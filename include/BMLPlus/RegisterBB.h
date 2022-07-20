@@ -142,7 +142,7 @@ public:
     std::string m_Name;
     std::string m_Desc;
     std::string m_Category;
-    std::string m_Author;
+    std::string m_Author = "Gamepiaynmo";
     CKGUID m_Guid;
     CKGUID m_AuthorGuid = BML_GUID;
     CKDWORD m_Version = BML_MAJOR_VER << 16 | BML_MINOR_VER;
