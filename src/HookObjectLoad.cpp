@@ -62,7 +62,7 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
                     ModLoader::GetInstance().GetModManager()->BroadcastCallback(&IMod::OnLoadScript,
                                                                                 std::bind(&IMod::OnLoadScript,
                                                                                           std::placeholders::_1,
-                                                                                          filename, beh));
+                                                                                          filename, behavior));
                 }
             }
         }
