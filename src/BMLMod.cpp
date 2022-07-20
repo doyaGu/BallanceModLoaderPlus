@@ -1,0 +1,1900 @@
+#include "BMLMod.h"
+
+#include <ctime>
+#include <map>
+#include <algorithm>
+
+#include "Gui.h"
+#include "InputHook.h"
+#include "ExecuteBB.h"
+#include "RegisterBB.h"
+#include "ScriptHelper.h"
+#include "ModLoader.h"
+#include "Commands.h"
+#include "Config.h"
+#include "Util.h"
+
+using namespace ScriptHelper;
+
+GuiList::GuiList() {
+    m_Left = AddLeftButton("M_List_Left", 0.12f, 0.36f, [this]() { PreviousPage(); });
+    m_Right = AddRightButton("M_List_Right", 0.12f, 0.6038f, [this]() { NextPage(); });
+    AddBackButton("M_Opt_Mods_Back")->SetCallback([this]() { Exit(); });
+}
+
+void GuiList::Init(int size, int maxsize) {
+    m_Size = size;
+    m_MaxPage = (size + maxsize - 1) / maxsize;
+    m_MaxSize = maxsize;
+    m_CurPage = 0;
+
+    for (int i = 0; i < m_Size; i++)
+        m_GuiList.push_back(CreateSubGui(i));
+    for (int i = 0; i < m_MaxSize; i++) {
+        BGui::Button *button = CreateButton(i);
+        if (m_Size > 0 && m_GuiList[0] != nullptr) {
+            button->SetCallback([this, i]() {
+                BGui::Gui *gui = m_GuiList[m_MaxSize * m_CurPage + i];
+                ModLoader::GetInstance().m_BMLMod->ShowGui(gui);
+            });
+        }
+        m_Buttons.push_back(button);
+    }
+}
+
+void GuiList::SetPage(int page) {
+    int size = (std::min)(m_MaxSize, m_Size - page * m_MaxSize);
+    for (int i = 0; i < m_MaxSize; i++)
+        m_Buttons[i]->SetVisible(i < size);
+    for (int i = 0; i < size; i++)
+        m_Buttons[i]->SetText(GetButtonText(page * m_MaxSize + i).c_str());
+
+    m_CurPage = page;
+    m_Left->SetVisible(page > 0);
+    m_Right->SetVisible(page < m_MaxPage - 1);
+}
+
+void GuiList::Exit() {
+    ModLoader::GetInstance().m_BMLMod->ShowGui(GetParentGui());
+}
+
+void GuiList::SetVisible(bool visible) {
+    Gui::SetVisible(visible);
+    if (visible)
+        SetPage(m_CurPage);
+}
+
+GuiModOption::GuiModOption() {
+    Init(ModLoader::GetInstance().GetModCount(), 4);
+
+    AddTextLabel("M_Opt_Mods_Title", "Mod List", ExecuteBB::GAMEFONT_02, 0.35f, 0.1f, 0.3f, 0.1f);
+}
+
+BGui::Button *GuiModOption::CreateButton(int index) {
+    return AddSettingButton(("M_Opt_Mods_" + std::to_string(index)).c_str(), "", 0.25f + 0.13f * index);
+}
+
+std::string GuiModOption::GetButtonText(int index) {
+    return ModLoader::GetInstance().GetMod(index)->GetID();
+}
+
+BGui::Gui *GuiModOption::CreateSubGui(int index) {
+    return new GuiModMenu(ModLoader::GetInstance().GetMod(index));
+}
+
+BGui::Gui *GuiModOption::GetParentGui() {
+    return nullptr;
+}
+
+void GuiModOption::Exit() {
+    GuiList::Exit();
+    ModLoader::GetInstance().GetCKContext()->GetCurrentScene()->Activate(
+        ModLoader::GetInstance().GetScriptByName("Menu_Options"),
+        true);
+}
+
+GuiModMenu::GuiModMenu(IMod *mod) : GuiList() {
+    m_Left->SetPosition(Vx2DVector(0.36f, 0.3f));
+    m_Right->SetPosition(Vx2DVector(0.6038f, 0.3f));
+    AddTextLabel("M_Opt_ModMenu_Name", mod->GetName(), ExecuteBB::GAMEFONT_01, 0.35f, 0.1f, 0.3f, 0.05f);
+    AddTextLabel("M_Opt_ModMenu_Author", (std::string("by ") + mod->GetAuthor()).c_str(), ExecuteBB::GAMEFONT_03, 0.35f,
+                 0.13f, 0.3f, 0.04f);
+    AddTextLabel("M_Opt_ModMenu_Version", (std::string("v") + mod->GetVersion()).c_str(), ExecuteBB::GAMEFONT_03, 0.35f,
+                 0.15f, 0.3f, 0.04f);
+    BGui::Label *desc = AddTextLabel("M_Opt_ModMenu_Description", mod->GetDescription(), ExecuteBB::GAMEFONT_03, 0.35f,
+                                     0.20f, 0.3f, 0.1f);
+    desc->SetTextFlags(TEXT_SCREEN | TEXT_WORDWRAP);
+    desc->SetAlignment(ALIGN_TOP);
+    m_CommentBackground = AddPanel("M_Opt_ModMenu_Comment_Bg", VxColor(0, 0, 0, 110), 0.725f, 0.4f, 0.25f, 0.2f);
+    m_Comment = AddTextLabel("M_Opt_ModMenu_Comment", "", ExecuteBB::GAMEFONT_03, 0.725f, 0.4f, 0.25f, 0.2f);
+    m_Comment->SetTextFlags(TEXT_SCREEN | TEXT_WORDWRAP);
+    m_Comment->SetAlignment(ALIGN_TOP);
+
+    m_Config = ModLoader::GetInstance().GetConfig(mod);
+    if (m_Config) {
+        AddTextLabel("M_Opt_ModMenu_Title", "Mod Options", ExecuteBB::GAMEFONT_01, 0.35f, 0.4f, 0.3f, 0.05f);
+        for (auto &cate: m_Config->m_Data)
+            m_Categories.push_back(cate.name);
+    }
+
+    Init(m_Categories.size(), 6);
+    SetVisible(false);
+}
+
+void GuiModMenu::Process() {
+    bool show_cmt = false;
+    if (m_CurPage >= 0 && m_CurPage < m_MaxPage) {
+        CKRenderContext *rc = ModLoader::GetInstance().GetRenderContext();
+        InputHook *input = ModLoader::GetInstance().GetInputManager();
+        Vx2DVector mousePos;
+        input->GetMousePosition(mousePos, false);
+        int size = (std::min)(m_MaxSize, m_Size - m_CurPage * m_MaxSize);
+        for (int i = 0; i < size; i++) {
+            if (Intersect(mousePos.x / rc->GetWidth(), mousePos.y / rc->GetHeight(), m_Buttons[i])) {
+                if (m_CurComment != i) {
+                    m_CommentBackground->SetVisible(true);
+                    m_Comment->SetVisible(true);
+                    m_Comment->SetText(m_Config->m_Data[i + m_CurPage * m_MaxSize].comment.c_str());
+                    m_CurComment = i;
+                }
+
+                show_cmt = true;
+                break;
+            }
+        }
+    }
+
+    if (!show_cmt) {
+        if (m_CurComment >= 0) {
+            m_CommentBackground->SetVisible(false);
+            m_Comment->SetVisible(false);
+            m_CurComment = -1;
+        }
+    }
+
+    GuiList::Process();
+}
+
+void GuiModMenu::SetVisible(bool visible) {
+    GuiList::SetVisible(visible);
+    if (visible) {
+        m_CommentBackground->SetVisible(false);
+        m_Comment->SetVisible(false);
+        m_CurComment = -1;
+    }
+}
+
+BGui::Button *GuiModMenu::CreateButton(int index) {
+    BGui::Button *button = AddLevelButton(("M_Opt_ModMenu_" + std::to_string(index)).c_str(), "",
+                                          0.45f + 0.06f * index);
+    button->SetFont(ExecuteBB::GAMEFONT_03);
+    return button;
+}
+
+std::string GuiModMenu::GetButtonText(int index) {
+    return m_Categories[index];
+}
+
+BGui::Gui *GuiModMenu::CreateSubGui(int index) {
+    return new GuiModCategory(this, m_Config, m_Categories[index]);
+}
+
+BGui::Gui *GuiModMenu::GetParentGui() {
+    return ModLoader::GetInstance().m_BMLMod->m_ModOption;
+}
+
+GuiCustomMap::GuiCustomMap(BMLMod *mod) : GuiList(), m_BMLMod(mod) {
+    m_Left->SetPosition(Vx2DVector(0.34f, 0.4f));
+    m_Right->SetPosition(Vx2DVector(0.6238f, 0.4f));
+
+    AddTextLabel("M_Opt_Mods_Title", "Custom Maps", ExecuteBB::GAMEFONT_02, 0.35f, 0.07f, 0.3f, 0.1f);
+
+    CKDirectoryParser mapParser("..\\ModLoader\\Maps", "*.nmo", TRUE);
+    char *mapPath = mapParser.GetNextFile();
+    while (mapPath) {
+        MapInfo info;
+
+        info.DisplayName = CKPathSplitter(mapPath).GetName();
+        info.SearchName = info.DisplayName;
+        info.FilePath = "..\\ModLoader\\Maps\\" + info.DisplayName + ".nmo";
+
+        std::transform(info.SearchName.begin(), info.SearchName.end(), info.SearchName.begin(), tolower);
+        m_Maps.push_back(info);
+        mapPath = mapParser.GetNextFile();
+    }
+
+    m_Exit = AddLeftButton("M_Exit_Custom_Maps", 0.4f, 0.34f, [this]() {
+        GuiList::Exit();
+        ModLoader::GetInstance().GetCKContext()->GetCurrentScene()->Activate(
+            ModLoader::GetInstance().GetScriptByName("Menu_Start"),
+            true);
+    });
+
+    AddPanel("M_Map_Search_Bg", VxColor(0, 0, 0, 110), 0.4f, 0.18f, 0.2f, 0.03f);
+    m_SearchBar = AddTextInput("M_Search_Map", ExecuteBB::GAMEFONT_03, 0.4f, 0.18f, 0.2f, 0.03f, [this](CKDWORD) {
+        m_SearchRes.clear();
+        std::string text = m_SearchBar->GetText();
+        std::transform(text.begin(), text.end(), text.begin(), tolower);
+
+        for (auto &p: m_Maps) {
+            if (text.length() == 0 || p.SearchName.find(text) != std::string::npos) {
+                m_SearchRes.push_back(&p);
+            }
+        }
+        m_Size = m_SearchRes.size();
+        m_MaxPage = (m_Size + m_MaxSize - 1) / m_MaxSize;
+        SetPage(0);
+    });
+
+    std::sort(m_Maps.begin(), m_Maps.end());
+    for (auto &p: m_Maps)
+        m_SearchRes.push_back(&p);
+    Init(m_SearchRes.size(), 10);
+    SetVisible(false);
+}
+
+BGui::Button *GuiCustomMap::CreateButton(int index) {
+    m_Texts.push_back(
+        AddText(("M_Opt_ModMenu_" + std::to_string(index)).c_str(), "", 0.44f, 0.23f + 0.06f * index, 0.3f, 0.05f));
+    return AddLevelButton(("M_Opt_ModMenu_" + std::to_string(index)).c_str(), "", 0.23f + 0.06f * index, 0.4031f,
+                          [this, index]() {
+                              GuiList::Exit();
+                              SetParamString(m_BMLMod->m_MapFile,
+                                             m_SearchRes[m_CurPage * m_MaxSize + index]->FilePath.c_str());
+                              SetParamValue(m_BMLMod->m_LoadCustom, TRUE);
+                              int level = rand() % 10 + 2;
+                              m_BMLMod->m_CurLevel->SetElementValue(0, 0, &level);
+                              level--;
+                              SetParamValue(m_BMLMod->m_LevelRow, level);
+
+                              CKContext *ctx = m_BMLMod->m_BML->GetCKContext();
+                              CKMessageManager *mm = ctx->GetMessageManager();
+                              CKMessageType loadLevel = mm->AddMessageType("Load Level");
+                              CKMessageType loadMenu = mm->AddMessageType("Menu_Load");
+
+                              mm->SendMessageSingle(loadLevel, ctx->GetCurrentLevel());
+                              mm->SendMessageSingle(loadMenu, ModLoader::GetInstance().GetGroupByName("All_Sound"));
+                              ModLoader::GetInstance().Get2dEntityByName("M_BlackScreen")->Show(CKHIDE);
+                              m_BMLMod->m_ExitStart->ActivateInput(0);
+                              m_BMLMod->m_ExitStart->Activate();
+                          });
+}
+
+std::string GuiCustomMap::GetButtonText(int index) {
+    return "";
+}
+
+BGui::Gui *GuiCustomMap::CreateSubGui(int index) {
+    return nullptr;
+}
+
+BGui::Gui *GuiCustomMap::GetParentGui() {
+    return nullptr;
+}
+
+void GuiCustomMap::SetPage(int page) {
+    GuiList::SetPage(page);
+    int size = (std::min)(m_MaxSize, m_Size - page * m_MaxSize);
+    for (int i = 0; i < m_MaxSize; i++)
+        m_Texts[i]->SetVisible(i < size);
+    for (int i = 0; i < size; i++)
+        m_Texts[i]->SetText(m_SearchRes[page * m_MaxSize + i]->DisplayName.c_str());
+    m_BMLMod->m_BML->AddTimer(1ul, [this, page]() { m_Exit->SetVisible(page == 0); });
+}
+
+void GuiCustomMap::Exit() {
+    GuiList::Exit();
+    ModLoader::GetInstance().GetCKContext()->GetCurrentScene()->Activate(
+        ModLoader::GetInstance().GetScriptByName("Menu_Main"),
+        true);
+}
+
+GuiModCategory::GuiModCategory(GuiModMenu *parent, Config *config, const std::string &category) {
+    for (Property *prop: config->GetCategory(category.c_str()).props) {
+        auto *newprop = new Property(nullptr, category, prop->m_key);
+        newprop->CopyValue(prop);
+        newprop->SetComment(prop->GetComment());
+        m_Data.push_back(newprop);
+    }
+
+    m_Size = m_Data.size();
+    m_CurPage = 0;
+
+    m_Parent = parent;
+    m_Config = config;
+    m_Category = category;
+
+    AddTextLabel("M_Opt_Category_Title", category.c_str(), ExecuteBB::GAMEFONT_02, 0.35f, 0.1f, 0.3f, 0.1f);
+    m_Left = AddLeftButton("M_List_Left", 0.12f, 0.35f, [this]() { PreviousPage(); });
+    m_Right = AddRightButton("M_List_Right", 0.12f, 0.6138f, [this]() { NextPage(); });
+    AddBackButton("M_Opt_Category_Back")->SetCallback([this]() { SaveAndExit(); });
+    m_Exit = AddBackButton("M_Opt_Category_Back");
+    m_Exit->SetCallback([this]() { Exit(); });
+    m_CommentBackground = AddPanel("M_Opt_Comment_Bg", VxColor(0, 0, 0, 110), 0.725f, 0.4f, 0.25f, 0.2f);
+    m_Comment = AddTextLabel("M_Opt_Comment", "", ExecuteBB::GAMEFONT_03, 0.725f, 0.4f, 0.25f, 0.2f);
+    m_Comment->SetTextFlags(TEXT_SCREEN | TEXT_WORDWRAP);
+    m_Comment->SetAlignment(ALIGN_TOP);
+
+    Vx2DVector offset(0.0f, ModLoader::GetInstance().GetRenderContext()->GetHeight() * 0.015f);
+
+    float cnt = 0.25f, page = 0;
+    std::vector<BGui::Element *> elements;
+    std::vector<std::pair<Property *, BGui::Element *>> comments;
+    for (Property *prop: m_Data) {
+        std::string name = prop->m_key;
+        switch (prop->GetType()) {
+            case IProperty::STRING: {
+                BGui::Button *bg = AddSettingButton(name.c_str(), name.c_str(), cnt);
+                bg->SetAlignment(ALIGN_TOP);
+                bg->SetFont(ExecuteBB::GAMEFONT_03);
+                bg->SetZOrder(15);
+                bg->SetOffset(offset);
+                elements.push_back(bg);
+                BGui::Input *input = AddTextInput(name.c_str(), ExecuteBB::GAMEFONT_03, 0.43f, cnt + 0.05f, 0.18f,
+                                                  0.025f);
+                input->SetText(prop->GetString());
+                input->SetCallback([this, prop, input](CKDWORD) { prop->SetString(input->GetText()); });
+                elements.push_back(input);
+                BGui::Panel *panel = AddPanel(name.c_str(), VxColor(0, 0, 0, 110), 0.43f, cnt + 0.05f, 0.18f, 0.025f);
+                elements.push_back(panel);
+                m_Inputs.emplace_back(input, nullptr);
+                comments.emplace_back(prop, bg);
+                cnt += 0.12f;
+                break;
+            }
+            case IProperty::INTEGER: {
+                BGui::Button *bg = AddSettingButton(name.c_str(), name.c_str(), cnt);
+                bg->SetAlignment(ALIGN_TOP);
+                bg->SetFont(ExecuteBB::GAMEFONT_03);
+                bg->SetZOrder(15);
+                bg->SetOffset(offset);
+                elements.push_back(bg);
+                BGui::Input *input = AddTextInput(name.c_str(), ExecuteBB::GAMEFONT_03, 0.43f, cnt + 0.05f, 0.18f,
+                                                  0.025f);
+                input->SetText(std::to_string(prop->GetInteger()).c_str());
+                input->SetCallback([this, prop, input](CKDWORD) { prop->SetInteger(atoi(input->GetText())); });
+                elements.push_back(input);
+                BGui::Panel *panel = AddPanel(name.c_str(), VxColor(0, 0, 0, 110), 0.43f, cnt + 0.05f, 0.18f, 0.025f);
+                elements.push_back(panel);
+                m_Inputs.emplace_back(input, nullptr);
+                comments.emplace_back(prop, bg);
+                cnt += 0.12f;
+                break;
+            }
+            case IProperty::FLOAT: {
+                BGui::Button *bg = AddSettingButton(name.c_str(), name.c_str(), cnt);
+                bg->SetAlignment(ALIGN_TOP);
+                bg->SetFont(ExecuteBB::GAMEFONT_03);
+                bg->SetZOrder(15);
+                bg->SetOffset(offset);
+                elements.push_back(bg);
+                BGui::Input *input = AddTextInput(name.c_str(), ExecuteBB::GAMEFONT_03, 0.43f, cnt + 0.05f, 0.18f,
+                                                  0.025f);
+                std::ostringstream stream;
+                stream << prop->GetFloat();
+                input->SetText(stream.str().c_str());
+                input->SetCallback([this, prop, input](CKDWORD) { prop->SetFloat((float) atof(input->GetText())); });
+                elements.push_back(input);
+                BGui::Panel *panel = AddPanel(name.c_str(), VxColor(0, 0, 0, 110), 0.43f, cnt + 0.05f, 0.18f, 0.025f);
+                elements.push_back(panel);
+                m_Inputs.emplace_back(input, nullptr);
+                comments.emplace_back(prop, bg);
+                cnt += 0.12f;
+                break;
+            }
+            case IProperty::KEY: {
+                std::pair<BGui::Button *, BGui::KeyInput *> key = AddKeyButton(name.c_str(), name.c_str(), cnt);
+                key.second->SetKey(prop->GetKey());
+                key.second->SetCallback([this, prop](CKDWORD key) { prop->SetKey(CKKEYBOARD(key)); });
+                elements.push_back(key.first);
+                elements.push_back(key.second);
+                m_Inputs.emplace_back(key.second, nullptr);
+                comments.emplace_back(prop, key.first);
+                cnt += 0.06f;
+                break;
+            }
+            case IProperty::BOOLEAN: {
+                BGui::Button *bg = AddSettingButton(name.c_str(), name.c_str(), cnt);
+                bg->SetAlignment(ALIGN_TOP);
+                bg->SetFont(ExecuteBB::GAMEFONT_03);
+                bg->SetZOrder(15);
+                bg->SetOffset(offset);
+                elements.push_back(bg);
+                std::pair<BGui::Button *, BGui::Button *> yesno = AddYesNoButton(name.c_str(), cnt + 0.043f, 0.4350f,
+                                                                                 0.5200f,
+                                                                                 [this, prop](bool value) {
+                                                                                     prop->SetBoolean(value);
+                                                                                 });
+                yesno.first->SetActive(prop->GetBoolean());
+                yesno.second->SetActive(!prop->GetBoolean());
+                elements.push_back(yesno.first);
+                elements.push_back(yesno.second);
+                m_Inputs.emplace_back(yesno);
+                comments.emplace_back(prop, bg);
+                cnt += 0.12f;
+                break;
+            }
+            case IProperty::NONE:
+                break;
+        }
+
+        if (cnt > 0.7f) {
+            cnt = 0.25f;
+            page++;
+            m_Elements.push_back(elements);
+            elements.clear();
+            m_Comments.push_back(comments);
+            comments.clear();
+        }
+    }
+
+    if (cnt > 0.25f) {
+        m_Elements.push_back(elements);
+        m_Comments.push_back(comments);
+    }
+
+    m_MaxPage = m_Elements.size();
+
+    SetVisible(false);
+}
+
+void GuiModCategory::Process() {
+    bool show_cmt = false;
+    if (m_CurPage >= 0 && m_CurPage < (int) m_Comments.size()) {
+        CKRenderContext *rc = ModLoader::GetInstance().GetRenderContext();
+        InputHook *input = ModLoader::GetInstance().GetInputManager();
+        Vx2DVector mousePos;
+        input->GetMousePosition(mousePos, false);
+        for (auto &pair: m_Comments[m_CurPage]) {
+            if (Intersect(mousePos.x / rc->GetWidth(), mousePos.y / rc->GetHeight(), pair.second)) {
+                if (m_CurComment != pair.first) {
+                    m_CommentBackground->SetVisible(true);
+                    m_Comment->SetVisible(true);
+                    m_Comment->SetText(pair.first->GetComment());
+                    m_CurComment = pair.first;
+                }
+
+                show_cmt = true;
+                break;
+            }
+        }
+    }
+
+    if (!show_cmt) {
+        if (m_CurComment != nullptr) {
+            m_CommentBackground->SetVisible(false);
+            m_Comment->SetVisible(false);
+            m_CurComment = nullptr;
+        }
+    }
+
+    Gui::Process();
+}
+
+void GuiModCategory::SetVisible(bool visible) {
+    Gui::SetVisible(visible);
+    if (visible) {
+        std::vector<Property *> &props = m_Config->GetCategory(m_Category.c_str()).props;
+        for (size_t i = 0; i < props.size(); i++) {
+            Property *prop = props[i];
+            m_Data[i]->CopyValue(prop);
+            std::pair<BGui::Element *, BGui::Element *> input = m_Inputs[i];
+            switch (prop->GetType()) {
+                case IProperty::STRING:
+                    reinterpret_cast<BGui::Input *>(input.first)->SetText(prop->GetString());
+                    break;
+                case IProperty::INTEGER:
+                    reinterpret_cast<BGui::Input *>(input.first)->SetText(std::to_string(prop->GetInteger()).c_str());
+                    break;
+                case IProperty::FLOAT: {
+                    std::ostringstream stream;
+                    stream << prop->GetFloat();
+                    reinterpret_cast<BGui::Input *>(input.first)->SetText(stream.str().c_str());
+                    break;
+                }
+                case IProperty::KEY:
+                    reinterpret_cast<BGui::KeyInput *>(input.first)->SetKey(prop->GetKey());
+                    break;
+                case IProperty::BOOLEAN: {
+                    reinterpret_cast<BGui::Button *>(input.first)->SetActive(prop->GetBoolean());
+                    reinterpret_cast<BGui::Button *>(input.second)->SetActive(!prop->GetBoolean());
+                    break;
+                }
+                case IProperty::NONE:
+                    break;
+            }
+        }
+
+        m_CommentBackground->SetVisible(false);
+        m_Comment->SetVisible(false);
+        m_CurComment = nullptr;
+
+        SetPage(m_CurPage);
+    }
+}
+
+void GuiModCategory::SetPage(int page) {
+    for (auto &p: m_Elements)
+        for (auto &e: p)
+            e->SetVisible(false);
+
+    for (auto &e: m_Elements[page])
+        e->SetVisible(true);
+
+    m_CurPage = page;
+    m_Left->SetVisible(page > 0);
+    m_Right->SetVisible(page < m_MaxPage - 1);
+    m_Exit->SetVisible(false);
+}
+
+void GuiModCategory::SaveAndExit() {
+    Config::Category &cate = m_Config->GetCategory(m_Category.c_str());
+    for (Property *p: m_Data)
+        cate.GetProperty(p->m_key.c_str())->CopyValue(p);
+    m_Config->Save();
+    Exit();
+}
+
+void GuiModCategory::Exit() {
+    ModLoader::GetInstance().m_BMLMod->ShowGui(m_Parent);
+}
+
+void ScreenModeHook::OnScreenModeChanged() {
+    CKCamera *cams[] = {ModLoader::GetInstance().GetTargetCameraByName("Cam_MenuLevel"),
+                        ModLoader::GetInstance().GetTargetCameraByName("InGameCam")};
+    CKRenderContext *rc = ModLoader::GetInstance().GetRenderContext();
+    for (CKCamera *cam: cams) {
+        if (cam) {
+            cam->SetAspectRatio(rc->GetWidth(), rc->GetHeight());
+            cam->SetFov(0.75f * rc->GetWidth() / rc->GetHeight());
+            CKStateChunk *chunk = CKSaveObjectState(cam);
+
+            ModLoader::GetInstance().RestoreIC(cam);
+            cam->SetAspectRatio(rc->GetWidth(), rc->GetHeight());
+            cam->SetFov(0.75f * rc->GetWidth() / rc->GetHeight());
+            ModLoader::GetInstance().SetIC(cam);
+
+            CKReadObjectState(cam, chunk);
+        }
+    }
+}
+
+void CommandTravel::Execute(IBML *bml, const std::vector<std::string> &args) {
+    if (bml->IsPlaying()) {
+        if (m_BMLMod->IsInTravelCam()) {
+            m_BMLMod->ExitTravelCam();
+            m_BMLMod->AddIngameMessage("Exit Travel Camera");
+            bml->GetGroupByName("HUD_sprites")->Show();
+            bml->GetGroupByName("LifeBalls")->Show();
+        } else {
+            m_BMLMod->EnterTravelCam();
+            m_BMLMod->AddIngameMessage("Enter Travel Camera");
+            bml->GetGroupByName("HUD_sprites")->Show(CKHIDE);
+            bml->GetGroupByName("LifeBalls")->Show(CKHIDE);
+        }
+    }
+}
+
+void BMLMod::OnLoad() {
+    GetConfig()->SetCategoryComment("Misc", "Miscellaneous");
+    m_SkipAnim = GetConfig()->GetProperty("Misc", "SkipLoadingAnim");
+    m_SkipAnim->SetComment("Skip the Loading Animation");
+    m_SkipAnim->SetDefaultBoolean(true);
+
+    m_FullscreenKey = GetConfig()->GetProperty("Misc", "Fullscreen");
+    m_FullscreenKey->SetComment("Toggle Fullscreen in game");
+    m_FullscreenKey->SetDefaultKey(CKKEY_F11);
+
+    m_UnlockRes = GetConfig()->GetProperty("Misc", "UnlockResolution");
+    m_UnlockRes->SetComment("Unlock 16:9 Resolutions");
+    m_UnlockRes->SetDefaultBoolean(true);
+
+    m_Overclock = GetConfig()->GetProperty("Misc", "Overclock");
+    m_Overclock->SetComment("Remove delay of spawn / respawn");
+    m_Overclock->SetDefaultBoolean(false);
+
+    m_ShowTitle = GetConfig()->GetProperty("Misc", "ShowTitle");
+    m_ShowTitle->SetComment("Show BML Title at top");
+    m_ShowTitle->SetDefaultBoolean(true);
+
+    m_ShowFPS = GetConfig()->GetProperty("Misc", "ShowFPS");
+    m_ShowFPS->SetComment("Show FPS at top-left corner");
+    m_ShowFPS->SetDefaultBoolean(true);
+
+    m_ShowSR = GetConfig()->GetProperty("Misc", "ShowSRTimer");
+    m_ShowSR->SetComment("Show SR Timer above Time Score");
+    m_ShowSR->SetDefaultBoolean(true);
+
+    m_FixLifeBall = GetConfig()->GetProperty("Misc", "FixLifeBallFreeze");
+    m_FixLifeBall->SetComment("Game won't freeze when picking up life balls");
+    m_FixLifeBall->SetDefaultBoolean(true);
+
+    GetConfig()->SetCategoryComment("Debug", "Debug Utilities");
+    m_Suicide = GetConfig()->GetProperty("Debug", "Suicide");
+    m_Suicide->SetComment("Suicide");
+    m_Suicide->SetDefaultKey(CKKEY_R);
+
+    m_BallCheat[0] = GetConfig()->GetProperty("Debug", "BallUp");
+    m_BallCheat[0]->SetComment("Apply an upward force to the ball");
+    m_BallCheat[0]->SetDefaultKey(CKKEY_F1);
+
+    m_BallCheat[1] = GetConfig()->GetProperty("Debug", "BallDown");
+    m_BallCheat[1]->SetComment("Apply a downward force to the ball");
+    m_BallCheat[1]->SetDefaultKey(CKKEY_F2);
+
+    m_ChangeBall[0] = GetConfig()->GetProperty("Debug", "TurnPaper");
+    m_ChangeBall[0]->SetComment("Turn into paper ball");
+    m_ChangeBall[0]->SetDefaultKey(CKKEY_I);
+
+    m_ChangeBall[1] = GetConfig()->GetProperty("Debug", "TurnWood");
+    m_ChangeBall[1]->SetComment("Turn into wood ball");
+    m_ChangeBall[1]->SetDefaultKey(CKKEY_O);
+
+    m_ChangeBall[2] = GetConfig()->GetProperty("Debug", "TurnStone");
+    m_ChangeBall[2]->SetComment("Turn into stone ball");
+    m_ChangeBall[2]->SetDefaultKey(CKKEY_P);
+
+    m_ResetBall = GetConfig()->GetProperty("Debug", "ResetBall");
+    m_ResetBall->SetComment("Reset ball and all moduls");
+    m_ResetBall->SetDefaultKey(CKKEY_BACK);
+
+    m_AddLife = GetConfig()->GetProperty("Debug", "AddLife");
+    m_AddLife->SetComment("Add one extra Life");
+    m_AddLife->SetDefaultKey(CKKEY_L);
+
+    m_SpeedupBall = GetConfig()->GetProperty("Debug", "BallSpeedUp");
+    m_SpeedupBall->SetComment("Change to 3 times ball speed");
+    m_SpeedupBall->SetDefaultKey(CKKEY_LCONTROL);
+
+    GetConfig()->SetCategoryComment("Auxiliaries", "Temporal Auxiliary Moduls");
+    m_AddBall[0] = GetConfig()->GetProperty("Auxiliaries", "PaperBall");
+    m_AddBall[0]->SetComment("Add a Paper Ball");
+    m_AddBall[0]->SetDefaultKey(CKKEY_J);
+
+    m_AddBall[1] = GetConfig()->GetProperty("Auxiliaries", "WoodBall");
+    m_AddBall[1]->SetComment("Add a Wood Ball");
+    m_AddBall[1]->SetDefaultKey(CKKEY_K);
+
+    m_AddBall[2] = GetConfig()->GetProperty("Auxiliaries", "StoneBall");
+    m_AddBall[2]->SetComment("Add a Stone Ball");
+    m_AddBall[2]->SetDefaultKey(CKKEY_N);
+
+    m_AddBall[3] = GetConfig()->GetProperty("Auxiliaries", "Box");
+    m_AddBall[3]->SetComment("Add a Box");
+    m_AddBall[3]->SetDefaultKey(CKKEY_M);
+
+    m_MoveKeys[0] = GetConfig()->GetProperty("Auxiliaries", "MoveFront");
+    m_MoveKeys[0]->SetComment("Move Front");
+    m_MoveKeys[0]->SetDefaultKey(CKKEY_UP);
+
+    m_MoveKeys[1] = GetConfig()->GetProperty("Auxiliaries", "MoveBack");
+    m_MoveKeys[1]->SetComment("Move Back");
+    m_MoveKeys[1]->SetDefaultKey(CKKEY_DOWN);
+
+    m_MoveKeys[2] = GetConfig()->GetProperty("Auxiliaries", "MoveLeft");
+    m_MoveKeys[2]->SetComment("Move Left");
+    m_MoveKeys[2]->SetDefaultKey(CKKEY_LEFT);
+
+    m_MoveKeys[3] = GetConfig()->GetProperty("Auxiliaries", "MoveRight");
+    m_MoveKeys[3]->SetComment("Move Right");
+    m_MoveKeys[3]->SetDefaultKey(CKKEY_RIGHT);
+
+    m_MoveKeys[4] = GetConfig()->GetProperty("Auxiliaries", "MoveUp");
+    m_MoveKeys[4]->SetComment("Move Up");
+    m_MoveKeys[4]->SetDefaultKey(CKKEY_RSHIFT);
+
+    m_MoveKeys[5] = GetConfig()->GetProperty("Auxiliaries", "MoveDown");
+    m_MoveKeys[5]->SetComment("Move Down");
+    m_MoveKeys[5]->SetDefaultKey(CKKEY_RCONTROL);
+
+    GetConfig()->SetCategoryComment("Camera", "Camera Utilities");
+    m_CamOn = GetConfig()->GetProperty("Camera", "Enable");
+    m_CamOn->SetComment("Enable Camera Utilities");
+    m_CamOn->SetDefaultBoolean(false);
+
+    m_CamReset = GetConfig()->GetProperty("Camera", "Reset");
+    m_CamReset->SetComment("Reset Camera");
+    m_CamReset->SetDefaultKey(CKKEY_D);
+
+    m_Cam45 = GetConfig()->GetProperty("Camera", "Rotate45");
+    m_Cam45->SetComment("Set to 45 degrees");
+    m_Cam45->SetDefaultKey(CKKEY_W);
+
+    m_CamRot[0] = GetConfig()->GetProperty("Camera", "RotateLeft");
+    m_CamRot[0]->SetComment("Rotate the camera");
+    m_CamRot[0]->SetDefaultKey(CKKEY_Q);
+
+    m_CamRot[1] = GetConfig()->GetProperty("Camera", "RotateRight");
+    m_CamRot[1]->SetComment("Rotate the camera");
+    m_CamRot[1]->SetDefaultKey(CKKEY_E);
+
+    m_CamY[0] = GetConfig()->GetProperty("Camera", "MoveUp");
+    m_CamY[0]->SetComment("Move the camera");
+    m_CamY[0]->SetDefaultKey(CKKEY_A);
+
+    m_CamY[1] = GetConfig()->GetProperty("Camera", "MoveDown");
+    m_CamY[1]->SetComment("Move the camera");
+    m_CamY[1]->SetDefaultKey(CKKEY_Z);
+
+    m_CamZ[0] = GetConfig()->GetProperty("Camera", "MoveFront");
+    m_CamZ[0]->SetComment("Move the camera");
+    m_CamZ[0]->SetDefaultKey(CKKEY_S);
+
+    m_CamZ[1] = GetConfig()->GetProperty("Camera", "MoveBack");
+    m_CamZ[1]->SetComment("Move the camera");
+    m_CamZ[1]->SetDefaultKey(CKKEY_X);
+
+    m_BML->RegisterCommand(new CommandBML());
+    m_BML->RegisterCommand(new CommandHelp());
+    m_BML->RegisterCommand(new CommandCheat());
+    m_BML->RegisterCommand(new CommandClear());
+    m_BML->RegisterCommand(new CommandScore());
+    m_BML->RegisterCommand(new CommandSpeed());
+    m_BML->RegisterCommand(new CommandKill());
+    m_BML->RegisterCommand(new CommandSetSpawn());
+    m_BML->RegisterCommand(new CommandSector());
+    m_BML->RegisterCommand(new CommandWin());
+    m_BML->RegisterCommand(new CommandTravel(this));
+
+    m_Balls[0] = (CK3dEntity *) ExecuteBB::ObjectLoad("3D Entities\\PH\\P_Ball_Paper.nmo", true,
+                                                      "P_Ball_Paper_MF").second;
+    m_Balls[1] = (CK3dEntity *) ExecuteBB::ObjectLoad("3D Entities\\PH\\P_Ball_Wood.nmo", true,
+                                                      "P_Ball_Wood_MF").second;
+    m_Balls[2] = (CK3dEntity *) ExecuteBB::ObjectLoad("3D Entities\\PH\\P_Ball_Stone.nmo", true,
+                                                      "P_Ball_Stone_MF").second;
+    m_Balls[3] = (CK3dEntity *) ExecuteBB::ObjectLoad("3D Entities\\PH\\P_Box.nmo", true,
+                                                      "P_Box_MF").second;
+    m_TravelCam = (CKCamera *) m_BML->GetCKContext()->CreateObject(CKCID_CAMERA, "TravelCam");
+}
+
+void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
+                          CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
+                          XObjectArray *objArray, CKObject *masterObj) {
+    if (!strcmp(filename, "3D Entities\\Menu.nmo")) {
+        BGui::Gui::InitMaterials();
+
+        GetLogger()->Info("Create Command Gui");
+        m_CmdBar = new BGui::Gui();
+        m_CmdBar->AddPanel("M_Cmd_Bg", VxColor(0, 0, 0, 110), 0.02f, 0.94f, 0.95f, 0.025f)->SetZOrder(100);
+        m_CmdInput = m_CmdBar->AddTextInput("M_Cmd_Text", ExecuteBB::GAMEFONT_03, 0.02f, 0.94f, 0.95f, 0.025f,
+                                            [this](CKDWORD key) { OnCmdEdit(key); });
+        m_CmdInput->SetAlignment(ALIGN_LEFT);
+        m_CmdInput->SetTextFlags(TEXT_SCREEN | TEXT_SHOWCARET);
+        m_CmdInput->SetZOrder(110);
+        m_CmdBar->SetCanBeBlocked(false);
+        m_CmdBar->SetVisible(false);
+
+        GetLogger()->Info("Create Console Gui");
+        m_MsgLog = new BGui::Gui();
+        for (int i = 0; i < MSG_MAXSIZE; i++) {
+            m_Msgs[i].m_Background = m_MsgLog->AddPanel((std::string("M_Cmd_Log_Bg_") + std::to_string(i + 1)).c_str(),
+                                                        VxColor(0, 0, 0, 110), 0.02f, 0.9f - i * 0.025f, 0.95f, 0.025f);
+            m_Msgs[i].m_Background->SetVisible(false);
+            m_Msgs[i].m_Background->SetZOrder(100);
+            m_Msgs[i].m_Text = m_MsgLog->AddTextLabel((std::string("M_Cmd_Log_Text_") + std::to_string(i + 1)).c_str(),
+                                                      "", ExecuteBB::GAMEFONT_03, 0.02f, 0.9f - i * 0.025f, 0.95f,
+                                                      0.025f);
+            m_Msgs[i].m_Text->SetVisible(false);
+            m_Msgs[i].m_Text->SetAlignment(ALIGN_LEFT);
+            m_Msgs[i].m_Text->SetZOrder(110);
+            m_Msgs[i].m_Timer = 0;
+        }
+
+        GetLogger()->Info("Create BML Gui");
+        m_IngameBanner = new BGui::Gui();
+        m_Title = m_IngameBanner->AddTextLabel("M_Use_BML", "BML Plus " BML_VERSION, ExecuteBB::GAMEFONT_01, 0, 0, 1,
+                                               0.03f);
+        m_Title->SetVisible(m_ShowTitle->GetBoolean());
+        m_Cheat = m_IngameBanner->AddTextLabel("M_Use_Cheat", "Cheat Mode Enabled", ExecuteBB::GAMEFONT_01, 0, 0.85f, 1,
+                                               0.05f);
+        // m_Cheat[1] = m_IngameBanner->AddTextLabel("M_Use_Cheat", "Cheat Mode Enabled", ExecuteBB::GAMEFONT_03A, 0.001f, 0.901f, 1, 0.03f);
+        // m_Cheat[2] = m_IngameBanner->AddTextLabel("M_Use_Cheat", "Cheat Mode Enabled", ExecuteBB::GAMEFONT_03A, 0.002f, 0.902f, 1, 0.03f);
+        m_FPS = m_IngameBanner->AddTextLabel("M_Show_Fps", "", ExecuteBB::GAMEFONT_01, 0, 0, 0.2f, 0.03f);
+        m_SRTitle = m_IngameBanner->AddTextLabel("M_Time_Counter_Title", "SR Timer", ExecuteBB::GAMEFONT_01, 0.03f,
+                                                 0.8f, 0.2f, 0.03f);
+        m_SRScore = m_IngameBanner->AddTextLabel("M_Time_Counter", "", ExecuteBB::GAMEFONT_01, 0.05f, 0.83f, 0.2f,
+                                                 0.03f);
+        m_FPS->SetAlignment(ALIGN_LEFT);
+        m_FPS->SetVisible(m_ShowFPS->GetBoolean());
+        m_SRTitle->SetAlignment(ALIGN_LEFT);
+        m_SRTitle->SetVisible(false);
+        m_SRScore->SetAlignment(ALIGN_LEFT);
+        m_SRScore->SetVisible(false);
+        m_Cheat->SetVisible(false);
+        m_CustomMaps = m_IngameBanner->AddRightButton("M_Enter_Custom_Maps", 0.4f, 0.6238f, [this]() {
+            m_ExitStart->ActivateInput(0);
+            m_ExitStart->Activate();
+            ShowGui(m_MapsGui);
+        });
+
+        GetLogger()->Info("Create Mod Options Gui");
+        m_ModOption = new GuiModOption();
+        m_ModOption->SetVisible(false);
+
+        m_MapsGui = new GuiCustomMap(this);
+        m_Level01 = m_BML->Get2dEntityByName("M_Start_But_01");
+        CKBehavior *menuMain = m_BML->GetScriptByName("Menu_Start");
+        m_ExitStart = FindFirstBB(menuMain, "Exit");
+
+        m_ScreenModeHook = new ScreenModeHook();
+    }
+
+    if (!strcmp(filename, "3D Entities\\MenuLevel.nmo")) {
+        if (m_UnlockRes->GetBoolean()) {
+            GetLogger()->Info("Adjust MenuLevel Camera");
+            CKCamera *cam = m_BML->GetTargetCameraByName("Cam_MenuLevel");
+            CKRenderContext *rc = m_BML->GetRenderContext();
+            cam->SetAspectRatio(rc->GetWidth(), rc->GetHeight());
+            cam->SetFov(0.75f * rc->GetWidth() / rc->GetHeight());
+            m_BML->SetIC(cam);
+        }
+    }
+
+    if (!strcmp(filename, "3D Entities\\Camera.nmo")) {
+        if (m_UnlockRes->GetBoolean()) {
+            GetLogger()->Info("Adjust Ingame Camera");
+            CKCamera *cam = m_BML->GetTargetCameraByName("InGameCam");
+            CKRenderContext *rc = m_BML->GetRenderContext();
+            cam->SetAspectRatio(rc->GetWidth(), rc->GetHeight());
+            cam->SetFov(0.75f * rc->GetWidth() / rc->GetHeight());
+            m_BML->SetIC(cam);
+        }
+
+        m_CamPos = m_BML->Get3dEntityByName("Cam_Pos");
+        m_CamOrient = m_BML->Get3dEntityByName("Cam_Orient");
+        m_CamOrientRef = m_BML->Get3dEntityByName("Cam_OrientRef");
+        m_CamTarget = m_BML->Get3dEntityByName("Cam_Target");
+    }
+}
+
+void BMLMod::OnLoadScript(const char *filename, CKBehavior *script) {
+    if (!strcmp(script->GetName(), "Default Level"))
+        OnEditScript_Base_DefaultLevel(script);
+
+    if (!strcmp(script->GetName(), "Event_handler"))
+        OnEditScript_Base_EventHandler(script);
+
+    if (!strcmp(script->GetName(), "Menu_Init"))
+        OnEditScript_Menu_MenuInit(script);
+
+    if (!strcmp(script->GetName(), "Menu_Options"))
+        OnEditScript_Menu_OptionsMenu(script);
+
+    if (!strcmp(script->GetName(), "Gameplay_Ingame"))
+        OnEditScript_Gameplay_Ingame(script);
+
+    if (!strcmp(script->GetName(), "Gameplay_Energy"))
+        OnEditScript_Gameplay_Energy(script);
+
+    if (!strcmp(script->GetName(), "Gameplay_Events"))
+        OnEditScript_Gameplay_Events(script);
+
+    if (!strcmp(script->GetName(), "Levelinit_build"))
+        OnEditScript_Levelinit_build(script);
+
+    if (m_FixLifeBall) {
+        if (!strcmp(script->GetName(), "P_Extra_Life_Particle_Blob Script") ||
+            !strcmp(script->GetName(), "P_Extra_Life_Particle_Fizz Script"))
+            OnEditScript_ExtraLife_Fix(script);
+    }
+}
+
+void BMLMod::OnProcess() {
+    auto *ctx = m_BML->GetCKContext();
+    auto *im = m_BML->GetInputManager();
+    m_CheatEnabled = m_BML->IsCheatEnabled();
+
+    if (im->IsKeyPressed(m_FullscreenKey->GetKey())) {
+        CKRenderContext *rc = m_BML->GetRenderContext();
+        if (rc->IsFullScreen()) {
+            rc->StopFullScreen();
+            GetLogger()->Info("Switch to Windowed Mode");
+        } else {
+            rc->GoFullScreen(rc->GetWidth(), rc->GetHeight(), -1, rc->GetDriverIndex());
+            GetLogger()->Info("Switch to Fullscreen Mode");
+        }
+    }
+
+    if (m_IngameBanner) {
+        CKStats stats;
+        ctx->GetProfileStats(&stats);
+        m_FPSCount += int(1000 / stats.TotalFrameTime);
+        if (++m_FPSTimer == 60) {
+            m_FPS->SetText(("FPS: " + std::to_string(m_FPSCount / 60)).c_str());
+            m_FPSTimer = 0;
+            m_FPSCount = 0;
+        }
+    }
+
+    if (m_CmdBar) {
+        if (!m_CmdTyping && im->oIsKeyPressed(CKKEY_SLASH)) {
+            GetLogger()->Info("Toggle Command Bar");
+            m_CmdTyping = true;
+            im->SetBlock(true);
+            m_CmdBar->SetVisible(true);
+            m_HistoryPos = m_CmdHistory.size();
+        }
+
+        m_MsgLog->Process();
+        if (!IsInTravelCam())
+            m_IngameBanner->Process();
+        if (m_CurGui)
+            m_CurGui->Process();
+        m_ScreenModeHook->Process();
+
+        if (m_CmdTyping) {
+            m_CmdBar->Process();
+
+            for (int i = 0; i < std::min(MSG_MAXSIZE, m_MsgCount); i++) {
+                m_Msgs[i].m_Background->SetVisible(true);
+                m_Msgs[i].m_Background->SetColor(VxColor(0, 0, 0, 110));
+                m_Msgs[i].m_Text->SetVisible(true);
+            }
+        } else {
+            for (int i = 0; i < std::min(MSG_MAXSIZE, m_MsgCount); i++) {
+                int &timer = m_Msgs[i].m_Timer;
+                m_Msgs[i].m_Background->SetVisible(timer > 0);
+                m_Msgs[i].m_Background->SetColor(VxColor(0, 0, 0, std::min(110, timer / 2)));
+                m_Msgs[i].m_Text->SetVisible(timer > 100);
+            }
+        }
+
+        for (int i = 0; i < std::min(MSG_MAXSIZE, m_MsgCount); i++) {
+            m_Msgs[i].m_Timer--;
+        }
+    }
+
+    if (m_BML->IsPlaying()) {
+        if (!m_SuicideCd) {
+            if (m_BML->IsPlaying() && im->IsKeyPressed(m_Suicide->GetKey())) {
+                ModLoader::GetInstance().ExecuteCommand("kill");
+                m_SuicideCd = true;
+                m_BML->AddTimer(1000.0f, [this]() { m_SuicideCd = false; });
+            }
+        }
+
+        float deltaTime = m_BML->GetTimeManager()->GetLastDeltaTime() / 10;
+        if (m_ChangeBallCd == 0) {
+            for (int i = 0; i < 3; i++) {
+                if (m_CheatEnabled && im->IsKeyPressed(m_ChangeBall[i]->GetKey())) {
+                    CKMessageManager *mm = m_BML->GetMessageManager();
+                    CKMessageType ballDeact = mm->AddMessageType("BallNav deactivate");
+
+                    mm->SendMessageSingle(ballDeact, m_BML->GetGroupByName("All_Gameplay"));
+                    mm->SendMessageSingle(ballDeact, m_BML->GetGroupByName("All_Sound"));
+                    m_ChangeBallCd = 2;
+
+                    m_BML->AddTimer(2ul, [this, i]() {
+                        auto *curBall = (CK3dEntity *) m_CurLevel->GetElementObject(0, 1);
+                        ExecuteBB::Unphysicalize(curBall);
+
+                        static char trafoTypes[3][6] = {"paper", "wood", "stone"};
+                        SetParamString(m_CurTrafo, trafoTypes[i]);
+                        m_SetNewBall->ActivateInput(0);
+                        m_SetNewBall->Activate();
+
+                        GetLogger()->Info("Set to %s Ball", i == 0 ? "Paper" : i == 1 ? "Wood" : "Stone");
+                    });
+                }
+            }
+        } else
+            m_ChangeBallCd--;
+
+        if (m_CheatEnabled && im->IsKeyPressed(m_ResetBall->GetKey())) {
+            CKMessageManager *mm = m_BML->GetMessageManager();
+            CKMessageType ballDeact = mm->AddMessageType("BallNav deactivate");
+
+            mm->SendMessageSingle(ballDeact, m_BML->GetGroupByName("All_Gameplay"));
+            mm->SendMessageSingle(ballDeact, m_BML->GetGroupByName("All_Sound"));
+
+            m_BML->AddTimer(2ul, [this, ctx]() {
+                auto *curBall = (CK3dEntity *) m_CurLevel->GetElementObject(0, 1);
+                if (curBall) {
+                    ExecuteBB::Unphysicalize(curBall);
+
+                    CKDataArray *ph = m_BML->GetArrayByName("PH");
+                    for (int i = 0; i < ph->GetRowCount(); i++) {
+                        CKBOOL set = true;
+                        char name[100];
+                        ph->GetElementStringValue(i, 1, name);
+                        if (!strcmp(name, "P_Extra_Point"))
+                            ph->SetElementValue(i, 4, &set);
+                    }
+
+                    m_IngameParam->SetElementValueFromParameter(0, 1, m_CurSector);
+                    m_IngameParam->SetElementValueFromParameter(0, 2, m_CurSector);
+                    CKBehavior *sectorMgr = m_BML->GetScriptByName("Gameplay_SectorManager");
+                    ctx->GetCurrentScene()->Activate(sectorMgr, true);
+
+                    m_BML->AddTimerLoop(1ul, [this, curBall, sectorMgr]() {
+                        if (sectorMgr->IsActive())
+                            return true;
+
+                        m_DynamicPos->ActivateInput(1);
+                        m_DynamicPos->Activate();
+
+                        m_BML->AddTimer(1ul, [this, curBall]() {
+                            VxMatrix matrix;
+                            m_CurLevel->GetElementValue(0, 3, &matrix);
+                            curBall->SetWorldMatrix(matrix);
+
+                            CK3dEntity *camMF = m_BML->Get3dEntityByName("Cam_MF");
+                            m_BML->RestoreIC(camMF, true);
+                            camMF->SetWorldMatrix(matrix);
+
+                            m_BML->AddTimer(1ul, [this]() {
+                                m_DynamicPos->ActivateInput(0);
+                                m_DynamicPos->Activate();
+
+                                m_PhysicsNewBall->ActivateInput(0);
+                                m_PhysicsNewBall->Activate();
+                                m_PhysicsNewBall->GetParent()->Activate();
+
+                                GetLogger()->Info("Sector Reset");
+                            });
+                        });
+
+                        return false;
+                    });
+                }
+            });
+        }
+
+        VxVector vect;
+        VxQuaternion quat;
+
+        if (IsInTravelCam()) {
+            if (im->IsKeyDown(CKKEY_W)) {
+                vect = VxVector(0, 0, 0.2f * deltaTime);
+                m_TravelCam->Translate(&vect, m_TravelCam);
+            }
+            if (im->IsKeyDown(CKKEY_S)) {
+                vect = VxVector(0, 0, -0.2f * deltaTime);
+                m_TravelCam->Translate(&vect, m_TravelCam);
+            }
+            if (im->IsKeyDown(CKKEY_A)) {
+                vect = VxVector(-0.2f * deltaTime, 0, 0);
+                m_TravelCam->Translate(&vect, m_TravelCam);
+            }
+            if (im->IsKeyDown(CKKEY_D)) {
+                vect = VxVector(0.2f * deltaTime, 0, 0);
+                m_TravelCam->Translate(&vect, m_TravelCam);
+            }
+            if (im->IsKeyDown(CKKEY_SPACE)) {
+                vect = VxVector(0, 0.2f * deltaTime, 0);
+                m_TravelCam->Translate(&vect);
+            }
+            if (im->IsKeyDown(CKKEY_LSHIFT)) {
+                vect = VxVector(0, -0.2f * deltaTime, 0);
+                m_TravelCam->Translate(&vect);
+            }
+            VxVector delta;
+            im->GetMouseRelativePosition(delta);
+            delta.x = std::fmod(delta.x, 16.0f);
+            delta.y = std::fmod(delta.y, 16.0f);
+            vect = VxVector(0, 1, 0);
+            m_TravelCam->Rotate(&vect, -delta.x * 2 / m_BML->GetRenderContext()->GetWidth());
+            vect = VxVector(1, 0, 0);
+            m_TravelCam->Rotate(&vect, -delta.y * 2 / m_BML->GetRenderContext()->GetWidth(), m_TravelCam);
+        } else if (m_CamOn->GetBoolean()) {
+            if (im->IsKeyPressed(m_Cam45->GetKey())) {
+                vect = VxVector(0, 1, 0);
+                m_CamOrientRef->Rotate(&vect, PI / 4, m_CamOrientRef);
+                m_CamOrient->SetQuaternion(&quat, m_CamOrientRef);
+            }
+            if (im->IsKeyDown(m_CamRot[0]->GetKey())) {
+                vect = VxVector(0, 1, 0);
+                m_CamOrientRef->Rotate(&vect, -0.01f * deltaTime, m_CamOrientRef);
+                m_CamOrient->SetQuaternion(&quat, m_CamOrientRef);
+            }
+            if (im->IsKeyDown(m_CamRot[1]->GetKey())) {
+                vect = VxVector(0, 1, 0);
+                m_CamOrientRef->Rotate(&vect, 0.01f * deltaTime, m_CamOrientRef);
+                m_CamOrient->SetQuaternion(&quat, m_CamOrientRef);
+            }
+            if (im->IsKeyDown(m_CamY[0]->GetKey())) {
+                vect = VxVector(0, 0.15f * deltaTime, 0);
+                m_CamPos->Translate(&vect, m_CamOrientRef);
+            }
+            if (im->IsKeyDown(m_CamY[1]->GetKey())) {
+                vect = VxVector(0, -0.15f * deltaTime, 0);
+                m_CamPos->Translate(&vect, m_CamOrientRef);
+            }
+            if (im->IsKeyDown(m_CamZ[0]->GetKey())) {
+                VxVector position;
+                m_CamPos->GetPosition(&position, m_CamOrientRef);
+                position.z = (std::min)(position.z + 0.1f * deltaTime, -0.1f);
+                m_CamPos->SetPosition(&position, m_CamOrientRef);
+            }
+            if (im->IsKeyDown(m_CamZ[1]->GetKey())) {
+                vect = VxVector(0, 0, -0.1f * deltaTime);
+                m_CamPos->Translate(&vect, m_CamOrientRef);
+            }
+            if (im->IsKeyDown(m_CamReset->GetKey())) {
+                VxQuaternion rotation;
+                m_CamOrientRef->GetQuaternion(&rotation, m_CamTarget);
+                if (rotation.angle > 0.9f)
+                    rotation = VxQuaternion();
+                else {
+                    rotation = rotation + VxQuaternion();
+                    rotation *= 0.5f;
+                }
+                m_CamOrientRef->SetQuaternion(&rotation, m_CamTarget);
+                m_CamOrient->SetQuaternion(&quat, m_CamOrientRef);
+                vect = VxVector(0, 35, -22);
+                m_CamPos->SetPosition(&vect, m_CamOrient);
+            }
+        }
+
+        if (!m_AddLifeCd) {
+            if (m_CheatEnabled && im->IsKeyPressed(m_AddLife->GetKey())) {
+                CKMessageManager *mm = m_BML->GetMessageManager();
+                CKMessageType addLife = mm->AddMessageType("Life_Up");
+
+                mm->SendMessageSingle(addLife, m_BML->GetGroupByName("All_Gameplay"));
+                mm->SendMessageSingle(addLife, m_BML->GetGroupByName("All_Sound"));
+                m_AddLifeCd = true;
+                m_BML->AddTimer(1000.0f, [this]() { m_AddLifeCd = false; });
+            }
+        }
+
+        if (m_CheatEnabled) {
+            if (m_CurSel < 0) {
+                for (int i = 0; i < 4; i++) {
+                    if (im->IsKeyDown(m_AddBall[i]->GetKey())) {
+                        m_CurSel = i;
+                        im->SetBlock(true);
+                    }
+                }
+
+                if (m_CurSel >= 0) {
+                    m_CurObj = (CK3dEntity *) ctx->CopyObject(m_Balls[m_CurSel]);
+                    vect = VxVector(0, 5, 0);
+                    m_CurObj->SetPosition(&vect, m_CamTarget);
+                    m_CurObj->Show();
+                }
+            } else if (im->oIsKeyDown(m_AddBall[m_CurSel]->GetKey())) {
+                if (im->oIsKeyDown(m_MoveKeys[0]->GetKey())) {
+                    vect = VxVector(0, 0, 0.1f * deltaTime);
+                    m_CurObj->Translate(&vect, m_CamOrientRef);
+                }
+                if (im->oIsKeyDown(m_MoveKeys[1]->GetKey())) {
+                    vect = VxVector(0, 0, -0.1f * deltaTime);
+                    m_CurObj->Translate(&vect, m_CamOrientRef);
+                }
+                if (im->oIsKeyDown(m_MoveKeys[2]->GetKey())) {
+                    vect = VxVector(-0.1f * deltaTime, 0, 0);
+                    m_CurObj->Translate(&vect, m_CamOrientRef);
+                }
+                if (im->oIsKeyDown(m_MoveKeys[3]->GetKey())) {
+                    vect = VxVector(0.1f * deltaTime, 0, 0);
+                    m_CurObj->Translate(&vect, m_CamOrientRef);
+                }
+                if (im->oIsKeyDown(m_MoveKeys[4]->GetKey())) {
+                    vect = VxVector(0, 0.1f * deltaTime, 0);
+                    m_CurObj->Translate(&vect, m_CamOrientRef);
+                }
+                if (im->oIsKeyDown(m_MoveKeys[5]->GetKey())) {
+                    vect = VxVector(0, -0.1f * deltaTime, 0);
+                    m_CurObj->Translate(&vect, m_CamOrientRef);
+                }
+            } else {
+                CKMesh *mesh = m_CurObj->GetMesh(0);
+                switch (m_CurSel) {
+                    case 0:
+                        ExecuteBB::PhysicalizeConvex(m_CurObj, false, 0.5f, 0.4f, 0.2f, "", false, true, false, 1.5f,
+                                                     0.1f, mesh->GetName(), VxVector(0, 0, 0), mesh);
+                        break;
+                    case 1:
+                        ExecuteBB::PhysicalizeBall(m_CurObj, false, 0.6f, 0.2f, 2.0f, "", false, true, false, 0.6f,
+                                                   0.1f, mesh->GetName());
+                        break;
+                    case 2:
+                        ExecuteBB::PhysicalizeBall(m_CurObj, false, 0.7f, 0.1f, 10.0f, "", false, true, false, 0.2f,
+                                                   0.1f, mesh->GetName());
+                        break;
+                    default:
+                        ExecuteBB::PhysicalizeConvex(m_CurObj, false, 0.7f, 0.3f, 1.0f, "", false, true, false, 0.1f,
+                                                     0.1f, mesh->GetName(), VxVector(0, 0, 0), mesh);
+                        break;
+                }
+
+                CKDataArray *ph = m_BML->GetArrayByName("PH");
+                ph->AddRow();
+                int index = ph->GetRowCount() - 1;
+                ph->SetElementValueFromParameter(index, 0, m_CurSector);
+                static char P_BALL_NAMES[4][13] = {"P_Ball_Paper", "P_Ball_Wood", "P_Ball_Stone", "P_Box"};
+                ph->SetElementStringValue(index, 1, P_BALL_NAMES[m_CurSel]);
+                VxMatrix matrix = m_CurObj->GetWorldMatrix();
+                ph->SetElementValue(index, 2, &matrix);
+                ph->SetElementObject(index, 3, m_CurObj);
+                CKBOOL set = false;
+                ph->SetElementValue(index, 4, &set);
+
+                CKGroup *depth = m_BML->GetGroupByName("DepthTest");
+                depth->AddObject(m_CurObj);
+                m_TempBalls.emplace_back(index, m_CurObj);
+
+                m_CurSel = -1;
+                m_CurObj = nullptr;
+                im->SetBlock(false);
+
+                GetLogger()->Info("Summoned a %s",
+                                  m_CurSel < 2 ? m_CurSel == 0 ? "Paper Ball" : "Wood Ball" : m_CurSel == 2
+                                                                                              ? "Stone Ball"
+                                                                                              : "Box");
+            }
+        }
+
+        if (m_CheatEnabled) {
+            bool speedup = im->IsKeyDown(m_SpeedupBall->GetKey());
+            if (speedup && !m_Speedup)
+                ModLoader::GetInstance().ExecuteCommand("speed 3");
+            if (!speedup && m_Speedup)
+                ModLoader::GetInstance().ExecuteCommand("speed 1");
+            m_Speedup = speedup;
+        }
+    }
+
+    if (m_SRActivated) {
+        m_SRTimer += m_BML->GetTimeManager()->GetLastDeltaTime();
+        int counter = int(m_SRTimer);
+        int ms = counter % 1000;
+        counter /= 1000;
+        int s = counter % 60;
+        counter /= 60;
+        int m = counter % 60;
+        counter /= 60;
+        int h = counter % 100;
+        static char time[16];
+        sprintf(time, "%02d:%02d:%02d.%03d", h, m, s, ms);
+        m_SRScore->SetText(time);
+    }
+
+    if (m_MapsGui) {
+        bool inStart = m_Level01->IsVisible();
+        m_CustomMaps->SetVisible(inStart);
+    }
+}
+
+void BMLMod::OnCheatEnabled(bool enable) {
+    if (enable) {
+        SetParamValue(m_BallForce[0], m_BallCheat[0]->GetKey());
+        SetParamValue(m_BallForce[1], m_BallCheat[1]->GetKey());
+    } else {
+        SetParamValue(m_BallForce[0], CKKEYBOARD(0));
+        SetParamValue(m_BallForce[1], CKKEYBOARD(0));
+        ModLoader::GetInstance().ExecuteCommand("speed 1", true);
+    }
+}
+
+void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *prop) {
+    if (m_BML->IsCheatEnabled()) {
+        if (prop == m_BallCheat[0])
+            SetParamValue(m_BallForce[0], m_BallCheat[0]->GetKey());
+        if (prop == m_BallCheat[1])
+            SetParamValue(m_BallForce[1], m_BallCheat[1]->GetKey());
+    }
+    if (prop == m_Overclock) {
+        for (int i = 0; i < 3; i++) {
+            m_OverclockLinks[i]->SetOutBehaviorIO(m_OverclockLinkIO[i][m_Overclock->GetBoolean()]);
+        }
+    }
+    if (prop == m_ShowTitle) {
+        m_Title->SetVisible(prop->GetBoolean());
+    }
+    if (prop == m_ShowFPS) {
+        m_FPS->SetVisible(prop->GetBoolean());
+    }
+    if (prop == m_ShowSR && m_BML->IsIngame()) {
+        m_SRScore->SetVisible(m_ShowSR->GetBoolean());
+        m_SRTitle->SetVisible(m_ShowSR->GetBoolean());
+    }
+}
+
+void BMLMod::OnPostResetLevel() {
+    CKDataArray *ph = m_BML->GetArrayByName("PH");
+    for (auto iter = m_TempBalls.rbegin(); iter != m_TempBalls.rend(); iter++) {
+        ph->RemoveRow(iter->first);
+        m_BML->GetCKContext()->DestroyObject(iter->second);
+    }
+    m_TempBalls.clear();
+}
+
+void BMLMod::OnStartLevel() {
+    m_SRTimer = 0.0f;
+    m_SRScore->SetText("00:00:00.000");
+    if (m_ShowSR->GetBoolean()) {
+        m_SRScore->SetVisible(true);
+        m_SRTitle->SetVisible(true);
+    }
+    SetParamValue(m_LoadCustom, FALSE);
+}
+
+void BMLMod::OnPostExitLevel() {
+    m_SRScore->SetVisible(false);
+    m_SRTitle->SetVisible(false);
+}
+
+void BMLMod::OnPauseLevel() {
+    m_SRActivated = false;
+}
+
+void BMLMod::OnUnpauseLevel() {
+    m_SRActivated = true;
+}
+
+void BMLMod::OnCounterActive() {
+    m_SRActivated = true;
+}
+
+void BMLMod::OnCounterInactive() {
+    m_SRActivated = false;
+}
+
+void BMLMod::AddIngameMessage(const char *msg) {
+    for (int i = std::min(MSG_MAXSIZE - 1, m_MsgCount) - 1; i >= 0; i--) {
+        const char *text = m_Msgs[i].m_Text->GetText();
+        m_Msgs[i + 1].m_Text->SetText(text);
+        m_Msgs[i + 1].m_Timer = m_Msgs[i].m_Timer;
+    }
+
+    m_Msgs[0].m_Text->SetText(msg);
+    m_Msgs[0].m_Timer = 1000;
+    m_MsgCount++;
+
+    GetLogger()->Info(msg);
+}
+
+void BMLMod::ShowCheatBanner(bool show) {
+    m_Cheat->SetVisible(show);
+}
+
+void BMLMod::ShowModOptions() {
+    ShowGui(m_ModOption);
+    m_ModOption->SetPage(0);
+}
+
+void BMLMod::ShowGui(BGui::Gui *gui) {
+    if (m_CurGui != nullptr)
+        CloseCurrentGui();
+    m_BML->AddTimer(1ul, [this, gui]() {
+        m_CurGui = gui;
+        if (gui)
+            gui->SetVisible(true);
+    });
+}
+
+void BMLMod::CloseCurrentGui() {
+    m_CurGui->SetVisible(false);
+    m_CurGui = nullptr;
+}
+
+void BMLMod::EnterTravelCam() {
+    CKCamera *cam = m_BML->GetTargetCameraByName("InGameCam");
+    m_TravelCam->SetWorldMatrix(cam->GetWorldMatrix());
+    int width, height;
+    cam->GetAspectRatio(width, height);
+    m_TravelCam->SetAspectRatio(width, height);
+    m_TravelCam->SetFov(cam->GetFov());
+    m_BML->GetRenderContext()->AttachViewpointToCamera(m_TravelCam);
+}
+
+void BMLMod::ExitTravelCam() {
+    CKCamera *cam = m_BML->GetTargetCameraByName("InGameCam");
+    m_BML->GetRenderContext()->AttachViewpointToCamera(cam);
+}
+
+int BMLMod::GetHSScore() {
+    int points, lifes;
+    CKDataArray *energy = m_BML->GetArrayByName("Energy");
+    energy->GetElementValue(0, 0, &points);
+    energy->GetElementValue(0, 1, &lifes);
+    return points + lifes * 200;
+}
+
+bool BMLMod::IsInTravelCam() {
+    return m_BML->GetRenderContext()->GetAttachedCamera() == m_TravelCam;
+}
+
+
+void BMLMod::OnEditScript_Base_DefaultLevel(CKBehavior *script) {
+    if (m_UnlockRes->GetBoolean()) {
+        GetLogger()->Info("Unlock higher resolutions");
+        CKBehavior *sm = FindFirstBB(script, "Screen Modes");
+
+        CKBehavior *rrs[4];
+        FindBB(
+            sm, [sm, &rrs](CKBehavior *rr) {
+                int v = GetParamValue<int>(rr->GetInputParameter(2)->GetDirectSource());
+                switch (v) {
+                    case 1:
+                        rrs[0] = rr;
+                        break;
+                    case 640:
+                        rrs[1] = rr;
+                        break;
+                    case 1600:
+                        rrs[2] = rr;
+                        break;
+                    case 16:
+                    case 32:
+                        rrs[3] = rr;
+                        break;
+                    default:
+                        break;
+                }
+                return true;
+            },
+            "Remove Row If");
+
+        CKBehavior *it = FindPreviousBB(sm, rrs[0], "Iterator");
+        CKBehavior *gc = FindNextBB(sm, rrs[3], "Get Cell");
+        DeleteBB(sm, rrs[0]);
+        DeleteBB(sm, rrs[3]);
+        CreateLink(sm, it, gc, 0, 0);
+
+        CKBehavior *ss = FindFirstBB(script, "Synch to Screen");
+        CKBehavior *dl = FindFirstBB(ss, "Delayer");
+        CKBehavior *ii = FindFirstBB(ss, "Iterator If");
+        CreateLink(ss, ii, dl);
+        FindBB(
+            ss, [ss](CKBehavior *csm) {
+                CKBehavior *smc = FindNextBB(ss, csm, "Show Mouse Cursor");
+                CreateLink(ss, csm, smc, 1, 0);
+                return true;
+            },
+            "TT Change ScreenMode");
+    }
+
+    if (m_SkipAnim->GetBoolean()) {
+        GetLogger()->Info("Skip Loading Animation");
+        CKBehavior *is = FindFirstBB(script, "Intro Start"),
+            *ie = FindFirstBB(script, "Intro Ende");
+
+        CKBehavior *ml = FindFirstBB(script, "Main Loading"),
+            *ps = FindFirstBB(script, "Preload Sound");
+
+        FindPreviousLink(script, is)->SetOutBehaviorIO(ml->GetInput(0));
+        FindNextLink(script, ps)->SetOutBehaviorIO(FindNextLink(script, ie)->GetOutBehaviorIO());
+    }
+}
+
+void BMLMod::OnEditScript_Base_EventHandler(CKBehavior *script) {
+    CKBehavior *som = FindFirstBB(script, "Switch On Message", false, 2, 11, 11, 0);
+
+    GetLogger()->Info("Insert message Start Menu Hook");
+    InsertBB(script, FindNextLink(script, FindNextBB(script, som, nullptr, 0, 0)),
+             CreateBB(script, BML_ONPRESTARTMENU_GUID));
+    CreateLink(script, FindEndOfChain(script, FindNextBB(script, som, nullptr, 0, 0)),
+               CreateBB(script, BML_ONPOSTSTARTMENU_GUID));
+
+    GetLogger()->Info("Insert message Exit Game Hook");
+    InsertBB(script, FindNextLink(script, FindNextBB(script, som, nullptr, 1, 0)),
+             CreateBB(script, BML_ONEXITGAME_GUID));
+
+    GetLogger()->Info("Insert message Load Level Hook");
+    CKBehaviorLink *link = FindNextLink(script,
+                                        FindNextBB(script, FindNextBB(script, FindNextBB(script, som, nullptr, 2, 0))));
+    InsertBB(script, link, CreateBB(script, BML_ONPRELOADLEVEL_GUID));
+    CreateLink(script, FindEndOfChain(script, FindNextBB(script, som, nullptr, 2, 0)),
+               CreateBB(script, BML_ONPOSTLOADLEVEL_GUID));
+
+    GetLogger()->Info("Insert message Start Level Hook");
+    CreateLink(script, FindEndOfChain(script, FindNextBB(script, som, nullptr, 3, 0)),
+               CreateBB(script, BML_ONSTARTLEVEL_GUID));
+
+    GetLogger()->Info("Insert message Reset Level Hook");
+    CKBehavior *rl = FindFirstBB(script, "reset Level");
+    link = FindNextLink(rl, FindNextBB(rl, FindNextBB(rl, rl->GetInput(0))));
+    InsertBB(script, link, CreateBB(script, BML_ONPRERESETLEVEL_GUID));
+    CreateLink(script, FindEndOfChain(script, FindNextBB(script, som, nullptr, 4, 0)),
+               CreateBB(script, BML_ONPOSTRESETLEVEL_GUID));
+
+    GetLogger()->Info("Insert message Pause Level Hook");
+    CreateLink(script, FindEndOfChain(script, FindNextBB(script, som, nullptr, 5, 0)),
+               CreateBB(script, BML_ONPAUSELEVEL_GUID));
+
+    GetLogger()->Info("Insert message Unpause Level Hook");
+    CreateLink(script, FindEndOfChain(script, FindNextBB(script, som, nullptr, 6, 0)),
+               CreateBB(script, BML_ONUNPAUSELEVEL_GUID));
+
+    CKBehavior *bs = FindNextBB(script, FindFirstBB(script, "DeleteCollisionSurfaces"));
+
+    GetLogger()->Info("Insert message Exit Level Hook");
+    link = FindNextLink(script,
+                        FindNextBB(script,
+                                   FindNextBB(script,
+                                              FindNextBB(script,
+                                                         FindNextBB(script,
+                                                                    FindNextBB(script, som, nullptr, 7, 0))))));
+    InsertBB(script, link, CreateBB(script, BML_ONPREEXITLEVEL_GUID));
+    InsertBB(script, FindNextLink(script, FindNextBB(script, bs, nullptr, 0, 0)),
+             CreateBB(script, BML_ONPOSTEXITLEVEL_GUID));
+
+    GetLogger()->Info("Insert message Next Level Hook");
+    link = FindNextLink(script,
+                        FindNextBB(script,
+                                   FindNextBB(script,
+                                              FindNextBB(script,
+                                                         FindNextBB(script,
+                                                                    FindNextBB(script, som, nullptr, 8, 0))))));
+    InsertBB(script, link, CreateBB(script, BML_ONPRENEXTLEVEL_GUID));
+    InsertBB(script, FindNextLink(script, FindNextBB(script, bs, nullptr, 1, 0)),
+             CreateBB(script, BML_ONPOSTNEXTLEVEL_GUID));
+
+    GetLogger()->Info("Insert message Dead Hook");
+    CreateLink(script, FindEndOfChain(script, FindNextBB(script, som, nullptr, 9, 0)),
+               CreateBB(script, BML_ONDEAD_GUID));
+
+    CKBehavior *hs = FindFirstBB(script, "Highscore");
+    hs->AddOutput("Out");
+    FindBB(hs, [hs](CKBehavior *beh) {
+               CreateLink(hs, beh, hs->GetOutput(0));
+               return true;
+           },
+           "Activate Script");
+    GetLogger()->Info("Insert message End Level Hook");
+    InsertBB(script, FindNextLink(script, FindNextBB(script, som, nullptr, 10, 0)),
+             CreateBB(script, BML_ONPREENDLEVEL_GUID));
+    CreateLink(script, hs, CreateBB(script, BML_ONPOSTENDLEVEL_GUID));
+}
+
+void BMLMod::OnEditScript_Menu_MenuInit(CKBehavior *script) {
+    m_BML->AddTimer(1ul, [this]() {
+        GetLogger()->Info("Acquire Game Fonts");
+        CKBehavior *script = m_BML->GetScriptByName("Menu_Init");
+        CKBehavior *fonts = FindFirstBB(script, "Fonts");
+        CKBehavior *bbs[7] = {nullptr};
+        int cnt = 0;
+        FindBB(fonts, [&bbs, &cnt](CKBehavior *beh) {
+            bbs[cnt++] = beh;
+            return true;
+        }, "TT CreateFontEx");
+
+        std::map<std::string, ExecuteBB::FontType> fontid;
+        fontid["GameFont_01"] = ExecuteBB::GAMEFONT_01;
+        fontid["GameFont_02"] = ExecuteBB::GAMEFONT_02;
+        fontid["GameFont_03"] = ExecuteBB::GAMEFONT_03;
+        fontid["GameFont_03a"] = ExecuteBB::GAMEFONT_03A;
+        fontid["GameFont_04"] = ExecuteBB::GAMEFONT_04;
+        fontid["GameFont_Credits_Small"] = ExecuteBB::GAMEFONT_CREDITS_SMALL;
+        fontid["GameFont_Credits_Big"] = ExecuteBB::GAMEFONT_CREDITS_BIG;
+
+        for (int i = 0; i < 7; i++) {
+            int font;
+            bbs[i]->GetOutputParameterValue(0, &font);
+            ExecuteBB::InitFont(fontid[static_cast<const char *>(bbs[i]->GetInputParameterReadDataPtr(0))], font);
+        }
+    });
+}
+
+void BMLMod::OnEditScript_Menu_OptionsMenu(CKBehavior *script) {
+    GetLogger()->Info("Start to insert Mods Button into Options Menu");
+
+    char but_name[] = "M_Options_But_X";
+    CK2dEntity *buttons[6] = {nullptr};
+    CKContext *context = m_BML->GetCKContext();
+    buttons[0] = m_BML->Get2dEntityByName("M_Options_Title");
+    for (int i = 1; i < 4; i++) {
+        but_name[14] = '0' + i;
+        buttons[i] = m_BML->Get2dEntityByName(but_name);
+    }
+
+    buttons[5] = m_BML->Get2dEntityByName("M_Options_But_Back");
+    buttons[4] = (CK2dEntity *) context->CopyObject(buttons[1]);
+    buttons[4]->SetName("M_Options_But_4");
+    for (int i = 0; i < 5; i++) {
+        Vx2DVector pos;
+        buttons[i]->GetPosition(pos, true);
+        pos.y = 0.1f + 0.14f * i;
+        buttons[i]->SetPosition(pos, true);
+    }
+
+    CKDataArray *array = m_BML->GetArrayByName("Menu_Options_ShowHide");
+    array->InsertRow(3);
+    array->SetElementObject(3, 0, buttons[4]);
+    CKBOOL show = 1;
+    array->SetElementValue(3, 1, &show, sizeof(show));
+    m_BML->SetIC(array);
+
+    CKBehavior *graph = FindFirstBB(script, "Options Menu");
+    CKBehavior *up_sop = nullptr, *down_sop = nullptr, *up_ps = nullptr, *down_ps = nullptr;
+    FindBB(
+        graph, [graph, &up_sop, &down_sop](CKBehavior *beh) {
+            CKBehavior *previous = FindPreviousBB(graph, beh);
+            const char *name = previous->GetName();
+            if (!strcmp(previous->GetName(), "Set 2D Material"))
+                up_sop = beh;
+            if (!strcmp(previous->GetName(), "Send Message"))
+                down_sop = beh;
+            return !(up_sop && down_sop);
+        },
+        "Switch On Parameter");
+    FindBB(
+        graph, [graph, &up_ps, &down_ps](CKBehavior *beh) {
+            CKBehavior *previous = FindNextBB(graph, beh);
+            const char *name = previous->GetName();
+            if (!strcmp(previous->GetName(), "Keyboard"))
+                up_ps = beh;
+            if (!strcmp(previous->GetName(), "Send Message"))
+                down_ps = beh;
+            return !(up_ps && down_ps);
+        },
+        "Parameter Selector");
+
+    CKParameterLocal *pin = CreateParamValue(graph, "Pin 5", CKPGUID_INT, 4);
+    up_sop->CreateInputParameter("Pin 5", CKPGUID_INT)->SetDirectSource(pin);
+    up_sop->AddOutput("Out 5");
+    down_sop->CreateInputParameter("Pin 5", CKPGUID_INT)->SetDirectSource(pin);
+    down_sop->AddOutput("Out 5");
+    up_ps->CreateInputParameter("pIn 4", CKPGUID_INT)->SetDirectSource(pin);
+    up_ps->AddInput("In 4");
+    down_ps->CreateInputParameter("pIn 4", CKPGUID_INT)->SetDirectSource(pin);
+    down_ps->AddInput("In 4");
+
+    CKBehavior *text2d = CreateBB(graph, VT_TEXT2D, true);
+    CKBehavior *pushbutton = CreateBB(graph, TT_PUSHBUTTON2, true);
+    CKBehavior *text2dref = FindFirstBB(graph, "2D Text");
+    CKBehavior *nop = FindFirstBB(graph, "Nop");
+    CKParameterLocal *entity2d = CreateParamObject(graph, "Button", CKPGUID_2DENTITY, buttons[4]);
+    CKParameterLocal *buttonname = CreateParamString(graph, "Text", "Mods");
+    int textflags;
+    text2dref->GetLocalParameterValue(0, &textflags);
+    text2d->SetLocalParameterValue(0, &textflags, sizeof(textflags));
+
+    text2d->GetTargetParameter()->SetDirectSource(entity2d);
+    pushbutton->GetTargetParameter()->SetDirectSource(entity2d);
+    text2d->GetInputParameter(0)->ShareSourceWith(text2dref->GetInputParameter(0));
+    text2d->GetInputParameter(1)->SetDirectSource(buttonname);
+    for (int i = 2; i < 6; i++)
+        text2d->GetInputParameter(i)->ShareSourceWith(text2dref->GetInputParameter(i));
+
+    FindNextLink(graph, up_sop, nullptr, 4, 0)->SetInBehaviorIO(up_sop->GetOutput(5));
+    CreateLink(graph, up_sop, text2d, 4, 0);
+    CreateLink(graph, text2d, nop, 0, 0);
+    CreateLink(graph, text2d, pushbutton, 0, 0);
+    FindPreviousLink(graph, up_ps, nullptr, 1, 3)->SetOutBehaviorIO(up_ps->GetInput(4));
+    FindPreviousLink(graph, down_ps, nullptr, 2, 3)->SetOutBehaviorIO(down_ps->GetInput(4));
+    CreateLink(graph, pushbutton, up_ps, 1, 3);
+    CreateLink(graph, pushbutton, down_ps, 2, 3);
+    graph->AddOutput("Button 5 Pressed");
+    CreateLink(graph, down_sop, graph->GetOutput(4), 5);
+    FindNextLink(script, graph, nullptr, 3, 0)->SetInBehaviorIO(graph->GetOutput(4));
+
+    CKBehavior *modsmenu = CreateBB(script, BML_MODSMENU_GUID);
+    CKBehavior *exit = FindFirstBB(script, "Exit", false, 1, 0);
+    CreateLink(script, graph, modsmenu, 3, 0);
+    CreateLink(script, modsmenu, exit, 0, 0);
+    CKBehavior *keyboard = FindFirstBB(graph, "Keyboard");
+    FindBB(
+        keyboard, [keyboard](CKBehavior *beh) {
+            CKParameter *source = beh->GetInputParameter(0)->GetRealSource();
+            if (GetParamValue<CKKEYBOARD>(source) == CKKEY_ESCAPE) {
+                CKBehavior *id = FindNextBB(keyboard, beh);
+                SetParamValue(id->GetInputParameter(0)->GetRealSource(), 4);
+                return false;
+            }
+            return true;
+        },
+        "Secure Key");
+
+    GetLogger()->Info("Mods Button inserted");
+}
+
+void BMLMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
+    GetLogger()->Info("Insert Ball/Camera Active/Inactive Hook");
+    CKBehavior *camonoff = FindFirstBB(script, "CamNav On/Off");
+    CKBehavior *ballonoff = FindFirstBB(script, "BallNav On/Off");
+    CKMessageManager *mm = m_BML->GetMessageManager();
+    CKMessageType camon = mm->AddMessageType("CamNav activate"), camoff = mm->AddMessageType("CamNav deactivate"),
+        ballon = mm->AddMessageType("BallNav activate"), balloff = mm->AddMessageType("BallNav deactivate");
+    CKBehavior *con, *coff, *bon, *boff;
+    FindBB(
+        camonoff, [camonoff, camon, camoff, &con, &coff](CKBehavior *beh) {
+            auto msg = GetParamValue<CKMessageType>(beh->GetInputParameter(0)->GetDirectSource());
+            if (msg == camon) con = beh;
+            if (msg == camoff) coff = beh;
+            return true;
+        },
+        "Wait Message");
+    CreateLink(camonoff, con, CreateBB(camonoff, BML_ONCAMNAVACTIVE_GUID), 0, 0);
+    CreateLink(camonoff, coff, CreateBB(camonoff, BML_ONCAMNAVINACTIVE_GUID), 0, 0);
+    FindBB(
+        ballonoff, [ballonoff, ballon, balloff, &bon, &boff](CKBehavior *beh) {
+            auto msg = GetParamValue<CKMessageType>(beh->GetInputParameter(0)->GetDirectSource());
+            if (msg == ballon) bon = beh;
+            if (msg == balloff) boff = beh;
+            return true;
+        },
+        "Wait Message");
+    CreateLink(ballonoff, bon, CreateBB(ballonoff, BML_ONBALLNAVACTIVE_GUID), 0, 0);
+    CreateLink(ballonoff, boff, CreateBB(ballonoff, BML_ONBALLNAVINACTIVE_GUID), 0, 0);
+
+    GetLogger()->Info("Debug Ball Force");
+    CKBehavior *ballNav = FindFirstBB(script, "Ball Navigation");
+    CKBehavior *nop[2] = {0};
+    FindBB(
+        ballNav, [&nop, ballNav](CKBehavior *beh) {
+            if (nop[0]) nop[1] = beh;
+            else nop[0] = beh;
+            return !nop[1];
+        },
+        "Nop");
+    CKBehavior *keyevent[2] = {CreateBB(ballNav, VT_KEYEVENT), CreateBB(ballNav, VT_KEYEVENT)};
+    m_BallForce[0] = CreateParamValue(ballNav, "Up", CKPGUID_KEY, CKKEYBOARD(0));
+    m_BallForce[1] = CreateParamValue(ballNav, "Down", CKPGUID_KEY, CKKEYBOARD(0));
+    CKBehavior *phyforce[2] = {CreateBB(ballNav, TT_SETPHYSICSFORCE, true),
+                               CreateBB(ballNav, TT_SETPHYSICSFORCE, true)};
+    CKBehavior *op = FindFirstBB(ballNav, "Op");
+    CKParameter *mass = op->GetInputParameter(0)->GetDirectSource();
+    CKBehavior *spf = FindFirstBB(ballNav, "SetPhysicsForce");
+    CKParameter *dir[2] = {CreateParamValue(ballNav, "Up", CKPGUID_VECTOR, VxVector(0, 1, 0)),
+                           CreateParamValue(ballNav, "Down", CKPGUID_VECTOR, VxVector(0, -1, 0))};
+    CKBehavior *wake = FindFirstBB(ballNav, "Physics WakeUp");
+
+    for (int i = 0; i < 2; i++) {
+        keyevent[i]->GetInputParameter(0)->SetDirectSource(m_BallForce[i]);
+        CreateLink(ballNav, nop[0], keyevent[i], 0, 0);
+        CreateLink(ballNav, nop[1], keyevent[i], 0, 1);
+        phyforce[i]->GetTargetParameter()->ShareSourceWith(spf->GetTargetParameter());
+        phyforce[i]->GetInputParameter(0)->ShareSourceWith(spf->GetInputParameter(0));
+        phyforce[i]->GetInputParameter(1)->ShareSourceWith(spf->GetInputParameter(1));
+        phyforce[i]->GetInputParameter(2)->SetDirectSource(dir[i]);
+        phyforce[i]->GetInputParameter(3)->ShareSourceWith(spf->GetInputParameter(3));
+        phyforce[i]->GetInputParameter(4)->SetDirectSource(mass);
+        CreateLink(ballNav, keyevent[i], phyforce[i], 0, 0);
+        CreateLink(ballNav, keyevent[i], phyforce[i], 1, 1);
+        CreateLink(ballNav, nop[1], phyforce[i], 0, 1);
+        CreateLink(ballNav, phyforce[i], wake, 0, 0);
+        CreateLink(ballNav, phyforce[i], wake, 1, 0);
+    }
+
+    CKBehavior *ballMgr = FindFirstBB(script, "BallManager");
+    m_DynamicPos = FindNextBB(script, ballMgr, "TT Set Dynamic Position");
+    CKBehavior *deactBall = FindFirstBB(ballMgr, "Deactivate Ball");
+    CKBehavior *pieces = FindFirstBB(deactBall, "reset Ballpieces");
+    m_OverclockLinks[0] = FindNextLink(deactBall, pieces);
+    CKBehavior *unphy = FindNextBB(deactBall,
+                                   FindNextBB(deactBall, m_OverclockLinks[0]->GetOutBehaviorIO()->GetOwner()));
+    m_OverclockLinkIO[0][1] = unphy->GetInput(1);
+
+    CKBehavior *newBall = FindFirstBB(ballMgr, "New Ball");
+    m_PhysicsNewBall = FindFirstBB(newBall, "physicalize new Ball");
+    m_OverclockLinks[1] = FindPreviousLink(newBall, FindPreviousBB(newBall,
+                                                                   FindPreviousBB(newBall,
+                                                                                  FindPreviousBB(newBall,
+                                                                                                 m_PhysicsNewBall))));
+    m_OverclockLinkIO[1][1] = m_PhysicsNewBall->GetInput(0);
+
+    CKBehavior *trafoMgr = FindFirstBB(script, "Trafo Manager");
+    m_SetNewBall = FindFirstBB(trafoMgr, "set new Ball");
+    CKBehavior *sop = FindFirstBB(m_SetNewBall, "Switch On Parameter");
+    m_CurTrafo = sop->GetInputParameter(0)->GetDirectSource();
+    m_CurLevel = m_BML->GetArrayByName("CurrentLevel");
+    m_IngameParam = m_BML->GetArrayByName("IngameParameter");
+}
+
+void BMLMod::OnEditScript_Gameplay_Energy(CKBehavior *script) {
+    GetLogger()->Info("Insert Counter Active/Inactive Hook");
+    CKBehavior *som = FindFirstBB(script, "Switch On Message");
+    InsertBB(script, FindNextLink(script, som, nullptr, 3), CreateBB(script, BML_ONCOUNTERACTIVE_GUID));
+    InsertBB(script, FindNextLink(script, som, nullptr, 1), CreateBB(script, BML_ONCOUNTERINACTIVE_GUID));
+
+    GetLogger()->Info("Insert Life/Point Hooks");
+    CKMessageManager *mm = m_BML->GetMessageManager();
+    CKMessageType lifeup = mm->AddMessageType("Life_Up"), balloff = mm->AddMessageType("Ball Off"),
+        sublife = mm->AddMessageType("Sub Life"), extrapoint = mm->AddMessageType("Extrapoint");
+    CKBehavior *lu, *bo, *sl, *ep;
+    FindBB(script,
+           [script, lifeup, balloff, sublife, extrapoint, &lu, &bo, &sl, &ep](CKBehavior *beh) {
+               auto msg = GetParamValue<CKMessageType>(beh->GetInputParameter(0)->GetDirectSource());
+               if (msg == lifeup) lu = beh;
+               if (msg == balloff) bo = beh;
+               if (msg == sublife) sl = beh;
+               if (msg == extrapoint) ep = beh;
+               return true;
+           },
+           "Wait Message");
+    CKBehavior *luhook = CreateBB(script, BML_ONPRELIFEUP_GUID);
+    InsertBB(script, FindNextLink(script, lu, "add Life"), luhook);
+    CreateLink(script, FindEndOfChain(script, luhook), CreateBB(script, BML_ONPOSTLIFEUP_GUID));
+    InsertBB(script, FindNextLink(script, bo, "Delayer"), CreateBB(script, BML_ONBALLOFF_GUID));
+    CKBehavior *slhook = CreateBB(script, BML_ONPRESUBLIFE_GUID);
+    InsertBB(script, FindNextLink(script, sl, "sub Life"), slhook);
+    CreateLink(script, FindEndOfChain(script, slhook), CreateBB(script, BML_ONPOSTSUBLIFE_GUID));
+    InsertBB(script, FindNextLink(script, ep, "Show"), CreateBB(script, BML_ONEXTRAPOINT_GUID));
+
+    CKBehavior *delay = FindFirstBB(script, "Delayer");
+    m_OverclockLinks[2] = FindPreviousLink(script, delay);
+    CKBehaviorLink *link = FindNextLink(script, delay);
+    m_OverclockLinkIO[2][1] = link->GetOutBehaviorIO();
+
+    for (int i = 0; i < 3; i++) {
+        m_OverclockLinkIO[i][0] = m_OverclockLinks[i]->GetOutBehaviorIO();
+        if (m_Overclock->GetBoolean())
+            m_OverclockLinks[i]->SetOutBehaviorIO(m_OverclockLinkIO[i][1]);
+    }
+}
+
+void BMLMod::OnEditScript_Gameplay_Events(CKBehavior *script) {
+    GetLogger()->Info("Insert Checkpoint & GameOver Hooks");
+    CKMessageManager *mm = m_BML->GetMessageManager();
+    CKMessageType checkpoint = mm->AddMessageType("Checkpoint reached"),
+        gameover = mm->AddMessageType("Game Over"),
+        levelfinish = mm->AddMessageType("Level_Finish");
+    CKBehavior *cp, *go, *lf;
+    FindBB(script,
+           [script, checkpoint, gameover, levelfinish, &cp, &go, &lf](CKBehavior *beh) {
+               auto msg = GetParamValue<CKMessageType>(beh->GetInputParameter(0)->GetDirectSource());
+               if (msg == checkpoint) cp = beh;
+               if (msg == gameover) go = beh;
+               if (msg == levelfinish) lf = beh;
+               return true;
+           },
+           "Wait Message");
+    CKBehavior *hook = CreateBB(script, BML_ONPRECHECKPOINT_GUID);
+    InsertBB(script, FindNextLink(script, cp, "set Resetpoint"), hook);
+    CreateLink(script, FindEndOfChain(script, hook), CreateBB(script, BML_ONPOSTCHECKPOINT_GUID));
+    InsertBB(script, FindNextLink(script, go, "Send Message"), CreateBB(script, BML_ONGAMEOVER_GUID));
+    InsertBB(script, FindNextLink(script, lf, "Send Message"), CreateBB(script, BML_ONLEVELFINISH_GUID));
+
+    CKBehavior *id = FindNextBB(script, script->GetInput(0));
+    m_CurSector = id->GetOutputParameter(0)->GetDestination(0);
+}
+
+void BMLMod::OnEditScript_Levelinit_build(CKBehavior *script) {
+    CKBehavior *loadLevel = FindFirstBB(script, "Load LevelXX");
+    CKBehaviorLink *inLink = FindNextLink(loadLevel, loadLevel->GetInput(0));
+    CKBehavior *op = FindNextBB(loadLevel, inLink->GetOutBehaviorIO()->GetOwner());
+    m_LevelRow = op->GetOutputParameter(0)->GetDestination(0);
+    CKBehavior *objLoad = FindFirstBB(loadLevel, "Object Load");
+    CKBehavior *bin = CreateBB(loadLevel, VT_BINARYSWITCH);
+    CreateLink(loadLevel, loadLevel->GetInput(0), bin, 0);
+    m_LoadCustom = CreateLocalParameter(loadLevel, "Custom Level", CKPGUID_BOOL);
+    bin->GetInputParameter(0)->SetDirectSource(m_LoadCustom);
+    inLink->SetInBehaviorIO(bin->GetOutput(1));
+    CreateLink(loadLevel, bin, objLoad);
+    m_MapFile = objLoad->GetInputParameter(0)->GetDirectSource();
+}
+
+void BMLMod::OnEditScript_ExtraLife_Fix(CKBehavior *script) {
+    CKBehavior *emitter = FindFirstBB(script, "SphericalParticleSystem");
+    emitter->CreateInputParameter("Real-Time Mode", CKPGUID_BOOL)
+        ->SetDirectSource(CreateParamValue<CKBOOL>(script, "Real-Time Mode", CKPGUID_BOOL, 1));
+    emitter->CreateInputParameter("DeltaTime", CKPGUID_FLOAT)
+        ->SetDirectSource(CreateParamValue<float>(script, "DeltaTime", CKPGUID_FLOAT, 20.0f));
+}
+
+void BMLMod::OnCmdEdit(CKDWORD key) {
+    switch (key) {
+        case CKKEY_RETURN:
+            m_CmdHistory.emplace_back(m_CmdInput->GetText());
+            if (m_CmdInput->GetText()[0] == '/') {
+                ModLoader::GetInstance().ExecuteCommand(m_CmdInput->GetText() + 1);
+            } else {
+                AddIngameMessage(m_CmdInput->GetText());
+            }
+        case CKKEY_ESCAPE:
+            m_CmdTyping = false;
+            ModLoader::GetInstance().GetInputManager()->SetBlock(false);
+            m_CmdBar->SetVisible(false);
+            m_CmdInput->SetText("");
+            break;
+        case CKKEY_TAB:
+            if (m_CmdInput->GetText()[0] == '/') {
+                m_CmdInput->SetText(
+                    ('/' + ModLoader::GetInstance().TabCompleteCommand(m_CmdInput->GetText() + 1)).c_str());
+            }
+            break;
+        case CKKEY_UP:
+            if (m_HistoryPos > 0)
+                m_CmdInput->SetText(m_CmdHistory[--m_HistoryPos].c_str());
+            break;
+        case CKKEY_DOWN:
+            if (m_HistoryPos < m_CmdHistory.size())
+                m_CmdInput->SetText(++m_HistoryPos == m_CmdHistory.size() ? "/" : m_CmdHistory[m_HistoryPos].c_str());
+            break;
+        default:;
+    }
+}
