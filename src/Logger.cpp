@@ -1,0 +1,50 @@
+#include "Logger.h"
+
+#include <stdio.h>
+#include <Windows.h>
+
+#include "ModLoader.h"
+
+Logger::Logger(const char *modName) : m_ModName(modName) {}
+
+void Logger::Info(const char *fmt, ...) {
+    va_list args;
+        va_start(args, fmt);
+    Log("INFO", fmt, args);
+        va_end(args);
+}
+
+void Logger::Warn(const char *fmt, ...) {
+    va_list args;
+        va_start(args, fmt);
+    Log("WARN", fmt, args);
+        va_end(args);
+}
+
+void Logger::Error(const char *fmt, ...) {
+    va_list args;
+        va_start(args, fmt);
+    Log("ERROR", fmt, args);
+        va_end(args);
+}
+
+void Logger::Log(const char *level, const char *fmt, va_list args) {
+    SYSTEMTIME sys;
+    GetLocalTime(&sys);
+
+    FILE *out_files[] = {
+#ifdef _DEBUG
+        stdout,
+#endif
+        ModLoader::GetInstance().GetLogFile()
+    };
+
+    for (FILE *file: out_files) {
+        fprintf(file, "[%02d/%02d/%d %02d:%02d:%02d.%03d] ", sys.wMonth, sys.wDay,
+                sys.wYear, sys.wHour, sys.wMinute, sys.wSecond, sys.wMilliseconds);
+        fprintf(file, "[%s/%s]: ", m_ModName, level);
+        vfprintf(file, fmt, args);
+        fputc('\n', file);
+        fflush(file);
+    }
+}
