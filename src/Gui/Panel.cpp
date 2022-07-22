@@ -16,7 +16,11 @@ Panel::Panel(const char *name) : Element(name) {
 }
 
 Panel::~Panel() {
-    ModLoader::GetInstance().GetCKContext()->DestroyObject(CKOBJID(m_material));
+    if (!ModLoader::GetInstance().IsReset()) {
+        CKContext *context = ModLoader::GetInstance().GetCKContext();
+        if (context)
+            context->DestroyObject(CKOBJID(m_material));
+    }
 }
 
 VxColor Panel::GetColor() {

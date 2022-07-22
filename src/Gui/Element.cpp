@@ -15,7 +15,11 @@ Element::Element(const char *name) {
 }
 
 Element::~Element() {
-    ModLoader::GetInstance().GetCKContext()->DestroyObject(CKOBJID(m_2dentity));
+    if (!ModLoader::GetInstance().IsReset()) {
+        CKContext *context = ModLoader::GetInstance().GetCKContext();
+        if (context)
+            context->DestroyObject(CKOBJID(m_2dentity));
+    }
 }
 
 Vx2DVector Element::GetPosition() {

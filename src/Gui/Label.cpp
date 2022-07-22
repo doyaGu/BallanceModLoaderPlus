@@ -10,7 +10,11 @@ Label::Label(const char *name) : Element(name) {
 }
 
 Label::~Label() {
-    ModLoader::GetInstance().GetCKContext()->DestroyObject(CKOBJID(m_text2d));
+    if (!ModLoader::GetInstance().IsReset()) {
+        CKContext *context = ModLoader::GetInstance().GetCKContext();
+        if (context)
+            context->DestroyObject(CKOBJID(m_text2d));
+    }
 }
 
 const char *Label::GetText() {

@@ -49,18 +49,20 @@ public:
 
     CKERROR OnCKInit() override;
     CKERROR OnCKEnd() override;
+    
+    CKERROR OnCKReset() override;
     CKERROR OnCKPostReset() override;
 
     CKERROR PostProcess() override;
 
     CKERROR OnPreRender(CKRenderContext *dev) override;
-
     CKERROR OnPostRender(CKRenderContext *dev) override;
 
     CKDWORD GetValidFunctionsMask() override {
         return CKMANAGER_FUNC_PostProcess |
                CKMANAGER_FUNC_OnCKInit |
                CKMANAGER_FUNC_OnCKEnd |
+               CKMANAGER_FUNC_OnCKReset |
                CKMANAGER_FUNC_OnCKPostReset |
                CKMANAGER_FUNC_OnPreRender |
                CKMANAGER_FUNC_OnPostRender;
