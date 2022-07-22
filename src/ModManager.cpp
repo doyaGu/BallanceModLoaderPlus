@@ -149,6 +149,9 @@ CKERROR ModManager::PostProcess() {
         m_Loader->SkipRenderForNextTick();
 
     m_Loader->GetInputManager()->Process();
+
+    if (m_Loader->m_Exiting)
+        m_Loader->SendMessageBroadcast("Exit Game");
     return CK_OK;
 }
 
