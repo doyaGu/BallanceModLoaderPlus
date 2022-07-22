@@ -117,9 +117,10 @@ CKERROR ModManager::OnCKPostReset() {
         int scriptCnt = m_Context->GetObjectsCountByClassID(CKCID_BEHAVIOR);
         CK_ID *scripts = m_Context->GetObjectsListByClassID(CKCID_BEHAVIOR);
         for (int i = 0; i < scriptCnt; i++) {
-            auto *beh = (CKBehavior *) m_Context->GetObject(scripts[i]);
-            if (beh->GetType() == CKBEHAVIORTYPE_SCRIPT)
-                BroadcastCallback(&IMod::OnLoadScript,std::bind(&IMod::OnLoadScript, std::placeholders::_1, "base.cmo", beh));
+            auto *behavior = (CKBehavior *) m_Context->GetObject(scripts[i]);
+            if (behavior->GetType() == CKBEHAVIORTYPE_SCRIPT) {
+                BroadcastCallback(&IMod::OnLoadScript, std::bind(&IMod::OnLoadScript, std::placeholders::_1, "base.cmo", behavior));
+            }
         }
 
         m_Initialized = true;
