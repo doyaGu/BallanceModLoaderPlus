@@ -8,7 +8,7 @@ CKMaterial *m_up = nullptr;
 CKMaterial *m_over = nullptr;
 CKMaterial *m_inactive = nullptr;
 
-Button::Button(const char *name) : Label(name) {
+Button::Button(const char *name) : Label(name), m_type(BUTTON_NORMAL) {
     m_2dentity->UseSourceRect();
 }
 
