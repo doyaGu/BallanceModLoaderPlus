@@ -13,7 +13,7 @@
 #include "unzip.h"
 
 bool BModDll::Load() {
-    if (!LoadDll())
+    if (LoadDll() == nullptr)
         return false;
     entry = reinterpret_cast<BModGetBMLEntryFunction>(GetFunctionPtr("BMLEntry"));
     if (!entry)
@@ -23,8 +23,7 @@ bool BModDll::Load() {
 }
 
 INSTANCE_HANDLE BModDll::LoadDll() {
-    VxSharedLibrary shl;
-    dllInstance = shl.Load(TOCKSTRING(dllFileName.c_str()));
+    dllInstance = LoadLibraryEx(dllFileName.c_str(), NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
     return dllInstance;
 }
 
@@ -140,8 +139,8 @@ void ModLoader::PreloadMods() {
         BModDll modDll;
         modDll.dllFileName = filename;
         modDll.dllPath = filename.substr(0, filename.find_last_of('\\'));
-        modDll.Load();
-        m_ModDlls.push_back(modDll);
+        if (modDll.Load())
+            m_ModDlls.push_back(modDll);
     }
 
     char filename[MAX_PATH];
@@ -192,8 +191,8 @@ void ModLoader::PreloadMods() {
                 } while (unzGoToNextFile(zipFile) == UNZ_OK);
                 delete[] buf;
 
-                modDll.Load();
-                m_ModDlls.push_back(modDll);
+                if (modDll.Load())
+                    m_ModDlls.push_back(modDll);
             }
         } while (unzGoToNextFile(zipFile) == UNZ_OK);
 
