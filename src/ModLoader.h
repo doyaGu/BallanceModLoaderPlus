@@ -58,6 +58,7 @@ public:
     void Release();
 
     bool IsInitialized() const { return m_Initialized; }
+    bool IsReset() { return m_IsReset; }
 
     FILE *GetLogFile() { return m_Logfile; }
 
@@ -256,6 +257,7 @@ protected:
 
     bool m_Initialized = false;
     bool m_Exiting = false;
+    bool m_IsReset = false;
     bool m_Ingame = false;
     bool m_Paused = false;
     bool m_SkipRender = false;

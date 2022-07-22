@@ -22,7 +22,11 @@ Text::Text(const char *name) : Element(name) {
 }
 
 Text::~Text() {
-    ModLoader::GetInstance().GetCKContext()->DestroyObject(CKOBJID(m_sprite));
+    if (!ModLoader::GetInstance().IsReset()) {
+        CKContext *context = ModLoader::GetInstance().GetCKContext();
+        if (context)
+            context->DestroyObject(CKOBJID(m_sprite));
+    }
 }
 
 void Text::UpdateFont() {

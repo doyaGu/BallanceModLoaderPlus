@@ -69,14 +69,18 @@ CKERROR ModManager::OnCKInit() {
 }
 
 CKERROR ModManager::OnCKEnd() {
+    m_Initialized = false;
+
     BroadcastMessage("OnUnload", &IMod::OnUnload);
 
     for (Config *config: m_Loader->m_Configs)
         config->Save();
     m_Loader->m_Configs.clear();
+    return CK_OK;
+}
 
-    m_Initialized = false;
-
+CKERROR ModManager::OnCKReset() {
+    m_Loader->m_IsReset = true;
     return CK_OK;
 }
 
@@ -125,6 +129,8 @@ CKERROR ModManager::OnCKPostReset() {
 
         m_Initialized = true;
     }
+
+    m_Loader->m_IsReset = false;
     return CK_OK;
 }
 
