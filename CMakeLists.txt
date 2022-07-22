@@ -42,7 +42,7 @@ if (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
 endif ()
 
 # Generate a CompilationDatabase (compile_commands.json)
-set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
+set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
 set(VIRTOOLS_SDK_PATH "${VIRTOOLS_SDK_PATH}" CACHE PATH "Path to the Virtools SDK")
 set(VIRTOOLS_SDK_FETCH_FROM_GIT "${VIRTOOLS_SDK_FETCH_FROM_GIT}" CACHE BOOL "Set to ON to fetch copy of SDK from git if not otherwise locatable")

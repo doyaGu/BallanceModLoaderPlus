@@ -101,29 +101,29 @@ target_compile_definitions(BMLPlus PRIVATE
         )
 
 if (NOT SKIP_INSTALL_LIBRARIES AND NOT SKIP_INSTALL_ALL)
-    configure_package_config_file(${PROJECT_SOURCE_DIR}/CMake/BMLPlus-config.cmake.in
-            "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.cmake"
+    configure_package_config_file(${PROJECT_SOURCE_DIR}/CMake/BMLPlusConfig.cmake.in
+            "${CMAKE_CURRENT_BINARY_DIR}/BMLPlusConfig.cmake"
             INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BMLPlus"
             )
 
     write_basic_package_version_file(
-            "${CMAKE_CURRENT_BINARY_DIR}/BMLPlus-config-version.cmake"
+            "${CMAKE_CURRENT_BINARY_DIR}/BMLPlusConfigVersion.cmake"
             COMPATIBILITY SameMinorVersion
     )
 
     install(FILES
-            "${CMAKE_CURRENT_BINARY_DIR}/BMLPlus-config.cmake"
+            "${CMAKE_CURRENT_BINARY_DIR}/BMLPlusConfig.cmake"
             DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BMLPlus"
             )
 
     install(TARGETS BMLPlus
-            EXPORT BMLPlus-targets
+            EXPORT BMLPlusTargets
             ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
             LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
             RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
             )
 
-    install(EXPORT "BMLPlus-targets"
+    install(EXPORT "BMLPlusTargets"
             DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BMLPlus")
 endif ()
 
