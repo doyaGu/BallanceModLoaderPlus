@@ -17,7 +17,7 @@ class IProperty;
 
 class BML_EXPORT IMod : public IMessageReceiver {
 public:
-    explicit IMod(IBML *bml) : m_BML(bml) {};
+    explicit IMod(IBML *bml) : m_BML(bml) {}
     virtual ~IMod();
 
     virtual const char *GetID() = 0;
