@@ -179,7 +179,7 @@ public:
     std::string GetDescription() override { return "Switch to First-Person Camera."; };
     bool IsCheat() override { return false; };
     void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; };
+    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; };
 
 private:
     BMLMod *m_BMLMod;

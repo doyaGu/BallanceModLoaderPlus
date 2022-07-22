@@ -19,7 +19,7 @@ public:
 
     virtual void Execute(IBML *bml, const std::vector<std::string> &args) = 0;
 
-    virtual std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) = 0;
+    virtual const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) = 0;
 
     static int ParseInteger(const std::string &str, int mn = INT_MIN, int mx = INT_MAX) {
         return (std::max)(mn, (std::min)(mx, atoi(str.c_str())));
