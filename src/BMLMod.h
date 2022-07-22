@@ -212,6 +212,7 @@ public:
     void OnProcess() override;
     void OnCheatEnabled(bool enable) override;
     void OnModifyConfig(const char *category, const char *key, IProperty *prop) override;
+    void OnPreStartMenu() override;
     void OnPostResetLevel() override;
     void OnStartLevel() override;
     void OnPostExitLevel() override;
@@ -280,6 +281,8 @@ private:
     IProperty *m_SkipAnim = nullptr;
     IProperty *m_FullscreenKey = nullptr;
     IProperty *m_UnlockRes = nullptr;
+    IProperty *m_UnlockFPS = nullptr;
+    IProperty *m_FPSLimit = nullptr;
     IProperty* m_ShowTitle = nullptr;
     IProperty *m_ShowFPS = nullptr;
     IProperty *m_ShowSR = nullptr;

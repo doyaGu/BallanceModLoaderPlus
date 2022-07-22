@@ -589,6 +589,14 @@ void BMLMod::OnLoad() {
     m_UnlockRes->SetComment("Unlock 16:9 Resolutions");
     m_UnlockRes->SetDefaultBoolean(true);
 
+    m_UnlockFPS = GetConfig()->GetProperty("Misc", "UnlockFrameRate");
+    m_UnlockFPS->SetComment("Unlock Frame Rate Limitation");
+    m_UnlockFPS->SetDefaultBoolean(true);
+
+    m_FPSLimit = GetConfig()->GetProperty("Misc", "SetMaxFrameRate");
+    m_FPSLimit->SetComment("Set Frame Rate Limitation, this option will not work if frame rate is unlocked");
+    m_FPSLimit->SetDefaultInteger(0);
+
     m_Overclock = GetConfig()->GetProperty("Misc", "Overclock");
     m_Overclock->SetComment("Remove delay of spawn / respawn");
     m_Overclock->SetDefaultBoolean(false);
@@ -1275,6 +1283,19 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
         if (prop == m_BallCheat[1])
             SetParamValue(m_BallForce[1], m_BallCheat[1]->GetKey());
     }
+    if (prop == m_UnlockFPS) {
+        if (prop->GetBoolean())
+            ModLoader::GetInstance().AdjustFrameRate(false, 0);
+        else
+            ModLoader::GetInstance().AdjustFrameRate(true);
+    }
+    if (prop == m_FPSLimit && !m_UnlockFPS->GetBoolean()) {
+        int val = prop->GetInteger();
+        if (val > 0)
+            ModLoader::GetInstance().AdjustFrameRate(false, static_cast<float>(val));
+        else
+            ModLoader::GetInstance().AdjustFrameRate(true);
+    }
     if (prop == m_Overclock) {
         for (int i = 0; i < 3; i++) {
             m_OverclockLinks[i]->SetOutBehaviorIO(m_OverclockLinkIO[i][m_Overclock->GetBoolean()]);
@@ -1292,6 +1313,12 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
     }
 }
 
+void BMLMod::OnPreStartMenu() {
+    if(m_UnlockFPS->GetBoolean()) {
+        ModLoader::GetInstance().AdjustFrameRate(false, 0);
+    }
+}
+
 void BMLMod::OnPostResetLevel() {
     CKDataArray *ph = m_BML->GetArrayByName("PH");
     for (auto iter = m_TempBalls.rbegin(); iter != m_TempBalls.rend(); iter++) {
@@ -1302,6 +1329,9 @@ void BMLMod::OnPostResetLevel() {
 }
 
 void BMLMod::OnStartLevel() {
+    if(m_UnlockFPS->GetBoolean()) {
+        ModLoader::GetInstance().AdjustFrameRate(false, 0);
+    }
     m_SRTimer = 0.0f;
     m_SRScore->SetText("00:00:00.000");
     if (m_ShowSR->GetBoolean()) {

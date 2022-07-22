@@ -232,6 +232,17 @@ public:
     void SkipRenderForNextTick() override { m_SkipRender = true; }
     bool IsSkipRender() { return m_SkipRender; }
 
+    void AdjustFrameRate(bool sync = false, float limit = 60.0f) {
+        if (sync) {
+            m_TimeManager->ChangeLimitOptions(CK_FRAMERATE_SYNC);
+        } else if (limit > 0) {
+            m_TimeManager->ChangeLimitOptions(CK_FRAMERATE_LIMIT);
+            m_TimeManager->SetFrameRateLimit(limit);
+        } else {
+            m_TimeManager->ChangeLimitOptions(CK_FRAMERATE_FREE);
+        }
+    }
+
     ModManager *GetModManager() { return m_ModManager; }
 
     static ModLoader &GetInstance();
