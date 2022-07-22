@@ -244,6 +244,10 @@ public:
         }
     }
 
+    void SendMessageBroadcast(const char* msg) {
+        m_MessageManager->SendMessageBroadcast(m_MessageManager->AddMessageType(TOCKSTRING(msg)));
+    }
+
     ModManager *GetModManager() { return m_ModManager; }
 
     static ModLoader &GetInstance();
