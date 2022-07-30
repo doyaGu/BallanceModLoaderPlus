@@ -594,7 +594,7 @@ void BMLMod::OnLoad() {
     m_UnlockFPS->SetDefaultBoolean(true);
 
     m_FPSLimit = GetConfig()->GetProperty("Misc", "SetMaxFrameRate");
-    m_FPSLimit->SetComment("Set Frame Rate Limitation, this option will not work if frame rate is unlocked");
+    m_FPSLimit->SetComment("Set Frame Rate Limitation, this option will not work if frame rate is unlocked. Set to 0 will turn on VSync.");
     m_FPSLimit->SetDefaultInteger(0);
 
     m_Overclock = GetConfig()->GetProperty("Misc", "Overclock");
@@ -1286,8 +1286,13 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
     if (prop == m_UnlockFPS) {
         if (prop->GetBoolean())
             ModLoader::GetInstance().AdjustFrameRate(false, 0);
-        else
-            ModLoader::GetInstance().AdjustFrameRate(true);
+        else {
+            int val = m_FPSLimit->GetInteger();
+            if (val > 0)
+                ModLoader::GetInstance().AdjustFrameRate(false, static_cast<float>(val));
+            else
+                ModLoader::GetInstance().AdjustFrameRate(true);
+        }
     }
     if (prop == m_FPSLimit && !m_UnlockFPS->GetBoolean()) {
         int val = prop->GetInteger();
@@ -1316,6 +1321,12 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
 void BMLMod::OnPreStartMenu() {
     if(m_UnlockFPS->GetBoolean()) {
         ModLoader::GetInstance().AdjustFrameRate(false, 0);
+    } else {
+        int val = m_FPSLimit->GetInteger();
+        if (val > 0)
+            ModLoader::GetInstance().AdjustFrameRate(false, static_cast<float>(val));
+        else
+            ModLoader::GetInstance().AdjustFrameRate(true);
     }
 }
 
@@ -1331,6 +1342,12 @@ void BMLMod::OnPostResetLevel() {
 void BMLMod::OnStartLevel() {
     if(m_UnlockFPS->GetBoolean()) {
         ModLoader::GetInstance().AdjustFrameRate(false, 0);
+    } else {
+        int val = m_FPSLimit->GetInteger();
+        if (val > 0)
+            ModLoader::GetInstance().AdjustFrameRate(false, static_cast<float>(val));
+        else
+            ModLoader::GetInstance().AdjustFrameRate(true);
     }
     m_SRTimer = 0.0f;
     m_SRScore->SetText("00:00:00.000");
