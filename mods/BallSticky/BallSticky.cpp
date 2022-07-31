@@ -79,7 +79,7 @@ void BallSticky::OnEditScript_Gameplay_Ingame(CKBehavior* script) {
 	}
 
 	int cnt = 0;
-	FindBB(ballNav, [ballNav, forces, keepActive, &cnt](CKBehavior* beh) {
+	FindBB(ballNav, [ballNav, &forces, &keepActive, &cnt](CKBehavior* beh) {
 		VxVector dir;
 		beh->GetInputParameterValue(2, &dir);
 		int idx = -1;
@@ -96,5 +96,5 @@ void BallSticky::OnEditScript_Gameplay_Ingame(CKBehavior* script) {
 			}
 		}
 		return cnt < 4;
-		}, "SetPhysicsForce");
+	}, "SetPhysicsForce");
 }
