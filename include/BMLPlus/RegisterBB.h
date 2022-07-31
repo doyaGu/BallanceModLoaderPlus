@@ -197,23 +197,24 @@ public:
     ProcessFunction m_ProcFunc;
 };
 
-template <typename T>
+template<typename T>
 class BuilderFactory {
 public:
     BuilderFactory() = default;
+
     ~BuilderFactory() {
-        for (auto* builder : m_Builders) {
+        for (auto *builder: m_Builders) {
             if (builder) delete builder;
         }
     }
 
-    T* NewBuilder() {
-        auto* builder = new T();
+    T *NewBuilder() {
+        auto *builder = new T();
         m_Builders.push_back(builder);
         return builder;
     }
 
-    void DeleteBuilder(T* builder) {
+    void DeleteBuilder(T *builder) {
         if (std::find(m_Builders.cbegin(), m_Builders.cend(), builder) != m_Builders.cend()) {
             std::remove(m_Builders.begin(), m_Builders.end(), builder);
             if (builder) delete builder;
