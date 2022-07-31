@@ -1319,7 +1319,7 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
 }
 
 void BMLMod::OnPreStartMenu() {
-    if(m_UnlockFPS->GetBoolean()) {
+    if (m_UnlockFPS->GetBoolean()) {
         ModLoader::GetInstance().AdjustFrameRate(false, 0);
     } else {
         int val = m_FPSLimit->GetInteger();
@@ -1340,7 +1340,7 @@ void BMLMod::OnPostResetLevel() {
 }
 
 void BMLMod::OnStartLevel() {
-    if(m_UnlockFPS->GetBoolean()) {
+    if (m_UnlockFPS->GetBoolean()) {
         ModLoader::GetInstance().AdjustFrameRate(false, 0);
     } else {
         int val = m_FPSLimit->GetInteger();
