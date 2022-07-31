@@ -87,7 +87,7 @@ target_link_libraries(BMLPlus
         PUBLIC
             CK2 VxMath
         PRIVATE
-            CKZlib asmjit::asmjit
+            CKZlib xbyak
         )
 
 target_compile_definitions(BMLPlus PRIVATE "BML_EXPORTS")

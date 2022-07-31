@@ -1,15 +1,93 @@
 #include "RegisterBB.h"
 
 #include <vector>
+#include <memory>
 
 #include "Defines.h"
 #include "ModLoader.h"
 
-#include "asmjit/x86.h"
+#include "xbyak/xbyak.h"
 
 namespace {
+    CKBehaviorPrototype *CreatePrototype(BBBuilder *builder) {
+        CKBehaviorPrototype *proto = CreateCKBehaviorPrototype(TOCKSTRING(builder->m_Name.c_str()));
+
+        for (auto &name: builder->m_Inputs)
+            proto->DeclareInput(TOCKSTRING(name.c_str()));
+        for (auto &name: builder->m_Outputs)
+            proto->DeclareOutput(TOCKSTRING(name.c_str()));
+
+        for (auto &pair: builder->m_InputParams)
+            proto->DeclareInParameter(TOCKSTRING(pair.first.c_str()), pair.second);
+        for (auto &pair: builder->m_OutputParams)
+            proto->DeclareOutParameter(TOCKSTRING(pair.first.c_str()), pair.second);
+
+        if (builder->m_BehFlags != 0)
+            proto->SetBehaviorFlags(static_cast<CK_BEHAVIOR_FLAGS>(builder->m_BehFlags));
+        proto->SetFlags(builder->m_Flags);
+
+        if (builder->m_Callback != nullptr)
+            proto->SetBehaviorCallbackFct(builder->m_Callback, builder->m_CallbackMask, builder->m_CallbackParam);
+
+        proto->SetFunction(builder->BuildFunction());
+
+        return proto;
+    }
+
+    class CreateProtoFunctionGenerator : public Xbyak::CodeGenerator {
+    public:
+        explicit CreateProtoFunctionGenerator(BBBuilder *builder) {
+            sub(esp, 8);
+            mov(ecx, dword[esp + 12]);
+            mov(dword[esp], reinterpret_cast<uint32_t>(builder));
+            mov(dword[esp + 4], ecx);
+            call(CreatePrototype);
+            mov(ecx, dword[esp + 4]);
+            mov(dword[ecx], eax);
+            xor_(eax, eax);
+            add(esp, 8);
+            ret();
+        }
+
+        CKDLL_CREATEPROTOFUNCTION Get() const {
+            return getCode<CKDLL_CREATEPROTOFUNCTION>();
+        }
+    };
+
+    int HookFunction(const CKBehaviorContext &behcontext, HookBuilder *builder) {
+        CKBehavior *beh = behcontext.Behavior;
+
+        for (size_t pos = 0; pos < builder->m_OutputPos.size(); pos++)
+            beh->GetOutputParameter(pos)->CopyValue(beh->GetInputParameter(builder->m_OutputPos[pos])->GetRealSource());
+
+        HookParams params(beh);
+        bool cancelled = builder->m_ProcFunc(&params) && beh->GetOutputCount() > 1;
+
+        beh->ActivateInput(0, FALSE);
+        beh->ActivateOutput(cancelled ? 1 : 0);
+        return CKBR_OK;
+    }
+
+    class BehaviorFunctionGenerator : public Xbyak::CodeGenerator {
+    public:
+        explicit BehaviorFunctionGenerator(HookBuilder *builder) {
+            sub(esp, 8);
+            mov(eax, dword[esp + 12]);
+            mov(dword[esp], eax);
+            mov(dword[esp + 4], reinterpret_cast<uint32_t>(builder));
+            call(HookFunction);
+            add(esp, 8);
+            ret();
+        }
+
+        CKBEHAVIORFCT Get() const {
+            return getCode<CKBEHAVIORFCT>();
+        }
+    };
+
     BuilderFactory<HookBuilder> g_BuilderFactory;
-    asmjit::JitRuntime g_JitRuntime;
+    std::vector<std::unique_ptr<CreateProtoFunctionGenerator>> g_CreateProtoFunctionGenerators;
+    std::vector<std::unique_ptr<BehaviorFunctionGenerator>> g_BehaviorFunctionGenerators;
 }
 
 CKObjectDeclaration *BBBuilder::Build() {
@@ -26,117 +104,14 @@ CKObjectDeclaration *BBBuilder::Build() {
     return od;
 }
 
-CKBehaviorPrototype *CreatePrototype(BBBuilder *builder) {
-    CKBehaviorPrototype *proto = CreateCKBehaviorPrototype(TOCKSTRING(builder->m_Name.c_str()));
-
-    for (auto &name: builder->m_Inputs)
-        proto->DeclareInput(TOCKSTRING(name.c_str()));
-    for (auto &name: builder->m_Outputs)
-        proto->DeclareOutput(TOCKSTRING(name.c_str()));
-
-    for (auto &pair: builder->m_InputParams)
-        proto->DeclareInParameter(TOCKSTRING(pair.first.c_str()), pair.second);
-    for (auto &pair: builder->m_OutputParams)
-        proto->DeclareOutParameter(TOCKSTRING(pair.first.c_str()), pair.second);
-
-    if (builder->m_BehFlags != 0)
-        proto->SetBehaviorFlags(static_cast<CK_BEHAVIOR_FLAGS>(builder->m_BehFlags));
-    proto->SetFlags(builder->m_Flags);
-
-    if (builder->m_Callback != nullptr)
-        proto->SetBehaviorCallbackFct(builder->m_Callback, builder->m_CallbackMask, builder->m_CallbackParam);
-
-    proto->SetFunction(builder->BuildFunction());
-
-    return proto;
-}
-
-CKDLL_CREATEPROTOFUNCTION GenCreateProtoFunction(BBBuilder *builder) {
-    using namespace asmjit;
-    CodeHolder code;
-    code.init(g_JitRuntime.environment());
-
-    using namespace asmjit::x86;
-    Compiler cc(&code);
-
-    FuncNode *funcNode = cc.addFunc(FuncSignatureT<CKERROR, CKBehaviorPrototype**>(CallConvId::kHost));
-    Gp pproto = cc.newIntPtr("pproto");
-    Gp proto = cc.newIntPtr("proto");
-    funcNode->setArg(0, pproto);
-
-    InvokeNode *invokeNode;
-    cc.invoke(&invokeNode,
-              imm((void*)CreatePrototype),
-              FuncSignatureT<CKBehaviorPrototype*, BBBuilder*>(CallConvId::kHost));
-    invokeNode->setArg(0, imm((void*)builder));
-    invokeNode->setRet(0, proto);
-
-    cc.mov(dword_ptr(pproto), proto);
-    cc.xor_(eax, eax);
-    cc.ret(eax);
-    cc.endFunc();
-
-    cc.finalize();
-
-    CKDLL_CREATEPROTOFUNCTION fct;
-    Error err = g_JitRuntime.add(&fct, &code);
-    if (err) return nullptr;
-    return fct;
-}
-
 CKDLL_CREATEPROTOFUNCTION BBBuilder::BuildProto() {
-    return GenCreateProtoFunction(this);
-}
-
-int HookFunction(const CKBehaviorContext &behcontext, HookBuilder *builder) {
-    CKBehavior *beh = behcontext.Behavior;
-
-    for (size_t pos = 0; pos < builder->m_OutputPos.size(); pos++)
-        beh->GetOutputParameter(pos)->CopyValue(beh->GetInputParameter(builder->m_OutputPos[pos])->GetRealSource());
-
-    HookParams params(beh);
-    bool cancelled = builder->m_ProcFunc(&params) && beh->GetOutputCount() > 1;
-
-    beh->ActivateInput(0, FALSE);
-    beh->ActivateOutput(cancelled ? 1 : 0);
-    return CKBR_OK;
-}
-
-CKBEHAVIORFCT GenBehaviorFunction(HookBuilder *builder) {
-    using namespace asmjit;
-    CodeHolder code;
-    code.init(g_JitRuntime.environment());
-
-    using namespace asmjit::x86;
-    Compiler cc(&code);
-
-    FuncNode* funcNode = cc.addFunc(FuncSignatureT<int, const CKBehaviorContext&>(CallConvId::kHost));
-    Gp behcontext = cc.newIntPtr("behcontext");
-    Gp retval = cc.newInt32("retval");
-    funcNode->setArg(0, behcontext);
-
-    InvokeNode* invokeNode;
-    cc.invoke(&invokeNode,
-              imm((void*)HookFunction),
-              FuncSignatureT<int, const CKBehaviorContext&, HookBuilder*>(CallConvId::kHost));
-    invokeNode->setArg(0, behcontext);
-    invokeNode->setArg(1, imm((void*)builder));
-    invokeNode->setRet(0, retval);
-
-    cc.mov(eax, retval);
-    cc.ret(eax);
-    cc.endFunc();
-
-    cc.finalize();
-
-    CKBEHAVIORFCT fct;
-    Error err = g_JitRuntime.add(&fct, &code);
-    if (err) return nullptr;
-    return fct;
+    g_CreateProtoFunctionGenerators.push_back(std::make_unique<CreateProtoFunctionGenerator>(this));
+    return g_CreateProtoFunctionGenerators.back()->Get();
 }
 
 CKBEHAVIORFCT HookBuilder::BuildFunction() {
-    return GenBehaviorFunction(this);
+    g_BehaviorFunctionGenerators.push_back(std::make_unique<BehaviorFunctionGenerator>(this));
+    return g_BehaviorFunctionGenerators.back()->Get();
 }
 
 void RegisterCallback(XObjectDeclarationArray *reg, const char *name, const char *desc, CKGUID guid,
