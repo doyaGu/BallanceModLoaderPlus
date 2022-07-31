@@ -86,8 +86,12 @@ public:
 
 private:
     void trim(std::string &s) {
-        s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](char x){return !std::isspace(x);}));
-        s.erase(std::find_if(s.rbegin(), s.rend(), [](char x){return !std::isspace(x);}).base(), s.end());
+        auto it = s.begin();
+        while (it != s.end() && std::isspace(*it)) ++it;
+        s.erase(s.begin(), it);
+        auto rit = s.rbegin();
+        while (rit != s.rend() && std::isspace(*rit)) ++rit;
+        s.erase(rit.base(), s.end());
     }
 
     IMod *m_Mod;
