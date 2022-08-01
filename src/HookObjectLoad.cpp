@@ -47,22 +47,17 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
         CKBOOL isMap = !strcmp(beh->GetOwnerScript()->GetName(), "Levelinit_build");
 
         ModLoader::GetInstance().GetModManager()->BroadcastCallback(&IMod::OnLoadObject,
-                                                                    std::bind(&IMod::OnLoadObject,
-                                                                              std::placeholders::_1,
                                                                               filename, isMap, mastername, cid,
                                                                               addToScene, reuseMeshes,
                                                                               reuseMaterials, dynamic, oarray,
-                                                                              masterobject));
+                                                                              masterobject);
 
         for (CK_ID *id = oarray->Begin(); id != oarray->End(); id++) {
             CKObject *obj = ModLoader::GetInstance().GetCKContext()->GetObject(*id);
             if (obj->GetClassID() == CKCID_BEHAVIOR) {
                 auto *behavior = (CKBehavior *) obj;
                 if (behavior->GetType() == CKBEHAVIORTYPE_SCRIPT) {
-                    ModLoader::GetInstance().GetModManager()->BroadcastCallback(&IMod::OnLoadScript,
-                                                                                std::bind(&IMod::OnLoadScript,
-                                                                                          std::placeholders::_1,
-                                                                                          filename, behavior));
+                    ModLoader::GetInstance().GetModManager()->BroadcastCallback(&IMod::OnLoadScript, filename, behavior);
                 }
             }
         }

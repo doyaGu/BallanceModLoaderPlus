@@ -460,7 +460,7 @@ bool ModLoader::IsCheatEnabled() {
 void ModLoader::EnableCheat(bool enable) {
     m_CheatEnabled = enable;
     m_BMLMod->ShowCheatBanner(enable);
-    m_ModManager->BroadcastCallback(&IMod::OnCheatEnabled,std::bind(&IMod::OnCheatEnabled, std::placeholders::_1, enable));
+    m_ModManager->BroadcastCallback(&IMod::OnCheatEnabled, enable);
 }
 
 void ModLoader::SetIC(CKBeObject *obj, bool hierarchy) {
