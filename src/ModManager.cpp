@@ -115,15 +115,14 @@ CKERROR ModManager::OnCKPostReset() {
         for (Config *config: m_Loader->m_Configs)
             config->Save();
 
-        BroadcastCallback(&IMod::OnLoadObject, std::bind(&IMod::OnLoadObject, std::placeholders::_1, "base.cmo", false,
-                                                         "", CKCID_3DOBJECT, true, true, true, false, nullptr, nullptr));
+        BroadcastCallback(&IMod::OnLoadObject, "base.cmo", false,  "", CKCID_3DOBJECT, true, true, true, false, nullptr, nullptr);
 
         int scriptCnt = m_Context->GetObjectsCountByClassID(CKCID_BEHAVIOR);
         CK_ID *scripts = m_Context->GetObjectsListByClassID(CKCID_BEHAVIOR);
         for (int i = 0; i < scriptCnt; i++) {
             auto *behavior = (CKBehavior *) m_Context->GetObject(scripts[i]);
             if (behavior->GetType() == CKBEHAVIORTYPE_SCRIPT) {
-                BroadcastCallback(&IMod::OnLoadScript, std::bind(&IMod::OnLoadScript, std::placeholders::_1, "base.cmo", behavior));
+                BroadcastCallback(&IMod::OnLoadScript, "base.cmo", behavior);
             }
         }
 
@@ -144,7 +143,7 @@ CKERROR ModManager::PostProcess() {
             iter++;
     }
 
-    BroadcastCallback(&IMod::OnProcess, [](auto &&mod) { mod->OnProcess(); });
+    BroadcastCallback(&IMod::OnProcess);
     if (m_Loader->GetInputManager()->IsKeyDown(CKKEY_F) && m_Loader->IsCheatEnabled())
         m_Loader->SkipRenderForNextTick();
 
@@ -166,7 +165,7 @@ CKERROR ModManager::OnPreRender(CKRenderContext *dev) {
 
 CKERROR ModManager::OnPostRender(CKRenderContext *dev) {
     auto flags = static_cast<CK_RENDER_FLAGS>(dev->GetCurrentRenderOptions());
-    BroadcastCallback(&IMod::OnRender, std::bind(&IMod::OnRender, std::placeholders::_1, flags));
+    BroadcastCallback(&IMod::OnRender, flags);
     return CK_OK;
 }
 

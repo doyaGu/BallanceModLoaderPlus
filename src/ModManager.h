@@ -2,8 +2,8 @@
 #define BML2_MODMANAGER_H
 
 #include <vector>
-#include <map>
-#include <functional>
+#include <unordered_map>
+#include <type_traits>
 
 #include "CKContext.h"
 #include "CKBaseManager.h"
@@ -32,17 +32,17 @@ public:
     IMod *GetModByID(const char *modId);
     int GetModIndex(IMod *mod);
 
-    template<typename T>
-    void BroadcastCallback(T func, const std::function<void(IMod *)>& callback) {
-        for (IMod *mod: m_CallbackMap[func_addr(func)]) {
-            callback(mod);
+    template<typename T, typename... Args>
+    std::enable_if_t<std::is_member_function_pointer<T>::value, void> BroadcastCallback(T callback, Args&&... args) {
+        for (IMod *mod: m_CallbackMap[func_addr(callback)]) {
+            (mod->*callback)(std::forward<Args>(args)...);
         }
     }
 
     template<typename T>
-    void BroadcastMessage(const char *msg, T func) {
+    std::enable_if_t<std::is_member_function_pointer<T>::value, void> BroadcastMessage(const char *msg, T func) {
         m_Logger->Info("On Message %s", msg);
-        BroadcastCallback(func, func);
+        BroadcastCallback(func);
     }
 
     // Internal functions
@@ -87,7 +87,7 @@ protected:
 
     std::vector<IMod *> m_Mods;
 
-    std::map<void *, std::vector<IMod *>> m_CallbackMap;
+    std::unordered_map<void *, std::vector<IMod *>> m_CallbackMap;
 };
 
 
