@@ -71,7 +71,7 @@ if (NOT VIRTOOLS_SDK_PATH)
     endif ()
 endif ()
 
-find_package(VirtoolsSDK REQUIRED)
+find_package(VirtoolsSDK REQUIRED HINTS ${VIRTOOLS_SDK_PATH})
 
 add_subdirectory(deps)
 add_subdirectory(src)
