@@ -86,7 +86,7 @@ public:
         mod->OnModifyConfig(category, key, prop);
     }
 
-    void ExecuteCommand(const char *cmd, bool force = false);
+    void ExecuteCommand(const char *cmd, bool force = false) override;
     std::string TabCompleteCommand(const char *cmd);
 
     void PreloadMods();

@@ -89,6 +89,8 @@ public:
     virtual int GetHSScore() = 0;
 
     virtual void SkipRenderForNextTick() = 0;
+
+    virtual void ExecuteCommand(const char *cmd, bool force = false) = 0;
 };
 
 
