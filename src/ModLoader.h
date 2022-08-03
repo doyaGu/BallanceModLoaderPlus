@@ -58,7 +58,7 @@ public:
     void Release();
 
     bool IsInitialized() const { return m_Initialized; }
-    bool IsReset() { return m_IsReset; }
+    bool IsReset() const { return m_IsReset; }
 
     FILE *GetLogFile() { return m_Logfile; }
 
@@ -231,7 +231,7 @@ public:
     int GetHSScore() override;
 
     void SkipRenderForNextTick() override { m_SkipRender = true; }
-    bool IsSkipRender() { return m_SkipRender; }
+    bool IsSkipRender() const { return m_SkipRender; }
 
     void AdjustFrameRate(bool sync = false, float limit = 60.0f) {
         if (sync) {
