@@ -408,10 +408,13 @@ void ModLoader::ExecuteCommand(const char *cmd, bool force) {
     m_Logger->Info("Execute Command: %s", cmd);
     std::vector<std::string> args = SplitString(cmd, " ");
     ICommand *command = FindCommand(args[0]);
-    if (command && (!command->IsCheat() || m_CheatEnabled || force))
+    if (command && (!command->IsCheat() || m_CheatEnabled || force)) {
+        m_ModManager->BroadcastCallback(&IMod::OnPreCommandExecute, command, args);
         command->Execute(this, args);
-    else
+        m_ModManager->BroadcastCallback(&IMod::OnPostCommandExecute, command, args);
+    } else {
         m_BMLMod->AddIngameMessage(("Error: Unknown Command " + args[0]).c_str());
+    }
 }
 
 std::string ModLoader::TabCompleteCommand(const char *cmd) {
