@@ -87,7 +87,7 @@ target_link_libraries(BMLPlus
         PUBLIC
             CK2 VxMath
         PRIVATE
-            CKZlib xbyak
+            CKZlib xbyak minhook
         )
 
 target_compile_definitions(BMLPlus PRIVATE "BML_EXPORTS")

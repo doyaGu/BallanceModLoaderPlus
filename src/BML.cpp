@@ -5,6 +5,8 @@
 #include "ModLoader.h"
 #include "ModManager.h"
 
+#include "MinHook.h"
+
 #ifdef CK_LIB
 #define RegisterBehaviorDeclarations Register_BML_BehaviorDeclarations
 #define InitInstance _BML_InitInstance
@@ -91,20 +93,32 @@ PLUGIN_EXPORT void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg) {
     loader.RegisterModBBs(reg);
 }
 
-void WriteMemory(LPVOID dest, LPVOID src, int len) {
-    DWORD oldFlag;
-    VirtualProtect(dest, len, PAGE_EXECUTE_READWRITE, &oldFlag);
-    memcpy(dest, src, len);
-    VirtualProtect(dest, len, oldFlag, &oldFlag);
-}
-
-void HookPrototypeRuntime() {
-    BYTE data[] = {0xeb, 0x75};
-    WriteMemory(reinterpret_cast<LPVOID>(0x240388F4), &data, sizeof(data));
+bool HookCreateCKBehaviorPrototypeRuntime() {
+    VxSharedLibrary sl;
+    sl.Attach(GetModuleHandle("CK2.dll"));
+    LPVOID lpCreateCKBehaviorPrototypeRunTimeProc = sl.GetFunctionPtr(
+        TOCKSTRING("?CreateCKBehaviorPrototypeRunTime@@YAPAVCKBehaviorPrototype@@PAD@Z"));
+    LPVOID lpCreateCKBehaviorPrototypeProc = sl.GetFunctionPtr(
+        TOCKSTRING("?CreateCKBehaviorPrototype@@YAPAVCKBehaviorPrototype@@PAD@Z"));
+    if (MH_CreateHook(lpCreateCKBehaviorPrototypeRunTimeProc, lpCreateCKBehaviorPrototypeProc, NULL) != MH_OK
+        || MH_EnableHook(lpCreateCKBehaviorPrototypeRunTimeProc) != MH_OK) {
+        return false;
+    }
+    return true;
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
-    if (fdwReason == DLL_PROCESS_ATTACH)
-        HookPrototypeRuntime();
+    switch (fdwReason) {
+        case DLL_PROCESS_ATTACH:
+            if (MH_Initialize() != MH_OK)
+                return FALSE;
+            if (!HookCreateCKBehaviorPrototypeRuntime())
+                return FALSE;
+            break;
+        case DLL_PROCESS_DETACH:
+            if (MH_Uninitialize() != MH_OK)
+                return FALSE;
+            break;
+    }
     return TRUE;
 }
