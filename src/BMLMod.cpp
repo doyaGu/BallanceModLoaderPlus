@@ -1078,8 +1078,8 @@ void BMLMod::OnProcess() {
             }
             VxVector delta;
             im->GetMouseRelativePosition(delta);
-            delta.x = std::fmod(delta.x, 16.0f);
-            delta.y = std::fmod(delta.y, 16.0f);
+            delta.x = std::fmod(delta.x, 20.0f);
+            delta.y = std::fmod(delta.y, 20.0f);
             vect = VxVector(0, 1, 0);
             m_TravelCam->Rotate(&vect, -delta.x * 2 / m_BML->GetRenderContext()->GetWidth());
             vect = VxVector(1, 0, 0);
