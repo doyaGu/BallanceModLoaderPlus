@@ -27,26 +27,6 @@ public:
     explicit ModManager(CKContext *ctx);
     ~ModManager() override;
 
-    int GetModCount();
-    IMod *GetMod(int modIdx);
-    IMod *GetModByID(const char *modId);
-    int GetModIndex(IMod *mod);
-
-    template<typename T, typename... Args>
-    std::enable_if_t<std::is_member_function_pointer<T>::value, void> BroadcastCallback(T callback, Args&&... args) {
-        for (IMod *mod: m_CallbackMap[func_addr(callback)]) {
-            (mod->*callback)(std::forward<Args>(args)...);
-        }
-    }
-
-    template<typename T>
-    std::enable_if_t<std::is_member_function_pointer<T>::value, void> BroadcastMessage(const char *msg, T func) {
-        m_Logger->Info("On Message %s", msg);
-        BroadcastCallback(func);
-    }
-
-    // Internal functions
-
     CKERROR OnCKInit() override;
     CKERROR OnCKEnd() override;
     
@@ -75,19 +55,10 @@ public:
     static const char *Name;
 
 protected:
-    CKERROR RegisterMod(BModDll &modDll, IBML *bml);
-    CKERROR LoadMod(IMod* mod);
-
-    void FillCallbackMap(IMod *mod);
-
     bool m_Initialized = false;
 
     ILogger *m_Logger = nullptr;
     ModLoader *m_Loader = nullptr;
-
-    std::vector<IMod *> m_Mods;
-
-    std::unordered_map<void *, std::vector<IMod *>> m_CallbackMap;
 };
 
 

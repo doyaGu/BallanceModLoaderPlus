@@ -61,7 +61,7 @@ int Physicalize(const CKBehaviorContext &behcontext) {
             paramPos += concaveCnt;
         }
 
-        ModLoader::GetInstance().GetModManager()->BroadcastCallback(&IMod::OnPhysicalize, target,
+        ModLoader::GetInstance().BroadcastCallback(&IMod::OnPhysicalize, target,
                                                                               fixed, friction, elasticity, mass,
                                                                               collGroup, startFrozen, enableColl,
                                                                               calcMassCenter, linearDamp, rotDamp,
@@ -73,7 +73,7 @@ int Physicalize(const CKBehaviorContext &behcontext) {
         if (ballRadius) delete[] ballRadius;
         if (concaveMesh) delete[] concaveMesh;
     } else {
-        ModLoader::GetInstance().GetModManager()->BroadcastCallback(&IMod::OnUnphysicalize, target);
+        ModLoader::GetInstance().BroadcastCallback(&IMod::OnUnphysicalize, target);
     }
 
     return g_Physicalize(behcontext);
