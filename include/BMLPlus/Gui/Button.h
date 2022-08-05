@@ -41,9 +41,9 @@ namespace BGui {
         void OnMouseLeave();
 
     protected:
-        ButtonType m_type;
-        bool m_active = true;
-        std::function<void()> m_callback;
+        ButtonType m_Type;
+        bool m_Active = true;
+        std::function<void()> m_Callback;
     };
 }
 

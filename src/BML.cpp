@@ -8,23 +8,23 @@
 #include "MinHook.h"
 
 #ifdef CK_LIB
-#define RegisterBehaviorDeclarations Register_BML_BehaviorDeclarations
-#define InitInstance _BML_InitInstance
-#define ExitInstance _BML_ExitInstance
-#define CreateNewManager CreateNewModManager
-#define RemoveManager RemoveModManager
-#define CKGetPluginInfoCount CKGet_BML_PluginInfoCount
-#define CKGetPluginInfo CKGet_BML_PluginInfo
-#define g_PluginInfo g_BML_PluginInfo
+#define RegisterBehaviorDeclarations    Register_BML_BehaviorDeclarations
+#define InitInstance                    _BML_InitInstance
+#define ExitInstance                    _BML_ExitInstance
+#define CreateNewManager                CreateNewModManager
+#define RemoveManager                   RemoveModManager
+#define CKGetPluginInfoCount            CKGet_BML_PluginInfoCount
+#define CKGetPluginInfo                 CKGet_BML_PluginInfo
+#define g_PluginInfo                    g_BML_PluginInfo
 #else
-#define RegisterBehaviorDeclarations RegisterBehaviorDeclarations
-#define InitInstance InitInstance
-#define ExitInstance ExitInstance
-#define CreateNewManager CreateNewManager
-#define RemoveManager RemoveManager
-#define CKGetPluginInfoCount CKGetPluginInfoCount
-#define CKGetPluginInfo CKGetPluginInfo
-#define g_PluginInfo g_PluginInfo
+#define RegisterBehaviorDeclarations    RegisterBehaviorDeclarations
+#define InitInstance                    InitInstance
+#define ExitInstance                    ExitInstance
+#define CreateNewManager                CreateNewManager
+#define RemoveManager                   RemoveManager
+#define CKGetPluginInfoCount            CKGetPluginInfoCount
+#define CKGetPluginInfo                 CKGetPluginInfo
+#define g_PluginInfo                    g_PluginInfo
 #endif
 
 CKERROR InitInstance(CKContext *context) {
@@ -100,8 +100,8 @@ bool HookCreateCKBehaviorPrototypeRuntime() {
         TOCKSTRING("?CreateCKBehaviorPrototypeRunTime@@YAPAVCKBehaviorPrototype@@PAD@Z"));
     LPVOID lpCreateCKBehaviorPrototypeProc = sl.GetFunctionPtr(
         TOCKSTRING("?CreateCKBehaviorPrototype@@YAPAVCKBehaviorPrototype@@PAD@Z"));
-    if (MH_CreateHook(lpCreateCKBehaviorPrototypeRunTimeProc, lpCreateCKBehaviorPrototypeProc, NULL) != MH_OK
-        || MH_EnableHook(lpCreateCKBehaviorPrototypeRunTimeProc) != MH_OK) {
+    if (MH_CreateHook(lpCreateCKBehaviorPrototypeRunTimeProc, lpCreateCKBehaviorPrototypeProc, NULL) != MH_OK ||
+        MH_EnableHook(lpCreateCKBehaviorPrototypeRunTimeProc) != MH_OK) {
         return false;
     }
     return true;

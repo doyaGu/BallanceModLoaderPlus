@@ -30,7 +30,7 @@ namespace BGui {
         void Process() override;
 
     protected:
-        CKBehavior *m_text2d;
+        CKBehavior *m_Text2d;
     };
 }
 
