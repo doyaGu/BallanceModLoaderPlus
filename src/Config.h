@@ -1,6 +1,7 @@
 #ifndef BML_CONFIG_H
 #define BML_CONFIG_H
 
+#include <algorithm>
 #include <cctype>
 #include <string>
 #include <vector>
@@ -86,12 +87,8 @@ public:
 
 private:
     void trim(std::string &s) {
-        auto it = s.begin();
-        while (it != s.end() && std::isspace(*it)) ++it;
-        s.erase(s.begin(), it);
-        auto rit = s.rbegin();
-        while (rit != s.rend() && std::isspace(*rit)) ++rit;
-        s.erase(rit.base(), s.end());
+		s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](char x){return !std::isspace(x); }));
+		s.erase(std::find_if(s.rbegin(), s.rend(), [](char x){return !std::isspace(x); }).base(), s.end());
     }
 
     IMod *m_Mod;
