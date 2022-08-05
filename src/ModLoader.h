@@ -6,7 +6,7 @@
 #include <string>
 #include <list>
 #include <vector>
-#include <map>
+#include <unordered_map>
 
 #include "CKAll.h"
 
@@ -90,7 +90,7 @@ public:
     std::string TabCompleteCommand(const char *cmd);
 
     void PreloadMods();
-
+    
     void RegisterModBBs(XObjectDeclarationArray *reg);
 
     void OnPreStartMenu() override;
@@ -233,6 +233,23 @@ public:
     void SkipRenderForNextTick() override { m_SkipRender = true; }
     bool IsSkipRender() const { return m_SkipRender; }
 
+    template<typename T, typename... Args>
+    std::enable_if_t<std::is_member_function_pointer<T>::value, void> BroadcastCallback(T callback, Args&&... args) {
+        for (IMod *mod: m_CallbackMap[func_addr(callback)]) {
+            (mod->*callback)(std::forward<Args>(args)...);
+        }
+    }
+
+    template<typename T>
+    std::enable_if_t<std::is_member_function_pointer<T>::value, void> BroadcastMessage(const char *msg, T func) {
+        m_Logger->Info("On Message %s", msg);
+        BroadcastCallback(func);
+    }
+
+    void SendMessageBroadcast(const char* msg) {
+        m_MessageManager->SendMessageBroadcast(m_MessageManager->AddMessageType(TOCKSTRING(msg)));
+    }
+
     void AdjustFrameRate(bool sync = false, float limit = 60.0f) {
         if (sync) {
             m_TimeManager->ChangeLimitOptions(CK_FRAMERATE_SYNC);
@@ -244,16 +261,16 @@ public:
         }
     }
 
-    void SendMessageBroadcast(const char* msg) {
-        m_MessageManager->SendMessageBroadcast(m_MessageManager->AddMessageType(TOCKSTRING(msg)));
-    }
-
     ModManager *GetModManager() { return m_ModManager; }
 
     static ModLoader &GetInstance();
 
 protected:
     void GetManagers();
+
+    bool RegisterMod(BModDll &modDll);
+    void LoadMod(IMod *mod);
+    void FillCallbackMap(IMod *mod);
 
     BMLMod *GetBMLMod() { return m_BMLMod; }
 
@@ -289,11 +306,14 @@ protected:
     BMLMod *m_BMLMod = nullptr;
     NewBallTypeMod *m_BallTypeMod = nullptr;
 
+    std::vector<IMod *> m_Mods;
     std::vector<BModDll> m_ModDlls;
+    std::unordered_map<void *, std::vector<IMod *>> m_CallbackMap;
+
     std::vector<Config *> m_Configs;
     std::list<Timer> m_Timers;
     std::vector<ICommand *> m_Commands;
-    std::map<std::string, ICommand *> m_CommandMap;
+    std::unordered_map<std::string, ICommand *> m_CommandMap;
 };
 
 #endif // BML_MODLOADER_H

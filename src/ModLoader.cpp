@@ -99,6 +99,10 @@ void ModLoader::Release() {
 
     m_Logger->Info("Goodbye!");
 
+	for (int i = 0; i < m_ModDlls.size(); i++) {
+        delete m_Mods[i];
+	}
+
     delete m_Logger;
     fclose(m_Logfile);
 }
@@ -207,6 +211,107 @@ void ModLoader::RegisterModBBs(XObjectDeclarationArray *reg) {
     }
 }
 
+bool ModLoader::RegisterMod(BModDll &modDll) {
+    IMod *mod = modDll.entry(this);
+    BMLVersion curVer;
+    BMLVersion reqVer = mod->GetBMLVersion();
+    if (curVer < reqVer) {
+        m_Logger->Warn("Mod %s[%s] requires BML %d.%d.%d", mod->GetID(), mod->GetName(), reqVer.major, reqVer.minor, reqVer.build);
+        m_ModDlls.erase(std::find_if(m_ModDlls.begin(), m_ModDlls.end(),
+                                     [modDll](const BModDll &md) { return md.dllInstance == modDll.dllInstance; }));
+        return false;
+    }
+    m_Mods.push_back(mod);
+    return true;
+}
+
+void ModLoader::LoadMod(IMod *mod) {
+    m_Logger->Info("Loading Mod %s[%s] v%s by %s", mod->GetID(), mod->GetName(), mod->GetVersion(), mod->GetAuthor());
+    FillCallbackMap(mod);
+    mod->OnLoad();
+}
+
+void ModLoader::FillCallbackMap(IMod *mod) {
+    static class BlankMod : IMod {
+    public:
+        explicit BlankMod(IBML *bml) : IMod(bml) {}
+
+        const char *GetID() override { return ""; }
+        const char *GetVersion() override { return ""; }
+        const char *GetName() override { return ""; }
+        const char *GetAuthor() override { return ""; }
+        const char *GetDescription() override { return ""; }
+        DECLARE_BML_VERSION;
+    } blank(this);
+
+    void **vtable[2] = {
+        *reinterpret_cast<void ***>(&blank),
+        *reinterpret_cast<void ***>(mod)};
+
+    int index = 0;
+#define CHECK_V_FUNC(IDX, FUNC)                             \
+    {                                                       \
+        auto idx = IDX;                                     \
+        if (vtable[0][idx] != vtable[1][idx])               \
+            m_CallbackMap[func_addr(FUNC)].push_back(mod);  \
+    }
+
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreStartMenu);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostStartMenu);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnExitGame);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreLoadLevel);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostLoadLevel);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnStartLevel);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreResetLevel);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostResetLevel);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnPauseLevel);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnUnpauseLevel);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreExitLevel);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostExitLevel);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreNextLevel);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostNextLevel);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnDead);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreEndLevel);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostEndLevel);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnCounterActive);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnCounterInactive);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnBallNavActive);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnBallNavInactive);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnCamNavActive);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnCamNavInactive);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnBallOff);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreCheckpointReached);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostCheckpointReached);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnLevelFinish);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnGameOver);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnExtraPoint);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreSubLife);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostSubLife);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreLifeUp);
+    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostLifeUp);
+
+    index += 7;
+
+    CHECK_V_FUNC(index++, &IMod::OnLoad);
+    CHECK_V_FUNC(index++, &IMod::OnUnload);
+    CHECK_V_FUNC(index++, &IMod::OnModifyConfig);
+    CHECK_V_FUNC(index++, &IMod::OnLoadObject);
+    CHECK_V_FUNC(index++, &IMod::OnLoadScript);
+    CHECK_V_FUNC(index++, &IMod::OnProcess);
+    CHECK_V_FUNC(index++, &IMod::OnRender);
+    CHECK_V_FUNC(index++, &IMod::OnCheatEnabled);
+
+    CHECK_V_FUNC(index++, &IMod::OnPhysicalize);
+    CHECK_V_FUNC(index++, &IMod::OnUnphysicalize);
+
+    if (mod->GetBMLVersion() >= BMLVersion(0, 2, 0)) {
+        CHECK_V_FUNC(index++, &IMod::OnPreCommandExecute);
+        CHECK_V_FUNC(index++, &IMod::OnPostCommandExecute);
+    }
+
+#undef CHECK_V_FUNC
+}
+
 Config *ModLoader::GetConfig(IMod *mod) {
     for (Config *cfg: m_Configs) {
         if (cfg->GetMod() == mod)
@@ -221,142 +326,142 @@ void ModLoader::OpenModsMenu() {
 }
 
 void ModLoader::OnPreStartMenu() {
-    m_ModManager->BroadcastMessage("PreStartMenu", &IMod::OnPreStartMenu);
+    BroadcastMessage("PreStartMenu", &IMod::OnPreStartMenu);
 }
 
 void ModLoader::OnPostStartMenu() {
-    m_ModManager->BroadcastMessage("PostStartMenu", &IMod::OnPostStartMenu);
+    BroadcastMessage("PostStartMenu", &IMod::OnPostStartMenu);
 }
 
 void ModLoader::OnExitGame() {
-    m_ModManager->BroadcastMessage("ExitGame", &IMod::OnExitGame);
+    BroadcastMessage("ExitGame", &IMod::OnExitGame);
 }
 
 void ModLoader::OnPreLoadLevel() {
-    m_ModManager->BroadcastMessage("PreLoadLevel", &IMod::OnPreLoadLevel);
+    BroadcastMessage("PreLoadLevel", &IMod::OnPreLoadLevel);
 }
 
 void ModLoader::OnPostLoadLevel() {
-    m_ModManager->BroadcastMessage("PostLoadLevel", &IMod::OnPostLoadLevel);
+    BroadcastMessage("PostLoadLevel", &IMod::OnPostLoadLevel);
 }
 
 void ModLoader::OnStartLevel() {
-    m_ModManager->BroadcastMessage("StartLevel", &IMod::OnStartLevel);
+    BroadcastMessage("StartLevel", &IMod::OnStartLevel);
     m_Ingame = true;
     m_Paused = false;
 }
 
 void ModLoader::OnPreResetLevel() {
-    m_ModManager->BroadcastMessage("PreResetLevel", &IMod::OnPreResetLevel);
+    BroadcastMessage("PreResetLevel", &IMod::OnPreResetLevel);
 }
 
 void ModLoader::OnPostResetLevel() {
-    m_ModManager->BroadcastMessage("PostResetLevel", &IMod::OnPostResetLevel);
+    BroadcastMessage("PostResetLevel", &IMod::OnPostResetLevel);
 }
 
 void ModLoader::OnPauseLevel() {
-    m_ModManager->BroadcastMessage("PauseLevel", &IMod::OnPauseLevel);
+    BroadcastMessage("PauseLevel", &IMod::OnPauseLevel);
     m_Paused = true;
 }
 
 void ModLoader::OnUnpauseLevel() {
-    m_ModManager->BroadcastMessage("UnpauseLevel", &IMod::OnUnpauseLevel);
+    BroadcastMessage("UnpauseLevel", &IMod::OnUnpauseLevel);
     m_Paused = false;
 }
 
 void ModLoader::OnPreExitLevel() {
-    m_ModManager->BroadcastMessage("PreExitLevel", &IMod::OnPreExitLevel);
+    BroadcastMessage("PreExitLevel", &IMod::OnPreExitLevel);
 }
 
 void ModLoader::OnPostExitLevel() {
-    m_ModManager->BroadcastMessage("PostExitLevel", &IMod::OnPostExitLevel);
+    BroadcastMessage("PostExitLevel", &IMod::OnPostExitLevel);
     m_Ingame = false;
 }
 
 void ModLoader::OnPreNextLevel() {
-    m_ModManager->BroadcastMessage("PreNextLevel", &IMod::OnPreNextLevel);
+    BroadcastMessage("PreNextLevel", &IMod::OnPreNextLevel);
 }
 
 void ModLoader::OnPostNextLevel() {
-    m_ModManager->BroadcastMessage("PostNextLevel", &IMod::OnPostNextLevel);
+    BroadcastMessage("PostNextLevel", &IMod::OnPostNextLevel);
 }
 
 void ModLoader::OnDead() {
-    m_ModManager->BroadcastMessage("Dead", &IMod::OnDead);
+    BroadcastMessage("Dead", &IMod::OnDead);
     m_Ingame = false;
 }
 
 void ModLoader::OnPreEndLevel() {
-    m_ModManager->BroadcastMessage("PreEndLevel", &IMod::OnPreEndLevel);
+    BroadcastMessage("PreEndLevel", &IMod::OnPreEndLevel);
 }
 
 void ModLoader::OnPostEndLevel() {
-    m_ModManager->BroadcastMessage("PostEndLevel", &IMod::OnPostEndLevel);
+    BroadcastMessage("PostEndLevel", &IMod::OnPostEndLevel);
     m_Ingame = false;
 }
 
 void ModLoader::OnCounterActive() {
-    m_ModManager->BroadcastMessage("CounterActive", &IMod::OnCounterActive);
+    BroadcastMessage("CounterActive", &IMod::OnCounterActive);
 }
 
 void ModLoader::OnCounterInactive() {
-    m_ModManager->BroadcastMessage("CounterInactive", &IMod::OnCounterInactive);
+    BroadcastMessage("CounterInactive", &IMod::OnCounterInactive);
 }
 
 void ModLoader::OnBallNavActive() {
-    m_ModManager->BroadcastMessage("BallNavActive", &IMod::OnBallNavActive);
+    BroadcastMessage("BallNavActive", &IMod::OnBallNavActive);
 }
 
 void ModLoader::OnBallNavInactive() {
-    m_ModManager->BroadcastMessage("BallNavInactive", &IMod::OnBallNavInactive);
+    BroadcastMessage("BallNavInactive", &IMod::OnBallNavInactive);
 }
 
 void ModLoader::OnCamNavActive() {
-    m_ModManager->BroadcastMessage("CamNavActive", &IMod::OnCamNavActive);
+    BroadcastMessage("CamNavActive", &IMod::OnCamNavActive);
 }
 
 void ModLoader::OnCamNavInactive() {
-    m_ModManager->BroadcastMessage("CamNavInactive", &IMod::OnCamNavInactive);
+    BroadcastMessage("CamNavInactive", &IMod::OnCamNavInactive);
 }
 
 void ModLoader::OnBallOff() {
-    m_ModManager->BroadcastMessage("BallOff", &IMod::OnBallOff);
+    BroadcastMessage("BallOff", &IMod::OnBallOff);
 }
 
 void ModLoader::OnPreCheckpointReached() {
-    m_ModManager->BroadcastMessage("PreCheckpoint", &IMod::OnPreCheckpointReached);
+    BroadcastMessage("PreCheckpoint", &IMod::OnPreCheckpointReached);
 }
 
 void ModLoader::OnPostCheckpointReached() {
-    m_ModManager->BroadcastMessage("PostCheckpoint", &IMod::OnPostCheckpointReached);
+    BroadcastMessage("PostCheckpoint", &IMod::OnPostCheckpointReached);
 }
 
 void ModLoader::OnLevelFinish() {
-    m_ModManager->BroadcastMessage("LevelFinish", &IMod::OnLevelFinish);
+    BroadcastMessage("LevelFinish", &IMod::OnLevelFinish);
 }
 
 void ModLoader::OnGameOver() {
-    m_ModManager->BroadcastMessage("GameOver", &IMod::OnGameOver);
+    BroadcastMessage("GameOver", &IMod::OnGameOver);
 }
 
 void ModLoader::OnExtraPoint() {
-    m_ModManager->BroadcastMessage("ExtraPoint", &IMod::OnExtraPoint);
+    BroadcastMessage("ExtraPoint", &IMod::OnExtraPoint);
 }
 
 void ModLoader::OnPreSubLife() {
-    m_ModManager->BroadcastMessage("PreSubLife", &IMod::OnPreSubLife);
+    BroadcastMessage("PreSubLife", &IMod::OnPreSubLife);
 }
 
 void ModLoader::OnPostSubLife() {
-    m_ModManager->BroadcastMessage("PostSubLife", &IMod::OnPostSubLife);
+    BroadcastMessage("PostSubLife", &IMod::OnPostSubLife);
 }
 
 void ModLoader::OnPreLifeUp() {
-    m_ModManager->BroadcastMessage("PreLifeUp", &IMod::OnPreLifeUp);
+    BroadcastMessage("PreLifeUp", &IMod::OnPreLifeUp);
 }
 
 void ModLoader::OnPostLifeUp() {
-    m_ModManager->BroadcastMessage("PostLifeUp", &IMod::OnPostLifeUp);
+    BroadcastMessage("PostLifeUp", &IMod::OnPostLifeUp);
 }
 
 void ModLoader::AddTimer(CKDWORD delay, std::function<void()> callback) {
@@ -409,9 +514,9 @@ void ModLoader::ExecuteCommand(const char *cmd, bool force) {
     std::vector<std::string> args = SplitString(cmd, " ");
     ICommand *command = FindCommand(args[0]);
     if (command && (!command->IsCheat() || m_CheatEnabled || force)) {
-        m_ModManager->BroadcastCallback(&IMod::OnPreCommandExecute, command, args);
+        BroadcastCallback(&IMod::OnPreCommandExecute, command, args);
         command->Execute(this, args);
-        m_ModManager->BroadcastCallback(&IMod::OnPostCommandExecute, command, args);
+        BroadcastCallback(&IMod::OnPostCommandExecute, command, args);
     } else {
         m_BMLMod->AddIngameMessage(("Error: Unknown Command " + args[0]).c_str());
     }
@@ -463,7 +568,7 @@ bool ModLoader::IsCheatEnabled() {
 void ModLoader::EnableCheat(bool enable) {
     m_CheatEnabled = enable;
     m_BMLMod->ShowCheatBanner(enable);
-    m_ModManager->BroadcastCallback(&IMod::OnCheatEnabled, enable);
+    BroadcastCallback(&IMod::OnCheatEnabled, enable);
 }
 
 void ModLoader::SetIC(CKBeObject *obj, bool hierarchy) {
@@ -557,11 +662,11 @@ void ModLoader::RegisterModul(const char *modulName) {
 }
 
 int ModLoader::GetModCount() {
-    return m_ModManager->GetModCount();
+    return m_Mods.size();
 }
 
 IMod *ModLoader::GetMod(int index) {
-    return m_ModManager->GetMod(index);
+    return m_Mods[index];
 }
 
 float ModLoader::GetSRScore() {

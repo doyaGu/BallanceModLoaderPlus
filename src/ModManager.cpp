@@ -19,37 +19,7 @@ ModManager::ModManager(CKContext *ctx) : CKBaseManager(ctx, BML_MODMANAGER_GUID,
 }
 
 ModManager::~ModManager() {
-    for (auto &mod: m_Mods) {
-        if (mod) delete mod;
-    }
     delete m_Logger;
-}
-
-int ModManager::GetModCount() {
-    return m_Mods.size();
-}
-
-IMod *ModManager::GetMod(int modIdx) {
-    return m_Mods[modIdx];
-}
-
-IMod *ModManager::GetModByID(const char *modId) {
-    auto it = std::find_if(m_Mods.begin(), m_Mods.end(), [modId](IMod *mod) { return mod->GetID() == modId; });
-    if (it != m_Mods.end())
-        return *it;
-    else
-        return nullptr;
-}
-
-int ModManager::GetModIndex(IMod *mod) {
-    int i;
-    int c = m_Mods.size();
-    for (i = 0; i < c; ++i)
-        if (m_Mods[i] == mod)
-            break;
-    if (i == c)
-        return -1;
-    return i;
 }
 
 CKERROR ModManager::OnCKInit() {
@@ -71,7 +41,7 @@ CKERROR ModManager::OnCKInit() {
 CKERROR ModManager::OnCKEnd() {
     m_Initialized = false;
 
-    BroadcastMessage("OnUnload", &IMod::OnUnload);
+    m_Loader->BroadcastMessage("OnUnload", &IMod::OnUnload);
 
     for (Config *config: m_Loader->m_Configs)
         config->Save();
@@ -94,19 +64,20 @@ CKERROR ModManager::OnCKPostReset() {
 
         ExecuteBB::Init(m_Context);
 
+        auto &mods = m_Loader->m_Mods;
         m_Loader->m_BMLMod = new BMLMod(m_Loader);
-        m_Mods.push_back(m_Loader->m_BMLMod);
+        mods.push_back(m_Loader->m_BMLMod);
 
         m_Loader->m_BallTypeMod = new NewBallTypeMod(m_Loader);
-        m_Mods.push_back(m_Loader->m_BallTypeMod);
+        mods.push_back(m_Loader->m_BallTypeMod);
 
         for (auto &modDll: m_Loader->m_ModDlls) {
-            if (RegisterMod(modDll, m_Loader) == CK_OK && !modDll.dllPath.empty())
+            if (m_Loader->RegisterMod(modDll) == CK_OK && !modDll.dllPath.empty())
                 AddDataPath(modDll.dllPath.c_str());
         }
 
-        for (auto *mod: m_Mods) {
-            LoadMod(mod);
+        for (auto *mod: mods) {
+            m_Loader->LoadMod(mod);
         }
 
         std::sort(m_Loader->m_Commands.begin(), m_Loader->m_Commands.end(),
@@ -115,14 +86,14 @@ CKERROR ModManager::OnCKPostReset() {
         for (Config *config: m_Loader->m_Configs)
             config->Save();
 
-        BroadcastCallback(&IMod::OnLoadObject, "base.cmo", false,  "", CKCID_3DOBJECT, true, true, true, false, nullptr, nullptr);
+        m_Loader->BroadcastCallback(&IMod::OnLoadObject, "base.cmo", false,  "", CKCID_3DOBJECT, true, true, true, false, nullptr, nullptr);
 
         int scriptCnt = m_Context->GetObjectsCountByClassID(CKCID_BEHAVIOR);
         CK_ID *scripts = m_Context->GetObjectsListByClassID(CKCID_BEHAVIOR);
         for (int i = 0; i < scriptCnt; i++) {
             auto *behavior = (CKBehavior *) m_Context->GetObject(scripts[i]);
             if (behavior->GetType() == CKBEHAVIORTYPE_SCRIPT) {
-                BroadcastCallback(&IMod::OnLoadScript, "base.cmo", behavior);
+                m_Loader->BroadcastCallback(&IMod::OnLoadScript, "base.cmo", behavior);
             }
         }
 
@@ -143,7 +114,7 @@ CKERROR ModManager::PostProcess() {
             iter++;
     }
 
-    BroadcastCallback(&IMod::OnProcess);
+    m_Loader->BroadcastCallback(&IMod::OnProcess);
     if (m_Loader->GetInputManager()->IsKeyDown(CKKEY_F) && m_Loader->IsCheatEnabled())
         m_Loader->SkipRenderForNextTick();
 
@@ -165,109 +136,6 @@ CKERROR ModManager::OnPreRender(CKRenderContext *dev) {
 
 CKERROR ModManager::OnPostRender(CKRenderContext *dev) {
     auto flags = static_cast<CK_RENDER_FLAGS>(dev->GetCurrentRenderOptions());
-    BroadcastCallback(&IMod::OnRender, flags);
+    m_Loader->BroadcastCallback(&IMod::OnRender, flags);
     return CK_OK;
-}
-
-CKERROR ModManager::RegisterMod(BModDll &modDll, IBML *bml) {
-    if (!modDll.entry)
-        return CKERR_NOTFOUND;
-
-    IMod *mod = modDll.entry(bml);
-    BMLVersion curVer;
-    BMLVersion reqVer = mod->GetBMLVersion();
-    if (curVer < reqVer) {
-        m_Logger->Warn("Mod %s[%s] requires BML %d.%d.%d", mod->GetID(), mod->GetName(), reqVer.major, reqVer.minor, reqVer.build);
-        return CKERR_INVALIDPLUGIN;
-    }
-    m_Mods.push_back(mod);
-    return CK_OK;
-}
-
-CKERROR ModManager::LoadMod(IMod *mod) {
-    m_Logger->Info("Loading Mod %s[%s] v%s by %s", mod->GetID(), mod->GetName(), mod->GetVersion(), mod->GetAuthor());
-    FillCallbackMap(mod);
-    mod->OnLoad();
-    return CK_OK;
-}
-
-void ModManager::FillCallbackMap(IMod *mod) {
-    static class BlankMod : IMod {
-    public:
-        explicit BlankMod(IBML *bml) : IMod(bml) {}
-
-        const char *GetID() override { return ""; }
-        const char *GetVersion() override { return ""; }
-        const char *GetName() override { return ""; }
-        const char *GetAuthor() override { return ""; }
-        const char *GetDescription() override { return ""; }
-        DECLARE_BML_VERSION;
-    } blank(m_Loader);
-
-    void **vtable[2] = {
-        *reinterpret_cast<void ***>(&blank),
-        *reinterpret_cast<void ***>(mod)};
-
-    int index = 0;
-#define CHECK_V_FUNC(IDX, FUNC)                             \
-    {                                                       \
-        auto idx = IDX;                                     \
-        if (vtable[0][idx] != vtable[1][idx])               \
-            m_CallbackMap[func_addr(FUNC)].push_back(mod);  \
-    }
-
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreStartMenu);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostStartMenu);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnExitGame);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreLoadLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostLoadLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnStartLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreResetLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostResetLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPauseLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnUnpauseLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreExitLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostExitLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreNextLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostNextLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnDead);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreEndLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostEndLevel);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnCounterActive);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnCounterInactive);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnBallNavActive);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnBallNavInactive);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnCamNavActive);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnCamNavInactive);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnBallOff);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreCheckpointReached);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostCheckpointReached);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnLevelFinish);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnGameOver);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnExtraPoint);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreSubLife);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostSubLife);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPreLifeUp);
-    CHECK_V_FUNC(index++, &IMessageReceiver::OnPostLifeUp);
-
-    index += 7;
-
-    CHECK_V_FUNC(index++, &IMod::OnLoad);
-    CHECK_V_FUNC(index++, &IMod::OnUnload);
-    CHECK_V_FUNC(index++, &IMod::OnModifyConfig);
-    CHECK_V_FUNC(index++, &IMod::OnLoadObject);
-    CHECK_V_FUNC(index++, &IMod::OnLoadScript);
-    CHECK_V_FUNC(index++, &IMod::OnProcess);
-    CHECK_V_FUNC(index++, &IMod::OnRender);
-    CHECK_V_FUNC(index++, &IMod::OnCheatEnabled);
-
-    CHECK_V_FUNC(index++, &IMod::OnPhysicalize);
-    CHECK_V_FUNC(index++, &IMod::OnUnphysicalize);
-
-    if (mod->GetBMLVersion() >= BMLVersion(0, 2, 0)) {
-        CHECK_V_FUNC(index++, &IMod::OnPreCommandExecute);
-        CHECK_V_FUNC(index++, &IMod::OnPostCommandExecute);
-    }
-
-#undef CHECK_V_FUNC
 }
