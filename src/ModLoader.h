@@ -21,6 +21,7 @@ class BMLMod;
 class NewBallTypeMod;
 
 typedef IMod *(*BModGetBMLEntryFunction)(IBML *);
+typedef void (*BModGetBMLExitFunction)(IMod *);
 typedef void (*BModRegisterBBFunction)(XObjectDeclarationArray *);
 
 struct BModDll {
@@ -28,6 +29,7 @@ struct BModDll {
     std::string dllPath;
     INSTANCE_HANDLE dllInstance;
     BModGetBMLEntryFunction entry;
+	BModGetBMLExitFunction exit;
     BModRegisterBBFunction registerBB;
 
     bool Load();

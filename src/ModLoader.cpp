@@ -18,6 +18,7 @@ bool BModDll::Load() {
     entry = reinterpret_cast<BModGetBMLEntryFunction>(GetFunctionPtr("BMLEntry"));
     if (!entry)
         return false;
+	exit = reinterpret_cast<BModGetBMLExitFunction>(GetFunctionPtr("BMLExit"));
     registerBB = reinterpret_cast<BModRegisterBBFunction>(GetFunctionPtr("RegisterBB"));
     return true;
 }
@@ -100,7 +101,11 @@ void ModLoader::Release() {
     m_Logger->Info("Goodbye!");
 
 	for (int i = 0; i < m_ModDlls.size(); i++) {
-        delete m_Mods[i];
+		auto &mod = m_Mods[i];
+		if (m_ModDlls[i].exit)
+			m_ModDlls[i].exit(mod);
+		else
+			delete mod;
 	}
 
     delete m_Logger;
