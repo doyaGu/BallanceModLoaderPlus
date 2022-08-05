@@ -115,7 +115,7 @@ CKBEHAVIORFCT HookBuilder::BuildFunction() {
 }
 
 void RegisterCallback(XObjectDeclarationArray *reg, const char *name, const char *desc, CKGUID guid,
-                      std::function<void()> callback) {
+                      const std::function<void()>& callback) {
     auto *builder = g_BuilderFactory.NewBuilder();
     CKStoreDeclaration(reg, builder
         ->SetName(name)
