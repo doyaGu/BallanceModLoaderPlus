@@ -7,7 +7,7 @@ namespace BGui {
     class BML_EXPORT Element {
         friend class Gui;
 
-        public:
+    public:
         explicit Element(const char *name);
         virtual ~Element();
 
@@ -25,8 +25,8 @@ namespace BGui {
 
         virtual void Process() {};
 
-        protected:
-        CK2dEntity *m_2dentity;
+    protected:
+        CK2dEntity *m_2dEntity;
     };
 }
 

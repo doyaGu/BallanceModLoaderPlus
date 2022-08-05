@@ -16,7 +16,7 @@
 
 using namespace ScriptHelper;
 
-GuiList::GuiList() {
+GuiList::GuiList() : m_CurPage(0), m_MaxPage(0), m_Size(0), m_MaxSize(0) {
     m_Left = AddLeftButton("M_List_Left", 0.12f, 0.36f, [this]() { PreviousPage(); });
     m_Right = AddRightButton("M_List_Right", 0.12f, 0.6038f, [this]() { NextPage(); });
     AddBackButton("M_Opt_Mods_Back")->SetCallback([this]() { Exit(); });
@@ -330,8 +330,7 @@ GuiModCategory::GuiModCategory(GuiModMenu *parent, Config *config, const std::st
                 bg->SetZOrder(15);
                 bg->SetOffset(offset);
                 elements.push_back(bg);
-                BGui::Input *input = AddTextInput(name.c_str(), ExecuteBB::GAMEFONT_03, 0.43f, cnt + 0.05f, 0.18f,
-                                                  0.025f);
+                BGui::Input *input = AddTextInput(name.c_str(), ExecuteBB::GAMEFONT_03, 0.43f, cnt + 0.05f, 0.18f, 0.025f);
                 input->SetText(prop->GetString());
                 input->SetCallback([this, prop, input](CKDWORD) { prop->SetString(input->GetText()); });
                 elements.push_back(input);
@@ -349,8 +348,7 @@ GuiModCategory::GuiModCategory(GuiModMenu *parent, Config *config, const std::st
                 bg->SetZOrder(15);
                 bg->SetOffset(offset);
                 elements.push_back(bg);
-                BGui::Input *input = AddTextInput(name.c_str(), ExecuteBB::GAMEFONT_03, 0.43f, cnt + 0.05f, 0.18f,
-                                                  0.025f);
+                BGui::Input *input = AddTextInput(name.c_str(), ExecuteBB::GAMEFONT_03, 0.43f, cnt + 0.05f, 0.18f, 0.025f);
                 input->SetText(std::to_string(prop->GetInteger()).c_str());
                 input->SetCallback([this, prop, input](CKDWORD) { prop->SetInteger(atoi(input->GetText())); });
                 elements.push_back(input);
@@ -368,8 +366,7 @@ GuiModCategory::GuiModCategory(GuiModMenu *parent, Config *config, const std::st
                 bg->SetZOrder(15);
                 bg->SetOffset(offset);
                 elements.push_back(bg);
-                BGui::Input *input = AddTextInput(name.c_str(), ExecuteBB::GAMEFONT_03, 0.43f, cnt + 0.05f, 0.18f,
-                                                  0.025f);
+                BGui::Input *input = AddTextInput(name.c_str(), ExecuteBB::GAMEFONT_03, 0.43f, cnt + 0.05f, 0.18f, 0.025f);
                 std::ostringstream stream;
                 stream << prop->GetFloat();
                 input->SetText(stream.str().c_str());
@@ -400,11 +397,8 @@ GuiModCategory::GuiModCategory(GuiModMenu *parent, Config *config, const std::st
                 bg->SetZOrder(15);
                 bg->SetOffset(offset);
                 elements.push_back(bg);
-                std::pair<BGui::Button *, BGui::Button *> yesno = AddYesNoButton(name.c_str(), cnt + 0.043f, 0.4350f,
-                                                                                 0.5200f,
-                                                                                 [this, prop](bool value) {
-                                                                                     prop->SetBoolean(value);
-                                                                                 });
+                auto yesno = AddYesNoButton(name.c_str(), cnt + 0.043f, 0.4350f, 0.5200f,
+                                            [this, prop](bool value) { prop->SetBoolean(value); });
                 yesno.first->SetActive(prop->GetBoolean());
                 yesno.second->SetActive(!prop->GetBoolean());
                 elements.push_back(yesno.first);
@@ -780,8 +774,7 @@ void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *master
             m_Msgs[i].m_Background->SetVisible(false);
             m_Msgs[i].m_Background->SetZOrder(100);
             m_Msgs[i].m_Text = m_MsgLog->AddTextLabel((std::string("M_Cmd_Log_Text_") + std::to_string(i + 1)).c_str(),
-                                                      "", ExecuteBB::GAMEFONT_03, 0.02f, 0.9f - i * 0.025f, 0.95f,
-                                                      0.025f);
+                                                      "", ExecuteBB::GAMEFONT_03, 0.02f, 0.9f - i * 0.025f, 0.95f, 0.025f);
             m_Msgs[i].m_Text->SetVisible(false);
             m_Msgs[i].m_Text->SetAlignment(ALIGN_LEFT);
             m_Msgs[i].m_Text->SetZOrder(110);
@@ -790,18 +783,14 @@ void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *master
 
         GetLogger()->Info("Create BML Gui");
         m_IngameBanner = new BGui::Gui();
-        m_Title = m_IngameBanner->AddTextLabel("M_Use_BML", "BML Plus " BML_VERSION, ExecuteBB::GAMEFONT_01, 0, 0, 1,
-                                               0.03f);
+        m_Title = m_IngameBanner->AddTextLabel("M_Use_BML", "BML Plus " BML_VERSION, ExecuteBB::GAMEFONT_01, 0, 0, 1, 0.03f);
         m_Title->SetVisible(m_ShowTitle->GetBoolean());
-        m_Cheat = m_IngameBanner->AddTextLabel("M_Use_Cheat", "Cheat Mode Enabled", ExecuteBB::GAMEFONT_01, 0, 0.85f, 1,
-                                               0.05f);
+        m_Cheat = m_IngameBanner->AddTextLabel("M_Use_Cheat", "Cheat Mode Enabled", ExecuteBB::GAMEFONT_01, 0, 0.85f, 1, 0.05f);
         // m_Cheat[1] = m_IngameBanner->AddTextLabel("M_Use_Cheat", "Cheat Mode Enabled", ExecuteBB::GAMEFONT_03A, 0.001f, 0.901f, 1, 0.03f);
         // m_Cheat[2] = m_IngameBanner->AddTextLabel("M_Use_Cheat", "Cheat Mode Enabled", ExecuteBB::GAMEFONT_03A, 0.002f, 0.902f, 1, 0.03f);
         m_FPS = m_IngameBanner->AddTextLabel("M_Show_Fps", "", ExecuteBB::GAMEFONT_01, 0, 0, 0.2f, 0.03f);
-        m_SRTitle = m_IngameBanner->AddTextLabel("M_Time_Counter_Title", "SR Timer", ExecuteBB::GAMEFONT_01, 0.03f,
-                                                 0.8f, 0.2f, 0.03f);
-        m_SRScore = m_IngameBanner->AddTextLabel("M_Time_Counter", "", ExecuteBB::GAMEFONT_01, 0.05f, 0.83f, 0.2f,
-                                                 0.03f);
+        m_SRTitle = m_IngameBanner->AddTextLabel("M_Time_Counter_Title", "SR Timer", ExecuteBB::GAMEFONT_01, 0.03f, 0.8f, 0.2f, 0.03f);
+        m_SRScore = m_IngameBanner->AddTextLabel("M_Time_Counter", "", ExecuteBB::GAMEFONT_01, 0.05f, 0.83f, 0.2f, 0.03f);
         m_FPS->SetAlignment(ALIGN_LEFT);
         m_FPS->SetVisible(m_ShowFPS->GetBoolean());
         m_SRTitle->SetAlignment(ALIGN_LEFT);
@@ -1227,10 +1216,7 @@ void BMLMod::OnProcess() {
                 m_CurObj = nullptr;
                 im->SetBlock(false);
 
-                GetLogger()->Info("Summoned a %s",
-                                  m_CurSel < 2 ? m_CurSel == 0 ? "Paper Ball" : "Wood Ball" : m_CurSel == 2
-                                                                                              ? "Stone Ball"
-                                                                                              : "Box");
+                GetLogger()->Info("Summoned a %s", m_CurSel < 2 ? m_CurSel == 0 ? "Paper Ball" : "Wood Ball" : m_CurSel == 2 ? "Stone Ball" : "Box");
             }
         }
 
@@ -1407,8 +1393,7 @@ void BMLMod::ShowGui(BGui::Gui *gui) {
         CloseCurrentGui();
     m_BML->AddTimer(1ul, [this, gui]() {
         m_CurGui = gui;
-        if (gui)
-            gui->SetVisible(true);
+        if (gui) gui->SetVisible(true);
     });
 }
 
@@ -1451,8 +1436,7 @@ void BMLMod::OnEditScript_Base_DefaultLevel(CKBehavior *script) {
         CKBehavior *sm = FindFirstBB(script, "Screen Modes");
 
         CKBehavior *rrs[4];
-        FindBB(
-            sm, [sm, &rrs](CKBehavior *rr) {
+        FindBB(sm, [sm, &rrs](CKBehavior *rr) {
                 int v = GetParamValue<int>(rr->GetInputParameter(2)->GetDirectSource());
                 switch (v) {
                     case 1:
@@ -1472,8 +1456,7 @@ void BMLMod::OnEditScript_Base_DefaultLevel(CKBehavior *script) {
                         break;
                 }
                 return true;
-            },
-            "Remove Row If");
+            }, "Remove Row If");
 
         CKBehavior *it = FindPreviousBB(sm, rrs[0], "Iterator");
         CKBehavior *gc = FindNextBB(sm, rrs[3], "Get Cell");
@@ -1485,13 +1468,11 @@ void BMLMod::OnEditScript_Base_DefaultLevel(CKBehavior *script) {
         CKBehavior *dl = FindFirstBB(ss, "Delayer");
         CKBehavior *ii = FindFirstBB(ss, "Iterator If");
         CreateLink(ss, ii, dl);
-        FindBB(
-            ss, [ss](CKBehavior *csm) {
+        FindBB(ss, [ss](CKBehavior *csm) {
                 CKBehavior *smc = FindNextBB(ss, csm, "Show Mouse Cursor");
                 CreateLink(ss, csm, smc, 1, 0);
                 return true;
-            },
-            "TT Change ScreenMode");
+            }, "TT Change ScreenMode");
     }
 
     if (m_SkipAnim->GetBoolean()) {
@@ -1579,8 +1560,7 @@ void BMLMod::OnEditScript_Base_EventHandler(CKBehavior *script) {
     FindBB(hs, [hs](CKBehavior *beh) {
                CreateLink(hs, beh, hs->GetOutput(0));
                return true;
-           },
-           "Activate Script");
+           }, "Activate Script");
     GetLogger()->Info("Insert message End Level Hook");
     InsertBB(script, FindNextLink(script, FindNextBB(script, som, nullptr, 10, 0)),
              CreateBB(script, BML_ONPREENDLEVEL_GUID));
@@ -1647,8 +1627,7 @@ void BMLMod::OnEditScript_Menu_OptionsMenu(CKBehavior *script) {
 
     CKBehavior *graph = FindFirstBB(script, "Options Menu");
     CKBehavior *up_sop = nullptr, *down_sop = nullptr, *up_ps = nullptr, *down_ps = nullptr;
-    FindBB(
-        graph, [graph, &up_sop, &down_sop](CKBehavior *beh) {
+    FindBB(graph, [graph, &up_sop, &down_sop](CKBehavior *beh) {
             CKBehavior *previous = FindPreviousBB(graph, beh);
             const char *name = previous->GetName();
             if (!strcmp(previous->GetName(), "Set 2D Material"))
@@ -1656,10 +1635,8 @@ void BMLMod::OnEditScript_Menu_OptionsMenu(CKBehavior *script) {
             if (!strcmp(previous->GetName(), "Send Message"))
                 down_sop = beh;
             return !(up_sop && down_sop);
-        },
-        "Switch On Parameter");
-    FindBB(
-        graph, [graph, &up_ps, &down_ps](CKBehavior *beh) {
+        }, "Switch On Parameter");
+    FindBB(graph, [graph, &up_ps, &down_ps](CKBehavior *beh) {
             CKBehavior *previous = FindNextBB(graph, beh);
             const char *name = previous->GetName();
             if (!strcmp(previous->GetName(), "Keyboard"))
@@ -1667,8 +1644,7 @@ void BMLMod::OnEditScript_Menu_OptionsMenu(CKBehavior *script) {
             if (!strcmp(previous->GetName(), "Send Message"))
                 down_ps = beh;
             return !(up_ps && down_ps);
-        },
-        "Parameter Selector");
+        }, "Parameter Selector");
 
     CKParameterLocal *pin = CreateParamValue(graph, "Pin 5", CKPGUID_INT, 4);
     up_sop->CreateInputParameter("Pin 5", CKPGUID_INT)->SetDirectSource(pin);
@@ -1714,8 +1690,7 @@ void BMLMod::OnEditScript_Menu_OptionsMenu(CKBehavior *script) {
     CreateLink(script, graph, modsmenu, 3, 0);
     CreateLink(script, modsmenu, exit, 0, 0);
     CKBehavior *keyboard = FindFirstBB(graph, "Keyboard");
-    FindBB(
-        keyboard, [keyboard](CKBehavior *beh) {
+    FindBB(keyboard, [keyboard](CKBehavior *beh) {
             CKParameter *source = beh->GetInputParameter(0)->GetRealSource();
             if (GetParamValue<CKKEYBOARD>(source) == CKKEY_ESCAPE) {
                 CKBehavior *id = FindNextBB(keyboard, beh);
@@ -1723,8 +1698,7 @@ void BMLMod::OnEditScript_Menu_OptionsMenu(CKBehavior *script) {
                 return false;
             }
             return true;
-        },
-        "Secure Key");
+        }, "Secure Key");
 
     GetLogger()->Info("Mods Button inserted");
 }
@@ -1734,40 +1708,36 @@ void BMLMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
     CKBehavior *camonoff = FindFirstBB(script, "CamNav On/Off");
     CKBehavior *ballonoff = FindFirstBB(script, "BallNav On/Off");
     CKMessageManager *mm = m_BML->GetMessageManager();
-    CKMessageType camon = mm->AddMessageType("CamNav activate"), camoff = mm->AddMessageType("CamNav deactivate"),
-        ballon = mm->AddMessageType("BallNav activate"), balloff = mm->AddMessageType("BallNav deactivate");
+    CKMessageType camon = mm->AddMessageType("CamNav activate");
+    CKMessageType camoff = mm->AddMessageType("CamNav deactivate");
+    CKMessageType ballon = mm->AddMessageType("BallNav activate");
+    CKMessageType balloff = mm->AddMessageType("BallNav deactivate");
     CKBehavior *con, *coff, *bon, *boff;
-    FindBB(
-        camonoff, [camonoff, camon, camoff, &con, &coff](CKBehavior *beh) {
+    FindBB(camonoff, [camonoff, camon, camoff, &con, &coff](CKBehavior *beh) {
             auto msg = GetParamValue<CKMessageType>(beh->GetInputParameter(0)->GetDirectSource());
             if (msg == camon) con = beh;
             if (msg == camoff) coff = beh;
             return true;
-        },
-        "Wait Message");
+        }, "Wait Message");
     CreateLink(camonoff, con, CreateBB(camonoff, BML_ONCAMNAVACTIVE_GUID), 0, 0);
     CreateLink(camonoff, coff, CreateBB(camonoff, BML_ONCAMNAVINACTIVE_GUID), 0, 0);
-    FindBB(
-        ballonoff, [ballonoff, ballon, balloff, &bon, &boff](CKBehavior *beh) {
+    FindBB(ballonoff, [ballonoff, ballon, balloff, &bon, &boff](CKBehavior *beh) {
             auto msg = GetParamValue<CKMessageType>(beh->GetInputParameter(0)->GetDirectSource());
             if (msg == ballon) bon = beh;
             if (msg == balloff) boff = beh;
             return true;
-        },
-        "Wait Message");
+        }, "Wait Message");
     CreateLink(ballonoff, bon, CreateBB(ballonoff, BML_ONBALLNAVACTIVE_GUID), 0, 0);
     CreateLink(ballonoff, boff, CreateBB(ballonoff, BML_ONBALLNAVINACTIVE_GUID), 0, 0);
 
     GetLogger()->Info("Debug Ball Force");
     CKBehavior *ballNav = FindFirstBB(script, "Ball Navigation");
     CKBehavior *nop[2] = {0};
-    FindBB(
-        ballNav, [&nop, ballNav](CKBehavior *beh) {
+    FindBB(ballNav, [&nop, ballNav](CKBehavior *beh) {
             if (nop[0]) nop[1] = beh;
             else nop[0] = beh;
             return !nop[1];
-        },
-        "Nop");
+        }, "Nop");
     CKBehavior *keyevent[2] = {CreateBB(ballNav, VT_KEYEVENT), CreateBB(ballNav, VT_KEYEVENT)};
     m_BallForce[0] = CreateParamValue(ballNav, "Up", CKPGUID_KEY, CKKEYBOARD(0));
     m_BallForce[1] = CreateParamValue(ballNav, "Down", CKPGUID_KEY, CKKEYBOARD(0));
@@ -1802,8 +1772,7 @@ void BMLMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
     CKBehavior *deactBall = FindFirstBB(ballMgr, "Deactivate Ball");
     CKBehavior *pieces = FindFirstBB(deactBall, "reset Ballpieces");
     m_OverclockLinks[0] = FindNextLink(deactBall, pieces);
-    CKBehavior *unphy = FindNextBB(deactBall,
-                                   FindNextBB(deactBall, m_OverclockLinks[0]->GetOutBehaviorIO()->GetOwner()));
+    CKBehavior *unphy = FindNextBB(deactBall, FindNextBB(deactBall, m_OverclockLinks[0]->GetOutBehaviorIO()->GetOwner()));
     m_OverclockLinkIO[0][1] = unphy->GetInput(1);
 
     CKBehavior *newBall = FindFirstBB(ballMgr, "New Ball");
@@ -1833,16 +1802,14 @@ void BMLMod::OnEditScript_Gameplay_Energy(CKBehavior *script) {
     CKMessageType lifeup = mm->AddMessageType("Life_Up"), balloff = mm->AddMessageType("Ball Off"),
         sublife = mm->AddMessageType("Sub Life"), extrapoint = mm->AddMessageType("Extrapoint");
     CKBehavior *lu, *bo, *sl, *ep;
-    FindBB(script,
-           [script, lifeup, balloff, sublife, extrapoint, &lu, &bo, &sl, &ep](CKBehavior *beh) {
+    FindBB(script, [script, lifeup, balloff, sublife, extrapoint, &lu, &bo, &sl, &ep](CKBehavior *beh) {
                auto msg = GetParamValue<CKMessageType>(beh->GetInputParameter(0)->GetDirectSource());
                if (msg == lifeup) lu = beh;
                if (msg == balloff) bo = beh;
                if (msg == sublife) sl = beh;
                if (msg == extrapoint) ep = beh;
                return true;
-           },
-           "Wait Message");
+           }, "Wait Message");
     CKBehavior *luhook = CreateBB(script, BML_ONPRELIFEUP_GUID);
     InsertBB(script, FindNextLink(script, lu, "add Life"), luhook);
     CreateLink(script, FindEndOfChain(script, luhook), CreateBB(script, BML_ONPOSTLIFEUP_GUID));
@@ -1871,15 +1838,13 @@ void BMLMod::OnEditScript_Gameplay_Events(CKBehavior *script) {
         gameover = mm->AddMessageType("Game Over"),
         levelfinish = mm->AddMessageType("Level_Finish");
     CKBehavior *cp, *go, *lf;
-    FindBB(script,
-           [script, checkpoint, gameover, levelfinish, &cp, &go, &lf](CKBehavior *beh) {
+    FindBB(script, [script, checkpoint, gameover, levelfinish, &cp, &go, &lf](CKBehavior *beh) {
                auto msg = GetParamValue<CKMessageType>(beh->GetInputParameter(0)->GetDirectSource());
                if (msg == checkpoint) cp = beh;
                if (msg == gameover) go = beh;
                if (msg == levelfinish) lf = beh;
                return true;
-           },
-           "Wait Message");
+           }, "Wait Message");
     CKBehavior *hook = CreateBB(script, BML_ONPRECHECKPOINT_GUID);
     InsertBB(script, FindNextLink(script, cp, "set Resetpoint"), hook);
     CreateLink(script, FindEndOfChain(script, hook), CreateBB(script, BML_ONPOSTCHECKPOINT_GUID));
@@ -1930,8 +1895,7 @@ void BMLMod::OnCmdEdit(CKDWORD key) {
             break;
         case CKKEY_TAB:
             if (m_CmdInput->GetText()[0] == '/') {
-                m_CmdInput->SetText(
-                    ('/' + ModLoader::GetInstance().TabCompleteCommand(m_CmdInput->GetText() + 1)).c_str());
+                m_CmdInput->SetText(('/' + ModLoader::GetInstance().TabCompleteCommand(m_CmdInput->GetText() + 1)).c_str());
             }
             break;
         case CKKEY_UP:

@@ -5,12 +5,12 @@
 
 using namespace BGui;
 
-CKMaterial *m_highlight = nullptr;
+CKMaterial *g_Highlight = nullptr;
 
-KeyInput::KeyInput(const char *name) : Input(name), m_key() {
-    m_2dentity->UseSourceRect();
+KeyInput::KeyInput(const char *name) : Input(name), m_Key() {
+    m_2dEntity->UseSourceRect();
     VxRect rect(0.005f, 0.3804f, 0.4353f, 0.4549f);
-    m_2dentity->SetSourceRect(rect);
+    m_2dEntity->SetSourceRect(rect);
 }
 
 void KeyInput::OnCharTyped(CKDWORD key) {
@@ -19,20 +19,20 @@ void KeyInput::OnCharTyped(CKDWORD key) {
 }
 
 CKKEYBOARD KeyInput::GetKey() {
-    return m_key;
+    return m_Key;
 }
 
 void KeyInput::SetKey(CKKEYBOARD key) {
-    m_key = key;
+    m_Key = key;
     char name[0x100];
     ModLoader::GetInstance().GetInputManager()->GetKeyName(key, name);
     SetText(name);
 }
 
 void KeyInput::GetFocus() {
-    m_2dentity->SetMaterial(m_highlight);
+    m_2dEntity->SetMaterial(g_Highlight);
 }
 
 void KeyInput::LoseFocus() {
-    m_2dentity->SetMaterial(nullptr);
+    m_2dEntity->SetMaterial(nullptr);
 }

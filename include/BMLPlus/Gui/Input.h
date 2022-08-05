@@ -26,9 +26,9 @@ namespace BGui {
         virtual void LoseFocus();
 
     protected:
-        std::string m_text;
-        unsigned int m_caret = 0;
-        std::function<void(CKDWORD)> m_callback;
+        std::string m_Text;
+        unsigned int m_Caret = 0;
+        std::function<void(CKDWORD)> m_Callback;
     };
 }
 

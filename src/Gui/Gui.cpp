@@ -7,45 +7,45 @@
 
 using namespace BGui;
 
-extern const char *g_text_font;
-extern const char *g_avail_fonts[2];
-extern CKMaterial *m_up;
-extern CKMaterial *m_over;
-extern CKMaterial *m_inactive;
-extern CKMaterial *m_caret;
-extern CKMaterial *m_highlight;
+extern const char *g_TextFont;
+extern const char *g_AvailFonts[2];
+extern CKMaterial *g_Up;
+extern CKMaterial *g_Over;
+extern CKMaterial *g_Inactive;
+extern CKMaterial *g_Caret;
+extern CKMaterial *g_Highlight;
 
 CKMaterial *m_field = nullptr;
 CKGroup *all_sound = nullptr;
 
 Gui::Gui() {
     CKRenderContext *rc = ModLoader::GetInstance().GetRenderContext();
-    m_width = rc->GetWidth();
-    m_height = rc->GetHeight();
+    m_Width = rc->GetWidth();
+    m_Height = rc->GetHeight();
 }
 
 void Gui::OnCharTyped(CKDWORD key) {
     if (key == CKKEY_ESCAPE)
-        if (m_back)
-            m_back->InvokeCallback();
-    if (m_focus && m_focus->IsVisible())
-        m_focus->OnCharTyped(key);
+        if (m_Back)
+            m_Back->InvokeCallback();
+    if (m_Focus && m_Focus->IsVisible())
+        m_Focus->OnCharTyped(key);
 }
 
 void Gui::OnMouseDown(float x, float y, CK_MOUSEBUTTON key) {
     if (key == CK_MOUSEBUTTON_LEFT) {
         bool success = false;
-        for (Button *button: m_buttons) {
+        for (Button *button: m_Buttons) {
             if (Intersect(x, y, button)) {
                 button->InvokeCallback();
                 success = true;
             }
         }
-        if (m_buttons.empty() && m_inputs.size() == 1)
-            SetFocus(m_inputs[0]);
+        if (m_Buttons.empty() && m_Inputs.size() == 1)
+            SetFocus(m_Inputs[0]);
         else {
             SetFocus(nullptr);
-            for (Input *input: m_inputs) {
+            for (Input *input: m_Inputs) {
                 if (Intersect(x, y, input)) {
                     SetFocus(input);
                     success = true;
@@ -77,8 +77,8 @@ Button *Gui::AddNormalButton(const char *name, const char *text, float yPos, flo
     button->SetPosition(Vx2DVector(xPos, yPos));
     button->SetCallback(std::move(callback));
     button->SetType(BUTTON_NORMAL);
-    m_elements.push_back(button);
-    m_buttons.push_back(button);
+    m_Elements.push_back(button);
+    m_Buttons.push_back(button);
     return button;
 }
 
@@ -89,9 +89,9 @@ Button *Gui::AddBackButton(const char *name, const char *text, float yPos, float
     button->SetPosition(Vx2DVector(xPos, yPos));
     button->SetCallback(std::move(callback));
     button->SetType(BUTTON_BACK);
-    m_elements.push_back(button);
-    m_buttons.push_back(button);
-    m_back = button;
+    m_Elements.push_back(button);
+    m_Buttons.push_back(button);
+    m_Back = button;
     return button;
 }
 
@@ -102,8 +102,8 @@ Button *Gui::AddSettingButton(const char *name, const char *text, float yPos, fl
     button->SetPosition(Vx2DVector(xPos, yPos));
     button->SetCallback(std::move(callback));
     button->SetType(BUTTON_SETTING);
-    m_elements.push_back(button);
-    m_buttons.push_back(button);
+    m_Elements.push_back(button);
+    m_Buttons.push_back(button);
     return button;
 }
 
@@ -114,8 +114,8 @@ Button *Gui::AddLevelButton(const char *name, const char *text, float yPos, floa
     button->SetPosition(Vx2DVector(xPos, yPos));
     button->SetCallback(std::move(callback));
     button->SetType(BUTTON_LEVEL);
-    m_elements.push_back(button);
-    m_buttons.push_back(button);
+    m_Elements.push_back(button);
+    m_Buttons.push_back(button);
     return button;
 }
 
@@ -126,8 +126,8 @@ Button *Gui::AddSmallButton(const char *name, const char *text, float yPos, floa
     button->SetPosition(Vx2DVector(xPos, yPos));
     button->SetCallback(std::move(callback));
     button->SetType(BUTTON_SMALL);
-    m_elements.push_back(button);
-    m_buttons.push_back(button);
+    m_Elements.push_back(button);
+    m_Buttons.push_back(button);
     return button;
 }
 
@@ -136,8 +136,8 @@ Button *Gui::AddLeftButton(const char *name, float yPos, float xPos, std::functi
     button->SetPosition(Vx2DVector(xPos, yPos));
     button->SetCallback(std::move(callback));
     button->SetType(BUTTON_LEFT);
-    m_elements.push_back(button);
-    m_buttons.push_back(button);
+    m_Elements.push_back(button);
+    m_Buttons.push_back(button);
     return button;
 }
 
@@ -146,8 +146,8 @@ Button *Gui::AddRightButton(const char *name, float yPos, float xPos, std::funct
     button->SetPosition(Vx2DVector(xPos, yPos));
     button->SetCallback(std::move(callback));
     button->SetType(BUTTON_RIGHT);
-    m_elements.push_back(button);
-    m_buttons.push_back(button);
+    m_Elements.push_back(button);
+    m_Buttons.push_back(button);
     return button;
 }
 
@@ -156,8 +156,8 @@ Button *Gui::AddPlusButton(const char *name, float yPos, float xPos, std::functi
     button->SetPosition(Vx2DVector(xPos, yPos));
     button->SetCallback(std::move(callback));
     button->SetType(BUTTON_PLUS);
-    m_elements.push_back(button);
-    m_buttons.push_back(button);
+    m_Elements.push_back(button);
+    m_Buttons.push_back(button);
     return button;
 }
 
@@ -166,8 +166,8 @@ Button *Gui::AddMinusButton(const char *name, float yPos, float xPos, std::funct
     button->SetPosition(Vx2DVector(xPos, yPos));
     button->SetCallback(std::move(callback));
     button->SetType(BUTTON_MINUS);
-    m_elements.push_back(button);
-    m_buttons.push_back(button);
+    m_Elements.push_back(button);
+    m_Buttons.push_back(button);
     return button;
 }
 
@@ -175,8 +175,8 @@ Button *Gui::AddKeyBgButton(const char *name, float yPos, float xPos) {
     auto *button = new Button(name);
     button->SetPosition(Vx2DVector(xPos, yPos));
     button->SetType(BUTTON_KEY);
-    m_elements.push_back(button);
-    m_buttons.push_back(button);
+    m_Elements.push_back(button);
+    m_Buttons.push_back(button);
     return button;
 }
 
@@ -185,7 +185,7 @@ Panel *Gui::AddPanel(const char *name, VxColor color, float xPos, float yPos, fl
     panel->SetColor(color);
     panel->SetPosition(Vx2DVector(xPos, yPos));
     panel->SetSize(Vx2DVector(xSize, ySize));
-    m_elements.push_back(panel);
+    m_Elements.push_back(panel);
     return panel;
 }
 
@@ -196,7 +196,7 @@ Label *Gui::AddTextLabel(const char *name, const char *text, ExecuteBB::FontType
     label->SetFont(font);
     label->SetPosition(Vx2DVector(xPos, yPos));
     label->SetSize(Vx2DVector(xSize, ySize));
-    m_elements.push_back(label);
+    m_Elements.push_back(label);
     return label;
 }
 
@@ -205,8 +205,8 @@ Text *Gui::AddText(const char *name, const char *text, float xPos, float yPos, f
     txt->SetText(text);
     txt->SetPosition(Vx2DVector(xPos, yPos));
     txt->SetSize(Vx2DVector(xSize, ySize));
-    m_elements.push_back(txt);
-    m_texts.push_back(txt);
+    m_Elements.push_back(txt);
+    m_Texts.push_back(txt);
     return txt;
 }
 
@@ -217,9 +217,9 @@ Input *Gui::AddTextInput(const char *name, ExecuteBB::FontType font, float xPos,
     input->SetPosition(Vx2DVector(xPos, yPos));
     input->SetSize(Vx2DVector(xSize, ySize));
     input->SetCallback(std::move(callback));
-    m_elements.push_back(input);
-    m_inputs.push_back(input);
-    if (!m_focus)
+    m_Elements.push_back(input);
+    m_Inputs.push_back(input);
+    if (!m_Focus)
         SetFocus(input);
     return input;
 }
@@ -232,7 +232,7 @@ std::pair<Button *, KeyInput *> Gui::AddKeyButton(const char *name, const char *
     bg->SetZOrder(15);
     bg->SetOffset(Vx2DVector(ModLoader::GetInstance().GetRenderContext()->GetWidth() * 0.03f, 0.0f));
     bg->SetCallback([]() {});
-    m_elements.push_back(bg);
+    m_Elements.push_back(bg);
 
     auto *button = new KeyInput(name);
     button->SetFont(ExecuteBB::GAMEFONT_03);
@@ -240,13 +240,12 @@ std::pair<Button *, KeyInput *> Gui::AddKeyButton(const char *name, const char *
     button->SetSize(Vx2DVector(0.1450f, 0.0396f));
     button->SetCallback(std::move(callback));
     button->SetZOrder(25);
-    m_elements.push_back(button);
-    m_inputs.push_back(button);
+    m_Elements.push_back(button);
+    m_Inputs.push_back(button);
     return {bg, button};
 }
 
-std::pair<Button *, Button *> Gui::AddYesNoButton(const char *name, float yPos, float x1Pos, float x2Pos,
-                                                  std::function<void(bool)> callback) {
+std::pair<Button *, Button *> Gui::AddYesNoButton(const char *name, float yPos, float x1Pos, float x2Pos, std::function<void(bool)> callback) {
     Button *yes = AddSmallButton(name, "Yes", yPos, x1Pos);
     Button *no = AddSmallButton(name, "No", yPos, x2Pos);
     yes->SetCallback([callback, yes, no]() {
@@ -259,27 +258,27 @@ std::pair<Button *, Button *> Gui::AddYesNoButton(const char *name, float yPos, 
         yes->SetActive(false);
         no->SetActive(true);
     });
-    m_elements.push_back(yes);
-    m_elements.push_back(no);
+    m_Elements.push_back(yes);
+    m_Elements.push_back(no);
     return {yes, no};
 }
 
 void Gui::Process() {
     CKRenderContext *rc = ModLoader::GetInstance().GetRenderContext();
-    if (rc->GetWidth() != m_width || rc->GetHeight() != m_height) {
-        m_width = rc->GetWidth();
-        m_height = rc->GetHeight();
+    if (rc->GetWidth() != m_Width || rc->GetHeight() != m_Height) {
+        m_Width = rc->GetWidth();
+        m_Height = rc->GetHeight();
         OnScreenModeChanged();
     }
 
-    for (Element *element: m_elements)
+    for (Element *element: m_Elements)
         element->Process();
 
     InputHook *input = ModLoader::GetInstance().GetInputManager();
-    int cnt = (m_block ? input->GetNumberOfKeyInBuffer() : input->oGetNumberOfKeyInBuffer());
+    int cnt = (m_Block ? input->GetNumberOfKeyInBuffer() : input->oGetNumberOfKeyInBuffer());
     for (int i = 0; i < cnt; i++) {
         CKDWORD key;
-        if ((m_block ? input->GetKeyFromBuffer(i, key) : input->oGetKeyFromBuffer(i, key)) == KEY_PRESSED)
+        if ((m_Block ? input->GetKeyFromBuffer(i, key) : input->oGetKeyFromBuffer(i, key)) == KEY_PRESSED)
             OnCharTyped(key);
     }
 
@@ -287,13 +286,13 @@ void Gui::Process() {
     input->GetMousePosition(mousePos, false);
     for (CK_MOUSEBUTTON button = CK_MOUSEBUTTON_LEFT; button < CK_MOUSEBUTTON_4;
          (*reinterpret_cast<int *>(&button))++) {
-        if (m_block ? input->IsMouseClicked(button) : input->oIsMouseClicked(button))
+        if (m_Block ? input->IsMouseClicked(button) : input->oIsMouseClicked(button))
             OnMouseDown(mousePos.x / rc->GetWidth(), mousePos.y / rc->GetHeight(), button);
     }
 
-    for (Button *button: m_buttons)
+    for (Button *button: m_Buttons)
         button->OnMouseLeave();
-    for (Button *button: m_buttons)
+    for (Button *button: m_Buttons)
         if (Intersect(mousePos.x / rc->GetWidth(), mousePos.y / rc->GetHeight(), button))
             button->OnMouseEnter();
 
@@ -308,53 +307,53 @@ void Gui::Process() {
 }
 
 void Gui::SetVisible(bool visible) {
-    for (Element *element: m_elements)
+    for (Element *element: m_Elements)
         element->SetVisible(visible);
 }
 
 bool Gui::CanBeBlocked() {
-    return m_block;
+    return m_Block;
 }
 
 void Gui::SetCanBeBlocked(bool block) {
-    m_block = block;
+    m_Block = block;
 }
 
 void Gui::SetFocus(Input *input) {
-    if (m_focus)
-        m_focus->LoseFocus();
-    m_focus = input;
+    if (m_Focus)
+        m_Focus->LoseFocus();
+    m_Focus = input;
     if (input)
         input->GetFocus();
 }
 
 void Gui::InitMaterials() {
-    m_up = ModLoader::GetInstance().GetMaterialByName("M_Button_Up");
-    m_inactive = ModLoader::GetInstance().GetMaterialByName("M_Button_Inactive");
-    m_over = ModLoader::GetInstance().GetMaterialByName("M_Button_Over");
+    g_Up = ModLoader::GetInstance().GetMaterialByName("M_Button_Up");
+    g_Inactive = ModLoader::GetInstance().GetMaterialByName("M_Button_Inactive");
+    g_Over = ModLoader::GetInstance().GetMaterialByName("M_Button_Over");
     m_field = ModLoader::GetInstance().GetMaterialByName("M_EntryBG");
-    m_caret = ModLoader::GetInstance().GetMaterialByName("M_Caret");
-    m_highlight = ModLoader::GetInstance().GetMaterialByName("M_Keys_Highlight");
+    g_Caret = ModLoader::GetInstance().GetMaterialByName("M_Caret");
+    g_Highlight = ModLoader::GetInstance().GetMaterialByName("M_Keys_Highlight");
     all_sound = ModLoader::GetInstance().GetGroupByName("All_Sound");
 
     CKParameterManager *pm = ModLoader::GetInstance().GetParameterManager();
     CKEnumStruct *data = pm->GetEnumDescByType(pm->ParameterGuidToType(CKPGUID_FONTNAME));
-    for (const char *avail_font: g_avail_fonts) {
+    for (const char *avail_font: g_AvailFonts) {
         for (int i = 0; i < data->GetNumEnums(); i++) {
             const char *fontName = data->GetEnumDescription(i);
             if (!strcmp(fontName, avail_font)) {
-                g_text_font = avail_font;
+                g_TextFont = avail_font;
                 break;
             }
         }
-        if (g_text_font)
+        if (g_TextFont)
             break;
     }
-    if (!g_text_font)
-        g_text_font = "";
+    if (!g_TextFont)
+        g_TextFont = "";
 }
 
 void Gui::OnScreenModeChanged() {
-    for (Text *txt: m_texts)
+    for (Text *txt: m_Texts)
         txt->UpdateFont();
 }

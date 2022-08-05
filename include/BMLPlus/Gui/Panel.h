@@ -17,7 +17,7 @@ namespace BGui {
         void SetColor(VxColor color);
 
     protected:
-        CKMaterial *m_material;
+        CKMaterial *m_Material;
     };
 }
 

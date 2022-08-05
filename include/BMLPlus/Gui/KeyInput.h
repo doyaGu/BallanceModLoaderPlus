@@ -22,8 +22,8 @@ namespace BGui {
         void LoseFocus() override;
 
     protected:
-        CKKEYBOARD m_key;
-        std::function<void()> m_keycb;
+        CKKEYBOARD m_Key;
+        std::function<void()> m_KeyCallback;
     };
 }
 

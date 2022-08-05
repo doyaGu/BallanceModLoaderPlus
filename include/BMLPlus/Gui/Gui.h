@@ -69,16 +69,16 @@ namespace BGui {
         static void InitMaterials();
 
     private:
-        std::vector<Element *> m_elements;
-        std::vector<Button *> m_buttons;
-        std::vector<Input *> m_inputs;
-        std::vector<Text *> m_texts;
-        Input *m_focus = nullptr;
-        Button *m_back = nullptr;
-        bool m_block = true;
-        int m_width = 0;
-        int m_height = 0;
-        Vx2DVector m_oldMousePos;
+        std::vector<Element *> m_Elements;
+        std::vector<Button *> m_Buttons;
+        std::vector<Input *> m_Inputs;
+        std::vector<Text *> m_Texts;
+        Input *m_Focus = nullptr;
+        Button *m_Back = nullptr;
+        bool m_Block = true;
+        int m_Width = 0;
+        int m_Height = 0;
+        Vx2DVector m_OldMousePos;
     };
 }
 
