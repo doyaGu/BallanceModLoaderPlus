@@ -100,7 +100,7 @@ void ModLoader::Release() {
 
     m_Logger->Info("Goodbye!");
 
-	for (int i = 0; i < m_ModDlls.size(); i++) {
+	for (size_t i = 0; i < m_ModDlls.size(); i++) {
 		auto &mod = m_Mods[i];
 		if (m_ModDlls[i].exit)
 			m_ModDlls[i].exit(mod);
