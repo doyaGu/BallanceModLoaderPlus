@@ -39,6 +39,11 @@ struct BModDll {
     void *GetFunctionPtr(const char *functionName);
 };
 
+template<typename T>
+void *func_addr(T func) {
+    return *reinterpret_cast<void **>(&func);
+}
+
 class ModLoader : public IBML {
     friend class ModManager;
     friend class BMLMod;

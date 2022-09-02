@@ -16,11 +16,6 @@ class IMod;
 struct BModDll;
 class ModLoader;
 
-template<typename T>
-void *func_addr(T func) {
-    return *reinterpret_cast<void **>(&func);
-}
-
 class ModManager : public CKBaseManager {
     friend class ModLoader;
 public:
