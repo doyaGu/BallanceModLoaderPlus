@@ -66,7 +66,7 @@ namespace ExecuteBB {
     CKBehavior *Create2DText(CK2dEntity *target, FontType font, const char *text, int align, VxRect margin,
                              Vx2DVector offset, Vx2DVector pindent, CKMaterial *bgmat, float caretsize,
                              CKMaterial *caretmat, int flags) {
-        CKBehavior *beh = CreateBB(ownerScript, VT_TEXT2D, true);
+        CKBehavior *beh = CreateBB(ownerScript, VT_INTERFACE_2DTEXT, true);
         beh->GetTargetParameter()->SetDirectSource(CreateParamObject(CKPGUID_2DENTITY, "Target", target));
         beh->GetInputParameter(0)->SetDirectSource(CreateParamValue(CKPGUID_FONT, "Font", GetFont(font)));
         beh->GetInputParameter(1)->SetDirectSource(CreateParamString("Text", text));
@@ -84,7 +84,7 @@ namespace ExecuteBB {
     CKBehavior *CreatePhysicalize(CK3dEntity *target, CKBOOL fixed, float friction, float elasticity, float mass,
                                   const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
                                   float linearDamp, float rotDamp, const char *collSurface, VxVector massCenter) {
-        CKBehavior *beh = CreateBB(ownerScript, TT_PHYSICALIZE, true);
+        CKBehavior *beh = CreateBB(ownerScript, PHYSICS_RT_PHYSICALIZE, true);
         beh->GetTargetParameter()->SetDirectSource(CreateParamObject(CKPGUID_3DENTITY, "Target", target));
         beh->GetInputParameter(0)->SetDirectSource(CreateParamValue(CKPGUID_BOOL, "Fixed", fixed));
         beh->GetInputParameter(1)->SetDirectSource(CreateParamValue(CKPGUID_FLOAT, "Friction", friction));
@@ -199,7 +199,7 @@ namespace ExecuteBB {
 
     CKBehavior *CreateSetPhysicsForce(CK3dEntity *target, VxVector position, CK3dEntity *posRef, VxVector direction,
                                       CK3dEntity *directionRef, float force) {
-        CKBehavior *beh = CreateBB(ownerScript, TT_SETPHYSICSFORCE, true);
+        CKBehavior *beh = CreateBB(ownerScript, PHYSICS_RT_PHYSICSFORCE, true);
         beh->GetTargetParameter()->SetDirectSource(CreateParamObject(CKPGUID_3DENTITY, "Target", target));
         beh->GetInputParameter(0)->SetDirectSource(CreateParamValue(CKPGUID_VECTOR, "Position", position));
         beh->GetInputParameter(1)->SetDirectSource(CreateParamObject(CKPGUID_3DENTITY, "Pos Referential", posRef));
@@ -228,7 +228,7 @@ namespace ExecuteBB {
     }
 
     CKBehavior *CreatePhysicsWakeUp(CK3dEntity *target) {
-        CKBehavior *beh = CreateBB(ownerScript, TT_PHYSICSWAKEUP, true);
+        CKBehavior *beh = CreateBB(ownerScript, PHYSICS_RT_PHYSICSWAKEUP, true);
         beh->GetTargetParameter()->SetDirectSource(CreateParamObject(CKPGUID_3DENTITY, "Target", target));
         return beh;
     }
@@ -241,7 +241,7 @@ namespace ExecuteBB {
 
     CKBehavior *CreateObjectLoad(const char *file, const char *mastername, CK_CLASSID filter, CKBOOL addToScene,
                                  CKBOOL reuseMesh, CKBOOL reuseMtl, CKBOOL dynamic) {
-        CKBehavior *beh = CreateBB(ownerScript, VT_OBJECTLOAD);
+        CKBehavior *beh = CreateBB(ownerScript, VT_NARRATIVES_OBJECTLOAD);
         beh->GetInputParameter(0)->SetDirectSource(CreateParamString("File", file));
         beh->GetInputParameter(1)->SetDirectSource(CreateParamString("Master Name", mastername));
         beh->GetInputParameter(2)->SetDirectSource(CreateParamValue(CKPGUID_CLASSID, "Filter", filter));
@@ -284,7 +284,7 @@ namespace ExecuteBB {
 
     CKBehavior *CreatePhysicsImpulse(CK3dEntity *target, VxVector position, CK3dEntity *posRef, VxVector direction,
                                      CK3dEntity *dirRef, float impulse) {
-        CKBehavior *beh = CreateBB(ownerScript, TT_PHYSICSIMPLUSE, true);
+        CKBehavior *beh = CreateBB(ownerScript, PHYSICS_RT_PHYSICSIMPULSE, true);
         beh->GetTargetParameter()->SetDirectSource(CreateParamObject(CKPGUID_3DENTITY, "Target", target));
         beh->GetInputParameter(0)->SetDirectSource(CreateParamValue(CKPGUID_VECTOR, "Position", position));
         beh->GetInputParameter(1)->SetDirectSource(CreateParamObject(CKPGUID_3DENTITY, "PosRef", posRef));

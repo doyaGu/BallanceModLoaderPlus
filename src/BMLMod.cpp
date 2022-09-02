@@ -1656,8 +1656,8 @@ void BMLMod::OnEditScript_Menu_OptionsMenu(CKBehavior *script) {
     down_ps->CreateInputParameter("pIn 4", CKPGUID_INT)->SetDirectSource(pin);
     down_ps->AddInput("In 4");
 
-    CKBehavior *text2d = CreateBB(graph, VT_TEXT2D, true);
-    CKBehavior *pushbutton = CreateBB(graph, TT_PUSHBUTTON2, true);
+    CKBehavior *text2d = CreateBB(graph, VT_INTERFACE_2DTEXT, true);
+    CKBehavior *pushbutton = CreateBB(graph, TT_TOOLBOX_RT_TTPUSHBUTTON2, true);
     CKBehavior *text2dref = FindFirstBB(graph, "2D Text");
     CKBehavior *nop = FindFirstBB(graph, "Nop");
     CKParameterLocal *entity2d = CreateParamObject(graph, "Button", CKPGUID_2DENTITY, buttons[4]);
@@ -1738,11 +1738,11 @@ void BMLMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
             else nop[0] = beh;
             return !nop[1];
         }, "Nop");
-    CKBehavior *keyevent[2] = {CreateBB(ballNav, VT_KEYEVENT), CreateBB(ballNav, VT_KEYEVENT)};
+    CKBehavior *keyevent[2] = {CreateBB(ballNav, VT_CONTROLLERS_KEYEVENT), CreateBB(ballNav, VT_CONTROLLERS_KEYEVENT)};
     m_BallForce[0] = CreateParamValue(ballNav, "Up", CKPGUID_KEY, CKKEYBOARD(0));
     m_BallForce[1] = CreateParamValue(ballNav, "Down", CKPGUID_KEY, CKKEYBOARD(0));
-    CKBehavior *phyforce[2] = {CreateBB(ballNav, TT_SETPHYSICSFORCE, true),
-                               CreateBB(ballNav, TT_SETPHYSICSFORCE, true)};
+    CKBehavior *phyforce[2] = {CreateBB(ballNav, PHYSICS_RT_PHYSICSFORCE, true),
+                               CreateBB(ballNav, PHYSICS_RT_PHYSICSFORCE, true)};
     CKBehavior *op = FindFirstBB(ballNav, "Op");
     CKParameter *mass = op->GetInputParameter(0)->GetDirectSource();
     CKBehavior *spf = FindFirstBB(ballNav, "SetPhysicsForce");
@@ -1861,7 +1861,7 @@ void BMLMod::OnEditScript_Levelinit_build(CKBehavior *script) {
     CKBehavior *op = FindNextBB(loadLevel, inLink->GetOutBehaviorIO()->GetOwner());
     m_LevelRow = op->GetOutputParameter(0)->GetDestination(0);
     CKBehavior *objLoad = FindFirstBB(loadLevel, "Object Load");
-    CKBehavior *bin = CreateBB(loadLevel, VT_BINARYSWITCH);
+    CKBehavior *bin = CreateBB(loadLevel, VT_LOGICS_BINARYSWITCH);
     CreateLink(loadLevel, loadLevel->GetInput(0), bin, 0);
     m_LoadCustom = CreateLocalParameter(loadLevel, "Custom Level", CKPGUID_BOOL);
     bin->GetInputParameter(0)->SetDirectSource(m_LoadCustom);
@@ -1906,6 +1906,7 @@ void BMLMod::OnCmdEdit(CKDWORD key) {
             if (m_HistoryPos < m_CmdHistory.size())
                 m_CmdInput->SetText(++m_HistoryPos == m_CmdHistory.size() ? "/" : m_CmdHistory[m_HistoryPos].c_str());
             break;
-        default:;
+        default:
+            break;
     }
 }
