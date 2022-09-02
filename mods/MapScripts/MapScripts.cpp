@@ -4,6 +4,10 @@ IMod *BMLEntry(IBML *bml) {
     return new MapScripts(bml);
 }
 
+void BMLExit(IMod *mod) {
+    delete mod;
+}
+
 template<typename T>
 void *func_addr(T func) {
     return *reinterpret_cast<void **>(&func);

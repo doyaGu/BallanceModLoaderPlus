@@ -6,6 +6,10 @@ IMod* BMLEntry(IBML* bml) {
 	return new BallSticky(bml);
 }
 
+void BMLExit(IMod *mod) {
+    delete mod;
+}
+
 void BallSticky::OnLoad() {
     m_StickyImpulse = 90.0f;
     m_BML->RegisterBallType("Ball_Sticky.nmo", "sticky", "Sticky", "Ball_Sticky", 10.0f, 0.0f, 1.4f, "Ball", 1.0f, 7.0f, 0.15f, 2.0f);

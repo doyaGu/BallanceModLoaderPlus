@@ -4,6 +4,10 @@ IMod *BMLEntry(IBML *bml) {
     return new BMLModuls(bml);
 }
 
+void BMLExit(IMod *mod) {
+    delete mod;
+}
+
 void BMLModuls::OnLoad() {
     m_BML->RegisterModul("P_Rotboard_Wood");
     m_BML->RegisterModul("P_Rotboard_Wood_Inv");

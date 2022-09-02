@@ -9,6 +9,10 @@ IMod *BMLEntry(IBML *bml) {
     return new DeformedWB(bml);
 }
 
+void BMLExit(IMod *mod) {
+    delete mod;
+}
+
 void DeformedWB::OnLoad() {
     m_Enabled = GetConfig()->GetProperty("Misc", "Enable");
     m_Enabled->SetComment("Enable deforming player wooden ball");

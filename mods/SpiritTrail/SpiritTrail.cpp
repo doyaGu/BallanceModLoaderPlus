@@ -7,6 +7,10 @@ IMod *BMLEntry(IBML *bml) {
     return new SpiritTrail(bml);
 }
 
+void BMLExit(IMod *mod) {
+    delete mod;
+}
+
 std::pair<char *, int> ReadDataFromFile(const char *filename) {
     FILE *fp = fopen(filename, "rb");
     fseek(fp, 0, SEEK_END);
