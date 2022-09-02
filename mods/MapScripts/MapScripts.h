@@ -5,6 +5,7 @@
 #include <map>
 
 MOD_EXPORT IMod *BMLEntry(IBML *bml);
+MOD_EXPORT void BMLExit(IMod *mod);
 
 class MapScripts : public IMod {
 public:

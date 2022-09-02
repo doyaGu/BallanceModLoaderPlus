@@ -3,6 +3,7 @@
 #include <BMLPlus/BMLAll.h>
 
 MOD_EXPORT IMod *BMLEntry(IBML *bml);
+MOD_EXPORT void BMLExit(IMod *mod);
 
 class DeformedWB : public IMod {
 public:

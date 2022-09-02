@@ -4,6 +4,10 @@ IMod *BMLEntry(IBML *bml) {
     return new DualBallControl(bml);
 }
 
+void BMLExit(IMod *mod) {
+    delete mod;
+}
+
 void DualBallControl::OnLoad() {
     GetConfig()->SetCategoryComment("Misc", "Miscellaneous");
 

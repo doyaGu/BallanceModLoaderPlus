@@ -6,6 +6,7 @@
 #define TICK_SPEED 8
 
 MOD_EXPORT IMod *BMLEntry(IBML *bml);
+MOD_EXPORT void BMLExit(IMod *mod);
 
 class SpiritTrail : public IMod {
 public:

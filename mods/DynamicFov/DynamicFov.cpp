@@ -9,6 +9,10 @@ IMod *BMLEntry(IBML *bml) {
     return g_mod;
 }
 
+void BMLExit(IMod *mod) {
+    delete mod;
+}
+
 void RegisterBB(XObjectDeclarationArray *reg) {
     CKStoreDeclaration(reg, (new HookBuilder())
         ->SetName("BML OnResetBallPosition")

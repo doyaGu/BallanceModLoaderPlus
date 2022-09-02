@@ -3,6 +3,7 @@
 #include <BMLPlus/BMLAll.h>
 
 MOD_EXPORT IMod *BMLEntry(IBML *bml);
+MOD_EXPORT void BMLExit(IMod *mod);
 MOD_EXPORT void RegisterBB(XObjectDeclarationArray *reg);
 
 class DynamicFov : public IMod {
@@ -33,8 +34,8 @@ private:
     CKBehavior *m_DynamicPos = nullptr;
 
     bool m_IsActive = false;
-    VxVector m_LastPos;
     bool m_WasPaused = false;
+    VxVector m_LastPos;
 
     IProperty *m_Enabled = nullptr;
 };

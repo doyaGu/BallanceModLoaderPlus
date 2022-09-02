@@ -4,6 +4,7 @@
 #include <vector>
 
 MOD_EXPORT IMod *BMLEntry(IBML *bml);
+MOD_EXPORT void BMLExit(IMod *mod);
 
 class DualBallControl : public IMod {
 public:
