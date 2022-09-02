@@ -321,7 +321,7 @@ void NewBallTypeMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
         CKAttributeManager *am = m_BML->GetAttributeManager();
         CKAttributeType trafoType = am->GetAttributeTypeByName("TrafoType");
         for (BallTypeInfo &info: m_BallTypes) {
-            CKBehavior *setAttr = CreateBB(trafoAttr, VT_SETATTRIBUTE, true);
+            CKBehavior *setAttr = CreateBB(trafoAttr, VT_LOGICS_SETATTRIBUTE, true);
             CKParameter *attr = CreateParamValue(trafoAttr, "Attr", CKPGUID_ATTRIBUTE, trafoType);
             CKParameter *attrParam = CreateParamString(trafoAttr, "Param", info.m_ID.c_str());
             setAttr->GetTargetParameter()->SetDirectSource(info.m_BallParam);
@@ -340,7 +340,7 @@ void NewBallTypeMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
             for (BallTypeInfo &info: m_BallTypes) {
                 CKParameter *id = CreateParamString(pieceFlag, "Pin", info.m_ID.c_str());
                 CKParameter *boolTrue = CreateParamValue(pieceFlag, "True", CKPGUID_BOOL, TRUE);
-                CKBehavior *identity = CreateBB(pieceFlag, VT_IDENTITY);
+                CKBehavior *identity = CreateBB(pieceFlag, VT_LOGICS_IDENTITY);
                 identity->GetInputParameter(0)->SetType(booltype);
                 identity->GetOutputParameter(0)->SetType(booltype);
 
@@ -399,12 +399,12 @@ void NewBallTypeMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
             CKParameter *reset = CreateParamValue(fadeout, "Reset", CKPGUID_BOOL, TRUE);
             CKParameter *setfalse = CreateParamValue(fadeout, "False", CKPGUID_BOOL, FALSE);
             for (BallTypeInfo &info: m_BallTypes) {
-                CKBehavior *binswitch[2] = {CreateBB(fadeout, VT_BINARYSWITCH), CreateBB(fadeout, VT_BINARYSWITCH)};
-                CKBehavior *seton = CreateBB(fadeout, VT_IDENTITY);
+                CKBehavior *binswitch[2] = {CreateBB(fadeout, VT_LOGICS_BINARYSWITCH), CreateBB(fadeout, VT_LOGICS_BINARYSWITCH)};
+                CKBehavior *seton = CreateBB(fadeout, VT_LOGICS_IDENTITY);
                 seton->GetInputParameter(0)->SetType(booltype);
                 seton->GetOutputParameter(0)->SetType(booltype);
-                CKBehavior *timer = CreateBB(fadeout, VT_TIMER);
-                CKBehavior *activate = CreateBB(fadeout, VT_ACTIVATESCRIPT);
+                CKBehavior *timer = CreateBB(fadeout, VT_LOGICS_TIMER);
+                CKBehavior *activate = CreateBB(fadeout, VT_NARRATIVES_ACTIVATESCRIPT);
                 info.m_Timer = timer;
                 info.m_BinarySwitch[0] = binswitch[0];
                 info.m_BinarySwitch[1] = binswitch[1];
@@ -444,7 +444,7 @@ void NewBallTypeMod::OnEditScript_Base_EventHandler(CKBehavior *script) {
     auto addResetAttr = [this](CKBehavior *graph) {
         CKBehavior *remAttr = FindFirstBB(graph, "Remove Attribute");
         for (BallTypeInfo &info: m_BallTypes) {
-            CKBehavior *attr = CreateBB(graph, VT_REMOVEATTRIBUTE, true);
+            CKBehavior *attr = CreateBB(graph, VT_LOGICS_REMOVEATTRIBUTE, true);
             attr->GetTargetParameter()->SetDirectSource(info.m_BallParam);
             attr->GetInputParameter(0)->ShareSourceWith(remAttr->GetInputParameter(0));
             InsertBB(graph, FindNextLink(graph, graph->GetInput(0)), attr);
