@@ -1,6 +1,8 @@
 #include "InputHook.h"
 
-InputHook::InputHook(CKInputManager *inputManager) : m_InputManager(inputManager) {}
+InputHook::InputHook(CKContext *context) {
+    m_InputManager = (CKInputManager *)context->GetManagerByGuid(INPUT_MANAGER_GUID);
+}
 
 void InputHook::EnableKeyboardRepetition(CKBOOL iEnable) {
     m_InputManager->EnableKeyboardRepetition(iEnable);
