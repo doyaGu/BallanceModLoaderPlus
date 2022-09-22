@@ -241,7 +241,24 @@ private:
     void OnEditScript_Levelinit_build(CKBehavior *script);
     void OnEditScript_ExtraLife_Fix(CKBehavior *script);
 
+    void OnProcess_FpsDisplay();
+    void OnProcess_CommandBar();
+    void OnProcess_Suicide();
+    void OnProcess_ChangeSpeed();
+    void OnProcess_ChangeBall();
+    void OnProcess_ResetBall();
+    void OnProcess_Travel();
+    void OnProcess_AddLife();
+    void OnProcess_Summon();
+    void OnProcess_SRTimer();
+
     void OnCmdEdit(CKDWORD key);
+    
+    CKContext *m_CKContext = nullptr;
+    InputHook *m_InputHook = nullptr;
+
+    float m_DeltaTime = 0.0f;
+    bool m_CheatEnabled = false;
 
     BGui::Gui *m_CmdBar = nullptr;
     bool m_CmdTyping = false;
@@ -267,7 +284,6 @@ private:
     int m_FPSTimer = 0;
     float m_SRTimer = 0.0f;
     bool m_SRActivated = false;
-    bool m_CheatEnabled = false;
 
     BGui::Gui *m_CurGui = nullptr;
     GuiModOption *m_ModOption = nullptr;
