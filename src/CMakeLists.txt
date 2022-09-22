@@ -59,7 +59,7 @@ set(BMLPLUS_SRCS
 
         InputHook.cpp
         ObjectLoadHook.cpp
-        PhysicsHook.cpp
+        PhysicalizeHook.cpp
 
         ExecuteBB.cpp
         RegisterBB.cpp
