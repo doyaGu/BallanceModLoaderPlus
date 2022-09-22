@@ -1,6 +1,6 @@
 #include "Defines.h"
 #include "ModLoader.h"
-#include "ModManager.h"
+#include "RegisterBB.h"
 
 namespace {
     CKBEHAVIORFCT g_Physicalize = nullptr;
@@ -62,12 +62,12 @@ int Physicalize(const CKBehaviorContext &behcontext) {
         }
 
         ModLoader::GetInstance().BroadcastCallback(&IMod::OnPhysicalize, target,
-                                                                              fixed, friction, elasticity, mass,
-                                                                              collGroup, startFrozen, enableColl,
-                                                                              calcMassCenter, linearDamp, rotDamp,
-                                                                              collSurface, massCenter, convexCnt,
-                                                                              convexMesh, ballCnt, ballCenter,
-                                                                              ballRadius, concaveCnt, concaveMesh);
+                                                   fixed, friction, elasticity, mass,
+                                                   collGroup, startFrozen, enableColl,
+                                                   calcMassCenter, linearDamp, rotDamp,
+                                                   collSurface, massCenter, convexCnt,
+                                                   convexMesh, ballCnt, ballCenter,
+                                                   ballRadius, concaveCnt, concaveMesh);
         if (convexMesh) delete[] convexMesh;
         if (ballCenter) delete[] ballCenter;
         if (ballRadius) delete[] ballRadius;
@@ -80,7 +80,7 @@ int Physicalize(const CKBehaviorContext &behcontext) {
 }
 
 bool HookPhysicalize() {
-    CKBehaviorPrototype *physicalizeProto = CKGetPrototypeFromGuid(TT_PHYSICALIZE);
+    CKBehaviorPrototype *physicalizeProto = CKGetPrototypeFromGuid(PHYSICS_RT_PHYSICALIZE);
     if (!physicalizeProto) return false;
     if (!g_Physicalize) g_Physicalize = physicalizeProto->GetFunction();
     physicalizeProto->SetFunction(&Physicalize);
