@@ -122,7 +122,7 @@ void ModLoader::GetManagers() {
     m_CollisionManager = (CKCollisionManager *) m_Context->GetManagerByGuid(COLLISION_MANAGER_GUID);
     m_Logger->Info("Get Collision Manager pointer 0x%08x", m_CollisionManager);
 
-    m_InputManager = new InputHook((CKInputManager *) m_Context->GetManagerByGuid(INPUT_MANAGER_GUID));
+    m_InputManager = new InputHook(m_Context);
     m_Logger->Info("Get Input Manager pointer 0x%08x", m_InputManager);
 
     m_MessageManager = m_Context->GetMessageManager();

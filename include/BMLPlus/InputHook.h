@@ -7,7 +7,7 @@
 
 class BML_EXPORT InputHook {
 public:
-    explicit InputHook(CKInputManager *inputManager);
+    explicit InputHook(CKContext *context);
 
     void EnableKeyboardRepetition(CKBOOL iEnable = TRUE);
     CKBOOL IsKeyboardRepetitionEnabled();
@@ -72,7 +72,7 @@ public:
 
 private:
     bool m_Block = false;
-	unsigned char m_KeyboardState[256] = {};
+    unsigned char m_KeyboardState[256] = {};
     unsigned char m_LastKeyboardState[256] = {};
     Vx2DVector m_LastMousePos;
     CKInputManager *m_InputManager = nullptr;
