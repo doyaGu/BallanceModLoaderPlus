@@ -1,7 +1,73 @@
 #include "InputHook.h"
+#include "ModLoader.h"
+
+int KeyEvent(const CKBehaviorContext &behcontext)
+{
+    CKBehavior *beh = behcontext.Behavior;
+
+    CKBOOL state = FALSE;
+
+    // If the Off input is active, we stop sending messages
+    if (beh->IsInputActive(1))
+    {
+        beh->ActivateInput(1, FALSE);
+        return CKBR_OK;
+    }
+    else
+    {
+        if (beh->IsInputActive(0))
+        {
+            beh->ActivateInput(0, FALSE);
+            beh->SetOutputParameterValue(0, &state);
+        }
+    }
+
+    beh->GetOutputParameterValue(0, &state);
+
+    InputHook *input = ModLoader::GetInstance().GetInputManager();
+    if (!input)
+    {
+        behcontext.Context->OutputToConsoleEx("Can't get the Input Manager");
+        return CKBR_GENERICERROR;
+    }
+
+    int i, count = beh->GetInputParameterCount();
+
+    for (i = 0; i < count; ++i)
+    {
+        int key = 0;
+        beh->GetInputParameterValue(i, &key);
+
+        if (!input->IsKeyDown(key))
+            break;
+    }
+
+    if ((i != count) && state)
+    {
+        state = FALSE;
+        beh->ActivateOutput(1);
+    }
+    else if ((i == count) && !state)
+    {
+        state = TRUE;
+        beh->ActivateOutput(0);
+    }
+
+    beh->SetOutputParameterValue(0, &state);
+
+    return CKBR_ACTIVATENEXTFRAME;
+}
+
+bool HookKeyEvent() {
+    CKBehaviorPrototype *keyEventProto = CKGetPrototypeFromGuid(VT_CONTROLLERS_KEYEVENT);
+    if (!keyEventProto) return false;
+    keyEventProto->SetFunction(&KeyEvent);
+    return true;
+}
 
 InputHook::InputHook(CKContext *context) {
     m_InputManager = (CKInputManager *)context->GetManagerByGuid(INPUT_MANAGER_GUID);
+    HookKeyEvent();
 }
 
 void InputHook::EnableKeyboardRepetition(CKBOOL iEnable) {
