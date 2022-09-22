@@ -67,6 +67,7 @@ public:
     bool IsInitialized() const { return m_Initialized; }
     bool IsReset() const { return m_IsReset; }
 
+    ILogger *GetLogger() {return m_Logger; }
     FILE *GetLogFile() { return m_Logfile; }
 
     void AddConfig(Config *config) { m_Configs.push_back(config); }
@@ -315,6 +316,7 @@ protected:
 
     std::vector<IMod *> m_Mods;
     std::vector<BModDll> m_ModDlls;
+
     std::unordered_map<void *, std::vector<IMod *>> m_CallbackMap;
 
     std::vector<Config *> m_Configs;
