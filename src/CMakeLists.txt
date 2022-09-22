@@ -16,6 +16,7 @@ set(BMLPLUS_PUBLIC_HDRS
 
         ${BMLPLUS_INC_DIR}/BMLPlus/Gui.h
         ${BMLPLUS_INC_DIR}/BMLPlus/InputHook.h
+
         ${BMLPLUS_INC_DIR}/BMLPlus/ExecuteBB.h
         ${BMLPLUS_INC_DIR}/BMLPlus/RegisterBB.h
         ${BMLPLUS_INC_DIR}/BMLPlus/ScriptHelper.h
@@ -42,10 +43,7 @@ set(BMLPLUS_SRCS
         BML.cpp
         ModLoader.cpp
         ModManager.cpp
-
-        HookObjectLoad.cpp
-        HookPhysicalize.cpp
-
+        
         IMod.cpp
         BMLMod.cpp
         NewBallTypeMod.cpp
@@ -60,6 +58,9 @@ set(BMLPLUS_SRCS
         Gui/Gui.cpp
 
         InputHook.cpp
+        ObjectLoadHook.cpp
+        PhysicsHook.cpp
+
         ExecuteBB.cpp
         RegisterBB.cpp
         ScriptHelper.cpp
