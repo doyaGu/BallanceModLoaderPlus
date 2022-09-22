@@ -165,11 +165,6 @@ private:
     Property *m_CurComment = nullptr;
 };
 
-class ScreenModeHook : public BGui::Gui {
-public:
-    void OnScreenModeChanged() override;
-};
-
 class CommandTravel : public ICommand {
 public:
     explicit CommandTravel(class BMLMod *mod) : m_BMLMod(mod) {};
@@ -237,7 +232,6 @@ public:
     bool IsInTravelCam();
 
 private:
-    void OnEditScript_Base_DefaultLevel(CKBehavior *script);
     void OnEditScript_Base_EventHandler(CKBehavior *script);
     void OnEditScript_Menu_MenuInit(CKBehavior *script);
     void OnEditScript_Menu_OptionsMenu(CKBehavior *script);
@@ -278,9 +272,6 @@ private:
     BGui::Gui *m_CurGui = nullptr;
     GuiModOption *m_ModOption = nullptr;
 
-    IProperty *m_SkipAnim = nullptr;
-    IProperty *m_FullscreenKey = nullptr;
-    IProperty *m_UnlockRes = nullptr;
     IProperty *m_UnlockFPS = nullptr;
     IProperty *m_FPSLimit = nullptr;
     IProperty* m_ShowTitle = nullptr;
@@ -343,8 +334,6 @@ private:
     CKParameter *m_LoadCustom = nullptr;
     CKParameter *m_MapFile = nullptr;
     CKParameter *m_LevelRow = nullptr;
-
-    ScreenModeHook *m_ScreenModeHook = nullptr;
 };
 
 #endif // BML_BMLMOD_H

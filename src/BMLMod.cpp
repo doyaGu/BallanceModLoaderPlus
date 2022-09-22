@@ -533,26 +533,6 @@ void GuiModCategory::Exit() {
     ModLoader::GetInstance().m_BMLMod->ShowGui(m_Parent);
 }
 
-void ScreenModeHook::OnScreenModeChanged() {
-    CKCamera *cams[] = {ModLoader::GetInstance().GetTargetCameraByName("Cam_MenuLevel"),
-                        ModLoader::GetInstance().GetTargetCameraByName("InGameCam")};
-    CKRenderContext *rc = ModLoader::GetInstance().GetRenderContext();
-    for (CKCamera *cam: cams) {
-        if (cam) {
-            cam->SetAspectRatio(rc->GetWidth(), rc->GetHeight());
-            cam->SetFov(0.75f * rc->GetWidth() / rc->GetHeight());
-            CKStateChunk *chunk = CKSaveObjectState(cam);
-
-            ModLoader::GetInstance().RestoreIC(cam);
-            cam->SetAspectRatio(rc->GetWidth(), rc->GetHeight());
-            cam->SetFov(0.75f * rc->GetWidth() / rc->GetHeight());
-            ModLoader::GetInstance().SetIC(cam);
-
-            CKReadObjectState(cam, chunk);
-        }
-    }
-}
-
 void CommandTravel::Execute(IBML *bml, const std::vector<std::string> &args) {
     if (bml->IsPlaying()) {
         if (m_BMLMod->IsInTravelCam()) {
@@ -571,18 +551,6 @@ void CommandTravel::Execute(IBML *bml, const std::vector<std::string> &args) {
 
 void BMLMod::OnLoad() {
     GetConfig()->SetCategoryComment("Misc", "Miscellaneous");
-    m_SkipAnim = GetConfig()->GetProperty("Misc", "SkipLoadingAnim");
-    m_SkipAnim->SetComment("Skip the Loading Animation");
-    m_SkipAnim->SetDefaultBoolean(true);
-
-    m_FullscreenKey = GetConfig()->GetProperty("Misc", "Fullscreen");
-    m_FullscreenKey->SetComment("Toggle Fullscreen in game");
-    m_FullscreenKey->SetDefaultKey(CKKEY_F11);
-
-    m_UnlockRes = GetConfig()->GetProperty("Misc", "UnlockResolution");
-    m_UnlockRes->SetComment("Unlock 16:9 Resolutions");
-    m_UnlockRes->SetDefaultBoolean(true);
-
     m_UnlockFPS = GetConfig()->GetProperty("Misc", "UnlockFrameRate");
     m_UnlockFPS->SetComment("Unlock Frame Rate Limitation");
     m_UnlockFPS->SetDefaultBoolean(true);
@@ -812,31 +780,9 @@ void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *master
         m_Level01 = m_BML->Get2dEntityByName("M_Start_But_01");
         CKBehavior *menuMain = m_BML->GetScriptByName("Menu_Start");
         m_ExitStart = FindFirstBB(menuMain, "Exit");
-
-        m_ScreenModeHook = new ScreenModeHook();
-    }
-
-    if (!strcmp(filename, "3D Entities\\MenuLevel.nmo")) {
-        if (m_UnlockRes->GetBoolean()) {
-            GetLogger()->Info("Adjust MenuLevel Camera");
-            CKCamera *cam = m_BML->GetTargetCameraByName("Cam_MenuLevel");
-            CKRenderContext *rc = m_BML->GetRenderContext();
-            cam->SetAspectRatio(rc->GetWidth(), rc->GetHeight());
-            cam->SetFov(0.75f * rc->GetWidth() / rc->GetHeight());
-            m_BML->SetIC(cam);
-        }
     }
 
     if (!strcmp(filename, "3D Entities\\Camera.nmo")) {
-        if (m_UnlockRes->GetBoolean()) {
-            GetLogger()->Info("Adjust Ingame Camera");
-            CKCamera *cam = m_BML->GetTargetCameraByName("InGameCam");
-            CKRenderContext *rc = m_BML->GetRenderContext();
-            cam->SetAspectRatio(rc->GetWidth(), rc->GetHeight());
-            cam->SetFov(0.75f * rc->GetWidth() / rc->GetHeight());
-            m_BML->SetIC(cam);
-        }
-
         m_CamPos = m_BML->Get3dEntityByName("Cam_Pos");
         m_CamOrient = m_BML->Get3dEntityByName("Cam_Orient");
         m_CamOrientRef = m_BML->Get3dEntityByName("Cam_OrientRef");
@@ -845,9 +791,6 @@ void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *master
 }
 
 void BMLMod::OnLoadScript(const char *filename, CKBehavior *script) {
-    if (!strcmp(script->GetName(), "Default Level"))
-        OnEditScript_Base_DefaultLevel(script);
-
     if (!strcmp(script->GetName(), "Event_handler"))
         OnEditScript_Base_EventHandler(script);
 
@@ -881,17 +824,6 @@ void BMLMod::OnProcess() {
     auto *im = m_BML->GetInputManager();
     m_CheatEnabled = m_BML->IsCheatEnabled();
 
-    if (im->IsKeyPressed(m_FullscreenKey->GetKey())) {
-        CKRenderContext *rc = m_BML->GetRenderContext();
-        if (rc->IsFullScreen()) {
-            rc->StopFullScreen();
-            GetLogger()->Info("Switch to Windowed Mode");
-        } else {
-            rc->GoFullScreen(rc->GetWidth(), rc->GetHeight(), -1, rc->GetDriverIndex());
-            GetLogger()->Info("Switch to Fullscreen Mode");
-        }
-    }
-
     if (m_IngameBanner) {
         CKStats stats;
         ctx->GetProfileStats(&stats);
@@ -917,7 +849,6 @@ void BMLMod::OnProcess() {
             m_IngameBanner->Process();
         if (m_CurGui)
             m_CurGui->Process();
-        m_ScreenModeHook->Process();
 
         if (m_CmdTyping) {
             m_CmdBar->Process();
@@ -1429,65 +1360,6 @@ bool BMLMod::IsInTravelCam() {
     return m_BML->GetRenderContext()->GetAttachedCamera() == m_TravelCam;
 }
 
-
-void BMLMod::OnEditScript_Base_DefaultLevel(CKBehavior *script) {
-    if (m_UnlockRes->GetBoolean()) {
-        GetLogger()->Info("Unlock higher resolutions");
-        CKBehavior *sm = FindFirstBB(script, "Screen Modes");
-
-        CKBehavior *rrs[4];
-        FindBB(sm, [sm, &rrs](CKBehavior *rr) {
-                int v = GetParamValue<int>(rr->GetInputParameter(2)->GetDirectSource());
-                switch (v) {
-                    case 1:
-                        rrs[0] = rr;
-                        break;
-                    case 640:
-                        rrs[1] = rr;
-                        break;
-                    case 1600:
-                        rrs[2] = rr;
-                        break;
-                    case 16:
-                    case 32:
-                        rrs[3] = rr;
-                        break;
-                    default:
-                        break;
-                }
-                return true;
-            }, "Remove Row If");
-
-        CKBehavior *it = FindPreviousBB(sm, rrs[0], "Iterator");
-        CKBehavior *gc = FindNextBB(sm, rrs[3], "Get Cell");
-        DeleteBB(sm, rrs[0]);
-        DeleteBB(sm, rrs[3]);
-        CreateLink(sm, it, gc, 0, 0);
-
-        CKBehavior *ss = FindFirstBB(script, "Synch to Screen");
-        CKBehavior *dl = FindFirstBB(ss, "Delayer");
-        CKBehavior *ii = FindFirstBB(ss, "Iterator If");
-        CreateLink(ss, ii, dl);
-        FindBB(ss, [ss](CKBehavior *csm) {
-                CKBehavior *smc = FindNextBB(ss, csm, "Show Mouse Cursor");
-                CreateLink(ss, csm, smc, 1, 0);
-                return true;
-            }, "TT Change ScreenMode");
-    }
-
-    if (m_SkipAnim->GetBoolean()) {
-        GetLogger()->Info("Skip Loading Animation");
-        CKBehavior *is = FindFirstBB(script, "Intro Start"),
-            *ie = FindFirstBB(script, "Intro Ende");
-
-        CKBehavior *ml = FindFirstBB(script, "Main Loading"),
-            *ps = FindFirstBB(script, "Preload Sound");
-
-        FindPreviousLink(script, is)->SetOutBehaviorIO(ml->GetInput(0));
-        FindNextLink(script, ps)->SetOutBehaviorIO(FindNextLink(script, ie)->GetOutBehaviorIO());
-    }
-}
-
 void BMLMod::OnEditScript_Base_EventHandler(CKBehavior *script) {
     CKBehavior *som = FindFirstBB(script, "Switch On Message", false, 2, 11, 11, 0);
 
@@ -1630,18 +1502,18 @@ void BMLMod::OnEditScript_Menu_OptionsMenu(CKBehavior *script) {
     FindBB(graph, [graph, &up_sop, &down_sop](CKBehavior *beh) {
             CKBehavior *previous = FindPreviousBB(graph, beh);
             const char *name = previous->GetName();
-            if (!strcmp(previous->GetName(), "Set 2D Material"))
+            if (!strcmp(name, "Set 2D Material"))
                 up_sop = beh;
-            if (!strcmp(previous->GetName(), "Send Message"))
+            if (!strcmp(name, "Send Message"))
                 down_sop = beh;
             return !(up_sop && down_sop);
         }, "Switch On Parameter");
     FindBB(graph, [graph, &up_ps, &down_ps](CKBehavior *beh) {
             CKBehavior *previous = FindNextBB(graph, beh);
             const char *name = previous->GetName();
-            if (!strcmp(previous->GetName(), "Keyboard"))
+            if (!strcmp(name, "Keyboard"))
                 up_ps = beh;
-            if (!strcmp(previous->GetName(), "Send Message"))
+            if (!strcmp(name, "Send Message"))
                 down_ps = beh;
             return !(up_ps && down_ps);
         }, "Parameter Selector");
