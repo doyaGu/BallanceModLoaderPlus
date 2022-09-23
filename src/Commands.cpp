@@ -13,8 +13,7 @@ void CommandBML::Execute(IBML *bml, const std::vector<std::string> &args) {
     int count = loader.GetModCount();
     for (int i = 0; i < count; ++i) {
         auto *mod = loader.GetMod(i);
-        std::string str = std::string("  ") + mod->GetID() + ": " + mod->GetName() + " " + mod->GetVersion() +
-                          " by " + mod->GetAuthor();
+        std::string str = std::string("  ") + mod->GetID() + ": " + mod->GetName() + " " + mod->GetVersion() + " by " + mod->GetAuthor();
         bml->SendIngameMessage(str.data());
     }
 }
@@ -81,7 +80,6 @@ void CommandSpeed::Execute(IBML *bml, const std::vector<std::string> &args) {
         float time = ParseFloat(args[1], 0, 1000);
         bool notify = true;
         if (!m_CurLevel) {
-            CKContext *ctx = bml->GetCKContext();
             m_CurLevel = bml->GetArrayByName("CurrentLevel");
             m_PhysicsBall = bml->GetArrayByName("Physicalize_GameBall");
             CKBehavior *ingame = bml->GetScriptByName("Gameplay_Ingame");
@@ -130,7 +128,6 @@ void CommandSpeed::Execute(IBML *bml, const std::vector<std::string> &args) {
 
 void CommandKill::Execute(IBML *bml, const std::vector<std::string> &args) {
     if (!m_DeactivateBall) {
-        CKContext *ctx = bml->GetCKContext();
         CKBehavior *ingame = bml->GetScriptByName("Gameplay_Ingame");
         CKBehavior *ballMgr = ScriptHelper::FindFirstBB(ingame, "BallManager");
         m_DeactivateBall = ScriptHelper::FindFirstBB(ballMgr, "Deactivate Ball");
@@ -245,7 +242,7 @@ void CommandSector::ResetBall(IBML *bml, CKContext *ctx) {
     mm->SendMessageSingle(ballDeactivate, bml->GetGroupByName("All_Gameplay"));
     mm->SendMessageSingle(ballDeactivate, bml->GetGroupByName("All_Sound"));
 
-    bml->AddTimer(2ul, [this, bml, ctx]() {
+    bml->AddTimer(2ul, [this, bml]() {
         auto *curBall = (CK3dEntity *) m_CurLevel->GetElementObject(0, 1);
         if (curBall) {
             ExecuteBB::Unphysicalize(curBall);
@@ -253,7 +250,7 @@ void CommandSector::ResetBall(IBML *bml, CKContext *ctx) {
             ModLoader::GetInstance().m_BMLMod->m_DynamicPos->ActivateInput(1);
             ModLoader::GetInstance().m_BMLMod->m_DynamicPos->Activate();
 
-            bml->AddTimer(1ul, [this, bml, curBall, ctx]() {
+            bml->AddTimer(1ul, [this, bml, curBall]() {
                 VxMatrix matrix;
                 m_CurLevel->GetElementValue(0, 3, &matrix);
                 curBall->SetWorldMatrix(matrix);
@@ -262,7 +259,7 @@ void CommandSector::ResetBall(IBML *bml, CKContext *ctx) {
                 bml->RestoreIC(camMF, true);
                 camMF->SetWorldMatrix(matrix);
 
-                bml->AddTimer(1ul, [this]() {
+                bml->AddTimer(1ul, []() {
                     ModLoader::GetInstance().m_BMLMod->m_DynamicPos->ActivateInput(0);
                     ModLoader::GetInstance().m_BMLMod->m_DynamicPos->Activate();
 
@@ -280,7 +277,6 @@ void CommandWin::Execute(IBML *bml, const std::vector<std::string> &args) {
         CKMessageManager *mm = bml->GetMessageManager();
         CKMessageType levelWin = mm->AddMessageType("Level_Finish");
 
-        CKContext *ctx = bml->GetCKContext();
         mm->SendMessageSingle(levelWin, bml->GetGroupByName("All_Gameplay"));
         bml->SendIngameMessage("Level Finished");
     }
