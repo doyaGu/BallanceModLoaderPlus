@@ -516,7 +516,11 @@ ICommand *ModLoader::FindCommand(const std::string &name) {
 
 void ModLoader::ExecuteCommand(const char *cmd, bool force) {
     m_Logger->Info("Execute Command: %s", cmd);
+
     std::vector<std::string> args = SplitString(cmd, " ");
+    for (auto &ch : args[0])
+        ch = static_cast<char>(std::tolower(ch));
+
     ICommand *command = FindCommand(args[0]);
     if (command && (!command->IsCheat() || m_CheatEnabled || force)) {
         BroadcastCallback(&IMod::OnPreCommandExecute, command, args);
