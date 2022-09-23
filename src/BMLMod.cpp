@@ -719,8 +719,8 @@ void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *master
 
         GetLogger()->Info("Create Command Gui");
         m_CmdBar = new BGui::Gui();
-        m_CmdBar->AddPanel("M_Cmd_Bg", VxColor(0, 0, 0, 110), 0.02f, 0.94f, 0.95f, 0.025f)->SetZOrder(100);
-        m_CmdInput = m_CmdBar->AddTextInput("M_Cmd_Text", ExecuteBB::GAMEFONT_03, 0.02f, 0.94f, 0.95f, 0.025f, [this](CKDWORD key) { OnCmdEdit(key); });
+        m_CmdBar->AddPanel("M_Cmd_Bg", VxColor(0, 0, 0, 110), 0.25f, 0.94f, 0.55f, 0.025f)->SetZOrder(100);
+        m_CmdInput = m_CmdBar->AddTextInput("M_Cmd_Text", ExecuteBB::GAMEFONT_03, 0.25f, 0.94f, 0.55f, 0.025f, [this](CKDWORD key) { OnCmdEdit(key); });
         m_CmdInput->SetAlignment(ALIGN_LEFT);
         m_CmdInput->SetTextFlags(TEXT_SCREEN | TEXT_SHOWCARET);
         m_CmdInput->SetZOrder(110);
@@ -731,11 +731,11 @@ void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *master
         m_MsgLog = new BGui::Gui();
         for (int i = 0; i < MSG_MAXSIZE; i++) {
             m_Msgs[i].m_Background = m_MsgLog->AddPanel((std::string("M_Cmd_Log_Bg_") + std::to_string(i + 1)).c_str(),
-                                                        VxColor(0, 0, 0, 110), 0.02f, 0.9f - i * 0.025f, 0.95f, 0.025f);
+                                                        VxColor(0, 0, 0, 110), 0.25f, 0.9f - i * 0.025f, 0.55f, 0.025f);
             m_Msgs[i].m_Background->SetVisible(false);
             m_Msgs[i].m_Background->SetZOrder(100);
             m_Msgs[i].m_Text = m_MsgLog->AddTextLabel((std::string("M_Cmd_Log_Text_") + std::to_string(i + 1)).c_str(),
-                                                      "", ExecuteBB::GAMEFONT_03, 0.02f, 0.9f - i * 0.025f, 0.95f, 0.025f);
+                                                      "", ExecuteBB::GAMEFONT_03, 0.25f, 0.9f - i * 0.025f, 0.55f, 0.025f);
             m_Msgs[i].m_Text->SetVisible(false);
             m_Msgs[i].m_Text->SetAlignment(ALIGN_LEFT);
             m_Msgs[i].m_Text->SetZOrder(110);
