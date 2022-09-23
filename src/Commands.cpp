@@ -150,16 +150,17 @@ void CommandSetSpawn::Execute(IBML *bml, const std::vector<std::string> &args) {
 
     if (bml->IsIngame() && m_CurLevel) {
         CK3dEntity *camRef = bml->Get3dEntityByName("Cam_OrientRef");
-        VxMatrix matrix = camRef->GetWorldMatrix();
-        VxVector4 pos = matrix[3];
-        m_CurLevel->GetElementValue(0, 3, &matrix);
-        matrix[3] = pos;
-        m_CurLevel->SetElementValue(0, 3, &matrix);
+        VxMatrix mat = camRef->GetWorldMatrix();
+        for (int i = 0; i < 3; i++) {
+            std::swap(mat[0][i], mat[2][i]);
+            mat[0][i] = -mat[0][i];
+        }
+        m_CurLevel->SetElementValue(0, 3, &mat);
         bml->SendIngameMessage(
             ("Set Spawn Point to (" +
-             std::to_string(matrix[3][0]) + ", " +
-             std::to_string(matrix[3][1]) + ", " +
-             std::to_string(matrix[3][2]) + ")").c_str());
+             std::to_string(mat[3][0]) + ", " +
+             std::to_string(mat[3][1]) + ", " +
+             std::to_string(mat[3][2]) + ")").c_str());
     }
 }
 
