@@ -15,6 +15,4 @@ bool IsVirtoolsFile(const char *file);
 bool IsTextureFile(const char *file);
 bool IsSoundFile(const char *file);
 
-std::string Text2Pinyin(const std::string &text);
-
 #endif // BML_UTIL_H
