@@ -1586,16 +1586,19 @@ void BMLMod::OnProcess_Travel() {
             vect = VxVector(0, -0.2f * m_DeltaTime, 0);
             m_TravelCam->Translate(&vect);
         }
-        VxVector delta;
-        m_InputHook->GetMouseRelativePosition(delta);
-        delta.x = std::fmod(delta.x, 20.0f);
-        delta.y = std::fmod(delta.y, 20.0f);
 
         int width = m_BML->GetRenderContext()->GetWidth();
+        int height = m_BML->GetRenderContext()->GetHeight();
+
+        VxVector delta;
+        m_InputHook->GetMouseRelativePosition(delta);
+        delta.x = std::fmod(delta.x, width);
+        delta.y = std::fmod(delta.y, height);
+
         vect = VxVector(0, 1, 0);
         m_TravelCam->Rotate(&vect, -delta.x * 2 / width);
         vect = VxVector(1, 0, 0);
-        m_TravelCam->Rotate(&vect, -delta.y * 2 / width, m_TravelCam);
+        m_TravelCam->Rotate(&vect, -delta.y * 2 / height, m_TravelCam);
     } else if (m_CamOn->GetBoolean()) {
         if (m_InputHook->IsKeyPressed(m_Cam45->GetKey())) {
             vect = VxVector(0, 1, 0);
