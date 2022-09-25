@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.12)
 
-project(BallanceModLoaderPlus VERSION 0.2.0)
+project(BallanceModLoaderPlus VERSION 0.2.1)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED NO)
