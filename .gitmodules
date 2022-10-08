@@ -4,6 +4,3 @@
 [submodule "deps/minhook"]
 	path = deps/minhook
 	url = https://github.com/TsudaKageyu/minhook
-[submodule "deps/imgui"]
-	path = deps/imgui
-	url = https://github.com/doyaGu/imgui.git
