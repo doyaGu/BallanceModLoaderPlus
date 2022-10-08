@@ -69,11 +69,11 @@ void BallSticky::OnEditScript_Gameplay_Ingame(CKBehavior* script) {
 	CKParameter* posRef[2] = { CreateParamObject(ballNav, "PosRef", CKPGUID_3DENTITY, m_BallRef[0]),
 		CreateParamObject(ballNav, "PosRef", CKPGUID_3DENTITY, m_BallRef[1]) };
 	for (int i = 0; i < 8; i++) {
-		keepActive[i] = CreateBB(ballNav, VT_KEEPACTIVE);
-		perSecond[i] = CreateBB(ballNav, VT_PERSECOND);
+		keepActive[i] = CreateBB(ballNav, VT_LOGICS_KEEPACTIVE);
+		perSecond[i] = CreateBB(ballNav, VT_LOGICS_PERSECOND);
 		perSecond[i]->GetInputParameter(0)->SetDirectSource(m_StickyForce[i % 2]);
 		CreateLink(ballNav, keepActive[i], perSecond[i], 1);
-		forces[i] = CreateBB(ballNav, TT_PHYSICSIMPLUSE, true);
+		forces[i] = CreateBB(ballNav, PHYSICS_RT_PHYSICSIMPULSE, true);
 		forces[i]->GetTargetParameter()->ShareSourceWith(oForce->GetTargetParameter());
 		forces[i]->GetInputParameter(0)->ShareSourceWith(oForce->GetInputParameter(0));
 		forces[i]->GetInputParameter(1)->SetDirectSource(posRef[i % 2]);
