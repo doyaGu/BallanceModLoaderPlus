@@ -1,6 +1,9 @@
 #ifndef BML_GUI_ELEMENT_H
 #define BML_GUI_ELEMENT_H
 
+#include "Vx2dVector.h"
+#include "VxColor.h"
+
 #include "Defines.h"
 
 namespace BGui {
