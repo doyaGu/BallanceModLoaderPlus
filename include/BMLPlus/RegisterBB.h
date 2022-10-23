@@ -71,36 +71,31 @@ struct BuildingBlockParameter {
 
 class BuildingBlock {
 public:
+    BuildingBlock() = default;
+
     explicit BuildingBlock(CKGUID guid) : m_Guid(guid) {}
 
     BuildingBlock(const BuildingBlock &rhs) = delete;
-
     BuildingBlock &operator=(const BuildingBlock &rhs) = delete;
 
     BuildingBlock(BuildingBlock &&rhs) = default;
-
     BuildingBlock &operator=(BuildingBlock &&rhs) = default;
 
     bool operator==(const BuildingBlock &rhs) const {
         return m_Guid == rhs.m_Guid;
     }
-
     bool operator!=(const BuildingBlock &rhs) const {
         return !(rhs == *this);
     }
-
     bool operator<(const BuildingBlock &rhs) const {
         return m_Guid < rhs.m_Guid;
     }
-
     bool operator>(const BuildingBlock &rhs) const {
         return rhs < *this;
     }
-
     bool operator<=(const BuildingBlock &rhs) const {
         return !(rhs < *this);
     }
-
     bool operator>=(const BuildingBlock &rhs) const {
         return !(*this < rhs);
     }
@@ -201,6 +196,11 @@ public:
 
     BuildingBlock &SetCategory(const char *category) {
         m_Category = category;
+        return *this;
+    }
+
+    BuildingBlock &SetGuid(CKGUID guid) {
+        m_Guid = guid;
         return *this;
     }
 
@@ -341,13 +341,14 @@ public:
         return *this;
     }
 
-    bool Load();
 
-    void Register(XObjectDeclarationArray *reg);
+    BML_EXPORT bool Load(CKGUID guid = CKGUID());
 
-    static CKObjectDeclaration *FillDeclaration(BuildingBlock &bb);
+    BML_EXPORT void Register(XObjectDeclarationArray *reg);
 
-    static CKBehaviorPrototype *CreatePrototype(BuildingBlock &bb);
+    BML_EXPORT static CKObjectDeclaration *FillDeclaration(BuildingBlock &bb);
+
+    BML_EXPORT static CKBehaviorPrototype *CreatePrototype(BuildingBlock &bb);
 
 protected:
     std::string m_Name;
@@ -408,29 +409,6 @@ public:
 protected:
     std::vector<int> m_OutputPos;
 };
-
-BML_EXPORT std::unique_ptr<BuildingBlock> LoadBuildingBlock(CKGUID guid);
-
-BML_EXPORT std::unique_ptr<BuildingBlock> CreateBuildingBlock(
-    const char *name,
-    const char *desc,
-    const char *category,
-    CKGUID guid,
-    CKGUID authorGuid,
-    const char *author,
-    CKDWORD version,
-    const std::vector<std::string> &inputs,
-    const std::vector<std::string> &outputs,
-    const std::vector<BuildingBlockParameter> &inParams,
-    const std::vector<BuildingBlockParameter> &outParams,
-    const std::vector<BuildingBlockParameter> &localParams,
-    const std::vector<BuildingBlockParameter> &settings,
-    CKBEHAVIORFCT function,
-    CKBEHAVIORCALLBACKFCT callback = nullptr,
-    CKDWORD callbackMask = CKCB_BEHAVIORALL,
-    void *callbackParam = nullptr,
-    CK_BEHAVIORPROTOTYPE_FLAGS flags = CK_BEHAVIORPROTOTYPE_NORMAL,
-    CK_BEHAVIOR_FLAGS behaviorFlags = CKBEHAVIOR_NONE);
 
 BML_EXPORT std::unique_ptr<BuildingBlockHook> CreateBuildingBlockHook(const char *name, const char *desc, CKGUID guid, const BehaviorFunction &callback);
 
