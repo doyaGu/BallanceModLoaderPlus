@@ -174,10 +174,17 @@ CKBehaviorPrototype *BuildingBlock::CreatePrototype(BuildingBlock &bb) {
     return proto;
 }
 
-bool BuildingBlock::Load() {
-    CKObjectDeclaration *od = CKGetObjectDeclarationFromGuid(m_Guid);
+bool BuildingBlock::Load(CKGUID guid) {
+    if (guid == CKGUID())
+        guid = m_Guid;
+
+    CKObjectDeclaration *od = CKGetObjectDeclarationFromGuid(guid);
     if (!od) return false;
 
+    CKBehaviorPrototype *proto = CKGetPrototypeFromGuid(guid);
+    if (!proto) return false;
+
+    m_Guid = guid;
     m_Name = od->GetName();
     m_Description = od->GetDescription();
     m_Category = od->GetCategory();
@@ -188,9 +195,6 @@ bool BuildingBlock::Load() {
 
     for (int i = 0; i < od->GetManagerNeededCount(); ++i)
         AddManagerNeeded(od->GetManagerNeeded(i));
-
-    CKBehaviorPrototype *proto = CKGetPrototypeFromGuid(m_Guid);
-    if (!proto) return false;
 
     m_PrototypeName = proto->GetName();
 
@@ -214,8 +218,7 @@ bool BuildingBlock::Load() {
     for (int i = 0; i < proto->GetLocalParameterCount(); ++i) {
         if (localParams[i]->Type == CKPARAMETER_LOCAL)
             AddLocalParam(localParams[i]->Name, localParams[i]->Guid, localParams[i]->DefaultValueString);
-        else
-        if (localParams[i]->Type == CKPARAMETER_SETTING)
+        else if (localParams[i]->Type == CKPARAMETER_SETTING)
             AddSetting(localParams[i]->Name, localParams[i]->Guid, localParams[i]->DefaultValueString);
     }
 
