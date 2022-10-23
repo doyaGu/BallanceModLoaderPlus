@@ -35,7 +35,7 @@ void GuiList::Init(int size, int maxsize) {
         if (m_Size > 0 && m_GuiList[0] != nullptr) {
             button->SetCallback([this, i]() {
                 BGui::Gui *gui = m_GuiList[m_MaxSize * m_CurPage + i];
-                ModLoader::GetInstance().m_BMLMod->ShowGui(gui);
+                ModLoader::GetInstance().GetBMLMod()->ShowGui(gui);
             });
         }
         m_Buttons.push_back(button);
@@ -55,7 +55,7 @@ void GuiList::SetPage(int page) {
 }
 
 void GuiList::Exit() {
-    ModLoader::GetInstance().m_BMLMod->ShowGui(GetParentGui());
+    ModLoader::GetInstance().GetBMLMod()->ShowGui(GetParentGui());
 }
 
 void GuiList::SetVisible(bool visible) {
@@ -176,7 +176,7 @@ BGui::Gui *GuiModMenu::CreateSubGui(int index) {
 }
 
 BGui::Gui *GuiModMenu::GetParentGui() {
-    return ModLoader::GetInstance().m_BMLMod->m_ModOption;
+    return ModLoader::GetInstance().GetBMLMod()->m_ModOption;
 }
 
 GuiCustomMap::GuiCustomMap(BMLMod *mod) : GuiList(), m_BMLMod(mod) {
@@ -524,23 +524,7 @@ void GuiModCategory::SaveAndExit() {
 }
 
 void GuiModCategory::Exit() {
-    ModLoader::GetInstance().m_BMLMod->ShowGui(m_Parent);
-}
-
-void CommandTravel::Execute(IBML *bml, const std::vector<std::string> &args) {
-    if (bml->IsPlaying()) {
-        if (m_BMLMod->IsInTravelCam()) {
-            m_BMLMod->ExitTravelCam();
-            m_BMLMod->AddIngameMessage("Exit Travel Camera");
-            bml->GetGroupByName("HUD_sprites")->Show();
-            bml->GetGroupByName("LifeBalls")->Show();
-        } else {
-            m_BMLMod->EnterTravelCam();
-            m_BMLMod->AddIngameMessage("Enter Travel Camera");
-            bml->GetGroupByName("HUD_sprites")->Show(CKHIDE);
-            bml->GetGroupByName("LifeBalls")->Show(CKHIDE);
-        }
-    }
+    ModLoader::GetInstance().GetBMLMod()->ShowGui(m_Parent);
 }
 
 void BMLMod::OnLoad() {
@@ -852,7 +836,7 @@ void BMLMod::OnCheatEnabled(bool enable) {
     } else {
         SetParamValue(m_BallForce[0], CKKEYBOARD(0));
         SetParamValue(m_BallForce[1], CKKEYBOARD(0));
-        ModLoader::GetInstance().ExecuteCommand("speed 1", true);
+        ModLoader::GetInstance().ExecuteCommand("speed 1");
     }
 }
 
@@ -1562,28 +1546,40 @@ void BMLMod::OnProcess_Travel() {
     VxQuaternion quat;
 
     if (IsInTravelCam()) {
+        if (m_InputHook->IsKeyDown(CKKEY_1)) {
+            m_TravelSpeed = 0.2f;
+        } else if (m_InputHook->IsKeyDown(CKKEY_2)) {
+            m_TravelSpeed = 0.4f;
+        } else if (m_InputHook->IsKeyDown(CKKEY_3)) {
+            m_TravelSpeed = 0.8f;
+        } else if (m_InputHook->IsKeyDown(CKKEY_4)) {
+            m_TravelSpeed = 1.6f;
+        } else if (m_InputHook->IsKeyDown(CKKEY_5)) {
+            m_TravelSpeed = 2.4f;
+        }
+
         if (m_InputHook->IsKeyDown(CKKEY_W)) {
-            vect = VxVector(0, 0, 0.2f * m_DeltaTime);
+            vect = VxVector(0, 0, m_TravelSpeed * m_DeltaTime);
             m_TravelCam->Translate(&vect, m_TravelCam);
         }
         if (m_InputHook->IsKeyDown(CKKEY_S)) {
-            vect = VxVector(0, 0, -0.2f * m_DeltaTime);
+            vect = VxVector(0, 0, -m_TravelSpeed * m_DeltaTime);
             m_TravelCam->Translate(&vect, m_TravelCam);
         }
         if (m_InputHook->IsKeyDown(CKKEY_A)) {
-            vect = VxVector(-0.2f * m_DeltaTime, 0, 0);
+            vect = VxVector(-m_TravelSpeed * m_DeltaTime, 0, 0);
             m_TravelCam->Translate(&vect, m_TravelCam);
         }
         if (m_InputHook->IsKeyDown(CKKEY_D)) {
-            vect = VxVector(0.2f * m_DeltaTime, 0, 0);
+            vect = VxVector(m_TravelSpeed * m_DeltaTime, 0, 0);
             m_TravelCam->Translate(&vect, m_TravelCam);
         }
         if (m_InputHook->IsKeyDown(CKKEY_SPACE)) {
-            vect = VxVector(0, 0.2f * m_DeltaTime, 0);
+            vect = VxVector(0, m_TravelSpeed * m_DeltaTime, 0);
             m_TravelCam->Translate(&vect);
         }
         if (m_InputHook->IsKeyDown(CKKEY_LSHIFT)) {
-            vect = VxVector(0, -0.2f * m_DeltaTime, 0);
+            vect = VxVector(0, -m_TravelSpeed * m_DeltaTime, 0);
             m_TravelCam->Translate(&vect);
         }
 
@@ -1592,8 +1588,8 @@ void BMLMod::OnProcess_Travel() {
 
         VxVector delta;
         m_InputHook->GetMouseRelativePosition(delta);
-        delta.x = std::fmod(delta.x, width);
-        delta.y = std::fmod(delta.y, height);
+        delta.x = static_cast<float>(std::fmod(delta.x, width));
+        delta.y = static_cast<float>(std::fmod(delta.y, height));
 
         vect = VxVector(0, 1, 0);
         m_TravelCam->Rotate(&vect, -delta.x * 2 / width);

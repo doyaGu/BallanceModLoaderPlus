@@ -20,8 +20,10 @@ void CommandBML::Execute(IBML *bml, const std::vector<std::string> &args) {
 
 void CommandHelp::Execute(IBML *bml, const std::vector<std::string> &args) {
     auto &loader = ModLoader::GetInstance();
-    bml->SendIngameMessage((std::to_string(loader.m_Commands.size()) + " Existing Commands:").data());
-    for (ICommand *cmd: loader.m_Commands) {
+    const int cmdCount = loader.GetCommandCount();
+    bml->SendIngameMessage((std::to_string(cmdCount) + " Existing Commands:").data());
+    for (int i = 0; i < cmdCount; i++) {
+        ICommand *cmd = loader.GetCommand(i);
         std::string str = std::string("  /") + cmd->GetName();
         if (!cmd->GetAlias().empty())
             str += "(" + cmd->GetAlias() + ")";
@@ -247,8 +249,9 @@ void CommandSector::ResetBall(IBML *bml, CKContext *ctx) {
         if (curBall) {
             ExecuteBB::Unphysicalize(curBall);
 
-            ModLoader::GetInstance().m_BMLMod->m_DynamicPos->ActivateInput(1);
-            ModLoader::GetInstance().m_BMLMod->m_DynamicPos->Activate();
+            auto *bmlMod = ModLoader::GetInstance().GetBMLMod();
+            bmlMod->m_DynamicPos->ActivateInput(1);
+            bmlMod->m_DynamicPos->Activate();
 
             bml->AddTimer(1ul, [this, bml, curBall]() {
                 VxMatrix matrix;
@@ -260,12 +263,12 @@ void CommandSector::ResetBall(IBML *bml, CKContext *ctx) {
                 camMF->SetWorldMatrix(matrix);
 
                 bml->AddTimer(1ul, []() {
-                    ModLoader::GetInstance().m_BMLMod->m_DynamicPos->ActivateInput(0);
-                    ModLoader::GetInstance().m_BMLMod->m_DynamicPos->Activate();
-
-                    ModLoader::GetInstance().m_BMLMod->m_PhysicsNewBall->ActivateInput(0);
-                    ModLoader::GetInstance().m_BMLMod->m_PhysicsNewBall->Activate();
-                    ModLoader::GetInstance().m_BMLMod->m_PhysicsNewBall->GetParent()->Activate();
+                    auto *bmlMod = ModLoader::GetInstance().GetBMLMod();
+                    bmlMod->m_DynamicPos->ActivateInput(0);
+                    bmlMod->m_DynamicPos->Activate();
+                    bmlMod->m_PhysicsNewBall->ActivateInput(0);
+                    bmlMod->m_PhysicsNewBall->Activate();
+                    bmlMod->m_PhysicsNewBall->GetParent()->Activate();
                 });
             });
         }
@@ -279,5 +282,21 @@ void CommandWin::Execute(IBML *bml, const std::vector<std::string> &args) {
 
         mm->SendMessageSingle(levelWin, bml->GetGroupByName("All_Gameplay"));
         bml->SendIngameMessage("Level Finished");
+    }
+}
+
+void CommandTravel::Execute(IBML *bml, const std::vector<std::string> &args) {
+    if (bml->IsPlaying()) {
+        if (m_BMLMod->IsInTravelCam()) {
+            m_BMLMod->ExitTravelCam();
+            m_BMLMod->AddIngameMessage("Exit Travel Camera");
+            bml->GetGroupByName("HUD_sprites")->Show();
+            bml->GetGroupByName("LifeBalls")->Show();
+        } else {
+            m_BMLMod->EnterTravelCam();
+            m_BMLMod->AddIngameMessage("Enter Travel Camera");
+            bml->GetGroupByName("HUD_sprites")->Show(CKHIDE);
+            bml->GetGroupByName("LifeBalls")->Show(CKHIDE);
+        }
     }
 }
