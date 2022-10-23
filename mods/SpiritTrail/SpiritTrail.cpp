@@ -12,25 +12,32 @@ void BMLExit(IMod *mod) {
 }
 
 std::pair<char *, int> ReadDataFromFile(const char *filename) {
+    if (!filename) return {nullptr, 0};
     FILE *fp = fopen(filename, "rb");
+    if (!fp) return {nullptr, 0};
+
     fseek(fp, 0, SEEK_END);
     int size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
+
     char *buffer = new char[size];
     fread(buffer, size, 1, fp);
     fclose(fp);
+
     return {buffer, size};
 }
 
 std::string GetFileHash(const char *filename) {
+    if (!filename) return "";
     auto data = ReadDataFromFile(filename);
+    if (!data.first) return "";
 
     std::string res;
     int segm[] = {0, data.second / 4, data.second / 2, data.second * 3 / 4, data.second};
     for (int i = 0; i < 4; i++) {
         char hash[10];
         CKDWORD crc = CKComputeDataCRC(data.first + segm[i], segm[i + 1] - segm[i]);
-        sprintf(hash, "%08x", crc);
+        sprintf(hash, "%08lx", crc);
         res += hash;
     }
 
@@ -39,13 +46,20 @@ std::string GetFileHash(const char *filename) {
 }
 
 void WriteDataToFile(char *data, int size, const char *filename) {
+    if (!data || size == 0 || !filename)
+        return;
+
     FILE *fp = fopen(filename, "wb");
     fwrite(data, size, 1, fp);
     fclose(fp);
 }
 
 std::pair<char *, int> UncompressDataFromFile(const char *filename) {
+    if (!filename) return {nullptr, 0};
+
     FILE *fp = fopen(filename, "rb");
+    if (!fp) return {nullptr, 0};
+
     fseek(fp, 0, SEEK_END);
     int nsize = ftell(fp) - 4;
     fseek(fp, 0, SEEK_SET);
@@ -62,10 +76,15 @@ std::pair<char *, int> UncompressDataFromFile(const char *filename) {
 }
 
 void CompressDataToFile(char *data, int size, const char *filename) {
+    if (!data || size == 0 || !filename)
+        return;
+
     int nsize;
     char *res = CKPackData(data, size, nsize, 9);
 
     FILE *fp = fopen(filename, "wb");
+    if (!fp) return;
+
     fwrite(&size, 4, 1, fp);
     fwrite(res, nsize, 1, fp);
     fclose(fp);
@@ -117,7 +136,7 @@ void SpiritTrail::OnLoadObject(const char *filename, CKBOOL isMap, const char *m
             dep[CKCID_OBJECT] = CK_DEPENDENCIES_COPY_OBJECT_NAME | CK_DEPENDENCIES_COPY_OBJECT_UNIQUENAME;
             dep[CKCID_MESH] = CK_DEPENDENCIES_COPY_MESH_MATERIAL;
             dep[CKCID_3DENTITY] = CK_DEPENDENCIES_COPY_3DENTITY_MESH;
-            ball.obj = (CK3dObject *)m_BML->GetCKContext()->CopyObject(ball.obj, &dep, "_Spirit");
+            ball.obj = (CK3dObject *) m_BML->GetCKContext()->CopyObject(ball.obj, &dep, "_Spirit");
             for (int j = 0; j < ball.obj->GetMeshCount(); j++) {
                 CKMesh *mesh = ball.obj->GetMesh(j);
                 for (int k = 0; k < mesh->GetMaterialCount(); k++) {
@@ -182,7 +201,7 @@ void SpiritTrail::OnProcess() {
 
     if (m_IsPlaying && !m_PlayPaused) {
         m_PlayTimer += m_BML->GetTimeManager()->GetLastDeltaTime();
-        m_PlayTimer = (std::min)(m_PlayTimer, 1000.0f);
+        m_PlayTimer = std::min(m_PlayTimer, 1000.0f);
 
         while (m_PlayTimer > 0) {
             m_PlayTimer -= delta;
@@ -212,7 +231,9 @@ void SpiritTrail::OnProcess() {
                 ball->SetPosition(&position);
                 ball->SetQuaternion(&rotation);
             }
-        } else StopPlaying();
+        } else {
+            StopPlaying();
+        }
     }
 }
 
