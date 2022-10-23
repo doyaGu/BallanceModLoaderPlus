@@ -165,21 +165,6 @@ private:
     Property *m_CurComment = nullptr;
 };
 
-class CommandTravel : public ICommand {
-public:
-    explicit CommandTravel(class BMLMod *mod) : m_BMLMod(mod) {};
-
-    std::string GetName() override { return "travel"; };
-    std::string GetAlias() override { return ""; };
-    std::string GetDescription() override { return "Switch to First-Person Camera."; };
-    bool IsCheat() override { return false; };
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; };
-
-private:
-    BMLMod *m_BMLMod;
-};
-
 class BMLMod : public IMod {
     friend class CommandClear;
     friend class CommandSector;
@@ -340,7 +325,7 @@ private:
     std::vector<std::pair<int, CK3dEntity *>> m_TempBalls;
     IProperty *m_MoveKeys[6] = {};
 
-    IProperty *m_FPSKeys[6] = {};
+    float m_TravelSpeed = 0.2f;
     CKCamera *m_TravelCam = nullptr;
 
     GuiCustomMap *m_MapsGui = nullptr;
