@@ -36,30 +36,24 @@ int Physicalize(const CKBehaviorContext &behcontext) {
         beh->GetLocalParameterValue(2, &concaveCnt);
 
         CKMesh **convexMesh = (convexCnt > 0) ? new CKMesh *[convexCnt] : nullptr;
-        VxVector *ballCenter = (ballCnt > 0) ? new VxVector[ballCnt] : nullptr;;
+        VxVector *ballCenter = (ballCnt > 0) ? new VxVector[ballCnt] : nullptr;
         float *ballRadius = (ballCnt > 0) ? new float[ballCnt] : nullptr;
         CKMesh **concaveMesh = (concaveCnt > 0) ? new CKMesh *[concaveCnt] : nullptr;
 
         int paramPos = 11;
-        if (convexCnt > 0) {
-            for (int i = 0; i < convexCnt; i++)
-                convexMesh[i] = (CKMesh *) beh->GetInputParameterObject(paramPos + i);
-            paramPos += convexCnt;
-        }
+        for (int i = 0; i < convexCnt; i++)
+            convexMesh[i] = (CKMesh *) beh->GetInputParameterReadDataPtr(paramPos + i);
+        paramPos += convexCnt;
 
-        if (ballCnt > 0) {
-            for (int i = 0; i < ballCnt; i++) {
-                beh->GetInputParameterValue(paramPos + 2 * i, ballCenter + i);
-                beh->GetInputParameterValue(paramPos + 2 * i + 1, ballRadius + i);
-            }
-            paramPos += ballCnt * 2;
+        for (int i = 0; i < ballCnt; i++) {
+            beh->GetInputParameterValue(paramPos + 2 * i, &ballCenter[i]);
+            beh->GetInputParameterValue(paramPos + 2 * i + 1, &ballRadius[i]);
         }
+        paramPos += ballCnt * 2;
 
-        if (concaveCnt > 0) {
-            for (int i = 0; i < concaveCnt; i++)
-                concaveMesh[i] = (CKMesh *) beh->GetInputParameterObject(paramPos + i);
-            paramPos += concaveCnt;
-        }
+        for (int i = 0; i < concaveCnt; i++)
+            concaveMesh[i] = (CKMesh *) beh->GetInputParameterReadDataPtr(paramPos + i);
+        paramPos += concaveCnt;
 
         ModLoader::GetInstance().BroadcastCallback(&IMod::OnPhysicalize, target,
                                                    fixed, friction, elasticity, mass,
@@ -68,10 +62,10 @@ int Physicalize(const CKBehaviorContext &behcontext) {
                                                    collSurface, massCenter, convexCnt,
                                                    convexMesh, ballCnt, ballCenter,
                                                    ballRadius, concaveCnt, concaveMesh);
-        if (convexMesh) delete[] convexMesh;
-        if (ballCenter) delete[] ballCenter;
-        if (ballRadius) delete[] ballRadius;
-        if (concaveMesh) delete[] concaveMesh;
+        delete[] convexMesh;
+        delete[] ballCenter;
+        delete[] ballRadius;
+        delete[] concaveMesh;
     } else {
         ModLoader::GetInstance().BroadcastCallback(&IMod::OnUnphysicalize, target);
     }
@@ -84,5 +78,12 @@ bool HookPhysicalize() {
     if (!physicalizeProto) return false;
     if (!g_Physicalize) g_Physicalize = physicalizeProto->GetFunction();
     physicalizeProto->SetFunction(&Physicalize);
+    return true;
+}
+
+bool UnhookPhysicalize() {
+    CKBehaviorPrototype *physicalizeProto = CKGetPrototypeFromGuid(PHYSICS_RT_PHYSICALIZE);
+    if (!physicalizeProto) return false;
+    physicalizeProto->SetFunction(g_Physicalize);
     return true;
 }

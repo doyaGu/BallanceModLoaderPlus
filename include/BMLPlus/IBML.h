@@ -90,7 +90,9 @@ public:
 
     virtual void SkipRenderForNextTick() = 0;
 
-    virtual void ExecuteCommand(const char *cmd, bool force = false) = 0;
+    virtual int GetCommandCount() const = 0;
+    virtual ICommand *GetCommand(int index) const = 0;
+    virtual ICommand *FindCommand(const char *name) const = 0;
 };
 
 
