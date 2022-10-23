@@ -1,13 +1,8 @@
 #include "TASSupport.h"
 
-#include <sys/stat.h>
-#include <stdio.h>
+#include <cstdio>
 #include <ctime>
-#include <thread>
-
-#include <Windows.h>
-
-#include "MinHook.h"
+#include <sys/stat.h>
 
 TASSupport *g_mod = nullptr;
 
@@ -21,24 +16,36 @@ void BMLExit(IMod *mod) {
 }
 
 std::pair<char *, int> ReadDataFromFile(const char *filename) {
+    if (!filename) return {nullptr, 0};
     FILE *fp = fopen(filename, "rb");
+    if (!fp) return {nullptr, 0};
+
     fseek(fp, 0, SEEK_END);
     int size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
+
     char *buffer = new char[size];
     fread(buffer, size, 1, fp);
     fclose(fp);
+
     return {buffer, size};
 }
 
 void WriteDataToFile(char *data, int size, const char *filename) {
+    if (!data || size == 0 || !filename)
+        return;
+
     FILE *fp = fopen(filename, "wb");
     fwrite(data, size, 1, fp);
     fclose(fp);
 }
 
 std::pair<char *, int> UncompressDataFromFile(const char *filename) {
+    if (!filename) return {nullptr, 0};
+
     FILE *fp = fopen(filename, "rb");
+    if (!fp) return {nullptr, 0};
+
     fseek(fp, 0, SEEK_END);
     int nsize = ftell(fp) - 4;
     fseek(fp, 0, SEEK_SET);
@@ -55,10 +62,15 @@ std::pair<char *, int> UncompressDataFromFile(const char *filename) {
 }
 
 void CompressDataToFile(char *data, int size, const char *filename) {
+    if (!data || size == 0 || !filename)
+        return;
+
     int nsize;
     char *res = CKPackData(data, size, nsize, 9);
 
     FILE *fp = fopen(filename, "wb");
+    if (!fp) return;
+
     fwrite(&size, 4, 1, fp);
     fwrite(res, nsize, 1, fp);
     fclose(fp);
@@ -66,151 +78,7 @@ void CompressDataToFile(char *data, int size, const char *filename) {
     CKDeletePointer(res);
 }
 
-//BOOL WINAPI HookQueryPerformanceCounter(LARGE_INTEGER* lpPerformanceCount) {
-//	lpPerformanceCount->QuadPart = 0;
-//	return true;
-//}
-//
-//auto hookCount = &HookQueryPerformanceCounter;
-//
-//clock_t hook_clock(void) {
-//	return 0;
-//}
-//
-//auto hookClock = &hook_clock;
-//
-//time_t hook_time(time_t* const _Time) {
-//	if (_Time) *_Time = 0;
-//	return 0;
-//}
-//
-//auto hookTime = &hook_time;
-
-#ifdef _DEBUG
-
-void TASSupport::OnPhysicalize(CK3dEntity *target, CKBOOL fixed, float friction, float elasticity, float mass,
-                               const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
-                               float linearDamp, float rotDamp, const char *collSurface, VxVector massCenter,
-                               int convexCnt, CKMesh **convexMesh, int ballCnt, VxVector *ballCenter, float *ballRadius,
-                               int concaveCnt, CKMesh **concaveMesh) {
-
-    //CK3dEntity* curBall = static_cast<CK3dEntity*>(m_CurLevel->GetElementObject(0, 1));
-    //if (curBall == target) {
-    CKSTRING name = target->GetName();
-    VxVector pos;
-    reinterpret_cast<CK3dEntity *>(target)->GetPosition(&pos);
-    GetLogger()->Info("Physicalize %s %f %f %f", name, pos.x, pos.y, pos.z);
-    //}
-}
-
-void TASSupport::OnUnphysicalize(CK3dEntity *target) {
-
-    //CK3dEntity* curBall = static_cast<CK3dEntity*>(m_CurLevel->GetElementObject(0, 1));
-    //if (curBall == target) {
-    CKSTRING name = target->GetName();
-    VxVector pos;
-    reinterpret_cast<CK3dEntity *>(target)->GetPosition(&pos);
-    GetLogger()->Info("Unphysicalize %s %f %f %f", name, pos.x, pos.y, pos.z);
-    //}
-}
-
-#endif
-
-class HookInputManager : public CKInputManager {
-public:
-    typedef CKERROR(HookInputManager::* PreProcessFunc)();
-
-    static PreProcessFunc m_preProcess;
-
-    CKERROR HookPreProcess() {
-        CKERROR ret = (this->*m_preProcess)();
-
-        if (g_mod->m_Playing) {
-            if (g_mod->m_CurFrame < g_mod->m_RecordData.size()) {
-                KeyState state = g_mod->m_RecordData[g_mod->m_CurFrame++].keyState;
-                CKBYTE *stateBuf = GetKeyboardState();
-                stateBuf[g_mod->m_KeyUp] = state.key_up;
-                stateBuf[g_mod->m_KeyDown] = state.key_down;
-                stateBuf[g_mod->m_KeyLeft] = state.key_left;
-                stateBuf[g_mod->m_KeyRight] = state.key_right;
-                stateBuf[CKKEY_Q] = state.key_q;
-                stateBuf[g_mod->m_KeyShift] = state.key_shift;
-                stateBuf[g_mod->m_KeySpace] = state.key_space;
-                stateBuf[CKKEY_ESCAPE] = state.key_esc;
-            } else {
-                g_mod->OnStop();
-            }
-        }
-
-        if (g_mod->m_Recording) {
-            KeyState state;
-            CKBYTE *stateBuf = GetKeyboardState();
-            state.key_up = stateBuf[g_mod->m_KeyUp];
-            state.key_down = stateBuf[g_mod->m_KeyDown];
-            state.key_left = stateBuf[g_mod->m_KeyLeft];
-            state.key_right = stateBuf[g_mod->m_KeyRight];
-            state.key_q = stateBuf[CKKEY_Q];
-            state.key_shift = stateBuf[g_mod->m_KeyShift];
-            state.key_space = stateBuf[g_mod->m_KeySpace];
-            state.key_esc = stateBuf[CKKEY_ESCAPE];
-            g_mod->m_RecordData.rbegin()->keyState = state;
-        }
-
-        return ret;
-    }
-};
-
-HookInputManager::PreProcessFunc HookInputManager::m_preProcess = &HookInputManager::HookPreProcess;
-
-class HookTimeManager : public CKTimeManager {
-public:
-    typedef CKERROR(HookTimeManager::* PreProcessFunc)();
-
-    //static CKDWORD tickCount;
-    static PreProcessFunc m_preProcess;
-
-    CKERROR HookPreProcess() {
-        CKERROR ret = (this->*m_preProcess)();
-
-        //tickCount++;
-        if (g_mod->m_Recording) {
-            g_mod->m_RecordData.emplace_back(GetLastDeltaTime());
-        }
-
-        if (g_mod->m_Playing) {
-            if (g_mod->m_CurFrame < g_mod->m_RecordData.size())
-                SetLastDeltaTime(g_mod->m_RecordData[g_mod->m_CurFrame].deltaTime);
-            else g_mod->OnStop();
-        }
-
-        return ret;
-    }
-};
-
-//CKDWORD HookTimeManager::tickCount = 0;
-HookTimeManager::PreProcessFunc HookTimeManager::m_preProcess = &HookTimeManager::HookPreProcess;
-
-//void WriteMemory(LPVOID dest, LPVOID src, int len) {
-//	DWORD oldFlag;
-//	VirtualProtect(dest, len, PAGE_EXECUTE_READWRITE, &oldFlag);
-//	memcpy(dest, src, len);
-//	VirtualProtect(dest, len, oldFlag, &oldFlag);
-//}
-
 void TASSupport::OnLoad() {
-    //void* countHook = (reinterpret_cast<CKBYTE*>(LoadLibrary("Physics_RT.dll")) + 0x630E8);
-    //WriteMemory(countHook, &hookCount, sizeof(&hookCount));
-
-    //void* clockHook = (reinterpret_cast<CKBYTE*>(LoadLibrary("Physics_RT.dll")) + 0x63154);
-    //WriteMemory(clockHook, &hookClock, sizeof(&hookClock));
-
-    //void* timeHook = (reinterpret_cast<CKBYTE*>(LoadLibrary("Physics_RT.dll")) + 0x63190);
-    //WriteMemory(timeHook, &hookTime, sizeof(&hookTime));
-
-    //CKBYTE randcode[] = { 0x33, 0xC0, 0x90, 0x90, 0x90, 0x90, 0x90 };
-    //void* randHook = (reinterpret_cast<CKBYTE*>(LoadLibrary("Physics_RT.dll")) + 0x52f95);
-    //WriteMemory(randHook, randcode, sizeof(randcode));
-
     VxMakeDirectory("..\\ModLoader\\TASRecords\\");
 
     GetConfig()->SetCategoryComment("Misc", "Miscellaneous");
@@ -255,24 +123,6 @@ void TASSupport::OnLoad() {
     m_LoadLevel->SetDefaultInteger(0);
 
     if (m_Enabled->GetBoolean()) {
-        MH_Initialize();
-
-        if (MH_CreateHook(reinterpret_cast<LPVOID>(0x24017F8C),
-                          *reinterpret_cast<LPVOID *>(&HookTimeManager::m_preProcess),
-                          reinterpret_cast<LPVOID *>(&HookTimeManager::m_preProcess)) != MH_OK
-            || MH_EnableHook(reinterpret_cast<LPVOID>(0x24017F8C)) != MH_OK) {
-            GetLogger()->Error("Create Time Manager Hook Failed");
-            return;
-        }
-
-        if (MH_CreateHook(reinterpret_cast<LPVOID>(0x24AC1C30),
-                          *reinterpret_cast<LPVOID *>(&HookInputManager::m_preProcess),
-                          reinterpret_cast<LPVOID *>(&HookInputManager::m_preProcess)) != MH_OK
-            || MH_EnableHook(reinterpret_cast<LPVOID>(0x24AC1C30)) != MH_OK) {
-            GetLogger()->Error("Create Input Manager Hook Failed");
-            return;
-        }
-
         m_TASEntryGui = new BGui::Gui();
         m_TASEntry = m_TASEntryGui->AddSmallButton("M_Enter_TAS_Records", "TAS", 0.88f, 0.61f, [this]() {
             m_ExitStart->ActivateInput(0);
@@ -280,7 +130,10 @@ void TASSupport::OnLoad() {
             m_TASListGui->SetVisible(true);
         });
         m_TASEntry->SetActive(false);
+
         m_TASListGui = new GuiTASList();
+        m_TASListGui->SetVisible(false);
+        m_TASListGui->Init(0, 12);
 
         m_KeysGui = new BGui::Gui();
         m_KeysGui->AddPanel("M_TAS_Keys_Bg", VxColor(0, 0, 0, 180), 0.28f, 0.74f, 0.45f, 0.12f);
@@ -309,7 +162,9 @@ void TASSupport::OnLoad() {
 
 void TASSupport::OnUnload() {
     if (m_Enabled->GetBoolean()) {
-        MH_Uninitialize();
+        delete m_KeysGui;
+        delete m_TASListGui;
+        delete m_TASEntryGui;
     }
 }
 
@@ -351,88 +206,58 @@ void TASSupport::OnLoadScript(const char *filename, CKBehavior *script) {
     }
 }
 
+void TASSupport::OnPreProcess() {
+    if (m_Enabled->GetBoolean()) {
+        InputHook *inputHook = m_BML->GetInputManager();
+
+        if (m_Playing) {
+            if (m_CurFrame < m_RecordData.size()) {
+                KeyState state = m_RecordData[m_CurFrame++].keyState;
+                CKBYTE *stateBuf = inputHook->GetKeyboardState();
+                stateBuf[m_KeyUp] = state.key_up;
+                stateBuf[m_KeyDown] = state.key_down;
+                stateBuf[m_KeyLeft] = state.key_left;
+                stateBuf[m_KeyRight] = state.key_right;
+                stateBuf[CKKEY_Q] = state.key_q;
+                stateBuf[m_KeyShift] = state.key_shift;
+                stateBuf[m_KeySpace] = state.key_space;
+                stateBuf[CKKEY_ESCAPE] = state.key_esc;
+            } else {
+                OnStop();
+            }
+        }
+
+        if (m_Recording) {
+            KeyState state;
+            CKBYTE *stateBuf = inputHook->GetKeyboardState();
+            state.key_up = stateBuf[m_KeyUp];
+            state.key_down = stateBuf[m_KeyDown];
+            state.key_left = stateBuf[m_KeyLeft];
+            state.key_right = stateBuf[m_KeyRight];
+            state.key_q = stateBuf[CKKEY_Q];
+            state.key_shift = stateBuf[m_KeyShift];
+            state.key_space = stateBuf[m_KeySpace];
+            state.key_esc = stateBuf[CKKEY_ESCAPE];
+            m_RecordData.rbegin()->keyState = state;
+        }
+
+        CKTimeManager *timeManager = m_BML->GetTimeManager();
+
+        // tickCount++;
+        if (m_Recording) {
+            m_RecordData.emplace_back(timeManager->GetLastDeltaTime());
+        }
+
+        if (m_Playing) {
+            if (m_CurFrame < m_RecordData.size())
+                timeManager->SetLastDeltaTime(m_RecordData[m_CurFrame].deltaTime);
+            else
+                OnStop();
+        }
+    }
+}
+
 void TASSupport::OnProcess() {
-    if (m_BML->IsPlaying()) {
-        /*CK3dEntity* curBall = static_cast<CK3dEntity*>(m_CurLevel->GetElementObject(0, 1));
-        VxVector pos;
-        curBall->GetPosition(&pos);
-        GetLogger()->Info("%f %f %f %x %x %x", pos.x, pos.y, pos.z, *(DWORD*)&pos.x, *(DWORD*)&pos.y, *(DWORD*)&pos.z);
-
-        CKBaseManager* physicsManager = m_BML->GetCKContext()->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
-        int objCnt = *reinterpret_cast<short*>(reinterpret_cast<CKBYTE*>(physicsManager) + 0x2A);
-        void** objList = *reinterpret_cast<void***>(reinterpret_cast<CKBYTE*>(physicsManager) + 0x2C);
-        for (int i = 0; i < objCnt; i++) {
-            void* obj = objList[i];
-            CKBYTE* posptr = *reinterpret_cast<CKBYTE**>(reinterpret_cast<CKBYTE*>(obj) + 0xA4);
-            double* pos = reinterpret_cast<double*>(posptr + 0xB8);
-            float* speed = reinterpret_cast<float*>(posptr + 0xD8);
-            GetLogger()->Info("Physics Process %lf %lf %lf %f %f %f", pos[0], pos[1], pos[2], speed[0], speed[1], speed[2]);
-        }*/
-
-        //GetLogger()->Info("Tick %d", HookTimeManager::tickCount);
-        //VxVector pos;
-        //CK3dEntity* stoneball = m_BML->Get3dObjectByName("P_Ball_Stone_MF");
-        //stoneball->GetPosition(&pos);
-        //GetLogger()->Info("%d %f %f %f %x %x %x", 0, pos.x, pos.y, pos.z, *(DWORD*)&pos.x, *(DWORD*)&pos.y, *(DWORD*)&pos.z);
-
-        //char ballname[100];
-        //for (int i = 1; i < 16; i++) {
-        //	sprintf(ballname, "P_Ball_Stone_MF%03d", i);
-        //	CK3dEntity* stoneball = m_BML->Get3dObjectByName(ballname);
-        //	stoneball->GetPosition(&pos);
-        //	GetLogger()->Info("%d %f %f %f %x %x %x", i, pos.x, pos.y, pos.z, *(DWORD*)&pos.x, *(DWORD*)&pos.y, *(DWORD*)&pos.z);
-        //}
-    }
-
-    if (m_Playing || m_Recording) {
-        //CK3dEntity* curBall = static_cast<CK3dEntity*>(m_CurLevel->GetElementObject(0, 1));
-        //if (curBall != nullptr) {
-        //	VxVector pos;
-        //	curBall->GetPosition(&pos);
-        //	GetLogger()->Info("%d %d %f %f %f %f %f", m_CurFrame, m_RecordData.size(), m_BML->GetTimeManager()->GetLastDeltaTime(),
-        //		pos.x, pos.y, pos.z, m_BML->GetSRScore());
-        //}
-        //else {
-        //	GetLogger()->Info("%d %d %f", m_CurFrame, m_RecordData.size(), m_BML->GetTimeManager()->GetLastDeltaTime());
-
-        //	//std::function<void(CKBehavior*, int)> active = [this, &active](CKBehavior* script, int depth) {
-        //	//	int num = script->GetSubBehaviorCount();
-        //	//	for (int j = 0; j < num; j++) {
-        //	//		CKBehavior* beh = script->GetSubBehavior(j);
-        //	//		if (beh->IsActive()) {
-        //	//			GetLogger()->Info("%s%s", std::string(depth, ' ').c_str(), beh->GetName());
-        //	//			if (!beh->IsUsingFunction())
-        //	//				active(beh, depth + 1);
-        //	//		}
-        //	//	}
-        //	//};
-
-        //	//CKContext* context = m_BML->GetCKContext();
-        //	//int cnt = context->GetObjectsCountByClassID(CKCID_BEHAVIOR);
-        //	//CK_ID* scripts = context->GetObjectsListByClassID(CKCID_BEHAVIOR);
-        //	//bool act = false;
-        //	//for (int i = 0; i < cnt; i++) {
-        //	//	CKBehavior* script = (CKBehavior*)context->GetObject(scripts[i]);
-        //	//	if (script->GetType() == CKBEHAVIORTYPE_SCRIPT) {
-        //	//		// delay(script);
-        //	//		if (script->IsActive()) {
-        //	//			GetLogger()->Info("%s", script->GetName());
-        //	//			act = true;
-        //	//			active(script, 1);
-        //	//		}
-        //	//	}
-        //	//}
-        //}
-
-        //CKBaseManager* physicsManager = m_BML->GetCKContext()->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
-        //CKBYTE* m_Timer = *reinterpret_cast<CKBYTE**>(reinterpret_cast<CKBYTE*>(physicsManager) + 0xC0);
-
-        //GetLogger()->Info("%f %f %llx %llx", m_BML->GetTimeManager()->GetLastDeltaTime(),
-        //	m_BML->GetTimeManager()->GetLastDeltaTimeFree(),
-        //	*reinterpret_cast<double*>(reinterpret_cast<CKBYTE*>(physicsManager) + 0xC8),
-        //	*reinterpret_cast<double*>(m_Timer + 0x120));
-    }
-
     if (m_Enabled->GetBoolean()) {
 #ifndef _DEBUG
         if (m_BML->IsCheatEnabled() && m_Recording)
@@ -475,7 +300,7 @@ void TASSupport::OnProcess() {
             if (m_BML->GetInputManager()->IsKeyPressed(m_StopKey->GetKey()))
                 OnStop();
 
-            if (m_CurFrame < m_SkipRender->GetInteger())
+            if (m_CurFrame < (std::size_t) m_SkipRender->GetInteger())
                 m_BML->SkipRenderForNextTick();
 
             if (m_BML->GetInputManager()->IsKeyPressed(m_ExitKey->GetKey()))
@@ -493,7 +318,7 @@ void TASSupport::OnPostStartMenu() {
             std::string tasPath = "..\\ModLoader\\TASRecords\\" + tasFile + ".tas";
             struct stat buf = {0};
             if (stat(tasPath.c_str(), &buf) == 0) {
-                g_mod->m_BML->SendIngameMessage(("Loading TAS Record: " + tasFile + ".tas").c_str());
+                m_BML->SendIngameMessage(("Loading TAS Record: " + tasFile + ".tas").c_str());
                 LoadTAS(tasPath);
 
                 int level = m_LoadLevel->GetInteger();
@@ -513,7 +338,8 @@ void TASSupport::OnPostStartMenu() {
                         m_ExitMain->Activate();
                     });
                 }
-            } else m_BML->SendIngameMessage(("TAS file " + tasFile + ".tas not found.").c_str());
+            } else
+                m_BML->SendIngameMessage(("TAS file " + tasFile + ".tas not found.").c_str());
         }
 
         firstTime = false;
@@ -524,51 +350,6 @@ void TASSupport::OnBallOff() {
     if (m_Enabled->GetBoolean() && m_Playing && m_ExitOnDead->GetBoolean())
         m_BML->ExitGame();
 }
-
-#ifdef _DEBUG
-
-void TASSupport::OnPostExitLevel() {
-    CKBaseManager *physicsManager = m_BML->GetCKContext()->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
-    CKBYTE *moduleAddr = reinterpret_cast<CKBYTE *>(GetModuleHandle("physics_RT.dll"));
-    CKERROR(CKBaseManager::*
-    ClearFunc)();
-    *reinterpret_cast<DWORD *>(&ClearFunc) = *(*reinterpret_cast<DWORD **>(physicsManager) + 4);
-    (physicsManager->*ClearFunc)();
-    CKERROR(CKBaseManager::*
-    EndFunc)();
-    *reinterpret_cast<DWORD *>(&EndFunc) = *(*reinterpret_cast<DWORD **>(physicsManager) + 12);
-    (physicsManager->*EndFunc)();
-    CKERROR(CKBaseManager::*
-    ConstructorFunc)(CKContext * );
-    *reinterpret_cast<CKBYTE **>(&ConstructorFunc) = reinterpret_cast<CKBYTE *>(GetModuleHandle("physics_RT.dll")) + 0x6730;
-    (physicsManager->*ConstructorFunc)(m_BML->GetCKContext());
-    //CKERROR(CKBaseManager:: * PauseFunc)();
-    //*reinterpret_cast<DWORD*>(&PauseFunc) = *(*reinterpret_cast<DWORD**>(physicsManager) + 15);
-    //(physicsManager->*PauseFunc)();
-    //CKERROR(CKBaseManager:: * ResetFunc)();
-    //*reinterpret_cast<DWORD*>(&ResetFunc) = *(*reinterpret_cast<DWORD**>(physicsManager) + 13);
-    //(physicsManager->*ResetFunc)();
-    CKERROR(CKBaseManager::*
-    InitFunc)();
-    *reinterpret_cast<DWORD *>(&InitFunc) = *(*reinterpret_cast<DWORD **>(physicsManager) + 11);
-    (physicsManager->*InitFunc)();
-    CKERROR(CKBaseManager::*
-    PlayFunc)();
-    *reinterpret_cast<CKBYTE **>(&PlayFunc) = reinterpret_cast<CKBYTE *>(GetModuleHandle("physics_RT.dll")) + 0x6BB0;
-    (physicsManager->*PlayFunc)();
-
-    m_BML->RestoreIC(m_BML->Get3dEntityByName("Ball_PaperPieces_Frame"), true);
-    m_BML->RestoreIC(m_BML->Get3dEntityByName("Ball_StonePieces_Frame"), true);
-    m_BML->RestoreIC(m_BML->Get3dEntityByName("Ball_WoodPieces_Frame"), true);
-
-    m_InitPieces->ActivateInput(0);
-    m_InitPieces->Activate();
-    CKBehavior *Balls_Init = m_BML->GetScriptByName("Balls_Init");
-    CKBehavior *temp = m_InitPieces->GetParent();
-    m_InitPieces->GetParent()->Activate();
-}
-
-#endif
 
 void TASSupport::OnStart() {
     if (m_Enabled->GetBoolean()) {
@@ -590,7 +371,7 @@ void TASSupport::OnStart() {
             *reinterpret_cast<double *>(timer + 0x120) = 0;
             *reinterpret_cast<double *>(timer + 0x128) = 1.0 / 66;
             *reinterpret_cast<double *>(timer + 0x130) = 0;
-            *reinterpret_cast<DWORD *>(timer + 0x138) = 0;
+            *reinterpret_cast<CKDWORD *>(timer + 0x138) = 0;
             *reinterpret_cast<double *>(*reinterpret_cast<CKBYTE **>(timer + 0x4) + 0x18) = 0;
         });
 
@@ -610,6 +391,7 @@ void TASSupport::OnStart() {
             m_BML->SendIngameMessage("Start playing TAS.");
             if (m_ShowKeys->GetBoolean())
                 m_KeysGui->SetVisible(true);
+            m_LoadThread->join();
         } else if (m_Record->GetBoolean()) {
             m_Recording = true;
             m_CurFrame = 0;
@@ -623,6 +405,15 @@ void TASSupport::OnStop() {
     if (m_Enabled->GetBoolean()) {
         if (m_Playing || m_Recording) {
             if (m_Playing) {
+                CKBYTE *stateBuf = m_BML->GetInputManager()->GetKeyboardState();
+                stateBuf[m_KeyUp] = KS_IDLE;
+                stateBuf[m_KeyDown] = KS_IDLE;
+                stateBuf[m_KeyLeft] = KS_IDLE;
+                stateBuf[m_KeyRight] = KS_IDLE;
+                stateBuf[CKKEY_Q] = KS_IDLE;
+                stateBuf[m_KeyShift] = KS_IDLE;
+                stateBuf[m_KeySpace] = KS_IDLE;
+                stateBuf[CKKEY_ESCAPE] = KS_IDLE;
                 m_BML->SendIngameMessage("TAS playing stopped.");
                 if (m_ExitOnFinish->GetBoolean())
                     m_BML->ExitGame();
@@ -661,14 +452,14 @@ void TASSupport::OnFinish() {
 }
 
 void TASSupport::LoadTAS(const std::string &filename) {
-    std::thread([this, filename]() {
+    m_LoadThread = std::make_unique<std::thread>([=]() {
         auto data = UncompressDataFromFile(filename.c_str());
         int length = data.second / sizeof(FrameData);
         m_RecordData.resize(length);
         memcpy(&m_RecordData[0], data.first, data.second);
-        m_ReadyToPlay = true;
         CKDeletePointer(data.first);
-    }).detach();
+    });
+    m_ReadyToPlay = true;
 }
 
 GuiTASList::GuiTASList() {
@@ -676,9 +467,6 @@ GuiTASList::GuiTASList() {
     m_Right = AddRightButton("M_List_Right", 0.4f, 0.6238f, [this]() { NextPage(); });
     AddBackButton("M_Opt_Mods_Back")->SetCallback([this]() { Exit(); });
     AddTextLabel("M_Opt_Mods_Title", "TAS Records", ExecuteBB::GAMEFONT_02, 0.35f, 0.07f, 0.3f, 0.05f);
-
-    Init(0, 12);
-    SetVisible(false);
 }
 
 void GuiTASList::Init(int size, int maxsize) {
@@ -709,7 +497,9 @@ void GuiTASList::RefreshRecords() {
     for (char *tasPath = tasTraverser.GetNextFile(); tasPath != nullptr; tasPath = tasTraverser.GetNextFile()) {
         std::string tasFile = tasPath;
         TASInfo info;
-        info.displayName = tasFile.substr(tasFile.find_last_of('\\') + 1);;
+        auto start = tasFile.find_last_of('\\') + 1;
+        auto count = tasFile.find_last_of('.') - start;
+        info.displayName = tasFile.substr(start, count);
         info.filepath = "..\\ModLoader\\TASRecords\\" + info.displayName + ".tas";
         m_Records.push_back(info);
     }
