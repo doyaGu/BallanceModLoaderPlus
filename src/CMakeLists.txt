@@ -78,7 +78,6 @@ add_library(BMLPlus SHARED ${BMLPLUS_SRCS} ${BMLPLUS_PUBLIC_HDRS} ${BMLPLUS_PRIV
 target_include_directories(BMLPlus
         PUBLIC
             $<BUILD_INTERFACE:${BMLPLUS_INC_DIR}>
-            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
         PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}
             ${BMLPLUS_INC_DIR}/BMLPlus
@@ -102,30 +101,39 @@ target_compile_definitions(BMLPlus PRIVATE
         )
 
 if (NOT SKIP_INSTALL_LIBRARIES AND NOT SKIP_INSTALL_ALL)
-    configure_package_config_file(${PROJECT_SOURCE_DIR}/CMake/BMLPlusConfig.cmake.in
-            "${CMAKE_CURRENT_BINARY_DIR}/BMLPlusConfig.cmake"
-            INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BMLPlus"
-            )
-
-    write_basic_package_version_file(
-            "${CMAKE_CURRENT_BINARY_DIR}/BMLPlusConfigVersion.cmake"
-            COMPATIBILITY SameMinorVersion
-    )
-
-    install(FILES
-            "${CMAKE_CURRENT_BINARY_DIR}/BMLPlusConfig.cmake"
-            DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BMLPlus"
+    target_include_directories(BMLPlus PUBLIC
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
             )
 
     install(TARGETS BMLPlus
-            EXPORT BMLPlusTargets
+            EXPORT BMLPlus
             ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
             LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
             RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
             )
 
-    install(EXPORT "BMLPlusTargets"
-            DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BMLPlus")
+    install(EXPORT BMLPlus
+            DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BMLPlus"
+            )
+
+    write_basic_package_version_file(${PROJECT_BINARY_DIR}/BMLPlus-config-version.cmake
+            COMPATIBILITY SameMajorVersion
+            )
+
+    set(BML_CONFIG_CONTENT "@PACKAGE_INIT@\n")
+    string(APPEND BML_CONFIG_CONTENT "include(\"\${PROJECT_SOURCE_DIR}/BMLPlus.cmake\")")
+    file(WRITE ${PROJECT_BINARY_DIR}/BMLPlus-config.cmake.in ${BML_CONFIG_CONTENT})
+
+    configure_package_config_file(${PROJECT_BINARY_DIR}/BMLPlus-config.cmake.in
+            ${PROJECT_BINARY_DIR}/BMLPlus-config.cmake
+            INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BMLPlus"
+            )
+
+    install(FILES
+            ${PROJECT_BINARY_DIR}/BMLPlus-config-version.cmake
+            ${PROJECT_BINARY_DIR}/BMLPlus-config.cmake
+            DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BMLPlus"
+            )
 endif ()
 
 if (NOT SKIP_INSTALL_HEADERS AND NOT SKIP_INSTALL_ALL)
