@@ -17,7 +17,7 @@ void MapScripts::OnLoadObject(const char *filename, CKBOOL isMap, const char *ma
                               CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
                               XObjectArray *objArray, CKObject *masterObj) {
 #define FILL_MAP(FUNC) \
-    m_MapScripts[func_addr(&MapScripts::FUNC)] = m_BML->GetScriptByName("BML_" TOSTRING(FUNC))
+    m_MapScripts[func_addr(&MapScripts::FUNC)] = m_BML->GetScriptByName("BML_" #FUNC)
 
     if (isMap) {
         FILL_MAP(OnPostLoadLevel);
