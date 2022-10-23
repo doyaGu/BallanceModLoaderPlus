@@ -1,5 +1,8 @@
 #pragma once
 
+#include <memory>
+#include <thread>
+
 #include <BMLPlus/BMLAll.h>
 
 MOD_EXPORT IMod *BMLEntry(IBML *bml);
@@ -94,6 +97,8 @@ public:
                       CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
                       XObjectArray *objArray, CKObject *masterObj) override;
     void OnLoadScript(const char *filename, CKBehavior *script) override;
+
+    void OnPreProcess() override;
     void OnProcess() override;
 
     void OnBallOff() override;
@@ -104,19 +109,6 @@ public:
     void OnLevelFinish() override { OnFinish(); }
 
     void OnPostStartMenu() override;
-
-#ifdef _DEBUG
-
-    void OnPostExitLevel() override;
-
-    void OnPhysicalize(CK3dEntity *target, CKBOOL fixed, float friction, float elasticity, float mass,
-                       const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
-                       float linearDamp, float rotDamp, const char *collSurface, VxVector massCenter, int convexCnt,
-                       CKMesh **convexMesh, int ballCnt, VxVector *ballCenter, float *ballRadius, int concaveCnt,
-                       CKMesh **concaveMesh) override;
-    void OnUnphysicalize(CK3dEntity *target) override;
-
-#endif
 
     IBML* GetBML() { return m_BML; }
 
@@ -142,7 +134,7 @@ public:
 
     bool m_Recording = false;
     bool m_Playing = false;
-    int m_CurFrame = 0;
+    std::size_t m_CurFrame = 0;
     std::vector<FrameData> m_RecordData;
     std::string m_MapName;
 
@@ -173,4 +165,6 @@ public:
     IProperty *m_ExitKey = nullptr;
     IProperty *m_LoadTAS = nullptr;
     IProperty *m_LoadLevel = nullptr;
+
+    std::unique_ptr<std::thread> m_LoadThread;
 };
