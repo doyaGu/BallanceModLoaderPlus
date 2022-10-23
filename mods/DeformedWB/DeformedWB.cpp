@@ -1,9 +1,8 @@
 #include "DeformedWB.h"
 
-#include <time.h>
 #include <random>
 
-std::default_random_engine e(time(0));
+std::default_random_engine g_RandomEngine;
 
 IMod *BMLEntry(IBML *bml) {
     return new DeformedWB(bml);
@@ -46,11 +45,11 @@ void DeformedWB::OnStartLevel() {
         invs.SetIdentity();
         for (int i = 0; i < 3; i++) {
             for (int j = 0; j < 3; j++)
-                proj[i][j] = rnd(e);
+                proj[i][j] = rnd(g_RandomEngine);
             for (int j = 0; j < i; j++)
                 proj[i] -= DotProduct(proj[i], proj[j]) * proj[j];
             proj[i] = Normalize(proj[i]);
-            scale[i][i] = rnd(e) * m_Extent->GetFloat() + 1;
+            scale[i][i] = rnd(g_RandomEngine) * m_Extent->GetFloat() + 1;
         }
 
         float slen = scale[0][0] + scale[1][1] + scale[2][2];
