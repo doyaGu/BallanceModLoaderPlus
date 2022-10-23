@@ -3,6 +3,7 @@
 #define HOOK_GUID CKGUID(0x6bed00f0, 0x7a91139b)
 
 DynamicFov *g_mod = nullptr;
+std::unique_ptr<BuildingBlockHook> g_MessageHook;
 
 IMod *BMLEntry(IBML *bml) {
     g_mod = new DynamicFov(bml);
@@ -14,14 +15,12 @@ void BMLExit(IMod *mod) {
 }
 
 void RegisterBB(XObjectDeclarationArray *reg) {
-    CKStoreDeclaration(reg, (new HookBuilder())
-        ->SetName("BML OnResetBallPosition")
-        ->SetDescription("OnResetBallPosition Hook")
-        ->SetGuid(HOOK_GUID)
-        ->SetProcessFunction([](HookParams *params) {
-            g_mod->SetInactive();
-            return false;
-        })->Build());
+    g_MessageHook = CreateBuildingBlockHook("BML OnResetBallPosition", "OnResetBallPosition Hook.", HOOK_GUID,
+                                            [](const CKBehaviorContext &behcontext) {
+                                                g_mod->SetInactive();
+                                                return false;
+                                            });
+    g_MessageHook->Register(reg);
 }
 
 void DynamicFov::OnLoad() {
