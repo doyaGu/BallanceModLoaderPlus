@@ -6,7 +6,8 @@
 #include <string>
 #include <list>
 #include <vector>
-#include <unordered_map>
+#include <map>
+#include <memory>
 
 #include "CKAll.h"
 
@@ -16,9 +17,9 @@
 #include "Timer.h"
 #include "Gui.h"
 
-class ModManager;
 class BMLMod;
 class NewBallTypeMod;
+class BuildingBlockHook;
 
 typedef IMod *(*BModGetBMLEntryFunction)(IBML *);
 typedef void (*BModGetBMLExitFunction)(IMod *);
@@ -36,7 +37,7 @@ struct BModDll {
 
     INSTANCE_HANDLE LoadDll();
 
-    void *GetFunctionPtr(const char *functionName);
+    void *GetFunctionPtr(const char *functionName) const;
 };
 
 template<typename T>
@@ -45,19 +46,9 @@ void *func_addr(T func) {
 }
 
 class ModLoader : public IBML {
-    friend class ModManager;
-    friend class BMLMod;
-    friend class CommandBML;
-    friend class CommandHelp;
-    friend class CommandCheat;
-    friend class CommandClear;
-    friend class CommandSector;
-    friend class GuiList;
-    friend class GuiModOption;
-    friend class GuiModMenu;
-    friend class GuiModCategory;
-
 public:
+    static ModLoader &GetInstance();
+
     ModLoader();
     ~ModLoader() override;
 
@@ -66,9 +57,12 @@ public:
 
     bool IsInitialized() const { return m_Initialized; }
     bool IsReset() const { return m_IsReset; }
+    void SetReset() { m_IsReset = true; }
 
     ILogger *GetLogger() {return m_Logger; }
     FILE *GetLogFile() { return m_Logfile; }
+
+    void AddDataPath(const char *path);
 
     void AddConfig(Config *config) { m_Configs.push_back(config); }
     Config *GetConfig(IMod *mod);
@@ -94,12 +88,24 @@ public:
         mod->OnModifyConfig(category, key, prop);
     }
 
-    void ExecuteCommand(const char *cmd, bool force = false) override;
+    int GetCommandCount() const override;
+    ICommand *GetCommand(int index) const override;
+    ICommand *FindCommand(const char *name) const override;
+
+    void ExecuteCommand(const char *cmd);
     std::string TabCompleteCommand(const char *cmd);
 
     void PreloadMods();
-    
-    void RegisterModBBs(XObjectDeclarationArray *reg);
+
+    void LoadMods();
+    void UnloadMods();
+
+    void RegisterBBs(XObjectDeclarationArray *reg);
+
+    CKERROR OnPreProcess();
+    CKERROR OnProcess();
+    CKERROR OnPreRender(CKRenderContext *dev);
+    CKERROR OnPostRender(CKRenderContext *dev);
 
     void OnPreStartMenu() override;
     void OnPostStartMenu() override;
@@ -269,20 +275,20 @@ public:
         }
     }
 
-    ModManager *GetModManager() { return m_ModManager; }
-
-    static ModLoader &GetInstance();
+    BMLMod *GetBMLMod() { return m_BMLMod; }
 
 protected:
+    void MakeDirectories();
+    void InitLogger();
+    void FiniLogger();
+    void InitHooks();
+    void FiniHooks();
     void GetManagers();
+    void CreateMessageHooks();
 
     bool RegisterMod(BModDll &modDll);
     void LoadMod(IMod *mod);
     void FillCallbackMap(IMod *mod);
-
-    BMLMod *GetBMLMod() { return m_BMLMod; }
-
-    ICommand *FindCommand(const std::string &name);
 
     bool m_Initialized = false;
     bool m_Exiting = false;
@@ -309,20 +315,20 @@ protected:
     CKSoundManager *m_SoundManager = nullptr;
     CKTimeManager *m_TimeManager = nullptr;
 
-    ModManager *m_ModManager = nullptr;
+    std::vector<BModDll> m_ModDlls;
+    std::vector<IMod *> m_Mods;
 
     BMLMod *m_BMLMod = nullptr;
     NewBallTypeMod *m_BallTypeMod = nullptr;
 
-    std::vector<IMod *> m_Mods;
-    std::vector<BModDll> m_ModDlls;
-
-    std::unordered_map<void *, std::vector<IMod *>> m_CallbackMap;
+    std::vector<ICommand *> m_Commands;
+    std::map<std::string, ICommand *> m_CommandMap;
 
     std::vector<Config *> m_Configs;
     std::list<Timer> m_Timers;
-    std::vector<ICommand *> m_Commands;
-    std::unordered_map<std::string, ICommand *> m_CommandMap;
+
+    std::map<void *, std::vector<IMod *>> m_CallbackMap;
+    std::vector<std::unique_ptr<BuildingBlockHook>> m_MessageHooks;
 };
 
 #endif // BML_MODLOADER_H

@@ -1,23 +1,16 @@
-#ifndef BML2_MODMANAGER_H
-#define BML2_MODMANAGER_H
-
-#include <vector>
-#include <unordered_map>
-#include <type_traits>
+#ifndef BML_MODMANAGER_H
+#define BML_MODMANAGER_H
 
 #include "CKContext.h"
 #include "CKBaseManager.h"
 
-#include "Defines.h"
-#include "ILogger.h"
+#ifndef BML_MODMANAGER_GUID
+#define BML_MODMANAGER_GUID CKGUID(0x32a40332, 0x3bf12a51)
+#endif
 
-class IBML;
-class IMod;
-struct BModDll;
 class ModLoader;
 
 class ModManager : public CKBaseManager {
-    friend class ModLoader;
 public:
     explicit ModManager(CKContext *ctx);
     ~ModManager() override;
@@ -28,13 +21,17 @@ public:
     CKERROR OnCKReset() override;
     CKERROR OnCKPostReset() override;
 
+    CKERROR PreProcess() override;
     CKERROR PostProcess() override;
 
     CKERROR OnPreRender(CKRenderContext *dev) override;
     CKERROR OnPostRender(CKRenderContext *dev) override;
 
+    int GetFunctionPriority(CKMANAGER_FUNCTIONS Function) override { return -1000; }
+
     CKDWORD GetValidFunctionsMask() override {
-        return CKMANAGER_FUNC_PostProcess |
+        return CKMANAGER_FUNC_PreProcess |
+               CKMANAGER_FUNC_PostProcess |
                CKMANAGER_FUNC_OnCKInit |
                CKMANAGER_FUNC_OnCKEnd |
                CKMANAGER_FUNC_OnCKReset |
@@ -47,14 +44,9 @@ public:
         return (ModManager *)context->GetManagerByGuid(BML_MODMANAGER_GUID);
     }
 
-    static const char *Name;
-
 protected:
-    bool m_Initialized = false;
-
-    ILogger *m_Logger = nullptr;
-    ModLoader *m_Loader = nullptr;
+    ModLoader *m_Loader;
 };
 
 
-#endif //BML2_MODMANAGER_H
+#endif //BML_MODMANAGER_H

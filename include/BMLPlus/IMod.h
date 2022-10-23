@@ -16,6 +16,26 @@ class ICommand;
 class IConfig;
 class IProperty;
 
+struct BMLVersion {
+    int major, minor, build;
+
+    BMLVersion() : major(BML_MAJOR_VER), minor(BML_MINOR_VER), build(BML_PATCH_VER) {}
+    BMLVersion(int mj, int mn, int bd) : major(mj), minor(mn), build(bd) {}
+
+    bool operator<(const BMLVersion &o) const {
+        if (major == o.major) {
+            if (minor == o.minor)
+                return build < o.build;
+            return minor < o.minor;
+        }
+        return major < o.major;
+    }
+
+    bool operator>=(const BMLVersion &o) const {
+        return !(*this < o);
+    }
+};
+
 #define DECLARE_BML_VERSION \
     BMLVersion GetBMLVersion() override { return { BML_MAJOR_VER, BML_MINOR_VER, BML_PATCH_VER }; }
 
@@ -51,8 +71,7 @@ public:
                                int concaveCnt, CKMesh **concaveMesh) {}
     virtual void OnUnphysicalize(CK3dEntity *target) {}
 
-    virtual void OnPreCommandExecute(ICommand *command, const std::vector<std::string> &args) {}
-    virtual void OnPostCommandExecute(ICommand *command, const std::vector<std::string> &args) {}
+    virtual void OnPreProcess() {}
 
 protected:
     virtual ILogger *GetLogger() final;
