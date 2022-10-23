@@ -177,13 +177,12 @@ void RegisterBuildingBlockHooks(XObjectDeclarationArray *reg) {
 }
 
 bool HookCreateCKBehaviorPrototypeRuntime() {
-    VxSharedLibrary sl;
-    sl.Attach(GetModuleHandle("CK2.dll"));
-    LPVOID lpCreateCKBehaviorPrototypeRunTimeProc = sl.GetFunctionPtr(
-        TOCKSTRING("?CreateCKBehaviorPrototypeRunTime@@YAPAVCKBehaviorPrototype@@PAD@Z"));
-    LPVOID lpCreateCKBehaviorPrototypeProc = sl.GetFunctionPtr(
-        TOCKSTRING("?CreateCKBehaviorPrototype@@YAPAVCKBehaviorPrototype@@PAD@Z"));
-    if (MH_CreateHook(lpCreateCKBehaviorPrototypeRunTimeProc, lpCreateCKBehaviorPrototypeProc, NULL) != MH_OK ||
+    HMODULE handle = ::GetModuleHandleA("CK2.dll");
+    LPVOID lpCreateCKBehaviorPrototypeRunTimeProc = (LPVOID) ::GetProcAddress(handle,
+        "?CreateCKBehaviorPrototypeRunTime@@YAPAVCKBehaviorPrototype@@PAD@Z");
+    LPVOID lpCreateCKBehaviorPrototypeProc = (LPVOID) ::GetProcAddress(handle,
+        "?CreateCKBehaviorPrototype@@YAPAVCKBehaviorPrototype@@PAD@Z");
+    if (MH_CreateHook(lpCreateCKBehaviorPrototypeRunTimeProc, lpCreateCKBehaviorPrototypeProc, nullptr) != MH_OK ||
         MH_EnableHook(lpCreateCKBehaviorPrototypeRunTimeProc) != MH_OK) {
         return false;
     }
