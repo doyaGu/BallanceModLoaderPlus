@@ -317,6 +317,7 @@ protected:
 
     std::vector<BModDll> m_ModDlls;
     std::vector<IMod *> m_Mods;
+    std::map<IMod *, BModDll *> m_ModDllMap;
 
     BMLMod *m_BMLMod = nullptr;
     NewBallTypeMod *m_BallTypeMod = nullptr;
