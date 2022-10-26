@@ -84,10 +84,9 @@ void ModLoader::Release() {
 
     m_Logger->Info("Releasing Mod Loader");
 
-    for (size_t i = 0; i < m_ModDlls.size(); i++) {
-        auto &mod = m_Mods[i];
-        if (m_ModDlls[i].exit)
-            m_ModDlls[i].exit(mod);
+    for (const auto &mod : m_ModDllMap) {
+        if (mod.second && mod.second->exit)
+            mod.second->exit(mod.first);
     }
 
     FiniHooks();
@@ -185,15 +184,18 @@ void ModLoader::AddDataPath(const char *path) {
     if (!m_PathManager->PathIsAbsolute(dataPath)) {
         char buf[MAX_PATH];
         VxGetCurrentDirectory(buf);
-        dataPath.Format("%s\\%s", buf, dataPath);
+        dataPath.Format("%s\\%s", buf, dataPath.CStr());
     }
     if (dataPath[dataPath.Length() - 1] != '\\')
         dataPath << '\\';
+
+    XString subDataPath1 = dataPath + "3D Entities\\";
+    XString subDataPath2 = dataPath + "3D Entities\\PH\\";
     XString texturePath = dataPath + "Textures\\";
     XString soundPath = dataPath + "Sounds\\";
     m_PathManager->AddPath(DATA_PATH_IDX, dataPath);
-    m_PathManager->AddPath(DATA_PATH_IDX, dataPath + "3D Entities\\");
-    m_PathManager->AddPath(DATA_PATH_IDX, dataPath + "3D Entities\\PH\\");
+    m_PathManager->AddPath(DATA_PATH_IDX, subDataPath1);
+    m_PathManager->AddPath(DATA_PATH_IDX, subDataPath2);
     m_PathManager->AddPath(BITMAP_PATH_IDX, texturePath);
     m_PathManager->AddPath(SOUND_PATH_IDX, soundPath);
 }
@@ -225,9 +227,11 @@ void ModLoader::LoadMods() {
 
     m_BMLMod = new BMLMod(this);
     m_Mods.push_back(m_BMLMod);
+    m_ModDllMap.insert({m_BMLMod, nullptr});
 
     m_BallTypeMod = new NewBallTypeMod(this);
     m_Mods.push_back(m_BallTypeMod);
+    m_ModDllMap.insert({m_BallTypeMod, nullptr});
 
     for (auto &modDll: m_ModDlls) {
         if (RegisterMod(modDll) && !modDll.dllPath.empty())
@@ -814,6 +818,7 @@ bool ModLoader::RegisterMod(BModDll &modDll) {
         return false;
     }
     m_Mods.push_back(mod);
+    m_ModDllMap.insert({mod, &modDll});
     return true;
 }
 
