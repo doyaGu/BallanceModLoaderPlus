@@ -311,4 +311,22 @@ namespace ExecuteBB {
         beh->GetInputParameter(1)->SetDirectSource(CreateParamObject(CKPGUID_BEOBJECT, "Dest", dest));
         return beh;
     }
+
+    CKBehavior *CreateHookBlock(CKBehavior *script, void (*callback)(void *), void *arg, int inCount, int outCount) {
+        CKBehavior *beh = CreateBB(script, BML_HOOKBLOCK_GUID);
+        beh->SetLocalParameterValue(0, &callback);
+        beh->SetLocalParameterValue(1, &arg);
+
+        XString pinName = "In ";
+        for (int i = 0; i < inCount; i++) {
+            beh->CreateInput((pinName << i).Str());
+        }
+
+        XString poutName = "Out ";
+        for (int i = 0; i < outCount; i++) {
+            beh->CreateOutput((poutName << i).Str());
+        }
+
+        return beh;
+    }
 }
