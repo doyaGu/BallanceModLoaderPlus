@@ -7,7 +7,6 @@
 #include "Logger.h"
 #include "BMLMod.h"
 #include "NewBallTypeMod.h"
-#include "ModManager.h"
 #include "Util.h"
 
 #include "unzip.h"
