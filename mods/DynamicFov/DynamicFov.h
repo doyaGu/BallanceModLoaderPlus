@@ -4,7 +4,6 @@
 
 MOD_EXPORT IMod *BMLEntry(IBML *bml);
 MOD_EXPORT void BMLExit(IMod *mod);
-MOD_EXPORT void RegisterBB(XObjectDeclarationArray *reg);
 
 class DynamicFov : public IMod {
 public:
