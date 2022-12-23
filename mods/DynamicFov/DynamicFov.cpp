@@ -1,9 +1,6 @@
 #include "DynamicFov.h"
 
-#define HOOK_GUID CKGUID(0x6bed00f0, 0x7a91139b)
-
 DynamicFov *g_mod = nullptr;
-std::unique_ptr<BuildingBlockHook> g_MessageHook;
 
 IMod *BMLEntry(IBML *bml) {
     g_mod = new DynamicFov(bml);
@@ -12,15 +9,6 @@ IMod *BMLEntry(IBML *bml) {
 
 void BMLExit(IMod *mod) {
     delete mod;
-}
-
-void RegisterBB(XObjectDeclarationArray *reg) {
-    g_MessageHook = CreateBuildingBlockHook("BML OnResetBallPosition", "OnResetBallPosition Hook.", HOOK_GUID,
-                                            [](const CKBehaviorContext &behcontext) {
-                                                g_mod->SetInactive();
-                                                return false;
-                                            });
-    g_MessageHook->Register(reg);
 }
 
 void DynamicFov::OnLoad() {
@@ -46,7 +34,7 @@ void DynamicFov::OnLoadScript(const char *filename, CKBehavior *script) {
     if (!strcmp(script->GetName(), "Gameplay_Ingame")) {
         m_IngameScript = script;
         CKBehavior *ballMgr = ScriptHelper::FindFirstBB(script, "BallManager");
-        ScriptHelper::CreateLink(script, ballMgr, ScriptHelper::CreateBB(script, HOOK_GUID));
+        ScriptHelper::CreateLink(script, ballMgr, ExecuteBB::CreateHookBlock(script, [](void *) { g_mod->SetInactive(); }));
         CKBehavior *init = ScriptHelper::FindFirstBB(script, "Init Ingame");
         m_DynamicPos = ScriptHelper::FindNextBB(script, init, "TT Set Dynamic Position");
     }
