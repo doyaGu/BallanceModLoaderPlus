@@ -26,6 +26,7 @@ set(BMLPLUS_PUBLIC_HDRS
 
 set(BMLPLUS_PRIVATE_HDRS
         ModLoader.h
+        ModDll.h
 
         BMLMod.h
         NewBallTypeMod.h
@@ -43,6 +44,7 @@ set(BMLPLUS_SRCS
         ModLoader.cpp
         HookManager.cpp
         HookBlock.cpp
+        ModDll.cpp
 
         IMod.cpp
         BMLMod.cpp

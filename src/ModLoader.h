@@ -20,24 +20,7 @@
 class BMLMod;
 class NewBallTypeMod;
 
-typedef IMod *(*BModGetBMLEntryFunction)(IBML *);
-typedef void (*BModGetBMLExitFunction)(IMod *);
-typedef void (*BModRegisterBBFunction)(XObjectDeclarationArray *);
-
-struct BModDll {
-    std::string dllFileName;
-    std::string dllPath;
-    INSTANCE_HANDLE dllInstance;
-    BModGetBMLEntryFunction entry;
-	BModGetBMLExitFunction exit;
-    BModRegisterBBFunction registerBB;
-
-    bool Load();
-
-    INSTANCE_HANDLE LoadDll();
-
-    void *GetFunctionPtr(const char *functionName) const;
-};
+struct ModDll;
 
 template<typename T>
 void *func_addr(T func) {
@@ -284,7 +267,7 @@ protected:
     void FiniHooks();
     void GetManagers();
 
-    bool RegisterMod(BModDll &modDll);
+    bool RegisterMod(ModDll &modDll);
     void LoadMod(IMod *mod);
     void FillCallbackMap(IMod *mod);
 
@@ -313,9 +296,9 @@ protected:
     CKSoundManager *m_SoundManager = nullptr;
     CKTimeManager *m_TimeManager = nullptr;
 
-    std::vector<BModDll> m_ModDlls;
+    std::vector<ModDll> m_ModDlls;
     std::vector<IMod *> m_Mods;
-    std::map<IMod *, BModDll *> m_ModDllMap;
+    std::map<IMod *, ModDll *> m_ModDllMap;
 
     BMLMod *m_BMLMod = nullptr;
     NewBallTypeMod *m_BallTypeMod = nullptr;

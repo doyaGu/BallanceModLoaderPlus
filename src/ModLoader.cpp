@@ -8,6 +8,7 @@
 #include "BMLMod.h"
 #include "NewBallTypeMod.h"
 #include "Util.h"
+#include "ModDll.h"
 
 #include "unzip.h"
 
@@ -16,26 +17,6 @@ extern bool UnhookObjectLoad();
 
 extern bool HookPhysicalize();
 extern bool UnhookPhysicalize();
-
-bool BModDll::Load() {
-    if (LoadDll() == nullptr)
-        return false;
-    entry = reinterpret_cast<BModGetBMLEntryFunction>(GetFunctionPtr("BMLEntry"));
-    if (!entry)
-        return false;
-    exit = reinterpret_cast<BModGetBMLExitFunction>(GetFunctionPtr("BMLExit"));
-    registerBB = reinterpret_cast<BModRegisterBBFunction>(GetFunctionPtr("RegisterBB"));
-    return true;
-}
-
-INSTANCE_HANDLE BModDll::LoadDll() {
-    dllInstance = LoadLibraryEx(dllFileName.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
-    return dllInstance;
-}
-
-void *BModDll::GetFunctionPtr(const char *functionName) const {
-    return (void *) ::GetProcAddress((HMODULE) dllInstance, functionName);
-}
 
 ModLoader &ModLoader::GetInstance() {
     static ModLoader instance;
@@ -97,7 +78,7 @@ void ModLoader::PreloadMods() {
     CKDirectoryParser bmodTraverser("..\\ModLoader\\Mods", "*.bmodp", TRUE);
     for (char *bmodPath = bmodTraverser.GetNextFile(); bmodPath != nullptr; bmodPath = bmodTraverser.GetNextFile()) {
         std::string filename = bmodPath;
-        BModDll modDll;
+        ModDll modDll;
         modDll.dllFileName = filename;
         modDll.dllPath = filename.substr(0, filename.find_last_of('\\'));
         if (modDll.Load())
@@ -107,7 +88,7 @@ void ModLoader::PreloadMods() {
     char filename[MAX_PATH];
     CKDirectoryParser zipTraverser("..\\ModLoader\\Mods", "*.zip", TRUE);
     for (char *zipPath = zipTraverser.GetNextFile(); zipPath != nullptr; zipPath = zipTraverser.GetNextFile()) {
-        BModDll modDll;
+        ModDll modDll;
 
         unzFile zipFile = unzOpen(zipPath);
         unz_file_info zipInfo;
@@ -757,7 +738,7 @@ bool ModLoader::RegisterMod(ModDll &modDll) {
     if (curVer < reqVer) {
         m_Logger->Warn("Mod %s[%s] requires BML %d.%d.%d", mod->GetID(), mod->GetName(), reqVer.major, reqVer.minor, reqVer.build);
         m_ModDlls.erase(std::find_if(m_ModDlls.begin(), m_ModDlls.end(),
-                                     [modDll](const BModDll &md) { return md.dllInstance == modDll.dllInstance; }));
+                                     [modDll](const ModDll &md) { return md.dllInstance == modDll.dllInstance; }));
         return false;
     }
     m_Mods.push_back(mod);
