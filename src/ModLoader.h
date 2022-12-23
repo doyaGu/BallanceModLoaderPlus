@@ -19,7 +19,6 @@
 
 class BMLMod;
 class NewBallTypeMod;
-class BuildingBlockHook;
 
 typedef IMod *(*BModGetBMLEntryFunction)(IBML *);
 typedef void (*BModGetBMLExitFunction)(IMod *);
@@ -284,7 +283,6 @@ protected:
     void InitHooks();
     void FiniHooks();
     void GetManagers();
-    void CreateMessageHooks();
 
     bool RegisterMod(BModDll &modDll);
     void LoadMod(IMod *mod);
@@ -329,7 +327,6 @@ protected:
     std::list<Timer> m_Timers;
 
     std::map<void *, std::vector<IMod *>> m_CallbackMap;
-    std::vector<std::unique_ptr<BuildingBlockHook>> m_MessageHooks;
 };
 
 #endif // BML_MODLOADER_H

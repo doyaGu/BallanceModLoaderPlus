@@ -1,6 +1,5 @@
 #include "Defines.h"
 #include "ModLoader.h"
-#include "RegisterBB.h"
 
 namespace {
     CKBEHAVIORFCT g_Physicalize = nullptr;

@@ -3,7 +3,6 @@
 #include <ctime>
 #include <Windows.h>
 
-#include "RegisterBB.h"
 #include "InputHook.h"
 #include "Logger.h"
 #include "BMLMod.h"
@@ -165,11 +164,6 @@ void ModLoader::PreloadMods() {
 
 void ModLoader::RegisterBBs(XObjectDeclarationArray *reg) {
     assert(reg != nullptr);
-
-    CreateMessageHooks();
-    for (auto &hook: m_MessageHooks) {
-        hook->Register(reg);
-    }
 
     for (auto &modDll: m_ModDlls) {
         if (modDll.registerBB)
@@ -757,57 +751,7 @@ void ModLoader::GetManagers() {
     m_Logger->Info("Get Time Manager pointer 0x%08x", m_TimeManager);
 }
 
-void ModLoader::CreateMessageHooks() {
-#define ADD_GAME_MESSAGE_HOOK(evt, guid) \
-    m_MessageHooks.push_back(CreateBuildingBlockHook("BML On" #evt, #evt " Hook.", guid, \
-    [](const CKBehaviorContext &behcontext) { \
-        ModLoader::GetInstance().On##evt(); \
-        return CK_OK; \
-    }))
-
-    ADD_GAME_MESSAGE_HOOK(PreStartMenu, BML_ONPRESTARTMENU_GUID);
-    ADD_GAME_MESSAGE_HOOK(PostStartMenu, BML_ONPOSTSTARTMENU_GUID);
-    ADD_GAME_MESSAGE_HOOK(ExitGame, BML_ONEXITGAME_GUID);
-    ADD_GAME_MESSAGE_HOOK(PreLoadLevel, BML_ONPRELOADLEVEL_GUID);
-    ADD_GAME_MESSAGE_HOOK(PostLoadLevel, BML_ONPOSTLOADLEVEL_GUID);
-    ADD_GAME_MESSAGE_HOOK(StartLevel, BML_ONSTARTLEVEL_GUID);
-    ADD_GAME_MESSAGE_HOOK(PreResetLevel, BML_ONPRERESETLEVEL_GUID);
-    ADD_GAME_MESSAGE_HOOK(PostResetLevel, BML_ONPOSTRESETLEVEL_GUID);
-    ADD_GAME_MESSAGE_HOOK(PauseLevel, BML_ONPAUSELEVEL_GUID);
-    ADD_GAME_MESSAGE_HOOK(UnpauseLevel, BML_ONUNPAUSELEVEL_GUID);
-    ADD_GAME_MESSAGE_HOOK(PreExitLevel, BML_ONPREEXITLEVEL_GUID);
-    ADD_GAME_MESSAGE_HOOK(PostExitLevel, BML_ONPOSTEXITLEVEL_GUID);
-    ADD_GAME_MESSAGE_HOOK(PreNextLevel, BML_ONPRENEXTLEVEL_GUID);
-    ADD_GAME_MESSAGE_HOOK(PostNextLevel, BML_ONPOSTNEXTLEVEL_GUID);
-    ADD_GAME_MESSAGE_HOOK(Dead, BML_ONDEAD_GUID);
-    ADD_GAME_MESSAGE_HOOK(PreEndLevel, BML_ONPREENDLEVEL_GUID);
-    ADD_GAME_MESSAGE_HOOK(PostEndLevel, BML_ONPOSTENDLEVEL_GUID);
-    ADD_GAME_MESSAGE_HOOK(CounterActive, BML_ONCOUNTERACTIVE_GUID);
-    ADD_GAME_MESSAGE_HOOK(CounterInactive, BML_ONCOUNTERINACTIVE_GUID);
-    ADD_GAME_MESSAGE_HOOK(BallNavActive, BML_ONBALLNAVACTIVE_GUID);
-    ADD_GAME_MESSAGE_HOOK(BallNavInactive, BML_ONBALLNAVINACTIVE_GUID);
-    ADD_GAME_MESSAGE_HOOK(CamNavActive, BML_ONCAMNAVACTIVE_GUID);
-    ADD_GAME_MESSAGE_HOOK(CamNavInactive, BML_ONCAMNAVINACTIVE_GUID);
-    ADD_GAME_MESSAGE_HOOK(BallOff, BML_ONBALLOFF_GUID);
-    ADD_GAME_MESSAGE_HOOK(PreCheckpointReached, BML_ONPRECHECKPOINT_GUID);
-    ADD_GAME_MESSAGE_HOOK(PostCheckpointReached, BML_ONPOSTCHECKPOINT_GUID);
-    ADD_GAME_MESSAGE_HOOK(LevelFinish, BML_ONLEVELFINISH_GUID);
-    ADD_GAME_MESSAGE_HOOK(GameOver, BML_ONGAMEOVER_GUID);
-    ADD_GAME_MESSAGE_HOOK(ExtraPoint, BML_ONEXTRAPOINT_GUID);
-    ADD_GAME_MESSAGE_HOOK(PreSubLife, BML_ONPRESUBLIFE_GUID);
-    ADD_GAME_MESSAGE_HOOK(PostSubLife, BML_ONPOSTSUBLIFE_GUID);
-    ADD_GAME_MESSAGE_HOOK(PreLifeUp, BML_ONPRELIFEUP_GUID);
-    ADD_GAME_MESSAGE_HOOK(PostLifeUp, BML_ONPOSTLIFEUP_GUID);
-
-    m_MessageHooks.push_back(CreateBuildingBlockHook("BML ModsMenu", "Show BML Mods Menu.", BML_MODSMENU_GUID,
-                                                     [](const CKBehaviorContext &behcontext) {
-                                                         ModLoader::GetInstance().OpenModsMenu();
-                                                         return CK_OK;
-                                                     }));
-#undef ADD_GAME_MESSAGE_HOOK
-}
-
-bool ModLoader::RegisterMod(BModDll &modDll) {
+bool ModLoader::RegisterMod(ModDll &modDll) {
     IMod *mod = modDll.entry(this);
     BMLVersion curVer;
     BMLVersion reqVer = mod->GetBMLVersion();

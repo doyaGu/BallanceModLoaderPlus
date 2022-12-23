@@ -1,10 +1,9 @@
-﻿#include <Windows.h>
+#include <Windows.h>
 
 #include "BMLAll.h"
 
 #include "ModLoader.h"
 #include "ModManager.h"
-#include "RegisterBB.h"
 
 #include "MinHook.h"
 
