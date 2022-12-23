@@ -305,8 +305,8 @@ namespace ExecuteBB {
         bbPhyImpul->Execute(0);
     }
 
-    CKBehavior *CreateSendMessage(const char *msg, CKBeObject *dest) {
-        CKBehavior *beh = CreateBB(ownerScript, VT_LOGICS_SENDMESSAGE, false);
+    CKBehavior *CreateSendMessage(CKBehavior *script, const char *msg, CKBeObject *dest) {
+        CKBehavior *beh = CreateBB(script, VT_LOGICS_SENDMESSAGE);
         beh->GetInputParameter(0)->SetDirectSource(CreateParamString("Message", msg));
         beh->GetInputParameter(1)->SetDirectSource(CreateParamObject(CKPGUID_BEOBJECT, "Dest", dest));
         return beh;
