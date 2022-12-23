@@ -28,19 +28,9 @@ public:
     CKERROR OnPostRender(CKRenderContext *dev) override;
     CKERROR OnPostSpriteRender(CKRenderContext *dev) override;
 
-    CKDWORD GetValidFunctionsMask() override {
-        return CKMANAGER_FUNC_PreProcess |
-               CKMANAGER_FUNC_PostProcess |
-               CKMANAGER_FUNC_OnCKInit |
-               CKMANAGER_FUNC_OnCKEnd |
-               CKMANAGER_FUNC_OnCKPlay |
-               CKMANAGER_FUNC_OnCKPause |
-               CKMANAGER_FUNC_OnCKReset |
-               CKMANAGER_FUNC_OnCKPostReset |
-               CKMANAGER_FUNC_OnPreRender |
-               CKMANAGER_FUNC_OnPostRender |
-               CKMANAGER_FUNC_OnPostSpriteRender;
-    }
+    int GetFunctionPriority(CKMANAGER_FUNCTIONS Function) override;
+
+    CKDWORD GetValidFunctionsMask() override;
 
     virtual void AddPreProcessCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE);
     virtual void RemovePreProcessCallBack(CK_PROCESSCALLBACK func, void *arg);
