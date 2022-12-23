@@ -1,5 +1,4 @@
 #include "ModLoader.h"
-#include "RegisterBB.h"
 
 namespace {
     CKBEHAVIORFCT g_ObjectLoad = nullptr;

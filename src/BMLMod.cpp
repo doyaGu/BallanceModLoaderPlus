@@ -7,7 +7,6 @@
 #include "Gui.h"
 #include "InputHook.h"
 #include "ExecuteBB.h"
-#include "RegisterBB.h"
 #include "ScriptHelper.h"
 #include "ModLoader.h"
 #include "Commands.h"

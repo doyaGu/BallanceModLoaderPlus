@@ -18,7 +18,6 @@ set(BMLPLUS_PUBLIC_HDRS
         ${BMLPLUS_INC_DIR}/BMLPlus/InputHook.h
 
         ${BMLPLUS_INC_DIR}/BMLPlus/ExecuteBB.h
-        ${BMLPLUS_INC_DIR}/BMLPlus/RegisterBB.h
         ${BMLPLUS_INC_DIR}/BMLPlus/ScriptHelper.h
 
         ${BMLPLUS_INC_DIR}/BMLPlus/BMLAll.h
@@ -62,7 +61,6 @@ set(BMLPLUS_SRCS
         PhysicalizeHook.cpp
 
         ExecuteBB.cpp
-        RegisterBB.cpp
         ScriptHelper.cpp
 
         Logger.cpp
@@ -87,7 +85,7 @@ target_link_libraries(BMLPlus
         PUBLIC
             CK2 VxMath
         PRIVATE
-            CKZlib xbyak minhook
+            CKZlib minhook
         )
 
 target_compile_definitions(BMLPlus PRIVATE "BML_EXPORTS")

@@ -2,7 +2,6 @@
 
 #include "Defines.h"
 #include "ScriptHelper.h"
-#include "RegisterBB.h"
 #include "ModLoader.h"
 
 using namespace ScriptHelper;
