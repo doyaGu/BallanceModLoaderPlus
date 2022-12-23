@@ -6,7 +6,7 @@
 using namespace BGui;
 
 Label::Label(const char *name) : Element(name) {
-    m_Text2d = ExecuteBB::Create2DText(m_2dEntity);
+    m_Text2d = ExecuteBB::Create2DText(ModLoader::GetInstance().GetScriptByName("Level_Init"));
 }
 
 Label::~Label() {
