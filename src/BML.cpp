@@ -65,15 +65,15 @@ CKPluginInfo g_PluginInfo[2];
 PLUGIN_EXPORT int CKGetPluginInfoCount() { return 2; }
 
 PLUGIN_EXPORT CKPluginInfo *CKGetPluginInfo(int Index) {
-    g_PluginInfo[0].m_Author = "Gamepiaynmo";
-    g_PluginInfo[0].m_Description = "Ballance Mod Loader";
+    g_PluginInfo[0].m_Author = "Kakuty";
+    g_PluginInfo[0].m_Description = "Building blocks for hooking";
     g_PluginInfo[0].m_Extension = "";
     g_PluginInfo[0].m_Type = CKPLUGIN_BEHAVIOR_DLL;
     g_PluginInfo[0].m_Version = BML_MAJOR_VER << 16 | BML_MINOR_VER;
     g_PluginInfo[0].m_InitInstanceFct = nullptr;
     g_PluginInfo[0].m_ExitInstanceFct = nullptr;
-    g_PluginInfo[0].m_GUID = BML_MODLOADER_GUID;
-    g_PluginInfo[0].m_Summary = "Mod Loader for Ballance";
+    g_PluginInfo[0].m_GUID = CKGUID(0x3a086b4d, 0x2f4a4f01);
+    g_PluginInfo[0].m_Summary = "Building blocks for hooking";
 
     g_PluginInfo[1].m_Author = "Kakuty";
     g_PluginInfo[1].m_Description = "Hook Manager";
@@ -89,7 +89,10 @@ PLUGIN_EXPORT CKPluginInfo *CKGetPluginInfo(int Index) {
 }
 
 PLUGIN_EXPORT void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg);
+
 void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg) {
+    RegisterBehavior(reg, FillBehaviorHookBlockDecl);
+
     auto &loader = ModLoader::GetInstance();
     loader.PreloadMods();
     loader.RegisterBBs(reg);

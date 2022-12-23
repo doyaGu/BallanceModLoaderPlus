@@ -42,6 +42,7 @@ set(BMLPLUS_SRCS
         BML.cpp
         ModLoader.cpp
         HookManager.cpp
+        HookBlock.cpp
 
         IMod.cpp
         BMLMod.cpp
