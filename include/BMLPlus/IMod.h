@@ -71,7 +71,8 @@ public:
                                int concaveCnt, CKMesh **concaveMesh) {}
     virtual void OnUnphysicalize(CK3dEntity *target) {}
 
-    virtual void OnPreProcess() {}
+    virtual void OnPreCommandExecute(ICommand *command, const std::vector<std::string> &args) {}
+    virtual void OnPostCommandExecute(ICommand *command, const std::vector<std::string> &args) {}
 
 protected:
     virtual ILogger *GetLogger() final;
