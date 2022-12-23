@@ -136,7 +136,7 @@ namespace ExecuteBB {
 
     BML_EXPORT void PhysicsWakeUp(CK3dEntity *target = nullptr);
 
-    BML_EXPORT CKBehavior *CreateSendMessage(const char *msg, CKBeObject *dest);
+    BML_EXPORT CKBehavior *CreateSendMessage(CKBehavior *script, const char *msg, CKBeObject *dest);
 
     BML_EXPORT CKBehavior *CreateHookBlock(CKBehavior *script, void (*callback)(void *), void *arg = nullptr, int inCount = 1, int outCount = 1);
 }
