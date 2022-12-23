@@ -84,7 +84,6 @@ public:
 
     void RegisterBBs(XObjectDeclarationArray *reg);
 
-    CKERROR OnPreProcess();
     CKERROR OnProcess();
     CKERROR OnPreRender(CKRenderContext *dev);
     CKERROR OnPostRender(CKRenderContext *dev);

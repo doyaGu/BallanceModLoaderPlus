@@ -244,11 +244,6 @@ void ModLoader::UnloadMods() {
     m_Configs.clear();
 }
 
-CKERROR ModLoader::OnPreProcess() {
-    BroadcastCallback(&IMod::OnPreProcess);
-    return CK_OK;
-}
-
 CKERROR ModLoader::OnProcess() {
     m_SkipRender = false;
 
@@ -486,7 +481,9 @@ void ModLoader::ExecuteCommand(const char *cmd) {
 
     ICommand *command = FindCommand(args[0].c_str());
     if (command && (!command->IsCheat() || m_CheatEnabled)) {
+        BroadcastCallback(&IMod::OnPreCommandExecute, command, args);
         command->Execute(this, args);
+        BroadcastCallback(&IMod::OnPostCommandExecute, command, args);
     } else {
         m_BMLMod->AddIngameMessage(("Error: Unknown Command " + args[0]).c_str());
     }
@@ -825,8 +822,9 @@ void ModLoader::FillCallbackMap(IMod *mod) {
     CHECK_V_FUNC(index++, &IMod::OnPhysicalize);
     CHECK_V_FUNC(index++, &IMod::OnUnphysicalize);
 
-    if (mod->GetBMLVersion() >= BMLVersion(0, 2, 1)) {
-        CHECK_V_FUNC(index++, &IMod::OnPreProcess);
+    if (mod->GetBMLVersion() >= BMLVersion(0, 2, 0)) {
+        CHECK_V_FUNC(index++, &IMod::OnPreCommandExecute);
+        CHECK_V_FUNC(index++, &IMod::OnPostCommandExecute);
     }
 
 #undef CHECK_V_FUNC
