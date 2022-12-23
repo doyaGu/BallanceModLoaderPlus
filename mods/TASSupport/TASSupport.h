@@ -98,7 +98,7 @@ public:
                       XObjectArray *objArray, CKObject *masterObj) override;
     void OnLoadScript(const char *filename, CKBehavior *script) override;
 
-    void OnPreProcess() override;
+    void OnPreProcess();
     void OnProcess() override;
 
     void OnBallOff() override;

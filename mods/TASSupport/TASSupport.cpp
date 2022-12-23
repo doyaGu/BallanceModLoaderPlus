@@ -4,6 +4,8 @@
 #include <ctime>
 #include <sys/stat.h>
 
+#include <BMLPlus/HookManager.h>
+
 TASSupport *g_mod = nullptr;
 
 IMod *BMLEntry(IBML *bml) {
@@ -78,8 +80,14 @@ void CompressDataToFile(char *data, int size, const char *filename) {
     CKDeletePointer(res);
 }
 
+static void PreProcessCallBack(CKContext *, void *arg) {
+    ((TASSupport *)arg)->OnPreProcess();
+}
+
 void TASSupport::OnLoad() {
     VxMakeDirectory("..\\ModLoader\\TASRecords\\");
+
+    HookManager::GetManager(m_BML->GetCKContext())->AddPreProcessCallBack(PreProcessCallBack, this);
 
     GetConfig()->SetCategoryComment("Misc", "Miscellaneous");
     m_Enabled = GetConfig()->GetProperty("Misc", "Enable");
@@ -166,6 +174,8 @@ void TASSupport::OnUnload() {
         delete m_TASListGui;
         delete m_TASEntryGui;
     }
+
+    HookManager::GetManager(m_BML->GetCKContext())->RemovePreProcessCallBack(PreProcessCallBack, this);
 }
 
 void TASSupport::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
