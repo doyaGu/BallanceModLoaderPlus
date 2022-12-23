@@ -47,36 +47,6 @@ namespace ExecuteBB {
     int GetFont(FontType type);
     FontType GetFontType(int font);
 
-    BML_EXPORT CKBehavior *Create2DText(CK2dEntity *target = nullptr, FontType font = NOFONT, const char *text = "",
-                                        int align = ALIGN_CENTER, VxRect margin = {2, 2, 2, 2},
-                                        Vx2DVector offset = {0, 0}, Vx2DVector pindent = {0, 0},
-                                        CKMaterial *bgmat = nullptr,float caretsize = 0.1f,
-                                        CKMaterial *caretmat = nullptr, int flags = TEXT_SCREEN);
-
-    BML_EXPORT CKBehavior *CreatePhysicalizeConvex(CK3dEntity *target = nullptr, CKBOOL fixed = false,
-                                                   float friction = 0.7f, float elasticity = 0.4f, float mass = 1.0f,
-                                                   const char *collGroup = "", CKBOOL startFrozen = false,
-                                                   CKBOOL enableColl = true, CKBOOL calcMassCenter = false,
-                                                   float linearDamp = 0.1f, float rotDamp = 0.1f,
-                                                   const char *collSurface = "", VxVector massCenter = VxVector(0, 0, 0),
-                                                   CKMesh *mesh = nullptr);
-
-    BML_EXPORT CKBehavior *CreatePhysicalizeBall(CK3dEntity *target = nullptr, CKBOOL fixed = false,
-                                                 float friction = 0.7f, float elasticity = 0.4f, float mass = 1.0f,
-                                                 const char *collGroup = "", CKBOOL startFrozen = false,
-                                                 CKBOOL enableColl = true, CKBOOL calcMassCenter = false,
-                                                 float linearDamp = 0.1f, float rotDamp = 0.1f,
-                                                 const char *collSurface = "", VxVector massCenter = VxVector(0, 0, 0),
-                                                 VxVector ballCenter = VxVector(0, 0, 0), float ballRadius = 2.0f);
-
-    BML_EXPORT CKBehavior *CreatePhysicalizeConcave(CK3dEntity *target = nullptr, CKBOOL fixed = false,
-                                                    float friction = 0.7f, float elasticity = 0.4f, float mass = 1.0f,
-                                                    const char *collGroup = "", CKBOOL startFrozen = false,
-                                                    CKBOOL enableColl = true, CKBOOL calcMassCenter = false,
-                                                    float linearDamp = 0.1f, float rotDamp = 0.1f,
-                                                    const char *collSurface = "", VxVector massCenter = VxVector(0, 0, 0),
-                                                    CKMesh *mesh = nullptr);
-
     BML_EXPORT void PhysicalizeConvex(CK3dEntity *target = nullptr, CKBOOL fixed = false, float friction = 0.7f,
                                       float elasticity = 0.4f, float mass = 1.0f, const char *collGroup = "",
                                       CKBOOL startFrozen = false, CKBOOL enableColl = true,
@@ -100,11 +70,6 @@ namespace ExecuteBB {
 
     BML_EXPORT void Unphysicalize(CK3dEntity *target);
 
-    BML_EXPORT CKBehavior *CreateSetPhysicsForce(CK3dEntity *target = nullptr,
-                                                 VxVector position = VxVector(0, 0, 0), CK3dEntity *posRef = nullptr,
-                                                 VxVector direction = VxVector(0, 0, 0), CK3dEntity *directionRef = nullptr,
-                                                 float force = 0.0f);
-
     BML_EXPORT void SetPhysicsForce(CK3dEntity *target = nullptr,
                                     VxVector position = VxVector(0, 0, 0), CK3dEntity *posRef = nullptr,
                                     VxVector direction = VxVector(0, 0, 0), CK3dEntity *directionRef = nullptr,
@@ -112,9 +77,12 @@ namespace ExecuteBB {
 
     BML_EXPORT void UnsetPhysicsForce(CK3dEntity *target = nullptr);
 
-    BML_EXPORT CKBehavior *CreateObjectLoad(const char *file = "", const char *mastername = "",
-                                            CK_CLASSID filter = CKCID_3DOBJECT, CKBOOL addToScene = true,
-                                            CKBOOL reuseMesh = true, CKBOOL reuseMtl = true, CKBOOL dynamic = true);
+    BML_EXPORT void PhysicsImpulse(CK3dEntity *target = nullptr,
+                                   VxVector position = VxVector(0, 0, 0), CK3dEntity *posRef = nullptr,
+                                   VxVector direction = VxVector(0, 0, 0), CK3dEntity *dirRef = nullptr,
+                                   float impulse = 0.0f);
+
+    BML_EXPORT void PhysicsWakeUp(CK3dEntity *target = nullptr);
 
     BML_EXPORT ::std::pair<XObjectArray *, CKObject *> ObjectLoad(const char *file = "", bool rename = true,
                                                                   const char *mastername = "",
@@ -122,19 +90,51 @@ namespace ExecuteBB {
                                                                   CKBOOL addToScene = true, CKBOOL reuseMesh = true,
                                                                   CKBOOL reuseMtl = true, CKBOOL dynamic = true);
 
-    BML_EXPORT CKBehavior *CreatePhysicsImpulse(CK3dEntity *target = nullptr,
+    BML_EXPORT CKBehavior *Create2DText(CKBehavior *script, CK2dEntity *target = nullptr, FontType font = NOFONT, const char *text = "",
+                                        int align = ALIGN_CENTER, VxRect margin = {2, 2, 2, 2},
+                                        Vx2DVector offset = {0, 0}, Vx2DVector pindent = {0, 0},
+                                        CKMaterial *bgmat = nullptr,float caretsize = 0.1f,
+                                        CKMaterial *caretmat = nullptr, int flags = TEXT_SCREEN);
+
+    BML_EXPORT CKBehavior *CreatePhysicalizeConvex(CKBehavior *script, CK3dEntity *target = nullptr, CKBOOL fixed = false,
+                                                   float friction = 0.7f, float elasticity = 0.4f, float mass = 1.0f,
+                                                   const char *collGroup = "", CKBOOL startFrozen = false,
+                                                   CKBOOL enableColl = true, CKBOOL calcMassCenter = false,
+                                                   float linearDamp = 0.1f, float rotDamp = 0.1f,
+                                                   const char *collSurface = "", VxVector massCenter = VxVector(0, 0, 0),
+                                                   CKMesh *mesh = nullptr);
+
+    BML_EXPORT CKBehavior *CreatePhysicalizeBall(CKBehavior *script, CK3dEntity *target = nullptr, CKBOOL fixed = false,
+                                                 float friction = 0.7f, float elasticity = 0.4f, float mass = 1.0f,
+                                                 const char *collGroup = "", CKBOOL startFrozen = false,
+                                                 CKBOOL enableColl = true, CKBOOL calcMassCenter = false,
+                                                 float linearDamp = 0.1f, float rotDamp = 0.1f,
+                                                 const char *collSurface = "", VxVector massCenter = VxVector(0, 0, 0),
+                                                 VxVector ballCenter = VxVector(0, 0, 0), float ballRadius = 2.0f);
+
+    BML_EXPORT CKBehavior *CreatePhysicalizeConcave(CKBehavior *script, CK3dEntity *target = nullptr, CKBOOL fixed = false,
+                                                    float friction = 0.7f, float elasticity = 0.4f, float mass = 1.0f,
+                                                    const char *collGroup = "", CKBOOL startFrozen = false,
+                                                    CKBOOL enableColl = true, CKBOOL calcMassCenter = false,
+                                                    float linearDamp = 0.1f, float rotDamp = 0.1f,
+                                                    const char *collSurface = "", VxVector massCenter = VxVector(0, 0, 0),
+                                                    CKMesh *mesh = nullptr);
+
+    BML_EXPORT CKBehavior *CreateSetPhysicsForce(CKBehavior *script, CK3dEntity *target = nullptr,
+                                                 VxVector position = VxVector(0, 0, 0), CK3dEntity *posRef = nullptr,
+                                                 VxVector direction = VxVector(0, 0, 0), CK3dEntity *directionRef = nullptr,
+                                                 float force = 0.0f);
+
+    BML_EXPORT CKBehavior *CreatePhysicsImpulse(CKBehavior *script, CK3dEntity *target = nullptr,
                                                 VxVector position = VxVector(0, 0, 0), CK3dEntity *posRef = nullptr,
                                                 VxVector direction = VxVector(0, 0, 0), CK3dEntity *dirRef = nullptr,
                                                 float impulse = 0.0f);
 
-    BML_EXPORT void PhysicsImpulse(CK3dEntity *target = nullptr,
-                                   VxVector position = VxVector(0, 0, 0), CK3dEntity *posRef = nullptr,
-                                   VxVector direction = VxVector(0, 0, 0), CK3dEntity *dirRef = nullptr,
-                                   float impulse = 0.0f);
+    BML_EXPORT CKBehavior *CreatePhysicsWakeUp(CKBehavior *script, CK3dEntity *target = nullptr);
 
-    BML_EXPORT CKBehavior *CreatePhysicsWakeUp(CK3dEntity *target = nullptr);
-
-    BML_EXPORT void PhysicsWakeUp(CK3dEntity *target = nullptr);
+    BML_EXPORT CKBehavior *CreateObjectLoad(CKBehavior *script, const char *file = "", const char *mastername = "",
+                                            CK_CLASSID filter = CKCID_3DOBJECT, CKBOOL addToScene = true,
+                                            CKBOOL reuseMesh = true, CKBOOL reuseMtl = true, CKBOOL dynamic = true);
 
     BML_EXPORT CKBehavior *CreateSendMessage(CKBehavior *script, const char *msg, CKBeObject *dest);
 

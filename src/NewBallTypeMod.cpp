@@ -474,16 +474,15 @@ void NewBallTypeMod::OnEditScript_PhysicalizeNewBall(CKBehavior *graph) {
     for (BallTypeInfo &info: m_BallTypes) {
         CKParameter *ballName = CreateParamString(graph, "Pin", info.m_ObjName.c_str());
         sop->CreateInputParameter("Pin", CKPGUID_STRING)->SetDirectSource(ballName);
-        CKBehavior *newPhy = nullptr;
+        CKBehavior *newPhy;
         if (info.m_Radius > 0) {
-            newPhy = ExecuteBB::CreatePhysicalizeBall();
+            newPhy = ExecuteBB::CreatePhysicalizeBall(graph);
             SetParamValue(newPhy->GetInputParameter(12)->GetDirectSource(), info.m_Radius);
         } else {
-            newPhy = ExecuteBB::CreatePhysicalizeConvex();
+            newPhy = ExecuteBB::CreatePhysicalizeConvex(graph);
             newPhy->GetInputParameter(11)->SetDirectSource(op->GetOutputParameter(0));
         }
 
-        graph->AddSubBehavior(newPhy);
         newPhy->GetTargetParameter()->ShareSourceWith(physicalize->GetTargetParameter());
         for (int i = 0; i < 11; i++)
             newPhy->GetInputParameter(i)->ShareSourceWith(physicalize->GetInputParameter(i));

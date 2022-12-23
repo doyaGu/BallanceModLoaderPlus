@@ -9,7 +9,6 @@ using namespace ScriptHelper;
 namespace ExecuteBB {
     int GameFonts[8] = {0};
 
-    CKBehavior *ownerScript;
     CKBehavior *bbPhysConv, *bbPhysBall, *bbPhysConc;
     CKBehavior *bbObjLoad;
     CKBehavior *bbPhyImpul;
@@ -19,15 +18,15 @@ namespace ExecuteBB {
     void Init(CKContext *context) {
         for (int i = 0; i < 8; i++)
             GameFonts[i] = i;
-        ownerScript = ModLoader::GetInstance().GetScriptByName("Level_Init");
+        CKBehavior *ownerScript = ModLoader::GetInstance().GetScriptByName("Level_Init");
 
-        bbPhysConv = CreatePhysicalizeConvex();
-        bbPhysBall = CreatePhysicalizeBall();
-        bbPhysConc = CreatePhysicalizeConcave();
-        bbObjLoad = CreateObjectLoad();
-        bbPhyImpul = CreatePhysicsImpulse();
-        bbSetForce = CreateSetPhysicsForce();
-        bbPhysicsWakeUp = CreatePhysicsWakeUp();
+        bbPhysConv = CreatePhysicalizeConvex(ownerScript);
+        bbPhysBall = CreatePhysicalizeBall(ownerScript);
+        bbPhysConc = CreatePhysicalizeConcave(ownerScript);
+        bbObjLoad = CreateObjectLoad(ownerScript);
+        bbPhyImpul = CreatePhysicsImpulse(ownerScript);
+        bbSetForce = CreateSetPhysicsForce(ownerScript);
+        bbPhysicsWakeUp = CreatePhysicsWakeUp(ownerScript);
     }
 
     void InitFont(FontType type, int fontIndex) {
@@ -43,98 +42,6 @@ namespace ExecuteBB {
             if (GameFonts[i] == font)
                 return static_cast<FontType>(i);
         return NOFONT;
-    }
-
-    template<typename T>
-    CKParameter *CreateParamValue(CKGUID guid, const char *name, T value) {
-        CKParameter *param = CreateLocalParameter(ownerScript, name, guid);
-        param->SetValue(&value, sizeof(T));
-        return param;
-    }
-
-    CKParameter *CreateParamObject(CKGUID guid, const char *name, CKObject *value) {
-        return CreateParamValue<CK_ID>(guid, name, CKOBJID(value));
-    }
-
-    CKParameter *CreateParamString(const char *name, const char *value) {
-        CKParameter *param = CreateLocalParameter(ownerScript, name, CKPGUID_STRING);
-        param->SetStringValue(TOCKSTRING(value));
-        return param;
-    }
-
-    CKBehavior *Create2DText(CK2dEntity *target, FontType font, const char *text, int align, VxRect margin,
-                             Vx2DVector offset, Vx2DVector pindent, CKMaterial *bgmat, float caretsize,
-                             CKMaterial *caretmat, int flags) {
-        CKBehavior *beh = CreateBB(ownerScript, VT_INTERFACE_2DTEXT, true);
-        beh->GetTargetParameter()->SetDirectSource(CreateParamObject(CKPGUID_2DENTITY, "Target", target));
-        beh->GetInputParameter(0)->SetDirectSource(CreateParamValue(CKPGUID_FONT, "Font", GetFont(font)));
-        beh->GetInputParameter(1)->SetDirectSource(CreateParamString("Text", text));
-        beh->GetInputParameter(2)->SetDirectSource(CreateParamValue(CKPGUID_ALIGNMENT, "Alignment", align));
-        beh->GetInputParameter(3)->SetDirectSource(CreateParamValue(CKPGUID_RECT, "Margins", margin));
-        beh->GetInputParameter(4)->SetDirectSource(CreateParamValue(CKPGUID_2DVECTOR, "Offset", offset));
-        beh->GetInputParameter(5)->SetDirectSource(CreateParamValue(CKPGUID_2DVECTOR, "Paragraph Indentation", pindent));
-        beh->GetInputParameter(6)->SetDirectSource(CreateParamObject(CKPGUID_MATERIAL, "Background Material", bgmat));
-        beh->GetInputParameter(7)->SetDirectSource(CreateParamValue(CKPGUID_PERCENTAGE, "Caret Size", caretsize));
-        beh->GetInputParameter(8)->SetDirectSource(CreateParamObject(CKPGUID_MATERIAL, "Caret Material", caretmat));
-        SetParamValue(beh->GetLocalParameter(0), flags);
-        return beh;
-    }
-
-    CKBehavior *CreatePhysicalize(CK3dEntity *target, CKBOOL fixed, float friction, float elasticity, float mass,
-                                  const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
-                                  float linearDamp, float rotDamp, const char *collSurface, VxVector massCenter) {
-        CKBehavior *beh = CreateBB(ownerScript, PHYSICS_RT_PHYSICALIZE, true);
-        beh->GetTargetParameter()->SetDirectSource(CreateParamObject(CKPGUID_3DENTITY, "Target", target));
-        beh->GetInputParameter(0)->SetDirectSource(CreateParamValue(CKPGUID_BOOL, "Fixed", fixed));
-        beh->GetInputParameter(1)->SetDirectSource(CreateParamValue(CKPGUID_FLOAT, "Friction", friction));
-        beh->GetInputParameter(2)->SetDirectSource(CreateParamValue(CKPGUID_FLOAT, "Elasticity", elasticity));
-        beh->GetInputParameter(3)->SetDirectSource(CreateParamValue(CKPGUID_FLOAT, "Mass", mass));
-        beh->GetInputParameter(4)->SetDirectSource(CreateParamString("Collision Group", collGroup));
-        beh->GetInputParameter(5)->SetDirectSource(CreateParamValue(CKPGUID_BOOL, "Start Frozen", startFrozen));
-        beh->GetInputParameter(6)->SetDirectSource(CreateParamValue(CKPGUID_BOOL, "Enable Collision", enableColl));
-        beh->GetInputParameter(7)->SetDirectSource(CreateParamValue(CKPGUID_BOOL, "Calculate Mass Center", calcMassCenter));
-        beh->GetInputParameter(8)->SetDirectSource(CreateParamValue(CKPGUID_FLOAT, "Linear Speed Damp", linearDamp));
-        beh->GetInputParameter(9)->SetDirectSource(CreateParamValue(CKPGUID_FLOAT, "Rot Speed Damp", rotDamp));
-        beh->GetInputParameter(10)->SetDirectSource(CreateParamString("Collision Surface", collSurface));
-        SetParamValue(beh->GetLocalParameter(3), massCenter);
-        return beh;
-    }
-
-    CKBehavior *CreatePhysicalizeConvex(CK3dEntity *target, CKBOOL fixed, float friction, float elasticity, float mass,
-                                        const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl,
-                                        CKBOOL calcMassCenter, float linearDamp, float rotDamp, const char *collSurface,
-                                        VxVector massCenter, CKMesh *mesh) {
-        CKBehavior *beh = CreatePhysicalize(target, fixed, friction, elasticity, mass, collGroup, startFrozen,
-                                            enableColl, calcMassCenter, linearDamp, rotDamp, collSurface, massCenter);
-        beh->GetInputParameter(11)->SetDirectSource(CreateParamObject(CKPGUID_MESH, "Mesh", mesh));
-        return beh;
-    }
-
-    CKBehavior *CreatePhysicalizeBall(CK3dEntity *target, CKBOOL fixed, float friction, float elasticity, float mass,
-                                      const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl,
-                                      CKBOOL calcMassCenter, float linearDamp, float rotDamp, const char *collSurface,
-                                      VxVector massCenter, VxVector ballCenter, float ballRadius) {
-        CKBehavior *beh = CreatePhysicalize(target, fixed, friction, elasticity, mass, collGroup, startFrozen,
-                                            enableColl, calcMassCenter, linearDamp, rotDamp, collSurface, massCenter);
-        SetParamValue(beh->GetLocalParameter(0), 0);
-        SetParamValue(beh->GetLocalParameter(1), 1);
-        beh->CallCallbackFunction(CKM_BEHAVIORSETTINGSEDITED);
-        beh->GetInputParameter(11)->SetDirectSource(CreateParamValue(CKPGUID_VECTOR, "Ball Position", ballCenter));
-        beh->GetInputParameter(12)->SetDirectSource(CreateParamValue(CKPGUID_FLOAT, "Ball Radius", ballRadius));
-        return beh;
-    }
-
-    CKBehavior *CreatePhysicalizeConcave(CK3dEntity *target, CKBOOL fixed, float friction, float elasticity, float mass,
-                                         const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl,
-                                         CKBOOL calcMassCenter, float linearDamp, float rotDamp,
-                                         const char *collSurface, VxVector massCenter, CKMesh *mesh) {
-        CKBehavior *beh = CreatePhysicalize(target, fixed, friction, elasticity, mass, collGroup, startFrozen,
-                                            enableColl, calcMassCenter, linearDamp, rotDamp, collSurface, massCenter);
-        SetParamValue(beh->GetLocalParameter(0), 0);
-        SetParamValue(beh->GetLocalParameter(2), 1);
-        beh->CallCallbackFunction(CKM_BEHAVIORSETTINGSEDITED);
-        beh->GetInputParameter(11)->SetDirectSource(CreateParamObject(CKPGUID_MESH, "Mesh", mesh));
-        return beh;
     }
 
     void PhysicalizeParam(CKBehavior *beh, CK3dEntity *target, CKBOOL fixed, float friction, float elasticity,
@@ -196,17 +103,6 @@ namespace ExecuteBB {
         bbPhysConv->Execute(0);
     }
 
-    CKBehavior *CreateSetPhysicsForce(CK3dEntity *target, VxVector position, CK3dEntity *posRef, VxVector direction,
-                                      CK3dEntity *directionRef, float force) {
-        CKBehavior *beh = CreateBB(ownerScript, PHYSICS_RT_PHYSICSFORCE, true);
-        beh->GetTargetParameter()->SetDirectSource(CreateParamObject(CKPGUID_3DENTITY, "Target", target));
-        beh->GetInputParameter(0)->SetDirectSource(CreateParamValue(CKPGUID_VECTOR, "Position", position));
-        beh->GetInputParameter(1)->SetDirectSource(CreateParamObject(CKPGUID_3DENTITY, "Pos Referential", posRef));
-        beh->GetInputParameter(2)->SetDirectSource(CreateParamValue(CKPGUID_VECTOR, "Direction", direction));
-        beh->GetInputParameter(3)->SetDirectSource(CreateParamObject(CKPGUID_3DENTITY, "Direction Ref", directionRef));
-        beh->GetInputParameter(4)->SetDirectSource(CreateParamValue(CKPGUID_FLOAT, "Force Value", force));
-        return beh;
-    }
 
     void SetPhysicsForce(CK3dEntity *target, VxVector position, CK3dEntity *posRef, VxVector direction,
                          CK3dEntity *directionRef, float force) {
@@ -226,29 +122,22 @@ namespace ExecuteBB {
         bbSetForce->Execute(0);
     }
 
-    CKBehavior *CreatePhysicsWakeUp(CK3dEntity *target) {
-        CKBehavior *beh = CreateBB(ownerScript, PHYSICS_RT_PHYSICSWAKEUP, true);
-        beh->GetTargetParameter()->SetDirectSource(CreateParamObject(CKPGUID_3DENTITY, "Target", target));
-        return beh;
-    }
-
     void PhysicsWakeUp(CK3dEntity *target) {
         SetParamObject(bbPhysicsWakeUp->GetTargetParameter()->GetDirectSource(), target);
         bbPhysicsWakeUp->ActivateInput(0);
         bbPhysicsWakeUp->Execute(0);
     }
 
-    CKBehavior *CreateObjectLoad(const char *file, const char *mastername, CK_CLASSID filter, CKBOOL addToScene,
-                                 CKBOOL reuseMesh, CKBOOL reuseMtl, CKBOOL dynamic) {
-        CKBehavior *beh = CreateBB(ownerScript, VT_NARRATIVES_OBJECTLOAD);
-        beh->GetInputParameter(0)->SetDirectSource(CreateParamString("File", file));
-        beh->GetInputParameter(1)->SetDirectSource(CreateParamString("Master Name", mastername));
-        beh->GetInputParameter(2)->SetDirectSource(CreateParamValue(CKPGUID_CLASSID, "Filter", filter));
-        beh->GetInputParameter(3)->SetDirectSource(CreateParamValue(CKPGUID_BOOL, "Add to Scene", addToScene));
-        beh->GetInputParameter(4)->SetDirectSource(CreateParamValue(CKPGUID_BOOL, "Reuse Mesh", reuseMesh));
-        beh->GetInputParameter(5)->SetDirectSource(CreateParamValue(CKPGUID_BOOL, "Reuse Material", reuseMtl));
-        SetParamValue(beh->GetLocalParameter(0), dynamic);
-        return beh;
+    void PhysicsImpulse(CK3dEntity *target, VxVector position, CK3dEntity *posRef, VxVector direction,
+                        CK3dEntity *dirRef, float impulse) {
+        SetParamObject(bbPhyImpul->GetTargetParameter()->GetDirectSource(), target);
+        SetParamValue(bbPhyImpul->GetInputParameter(0)->GetDirectSource(), position);
+        SetParamObject(bbPhyImpul->GetInputParameter(1)->GetDirectSource(), posRef);
+        SetParamValue(bbPhyImpul->GetInputParameter(2)->GetDirectSource(), direction);
+        SetParamObject(bbPhyImpul->GetInputParameter(3)->GetDirectSource(), dirRef);
+        SetParamValue(bbPhyImpul->GetInputParameter(4)->GetDirectSource(), impulse);
+        bbPhyImpul->ActivateInput(0);
+        bbPhyImpul->Execute(0);
     }
 
     std::pair<XObjectArray *, CKObject *> ObjectLoad(const char *file, bool rename, const char *mastername,
@@ -281,34 +170,128 @@ namespace ExecuteBB {
         return {array, bbObjLoad->GetOutputParameterObject(1)};
     }
 
-    CKBehavior *CreatePhysicsImpulse(CK3dEntity *target, VxVector position, CK3dEntity *posRef, VxVector direction,
-                                     CK3dEntity *dirRef, float impulse) {
-        CKBehavior *beh = CreateBB(ownerScript, PHYSICS_RT_PHYSICSIMPULSE, true);
-        beh->GetTargetParameter()->SetDirectSource(CreateParamObject(CKPGUID_3DENTITY, "Target", target));
-        beh->GetInputParameter(0)->SetDirectSource(CreateParamValue(CKPGUID_VECTOR, "Position", position));
-        beh->GetInputParameter(1)->SetDirectSource(CreateParamObject(CKPGUID_3DENTITY, "PosRef", posRef));
-        beh->GetInputParameter(2)->SetDirectSource(CreateParamValue(CKPGUID_VECTOR, "Direction", direction));
-        beh->GetInputParameter(3)->SetDirectSource(CreateParamObject(CKPGUID_3DENTITY, "DirRef", dirRef));
-        beh->GetInputParameter(4)->SetDirectSource(CreateParamValue(CKPGUID_FLOAT, "Impulse", impulse));
+    CKBehavior *Create2DText(CKBehavior *script, CK2dEntity *target, FontType font, const char *text, int align, VxRect margin,
+                             Vx2DVector offset, Vx2DVector pindent, CKMaterial *bgmat, float caretsize,
+                             CKMaterial *caretmat, int flags) {
+        CKBehavior *beh = CreateBB(script, VT_INTERFACE_2DTEXT, true);
+        beh->GetTargetParameter()->SetDirectSource(CreateParamObject(script, "Target", CKPGUID_2DENTITY, target));
+        beh->GetInputParameter(0)->SetDirectSource(CreateParamValue(script, "Font", CKPGUID_FONT, GetFont(font)));
+        beh->GetInputParameter(1)->SetDirectSource(CreateParamString(script, "Text", text));
+        beh->GetInputParameter(2)->SetDirectSource(CreateParamValue(script, "Alignment", CKPGUID_ALIGNMENT, align));
+        beh->GetInputParameter(3)->SetDirectSource(CreateParamValue(script, "Margins", CKPGUID_RECT, margin));
+        beh->GetInputParameter(4)->SetDirectSource(CreateParamValue(script, "Offset", CKPGUID_2DVECTOR, offset));
+        beh->GetInputParameter(5)->SetDirectSource(CreateParamValue(script, "Paragraph Indentation", CKPGUID_2DVECTOR, pindent));
+        beh->GetInputParameter(6)->SetDirectSource(CreateParamObject(script, "Background Material", CKPGUID_MATERIAL, bgmat));
+        beh->GetInputParameter(7)->SetDirectSource(CreateParamValue(script, "Caret Size", CKPGUID_PERCENTAGE, caretsize));
+        beh->GetInputParameter(8)->SetDirectSource(CreateParamObject(script, "Caret Material", CKPGUID_MATERIAL, caretmat));
+        SetParamValue(beh->GetLocalParameter(0), flags);
         return beh;
     }
 
-    void PhysicsImpulse(CK3dEntity *target, VxVector position, CK3dEntity *posRef, VxVector direction,
-                        CK3dEntity *dirRef, float impulse) {
-        SetParamObject(bbPhyImpul->GetTargetParameter()->GetDirectSource(), target);
-        SetParamValue(bbPhyImpul->GetInputParameter(0)->GetDirectSource(), position);
-        SetParamObject(bbPhyImpul->GetInputParameter(1)->GetDirectSource(), posRef);
-        SetParamValue(bbPhyImpul->GetInputParameter(2)->GetDirectSource(), direction);
-        SetParamObject(bbPhyImpul->GetInputParameter(3)->GetDirectSource(), dirRef);
-        SetParamValue(bbPhyImpul->GetInputParameter(4)->GetDirectSource(), impulse);
-        bbPhyImpul->ActivateInput(0);
-        bbPhyImpul->Execute(0);
+    CKBehavior *CreatePhysicalize(CKBehavior *script, CK3dEntity *target, CKBOOL fixed, float friction, float elasticity, float mass,
+                                  const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
+                                  float linearDamp, float rotDamp, const char *collSurface, VxVector massCenter) {
+        CKBehavior *beh = CreateBB(script, PHYSICS_RT_PHYSICALIZE, true);
+        beh->GetTargetParameter()->SetDirectSource(CreateParamObject(script, "Target", CKPGUID_3DENTITY, target));
+        beh->GetInputParameter(0)->SetDirectSource(CreateParamValue(script, "Fixed", CKPGUID_BOOL, fixed));
+        beh->GetInputParameter(1)->SetDirectSource(CreateParamValue(script, "Friction", CKPGUID_FLOAT, friction));
+        beh->GetInputParameter(2)->SetDirectSource(CreateParamValue(script, "Elasticity", CKPGUID_FLOAT, elasticity));
+        beh->GetInputParameter(3)->SetDirectSource(CreateParamValue(script, "Mass", CKPGUID_FLOAT, mass));
+        beh->GetInputParameter(4)->SetDirectSource(CreateParamString(script, "Collision Group", collGroup));
+        beh->GetInputParameter(5)->SetDirectSource(CreateParamValue(script, "Start Frozen", CKPGUID_BOOL, startFrozen));
+        beh->GetInputParameter(6)->SetDirectSource(CreateParamValue(script, "Enable Collision", CKPGUID_BOOL, enableColl));
+        beh->GetInputParameter(7)->SetDirectSource(CreateParamValue(script, "Calculate Mass Center", CKPGUID_BOOL, calcMassCenter));
+        beh->GetInputParameter(8)->SetDirectSource(CreateParamValue(script, "Linear Speed Damp", CKPGUID_FLOAT, linearDamp));
+        beh->GetInputParameter(9)->SetDirectSource(CreateParamValue(script, "Rot Speed Damp", CKPGUID_FLOAT, rotDamp));
+        beh->GetInputParameter(10)->SetDirectSource(CreateParamString(script, "Collision Surface", collSurface));
+        SetParamValue(beh->GetLocalParameter(3), massCenter);
+        return beh;
+    }
+
+    CKBehavior *CreatePhysicalizeConvex(CKBehavior *script, CK3dEntity *target, CKBOOL fixed, float friction, float elasticity, float mass,
+                                        const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl,
+                                        CKBOOL calcMassCenter, float linearDamp, float rotDamp, const char *collSurface,
+                                        VxVector massCenter, CKMesh *mesh) {
+        CKBehavior *beh = CreatePhysicalize(script, target, fixed, friction, elasticity, mass, collGroup, startFrozen,
+                                            enableColl, calcMassCenter, linearDamp, rotDamp, collSurface, massCenter);
+        beh->GetInputParameter(11)->SetDirectSource(CreateParamObject(script, "Mesh", CKPGUID_MESH, mesh));
+        return beh;
+    }
+
+    CKBehavior *CreatePhysicalizeBall(CKBehavior *script, CK3dEntity *target, CKBOOL fixed, float friction, float elasticity, float mass,
+                                      const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl,
+                                      CKBOOL calcMassCenter, float linearDamp, float rotDamp, const char *collSurface,
+                                      VxVector massCenter, VxVector ballCenter, float ballRadius) {
+        CKBehavior *beh = CreatePhysicalize(script, target, fixed, friction, elasticity, mass, collGroup, startFrozen,
+                                            enableColl, calcMassCenter, linearDamp, rotDamp, collSurface, massCenter);
+        SetParamValue(beh->GetLocalParameter(0), 0);
+        SetParamValue(beh->GetLocalParameter(1), 1);
+        beh->CallCallbackFunction(CKM_BEHAVIORSETTINGSEDITED);
+        beh->GetInputParameter(11)->SetDirectSource(CreateParamValue(script, "Ball Position", CKPGUID_VECTOR, ballCenter));
+        beh->GetInputParameter(12)->SetDirectSource(CreateParamValue(script, "Ball Radius", CKPGUID_FLOAT, ballRadius));
+        return beh;
+    }
+
+    CKBehavior *CreatePhysicalizeConcave(CKBehavior *script, CK3dEntity *target, CKBOOL fixed, float friction, float elasticity, float mass,
+                                         const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl,
+                                         CKBOOL calcMassCenter, float linearDamp, float rotDamp,
+                                         const char *collSurface, VxVector massCenter, CKMesh *mesh) {
+        CKBehavior *beh = CreatePhysicalize(script, target, fixed, friction, elasticity, mass, collGroup, startFrozen,
+                                            enableColl, calcMassCenter, linearDamp, rotDamp, collSurface, massCenter);
+        SetParamValue(beh->GetLocalParameter(0), 0);
+        SetParamValue(beh->GetLocalParameter(2), 1);
+        beh->CallCallbackFunction(CKM_BEHAVIORSETTINGSEDITED);
+        beh->GetInputParameter(11)->SetDirectSource(CreateParamObject(script, "Mesh", CKPGUID_MESH, mesh));
+        return beh;
+    }
+
+    CKBehavior *CreateSetPhysicsForce(CKBehavior *script, CK3dEntity *target, VxVector position, CK3dEntity *posRef, VxVector direction,
+                                      CK3dEntity *directionRef, float force) {
+        CKBehavior *beh = CreateBB(script, PHYSICS_RT_PHYSICSFORCE, true);
+        beh->GetTargetParameter()->SetDirectSource(CreateParamObject(script, "Target", CKPGUID_3DENTITY, target));
+        beh->GetInputParameter(0)->SetDirectSource(CreateParamValue(script, "Position", CKPGUID_VECTOR, position));
+        beh->GetInputParameter(1)->SetDirectSource(CreateParamObject(script, "Pos Referential", CKPGUID_3DENTITY, posRef));
+        beh->GetInputParameter(2)->SetDirectSource(CreateParamValue(script, "Direction", CKPGUID_VECTOR, direction));
+        beh->GetInputParameter(3)->SetDirectSource(CreateParamObject(script, "Direction Ref", CKPGUID_3DENTITY, directionRef));
+        beh->GetInputParameter(4)->SetDirectSource(CreateParamValue(script, "Force Value", CKPGUID_FLOAT, force));
+        return beh;
+    }
+
+    CKBehavior *CreatePhysicsWakeUp(CKBehavior *script, CK3dEntity *target) {
+        CKBehavior *beh = CreateBB(script, PHYSICS_RT_PHYSICSWAKEUP, true);
+        beh->GetTargetParameter()->SetDirectSource(CreateParamObject(script, "Target", CKPGUID_3DENTITY, target));
+        return beh;
+    }
+
+    CKBehavior *CreatePhysicsImpulse(CKBehavior *script, CK3dEntity *target, VxVector position, CK3dEntity *posRef, VxVector direction,
+                                     CK3dEntity *dirRef, float impulse) {
+        CKBehavior *beh = CreateBB(script, PHYSICS_RT_PHYSICSIMPULSE, true);
+        beh->GetTargetParameter()->SetDirectSource(CreateParamObject(script, "Target", CKPGUID_3DENTITY, target));
+        beh->GetInputParameter(0)->SetDirectSource(CreateParamValue(script, "Position", CKPGUID_VECTOR, position));
+        beh->GetInputParameter(1)->SetDirectSource(CreateParamObject(script, "PosRef", CKPGUID_3DENTITY, posRef));
+        beh->GetInputParameter(2)->SetDirectSource(CreateParamValue(script, "Direction", CKPGUID_VECTOR, direction));
+        beh->GetInputParameter(3)->SetDirectSource(CreateParamObject(script, "DirRef", CKPGUID_3DENTITY, dirRef));
+        beh->GetInputParameter(4)->SetDirectSource(CreateParamValue(script, "Impulse", CKPGUID_FLOAT, impulse));
+        return beh;
+    }
+
+    CKBehavior *CreateObjectLoad(CKBehavior *script, const char *file, const char *mastername, CK_CLASSID filter, CKBOOL addToScene,
+                                 CKBOOL reuseMesh, CKBOOL reuseMtl, CKBOOL dynamic) {
+        CKBehavior *beh = CreateBB(script, VT_NARRATIVES_OBJECTLOAD);
+        beh->GetInputParameter(0)->SetDirectSource(CreateParamString(script, "File", file));
+        beh->GetInputParameter(1)->SetDirectSource(CreateParamString(script, "Master Name", mastername));
+        beh->GetInputParameter(2)->SetDirectSource(CreateParamValue(script, "Filter", CKPGUID_CLASSID, filter));
+        beh->GetInputParameter(3)->SetDirectSource(CreateParamValue(script, "Add to Scene", CKPGUID_BOOL, addToScene));
+        beh->GetInputParameter(4)->SetDirectSource(CreateParamValue(script, "Reuse Mesh", CKPGUID_BOOL, reuseMesh));
+        beh->GetInputParameter(5)->SetDirectSource(CreateParamValue(script, "Reuse Material", CKPGUID_BOOL, reuseMtl));
+        SetParamValue(beh->GetLocalParameter(0), dynamic);
+        return beh;
     }
 
     CKBehavior *CreateSendMessage(CKBehavior *script, const char *msg, CKBeObject *dest) {
         CKBehavior *beh = CreateBB(script, VT_LOGICS_SENDMESSAGE);
-        beh->GetInputParameter(0)->SetDirectSource(CreateParamString("Message", msg));
-        beh->GetInputParameter(1)->SetDirectSource(CreateParamObject(CKPGUID_BEOBJECT, "Dest", dest));
+        beh->GetInputParameter(0)->SetDirectSource(CreateParamString(script, "Message", msg));
+        beh->GetInputParameter(1)->SetDirectSource(CreateParamObject(script, "Dest", CKPGUID_BEOBJECT, dest));
         return beh;
     }
 
