@@ -3,65 +3,89 @@
 #include "BMLAll.h"
 
 #include "ModLoader.h"
-#include "ModManager.h"
+#include "HookManager.h"
 
 #include "MinHook.h"
 
-#ifdef CK_LIB
-#define RegisterBehaviorDeclarations    Register_BML_BehaviorDeclarations
-#define CreateNewManager                CreateNewModManager
-#define RemoveManager                   RemoveModManager
-#define CKGetPluginInfoCount            CKGet_BML_PluginInfoCount
-#define CKGetPluginInfo                 CKGet_BML_PluginInfo
-#define g_PluginInfo                    g_BML_PluginInfo
-#else
-#define RegisterBehaviorDeclarations    RegisterBehaviorDeclarations
-#define CreateNewManager                CreateNewManager
-#define RemoveManager                   RemoveManager
-#define CKGetPluginInfoCount            CKGetPluginInfoCount
-#define CKGetPluginInfo                 CKGetPluginInfo
-#define g_PluginInfo                    g_PluginInfo
-#endif
+void RegisterCallbacks(HookManager *hookManager) {
+    hookManager->AddOnCKInitCallBack([](CKContext *context, void *) {
+        ModLoader::GetInstance().Init(context);
+    }, nullptr, FALSE);
 
-CKERROR CreateNewManager(CKContext *context) {
-    new ModManager(context);
+    hookManager->AddOnCKEndCallBack([](CKContext *, void *) {
+        auto &loader = ModLoader::GetInstance();
+        if (loader.IsInitialized()) {
+            loader.UnloadMods();
+            loader.Release();
+        }
+    }, nullptr, FALSE);
+
+    hookManager->AddOnCKResetCallBack([](CKContext *, void *) {
+        ModLoader::GetInstance().SetReset();
+    }, nullptr, FALSE);
+
+    hookManager->AddOnCKResetCallBack([](CKContext *, void *) {
+        ModLoader::GetInstance().SetReset();
+    }, nullptr, FALSE);
+
+    hookManager->AddOnCKPostResetCallBack([](CKContext *, void *) {
+        auto &loader = ModLoader::GetInstance();
+        if (loader.GetModCount() == 0)
+            loader.LoadMods();
+    }, nullptr, FALSE);
+
+    hookManager->AddPostProcessCallBack([](CKContext *context, void *) {
+        ModLoader::GetInstance().OnProcess();
+    }, nullptr, FALSE);
+
+    hookManager->AddPreRenderCallBack([](CKRenderContext *dev, void *) {
+        ModLoader::GetInstance().OnPreRender(dev);
+    }, nullptr, FALSE);
+
+    hookManager->AddPostRenderCallBack([](CKRenderContext *dev, void *) {
+        ModLoader::GetInstance().OnPostRender(dev);
+    }, nullptr, FALSE);
+}
+
+CKERROR CreateNewHookManager(CKContext *context) {
+    RegisterCallbacks(new HookManager(context));
 
     return CK_OK;
 }
 
-CKERROR RemoveManager(CKContext *context) {
-    ModManager *man = ModManager::GetManager(context);
+CKERROR RemoveHookManager(CKContext *context) {
+    HookManager *man = HookManager::GetManager(context);
     delete man;
 
     return CK_OK;
 }
 
-CKPluginInfo g_BML_PluginInfo[2];
+CKPluginInfo g_PluginInfo[2];
 
 PLUGIN_EXPORT int CKGetPluginInfoCount() { return 2; }
 
 PLUGIN_EXPORT CKPluginInfo *CKGetPluginInfo(int Index) {
-    g_BML_PluginInfo[0].m_Author = "Gamepiaynmo";
-    g_BML_PluginInfo[0].m_Description = "Ballance Mod Loader";
-    g_BML_PluginInfo[0].m_Extension = "";
-    g_BML_PluginInfo[0].m_Type = CKPLUGIN_BEHAVIOR_DLL;
-    g_BML_PluginInfo[0].m_Version = BML_MAJOR_VER << 16 | BML_MINOR_VER;
-    g_BML_PluginInfo[0].m_InitInstanceFct = nullptr;
-    g_BML_PluginInfo[0].m_ExitInstanceFct = nullptr;
-    g_BML_PluginInfo[0].m_GUID = BML_MODLOADER_GUID;
-    g_BML_PluginInfo[0].m_Summary = "Mod Loader for Ballance";
+    g_PluginInfo[0].m_Author = "Gamepiaynmo";
+    g_PluginInfo[0].m_Description = "Ballance Mod Loader";
+    g_PluginInfo[0].m_Extension = "";
+    g_PluginInfo[0].m_Type = CKPLUGIN_BEHAVIOR_DLL;
+    g_PluginInfo[0].m_Version = BML_MAJOR_VER << 16 | BML_MINOR_VER;
+    g_PluginInfo[0].m_InitInstanceFct = nullptr;
+    g_PluginInfo[0].m_ExitInstanceFct = nullptr;
+    g_PluginInfo[0].m_GUID = BML_MODLOADER_GUID;
+    g_PluginInfo[0].m_Summary = "Mod Loader for Ballance";
 
-    g_BML_PluginInfo[1].m_Author = "Kakuty";
-    g_BML_PluginInfo[1].m_Description = "Ballance Mod Manager";
-    g_BML_PluginInfo[1].m_Extension = "";
-    g_BML_PluginInfo[1].m_Type = CKPLUGIN_MANAGER_DLL;
-    g_BML_PluginInfo[1].m_Version = 0x000001;
-    g_BML_PluginInfo[1].m_InitInstanceFct = CreateNewManager;
-    g_BML_PluginInfo[1].m_ExitInstanceFct = RemoveManager;
-    g_BML_PluginInfo[1].m_GUID = BML_MODMANAGER_GUID;
-    g_BML_PluginInfo[1].m_Summary = "Mod Manager for Ballance";
+    g_PluginInfo[1].m_Author = "Kakuty";
+    g_PluginInfo[1].m_Description = "Hook Manager";
+    g_PluginInfo[1].m_Extension = "";
+    g_PluginInfo[1].m_Type = CKPLUGIN_MANAGER_DLL;
+    g_PluginInfo[1].m_Version = 0x000001;
+    g_PluginInfo[1].m_InitInstanceFct = CreateNewHookManager;
+    g_PluginInfo[1].m_ExitInstanceFct = RemoveHookManager;
+    g_PluginInfo[1].m_GUID = BML_HOOKMANAGER_GUID;
+    g_PluginInfo[1].m_Summary = "Virtools Hook Manager";
 
-    return &g_BML_PluginInfo[Index];
+    return &g_PluginInfo[Index];
 }
 
 PLUGIN_EXPORT void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg);
