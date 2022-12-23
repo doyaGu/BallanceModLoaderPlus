@@ -93,6 +93,8 @@ public:
     virtual int GetCommandCount() const = 0;
     virtual ICommand *GetCommand(int index) const = 0;
     virtual ICommand *FindCommand(const char *name) const = 0;
+
+    virtual IMod *FindMod(const char *id) const = 0;
 };
 
 

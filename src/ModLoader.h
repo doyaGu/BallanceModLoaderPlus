@@ -221,6 +221,7 @@ public:
 
     int GetModCount() override;
     IMod *GetMod(int index) override;
+    IMod *FindMod(const char *id) const override;
 
     float GetSRScore() override;
     int GetHSScore() override;
@@ -295,12 +296,14 @@ protected:
     CKSoundManager *m_SoundManager = nullptr;
     CKTimeManager *m_TimeManager = nullptr;
 
-    std::vector<ModDll> m_ModDlls;
-    std::vector<IMod *> m_Mods;
-    std::map<IMod *, ModDll *> m_ModDllMap;
-
     BMLMod *m_BMLMod = nullptr;
     NewBallTypeMod *m_BallTypeMod = nullptr;
+
+    std::vector<IMod *> m_Mods;
+    std::map<std::string, IMod *> m_ModMap;
+
+    std::vector<ModDll> m_ModDlls;
+    std::map<IMod *, ModDll *> m_ModDllMap;
 
     std::vector<ICommand *> m_Commands;
     std::map<std::string, ICommand *> m_CommandMap;
