@@ -201,10 +201,12 @@ void ModLoader::LoadMods() {
 
     m_BMLMod = new BMLMod(this);
     m_Mods.push_back(m_BMLMod);
+    m_ModMap.insert({m_BMLMod->GetID(), m_BMLMod});
     m_ModDllMap.insert({m_BMLMod, nullptr});
 
     m_BallTypeMod = new NewBallTypeMod(this);
     m_Mods.push_back(m_BallTypeMod);
+    m_ModMap.insert({m_BallTypeMod->GetID(), m_BallTypeMod});
     m_ModDllMap.insert({m_BallTypeMod, nullptr});
 
     for (auto &modDll: m_ModDlls) {
@@ -636,6 +638,16 @@ IMod *ModLoader::GetMod(int index) {
     return m_Mods[index];
 }
 
+IMod *ModLoader::FindMod(const char *id) const {
+    if (!id)
+        return nullptr;
+
+    auto iter = m_ModMap.find(id);
+    if (iter == m_ModMap.end())
+        return nullptr;
+    return iter->second;
+}
+
 float ModLoader::GetSRScore() {
     return m_BMLMod->GetSRScore();
 }
@@ -739,6 +751,7 @@ bool ModLoader::RegisterMod(ModDll &modDll) {
         return false;
     }
     m_Mods.push_back(mod);
+    m_ModMap.insert({mod->GetID(), mod});
     m_ModDllMap.insert({mod, &modDll});
     return true;
 }
