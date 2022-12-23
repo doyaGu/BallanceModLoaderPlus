@@ -12,7 +12,6 @@
 #include "Gui.h"
 #include "InputHook.h"
 #include "ExecuteBB.h"
-#include "RegisterBB.h"
 #include "ScriptHelper.h"
 
 #endif // BMLALL_H
