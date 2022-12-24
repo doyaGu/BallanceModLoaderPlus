@@ -13,7 +13,6 @@ namespace ScriptHelper {
                     return false;
             }
 
-            auto res = beh->GetName();
             if ((!name || !strcmp(beh->GetName(), name)) && (inputCnt < 0 || beh->GetInputCount() == inputCnt) &&
                 (outputCnt < 0 || beh->GetOutputCount() == outputCnt) &&
                 (inputParamCnt < 0 || beh->GetInputParameterCount() == inputParamCnt) &&
@@ -227,7 +226,7 @@ namespace ScriptHelper {
     }
 
     CKBehavior *FindEndOfChain(CKBehavior *script, CKBehavior *beh) {
-        CKBehavior *next = nullptr;
+        CKBehavior *next;
         while (true) {
             next = FindNextBB(script, beh);
             if (next)
