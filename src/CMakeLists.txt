@@ -42,9 +42,10 @@ set(BMLPLUS_PRIVATE_HDRS
 set(BMLPLUS_SRCS
         BML.cpp
         ModLoader.cpp
+        ModDll.cpp
+
         HookManager.cpp
         HookBlock.cpp
-        ModDll.cpp
 
         IMod.cpp
         BMLMod.cpp
