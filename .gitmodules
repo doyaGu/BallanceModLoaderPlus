@@ -1,6 +1,3 @@
-[submodule "deps/xbyak"]
-	path = deps/xbyak
-	url = https://github.com/doyaGu/xbyak.git
 [submodule "deps/minhook"]
 	path = deps/minhook
 	url = https://github.com/TsudaKageyu/minhook
