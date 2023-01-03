@@ -220,8 +220,6 @@ void ModLoader::LoadMods() {
     m_RenderManager = m_Context->GetRenderManager();
     m_Logger->Info("Get Render Manager pointer 0x%08x", m_RenderManager);
 
-    ExecuteBB::Init(m_Context);
-
     m_BMLMod = new BMLMod(this);
     m_Mods.push_back(m_BMLMod);
     m_ModMap.insert({m_BMLMod->GetID(), m_BMLMod});

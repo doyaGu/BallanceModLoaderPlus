@@ -3,6 +3,11 @@
 #include "ModLoader.h"
 #include "ScriptHelper.h"
 
+namespace ExecuteBB {
+    int GetFont(FontType type);
+    FontType GetFontType(int font);
+}
+
 using namespace BGui;
 
 Label::Label(const char *name) : Element(name) {

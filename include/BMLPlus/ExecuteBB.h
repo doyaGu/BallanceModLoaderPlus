@@ -42,11 +42,6 @@ namespace ExecuteBB {
         GAMEFONT_CREDITS_BIG
     };
 
-    void Init(CKContext *context);
-    void InitFont(FontType type, int fontIndex);
-    int GetFont(FontType type);
-    FontType GetFontType(int font);
-
     BML_EXPORT void PhysicalizeConvex(CK3dEntity *target = nullptr, CKBOOL fixed = false, float friction = 0.7f,
                                       float elasticity = 0.4f, float mass = 1.0f, const char *collGroup = "",
                                       CKBOOL startFrozen = false, CKBOOL enableColl = true,
