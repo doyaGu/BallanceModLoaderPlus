@@ -36,7 +36,6 @@ set(BMLPLUS_PRIVATE_HDRS
         Config.h
 
         Timer.h
-        Util.h
         )
 
 set(BMLPLUS_SRCS
@@ -71,7 +70,6 @@ set(BMLPLUS_SRCS
         Commands.cpp
         Config.cpp
         Timer.cpp
-        Util.cpp
 
         BML.rc
         )

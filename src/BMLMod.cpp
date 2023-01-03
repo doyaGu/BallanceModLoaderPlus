@@ -11,7 +11,6 @@
 #include "ModLoader.h"
 #include "Commands.h"
 #include "Config.h"
-#include "Util.h"
 
 using namespace ScriptHelper;
 

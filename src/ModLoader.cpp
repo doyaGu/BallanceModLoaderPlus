@@ -7,7 +7,6 @@
 #include "Logger.h"
 #include "BMLMod.h"
 #include "NewBallTypeMod.h"
-#include "Util.h"
 #include "ModDll.h"
 
 #include "unzip.h"
@@ -17,6 +16,30 @@ extern bool UnhookObjectLoad();
 
 extern bool HookPhysicalize();
 extern bool UnhookPhysicalize();
+
+static std::vector<std::string> SplitString(const std::string &str, const std::string &de) {
+    size_t lpos, pos = 0;
+    std::vector<std::string> res;
+
+    lpos = str.find_first_not_of(de, pos);
+    while (lpos != std::string::npos) {
+        pos = str.find_first_of(de, lpos);
+        res.push_back(str.substr(lpos, pos - lpos));
+        if (pos == std::string::npos)
+            break;
+
+        lpos = str.find_first_not_of(de, pos);
+    }
+
+    if (pos != std::string::npos)
+        res.emplace_back("");
+
+    return res;
+}
+
+static bool StartWith(const std::string &str, const std::string &start) {
+    return str.substr(0, start.size()) == start;
+}
 
 ModLoader &ModLoader::GetInstance() {
     static ModLoader instance;
