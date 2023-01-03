@@ -12,6 +12,10 @@
 #include "Commands.h"
 #include "Config.h"
 
+namespace ExecuteBB {
+    void InitFont(FontType type, int fontIndex);
+}
+
 using namespace ScriptHelper;
 
 GuiList::GuiList() : m_CurPage(0), m_MaxPage(0), m_Size(0), m_MaxSize(0) {

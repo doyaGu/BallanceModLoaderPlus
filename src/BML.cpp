@@ -7,6 +7,10 @@
 
 #include "MinHook.h"
 
+namespace ExecuteBB {
+    void Init();
+}
+
 void RegisterCallbacks(HookManager *hookManager) {
     hookManager->AddOnCKInitCallBack([](CKContext *context, void *) {
         ModLoader::GetInstance().Init(context);
@@ -30,8 +34,10 @@ void RegisterCallbacks(HookManager *hookManager) {
 
     hookManager->AddOnCKPostResetCallBack([](CKContext *, void *) {
         auto &loader = ModLoader::GetInstance();
-        if (loader.GetModCount() == 0)
+        if (loader.GetModCount() == 0) {
+            ExecuteBB::Init();
             loader.LoadMods();
+        }
     }, nullptr, FALSE);
 
     hookManager->AddPostProcessCallBack([](CKContext *context, void *) {

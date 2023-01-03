@@ -15,7 +15,7 @@ namespace ExecuteBB {
     CKBehavior *bbSetForce;
     CKBehavior *bbPhysicsWakeUp;
 
-    void Init(CKContext *context) {
+    void Init() {
         for (int i = 0; i < 8; i++)
             GameFonts[i] = i;
         CKBehavior *ownerScript = ModLoader::GetInstance().GetScriptByName("Level_Init");
@@ -103,7 +103,6 @@ namespace ExecuteBB {
         bbPhysConv->Execute(0);
     }
 
-
     void SetPhysicsForce(CK3dEntity *target, VxVector position, CK3dEntity *posRef, VxVector direction,
                          CK3dEntity *directionRef, float force) {
         SetParamObject(bbSetForce->GetTargetParameter()->GetDirectSource(), target);
@@ -160,9 +159,7 @@ namespace ExecuteBB {
             for (CK_ID *id = array->Begin(); id != array->End(); id++) {
                 CKObject *obj = bbObjLoad->GetCKContext()->GetObject(*id);
                 if (CKIsChildClassOf(obj, CKCID_BEOBJECT)) {
-                    auto name = obj->GetName();
-                    obj->SetName(
-                        TOCKSTRING((obj->GetName() + std::string("_BMLLoad_") + std::to_string(count)).c_str()));
+                    obj->SetName(TOCKSTRING((obj->GetName() + std::string("_BMLLoad_") + std::to_string(count)).c_str()));
                 }
             }
         }
