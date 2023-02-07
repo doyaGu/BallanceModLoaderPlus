@@ -13,7 +13,7 @@ public:
     const char *GetVersion() override { return "0.1.0"; }
     const char *GetName() override { return "Lantern Fader"; }
     const char *GetAuthor() override { return "Kakuty"; }
-    const char *GetDescription() override { return "Alleviate FPS drops by modifying alpha test settings for lantern material."; }
+    const char *GetDescription() override { return "Alleviate FPS drops by turning on alpha test for lantern material."; }
     DECLARE_BML_VERSION;
 
     void OnLoad() override;
@@ -22,5 +22,4 @@ public:
 
 private:
     IProperty *m_AlphaTestEnabled = nullptr;
-    IProperty *m_AlphaTestRef = nullptr;
 };
