@@ -8,6 +8,7 @@ set(BMODS
         DeformedWB
         DualBallControl
         DynamicFov
+        LanternFader
         MapScripts
         SpiritTrail
         TASSupport
