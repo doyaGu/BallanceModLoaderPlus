@@ -1,10 +1,10 @@
 #include "DynamicFov.h"
 
-DynamicFov *g_mod = nullptr;
+DynamicFov *g_Mod = nullptr;
 
 IMod *BMLEntry(IBML *bml) {
-    g_mod = new DynamicFov(bml);
-    return g_mod;
+    g_Mod = new DynamicFov(bml);
+    return g_Mod;
 }
 
 void BMLExit(IMod *mod) {
@@ -34,7 +34,7 @@ void DynamicFov::OnLoadScript(const char *filename, CKBehavior *script) {
     if (!strcmp(script->GetName(), "Gameplay_Ingame")) {
         m_IngameScript = script;
         CKBehavior *ballMgr = ScriptHelper::FindFirstBB(script, "BallManager");
-        ScriptHelper::CreateLink(script, ballMgr, ExecuteBB::CreateHookBlock(script, [](void *) { g_mod->SetInactive(); }));
+        ScriptHelper::CreateLink(script, ballMgr, ExecuteBB::CreateHookBlock(script, [](void *) { g_Mod->SetInactive(); }));
         CKBehavior *init = ScriptHelper::FindFirstBB(script, "Init Ingame");
         m_DynamicPos = ScriptHelper::FindNextBB(script, init, "TT Set Dynamic Position");
     }

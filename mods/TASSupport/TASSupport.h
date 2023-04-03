@@ -118,6 +118,9 @@ public:
 
     void LoadTAS(const std::string &filename);
 
+    CKTimeManager *m_TimeManager = nullptr;
+    CKInputManager *m_InputManager = nullptr;
+
     CKDataArray *m_CurLevel = nullptr;
     CKDataArray *m_Keyboard = nullptr;
     CKKEYBOARD m_KeyUp = CKKEY_UP;
