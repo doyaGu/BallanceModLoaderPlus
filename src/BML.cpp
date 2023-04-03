@@ -1,134 +1,251 @@
-#include <Windows.h>
-
-#include "BMLAll.h"
+#include "Hooks.h"
 
 #include "ModLoader.h"
-#include "HookManager.h"
 
-#include "MinHook.h"
+#define BML_HOOK_CODE 0x00424D4C
+#define BML_HOOK_VERSION 0x00000001
+
+static CKContext *g_CKContext = nullptr;
 
 namespace ExecuteBB {
     void Init();
 }
 
-void RegisterCallbacks(HookManager *hookManager) {
-    hookManager->AddOnCKInitCallBack([](CKContext *context, void *) {
-        ModLoader::GetInstance().Init(context);
-    }, nullptr, FALSE);
-
-    hookManager->AddOnCKEndCallBack([](CKContext *, void *) {
-        auto &loader = ModLoader::GetInstance();
-        if (loader.IsInitialized()) {
-            loader.UnloadMods();
-            loader.Release();
-        }
-    }, nullptr, FALSE);
-
-    hookManager->AddOnCKResetCallBack([](CKContext *, void *) {
-        ModLoader::GetInstance().SetReset();
-    }, nullptr, FALSE);
-
-    hookManager->AddOnCKResetCallBack([](CKContext *, void *) {
-        ModLoader::GetInstance().SetReset();
-    }, nullptr, FALSE);
-
-    hookManager->AddOnCKPostResetCallBack([](CKContext *, void *) {
-        auto &loader = ModLoader::GetInstance();
-        if (loader.GetModCount() == 0) {
-            ExecuteBB::Init();
-            loader.LoadMods();
-        }
-    }, nullptr, FALSE);
-
-    hookManager->AddPostProcessCallBack([](CKContext *context, void *) {
-        ModLoader::GetInstance().OnProcess();
-    }, nullptr, FALSE);
-
-    hookManager->AddPreRenderCallBack([](CKRenderContext *dev, void *) {
-        ModLoader::GetInstance().OnPreRender(dev);
-    }, nullptr, FALSE);
-
-    hookManager->AddPostRenderCallBack([](CKRenderContext *dev, void *) {
-        ModLoader::GetInstance().OnPostRender(dev);
-    }, nullptr, FALSE);
+static int OnError(HookModuleErrorCode code, void *data1, void *data2) {
+    return HMR_OK;
 }
 
-CKERROR CreateNewHookManager(CKContext *context) {
-    RegisterCallbacks(new HookManager(context));
+static int OnQuery(HookModuleQueryCode code, void *data1, void *data2) {
+    switch (code) {
+        case HMQC_ABI:
+            *reinterpret_cast<int *>(data2) = HOOKS_ABI_VERSION;
+            break;
+        case HMQC_CODE:
+            *reinterpret_cast<int *>(data2) = BML_HOOK_CODE;
+            break;
+        case HMQC_VERSION:
+            *reinterpret_cast<int *>(data2) = BML_HOOK_VERSION;
+            break;
+        case HMQC_CK2:
+            *reinterpret_cast<int *>(data2) =
+                CKHF_PreProcess |
+                CKHF_PostProcess |
+                CKHF_OnCKInit |
+                CKHF_OnCKEnd |
+                CKHF_OnCKReset |
+                CKHF_OnCKPostReset |
+                CKHF_OnPreRender |
+                CKHF_OnPostRender |
+                CKHF_OnPostSpriteRender;
+            break;
+        case HMQC_MSGHOOK:
+            *reinterpret_cast<int *>(data2) = 0;
+//                MHF_MSGFILTER |
+//                MHF_JOURNALRECORD |
+//                MHF_JOURNALPLAYBACK |
+//                MHF_KEYBOARD |
+//                MHF_GETMESSAGE |
+//                MHF_CALLWNDPROC |
+//                MHF_CBT |
+//                MHF_SYSMSGFILTER |
+//                MHF_MOUSE |
+//                MHF_DEBUG |
+//                MHF_SHELL |
+//                MHF_FOREGROUNDIDLE |
+//                MHF_CALLWNDPROCRET |
+//                MHF_KEYBOARD_LL |
+//                MHF_MOUSE_LL;
+            break;
+        default:
+            return HMR_SKIP;
+    }
 
-    return CK_OK;
+    return HMR_OK;
 }
 
-CKERROR RemoveHookManager(CKContext *context) {
-    HookManager *man = HookManager::GetManager(context);
-    delete man;
-
-    return CK_OK;
+static int OnPost(HookModulePostCode code, void *data1, void *data2) {
+    switch (code) {
+        case HMPC_CKCONTEXT:
+            g_CKContext = (CKContext *) data2;
+            break;
+        default:
+            return HMR_SKIP;
+    }
+    return HMR_OK;
 }
 
-CKPluginInfo g_PluginInfo[2];
-
-PLUGIN_EXPORT int CKGetPluginInfoCount() { return 2; }
-
-PLUGIN_EXPORT CKPluginInfo *CKGetPluginInfo(int Index) {
-    g_PluginInfo[0].m_Author = "Kakuty";
-    g_PluginInfo[0].m_Description = "Building blocks for hooking";
-    g_PluginInfo[0].m_Extension = "";
-    g_PluginInfo[0].m_Type = CKPLUGIN_BEHAVIOR_DLL;
-    g_PluginInfo[0].m_Version = BML_MAJOR_VER << 16 | BML_MINOR_VER;
-    g_PluginInfo[0].m_InitInstanceFct = nullptr;
-    g_PluginInfo[0].m_ExitInstanceFct = nullptr;
-    g_PluginInfo[0].m_GUID = CKGUID(0x3a086b4d, 0x2f4a4f01);
-    g_PluginInfo[0].m_Summary = "Building blocks for hooking";
-
-    g_PluginInfo[1].m_Author = "Kakuty";
-    g_PluginInfo[1].m_Description = "Hook Manager";
-    g_PluginInfo[1].m_Extension = "";
-    g_PluginInfo[1].m_Type = CKPLUGIN_MANAGER_DLL;
-    g_PluginInfo[1].m_Version = 0x000001;
-    g_PluginInfo[1].m_InitInstanceFct = CreateNewHookManager;
-    g_PluginInfo[1].m_ExitInstanceFct = RemoveHookManager;
-    g_PluginInfo[1].m_GUID = BML_HOOKMANAGER_GUID;
-    g_PluginInfo[1].m_Summary = "Virtools Hook Manager";
-
-    return &g_PluginInfo[Index];
-}
-
-PLUGIN_EXPORT void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg);
-
-void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg) {
-    RegisterBehavior(reg, FillBehaviorHookBlockDecl);
-
+static int OnLoad(size_t code, void * /* handle */) {
     auto &loader = ModLoader::GetInstance();
     loader.PreloadMods();
-    loader.RegisterBBs(reg);
+
+    return HMR_OK;
 }
 
-bool HookCreateCKBehaviorPrototypeRuntime() {
-    HMODULE handle = ::GetModuleHandleA("CK2.dll");
-    LPVOID lpCreateCKBehaviorPrototypeRunTimeProc = (LPVOID) ::GetProcAddress(handle,
-        "?CreateCKBehaviorPrototypeRunTime@@YAPAVCKBehaviorPrototype@@PAD@Z");
-    LPVOID lpCreateCKBehaviorPrototypeProc = (LPVOID) ::GetProcAddress(handle,
-        "?CreateCKBehaviorPrototype@@YAPAVCKBehaviorPrototype@@PAD@Z");
-    if (MH_CreateHook(lpCreateCKBehaviorPrototypeRunTimeProc, lpCreateCKBehaviorPrototypeProc, nullptr) != MH_OK ||
-        MH_EnableHook(lpCreateCKBehaviorPrototypeRunTimeProc) != MH_OK) {
-        return false;
+static int OnUnload(size_t code, void * /* handle */) {
+    auto &loader = ModLoader::GetInstance();
+    if (loader.IsInitialized()) {
+        loader.Release();
     }
-    return true;
+    return HMR_OK;
 }
 
-BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
-    switch (fdwReason) {
-        case DLL_PROCESS_ATTACH:
-            if (MH_Initialize() != MH_OK)
-                return FALSE;
-            if (!HookCreateCKBehaviorPrototypeRuntime())
-                return FALSE;
+CKERROR PreProcess(void *arg) {
+    g_CKContext->OutputToConsole((CKSTRING)"PreProcess");
+    return CK_OK;
+}
+
+CKERROR PostProcess(void *arg) {
+    ModLoader::GetInstance().OnProcess();
+    return CK_OK;
+}
+
+CKERROR OnCKInit(void *arg) {
+    ModLoader::GetInstance().Init(g_CKContext);
+    return CK_OK;
+}
+
+CKERROR OnCKEnd(void *arg) {
+    auto &loader = ModLoader::GetInstance();
+    if (loader.IsInitialized()) {
+        loader.UnloadMods();
+    }
+    return CK_OK;
+}
+
+CKERROR OnCKReset(void *arg) {
+    ModLoader::GetInstance().SetReset();
+    return CK_OK;
+}
+
+CKERROR OnCKPostReset(void *arg) {
+    auto &loader = ModLoader::GetInstance();
+    if (loader.GetModCount() == 0) {
+        ExecuteBB::Init();
+        loader.LoadMods();
+    }
+    return CK_OK;
+}
+
+CKERROR OnPreRender(CKRenderContext *dev, void *arg) {
+    ModLoader::GetInstance().OnPreRender(dev);
+    return CK_OK;
+}
+
+CKERROR OnPostRender(CKRenderContext *dev, void *arg) {
+    ModLoader::GetInstance().OnPostRender(dev);
+    return CK_OK;
+}
+
+CKERROR OnPostSpriteRender(CKRenderContext *dev, void *arg) {
+//    ModLoader::GetInstance().OnPostSpriteRender(dev);
+    return CK_OK;
+}
+
+static int OnSet(size_t code, void **pcb, void **parg) {
+    switch (code) {
+        case CKHFI_PreProcess:
+            *pcb = reinterpret_cast<void*>(PreProcess);
+            *parg = nullptr;
             break;
-        case DLL_PROCESS_DETACH:
-            if (MH_Uninitialize() != MH_OK)
-                return FALSE;
+        case CKHFI_PostProcess:
+            *pcb = reinterpret_cast<void*>(PostProcess);
+            *parg = nullptr;
+            break;
+        case CKHFI_OnCKInit:
+            *pcb = reinterpret_cast<void*>(OnCKInit);
+            *parg = nullptr;
+            break;
+        case CKHFI_OnCKEnd:
+            *pcb = reinterpret_cast<void*>(OnCKEnd);
+            *parg = nullptr;
+            break;
+        case CKHFI_OnCKReset:
+            *pcb = reinterpret_cast<void*>(OnCKReset);
+            *parg = nullptr;
+            break;
+        case CKHFI_OnCKPostReset:
+            *pcb = reinterpret_cast<void*>(OnCKPostReset);
+            *parg = nullptr;
+            break;
+        case CKHFI_OnPreRender:
+            *pcb = reinterpret_cast<void*>(OnPreRender);
+            *parg = nullptr;
+            break;
+        case CKHFI_OnPostRender:
+            *pcb = reinterpret_cast<void*>(OnPostRender);
+            *parg = nullptr;
+            break;
+        case CKHFI_OnPostSpriteRender:
+            *pcb = reinterpret_cast<void*>(OnPostSpriteRender);
+            *parg = nullptr;
+            break;
+        default:
             break;
     }
-    return TRUE;
+    return HMR_OK;
+}
+
+static int OnUnset(size_t code, void **pcb, void **parg) {
+    switch (code) {
+        case CKHFI_PreProcess:
+            *pcb = reinterpret_cast<void*>(PreProcess);
+            *parg = nullptr;
+            break;
+        case CKHFI_PostProcess:
+            *pcb = reinterpret_cast<void*>(PostProcess);
+            *parg = nullptr;
+            break;
+        case CKHFI_OnCKInit:
+            *pcb = reinterpret_cast<void*>(OnCKInit);
+            *parg = nullptr;
+            break;
+        case CKHFI_OnCKEnd:
+            *pcb = reinterpret_cast<void*>(OnCKEnd);
+            *parg = nullptr;
+            break;
+        case CKHFI_OnCKReset:
+            *pcb = reinterpret_cast<void*>(OnCKReset);
+            *parg = nullptr;
+            break;
+        case CKHFI_OnCKPostReset:
+            *pcb = reinterpret_cast<void*>(OnCKPostReset);
+            *parg = nullptr;
+            break;
+        case CKHFI_OnPreRender:
+            *pcb = reinterpret_cast<void*>(OnPreRender);
+            *parg = nullptr;
+            break;
+        case CKHFI_OnPostRender:
+            *pcb = reinterpret_cast<void*>(OnPostRender);
+            *parg = nullptr;
+            break;
+        case CKHFI_OnPostSpriteRender:
+            *pcb = reinterpret_cast<void*>(OnPostSpriteRender);
+            *parg = nullptr;
+            break;
+        default:
+            break;
+    }
+    return HMR_OK;
+}
+
+HOOKS_EXPORT int BMLHandler(size_t action, size_t code, uintptr_t param1, uintptr_t param2) {
+    switch (action) {
+        case HMA_ERROR:
+            return OnError(static_cast<HookModuleErrorCode>(code), reinterpret_cast<void *>(param1), reinterpret_cast<void *>(param2));
+        case HMA_QUERY:
+            return OnQuery(static_cast<HookModuleQueryCode>(code), reinterpret_cast<void *>(param1), reinterpret_cast<void *>(param2));
+        case HMA_POST:
+            return OnPost(static_cast<HookModulePostCode>(code), reinterpret_cast<void *>(param1), reinterpret_cast<void *>(param2));
+        case HMA_LOAD:
+            return OnLoad(code, reinterpret_cast<void *>(param2));
+        case HMA_UNLOAD:
+            return OnUnload(code, reinterpret_cast<void *>(param2));
+        case HMA_SET:
+            return OnSet(code, reinterpret_cast<void **>(param1), reinterpret_cast<void **>(param2));
+        case HMA_UNSET:
+            return OnUnset(code, reinterpret_cast<void **>(param1), reinterpret_cast<void **>(param2));
+        default:
+            return HMR_SKIP;
+    }
 }

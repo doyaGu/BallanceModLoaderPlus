@@ -16,7 +16,6 @@ set(BMLPLUS_PUBLIC_HDRS
 
         ${BMLPLUS_INC_DIR}/BMLPlus/Gui.h
         ${BMLPLUS_INC_DIR}/BMLPlus/InputHook.h
-        ${BMLPLUS_INC_DIR}/BMLPlus/HookManager.h
 
         ${BMLPLUS_INC_DIR}/BMLPlus/ExecuteBB.h
         ${BMLPLUS_INC_DIR}/BMLPlus/ScriptHelper.h
@@ -42,9 +41,6 @@ set(BMLPLUS_SRCS
         BML.cpp
         ModLoader.cpp
         ModDll.cpp
-
-        HookManager.cpp
-        HookBlock.cpp
 
         IMod.cpp
         BMLMod.cpp
@@ -87,7 +83,7 @@ target_link_libraries(BMLPlus
         PUBLIC
             CK2 VxMath
         PRIVATE
-            CKZlib minhook
+            CKZlib
         )
 
 target_compile_definitions(BMLPlus PRIVATE "BML_EXPORTS")
