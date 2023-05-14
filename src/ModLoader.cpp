@@ -255,8 +255,6 @@ void ModLoader::LoadMods() {
             BroadcastCallback(&IMod::OnLoadScript, "base.cmo", behavior);
         }
     }
-
-    m_IsReset = false;
 }
 
 void ModLoader::UnloadMods() {

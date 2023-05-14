@@ -22,11 +22,9 @@ Text::Text(const char *name) : Element(name) {
 }
 
 Text::~Text() {
-    if (!ModLoader::GetInstance().IsReset()) {
-        CKContext *context = ModLoader::GetInstance().GetCKContext();
-        if (context)
-            context->DestroyObject(CKOBJID(m_Sprite));
-    }
+    CKContext *context = ModLoader::GetInstance().GetCKContext();
+    if (context)
+        context->DestroyObject(CKOBJID(m_Sprite));
 }
 
 void Text::UpdateFont() {
@@ -52,8 +50,8 @@ Vx2DVector Text::GetSize() {
 
 void Text::SetSize(Vx2DVector size) {
     m_Sprite->ReleaseAllSlots();
-    m_Sprite->Create(int(ModLoader::GetInstance().GetRenderContext()->GetWidth() * size.x),
-                     int(ModLoader::GetInstance().GetRenderContext()->GetHeight() * size.y), 32);
+    auto *dev = ModLoader::GetInstance().GetRenderContext();
+    m_Sprite->Create(dev->GetWidth() * size.x, dev->GetHeight() * size.y, 32);
     m_Sprite->SetSize(size, true);
 }
 
