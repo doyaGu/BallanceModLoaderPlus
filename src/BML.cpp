@@ -28,7 +28,6 @@ static int OnQuery(HookModuleQueryCode code, void *data1, void *data2) {
             break;
         case HMQC_CK2:
             *reinterpret_cast<int *>(data2) =
-                CKHF_PreProcess |
                 CKHF_PostProcess |
                 CKHF_PreClearAll |
                 CKHF_OnCKInit |
@@ -36,8 +35,7 @@ static int OnQuery(HookModuleQueryCode code, void *data1, void *data2) {
                 CKHF_OnCKReset |
                 CKHF_OnCKPostReset |
                 CKHF_OnPreRender |
-                CKHF_OnPostRender |
-                CKHF_OnPostSpriteRender;
+                CKHF_OnPostRender;
             break;
         case HMQC_MSGHOOK:
             *reinterpret_cast<int *>(data2) = 0;
@@ -78,7 +76,6 @@ static int OnPost(HookModulePostCode code, void *data1, void *data2) {
 static int OnLoad(size_t code, void * /* handle */) {
     auto &loader = ModLoader::GetInstance();
     loader.PreloadMods();
-
     return HMR_OK;
 }
 
@@ -141,17 +138,8 @@ CKERROR OnPostRender(CKRenderContext *dev, void *arg) {
     return CK_OK;
 }
 
-CKERROR OnPostSpriteRender(CKRenderContext *dev, void *arg) {
-//    ModLoader::GetInstance().OnPostSpriteRender(dev);
-    return CK_OK;
-}
-
 static int OnSet(size_t code, void **pcb, void **parg) {
     switch (code) {
-        case CKHFI_PreProcess:
-            *pcb = reinterpret_cast<void*>(PreProcess);
-            *parg = nullptr;
-            break;
         case CKHFI_PostProcess:
             *pcb = reinterpret_cast<void*>(PostProcess);
             *parg = nullptr;
@@ -182,10 +170,6 @@ static int OnSet(size_t code, void **pcb, void **parg) {
             break;
         case CKHFI_OnPostRender:
             *pcb = reinterpret_cast<void*>(OnPostRender);
-            *parg = nullptr;
-            break;
-        case CKHFI_OnPostSpriteRender:
-            *pcb = reinterpret_cast<void*>(OnPostSpriteRender);
             *parg = nullptr;
             break;
         default:
@@ -196,10 +180,6 @@ static int OnSet(size_t code, void **pcb, void **parg) {
 
 static int OnUnset(size_t code, void **pcb, void **parg) {
     switch (code) {
-        case CKHFI_PreProcess:
-            *pcb = reinterpret_cast<void*>(PreProcess);
-            *parg = nullptr;
-            break;
         case CKHFI_PostProcess:
             *pcb = reinterpret_cast<void*>(PostProcess);
             *parg = nullptr;
@@ -230,10 +210,6 @@ static int OnUnset(size_t code, void **pcb, void **parg) {
             break;
         case CKHFI_OnPostRender:
             *pcb = reinterpret_cast<void*>(OnPostRender);
-            *parg = nullptr;
-            break;
-        case CKHFI_OnPostSpriteRender:
-            *pcb = reinterpret_cast<void*>(OnPostSpriteRender);
             *parg = nullptr;
             break;
         default:
