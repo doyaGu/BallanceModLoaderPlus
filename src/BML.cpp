@@ -32,7 +32,6 @@ static int OnQuery(HookModuleQueryCode code, void *data1, void *data2) {
                 CKHF_PreClearAll |
                 CKHF_OnCKInit |
                 CKHF_OnCKEnd |
-                CKHF_OnCKReset |
                 CKHF_OnCKPostReset |
                 CKHF_OnPreRender |
                 CKHF_OnPostRender;
@@ -114,11 +113,6 @@ CKERROR OnCKEnd(void *arg) {
     return CK_OK;
 }
 
-CKERROR OnCKReset(void *arg) {
-    ModLoader::GetInstance().SetReset();
-    return CK_OK;
-}
-
 CKERROR OnCKPostReset(void *arg) {
     auto &loader = ModLoader::GetInstance();
     if (loader.GetModCount() == 0) {
@@ -156,10 +150,6 @@ static int OnSet(size_t code, void **pcb, void **parg) {
             *pcb = reinterpret_cast<void*>(OnCKEnd);
             *parg = nullptr;
             break;
-        case CKHFI_OnCKReset:
-            *pcb = reinterpret_cast<void*>(OnCKReset);
-            *parg = nullptr;
-            break;
         case CKHFI_OnCKPostReset:
             *pcb = reinterpret_cast<void*>(OnCKPostReset);
             *parg = nullptr;
@@ -194,10 +184,6 @@ static int OnUnset(size_t code, void **pcb, void **parg) {
             break;
         case CKHFI_OnCKEnd:
             *pcb = reinterpret_cast<void*>(OnCKEnd);
-            *parg = nullptr;
-            break;
-        case CKHFI_OnCKReset:
-            *pcb = reinterpret_cast<void*>(OnCKReset);
             *parg = nullptr;
             break;
         case CKHFI_OnCKPostReset:
