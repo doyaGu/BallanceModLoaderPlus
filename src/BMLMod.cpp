@@ -244,12 +244,11 @@ BGui::Button *GuiCustomMap::CreateButton(int index) {
                               level--;
                               SetParamValue(m_BMLMod->m_LevelRow, level);
 
-                              CKContext *ctx = m_BMLMod->m_BML->GetCKContext();
-                              CKMessageManager *mm = ctx->GetMessageManager();
+                              CKMessageManager *mm = m_BMLMod->m_CKContext->GetMessageManager();
                               CKMessageType loadLevel = mm->AddMessageType("Load Level");
                               CKMessageType loadMenu = mm->AddMessageType("Menu_Load");
 
-                              mm->SendMessageSingle(loadLevel, ctx->GetCurrentLevel());
+                              mm->SendMessageSingle(loadLevel, m_BMLMod->m_CKContext->GetCurrentLevel());
                               mm->SendMessageSingle(loadMenu, ModLoader::GetInstance().GetGroupByName("All_Sound"));
                               ModLoader::GetInstance().Get2dEntityByName("M_BlackScreen")->Show(CKHIDE);
                               m_BMLMod->m_ExitStart->ActivateInput(0);
@@ -539,6 +538,10 @@ void BMLMod::OnLoad() {
     m_FPSLimit->SetComment("Set Frame Rate Limitation, this option will not work if frame rate is unlocked. Set to 0 will turn on VSync.");
     m_FPSLimit->SetDefaultInteger(0);
 
+    m_AdaptiveCamera = GetConfig()->GetProperty("Misc", "AdaptiveCamera");
+    m_AdaptiveCamera->SetComment("Adjust cameras on screen mode changed");
+    m_AdaptiveCamera->SetDefaultBoolean(true);
+
     m_Overclock = GetConfig()->GetProperty("Misc", "Overclock");
     m_Overclock->SetComment("Remove delay of spawn / respawn");
     m_Overclock->SetDefaultBoolean(false);
@@ -687,14 +690,17 @@ void BMLMod::OnLoad() {
     m_BML->RegisterCommand(new CommandTravel(this));
 
     m_CKContext = m_BML->GetCKContext();
+    m_RenderContext = m_BML->GetRenderContext();
     m_InputHook = m_BML->GetInputManager();
+
+    m_RenderContext->Get2dRoot(TRUE)->GetRect(m_WindowRect);
 
     m_Balls[0] = (CK3dEntity *) ExecuteBB::ObjectLoad("3D Entities\\PH\\P_Ball_Paper.nmo", true, "P_Ball_Paper_MF").second;
     m_Balls[1] = (CK3dEntity *) ExecuteBB::ObjectLoad("3D Entities\\PH\\P_Ball_Wood.nmo", true, "P_Ball_Wood_MF").second;
     m_Balls[2] = (CK3dEntity *) ExecuteBB::ObjectLoad("3D Entities\\PH\\P_Ball_Stone.nmo", true, "P_Ball_Stone_MF").second;
     m_Balls[3] = (CK3dEntity *) ExecuteBB::ObjectLoad("3D Entities\\PH\\P_Box.nmo", true, "P_Box_MF").second;
 
-    m_TravelCam = (CKCamera *) m_BML->GetCKContext()->CreateObject(CKCID_CAMERA, "TravelCam");
+    m_TravelCam = (CKCamera *) m_CKContext->CreateObject(CKCID_CAMERA, "TravelCam");
 }
 
 void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
@@ -759,7 +765,25 @@ void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *master
         m_ExitStart = FindFirstBB(menuMain, "Exit");
     }
 
+    if (!strcmp(filename, "3D Entities\\MenuLevel.nmo")) {
+        if (m_AdaptiveCamera->GetBoolean()) {
+            GetLogger()->Info("Adjust MenuLevel Camera");
+            CKCamera *cam = m_BML->GetTargetCameraByName("Cam_MenuLevel");
+            cam->SetAspectRatio(m_WindowRect.GetWidth(), m_WindowRect.GetHeight());
+            cam->SetFov(0.75f * m_WindowRect.GetWidth() / m_WindowRect.GetHeight());
+            m_BML->SetIC(cam);
+        }
+    }
+
     if (!strcmp(filename, "3D Entities\\Camera.nmo")) {
+        if (m_AdaptiveCamera->GetBoolean()) {
+            GetLogger()->Info("Adjust Ingame Camera");
+            CKCamera *cam = m_BML->GetTargetCameraByName("InGameCam");
+            cam->SetAspectRatio(m_WindowRect.GetWidth(), m_WindowRect.GetHeight());
+            cam->SetFov(0.75f * m_WindowRect.GetWidth() / m_WindowRect.GetHeight());
+            m_BML->SetIC(cam);
+        }
+
         m_CamPos = m_BML->Get3dEntityByName("Cam_Pos");
         m_CamOrient = m_BML->Get3dEntityByName("Cam_Orient");
         m_CamOrientRef = m_BML->Get3dEntityByName("Cam_OrientRef");
@@ -799,6 +823,12 @@ void BMLMod::OnLoadScript(const char *filename, CKBehavior *script) {
 void BMLMod::OnProcess() {
     m_DeltaTime = m_BML->GetTimeManager()->GetLastDeltaTime() / 10;
     m_CheatEnabled = m_BML->IsCheatEnabled();
+
+    m_OldWindowRect = m_WindowRect;
+    m_RenderContext->Get2dRoot(TRUE)->GetRect(m_WindowRect);
+    if (m_WindowRect != m_OldWindowRect) {
+        OnResize();
+    }
 
     if (m_IngameBanner) {
         OnProcess_FpsDisplay();
@@ -900,7 +930,7 @@ void BMLMod::OnPostResetLevel() {
     CKDataArray *ph = m_BML->GetArrayByName("PH");
     for (auto iter = m_TempBalls.rbegin(); iter != m_TempBalls.rend(); iter++) {
         ph->RemoveRow(iter->first);
-        m_BML->GetCKContext()->DestroyObject(iter->second);
+        m_CKContext->DestroyObject(iter->second);
     }
     m_TempBalls.clear();
 }
@@ -1112,7 +1142,6 @@ void BMLMod::OnEditScript_Menu_OptionsMenu(CKBehavior *script) {
 
     char but_name[] = "M_Options_But_X";
     CK2dEntity *buttons[6] = {nullptr};
-    CKContext *context = m_BML->GetCKContext();
     buttons[0] = m_BML->Get2dEntityByName("M_Options_Title");
     for (int i = 1; i < 4; i++) {
         but_name[14] = '0' + i;
@@ -1120,7 +1149,7 @@ void BMLMod::OnEditScript_Menu_OptionsMenu(CKBehavior *script) {
     }
 
     buttons[5] = m_BML->Get2dEntityByName("M_Options_But_Back");
-    buttons[4] = (CK2dEntity *) context->CopyObject(buttons[1]);
+    buttons[4] = (CK2dEntity *) m_CKContext->CopyObject(buttons[1]);
     buttons[4]->SetName("M_Options_But_4");
     for (int i = 0; i < 5; i++) {
         Vx2DVector pos;
@@ -1388,7 +1417,7 @@ void BMLMod::OnEditScript_ExtraLife_Fix(CKBehavior *script) {
 
 void BMLMod::OnProcess_FpsDisplay() {
     CKStats stats;
-    m_BML->GetCKContext()->GetProfileStats(&stats);
+    m_CKContext->GetProfileStats(&stats);
     m_FPSCount += int(1000 / stats.TotalFrameTime);
     if (++m_FPSTimer == 60) {
         m_FPS->SetText(("FPS: " + std::to_string(m_FPSCount / 60)).c_str());
@@ -1756,6 +1785,28 @@ void BMLMod::OnProcess_SRTimer() {
     static char time[16];
     sprintf(time, "%02d:%02d:%02d.%03d", h, m, s, ms);
     m_SRScore->SetText(time);
+}
+
+void BMLMod::OnResize() {
+    CKCamera *cams[] = {
+        m_BML->GetTargetCameraByName("Cam_MenuLevel"),
+        m_BML->GetTargetCameraByName("InGameCam")
+    };
+
+    for (CKCamera *cam: cams) {
+        if (cam) {
+            cam->SetAspectRatio(m_WindowRect.GetWidth(), m_WindowRect.GetHeight());
+            cam->SetFov(0.75f * m_WindowRect.GetWidth() / m_WindowRect.GetHeight());
+            CKStateChunk *chunk = CKSaveObjectState(cam);
+
+            m_BML->RestoreIC(cam);
+            cam->SetAspectRatio(m_WindowRect.GetWidth(), m_WindowRect.GetHeight());
+            cam->SetFov(0.75f * m_WindowRect.GetWidth() / m_WindowRect.GetHeight());
+            m_BML->SetIC(cam);
+
+            CKReadObjectState(cam, chunk);
+        }
+    }
 }
 
 void BMLMod::OnCmdEdit(CKDWORD key) {
