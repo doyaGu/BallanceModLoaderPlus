@@ -30,6 +30,7 @@ static int OnQuery(HookModuleQueryCode code, void *data1, void *data2) {
             *reinterpret_cast<int *>(data2) =
                 CKHF_PreProcess |
                 CKHF_PostProcess |
+                CKHF_PreClearAll |
                 CKHF_OnCKInit |
                 CKHF_OnCKEnd |
                 CKHF_OnCKReset |
@@ -82,10 +83,6 @@ static int OnLoad(size_t code, void * /* handle */) {
 }
 
 static int OnUnload(size_t code, void * /* handle */) {
-    auto &loader = ModLoader::GetInstance();
-    if (loader.IsInitialized()) {
-        loader.Release();
-    }
     return HMR_OK;
 }
 
@@ -99,6 +96,14 @@ CKERROR PostProcess(void *arg) {
     return CK_OK;
 }
 
+CKERROR PreClearAll(void *arg) {
+    auto &loader = ModLoader::GetInstance();
+    if (loader.IsInitialized()) {
+        loader.UnloadMods();
+    }
+    return CK_OK;
+}
+
 CKERROR OnCKInit(void *arg) {
     ModLoader::GetInstance().Init(g_CKContext);
     return CK_OK;
@@ -107,7 +112,7 @@ CKERROR OnCKInit(void *arg) {
 CKERROR OnCKEnd(void *arg) {
     auto &loader = ModLoader::GetInstance();
     if (loader.IsInitialized()) {
-        loader.UnloadMods();
+        loader.Release();
     }
     return CK_OK;
 }
@@ -149,6 +154,10 @@ static int OnSet(size_t code, void **pcb, void **parg) {
             break;
         case CKHFI_PostProcess:
             *pcb = reinterpret_cast<void*>(PostProcess);
+            *parg = nullptr;
+            break;
+        case CKHF_PreClearAll:
+            *pcb = reinterpret_cast<void *>(PreClearAll);
             *parg = nullptr;
             break;
         case CKHFI_OnCKInit:
@@ -193,6 +202,10 @@ static int OnUnset(size_t code, void **pcb, void **parg) {
             break;
         case CKHFI_PostProcess:
             *pcb = reinterpret_cast<void*>(PostProcess);
+            *parg = nullptr;
+            break;
+        case CKHF_PreClearAll:
+            *pcb = reinterpret_cast<void *>(PreClearAll);
             *parg = nullptr;
             break;
         case CKHFI_OnCKInit:
