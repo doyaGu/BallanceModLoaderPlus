@@ -38,21 +38,6 @@ static int OnQuery(HookModuleQueryCode code, void *data1, void *data2) {
             break;
         case HMQC_MSGHOOK:
             *reinterpret_cast<int *>(data2) = 0;
-//                MHF_MSGFILTER |
-//                MHF_JOURNALRECORD |
-//                MHF_JOURNALPLAYBACK |
-//                MHF_KEYBOARD |
-//                MHF_GETMESSAGE |
-//                MHF_CALLWNDPROC |
-//                MHF_CBT |
-//                MHF_SYSMSGFILTER |
-//                MHF_MOUSE |
-//                MHF_DEBUG |
-//                MHF_SHELL |
-//                MHF_FOREGROUNDIDLE |
-//                MHF_CALLWNDPROCRET |
-//                MHF_KEYBOARD_LL |
-//                MHF_MOUSE_LL;
             break;
         default:
             return HMR_SKIP;

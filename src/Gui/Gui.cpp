@@ -15,8 +15,8 @@ extern CKMaterial *g_Inactive;
 extern CKMaterial *g_Caret;
 extern CKMaterial *g_Highlight;
 
-CKMaterial *m_field = nullptr;
-CKGroup *all_sound = nullptr;
+CKMaterial *g_Field = nullptr;
+CKGroup *g_AllSound = nullptr;
 
 Gui::Gui() {
     CKRenderContext *rc = ModLoader::GetInstance().GetRenderContext();
@@ -56,7 +56,7 @@ void Gui::OnMouseDown(float x, float y, CK_MOUSEBUTTON key) {
         if (success) {
             CKMessageManager *mm = ModLoader::GetInstance().GetMessageManager();
             CKMessageType msg = mm->AddMessageType("Menu_Click");
-            mm->SendMessageSingle(msg, all_sound);
+            mm->SendMessageSingle(msg, g_AllSound);
         }
     }
 }
@@ -331,10 +331,10 @@ void Gui::InitMaterials() {
     g_Up = ModLoader::GetInstance().GetMaterialByName("M_Button_Up");
     g_Inactive = ModLoader::GetInstance().GetMaterialByName("M_Button_Inactive");
     g_Over = ModLoader::GetInstance().GetMaterialByName("M_Button_Over");
-    m_field = ModLoader::GetInstance().GetMaterialByName("M_EntryBG");
+    g_Field = ModLoader::GetInstance().GetMaterialByName("M_EntryBG");
     g_Caret = ModLoader::GetInstance().GetMaterialByName("M_Caret");
     g_Highlight = ModLoader::GetInstance().GetMaterialByName("M_Keys_Highlight");
-    all_sound = ModLoader::GetInstance().GetGroupByName("All_Sound");
+    g_AllSound = ModLoader::GetInstance().GetGroupByName("All_Sound");
 
     CKParameterManager *pm = ModLoader::GetInstance().GetParameterManager();
     CKEnumStruct *data = pm->GetEnumDescByType(pm->ParameterGuidToType(CKPGUID_FONTNAME));
