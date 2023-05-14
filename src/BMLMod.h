@@ -237,10 +237,15 @@ private:
     void OnProcess_Summon();
     void OnProcess_SRTimer();
 
+    void OnResize();
     void OnCmdEdit(CKDWORD key);
-    
+
     CKContext *m_CKContext = nullptr;
+    CKRenderContext *m_RenderContext = nullptr;
     InputHook *m_InputHook = nullptr;
+
+    VxRect m_OldWindowRect;
+    VxRect m_WindowRect;
 
     float m_DeltaTime = 0.0f;
     bool m_CheatEnabled = false;
@@ -275,6 +280,7 @@ private:
 
     IProperty *m_UnlockFPS = nullptr;
     IProperty *m_FPSLimit = nullptr;
+    IProperty *m_AdaptiveCamera = nullptr;
     IProperty* m_ShowTitle = nullptr;
     IProperty *m_ShowFPS = nullptr;
     IProperty *m_ShowSR = nullptr;
