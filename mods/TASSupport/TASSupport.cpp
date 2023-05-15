@@ -89,7 +89,7 @@ bool CompressDataToFile(char *data, int size, const char *filename) {
     return true;
 }
 
-static void PreProcessCallBack(CKContext *, void *arg) {
+static void PreProcessCallBack(void *arg) {
     ((TASSupport *)arg)->OnPreProcess();
 }
 
@@ -244,6 +244,7 @@ void TASSupport::OnPreProcess() {
                 stateBuf[m_KeyShift] = state.key_shift;
                 stateBuf[m_KeySpace] = state.key_space;
                 stateBuf[CKKEY_ESCAPE] = state.key_esc;
+                stateBuf[CKKEY_RETURN] = state.key_enter;
             } else {
                 OnStop();
             }
@@ -260,6 +261,7 @@ void TASSupport::OnPreProcess() {
             state.key_shift = stateBuf[m_KeyShift];
             state.key_space = stateBuf[m_KeySpace];
             state.key_esc = stateBuf[CKKEY_ESCAPE];
+			state.key_enter = stateBuf[CKKEY_RETURN];
             m_RecordData.rbegin()->keyState = state;
         }
     }
