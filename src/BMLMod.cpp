@@ -1044,56 +1044,101 @@ void BMLMod::OnEditScript_Base_EventHandler(CKBehavior *script) {
 
     GetLogger()->Info("Insert message Start Menu Hook");
     InsertBB(script, FindNextLink(script, FindNextBB(script, som, nullptr, 0, 0)),
-             ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnPreStartMenu(); }));
+             ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+                 ModLoader::GetInstance().OnPreStartMenu();
+                 return CKBR_OK;
+             }));
     CreateLink(script, FindEndOfChain(script, FindNextBB(script, som, nullptr, 0, 0)),
-               ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnPostStartMenu(); }));
+               ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+                   ModLoader::GetInstance().OnPostStartMenu();
+                   return CKBR_OK;
+               }));
 
     GetLogger()->Info("Insert message Exit Game Hook");
     InsertBB(script, FindNextLink(script, FindNextBB(script, som, nullptr, 1, 0)),
-             ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnExitGame(); }));
+             ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+                 ModLoader::GetInstance().OnExitGame();
+                 return CKBR_OK;
+             }));
 
     GetLogger()->Info("Insert message Load Level Hook");
     CKBehaviorLink *link = FindNextLink(script, FindNextBB(script, FindNextBB(script, FindNextBB(script, som, nullptr, 2, 0))));
-    InsertBB(script, link, ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnPreLoadLevel(); }));
+    InsertBB(script, link, ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnPreLoadLevel();
+        return CKBR_OK;
+    }));
     CreateLink(script, FindEndOfChain(script, FindNextBB(script, som, nullptr, 2, 0)),
-               ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnPostLoadLevel(); }));
+               ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+                   ModLoader::GetInstance().OnPostLoadLevel();
+                   return CKBR_OK;
+               }));
 
     GetLogger()->Info("Insert message Start Level Hook");
     CreateLink(script, FindEndOfChain(script, FindNextBB(script, som, nullptr, 3, 0)),
-               ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnStartLevel(); }));
+               ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+                   ModLoader::GetInstance().OnStartLevel();
+                   return CKBR_OK;
+               }));
 
     GetLogger()->Info("Insert message Reset Level Hook");
     CKBehavior *rl = FindFirstBB(script, "reset Level");
     link = FindNextLink(rl, FindNextBB(rl, FindNextBB(rl, rl->GetInput(0))));
-    InsertBB(script, link, ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnPreResetLevel(); }));
+    InsertBB(script, link, ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnPreResetLevel();
+        return CKBR_OK;
+    }));
     CreateLink(script, FindEndOfChain(script, FindNextBB(script, som, nullptr, 4, 0)),
-               ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnPostResetLevel(); }));
+               ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+                   ModLoader::GetInstance().OnPostResetLevel();
+                   return CKBR_OK;
+               }));
 
     GetLogger()->Info("Insert message Pause Level Hook");
     CreateLink(script, FindEndOfChain(script, FindNextBB(script, som, nullptr, 5, 0)),
-               ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnPauseLevel(); }));
+               ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+                   ModLoader::GetInstance().OnPauseLevel();
+                   return CKBR_OK;
+               }));
 
     GetLogger()->Info("Insert message Unpause Level Hook");
     CreateLink(script, FindEndOfChain(script, FindNextBB(script, som, nullptr, 6, 0)),
-               ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnUnpauseLevel(); }));
+               ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+                   ModLoader::GetInstance().OnUnpauseLevel();
+                   return CKBR_OK;
+               }));
 
     CKBehavior *bs = FindNextBB(script, FindFirstBB(script, "DeleteCollisionSurfaces"));
 
     GetLogger()->Info("Insert message Exit Level Hook");
     link = FindNextLink(script, FindNextBB(script, FindNextBB(script, FindNextBB(script, FindNextBB(script, FindNextBB(script, som, nullptr, 7, 0))))));
-    InsertBB(script, link, ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnPreExitLevel(); }));
+    InsertBB(script, link, ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnPreExitLevel();
+        return CKBR_OK;
+    }));
     InsertBB(script, FindNextLink(script, FindNextBB(script, bs, nullptr, 0, 0)),
-             ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnPostExitLevel(); }));
+             ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+                 ModLoader::GetInstance().OnPostExitLevel();
+                 return CKBR_OK;
+             }));
 
     GetLogger()->Info("Insert message Next Level Hook");
     link = FindNextLink(script, FindNextBB(script, FindNextBB(script, FindNextBB(script, FindNextBB(script, FindNextBB(script, som, nullptr, 8, 0))))));
-    InsertBB(script, link, ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnPreNextLevel(); }));
+    InsertBB(script, link, ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnPreNextLevel();
+        return CKBR_OK;
+    }));
     InsertBB(script, FindNextLink(script, FindNextBB(script, bs, nullptr, 1, 0)),
-             ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnPostNextLevel(); }));
+             ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+                 ModLoader::GetInstance().OnPostNextLevel();
+                 return CKBR_OK;
+             }));
 
     GetLogger()->Info("Insert message Dead Hook");
     CreateLink(script, FindEndOfChain(script, FindNextBB(script, som, nullptr, 9, 0)),
-               ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnDead(); }));
+               ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+                   ModLoader::GetInstance().OnDead();
+                   return CKBR_OK;
+               }));
 
     CKBehavior *hs = FindFirstBB(script, "Highscore");
     hs->AddOutput("Out");
@@ -1104,8 +1149,14 @@ void BMLMod::OnEditScript_Base_EventHandler(CKBehavior *script) {
 
     GetLogger()->Info("Insert message End Level Hook");
     InsertBB(script, FindNextLink(script, FindNextBB(script, som, nullptr, 10, 0)),
-             ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnPreEndLevel(); }));
-    CreateLink(script, hs, ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnPostEndLevel(); }));
+             ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+                 ModLoader::GetInstance().OnPreEndLevel();
+                 return CKBR_OK;
+             }));
+    CreateLink(script, hs, ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnPostEndLevel();
+        return CKBR_OK;
+    }));
 }
 
 void BMLMod::OnEditScript_Menu_MenuInit(CKBehavior *script) {
@@ -1130,7 +1181,7 @@ void BMLMod::OnEditScript_Menu_MenuInit(CKBehavior *script) {
         fontid["GameFont_Credits_Big"] = ExecuteBB::GAMEFONT_CREDITS_BIG;
 
         for (int i = 0; i < 7; i++) {
-            int font;
+            int font = 0;
             bbs[i]->GetOutputParameterValue(0, &font);
             ExecuteBB::InitFont(fontid[static_cast<const char *>(bbs[i]->GetInputParameterReadDataPtr(0))], font);
         }
@@ -1225,7 +1276,10 @@ void BMLMod::OnEditScript_Menu_OptionsMenu(CKBehavior *script) {
     CreateLink(graph, down_sop, graph->GetOutput(4), 5);
     FindNextLink(script, graph, nullptr, 3, 0)->SetInBehaviorIO(graph->GetOutput(4));
 
-    CKBehavior *modsmenu = ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OpenModsMenu(); });
+    CKBehavior *modsmenu = ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OpenModsMenu();
+        return CKBR_OK;
+    });
     CKBehavior *exit = FindFirstBB(script, "Exit", false, 1, 0);
     CreateLink(script, graph, modsmenu, 3, 0);
     CreateLink(script, modsmenu, exit, 0, 0);
@@ -1259,16 +1313,28 @@ void BMLMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
         if (msg == camoff) coff = beh;
         return true;
     }, "Wait Message");
-    CreateLink(camonoff, con, ExecuteBB::CreateHookBlock(camonoff, [](void *) { ModLoader::GetInstance().OnCamNavActive(); }), 0, 0);
-    CreateLink(camonoff, coff, ExecuteBB::CreateHookBlock(camonoff, [](void *) { ModLoader::GetInstance().OnCamNavInactive(); }), 0, 0);
+    CreateLink(camonoff, con, ExecuteBB::CreateHookBlock(camonoff, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnCamNavActive();
+        return CKBR_OK;
+    }), 0, 0);
+    CreateLink(camonoff, coff, ExecuteBB::CreateHookBlock(camonoff, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnCamNavInactive();
+        return CKBR_OK;
+    }), 0, 0);
     FindBB(ballonoff, [ballon, balloff, &bon, &boff](CKBehavior *beh) {
         auto msg = GetParamValue<CKMessageType>(beh->GetInputParameter(0)->GetDirectSource());
         if (msg == ballon) bon = beh;
         if (msg == balloff) boff = beh;
         return true;
     }, "Wait Message");
-    CreateLink(ballonoff, bon, ExecuteBB::CreateHookBlock(ballonoff, [](void *) { ModLoader::GetInstance().OnBallNavActive(); }), 0, 0);
-    CreateLink(ballonoff, boff, ExecuteBB::CreateHookBlock(ballonoff, [](void *) { ModLoader::GetInstance().OnBallNavInactive(); }), 0, 0);
+    CreateLink(ballonoff, bon, ExecuteBB::CreateHookBlock(ballonoff, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnBallNavActive();
+        return CKBR_OK;
+    }), 0, 0);
+    CreateLink(ballonoff, boff, ExecuteBB::CreateHookBlock(ballonoff, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnBallNavInactive();
+        return CKBR_OK;
+    }), 0, 0);
 
     GetLogger()->Info("Debug Ball Force");
     CKBehavior *ballNav = FindFirstBB(script, "Ball Navigation");
@@ -1331,8 +1397,14 @@ void BMLMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
 void BMLMod::OnEditScript_Gameplay_Energy(CKBehavior *script) {
     GetLogger()->Info("Insert Counter Active/Inactive Hook");
     CKBehavior *som = FindFirstBB(script, "Switch On Message");
-    InsertBB(script, FindNextLink(script, som, nullptr, 3), ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnCounterActive(); }));
-    InsertBB(script, FindNextLink(script, som, nullptr, 1), ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnCounterInactive(); }));
+    InsertBB(script, FindNextLink(script, som, nullptr, 3), ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnCounterActive();
+        return CKBR_OK;
+    }));
+    InsertBB(script, FindNextLink(script, som, nullptr, 1), ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnCounterInactive();
+        return CKBR_OK;
+    }));
 
     GetLogger()->Info("Insert Life/Point Hooks");
     CKMessageManager *mm = m_BML->GetMessageManager();
@@ -1347,14 +1419,32 @@ void BMLMod::OnEditScript_Gameplay_Energy(CKBehavior *script) {
         if (msg == extrapoint) ep = beh;
         return true;
     }, "Wait Message");
-    CKBehavior *luhook = ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnPreLifeUp(); });
+    CKBehavior *luhook = ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnPreLifeUp();
+        return CKBR_OK;
+    });
     InsertBB(script, FindNextLink(script, lu, "add Life"), luhook);
-    CreateLink(script, FindEndOfChain(script, luhook), ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnPostLifeUp(); }));
-    InsertBB(script, FindNextLink(script, bo, "Delayer"), ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnBallOff(); }));
-    CKBehavior *slhook = ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnPreSubLife(); });
+    CreateLink(script, FindEndOfChain(script, luhook), ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnPostLifeUp();
+        return CKBR_OK;
+    }));
+    InsertBB(script, FindNextLink(script, bo, "Delayer"), ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnBallOff();
+        return CKBR_OK;
+    }));
+    CKBehavior *slhook = ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnPreSubLife();
+        return CKBR_OK;
+    });
     InsertBB(script, FindNextLink(script, sl, "sub Life"), slhook);
-    CreateLink(script, FindEndOfChain(script, slhook), ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnPostSubLife(); }));
-    InsertBB(script, FindNextLink(script, ep, "Show"), ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnExtraPoint(); }));
+    CreateLink(script, FindEndOfChain(script, slhook), ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnPostSubLife();
+        return CKBR_OK;
+    }));
+    InsertBB(script, FindNextLink(script, ep, "Show"), ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnExtraPoint();
+        return CKBR_OK;
+    }));
 
     CKBehavior *delay = FindFirstBB(script, "Delayer");
     m_OverclockLinks[2] = FindPreviousLink(script, delay);
@@ -1382,11 +1472,23 @@ void BMLMod::OnEditScript_Gameplay_Events(CKBehavior *script) {
         if (msg == levelfinish) lf = beh;
         return true;
     }, "Wait Message");
-    CKBehavior *hook = ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnPreCheckpointReached(); });
+    CKBehavior *hook = ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnPreCheckpointReached();
+        return CKBR_OK;
+    });
     InsertBB(script, FindNextLink(script, cp, "set Resetpoint"), hook);
-    CreateLink(script, FindEndOfChain(script, hook), ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnPostCheckpointReached(); }));
-    InsertBB(script, FindNextLink(script, go, "Send Message"), ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnGameOver(); }));
-    InsertBB(script, FindNextLink(script, lf, "Send Message"), ExecuteBB::CreateHookBlock(script, [](void *) { ModLoader::GetInstance().OnLevelFinish(); }));
+    CreateLink(script, FindEndOfChain(script, hook), ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnPostCheckpointReached();
+        return CKBR_OK;
+    }));
+    InsertBB(script, FindNextLink(script, go, "Send Message"), ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnGameOver();
+        return CKBR_OK;
+    }));
+    InsertBB(script, FindNextLink(script, lf, "Send Message"), ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
+        ModLoader::GetInstance().OnLevelFinish();
+        return CKBR_OK;
+    }));
 
     CKBehavior *id = FindNextBB(script, script->GetInput(0));
     m_CurSector = id->GetOutputParameter(0)->GetDestination(0);
@@ -1793,7 +1895,7 @@ void BMLMod::OnResize() {
         m_BML->GetTargetCameraByName("InGameCam")
     };
 
-    for (CKCamera *cam: cams) {
+    for (CKCamera *cam : cams) {
         if (cam) {
             cam->SetAspectRatio(m_WindowRect.GetWidth(), m_WindowRect.GetHeight());
             cam->SetFov(0.75f * m_WindowRect.GetWidth() / m_WindowRect.GetHeight());
