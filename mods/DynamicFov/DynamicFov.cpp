@@ -34,7 +34,10 @@ void DynamicFov::OnLoadScript(const char *filename, CKBehavior *script) {
     if (!strcmp(script->GetName(), "Gameplay_Ingame")) {
         m_IngameScript = script;
         CKBehavior *ballMgr = ScriptHelper::FindFirstBB(script, "BallManager");
-        ScriptHelper::CreateLink(script, ballMgr, ExecuteBB::CreateHookBlock(script, [](void *) { g_Mod->SetInactive(); }));
+        ScriptHelper::CreateLink(script, ballMgr, ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext*, void*) -> int {
+            g_Mod->SetInactive();
+            return CKBR_OK;
+            }));
         CKBehavior *init = ScriptHelper::FindFirstBB(script, "Init Ingame");
         m_DynamicPos = ScriptHelper::FindNextBB(script, init, "TT Set Dynamic Position");
     }

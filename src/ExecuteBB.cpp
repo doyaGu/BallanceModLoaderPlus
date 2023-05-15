@@ -292,7 +292,7 @@ namespace ExecuteBB {
         return beh;
     }
 
-    CKBehavior *CreateHookBlock(CKBehavior *script, void (*callback)(void *), void *arg, int inCount, int outCount) {
+    CKBehavior *CreateHookBlock(CKBehavior *script, CKBehaviorCallback callback, void *arg, int inCount, int outCount) {
         CKBehavior *beh = CreateBB(script, BML_HOOKBLOCK_GUID);
         beh->SetLocalParameterValue(0, &callback);
         beh->SetLocalParameterValue(1, &arg);

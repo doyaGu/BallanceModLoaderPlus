@@ -133,7 +133,8 @@ namespace ExecuteBB {
 
     BML_EXPORT CKBehavior *CreateSendMessage(CKBehavior *script, const char *msg, CKBeObject *dest);
 
-    BML_EXPORT CKBehavior *CreateHookBlock(CKBehavior *script, void (*callback)(void *), void *arg = nullptr, int inCount = 1, int outCount = 1);
+    typedef int (*CKBehaviorCallback)(const CKBehaviorContext *behcontext, void *arg);
+    BML_EXPORT CKBehavior *CreateHookBlock(CKBehavior *script, CKBehaviorCallback callback, void *arg = nullptr, int inCount = 1, int outCount = 1);
 }
 
 #endif // BML_EXECUTEBB_H
