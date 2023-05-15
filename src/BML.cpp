@@ -67,11 +67,6 @@ static int OnUnload(size_t code, void * /* handle */) {
     return HMR_OK;
 }
 
-CKERROR PreProcess(void *arg) {
-    g_CKContext->OutputToConsole((CKSTRING)"PreProcess");
-    return CK_OK;
-}
-
 CKERROR PostProcess(void *arg) {
     ModLoader::GetInstance().OnProcess();
     return CK_OK;
