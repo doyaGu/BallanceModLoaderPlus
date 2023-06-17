@@ -14,123 +14,80 @@ typedef void (*CK_COPYCALLBACK)(CKDependenciesContext *, void *);
 
 class HookManager : public CKBaseManager {
 public:
-    explicit HookManager(CKContext *context);
+    virtual void AddPreClearAllCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemovePreClearAllCallBack(CK_PROCESSCALLBACK func, void *arg) = 0;
 
-    ~HookManager() override;
+    virtual void AddPostClearAllCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemovePostClearAllCallBack(CK_PROCESSCALLBACK func, void *arg) = 0;
 
-    CKERROR PreClearAll() override;
-    CKERROR PostClearAll() override;
+    virtual void AddPreProcessCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemovePreProcessCallBack(CK_PROCESSCALLBACK func, void *arg) = 0;
 
-    CKERROR PreProcess() override;
-    CKERROR PostProcess() override;
+    virtual void AddPostProcessCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemovePostProcessCallBack(CK_PROCESSCALLBACK func, void *arg) = 0;
 
-    CKERROR SequenceAddedToScene(CKScene *scn, CK_ID *objids, int count) override;
-    CKERROR SequenceRemovedFromScene(CKScene *scn, CK_ID *objids, int count) override;
+    virtual void AddOnSequenceAddedToSceneCallBack(CK_SCENECALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemoveOnSequenceAddedToSceneCallBack(CK_SCENECALLBACK func, void *arg) = 0;
 
-    CKERROR PreLaunchScene(CKScene *OldScene, CKScene *NewScene) override;
-    CKERROR PostLaunchScene(CKScene *OldScene, CKScene *NewScene) override;
+    virtual void AddOnSequenceRemovedFromSceneCallBack(CK_SCENECALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemoveOnSequenceRemovedFromSceneCallBack(CK_SCENECALLBACK func, void *arg) = 0;
 
-    CKERROR OnCKInit() override;
-    CKERROR OnCKEnd() override;
+    virtual void AddPreLaunchSceneCallBack(CK_LAUNCHSCENECALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemovePreLaunchSceneCallBack(CK_LAUNCHSCENECALLBACK func, void *arg) = 0;
 
-    CKERROR OnCKReset() override;
-    CKERROR OnCKPostReset() override;
+    virtual void AddPostLaunchSceneCallBack(CK_LAUNCHSCENECALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemovePostLaunchSceneCallBack(CK_LAUNCHSCENECALLBACK func, void *arg) = 0;
 
-    CKERROR OnCKPause() override;
-    CKERROR OnCKPlay() override;
+    virtual void AddOnCKInitCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemoveOnCKInitCallBack(CK_PROCESSCALLBACK func, void *arg) = 0;
 
-    CKERROR SequenceToBeDeleted(CK_ID *objids, int count) override;
-    CKERROR SequenceDeleted(CK_ID *objids, int count) override;
+    virtual void AddOnCKEndCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemoveOnCKEndCallBack(CK_PROCESSCALLBACK func, void *arg) = 0;
 
-    CKERROR PreLoad() override;
-    CKERROR PostLoad() override;
+    virtual void AddOnCKResetCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemoveOnCKResetCallBack(CK_PROCESSCALLBACK func, void *arg) = 0;
 
-    CKERROR PreSave() override;
-    CKERROR PostSave() override;
+    virtual void AddOnCKPostResetCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemoveOnCKPostResetCallBack(CK_PROCESSCALLBACK func, void *arg) = 0;
 
-    CKERROR OnPreCopy(CKDependenciesContext &context) override;
-    CKERROR OnPostCopy(CKDependenciesContext &context) override;
+    virtual void AddOnCKPauseCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemoveOnCKPauseCallBack(CK_PROCESSCALLBACK func, void *arg) = 0;
 
-    CKERROR OnPreRender(CKRenderContext *dev) override;
-    CKERROR OnPostRender(CKRenderContext *dev) override;
-    CKERROR OnPostSpriteRender(CKRenderContext *dev) override;
+    virtual void AddOnCKPlayCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemoveOnCKPlayCallBack(CK_PROCESSCALLBACK func, void *arg) = 0;
 
-    CKDWORD GetValidFunctionsMask() override;
+    virtual void AddOnSequenceToBeDeletedCallBack(CK_DELETECALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemoveOnSequenceToBeDeletedCallBack(CK_DELETECALLBACK func, void *arg) = 0;
 
-    virtual void AddPreClearAllCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemovePreClearAllCallBack(CK_PROCESSCALLBACK func, void *arg);
+    virtual void AddOnSequenceDeletedCallBack(CK_DELETECALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemoveOnSequenceDeletedCallBack(CK_DELETECALLBACK func, void *arg) = 0;
 
-    virtual void AddPostClearAllCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemovePostClearAllCallBack(CK_PROCESSCALLBACK func, void *arg);
+    virtual void AddPreLoadCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemovePreLoadCallBack(CK_PROCESSCALLBACK func, void *arg) = 0;
 
-    virtual void AddPreProcessCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemovePreProcessCallBack(CK_PROCESSCALLBACK func, void *arg);
+    virtual void AddPostLoadCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemovePostLoadCallBack(CK_PROCESSCALLBACK func, void *arg) = 0;
 
-    virtual void AddPostProcessCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemovePostProcessCallBack(CK_PROCESSCALLBACK func, void *arg);
+    virtual void AddPreSaveCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemovePreSaveCallBack(CK_PROCESSCALLBACK func, void *arg) = 0;
 
-    virtual void AddOnSequenceAddedToSceneCallBack(CK_SCENECALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemoveOnSequenceAddedToSceneCallBack(CK_SCENECALLBACK func, void *arg);
+    virtual void AddPostSaveCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemovePostSaveCallBack(CK_PROCESSCALLBACK func, void *arg) = 0;
 
-    virtual void AddOnSequenceRemovedFromSceneCallBack(CK_SCENECALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemoveOnSequenceRemovedFromSceneCallBack(CK_SCENECALLBACK func, void *arg);
+    virtual void AddOnPreCopyCallBack(CK_COPYCALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemoveOnPreCopyCallBack(CK_COPYCALLBACK func, void *arg) = 0;
 
-    virtual void AddPreLaunchSceneCallBack(CK_LAUNCHSCENECALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemovePreLaunchSceneCallBack(CK_LAUNCHSCENECALLBACK func, void *arg);
+    virtual void AddOnPostCopyCallBack(CK_COPYCALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemoveOnPostCopyCallBack(CK_COPYCALLBACK func, void *arg) = 0;
 
-    virtual void AddPostLaunchSceneCallBack(CK_LAUNCHSCENECALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemovePostLaunchSceneCallBack(CK_LAUNCHSCENECALLBACK func, void *arg);
+    virtual void AddOnPreRenderCallBack(CK_RENDERCALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemoveOnPreRenderCallBack(CK_RENDERCALLBACK func, void *arg) = 0;
 
-    virtual void AddOnCKInitCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemoveOnCKInitCallBack(CK_PROCESSCALLBACK func, void *arg);
+    virtual void AddOnPostRenderCallBack(CK_RENDERCALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemoveOnPostRenderCallBack(CK_RENDERCALLBACK func, void *arg) = 0;
 
-    virtual void AddOnCKEndCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemoveOnCKEndCallBack(CK_PROCESSCALLBACK func, void *arg);
-
-    virtual void AddOnCKResetCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemoveOnCKResetCallBack(CK_PROCESSCALLBACK func, void *arg);
-
-    virtual void AddOnCKPostResetCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemoveOnCKPostResetCallBack(CK_PROCESSCALLBACK func, void *arg);
-
-    virtual void AddOnCKPauseCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemoveOnCKPauseCallBack(CK_PROCESSCALLBACK func, void *arg);
-
-    virtual void AddOnCKPlayCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemoveOnCKPlayCallBack(CK_PROCESSCALLBACK func, void *arg);
-
-    virtual void AddOnSequenceToBeDeletedCallBack(CK_DELETECALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemoveOnSequenceToBeDeletedCallBack(CK_DELETECALLBACK func, void *arg);
-
-    virtual void AddOnSequenceDeletedCallBack(CK_DELETECALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemoveOnSequenceDeletedCallBack(CK_DELETECALLBACK func, void *arg);
-
-    virtual void AddPreLoadCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemovePreLoadCallBack(CK_PROCESSCALLBACK func, void *arg);
-
-    virtual void AddPostLoadCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemovePostLoadCallBack(CK_PROCESSCALLBACK func, void *arg);
-
-    virtual void AddPreSaveCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemovePreSaveCallBack(CK_PROCESSCALLBACK func, void *arg);
-
-    virtual void AddPostSaveCallBack(CK_PROCESSCALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemovePostSaveCallBack(CK_PROCESSCALLBACK func, void *arg);
-
-    virtual void AddOnPreCopyCallBack(CK_COPYCALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemoveOnPreCopyCallBack(CK_COPYCALLBACK func, void *arg);
-
-    virtual void AddOnPostCopyCallBack(CK_COPYCALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemoveOnPostCopyCallBack(CK_COPYCALLBACK func, void *arg);
-
-    virtual void AddOnPreRenderCallBack(CK_RENDERCALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemoveOnPreRenderCallBack(CK_RENDERCALLBACK func, void *arg);
-
-    virtual void AddOnPostRenderCallBack(CK_RENDERCALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemoveOnPostRenderCallBack(CK_RENDERCALLBACK func, void *arg);
-
-    virtual void AddOnPostSpriteRenderCallBack(CK_RENDERCALLBACK func, void *arg, CKBOOL temp = FALSE);
-    virtual void RemoveOnPostSpriteRenderCallBack(CK_RENDERCALLBACK func, void *arg);
+    virtual void AddOnPostSpriteRenderCallBack(CK_RENDERCALLBACK func, void *arg, CKBOOL temp = FALSE) = 0;
+    virtual void RemoveOnPostSpriteRenderCallBack(CK_RENDERCALLBACK func, void *arg) = 0;
 
     static HookManager *GetManager(CKContext *context) {
         return (HookManager *) context->GetManagerByGuid(HOOKMANAGER_GUID);
