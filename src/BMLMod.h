@@ -261,8 +261,9 @@ private:
     struct {
         BGui::Panel *m_Background;
         BGui::Label *m_Text;
-        int m_Timer;
+        float m_Timer;
     } m_Msgs[MSG_MAXSIZE] = {};
+    float m_MsgMaxTimer = 6000; // ms
 
     BGui::Gui *m_IngameBanner = nullptr;
     BGui::Label* m_Title = nullptr;
@@ -285,6 +286,7 @@ private:
     IProperty *m_ShowFPS = nullptr;
     IProperty *m_ShowSR = nullptr;
     IProperty *m_FixLifeBall = nullptr;
+    IProperty* m_MsgDuration = nullptr;
 
     IProperty *m_BallCheat[2] = {};
     IProperty *m_EnableSuicide = nullptr;
