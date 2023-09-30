@@ -263,6 +263,9 @@ void ModLoader::UnloadMods() {
     for (Config *config: m_Configs)
         config->Save();
     m_Configs.clear();
+
+    m_ModMap.clear();
+    m_Mods.clear();
 }
 
 CKERROR ModLoader::OnProcess() {
