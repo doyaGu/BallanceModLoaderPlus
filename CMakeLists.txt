@@ -9,9 +9,7 @@ set(CMAKE_CXX_EXTENSIONS YES)
 option(BML_BUILD_MODS "Build mods" ON)
 
 # Add path for custom modules
-list(INSERT CMAKE_MODULE_PATH 0
-        "${CMAKE_CURRENT_SOURCE_DIR}/CMake"
-        "${CMAKE_CURRENT_SOURCE_DIR}/CMake/Modules")
+list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}/CMake")
 
 include(GenerateExportHeader)
 include(GNUInstallDirs)
@@ -44,34 +42,7 @@ endif ()
 # Generate a CompilationDatabase (compile_commands.json)
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
-set(VIRTOOLS_SDK_PATH "${VIRTOOLS_SDK_PATH}" CACHE PATH "Path to the Virtools SDK")
-set(VIRTOOLS_SDK_FETCH_FROM_GIT "${VIRTOOLS_SDK_FETCH_FROM_GIT}" CACHE BOOL "Set to ON to fetch copy of SDK from git if not otherwise locatable")
-set(VIRTOOLS_SDK_FETCH_FROM_GIT_PATH "${VIRTOOLS_SDK_FETCH_FROM_GIT_PATH}" CACHE FILEPATH "location to download SDK")
-
-if (NOT VIRTOOLS_SDK_PATH)
-    if (NOT VIRTOOLS_SDK_FETCH_FROM_GIT)
-        message(FATAL_ERROR "Virtools SDK location was not specified. Please set VIRTOOLS_SDK_PATH or set VIRTOOLS_SDK_FETCH_FROM_GIT to on to fetch from git.")
-    else ()
-        include(FetchContent)
-        set(FETCHCONTENT_BASE_DIR_SAVE ${FETCHCONTENT_BASE_DIR})
-        if (VIRTOOLS_SDK_FETCH_FROM_GIT_PATH)
-            get_filename_component(FETCHCONTENT_BASE_DIR "${VIRTOOLS_SDK_FETCH_FROM_GIT_PATH}" REALPATH BASE_DIR "${CMAKE_SOURCE_DIR}")
-        endif ()
-        FetchContent_Declare(
-                Virtools_SDK
-                GIT_REPOSITORY https://github.com/doyaGu/Virtools-SDK-2.1.git
-                GIT_TAG main
-        )
-        if (NOT Virtools_SDK)
-            message("Downloading Virtools SDK")
-            FetchContent_Populate(Virtools_SDK)
-            set(VIRTOOLS_SDK_PATH "${virtools_sdk_SOURCE_DIR}" CACHE PATH "Path to the Virtools SDK" FORCE)
-        endif ()
-        set(FETCHCONTENT_BASE_DIR ${FETCHCONTENT_BASE_DIR_SAVE})
-    endif ()
-endif ()
-
-find_package(VirtoolsSDK REQUIRED HINTS ${VIRTOOLS_SDK_PATH})
+find_package(VirtoolsSDK REQUIRED)
 
 add_subdirectory(deps)
 add_subdirectory(src)
