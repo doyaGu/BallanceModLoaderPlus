@@ -36,9 +36,6 @@ static int OnQuery(HookModuleQueryCode code, void *data1, void *data2) {
                 CKHF_OnPreRender |
                 CKHF_OnPostRender;
             break;
-        case HMQC_MSGHOOK:
-            *reinterpret_cast<int *>(data2) = 0;
-            break;
         default:
             return HMR_SKIP;
     }
