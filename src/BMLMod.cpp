@@ -884,48 +884,49 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
     if (m_BML->IsCheatEnabled()) {
         if (prop == m_BallCheat[0])
             SetParamValue(m_BallForce[0], m_BallCheat[0]->GetKey());
-        if (prop == m_BallCheat[1])
+        else if (prop == m_BallCheat[1])
             SetParamValue(m_BallForce[1], m_BallCheat[1]->GetKey());
-    }
-    if (prop == m_UnlockFPS) {
-        if (prop->GetBoolean())
-            ModLoader::GetInstance().AdjustFrameRate(false, 0);
-        else {
-            int val = m_FPSLimit->GetInteger();
+    } else {
+        if (prop == m_UnlockFPS) {
+            if (prop->GetBoolean())
+                ModLoader::GetInstance().AdjustFrameRate(false, 0);
+            else {
+                int val = m_FPSLimit->GetInteger();
+                if (val > 0)
+                    ModLoader::GetInstance().AdjustFrameRate(false, static_cast<float>(val));
+                else
+                    ModLoader::GetInstance().AdjustFrameRate(true);
+            }
+        }
+        else if (prop == m_FPSLimit && !m_UnlockFPS->GetBoolean()) {
+            int val = prop->GetInteger();
             if (val > 0)
                 ModLoader::GetInstance().AdjustFrameRate(false, static_cast<float>(val));
             else
                 ModLoader::GetInstance().AdjustFrameRate(true);
         }
-    }
-    if (prop == m_FPSLimit && !m_UnlockFPS->GetBoolean()) {
-        int val = prop->GetInteger();
-        if (val > 0)
-            ModLoader::GetInstance().AdjustFrameRate(false, static_cast<float>(val));
-        else
-            ModLoader::GetInstance().AdjustFrameRate(true);
-    }
-    if (prop == m_Overclock) {
-        for (int i = 0; i < 3; i++) {
-            m_OverclockLinks[i]->SetOutBehaviorIO(m_OverclockLinkIO[i][m_Overclock->GetBoolean()]);
+        else if (prop == m_Overclock) {
+            for (int i = 0; i < 3; i++) {
+                m_OverclockLinks[i]->SetOutBehaviorIO(m_OverclockLinkIO[i][m_Overclock->GetBoolean()]);
+            }
+        }
+        else if (prop == m_ShowTitle) {
+            m_Title->SetVisible(prop->GetBoolean());
+        }
+        else if (prop == m_ShowFPS) {
+            m_FPS->SetVisible(prop->GetBoolean());
+        }
+        else if (prop == m_ShowSR && m_BML->IsIngame()) {
+            m_SRScore->SetVisible(m_ShowSR->GetBoolean());
+            m_SRTitle->SetVisible(m_ShowSR->GetBoolean());
+        }
+        else if (prop == m_MsgDuration) {
+            m_MsgMaxTimer = m_MsgDuration->GetFloat() * 1000;
+            if (m_MsgMaxTimer < 2000) {
+                m_MsgDuration->SetFloat(2.0f);
+            }
         }
     }
-    if (prop == m_ShowTitle) {
-        m_Title->SetVisible(prop->GetBoolean());
-    }
-    if (prop == m_ShowFPS) {
-        m_FPS->SetVisible(prop->GetBoolean());
-    }
-    if (prop == m_ShowSR && m_BML->IsIngame()) {
-        m_SRScore->SetVisible(m_ShowSR->GetBoolean());
-        m_SRTitle->SetVisible(m_ShowSR->GetBoolean());
-    }
-    if (prop == m_MsgDuration) {
-		m_MsgMaxTimer = m_MsgDuration->GetFloat() * 1000;
-		if (m_MsgMaxTimer < 2000) {
-			m_MsgDuration->SetFloat(2.0f);
-		}
-	}
 }
 
 void BMLMod::OnPreStartMenu() {
