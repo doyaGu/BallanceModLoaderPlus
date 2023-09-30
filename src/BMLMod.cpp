@@ -562,6 +562,11 @@ void BMLMod::OnLoad() {
     m_FixLifeBall->SetComment("Game won't freeze when picking up life balls");
     m_FixLifeBall->SetDefaultBoolean(true);
 
+    m_MsgDuration = GetConfig()->GetProperty("Misc", "MessageDuration");
+	m_MsgDuration->SetComment("Maximum visible time of each notification message, measured in seconds (default: 6)");
+	m_MsgDuration->SetDefaultFloat(m_MsgMaxTimer / 1000);
+	m_MsgMaxTimer = m_MsgDuration->GetFloat() * 1000;
+
     GetConfig()->SetCategoryComment("Debug", "Debug Utilities");
     m_EnableSuicide = GetConfig()->GetProperty("Debug", "EnableSuicide");
     m_EnableSuicide->SetComment("Enable the Suicide Hotkey");
@@ -915,6 +920,12 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
         m_SRScore->SetVisible(m_ShowSR->GetBoolean());
         m_SRTitle->SetVisible(m_ShowSR->GetBoolean());
     }
+    if (prop == m_MsgDuration) {
+		m_MsgMaxTimer = m_MsgDuration->GetFloat() * 1000;
+		if (m_MsgMaxTimer < 2000) {
+			m_MsgDuration->SetFloat(2.0f);
+		}
+	}
 }
 
 void BMLMod::OnPreStartMenu() {
@@ -986,7 +997,7 @@ void BMLMod::AddIngameMessage(const char *msg) {
     }
 
     m_Msgs[0].m_Text->SetText(msg);
-    m_Msgs[0].m_Timer = 1000;
+    m_Msgs[0].m_Timer = m_MsgMaxTimer;
     m_MsgCount++;
 
     GetLogger()->Info(msg);
@@ -1556,15 +1567,17 @@ void BMLMod::OnProcess_CommandBar() {
         }
     } else {
         for (int i = 0; i < std::min(MSG_MAXSIZE, m_MsgCount); i++) {
-            int &timer = m_Msgs[i].m_Timer;
+            float &timer = m_Msgs[i].m_Timer;
             m_Msgs[i].m_Background->SetVisible(timer > 0);
-            m_Msgs[i].m_Background->SetColor(VxColor(0, 0, 0, std::min(110, timer / 2)));
-            m_Msgs[i].m_Text->SetVisible(timer > 100);
+            m_Msgs[i].m_Background->SetColor(VxColor(0, 0, 0, std::min(110, (int)(timer / 20))));
+            m_Msgs[i].m_Text->SetVisible(timer > 1000);
         }
     }
 
+    CKStats stats;
+    m_CKContext->GetProfileStats(&stats);
     for (int i = 0; i < std::min(MSG_MAXSIZE, m_MsgCount); i++) {
-        m_Msgs[i].m_Timer--;
+        m_Msgs[i].m_Timer -= stats.TotalFrameTime;
     }
 }
 
