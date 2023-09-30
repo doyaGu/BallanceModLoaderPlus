@@ -287,7 +287,8 @@ private:
     IProperty *m_FixLifeBall = nullptr;
 
     IProperty *m_BallCheat[2] = {};
-    IProperty *m_Suicide = nullptr;
+    IProperty *m_EnableSuicide = nullptr;
+    IProperty* m_Suicide = nullptr;
     CKParameterLocal *m_BallForce[2] = {};
     bool m_SuicideCd = false;
 
