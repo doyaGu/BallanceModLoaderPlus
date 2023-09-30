@@ -1,6 +1,11 @@
 #ifndef HOOKS_H
 #define HOOKS_H
 
+#define HOOKS_MAJOR_VER 0
+#define HOOKS_MINOR_VER 3
+#define HOOKS_PATCH_VER 0
+#define HOOKS_VERSION "0.3.0"
+
 #if (defined(_MSC_VER) || defined(__MINGW32__))
 #define HOOKS_EXPORT extern "C" __declspec(dllexport)
 #else
@@ -11,7 +16,7 @@
 extern "C" {
 #endif
 
-#include "stdint.h"
+#include <stdint.h>
 
 #define HOOKS_ABI_VERSION 1
 
@@ -40,7 +45,6 @@ typedef enum HookModuleReturn {
 } HookModuleReturn;
 
 typedef enum HookModuleErrorCode {
-    HMEC_SYSTEM = 0,
     HMEC_USER = 0x100,
 } HookModuleErrorCode;
 
@@ -50,12 +54,12 @@ typedef enum HookModuleQueryCode {
     HMQC_VERSION = 2,
 
     HMQC_CK2 = 0x20,
-    HMQC_MSGHOOK = 0x21,
+    HMQC_WINDOW = 0x30,
 } HookModuleQueryCode;
 
 typedef enum HookModulePostCode {
-    HMPC_CK2 = 0x20,
-    HMPC_MSGHOOK = 0x21,
+    HMPC_API = 0x10,
+
     HMPC_CKCONTEXT = 0x40,
     HMPC_WINDOW = 0x41,
 } HookModulePostCode;
@@ -118,41 +122,47 @@ typedef enum CKHookFunctionIndex {
     CKHFI_OnPostSpriteRender = 24,
 } CKHookFunctionIndex;
 
-typedef enum MessageHookFunctions {
-    MHF_MSGFILTER = 0x00000001,
-    MHF_JOURNALRECORD = 0x00000002,
-    MHF_JOURNALPLAYBACK = 0x00000004,
-    MHF_KEYBOARD = 0x00000008,
-    MHF_GETMESSAGE = 0x00000010,
-    MHF_CALLWNDPROC = 0x00000020,
-    MHF_CBT = 0x00000040,
-    MHF_SYSMSGFILTER = 0x00000080,
-    MHF_MOUSE = 0x00000100,
-    MHF_DEBUG = 0x00000200,
-    MHF_SHELL = 0x00000400,
-    MHF_FOREGROUNDIDLE = 0x00000800,
-    MHF_CALLWNDPROCRET = 0x00001000,
-    MHF_KEYBOARD_LL = 0x00002000,
-    MHF_MOUSE_LL = 0x00004000,
-} MessageHookFunctions;
+typedef enum WindowHookFunctions {
+    WHF_OnWndProc = 0x00000001,
+    WHF_OnWndProcRet = 0x00000002,
+} WindowHookFunctions;
 
-typedef enum MessageHookFunctionsIndex {
-    MHFI_MSGFILTER = 32,
-    MHFI_JOURNALRECORD = 33,
-    MHFI_JOURNALPLAYBACK = 34,
-    MHFI_KEYBOARD = 35,
-    MHFI_GETMESSAGE = 36,
-    MHFI_CALLWNDPROC = 37,
-    MHFI_CBT = 38,
-    MHFI_SYSMSGFILTER = 39,
-    MHFI_MOUSE = 40,
-    MHFI_DEBUG = 41,
-    MHFI_SHELL = 42,
-    MHFI_FOREGROUNDIDLE = 43,
-    MHFI_CALLWNDPROCRET = 44,
-    MHFI_KEYBOARD_LL = 45,
-    MHFI_MOUSE_LL = 46,
-} MessageHookFunctionsIndex;
+typedef enum WindowHookFunctionIndex {
+    WHFI_OnWndProc = 32,
+    WHFI_OnWndProcRet = 33,
+} WindowHookFunctionIndex;
+
+typedef enum HookApiIndex {
+    HAI_HOOK = 0
+} HookApiIndex;
+
+typedef enum HookApiErrorCode {
+    HAEC_OK = 0,
+    HAEC_ALREADY_CREATED,
+    HAEC_NOT_CREATED,
+    HAEC_ENABLED,
+    HAEC_DISABLED,
+    HAEC_NOT_EXECUTABLE,
+    HAEC_UNSUPPORTED_FUNCTION,
+    HAEC_MEMORY_ALLOC,
+    HAEC_MEMORY_PROTECT,
+    HAEC_MODULE_NOT_FOUND,
+    HAEC_FUNCTION_NOT_FOUND,
+    HAEC_UNKNOWN = -1
+} HookApiErrorCode;
+
+typedef struct HookApi {
+    HookApiErrorCode (*CreateHook)(void *target, void *detour, void **originalPtr);
+    HookApiErrorCode (*CreateHookApi)(const char *modulePath, const char *procName, void *detour, void **originalPtr, void **targetPtr);
+    HookApiErrorCode (*RemoveHook)(void *target);
+
+    HookApiErrorCode (*EnableHook)(void *target);
+    HookApiErrorCode (*DisableHook)(void *target);
+
+    HookApiErrorCode (*QueueEnableHook)(void *target);
+    HookApiErrorCode (*QueueDisableHook)(void *target);
+    HookApiErrorCode (*ApplyQueued)();
+} HookApi;
 
 #ifdef __cplusplus
 }
