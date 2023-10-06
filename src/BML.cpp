@@ -67,7 +67,7 @@ CKERROR PostProcess(void *arg) {
 
 CKERROR PreClearAll(void *arg) {
     auto &loader = ModLoader::GetInstance();
-    if (loader.IsInitialized()) {
+    if (loader.AreModsLoaded()) {
         loader.UnloadMods();
     }
     return CK_OK;
@@ -88,7 +88,7 @@ CKERROR OnCKEnd(void *arg) {
 
 CKERROR OnCKPostReset(void *arg) {
     auto &loader = ModLoader::GetInstance();
-    if (loader.GetModCount() == 0) {
+    if (!loader.AreModsLoaded()) {
         loader.LoadMods();
     }
     return CK_OK;
