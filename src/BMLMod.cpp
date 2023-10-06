@@ -13,6 +13,7 @@
 #include "Config.h"
 
 namespace ExecuteBB {
+    void Init();
     void InitFont(FontType type, int fontIndex);
 }
 
@@ -702,6 +703,8 @@ void BMLMod::OnLoad() {
     m_InputHook = m_BML->GetInputManager();
 
     m_RenderContext->Get2dRoot(TRUE)->GetRect(m_WindowRect);
+
+    ExecuteBB::Init();
 
     m_Balls[0] = (CK3dEntity *) ExecuteBB::ObjectLoad("3D Entities\\PH\\P_Ball_Paper.nmo", true, "P_Ball_Paper_MF").second;
     m_Balls[1] = (CK3dEntity *) ExecuteBB::ObjectLoad("3D Entities\\PH\\P_Ball_Wood.nmo", true, "P_Ball_Wood_MF").second;
