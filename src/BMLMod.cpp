@@ -777,7 +777,7 @@ void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *master
         if (m_AdaptiveCamera->GetBoolean()) {
             GetLogger()->Info("Adjust MenuLevel Camera");
             CKCamera *cam = m_BML->GetTargetCameraByName("Cam_MenuLevel");
-            cam->SetAspectRatio(m_WindowRect.GetWidth(), m_WindowRect.GetHeight());
+            cam->SetAspectRatio((int)m_WindowRect.GetWidth(), (int)m_WindowRect.GetHeight());
             cam->SetFov(0.75f * m_WindowRect.GetWidth() / m_WindowRect.GetHeight());
             m_BML->SetIC(cam);
         }
@@ -787,7 +787,7 @@ void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *master
         if (m_AdaptiveCamera->GetBoolean()) {
             GetLogger()->Info("Adjust Ingame Camera");
             CKCamera *cam = m_BML->GetTargetCameraByName("InGameCam");
-            cam->SetAspectRatio(m_WindowRect.GetWidth(), m_WindowRect.GetHeight());
+            cam->SetAspectRatio((int)m_WindowRect.GetWidth(), (int)m_WindowRect.GetHeight());
             cam->SetFov(0.75f * m_WindowRect.GetWidth() / m_WindowRect.GetHeight());
             m_BML->SetIC(cam);
         }
@@ -1914,12 +1914,12 @@ void BMLMod::OnResize() {
 
     for (CKCamera *cam : cams) {
         if (cam) {
-            cam->SetAspectRatio(m_WindowRect.GetWidth(), m_WindowRect.GetHeight());
+            cam->SetAspectRatio((int)m_WindowRect.GetWidth(), (int)m_WindowRect.GetHeight());
             cam->SetFov(0.75f * m_WindowRect.GetWidth() / m_WindowRect.GetHeight());
             CKStateChunk *chunk = CKSaveObjectState(cam);
 
             m_BML->RestoreIC(cam);
-            cam->SetAspectRatio(m_WindowRect.GetWidth(), m_WindowRect.GetHeight());
+            cam->SetAspectRatio((int)m_WindowRect.GetWidth(), (int)m_WindowRect.GetHeight());
             cam->SetFov(0.75f * m_WindowRect.GetWidth() / m_WindowRect.GetHeight());
             m_BML->SetIC(cam);
 

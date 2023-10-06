@@ -51,7 +51,7 @@ Vx2DVector Text::GetSize() {
 void Text::SetSize(Vx2DVector size) {
     m_Sprite->ReleaseAllSlots();
     auto *dev = ModLoader::GetInstance().GetRenderContext();
-    m_Sprite->Create(dev->GetWidth() * size.x, dev->GetHeight() * size.y, 32);
+    m_Sprite->Create((int)(dev->GetWidth() * size.x), (int)(dev->GetHeight() * size.y), 32);
     m_Sprite->SetSize(size, true);
 }
 
