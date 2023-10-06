@@ -7,10 +7,6 @@
 
 static CKContext *g_CKContext = nullptr;
 
-namespace ExecuteBB {
-    void Init();
-}
-
 static int OnError(HookModuleErrorCode code, void *data1, void *data2) {
     return HMR_OK;
 }
@@ -93,7 +89,6 @@ CKERROR OnCKEnd(void *arg) {
 CKERROR OnCKPostReset(void *arg) {
     auto &loader = ModLoader::GetInstance();
     if (loader.GetModCount() == 0) {
-        ExecuteBB::Init();
         loader.LoadMods();
     }
     return CK_OK;
