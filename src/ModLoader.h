@@ -38,6 +38,7 @@ public:
     void Release();
 
     bool IsInitialized() const { return m_Initialized; }
+    bool AreModsLoaded() const { return m_ModsLoaded; }
 
     ILogger *GetLogger() {return m_Logger; }
     FILE *GetLogFile() { return m_Logfile; }
@@ -270,6 +271,7 @@ protected:
     void FillCallbackMap(IMod *mod);
 
     bool m_Initialized = false;
+    bool m_ModsLoaded = false;
     bool m_Exiting = false;
     bool m_Ingame = false;
     bool m_Paused = false;

@@ -239,6 +239,8 @@ void ModLoader::LoadMods() {
         LoadMod(mod);
     }
 
+    m_ModsLoaded = true;
+
     std::sort(m_Commands.begin(), m_Commands.end(),
               [](ICommand *a, ICommand *b) { return a->GetName() < b->GetName(); });
 
@@ -266,6 +268,8 @@ void ModLoader::UnloadMods() {
 
     m_ModMap.clear();
     m_Mods.clear();
+
+    m_ModsLoaded = false;
 }
 
 CKERROR ModLoader::OnProcess() {
