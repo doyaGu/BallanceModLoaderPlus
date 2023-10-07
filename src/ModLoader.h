@@ -37,6 +37,7 @@ public:
     void Init(CKContext *context);
     void Release();
 
+    bool IsOriginalPlayer() const { return m_IsOriginalPlayer; }
     bool IsInitialized() const { return m_Initialized; }
     bool AreModsLoaded() const { return m_ModsLoaded; }
 
@@ -259,6 +260,7 @@ public:
     BMLMod *GetBMLMod() { return m_BMLMod; }
 
 protected:
+    void DetectPlayer();
     void MakeDirectories();
     void InitLogger();
     void FiniLogger();
@@ -270,6 +272,7 @@ protected:
     void LoadMod(IMod *mod);
     void FillCallbackMap(IMod *mod);
 
+    bool m_IsOriginalPlayer = false;
     bool m_Initialized = false;
     bool m_ModsLoaded = false;
     bool m_Exiting = false;
