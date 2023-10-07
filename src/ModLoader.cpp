@@ -257,6 +257,9 @@ void ModLoader::UnloadMods() {
         config->Save();
     m_Configs.clear();
 
+    m_Commands.clear();
+    m_CommandMap.clear();
+
     m_ModMap.clear();
     m_Mods.clear();
 
