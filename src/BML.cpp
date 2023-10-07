@@ -5,7 +5,44 @@
 #define BML_HOOK_CODE 0x00424D4C
 #define BML_HOOK_VERSION 0x00000001
 
-static CKContext *g_CKContext = nullptr;
+HookApi *g_HookApi = nullptr;
+CKContext *g_CKContext = nullptr;
+
+CKERROR PreProcess(void *arg) {
+    return ModLoader::GetInstance().PreProcess();
+}
+
+CKERROR PostProcess(void *arg) {
+    return ModLoader::GetInstance().PostProcess();
+}
+
+CKERROR PreClearAll(void *arg) {
+    return ModLoader::GetInstance().PreClearAll();
+}
+
+CKERROR OnCKInit(void *arg) {
+    return ModLoader::GetInstance().OnCKInit(g_CKContext);
+}
+
+CKERROR OnCKEnd(void *arg) {
+    return ModLoader::GetInstance().OnCKEnd();
+}
+
+CKERROR OnCKPostReset(void *arg) {
+    return ModLoader::GetInstance().OnCKPostReset();
+}
+
+CKERROR OnPreRender(CKRenderContext *dev, void *arg) {
+    return ModLoader::GetInstance().OnPreRender(dev);
+}
+
+CKERROR OnPostRender(CKRenderContext *dev, void *arg) {
+    return ModLoader::GetInstance().OnPostRender(dev);
+}
+
+CKERROR OnPostSpriteRender(CKRenderContext *dev, void *arg) {
+    return ModLoader::GetInstance().OnPostSpriteRender(dev);
+}
 
 static int OnError(HookModuleErrorCode code, void *data1, void *data2) {
     return HMR_OK;
@@ -24,13 +61,15 @@ static int OnQuery(HookModuleQueryCode code, void *data1, void *data2) {
             break;
         case HMQC_CK2:
             *reinterpret_cast<int *>(data2) =
-                CKHF_PostProcess |
-                CKHF_PreClearAll |
-                CKHF_OnCKInit |
-                CKHF_OnCKEnd |
-                CKHF_OnCKPostReset |
-                CKHF_OnPreRender |
-                CKHF_OnPostRender;
+                    CKHF_PreProcess |
+                    CKHF_PostProcess |
+                    CKHF_PreClearAll |
+                    CKHF_OnCKInit |
+                    CKHF_OnCKEnd |
+                    CKHF_OnCKPostReset |
+                    CKHF_OnPreRender |
+                    CKHF_OnPostRender |
+                    CKHF_OnPostSpriteRender;
             break;
         default:
             return HMR_SKIP;
@@ -41,6 +80,8 @@ static int OnQuery(HookModuleQueryCode code, void *data1, void *data2) {
 
 static int OnPost(HookModulePostCode code, void *data1, void *data2) {
     switch (code) {
+        case HMPC_API:
+            g_HookApi = (HookApi *) data2;
         case HMPC_CKCONTEXT:
             g_CKContext = (CKContext *) data2;
             break;
@@ -60,52 +101,12 @@ static int OnUnload(size_t code, void * /* handle */) {
     return HMR_OK;
 }
 
-CKERROR PostProcess(void *arg) {
-    ModLoader::GetInstance().OnProcess();
-    return CK_OK;
-}
-
-CKERROR PreClearAll(void *arg) {
-    auto &loader = ModLoader::GetInstance();
-    if (loader.AreModsLoaded()) {
-        loader.UnloadMods();
-    }
-    return CK_OK;
-}
-
-CKERROR OnCKInit(void *arg) {
-    ModLoader::GetInstance().Init(g_CKContext);
-    return CK_OK;
-}
-
-CKERROR OnCKEnd(void *arg) {
-    auto &loader = ModLoader::GetInstance();
-    if (loader.IsInitialized()) {
-        loader.Release();
-    }
-    return CK_OK;
-}
-
-CKERROR OnCKPostReset(void *arg) {
-    auto &loader = ModLoader::GetInstance();
-    if (!loader.AreModsLoaded()) {
-        loader.LoadMods();
-    }
-    return CK_OK;
-}
-
-CKERROR OnPreRender(CKRenderContext *dev, void *arg) {
-    ModLoader::GetInstance().OnPreRender(dev);
-    return CK_OK;
-}
-
-CKERROR OnPostRender(CKRenderContext *dev, void *arg) {
-    ModLoader::GetInstance().OnPostRender(dev);
-    return CK_OK;
-}
-
 static int OnSet(size_t code, void **pcb, void **parg) {
     switch (code) {
+        case CKHFI_PreProcess:
+            *pcb = reinterpret_cast<void*>(PreProcess);
+            *parg = nullptr;
+            break;
         case CKHFI_PostProcess:
             *pcb = reinterpret_cast<void*>(PostProcess);
             *parg = nullptr;
@@ -132,6 +133,10 @@ static int OnSet(size_t code, void **pcb, void **parg) {
             break;
         case CKHFI_OnPostRender:
             *pcb = reinterpret_cast<void*>(OnPostRender);
+            *parg = nullptr;
+            break;
+        case CKHFI_OnPostSpriteRender:
+            *pcb = reinterpret_cast<void*>(OnPostSpriteRender);
             *parg = nullptr;
             break;
         default:
@@ -142,6 +147,10 @@ static int OnSet(size_t code, void **pcb, void **parg) {
 
 static int OnUnset(size_t code, void **pcb, void **parg) {
     switch (code) {
+        case CKHFI_PreProcess:
+            *pcb = reinterpret_cast<void*>(PreProcess);
+            *parg = nullptr;
+            break;
         case CKHFI_PostProcess:
             *pcb = reinterpret_cast<void*>(PostProcess);
             *parg = nullptr;
@@ -168,6 +177,10 @@ static int OnUnset(size_t code, void **pcb, void **parg) {
             break;
         case CKHFI_OnPostRender:
             *pcb = reinterpret_cast<void*>(OnPostRender);
+            *parg = nullptr;
+            break;
+        case CKHFI_OnPostSpriteRender:
+            *pcb = reinterpret_cast<void*>(OnPostSpriteRender);
             *parg = nullptr;
             break;
         default:

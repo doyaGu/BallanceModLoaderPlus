@@ -39,10 +39,14 @@ if (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     message(STATUS "Setting default install directory to ${CMAKE_INSTALL_PREFIX} as no install directory was specified")
 endif ()
 
-# Generate a CompilationDatabase (compile_commands.json)
-set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
+# Disable msvc unsafe warnings
+add_compile_definitions(
+        $<$<C_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>
+        $<$<C_COMPILER_ID:MSVC>:_CRT_NONSTDC_NO_WARNINGS>
+)
 
 find_package(VirtoolsSDK REQUIRED)
+find_package(ImGui REQUIRED)
 
 add_subdirectory(deps)
 add_subdirectory(src)

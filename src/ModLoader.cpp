@@ -1,7 +1,12 @@
 #include "ModLoader.h"
 
 #include <ctime>
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <Windows.h>
+#include <Psapi.h>
 
 #include "InputHook.h"
 #include "Logger.h"
@@ -10,12 +15,65 @@
 #include "ModDll.h"
 
 #include "unzip.h"
+#include "imgui_impl_ck2.h"
+#include "imgui_impl_win32.h"
+#include "Hooks.h"
+
+extern HookApi *g_HookApi;
 
 extern bool HookObjectLoad();
 extern bool UnhookObjectLoad();
 
 extern bool HookPhysicalize();
 extern bool UnhookPhysicalize();
+
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+namespace {
+    typedef LRESULT (CALLBACK *LPFNWNDPROC)(HWND, UINT, WPARAM, LPARAM);
+
+    LPFNWNDPROC g_WndProc = nullptr;
+    LPFNWNDPROC g_MainWndProc = nullptr;
+    LPFNWNDPROC g_RenderWndProc = nullptr;
+
+    LRESULT MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+        if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
+            return 1;
+        return g_MainWndProc(hWnd, msg, wParam, lParam);
+    }
+
+    LRESULT RenderWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+        if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
+            return 1;
+        return g_RenderWndProc(hWnd, msg, wParam, lParam);
+    }
+
+    void HookWndProc(HWND hMainWnd, HWND hRenderWnd) {
+        g_MainWndProc = reinterpret_cast<LPFNWNDPROC>(GetWindowLongPtr(hMainWnd, GWLP_WNDPROC));
+        SetWindowLongPtr(hMainWnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(MainWndProc));
+        if (hMainWnd != hRenderWnd) {
+            g_RenderWndProc = reinterpret_cast<LPFNWNDPROC>(GetWindowLongPtr(hRenderWnd, GWLP_WNDPROC));
+            SetWindowLongPtr(hRenderWnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(RenderWndProc));
+        }
+    }
+
+    void UnhookWndProc(HWND hMainWnd, HWND hRenderWnd) {
+        if (g_MainWndProc)
+            SetWindowLongPtr(hMainWnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(g_MainWndProc));
+        if (g_RenderWndProc)
+            SetWindowLongPtr(hRenderWnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(g_RenderWndProc));
+    }
+
+    void *GetModuleBaseAddress(HMODULE hModule) {
+        if (!hModule)
+            return nullptr;
+
+        MODULEINFO moduleInfo;
+        ::GetModuleInformation(::GetCurrentProcess(), hModule, &moduleInfo, sizeof(moduleInfo));
+
+        return moduleInfo.lpBaseOfDll;
+    }
+}
 
 static std::vector<std::string> SplitString(const std::string &str, const std::string &de) {
     size_t lpos, pos = 0;
@@ -56,6 +114,8 @@ ModLoader::~ModLoader() {
 
 void ModLoader::Init(CKContext *context) {
     srand((unsigned int) time(nullptr));
+
+    DetectPlayer();
 
     MakeDirectories();
 
@@ -266,7 +326,88 @@ void ModLoader::UnloadMods() {
     m_ModsLoaded = false;
 }
 
-CKERROR ModLoader::OnProcess() {
+CKERROR ModLoader::OnCKInit(CKContext *context) {
+    if (!m_ImGuiCreated) {
+        // Setup Dear ImGui context
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        m_ImGuiCreated = true;
+    }
+
+    Init(context);
+    return CK_OK;
+}
+
+CKERROR ModLoader::OnCKEnd() {
+    if (IsInitialized()) {
+        Release();
+    }
+
+    if (m_ImGuiCreated) {
+        ImGui::DestroyContext();
+        m_ImGuiCreated = false;
+    }
+
+    return CK_OK;
+}
+
+CKERROR ModLoader::OnCKPostReset() {
+    if (!m_ImGuiInited) {
+        if (IsOriginalPlayer()) {
+            g_WndProc = reinterpret_cast<LPFNWNDPROC>(
+                    (char *) ::GetModuleBaseAddress(::GetModuleHandleA("Player.exe")) + 0x39F0);
+            g_HookApi->CreateHook((void *) g_WndProc, (void *) MainWndProc, (void **) &g_MainWndProc);
+            g_HookApi->EnableHook((void *) g_WndProc);
+        } else {
+            HookWndProc((HWND) m_Context->GetMainWindow(),
+                        (HWND) m_Context->GetPlayerRenderContext()->GetWindowHandle());
+        }
+        ImGui_ImplCK2_Init(m_Context);
+        ImGui_ImplWin32_Init(m_Context->GetMainWindow());
+        m_ImGuiInited = true;
+    }
+
+    if (!AreModsLoaded()) {
+        LoadMods();
+    }
+    return CK_OK;
+}
+
+CKERROR ModLoader::PreClearAll() {
+    if (AreModsLoaded()) {
+        UnloadMods();
+    }
+
+    if (m_ImGuiInited) {
+        ImGui_ImplWin32_Shutdown();
+        ImGui_ImplCK2_Shutdown();
+
+        if (IsOriginalPlayer()) {
+            g_HookApi->DisableHook((void *) g_WndProc);
+            g_HookApi->RemoveHook((void *) g_WndProc);
+            g_WndProc = nullptr;
+        } else {
+            UnhookWndProc((HWND) m_Context->GetMainWindow(),
+                          (HWND) m_Context->GetPlayerRenderContext()->GetWindowHandle());
+        }
+        m_ImGuiInited = false;
+    }
+
+    return CK_OK;
+}
+
+CKERROR ModLoader::PreProcess() {
+    if (m_ImGuiInited) {
+        m_NewFrameReady = false;
+        ImGui_ImplCK2_NewFrame();
+        ImGui_ImplWin32_NewFrame();
+        ImGui::NewFrame();
+    }
+
+    return CK_OK;
+}
+
+CKERROR ModLoader::PostProcess() {
     m_SkipRender = false;
 
     for (auto iter = m_Timers.begin(); iter != m_Timers.end();) {
@@ -284,6 +425,12 @@ CKERROR ModLoader::OnProcess() {
     m_InputManager->Process();
 
     if (m_Exiting) SendMessageBroadcast("Exit Game");
+
+    if (m_ImGuiInited) {
+        ImGui::Render();
+        m_NewFrameReady = true;
+    }
+
     return CK_OK;
 }
 
@@ -297,6 +444,13 @@ CKERROR ModLoader::OnPreRender(CKRenderContext *dev) {
 
 CKERROR ModLoader::OnPostRender(CKRenderContext *dev) {
     BroadcastCallback(&IMod::OnRender, static_cast<CK_RENDER_FLAGS>(dev->GetCurrentRenderOptions()));
+    return CK_OK;
+}
+
+CKERROR ModLoader::OnPostSpriteRender(CKRenderContext *dev) {
+    if (m_NewFrameReady) {
+        ImGui_ImplCK2_RenderDrawData(ImGui::GetDrawData());
+    }
     return CK_OK;
 }
 
