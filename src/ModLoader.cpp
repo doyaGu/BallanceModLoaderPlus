@@ -165,15 +165,6 @@ void ModLoader::PreloadMods() {
     }
 }
 
-void ModLoader::RegisterBBs(XObjectDeclarationArray *reg) {
-    assert(reg != nullptr);
-
-    for (auto &modDll: m_ModDlls) {
-        if (modDll.registerBB)
-            modDll.registerBB(reg);
-    }
-}
-
 void ModLoader::AddDataPath(const char *path) {
     if (!path) return;
 
