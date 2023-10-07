@@ -82,8 +82,6 @@ public:
     void LoadMods();
     void UnloadMods();
 
-    void RegisterBBs(XObjectDeclarationArray *reg);
-
     CKERROR OnProcess();
     CKERROR OnPreRender(CKRenderContext *dev);
     CKERROR OnPostRender(CKRenderContext *dev);
