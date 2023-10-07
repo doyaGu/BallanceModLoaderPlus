@@ -457,17 +457,18 @@ void ModLoader::SendIngameMessage(const char *msg) {
 }
 
 void ModLoader::RegisterCommand(ICommand *cmd) {
+    auto it = m_CommandMap.find(cmd->GetName());
+    if (it != m_CommandMap.end()) {
+        m_Logger->Warn("Command Name Conflict: %s is redefined.", cmd->GetName().c_str());
+        return;
+    }
+
+    m_CommandMap[cmd->GetName()] = cmd;
     m_Commands.push_back(cmd);
 
-    auto iter = m_CommandMap.find(cmd->GetName());
-    if (iter == m_CommandMap.end())
-        m_CommandMap[cmd->GetName()] = cmd;
-    else
-        m_Logger->Warn("Command Name Conflict: %s is redefined.", cmd->GetName().c_str());
-
     if (!cmd->GetAlias().empty()) {
-        iter = m_CommandMap.find(cmd->GetAlias());
-        if (iter == m_CommandMap.end())
+        it = m_CommandMap.find(cmd->GetAlias());
+        if (it == m_CommandMap.end())
             m_CommandMap[cmd->GetAlias()] = cmd;
         else
             m_Logger->Warn("Command Alias Conflict: %s is redefined.", cmd->GetAlias().c_str());
