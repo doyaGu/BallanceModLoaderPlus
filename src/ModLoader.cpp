@@ -682,6 +682,18 @@ int ModLoader::GetHSScore() {
     return m_BMLMod->GetHSScore();
 }
 
+void ModLoader::DetectPlayer() {
+    FILE *fp = fopen("Player.exe", "rb");
+    if (fp) {
+        fseek(fp, 0, SEEK_END);
+        long size = ftell(fp);
+        rewind(fp);
+
+        m_IsOriginalPlayer = size == 155648;
+        fclose(fp);
+    }
+}
+
 void ModLoader::MakeDirectories() {
     VxMakeDirectory("..\\ModLoader");
     VxMakeDirectory("..\\ModLoader\\Config");
