@@ -83,18 +83,16 @@ target_link_libraries(BMLPlus
         PUBLIC
             CK2 VxMath
         PRIVATE
-            CKZlib
+            CKZlib ImGui
         )
 
 target_compile_definitions(BMLPlus PRIVATE "BML_EXPORTS")
 
-# Disable msvc unsafe warnings
-target_compile_definitions(BMLPlus PRIVATE
-        $<$<C_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>
-        $<$<C_COMPILER_ID:MSVC>:_CRT_NONSTDC_NO_WARNINGS>
-        $<$<C_COMPILER_ID:MSVC>:_CRT_SECURE_NO_DEPRECATE>
-        $<$<C_COMPILER_ID:MSVC>:_CRT_NONSTDC_NO_DEPRECATE>
-        )
+set_target_properties(BMLPlus PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+)
 
 if (NOT SKIP_INSTALL_LIBRARIES AND NOT SKIP_INSTALL_ALL)
     target_include_directories(BMLPlus PUBLIC

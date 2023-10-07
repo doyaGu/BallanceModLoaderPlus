@@ -82,9 +82,18 @@ public:
     void LoadMods();
     void UnloadMods();
 
-    CKERROR OnProcess();
+    CKERROR OnCKInit(CKContext *context);
+    CKERROR OnCKEnd();
+
+    CKERROR OnCKPostReset();
+    CKERROR PreClearAll();
+
+    CKERROR PreProcess();
+    CKERROR PostProcess();
+
     CKERROR OnPreRender(CKRenderContext *dev);
     CKERROR OnPostRender(CKRenderContext *dev);
+    CKERROR OnPostSpriteRender(CKRenderContext *dev);
 
     void OnPreStartMenu() override;
     void OnPostStartMenu() override;
@@ -278,6 +287,9 @@ protected:
     bool m_Paused = false;
     bool m_SkipRender = false;
     bool m_CheatEnabled = false;
+    bool m_ImGuiCreated = false;
+    bool m_ImGuiInited = false;
+    bool m_NewFrameReady = false;
 
     FILE *m_Logfile = nullptr;
     ILogger *m_Logger = nullptr;
