@@ -554,6 +554,7 @@ void ModLoader::OnPostCheckpointReached() {
 
 void ModLoader::OnLevelFinish() {
     BroadcastMessage("LevelFinish", &IMod::OnLevelFinish);
+    m_Ingame = false;
 }
 
 void ModLoader::OnGameOver() {
