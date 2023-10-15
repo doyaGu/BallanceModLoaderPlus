@@ -657,13 +657,19 @@ void ModLoader::ExecuteCommand(const char *cmd) {
         ch = static_cast<char>(std::tolower(ch));
 
     ICommand *command = FindCommand(args[0].c_str());
-    if (command && (!command->IsCheat() || m_CheatEnabled)) {
-        BroadcastCallback(&IMod::OnPreCommandExecute, command, args);
-        command->Execute(this, args);
-        BroadcastCallback(&IMod::OnPostCommandExecute, command, args);
-    } else {
+    if (!command) {
         m_BMLMod->AddIngameMessage(("Error: Unknown Command " + args[0]).c_str());
+        return;
     }
+
+    if (command->IsCheat() && !m_CheatEnabled) {
+        m_BMLMod->AddIngameMessage(("Error: Can not execute cheat command " + args[0]).c_str());
+        return;
+    }
+
+    BroadcastCallback(&IMod::OnPreCommandExecute, command, args);
+    command->Execute(this, args);
+    BroadcastCallback(&IMod::OnPostCommandExecute, command, args);
 }
 
 std::string ModLoader::TabCompleteCommand(const char *cmd) {
