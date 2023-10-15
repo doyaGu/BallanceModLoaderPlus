@@ -608,6 +608,10 @@ void BMLMod::OnLoad() {
     m_SpeedupBall->SetComment("Change to 3 times ball speed");
     m_SpeedupBall->SetDefaultKey(CKKEY_LCONTROL);
 
+    m_SpeedNotification = GetConfig()->GetProperty("Debug", "SpeedNotification");
+    m_SpeedNotification->SetComment("Notify the player when speed of the ball changes.");
+    m_SpeedNotification->SetDefaultBoolean(true);
+
     m_SkipRenderKey = GetConfig()->GetProperty("Debug", "SkipRender");
     m_SkipRenderKey->SetComment("Skip rendering of current frames while holding.");
     m_SkipRenderKey->SetDefaultKey(CKKEY_F);
@@ -695,11 +699,11 @@ void BMLMod::OnLoad() {
     m_BML->RegisterCommand(new CommandCheat());
     m_BML->RegisterCommand(new CommandClear());
     m_BML->RegisterCommand(new CommandScore());
-    m_BML->RegisterCommand(new CommandSpeed());
     m_BML->RegisterCommand(new CommandKill());
     m_BML->RegisterCommand(new CommandSetSpawn());
     m_BML->RegisterCommand(new CommandSector());
     m_BML->RegisterCommand(new CommandWin());
+    m_BML->RegisterCommand(new CommandSpeed(this));
     m_BML->RegisterCommand(new CommandTravel(this));
 
     m_CKContext = m_BML->GetCKContext();
@@ -886,7 +890,6 @@ void BMLMod::OnCheatEnabled(bool enable) {
     } else {
         SetParamValue(m_BallForce[0], CKKEYBOARD(0));
         SetParamValue(m_BallForce[1], CKKEYBOARD(0));
-        ModLoader::GetInstance().ExecuteCommand("speed 1");
     }
 }
 
@@ -935,6 +938,14 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
             if (m_MsgMaxTimer < 2000) {
                 m_MsgDuration->SetFloat(2.0f);
             }
+        }
+    }
+}
+
+void BMLMod::OnPreCommandExecute(ICommand *command, const std::vector<std::string> &args) {
+    if (args[0] == "cheat") {
+        if (m_BML->IsCheatEnabled() && (args.size() == 1 || !ICommand::ParseBoolean(args[1]))) {
+            ChangeBallSpeed(1);
         }
     }
 }
@@ -1072,6 +1083,56 @@ void BMLMod::AdjustFrameRate(bool sync, float limit) {
         m_TimeManager->SetFrameRateLimit(limit);
     } else {
         m_TimeManager->ChangeLimitOptions(CK_FRAMERATE_FREE);
+    }
+}
+
+void BMLMod::ChangeBallSpeed(float times) {
+    if (m_BML->IsIngame()) {
+        bool notify = true;
+
+        if (!m_PhysicsBall) {
+            m_PhysicsBall = m_BML->GetArrayByName("Physicalize_GameBall");
+            CKBehavior *ingame = m_BML->GetScriptByName("Gameplay_Ingame");
+            m_Force = ScriptHelper::FindFirstBB(ingame, "Ball Navigation")->GetInputParameter(0)->GetRealSource();
+
+            for (int i = 0; i < m_PhysicsBall->GetRowCount(); i++) {
+                std::string ballName(m_PhysicsBall->GetElementStringValue(i, 0, nullptr), '\0');
+                m_PhysicsBall->GetElementStringValue(i, 0, &ballName[0]);
+                ballName.pop_back();
+                float force;
+                m_PhysicsBall->GetElementValue(i, 7, &force);
+                m_Forces[ballName] = force;
+            }
+        }
+
+        if (m_PhysicsBall) {
+            CKObject *curBall = m_CurLevel->GetElementObject(0, 1);
+            if (curBall) {
+                auto iter = m_Forces.find(curBall->GetName());
+                if (iter != m_Forces.end()) {
+                    float force = iter->second;
+                    force *= times;
+                    if (force == ScriptHelper::GetParamValue<float>(m_Force))
+                        notify = false;
+                    ScriptHelper::SetParamValue(m_Force, force);
+                }
+            }
+
+            for (int i = 0; i < m_PhysicsBall->GetRowCount(); i++) {
+                std::string ballName(m_PhysicsBall->GetElementStringValue(i, 0, nullptr), '\0');
+                m_PhysicsBall->GetElementStringValue(i, 0, &ballName[0]);
+                ballName.pop_back();
+                auto iter = m_Forces.find(ballName);
+                if (iter != m_Forces.end()) {
+                    float force = iter->second;
+                    force *= times;
+                    m_PhysicsBall->SetElementValue(i, 7, &force);
+                }
+            }
+
+            if (notify && m_SpeedNotification->GetBoolean())
+                m_BML->SendIngameMessage(("Current Ball Speed Changed to " + std::to_string(times) + " times").c_str());
+        }
     }
 }
 

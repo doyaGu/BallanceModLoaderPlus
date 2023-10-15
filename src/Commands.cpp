@@ -77,57 +77,6 @@ void CommandScore::Execute(IBML *bml, const std::vector<std::string> &args) {
     }
 }
 
-void CommandSpeed::Execute(IBML *bml, const std::vector<std::string> &args) {
-    if (bml->IsIngame() && args.size() > 1) {
-        float time = ParseFloat(args[1], 0, 1000);
-        bool notify = true;
-        if (!m_CurLevel) {
-            m_CurLevel = bml->GetArrayByName("CurrentLevel");
-            m_PhysicsBall = bml->GetArrayByName("Physicalize_GameBall");
-            CKBehavior *ingame = bml->GetScriptByName("Gameplay_Ingame");
-            m_Force = ScriptHelper::FindFirstBB(ingame, "Ball Navigation")->GetInputParameter(0)->GetRealSource();
-
-            for (int i = 0; i < m_PhysicsBall->GetRowCount(); i++) {
-                std::string ballName(m_PhysicsBall->GetElementStringValue(i, 0, nullptr), '\0');
-                m_PhysicsBall->GetElementStringValue(i, 0, &ballName[0]);
-                ballName.pop_back();
-                float force;
-                m_PhysicsBall->GetElementValue(i, 7, &force);
-                m_Forces[ballName] = force;
-            }
-        }
-
-        if (m_CurLevel) {
-            CKObject *curBall = m_CurLevel->GetElementObject(0, 1);
-            if (curBall) {
-                auto iter = m_Forces.find(curBall->GetName());
-                if (iter != m_Forces.end()) {
-                    float force = iter->second;
-                    force *= time;
-                    if (force == ScriptHelper::GetParamValue<float>(m_Force))
-                        notify = false;
-                    ScriptHelper::SetParamValue(m_Force, force);
-                }
-            }
-
-            for (int i = 0; i < m_PhysicsBall->GetRowCount(); i++) {
-                std::string ballName(m_PhysicsBall->GetElementStringValue(i, 0, nullptr), '\0');
-                m_PhysicsBall->GetElementStringValue(i, 0, &ballName[0]);
-                ballName.pop_back();
-                auto iter = m_Forces.find(ballName);
-                if (iter != m_Forces.end()) {
-                    float force = iter->second;
-                    force *= time;
-                    m_PhysicsBall->SetElementValue(i, 7, &force);
-                }
-            }
-
-            if (notify)
-                bml->SendIngameMessage(("Current Ball Speed Changed to " + std::to_string(time) + " times").c_str());
-        }
-    }
-}
-
 void CommandKill::Execute(IBML *bml, const std::vector<std::string> &args) {
     if (!m_DeactivateBall) {
         CKBehavior *ingame = bml->GetScriptByName("Gameplay_Ingame");
@@ -282,6 +231,13 @@ void CommandWin::Execute(IBML *bml, const std::vector<std::string> &args) {
 
         mm->SendMessageSingle(levelWin, bml->GetGroupByName("All_Gameplay"));
         bml->SendIngameMessage("Level Finished");
+    }
+}
+
+void CommandSpeed::Execute(IBML *bml, const std::vector<std::string> &args) {
+    if (args.size() > 1) {
+        float times = ParseFloat(args[1], 0, 1000);
+        m_BMLMod->ChangeBallSpeed(times);
     }
 }
 
