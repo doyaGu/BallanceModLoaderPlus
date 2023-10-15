@@ -1954,7 +1954,15 @@ void BMLMod::OnCmdEdit(CKDWORD key) {
             }
         case CKKEY_ESCAPE:
             m_CmdTyping = false;
-            ModLoader::GetInstance().GetInputManager()->SetBlock(false);
+            ModLoader::GetInstance().AddTimerLoop(1ul, [this, key] {
+                if (m_CmdTyping)
+                    return false;
+                InputHook *input = ModLoader::GetInstance().GetInputManager();
+                if (input->oIsKeyDown(key))
+                    return true;
+                input->SetBlock(false);
+                return false;
+            });
             m_CmdBar->SetVisible(false);
             m_CmdInput->SetText("");
             break;
