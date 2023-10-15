@@ -91,7 +91,6 @@ public:
     CKERROR PreProcess();
     CKERROR PostProcess();
 
-    CKERROR OnPreRender(CKRenderContext *dev);
     CKERROR OnPostRender(CKRenderContext *dev);
     CKERROR OnPostSpriteRender(CKRenderContext *dev);
 
@@ -233,8 +232,7 @@ public:
     float GetSRScore() override;
     int GetHSScore() override;
 
-    void SkipRenderForNextTick() override { m_SkipRender = true; }
-    bool IsSkipRender() const { return m_SkipRender; }
+    void SkipRenderForNextTick() override;
 
     template<typename T, typename... Args>
     std::enable_if_t<std::is_member_function_pointer<T>::value, void> BroadcastCallback(T callback, Args&&... args) {
@@ -274,7 +272,6 @@ protected:
     bool m_Exiting = false;
     bool m_Ingame = false;
     bool m_Paused = false;
-    bool m_SkipRender = false;
     bool m_CheatEnabled = false;
     bool m_ImGuiCreated = false;
     bool m_ImGuiInited = false;
