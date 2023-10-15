@@ -192,6 +192,8 @@ public:
     void OnProcess() override;
     void OnCheatEnabled(bool enable) override;
     void OnModifyConfig(const char *category, const char *key, IProperty *prop) override;
+    void OnPreCommandExecute(ICommand *command, const std::vector<std::string> &args) override;
+
     void OnPreStartMenu() override;
     void OnPostResetLevel() override;
     void OnStartLevel() override;
@@ -217,6 +219,8 @@ public:
     bool IsInTravelCam();
 
     void AdjustFrameRate(bool sync = false, float limit = 60.0f);
+
+    void ChangeBallSpeed(float times);
 
 private:
     void OnEditScript_Base_EventHandler(CKBehavior *script);
@@ -323,7 +327,12 @@ private:
     CKDataArray *m_IngameParam = nullptr;
     int m_ChangeBallCd = 0;
     IProperty *m_SpeedupBall = nullptr;
+    IProperty *m_SpeedNotification = nullptr;
     bool m_Speedup = false;
+
+    CKDataArray *m_PhysicsBall = nullptr;
+    CKParameter *m_Force = nullptr;
+    std::map<std::string, float> m_Forces;
 
     IProperty *m_ResetBall = nullptr;
     CKParameter *m_CurSector = nullptr;

@@ -7,6 +7,8 @@
 
 #include "ICommand.h"
 
+class BMLMod;
+
 class CommandBML : public ICommand {
 public:
     std::string GetName() override { return "bml"; };
@@ -40,6 +42,7 @@ public:
 };
 
 class CommandClear : public ICommand {
+public:
     std::string GetName() override { return "clear"; };
     std::string GetAlias() override { return ""; };
     std::string GetDescription() override { return "Clear the Console."; };
@@ -49,6 +52,7 @@ class CommandClear : public ICommand {
 };
 
 class CommandScore : public ICommand {
+public:
     std::string GetName() override { return "score"; };
     std::string GetAlias() override { return ""; };
     std::string GetDescription() override { return "Manage Ingame Score."; };
@@ -62,21 +66,8 @@ private:
     CKDataArray *m_Energy = nullptr;
 };
 
-class CommandSpeed : public ICommand {
-    std::string GetName() override { return "speed"; };
-    std::string GetAlias() override { return ""; };
-    std::string GetDescription() override { return "Change Realtime Ball Speed."; };
-    bool IsCheat() override { return true; };
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; };
-
-private:
-    CKDataArray *m_CurLevel = nullptr, *m_PhysicsBall = nullptr;
-    CKParameter *m_Force = nullptr;
-    std::map<std::string, float> m_Forces;
-};
-
 class CommandKill : public ICommand {
+public:
     std::string GetName() override { return "kill"; };
     std::string GetAlias() override { return ""; };
     std::string GetDescription() override { return "Suicide."; };
@@ -89,6 +80,7 @@ private:
 };
 
 class CommandSetSpawn : public ICommand {
+public:
     std::string GetName() override { return "spawn"; };
     std::string GetAlias() override { return ""; };
     std::string GetDescription() override { return "Set Ball Spawn Point to Current Position."; };
@@ -101,6 +93,7 @@ private:
 };
 
 class CommandSector : public ICommand {
+public:
     std::string GetName() override { return "sector"; };
     std::string GetAlias() override { return ""; };
     std::string GetDescription() override { return "Start playing specified sector."; };
@@ -116,6 +109,7 @@ private:
 };
 
 class CommandWin : public ICommand {
+public:
     std::string GetName() override { return "win"; };
     std::string GetAlias() override { return ""; };
     std::string GetDescription() override { return "Finish this Level."; };
@@ -124,9 +118,23 @@ class CommandWin : public ICommand {
     const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; };
 };
 
+class CommandSpeed : public ICommand {
+public:
+    explicit CommandSpeed(BMLMod *mod) : m_BMLMod(mod) {};
+    std::string GetName() override { return "speed"; };
+    std::string GetAlias() override { return ""; };
+    std::string GetDescription() override { return "Change Realtime Ball Speed."; };
+    bool IsCheat() override { return true; };
+    void Execute(IBML *bml, const std::vector<std::string> &args) override;
+    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; };
+
+private:
+    BMLMod *m_BMLMod;
+};
+
 class CommandTravel : public ICommand {
 public:
-    explicit CommandTravel(class BMLMod *mod) : m_BMLMod(mod) {};
+    explicit CommandTravel(BMLMod *mod) : m_BMLMod(mod) {};
 
     std::string GetName() override { return "travel"; };
     std::string GetAlias() override { return ""; };
