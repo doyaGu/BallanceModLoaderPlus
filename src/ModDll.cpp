@@ -10,7 +10,6 @@ bool ModDll::Load() {
     entry = GetFunction<GetBMLEntryFunction>("BMLEntry");
     if (!entry) return false;
     exit = GetFunction<GetBMLExitFunction>("BMLExit");
-    registerBB = GetFunction<RegisterBBFunction>("RegisterBB");
     return true;
 }
 
