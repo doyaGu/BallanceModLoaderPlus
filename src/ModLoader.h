@@ -253,17 +253,6 @@ public:
         m_MessageManager->SendMessageBroadcast(m_MessageManager->AddMessageType(TOCKSTRING(msg)));
     }
 
-    void AdjustFrameRate(bool sync = false, float limit = 60.0f) {
-        if (sync) {
-            m_TimeManager->ChangeLimitOptions(CK_FRAMERATE_SYNC);
-        } else if (limit > 0) {
-            m_TimeManager->ChangeLimitOptions(CK_FRAMERATE_LIMIT);
-            m_TimeManager->SetFrameRateLimit(limit);
-        } else {
-            m_TimeManager->ChangeLimitOptions(CK_FRAMERATE_FREE);
-        }
-    }
-
     BMLMod *GetBMLMod() { return m_BMLMod; }
 
 protected:

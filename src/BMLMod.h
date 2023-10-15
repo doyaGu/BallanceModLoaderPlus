@@ -216,6 +216,8 @@ public:
     void ExitTravelCam();
     bool IsInTravelCam();
 
+    void AdjustFrameRate(bool sync = false, float limit = 60.0f);
+
 private:
     void OnEditScript_Base_EventHandler(CKBehavior *script);
     void OnEditScript_Menu_MenuInit(CKBehavior *script);
@@ -242,6 +244,7 @@ private:
 
     CKContext *m_CKContext = nullptr;
     CKRenderContext *m_RenderContext = nullptr;
+    CKTimeManager *m_TimeManager = nullptr;
     InputHook *m_InputHook = nullptr;
 
     VxRect m_OldWindowRect;
