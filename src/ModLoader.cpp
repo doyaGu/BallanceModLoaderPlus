@@ -408,8 +408,6 @@ CKERROR ModLoader::PreProcess() {
 }
 
 CKERROR ModLoader::PostProcess() {
-    m_SkipRender = false;
-
     for (auto iter = m_Timers.begin(); iter != m_Timers.end();) {
         if (!iter->Process(m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime()))
             iter = m_Timers.erase(iter);
@@ -418,9 +416,6 @@ CKERROR ModLoader::PostProcess() {
     }
 
     BroadcastCallback(&IMod::OnProcess);
-
-    if (m_InputManager->IsKeyDown(CKKEY_F) && IsCheatEnabled())
-        SkipRenderForNextTick();
 
     m_InputManager->Process();
 
@@ -431,14 +426,6 @@ CKERROR ModLoader::PostProcess() {
         m_NewFrameReady = true;
     }
 
-    return CK_OK;
-}
-
-CKERROR ModLoader::OnPreRender(CKRenderContext *dev) {
-    if (m_SkipRender)
-        dev->ChangeCurrentRenderOptions(0, CK_RENDER_DEFAULTSETTINGS);
-    else
-        dev->ChangeCurrentRenderOptions(CK_RENDER_DEFAULTSETTINGS, 0);
     return CK_OK;
 }
 
@@ -835,6 +822,11 @@ float ModLoader::GetSRScore() {
 
 int ModLoader::GetHSScore() {
     return m_BMLMod->GetHSScore();
+}
+
+void ModLoader::SkipRenderForNextTick() {
+    m_RenderContext->ChangeCurrentRenderOptions(0, CK_RENDER_DEFAULTSETTINGS);
+    AddTimer(1ul, [this]() { m_RenderContext->ChangeCurrentRenderOptions(CK_RENDER_DEFAULTSETTINGS, 0); });
 }
 
 void ModLoader::DetectPlayer() {

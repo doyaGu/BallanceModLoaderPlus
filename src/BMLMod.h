@@ -238,6 +238,7 @@ private:
     void OnProcess_AddLife();
     void OnProcess_Summon();
     void OnProcess_SRTimer();
+    void OnProcess_SkipRender();
 
     void OnResize();
     void OnCmdEdit(CKDWORD key);
@@ -252,6 +253,8 @@ private:
 
     float m_DeltaTime = 0.0f;
     bool m_CheatEnabled = false;
+    bool m_SkipRender = false;
+    IProperty* m_SkipRenderKey = nullptr;
 
     BGui::Gui *m_CmdBar = nullptr;
     bool m_CmdTyping = false;

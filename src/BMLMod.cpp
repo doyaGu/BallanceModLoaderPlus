@@ -608,6 +608,10 @@ void BMLMod::OnLoad() {
     m_SpeedupBall->SetComment("Change to 3 times ball speed");
     m_SpeedupBall->SetDefaultKey(CKKEY_LCONTROL);
 
+    m_SkipRenderKey = GetConfig()->GetProperty("Debug", "SkipRender");
+    m_SkipRenderKey->SetComment("Skip rendering of current frames while holding.");
+    m_SkipRenderKey->SetDefaultKey(CKKEY_F);
+
     GetConfig()->SetCategoryComment("Auxiliaries", "Temporal Auxiliary Moduls");
     m_AddBall[0] = GetConfig()->GetProperty("Auxiliaries", "PaperBall");
     m_AddBall[0]->SetComment("Add a Paper Ball");
@@ -841,6 +845,8 @@ void BMLMod::OnProcess() {
     if (m_WindowRect != m_OldWindowRect) {
         OnResize();
     }
+
+    OnProcess_SkipRender();
 
     if (m_IngameBanner) {
         OnProcess_FpsDisplay();
@@ -1919,6 +1925,14 @@ void BMLMod::OnProcess_SRTimer() {
     static char time[16];
     sprintf(time, "%02d:%02d:%02d.%03d", h, m, s, ms);
     m_SRScore->SetText(time);
+}
+
+void BMLMod::OnProcess_SkipRender() {
+    m_SkipRender = (m_BML->IsCheatEnabled() && m_InputHook->IsKeyDown(m_SkipRenderKey->GetKey()));
+    if (m_SkipRender)
+        m_RenderContext->ChangeCurrentRenderOptions(0, CK_RENDER_DEFAULTSETTINGS);
+    else
+        m_RenderContext->ChangeCurrentRenderOptions(CK_RENDER_DEFAULTSETTINGS, 0);
 }
 
 void BMLMod::OnResize() {
