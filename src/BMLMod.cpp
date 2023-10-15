@@ -700,6 +700,7 @@ void BMLMod::OnLoad() {
 
     m_CKContext = m_BML->GetCKContext();
     m_RenderContext = m_BML->GetRenderContext();
+    m_TimeManager = m_BML->GetTimeManager();
     m_InputHook = m_BML->GetInputManager();
 
     m_RenderContext->Get2dRoot(TRUE)->GetRect(m_WindowRect);
@@ -832,7 +833,7 @@ void BMLMod::OnLoadScript(const char *filename, CKBehavior *script) {
 }
 
 void BMLMod::OnProcess() {
-    m_DeltaTime = m_BML->GetTimeManager()->GetLastDeltaTime() / 10;
+    m_DeltaTime = m_TimeManager->GetLastDeltaTime() / 10;
     m_CheatEnabled = m_BML->IsCheatEnabled();
 
     m_OldWindowRect = m_WindowRect;
@@ -892,21 +893,21 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
     } else {
         if (prop == m_UnlockFPS) {
             if (prop->GetBoolean())
-                ModLoader::GetInstance().AdjustFrameRate(false, 0);
+                AdjustFrameRate(false, 0);
             else {
                 int val = m_FPSLimit->GetInteger();
                 if (val > 0)
-                    ModLoader::GetInstance().AdjustFrameRate(false, static_cast<float>(val));
+                    AdjustFrameRate(false, static_cast<float>(val));
                 else
-                    ModLoader::GetInstance().AdjustFrameRate(true);
+                    AdjustFrameRate(true);
             }
         }
         else if (prop == m_FPSLimit && !m_UnlockFPS->GetBoolean()) {
             int val = prop->GetInteger();
             if (val > 0)
-                ModLoader::GetInstance().AdjustFrameRate(false, static_cast<float>(val));
+                AdjustFrameRate(false, static_cast<float>(val));
             else
-                ModLoader::GetInstance().AdjustFrameRate(true);
+                AdjustFrameRate(true);
         }
         else if (prop == m_Overclock) {
             for (int i = 0; i < 3; i++) {
@@ -934,13 +935,13 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
 
 void BMLMod::OnPreStartMenu() {
     if (m_UnlockFPS->GetBoolean()) {
-        ModLoader::GetInstance().AdjustFrameRate(false, 0);
+        AdjustFrameRate(false, 0);
     } else {
         int val = m_FPSLimit->GetInteger();
         if (val > 0)
-            ModLoader::GetInstance().AdjustFrameRate(false, static_cast<float>(val));
+            AdjustFrameRate(false, static_cast<float>(val));
         else
-            ModLoader::GetInstance().AdjustFrameRate(true);
+            AdjustFrameRate(true);
     }
 }
 
@@ -955,13 +956,13 @@ void BMLMod::OnPostResetLevel() {
 
 void BMLMod::OnStartLevel() {
     if (m_UnlockFPS->GetBoolean()) {
-        ModLoader::GetInstance().AdjustFrameRate(false, 0);
+        AdjustFrameRate(false, 0);
     } else {
         int val = m_FPSLimit->GetInteger();
         if (val > 0)
-            ModLoader::GetInstance().AdjustFrameRate(false, static_cast<float>(val));
+            AdjustFrameRate(false, static_cast<float>(val));
         else
-            ModLoader::GetInstance().AdjustFrameRate(true);
+            AdjustFrameRate(true);
     }
     m_SRTimer = 0.0f;
     m_SRScore->SetText("00:00:00.000");
@@ -1055,6 +1056,17 @@ int BMLMod::GetHSScore() {
 
 bool BMLMod::IsInTravelCam() {
     return m_BML->GetRenderContext()->GetAttachedCamera() == m_TravelCam;
+}
+
+void BMLMod::AdjustFrameRate(bool sync, float limit) {
+    if (sync) {
+        m_TimeManager->ChangeLimitOptions(CK_FRAMERATE_SYNC);
+    } else if (limit > 0) {
+        m_TimeManager->ChangeLimitOptions(CK_FRAMERATE_LIMIT);
+        m_TimeManager->SetFrameRateLimit(limit);
+    } else {
+        m_TimeManager->ChangeLimitOptions(CK_FRAMERATE_FREE);
+    }
 }
 
 void BMLMod::OnEditScript_Base_EventHandler(CKBehavior *script) {
@@ -1895,7 +1907,7 @@ void BMLMod::OnProcess_Summon() {
 }
 
 void BMLMod::OnProcess_SRTimer() {
-    m_SRTimer += m_BML->GetTimeManager()->GetLastDeltaTime();
+    m_SRTimer += m_TimeManager->GetLastDeltaTime();
     int counter = int(m_SRTimer);
     int ms = counter % 1000;
     counter /= 1000;
