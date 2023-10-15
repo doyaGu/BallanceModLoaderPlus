@@ -10,7 +10,6 @@
 
 typedef IMod *(*GetBMLEntryFunction)(IBML *);
 typedef void (*GetBMLExitFunction)(IMod *);
-typedef void (*RegisterBBFunction)(XObjectDeclarationArray *);
 
 struct ModDll {
     std::string dllFileName;
@@ -18,7 +17,6 @@ struct ModDll {
     INSTANCE_HANDLE dllInstance;
     GetBMLEntryFunction entry;
     GetBMLExitFunction exit;
-    RegisterBBFunction registerBB;
 
     bool Load();
 
