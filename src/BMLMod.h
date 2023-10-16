@@ -303,6 +303,7 @@ private:
     IProperty *m_ShowSR = nullptr;
     IProperty *m_FixLifeBall = nullptr;
     IProperty* m_MsgDuration = nullptr;
+    IProperty* m_CustomMapNumber = nullptr;
 
     IProperty *m_BallCheat[2] = {};
     IProperty *m_EnableSuicide = nullptr;

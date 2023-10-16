@@ -240,7 +240,8 @@ BGui::Button *GuiCustomMap::CreateButton(int index) {
                               GuiList::Exit();
                               SetParamString(m_BMLMod->m_MapFile, m_SearchRes[m_CurPage * m_MaxSize + index]->FilePath.c_str());
                               SetParamValue(m_BMLMod->m_LoadCustom, TRUE);
-                              int level = rand() % 10 + 2;
+                              int level = m_BMLMod->GetConfig()->GetProperty("Misc", "CustomMapNumber")->GetInteger();
+                              level = (level >= 1 && level <= 13) ? level : rand() % 10 + 2;
                               m_BMLMod->m_CurLevel->SetElementValue(0, 0, &level);
                               level--;
                               SetParamValue(m_BMLMod->m_LevelRow, level);
@@ -1120,6 +1121,11 @@ void BMLMod::InitConfigs() {
     m_MsgDuration->SetComment("Maximum visible time of each notification message, measured in seconds (default: 6)");
     m_MsgDuration->SetDefaultFloat(m_MsgMaxTimer / 1000);
     m_MsgMaxTimer = m_MsgDuration->GetFloat() * 1000;
+
+    m_CustomMapNumber = GetConfig()->GetProperty("Misc", "CustomMapNumber");
+    m_CustomMapNumber->SetComment("Level number to use for custom maps (affects level bonus and sky textures)."
+                                  " Must be in the range of 1~13; 0 to randomly select one between 2 and 11");
+    m_CustomMapNumber->SetDefaultInteger(0);
 
     GetConfig()->SetCategoryComment("Debug", "Debug Utilities");
     m_EnableSuicide = GetConfig()->GetProperty("Debug", "EnableSuicide");
