@@ -530,182 +530,6 @@ void GuiModCategory::Exit() {
 }
 
 void BMLMod::OnLoad() {
-    GetConfig()->SetCategoryComment("Misc", "Miscellaneous");
-    m_UnlockFPS = GetConfig()->GetProperty("Misc", "UnlockFrameRate");
-    m_UnlockFPS->SetComment("Unlock Frame Rate Limitation");
-    m_UnlockFPS->SetDefaultBoolean(true);
-
-    m_FPSLimit = GetConfig()->GetProperty("Misc", "SetMaxFrameRate");
-    m_FPSLimit->SetComment("Set Frame Rate Limitation, this option will not work if frame rate is unlocked. Set to 0 will turn on VSync.");
-    m_FPSLimit->SetDefaultInteger(0);
-
-    m_AdaptiveCamera = GetConfig()->GetProperty("Misc", "AdaptiveCamera");
-    m_AdaptiveCamera->SetComment("Adjust cameras on screen mode changed");
-    m_AdaptiveCamera->SetDefaultBoolean(true);
-
-    m_Overclock = GetConfig()->GetProperty("Misc", "Overclock");
-    m_Overclock->SetComment("Remove delay of spawn / respawn");
-    m_Overclock->SetDefaultBoolean(false);
-
-    m_ShowTitle = GetConfig()->GetProperty("Misc", "ShowTitle");
-    m_ShowTitle->SetComment("Show BML Title at top");
-    m_ShowTitle->SetDefaultBoolean(true);
-
-    m_ShowFPS = GetConfig()->GetProperty("Misc", "ShowFPS");
-    m_ShowFPS->SetComment("Show FPS at top-left corner");
-    m_ShowFPS->SetDefaultBoolean(true);
-
-    m_ShowSR = GetConfig()->GetProperty("Misc", "ShowSRTimer");
-    m_ShowSR->SetComment("Show SR Timer above Time Score");
-    m_ShowSR->SetDefaultBoolean(true);
-
-    m_FixLifeBall = GetConfig()->GetProperty("Misc", "FixLifeBallFreeze");
-    m_FixLifeBall->SetComment("Game won't freeze when picking up life balls");
-    m_FixLifeBall->SetDefaultBoolean(true);
-
-    m_MsgDuration = GetConfig()->GetProperty("Misc", "MessageDuration");
-	m_MsgDuration->SetComment("Maximum visible time of each notification message, measured in seconds (default: 6)");
-	m_MsgDuration->SetDefaultFloat(m_MsgMaxTimer / 1000);
-	m_MsgMaxTimer = m_MsgDuration->GetFloat() * 1000;
-
-    GetConfig()->SetCategoryComment("Debug", "Debug Utilities");
-    m_EnableSuicide = GetConfig()->GetProperty("Debug", "EnableSuicide");
-    m_EnableSuicide->SetComment("Enable the Suicide Hotkey");
-    m_EnableSuicide->SetDefaultBoolean(true);
-    m_Suicide = GetConfig()->GetProperty("Debug", "Suicide");
-    m_Suicide->SetComment("Suicide");
-    m_Suicide->SetDefaultKey(CKKEY_R);
-
-    m_BallCheat[0] = GetConfig()->GetProperty("Debug", "BallUp");
-    m_BallCheat[0]->SetComment("Apply an upward force to the ball");
-    m_BallCheat[0]->SetDefaultKey(CKKEY_F1);
-
-    m_BallCheat[1] = GetConfig()->GetProperty("Debug", "BallDown");
-    m_BallCheat[1]->SetComment("Apply a downward force to the ball");
-    m_BallCheat[1]->SetDefaultKey(CKKEY_F2);
-
-    m_ChangeBall[0] = GetConfig()->GetProperty("Debug", "TurnPaper");
-    m_ChangeBall[0]->SetComment("Turn into paper ball");
-    m_ChangeBall[0]->SetDefaultKey(CKKEY_I);
-
-    m_ChangeBall[1] = GetConfig()->GetProperty("Debug", "TurnWood");
-    m_ChangeBall[1]->SetComment("Turn into wood ball");
-    m_ChangeBall[1]->SetDefaultKey(CKKEY_O);
-
-    m_ChangeBall[2] = GetConfig()->GetProperty("Debug", "TurnStone");
-    m_ChangeBall[2]->SetComment("Turn into stone ball");
-    m_ChangeBall[2]->SetDefaultKey(CKKEY_P);
-
-    m_ResetBall = GetConfig()->GetProperty("Debug", "ResetBall");
-    m_ResetBall->SetComment("Reset ball and all moduls");
-    m_ResetBall->SetDefaultKey(CKKEY_BACK);
-
-    m_AddLife = GetConfig()->GetProperty("Debug", "AddLife");
-    m_AddLife->SetComment("Add one extra Life");
-    m_AddLife->SetDefaultKey(CKKEY_L);
-
-    m_SpeedupBall = GetConfig()->GetProperty("Debug", "BallSpeedUp");
-    m_SpeedupBall->SetComment("Change to 3 times ball speed");
-    m_SpeedupBall->SetDefaultKey(CKKEY_LCONTROL);
-
-    m_SpeedNotification = GetConfig()->GetProperty("Debug", "SpeedNotification");
-    m_SpeedNotification->SetComment("Notify the player when speed of the ball changes.");
-    m_SpeedNotification->SetDefaultBoolean(true);
-
-    m_SkipRenderKey = GetConfig()->GetProperty("Debug", "SkipRender");
-    m_SkipRenderKey->SetComment("Skip rendering of current frames while holding.");
-    m_SkipRenderKey->SetDefaultKey(CKKEY_F);
-
-    GetConfig()->SetCategoryComment("Auxiliaries", "Temporal Auxiliary Moduls");
-    m_AddBall[0] = GetConfig()->GetProperty("Auxiliaries", "PaperBall");
-    m_AddBall[0]->SetComment("Add a Paper Ball");
-    m_AddBall[0]->SetDefaultKey(CKKEY_J);
-
-    m_AddBall[1] = GetConfig()->GetProperty("Auxiliaries", "WoodBall");
-    m_AddBall[1]->SetComment("Add a Wood Ball");
-    m_AddBall[1]->SetDefaultKey(CKKEY_K);
-
-    m_AddBall[2] = GetConfig()->GetProperty("Auxiliaries", "StoneBall");
-    m_AddBall[2]->SetComment("Add a Stone Ball");
-    m_AddBall[2]->SetDefaultKey(CKKEY_N);
-
-    m_AddBall[3] = GetConfig()->GetProperty("Auxiliaries", "Box");
-    m_AddBall[3]->SetComment("Add a Box");
-    m_AddBall[3]->SetDefaultKey(CKKEY_M);
-
-    m_MoveKeys[0] = GetConfig()->GetProperty("Auxiliaries", "MoveFront");
-    m_MoveKeys[0]->SetComment("Move Front");
-    m_MoveKeys[0]->SetDefaultKey(CKKEY_UP);
-
-    m_MoveKeys[1] = GetConfig()->GetProperty("Auxiliaries", "MoveBack");
-    m_MoveKeys[1]->SetComment("Move Back");
-    m_MoveKeys[1]->SetDefaultKey(CKKEY_DOWN);
-
-    m_MoveKeys[2] = GetConfig()->GetProperty("Auxiliaries", "MoveLeft");
-    m_MoveKeys[2]->SetComment("Move Left");
-    m_MoveKeys[2]->SetDefaultKey(CKKEY_LEFT);
-
-    m_MoveKeys[3] = GetConfig()->GetProperty("Auxiliaries", "MoveRight");
-    m_MoveKeys[3]->SetComment("Move Right");
-    m_MoveKeys[3]->SetDefaultKey(CKKEY_RIGHT);
-
-    m_MoveKeys[4] = GetConfig()->GetProperty("Auxiliaries", "MoveUp");
-    m_MoveKeys[4]->SetComment("Move Up");
-    m_MoveKeys[4]->SetDefaultKey(CKKEY_RSHIFT);
-
-    m_MoveKeys[5] = GetConfig()->GetProperty("Auxiliaries", "MoveDown");
-    m_MoveKeys[5]->SetComment("Move Down");
-    m_MoveKeys[5]->SetDefaultKey(CKKEY_RCONTROL);
-
-    GetConfig()->SetCategoryComment("Camera", "Camera Utilities");
-    m_CamOn = GetConfig()->GetProperty("Camera", "Enable");
-    m_CamOn->SetComment("Enable Camera Utilities");
-    m_CamOn->SetDefaultBoolean(false);
-
-    m_CamReset = GetConfig()->GetProperty("Camera", "Reset");
-    m_CamReset->SetComment("Reset Camera");
-    m_CamReset->SetDefaultKey(CKKEY_D);
-
-    m_Cam45 = GetConfig()->GetProperty("Camera", "Rotate45");
-    m_Cam45->SetComment("Set to 45 degrees");
-    m_Cam45->SetDefaultKey(CKKEY_W);
-
-    m_CamRot[0] = GetConfig()->GetProperty("Camera", "RotateLeft");
-    m_CamRot[0]->SetComment("Rotate the camera");
-    m_CamRot[0]->SetDefaultKey(CKKEY_Q);
-
-    m_CamRot[1] = GetConfig()->GetProperty("Camera", "RotateRight");
-    m_CamRot[1]->SetComment("Rotate the camera");
-    m_CamRot[1]->SetDefaultKey(CKKEY_E);
-
-    m_CamY[0] = GetConfig()->GetProperty("Camera", "MoveUp");
-    m_CamY[0]->SetComment("Move the camera");
-    m_CamY[0]->SetDefaultKey(CKKEY_A);
-
-    m_CamY[1] = GetConfig()->GetProperty("Camera", "MoveDown");
-    m_CamY[1]->SetComment("Move the camera");
-    m_CamY[1]->SetDefaultKey(CKKEY_Z);
-
-    m_CamZ[0] = GetConfig()->GetProperty("Camera", "MoveFront");
-    m_CamZ[0]->SetComment("Move the camera");
-    m_CamZ[0]->SetDefaultKey(CKKEY_S);
-
-    m_CamZ[1] = GetConfig()->GetProperty("Camera", "MoveBack");
-    m_CamZ[1]->SetComment("Move the camera");
-    m_CamZ[1]->SetDefaultKey(CKKEY_X);
-
-    m_BML->RegisterCommand(new CommandBML());
-    m_BML->RegisterCommand(new CommandHelp());
-    m_BML->RegisterCommand(new CommandCheat());
-    m_BML->RegisterCommand(new CommandClear());
-    m_BML->RegisterCommand(new CommandScore());
-    m_BML->RegisterCommand(new CommandKill());
-    m_BML->RegisterCommand(new CommandSetSpawn());
-    m_BML->RegisterCommand(new CommandSector());
-    m_BML->RegisterCommand(new CommandWin());
-    m_BML->RegisterCommand(new CommandSpeed(this));
-    m_BML->RegisterCommand(new CommandTravel(this));
-
     m_CKContext = m_BML->GetCKContext();
     m_RenderContext = m_BML->GetRenderContext();
     m_TimeManager = m_BML->GetTimeManager();
@@ -714,6 +538,9 @@ void BMLMod::OnLoad() {
     m_RenderContext->Get2dRoot(TRUE)->GetRect(m_WindowRect);
 
     ExecuteBB::Init();
+
+    InitConfigs();
+    RegisterCommands();
 
     m_Balls[0] = (CK3dEntity *) ExecuteBB::ObjectLoad("3D Entities\\PH\\P_Ball_Paper.nmo", true, "P_Ball_Paper_MF").second;
     m_Balls[1] = (CK3dEntity *) ExecuteBB::ObjectLoad("3D Entities\\PH\\P_Ball_Wood.nmo", true, "P_Ball_Wood_MF").second;
@@ -1025,6 +852,16 @@ void BMLMod::AddIngameMessage(const char *msg) {
     GetLogger()->Info(msg);
 }
 
+void BMLMod::ClearIngameMessages() {
+    m_MsgCount = 0;
+    for (int i = 0; i < MSG_MAXSIZE; i++) {
+        m_Msgs[i].m_Background->SetVisible(false);
+        m_Msgs[i].m_Text->SetVisible(false);
+        m_Msgs[i].m_Text->SetText("");
+        m_Msgs[i].m_Timer = 0;
+    }
+}
+
 void BMLMod::ShowCheatBanner(bool show) {
     m_Cheat->SetVisible(show);
 }
@@ -1131,9 +968,298 @@ void BMLMod::ChangeBallSpeed(float times) {
             }
 
             if (notify && m_SpeedNotification->GetBoolean())
-                m_BML->SendIngameMessage(("Current Ball Speed Changed to " + std::to_string(times) + " times").c_str());
+                AddIngameMessage(("Current Ball Speed Changed to " + std::to_string(times) + " times").c_str());
         }
     }
+}
+
+void BMLMod::ResetBall() {
+    CKMessageManager *mm = m_BML->GetMessageManager();
+    CKMessageType ballDeactivate = mm->AddMessageType("BallNav deactivate");
+
+    mm->SendMessageSingle(ballDeactivate, m_BML->GetGroupByName("All_Gameplay"));
+    mm->SendMessageSingle(ballDeactivate, m_BML->GetGroupByName("All_Sound"));
+
+    m_BML->AddTimer(2ul, [this]() {
+        auto *curBall = (CK3dEntity *) m_CurLevel->GetElementObject(0, 1);
+        if (curBall) {
+            ExecuteBB::Unphysicalize(curBall);
+
+            m_DynamicPos->ActivateInput(1);
+            m_DynamicPos->Activate();
+
+            m_BML->AddTimer(1ul, [this, curBall]() {
+                VxMatrix matrix;
+                m_CurLevel->GetElementValue(0, 3, &matrix);
+                curBall->SetWorldMatrix(matrix);
+
+                CK3dEntity *camMF = m_BML->Get3dEntityByName("Cam_MF");
+                m_BML->RestoreIC(camMF, true);
+                camMF->SetWorldMatrix(matrix);
+
+                m_BML->AddTimer(1ul, [this]() {
+                    m_DynamicPos->ActivateInput(0);
+                    m_DynamicPos->Activate();
+                    m_PhysicsNewBall->ActivateInput(0);
+                    m_PhysicsNewBall->Activate();
+                    m_PhysicsNewBall->GetParent()->Activate();
+                });
+            });
+        }
+    });
+}
+
+int BMLMod::GetSectorCount() {
+    CKDataArray *checkPoints = m_BML->GetArrayByName("Checkpoints");
+    if (!checkPoints)
+        return 0;
+    return checkPoints->GetRowCount();
+}
+
+void BMLMod::SetSector(int sector) {
+    if (m_BML->IsPlaying()) {
+        CKDataArray *checkPoints = m_BML->GetArrayByName("Checkpoints");
+        CKDataArray *resetPoints = m_BML->GetArrayByName("ResetPoints");
+
+        if (sector < 1 || sector > checkPoints->GetRowCount())
+            return;
+
+        int curSector = ScriptHelper::GetParamValue<int>(m_CurSector);
+        if (curSector != sector) {
+            VxMatrix matrix;
+            resetPoints->GetElementValue(sector - 1, 0, &matrix);
+            m_CurLevel->SetElementValue(0, 3, &matrix);
+
+            m_IngameParam->SetElementValue(0, 1, &sector);
+            m_IngameParam->SetElementValue(0, 2, &curSector);
+            ScriptHelper::SetParamValue(m_CurSector, sector);
+
+            AddIngameMessage(("Changed to Sector " + std::to_string(sector)).c_str());
+
+            CKBehavior *sectorMgr = m_BML->GetScriptByName("Gameplay_SectorManager");
+            m_CKContext->GetCurrentScene()->Activate(sectorMgr, true);
+
+            m_BML->AddTimerLoop(1ul, [this, sector, checkPoints, sectorMgr]() {
+                if (sectorMgr->IsActive())
+                    return true;
+
+                m_BML->AddTimer(2ul, [this, checkPoints, sector]() {
+                    CKBOOL active = false;
+                    m_CurLevel->SetElementValue(0, 4, &active);
+
+                    CK_ID flameId;
+                    checkPoints->GetElementValue(sector % 2, 1, &flameId);
+                    auto *flame = (CK3dEntity *) m_CKContext->GetObject(flameId);
+                    m_CKContext->GetCurrentScene()->Activate(flame->GetScript(0), true);
+
+                    checkPoints->GetElementValue(sector - 1, 1, &flameId);
+                    flame = (CK3dEntity *) m_CKContext->GetObject(flameId);
+                    m_CKContext->GetCurrentScene()->Activate(flame->GetScript(0), true);
+
+                    if (sector > checkPoints->GetRowCount()) {
+                        CKMessageManager *mm = m_BML->GetMessageManager();
+                        CKMessageType msg = mm->AddMessageType("last Checkpoint reached");
+                        mm->SendMessageSingle(msg, m_BML->GetGroupByName("All_Sound"));
+
+                        ResetBall();
+                    } else {
+                        m_BML->AddTimer(2ul, [this, sector, checkPoints, flame]() {
+                            VxMatrix matrix;
+                            checkPoints->GetElementValue(sector - 1, 0, &matrix);
+                            flame->SetWorldMatrix(matrix);
+                            CKBOOL active = true;
+                            m_CurLevel->SetElementValue(0, 4, &active);
+                            m_CKContext->GetCurrentScene()->Activate(flame->GetScript(0), true);
+                            m_BML->Show(flame, CKSHOW, true);
+
+                            ResetBall();
+                        });
+                    }
+                });
+                return false;
+            });
+        }
+    }
+}
+
+void BMLMod::InitConfigs() {
+    GetConfig()->SetCategoryComment("Misc", "Miscellaneous");
+    m_UnlockFPS = GetConfig()->GetProperty("Misc", "UnlockFrameRate");
+    m_UnlockFPS->SetComment("Unlock Frame Rate Limitation");
+    m_UnlockFPS->SetDefaultBoolean(true);
+
+    m_FPSLimit = GetConfig()->GetProperty("Misc", "SetMaxFrameRate");
+    m_FPSLimit->SetComment("Set Frame Rate Limitation, this option will not work if frame rate is unlocked. Set to 0 will turn on VSync.");
+    m_FPSLimit->SetDefaultInteger(0);
+
+    m_AdaptiveCamera = GetConfig()->GetProperty("Misc", "AdaptiveCamera");
+    m_AdaptiveCamera->SetComment("Adjust cameras on screen mode changed");
+    m_AdaptiveCamera->SetDefaultBoolean(true);
+
+    m_Overclock = GetConfig()->GetProperty("Misc", "Overclock");
+    m_Overclock->SetComment("Remove delay of spawn / respawn");
+    m_Overclock->SetDefaultBoolean(false);
+
+    m_ShowTitle = GetConfig()->GetProperty("Misc", "ShowTitle");
+    m_ShowTitle->SetComment("Show BML Title at top");
+    m_ShowTitle->SetDefaultBoolean(true);
+
+    m_ShowFPS = GetConfig()->GetProperty("Misc", "ShowFPS");
+    m_ShowFPS->SetComment("Show FPS at top-left corner");
+    m_ShowFPS->SetDefaultBoolean(true);
+
+    m_ShowSR = GetConfig()->GetProperty("Misc", "ShowSRTimer");
+    m_ShowSR->SetComment("Show SR Timer above Time Score");
+    m_ShowSR->SetDefaultBoolean(true);
+
+    m_FixLifeBall = GetConfig()->GetProperty("Misc", "FixLifeBallFreeze");
+    m_FixLifeBall->SetComment("Game won't freeze when picking up life balls");
+    m_FixLifeBall->SetDefaultBoolean(true);
+
+    m_MsgDuration = GetConfig()->GetProperty("Misc", "MessageDuration");
+    m_MsgDuration->SetComment("Maximum visible time of each notification message, measured in seconds (default: 6)");
+    m_MsgDuration->SetDefaultFloat(m_MsgMaxTimer / 1000);
+    m_MsgMaxTimer = m_MsgDuration->GetFloat() * 1000;
+
+    GetConfig()->SetCategoryComment("Debug", "Debug Utilities");
+    m_EnableSuicide = GetConfig()->GetProperty("Debug", "EnableSuicide");
+    m_EnableSuicide->SetComment("Enable the Suicide Hotkey");
+    m_EnableSuicide->SetDefaultBoolean(true);
+    m_Suicide = GetConfig()->GetProperty("Debug", "Suicide");
+    m_Suicide->SetComment("Suicide");
+    m_Suicide->SetDefaultKey(CKKEY_R);
+
+    m_BallCheat[0] = GetConfig()->GetProperty("Debug", "BallUp");
+    m_BallCheat[0]->SetComment("Apply an upward force to the ball");
+    m_BallCheat[0]->SetDefaultKey(CKKEY_F1);
+
+    m_BallCheat[1] = GetConfig()->GetProperty("Debug", "BallDown");
+    m_BallCheat[1]->SetComment("Apply a downward force to the ball");
+    m_BallCheat[1]->SetDefaultKey(CKKEY_F2);
+
+    m_ChangeBall[0] = GetConfig()->GetProperty("Debug", "TurnPaper");
+    m_ChangeBall[0]->SetComment("Turn into paper ball");
+    m_ChangeBall[0]->SetDefaultKey(CKKEY_I);
+
+    m_ChangeBall[1] = GetConfig()->GetProperty("Debug", "TurnWood");
+    m_ChangeBall[1]->SetComment("Turn into wood ball");
+    m_ChangeBall[1]->SetDefaultKey(CKKEY_O);
+
+    m_ChangeBall[2] = GetConfig()->GetProperty("Debug", "TurnStone");
+    m_ChangeBall[2]->SetComment("Turn into stone ball");
+    m_ChangeBall[2]->SetDefaultKey(CKKEY_P);
+
+    m_ResetBall = GetConfig()->GetProperty("Debug", "ResetBall");
+    m_ResetBall->SetComment("Reset ball and all moduls");
+    m_ResetBall->SetDefaultKey(CKKEY_BACK);
+
+    m_AddLife = GetConfig()->GetProperty("Debug", "AddLife");
+    m_AddLife->SetComment("Add one extra Life");
+    m_AddLife->SetDefaultKey(CKKEY_L);
+
+    m_SpeedupBall = GetConfig()->GetProperty("Debug", "BallSpeedUp");
+    m_SpeedupBall->SetComment("Change to 3 times ball speed");
+    m_SpeedupBall->SetDefaultKey(CKKEY_LCONTROL);
+
+    m_SpeedNotification = GetConfig()->GetProperty("Debug", "SpeedNotification");
+    m_SpeedNotification->SetComment("Notify the player when speed of the ball changes.");
+    m_SpeedNotification->SetDefaultBoolean(true);
+
+    m_SkipRenderKey = GetConfig()->GetProperty("Debug", "SkipRender");
+    m_SkipRenderKey->SetComment("Skip rendering of current frames while holding.");
+    m_SkipRenderKey->SetDefaultKey(CKKEY_F);
+
+    GetConfig()->SetCategoryComment("Auxiliaries", "Temporal Auxiliary Moduls");
+    m_AddBall[0] = GetConfig()->GetProperty("Auxiliaries", "PaperBall");
+    m_AddBall[0]->SetComment("Add a Paper Ball");
+    m_AddBall[0]->SetDefaultKey(CKKEY_J);
+
+    m_AddBall[1] = GetConfig()->GetProperty("Auxiliaries", "WoodBall");
+    m_AddBall[1]->SetComment("Add a Wood Ball");
+    m_AddBall[1]->SetDefaultKey(CKKEY_K);
+
+    m_AddBall[2] = GetConfig()->GetProperty("Auxiliaries", "StoneBall");
+    m_AddBall[2]->SetComment("Add a Stone Ball");
+    m_AddBall[2]->SetDefaultKey(CKKEY_N);
+
+    m_AddBall[3] = GetConfig()->GetProperty("Auxiliaries", "Box");
+    m_AddBall[3]->SetComment("Add a Box");
+    m_AddBall[3]->SetDefaultKey(CKKEY_M);
+
+    m_MoveKeys[0] = GetConfig()->GetProperty("Auxiliaries", "MoveFront");
+    m_MoveKeys[0]->SetComment("Move Front");
+    m_MoveKeys[0]->SetDefaultKey(CKKEY_UP);
+
+    m_MoveKeys[1] = GetConfig()->GetProperty("Auxiliaries", "MoveBack");
+    m_MoveKeys[1]->SetComment("Move Back");
+    m_MoveKeys[1]->SetDefaultKey(CKKEY_DOWN);
+
+    m_MoveKeys[2] = GetConfig()->GetProperty("Auxiliaries", "MoveLeft");
+    m_MoveKeys[2]->SetComment("Move Left");
+    m_MoveKeys[2]->SetDefaultKey(CKKEY_LEFT);
+
+    m_MoveKeys[3] = GetConfig()->GetProperty("Auxiliaries", "MoveRight");
+    m_MoveKeys[3]->SetComment("Move Right");
+    m_MoveKeys[3]->SetDefaultKey(CKKEY_RIGHT);
+
+    m_MoveKeys[4] = GetConfig()->GetProperty("Auxiliaries", "MoveUp");
+    m_MoveKeys[4]->SetComment("Move Up");
+    m_MoveKeys[4]->SetDefaultKey(CKKEY_RSHIFT);
+
+    m_MoveKeys[5] = GetConfig()->GetProperty("Auxiliaries", "MoveDown");
+    m_MoveKeys[5]->SetComment("Move Down");
+    m_MoveKeys[5]->SetDefaultKey(CKKEY_RCONTROL);
+
+    GetConfig()->SetCategoryComment("Camera", "Camera Utilities");
+    m_CamOn = GetConfig()->GetProperty("Camera", "Enable");
+    m_CamOn->SetComment("Enable Camera Utilities");
+    m_CamOn->SetDefaultBoolean(false);
+
+    m_CamReset = GetConfig()->GetProperty("Camera", "Reset");
+    m_CamReset->SetComment("Reset Camera");
+    m_CamReset->SetDefaultKey(CKKEY_D);
+
+    m_Cam45 = GetConfig()->GetProperty("Camera", "Rotate45");
+    m_Cam45->SetComment("Set to 45 degrees");
+    m_Cam45->SetDefaultKey(CKKEY_W);
+
+    m_CamRot[0] = GetConfig()->GetProperty("Camera", "RotateLeft");
+    m_CamRot[0]->SetComment("Rotate the camera");
+    m_CamRot[0]->SetDefaultKey(CKKEY_Q);
+
+    m_CamRot[1] = GetConfig()->GetProperty("Camera", "RotateRight");
+    m_CamRot[1]->SetComment("Rotate the camera");
+    m_CamRot[1]->SetDefaultKey(CKKEY_E);
+
+    m_CamY[0] = GetConfig()->GetProperty("Camera", "MoveUp");
+    m_CamY[0]->SetComment("Move the camera");
+    m_CamY[0]->SetDefaultKey(CKKEY_A);
+
+    m_CamY[1] = GetConfig()->GetProperty("Camera", "MoveDown");
+    m_CamY[1]->SetComment("Move the camera");
+    m_CamY[1]->SetDefaultKey(CKKEY_Z);
+
+    m_CamZ[0] = GetConfig()->GetProperty("Camera", "MoveFront");
+    m_CamZ[0]->SetComment("Move the camera");
+    m_CamZ[0]->SetDefaultKey(CKKEY_S);
+
+    m_CamZ[1] = GetConfig()->GetProperty("Camera", "MoveBack");
+    m_CamZ[1]->SetComment("Move the camera");
+    m_CamZ[1]->SetDefaultKey(CKKEY_X);
+}
+
+void BMLMod::RegisterCommands() {
+    m_BML->RegisterCommand(new CommandBML());
+    m_BML->RegisterCommand(new CommandHelp());
+    m_BML->RegisterCommand(new CommandCheat());
+    m_BML->RegisterCommand(new CommandClear(this));
+    m_BML->RegisterCommand(new CommandScore());
+    m_BML->RegisterCommand(new CommandKill());
+    m_BML->RegisterCommand(new CommandSetSpawn());
+    m_BML->RegisterCommand(new CommandSector(this));
+    m_BML->RegisterCommand(new CommandWin());
+    m_BML->RegisterCommand(new CommandSpeed(this));
+    m_BML->RegisterCommand(new CommandTravel(this));
 }
 
 void BMLMod::OnEditScript_Base_EventHandler(CKBehavior *script) {

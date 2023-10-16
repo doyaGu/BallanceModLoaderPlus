@@ -166,8 +166,6 @@ private:
 };
 
 class BMLMod : public IMod {
-    friend class CommandClear;
-    friend class CommandSector;
     friend class GuiModMenu;
     friend class GuiCustomMap;
 
@@ -204,6 +202,7 @@ public:
     void OnCounterInactive() override;
 
     void AddIngameMessage(const char *msg);
+    void ClearIngameMessages();
 
     void ShowCheatBanner(bool show);
     void ShowModOptions();
@@ -221,8 +220,15 @@ public:
     void AdjustFrameRate(bool sync = false, float limit = 60.0f);
 
     void ChangeBallSpeed(float times);
+    void ResetBall();
+
+    int GetSectorCount();
+    void SetSector(int index);
 
 private:
+    void InitConfigs();
+    void RegisterCommands();
+
     void OnEditScript_Base_EventHandler(CKBehavior *script);
     void OnEditScript_Menu_MenuInit(CKBehavior *script);
     void OnEditScript_Menu_OptionsMenu(CKBehavior *script);
@@ -276,7 +282,7 @@ private:
     float m_MsgMaxTimer = 6000; // ms
 
     BGui::Gui *m_IngameBanner = nullptr;
-    BGui::Label* m_Title = nullptr;
+    BGui::Label *m_Title = nullptr;
     BGui::Label *m_Cheat = nullptr;
     BGui::Label *m_FPS = nullptr;
     BGui::Label *m_SRScore = nullptr;
@@ -292,7 +298,7 @@ private:
     IProperty *m_UnlockFPS = nullptr;
     IProperty *m_FPSLimit = nullptr;
     IProperty *m_AdaptiveCamera = nullptr;
-    IProperty* m_ShowTitle = nullptr;
+    IProperty *m_ShowTitle = nullptr;
     IProperty *m_ShowFPS = nullptr;
     IProperty *m_ShowSR = nullptr;
     IProperty *m_FixLifeBall = nullptr;
@@ -300,7 +306,7 @@ private:
 
     IProperty *m_BallCheat[2] = {};
     IProperty *m_EnableSuicide = nullptr;
-    IProperty* m_Suicide = nullptr;
+    IProperty *m_Suicide = nullptr;
     CKParameterLocal *m_BallForce[2] = {};
     bool m_SuicideCd = false;
 
