@@ -7,25 +7,25 @@
 #endif
 #include <Windows.h>
 #include <Psapi.h>
+#include <direct.h>
+#include <io.h>
 
 #include "InputHook.h"
 #include "Logger.h"
+#include "StringUtils.h"
+#include "PathUtils.h"
+
+// Builtin Mods
 #include "BMLMod.h"
 #include "NewBallTypeMod.h"
-#include "ModDll.h"
 
+#include "Hooks.h"
 #include "unzip.h"
 #include "imgui_impl_ck2.h"
 #include "imgui_impl_win32.h"
-#include "Hooks.h"
 
+extern HMODULE g_DllHandle;
 extern HookApi *g_HookApi;
-
-extern bool HookObjectLoad();
-extern bool UnhookObjectLoad();
-
-extern bool HookPhysicalize();
-extern bool UnhookPhysicalize();
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -36,14 +36,20 @@ namespace {
     LPFNWNDPROC g_MainWndProc = nullptr;
     LPFNWNDPROC g_RenderWndProc = nullptr;
 
-    LRESULT MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    LRESULT OnWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
+            return 1;
+        return 0;
+    }
+
+    LRESULT MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+        if (OnWndProc(hWnd, msg, wParam, lParam))
             return 1;
         return g_MainWndProc(hWnd, msg, wParam, lParam);
     }
 
     LRESULT RenderWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-        if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
+        if (OnWndProc(hWnd, msg, wParam, lParam))
             return 1;
         return g_RenderWndProc(hWnd, msg, wParam, lParam);
     }
@@ -75,30 +81,6 @@ namespace {
     }
 }
 
-static std::vector<std::string> SplitString(const std::string &str, const std::string &de) {
-    size_t lpos, pos = 0;
-    std::vector<std::string> res;
-
-    lpos = str.find_first_not_of(de, pos);
-    while (lpos != std::string::npos) {
-        pos = str.find_first_of(de, lpos);
-        res.push_back(str.substr(lpos, pos - lpos));
-        if (pos == std::string::npos)
-            break;
-
-        lpos = str.find_first_not_of(de, pos);
-    }
-
-    if (pos != std::string::npos)
-        res.emplace_back("");
-
-    return res;
-}
-
-static bool StartWith(const std::string &str, const std::string &start) {
-    return str.substr(0, start.size()) == start;
-}
-
 ModLoader &ModLoader::GetInstance() {
     static ModLoader instance;
     return instance;
@@ -107,17 +89,18 @@ ModLoader &ModLoader::GetInstance() {
 ModLoader::ModLoader() = default;
 
 ModLoader::~ModLoader() {
-    if (IsInitialized())
-        Release();
-    delete m_InputManager;
+    Shutdown();
 }
 
 void ModLoader::Init(CKContext *context) {
+    if (IsInitialized())
+        return;
+
     srand((unsigned int) time(nullptr));
 
     DetectPlayer();
 
-    MakeDirectories();
+    InitDirectories();
 
     InitLogger();
 
@@ -141,111 +124,128 @@ void ModLoader::Init(CKContext *context) {
     m_Initialized = true;
 }
 
-void ModLoader::Release() {
-    m_Initialized = false;
+void ModLoader::Shutdown() {
+    if (m_Initialized) {
+        m_Logger->Info("Releasing Mod Loader");
 
-    m_Logger->Info("Releasing Mod Loader");
+        delete m_InputHook;
 
-    for (const auto &mod : m_ModDllMap) {
-        if (mod.second && mod.second->exit)
-            mod.second->exit(mod.first);
+        ShutdownHooks();
+
+        m_Logger->Info("Goodbye!");
+        ShutdownLogger();
+
+        m_Initialized = false;
     }
-
-    FiniHooks();
-
-    m_Logger->Info("Goodbye!");
-    FiniLogger();
 }
 
-void ModLoader::PreloadMods() {
-    CKDirectoryParser bmodTraverser("..\\ModLoader\\Mods", "*.bmodp", TRUE);
-    for (char *bmodPath = bmodTraverser.GetNextFile(); bmodPath != nullptr; bmodPath = bmodTraverser.GetNextFile()) {
-        std::string filename = bmodPath;
-        ModDll modDll;
-        modDll.dllFileName = filename;
-        modDll.dllPath = filename.substr(0, filename.find_last_of('\\'));
-        if (modDll.Load())
-            m_ModDlls.push_back(modDll);
-    }
+void ModLoader::LoadMods() {
+    if (AreModsLoaded())
+        return;
 
-    char filename[MAX_PATH];
-    CKDirectoryParser zipTraverser("..\\ModLoader\\Mods", "*.zip", TRUE);
-    for (char *zipPath = zipTraverser.GetNextFile(); zipPath != nullptr; zipPath = zipTraverser.GetNextFile()) {
-        ModDll modDll;
+    RegisterBuiltinMods();
 
-        unzFile zipFile = unzOpen(zipPath);
-        unz_file_info zipInfo;
+    std::string path = m_LoaderDir + "\\Mods";
+    if (utils::DirectoryExists(path)) {
+        std::vector<std::string> mods;
+        if (ExploreMods(path, mods) == 0) {
+            m_Logger->Info("No mod is found.");
+        }
 
-        unzGoToFirstFile(zipFile);
-        do {
-            unzGetCurrentFileInfo(zipFile, &zipInfo, filename, MAX_PATH, nullptr, 0, nullptr, 0);
-            const char *ext = strrchr(filename, '.');
-            if (ext && strcmpi(ext, ".bmodp") == 0) {
-
-                std::string path = "..\\ModLoader\\Cache\\Mods\\";
-                path.append(CKPathSplitter(zipPath).GetName());
-                path.push_back('\\');
-                modDll.dllPath = path;
-                modDll.dllFileName = path + filename;
-
-                BYTE *buf = new BYTE[8192];
-                unzGoToFirstFile(zipFile);
-                do {
-                    unzGetCurrentFileInfo(zipFile, &zipInfo, filename, MAX_PATH, nullptr, 0, nullptr, 0);
-                    std::string fullPath = path + filename;
-                    VxCreateFileTree(TOCKSTRING(fullPath.c_str()));
-                    if (zipInfo.uncompressed_size != 0) {
-                        unzOpenCurrentFile(zipFile);
-                        FILE *fp = fopen(fullPath.c_str(), "wb");
-                        int err;
-                        do {
-                            err = unzReadCurrentFile(zipFile, buf, 8192);
-                            if (err < 0) {
-                                m_Logger->Warn("error %d with zipfile in unzReadCurrentFile\n", err);
-                                break;
-                            }
-                            if (err > 0)
-                                if (fwrite(buf, (unsigned) err, 1, fp) != 1) {
-                                    m_Logger->Warn("error in writing extracted file\n");
-                                    break;
-                                }
-                        } while (err > 0);
-                        fclose(fp);
-                        unzCloseCurrentFile(zipFile);
-                    }
-                } while (unzGoToNextFile(zipFile) == UNZ_OK);
-                delete[] buf;
-
-                if (modDll.Load())
-                    m_ModDlls.push_back(modDll);
+        for (auto &mod: mods) {
+            if (LoadMod(mod)) {
+                std::string p = utils::RemoveFileName(mod);
+                AddDataPath(p.c_str());
             }
-        } while (unzGoToNextFile(zipFile) == UNZ_OK);
-
-        unzClose(zipFile);
+        }
     }
+
+    for (IMod *mod : m_Mods) {
+        m_Logger->Info("Loading Mod %s[%s] v%s by %s",
+            mod->GetID(), mod->GetName(), mod->GetVersion(), mod->GetAuthor());
+        FillCallbackMap(mod);
+        mod->OnLoad();
+    }
+
+    std::sort(m_Commands.begin(), m_Commands.end(),
+              [](ICommand *a, ICommand *b) { return a->GetName() < b->GetName(); });
+
+    for (Config *config: m_Configs)
+        config->Save();
+
+    BroadcastCallback(&IMod::OnLoadObject, "base.cmo", false, "", CKCID_3DOBJECT,
+                      true, true, true, false, nullptr, nullptr);
+
+    int scriptCnt = m_Context->GetObjectsCountByClassID(CKCID_BEHAVIOR);
+    CK_ID *scripts = m_Context->GetObjectsListByClassID(CKCID_BEHAVIOR);
+    for (int i = 0; i < scriptCnt; i++) {
+        auto *behavior = (CKBehavior *) m_Context->GetObject(scripts[i]);
+        if (behavior->GetType() == CKBEHAVIORTYPE_SCRIPT) {
+            BroadcastCallback(&IMod::OnLoadScript, "base.cmo", behavior);
+        }
+    }
+
+    m_ModsLoaded = true;
 }
 
-void ModLoader::AddDataPath(const char *path) {
-    if (!path) return;
+void ModLoader::UnloadMods() {
+    if (!AreModsLoaded())
+        return;
 
-    XString dataPath = path;
-    if (!m_PathManager->PathIsAbsolute(dataPath)) {
-        char buf[MAX_PATH];
-        VxGetCurrentDirectory(buf);
-        dataPath.Format("%s\\%s", buf, dataPath.CStr());
+    std::vector<std::string> modNames;
+    modNames.reserve(m_Mods.size());
+    for (auto *mod: m_Mods) {
+        modNames.emplace_back(mod->GetID());
     }
-    if (dataPath[dataPath.Length() - 1] != '\\')
-        dataPath << '\\';
 
-    XString subDataPath1 = dataPath + "3D Entities\\";
-    XString subDataPath2 = dataPath + "3D Entities\\PH\\";
-    XString texturePath = dataPath + "Textures\\";
-    XString soundPath = dataPath + "Sounds\\";
-    m_PathManager->AddPath(DATA_PATH_IDX, dataPath);
-    m_PathManager->AddPath(DATA_PATH_IDX, subDataPath1);
-    m_PathManager->AddPath(DATA_PATH_IDX, subDataPath2);
-    m_PathManager->AddPath(BITMAP_PATH_IDX, texturePath);
-    m_PathManager->AddPath(SOUND_PATH_IDX, soundPath);
+    for (auto rit = modNames.rbegin(); rit != modNames.rend(); ++rit) {
+        UnloadMod(rit->c_str());
+    }
+
+    for (Config *config: m_Configs)
+        config->Save();
+    m_Configs.clear();
+
+    m_Commands.clear();
+    m_CommandMap.clear();
+
+    m_ModsLoaded = false;
+}
+
+int ModLoader::GetModCount() {
+    return (int)m_Mods.size();
+}
+
+IMod *ModLoader::GetMod(int index) {
+    return m_Mods[index];
+}
+
+IMod *ModLoader::FindMod(const char *id) const {
+    if (!id)
+        return nullptr;
+
+    auto iter = m_ModMap.find(id);
+    if (iter == m_ModMap.end())
+        return nullptr;
+    return iter->second;
+}
+
+const char *ModLoader::GetDirectory(ModLoader::DirectoryType type) const {
+    switch (type) {
+        case DIR_WORKING:
+            if (m_WorkingDir.empty()) {
+                char cwd[MAX_PATH];
+                getcwd(cwd, MAX_PATH);
+                m_WorkingDir = cwd;
+            }
+            return m_WorkingDir.c_str();
+        case DIR_GAME:
+            return m_GameDir.c_str();
+        case DIR_LOADER:
+            return m_LoaderDir.c_str();
+    }
+
+    return nullptr;
 }
 
 Config *ModLoader::GetConfig(IMod *mod) {
@@ -256,74 +256,237 @@ Config *ModLoader::GetConfig(IMod *mod) {
     return nullptr;
 }
 
+void ModLoader::RegisterCommand(ICommand *cmd) {
+    auto it = m_CommandMap.find(cmd->GetName());
+    if (it != m_CommandMap.end()) {
+        m_Logger->Warn("Command Name Conflict: %s is redefined.", cmd->GetName().c_str());
+        return;
+    }
+
+    m_CommandMap[cmd->GetName()] = cmd;
+    m_Commands.push_back(cmd);
+
+    if (!cmd->GetAlias().empty()) {
+        it = m_CommandMap.find(cmd->GetAlias());
+        if (it == m_CommandMap.end())
+            m_CommandMap[cmd->GetAlias()] = cmd;
+        else
+            m_Logger->Warn("Command Alias Conflict: %s is redefined.", cmd->GetAlias().c_str());
+    }
+}
+
+int ModLoader::GetCommandCount() const {
+    return (int)m_Commands.size();
+}
+
+ICommand *ModLoader::GetCommand(int index) const {
+    return m_Commands[index];
+}
+
+ICommand *ModLoader::FindCommand(const char *name) const {
+    if (!name) return nullptr;
+
+    auto iter = m_CommandMap.find(name);
+    if (iter == m_CommandMap.end())
+        return nullptr;
+    return iter->second;
+}
+
+void ModLoader::ExecuteCommand(const char *cmd) {
+    m_Logger->Info("Execute Command: %s", cmd);
+
+    auto args = utils::Split(cmd, " ");
+    for (auto &ch: args[0])
+        ch = static_cast<char>(std::tolower(ch));
+
+    ICommand *command = FindCommand(args[0].c_str());
+    if (!command) {
+        m_BMLMod->AddIngameMessage(("Error: Unknown Command " + args[0]).c_str());
+        return;
+    }
+
+    if (command->IsCheat() && !m_CheatEnabled) {
+        m_BMLMod->AddIngameMessage(("Error: Can not execute cheat command " + args[0]).c_str());
+        return;
+    }
+
+    BroadcastCallback(&IMod::OnPreCommandExecute, command, args);
+    command->Execute(this, args);
+    BroadcastCallback(&IMod::OnPostCommandExecute, command, args);
+}
+
+std::string ModLoader::TabCompleteCommand(const char *cmd) {
+    auto args = utils::Split(cmd, " ");
+    std::vector<std::string> res;
+    if (args.size() == 1) {
+        for (auto &p: m_CommandMap) {
+            if (utils::StartsWith(p.first, args[0])) {
+                if (!p.second->IsCheat() || m_CheatEnabled)
+                    res.push_back(p.first);
+            }
+        }
+    } else {
+        ICommand *command = FindCommand(args[0].c_str());
+        if (command && (!command->IsCheat() || m_CheatEnabled)) {
+            for (const std::string &str: command->GetTabCompletion(this, args))
+                if (utils::StartsWith(str, args[args.size() - 1]))
+                    res.push_back(str);
+        }
+    }
+
+    if (res.empty())
+        return cmd;
+    if (res.size() == 1) {
+        if (args.size() == 1)
+            return res[0];
+        else {
+            std::string str(cmd);
+            str = str.substr(0, str.size() - args[args.size() - 1].size());
+            str += res[0];
+            return str;
+        }
+    }
+
+    std::string str = res[0];
+    for (unsigned int i = 1; i < res.size(); i++)
+        str += ", " + res[i];
+    m_BMLMod->AddIngameMessage(str.c_str());
+    return cmd;
+}
+
+void ModLoader::AddTimer(CKDWORD delay, std::function<void()> callback) {
+    m_Timers.emplace_back(delay, callback, m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime());
+}
+
+void ModLoader::AddTimerLoop(CKDWORD delay, std::function<bool()> callback) {
+    m_Timers.emplace_back(delay, callback, m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime());
+}
+
+void ModLoader::AddTimer(float delay, std::function<void()> callback) {
+    m_Timers.emplace_back(delay, callback, m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime());
+}
+
+void ModLoader::AddTimerLoop(float delay, std::function<bool()> callback) {
+    m_Timers.emplace_back(delay, callback, m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime());
+}
+
+void ModLoader::SetIC(CKBeObject *obj, bool hierarchy) {
+    m_Context->GetCurrentScene()->SetObjectInitialValue(obj, CKSaveObjectState(obj));
+
+    if (hierarchy) {
+        if (CKIsChildClassOf(obj, CKCID_2DENTITY)) {
+            auto *entity = (CK2dEntity *) obj;
+            for (int i = 0; i < entity->GetChildrenCount(); i++)
+                SetIC(entity->GetChild(i), true);
+        }
+        if (CKIsChildClassOf(obj, CKCID_3DENTITY)) {
+            auto *entity = (CK3dEntity *) obj;
+            for (int i = 0; i < entity->GetChildrenCount(); i++)
+                SetIC(entity->GetChild(i), true);
+        }
+    }
+}
+
+void ModLoader::RestoreIC(CKBeObject *obj, bool hierarchy) {
+    CKStateChunk *chunk = m_Context->GetCurrentScene()->GetObjectInitialValue(obj);
+    if (chunk)
+        CKReadObjectState(obj, chunk);
+
+    if (hierarchy) {
+        if (CKIsChildClassOf(obj, CKCID_2DENTITY)) {
+            auto *entity = (CK2dEntity *) obj;
+            for (int i = 0; i < entity->GetChildrenCount(); i++)
+                RestoreIC(entity->GetChild(i), true);
+        }
+        if (CKIsChildClassOf(obj, CKCID_3DENTITY)) {
+            auto *entity = (CK3dEntity *) obj;
+            for (int i = 0; i < entity->GetChildrenCount(); i++)
+                RestoreIC(entity->GetChild(i), true);
+        }
+    }
+}
+
+void ModLoader::Show(CKBeObject *obj, CK_OBJECT_SHOWOPTION show, bool hierarchy) {
+    obj->Show(show);
+
+    if (hierarchy) {
+        if (CKIsChildClassOf(obj, CKCID_2DENTITY)) {
+            auto *entity = (CK2dEntity *) obj;
+            for (int i = 0; i < entity->GetChildrenCount(); i++)
+                Show(entity->GetChild(i), show, true);
+        }
+        if (CKIsChildClassOf(obj, CKCID_3DENTITY)) {
+            auto *entity = (CK3dEntity *) obj;
+            for (int i = 0; i < entity->GetChildrenCount(); i++)
+                Show(entity->GetChild(i), show, true);
+        }
+    }
+}
+
 void ModLoader::OpenModsMenu() {
     m_Logger->Info("Open Mods Menu");
     m_BMLMod->ShowModOptions();
 }
 
-void ModLoader::LoadMods() {
-    if (!m_Initialized)
-        return;
-
-    m_RenderContext = m_Context->GetPlayerRenderContext();
-    m_Logger->Info("Get Render Context pointer 0x%08x", m_RenderContext);
-
-    m_RenderManager = m_Context->GetRenderManager();
-    m_Logger->Info("Get Render Manager pointer 0x%08x", m_RenderManager);
-
-    m_BMLMod = new BMLMod(this);
-    m_Mods.push_back(m_BMLMod);
-    m_ModMap.insert({m_BMLMod->GetID(), m_BMLMod});
-    m_ModDllMap.insert({m_BMLMod, nullptr});
-
-    m_BallTypeMod = new NewBallTypeMod(this);
-    m_Mods.push_back(m_BallTypeMod);
-    m_ModMap.insert({m_BallTypeMod->GetID(), m_BallTypeMod});
-    m_ModDllMap.insert({m_BallTypeMod, nullptr});
-
-    for (auto &modDll: m_ModDlls) {
-        if (RegisterMod(modDll) && !modDll.dllPath.empty())
-            AddDataPath(modDll.dllPath.c_str());
-    }
-
-    for (auto *mod: m_Mods) {
-        LoadMod(mod);
-    }
-
-    m_ModsLoaded = true;
-
-    std::sort(m_Commands.begin(), m_Commands.end(),
-              [](ICommand *a, ICommand *b) { return a->GetName() < b->GetName(); });
-
-    for (Config *config: m_Configs)
-        config->Save();
-
-    BroadcastCallback(&IMod::OnLoadObject, "base.cmo", false, "", CKCID_3DOBJECT, true, true, true, false, nullptr, nullptr);
-
-    int scriptCnt = m_Context->GetObjectsCountByClassID(CKCID_BEHAVIOR);
-    CK_ID *scripts = m_Context->GetObjectsListByClassID(CKCID_BEHAVIOR);
-    for (int i = 0; i < scriptCnt; i++) {
-        auto *behavior = (CKBehavior *) m_Context->GetObject(scripts[i]);
-        if (behavior->GetType() == CKBEHAVIORTYPE_SCRIPT) {
-            BroadcastCallback(&IMod::OnLoadScript, "base.cmo", behavior);
-        }
-    }
+bool ModLoader::IsCheatEnabled() {
+    return m_CheatEnabled;
 }
 
-void ModLoader::UnloadMods() {
-    BroadcastMessage("OnUnload", &IMod::OnUnload);
+void ModLoader::EnableCheat(bool enable) {
+    m_CheatEnabled = enable;
+    m_BMLMod->ShowCheatBanner(enable);
+    BroadcastCallback(&IMod::OnCheatEnabled, enable);
+}
 
-    for (Config *config: m_Configs)
-        config->Save();
-    m_Configs.clear();
+void ModLoader::SendIngameMessage(const char *msg) {
+    m_BMLMod->AddIngameMessage(msg);
+}
 
-    m_Commands.clear();
-    m_CommandMap.clear();
+float ModLoader::GetSRScore() {
+    return m_BMLMod->GetSRScore();
+}
 
-    m_ModMap.clear();
-    m_Mods.clear();
+int ModLoader::GetHSScore() {
+    return m_BMLMod->GetHSScore();
+}
 
-    m_ModsLoaded = false;
+void ModLoader::RegisterBallType(const char *ballFile, const char *ballId, const char *ballName, const char *objName,
+                                 float friction, float elasticity, float mass, const char *collGroup,
+                                 float linearDamp, float rotDamp, float force, float radius) {
+    m_BallTypeMod->RegisterBallType(ballFile, ballId, ballName, objName, friction, elasticity,
+                                    mass, collGroup, linearDamp, rotDamp, force, radius);
+}
+
+void ModLoader::RegisterFloorType(const char *floorName, float friction, float elasticity, float mass,
+                                  const char *collGroup, bool enableColl) {
+    m_BallTypeMod->RegisterFloorType(floorName, friction, elasticity, mass, collGroup, enableColl);
+}
+
+void ModLoader::RegisterModulBall(const char *modulName, bool fixed, float friction, float elasticity, float mass,
+                                  const char *collGroup, bool frozen, bool enableColl, bool calcMassCenter,
+                                  float linearDamp, float rotDamp, float radius) {
+    m_BallTypeMod->RegisterModulBall(modulName, fixed, friction, elasticity, mass, collGroup,
+                                     frozen, enableColl, calcMassCenter, linearDamp, rotDamp, radius);
+}
+
+void ModLoader::RegisterModulConvex(const char *modulName, bool fixed, float friction, float elasticity, float mass,
+                                    const char *collGroup, bool frozen, bool enableColl, bool calcMassCenter,
+                                    float linearDamp, float rotDamp) {
+    m_BallTypeMod->RegisterModulConvex(modulName, fixed, friction, elasticity, mass, collGroup,
+                                       frozen, enableColl, calcMassCenter, linearDamp, rotDamp);
+}
+
+void ModLoader::RegisterTrafo(const char *modulName) {
+    m_BallTypeMod->RegisterTrafo(modulName);
+}
+
+void ModLoader::RegisterModul(const char *modulName) {
+    m_BallTypeMod->RegisterModul(modulName);
+}
+
+void ModLoader::SkipRenderForNextTick() {
+    m_RenderContext->ChangeCurrentRenderOptions(0, CK_RENDER_DEFAULTSETTINGS);
+    AddTimer(1ul, [this]() { m_RenderContext->ChangeCurrentRenderOptions(CK_RENDER_DEFAULTSETTINGS, 0); });
 }
 
 CKERROR ModLoader::OnCKInit(CKContext *context) {
@@ -339,9 +502,7 @@ CKERROR ModLoader::OnCKInit(CKContext *context) {
 }
 
 CKERROR ModLoader::OnCKEnd() {
-    if (IsInitialized()) {
-        Release();
-    }
+    Shutdown();
 
     if (m_ImGuiCreated) {
         ImGui::DestroyContext();
@@ -367,16 +528,23 @@ CKERROR ModLoader::OnCKPostReset() {
         m_ImGuiInited = true;
     }
 
-    if (!AreModsLoaded()) {
-        LoadMods();
+    if (!m_RenderManager) {
+        m_RenderManager = m_Context->GetRenderManager();
+        m_Logger->Info("Get Render Manager pointer 0x%08x", m_RenderManager);
     }
+
+    if (!m_RenderContext) {
+        m_RenderContext = m_Context->GetPlayerRenderContext();
+        m_Logger->Info("Get Render Context pointer 0x%08x", m_RenderContext);
+    }
+
+    LoadMods();
+
     return CK_OK;
 }
 
 CKERROR ModLoader::PreClearAll() {
-    if (AreModsLoaded()) {
-        UnloadMods();
-    }
+    UnloadMods();
 
     if (m_ImGuiInited) {
         ImGui_ImplWin32_Shutdown();
@@ -417,9 +585,10 @@ CKERROR ModLoader::PostProcess() {
 
     BroadcastCallback(&IMod::OnProcess);
 
-    m_InputManager->Process();
+    m_InputHook->Process();
 
-    if (m_Exiting) SendMessageBroadcast("Exit Game");
+    if (m_Exiting)
+        m_MessageManager->SendMessageBroadcast(m_MessageManager->AddMessageType(TOCKSTRING("Exit Game")));
 
     if (m_ImGuiInited) {
         ImGui::Render();
@@ -581,257 +750,8 @@ void ModLoader::OnPostLifeUp() {
     BroadcastMessage("PostLifeUp", &IMod::OnPostLifeUp);
 }
 
-void ModLoader::AddTimer(CKDWORD delay, std::function<void()> callback) {
-    m_Timers.emplace_back(delay, callback, m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime());
-}
-
-void ModLoader::AddTimerLoop(CKDWORD delay, std::function<bool()> callback) {
-    m_Timers.emplace_back(delay, callback, m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime());
-}
-
-void ModLoader::AddTimer(float delay, std::function<void()> callback) {
-    m_Timers.emplace_back(delay, callback, m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime());
-}
-
-void ModLoader::AddTimerLoop(float delay, std::function<bool()> callback) {
-    m_Timers.emplace_back(delay, callback, m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime());
-}
-
-void ModLoader::SendIngameMessage(const char *msg) {
-    m_BMLMod->AddIngameMessage(msg);
-}
-
-void ModLoader::RegisterCommand(ICommand *cmd) {
-    auto it = m_CommandMap.find(cmd->GetName());
-    if (it != m_CommandMap.end()) {
-        m_Logger->Warn("Command Name Conflict: %s is redefined.", cmd->GetName().c_str());
-        return;
-    }
-
-    m_CommandMap[cmd->GetName()] = cmd;
-    m_Commands.push_back(cmd);
-
-    if (!cmd->GetAlias().empty()) {
-        it = m_CommandMap.find(cmd->GetAlias());
-        if (it == m_CommandMap.end())
-            m_CommandMap[cmd->GetAlias()] = cmd;
-        else
-            m_Logger->Warn("Command Alias Conflict: %s is redefined.", cmd->GetAlias().c_str());
-    }
-}
-
-int ModLoader::GetCommandCount() const {
-    return m_Commands.size();
-}
-
-ICommand *ModLoader::GetCommand(int index) const {
-    return m_Commands[index];
-}
-
-ICommand *ModLoader::FindCommand(const char *name) const {
-    if (!name) return nullptr;
-
-    auto iter = m_CommandMap.find(name);
-    if (iter == m_CommandMap.end())
-        return nullptr;
-    return iter->second;
-}
-
-void ModLoader::ExecuteCommand(const char *cmd) {
-    m_Logger->Info("Execute Command: %s", cmd);
-
-    std::vector<std::string> args = SplitString(cmd, " ");
-    for (auto &ch: args[0])
-        ch = static_cast<char>(std::tolower(ch));
-
-    ICommand *command = FindCommand(args[0].c_str());
-    if (!command) {
-        m_BMLMod->AddIngameMessage(("Error: Unknown Command " + args[0]).c_str());
-        return;
-    }
-
-    if (command->IsCheat() && !m_CheatEnabled) {
-        m_BMLMod->AddIngameMessage(("Error: Can not execute cheat command " + args[0]).c_str());
-        return;
-    }
-
-    BroadcastCallback(&IMod::OnPreCommandExecute, command, args);
-    command->Execute(this, args);
-    BroadcastCallback(&IMod::OnPostCommandExecute, command, args);
-}
-
-std::string ModLoader::TabCompleteCommand(const char *cmd) {
-    std::vector<std::string> args = SplitString(cmd, " ");
-    std::vector<std::string> res;
-    if (args.size() == 1) {
-        for (auto &p: m_CommandMap) {
-            if (StartWith(p.first, args[0])) {
-                if (!p.second->IsCheat() || m_CheatEnabled)
-                    res.push_back(p.first);
-            }
-        }
-    } else {
-        ICommand *command = FindCommand(args[0].c_str());
-        if (command && (!command->IsCheat() || m_CheatEnabled)) {
-            for (const std::string &str: command->GetTabCompletion(this, args))
-                if (StartWith(str, args[args.size() - 1]))
-                    res.push_back(str);
-        }
-    }
-
-    if (res.empty())
-        return cmd;
-    if (res.size() == 1) {
-        if (args.size() == 1)
-            return res[0];
-        else {
-            std::string str(cmd);
-            str = str.substr(0, str.size() - args[args.size() - 1].size());
-            str += res[0];
-            return str;
-        }
-    }
-
-    std::string str = res[0];
-    for (unsigned int i = 1; i < res.size(); i++)
-        str += ", " + res[i];
-    m_BMLMod->AddIngameMessage(str.c_str());
-    return cmd;
-}
-
-bool ModLoader::IsCheatEnabled() {
-    return m_CheatEnabled;
-}
-
-void ModLoader::EnableCheat(bool enable) {
-    m_CheatEnabled = enable;
-    m_BMLMod->ShowCheatBanner(enable);
-    BroadcastCallback(&IMod::OnCheatEnabled, enable);
-}
-
-void ModLoader::SetIC(CKBeObject *obj, bool hierarchy) {
-    m_Context->GetCurrentScene()->SetObjectInitialValue(obj, CKSaveObjectState(obj));
-
-    if (hierarchy) {
-        if (CKIsChildClassOf(obj, CKCID_2DENTITY)) {
-            auto *entity = (CK2dEntity *) obj;
-            for (int i = 0; i < entity->GetChildrenCount(); i++)
-                SetIC(entity->GetChild(i), true);
-        }
-        if (CKIsChildClassOf(obj, CKCID_3DENTITY)) {
-            auto *entity = (CK3dEntity *) obj;
-            for (int i = 0; i < entity->GetChildrenCount(); i++)
-                SetIC(entity->GetChild(i), true);
-        }
-    }
-}
-
-void ModLoader::RestoreIC(CKBeObject *obj, bool hierarchy) {
-    CKStateChunk *chunk = m_Context->GetCurrentScene()->GetObjectInitialValue(obj);
-    if (chunk)
-        CKReadObjectState(obj, chunk);
-
-    if (hierarchy) {
-        if (CKIsChildClassOf(obj, CKCID_2DENTITY)) {
-            auto *entity = (CK2dEntity *) obj;
-            for (int i = 0; i < entity->GetChildrenCount(); i++)
-                RestoreIC(entity->GetChild(i), true);
-        }
-        if (CKIsChildClassOf(obj, CKCID_3DENTITY)) {
-            auto *entity = (CK3dEntity *) obj;
-            for (int i = 0; i < entity->GetChildrenCount(); i++)
-                RestoreIC(entity->GetChild(i), true);
-        }
-    }
-}
-
-void ModLoader::Show(CKBeObject *obj, CK_OBJECT_SHOWOPTION show, bool hierarchy) {
-    obj->Show(show);
-
-    if (hierarchy) {
-        if (CKIsChildClassOf(obj, CKCID_2DENTITY)) {
-            auto *entity = (CK2dEntity *) obj;
-            for (int i = 0; i < entity->GetChildrenCount(); i++)
-                Show(entity->GetChild(i), show, true);
-        }
-        if (CKIsChildClassOf(obj, CKCID_3DENTITY)) {
-            auto *entity = (CK3dEntity *) obj;
-            for (int i = 0; i < entity->GetChildrenCount(); i++)
-                Show(entity->GetChild(i), show, true);
-        }
-    }
-}
-
-void ModLoader::RegisterBallType(const char *ballFile, const char *ballId, const char *ballName, const char *objName,
-                                 float friction, float elasticity,
-                                 float mass, const char *collGroup, float linearDamp, float rotDamp, float force,
-                                 float radius) {
-    m_BallTypeMod->RegisterBallType(ballFile, ballId, ballName, objName, friction, elasticity,
-                                    mass, collGroup, linearDamp, rotDamp, force, radius);
-}
-
-void ModLoader::RegisterFloorType(const char *floorName, float friction, float elasticity, float mass,
-                                  const char *collGroup, bool enableColl) {
-    m_BallTypeMod->RegisterFloorType(floorName, friction, elasticity, mass, collGroup, enableColl);
-}
-
-void ModLoader::RegisterModulBall(const char *modulName, bool fixed, float friction, float elasticity, float mass,
-                                  const char *collGroup,
-                                  bool frozen, bool enableColl, bool calcMassCenter, float linearDamp, float rotDamp,
-                                  float radius) {
-    m_BallTypeMod->RegisterModulBall(modulName, fixed, friction, elasticity, mass, collGroup,
-                                     frozen, enableColl, calcMassCenter, linearDamp, rotDamp, radius);
-}
-
-void ModLoader::RegisterModulConvex(const char *modulName, bool fixed, float friction, float elasticity, float mass,
-                                    const char *collGroup,
-                                    bool frozen, bool enableColl, bool calcMassCenter, float linearDamp,
-                                    float rotDamp) {
-    m_BallTypeMod->RegisterModulConvex(modulName, fixed, friction, elasticity, mass, collGroup,
-                                       frozen, enableColl, calcMassCenter, linearDamp, rotDamp);
-}
-
-void ModLoader::RegisterTrafo(const char *modulName) {
-    m_BallTypeMod->RegisterTrafo(modulName);
-}
-
-void ModLoader::RegisterModul(const char *modulName) {
-    m_BallTypeMod->RegisterModul(modulName);
-}
-
-int ModLoader::GetModCount() {
-    return m_Mods.size();
-}
-
-IMod *ModLoader::GetMod(int index) {
-    return m_Mods[index];
-}
-
-IMod *ModLoader::FindMod(const char *id) const {
-    if (!id)
-        return nullptr;
-
-    auto iter = m_ModMap.find(id);
-    if (iter == m_ModMap.end())
-        return nullptr;
-    return iter->second;
-}
-
-float ModLoader::GetSRScore() {
-    return m_BMLMod->GetSRScore();
-}
-
-int ModLoader::GetHSScore() {
-    return m_BMLMod->GetHSScore();
-}
-
-void ModLoader::SkipRenderForNextTick() {
-    m_RenderContext->ChangeCurrentRenderOptions(0, CK_RENDER_DEFAULTSETTINGS);
-    AddTimer(1ul, [this]() { m_RenderContext->ChangeCurrentRenderOptions(CK_RENDER_DEFAULTSETTINGS, 0); });
-}
-
 void ModLoader::DetectPlayer() {
-    FILE *fp = fopen("Player.exe", "rb");
+    FILE * fp = fopen("Player.exe", "rb");
     if (fp) {
         fseek(fp, 0, SEEK_END);
         long size = ftell(fp);
@@ -842,20 +762,53 @@ void ModLoader::DetectPlayer() {
     }
 }
 
-void ModLoader::MakeDirectories() {
-    VxMakeDirectory("..\\ModLoader");
-    VxMakeDirectory("..\\ModLoader\\Config");
-    VxMakeDirectory("..\\ModLoader\\Maps");
-    VxMakeDirectory("..\\ModLoader\\Mods");
+void ModLoader::InitDirectories() {
+    std::string path;
+    {
+        char szPath[MAX_PATH];
+        char drive[4];
+        char dir[MAX_PATH];
+        ::GetModuleFileNameA(g_DllHandle, szPath, MAX_PATH);
+        _splitpath(szPath, drive, dir, nullptr, nullptr);
+        snprintf(szPath, MAX_PATH, "%s%s", drive, dir);
+        path = utils::RemoveTrailingPathSeparator(szPath);
+    }
 
-    VxDeleteDirectory("..\\ModLoader\\Cache");
-    VxMakeDirectory("..\\ModLoader\\Cache");
-    VxMakeDirectory("..\\ModLoader\\Cache\\Maps");
-    VxMakeDirectory("..\\ModLoader\\Cache\\Mods");
+    std::string bin = "Bin";
+    std::string parentPath = utils::RemoveTrailingPathSeparator(utils::RemoveFileName(path));
+
+    // Set up loader directory
+    if (utils::EndsWithCaseInsensitive(path, bin)) {
+        m_LoaderDir = std::move(parentPath);
+    } else if (utils::EndsWithCaseInsensitive(path, bin.append("\\").append("Debug")) ||
+               utils::EndsWithCaseInsensitive(path, bin.append("\\").append("Release"))) {
+        path = parentPath;
+        m_LoaderDir = std::move(utils::RemoveFileName(path));
+    } else {
+        m_LoaderDir = std::move(path);
+    }
+
+    // Set up game directory
+    m_GameDir = std::move(utils::RemoveTrailingPathSeparator(utils::RemoveFileName(m_LoaderDir)));
+
+    // Set up configs directory
+    std::string configPath = m_LoaderDir + "\\Configs";
+    if (!utils::DirectoryExists(configPath)) {
+        utils::CreateDir(configPath);
+    }
+
+    // Set up cache directory
+    std::string cachePath = m_LoaderDir + "\\Cache";
+    if (!utils::DirectoryExists(cachePath)) {
+        utils::CreateDir(cachePath);
+    } else {
+        VxDeleteDirectory(TOCKSTRING(cachePath.c_str()));
+    }
 }
 
 void ModLoader::InitLogger() {
-    m_Logfile = fopen("..\\ModLoader\\ModLoader.log", "w");
+    std::string logfilePath = m_LoaderDir + "\\ModLoader.log";
+    m_Logfile = fopen(logfilePath.c_str(), "w");
     m_Logger = new Logger("ModLoader");
 
 #ifdef _DEBUG
@@ -864,7 +817,7 @@ void ModLoader::InitLogger() {
 #endif
 }
 
-void ModLoader::FiniLogger() {
+void ModLoader::ShutdownLogger() {
 #ifdef _DEBUG
     FreeConsole();
 #endif
@@ -874,6 +827,9 @@ void ModLoader::FiniLogger() {
 }
 
 void ModLoader::InitHooks() {
+    extern bool HookObjectLoad();
+    extern bool HookPhysicalize();
+
     if (HookObjectLoad())
         m_Logger->Info("Hook ObjectLoad Success");
     else
@@ -885,7 +841,10 @@ void ModLoader::InitHooks() {
         m_Logger->Info("Hook Physicalize Failed");
 }
 
-void ModLoader::FiniHooks() {
+void ModLoader::ShutdownHooks() {
+    extern bool UnhookObjectLoad();
+    extern bool UnhookPhysicalize();
+
     if (UnhookObjectLoad())
         m_Logger->Info("Unhook ObjectLoad Success");
     else
@@ -907,8 +866,8 @@ void ModLoader::GetManagers() {
     m_CollisionManager = (CKCollisionManager *) m_Context->GetManagerByGuid(COLLISION_MANAGER_GUID);
     m_Logger->Info("Get Collision Manager pointer 0x%08x", m_CollisionManager);
 
-    m_InputManager = new InputHook(m_Context);
-    m_Logger->Info("Get Input Manager pointer 0x%08x", m_InputManager);
+    m_InputHook = new InputHook(m_Context);
+    m_Logger->Info("Get Input Manager pointer 0x%08x", m_InputHook);
 
     m_MessageManager = m_Context->GetMessageManager();
     m_Logger->Info("Get Message Manager pointer 0x%08x", m_MessageManager);
@@ -926,26 +885,257 @@ void ModLoader::GetManagers() {
     m_Logger->Info("Get Time Manager pointer 0x%08x", m_TimeManager);
 }
 
-bool ModLoader::RegisterMod(ModDll &modDll) {
-    IMod *mod = modDll.entry(this);
-    BMLVersion curVer;
-    BMLVersion reqVer = mod->GetBMLVersion();
-    if (curVer < reqVer) {
-        m_Logger->Warn("Mod %s[%s] requires BML %d.%d.%d", mod->GetID(), mod->GetName(), reqVer.major, reqVer.minor, reqVer.build);
-        m_ModDlls.erase(std::find_if(m_ModDlls.begin(), m_ModDlls.end(),
-                                     [modDll](const ModDll &md) { return md.dllInstance == modDll.dllInstance; }));
+size_t ModLoader::ExploreMods(const std::string &path, std::vector<std::string> &mods) {
+    if (!utils::DirectoryExists(path))
+        return 0;
+
+    std::string p = path + (utils::HasTrailingPathSeparator(path) ? "*" : "\\*");
+    _finddata_t fileinfo = {};
+    auto handle = _findfirst(p.c_str(), &fileinfo);
+    if (handle == -1)
+        return 0;
+
+    do {
+        if ((fileinfo.attrib & _A_SUBDIR)) {
+            if (strcmp(fileinfo.name, ".") != 0 && strcmp(fileinfo.name, "..") != 0)
+                ExploreMods(p.assign(path).append("\\").append(fileinfo.name), mods);
+        } else {
+            std::string filename = path + "\\" + fileinfo.name;
+            if (utils::EndsWithCaseInsensitive(filename, ".zip")) {
+                std::string cachePath = GetDirectory(DIR_LOADER);
+                std::string name = utils::GetFileName(filename);
+                cachePath.append("\\Cache\\Mods\\").append(name);
+                if (Unzip(filename, cachePath))
+                    ExploreMods(cachePath, mods);
+            } else if (utils::EndsWithCaseInsensitive(filename, ".bmodp")) {
+                // Add mod filename.
+                mods.push_back(filename);
+            }
+        }
+    } while (_findnext(handle, &fileinfo) == 0);
+
+    _findclose(handle);
+
+    return mods.size();
+}
+
+bool ModLoader::Unzip(const std::string &zipfile, const std::string &dest) {
+    unzFile zipFile = unzOpen(zipfile.c_str());
+    if (!zipFile)
         return false;
+
+    unz_file_info zipInfo;
+    char zipFilename[MAX_PATH];
+    auto *buf = new uint8_t[8192];
+
+    std::string path = dest;
+    if (!utils::HasTrailingPathSeparator(path))
+        path.append("\\");
+    if (!utils::DirectoryExists(path) && !utils::CreateFileTree(path))
+        return false;
+
+    bool complete = true;
+
+    unzGoToFirstFile(zipFile);
+    do {
+        unzGetCurrentFileInfo(zipFile, &zipInfo, zipFilename, MAX_PATH, nullptr, 0, nullptr, 0);
+        std::string fullPath = path + zipFilename;
+        utils::CreateFileTree(fullPath);
+
+        if (zipInfo.uncompressed_size != 0) {
+            unzOpenCurrentFile(zipFile);
+            FILE * fp = fopen(fullPath.c_str(), "wb");
+            int err;
+            do {
+                err = unzReadCurrentFile(zipFile, buf, 8192);
+                if (err < 0) {
+                    m_Logger->Warn("Error %d with %s in unzReadCurrentFile.", err, zipfile.c_str());
+                    complete = false;
+                    break;
+                }
+                if (err > 0)
+                    if (fwrite(buf, (unsigned) err, 1, fp) != 1) {
+                        m_Logger->Warn("Error in writing extracted file.");
+                        complete = false;
+                        break;
+                    }
+            } while (err > 0);
+            fclose(fp);
+            unzCloseCurrentFile(zipFile);
+        }
+
+    } while (unzGoToNextFile(zipFile) == UNZ_OK);
+
+    delete[] buf;
+    unzClose(zipFile);
+    return complete;
+}
+
+std::shared_ptr<void> ModLoader::LoadLib(const std::string &path) {
+    if (path.empty())
+        return nullptr;
+
+    std::shared_ptr<void> dllHandlePtr;
+
+    HMODULE dllHandle = ::LoadLibraryEx(path.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+    if (!dllHandle)
+        return nullptr;
+
+    bool inserted;
+    DllHandleMap::iterator it;
+    std::tie(it, inserted) = m_DllHandleMap.insert({dllHandle, std::weak_ptr<void>()});
+    if (!inserted) {
+        dllHandlePtr = it->second.lock();
+        if (dllHandlePtr) {
+            ::FreeLibrary(dllHandle);
+        }
     }
-    m_Mods.push_back(mod);
-    m_ModMap.insert({mod->GetID(), mod});
-    m_ModDllMap.insert({mod, &modDll});
+
+    if (!dllHandlePtr) {
+        dllHandlePtr = std::shared_ptr<void>(dllHandle, [](void *ptr) {
+            ::FreeLibrary(reinterpret_cast<HMODULE>(ptr));
+        });
+        it->second = dllHandlePtr;
+    }
+
+    return dllHandlePtr;
+}
+
+bool ModLoader::UnloadLib(void *dllHandle) {
+    auto it = m_DllHandleToModsMap.find(dllHandle);
+    if (it == m_DllHandleToModsMap.end())
+        return false;
+
+    for (auto *mod: it->second) {
+        UnregisterMod(mod, m_ModToDllHandleMap[mod]);
+    }
     return true;
 }
 
-void ModLoader::LoadMod(IMod *mod) {
-    m_Logger->Info("Loading Mod %s[%s] v%s by %s", mod->GetID(), mod->GetName(), mod->GetVersion(), mod->GetAuthor());
-    FillCallbackMap(mod);
-    mod->OnLoad();
+bool ModLoader::LoadMod(const std::string &filename) {
+    auto modName = utils::GetFileName(filename);
+    auto dllHandle = LoadLib(filename);
+    if (!dllHandle) {
+        m_Logger->Error("Failed to load %s.", modName.c_str());
+        return false;
+    }
+
+    constexpr const char *ENTRY_SYMBOL = "BMLEntry";
+    typedef IMod *(*BMLEntryFunc)(IBML *);
+
+    auto func = reinterpret_cast<BMLEntryFunc>(::GetProcAddress(reinterpret_cast<HMODULE>(dllHandle.get()),
+                                                                ENTRY_SYMBOL));
+    if (!func) {
+        m_Logger->Error("%s does not export the required symbol: %s.", filename.c_str(), ENTRY_SYMBOL);
+        return false;
+    }
+
+    IMod *mod = func(this);
+    if (!mod) {
+        m_Logger->Error("No mod could be registered, %s will be unloaded.", modName.c_str());
+        UnloadLib(dllHandle.get());
+        return false;
+    }
+
+    if (!RegisterMod(mod, dllHandle))
+        return false;
+
+    return true;
+}
+
+bool ModLoader::UnloadMod(const std::string &id) {
+    auto it = m_ModMap.find(id);
+    if (it == m_ModMap.end())
+        return false;
+
+    IMod *mod = it->second;
+    auto dit = m_ModToDllHandleMap.find(mod);
+    if (dit == m_ModToDllHandleMap.end())
+        return false;
+
+    auto &dllHandle = dit->second;
+
+    if (!UnregisterMod(mod, dllHandle)) {
+        m_Logger->Error("Failed to unload mod %s.", id.c_str());
+        return false;
+    }
+
+    return true;
+}
+
+void ModLoader::RegisterBuiltinMods() {
+    m_BMLMod = new BMLMod(this);
+    RegisterMod(m_BMLMod, nullptr);
+
+    m_BallTypeMod = new NewBallTypeMod(this);
+    RegisterMod(m_BallTypeMod, nullptr);
+}
+
+bool ModLoader::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) {
+    if (!mod)
+        return false;
+
+    BMLVersion curVer;
+    BMLVersion reqVer = mod->GetBMLVersion();
+    if (curVer < reqVer) {
+        m_Logger->Warn("Mod %s[%s] requires BML %d.%d.%d", mod->GetID(), mod->GetName(),
+                       reqVer.major, reqVer.minor, reqVer.build);
+        return false;
+    }
+
+    bool inserted;
+    ModMap::iterator it;
+    std::tie(it, inserted) = m_ModMap.insert({mod->GetID(), mod});
+    if (!inserted) {
+        m_Logger->Error("Mod %s has already been registered.", mod->GetID());
+        return false;
+    }
+
+    m_Mods.push_back(mod);
+
+    auto mods = m_DllHandleToModsMap[dllHandle.get()];
+    mods.push_back(mod);
+
+    m_ModToDllHandleMap.insert({mod, dllHandle});
+
+    return true;
+}
+
+bool ModLoader::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) {
+    if (!mod)
+        return false;
+
+    mod->OnUnload();
+
+    auto it = m_ModMap.find(mod->GetID());
+    if (it == m_ModMap.end())
+        return false;
+    m_ModMap.erase(it);
+
+    auto oit = std::find(m_Mods.begin(), m_Mods.end(), mod);
+    if (oit != m_Mods.end())
+        m_Mods.erase(oit);
+
+    constexpr const char *EXIT_SYMBOL = "BMLExit";
+    typedef void (*BMLExitFunc)(IMod *);
+
+    auto func = reinterpret_cast<BMLExitFunc>(::GetProcAddress(reinterpret_cast<HMODULE>(dllHandle.get()),
+                                                               EXIT_SYMBOL));
+    if (func)
+        func(mod);
+
+    auto mit = m_DllHandleToModsMap.find(dllHandle.get());
+    if (mit != m_DllHandleToModsMap.end()) {
+        auto &mods = mit->second;
+        mods.erase(std::remove(mods.begin(), mods.end(), mod), mods.end());
+    }
+
+    auto dit = m_ModToDllHandleMap.find(mod);
+    if (dit != m_ModToDllHandleMap.end()) {
+        m_ModToDllHandleMap.erase(dit);
+    }
+
+    return true;
 }
 
 void ModLoader::FillCallbackMap(IMod *mod) {
@@ -962,15 +1152,15 @@ void ModLoader::FillCallbackMap(IMod *mod) {
     } blank(this);
 
     void **vtable[2] = {
-        *reinterpret_cast<void ***>(&blank),
-        *reinterpret_cast<void ***>(mod)};
+            *reinterpret_cast<void ***>(&blank),
+            *reinterpret_cast<void ***>(mod)};
 
     int index = 0;
 #define CHECK_V_FUNC(IDX, FUNC)                             \
     do {                                                    \
         auto idx = IDX;                                     \
         if (vtable[0][idx] != vtable[1][idx])               \
-            m_CallbackMap[func_addr(FUNC)].push_back(mod);  \
+            m_CallbackMap[FuncToAddr(FUNC)].push_back(mod);  \
     } while(0)
 
     CHECK_V_FUNC(index++, &IMessageReceiver::OnPreStartMenu);
@@ -1027,4 +1217,34 @@ void ModLoader::FillCallbackMap(IMod *mod) {
     }
 
 #undef CHECK_V_FUNC
+}
+
+void ModLoader::AddDataPath(const char *path) {
+    if (!path)
+        return;
+
+    XString dataPath = path;
+    if (!m_PathManager->PathIsAbsolute(dataPath)) {
+        char buf[MAX_PATH];
+        VxGetCurrentDirectory(buf);
+        dataPath.Format("%s\\%s", buf, dataPath.CStr());
+    }
+    if (dataPath[dataPath.Length() - 1] != '\\')
+        dataPath << '\\';
+
+    m_PathManager->AddPath(DATA_PATH_IDX, dataPath);
+
+    XString subDataPath1 = dataPath + "3D Entities\\";
+    XString subDataPath2 = dataPath + "3D Entities\\PH\\";
+    XString texturePath = dataPath + "Textures\\";
+    XString soundPath = dataPath + "Sounds\\";
+
+    if (utils::DirectoryExists(subDataPath1.CStr()))
+        m_PathManager->AddPath(DATA_PATH_IDX, subDataPath1);
+    if (utils::DirectoryExists(subDataPath2.CStr()))
+        m_PathManager->AddPath(DATA_PATH_IDX, subDataPath2);
+    if (utils::DirectoryExists(texturePath.CStr()))
+        m_PathManager->AddPath(BITMAP_PATH_IDX, texturePath);
+    if (utils::DirectoryExists(soundPath.CStr()))
+        m_PathManager->AddPath(SOUND_PATH_IDX, soundPath);
 }
