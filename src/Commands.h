@@ -43,12 +43,17 @@ public:
 
 class CommandClear : public ICommand {
 public:
+    explicit CommandClear(BMLMod *mod) : m_BMLMod(mod) {};
+
     std::string GetName() override { return "clear"; };
     std::string GetAlias() override { return ""; };
     std::string GetDescription() override { return "Clear the Console."; };
     bool IsCheat() override { return false; };
     void Execute(IBML *bml, const std::vector<std::string> &args) override;
     const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; };
+
+private:
+    BMLMod *m_BMLMod;
 };
 
 class CommandScore : public ICommand {
@@ -92,22 +97,6 @@ private:
     CKDataArray *m_CurLevel = nullptr;
 };
 
-class CommandSector : public ICommand {
-public:
-    std::string GetName() override { return "sector"; };
-    std::string GetAlias() override { return ""; };
-    std::string GetDescription() override { return "Start playing specified sector."; };
-    bool IsCheat() override { return true; };
-    void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; };
-
-    void ResetBall(IBML *bml, CKContext *ctx);
-
-private:
-    CKDataArray *m_CurLevel = nullptr, *m_Checkpoints = nullptr, *m_ResetPoints = nullptr, *m_IngameParam = nullptr;
-    CKParameter *m_CurSector = nullptr;
-};
-
 class CommandWin : public ICommand {
 public:
     std::string GetName() override { return "win"; };
@@ -118,9 +107,25 @@ public:
     const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; };
 };
 
+class CommandSector : public ICommand {
+public:
+    explicit CommandSector(BMLMod *mod) : m_BMLMod(mod) {};
+
+    std::string GetName() override { return "sector"; };
+    std::string GetAlias() override { return ""; };
+    std::string GetDescription() override { return "Start playing specified sector."; };
+    bool IsCheat() override { return true; };
+    void Execute(IBML *bml, const std::vector<std::string> &args) override;
+    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; };
+
+private:
+    BMLMod *m_BMLMod;
+};
+
 class CommandSpeed : public ICommand {
 public:
     explicit CommandSpeed(BMLMod *mod) : m_BMLMod(mod) {};
+
     std::string GetName() override { return "speed"; };
     std::string GetAlias() override { return ""; };
     std::string GetDescription() override { return "Change Realtime Ball Speed."; };
