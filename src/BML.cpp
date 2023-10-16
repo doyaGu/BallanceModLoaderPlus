@@ -1,10 +1,16 @@
-#include "Hooks.h"
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
 
 #include "ModLoader.h"
+
+#include "Hooks.h"
 
 #define BML_HOOK_CODE 0x00424D4C
 #define BML_HOOK_VERSION 0x00000001
 
+HMODULE g_DllHandle = nullptr;
 HookApi *g_HookApi = nullptr;
 CKContext *g_CKContext = nullptr;
 
@@ -87,8 +93,6 @@ static int OnPost(HookModulePostCode code, void *data1, void *data2) {
 }
 
 static int OnLoad(size_t code, void * /* handle */) {
-    auto &loader = ModLoader::GetInstance();
-    loader.PreloadMods();
     return HMR_OK;
 }
 
@@ -195,4 +199,18 @@ HOOKS_EXPORT int BMLHandler(size_t action, size_t code, uintptr_t param1, uintpt
         default:
             return HMR_SKIP;
     }
+}
+
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
+    switch (fdwReason) {
+        case DLL_PROCESS_ATTACH:
+            g_DllHandle = hModule;
+            break;
+        case DLL_PROCESS_DETACH:
+            g_DllHandle = nullptr;
+            break;
+        default:
+            break;
+    }
+    return TRUE;
 }

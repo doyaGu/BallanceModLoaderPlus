@@ -25,26 +25,27 @@ set(BMLPLUS_PUBLIC_HDRS
 
 set(BMLPLUS_PRIVATE_HDRS
         ModLoader.h
-        ModDll.h
 
         BMLMod.h
         NewBallTypeMod.h
+        Commands.h
 
         Logger.h
-        Commands.h
         Config.h
-
         Timer.h
+
+        StringUtils.h
+        PathUtils.h
         )
 
 set(BMLPLUS_SRCS
         BML.cpp
         ModLoader.cpp
-        ModDll.cpp
 
         IMod.cpp
         BMLMod.cpp
         NewBallTypeMod.cpp
+        Commands.cpp
 
         Gui/Element.cpp
         Gui/Text.cpp
@@ -63,9 +64,10 @@ set(BMLPLUS_SRCS
         ScriptHelper.cpp
 
         Logger.cpp
-        Commands.cpp
         Config.cpp
         Timer.cpp
+
+        PathUtils.cpp
 
         BML.rc
         )

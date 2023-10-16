@@ -95,6 +95,8 @@ public:
     virtual ICommand *FindCommand(const char *name) const = 0;
 
     virtual IMod *FindMod(const char *id) const = 0;
+
+    virtual void ExecuteCommand(const char *cmd) = 0;
 };
 
 
