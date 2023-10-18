@@ -253,8 +253,6 @@ public:
     void OnPostLifeUp() override;
 
 protected:
-    typedef std::function<int(IMod *)> ModCallback;
-
     void DetectPlayer();
     void InitDirectories();
     void InitLogger();
