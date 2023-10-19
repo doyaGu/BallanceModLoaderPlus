@@ -1022,7 +1022,7 @@ void BMLMod::SetSector(int sector) {
         CKDataArray *checkPoints = m_BML->GetArrayByName("Checkpoints");
         CKDataArray *resetPoints = m_BML->GetArrayByName("ResetPoints");
 
-        if (sector < 1 || sector > checkPoints->GetRowCount())
+        if (sector < 1 || sector > checkPoints->GetRowCount() + 1)
             return;
 
         int curSector = ScriptHelper::GetParamValue<int>(m_CurSector);
