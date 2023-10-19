@@ -306,7 +306,7 @@ private:
     IProperty* m_CustomMapNumber = nullptr;
 
     IProperty *m_BallCheat[2] = {};
-    IProperty *m_EnableSuicide = nullptr;
+    IProperty *m_EnableSuicideKey = nullptr;
     IProperty *m_Suicide = nullptr;
     CKParameterLocal *m_BallForce[2] = {};
     bool m_SuicideCd = false;

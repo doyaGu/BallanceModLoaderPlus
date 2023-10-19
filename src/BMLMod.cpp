@@ -1128,9 +1128,9 @@ void BMLMod::InitConfigs() {
     m_CustomMapNumber->SetDefaultInteger(0);
 
     GetConfig()->SetCategoryComment("Debug", "Debug Utilities");
-    m_EnableSuicide = GetConfig()->GetProperty("Debug", "EnableSuicide");
-    m_EnableSuicide->SetComment("Enable the Suicide Hotkey");
-    m_EnableSuicide->SetDefaultBoolean(true);
+    m_EnableSuicideKey = GetConfig()->GetProperty("Debug", "EnableSuicideKey");
+    m_EnableSuicideKey->SetComment("Enable the Suicide Hotkey");
+    m_EnableSuicideKey->SetDefaultBoolean(true);
     m_Suicide = GetConfig()->GetProperty("Debug", "Suicide");
     m_Suicide->SetComment("Suicide");
     m_Suicide->SetDefaultKey(CKKEY_R);
@@ -1797,7 +1797,7 @@ void BMLMod::OnProcess_CommandBar() {
 }
 
 void BMLMod::OnProcess_Suicide() {
-    if (m_EnableSuicide->GetBoolean() && !m_SuicideCd && m_InputHook->IsKeyPressed(m_Suicide->GetKey())) {
+    if (m_EnableSuicideKey->GetBoolean() && !m_SuicideCd && m_InputHook->IsKeyPressed(m_Suicide->GetKey())) {
         ModLoader::GetInstance().ExecuteCommand("kill");
         m_BML->AddTimer(1000.0f, [this]() { m_SuicideCd = false; });
         m_SuicideCd = true;
