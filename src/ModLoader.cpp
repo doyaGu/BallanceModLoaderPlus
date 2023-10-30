@@ -633,11 +633,13 @@ void ModLoader::OnPostLoadLevel() {
 void ModLoader::OnStartLevel() {
     BroadcastMessage("StartLevel", &IMod::OnStartLevel);
     m_Ingame = true;
+    m_InLevel = true;
     m_Paused = false;
 }
 
 void ModLoader::OnPreResetLevel() {
     BroadcastMessage("PreResetLevel", &IMod::OnPreResetLevel);
+    m_InLevel = false;
 }
 
 void ModLoader::OnPostResetLevel() {
@@ -661,6 +663,7 @@ void ModLoader::OnPreExitLevel() {
 void ModLoader::OnPostExitLevel() {
     BroadcastMessage("PostExitLevel", &IMod::OnPostExitLevel);
     m_Ingame = false;
+    m_InLevel = false;
 }
 
 void ModLoader::OnPreNextLevel() {
@@ -669,11 +672,13 @@ void ModLoader::OnPreNextLevel() {
 
 void ModLoader::OnPostNextLevel() {
     BroadcastMessage("PostNextLevel", &IMod::OnPostNextLevel);
+    m_InLevel = false;
 }
 
 void ModLoader::OnDead() {
     BroadcastMessage("Dead", &IMod::OnDead);
     m_Ingame = false;
+    m_InLevel = false;
 }
 
 void ModLoader::OnPreEndLevel() {
@@ -683,6 +688,7 @@ void ModLoader::OnPreEndLevel() {
 void ModLoader::OnPostEndLevel() {
     BroadcastMessage("PostEndLevel", &IMod::OnPostEndLevel);
     m_Ingame = false;
+    m_InLevel = false;
 }
 
 void ModLoader::OnCounterActive() {
@@ -723,7 +729,7 @@ void ModLoader::OnPostCheckpointReached() {
 
 void ModLoader::OnLevelFinish() {
     BroadcastMessage("LevelFinish", &IMod::OnLevelFinish);
-    m_Ingame = false;
+    m_InLevel = false;
 }
 
 void ModLoader::OnGameOver() {
