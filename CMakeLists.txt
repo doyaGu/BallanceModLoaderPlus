@@ -46,7 +46,6 @@ add_compile_definitions(
 )
 
 find_package(VirtoolsSDK REQUIRED)
-find_package(ImGui REQUIRED)
 
 add_subdirectory(deps)
 add_subdirectory(src)

@@ -85,7 +85,7 @@ target_link_libraries(BMLPlus
         PUBLIC
             CK2 VxMath
         PRIVATE
-            CKZlib ImGui
+            CKZlib
         )
 
 target_compile_definitions(BMLPlus PRIVATE "BML_EXPORTS")

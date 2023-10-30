@@ -291,10 +291,6 @@ protected:
     bool m_IsOriginalPlayer = false;
     bool m_CheatEnabled = false;
 
-    bool m_ImGuiCreated = false;
-    bool m_ImGuiInited = false;
-    bool m_NewFrameReady = false;
-
     mutable std::string m_WorkingDir;
     std::string m_GameDir;
     std::string m_LoaderDir;
