@@ -77,7 +77,7 @@ void CommandKill::Execute(IBML *bml, const std::vector<std::string> &args) {
         m_DeactivateBall = ScriptHelper::FindFirstBB(ballMgr, "Deactivate Ball");
     }
 
-    if (bml->IsPlaying() && m_DeactivateBall) {
+    if (m_DeactivateBall && ModLoader::GetInstance().IsInLevel()) {
         m_DeactivateBall->ActivateInput(0);
         m_DeactivateBall->Activate();
         bml->SendIngameMessage("Killed Ball");

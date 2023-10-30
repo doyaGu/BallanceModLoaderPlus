@@ -67,6 +67,7 @@ public:
     bool IsIngame() override { return m_Ingame; }
     bool IsPaused() override { return m_Paused; }
     bool IsPlaying() override { return m_Ingame && !m_Paused; }
+    bool IsInLevel() { return m_InLevel && !m_Paused; }
     bool IsOriginalPlayer() const { return m_IsOriginalPlayer; }
 
     CKAttributeManager *GetAttributeManager() override { return m_AttributeManager; }
@@ -285,6 +286,7 @@ protected:
 
     bool m_Exiting = false;
     bool m_Ingame = false;
+    bool m_InLevel = false;
     bool m_Paused = false;
     bool m_IsOriginalPlayer = false;
     bool m_CheatEnabled = false;
