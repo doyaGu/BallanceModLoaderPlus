@@ -56,8 +56,11 @@ public:
 
     const char *GetDirectory(DirectoryType type) const;
 
-    void AddConfig(Config *config) { m_Configs.push_back(config); }
+    bool AddConfig(Config *config);
+    bool RemoveConfig(Config *config);
     Config *GetConfig(IMod *mod);
+    bool LoadConfig(Config *config);
+    bool SaveConfig(Config *config);
 
     CKContext *GetCKContext() override { return m_Context; }
     CKRenderContext *GetRenderContext() override { return m_RenderContext; }
@@ -334,6 +337,9 @@ protected:
     CommandMap m_CommandMap;
 
     std::vector<Config *> m_Configs;
+    typedef std::unordered_map<std::string, Config *> ConfigMap;
+    ConfigMap m_ConfigMap;
+
     std::list<Timer> m_Timers;
 
     std::unordered_map<void *, std::vector<IMod *>> m_CallbackMap;

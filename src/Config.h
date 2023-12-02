@@ -44,24 +44,24 @@ public:
     void SetDefaultFloat(float value) override;
     void SetDefaultKey(CKKEYBOARD value) override;
 
-    PropertyType GetType() override { return m_type; }
+    PropertyType GetType() override { return m_Type; }
 
     void CopyValue(Property *o);
 
 private:
     union {
-        bool m_bool;
-        int m_int = 0;
-        float m_float;
-        CKKEYBOARD m_key;
-    } m_value;
-    std::string m_string;
+        bool m_Bool;
+        int m_Int = 0;
+        float m_Float;
+        CKKEYBOARD m_Key;
+    } m_Value;
+    std::string m_String;
 
-    PropertyType m_type = INTEGER;
-    std::string m_comment;
+    PropertyType m_Type = INTEGER;
+    std::string m_Comment;
 
-    std::string m_category, m_key;
-    Config *m_config = nullptr;
+    std::string m_Category, m_Key;
+    Config *m_Config = nullptr;
 };
 
 class Config : public IConfig {
@@ -82,17 +82,17 @@ public:
     const char *GetCategoryComment(const char *category);
     void SetCategoryComment(const char *category, const char *comment) override;
 
-    void Load();
-    void Save();
+    bool Load(const char *path);
+    bool Save(const char *path);
 
 private:
-    void trim(std::string &s) {
+    static void Trim(std::string &s) {
 		s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](char x){return !std::isspace(x); }));
 		s.erase(std::find_if(s.rbegin(), s.rend(), [](char x){return !std::isspace(x); }).base(), s.end());
     }
 
     IMod *m_Mod;
-    std::string m_ModName;
+    std::string m_ModID;
 
     struct Category {
         std::string name;
