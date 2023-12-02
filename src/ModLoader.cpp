@@ -6,7 +6,6 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <Windows.h>
-#include <Psapi.h>
 #include <direct.h>
 #include <io.h>
 
@@ -155,7 +154,7 @@ void ModLoader::UnloadMods() {
 }
 
 int ModLoader::GetModCount() {
-    return (int)m_Mods.size();
+    return (int) m_Mods.size();
 }
 
 IMod *ModLoader::GetMod(int index) {
@@ -218,7 +217,7 @@ void ModLoader::RegisterCommand(ICommand *cmd) {
 }
 
 int ModLoader::GetCommandCount() const {
-    return (int)m_Commands.size();
+    return (int) m_Commands.size();
 }
 
 ICommand *ModLoader::GetCommand(int index) const {
@@ -640,7 +639,7 @@ void ModLoader::OnPostLifeUp() {
 }
 
 void ModLoader::DetectPlayer() {
-    FILE * fp = fopen("Player.exe", "rb");
+    FILE *fp = fopen("Player.exe", "rb");
     if (fp) {
         fseek(fp, 0, SEEK_END);
         long size = ftell(fp);
@@ -833,7 +832,7 @@ bool ModLoader::Unzip(const std::string &zipfile, const std::string &dest) {
 
         if (zipInfo.uncompressed_size != 0) {
             unzOpenCurrentFile(zipFile);
-            FILE * fp = fopen(fullPath.c_str(), "wb");
+            FILE *fp = fopen(fullPath.c_str(), "wb");
             int err;
             do {
                 err = unzReadCurrentFile(zipFile, buf, 8192);
