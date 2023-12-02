@@ -112,7 +112,7 @@ void ModLoader::LoadMods() {
               [](ICommand *a, ICommand *b) { return a->GetName() < b->GetName(); });
 
     for (Config *config: m_Configs)
-        config->Save();
+        SaveConfig(config);
 
     BroadcastCallback(&IMod::OnLoadObject, "base.cmo", false, "", CKCID_3DOBJECT,
                       true, true, true, false, nullptr, nullptr);
@@ -143,8 +143,9 @@ void ModLoader::UnloadMods() {
         UnloadMod(rit->c_str());
     }
 
-    for (Config *config: m_Configs)
-        config->Save();
+    for (auto rit = m_Configs.rbegin(); rit != m_Configs.rend(); ++rit) {
+        RemoveConfig(*rit);
+    }
     m_Configs.clear();
 
     m_Commands.clear();
@@ -189,12 +190,79 @@ const char *ModLoader::GetDirectory(ModLoader::DirectoryType type) const {
     return nullptr;
 }
 
-Config *ModLoader::GetConfig(IMod *mod) {
-    for (Config *cfg: m_Configs) {
-        if (cfg->GetMod() == mod)
-            return cfg;
+bool ModLoader::AddConfig(Config *config) {
+    if (!config)
+        return false;
+
+    IMod *mod = config->GetMod();
+    if (!mod)
+        return false;
+
+    bool inserted;
+    ConfigMap::iterator it;
+    std::tie(it, inserted) = m_ConfigMap.insert({mod->GetID(), config});
+    if (!inserted) {
+        m_Logger->Error("Can not add duplicate config for %s.", mod->GetID());
+        return false;
     }
-    return nullptr;
+
+    LoadConfig(config);
+    m_Configs.push_back(config);
+
+    return true;
+}
+
+bool ModLoader::RemoveConfig(Config *config) {
+    if (!config)
+        return false;
+
+    IMod *mod = config->GetMod();
+    if (!mod)
+        return false;
+
+    auto it = m_ConfigMap.find(mod->GetID());
+    if (it != m_ConfigMap.end()) {
+        SaveConfig(config);
+        m_Configs.erase(std::remove(m_Configs.begin(), m_Configs.end(), it->second), m_Configs.end());
+    }
+
+    return true;
+}
+
+Config *ModLoader::GetConfig(IMod *mod) {
+    if (!mod)
+        return nullptr;
+
+    auto it = m_ConfigMap.find(mod->GetID());
+    if (it == m_ConfigMap.end())
+        return nullptr;
+    return it->second;
+}
+
+bool ModLoader::LoadConfig(Config *config) {
+    if (!config)
+        return false;
+
+    IMod *mod = config->GetMod();
+    if (!mod)
+        return false;
+
+    std::string configPath = GetDirectory(DIR_LOADER);
+    configPath.append("\\Configs\\").append(mod->GetID()).append(".cfg");
+    return config->Load(configPath.c_str());
+}
+
+bool ModLoader::SaveConfig(Config *config) {
+    if (!config)
+        return false;
+
+    IMod *mod = config->GetMod();
+    if (!mod)
+        return false;
+
+    std::string configPath = GetDirectory(DIR_LOADER);
+    configPath.append("\\Configs\\").append(mod->GetID()).append(".cfg");
+    return config->Save(configPath.c_str());
 }
 
 void ModLoader::RegisterCommand(ICommand *cmd) {

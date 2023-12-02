@@ -5,9 +5,7 @@
 
 #include "ModLoader.h"
 
-Config::Config(IMod *mod) : m_Mod(mod), m_ModName(mod->GetID()) {
-    Load();
-}
+Config::Config(IMod *mod) : m_Mod(mod), m_ModID(mod->GetID()) {}
 
 Config::~Config() {
     for (Category &cate: m_Data) {
@@ -16,30 +14,33 @@ Config::~Config() {
     }
 }
 
-void Config::Load() {
-    std::ifstream fin("../ModLoader/Config/" + m_ModName + ".cfg");
+bool Config::Load(const char *path) {
+    if (!path || path[0] == '\0')
+        return false;
+        
+    std::ifstream fin(path);
     if (fin.fail())
-        return;
+        return false;
 
     std::string token, comment, category;
     bool inCate = false;
     while (fin >> token) {
         if (token == "#") {
             std::getline(fin, comment);
-            trim(comment);
+            Trim(comment);
         } else if (token == "{")
             inCate = true;
         else if (token == "}")
             inCate = false;
         else if (inCate) {
-            std::string propname;
-            fin >> propname;
-            Property *prop = new Property(nullptr, category, propname);
+            std::string propName;
+            fin >> propName;
+            Property *prop = new Property(nullptr, category, propName);
             switch (token[0]) {
                 case 'S': {
                     std::string value;
                     std::getline(fin, value);
-                    trim(value);
+                    Trim(value);
                     prop->SetDefaultString(value.c_str());
                     break;
                 }
@@ -76,16 +77,21 @@ void Config::Load() {
             comment.clear();
         }
     }
+
+    return true;
 }
 
-void Config::Save() {
-    std::ofstream fout("../ModLoader/Config/" + m_ModName + ".cfg");
+bool Config::Save(const char *path) {
+    if (!path || path[0] == '\0')
+        return false;
+
+    std::ofstream fout(path);
     if (fout.fail())
-        return;
+        return false;
 
     for (auto &category: m_Data) {
         for (auto iter = category.props.begin(); iter != category.props.end();) {
-            if (!(*iter)->m_config) {
+            if (!(*iter)->m_Config) {
                 delete (*iter);
                 iter = category.props.erase(iter);
             } else
@@ -129,7 +135,7 @@ void Config::Save() {
                     break;
             }
 
-            fout << property->m_key << " ";
+            fout << property->m_Key << " ";
             switch (property->GetType()) {
                 case IProperty::STRING:
                     fout << property->GetString();
@@ -156,6 +162,8 @@ void Config::Save() {
         fout << "}" << std::endl
              << std::endl;
     }
+
+    return true;
 }
 
 bool Config::HasCategory(const char *category) {
@@ -168,7 +176,7 @@ bool Config::HasCategory(const char *category) {
 bool Config::HasKey(const char *category, const char *key) {
     if (HasCategory(category))
         for (Property *prop: GetCategory(category).props)
-            if (prop->m_key == key)
+            if (prop->m_Key == key)
                 return true;
     return false;
 }
@@ -176,12 +184,12 @@ bool Config::HasKey(const char *category, const char *key) {
 IProperty *Config::GetProperty(const char *category, const char *key) {
     bool exist = HasKey(category, key);
     Property *prop = GetCategory(category).GetProperty(key);
-    prop->m_config = this;
+    prop->m_Config = this;
     if (!exist) {
-        prop->m_type = IProperty::NONE;
-        prop->m_value.m_int = 0;
-        prop->m_category = category;
-        prop->m_key = key;
+        prop->m_Type = IProperty::NONE;
+        prop->m_Value.m_Int = 0;
+        prop->m_Category = category;
+        prop->m_Key = key;
     }
     return prop;
 }
@@ -200,7 +208,7 @@ Config::Category &Config::GetCategory(const char *name) {
 
 Property *Config::Category::GetProperty(const char *name) {
     for (Property *prop: props)
-        if (prop->m_key == name)
+        if (prop->m_Key == name)
             return prop;
 
     auto *prop = new Property(config, this->name, name);
@@ -217,124 +225,124 @@ void Config::SetCategoryComment(const char *category, const char *comment) {
 }
 
 Property::Property(Config *config, std::string category, std::string key) {
-    m_type = NONE;
-    m_value.m_int = 0;
-    m_config = config;
-    m_category = std::move(category);
-    m_key = std::move(key);
+    m_Type = NONE;
+    m_Value.m_Int = 0;
+    m_Config = config;
+    m_Category = std::move(category);
+    m_Key = std::move(key);
 }
 
 const char *Property::GetString() {
-    return m_type == STRING ? m_string.c_str() : "";
+    return m_Type == STRING ? m_String.c_str() : "";
 }
 
 bool Property::GetBoolean() {
-    return m_type == BOOLEAN && m_value.m_bool;
+    return m_Type == BOOLEAN && m_Value.m_Bool;
 }
 
 int Property::GetInteger() {
-    return m_type == INTEGER ? m_value.m_int : 0;
+    return m_Type == INTEGER ? m_Value.m_Int : 0;
 }
 
 float Property::GetFloat() {
-    return m_type == FLOAT ? m_value.m_float : 0.0f;
+    return m_Type == FLOAT ? m_Value.m_Float : 0.0f;
 }
 
 CKKEYBOARD Property::GetKey() {
-    return m_type == KEY ? m_value.m_key : (CKKEYBOARD) 0;
+    return m_Type == KEY ? m_Value.m_Key : (CKKEYBOARD) 0;
 }
 
 void Property::SetString(const char *value) {
-    if (m_type != STRING || m_string != value) {
-        m_string = value;
-        m_type = STRING;
-        if (m_config)
-            ModLoader::GetInstance().OnModifyConfig(m_config->m_Mod, m_category.c_str(), m_key.c_str(), this);
+    if (m_Type != STRING || m_String != value) {
+        m_String = value;
+        m_Type = STRING;
+        if (m_Config)
+            ModLoader::GetInstance().OnModifyConfig(m_Config->m_Mod, m_Category.c_str(), m_Key.c_str(), this);
     }
 }
 
 void Property::SetBoolean(bool value) {
-    if (m_type != BOOLEAN || m_value.m_bool != value) {
-        m_value.m_bool = value;
-        m_type = BOOLEAN;
-        if (m_config)
-            ModLoader::GetInstance().OnModifyConfig(m_config->m_Mod, m_category.c_str(), m_key.c_str(), this);
+    if (m_Type != BOOLEAN || m_Value.m_Bool != value) {
+        m_Value.m_Bool = value;
+        m_Type = BOOLEAN;
+        if (m_Config)
+            ModLoader::GetInstance().OnModifyConfig(m_Config->m_Mod, m_Category.c_str(), m_Key.c_str(), this);
     }
 }
 
 void Property::SetInteger(int value) {
-    if (m_type != INTEGER || m_value.m_int != value) {
-        m_value.m_int = value;
-        m_type = INTEGER;
-        if (m_config)
-            ModLoader::GetInstance().OnModifyConfig(m_config->m_Mod, m_category.c_str(), m_key.c_str(), this);
+    if (m_Type != INTEGER || m_Value.m_Int != value) {
+        m_Value.m_Int = value;
+        m_Type = INTEGER;
+        if (m_Config)
+            ModLoader::GetInstance().OnModifyConfig(m_Config->m_Mod, m_Category.c_str(), m_Key.c_str(), this);
     }
 }
 
 void Property::SetFloat(float value) {
-    if (m_type != FLOAT || m_value.m_float != value) {
-        m_value.m_float = value;
-        m_type = FLOAT;
-        if (m_config)
-            ModLoader::GetInstance().OnModifyConfig(m_config->m_Mod, m_category.c_str(), m_key.c_str(), this);
+    if (m_Type != FLOAT || m_Value.m_Float != value) {
+        m_Value.m_Float = value;
+        m_Type = FLOAT;
+        if (m_Config)
+            ModLoader::GetInstance().OnModifyConfig(m_Config->m_Mod, m_Category.c_str(), m_Key.c_str(), this);
     }
 }
 
 void Property::SetKey(CKKEYBOARD value) {
-    if (m_type != KEY || m_value.m_key != value) {
-        m_value.m_key = value;
-        m_type = KEY;
-        if (m_config)
-            ModLoader::GetInstance().OnModifyConfig(m_config->m_Mod, m_category.c_str(), m_key.c_str(), this);
+    if (m_Type != KEY || m_Value.m_Key != value) {
+        m_Value.m_Key = value;
+        m_Type = KEY;
+        if (m_Config)
+            ModLoader::GetInstance().OnModifyConfig(m_Config->m_Mod, m_Category.c_str(), m_Key.c_str(), this);
     }
 }
 
 const char *Property::GetComment() {
-    return m_comment.c_str();
+    return m_Comment.c_str();
 }
 
 void Property::SetComment(const char *comment) {
-    m_comment = comment;
+    m_Comment = comment;
 }
 
 void Property::SetDefaultString(const char *value) {
-    if (m_type != STRING) {
-        m_type = STRING;
-        m_string = value;
+    if (m_Type != STRING) {
+        m_Type = STRING;
+        m_String = value;
     }
 }
 
 void Property::SetDefaultBoolean(bool value) {
-    if (m_type != BOOLEAN) {
-        m_type = BOOLEAN;
-        m_value.m_bool = value;
+    if (m_Type != BOOLEAN) {
+        m_Type = BOOLEAN;
+        m_Value.m_Bool = value;
     }
 }
 
 void Property::SetDefaultInteger(int value) {
-    if (m_type != INTEGER) {
-        m_type = INTEGER;
-        m_value.m_int = value;
+    if (m_Type != INTEGER) {
+        m_Type = INTEGER;
+        m_Value.m_Int = value;
     }
 }
 
 void Property::SetDefaultFloat(float value) {
-    if (m_type != FLOAT) {
-        m_type = FLOAT;
-        m_value.m_float = value;
+    if (m_Type != FLOAT) {
+        m_Type = FLOAT;
+        m_Value.m_Float = value;
     }
 }
 
 void Property::SetDefaultKey(CKKEYBOARD value) {
-    if (m_type != KEY) {
-        m_type = KEY;
-        m_value.m_key = value;
+    if (m_Type != KEY) {
+        m_Type = KEY;
+        m_Value.m_Key = value;
     }
 }
 
 void Property::CopyValue(Property *o) {
-    m_type = o->GetType();
-    switch (m_type) {
+    m_Type = o->GetType();
+    switch (m_Type) {
         case INTEGER:
             SetInteger(o->GetInteger());
             break;

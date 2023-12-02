@@ -289,7 +289,7 @@ void GuiCustomMap::Exit() {
 
 GuiModCategory::GuiModCategory(GuiModMenu *parent, Config *config, const std::string &category) {
     for (Property *prop: config->GetCategory(category.c_str()).props) {
-        auto *newprop = new Property(nullptr, category, prop->m_key);
+        auto *newprop = new Property(nullptr, category, prop->m_Key);
         newprop->CopyValue(prop);
         newprop->SetComment(prop->GetComment());
         m_Data.push_back(newprop);
@@ -319,7 +319,7 @@ GuiModCategory::GuiModCategory(GuiModMenu *parent, Config *config, const std::st
     std::vector<BGui::Element *> elements;
     std::vector<std::pair<Property *, BGui::Element *>> comments;
     for (Property *prop: m_Data) {
-        std::string name = prop->m_key;
+        std::string name = prop->m_Key;
         switch (prop->GetType()) {
             case IProperty::STRING: {
                 BGui::Button *bg = AddSettingButton(name.c_str(), name.c_str(), cnt);
@@ -521,8 +521,8 @@ void GuiModCategory::SetPage(int page) {
 void GuiModCategory::SaveAndExit() {
     Config::Category &cate = m_Config->GetCategory(m_Category.c_str());
     for (Property *p: m_Data)
-        cate.GetProperty(p->m_key.c_str())->CopyValue(p);
-    m_Config->Save();
+        cate.GetProperty(p->m_Key.c_str())->CopyValue(p);
+    ModLoader::GetInstance().SaveConfig(m_Config);
     Exit();
 }
 
