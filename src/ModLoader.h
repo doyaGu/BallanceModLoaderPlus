@@ -330,12 +330,13 @@ protected:
     ModMap m_ModMap;
 
     std::vector<ICommand *> m_Commands;
-    std::map<std::string, ICommand *> m_CommandMap;
+    typedef std::unordered_map<std::string, ICommand *> CommandMap;
+    CommandMap m_CommandMap;
 
     std::vector<Config *> m_Configs;
     std::list<Timer> m_Timers;
 
-    std::map<void *, std::vector<IMod *>> m_CallbackMap;
+    std::unordered_map<void *, std::vector<IMod *>> m_CallbackMap;
 };
 
 #endif // BML_MODLOADER_H
