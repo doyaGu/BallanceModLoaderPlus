@@ -36,6 +36,7 @@ set(BMLPLUS_PRIVATE_HDRS
 
         StringUtils.h
         PathUtils.h
+        WindowUtils.h
         )
 
 set(BMLPLUS_SRCS
@@ -68,6 +69,7 @@ set(BMLPLUS_SRCS
         Timer.cpp
 
         PathUtils.cpp
+        WindowUtils.cpp
 
         BML.rc
         )

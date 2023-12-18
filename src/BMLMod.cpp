@@ -1,6 +1,5 @@
 #include "BMLMod.h"
 
-#include <ctime>
 #include <map>
 #include <algorithm>
 
@@ -11,6 +10,7 @@
 #include "ModLoader.h"
 #include "Commands.h"
 #include "Config.h"
+#include "WindowUtils.h"
 
 namespace ExecuteBB {
     void Init();
@@ -1947,18 +1947,13 @@ void BMLMod::OnProcess_Travel() {
             m_TravelCam->Translate(&vect);
         }
 
-        int width = m_BML->GetRenderContext()->GetWidth();
-        int height = m_BML->GetRenderContext()->GetHeight();
-
         VxVector delta;
         m_InputHook->GetMouseRelativePosition(delta);
-        delta.x = static_cast<float>(std::fmod(delta.x, width));
-        delta.y = static_cast<float>(std::fmod(delta.y, height));
 
         vect = VxVector(0, 1, 0);
-        m_TravelCam->Rotate(&vect, -delta.x * 2 / width);
+        m_TravelCam->Rotate(&vect, (-delta.x / (float)utils::GetScreenWidth()) * 180.0f / PI);
         vect = VxVector(1, 0, 0);
-        m_TravelCam->Rotate(&vect, -delta.y * 2 / height, m_TravelCam);
+        m_TravelCam->Rotate(&vect, (-delta.y / (float)utils::GetScreenHeight()) * 180.0f / PI, m_TravelCam);
     } else if (m_CamOn->GetBoolean()) {
         if (m_InputHook->IsKeyPressed(m_Cam45->GetKey())) {
             vect = VxVector(0, 1, 0);
