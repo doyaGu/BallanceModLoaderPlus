@@ -1949,11 +1949,14 @@ void BMLMod::OnProcess_Travel() {
 
         VxVector delta;
         m_InputHook->GetMouseRelativePosition(delta);
-
-        vect = VxVector(0, 1, 0);
-        m_TravelCam->Rotate(&vect, (-delta.x / (float)utils::GetScreenWidth()) * 180.0f / PI);
-        vect = VxVector(1, 0, 0);
-        m_TravelCam->Rotate(&vect, (-delta.y / (float)utils::GetScreenHeight()) * 180.0f / PI, m_TravelCam);
+        if (delta.x != 0) {
+            vect = VxVector(0, 1, 0);
+            m_TravelCam->Rotate(&vect, (-delta.x / (float)utils::GetScreenWidth()) * 180.0f / PI);
+        }
+        if (delta.y != 0) {
+            vect = VxVector(1, 0, 0);
+            m_TravelCam->Rotate(&vect, (-delta.y / (float)utils::GetScreenHeight()) * 180.0f / PI, m_TravelCam);
+        }
     } else if (m_CamOn->GetBoolean()) {
         if (m_InputHook->IsKeyPressed(m_Cam45->GetKey())) {
             vect = VxVector(0, 1, 0);
