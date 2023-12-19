@@ -6,8 +6,8 @@
 
 #include "CKAll.h"
 
-#include "Defines.h"
-#include "IMessageReceiver.h"
+#include "BML/Defines.h"
+#include "BML/IMessageReceiver.h"
 
 class IMod;
 class IBML;

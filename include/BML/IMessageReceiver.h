@@ -1,7 +1,7 @@
 #ifndef BML_IMESSAGERECEIVER_H
 #define BML_IMESSAGERECEIVER_H
 
-#include "Export.h"
+#include "BML/Export.h"
 
 class BML_EXPORT IMessageReceiver {
     public:

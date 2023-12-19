@@ -1,4 +1,4 @@
-#include "Gui/Text.h"
+#include "BML/Gui/Text.h"
 
 #include "ModLoader.h"
 

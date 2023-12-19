@@ -1,4 +1,4 @@
-#include "InputHook.h"
+#include "BML/InputHook.h"
 #include "ModLoader.h"
 
 int KeyEvent(const CKBehaviorContext &behcontext)

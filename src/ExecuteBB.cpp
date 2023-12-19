@@ -1,7 +1,7 @@
-#include "ExecuteBB.h"
+#include "BML/ExecuteBB.h"
 
-#include "Defines.h"
-#include "ScriptHelper.h"
+#include "BML/Defines.h"
+#include "BML/ScriptHelper.h"
 #include "ModLoader.h"
 
 using namespace ScriptHelper;

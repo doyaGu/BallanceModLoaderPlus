@@ -1,4 +1,4 @@
-#include "Gui/Panel.h"
+#include "BML/Gui/Panel.h"
 
 #include "ModLoader.h"
 

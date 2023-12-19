@@ -1,7 +1,7 @@
-#include "Gui/Label.h"
+#include "BML/Gui/Label.h"
 
+#include "BML/ScriptHelper.h"
 #include "ModLoader.h"
-#include "ScriptHelper.h"
 
 namespace ExecuteBB {
     int GetFont(FontType type);

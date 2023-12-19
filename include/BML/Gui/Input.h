@@ -4,9 +4,9 @@
 #include <functional>
 #include <string>
 
-#include "Defines.h"
+#include "BML/Defines.h"
 
-#include "Gui/Label.h"
+#include "BML/Gui/Label.h"
 
 namespace BGui {
     class BML_EXPORT Input : public Label {

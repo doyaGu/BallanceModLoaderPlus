@@ -5,7 +5,7 @@
 
 #include "CKAll.h"
 
-#include "Export.h"
+#include "BML/Export.h"
 
 #define TEXT_SCREEN        1
 #define TEXT_BACKGROUND    2

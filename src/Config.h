@@ -9,8 +9,8 @@
 #include <sstream>
 #include <functional>
 
-#include "IConfig.h"
-#include "IMod.h"
+#include "BML/IConfig.h"
+#include "BML/IMod.h"
 
 class Config;
 

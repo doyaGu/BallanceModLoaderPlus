@@ -4,7 +4,7 @@
 #include "Vx2dVector.h"
 #include "VxColor.h"
 
-#include "Defines.h"
+#include "BML/Defines.h"
 
 namespace BGui {
     class BML_EXPORT Element {

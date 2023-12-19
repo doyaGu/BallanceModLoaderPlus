@@ -5,10 +5,10 @@
 
 #include "CKAll.h"
 
-#include "Defines.h"
-#include "ILogger.h"
-#include "ICommand.h"
-#include "IMessageReceiver.h"
+#include "BML/Defines.h"
+#include "BML/ILogger.h"
+#include "BML/ICommand.h"
+#include "BML/IMessageReceiver.h"
 
 class IMod;
 class InputHook;

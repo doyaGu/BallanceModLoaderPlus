@@ -3,10 +3,10 @@
 #include <map>
 #include <algorithm>
 
-#include "Gui.h"
-#include "InputHook.h"
-#include "ExecuteBB.h"
-#include "ScriptHelper.h"
+#include "BML/Gui.h"
+#include "BML/InputHook.h"
+#include "BML/ExecuteBB.h"
+#include "BML/ScriptHelper.h"
 #include "ModLoader.h"
 #include "Commands.h"
 #include "Config.h"
