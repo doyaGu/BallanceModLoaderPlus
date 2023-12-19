@@ -22,8 +22,6 @@ CKERROR PostProcess(void *arg) {
 
     ModLoader::GetInstance().PostProcess();
 
-    ImGui::ShowDemoWindow();
-
     Overlay::ImGuiRender();
     ImGui::SetCurrentContext(backupContext);
     return CK_OK;
