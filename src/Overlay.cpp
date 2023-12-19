@@ -1,4 +1,4 @@
-#include "BUI.h"
+#include "Overlay.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -18,7 +18,7 @@ extern HookApi *g_HookApi;
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-namespace BUI {
+namespace Overlay {
     typedef LRESULT (CALLBACK *LPFNWNDPROC)(HWND, UINT, WPARAM, LPARAM);
 
     ImGuiContext *g_ImGuiContext = nullptr;
@@ -30,9 +30,14 @@ namespace BUI {
     LPFNWNDPROC g_RenderWndProc = nullptr;
 
     LRESULT OnWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-        if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
-            return 1;
-        return 0;
+        ImGuiContext *const backupContext = ImGui::GetCurrentContext();
+        ImGui::SetCurrentContext(g_ImGuiContext);
+
+        LRESULT res = ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
+
+        ImGui::SetCurrentContext(backupContext);
+
+        return res;
     }
 
     LRESULT MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -74,11 +79,16 @@ namespace BUI {
         return moduleInfo.lpBaseOfDll;
     }
 
-    bool Init(CKContext *context, bool originalPlayer) {
+    ImGuiContext *GetImGuiContext() {
+        return g_ImGuiContext;
+    }
+
+    bool ImGuiInit(CKContext *context, bool originalPlayer) {
         if (!g_ImGuiReady) {
             // Setup Dear ImGui context
             IMGUI_CHECKVERSION();
 
+            ImGuiContext *const backupContext = ImGui::GetCurrentContext();
             g_ImGuiContext = ImGui::CreateContext();
             if (!g_ImGuiContext)
                 return false;
@@ -106,6 +116,8 @@ namespace BUI {
             if (!ImGui_ImplWin32_Init(context->GetMainWindow()))
                 return false;
 
+            // Restore previous context in case this was called from a new runtime.
+            ImGui::SetCurrentContext(backupContext);
             g_ImGuiReady = true;
         }
 
@@ -113,10 +125,13 @@ namespace BUI {
         return true;
     }
 
-    void Shutdown(CKContext *context, bool originalPlayer) {
+    void ImGuiShutdown(CKContext *context, bool originalPlayer) {
         g_RenderReady = false;
 
         if (g_ImGuiReady) {
+            ImGuiContext *const backupContext = ImGui::GetCurrentContext();
+            ImGui::SetCurrentContext(g_ImGuiContext);
+
             ImGui_ImplWin32_Shutdown();
             ImGui_ImplCK2_Shutdown();
 
@@ -130,11 +145,12 @@ namespace BUI {
             }
             ImGui::DestroyContext();
 
+            ImGui::SetCurrentContext(backupContext);
             g_ImGuiReady = false;
         }
     }
 
-    void NewFrame() {
+    void ImGuiNewFrame() {
         if (g_ImGuiReady) {
             ImGui_ImplCK2_NewFrame();
             ImGui_ImplWin32_NewFrame();
@@ -142,16 +158,21 @@ namespace BUI {
         }
     }
 
-    void Render() {
+    void ImGuiRender() {
         if (g_ImGuiReady) {
             ImGui::Render();
             g_RenderReady = true;
         }
     }
 
-    void OnRender() {
+    void ImGuiOnRender() {
         if (g_RenderReady) {
+            ImGuiContext *const backupContext = ImGui::GetCurrentContext();
+            ImGui::SetCurrentContext(g_ImGuiContext);
+
             ImGui_ImplCK2_RenderDrawData(ImGui::GetDrawData());
+
+            ImGui::SetCurrentContext(backupContext);
         }
     }
 }

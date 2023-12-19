@@ -25,12 +25,12 @@ set(BML_PUBLIC_HEADERS
 
 set(BML_PRIVATE_HEADERS
         ModLoader.h
-        BUI.h
 
         BMLMod.h
         NewBallTypeMod.h
         Commands.h
 
+        Overlay.h
         Logger.h
         Config.h
         Timer.h
@@ -43,7 +43,6 @@ set(BML_PRIVATE_HEADERS
 set(BML_SOURCES
         BML.cpp
         ModLoader.cpp
-        BUI.cpp
 
         IMod.cpp
         BMLMod.cpp
@@ -66,6 +65,7 @@ set(BML_SOURCES
         ExecuteBB.cpp
         ScriptHelper.cpp
 
+        Overlay.cpp
         Logger.cpp
         Config.cpp
         Timer.cpp
