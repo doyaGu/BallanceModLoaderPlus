@@ -69,7 +69,7 @@ public:
     bool IsIngame() override { return m_Ingame; }
     bool IsPaused() override { return m_Paused; }
     bool IsPlaying() override { return m_Ingame && !m_Paused; }
-    bool IsInLevel() { return m_InLevel && !m_Paused; }
+    bool IsInLevel() const { return m_InLevel && !m_Paused; }
     bool IsOriginalPlayer() const { return m_IsOriginalPlayer; }
 
     CKAttributeManager *GetAttributeManager() override { return m_AttributeManager; }
@@ -144,6 +144,8 @@ public:
         return (CKBehavior *)m_Context->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_BEHAVIOR);
     }
 
+    CKGroup *GetModGroup() { return m_ModGroup; }
+    CKDataArray *GetModInfo() { return m_ModInfo; }
     BMLMod *GetBMLMod() { return m_BMLMod; }
 
     void OpenModsMenu();
@@ -278,6 +280,10 @@ protected:
 
     void AddDataPath(const char *path);
 
+    bool CreateModGroup();
+    bool CreateModInfo();
+    void SaveModInfo(IMod *mod, CKDataArray *modObj);
+
     bool m_Initialized = false;
     bool m_ModsLoaded = false;
 
@@ -308,6 +314,10 @@ protected:
     CKRenderManager *m_RenderManager = nullptr;
     CKSoundManager *m_SoundManager = nullptr;
     CKTimeManager *m_TimeManager = nullptr;
+
+    CKLevel *m_Level = nullptr;
+    CKGroup *m_ModGroup = nullptr;
+    CKDataArray *m_ModInfo = nullptr;
 
     BMLMod *m_BMLMod = nullptr;
     NewBallTypeMod *m_BallTypeMod = nullptr;
