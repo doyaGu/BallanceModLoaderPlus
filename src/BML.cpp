@@ -30,9 +30,11 @@ CKERROR PostProcess(void *arg) {
 }
 
 CKERROR PreClearAll(void *arg) {
-    ModLoader::GetInstance().PreClearAll();
+    auto &loader = ModLoader::GetInstance();
 
-    BUI::Shutdown(g_CKContext);
+    loader.PreClearAll();
+
+    BUI::Shutdown(g_CKContext, loader.IsOriginalPlayer());
 
     return CK_OK;
 }
@@ -50,9 +52,11 @@ CKERROR OnCKEnd(void *arg) {
 }
 
 CKERROR OnCKPostReset(void *arg) {
-    BUI::Init(g_CKContext);
+    auto &loader = ModLoader::GetInstance();
 
-    return ModLoader::GetInstance().OnCKPostReset();
+    BUI::Init(g_CKContext, loader.IsOriginalPlayer());
+
+    return loader.OnCKPostReset();
 }
 
 CKERROR OnPostRender(CKRenderContext *dev, void *arg) {
