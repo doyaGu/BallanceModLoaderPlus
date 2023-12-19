@@ -4,7 +4,7 @@
 #include <Windows.h>
 
 #include "ModLoader.h"
-#include "BUI.h"
+#include "Overlay.h"
 
 #include "Hooks.h"
 
@@ -15,17 +15,17 @@ HMODULE g_DllHandle = nullptr;
 HookApi *g_HookApi = nullptr;
 CKContext *g_CKContext = nullptr;
 
-CKERROR PreProcess(void *arg) {
-    BUI::NewFrame();
-
-    return CK_OK;
-}
-
 CKERROR PostProcess(void *arg) {
+    ImGuiContext *const backupContext = ImGui::GetCurrentContext();
+    ImGui::SetCurrentContext(Overlay::GetImGuiContext());
+    Overlay::ImGuiNewFrame();
+
     ModLoader::GetInstance().PostProcess();
 
-    BUI::Render();
+    ImGui::ShowDemoWindow();
 
+    Overlay::ImGuiRender();
+    ImGui::SetCurrentContext(backupContext);
     return CK_OK;
 }
 
@@ -34,7 +34,7 @@ CKERROR PreClearAll(void *arg) {
 
     loader.PreClearAll();
 
-    BUI::Shutdown(g_CKContext, loader.IsOriginalPlayer());
+    Overlay::ImGuiShutdown(g_CKContext, loader.IsOriginalPlayer());
 
     return CK_OK;
 }
@@ -54,7 +54,7 @@ CKERROR OnCKEnd(void *arg) {
 CKERROR OnCKPostReset(void *arg) {
     auto &loader = ModLoader::GetInstance();
 
-    BUI::Init(g_CKContext, loader.IsOriginalPlayer());
+    Overlay::ImGuiInit(g_CKContext, loader.IsOriginalPlayer());
 
     return loader.OnCKPostReset();
 }
@@ -64,7 +64,7 @@ CKERROR OnPostRender(CKRenderContext *dev, void *arg) {
 }
 
 CKERROR OnPostSpriteRender(CKRenderContext *dev, void *arg) {
-    BUI::OnRender();
+    Overlay::ImGuiOnRender();
 
     return CK_OK;
 }
@@ -86,7 +86,6 @@ static int OnQuery(HookModuleQueryCode code, void *data1, void *data2) {
             break;
         case HMQC_CK2:
             *reinterpret_cast<int *>(data2) =
-                    CKHF_PreProcess |
                     CKHF_PostProcess |
                     CKHF_PreClearAll |
                     CKHF_OnCKInit |
@@ -125,10 +124,6 @@ static int OnUnload(size_t code, void * /* handle */) {
 
 static int OnSet(size_t code, void **pcb, void **parg) {
     switch (code) {
-        case CKHFI_PreProcess:
-            *pcb = reinterpret_cast<void*>(PreProcess);
-            *parg = nullptr;
-            break;
         case CKHFI_PostProcess:
             *pcb = reinterpret_cast<void*>(PostProcess);
             *parg = nullptr;
@@ -165,10 +160,6 @@ static int OnSet(size_t code, void **pcb, void **parg) {
 
 static int OnUnset(size_t code, void **pcb, void **parg) {
     switch (code) {
-        case CKHFI_PreProcess:
-            *pcb = reinterpret_cast<void*>(PreProcess);
-            *parg = nullptr;
-            break;
         case CKHFI_PostProcess:
             *pcb = reinterpret_cast<void*>(PostProcess);
             *parg = nullptr;
