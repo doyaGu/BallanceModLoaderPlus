@@ -120,6 +120,7 @@ target_link_libraries(BML
 target_compile_definitions(BML PRIVATE "BML_EXPORTS" "IMGUI_EXPORT")
 
 set_target_properties(BML PROPERTIES
+        OUTPUT_NAME "BMLPlus"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
