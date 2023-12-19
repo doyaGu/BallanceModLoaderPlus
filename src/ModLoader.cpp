@@ -498,16 +498,6 @@ void ModLoader::SkipRenderForNextTick() {
     AddTimer(1ul, [this]() { m_RenderContext->ChangeCurrentRenderOptions(CK_RENDER_DEFAULTSETTINGS, 0); });
 }
 
-CKERROR ModLoader::OnCKInit(CKContext *context) {
-    Init(context);
-    return CK_OK;
-}
-
-CKERROR ModLoader::OnCKEnd() {
-    Shutdown();
-    return CK_OK;
-}
-
 CKERROR ModLoader::OnCKPostReset() {
     if (!m_RenderManager) {
         m_RenderManager = m_Context->GetRenderManager();
@@ -526,10 +516,6 @@ CKERROR ModLoader::OnCKPostReset() {
 
 CKERROR ModLoader::PreClearAll() {
     UnloadMods();
-    return CK_OK;
-}
-
-CKERROR ModLoader::PreProcess() {
     return CK_OK;
 }
 
@@ -553,10 +539,6 @@ CKERROR ModLoader::PostProcess() {
 
 CKERROR ModLoader::OnPostRender(CKRenderContext *dev) {
     BroadcastCallback(&IMod::OnRender, static_cast<CK_RENDER_FLAGS>(dev->GetCurrentRenderOptions()));
-    return CK_OK;
-}
-
-CKERROR ModLoader::OnPostSpriteRender(CKRenderContext *dev) {
     return CK_OK;
 }
 

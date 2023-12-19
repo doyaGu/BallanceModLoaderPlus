@@ -4,6 +4,7 @@
 #include <Windows.h>
 
 #include "ModLoader.h"
+#include "BUI.h"
 
 #include "Hooks.h"
 
@@ -15,26 +16,42 @@ HookApi *g_HookApi = nullptr;
 CKContext *g_CKContext = nullptr;
 
 CKERROR PreProcess(void *arg) {
-    return ModLoader::GetInstance().PreProcess();
+    BUI::NewFrame();
+
+    return CK_OK;
 }
 
 CKERROR PostProcess(void *arg) {
-    return ModLoader::GetInstance().PostProcess();
+    ModLoader::GetInstance().PostProcess();
+
+    BUI::Render();
+
+    return CK_OK;
 }
 
 CKERROR PreClearAll(void *arg) {
-    return ModLoader::GetInstance().PreClearAll();
+    ModLoader::GetInstance().PreClearAll();
+
+    BUI::Shutdown(g_CKContext);
+
+    return CK_OK;
 }
 
 CKERROR OnCKInit(void *arg) {
-    return ModLoader::GetInstance().OnCKInit(g_CKContext);
+    ModLoader::GetInstance().Init(g_CKContext);
+
+    return CK_OK;
 }
 
 CKERROR OnCKEnd(void *arg) {
-    return ModLoader::GetInstance().OnCKEnd();
+    ModLoader::GetInstance().Shutdown();
+
+    return CK_OK;
 }
 
 CKERROR OnCKPostReset(void *arg) {
+    BUI::Init(g_CKContext);
+
     return ModLoader::GetInstance().OnCKPostReset();
 }
 
@@ -43,7 +60,9 @@ CKERROR OnPostRender(CKRenderContext *dev, void *arg) {
 }
 
 CKERROR OnPostSpriteRender(CKRenderContext *dev, void *arg) {
-    return ModLoader::GetInstance().OnPostSpriteRender(dev);
+    BUI::OnRender();
+
+    return CK_OK;
 }
 
 static int OnError(HookModuleErrorCode code, void *data1, void *data2) {
