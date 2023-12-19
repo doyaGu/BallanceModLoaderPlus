@@ -1,7 +1,7 @@
 #ifndef BML_ILOGGER_H
 #define BML_ILOGGER_H
 
-#include "Export.h"
+#include "BML/Export.h"
 
 class BML_EXPORT ILogger {
 public:

@@ -1,7 +1,7 @@
-#include "Gui/KeyInput.h"
+#include "BML/Gui/KeyInput.h"
 
+#include "BML/InputHook.h"
 #include "ModLoader.h"
-#include "InputHook.h"
 
 using namespace BGui;
 

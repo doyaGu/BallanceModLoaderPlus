@@ -3,9 +3,9 @@
 
 #include <functional>
 
-#include "Defines.h"
+#include "BML/Defines.h"
 
-#include "Gui/Input.h"
+#include "BML/Gui/Input.h"
 
 namespace BGui {
     class BML_EXPORT KeyInput : public Input {

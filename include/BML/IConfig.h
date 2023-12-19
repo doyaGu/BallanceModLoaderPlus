@@ -3,7 +3,7 @@
 
 #include "CKEnums.h"
 
-#include "Export.h"
+#include "BML/Export.h"
 
 class BML_EXPORT IProperty {
 public:

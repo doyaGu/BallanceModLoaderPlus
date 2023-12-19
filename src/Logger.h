@@ -3,7 +3,7 @@
 
 #include <cstdarg>
 
-#include "ILogger.h"
+#include "BML/ILogger.h"
 
 class BML_EXPORT Logger : public ILogger
 {

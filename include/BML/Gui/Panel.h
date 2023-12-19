@@ -1,9 +1,9 @@
 #ifndef BML_GUI_PANEL_H
 #define BML_GUI_PANEL_H
 
-#include "Defines.h"
+#include "BML/Defines.h"
 
-#include "Gui/Element.h"
+#include "BML/Gui/Element.h"
 
 namespace BGui {
     class BML_EXPORT Panel : public Element {

@@ -6,10 +6,10 @@
 #include <queue>
 #include <map>
 
-#include "Defines.h"
-#include "ICommand.h"
-#include "IMod.h"
-#include "Gui.h"
+#include "BML/Defines.h"
+#include "BML/ICommand.h"
+#include "BML/IMod.h"
+#include "BML/Gui.h"
 #include "ModLoader.h"
 
 #define MSG_MAXSIZE 35

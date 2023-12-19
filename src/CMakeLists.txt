@@ -1,29 +1,29 @@
-set(BMLPLUS_INC_DIR ${PROJECT_SOURCE_DIR}/include)
+set(BML_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/include)
 
-configure_file(Version.h.in "${BMLPLUS_INC_DIR}/BMLPlus/Version.h")
+configure_file(Version.h.in "${BML_INCLUDE_DIR}/BML/Version.h")
 
-set(BMLPLUS_PUBLIC_HDRS
-        ${BMLPLUS_INC_DIR}/BMLPlus/Export.h
-        ${BMLPLUS_INC_DIR}/BMLPlus/Version.h
-        ${BMLPLUS_INC_DIR}/BMLPlus/Defines.h
+set(BML_PUBLIC_HEADERS
+        ${BML_INCLUDE_DIR}/BML/Export.h
+        ${BML_INCLUDE_DIR}/BML/Version.h
+        ${BML_INCLUDE_DIR}/BML/Defines.h
 
-        ${BMLPLUS_INC_DIR}/BMLPlus/ILogger.h
-        ${BMLPLUS_INC_DIR}/BMLPlus/ICommand.h
-        ${BMLPLUS_INC_DIR}/BMLPlus/IConfig.h
-        ${BMLPLUS_INC_DIR}/BMLPlus/IMessageReceiver.h
-        ${BMLPLUS_INC_DIR}/BMLPlus/IBML.h
-        ${BMLPLUS_INC_DIR}/BMLPlus/IMod.h
+        ${BML_INCLUDE_DIR}/BML/ILogger.h
+        ${BML_INCLUDE_DIR}/BML/ICommand.h
+        ${BML_INCLUDE_DIR}/BML/IConfig.h
+        ${BML_INCLUDE_DIR}/BML/IMessageReceiver.h
+        ${BML_INCLUDE_DIR}/BML/IBML.h
+        ${BML_INCLUDE_DIR}/BML/IMod.h
 
-        ${BMLPLUS_INC_DIR}/BMLPlus/Gui.h
-        ${BMLPLUS_INC_DIR}/BMLPlus/InputHook.h
+        ${BML_INCLUDE_DIR}/BML/Gui.h
+        ${BML_INCLUDE_DIR}/BML/InputHook.h
 
-        ${BMLPLUS_INC_DIR}/BMLPlus/ExecuteBB.h
-        ${BMLPLUS_INC_DIR}/BMLPlus/ScriptHelper.h
+        ${BML_INCLUDE_DIR}/BML/ExecuteBB.h
+        ${BML_INCLUDE_DIR}/BML/ScriptHelper.h
 
-        ${BMLPLUS_INC_DIR}/BMLPlus/BMLAll.h
-        )
+        ${BML_INCLUDE_DIR}/BML/BMLAll.h
+)
 
-set(BMLPLUS_PRIVATE_HDRS
+set(BML_PRIVATE_HEADERS
         ModLoader.h
 
         BMLMod.h
@@ -37,9 +37,9 @@ set(BMLPLUS_PRIVATE_HDRS
         StringUtils.h
         PathUtils.h
         WindowUtils.h
-        )
+)
 
-set(BMLPLUS_SRCS
+set(BML_SOURCES
         BML.cpp
         ModLoader.cpp
 
@@ -72,68 +72,56 @@ set(BMLPLUS_SRCS
         WindowUtils.cpp
 
         BML.rc
-        )
-
-add_library(BMLPlus SHARED ${BMLPLUS_SRCS} ${BMLPLUS_PUBLIC_HDRS} ${BMLPLUS_PRIVATE_HDRS})
-target_include_directories(BMLPlus
-        PUBLIC
-            $<BUILD_INTERFACE:${BMLPLUS_INC_DIR}>
-        PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}
-            ${BMLPLUS_INC_DIR}/BMLPlus
-        )
-
-target_link_libraries(BMLPlus
-        PUBLIC
-            CK2 VxMath
-        PRIVATE
-            CKZlib
-        )
-
-target_compile_definitions(BMLPlus PRIVATE "BML_EXPORTS")
-
-set_target_properties(BMLPlus PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-        ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
-        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
 )
 
-if (NOT SKIP_INSTALL_LIBRARIES AND NOT SKIP_INSTALL_ALL)
-    target_include_directories(BMLPlus PUBLIC
-            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-            )
+add_library(BML SHARED ${BML_SOURCES} ${BML_PUBLIC_HEADERS} ${BML_PRIVATE_HEADERS})
 
-    install(TARGETS BMLPlus
-            EXPORT BMLPlus
-            ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-            LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-            RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-            )
+target_include_directories(BML
+        PUBLIC
+        $<BUILD_INTERFACE:${BML_INCLUDE_DIR}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+        PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
 
-    install(EXPORT BMLPlus
-            DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BMLPlus"
-            )
+target_link_libraries(BML
+        PUBLIC
+        CK2 VxMath
+        PRIVATE
+        CKZlib
+)
 
-    write_basic_package_version_file(${PROJECT_BINARY_DIR}/BMLPlus-config-version.cmake
-            COMPATIBILITY SameMajorVersion
-            )
+target_compile_definitions(BML PRIVATE "BML_EXPORTS")
 
-    set(BML_CONFIG_CONTENT "@PACKAGE_INIT@\n")
-    string(APPEND BML_CONFIG_CONTENT "include(\"\${PROJECT_SOURCE_DIR}/BMLPlus.cmake\")")
-    file(WRITE ${PROJECT_BINARY_DIR}/BMLPlus-config.cmake.in ${BML_CONFIG_CONTENT})
+set_target_properties(BML PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+)
 
-    configure_package_config_file(${PROJECT_BINARY_DIR}/BMLPlus-config.cmake.in
-            ${PROJECT_BINARY_DIR}/BMLPlus-config.cmake
-            INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BMLPlus"
-            )
+install(TARGETS BML EXPORT BMLTargets
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+)
 
-    install(FILES
-            ${PROJECT_BINARY_DIR}/BMLPlus-config-version.cmake
-            ${PROJECT_BINARY_DIR}/BMLPlus-config.cmake
-            DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BMLPlus"
-            )
-endif ()
+install(DIRECTORY "${BML_INCLUDE_DIR}/BML" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 
-if (NOT SKIP_INSTALL_HEADERS AND NOT SKIP_INSTALL_ALL)
-    install(DIRECTORY ${BMLPLUS_INC_DIR}/BMLPlus DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-endif ()
+install(EXPORT BMLTargets DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML")
+
+configure_package_config_file("${PROJECT_SOURCE_DIR}/cmake/BMLConfig.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/BMLConfig.cmake"
+        INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML"
+)
+
+write_basic_package_version_file(
+        "${CMAKE_CURRENT_BINARY_DIR}/BMLConfigVersion.cmake"
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMinorVersion
+)
+
+install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/BMLConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/BMLConfigVersion.cmake"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML"
+)

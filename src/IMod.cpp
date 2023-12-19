@@ -1,4 +1,4 @@
-#include "IMod.h"
+#include "BML/IMod.h"
 #include "Logger.h"
 #include "Config.h"
 #include "ModLoader.h"

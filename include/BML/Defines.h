@@ -1,9 +1,9 @@
 #ifndef BML_DEFINES_H
 #define BML_DEFINES_H
 
-#include "Version.h"
-#include "Export.h"
-#include "Guids.h"
+#include "BML/Version.h"
+#include "BML/Export.h"
+#include "BML/Guids.h"
 
 #include "CKDefines.h"
 

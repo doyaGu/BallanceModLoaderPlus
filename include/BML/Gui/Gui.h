@@ -4,16 +4,16 @@
 #include <functional>
 #include <vector>
 
-#include "Defines.h"
-#include "ExecuteBB.h"
+#include "BML/Defines.h"
+#include "BML/ExecuteBB.h"
 
-#include "Gui/Element.h"
-#include "Gui/Text.h"
-#include "Gui/Panel.h"
-#include "Gui/Label.h"
-#include "Gui/Button.h"
-#include "Gui/Input.h"
-#include "Gui/KeyInput.h"
+#include "BML/Gui/Element.h"
+#include "BML/Gui/Text.h"
+#include "BML/Gui/Panel.h"
+#include "BML/Gui/Label.h"
+#include "BML/Gui/Button.h"
+#include "BML/Gui/Input.h"
+#include "BML/Gui/KeyInput.h"
 
 namespace BGui {
     class BML_EXPORT Gui {

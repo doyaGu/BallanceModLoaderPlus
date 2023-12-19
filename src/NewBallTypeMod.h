@@ -4,8 +4,8 @@
 #include <string>
 #include <vector>
 
-#include "IMod.h"
-#include "Version.h"
+#include "BML/IMod.h"
+#include "BML/Version.h"
 
 struct BallTypeInfo {
     friend class NewBallTypeMod;

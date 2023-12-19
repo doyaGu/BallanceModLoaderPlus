@@ -1,8 +1,8 @@
-#include "Gui/Input.h"
+#include "BML/Gui/Input.h"
 
+#include "BML/InputHook.h"
+#include "BML/ScriptHelper.h"
 #include "ModLoader.h"
-#include "InputHook.h"
-#include "ScriptHelper.h"
 
 using namespace BGui;
 

@@ -9,7 +9,7 @@
 #include <direct.h>
 #include <io.h>
 
-#include "InputHook.h"
+#include "BML/InputHook.h"
 #include "Logger.h"
 #include "StringUtils.h"
 #include "PathUtils.h"

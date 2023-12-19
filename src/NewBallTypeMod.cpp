@@ -1,8 +1,8 @@
 #include "NewBallTypeMod.h"
 
-#include "IBML.h"
-#include "ExecuteBB.h"
-#include "ScriptHelper.h"
+#include "BML/IBML.h"
+#include "BML/ExecuteBB.h"
+#include "BML/ScriptHelper.h"
 
 using namespace ScriptHelper;
 

@@ -1,10 +1,10 @@
 #ifndef BML_GUI_LABEL_H
 #define BML_GUI_LABEL_H
 
-#include "Defines.h"
-#include "ExecuteBB.h"
+#include "BML/Defines.h"
+#include "BML/ExecuteBB.h"
 
-#include "Gui/Element.h"
+#include "BML/Gui/Element.h"
 
 namespace BGui {
     class BML_EXPORT Label : public Element {

@@ -1,4 +1,4 @@
-#include "Version.h"
+#include "BML/Version.h"
 #include "winres.h"
 
 // Version
@@ -23,9 +23,9 @@ BEGIN
             VALUE "CompanyName", "Gamepiaynmo & Kakuty"
             VALUE "FileDescription", "Mod Loader for Ballance"
             VALUE "FileVersion", BML_VERSION
-            VALUE "InternalName", "BMLPlus.dll"
+            VALUE "InternalName", "BML.dll"
             VALUE "LegalCopyright", "Copyright (C) 2022"
-            VALUE "OriginalFilename", "BMLPlus.dll"
+            VALUE "OriginalFilename", "BML.dll"
             VALUE "ProductName", "Ballance Mod Loader Plus"
             VALUE "ProductVersion", BML_VERSION
         END

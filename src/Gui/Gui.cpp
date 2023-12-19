@@ -1,9 +1,9 @@
-#include "Gui/Gui.h"
+#include "BML/Gui/Gui.h"
 
 #include <utility>
 
+#include "BML/InputHook.h"
 #include "ModLoader.h"
-#include "InputHook.h"
 
 using namespace BGui;
 

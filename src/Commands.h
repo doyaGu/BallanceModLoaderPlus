@@ -5,7 +5,7 @@
 
 #include "CKAll.h"
 
-#include "ICommand.h"
+#include "BML/ICommand.h"
 
 class BMLMod;
 

@@ -1,7 +1,8 @@
 #pragma once
 
-#include <BMLPlus/BMLAll.h>
 #include <thread>
+
+#include <BML/BMLAll.h>
 
 #define TICK_SPEED 8
 

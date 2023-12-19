@@ -3,7 +3,7 @@
 #include <memory>
 #include <thread>
 
-#include <BMLPlus/BMLAll.h>
+#include <BML/BMLAll.h>
 
 MOD_EXPORT IMod *BMLEntry(IBML *bml);
 MOD_EXPORT void BMLExit(IMod *mod);

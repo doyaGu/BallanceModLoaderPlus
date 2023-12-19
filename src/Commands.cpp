@@ -1,9 +1,9 @@
 #include "Commands.h"
 
-#include "Version.h"
+#include "BML/Version.h"
+#include "BML/ScriptHelper.h"
 #include "ModLoader.h"
 #include "BMLMod.h"
-#include "ScriptHelper.h"
 
 void CommandBML::Execute(IBML *bml, const std::vector<std::string> &args) {
     auto &loader = ModLoader::GetInstance();

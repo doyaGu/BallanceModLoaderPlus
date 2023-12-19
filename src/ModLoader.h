@@ -11,11 +11,10 @@
 
 #include "CKAll.h"
 
-#include "IBML.h"
-#include "IMod.h"
+#include "BML/IBML.h"
+#include "BML/IMod.h"
 #include "Config.h"
 #include "Timer.h"
-#include "Gui.h"
 
 class BMLMod;
 class NewBallTypeMod;

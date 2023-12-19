@@ -1,9 +1,9 @@
 #ifndef BML_GUI_TEXT_H
 #define BML_GUI_TEXT_H
 
-#include "Defines.h"
+#include "BML/Defines.h"
 
-#include "Gui/Element.h"
+#include "BML/Gui/Element.h"
 
 namespace BGui {
     class BML_EXPORT Text : private Element {

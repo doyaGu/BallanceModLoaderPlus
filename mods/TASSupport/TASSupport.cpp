@@ -4,7 +4,7 @@
 #include <ctime>
 #include <sys/stat.h>
 
-#include <BMLPlus/HookManager.h>
+#include <BML/HookManager.h>
 
 TASSupport *g_Mod = nullptr;
 
