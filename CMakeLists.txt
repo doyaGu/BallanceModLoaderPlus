@@ -9,7 +9,7 @@ set(CMAKE_CXX_EXTENSIONS YES)
 option(BML_BUILD_MODS "Build mods" ON)
 
 # Add path for custom modules
-list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}/CMake")
+list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include(GenerateExportHeader)
 include(GNUInstallDirs)
