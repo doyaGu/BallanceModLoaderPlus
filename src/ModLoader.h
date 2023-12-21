@@ -193,7 +193,7 @@ public:
     }
 
     CKERROR OnCKPostReset();
-    CKERROR PreClearAll();
+    CKERROR OnCKReset();
 
     CKERROR PostProcess();
 

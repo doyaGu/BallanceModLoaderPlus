@@ -542,7 +542,7 @@ CKERROR ModLoader::OnCKPostReset() {
     return CK_OK;
 }
 
-CKERROR ModLoader::PreClearAll() {
+CKERROR ModLoader::OnCKReset() {
     UnloadMods();
 
     m_CallbackMap.clear();
