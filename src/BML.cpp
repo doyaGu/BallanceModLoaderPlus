@@ -27,16 +27,6 @@ CKERROR PostProcess(void *arg) {
     return CK_OK;
 }
 
-CKERROR PreClearAll(void *arg) {
-    auto &loader = ModLoader::GetInstance();
-
-    loader.PreClearAll();
-
-    Overlay::ImGuiShutdown(g_CKContext, loader.IsOriginalPlayer());
-
-    return CK_OK;
-}
-
 CKERROR OnCKInit(void *arg) {
     ModLoader::GetInstance().Init(g_CKContext);
 
@@ -45,6 +35,16 @@ CKERROR OnCKInit(void *arg) {
 
 CKERROR OnCKEnd(void *arg) {
     ModLoader::GetInstance().Shutdown();
+
+    return CK_OK;
+}
+
+CKERROR OnCKReset(void *arg) {
+    auto &loader = ModLoader::GetInstance();
+
+    loader.OnCKReset();
+
+    Overlay::ImGuiShutdown(g_CKContext, loader.IsOriginalPlayer());
 
     return CK_OK;
 }
@@ -85,9 +85,9 @@ static int OnQuery(HookModuleQueryCode code, void *data1, void *data2) {
         case HMQC_CK2:
             *reinterpret_cast<int *>(data2) =
                     CKHF_PostProcess |
-                    CKHF_PreClearAll |
                     CKHF_OnCKInit |
                     CKHF_OnCKEnd |
+                    CKHF_OnCKReset |
                     CKHF_OnCKPostReset |
                     CKHF_OnPostRender |
                     CKHF_OnPostSpriteRender;
@@ -126,16 +126,16 @@ static int OnSet(size_t code, void **pcb, void **parg) {
             *pcb = reinterpret_cast<void*>(PostProcess);
             *parg = nullptr;
             break;
-        case CKHFI_PreClearAll:
-            *pcb = reinterpret_cast<void *>(PreClearAll);
-            *parg = nullptr;
-            break;
         case CKHFI_OnCKInit:
             *pcb = reinterpret_cast<void*>(OnCKInit);
             *parg = nullptr;
             break;
         case CKHFI_OnCKEnd:
             *pcb = reinterpret_cast<void*>(OnCKEnd);
+            *parg = nullptr;
+            break;
+        case CKHFI_OnCKReset:
+            *pcb = reinterpret_cast<void *>(OnCKReset);
             *parg = nullptr;
             break;
         case CKHFI_OnCKPostReset:
@@ -162,16 +162,16 @@ static int OnUnset(size_t code, void **pcb, void **parg) {
             *pcb = reinterpret_cast<void*>(PostProcess);
             *parg = nullptr;
             break;
-        case CKHFI_PreClearAll:
-            *pcb = reinterpret_cast<void *>(PreClearAll);
-            *parg = nullptr;
-            break;
         case CKHFI_OnCKInit:
             *pcb = reinterpret_cast<void*>(OnCKInit);
             *parg = nullptr;
             break;
         case CKHFI_OnCKEnd:
             *pcb = reinterpret_cast<void*>(OnCKEnd);
+            *parg = nullptr;
+            break;
+        case CKHFI_OnCKReset:
+            *pcb = reinterpret_cast<void *>(OnCKReset);
             *parg = nullptr;
             break;
         case CKHFI_OnCKPostReset:
