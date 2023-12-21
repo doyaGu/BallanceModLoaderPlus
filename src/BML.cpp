@@ -126,7 +126,7 @@ static int OnSet(size_t code, void **pcb, void **parg) {
             *pcb = reinterpret_cast<void*>(PostProcess);
             *parg = nullptr;
             break;
-        case CKHF_PreClearAll:
+        case CKHFI_PreClearAll:
             *pcb = reinterpret_cast<void *>(PreClearAll);
             *parg = nullptr;
             break;
@@ -162,7 +162,7 @@ static int OnUnset(size_t code, void **pcb, void **parg) {
             *pcb = reinterpret_cast<void*>(PostProcess);
             *parg = nullptr;
             break;
-        case CKHF_PreClearAll:
+        case CKHFI_PreClearAll:
             *pcb = reinterpret_cast<void *>(PreClearAll);
             *parg = nullptr;
             break;
