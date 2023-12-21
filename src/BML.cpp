@@ -54,7 +54,14 @@ CKERROR OnCKPostReset(void *arg) {
 
     Overlay::ImGuiInit(g_CKContext, loader.IsOriginalPlayer());
 
-    return loader.OnCKPostReset();
+    ImGuiContext *const backupContext = ImGui::GetCurrentContext();
+    ImGui::SetCurrentContext(Overlay::GetImGuiContext());
+
+    loader.OnCKPostReset();
+
+    ImGui::SetCurrentContext(backupContext);
+
+    return CK_OK;
 }
 
 CKERROR OnPostRender(CKRenderContext *dev, void *arg) {
