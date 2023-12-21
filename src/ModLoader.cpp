@@ -108,6 +108,15 @@ void ModLoader::UnloadMods() {
     if (!AreModsLoaded())
         return;
 
+    for (auto rit = m_Mods.rbegin(); rit != m_Mods.rend(); ++rit) {
+        auto *mod = *rit;
+        mod->OnUnload();
+    }
+
+    for (auto rit = m_Configs.rbegin(); rit != m_Configs.rend(); ++rit) {
+        SaveConfig(*rit);
+    }
+
     std::vector<std::string> modNames;
     modNames.reserve(m_Mods.size());
     for (auto *mod: m_Mods) {
@@ -118,9 +127,6 @@ void ModLoader::UnloadMods() {
         UnloadMod(rit->c_str());
     }
 
-    for (auto rit = m_Configs.rbegin(); rit != m_Configs.rend(); ++rit) {
-        RemoveConfig(*rit);
-    }
     m_Configs.clear();
 
     m_Commands.clear();
@@ -538,6 +544,8 @@ CKERROR ModLoader::OnCKPostReset() {
 
 CKERROR ModLoader::PreClearAll() {
     UnloadMods();
+
+    m_CallbackMap.clear();
 
     m_ModInfo->Clear();
     m_Context->DestroyObject(m_ModInfo);
@@ -1081,8 +1089,6 @@ bool ModLoader::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) {
 bool ModLoader::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) {
     if (!mod)
         return false;
-
-    mod->OnUnload();
 
     auto it = m_ModMap.find(mod->GetID());
     if (it == m_ModMap.end())
