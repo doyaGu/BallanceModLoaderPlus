@@ -4,7 +4,6 @@
 #include <Windows.h>
 
 #include "ModLoader.h"
-#include "Overlay.h"
 
 #include "Hooks.h"
 
@@ -16,52 +15,25 @@ HookApi *g_HookApi = nullptr;
 CKContext *g_CKContext = nullptr;
 
 CKERROR PostProcess(void *arg) {
-    ImGuiContext *const backupContext = ImGui::GetCurrentContext();
-    ImGui::SetCurrentContext(Overlay::GetImGuiContext());
-    Overlay::ImGuiNewFrame();
-
-    ModLoader::GetInstance().PostProcess();
-
-    Overlay::ImGuiRender();
-    ImGui::SetCurrentContext(backupContext);
-    return CK_OK;
+    return ModLoader::GetInstance().PostProcess();
 }
 
 CKERROR OnCKInit(void *arg) {
     ModLoader::GetInstance().Init(g_CKContext);
-
     return CK_OK;
 }
 
 CKERROR OnCKEnd(void *arg) {
     ModLoader::GetInstance().Shutdown();
-
     return CK_OK;
 }
 
 CKERROR OnCKReset(void *arg) {
-    auto &loader = ModLoader::GetInstance();
-
-    loader.OnCKReset();
-
-    Overlay::ImGuiShutdown(g_CKContext, loader.IsOriginalPlayer());
-
-    return CK_OK;
+    return ModLoader::GetInstance().OnCKReset();
 }
 
 CKERROR OnCKPostReset(void *arg) {
-    auto &loader = ModLoader::GetInstance();
-
-    Overlay::ImGuiInit(g_CKContext, loader.IsOriginalPlayer());
-
-    ImGuiContext *const backupContext = ImGui::GetCurrentContext();
-    ImGui::SetCurrentContext(Overlay::GetImGuiContext());
-
-    loader.OnCKPostReset();
-
-    ImGui::SetCurrentContext(backupContext);
-
-    return CK_OK;
+    return ModLoader::GetInstance().OnCKPostReset();
 }
 
 CKERROR OnPostRender(CKRenderContext *dev, void *arg) {
@@ -69,9 +41,7 @@ CKERROR OnPostRender(CKRenderContext *dev, void *arg) {
 }
 
 CKERROR OnPostSpriteRender(CKRenderContext *dev, void *arg) {
-    Overlay::ImGuiOnRender();
-
-    return CK_OK;
+    return ModLoader::GetInstance().OnPostSpriteRender(dev);
 }
 
 static int OnError(HookModuleErrorCode code, void *data1, void *data2) {

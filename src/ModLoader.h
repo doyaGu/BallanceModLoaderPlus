@@ -198,6 +198,7 @@ public:
     CKERROR PostProcess();
 
     CKERROR OnPostRender(CKRenderContext *dev);
+    CKERROR OnPostSpriteRender(CKRenderContext *dev);
 
     void OnPreStartMenu() override;
     void OnPostStartMenu() override;
