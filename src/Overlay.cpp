@@ -118,16 +118,15 @@ namespace Overlay {
 
             // Restore previous context in case this was called from a new runtime.
             ImGui::SetCurrentContext(backupContext);
+
+            g_RenderReady = false;
             g_ImGuiReady = true;
         }
 
-        g_RenderReady = false;
         return true;
     }
 
     void ImGuiShutdown(CKContext *context, bool originalPlayer) {
-        g_RenderReady = false;
-
         if (g_ImGuiReady) {
             ImGuiContext *const backupContext = ImGui::GetCurrentContext();
             ImGui::SetCurrentContext(g_ImGuiContext);
@@ -146,12 +145,15 @@ namespace Overlay {
             ImGui::DestroyContext();
 
             ImGui::SetCurrentContext(backupContext);
+
+            g_RenderReady = false;
             g_ImGuiReady = false;
         }
     }
 
     void ImGuiNewFrame() {
         if (g_ImGuiReady) {
+            g_RenderReady = false;
             ImGui_ImplCK2_NewFrame();
             ImGui_ImplWin32_NewFrame();
             ImGui::NewFrame();
