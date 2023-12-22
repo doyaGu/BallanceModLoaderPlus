@@ -117,6 +117,11 @@ void ModLoader::UnloadMods() {
         SaveConfig(*rit);
     }
 
+    m_CallbackMap.clear();
+    m_Configs.clear();
+    m_Commands.clear();
+    m_CommandMap.clear();
+
     std::vector<std::string> modNames;
     modNames.reserve(m_Mods.size());
     for (auto *mod: m_Mods) {
@@ -126,11 +131,6 @@ void ModLoader::UnloadMods() {
     for (auto rit = modNames.rbegin(); rit != modNames.rend(); ++rit) {
         UnloadMod(rit->c_str());
     }
-
-    m_Configs.clear();
-
-    m_Commands.clear();
-    m_CommandMap.clear();
 
     m_ModsLoaded = false;
 }
@@ -544,8 +544,6 @@ CKERROR ModLoader::OnCKPostReset() {
 
 CKERROR ModLoader::OnCKReset() {
     UnloadMods();
-
-    m_CallbackMap.clear();
 
     m_ModInfo->Clear();
     m_Context->DestroyObject(m_ModInfo);
