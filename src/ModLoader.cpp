@@ -481,7 +481,7 @@ void ModLoader::SkipRenderForNextTick() {
 }
 
 CKERROR ModLoader::OnCKPostReset() {
-    if (AreModsLoaded())
+    if (!IsInitialized() || AreModsLoaded())
         return CK_OK;
 
     m_RenderManager = m_Context->GetRenderManager();
@@ -550,7 +550,7 @@ CKERROR ModLoader::OnCKPostReset() {
 }
 
 CKERROR ModLoader::OnCKReset() {
-    if (!AreModsLoaded())
+    if (!IsInitialized() || !AreModsLoaded())
         return CK_OK;
 
     UnloadMods();
