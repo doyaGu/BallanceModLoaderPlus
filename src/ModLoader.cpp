@@ -11,6 +11,7 @@
 
 #include "BML/InputHook.h"
 #include "Logger.h"
+#include "Overlay.h"
 #include "StringUtils.h"
 #include "PathUtils.h"
 
@@ -480,15 +481,19 @@ void ModLoader::SkipRenderForNextTick() {
 }
 
 CKERROR ModLoader::OnCKPostReset() {
-    if (!m_RenderManager) {
-        m_RenderManager = m_Context->GetRenderManager();
-        m_Logger->Info("Get Render Manager pointer 0x%08x", m_RenderManager);
-    }
+    if (AreModsLoaded())
+        return CK_OK;
 
-    if (!m_RenderContext) {
-        m_RenderContext = m_Context->GetPlayerRenderContext();
-        m_Logger->Info("Get Render Context pointer 0x%08x", m_RenderContext);
-    }
+    m_RenderManager = m_Context->GetRenderManager();
+    m_Logger->Info("Get Render Manager pointer 0x%08x", m_RenderManager);
+
+    m_RenderContext = m_Context->GetPlayerRenderContext();
+    m_Logger->Info("Get Render Context pointer 0x%08x", m_RenderContext);
+
+    Overlay::ImGuiInit(m_Context, IsOriginalPlayer());
+
+    ImGuiContext *const backupContext = ImGui::GetCurrentContext();
+    ImGui::SetCurrentContext(Overlay::GetImGuiContext());
 
     m_Level = m_Context->GetCurrentLevel();
     if (!m_Level) {
@@ -539,10 +544,15 @@ CKERROR ModLoader::OnCKPostReset() {
         }
     }
 
+    ImGui::SetCurrentContext(backupContext);
+
     return CK_OK;
 }
 
 CKERROR ModLoader::OnCKReset() {
+    if (!AreModsLoaded())
+        return CK_OK;
+
     UnloadMods();
 
     m_ModInfo->Clear();
@@ -561,10 +571,16 @@ CKERROR ModLoader::OnCKReset() {
     m_ModGroup->Clear();
     m_Context->DestroyObject(m_ModGroup);
 
+    Overlay::ImGuiShutdown(m_Context, IsOriginalPlayer());
+
     return CK_OK;
 }
 
 CKERROR ModLoader::PostProcess() {
+    ImGuiContext *const backupContext = ImGui::GetCurrentContext();
+    ImGui::SetCurrentContext(Overlay::GetImGuiContext());
+    Overlay::ImGuiNewFrame();
+
     for (auto iter = m_Timers.begin(); iter != m_Timers.end();) {
         if (!iter->Process(m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime()))
             iter = m_Timers.erase(iter);
@@ -573,6 +589,9 @@ CKERROR ModLoader::PostProcess() {
     }
 
     BroadcastCallback(&IMod::OnProcess);
+
+    Overlay::ImGuiRender();
+    ImGui::SetCurrentContext(backupContext);
 
     m_InputHook->Process();
 
@@ -584,6 +603,11 @@ CKERROR ModLoader::PostProcess() {
 
 CKERROR ModLoader::OnPostRender(CKRenderContext *dev) {
     BroadcastCallback(&IMod::OnRender, static_cast<CK_RENDER_FLAGS>(dev->GetCurrentRenderOptions()));
+    return CK_OK;
+}
+
+CKERROR ModLoader::OnPostSpriteRender(CKRenderContext *dev) {
+    Overlay::ImGuiOnRender();
     return CK_OK;
 }
 
