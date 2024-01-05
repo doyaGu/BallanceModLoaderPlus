@@ -101,6 +101,8 @@ namespace Bui {
             case BUTTON_PLUS:
             case BUTTON_MINUS:
                 return {vpSize.x * 0.0200f, vpSize.y * 0.0267f};
+            default:
+                return {0.0f, 0.0f};
         }
     }
 
@@ -116,12 +118,7 @@ namespace Bui {
                 return vpSize.x * 0.05f;
             case BUTTON_LEVEL:
                 return vpSize.x * 0.032f;
-            case BUTTON_KEY:
-            case BUTTON_SMALL:
-            case BUTTON_LEFT:
-            case BUTTON_RIGHT:
-            case BUTTON_PLUS:
-            case BUTTON_MINUS:
+            default:
                 return 0.0f;
         }
     }
