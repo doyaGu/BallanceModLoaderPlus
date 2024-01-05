@@ -61,7 +61,7 @@ public:
     bool LoadConfig(Config *config);
     bool SaveConfig(Config *config);
 
-    CKContext *GetCKContext() override { return m_Context; }
+    CKContext *GetCKContext() override { return m_CKContext; }
     CKRenderContext *GetRenderContext() override { return m_RenderContext; }
 
     void ExitGame() override { m_Exiting = true; }
@@ -102,46 +102,46 @@ public:
     void Show(CKBeObject *obj, CK_OBJECT_SHOWOPTION show, bool hierarchy = false) override;
 
     CKDataArray *GetArrayByName(const char *name) override {
-        return (CKDataArray *)m_Context->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_DATAARRAY);
+        return (CKDataArray *)m_CKContext->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_DATAARRAY);
     }
     CKGroup *GetGroupByName(const char *name) override {
-        return (CKGroup *)m_Context->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_GROUP);
+        return (CKGroup *)m_CKContext->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_GROUP);
     }
     CKMaterial *GetMaterialByName(const char *name) override {
-        return (CKMaterial *)m_Context->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_MATERIAL);
+        return (CKMaterial *)m_CKContext->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_MATERIAL);
     }
     CKMesh *GetMeshByName(const char *name) override {
-        return (CKMesh *)m_Context->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_MESH);
+        return (CKMesh *)m_CKContext->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_MESH);
     }
     CK2dEntity *Get2dEntityByName(const char *name) override {
-        return (CK2dEntity *)m_Context->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_2DENTITY);
+        return (CK2dEntity *)m_CKContext->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_2DENTITY);
     }
     CK3dEntity *Get3dEntityByName(const char *name) override {
-        return (CK3dEntity *)m_Context->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_3DENTITY);
+        return (CK3dEntity *)m_CKContext->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_3DENTITY);
     }
     CK3dObject *Get3dObjectByName(const char *name) override {
-        return (CK3dObject *)m_Context->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_3DOBJECT);
+        return (CK3dObject *)m_CKContext->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_3DOBJECT);
     }
     CKCamera *GetCameraByName(const char *name) override {
-        return (CKCamera *)m_Context->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_CAMERA);
+        return (CKCamera *)m_CKContext->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_CAMERA);
     }
     CKTargetCamera *GetTargetCameraByName(const char *name) override {
-        return (CKTargetCamera *)m_Context->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_TARGETCAMERA);
+        return (CKTargetCamera *)m_CKContext->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_TARGETCAMERA);
     }
     CKLight *GetLightByName(const char *name) override {
-        return (CKLight *)m_Context->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_LIGHT);
+        return (CKLight *)m_CKContext->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_LIGHT);
     }
     CKTargetLight *GetTargetLightByName(const char *name) override {
-        return (CKTargetLight *)m_Context->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_TARGETLIGHT);
+        return (CKTargetLight *)m_CKContext->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_TARGETLIGHT);
     }
     CKSound *GetSoundByName(const char *name) override {
-        return (CKSound *)m_Context->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_SOUND);
+        return (CKSound *)m_CKContext->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_SOUND);
     }
     CKTexture *GetTextureByName(const char *name) override {
-        return (CKTexture *)m_Context->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_TEXTURE);
+        return (CKTexture *)m_CKContext->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_TEXTURE);
     }
     CKBehavior *GetScriptByName(const char *name) override {
-        return (CKBehavior *)m_Context->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_BEHAVIOR);
+        return (CKBehavior *)m_CKContext->GetObjectByNameAndClass(TOCKSTRING(name), CKCID_BEHAVIOR);
     }
 
     BMLMod *GetBMLMod() { return m_BMLMod; }
@@ -296,7 +296,7 @@ protected:
     FILE *m_Logfile = nullptr;
     ILogger *m_Logger = nullptr;
 
-    CKContext *m_Context = nullptr;
+    CKContext *m_CKContext = nullptr;
     CKRenderContext *m_RenderContext = nullptr;
 
     CKAttributeManager *m_AttributeManager = nullptr;
