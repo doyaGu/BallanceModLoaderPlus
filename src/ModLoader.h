@@ -39,6 +39,7 @@ public:
 
     bool IsInitialized() const { return m_Initialized; }
     bool AreModsLoaded() const { return m_ModsLoaded; }
+    bool AreModsLoadedOnce() const { return m_ModsLoadedOnce; }
 
     void Init(CKContext *context);
     void Shutdown();
@@ -279,6 +280,7 @@ protected:
 
     bool m_Initialized = false;
     bool m_ModsLoaded = false;
+    bool m_ModsLoadedOnce = false;
 
     bool m_Exiting = false;
     bool m_Ingame = false;

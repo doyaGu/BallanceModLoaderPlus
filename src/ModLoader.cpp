@@ -67,7 +67,7 @@ void ModLoader::Init(CKContext *context) {
 }
 
 void ModLoader::Shutdown() {
-    if (m_Initialized) {
+    if (IsInitialized()) {
         m_Logger->Info("Releasing Mod Loader");
 
         delete m_InputHook;
@@ -103,6 +103,7 @@ void ModLoader::LoadMods() {
     }
 
     m_ModsLoaded = true;
+    m_ModsLoadedOnce = true;
 }
 
 void ModLoader::UnloadMods() {
@@ -481,7 +482,7 @@ void ModLoader::SkipRenderForNextTick() {
 }
 
 CKERROR ModLoader::OnCKPostReset() {
-    if (!IsInitialized() || AreModsLoaded())
+    if (!IsInitialized() || AreModsLoaded() || AreModsLoadedOnce())
         return CK_OK;
 
     m_RenderManager = m_CKContext->GetRenderManager();
