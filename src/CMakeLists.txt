@@ -14,6 +14,7 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/IBML.h
         ${BML_INCLUDE_DIR}/BML/IMod.h
 
+        ${BML_INCLUDE_DIR}/BML/Bui.h
         ${BML_INCLUDE_DIR}/BML/Gui.h
         ${BML_INCLUDE_DIR}/BML/InputHook.h
 
@@ -49,6 +50,9 @@ set(BML_SOURCES
         NewBallTypeMod.cpp
         Commands.cpp
 
+        Bui.cpp
+        Overlay.cpp
+
         Gui/Element.cpp
         Gui/Text.cpp
         Gui/Panel.cpp
@@ -65,7 +69,6 @@ set(BML_SOURCES
         ExecuteBB.cpp
         ScriptHelper.cpp
 
-        Overlay.cpp
         Logger.cpp
         Config.cpp
         Timer.cpp
