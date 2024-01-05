@@ -495,32 +495,11 @@ CKERROR ModLoader::OnCKPostReset() {
     ImGuiContext *const backupContext = ImGui::GetCurrentContext();
     ImGui::SetCurrentContext(Overlay::GetImGuiContext());
 
-    m_Level = m_Context->GetCurrentLevel();
-    if (!m_Level) {
-        m_Logger->Error("Failed to acquire the current level");
-        return CKERR_INVALIDPARAMETER;
-    }
-
-    if (!CreateModGroup())
-        m_Logger->Error("Failed to create mod group");
-
-    if (!CreateModInfo())
-        m_Logger->Error("Failed to create the data array for mods");
-
     LoadMods();
 
     for (IMod *mod: m_Mods) {
         m_Logger->Info("Loading Mod %s[%s] v%s by %s",
                        mod->GetID(), mod->GetName(), mod->GetVersion(), mod->GetAuthor());
-
-        auto *modObj = (CKDataArray *)m_Context->CreateObject(CKCID_DATAARRAY, (CKSTRING)mod->GetID(), CK_OBJECTCREATION_DYNAMIC);
-        if (modObj) {
-            m_ModGroup->AddObject(modObj);
-        } else {
-            m_Logger->Error("Failed to create the object for mod: %s", mod->GetID());
-        }
-
-        SaveModInfo(mod, modObj);
 
         FillCallbackMap(mod);
         mod->OnLoad();
@@ -554,22 +533,6 @@ CKERROR ModLoader::OnCKReset() {
         return CK_OK;
 
     UnloadMods();
-
-    m_ModInfo->Clear();
-    m_Context->DestroyObject(m_ModInfo);
-
-    const int count = m_ModGroup->GetObjectCount();
-    for (int i = 0; i < count; ++i) {
-        CKBeObject *obj = m_ModGroup->GetObject(i);
-        const int scriptCount = obj->GetScriptCount();
-        for (int j = 0; j < scriptCount; ++j) {
-            CKBehavior *script = obj->GetScript(i);
-            m_Context->DestroyObject(script);
-        }
-        m_Context->DestroyObject(obj);
-    }
-    m_ModGroup->Clear();
-    m_Context->DestroyObject(m_ModGroup);
 
     Overlay::ImGuiShutdown(m_Context, IsOriginalPlayer());
 
@@ -1252,40 +1215,4 @@ void ModLoader::AddDataPath(const char *path) {
         m_PathManager->AddPath(BITMAP_PATH_IDX, texturePath);
     if (utils::DirectoryExists(soundPath.CStr()))
         m_PathManager->AddPath(SOUND_PATH_IDX, soundPath);
-}
-
-bool ModLoader::CreateModGroup() {
-    m_ModGroup = (CKGroup *)m_Context->CreateObject(CKCID_GROUP, "Mods", CK_OBJECTCREATION_DYNAMIC);
-    if (!m_ModGroup)
-        return false;
-
-    m_Level->AddObject(m_ModGroup);
-    return true;
-}
-
-bool ModLoader::CreateModInfo() {
-    m_ModInfo = (CKDataArray *)m_Context->CreateObject(CKCID_DATAARRAY, "ModInfos", CK_OBJECTCREATION_DYNAMIC);
-    if (!m_ModInfo)
-        return false;
-
-    m_Level->AddObject(m_ModInfo);
-
-    m_ModInfo->InsertColumn(-1, CKARRAYTYPE_STRING, "ID");
-    m_ModInfo->InsertColumn(-1, CKARRAYTYPE_STRING, "Version");
-    m_ModInfo->InsertColumn(-1, CKARRAYTYPE_STRING, "Name");
-    m_ModInfo->InsertColumn(-1, CKARRAYTYPE_STRING, "Author");
-    m_ModInfo->InsertColumn(-1, CKARRAYTYPE_STRING, "Description");
-    m_ModInfo->InsertColumn(-1, CKARRAYTYPE_OBJECT, "Object");
-
-    return true;
-}
-
-void ModLoader::SaveModInfo(IMod *mod, CKDataArray *modObj) {
-    CKDataRow *row = m_ModInfo->InsertRow(-1);
-    (*row)[0] = (CKDWORD)CKStrdup((CKSTRING)mod->GetID());
-    (*row)[1] = (CKDWORD)CKStrdup((CKSTRING)mod->GetVersion());
-    (*row)[2] = (CKDWORD)CKStrdup((CKSTRING)mod->GetName());
-    (*row)[3] = (CKDWORD)CKStrdup((CKSTRING)mod->GetAuthor());
-    (*row)[4] = (CKDWORD)CKStrdup((CKSTRING)mod->GetDescription());
-    (*row)[5] = modObj->GetID();
 }
