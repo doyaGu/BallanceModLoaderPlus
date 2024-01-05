@@ -55,7 +55,7 @@ void ModLoader::Init(CKContext *context) {
     m_Logger->Info("VxMath.dll Address: 0x%08x", ::GetModuleHandleA("VxMath.dll"));
 #endif
 
-    m_Context = context;
+    m_CKContext = context;
 
     GetManagers();
 
@@ -362,7 +362,7 @@ void ModLoader::AddTimerLoop(float delay, std::function<bool()> callback) {
 }
 
 void ModLoader::SetIC(CKBeObject *obj, bool hierarchy) {
-    m_Context->GetCurrentScene()->SetObjectInitialValue(obj, CKSaveObjectState(obj));
+    m_CKContext->GetCurrentScene()->SetObjectInitialValue(obj, CKSaveObjectState(obj));
 
     if (hierarchy) {
         if (CKIsChildClassOf(obj, CKCID_2DENTITY)) {
@@ -379,7 +379,7 @@ void ModLoader::SetIC(CKBeObject *obj, bool hierarchy) {
 }
 
 void ModLoader::RestoreIC(CKBeObject *obj, bool hierarchy) {
-    CKStateChunk *chunk = m_Context->GetCurrentScene()->GetObjectInitialValue(obj);
+    CKStateChunk *chunk = m_CKContext->GetCurrentScene()->GetObjectInitialValue(obj);
     if (chunk)
         CKReadObjectState(obj, chunk);
 
@@ -484,13 +484,13 @@ CKERROR ModLoader::OnCKPostReset() {
     if (!IsInitialized() || AreModsLoaded())
         return CK_OK;
 
-    m_RenderManager = m_Context->GetRenderManager();
+    m_RenderManager = m_CKContext->GetRenderManager();
     m_Logger->Info("Get Render Manager pointer 0x%08x", m_RenderManager);
 
-    m_RenderContext = m_Context->GetPlayerRenderContext();
+    m_RenderContext = m_CKContext->GetPlayerRenderContext();
     m_Logger->Info("Get Render Context pointer 0x%08x", m_RenderContext);
 
-    Overlay::ImGuiInit(m_Context, IsOriginalPlayer());
+    Overlay::ImGuiInit(m_CKContext, IsOriginalPlayer());
 
     ImGuiContext *const backupContext = ImGui::GetCurrentContext();
     ImGui::SetCurrentContext(Overlay::GetImGuiContext());
@@ -514,10 +514,10 @@ CKERROR ModLoader::OnCKPostReset() {
     BroadcastCallback(&IMod::OnLoadObject, "base.cmo", false, "", CKCID_3DOBJECT,
                       true, true, true, false, nullptr, nullptr);
 
-    int scriptCnt = m_Context->GetObjectsCountByClassID(CKCID_BEHAVIOR);
-    CK_ID *scripts = m_Context->GetObjectsListByClassID(CKCID_BEHAVIOR);
+    int scriptCnt = m_CKContext->GetObjectsCountByClassID(CKCID_BEHAVIOR);
+    CK_ID *scripts = m_CKContext->GetObjectsListByClassID(CKCID_BEHAVIOR);
     for (int i = 0; i < scriptCnt; i++) {
-        auto *behavior = (CKBehavior *) m_Context->GetObject(scripts[i]);
+        auto *behavior = (CKBehavior *) m_CKContext->GetObject(scripts[i]);
         if (behavior->GetType() == CKBEHAVIORTYPE_SCRIPT) {
             BroadcastCallback(&IMod::OnLoadScript, "base.cmo", behavior);
         }
@@ -534,7 +534,7 @@ CKERROR ModLoader::OnCKReset() {
 
     UnloadMods();
 
-    Overlay::ImGuiShutdown(m_Context, IsOriginalPlayer());
+    Overlay::ImGuiShutdown(m_CKContext, IsOriginalPlayer());
 
     return CK_OK;
 }
@@ -827,31 +827,31 @@ void ModLoader::ShutdownHooks() {
 }
 
 void ModLoader::GetManagers() {
-    m_AttributeManager = m_Context->GetAttributeManager();
+    m_AttributeManager = m_CKContext->GetAttributeManager();
     m_Logger->Info("Get Attribute Manager pointer 0x%08x", m_AttributeManager);
 
-    m_BehaviorManager = m_Context->GetBehaviorManager();
+    m_BehaviorManager = m_CKContext->GetBehaviorManager();
     m_Logger->Info("Get Behavior Manager pointer 0x%08x", m_BehaviorManager);
 
-    m_CollisionManager = (CKCollisionManager *) m_Context->GetManagerByGuid(COLLISION_MANAGER_GUID);
+    m_CollisionManager = (CKCollisionManager *) m_CKContext->GetManagerByGuid(COLLISION_MANAGER_GUID);
     m_Logger->Info("Get Collision Manager pointer 0x%08x", m_CollisionManager);
 
-    m_InputHook = new InputHook(m_Context);
+    m_InputHook = new InputHook(m_CKContext);
     m_Logger->Info("Get Input Manager pointer 0x%08x", m_InputHook);
 
-    m_MessageManager = m_Context->GetMessageManager();
+    m_MessageManager = m_CKContext->GetMessageManager();
     m_Logger->Info("Get Message Manager pointer 0x%08x", m_MessageManager);
 
-    m_PathManager = m_Context->GetPathManager();
+    m_PathManager = m_CKContext->GetPathManager();
     m_Logger->Info("Get Path Manager pointer 0x%08x", m_PathManager);
 
-    m_ParameterManager = m_Context->GetParameterManager();
+    m_ParameterManager = m_CKContext->GetParameterManager();
     m_Logger->Info("Get Parameter Manager pointer 0x%08x", m_ParameterManager);
 
-    m_SoundManager = (CKSoundManager *) m_Context->GetManagerByGuid(SOUND_MANAGER_GUID);
+    m_SoundManager = (CKSoundManager *) m_CKContext->GetManagerByGuid(SOUND_MANAGER_GUID);
     m_Logger->Info("Get Sound Manager pointer 0x%08x", m_SoundManager);
 
-    m_TimeManager = m_Context->GetTimeManager();
+    m_TimeManager = m_CKContext->GetTimeManager();
     m_Logger->Info("Get Time Manager pointer 0x%08x", m_TimeManager);
 }
 
