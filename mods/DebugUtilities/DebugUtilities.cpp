@@ -13,6 +13,7 @@ void BMLExit(IMod *mod) {
 
 void DebugUtilities::OnLoad() {
     GetConfig()->SetCategoryComment("Debug", "Debug Utilities");
+
     m_EnableSuicideKey = GetConfig()->GetProperty("Debug", "EnableSuicideKey");
     m_EnableSuicideKey->SetComment("Enable the Suicide Hotkey");
     m_EnableSuicideKey->SetDefaultBoolean(true);
@@ -53,8 +54,6 @@ void DebugUtilities::OnLoad() {
     m_SpeedupBall->SetComment("Change to 3 times ball speed");
     m_SpeedupBall->SetDefaultKey(CKKEY_LCONTROL);
 
-
-    GetConfig()->SetCategoryComment("Debug", "Debug Utilities");
     m_EnableSuicideKey = GetConfig()->GetProperty("Debug", "EnableSuicideKey");
     m_EnableSuicideKey->SetComment("Enable the Suicide Hotkey");
     m_EnableSuicideKey->SetDefaultBoolean(true);
@@ -157,10 +156,8 @@ void DebugUtilities::OnCheatEnabled(bool enable) {
 }
 
 void DebugUtilities::OnPreCommandExecute(ICommand *command, const std::vector<std::string> &args) {
-    if (args[0] == "cheat") {
-        if (m_BML->IsCheatEnabled() && (args.size() == 1 || !ICommand::ParseBoolean(args[1]))) {
-            ChangeBallSpeed(1);
-        }
+    if (args[0] == "cheat" && m_BML->IsCheatEnabled() && (args.size() == 1 || !ICommand::ParseBoolean(args[1]))) {
+        ChangeBallSpeed(1);
     }
 }
 
