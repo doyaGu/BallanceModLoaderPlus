@@ -114,7 +114,7 @@ target_link_libraries(BML
         PUBLIC
         CK2 VxMath
         PRIVATE
-        CKZlib
+        zip
 )
 
 target_compile_definitions(BML PRIVATE "BML_EXPORTS" "IMGUI_EXPORT")

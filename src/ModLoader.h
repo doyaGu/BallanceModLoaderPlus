@@ -262,8 +262,6 @@ protected:
 
     size_t ExploreMods(const std::string &path, std::vector<std::string> &mods);
 
-    bool Unzip(const std::string &zipfile, const std::string &dest);
-
     std::shared_ptr<void> LoadLib(const std::string &path);
     bool UnloadLib(void *dllHandle);
 
