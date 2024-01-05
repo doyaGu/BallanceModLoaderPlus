@@ -38,7 +38,6 @@ set(BML_PRIVATE_HEADERS
 
         StringUtils.h
         PathUtils.h
-        WindowUtils.h
 )
 
 set(BML_SOURCES
@@ -74,7 +73,6 @@ set(BML_SOURCES
         Timer.cpp
 
         PathUtils.cpp
-        WindowUtils.cpp
 
         BML.rc
 )
