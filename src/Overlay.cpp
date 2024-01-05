@@ -97,10 +97,6 @@ namespace Overlay {
             io.IniFilename = nullptr;
             io.ConfigFlags = ImGuiConfigFlags_NavEnableKeyboard;
 
-            ImFontConfig fontCfg;
-            fontCfg.SizePixels = 32.0f;
-            io.Fonts->AddFontDefault(&fontCfg);
-
             if (originalPlayer) {
                 g_WndProc = (LPFNWNDPROC)((char *) GetModuleBaseAddress(::GetModuleHandleA("Player.exe")) + 0x39F0);
                 g_HookApi->CreateHook((void *) g_WndProc, (void *) MainWndProc, (void **) &g_MainWndProc);
@@ -154,6 +150,7 @@ namespace Overlay {
     void ImGuiNewFrame() {
         if (g_ImGuiReady) {
             g_RenderReady = false;
+
             ImGui_ImplCK2_NewFrame();
             ImGui_ImplWin32_NewFrame();
             ImGui::NewFrame();
