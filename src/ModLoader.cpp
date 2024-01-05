@@ -19,7 +19,7 @@
 #include "BMLMod.h"
 #include "NewBallTypeMod.h"
 
-#include "unzip.h"
+#include "zip.h"
 
 extern HMODULE g_DllHandle;
 
@@ -875,7 +875,7 @@ size_t ModLoader::ExploreMods(const std::string &path, std::vector<std::string> 
                 std::string cachePath = GetDirectory(DIR_LOADER);
                 std::string name = utils::GetFileName(filename);
                 cachePath.append("\\Cache\\Mods\\").append(name);
-                if (Unzip(filename, cachePath))
+                if (zip_extract(filename.c_str(), cachePath.c_str(), nullptr, nullptr) == 0)
                     ExploreMods(cachePath, mods);
             } else if (utils::EndsWithCaseInsensitive(filename, ".bmodp")) {
                 // Add mod filename.
@@ -887,58 +887,6 @@ size_t ModLoader::ExploreMods(const std::string &path, std::vector<std::string> 
     _findclose(handle);
 
     return mods.size();
-}
-
-bool ModLoader::Unzip(const std::string &zipfile, const std::string &dest) {
-    unzFile zipFile = unzOpen(zipfile.c_str());
-    if (!zipFile)
-        return false;
-
-    unz_file_info zipInfo;
-    char zipFilename[MAX_PATH];
-    auto *buf = new uint8_t[8192];
-
-    std::string path = dest;
-    if (!utils::HasTrailingPathSeparator(path))
-        path.append("\\");
-    if (!utils::DirectoryExists(path) && !utils::CreateFileTree(path))
-        return false;
-
-    bool complete = true;
-
-    unzGoToFirstFile(zipFile);
-    do {
-        unzGetCurrentFileInfo(zipFile, &zipInfo, zipFilename, MAX_PATH, nullptr, 0, nullptr, 0);
-        std::string fullPath = path + zipFilename;
-        utils::CreateFileTree(fullPath);
-
-        if (zipInfo.uncompressed_size != 0) {
-            unzOpenCurrentFile(zipFile);
-            FILE *fp = fopen(fullPath.c_str(), "wb");
-            int err;
-            do {
-                err = unzReadCurrentFile(zipFile, buf, 8192);
-                if (err < 0) {
-                    m_Logger->Warn("Error %d with %s in unzReadCurrentFile.", err, zipfile.c_str());
-                    complete = false;
-                    break;
-                }
-                if (err > 0)
-                    if (fwrite(buf, (unsigned) err, 1, fp) != 1) {
-                        m_Logger->Warn("Error in writing extracted file.");
-                        complete = false;
-                        break;
-                    }
-            } while (err > 0);
-            fclose(fp);
-            unzCloseCurrentFile(zipFile);
-        }
-
-    } while (unzGoToNextFile(zipFile) == UNZ_OK);
-
-    delete[] buf;
-    unzClose(zipFile);
-    return complete;
 }
 
 std::shared_ptr<void> ModLoader::LoadLib(const std::string &path) {
