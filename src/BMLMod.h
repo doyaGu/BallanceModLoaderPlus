@@ -17,6 +17,12 @@
 class Config;
 class Property;
 
+enum HudTypes {
+    HUD_TITLE = 1,
+    HUD_FPS = 2,
+    HUD_SR = 4,
+};
+
 class GuiList : public BGui::Gui {
 public:
     GuiList();
@@ -188,12 +194,9 @@ public:
                       CKBOOL dynamic, XObjectArray *objArray, CKObject *masterObj) override;
     void OnLoadScript(const char *filename, CKBehavior *script) override;
     void OnProcess() override;
-    void OnCheatEnabled(bool enable) override;
     void OnModifyConfig(const char *category, const char *key, IProperty *prop) override;
-    void OnPreCommandExecute(ICommand *command, const std::vector<std::string> &args) override;
 
     void OnPreStartMenu() override;
-    void OnPostResetLevel() override;
     void OnStartLevel() override;
     void OnPostExitLevel() override;
     void OnPauseLevel() override;
@@ -213,17 +216,10 @@ public:
     float GetSRScore() const { return m_SRTimer; }
     int GetHSScore();
 
-    void EnterTravelCam();
-    void ExitTravelCam();
-    bool IsInTravelCam();
-
     void AdjustFrameRate(bool sync = false, float limit = 60.0f);
 
-    void ChangeBallSpeed(float times);
-    void ResetBall();
-
-    int GetSectorCount();
-    void SetSector(int index);
+    int GetHUD();
+    void SetHUD(int mode);
 
 private:
     void InitConfigs();
@@ -240,15 +236,7 @@ private:
 
     void OnProcess_FpsDisplay();
     void OnProcess_CommandBar();
-    void OnProcess_Suicide();
-    void OnProcess_ChangeSpeed();
-    void OnProcess_ChangeBall();
-    void OnProcess_ResetBall();
-    void OnProcess_Travel();
-    void OnProcess_AddLife();
-    void OnProcess_Summon();
     void OnProcess_SRTimer();
-    void OnProcess_SkipRender();
 
     void OnResize();
     void OnCmdEdit(CKDWORD key);
@@ -260,11 +248,6 @@ private:
 
     VxRect m_OldWindowRect;
     VxRect m_WindowRect;
-
-    float m_DeltaTime = 0.0f;
-    bool m_CheatEnabled = false;
-    bool m_SkipRender = false;
-    IProperty* m_SkipRenderKey = nullptr;
 
     BGui::Gui *m_CmdBar = nullptr;
     bool m_CmdTyping = false;
@@ -305,60 +288,6 @@ private:
     IProperty* m_MsgDuration = nullptr;
     IProperty* m_CustomMapNumber = nullptr;
 
-    IProperty *m_BallCheat[2] = {};
-    IProperty *m_EnableSuicideKey = nullptr;
-    IProperty *m_Suicide = nullptr;
-    CKParameterLocal *m_BallForce[2] = {};
-    bool m_SuicideCd = false;
-
-    IProperty *m_CamRot[2] = {};
-    IProperty *m_CamY[2] = {};
-    IProperty *m_CamZ[2] = {};
-    IProperty *m_Cam45 = nullptr;
-    IProperty *m_CamReset = nullptr;
-    IProperty *m_CamOn = nullptr;
-
-    CK3dEntity *m_CamPos = nullptr;
-    CK3dEntity *m_CamOrient = nullptr;
-    CK3dEntity *m_CamOrientRef = nullptr;
-    CK3dEntity *m_CamTarget = nullptr;
-
-    IProperty *m_Overclock = nullptr;
-    CKBehaviorLink *m_OverclockLinks[3] = {};
-    CKBehaviorIO *m_OverclockLinkIO[3][2] = {};
-
-    IProperty *m_ChangeBall[3] = {};
-    CKBehavior *m_SetNewBall = nullptr;
-    CKParameter *m_CurTrafo = nullptr;
-    CKDataArray *m_CurLevel = nullptr;
-    CKDataArray *m_IngameParam = nullptr;
-    int m_ChangeBallCd = 0;
-    IProperty *m_SpeedupBall = nullptr;
-    IProperty *m_SpeedNotification = nullptr;
-    bool m_Speedup = false;
-
-    CKDataArray *m_PhysicsBall = nullptr;
-    CKParameter *m_Force = nullptr;
-    std::map<std::string, float> m_Forces;
-
-    IProperty *m_ResetBall = nullptr;
-    CKParameter *m_CurSector = nullptr;
-    CKBehavior *m_PhysicsNewBall = nullptr;
-    CKBehavior *m_DynamicPos = nullptr;
-
-    IProperty *m_AddLife = nullptr;
-    bool m_AddLifeCd = false;
-
-    IProperty *m_AddBall[4] = {};
-    int m_CurSel = -1;
-    CK3dEntity *m_CurObj = nullptr;
-    CK3dEntity *m_Balls[4] = {};
-    std::vector<std::pair<int, CK3dEntity *>> m_TempBalls;
-    IProperty *m_MoveKeys[6] = {};
-
-    float m_TravelSpeed = 0.2f;
-    CKCamera *m_TravelCam = nullptr;
-
     GuiCustomMap *m_MapsGui = nullptr;
     CK2dEntity *m_Level01 = nullptr;
     CKBehavior *m_ExitStart = nullptr;
@@ -366,6 +295,7 @@ private:
     CKParameter *m_LoadCustom = nullptr;
     CKParameter *m_MapFile = nullptr;
     CKParameter *m_LevelRow = nullptr;
+    CKDataArray *m_CurLevel = nullptr;
 };
 
 #endif // BML_BMLMOD_H

@@ -10,7 +10,6 @@
 #include "ModLoader.h"
 #include "Commands.h"
 #include "Config.h"
-#include "WindowUtils.h"
 
 namespace ExecuteBB {
     void Init();
@@ -542,13 +541,6 @@ void BMLMod::OnLoad() {
 
     InitConfigs();
     RegisterCommands();
-
-    m_Balls[0] = (CK3dEntity *) ExecuteBB::ObjectLoad("3D Entities\\PH\\P_Ball_Paper.nmo", true, "P_Ball_Paper_MF").second;
-    m_Balls[1] = (CK3dEntity *) ExecuteBB::ObjectLoad("3D Entities\\PH\\P_Ball_Wood.nmo", true, "P_Ball_Wood_MF").second;
-    m_Balls[2] = (CK3dEntity *) ExecuteBB::ObjectLoad("3D Entities\\PH\\P_Ball_Stone.nmo", true, "P_Ball_Stone_MF").second;
-    m_Balls[3] = (CK3dEntity *) ExecuteBB::ObjectLoad("3D Entities\\PH\\P_Box.nmo", true, "P_Box_MF").second;
-
-    m_TravelCam = (CKCamera *) m_CKContext->CreateObject(CKCID_CAMERA, "TravelCam");
 }
 
 void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
@@ -631,11 +623,6 @@ void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *master
             cam->SetFov(0.75f * m_WindowRect.GetWidth() / m_WindowRect.GetHeight());
             m_BML->SetIC(cam);
         }
-
-        m_CamPos = m_BML->Get3dEntityByName("Cam_Pos");
-        m_CamOrient = m_BML->Get3dEntityByName("Cam_Orient");
-        m_CamOrientRef = m_BML->Get3dEntityByName("Cam_OrientRef");
-        m_CamTarget = m_BML->Get3dEntityByName("Cam_Target");
     }
 }
 
@@ -669,16 +656,11 @@ void BMLMod::OnLoadScript(const char *filename, CKBehavior *script) {
 }
 
 void BMLMod::OnProcess() {
-    m_DeltaTime = m_TimeManager->GetLastDeltaTime() / 10;
-    m_CheatEnabled = m_BML->IsCheatEnabled();
-
     m_OldWindowRect = m_WindowRect;
     m_RenderContext->Get2dRoot(TRUE)->GetRect(m_WindowRect);
     if (m_WindowRect != m_OldWindowRect) {
         OnResize();
     }
-
-    OnProcess_SkipRender();
 
     if (m_IngameBanner) {
         OnProcess_FpsDisplay();
@@ -686,19 +668,6 @@ void BMLMod::OnProcess() {
 
     if (m_CmdBar) {
         OnProcess_CommandBar();
-    }
-
-    if (m_BML->IsPlaying()) {
-        OnProcess_Suicide();
-        OnProcess_Travel();
-
-        if (m_CheatEnabled) {
-            OnProcess_ChangeSpeed();
-            OnProcess_ChangeBall();
-            OnProcess_ResetBall();
-            OnProcess_AddLife();
-            OnProcess_Summon();
-        }
     }
 
     if (m_SRActivated) {
@@ -711,69 +680,30 @@ void BMLMod::OnProcess() {
     }
 }
 
-void BMLMod::OnCheatEnabled(bool enable) {
-    if (enable) {
-        SetParamValue(m_BallForce[0], m_BallCheat[0]->GetKey());
-        SetParamValue(m_BallForce[1], m_BallCheat[1]->GetKey());
-    } else {
-        SetParamValue(m_BallForce[0], CKKEYBOARD(0));
-        SetParamValue(m_BallForce[1], CKKEYBOARD(0));
-    }
-}
-
 void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *prop) {
-    if (m_BML->IsCheatEnabled()) {
-        if (prop == m_BallCheat[0])
-            SetParamValue(m_BallForce[0], m_BallCheat[0]->GetKey());
-        else if (prop == m_BallCheat[1])
-            SetParamValue(m_BallForce[1], m_BallCheat[1]->GetKey());
-    } else {
-        if (prop == m_UnlockFPS) {
-            if (prop->GetBoolean())
-                AdjustFrameRate(false, 0);
-            else {
-                int val = m_FPSLimit->GetInteger();
-                if (val > 0)
-                    AdjustFrameRate(false, static_cast<float>(val));
-                else
-                    AdjustFrameRate(true);
-            }
-        }
-        else if (prop == m_FPSLimit && !m_UnlockFPS->GetBoolean()) {
-            int val = prop->GetInteger();
+    if (prop == m_UnlockFPS) {
+        if (prop->GetBoolean()) {
+            AdjustFrameRate(false, 0);
+        } else {
+            int val = m_FPSLimit->GetInteger();
             if (val > 0)
                 AdjustFrameRate(false, static_cast<float>(val));
             else
                 AdjustFrameRate(true);
         }
-        else if (prop == m_Overclock) {
-            for (int i = 0; i < 3; i++) {
-                m_OverclockLinks[i]->SetOutBehaviorIO(m_OverclockLinkIO[i][m_Overclock->GetBoolean()]);
-            }
-        }
-        else if (prop == m_ShowTitle) {
-            m_Title->SetVisible(prop->GetBoolean());
-        }
-        else if (prop == m_ShowFPS) {
-            m_FPS->SetVisible(prop->GetBoolean());
-        }
-        else if (prop == m_ShowSR && m_BML->IsIngame()) {
-            m_SRScore->SetVisible(m_ShowSR->GetBoolean());
-            m_SRTitle->SetVisible(m_ShowSR->GetBoolean());
-        }
-        else if (prop == m_MsgDuration) {
-            m_MsgMaxTimer = m_MsgDuration->GetFloat() * 1000;
-            if (m_MsgMaxTimer < 2000) {
-                m_MsgDuration->SetFloat(2.0f);
-            }
-        }
-    }
-}
-
-void BMLMod::OnPreCommandExecute(ICommand *command, const std::vector<std::string> &args) {
-    if (args[0] == "cheat") {
-        if (m_BML->IsCheatEnabled() && (args.size() == 1 || !ICommand::ParseBoolean(args[1]))) {
-            ChangeBallSpeed(1);
+    } else if (prop == m_FPSLimit && !m_UnlockFPS->GetBoolean()) {
+        int val = prop->GetInteger();
+        if (val > 0)
+            AdjustFrameRate(false, static_cast<float>(val));
+        else
+            AdjustFrameRate(true);
+    } else if (prop == m_ShowSR && m_BML->IsIngame()) {
+        m_SRScore->SetVisible(m_ShowSR->GetBoolean());
+        m_SRTitle->SetVisible(m_ShowSR->GetBoolean());
+    } else if (prop == m_MsgDuration) {
+        m_MsgMaxTimer = m_MsgDuration->GetFloat() * 1000;
+        if (m_MsgMaxTimer < 2000) {
+            m_MsgDuration->SetFloat(2.0f);
         }
     }
 }
@@ -788,15 +718,6 @@ void BMLMod::OnPreStartMenu() {
         else
             AdjustFrameRate(true);
     }
-}
-
-void BMLMod::OnPostResetLevel() {
-    CKDataArray *ph = m_BML->GetArrayByName("PH");
-    for (auto iter = m_TempBalls.rbegin(); iter != m_TempBalls.rend(); iter++) {
-        ph->RemoveRow(iter->first);
-        m_CKContext->DestroyObject(iter->second);
-    }
-    m_TempBalls.clear();
 }
 
 void BMLMod::OnStartLevel() {
@@ -886,31 +807,12 @@ void BMLMod::CloseCurrentGui() {
     m_CurGui = nullptr;
 }
 
-void BMLMod::EnterTravelCam() {
-    CKCamera *cam = m_BML->GetTargetCameraByName("InGameCam");
-    m_TravelCam->SetWorldMatrix(cam->GetWorldMatrix());
-    int width, height;
-    cam->GetAspectRatio(width, height);
-    m_TravelCam->SetAspectRatio(width, height);
-    m_TravelCam->SetFov(cam->GetFov());
-    m_BML->GetRenderContext()->AttachViewpointToCamera(m_TravelCam);
-}
-
-void BMLMod::ExitTravelCam() {
-    CKCamera *cam = m_BML->GetTargetCameraByName("InGameCam");
-    m_BML->GetRenderContext()->AttachViewpointToCamera(cam);
-}
-
 int BMLMod::GetHSScore() {
     int points, lifes;
     CKDataArray *energy = m_BML->GetArrayByName("Energy");
     energy->GetElementValue(0, 0, &points);
     energy->GetElementValue(0, 1, &lifes);
     return points + lifes * 200;
-}
-
-bool BMLMod::IsInTravelCam() {
-    return m_BML->GetRenderContext()->GetAttachedCamera() == m_TravelCam;
 }
 
 void BMLMod::AdjustFrameRate(bool sync, float limit) {
@@ -924,163 +826,24 @@ void BMLMod::AdjustFrameRate(bool sync, float limit) {
     }
 }
 
-void BMLMod::ChangeBallSpeed(float times) {
-    if (m_BML->IsIngame()) {
-        bool notify = true;
-
-        if (!m_PhysicsBall) {
-            m_PhysicsBall = m_BML->GetArrayByName("Physicalize_GameBall");
-            CKBehavior *ingame = m_BML->GetScriptByName("Gameplay_Ingame");
-            m_Force = ScriptHelper::FindFirstBB(ingame, "Ball Navigation")->GetInputParameter(0)->GetRealSource();
-
-            for (int i = 0; i < m_PhysicsBall->GetRowCount(); i++) {
-                std::string ballName(m_PhysicsBall->GetElementStringValue(i, 0, nullptr), '\0');
-                m_PhysicsBall->GetElementStringValue(i, 0, &ballName[0]);
-                ballName.pop_back();
-                float force;
-                m_PhysicsBall->GetElementValue(i, 7, &force);
-                m_Forces[ballName] = force;
-            }
-        }
-
-        if (m_PhysicsBall) {
-            CKObject *curBall = m_CurLevel->GetElementObject(0, 1);
-            if (curBall) {
-                auto iter = m_Forces.find(curBall->GetName());
-                if (iter != m_Forces.end()) {
-                    float force = iter->second;
-                    force *= times;
-                    if (force == ScriptHelper::GetParamValue<float>(m_Force))
-                        notify = false;
-                    ScriptHelper::SetParamValue(m_Force, force);
-                }
-            }
-
-            for (int i = 0; i < m_PhysicsBall->GetRowCount(); i++) {
-                std::string ballName(m_PhysicsBall->GetElementStringValue(i, 0, nullptr), '\0');
-                m_PhysicsBall->GetElementStringValue(i, 0, &ballName[0]);
-                ballName.pop_back();
-                auto iter = m_Forces.find(ballName);
-                if (iter != m_Forces.end()) {
-                    float force = iter->second;
-                    force *= times;
-                    m_PhysicsBall->SetElementValue(i, 7, &force);
-                }
-            }
-
-            if (notify && m_SpeedNotification->GetBoolean())
-                AddIngameMessage(("Current Ball Speed Changed to " + std::to_string(times) + " times").c_str());
-        }
+int BMLMod::GetHUD() {
+    int code = 0;
+    if (m_ShowTitle->GetBoolean()) {
+        code |= HUD_TITLE;
     }
-}
-
-void BMLMod::ResetBall() {
-    CKMessageManager *mm = m_BML->GetMessageManager();
-    CKMessageType ballDeactivate = mm->AddMessageType("BallNav deactivate");
-
-    mm->SendMessageSingle(ballDeactivate, m_BML->GetGroupByName("All_Gameplay"));
-    mm->SendMessageSingle(ballDeactivate, m_BML->GetGroupByName("All_Sound"));
-
-    m_BML->AddTimer(2ul, [this]() {
-        auto *curBall = (CK3dEntity *) m_CurLevel->GetElementObject(0, 1);
-        if (curBall) {
-            ExecuteBB::Unphysicalize(curBall);
-
-            m_DynamicPos->ActivateInput(1);
-            m_DynamicPos->Activate();
-
-            m_BML->AddTimer(1ul, [this, curBall]() {
-                VxMatrix matrix;
-                m_CurLevel->GetElementValue(0, 3, &matrix);
-                curBall->SetWorldMatrix(matrix);
-
-                CK3dEntity *camMF = m_BML->Get3dEntityByName("Cam_MF");
-                m_BML->RestoreIC(camMF, true);
-                camMF->SetWorldMatrix(matrix);
-
-                m_BML->AddTimer(1ul, [this]() {
-                    m_DynamicPos->ActivateInput(0);
-                    m_DynamicPos->Activate();
-                    m_PhysicsNewBall->ActivateInput(0);
-                    m_PhysicsNewBall->Activate();
-                    m_PhysicsNewBall->GetParent()->Activate();
-                });
-            });
-        }
-    });
-}
-
-int BMLMod::GetSectorCount() {
-    CKDataArray *checkPoints = m_BML->GetArrayByName("Checkpoints");
-    if (!checkPoints)
-        return 0;
-    return checkPoints->GetRowCount();
-}
-
-void BMLMod::SetSector(int sector) {
-    if (m_BML->IsPlaying()) {
-        CKDataArray *checkPoints = m_BML->GetArrayByName("Checkpoints");
-        CKDataArray *resetPoints = m_BML->GetArrayByName("ResetPoints");
-
-        if (sector < 1 || sector > checkPoints->GetRowCount() + 1)
-            return;
-
-        int curSector = ScriptHelper::GetParamValue<int>(m_CurSector);
-        if (curSector != sector) {
-            VxMatrix matrix;
-            resetPoints->GetElementValue(sector - 1, 0, &matrix);
-            m_CurLevel->SetElementValue(0, 3, &matrix);
-
-            m_IngameParam->SetElementValue(0, 1, &sector);
-            m_IngameParam->SetElementValue(0, 2, &curSector);
-            ScriptHelper::SetParamValue(m_CurSector, sector);
-
-            AddIngameMessage(("Changed to Sector " + std::to_string(sector)).c_str());
-
-            CKBehavior *sectorMgr = m_BML->GetScriptByName("Gameplay_SectorManager");
-            m_CKContext->GetCurrentScene()->Activate(sectorMgr, true);
-
-            m_BML->AddTimerLoop(1ul, [this, sector, checkPoints, sectorMgr]() {
-                if (sectorMgr->IsActive())
-                    return true;
-
-                m_BML->AddTimer(2ul, [this, checkPoints, sector]() {
-                    CKBOOL active = false;
-                    m_CurLevel->SetElementValue(0, 4, &active);
-
-                    CK_ID flameId;
-                    checkPoints->GetElementValue(sector % 2, 1, &flameId);
-                    auto *flame = (CK3dEntity *) m_CKContext->GetObject(flameId);
-                    m_CKContext->GetCurrentScene()->Activate(flame->GetScript(0), true);
-
-                    checkPoints->GetElementValue(sector - 1, 1, &flameId);
-                    flame = (CK3dEntity *) m_CKContext->GetObject(flameId);
-                    m_CKContext->GetCurrentScene()->Activate(flame->GetScript(0), true);
-
-                    if (sector > checkPoints->GetRowCount()) {
-                        CKMessageManager *mm = m_BML->GetMessageManager();
-                        CKMessageType msg = mm->AddMessageType("last Checkpoint reached");
-                        mm->SendMessageSingle(msg, m_BML->GetGroupByName("All_Sound"));
-
-                        ResetBall();
-                    } else {
-                        m_BML->AddTimer(2ul, [this, sector, checkPoints, flame]() {
-                            VxMatrix matrix;
-                            checkPoints->GetElementValue(sector - 1, 0, &matrix);
-                            flame->SetWorldMatrix(matrix);
-                            CKBOOL active = true;
-                            m_CurLevel->SetElementValue(0, 4, &active);
-                            m_CKContext->GetCurrentScene()->Activate(flame->GetScript(0), true);
-                            m_BML->Show(flame, CKSHOW, true);
-
-                            ResetBall();
-                        });
-                    }
-                });
-                return false;
-            });
-        }
+    if (m_ShowFPS->GetBoolean()) {
+        code |= HUD_FPS;
     }
+    if (m_ShowSR->GetBoolean()) {
+        code |= HUD_SR;
+    }
+    return code;
+}
+
+void BMLMod::SetHUD(int mode) {
+    m_ShowTitle->SetBoolean((mode & HUD_TITLE) != 0);
+    m_ShowFPS->SetBoolean((mode & HUD_FPS) != 0);
+    m_ShowSR->SetBoolean((mode & HUD_SR) != 0);
 }
 
 void BMLMod::InitConfigs() {
@@ -1096,10 +859,6 @@ void BMLMod::InitConfigs() {
     m_AdaptiveCamera = GetConfig()->GetProperty("Misc", "AdaptiveCamera");
     m_AdaptiveCamera->SetComment("Adjust cameras on screen mode changed");
     m_AdaptiveCamera->SetDefaultBoolean(true);
-
-    m_Overclock = GetConfig()->GetProperty("Misc", "Overclock");
-    m_Overclock->SetComment("Remove delay of spawn / respawn");
-    m_Overclock->SetDefaultBoolean(false);
 
     m_ShowTitle = GetConfig()->GetProperty("Misc", "ShowTitle");
     m_ShowTitle->SetComment("Show BML Title at top");
@@ -1126,146 +885,15 @@ void BMLMod::InitConfigs() {
     m_CustomMapNumber->SetComment("Level number to use for custom maps (affects level bonus and sky textures)."
                                   " Must be in the range of 1~13; 0 to randomly select one between 2 and 11");
     m_CustomMapNumber->SetDefaultInteger(0);
-
-    GetConfig()->SetCategoryComment("Debug", "Debug Utilities");
-    m_EnableSuicideKey = GetConfig()->GetProperty("Debug", "EnableSuicideKey");
-    m_EnableSuicideKey->SetComment("Enable the Suicide Hotkey");
-    m_EnableSuicideKey->SetDefaultBoolean(true);
-    m_Suicide = GetConfig()->GetProperty("Debug", "Suicide");
-    m_Suicide->SetComment("Suicide");
-    m_Suicide->SetDefaultKey(CKKEY_R);
-
-    m_BallCheat[0] = GetConfig()->GetProperty("Debug", "BallUp");
-    m_BallCheat[0]->SetComment("Apply an upward force to the ball");
-    m_BallCheat[0]->SetDefaultKey(CKKEY_F1);
-
-    m_BallCheat[1] = GetConfig()->GetProperty("Debug", "BallDown");
-    m_BallCheat[1]->SetComment("Apply a downward force to the ball");
-    m_BallCheat[1]->SetDefaultKey(CKKEY_F2);
-
-    m_ChangeBall[0] = GetConfig()->GetProperty("Debug", "TurnPaper");
-    m_ChangeBall[0]->SetComment("Turn into paper ball");
-    m_ChangeBall[0]->SetDefaultKey(CKKEY_I);
-
-    m_ChangeBall[1] = GetConfig()->GetProperty("Debug", "TurnWood");
-    m_ChangeBall[1]->SetComment("Turn into wood ball");
-    m_ChangeBall[1]->SetDefaultKey(CKKEY_O);
-
-    m_ChangeBall[2] = GetConfig()->GetProperty("Debug", "TurnStone");
-    m_ChangeBall[2]->SetComment("Turn into stone ball");
-    m_ChangeBall[2]->SetDefaultKey(CKKEY_P);
-
-    m_ResetBall = GetConfig()->GetProperty("Debug", "ResetBall");
-    m_ResetBall->SetComment("Reset ball and all moduls");
-    m_ResetBall->SetDefaultKey(CKKEY_BACK);
-
-    m_AddLife = GetConfig()->GetProperty("Debug", "AddLife");
-    m_AddLife->SetComment("Add one extra Life");
-    m_AddLife->SetDefaultKey(CKKEY_L);
-
-    m_SpeedupBall = GetConfig()->GetProperty("Debug", "BallSpeedUp");
-    m_SpeedupBall->SetComment("Change to 3 times ball speed");
-    m_SpeedupBall->SetDefaultKey(CKKEY_LCONTROL);
-
-    m_SpeedNotification = GetConfig()->GetProperty("Debug", "SpeedNotification");
-    m_SpeedNotification->SetComment("Notify the player when speed of the ball changes.");
-    m_SpeedNotification->SetDefaultBoolean(true);
-
-    m_SkipRenderKey = GetConfig()->GetProperty("Debug", "SkipRender");
-    m_SkipRenderKey->SetComment("Skip rendering of current frames while holding.");
-    m_SkipRenderKey->SetDefaultKey(CKKEY_F);
-
-    GetConfig()->SetCategoryComment("Auxiliaries", "Temporal Auxiliary Moduls");
-    m_AddBall[0] = GetConfig()->GetProperty("Auxiliaries", "PaperBall");
-    m_AddBall[0]->SetComment("Add a Paper Ball");
-    m_AddBall[0]->SetDefaultKey(CKKEY_J);
-
-    m_AddBall[1] = GetConfig()->GetProperty("Auxiliaries", "WoodBall");
-    m_AddBall[1]->SetComment("Add a Wood Ball");
-    m_AddBall[1]->SetDefaultKey(CKKEY_K);
-
-    m_AddBall[2] = GetConfig()->GetProperty("Auxiliaries", "StoneBall");
-    m_AddBall[2]->SetComment("Add a Stone Ball");
-    m_AddBall[2]->SetDefaultKey(CKKEY_N);
-
-    m_AddBall[3] = GetConfig()->GetProperty("Auxiliaries", "Box");
-    m_AddBall[3]->SetComment("Add a Box");
-    m_AddBall[3]->SetDefaultKey(CKKEY_M);
-
-    m_MoveKeys[0] = GetConfig()->GetProperty("Auxiliaries", "MoveFront");
-    m_MoveKeys[0]->SetComment("Move Front");
-    m_MoveKeys[0]->SetDefaultKey(CKKEY_UP);
-
-    m_MoveKeys[1] = GetConfig()->GetProperty("Auxiliaries", "MoveBack");
-    m_MoveKeys[1]->SetComment("Move Back");
-    m_MoveKeys[1]->SetDefaultKey(CKKEY_DOWN);
-
-    m_MoveKeys[2] = GetConfig()->GetProperty("Auxiliaries", "MoveLeft");
-    m_MoveKeys[2]->SetComment("Move Left");
-    m_MoveKeys[2]->SetDefaultKey(CKKEY_LEFT);
-
-    m_MoveKeys[3] = GetConfig()->GetProperty("Auxiliaries", "MoveRight");
-    m_MoveKeys[3]->SetComment("Move Right");
-    m_MoveKeys[3]->SetDefaultKey(CKKEY_RIGHT);
-
-    m_MoveKeys[4] = GetConfig()->GetProperty("Auxiliaries", "MoveUp");
-    m_MoveKeys[4]->SetComment("Move Up");
-    m_MoveKeys[4]->SetDefaultKey(CKKEY_RSHIFT);
-
-    m_MoveKeys[5] = GetConfig()->GetProperty("Auxiliaries", "MoveDown");
-    m_MoveKeys[5]->SetComment("Move Down");
-    m_MoveKeys[5]->SetDefaultKey(CKKEY_RCONTROL);
-
-    GetConfig()->SetCategoryComment("Camera", "Camera Utilities");
-    m_CamOn = GetConfig()->GetProperty("Camera", "Enable");
-    m_CamOn->SetComment("Enable Camera Utilities");
-    m_CamOn->SetDefaultBoolean(false);
-
-    m_CamReset = GetConfig()->GetProperty("Camera", "Reset");
-    m_CamReset->SetComment("Reset Camera");
-    m_CamReset->SetDefaultKey(CKKEY_D);
-
-    m_Cam45 = GetConfig()->GetProperty("Camera", "Rotate45");
-    m_Cam45->SetComment("Set to 45 degrees");
-    m_Cam45->SetDefaultKey(CKKEY_W);
-
-    m_CamRot[0] = GetConfig()->GetProperty("Camera", "RotateLeft");
-    m_CamRot[0]->SetComment("Rotate the camera");
-    m_CamRot[0]->SetDefaultKey(CKKEY_Q);
-
-    m_CamRot[1] = GetConfig()->GetProperty("Camera", "RotateRight");
-    m_CamRot[1]->SetComment("Rotate the camera");
-    m_CamRot[1]->SetDefaultKey(CKKEY_E);
-
-    m_CamY[0] = GetConfig()->GetProperty("Camera", "MoveUp");
-    m_CamY[0]->SetComment("Move the camera");
-    m_CamY[0]->SetDefaultKey(CKKEY_A);
-
-    m_CamY[1] = GetConfig()->GetProperty("Camera", "MoveDown");
-    m_CamY[1]->SetComment("Move the camera");
-    m_CamY[1]->SetDefaultKey(CKKEY_Z);
-
-    m_CamZ[0] = GetConfig()->GetProperty("Camera", "MoveFront");
-    m_CamZ[0]->SetComment("Move the camera");
-    m_CamZ[0]->SetDefaultKey(CKKEY_S);
-
-    m_CamZ[1] = GetConfig()->GetProperty("Camera", "MoveBack");
-    m_CamZ[1]->SetComment("Move the camera");
-    m_CamZ[1]->SetDefaultKey(CKKEY_X);
 }
 
 void BMLMod::RegisterCommands() {
     m_BML->RegisterCommand(new CommandBML());
     m_BML->RegisterCommand(new CommandHelp());
+    m_BML->RegisterCommand(new CommandEcho());
     m_BML->RegisterCommand(new CommandCheat());
     m_BML->RegisterCommand(new CommandClear(this));
-    m_BML->RegisterCommand(new CommandScore());
-    m_BML->RegisterCommand(new CommandKill());
-    m_BML->RegisterCommand(new CommandSetSpawn());
-    m_BML->RegisterCommand(new CommandSector(this));
-    m_BML->RegisterCommand(new CommandWin());
-    m_BML->RegisterCommand(new CommandSpeed(this));
-    m_BML->RegisterCommand(new CommandTravel(this));
+    m_BML->RegisterCommand(new CommandHUD(this));
 }
 
 void BMLMod::OnEditScript_Base_EventHandler(CKBehavior *script) {
@@ -1565,62 +1193,7 @@ void BMLMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
         return CKBR_OK;
     }), 0, 0);
 
-    GetLogger()->Info("Debug Ball Force");
-    CKBehavior *ballNav = FindFirstBB(script, "Ball Navigation");
-    CKBehavior *nop[2] = {nullptr, nullptr};
-    FindBB(ballNav, [&nop](CKBehavior *beh) {
-        if (nop[0]) nop[1] = beh;
-        else nop[0] = beh;
-        return !nop[1];
-    }, "Nop");
-    CKBehavior *keyevent[2] = {CreateBB(ballNav, VT_CONTROLLERS_KEYEVENT), CreateBB(ballNav, VT_CONTROLLERS_KEYEVENT)};
-    m_BallForce[0] = CreateParamValue(ballNav, "Up", CKPGUID_KEY, CKKEYBOARD(0));
-    m_BallForce[1] = CreateParamValue(ballNav, "Down", CKPGUID_KEY, CKKEYBOARD(0));
-    CKBehavior *phyforce[2] = {CreateBB(ballNav, PHYSICS_RT_PHYSICSFORCE, true),
-                               CreateBB(ballNav, PHYSICS_RT_PHYSICSFORCE, true)};
-    CKBehavior *op = FindFirstBB(ballNav, "Op");
-    CKParameter *mass = op->GetInputParameter(0)->GetDirectSource();
-    CKBehavior *spf = FindFirstBB(ballNav, "SetPhysicsForce");
-    CKParameter *dir[2] = {CreateParamValue(ballNav, "Up", CKPGUID_VECTOR, VxVector(0, 1, 0)),
-                           CreateParamValue(ballNav, "Down", CKPGUID_VECTOR, VxVector(0, -1, 0))};
-    CKBehavior *wake = FindFirstBB(ballNav, "Physics WakeUp");
-
-    for (int i = 0; i < 2; i++) {
-        keyevent[i]->GetInputParameter(0)->SetDirectSource(m_BallForce[i]);
-        CreateLink(ballNav, nop[0], keyevent[i], 0, 0);
-        CreateLink(ballNav, nop[1], keyevent[i], 0, 1);
-        phyforce[i]->GetTargetParameter()->ShareSourceWith(spf->GetTargetParameter());
-        phyforce[i]->GetInputParameter(0)->ShareSourceWith(spf->GetInputParameter(0));
-        phyforce[i]->GetInputParameter(1)->ShareSourceWith(spf->GetInputParameter(1));
-        phyforce[i]->GetInputParameter(2)->SetDirectSource(dir[i]);
-        phyforce[i]->GetInputParameter(3)->ShareSourceWith(spf->GetInputParameter(3));
-        phyforce[i]->GetInputParameter(4)->SetDirectSource(mass);
-        CreateLink(ballNav, keyevent[i], phyforce[i], 0, 0);
-        CreateLink(ballNav, keyevent[i], phyforce[i], 1, 1);
-        CreateLink(ballNav, nop[1], phyforce[i], 0, 1);
-        CreateLink(ballNav, phyforce[i], wake, 0, 0);
-        CreateLink(ballNav, phyforce[i], wake, 1, 0);
-    }
-
-    CKBehavior *ballMgr = FindFirstBB(script, "BallManager");
-    m_DynamicPos = FindNextBB(script, ballMgr, "TT Set Dynamic Position");
-    CKBehavior *deactBall = FindFirstBB(ballMgr, "Deactivate Ball");
-    CKBehavior *pieces = FindFirstBB(deactBall, "reset Ballpieces");
-    m_OverclockLinks[0] = FindNextLink(deactBall, pieces);
-    CKBehavior *unphy = FindNextBB(deactBall, FindNextBB(deactBall, m_OverclockLinks[0]->GetOutBehaviorIO()->GetOwner()));
-    m_OverclockLinkIO[0][1] = unphy->GetInput(1);
-
-    CKBehavior *newBall = FindFirstBB(ballMgr, "New Ball");
-    m_PhysicsNewBall = FindFirstBB(newBall, "physicalize new Ball");
-    m_OverclockLinks[1] = FindPreviousLink(newBall, FindPreviousBB(newBall, FindPreviousBB(newBall, FindPreviousBB(newBall, m_PhysicsNewBall))));
-    m_OverclockLinkIO[1][1] = m_PhysicsNewBall->GetInput(0);
-
-    CKBehavior *trafoMgr = FindFirstBB(script, "Trafo Manager");
-    m_SetNewBall = FindFirstBB(trafoMgr, "set new Ball");
-    CKBehavior *sop = FindFirstBB(m_SetNewBall, "Switch On Parameter");
-    m_CurTrafo = sop->GetInputParameter(0)->GetDirectSource();
     m_CurLevel = m_BML->GetArrayByName("CurrentLevel");
-    m_IngameParam = m_BML->GetArrayByName("IngameParameter");
 }
 
 void BMLMod::OnEditScript_Gameplay_Energy(CKBehavior *script) {
@@ -1674,17 +1247,6 @@ void BMLMod::OnEditScript_Gameplay_Energy(CKBehavior *script) {
         ModLoader::GetInstance().OnExtraPoint();
         return CKBR_OK;
     }));
-
-    CKBehavior *delay = FindFirstBB(script, "Delayer");
-    m_OverclockLinks[2] = FindPreviousLink(script, delay);
-    CKBehaviorLink *link = FindNextLink(script, delay);
-    m_OverclockLinkIO[2][1] = link->GetOutBehaviorIO();
-
-    for (int i = 0; i < 3; i++) {
-        m_OverclockLinkIO[i][0] = m_OverclockLinks[i]->GetOutBehaviorIO();
-        if (m_Overclock->GetBoolean())
-            m_OverclockLinks[i]->SetOutBehaviorIO(m_OverclockLinkIO[i][1]);
-    }
 }
 
 void BMLMod::OnEditScript_Gameplay_Events(CKBehavior *script) {
@@ -1718,9 +1280,6 @@ void BMLMod::OnEditScript_Gameplay_Events(CKBehavior *script) {
         ModLoader::GetInstance().OnLevelFinish();
         return CKBR_OK;
     }));
-
-    CKBehavior *id = FindNextBB(script, script->GetInput(0));
-    m_CurSector = id->GetOutputParameter(0)->GetDestination(0);
 }
 
 void BMLMod::OnEditScript_Levelinit_build(CKBehavior *script) {
@@ -1767,8 +1326,8 @@ void BMLMod::OnProcess_CommandBar() {
     }
 
     m_MsgLog->Process();
-    if (!IsInTravelCam())
-        m_IngameBanner->Process();
+    m_IngameBanner->Process();
+
     if (m_CurGui)
         m_CurGui->Process();
 
@@ -1796,313 +1355,6 @@ void BMLMod::OnProcess_CommandBar() {
     }
 }
 
-void BMLMod::OnProcess_Suicide() {
-    if (m_EnableSuicideKey->GetBoolean() && !m_SuicideCd && m_InputHook->IsKeyPressed(m_Suicide->GetKey())) {
-        ModLoader::GetInstance().ExecuteCommand("kill");
-        m_BML->AddTimer(1000.0f, [this]() { m_SuicideCd = false; });
-        m_SuicideCd = true;
-    }
-}
-
-void BMLMod::OnProcess_ChangeSpeed() {
-    bool speedup = m_InputHook->IsKeyDown(m_SpeedupBall->GetKey());
-    if (speedup && !m_Speedup)
-        ModLoader::GetInstance().ExecuteCommand("speed 3");
-    if (!speedup && m_Speedup)
-        ModLoader::GetInstance().ExecuteCommand("speed 1");
-    m_Speedup = speedup;
-}
-
-void BMLMod::OnProcess_ChangeBall() {
-    if (m_ChangeBallCd != 0) {
-        m_ChangeBallCd--;
-        return;
-    }
-
-    for (int i = 0; i < 3; i++) {
-        if (m_InputHook->IsKeyPressed(m_ChangeBall[i]->GetKey())) {
-            CKMessageManager *mm = m_BML->GetMessageManager();
-            CKMessageType ballDeactivate = mm->AddMessageType("BallNav deactivate");
-
-            mm->SendMessageSingle(ballDeactivate, m_BML->GetGroupByName("All_Gameplay"));
-            mm->SendMessageSingle(ballDeactivate, m_BML->GetGroupByName("All_Sound"));
-            m_ChangeBallCd = 2;
-
-            m_BML->AddTimer(2ul, [this, i]() {
-                auto *curBall = (CK3dEntity *) m_CurLevel->GetElementObject(0, 1);
-                ExecuteBB::Unphysicalize(curBall);
-
-                static char trafoTypes[3][6] = {"paper", "wood", "stone"};
-                SetParamString(m_CurTrafo, trafoTypes[i]);
-                m_SetNewBall->ActivateInput(0);
-                m_SetNewBall->Activate();
-
-                GetLogger()->Info("Set to %s Ball", i == 0 ? "Paper" : i == 1 ? "Wood" : "Stone");
-            });
-        }
-    }
-}
-
-void BMLMod::OnProcess_ResetBall() {
-    if (m_InputHook->IsKeyPressed(m_ResetBall->GetKey())) {
-        CKMessageManager *mm = m_BML->GetMessageManager();
-        CKMessageType ballDeactivate = mm->AddMessageType("BallNav deactivate");
-
-        mm->SendMessageSingle(ballDeactivate, m_BML->GetGroupByName("All_Gameplay"));
-        mm->SendMessageSingle(ballDeactivate, m_BML->GetGroupByName("All_Sound"));
-
-        m_BML->AddTimer(2ul, [this]() {
-            auto *curBall = (CK3dEntity *) m_CurLevel->GetElementObject(0, 1);
-            if (curBall) {
-                ExecuteBB::Unphysicalize(curBall);
-
-                CKDataArray *ph = m_BML->GetArrayByName("PH");
-                for (int i = 0; i < ph->GetRowCount(); i++) {
-                    CKBOOL set = true;
-                    char name[100];
-                    ph->GetElementStringValue(i, 1, name);
-                    if (!strcmp(name, "P_Extra_Point"))
-                        ph->SetElementValue(i, 4, &set);
-                }
-
-                m_IngameParam->SetElementValueFromParameter(0, 1, m_CurSector);
-                m_IngameParam->SetElementValueFromParameter(0, 2, m_CurSector);
-                CKBehavior *sectorMgr = m_BML->GetScriptByName("Gameplay_SectorManager");
-                m_CKContext->GetCurrentScene()->Activate(sectorMgr, true);
-
-                m_BML->AddTimerLoop(1ul, [this, curBall, sectorMgr]() {
-                    if (sectorMgr->IsActive())
-                        return true;
-
-                    m_DynamicPos->ActivateInput(1);
-                    m_DynamicPos->Activate();
-
-                    m_BML->AddTimer(1ul, [this, curBall]() {
-                        VxMatrix matrix;
-                        m_CurLevel->GetElementValue(0, 3, &matrix);
-                        curBall->SetWorldMatrix(matrix);
-
-                        CK3dEntity *camMF = m_BML->Get3dEntityByName("Cam_MF");
-                        m_BML->RestoreIC(camMF, true);
-                        camMF->SetWorldMatrix(matrix);
-
-                        m_BML->AddTimer(1ul, [this]() {
-                            m_DynamicPos->ActivateInput(0);
-                            m_DynamicPos->Activate();
-
-                            m_PhysicsNewBall->ActivateInput(0);
-                            m_PhysicsNewBall->Activate();
-                            m_PhysicsNewBall->GetParent()->Activate();
-
-                            GetLogger()->Info("Sector Reset");
-                        });
-                    });
-
-                    return false;
-                });
-            }
-        });
-    }
-}
-
-void BMLMod::OnProcess_Travel() {
-    VxVector vect;
-    VxQuaternion quat;
-
-    if (IsInTravelCam()) {
-        if (m_InputHook->IsKeyDown(CKKEY_1)) {
-            m_TravelSpeed = 0.2f;
-        } else if (m_InputHook->IsKeyDown(CKKEY_2)) {
-            m_TravelSpeed = 0.4f;
-        } else if (m_InputHook->IsKeyDown(CKKEY_3)) {
-            m_TravelSpeed = 0.8f;
-        } else if (m_InputHook->IsKeyDown(CKKEY_4)) {
-            m_TravelSpeed = 1.6f;
-        } else if (m_InputHook->IsKeyDown(CKKEY_5)) {
-            m_TravelSpeed = 2.4f;
-        }
-
-        if (m_InputHook->IsKeyDown(CKKEY_W)) {
-            vect = VxVector(0, 0, m_TravelSpeed * m_DeltaTime);
-            m_TravelCam->Translate(&vect, m_TravelCam);
-        }
-        if (m_InputHook->IsKeyDown(CKKEY_S)) {
-            vect = VxVector(0, 0, -m_TravelSpeed * m_DeltaTime);
-            m_TravelCam->Translate(&vect, m_TravelCam);
-        }
-        if (m_InputHook->IsKeyDown(CKKEY_A)) {
-            vect = VxVector(-m_TravelSpeed * m_DeltaTime, 0, 0);
-            m_TravelCam->Translate(&vect, m_TravelCam);
-        }
-        if (m_InputHook->IsKeyDown(CKKEY_D)) {
-            vect = VxVector(m_TravelSpeed * m_DeltaTime, 0, 0);
-            m_TravelCam->Translate(&vect, m_TravelCam);
-        }
-        if (m_InputHook->IsKeyDown(CKKEY_SPACE)) {
-            vect = VxVector(0, m_TravelSpeed * m_DeltaTime, 0);
-            m_TravelCam->Translate(&vect);
-        }
-        if (m_InputHook->IsKeyDown(CKKEY_LSHIFT)) {
-            vect = VxVector(0, -m_TravelSpeed * m_DeltaTime, 0);
-            m_TravelCam->Translate(&vect);
-        }
-
-        VxVector delta;
-        m_InputHook->GetMouseRelativePosition(delta);
-        if (delta.x != 0) {
-            vect = VxVector(0, 1, 0);
-            m_TravelCam->Rotate(&vect, (-delta.x / (float)utils::GetScreenWidth()) * 180.0f / PI);
-        }
-        if (delta.y != 0) {
-            vect = VxVector(1, 0, 0);
-            m_TravelCam->Rotate(&vect, (-delta.y / (float)utils::GetScreenHeight()) * 180.0f / PI, m_TravelCam);
-        }
-    } else if (m_CamOn->GetBoolean()) {
-        if (m_InputHook->IsKeyPressed(m_Cam45->GetKey())) {
-            vect = VxVector(0, 1, 0);
-            m_CamOrientRef->Rotate(&vect, PI / 4, m_CamOrientRef);
-            m_CamOrient->SetQuaternion(&quat, m_CamOrientRef);
-        }
-        if (m_InputHook->IsKeyDown(m_CamRot[0]->GetKey())) {
-            vect = VxVector(0, 1, 0);
-            m_CamOrientRef->Rotate(&vect, -0.01f * m_DeltaTime, m_CamOrientRef);
-            m_CamOrient->SetQuaternion(&quat, m_CamOrientRef);
-        }
-        if (m_InputHook->IsKeyDown(m_CamRot[1]->GetKey())) {
-            vect = VxVector(0, 1, 0);
-            m_CamOrientRef->Rotate(&vect, 0.01f * m_DeltaTime, m_CamOrientRef);
-            m_CamOrient->SetQuaternion(&quat, m_CamOrientRef);
-        }
-        if (m_InputHook->IsKeyDown(m_CamY[0]->GetKey())) {
-            vect = VxVector(0, 0.15f * m_DeltaTime, 0);
-            m_CamPos->Translate(&vect, m_CamOrientRef);
-        }
-        if (m_InputHook->IsKeyDown(m_CamY[1]->GetKey())) {
-            vect = VxVector(0, -0.15f * m_DeltaTime, 0);
-            m_CamPos->Translate(&vect, m_CamOrientRef);
-        }
-        if (m_InputHook->IsKeyDown(m_CamZ[0]->GetKey())) {
-            VxVector position;
-            m_CamPos->GetPosition(&position, m_CamOrientRef);
-            position.z = (std::min)(position.z + 0.1f * m_DeltaTime, -0.1f);
-            m_CamPos->SetPosition(&position, m_CamOrientRef);
-        }
-        if (m_InputHook->IsKeyDown(m_CamZ[1]->GetKey())) {
-            vect = VxVector(0, 0, -0.1f * m_DeltaTime);
-            m_CamPos->Translate(&vect, m_CamOrientRef);
-        }
-        if (m_InputHook->IsKeyDown(m_CamReset->GetKey())) {
-            VxQuaternion rotation;
-            m_CamOrientRef->GetQuaternion(&rotation, m_CamTarget);
-            if (rotation.angle > 0.9f)
-                rotation = VxQuaternion();
-            else {
-                rotation = rotation + VxQuaternion();
-                rotation *= 0.5f;
-            }
-            m_CamOrientRef->SetQuaternion(&rotation, m_CamTarget);
-            m_CamOrient->SetQuaternion(&quat, m_CamOrientRef);
-            vect = VxVector(0, 35, -22);
-            m_CamPos->SetPosition(&vect, m_CamOrient);
-        }
-    }
-}
-
-void BMLMod::OnProcess_AddLife() {
-    if (!m_AddLifeCd && m_InputHook->IsKeyPressed(m_AddLife->GetKey())) {
-        CKMessageManager *mm = m_BML->GetMessageManager();
-        CKMessageType addLife = mm->AddMessageType("Life_Up");
-
-        mm->SendMessageSingle(addLife, m_BML->GetGroupByName("All_Gameplay"));
-        mm->SendMessageSingle(addLife, m_BML->GetGroupByName("All_Sound"));
-        m_AddLifeCd = true;
-        m_BML->AddTimer(1000.0f, [this]() { m_AddLifeCd = false; });
-    }
-}
-
-void BMLMod::OnProcess_Summon() {
-    VxVector vect;
-
-    if (m_CurSel < 0) {
-        for (int i = 0; i < 4; i++) {
-            if (m_InputHook->IsKeyDown(m_AddBall[i]->GetKey())) {
-                m_CurSel = i;
-                m_InputHook->SetBlock(true);
-            }
-        }
-
-        if (m_CurSel >= 0) {
-            m_CurObj = (CK3dEntity *) m_CKContext->CopyObject(m_Balls[m_CurSel]);
-            vect = VxVector(0, 5, 0);
-            m_CurObj->SetPosition(&vect, m_CamTarget);
-            m_CurObj->Show();
-        }
-    } else if (m_InputHook->oIsKeyDown(m_AddBall[m_CurSel]->GetKey())) {
-        if (m_InputHook->oIsKeyDown(m_MoveKeys[0]->GetKey())) {
-            vect = VxVector(0, 0, 0.1f * m_DeltaTime);
-            m_CurObj->Translate(&vect, m_CamOrientRef);
-        }
-        if (m_InputHook->oIsKeyDown(m_MoveKeys[1]->GetKey())) {
-            vect = VxVector(0, 0, -0.1f * m_DeltaTime);
-            m_CurObj->Translate(&vect, m_CamOrientRef);
-        }
-        if (m_InputHook->oIsKeyDown(m_MoveKeys[2]->GetKey())) {
-            vect = VxVector(-0.1f * m_DeltaTime, 0, 0);
-            m_CurObj->Translate(&vect, m_CamOrientRef);
-        }
-        if (m_InputHook->oIsKeyDown(m_MoveKeys[3]->GetKey())) {
-            vect = VxVector(0.1f * m_DeltaTime, 0, 0);
-            m_CurObj->Translate(&vect, m_CamOrientRef);
-        }
-        if (m_InputHook->oIsKeyDown(m_MoveKeys[4]->GetKey())) {
-            vect = VxVector(0, 0.1f * m_DeltaTime, 0);
-            m_CurObj->Translate(&vect, m_CamOrientRef);
-        }
-        if (m_InputHook->oIsKeyDown(m_MoveKeys[5]->GetKey())) {
-            vect = VxVector(0, -0.1f * m_DeltaTime, 0);
-            m_CurObj->Translate(&vect, m_CamOrientRef);
-        }
-    } else {
-        CKMesh *mesh = m_CurObj->GetMesh(0);
-        switch (m_CurSel) {
-            case 0:
-                ExecuteBB::PhysicalizeConvex(m_CurObj, false, 0.5f, 0.4f, 0.2f, "", false, true, false, 1.5f, 0.1f, mesh->GetName(), VxVector(0, 0, 0), mesh);
-                break;
-            case 1:
-                ExecuteBB::PhysicalizeBall(m_CurObj, false, 0.6f, 0.2f, 2.0f, "", false, true, false, 0.6f, 0.1f, mesh->GetName());
-                break;
-            case 2:
-                ExecuteBB::PhysicalizeBall(m_CurObj, false, 0.7f, 0.1f, 10.0f, "", false, true, false, 0.2f, 0.1f, mesh->GetName());
-                break;
-            default:
-                ExecuteBB::PhysicalizeConvex(m_CurObj, false, 0.7f, 0.3f, 1.0f, "", false, true, false, 0.1f, 0.1f, mesh->GetName(), VxVector(0, 0, 0), mesh);
-                break;
-        }
-
-        CKDataArray *ph = m_BML->GetArrayByName("PH");
-        ph->AddRow();
-        int index = ph->GetRowCount() - 1;
-        ph->SetElementValueFromParameter(index, 0, m_CurSector);
-        static char P_BALL_NAMES[4][13] = {"P_Ball_Paper", "P_Ball_Wood", "P_Ball_Stone", "P_Box"};
-        ph->SetElementStringValue(index, 1, P_BALL_NAMES[m_CurSel]);
-        VxMatrix matrix = m_CurObj->GetWorldMatrix();
-        ph->SetElementValue(index, 2, &matrix);
-        ph->SetElementObject(index, 3, m_CurObj);
-        CKBOOL set = false;
-        ph->SetElementValue(index, 4, &set);
-
-        CKGroup *depth = m_BML->GetGroupByName("DepthTest");
-        depth->AddObject(m_CurObj);
-        m_TempBalls.emplace_back(index, m_CurObj);
-
-        m_CurSel = -1;
-        m_CurObj = nullptr;
-        m_InputHook->SetBlock(false);
-
-        GetLogger()->Info("Summoned a %s", m_CurSel < 2 ? m_CurSel == 0 ? "Paper Ball" : "Wood Ball" : m_CurSel == 2 ? "Stone Ball" : "Box");
-    }
-}
-
 void BMLMod::OnProcess_SRTimer() {
     m_SRTimer += m_TimeManager->GetLastDeltaTime();
     int counter = int(m_SRTimer);
@@ -2116,14 +1368,6 @@ void BMLMod::OnProcess_SRTimer() {
     static char time[16];
     sprintf(time, "%02d:%02d:%02d.%03d", h, m, s, ms);
     m_SRScore->SetText(time);
-}
-
-void BMLMod::OnProcess_SkipRender() {
-    m_SkipRender = (m_BML->IsCheatEnabled() && m_InputHook->IsKeyDown(m_SkipRenderKey->GetKey()));
-    if (m_SkipRender)
-        m_RenderContext->ChangeCurrentRenderOptions(0, CK_RENDER_DEFAULTSETTINGS);
-    else
-        m_RenderContext->ChangeCurrentRenderOptions(CK_RENDER_DEFAULTSETTINGS, 0);
 }
 
 void BMLMod::OnResize() {
