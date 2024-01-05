@@ -16,7 +16,7 @@ public:
     const char *GetID() override { return "DebugUtilities"; }
     const char *GetVersion() override { return BML_VERSION; }
     const char *GetName() override { return "Debug Utilities"; }
-    const char *GetAuthor() override { return "Gamepiaynmo"; }
+    const char *GetAuthor() override { return "Gamepiaynmo & Kakuty"; }
     const char *GetDescription() override { return "Ballance Debug Utilities."; }
     DECLARE_BML_VERSION;
 
