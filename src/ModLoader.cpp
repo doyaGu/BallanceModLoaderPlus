@@ -13,7 +13,6 @@
 
 #include "BML/InputHook.h"
 #include "Logger.h"
-#include "Overlay.h"
 #include "StringUtils.h"
 #include "PathUtils.h"
 
@@ -491,11 +490,6 @@ CKERROR ModLoader::OnCKPostReset() {
     m_RenderContext = m_CKContext->GetPlayerRenderContext();
     m_Logger->Info("Get Render Context pointer 0x%08x", m_RenderContext);
 
-    Overlay::ImGuiInit(m_CKContext, IsOriginalPlayer());
-
-    ImGuiContext *const backupContext = ImGui::GetCurrentContext();
-    ImGui::SetCurrentContext(Overlay::GetImGuiContext());
-
     LoadMods();
 
     for (IMod *mod: m_Mods) {
@@ -524,8 +518,6 @@ CKERROR ModLoader::OnCKPostReset() {
         }
     }
 
-    ImGui::SetCurrentContext(backupContext);
-
     return CK_OK;
 }
 
@@ -535,16 +527,10 @@ CKERROR ModLoader::OnCKReset() {
 
     UnloadMods();
 
-    Overlay::ImGuiShutdown(m_CKContext, IsOriginalPlayer());
-
     return CK_OK;
 }
 
 CKERROR ModLoader::PostProcess() {
-    ImGuiContext *const backupContext = ImGui::GetCurrentContext();
-    ImGui::SetCurrentContext(Overlay::GetImGuiContext());
-    Overlay::ImGuiNewFrame();
-
     for (auto iter = m_Timers.begin(); iter != m_Timers.end();) {
         if (!iter->Process(m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime()))
             iter = m_Timers.erase(iter);
@@ -553,11 +539,6 @@ CKERROR ModLoader::PostProcess() {
     }
 
     BroadcastCallback(&IMod::OnProcess);
-
-    Overlay::ImGuiRender();
-    ImGui::SetCurrentContext(backupContext);
-
-    m_InputHook->Process();
 
     if (m_Exiting)
         m_MessageManager->SendMessageBroadcast(m_MessageManager->AddMessageType(TOCKSTRING("Exit Game")));
@@ -571,7 +552,6 @@ CKERROR ModLoader::OnPostRender(CKRenderContext *dev) {
 }
 
 CKERROR ModLoader::OnPostSpriteRender(CKRenderContext *dev) {
-    Overlay::ImGuiOnRender();
     return CK_OK;
 }
 
