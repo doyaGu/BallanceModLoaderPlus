@@ -12,7 +12,7 @@ public:
     const char *GetID() override { return "TravelMode"; }
     const char *GetVersion() override { return BML_VERSION; }
     const char *GetName() override { return "Travel Mode"; }
-    const char *GetAuthor() override { return "Gamepiaynmo"; }
+    const char *GetAuthor() override { return "Gamepiaynmo & Kakuty"; }
     const char *GetDescription() override { return "Travel Mode for Ballance."; }
     DECLARE_BML_VERSION;
 

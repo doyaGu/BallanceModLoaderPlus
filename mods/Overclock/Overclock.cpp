@@ -11,6 +11,8 @@ void BMLExit(IMod *mod) {
 }
 
 void Overclock::OnLoad() {
+    GetConfig()->SetCategoryComment("Misc", "Miscellaneous");
+
     m_Overclock = GetConfig()->GetProperty("Misc", "Overclock");
     m_Overclock->SetComment("Remove delay of spawn / respawn");
     m_Overclock->SetDefaultBoolean(false);
