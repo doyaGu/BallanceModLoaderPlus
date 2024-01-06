@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+#include <vector>
 #include <memory>
 #include <thread>
 
@@ -98,7 +100,6 @@ public:
                       XObjectArray *objArray, CKObject *masterObj) override;
     void OnLoadScript(const char *filename, CKBehavior *script) override;
 
-    void OnPreProcess();
     void OnProcess() override;
 
     void OnBallOff() override;
@@ -111,6 +112,9 @@ public:
     void OnPostStartMenu() override;
 
     IBML* GetBML() { return m_BML; }
+
+    void OnPreProcessInput();
+    void OnPreProcessTime();
 
     void OnStart();
     void OnStop();
