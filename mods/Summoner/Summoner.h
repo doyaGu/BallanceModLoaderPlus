@@ -12,7 +12,7 @@ public:
     const char *GetID() override { return "Summoner"; }
     const char *GetVersion() override { return BML_VERSION; }
     const char *GetName() override { return "Summoner"; }
-    const char *GetAuthor() override { return "Gamepiaynmo"; }
+    const char *GetAuthor() override { return "Gamepiaynmo & Kakuty"; }
     const char *GetDescription() override { return "Ballance Entity Summoner."; }
     DECLARE_BML_VERSION;
 

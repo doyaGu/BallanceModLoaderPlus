@@ -16,6 +16,7 @@ void BMLExit(IMod *mod) {
 
 void TravelMode::OnLoad() {
     GetConfig()->SetCategoryComment("Camera", "Camera Utilities");
+
     m_CamOn = GetConfig()->GetProperty("Camera", "Enable");
     m_CamOn->SetComment("Enable Camera Utilities");
     m_CamOn->SetDefaultBoolean(false);

@@ -12,6 +12,7 @@ void BMLExit(IMod *mod) {
 
 void Summoner::OnLoad() {
     GetConfig()->SetCategoryComment("Auxiliaries", "Temporal Auxiliary Moduls");
+
     m_AddBall[0] = GetConfig()->GetProperty("Auxiliaries", "PaperBall");
     m_AddBall[0]->SetComment("Add a Paper Ball");
     m_AddBall[0]->SetDefaultKey(CKKEY_J);

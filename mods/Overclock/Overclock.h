@@ -12,7 +12,7 @@ public:
     const char *GetID() override { return "Overclock"; }
     const char *GetVersion() override { return BML_VERSION; }
     const char *GetName() override { return "Overclock"; }
-    const char *GetAuthor() override { return "Gamepiaynmo"; }
+    const char *GetAuthor() override { return "Gamepiaynmo & Kakuty"; }
     const char *GetDescription() override { return "Remove delay of spawn / respawn."; }
     DECLARE_BML_VERSION;
 
