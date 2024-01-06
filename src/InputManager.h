@@ -213,4 +213,10 @@ private:
     void EnsureCursorVisible(CKBOOL iShow);
 };
 
+void CKInitializeParameterTypes(CKContext *context);
+void CKInitializeOperationTypes(CKContext *context);
+void CKInitializeOperationFunctions(CKContext *context);
+void CKUnInitializeParameterTypes(CKContext *context);
+void CKUnInitializeOperationTypes(CKContext *context);
+
 #endif // DX8INPUTMANAGER_H
