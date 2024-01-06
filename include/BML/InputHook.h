@@ -7,14 +7,14 @@
 
 class BML_EXPORT InputHook {
 public:
-    explicit InputHook(CKContext *context);
-
     void EnableKeyboardRepetition(CKBOOL iEnable = TRUE);
     CKBOOL IsKeyboardRepetitionEnabled();
 
     CKBOOL IsKeyDown(CKDWORD iKey, CKDWORD *oStamp = nullptr);
     CKBOOL IsKeyUp(CKDWORD iKey);
     CKBOOL IsKeyToggled(CKDWORD iKey, CKDWORD *oStamp = nullptr);
+    CKBOOL IsKeyPressed(CKDWORD iKey);
+    CKBOOL IsKeyReleased(CKDWORD iKey);
 
     void GetKeyName(CKDWORD iKey, CKSTRING oKeyName);
     CKDWORD GetKeyFromName(CKSTRING iKeyName);
@@ -50,6 +50,9 @@ public:
     CKBOOL oIsKeyDown(CKDWORD iKey, CKDWORD *oStamp = nullptr);
     CKBOOL oIsKeyUp(CKDWORD iKey);
     CKBOOL oIsKeyToggled(CKDWORD iKey, CKDWORD *oStamp = nullptr);
+    CKBOOL oIsKeyPressed(CKDWORD iKey);
+    CKBOOL oIsKeyReleased(CKDWORD iKey);
+
     unsigned char *oGetKeyboardState();
     int oGetNumberOfKeyInBuffer();
     int oGetKeyFromBuffer(int i, CKDWORD &oKey, CKDWORD *oTimeStamp = nullptr);
@@ -61,21 +64,6 @@ public:
 
     bool IsBlock();
     void SetBlock(bool block);
-
-    void Process();
-
-    CKBOOL IsKeyPressed(CKDWORD iKey);
-    CKBOOL IsKeyReleased(CKDWORD iKey);
-
-    CKBOOL oIsKeyPressed(CKDWORD iKey);
-    CKBOOL oIsKeyReleased(CKDWORD iKey);
-
-private:
-    bool m_Block = false;
-    unsigned char m_KeyboardState[256] = {};
-    unsigned char m_LastKeyboardState[256] = {};
-    Vx2DVector m_LastMousePos;
-    CKInputManager *m_InputManager = nullptr;
 };
 
 #endif // BML_INPUTHOOK_H
