@@ -9,6 +9,8 @@
 #include <direct.h>
 #include <io.h>
 
+#include <zip.h>
+
 #include "BML/InputHook.h"
 #include "Logger.h"
 #include "Overlay.h"
@@ -18,8 +20,6 @@
 // Builtin Mods
 #include "BMLMod.h"
 #include "NewBallTypeMod.h"
-
-#include "zip.h"
 
 extern HMODULE g_DllHandle;
 
@@ -739,28 +739,17 @@ void ModLoader::InitDirectories() {
         char szPath[MAX_PATH];
         char drive[4];
         char dir[MAX_PATH];
-        ::GetModuleFileNameA(g_DllHandle, szPath, MAX_PATH);
+        ::GetModuleFileNameA(nullptr, szPath, MAX_PATH);
         _splitpath(szPath, drive, dir, nullptr, nullptr);
         snprintf(szPath, MAX_PATH, "%s%s", drive, dir);
         path = utils::RemoveTrailingPathSeparator(szPath);
     }
 
-    std::string bin = "Bin";
-    std::string parentPath = utils::RemoveTrailingPathSeparator(utils::RemoveFileName(path));
+    // Set up game directory
+    m_GameDir = utils::RemoveTrailingPathSeparator(utils::RemoveFileName(path));
 
     // Set up loader directory
-    if (utils::EndsWithCaseInsensitive(path, bin)) {
-        m_LoaderDir = std::move(parentPath);
-    } else if (utils::EndsWithCaseInsensitive(path, bin.append("\\").append("Debug")) ||
-               utils::EndsWithCaseInsensitive(path, bin.append("\\").append("Release"))) {
-        path = parentPath;
-        m_LoaderDir = std::move(utils::RemoveFileName(path));
-    } else {
-        m_LoaderDir = std::move(path);
-    }
-
-    // Set up game directory
-    m_GameDir = std::move(utils::RemoveTrailingPathSeparator(utils::RemoveFileName(m_LoaderDir)));
+    m_LoaderDir = utils::JoinPaths(m_GameDir, "ModLoader");
 
     // Set up configs directory
     std::string configPath = m_LoaderDir + "\\Configs";
@@ -837,7 +826,7 @@ void ModLoader::GetManagers() {
     m_CollisionManager = (CKCollisionManager *) m_CKContext->GetManagerByGuid(COLLISION_MANAGER_GUID);
     m_Logger->Info("Get Collision Manager pointer 0x%08x", m_CollisionManager);
 
-    m_InputHook = new InputHook(m_CKContext);
+    m_InputHook = new InputHook();
     m_Logger->Info("Get Input Manager pointer 0x%08x", m_InputHook);
 
     m_MessageManager = m_CKContext->GetMessageManager();

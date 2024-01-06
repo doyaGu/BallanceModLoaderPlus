@@ -1,269 +1,200 @@
 #include "BML/InputHook.h"
-#include "ModLoader.h"
+#include "InputManager.h"
 
-int KeyEvent(const CKBehaviorContext &behcontext)
-{
-    CKBehavior *beh = behcontext.Behavior;
-
-    CKBOOL state = FALSE;
-
-    // If the Off input is active, we stop sending messages
-    if (beh->IsInputActive(1))
-    {
-        beh->ActivateInput(1, FALSE);
-        return CKBR_OK;
-    }
-    else
-    {
-        if (beh->IsInputActive(0))
-        {
-            beh->ActivateInput(0, FALSE);
-            beh->SetOutputParameterValue(0, &state);
-        }
-    }
-
-    beh->GetOutputParameterValue(0, &state);
-
-    InputHook *input = ModLoader::GetInstance().GetInputManager();
-    if (!input)
-    {
-        behcontext.Context->OutputToConsoleEx("Can't get the Input Manager");
-        return CKBR_GENERICERROR;
-    }
-
-    int i, count = beh->GetInputParameterCount();
-
-    for (i = 0; i < count; ++i)
-    {
-        int key = 0;
-        beh->GetInputParameterValue(i, &key);
-
-        if (!input->IsKeyDown(key))
-            break;
-    }
-
-    if ((i != count) && state)
-    {
-        state = FALSE;
-        beh->ActivateOutput(1);
-    }
-    else if ((i == count) && !state)
-    {
-        state = TRUE;
-        beh->ActivateOutput(0);
-    }
-
-    beh->SetOutputParameterValue(0, &state);
-
-    return CKBR_ACTIVATENEXTFRAME;
-}
-
-bool HookKeyEvent() {
-    CKBehaviorPrototype *keyEventProto = CKGetPrototypeFromGuid(VT_CONTROLLERS_KEYEVENT);
-    if (!keyEventProto) return false;
-    keyEventProto->SetFunction(&KeyEvent);
-    return true;
-}
-
-InputHook::InputHook(CKContext *context) {
-    m_InputManager = (CKInputManager *)context->GetManagerByGuid(INPUT_MANAGER_GUID);
-    HookKeyEvent();
-}
+extern InputManager *g_InputManager;
 
 void InputHook::EnableKeyboardRepetition(CKBOOL iEnable) {
-    m_InputManager->EnableKeyboardRepetition(iEnable);
+    g_InputManager->EnableKeyboardRepetition(iEnable);
 }
 
 CKBOOL InputHook::IsKeyboardRepetitionEnabled() {
-    return m_InputManager->IsKeyboardRepetitionEnabled();
+    return g_InputManager->IsKeyboardRepetitionEnabled();
 }
 
 CKBOOL InputHook::IsKeyDown(CKDWORD iKey, CKDWORD *oStamp) {
-    CKBOOL res = InputHook::oIsKeyDown(iKey, oStamp);
-    return !m_Block && res;
+    return g_InputManager->IsKeyDown(iKey, oStamp);
 }
 
 CKBOOL InputHook::IsKeyUp(CKDWORD iKey) {
-    return m_Block || InputHook::oIsKeyUp(iKey);
+    return g_InputManager->IsKeyUp(iKey);
 }
 
 CKBOOL InputHook::IsKeyToggled(CKDWORD iKey, CKDWORD *oStamp) {
-    CKBOOL res = InputHook::oIsKeyToggled(iKey, oStamp);
-    return !m_Block && res;
+    return g_InputManager->IsKeyToggled(iKey, oStamp);
 }
 
 void InputHook::GetKeyName(CKDWORD iKey, CKSTRING oKeyName) {
-    m_InputManager->GetKeyName(iKey, oKeyName);
+    g_InputManager->GetKeyName(iKey, oKeyName);
 }
 
 CKDWORD InputHook::GetKeyFromName(CKSTRING iKeyName) {
-    return m_InputManager->GetKeyFromName(iKeyName);
+    return g_InputManager->GetKeyFromName(iKeyName);
 }
 
 unsigned char *InputHook::GetKeyboardState() {
-    return m_Block ? m_KeyboardState : InputHook::oGetKeyboardState();
+    return g_InputManager->GetKeyboardState();
 }
 
 CKBOOL InputHook::IsKeyboardAttached() {
-    return m_InputManager->IsKeyboardAttached();
+    return g_InputManager->IsKeyboardAttached();
 }
 
 int InputHook::GetNumberOfKeyInBuffer() {
-    return m_Block ? 0 : InputHook::oGetNumberOfKeyInBuffer();
+    return g_InputManager->GetNumberOfKeyInBuffer();
 }
 
 int InputHook::GetKeyFromBuffer(int i, CKDWORD &oKey, CKDWORD *oTimeStamp) {
-    return m_Block ? NO_KEY : InputHook::oGetKeyFromBuffer(i, oKey, oTimeStamp);
+    return g_InputManager->GetKeyFromBuffer(i, oKey, oTimeStamp);
 }
 
 CKBOOL InputHook::IsMouseButtonDown(CK_MOUSEBUTTON iButton) {
-    return !m_Block && InputHook::oIsMouseButtonDown(iButton);
+    return g_InputManager->IsMouseButtonDown(iButton);
 }
 
 CKBOOL InputHook::IsMouseClicked(CK_MOUSEBUTTON iButton) {
-    return !m_Block && InputHook::oIsMouseClicked(iButton);
+    return g_InputManager->IsMouseClicked(iButton);
 }
 
 CKBOOL InputHook::IsMouseToggled(CK_MOUSEBUTTON iButton) {
-    return !m_Block && InputHook::oIsMouseToggled(iButton);
+    return g_InputManager->IsMouseToggled(iButton);
 }
 
 void InputHook::GetMouseButtonsState(CKBYTE oStates[4]) {
-    if (m_Block)
-        memset(oStates, KS_IDLE, sizeof(CKBYTE) * 4);
-    else
-        InputHook::oGetMouseButtonsState(oStates);
+    g_InputManager->GetMouseButtonsState(oStates);
 }
 
 void InputHook::GetMousePosition(Vx2DVector &oPosition, CKBOOL iAbsolute) {
-    m_InputManager->GetMousePosition(oPosition, iAbsolute);
+    g_InputManager->GetMousePosition(oPosition, iAbsolute);
 }
 
 void InputHook::GetMouseRelativePosition(VxVector &oPosition) {
-    m_InputManager->GetMouseRelativePosition(oPosition);
+    g_InputManager->GetMouseRelativePosition(oPosition);
 }
 
 void InputHook::GetLastMousePosition(Vx2DVector &position) {
-    position = m_LastMousePos;
+    g_InputManager->GetMousePosition(position, FALSE);
+    VxVector delta;
+    g_InputManager->GetMouseRelativePosition(delta);
+    position.x -= delta.x;
+    position.y -= delta.y;
 }
 
 CKBOOL InputHook::IsMouseAttached() {
-    return m_InputManager->IsMouseAttached();
+    return g_InputManager->IsMouseAttached();
 }
 
 CKBOOL InputHook::IsJoystickAttached(int iJoystick) {
-    return m_InputManager->IsJoystickAttached(iJoystick);
+    return g_InputManager->IsJoystickAttached(iJoystick);
 }
 
 void InputHook::GetJoystickPosition(int iJoystick, VxVector *oPosition) {
-    m_InputManager->GetJoystickPosition(iJoystick, oPosition);
+    g_InputManager->GetJoystickPosition(iJoystick, oPosition);
 }
 
 void InputHook::GetJoystickRotation(int iJoystick, VxVector *oRotation) {
-    m_InputManager->GetJoystickRotation(iJoystick, oRotation);
+    g_InputManager->GetJoystickRotation(iJoystick, oRotation);
 }
 
 void InputHook::GetJoystickSliders(int iJoystick, Vx2DVector *oPosition) {
-    m_InputManager->GetJoystickSliders(iJoystick, oPosition);
+    g_InputManager->GetJoystickSliders(iJoystick, oPosition);
 }
 
 void InputHook::GetJoystickPointOfViewAngle(int iJoystick, float *oAngle) {
-    m_InputManager->GetJoystickPointOfViewAngle(iJoystick, oAngle);
+    g_InputManager->GetJoystickPointOfViewAngle(iJoystick, oAngle);
 }
 
 CKDWORD InputHook::GetJoystickButtonsState(int iJoystick) {
-    return m_InputManager->GetJoystickButtonsState(iJoystick);
+    return g_InputManager->GetJoystickButtonsState(iJoystick);
 }
 
 CKBOOL InputHook::IsJoystickButtonDown(int iJoystick, int iButton) {
-    return m_InputManager->IsJoystickButtonDown(iJoystick, iButton);
+    return g_InputManager->IsJoystickButtonDown(iJoystick, iButton);
 }
 
 void InputHook::Pause(CKBOOL pause) {
-    m_InputManager->Pause(pause);
+    g_InputManager->Pause(pause);
 }
 
 void InputHook::ShowCursor(CKBOOL iShow) {
-    m_InputManager->ShowCursor(iShow);
+    g_InputManager->ShowCursor(iShow);
 }
 
 CKBOOL InputHook::GetCursorVisibility() {
-    return m_InputManager->GetCursorVisibility();
+    return g_InputManager->GetCursorVisibility();
 }
 
 VXCURSOR_POINTER InputHook::GetSystemCursor() {
-    return m_InputManager->GetSystemCursor();
+    return g_InputManager->GetSystemCursor();
 }
 
 void InputHook::SetSystemCursor(VXCURSOR_POINTER cursor) {
-    m_InputManager->SetSystemCursor(cursor);
+    g_InputManager->SetSystemCursor(cursor);
 }
 
 bool InputHook::IsBlock() {
-    return m_Block;
+    return g_InputManager->IsBlocked(static_cast<CK_INPUT_DEVICE>(CK_INPUT_DEVICE_KEYBOARD | CK_INPUT_DEVICE_MOUSE));
 }
 
 void InputHook::SetBlock(bool block) {
-    m_Block = block;
-}
-
-void InputHook::Process() {
-    memcpy(m_LastKeyboardState, InputHook::oGetKeyboardState(), sizeof(m_LastKeyboardState));
-    m_InputManager->GetMousePosition(m_LastMousePos, false);
+    if (block) {
+        g_InputManager->Block(static_cast<CK_INPUT_DEVICE>(CK_INPUT_DEVICE_KEYBOARD | CK_INPUT_DEVICE_MOUSE));
+    } else {
+        g_InputManager->Unblock(static_cast<CK_INPUT_DEVICE>(CK_INPUT_DEVICE_KEYBOARD | CK_INPUT_DEVICE_MOUSE));
+    }
 }
 
 CKBOOL InputHook::IsKeyPressed(CKDWORD iKey) {
-    return !m_Block && oIsKeyPressed(iKey);
+    return g_InputManager->IsKeyDown(iKey, nullptr);
 }
 
 CKBOOL InputHook::IsKeyReleased(CKDWORD iKey) {
-    return !m_Block && oIsKeyReleased(iKey);
+    return g_InputManager->IsKeyToggled(iKey, nullptr);
 }
 
 CKBOOL InputHook::oIsKeyPressed(CKDWORD iKey) {
-    return oIsKeyDown(iKey) && !m_LastKeyboardState[iKey];
+    return g_InputManager->IsKeyDownRaw(iKey, nullptr);
 }
 
 CKBOOL InputHook::oIsKeyReleased(CKDWORD iKey) {
-    return oIsKeyUp(iKey) && m_LastKeyboardState[iKey];
+    return g_InputManager->IsKeyToggledRaw(iKey, nullptr);
 }
 
 CKBOOL InputHook::oIsKeyDown(CKDWORD iKey, CKDWORD *oStamp) {
-    return m_InputManager->IsKeyDown(iKey, oStamp);
+    return g_InputManager->IsKeyDownRaw(iKey, oStamp);
 }
 
 CKBOOL InputHook::oIsKeyUp(CKDWORD iKey) {
-    return m_InputManager->IsKeyUp(iKey);
+    return g_InputManager->IsKeyUpRaw(iKey);
 }
 
 CKBOOL InputHook::oIsKeyToggled(CKDWORD iKey, CKDWORD *oStamp) {
-    return (m_InputManager->IsKeyToggled)(iKey, oStamp);
+    return g_InputManager->IsKeyToggledRaw(iKey, oStamp);
 }
 
 unsigned char *InputHook::oGetKeyboardState() {
-    return m_InputManager->GetKeyboardState();
+    return g_InputManager->GetKeyboardStateRaw();
 }
 
 int InputHook::oGetNumberOfKeyInBuffer() {
-    return m_InputManager->GetNumberOfKeyInBuffer();
+    return g_InputManager->GetNumberOfKeyInBufferRaw();
 }
 
 int InputHook::oGetKeyFromBuffer(int i, CKDWORD &oKey, CKDWORD *oTimeStamp) {
-    return m_InputManager->GetKeyFromBuffer(i, oKey, oTimeStamp);
+    return g_InputManager->GetKeyFromBufferRaw(i, oKey, oTimeStamp);
 }
 
 CKBOOL InputHook::oIsMouseButtonDown(CK_MOUSEBUTTON iButton) {
-    return m_InputManager->IsMouseButtonDown(iButton);
+    return g_InputManager->IsMouseButtonDownRaw(iButton);
 }
 
 CKBOOL InputHook::oIsMouseClicked(CK_MOUSEBUTTON iButton) {
-    return m_InputManager->IsMouseClicked(iButton);
+    return g_InputManager->IsMouseClickedRaw(iButton);
 }
 
 CKBOOL InputHook::oIsMouseToggled(CK_MOUSEBUTTON iButton) {
-    return m_InputManager->IsMouseToggled(iButton);
+    return g_InputManager->IsMouseToggledRaw(iButton);
 }
 
 void InputHook::oGetMouseButtonsState(CKBYTE oStates[4]) {
-    m_InputManager->GetMouseButtonsState(oStates);
+    g_InputManager->GetMouseButtonsStateRaw(oStates);
 }
