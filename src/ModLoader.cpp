@@ -730,6 +730,9 @@ void ModLoader::InitDirectories() {
 
     // Set up loader directory
     m_LoaderDir = utils::JoinPaths(m_GameDir, "ModLoader");
+    if (!utils::DirectoryExists(m_LoaderDir)) {
+        utils::CreateDir(m_LoaderDir);
+    }
 
     // Set up configs directory
     std::string configPath = m_LoaderDir + "\\Config";
