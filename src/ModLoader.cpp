@@ -230,7 +230,7 @@ bool ModLoader::LoadConfig(Config *config) {
         return false;
 
     std::string configPath = GetDirectory(DIR_LOADER);
-    configPath.append("\\Configs\\").append(mod->GetID()).append(".cfg");
+    configPath.append("\\Config\\").append(mod->GetID()).append(".cfg");
     return config->Load(configPath.c_str());
 }
 
@@ -243,7 +243,7 @@ bool ModLoader::SaveConfig(Config *config) {
         return false;
 
     std::string configPath = GetDirectory(DIR_LOADER);
-    configPath.append("\\Configs\\").append(mod->GetID()).append(".cfg");
+    configPath.append("\\Config\\").append(mod->GetID()).append(".cfg");
     return config->Save(configPath.c_str());
 }
 
@@ -732,7 +732,7 @@ void ModLoader::InitDirectories() {
     m_LoaderDir = utils::JoinPaths(m_GameDir, "ModLoader");
 
     // Set up configs directory
-    std::string configPath = m_LoaderDir + "\\Configs";
+    std::string configPath = m_LoaderDir + "\\Config";
     if (!utils::DirectoryExists(configPath)) {
         utils::CreateDir(configPath);
     }
