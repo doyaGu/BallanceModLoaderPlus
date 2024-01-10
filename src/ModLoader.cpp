@@ -1103,10 +1103,8 @@ void ModLoader::FillCallbackMap(IMod *mod) {
     CHECK_V_FUNC(index++, &IMod::OnPhysicalize);
     CHECK_V_FUNC(index++, &IMod::OnUnphysicalize);
 
-    if (mod->GetBMLVersion() >= BMLVersion(0, 2, 0)) {
-        CHECK_V_FUNC(index++, &IMod::OnPreCommandExecute);
-        CHECK_V_FUNC(index++, &IMod::OnPostCommandExecute);
-    }
+    CHECK_V_FUNC(index++, &IMod::OnPreCommandExecute);
+    CHECK_V_FUNC(index++, &IMod::OnPostCommandExecute);
 
 #undef CHECK_V_FUNC
 }
