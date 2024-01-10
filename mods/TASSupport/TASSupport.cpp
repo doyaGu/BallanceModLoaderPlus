@@ -351,51 +351,47 @@ void TASSupport::OnPostStartMenu() {
 }
 
 void TASSupport::OnPreProcessInput() {
-    if (m_Enabled->GetBoolean()) {
-        if (m_Playing) {
-            if (m_CurFrame < m_RecordData.size()) {
-                KeyState state = m_RecordData[m_CurFrame++].keyState;
-                CKBYTE *stateBuf = m_InputManager->GetKeyboardState();
-                stateBuf[m_KeyUp] = state.key_up;
-                stateBuf[m_KeyDown] = state.key_down;
-                stateBuf[m_KeyLeft] = state.key_left;
-                stateBuf[m_KeyRight] = state.key_right;
-                stateBuf[CKKEY_Q] = state.key_q;
-                stateBuf[m_KeyShift] = state.key_shift;
-                stateBuf[m_KeySpace] = state.key_space;
-                stateBuf[CKKEY_ESCAPE] = state.key_esc;
-                stateBuf[CKKEY_RETURN] = state.key_enter;
-            } else {
-                OnStop();
-            }
-        } else if (m_Recording) {
-            KeyState state = {};
+    if (m_Playing) {
+        if (m_CurFrame < m_RecordData.size()) {
+            KeyState state = m_RecordData[m_CurFrame++].keyState;
             CKBYTE *stateBuf = m_InputManager->GetKeyboardState();
-            state.key_up = stateBuf[m_KeyUp];
-            state.key_down = stateBuf[m_KeyDown];
-            state.key_left = stateBuf[m_KeyLeft];
-            state.key_right = stateBuf[m_KeyRight];
-            state.key_q = stateBuf[CKKEY_Q];
-            state.key_shift = stateBuf[m_KeyShift];
-            state.key_space = stateBuf[m_KeySpace];
-            state.key_esc = stateBuf[CKKEY_ESCAPE];
-            state.key_enter = stateBuf[CKKEY_RETURN];
-            m_RecordData.rbegin()->keyState = state;
+            stateBuf[m_KeyUp] = state.key_up;
+            stateBuf[m_KeyDown] = state.key_down;
+            stateBuf[m_KeyLeft] = state.key_left;
+            stateBuf[m_KeyRight] = state.key_right;
+            stateBuf[CKKEY_Q] = state.key_q;
+            stateBuf[m_KeyShift] = state.key_shift;
+            stateBuf[m_KeySpace] = state.key_space;
+            stateBuf[CKKEY_ESCAPE] = state.key_esc;
+            stateBuf[CKKEY_RETURN] = state.key_enter;
+        } else {
+            OnStop();
         }
+    } else if (m_Recording) {
+        KeyState state = {};
+        CKBYTE *stateBuf = m_InputManager->GetKeyboardState();
+        state.key_up = stateBuf[m_KeyUp];
+        state.key_down = stateBuf[m_KeyDown];
+        state.key_left = stateBuf[m_KeyLeft];
+        state.key_right = stateBuf[m_KeyRight];
+        state.key_q = stateBuf[CKKEY_Q];
+        state.key_shift = stateBuf[m_KeyShift];
+        state.key_space = stateBuf[m_KeySpace];
+        state.key_esc = stateBuf[CKKEY_ESCAPE];
+        state.key_enter = stateBuf[CKKEY_RETURN];
+        m_RecordData.rbegin()->keyState = state;
     }
 }
 
 void TASSupport::OnPreProcessTime() {
-    if (m_Enabled->GetBoolean()) {
-        if (m_Playing) {
-            if (m_CurFrame < m_RecordData.size()) {
-                m_TimeManager->SetLastDeltaTime(m_RecordData[m_CurFrame].deltaTime);
-            } else {
-                OnStop();
-            }
-        } else if (m_Recording) {
-            m_RecordData.emplace_back(m_TimeManager->GetLastDeltaTime());
+    if (m_Playing) {
+        if (m_CurFrame < m_RecordData.size()) {
+            m_TimeManager->SetLastDeltaTime(m_RecordData[m_CurFrame].deltaTime);
+        } else {
+            OnStop();
         }
+    } else if (m_Recording) {
+        m_RecordData.emplace_back(m_TimeManager->GetLastDeltaTime());
     }
 }
 
