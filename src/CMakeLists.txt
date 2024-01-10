@@ -37,6 +37,7 @@ set(BML_PRIVATE_HEADERS
 
         StringUtils.h
         PathUtils.h
+        HookUtils.h
 )
 
 set(BML_SOURCES
@@ -71,6 +72,7 @@ set(BML_SOURCES
         Timer.cpp
 
         PathUtils.cpp
+        HookUtils.cpp
 
         BML.rc
 )
