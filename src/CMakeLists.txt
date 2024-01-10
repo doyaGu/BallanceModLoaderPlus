@@ -62,7 +62,7 @@ set(BML_SOURCES
 
         InputHook.cpp
         ObjectLoadHook.cpp
-        PhysicalizeHook.cpp
+        PhysicsHook.cpp
 
         ExecuteBB.cpp
         ScriptHelper.cpp
