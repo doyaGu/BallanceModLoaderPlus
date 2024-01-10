@@ -102,7 +102,6 @@ void ModLoader::LoadMods() {
     }
 
     m_ModsLoaded = true;
-    m_ModsLoadedOnce = true;
 }
 
 void ModLoader::UnloadMods() {
@@ -134,6 +133,7 @@ void ModLoader::UnloadMods() {
     }
 
     m_ModsLoaded = false;
+    m_ModsLoadedOnce = true;
 }
 
 int ModLoader::GetModCount() {
