@@ -60,8 +60,6 @@ void ModLoader::Init(CKContext *context) {
 
     InitHooks();
 
-    m_Logger->Info("Loading Mod Loader");
-
     m_Initialized = true;
 }
 
