@@ -25,7 +25,7 @@ set(BML_PUBLIC_HEADERS
 
 set(BML_PRIVATE_HEADERS
         ModLoader.h
-        InputManager.h
+        ModManager.h
 
         BMLMod.h
         NewBallTypeMod.h
@@ -42,9 +42,9 @@ set(BML_PRIVATE_HEADERS
 
 set(BML_SOURCES
         BML.cpp
-        ModLoader.cpp
         HookBlock.cpp
-        InputManager.cpp
+        ModManager.cpp
+        ModLoader.cpp
 
         IMod.cpp
         BMLMod.cpp
@@ -94,7 +94,6 @@ target_link_libraries(BML
         CK2 VxMath
         PRIVATE
         minhook zip
-        dinput8 dxguid Winmm
 )
 
 target_compile_definitions(BML PRIVATE "BML_EXPORTS")

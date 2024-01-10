@@ -7,26 +7,20 @@
 
 #include "CKContext.h"
 
-#include "InputManager.h"
+#include "ModManager.h"
+#include "HookUtils.h"
 
 HMODULE g_DllHandle = nullptr;
-InputManager *g_InputManager = nullptr;
+ModManager *g_ModManager = nullptr;
 
-CKERROR CreateInputManager(CKContext *context) {
-    CKInitializeParameterTypes(context);
-    CKInitializeOperationTypes(context);
-    CKInitializeOperationFunctions(context);
-
-    g_InputManager = new InputManager(context);
+CKERROR CreateModManager(CKContext *context) {
+    g_ModManager = new ModManager(context);
 
     return CK_OK;
 }
 
-CKERROR RemoveInputManager(CKContext *context) {
-    delete g_InputManager;
-
-    CKUnInitializeParameterTypes(context);
-    CKUnInitializeOperationTypes(context);
+CKERROR RemoveModManager(CKContext *context) {
+    delete g_ModManager;
 
     return CK_OK;
 }
@@ -46,15 +40,15 @@ PLUGIN_EXPORT CKPluginInfo *CKGetPluginInfo(int Index) {
     g_PluginInfo[0].m_GUID = CKGUID(0x3a086b4d, 0x2f4a4f01);
     g_PluginInfo[0].m_Summary = "Building blocks for hooking";
 
-    g_PluginInfo[1].m_Author = "Virtools";
-    g_PluginInfo[1].m_Description = "DirectX Keyboard/Mouse/Joystick Manager";
+    g_PluginInfo[1].m_Author = "Kakuty";
+    g_PluginInfo[1].m_Description = "Mod Manager";
     g_PluginInfo[1].m_Extension = "";
     g_PluginInfo[1].m_Type = CKPLUGIN_MANAGER_DLL;
     g_PluginInfo[1].m_Version = 0x000001;
-    g_PluginInfo[1].m_InitInstanceFct = CreateInputManager;
-    g_PluginInfo[1].m_ExitInstanceFct = RemoveInputManager;
-    g_PluginInfo[1].m_GUID = INPUT_MANAGER_GUID;
-    g_PluginInfo[1].m_Summary = "DirectX Input Manager";
+    g_PluginInfo[1].m_InitInstanceFct = CreateModManager;
+    g_PluginInfo[1].m_ExitInstanceFct = RemoveModManager;
+    g_PluginInfo[1].m_GUID = MOD_MANAGER_GUID;
+    g_PluginInfo[1].m_Summary = "Mod Manager";
 
     return &g_PluginInfo[Index];
 }
@@ -65,7 +59,7 @@ void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg) {
     RegisterBehavior(reg, FillBehaviorHookBlockDecl);
 }
 
-bool HookCreateCKBehaviorPrototypeRuntime() {
+static bool HookCreateCKBehaviorPrototypeRuntime() {
     HMODULE handle = ::GetModuleHandleA("CK2.dll");
     LPVOID lpCreateCKBehaviorPrototypeRunTimeProc =
             (LPVOID) ::GetProcAddress(handle, "?CreateCKBehaviorPrototypeRunTime@@YAPAVCKBehaviorPrototype@@PAD@Z");
@@ -81,19 +75,26 @@ bool HookCreateCKBehaviorPrototypeRuntime() {
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
     switch (fdwReason) {
         case DLL_PROCESS_ATTACH:
+            if (MH_Initialize() != MH_OK) {
+                utils::OutputDebugA("Fatal: Unable to initialize MinHook.\n");
+                return FALSE;
+            }
+            if (!HookCreateCKBehaviorPrototypeRuntime()) {
+                utils::OutputDebugA("Fatal: Unable to hook CKBehaviorPrototypeRuntime.\n");
+                return FALSE;
+            }
             g_DllHandle = hModule;
-            if (MH_Initialize() != MH_OK)
-                return FALSE;
-            if (!HookCreateCKBehaviorPrototypeRuntime())
-                return FALSE;
             break;
         case DLL_PROCESS_DETACH:
             g_DllHandle = nullptr;
-            if (MH_Uninitialize() != MH_OK)
+            if (MH_Uninitialize() != MH_OK) {
+                utils::OutputDebugA("Fatal: Unable to uninitialize MinHook.\n");
                 return FALSE;
+            }
             break;
         default:
             break;
     }
+
     return TRUE;
 }
