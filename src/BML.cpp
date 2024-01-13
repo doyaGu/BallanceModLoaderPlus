@@ -15,6 +15,7 @@
 
 HMODULE g_DllHandle = nullptr;
 InputManager *g_InputManager = nullptr;
+SoundManager *g_SoundManager = nullptr;
 
 CKERROR CreateInputManager(CKContext *context)
 {
@@ -37,9 +38,21 @@ CKERROR RemoveInputManager(CKContext *context)
     return CK_OK;
 }
 
-CKPluginInfo g_PluginInfo[2];
+CKERROR CreateSoundManager(CKContext *context)
+{
+    g_SoundManager = new SoundManager(context);
+    return CK_OK;
+}
 
-PLUGIN_EXPORT int CKGetPluginInfoCount() { return 2; }
+CKERROR RemoveSoundManager(CKContext *context)
+{
+    delete g_SoundManager;
+    return CK_OK;
+}
+
+CKPluginInfo g_PluginInfo[3];
+
+PLUGIN_EXPORT int CKGetPluginInfoCount() { return 3; }
 
 PLUGIN_EXPORT CKPluginInfo *CKGetPluginInfo(int Index) {
     g_PluginInfo[0].m_Author = "Kakuty";
@@ -61,6 +74,16 @@ PLUGIN_EXPORT CKPluginInfo *CKGetPluginInfo(int Index) {
     g_PluginInfo[1].m_ExitInstanceFct = RemoveInputManager;
     g_PluginInfo[1].m_GUID = CKGUID(0xF787C904, 0);
     g_PluginInfo[1].m_Summary = "DirectX Input Manager";
+
+    g_PluginInfo[2].m_Author = "Virtools";
+    g_PluginInfo[2].m_Description = "DirectX Sound Manager";
+    g_PluginInfo[2].m_Extension = "";
+    g_PluginInfo[2].m_Type = CKPLUGIN_MANAGER_DLL;
+    g_PluginInfo[2].m_Version = 0x000001;
+    g_PluginInfo[2].m_InitInstanceFct = CreateSoundManager;
+    g_PluginInfo[2].m_ExitInstanceFct = RemoveSoundManager;
+    g_PluginInfo[2].m_GUID = CKGUID(0x77135393, 0x225c679a);
+    g_PluginInfo[2].m_Summary = "DirectX Sound Manager";
 
     return &g_PluginInfo[Index];
 }
