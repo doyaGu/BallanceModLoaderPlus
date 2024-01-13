@@ -1,8 +1,6 @@
 #include "ModLoader.h"
 
-namespace {
-    CKBEHAVIORFCT g_ObjectLoad = nullptr;
-}
+static CKBEHAVIORFCT g_ObjectLoad = nullptr;
 
 int ObjectLoad(const CKBehaviorContext &behcontext) {
     CKBehavior *beh = behcontext.Behavior;

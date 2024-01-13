@@ -3,19 +3,20 @@
 #include <MinHook.h>
 
 const char *g_PluginsBlocked[] = {
+    "Dx5InputManager",
+    "Dx8InputManager",
     "BML",
     "BMLPlus",
     "Hooks",
 };
 
-CP_DEFINE_METHOD_HOOK_PTRS(CKPluginManager, ParsePlugins)
-CP_DEFINE_METHOD_HOOK_PTRS(CKPluginManager, RegisterPlugin)
+CP_DEFINE_METHOD_PTRS(CKPluginManager, ParsePlugins)
+CP_DEFINE_METHOD_PTRS(CKPluginManager, RegisterPlugin)
 
 #define CP_PLUGIN_MANAGER_METHOD_NAME(Name) CP_HOOK_CLASS_NAME(CKPluginManager)::CP_FUNC_HOOK_NAME(Name)
 
 int CP_PLUGIN_MANAGER_METHOD_NAME(ParsePlugins)(CKSTRING Directory) {
     return CP_CALL_METHOD_ORIG(ParsePlugins, Directory);
-
 }
 
 CKERROR CP_PLUGIN_MANAGER_METHOD_NAME(RegisterPlugin)(CKSTRING str) {

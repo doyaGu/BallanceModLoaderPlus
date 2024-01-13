@@ -20,8 +20,6 @@
 #include "BMLMod.h"
 #include "NewBallTypeMod.h"
 
-extern HMODULE g_DllHandle;
-
 ModLoader &ModLoader::GetInstance() {
     static ModLoader instance;
     return instance;
@@ -478,9 +476,12 @@ void ModLoader::SkipRenderForNextTick() {
     AddTimer(1ul, [this]() { m_RenderContext->ChangeCurrentRenderOptions(CK_RENDER_DEFAULTSETTINGS, 0); });
 }
 
-CKERROR ModLoader::OnCKPostReset() {
+void ModLoader::OnCKPostReset() {
     if (!IsInitialized() || AreModsLoaded() || AreModsLoadedOnce())
-        return CK_OK;
+        return;
+
+    if (m_CKContext->GetCurrentLevel() == nullptr)
+        return;
 
     m_RenderManager = m_CKContext->GetRenderManager();
     m_Logger->Info("Get Render Manager pointer 0x%08x", m_RenderManager);
@@ -515,23 +516,16 @@ CKERROR ModLoader::OnCKPostReset() {
             BroadcastCallback(&IMod::OnLoadScript, "base.cmo", behavior);
         }
     }
-
-    return CK_OK;
 }
 
-CKERROR ModLoader::OnCKReset() {
+void ModLoader::OnCKReset() {
     if (!IsInitialized() || !AreModsLoaded())
-        return CK_OK;
+        return;
 
     UnloadMods();
-
-    return CK_OK;
 }
 
-CKERROR ModLoader::PostProcess() {
-    extern void PhysicsPostProcess();
-    PhysicsPostProcess();
-
+void ModLoader::PostProcess() {
     for (auto iter = m_Timers.begin(); iter != m_Timers.end();) {
         if (!iter->Process(m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime()))
             iter = m_Timers.erase(iter);
@@ -545,18 +539,15 @@ CKERROR ModLoader::PostProcess() {
         m_MessageManager->SendMessageBroadcast(m_MessageManager->AddMessageType(TOCKSTRING("Exit Game")));
 
     m_InputHook->Process();
-
-    return CK_OK;
 }
 
-CKERROR ModLoader::OnPostRender(CKRenderContext *dev) {
+void ModLoader::OnPreRender(CKRenderContext *dev) {}
+
+void ModLoader::OnPostRender(CKRenderContext *dev) {
     BroadcastCallback(&IMod::OnRender, static_cast<CK_RENDER_FLAGS>(dev->GetCurrentRenderOptions()));
-    return CK_OK;
 }
 
-CKERROR ModLoader::OnPostSpriteRender(CKRenderContext *dev) {
-    return CK_OK;
-}
+void ModLoader::OnPostSpriteRender(CKRenderContext *dev) {}
 
 void ModLoader::OnPreStartMenu() {
     BroadcastMessage("PreStartMenu", &IMod::OnPreStartMenu);
@@ -812,7 +803,7 @@ void ModLoader::GetManagers() {
     m_CollisionManager = (CKCollisionManager *) m_CKContext->GetManagerByGuid(COLLISION_MANAGER_GUID);
     m_Logger->Info("Get Collision Manager pointer 0x%08x", m_CollisionManager);
 
-    m_InputHook = new InputHook((CKInputManager *)m_CKContext->GetManagerByGuid(INPUT_MANAGER_GUID));
+    m_InputHook = new InputHook;
     m_Logger->Info("Get Input Manager pointer 0x%08x", m_InputHook);
 
     m_MessageManager = m_CKContext->GetMessageManager();
