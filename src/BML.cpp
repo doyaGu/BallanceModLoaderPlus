@@ -17,8 +17,7 @@ HMODULE g_DllHandle = nullptr;
 InputManager *g_InputManager = nullptr;
 SoundManager *g_SoundManager = nullptr;
 
-CKERROR CreateInputManager(CKContext *context)
-{
+CKERROR CreateInputManager(CKContext *context) {
     CKInitializeParameterTypes(context);
     CKInitializeOperationTypes(context);
     CKInitializeOperationFunctions(context);
@@ -28,8 +27,7 @@ CKERROR CreateInputManager(CKContext *context)
     return CK_OK;
 }
 
-CKERROR RemoveInputManager(CKContext *context)
-{
+CKERROR RemoveInputManager(CKContext *context) {
     delete g_InputManager;
 
     CKUnInitializeParameterTypes(context);
@@ -38,14 +36,12 @@ CKERROR RemoveInputManager(CKContext *context)
     return CK_OK;
 }
 
-CKERROR CreateSoundManager(CKContext *context)
-{
+CKERROR CreateSoundManager(CKContext *context) {
     g_SoundManager = new SoundManager(context);
     return CK_OK;
 }
 
-CKERROR RemoveSoundManager(CKContext *context)
-{
+CKERROR RemoveSoundManager(CKContext *context) {
     delete g_SoundManager;
     return CK_OK;
 }
