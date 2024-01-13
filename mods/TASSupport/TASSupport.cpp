@@ -394,15 +394,16 @@ void TASSupport::OnPreProcessTime() {
 void TASSupport::OnStart() {
     if (m_Enabled->GetBoolean()) {
         m_BML->AddTimer(1ul, [this]() {
-            CKBaseManager *physicsManager = m_BML->GetCKContext()->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
-            auto *averageTickTime = reinterpret_cast<float *>(reinterpret_cast<CKBYTE *>(physicsManager) + 0xC8);
-            *averageTickTime = m_TimeManager->GetLastDeltaTime();
-            CKBYTE *timer = *reinterpret_cast<CKBYTE **>(reinterpret_cast<CKBYTE *>(physicsManager) + 0xC0);
-            *reinterpret_cast<double *>(timer + 0x120) = 0;
-            *reinterpret_cast<double *>(timer + 0x128) = 1.0 / 66;
-            *reinterpret_cast<double *>(timer + 0x130) = 0;
-            *reinterpret_cast<CKDWORD *>(timer + 0x138) = 0;
-            *reinterpret_cast<double *>(*reinterpret_cast<CKBYTE **>(timer + 0x4) + 0x18) = 0;
+            auto *physicsManager = (CKBaseManager *)m_BML->GetCKContext()->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
+            auto *env = *reinterpret_cast<CKBYTE **>(reinterpret_cast<CKBYTE *>(physicsManager) + 0xC0);
+            *reinterpret_cast<double *>(env + 0x120) = 0;
+            *reinterpret_cast<double *>(env + 0x128) = 1.0 / 66;
+            *reinterpret_cast<double *>(env + 0x130) = 0;
+            *reinterpret_cast<CKDWORD *>(env + 0x138) = 0;
+            *reinterpret_cast<double *>(*reinterpret_cast<CKBYTE **>(env + 0x4) + 0x18) = 0;
+
+            auto *time = reinterpret_cast<float *>(reinterpret_cast<CKBYTE *>(physicsManager) + 0xC8);
+            *time = m_TimeManager->GetLastDeltaTime();
         });
 
         if (m_Keyboard) {
