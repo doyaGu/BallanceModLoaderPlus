@@ -191,13 +191,14 @@ public:
         BroadcastCallback(func);
     }
 
-    CKERROR OnCKPostReset();
-    CKERROR OnCKReset();
+    void OnCKPostReset();
+    void OnCKReset();
 
-    CKERROR PostProcess();
+    void PostProcess();
 
-    CKERROR OnPostRender(CKRenderContext *dev);
-    CKERROR OnPostSpriteRender(CKRenderContext *dev);
+    void OnPreRender(CKRenderContext *dev);
+    void OnPostRender(CKRenderContext *dev);
+    void OnPostSpriteRender(CKRenderContext *dev);
 
     void OnPreStartMenu() override;
     void OnPostStartMenu() override;

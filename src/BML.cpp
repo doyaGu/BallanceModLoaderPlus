@@ -7,21 +7,32 @@
 
 #include "CKContext.h"
 
-#include "ModManager.h"
+#include "InputManager.h"
+#include "SoundManager.h"
 #include "PluginManagerHook.h"
+#include "ContextHook.h"
 #include "HookUtils.h"
 
 HMODULE g_DllHandle = nullptr;
-ModManager *g_ModManager = nullptr;
+InputManager *g_InputManager = nullptr;
 
-CKERROR CreateModManager(CKContext *context) {
-    g_ModManager = new ModManager(context);
+CKERROR CreateInputManager(CKContext *context)
+{
+    CKInitializeParameterTypes(context);
+    CKInitializeOperationTypes(context);
+    CKInitializeOperationFunctions(context);
+
+    g_InputManager = new InputManager(context);
 
     return CK_OK;
 }
 
-CKERROR RemoveModManager(CKContext *context) {
-    delete g_ModManager;
+CKERROR RemoveInputManager(CKContext *context)
+{
+    delete g_InputManager;
+
+    CKUnInitializeParameterTypes(context);
+    CKUnInitializeOperationTypes(context);
 
     return CK_OK;
 }
@@ -41,15 +52,15 @@ PLUGIN_EXPORT CKPluginInfo *CKGetPluginInfo(int Index) {
     g_PluginInfo[0].m_GUID = CKGUID(0x3a086b4d, 0x2f4a4f01);
     g_PluginInfo[0].m_Summary = "Building blocks for hooking";
 
-    g_PluginInfo[1].m_Author = "Kakuty";
-    g_PluginInfo[1].m_Description = "Mod Manager";
+    g_PluginInfo[1].m_Author = "Virtools";
+    g_PluginInfo[1].m_Description = "DirectX Keyboard/Mouse/Joystick Manager";
     g_PluginInfo[1].m_Extension = "";
     g_PluginInfo[1].m_Type = CKPLUGIN_MANAGER_DLL;
     g_PluginInfo[1].m_Version = 0x000001;
-    g_PluginInfo[1].m_InitInstanceFct = CreateModManager;
-    g_PluginInfo[1].m_ExitInstanceFct = RemoveModManager;
-    g_PluginInfo[1].m_GUID = MOD_MANAGER_GUID;
-    g_PluginInfo[1].m_Summary = "Mod Manager";
+    g_PluginInfo[1].m_InitInstanceFct = CreateInputManager;
+    g_PluginInfo[1].m_ExitInstanceFct = RemoveInputManager;
+    g_PluginInfo[1].m_GUID = CKGUID(0xF787C904, 0);
+    g_PluginInfo[1].m_Summary = "DirectX Input Manager";
 
     return &g_PluginInfo[Index];
 }
@@ -84,6 +95,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
                 utils::OutputDebugA("Fatal: Unable to hook CKPluginManager.\n");
                 return FALSE;
             }
+            if (!CP_HOOK_CLASS_NAME(CKContext)::InitHooks()) {
+                utils::OutputDebugA("Fatal: Unable to hook CKContext.\n");
+                return FALSE;
+            }
             if (!HookCreateCKBehaviorPrototypeRuntime()) {
                 utils::OutputDebugA("Fatal: Unable to hook CKBehaviorPrototypeRuntime.\n");
                 return FALSE;
@@ -92,6 +107,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
             break;
         case DLL_PROCESS_DETACH:
             g_DllHandle = nullptr;
+            CP_HOOK_CLASS_NAME(CKContext)::ShutdownHooks();
             CP_HOOK_CLASS_NAME(CKPluginManager)::ShutdownHooks();
             if (MH_Uninitialize() != MH_OK) {
                 utils::OutputDebugA("Fatal: Unable to uninitialize MinHook.\n");

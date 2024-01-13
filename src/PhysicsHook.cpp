@@ -1,46 +1,7 @@
 #include "BML/Defines.h"
 #include "ModLoader.h"
 
-#include "HookUtils.h"
-#include "VTables.h"
-
-namespace {
-    CKBEHAVIORFCT g_Physicalize = nullptr;
-}
-
-struct PhysicsHook {
-    static CKIpionManager *s_IpionManager;
-    static CP_CLASS_VTABLE_NAME(CKIpionManager) s_VTable;
-
-    static void Hook(CKIpionManager *im) {
-        if (!im)
-            return;
-
-        s_IpionManager = im;
-        utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKIpionManager)>(s_IpionManager, s_VTable);
-
-#define HOOK_PHYSICS_VIRTUAL_METHOD(Instance, Name) \
-    utils::HookVirtualMethod(Instance, &PhysicsHook::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKIpionManager), Name) / sizeof(void*)))
-
-        HOOK_PHYSICS_VIRTUAL_METHOD(s_IpionManager, PostProcess);
-
-#undef HOOK_PHYSICS_VIRTUAL_METHOD
-    }
-
-    static void Unhook() {
-        if (s_IpionManager)
-            utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKIpionManager)>(s_IpionManager, s_VTable);
-    }
-
-    CP_DECLARE_METHOD_HOOK(CKERROR, PostProcess, ()) { return CK_OK; }
-
-    static CKERROR PostProcessOriginal() {
-        return CP_CALL_METHOD_PTR(s_IpionManager, s_VTable.PostProcess);
-    }
-};
-
-CKIpionManager *PhysicsHook::s_IpionManager = nullptr;
-CP_CLASS_VTABLE_NAME(CKIpionManager) PhysicsHook::s_VTable = {};
+static CKBEHAVIORFCT g_Physicalize = nullptr;
 
 int Physicalize(const CKBehaviorContext &behcontext) {
     CKBehavior *beh = behcontext.Behavior;
@@ -109,15 +70,7 @@ int Physicalize(const CKBehaviorContext &behcontext) {
     return g_Physicalize(behcontext);
 }
 
-void PhysicsPostProcess() {
-    PhysicsHook::PostProcessOriginal();
-}
-
 bool HookPhysicalize() {
-    CKContext *context = ModLoader::GetInstance().GetCKContext();
-    auto *im = (CKIpionManager *) context->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
-    PhysicsHook::Hook(im);
-
     CKBehaviorPrototype *physicalizeProto = CKGetPrototypeFromGuid(PHYSICS_RT_PHYSICALIZE);
     if (!physicalizeProto) return false;
     if (!g_Physicalize) g_Physicalize = physicalizeProto->GetFunction();
@@ -126,8 +79,6 @@ bool HookPhysicalize() {
 }
 
 bool UnhookPhysicalize() {
-    PhysicsHook::Unhook();
-
     CKBehaviorPrototype *physicalizeProto = CKGetPrototypeFromGuid(PHYSICS_RT_PHYSICALIZE);
     if (!physicalizeProto) return false;
     physicalizeProto->SetFunction(g_Physicalize);
