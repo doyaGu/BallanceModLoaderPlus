@@ -720,6 +720,10 @@ void BMLMod::OnPreStartMenu() {
     }
 }
 
+void BMLMod::OnExitGame() {
+    m_Level01 = nullptr;
+}
+
 void BMLMod::OnStartLevel() {
     if (m_UnlockFPS->GetBoolean()) {
         AdjustFrameRate(false, 0);

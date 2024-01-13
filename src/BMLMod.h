@@ -197,6 +197,7 @@ public:
     void OnModifyConfig(const char *category, const char *key, IProperty *prop) override;
 
     void OnPreStartMenu() override;
+    void OnExitGame() override;
     void OnStartLevel() override;
     void OnPostExitLevel() override;
     void OnPauseLevel() override;
