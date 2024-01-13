@@ -261,8 +261,7 @@ void TASSupport::OnProcess() {
 
         if (m_TASEntryGui && m_Level01) {
             m_TASEntryGui->Process();
-            bool visible = m_Level01->IsVisible();
-            m_TASEntry->SetVisible(visible);
+            m_TASEntry->SetVisible(m_Level01->IsVisible());
 
             if (m_TASListGui->IsVisible())
                 m_TASListGui->Process();
@@ -304,11 +303,6 @@ void TASSupport::OnProcess() {
     }
 }
 
-void TASSupport::OnBallOff() {
-    if (m_Enabled->GetBoolean() && m_Playing && m_ExitOnDead->GetBoolean())
-        m_BML->ExitGame();
-}
-
 void TASSupport::OnPostStartMenu() {
     static bool firstTime = true;
 
@@ -344,6 +338,15 @@ void TASSupport::OnPostStartMenu() {
 
         firstTime = false;
     }
+}
+
+void TASSupport::OnExitGame() {
+    m_Level01 = nullptr;
+}
+
+void TASSupport::OnBallOff() {
+    if (m_Enabled->GetBoolean() && m_Playing && m_ExitOnDead->GetBoolean())
+        m_BML->ExitGame();
 }
 
 void TASSupport::OnPreProcessInput() {

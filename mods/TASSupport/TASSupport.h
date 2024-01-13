@@ -102,14 +102,15 @@ public:
 
     void OnProcess() override;
 
-    void OnBallOff() override;
+    void OnPostStartMenu() override;
+    void OnExitGame() override;
 
     void OnPreLoadLevel() override { OnStart(); }
     void OnPreResetLevel() override { OnStop(); }
     void OnPreExitLevel() override { OnStop(); }
     void OnLevelFinish() override { OnFinish(); }
 
-    void OnPostStartMenu() override;
+    void OnBallOff() override;
 
     IBML* GetBML() { return m_BML; }
 
