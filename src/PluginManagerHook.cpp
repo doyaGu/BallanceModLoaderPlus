@@ -3,9 +3,9 @@
 #include <MinHook.h>
 
 const char *g_PluginsBlocked[] = {
-    "BML.dll",
-    "BMLPlus.dll",
-    "Hooks.dll",
+    "BML",
+    "BMLPlus",
+    "Hooks",
 };
 
 CP_DEFINE_METHOD_HOOK_PTRS(CKPluginManager, ParsePlugins)
