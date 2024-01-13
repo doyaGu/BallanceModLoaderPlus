@@ -249,10 +249,6 @@ void TASSupport::OnLoadScript(const char *filename, CKBehavior *script) {
             CKBehavior *beh = ScriptHelper::FindFirstBB(script, "Set Position");
             ScriptHelper::DeleteBB(script, beh);
         }
-
-        if (!strcmp(script->GetName(), "Balls_Init")) {
-            m_InitPieces = ScriptHelper::FindFirstBB(script, "Init Ballpieces");
-        }
     }
 }
 

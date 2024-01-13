@@ -147,7 +147,6 @@ public:
 
     CK2dEntity *m_Level01 = nullptr;
     CKBehavior *m_ExitStart = nullptr;
-    CKBehavior *m_InitPieces = nullptr;
     BGui::Gui *m_TASEntryGui = nullptr;
     BGui::Button *m_TASEntry = nullptr;
     GuiTASList *m_TASListGui = nullptr;
