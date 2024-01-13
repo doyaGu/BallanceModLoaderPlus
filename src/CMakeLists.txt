@@ -25,6 +25,7 @@ set(BML_PUBLIC_HEADERS
 
 set(BML_PRIVATE_HEADERS
         InputManager.h
+        SoundManager.h
 
         ModLoader.h
         PluginManagerHook.h
@@ -47,6 +48,7 @@ set(BML_SOURCES
         BML.cpp
         HookBlock.cpp
         InputManager.cpp
+        SoundManager.cpp
         PluginManagerHook.cpp
         ContextHook.cpp
         ModLoader.cpp
@@ -99,7 +101,7 @@ target_link_libraries(BML
         CK2 VxMath
         PRIVATE
         minhook zip
-        dinput8 dxguid Winmm
+        dinput8 dsound dxguid Winmm
 )
 
 target_compile_definitions(BML PRIVATE "BML_EXPORTS")

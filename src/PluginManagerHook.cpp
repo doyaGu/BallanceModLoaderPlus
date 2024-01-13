@@ -5,6 +5,8 @@
 const char *g_PluginsBlocked[] = {
     "Dx5InputManager",
     "Dx8InputManager",
+    "DX7SoundManager",
+    "DX8SoundManager",
     "BML",
     "BMLPlus",
     "Hooks",
