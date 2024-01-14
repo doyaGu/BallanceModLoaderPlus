@@ -17,15 +17,16 @@ public:
     DECLARE_BML_VERSION;
 
     void OnLoad() override;
-    void OnUnload() override;
 
     void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
                       CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
                       XObjectArray *objArray, CKObject *masterObj) override;
     void OnProcess() override;
 
+    void OnExitGame() override;
     void OnPauseLevel() override;
     void OnUnpauseLevel() override;
+    void OnPreExitLevel() override;
 
     void EnterTravelCam();
     void ExitTravelCam();
