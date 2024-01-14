@@ -64,8 +64,6 @@ public:
 
     bool IsBlock();
     void SetBlock(bool block);
-
-    void Process();
 };
 
 #endif // BML_INPUTHOOK_H

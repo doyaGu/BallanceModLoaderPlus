@@ -198,7 +198,3 @@ CKBOOL InputHook::oIsMouseToggled(CK_MOUSEBUTTON iButton) {
 void InputHook::oGetMouseButtonsState(CKBYTE oStates[4]) {
     g_InputManager->GetMouseButtonsStateRaw(oStates);
 }
-
-void InputHook::Process() {
-    g_InputManager->PostProcess();
-}
