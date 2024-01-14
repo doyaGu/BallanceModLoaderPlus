@@ -12,9 +12,9 @@ namespace utils {
         char buf[4096] = {0};
 
         va_list args;
-                va_start(args, format);
+        va_start(args, format);
         ::StringCchVPrintfA(buf, ARRAYSIZE(buf) - 1, format, args);
-                va_end(args);
+        va_end(args);
 
         buf[ARRAYSIZE(buf) - 1] = '\0';
         ::OutputDebugStringA(buf);
@@ -24,9 +24,9 @@ namespace utils {
         wchar_t buf[4096] = {0};
 
         va_list args;
-                va_start(args, format);
+        va_start(args, format);
         ::StringCchVPrintfW(buf, ARRAYSIZE(buf) - 1, format, args);
-                va_end(args);
+        va_end(args);
 
         buf[ARRAYSIZE(buf) - 1] = L'\0';
         ::OutputDebugStringW(buf);
