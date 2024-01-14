@@ -3,6 +3,8 @@
 #include "CKRenderContext.h"
 #include "CKParameterManager.h"
 
+#include "ModLoader.h"
+
 #define CKOGUID_GETMOUSEPOSITION CKGUID(0x6ea0201, 0x680e3a62)
 #define CKOGUID_GETMOUSEX CKGUID(0x53c51abe, 0xeba68de)
 #define CKOGUID_GETMOUSEY CKGUID(0x27af3c9f, 0xdbc4eb3)
@@ -817,11 +819,15 @@ CKERROR InputManager::OnCKInit() {
     if (!m_Keyboard)
         Initialize((HWND) m_Context->GetMainWindow());
 
+    ModLoader::GetInstance().Init(m_Context);
     return CK_OK;
 }
 
 CKERROR InputManager::OnCKEnd() {
+    ModLoader::GetInstance().Shutdown();
+
     Uninitialize();
+
     return CK_OK;
 }
 
@@ -829,6 +835,13 @@ CKERROR InputManager::OnCKReset() {
     m_ShowCursor = TRUE;
     ClearBuffers();
 
+    ModLoader::GetInstance().OnCKReset();
+
+    return CK_OK;
+}
+
+CKERROR InputManager::OnCKPostReset() {
+    ModLoader::GetInstance().OnCKPostReset();
     return CK_OK;
 }
 
@@ -948,6 +961,8 @@ CKERROR InputManager::PreProcess() {
 }
 
 CKERROR InputManager::PostProcess() {
+    ModLoader::GetInstance().PostProcess();
+
     for (int iKey = 0; iKey < KEYBOARD_BUFFER_SIZE; iKey++) {
         if ((m_KeyboardState[iKey] & KS_RELEASED) != 0)
             m_KeyboardState[iKey] = KS_IDLE;
@@ -958,6 +973,16 @@ CKERROR InputManager::PostProcess() {
             m_Mouse.m_State.rgbButtons[iButton] = KS_IDLE;
     }
 
+    return CK_OK;
+}
+
+CKERROR InputManager::OnPostRender(CKRenderContext *dev) {
+    ModLoader::GetInstance().OnPostRender(dev);
+    return CK_OK;
+}
+
+CKERROR InputManager::OnPostSpriteRender(CKRenderContext *dev) {
+    ModLoader::GetInstance().OnPostSpriteRender(dev);
     return CK_OK;
 }
 

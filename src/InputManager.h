@@ -159,19 +159,25 @@ public:
     CKERROR OnCKInit() override;
     CKERROR OnCKEnd() override;
     CKERROR OnCKReset() override;
+    CKERROR OnCKPostReset() override;
     CKERROR OnCKPause() override;
     CKERROR OnCKPlay() override;
     CKERROR PreProcess() override;
     CKERROR PostProcess() override;
+    CKERROR OnPostRender(CKRenderContext *dev) override;
+    CKERROR OnPostSpriteRender(CKRenderContext *dev) override;
 
     CKDWORD GetValidFunctionsMask() override {
         return CKMANAGER_FUNC_OnCKInit |
-               CKMANAGER_FUNC_OnCKEnd |
-               CKMANAGER_FUNC_OnCKReset |
-               CKMANAGER_FUNC_OnCKPause |
-               CKMANAGER_FUNC_OnCKPlay |
-               CKMANAGER_FUNC_PreProcess;
-               /* CKMANAGER_FUNC_PostProcess; */
+                CKMANAGER_FUNC_OnCKEnd |
+                CKMANAGER_FUNC_OnCKReset |
+                CKMANAGER_FUNC_OnCKPostReset |
+                CKMANAGER_FUNC_OnCKPause |
+                CKMANAGER_FUNC_OnCKPlay |
+                CKMANAGER_FUNC_PreProcess |
+                CKMANAGER_FUNC_PostProcess |
+                CKMANAGER_FUNC_OnPostRender |
+                CKMANAGER_FUNC_OnPostSpriteRender;
     }
 
     ~InputManager() override;

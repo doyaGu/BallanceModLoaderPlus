@@ -10,7 +10,6 @@
 #include "InputManager.h"
 #include "SoundManager.h"
 #include "PluginManagerHook.h"
-#include "ContextHook.h"
 #include "HookUtils.h"
 
 HMODULE g_DllHandle = nullptr;
@@ -114,10 +113,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
                 utils::OutputDebugA("Fatal: Unable to hook CKPluginManager.\n");
                 return FALSE;
             }
-            if (!CP_HOOK_CLASS_NAME(CKContext)::InitHooks()) {
-                utils::OutputDebugA("Fatal: Unable to hook CKContext.\n");
-                return FALSE;
-            }
             if (!HookCreateCKBehaviorPrototypeRuntime()) {
                 utils::OutputDebugA("Fatal: Unable to hook CKBehaviorPrototypeRuntime.\n");
                 return FALSE;
@@ -126,7 +121,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
             break;
         case DLL_PROCESS_DETACH:
             g_DllHandle = nullptr;
-            CP_HOOK_CLASS_NAME(CKContext)::ShutdownHooks();
             CP_HOOK_CLASS_NAME(CKPluginManager)::ShutdownHooks();
             if (MH_Uninitialize() != MH_OK) {
                 utils::OutputDebugA("Fatal: Unable to uninitialize MinHook.\n");

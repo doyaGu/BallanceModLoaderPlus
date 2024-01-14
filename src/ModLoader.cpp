@@ -526,6 +526,9 @@ void ModLoader::OnCKReset() {
 }
 
 void ModLoader::PostProcess() {
+    extern void PhysicsPostProcess();
+    PhysicsPostProcess();
+
     for (auto iter = m_Timers.begin(); iter != m_Timers.end();) {
         if (!iter->Process(m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime()))
             iter = m_Timers.erase(iter);
@@ -537,8 +540,6 @@ void ModLoader::PostProcess() {
 
     if (m_Exiting)
         m_MessageManager->SendMessageBroadcast(m_MessageManager->AddMessageType(TOCKSTRING("Exit Game")));
-
-    m_InputHook->Process();
 }
 
 void ModLoader::OnPreRender(CKRenderContext *dev) {}
