@@ -196,7 +196,6 @@ public:
 
     void PostProcess();
 
-    void OnPreRender(CKRenderContext *dev);
     void OnPostRender(CKRenderContext *dev);
     void OnPostSpriteRender(CKRenderContext *dev);
 

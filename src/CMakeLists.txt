@@ -24,14 +24,14 @@ set(BML_PUBLIC_HEADERS
 )
 
 set(BML_PRIVATE_HEADERS
-        InputManager.h
-        SoundManager.h
-        PluginManagerHook.h
-
+        ModManager.h
         ModLoader.h
+
         BMLMod.h
         NewBallTypeMod.h
         Commands.h
+
+        PluginManagerHook.h
 
         Logger.h
         Config.h
@@ -45,9 +45,7 @@ set(BML_PRIVATE_HEADERS
 set(BML_SOURCES
         BML.cpp
         HookBlock.cpp
-        InputManager.cpp
-        SoundManager.cpp
-        PluginManagerHook.cpp
+        ModManager.cpp
 
         ModLoader.cpp
         IMod.cpp
@@ -64,6 +62,7 @@ set(BML_SOURCES
         Gui/KeyInput.cpp
         Gui/Gui.cpp
 
+        PluginManagerHook.cpp
         InputHook.cpp
         ObjectLoadHook.cpp
         PhysicsHook.cpp

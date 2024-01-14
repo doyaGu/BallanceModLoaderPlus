@@ -7,47 +7,26 @@
 
 #include "CKContext.h"
 
-#include "InputManager.h"
-#include "SoundManager.h"
+#include "ModManager.h"
 #include "PluginManagerHook.h"
 #include "HookUtils.h"
 
 HMODULE g_DllHandle = nullptr;
-InputManager *g_InputManager = nullptr;
-SoundManager *g_SoundManager = nullptr;
+ModManager *g_ModManager = nullptr;
 
-CKERROR CreateInputManager(CKContext *context) {
-    CKInitializeParameterTypes(context);
-    CKInitializeOperationTypes(context);
-    CKInitializeOperationFunctions(context);
-
-    g_InputManager = new InputManager(context);
-
+CKERROR CreateModManager(CKContext *context) {
+    g_ModManager = new ModManager(context);
     return CK_OK;
 }
 
-CKERROR RemoveInputManager(CKContext *context) {
-    delete g_InputManager;
-
-    CKUnInitializeParameterTypes(context);
-    CKUnInitializeOperationTypes(context);
-
+CKERROR RemoveModManager(CKContext *context) {
+    delete g_ModManager;
     return CK_OK;
 }
 
-CKERROR CreateSoundManager(CKContext *context) {
-    g_SoundManager = new SoundManager(context);
-    return CK_OK;
-}
+CKPluginInfo g_PluginInfo[2];
 
-CKERROR RemoveSoundManager(CKContext *context) {
-    delete g_SoundManager;
-    return CK_OK;
-}
-
-CKPluginInfo g_PluginInfo[3];
-
-PLUGIN_EXPORT int CKGetPluginInfoCount() { return 3; }
+PLUGIN_EXPORT int CKGetPluginInfoCount() { return 2; }
 
 PLUGIN_EXPORT CKPluginInfo *CKGetPluginInfo(int Index) {
     g_PluginInfo[0].m_Author = "Kakuty";
@@ -60,25 +39,15 @@ PLUGIN_EXPORT CKPluginInfo *CKGetPluginInfo(int Index) {
     g_PluginInfo[0].m_GUID = CKGUID(0x3a086b4d, 0x2f4a4f01);
     g_PluginInfo[0].m_Summary = "Building blocks for hooking";
 
-    g_PluginInfo[1].m_Author = "Virtools";
-    g_PluginInfo[1].m_Description = "DirectX Keyboard/Mouse/Joystick Manager";
+    g_PluginInfo[1].m_Author = "Kakuty";
+    g_PluginInfo[1].m_Description = "Mod Manager";
     g_PluginInfo[1].m_Extension = "";
     g_PluginInfo[1].m_Type = CKPLUGIN_MANAGER_DLL;
     g_PluginInfo[1].m_Version = 0x000001;
-    g_PluginInfo[1].m_InitInstanceFct = CreateInputManager;
-    g_PluginInfo[1].m_ExitInstanceFct = RemoveInputManager;
-    g_PluginInfo[1].m_GUID = CKGUID(0xF787C904, 0);
-    g_PluginInfo[1].m_Summary = "DirectX Input Manager";
-
-    g_PluginInfo[2].m_Author = "Virtools";
-    g_PluginInfo[2].m_Description = "DirectX Sound Manager";
-    g_PluginInfo[2].m_Extension = "";
-    g_PluginInfo[2].m_Type = CKPLUGIN_MANAGER_DLL;
-    g_PluginInfo[2].m_Version = 0x000001;
-    g_PluginInfo[2].m_InitInstanceFct = CreateSoundManager;
-    g_PluginInfo[2].m_ExitInstanceFct = RemoveSoundManager;
-    g_PluginInfo[2].m_GUID = CKGUID(0x77135393, 0x225c679a);
-    g_PluginInfo[2].m_Summary = "DirectX Sound Manager";
+    g_PluginInfo[1].m_InitInstanceFct = CreateModManager;
+    g_PluginInfo[1].m_ExitInstanceFct = RemoveModManager;
+    g_PluginInfo[1].m_GUID = MOD_MANAGER_GUID;
+    g_PluginInfo[1].m_Summary = "Mod Manager";
 
     return &g_PluginInfo[Index];
 }
