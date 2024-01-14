@@ -674,7 +674,7 @@ void BMLMod::OnProcess() {
         OnProcess_SRTimer();
     }
 
-    if (m_MapsGui) {
+    if (m_Level01 && m_MapsGui) {
         bool inStart = m_Level01->IsVisible();
         m_CustomMaps->SetVisible(inStart);
     }
