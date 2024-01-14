@@ -28,7 +28,7 @@ public:
         return (std::max)(mn, (std::min)(mx, (float) atof(str.c_str())));
     }
     static bool ParseBoolean(const std::string &str) {
-        return str == "true" || str == "1";
+        return str == "true" || str == "on" || str == "1";
     }
 };
 
