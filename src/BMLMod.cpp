@@ -697,6 +697,10 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
             AdjustFrameRate(false, static_cast<float>(val));
         else
             AdjustFrameRate(true);
+    } else if (prop == m_ShowTitle) {
+        m_Title->SetVisible(prop->GetBoolean());
+    } else if (prop == m_ShowFPS) {
+        m_FPS->SetVisible(prop->GetBoolean());
     } else if (prop == m_ShowSR && m_BML->IsIngame()) {
         m_SRScore->SetVisible(m_ShowSR->GetBoolean());
         m_SRTitle->SetVisible(m_ShowSR->GetBoolean());
