@@ -60,13 +60,6 @@ void TravelMode::OnLoad() {
     m_TravelCam = (CKCamera *) m_BML->GetCKContext()->CreateObject(CKCID_CAMERA, "TravelCam");
 }
 
-void TravelMode::OnUnload() {
-    if (m_Once) {
-        m_BML->ExecuteCommand("hud on");
-        m_Once = false;
-    }
-}
-
 void TravelMode::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass, CKBOOL addToScene, CKBOOL reuseMeshes,
                               CKBOOL reuseMaterials, CKBOOL dynamic, XObjectArray *objArray, CKObject *masterObj) {
     if (!strcmp(filename, "3D Entities\\Camera.nmo")) {
@@ -182,12 +175,23 @@ void TravelMode::OnProcess() {
     }
 }
 
+void TravelMode::OnExitGame() {
+    OnPreExitLevel();
+}
+
 void TravelMode::OnPauseLevel() {
     m_Paused = true;
 }
 
 void TravelMode::OnUnpauseLevel() {
     m_Paused = false;
+}
+
+void TravelMode::OnPreExitLevel() {
+    if (m_Once) {
+        m_BML->ExecuteCommand("hud on");
+        m_Once = false;
+    }
 }
 
 void TravelMode::EnterTravelCam() {
