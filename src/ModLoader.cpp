@@ -540,9 +540,9 @@ void ModLoader::PostProcess() {
 
     if (m_Exiting)
         m_MessageManager->SendMessageBroadcast(m_MessageManager->AddMessageType(TOCKSTRING("Exit Game")));
-}
 
-void ModLoader::OnPreRender(CKRenderContext *dev) {}
+    m_InputHook->Process();
+}
 
 void ModLoader::OnPostRender(CKRenderContext *dev) {
     BroadcastCallback(&IMod::OnRender, static_cast<CK_RENDER_FLAGS>(dev->GetCurrentRenderOptions()));
@@ -804,7 +804,7 @@ void ModLoader::GetManagers() {
     m_CollisionManager = (CKCollisionManager *) m_CKContext->GetManagerByGuid(COLLISION_MANAGER_GUID);
     m_Logger->Info("Get Collision Manager pointer 0x%08x", m_CollisionManager);
 
-    m_InputHook = new InputHook;
+    m_InputHook = new InputHook((CKInputManager *)m_CKContext->GetManagerByGuid(INPUT_MANAGER_GUID));
     m_Logger->Info("Get Input Manager pointer 0x%08x", m_InputHook);
 
     m_MessageManager = m_CKContext->GetMessageManager();
