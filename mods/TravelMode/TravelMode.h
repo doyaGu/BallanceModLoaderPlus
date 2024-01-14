@@ -17,6 +17,8 @@ public:
     DECLARE_BML_VERSION;
 
     void OnLoad() override;
+    void OnUnload() override;
+
     void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
                       CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
                       XObjectArray *objArray, CKObject *masterObj) override;
@@ -34,6 +36,7 @@ private:
     InputHook *m_InputHook = nullptr;
     float m_DeltaTime = 0.0f;
 
+    bool m_Once = false;
     bool m_Paused = false;
 
     float m_TravelSpeed = 0.2f;
