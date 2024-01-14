@@ -97,7 +97,6 @@ target_link_libraries(BML
         CK2 VxMath
         PRIVATE
         minhook zip
-        dinput8 dsound dxguid Winmm
 )
 
 target_compile_definitions(BML PRIVATE "BML_EXPORTS")
