@@ -6,7 +6,7 @@
 
 void CommandBML::Execute(IBML *bml, const std::vector<std::string> &args) {
     auto &loader = ModLoader::GetInstance();
-    bml->SendIngameMessage("Ballance Mod Loader Plus" BML_VERSION);
+    bml->SendIngameMessage("Ballance Mod Loader Plus " BML_VERSION);
     bml->SendIngameMessage((std::to_string(loader.GetModCount()) + " Mods Installed:").data());
 
     int count = loader.GetModCount();
