@@ -6,10 +6,10 @@
 #include "BML/Export.h"
 
 typedef enum CK_INPUT_DEVICE {
-    CK_INPUT_DEVICE_NULL     = 0x00000000,
-    CK_INPUT_DEVICE_KEYBOARD = 0x00000001,
-    CK_INPUT_DEVICE_MOUSE    = 0x00000002,
-    CK_INPUT_DEVICE_JOYSTICK = 0x00000004,
+    CK_INPUT_DEVICE_KEYBOARD = 0,
+    CK_INPUT_DEVICE_MOUSE    = 1,
+    CK_INPUT_DEVICE_JOYSTICK = 2,
+    CK_INPUT_DEVICE_COUNT    = 3,
 } CK_INPUT_DEVICE;
 
 class BML_EXPORT InputHook {
@@ -75,7 +75,7 @@ public:
     bool IsBlock();
     void SetBlock(bool block);
 
-    bool IsBlocked(CK_INPUT_DEVICE device);
+    int IsBlocked(CK_INPUT_DEVICE device);
     void Block(CK_INPUT_DEVICE device);
     void Unblock(CK_INPUT_DEVICE device);
 
