@@ -4,7 +4,7 @@
 #include "VTables.h"
 
 struct InputHook::Impl {
-    static int s_BlockedDevice;
+    static int s_BlockedDevice[CK_INPUT_DEVICE_COUNT];
     static CKInputManager *s_InputManager;
     static CP_CLASS_VTABLE_NAME(CKInputManager) s_VTable;
 
@@ -160,16 +160,20 @@ struct InputHook::Impl {
         return IsJoystickButtonDownOriginal(iJoystick, iButton);
     }
 
-    static bool IsBlocked(CK_INPUT_DEVICE device) {
-        return (s_BlockedDevice & device) != 0;
+    static int IsBlocked(CK_INPUT_DEVICE device) {
+        if (device >= 0 && device < CK_INPUT_DEVICE_COUNT)
+            return s_BlockedDevice[device];
+        return 0;
     }
 
     static void Block(CK_INPUT_DEVICE device) {
-        s_BlockedDevice |= device;
+        if (device >= 0 && device < CK_INPUT_DEVICE_COUNT)
+            ++s_BlockedDevice[device];
     }
 
     static void Unblock(CK_INPUT_DEVICE device) {
-        s_BlockedDevice &= ~device;
+        if (IsBlocked(device) > 0)
+            --s_BlockedDevice[device];
     }
 
     static CKERROR PostProcessOriginal() {
@@ -249,7 +253,7 @@ struct InputHook::Impl {
     }
 };
 
-int InputHook::Impl::s_BlockedDevice = 0;
+int InputHook::Impl::s_BlockedDevice[CK_INPUT_DEVICE_COUNT] = {};
 CKInputManager* InputHook::Impl::s_InputManager = nullptr;
 CP_CLASS_VTABLE_NAME(CKInputManager) InputHook::Impl::s_VTable = {};
 
@@ -449,18 +453,18 @@ void InputHook::oGetMouseButtonsState(CKBYTE oStates[4]) {
 }
 
 bool InputHook::IsBlock() {
-    return Impl::IsBlocked(static_cast<CK_INPUT_DEVICE>(CK_INPUT_DEVICE_KEYBOARD));
+    return Impl::IsBlocked(CK_INPUT_DEVICE_KEYBOARD);
 }
 
 void InputHook::SetBlock(bool block) {
     if (block) {
-        Impl::Block(static_cast<CK_INPUT_DEVICE>(CK_INPUT_DEVICE_KEYBOARD));
+        Impl::Block(CK_INPUT_DEVICE_KEYBOARD);
     } else {
-        Impl::Unblock(static_cast<CK_INPUT_DEVICE>(CK_INPUT_DEVICE_KEYBOARD));
+        Impl::Unblock(CK_INPUT_DEVICE_KEYBOARD);
     }
 }
 
-bool InputHook::IsBlocked(CK_INPUT_DEVICE device) {
+int InputHook::IsBlocked(CK_INPUT_DEVICE device) {
     return Impl::IsBlocked(device);
 }
 
