@@ -112,12 +112,13 @@ GuiModMenu::GuiModMenu(IMod *mod) : GuiList() {
     m_Config = ModLoader::GetInstance().GetConfig(mod);
     if (m_Config) {
         AddTextLabel("M_Opt_ModMenu_Title", "Mod Options", ExecuteBB::GAMEFONT_01, 0.35f, 0.4f, 0.3f, 0.05f);
-        for (auto &cate: m_Config->m_Data)
-            m_Categories.push_back(cate.name);
+        const size_t count = m_Config->GetCategoryCount();
+        for (size_t i = 0; i < count; ++i)
+            m_Categories.emplace_back(m_Config->GetCategory(i)->GetName());
     }
 
-    Init(m_Categories.size(), 6);
-    SetVisible(false);
+    Init((int)m_Categories.size(), 6);
+    GuiModMenu::SetVisible(false);
 }
 
 void GuiModMenu::Process() {
@@ -129,11 +130,11 @@ void GuiModMenu::Process() {
         input->GetMousePosition(mousePos, false);
         int size = (std::min)(m_MaxSize, m_Size - m_CurPage * m_MaxSize);
         for (int i = 0; i < size; i++) {
-            if (Intersect(mousePos.x / rc->GetWidth(), mousePos.y / rc->GetHeight(), m_Buttons[i])) {
+            if (Intersect(mousePos.x / (float)rc->GetWidth(), mousePos.y / (float)rc->GetHeight(), m_Buttons[i])) {
                 if (m_CurComment != i) {
                     m_CommentBackground->SetVisible(true);
                     m_Comment->SetVisible(true);
-                    m_Comment->SetText(m_Config->m_Data[i + m_CurPage * m_MaxSize].comment.c_str());
+                    m_Comment->SetText(m_Config->GetCategory(i + m_CurPage * m_MaxSize)->GetComment());
                     m_CurComment = i;
                 }
 
@@ -287,14 +288,17 @@ void GuiCustomMap::Exit() {
 }
 
 GuiModCategory::GuiModCategory(GuiModMenu *parent, Config *config, const std::string &category) {
-    for (Property *prop: config->GetCategory(category.c_str()).props) {
-        auto *newprop = new Property(nullptr, category, prop->m_Key);
+    auto *cate = config->GetCategory(category.c_str());
+    const size_t count = cate->GetPropertyCount();
+    for (size_t i = 0; i < count; ++i) {
+        auto *prop = cate->GetProperty(i);
+        auto *newprop = new Property(nullptr, category, prop->GetName());
         newprop->CopyValue(prop);
         newprop->SetComment(prop->GetComment());
         m_Data.push_back(newprop);
     }
 
-    m_Size = m_Data.size();
+    m_Size = (int)m_Data.size();
     m_CurPage = 0;
 
     m_Parent = parent;
@@ -318,20 +322,20 @@ GuiModCategory::GuiModCategory(GuiModMenu *parent, Config *config, const std::st
     std::vector<BGui::Element *> elements;
     std::vector<std::pair<Property *, BGui::Element *>> comments;
     for (Property *prop: m_Data) {
-        std::string name = prop->m_Key;
+        const char *name = prop->GetName();
         switch (prop->GetType()) {
             case IProperty::STRING: {
-                BGui::Button *bg = AddSettingButton(name.c_str(), name.c_str(), cnt);
+                BGui::Button *bg = AddSettingButton(name, name, cnt);
                 bg->SetAlignment(ALIGN_TOP);
                 bg->SetFont(ExecuteBB::GAMEFONT_03);
                 bg->SetZOrder(15);
                 bg->SetOffset(offset);
                 elements.push_back(bg);
-                BGui::Input *input = AddTextInput(name.c_str(), ExecuteBB::GAMEFONT_03, 0.43f, cnt + 0.05f, 0.18f, 0.025f);
+                BGui::Input *input = AddTextInput(name, ExecuteBB::GAMEFONT_03, 0.43f, cnt + 0.05f, 0.18f, 0.025f);
                 input->SetText(prop->GetString());
                 input->SetCallback([prop, input](CKDWORD) { prop->SetString(input->GetText()); });
                 elements.push_back(input);
-                BGui::Panel *panel = AddPanel(name.c_str(), VxColor(0, 0, 0, 110), 0.43f, cnt + 0.05f, 0.18f, 0.025f);
+                BGui::Panel *panel = AddPanel(name, VxColor(0, 0, 0, 110), 0.43f, cnt + 0.05f, 0.18f, 0.025f);
                 elements.push_back(panel);
                 m_Inputs.emplace_back(input, nullptr);
                 comments.emplace_back(prop, bg);
@@ -339,17 +343,17 @@ GuiModCategory::GuiModCategory(GuiModMenu *parent, Config *config, const std::st
                 break;
             }
             case IProperty::INTEGER: {
-                BGui::Button *bg = AddSettingButton(name.c_str(), name.c_str(), cnt);
+                BGui::Button *bg = AddSettingButton(name, name, cnt);
                 bg->SetAlignment(ALIGN_TOP);
                 bg->SetFont(ExecuteBB::GAMEFONT_03);
                 bg->SetZOrder(15);
                 bg->SetOffset(offset);
                 elements.push_back(bg);
-                BGui::Input *input = AddTextInput(name.c_str(), ExecuteBB::GAMEFONT_03, 0.43f, cnt + 0.05f, 0.18f, 0.025f);
+                BGui::Input *input = AddTextInput(name, ExecuteBB::GAMEFONT_03, 0.43f, cnt + 0.05f, 0.18f, 0.025f);
                 input->SetText(std::to_string(prop->GetInteger()).c_str());
                 input->SetCallback([prop, input](CKDWORD) { prop->SetInteger(atoi(input->GetText())); });
                 elements.push_back(input);
-                BGui::Panel *panel = AddPanel(name.c_str(), VxColor(0, 0, 0, 110), 0.43f, cnt + 0.05f, 0.18f, 0.025f);
+                BGui::Panel *panel = AddPanel(name, VxColor(0, 0, 0, 110), 0.43f, cnt + 0.05f, 0.18f, 0.025f);
                 elements.push_back(panel);
                 m_Inputs.emplace_back(input, nullptr);
                 comments.emplace_back(prop, bg);
@@ -357,19 +361,19 @@ GuiModCategory::GuiModCategory(GuiModMenu *parent, Config *config, const std::st
                 break;
             }
             case IProperty::FLOAT: {
-                BGui::Button *bg = AddSettingButton(name.c_str(), name.c_str(), cnt);
+                BGui::Button *bg = AddSettingButton(name, name, cnt);
                 bg->SetAlignment(ALIGN_TOP);
                 bg->SetFont(ExecuteBB::GAMEFONT_03);
                 bg->SetZOrder(15);
                 bg->SetOffset(offset);
                 elements.push_back(bg);
-                BGui::Input *input = AddTextInput(name.c_str(), ExecuteBB::GAMEFONT_03, 0.43f, cnt + 0.05f, 0.18f, 0.025f);
+                BGui::Input *input = AddTextInput(name, ExecuteBB::GAMEFONT_03, 0.43f, cnt + 0.05f, 0.18f, 0.025f);
                 std::ostringstream stream;
                 stream << prop->GetFloat();
                 input->SetText(stream.str().c_str());
                 input->SetCallback([prop, input](CKDWORD) { prop->SetFloat((float) atof(input->GetText())); });
                 elements.push_back(input);
-                BGui::Panel *panel = AddPanel(name.c_str(), VxColor(0, 0, 0, 110), 0.43f, cnt + 0.05f, 0.18f, 0.025f);
+                BGui::Panel *panel = AddPanel(name, VxColor(0, 0, 0, 110), 0.43f, cnt + 0.05f, 0.18f, 0.025f);
                 elements.push_back(panel);
                 m_Inputs.emplace_back(input, nullptr);
                 comments.emplace_back(prop, bg);
@@ -377,7 +381,7 @@ GuiModCategory::GuiModCategory(GuiModMenu *parent, Config *config, const std::st
                 break;
             }
             case IProperty::KEY: {
-                std::pair<BGui::Button *, BGui::KeyInput *> key = AddKeyButton(name.c_str(), name.c_str(), cnt);
+                std::pair<BGui::Button *, BGui::KeyInput *> key = AddKeyButton(name, name, cnt);
                 key.second->SetKey(prop->GetKey());
                 key.second->SetCallback([prop](CKDWORD key) { prop->SetKey(CKKEYBOARD(key)); });
                 elements.push_back(key.first);
@@ -388,13 +392,13 @@ GuiModCategory::GuiModCategory(GuiModMenu *parent, Config *config, const std::st
                 break;
             }
             case IProperty::BOOLEAN: {
-                BGui::Button *bg = AddSettingButton(name.c_str(), name.c_str(), cnt);
+                BGui::Button *bg = AddSettingButton(name, name, cnt);
                 bg->SetAlignment(ALIGN_TOP);
                 bg->SetFont(ExecuteBB::GAMEFONT_03);
                 bg->SetZOrder(15);
                 bg->SetOffset(offset);
                 elements.push_back(bg);
-                auto yesno = AddYesNoButton(name.c_str(), cnt + 0.043f, 0.4350f, 0.5200f, [prop](bool value) { prop->SetBoolean(value); });
+                auto yesno = AddYesNoButton(name, cnt + 0.043f, 0.4350f, 0.5200f, [prop](bool value) { prop->SetBoolean(value); });
                 yesno.first->SetActive(prop->GetBoolean());
                 yesno.second->SetActive(!prop->GetBoolean());
                 elements.push_back(yesno.first);
@@ -423,9 +427,9 @@ GuiModCategory::GuiModCategory(GuiModMenu *parent, Config *config, const std::st
         m_Comments.push_back(comments);
     }
 
-    m_MaxPage = m_Elements.size();
+    m_MaxPage = (int)m_Elements.size();
 
-    SetVisible(false);
+    GuiModCategory::SetVisible(false);
 }
 
 void GuiModCategory::Process() {
@@ -464,9 +468,10 @@ void GuiModCategory::Process() {
 void GuiModCategory::SetVisible(bool visible) {
     Gui::SetVisible(visible);
     if (visible) {
-        std::vector<Property *> &props = m_Config->GetCategory(m_Category.c_str()).props;
-        for (size_t i = 0; i < props.size(); i++) {
-            Property *prop = props[i];
+        auto *cate = m_Config->GetCategory(m_Category.c_str());
+        const size_t count = cate->GetPropertyCount();
+        for (size_t i = 0; i < count; i++) {
+            Property *prop = cate->GetProperty(i);
             m_Data[i]->CopyValue(prop);
             std::pair<BGui::Element *, BGui::Element *> input = m_Inputs[i];
             switch (prop->GetType()) {
@@ -518,9 +523,9 @@ void GuiModCategory::SetPage(int page) {
 }
 
 void GuiModCategory::SaveAndExit() {
-    Config::Category &cate = m_Config->GetCategory(m_Category.c_str());
+    auto *cate = m_Config->GetCategory(m_Category.c_str());
     for (Property *p: m_Data)
-        cate.GetProperty(p->m_Key.c_str())->CopyValue(p);
+        cate->GetProperty(p->GetName())->CopyValue(p);
     ModLoader::GetInstance().SaveConfig(m_Config);
     Exit();
 }
