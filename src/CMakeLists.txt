@@ -74,6 +74,7 @@ set(BML_SOURCES
         Config.cpp
         Timer.cpp
 
+        StringUtils.cpp
         PathUtils.cpp
         HookUtils.cpp
 
