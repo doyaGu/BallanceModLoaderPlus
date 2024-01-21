@@ -29,8 +29,8 @@ namespace utils {
 
     void *GetModuleBaseAddress(const char *modulePath);
 
-    void ProtectRegion(void *region, uint32_t protection);
-    uint32_t UnprotectRegion(void *region);
+    uint32_t ProtectRegion(void *region, size_t size, uint32_t protection);
+    uint32_t UnprotectRegion(void *region, size_t size);
 
     inline void **GetVTable(void *instance) {
         if (instance) {
@@ -55,11 +55,11 @@ namespace utils {
     inline void SaveVTable(void *instance, T &table) {
         void **src = reinterpret_cast<void**>(&table);
         void **dest = reinterpret_cast<void**>(*reinterpret_cast<void**>(instance));
-        uint32_t originalProtection = UnprotectRegion((void *) dest);
+        uint32_t originalProtection = UnprotectRegion((void *) dest, sizeof(T));
         for (size_t i = 0; i < sizeof(T) / sizeof(void *); ++i) {
             dest[i] = src[i];
         }
-        ProtectRegion((void *) dest, originalProtection);
+        ProtectRegion((void *) dest, sizeof(T), originalProtection);
     }
 
     void *HookVirtualMethod(void *instance, void *hook, size_t offset);

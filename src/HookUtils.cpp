@@ -60,17 +60,16 @@ namespace utils {
         return moduleInfo.lpBaseOfDll;
     }
 
-    void ProtectRegion(void *region, uint32_t protection) {
-        MEMORY_BASIC_INFORMATION mbi;
-        VirtualQuery((LPCVOID) region, &mbi, sizeof(mbi));
-        VirtualProtect(mbi.BaseAddress, mbi.RegionSize, protection, &mbi.Protect);
+    uint32_t ProtectRegion(void *region, size_t size, uint32_t protection) {
+        DWORD oldProtect;
+        VirtualProtect(region, size, protection, &oldProtect);
+        return oldProtect;
     }
 
-    uint32_t UnprotectRegion(void *region) {
-        MEMORY_BASIC_INFORMATION mbi;
-        VirtualQuery((LPCVOID) region, &mbi, sizeof(mbi));
-        VirtualProtect(mbi.BaseAddress, mbi.RegionSize, PAGE_EXECUTE_READWRITE, &mbi.Protect);
-        return mbi.Protect;
+    uint32_t UnprotectRegion(void *region, size_t size) {
+        DWORD oldProtect;
+        VirtualProtect(region, size, PAGE_EXECUTE_READWRITE, &oldProtect);
+        return oldProtect;
     }
 
     void *HookVirtualMethod(void *instance, void *hook, size_t offset) {
@@ -78,9 +77,9 @@ namespace utils {
         uintptr_t entry = vtable + offset * sizeof(uintptr_t);
         uintptr_t original = *((uintptr_t *) entry);
 
-        uint32_t originalProtection = UnprotectRegion((void *) entry);
+        uint32_t originalProtection = UnprotectRegion((void *) entry, sizeof(void *));
         *((uintptr_t *) entry) = (uintptr_t) hook;
-        ProtectRegion((void *) entry, originalProtection);
+        ProtectRegion((void *) entry, sizeof(void *), originalProtection);
 
         return (void *) original;
     }
