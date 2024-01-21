@@ -38,7 +38,7 @@ namespace utils {
                 return path.substr(0, path.rfind('.'));
         } else {
             const std::string de = std::string(".") + ext;
-            if (EndsWithCaseInsensitive(path, de)) {
+            if (StringEndsWithCaseInsensitive(path, de)) {
                 return path.substr(0, path.length() - de.length());
             }
         }
@@ -136,7 +136,7 @@ namespace utils {
     }
 
     bool HasTrailingPathSeparator(const std::string &path) {
-        return !path.empty() && EndsWith(path, "\\");
+        return !path.empty() && StringEndsWith(path, "\\");
     }
 
     std::string RemoveTrailingPathSeparator(const std::string &path) {

@@ -282,7 +282,7 @@ ICommand *ModLoader::FindCommand(const char *name) const {
 void ModLoader::ExecuteCommand(const char *cmd) {
     m_Logger->Info("Execute Command: %s", cmd);
 
-    auto args = utils::Split(cmd, " ");
+    auto args = utils::SplitString(cmd, " ");
     for (auto &ch: args[0])
         ch = static_cast<char>(std::tolower(ch));
 
@@ -303,11 +303,11 @@ void ModLoader::ExecuteCommand(const char *cmd) {
 }
 
 std::string ModLoader::TabCompleteCommand(const char *cmd) {
-    auto args = utils::Split(cmd, " ");
+    auto args = utils::SplitString(cmd, " ");
     std::vector<std::string> res;
     if (args.size() == 1) {
         for (auto &p: m_CommandMap) {
-            if (utils::StartsWith(p.first, args[0])) {
+            if (utils::StringStartsWith(p.first, args[0])) {
                 if (!p.second->IsCheat() || m_CheatEnabled)
                     res.push_back(p.first);
             }
@@ -316,7 +316,7 @@ std::string ModLoader::TabCompleteCommand(const char *cmd) {
         ICommand *command = FindCommand(args[0].c_str());
         if (command && (!command->IsCheat() || m_CheatEnabled)) {
             for (const std::string &str: command->GetTabCompletion(this, args))
-                if (utils::StartsWith(str, args[args.size() - 1]))
+                if (utils::StringStartsWith(str, args[args.size() - 1]))
                     res.push_back(str);
         }
     }
@@ -839,13 +839,13 @@ size_t ModLoader::ExploreMods(const std::string &path, std::vector<std::string> 
                 ExploreMods(p.assign(path).append("\\").append(fileinfo.name), mods);
         } else {
             std::string filename = path + "\\" + fileinfo.name;
-            if (utils::EndsWithCaseInsensitive(filename, ".zip")) {
+            if (utils::StringEndsWithCaseInsensitive(filename, ".zip")) {
                 std::string cachePath = GetDirectory(DIR_LOADER);
                 std::string name = utils::GetFileName(filename);
                 cachePath.append("\\Cache\\Mods\\").append(name);
                 if (zip_extract(filename.c_str(), cachePath.c_str(), nullptr, nullptr) == 0)
                     ExploreMods(cachePath, mods);
-            } else if (utils::EndsWithCaseInsensitive(filename, ".bmodp")) {
+            } else if (utils::StringEndsWithCaseInsensitive(filename, ".bmodp")) {
                 // Add mod filename.
                 mods.push_back(filename);
             }
