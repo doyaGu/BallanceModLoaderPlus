@@ -1,29 +1,26 @@
 #include "Commands.h"
 
-#include "BML/Version.h"
-#include "ModLoader.h"
+#include "BML/IBML.h"
 #include "BMLMod.h"
 
 void CommandBML::Execute(IBML *bml, const std::vector<std::string> &args) {
-    auto &loader = ModLoader::GetInstance();
     bml->SendIngameMessage("Ballance Mod Loader Plus " BML_VERSION);
-    bml->SendIngameMessage((std::to_string(loader.GetModCount()) + " Mods Installed:").data());
+    bml->SendIngameMessage((std::to_string(bml->GetModCount()) + " Mods Installed:").data());
 
-    int count = loader.GetModCount();
+    int count = bml->GetModCount();
     for (int i = 0; i < count; ++i) {
-        auto *mod = loader.GetMod(i);
+        auto *mod = bml->GetMod(i);
         std::string str = std::string("  ") + mod->GetID() + ": " + mod->GetName() + " " + mod->GetVersion() + " by " + mod->GetAuthor();
         bml->SendIngameMessage(str.data());
     }
 }
 
 void CommandHelp::Execute(IBML *bml, const std::vector<std::string> &args) {
-    auto &loader = ModLoader::GetInstance();
-    const int cmdCount = loader.GetCommandCount();
+    const int cmdCount = bml->GetCommandCount();
     bml->SendIngameMessage((std::to_string(cmdCount) + " Existing Commands:").data());
     for (int i = 0; i < cmdCount; i++) {
-        ICommand *cmd = loader.GetCommand(i);
-        std::string str = std::string("\t") + cmd->GetName();
+        ICommand *cmd = bml->GetCommand(i);
+        std::string str = std::string("  /") + cmd->GetName();
         if (!cmd->GetAlias().empty())
             str += "(" + cmd->GetAlias() + ")";
         if (cmd->IsCheat())
@@ -44,13 +41,12 @@ void CommandEcho::Execute(IBML *bml, const std::vector<std::string> &args) {
 }
 
 void CommandCheat::Execute(IBML *bml, const std::vector<std::string> &args) {
-    auto &loader = ModLoader::GetInstance();
     if (args.size() == 1) {
-        loader.EnableCheat(!loader.IsCheatEnabled());
+        bml->EnableCheat(!bml->IsCheatEnabled());
     } else {
-        loader.EnableCheat(ParseBoolean(args[1]));
+        bml->EnableCheat(ParseBoolean(args[1]));
     }
-    bml->SendIngameMessage(loader.IsCheatEnabled() ? "Cheat Mode On" : "Cheat Mode Off");
+    bml->SendIngameMessage(bml->IsCheatEnabled() ? "Cheat Mode On" : "Cheat Mode Off");
 }
 
 void CommandClear::Execute(IBML *bml, const std::vector<std::string> &args) {
