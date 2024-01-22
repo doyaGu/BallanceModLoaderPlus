@@ -56,7 +56,7 @@ void DualBallControl::OnLoadObject(const char *filename, CKBOOL isMap, const cha
         CKDataArray *physBall = m_BML->GetArrayByName("Physicalize_GameBall");
         for (int i = 0; i < physBall->GetRowCount(); i++) {
             std::string ballName(physBall->GetElementStringValue(i, 0, nullptr), '\0');
-            physBall->GetElementStringValue(i, 0, TOCKSTRING(ballName.c_str()));
+            physBall->GetElementStringValue(i, 0, (CKSTRING) ballName.c_str());
             CK3dObject *ballObj = m_BML->Get3dObjectByName(ballName.c_str());
             m_Balls.push_back(ballObj);
 
@@ -256,7 +256,7 @@ void DualBallControl::OnPostLoadLevel() {
         int counter = 0;
         auto createFlame = [this, &counter, flame, &dep, allLevel, scene]() {
             std::string suffix = "_Dual_" + std::to_string(counter++);
-            auto *newFlame = (CK3dEntity *) m_BML->GetCKContext()->CopyObject(flame, &dep, TOCKSTRING(suffix.c_str()));
+            auto *newFlame = (CK3dEntity *) m_BML->GetCKContext()->CopyObject(flame, &dep, (CKSTRING) suffix.c_str());
             scene->Activate(newFlame, false);
             allLevel->AddObject(newFlame);
             for (int i = 0; i < newFlame->GetScriptCount(); i++)

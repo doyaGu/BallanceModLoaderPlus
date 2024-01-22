@@ -75,7 +75,7 @@ namespace ScriptHelper {
     }
 
     CKParameterLocal *CreateLocalParameter(CKBehavior *script, const char *name, CKGUID type) {
-        return script->CreateLocalParameter(TOCKSTRING(name), type);
+        return script->CreateLocalParameter((CKSTRING) name, type);
     }
 
     CKParameterLocal *CreateParamObject(CKBehavior *script, const char *name, CKGUID guid, CKObject *value) {
@@ -84,7 +84,7 @@ namespace ScriptHelper {
 
     CKParameterLocal *CreateParamString(CKBehavior *script, const char *name, const char *value) {
         CKParameterLocal *param = CreateLocalParameter(script, name, CKPGUID_STRING);
-        param->SetStringValue(TOCKSTRING(value));
+        param->SetStringValue((CKSTRING) value);
         return param;
     }
 
@@ -94,7 +94,7 @@ namespace ScriptHelper {
     }
 
     void SetParamString(CKParameter *param, const char *value) {
-        param->SetStringValue(TOCKSTRING(value));
+        param->SetStringValue((CKSTRING) value);
     }
 
     CKObject *GetParamObject(CKParameter *param) {

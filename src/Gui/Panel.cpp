@@ -6,7 +6,7 @@ using namespace BGui;
 
 Panel::Panel(const char *name) : Element(name) {
     CKContext *context = BML_GetCKContext();
-    m_Material = (CKMaterial *)context->CreateObject(CKCID_MATERIAL, TOCKSTRING((std::string(name) + "_Mat").c_str()));
+    m_Material = (CKMaterial *)context->CreateObject(CKCID_MATERIAL, (CKSTRING) ((std::string(name) + "_Mat").c_str()));
     context->GetCurrentLevel()->AddObject(m_Material);
     m_Material->EnableAlphaBlend();
     m_Material->SetSourceBlend(VXBLEND_SRCALPHA);
