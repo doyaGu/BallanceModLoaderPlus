@@ -9,7 +9,7 @@ const char *g_AvailFonts[] = {"Microsoft YaHei UI", "Microsoft YaHei"};
 
 Text::Text(const char *name) : Element(name) {
     CKContext *context = BML_GetCKContext();
-    m_Sprite = (CKSpriteText *)context->CreateObject(CKCID_SPRITETEXT, TOCKSTRING(name));
+    m_Sprite = (CKSpriteText *)context->CreateObject(CKCID_SPRITETEXT, (CKSTRING) name);
     m_Sprite->ModifyObjectFlags(CK_OBJECT_NOTTOBELISTEDANDSAVED, 0);
     context->GetCurrentLevel()->AddObject(m_Sprite);
     m_Sprite->SetHomogeneousCoordinates();
@@ -18,7 +18,7 @@ Text::Text(const char *name) : Element(name) {
     m_Sprite->SetZOrder(20);
     m_Sprite->SetTextColor(0xffffffff);
     m_Sprite->SetAlign(CKSPRITETEXT_ALIGNMENT(CKSPRITETEXT_VCENTER | CKSPRITETEXT_LEFT));
-    m_Sprite->SetFont(TOCKSTRING(g_TextFont), context->GetPlayerRenderContext()->GetHeight() / 85, 400);
+    m_Sprite->SetFont((CKSTRING) g_TextFont, context->GetPlayerRenderContext()->GetHeight() / 85, 400);
 }
 
 Text::~Text() {
@@ -29,7 +29,7 @@ Text::~Text() {
 
 void Text::UpdateFont() {
     CKContext *context = BML_GetCKContext();
-    m_Sprite->SetFont(TOCKSTRING(g_TextFont), context->GetPlayerRenderContext()->GetHeight() / 85, 400);
+    m_Sprite->SetFont((CKSTRING) g_TextFont, context->GetPlayerRenderContext()->GetHeight() / 85, 400);
 }
 
 Vx2DVector Text::GetPosition() {
@@ -76,11 +76,11 @@ const char *Text::GetText() {
 }
 
 void Text::SetText(const char *text) {
-    m_Sprite->SetText(TOCKSTRING(text));
+    m_Sprite->SetText((CKSTRING) text);
 }
 
 void Text::SetFont(const char *FontName, int FontSize, int Weight, CKBOOL italic, CKBOOL underline) {
-    m_Sprite->SetFont(TOCKSTRING(FontName), FontSize, Weight, italic, underline);
+    m_Sprite->SetFont((CKSTRING) FontName, FontSize, Weight, italic, underline);
 }
 
 void Text::SetAlignment(CKSPRITETEXT_ALIGNMENT align) {

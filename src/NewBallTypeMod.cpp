@@ -185,11 +185,11 @@ void NewBallTypeMod::OnLoadBalls(XObjectArray *objArray) {
         m_PhysicsBall->AddRow();
         int row = m_PhysicsBall->GetRowCount() - 1;
 
-        m_PhysicsBall->SetElementStringValue(row, 0, TOCKSTRING(info.m_ObjName.c_str()));
+        m_PhysicsBall->SetElementStringValue(row, 0, (CKSTRING) info.m_ObjName.c_str());
         m_PhysicsBall->SetElementValue(row, 1, &info.m_Friction);
         m_PhysicsBall->SetElementValue(row, 2, &info.m_Elasticity);
         m_PhysicsBall->SetElementValue(row, 3, &info.m_Mass);
-        m_PhysicsBall->SetElementStringValue(row, 4, TOCKSTRING(info.m_CollGroup.c_str()));
+        m_PhysicsBall->SetElementStringValue(row, 4, (CKSTRING) info.m_CollGroup.c_str());
         m_PhysicsBall->SetElementValue(row, 5, &info.m_LinearDamp);
         m_PhysicsBall->SetElementValue(row, 6, &info.m_RotDamp);
         m_PhysicsBall->SetElementValue(row, 7, &info.m_Force);
@@ -210,7 +210,7 @@ void NewBallTypeMod::OnLoadLevelinit(XObjectArray *objArray) {
     for (ModulInfo &info: m_Moduls) {
         phGroups->AddRow();
         int row = phGroups->GetRowCount() - 1;
-        phGroups->SetElementStringValue(row, 0, TOCKSTRING(info.m_Name.c_str()));
+        phGroups->SetElementStringValue(row, 0, (CKSTRING) info.m_Name.c_str());
         int activation = 1;
         phGroups->SetElementValue(row, 2, &activation);
         phGroups->SetElementValue(row, 3, &info.m_Type);
@@ -219,23 +219,23 @@ void NewBallTypeMod::OnLoadLevelinit(XObjectArray *objArray) {
     for (FloorTypeInfo &info: m_FloorTypes) {
         physFloors->AddRow();
         int row = physFloors->GetRowCount() - 1;
-        physFloors->SetElementStringValue(row, 0, TOCKSTRING(info.m_Name.c_str()));
+        physFloors->SetElementStringValue(row, 0, (CKSTRING) info.m_Name.c_str());
         physFloors->SetElementValue(row, 1, &info.m_Friction);
         physFloors->SetElementValue(row, 2, &info.m_Elasticity);
         physFloors->SetElementValue(row, 3, &info.m_Mass);
-        physFloors->SetElementStringValue(row, 4, TOCKSTRING(info.m_CollGroup.c_str()));
+        physFloors->SetElementStringValue(row, 4, (CKSTRING) info.m_CollGroup.c_str());
         physFloors->SetElementValue(row, 5, &info.m_EnableColl);
     }
 
     for (ModulConvexInfo &info: m_ModulConvexes) {
         physConvexs->AddRow();
         int row = physConvexs->GetRowCount() - 1;
-        physConvexs->SetElementStringValue(row, 0, TOCKSTRING(info.m_Name.c_str()));
+        physConvexs->SetElementStringValue(row, 0, (CKSTRING) info.m_Name.c_str());
         physConvexs->SetElementValue(row, 1, &info.m_Fixed);
         physConvexs->SetElementValue(row, 2, &info.m_Friction);
         physConvexs->SetElementValue(row, 3, &info.m_Elasticity);
         physConvexs->SetElementValue(row, 4, &info.m_Mass);
-        physConvexs->SetElementStringValue(row, 5, TOCKSTRING(info.m_CollGroup.c_str()));
+        physConvexs->SetElementStringValue(row, 5, (CKSTRING) info.m_CollGroup.c_str());
         physConvexs->SetElementValue(row, 6, &info.m_Frozen);
         physConvexs->SetElementValue(row, 7, &info.m_EnableColl);
         physConvexs->SetElementValue(row, 8, &info.m_MassCenter);
@@ -244,7 +244,7 @@ void NewBallTypeMod::OnLoadLevelinit(XObjectArray *objArray) {
 
         phGroups->AddRow();
         row = phGroups->GetRowCount() - 1;
-        phGroups->SetElementStringValue(row, 0, TOCKSTRING(info.m_Name.c_str()));
+        phGroups->SetElementStringValue(row, 0, (CKSTRING) info.m_Name.c_str());
         int activation = 2, reset = 2;
         phGroups->SetElementValue(row, 2, &activation);
         phGroups->SetElementValue(row, 3, &reset);
@@ -253,12 +253,12 @@ void NewBallTypeMod::OnLoadLevelinit(XObjectArray *objArray) {
     for (ModulBallInfo &info: m_ModulBalls) {
         physBalls->AddRow();
         int row = physBalls->GetRowCount() - 1;
-        physBalls->SetElementStringValue(row, 0, TOCKSTRING(info.m_Name.c_str()));
+        physBalls->SetElementStringValue(row, 0, (CKSTRING) info.m_Name.c_str());
         physBalls->SetElementValue(row, 1, &info.m_Fixed);
         physBalls->SetElementValue(row, 2, &info.m_Friction);
         physBalls->SetElementValue(row, 3, &info.m_Elasticity);
         physBalls->SetElementValue(row, 4, &info.m_Mass);
-        physBalls->SetElementStringValue(row, 5, TOCKSTRING(info.m_CollGroup.c_str()));
+        physBalls->SetElementStringValue(row, 5, (CKSTRING) info.m_CollGroup.c_str());
         physBalls->SetElementValue(row, 6, &info.m_Frozen);
         physBalls->SetElementValue(row, 7, &info.m_EnableColl);
         physBalls->SetElementValue(row, 8, &info.m_MassCenter);
@@ -268,7 +268,7 @@ void NewBallTypeMod::OnLoadLevelinit(XObjectArray *objArray) {
 
         phGroups->AddRow();
         row = phGroups->GetRowCount() - 1;
-        phGroups->SetElementStringValue(row, 0, TOCKSTRING(info.m_Name.c_str()));
+        phGroups->SetElementStringValue(row, 0, (CKSTRING) info.m_Name.c_str());
         int activation = 3, reset = 2;
         phGroups->SetElementValue(row, 2, &activation);
         phGroups->SetElementValue(row, 3, &reset);
@@ -288,14 +288,14 @@ void NewBallTypeMod::OnLoadSounds(XObjectArray *objArray) {
 
         ballSound->AddRow();
         int row = ballSound->GetRowCount() - 1;
-        ballSound->SetElementStringValue(row, 0, TOCKSTRING(info.m_ObjName.c_str()));
-        ballSound->SetElementStringValue(row, 1, TOCKSTRING((roll + "_Stone").c_str()));
-        ballSound->SetElementStringValue(row, 2, TOCKSTRING((roll + "_Wood").c_str()));
-        ballSound->SetElementStringValue(row, 3, TOCKSTRING((roll + "_Metal").c_str()));
-        ballSound->SetElementStringValue(row, 4, TOCKSTRING((hit + "_Stone").c_str()));
-        ballSound->SetElementStringValue(row, 5, TOCKSTRING((hit + "_Wood").c_str()));
-        ballSound->SetElementStringValue(row, 6, TOCKSTRING((hit + "_Metal").c_str()));
-        ballSound->SetElementStringValue(row, 7, TOCKSTRING((hit + "_Dome").c_str()));
+        ballSound->SetElementStringValue(row, 0, (CKSTRING) info.m_ObjName.c_str());
+        ballSound->SetElementStringValue(row, 1, (CKSTRING) ((roll + "_Stone").c_str()));
+        ballSound->SetElementStringValue(row, 2, (CKSTRING) ((roll + "_Wood").c_str()));
+        ballSound->SetElementStringValue(row, 3, (CKSTRING) ((roll + "_Metal").c_str()));
+        ballSound->SetElementStringValue(row, 4, (CKSTRING) ((hit + "_Stone").c_str()));
+        ballSound->SetElementStringValue(row, 5, (CKSTRING) ((hit + "_Wood").c_str()));
+        ballSound->SetElementStringValue(row, 6, (CKSTRING) ((hit + "_Metal").c_str()));
+        ballSound->SetElementStringValue(row, 7, (CKSTRING) ((hit + "_Dome").c_str()));
     }
 
     GetLogger()->Info("New Ball Sounds Registered");

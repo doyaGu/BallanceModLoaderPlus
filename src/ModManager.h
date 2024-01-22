@@ -151,46 +151,46 @@ public:
     CKTimeManager *GetTimeManager() override { return m_TimeManager; }
 
     CKDataArray *GetArrayByName(const char *name) override {
-        return (CKDataArray *)m_Context->GetObjectByNameAndClass((CKSTRING)(name), CKCID_DATAARRAY);
+        return (CKDataArray *)m_Context->GetObjectByNameAndClass((CKSTRING) name, CKCID_DATAARRAY);
     }
     CKGroup *GetGroupByName(const char *name) override {
-        return (CKGroup *)m_Context->GetObjectByNameAndClass((CKSTRING)(name), CKCID_GROUP);
+        return (CKGroup *)m_Context->GetObjectByNameAndClass((CKSTRING) name, CKCID_GROUP);
     }
     CKMaterial *GetMaterialByName(const char *name) override {
-        return (CKMaterial *)m_Context->GetObjectByNameAndClass((CKSTRING)(name), CKCID_MATERIAL);
+        return (CKMaterial *)m_Context->GetObjectByNameAndClass((CKSTRING) name, CKCID_MATERIAL);
     }
     CKMesh *GetMeshByName(const char *name) override {
-        return (CKMesh *)m_Context->GetObjectByNameAndClass((CKSTRING)(name), CKCID_MESH);
+        return (CKMesh *)m_Context->GetObjectByNameAndClass((CKSTRING) name, CKCID_MESH);
     }
     CK2dEntity *Get2dEntityByName(const char *name) override {
-        return (CK2dEntity *)m_Context->GetObjectByNameAndClass((CKSTRING)(name), CKCID_2DENTITY);
+        return (CK2dEntity *)m_Context->GetObjectByNameAndClass((CKSTRING) name, CKCID_2DENTITY);
     }
     CK3dEntity *Get3dEntityByName(const char *name) override {
-        return (CK3dEntity *)m_Context->GetObjectByNameAndClass((CKSTRING)(name), CKCID_3DENTITY);
+        return (CK3dEntity *)m_Context->GetObjectByNameAndClass((CKSTRING) name, CKCID_3DENTITY);
     }
     CK3dObject *Get3dObjectByName(const char *name) override {
-        return (CK3dObject *)m_Context->GetObjectByNameAndClass((CKSTRING)(name), CKCID_3DOBJECT);
+        return (CK3dObject *)m_Context->GetObjectByNameAndClass((CKSTRING) name, CKCID_3DOBJECT);
     }
     CKCamera *GetCameraByName(const char *name) override {
-        return (CKCamera *)m_Context->GetObjectByNameAndClass((CKSTRING)(name), CKCID_CAMERA);
+        return (CKCamera *)m_Context->GetObjectByNameAndClass((CKSTRING) name, CKCID_CAMERA);
     }
     CKTargetCamera *GetTargetCameraByName(const char *name) override {
-        return (CKTargetCamera *)m_Context->GetObjectByNameAndClass((CKSTRING)(name), CKCID_TARGETCAMERA);
+        return (CKTargetCamera *)m_Context->GetObjectByNameAndClass((CKSTRING) name, CKCID_TARGETCAMERA);
     }
     CKLight *GetLightByName(const char *name) override {
-        return (CKLight *)m_Context->GetObjectByNameAndClass((CKSTRING)(name), CKCID_LIGHT);
+        return (CKLight *)m_Context->GetObjectByNameAndClass((CKSTRING) name, CKCID_LIGHT);
     }
     CKTargetLight *GetTargetLightByName(const char *name) override {
-        return (CKTargetLight *)m_Context->GetObjectByNameAndClass((CKSTRING)(name), CKCID_TARGETLIGHT);
+        return (CKTargetLight *)m_Context->GetObjectByNameAndClass((CKSTRING) name, CKCID_TARGETLIGHT);
     }
     CKSound *GetSoundByName(const char *name) override {
-        return (CKSound *)m_Context->GetObjectByNameAndClass((CKSTRING)(name), CKCID_SOUND);
+        return (CKSound *)m_Context->GetObjectByNameAndClass((CKSTRING) name, CKCID_SOUND);
     }
     CKTexture *GetTextureByName(const char *name) override {
-        return (CKTexture *)m_Context->GetObjectByNameAndClass((CKSTRING)(name), CKCID_TEXTURE);
+        return (CKTexture *)m_Context->GetObjectByNameAndClass((CKSTRING) name, CKCID_TEXTURE);
     }
     CKBehavior *GetScriptByName(const char *name) override {
-        return (CKBehavior *)m_Context->GetObjectByNameAndClass((CKSTRING)(name), CKCID_BEHAVIOR);
+        return (CKBehavior *)m_Context->GetObjectByNameAndClass((CKSTRING) name, CKCID_BEHAVIOR);
     }
 
     void SetIC(CKBeObject *obj, bool hierarchy = false) override;

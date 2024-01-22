@@ -117,7 +117,7 @@ void SpiritTrail::OnLoadObject(const char *filename, CKBOOL isMap, const char *m
         XString filepath = filename;
         m_BML->GetPathManager()->ResolveFileName(filepath, DATA_PATH_IDX);
         m_RecordDir = "..\\ModLoader\\Trails\\" + GetFileHash(filepath.CStr()) + "\\";
-        VxMakeDirectory(TOCKSTRING(m_RecordDir.c_str()));
+        VxMakeDirectory((CKSTRING) m_RecordDir.c_str());
     }
 
     if (!strcmp(filename, "3D Entities\\Balls.nmo")) {

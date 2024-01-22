@@ -188,7 +188,7 @@ CKBehavior *BML_GetScriptByName(const char *name) {
     return g_ModManager->GetScriptByName(name);
 }
 
-ModManager::ModManager(CKContext *context)  : CKBaseManager(context, MOD_MANAGER_GUID, (CKSTRING)"Mod Manager") {
+ModManager::ModManager(CKContext *context)  : CKBaseManager(context, MOD_MANAGER_GUID, (CKSTRING) "Mod Manager") {
     context->RegisterNewManager(this);
     g_ModManager = this;
 }
@@ -256,7 +256,7 @@ CKERROR ModManager::PostProcess() {
     BroadcastCallback(&IMod::OnProcess);
 
     if (m_Exiting)
-        m_MessageManager->SendMessageBroadcast(m_MessageManager->AddMessageType((CKSTRING)("Exit Game")));
+        m_MessageManager->SendMessageBroadcast(m_MessageManager->AddMessageType((CKSTRING) "Exit Game"));
 
     m_InputHook->Process();
 
@@ -957,7 +957,7 @@ void ModManager::InitDirectories() {
     if (!utils::DirectoryExists(cachePath)) {
         utils::CreateDir(cachePath);
     } else {
-        VxDeleteDirectory((CKSTRING)(cachePath.c_str()));
+        VxDeleteDirectory((CKSTRING) cachePath.c_str());
     }
 }
 

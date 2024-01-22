@@ -5,7 +5,7 @@
 using namespace BGui;
 
 Element::Element(const char *name) {
-    m_2dEntity = (CK2dEntity *) BML_GetCKContext()->CreateObject(CKCID_2DENTITY, TOCKSTRING(name));
+    m_2dEntity = (CK2dEntity *) BML_GetCKContext()->CreateObject(CKCID_2DENTITY, (CKSTRING) name);
     BML_GetCKContext()->GetCurrentLevel()->AddObject(m_2dEntity);
     m_2dEntity->SetHomogeneousCoordinates();
     m_2dEntity->EnableClipToCamera(false);

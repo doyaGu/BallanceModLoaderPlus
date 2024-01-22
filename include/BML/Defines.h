@@ -11,6 +11,4 @@
 #define MAX_PATH 260
 #endif
 
-#define TOCKSTRING(str) const_cast<CKSTRING>(str)
-
 #endif // BML_DEFINES_H
