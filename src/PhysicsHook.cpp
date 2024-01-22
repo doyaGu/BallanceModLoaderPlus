@@ -112,8 +112,7 @@ void PhysicsPostProcess() {
 }
 
 bool HookPhysicalize() {
-    CKContext *context = BML_GetModManager()->GetCKContext();
-    auto *im = (CKIpionManager *) context->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
+    auto *im = (CKIpionManager *) BML_GetCKContext()->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
     PhysicsHook::Hook(im);
 
     CKBehaviorPrototype *physicalizeProto = CKGetPrototypeFromGuid(PHYSICS_RT_PHYSICALIZE);
