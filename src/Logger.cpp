@@ -1,9 +1,13 @@
 #include "Logger.h"
 
-#include <stdio.h>
+#include <cstdio>
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <Windows.h>
 
-#include "ModLoader.h"
+#include "ModManager.h"
 
 Logger::Logger(const char *modName) : m_ModName(modName) {}
 
@@ -36,7 +40,7 @@ void Logger::Log(const char *level, const char *fmt, va_list args) {
 #ifdef _DEBUG
         stdout,
 #endif
-        ModLoader::GetInstance().GetLogFile()
+        BML_GetModManager()->GetLogFile()
     };
 
     for (FILE *file: out_files) {

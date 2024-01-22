@@ -10,12 +10,12 @@
 #include "BML/ICommand.h"
 #include "BML/IMod.h"
 #include "BML/Gui.h"
-#include "ModLoader.h"
 
 #define MSG_MAXSIZE 35
 
 class Config;
 class Property;
+class InputHook;
 
 enum HudTypes {
     HUD_TITLE = 1,

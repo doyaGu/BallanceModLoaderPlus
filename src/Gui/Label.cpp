@@ -1,7 +1,7 @@
 #include "BML/Gui/Label.h"
 
 #include "BML/ScriptHelper.h"
-#include "ModLoader.h"
+#include "ModManager.h"
 
 namespace ExecuteBB {
     int GetFont(FontType type);
@@ -11,11 +11,11 @@ namespace ExecuteBB {
 using namespace BGui;
 
 Label::Label(const char *name) : Element(name) {
-    m_Text2d = ExecuteBB::Create2DText(ModLoader::GetInstance().GetScriptByName("Level_Init"), m_2dEntity);
+    m_Text2d = ExecuteBB::Create2DText(BML_GetModManager()->GetScriptByName("Level_Init"), m_2dEntity);
 }
 
 Label::~Label() {
-    CKContext *context = ModLoader::GetInstance().GetCKContext();
+    CKContext *context = BML_GetCKContext();
     if (context)
         context->DestroyObject(CKOBJID(m_Text2d));
 }

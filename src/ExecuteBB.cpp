@@ -2,7 +2,8 @@
 
 #include "BML/Defines.h"
 #include "BML/ScriptHelper.h"
-#include "ModLoader.h"
+
+#include "ModManager.h"
 
 using namespace ScriptHelper;
 
@@ -18,7 +19,7 @@ namespace ExecuteBB {
     void Init() {
         for (int i = 0; i < 8; i++)
             GameFonts[i] = i;
-        CKBehavior *ownerScript = ModLoader::GetInstance().GetScriptByName("Level_Init");
+        CKBehavior *ownerScript = BML_GetScriptByName("Level_Init");
 
         bbPhysConv = CreatePhysicalizeConvex(ownerScript);
         bbPhysBall = CreatePhysicalizeBall(ownerScript);

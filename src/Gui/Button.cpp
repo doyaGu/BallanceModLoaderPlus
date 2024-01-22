@@ -1,7 +1,5 @@
 #include "BML/Gui/Button.h"
 
-#include "ModLoader.h"
-
 using namespace BGui;
 
 CKMaterial *g_Up = nullptr;

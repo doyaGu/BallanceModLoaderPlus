@@ -1,4 +1,4 @@
-#include "ModLoader.h"
+#include "ModManager.h"
 
 static CKBEHAVIORFCT g_ObjectLoad = nullptr;
 
@@ -25,18 +25,18 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
         CKObject *masterobject = beh->GetOutputParameterObject(1);
         CKBOOL isMap = !strcmp(beh->GetOwnerScript()->GetName(), "Levelinit_build");
 
-        ModLoader::GetInstance().BroadcastCallback(&IMod::OnLoadObject,
+        BML_GetModManager()->BroadcastCallback(&IMod::OnLoadObject,
                                                    filename, isMap, mastername, cid,
                                                    addToScene, reuseMeshes,
                                                    reuseMaterials, dynamic, oarray,
                                                    masterobject);
 
         for (CK_ID *id = oarray->Begin(); id != oarray->End(); id++) {
-            CKObject *obj = ModLoader::GetInstance().GetCKContext()->GetObject(*id);
+            CKObject *obj = BML_GetModManager()->GetCKContext()->GetObject(*id);
             if (obj->GetClassID() == CKCID_BEHAVIOR) {
                 auto *behavior = (CKBehavior *) obj;
                 if (behavior->GetType() == CKBEHAVIORTYPE_SCRIPT) {
-                    ModLoader::GetInstance().BroadcastCallback(&IMod::OnLoadScript, filename, behavior);
+                    BML_GetModManager()->BroadcastCallback(&IMod::OnLoadScript, filename, behavior);
                 }
             }
         }

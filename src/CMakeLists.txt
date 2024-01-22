@@ -25,7 +25,6 @@ set(BML_PUBLIC_HEADERS
 
 set(BML_PRIVATE_HEADERS
         ModManager.h
-        ModLoader.h
 
         BMLMod.h
         NewBallTypeMod.h
@@ -48,7 +47,6 @@ set(BML_SOURCES
         HookBlock.cpp
         ModManager.cpp
 
-        ModLoader.cpp
         IMod.cpp
         BMLMod.cpp
         NewBallTypeMod.cpp

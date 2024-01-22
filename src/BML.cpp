@@ -11,16 +11,13 @@
 #include "PluginManagerHook.h"
 #include "HookUtils.h"
 
-HMODULE g_DllHandle = nullptr;
-ModManager *g_ModManager = nullptr;
-
 CKERROR CreateModManager(CKContext *context) {
-    g_ModManager = new ModManager(context);
+    new ModManager(context);
     return CK_OK;
 }
 
 CKERROR RemoveModManager(CKContext *context) {
-    delete g_ModManager;
+    delete BML_GetModManager();
     return CK_OK;
 }
 
@@ -86,10 +83,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
                 utils::OutputDebugA("Fatal: Unable to hook CKBehaviorPrototypeRuntime.\n");
                 return FALSE;
             }
-            g_DllHandle = hModule;
             break;
         case DLL_PROCESS_DETACH:
-            g_DllHandle = nullptr;
             CP_HOOK_CLASS_NAME(CKPluginManager)::ShutdownHooks();
             if (MH_Uninitialize() != MH_OK) {
                 utils::OutputDebugA("Fatal: Unable to uninitialize MinHook.\n");
