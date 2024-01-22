@@ -709,22 +709,30 @@ void ModLoader::DetectPlayer() {
 }
 
 void ModLoader::InitDirectories() {
-    std::string path;
+    char path[MAX_PATH];
     {
-        char szPath[MAX_PATH];
-        char drive[4];
-        char dir[MAX_PATH];
-        ::GetModuleFileNameA(nullptr, szPath, MAX_PATH);
-        _splitpath(szPath, drive, dir, nullptr, nullptr);
-        snprintf(szPath, MAX_PATH, "%s%s", drive, dir);
-        path = utils::RemoveTrailingPathSeparator(szPath);
+        wchar_t szPath[MAX_PATH];
+        wchar_t drive[4];
+        wchar_t dir[MAX_PATH];
+        ::GetModuleFileNameW(nullptr, szPath, MAX_PATH);
+        _wsplitpath(szPath, drive, dir, nullptr, nullptr);
+        _snwprintf(szPath, MAX_PATH, L"%s%s", drive, dir);
+        size_t len = wcslen(szPath);
+        szPath[len - 1] = '\0';
+        wchar_t *s = wcsrchr(szPath, '\\');
+        *s = '\0';
+        utils::Utf16ToAnsi(szPath, path, MAX_PATH);
     }
 
     // Set up game directory
-    m_GameDir = utils::RemoveTrailingPathSeparator(utils::RemoveFileName(path));
+    m_GameDir = path;
 
     // Set up loader directory
-    m_LoaderDir = utils::JoinPaths(m_GameDir, "ModLoader");
+    m_LoaderDir = m_GameDir + "\\ModLoader";
+    if (!utils::DirectoryExists(m_LoaderDir)) {
+        utils::CreateDir(m_LoaderDir);
+    }
+
     if (!utils::DirectoryExists(m_LoaderDir)) {
         utils::CreateDir(m_LoaderDir);
     }
@@ -740,7 +748,7 @@ void ModLoader::InitDirectories() {
     if (!utils::DirectoryExists(cachePath)) {
         utils::CreateDir(cachePath);
     } else {
-        VxDeleteDirectory(TOCKSTRING(cachePath.c_str()));
+        VxDeleteDirectory((CKSTRING)cachePath.c_str());
     }
 }
 
