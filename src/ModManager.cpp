@@ -199,7 +199,6 @@ ModManager::~ModManager() {
 
 CKERROR ModManager::OnCKInit() {
     Init();
-    LoadMods();
 
     return CK_OK;
 }
@@ -216,12 +215,21 @@ CKERROR ModManager::OnCKReset() {
 
     if (!AreModsDown())
         ShutdownMods();
+
+    UnloadMods();
     return CK_OK;
 }
 
 CKERROR ModManager::OnCKPostReset() {
     if (m_Context->GetCurrentLevel() == nullptr)
         return CK_OK;
+
+    if (!m_RenderContext) {
+        m_RenderContext = m_Context->GetPlayerRenderContext();
+        m_Logger->Info("Get Render Context pointer 0x%08x", m_RenderContext);
+    }
+
+    LoadMods();
 
     if (!AreModsDown())
         InitMods();
@@ -353,12 +361,6 @@ void ModManager::UnloadMods() {
 void ModManager::InitMods() {
     if (!IsInitialized() || !AreModsLoaded() || AreModsInited())
         return;
-
-    m_RenderManager = m_Context->GetRenderManager();
-    m_Logger->Info("Get Render Manager pointer 0x%08x", m_RenderManager);
-
-    m_RenderContext = m_Context->GetPlayerRenderContext();
-    m_Logger->Info("Get Render Context pointer 0x%08x", m_RenderContext);
 
     for (IMod *mod: m_Mods) {
         m_Logger->Info("Loading Mod %s[%s] v%s by %s",
@@ -1028,6 +1030,9 @@ void ModManager::GetManagers() {
 
     m_ParameterManager = m_Context->GetParameterManager();
     m_Logger->Info("Get Parameter Manager pointer 0x%08x", m_ParameterManager);
+
+    m_RenderManager = m_Context->GetRenderManager();
+    m_Logger->Info("Get Render Manager pointer 0x%08x", m_RenderManager);
 
     m_SoundManager = (CKSoundManager *) m_Context->GetManagerByGuid(SOUND_MANAGER_GUID);
     m_Logger->Info("Get Sound Manager pointer 0x%08x", m_SoundManager);
