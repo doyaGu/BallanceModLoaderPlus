@@ -3,7 +3,7 @@
 #include <utility>
 
 #include "BML/InputHook.h"
-#include "ModLoader.h"
+#include "ModManager.h"
 
 using namespace BGui;
 
@@ -19,7 +19,7 @@ CKMaterial *g_Field = nullptr;
 CKGroup *g_AllSound = nullptr;
 
 Gui::Gui() {
-    CKRenderContext *rc = ModLoader::GetInstance().GetRenderContext();
+    CKRenderContext *rc = BML_GetRenderContext();
     m_Width = rc->GetWidth();
     m_Height = rc->GetHeight();
 }
@@ -54,7 +54,7 @@ void Gui::OnMouseDown(float x, float y, CK_MOUSEBUTTON key) {
         }
 
         if (success) {
-            CKMessageManager *mm = ModLoader::GetInstance().GetMessageManager();
+            CKMessageManager *mm = BML_GetModManager()->GetMessageManager();
             CKMessageType msg = mm->AddMessageType("Menu_Click");
             mm->SendMessageSingle(msg, g_AllSound);
         }
@@ -230,7 +230,7 @@ std::pair<Button *, KeyInput *> Gui::AddKeyButton(const char *name, const char *
     bg->SetText(text);
     bg->SetAlignment(ALIGN_LEFT);
     bg->SetZOrder(15);
-    bg->SetOffset(Vx2DVector(ModLoader::GetInstance().GetRenderContext()->GetWidth() * 0.03f, 0.0f));
+    bg->SetOffset(Vx2DVector((float)BML_GetRenderContext()->GetWidth() * 0.03f, 0.0f));
     bg->SetCallback([]() {});
     m_Elements.push_back(bg);
 
@@ -264,7 +264,7 @@ std::pair<Button *, Button *> Gui::AddYesNoButton(const char *name, float yPos, 
 }
 
 void Gui::Process() {
-    CKRenderContext *rc = ModLoader::GetInstance().GetRenderContext();
+    CKRenderContext *rc = BML_GetRenderContext();
     if (rc->GetWidth() != m_Width || rc->GetHeight() != m_Height) {
         m_Width = rc->GetWidth();
         m_Height = rc->GetHeight();
@@ -274,7 +274,7 @@ void Gui::Process() {
     for (Element *element: m_Elements)
         element->Process();
 
-    InputHook *input = ModLoader::GetInstance().GetInputManager();
+    InputHook *input = BML_GetInputHook();
     int cnt = (m_Block ? input->GetNumberOfKeyInBuffer() : input->oGetNumberOfKeyInBuffer());
     for (int i = 0; i < cnt; i++) {
         CKDWORD key;
@@ -328,15 +328,15 @@ void Gui::SetFocus(Input *input) {
 }
 
 void Gui::InitMaterials() {
-    g_Up = ModLoader::GetInstance().GetMaterialByName("M_Button_Up");
-    g_Inactive = ModLoader::GetInstance().GetMaterialByName("M_Button_Inactive");
-    g_Over = ModLoader::GetInstance().GetMaterialByName("M_Button_Over");
-    g_Field = ModLoader::GetInstance().GetMaterialByName("M_EntryBG");
-    g_Caret = ModLoader::GetInstance().GetMaterialByName("M_Caret");
-    g_Highlight = ModLoader::GetInstance().GetMaterialByName("M_Keys_Highlight");
-    g_AllSound = ModLoader::GetInstance().GetGroupByName("All_Sound");
+    g_Up = BML_GetModManager()->GetMaterialByName("M_Button_Up");
+    g_Inactive = BML_GetModManager()->GetMaterialByName("M_Button_Inactive");
+    g_Over = BML_GetModManager()->GetMaterialByName("M_Button_Over");
+    g_Field = BML_GetModManager()->GetMaterialByName("M_EntryBG");
+    g_Caret = BML_GetModManager()->GetMaterialByName("M_Caret");
+    g_Highlight = BML_GetModManager()->GetMaterialByName("M_Keys_Highlight");
+    g_AllSound = BML_GetModManager()->GetGroupByName("All_Sound");
 
-    CKParameterManager *pm = ModLoader::GetInstance().GetParameterManager();
+    CKParameterManager *pm = BML_GetModManager()->GetParameterManager();
     CKEnumStruct *data = pm->GetEnumDescByType(pm->ParameterGuidToType(CKPGUID_FONTNAME));
     for (const char *avail_font: g_AvailFonts) {
         for (int i = 0; i < data->GetNumEnums(); i++) {

@@ -3,7 +3,6 @@
 #include <fstream>
 #include <utility>
 
-#include "ModLoader.h"
 #include "StringUtils.h"
 
 Config::Config(IMod *mod) : m_Mod(mod), m_ModID(mod->GetID()) {}
@@ -447,5 +446,5 @@ CKKEYBOARD *Property::GetKeyPtr() {
 
 void Property::SetModified() {
     if (m_Config)
-        ModLoader::GetInstance().OnModifyConfig(m_Config->m_Mod, m_Category.c_str(), m_Key.c_str(), this);
+        m_Config->m_Mod->OnModifyConfig( m_Category.c_str(), m_Key.c_str(), this);
 }

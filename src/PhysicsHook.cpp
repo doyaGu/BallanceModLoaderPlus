@@ -1,6 +1,4 @@
-#include "BML/Defines.h"
-#include "ModLoader.h"
-
+#include "ModManager.h"
 #include "HookUtils.h"
 #include "VTables.h"
 
@@ -91,7 +89,7 @@ int Physicalize(const CKBehaviorContext &behcontext) {
             concaveMesh[i] = (CKMesh *) beh->GetInputParameterReadDataPtr(paramPos + i);
         paramPos += concaveCnt;
 
-        ModLoader::GetInstance().BroadcastCallback(&IMod::OnPhysicalize, target,
+        BML_GetModManager()->BroadcastCallback(&IMod::OnPhysicalize, target,
                                                    fixed, friction, elasticity, mass,
                                                    collGroup, startFrozen, enableColl,
                                                    calcMassCenter, linearDamp, rotDamp,
@@ -103,7 +101,7 @@ int Physicalize(const CKBehaviorContext &behcontext) {
         delete[] ballRadius;
         delete[] concaveMesh;
     } else {
-        ModLoader::GetInstance().BroadcastCallback(&IMod::OnUnphysicalize, target);
+        BML_GetModManager()->BroadcastCallback(&IMod::OnUnphysicalize, target);
     }
 
     return g_Physicalize(behcontext);
@@ -114,7 +112,7 @@ void PhysicsPostProcess() {
 }
 
 bool HookPhysicalize() {
-    CKContext *context = ModLoader::GetInstance().GetCKContext();
+    CKContext *context = BML_GetModManager()->GetCKContext();
     auto *im = (CKIpionManager *) context->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
     PhysicsHook::Hook(im);
 

@@ -1,13 +1,12 @@
 #include "BML/Gui/Element.h"
 
-#include "ModLoader.h"
+#include "ModManager.h"
 
 using namespace BGui;
 
 Element::Element(const char *name) {
-    m_2dEntity = (CK2dEntity *) ModLoader::GetInstance().GetCKContext()
-        ->CreateObject(CKCID_2DENTITY, TOCKSTRING(name));
-    ModLoader::GetInstance().GetCKContext()->GetCurrentLevel()->AddObject(m_2dEntity);
+    m_2dEntity = (CK2dEntity *) BML_GetCKContext()->CreateObject(CKCID_2DENTITY, TOCKSTRING(name));
+    BML_GetCKContext()->GetCurrentLevel()->AddObject(m_2dEntity);
     m_2dEntity->SetHomogeneousCoordinates();
     m_2dEntity->EnableClipToCamera(false);
     m_2dEntity->EnableRatioOffset(false);
@@ -15,7 +14,7 @@ Element::Element(const char *name) {
 }
 
 Element::~Element() {
-    CKContext *context = ModLoader::GetInstance().GetCKContext();
+    CKContext *context = BML_GetCKContext();
     if (context)
         context->DestroyObject(CKOBJID(m_2dEntity));
 }

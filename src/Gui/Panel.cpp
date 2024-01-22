@@ -1,13 +1,13 @@
 #include "BML/Gui/Panel.h"
 
-#include "ModLoader.h"
+#include "ModManager.h"
 
 using namespace BGui;
 
 Panel::Panel(const char *name) : Element(name) {
-    m_Material = (CKMaterial *)ModLoader::GetInstance().GetCKContext()
-        ->CreateObject(CKCID_MATERIAL, TOCKSTRING((std::string(name) + "_Mat").c_str()));
-    ModLoader::GetInstance().GetCKContext()->GetCurrentLevel()->AddObject(m_Material);
+    CKContext *context = BML_GetCKContext();
+    m_Material = (CKMaterial *)context->CreateObject(CKCID_MATERIAL, TOCKSTRING((std::string(name) + "_Mat").c_str()));
+    context->GetCurrentLevel()->AddObject(m_Material);
     m_Material->EnableAlphaBlend();
     m_Material->SetSourceBlend(VXBLEND_SRCALPHA);
     m_Material->SetDestBlend(VXBLEND_INVSRCALPHA);
@@ -16,7 +16,7 @@ Panel::Panel(const char *name) : Element(name) {
 }
 
 Panel::~Panel() {
-    CKContext *context = ModLoader::GetInstance().GetCKContext();
+    CKContext *context = BML_GetCKContext();
     if (context)
         context->DestroyObject(CKOBJID(m_Material));
 }

@@ -1,7 +1,7 @@
 #include "BML/IMod.h"
 #include "Logger.h"
 #include "Config.h"
-#include "ModLoader.h"
+#include "ModManager.h"
 
 ILogger *IMod::GetLogger() {
     if (m_Logger == nullptr)
@@ -11,9 +11,9 @@ ILogger *IMod::GetLogger() {
 
 IConfig *IMod::GetConfig() {
     if (m_Config == nullptr) {
-        Config *config = new Config(this);
+        auto *config = new Config(this);
         m_Config = config;
-        ModLoader::GetInstance().AddConfig(config);
+        BML_GetModManager()->AddConfig(config);
     }
     return m_Config;
 }
