@@ -38,6 +38,16 @@ namespace utils {
                 ? (HMODULE) mbi.AllocationBase : nullptr);
     }
 
+    void *GetModuleBaseAddress(void *hModule) {
+        if (!hModule)
+            return nullptr;
+
+        MODULEINFO moduleInfo;
+        ::GetModuleInformation(::GetCurrentProcess(), (HMODULE)hModule, &moduleInfo, sizeof(moduleInfo));
+
+        return moduleInfo.lpBaseOfDll;
+    }
+
     void *GetModuleBaseAddress(const char *modulePath) {
         if (!modulePath)
             return nullptr;
