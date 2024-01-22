@@ -30,7 +30,7 @@ private:
     union {
         CKDWORD tick;
         float time;
-    } m_Delay, m_Start;
+    } m_Delay = {}, m_Start = {};
 };
 
 #endif // BML_TIMER_H
