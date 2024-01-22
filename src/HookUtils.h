@@ -27,6 +27,7 @@ namespace utils {
 
     void *GetSelfModuleHandle();
 
+    void *GetModuleBaseAddress(void *hModule);
     void *GetModuleBaseAddress(const char *modulePath);
 
     uint32_t ProtectRegion(void *region, size_t size, uint32_t protection);
