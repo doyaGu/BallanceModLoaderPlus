@@ -213,10 +213,11 @@ CKERROR ModManager::OnCKReset() {
     if (m_Context->GetCurrentLevel() == nullptr)
         return CK_OK;
 
-    if (!AreModsDown())
+    if (!AreModsDown()) {
         ShutdownMods();
+        UnloadMods();
+    }
 
-    UnloadMods();
     return CK_OK;
 }
 
@@ -229,10 +230,11 @@ CKERROR ModManager::OnCKPostReset() {
         m_Logger->Info("Get Render Context pointer 0x%08x", m_RenderContext);
     }
 
-    LoadMods();
-
-    if (!AreModsDown())
+    if (!AreModsDown()) {
+        LoadMods();
         InitMods();
+    }
+
     return CK_OK;
 }
 
