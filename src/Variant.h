@@ -238,7 +238,7 @@ public:
     bool operator==(int64_t value) const { return IsInt64() && m_Value.i64 == value; }
     bool operator==(float value) const { return IsFloat32() && m_Value.f32 == value; }
     bool operator==(double value) const { return IsFloat64() && m_Value.f64 == value; }
-    bool operator==(const char *value) const { return IsString() && strncmp(m_Value.str, value, m_Size) == 0; }
+    bool operator==(const char *value) const { return IsString() && strcmp(m_Value.str, value) == 0; }
     bool operator==(void *value) const { return IsPtr() && m_Value.ptr == value; }
 
     bool operator!=(const Variant &rhs) const { return !(*this == rhs); }
