@@ -33,9 +33,9 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
 
         for (CK_ID *id = oarray->Begin(); id != oarray->End(); id++) {
             CKObject *obj = BML_GetModManager()->GetCKContext()->GetObject(*id);
-            if (obj->GetClassID() == CKCID_BEHAVIOR) {
+            if (obj && obj->GetClassID() == CKCID_BEHAVIOR) {
                 auto *behavior = (CKBehavior *) obj;
-                if (behavior->GetType() == CKBEHAVIORTYPE_SCRIPT) {
+                if ((behavior->GetType() & CKBEHAVIORTYPE_SCRIPT) != 0) {
                     BML_GetModManager()->BroadcastCallback(&IMod::OnLoadScript, filename, behavior);
                 }
             }
