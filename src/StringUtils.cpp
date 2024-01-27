@@ -25,8 +25,39 @@ namespace utils {
         return ret;
     }
 
+    std::vector<std::wstring> SplitString(const std::wstring &str, const std::wstring &delim) {
+        size_t lpos, pos = 0;
+        std::vector<std::wstring> ret;
+
+        lpos = str.find_first_not_of(delim, pos);
+        while (lpos != std::wstring::npos) {
+            pos = str.find_first_of(delim, lpos);
+            ret.push_back(str.substr(lpos, pos - lpos));
+            if (pos == std::wstring::npos)
+                break;
+            lpos = str.find_first_not_of(delim, pos);
+        }
+
+        if (pos != std::wstring::npos)
+            ret.emplace_back(L"");
+
+        return ret;
+    }
+
     std::string JoinString(const std::vector<std::string> &str, const std::string &delim) {
         std::string ret;
+        for (size_t i = 0; i < str.size(); ++i) {
+            if (str[i].empty())
+                continue;
+            ret += str[i];
+            if (i < str.size() - 1)
+                ret += delim;
+        }
+        return ret;
+    }
+
+    std::wstring JoinString(const std::vector<std::wstring> &str, const std::wstring &delim) {
+        std::wstring ret;
         for (size_t i = 0; i < str.size(); ++i) {
             if (str[i].empty())
                 continue;
@@ -41,7 +72,18 @@ namespace utils {
         return JoinString(str, std::string(1, delim));
     }
 
+    std::wstring JoinString(const std::vector<std::wstring> &str, wchar_t delim) {
+        return JoinString(str, std::wstring(1, delim));
+    }
+
     bool StringStartsWith(const std::string &s1, const std::string &s2) {
+        if (s1.size() >= s2.size()) {
+            return s1.compare(0, s2.size(), s2) == 0;
+        }
+        return false;
+    }
+
+    bool StringStartsWith(const std::wstring &s1, const std::wstring &s2) {
         if (s1.size() >= s2.size()) {
             return s1.compare(0, s2.size(), s2) == 0;
         }
@@ -55,7 +97,21 @@ namespace utils {
         return false;
     }
 
+    bool StringStartsWithCaseInsensitive(const std::wstring &s1, const std::wstring &s2) {
+        if (s1.size() >= s2.size()) {
+            return wcsncmp(s1.c_str(), s2.c_str(), s2.size()) == 0;
+        }
+        return false;
+    }
+
     bool StringEndsWith(const std::string &s1, const std::string &s2) {
+        if (s1.size() >= s2.size()) {
+            return s1.compare(s1.size() - s2.size(), s2.size(), s2) == 0;
+        }
+        return false;
+    }
+
+    bool StringEndsWith(const std::wstring &s1, const std::wstring &s2) {
         if (s1.size() >= s2.size()) {
             return s1.compare(s1.size() - s2.size(), s2.size(), s2) == 0;
         }
@@ -69,11 +125,22 @@ namespace utils {
         return false;
     }
 
+    bool StringEndsWithCaseInsensitive(const std::wstring &s1, const std::wstring &s2) {
+        if (s1.size() >= s2.size()) {
+            return wcsnicmp(s1.c_str() + s1.size() - s2.size(), s2.c_str(), s2.size()) == 0;
+        }
+        return false;
+    }
+
     int AnsiToUtf16(const char *charStr, wchar_t *wcharStr, int size) {
         return ::MultiByteToWideChar(CP_ACP, 0, charStr, -1, wcharStr, size);
     }
 
     int Utf16ToAnsi(const wchar_t *wcharStr, char *charStr, int size) {
-        return ::WideCharToMultiByte(CP_ACP, 0, wcharStr, -1, charStr, size, NULL, NULL);
+        return ::WideCharToMultiByte(CP_ACP, 0, wcharStr, -1, charStr, size, nullptr, nullptr);
+    }
+
+    int Utf16ToUtf8(const wchar_t *wcharStr, char *charStr, int size) {
+        return ::WideCharToMultiByte(CP_UTF8, 0, wcharStr, -1, charStr, size, nullptr, nullptr);
     }
 }

@@ -29,12 +29,15 @@ class NewBallTypeMod;
 
 typedef enum DirectoryType {
     BML_DIR_WORKING = 0,
-    BML_DIR_GAME = 1,
-    BML_DIR_LOADER = 2,
+    BML_DIR_TEMP = 1,
+    BML_DIR_GAME = 2,
+    BML_DIR_LOADER = 3,
+    BML_DIR_CONFIG = 4,
 } DirectoryType;
 
 ModManager *BML_GetModManager();
-const char *BML_GetDirectory(DirectoryType type);
+const wchar_t *BML_GetDirectory(DirectoryType type);
+const char *BML_GetDirectoryUtf8(DirectoryType type);
 CKContext *BML_GetCKContext();
 CKRenderContext *BML_GetRenderContext();
 InputHook *BML_GetInputHook();
@@ -134,7 +137,8 @@ public:
     ILogger *GetLogger() {return m_Logger; }
     FILE *GetLogFile() { return m_Logfile; }
 
-    const char *GetDirectory(DirectoryType type) const;
+    const wchar_t *GetDirectory(DirectoryType type);
+    const char *GetDirectoryUtf8(DirectoryType type);
 
     CKContext *GetCKContext() override { return m_Context; }
     CKRenderContext *GetRenderContext() override { return m_RenderContext; }
@@ -322,12 +326,12 @@ protected:
     void ShutdownHooks();
     void GetManagers();
 
-    size_t ExploreMods(const std::string &path, std::vector<std::string> &mods);
+    size_t ExploreMods(const std::wstring &path, std::vector<std::wstring> &mods);
 
-    std::shared_ptr<void> LoadLib(const std::string &path);
+    std::shared_ptr<void> LoadLib(const wchar_t *path);
     bool UnloadLib(void *dllHandle);
 
-    bool LoadMod(const std::string &filename);
+    bool LoadMod(const std::wstring &path);
     bool UnloadMod(const std::string &id);
 
     void RegisterBuiltinMods();
@@ -351,9 +355,17 @@ protected:
     bool m_IsOriginalPlayer = false;
     bool m_CheatEnabled = false;
 
-    mutable std::string m_WorkingDir;
-    std::string m_GameDir;
-    std::string m_LoaderDir;
+    std::wstring m_WorkingDir;
+    std::wstring m_TempDir;
+    std::wstring m_GameDir;
+    std::wstring m_LoaderDir;
+    std::wstring m_ConfigDir;
+
+    std::string m_WorkingDirUtf8;
+    std::string m_TempDirUtf8;
+    std::string m_GameDirUtf8;
+    std::string m_LoaderDirUtf8;
+    std::string m_ConfigDirUtf8;
 
     FILE *m_Logfile = nullptr;
     ILogger *m_Logger = nullptr;
