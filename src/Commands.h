@@ -25,6 +25,16 @@ public:
     const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; };
 };
 
+class CommandExit : public ICommand {
+public:
+    std::string GetName() override { return "exit"; };
+    std::string GetAlias() override { return ""; };
+    std::string GetDescription() override { return "Exit the game."; };
+    bool IsCheat() override { return false; };
+    void Execute(IBML *bml, const std::vector<std::string> &args) override;
+    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; };
+};
+
 class CommandEcho : public ICommand {
 public:
     std::string GetName() override { return "echo"; };

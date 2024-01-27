@@ -901,6 +901,7 @@ void BMLMod::InitConfigs() {
 void BMLMod::RegisterCommands() {
     m_BML->RegisterCommand(new CommandBML());
     m_BML->RegisterCommand(new CommandHelp());
+    m_BML->RegisterCommand(new CommandExit());
     m_BML->RegisterCommand(new CommandEcho());
     m_BML->RegisterCommand(new CommandCheat());
     m_BML->RegisterCommand(new CommandClear(this));
