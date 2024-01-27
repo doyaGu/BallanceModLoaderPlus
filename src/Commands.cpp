@@ -30,6 +30,10 @@ void CommandHelp::Execute(IBML *bml, const std::vector<std::string> &args) {
     }
 }
 
+void CommandExit::Execute(IBML *bml, const std::vector<std::string> &args) {
+    bml->ExitGame();
+}
+
 void CommandEcho::Execute(IBML *bml, const std::vector<std::string> &args) {
     if (args.size() > 1) {
         std::string str;
