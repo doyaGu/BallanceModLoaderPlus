@@ -115,8 +115,8 @@ public:
     const char *GetCategoryComment(const char *category);
     void SetCategoryComment(const char *category, const char *comment) override;
 
-    bool Load(const char *path);
-    bool Save(const char *path);
+    bool Load(const wchar_t *path);
+    bool Save(const wchar_t *path);
 
 private:
     static void Trim(std::string &s) {

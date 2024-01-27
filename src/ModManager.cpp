@@ -6,10 +6,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <Windows.h>
-#include <direct.h>
 #include <io.h>
-
-#include <zip.h>
 
 #include "BML/InputHook.h"
 #include "Logger.h"
@@ -26,10 +23,16 @@ ModManager *BML_GetModManager() {
     return g_ModManager;
 }
 
-const char *BML_GetDirectory(DirectoryType type) {
+const wchar_t *BML_GetDirectory(DirectoryType type) {
     if (!g_ModManager)
         return nullptr;
     return g_ModManager->GetDirectory(type);
+}
+
+const char *BML_GetDirectoryUtf8(DirectoryType type) {
+    if (!g_ModManager)
+        return nullptr;
+    return g_ModManager->GetDirectoryUtf8(type);
 }
 
 CKContext *BML_GetCKContext() {
@@ -315,6 +318,8 @@ void ModManager::Shutdown() {
         m_Logger->Info("Goodbye!");
         ShutdownLogger();
 
+        utils::DeleteDir(m_TempDir);
+
         m_Initialized = false;
     }
 }
@@ -325,17 +330,23 @@ void ModManager::LoadMods() {
 
     RegisterBuiltinMods();
 
-    std::string path = m_LoaderDir + "\\Mods";
+    std::wstring path = m_LoaderDir + L"\\Mods";
     if (utils::DirectoryExists(path)) {
-        std::vector<std::string> mods;
+        std::vector<std::wstring> mods;
         if (ExploreMods(path, mods) == 0) {
             m_Logger->Info("No mod is found.");
         }
 
         for (auto &mod: mods) {
             if (LoadMod(mod)) {
-                std::string p = utils::RemoveFileName(mod);
-                AddDataPath(p.c_str());
+                wchar_t drive[4];
+                wchar_t dir[MAX_PATH];
+                _wsplitpath(mod.c_str(), drive, dir, nullptr, nullptr);
+                wchar_t wBuf[MAX_PATH];
+                _snwprintf(wBuf, MAX_PATH, L"%s%s", drive, dir);
+                char buf[1024];
+                utils::Utf16ToAnsi(wBuf, buf, MAX_PATH);
+                AddDataPath(buf);
             }
         }
     }
@@ -354,7 +365,7 @@ void ModManager::UnloadMods() {
     }
 
     for (auto rit = modNames.rbegin(); rit != modNames.rend(); ++rit) {
-        UnloadMod(rit->c_str());
+        UnloadMod(*rit);
     }
 
     m_ModsLoaded = false;
@@ -588,8 +599,10 @@ bool ModManager::LoadConfig(Config *config) {
     if (!mod)
         return false;
 
-    std::string configPath = GetDirectory(BML_DIR_LOADER);
-    configPath.append("\\Config\\").append(mod->GetID()).append(".cfg");
+    wchar_t buf[256];
+    utils::AnsiToUtf16(mod->GetID(), buf, 256);
+    std::wstring configPath = m_LoaderDir;
+    configPath.append(L"\\Config\\").append(buf).append(L".cfg");
     return config->Load(configPath.c_str());
 }
 
@@ -601,24 +614,46 @@ bool ModManager::SaveConfig(Config *config) {
     if (!mod)
         return false;
 
-    std::string configPath = GetDirectory(BML_DIR_LOADER);
-    configPath.append("\\Config\\").append(mod->GetID()).append(".cfg");
+    wchar_t buf[256];
+    utils::AnsiToUtf16(mod->GetID(), buf, 256);
+    std::wstring configPath = m_LoaderDir;
+    configPath.append(L"\\Config\\").append(buf).append(L".cfg");
     return config->Save(configPath.c_str());
 }
 
-const char *ModManager::GetDirectory(DirectoryType type) const {
+const wchar_t *ModManager::GetDirectory(DirectoryType type) {
     switch (type) {
         case BML_DIR_WORKING:
-            if (m_WorkingDir.empty()) {
-                char cwd[MAX_PATH];
-                getcwd(cwd, MAX_PATH);
-                m_WorkingDir = cwd;
-            }
             return m_WorkingDir.c_str();
+        case BML_DIR_TEMP:
+            return m_TempDir.c_str();
         case BML_DIR_GAME:
             return m_GameDir.c_str();
         case BML_DIR_LOADER:
             return m_LoaderDir.c_str();
+        case BML_DIR_CONFIG:
+            return m_ConfigDir.c_str();
+        default:
+            break;
+    }
+
+    return nullptr;
+}
+
+const char *ModManager::GetDirectoryUtf8(DirectoryType type) {
+    switch (type) {
+        case BML_DIR_WORKING:
+            return m_WorkingDirUtf8.c_str();
+        case BML_DIR_TEMP:
+            return m_TempDirUtf8.c_str();
+        case BML_DIR_GAME:
+            return m_GameDirUtf8.c_str();
+        case BML_DIR_LOADER:
+            return m_LoaderDirUtf8.c_str();
+        case BML_DIR_CONFIG:
+            return m_ConfigDirUtf8.c_str();
+        default:
+            break;
     }
 
     return nullptr;
@@ -918,52 +953,62 @@ void ModManager::DetectPlayer() {
 }
 
 void ModManager::InitDirectories() {
-    char path[MAX_PATH];
-    {
-        wchar_t szPath[MAX_PATH];
-        wchar_t drive[4];
-        wchar_t dir[MAX_PATH];
-        ::GetModuleFileNameW(nullptr, szPath, MAX_PATH);
-        _wsplitpath(szPath, drive, dir, nullptr, nullptr);
-        _snwprintf(szPath, MAX_PATH, L"%s%s", drive, dir);
-        size_t len = wcslen(szPath);
-        szPath[len - 1] = '\0';
-        wchar_t *s = wcsrchr(szPath, '\\');
-        *s = '\0';
-        utils::Utf16ToAnsi(szPath, path, MAX_PATH);
-    }
+    char buf[1024];
+
+    wchar_t path[MAX_PATH];
+    wchar_t drive[4];
+    wchar_t dir[MAX_PATH];
+
+    // Set up working directory
+    _wgetcwd(path, MAX_PATH);
+    m_WorkingDir = path;
+
+    utils::Utf16ToUtf8(m_WorkingDir.c_str(), buf, sizeof(buf));
+    m_WorkingDirUtf8 = buf;
+
+    // Set up working directory
+    ::GetTempPathW(MAX_PATH, path);
+    wcsncat(path, L"BML", MAX_PATH);
+    m_TempDir = path;
+
+    utils::Utf16ToUtf8(m_TempDir.c_str(), buf, sizeof(buf));
+    m_TempDirUtf8 = buf;
 
     // Set up game directory
+    ::GetModuleFileNameW(nullptr, path, MAX_PATH);
+    _wsplitpath(path, drive, dir, nullptr, nullptr);
+    _snwprintf(path, MAX_PATH, L"%s%s", drive, dir);
+    size_t len = wcslen(path);
+    path[len - 1] = '\0';
+    wchar_t *s = wcsrchr(path, '\\');
+    *s = '\0';
     m_GameDir = path;
 
+    utils::Utf16ToUtf8(m_GameDir.c_str(), buf, sizeof(buf));
+    m_GameDirUtf8 = buf;
+
     // Set up loader directory
-    m_LoaderDir = m_GameDir + "\\ModLoader";
+    m_LoaderDir = m_GameDir + L"\\ModLoader";
     if (!utils::DirectoryExists(m_LoaderDir)) {
         utils::CreateDir(m_LoaderDir);
     }
 
-    if (!utils::DirectoryExists(m_LoaderDir)) {
-        utils::CreateDir(m_LoaderDir);
+    utils::Utf16ToUtf8(m_LoaderDir.c_str(), buf, sizeof(buf));
+    m_LoaderDirUtf8 = buf;
+
+    // Set up config directory
+    m_ConfigDir = m_LoaderDir + L"\\Config";
+    if (!utils::DirectoryExists(m_ConfigDir)) {
+        utils::CreateDir(m_ConfigDir);
     }
 
-    // Set up configs directory
-    std::string configPath = m_LoaderDir + "\\Config";
-    if (!utils::DirectoryExists(configPath)) {
-        utils::CreateDir(configPath);
-    }
-
-    // Set up cache directory
-    std::string cachePath = m_LoaderDir + "\\Cache";
-    if (!utils::DirectoryExists(cachePath)) {
-        utils::CreateDir(cachePath);
-    } else {
-        VxDeleteDirectory((CKSTRING) cachePath.c_str());
-    }
+    utils::Utf16ToUtf8(m_ConfigDir.c_str(), buf, sizeof(buf));
+    m_ConfigDirUtf8 = buf;
 }
 
 void ModManager::InitLogger() {
-    std::string logfilePath = m_LoaderDir + "\\ModLoader.log";
-    m_Logfile = fopen(logfilePath.c_str(), "w");
+    std::wstring logfilePath = m_LoaderDir + L"\\ModLoader.log";
+    m_Logfile = _wfopen(logfilePath.c_str(), L"w");
     m_Logger = new Logger("ModLoader");
 
 #ifdef _DEBUG
@@ -1043,47 +1088,47 @@ void ModManager::GetManagers() {
     m_Logger->Info("Get Time Manager pointer 0x%08x", m_TimeManager);
 }
 
-size_t ModManager::ExploreMods(const std::string &path, std::vector<std::string> &mods) {
-    if (!utils::DirectoryExists(path))
+size_t ModManager::ExploreMods(const std::wstring &path, std::vector<std::wstring> &mods) {
+    if (path.empty() || !utils::DirectoryExists(path))
         return 0;
 
-    std::string p = path + (utils::HasTrailingPathSeparator(path) ? "*" : "\\*");
-    _finddata_t fileinfo = {};
-    auto handle = _findfirst(p.c_str(), &fileinfo);
+    std::wstring p = path + L"\\*";
+
+    _wfinddata_t fileinfo = {};
+    auto handle = _wfindfirst(p.c_str(), &fileinfo);
     if (handle == -1)
         return 0;
 
     do {
-        if ((fileinfo.attrib & _A_SUBDIR)) {
-            if (strcmp(fileinfo.name, ".") != 0 && strcmp(fileinfo.name, "..") != 0)
-                ExploreMods(p.assign(path).append("\\").append(fileinfo.name), mods);
-        } else {
-            std::string filename = path + "\\" + fileinfo.name;
-            if (utils::StringEndsWithCaseInsensitive(filename, ".zip")) {
-                std::string cachePath = GetDirectory(BML_DIR_LOADER);
-                std::string name = utils::GetFileName(filename);
-                cachePath.append("\\Cache\\Mods\\").append(name);
-                if (zip_extract(filename.c_str(), cachePath.c_str(), nullptr, nullptr) == 0)
-                    ExploreMods(cachePath, mods);
-            } else if (utils::StringEndsWithCaseInsensitive(filename, ".bmodp")) {
-                // Add mod filename.
-                mods.push_back(filename);
+        if ((fileinfo.attrib & _A_SUBDIR) == 0) {
+            std::wstring fullPath = path + L"\\" + fileinfo.name;
+            wchar_t filename[MAX_PATH];
+            wchar_t ext[32];
+            _wsplitpath(fileinfo.name, nullptr, nullptr, filename, ext);
+
+            if (_wcsicmp(ext, L".zip") == 0) {
+                std::wstring dest = m_TempDir;
+                dest.append(L"\\Mods\\").append(filename);
+                utils::ExtractZip(fullPath, dest);
+                ExploreMods(dest, mods);
+            } else if (_wcsicmp(ext, L".bmodp") == 0) {
+                mods.push_back(fullPath);
             }
         }
-    } while (_findnext(handle, &fileinfo) == 0);
+    } while (_wfindnext(handle, &fileinfo) == 0);
 
     _findclose(handle);
 
     return mods.size();
 }
 
-std::shared_ptr<void> ModManager::LoadLib(const std::string &path) {
-    if (path.empty())
+std::shared_ptr<void> ModManager::LoadLib(const wchar_t *path) {
+    if (!path || path[0] == '\0')
         return nullptr;
 
     std::shared_ptr<void> dllHandlePtr;
 
-    HMODULE dllHandle = ::LoadLibraryEx(path.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+    HMODULE dllHandle = ::LoadLibraryExW(path, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
     if (!dllHandle)
         return nullptr;
 
@@ -1118,11 +1163,13 @@ bool ModManager::UnloadLib(void *dllHandle) {
     return true;
 }
 
-bool ModManager::LoadMod(const std::string &filename) {
-    auto modName = utils::GetFileName(filename);
-    auto dllHandle = LoadLib(filename);
+bool ModManager::LoadMod(const std::wstring &path) {
+    wchar_t filename[MAX_PATH];
+    _wsplitpath(path.c_str(), nullptr, nullptr, filename, nullptr);
+
+    auto dllHandle = LoadLib(path.c_str());
     if (!dllHandle) {
-        m_Logger->Error("Failed to load %s.", modName.c_str());
+        m_Logger->Error("Failed to load %s.", filename);
         return false;
     }
 
@@ -1132,14 +1179,14 @@ bool ModManager::LoadMod(const std::string &filename) {
     auto func = reinterpret_cast<BMLEntryFunc>(::GetProcAddress(reinterpret_cast<HMODULE>(dllHandle.get()),
                                                                 ENTRY_SYMBOL));
     if (!func) {
-        m_Logger->Error("%s does not export the required symbol: %s.", filename.c_str(), ENTRY_SYMBOL);
+        m_Logger->Error("%s does not export the required symbol: %s.", filename, ENTRY_SYMBOL);
         return false;
     }
 
     auto *bml = static_cast<IBML *>(this);
     IMod *mod = func(bml);
     if (!mod) {
-        m_Logger->Error("No mod could be registered, %s will be unloaded.", modName.c_str());
+        m_Logger->Error("No mod could be registered, %s will be unloaded.", filename);
         UnloadLib(dllHandle.get());
         return false;
     }

@@ -1,6 +1,7 @@
 #include "Config.h"
 
-#include <fstream>
+#include <cstdio>
+#include <sstream>
 #include <utility>
 
 #include "StringUtils.h"
@@ -13,19 +14,35 @@ Config::~Config() {
     m_Categories.clear();
 }
 
-bool Config::Load(const char *path) {
+bool Config::Load(const wchar_t *path) {
     if (!path || path[0] == '\0')
         return false;
-        
-    std::ifstream fin(path);
-    if (fin.fail())
+
+    FILE *fp = _wfopen(path, L"rb");
+    if (!fp)
         return false;
+
+    fseek(fp, 0, SEEK_END);
+    size_t sz = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    char *buf = new char[sz];
+
+    if (fread(buf, sizeof(char), sz, fp) != sz) {
+        delete[] buf;
+        fclose(fp);
+        return false;
+    }
+    fclose(fp);
+
+    std::istringstream in(buf);
+    delete[] buf;
 
     std::string token, comment, category;
     bool inCate = false;
-    while (fin >> token) {
+    while (in >> token) {
         if (token == "#") {
-            std::getline(fin, comment);
+            std::getline(in, comment);
             Trim(comment);
         } else if (token == "{")
             inCate = true;
@@ -33,37 +50,37 @@ bool Config::Load(const char *path) {
             inCate = false;
         else if (inCate) {
             std::string propName;
-            fin >> propName;
+            in >> propName;
             auto *prop = new Property(nullptr, category, propName);
             switch (token[0]) {
                 case 'S': {
                     std::string value;
-                    std::getline(fin, value);
+                    std::getline(in, value);
                     Trim(value);
                     prop->SetDefaultString(value.c_str());
                     break;
                 }
                 case 'B': {
                     bool value;
-                    fin >> value;
+                    in >> value;
                     prop->SetDefaultBoolean(value);
                     break;
                 }
                 case 'K': {
                     int value;
-                    fin >> value;
+                    in >> value;
                     prop->SetDefaultKey(CKKEYBOARD(value));
                     break;
                 }
                 case 'I': {
                     int value;
-                    fin >> value;
+                    in >> value;
                     prop->SetDefaultInteger(value);
                     break;
                 }
                 case 'F': {
                     float value;
-                    fin >> value;
+                    in >> value;
                     prop->SetDefaultFloat(value);
                     break;
                 }
@@ -80,13 +97,15 @@ bool Config::Load(const char *path) {
     return true;
 }
 
-bool Config::Save(const char *path) {
+bool Config::Save(const wchar_t *path) {
     if (!path || path[0] == '\0')
         return false;
 
-    std::ofstream fout(path);
-    if (fout.fail())
+    FILE *fp = _wfopen(path, L"wb");
+    if (!fp)
         return false;
+
+    std::ostringstream out;
 
     for (auto *category: m_Categories) {
         auto &props = category->m_Properties;
@@ -107,63 +126,70 @@ bool Config::Save(const char *path) {
             iter++;
     }
 
-    fout << "# Configuration File for Mod: " << m_Mod->GetName() << " - " << m_Mod->GetVersion() << std::endl
+    out << "# Configuration File for Mod: " << m_Mod->GetName() << " - " << m_Mod->GetVersion() << std::endl
          << std::endl;
     for (auto *category: m_Categories) {
-        fout << "# " << category->m_Comment << std::endl;
-        fout << category->m_Name << " {" << std::endl
+        out << "# " << category->m_Comment << std::endl;
+        out << category->m_Name << " {" << std::endl
              << std::endl;
 
         for (auto property: category->m_Properties) {
-            fout << "\t# " << property->GetComment() << std::endl;
-            fout << "\t";
+            out << "\t# " << property->GetComment() << std::endl;
+            out << "\t";
             switch (property->GetType()) {
                 case IProperty::STRING:
-                    fout << "S ";
+                    out << "S ";
                     break;
                 case IProperty::BOOLEAN:
-                    fout << "B ";
+                    out << "B ";
                     break;
                 case IProperty::FLOAT:
-                    fout << "F ";
+                    out << "F ";
                     break;
                 case IProperty::KEY:
-                    fout << "K ";
+                    out << "K ";
                     break;
                 case IProperty::INTEGER:
                 default:
-                    fout << "I ";
+                    out << "I ";
                     break;
             }
 
-            fout << property->m_Key << " ";
+            out << property->m_Key << " ";
             switch (property->GetType()) {
                 case IProperty::STRING:
-                    fout << property->GetString();
+                    out << property->GetString();
                     break;
                 case IProperty::BOOLEAN:
-                    fout << property->GetBoolean();
+                    out << property->GetBoolean();
                     break;
                 case IProperty::FLOAT:
-                    fout << property->GetFloat();
+                    out << property->GetFloat();
                     break;
                 case IProperty::KEY:
-                    fout << (int) property->GetKey();
+                    out << (int) property->GetKey();
                     break;
                 case IProperty::INTEGER:
                 default:
-                    fout << property->GetInteger();
+                    out << property->GetInteger();
                     break;
             }
 
-            fout << std::endl
+            out << std::endl
                  << std::endl;
         }
 
-        fout << "}" << std::endl
+        out << "}" << std::endl
              << std::endl;
     }
 
+    std::string buf = out.str();
+    if (fwrite(buf.c_str(), sizeof(char), buf.size(), fp) != buf.size()) {
+        fclose(fp);
+        return false;
+    }
+
+    fclose(fp);
     return true;
 }
 
