@@ -134,8 +134,10 @@ namespace utils {
     }
 
     bool ExtractZip(const std::wstring &path, const std::wstring &dest) {
-        if (!FileExists(path) || !DirectoryExists(dest))
+        if (!FileExists(path) || dest.empty())
             return false;
+
+        CreateFileTree(dest);
 
         if (!StringEndsWithCaseInsensitive(path, L".zip"))
             return false;
