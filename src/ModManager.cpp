@@ -325,7 +325,7 @@ void ModManager::Shutdown() {
 }
 
 void ModManager::LoadMods() {
-    if (AreModsLoaded())
+    if (!IsInitialized() || AreModsLoaded())
         return;
 
     RegisterBuiltinMods();
@@ -355,7 +355,7 @@ void ModManager::LoadMods() {
 }
 
 void ModManager::UnloadMods() {
-    if (!AreModsLoaded())
+    if (!IsInitialized() || !AreModsLoaded())
         return;
 
     std::vector<std::string> modNames;
@@ -970,6 +970,9 @@ void ModManager::InitDirectories() {
     ::GetTempPathW(MAX_PATH, path);
     wcsncat(path, L"BML", MAX_PATH);
     m_TempDir = path;
+    if (!utils::DirectoryExists(m_TempDir)) {
+        utils::CreateDir(m_TempDir);
+    }
 
     utils::Utf16ToUtf8(m_TempDir.c_str(), buf, sizeof(buf));
     m_TempDirUtf8 = buf;
