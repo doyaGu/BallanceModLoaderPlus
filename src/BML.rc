@@ -20,11 +20,11 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "CompanyName", "Gamepiaynmo & Kakuty"
+            VALUE "CompanyName", "Kakuty & Gamepiaynmo"
             VALUE "FileDescription", "Mod Loader for Ballance"
             VALUE "FileVersion", BML_VERSION
             VALUE "InternalName", "BMLPlus.dll"
-            VALUE "LegalCopyright", "Copyright (C) 2023"
+            VALUE "LegalCopyright", "Copyright (C) 2024"
             VALUE "OriginalFilename", "BMLPlus.dll"
             VALUE "ProductName", "Ballance Mod Loader Plus"
             VALUE "ProductVersion", BML_VERSION

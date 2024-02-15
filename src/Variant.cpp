@@ -1,6 +1,7 @@
 #include "Variant.h"
 
 #include <cstdlib>
+#include <cstring>
 
 Variant::Variant() = default;
 
@@ -361,6 +362,10 @@ bool Variant::operator==(const Variant &rhs) const {
     }
 
     return false;
+}
+
+bool Variant::operator==(const char *value) const {
+    return IsString() && strcmp(m_Value.str, value) == 0;
 }
 
 void Variant::SetBuffer(const void *buf, size_t size) {

@@ -14,6 +14,7 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/IBML.h
         ${BML_INCLUDE_DIR}/BML/IMod.h
 
+        ${BML_INCLUDE_DIR}/BML/Bui.h
         ${BML_INCLUDE_DIR}/BML/Gui.h
         ${BML_INCLUDE_DIR}/BML/InputHook.h
 
@@ -29,6 +30,8 @@ set(BML_PRIVATE_HEADERS
         BMLMod.h
         NewBallTypeMod.h
         Commands.h
+
+        Overlay.h
 
         PluginManagerHook.h
 
@@ -61,10 +64,14 @@ set(BML_SOURCES
         Gui/KeyInput.cpp
         Gui/Gui.cpp
 
+        Overlay.cpp
+        Bui.cpp
+
         PluginManagerHook.cpp
         InputHook.cpp
         ObjectLoadHook.cpp
         PhysicsHook.cpp
+        TextureFont.cpp
 
         ExecuteBB.cpp
         ScriptHelper.cpp
@@ -81,13 +88,35 @@ set(BML_SOURCES
         BML.rc
 )
 
+set(IMGUI_HEADERS
+        ${IMGUI_SOURCE_DIR}/imgui.h
+        ${IMGUI_SOURCE_DIR}/imgui_internal.h
+        ${IMGUI_SOURCE_DIR}/imstb_rectpack.h
+        ${IMGUI_SOURCE_DIR}/imstb_textedit.h
+        ${IMGUI_SOURCE_DIR}/imstb_truetype.h
+        ${IMGUI_SOURCE_DIR}/backends/imgui_impl_win32.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/imgui_impl_ck2.h
+)
+
+set(IMGUI_SOURCES
+        ${IMGUI_SOURCE_DIR}/imgui.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_draw.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_widgets.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_demo.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
+        ${IMGUI_SOURCE_DIR}/backends/imgui_impl_win32.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/imgui_impl_ck2.cpp
+)
+
 add_library(BML SHARED
         ${BML_SOURCES} ${BML_PUBLIC_HEADERS} ${BML_PRIVATE_HEADERS}
+        ${IMGUI_SOURCES} ${IMGUI_HEADERS}
 )
 
 target_include_directories(BML
         PUBLIC
         $<BUILD_INTERFACE:${BML_INCLUDE_DIR}>
+        $<BUILD_INTERFACE:${IMGUI_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
         PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
@@ -97,16 +126,21 @@ target_link_libraries(BML
         PUBLIC
         CK2 VxMath
         PRIVATE
-        minhook zip
+        minhook zip onig utf8
 )
 
-target_compile_definitions(BML PRIVATE "BML_EXPORTS")
+target_compile_definitions(BML PRIVATE "BML_EXPORTS" "IMGUI_EXPORT")
 
 set_target_properties(BML PROPERTIES
         OUTPUT_NAME "BMLPlus"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+)
+
+add_custom_command(TARGET BML PRE_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/imconfig.h" "${IMGUI_SOURCE_DIR}"
+        VERBATIM
 )
 
 install(TARGETS BML EXPORT BMLTargets
@@ -116,6 +150,12 @@ install(TARGETS BML EXPORT BMLTargets
 )
 
 install(DIRECTORY "${BML_INCLUDE_DIR}/BML" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+install(FILES
+        "${IMGUI_SOURCE_DIR}/imgui.h"
+        "${IMGUI_SOURCE_DIR}/imgui_internal.h"
+        "${IMGUI_SOURCE_DIR}/imstb_textedit.h"
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
 
 install(EXPORT BMLTargets DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML")
 

@@ -3,19 +3,27 @@
 
 #include <string>
 #include <vector>
-#include <queue>
-#include <map>
+#include <stack>
 
-#include "BML/Defines.h"
 #include "BML/ICommand.h"
 #include "BML/IMod.h"
-#include "BML/Gui.h"
+
+#include "imgui.h"
 
 #define MSG_MAXSIZE 35
 
 class Config;
+class Category;
 class Property;
 class InputHook;
+
+enum MenuId {
+    MENU_NULL = 0,
+    MENU_MOD_LIST,
+    MENU_MOD_PAGE,
+    MENU_MOD_OPTIONS,
+    MENU_MAP_LIST,
+};
 
 enum HudTypes {
     HUD_TITLE = 1,
@@ -23,158 +31,12 @@ enum HudTypes {
     HUD_SR = 4,
 };
 
-class GuiList : public BGui::Gui {
-public:
-    GuiList();
-
-    void Init(int size, int maxsize);
-
-    virtual BGui::Button *CreateButton(int index) = 0;
-    virtual std::string GetButtonText(int index) = 0;
-
-    virtual BGui::Gui *CreateSubGui(int index) = 0;
-    virtual BGui::Gui *GetParentGui() = 0;
-
-    virtual void SetPage(int page);
-    void PreviousPage() {
-        if (m_CurPage > 0)
-            SetPage(m_CurPage - 1);
-    }
-    void NextPage() {
-        if (m_CurPage < m_MaxPage - 1)
-            SetPage(m_CurPage + 1);
-    }
-
-    virtual void Exit();
-
-    void SetVisible(bool visible) override;
-
-protected:
-    std::vector<BGui::Button *> m_Buttons;
-    int m_CurPage;
-    int m_MaxPage;
-    int m_Size;
-    int m_MaxSize;
-    std::vector<BGui::Gui *> m_GuiList;
-    BGui::Button *m_Left, *m_Right;
-};
-
-class GuiModOption : public GuiList {
-public:
-    GuiModOption();
-
-    BGui::Button *CreateButton(int index) override;
-    std::string GetButtonText(int index) override;
-
-    BGui::Gui *CreateSubGui(int index) override;
-    BGui::Gui *GetParentGui() override;
-
-    void Exit() override;
-};
-
-class GuiModMenu : public GuiList {
-public:
-    explicit GuiModMenu(IMod *mod);
-
-    void Process() override;
-
-    void SetVisible(bool visible) override;
-
-    BGui::Button *CreateButton(int index) override;
-    std::string GetButtonText(int index) override;
-
-    BGui::Gui *CreateSubGui(int index) override;
-    BGui::Gui *GetParentGui() override;
-
-private:
-    Config *m_Config;
-    std::vector<std::string> m_Categories;
-
-    BGui::Panel *m_CommentBackground;
-    BGui::Label *m_Comment;
-    int m_CurComment = -1;
-};
-
-class GuiCustomMap : public GuiList {
-public:
-    explicit GuiCustomMap(class BMLMod *mod);
-
-    BGui::Button *CreateButton(int index) override;
-    std::string GetButtonText(int index) override;
-
-    BGui::Gui *CreateSubGui(int index) override;
-    BGui::Gui *GetParentGui() override;
-
-    void SetPage(int page) override;
-
-    void Exit() override;
-
-private:
-    struct MapInfo {
-        std::string DisplayName;
-        std::string SearchName;
-        std::string FilePath;
-
-        bool operator<(const MapInfo &o) const {
-            return DisplayName < o.DisplayName;
-        }
-    };
-
-    std::vector<MapInfo> m_Maps;
-    std::vector<MapInfo *> m_SearchRes;
-    std::vector<BGui::Text *> m_Texts;
-    BGui::Input *m_SearchBar = nullptr;
-    BGui::Button *m_Exit = nullptr;
-
-    BMLMod *m_BMLMod;
-};
-
-class GuiModCategory : public BGui::Gui {
-public:
-    GuiModCategory(GuiModMenu *parent, Config *config, const std::string& category);
-
-    void Process() override;
-
-    void SetVisible(bool visible) override;
-
-    void SetPage(int page);
-    void PreviousPage() {
-        if (m_CurPage > 0)
-            SetPage(m_CurPage - 1);
-    }
-    void NextPage() {
-        if (m_CurPage < m_MaxPage - 1)
-            SetPage(m_CurPage + 1);
-    }
-
-    void SaveAndExit();
-    void Exit();
-
-private:
-    std::vector<Property *> m_Data;
-    std::vector<std::vector<BGui::Element *>> m_Elements;
-    std::vector<std::pair<BGui::Element *, BGui::Element *>> m_Inputs;
-    int m_CurPage;
-    int m_MaxPage;
-    int m_Size;
-    BGui::Button *m_Left;
-    BGui::Button *m_Right;
-
-    GuiModMenu *m_Parent;
-    Config *m_Config;
-    std::string m_Category;
-    BGui::Button *m_Exit;
-
-    std::vector<std::vector<std::pair<Property *, BGui::Element *>>> m_Comments;
-    BGui::Panel *m_CommentBackground;
-    BGui::Label *m_Comment;
-    Property *m_CurComment = nullptr;
+struct MapInfo {
+    std::string name;
+    std::wstring path;
 };
 
 class BMLMod : public IMod {
-    friend class GuiModMenu;
-    friend class GuiCustomMap;
-
 public:
     explicit BMLMod(IBML *bml) : IMod(bml) {}
 
@@ -208,11 +70,11 @@ public:
     void AddIngameMessage(const char *msg);
     void ClearIngameMessages();
 
-    void ShowCheatBanner(bool show);
-    void ShowModOptions();
-    void ShowGui(BGui::Gui *gui);
+    void OpenModsMenu();
+    void ExitModsMenu();
 
-    void CloseCurrentGui();
+    void OpenMapMenu();
+    void ExitMapMenu(bool backToMenu = true);
 
     float GetSRScore() const { return m_SRTimer; }
     int GetHSScore();
@@ -222,9 +84,21 @@ public:
     int GetHUD();
     void SetHUD(int mode);
 
+    void ToggleCommandBar(bool on = true);
+
+    int OnTextEdit(ImGuiInputTextCallbackData *data);
+
 private:
     void InitConfigs();
     void RegisterCommands();
+    void InitGUI();
+    void LoadFont();
+
+    void RefreshMaps();
+    size_t ExploreMaps(const std::wstring &path, std::vector<MapInfo> &maps);
+
+    void LoadMap(const std::wstring &path);
+    std::string CreateTempMapFile(const std::wstring &path);
 
     void OnEditScript_Base_EventHandler(CKBehavior *script);
     void OnEditScript_Menu_MenuInit(CKBehavior *script);
@@ -235,12 +109,27 @@ private:
     void OnEditScript_Levelinit_build(CKBehavior *script);
     void OnEditScript_ExtraLife_Fix(CKBehavior *script);
 
-    void OnProcess_FpsDisplay();
-    void OnProcess_CommandBar();
+    void OnProcess_Fps();
     void OnProcess_SRTimer();
+    void OnProcess_HUD();
+    void OnProcess_CommandBar();
+    void OnProcess_Menu();
 
+    void ShowMenu(MenuId id);
+    void ShowPreviousMenu();
+    void HideMenu();
+
+    void PushMenu(MenuId id);
+    MenuId PopWindow();
+
+    void OnDrawMenu();
+    void OnDrawModList();
+    void OnDrawModPage();
+    void OnDrawModOptions();
+    void OnDrawMapList();
+
+    void OnSearchMaps();
     void OnResize();
-    void OnCmdEdit(CKDWORD key);
 
     CKContext *m_CKContext = nullptr;
     CKRenderContext *m_RenderContext = nullptr;
@@ -250,34 +139,42 @@ private:
     VxRect m_OldWindowRect;
     VxRect m_WindowRect;
 
-    BGui::Gui *m_CmdBar = nullptr;
-    bool m_CmdTyping = false;
-    BGui::Input *m_CmdInput = nullptr;
-    std::vector<std::string> m_CmdHistory;
-    unsigned int m_HistoryPos = 0;
+    ImFont *m_Font = nullptr;
 
-    BGui::Gui *m_MsgLog = nullptr;
+    MenuId m_CurrentMenu = MENU_NULL;
+    std::stack<MenuId> m_MenuStack;
+
+    int m_ModListPage = 0;
+    int m_ModPage = 0;
+    int m_ModOptionPage = 0;
+    int m_MapPage = 0;
+
+    IMod *m_CurrentMod = nullptr;
+    Category *m_CurrentCategory = nullptr;
+
+#ifndef NDEBUG
+    bool m_ShowImGuiDemo = false;
+#endif
+
+    bool m_CmdTyping = false;
+    char m_CmdBuf[65536] = {};
+    std::vector<std::string> m_CmdHistory;
+    int m_HistoryPos = 0;
+
     int m_MsgCount = 0;
     struct {
-        BGui::Panel *m_Background;
-        BGui::Label *m_Text;
-        float m_Timer;
+        char Text[256] = {};
+        float Timer = 0.0f;
     } m_Msgs[MSG_MAXSIZE] = {};
     float m_MsgMaxTimer = 6000; // ms
 
-    BGui::Gui *m_IngameBanner = nullptr;
-    BGui::Label *m_Title = nullptr;
-    BGui::Label *m_Cheat = nullptr;
-    BGui::Label *m_FPS = nullptr;
-    BGui::Label *m_SRScore = nullptr;
-    BGui::Label *m_SRTitle = nullptr;
     int m_FPSCount = 0;
     int m_FPSTimer = 0;
+    char m_FPSText[16] = {};
     float m_SRTimer = 0.0f;
+    char m_SRScore[16] = {};
     bool m_SRActivated = false;
-
-    BGui::Gui *m_CurGui = nullptr;
-    GuiModOption *m_ModOption = nullptr;
+    bool m_SRShouldDraw = false;
 
     IProperty *m_UnlockFPS = nullptr;
     IProperty *m_FPSLimit = nullptr;
@@ -288,15 +185,20 @@ private:
     IProperty *m_FixLifeBall = nullptr;
     IProperty* m_MsgDuration = nullptr;
     IProperty* m_CustomMapNumber = nullptr;
+    IProperty *m_FontFilename = nullptr;
+    IProperty *m_FontSize = nullptr;
+    IProperty *m_FontGlyphRanges = nullptr;
 
-    GuiCustomMap *m_MapsGui = nullptr;
     CK2dEntity *m_Level01 = nullptr;
     CKBehavior *m_ExitStart = nullptr;
-    BGui::Button *m_CustomMaps = nullptr;
     CKParameter *m_LoadCustom = nullptr;
     CKParameter *m_MapFile = nullptr;
     CKParameter *m_LevelRow = nullptr;
     CKDataArray *m_CurLevel = nullptr;
+
+    char m_MapSearchBuf[65536] = {};
+    std::vector<size_t> m_MapSearchResult;
+    std::vector<MapInfo> m_Maps;
 };
 
 #endif // BML_BMLMOD_H

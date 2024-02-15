@@ -1,8 +1,12 @@
 #include "BMLMod.h"
 
 #include <map>
-#include <algorithm>
+#include <io.h>
 
+#include <oniguruma.h>
+#include <utf8.h>
+
+#include "BML/Bui.h"
 #include "BML/Gui.h"
 #include "BML/InputHook.h"
 #include "BML/ExecuteBB.h"
@@ -10,6 +14,9 @@
 #include "ModManager.h"
 #include "Commands.h"
 #include "Config.h"
+#include "StringUtils.h"
+#include "PathUtils.h"
+#include "imgui_internal.h"
 
 namespace ExecuteBB {
     void Init();
@@ -18,532 +25,18 @@ namespace ExecuteBB {
 
 using namespace ScriptHelper;
 
-GuiList::GuiList() : m_CurPage(0), m_MaxPage(0), m_Size(0), m_MaxSize(0) {
-    m_Left = AddLeftButton("M_List_Left", 0.12f, 0.36f, [this]() { PreviousPage(); });
-    m_Right = AddRightButton("M_List_Right", 0.12f, 0.6038f, [this]() { NextPage(); });
-    AddBackButton("M_Opt_Mods_Back")->SetCallback([this]() { Exit(); });
-}
-
-void GuiList::Init(int size, int maxsize) {
-    m_Size = size;
-    m_MaxPage = (size + maxsize - 1) / maxsize;
-    m_MaxSize = maxsize;
-    m_CurPage = 0;
-
-    for (int i = 0; i < m_Size; i++)
-        m_GuiList.push_back(CreateSubGui(i));
-    for (int i = 0; i < m_MaxSize; i++) {
-        BGui::Button *button = CreateButton(i);
-        if (m_Size > 0 && m_GuiList[0] != nullptr) {
-            button->SetCallback([this, i]() {
-                BGui::Gui *gui = m_GuiList[m_MaxSize * m_CurPage + i];
-                BML_GetModManager()->GetBMLMod()->ShowGui(gui);
-            });
-        }
-        m_Buttons.push_back(button);
-    }
-}
-
-void GuiList::SetPage(int page) {
-    int size = (std::min)(m_MaxSize, m_Size - page * m_MaxSize);
-    for (int i = 0; i < m_MaxSize; i++)
-        m_Buttons[i]->SetVisible(i < size);
-    for (int i = 0; i < size; i++)
-        m_Buttons[i]->SetText(GetButtonText(page * m_MaxSize + i).c_str());
-
-    m_CurPage = page;
-    m_Left->SetVisible(page > 0);
-    m_Right->SetVisible(page < m_MaxPage - 1);
-}
-
-void GuiList::Exit() {
-    BML_GetModManager()->GetBMLMod()->ShowGui(GetParentGui());
-}
-
-void GuiList::SetVisible(bool visible) {
-    Gui::SetVisible(visible);
-    if (visible)
-        SetPage(m_CurPage);
-}
-
-GuiModOption::GuiModOption() {
-    Init(BML_GetModManager()->GetModCount(), 4);
-
-    AddTextLabel("M_Opt_Mods_Title", "Mod List", ExecuteBB::GAMEFONT_02, 0.35f, 0.1f, 0.3f, 0.1f);
-}
-
-BGui::Button *GuiModOption::CreateButton(int index) {
-    return AddSettingButton(("M_Opt_Mods_" + std::to_string(index)).c_str(), "", 0.25f + 0.13f * index);
-}
-
-std::string GuiModOption::GetButtonText(int index) {
-    return BML_GetModManager()->GetMod(index)->GetID();
-}
-
-BGui::Gui *GuiModOption::CreateSubGui(int index) {
-    return new GuiModMenu(BML_GetModManager()->GetMod(index));
-}
-
-BGui::Gui *GuiModOption::GetParentGui() {
-    return nullptr;
-}
-
-void GuiModOption::Exit() {
-    GuiList::Exit();
-    BML_GetModManager()->GetCKContext()->GetCurrentScene()->Activate(
-        BML_GetModManager()->GetScriptByName("Menu_Options"),
-        true);
-}
-
-GuiModMenu::GuiModMenu(IMod *mod) : GuiList() {
-    m_Left->SetPosition(Vx2DVector(0.36f, 0.3f));
-    m_Right->SetPosition(Vx2DVector(0.6038f, 0.3f));
-    AddTextLabel("M_Opt_ModMenu_Name", mod->GetName(), ExecuteBB::GAMEFONT_01, 0.35f, 0.1f, 0.3f, 0.05f);
-    AddTextLabel("M_Opt_ModMenu_Author", (std::string("by ") + mod->GetAuthor()).c_str(), ExecuteBB::GAMEFONT_03, 0.35f, 0.13f, 0.3f, 0.04f);
-    AddTextLabel("M_Opt_ModMenu_Version", (std::string("v") + mod->GetVersion()).c_str(), ExecuteBB::GAMEFONT_03, 0.35f, 0.15f, 0.3f, 0.04f);
-    BGui::Label *desc = AddTextLabel("M_Opt_ModMenu_Description", mod->GetDescription(), ExecuteBB::GAMEFONT_03, 0.35f, 0.20f, 0.3f, 0.1f);
-    desc->SetTextFlags(TEXT_SCREEN | TEXT_WORDWRAP);
-    desc->SetAlignment(ALIGN_TOP);
-    m_CommentBackground = AddPanel("M_Opt_ModMenu_Comment_Bg", VxColor(0, 0, 0, 110), 0.725f, 0.4f, 0.25f, 0.2f);
-    m_Comment = AddTextLabel("M_Opt_ModMenu_Comment", "", ExecuteBB::GAMEFONT_03, 0.725f, 0.4f, 0.25f, 0.2f);
-    m_Comment->SetTextFlags(TEXT_SCREEN | TEXT_WORDWRAP);
-    m_Comment->SetAlignment(ALIGN_TOP);
-
-    m_Config = BML_GetModManager()->GetConfig(mod);
-    if (m_Config) {
-        AddTextLabel("M_Opt_ModMenu_Title", "Mod Options", ExecuteBB::GAMEFONT_01, 0.35f, 0.4f, 0.3f, 0.05f);
-        const size_t count = m_Config->GetCategoryCount();
-        for (size_t i = 0; i < count; ++i)
-            m_Categories.emplace_back(m_Config->GetCategory(i)->GetName());
-    }
-
-    Init((int)m_Categories.size(), 6);
-    GuiModMenu::SetVisible(false);
-}
-
-void GuiModMenu::Process() {
-    bool show_cmt = false;
-    if (m_CurPage >= 0 && m_CurPage < m_MaxPage) {
-        CKRenderContext *rc = BML_GetModManager()->GetRenderContext();
-        InputHook *input = BML_GetModManager()->GetInputManager();
-        Vx2DVector mousePos;
-        input->GetMousePosition(mousePos, false);
-        int size = (std::min)(m_MaxSize, m_Size - m_CurPage * m_MaxSize);
-        for (int i = 0; i < size; i++) {
-            if (Intersect(mousePos.x / (float)rc->GetWidth(), mousePos.y / (float)rc->GetHeight(), m_Buttons[i])) {
-                if (m_CurComment != i) {
-                    m_CommentBackground->SetVisible(true);
-                    m_Comment->SetVisible(true);
-                    m_Comment->SetText(m_Config->GetCategory(i + m_CurPage * m_MaxSize)->GetComment());
-                    m_CurComment = i;
-                }
-
-                show_cmt = true;
-                break;
-            }
-        }
-    }
-
-    if (!show_cmt) {
-        if (m_CurComment >= 0) {
-            m_CommentBackground->SetVisible(false);
-            m_Comment->SetVisible(false);
-            m_CurComment = -1;
-        }
-    }
-
-    GuiList::Process();
-}
-
-void GuiModMenu::SetVisible(bool visible) {
-    GuiList::SetVisible(visible);
-    if (visible) {
-        m_CommentBackground->SetVisible(false);
-        m_Comment->SetVisible(false);
-        m_CurComment = -1;
-    }
-}
-
-BGui::Button *GuiModMenu::CreateButton(int index) {
-    BGui::Button *button = AddLevelButton(("M_Opt_ModMenu_" + std::to_string(index)).c_str(), "", 0.45f + 0.06f * index);
-    button->SetFont(ExecuteBB::GAMEFONT_03);
-    return button;
-}
-
-std::string GuiModMenu::GetButtonText(int index) {
-    return m_Categories[index];
-}
-
-BGui::Gui *GuiModMenu::CreateSubGui(int index) {
-    return new GuiModCategory(this, m_Config, m_Categories[index]);
-}
-
-BGui::Gui *GuiModMenu::GetParentGui() {
-    return BML_GetModManager()->GetBMLMod()->m_ModOption;
-}
-
-GuiCustomMap::GuiCustomMap(BMLMod *mod) : GuiList(), m_BMLMod(mod) {
-    m_Left->SetPosition(Vx2DVector(0.34f, 0.4f));
-    m_Right->SetPosition(Vx2DVector(0.6238f, 0.4f));
-
-    AddTextLabel("M_Opt_Mods_Title", "Custom Maps", ExecuteBB::GAMEFONT_02, 0.35f, 0.07f, 0.3f, 0.1f);
-
-    CKDirectoryParser mapParser("..\\ModLoader\\Maps", "*.nmo", TRUE);
-    char *mapPath = mapParser.GetNextFile();
-    while (mapPath) {
-        MapInfo info;
-
-        info.DisplayName = CKPathSplitter(mapPath).GetName();
-        info.SearchName = info.DisplayName;
-        info.FilePath = "..\\ModLoader\\Maps\\" + info.DisplayName + ".nmo";
-
-        std::transform(info.SearchName.begin(), info.SearchName.end(), info.SearchName.begin(), tolower);
-        m_Maps.push_back(info);
-        mapPath = mapParser.GetNextFile();
-    }
-
-    m_Exit = AddLeftButton("M_Exit_Custom_Maps", 0.4f, 0.34f, [this]() {
-        GuiList::Exit();
-        BML_GetCKContext()->GetCurrentScene()->Activate(BML_GetScriptByName("Menu_Start"), true);
-    });
-
-    AddPanel("M_Map_Search_Bg", VxColor(0, 0, 0, 110), 0.4f, 0.18f, 0.2f, 0.03f);
-    m_SearchBar = AddTextInput("M_Search_Map", ExecuteBB::GAMEFONT_03, 0.4f, 0.18f, 0.2f, 0.03f, [this](CKDWORD) {
-        m_SearchRes.clear();
-        std::string text = m_SearchBar->GetText();
-        std::transform(text.begin(), text.end(), text.begin(), tolower);
-
-        for (auto &p: m_Maps) {
-            if (text.length() == 0 || p.SearchName.find(text) != std::string::npos) {
-                m_SearchRes.push_back(&p);
-            }
-        }
-        m_Size = m_SearchRes.size();
-        m_MaxPage = (m_Size + m_MaxSize - 1) / m_MaxSize;
-        SetPage(0);
-    });
-
-    std::sort(m_Maps.begin(), m_Maps.end());
-    for (auto &p: m_Maps)
-        m_SearchRes.push_back(&p);
-    Init(m_SearchRes.size(), 10);
-    SetVisible(false);
-}
-
-BGui::Button *GuiCustomMap::CreateButton(int index) {
-    m_Texts.push_back(
-        AddText(("M_Opt_ModMenu_" + std::to_string(index)).c_str(), "", 0.44f, 0.23f + 0.06f * index, 0.3f, 0.05f));
-    return AddLevelButton(("M_Opt_ModMenu_" + std::to_string(index)).c_str(), "", 0.23f + 0.06f * index, 0.4031f,
-                          [this, index]() {
-                              GuiList::Exit();
-                              SetParamString(m_BMLMod->m_MapFile, m_SearchRes[m_CurPage * m_MaxSize + index]->FilePath.c_str());
-                              SetParamValue(m_BMLMod->m_LoadCustom, TRUE);
-                              int level = m_BMLMod->GetConfig()->GetProperty("Misc", "CustomMapNumber")->GetInteger();
-                              level = (level >= 1 && level <= 13) ? level : rand() % 10 + 2;
-                              m_BMLMod->m_CurLevel->SetElementValue(0, 0, &level);
-                              level--;
-                              SetParamValue(m_BMLMod->m_LevelRow, level);
-
-                              CKMessageManager *mm = m_BMLMod->m_CKContext->GetMessageManager();
-                              CKMessageType loadLevel = mm->AddMessageType("Load Level");
-                              CKMessageType loadMenu = mm->AddMessageType("Menu_Load");
-
-                              mm->SendMessageSingle(loadLevel, m_BMLMod->m_CKContext->GetCurrentLevel());
-                              mm->SendMessageSingle(loadMenu, BML_GetGroupByName("All_Sound"));
-                              BML_Get2dEntityByName("M_BlackScreen")->Show(CKHIDE);
-                              m_BMLMod->m_ExitStart->ActivateInput(0);
-                              m_BMLMod->m_ExitStart->Activate();
-                          });
-}
-
-std::string GuiCustomMap::GetButtonText(int index) {
-    return "";
-}
-
-BGui::Gui *GuiCustomMap::CreateSubGui(int index) {
-    return nullptr;
-}
-
-BGui::Gui *GuiCustomMap::GetParentGui() {
-    return nullptr;
-}
-
-void GuiCustomMap::SetPage(int page) {
-    GuiList::SetPage(page);
-    int size = (std::min)(m_MaxSize, m_Size - page * m_MaxSize);
-    for (int i = 0; i < m_MaxSize; i++)
-        m_Texts[i]->SetVisible(i < size);
-    for (int i = 0; i < size; i++)
-        m_Texts[i]->SetText(m_SearchRes[page * m_MaxSize + i]->DisplayName.c_str());
-    m_BMLMod->m_BML->AddTimer(1ul, [this, page]() { m_Exit->SetVisible(page == 0); });
-}
-
-void GuiCustomMap::Exit() {
-    GuiList::Exit();
-    BML_GetCKContext()->GetCurrentScene()->Activate(
-        BML_GetScriptByName("Menu_Main"),
-        true);
-}
-
-GuiModCategory::GuiModCategory(GuiModMenu *parent, Config *config, const std::string &category) {
-    auto *cate = config->GetCategory(category.c_str());
-    const size_t count = cate->GetPropertyCount();
-    for (size_t i = 0; i < count; ++i) {
-        auto *prop = cate->GetProperty(i);
-        auto *newprop = new Property(nullptr, category, prop->GetName());
-        newprop->CopyValue(prop);
-        newprop->SetComment(prop->GetComment());
-        m_Data.push_back(newprop);
-    }
-
-    m_Size = (int)m_Data.size();
-    m_CurPage = 0;
-
-    m_Parent = parent;
-    m_Config = config;
-    m_Category = category;
-
-    AddTextLabel("M_Opt_Category_Title", category.c_str(), ExecuteBB::GAMEFONT_02, 0.35f, 0.1f, 0.3f, 0.1f);
-    m_Left = AddLeftButton("M_List_Left", 0.12f, 0.35f, [this]() { PreviousPage(); });
-    m_Right = AddRightButton("M_List_Right", 0.12f, 0.6138f, [this]() { NextPage(); });
-    AddBackButton("M_Opt_Category_Back")->SetCallback([this]() { SaveAndExit(); });
-    m_Exit = AddBackButton("M_Opt_Category_Back");
-    m_Exit->SetCallback([this]() { Exit(); });
-    m_CommentBackground = AddPanel("M_Opt_Comment_Bg", VxColor(0, 0, 0, 110), 0.725f, 0.4f, 0.25f, 0.2f);
-    m_Comment = AddTextLabel("M_Opt_Comment", "", ExecuteBB::GAMEFONT_03, 0.725f, 0.4f, 0.25f, 0.2f);
-    m_Comment->SetTextFlags(TEXT_SCREEN | TEXT_WORDWRAP);
-    m_Comment->SetAlignment(ALIGN_TOP);
-
-    Vx2DVector offset(0.0f, BML_GetRenderContext()->GetHeight() * 0.015f);
-
-    float cnt = 0.25f, page = 0;
-    std::vector<BGui::Element *> elements;
-    std::vector<std::pair<Property *, BGui::Element *>> comments;
-    for (Property *prop: m_Data) {
-        const char *name = prop->GetName();
-        switch (prop->GetType()) {
-            case IProperty::STRING: {
-                BGui::Button *bg = AddSettingButton(name, name, cnt);
-                bg->SetAlignment(ALIGN_TOP);
-                bg->SetFont(ExecuteBB::GAMEFONT_03);
-                bg->SetZOrder(15);
-                bg->SetOffset(offset);
-                elements.push_back(bg);
-                BGui::Input *input = AddTextInput(name, ExecuteBB::GAMEFONT_03, 0.43f, cnt + 0.05f, 0.18f, 0.025f);
-                input->SetText(prop->GetString());
-                input->SetCallback([prop, input](CKDWORD) { prop->SetString(input->GetText()); });
-                elements.push_back(input);
-                BGui::Panel *panel = AddPanel(name, VxColor(0, 0, 0, 110), 0.43f, cnt + 0.05f, 0.18f, 0.025f);
-                elements.push_back(panel);
-                m_Inputs.emplace_back(input, nullptr);
-                comments.emplace_back(prop, bg);
-                cnt += 0.12f;
-                break;
-            }
-            case IProperty::INTEGER: {
-                BGui::Button *bg = AddSettingButton(name, name, cnt);
-                bg->SetAlignment(ALIGN_TOP);
-                bg->SetFont(ExecuteBB::GAMEFONT_03);
-                bg->SetZOrder(15);
-                bg->SetOffset(offset);
-                elements.push_back(bg);
-                BGui::Input *input = AddTextInput(name, ExecuteBB::GAMEFONT_03, 0.43f, cnt + 0.05f, 0.18f, 0.025f);
-                input->SetText(std::to_string(prop->GetInteger()).c_str());
-                input->SetCallback([prop, input](CKDWORD) { prop->SetInteger(atoi(input->GetText())); });
-                elements.push_back(input);
-                BGui::Panel *panel = AddPanel(name, VxColor(0, 0, 0, 110), 0.43f, cnt + 0.05f, 0.18f, 0.025f);
-                elements.push_back(panel);
-                m_Inputs.emplace_back(input, nullptr);
-                comments.emplace_back(prop, bg);
-                cnt += 0.12f;
-                break;
-            }
-            case IProperty::FLOAT: {
-                BGui::Button *bg = AddSettingButton(name, name, cnt);
-                bg->SetAlignment(ALIGN_TOP);
-                bg->SetFont(ExecuteBB::GAMEFONT_03);
-                bg->SetZOrder(15);
-                bg->SetOffset(offset);
-                elements.push_back(bg);
-                BGui::Input *input = AddTextInput(name, ExecuteBB::GAMEFONT_03, 0.43f, cnt + 0.05f, 0.18f, 0.025f);
-                std::ostringstream stream;
-                stream << prop->GetFloat();
-                input->SetText(stream.str().c_str());
-                input->SetCallback([prop, input](CKDWORD) { prop->SetFloat((float) atof(input->GetText())); });
-                elements.push_back(input);
-                BGui::Panel *panel = AddPanel(name, VxColor(0, 0, 0, 110), 0.43f, cnt + 0.05f, 0.18f, 0.025f);
-                elements.push_back(panel);
-                m_Inputs.emplace_back(input, nullptr);
-                comments.emplace_back(prop, bg);
-                cnt += 0.12f;
-                break;
-            }
-            case IProperty::KEY: {
-                std::pair<BGui::Button *, BGui::KeyInput *> key = AddKeyButton(name, name, cnt);
-                key.second->SetKey(prop->GetKey());
-                key.second->SetCallback([prop](CKDWORD key) { prop->SetKey(CKKEYBOARD(key)); });
-                elements.push_back(key.first);
-                elements.push_back(key.second);
-                m_Inputs.emplace_back(key.second, nullptr);
-                comments.emplace_back(prop, key.first);
-                cnt += 0.06f;
-                break;
-            }
-            case IProperty::BOOLEAN: {
-                BGui::Button *bg = AddSettingButton(name, name, cnt);
-                bg->SetAlignment(ALIGN_TOP);
-                bg->SetFont(ExecuteBB::GAMEFONT_03);
-                bg->SetZOrder(15);
-                bg->SetOffset(offset);
-                elements.push_back(bg);
-                auto yesno = AddYesNoButton(name, cnt + 0.043f, 0.4350f, 0.5200f, [prop](bool value) { prop->SetBoolean(value); });
-                yesno.first->SetActive(prop->GetBoolean());
-                yesno.second->SetActive(!prop->GetBoolean());
-                elements.push_back(yesno.first);
-                elements.push_back(yesno.second);
-                m_Inputs.emplace_back(yesno);
-                comments.emplace_back(prop, bg);
-                cnt += 0.12f;
-                break;
-            }
-            case IProperty::NONE:
-                break;
-        }
-
-        if (cnt > 0.7f) {
-            cnt = 0.25f;
-            page++;
-            m_Elements.push_back(elements);
-            elements.clear();
-            m_Comments.push_back(comments);
-            comments.clear();
-        }
-    }
-
-    if (cnt > 0.25f) {
-        m_Elements.push_back(elements);
-        m_Comments.push_back(comments);
-    }
-
-    m_MaxPage = (int)m_Elements.size();
-
-    GuiModCategory::SetVisible(false);
-}
-
-void GuiModCategory::Process() {
-    bool show_cmt = false;
-    if (m_CurPage >= 0 && m_CurPage < (int) m_Comments.size()) {
-        CKRenderContext *rc = BML_GetRenderContext();
-        InputHook *input = BML_GetInputHook();
-        Vx2DVector mousePos;
-        input->GetMousePosition(mousePos, false);
-        for (auto &pair: m_Comments[m_CurPage]) {
-            if (Intersect(mousePos.x / rc->GetWidth(), mousePos.y / rc->GetHeight(), pair.second)) {
-                if (m_CurComment != pair.first) {
-                    m_CommentBackground->SetVisible(true);
-                    m_Comment->SetVisible(true);
-                    m_Comment->SetText(pair.first->GetComment());
-                    m_CurComment = pair.first;
-                }
-
-                show_cmt = true;
-                break;
-            }
-        }
-    }
-
-    if (!show_cmt) {
-        if (m_CurComment != nullptr) {
-            m_CommentBackground->SetVisible(false);
-            m_Comment->SetVisible(false);
-            m_CurComment = nullptr;
-        }
-    }
-
-    Gui::Process();
-}
-
-void GuiModCategory::SetVisible(bool visible) {
-    Gui::SetVisible(visible);
-    if (visible) {
-        auto *cate = m_Config->GetCategory(m_Category.c_str());
-        const size_t count = cate->GetPropertyCount();
-        for (size_t i = 0; i < count; i++) {
-            Property *prop = cate->GetProperty(i);
-            m_Data[i]->CopyValue(prop);
-            std::pair<BGui::Element *, BGui::Element *> input = m_Inputs[i];
-            switch (prop->GetType()) {
-                case IProperty::STRING:
-                    reinterpret_cast<BGui::Input *>(input.first)->SetText(prop->GetString());
-                    break;
-                case IProperty::INTEGER:
-                    reinterpret_cast<BGui::Input *>(input.first)->SetText(std::to_string(prop->GetInteger()).c_str());
-                    break;
-                case IProperty::FLOAT: {
-                    std::ostringstream stream;
-                    stream << prop->GetFloat();
-                    reinterpret_cast<BGui::Input *>(input.first)->SetText(stream.str().c_str());
-                    break;
-                }
-                case IProperty::KEY:
-                    reinterpret_cast<BGui::KeyInput *>(input.first)->SetKey(prop->GetKey());
-                    break;
-                case IProperty::BOOLEAN: {
-                    reinterpret_cast<BGui::Button *>(input.first)->SetActive(prop->GetBoolean());
-                    reinterpret_cast<BGui::Button *>(input.second)->SetActive(!prop->GetBoolean());
-                    break;
-                }
-                case IProperty::NONE:
-                    break;
-            }
-        }
-
-        m_CommentBackground->SetVisible(false);
-        m_Comment->SetVisible(false);
-        m_CurComment = nullptr;
-
-        SetPage(m_CurPage);
-    }
-}
-
-void GuiModCategory::SetPage(int page) {
-    for (auto &p: m_Elements)
-        for (auto &e: p)
-            e->SetVisible(false);
-
-    for (auto &e: m_Elements[page])
-        e->SetVisible(true);
-
-    m_CurPage = page;
-    m_Left->SetVisible(page > 0);
-    m_Right->SetVisible(page < m_MaxPage - 1);
-    m_Exit->SetVisible(false);
-}
-
-void GuiModCategory::SaveAndExit() {
-    auto *cate = m_Config->GetCategory(m_Category.c_str());
-    for (Property *p: m_Data)
-        cate->GetProperty(p->GetName())->CopyValue(p);
-    BML_GetModManager()->SaveConfig(m_Config);
-    Exit();
-}
-
-void GuiModCategory::Exit() {
-    BML_GetModManager()->GetBMLMod()->ShowGui(m_Parent);
-}
-
 void BMLMod::OnLoad() {
     m_CKContext = m_BML->GetCKContext();
     m_RenderContext = m_BML->GetRenderContext();
     m_TimeManager = m_BML->GetTimeManager();
     m_InputHook = m_BML->GetInputManager();
-
     m_RenderContext->Get2dRoot(TRUE)->GetRect(m_WindowRect);
 
     ExecuteBB::Init();
 
     InitConfigs();
     RegisterCommands();
+    InitGUI();
 }
 
 void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
@@ -551,58 +44,8 @@ void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *master
                           XObjectArray *objArray, CKObject *masterObj) {
     if (!strcmp(filename, "3D Entities\\Menu.nmo")) {
         BGui::Gui::InitMaterials();
+        Bui::InitSounds(m_CKContext);
 
-        GetLogger()->Info("Create Command Gui");
-        m_CmdBar = new BGui::Gui();
-        m_CmdBar->AddPanel("M_Cmd_Bg", VxColor(0, 0, 0, 110), 0.02f, 0.94f, 0.96f, 0.025f)->SetZOrder(100);
-        m_CmdInput = m_CmdBar->AddTextInput("M_Cmd_Text", ExecuteBB::GAMEFONT_03, 0.02f, 0.94f, 0.96f, 0.025f, [this](CKDWORD key) { OnCmdEdit(key); });
-        m_CmdInput->SetAlignment(ALIGN_LEFT);
-        m_CmdInput->SetTextFlags(TEXT_SCREEN | TEXT_SHOWCARET);
-        m_CmdInput->SetZOrder(110);
-        m_CmdBar->SetCanBeBlocked(false);
-        m_CmdBar->SetVisible(false);
-
-        GetLogger()->Info("Create Console Gui");
-        m_MsgLog = new BGui::Gui();
-        for (int i = 0; i < MSG_MAXSIZE; i++) {
-            m_Msgs[i].m_Background = m_MsgLog->AddPanel((std::string("M_Cmd_Log_Bg_") + std::to_string(i + 1)).c_str(),
-                                                        VxColor(0, 0, 0, 110), 0.02f, 0.9f - i * 0.025f, 0.96f, 0.025f);
-            m_Msgs[i].m_Background->SetVisible(false);
-            m_Msgs[i].m_Background->SetZOrder(100);
-            m_Msgs[i].m_Text = m_MsgLog->AddTextLabel((std::string("M_Cmd_Log_Text_") + std::to_string(i + 1)).c_str(),
-                                                      "", ExecuteBB::GAMEFONT_03, 0.02f, 0.9f - i * 0.025f, 0.96f, 0.025f);
-            m_Msgs[i].m_Text->SetVisible(false);
-            m_Msgs[i].m_Text->SetAlignment(ALIGN_LEFT);
-            m_Msgs[i].m_Text->SetZOrder(110);
-            m_Msgs[i].m_Timer = 0;
-        }
-
-        GetLogger()->Info("Create BML Gui");
-        m_IngameBanner = new BGui::Gui();
-        m_Title = m_IngameBanner->AddTextLabel("M_Use_BML", "BML Plus " BML_VERSION, ExecuteBB::GAMEFONT_01, 0, 0, 1, 0.03f);
-        m_Title->SetVisible(m_ShowTitle->GetBoolean());
-        m_Cheat = m_IngameBanner->AddTextLabel("M_Use_Cheat", "Cheat Mode Enabled", ExecuteBB::GAMEFONT_01, 0, 0.85f, 1, 0.05f);
-        m_FPS = m_IngameBanner->AddTextLabel("M_Show_Fps", "", ExecuteBB::GAMEFONT_01, 0, 0, 0.2f, 0.03f);
-        m_SRTitle = m_IngameBanner->AddTextLabel("M_Time_Counter_Title", "SR Timer", ExecuteBB::GAMEFONT_01, 0.03f, 0.8f, 0.2f, 0.03f);
-        m_SRScore = m_IngameBanner->AddTextLabel("M_Time_Counter", "", ExecuteBB::GAMEFONT_01, 0.05f, 0.83f, 0.2f, 0.03f);
-        m_FPS->SetAlignment(ALIGN_LEFT);
-        m_FPS->SetVisible(m_ShowFPS->GetBoolean());
-        m_SRTitle->SetAlignment(ALIGN_LEFT);
-        m_SRTitle->SetVisible(false);
-        m_SRScore->SetAlignment(ALIGN_LEFT);
-        m_SRScore->SetVisible(false);
-        m_Cheat->SetVisible(false);
-        m_CustomMaps = m_IngameBanner->AddRightButton("M_Enter_Custom_Maps", 0.4f, 0.6238f, [this]() {
-            m_ExitStart->ActivateInput(0);
-            m_ExitStart->Activate();
-            ShowGui(m_MapsGui);
-        });
-
-        GetLogger()->Info("Create Mod Options Gui");
-        m_ModOption = new GuiModOption();
-        m_ModOption->SetVisible(false);
-
-        m_MapsGui = new GuiCustomMap(this);
         m_Level01 = m_BML->Get2dEntityByName("M_Start_But_01");
         CKBehavior *menuMain = m_BML->GetScriptByName("Menu_Start");
         m_ExitStart = FindFirstBB(menuMain, "Exit");
@@ -665,22 +108,18 @@ void BMLMod::OnProcess() {
         OnResize();
     }
 
-    if (m_IngameBanner) {
-        OnProcess_FpsDisplay();
-    }
+    OnProcess_Fps();
+    OnProcess_SRTimer();
+    OnProcess_HUD();
+    OnProcess_CommandBar();
+    OnProcess_Menu();
 
-    if (m_CmdBar) {
-        OnProcess_CommandBar();
-    }
-
-    if (m_SRActivated) {
-        OnProcess_SRTimer();
-    }
-
-    if (m_Level01 && m_MapsGui) {
-        bool inStart = m_Level01->IsVisible();
-        m_CustomMaps->SetVisible(inStart);
-    }
+#ifndef NDEBUG
+    if (ImGui::IsKeyChordPressed(ImGuiMod_Shift | ImGuiMod_Alt | ImGuiKey_F5))
+        m_ShowImGuiDemo = !m_ShowImGuiDemo;
+    if (m_ShowImGuiDemo)
+        ImGui::ShowDemoWindow(&m_ShowImGuiDemo);
+#endif
 }
 
 void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *prop) {
@@ -700,13 +139,8 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
             AdjustFrameRate(false, static_cast<float>(val));
         else
             AdjustFrameRate(true);
-    } else if (prop == m_ShowTitle) {
-        m_Title->SetVisible(prop->GetBoolean());
-    } else if (prop == m_ShowFPS) {
-        m_FPS->SetVisible(prop->GetBoolean());
     } else if (prop == m_ShowSR && m_BML->IsIngame()) {
-        m_SRScore->SetVisible(m_ShowSR->GetBoolean());
-        m_SRTitle->SetVisible(m_ShowSR->GetBoolean());
+        m_SRShouldDraw = m_ShowSR->GetBoolean();
     } else if (prop == m_MsgDuration) {
         m_MsgMaxTimer = m_MsgDuration->GetFloat() * 1000;
         if (m_MsgMaxTimer < 2000) {
@@ -729,6 +163,9 @@ void BMLMod::OnPreStartMenu() {
 
 void BMLMod::OnExitGame() {
     m_Level01 = nullptr;
+#ifndef NDEBUG
+    m_ShowImGuiDemo = false;
+#endif
 }
 
 void BMLMod::OnStartLevel() {
@@ -742,17 +179,15 @@ void BMLMod::OnStartLevel() {
             AdjustFrameRate(true);
     }
     m_SRTimer = 0.0f;
-    m_SRScore->SetText("00:00:00.000");
+    strcpy(m_SRScore, "00:00:00.000");
     if (m_ShowSR->GetBoolean()) {
-        m_SRScore->SetVisible(true);
-        m_SRTitle->SetVisible(true);
+        m_SRShouldDraw = true;
     }
     SetParamValue(m_LoadCustom, FALSE);
 }
 
 void BMLMod::OnPostExitLevel() {
-    m_SRScore->SetVisible(false);
-    m_SRTitle->SetVisible(false);
+    m_SRShouldDraw = false;
 }
 
 void BMLMod::OnPauseLevel() {
@@ -773,13 +208,13 @@ void BMLMod::OnCounterInactive() {
 
 void BMLMod::AddIngameMessage(const char *msg) {
     for (int i = std::min(MSG_MAXSIZE - 1, m_MsgCount) - 1; i >= 0; i--) {
-        const char *text = m_Msgs[i].m_Text->GetText();
-        m_Msgs[i + 1].m_Text->SetText(text);
-        m_Msgs[i + 1].m_Timer = m_Msgs[i].m_Timer;
+        const char *text = m_Msgs[i].Text;
+        strncpy(m_Msgs[i + 1].Text, text, 256);
+        m_Msgs[i + 1].Timer = m_Msgs[i].Timer;
     }
 
-    m_Msgs[0].m_Text->SetText(msg);
-    m_Msgs[0].m_Timer = m_MsgMaxTimer;
+    strncpy(m_Msgs[0].Text, msg, 256);
+    m_Msgs[0].Timer = m_MsgMaxTimer;
     m_MsgCount++;
 
     GetLogger()->Info(msg);
@@ -788,34 +223,52 @@ void BMLMod::AddIngameMessage(const char *msg) {
 void BMLMod::ClearIngameMessages() {
     m_MsgCount = 0;
     for (int i = 0; i < MSG_MAXSIZE; i++) {
-        m_Msgs[i].m_Background->SetVisible(false);
-        m_Msgs[i].m_Text->SetVisible(false);
-        m_Msgs[i].m_Text->SetText("");
-        m_Msgs[i].m_Timer = 0;
+        m_Msgs[i].Text[0] = '\0';
+        m_Msgs[i].Timer = 0.0f;
     }
 }
 
-void BMLMod::ShowCheatBanner(bool show) {
-    m_Cheat->SetVisible(show);
+void BMLMod::OpenModsMenu() {
+    ShowMenu(MENU_MOD_LIST);
+    m_InputHook->Block(CK_INPUT_DEVICE_KEYBOARD);
 }
 
-void BMLMod::ShowModOptions() {
-    ShowGui(m_ModOption);
-    m_ModOption->SetPage(0);
-}
+void BMLMod::ExitModsMenu() {
+    ShowPreviousMenu();
+    HideMenu();
 
-void BMLMod::ShowGui(BGui::Gui *gui) {
-    if (m_CurGui != nullptr)
-        CloseCurrentGui();
-    m_BML->AddTimer(1ul, [this, gui]() {
-        m_CurGui = gui;
-        if (gui) gui->SetVisible(true);
+    CKBehavior *beh = m_BML->GetScriptByName("Menu_Options");
+    m_CKContext->GetCurrentScene()->Activate(beh, true);
+    m_BML->AddTimerLoop(1ul, [this] {
+        if (m_InputHook->oIsKeyDown(CKKEY_ESCAPE) || m_InputHook->oIsKeyDown(CKKEY_RETURN))
+            return true;
+        m_InputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
+        return false;
     });
 }
 
-void BMLMod::CloseCurrentGui() {
-    m_CurGui->SetVisible(false);
-    m_CurGui = nullptr;
+void BMLMod::OpenMapMenu() {
+    ShowMenu(MENU_MAP_LIST);
+    m_InputHook->Block(CK_INPUT_DEVICE_KEYBOARD);
+
+    RefreshMaps();
+}
+
+void BMLMod::ExitMapMenu(bool backToMenu) {
+    ShowPreviousMenu();
+    HideMenu();
+
+    if (backToMenu) {
+        CKBehavior *beh = m_BML->GetScriptByName("Menu_Start");
+        m_CKContext->GetCurrentScene()->Activate(beh, true);
+    }
+
+    m_BML->AddTimerLoop(1ul, [this] {
+        if (m_InputHook->oIsKeyDown(CKKEY_ESCAPE) || m_InputHook->oIsKeyDown(CKKEY_RETURN))
+            return true;
+        m_InputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
+        return false;
+    });
 }
 
 int BMLMod::GetHSScore() {
@@ -857,8 +310,174 @@ void BMLMod::SetHUD(int mode) {
     m_ShowSR->SetBoolean((mode & HUD_SR) != 0);
 }
 
+void BMLMod::ToggleCommandBar(bool on) {
+    if (on) {
+        m_CmdTyping = true;
+        m_CmdBuf[0] = '\0';
+        m_InputHook->Block(CK_INPUT_DEVICE_KEYBOARD);
+        m_HistoryPos = (int)m_CmdHistory.size();
+    } else {
+        m_CmdTyping = false;
+        m_CmdBuf[0] = '\0';
+        m_BML->AddTimerLoop(1ul, [this] {
+            if (m_InputHook->oIsKeyDown(CKKEY_ESCAPE))
+                return true;
+            m_InputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
+            return false;
+        });
+    }
+}
+
+int BMLMod::OnTextEdit(ImGuiInputTextCallbackData *data) {
+    switch (data->EventFlag) {
+        case ImGuiInputTextFlags_CallbackCompletion: {
+            // Locate beginning of current word
+            const char *wordEnd = data->Buf + data->CursorPos;
+            const char *wordStart = wordEnd;
+            while (wordStart > data->Buf) {
+                const char c = wordStart[-1];
+                if (isspace(c))
+                    break;
+                --wordStart;
+            }
+
+            int argc = 1;
+            const char *cmdEnd;
+            const char *cmdStart;
+            if (wordStart == data->Buf) {
+                cmdEnd = wordEnd;
+                cmdStart = wordStart;
+            } else {
+                cmdEnd = wordStart;
+                cmdStart = cmdEnd;
+                while (cmdStart > data->Buf) {
+                    const char c = cmdStart[-1];
+                    if (isspace(c)) {
+                        ++argc;
+                        cmdEnd = &cmdStart[-1];
+                    }
+                    cmdStart--;
+                }
+            }
+
+            // Build a list of candidates
+            std::vector<std::string> candidates;
+            if (argc == 1) {
+                const int count = m_BML->GetCommandCount();
+                for (int i = 0; i < count; ++i) {
+                    ICommand *cmd = m_BML->GetCommand(i);
+                    if (cmd) {
+                        if (utf8ncasecmp(cmd->GetName().c_str(), cmdStart, (int)(cmdEnd - cmdStart)) == 0)
+                            candidates.push_back(cmd->GetName());
+                    }
+                }
+            } else {
+                size_t size = utf8size(cmdStart);
+                char *buf = new char[size + 1];
+                utf8ncpy(buf, cmdStart, size);
+
+                std::vector<std::string> args;
+
+                char *lp = &buf[0];
+                char *rp = lp;
+                char *end = lp + size;
+                utf8_int32_t cp, temp;
+                utf8codepoint(rp, &cp);
+                while (rp != end) {
+                    if (std::isspace(*rp) || *rp == '\0') {
+                        size_t len = rp - lp;
+                        if (len != 0) {
+                            char bk = *rp;
+                            *rp = '\0';
+                            args.emplace_back(lp);
+                            *rp = bk;
+                        }
+
+                        if (*rp != '\0') {
+                            while (std::isspace(*rp))
+                                ++rp;
+                            --rp;
+                        }
+
+                        lp = utf8codepoint(rp, &temp);
+                    }
+
+                    rp = utf8codepoint(rp, &cp);
+                }
+
+                delete[] buf;
+
+                ICommand *cmd = m_BML->FindCommand(args[0].c_str());
+                for (const auto &str : cmd->GetTabCompletion(m_BML, args)) {
+                    if (utils::StringStartsWith(str, args[args.size() - 1]))
+                        candidates.push_back(str);
+                }
+            }
+
+            if (!candidates.empty()) {
+                if (candidates.size() == 1) {
+                    // Single match. Delete the beginning of the word and replace it entirely so we've got nice casing.
+                    data->DeleteChars((int)(wordStart - data->Buf), (int)(wordEnd - wordStart));
+                    data->InsertChars(data->CursorPos, candidates[0].c_str());
+                    data->InsertChars(data->CursorPos, " ");
+                } else {
+                    // Multiple matches. Complete as much as we can..
+                    // So inputting "C"+Tab will complete to "CL" then display "CLEAR" and "CLASSIFY" as matches.
+                    int matchLen = (int)(wordEnd - wordStart);
+                    for (;;)
+                    {
+                        int c = 0;
+                        bool allCandidatesMatches = true;
+                        for (size_t i = 0; i < candidates.size() && allCandidatesMatches; i++)
+                            if (i == 0)
+                                c = toupper(candidates[i][matchLen]);
+                            else if (c == 0 || c != toupper(candidates[i][matchLen]))
+                                allCandidatesMatches = false;
+                        if (!allCandidatesMatches)
+                            break;
+                        matchLen++;
+                    }
+
+                    if (matchLen > 0)
+                    {
+                        data->DeleteChars((int)(wordStart - data->Buf), (int)(wordEnd - wordStart));
+                        data->InsertChars(data->CursorPos, candidates[0].c_str(), candidates[0].c_str() + matchLen);
+                        data->InsertChars(data->CursorPos, " ");
+                    }
+                }
+            }
+        }
+            break;
+        case ImGuiInputTextFlags_CallbackHistory: {
+            const unsigned int prevHistoryPos = m_HistoryPos;
+            if (data->EventKey == ImGuiKey_UpArrow) {
+                if (m_HistoryPos == -1)
+                    m_HistoryPos = (int)(m_CmdHistory.size() - 1);
+                else if (m_HistoryPos > 0)
+                    m_HistoryPos--;
+            } else if (data->EventKey == ImGuiKey_DownArrow) {
+                if (m_HistoryPos != -1)
+                    if (++m_HistoryPos >= (int)m_CmdHistory.size())
+                        m_HistoryPos = -1;
+            }
+
+            if (prevHistoryPos != m_HistoryPos) {
+                const std::string &historyStr = (m_HistoryPos >= 0) ? m_CmdHistory[m_HistoryPos] : "";
+                data->DeleteChars(0, data->BufTextLen);
+                data->InsertChars(0, historyStr.c_str());
+            }
+        }
+            break;
+        default:
+            break;
+    }
+
+    return 0;
+}
+
 void BMLMod::InitConfigs() {
     GetConfig()->SetCategoryComment("Misc", "Miscellaneous");
+
     m_UnlockFPS = GetConfig()->GetProperty("Misc", "UnlockFrameRate");
     m_UnlockFPS->SetComment("Unlock Frame Rate Limitation");
     m_UnlockFPS->SetDefaultBoolean(true);
@@ -896,6 +515,20 @@ void BMLMod::InitConfigs() {
     m_CustomMapNumber->SetComment("Level number to use for custom maps (affects level bonus and sky textures)."
                                   " Must be in the range of 1~13; 0 to randomly select one between 2 and 11");
     m_CustomMapNumber->SetDefaultInteger(0);
+
+    GetConfig()->SetCategoryComment("GUI", "Settings for the GUI created by BML");
+
+    m_FontFilename = GetConfig()->GetProperty("GUI", "FontFilename");
+    m_FontFilename->SetComment("The filename of TrueType font (the font filename should end with .ttf or .otf)");
+    m_FontFilename->SetDefaultString("unifont.otf");
+
+    m_FontSize = GetConfig()->GetProperty("GUI", "FontSize");
+    m_FontSize->SetComment("The size of font (pixel).");
+    m_FontSize->SetDefaultFloat(32.0f);
+
+    m_FontGlyphRanges = GetConfig()->GetProperty("GUI", "FontGlyphRanges");
+    m_FontGlyphRanges->SetComment("The Unicode ranges of font glyph.");
+    m_FontGlyphRanges->SetDefaultString("Default");
 }
 
 void BMLMod::RegisterCommands() {
@@ -906,6 +539,147 @@ void BMLMod::RegisterCommands() {
     m_BML->RegisterCommand(new CommandCheat());
     m_BML->RegisterCommand(new CommandClear(this));
     m_BML->RegisterCommand(new CommandHUD(this));
+}
+
+void BMLMod::InitGUI() {
+    ImGuiIO &io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.ConfigFlags = ImGuiConfigFlags_NavEnableKeyboard;
+    io.FontGlobalScale = m_WindowRect.GetHeight() / 1200.0f;
+
+    LoadFont();
+
+    Bui::InitTextures(m_CKContext);
+    Bui::InitMaterials(m_CKContext);
+}
+
+void BMLMod::LoadFont() {
+    ImGuiIO &io = ImGui::GetIO();
+
+    const char *filename = m_FontFilename->GetString();
+    if (filename && filename[0] != '\0') {
+        std::string path = BML_GetModManager()->GetDirectoryUtf8(BML_DIR_LOADER);
+        path.append("\\Fonts\\").append(filename);
+        if (utils::FileExists(path)) {
+            float size = m_FontSize->GetFloat();
+            if (size <= 0)
+                size = 32.0f;
+
+            const ImWchar *glyphRanges = nullptr;
+            const char *ranges = m_FontGlyphRanges->GetString();
+            if (strnicmp(ranges, "ChineseFull", 12) == 0) {
+                glyphRanges = io.Fonts->GetGlyphRangesChineseFull();
+            } else if (strnicmp(ranges, "Chinese", 8) == 0) {
+                glyphRanges = io.Fonts->GetGlyphRangesChineseSimplifiedCommon();
+            }
+
+            ImFontConfig config;
+            config.SizePixels = size;
+            if (strnicmp(ranges, "Chinese", 7) == 0) {
+                // Set OversampleH/OversampleV to 1 to reduce the texture size.
+                config.OversampleH = config.OversampleV = 1;
+            }
+
+            m_Font = io.Fonts->AddFontFromFileTTF(path.c_str(), size, &config, glyphRanges);
+        }
+    }
+
+    if (!m_Font) {
+        ImFontConfig config;
+        config.SizePixels = 32.0f;
+        m_Font = io.Fonts->AddFontDefault(&config);
+        GetLogger()->Warn("Can not load the specific font, use default font instead.");
+    }
+}
+
+void BMLMod::RefreshMaps() {
+    std::wstring path = BML_GetModManager()->GetDirectory(BML_DIR_LOADER);
+    path.append(L"\\Maps");
+
+    ExploreMaps(path, m_Maps);
+}
+
+size_t BMLMod::ExploreMaps(const std::wstring &path, std::vector<MapInfo> &maps) {
+    if (path.empty() || !utils::DirectoryExists(path))
+        return 0;
+
+    std::wstring p = path + L"\\*";
+    _wfinddata_t fileinfo = {};
+    auto handle = _wfindfirst(p.c_str(), &fileinfo);
+    if (handle == -1)
+        return 0;
+
+    do {
+        if ((fileinfo.attrib & _A_SUBDIR)) {
+            if (wcscmp(fileinfo.name, L".") != 0 && wcscmp(fileinfo.name, L"..") != 0)
+                ExploreMaps(p.assign(path).append(L"\\").append(fileinfo.name), maps);
+        } else {
+            std::wstring fullPath = path;
+            fullPath.append(L"\\").append(fileinfo.name);
+
+            wchar_t filename[1024];
+            wchar_t ext[64];
+            _wsplitpath(fileinfo.name, nullptr, nullptr, filename, ext);
+            if (wcsicmp(ext, L".nmo") == 0) {
+                MapInfo info;
+                char buffer[1024];
+                utils::Utf16ToUtf8(filename, buffer, sizeof(buffer));
+                info.name = buffer;
+                info.path = fullPath;
+                maps.push_back(std::move(info));
+            }
+        }
+    } while (_wfindnext(handle, &fileinfo) == 0);
+
+    _findclose(handle);
+
+    return maps.size();
+}
+
+void BMLMod::LoadMap(const std::wstring &path) {
+    if (path.empty())
+        return;
+
+    std::string filename = CreateTempMapFile(path);
+    SetParamString(m_MapFile, filename.c_str());
+    SetParamValue(m_LoadCustom, TRUE);
+    int level = GetConfig()->GetProperty("Misc", "CustomMapNumber")->GetInteger();
+    level = (level >= 1 && level <= 13) ? level : rand() % 10 + 2;
+    m_CurLevel->SetElementValue(0, 0, &level);
+    level--;
+    SetParamValue(m_LevelRow, level);
+
+    CKMessageManager *mm = m_CKContext->GetMessageManager();
+    CKMessageType loadLevel = mm->AddMessageType((CKSTRING) "Load Level");
+    CKMessageType loadMenu = mm->AddMessageType((CKSTRING) "Menu_Load");
+
+    mm->SendMessageSingle(loadLevel, m_CKContext->GetCurrentLevel());
+    mm->SendMessageSingle(loadMenu, BML_GetGroupByName("All_Sound"));
+    m_BML->Get2dEntityByName("M_BlackScreen")->Show(CKHIDE);
+    m_ExitStart->ActivateInput(0);
+    m_ExitStart->Activate();
+}
+
+std::string BMLMod::CreateTempMapFile(const std::wstring &path) {
+    if (path.empty() || !utils::FileExists(path))
+        return "";
+
+    wchar_t filename[1024];
+    wchar_t ext[64];
+    _wsplitpath(path.c_str(), nullptr, nullptr, filename, ext);
+
+    size_t hash = utils::HashString(filename);
+
+    wchar_t buf[1024];
+    _snwprintf(buf, sizeof(buf) / sizeof(wchar_t),
+               L"%s\\Maps\\%8X%s", BML_GetModManager()->GetDirectory(BML_DIR_TEMP), hash, ext);
+
+    if (!utils::DuplicateFile(path, buf))
+        return "";
+
+    char str[1024];
+    utils::Utf16ToAnsi(buf, str, sizeof(str));
+    return str;
 }
 
 void BMLMod::OnEditScript_Base_EventHandler(CKBehavior *script) {
@@ -1317,72 +1091,760 @@ void BMLMod::OnEditScript_ExtraLife_Fix(CKBehavior *script) {
         ->SetDirectSource(CreateParamValue<float>(script, "DeltaTime", CKPGUID_FLOAT, 20.0f));
 }
 
-void BMLMod::OnProcess_FpsDisplay() {
+void BMLMod::OnProcess_Fps() {
     CKStats stats;
     m_CKContext->GetProfileStats(&stats);
     m_FPSCount += int(1000 / stats.TotalFrameTime);
     if (++m_FPSTimer == 60) {
-        m_FPS->SetText(("FPS: " + std::to_string(m_FPSCount / 60)).c_str());
+        sprintf(m_FPSText, "FPS: %d", m_FPSCount / 60);
         m_FPSTimer = 0;
         m_FPSCount = 0;
     }
 }
 
+void BMLMod::OnProcess_SRTimer() {
+    if (m_SRActivated) {
+        m_SRTimer += m_TimeManager->GetLastDeltaTime();
+        int counter = int(m_SRTimer);
+        int ms = counter % 1000;
+        counter /= 1000;
+        int s = counter % 60;
+        counter /= 60;
+        int m = counter % 60;
+        counter /= 60;
+        int h = counter % 100;
+        sprintf(m_SRScore, "%02d:%02d:%02d.%03d", h, m, s, ms);
+    }
+}
+
+void BMLMod::OnProcess_HUD() {
+    const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
+
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+    ImGui::SetNextWindowSize(vpSize);
+
+    constexpr ImGuiWindowFlags HUDFlags = ImGuiWindowFlags_NoDecoration |
+                                          ImGuiWindowFlags_NoBackground |
+                                          ImGuiWindowFlags_NoResize |
+                                          ImGuiWindowFlags_NoMove |
+                                          ImGuiWindowFlags_NoInputs |
+                                          ImGuiWindowFlags_NoSavedSettings;
+    if (ImGui::Begin("HUD", nullptr, HUDFlags)) {
+        ImDrawList *drawList = ImGui::GetWindowDrawList();
+
+        float oldScale = m_Font->Scale;
+        m_Font->Scale *= 1.2f;
+        ImGui::PushFont(m_Font);
+
+        if (m_ShowTitle->GetBoolean()) {
+            constexpr auto TitleText = "BML Plus " BML_VERSION;
+            const auto titleSize = ImGui::CalcTextSize(TitleText);
+            drawList->AddText(ImVec2((vpSize.x - titleSize.x) / 2.0f, 0), IM_COL32_WHITE, TitleText);
+        }
+
+        if (m_BML->IsCheatEnabled()) {
+            constexpr auto CheatText = "Cheat Mode Enabled";
+            const auto cheatSize = ImGui::CalcTextSize(CheatText);
+            drawList->AddText(ImVec2((vpSize.x - cheatSize.x) / 2.0f, vpSize.y * 0.85f), IM_COL32_WHITE, CheatText);
+        }
+
+        if (m_ShowFPS->GetBoolean()) {
+            drawList->AddText(ImVec2(0, 0), IM_COL32_WHITE, m_FPSText);
+        }
+
+        if (m_SRShouldDraw) {
+            drawList->AddText(ImVec2(vpSize.x * 0.03f, vpSize.y * 0.8f), IM_COL32_WHITE, "SR Timer");
+            auto srSize = ImGui::CalcTextSize(m_SRScore);
+            drawList->AddText(ImVec2(vpSize.x * 0.05f, vpSize.y * 0.8f + srSize.y), IM_COL32_WHITE, m_SRScore);
+        }
+
+        m_Font->Scale = oldScale;
+        ImGui::PopFont();
+    }
+    ImGui::End();
+}
+
+static int TextEditCallback(ImGuiInputTextCallbackData *data) {
+    auto *mod = (BMLMod *) data->UserData;
+    return mod->OnTextEdit(data);
+}
+
 void BMLMod::OnProcess_CommandBar() {
-    if (!m_CmdTyping && m_InputHook->oIsKeyPressed(CKKEY_SLASH)) {
+    bool prev = m_CmdTyping;
+    if (!m_CmdTyping && ImGui::IsKeyPressed(ImGuiKey_Slash)) {
         GetLogger()->Info("Toggle Command Bar");
-        m_CmdTyping = true;
-        m_InputHook->SetBlock(true);
-        m_CmdBar->SetVisible(true);
-        m_HistoryPos = m_CmdHistory.size();
+        ToggleCommandBar();
     }
 
-    m_MsgLog->Process();
-    m_IngameBanner->Process();
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, Bui::GetMenuColor());
+    ImGui::PushFont(m_Font);
 
-    if (m_CurGui)
-        m_CurGui->Process();
+    const ImVec2 vpSize = ImGui::GetMainViewport()->Size;
+    const ImVec2 size(vpSize.x * 0.96f, 0.0f);
 
     if (m_CmdTyping) {
-        m_CmdBar->Process();
+        const ImVec2 pos(vpSize.x * 0.02f, vpSize.y * 0.93f);
+        ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
+        ImGui::SetNextWindowSize(size, ImGuiCond_Always);
 
-        for (int i = 0; i < std::min(MSG_MAXSIZE, m_MsgCount); i++) {
-            m_Msgs[i].m_Background->SetVisible(true);
-            m_Msgs[i].m_Background->SetColor(VxColor(0, 0, 0, 110));
-            m_Msgs[i].m_Text->SetVisible(true);
+        if (!prev)
+            ImGui::SetNextWindowFocus();
+
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, Bui::GetMenuColor());
+
+        constexpr ImGuiWindowFlags BarFlags = ImGuiWindowFlags_NoDecoration |
+                                              ImGuiWindowFlags_NoBackground |
+                                              ImGuiWindowFlags_NoResize |
+                                              ImGuiWindowFlags_NoMove |
+                                              ImGuiWindowFlags_NoNav;
+        ImGui::Begin("CommandBar", nullptr, BarFlags);
+
+        ImGui::SetNextItemWidth(size.x);
+
+        constexpr ImGuiInputTextFlags InputTextFlags = ImGuiInputTextFlags_EnterReturnsTrue |
+                                                       ImGuiInputTextFlags_EscapeClearsAll |
+                                                       ImGuiInputTextFlags_CallbackCompletion |
+                                                       ImGuiInputTextFlags_CallbackHistory;
+        if (ImGui::InputText("##CmdBar", m_CmdBuf, IM_ARRAYSIZE(m_CmdBuf), InputTextFlags, &TextEditCallback,
+                             (void *) this)) {
+            if (m_CmdBuf[0] != '\0') {
+                m_CmdHistory.emplace_back(m_CmdBuf);
+                m_BML->ExecuteCommand(m_CmdBuf);
+            }
+            ToggleCommandBar(false);
         }
-    } else {
-        for (int i = 0; i < std::min(MSG_MAXSIZE, m_MsgCount); i++) {
-            float &timer = m_Msgs[i].m_Timer;
-            m_Msgs[i].m_Background->SetVisible(timer > 0);
-            m_Msgs[i].m_Background->SetColor(VxColor(0, 0, 0, std::min(110, (int)(timer / 20))));
-            m_Msgs[i].m_Text->SetVisible(timer > 1000);
+
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+            ToggleCommandBar(false);
+
+        ImGui::SetItemDefaultFocus();
+        if (!prev)
+            ImGui::SetKeyboardFocusHere(-1);
+
+        ImGui::End();
+        ImGui::PopStyleColor();
+    }
+
+    constexpr ImGuiWindowFlags MsgFlags = ImGuiWindowFlags_NoDecoration |
+                                          ImGuiWindowFlags_NoInputs |
+                                          ImGuiWindowFlags_NoMove |
+                                          ImGuiWindowFlags_NoResize |
+                                          ImGuiWindowFlags_NoFocusOnAppearing |
+                                          ImGuiWindowFlags_NoNav;
+
+    const int count = std::min(MSG_MAXSIZE, m_MsgCount);
+    for (int i = 0; i < count; i++) {
+        float &timer = m_Msgs[i].Timer;
+        if (timer < 0) {
+            m_Msgs[i].Text[0] = '\0';
+        } else {
+            const ImVec2 pos(vpSize.x * 0.02f, vpSize.y * 0.9f - (float) i * ImGui::GetFontSize());
+            ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
+            ImGui::SetNextWindowSize(size, ImGuiCond_Always);
+            ImGui::SetNextWindowBgAlpha(std::min(110.0f, (timer / 20.0f)) / 255.0f);
+            static char buf[16];
+            snprintf(buf, 16, "Message%d", i);
+            ImGui::Begin(buf, nullptr, MsgFlags);
+            ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+            ImGui::Text("%s", m_Msgs[i].Text);
+            ImGui::End();
         }
     }
+
+    ImGui::PopFont();
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar(2);
 
     CKStats stats;
     m_CKContext->GetProfileStats(&stats);
-    for (int i = 0; i < std::min(MSG_MAXSIZE, m_MsgCount); i++) {
-        m_Msgs[i].m_Timer -= stats.TotalFrameTime;
+    for (int i = 0; i < count; i++) {
+        m_Msgs[i].Timer -= stats.TotalFrameTime;
     }
 }
 
-void BMLMod::OnProcess_SRTimer() {
-    m_SRTimer += m_TimeManager->GetLastDeltaTime();
-    int counter = int(m_SRTimer);
-    int ms = counter % 1000;
-    counter /= 1000;
-    int s = counter % 60;
-    counter /= 60;
-    int m = counter % 60;
-    counter /= 60;
-    int h = counter % 100;
-    static char time[16];
-    sprintf(time, "%02d:%02d:%02d.%03d", h, m, s, ms);
-    m_SRScore->SetText(time);
+void BMLMod::OnProcess_Menu() {
+    if (m_Level01 && m_Level01->IsVisible()) {
+        const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        ImGui::SetNextWindowPos(ImVec2(vpSize.x * 0.6238f, vpSize.y * 0.4f));
+
+        constexpr ImGuiWindowFlags ButtonFlags = ImGuiWindowFlags_NoDecoration |
+                                                 ImGuiWindowFlags_NoBackground |
+                                                 ImGuiWindowFlags_NoMove |
+                                                 ImGuiWindowFlags_NoNav |
+                                                 ImGuiWindowFlags_AlwaysAutoResize |
+                                                 ImGuiWindowFlags_NoFocusOnAppearing;
+
+        if (ImGui::Begin("Button_Custom_Maps", nullptr, ButtonFlags)) {
+            if (Bui::RightButton("Enter_Custom_Maps")) {
+                m_ExitStart->ActivateInput(0);
+                m_ExitStart->Activate();
+                OpenMapMenu();
+            }
+        }
+        ImGui::End();
+
+        ImGui::PopStyleVar(2);
+    }
+
+    OnDrawMenu();
+}
+
+void BMLMod::ShowMenu(MenuId id) {
+    PushMenu(m_CurrentMenu);
+    m_CurrentMenu = id;
+}
+
+void BMLMod::ShowPreviousMenu() {
+    MenuId id = PopWindow();
+    m_CurrentMenu = id;
+}
+
+void BMLMod::HideMenu() {
+    m_CurrentMenu = MENU_NULL;
+}
+
+void BMLMod::PushMenu(MenuId id) {
+    m_MenuStack.push(id);
+}
+
+MenuId BMLMod::PopWindow() {
+    if (m_MenuStack.empty())
+        return MENU_NULL;
+    MenuId id = m_MenuStack.top();
+    m_MenuStack.pop();
+    return id;
+}
+
+constexpr ImGuiWindowFlags MenuWinFlags = ImGuiWindowFlags_NoDecoration |
+                                          ImGuiWindowFlags_NoBackground |
+                                          ImGuiWindowFlags_NoMove |
+                                          ImGuiWindowFlags_NoScrollWithMouse |
+                                          ImGuiWindowFlags_NoSavedSettings;
+
+void BMLMod::OnDrawMenu() {
+    if (m_CurrentMenu == MENU_NULL)
+        return;
+
+    ImGui::PushFont(m_Font);
+
+    const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
+    ImGui::SetNextWindowPos(ImVec2(vpSize.x * 0.3f, 0.0f), ImGuiCond_Appearing);
+    ImGui::SetNextWindowSize(ImVec2(vpSize.x * 0.7f, vpSize.y), ImGuiCond_Appearing);
+
+    switch (m_CurrentMenu) {
+        case MENU_MOD_LIST:
+            OnDrawModList();
+            break;
+        case MENU_MOD_PAGE:
+            OnDrawModPage();
+            break;
+        case MENU_MOD_OPTIONS:
+            OnDrawModOptions();
+            break;
+        case MENU_MAP_LIST:
+            OnDrawMapList();
+            break;
+        default:
+            break;
+    }
+
+    ImGui::PopFont();
+}
+
+void BMLMod::OnDrawModList() {
+    constexpr auto TitleText = "Mod List";
+
+    ImGui::Begin(TitleText, nullptr, MenuWinFlags);
+
+    {
+        float oldScale = ImGui::GetFont()->Scale;
+        ImGui::GetFont()->Scale *= 1.5f;
+        ImGui::PushFont(ImGui::GetFont());
+
+        const auto titleSize = ImGui::CalcTextSize(TitleText);
+        const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
+        ImGui::GetWindowDrawList()->AddText(ImVec2((vpSize.x - titleSize.x) / 2.0f, vpSize.y * 0.13f), IM_COL32_WHITE,
+                                            TitleText);
+
+        ImGui::GetFont()->Scale = oldScale;
+        ImGui::PopFont();
+    }
+
+    const int modCount = m_BML->GetModCount();
+    const int maxPage = ((modCount % 4) == 0) ? modCount / 4 : modCount / 4 + 1;
+
+    if (m_ModListPage > 0) {
+        ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.36f, 0.124f)));
+        if (Bui::LeftButton("ModListPrevPage")) {
+            --m_ModListPage;
+        }
+    }
+
+    if (maxPage > 1 && m_ModListPage < maxPage - 1) {
+        ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.6038f, 0.124f)));
+        if (Bui::RightButton("ModListNextPage")) {
+            ++m_ModListPage;
+        }
+    }
+
+    {
+        const int n = m_ModListPage * 4;
+        for (int i = 0; i < 4 && n + i < modCount; ++i) {
+            IMod *mod = m_BML->GetMod(n + i);
+
+            char buf[256];
+            sprintf(buf, "%s", mod->GetID());
+            ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.35f, 0.24f + (float) i * 0.14f)));
+            if (Bui::MainButton(buf)) {
+                m_CurrentMod = mod;
+                ShowMenu(MENU_MOD_PAGE);
+            }
+        }
+    }
+
+    ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.4031f, 0.85f)));
+    if (Bui::BackButton("ModListBack") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        m_ModListPage = 0;
+        ExitModsMenu();
+    }
+
+    ImGui::End();
+}
+
+void BMLMod::OnDrawModPage() {
+    if (!m_CurrentMod)
+        return;
+
+    constexpr auto TitleText = "Mod Options";
+
+    ImGui::Begin("Mod Page", nullptr, MenuWinFlags);
+
+    ImGui::Dummy(Bui::CoordToScreenPos(ImVec2(0.375f, 0.1f)));
+
+    ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
+    float menuWidth = vpSize.x * 0.4f;
+
+    {
+        float oldScale = ImGui::GetFont()->Scale;
+        ImGui::GetFont()->Scale *= 1.2f;
+        ImGui::PushFont(ImGui::GetFont());
+
+        const float textWidth = ImGui::CalcTextSize(m_CurrentMod->GetName()).x;
+        ImGui::SetCursorPosX((menuWidth - textWidth) * 0.5f);
+        ImGui::TextUnformatted(m_CurrentMod->GetName());
+
+        ImGui::GetFont()->Scale = oldScale;
+        ImGui::PopFont();
+    }
+
+    char buf[256];
+
+    {
+        snprintf(buf, sizeof(buf), "By %s", m_CurrentMod->GetAuthor());
+        const float textWidth = ImGui::CalcTextSize(buf).x;
+        const float indent = (menuWidth - textWidth) * 0.5f;
+        if (indent > 0) {
+            ImGui::SetCursorPosX(indent);
+            ImGui::PushTextWrapPos(indent + textWidth);
+        } else {
+            ImGui::PushTextWrapPos(menuWidth);
+        }
+        ImGui::TextUnformatted(buf);
+        ImGui::PopTextWrapPos();
+    }
+
+    {
+        snprintf(buf, sizeof(buf), "v%s", m_CurrentMod->GetVersion());
+        const float textWidth = ImGui::CalcTextSize(buf).x;
+        ImGui::SetCursorPosX((menuWidth - textWidth) * 0.5f);
+        ImGui::TextUnformatted(buf);
+    }
+
+    ImGui::NewLine();
+
+    {
+        const float textWidth = ImGui::CalcTextSize(m_CurrentMod->GetDescription()).x;
+        const float indent = (menuWidth - textWidth) * 0.5f;
+        if (indent > 0) {
+            ImGui::SetCursorPosX(indent);
+            ImGui::PushTextWrapPos(indent + textWidth);
+        } else {
+            ImGui::PushTextWrapPos(menuWidth);
+        }
+        ImGui::TextUnformatted(m_CurrentMod->GetDescription());
+        ImGui::PopTextWrapPos();
+    }
+
+    auto *config = BML_GetModManager()->GetConfig(m_CurrentMod);
+    if (config) {
+        float y = ImGui::GetCursorScreenPos().y;
+        float spacing = 0.1f;
+
+        {
+            float oldScale = ImGui::GetFont()->Scale;
+            ImGui::GetFont()->Scale *= 1.5f;
+            ImGui::PushFont(ImGui::GetFont());
+
+            const auto titleSize = ImGui::CalcTextSize(TitleText);
+            ImGui::GetWindowDrawList()->AddText(ImVec2((vpSize.x - titleSize.x) / 2.0f, y + vpSize.y * 0.06f),
+                                                IM_COL32_WHITE, TitleText);
+
+            ImGui::GetFont()->Scale = oldScale;
+            ImGui::PopFont();
+        }
+
+        const int categoryCount = (int) config->GetCategoryCount();
+        const int maxPage = ((categoryCount % 4) == 0) ? categoryCount / 4 : categoryCount / 4 + 1;
+
+        if (m_ModPage > 0) {
+            ImGui::SetCursorScreenPos(ImVec2(vpSize.x * 0.36f, y + vpSize.y * 0.054f));
+            if (Bui::LeftButton("ModPrevPage")) {
+                --m_ModPage;
+            }
+        }
+
+        if (maxPage > 1 && m_ModPage < maxPage - 1) {
+            ImGui::SetCursorScreenPos(ImVec2(vpSize.x * 0.6038f, y + vpSize.y * 0.054f));
+            if (Bui::RightButton("ModNextPage")) {
+                ++m_ModPage;
+            }
+        }
+
+        {
+            bool v = true;
+            const int n = m_ModPage * 4;
+            for (int i = 0; i < 4 && n + i < categoryCount; ++i) {
+                Category *category = config->GetCategory(n + i);
+                ImGui::SetCursorScreenPos(ImVec2(vpSize.x * 0.4031f, y + vpSize.y * (0.13f + (float) i * 0.06f)));
+                if (Bui::LevelButton(category->GetName(), &v)) {
+                    m_CurrentCategory = category;
+                    ShowMenu(MENU_MOD_OPTIONS);
+                }
+
+                if (ImGui::IsItemHovered()) {
+                    ImGui::PushStyleColor(ImGuiCol_ChildBg, Bui::GetMenuColor());
+
+                    const ImVec2 commentBoxPos(vpSize.x * 0.725f, vpSize.y * 0.4f);
+                    const ImVec2 commentBoxSize(vpSize.x * 0.25f, vpSize.y * 0.2f);
+                    ImGui::SetCursorScreenPos(commentBoxPos);
+                    ImGui::BeginChild("ModComment", commentBoxSize);
+
+                    {
+                        const float textWidth = ImGui::CalcTextSize(category->GetName()).x;
+                        const float indent = (commentBoxSize.x - textWidth) * 0.5f;
+                        if (indent > 0) {
+                            ImGui::SetCursorPosX(indent);
+                            ImGui::PushTextWrapPos(indent + textWidth);
+                        } else {
+                            ImGui::PushTextWrapPos(commentBoxSize.x);
+                        }
+                        ImGui::TextUnformatted(category->GetName());
+                        ImGui::PopTextWrapPos();
+                    }
+
+                    {
+                        const float textWidth = ImGui::CalcTextSize(category->GetComment()).x;
+                        const float indent = (commentBoxSize.x - textWidth) * 0.5f;
+                        if (indent > 0) {
+                            ImGui::SetCursorPosX(indent);
+                            ImGui::PushTextWrapPos(indent + textWidth);
+                        } else {
+                            ImGui::PushTextWrapPos(commentBoxSize.x);
+                        }
+                        ImGui::TextUnformatted(category->GetComment());
+                        ImGui::PopTextWrapPos();
+                    }
+
+                    ImGui::EndChild();
+                    ImGui::PopStyleColor();
+                }
+            }
+        }
+    }
+
+    ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.4031f, 0.85f)));
+    if (Bui::BackButton("ModBack") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        m_ModPage = 0;
+        ShowPreviousMenu();
+    }
+
+    ImGui::End();
+}
+
+void BMLMod::OnDrawModOptions() {
+    if (!m_CurrentCategory)
+        return;
+
+    ImGui::Begin("Mod Options", nullptr, MenuWinFlags);
+
+    {
+        float oldScale = ImGui::GetFont()->Scale;
+        ImGui::GetFont()->Scale *= 1.5f;
+        ImGui::PushFont(ImGui::GetFont());
+
+        const auto titleSize = ImGui::CalcTextSize(m_CurrentCategory->GetName());
+        const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
+        ImGui::GetWindowDrawList()->AddText(ImVec2((vpSize.x - titleSize.x) / 2.0f, vpSize.y * 0.13f), IM_COL32_WHITE,
+                                            m_CurrentCategory->GetName());
+
+        ImGui::GetFont()->Scale = oldScale;
+        ImGui::PopFont();
+    }
+
+    const int optionCount = (int) m_CurrentCategory->GetPropertyCount();
+    const int maxPage = ((optionCount % 4) == 0) ? optionCount / 4 : optionCount / 4 + 1;
+
+    if (m_ModOptionPage > 0) {
+        ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.36f, 0.124f)));
+        if (Bui::LeftButton("ModOptionPrevPage")) {
+            --m_ModOptionPage;
+        }
+    }
+
+    if (maxPage > 1 && m_ModOptionPage < maxPage - 1) {
+        ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.6038f, 0.124f)));
+        if (Bui::RightButton("ModOptionNextPage")) {
+            ++m_ModOptionPage;
+        }
+    }
+
+    {
+        static char buffers[4][4096];
+        static size_t bufferHashes[4];
+        static bool keyToggled[4];
+        static ImGuiKeyChord keyChord[4];
+
+        const int n = m_ModOptionPage * 4;
+        for (int i = 0; i < 4 && n + i < optionCount; ++i) {
+            Property *property = m_CurrentCategory->GetProperty(n + i);
+            ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.35f, 0.24f + (float) i * 0.14f)));
+            switch (property->GetType()) {
+                case IProperty::STRING: {
+                    if (bufferHashes[i] != property->GetHash()) {
+                        bufferHashes[i] = property->GetHash();
+                        strncpy(buffers[i], property->GetString(), property->GetStringSize() + 1);
+                    }
+                    Bui::InputTextButton(property->GetName(), buffers[i], sizeof(buffers[i]));
+                    if (ImGui::IsItemDeactivatedAfterEdit()) {
+                        bufferHashes[i] = utils::HashString(buffers[i]);
+                        if (bufferHashes[i] != property->GetHash())
+                            property->SetString(buffers[i]);
+                    }
+                }
+                    break;
+                case IProperty::BOOLEAN:
+                    if (Bui::YesNoButton(property->GetName(), property->GetBooleanPtr())) {
+                        property->SetModified();
+                    }
+                    break;
+                case IProperty::INTEGER:
+                    if (Bui::InputIntButton(property->GetName(), property->GetIntegerPtr())) {
+                        property->SetModified();
+                    }
+                    break;
+                case IProperty::KEY:
+                    keyChord[i] = Bui::CKKeyToImGuiKey(property->GetKey());
+                    if (Bui::KeyButton(property->GetName(), &keyToggled[i], &keyChord[i])) {
+                        keyChord[i] &= ~ImGuiMod_Mask_;
+                        property->SetKey(Bui::ImGuiKeyToCKKey(static_cast<ImGuiKey>(keyChord[i])));
+                    }
+                    break;
+                case IProperty::FLOAT:
+                    if (Bui::InputFloatButton(property->GetName(), property->GetFloatPtr())) {
+                        property->SetModified();
+                    }
+                    break;
+                default:
+                    ImGui::Dummy(Bui::GetButtonSize(Bui::BUTTON_OPTION));
+                    break;
+            }
+
+            if (ImGui::IsItemHovered()) {
+                ImGui::PushStyleColor(ImGuiCol_ChildBg, Bui::GetMenuColor());
+
+                ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
+                const ImVec2 commentBoxPos(vpSize.x * 0.725f, vpSize.y * 0.4f);
+                const ImVec2 commentBoxSize(vpSize.x * 0.25f, vpSize.y * 0.2f);
+                ImGui::SetCursorScreenPos(commentBoxPos);
+                ImGui::BeginChild("ModComment", commentBoxSize);
+
+                {
+                    const float textWidth = ImGui::CalcTextSize(property->GetName()).x;
+                    const float indent = (commentBoxSize.x - textWidth) * 0.5f;
+                    if (indent > 0) {
+                        ImGui::SetCursorPosX(indent);
+                        ImGui::PushTextWrapPos(indent + textWidth);
+                    } else {
+                        ImGui::PushTextWrapPos(commentBoxSize.x);
+                    }
+                    ImGui::TextUnformatted(property->GetName());
+                    ImGui::PopTextWrapPos();
+                }
+
+                {
+                    const float textWidth = ImGui::CalcTextSize(property->GetComment()).x;
+                    const float indent = (commentBoxSize.x - textWidth) * 0.5f;
+                    if (indent > 0) {
+                        ImGui::SetCursorPosX(indent);
+                        ImGui::PushTextWrapPos(indent + textWidth);
+                    } else {
+                        ImGui::PushTextWrapPos(commentBoxSize.x);
+                    }
+                    ImGui::TextUnformatted(property->GetComment());
+                    ImGui::PopTextWrapPos();
+                }
+
+                ImGui::EndChild();
+                ImGui::PopStyleColor();
+            }
+        }
+    }
+
+    ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.4031f, 0.85f)));
+    if (Bui::BackButton("ModOptionsBack") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        m_ModOptionPage = 0;
+        ShowPreviousMenu();
+    }
+
+    ImGui::End();
+}
+
+void BMLMod::OnDrawMapList() {
+    constexpr auto TitleText = "Custom Maps";
+
+    ImGui::Begin(TitleText, nullptr, MenuWinFlags);
+
+    const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
+
+    {
+        float oldScale = ImGui::GetFont()->Scale;
+        ImGui::GetFont()->Scale *= 1.5f;
+        ImGui::PushFont(ImGui::GetFont());
+
+        const auto titleSize = ImGui::CalcTextSize(TitleText);
+        ImGui::GetWindowDrawList()->AddText(ImVec2((vpSize.x - titleSize.x) / 2.0f, vpSize.y * 0.07f), IM_COL32_WHITE,
+                                            TitleText);
+
+        ImGui::GetFont()->Scale = oldScale;
+        ImGui::PopFont();
+    }
+
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, Bui::GetMenuColor());
+
+    constexpr ImGuiWindowFlags BarFlags = ImGuiWindowFlags_NoDecoration |
+                                          ImGuiWindowFlags_NoBackground |
+                                          ImGuiWindowFlags_NoResize |
+                                          ImGuiWindowFlags_NoMove |
+                                          ImGuiWindowFlags_NoNav;
+
+    ImGui::SetCursorScreenPos(ImVec2(vpSize.x * 0.4f, vpSize.y * 0.18f));
+    ImGui::SetNextItemWidth(vpSize.x * 0.2f);
+
+    if (ImGui::InputText("##SearchBar", m_MapSearchBuf, IM_ARRAYSIZE(m_MapSearchBuf))) {
+        OnSearchMaps();
+    }
+
+    ImGui::PopStyleColor();
+
+    int mapCount = (m_MapSearchBuf[0] == '\0') ? (int) m_Maps.size() : (int) m_MapSearchResult.size();
+    int maxPage = ((mapCount % 10) == 0) ? mapCount / 10 : mapCount / 10 + 1;
+
+    ImGui::SetCursorScreenPos(ImVec2(vpSize.x * 0.34f, vpSize.y * 0.4f));
+    if (Bui::LeftButton("MapListPrevPage")) {
+        if (m_MapPage == 0) {
+            ExitMapMenu();
+        } else if (m_MapPage > 0) {
+            --m_MapPage;
+        }
+    }
+
+    if (maxPage > 1 && m_MapPage < maxPage - 1) {
+        ImGui::SetCursorScreenPos(ImVec2(vpSize.x * 0.6238f, vpSize.y * 0.4f));
+        if (Bui::RightButton("MapListNextPage")) {
+            ++m_MapPage;
+        }
+    }
+
+    bool v = true;
+    const int n = m_MapPage * 10;
+
+    if (m_MapSearchBuf[0] == '\0') {
+        for (int i = 0; i < 10 && n + i < mapCount; ++i) {
+            auto &info = m_Maps[n + i];
+
+            ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.4031f, 0.23f + (float) i * 0.06f)));
+            if (Bui::LevelButton(info.name.c_str(), &v)) {
+                ExitMapMenu(false);
+                LoadMap(info.path);
+            }
+        }
+    } else {
+        for (int i = 0; i < 10 && n + i < mapCount; ++i) {
+            auto &info = m_Maps[m_MapSearchResult[n + i]];
+
+            ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.4031f, 0.23f + (float) i * 0.06f)));
+            if (Bui::LevelButton(info.name.c_str(), &v)) {
+                ExitMapMenu(false);
+                LoadMap(info.path);
+            }
+        }
+    }
+
+    ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.4031f, 0.85f)));
+    if (Bui::BackButton("MapListBack") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        m_MapPage = 0;
+        ExitMapMenu();
+    }
+
+    ImGui::End();
+}
+
+void BMLMod::OnSearchMaps() {
+    m_MapSearchResult.clear();
+
+    if (m_MapSearchBuf[0] == '\0')
+        return;
+
+    auto *pattern = (OnigUChar *) m_MapSearchBuf;
+    regex_t *reg;
+    OnigErrorInfo einfo;
+
+    int r = onig_new(&reg, pattern, pattern + strlen((char *) pattern),
+                     ONIG_OPTION_DEFAULT, ONIG_ENCODING_UTF8, ONIG_SYNTAX_ASIS, &einfo);
+    if (r != ONIG_NORMAL) {
+        char s[ONIG_MAX_ERROR_MESSAGE_LEN];
+        onig_error_code_to_str((UChar *) s, r, &einfo);
+        GetLogger()->Error(s);
+        return;
+    }
+
+    for (size_t i = 0; i < m_Maps.size(); ++i) {
+        auto &name = m_Maps[i].name;
+        const auto *end = (const UChar *) (name.c_str() + name.size());
+        const auto *start = (const UChar *) name.c_str();
+        const auto *range = end;
+
+        r = onig_search(reg, start, end, start, range, nullptr, ONIG_OPTION_NONE);
+        if (r >= 0) {
+            m_MapSearchResult.push_back(i);
+        } else if (r != ONIG_MISMATCH) {
+            char s[ONIG_MAX_ERROR_MESSAGE_LEN];
+            onig_error_code_to_str((UChar *) s, r);
+            GetLogger()->Error(s);
+        }
+    }
+
+    onig_free(reg);
 }
 
 void BMLMod::OnResize() {
+    ImGui::GetIO().FontGlobalScale = m_WindowRect.GetHeight() / 1200.0f;
+
     CKCamera *cams[] = {
         m_BML->GetTargetCameraByName("Cam_MenuLevel"),
         m_BML->GetTargetCameraByName("InGameCam")
@@ -1401,46 +1863,5 @@ void BMLMod::OnResize() {
 
             CKReadObjectState(cam, chunk);
         }
-    }
-}
-
-void BMLMod::OnCmdEdit(CKDWORD key) {
-    switch (key) {
-        case CKKEY_RETURN:
-            m_CmdHistory.emplace_back(m_CmdInput->GetText());
-            if (m_CmdInput->GetText()[0] == '/') {
-                BML_GetModManager()->ExecuteCommand(m_CmdInput->GetText() + 1);
-            } else {
-                AddIngameMessage(m_CmdInput->GetText());
-            }
-        case CKKEY_ESCAPE:
-            m_CmdTyping = false;
-            BML_GetModManager()->AddTimerLoop(1ul, [this, key] {
-                if (m_CmdTyping)
-                    return false;
-                InputHook *input = BML_GetInputHook();
-                if (input->oIsKeyDown(key))
-                    return true;
-                input->SetBlock(false);
-                return false;
-            });
-            m_CmdBar->SetVisible(false);
-            m_CmdInput->SetText("");
-            break;
-        case CKKEY_TAB:
-            if (m_CmdInput->GetText()[0] == '/') {
-                m_CmdInput->SetText(('/' + BML_GetModManager()->TabCompleteCommand(m_CmdInput->GetText() + 1)).c_str());
-            }
-            break;
-        case CKKEY_UP:
-            if (m_HistoryPos > 0)
-                m_CmdInput->SetText(m_CmdHistory[--m_HistoryPos].c_str());
-            break;
-        case CKKEY_DOWN:
-            if (m_HistoryPos < m_CmdHistory.size())
-                m_CmdInput->SetText(++m_HistoryPos == m_CmdHistory.size() ? "/" : m_CmdHistory[m_HistoryPos].c_str());
-            break;
-        default:
-            break;
     }
 }
