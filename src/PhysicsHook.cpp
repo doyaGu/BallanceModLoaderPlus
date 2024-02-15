@@ -76,7 +76,7 @@ int Physicalize(const CKBehaviorContext &behcontext) {
 
         int paramPos = 11;
         for (int i = 0; i < convexCnt; i++)
-            convexMesh[i] = (CKMesh *) beh->GetInputParameterReadDataPtr(paramPos + i);
+            convexMesh[i] = (CKMesh *) beh->GetInputParameterObject(paramPos + i);
         paramPos += convexCnt;
 
         for (int i = 0; i < ballCnt; i++) {
@@ -86,7 +86,7 @@ int Physicalize(const CKBehaviorContext &behcontext) {
         paramPos += ballCnt * 2;
 
         for (int i = 0; i < concaveCnt; i++)
-            concaveMesh[i] = (CKMesh *) beh->GetInputParameterReadDataPtr(paramPos + i);
+            concaveMesh[i] = (CKMesh *) beh->GetInputParameterObject(paramPos + i);
         paramPos += concaveCnt;
 
         BML_GetModManager()->BroadcastCallback(&IMod::OnPhysicalize, target,

@@ -126,7 +126,6 @@ public:
     ICommand *GetCommand(int index) const override;
     ICommand *FindCommand(const char *name) const override;
     void ExecuteCommand(const char *cmd) override;
-    std::string TabCompleteCommand(const char *cmd);
 
     bool AddConfig(Config *config);
     bool RemoveConfig(Config *config);

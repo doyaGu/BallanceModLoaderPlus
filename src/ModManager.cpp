@@ -8,7 +8,11 @@
 #include <Windows.h>
 #include <io.h>
 
+#include <utf8.h>
+#include <oniguruma.h>
+
 #include "BML/InputHook.h"
+#include "Overlay.h"
 #include "Logger.h"
 #include "StringUtils.h"
 #include "PathUtils.h"
@@ -203,10 +207,14 @@ ModManager::~ModManager() {
 CKERROR ModManager::OnCKInit() {
     Init();
 
+    Overlay::ImGuiCreateContext(m_Context, IsOriginalPlayer());
+
     return CK_OK;
 }
 
 CKERROR ModManager::OnCKEnd() {
+    Overlay::ImGuiDestroyContext(m_Context, IsOriginalPlayer());
+
     Shutdown();
 
     return CK_OK;
@@ -219,6 +227,8 @@ CKERROR ModManager::OnCKReset() {
     if (!AreModsDown()) {
         ShutdownMods();
         UnloadMods();
+
+        Overlay::ImGuiShutdown();
     }
 
     return CK_OK;
@@ -234,14 +244,32 @@ CKERROR ModManager::OnCKPostReset() {
     }
 
     if (!AreModsDown()) {
+        Overlay::ImGuiInit(m_Context);
+        Overlay::ImGuiSetCurrentContext();
+
         LoadMods();
         InitMods();
+
+        Overlay::ImGuiRestorePreviousContext();
     }
 
     return CK_OK;
 }
 
 CKERROR ModManager::PreProcess() {
+    Overlay::ImGuiSetCurrentContext();
+    Overlay::ImGuiNewFrame();
+
+    ImGuiIO &io = ImGui::GetIO();
+
+    if (io.WantCaptureKeyboard) {
+        m_InputHook->Block(CK_INPUT_DEVICE_KEYBOARD);
+    }
+
+    if (io.WantCaptureMouse) {
+        m_InputHook->Block(CK_INPUT_DEVICE_MOUSE);
+    }
+
     return CK_OK;
 }
 
@@ -258,6 +286,31 @@ CKERROR ModManager::PostProcess() {
 
     BroadcastCallback(&IMod::OnProcess);
 
+    ImGuiIO &io = ImGui::GetIO();
+    if (io.WantCaptureKeyboard) {
+        m_InputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
+    }
+
+    if (io.WantCaptureMouse) {
+        m_InputHook->Unblock(CK_INPUT_DEVICE_MOUSE);
+    }
+
+    static bool cursorVisibilityChanged = false;
+    if (!m_InputHook->GetCursorVisibility()) {
+        if (io.WantCaptureMouse) {
+            m_InputHook->ShowCursor(TRUE);
+            cursorVisibilityChanged = true;
+        }
+    } else if (cursorVisibilityChanged) {
+        if (!io.WantCaptureMouse) {
+            m_InputHook->ShowCursor(FALSE);
+            cursorVisibilityChanged = false;
+        }
+    }
+
+    Overlay::ImGuiRender();
+    Overlay::ImGuiRestorePreviousContext();
+
     if (m_Exiting)
         m_MessageManager->SendMessageBroadcast(m_MessageManager->AddMessageType((CKSTRING) "Exit Game"));
 
@@ -273,6 +326,8 @@ CKERROR ModManager::OnPostRender(CKRenderContext *dev) {
 }
 
 CKERROR ModManager::OnPostSpriteRender(CKRenderContext *dev) {
+    Overlay::ImGuiOnRender();
+
     return CK_OK;
 }
 
@@ -281,6 +336,9 @@ void ModManager::Init() {
         return;
 
     srand((unsigned int) time(nullptr));
+
+    OnigEncoding encodings[3] = {ONIG_ENCODING_ASCII, ONIG_ENCODING_UTF8, ONIG_ENCODING_UTF16_LE};
+    onig_initialize(encodings, sizeof(encodings)/sizeof(encodings[0]));
 
     DetectPlayer();
 
@@ -319,6 +377,8 @@ void ModManager::Shutdown() {
         ShutdownLogger();
 
         utils::DeleteDir(m_TempDir);
+
+        onig_end();
 
         m_Initialized = false;
     }
@@ -481,11 +541,45 @@ ICommand *ModManager::FindCommand(const char *name) const {
 }
 
 void ModManager::ExecuteCommand(const char *cmd) {
-    m_Logger->Info("Execute Command: %s", cmd);
+    if (!cmd || cmd[0] == '\0')
+        return;
 
-    auto args = utils::SplitString(cmd, " ");
-    for (auto &ch: args[0])
-        ch = static_cast<char>(std::tolower(ch));
+    size_t size = utf8size(cmd);
+    char *buf = new char[size + 1];
+    utf8ncpy(buf, cmd, size);
+
+    std::vector<std::string> args;
+
+    char *lp = &buf[0];
+    char *rp = lp;
+    char *end = lp + size;
+    utf8_int32_t cp, temp;
+    utf8codepoint(rp, &cp);
+    while (rp != end) {
+        if (std::isspace(*rp) || *rp == '\0') {
+            size_t len = rp - lp;
+            if (len != 0) {
+                char bk = *rp;
+                *rp = '\0';
+                args.emplace_back(lp);
+                *rp = bk;
+            }
+
+            if (*rp != '\0') {
+                while (std::isspace(*rp))
+                    ++rp;
+                --rp;
+            }
+
+            lp = utf8codepoint(rp, &temp);
+        }
+
+        rp = utf8codepoint(rp, &cp);
+    }
+
+    delete[] buf;
+
+    m_Logger->Info("Execute Command: %s", cmd);
 
     ICommand *command = FindCommand(args[0].c_str());
     if (!command) {
@@ -501,45 +595,6 @@ void ModManager::ExecuteCommand(const char *cmd) {
     BroadcastCallback(&IMod::OnPreCommandExecute, command, args);
     command->Execute(this, args);
     BroadcastCallback(&IMod::OnPostCommandExecute, command, args);
-}
-
-std::string ModManager::TabCompleteCommand(const char *cmd) {
-    auto args = utils::SplitString(cmd, " ");
-    std::vector<std::string> res;
-    if (args.size() == 1) {
-        for (auto &p: m_CommandMap) {
-            if (utils::StringStartsWith(p.first, args[0])) {
-                if (!p.second->IsCheat() || m_CheatEnabled)
-                    res.push_back(p.first);
-            }
-        }
-    } else {
-        ICommand *command = FindCommand(args[0].c_str());
-        if (command && (!command->IsCheat() || m_CheatEnabled)) {
-            for (const std::string &str: command->GetTabCompletion(this, args))
-                if (utils::StringStartsWith(str, args[args.size() - 1]))
-                    res.push_back(str);
-        }
-    }
-
-    if (res.empty())
-        return cmd;
-    if (res.size() == 1) {
-        if (args.size() == 1)
-            return res[0];
-        else {
-            std::string str(cmd);
-            str = str.substr(0, str.size() - args[args.size() - 1].size());
-            str += res[0];
-            return str;
-        }
-    }
-
-    std::string str = res[0];
-    for (unsigned int i = 1; i < res.size(); i++)
-        str += ", " + res[i];
-    m_BMLMod->AddIngameMessage(str.c_str());
-    return cmd;
 }
 
 bool ModManager::AddConfig(Config *config) {
@@ -730,7 +785,7 @@ void ModManager::AddTimerLoop(float delay, std::function<bool()> callback) {
 
 void ModManager::OpenModsMenu() {
     m_Logger->Info("Open Mods Menu");
-    m_BMLMod->ShowModOptions();
+    m_BMLMod->OpenModsMenu();
 }
 
 bool ModManager::IsCheatEnabled() {
@@ -739,7 +794,6 @@ bool ModManager::IsCheatEnabled() {
 
 void ModManager::EnableCheat(bool enable) {
     m_CheatEnabled = enable;
-    m_BMLMod->ShowCheatBanner(enable);
     BroadcastCallback(&IMod::OnCheatEnabled, enable);
 }
 

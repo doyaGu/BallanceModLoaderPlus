@@ -20,7 +20,7 @@ void CommandHelp::Execute(IBML *bml, const std::vector<std::string> &args) {
     bml->SendIngameMessage((std::to_string(cmdCount) + " Existing Commands:").data());
     for (int i = 0; i < cmdCount; i++) {
         ICommand *cmd = bml->GetCommand(i);
-        std::string str = std::string("  /") + cmd->GetName();
+        std::string str = std::string("\t") + cmd->GetName();
         if (!cmd->GetAlias().empty())
             str += "(" + cmd->GetAlias() + ")";
         if (cmd->IsCheat())
