@@ -36,50 +36,13 @@ struct FrameData {
     };
 };
 
-class GuiTASList : public BGui::Gui {
-public:
-    GuiTASList();
+struct TASInfo {
+    std::string name;
+    std::string path;
 
-    void Init(int size, int maxsize);
-
-    void Resize(int size);
-
-    void RefreshRecords();
-
-    virtual BGui::Button *CreateButton(int index);
-
-    virtual std::string GetButtonText(int index);
-
-    virtual void SetPage(int page);
-
-    virtual void Exit();
-
-    void SetVisible(bool visible) override;
-    bool IsVisible() const { return m_Visible; }
-
-    void PreviousPage() { if (m_CurPage > 0) SetPage(m_CurPage - 1); }
-    void NextPage() { if (m_CurPage < m_MaxPage - 1) SetPage(m_CurPage + 1); }
-
-protected:
-    std::vector<BGui::Button *> m_Buttons;
-    int m_CurPage = 0;
-    int m_MaxPage = 0;
-    int m_Size = 0;
-    int m_MaxSize = 0;
-    BGui::Button *m_Left;
-    BGui::Button *m_Right;
-
-    struct TASInfo {
-        std::string displayName, filepath;
-
-        bool operator<(const TASInfo &o) const {
-            return displayName < o.displayName;
-        }
-    };
-
-    std::vector<TASInfo> m_Records;
-    std::vector<BGui::Text *> m_Texts;
-    bool m_Visible = false;
+    bool operator<(const TASInfo &o) const {
+        return name < o.name;
+    }
 };
 
 class TASSupport : public IMod {
@@ -89,7 +52,7 @@ public:
     const char *GetID() override { return "TASSupport"; }
     const char *GetVersion() override { return BML_VERSION; }
     const char *GetName() override { return "TAS Support"; }
-    const char *GetAuthor() override { return "Gamepiaynmo"; }
+    const char *GetAuthor() override { return "Gamepiaynmo & Kakuty"; }
     const char *GetDescription() override { return "Make TAS possible in Ballance (WIP)."; }
     DECLARE_BML_VERSION;
 
@@ -112,8 +75,6 @@ public:
 
     void OnBallOff() override;
 
-    IBML* GetBML() { return m_BML; }
-
     void OnPreProcessInput();
     void OnPreProcessTime();
 
@@ -121,10 +82,17 @@ public:
     void OnStop();
     void OnFinish();
 
+    void OnDrawMenu();
+    void OnDrawKeys();
+
+    void OpenTASMenu();
+    void ExitTASMenu();
+
+    void RefreshRecords();
     void LoadTAS(const std::string &filename);
 
     CKTimeManager *m_TimeManager = nullptr;
-    CKInputManager *m_InputManager = nullptr;
+    InputHook *m_InputHook = nullptr;
 
     CKDataArray *m_CurLevel = nullptr;
     CKDataArray *m_Keyboard = nullptr;
@@ -138,33 +106,24 @@ public:
     IProperty *m_Enabled = nullptr;
     IProperty *m_Record = nullptr;
     IProperty *m_StopKey = nullptr;
-    bool m_ReadyToPlay = false;
 
+    bool m_ReadyToPlay = false;
     bool m_Recording = false;
     bool m_Playing = false;
+    bool m_ShowMenu = false;
+    int m_CurPage = 0;
+    std::vector<TASInfo> m_Records;
+
     std::size_t m_CurFrame = 0;
     std::vector<FrameData> m_RecordData;
     std::string m_MapName;
 
     CK2dEntity *m_Level01 = nullptr;
     CKBehavior *m_ExitStart = nullptr;
-    BGui::Gui *m_TASEntryGui = nullptr;
-    BGui::Button *m_TASEntry = nullptr;
-    GuiTASList *m_TASListGui = nullptr;
     CKBehavior *m_ExitMain = nullptr;
 
     IProperty *m_ShowKeys = nullptr;
-    BGui::Gui *m_KeysGui = nullptr;
-    BGui::Button *m_ButtonUp = nullptr;
-    BGui::Button *m_ButtonDown = nullptr;
-    BGui::Button *m_ButtonLeft = nullptr;
-    BGui::Button *m_ButtonRight = nullptr;
-    BGui::Button *m_ButtonShift = nullptr;
-    BGui::Button *m_ButtonSpace = nullptr;
-    BGui::Button *m_ButtonQ = nullptr;
-    BGui::Button *m_ButtonEsc = nullptr;
     char m_FrameCountText[100] = {};
-    BGui::Label *m_FrameCountLabel = nullptr;
 
     IProperty *m_SkipRender = nullptr;
     IProperty *m_ExitOnDead = nullptr;
