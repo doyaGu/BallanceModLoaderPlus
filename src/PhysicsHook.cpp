@@ -40,62 +40,100 @@ struct PhysicsHook {
 CKIpionManager *PhysicsHook::s_IpionManager = nullptr;
 CP_CLASS_VTABLE_NAME(CKIpionManager) PhysicsHook::s_VTable = {};
 
+#define FIXED 0
+#define FRICTION 1
+#define ELASTICITY 2
+#define MASS 3
+#define COLLISION_GROUP 4
+#define START_FROZEN 5
+#define ENABLE_COLLISION 6
+#define AUTOMATIC_CALCULATE_MASS_CENTER 7
+#define LINEAR_SPEED_DAMPENING 8
+#define ROT_SPEED_DAMPENING 9
+#define COLLISION_SURFACE 10
+#define CONVEX 11
+
 int Physicalize(const CKBehaviorContext &behcontext) {
     CKBehavior *beh = behcontext.Behavior;
     bool physicalize = beh->IsInputActive(0);
     auto *target = (CK3dEntity *) beh->GetTarget();
 
     if (physicalize) {
-        CKBOOL fixed;
-        float friction, elasticity, mass;
-        beh->GetInputParameterValue(0, &fixed);
-        beh->GetInputParameterValue(1, &friction);
-        beh->GetInputParameterValue(2, &elasticity);
-        beh->GetInputParameterValue(3, &mass);
-        CKSTRING collGroup = (CKSTRING) beh->GetInputParameterReadDataPtr(4);
-        CKBOOL startFrozen, enableColl, calcMassCenter;
-        float linearDamp, rotDamp;
-        beh->GetInputParameterValue(5, &startFrozen);
-        beh->GetInputParameterValue(6, &enableColl);
-        beh->GetInputParameterValue(7, &calcMassCenter);
-        beh->GetInputParameterValue(8, &linearDamp);
-        beh->GetInputParameterValue(9, &rotDamp);
-        CKSTRING collSurface = (CKSTRING) beh->GetInputParameterReadDataPtr(10);
-        VxVector massCenter;
-        beh->GetLocalParameterValue(3, &massCenter);
+        CKBOOL fixed = FALSE;
+        beh->GetInputParameterValue(FIXED, &fixed);
 
-        int convexCnt, ballCnt, concaveCnt;
-        beh->GetLocalParameterValue(0, &convexCnt);
-        beh->GetLocalParameterValue(1, &ballCnt);
-        beh->GetLocalParameterValue(2, &concaveCnt);
+        float friction = 0.4f;
+        beh->GetInputParameterValue(FRICTION, &friction);
 
-        CKMesh **convexMesh = (convexCnt > 0) ? new CKMesh *[convexCnt] : nullptr;
-        VxVector *ballCenter = (ballCnt > 0) ? new VxVector[ballCnt] : nullptr;
-        float *ballRadius = (ballCnt > 0) ? new float[ballCnt] : nullptr;
-        CKMesh **concaveMesh = (concaveCnt > 0) ? new CKMesh *[concaveCnt] : nullptr;
+        float elasticity = 0.5f;
+        beh->GetInputParameterValue(ELASTICITY, &elasticity);
 
-        int paramPos = 11;
-        for (int i = 0; i < convexCnt; i++)
-            convexMesh[i] = (CKMesh *) beh->GetInputParameterObject(paramPos + i);
-        paramPos += convexCnt;
+        float mass = 1.0f;
+        beh->GetInputParameterValue(MASS, &mass);
 
-        for (int i = 0; i < ballCnt; i++) {
-            beh->GetInputParameterValue(paramPos + 2 * i, &ballCenter[i]);
-            beh->GetInputParameterValue(paramPos + 2 * i + 1, &ballRadius[i]);
+        CKSTRING collisionGroup = (CKSTRING) beh->GetInputParameterReadDataPtr(COLLISION_GROUP);
+
+        CKBOOL startFrozen = FALSE;
+        beh->GetInputParameterValue(START_FROZEN, &startFrozen);
+
+        CKBOOL enableCollision = TRUE;
+        beh->GetInputParameterValue(ENABLE_COLLISION, &enableCollision);
+
+        CKBOOL autoCalcMassCenter = TRUE;
+        beh->GetInputParameterValue(AUTOMATIC_CALCULATE_MASS_CENTER, &autoCalcMassCenter);
+
+        float linearSpeedDampening = 0.1f;
+        beh->GetInputParameterValue(LINEAR_SPEED_DAMPENING, &linearSpeedDampening);
+
+        float rotSpeedDampening = 0.1f;
+        beh->GetInputParameterValue(ROT_SPEED_DAMPENING, &rotSpeedDampening);
+
+        auto collisionSurface = (CKSTRING) beh->GetInputParameterReadDataPtr(COLLISION_SURFACE);
+
+        int convexCount = 1;
+        beh->GetLocalParameterValue(0, &convexCount);
+
+        int ballCount = 0;
+        beh->GetLocalParameterValue(1, &ballCount);
+
+        int concaveCount = 0;
+        beh->GetLocalParameterValue(2, &concaveCount);
+
+        int pos = CONVEX;
+        CKMesh **convexMesh = (convexCount > 0) ? new CKMesh *[convexCount] : nullptr;
+        VxVector *ballCenter = (ballCount > 0) ? new VxVector[ballCount] : nullptr;
+        float *ballRadius = (ballCount > 0) ? new float[ballCount] : nullptr;
+        CKMesh **concaveMesh = (concaveCount > 0) ? new CKMesh *[concaveCount] : nullptr;
+
+        if (convexMesh) {
+            for (int i = 0; i < convexCount; ++i)
+                convexMesh[i] = (CKMesh *) beh->GetInputParameterObject(pos + i);
         }
-        paramPos += ballCnt * 2;
+        pos += convexCount;
 
-        for (int i = 0; i < concaveCnt; i++)
-            concaveMesh[i] = (CKMesh *) beh->GetInputParameterObject(paramPos + i);
-        paramPos += concaveCnt;
+        for (int j = 0; j < ballCount; ++j) {
+            beh->GetInputParameterValue(pos + 2 * j, &ballCenter[j]);
+            beh->GetInputParameterValue(pos + 2 * j + 1, &ballRadius[j]);
+        }
+        pos += ballCount * 2;
+
+        if (concaveMesh) {
+            for (int k = 0; k < concaveCount; ++k)
+                concaveMesh[k] = (CKMesh *) beh->GetInputParameterObject(pos + k);
+        }
+        pos += concaveCount;
+
+        VxVector shiftMassCenter;
+        beh->GetLocalParameterValue(3, &shiftMassCenter);
 
         BML_GetModManager()->BroadcastCallback(&IMod::OnPhysicalize, target,
-                                                   fixed, friction, elasticity, mass,
-                                                   collGroup, startFrozen, enableColl,
-                                                   calcMassCenter, linearDamp, rotDamp,
-                                                   collSurface, massCenter, convexCnt,
-                                                   convexMesh, ballCnt, ballCenter,
-                                                   ballRadius, concaveCnt, concaveMesh);
+                                               fixed, friction, elasticity, mass,
+                                               collisionGroup, startFrozen, enableCollision,
+                                               autoCalcMassCenter, linearSpeedDampening,
+                                               rotSpeedDampening,
+                                               collisionSurface, shiftMassCenter, convexCount,
+                                               convexMesh, ballCount, ballCenter,
+                                               ballRadius, concaveCount, concaveMesh);
         delete[] convexMesh;
         delete[] ballCenter;
         delete[] ballRadius;
