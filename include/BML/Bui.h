@@ -34,6 +34,21 @@ namespace Bui {
 
     BML_EXPORT ImGuiContext *GetImGuiContext();
 
+    class ImGuiContextScope {
+    public:
+        explicit ImGuiContextScope(ImGuiContext *context = nullptr) {
+            m_ImGuiContext = (context != nullptr) ? context : ImGui::GetCurrentContext();
+            ImGui::SetCurrentContext(GetImGuiContext());
+        }
+
+        ~ImGuiContextScope() {
+            ImGui::SetCurrentContext(m_ImGuiContext);
+        }
+
+    private:
+        ImGuiContext *m_ImGuiContext;
+    };
+
     BML_EXPORT CKTexture *LoadTexture(CKContext *context, const char *id, const char *filename, int slot = 0);
 
     BML_EXPORT ImVec2 GetMenuPos();
