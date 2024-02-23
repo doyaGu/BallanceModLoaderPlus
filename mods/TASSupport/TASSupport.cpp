@@ -218,6 +218,8 @@ void TASSupport::OnLoadScript(const char *filename, CKBehavior *script) {
 
 void TASSupport::OnProcess() {
     if (m_Enabled->GetBoolean()) {
+        Bui::ImGuiContextScope scope;
+
 #ifndef _DEBUG
         if (m_BML->IsCheatEnabled() && m_Recording)
             OnStop();
@@ -368,18 +370,18 @@ void TASSupport::OnStart() {
     if (m_Enabled->GetBoolean()) {
         m_BML->AddTimer(1ul, [this]() {
             auto *physicsManager = (CKIpionManager *)m_BML->GetCKContext()->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
-//            physicsManager->ResetSimulationClock();
-//            physicsManager->ResetDeltaTime();
+            // physicsManager->ResetSimulationClock();
+            // physicsManager->ResetDeltaTime();
 
-            auto *env = *reinterpret_cast<CKBYTE **>(reinterpret_cast<CKBYTE *>(physicsManager) + 0xC0);
-            *reinterpret_cast<double *>(env + 0x120) = 0;
-            *reinterpret_cast<double *>(env + 0x128) = 1.0 / 66;
-            *reinterpret_cast<double *>(env + 0x130) = 0;
-            *reinterpret_cast<CKDWORD *>(env + 0x138) = 0;
-            *reinterpret_cast<double *>(*reinterpret_cast<CKBYTE **>(env + 0x4) + 0x18) = 0;
+           auto *env = *reinterpret_cast<CKBYTE **>(reinterpret_cast<CKBYTE *>(physicsManager) + 0xC0);
+           *reinterpret_cast<double *>(env + 0x120) = 0;
+           *reinterpret_cast<double *>(env + 0x128) = 1.0 / 66;
+           *reinterpret_cast<double *>(env + 0x130) = 0;
+           *reinterpret_cast<CKDWORD *>(env + 0x138) = 0;
+           *reinterpret_cast<double *>(*reinterpret_cast<CKBYTE **>(env + 0x4) + 0x18) = 0;
 
-            auto *time = reinterpret_cast<float *>(reinterpret_cast<CKBYTE *>(physicsManager) + 0xC8);
-            *time = m_TimeManager->GetLastDeltaTime();
+           auto *time = reinterpret_cast<float *>(reinterpret_cast<CKBYTE *>(physicsManager) + 0xC8);
+           *time = m_TimeManager->GetLastDeltaTime();
         });
 
         if (m_Keyboard) {
