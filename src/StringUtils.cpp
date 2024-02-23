@@ -44,6 +44,16 @@ namespace utils {
         return ret;
     }
 
+    void TrimString(std::string &s) {
+        s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](char x) { return !std::isspace(x); }));
+        s.erase(std::find_if(s.rbegin(), s.rend(), [](char x) { return !std::isspace(x); }).base(), s.end());
+    }
+
+    void TrimString(std::wstring &s) {
+        s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](wchar_t x) { return !std::iswspace(x); }));
+        s.erase(std::find_if(s.rbegin(), s.rend(), [](wchar_t x) { return !std::iswspace(x); }).base(), s.end());
+    }
+
     std::string JoinString(const std::vector<std::string> &str, const std::string &delim) {
         std::string ret;
         for (size_t i = 0; i < str.size(); ++i) {
@@ -142,5 +152,93 @@ namespace utils {
 
     int Utf16ToUtf8(const wchar_t *wcharStr, char *charStr, int size) {
         return ::WideCharToMultiByte(CP_UTF8, 0, wcharStr, -1, charStr, size, nullptr, nullptr);
+    }
+
+    int Utf8ToUtf16(const char *charStr, wchar_t *wcharStr, int size) {
+        return ::MultiByteToWideChar(CP_UTF8, 0, charStr, -1, wcharStr, size);
+    }
+
+    std::wstring AnsiToUtf16(const char *str) {
+        if (!str || str[0] == '\0')
+            return L"";
+
+        size_t len = strlen(str);
+        int size = ::MultiByteToWideChar(CP_ACP, 0, str, (int) len, nullptr, 0);
+        std::wstring wstr(size, 0);
+        ::MultiByteToWideChar(CP_ACP, 0, str, (int) len, &wstr[0], size);
+        return wstr;
+    }
+
+    std::string Utf16ToAnsi(const wchar_t *wstr) {
+        if (!wstr || wstr[0] == '\0')
+            return "";
+
+        size_t len = wcslen(wstr);
+        int size = ::WideCharToMultiByte(CP_ACP, 0, wstr, -1, nullptr, 0, nullptr, nullptr);
+        std::string str(size, 0);
+        ::WideCharToMultiByte(CP_ACP, 0, wstr, (int) len, &str[0], size, nullptr, nullptr);
+        return str;
+    }
+
+    std::wstring Utf8ToUtf16(const char *str) {
+        if (!str || str[0] == '\0')
+            return L"";
+
+        size_t len = strlen(str);
+        int size = ::MultiByteToWideChar(CP_UTF8, 0, str, (int) len, nullptr, 0);
+        std::wstring wstr(size, 0);
+        ::MultiByteToWideChar(CP_UTF8, 0, str, (int) len, &wstr[0], size);
+        return wstr;
+    }
+
+    std::string Utf16ToUtf8(const wchar_t *wstr) {
+        if (!wstr || wstr[0] == '\0')
+            return "";
+
+        size_t len = wcslen(wstr);
+        int size = ::WideCharToMultiByte(CP_UTF8, 0, wstr, (int) len, nullptr, 0, nullptr, nullptr);
+        std::string str(size, 0);
+        ::WideCharToMultiByte(CP_UTF8, 0, wstr, (int) len, &str[0], size, nullptr, nullptr);
+        return str;
+    }
+
+    std::wstring AnsiToUtf16(const std::string &str) {
+        if (str.empty())
+            return L"";
+
+        int size = ::MultiByteToWideChar(CP_ACP, 0, &str[0], (int) str.size(), nullptr, 0);
+        std::wstring wstr(size, 0);
+        ::MultiByteToWideChar(CP_ACP, 0, &str[0], (int) str.size(), &wstr[0], size);
+        return wstr;
+    }
+
+    std::string Utf16ToAnsi(const std::wstring &wstr) {
+        if (wstr.empty())
+            return "";
+
+        int size = ::WideCharToMultiByte(CP_ACP, 0, &wstr[0], -1, nullptr, 0, nullptr, nullptr);
+        std::string str(size, 0);
+        ::WideCharToMultiByte(CP_ACP, 0, &wstr[0], (int) wstr.size(), &str[0], size, nullptr, nullptr);
+        return str;
+    }
+
+    std::wstring Utf8ToUtf16(const std::string &str) {
+        if (str.empty())
+            return L"";
+
+        int size = ::MultiByteToWideChar(CP_UTF8, 0, &str[0], (int) str.size(), nullptr, 0);
+        std::wstring wstr(size, 0);
+        ::MultiByteToWideChar(CP_UTF8, 0, &str[0], (int) str.size(), &wstr[0], size);
+        return wstr;
+    }
+
+    std::string Utf16ToUtf8(const std::wstring &wstr) {
+        if (wstr.empty())
+            return "";
+
+        int size = ::WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int) wstr.size(), nullptr, 0, nullptr, nullptr);
+        std::string str(size, 0);
+        ::WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int) wstr.size(), &str[0], size, nullptr, nullptr);
+        return str;
     }
 }

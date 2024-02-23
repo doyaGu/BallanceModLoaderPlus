@@ -1,12 +1,17 @@
 #ifndef BML_STRINGUTILS_H
 #define BML_STRINGUTILS_H
 
+#include <cctype>
+#include <cwctype>
 #include <string>
 #include <vector>
 
 namespace utils {
     std::vector<std::string> SplitString(const std::string &str, const std::string &delim);
     std::vector<std::wstring> SplitString(const std::wstring &str, const std::wstring &delim);
+
+    void TrimString(std::string &s);
+    void TrimString(std::wstring &s);
 
     std::string JoinString(const std::vector<std::string> &str, const std::string &delim);
     std::wstring JoinString(const std::vector<std::wstring> &str, const std::wstring &delim);
@@ -26,6 +31,17 @@ namespace utils {
     int AnsiToUtf16(const char *charStr, wchar_t *wcharStr, int size);
     int Utf16ToAnsi(const wchar_t *wcharStr, char *charStr, int size);
     int Utf16ToUtf8(const wchar_t *wcharStr, char *charStr, int size);
+    int Utf8ToUtf16(const char *charStr, wchar_t *wcharStr, int size);
+
+    std::wstring AnsiToUtf16(const char *str);
+    std::string Utf16ToAnsi(const wchar_t *wstr);
+    std::wstring Utf8ToUtf16(const char *str);
+    std::string Utf16ToUtf8(const wchar_t *wstr);
+
+    std::wstring AnsiToUtf16(const std::string &str);
+    std::string Utf16ToAnsi(const std::wstring &wstr);
+    std::wstring Utf8ToUtf16(const std::string &str);
+    std::string Utf16ToUtf8(const std::wstring &wstr);
 
     // BKDR hash
     inline size_t HashString(const char *str) {
