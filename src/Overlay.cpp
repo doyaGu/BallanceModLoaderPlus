@@ -19,7 +19,6 @@ namespace Overlay {
     typedef LRESULT (CALLBACK *LPFNWNDPROC)(HWND, UINT, WPARAM, LPARAM);
 
     ImGuiContext *g_ImGuiContext = nullptr;
-    ImGuiContext *g_PrevImGuiContext = nullptr;
     bool g_ImGuiReady = false;
     bool g_RenderReady = false;
 
@@ -27,7 +26,7 @@ namespace Overlay {
     LPFNWNDPROC g_MainWndProc = nullptr;
 
     LRESULT OnWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-        ImGuiSetCurrentContext();
+        ImGuiContextScope scope;
 
         LRESULT res;
         if (msg == WM_IME_COMPOSITION) {
@@ -48,7 +47,6 @@ namespace Overlay {
             res = ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
         }
 
-        ImGuiRestorePreviousContext();
         return res;
     }
 
@@ -72,62 +70,39 @@ namespace Overlay {
         return g_ImGuiContext;
     }
 
-    void ImGuiSetCurrentContext() {
-        g_PrevImGuiContext = ImGui::GetCurrentContext();
-        ImGui::SetCurrentContext(g_ImGuiContext);
-    }
-
-    void ImGuiRestorePreviousContext() {
-        ImGui::SetCurrentContext(g_PrevImGuiContext);
-    }
-
-    bool ImGuiCreateContext(CKContext *context, bool originalPlayer) {
+    ImGuiContext *ImGuiCreateContext() {
         // Setup Dear ImGui context
         IMGUI_CHECKVERSION();
 
-        g_PrevImGuiContext = ImGui::GetCurrentContext();
+        ImGuiContext *previousContext = ImGui::GetCurrentContext();
         g_ImGuiContext = ImGui::CreateContext();
-        if (!g_ImGuiContext)
-            return false;
+        ImGui::SetCurrentContext(previousContext);
 
-        if (originalPlayer) {
-            g_WndProc = (LPFNWNDPROC) ((char *) utils::GetModuleBaseAddress(::GetModuleHandleA("Player.exe")) + 0x39F0);
-            MH_CreateHook((void *) g_WndProc, (void *) MainWndProc, (void **) &g_MainWndProc);
-            MH_EnableHook((void *) g_WndProc);
-        } else {
-            HookWndProc((HWND) context->GetMainWindow());
-        }
-
-        ImGuiRestorePreviousContext();
-        return true;
+        return g_ImGuiContext;
     }
 
-    void ImGuiDestroyContext(CKContext *context, bool originalPlayer) {
-        ImGuiSetCurrentContext();
-
-        if (originalPlayer) {
-            MH_DisableHook((void *) g_WndProc);
-            MH_RemoveHook((void *) g_WndProc);
-            g_WndProc = nullptr;
-        } else {
-            UnhookWndProc((HWND) context->GetMainWindow());
-        }
-
+    void ImGuiDestroyContext() {
+        ImGuiContextScope scope;
         ImGui::DestroyContext();
-        ImGuiRestorePreviousContext();
     }
 
-    bool ImGuiInit(CKContext *context) {
+    bool ImGuiInit(CKContext *context, bool originalPlayer) {
         if (!g_ImGuiReady) {
-            ImGuiSetCurrentContext();
+            ImGuiContextScope scope;
+
+            if (originalPlayer) {
+                g_WndProc = (LPFNWNDPROC) ((char *) utils::GetModuleBaseAddress(::GetModuleHandleA("Player.exe")) + 0x39F0);
+                MH_CreateHook((void *) g_WndProc, (void *) MainWndProc, (void **) &g_MainWndProc);
+                MH_EnableHook((void *) g_WndProc);
+            } else {
+                HookWndProc((HWND) context->GetMainWindow());
+            }
 
             if (!ImGui_ImplWin32_Init(context->GetMainWindow()))
                 return false;
 
             if (!ImGui_ImplCK2_Init(context))
                 return false;
-
-            ImGuiRestorePreviousContext();
 
             g_RenderReady = false;
             g_ImGuiReady = true;
@@ -136,14 +111,20 @@ namespace Overlay {
         return true;
     }
 
-    void ImGuiShutdown() {
+    void ImGuiShutdown(CKContext *context, bool originalPlayer) {
         if (g_ImGuiReady) {
-            ImGuiSetCurrentContext();
+            ImGuiContextScope scope;
 
             ImGui_ImplCK2_Shutdown();
             ImGui_ImplWin32_Shutdown();
 
-            ImGuiRestorePreviousContext();
+            if (originalPlayer) {
+                MH_DisableHook((void *) g_WndProc);
+                MH_RemoveHook((void *) g_WndProc);
+                g_WndProc = nullptr;
+            } else {
+                UnhookWndProc((HWND) context->GetMainWindow());
+            }
 
             g_RenderReady = false;
             g_ImGuiReady = false;
@@ -169,11 +150,8 @@ namespace Overlay {
 
     void ImGuiOnRender() {
         if (g_RenderReady) {
-            ImGuiSetCurrentContext();
-
+            ImGuiContextScope scope;
             ImGui_ImplCK2_RenderDrawData(ImGui::GetDrawData());
-
-            ImGuiRestorePreviousContext();
         }
     }
 }
