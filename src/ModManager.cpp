@@ -220,6 +220,30 @@ CKERROR ModManager::OnCKEnd() {
     return CK_OK;
 }
 
+CKERROR ModManager::OnCKPlay() {
+    if (m_Context->IsReseted()) {
+        if (m_Context->GetCurrentLevel() == nullptr)
+            return CK_OK;
+
+        if (!m_RenderContext) {
+            m_RenderContext = m_Context->GetPlayerRenderContext();
+            m_Logger->Info("Get Render Context pointer 0x%08x", m_RenderContext);
+        }
+
+        if (!AreModsDown()) {
+            Overlay::ImGuiInit(m_Context);
+            Overlay::ImGuiSetCurrentContext();
+
+            LoadMods();
+            InitMods();
+
+            Overlay::ImGuiRestorePreviousContext();
+        }
+    }
+
+    return CK_OK;
+}
+
 CKERROR ModManager::OnCKReset() {
     if (m_Context->GetCurrentLevel() == nullptr)
         return CK_OK;
@@ -229,28 +253,6 @@ CKERROR ModManager::OnCKReset() {
         UnloadMods();
 
         Overlay::ImGuiShutdown();
-    }
-
-    return CK_OK;
-}
-
-CKERROR ModManager::OnCKPostReset() {
-    if (m_Context->GetCurrentLevel() == nullptr)
-        return CK_OK;
-
-    if (!m_RenderContext) {
-        m_RenderContext = m_Context->GetPlayerRenderContext();
-        m_Logger->Info("Get Render Context pointer 0x%08x", m_RenderContext);
-    }
-
-    if (!AreModsDown()) {
-        Overlay::ImGuiInit(m_Context);
-        Overlay::ImGuiSetCurrentContext();
-
-        LoadMods();
-        InitMods();
-
-        Overlay::ImGuiRestorePreviousContext();
     }
 
     return CK_OK;
@@ -274,7 +276,7 @@ CKERROR ModManager::PreProcess() {
 }
 
 CKERROR ModManager::PostProcess() {
-    extern void PhysicsPostProcess();
+        extern void PhysicsPostProcess();
     PhysicsPostProcess();
 
     for (auto iter = m_Timers.begin(); iter != m_Timers.end();) {

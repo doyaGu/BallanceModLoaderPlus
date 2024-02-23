@@ -74,8 +74,8 @@ public:
     CKERROR OnCKInit() override;
     CKERROR OnCKEnd() override;
 
+    CKERROR OnCKPlay() override;
     CKERROR OnCKReset() override;
-    CKERROR OnCKPostReset() override;
 
     CKERROR PreProcess() override;
     CKERROR PostProcess() override;
@@ -86,8 +86,8 @@ public:
     CKDWORD GetValidFunctionsMask() override {
         return CKMANAGER_FUNC_OnCKInit |
                CKMANAGER_FUNC_OnCKEnd |
+               CKMANAGER_FUNC_OnCKPlay |
                CKMANAGER_FUNC_OnCKReset |
-               CKMANAGER_FUNC_OnCKPostReset |
                CKMANAGER_FUNC_PreProcess |
                CKMANAGER_FUNC_PostProcess |
                CKMANAGER_FUNC_OnPostRender |
@@ -196,9 +196,9 @@ public:
         return (CKBehavior *)m_Context->GetObjectByNameAndClass((CKSTRING) name, CKCID_BEHAVIOR);
     }
 
-    void SetIC(CKBeObject *obj, bool hierarchy = false) override;
-    void RestoreIC(CKBeObject *obj, bool hierarchy = false) override;
-    void Show(CKBeObject *obj, CK_OBJECT_SHOWOPTION show, bool hierarchy = false) override;
+    void SetIC(CKBeObject *obj, bool hierarchy) override;
+    void RestoreIC(CKBeObject *obj, bool hierarchy) override;
+    void Show(CKBeObject *obj, CK_OBJECT_SHOWOPTION show, bool hierarchy) override;
 
     void AddTimer(CKDWORD delay, std::function<void()> callback) override;
     void AddTimerLoop(CKDWORD delay, std::function<bool()> callback) override;
