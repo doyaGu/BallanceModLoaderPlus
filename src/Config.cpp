@@ -26,7 +26,7 @@ bool Config::Load(const wchar_t *path) {
     size_t sz = ftell(fp);
     fseek(fp, 0, SEEK_SET);
 
-    char *buf = new char[sz];
+    auto *buf = new char[sz + 1];
 
     if (fread(buf, sizeof(char), sz, fp) != sz) {
         delete[] buf;
@@ -34,29 +34,36 @@ bool Config::Load(const wchar_t *path) {
         return false;
     }
     fclose(fp);
+    buf[sz] = '\0';
 
-    std::istringstream in(buf);
+    std::wstring wBuf = utils::Utf8ToUtf16(buf);
     delete[] buf;
 
-    std::string token, comment, category;
+    std::wistringstream in(wBuf);
+    std::wstring wToken, wComment, wCategory;
+    std::string comment, category;
     bool inCate = false;
-    while (in >> token) {
-        if (token == "#") {
-            std::getline(in, comment);
-            Trim(comment);
-        } else if (token == "{")
+
+    while (in >> wToken) {
+        if (wToken == L"#") {
+            std::getline(in, wComment);
+            utils::TrimString(wComment);
+            comment = utils::Utf16ToUtf8(wComment);
+        } else if (wToken == L"{")
             inCate = true;
-        else if (token == "}")
+        else if (wToken == L"}")
             inCate = false;
         else if (inCate) {
-            std::string propName;
-            in >> propName;
+            std::wstring wPropName;
+            in >> wPropName;
+            std::string propName = utils::Utf16ToUtf8(wPropName);
             auto *prop = new Property(nullptr, category, propName);
-            switch (token[0]) {
+            switch (wToken[0]) {
                 case 'S': {
-                    std::string value;
-                    std::getline(in, value);
-                    Trim(value);
+                    std::wstring wValue;
+                    std::getline(in, wValue);
+                    utils::TrimString(wValue);
+                    std::string value = utils::Utf16ToUtf8(wValue);
                     prop->SetDefaultString(value.c_str());
                     break;
                 }
@@ -88,9 +95,11 @@ bool Config::Load(const wchar_t *path) {
             prop->SetComment(comment.c_str());
             GetCategory(category.c_str())->m_Properties.push_back(prop);
         } else {
-            category = token;
+            wCategory = wToken;
+            category = utils::Utf16ToUtf8(wCategory);
+
             GetCategory(category.c_str())->m_Comment = comment;
-            comment.clear();
+            wComment.clear();
         }
     }
 
@@ -126,12 +135,11 @@ bool Config::Save(const wchar_t *path) {
             iter++;
     }
 
-    out << "# Configuration File for Mod: " << m_Mod->GetName() << " - " << m_Mod->GetVersion() << std::endl
-         << std::endl;
+    out << "# Configuration File for Mod: " << m_Mod->GetName()
+        << " - " << m_Mod->GetVersion() << std::endl << std::endl;
     for (auto *category: m_Categories) {
         out << "# " << category->m_Comment << std::endl;
-        out << category->m_Name << " {" << std::endl
-             << std::endl;
+        out << category->m_Name << " {" << std::endl << std::endl;
 
         for (auto property: category->m_Properties) {
             out << "\t# " << property->GetComment() << std::endl;
@@ -175,12 +183,10 @@ bool Config::Save(const wchar_t *path) {
                     break;
             }
 
-            out << std::endl
-                 << std::endl;
+            out << std::endl << std::endl;
         }
 
-        out << "}" << std::endl
-             << std::endl;
+        out << "}" << std::endl << std::endl;
     }
 
     std::string buf = out.str();
@@ -266,7 +272,7 @@ void Config::SetCategoryComment(const char *category, const char *comment) {
 }
 
 Category::Category(Config *config, std::string name)
-    : m_Config(config), m_Name(std::move(name)) {}
+        : m_Config(config), m_Name(std::move(name)) {}
 
 Category::~Category() {
     for (Property *prop: m_Properties)
@@ -472,5 +478,5 @@ CKKEYBOARD *Property::GetKeyPtr() {
 
 void Property::SetModified() {
     if (m_Config)
-        m_Config->m_Mod->OnModifyConfig( m_Category.c_str(), m_Key.c_str(), this);
+        m_Config->m_Mod->OnModifyConfig(m_Category.c_str(), m_Key.c_str(), this);
 }

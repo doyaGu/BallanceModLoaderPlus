@@ -119,11 +119,6 @@ public:
     bool Save(const wchar_t *path);
 
 private:
-    static void Trim(std::string &s) {
-		s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](char x){return !std::isspace(x); }));
-		s.erase(std::find_if(s.rbegin(), s.rend(), [](char x){return !std::isspace(x); }).base(), s.end());
-    }
-
     IMod *m_Mod;
     std::string m_ModID;
 
