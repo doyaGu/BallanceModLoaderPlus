@@ -8,14 +8,26 @@
 namespace Overlay {
     ImGuiContext *GetImGuiContext();
 
-    void ImGuiSetCurrentContext();
-    void ImGuiRestorePreviousContext();
+    class ImGuiContextScope {
+    public:
+        explicit ImGuiContextScope(ImGuiContext *context = nullptr) {
+            m_ImGuiContext = (context != nullptr) ? context : ImGui::GetCurrentContext();
+            ImGui::SetCurrentContext(GetImGuiContext());
+        }
 
-    bool ImGuiCreateContext(CKContext *context, bool originalPlayer = false);
-    void ImGuiDestroyContext(CKContext *context, bool originalPlayer = false);
+        ~ImGuiContextScope() {
+            ImGui::SetCurrentContext(m_ImGuiContext);
+        }
 
-    bool ImGuiInit(CKContext *context);
-    void ImGuiShutdown();
+    private:
+        ImGuiContext *m_ImGuiContext;
+    };
+
+    ImGuiContext *ImGuiCreateContext();
+    void ImGuiDestroyContext();
+
+    bool ImGuiInit(CKContext *context, bool originalPlayer = false);
+    void ImGuiShutdown(CKContext *context, bool originalPlayer = false);
 
     void ImGuiNewFrame();
     void ImGuiRender();

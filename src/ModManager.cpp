@@ -207,13 +207,13 @@ ModManager::~ModManager() {
 CKERROR ModManager::OnCKInit() {
     Init();
 
-    Overlay::ImGuiCreateContext(m_Context, IsOriginalPlayer());
+    Overlay::ImGuiCreateContext();
 
     return CK_OK;
 }
 
 CKERROR ModManager::OnCKEnd() {
-    Overlay::ImGuiDestroyContext(m_Context, IsOriginalPlayer());
+    Overlay::ImGuiDestroyContext();
 
     Shutdown();
 
@@ -231,13 +231,11 @@ CKERROR ModManager::OnCKPlay() {
         }
 
         if (!AreModsDown()) {
-            Overlay::ImGuiInit(m_Context);
-            Overlay::ImGuiSetCurrentContext();
+            Overlay::ImGuiInit(m_Context, IsOriginalPlayer());
+            Overlay::ImGuiContextScope scope;
 
             LoadMods();
             InitMods();
-
-            Overlay::ImGuiRestorePreviousContext();
         }
     }
 
@@ -252,14 +250,15 @@ CKERROR ModManager::OnCKReset() {
         ShutdownMods();
         UnloadMods();
 
-        Overlay::ImGuiShutdown();
+        Overlay::ImGuiShutdown(m_Context, IsOriginalPlayer());
     }
 
     return CK_OK;
 }
 
 CKERROR ModManager::PreProcess() {
-    Overlay::ImGuiSetCurrentContext();
+    Overlay::ImGuiContextScope scope;
+
     Overlay::ImGuiNewFrame();
 
     ImGuiIO &io = ImGui::GetIO();
@@ -276,7 +275,9 @@ CKERROR ModManager::PreProcess() {
 }
 
 CKERROR ModManager::PostProcess() {
-        extern void PhysicsPostProcess();
+    Overlay::ImGuiContextScope scope;
+
+    extern void PhysicsPostProcess();
     PhysicsPostProcess();
 
     for (auto iter = m_Timers.begin(); iter != m_Timers.end();) {
@@ -311,7 +312,6 @@ CKERROR ModManager::PostProcess() {
     }
 
     Overlay::ImGuiRender();
-    Overlay::ImGuiRestorePreviousContext();
 
     if (m_Exiting)
         m_MessageManager->SendMessageBroadcast(m_MessageManager->AddMessageType((CKSTRING) "Exit Game"));
