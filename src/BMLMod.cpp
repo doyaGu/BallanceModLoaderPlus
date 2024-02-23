@@ -560,28 +560,27 @@ void BMLMod::LoadFont() {
     if (filename && filename[0] != '\0') {
         std::string path = BML_GetModManager()->GetDirectoryUtf8(BML_DIR_LOADER);
         path.append("\\Fonts\\").append(filename);
-        if (utils::FileExists(path)) {
-            float size = m_FontSize->GetFloat();
-            if (size <= 0)
-                size = 32.0f;
 
-            const ImWchar *glyphRanges = nullptr;
-            const char *ranges = m_FontGlyphRanges->GetString();
-            if (strnicmp(ranges, "ChineseFull", 12) == 0) {
-                glyphRanges = io.Fonts->GetGlyphRangesChineseFull();
-            } else if (strnicmp(ranges, "Chinese", 8) == 0) {
-                glyphRanges = io.Fonts->GetGlyphRangesChineseSimplifiedCommon();
-            }
+        float size = m_FontSize->GetFloat();
+        if (size <= 0)
+            size = 32.0f;
 
-            ImFontConfig config;
-            config.SizePixels = size;
-            if (strnicmp(ranges, "Chinese", 7) == 0) {
-                // Set OversampleH/OversampleV to 1 to reduce the texture size.
-                config.OversampleH = config.OversampleV = 1;
-            }
-
-            m_Font = io.Fonts->AddFontFromFileTTF(path.c_str(), size, &config, glyphRanges);
+        const ImWchar *glyphRanges = nullptr;
+        const char *ranges = m_FontGlyphRanges->GetString();
+        if (strnicmp(ranges, "ChineseFull", 12) == 0) {
+            glyphRanges = io.Fonts->GetGlyphRangesChineseFull();
+        } else if (strnicmp(ranges, "Chinese", 8) == 0) {
+            glyphRanges = io.Fonts->GetGlyphRangesChineseSimplifiedCommon();
         }
+
+        ImFontConfig config;
+        config.SizePixels = size;
+        if (strnicmp(ranges, "Chinese", 7) == 0) {
+            // Set OversampleH/OversampleV to 1 to reduce the texture size.
+            config.OversampleH = config.OversampleV = 1;
+        }
+
+        m_Font = io.Fonts->AddFontFromFileTTF(path.c_str(), size, &config, glyphRanges);
     }
 
     if (!m_Font) {
@@ -673,6 +672,7 @@ std::string BMLMod::CreateTempMapFile(const std::wstring &path) {
     wchar_t buf[1024];
     _snwprintf(buf, sizeof(buf) / sizeof(wchar_t),
                L"%s\\Maps\\%8X%s", BML_GetModManager()->GetDirectory(BML_DIR_TEMP), hash, ext);
+    buf[1023] = '\0';
 
     if (!utils::DuplicateFile(path, buf))
         return "";
