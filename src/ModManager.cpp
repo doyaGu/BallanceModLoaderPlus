@@ -659,7 +659,7 @@ bool ModManager::LoadConfig(Config *config) {
     wchar_t buf[256];
     utils::AnsiToUtf16(mod->GetID(), buf, 256);
     std::wstring configPath = m_LoaderDir;
-    configPath.append(L"\\Config\\").append(buf).append(L".cfg");
+    configPath.append(L"\\Configs\\").append(buf).append(L".cfg");
     return config->Load(configPath.c_str());
 }
 
@@ -674,7 +674,7 @@ bool ModManager::SaveConfig(Config *config) {
     wchar_t buf[256];
     utils::AnsiToUtf16(mod->GetID(), buf, 256);
     std::wstring configPath = m_LoaderDir;
-    configPath.append(L"\\Config\\").append(buf).append(L".cfg");
+    configPath.append(L"\\Configs\\").append(buf).append(L".cfg");
     return config->Save(configPath.c_str());
 }
 
@@ -1056,7 +1056,7 @@ void ModManager::InitDirectories() {
     m_LoaderDirUtf8 = buf;
 
     // Set up config directory
-    m_ConfigDir = m_LoaderDir + L"\\Config";
+    m_ConfigDir = m_LoaderDir + L"\\Configs";
     if (!utils::DirectoryExists(m_ConfigDir)) {
         utils::CreateDir(m_ConfigDir);
     }
