@@ -17,10 +17,6 @@ public:
     DECLARE_BML_VERSION;
 
     void OnLoad() override;
-
-    void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
-                      CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
-                      XObjectArray *objArray, CKObject *masterObj) override;
     void OnProcess() override;
 
     void OnExitGame() override;
@@ -42,16 +38,4 @@ private:
 
     float m_TravelSpeed = 0.2f;
     CKCamera *m_TravelCam = nullptr;
-
-    IProperty *m_CamRot[2] = {};
-    IProperty *m_CamY[2] = {};
-    IProperty *m_CamZ[2] = {};
-    IProperty *m_Cam45 = nullptr;
-    IProperty *m_CamReset = nullptr;
-    IProperty *m_CamOn = nullptr;
-
-    CK3dEntity *m_CamPos = nullptr;
-    CK3dEntity *m_CamOrient = nullptr;
-    CK3dEntity *m_CamOrientRef = nullptr;
-    CK3dEntity *m_CamTarget = nullptr;
 };

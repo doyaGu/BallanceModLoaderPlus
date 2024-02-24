@@ -22,6 +22,9 @@ public:
 
     void OnLoad() override;
     void OnModifyConfig(const char *category, const char *key, IProperty *prop) override;
+    void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
+                      CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
+                      XObjectArray *objArray, CKObject *masterObj) override;
     void OnLoadScript(const char *filename, CKBehavior *script) override;
 
     void OnProcess() override;
@@ -31,6 +34,7 @@ public:
 
     void OnStartLevel() override;
     void OnPreResetLevel() override;
+    void OnPostResetLevel() override;
     void OnPauseLevel() override;
     void OnUnpauseLevel() override;
     void OnPostExitLevel() override;
@@ -57,10 +61,12 @@ private:
     void OnProcess_ChangeSpeed();
     void OnProcess_AddLife();
     void OnProcess_SkipRender();
+    void OnProcess_Summon();
 
     CKContext *m_CKContext = nullptr;
     CKRenderContext *m_RenderContext = nullptr;
     InputHook *m_InputHook = nullptr;
+    float m_DeltaTime = 0.0f;
 
     bool m_InLevel = false;
     bool m_Paused = false;
@@ -96,7 +102,16 @@ private:
     CKDataArray *m_CurLevel = nullptr;
     CKDataArray *m_IngameParam = nullptr;
 
+    CK3dEntity *m_CamOrientRef = nullptr;
+    CK3dEntity *m_CamTarget = nullptr;
     CKParameter *m_CurSector = nullptr;
     CKBehavior *m_PhysicsNewBall = nullptr;
     CKBehavior *m_DynamicPos = nullptr;
+
+    IProperty *m_AddBall[4] = {};
+    int m_CurSel = -1;
+    CK3dEntity *m_CurObj = nullptr;
+    CK3dEntity *m_Balls[4] = {};
+    std::vector<std::pair<int, CK3dEntity *>> m_TempBalls;
+    IProperty *m_MoveKeys[6] = {};
 };
