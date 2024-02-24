@@ -320,7 +320,7 @@ void BMLMod::ToggleCommandBar(bool on) {
         m_CmdTyping = false;
         m_CmdBuf[0] = '\0';
         m_BML->AddTimerLoop(1ul, [this] {
-            if (m_InputHook->oIsKeyDown(CKKEY_ESCAPE))
+            if (m_InputHook->oIsKeyDown(CKKEY_ESCAPE) || m_InputHook->oIsKeyDown(CKKEY_RETURN))
                 return true;
             m_InputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
             return false;
