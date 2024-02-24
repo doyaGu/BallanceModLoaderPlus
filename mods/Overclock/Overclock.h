@@ -27,5 +27,4 @@ private:
     IProperty *m_Overclock = nullptr;
     CKBehaviorLink *m_OverclockLinks[3] = {};
     CKBehaviorIO *m_OverclockLinkIO[3][2] = {};
-
 };
