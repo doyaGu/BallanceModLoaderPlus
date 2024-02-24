@@ -1207,8 +1207,8 @@ void BMLMod::OnProcess_CommandBar() {
                                                        ImGuiInputTextFlags_EscapeClearsAll |
                                                        ImGuiInputTextFlags_CallbackCompletion |
                                                        ImGuiInputTextFlags_CallbackHistory;
-        if (ImGui::InputText("##CmdBar", m_CmdBuf, IM_ARRAYSIZE(m_CmdBuf), InputTextFlags, &TextEditCallback,
-                             (void *) this)) {
+        if (ImGui::InputText("##CmdBar", m_CmdBuf, IM_ARRAYSIZE(m_CmdBuf), InputTextFlags,
+                             &TextEditCallback, (void *) this)) {
             if (m_CmdBuf[0] != '\0') {
                 m_CmdHistory.emplace_back(m_CmdBuf);
                 m_BML->ExecuteCommand(m_CmdBuf);
@@ -1483,7 +1483,6 @@ void BMLMod::OnDrawModPage() {
     auto *config = BML_GetModManager()->GetConfig(m_CurrentMod);
     if (config) {
         float y = ImGui::GetCursorScreenPos().y;
-        float spacing = 0.1f;
 
         {
             float oldScale = ImGui::GetFont()->Scale;
@@ -1735,12 +1734,6 @@ void BMLMod::OnDrawMapList() {
     }
 
     ImGui::PushStyleColor(ImGuiCol_FrameBg, Bui::GetMenuColor());
-
-    constexpr ImGuiWindowFlags BarFlags = ImGuiWindowFlags_NoDecoration |
-                                          ImGuiWindowFlags_NoBackground |
-                                          ImGuiWindowFlags_NoResize |
-                                          ImGuiWindowFlags_NoMove |
-                                          ImGuiWindowFlags_NoNav;
 
     ImGui::SetCursorScreenPos(ImVec2(vpSize.x * 0.4f, vpSize.y * 0.18f));
     ImGui::SetNextItemWidth(vpSize.x * 0.2f);
