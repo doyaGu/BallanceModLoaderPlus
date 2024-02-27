@@ -11,7 +11,7 @@ public:
 
     const char *GetID() override { return "CameraUtilities"; }
     const char *GetVersion() override { return BML_VERSION; }
-    const char *GetName() override { return "CameraUtilities"; }
+    const char *GetName() override { return "Camera Utilities"; }
     const char *GetAuthor() override { return "Gamepiaynmo & Kakuty"; }
     const char *GetDescription() override { return "Camera utilities for Ballance."; }
     DECLARE_BML_VERSION;
