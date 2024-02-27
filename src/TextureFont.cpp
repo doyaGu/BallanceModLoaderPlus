@@ -117,8 +117,7 @@ void TextureFont::CreateFromTexture() {
         m_FontCoordinates[k].vwidth = vstep;
     }
 
-    if (m_SpacingProperties & FIXED) // The font must be fixed
-    {
+    if (m_SpacingProperties & FIXED) { // The font must be fixed
         // fill the uvs with the characters
         for (int i = 0; (float) i < m_CharNumber.y; ++i) {
             for (int j = 0; (float) j < m_CharNumber.x; ++j) {
@@ -134,8 +133,7 @@ void TextureFont::CreateFromTexture() {
             u = 0.0f;
             v += vstep;
         }
-    } else // The font must be proportional
-    {
+    } else { // The font must be proportional
         CKDWORD transColor = 0;
         CKBOOL alpha = TRUE;
         if (fontTexture->IsTransparent()) {
@@ -193,8 +191,7 @@ void TextureFont::CreateFromTexture() {
                             break;
                     }
 
-                    if (k == xwidth) // the whole character is empty
-                    {
+                    if (k == xwidth) { // the whole character is empty
                         m_FontCoordinates[c].uwidth *= m_SpacePercentage; // Changed from 0.5 to 0.3 coz was too big
                         u += ustep;
                         xpixel += xwidth;
