@@ -524,7 +524,7 @@ void BMLMod::InitConfigs() {
 
     m_FontSize = GetConfig()->GetProperty("GUI", "FontSize");
     m_FontSize->SetComment("The size of font (pixel).");
-    m_FontSize->SetDefaultFloat(32.0f);
+    m_FontSize->SetDefaultFloat(28.0f);
 
     m_FontGlyphRanges = GetConfig()->GetProperty("GUI", "FontGlyphRanges");
     m_FontGlyphRanges->SetComment("The Unicode ranges of font glyph.");
@@ -1128,6 +1128,7 @@ void BMLMod::OnProcess_HUD() {
                                           ImGuiWindowFlags_NoResize |
                                           ImGuiWindowFlags_NoMove |
                                           ImGuiWindowFlags_NoInputs |
+                                          ImGuiWindowFlags_NoBringToFrontOnFocus |
                                           ImGuiWindowFlags_NoSavedSettings;
     if (ImGui::Begin("HUD", nullptr, HUDFlags)) {
         ImDrawList *drawList = ImGui::GetWindowDrawList();
@@ -1231,8 +1232,9 @@ void BMLMod::OnProcess_CommandBar() {
                                           ImGuiWindowFlags_NoInputs |
                                           ImGuiWindowFlags_NoMove |
                                           ImGuiWindowFlags_NoResize |
+                                          ImGuiWindowFlags_NoNav |
                                           ImGuiWindowFlags_NoFocusOnAppearing |
-                                          ImGuiWindowFlags_NoNav;
+                                          ImGuiWindowFlags_NoBringToFrontOnFocus;
 
     const int count = std::min(MSG_MAXSIZE, m_MsgCount);
     for (int i = 0; i < count; i++) {
@@ -1240,7 +1242,7 @@ void BMLMod::OnProcess_CommandBar() {
         if (timer < 0) {
             m_Msgs[i].Text[0] = '\0';
         } else {
-            const ImVec2 pos(vpSize.x * 0.02f, vpSize.y * 0.9f - (float) i * ImGui::GetFontSize());
+            const ImVec2 pos(vpSize.x * 0.02f, vpSize.y * 0.9f - (float) i * ImGui::GetTextLineHeightWithSpacing());
             ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
             ImGui::SetNextWindowSize(size, ImGuiCond_Always);
             ImGui::SetNextWindowBgAlpha(std::min(110.0f, (timer / 20.0f)) / 255.0f);
@@ -1277,7 +1279,8 @@ void BMLMod::OnProcess_Menu() {
                                                  ImGuiWindowFlags_NoMove |
                                                  ImGuiWindowFlags_NoNav |
                                                  ImGuiWindowFlags_AlwaysAutoResize |
-                                                 ImGuiWindowFlags_NoFocusOnAppearing;
+                                                 ImGuiWindowFlags_NoFocusOnAppearing |
+                                                 ImGuiWindowFlags_NoBringToFrontOnFocus;
 
         if (ImGui::Begin("Button_Custom_Maps", nullptr, ButtonFlags)) {
             if (Bui::RightButton("Enter_Custom_Maps")) {
@@ -1324,6 +1327,7 @@ constexpr ImGuiWindowFlags MenuWinFlags = ImGuiWindowFlags_NoDecoration |
                                           ImGuiWindowFlags_NoBackground |
                                           ImGuiWindowFlags_NoMove |
                                           ImGuiWindowFlags_NoScrollWithMouse |
+                                          ImGuiWindowFlags_NoBringToFrontOnFocus |
                                           ImGuiWindowFlags_NoSavedSettings;
 
 void BMLMod::OnDrawMenu() {
