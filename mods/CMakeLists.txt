@@ -13,6 +13,7 @@ set(BMODS
         LanternFader
         MapScripts
         Overclock
+        Physics
         SpiritTrail
         TASSupport
         TravelMode
