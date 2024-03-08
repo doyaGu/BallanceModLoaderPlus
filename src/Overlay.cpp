@@ -9,6 +9,7 @@
 
 #include "imgui_internal.h"
 #include "imgui_impl_ck2.h"
+#define IMGUI_IMPL_WIN32_DISABLE_GAMEPAD
 #include "backends/imgui_impl_win32.h"
 
 #include "HookUtils.h"
