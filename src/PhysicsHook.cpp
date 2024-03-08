@@ -2,9 +2,14 @@
 #include "HookUtils.h"
 #include "VTables.h"
 
-namespace {
-    CKBEHAVIORFCT g_Physicalize = nullptr;
-}
+class CKIpionManager : public CKBaseManager {
+public:
+    virtual void Reset() = 0;
+};
+
+struct CP_CLASS_VTABLE_NAME(CKIpionManager) : public CP_CLASS_VTABLE_NAME(CKBaseManager)<CKIpionManager> {
+    CP_DECLARE_METHOD_PTR(CKIpionManager, void, Reset, ());
+};
 
 struct PhysicsHook {
     static CKIpionManager *s_IpionManager;
@@ -52,6 +57,8 @@ CP_CLASS_VTABLE_NAME(CKIpionManager) PhysicsHook::s_VTable = {};
 #define ROT_SPEED_DAMPENING 9
 #define COLLISION_SURFACE 10
 #define CONVEX 11
+
+static CKBEHAVIORFCT g_Physicalize = nullptr;
 
 int Physicalize(const CKBehaviorContext &behcontext) {
     CKBehavior *beh = behcontext.Behavior;
