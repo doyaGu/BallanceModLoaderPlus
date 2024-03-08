@@ -19,6 +19,16 @@ void BMLExit(IMod *mod) {
     delete mod;
 }
 
+static CKDWORD GetPhysicsRTVersion() {
+    CKPluginManager *pm = CKGetPluginManager();
+
+    CKPluginEntry *entry = pm->FindComponent(CKGUID(0x6BED328B, 0x141F5148));
+    if (!entry)
+        return 0;
+
+    return entry->m_PluginInfo.m_Version;
+}
+
 char *UncompressDataFromFile(int &size, const char *filename) {
     if (!filename) return nullptr;
 
@@ -114,6 +124,10 @@ void TASSupport::OnLoad() {
     m_ShowKeys->SetComment("Show realtime keyboard behavior for TAS records");
     m_ShowKeys->SetDefaultBoolean(true);
 
+    m_ShowInfo = GetConfig()->GetProperty("Misc", "ShowInfoGui");
+    m_ShowInfo->SetComment("Show realtime physics info");
+    m_ShowInfo->SetDefaultBoolean(true);
+
     m_SkipRender = GetConfig()->GetProperty("Misc", "SkipRenderUntil");
     m_SkipRender->SetComment("Skip render until the given frame to speed up TAS playing");
     m_SkipRender->SetDefaultInteger(0);
@@ -138,8 +152,18 @@ void TASSupport::OnLoad() {
     m_LoadLevel->SetComment("Automatically load given level on game startup");
     m_LoadLevel->SetDefaultInteger(0);
 
+    m_EnableDump = GetConfig()->GetProperty("Misc", "Dump Data");
+    m_EnableDump->SetComment("Dump position data while playing");
+    m_EnableDump->SetDefaultBoolean(false);
+
     VxMakeDirectory((CKSTRING) "..\\ModLoader\\TASRecords\\");
 
+    m_PhysicsRTVersion = GetPhysicsRTVersion();
+    if (m_PhysicsRTVersion == 0x000001) {
+        InitPhysicsMethodPointers();
+    }
+
+    m_IpionManager = (CKIpionManager *)m_BML->GetCKContext()->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
     m_TimeManager = m_BML->GetTimeManager();
     m_InputHook = m_BML->GetInputManager();
 
@@ -213,6 +237,15 @@ void TASSupport::OnLoadScript(const char *filename, CKBehavior *script) {
             CKBehavior *beh = ScriptHelper::FindFirstBB(script, "Set Position");
             ScriptHelper::DeleteBB(script, beh);
         }
+        if (!strcmp(script->GetName(), "Gameplay_Ingame")) {
+            for (int i = 0; i < script->GetLocalParameterCount(); ++i) {
+                CKParameter *param = script->GetLocalParameter(i);
+                if (!strcmp(param->GetName(), "ActiveBall")) {
+                    m_ActiveBall = param;
+                    break;
+                }
+            }
+        }
     }
 }
 
@@ -237,6 +270,7 @@ void TASSupport::OnProcess() {
                                                      ImGuiWindowFlags_NoMove |
                                                      ImGuiWindowFlags_NoNav |
                                                      ImGuiWindowFlags_AlwaysAutoResize |
+                                                     ImGuiWindowFlags_NoBringToFrontOnFocus |
                                                      ImGuiWindowFlags_NoFocusOnAppearing;
 
             if (ImGui::Begin("Button_TAS", nullptr, ButtonFlags)) {
@@ -255,6 +289,7 @@ void TASSupport::OnProcess() {
 
         if (m_Playing) {
             OnDrawKeys();
+            OnDrawInfo();
 
             if (m_InputHook->IsKeyToggled(m_StopKey->GetKey()))
                 OnStop();
@@ -328,6 +363,27 @@ void TASSupport::OnPreProcessInput() {
             stateBuf[m_KeySpace] = state.key_space;
             stateBuf[CKKEY_ESCAPE] = state.key_esc;
             stateBuf[CKKEY_RETURN] = state.key_enter;
+
+            if (m_EnableDump->GetBoolean()) {
+                auto *ball = GetActiveBall();
+                if (ball) {
+                    auto &data = m_DumpData.back();
+
+                    if (m_PhysicsRTVersion == 0x000001) {
+                        auto *obj = m_IpionManager->GetPhysicsObject0(ball);
+                        if (obj) {
+                            obj->GetPosition(&data.position, &data.angles);
+                            obj->GetVelocity(&data.velocity, &data.angularVelocity);
+                        }
+                    } else if (m_PhysicsRTVersion == 0x000002) {
+                        auto *obj = m_IpionManager->GetPhysicsObject(ball);
+                        if (obj) {
+                            obj->GetPosition(&data.position, &data.angles);
+                            obj->GetVelocity(&data.velocity, &data.angularVelocity);
+                        }
+                    }
+                }
+            }
         } else {
             OnStop();
         }
@@ -351,6 +407,10 @@ void TASSupport::OnPreProcessTime() {
     if (m_Playing) {
         if (m_CurFrame < m_RecordData.size()) {
             m_TimeManager->SetLastDeltaTime(m_RecordData[m_CurFrame].deltaTime);
+
+            if (m_EnableDump->GetBoolean()) {
+                m_DumpData.emplace_back(m_TimeManager->GetLastDeltaTime());
+            }
         } else {
             OnStop();
         }
@@ -359,29 +419,23 @@ void TASSupport::OnPreProcessTime() {
     }
 }
 
-class CKIpionManager : public CKBaseManager {
-public:
-    virtual void Reset() = 0;
-    virtual void ResetSimulationClock() = 0;
-    virtual void ResetDeltaTime() = 0;
-};
-
 void TASSupport::OnStart() {
     if (m_Enabled->GetBoolean()) {
         m_BML->AddTimer(1ul, [this]() {
-            auto *physicsManager = (CKIpionManager *)m_BML->GetCKContext()->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
-            // physicsManager->ResetSimulationClock();
-            // physicsManager->ResetDeltaTime();
+            if (m_PhysicsRTVersion == 0x000001) {
+                auto *env = *reinterpret_cast<CKBYTE **>(reinterpret_cast<CKBYTE *>(m_IpionManager) + 0xC0);
+                *reinterpret_cast<double *>(env + 0x120) = 0;
+                *reinterpret_cast<double *>(env + 0x128) = 1.0 / 66;
+                *reinterpret_cast<double *>(env + 0x130) = 0;
+                *reinterpret_cast<CKDWORD *>(env + 0x138) = 0;
+                *reinterpret_cast<double *>(*reinterpret_cast<CKBYTE **>(env + 0x4) + 0x18) = 0;
 
-           auto *env = *reinterpret_cast<CKBYTE **>(reinterpret_cast<CKBYTE *>(physicsManager) + 0xC0);
-           *reinterpret_cast<double *>(env + 0x120) = 0;
-           *reinterpret_cast<double *>(env + 0x128) = 1.0 / 66;
-           *reinterpret_cast<double *>(env + 0x130) = 0;
-           *reinterpret_cast<CKDWORD *>(env + 0x138) = 0;
-           *reinterpret_cast<double *>(*reinterpret_cast<CKBYTE **>(env + 0x4) + 0x18) = 0;
-
-           auto *time = reinterpret_cast<float *>(reinterpret_cast<CKBYTE *>(physicsManager) + 0xC8);
-           *time = m_TimeManager->GetLastDeltaTime();
+                auto *time = reinterpret_cast<float *>(reinterpret_cast<CKBYTE *>(m_IpionManager) + 0xC8);
+                *time = m_TimeManager->GetLastDeltaTime();
+            } else if (m_PhysicsRTVersion == 0x000002) {
+                m_IpionManager->ResetSimulationClock();
+                m_IpionManager->SetDeltaTime(m_TimeManager->GetLastDeltaTime());
+            }
         });
 
         if (m_Keyboard) {
@@ -430,6 +484,24 @@ void TASSupport::OnStop() {
             m_RecordData.clear();
             m_RecordData.shrink_to_fit();
             m_CurFrame = 0;
+
+            if (m_EnableDump->GetBoolean()) {
+                m_DumpData.shrink_to_fit();
+                m_BML->AddTimer(4ul, [this]() {
+                    static char filename[MAX_PATH];
+                    time_t stamp = time(nullptr);
+                    tm *curTime = localtime(&stamp);
+                    sprintf(filename, "%04d%02d%02d_%02d%02d%02d_%s.dump", curTime->tm_year + 1900, curTime->tm_mon + 1,
+                            curTime->tm_mday, curTime->tm_hour, curTime->tm_min, curTime->tm_sec, m_MapName.c_str());
+                    m_BML->SendIngameMessage(("TAS dump saved to " + std::string(filename)).c_str());
+                    const int count = (int)m_DumpData.size();
+                    std::thread([this, count]() {
+                        char filepath[MAX_PATH];
+                        sprintf(filepath, "..\\ModLoader\\TASRecords\\%s", filename);
+                        CompressDataToFile((char *)&m_DumpData[0], count * (int)sizeof(DumpData), filepath);
+                    }).detach();
+                });
+            }
         }
     }
 }
@@ -470,6 +542,7 @@ void TASSupport::OnDrawMenu() {
                                               ImGuiWindowFlags_NoBackground |
                                               ImGuiWindowFlags_NoMove |
                                               ImGuiWindowFlags_NoScrollWithMouse |
+                                              ImGuiWindowFlags_NoBringToFrontOnFocus |
                                               ImGuiWindowFlags_NoSavedSettings;
 
     ImGui::Begin(TitleText, nullptr, MenuWinFlags);
@@ -562,8 +635,53 @@ void TASSupport::OnDrawKeys() {
         ImGui::End();
 
         ImGui::PopStyleColor();
-
     }
+}
+
+void TASSupport::OnDrawInfo() {
+    if (!m_ShowInfo->GetBoolean())
+        return;
+
+    constexpr ImGuiWindowFlags WinFlags = ImGuiWindowFlags_AlwaysAutoResize |
+                                          ImGuiWindowFlags_NoDecoration |
+                                          ImGuiWindowFlags_NoNav |
+                                          ImGuiWindowFlags_NoFocusOnAppearing |
+                                          ImGuiWindowFlags_NoBringToFrontOnFocus;
+
+    if (ImGui::Begin("Info", nullptr, WinFlags)) {
+        auto *ball = GetActiveBall();
+        if (ball) {
+            ImGui::Text("Active Ball: %s", ball->GetName());
+
+            VxVector position, angles;
+            VxVector velocity, angularVelocity;
+
+            if (m_PhysicsRTVersion == 0x000001) {
+                auto *obj = m_IpionManager->GetPhysicsObject0(ball);
+                if (obj) {
+                    obj->GetPosition(&position, &angles);
+                    obj->GetVelocity(&velocity, &angularVelocity);
+                }
+            } else if (m_PhysicsRTVersion == 0x000002) {
+                auto *obj = m_IpionManager->GetPhysicsObject(ball);
+                if (obj) {
+                    obj->GetPosition(&position, &angles);
+                    obj->GetVelocity(&velocity, &angularVelocity);
+                }
+            }
+
+            ImGui::Text("Position:");
+            ImGui::Text("(%.3f, %.3f, %.3f)", position.x, position.y, position.z);
+            ImGui::Text("Angles:");
+            ImGui::Text("(%.3f, %.3f, %.3f)", angles.x, angles.y, angles.z);
+
+            ImGui::Text("Velocity:");
+            ImGui::Text("(%.3f, %.3f, %.3f)", velocity.x, velocity.y, velocity.z);
+            ImGui::Text("Angular Velocity:");
+            ImGui::Text("(%.3f, %.3f, %.3f)", angularVelocity.x, angularVelocity.y, angularVelocity.z);
+        }
+    }
+    ImGui::End();
 }
 
 void TASSupport::OpenTASMenu() {
@@ -618,4 +736,10 @@ void TASSupport::LoadTAS(const std::string &filename) {
         }
     });
     m_ReadyToPlay = true;
+}
+
+CK3dEntity *TASSupport::GetActiveBall() const {
+    if (!m_ActiveBall)
+        return nullptr;
+    return (CK3dEntity *)m_ActiveBall->GetValueObject();
 }

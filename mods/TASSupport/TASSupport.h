@@ -7,6 +7,8 @@
 
 #include <BML/BMLAll.h>
 
+#include "physics_RT.h"
+
 MOD_EXPORT IMod *BMLEntry(IBML *bml);
 MOD_EXPORT void BMLExit(IMod *mod);
 
@@ -34,6 +36,18 @@ struct FrameData {
         KeyState keyState;
         int keyStates;
     };
+};
+
+struct DumpData {
+    DumpData() = default;
+
+    explicit DumpData(float deltaTime) : deltaTime(deltaTime) {}
+
+    float deltaTime = 0.0f;
+    VxVector position;
+    VxVector angles;
+    VxVector velocity;
+    VxVector angularVelocity;
 };
 
 struct TASInfo {
@@ -84,6 +98,7 @@ public:
 
     void OnDrawMenu();
     void OnDrawKeys();
+    void OnDrawInfo();
 
     void OpenTASMenu();
     void ExitTASMenu();
@@ -91,6 +106,10 @@ public:
     void RefreshRecords();
     void LoadTAS(const std::string &filename);
 
+    CK3dEntity *GetActiveBall() const;
+
+    CKDWORD m_PhysicsRTVersion = 0;
+    CKIpionManager *m_IpionManager = nullptr;
     CKTimeManager *m_TimeManager = nullptr;
     InputHook *m_InputHook = nullptr;
 
@@ -116,13 +135,16 @@ public:
 
     std::size_t m_CurFrame = 0;
     std::vector<FrameData> m_RecordData;
+    std::vector<DumpData> m_DumpData;
     std::string m_MapName;
 
     CK2dEntity *m_Level01 = nullptr;
     CKBehavior *m_ExitStart = nullptr;
     CKBehavior *m_ExitMain = nullptr;
+    CKParameter *m_ActiveBall = nullptr;
 
     IProperty *m_ShowKeys = nullptr;
+    IProperty *m_ShowInfo = nullptr;
     char m_FrameCountText[100] = {};
 
     IProperty *m_SkipRender = nullptr;
@@ -131,6 +153,7 @@ public:
     IProperty *m_ExitKey = nullptr;
     IProperty *m_LoadTAS = nullptr;
     IProperty *m_LoadLevel = nullptr;
+    IProperty *m_EnableDump = nullptr;
 
     std::unique_ptr<std::thread> m_LoadThread;
 };
