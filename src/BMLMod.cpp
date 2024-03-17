@@ -595,6 +595,7 @@ void BMLMod::RefreshMaps() {
     std::wstring path = BML_GetModManager()->GetDirectory(BML_DIR_LOADER);
     path.append(L"\\Maps");
 
+    m_Maps.clear();
     ExploreMaps(path, m_Maps);
 }
 
