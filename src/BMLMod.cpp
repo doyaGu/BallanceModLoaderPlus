@@ -610,9 +610,8 @@ size_t BMLMod::ExploreMaps(const std::wstring &path, std::vector<MapInfo> &maps)
         return 0;
 
     do {
-        if ((fileinfo.attrib & _A_SUBDIR)) {
-            if (wcscmp(fileinfo.name, L".") != 0 && wcscmp(fileinfo.name, L"..") != 0)
-                ExploreMaps(p.assign(path).append(L"\\").append(fileinfo.name), maps);
+        if ((fileinfo.attrib & _A_SUBDIR) && wcscmp(fileinfo.name, L".") != 0 && wcscmp(fileinfo.name, L"..") != 0) {
+            ExploreMaps(p.assign(path).append(L"\\").append(fileinfo.name), maps);
         } else {
             std::wstring fullPath = path;
             fullPath.append(L"\\").append(fileinfo.name);
