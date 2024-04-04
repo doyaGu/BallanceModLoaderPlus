@@ -492,28 +492,32 @@ void DebugUtilities::OnProcess_Suicide() {
 
 void DebugUtilities::OnProcess_ChangeBall() {
     if (m_ChangeBallCd != 0) {
-        m_ChangeBallCd--;
         return;
     }
 
+    static char trafoTypes[3][6] = {"paper", "wood", "stone"};
+
     for (int i = 0; i < 3; i++) {
-        if (m_InputHook->IsKeyPressed(m_ChangeBall[i]->GetKey())) {
+        if (m_InputHook->IsKeyPressed(m_ChangeBall[i]->GetKey()) &&
+            strcmp(GetParamString(m_CurTrafo), trafoTypes[i]) != 0) {
             CKMessageManager *mm = m_BML->GetMessageManager();
             CKMessageType ballDeactivate = mm->AddMessageType("BallNav deactivate");
 
             mm->SendMessageSingle(ballDeactivate, m_BML->GetGroupByName("All_Gameplay"));
             mm->SendMessageSingle(ballDeactivate, m_BML->GetGroupByName("All_Sound"));
+            m_InputHook->Block(CK_INPUT_DEVICE_KEYBOARD);
             m_ChangeBallCd = 2;
 
-            m_BML->AddTimer(2ul, [this, i]() {
+            m_BML->AddTimer(0.01f, [this, i]() {
                 auto *curBall = (CK3dEntity *) m_CurLevel->GetElementObject(0, 1);
                 ExecuteBB::Unphysicalize(curBall);
 
-                static char trafoTypes[3][6] = {"paper", "wood", "stone"};
                 SetParamString(m_CurTrafo, trafoTypes[i]);
                 m_SetNewBall->ActivateInput(0);
                 m_SetNewBall->Activate();
 
+                m_InputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
+                m_ChangeBallCd = 0;
                 GetLogger()->Info("Set to %s Ball", i == 0 ? "Paper" : i == 1 ? "Wood" : "Stone");
             });
         }
