@@ -231,7 +231,7 @@ CKERROR ModManager::OnCKPlay() {
         }
 
         if (!AreModsDown()) {
-            Overlay::ImGuiInit(m_Context, IsOriginalPlayer());
+            Overlay::ImGuiInit(m_Context);
             Overlay::ImGuiContextScope scope;
 
             LoadMods();
@@ -250,7 +250,7 @@ CKERROR ModManager::OnCKReset() {
         ShutdownMods();
         UnloadMods();
 
-        Overlay::ImGuiShutdown(m_Context, IsOriginalPlayer());
+        Overlay::ImGuiShutdown(m_Context);
     }
 
     return CK_OK;
@@ -350,6 +350,11 @@ void ModManager::Init() {
 
     m_Logger->Info("Initializing Mod Loader Plus version " BML_VERSION);
     m_Logger->Info("Website: https://github.com/doyaGu/BallanceModManagerPlus");
+
+    if (IsOriginalPlayer()) {
+        m_Logger->Warn("The Original Player is no longer supported!");
+        m_Logger->Warn("Mod Loader Plus can not function normally!");
+    }
 
 #ifdef _DEBUG
     m_Logger->Info("Player.exe Address: 0x%08x", ::GetModuleHandleA("Player.exe"));
