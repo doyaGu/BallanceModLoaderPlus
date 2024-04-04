@@ -5,14 +5,10 @@
 #endif
 #include <Windows.h>
 
-#include <MinHook.h>
-
 #include "imgui_internal.h"
 #include "imgui_impl_ck2.h"
 #define IMGUI_IMPL_WIN32_DISABLE_GAMEPAD
 #include "backends/imgui_impl_win32.h"
-
-#include "HookUtils.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -23,7 +19,6 @@ namespace Overlay {
     bool g_ImGuiReady = false;
     bool g_RenderReady = false;
 
-    LPFNWNDPROC g_WndProc = nullptr;
     LPFNWNDPROC g_MainWndProc = nullptr;
 
     LRESULT OnWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -87,17 +82,11 @@ namespace Overlay {
         ImGui::DestroyContext();
     }
 
-    bool ImGuiInit(CKContext *context, bool originalPlayer) {
+    bool ImGuiInit(CKContext *context) {
         if (!g_ImGuiReady) {
             ImGuiContextScope scope;
 
-            if (originalPlayer) {
-                g_WndProc = (LPFNWNDPROC) ((char *) utils::GetModuleBaseAddress(::GetModuleHandleA("Player.exe")) + 0x39F0);
-                MH_CreateHook((void *) g_WndProc, (void *) MainWndProc, (void **) &g_MainWndProc);
-                MH_EnableHook((void *) g_WndProc);
-            } else {
-                HookWndProc((HWND) context->GetMainWindow());
-            }
+            HookWndProc((HWND) context->GetMainWindow());
 
             if (!ImGui_ImplWin32_Init(context->GetMainWindow()))
                 return false;
@@ -112,20 +101,14 @@ namespace Overlay {
         return true;
     }
 
-    void ImGuiShutdown(CKContext *context, bool originalPlayer) {
+    void ImGuiShutdown(CKContext *context) {
         if (g_ImGuiReady) {
             ImGuiContextScope scope;
 
             ImGui_ImplCK2_Shutdown();
             ImGui_ImplWin32_Shutdown();
 
-            if (originalPlayer) {
-                MH_DisableHook((void *) g_WndProc);
-                MH_RemoveHook((void *) g_WndProc);
-                g_WndProc = nullptr;
-            } else {
-                UnhookWndProc((HWND) context->GetMainWindow());
-            }
+            UnhookWndProc((HWND) context->GetMainWindow());
 
             g_RenderReady = false;
             g_ImGuiReady = false;
