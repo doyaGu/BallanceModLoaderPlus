@@ -37,6 +37,9 @@ struct CP_CLASS_VTABLE_NAME(CKInputManager) : public CP_CLASS_VTABLE_NAME(CKBase
 };
 
 struct InputHook::Impl {
+    static unsigned char s_KeyboardState[256];
+    static unsigned char s_LastKeyboardState[256];
+    static Vx2DVector s_LastMousePosition;
     static int s_BlockedDevice[CK_INPUT_DEVICE_COUNT];
     static CKInputManager *s_InputManager;
     static CP_CLASS_VTABLE_NAME(CKInputManager) s_VTable;
@@ -286,6 +289,9 @@ struct InputHook::Impl {
     }
 };
 
+unsigned char InputHook::Impl::s_KeyboardState[256] = {};
+unsigned char InputHook::Impl::s_LastKeyboardState[256] = {};
+Vx2DVector InputHook::Impl::s_LastMousePosition;
 int InputHook::Impl::s_BlockedDevice[CK_INPUT_DEVICE_COUNT] = {};
 CKInputManager* InputHook::Impl::s_InputManager = nullptr;
 CP_CLASS_VTABLE_NAME(CKInputManager) InputHook::Impl::s_VTable = {};
@@ -370,11 +376,7 @@ void InputHook::GetMouseRelativePosition(VxVector &oPosition) {
 }
 
 void InputHook::GetLastMousePosition(Vx2DVector &position) {
-    Impl::s_InputManager->GetMousePosition(position, FALSE);
-    VxVector delta;
-    Impl::s_InputManager->GetMouseRelativePosition(delta);
-    position.x -= delta.x;
-    position.y -= delta.y;
+    position = Impl::s_LastMousePosition;
 }
 
 CKBOOL InputHook::IsMouseAttached() {
@@ -430,19 +432,23 @@ void InputHook::SetSystemCursor(VXCURSOR_POINTER cursor) {
 }
 
 CKBOOL InputHook::IsKeyPressed(CKDWORD iKey) {
-    return Impl::s_InputManager->IsKeyDown(iKey, nullptr);
+    if (IsBlocked(CK_INPUT_DEVICE_KEYBOARD))
+        return FALSE;
+    return oIsKeyPressed(iKey);
 }
 
 CKBOOL InputHook::IsKeyReleased(CKDWORD iKey) {
-    return Impl::s_InputManager->IsKeyToggled(iKey, nullptr);
+    if (IsBlocked(CK_INPUT_DEVICE_KEYBOARD))
+        return FALSE;
+    return oIsKeyReleased(iKey);
 }
 
 CKBOOL InputHook::oIsKeyPressed(CKDWORD iKey) {
-    return Impl::IsKeyDownOriginal(iKey, nullptr);
+    return Impl::IsKeyDownOriginal(iKey, nullptr) && !Impl::s_LastKeyboardState[iKey];
 }
 
 CKBOOL InputHook::oIsKeyReleased(CKDWORD iKey) {
-    return Impl::IsKeyToggledOriginal(iKey, nullptr);
+    return Impl::IsKeyUpOriginal(iKey) && Impl::s_LastKeyboardState[iKey];
 }
 
 CKBOOL InputHook::oIsKeyDown(CKDWORD iKey, CKDWORD *oStamp) {
@@ -511,4 +517,6 @@ void InputHook::Unblock(CK_INPUT_DEVICE device) {
 
 void InputHook::Process() {
     Impl::PostProcessOriginal();
+    memcpy(Impl::s_LastKeyboardState, Impl::GetKeyboardStateOriginal(), sizeof(Impl::s_LastKeyboardState));
+    Impl::s_InputManager->GetMousePosition(Impl::s_LastMousePosition, false);
 }
