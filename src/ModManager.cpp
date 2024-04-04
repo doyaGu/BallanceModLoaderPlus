@@ -1022,26 +1022,17 @@ void ModManager::InitDirectories() {
 
     // Set up working directory
     _wgetcwd(path, MAX_PATH);
+    path[MAX_PATH - 1] = '\0';
     m_WorkingDir = path;
 
     utils::Utf16ToUtf8(m_WorkingDir.c_str(), buf, sizeof(buf));
     m_WorkingDirUtf8 = buf;
 
-    // Set up working directory
-    ::GetTempPathW(MAX_PATH, path);
-    wcsncat(path, L"BML", MAX_PATH);
-    m_TempDir = path;
-    if (!utils::DirectoryExists(m_TempDir)) {
-        utils::CreateDir(m_TempDir);
-    }
-
-    utils::Utf16ToUtf8(m_TempDir.c_str(), buf, sizeof(buf));
-    m_TempDirUtf8 = buf;
-
     // Set up game directory
     ::GetModuleFileNameW(nullptr, path, MAX_PATH);
     _wsplitpath(path, drive, dir, nullptr, nullptr);
     _snwprintf(path, MAX_PATH, L"%s%s", drive, dir);
+    path[MAX_PATH - 1] = '\0';
     size_t len = wcslen(path);
     path[len - 1] = '\0';
     wchar_t *s = wcsrchr(path, '\\');
@@ -1059,6 +1050,15 @@ void ModManager::InitDirectories() {
 
     utils::Utf16ToUtf8(m_LoaderDir.c_str(), buf, sizeof(buf));
     m_LoaderDirUtf8 = buf;
+
+    // Set up temp directory
+    m_TempDir = m_LoaderDir + L"\\Cache";
+    if (!utils::DirectoryExists(m_TempDir)) {
+        utils::CreateDir(m_TempDir);
+    }
+
+    utils::Utf16ToUtf8(m_TempDir.c_str(), buf, sizeof(buf));
+    m_TempDirUtf8 = buf;
 
     // Set up config directory
     m_ConfigDir = m_LoaderDir + L"\\Configs";
@@ -1434,7 +1434,7 @@ void ModManager::FillCallbackMap(IMod *mod) {
 }
 
 void ModManager::AddDataPath(const char *path) {
-    if (!path)
+    if (!path || path[0] == '\0')
         return;
 
     XString dataPath = path;
@@ -1446,19 +1446,32 @@ void ModManager::AddDataPath(const char *path) {
     if (dataPath[dataPath.Length() - 1] != '\\')
         dataPath << '\\';
 
-    m_PathManager->AddPath(DATA_PATH_IDX, dataPath);
+    if (utils::DirectoryExists(dataPath.CStr()) &&
+        m_PathManager->GetPathIndex(DATA_PATH_IDX, dataPath) == -1) {
+        m_PathManager->AddPath(DATA_PATH_IDX, dataPath);
 
-    XString subDataPath1 = dataPath + "3D Entities\\";
-    XString subDataPath2 = dataPath + "3D Entities\\PH\\";
+        XString subDataPath1 = dataPath + "3D Entities\\";
+        if (utils::DirectoryExists(subDataPath1.CStr()) &&
+            m_PathManager->GetPathIndex(DATA_PATH_IDX, subDataPath1) == -1) {
+            m_PathManager->AddPath(DATA_PATH_IDX, subDataPath1);
+        }
+
+        XString subDataPath2 = dataPath + "3D Entities\\PH\\";
+        if (utils::DirectoryExists(subDataPath2.CStr()) &&
+            m_PathManager->GetPathIndex(DATA_PATH_IDX, subDataPath2) == -1) {
+            m_PathManager->AddPath(DATA_PATH_IDX, subDataPath2);
+        }
+    }
+
     XString texturePath = dataPath + "Textures\\";
-    XString soundPath = dataPath + "Sounds\\";
-
-    if (utils::DirectoryExists(subDataPath1.CStr()))
-        m_PathManager->AddPath(DATA_PATH_IDX, subDataPath1);
-    if (utils::DirectoryExists(subDataPath2.CStr()))
-        m_PathManager->AddPath(DATA_PATH_IDX, subDataPath2);
-    if (utils::DirectoryExists(texturePath.CStr()))
+    if (utils::DirectoryExists(texturePath.CStr()) &&
+        m_PathManager->GetPathIndex(BITMAP_PATH_IDX, texturePath) == -1) {
         m_PathManager->AddPath(BITMAP_PATH_IDX, texturePath);
-    if (utils::DirectoryExists(soundPath.CStr()))
+    }
+
+    XString soundPath = dataPath + "Sounds\\";
+    if (utils::DirectoryExists(soundPath.CStr()) &&
+        m_PathManager->GetPathIndex(SOUND_PATH_IDX, soundPath) == -1) {
         m_PathManager->AddPath(SOUND_PATH_IDX, soundPath);
+    }
 }
