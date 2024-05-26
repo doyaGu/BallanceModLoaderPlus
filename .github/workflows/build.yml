@@ -15,7 +15,7 @@ jobs:
     runs-on: windows-latest
 
     env:
-      VIRTOOLS_SDK_PATH: ${{github.workspace}}\Virtools-SDK-2.1
+      VIRTOOLS_SDK_PATH: ${{github.workspace}}/Virtools-SDK-2.1
       PROJECT_NAME: BallanceModLoaderPlus
       
     steps:
@@ -55,4 +55,4 @@ jobs:
         uses: actions/upload-artifact@v4.3.3
         with:
           name: ${{env.PROJECT_NAME}}
-          path: ${{github.workspace}}/build/${{env.BUILD_TYPE}}
+          path: ${{github.workspace}}/build
