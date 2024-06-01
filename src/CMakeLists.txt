@@ -33,6 +33,7 @@ set(BML_PRIVATE_HEADERS
 
         Overlay.h
 
+        FileHook.h
         PluginManagerHook.h
 
         Logger.h
@@ -67,6 +68,7 @@ set(BML_SOURCES
         Overlay.cpp
         Bui.cpp
 
+        FileHook.cpp
         PluginManagerHook.cpp
         InputHook.cpp
         ObjectLoadHook.cpp
