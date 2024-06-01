@@ -151,6 +151,7 @@ install(TARGETS BML EXPORT BMLTargets
 
 install(DIRECTORY "${BML_INCLUDE_DIR}/BML" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 install(FILES
+        "${IMGUI_SOURCE_DIR}/imconfig.h"
         "${IMGUI_SOURCE_DIR}/imgui.h"
         "${IMGUI_SOURCE_DIR}/imgui_internal.h"
         "${IMGUI_SOURCE_DIR}/imstb_textedit.h"
