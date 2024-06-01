@@ -51,8 +51,8 @@ jobs:
         # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
         run: ctest -C ${{env.BUILD_TYPE}}
 
-      - name: Build
-        run: cmake --install . --prefix ${{github.workspace}}/install --config ${{env.BUILD_TYPE}}
+      - name: Install
+        run: cmake --install ${{github.workspace}}/build --prefix ${{github.workspace}}/install --config ${{env.BUILD_TYPE}}
         
       - name: Release Artifact
         uses: actions/upload-artifact@v4.3.3
