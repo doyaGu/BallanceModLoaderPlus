@@ -2,6 +2,7 @@
 #define BML_VTABLES_H
 
 #include "CKBaseManager.h"
+#include "CKObject.h"
 
 #include "Macros.h"
 
@@ -37,6 +38,28 @@ struct CP_CLASS_VTABLE_NAME(CKBaseManager) {
     CP_DECLARE_METHOD_PTR(T, CKERROR, OnPostSpriteRender, (CKRenderContext *dev));
     CP_DECLARE_METHOD_PTR(T, int, GetFunctionPriority, (CKMANAGER_FUNCTIONS Function));
     CP_DECLARE_METHOD_PTR(T, CKDWORD, GetValidFunctionsMask, ());
+};
+
+template <class T>
+struct CP_CLASS_VTABLE_NAME(CKObject) {
+    CP_DECLARE_METHOD_PTR(T, void, Show, (CK_OBJECT_SHOWOPTION show));
+    CP_DECLARE_METHOD_PTR(T, CKBOOL, IsHiddenByParent, ());
+    CP_DECLARE_METHOD_PTR(T, int, CanBeHide, ());
+    CP_DECLARE_METHOD_PTR(T, CKBOOL, IsVisible, ());
+    CP_DECLARE_METHOD_PTR(T, void, Destructor, ());
+    CP_DECLARE_METHOD_PTR(T, CK_CLASSID, GetClassID, ());
+    CP_DECLARE_METHOD_PTR(T, void, PreSave, (CKFile *file, CKDWORD flags));
+    CP_DECLARE_METHOD_PTR(T, CKStateChunk *, Save, (CKFile *file, CKDWORD flags));
+    CP_DECLARE_METHOD_PTR(T, CKERROR, Load, (CKStateChunk *chunk, CKFile *file));
+    CP_DECLARE_METHOD_PTR(T, void, PostLoad, ());
+    CP_DECLARE_METHOD_PTR(T, void, PreDelete, ());
+    CP_DECLARE_METHOD_PTR(T, void, CheckPreDeletion, ());
+    CP_DECLARE_METHOD_PTR(T, void, CheckPostDeletion, ());
+    CP_DECLARE_METHOD_PTR(T, int, GetMemoryOccupation, ());
+    CP_DECLARE_METHOD_PTR(T, CKBOOL, IsObjectUsed, (CKObject *obj, CK_CLASSID cid));
+    CP_DECLARE_METHOD_PTR(T, CKERROR, PrepareDependencies, (CKDependenciesContext &context, CKBOOL iCaller));
+    CP_DECLARE_METHOD_PTR(T, CKERROR, RemapDependencies, (CKDependenciesContext &context));
+    CP_DECLARE_METHOD_PTR(T, CKERROR, Copy, (CKObject &o, CKDependenciesContext &context));
 };
 
 #endif // BML_VTABLES_H
