@@ -35,6 +35,7 @@ set(BML_PRIVATE_HEADERS
 
         FileHook.h
         PluginManagerHook.h
+        RenderHook.h
 
         Logger.h
         Config.h
@@ -70,6 +71,7 @@ set(BML_SOURCES
 
         FileHook.cpp
         PluginManagerHook.cpp
+        RenderHook.cpp
         InputHook.cpp
         ObjectLoadHook.cpp
         PhysicsHook.cpp
