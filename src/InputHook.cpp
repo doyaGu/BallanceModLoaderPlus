@@ -3,56 +3,23 @@
 #include "HookUtils.h"
 #include "VTables.h"
 
-struct CP_CLASS_VTABLE_NAME(CKInputManager) : public CP_CLASS_VTABLE_NAME(CKBaseManager)<CKInputManager> {
-    CP_DECLARE_METHOD_PTR(CKInputManager, void, EnableKeyboardRepetition, (CKBOOL iEnable));
-    CP_DECLARE_METHOD_PTR(CKInputManager, CKBOOL, IsKeyboardRepetitionEnabled, ());
-    CP_DECLARE_METHOD_PTR(CKInputManager, CKBOOL, IsKeyDown, (CKDWORD iKey, CKDWORD *oStamp));
-    CP_DECLARE_METHOD_PTR(CKInputManager, CKBOOL, IsKeyUp, (CKDWORD iKey));
-    CP_DECLARE_METHOD_PTR(CKInputManager, CKBOOL, IsKeyToggled ,(CKDWORD iKey, CKDWORD *oStamp));
-    CP_DECLARE_METHOD_PTR(CKInputManager, void, GetKeyName, (CKDWORD iKey, CKSTRING oKeyName));
-    CP_DECLARE_METHOD_PTR(CKInputManager, CKDWORD, GetKeyFromName, (CKSTRING iKeyName));
-    CP_DECLARE_METHOD_PTR(CKInputManager, unsigned char *, GetKeyboardState, ());
-    CP_DECLARE_METHOD_PTR(CKInputManager, CKBOOL, IsKeyboardAttached, ());
-    CP_DECLARE_METHOD_PTR(CKInputManager, int, GetNumberOfKeyInBuffer, ());
-    CP_DECLARE_METHOD_PTR(CKInputManager, int, GetKeyFromBuffer, (int i, CKDWORD &oKey, CKDWORD *oTimeStamp));
-    CP_DECLARE_METHOD_PTR(CKInputManager, CKBOOL, IsMouseButtonDown, (CK_MOUSEBUTTON iButton));
-    CP_DECLARE_METHOD_PTR(CKInputManager, CKBOOL, IsMouseClicked, (CK_MOUSEBUTTON iButton));
-    CP_DECLARE_METHOD_PTR(CKInputManager, CKBOOL, IsMouseToggled, (CK_MOUSEBUTTON iButton));
-    CP_DECLARE_METHOD_PTR(CKInputManager, void, GetMouseButtonsState, (CKBYTE oStates[4]));
-    CP_DECLARE_METHOD_PTR(CKInputManager, void, GetMousePosition, (Vx2DVector &oPosition, CKBOOL iAbsolute));
-    CP_DECLARE_METHOD_PTR(CKInputManager, void, GetMouseRelativePosition, (VxVector &oPosition));
-    CP_DECLARE_METHOD_PTR(CKInputManager, CKBOOL, IsMouseAttached, ());
-    CP_DECLARE_METHOD_PTR(CKInputManager, CKBOOL, IsJoystickAttached, (int iJoystick));
-    CP_DECLARE_METHOD_PTR(CKInputManager, void, GetJoystickPosition, (int iJoystick, VxVector *oPosition));
-    CP_DECLARE_METHOD_PTR(CKInputManager, void, GetJoystickRotation, (int iJoystick, VxVector *oRotation));
-    CP_DECLARE_METHOD_PTR(CKInputManager, void, GetJoystickSliders, (int iJoystick, Vx2DVector *oPosition));
-    CP_DECLARE_METHOD_PTR(CKInputManager, void, GetJoystickPointOfViewAngle, (int iJoystick, float *oAngle));
-    CP_DECLARE_METHOD_PTR(CKInputManager, CKDWORD, GetJoystickButtonsState, (int iJoystick));
-    CP_DECLARE_METHOD_PTR(CKInputManager, CKBOOL, IsJoystickButtonDown, (int iJoystick, int iButton));
-    CP_DECLARE_METHOD_PTR(CKInputManager, void, Pause, (CKBOOL pause));
-    CP_DECLARE_METHOD_PTR(CKInputManager, void, ShowCursor, (CKBOOL iShow));
-    CP_DECLARE_METHOD_PTR(CKInputManager, CKBOOL, GetCursorVisibility, ());
-    CP_DECLARE_METHOD_PTR(CKInputManager, VXCURSOR_POINTER, GetSystemCursor, ());
-    CP_DECLARE_METHOD_PTR(CKInputManager, void, SetSystemCursor, (VXCURSOR_POINTER cursor));
-};
-
 struct InputHook::Impl {
     static unsigned char s_KeyboardState[256];
     static unsigned char s_LastKeyboardState[256];
     static Vx2DVector s_LastMousePosition;
     static int s_BlockedDevice[CK_INPUT_DEVICE_COUNT];
     static CKInputManager *s_InputManager;
-    static CP_CLASS_VTABLE_NAME(CKInputManager) s_VTable;
+    static CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager> s_VTable;
 
     static void Hook(CKInputManager *im) {
         if (!im)
             return;
 
         s_InputManager = im;
-        utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKInputManager)>(s_InputManager, s_VTable);
+        utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>>(s_InputManager, s_VTable);
 
 #define HOOK_INPUT_MANAGER_VIRTUAL_METHOD(Instance, Name) \
-    utils::HookVirtualMethod(Instance, &InputHook::Impl::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKInputManager), Name) / sizeof(void*)))
+    utils::HookVirtualMethod(Instance, &InputHook::Impl::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>, Name) / sizeof(void*)))
 
         HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, PostProcess);
 
@@ -80,7 +47,7 @@ struct InputHook::Impl {
 
     static void Unhook() {
         if (s_InputManager)
-            utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKInputManager)>(s_InputManager, s_VTable);
+            utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>>(s_InputManager, s_VTable);
     }
 
     CP_DECLARE_METHOD_HOOK(CKERROR, PostProcess, ()) { return CK_OK; }
@@ -294,7 +261,7 @@ unsigned char InputHook::Impl::s_LastKeyboardState[256] = {};
 Vx2DVector InputHook::Impl::s_LastMousePosition;
 int InputHook::Impl::s_BlockedDevice[CK_INPUT_DEVICE_COUNT] = {};
 CKInputManager* InputHook::Impl::s_InputManager = nullptr;
-CP_CLASS_VTABLE_NAME(CKInputManager) InputHook::Impl::s_VTable = {};
+CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager> InputHook::Impl::s_VTable = {};
 
 InputHook::InputHook(CKInputManager *input) : m_Impl(new Impl) {
     assert(input != nullptr);

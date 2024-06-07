@@ -3,131 +3,18 @@
 #include "HookUtils.h"
 #include "VTables.h"
 
-struct CP_CLASS_VTABLE_NAME(CKRenderContext) : public CP_CLASS_VTABLE_NAME(CKObject)<CKRenderContext> {
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, AddObject, (CKRenderObject *obj));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, AddObjectWithHierarchy, (CKRenderObject *obj));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, RemoveObject, (CKRenderObject *obj));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKBOOL, IsObjectAttached, (CKRenderObject *obj));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, const XObjectArray &, Compute3dRootObjects, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, const XObjectArray &, Compute2dRootObjects, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CK2dEntity *, Get2dRoot, (CKBOOL background));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, DetachAll, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, ForceCameraSettingsUpdate, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, PrepareCameras, (CK_RENDER_FLAGS Flags));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKERROR, Clear, (CK_RENDER_FLAGS Flags, CKDWORD Stencil));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKERROR, DrawScene, (CK_RENDER_FLAGS Flags));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKERROR, BackToFront, (CK_RENDER_FLAGS Flags));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKERROR, Render, (CK_RENDER_FLAGS Flags));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, AddPreRenderCallBack, (CK_RENDERCALLBACK Function, void *Argument, CKBOOL Temporary));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, RemovePreRenderCallBack, (CK_RENDERCALLBACK Function, void *Argument));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, AddPostRenderCallBack, (CK_RENDERCALLBACK Function, void *Argument, CKBOOL Temporary, CKBOOL BeforeTransparent));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, RemovePostRenderCallBack, (CK_RENDERCALLBACK Function, void *Argument));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, AddPostSpriteRenderCallBack, (CK_RENDERCALLBACK Function, void *Argument, CKBOOL Temporary));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, RemovePostSpriteRenderCallBack, (CK_RENDERCALLBACK Function, void *Argument));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, VxDrawPrimitiveData *, GetDrawPrimitiveStructure, (CKRST_DPFLAGS Flags, int VertexCount));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKWORD *, GetDrawPrimitiveIndices, (int IndicesCount));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, Transform, (VxVector *Dest, VxVector *Src, CK3dEntity *Ref));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, TransformVertices, (int VertexCount, VxTransformData *data, CK3dEntity *Ref));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKERROR, GoFullScreen, (int Width, int Height, int Bpp, int Driver, int RefreshRate));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKERROR, StopFullScreen, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKBOOL, IsFullScreen, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, int, GetDriverIndex, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKBOOL, ChangeDriver, (int NewDriver));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, WIN_HANDLE, GetWindowHandle, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, ScreenToClient, (Vx2DVector *ioPoint));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, ClientToScreen, (Vx2DVector *ioPoint));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKERROR, SetWindowRect, (VxRect &rect, CKDWORD Flags));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, GetWindowRect, (VxRect &rect, CKBOOL ScreenRelative));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, int, GetHeight, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, int, GetWidth, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKERROR, Resize, (int PosX, int PosY, int SizeX, int SizeY, CKDWORD Flags));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetViewRect, (VxRect &rect));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, GetViewRect, (VxRect &rect));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, VX_PIXELFORMAT, GetPixelFormat, (int *Bpp, int *Zbpp, int *StencilBpp));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetState, (VXRENDERSTATETYPE State, CKDWORD Value));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKDWORD, GetState, (VXRENDERSTATETYPE State));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKBOOL, SetTexture, (CKTexture *tex, CKBOOL Clamped, int Stage));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKBOOL, SetTextureStageState, (CKRST_TEXTURESTAGESTATETYPE State, CKDWORD Value, int Stage));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKRasterizerContext *, GetRasterizerContext, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetClearBackground, (CKBOOL ClearBack));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKBOOL, GetClearBackground, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetClearZBuffer, (CKBOOL ClearZ));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKBOOL, GetClearZBuffer, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, GetGlobalRenderMode, (VxShadeType *Shading, CKBOOL *Texture, CKBOOL *Wireframe));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetGlobalRenderMode, (VxShadeType Shading, CKBOOL Texture, CKBOOL Wireframe));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetCurrentRenderOptions, (CKDWORD flags));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKDWORD, GetCurrentRenderOptions, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, ChangeCurrentRenderOptions, (CKDWORD Add, CKDWORD Remove));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetCurrentExtents, (VxRect &extents));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, GetCurrentExtents, (VxRect &extents));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetAmbientLightRGB, (float R, float G, float B));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetAmbientLight, (CKDWORD Color));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKDWORD, GetAmbientLight, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetFogMode, (VXFOG_MODE Mode));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetFogStart, (float Start));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetFogEnd, (float End));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetFogDensity, (float Density));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetFogColor, (CKDWORD Color));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, VXFOG_MODE, GetFogMode, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, float, GetFogStart, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, float, GetFogEnd, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, float, GetFogDensity, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKDWORD, GetFogColor, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKBOOL, DrawPrimitive, (VXPRIMITIVETYPE pType, CKWORD *indices, int indexcount, VxDrawPrimitiveData *data));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetWorldTransformationMatrix, (const VxMatrix &M));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetProjectionTransformationMatrix, (const VxMatrix &M));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetViewTransformationMatrix, (const VxMatrix &M));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, const VxMatrix &, GetWorldTransformationMatrix, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, const VxMatrix &, GetProjectionTransformationMatrix, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, const VxMatrix &, GetViewTransformationMatrix, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKBOOL, SetUserClipPlane, (CKDWORD ClipPlaneIndex, const VxPlane &PlaneEquation));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKBOOL, GetUserClipPlane, (CKDWORD ClipPlaneIndex, VxPlane &PlaneEquation));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKRenderObject *, Pick, (int x, int y, CKPICKRESULT *oRes, CKBOOL iIgnoreUnpickable));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKRenderObject *, PointPick, (CKPOINT pt, CKPICKRESULT *oRes, CKBOOL iIgnoreUnpickable));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKERROR,  RectPick, (const VxRect &r, XObjectPointerArray &oObjects, CKBOOL Intersect));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, AttachViewpointToCamera, (CKCamera *cam));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, DetachViewpointFromCamera, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKCamera *, GetAttachedCamera, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CK3dEntity *, GetViewpoint, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKMaterial *, GetBackgroundMaterial, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, GetBoundingBox, (VxBbox *BBox));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, GetStats, (VxStats *stats));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetCurrentMaterial, (CKMaterial *mat, CKBOOL Lit));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, Activate, (CKBOOL active));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, int, DumpToMemory, (const VxRect *iRect, VXBUFFER_TYPE buffer, VxImageDescEx &desc));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, int, CopyToVideo, (const VxRect *iRect, VXBUFFER_TYPE buffer, VxImageDescEx &desc));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKERROR, DumpToFile, (CKSTRING filename, const VxRect *rect, VXBUFFER_TYPE buffer));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, VxDirectXData *, GetDirectXInfo, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, WarnEnterThread, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, WarnExitThread, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CK2dEntity *, Pick2D, (const Vx2DVector &v));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKBOOL, SetRenderTarget, (CKTexture *texture, int CubeMapFace));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, AddRemoveSequence, (CKBOOL Start));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetTransparentMode, (CKBOOL Trans));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, AddDirtyRect, (CKRECT *Rect));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, RestoreScreenBackup, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKDWORD, GetStencilFreeMask, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, UsedStencilBits, (CKDWORD stencilBits));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, int, GetFirstFreeStencilBits, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, VxDrawPrimitiveData *, LockCurrentVB, (CKDWORD VertexCount));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, CKBOOL, ReleaseCurrentVB, ());
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetTextureMatrix, (const VxMatrix &M, int Stage));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, SetStereoParameters, (float EyeSeparation, float FocalLength));
-    CP_DECLARE_METHOD_PTR(CKRenderContext, void, GetStereoParameters, (float &EyeSeparation, float &FocalLength));
-};
-
 struct RenderContextHook : public CKRenderContext {
     static bool s_DisableRender;
-    static CP_CLASS_VTABLE_NAME(CKRenderContext) s_VTable;
+    static CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> s_VTable;
 
     static void Hook(CKRenderContext *rc) {
         if (!rc)
             return;
 
-        utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKRenderContext)>(rc, s_VTable);
+        utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>>(rc, s_VTable);
 
 #define HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(Instance, Name) \
-    utils::HookVirtualMethod(Instance, &RenderContextHook::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKRenderContext), Name) / sizeof(void*)))
+    utils::HookVirtualMethod(Instance, &RenderContextHook::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>, Name) / sizeof(void*)))
 
         HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, AddObject);
         HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, RemoveObject);
@@ -244,7 +131,7 @@ struct RenderContextHook : public CKRenderContext {
 
     static void Unhook(CKRenderContext *rc) {
         if (rc)
-            utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKRenderContext)>(rc, s_VTable);
+            utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>>(rc, s_VTable);
     }
 
     CP_DECLARE_METHOD_HOOK(void, AddObject, (CKRenderObject *obj)) {
@@ -693,7 +580,7 @@ struct RenderContextHook : public CKRenderContext {
 };
 
 bool RenderContextHook::s_DisableRender = false;
-CP_CLASS_VTABLE_NAME(CKRenderContext) RenderContextHook::s_VTable = {};
+CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> RenderContextHook::s_VTable = {};
 
 namespace RenderHook {
     void HookRenderContext(CKRenderContext *rc) {
