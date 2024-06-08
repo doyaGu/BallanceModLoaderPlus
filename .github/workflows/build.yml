@@ -19,12 +19,14 @@ jobs:
       PROJECT_NAME: BallanceModLoaderPlus
       
     steps:
-      - name: Configure current branch and commit hash
+      - name: Get current branch
         shell: bash
-        run: |
-          echo "BRANCH=$(echo ${GITHUB_REF#refs/heads/})" >> "$GITHUB_ENV"
-          echo "SHA_SHORT=$(git rev-parse --short "$GITHUB_SHA")" >> "$GITHUB_ENV"
-      
+        run: echo "GIT_BRANCH=$(echo ${GITHUB_REF#refs/heads/})" >> "$GITHUB_ENV"
+
+      - name: Get current commit hash
+        shell: bash
+        run: echo "GIT_SHA=$(git rev-parse --short "$GITHUB_SHA")" >> "$GITHUB_ENV"
+          
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
@@ -63,5 +65,5 @@ jobs:
       - name: Release Artifact
         uses: actions/upload-artifact@v4.3.3
         with:
-          name: ${{env.PROJECT_NAME}}-${{env.BRANCH}}.${{env.SHA_SHORT}}
+          name: ${{env.PROJECT_NAME}}-${{env.GIT_BRANCH}}.${{env.GIT_SHA}}
           path: ${{github.workspace}}/install
