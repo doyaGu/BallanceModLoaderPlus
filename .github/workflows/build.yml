@@ -6,64 +6,76 @@ on:
   pull_request:
     branches: [ "main" ]
 
-env:
-  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
-  BUILD_TYPE: Release
-
 jobs:
   build:
     runs-on: windows-latest
 
     env:
-      VIRTOOLS_SDK_PATH: ${{github.workspace}}/Virtools-SDK-2.1
+      VIRTOOLS_SDK_PATH: ${{ github.workspace }}/Virtools-SDK-2.1
       PROJECT_NAME: BallanceModLoaderPlus
       
     steps:
-      - name: Checkout source code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+    - name: Checkout source code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Checkout Virtools SDK
+      uses: actions/checkout@v4
+      with:
+        repository: doyaGu/Virtools-SDK-2.1
+        path: ${{ env.VIRTOOLS_SDK_PATH }}
+
+    - name: Get current branch and commit hash
+      shell: bash
+      run: |
+        echo "GIT_BRANCH=$(echo ${GITHUB_REF#refs/heads/})" >> "$GITHUB_ENV"
+        echo "GIT_SHA=$(git rev-parse --short "$GITHUB_SHA")" >> "$GITHUB_ENV"
+
+    - name: Setup CMake
+      uses: lukka/get-cmake@latest
+
+    - name: Setup MSVC
+      uses: TheMrMilchmann/setup-msvc-dev@v3.0.0
+      with:
+        arch: x86
+      
+    - name: Configure CMake for Release version
+      run: cmake -B ${{ github.workspace }}/build-release -DCMAKE_BUILD_TYPE=Release -A Win32
+
+    - name: Configure CMake for Debug version
+      run: cmake -B ${{ github.workspace }}/build-debug -DCMAKE_BUILD_TYPE=Debug -A Win32
   
-      - name: Checkout Virtools SDK
-        uses: actions/checkout@v4
-        with:
-          repository: doyaGu/Virtools-SDK-2.1
-          path: ${{env.VIRTOOLS_SDK_PATH}}
+    - name: Build Release version
+      # Build your program with the given configuration
+      run: cmake --build ${{ github.workspace }}/build-release --config Release
 
-      - name: Get current branch and commit hash
-        shell: bash
-        run: |
-          echo "GIT_BRANCH=$(echo ${GITHUB_REF#refs/heads/})" >> "$GITHUB_ENV"
-          echo "GIT_SHA=$(git rev-parse --short "$GITHUB_SHA")" >> "$GITHUB_ENV"
+    - name: Build Debug version
+      # Build your program with the given configuration
+      run: cmake --build ${{ github.workspace }}/build-debug --config Debug
 
-      - name: Setup CMake
-        uses: lukka/get-cmake@latest
+    - name: Test Release version
+      working-directory: ${{ github.workspace }}/build-release
+      run: ctest -C Release
 
-      - name: Setup MSVC
-        uses: TheMrMilchmann/setup-msvc-dev@v3.0.0
-        with:
-          arch: x86
-        
-      - name: Configure CMake
-        # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
-        # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -A Win32
-  
-      - name: Build
-        # Build your program with the given configuration
-        run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
-  
-      - name: Test
-        working-directory: ${{github.workspace}}/build
-        # Execute tests defined by the CMake configuration.
-        # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-        run: ctest -C ${{env.BUILD_TYPE}}
+    - name: Test Debug version
+      working-directory: ${{ github.workspace }}/build-debug
+      run: ctest -C Debug
 
-      - name: Install
-        run: cmake --install ${{github.workspace}}/build --prefix ${{github.workspace}}/dist --config ${{env.BUILD_TYPE}}
-        
-      - name: Release Artifact
-        uses: actions/upload-artifact@v4.3.3
-        with:
-          name: ${{env.PROJECT_NAME}}-${{env.GIT_SHA}}-${{env.BUILD_TYPE}}
-          path: ${{github.workspace}}/dist
+    - name: Install Release version
+      run: cmake --install ${{ github.workspace }}/build-release --prefix ${{ github.workspace }}/dist-release --config Release
+
+    - name: Install Debug version
+      run: cmake --install ${{ github.workspace }}/build-debug --prefix ${{ github.workspace }}/dist-debug --config Debug
+      
+    - name: Upload Release Artifact
+      uses: actions/upload-artifact@v4.3.3
+      with:
+        name: ${{env.PROJECT_NAME}}-${{env.GIT_SHA}}-Release
+        path: ${{github.workspace}}/dist-release
+
+    - name: Upload Debug Artifact
+      uses: actions/upload-artifact@v4.3.3
+      with:
+        name: ${{env.PROJECT_NAME}}-${{env.GIT_SHA}}-Debug
+        path: ${{github.workspace}}/dist-debug
