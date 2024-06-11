@@ -524,7 +524,7 @@ void BMLMod::InitConfigs() {
 
     m_FontSize = GetConfig()->GetProperty("GUI", "FontSize");
     m_FontSize->SetComment("The size of font (pixel).");
-    m_FontSize->SetDefaultFloat(28.0f);
+    m_FontSize->SetDefaultFloat(32.0f);
 
     m_FontGlyphRanges = GetConfig()->GetProperty("GUI", "FontGlyphRanges");
     m_FontGlyphRanges->SetComment("The Unicode ranges of font glyph.");
