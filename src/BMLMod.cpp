@@ -1179,11 +1179,12 @@ void BMLMod::OnProcess_CommandBar() {
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleColor(ImGuiCol_WindowBg, Bui::GetMenuColor());
     ImGui::PushFont(m_Font);
 
     const ImVec2 vpSize = ImGui::GetMainViewport()->Size;
-    const ImVec2 size(vpSize.x * 0.96f, 0.0f);
+    ImVec2 size(vpSize.x * 0.96f, 0.0f);
 
     if (m_CmdTyping) {
         const ImVec2 pos(vpSize.x * 0.02f, vpSize.y * 0.93f);
@@ -1198,6 +1199,7 @@ void BMLMod::OnProcess_CommandBar() {
         constexpr ImGuiWindowFlags BarFlags = ImGuiWindowFlags_NoDecoration |
                                               ImGuiWindowFlags_NoBackground |
                                               ImGuiWindowFlags_NoResize |
+                                              ImGuiWindowFlags_NoCollapse |
                                               ImGuiWindowFlags_NoMove |
                                               ImGuiWindowFlags_NoNav;
         ImGui::Begin("CommandBar", nullptr, BarFlags);
@@ -1232,32 +1234,45 @@ void BMLMod::OnProcess_CommandBar() {
                                           ImGuiWindowFlags_NoInputs |
                                           ImGuiWindowFlags_NoMove |
                                           ImGuiWindowFlags_NoResize |
+                                          ImGuiWindowFlags_NoCollapse |
+                                          ImGuiWindowFlags_NoBackground |
                                           ImGuiWindowFlags_NoNav |
                                           ImGuiWindowFlags_NoFocusOnAppearing |
                                           ImGuiWindowFlags_NoBringToFrontOnFocus;
 
     const int count = std::min(MSG_MAXSIZE, m_MsgCount);
+    float ly = ImGui::GetTextLineHeightWithSpacing();
+    ImVec2 pos(vpSize.x * 0.02f, vpSize.y * 0.9f - (float) count * ly);
+    size.y = (float) count * ly;
+    ImVec4 bgColorVec4 = Bui::GetMenuColor();
+
+    ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(size, ImGuiCond_Always);
+    ImGui::Begin("Messages", nullptr, MsgFlags);
+    ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+
+    ImVec2 contentSize = ImGui::GetContentRegionMax();
+
     for (int i = 0; i < count; i++) {
         float &timer = m_Msgs[i].Timer;
         if (timer < 0) {
             m_Msgs[i].Text[0] = '\0';
         } else {
-            const ImVec2 pos(vpSize.x * 0.02f, vpSize.y * 0.9f - (float) i * ImGui::GetTextLineHeightWithSpacing());
-            ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
-            ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-            ImGui::SetNextWindowBgAlpha(std::min(110.0f, (timer / 20.0f)) / 255.0f);
-            static char buf[16];
-            snprintf(buf, 16, "Message%d", i);
-            ImGui::Begin(buf, nullptr, MsgFlags);
-            ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
-            ImGui::Text("%s", m_Msgs[i].Text);
-            ImGui::End();
+            ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+            cursorPos.y += (float)(count - i) * ly;
+            bgColorVec4.w = std::min(110.0f, (timer / 20.0f)) / 255.0f;
+
+            ImDrawList *drawList = ImGui::GetWindowDrawList();
+            drawList->AddRectFilled(cursorPos, ImVec2(cursorPos.x + contentSize.x, cursorPos.y + ly), ImGui::GetColorU32(bgColorVec4));
+            drawList->AddText(cursorPos, IM_COL32_WHITE, m_Msgs[i].Text);
         }
     }
 
+    ImGui::End();
+
     ImGui::PopFont();
     ImGui::PopStyleColor();
-    ImGui::PopStyleVar(2);
+    ImGui::PopStyleVar(3);
 
     CKStats stats;
     m_CKContext->GetProfileStats(&stats);
@@ -1372,8 +1387,7 @@ void BMLMod::OnDrawModList() {
 
         const auto titleSize = ImGui::CalcTextSize(TitleText);
         const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
-        ImGui::GetWindowDrawList()->AddText(ImVec2((vpSize.x - titleSize.x) / 2.0f, vpSize.y * 0.13f), IM_COL32_WHITE,
-                                            TitleText);
+        ImGui::GetWindowDrawList()->AddText(ImVec2((vpSize.x - titleSize.x) / 2.0f, vpSize.y * 0.13f), IM_COL32_WHITE, TitleText);
 
         ImGui::GetFont()->Scale = oldScale;
         ImGui::PopFont();
