@@ -1057,7 +1057,9 @@ void ModManager::InitDirectories() {
     m_LoaderDirUtf8 = buf;
 
     // Set up temp directory
-    m_TempDir = m_LoaderDir + L"\\Cache";
+    ::GetTempPathW(MAX_PATH, path);
+    wcsncat(path, L"BML", MAX_PATH);
+    m_TempDir = path;
     if (!utils::DirectoryExists(m_TempDir)) {
         utils::CreateDir(m_TempDir);
     }
