@@ -1251,20 +1251,29 @@ void BMLMod::OnProcess_CommandBar() {
     ImGui::Begin("Messages", nullptr, MsgFlags);
     ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
 
-    ImVec2 contentSize = ImGui::GetContentRegionMax();
+    const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+    const ImVec2 contentSize = ImGui::GetContentRegionMax();
 
-    for (int i = 0; i < count; i++) {
-        float &timer = m_Msgs[i].Timer;
-        if (timer < 0) {
-            m_Msgs[i].Text[0] = '\0';
-        } else {
-            ImVec2 cursorPos = ImGui::GetCursorScreenPos();
-            cursorPos.y += (float)(count - i) * ly;
-            bgColorVec4.w = std::min(110.0f, (timer / 20.0f)) / 255.0f;
+    ImVec2 msgPos = cursorPos;
+    ImDrawList *drawList = ImGui::GetWindowDrawList();
 
-            ImDrawList *drawList = ImGui::GetWindowDrawList();
-            drawList->AddRectFilled(cursorPos, ImVec2(cursorPos.x + contentSize.x, cursorPos.y + ly), ImGui::GetColorU32(bgColorVec4));
-            drawList->AddText(cursorPos, IM_COL32_WHITE, m_Msgs[i].Text);
+    if (m_CmdTyping) {
+        for (int i = 0; i < count; i++) {
+            msgPos.y = cursorPos.y + (float) (count - i) * ly;
+
+            drawList->AddRectFilled(msgPos, ImVec2(msgPos.x + contentSize.x, msgPos.y + ly), ImGui::GetColorU32(bgColorVec4));
+            drawList->AddText(msgPos, IM_COL32_WHITE, m_Msgs[i].Text);
+        }
+    } else {
+        for (int i = 0; i < count; i++) {
+            const float timer = m_Msgs[i].Timer;
+            if (timer >= 0) {
+                msgPos.y = cursorPos.y + (float) (count - i) * ly;
+                bgColorVec4.w = std::min(110.0f, (timer / 20.0f)) / 255.0f;
+
+                drawList->AddRectFilled(msgPos, ImVec2(msgPos.x + contentSize.x, msgPos.y + ly), ImGui::GetColorU32(bgColorVec4));
+                drawList->AddText(msgPos, IM_COL32_WHITE, m_Msgs[i].Text);
+            }
         }
     }
 
