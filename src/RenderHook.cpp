@@ -1,138 +1,371 @@
 #include "RenderHook.h"
 
+#include "CKTimeManager.h"
+#include "CKAttributeManager.h"
+#include "CKParameterOut.h"
+#include "CKRasterizer.h"
+
 #include "HookUtils.h"
 #include "VTables.h"
 
-struct RenderContextHook : public CKRenderContext {
-    static bool s_DisableRender;
-    static CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> s_VTable;
+struct VxCallBack {
+    void *callback;
+    void *argument;
+    CKBOOL temp;
+};
 
-    static void Hook(CKRenderContext *rc) {
-        if (!rc)
+struct VxOption {
+    CKDWORD Value;
+    XString Key;
+
+    void Set(XString &key, CKDWORD &value) {
+        Key = key;
+        Value = value;
+    }
+
+    void Set(const char *key, CKDWORD value) {
+        Key = key;
+        Value = value;
+    }
+};
+
+struct VxDriverDescEx {
+    CKBOOL CapsUpToDate;
+    CKDWORD DriverId;
+    char DriverDesc[512];
+    char DriverDesc2[512];
+    CKBOOL Hardware;
+    CKDWORD DisplayModeCount;
+    VxDisplayMode *DisplayModes;
+    XSArray<VxImageDescEx> TextureFormats;
+    Vx2DCapsDesc Caps2D;
+    Vx3DCapsDesc Caps3D;
+    CKRasterizer *Rasterizer;
+    CKRasterizerDriver *RasterizerDriver;
+};
+
+class CKCallbacksContainer {
+public:
+    XClassArray<VxCallBack> m_PreCallBacks;
+    void *m_Args;
+    XClassArray<VxCallBack> m_PostCallBacks;
+};
+
+struct UserDrawPrimitiveDataClass : public VxDrawPrimitiveData {
+    CKDWORD field_0[29];
+};
+
+struct CKRenderContextSettings
+{
+    CKRECT m_Rect;
+    CKDWORD m_Bpp;
+    CKDWORD m_Zbpp;
+    CKDWORD m_StencilBpp;
+};
+
+struct CKObjectExtents {
+    VxRect m_Rect;
+    CKDWORD m_Extent;
+    CK_ID m_Camera;
+};
+
+class CKSceneGraphNode {
+public:
+    CK3dEntity *m_Entity;
+    CKDWORD m_TimeFpsCalc;
+    CKDWORD m_Flag;
+    CKDWORD m_ChildCount;
+    VxBbox m_Bbox;
+    CKWORD m_LastPriority;
+    CKWORD m_Priority;
+    CKDWORD m_RenderContextMask;
+    CKDWORD m_EntityFlags;
+    CKSceneGraphNode *m_Parent;
+    XArray<CKSceneGraphNode> m_Children;
+    CKDWORD m_ChildrenCount;
+};
+
+struct CKSceneGraphRootNode : public CKSceneGraphNode {
+    XArray<CKSceneGraphNode> m_TransparentObjects;
+};
+
+class CKRenderedScene {
+public:
+    CKRenderContext *m_RenderContext;
+    CKContext *m_Context;
+    CKMaterial *m_BackgroundMaterial;
+    CK3dEntity *m_3dEntity;
+    CKCamera *m_AttachedCamera;
+    XArray<int> field_14;
+    XArray<CKCamera *> m_Cameras;
+    XArray<CKLight *> m_Lights;
+    CKDWORD m_FogMode;
+    float m_FogStart;
+    float m_FogEnd;
+    float m_FogDensity;
+    CKDWORD m_FogColor;
+    CKDWORD m_AmbientLight;
+    CKDWORD field_50;
+    XArray<int> field_54;
+};
+
+struct RenderManagerHook : public CKRenderManager {
+public:
+    XClassArray<VxCallBack> m_TemporaryPreRenderCallbacks;
+    XClassArray<VxCallBack> m_TemporaryPostRenderCallbacks;
+    XSObjectArray m_RenderContexts;
+    XArray<CKRasterizer *> m_Rasterizers;
+    VxDriverDescEx *m_Drivers;
+    int m_DriverCount;
+    CKMaterial *m_DefaultMat;
+    CKDWORD m_RenderContextMaskFree;
+    CKSceneGraphRootNode m_SceneGraphRootNode;
+    XObjectPointerArray m_MovedEntities;
+    XObjectPointerArray m_Objects;
+    CKDWORD field_D0;
+    CKDWORD field_D4;
+    CKDWORD field_D8;
+    CKDWORD field_DC;
+    CKDWORD field_E0;
+    CKDWORD field_E4;
+    CKDWORD field_E8;
+    CKDWORD field_EC;
+    CKDWORD field_F0;
+    CKDWORD field_F4;
+    CKDWORD field_F8;
+    CKDWORD field_FC;
+    CKDWORD field_100;
+    CKDWORD field_104;
+    CKDWORD field_108;
+    CKDWORD field_10C;
+    CKDWORD field_110;
+    CKDWORD field_114;
+    CKDWORD field_118;
+    CKDWORD field_11C;
+    CKDWORD field_120;
+    CKDWORD field_124;
+    CKDWORD field_128;
+    CKDWORD field_12C;
+    CKDWORD field_130;
+    CKDWORD field_134;
+    CKDWORD field_138;
+    XArray<CKVertexBuffer *> m_VertexBuffers;
+    VxOption m_ForceLinearFog;
+    VxOption m_ForceSoftware;
+    VxOption m_EnsureVertexShader;
+    VxOption m_DisableFilter;
+    VxOption m_DisableDithering;
+    VxOption m_Antialias;
+    VxOption m_DisableMipmap;
+    VxOption m_DisableSpecular;
+    VxOption m_UseIndexBuffers;
+    VxOption m_EnableScreenDump;
+    VxOption m_EnableDebugMode;
+    VxOption m_VertexCache;
+    VxOption m_SortTransparentObjects;
+    VxOption m_TextureCacheManagement;
+    VxOption m_DisablePerspectiveCorrection;
+    VxOption m_TextureVideoFormat;
+    VxOption m_SpriteVideoFormat;
+    XArray<VxOption*> m_Options;
+    CK2dEntity *m_2DRootFore;
+    CK2dEntity *m_2DRootBack;
+    CKDWORD m_2DRootBackName;
+    CKDWORD m_2DRootForeName;
+    XClassArray<VxEffectDescription> m_Effects;
+
+    static CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager> s_VTable;
+
+    CP_DECLARE_METHOD_HOOK(int, GetRenderDriverCount, ()) {
+        return CP_CALL_METHOD_PTR(this, s_VTable.GetRenderDriverCount);
+    }
+
+    CP_DECLARE_METHOD_HOOK(VxDriverDesc *, GetRenderDriverDescription, (int Driver)) {
+        return CP_CALL_METHOD_PTR(this, s_VTable.GetRenderDriverDescription, Driver);
+    }
+
+    CP_DECLARE_METHOD_HOOK(void, GetDesiredTexturesVideoFormat, (VxImageDescEx &VideoFormat)) {
+        CP_CALL_METHOD_PTR(this, s_VTable.GetDesiredTexturesVideoFormat, VideoFormat);
+    }
+
+    CP_DECLARE_METHOD_HOOK(void, SetDesiredTexturesVideoFormat, (VxImageDescEx &VideoFormat)) {
+        CP_CALL_METHOD_PTR(this, s_VTable.SetDesiredTexturesVideoFormat, VideoFormat);
+    }
+
+    CP_DECLARE_METHOD_HOOK(CKRenderContext *,GetRenderContext, (int pos)) {
+        return CP_CALL_METHOD_PTR(this, s_VTable.GetRenderContext, pos);
+    }
+
+    CP_DECLARE_METHOD_HOOK(CKRenderContext *,GetRenderContextFromPoint, (CKPOINT &pt)) {
+        return CP_CALL_METHOD_PTR(this, s_VTable.GetRenderContextFromPoint, pt);
+    }
+
+    CP_DECLARE_METHOD_HOOK(int, GetRenderContextCount, ()) {
+        return CP_CALL_METHOD_PTR(this, s_VTable.GetRenderContextCount);
+    }
+
+    CP_DECLARE_METHOD_HOOK(void, Process, ()) {
+        CP_CALL_METHOD_PTR(this, s_VTable.Process);
+    }
+
+    CP_DECLARE_METHOD_HOOK(void, FlushTextures, ()) {
+        CP_CALL_METHOD_PTR(this, s_VTable.FlushTextures);
+    }
+
+    CP_DECLARE_METHOD_HOOK(CKRenderContext *, CreateRenderContext, (void *Window, int Driver, CKRECT *rect, CKBOOL Fullscreen, int Bpp, int Zbpp, int StencilBpp, int RefreshRate)) {
+        return CP_CALL_METHOD_PTR(this, s_VTable.CreateRenderContext, Window, Driver, rect, Fullscreen, Bpp, Zbpp, StencilBpp, RefreshRate);
+    }
+
+    CP_DECLARE_METHOD_HOOK(CKERROR, DestroyRenderContext, (CKRenderContext *context)) {
+        return CP_CALL_METHOD_PTR(this, s_VTable.DestroyRenderContext, context);
+    }
+
+    CP_DECLARE_METHOD_HOOK(void, RemoveRenderContext, (CKRenderContext *context)) {
+        CP_CALL_METHOD_PTR(this, s_VTable.RemoveRenderContext, context);
+    }
+
+    CP_DECLARE_METHOD_HOOK(CKVertexBuffer *,CreateVertexBuffer, ()) {
+        return CP_CALL_METHOD_PTR(this, s_VTable.CreateVertexBuffer);
+    }
+
+    CP_DECLARE_METHOD_HOOK(void, DestroyVertexBuffer, (CKVertexBuffer *VB)) {
+        CP_CALL_METHOD_PTR(this, s_VTable.DestroyVertexBuffer, VB);
+    }
+
+    CP_DECLARE_METHOD_HOOK(void, SetRenderOptions, (CKSTRING RenderOptionString, CKDWORD Value)) {
+        CP_CALL_METHOD_PTR(this, s_VTable.SetRenderOptions, RenderOptionString, Value);
+    }
+
+    CP_DECLARE_METHOD_HOOK(const VxEffectDescription &, GetEffectDescription, (int EffectIndex)) {
+        return CP_CALL_METHOD_PTR(this, s_VTable.GetEffectDescription, EffectIndex);
+    }
+
+    CP_DECLARE_METHOD_HOOK(int, GetEffectCount,()) {
+        return CP_CALL_METHOD_PTR(this, s_VTable.GetEffectCount);
+    }
+
+    CP_DECLARE_METHOD_HOOK(int, AddEffect, (const VxEffectDescription &NewEffect)) {
+        return CP_CALL_METHOD_PTR(this, s_VTable.AddEffect, NewEffect);
+    }
+
+    static void Hook(CKRenderManager *man) {
+        if (!man)
             return;
 
-        utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>>(rc, s_VTable);
+        utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager>>(man, s_VTable);
 
-#define HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(Instance, Name) \
-    utils::HookVirtualMethod(Instance, &RenderContextHook::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>, Name) / sizeof(void*)))
+#define HOOK_RENDER_MANAGER_VIRTUAL_METHOD(Instance, Name) \
+    utils::HookVirtualMethod(Instance, &RenderManagerHook::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager>, Name) / sizeof(void*)))
 
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, AddObject);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, RemoveObject);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, IsObjectAttached);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Compute3dRootObjects);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Compute2dRootObjects);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Get2dRoot);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, DetachAll);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, ForceCameraSettingsUpdate);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, PrepareCameras);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Clear);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, DrawScene);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, BackToFront);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Render);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, AddPreRenderCallBack);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, RemovePreRenderCallBack);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, AddPostRenderCallBack);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, RemovePostRenderCallBack);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, AddPostSpriteRenderCallBack);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, RemovePostSpriteRenderCallBack);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetDrawPrimitiveStructure);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetDrawPrimitiveIndices);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Transform);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, TransformVertices);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GoFullScreen);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, StopFullScreen);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, IsFullScreen);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetDriverIndex);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, ChangeDriver);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetWindowHandle);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, ScreenToClient);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, ClientToScreen);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetWindowRect);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetWindowRect);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetHeight);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetWidth);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Resize);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetViewRect);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetViewRect);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetPixelFormat);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetState);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetState);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetTexture);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetTextureStageState);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetRasterizerContext);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetClearBackground);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetClearBackground);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetClearZBuffer);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetClearZBuffer);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetGlobalRenderMode);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetGlobalRenderMode);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetCurrentRenderOptions);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetCurrentRenderOptions);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, ChangeCurrentRenderOptions);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetCurrentExtents);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetCurrentExtents);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetAmbientLightRGB);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetAmbientLight);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetAmbientLight);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetFogMode);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetFogStart);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetFogEnd);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetFogDensity);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetFogColor);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetFogMode);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetFogStart);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetFogEnd);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetFogDensity);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetFogColor);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, DrawPrimitive);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetWorldTransformationMatrix);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetProjectionTransformationMatrix);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetViewTransformationMatrix);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetWorldTransformationMatrix);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetProjectionTransformationMatrix);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetViewTransformationMatrix);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetUserClipPlane);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetUserClipPlane);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Pick);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, PointPick);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, RectPick);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, AttachViewpointToCamera);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, DetachViewpointFromCamera);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetAttachedCamera);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetViewpoint);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetBackgroundMaterial);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetBoundingBox);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetStats);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetCurrentMaterial);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Activate);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, DumpToMemory);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, CopyToVideo);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, DumpToFile);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetDirectXInfo);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, WarnEnterThread);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, WarnExitThread);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Pick2D);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetRenderTarget);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, AddRemoveSequence);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetTransparentMode);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, AddDirtyRect);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, RestoreScreenBackup);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetStencilFreeMask);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, UsedStencilBits);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetFirstFreeStencilBits);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, LockCurrentVB);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, ReleaseCurrentVB);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetTextureMatrix);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetStereoParameters);
-        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetStereoParameters);
+        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderDriverCount);
+        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderDriverDescription);
+        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetDesiredTexturesVideoFormat);
+        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, SetDesiredTexturesVideoFormat);
+        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderContext);
+        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderContextFromPoint);
+        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderContextCount);
+        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, Process);
+        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, FlushTextures);
+        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, CreateRenderContext);
+        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, DestroyRenderContext);
+        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, RemoveRenderContext);
+        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, CreateVertexBuffer);
+        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, DestroyVertexBuffer);
+        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, SetRenderOptions);
+        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetEffectDescription);
+        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetEffectCount);
+        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, AddEffect);
 
-#undef HOOK_INPUT_MANAGER_VIRTUAL_METHOD
+#undef HOOK_RENDER_MANAGER_VIRTUAL_METHOD
     }
 
     static void Unhook(CKRenderContext *rc) {
         if (rc)
-            utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>>(rc, s_VTable);
+            utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager>>(rc, s_VTable);
     }
+};
+
+struct RenderContextHook : public CKRenderContext {
+    CKDWORD m_WinHandle;
+    CKDWORD m_AppHandle;
+    CKRECT m_WinRect;
+    CK_RENDER_FLAGS m_RenderFlags;
+    CKRenderedScene *m_RenderedScene;
+    CKBOOL m_Fullscreen;
+    CKBOOL m_Active;
+    CKBOOL m_PerspectiveOrOrthographic;
+    CKBOOL m_ProjectionUpdated;
+    CKBOOL m_Start;
+    CKBOOL m_TransparentMode;
+    CKBOOL m_DeviceValid;
+    CKCallbacksContainer m_PreRenderCallBacks;
+    CKCallbacksContainer m_PreRenderTempCallBacks;
+    CKCallbacksContainer m_PostRenderCallBacks;
+    CKRenderManager *m_RenderManager;
+    CKRasterizerContext *m_RasterizerContext;
+    CKRasterizerDriver *m_RasterizerDriver;
+    CKDWORD m_Driver;
+    CKDWORD m_Shading;
+    CKDWORD m_TextureEnabled;
+    CKDWORD m_DisplayWireframe;
+    VxFrustum m_Frustum;
+    float m_Fov;
+    float m_Zoom;
+    float m_NearPlane;
+    float m_FarPlane;
+    VxMatrix m_TransformMatrix;
+    CKViewportData m_ViewportData;
+    CKRECT m_WindowRect;
+    int m_Bpp;
+    int m_Zbpp;
+    int m_StencilBpp;
+    CKRenderContextSettings m_RenderContextSettings;
+    VxRect m_CurrentExtents;
+    CKDWORD field_21C;
+    CKDWORD m_TimeFpsCalc;
+    VxTimeProfiler m_RenderTimeProfiler;
+    float m_SmoothedFps;
+    VxStats m_Stats;
+    VxTimeProfiler m_DevicePreCallbacksTimeProfiler;
+    VxTimeProfiler m_DevicePostCallbacksTimeProfiler;
+    VxTimeProfiler m_ObjectsCallbacksTimeProfiler;
+    VxTimeProfiler m_SpriteCallbacksTimeProfiler;
+    VxTimeProfiler m_ObjectsRenderTimeProfiler;
+    VxTimeProfiler m_SceneTraversalTimeProfiler;
+    VxTimeProfiler m_SkinTimeProfiler;
+    VxTimeProfiler m_SpriteTimeProfiler;
+    VxTimeProfiler m_TransparentObjectsSortTimeProfiler;
+    CK3dEntity *m_Current3dEntity;
+    CKTexture *m_Texture;
+    CKDWORD m_CubeMapFace;
+    float m_FocalLength;
+    float m_EyeSeparation;
+    CKDWORD m_Flags;
+    CKDWORD m_FpsInterval;
+    XString m_CurrentObjectDesc;
+    XString m_StateString;
+    CKDWORD field_33C;
+    CKDWORD m_DrawSceneCalls;
+    CKBOOL m_ObjectsRendering;
+    XVoidArray m_Sprite3DBatches;
+    XVoidArray m_TransparentObjects;
+    int m_StencilFreeMask;
+    UserDrawPrimitiveDataClass *m_UserDrawPrimitiveData;
+    CKDWORD m_MaskFree;
+    CKDWORD m_VertexBufferIndex;
+    CKDWORD m_StartIndex;
+    CKDWORD m_DpFlags;
+    CKDWORD m_VertexBufferCount;
+    XArray<CKObjectExtents> m_ObjectExtents;
+    XArray<CKObjectExtents> m_Extents;
+    XVoidArray m_RootObjects;
+    CKCamera *m_Camera;
+    CKTexture *m_NCUTex;
+    VxTimeProfiler m_TimeProfiler_3A8;
+    CKDWORD m_PVInformation;
+
+    static bool s_DisableRender;
+    static CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> s_VTable;
 
     CP_DECLARE_METHOD_HOOK(void, AddObject, (CKRenderObject *obj)) {
         CP_CALL_METHOD_PTR(this, s_VTable.AddObject, obj);
@@ -189,7 +422,71 @@ struct RenderContextHook : public CKRenderContext {
     CP_DECLARE_METHOD_HOOK(CKERROR, Render, (CK_RENDER_FLAGS Flags)) {
         if (s_DisableRender)
             return CK_OK;
-        return CP_CALL_METHOD_PTR(this, s_VTable.Render, Flags);
+
+        VxTimeProfiler renderProfiler;
+
+        if (!m_Active)
+            return CKERR_RENDERCONTEXTINACTIVE;
+        if (!m_RasterizerContext)
+            return CKERR_INVALIDRENDERCONTEXT;
+        if (!Flags)
+            Flags = m_RenderFlags;
+
+        CKTimeManager *tm = m_Context->GetTimeManager();
+
+        if ((tm->GetLimitOptions() & CK_FRAMERATE_SYNC) != 0) {
+            Flags = static_cast<CK_RENDER_FLAGS>(Flags & CK_RENDER_CLEARBACK);
+        }
+
+        PrepareCameras(Flags);
+        m_Camera = nullptr;
+
+        if (m_RenderedScene->m_AttachedCamera) {
+            CKAttributeManager *am = m_Context->GetAttributeManager();
+            CKAttributeType attrType = am->GetAttributeTypeByName((CKSTRING)"1CamPl8ne4SterCube2Rend");
+            CKParameterOut *param = m_RenderedScene->m_AttachedCamera->GetAttributeParameter(attrType);
+            if (param) {
+                auto *cameraId = static_cast<CK_ID *>(param->GetReadDataPtr(0));
+                m_Camera = (CKCamera *)m_Context->GetObject(*cameraId);
+            }
+        }
+
+        CKERROR err = Clear(Flags);
+        if (err != CK_OK)
+            return err;
+
+        err = DrawScene(Flags);
+        if (err != CK_OK)
+            return err;
+
+        ++m_TimeFpsCalc;
+
+        float renderTime = m_RenderTimeProfiler.Current();
+        if (renderTime <= 1000.0f) {
+            float fps = (float)m_TimeFpsCalc * 1000.0f / renderTime;
+            m_RenderTimeProfiler.Reset();
+            m_TimeFpsCalc = 0;
+            fps = fps * 0.9f + m_SmoothedFps * 0.1f;
+            m_SmoothedFps = fps;
+            m_Stats.SmoothedFps = fps;
+        }
+
+        err = BackToFront(Flags);
+        if (err != CK_OK)
+            return err;
+
+        if ((Flags & CK_RENDER_DONOTUPDATEEXTENTS) != 0) {
+            CKObjectExtents extent;
+            GetViewRect(extent.m_Rect);
+            CKCamera *camera = GetAttachedCamera();
+            extent.m_Camera = (camera) ? camera->GetID() : 0;
+            m_Extents.PushBack(extent);
+        }
+
+        renderTime = renderProfiler.Current();
+        m_Context->AddProfileTime(CK_PROFILE_RENDERTIME, renderTime);
+
+        return err;
     }
 
     CP_DECLARE_METHOD_HOOK(void, AddPreRenderCallBack, (CK_RENDERCALLBACK Function, void *Argument, CKBOOL Temporary)) {
@@ -543,7 +840,6 @@ struct RenderContextHook : public CKRenderContext {
 
     CP_DECLARE_METHOD_HOOK(void, RestoreScreenBackup, ()) {
         CP_CALL_METHOD_PTR(this, s_VTable.RestoreScreenBackup);
-
     }
 
     CP_DECLARE_METHOD_HOOK(CKDWORD, GetStencilFreeMask, ()) {
@@ -576,6 +872,133 @@ struct RenderContextHook : public CKRenderContext {
 
     CP_DECLARE_METHOD_HOOK(void, GetStereoParameters, (float &EyeSeparation, float &FocalLength)) {
         CP_CALL_METHOD_PTR(this, s_VTable.GetStereoParameters, EyeSeparation, FocalLength);
+    }
+
+    static void Hook(CKRenderContext *rc) {
+        if (!rc)
+            return;
+
+        utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>>(rc, s_VTable);
+
+#define HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(Instance, Name) \
+    utils::HookVirtualMethod(Instance, &RenderContextHook::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>, Name) / sizeof(void*)))
+
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, AddObject);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, RemoveObject);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, IsObjectAttached);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Compute3dRootObjects);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Compute2dRootObjects);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Get2dRoot);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, DetachAll);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, ForceCameraSettingsUpdate);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, PrepareCameras);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Clear);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, DrawScene);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, BackToFront);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Render);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, AddPreRenderCallBack);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, RemovePreRenderCallBack);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, AddPostRenderCallBack);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, RemovePostRenderCallBack);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, AddPostSpriteRenderCallBack);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, RemovePostSpriteRenderCallBack);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetDrawPrimitiveStructure);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetDrawPrimitiveIndices);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Transform);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, TransformVertices);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GoFullScreen);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, StopFullScreen);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, IsFullScreen);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetDriverIndex);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, ChangeDriver);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetWindowHandle);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, ScreenToClient);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, ClientToScreen);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetWindowRect);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetWindowRect);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetHeight);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetWidth);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Resize);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetViewRect);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetViewRect);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetPixelFormat);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetState);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetState);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetTexture);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetTextureStageState);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetRasterizerContext);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetClearBackground);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetClearBackground);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetClearZBuffer);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetClearZBuffer);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetGlobalRenderMode);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetGlobalRenderMode);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetCurrentRenderOptions);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetCurrentRenderOptions);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, ChangeCurrentRenderOptions);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetCurrentExtents);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetCurrentExtents);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetAmbientLightRGB);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetAmbientLight);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetAmbientLight);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetFogMode);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetFogStart);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetFogEnd);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetFogDensity);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetFogColor);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetFogMode);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetFogStart);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetFogEnd);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetFogDensity);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetFogColor);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, DrawPrimitive);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetWorldTransformationMatrix);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetProjectionTransformationMatrix);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetViewTransformationMatrix);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetWorldTransformationMatrix);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetProjectionTransformationMatrix);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetViewTransformationMatrix);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetUserClipPlane);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetUserClipPlane);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Pick);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, PointPick);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, RectPick);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, AttachViewpointToCamera);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, DetachViewpointFromCamera);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetAttachedCamera);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetViewpoint);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetBackgroundMaterial);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetBoundingBox);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetStats);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetCurrentMaterial);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Activate);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, DumpToMemory);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, CopyToVideo);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, DumpToFile);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetDirectXInfo);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, WarnEnterThread);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, WarnExitThread);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Pick2D);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetRenderTarget);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, AddRemoveSequence);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetTransparentMode);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, AddDirtyRect);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, RestoreScreenBackup);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetStencilFreeMask);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, UsedStencilBits);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetFirstFreeStencilBits);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, LockCurrentVB);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, ReleaseCurrentVB);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetTextureMatrix);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetStereoParameters);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetStereoParameters);
+
+#undef HOOK_RENDER_CONTEXT_VIRTUAL_METHOD
+    }
+
+    static void Unhook(CKRenderContext *rc) {
+        if (rc)
+            utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>>(rc, s_VTable);
     }
 };
 
