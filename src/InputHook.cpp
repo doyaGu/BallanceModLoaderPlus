@@ -11,45 +11,6 @@ struct InputHook::Impl {
     static CKInputManager *s_InputManager;
     static CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager> s_VTable;
 
-    static void Hook(CKInputManager *im) {
-        if (!im)
-            return;
-
-        s_InputManager = im;
-        utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>>(s_InputManager, s_VTable);
-
-#define HOOK_INPUT_MANAGER_VIRTUAL_METHOD(Instance, Name) \
-    utils::HookVirtualMethod(Instance, &InputHook::Impl::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>, Name) / sizeof(void*)))
-
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, PostProcess);
-
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsKeyDown);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsKeyUp);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsKeyToggled);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetKeyboardState);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetNumberOfKeyInBuffer);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetKeyFromBuffer);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsMouseButtonDown);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsMouseClicked);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsMouseToggled);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetMouseButtonsState);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetMousePosition);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetMouseRelativePosition);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetJoystickPosition);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetJoystickRotation);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetJoystickSliders);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetJoystickPointOfViewAngle);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetJoystickButtonsState);
-        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsJoystickButtonDown);
-
-#undef HOOK_INPUT_MANAGER_VIRTUAL_METHOD
-    }
-
-    static void Unhook() {
-        if (s_InputManager)
-            utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>>(s_InputManager, s_VTable);
-    }
-
     CP_DECLARE_METHOD_HOOK(CKERROR, PostProcess, ()) { return CK_OK; }
 
     CP_DECLARE_METHOD_HOOK(CKBOOL, IsKeyDown, (CKDWORD iKey, CKDWORD *oStamp)) {
@@ -253,6 +214,45 @@ struct InputHook::Impl {
 
     static CKBOOL IsJoystickButtonDownOriginal(int iJoystick, int iButton) {
         return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.IsJoystickButtonDown, iJoystick, iButton);
+    }
+
+    static void Hook(CKInputManager *im) {
+        if (!im)
+            return;
+
+        s_InputManager = im;
+        utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>>(s_InputManager, s_VTable);
+
+#define HOOK_INPUT_MANAGER_VIRTUAL_METHOD(Instance, Name) \
+    utils::HookVirtualMethod(Instance, &InputHook::Impl::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>, Name) / sizeof(void*)))
+
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, PostProcess);
+
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsKeyDown);
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsKeyUp);
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsKeyToggled);
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetKeyboardState);
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetNumberOfKeyInBuffer);
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetKeyFromBuffer);
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsMouseButtonDown);
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsMouseClicked);
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsMouseToggled);
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetMouseButtonsState);
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetMousePosition);
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetMouseRelativePosition);
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetJoystickPosition);
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetJoystickRotation);
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetJoystickSliders);
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetJoystickPointOfViewAngle);
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, GetJoystickButtonsState);
+        HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, IsJoystickButtonDown);
+
+#undef HOOK_INPUT_MANAGER_VIRTUAL_METHOD
+    }
+
+    static void Unhook() {
+        if (s_InputManager)
+            utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>>(s_InputManager, s_VTable);
     }
 };
 
