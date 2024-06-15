@@ -423,70 +423,7 @@ struct RenderContextHook : public CKRenderContext {
         if (s_DisableRender)
             return CK_OK;
 
-        VxTimeProfiler renderProfiler;
-
-        if (!m_Active)
-            return CKERR_RENDERCONTEXTINACTIVE;
-        if (!m_RasterizerContext)
-            return CKERR_INVALIDRENDERCONTEXT;
-        if (!Flags)
-            Flags = m_RenderFlags;
-
-        CKTimeManager *tm = m_Context->GetTimeManager();
-
-        if ((tm->GetLimitOptions() & CK_FRAMERATE_SYNC) != 0) {
-            Flags = static_cast<CK_RENDER_FLAGS>(Flags & CK_RENDER_CLEARBACK);
-        }
-
-        PrepareCameras(Flags);
-        m_Camera = nullptr;
-
-        if (m_RenderedScene->m_AttachedCamera) {
-            CKAttributeManager *am = m_Context->GetAttributeManager();
-            CKAttributeType attrType = am->GetAttributeTypeByName((CKSTRING)"1CamPl8ne4SterCube2Rend");
-            CKParameterOut *param = m_RenderedScene->m_AttachedCamera->GetAttributeParameter(attrType);
-            if (param) {
-                auto *cameraId = static_cast<CK_ID *>(param->GetReadDataPtr(0));
-                m_Camera = (CKCamera *)m_Context->GetObject(*cameraId);
-            }
-        }
-
-        CKERROR err = Clear(Flags);
-        if (err != CK_OK)
-            return err;
-
-        err = DrawScene(Flags);
-        if (err != CK_OK)
-            return err;
-
-        ++m_TimeFpsCalc;
-
-        float renderTime = m_RenderTimeProfiler.Current();
-        if (renderTime <= 1000.0f) {
-            float fps = (float)m_TimeFpsCalc * 1000.0f / renderTime;
-            m_RenderTimeProfiler.Reset();
-            m_TimeFpsCalc = 0;
-            fps = fps * 0.9f + m_SmoothedFps * 0.1f;
-            m_SmoothedFps = fps;
-            m_Stats.SmoothedFps = fps;
-        }
-
-        err = BackToFront(Flags);
-        if (err != CK_OK)
-            return err;
-
-        if ((Flags & CK_RENDER_DONOTUPDATEEXTENTS) != 0) {
-            CKObjectExtents extent;
-            GetViewRect(extent.m_Rect);
-            CKCamera *camera = GetAttachedCamera();
-            extent.m_Camera = (camera) ? camera->GetID() : 0;
-            m_Extents.PushBack(extent);
-        }
-
-        renderTime = renderProfiler.Current();
-        m_Context->AddProfileTime(CK_PROFILE_RENDERTIME, renderTime);
-
-        return err;
+        return CP_CALL_METHOD_PTR(this, s_VTable.Render, Flags);
     }
 
     CP_DECLARE_METHOD_HOOK(void, AddPreRenderCallBack, (CK_RENDERCALLBACK Function, void *Argument, CKBOOL Temporary)) {
