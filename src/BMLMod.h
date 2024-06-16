@@ -176,12 +176,13 @@ private:
     bool m_SRActivated = false;
     bool m_SRShouldDraw = false;
 
-    IProperty *m_UnlockFPS = nullptr;
-    IProperty *m_FPSLimit = nullptr;
-    IProperty *m_AdaptiveCamera = nullptr;
     IProperty *m_ShowTitle = nullptr;
     IProperty *m_ShowFPS = nullptr;
     IProperty *m_ShowSR = nullptr;
+    IProperty *m_UnlockFPS = nullptr;
+    IProperty *m_FPSLimit = nullptr;
+    IProperty *m_AlphaTestEnabled = nullptr;
+    IProperty *m_FixWidescreen = nullptr;
     IProperty *m_FixLifeBall = nullptr;
     IProperty* m_MsgDuration = nullptr;
     IProperty* m_CustomMapNumber = nullptr;

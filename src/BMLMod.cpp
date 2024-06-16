@@ -52,7 +52,7 @@ void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *master
     }
 
     if (!strcmp(filename, "3D Entities\\MenuLevel.nmo")) {
-        if (m_AdaptiveCamera->GetBoolean()) {
+        if (m_FixWidescreen->GetBoolean()) {
             GetLogger()->Info("Adjust MenuLevel Camera");
             CKCamera *cam = m_BML->GetTargetCameraByName("Cam_MenuLevel");
             cam->SetAspectRatio((int)m_WindowRect.GetWidth(), (int)m_WindowRect.GetHeight());
@@ -62,7 +62,7 @@ void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *master
     }
 
     if (!strcmp(filename, "3D Entities\\Camera.nmo")) {
-        if (m_AdaptiveCamera->GetBoolean()) {
+        if (m_FixWidescreen->GetBoolean()) {
             GetLogger()->Info("Adjust Ingame Camera");
             CKCamera *cam = m_BML->GetTargetCameraByName("InGameCam");
             cam->SetAspectRatio((int)m_WindowRect.GetWidth(), (int)m_WindowRect.GetHeight());
@@ -145,6 +145,18 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
         m_MsgMaxTimer = m_MsgDuration->GetFloat() * 1000;
         if (m_MsgMaxTimer < 2000) {
             m_MsgDuration->SetFloat(2.0f);
+        }
+    } else if (prop == m_AlphaTestEnabled) {
+        CKMaterial *mat = m_BML->GetMaterialByName("Laterne_Verlauf");
+        if (mat) {
+            CKBOOL atest = m_AlphaTestEnabled->GetBoolean();
+            mat->EnableAlphaTest(atest);
+
+            VXCMPFUNC afunc = VXCMP_GREATEREQUAL;
+            mat->SetAlphaFunc(afunc);
+
+            int ref = 0;
+            mat->SetAlphaRef(ref);
         }
     }
 }
@@ -478,18 +490,6 @@ int BMLMod::OnTextEdit(ImGuiInputTextCallbackData *data) {
 void BMLMod::InitConfigs() {
     GetConfig()->SetCategoryComment("Misc", "Miscellaneous");
 
-    m_UnlockFPS = GetConfig()->GetProperty("Misc", "UnlockFrameRate");
-    m_UnlockFPS->SetComment("Unlock Frame Rate Limitation");
-    m_UnlockFPS->SetDefaultBoolean(true);
-
-    m_FPSLimit = GetConfig()->GetProperty("Misc", "SetMaxFrameRate");
-    m_FPSLimit->SetComment("Set Frame Rate Limitation, this option will not work if frame rate is unlocked. Set to 0 will turn on VSync.");
-    m_FPSLimit->SetDefaultInteger(0);
-
-    m_AdaptiveCamera = GetConfig()->GetProperty("Misc", "AdaptiveCamera");
-    m_AdaptiveCamera->SetComment("Adjust cameras on screen mode changed");
-    m_AdaptiveCamera->SetDefaultBoolean(true);
-
     m_ShowTitle = GetConfig()->GetProperty("Misc", "ShowTitle");
     m_ShowTitle->SetComment("Show BML Title at top");
     m_ShowTitle->SetDefaultBoolean(true);
@@ -501,6 +501,22 @@ void BMLMod::InitConfigs() {
     m_ShowSR = GetConfig()->GetProperty("Misc", "ShowSRTimer");
     m_ShowSR->SetComment("Show SR Timer above Time Score");
     m_ShowSR->SetDefaultBoolean(true);
+
+    m_UnlockFPS = GetConfig()->GetProperty("Misc", "UnlockFrameRate");
+    m_UnlockFPS->SetComment("Unlock Frame Rate Limitation");
+    m_UnlockFPS->SetDefaultBoolean(true);
+
+    m_FPSLimit = GetConfig()->GetProperty("Misc", "SetMaxFrameRate");
+    m_FPSLimit->SetComment("Set Frame Rate Limitation, this option will not work if frame rate is unlocked. Set to 0 will turn on VSync.");
+    m_FPSLimit->SetDefaultInteger(0);
+
+    m_AlphaTestEnabled = GetConfig()->GetProperty("Misc", "EnableAlphaTest");
+    m_AlphaTestEnabled->SetComment("Enable alpha test for lantern material, this option can increase FPS.");
+    m_AlphaTestEnabled->SetDefaultBoolean(true);
+
+    m_FixWidescreen = GetConfig()->GetProperty("Misc", "FixWidescreen");
+    m_FixWidescreen->SetComment("Improve widescreen resolutions support");
+    m_FixWidescreen->SetDefaultBoolean(true);
 
     m_FixLifeBall = GetConfig()->GetProperty("Misc", "FixLifeBallFreeze");
     m_FixLifeBall->SetComment("Game won't freeze when picking up life balls");
@@ -527,7 +543,9 @@ void BMLMod::InitConfigs() {
     m_FontSize->SetDefaultFloat(32.0f);
 
     m_FontGlyphRanges = GetConfig()->GetProperty("GUI", "FontGlyphRanges");
-    m_FontGlyphRanges->SetComment("The Unicode ranges of font glyph.");
+    m_FontGlyphRanges->SetComment("The Unicode ranges of font glyph."
+                                  " To display Chinese characters correctly, this option should be set to Chinese or ChineseFull."
+                                  " (The font you chosen must support Chinese characters)");
     m_FontGlyphRanges->SetDefaultString("Default");
 }
 
@@ -1081,6 +1099,19 @@ void BMLMod::OnEditScript_Levelinit_build(CKBehavior *script) {
     inLink->SetInBehaviorIO(bin->GetOutput(1));
     CreateLink(loadLevel, bin, objLoad);
     m_MapFile = objLoad->GetInputParameter(0)->GetDirectSource();
+
+    CKBehavior *smat = ScriptHelper::FindFirstBB(script, "set Mapping and Textures");
+    if (!smat) return;
+    CKBehavior *sml = ScriptHelper::FindFirstBB(smat, "Set Mat Laterne");
+    if (!sml) return;
+    CKBehavior *sat = ScriptHelper::FindFirstBB(sml, "Set Alpha Test");
+    if (!sat) return;
+
+    CKParameter *sate = sat->GetInputParameter(0)->GetDirectSource();
+    if (sate) {
+        CKBOOL atest = m_AlphaTestEnabled->GetBoolean();
+        sate->SetValue(&atest);
+    }
 }
 
 void BMLMod::OnEditScript_ExtraLife_Fix(CKBehavior *script) {
