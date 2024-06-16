@@ -186,6 +186,8 @@ private:
     IProperty *m_FixLifeBall = nullptr;
     IProperty* m_MsgDuration = nullptr;
     IProperty* m_CustomMapNumber = nullptr;
+    IProperty *m_Overclock = nullptr;
+
     IProperty *m_FontFilename = nullptr;
     IProperty *m_FontSize = nullptr;
     IProperty *m_FontGlyphRanges = nullptr;
@@ -196,6 +198,9 @@ private:
     CKParameter *m_MapFile = nullptr;
     CKParameter *m_LevelRow = nullptr;
     CKDataArray *m_CurLevel = nullptr;
+
+    CKBehaviorLink *m_OverclockLinks[3] = {};
+    CKBehaviorIO *m_OverclockLinkIO[3][2] = {};
 
     char m_MapSearchBuf[65536] = {};
     std::vector<size_t> m_MapSearchResult;

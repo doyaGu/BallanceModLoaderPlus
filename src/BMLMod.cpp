@@ -158,6 +158,9 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
             int ref = 0;
             mat->SetAlphaRef(ref);
         }
+    } else if (prop == m_Overclock) {
+        for (int i = 0; i < 3; i++)
+            m_OverclockLinks[i]->SetOutBehaviorIO(m_OverclockLinkIO[i][m_Overclock->GetBoolean()]);
     }
 }
 
@@ -531,6 +534,10 @@ void BMLMod::InitConfigs() {
     m_CustomMapNumber->SetComment("Level number to use for custom maps (affects level bonus and sky textures)."
                                   " Must be in the range of 1~13; 0 to randomly select one between 2 and 11");
     m_CustomMapNumber->SetDefaultInteger(0);
+
+    m_Overclock = GetConfig()->GetProperty("Misc", "Overclock");
+    m_Overclock->SetComment("Remove delay of spawn / respawn");
+    m_Overclock->SetDefaultBoolean(false);
 
     GetConfig()->SetCategoryComment("GUI", "Settings for the GUI created by BML");
 
@@ -998,6 +1005,18 @@ void BMLMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
     }), 0, 0);
 
     m_CurLevel = m_BML->GetArrayByName("CurrentLevel");
+
+    CKBehavior *ballMgr = FindFirstBB(script, "BallManager");
+    CKBehavior *deactBall = FindFirstBB(ballMgr, "Deactivate Ball");
+    CKBehavior *pieces = FindFirstBB(deactBall, "reset Ballpieces");
+    m_OverclockLinks[0] = FindNextLink(deactBall, pieces);
+    CKBehavior *unphy = FindNextBB(deactBall, FindNextBB(deactBall, m_OverclockLinks[0]->GetOutBehaviorIO()->GetOwner()));
+    m_OverclockLinkIO[0][1] = unphy->GetInput(1);
+
+    CKBehavior *newBall = FindFirstBB(ballMgr, "New Ball");
+    CKBehavior *physicsNewBall = FindFirstBB(newBall, "physicalize new Ball");
+    m_OverclockLinks[1] = FindPreviousLink(newBall, FindPreviousBB(newBall, FindPreviousBB(newBall, FindPreviousBB(newBall, physicsNewBall))));
+    m_OverclockLinkIO[1][1] = physicsNewBall->GetInput(0);
 }
 
 void BMLMod::OnEditScript_Gameplay_Energy(CKBehavior *script) {
@@ -1051,6 +1070,17 @@ void BMLMod::OnEditScript_Gameplay_Energy(CKBehavior *script) {
         BML_GetModManager()->OnExtraPoint();
         return CKBR_OK;
     }));
+
+    CKBehavior *delay = FindFirstBB(script, "Delayer");
+    m_OverclockLinks[2] = FindPreviousLink(script, delay);
+    CKBehaviorLink *link = FindNextLink(script, delay);
+    m_OverclockLinkIO[2][1] = link->GetOutBehaviorIO();
+
+    for (int i = 0; i < 3; i++) {
+        m_OverclockLinkIO[i][0] = m_OverclockLinks[i]->GetOutBehaviorIO();
+        if (m_Overclock->GetBoolean())
+            m_OverclockLinks[i]->SetOutBehaviorIO(m_OverclockLinkIO[i][1]);
+    }
 }
 
 void BMLMod::OnEditScript_Gameplay_Events(CKBehavior *script) {
