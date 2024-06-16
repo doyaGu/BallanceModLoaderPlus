@@ -82,37 +82,44 @@ namespace Overlay {
         ImGui::DestroyContext();
     }
 
-    bool ImGuiInit(CKContext *context) {
-        if (!g_ImGuiReady) {
-            ImGuiContextScope scope;
+    bool ImGuiInitPlatform(CKContext *context) {
+        ImGuiContextScope scope;
 
-            HookWndProc((HWND) context->GetMainWindow());
+        HookWndProc((HWND) context->GetMainWindow());
 
-            if (!ImGui_ImplWin32_Init(context->GetMainWindow()))
-                return false;
-
-            if (!ImGui_ImplCK2_Init(context))
-                return false;
-
-            g_RenderReady = false;
-            g_ImGuiReady = true;
-        }
+        if (!ImGui_ImplWin32_Init(context->GetMainWindow()))
+            return false;
 
         return true;
     }
 
-    void ImGuiShutdown(CKContext *context) {
-        if (g_ImGuiReady) {
-            ImGuiContextScope scope;
+    bool ImGuiInitRenderer(CKContext *context) {
+        ImGuiContextScope scope;
 
-            ImGui_ImplCK2_Shutdown();
-            ImGui_ImplWin32_Shutdown();
+        if (!ImGui_ImplCK2_Init(context))
+            return false;
 
-            UnhookWndProc((HWND) context->GetMainWindow());
+        g_RenderReady = false;
+        g_ImGuiReady = true;
 
-            g_RenderReady = false;
-            g_ImGuiReady = false;
-        }
+        return true;
+    }
+
+    void ImGuiShutdownPlatform(CKContext *context) {
+        ImGuiContextScope scope;
+
+        ImGui_ImplWin32_Shutdown();
+
+        UnhookWndProc((HWND) context->GetMainWindow());
+    }
+
+    void ImGuiShutdownRenderer(CKContext *context) {
+        ImGuiContextScope scope;
+
+        ImGui_ImplCK2_Shutdown();
+
+        g_RenderReady = false;
+        g_ImGuiReady = false;
     }
 
     void ImGuiNewFrame() {

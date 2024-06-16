@@ -26,8 +26,10 @@ namespace Overlay {
     ImGuiContext *ImGuiCreateContext();
     void ImGuiDestroyContext();
 
-    bool ImGuiInit(CKContext *context);
-    void ImGuiShutdown(CKContext *context);
+    bool ImGuiInitPlatform(CKContext *context);
+    bool ImGuiInitRenderer(CKContext *context);
+    void ImGuiShutdownPlatform(CKContext *context);
+    void ImGuiShutdownRenderer(CKContext *context);
 
     void ImGuiNewFrame();
     void ImGuiRender();

@@ -209,11 +209,13 @@ CKERROR ModManager::OnCKInit() {
     Init();
 
     Overlay::ImGuiCreateContext();
+    Overlay::ImGuiInitPlatform(m_Context);
 
     return CK_OK;
 }
 
 CKERROR ModManager::OnCKEnd() {
+    Overlay::ImGuiShutdownPlatform(m_Context);
     Overlay::ImGuiDestroyContext();
 
     Shutdown();
@@ -229,11 +231,9 @@ CKERROR ModManager::OnCKPlay() {
         if (!m_RenderContext) {
             m_RenderContext = m_Context->GetPlayerRenderContext();
             m_Logger->Info("Get Render Context pointer 0x%08x", m_RenderContext);
-            RenderHook::HookRenderContext(m_RenderContext);
         }
 
         if (!AreModsDown()) {
-            Overlay::ImGuiInit(m_Context);
             Overlay::ImGuiContextScope scope;
 
             LoadMods();
@@ -252,9 +252,6 @@ CKERROR ModManager::OnCKReset() {
         ShutdownMods();
         UnloadMods();
 
-        Overlay::ImGuiShutdown(m_Context);
-
-        RenderHook::UnhookRenderContext(m_RenderContext);
         m_RenderContext = nullptr;
     }
 
@@ -1097,9 +1094,11 @@ void ModManager::ShutdownLogger() {
     fclose(m_Logfile);
 }
 
+extern bool HookObjectLoad();
+extern bool HookPhysicalize();
+
 void ModManager::InitHooks() {
-    extern bool HookObjectLoad();
-    extern bool HookPhysicalize();
+    RenderHook::HookRenderManager(m_RenderManager);
 
     if (HookObjectLoad())
         m_Logger->Info("Hook ObjectLoad Success");
@@ -1112,9 +1111,11 @@ void ModManager::InitHooks() {
         m_Logger->Info("Hook Physicalize Failed");
 }
 
+extern bool UnhookObjectLoad();
+extern bool UnhookPhysicalize();
+
 void ModManager::ShutdownHooks() {
-    extern bool UnhookObjectLoad();
-    extern bool UnhookPhysicalize();
+    RenderHook::UnhookRenderManager(m_RenderManager);
 
     if (UnhookObjectLoad())
         m_Logger->Info("Unhook ObjectLoad Success");

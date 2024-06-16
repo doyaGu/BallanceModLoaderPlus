@@ -8,6 +8,8 @@
 #include "HookUtils.h"
 #include "VTables.h"
 
+#include "Overlay.h"
+
 struct VxCallBack {
     void *callback;
     void *argument;
@@ -213,10 +215,15 @@ public:
     }
 
     CP_DECLARE_METHOD_HOOK(CKRenderContext *, CreateRenderContext, (void *Window, int Driver, CKRECT *rect, CKBOOL Fullscreen, int Bpp, int Zbpp, int StencilBpp, int RefreshRate)) {
-        return CP_CALL_METHOD_PTR(this, s_VTable.CreateRenderContext, Window, Driver, rect, Fullscreen, Bpp, Zbpp, StencilBpp, RefreshRate);
+        auto *rc = CP_CALL_METHOD_PTR(this, s_VTable.CreateRenderContext, Window, Driver, rect, Fullscreen, Bpp, Zbpp, StencilBpp, RefreshRate);
+        RenderHook::HookRenderContext(rc);
+        Overlay::ImGuiInitRenderer(m_Context);
+        return rc;
     }
 
     CP_DECLARE_METHOD_HOOK(CKERROR, DestroyRenderContext, (CKRenderContext *context)) {
+        Overlay::ImGuiShutdownRenderer(m_Context);
+        RenderHook::UnhookRenderContext(context);
         return CP_CALL_METHOD_PTR(this, s_VTable.DestroyRenderContext, context);
     }
 
@@ -257,33 +264,35 @@ public:
 #define HOOK_RENDER_MANAGER_VIRTUAL_METHOD(Instance, Name) \
     utils::HookVirtualMethod(Instance, &RenderManagerHook::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager>, Name) / sizeof(void*)))
 
-        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderDriverCount);
-        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderDriverDescription);
-        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetDesiredTexturesVideoFormat);
-        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, SetDesiredTexturesVideoFormat);
-        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderContext);
-        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderContextFromPoint);
-        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderContextCount);
-        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, Process);
-        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, FlushTextures);
+        // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderDriverCount);
+        // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderDriverDescription);
+        // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetDesiredTexturesVideoFormat);
+        // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, SetDesiredTexturesVideoFormat);
+        // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderContext);
+        // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderContextFromPoint);
+        // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderContextCount);
+        // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, Process);
+        // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, FlushTextures);
         HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, CreateRenderContext);
         HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, DestroyRenderContext);
-        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, RemoveRenderContext);
-        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, CreateVertexBuffer);
-        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, DestroyVertexBuffer);
-        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, SetRenderOptions);
-        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetEffectDescription);
-        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetEffectCount);
-        HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, AddEffect);
+        // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, RemoveRenderContext);
+        // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, CreateVertexBuffer);
+        // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, DestroyVertexBuffer);
+        // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, SetRenderOptions);
+        // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetEffectDescription);
+        // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetEffectCount);
+        // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, AddEffect);
 
 #undef HOOK_RENDER_MANAGER_VIRTUAL_METHOD
     }
 
-    static void Unhook(CKRenderContext *rc) {
-        if (rc)
-            utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager>>(rc, s_VTable);
+    static void Unhook(CKRenderManager *man) {
+        if (man)
+            utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager>>(man, s_VTable);
     }
 };
+
+CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager> RenderManagerHook::s_VTable = {};
 
 struct RenderContextHook : public CKRenderContext {
     CKDWORD m_WinHandle;
@@ -496,7 +505,6 @@ struct RenderContextHook : public CKRenderContext {
 
     CP_DECLARE_METHOD_HOOK(void, ClientToScreen, (Vx2DVector *ioPoint)) {
         CP_CALL_METHOD_PTR(this, s_VTable.ClientToScreen, ioPoint);
-
     }
 
     CP_DECLARE_METHOD_HOOK(CKERROR, SetWindowRect, (VxRect &rect, CKDWORD Flags)) {
@@ -943,6 +951,14 @@ bool RenderContextHook::s_DisableRender = false;
 CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> RenderContextHook::s_VTable = {};
 
 namespace RenderHook {
+    void HookRenderManager(CKRenderManager *man) {
+        RenderManagerHook::Hook(man);
+    }
+
+    void UnhookRenderManager(CKRenderManager *man) {
+        RenderManagerHook::Unhook(man);
+    }
+
     void HookRenderContext(CKRenderContext *rc) {
         RenderContextHook::Hook(rc);
     }
