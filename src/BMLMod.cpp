@@ -5,6 +5,7 @@
 
 #include <oniguruma.h>
 #include <utf8.h>
+#include "imgui_internal.h"
 
 #include "BML/Bui.h"
 #include "BML/Gui.h"
@@ -14,9 +15,9 @@
 #include "ModManager.h"
 #include "Commands.h"
 #include "Config.h"
+#include "RenderHook.h"
 #include "StringUtils.h"
 #include "PathUtils.h"
-#include "imgui_internal.h"
 
 namespace ExecuteBB {
     void Init();
@@ -49,26 +50,6 @@ void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *master
         m_Level01 = m_BML->Get2dEntityByName("M_Start_But_01");
         CKBehavior *menuMain = m_BML->GetScriptByName("Menu_Start");
         m_ExitStart = FindFirstBB(menuMain, "Exit");
-    }
-
-    if (!strcmp(filename, "3D Entities\\MenuLevel.nmo")) {
-        if (m_FixWidescreen->GetBoolean()) {
-            GetLogger()->Info("Adjust MenuLevel Camera");
-            CKCamera *cam = m_BML->GetTargetCameraByName("Cam_MenuLevel");
-            cam->SetAspectRatio((int)m_WindowRect.GetWidth(), (int)m_WindowRect.GetHeight());
-            cam->SetFov(0.75f * m_WindowRect.GetWidth() / m_WindowRect.GetHeight());
-            m_BML->SetIC(cam);
-        }
-    }
-
-    if (!strcmp(filename, "3D Entities\\Camera.nmo")) {
-        if (m_FixWidescreen->GetBoolean()) {
-            GetLogger()->Info("Adjust Ingame Camera");
-            CKCamera *cam = m_BML->GetTargetCameraByName("InGameCam");
-            cam->SetAspectRatio((int)m_WindowRect.GetWidth(), (int)m_WindowRect.GetHeight());
-            cam->SetFov(0.75f * m_WindowRect.GetWidth() / m_WindowRect.GetHeight());
-            m_BML->SetIC(cam);
-        }
     }
 }
 
@@ -146,10 +127,10 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
         if (m_MsgMaxTimer < 2000) {
             m_MsgDuration->SetFloat(2.0f);
         }
-    } else if (prop == m_AlphaTestEnabled) {
+    } else if (prop == m_LanternAlphaTest) {
         CKMaterial *mat = m_BML->GetMaterialByName("Laterne_Verlauf");
         if (mat) {
-            CKBOOL atest = m_AlphaTestEnabled->GetBoolean();
+            CKBOOL atest = m_LanternAlphaTest->GetBoolean();
             mat->EnableAlphaTest(atest);
 
             VXCMPFUNC afunc = VXCMP_GREATEREQUAL;
@@ -158,6 +139,8 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
             int ref = 0;
             mat->SetAlphaRef(ref);
         }
+    } else if (prop == m_WidescreenFix) {
+        RenderHook::EnableWidescreenFix(m_WidescreenFix->GetBoolean());
     } else if (prop == m_Overclock) {
         for (int i = 0; i < 3; i++)
             m_OverclockLinks[i]->SetOutBehaviorIO(m_OverclockLinkIO[i][m_Overclock->GetBoolean()]);
@@ -174,6 +157,8 @@ void BMLMod::OnPreStartMenu() {
         else
             AdjustFrameRate(true);
     }
+
+    RenderHook::EnableWidescreenFix(m_WidescreenFix->GetBoolean());
 }
 
 void BMLMod::OnExitGame() {
@@ -513,13 +498,13 @@ void BMLMod::InitConfigs() {
     m_FPSLimit->SetComment("Set Frame Rate Limitation, this option will not work if frame rate is unlocked. Set to 0 will turn on VSync");
     m_FPSLimit->SetDefaultInteger(0);
 
-    m_AlphaTestEnabled = GetConfig()->GetProperty("Misc", "EnableAlphaTest");
-    m_AlphaTestEnabled->SetComment("Enable alpha test for lantern material, this option can increase FPS");
-    m_AlphaTestEnabled->SetDefaultBoolean(true);
+    m_LanternAlphaTest = GetConfig()->GetProperty("Misc", "LanternAlphaTest");
+    m_LanternAlphaTest->SetComment("Enable alpha test for lantern material, this option can increase FPS");
+    m_LanternAlphaTest->SetDefaultBoolean(true);
 
-    m_FixWidescreen = GetConfig()->GetProperty("Misc", "FixWidescreen");
-    m_FixWidescreen->SetComment("Improve widescreen resolutions support");
-    m_FixWidescreen->SetDefaultBoolean(true);
+    m_WidescreenFix = GetConfig()->GetProperty("Misc", "WidescreenFix");
+    m_WidescreenFix->SetComment("Improve widescreen resolutions support");
+    m_WidescreenFix->SetDefaultBoolean(false);
 
     m_FixLifeBall = GetConfig()->GetProperty("Misc", "FixLifeBallFreeze");
     m_FixLifeBall->SetComment("Game won't freeze when picking up life balls");
@@ -1138,7 +1123,7 @@ void BMLMod::OnEditScript_Levelinit_build(CKBehavior *script) {
 
     CKParameter *sate = sat->GetInputParameter(0)->GetDirectSource();
     if (sate) {
-        CKBOOL atest = m_AlphaTestEnabled->GetBoolean();
+        CKBOOL atest = m_LanternAlphaTest->GetBoolean();
         sate->SetValue(&atest);
     }
 }

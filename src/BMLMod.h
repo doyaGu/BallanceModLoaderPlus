@@ -181,8 +181,8 @@ private:
     IProperty *m_ShowSR = nullptr;
     IProperty *m_UnlockFPS = nullptr;
     IProperty *m_FPSLimit = nullptr;
-    IProperty *m_AlphaTestEnabled = nullptr;
-    IProperty *m_FixWidescreen = nullptr;
+    IProperty *m_LanternAlphaTest = nullptr;
+    IProperty *m_WidescreenFix = nullptr;
     IProperty *m_FixLifeBall = nullptr;
     IProperty* m_MsgDuration = nullptr;
     IProperty* m_CustomMapNumber = nullptr;

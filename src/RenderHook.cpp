@@ -5,6 +5,8 @@
 #include "CKParameterOut.h"
 #include "CKRasterizer.h"
 
+#include <MinHook.h>
+
 #include "HookUtils.h"
 #include "VTables.h"
 
@@ -111,7 +113,7 @@ public:
     XArray<int> field_54;
 };
 
-struct RenderManagerHook : public CKRenderManager {
+class CP_HOOK_CLASS_NAME(CKRenderManager) : public CKRenderManager {
 public:
     XClassArray<VxCallBack> m_TemporaryPreRenderCallbacks;
     XClassArray<VxCallBack> m_TemporaryPostRenderCallbacks;
@@ -255,14 +257,14 @@ public:
         return CP_CALL_METHOD_PTR(this, s_VTable.AddEffect, NewEffect);
     }
 
-    static void Hook(CKRenderManager *man) {
+    static bool Hook(CKRenderManager *man) {
         if (!man)
-            return;
+            return false;
 
         utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager>>(man, s_VTable);
 
 #define HOOK_RENDER_MANAGER_VIRTUAL_METHOD(Instance, Name) \
-    utils::HookVirtualMethod(Instance, &RenderManagerHook::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager>, Name) / sizeof(void*)))
+    utils::HookVirtualMethod(Instance, &CP_HOOK_CLASS_NAME(CKRenderManager)::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager>, Name) / sizeof(void*)))
 
         // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderDriverCount);
         // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderDriverDescription);
@@ -284,6 +286,8 @@ public:
         // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, AddEffect);
 
 #undef HOOK_RENDER_MANAGER_VIRTUAL_METHOD
+
+        return true;
     }
 
     static void Unhook(CKRenderManager *man) {
@@ -292,9 +296,9 @@ public:
     }
 };
 
-CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager> RenderManagerHook::s_VTable = {};
+CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager> CP_HOOK_CLASS_NAME(CKRenderManager)::s_VTable = {};
 
-struct RenderContextHook : public CKRenderContext {
+struct CP_HOOK_CLASS_NAME(CKRenderContext) : public CKRenderContext {
     CKDWORD m_WinHandle;
     CKDWORD m_AppHandle;
     CKRECT m_WinRect;
@@ -302,7 +306,7 @@ struct RenderContextHook : public CKRenderContext {
     CKRenderedScene *m_RenderedScene;
     CKBOOL m_Fullscreen;
     CKBOOL m_Active;
-    CKBOOL m_PerspectiveOrOrthographic;
+    CKBOOL m_Perspective;
     CKBOOL m_ProjectionUpdated;
     CKBOOL m_Start;
     CKBOOL m_TransparentMode;
@@ -374,7 +378,9 @@ struct RenderContextHook : public CKRenderContext {
     CKDWORD m_PVInformation;
 
     static bool s_DisableRender;
+    static bool s_EnableWidescreenFix;
     static CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> s_VTable;
+    CP_DECLARE_METHOD_PTRS(CKRenderContext, CKBOOL, UpdateProjection, (CKBOOL));
 
     CP_DECLARE_METHOD_HOOK(void, AddObject, (CKRenderObject *obj)) {
         CP_CALL_METHOD_PTR(this, s_VTable.AddObject, obj);
@@ -819,14 +825,27 @@ struct RenderContextHook : public CKRenderContext {
         CP_CALL_METHOD_PTR(this, s_VTable.GetStereoParameters, EyeSeparation, FocalLength);
     }
 
-    static void Hook(CKRenderContext *rc) {
+    CKBOOL CP_FUNC_HOOK_NAME(UpdateProjection)(CKBOOL force) {
+        const float fov = m_Fov;
+
+        if (s_EnableWidescreenFix && m_Perspective) {
+            const auto aspect = (float) ((double) m_ViewportData.ViewWidth / (double) m_ViewportData.ViewHeight);
+            m_Fov = atan2f(tanf(m_Fov * 0.5f) * 0.75f * aspect, 1.0f) * 2.0f;
+        }
+        auto res = CP_CALL_METHOD_ORIG(UpdateProjection, force);
+
+        m_Fov = fov;
+        return res;
+    }
+
+    static bool Hook(CKRenderContext *rc) {
         if (!rc)
-            return;
+            return false;
 
         utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>>(rc, s_VTable);
 
 #define HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(Instance, Name) \
-    utils::HookVirtualMethod(Instance, &RenderContextHook::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>, Name) / sizeof(void*)))
+    utils::HookVirtualMethod(Instance, &CP_HOOK_CLASS_NAME(CKRenderContext)::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>, Name) / sizeof(void*)))
 
         // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, AddObject);
         // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, RemoveObject);
@@ -851,8 +870,8 @@ struct RenderContextHook : public CKRenderContext {
         // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetDrawPrimitiveIndices);
         // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Transform);
         // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, TransformVertices);
-        // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GoFullScreen);
-        // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, StopFullScreen);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GoFullScreen);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, StopFullScreen);
         // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, IsFullScreen);
         // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetDriverIndex);
         // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, ChangeDriver);
@@ -863,7 +882,7 @@ struct RenderContextHook : public CKRenderContext {
         // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetWindowRect);
         // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetHeight);
         // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetWidth);
-        // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Resize);
+        HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, Resize);
         // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, SetViewRect);
         // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetViewRect);
         // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetPixelFormat);
@@ -939,35 +958,64 @@ struct RenderContextHook : public CKRenderContext {
         // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(rc, GetStereoParameters);
 
 #undef HOOK_RENDER_CONTEXT_VIRTUAL_METHOD
+
+#define CP_ADD_METHOD_HOOK(Name, Base, Offset) \
+        { CP_FUNC_TARGET_PTR_NAME(Name) = utils::ForceReinterpretCast<CP_FUNC_TYPE_NAME(Name)>(Base, Offset); } \
+        if ((MH_CreateHook(*reinterpret_cast<LPVOID *>(&CP_FUNC_TARGET_PTR_NAME(Name)), \
+                           *reinterpret_cast<LPVOID *>(&CP_FUNC_PTR_NAME(Name)), \
+                            reinterpret_cast<LPVOID *>(&CP_FUNC_ORIG_PTR_NAME(Name))) != MH_OK || \
+            MH_EnableHook(*reinterpret_cast<LPVOID *>(&CP_FUNC_TARGET_PTR_NAME(Name))) != MH_OK)) \
+                return false;
+
+        void *base = utils::GetModuleBaseAddress("CK2_3D.dll");
+        assert(base != nullptr);
+
+        CP_ADD_METHOD_HOOK(UpdateProjection, base, 0x6C68D);
+#undef CP_ADD_METHOD_HOOK
+
+        return true;
     }
 
     static void Unhook(CKRenderContext *rc) {
         if (rc)
             utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>>(rc, s_VTable);
+
+#define CP_REMOVE_METHOD_HOOK(Name) \
+    MH_DisableHook(*reinterpret_cast<void **>(&CP_FUNC_TARGET_PTR_NAME(Name))); \
+    MH_RemoveHook(*reinterpret_cast<void **>(&CP_FUNC_TARGET_PTR_NAME(Name)));
+
+        CP_REMOVE_METHOD_HOOK(UpdateProjection);
+#undef CP_REMOVE_METHOD_HOOK
     }
 };
 
-bool RenderContextHook::s_DisableRender = false;
-CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> RenderContextHook::s_VTable = {};
+bool CP_HOOK_CLASS_NAME(CKRenderContext)::s_DisableRender = false;
+bool CP_HOOK_CLASS_NAME(CKRenderContext)::s_EnableWidescreenFix = false;
+CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> CP_HOOK_CLASS_NAME(CKRenderContext)::s_VTable = {};
+CP_DEFINE_METHOD_PTRS(CKRenderContext, UpdateProjection)
 
 namespace RenderHook {
     void HookRenderManager(CKRenderManager *man) {
-        RenderManagerHook::Hook(man);
+        CP_HOOK_CLASS_NAME(CKRenderManager)::Hook(man);
     }
 
     void UnhookRenderManager(CKRenderManager *man) {
-        RenderManagerHook::Unhook(man);
+        CP_HOOK_CLASS_NAME(CKRenderManager)::Unhook(man);
     }
 
     void HookRenderContext(CKRenderContext *rc) {
-        RenderContextHook::Hook(rc);
+        CP_HOOK_CLASS_NAME(CKRenderContext)::Hook(rc);
     }
 
     void UnhookRenderContext(CKRenderContext *rc) {
-        RenderContextHook::Unhook(rc);
+        CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(rc);
     }
 
     void DisableRender(bool disable) {
-        RenderContextHook::s_DisableRender = disable;
+        CP_HOOK_CLASS_NAME(CKRenderContext)::s_DisableRender = disable;
+    }
+
+    void EnableWidescreenFix(bool enable) {
+        CP_HOOK_CLASS_NAME(CKRenderContext)::s_EnableWidescreenFix = enable;
     }
 }
