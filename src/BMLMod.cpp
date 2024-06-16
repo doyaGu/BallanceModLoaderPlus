@@ -510,11 +510,11 @@ void BMLMod::InitConfigs() {
     m_UnlockFPS->SetDefaultBoolean(true);
 
     m_FPSLimit = GetConfig()->GetProperty("Misc", "SetMaxFrameRate");
-    m_FPSLimit->SetComment("Set Frame Rate Limitation, this option will not work if frame rate is unlocked. Set to 0 will turn on VSync.");
+    m_FPSLimit->SetComment("Set Frame Rate Limitation, this option will not work if frame rate is unlocked. Set to 0 will turn on VSync");
     m_FPSLimit->SetDefaultInteger(0);
 
     m_AlphaTestEnabled = GetConfig()->GetProperty("Misc", "EnableAlphaTest");
-    m_AlphaTestEnabled->SetComment("Enable alpha test for lantern material, this option can increase FPS.");
+    m_AlphaTestEnabled->SetComment("Enable alpha test for lantern material, this option can increase FPS");
     m_AlphaTestEnabled->SetDefaultBoolean(true);
 
     m_FixWidescreen = GetConfig()->GetProperty("Misc", "FixWidescreen");
@@ -539,7 +539,7 @@ void BMLMod::InitConfigs() {
     m_Overclock->SetComment("Remove delay of spawn / respawn");
     m_Overclock->SetDefaultBoolean(false);
 
-    GetConfig()->SetCategoryComment("GUI", "Settings for the GUI created by BML");
+    GetConfig()->SetCategoryComment("GUI", "Settings for BML's GUI");
 
     m_FontFilename = GetConfig()->GetProperty("GUI", "FontFilename");
     m_FontFilename->SetComment("The filename of TrueType font (the font filename should end with .ttf or .otf)");
@@ -551,8 +551,7 @@ void BMLMod::InitConfigs() {
 
     m_FontGlyphRanges = GetConfig()->GetProperty("GUI", "FontGlyphRanges");
     m_FontGlyphRanges->SetComment("The Unicode ranges of font glyph."
-                                  " To display Chinese characters correctly, this option should be set to Chinese or ChineseFull."
-                                  " (The font you chosen must support Chinese characters)");
+                                  " To display Chinese characters correctly, this option should be set to Chinese or ChineseFull");
     m_FontGlyphRanges->SetDefaultString("Default");
 }
 
