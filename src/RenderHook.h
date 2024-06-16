@@ -11,6 +11,7 @@ namespace RenderHook {
     void UnhookRenderContext(CKRenderContext *rc);
 
     void DisableRender(bool disable);
+    void EnableWidescreenFix(bool enable);
 }
 
 #endif // BML_RENDERHOOK_H
