@@ -326,7 +326,7 @@ struct CP_HOOK_CLASS_NAME(CKRenderContext) : public CKRenderContext {
     float m_Zoom;
     float m_NearPlane;
     float m_FarPlane;
-    VxMatrix m_TransformMatrix;
+    VxMatrix m_ProjectionMatrix;
     CKViewportData m_ViewportData;
     CKRECT m_WindowRect;
     int m_Bpp;
@@ -826,16 +826,30 @@ struct CP_HOOK_CLASS_NAME(CKRenderContext) : public CKRenderContext {
     }
 
     CKBOOL CP_FUNC_HOOK_NAME(UpdateProjection)(CKBOOL force) {
-        const float fov = m_Fov;
+        if (!force && m_ProjectionUpdated)
+            return TRUE;
+        if (!m_RasterizerContext)
+            return FALSE;
 
-        if (s_EnableWidescreenFix && m_Perspective) {
-            const auto aspect = (float) ((double) m_ViewportData.ViewWidth / (double) m_ViewportData.ViewHeight);
-            m_Fov = atan2f(tanf(m_Fov * 0.5f) * 0.75f * aspect, 1.0f) * 2.0f;
+        const auto aspect = (float) ((double) m_ViewportData.ViewWidth / (double) m_ViewportData.ViewHeight);
+        if (m_Perspective) {
+            const float fov = s_EnableWidescreenFix ? atan2f(tanf(m_Fov * 0.5f) * 0.75f * aspect, 1.0f) * 2.0f : m_Fov;
+            m_ProjectionMatrix.Perspective(fov, aspect, m_NearPlane, m_FarPlane);
+        } else {
+            m_ProjectionMatrix.Orthographic(m_Zoom, aspect, m_NearPlane, m_FarPlane);
         }
-        auto res = CP_CALL_METHOD_ORIG(UpdateProjection, force);
 
-        m_Fov = fov;
-        return res;
+        m_RasterizerContext->SetTransformMatrix(VXMATRIX_PROJECTION, m_ProjectionMatrix);
+        m_RasterizerContext->SetViewport(&m_ViewportData);
+        m_ProjectionUpdated = TRUE;
+
+        VxRect rect(0.0f, 0.0f, (float) m_WindowRect.right, (float) m_WindowRect.bottom);
+        auto *background = Get2dRoot(TRUE);
+        background->SetRect(rect);
+        auto *foreground = Get2dRoot(FALSE);
+        foreground->SetRect(rect);
+
+        return TRUE;
     }
 
     static bool Hook(CKRenderContext *rc) {
