@@ -53,6 +53,12 @@
     static CP_FUNC_TYPE_NAME(Name) CP_FUNC_TARGET_PTR_NAME(Name)
 
 #define CP_DEFINE_METHOD_PTRS(Class, Name) \
+    Class::CP_FUNC_TYPE_NAME(Name) Class::CP_FUNC_PTR_NAME(Name) = \
+        reinterpret_cast<Class::CP_FUNC_TYPE_NAME(Name)>(&Class::Name); \
+    Class::CP_FUNC_TYPE_NAME(Name) Class::CP_FUNC_ORIG_PTR_NAME(Name) = nullptr; \
+    Class::CP_FUNC_TYPE_NAME(Name) Class::CP_FUNC_TARGET_PTR_NAME(Name) = nullptr;
+
+#define CP_DEFINE_METHOD_HOOK_PTRS(Class, Name) \
     CP_HOOK_CLASS_NAME(Class)::CP_FUNC_TYPE_NAME(Name) CP_HOOK_CLASS_NAME(Class)::CP_FUNC_PTR_NAME(Name) = \
         reinterpret_cast<CP_HOOK_CLASS_NAME(Class)::CP_FUNC_TYPE_NAME(Name)>(&CP_HOOK_CLASS_NAME(Class)::CP_FUNC_HOOK_NAME(Name)); \
     CP_HOOK_CLASS_NAME(Class)::CP_FUNC_TYPE_NAME(Name) CP_HOOK_CLASS_NAME(Class)::CP_FUNC_ORIG_PTR_NAME(Name) = nullptr; \

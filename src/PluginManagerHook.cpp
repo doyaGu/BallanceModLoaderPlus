@@ -8,8 +8,8 @@ const char *g_PluginsBlocked[] = {
     "Hooks",
 };
 
-CP_DEFINE_METHOD_PTRS(CKPluginManager, ParsePlugins)
-CP_DEFINE_METHOD_PTRS(CKPluginManager, RegisterPlugin)
+CP_DEFINE_METHOD_HOOK_PTRS(CKPluginManager, ParsePlugins)
+CP_DEFINE_METHOD_HOOK_PTRS(CKPluginManager, RegisterPlugin)
 
 #define CP_PLUGIN_MANAGER_METHOD_NAME(Name) CP_HOOK_CLASS_NAME(CKPluginManager)::CP_FUNC_HOOK_NAME(Name)
 
