@@ -64,7 +64,7 @@ struct CKRenderContextSettings {
 
 struct CKObjectExtents {
     VxRect m_Rect;
-    CKDWORD m_Flags = 0;
+    CK_RENDER_FLAGS m_Flags = CK_RENDER_USECURRENTSETTINGS;
     CK_ID m_Camera = 0;
 };
 
