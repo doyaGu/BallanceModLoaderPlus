@@ -613,7 +613,7 @@ void CKSceneGraphNode::NoTestsTraversal(CKRenderContext *Dev, CK_RENDER_FLAGS Fl
     auto *rst = dev->m_RasterizerContext;
 
     CKBOOL needClip = FALSE;
-    ++dev->m_TraversalCount;
+    ++dev->m_SceneTraversalCalls;
 
     SetAsPotentiallyVisible();
     SetAsInsideFrustum();
@@ -627,7 +627,7 @@ void CKSceneGraphNode::NoTestsTraversal(CKRenderContext *Dev, CK_RENDER_FLAGS Fl
         if (!clip.IsNull()) {
             if (clip != VxRect(0.0f, 0.0f, 1.0f, 1.0f)) {
                 needClip = TRUE;
-                VxRect rect = clip;
+                VxRect rect(0.0f, 0.0f, 0.0f, 0.0f);
                 const CKViewportData &data = dev->m_ViewportData;
                 VxRect screen((float) data.ViewX, (float) data.ViewY, (float) (data.ViewWidth + data.ViewX), (float) (data.ViewHeight + data.ViewY));
                 rect.TransformFromHomogeneous(screen);
@@ -638,7 +638,9 @@ void CKSceneGraphNode::NoTestsTraversal(CKRenderContext *Dev, CK_RENDER_FLAGS Fl
 
     if (m_Entity->GetClassID() == CKCID_CHARACTER)
         m_Entity->ModifyMoveableFlags(VX_MOVEABLE_CHARACTERRENDERED, 0);
+
     if ((dev->m_MaskFree & m_RenderContextMask) != 0 && m_Entity->IsToBeRendered()) {
+        m_Entity->ModifyMoveableFlags(0, VX_MOVEABLE_EXTENTSUPTODATE);
         if (m_Entity->IsToBeRenderedLast()) {
             m_TimeFpsCalc = dev->m_TimeFpsCalc;
             rm->m_SceneGraphRootNode.AddTransparentObject(this);
@@ -681,13 +683,13 @@ CKDWORD CKSceneGraphNode::Rebuild() {
 void CKSceneGraphNode::SetAsPotentiallyVisible() {
 //    CP_CALL_METHOD_ORIG(SetAsPotentiallyVisible);
 
-    m_Flags &= ~3u;
+    m_Flags &= ~3;
 }
 
 void CKSceneGraphNode::SetAsInsideFrustum() {
 //    CP_CALL_METHOD_ORIG(SetAsInsideFrustum);
 
-    m_Flags |= 1u;
+    m_Flags |= 1;
 }
 
 void CKSceneGraphNode::SetRenderContextMask(CKDWORD mask, CKBOOL b) {
@@ -777,7 +779,7 @@ void CKSceneGraphRootNode::RenderTransparents(CKRenderContext *Dev, CK_RENDER_FL
     auto *rm = (CP_HOOK_CLASS_NAME(CKRenderManager) *) dev->m_RenderManager;
     auto *rst = dev->m_RasterizerContext;
 
-    ++dev->m_TraversalCount;
+    ++dev->m_SceneTraversalCalls;
 
     SetAsPotentiallyVisible();
     if (m_ChildrenCount != 0) {
