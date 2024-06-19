@@ -606,7 +606,60 @@ CP_DEFINE_METHOD_PTRS(CKSceneGraphNode, ComputeHierarchicalBox);
 CP_DEFINE_METHOD_PTRS(CKSceneGraphNode, InvalidateBox);
 
 void CKSceneGraphNode::NoTestsTraversal(CKRenderContext *Dev, CK_RENDER_FLAGS Flags) {
-    CP_CALL_METHOD_ORIG(NoTestsTraversal, Dev, Flags);
+//    CP_CALL_METHOD_ORIG(NoTestsTraversal, Dev, Flags);
+
+    auto *dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) Dev;
+    auto *rm = (CP_HOOK_CLASS_NAME(CKRenderManager) *) dev->m_RenderManager;
+    auto *rst = dev->m_RasterizerContext;
+
+    CKBOOL needClip = FALSE;
+    ++dev->m_TraversalCount;
+
+    SetAsPotentiallyVisible();
+    SetAsInsideFrustum();
+
+    if ((m_Flags & 0x10) != 0)
+        SortNodes();
+
+    if (m_Entity->GetClassID() == CKCID_PLACE) {
+        auto *place = (CKPlace *) m_Entity;
+        VxRect &clip = place->ViewportClip();
+        if (!clip.IsNull()) {
+            if (clip != VxRect(0.0f, 0.0f, 1.0f, 1.0f)) {
+                needClip = TRUE;
+                VxRect rect = clip;
+                const CKViewportData &data = dev->m_ViewportData;
+                VxRect screen((float) data.ViewX, (float) data.ViewY, (float) (data.ViewWidth + data.ViewX), (float) (data.ViewHeight + data.ViewY));
+                rect.TransformFromHomogeneous(screen);
+                dev->SetClipRect(rect);
+            }
+        }
+    }
+
+    if (m_Entity->GetClassID() == CKCID_CHARACTER)
+        m_Entity->ModifyMoveableFlags(VX_MOVEABLE_CHARACTERRENDERED, 0);
+    if ((dev->m_MaskFree & m_RenderContextMask) != 0 && m_Entity->IsToBeRendered()) {
+        if (m_Entity->IsToBeRenderedLast()) {
+            m_TimeFpsCalc = dev->m_TimeFpsCalc;
+            rm->m_SceneGraphRootNode.AddTransparentObject(this);
+        } else {
+            dev->m_Stats.SceneTraversalTime = dev->m_SceneTraversalTimeProfiler.Current() + dev->m_Stats.SceneTraversalTime;
+            m_Entity->Render(dev, Flags);
+            dev->m_SceneTraversalTimeProfiler.Reset();
+        }
+    }
+
+    for (int i = 0; i < m_ChildrenCount; ++i) {
+        auto *child = m_Children[i];
+        if ((dev->m_MaskFree & child->m_EntityFlags) != 0) {
+            child->NoTestsTraversal(dev, Flags);
+        }
+    }
+
+    if (needClip) {
+        rst->SetViewport(&dev->m_ViewportData);
+        rst->SetTransformMatrix(VXMATRIX_PROJECTION, dev->m_ProjectionMatrix);
+    }
 }
 
 void CKSceneGraphNode::AddNode(CKSceneGraphNode *node) {
@@ -626,11 +679,15 @@ CKDWORD CKSceneGraphNode::Rebuild() {
 }
 
 void CKSceneGraphNode::SetAsPotentiallyVisible() {
-    CP_CALL_METHOD_ORIG(SetAsPotentiallyVisible);
+//    CP_CALL_METHOD_ORIG(SetAsPotentiallyVisible);
+
+    m_Flags &= ~3u;
 }
 
 void CKSceneGraphNode::SetAsInsideFrustum() {
-    CP_CALL_METHOD_ORIG(SetAsInsideFrustum);
+//    CP_CALL_METHOD_ORIG(SetAsInsideFrustum);
+
+    m_Flags |= 1u;
 }
 
 void CKSceneGraphNode::SetRenderContextMask(CKDWORD mask, CKBOOL b) {
@@ -662,8 +719,8 @@ void CKSceneGraphNode::InvalidateBox(CKBOOL b) {
 }
 
 void CKSceneGraphNode::sub_100789A0() {
-    m_Flag &= ~1;
-    m_Flag |= 2;
+    m_Flags &= ~1;
+    m_Flags |= 2;
 
     for (int i = 0; i < m_ChildrenCount; ++i) {
         m_Children[i]->sub_100789A0();
@@ -720,11 +777,11 @@ void CKSceneGraphRootNode::RenderTransparents(CKRenderContext *Dev, CK_RENDER_FL
     auto *rm = (CP_HOOK_CLASS_NAME(CKRenderManager) *) dev->m_RenderManager;
     auto *rst = dev->m_RasterizerContext;
 
-    ++dev->m_RenderTransparentCount;
+    ++dev->m_TraversalCount;
 
     SetAsPotentiallyVisible();
     if (m_ChildrenCount != 0) {
-        if ((m_Flag & 0x10) != 0)
+        if ((m_Flags & 0x10) != 0)
             SortNodes();
 
         CKBOOL needClip = FALSE;
@@ -762,7 +819,7 @@ void CKSceneGraphRootNode::RenderTransparents(CKRenderContext *Dev, CK_RENDER_FL
                 m_Entity->ModifyMoveableFlags(VX_MOVEABLE_CHARACTERRENDERED, 0);
             if ((dev->m_MaskFree & m_RenderContextMask) != 0 && m_Entity->IsToBeRendered()) {
                 if (m_Entity->IsToBeRenderedLast()) {
-                    if (sub_1000D290() || m_Entity->IsInViewFrustrum(dev, Flags)) {
+                    if (IsInsideFrustum() || m_Entity->IsInViewFrustrum(dev, Flags)) {
                         m_TimeFpsCalc = dev->m_TimeFpsCalc;
                         rm->m_SceneGraphRootNode.AddTransparentObject(this);
                     }
@@ -774,7 +831,7 @@ void CKSceneGraphRootNode::RenderTransparents(CKRenderContext *Dev, CK_RENDER_FL
             }
         }
 
-        if (sub_1000D290()) {
+        if (IsInsideFrustum()) {
             for (int i = 0; i < m_ChildrenCount; ++i) {
                 auto *child = m_Children[i];
                 if ((dev->m_MaskFree & child->m_EntityFlags) != 0)
@@ -821,9 +878,9 @@ void CKSceneGraphRootNode::Clear() {
 }
 
 void CKSceneGraphRootNode::AddTransparentObject(CKSceneGraphNode *node) {
-    if ((node->m_Flag & 0x20) == 0) {
+    if ((node->m_Flags & 0x20) == 0) {
         m_TransparentObjects.PushBack(CKTransparentObject(node));
-        node->m_Flag |= 0x20u;
+        node->m_Flags |= 0x20u;
     }
 }
 
