@@ -79,4 +79,7 @@
 #define CP_CALL_METHOD_ORIG(Name, ...) \
     (this->*CP_FUNC_ORIG_PTR_NAME(Name))(__VA_ARGS__)
 
+#define CP_CALL_METHOD_ORIG_FORCE(Class, Name, ...) \
+    (((Class *)this)->*CP_FUNC_ORIG_PTR_NAME(Name))(__VA_ARGS__)
+
 #endif // BML_MACROS_H

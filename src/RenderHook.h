@@ -68,6 +68,18 @@ struct CKObjectExtents {
     CK_ID m_Camera;
 };
 
+class CKSceneGraphNode;
+
+struct CKTransparentObject {
+    CKSceneGraphNode *m_Node;
+    float m_ZhMin;
+    float m_ZhMax;
+
+    explicit CKTransparentObject(CKSceneGraphNode *node) {
+        m_Node = node;
+    }
+};
+
 class CKRenderedScene {
 public:
     CKRenderedScene(CKRenderContext *rc);
@@ -144,6 +156,9 @@ public:
     CKBOOL ComputeHierarchicalBox();
     void InvalidateBox(CKBOOL b);
 
+    CKBOOL sub_1000D290() const { return (m_Flag & 1) != 0; }
+    void sub_100789A0();
+
     static bool Hook(void *base);
     static void Unhook();
 
@@ -158,7 +173,7 @@ public:
     CKDWORD m_EntityFlags;
     CKSceneGraphNode *m_Parent;
     XArray<CKSceneGraphNode *> m_Children;
-    CKDWORD m_ChildrenCount;
+    int m_ChildrenCount;
 
     CP_DECLARE_METHOD_PTRS(CKSceneGraphNode, void, NoTestsTraversal, (CKRenderContext *Dev, CK_RENDER_FLAGS Flags));
     CP_DECLARE_METHOD_PTRS(CKSceneGraphNode, void, AddNode, (CKSceneGraphNode *node));
@@ -179,13 +194,22 @@ public:
 class CKSceneGraphRootNode : public CKSceneGraphNode {
 public:
     void RenderTransparents(CKRenderContext *Dev, CK_RENDER_FLAGS Flags);
+    void SortTransparentObjects(CKRenderContext *Dev, CK_RENDER_FLAGS Flags);
+
+    void Check();
+    void Clear();
+
+    void AddTransparentObject(CKSceneGraphNode *node);
 
     static bool Hook(void *base);
     static void Unhook();
 
-    CP_DECLARE_METHOD_PTRS(CKSceneGraphRootNode, void, RenderTransparents, (CKRenderContext *Dev, CK_RENDER_FLAGS Flags));
+    XArray<CKTransparentObject> m_TransparentObjects;
 
-    XArray<CKSceneGraphNode *> m_TransparentObjects;
+    CP_DECLARE_METHOD_PTRS(CKSceneGraphRootNode, void, RenderTransparents, (CKRenderContext *Dev, CK_RENDER_FLAGS Flags));
+    CP_DECLARE_METHOD_PTRS(CKSceneGraphRootNode, void, SortTransparentObjects, (CKRenderContext *Dev, CK_RENDER_FLAGS Flags));
+    CP_DECLARE_METHOD_PTRS(CKSceneGraphRootNode, void, Check, ());
+    CP_DECLARE_METHOD_PTRS(CKSceneGraphRootNode, void, Clear, ());
 };
 
 class CP_HOOK_CLASS_NAME(CKRenderManager) : public CKRenderManager {
@@ -391,9 +415,15 @@ public:
     CP_DECLARE_METHOD_HOOK(void, SetStereoParameters, (float EyeSeparation, float FocalLength));
     CP_DECLARE_METHOD_HOOK(void, GetStereoParameters, (float & EyeSeparation, float & FocalLength));
 
-    CP_DECLARE_METHOD_HOOK(CKBOOL, UpdateProjection, (CKBOOL));
+    void CallSprite3DBatches();
+    CKBOOL UpdateProjection(CKBOOL force);
+    void SetClipRect(VxRect &rect);
 
-    CP_DECLARE_METHOD_PTRS(CKRenderContext, CKBOOL, UpdateProjection, (CKBOOL));
+    void SetFullViewport(CKViewportData &data, int width, int height);
+
+    CP_DECLARE_METHOD_PTRS(CKRenderContext, void, CallSprite3DBatches, ());
+    CP_DECLARE_METHOD_PTRS(CKRenderContext, CKBOOL, UpdateProjection, (CKBOOL force));
+    CP_DECLARE_METHOD_PTRS(CKRenderContext, void, SetClipRect, (VxRect &rect));
 
     static bool Hook(CKRenderContext *rc);
     static void Unhook(CKRenderContext *rc);
@@ -456,9 +486,9 @@ public:
     CKDWORD m_FpsInterval;
     XString m_CurrentObjectDesc;
     XString m_StateString;
-    CKDWORD field_33C;
+    CKDWORD m_RenderTransparentCount;
     CKDWORD m_DrawSceneCalls;
-    CKBOOL m_ObjectsRendering;
+    CKBOOL m_SortTransparentObjects;
     XVoidArray m_Sprite3DBatches;
     XVoidArray m_TransparentObjects;
     int m_StencilFreeMask;
@@ -515,6 +545,11 @@ public:
 #include "CK3dEntity.h"
 #undef CK_3DIMPLEMENTATION
 
+    void WorldMatrixChanged(CKBOOL invalidateBox, CKBOOL inverse);
+
+    static bool Hook(void *vtable, void *base);
+    static void Unhook(void *vtable);
+
     CK3dEntity *m_Parent;
     XObjectPointerArray m_Meshes;
     CKMesh *m_CurrentMesh;
@@ -537,6 +572,24 @@ public:
     CKDWORD field_138;
     VxRect m_RenderExtents;
     CKSceneGraphNode *m_SceneGraphNode;
+
+    CP_DECLARE_METHOD_PTRS(CK3dEntity, void, WorldMatrixChanged, (CKBOOL invalidateBox, CKBOOL inverse));
+};
+
+class CP_HOOK_CLASS_NAME(CKCamera) : public CP_HOOK_CLASS_NAME(CK3dEntity) {
+public:
+
+#define CK_3DIMPLEMENTATION
+#include "CKCamera.h"
+#undef CK_3DIMPLEMENTATION
+
+    float m_Fov;
+    float m_FrontPlane;
+    float m_BackPlane;
+    int m_ProjectionType;
+    float m_OrthographicZoom;
+    int m_Width;
+    int m_Height;
 };
 
 namespace RenderHook {
