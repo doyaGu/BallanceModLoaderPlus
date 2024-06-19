@@ -253,6 +253,11 @@ public:
         return InternalGetRenderState(State, Value);
     }
 
+    void SetRenderStateFlag(VXRENDERSTATETYPE State, CKDWORD Flag)
+    {
+        m_StateCache[State].Flag = Flag;
+    }
+
     //----------------------------------------------------------
     //--- Display lists
     virtual CKBOOL NewDisplayList() { return FALSE; }
