@@ -155,7 +155,7 @@ public:
     CKBOOL ComputeHierarchicalBox();
     void InvalidateBox(CKBOOL b);
 
-    CKBOOL sub_1000D290() const { return (m_Flag & 1) != 0; }
+    CKBOOL IsInsideFrustum() const { return (m_Flags & 1) != 0; }
     void sub_100789A0();
 
     static bool Hook(void *base);
@@ -163,8 +163,8 @@ public:
 
     CK3dEntity *m_Entity;
     CKDWORD m_TimeFpsCalc;
-    CKDWORD m_Flag;
-    CKDWORD m_ChildCount;
+    CKDWORD m_Flags;
+    CKDWORD m_NodeCount;
     VxBbox m_Bbox;
     CKWORD m_LastPriority;
     CKWORD m_Priority;
@@ -485,7 +485,7 @@ public:
     CKDWORD m_FpsInterval;
     XString m_CurrentObjectDesc;
     XString m_StateString;
-    CKDWORD m_RenderTransparentCount;
+    CKDWORD m_TraversalCount;
     CKDWORD m_DrawSceneCalls;
     CKBOOL m_SortTransparentObjects;
     XVoidArray m_Sprite3DBatches;
