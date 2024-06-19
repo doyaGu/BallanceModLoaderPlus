@@ -35,6 +35,8 @@ CP_DEFINE_METHOD_PTRS(CKRenderedScene, AddObject);
 CP_DEFINE_METHOD_PTRS(CKRenderedScene, RemoveObject);
 CP_DEFINE_METHOD_PTRS(CKRenderedScene, DetachAll);
 
+static CKBOOL *g_UpdateTransparency = nullptr;
+
 CKRenderedScene::CKRenderedScene(CKRenderContext *rc) {
     m_RenderContext = rc;
     m_Context = rc->GetCKContext();
@@ -69,7 +71,145 @@ CKRenderedScene::~CKRenderedScene() {
 }
 
 CKERROR CKRenderedScene::Draw(CK_RENDER_FLAGS Flags) {
-    return CP_CALL_METHOD_ORIG(Draw, Flags);
+    auto *dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) m_RenderContext;
+    auto *rm = (CP_HOOK_CLASS_NAME(CKRenderManager) *) dev->m_RenderManager;
+    auto *rst = dev->m_RasterizerContext;
+
+    SetDefaultRenderStates(rst);
+
+    dev->m_SpriteTimeProfiler.Reset();
+    if ((Flags & CK_RENDER_BACKGROUNDSPRITES) != 0 && rm->m_2DRootBack->GetChildrenCount()) {
+        VxRect rect;
+        dev->GetViewRect(rect);
+        dev->SetFullViewport(rst->m_ViewportData, dev->m_WindowRect.right, dev->m_WindowRect.bottom);
+        rst->SetViewport(&rst->m_ViewportData);
+        rm->m_2DRootBack->Render(m_RenderContext);
+        ResizeViewport(rect);
+    }
+    dev->m_Stats.SpriteTime = dev->m_SpriteTimeProfiler.Current() + dev->m_Stats.SpriteTime;
+
+    auto *rootEntity = (CP_HOOK_CLASS_NAME(CK3dEntity) *) m_RootEntity;
+
+    if ((Flags & CK_RENDER_SKIP3D) == 0) {
+        if (dev->m_Camera) {
+            auto *camera = (CP_HOOK_CLASS_NAME(CKCamera) *) dev->m_Camera;
+            rootEntity->m_WorldMatrix = camera->m_WorldMatrix;
+            rootEntity->WorldMatrixChanged(FALSE, TRUE);
+            VxVector vec;
+            camera->InverseTransform(&vec, rootEntity->m_WorldMatrix[3]);
+            auto z = dev->m_NearPlane / fabsf(vec.z);
+            float right = (camera->m_LocalBoundingBox.Max.x - vec.x) * z;
+            float left = (camera->m_LocalBoundingBox.Min.x - vec.x) * z;
+            float top = (camera->m_LocalBoundingBox.Max.y - vec.y) * z;
+            float bottom = (camera->m_LocalBoundingBox.Min.y - vec.y) * z;
+            dev->m_ProjectionMatrix.PerspectiveRect(left, right, top, bottom, dev->m_NearPlane, dev->m_FarPlane);
+            rst->SetTransformMatrix(VXMATRIX_PROJECTION, dev->m_ProjectionMatrix);
+            rst->SetViewport(&dev->m_ViewportData);
+
+            VxRect rect(0.0f, 0.0f, (float) dev->m_WindowRect.right, (float) dev->m_WindowRect.bottom);
+            auto *background = dev->Get2dRoot(TRUE);
+            background->SetRect(rect);
+            auto *foreground = dev->Get2dRoot(FALSE);
+            foreground->SetRect(rect);
+        }
+
+        const VxVector4 &origin = rootEntity->m_WorldMatrix[3];
+        const VxVector4 &right = rootEntity->m_WorldMatrix[0];
+        const VxVector4 &up = rootEntity->m_WorldMatrix[1];
+        const VxVector4 &dir = rootEntity->m_WorldMatrix[2];
+        const auto aspectRatio = (float) ((double) dev->m_ViewportData.ViewWidth / (double) dev->m_ViewportData.ViewHeight);
+        dev->m_Frustum = VxFrustum(origin, right, up, dir, dev->m_NearPlane, dev->m_FarPlane, dev->m_Fov, aspectRatio);
+
+        rst->SetTransformMatrix(VXMATRIX_WORLD, VxMatrix::Identity());
+        rst->SetTransformMatrix(VXMATRIX_VIEW, rootEntity->GetInverseWorldMatrix());
+
+        SetupLights(rst);
+
+        if (!dev->m_Camera)
+            dev->UpdateProjection(FALSE);
+
+        dev->m_DevicePreCallbacksTimeProfiler.Reset();
+        auto &devicePreCallbacks = dev->m_PreRenderCallBacks.m_PreCallBacks;
+        for (auto it = devicePreCallbacks.Begin(); it != devicePreCallbacks.End(); ++it) {
+            auto &cb = *it;
+            ((CK_RENDERCALLBACK) cb.callback)(dev, cb.argument);
+        }
+        dev->m_Stats.DevicePreCallbacks = dev->m_DevicePreCallbacksTimeProfiler.Current() + dev->m_Stats.DevicePreCallbacks;
+
+        rst->SetVertexShader(0);
+        m_Context->ExecuteManagersOnPreRender(dev);
+
+        CK_RENDER_FLAGS flags = CK_RENDER_DEFAULTSETTINGS;
+        if ((Flags & CK_RENDER_DONOTUPDATEEXTENTS) != 0)
+            flags = CK_RENDER_CLEARVIEWPORT;
+
+        dev->m_ObjectsRenderTimeProfiler.Reset();
+
+        dev->m_TransparentObjects.Resize(0);
+        dev->m_Stats.SceneTraversalTime = 0.0f;
+        dev->m_SceneTraversalTimeProfiler.Reset();
+        rm->m_SceneGraphRootNode.RenderTransparents(dev, flags);
+        dev->m_Stats.SceneTraversalTime = dev->m_SceneTraversalTimeProfiler.Current() + dev->m_Stats.SceneTraversalTime;
+        dev->CallSprite3DBatches();
+
+        dev->m_DevicePostCallbacksTimeProfiler.Reset();
+        auto &devicePostCallbacks = dev->m_PreRenderTempCallBacks.m_PostCallBacks;
+        for (auto it = devicePostCallbacks.Begin(); it != devicePostCallbacks.End(); ++it) {
+            auto &cb = *it;
+            ((CK_RENDERCALLBACK) cb.callback)(dev, cb.argument);
+        }
+        dev->m_Stats.DevicePostCallbacks = dev->m_DevicePostCallbacksTimeProfiler.Current() + dev->m_Stats.DevicePostCallbacks;
+
+        dev->m_SortTransparentObjects = TRUE;
+        rm->m_SceneGraphRootNode.SortTransparentObjects(dev, flags);
+        dev->CallSprite3DBatches();
+        dev->m_SortTransparentObjects = FALSE;
+
+        dev->m_Stats.ObjectsRenderTime = dev->m_ObjectsRenderTimeProfiler.Current();
+
+        dev->m_DevicePostCallbacksTimeProfiler.Reset();
+        rst->SetVertexShader(0);
+        auto &postCallbacks = dev->m_PreRenderCallBacks.m_PostCallBacks;
+        for (auto it = postCallbacks.Begin(); it != postCallbacks.End(); ++it) {
+            auto &cb = *it;
+            ((CK_RENDERCALLBACK) cb.callback)(dev, cb.argument);
+        }
+        dev->m_Stats.DevicePostCallbacks = dev->m_DevicePostCallbacksTimeProfiler.Current() + dev->m_Stats.DevicePostCallbacks;
+
+        m_Context->ExecuteManagersOnPostRender(dev);
+    }
+
+    dev->m_SpriteTimeProfiler.Reset();
+    if ((Flags & CK_RENDER_FOREGROUNDSPRITES) != 0 && rm->m_2DRootFore->GetChildrenCount() != 0) {
+        VxRect rect;
+        dev->GetViewRect(rect);
+        dev->SetFullViewport(rst->m_ViewportData, dev->m_WindowRect.right, dev->m_WindowRect.bottom);
+        rst->SetViewport(&rst->m_ViewportData);
+        rm->m_2DRootFore->Render(m_RenderContext);
+        ResizeViewport(rect);
+    }
+    dev->m_Stats.SpriteTime = dev->m_SpriteTimeProfiler.Current() + dev->m_Stats.SpriteTime;
+
+    rst->SetVertexShader(0);
+    m_Context->ExecuteManagersOnPostSpriteRender(dev);
+
+    dev->m_DevicePostCallbacksTimeProfiler.Reset();
+    rst->SetVertexShader(0);
+    auto &postCallbacks = dev->m_PostRenderCallBacks.m_PostCallBacks;
+    for (auto it = postCallbacks.Begin(); it != postCallbacks.End(); ++it) {
+        auto &cb = *it;
+        ((CK_RENDERCALLBACK) cb.callback)(dev, cb.argument);
+    }
+    dev->m_Stats.DevicePostCallbacks = dev->m_DevicePostCallbacksTimeProfiler.Current() + dev->m_Stats.DevicePostCallbacks;
+
+    dev->m_Stats.ObjectsRenderTime = dev->m_Stats.ObjectsRenderTime -
+                                     (dev->m_Stats.SceneTraversalTime +
+                                      dev->m_Stats.TransparentObjectsSortTime +
+                                      dev->m_Stats.ObjectsCallbacksTime + dev->m_Stats.SkinTime);
+    dev->m_Stats.SpriteTime = dev->m_Stats.SpriteTime - dev->m_Stats.SpriteCallbacksTime;
+
+    *g_UpdateTransparency = FALSE;
+    return CK_OK;
 }
 
 void CKRenderedScene::SetDefaultRenderStates(CKRasterizerContext *rst) {
@@ -122,46 +262,46 @@ void CKRenderedScene::AddObject(CKRenderObject *obj) {
 void CKRenderedScene::RemoveObject(CKRenderObject *obj) {
     CK_CLASSID cid = obj->GetClassID();
     if (CKIsChildClassOf(cid, CKCID_3DENTITY)) {
-        m_3DEntities.Remove((CK3dEntity *)obj);
+        m_3DEntities.Remove((CK3dEntity *) obj);
         if (CKIsChildClassOf(cid, CKCID_CAMERA)) {
-            m_Cameras.Remove((CKCamera *)obj);
+            m_Cameras.Remove((CKCamera *) obj);
             if (m_AttachedCamera == obj)
                 m_AttachedCamera = nullptr;
         } else if (CKIsChildClassOf(cid, CKCID_LIGHT)) {
-            m_Lights.Remove((CKLight *)obj);
+            m_Lights.Remove((CKLight *) obj);
         }
     } else if (CKIsChildClassOf(cid, CKCID_2DENTITY)) {
-        auto *ent = (CK2dEntity *)obj;
-        m_2DEntities.Remove((CK2dEntity *)obj);
+        auto *ent = (CK2dEntity *) obj;
+        m_2DEntities.Remove((CK2dEntity *) obj);
         if (!ent->GetParent()) {
-            auto *root = (CP_HOOK_CLASS_NAME(CK2dEntity) *)m_RenderContext->Get2dRoot(ent->IsBackground());
+            auto *root = (CP_HOOK_CLASS_NAME(CK2dEntity) *) m_RenderContext->Get2dRoot(ent->IsBackground());
             root->m_Children.Remove(ent);
         }
     }
 }
 
 void CKRenderedScene::DetachAll() {
-    auto *rm = (CP_HOOK_CLASS_NAME(CKRenderManager) *)m_Context->GetRenderManager();
+    auto *rm = (CP_HOOK_CLASS_NAME(CKRenderManager) *) m_Context->GetRenderManager();
 
     if (m_Context->IsInClearAll() || !rm->m_RenderContexts.IsHere(m_RenderContext->GetID())) {
         if (rm->m_2DRootBack) {
-            auto *back = (CP_HOOK_CLASS_NAME(CK2dEntity) *)rm->m_2DRootBack;
+            auto *back = (CP_HOOK_CLASS_NAME(CK2dEntity) *) rm->m_2DRootBack;
             back->m_Children.Clear();
         }
         if (rm->m_2DRootFore) {
-            auto *fore = (CP_HOOK_CLASS_NAME(CK2dEntity) *)rm->m_2DRootFore;
+            auto *fore = (CP_HOOK_CLASS_NAME(CK2dEntity) *) rm->m_2DRootFore;
             fore->m_Children.Clear();
         }
     }
 
     if (!m_Context->IsInClearAll()) {
         for (XArray<CK2dEntity *>::Iterator it = m_2DEntities.Begin(); it != m_2DEntities.End(); ++it) {
-            auto *ent = (CP_HOOK_CLASS_NAME(CK2dEntity) *)(*it);
+            auto *ent = (CP_HOOK_CLASS_NAME(CK2dEntity) *) (*it);
             if (ent)
                 ent->RemoveFromRenderContext(m_RenderContext);
         }
         for (XArray<CK3dEntity *>::Iterator it = m_3DEntities.Begin(); it != m_3DEntities.End(); ++it) {
-            auto *ent = (CP_HOOK_CLASS_NAME(CK3dEntity) *)(*it);
+            auto *ent = (CP_HOOK_CLASS_NAME(CK3dEntity) *) (*it);
             if (ent)
                 ent->RemoveFromRenderContext(m_RenderContext);
         }
@@ -275,6 +415,15 @@ void CKSceneGraphNode::InvalidateBox(CKBOOL b) {
     CP_CALL_METHOD_ORIG(InvalidateBox, b);
 }
 
+void CKSceneGraphNode::sub_100789A0() {
+    m_Flag &= ~1;
+    m_Flag |= 2;
+
+    for (int i = 0; i < m_ChildrenCount; ++i) {
+        m_Children[i]->sub_100789A0();
+    }
+}
+
 bool CKSceneGraphNode::Hook(void *base) {
     assert(base != nullptr);
 
@@ -314,21 +463,139 @@ void CKSceneGraphNode::Unhook() {
 }
 
 CP_DEFINE_METHOD_PTRS(CKSceneGraphRootNode, RenderTransparents);
+CP_DEFINE_METHOD_PTRS(CKSceneGraphRootNode, SortTransparentObjects);
+CP_DEFINE_METHOD_PTRS(CKSceneGraphRootNode, Check);
+CP_DEFINE_METHOD_PTRS(CKSceneGraphRootNode, Clear);
 
 void CKSceneGraphRootNode::RenderTransparents(CKRenderContext *Dev, CK_RENDER_FLAGS Flags) {
-    CP_CALL_METHOD_ORIG(RenderTransparents, Dev, Flags);
+    auto *dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) Dev;
+    auto *rm = (CP_HOOK_CLASS_NAME(CKRenderManager) *) dev->m_RenderManager;
+    auto *rst = dev->m_RasterizerContext;
+
+    ++dev->m_RenderTransparentCount;
+
+    SetAsPotentiallyVisible();
+    if (m_ChildrenCount != 0) {
+        if ((m_Flag & 0x10) != 0)
+            SortNodes();
+
+        CKBOOL needClip = FALSE;
+
+        if (m_Entity) {
+            m_Entity->ModifyMoveableFlags(0, VX_MOVEABLE_EXTENTSUPTODATE);
+            if (!m_Entity->IsInViewFrustrumHierarchic(dev)) {
+                if (m_Entity->GetClassID() == CKCID_CHARACTER) {
+                    VxBbox box = m_Bbox;
+                    box.Max *= 2.0f;
+                    box.Min *= 2.0f;
+                    if (rst->ComputeBoxVisibility(box, TRUE))
+                        m_Entity->ModifyMoveableFlags(VX_MOVEABLE_CHARACTERRENDERED, 0);
+                }
+                sub_100789A0();
+                return;
+            }
+
+            if (m_Entity->GetClassID() == CKCID_PLACE) {
+                auto *place = (CKPlace *) m_Entity;
+                VxRect &clip = place->ViewportClip();
+                if (!clip.IsNull()) {
+                    if (clip != VxRect(0.0f, 0.0f, 1.0f, 1.0f)) {
+                        needClip = TRUE;
+                        VxRect rect = clip;
+                        const CKViewportData &data = dev->m_ViewportData;
+                        VxRect screen((float) data.ViewX, (float) data.ViewY, (float) (data.ViewWidth + data.ViewX), (float) (data.ViewHeight + data.ViewY));
+                        rect.TransformFromHomogeneous(screen);
+                        dev->SetClipRect(rect);
+                    }
+                }
+            }
+
+            if (m_Entity->GetClassID() == CKCID_CHARACTER)
+                m_Entity->ModifyMoveableFlags(VX_MOVEABLE_CHARACTERRENDERED, 0);
+            if ((dev->m_MaskFree & m_RenderContextMask) != 0 && m_Entity->IsToBeRendered()) {
+                if (m_Entity->IsToBeRenderedLast()) {
+                    if (sub_1000D290() || m_Entity->IsInViewFrustrum(dev, Flags)) {
+                        m_TimeFpsCalc = dev->m_TimeFpsCalc;
+                        rm->m_SceneGraphRootNode.AddTransparentObject(this);
+                    }
+                } else {
+                    dev->m_Stats.SceneTraversalTime = dev->m_SceneTraversalTimeProfiler.Current() + dev->m_Stats.SceneTraversalTime;
+                    m_Entity->Render(dev, Flags);
+                    dev->m_SceneTraversalTimeProfiler.Reset();
+                }
+            }
+        }
+
+        if (sub_1000D290()) {
+            for (int i = 0; i < m_ChildrenCount; ++i) {
+                auto *child = m_Children[i];
+                if ((dev->m_MaskFree & child->m_EntityFlags) != 0)
+                    child->NoTestsTraversal(dev, Flags);
+            }
+        } else {
+            for (int i = 0; i < m_ChildrenCount; ++i) {
+                auto *child = m_Children[i];
+                if ((dev->m_MaskFree & child->m_EntityFlags) != 0) {
+                    auto *root = (CKSceneGraphRootNode *) child;
+                    root->RenderTransparents(dev, Flags);
+                }
+            }
+        }
+
+        if (needClip) {
+            rst->SetViewport(&dev->m_ViewportData);
+            rst->SetTransformMatrix(VXMATRIX_PROJECTION, dev->m_ProjectionMatrix);
+        }
+    } else if (m_Entity &&
+               m_Entity->IsToBeRendered() &&
+               (dev->m_MaskFree & m_RenderContextMask) != 0 &&
+               m_Entity->IsInViewFrustrum(dev, Flags)) {
+        if (m_Entity->IsToBeRenderedLast()) {
+            m_TimeFpsCalc = dev->m_TimeFpsCalc;
+            rm->m_SceneGraphRootNode.AddTransparentObject(this);
+        } else {
+            dev->m_Stats.SceneTraversalTime = dev->m_SceneTraversalTimeProfiler.Current() + dev->m_Stats.SceneTraversalTime;
+            m_Entity->Render(dev, static_cast<CK_RENDER_FLAGS>(Flags | CK_RENDER_CLEARVIEWPORT));
+            dev->m_SceneTraversalTimeProfiler.Reset();
+        }
+    }
+}
+
+void CKSceneGraphRootNode::SortTransparentObjects(CKRenderContext *Dev, CK_RENDER_FLAGS Flags) {
+    CP_CALL_METHOD_ORIG(SortTransparentObjects, Dev, Flags);
+}
+
+void CKSceneGraphRootNode::Check() {
+    CP_CALL_METHOD_ORIG(Check);
+}
+
+void CKSceneGraphRootNode::Clear() {
+    CP_CALL_METHOD_ORIG(Clear);
+}
+
+void CKSceneGraphRootNode::AddTransparentObject(CKSceneGraphNode *node) {
+    if ((node->m_Flag & 0x20) == 0) {
+        m_TransparentObjects.PushBack(CKTransparentObject(node));
+        node->m_Flag |= 0x20u;
+    }
 }
 
 bool CKSceneGraphRootNode::Hook(void *base) {
     assert(base != nullptr);
 
     CP_ADD_METHOD_HOOK(RenderTransparents, base, 0x77912);
+    CP_ADD_METHOD_HOOK(SortTransparentObjects, base, 0x78183);
+    CP_ADD_METHOD_HOOK(Check, base, 0x78129);
+    CP_ADD_METHOD_HOOK(Clear, base, 0x765C0);
 
     return true;
 }
 
 void CKSceneGraphRootNode::Unhook() {
     CP_REMOVE_METHOD_HOOK(RenderTransparents);
+    CP_REMOVE_METHOD_HOOK(SortTransparentObjects);
+    CP_REMOVE_METHOD_HOOK(Check);
+    CP_REMOVE_METHOD_HOOK(Clear);
 }
 
 CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager> CP_HOOK_CLASS_NAME(CKRenderManager)::s_VTable = {};
@@ -442,18 +709,28 @@ bool CP_HOOK_CLASS_NAME(CKRenderManager)::Hook(CKRenderManager *man) {
 
 #undef HOOK_RENDER_MANAGER_VIRTUAL_METHOD
 
+    void *base = utils::GetModuleBaseAddress("CK2_3D.dll");
+    assert(base != nullptr);
+
+    CP_HOOK_CLASS_NAME(CK3dEntity)::Hook(nullptr, base);
+    g_UpdateTransparency = utils::ForceReinterpretCast<CKBOOL *>(base, 0x90CCC);
+
     return true;
 }
 
 void CP_HOOK_CLASS_NAME(CKRenderManager)::Unhook(CKRenderManager *man) {
     if (man)
         utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager>>(man, s_VTable);
+
+    CP_HOOK_CLASS_NAME(CK3dEntity)::Unhook(nullptr);
 }
 
 bool CP_HOOK_CLASS_NAME(CKRenderContext)::s_DisableRender = false;
 bool CP_HOOK_CLASS_NAME(CKRenderContext)::s_EnableWidescreenFix = false;
 CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> CP_HOOK_CLASS_NAME(CKRenderContext)::s_VTable = {};
-CP_DEFINE_METHOD_HOOK_PTRS(CKRenderContext, UpdateProjection);
+CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CKRenderContext), CallSprite3DBatches);
+CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CKRenderContext), UpdateProjection);
+CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CKRenderContext), SetClipRect);
 
 #define CP_RENDER_CONTEXT_METHOD_NAME(Name) CP_HOOK_CLASS_NAME(CKRenderContext)::CP_FUNC_HOOK_NAME(Name)
 
@@ -509,7 +786,7 @@ CKERROR CP_RENDER_CONTEXT_METHOD_NAME(DrawScene)(CK_RENDER_FLAGS Flags) {
         Flags = m_RenderFlags;
 
     if ((Flags & CK_RENDER_SKIPDRAWSCENE) != 0)
-        return 0;
+        return CK_OK;
 
     ++m_DrawSceneCalls;
     memset(&m_Stats, 0, sizeof(VxStats));
@@ -517,9 +794,8 @@ CKERROR CP_RENDER_CONTEXT_METHOD_NAME(DrawScene)(CK_RENDER_FLAGS Flags) {
     m_RasterizerContext->m_RenderStateCacheHit = 0;
     m_RasterizerContext->m_RenderStateCacheMiss = 0;
 
-    if ((Flags & CK_RENDER_DONOTUPDATEEXTENTS) == 0) {
-         m_ObjectExtents.Resize(0);
-    }
+    if ((Flags & CK_RENDER_DONOTUPDATEEXTENTS) == 0)
+        m_ObjectExtents.Resize(0);
 
     m_RasterizerContext->BeginScene();
 
@@ -800,7 +1076,7 @@ CKBOOL CP_RENDER_CONTEXT_METHOD_NAME(GetUserClipPlane)(CKDWORD ClipPlaneIndex, V
     return CP_CALL_METHOD_PTR(this, s_VTable.GetUserClipPlane, ClipPlaneIndex, PlaneEquation);
 }
 
-CKRenderObject * CP_RENDER_CONTEXT_METHOD_NAME(Pick)(int x, int y, CKPICKRESULT *oRes, CKBOOL iIgnoreUnpickable) {
+CKRenderObject *CP_RENDER_CONTEXT_METHOD_NAME(Pick)(int x, int y, CKPICKRESULT *oRes, CKBOOL iIgnoreUnpickable) {
     return CP_CALL_METHOD_PTR(this, s_VTable.Pick, x, y, oRes, iIgnoreUnpickable);
 }
 
@@ -820,11 +1096,11 @@ void CP_RENDER_CONTEXT_METHOD_NAME(DetachViewpointFromCamera)() {
     CP_CALL_METHOD_PTR(this, s_VTable.DetachViewpointFromCamera);
 }
 
-CKCamera * CP_RENDER_CONTEXT_METHOD_NAME(GetAttachedCamera)() {
+CKCamera *CP_RENDER_CONTEXT_METHOD_NAME(GetAttachedCamera)() {
     return CP_CALL_METHOD_PTR(this, s_VTable.GetAttachedCamera);
 }
 
-CK3dEntity * CP_RENDER_CONTEXT_METHOD_NAME(GetViewpoint)() {
+CK3dEntity *CP_RENDER_CONTEXT_METHOD_NAME(GetViewpoint)() {
     return CP_CALL_METHOD_PTR(this, s_VTable.GetViewpoint);
 }
 
@@ -928,7 +1204,11 @@ void CP_RENDER_CONTEXT_METHOD_NAME(GetStereoParameters)(float &EyeSeparation, fl
     CP_CALL_METHOD_PTR(this, s_VTable.GetStereoParameters, EyeSeparation, FocalLength);
 }
 
-CKBOOL CP_RENDER_CONTEXT_METHOD_NAME(UpdateProjection)(CKBOOL force) {
+void CKRenderContextHook::CallSprite3DBatches() {
+    CP_CALL_METHOD_ORIG(CallSprite3DBatches);
+}
+
+CKBOOL CP_HOOK_CLASS_NAME(CKRenderContext)::UpdateProjection(CKBOOL force) {
     if (!force && m_ProjectionUpdated)
         return TRUE;
     if (!m_RasterizerContext)
@@ -953,6 +1233,17 @@ CKBOOL CP_RENDER_CONTEXT_METHOD_NAME(UpdateProjection)(CKBOOL force) {
     foreground->SetRect(rect);
 
     return TRUE;
+}
+
+void CP_HOOK_CLASS_NAME(CKRenderContext)::SetClipRect(VxRect &rect) {
+    CP_CALL_METHOD_ORIG(SetClipRect, rect);
+}
+
+void CP_HOOK_CLASS_NAME(CKRenderContext)::SetFullViewport(CKViewportData &data, int width, int height) {
+    data.ViewY = 0;
+    data.ViewX = 0;
+    data.ViewWidth = width;
+    data.ViewHeight = height;
 }
 
 bool CP_HOOK_CLASS_NAME(CKRenderContext)::Hook(CKRenderContext *rc) {
@@ -1079,7 +1370,9 @@ utils::HookVirtualMethod(Instance, &CP_HOOK_CLASS_NAME(CKRenderContext)::CP_FUNC
     void *base = utils::GetModuleBaseAddress("CK2_3D.dll");
     assert(base != nullptr);
 
+    CP_ADD_METHOD_HOOK(CallSprite3DBatches, base, 0x6DC61);
     CP_ADD_METHOD_HOOK(UpdateProjection, base, 0x6C68D);
+    CP_ADD_METHOD_HOOK(SetClipRect, base, 0x6C808);
 
     CKRenderedScene::Hook(base);
     CKSceneGraphNode::Hook(base);
@@ -1111,6 +1404,24 @@ void CP_HOOK_CLASS_NAME(CKRenderObject)::RemoveFromRenderContext(CKRenderContext
         else
             ent->m_SceneGraphNode->SetRenderContextMask(m_Mask, 0);
     }
+}
+
+CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CK3dEntity), WorldMatrixChanged);
+
+void CP_HOOK_CLASS_NAME(CK3dEntity)::WorldMatrixChanged(CKBOOL invalidateBox, CKBOOL inverse) {
+    CP_CALL_METHOD_ORIG_FORCE(CK3dEntity, WorldMatrixChanged, invalidateBox, inverse);
+}
+
+bool CP_HOOK_CLASS_NAME(CK3dEntity)::Hook(void *vtable, void *base) {
+    assert(base != nullptr);
+
+    CP_ADD_METHOD_HOOK(WorldMatrixChanged, base, 0x62D6);
+
+    return true;
+}
+
+void CP_HOOK_CLASS_NAME(CK3dEntity)::Unhook(void *vtable) {
+    CP_REMOVE_METHOD_HOOK(WorldMatrixChanged);
 }
 
 namespace RenderHook {
