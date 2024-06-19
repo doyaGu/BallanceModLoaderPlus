@@ -264,30 +264,30 @@ void CKRenderedScene::SetDefaultRenderStates(CKRasterizerContext *rst) {
     }
 
     if (rm->m_DisableSpecular.Value != 0) {
-        rst->SetRenderStateFlag(VXRENDERSTATE_SPECULARENABLE, FALSE);
+        rst->SetRenderStateFlags(VXRENDERSTATE_SPECULARENABLE, FALSE);
         rst->SetRenderState(VXRENDERSTATE_SPECULARENABLE, FALSE);
-        rst->SetRenderStateFlag(VXRENDERSTATE_SPECULARENABLE, TRUE);
+        rst->SetRenderStateFlags(VXRENDERSTATE_SPECULARENABLE, TRUE);
     } else {
-        rst->SetRenderStateFlag(VXRENDERSTATE_SPECULARENABLE, FALSE);
+        rst->SetRenderStateFlags(VXRENDERSTATE_SPECULARENABLE, FALSE);
         rst->SetRenderState(VXRENDERSTATE_SPECULARENABLE, TRUE);
     }
 
     if (rm->m_DisableDithering.Value != 0) {
-        rst->SetRenderStateFlag(VXRENDERSTATE_DITHERENABLE, FALSE);
+        rst->SetRenderStateFlags(VXRENDERSTATE_DITHERENABLE, FALSE);
         rst->SetRenderState(VXRENDERSTATE_DITHERENABLE, FALSE);
-        rst->SetRenderStateFlag(VXRENDERSTATE_DITHERENABLE, TRUE);
+        rst->SetRenderStateFlags(VXRENDERSTATE_DITHERENABLE, TRUE);
     } else {
-        rst->SetRenderStateFlag(VXRENDERSTATE_DITHERENABLE, FALSE);
+        rst->SetRenderStateFlags(VXRENDERSTATE_DITHERENABLE, FALSE);
         rst->InvalidateStateCache(VXRENDERSTATE_DITHERENABLE);
         rst->SetRenderState(VXRENDERSTATE_DITHERENABLE, TRUE);
     }
 
     if (rm->m_DisablePerspectiveCorrection.Value != 0) {
-        rst->SetRenderStateFlag(VXRENDERSTATE_TEXTUREPERSPECTIVE, FALSE);
+        rst->SetRenderStateFlags(VXRENDERSTATE_TEXTUREPERSPECTIVE, FALSE);
         rst->SetRenderState(VXRENDERSTATE_TEXTUREPERSPECTIVE, FALSE);
-        rst->SetRenderStateFlag(VXRENDERSTATE_TEXTUREPERSPECTIVE, TRUE);
+        rst->SetRenderStateFlags(VXRENDERSTATE_TEXTUREPERSPECTIVE, TRUE);
     } else {
-        rst->SetRenderStateFlag(VXRENDERSTATE_TEXTUREPERSPECTIVE, FALSE);
+        rst->SetRenderStateFlags(VXRENDERSTATE_TEXTUREPERSPECTIVE, FALSE);
         rst->SetRenderState(VXRENDERSTATE_TEXTUREPERSPECTIVE, TRUE);
     }
 
@@ -299,18 +299,18 @@ void CKRenderedScene::SetDefaultRenderStates(CKRasterizerContext *rst) {
     rst->SetRenderState(VXRENDERSTATE_ZFUNC, VXCMP_LESSEQUAL);
 
     if (dev->m_Shading == 0) {
-        rst->SetRenderStateFlag(VXRENDERSTATE_SHADEMODE, FALSE);
-        rst->SetRenderStateFlag(VXRENDERSTATE_FILLMODE, FALSE);
+        rst->SetRenderStateFlags(VXRENDERSTATE_SHADEMODE, FALSE);
+        rst->SetRenderStateFlags(VXRENDERSTATE_FILLMODE, FALSE);
         rst->SetRenderState(VXRENDERSTATE_FILLMODE, VXFILL_WIREFRAME);
-        rst->SetRenderStateFlag(VXRENDERSTATE_FILLMODE, TRUE);
+        rst->SetRenderStateFlags(VXRENDERSTATE_FILLMODE, TRUE);
     } else if (dev->m_Shading == 1) {
-        rst->SetRenderStateFlag(VXRENDERSTATE_FILLMODE, FALSE);
-        rst->SetRenderStateFlag(VXRENDERSTATE_SHADEMODE, FALSE);
+        rst->SetRenderStateFlags(VXRENDERSTATE_FILLMODE, FALSE);
+        rst->SetRenderStateFlags(VXRENDERSTATE_SHADEMODE, FALSE);
         rst->SetRenderState(VXRENDERSTATE_SHADEMODE, dev->m_Shading);
-        rst->SetRenderStateFlag(VXRENDERSTATE_SHADEMODE, TRUE);
+        rst->SetRenderStateFlags(VXRENDERSTATE_SHADEMODE, TRUE);
     } else if (dev->m_Shading == 2) {
-        rst->SetRenderStateFlag(VXRENDERSTATE_SHADEMODE, FALSE);
-        rst->SetRenderStateFlag(VXRENDERSTATE_FILLMODE, FALSE);
+        rst->SetRenderStateFlags(VXRENDERSTATE_SHADEMODE, FALSE);
+        rst->SetRenderStateFlags(VXRENDERSTATE_FILLMODE, FALSE);
     }
 }
 

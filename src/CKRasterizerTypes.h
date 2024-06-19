@@ -261,8 +261,8 @@ enum RSCache
 struct CKRenderStateData
 {
     CKDWORD Value; // Current Value for this render state
-    CKDWORD Valid; // Can value be modified...
-    CKDWORD Flag;
+    CKDWORD Valid; // Is value valid
+    CKDWORD Flags; // Can value be modified...
     CKDWORD DefaultValue; // Default Value for this render state
 };
 
