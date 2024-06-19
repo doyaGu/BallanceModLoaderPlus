@@ -924,15 +924,26 @@ CK2dEntity *CP_RENDER_CONTEXT_METHOD_NAME(Get2dRoot)(CKBOOL background) {
 }
 
 void CP_RENDER_CONTEXT_METHOD_NAME(DetachAll)() {
-    CP_CALL_METHOD_PTR(this, s_VTable.DetachAll);
+//    CP_CALL_METHOD_PTR(this, s_VTable.DetachAll);
+
+    m_ObjectExtents.Resize(0);
+    if (m_RasterizerContext)
+        m_RasterizerContext->FlushRenderStateCache();
+    m_RenderedScene->DetachAll();
 }
 
 void CP_RENDER_CONTEXT_METHOD_NAME(ForceCameraSettingsUpdate)() {
-    CP_CALL_METHOD_PTR(this, s_VTable.ForceCameraSettingsUpdate);
+//    CP_CALL_METHOD_PTR(this, s_VTable.ForceCameraSettingsUpdate);
+
+    m_RenderedScene->ForceCameraSettingsUpdate();
 }
 
 void CP_RENDER_CONTEXT_METHOD_NAME(PrepareCameras)(CK_RENDER_FLAGS Flags) {
-    CP_CALL_METHOD_PTR(this, s_VTable.PrepareCameras, Flags);
+//    CP_CALL_METHOD_PTR(this, s_VTable.PrepareCameras, Flags);
+
+    if (Flags == CK_RENDER_USECURRENTSETTINGS)
+        Flags = m_RenderFlags;
+    m_RenderedScene->PrepareCameras(Flags);
 }
 
 CKERROR CP_RENDER_CONTEXT_METHOD_NAME(Clear)(CK_RENDER_FLAGS Flags, CKDWORD Stencil) {
