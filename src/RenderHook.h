@@ -64,25 +64,24 @@ struct CKRenderContextSettings {
 
 struct CKObjectExtents {
     VxRect m_Rect;
-    CKDWORD m_Flags;
-    CK_ID m_Camera;
+    CKDWORD m_Flags = 0;
+    CK_ID m_Camera = 0;
 };
 
 class CKSceneGraphNode;
 
 struct CKTransparentObject {
-    CKSceneGraphNode *m_Node;
-    float m_ZhMin;
-    float m_ZhMax;
+    CKSceneGraphNode *m_Node = nullptr;
+    float m_ZhMin = 0.0f;
+    float m_ZhMax = 0.0f;
 
-    explicit CKTransparentObject(CKSceneGraphNode *node) {
-        m_Node = node;
-    }
+    CKTransparentObject() = default;
+    explicit CKTransparentObject(CKSceneGraphNode *node) : m_Node(node) {}
 };
 
 class CKRenderedScene {
 public:
-    CKRenderedScene(CKRenderContext *rc);
+    explicit CKRenderedScene(CKRenderContext *rc);
     ~CKRenderedScene();
 
     CKERROR Draw(CK_RENDER_FLAGS Flags);
@@ -117,7 +116,7 @@ public:
     float m_FogDensity;
     CKDWORD m_FogColor;
     CKDWORD m_AmbientLight;
-    CKDWORD m_LightCount;
+    int m_LightCount;
     XArray<CK2dEntity *> m_2DEntities;
 
     CP_DECLARE_METHOD_PTRS(CKRenderedScene, CKERROR, Draw, (CK_RENDER_FLAGS Flags));
@@ -204,7 +203,7 @@ public:
     static bool Hook(void *base);
     static void Unhook();
 
-    XArray<CKTransparentObject> m_TransparentObjects;
+    XClassArray<CKTransparentObject> m_TransparentObjects;
 
     CP_DECLARE_METHOD_PTRS(CKSceneGraphRootNode, void, RenderTransparents, (CKRenderContext *Dev, CK_RENDER_FLAGS Flags));
     CP_DECLARE_METHOD_PTRS(CKSceneGraphRootNode, void, SortTransparentObjects, (CKRenderContext *Dev, CK_RENDER_FLAGS Flags));
@@ -490,7 +489,7 @@ public:
     CKDWORD m_DrawSceneCalls;
     CKBOOL m_SortTransparentObjects;
     XVoidArray m_Sprite3DBatches;
-    XVoidArray m_TransparentObjects;
+    XClassArray<CKTransparentObject> m_TransparentObjects;
     int m_StencilFreeMask;
     UserDrawPrimitiveDataClass *m_UserDrawPrimitiveData;
     CKDWORD m_MaskFree;
@@ -498,8 +497,8 @@ public:
     CKDWORD m_StartIndex;
     CKDWORD m_DpFlags;
     CKDWORD m_VertexBufferCount;
-    XArray<CKObjectExtents> m_ObjectExtents;
-    XArray<CKObjectExtents> m_Extents;
+    XClassArray<CKObjectExtents> m_ObjectExtents;
+    XClassArray<CKObjectExtents> m_Extents;
     XVoidArray m_RootObjects;
     CKCamera *m_Camera;
     CKTexture *m_NCUTex;
@@ -590,6 +589,25 @@ public:
     float m_OrthographicZoom;
     int m_Width;
     int m_Height;
+};
+
+class CP_HOOK_CLASS_NAME(CKLight) : public CP_HOOK_CLASS_NAME(CK3dEntity) {
+public:
+
+#define CK_3DIMPLEMENTATION
+#include "CKLight.h"
+#undef CK_3DIMPLEMENTATION
+
+    CKBOOL Setup(CKRasterizerContext *rst, int index);
+
+    static bool Hook(void *vtable, void *base);
+    static void Unhook(void *vtable);
+
+    CKLightData m_LightData;
+    CKDWORD m_Flags;
+    float m_LightPower;
+
+    CP_DECLARE_METHOD_PTRS(CKLight, CKBOOL, Setup, (CKRasterizerContext *rst, int index));
 };
 
 namespace RenderHook {
