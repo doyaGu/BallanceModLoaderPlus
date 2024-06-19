@@ -485,7 +485,7 @@ public:
     CKDWORD m_FpsInterval;
     XString m_CurrentObjectDesc;
     XString m_StateString;
-    CKDWORD m_TraversalCount;
+    CKDWORD m_SceneTraversalCalls;
     CKDWORD m_DrawSceneCalls;
     CKBOOL m_SortTransparentObjects;
     XVoidArray m_Sprite3DBatches;
