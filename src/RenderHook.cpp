@@ -36,6 +36,7 @@ CP_DEFINE_METHOD_PTRS(CKRenderedScene, RemoveObject);
 CP_DEFINE_METHOD_PTRS(CKRenderedScene, DetachAll);
 
 static CKBOOL *g_UpdateTransparency = nullptr;
+static CKDWORD *g_10090CD0 = nullptr;
 
 CKRenderedScene::CKRenderedScene(CKRenderContext *rc) {
     m_RenderContext = rc;
@@ -215,7 +216,102 @@ CKERROR CKRenderedScene::Draw(CK_RENDER_FLAGS Flags) {
 }
 
 void CKRenderedScene::SetDefaultRenderStates(CKRasterizerContext *rst) {
-    CP_CALL_METHOD_ORIG(SetDefaultRenderStates, rst);
+//    CP_CALL_METHOD_ORIG(SetDefaultRenderStates, rst);
+
+    auto *dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) m_RenderContext;
+    auto *rm = (CP_HOOK_CLASS_NAME(CKRenderManager) *) dev->m_RenderManager;
+
+    rst->InvalidateStateCache(VXRENDERSTATE_FOGVERTEXMODE);
+    rst->InvalidateStateCache(VXRENDERSTATE_FOGENABLE);
+    rst->InvalidateStateCache(VXRENDERSTATE_FOGPIXELMODE);
+    rst->SetRenderState(VXRENDERSTATE_FOGENABLE, m_FogMode != VXFOG_NONE);
+
+    if (m_FogMode != VXFOG_NONE) {
+        if (rm->m_ForceLinearFog.Value != 0)
+            m_FogMode = VXFOG_LINEAR;
+
+        if ((dev->m_RasterizerDriver->m_3DCaps.RasterCaps & (CKRST_RASTERCAPS_FOGRANGE | CKRST_RASTERCAPS_FOGPIXEL)) ==
+            (CKRST_RASTERCAPS_FOGRANGE | CKRST_RASTERCAPS_FOGPIXEL)) {
+            rst->SetRenderState(VXRENDERSTATE_FOGPIXELMODE, m_FogMode);
+        } else {
+            m_FogMode = VXFOG_LINEAR;
+            rst->SetRenderState(VXRENDERSTATE_FOGVERTEXMODE, m_FogMode);
+        }
+
+        auto &proj = rst->m_ProjectionMatrix;
+        float v17 = proj[2][2] * m_FogEnd + proj[3][2];
+        float v15 = proj[2][3] * m_FogEnd + proj[3][3];
+        float v21 = proj[2][3] * m_FogStart + proj[3][3];
+        float v19 = proj[2][2] * m_FogStart + proj[3][2];
+        float v16 = 1.0f / v15;
+        float v18 = v17 * v16;
+        float v22 = 1.0f / v21;
+        float v20 = v19 * v22;
+
+        if (*g_10090CD0 == 0) {
+            rst->SetRenderState(VXRENDERSTATE_FOGEND, *reinterpret_cast<CKDWORD *>(&m_FogEnd));
+            rst->SetRenderState(VXRENDERSTATE_FOGSTART, *reinterpret_cast<CKDWORD *>(&m_FogStart));
+        } else if (*g_10090CD0 == 1) {
+            rst->SetRenderState(VXRENDERSTATE_FOGEND, *reinterpret_cast<CKDWORD *>(&v18));
+            rst->SetRenderState(VXRENDERSTATE_FOGSTART, *reinterpret_cast<CKDWORD *>(&v20));
+        } else if (*g_10090CD0 == 2) {
+            rst->SetRenderState(VXRENDERSTATE_FOGEND, *reinterpret_cast<CKDWORD *>(&v20));
+            rst->SetRenderState(VXRENDERSTATE_FOGSTART, *reinterpret_cast<CKDWORD *>(&v22));
+        }
+
+        rst->SetRenderState(VXRENDERSTATE_FOGDENSITY, *reinterpret_cast<CKDWORD *>(&m_FogDensity));
+        rst->SetRenderState(VXRENDERSTATE_FOGCOLOR, m_FogColor);
+    }
+
+    if (rm->m_DisableSpecular.Value != 0) {
+        rst->SetRenderStateFlag(VXRENDERSTATE_SPECULARENABLE, FALSE);
+        rst->SetRenderState(VXRENDERSTATE_SPECULARENABLE, FALSE);
+        rst->SetRenderStateFlag(VXRENDERSTATE_SPECULARENABLE, TRUE);
+    } else {
+        rst->SetRenderStateFlag(VXRENDERSTATE_SPECULARENABLE, FALSE);
+        rst->SetRenderState(VXRENDERSTATE_SPECULARENABLE, TRUE);
+    }
+
+    if (rm->m_DisableDithering.Value != 0) {
+        rst->SetRenderStateFlag(VXRENDERSTATE_DITHERENABLE, FALSE);
+        rst->SetRenderState(VXRENDERSTATE_DITHERENABLE, FALSE);
+        rst->SetRenderStateFlag(VXRENDERSTATE_DITHERENABLE, TRUE);
+    } else {
+        rst->SetRenderStateFlag(VXRENDERSTATE_DITHERENABLE, FALSE);
+        rst->InvalidateStateCache(VXRENDERSTATE_DITHERENABLE);
+        rst->SetRenderState(VXRENDERSTATE_DITHERENABLE, TRUE);
+    }
+
+    if (rm->m_DisablePerspectiveCorrection.Value != 0) {
+        rst->SetRenderStateFlag(VXRENDERSTATE_TEXTUREPERSPECTIVE, FALSE);
+        rst->SetRenderState(VXRENDERSTATE_TEXTUREPERSPECTIVE, FALSE);
+        rst->SetRenderStateFlag(VXRENDERSTATE_TEXTUREPERSPECTIVE, TRUE);
+    } else {
+        rst->SetRenderStateFlag(VXRENDERSTATE_TEXTUREPERSPECTIVE, FALSE);
+        rst->SetRenderState(VXRENDERSTATE_TEXTUREPERSPECTIVE, TRUE);
+    }
+
+    rst->m_PresentInterval = rm->m_DisableFilter.Value;
+    rst->m_CurrentPresentInterval = rm->m_DisableMipmap.Value;
+    rst->SetRenderState(VXRENDERSTATE_NORMALIZENORMALS, TRUE);
+    rst->SetRenderState(VXRENDERSTATE_ZENABLE, TRUE);
+    rst->SetRenderState(VXRENDERSTATE_CULLMODE, VXCULL_CCW);
+    rst->SetRenderState(VXRENDERSTATE_ZFUNC, VXCMP_LESSEQUAL);
+
+    if (dev->m_Shading == 0) {
+        rst->SetRenderStateFlag(VXRENDERSTATE_SHADEMODE, FALSE);
+        rst->SetRenderStateFlag(VXRENDERSTATE_FILLMODE, FALSE);
+        rst->SetRenderState(VXRENDERSTATE_FILLMODE, VXFILL_WIREFRAME);
+        rst->SetRenderStateFlag(VXRENDERSTATE_FILLMODE, TRUE);
+    } else if (dev->m_Shading == 1) {
+        rst->SetRenderStateFlag(VXRENDERSTATE_FILLMODE, FALSE);
+        rst->SetRenderStateFlag(VXRENDERSTATE_SHADEMODE, FALSE);
+        rst->SetRenderState(VXRENDERSTATE_SHADEMODE, dev->m_Shading);
+        rst->SetRenderStateFlag(VXRENDERSTATE_SHADEMODE, TRUE);
+    } else if (dev->m_Shading == 2) {
+        rst->SetRenderStateFlag(VXRENDERSTATE_SHADEMODE, FALSE);
+        rst->SetRenderStateFlag(VXRENDERSTATE_FILLMODE, FALSE);
+    }
 }
 
 void CKRenderedScene::SetupLights(CKRasterizerContext *rst) {
@@ -870,6 +966,7 @@ bool CP_HOOK_CLASS_NAME(CKRenderManager)::Hook(CKRenderManager *man) {
     CP_HOOK_CLASS_NAME(CK3dEntity)::Hook(nullptr, base);
     CP_HOOK_CLASS_NAME(CKLight)::Hook(nullptr, base);
     g_UpdateTransparency = utils::ForceReinterpretCast<CKBOOL *>(base, 0x90CCC);
+    g_10090CD0 = utils::ForceReinterpretCast<CKDWORD *>(base, 0x90CD0);
 
     return true;
 }
