@@ -299,8 +299,74 @@ void CKRenderedScene::ForceCameraSettingsUpdate() {
     }
 }
 
-void CKRenderedScene::UpdateViewportSize(CKBOOL force, CK_RENDER_FLAGS Flags) {
-    CP_CALL_METHOD_ORIG(UpdateViewportSize, force, Flags);
+void CKRenderedScene::UpdateViewportSize(CKBOOL updateProjection, CK_RENDER_FLAGS Flags) {
+//    CP_CALL_METHOD_ORIG(UpdateViewportSize, force, Flags);
+
+    auto *dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) m_RenderContext;
+
+    VxRect rect;
+    dev->GetWindowRect(rect);
+
+    if (Flags == CK_RENDER_USECURRENTSETTINGS)
+        Flags = static_cast<CK_RENDER_FLAGS>(dev->GetCurrentRenderOptions());
+
+    int width = 4;
+    int height = 3;
+    if (m_AttachedCamera)
+        m_AttachedCamera->GetAspectRatio(width, height);
+
+    int windowWidth = dev->m_WindowRect.right;
+    int windowHeight = dev->m_WindowRect.bottom;
+
+    int viewWidth;
+    int viewHeight;
+    int viewX = 0;
+    int viewY = 0;
+
+    auto ar1 = (float) ((double) windowWidth / (double) windowHeight);
+    auto ar2 = (float) ((double) width / (double) height);
+
+    if ((Flags & CK_RENDER_USECAMERARATIO) != 0) {
+        if (ar1 <= ar2) {
+            viewWidth = windowWidth;
+            if (ar1 == ar2)
+                viewHeight = windowHeight;
+            else
+                viewHeight = height * windowWidth / width;
+        } else {
+            viewWidth = width * windowHeight / height;
+            viewHeight = windowHeight;
+        }
+        viewX += (int)((double)(windowWidth - viewWidth) * 0.5);
+        viewY += (int)((double)(windowHeight - viewHeight) * 0.5);
+    } else {
+        viewWidth = windowWidth;
+        viewHeight = windowHeight;
+    }
+
+    auto &data = dev->m_ViewportData;
+    if ((dev->m_RenderFlags & CK_RENDER_USECAMERARATIO) != 0) {
+        if (m_AttachedCamera) {
+            if ((m_AttachedCamera->GetFlags() & CK_OBJECT_NOTTOBEDELETED) != 0) {
+                if (updateProjection)
+                    dev->UpdateProjection(TRUE);
+            } else if (data.ViewWidth == viewWidth && data.ViewHeight == viewHeight &&
+                       data.ViewX == viewX && data.ViewY == viewY) {
+                if (updateProjection)
+                    dev->UpdateProjection(TRUE);
+            } else {
+                data.ViewWidth = viewWidth;
+                data.ViewHeight = viewHeight;
+                data.ViewX = viewX;
+                data.ViewY = viewY;
+                dev->UpdateProjection(TRUE);
+            }
+        } else if (updateProjection) {
+            dev->UpdateProjection(TRUE);
+        }
+    } else if (updateProjection) {
+        dev->UpdateProjection(TRUE);
+    }
 }
 
 void CKRenderedScene::ResizeViewport(const VxRect &rect) {

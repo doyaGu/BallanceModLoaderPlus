@@ -92,7 +92,7 @@ public:
     void PrepareCameras(CK_RENDER_FLAGS Flags);
     void ForceCameraSettingsUpdate();
 
-    void UpdateViewportSize(CKBOOL force, CK_RENDER_FLAGS Flags);
+    void UpdateViewportSize(CKBOOL updateProjection, CK_RENDER_FLAGS Flags);
     void ResizeViewport(const VxRect &rect);
 
     void AddObject(CKRenderObject *obj);
@@ -124,7 +124,7 @@ public:
     CP_DECLARE_METHOD_PTRS(CKRenderedScene, void, SetupLights, (CKRasterizerContext *rst));
     CP_DECLARE_METHOD_PTRS(CKRenderedScene, void, PrepareCameras, (CK_RENDER_FLAGS Flags));
     CP_DECLARE_METHOD_PTRS(CKRenderedScene, void, ForceCameraSettingsUpdate, ());
-    CP_DECLARE_METHOD_PTRS(CKRenderedScene, void, UpdateViewportSize, (CKBOOL force, CK_RENDER_FLAGS Flags));
+    CP_DECLARE_METHOD_PTRS(CKRenderedScene, void, UpdateViewportSize, (CKBOOL updateProjection, CK_RENDER_FLAGS Flags));
     CP_DECLARE_METHOD_PTRS(CKRenderedScene, void, ResizeViewport, (const VxRect &rect));
     CP_DECLARE_METHOD_PTRS(CKRenderedScene, void, AddObject, (CKRenderObject *obj));
     CP_DECLARE_METHOD_PTRS(CKRenderedScene, void, RemoveObject, (CKRenderObject *obj));
