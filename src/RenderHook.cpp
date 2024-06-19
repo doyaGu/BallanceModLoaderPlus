@@ -985,15 +985,16 @@ CKERROR CP_RENDER_CONTEXT_METHOD_NAME(Render)(CK_RENDER_FLAGS Flags) {
 
     if (!m_Active)
         return CKERR_RENDERCONTEXTINACTIVE;
+
     if (!m_RasterizerContext)
         return CKERR_INVALIDRENDERCONTEXT;
-    if (!Flags)
+
+    if (Flags == CK_RENDER_USECURRENTSETTINGS)
         Flags = m_RenderFlags;
 
     CKTimeManager *tm = m_Context->GetTimeManager();
-
     if ((tm->GetLimitOptions() & CK_FRAMERATE_SYNC) != 0) {
-        Flags = static_cast<CK_RENDER_FLAGS>(Flags & CK_RENDER_CLEARBACK);
+        Flags = static_cast<CK_RENDER_FLAGS>(Flags & CK_RENDER_WAITVBL);
     }
 
     PrepareCameras(Flags);
@@ -1017,10 +1018,12 @@ CKERROR CP_RENDER_CONTEXT_METHOD_NAME(Render)(CK_RENDER_FLAGS Flags) {
     if (err != CK_OK)
         return err;
 
+    // Skip Stereo code
+
     ++m_TimeFpsCalc;
 
     float renderTime = m_RenderTimeProfiler.Current();
-    if (renderTime <= 1000.0f) {
+    if (renderTime > 1000.0f) {
         float fps = (float) m_TimeFpsCalc * 1000.0f / renderTime;
         m_RenderTimeProfiler.Reset();
         m_TimeFpsCalc = 0;
@@ -1036,6 +1039,7 @@ CKERROR CP_RENDER_CONTEXT_METHOD_NAME(Render)(CK_RENDER_FLAGS Flags) {
     if ((Flags & CK_RENDER_DONOTUPDATEEXTENTS) != 0) {
         CKObjectExtents extent;
         GetViewRect(extent.m_Rect);
+        extent.m_Flags = Flags;
         CKCamera *camera = GetAttachedCamera();
         extent.m_Camera = (camera) ? camera->GetID() : 0;
         m_Extents.PushBack(extent);
