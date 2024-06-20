@@ -205,7 +205,7 @@ public:
     void AddTimer(float delay, std::function<void()> callback) override;
     void AddTimerLoop(float delay, std::function<bool()> callback) override;
 
-    void ExitGame() override { m_Exiting = true; }
+    void ExitGame() override;
 
     bool IsIngame() override { return m_Ingame; }
     bool IsPaused() override { return m_Paused; }
@@ -347,7 +347,6 @@ protected:
     bool m_ModsInited = false;
     bool m_ModsDown = false;
 
-    bool m_Exiting = false;
     bool m_Ingame = false;
     bool m_InLevel = false;
     bool m_Paused = false;

@@ -315,9 +315,6 @@ CKERROR ModManager::PostProcess() {
 
     Overlay::ImGuiRender();
 
-    if (m_Exiting)
-        m_MessageManager->SendMessageBroadcast(m_MessageManager->AddMessageType((CKSTRING) "Exit Game"));
-
     m_InputHook->Process();
 
     return CK_OK;
@@ -790,6 +787,12 @@ void ModManager::AddTimer(float delay, std::function<void()> callback) {
 
 void ModManager::AddTimerLoop(float delay, std::function<bool()> callback) {
     m_Timers.emplace_back(delay, callback, m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime());
+}
+
+void ModManager::ExitGame() {
+    AddTimer(1ul, [this]() {
+        ::PostMessage((HWND) m_Context->GetMainWindow(), 0x5FA, 0, 0);
+    });
 }
 
 void ModManager::OpenModsMenu() {
