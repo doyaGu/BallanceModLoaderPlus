@@ -231,6 +231,8 @@ CKERROR ModManager::OnCKPlay() {
         if (!m_RenderContext) {
             m_RenderContext = m_Context->GetPlayerRenderContext();
             m_Logger->Info("Get Render Context pointer 0x%08x", m_RenderContext);
+
+            Overlay::ImGuiInitRenderer(m_Context);
         }
 
         if (!AreModsDown()) {
@@ -251,7 +253,10 @@ CKERROR ModManager::OnCKReset() {
     if (!AreModsDown()) {
         ShutdownMods();
         UnloadMods();
+    }
 
+    if (m_RenderContext) {
+        Overlay::ImGuiShutdownRenderer(m_Context);
         m_RenderContext = nullptr;
     }
 
