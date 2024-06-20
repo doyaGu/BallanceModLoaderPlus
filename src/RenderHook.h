@@ -489,7 +489,7 @@ public:
     XClassArray<CKTransparentObject> m_TransparentObjects;
     int m_StencilFreeMask;
     UserDrawPrimitiveDataClass *m_UserDrawPrimitiveData;
-    CKDWORD m_MaskFree;
+    CKDWORD m_Mask;
     CKDWORD m_VertexBufferIndex;
     CKDWORD m_StartIndex;
     CKDWORD m_DpFlags;

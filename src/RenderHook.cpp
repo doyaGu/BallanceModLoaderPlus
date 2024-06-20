@@ -43,7 +43,6 @@ CP_DEFINE_METHOD_PTRS(CKRenderedScene, AddObject);
 CP_DEFINE_METHOD_PTRS(CKRenderedScene, RemoveObject);
 CP_DEFINE_METHOD_PTRS(CKRenderedScene, DetachAll);
 
-
 CKRenderedScene::CKRenderedScene(CKRenderContext *rc) {
     m_RenderContext = rc;
     m_Context = rc->GetCKContext();
@@ -645,7 +644,7 @@ void CKSceneGraphNode::NoTestsTraversal(CKRenderContext *Dev, CK_RENDER_FLAGS Fl
     if (m_Entity->GetClassID() == CKCID_CHARACTER)
         m_Entity->ModifyMoveableFlags(VX_MOVEABLE_CHARACTERRENDERED, 0);
 
-    if ((dev->m_MaskFree & m_RenderContextMask) != 0 && m_Entity->IsToBeRendered()) {
+    if ((dev->m_Mask & m_RenderContextMask) != 0 && m_Entity->IsToBeRendered()) {
         m_Entity->ModifyMoveableFlags(0, VX_MOVEABLE_EXTENTSUPTODATE);
         if (m_Entity->IsToBeRenderedLast()) {
             m_TimeFpsCalc = dev->m_TimeFpsCalc;
@@ -659,7 +658,7 @@ void CKSceneGraphNode::NoTestsTraversal(CKRenderContext *Dev, CK_RENDER_FLAGS Fl
 
     for (int i = 0; i < m_ChildrenCount; ++i) {
         auto *child = m_Children[i];
-        if ((dev->m_MaskFree & child->m_EntityMask) != 0) {
+        if ((dev->m_Mask & child->m_EntityMask) != 0) {
             child->NoTestsTraversal(dev, Flags);
         }
     }
@@ -980,7 +979,7 @@ void CKSceneGraphRootNode::RenderTransparents(CKRenderContext *Dev, CK_RENDER_FL
 
             if (m_Entity->GetClassID() == CKCID_CHARACTER)
                 m_Entity->ModifyMoveableFlags(VX_MOVEABLE_CHARACTERRENDERED, 0);
-            if ((dev->m_MaskFree & m_RenderContextMask) != 0 && m_Entity->IsToBeRendered()) {
+            if ((dev->m_Mask & m_RenderContextMask) != 0 && m_Entity->IsToBeRendered()) {
                 if (m_Entity->IsToBeRenderedLast()) {
                     if (IsInsideFrustum() || m_Entity->IsInViewFrustrum(dev, Flags)) {
                         m_TimeFpsCalc = dev->m_TimeFpsCalc;
@@ -997,13 +996,13 @@ void CKSceneGraphRootNode::RenderTransparents(CKRenderContext *Dev, CK_RENDER_FL
         if (IsInsideFrustum()) {
             for (int i = 0; i < m_ChildrenCount; ++i) {
                 auto *child = m_Children[i];
-                if ((dev->m_MaskFree & child->m_EntityMask) != 0)
+                if ((dev->m_Mask & child->m_EntityMask) != 0)
                     child->NoTestsTraversal(dev, Flags);
             }
         } else {
             for (int i = 0; i < m_ChildrenCount; ++i) {
                 auto *child = m_Children[i];
-                if ((dev->m_MaskFree & child->m_EntityMask) != 0) {
+                if ((dev->m_Mask & child->m_EntityMask) != 0) {
                     auto *root = (CKSceneGraphRootNode *) child;
                     root->RenderTransparents(dev, Flags);
                 }
@@ -1015,7 +1014,7 @@ void CKSceneGraphRootNode::RenderTransparents(CKRenderContext *Dev, CK_RENDER_FL
             rst->SetTransformMatrix(VXMATRIX_PROJECTION, dev->m_ProjectionMatrix);
         }
     } else if (m_Entity && m_Entity->IsToBeRendered() &&
-               (dev->m_MaskFree & m_RenderContextMask) != 0 &&
+               (dev->m_Mask & m_RenderContextMask) != 0 &&
                m_Entity->IsInViewFrustrum(dev, Flags)) {
         if (m_Entity->IsToBeRenderedLast()) {
             m_TimeFpsCalc = dev->m_TimeFpsCalc;
@@ -2043,7 +2042,7 @@ void CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(CKRenderContext *rc) {
 void CP_HOOK_CLASS_NAME(CKRenderObject)::RemoveFromRenderContext(CKRenderContext *rc) {
     auto *dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) rc;
 
-    m_Mask &= ~dev->m_MaskFree;
+    m_Mask &= ~dev->m_Mask;
     if (CKIsChildClassOf(this, CKCID_3DENTITY) && !m_Context->IsInClearAll()) {
         auto *ent = (CP_HOOK_CLASS_NAME(CK3dEntity) *) this;
         if (dev->m_Start)
