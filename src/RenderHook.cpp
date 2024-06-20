@@ -1,5 +1,6 @@
 #include "RenderHook.h"
 
+#include "CKLevel.h"
 #include "CKTimeManager.h"
 #include "CKAttributeManager.h"
 #include "CKParameterOut.h"
@@ -24,6 +25,15 @@
     MH_DisableHook(*reinterpret_cast<void **>(&CP_FUNC_TARGET_PTR_NAME(Name))); \
     MH_RemoveHook(*reinterpret_cast<void **>(&CP_FUNC_TARGET_PTR_NAME(Name)));
 
+static CKBOOL *g_UpdateTransparency = nullptr;
+static CKDWORD *g_FogProjectionType = nullptr;
+
+static void (*g_UpdateDriverDescCapsFunc)(VxDriverDesc2 *desc) = nullptr;
+
+void UpdateDriverDescCaps(VxDriverDesc2 *desc) {
+    g_UpdateDriverDescCapsFunc(desc);
+}
+
 CP_DEFINE_METHOD_PTRS(CKRenderedScene, Draw);
 CP_DEFINE_METHOD_PTRS(CKRenderedScene, SetDefaultRenderStates);
 CP_DEFINE_METHOD_PTRS(CKRenderedScene, SetupLights);
@@ -35,8 +45,6 @@ CP_DEFINE_METHOD_PTRS(CKRenderedScene, AddObject);
 CP_DEFINE_METHOD_PTRS(CKRenderedScene, RemoveObject);
 CP_DEFINE_METHOD_PTRS(CKRenderedScene, DetachAll);
 
-static CKBOOL *g_UpdateTransparency = nullptr;
-static CKDWORD *g_10090CD0 = nullptr;
 
 CKRenderedScene::CKRenderedScene(CKRenderContext *rc) {
     m_RenderContext = rc;
@@ -248,13 +256,13 @@ void CKRenderedScene::SetDefaultRenderStates(CKRasterizerContext *rst) {
         float v22 = 1.0f / v21;
         float v20 = v19 * v22;
 
-        if (*g_10090CD0 == 0) {
+        if (*g_FogProjectionType == 0) {
             rst->SetRenderState(VXRENDERSTATE_FOGEND, *reinterpret_cast<CKDWORD *>(&m_FogEnd));
             rst->SetRenderState(VXRENDERSTATE_FOGSTART, *reinterpret_cast<CKDWORD *>(&m_FogStart));
-        } else if (*g_10090CD0 == 1) {
+        } else if (*g_FogProjectionType == 1) {
             rst->SetRenderState(VXRENDERSTATE_FOGEND, *reinterpret_cast<CKDWORD *>(&v18));
             rst->SetRenderState(VXRENDERSTATE_FOGSTART, *reinterpret_cast<CKDWORD *>(&v20));
-        } else if (*g_10090CD0 == 2) {
+        } else if (*g_FogProjectionType == 2) {
             rst->SetRenderState(VXRENDERSTATE_FOGEND, *reinterpret_cast<CKDWORD *>(&v20));
             rst->SetRenderState(VXRENDERSTATE_FOGSTART, *reinterpret_cast<CKDWORD *>(&v22));
         }
@@ -653,7 +661,7 @@ void CKSceneGraphNode::NoTestsTraversal(CKRenderContext *Dev, CK_RENDER_FLAGS Fl
 
     for (int i = 0; i < m_ChildrenCount; ++i) {
         auto *child = m_Children[i];
-        if ((dev->m_MaskFree & child->m_EntityFlags) != 0) {
+        if ((dev->m_MaskFree & child->m_EntityMask) != 0) {
             child->NoTestsTraversal(dev, Flags);
         }
     }
@@ -665,11 +673,36 @@ void CKSceneGraphNode::NoTestsTraversal(CKRenderContext *Dev, CK_RENDER_FLAGS Fl
 }
 
 void CKSceneGraphNode::AddNode(CKSceneGraphNode *node) {
-    CP_CALL_METHOD_ORIG(AddNode, node);
+//    CP_CALL_METHOD_ORIG(AddNode, node);
+
+    node->m_Index = m_Children.Size();
+    node->m_Parent = this;
+    m_Children.PushBack(node);
+
+    node->InvalidateBox(TRUE);
+
+    auto *entity = (CP_HOOK_CLASS_NAME(CK3dEntity) *) m_Entity;
+    SetRenderContextMask(entity ? entity->m_Mask : 0, TRUE);
+    node->EntityFlagsChanged(TRUE);
+
+    if (node->m_MaxPriority > m_Priority || node->m_Priority > m_Priority)
+        PrioritiesChanged();
 }
 
 void CKSceneGraphNode::RemoveNode(CKSceneGraphNode *node) {
-    CP_CALL_METHOD_ORIG(RemoveNode, node);
+//    CP_CALL_METHOD_ORIG(RemoveNode, node);
+
+    node->m_Parent = nullptr;
+    if (node->m_Index < m_ChildrenCount)
+        --m_ChildrenCount;
+    m_Children.Remove(node);
+    for (int i = node->m_Index; i < m_Children.Size(); ++i)
+        m_Children[i]->m_Index = i;
+
+    PrioritiesChanged();
+    InvalidateBox(TRUE);
+    auto *entity = (CP_HOOK_CLASS_NAME(CK3dEntity) *) m_Entity;
+    SetRenderContextMask(entity ? entity->m_Mask : 0, TRUE);
 }
 
 void CKSceneGraphNode::SortNodes() {
@@ -692,32 +725,162 @@ void CKSceneGraphNode::SetAsInsideFrustum() {
     m_Flags |= 1;
 }
 
-void CKSceneGraphNode::SetRenderContextMask(CKDWORD mask, CKBOOL b) {
-    CP_CALL_METHOD_ORIG(SetRenderContextMask, mask, b);
+void CKSceneGraphNode::SetRenderContextMask(CKDWORD mask, CKBOOL force) {
+//    CP_CALL_METHOD_ORIG(SetRenderContextMask, mask, force);
+
+    if (mask != m_RenderContextMask || force) {
+        m_RenderContextMask = mask;
+        for (auto *node = this; node != nullptr; node = node->m_Parent) {
+            CKDWORD flags = node->m_EntityMask;
+            node->m_EntityMask = node->m_RenderContextMask;
+            for (auto it = node->m_Children.Begin(); it != node->m_Children.End(); ++it)
+                node->m_EntityMask |= (*it)->m_EntityMask;
+            if (node->m_EntityMask == flags || !node->m_Parent)
+                break;
+            node->EntityFlagsChanged(TRUE);
+        }
+    }
 }
 
 void CKSceneGraphNode::SetPriority(int priority, int unused) {
-    CP_CALL_METHOD_ORIG(SetPriority, priority, unused);
+//    CP_CALL_METHOD_ORIG(SetPriority, priority, unused);
+
+    if (priority < -10000) {
+        priority = -10000;
+    } else if (priority > 10000) {
+        priority = 10000;
+    }
+
+    if (m_MaxPriority == priority + 10000 || !m_Parent) {
+        m_MaxPriority = priority + 10000;
+    } else {
+        m_Parent->m_Flags |= 0x10;
+        m_MaxPriority = priority + 10000;
+        m_Parent->PrioritiesChanged();
+    }
 }
 
 void CKSceneGraphNode::PrioritiesChanged() {
-    CP_CALL_METHOD_ORIG(PrioritiesChanged);
+//    CP_CALL_METHOD_ORIG(PrioritiesChanged);
+
+    for (auto *node = this; node != nullptr; node = node->m_Parent) {
+        CKWORD priority = 0;
+
+        for (auto it = node->m_Children.Begin(); it != node->m_Children.End(); ++it) {
+            if ((*it)->m_Priority > priority)
+                priority = (*it)->m_Priority;
+            if ((*it)->m_MaxPriority > priority)
+                priority = (*it)->m_MaxPriority;
+        }
+
+        if (m_Priority == priority)
+            break;
+
+        m_Flags |= 0x10;
+        m_Priority = priority;
+    }
 }
 
-void CKSceneGraphNode::EntityFlagsChanged(CKBOOL b) {
-    CP_CALL_METHOD_ORIG(EntityFlagsChanged, b);
+void CKSceneGraphNode::EntityFlagsChanged(CKBOOL hierarchically) {
+//    CP_CALL_METHOD_ORIG(EntityFlagsChanged, hierarchically);
+
+    if (!m_Parent || m_Parent->m_Children.IsEmpty())
+        return;
+
+    if (IsToBeParsed()) {
+        if (m_Index >= m_Parent->m_ChildrenCount) {
+            if (m_Parent->m_Children.Size() == 1) {
+                m_Parent->m_ChildrenCount = 1;
+                if (hierarchically && m_Parent->m_Parent)
+                    m_Parent->EntityFlagsChanged(TRUE);
+            } else {
+                if (m_Index > m_Parent->m_ChildrenCount) {
+                    auto *node = m_Parent->m_Children[m_Parent->m_ChildrenCount];
+                    m_Parent->m_Children[m_Index] = node;
+                    m_Parent->m_Children[m_Parent->m_ChildrenCount] = this;
+                    node->m_Index = m_Index;
+                    m_Index = m_Parent->m_ChildrenCount;
+                }
+                ++m_Parent->m_ChildrenCount;
+                if (hierarchically && m_Parent->m_Parent)
+                    m_Parent->EntityFlagsChanged(TRUE);
+            }
+            m_Parent->m_Flags |= 0x10;
+        }
+    } else if (m_Index < m_Parent->m_ChildrenCount) {
+        if (m_Index < m_Parent->m_ChildrenCount - 1) {
+            auto *node = m_Parent->m_Children[m_Parent->m_ChildrenCount - 1];
+            m_Parent->m_Children[m_Index] = node;
+            m_Parent->m_Children[m_Parent->m_ChildrenCount - 1] = this;
+            node->m_Index = m_Index;
+            m_Index = m_Parent->m_ChildrenCount - 1;
+        }
+        --m_Parent->m_ChildrenCount;
+        if (hierarchically && m_Parent->m_Parent)
+            m_Parent->EntityFlagsChanged(TRUE);
+        m_Parent->m_Flags |= 0x10;
+    }
 }
 
 CKBOOL CKSceneGraphNode::IsToBeParsed() {
-    return CP_CALL_METHOD_ORIG(IsToBeParsed);
+//    return CP_CALL_METHOD_ORIG(IsToBeParsed);
+
+    if (m_EntityMask == 0)
+        return FALSE;
+    if ((m_Entity->GetMoveableFlags() & VX_MOVEABLE_VISIBLE) != 0)
+        return TRUE;
+    if ((m_Entity->GetMoveableFlags() & VX_MOVEABLE_HIERARCHICALHIDE) != 0)
+        return FALSE;
+    return m_ChildrenCount != 0;
 }
 
 CKBOOL CKSceneGraphNode::ComputeHierarchicalBox() {
-    return CP_CALL_METHOD_ORIG(ComputeHierarchicalBox);
+//    return CP_CALL_METHOD_ORIG(ComputeHierarchicalBox);
+
+    if ((m_Flags & 8) != 0)
+        return (m_Flags & 4) != 0;
+
+    m_Flags |= 8;
+
+    auto *entity = (CP_HOOK_CLASS_NAME(CK3dEntity) *) m_Entity;
+    entity->UpdateBox();
+    if ((entity->m_MoveableFlags & VX_MOVEABLE_BOXVALID) != 0) {
+        m_Bbox = entity->m_WorldBoundingBox;
+        for (auto it = m_Children.Begin(); it != m_Children.End(); ++it) {
+            if ((*it)->ComputeHierarchicalBox())
+                m_Bbox.Merge((*it)->m_Bbox);
+        }
+        m_Flags |= 4;
+    } else {
+        auto it = m_Children.Begin();
+        while (it != m_Children.End()) {
+            if ((*it)->ComputeHierarchicalBox()) {
+                m_Bbox = (*it)->m_Bbox;
+                m_Flags |= 4;
+                ++it;
+                break;
+            }
+            ++it;
+        }
+
+        while (it != m_Children.End()) {
+            if ((*it)->ComputeHierarchicalBox())
+                m_Bbox.Merge((*it)->m_Bbox);
+            ++it;
+        }
+    }
+
+    return (m_Flags & 4) != 0;
 }
 
-void CKSceneGraphNode::InvalidateBox(CKBOOL b) {
-    CP_CALL_METHOD_ORIG(InvalidateBox, b);
+void CKSceneGraphNode::InvalidateBox(CKBOOL hierarchically) {
+//    CP_CALL_METHOD_ORIG(InvalidateBox, b);
+
+    m_Flags &= ~0xC;
+    if (hierarchically) {
+        for (auto *node = m_Parent; node && (node->m_Flags & 8) != 0; node = node->m_Parent)
+            node->m_Flags &= ~0xC;
+    }
 }
 
 void CKSceneGraphNode::sub_100789A0() {
@@ -836,13 +999,13 @@ void CKSceneGraphRootNode::RenderTransparents(CKRenderContext *Dev, CK_RENDER_FL
         if (IsInsideFrustum()) {
             for (int i = 0; i < m_ChildrenCount; ++i) {
                 auto *child = m_Children[i];
-                if ((dev->m_MaskFree & child->m_EntityFlags) != 0)
+                if ((dev->m_MaskFree & child->m_EntityMask) != 0)
                     child->NoTestsTraversal(dev, Flags);
             }
         } else {
             for (int i = 0; i < m_ChildrenCount; ++i) {
                 auto *child = m_Children[i];
-                if ((dev->m_MaskFree & child->m_EntityFlags) != 0) {
+                if ((dev->m_MaskFree & child->m_EntityMask) != 0) {
                     auto *root = (CKSceneGraphRootNode *) child;
                     root->RenderTransparents(dev, Flags);
                 }
@@ -909,56 +1072,146 @@ CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager> CP_HOOK_CLASS_NAME(CKRend
 #define CP_RENDER_MANAGER_METHOD_NAME(Name) CP_HOOK_CLASS_NAME(CKRenderManager)::CP_FUNC_HOOK_NAME(Name)
 
 int CP_RENDER_MANAGER_METHOD_NAME(GetRenderDriverCount)() {
-    return CP_CALL_METHOD_PTR(this, s_VTable.GetRenderDriverCount);
+//    return CP_CALL_METHOD_PTR(this, s_VTable.GetRenderDriverCount);
+
+    return m_DriverCount;
 }
 
 VxDriverDesc *CP_RENDER_MANAGER_METHOD_NAME(GetRenderDriverDescription)(int Driver) {
-    return CP_CALL_METHOD_PTR(this, s_VTable.GetRenderDriverDescription, Driver);
+//    return CP_CALL_METHOD_PTR(this, s_VTable.GetRenderDriverDescription, Driver);
+
+    if (Driver < 0 || Driver >= m_DriverCount)
+        return nullptr;
+
+    VxDriverDesc2 *drv = &m_Drivers[Driver];
+    if (!drv->CapsUpToDate)
+        UpdateDriverDescCaps(drv);
+    return &drv->Desc;
 }
 
 void CP_RENDER_MANAGER_METHOD_NAME(GetDesiredTexturesVideoFormat)(VxImageDescEx &VideoFormat) {
-    CP_CALL_METHOD_PTR(this, s_VTable.GetDesiredTexturesVideoFormat, VideoFormat);
+//    CP_CALL_METHOD_PTR(this, s_VTable.GetDesiredTexturesVideoFormat, VideoFormat);
+
+    VxPixelFormat2ImageDesc((VX_PIXELFORMAT)m_TextureVideoFormat.Value, VideoFormat);
 }
 
 void CP_RENDER_MANAGER_METHOD_NAME(SetDesiredTexturesVideoFormat)(VxImageDescEx &VideoFormat) {
-    CP_CALL_METHOD_PTR(this, s_VTable.SetDesiredTexturesVideoFormat, VideoFormat);
+//    CP_CALL_METHOD_PTR(this, s_VTable.SetDesiredTexturesVideoFormat, VideoFormat);
+
+    m_TextureVideoFormat.Value = VxImageDesc2PixelFormat(VideoFormat);
 }
 
 CKRenderContext *CP_RENDER_MANAGER_METHOD_NAME(GetRenderContext)(int pos) {
-    return CP_CALL_METHOD_PTR(this, s_VTable.GetRenderContext, pos);
+//    return CP_CALL_METHOD_PTR(this, s_VTable.GetRenderContext, pos);
+
+    return (CKRenderContext *) m_RenderContexts.GetObject(m_Context, pos);
 }
 
 CKRenderContext *CP_RENDER_MANAGER_METHOD_NAME(GetRenderContextFromPoint)(CKPOINT &pt) {
-    return CP_CALL_METHOD_PTR(this, s_VTable.GetRenderContextFromPoint, pt);
+//    return CP_CALL_METHOD_PTR(this, s_VTable.GetRenderContextFromPoint, pt);
+
+    for (auto it = m_RenderContexts.Begin(); it != m_RenderContexts.End(); ++it) {
+        auto *dev = (CKRenderContext *) m_Context->GetObject(*it);
+        if (dev) {
+            WIN_HANDLE handle = dev->GetWindowHandle();
+            if (handle) {
+                CKRECT rect;
+                VxGetWindowRect(handle, &rect);
+                if (VxPtInRect(&rect, &pt))
+                    return dev;
+            }
+        }
+    }
+
+    return nullptr;
 }
 
 int CP_RENDER_MANAGER_METHOD_NAME(GetRenderContextCount)() {
-    return CP_CALL_METHOD_PTR(this, s_VTable.GetRenderContextCount);
+//    return CP_CALL_METHOD_PTR(this, s_VTable.GetRenderContextCount);
+
+    return m_RenderContexts.Size();
 }
 
 void CP_RENDER_MANAGER_METHOD_NAME(Process)() {
-    CP_CALL_METHOD_PTR(this, s_VTable.Process);
+//    CP_CALL_METHOD_PTR(this, s_VTable.Process);
+
+    for (auto it = m_RenderContexts.Begin(); it != m_RenderContexts.End(); ++it) {
+        auto *dev = (CKRenderContext *) m_Context->GetObject(*it);
+        if (dev)
+            dev->Render();
+    }
 }
 
 void CP_RENDER_MANAGER_METHOD_NAME(FlushTextures)() {
-    CP_CALL_METHOD_PTR(this, s_VTable.FlushTextures);
+//    CP_CALL_METHOD_PTR(this, s_VTable.FlushTextures);
+
+    int textureCount = m_Context->GetObjectsCountByClassID(CKCID_TEXTURE);
+    CK_ID *textureIds = m_Context->GetObjectsListByClassID(CKCID_TEXTURE);
+    for (int i = 0; i < textureCount; ++i) {
+        auto *texture = (CKTexture *) m_Context->GetObject(textureIds[i]);
+        if (texture)
+            texture->FreeVideoMemory();
+    }
+
+    int spriteCount = m_Context->GetObjectsCountByClassID(CKCID_SPRITE);
+    CK_ID *spriteIds = m_Context->GetObjectsListByClassID(CKCID_SPRITE);
+    for (int i = 0; i < spriteCount; ++i) {
+        auto *sprite = (CKSprite *) m_Context->GetObject(spriteIds[i]);
+        if (sprite)
+            sprite->FreeVideoMemory();
+    }
+
+    int spriteTextCount = m_Context->GetObjectsCountByClassID(CKCID_SPRITETEXT);
+    CK_ID *spriteTextIds = m_Context->GetObjectsListByClassID(CKCID_SPRITETEXT);
+    for (int i = 0; i < spriteTextCount; ++i) {
+        auto *spriteText = (CKSpriteText *) m_Context->GetObject(spriteTextIds[i]);
+        if (spriteText)
+            spriteText->FreeVideoMemory();
+    }
 }
 
-CKRenderContext *CP_RENDER_MANAGER_METHOD_NAME(CreateRenderContext)(void *Window, int Driver, CKRECT *rect, CKBOOL Fullscreen, int Bpp, int Zbpp, int StencilBpp, int RefreshRate) {
-    auto *rc = CP_CALL_METHOD_PTR(this, s_VTable.CreateRenderContext, Window, Driver, rect, Fullscreen, Bpp, Zbpp, StencilBpp, RefreshRate);
-    RenderHook::HookRenderContext(rc);
+CKRenderContext *CP_RENDER_MANAGER_METHOD_NAME(CreateRenderContext)(void *Window, int Driver, CKRECT *Rect, CKBOOL Fullscreen, int Bpp, int Zbpp, int StencilBpp, int RefreshRate) {
+    auto *dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) m_Context->CreateObject(CKCID_RENDERCONTEXT);
+    if (!dev)
+        return nullptr;
+
+    RenderHook::HookRenderContext(dev);
+
+    if (dev->Create(Window, Driver, Rect, Fullscreen, Bpp, Zbpp, StencilBpp, RefreshRate) != CK_OK) {
+        m_Context->DestroyObject(dev);
+        return nullptr;
+    }
+
+    m_RenderContexts.PushBack(dev->GetID());
+
     Overlay::ImGuiInitRenderer(m_Context);
-    return rc;
+
+    return dev;
 }
 
 CKERROR CP_RENDER_MANAGER_METHOD_NAME(DestroyRenderContext)(CKRenderContext *context) {
+    if (!context)
+        return CKERR_INVALIDPARAMETER;
+
+    CKLevel *level = m_Context->GetCurrentLevel();
+    if (level)
+        level->RemoveRenderContext(context);
+
+    if (!m_RenderContexts.RemoveObject(context))
+        return CKERR_INVALIDPARAMETER;
+
     Overlay::ImGuiShutdownRenderer(m_Context);
     RenderHook::UnhookRenderContext(context);
-    return CP_CALL_METHOD_PTR(this, s_VTable.DestroyRenderContext, context);
+
+    m_Context->DestroyObject(context);
+    return CK_OK;
 }
 
 void CP_RENDER_MANAGER_METHOD_NAME(RemoveRenderContext)(CKRenderContext *context) {
-    CP_CALL_METHOD_PTR(this, s_VTable.RemoveRenderContext, context);
+//    CP_CALL_METHOD_PTR(this, s_VTable.RemoveRenderContext, context);
+
+    if (context)
+        m_RenderContexts.RemoveObject(context);
 }
 
 CKVertexBuffer *CP_RENDER_MANAGER_METHOD_NAME(CreateVertexBuffer)() {
@@ -994,18 +1247,18 @@ bool CP_HOOK_CLASS_NAME(CKRenderManager)::Hook(CKRenderManager *man) {
 #define HOOK_RENDER_MANAGER_VIRTUAL_METHOD(Instance, Name) \
     utils::HookVirtualMethod(Instance, &CP_HOOK_CLASS_NAME(CKRenderManager)::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager>, Name) / sizeof(void*)))
 
-    // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderDriverCount);
-    // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderDriverDescription);
-    // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetDesiredTexturesVideoFormat);
-    // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, SetDesiredTexturesVideoFormat);
-    // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderContext);
-    // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderContextFromPoint);
-    // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderContextCount);
-    // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, Process);
-    // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, FlushTextures);
+    HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderDriverCount);
+    HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderDriverDescription);
+    HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetDesiredTexturesVideoFormat);
+    HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, SetDesiredTexturesVideoFormat);
+    HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderContext);
+    HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderContextFromPoint);
+    HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, GetRenderContextCount);
+    HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, Process);
+    HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, FlushTextures);
     HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, CreateRenderContext);
     HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, DestroyRenderContext);
-    // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, RemoveRenderContext);
+    HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, RemoveRenderContext);
     // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, CreateVertexBuffer);
     // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, DestroyVertexBuffer);
     // HOOK_RENDER_MANAGER_VIRTUAL_METHOD(man, SetRenderOptions);
@@ -1024,8 +1277,11 @@ bool CP_HOOK_CLASS_NAME(CKRenderManager)::Hook(CKRenderManager *man) {
 
     CP_HOOK_CLASS_NAME(CK3dEntity)::Hook(nullptr, base);
     CP_HOOK_CLASS_NAME(CKLight)::Hook(nullptr, base);
+
     g_UpdateTransparency = utils::ForceReinterpretCast<CKBOOL *>(base, 0x90CCC);
-    g_10090CD0 = utils::ForceReinterpretCast<CKDWORD *>(base, 0x90CD0);
+    g_FogProjectionType = utils::ForceReinterpretCast<CKDWORD *>(base, 0x90CD0);
+
+    g_UpdateDriverDescCapsFunc = utils::ForceReinterpretCast<decltype(g_UpdateDriverDescCapsFunc)>(base, 0x734A0);
 
     return true;
 }
@@ -1045,6 +1301,7 @@ void CP_HOOK_CLASS_NAME(CKRenderManager)::Unhook(CKRenderManager *man) {
 bool CP_HOOK_CLASS_NAME(CKRenderContext)::s_DisableRender = false;
 bool CP_HOOK_CLASS_NAME(CKRenderContext)::s_EnableWidescreenFix = false;
 CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> CP_HOOK_CLASS_NAME(CKRenderContext)::s_VTable = {};
+CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CKRenderContext), Create);
 CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CKRenderContext), CallSprite3DBatches);
 CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CKRenderContext), UpdateProjection);
 CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CKRenderContext), SetClipRect);
@@ -1145,8 +1402,6 @@ CKERROR CP_RENDER_CONTEXT_METHOD_NAME(BackToFront)(CK_RENDER_FLAGS Flags) {
 CKERROR CP_RENDER_CONTEXT_METHOD_NAME(Render)(CK_RENDER_FLAGS Flags) {
     if (s_DisableRender)
         return CK_OK;
-
-//    return CP_CALL_METHOD_PTR(this, s_VTable.Render, Flags);
 
     VxTimeProfiler renderProfiler;
 
@@ -1602,7 +1857,11 @@ void CP_RENDER_CONTEXT_METHOD_NAME(GetStereoParameters)(float &EyeSeparation, fl
     CP_CALL_METHOD_PTR(this, s_VTable.GetStereoParameters, EyeSeparation, FocalLength);
 }
 
-void CKRenderContextHook::CallSprite3DBatches() {
+CKERROR CP_HOOK_CLASS_NAME(CKRenderContext)::Create(WIN_HANDLE Window, int Driver, CKRECT *Rect, CKBOOL Fullscreen, int Bpp, int Zbpp, int StencilBpp, int RefreshRate) {
+    return CP_CALL_METHOD_ORIG(Create, Window, Driver, Rect, Fullscreen, Bpp, Zbpp, StencilBpp, RefreshRate);
+}
+
+void CP_HOOK_CLASS_NAME(CKRenderContext)::CallSprite3DBatches() {
     CP_CALL_METHOD_ORIG(CallSprite3DBatches);
 }
 
@@ -1768,6 +2027,7 @@ utils::HookVirtualMethod(Instance, &CP_HOOK_CLASS_NAME(CKRenderContext)::CP_FUNC
     void *base = utils::GetModuleBaseAddress("CK2_3D.dll");
     assert(base != nullptr);
 
+    CP_ADD_METHOD_HOOK(Create, base, 0x6711B);
     CP_ADD_METHOD_HOOK(CallSprite3DBatches, base, 0x6DC61);
     CP_ADD_METHOD_HOOK(UpdateProjection, base, 0x6C68D);
     CP_ADD_METHOD_HOOK(SetClipRect, base, 0x6C808);
@@ -1779,6 +2039,7 @@ void CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(CKRenderContext *rc) {
     if (rc)
         utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>>(rc, s_VTable);
 
+    CP_REMOVE_METHOD_HOOK(Create);
     CP_REMOVE_METHOD_HOOK(CallSprite3DBatches);
     CP_REMOVE_METHOD_HOOK(UpdateProjection);
     CP_REMOVE_METHOD_HOOK(SetClipRect);

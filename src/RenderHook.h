@@ -29,20 +29,15 @@ struct VxOption {
     }
 };
 
-struct VxDriverDescEx {
+struct VxDriverDesc2 {
     CKBOOL CapsUpToDate;
     CKDWORD DriverId;
-    char DriverDesc[512];
-    char DriverDesc2[512];
-    CKBOOL Hardware;
-    CKDWORD DisplayModeCount;
-    VxDisplayMode *DisplayModes;
-    XSArray<VxImageDescEx> TextureFormats;
-    Vx2DCapsDesc Caps2D;
-    Vx3DCapsDesc Caps3D;
+    VxDriverDesc Desc;
     CKRasterizer *Rasterizer;
     CKRasterizerDriver *RasterizerDriver;
 };
+
+void UpdateDriverDescCaps(VxDriverDesc2 *desc);
 
 class CKCallbacksContainer {
 public:
@@ -144,16 +139,16 @@ public:
     void SetAsPotentiallyVisible();
     void SetAsInsideFrustum();
 
-    void SetRenderContextMask(CKDWORD mask, CKBOOL b);
+    void SetRenderContextMask(CKDWORD mask, CKBOOL force);
 
     void SetPriority(int priority, int unused);
 
     void PrioritiesChanged();
-    void EntityFlagsChanged(CKBOOL b);
+    void EntityFlagsChanged(CKBOOL hierarchically);
     CKBOOL IsToBeParsed();
 
     CKBOOL ComputeHierarchicalBox();
-    void InvalidateBox(CKBOOL b);
+    void InvalidateBox(CKBOOL hierarchically);
 
     CKBOOL IsInsideFrustum() const { return (m_Flags & 1) != 0; }
     void sub_100789A0();
@@ -164,12 +159,12 @@ public:
     CK3dEntity *m_Entity;
     CKDWORD m_TimeFpsCalc;
     CKDWORD m_Flags;
-    CKDWORD m_NodeCount;
+    int m_Index;
     VxBbox m_Bbox;
-    CKWORD m_LastPriority;
     CKWORD m_Priority;
+    CKWORD m_MaxPriority;
     CKDWORD m_RenderContextMask;
-    CKDWORD m_EntityFlags;
+    CKDWORD m_EntityMask;
     CKSceneGraphNode *m_Parent;
     XArray<CKSceneGraphNode *> m_Children;
     int m_ChildrenCount;
@@ -184,10 +179,10 @@ public:
     CP_DECLARE_METHOD_PTRS(CKSceneGraphNode, void, SetRenderContextMask, (CKDWORD mask, CKBOOL b));
     CP_DECLARE_METHOD_PTRS(CKSceneGraphNode, void, SetPriority, (int priority, int unused));
     CP_DECLARE_METHOD_PTRS(CKSceneGraphNode, void, PrioritiesChanged, ());
-    CP_DECLARE_METHOD_PTRS(CKSceneGraphNode, void, EntityFlagsChanged, (CKBOOL b));
+    CP_DECLARE_METHOD_PTRS(CKSceneGraphNode, void, EntityFlagsChanged, (CKBOOL hierarchically));
     CP_DECLARE_METHOD_PTRS(CKSceneGraphNode, CKBOOL, IsToBeParsed, ());
     CP_DECLARE_METHOD_PTRS(CKSceneGraphNode, CKBOOL, ComputeHierarchicalBox, ());
-    CP_DECLARE_METHOD_PTRS(CKSceneGraphNode, void, InvalidateBox, (CKBOOL b));
+    CP_DECLARE_METHOD_PTRS(CKSceneGraphNode, void, InvalidateBox, (CKBOOL hierarchically));
 };
 
 class CKSceneGraphRootNode : public CKSceneGraphNode {
@@ -222,7 +217,7 @@ public:
     CP_DECLARE_METHOD_HOOK(int, GetRenderContextCount, ());
     CP_DECLARE_METHOD_HOOK(void, Process, ());
     CP_DECLARE_METHOD_HOOK(void, FlushTextures, ());
-    CP_DECLARE_METHOD_HOOK(CKRenderContext *, CreateRenderContext, (void *Window, int Driver, CKRECT *rect, CKBOOL Fullscreen, int Bpp, int Zbpp, int StencilBpp, int RefreshRate));
+    CP_DECLARE_METHOD_HOOK(CKRenderContext *, CreateRenderContext, (void *Window, int Driver, CKRECT *Rect, CKBOOL Fullscreen, int Bpp, int Zbpp, int StencilBpp, int RefreshRate));
     CP_DECLARE_METHOD_HOOK(CKERROR, DestroyRenderContext, (CKRenderContext *context));
     CP_DECLARE_METHOD_HOOK(void, RemoveRenderContext, (CKRenderContext *context));
     CP_DECLARE_METHOD_HOOK(CKVertexBuffer *,CreateVertexBuffer, ());
@@ -239,7 +234,7 @@ public:
     XClassArray<VxCallBack> m_TemporaryPostRenderCallbacks;
     XSObjectArray m_RenderContexts;
     XArray<CKRasterizer *> m_Rasterizers;
-    VxDriverDescEx *m_Drivers;
+    VxDriverDesc2 *m_Drivers;
     int m_DriverCount;
     CKMaterial *m_DefaultMat;
     CKDWORD m_RenderContextMaskFree;
@@ -414,12 +409,14 @@ public:
     CP_DECLARE_METHOD_HOOK(void, SetStereoParameters, (float EyeSeparation, float FocalLength));
     CP_DECLARE_METHOD_HOOK(void, GetStereoParameters, (float & EyeSeparation, float & FocalLength));
 
+    CKERROR Create(WIN_HANDLE Window, int Driver, CKRECT *Rect, CKBOOL Fullscreen, int Bpp, int Zbpp, int StencilBpp, int RefreshRate);
     void CallSprite3DBatches();
     CKBOOL UpdateProjection(CKBOOL force);
     void SetClipRect(VxRect &rect);
 
     void SetFullViewport(CKViewportData &data, int width, int height);
 
+    CP_DECLARE_METHOD_PTRS(CKRenderContext, CKERROR, Create, (WIN_HANDLE Window, int Driver, CKRECT *Rect, CKBOOL Fullscreen, int Bpp, int Zbpp, int StencilBpp, int RefreshRate));
     CP_DECLARE_METHOD_PTRS(CKRenderContext, void, CallSprite3DBatches, ());
     CP_DECLARE_METHOD_PTRS(CKRenderContext, CKBOOL, UpdateProjection, (CKBOOL force));
     CP_DECLARE_METHOD_PTRS(CKRenderContext, void, SetClipRect, (VxRect &rect));
