@@ -492,7 +492,7 @@ void BMLMod::InitConfigs() {
 
     m_UnlockFPS = GetConfig()->GetProperty("Misc", "UnlockFrameRate");
     m_UnlockFPS->SetComment("Unlock Frame Rate Limitation");
-    m_UnlockFPS->SetDefaultBoolean(true);
+    m_UnlockFPS->SetDefaultBoolean(false);
 
     m_FPSLimit = GetConfig()->GetProperty("Misc", "SetMaxFrameRate");
     m_FPSLimit->SetComment("Set Frame Rate Limitation, this option will not work if frame rate is unlocked. Set to 0 will turn on VSync");
