@@ -11,8 +11,6 @@
 #include "HookUtils.h"
 #include "VTables.h"
 
-#include "Overlay.h"
-
 #define CP_ADD_METHOD_HOOK(Name, Base, Offset) \
         { CP_FUNC_TARGET_PTR_NAME(Name) = utils::ForceReinterpretCast<CP_FUNC_TYPE_NAME(Name)>(Base, Offset); } \
         if ((MH_CreateHook(*reinterpret_cast<LPVOID *>(&CP_FUNC_TARGET_PTR_NAME(Name)), \
@@ -1184,8 +1182,6 @@ CKRenderContext *CP_RENDER_MANAGER_METHOD_NAME(CreateRenderContext)(void *Window
 
     m_RenderContexts.PushBack(dev->GetID());
 
-    Overlay::ImGuiInitRenderer(m_Context);
-
     return dev;
 }
 
@@ -1200,7 +1196,6 @@ CKERROR CP_RENDER_MANAGER_METHOD_NAME(DestroyRenderContext)(CKRenderContext *con
     if (!m_RenderContexts.RemoveObject(context))
         return CKERR_INVALIDPARAMETER;
 
-    Overlay::ImGuiShutdownRenderer(m_Context);
     RenderHook::UnhookRenderContext(context);
 
     m_Context->DestroyObject(context);
