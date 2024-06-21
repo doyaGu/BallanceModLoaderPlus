@@ -796,6 +796,7 @@ void ModManager::AddTimerLoop(float delay, std::function<bool()> callback) {
 
 void ModManager::ExitGame() {
     AddTimer(1ul, [this]() {
+        OnExitGame();
         ::PostMessage((HWND) m_Context->GetMainWindow(), 0x5FA, 0, 0);
     });
 }
