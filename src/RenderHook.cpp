@@ -582,7 +582,7 @@ bool CKRenderedScene::Hook(void *base) {
     return true;
 }
 
-void CKRenderedScene::Unhook() {
+bool CKRenderedScene::Unhook() {
     CP_REMOVE_METHOD_HOOK(Draw);
     CP_REMOVE_METHOD_HOOK(SetDefaultRenderStates);
     CP_REMOVE_METHOD_HOOK(SetupLights);
@@ -593,6 +593,8 @@ void CKRenderedScene::Unhook() {
     CP_REMOVE_METHOD_HOOK(AddObject);
     CP_REMOVE_METHOD_HOOK(RemoveObject);
     CP_REMOVE_METHOD_HOOK(DetachAll);
+
+    return true;
 }
 
 CP_DEFINE_METHOD_PTRS(CKSceneGraphNode, NoTestsTraversal);
@@ -910,7 +912,7 @@ bool CKSceneGraphNode::Hook(void *base) {
     return true;
 }
 
-void CKSceneGraphNode::Unhook() {
+bool CKSceneGraphNode::Unhook() {
     CP_REMOVE_METHOD_HOOK(NoTestsTraversal);
     CP_REMOVE_METHOD_HOOK(AddNode);
     CP_REMOVE_METHOD_HOOK(RemoveNode);
@@ -925,6 +927,8 @@ void CKSceneGraphNode::Unhook() {
     CP_REMOVE_METHOD_HOOK(IsToBeParsed);
     CP_REMOVE_METHOD_HOOK(ComputeHierarchicalBox);
     CP_REMOVE_METHOD_HOOK(InvalidateBox);
+
+    return true;
 }
 
 CP_DEFINE_METHOD_PTRS(CKSceneGraphRootNode, RenderTransparents);
@@ -1057,11 +1061,13 @@ bool CKSceneGraphRootNode::Hook(void *base) {
     return true;
 }
 
-void CKSceneGraphRootNode::Unhook() {
+bool CKSceneGraphRootNode::Unhook() {
     CP_REMOVE_METHOD_HOOK(RenderTransparents);
     CP_REMOVE_METHOD_HOOK(SortTransparentObjects);
     CP_REMOVE_METHOD_HOOK(Check);
     CP_REMOVE_METHOD_HOOK(Clear);
+
+    return true;
 }
 
 CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager> CP_HOOK_CLASS_NAME(CKRenderManager)::s_VTable = {};
@@ -1280,7 +1286,7 @@ bool CP_HOOK_CLASS_NAME(CKRenderManager)::Hook(CKRenderManager *man) {
     return true;
 }
 
-void CP_HOOK_CLASS_NAME(CKRenderManager)::Unhook(CKRenderManager *man) {
+bool CP_HOOK_CLASS_NAME(CKRenderManager)::Unhook(CKRenderManager *man) {
     if (man)
         utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager>>(man, s_VTable);
 
@@ -1290,6 +1296,8 @@ void CP_HOOK_CLASS_NAME(CKRenderManager)::Unhook(CKRenderManager *man) {
 
     CP_HOOK_CLASS_NAME(CK3dEntity)::Unhook(nullptr);
     CP_HOOK_CLASS_NAME(CKLight)::Unhook(nullptr);
+
+    return true;
 }
 
 bool CP_HOOK_CLASS_NAME(CKRenderContext)::s_DisableRender = false;
@@ -2029,7 +2037,7 @@ utils::HookVirtualMethod(Instance, &CP_HOOK_CLASS_NAME(CKRenderContext)::CP_FUNC
     return true;
 }
 
-void CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(CKRenderContext *rc) {
+bool CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(CKRenderContext *rc) {
     if (rc)
         utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>>(rc, s_VTable);
 
@@ -2037,6 +2045,8 @@ void CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(CKRenderContext *rc) {
     CP_REMOVE_METHOD_HOOK(CallSprite3DBatches);
     CP_REMOVE_METHOD_HOOK(UpdateProjection);
     CP_REMOVE_METHOD_HOOK(SetClipRect);
+
+    return true;
 }
 
 void CP_HOOK_CLASS_NAME(CKRenderObject)::RemoveFromRenderContext(CKRenderContext *rc) {
@@ -2066,8 +2076,10 @@ bool CP_HOOK_CLASS_NAME(CK3dEntity)::Hook(void *vtable, void *base) {
     return true;
 }
 
-void CP_HOOK_CLASS_NAME(CK3dEntity)::Unhook(void *vtable) {
+bool CP_HOOK_CLASS_NAME(CK3dEntity)::Unhook(void *vtable) {
     CP_REMOVE_METHOD_HOOK(WorldMatrixChanged);
+
+    return true;
 }
 
 CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CKLight), Setup);
@@ -2084,25 +2096,27 @@ bool CP_HOOK_CLASS_NAME(CKLight)::Hook(void *vtable, void *base) {
     return true;
 }
 
-void CP_HOOK_CLASS_NAME(CKLight)::Unhook(void *vtable) {
+bool CP_HOOK_CLASS_NAME(CKLight)::Unhook(void *vtable) {
     CP_REMOVE_METHOD_HOOK(Setup);
+
+    return true;
 }
 
 namespace RenderHook {
-    void HookRenderManager(CKRenderManager *man) {
-        CP_HOOK_CLASS_NAME(CKRenderManager)::Hook(man);
+    bool HookRenderManager(CKRenderManager *man) {
+        return CP_HOOK_CLASS_NAME(CKRenderManager)::Hook(man);
     }
 
-    void UnhookRenderManager(CKRenderManager *man) {
-        CP_HOOK_CLASS_NAME(CKRenderManager)::Unhook(man);
+    bool UnhookRenderManager(CKRenderManager *man) {
+        return CP_HOOK_CLASS_NAME(CKRenderManager)::Unhook(man);
     }
 
-    void HookRenderContext(CKRenderContext *rc) {
-        CP_HOOK_CLASS_NAME(CKRenderContext)::Hook(rc);
+    bool HookRenderContext(CKRenderContext *rc) {
+        return CP_HOOK_CLASS_NAME(CKRenderContext)::Hook(rc);
     }
 
-    void UnhookRenderContext(CKRenderContext *rc) {
-        CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(rc);
+    bool UnhookRenderContext(CKRenderContext *rc) {
+        return CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(rc);
     }
 
     void DisableRender(bool disable) {

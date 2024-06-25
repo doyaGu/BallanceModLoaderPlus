@@ -95,7 +95,7 @@ public:
     void DetachAll();
 
     static bool Hook(void *base);
-    static void Unhook();
+    static bool Unhook();
 
     CKRenderContext *m_RenderContext;
     CKContext *m_Context;
@@ -154,7 +154,7 @@ public:
     void sub_100789A0();
 
     static bool Hook(void *base);
-    static void Unhook();
+    static bool Unhook();
 
     CK3dEntity *m_Entity;
     CKDWORD m_TimeFpsCalc;
@@ -196,7 +196,7 @@ public:
     void AddTransparentObject(CKSceneGraphNode *node);
 
     static bool Hook(void *base);
-    static void Unhook();
+    static bool Unhook();
 
     XClassArray<CKTransparentObject> m_TransparentObjects;
 
@@ -228,7 +228,7 @@ public:
     CP_DECLARE_METHOD_HOOK(int, AddEffect, (const VxEffectDescription &NewEffect));
 
     static bool Hook(CKRenderManager *man);
-    static void Unhook(CKRenderManager *man);
+    static bool Unhook(CKRenderManager *man);
 
     XClassArray<VxCallBack> m_TemporaryPreRenderCallbacks;
     XClassArray<VxCallBack> m_TemporaryPostRenderCallbacks;
@@ -422,7 +422,7 @@ public:
     CP_DECLARE_METHOD_PTRS(CKRenderContext, void, SetClipRect, (VxRect &rect));
 
     static bool Hook(CKRenderContext *rc);
-    static void Unhook(CKRenderContext *rc);
+    static bool Unhook(CKRenderContext *rc);
 
     CKDWORD m_WinHandle;
     CKDWORD m_AppHandle;
@@ -544,7 +544,7 @@ public:
     void WorldMatrixChanged(CKBOOL invalidateBox, CKBOOL inverse);
 
     static bool Hook(void *vtable, void *base);
-    static void Unhook(void *vtable);
+    static bool Unhook(void *vtable);
 
     CK3dEntity *m_Parent;
     XObjectPointerArray m_Meshes;
@@ -598,7 +598,7 @@ public:
     CKBOOL Setup(CKRasterizerContext *rst, int index);
 
     static bool Hook(void *vtable, void *base);
-    static void Unhook(void *vtable);
+    static bool Unhook(void *vtable);
 
     CKLightData m_LightData;
     CKDWORD m_Flags;
@@ -608,10 +608,10 @@ public:
 };
 
 namespace RenderHook {
-    void HookRenderManager(CKRenderManager *man);
-    void UnhookRenderManager(CKRenderManager *man);
-    void HookRenderContext(CKRenderContext *rc);
-    void UnhookRenderContext(CKRenderContext *rc);
+    bool HookRenderManager(CKRenderManager *man);
+    bool UnhookRenderManager(CKRenderManager *man);
+    bool HookRenderContext(CKRenderContext *rc);
+    bool UnhookRenderContext(CKRenderContext *rc);
 
     void DisableRender(bool disable);
     void EnableWidescreenFix(bool enable);
