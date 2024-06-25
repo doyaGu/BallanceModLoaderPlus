@@ -231,7 +231,7 @@ Variant &Variant::operator=(const Variant &rhs) {
 
 Variant &Variant::operator=(const char *value) {
     if (value) {
-        char *str = strdup(value);
+        char *str = _strdup(value);
         if (str) {
             Clear();
             SetType(VAR_TYPE_STR, VAR_TYPE_NONE);

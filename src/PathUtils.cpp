@@ -142,8 +142,10 @@ namespace utils {
         if (!StringEndsWithCaseInsensitive(path, L".zip"))
             return false;
 
-        FILE *fp = _wfopen(path.c_str(), L"rb");
-        if (!fp)
+        errno_t err;
+        FILE *fp;
+        err = _wfopen_s(&fp, path.c_str(), L"rb");
+        if (err != 0)
             return false;
 
         fseek(fp, 0, SEEK_END);
