@@ -415,7 +415,7 @@ void ModManager::ExecuteCommand(const char *cmd) {
     utf8_int32_t cp, temp;
     utf8codepoint(rp, &cp);
     while (rp != end) {
-        if (std::isspace(*rp) || *rp == '\0') {
+        if (utf8codepointsize(*rp) == 1 && std::isspace(*rp) || *rp == '\0') {
             size_t len = rp - lp;
             if (len != 0) {
                 char bk = *rp;
@@ -425,7 +425,7 @@ void ModManager::ExecuteCommand(const char *cmd) {
             }
 
             if (*rp != '\0') {
-                while (std::isspace(*rp))
+                while (utf8codepointsize(*rp) == 1 && std::isspace(*rp))
                     ++rp;
                 --rp;
             }
