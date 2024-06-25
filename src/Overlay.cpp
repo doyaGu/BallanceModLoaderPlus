@@ -5,6 +5,8 @@
 #endif
 #include <Windows.h>
 
+#include <MinHook.h>
+
 #include "imgui_internal.h"
 #include "imgui_impl_ck2.h"
 #define IMGUI_IMPL_WIN32_DISABLE_GAMEPAD
@@ -13,13 +15,14 @@
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 namespace Overlay {
-    typedef LRESULT (CALLBACK *LPFNWNDPROC)(HWND, UINT, WPARAM, LPARAM);
+    typedef BOOL (WINAPI *LPFNPEEKMESSAGEA)(LPMSG, HWND, UINT, UINT, UINT);
+    typedef BOOL (WINAPI *LPFNGETMESSAGEA)(LPMSG, HWND, UINT, UINT);
 
+    LPFNPEEKMESSAGEA g_OrigPeekMessageA = nullptr;
+    LPFNGETMESSAGEA g_OrigGetMessageA = nullptr;
     ImGuiContext *g_ImGuiContext = nullptr;
     bool g_ImGuiReady = false;
     bool g_RenderReady = false;
-
-    LPFNWNDPROC g_MainWndProc = nullptr;
 
     LRESULT OnWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         ImGuiContextScope scope;
@@ -46,20 +49,47 @@ namespace Overlay {
         return res;
     }
 
-    LRESULT MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-        if (OnWndProc(hWnd, msg, wParam, lParam))
-            return 1;
-        return g_MainWndProc(hWnd, msg, wParam, lParam);
+    extern "C" BOOL WINAPI HookPeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg) {
+        if (!g_OrigPeekMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg))
+            return FALSE;
+
+        if (lpMsg->hwnd != nullptr && (wRemoveMsg & PM_REMOVE) != 0 && OnWndProc(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
+            TranslateMessage(lpMsg);
+            lpMsg->message = WM_NULL;
+        }
+
+        return TRUE;
     }
 
-    void HookWndProc(HWND hMainWnd) {
-        g_MainWndProc = reinterpret_cast<LPFNWNDPROC>(GetWindowLongPtr(hMainWnd, GWLP_WNDPROC));
-        SetWindowLongPtr(hMainWnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(MainWndProc));
+    extern "C" BOOL WINAPI HookGetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax) {
+        if (!g_OrigGetMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax))
+            return FALSE;
+
+        if (lpMsg->hwnd != nullptr && OnWndProc(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
+            TranslateMessage(lpMsg);
+            lpMsg->message = WM_NULL;
+        }
+        return lpMsg->message != WM_QUIT;
     }
 
-    void UnhookWndProc(HWND hMainWnd) {
-        if (g_MainWndProc)
-            SetWindowLongPtr(hMainWnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(g_MainWndProc));
+    bool ImGuiInstallWin32Hooks() {
+        if (MH_CreateHookApi(L"user32", "PeekMessageA", (LPVOID) &HookPeekMessageA, (LPVOID *) &g_OrigPeekMessageA) != MH_OK ||
+            MH_EnableHook((LPVOID) &PeekMessageA) != MH_OK) {
+            return false;
+        }
+        if (MH_CreateHookApi(L"user32", "GetMessageA", (LPVOID) &HookGetMessageA, (LPVOID *) &g_OrigGetMessageA) != MH_OK ||
+            MH_EnableHook((LPVOID) &GetMessageA) != MH_OK) {
+            return false;
+        }
+        return true;
+    }
+
+    bool ImGuiUninstallWin32Hooks() {
+        if (MH_DisableHook((LPVOID) &PeekMessageA) != MH_OK)
+            return false;
+        if (MH_DisableHook((LPVOID) &GetMessageA) != MH_OK)
+            return false;
+        return true;
     }
 
     ImGuiContext *GetImGuiContext() {
@@ -85,8 +115,6 @@ namespace Overlay {
     bool ImGuiInitPlatform(CKContext *context) {
         ImGuiContextScope scope;
 
-        HookWndProc((HWND) context->GetMainWindow());
-
         if (!ImGui_ImplWin32_Init(context->GetMainWindow()))
             return false;
 
@@ -109,8 +137,6 @@ namespace Overlay {
         ImGuiContextScope scope;
 
         ImGui_ImplWin32_Shutdown();
-
-        UnhookWndProc((HWND) context->GetMainWindow());
     }
 
     void ImGuiShutdownRenderer(CKContext *context) {

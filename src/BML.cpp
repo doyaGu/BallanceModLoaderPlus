@@ -9,6 +9,7 @@
 
 #include "ModManager.h"
 #include "PluginManagerHook.h"
+#include "Overlay.h"
 #include "HookUtils.h"
 
 CKERROR CreateModManager(CKContext *context) {
@@ -83,8 +84,16 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
                 utils::OutputDebugA("Fatal: Unable to hook CKBehaviorPrototypeRuntime.\n");
                 return FALSE;
             }
+            if (!Overlay::ImGuiInstallWin32Hooks()) {
+                utils::OutputDebugA("Fatal: Unable to install Win32 hooks for ImGui.\n");
+                return FALSE;
+            }
             break;
         case DLL_PROCESS_DETACH:
+            if (!Overlay::ImGuiUninstallWin32Hooks()) {
+                utils::OutputDebugA("Fatal: Unable to uninstall Win32 hooks for ImGui.\n");
+                return FALSE;
+            }
             CP_HOOK_CLASS_NAME(CKPluginManager)::ShutdownHooks();
             if (MH_Uninitialize() != MH_OK) {
                 utils::OutputDebugA("Fatal: Unable to uninitialize MinHook.\n");
