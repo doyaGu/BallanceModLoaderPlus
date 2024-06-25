@@ -184,8 +184,6 @@ public:
     bool IsPaused() override { return m_Paused; }
     bool IsPlaying() override { return m_Ingame && !m_Paused; }
     bool IsInLevel() const { return m_InLevel && !m_Paused; }
-    bool IsOriginalPlayer() const { return m_IsOriginalPlayer; }
-
     BMLMod *GetBMLMod() { return m_BMLMod; }
 
     void OpenModsMenu();
@@ -290,7 +288,6 @@ public:
     }
 
 protected:
-    void DetectPlayer();
     void InitDirectories();
     void InitLogger();
     void ShutdownLogger();
@@ -323,7 +320,6 @@ protected:
     bool m_Ingame = false;
     bool m_InLevel = false;
     bool m_Paused = false;
-    bool m_IsOriginalPlayer = false;
     bool m_CheatEnabled = false;
 
     std::wstring m_WorkingDir;

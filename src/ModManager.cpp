@@ -199,11 +199,6 @@ void ModManager::Init() {
     m_Logger->Info("Initializing Mod Loader Plus version " BML_VERSION);
     m_Logger->Info("Website: https://github.com/doyaGu/BallanceModManagerPlus");
 
-    if (IsOriginalPlayer()) {
-        m_Logger->Warn("The Original Player is no longer supported!");
-        m_Logger->Warn("Mod Loader Plus can not function normally!");
-    }
-
 #ifdef _DEBUG
     m_Logger->Info("Player.exe Address: 0x%08x", ::GetModuleHandleA("Player.exe"));
     m_Logger->Info("CK2.dll Address: 0x%08x", ::GetModuleHandleA("CK2.dll"));
@@ -854,18 +849,6 @@ void ModManager::OnPreLifeUp() {
 
 void ModManager::OnPostLifeUp() {
     BroadcastMessage("PostLifeUp", &IMod::OnPostLifeUp);
-}
-
-void ModManager::DetectPlayer() {
-    FILE *fp = fopen("Player.exe", "rb");
-    if (fp) {
-        fseek(fp, 0, SEEK_END);
-        long size = ftell(fp);
-        rewind(fp);
-
-        m_IsOriginalPlayer = size == 155648;
-        fclose(fp);
-    }
 }
 
 void ModManager::InitDirectories() {
