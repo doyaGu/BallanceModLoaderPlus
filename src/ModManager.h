@@ -36,35 +36,8 @@ typedef enum DirectoryType {
 } DirectoryType;
 
 ModManager *BML_GetModManager();
-const wchar_t *BML_GetDirectory(DirectoryType type);
-const char *BML_GetDirectoryUtf8(DirectoryType type);
 CKContext *BML_GetCKContext();
 CKRenderContext *BML_GetRenderContext();
-InputHook *BML_GetInputHook();
-CKAttributeManager *BML_GetAttributeManager();
-CKBehaviorManager *BML_GetBehaviorManager();
-CKCollisionManager *BML_GetCollisionManager();
-CKMessageManager *BML_GetMessageManager();
-CKPathManager *BML_GetPathManager();
-CKParameterManager *BML_GetParameterManager();
-CKRenderManager *BML_GetRenderManager();
-CKSoundManager *BML_GetSoundManager();
-CKTimeManager *BML_GetTimeManager();
-
-CKDataArray *BML_GetArrayByName(const char *name);
-CKGroup *BML_GetGroupByName(const char *name);
-CKMaterial *BML_GetMaterialByName(const char *name);
-CKMesh *BML_GetMeshByName(const char *name);
-CK2dEntity *BML_Get2dEntityByName(const char *name);
-CK3dEntity *BML_Get3dEntityByName(const char *name);
-CK3dObject *BML_Get3dObjectByName(const char *name);
-CKCamera *BML_GetCameraByName(const char *name);
-CKTargetCamera *BML_GetTargetCameraByName(const char *name);
-CKLight *BML_GetLightByName(const char *name);
-CKTargetLight *BML_GetTargetLightByName(const char *name);
-CKSound *BML_GetSoundByName(const char *name);
-CKTexture *BML_GetTextureByName(const char *name);
-CKBehavior *BML_GetScriptByName(const char *name);
 
 class ModManager : public CKBaseManager, public IBML {
 public:

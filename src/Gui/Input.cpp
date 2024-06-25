@@ -70,7 +70,7 @@ void Input::OnCharTyped(CKDWORD key) {
             InvokeCallback(key);
             break;
         default:
-            char c = VxScanCodeToAscii(key, BML_GetInputHook()->GetKeyboardState());
+            char c = VxScanCodeToAscii(key, BML_GetModManager()->GetInputManager()->GetKeyboardState());
             if (c) {
                 m_Text.insert(m_Caret++, 1, c);
                 changed = true;
