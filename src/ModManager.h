@@ -81,8 +81,8 @@ public:
     bool AreModsInited() const { return m_ModsInited; }
     bool AreModsDown() const { return m_ModsDown; }
 
-    void Init();
-    void Shutdown();
+    bool Init();
+    bool Shutdown();
 
     void LoadMods();
     void UnloadMods();
@@ -184,7 +184,6 @@ public:
     bool IsPaused() override { return m_Paused; }
     bool IsPlaying() override { return m_Ingame && !m_Paused; }
     bool IsInLevel() const { return m_InLevel && !m_Paused; }
-    BMLMod *GetBMLMod() { return m_BMLMod; }
 
     void OpenModsMenu();
 
@@ -291,9 +290,9 @@ protected:
     void InitDirectories();
     void InitLogger();
     void ShutdownLogger();
-    void InitHooks();
-    void ShutdownHooks();
-    void GetManagers();
+    bool InitHooks();
+    bool ShutdownHooks();
+    bool GetManagers();
 
     size_t ExploreMods(const std::wstring &path, std::vector<std::wstring> &mods);
 
@@ -340,6 +339,7 @@ protected:
     CKAttributeManager *m_AttributeManager = nullptr;
     CKBehaviorManager *m_BehaviorManager = nullptr;
     CKCollisionManager *m_CollisionManager = nullptr;
+    CKInputManager *m_InputManager = nullptr;
     CKMessageManager *m_MessageManager = nullptr;
     CKPathManager *m_PathManager = nullptr;
     CKParameterManager *m_ParameterManager = nullptr;

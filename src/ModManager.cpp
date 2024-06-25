@@ -52,26 +52,17 @@ ModManager::~ModManager() {
 CKERROR ModManager::OnCKInit() {
     Init();
 
-    Overlay::ImGuiCreateContext();
-    Overlay::ImGuiInitPlatform(m_Context);
-
     return CK_OK;
 }
 
 CKERROR ModManager::OnCKEnd() {
-    Overlay::ImGuiShutdownPlatform(m_Context);
-    Overlay::ImGuiDestroyContext();
-
     Shutdown();
 
     return CK_OK;
 }
 
 CKERROR ModManager::OnCKPlay() {
-    if (m_Context->IsReseted()) {
-        if (m_Context->GetCurrentLevel() == nullptr)
-            return CK_OK;
-
+    if (m_Context->IsReseted() && m_Context->GetCurrentLevel() != nullptr) {
         if (!m_RenderContext) {
             m_RenderContext = m_Context->GetPlayerRenderContext();
             m_Logger->Info("Get Render Context pointer 0x%08x", m_RenderContext);
@@ -91,17 +82,16 @@ CKERROR ModManager::OnCKPlay() {
 }
 
 CKERROR ModManager::OnCKReset() {
-    if (m_Context->GetCurrentLevel() == nullptr)
-        return CK_OK;
+    if (m_Context->GetCurrentLevel() != nullptr) {
+        if (!AreModsDown()) {
+            ShutdownMods();
+            UnloadMods();
+        }
 
-    if (!AreModsDown()) {
-        ShutdownMods();
-        UnloadMods();
-    }
-
-    if (m_RenderContext) {
-        Overlay::ImGuiShutdownRenderer(m_Context);
-        m_RenderContext = nullptr;
+        if (m_RenderContext) {
+            Overlay::ImGuiShutdownRenderer(m_Context);
+            m_RenderContext = nullptr;
+        }
     }
 
     return CK_OK;
@@ -181,16 +171,9 @@ CKERROR ModManager::OnPostSpriteRender(CKRenderContext *dev) {
     return CK_OK;
 }
 
-void ModManager::Init() {
+bool ModManager::Init() {
     if (IsInitialized())
-        return;
-
-    srand((unsigned int) time(nullptr));
-
-    OnigEncoding encodings[3] = {ONIG_ENCODING_ASCII, ONIG_ENCODING_UTF8, ONIG_ENCODING_UTF16_LE};
-    onig_initialize(encodings, sizeof(encodings)/sizeof(encodings[0]));
-
-    DetectPlayer();
+        return false;
 
     InitDirectories();
 
@@ -205,33 +188,59 @@ void ModManager::Init() {
     m_Logger->Info("VxMath.dll Address: 0x%08x", ::GetModuleHandleA("VxMath.dll"));
 #endif
 
-    GetManagers();
+    OnigEncoding encodings[3] = {ONIG_ENCODING_ASCII, ONIG_ENCODING_UTF8, ONIG_ENCODING_UTF16_LE};
+    int err = onig_initialize(encodings, sizeof(encodings)/sizeof(encodings[0]));
+    if (err < 0) {
+        m_Logger->Error("Failed to initialize regular expression functionality");
+        return false;
+    }
 
-    InitHooks();
+    if (!GetManagers()) {
+        m_Logger->Error("Failed to get managers");
+        return false;
+    }
+
+    if (!InitHooks()) {
+        m_Logger->Error("Failed to initialize hooks");
+        return false;
+    }
+
+    if (Overlay::ImGuiCreateContext() == nullptr) {
+        m_Logger->Error("Failed to create ImGui context");
+        return false;
+    }
+
+    if (!Overlay::ImGuiInitPlatform(m_Context)) {
+        m_Logger->Error("Failed to initialize Win32 platform backend for ImGui");
+    }
 
     m_Initialized = true;
+    return true;
 }
 
-void ModManager::Shutdown() {
-    if (IsInitialized()) {
-        if (AreModsLoaded())
-            UnloadMods();
+bool ModManager::Shutdown() {
+    if (AreModsLoaded())
+        UnloadMods();
 
-        m_Logger->Info("Releasing Mod Loader");
+    m_Logger->Info("Releasing Mod Loader");
 
-        delete m_InputHook;
-
-        ShutdownHooks();
-
-        m_Logger->Info("Goodbye!");
-        ShutdownLogger();
-
-        utils::DeleteDir(m_TempDir);
-
-        onig_end();
-
-        m_Initialized = false;
+    if (Overlay::GetImGuiContext() != nullptr) {
+        Overlay::ImGuiShutdownPlatform(m_Context);
+        Overlay::ImGuiDestroyContext();
     }
+
+    ShutdownHooks();
+
+    utils::DeleteDir(m_TempDir);
+
+    onig_end();
+
+    m_Logger->Info("Goodbye!");
+
+    ShutdownLogger();
+
+    m_Initialized = false;
+    return true;
 }
 
 void ModManager::LoadMods() {
@@ -933,67 +942,149 @@ void ModManager::ShutdownLogger() {
 extern bool HookObjectLoad();
 extern bool HookPhysicalize();
 
-void ModManager::InitHooks() {
-    RenderHook::HookRenderManager(m_RenderManager);
+bool ModManager::InitHooks() {
+    bool result = true;
 
-    if (HookObjectLoad())
+    m_InputHook = new InputHook(m_InputManager);
+
+    if (RenderHook::HookRenderManager(m_RenderManager)) {
+        m_Logger->Info("Hook Render Engine Success");
+    } else {
+        m_Logger->Info("Hook Render Engine Failed");
+        result = false;
+    }
+
+    if (HookObjectLoad()) {
         m_Logger->Info("Hook ObjectLoad Success");
-    else
+    } else {
         m_Logger->Info("Hook ObjectLoad Failed");
+        result = false;
+    }
 
-    if (HookPhysicalize())
+    if (HookPhysicalize()) {
         m_Logger->Info("Hook Physicalize Success");
-    else
+    } else {
         m_Logger->Info("Hook Physicalize Failed");
+        result = false;
+    }
+
+    return result;
 }
 
 extern bool UnhookObjectLoad();
 extern bool UnhookPhysicalize();
 
-void ModManager::ShutdownHooks() {
-    RenderHook::UnhookRenderManager(m_RenderManager);
+bool ModManager::ShutdownHooks() {
+    bool result = true;
 
-    if (UnhookObjectLoad())
+    delete m_InputHook;
+
+    if (RenderHook::UnhookRenderManager(m_RenderManager)) {
+        m_Logger->Info("Unhook Render Engine Success");
+    } else {
+        m_Logger->Info("Unhook Render Engine Failed");
+        result = false;
+    }
+
+    if (UnhookObjectLoad()) {
         m_Logger->Info("Unhook ObjectLoad Success");
-    else
+    } else {
         m_Logger->Info("Unhook ObjectLoad Failed");
+        result = false;
+    }
 
-    if (UnhookPhysicalize())
+    if (UnhookPhysicalize()) {
         m_Logger->Info("Unhook Physicalize Success");
-    else
+    } else {
         m_Logger->Info("Unhook Physicalize Failed");
+        result = false;
+    }
+
+    return result;
 }
 
-void ModManager::GetManagers() {
+bool ModManager::GetManagers() {
     m_AttributeManager = m_Context->GetAttributeManager();
-    m_Logger->Info("Get Attribute Manager pointer 0x%08x", m_AttributeManager);
+    if (m_AttributeManager) {
+        m_Logger->Info("Get Attribute Manager pointer 0x%08x", m_AttributeManager);
+    } else {
+        m_Logger->Info("Failed to get Attribute Manager");
+        return false;
+    }
 
     m_BehaviorManager = m_Context->GetBehaviorManager();
-    m_Logger->Info("Get Behavior Manager pointer 0x%08x", m_BehaviorManager);
+    if (m_BehaviorManager) {
+        m_Logger->Info("Get Behavior Manager pointer 0x%08x", m_BehaviorManager);
+    } else {
+        m_Logger->Info("Failed to get Behavior Manager");
+        return false;
+    }
 
     m_CollisionManager = (CKCollisionManager *) m_Context->GetManagerByGuid(COLLISION_MANAGER_GUID);
-    m_Logger->Info("Get Collision Manager pointer 0x%08x", m_CollisionManager);
+    if (m_CollisionManager) {
+        m_Logger->Info("Get Collision Manager pointer 0x%08x", m_CollisionManager);
+    } else {
+        m_Logger->Info("Failed to get Collision Manager");
+        return false;
+    }
 
-    m_InputHook = new InputHook((CKInputManager *)m_Context->GetManagerByGuid(INPUT_MANAGER_GUID));
-    m_Logger->Info("Get Input Manager pointer 0x%08x", m_InputHook);
+    m_InputManager = (CKInputManager *)m_Context->GetManagerByGuid(INPUT_MANAGER_GUID);
+    if (m_InputManager) {
+        m_Logger->Info("Get Input Manager pointer 0x%08x", m_InputManager);
+    } else {
+        m_Logger->Info("Failed to get Input Manager");
+        return false;
+    }
 
     m_MessageManager = m_Context->GetMessageManager();
-    m_Logger->Info("Get Message Manager pointer 0x%08x", m_MessageManager);
+    if (m_MessageManager) {
+        m_Logger->Info("Get Message Manager pointer 0x%08x", m_MessageManager);
+    } else {
+        m_Logger->Info("Failed to get Message Manager");
+        return false;
+    }
 
     m_PathManager = m_Context->GetPathManager();
-    m_Logger->Info("Get Path Manager pointer 0x%08x", m_PathManager);
+    if (m_PathManager) {
+        m_Logger->Info("Get Path Manager pointer 0x%08x", m_PathManager);
+    } else {
+        m_Logger->Info("Failed to get Path Manager");
+        return false;
+    }
 
     m_ParameterManager = m_Context->GetParameterManager();
-    m_Logger->Info("Get Parameter Manager pointer 0x%08x", m_ParameterManager);
+    if (m_ParameterManager) {
+        m_Logger->Info("Get Parameter Manager pointer 0x%08x", m_ParameterManager);
+    } else {
+        m_Logger->Info("Failed to get Parameter Manager");
+        return false;
+    }
 
     m_RenderManager = m_Context->GetRenderManager();
-    m_Logger->Info("Get Render Manager pointer 0x%08x", m_RenderManager);
+    if (m_RenderManager) {
+        m_Logger->Info("Get Render Manager pointer 0x%08x", m_RenderManager);
+    } else {
+        m_Logger->Info("Failed to get Render Manager");
+        return false;
+    }
 
     m_SoundManager = (CKSoundManager *) m_Context->GetManagerByGuid(SOUND_MANAGER_GUID);
-    m_Logger->Info("Get Sound Manager pointer 0x%08x", m_SoundManager);
+    if (m_SoundManager) {
+        m_Logger->Info("Get Sound Manager pointer 0x%08x", m_SoundManager);
+    } else {
+        m_Logger->Info("Failed to get Sound Manager");
+        return false;
+    }
 
     m_TimeManager = m_Context->GetTimeManager();
-    m_Logger->Info("Get Time Manager pointer 0x%08x", m_TimeManager);
+    if (m_TimeManager) {
+        m_Logger->Info("Get Time Manager pointer 0x%08x", m_TimeManager);
+    } else {
+        m_Logger->Info("Failed to get Time Manager");
+        return false;
+    }
+
+    return true;
 }
 
 size_t ModManager::ExploreMods(const std::wstring &path, std::vector<std::wstring> &mods) {
