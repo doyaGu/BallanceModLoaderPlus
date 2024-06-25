@@ -102,7 +102,7 @@ namespace utils {
 
     bool StringStartsWithCaseInsensitive(const std::string &s1, const std::string &s2) {
         if (s1.size() >= s2.size()) {
-            return strnicmp(s1.c_str(), s2.c_str(), s2.size()) == 0;
+            return _strnicmp(s1.c_str(), s2.c_str(), s2.size()) == 0;
         }
         return false;
     }
@@ -130,14 +130,14 @@ namespace utils {
 
     bool StringEndsWithCaseInsensitive(const std::string &s1, const std::string &s2) {
         if (s1.size() >= s2.size()) {
-            return strnicmp(s1.c_str() + s1.size() - s2.size(), s2.c_str(), s2.size()) == 0;
+            return _strnicmp(s1.c_str() + s1.size() - s2.size(), s2.c_str(), s2.size()) == 0;
         }
         return false;
     }
 
     bool StringEndsWithCaseInsensitive(const std::wstring &s1, const std::wstring &s2) {
         if (s1.size() >= s2.size()) {
-            return wcsnicmp(s1.c_str() + s1.size() - s2.size(), s2.c_str(), s2.size()) == 0;
+            return _wcsnicmp(s1.c_str() + s1.size() - s2.size(), s2.c_str(), s2.size()) == 0;
         }
         return false;
     }
