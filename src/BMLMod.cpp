@@ -662,7 +662,7 @@ void BMLMod::LoadMap(const std::wstring &path) {
     CKMessageType loadMenu = mm->AddMessageType((CKSTRING) "Menu_Load");
 
     mm->SendMessageSingle(loadLevel, m_CKContext->GetCurrentLevel());
-    mm->SendMessageSingle(loadMenu, BML_GetGroupByName("All_Sound"));
+    mm->SendMessageSingle(loadMenu, m_BML->GetGroupByName("All_Sound"));
     m_BML->Get2dEntityByName("M_BlackScreen")->Show(CKHIDE);
     m_ExitStart->ActivateInput(0);
     m_ExitStart->Activate();

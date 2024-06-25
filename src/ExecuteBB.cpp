@@ -19,7 +19,7 @@ namespace ExecuteBB {
     void Init() {
         for (int i = 0; i < 8; i++)
             GameFonts[i] = i;
-        CKBehavior *ownerScript = BML_GetScriptByName("Level_Init");
+        CKBehavior *ownerScript = BML_GetModManager()->GetScriptByName("Level_Init");
 
         bbPhysConv = CreatePhysicalizeConvex(ownerScript);
         bbPhysBall = CreatePhysicalizeBall(ownerScript);

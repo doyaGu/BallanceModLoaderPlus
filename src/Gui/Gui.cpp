@@ -274,7 +274,7 @@ void Gui::Process() {
     for (Element *element: m_Elements)
         element->Process();
 
-    InputHook *input = BML_GetInputHook();
+    InputHook *input = BML_GetModManager()->GetInputManager();
     int cnt = (m_Block ? input->GetNumberOfKeyInBuffer() : input->oGetNumberOfKeyInBuffer());
     for (int i = 0; i < cnt; i++) {
         CKDWORD key;

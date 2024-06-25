@@ -25,7 +25,7 @@ CKKEYBOARD KeyInput::GetKey() {
 void KeyInput::SetKey(CKKEYBOARD key) {
     m_Key = key;
     char name[0x100];
-    BML_GetInputHook()->GetKeyName(key, name);
+    BML_GetModManager()->GetInputManager()->GetKeyName(key, name);
     SetText(name);
 }
 
