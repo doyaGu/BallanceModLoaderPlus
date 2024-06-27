@@ -32,6 +32,17 @@ void UpdateDriverDescCaps(VxDriverDesc2 *desc) {
     g_UpdateDriverDescCapsFunc(desc);
 }
 
+CKRenderContextSettings::CKRenderContextSettings(CKRasterizerContext *rst) {
+    if (rst) {
+        *this = *(CKRenderContextSettings *)&rst->m_PosX;
+    } else {
+        m_Rect = {};
+        m_Bpp = 0;
+        m_Zbpp = 0;
+        m_StencilBpp = 0;
+    }
+}
+
 CP_DEFINE_METHOD_PTRS(CKRenderedScene, Draw);
 CP_DEFINE_METHOD_PTRS(CKRenderedScene, SetDefaultRenderStates);
 CP_DEFINE_METHOD_PTRS(CKRenderedScene, SetupLights);
@@ -1071,6 +1082,7 @@ bool CKSceneGraphRootNode::Unhook() {
 }
 
 CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager> CP_HOOK_CLASS_NAME(CKRenderManager)::s_VTable = {};
+CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CKRenderManager), GetFullscreenContext);
 
 #define CP_RENDER_MANAGER_METHOD_NAME(Name) CP_HOOK_CLASS_NAME(CKRenderManager)::CP_FUNC_HOOK_NAME(Name)
 
@@ -1238,6 +1250,18 @@ int CP_RENDER_MANAGER_METHOD_NAME(AddEffect)(const VxEffectDescription &NewEffec
     return CP_CALL_METHOD_PTR(this, s_VTable.AddEffect, NewEffect);
 }
 
+CKRasterizerContext *CP_HOOK_CLASS_NAME(CKRenderManager)::GetFullscreenContext() {
+//    return CP_CALL_METHOD_ORIG(GetFullscreenContext);
+
+    for (auto it = m_Rasterizers.Begin(); it != m_Rasterizers.End(); ++it) {
+        CKRasterizerContext *rst = (*it)->m_FullscreenContext;
+        if (rst)
+            return rst;
+    }
+
+    return nullptr;
+}
+
 bool CP_HOOK_CLASS_NAME(CKRenderManager)::Hook(CKRenderManager *man) {
     if (!man)
         return false;
@@ -1271,6 +1295,8 @@ bool CP_HOOK_CLASS_NAME(CKRenderManager)::Hook(CKRenderManager *man) {
     void *base = utils::GetModuleBaseAddress("CK2_3D.dll");
     assert(base != nullptr);
 
+    CP_ADD_METHOD_HOOK(GetFullscreenContext, base, 0x74F8A);
+
     CKRenderedScene::Hook(base);
     CKSceneGraphNode::Hook(base);
     CKSceneGraphRootNode::Hook(base);
@@ -1290,6 +1316,8 @@ bool CP_HOOK_CLASS_NAME(CKRenderManager)::Unhook(CKRenderManager *man) {
     if (man)
         utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager>>(man, s_VTable);
 
+    CP_REMOVE_METHOD_HOOK(GetFullscreenContext);
+
     CKRenderedScene::Unhook();
     CKSceneGraphNode::Unhook();
     CKSceneGraphRootNode::Unhook();
@@ -1304,6 +1332,7 @@ bool CP_HOOK_CLASS_NAME(CKRenderContext)::s_DisableRender = false;
 bool CP_HOOK_CLASS_NAME(CKRenderContext)::s_EnableWidescreenFix = false;
 CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> CP_HOOK_CLASS_NAME(CKRenderContext)::s_VTable = {};
 CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CKRenderContext), Create);
+CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CKRenderContext), DestroyDevice);
 CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CKRenderContext), CallSprite3DBatches);
 CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CKRenderContext), UpdateProjection);
 CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CKRenderContext), SetClipRect);
@@ -1516,19 +1545,81 @@ void CP_RENDER_CONTEXT_METHOD_NAME(TransformVertices)(int VertexCount, VxTransfo
 }
 
 CKERROR CP_RENDER_CONTEXT_METHOD_NAME(GoFullScreen)(int Width, int Height, int Bpp, int Driver, int RefreshRate) {
-    return CP_CALL_METHOD_PTR(this, s_VTable.GoFullScreen, Width, Height, Bpp, Driver, RefreshRate);
+//    return CP_CALL_METHOD_PTR(this, s_VTable.GoFullScreen, Width, Height, Bpp, Driver, RefreshRate);
+
+    if (m_Fullscreen)
+        return CKERR_ALREADYFULLSCREEN;
+
+    auto *rm = (CP_HOOK_CLASS_NAME(CKRenderManager) *) m_RenderManager;
+    if (rm->GetFullscreenContext())
+        return CKERR_ALREADYFULLSCREEN;
+
+    m_RenderContextSettings = CKRenderContextSettings(m_RasterizerContext);
+    m_AppHandle = VxGetParent(m_WinHandle);
+    VxGetWindowRect(m_WinHandle, &m_WinRect);
+    VxScreenToClient(m_AppHandle, (CKPOINT *) &m_WinRect);
+    VxScreenToClient(m_AppHandle, (CKPOINT *) &m_WinRect.right);
+    DestroyDevice();
+
+    CKRECT rect = {0, 0, Width, Height};
+    CKERROR err = Create(m_WinHandle, Driver, &rect, TRUE, Bpp, 0, 0, RefreshRate);
+    if (err == CK_OK) {
+        m_RenderedScene->UpdateViewportSize(TRUE, CK_RENDER_USECURRENTSETTINGS);
+        Clear(static_cast<CK_RENDER_FLAGS>(CK_RENDER_CLEARSTENCIL | CK_RENDER_CLEARBACK | CK_RENDER_CLEARZ));
+        BackToFront(CK_RENDER_USECURRENTSETTINGS);
+        Clear(static_cast<CK_RENDER_FLAGS>(CK_RENDER_CLEARSTENCIL | CK_RENDER_CLEARBACK | CK_RENDER_CLEARZ));
+    } else {
+        VxSetParent(m_WinHandle, m_AppHandle);
+        VxMoveWindow(m_WinHandle, m_WinRect.left, m_WinRect.top, m_WinRect.right - m_WinRect.left, m_WinRect.bottom - m_WinRect.top, FALSE);
+        rect.left = m_RenderContextSettings.m_Rect.left;
+        rect.top = m_RenderContextSettings.m_Rect.top;
+        rect.right = rect.left + m_RenderContextSettings.m_Rect.right;
+        rect.bottom = rect.top + m_RenderContextSettings.m_Rect.bottom;
+        Create(m_WinHandle, m_DriverIndex, &rect, FALSE,
+               m_RenderContextSettings.m_Bpp, m_RenderContextSettings.m_Zbpp, m_RenderContextSettings.m_StencilBpp, 0);
+    }
+
+    return err;
 }
 
 CKERROR CP_RENDER_CONTEXT_METHOD_NAME(StopFullScreen)() {
-    return CP_CALL_METHOD_PTR(this, s_VTable.StopFullScreen);
+//    return CP_CALL_METHOD_PTR(this, s_VTable.StopFullScreen);
+
+    auto *rm = (CP_HOOK_CLASS_NAME(CKRenderManager) *) m_RenderManager;
+    if (rm->GetFullscreenContext() != m_RasterizerContext)
+        return CKERR_INVALIDRENDERCONTEXT;
+
+    if (!m_Fullscreen)
+        return CK_OK;
+    m_Fullscreen = FALSE;
+
+    DestroyDevice();
+    VxSetParent(m_WinHandle, m_AppHandle);
+    VxMoveWindow(m_WinHandle, m_WinRect.left, m_WinRect.top, m_WinRect.right - m_WinRect.left, m_WinRect.bottom - m_WinRect.top, FALSE);
+
+    CKRECT rect;
+    rect.left = m_RenderContextSettings.m_Rect.left;
+    rect.top = m_RenderContextSettings.m_Rect.top;
+    rect.right = rect.left + m_RenderContextSettings.m_Rect.right;
+    rect.bottom = rect.top + m_RenderContextSettings.m_Rect.bottom;
+
+    CKERROR err = Create(m_WinHandle, m_DriverIndex, &rect, FALSE,
+                         m_RenderContextSettings.m_Bpp, m_RenderContextSettings.m_Zbpp, m_RenderContextSettings.m_StencilBpp, 0);
+    m_RenderedScene->UpdateViewportSize(FALSE, CK_RENDER_USECURRENTSETTINGS);
+
+    return err;
 }
 
 CKBOOL CP_RENDER_CONTEXT_METHOD_NAME(IsFullScreen)() {
-    return CP_CALL_METHOD_PTR(this, s_VTable.IsFullScreen);
+//    return CP_CALL_METHOD_PTR(this, s_VTable.IsFullScreen);
+
+    return m_Fullscreen;
 }
 
 int CP_RENDER_CONTEXT_METHOD_NAME(GetDriverIndex)() {
-    return CP_CALL_METHOD_PTR(this, s_VTable.GetDriverIndex);
+//    return CP_CALL_METHOD_PTR(this, s_VTable.GetDriverIndex);
+
+    return m_DriverIndex;
 }
 
 CKBOOL CP_RENDER_CONTEXT_METHOD_NAME(ChangeDriver)(int NewDriver) {
@@ -1564,7 +1655,54 @@ int CP_RENDER_CONTEXT_METHOD_NAME(GetWidth)() {
 }
 
 CKERROR CP_RENDER_CONTEXT_METHOD_NAME(Resize)(int PosX, int PosY, int SizeX, int SizeY, CKDWORD Flags) {
-    return CP_CALL_METHOD_PTR(this, s_VTable.Resize, PosX, PosY, SizeX, SizeY, Flags);
+//    return CP_CALL_METHOD_PTR(this, s_VTable.Resize, PosX, PosY, SizeX, SizeY, Flags);
+
+    if (m_DeviceValid)
+        return CKERR_INVALIDRENDERCONTEXT;
+
+    if (!m_RasterizerContext) {
+        if (SizeX != 0 && SizeY != 0) {
+            CKRECT rect = {PosX, PosY, SizeX + PosX, SizeY + PosY};
+            Create(m_WinHandle, m_DriverIndex, &rect, FALSE, -1, -1, -1, 0);
+        } else {
+            Create(m_WinHandle, m_DriverIndex, nullptr, FALSE, -1, -1, -1, 0);
+        }
+
+        if (!m_RasterizerContext)
+            return CKERR_INVALIDRENDERCONTEXT;
+    }
+
+    if (m_Fullscreen)
+        return CKERR_ALREADYFULLSCREEN;
+
+    if ((Flags & VX_RESIZE_NOMOVE) == 0) {
+        m_WindowRect.left = PosX;
+        m_WindowRect.top = PosY;
+    }
+
+    if ((Flags & VX_RESIZE_NOSIZE) == 0) {
+        if (SizeX == 0 || SizeY == 0) {
+            CKRECT rect;
+            VxGetClientRect(m_WinHandle, &rect);
+            SizeX = rect.right;
+            SizeY = rect.bottom;
+        }
+        m_WindowRect.right = SizeX;
+        m_WindowRect.bottom = SizeY;
+        m_ViewportData.ViewX = 0;
+        m_ViewportData.ViewY = 0;
+        m_ViewportData.ViewWidth = SizeX;
+        m_ViewportData.ViewHeight = SizeY;
+        m_ProjectionUpdated = 0;
+    }
+
+    if (m_RasterizerContext->Resize(PosX, PosY, SizeX, SizeY, Flags)) {
+        m_RenderedScene->UpdateViewportSize(FALSE, CK_RENDER_USECURRENTSETTINGS);
+        return CK_OK;
+    } else {
+        m_RenderedScene->UpdateViewportSize(FALSE, CK_RENDER_USECURRENTSETTINGS);
+        return CKERR_OUTOFMEMORY;
+    }
 }
 
 void CP_RENDER_CONTEXT_METHOD_NAME(SetViewRect)(VxRect &rect) {
@@ -1863,6 +2001,10 @@ CKERROR CP_HOOK_CLASS_NAME(CKRenderContext)::Create(WIN_HANDLE Window, int Drive
     return CP_CALL_METHOD_ORIG(Create, Window, Driver, Rect, Fullscreen, Bpp, Zbpp, StencilBpp, RefreshRate);
 }
 
+CKBOOL CP_HOOK_CLASS_NAME(CKRenderContext)::DestroyDevice() {
+    return CP_CALL_METHOD_ORIG(DestroyDevice);
+}
+
 void CP_HOOK_CLASS_NAME(CKRenderContext)::CallSprite3DBatches() {
     CP_CALL_METHOD_ORIG(CallSprite3DBatches);
 }
@@ -2030,6 +2172,7 @@ utils::HookVirtualMethod(Instance, &CP_HOOK_CLASS_NAME(CKRenderContext)::CP_FUNC
     assert(base != nullptr);
 
     CP_ADD_METHOD_HOOK(Create, base, 0x6711B);
+    CP_ADD_METHOD_HOOK(DestroyDevice, base, 0x67558);
     CP_ADD_METHOD_HOOK(CallSprite3DBatches, base, 0x6DC61);
     CP_ADD_METHOD_HOOK(UpdateProjection, base, 0x6C68D);
     CP_ADD_METHOD_HOOK(SetClipRect, base, 0x6C808);
@@ -2042,6 +2185,7 @@ bool CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(CKRenderContext *rc) {
         utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>>(rc, s_VTable);
 
     CP_REMOVE_METHOD_HOOK(Create);
+    CP_REMOVE_METHOD_HOOK(DestroyDevice);
     CP_REMOVE_METHOD_HOOK(CallSprite3DBatches);
     CP_REMOVE_METHOD_HOOK(UpdateProjection);
     CP_REMOVE_METHOD_HOOK(SetClipRect);
