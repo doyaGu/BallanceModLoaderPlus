@@ -52,9 +52,11 @@ struct UserDrawPrimitiveDataClass : public VxDrawPrimitiveData {
 
 struct CKRenderContextSettings {
     CKRECT m_Rect;
-    CKDWORD m_Bpp;
-    CKDWORD m_Zbpp;
-    CKDWORD m_StencilBpp;
+    int m_Bpp;
+    int m_Zbpp;
+    int m_StencilBpp;
+
+    explicit CKRenderContextSettings(CKRasterizerContext *rst);
 };
 
 struct CKObjectExtents {
@@ -226,6 +228,10 @@ public:
     CP_DECLARE_METHOD_HOOK(const VxEffectDescription &, GetEffectDescription, (int EffectIndex));
     CP_DECLARE_METHOD_HOOK(int, GetEffectCount,());
     CP_DECLARE_METHOD_HOOK(int, AddEffect, (const VxEffectDescription &NewEffect));
+
+    CKRasterizerContext *GetFullscreenContext();
+
+    CP_DECLARE_METHOD_PTRS(CKRenderManager, CKRasterizerContext *, GetFullscreenContext, ());
 
     static bool Hook(CKRenderManager *man);
     static bool Unhook(CKRenderManager *man);
@@ -410,6 +416,7 @@ public:
     CP_DECLARE_METHOD_HOOK(void, GetStereoParameters, (float & EyeSeparation, float & FocalLength));
 
     CKERROR Create(WIN_HANDLE Window, int Driver, CKRECT *Rect, CKBOOL Fullscreen, int Bpp, int Zbpp, int StencilBpp, int RefreshRate);
+    CKBOOL DestroyDevice();
     void CallSprite3DBatches();
     CKBOOL UpdateProjection(CKBOOL force);
     void SetClipRect(VxRect &rect);
@@ -417,6 +424,7 @@ public:
     void SetFullViewport(CKViewportData &data, int width, int height);
 
     CP_DECLARE_METHOD_PTRS(CKRenderContext, CKERROR, Create, (WIN_HANDLE Window, int Driver, CKRECT *Rect, CKBOOL Fullscreen, int Bpp, int Zbpp, int StencilBpp, int RefreshRate));
+    CP_DECLARE_METHOD_PTRS(CKRenderContext, CKBOOL, DestroyDevice, ());
     CP_DECLARE_METHOD_PTRS(CKRenderContext, void, CallSprite3DBatches, ());
     CP_DECLARE_METHOD_PTRS(CKRenderContext, CKBOOL, UpdateProjection, (CKBOOL force));
     CP_DECLARE_METHOD_PTRS(CKRenderContext, void, SetClipRect, (VxRect &rect));
@@ -424,8 +432,8 @@ public:
     static bool Hook(CKRenderContext *rc);
     static bool Unhook(CKRenderContext *rc);
 
-    CKDWORD m_WinHandle;
-    CKDWORD m_AppHandle;
+    WIN_HANDLE m_WinHandle;
+    WIN_HANDLE m_AppHandle;
     CKRECT m_WinRect;
     CK_RENDER_FLAGS m_RenderFlags;
     CKRenderedScene *m_RenderedScene;
@@ -442,7 +450,7 @@ public:
     CKRenderManager *m_RenderManager;
     CKRasterizerContext *m_RasterizerContext;
     CKRasterizerDriver *m_RasterizerDriver;
-    CKDWORD m_Driver;
+    int m_DriverIndex;
     CKDWORD m_Shading;
     CKDWORD m_TextureEnabled;
     CKDWORD m_DisplayWireframe;
@@ -474,7 +482,7 @@ public:
     VxTimeProfiler m_SpriteTimeProfiler;
     VxTimeProfiler m_TransparentObjectsSortTimeProfiler;
     CK3dEntity *m_Current3dEntity;
-    CKTexture *m_Texture;
+    CKTexture *m_BufferTexture;
     CKDWORD m_CubeMapFace;
     float m_FocalLength;
     float m_EyeSeparation;
@@ -499,7 +507,7 @@ public:
     XVoidArray m_RootObjects;
     CKCamera *m_Camera;
     CKTexture *m_NCUTex;
-    VxTimeProfiler m_TimeProfiler_3A8;
+    VxTimeProfiler m_PVTimeProfiler;
     CKDWORD m_PVInformation;
 
     static bool s_DisableRender;
