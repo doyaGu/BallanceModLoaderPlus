@@ -16,7 +16,7 @@ TextureFont::TextureFont(FontManager *fm, CKContext *ctx, char *name) : m_FontCo
     m_Properties = 0;
     m_FontTexture = 0;
     m_FirstCharacter = 0;
-    m_ParagraphIndentation = 0.0f;
+    m_ParagraphIndentation = Vx2DVector(0.0f);
     m_SpacingProperties = 0;
     m_CaretMaterial = nullptr;
     m_CaretSize = 0.0f;
