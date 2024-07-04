@@ -39,6 +39,8 @@ set(BML_PRIVATE_HEADERS
 
         Narratives.h
 
+        DataShare.h
+        EventManager.h
         Logger.h
         Config.h
         Timer.h
@@ -83,6 +85,8 @@ set(BML_SOURCES
         ExecuteBB.cpp
         ScriptHelper.cpp
 
+        DataShare.cpp
+        EventManager.cpp
         Logger.cpp
         Config.cpp
         Timer.cpp

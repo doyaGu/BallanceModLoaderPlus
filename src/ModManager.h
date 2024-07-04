@@ -15,6 +15,8 @@
 
 #include "BML/IBML.h"
 #include "BML/IMod.h"
+#include "DataShare.h"
+#include "EventManager.h"
 #include "Config.h"
 #include "Timer.h"
 #include "HookUtils.h"
@@ -108,6 +110,9 @@ public:
 
     ILogger *GetLogger() {return m_Logger; }
     FILE *GetLogFile() { return m_Logfile; }
+
+    BML::IDataShare *GetDataShare() { return m_DataShare; }
+    BML::IEventManager *GetEventManager() { return m_EventManager; }
 
     const wchar_t *GetDirectory(DirectoryType type);
     const char *GetDirectoryUtf8(DirectoryType type);
@@ -333,6 +338,9 @@ protected:
     std::string m_LoaderDirUtf8;
     std::string m_ConfigDirUtf8;
 
+    BML::DataShare *m_DataShare = nullptr;
+    BML::EventManager *m_EventManager = nullptr;
+
     FILE *m_Logfile = nullptr;
     ILogger *m_Logger = nullptr;
 
@@ -363,7 +371,6 @@ protected:
     DllHandleMap m_DllHandleMap;
 
     std::vector<IMod *> m_Mods;
-
     typedef std::unordered_map<std::string, IMod *> ModMap;
     ModMap m_ModMap;
 
