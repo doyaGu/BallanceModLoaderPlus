@@ -37,6 +37,8 @@ set(BML_PRIVATE_HEADERS
         FileHook.h
         RenderHook.h
 
+        Narratives.h
+
         Logger.h
         Config.h
         Timer.h
@@ -77,6 +79,7 @@ set(BML_SOURCES
         PhysicsHook.cpp
         TextureFont.cpp
 
+        Narratives.cpp
         ExecuteBB.cpp
         ScriptHelper.cpp
 
