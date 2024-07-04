@@ -115,7 +115,7 @@ CKERROR CKRenderedScene::Draw(CK_RENDER_FLAGS Flags) {
             rootEntity->m_WorldMatrix = camera->m_WorldMatrix;
             rootEntity->WorldMatrixChanged(FALSE, TRUE);
             VxVector vec;
-            camera->InverseTransform(&vec, rootEntity->m_WorldMatrix[3]);
+            camera->InverseTransform(&vec, &rootEntity->m_WorldMatrix[3]);
             auto z = dev->m_NearPlane / fabsf(vec.z);
             float right = (camera->m_LocalBoundingBox.Max.x - vec.x) * z;
             float left = (camera->m_LocalBoundingBox.Min.x - vec.x) * z;
@@ -353,8 +353,10 @@ void CKRenderedScene::PrepareCameras(CK_RENDER_FLAGS Flags) {
         CKCamera *camera = *it;
         if (camera && camera->GetClassID() == CKCID_TARGETCAMERA) {
             auto *target = camera->GetTarget();
-            if (target)
-                camera->LookAt(VxVector(0.0f, 0.0f, 0.0f), target);
+            if (target) {
+                VxVector o(0.0f);
+                camera->LookAt(&o, target);
+            }
         }
     }
 
@@ -362,8 +364,10 @@ void CKRenderedScene::PrepareCameras(CK_RENDER_FLAGS Flags) {
         CKLight *light = *it;
         if (light && light->GetClassID() == CKCID_TARGETLIGHT) {
             auto *target = light->GetTarget();
-            if (target)
-                light->LookAt(VxVector(0.0f, 0.0f, 0.0f), target);
+            if (target) {
+                VxVector o(0.0f);
+                light->LookAt(&o, target);
+            }
         }
     }
 
