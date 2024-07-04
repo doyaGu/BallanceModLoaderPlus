@@ -41,9 +41,15 @@ namespace Bui {
             ImGui::SetCurrentContext(GetImGuiContext());
         }
 
+        ImGuiContextScope(const ImGuiContextScope &rhs) = delete;
+        ImGuiContextScope(ImGuiContextScope &&rhs) noexcept = delete;
+
         ~ImGuiContextScope() {
             ImGui::SetCurrentContext(m_ImGuiContext);
         }
+
+        ImGuiContextScope &operator=(const ImGuiContextScope &rhs) = delete;
+        ImGuiContextScope &operator=(ImGuiContextScope &&rhs) noexcept = delete;
 
     private:
         ImGuiContext *m_ImGuiContext;
