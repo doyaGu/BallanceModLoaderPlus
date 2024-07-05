@@ -10,7 +10,7 @@
 #include "BML/ICommand.h"
 #include "BML/IMessageReceiver.h"
 #include "BML/IDataShare.h"
-#include "BML/IEventManager.h"
+#include "BML/IEventPublisher.h"
 
 class IMod;
 class InputHook;
@@ -100,8 +100,8 @@ public:
 
     virtual void ExecuteCommand(const char *cmd) = 0;
 
-    virtual BML::IDataShare *GetDataShare() = 0;
-    virtual BML::IEventManager *GetEventManager() = 0;
+    virtual BML::IDataShare *GetDataShare(const char *name) = 0;
+    virtual BML::IEventPublisher *GetEventPublisher(const char *name) = 0;
 };
 
 

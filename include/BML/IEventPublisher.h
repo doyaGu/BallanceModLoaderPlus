@@ -1,6 +1,6 @@
 /**
- * @file IEventManager.h
- * @brief The interface of event manager.
+ * @file IEventPublisher.h
+ * @brief The interface of event publisher.
  */
 #ifndef BML_IEVENTMANAGER_H
 #define BML_IEVENTMANAGER_H
@@ -13,12 +13,26 @@
 namespace BML {
     inline namespace v1 {
         /**
-         * @brief Interface for event management.
+         * @brief Interface for event publisher.
          *
          * This class represents an interface for managing events and event types.
          */
-        class IEventManager {
+        class IEventPublisher {
         public:
+            /**
+             * @brief Increase the reference count of the logger object.
+             * @return The new reference count.
+             */
+            virtual int AddRef() const = 0;
+
+            /**
+             * @brief Decrease the reference count of the logger object.
+             * @return The new reference count.
+             */
+            virtual int Release() const = 0;
+
+            virtual const char *GetName() const = 0;
+
             /**
              * @brief Add a new event type with the given name.
              *
@@ -98,7 +112,7 @@ namespace BML {
              * @param listener Pointer to the listener object to be added.
              * @return True if the listener was added successfully, false otherwise.
              */
-            virtual bool AddListener(EventType eventType, IEventListener *listener) = 0;
+            virtual bool AddListener(EventType eventType, IEventListener *listener, const char *name, int priority = 0) = 0;
 
             /**
              * @brief Add a listener for the specified event name.
@@ -107,7 +121,7 @@ namespace BML {
              * @param listener Pointer to the listener object to be added.
              * @return True if the listener was added successfully, false otherwise.
              */
-            virtual bool AddListener(const char *eventName, IEventListener *listener) = 0;
+            virtual bool AddListener(const char *eventName, IEventListener *listener, const char *name, int priority = 0) = 0;
 
             /**
              * @brief Remove a listener for the specified event type.
@@ -138,6 +152,24 @@ namespace BML {
 
             virtual std::size_t GetListenerCount(EventType eventType) = 0;
             virtual std::size_t GetListenerCount(const char *eventName) = 0;
+
+            /**
+             * @brief Retrieves the user data associated with the specified type.
+             * @param type The type of the user data to retrieve.
+             * @return A pointer to the user data, or nullptr if not found.
+             */
+            virtual void *GetUserData(size_t type = 0) const = 0;
+
+            /**
+             * @brief Sets the user data associated with the specified type.
+             * @param data A pointer to the user data to set.
+             * @param type The type of the user data to set.
+             * @return A pointer to the previous user data associated with the type, or nullptr if not found.
+             */
+            virtual void *SetUserData(void *data, size_t type = 0) = 0;
+
+        protected:
+            virtual ~IEventPublisher() = default;
         };
     }
 }

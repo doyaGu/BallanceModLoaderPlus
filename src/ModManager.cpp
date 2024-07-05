@@ -41,15 +41,15 @@ CKRenderContext *BML_GetRenderContext() {
 }
 
 ModManager::ModManager(CKContext *context)  : CKBaseManager(context, MOD_MANAGER_GUID, (CKSTRING) "Mod Manager") {
-    m_DataShare = new BML::DataShare;
-    m_EventManager = new BML::EventManager;
+    m_DataShare = BML::DataShare::Create("BML");
+    m_EventPublisher = BML::EventPublisher::Create("BML");
     g_ModManager = this;
     context->RegisterNewManager(this);
 }
 
 ModManager::~ModManager() {
-    delete m_EventManager;
-    delete m_DataShare;
+    m_DataShare->Release();
+    m_EventPublisher->Release();
     g_ModManager = nullptr;
 }
 
@@ -1413,4 +1413,16 @@ void ModManager::AddDataPath(const char *path) {
         m_PathManager->GetPathIndex(SOUND_PATH_IDX, soundPath) == -1) {
         m_PathManager->AddPath(SOUND_PATH_IDX, soundPath);
     }
+}
+
+BML::IDataShare *ModManager::GetDataShare(const char *name) {
+    if (!name)
+        return m_DataShare;
+    return BML::DataShare::GetInstance(name);
+}
+
+BML::IEventPublisher *ModManager::GetEventPublisher(const char *name) {
+    if (!name)
+        return m_EventPublisher;
+    return BML::EventPublisher::GetInstance(name);
 }

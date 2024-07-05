@@ -40,7 +40,7 @@ set(BML_PRIVATE_HEADERS
         Narratives.h
 
         DataShare.h
-        EventManager.h
+        EventPublisher.h
         Logger.h
         Config.h
         Timer.h
@@ -86,7 +86,7 @@ set(BML_SOURCES
         ScriptHelper.cpp
 
         DataShare.cpp
-        EventManager.cpp
+        EventPublisher.cpp
         Logger.cpp
         Config.cpp
         Timer.cpp
