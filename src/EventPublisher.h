@@ -110,6 +110,7 @@ namespace BML {
         std::unordered_map<EventType, std::vector<EventListenerInfo>> m_EventListeners;
         DataBox m_UserData;
 
+        static std::mutex s_MapMutex;
         static std::unordered_map<std::string, EventPublisher *> s_EventPublishers;
     };
 }
