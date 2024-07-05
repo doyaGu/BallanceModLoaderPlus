@@ -7,19 +7,26 @@
 
 #include "BML/IDataShare.h"
 #include "BML/DataBox.h"
+#include "BML/RefCount.h"
 
 namespace BML {
     class DataShare final : public IDataShare {
     public:
-        DataShare();
+        static DataShare *GetInstance(const std::string &name);
+        static DataShare *Create(std::string name);
 
         DataShare(const DataShare &rhs) = delete;
         DataShare(DataShare &&rhs) noexcept = delete;
 
-        ~DataShare();
+        ~DataShare() override;
 
         DataShare &operator=(const DataShare &rhs) = delete;
         DataShare &operator=(DataShare &&rhs) noexcept = delete;
+
+        int AddRef() const override;
+        int Release() const override;
+
+        const char *GetName() const override;
 
         void Request(const char *key, DataShareCallback callback, void *userdata) const override;
 
@@ -32,6 +39,8 @@ namespace BML {
         void *SetUserData(void *data, size_t type) override;
 
     private:
+        explicit DataShare(std::string name);
+
         struct Callback {
             DataShareCallback callback;
             void *userdata;
@@ -52,10 +61,14 @@ namespace BML {
 
         static bool ValidateKey(const char *key);
 
+        std::string m_Name;
+        mutable RefCount m_RefCount;
         mutable std::mutex m_RWLock;
         std::unordered_map<std::string, void *> m_DataMap;
         mutable std::unordered_map<std::string, std::vector<Callback>> m_CallbackMap;
         DataBox m_UserData;
+
+        static std::unordered_map<std::string, DataShare *> s_DataShares;
     };
 }
 

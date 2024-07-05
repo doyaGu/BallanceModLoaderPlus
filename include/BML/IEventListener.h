@@ -26,9 +26,6 @@ namespace BML {
          */
         class IEventListener {
         public:
-            virtual const char *GetName() const = 0;
-            virtual int GetPriority() const { return 0; }
-
             virtual void OnRegister(EventType eventType, const char *eventName) {}
             virtual void OnUnregister(EventType eventType, const char *eventName) {}
             virtual void OnEventRenamed(EventType eventType, const char *newName, const char *oldName) {}

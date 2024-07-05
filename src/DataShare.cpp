@@ -2,9 +2,40 @@
 
 using namespace BML;
 
-DataShare::DataShare() = default;
+std::unordered_map<std::string, DataShare *> DataShare::s_DataShares;
 
-DataShare::~DataShare() = default;
+DataShare *DataShare::GetInstance(const std::string &name) {
+    auto it = s_DataShares.find(name);
+    if (it == s_DataShares.end()) {
+        s_DataShares[name] = Create(name);
+    }
+    return it->second;
+}
+
+DataShare *DataShare::Create(std::string name) {
+    return new DataShare(std::move(name));
+}
+
+DataShare::~DataShare() {
+    s_DataShares.erase(m_Name);
+}
+
+int DataShare::AddRef() const {
+    return m_RefCount.AddRef();
+}
+
+int DataShare::Release() const {
+    int r = m_RefCount.Release();
+    if (r == 0) {
+        std::atomic_thread_fence(std::memory_order_acquire);
+        delete const_cast<DataShare *>(this);
+    }
+    return r;
+}
+
+const char *DataShare::GetName() const {
+    return m_Name.c_str();
+}
 
 void DataShare::Request(const char *key, DataShareCallback callback, void *userdata) const {
     if (!ValidateKey(key)) return;
@@ -83,6 +114,11 @@ void *DataShare::GetUserData(size_t type) const {
 
 void *DataShare::SetUserData(void *data, size_t type) {
     return m_UserData.SetData(data, type);
+}
+
+DataShare::DataShare(std::string name) : m_Name(std::move(name)) {
+    s_DataShares[m_Name] = this;
+    AddRef();
 }
 
 bool DataShare::AddCallbacks(const char *key, DataShareCallback callback, void *userdata) const {

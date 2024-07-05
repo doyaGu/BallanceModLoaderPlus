@@ -16,7 +16,7 @@
 #include "BML/IBML.h"
 #include "BML/IMod.h"
 #include "DataShare.h"
-#include "EventManager.h"
+#include "EventPublisher.h"
 #include "Config.h"
 #include "Timer.h"
 #include "HookUtils.h"
@@ -111,8 +111,8 @@ public:
     ILogger *GetLogger() {return m_Logger; }
     FILE *GetLogFile() { return m_Logfile; }
 
-    BML::IDataShare *GetDataShare() { return m_DataShare; }
-    BML::IEventManager *GetEventManager() { return m_EventManager; }
+    BML::IDataShare *GetDataShare(const char *name) override;
+    BML::IEventPublisher *GetEventPublisher(const char *name) override;
 
     const wchar_t *GetDirectory(DirectoryType type);
     const char *GetDirectoryUtf8(DirectoryType type);
@@ -339,7 +339,7 @@ protected:
     std::string m_ConfigDirUtf8;
 
     BML::DataShare *m_DataShare = nullptr;
-    BML::EventManager *m_EventManager = nullptr;
+    BML::EventPublisher *m_EventPublisher = nullptr;
 
     FILE *m_Logfile = nullptr;
     ILogger *m_Logger = nullptr;

@@ -21,6 +21,20 @@ namespace BML {
         class IDataShare {
         public:
             /**
+             * @brief Increase the reference count of the logger object.
+             * @return The new reference count.
+             */
+            virtual int AddRef() const = 0;
+
+            /**
+             * @brief Decrease the reference count of the logger object.
+             * @return The new reference count.
+             */
+            virtual int Release() const = 0;
+
+            virtual const char *GetName() const = 0;
+
+            /**
              * @brief Requests data associated with the specified key.
              * @param key The key associated with the requested data.
              * @param callback The callback function to be called when the data is available.
@@ -72,6 +86,9 @@ namespace BML {
              * @return A pointer to the previous user data associated with the type, or nullptr if not found.
              */
             virtual void *SetUserData(void *data, size_t type = 0) = 0;
+
+        protected:
+            virtual ~IDataShare() = default;
         };
     }
 }
