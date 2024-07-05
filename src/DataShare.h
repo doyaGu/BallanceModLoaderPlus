@@ -68,6 +68,7 @@ namespace BML {
         mutable std::unordered_map<std::string, std::vector<Callback>> m_CallbackMap;
         DataBox m_UserData;
 
+        static std::mutex s_MapMutex;
         static std::unordered_map<std::string, DataShare *> s_DataShares;
     };
 }

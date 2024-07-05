@@ -4,12 +4,13 @@
 
 using namespace BML;
 
+std::mutex EventPublisher::s_MapMutex;
 std::unordered_map<std::string, EventPublisher *> EventPublisher::s_EventPublishers;
 
 EventPublisher *EventPublisher::GetInstance(const std::string &name) {
     auto it = s_EventPublishers.find(name);
     if (it == s_EventPublishers.end()) {
-        s_EventPublishers[name] = Create(name);
+        return Create(name);
     }
     return it->second;
 }
@@ -19,6 +20,7 @@ EventPublisher *EventPublisher::Create(std::string name) {
 }
 
 EventPublisher::~EventPublisher() {
+    std::lock_guard<std::mutex> lock{s_MapMutex};
     s_EventPublishers.erase(m_Name);
 }
 
@@ -421,6 +423,8 @@ void EventPublisher::SortListeners(EventType eventType) {
 }
 
 EventPublisher::EventPublisher(std::string name) : m_Name(std::move(name)) {
-    s_EventPublishers[m_Name] = this;
     AddRef();
+
+    std::lock_guard<std::mutex> lock{s_MapMutex};
+    s_EventPublishers[m_Name] = this;
 }
