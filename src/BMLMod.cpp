@@ -1406,8 +1406,8 @@ void BMLMod::OnDrawMenu() {
     ImGui::PushFont(m_Font);
 
     const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
-    ImGui::SetNextWindowPos(ImVec2(vpSize.x * 0.3f, 0.0f), ImGuiCond_Appearing);
-    ImGui::SetNextWindowSize(ImVec2(vpSize.x * 0.7f, vpSize.y), ImGuiCond_Appearing);
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Appearing);
+    ImGui::SetNextWindowSize(ImVec2(vpSize.x, vpSize.y), ImGuiCond_Appearing);
 
     switch (m_CurrentMenu) {
         case MENU_MOD_LIST:
@@ -1498,8 +1498,9 @@ void BMLMod::OnDrawModPage() {
 
     ImGui::Dummy(Bui::CoordToScreenPos(ImVec2(0.375f, 0.1f)));
 
-    ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
-    float menuWidth = vpSize.x * 0.4f;
+    const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
+    const float menuX = vpSize.x * 0.3f;
+    const float menuWidth = vpSize.x * 0.4f;
 
     {
         float oldScale = ImGui::GetFont()->Scale;
@@ -1507,7 +1508,7 @@ void BMLMod::OnDrawModPage() {
         ImGui::PushFont(ImGui::GetFont());
 
         const float textWidth = ImGui::CalcTextSize(m_CurrentMod->GetName()).x;
-        ImGui::SetCursorPosX((menuWidth - textWidth) * 0.5f);
+        ImGui::SetCursorPosX(menuX + (menuWidth - textWidth) * 0.5f);
         ImGui::TextUnformatted(m_CurrentMod->GetName());
 
         ImGui::GetFont()->Scale = oldScale;
@@ -1521,10 +1522,11 @@ void BMLMod::OnDrawModPage() {
         const float textWidth = ImGui::CalcTextSize(buf).x;
         const float indent = (menuWidth - textWidth) * 0.5f;
         if (indent > 0) {
-            ImGui::SetCursorPosX(indent);
-            ImGui::PushTextWrapPos(indent + textWidth);
+            ImGui::SetCursorPosX(menuX + indent);
+            ImGui::PushTextWrapPos(menuX + indent + textWidth);
         } else {
-            ImGui::PushTextWrapPos(menuWidth);
+            ImGui::SetCursorPosX(menuX - indent);
+            ImGui::PushTextWrapPos(menuX + menuWidth);
         }
         ImGui::TextUnformatted(buf);
         ImGui::PopTextWrapPos();
@@ -1533,7 +1535,7 @@ void BMLMod::OnDrawModPage() {
     {
         snprintf(buf, sizeof(buf), "v%s", m_CurrentMod->GetVersion());
         const float textWidth = ImGui::CalcTextSize(buf).x;
-        ImGui::SetCursorPosX((menuWidth - textWidth) * 0.5f);
+        ImGui::SetCursorPosX(menuX + (menuWidth - textWidth) * 0.5f);
         ImGui::TextUnformatted(buf);
     }
 
@@ -1543,10 +1545,11 @@ void BMLMod::OnDrawModPage() {
         const float textWidth = ImGui::CalcTextSize(m_CurrentMod->GetDescription()).x;
         const float indent = (menuWidth - textWidth) * 0.5f;
         if (indent > 0) {
-            ImGui::SetCursorPosX(indent);
-            ImGui::PushTextWrapPos(indent + textWidth);
+            ImGui::SetCursorPosX(menuX + indent);
+            ImGui::PushTextWrapPos(menuX + indent + textWidth);
         } else {
-            ImGui::PushTextWrapPos(menuWidth);
+            ImGui::SetCursorPosX(menuX - indent);
+            ImGui::PushTextWrapPos(menuX + menuWidth);
         }
         ImGui::TextUnformatted(m_CurrentMod->GetDescription());
         ImGui::PopTextWrapPos();
