@@ -1717,26 +1717,6 @@ void BMLMod::OnDrawMenu() {
 
 void BMLMod::OnResize() {
     ImGui::GetIO().FontGlobalScale = m_WindowRect.GetHeight() / 1200.0f;
-
-    CKCamera *cams[] = {
-        m_BML->GetTargetCameraByName("Cam_MenuLevel"),
-        m_BML->GetTargetCameraByName("InGameCam")
-    };
-
-    for (CKCamera *cam : cams) {
-        if (cam) {
-            cam->SetAspectRatio((int)m_WindowRect.GetWidth(), (int)m_WindowRect.GetHeight());
-            cam->SetFov(0.75f * m_WindowRect.GetWidth() / m_WindowRect.GetHeight());
-            CKStateChunk *chunk = CKSaveObjectState(cam);
-
-            m_BML->RestoreIC(cam);
-            cam->SetAspectRatio((int)m_WindowRect.GetWidth(), (int)m_WindowRect.GetHeight());
-            cam->SetFov(0.75f * m_WindowRect.GetWidth() / m_WindowRect.GetHeight());
-            m_BML->SetIC(cam);
-
-            CKReadObjectState(cam, chunk);
-        }
-    }
 }
 
 void BMLMod::OnOpenModsMenu() {
