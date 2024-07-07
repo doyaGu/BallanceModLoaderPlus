@@ -224,8 +224,18 @@ void ModOptionPage::OnDraw() {
                 }
                 break;
             case IProperty::INTEGER:
-                if (Bui::InputIntButton(property->GetName(), property->GetIntegerPtr())) {
-                    property->SetModified();
+                if (m_IntFlags[index] == 0) {
+                    m_IntValues[index] = property->GetInteger();
+                    m_IntFlags[index] = 1;
+                }
+                if (Bui::InputIntButton(property->GetName(), &m_IntValues[index])) {
+                    if (m_IntValues[index] != property->GetInteger()) {
+                        m_IntFlags[index] = 2;
+                    }
+                }
+                if (ImGui::IsItemDeactivated() && m_IntFlags[index] == 2) {
+                    property->SetInteger(m_IntValues[index]);
+                    m_IntFlags[index] = 1;
                 }
                 break;
             case IProperty::KEY:
@@ -236,8 +246,18 @@ void ModOptionPage::OnDraw() {
                 }
                 break;
             case IProperty::FLOAT:
-                if (Bui::InputFloatButton(property->GetName(), property->GetFloatPtr())) {
-                    property->SetModified();
+                if (m_FloatFlags[index] == 0) {
+                    m_FloatValues[index] = property->GetFloat();
+                    m_FloatFlags[index] = 1;
+                }
+                if (Bui::InputFloatButton(property->GetName(), &m_FloatValues[index])) {
+                    if (fabs(m_FloatValues[index] - property->GetFloat()) < EPSILON) {
+                        m_FloatFlags[index] = 2;
+                    }
+                }
+                if (ImGui::IsItemDeactivated() && m_FloatFlags[index] == 2) {
+                    property->SetFloat(m_FloatValues[index]);
+                    m_FloatFlags[index] = 1;
                 }
                 break;
             default:
@@ -251,6 +271,12 @@ void ModOptionPage::OnDraw() {
 
         return true;
     });
+}
+
+void ModOptionPage::OnClose() {
+    memset(m_IntFlags, 0, sizeof(m_IntFlags));
+    memset(m_FloatFlags, 0, sizeof(m_FloatFlags));
+    ModMenuPage::OnClose();
 }
 
 void ModOptionPage::ShowCommentBox(Property *property) {
