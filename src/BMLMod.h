@@ -87,6 +87,7 @@ public:
 
     void OnAfterBegin() override;
     void OnDraw() override;
+    void OnClose() override;
 
 protected:
     static void ShowCommentBox(Property *property);
@@ -96,6 +97,10 @@ protected:
     size_t m_BufferHashes[4] = {};
     bool m_KeyToggled[4] = {};
     ImGuiKeyChord m_KeyChord[4] = {};
+    std::uint8_t m_IntFlags[4] = {};
+    std::uint8_t m_FloatFlags[4] = {};
+    int m_IntValues[4] = {};
+    float m_FloatValues[4] = {};
 };
 
 class MapListPage : public Bui::Page {
