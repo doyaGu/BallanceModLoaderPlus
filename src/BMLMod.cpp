@@ -26,6 +26,411 @@ namespace ExecuteBB {
 
 using namespace ScriptHelper;
 
+void ModMenu::Init() {
+    m_Pages.push_back(std::make_unique<ModListPage>(this));
+    m_Pages.push_back(std::make_unique<ModPage>(this));
+    m_Pages.push_back(std::make_unique<ModOptionPage>(this));
+}
+
+void ModMenu::Shutdown() {
+    m_Pages.clear();
+}
+
+void ModMenu::OnOpen() {
+    m_Mod->OnOpenModsMenu();
+}
+
+void ModMenu::OnClose() {
+    m_Mod->OnCloseModsMenu();
+}
+
+IBML *ModMenu::GetBML() {
+    return static_cast<IBML *>(BML_GetModManager());
+}
+
+Config *ModMenu::GetConfig(IMod *mod) {
+    return BML_GetModManager()->GetConfig(mod);
+}
+
+ModMenuPage::ModMenuPage(ModMenu *menu, std::string name) : Page(std::move(name)), m_Menu(menu) {
+    m_Menu->AddPage(this);
+}
+
+ModMenuPage::~ModMenuPage() {
+    m_Menu->RemovePage(this);
+}
+
+void ModMenuPage::OnClose() {
+    SetPage(0);
+    m_Menu->ShowPrevPage();
+}
+
+void ModListPage::OnBegin() {
+    int count = ModMenu::GetBML()->GetModCount();
+    SetMaxPage(((count % 4) == 0) ? count / 4 : count / 4 + 1);
+}
+
+void ModListPage::OnDraw() {
+    const int n = GetPage() * 4;
+
+    DrawEntries([&](std::size_t index) {
+        IMod *mod = ModMenu::GetBML()->GetMod((int)(n + index));
+        if (!mod)
+            return false;
+
+        char buf[256];
+        sprintf(buf, "%s", mod->GetID());
+        if (Bui::MainButton(buf)) {
+            m_Menu->SetCurrentMod(mod);
+            m_Menu->ShowPage("Mod Page");
+        }
+        return true;
+    });
+}
+
+void ModPage::OnAfterBegin() {
+    if (!IsVisible())
+        return;
+
+    const auto menuPos = Bui::GetMenuPos();
+    const auto menuSize = Bui::GetMenuSize();
+
+    ImGui::SetCursorPosX(menuPos.x);
+    ImGui::Dummy(Bui::CoordToPixel(ImVec2(0.375f, 0.1f)));
+
+    auto *mod = m_Menu->GetCurrentMod();
+
+    ImGui::SetCursorPosX(menuPos.x);
+    WrappedText(mod->GetName(), menuSize.x, 1.2f);
+
+    snprintf(m_TextBuf, sizeof(m_TextBuf), "By %s", mod->GetAuthor());
+    ImGui::SetCursorPosX(menuPos.x);
+    WrappedText(m_TextBuf, menuSize.x);
+
+    snprintf(m_TextBuf, sizeof(m_TextBuf), "v%s", mod->GetVersion());
+    ImGui::SetCursorPosX(menuPos.x);
+    WrappedText(m_TextBuf, menuSize.x);
+
+    ImGui::SetCursorPosX(menuPos.x);
+    ImGui::NewLine();
+
+    ImGui::SetCursorPosX(menuPos.x);
+    WrappedText(mod->GetDescription(), menuSize.x);
+
+    m_Config = ModMenu::GetConfig(mod);
+    if (!m_Config)
+        return;
+
+    int count = (int) m_Config->GetCategoryCount();
+    SetMaxPage(((count % 4) == 0) ? count / 4 : count / 4 + 1);
+
+    if (m_PageIndex > 0 &&
+        LeftButton("PrevPage")) {
+        PrevPage();
+    }
+
+    if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 &&
+        RightButton("NextPage")) {
+        NextPage();
+    }
+}
+
+void ModPage::OnDraw() {
+    if (!m_Config)
+        return;
+
+    bool v = true;
+    const int n = GetPage() * 4;
+
+    DrawEntries([&](std::size_t index) {
+        Category *category = m_Config->GetCategory((int)(n + index));
+        if (!category)
+            return false;
+
+        if (Bui::LevelButton(category->GetName(), &v)) {
+            m_Menu->SetCurrentCategory(category);
+            m_Menu->ShowPage("Mod Options");
+        }
+
+        if (ImGui::IsItemHovered()) {
+            ShowCommentBox(category);
+        }
+        return true;
+    }, ImVec2(0.4031f, 0.5f), 0.06f, 4);
+}
+
+void ModPage::ShowCommentBox(Category *category) {
+    if (!category)
+        return;
+
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, Bui::GetMenuColor());
+
+    const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
+    const ImVec2 commentBoxPos(vpSize.x * 0.725f, vpSize.y * 0.4f);
+    const ImVec2 commentBoxSize(vpSize.x * 0.25f, vpSize.y * 0.2f);
+    ImGui::SetCursorScreenPos(commentBoxPos);
+    ImGui::BeginChild("ModComment", commentBoxSize);
+
+    WrappedText(category->GetName(), commentBoxSize.x);
+    WrappedText(category->GetComment(), commentBoxSize.x);
+
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+}
+
+void ModOptionPage::OnAfterBegin() {
+    m_Category = m_Menu->GetCurrentCategory();
+    if (!m_Category)
+        return;
+
+    int count = (int) m_Category->GetPropertyCount();
+    SetMaxPage(((count % 4) == 0) ? count / 4 : count / 4 + 1);
+
+    Page::OnAfterBegin();
+}
+
+void ModOptionPage::OnDraw() {
+    if (!m_Category)
+        return;
+
+    const int n = GetPage() * 4;
+
+    DrawEntries([&](std::size_t index) {
+        Property *property = m_Category->GetProperty((int)(n + index));
+        if (!property)
+            return false;
+
+        const char *name = property->GetName();
+        if (!name || name[0] == '\0')
+            return true;
+
+        switch (property->GetType()) {
+            case IProperty::STRING: {
+                if (m_BufferHashes[index] != property->GetHash()) {
+                    m_BufferHashes[index] = property->GetHash();
+                    strncpy(m_Buffers[index], property->GetString(), property->GetStringSize() + 1);
+                }
+                Bui::InputTextButton(property->GetName(), m_Buffers[index], sizeof(m_Buffers[index]));
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                    m_BufferHashes[index] = utils::HashString(m_Buffers[index]);
+                    if (m_BufferHashes[index] != property->GetHash())
+                        property->SetString(m_Buffers[index]);
+                }
+            }
+                break;
+            case IProperty::BOOLEAN:
+                if (Bui::YesNoButton(property->GetName(), property->GetBooleanPtr())) {
+                    property->SetModified();
+                }
+                break;
+            case IProperty::INTEGER:
+                if (Bui::InputIntButton(property->GetName(), property->GetIntegerPtr())) {
+                    property->SetModified();
+                }
+                break;
+            case IProperty::KEY:
+                m_KeyChord[index] = Bui::CKKeyToImGuiKey(property->GetKey());
+                if (Bui::KeyButton(property->GetName(), &m_KeyToggled[index], &m_KeyChord[index])) {
+                    m_KeyChord[index] &= ~ImGuiMod_Mask_;
+                    property->SetKey(Bui::ImGuiKeyToCKKey(static_cast<ImGuiKey>(m_KeyChord[index])));
+                }
+                break;
+            case IProperty::FLOAT:
+                if (Bui::InputFloatButton(property->GetName(), property->GetFloatPtr())) {
+                    property->SetModified();
+                }
+                break;
+            default:
+                ImGui::Dummy(Bui::GetButtonSize(Bui::BUTTON_OPTION));
+                break;
+        }
+
+        if (ImGui::IsItemHovered()) {
+            ShowCommentBox(property);
+        }
+
+        return true;
+    });
+}
+
+void ModOptionPage::ShowCommentBox(Property *property) {
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, Bui::GetMenuColor());
+
+    const ImVec2& vpSize = ImGui::GetMainViewport()->Size;
+    const ImVec2 commentBoxPos(vpSize.x * 0.725f, vpSize.y * 0.35f);
+    const ImVec2 commentBoxSize(vpSize.x * 0.25f, vpSize.y * 0.3f);
+    ImGui::SetCursorScreenPos(commentBoxPos);
+    ImGui::BeginChild("ModOptionComment", commentBoxSize);
+
+    WrappedText(property->GetName(), commentBoxSize.x);
+    WrappedText(property->GetComment(), commentBoxSize.x);
+
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+}
+
+void MapListPage::OnAfterBegin() {
+    if (!IsVisible())
+        return;
+
+    ImGui::SetCursorScreenPos(Bui::GetMenuPos());
+
+    DrawCenteredText(m_Name.c_str());
+
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, Bui::GetMenuColor());
+
+    const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
+    ImGui::SetCursorScreenPos(ImVec2(vpSize.x * 0.4f, vpSize.y * 0.18f));
+    ImGui::SetNextItemWidth(vpSize.x * 0.2f);
+
+    if (ImGui::InputText("##SearchBar", m_MapSearchBuf, IM_ARRAYSIZE(m_MapSearchBuf))) {
+        OnSearchMaps();
+    }
+
+    ImGui::PopStyleColor();
+
+    int count = (m_MapSearchBuf[0] == '\0') ? (int) m_Maps.size() : (int) m_MapSearchResult.size();
+    SetMaxPage(((count % 4) == 0) ? count / 4 : count / 4 + 1);
+
+    if (m_PageIndex > 0 &&
+        LeftButton("PrevPage")) {
+        PrevPage();
+    }
+
+    if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 &&
+        RightButton("NextPage")) {
+        NextPage();
+    }
+}
+
+void MapListPage::OnDraw() {
+    if (m_Maps.empty())
+        return;
+
+    bool v = true;
+    const int n = GetPage() * 10;
+
+    if (m_MapSearchBuf[0] == '\0') {
+        DrawEntries([&](std::size_t index) {
+            if (index >= m_Maps.size())
+                return false;
+            auto &info = m_Maps[n + index];
+            if (Bui::LevelButton(info.name.c_str(), &v)) {
+                Hide();
+                m_Mod->OnCloseMapMenu(false);
+                m_Mod->LoadMap(info.path);
+            }
+            return true;
+        }, ImVec2(0.4031f, 0.23f), 0.06f, 10);
+    } else {
+        DrawEntries([&](std::size_t index) {
+            if (index >= m_MapSearchResult.size())
+                return false;
+
+            auto &info = m_Maps[m_MapSearchResult[n + index]];
+
+            if (Bui::LevelButton(info.name.c_str(), &v)) {
+                Hide();
+                m_Mod->OnCloseMapMenu(false);
+                m_Mod->LoadMap(info.path);
+            }
+            return true;
+        }, ImVec2(0.4031f, 0.23f), 0.06f, 10);
+    }
+}
+
+bool MapListPage::OnOpen() {
+    m_Mod->OnOpenMapMenu();
+    RefreshMaps();
+    return true;
+}
+
+void MapListPage::OnClose() {
+    m_Mod->OnCloseMapMenu();
+}
+
+void MapListPage::RefreshMaps() {
+    std::wstring path = BML_GetModManager()->GetDirectory(BML_DIR_LOADER);
+    path.append(L"\\Maps");
+
+    m_Maps.clear();
+    ExploreMaps(path, m_Maps);
+}
+
+size_t MapListPage::ExploreMaps(const std::wstring &path, std::vector<MapInfo> &maps) {
+    if (path.empty() || !utils::DirectoryExists(path))
+        return 0;
+
+    std::wstring p = path + L"\\*";
+    _wfinddata_t fileinfo = {};
+    auto handle = _wfindfirst(p.c_str(), &fileinfo);
+    if (handle == -1)
+        return 0;
+
+    do {
+        if ((fileinfo.attrib & _A_SUBDIR) && wcscmp(fileinfo.name, L".") != 0 && wcscmp(fileinfo.name, L"..") != 0) {
+            ExploreMaps(p.assign(path).append(L"\\").append(fileinfo.name), maps);
+        } else {
+            std::wstring fullPath = path;
+            fullPath.append(L"\\").append(fileinfo.name);
+
+            wchar_t filename[1024];
+            wchar_t ext[64];
+            _wsplitpath(fileinfo.name, nullptr, nullptr, filename, ext);
+            if (wcsicmp(ext, L".nmo") == 0) {
+                MapInfo info;
+                char buffer[1024];
+                utils::Utf16ToUtf8(filename, buffer, sizeof(buffer));
+                info.name = buffer;
+                info.path = fullPath;
+                maps.push_back(std::move(info));
+            }
+        }
+    } while (_wfindnext(handle, &fileinfo) == 0);
+
+    _findclose(handle);
+
+    return maps.size();
+}
+
+void MapListPage::OnSearchMaps() {
+    m_MapSearchResult.clear();
+
+    if (m_MapSearchBuf[0] == '\0')
+        return;
+
+    auto *pattern = (OnigUChar *) m_MapSearchBuf;
+    regex_t *reg;
+    OnigErrorInfo einfo;
+
+    int r = onig_new(&reg, pattern, pattern + strlen((char *) pattern),
+                     ONIG_OPTION_DEFAULT, ONIG_ENCODING_UTF8, ONIG_SYNTAX_ASIS, &einfo);
+    if (r != ONIG_NORMAL) {
+        char s[ONIG_MAX_ERROR_MESSAGE_LEN];
+        onig_error_code_to_str((UChar *) s, r, &einfo);
+        m_Mod->GetLogger()->Error(s);
+        return;
+    }
+
+    for (size_t i = 0; i < m_Maps.size(); ++i) {
+        auto &name = m_Maps[i].name;
+        const auto *end = (const UChar *) (name.c_str() + name.size());
+        const auto *start = (const UChar *) name.c_str();
+        const auto *range = end;
+
+        r = onig_search(reg, start, end, start, range, nullptr, ONIG_OPTION_NONE);
+        if (r >= 0) {
+            m_MapSearchResult.push_back(i);
+        } else if (r != ONIG_MISMATCH) {
+            char s[ONIG_MAX_ERROR_MESSAGE_LEN];
+            onig_error_code_to_str((UChar *) s, r);
+            m_Mod->GetLogger()->Error(s);
+        }
+    }
+
+    onig_free(reg);
+}
+
 void BMLMod::OnLoad() {
     m_CKContext = m_BML->GetCKContext();
     m_RenderContext = m_BML->GetRenderContext();
@@ -38,6 +443,14 @@ void BMLMod::OnLoad() {
     InitConfigs();
     RegisterCommands();
     InitGUI();
+
+    m_ModMenu.Init();
+    m_MapListPage = std::make_unique<MapListPage>(this);
+}
+
+void BMLMod::OnUnload() {
+    m_ModMenu.Shutdown();
+    m_MapListPage.reset();
 }
 
 void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
@@ -229,46 +642,43 @@ void BMLMod::ClearIngameMessages() {
 }
 
 void BMLMod::OpenModsMenu() {
-    ShowMenu(MENU_MOD_LIST);
-    m_InputHook->Block(CK_INPUT_DEVICE_KEYBOARD);
+    m_ModMenu.Open("Mod List");
 }
 
-void BMLMod::ExitModsMenu() {
-    ShowPreviousMenu();
-    HideMenu();
-
-    CKBehavior *beh = m_BML->GetScriptByName("Menu_Options");
-    m_CKContext->GetCurrentScene()->Activate(beh, true);
-    m_BML->AddTimerLoop(1ul, [this] {
-        if (m_InputHook->oIsKeyDown(CKKEY_ESCAPE) || m_InputHook->oIsKeyDown(CKKEY_RETURN))
-            return true;
-        m_InputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
-        return false;
-    });
+void BMLMod::CloseModsMenu() {
+    m_ModMenu.Close();
 }
 
 void BMLMod::OpenMapMenu() {
-    ShowMenu(MENU_MAP_LIST);
-    m_InputHook->Block(CK_INPUT_DEVICE_KEYBOARD);
-
-    RefreshMaps();
+    m_MapListPage->Open();
 }
 
-void BMLMod::ExitMapMenu(bool backToMenu) {
-    ShowPreviousMenu();
-    HideMenu();
+void BMLMod::CloseMapMenu() {
+    m_MapListPage->Close();
+}
 
-    if (backToMenu) {
-        CKBehavior *beh = m_BML->GetScriptByName("Menu_Start");
-        m_CKContext->GetCurrentScene()->Activate(beh, true);
-    }
+void BMLMod::LoadMap(const std::wstring &path) {
+    if (path.empty())
+        return;
 
-    m_BML->AddTimerLoop(1ul, [this] {
-        if (m_InputHook->oIsKeyDown(CKKEY_ESCAPE) || m_InputHook->oIsKeyDown(CKKEY_RETURN))
-            return true;
-        m_InputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
-        return false;
-    });
+    std::string filename = CreateTempMapFile(path);
+    SetParamString(m_MapFile, filename.c_str());
+    SetParamValue(m_LoadCustom, TRUE);
+    int level = GetConfig()->GetProperty("Misc", "CustomMapNumber")->GetInteger();
+    level = (level >= 1 && level <= 13) ? level : rand() % 10 + 2;
+    m_CurLevel->SetElementValue(0, 0, &level);
+    level--;
+    SetParamValue(m_LevelRow, level);
+
+    CKMessageManager *mm = m_CKContext->GetMessageManager();
+    CKMessageType loadLevel = mm->AddMessageType((CKSTRING) "Load Level");
+    CKMessageType loadMenu = mm->AddMessageType((CKSTRING) "Menu_Load");
+
+    mm->SendMessageSingle(loadLevel, m_CKContext->GetCurrentLevel());
+    mm->SendMessageSingle(loadMenu, m_BML->GetGroupByName("All_Sound"));
+    m_BML->Get2dEntityByName("M_BlackScreen")->Show(CKHIDE);
+    m_ExitStart->ActivateInput(0);
+    m_ExitStart->Activate();
 }
 
 int BMLMod::GetHSScore() {
@@ -598,74 +1008,6 @@ void BMLMod::LoadFont() {
         m_Font = io.Fonts->AddFontDefault(&config);
         GetLogger()->Warn("Can not load the specific font, use default font instead.");
     }
-}
-
-void BMLMod::RefreshMaps() {
-    std::wstring path = BML_GetModManager()->GetDirectory(BML_DIR_LOADER);
-    path.append(L"\\Maps");
-
-    m_Maps.clear();
-    ExploreMaps(path, m_Maps);
-}
-
-size_t BMLMod::ExploreMaps(const std::wstring &path, std::vector<MapInfo> &maps) {
-    if (path.empty() || !utils::DirectoryExists(path))
-        return 0;
-
-    std::wstring p = path + L"\\*";
-    _wfinddata_t fileinfo = {};
-    auto handle = _wfindfirst(p.c_str(), &fileinfo);
-    if (handle == -1)
-        return 0;
-
-    do {
-        if ((fileinfo.attrib & _A_SUBDIR) && wcscmp(fileinfo.name, L".") != 0 && wcscmp(fileinfo.name, L"..") != 0) {
-            ExploreMaps(p.assign(path).append(L"\\").append(fileinfo.name), maps);
-        } else {
-            std::wstring fullPath = path;
-            fullPath.append(L"\\").append(fileinfo.name);
-
-            wchar_t filename[1024];
-            wchar_t ext[64];
-            _wsplitpath(fileinfo.name, nullptr, nullptr, filename, ext);
-            if (wcsicmp(ext, L".nmo") == 0) {
-                MapInfo info;
-                char buffer[1024];
-                utils::Utf16ToUtf8(filename, buffer, sizeof(buffer));
-                info.name = buffer;
-                info.path = fullPath;
-                maps.push_back(std::move(info));
-            }
-        }
-    } while (_wfindnext(handle, &fileinfo) == 0);
-
-    _findclose(handle);
-
-    return maps.size();
-}
-
-void BMLMod::LoadMap(const std::wstring &path) {
-    if (path.empty())
-        return;
-
-    std::string filename = CreateTempMapFile(path);
-    SetParamString(m_MapFile, filename.c_str());
-    SetParamValue(m_LoadCustom, TRUE);
-    int level = GetConfig()->GetProperty("Misc", "CustomMapNumber")->GetInteger();
-    level = (level >= 1 && level <= 13) ? level : rand() % 10 + 2;
-    m_CurLevel->SetElementValue(0, 0, &level);
-    level--;
-    SetParamValue(m_LevelRow, level);
-
-    CKMessageManager *mm = m_CKContext->GetMessageManager();
-    CKMessageType loadLevel = mm->AddMessageType((CKSTRING) "Load Level");
-    CKMessageType loadMenu = mm->AddMessageType((CKSTRING) "Menu_Load");
-
-    mm->SendMessageSingle(loadLevel, m_CKContext->GetCurrentLevel());
-    mm->SendMessageSingle(loadMenu, m_BML->GetGroupByName("All_Sound"));
-    m_BML->Get2dEntityByName("M_BlackScreen")->Show(CKHIDE);
-    m_ExitStart->ActivateInput(0);
-    m_ExitStart->Activate();
 }
 
 std::string BMLMod::CreateTempMapFile(const std::wstring &path) {
@@ -1366,548 +1708,11 @@ void BMLMod::OnProcess_Menu() {
     OnDrawMenu();
 }
 
-void BMLMod::ShowMenu(MenuId id) {
-    PushMenu(m_CurrentMenu);
-    m_CurrentMenu = id;
-}
-
-void BMLMod::ShowPreviousMenu() {
-    MenuId id = PopWindow();
-    m_CurrentMenu = id;
-}
-
-void BMLMod::HideMenu() {
-    m_CurrentMenu = MENU_NULL;
-}
-
-void BMLMod::PushMenu(MenuId id) {
-    m_MenuStack.push(id);
-}
-
-MenuId BMLMod::PopWindow() {
-    if (m_MenuStack.empty())
-        return MENU_NULL;
-    MenuId id = m_MenuStack.top();
-    m_MenuStack.pop();
-    return id;
-}
-
-constexpr ImGuiWindowFlags MenuWinFlags = ImGuiWindowFlags_NoDecoration |
-                                          ImGuiWindowFlags_NoBackground |
-                                          ImGuiWindowFlags_NoMove |
-                                          ImGuiWindowFlags_NoScrollWithMouse |
-                                          ImGuiWindowFlags_NoBringToFrontOnFocus |
-                                          ImGuiWindowFlags_NoSavedSettings;
-
 void BMLMod::OnDrawMenu() {
-    if (m_CurrentMenu == MENU_NULL)
-        return;
-
     ImGui::PushFont(m_Font);
-
-    const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
-    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Appearing);
-    ImGui::SetNextWindowSize(ImVec2(vpSize.x, vpSize.y), ImGuiCond_Appearing);
-
-    switch (m_CurrentMenu) {
-        case MENU_MOD_LIST:
-            OnDrawModList();
-            break;
-        case MENU_MOD_PAGE:
-            OnDrawModPage();
-            break;
-        case MENU_MOD_OPTIONS:
-            OnDrawModOptions();
-            break;
-        case MENU_MAP_LIST:
-            OnDrawMapList();
-            break;
-        default:
-            break;
-    }
-
+    m_ModMenu.Render();
+    m_MapListPage->Render();
     ImGui::PopFont();
-}
-
-void BMLMod::OnDrawModList() {
-    constexpr auto TitleText = "Mod List";
-
-    ImGui::Begin(TitleText, nullptr, MenuWinFlags);
-
-    {
-        float oldScale = ImGui::GetFont()->Scale;
-        ImGui::GetFont()->Scale *= 1.5f;
-        ImGui::PushFont(ImGui::GetFont());
-
-        const auto titleSize = ImGui::CalcTextSize(TitleText);
-        const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
-        ImGui::GetWindowDrawList()->AddText(ImVec2((vpSize.x - titleSize.x) / 2.0f, vpSize.y * 0.13f), IM_COL32_WHITE, TitleText);
-
-        ImGui::GetFont()->Scale = oldScale;
-        ImGui::PopFont();
-    }
-
-    const int modCount = m_BML->GetModCount();
-    const int maxPage = ((modCount % 4) == 0) ? modCount / 4 : modCount / 4 + 1;
-
-    if (m_ModListPage > 0) {
-        ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.36f, 0.124f)));
-        if (Bui::LeftButton("ModListPrevPage")) {
-            --m_ModListPage;
-        }
-    }
-
-    if (maxPage > 1 && m_ModListPage < maxPage - 1) {
-        ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.6038f, 0.124f)));
-        if (Bui::RightButton("ModListNextPage")) {
-            ++m_ModListPage;
-        }
-    }
-
-    {
-        const int n = m_ModListPage * 4;
-        for (int i = 0; i < 4 && n + i < modCount; ++i) {
-            IMod *mod = m_BML->GetMod(n + i);
-
-            char buf[256];
-            sprintf(buf, "%s", mod->GetID());
-            ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.35f, 0.24f + (float) i * 0.14f)));
-            if (Bui::MainButton(buf)) {
-                m_CurrentMod = mod;
-                ShowMenu(MENU_MOD_PAGE);
-            }
-        }
-    }
-
-    ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.4031f, 0.85f)));
-    if (Bui::BackButton("ModListBack") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-        m_ModListPage = 0;
-        ExitModsMenu();
-    }
-
-    ImGui::End();
-}
-
-void BMLMod::OnDrawModPage() {
-    if (!m_CurrentMod)
-        return;
-
-    constexpr auto TitleText = "Mod Options";
-
-    ImGui::Begin("Mod Page", nullptr, MenuWinFlags);
-
-    ImGui::Dummy(Bui::CoordToScreenPos(ImVec2(0.375f, 0.1f)));
-
-    const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
-    const float menuX = vpSize.x * 0.3f;
-    const float menuWidth = vpSize.x * 0.4f;
-
-    {
-        float oldScale = ImGui::GetFont()->Scale;
-        ImGui::GetFont()->Scale *= 1.2f;
-        ImGui::PushFont(ImGui::GetFont());
-
-        const float textWidth = ImGui::CalcTextSize(m_CurrentMod->GetName()).x;
-        ImGui::SetCursorPosX(menuX + (menuWidth - textWidth) * 0.5f);
-        ImGui::TextUnformatted(m_CurrentMod->GetName());
-
-        ImGui::GetFont()->Scale = oldScale;
-        ImGui::PopFont();
-    }
-
-    char buf[256];
-
-    {
-        snprintf(buf, sizeof(buf), "By %s", m_CurrentMod->GetAuthor());
-        const float textWidth = ImGui::CalcTextSize(buf).x;
-        const float indent = (menuWidth - textWidth) * 0.5f;
-        if (indent > 0) {
-            ImGui::SetCursorPosX(menuX + indent);
-            ImGui::PushTextWrapPos(menuX + indent + textWidth);
-        } else {
-            ImGui::SetCursorPosX(menuX - indent);
-            ImGui::PushTextWrapPos(menuX + menuWidth);
-        }
-        ImGui::TextUnformatted(buf);
-        ImGui::PopTextWrapPos();
-    }
-
-    {
-        snprintf(buf, sizeof(buf), "v%s", m_CurrentMod->GetVersion());
-        const float textWidth = ImGui::CalcTextSize(buf).x;
-        ImGui::SetCursorPosX(menuX + (menuWidth - textWidth) * 0.5f);
-        ImGui::TextUnformatted(buf);
-    }
-
-    ImGui::NewLine();
-
-    {
-        const float textWidth = ImGui::CalcTextSize(m_CurrentMod->GetDescription()).x;
-        const float indent = (menuWidth - textWidth) * 0.5f;
-        if (indent > 0) {
-            ImGui::SetCursorPosX(menuX + indent);
-            ImGui::PushTextWrapPos(menuX + indent + textWidth);
-        } else {
-            ImGui::SetCursorPosX(menuX - indent);
-            ImGui::PushTextWrapPos(menuX + menuWidth);
-        }
-        ImGui::TextUnformatted(m_CurrentMod->GetDescription());
-        ImGui::PopTextWrapPos();
-    }
-
-    auto *config = BML_GetModManager()->GetConfig(m_CurrentMod);
-    if (config) {
-        float y = ImGui::GetCursorScreenPos().y;
-
-        {
-            float oldScale = ImGui::GetFont()->Scale;
-            ImGui::GetFont()->Scale *= 1.5f;
-            ImGui::PushFont(ImGui::GetFont());
-
-            const auto titleSize = ImGui::CalcTextSize(TitleText);
-            ImGui::GetWindowDrawList()->AddText(ImVec2((vpSize.x - titleSize.x) / 2.0f, y + vpSize.y * 0.06f),
-                                                IM_COL32_WHITE, TitleText);
-
-            ImGui::GetFont()->Scale = oldScale;
-            ImGui::PopFont();
-        }
-
-        const int categoryCount = (int) config->GetCategoryCount();
-        const int maxPage = ((categoryCount % 4) == 0) ? categoryCount / 4 : categoryCount / 4 + 1;
-
-        if (m_ModPage > 0) {
-            ImGui::SetCursorScreenPos(ImVec2(vpSize.x * 0.36f, y + vpSize.y * 0.054f));
-            if (Bui::LeftButton("ModPrevPage")) {
-                --m_ModPage;
-            }
-        }
-
-        if (maxPage > 1 && m_ModPage < maxPage - 1) {
-            ImGui::SetCursorScreenPos(ImVec2(vpSize.x * 0.6038f, y + vpSize.y * 0.054f));
-            if (Bui::RightButton("ModNextPage")) {
-                ++m_ModPage;
-            }
-        }
-
-        {
-            bool v = true;
-            const int n = m_ModPage * 4;
-            for (int i = 0; i < 4 && n + i < categoryCount; ++i) {
-                Category *category = config->GetCategory(n + i);
-                ImGui::SetCursorScreenPos(ImVec2(vpSize.x * 0.4031f, y + vpSize.y * (0.13f + (float) i * 0.06f)));
-                if (Bui::LevelButton(category->GetName(), &v)) {
-                    m_CurrentCategory = category;
-                    ShowMenu(MENU_MOD_OPTIONS);
-                }
-
-                if (ImGui::IsItemHovered()) {
-                    ImGui::PushStyleColor(ImGuiCol_ChildBg, Bui::GetMenuColor());
-
-                    const ImVec2 commentBoxPos(vpSize.x * 0.725f, vpSize.y * 0.4f);
-                    const ImVec2 commentBoxSize(vpSize.x * 0.25f, vpSize.y * 0.2f);
-                    ImGui::SetCursorScreenPos(commentBoxPos);
-                    ImGui::BeginChild("ModComment", commentBoxSize);
-
-                    {
-                        const float textWidth = ImGui::CalcTextSize(category->GetName()).x;
-                        const float indent = (commentBoxSize.x - textWidth) * 0.5f;
-                        if (indent > 0) {
-                            ImGui::SetCursorPosX(indent);
-                            ImGui::PushTextWrapPos(indent + textWidth);
-                        } else {
-                            ImGui::PushTextWrapPos(commentBoxSize.x);
-                        }
-                        ImGui::TextUnformatted(category->GetName());
-                        ImGui::PopTextWrapPos();
-                    }
-
-                    {
-                        const float textWidth = ImGui::CalcTextSize(category->GetComment()).x;
-                        const float indent = (commentBoxSize.x - textWidth) * 0.5f;
-                        if (indent > 0) {
-                            ImGui::SetCursorPosX(indent);
-                            ImGui::PushTextWrapPos(indent + textWidth);
-                        } else {
-                            ImGui::PushTextWrapPos(commentBoxSize.x);
-                        }
-                        ImGui::TextUnformatted(category->GetComment());
-                        ImGui::PopTextWrapPos();
-                    }
-
-                    ImGui::EndChild();
-                    ImGui::PopStyleColor();
-                }
-            }
-        }
-    }
-
-    ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.4031f, 0.85f)));
-    if (Bui::BackButton("ModBack") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-        m_ModPage = 0;
-        ShowPreviousMenu();
-    }
-
-    ImGui::End();
-}
-
-void BMLMod::OnDrawModOptions() {
-    if (!m_CurrentCategory)
-        return;
-
-    ImGui::Begin("Mod Options", nullptr, MenuWinFlags);
-
-    {
-        float oldScale = ImGui::GetFont()->Scale;
-        ImGui::GetFont()->Scale *= 1.5f;
-        ImGui::PushFont(ImGui::GetFont());
-
-        const auto titleSize = ImGui::CalcTextSize(m_CurrentCategory->GetName());
-        const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
-        ImGui::GetWindowDrawList()->AddText(ImVec2((vpSize.x - titleSize.x) / 2.0f, vpSize.y * 0.13f), IM_COL32_WHITE,
-                                            m_CurrentCategory->GetName());
-
-        ImGui::GetFont()->Scale = oldScale;
-        ImGui::PopFont();
-    }
-
-    const int optionCount = (int) m_CurrentCategory->GetPropertyCount();
-    const int maxPage = ((optionCount % 4) == 0) ? optionCount / 4 : optionCount / 4 + 1;
-
-    if (m_ModOptionPage > 0) {
-        ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.36f, 0.124f)));
-        if (Bui::LeftButton("ModOptionPrevPage")) {
-            --m_ModOptionPage;
-        }
-    }
-
-    if (maxPage > 1 && m_ModOptionPage < maxPage - 1) {
-        ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.6038f, 0.124f)));
-        if (Bui::RightButton("ModOptionNextPage")) {
-            ++m_ModOptionPage;
-        }
-    }
-
-    {
-        static char buffers[4][4096];
-        static size_t bufferHashes[4];
-        static bool keyToggled[4];
-        static ImGuiKeyChord keyChord[4];
-
-        const int n = m_ModOptionPage * 4;
-        for (int i = 0; i < 4 && n + i < optionCount; ++i) {
-            Property *property = m_CurrentCategory->GetProperty(n + i);
-            ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.35f, 0.24f + (float) i * 0.14f)));
-            switch (property->GetType()) {
-                case IProperty::STRING: {
-                    if (bufferHashes[i] != property->GetHash()) {
-                        bufferHashes[i] = property->GetHash();
-                        strncpy(buffers[i], property->GetString(), property->GetStringSize() + 1);
-                    }
-                    Bui::InputTextButton(property->GetName(), buffers[i], sizeof(buffers[i]));
-                    if (ImGui::IsItemDeactivatedAfterEdit()) {
-                        bufferHashes[i] = utils::HashString(buffers[i]);
-                        if (bufferHashes[i] != property->GetHash())
-                            property->SetString(buffers[i]);
-                    }
-                }
-                    break;
-                case IProperty::BOOLEAN:
-                    if (Bui::YesNoButton(property->GetName(), property->GetBooleanPtr())) {
-                        property->SetModified();
-                    }
-                    break;
-                case IProperty::INTEGER:
-                    if (Bui::InputIntButton(property->GetName(), property->GetIntegerPtr())) {
-                        property->SetModified();
-                    }
-                    break;
-                case IProperty::KEY:
-                    keyChord[i] = Bui::CKKeyToImGuiKey(property->GetKey());
-                    if (Bui::KeyButton(property->GetName(), &keyToggled[i], &keyChord[i])) {
-                        keyChord[i] &= ~ImGuiMod_Mask_;
-                        property->SetKey(Bui::ImGuiKeyToCKKey(static_cast<ImGuiKey>(keyChord[i])));
-                    }
-                    break;
-                case IProperty::FLOAT:
-                    if (Bui::InputFloatButton(property->GetName(), property->GetFloatPtr())) {
-                        property->SetModified();
-                    }
-                    break;
-                default:
-                    ImGui::Dummy(Bui::GetButtonSize(Bui::BUTTON_OPTION));
-                    break;
-            }
-
-            if (ImGui::IsItemHovered()) {
-                ImGui::PushStyleColor(ImGuiCol_ChildBg, Bui::GetMenuColor());
-
-                ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
-                const ImVec2 commentBoxPos(vpSize.x * 0.725f, vpSize.y * 0.4f);
-                const ImVec2 commentBoxSize(vpSize.x * 0.25f, vpSize.y * 0.2f);
-                ImGui::SetCursorScreenPos(commentBoxPos);
-                ImGui::BeginChild("ModComment", commentBoxSize);
-
-                {
-                    const float textWidth = ImGui::CalcTextSize(property->GetName()).x;
-                    const float indent = (commentBoxSize.x - textWidth) * 0.5f;
-                    if (indent > 0) {
-                        ImGui::SetCursorPosX(indent);
-                        ImGui::PushTextWrapPos(indent + textWidth);
-                    } else {
-                        ImGui::PushTextWrapPos(commentBoxSize.x);
-                    }
-                    ImGui::TextUnformatted(property->GetName());
-                    ImGui::PopTextWrapPos();
-                }
-
-                {
-                    const float textWidth = ImGui::CalcTextSize(property->GetComment()).x;
-                    const float indent = (commentBoxSize.x - textWidth) * 0.5f;
-                    if (indent > 0) {
-                        ImGui::SetCursorPosX(indent);
-                        ImGui::PushTextWrapPos(indent + textWidth);
-                    } else {
-                        ImGui::PushTextWrapPos(commentBoxSize.x);
-                    }
-                    ImGui::TextUnformatted(property->GetComment());
-                    ImGui::PopTextWrapPos();
-                }
-
-                ImGui::EndChild();
-                ImGui::PopStyleColor();
-            }
-        }
-    }
-
-    ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.4031f, 0.85f)));
-    if (Bui::BackButton("ModOptionsBack") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-        m_ModOptionPage = 0;
-        ShowPreviousMenu();
-    }
-
-    ImGui::End();
-}
-
-void BMLMod::OnDrawMapList() {
-    constexpr auto TitleText = "Custom Maps";
-
-    ImGui::Begin(TitleText, nullptr, MenuWinFlags);
-
-    const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
-
-    {
-        float oldScale = ImGui::GetFont()->Scale;
-        ImGui::GetFont()->Scale *= 1.5f;
-        ImGui::PushFont(ImGui::GetFont());
-
-        const auto titleSize = ImGui::CalcTextSize(TitleText);
-        ImGui::GetWindowDrawList()->AddText(ImVec2((vpSize.x - titleSize.x) / 2.0f, vpSize.y * 0.07f), IM_COL32_WHITE,
-                                            TitleText);
-
-        ImGui::GetFont()->Scale = oldScale;
-        ImGui::PopFont();
-    }
-
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, Bui::GetMenuColor());
-
-    ImGui::SetCursorScreenPos(ImVec2(vpSize.x * 0.4f, vpSize.y * 0.18f));
-    ImGui::SetNextItemWidth(vpSize.x * 0.2f);
-
-    if (ImGui::InputText("##SearchBar", m_MapSearchBuf, IM_ARRAYSIZE(m_MapSearchBuf))) {
-        OnSearchMaps();
-    }
-
-    ImGui::PopStyleColor();
-
-    int mapCount = (m_MapSearchBuf[0] == '\0') ? (int) m_Maps.size() : (int) m_MapSearchResult.size();
-    int maxPage = ((mapCount % 10) == 0) ? mapCount / 10 : mapCount / 10 + 1;
-
-    ImGui::SetCursorScreenPos(ImVec2(vpSize.x * 0.34f, vpSize.y * 0.4f));
-    if (Bui::LeftButton("MapListPrevPage")) {
-        if (m_MapPage == 0) {
-            ExitMapMenu();
-        } else if (m_MapPage > 0) {
-            --m_MapPage;
-        }
-    }
-
-    if (maxPage > 1 && m_MapPage < maxPage - 1) {
-        ImGui::SetCursorScreenPos(ImVec2(vpSize.x * 0.6238f, vpSize.y * 0.4f));
-        if (Bui::RightButton("MapListNextPage")) {
-            ++m_MapPage;
-        }
-    }
-
-    bool v = true;
-    const int n = m_MapPage * 10;
-
-    if (m_MapSearchBuf[0] == '\0') {
-        for (int i = 0; i < 10 && n + i < mapCount; ++i) {
-            auto &info = m_Maps[n + i];
-
-            ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.4031f, 0.23f + (float) i * 0.06f)));
-            if (Bui::LevelButton(info.name.c_str(), &v)) {
-                ExitMapMenu(false);
-                LoadMap(info.path);
-            }
-        }
-    } else {
-        for (int i = 0; i < 10 && n + i < mapCount; ++i) {
-            auto &info = m_Maps[m_MapSearchResult[n + i]];
-
-            ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.4031f, 0.23f + (float) i * 0.06f)));
-            if (Bui::LevelButton(info.name.c_str(), &v)) {
-                ExitMapMenu(false);
-                LoadMap(info.path);
-            }
-        }
-    }
-
-    ImGui::SetCursorScreenPos(Bui::CoordToScreenPos(ImVec2(0.4031f, 0.85f)));
-    if (Bui::BackButton("MapListBack") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-        m_MapPage = 0;
-        ExitMapMenu();
-    }
-
-    ImGui::End();
-}
-
-void BMLMod::OnSearchMaps() {
-    m_MapSearchResult.clear();
-
-    if (m_MapSearchBuf[0] == '\0')
-        return;
-
-    auto *pattern = (OnigUChar *) m_MapSearchBuf;
-    regex_t *reg;
-    OnigErrorInfo einfo;
-
-    int r = onig_new(&reg, pattern, pattern + strlen((char *) pattern),
-                     ONIG_OPTION_DEFAULT, ONIG_ENCODING_UTF8, ONIG_SYNTAX_ASIS, &einfo);
-    if (r != ONIG_NORMAL) {
-        char s[ONIG_MAX_ERROR_MESSAGE_LEN];
-        onig_error_code_to_str((UChar *) s, r, &einfo);
-        GetLogger()->Error(s);
-        return;
-    }
-
-    for (size_t i = 0; i < m_Maps.size(); ++i) {
-        auto &name = m_Maps[i].name;
-        const auto *end = (const UChar *) (name.c_str() + name.size());
-        const auto *start = (const UChar *) name.c_str();
-        const auto *range = end;
-
-        r = onig_search(reg, start, end, start, range, nullptr, ONIG_OPTION_NONE);
-        if (r >= 0) {
-            m_MapSearchResult.push_back(i);
-        } else if (r != ONIG_MISMATCH) {
-            char s[ONIG_MAX_ERROR_MESSAGE_LEN];
-            onig_error_code_to_str((UChar *) s, r);
-            GetLogger()->Error(s);
-        }
-    }
-
-    onig_free(reg);
 }
 
 void BMLMod::OnResize() {
@@ -1932,4 +1737,37 @@ void BMLMod::OnResize() {
             CKReadObjectState(cam, chunk);
         }
     }
+}
+
+void BMLMod::OnOpenModsMenu() {
+    m_InputHook->Block(CK_INPUT_DEVICE_KEYBOARD);
+}
+
+void BMLMod::OnCloseModsMenu() {
+    CKBehavior *beh = m_BML->GetScriptByName("Menu_Options");
+    m_CKContext->GetCurrentScene()->Activate(beh, true);
+    m_BML->AddTimerLoop(1ul, [this] {
+        if (m_InputHook->oIsKeyDown(CKKEY_ESCAPE) || m_InputHook->oIsKeyDown(CKKEY_RETURN))
+            return true;
+        m_InputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
+        return false;
+    });
+}
+
+void BMLMod::OnOpenMapMenu() {
+    m_InputHook->Block(CK_INPUT_DEVICE_KEYBOARD);
+}
+
+void BMLMod::OnCloseMapMenu(bool backToMenu) {
+    if (backToMenu) {
+        CKBehavior *beh = m_BML->GetScriptByName("Menu_Start");
+        m_CKContext->GetCurrentScene()->Activate(beh, true);
+    }
+
+    m_BML->AddTimerLoop(1ul, [this] {
+        if (m_InputHook->oIsKeyDown(CKKEY_ESCAPE) || m_InputHook->oIsKeyDown(CKKEY_RETURN))
+            return true;
+        m_InputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
+        return false;
+    });
 }

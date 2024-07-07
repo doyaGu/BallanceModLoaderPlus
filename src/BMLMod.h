@@ -3,27 +3,16 @@
 
 #include <string>
 #include <vector>
-#include <stack>
 
-#include "BML/ICommand.h"
 #include "BML/IMod.h"
+#include "BML/IBML.h"
+#include "BML/Bui.h"
 
-#include "imgui.h"
+#include "Config.h"
 
 #define MSG_MAXSIZE 35
 
-class Config;
-class Category;
-class Property;
-class InputHook;
-
-enum MenuId {
-    MENU_NULL = 0,
-    MENU_MOD_LIST,
-    MENU_MOD_PAGE,
-    MENU_MOD_OPTIONS,
-    MENU_MAP_LIST,
-};
+class BMLMod;
 
 enum HudTypes {
     HUD_TITLE = 1,
@@ -31,14 +20,117 @@ enum HudTypes {
     HUD_SR = 4,
 };
 
-struct MapInfo {
-    std::string name;
-    std::wstring path;
+class ModMenu;
+
+class ModMenuPage : public Bui::Page {
+public:
+    ModMenuPage(ModMenu *menu, std::string name);
+    ~ModMenuPage() override;
+
+    void OnClose() override;
+
+protected:
+    ModMenu *m_Menu;
+};
+
+class ModMenu : public Bui::Menu {
+public:
+    explicit ModMenu(BMLMod *mod) : m_Mod(mod) {}
+
+    void Init();
+    void Shutdown();
+
+    IMod *GetCurrentMod() const { return m_CurrentMod; };
+    void SetCurrentMod(IMod *mod) { m_CurrentMod = mod; };
+
+    Category *GetCurrentCategory() const { return m_CurrentCategory; };
+    void SetCurrentCategory(Category *category) { m_CurrentCategory = category; };
+
+    void OnOpen() override;
+    void OnClose() override;
+
+    static IBML *GetBML();
+    static Config *GetConfig(IMod *mod);
+
+private:
+    BMLMod *m_Mod;
+    IMod *m_CurrentMod = nullptr;
+    Category *m_CurrentCategory = nullptr;
+    std::vector<std::unique_ptr<ModMenuPage>> m_Pages;
+};
+
+class ModListPage : public ModMenuPage {
+public:
+    explicit ModListPage(ModMenu *menu) : ModMenuPage(menu, "Mod List") {}
+
+    void OnBegin() override;
+    void OnDraw() override;
+};
+
+class ModPage : public ModMenuPage {
+public:
+    explicit ModPage(ModMenu *menu) : ModMenuPage(menu, "Mod Page") {}
+
+    void OnAfterBegin() override;
+    void OnDraw() override;
+
+protected:
+    static void ShowCommentBox(Category *category);
+
+    Config *m_Config = nullptr;
+    char m_TextBuf[1024] = {};
+};
+
+class ModOptionPage : public ModMenuPage {
+public:
+    explicit ModOptionPage(ModMenu *menu) : ModMenuPage(menu, "Mod Options") {}
+
+    void OnAfterBegin() override;
+    void OnDraw() override;
+
+protected:
+    static void ShowCommentBox(Property *property);
+
+    Category *m_Category = nullptr;
+    char m_Buffers[4][4096] = {};
+    size_t m_BufferHashes[4] = {};
+    bool m_KeyToggled[4] = {};
+    ImGuiKeyChord m_KeyChord[4] = {};
+};
+
+class MapListPage : public Bui::Page {
+public:
+    explicit MapListPage(BMLMod *mod) : Page("Custom Maps"), m_Mod(mod) {}
+    ~MapListPage() override = default;
+
+    void OnAfterBegin() override;
+    void OnDraw() override;
+
+    bool OnOpen() override;
+    void OnClose() override;
+
+    void RefreshMaps();
+
+private:
+    struct MapInfo {
+        std::string name;
+        std::wstring path;
+    };
+
+    size_t ExploreMaps(const std::wstring &path, std::vector<MapInfo> &maps);
+    void OnSearchMaps();
+
+    BMLMod *m_Mod;
+    char m_MapSearchBuf[65536] = {};
+    std::vector<size_t> m_MapSearchResult;
+    std::vector<MapInfo> m_Maps;
 };
 
 class BMLMod : public IMod {
+    friend class ModMenu;
+    friend class MapListPage;
 public:
-    explicit BMLMod(IBML *bml) : IMod(bml) {}
+    explicit BMLMod(IBML *bml) : IMod(bml), m_ModMenu(this) {}
 
     const char *GetID() override { return "BML"; }
     const char *GetVersion() override { return BML_VERSION; }
@@ -51,6 +143,7 @@ public:
     DECLARE_BML_VERSION;
 
     void OnLoad() override;
+    void OnUnload() override;
     void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName,
                       CK_CLASSID filterClass, CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials,
                       CKBOOL dynamic, XObjectArray *objArray, CKObject *masterObj) override;
@@ -71,10 +164,12 @@ public:
     void ClearIngameMessages();
 
     void OpenModsMenu();
-    void ExitModsMenu();
+    void CloseModsMenu();
 
     void OpenMapMenu();
-    void ExitMapMenu(bool backToMenu = true);
+    void CloseMapMenu();
+
+    void LoadMap(const std::wstring &path);
 
     float GetSRScore() const { return m_SRTimer; }
     int GetHSScore();
@@ -94,10 +189,6 @@ private:
     void InitGUI();
     void LoadFont();
 
-    void RefreshMaps();
-    size_t ExploreMaps(const std::wstring &path, std::vector<MapInfo> &maps);
-
-    void LoadMap(const std::wstring &path);
     std::string CreateTempMapFile(const std::wstring &path);
 
     void OnEditScript_Base_EventHandler(CKBehavior *script);
@@ -115,21 +206,14 @@ private:
     void OnProcess_CommandBar();
     void OnProcess_Menu();
 
-    void ShowMenu(MenuId id);
-    void ShowPreviousMenu();
-    void HideMenu();
-
-    void PushMenu(MenuId id);
-    MenuId PopWindow();
-
     void OnDrawMenu();
-    void OnDrawModList();
-    void OnDrawModPage();
-    void OnDrawModOptions();
-    void OnDrawMapList();
-
-    void OnSearchMaps();
     void OnResize();
+
+    void OnOpenModsMenu();
+    void OnCloseModsMenu();
+
+    void OnOpenMapMenu();
+    void OnCloseMapMenu(bool backToMenu = true);
 
     CKContext *m_CKContext = nullptr;
     CKRenderContext *m_RenderContext = nullptr;
@@ -141,16 +225,8 @@ private:
 
     ImFont *m_Font = nullptr;
 
-    MenuId m_CurrentMenu = MENU_NULL;
-    std::stack<MenuId> m_MenuStack;
-
-    int m_ModListPage = 0;
-    int m_ModPage = 0;
-    int m_ModOptionPage = 0;
-    int m_MapPage = 0;
-
-    IMod *m_CurrentMod = nullptr;
-    Category *m_CurrentCategory = nullptr;
+    ModMenu m_ModMenu;
+    std::unique_ptr<MapListPage> m_MapListPage;
 
 #ifndef NDEBUG
     bool m_ShowImGuiDemo = false;
@@ -201,10 +277,6 @@ private:
 
     CKBehaviorLink *m_OverclockLinks[3] = {};
     CKBehaviorIO *m_OverclockLinkIO[3][2] = {};
-
-    char m_MapSearchBuf[65536] = {};
-    std::vector<size_t> m_MapSearchResult;
-    std::vector<MapInfo> m_Maps;
 };
 
 #endif // BML_BMLMOD_H

@@ -949,7 +949,7 @@ namespace Bui {
     }
 
     ImVec2 GetButtonSize(ButtonType type) {
-        return CoordToScreenPos(g_ButtonSizes[type]);
+        return CoordToPixel(g_ButtonSizes[type]);
     }
 
     float GetButtonIndent(ButtonType type) {

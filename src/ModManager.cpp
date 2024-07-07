@@ -354,6 +354,8 @@ int ModManager::GetModCount() {
 }
 
 IMod *ModManager::GetMod(int index) {
+    if (index < 0 || index >= (int) m_Mods.size())
+        return nullptr;
     return m_Mods[index];
 }
 
@@ -391,6 +393,8 @@ int ModManager::GetCommandCount() const {
 }
 
 ICommand *ModManager::GetCommand(int index) const {
+    if (index < 0 || index >= (int) m_Commands.size())
+        return nullptr;
     return m_Commands[index];
 }
 
