@@ -41,6 +41,9 @@ void ModMenu::OnOpen() {
 }
 
 void ModMenu::OnClose() {
+    for (auto &page : m_Pages) {
+        page->SetPage(0);
+    }
     m_Mod->OnCloseModsMenu();
 }
 
@@ -61,7 +64,6 @@ ModMenuPage::~ModMenuPage() {
 }
 
 void ModMenuPage::OnClose() {
-    SetPage(0);
     m_Menu->ShowPrevPage();
 }
 
