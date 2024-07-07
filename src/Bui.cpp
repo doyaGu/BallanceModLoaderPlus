@@ -1225,12 +1225,15 @@ namespace Bui {
         ImVec2 size = GetButtonSize(BUTTON_OPTION);
         const ImRect bb(pos, ImVec2(pos.x + size.x, pos.y + size.y));
 
+        ImGui::BeginGroup();
+
         ImGui::SetNextItemAllowOverlap();
         ImGui::ItemSize(bb);
         if (!ImGui::ItemAdd(bb, id))
             return false;
 
-        bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_RectOnly);
+        bool hovered, held;
+        ImGui::ButtonBehavior(bb, id, &hovered, &held);
 
         AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
 
@@ -1239,21 +1242,12 @@ namespace Bui {
         const ImVec2 max(bb.Max.x - indent, bb.Max.y);
         ImGui::RenderTextClipped(min, max, label, nullptr, &textSize, ImVec2(0.5f, 0.21f), &bb);
 
-        if (ImGui::IsItemFocused()) {
-            if (ImGui::IsKeyDown(ImGuiKey_LeftArrow)) {
-                *v = true;
-            } else if (ImGui::IsKeyDown(ImGuiKey_RightArrow)) {
-                *v = false;
-            }
-        }
-
         ImVec2 backup = ImGui::GetCursorScreenPos();
 
         float spacing = size.x * 0.05f;
         ImVec2 smPos(pos.x + size.x * 0.27f,  pos.y + size.y * 0.43f);
         ImGui::SetCursorScreenPos(smPos);
 
-        ImGui::BeginGroup();
         ImGui::PushID(label);
 
         bool yf = *v;
@@ -1265,9 +1259,10 @@ namespace Bui {
         bool no = SmallButton("No", &nf);
 
         ImGui::PopID();
-        ImGui::EndGroup();
 
         ImGui::SetCursorScreenPos(backup);
+
+        ImGui::EndGroup();
 
         if (yes || no) {
             *v = yes;
@@ -1286,7 +1281,6 @@ namespace Bui {
         if (window->SkipItems)
             return false;
 
-        const ImGuiStyle& style = ImGui::GetStyle();
         const ImGuiID id = window->GetID(label);
         const ImVec2 textSize = ImGui::CalcTextSize(label, nullptr, true);
 
@@ -1294,12 +1288,15 @@ namespace Bui {
         ImVec2 size = GetButtonSize(BUTTON_OPTION);
         const ImRect bb(pos, ImVec2(pos.x + size.x, pos.y + size.y));
 
+        ImGui::BeginGroup();
+
         ImGui::SetNextItemAllowOverlap();
         ImGui::ItemSize(bb);
         if (!ImGui::ItemAdd(bb, id))
             return false;
 
-        bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_RectOnly);
+        bool hovered, held;
+        ImGui::ButtonBehavior(bb, id, &hovered, &held);
 
         AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
 
@@ -1324,6 +1321,8 @@ namespace Bui {
 
         ImGui::SetCursorScreenPos(backup);
 
+        ImGui::EndGroup();
+
         return changed;
     }
 
@@ -1332,7 +1331,6 @@ namespace Bui {
         if (window->SkipItems)
             return false;
 
-        const ImGuiStyle& style = ImGui::GetStyle();
         const ImGuiID id = window->GetID(label);
         const ImVec2 textSize = ImGui::CalcTextSize(label, nullptr, true);
 
@@ -1340,12 +1338,15 @@ namespace Bui {
         ImVec2 size = GetButtonSize(BUTTON_OPTION);
         const ImRect bb(pos, ImVec2(pos.x + size.x, pos.y + size.y));
 
+        ImGui::BeginGroup();
+
         ImGui::SetNextItemAllowOverlap();
         ImGui::ItemSize(bb);
         if (!ImGui::ItemAdd(bb, id))
             return false;
 
-        bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_RectOnly);
+        bool hovered, held;
+        ImGui::ButtonBehavior(bb, id, &hovered, &held);
 
         AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
 
@@ -1370,6 +1371,8 @@ namespace Bui {
 
         ImGui::SetCursorScreenPos(backup);
 
+        ImGui::EndGroup();
+
         return changed;
     }
 
@@ -1378,7 +1381,6 @@ namespace Bui {
         if (window->SkipItems)
             return false;
 
-        const ImGuiStyle& style = ImGui::GetStyle();
         const ImGuiID id = window->GetID(label);
         const ImVec2 textSize = ImGui::CalcTextSize(label, nullptr, true);
 
@@ -1386,12 +1388,15 @@ namespace Bui {
         ImVec2 size = GetButtonSize(BUTTON_OPTION);
         const ImRect bb(pos, ImVec2(pos.x + size.x, pos.y + size.y));
 
+        ImGui::BeginGroup();
+
         ImGui::SetNextItemAllowOverlap();
         ImGui::ItemSize(bb);
         if (!ImGui::ItemAdd(bb, id))
             return false;
 
-        bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_RectOnly);
+        bool hovered, held;
+        ImGui::ButtonBehavior(bb, id, &hovered, &held);
 
         AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
 
@@ -1418,6 +1423,8 @@ namespace Bui {
         ImGui::PopStyleColor(4);
 
         ImGui::SetCursorScreenPos(backup);
+
+        ImGui::EndGroup();
 
         return changed;
     }
