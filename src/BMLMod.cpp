@@ -989,10 +989,7 @@ void BMLMod::RegisterCommands() {
 }
 
 void BMLMod::InitGUI() {
-    ImGuiIO &io = ImGui::GetIO();
-    io.IniFilename = nullptr;
-    io.ConfigFlags = ImGuiConfigFlags_NavEnableKeyboard;
-    io.FontGlobalScale = m_WindowRect.GetHeight() / 1200.0f;
+    ImGui::GetIO().FontGlobalScale = m_WindowRect.GetHeight() / 1200.0f;
 
     LoadFont();
 
