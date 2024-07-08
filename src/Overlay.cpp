@@ -102,6 +102,11 @@ namespace Overlay {
 
         ImGuiContext *previousContext = ImGui::GetCurrentContext();
         g_ImGuiContext = ImGui::CreateContext();
+
+        ImGuiIO &io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
         ImGui::SetCurrentContext(previousContext);
 
         return g_ImGuiContext;
