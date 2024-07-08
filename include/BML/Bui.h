@@ -115,8 +115,14 @@ namespace Bui {
         bool IsHovered() const { return m_Hovered; }
 
         void SetVisibility(bool visible) {
-            if (m_Visible != visible)
+            if (m_Visible != visible) {
                 m_Visible = visible;
+                if (m_Visible) {
+                    OnShow();
+                } else {
+                    OnHide();
+                }
+            }
         }
         void ToggleVisibility() { SetVisibility(!m_Visible); }
         void Show() { SetVisibility(true); }
@@ -155,6 +161,8 @@ namespace Bui {
         virtual void OnAfterBegin() {}
         virtual void OnDraw() = 0;
         virtual void OnEnd() {}
+        virtual void OnShow() {}
+        virtual void OnHide() {}
 
     protected:
         std::string m_Name;
@@ -246,39 +254,28 @@ namespace Bui {
         }
 
         static bool BackButton(const std::string &label, const ImVec2 &pos = ImVec2(0.4031f, 0.85f)) {
-            auto oldPos = ImGui::GetCursorScreenPos();
             ImGui::SetCursorScreenPos(Bui::CoordToPixel(pos));
-            bool result = (Bui::BackButton(label.c_str()) || ImGui::IsKeyPressed(ImGuiKey_Escape));
-            ImGui::SetCursorScreenPos(oldPos);
-            return result;
+            return (Bui::BackButton(label.c_str()) || ImGui::IsKeyPressed(ImGuiKey_Escape));
         }
 
         static bool LeftButton(const std::string &label, const ImVec2 &pos = ImVec2(0.36f, 0.124f)) {
-            auto oldPos = ImGui::GetCursorScreenPos();
             ImGui::SetCursorScreenPos(Bui::CoordToPixel(pos));
-            bool result = (Bui::LeftButton(label.c_str()) || ImGui::IsKeyPressed(ImGuiKey_PageUp));
-            ImGui::SetCursorScreenPos(oldPos);
-            return result;
+            return (Bui::LeftButton(label.c_str()) || ImGui::IsKeyPressed(ImGuiKey_PageUp));
         }
 
         static bool RightButton(const std::string &label, const ImVec2 &pos = ImVec2(0.6038f, 0.124f)) {
-            auto oldPos = ImGui::GetCursorScreenPos();
             ImGui::SetCursorScreenPos(Bui::CoordToPixel(pos));
-            bool result = (Bui::RightButton(label.c_str()) || ImGui::IsKeyPressed(ImGuiKey_PageDown));
-            ImGui::SetCursorScreenPos(oldPos);
-            return result;
+            return (Bui::RightButton(label.c_str()) || ImGui::IsKeyPressed(ImGuiKey_PageDown));
         }
 
         static void WrappedText(const char *text, float length, float scale = 1.0f) {
             if (!text || text[0] == '\0')
                 return;
 
-            float oldPosX = ImGui::GetCursorPosX();
-
             const float width = ImGui::CalcTextSize(text).x;
             const float indent = (length - width) * 0.5f;
             if (indent > 0) {
-                ImGui::SetCursorPosX(oldPosX + indent);
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
             }
 
             ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + length);
@@ -295,8 +292,6 @@ namespace Bui {
             }
 
             ImGui::PopTextWrapPos();
-
-            ImGui::SetCursorPosX(oldPosX);
         }
 
         static void DrawCenteredText(const char *text, float y = 0.13f, float scale = 1.5f, ImU32 color = IM_COL32_WHITE) {
