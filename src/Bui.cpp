@@ -1227,13 +1227,14 @@ namespace Bui {
 
         ImGui::BeginGroup();
 
-        ImGui::SetNextItemAllowOverlap();
         ImGui::ItemSize(bb);
         if (!ImGui::ItemAdd(bb, id))
             return false;
 
         bool hovered, held;
-        ImGui::ButtonBehavior(bb, id, &hovered, &held);
+        bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
+        if (pressed)
+            *v = !*v;
 
         AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
 
@@ -1290,13 +1291,12 @@ namespace Bui {
 
         ImGui::BeginGroup();
 
-        ImGui::SetNextItemAllowOverlap();
         ImGui::ItemSize(bb);
         if (!ImGui::ItemAdd(bb, id))
             return false;
 
         bool hovered, held;
-        ImGui::ButtonBehavior(bb, id, &hovered, &held);
+        ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
 
         AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
 
@@ -1340,13 +1340,12 @@ namespace Bui {
 
         ImGui::BeginGroup();
 
-        ImGui::SetNextItemAllowOverlap();
         ImGui::ItemSize(bb);
         if (!ImGui::ItemAdd(bb, id))
             return false;
 
         bool hovered, held;
-        ImGui::ButtonBehavior(bb, id, &hovered, &held);
+        ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
 
         AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
 
@@ -1390,13 +1389,12 @@ namespace Bui {
 
         ImGui::BeginGroup();
 
-        ImGui::SetNextItemAllowOverlap();
         ImGui::ItemSize(bb);
         if (!ImGui::ItemAdd(bb, id))
             return false;
 
         bool hovered, held;
-        ImGui::ButtonBehavior(bb, id, &hovered, &held);
+        ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
 
         AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
 
