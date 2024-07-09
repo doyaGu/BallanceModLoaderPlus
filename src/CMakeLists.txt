@@ -117,9 +117,21 @@ set(IMGUI_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/imgui_impl_ck2.cpp
 )
 
+set(IMPLOT_HEADERS
+        ${IMPLOT_SOURCE_DIR}/implot.h
+        ${IMPLOT_SOURCE_DIR}/implot_internal.h
+)
+
+set(IMPLOT_SOURCES
+        ${IMPLOT_SOURCE_DIR}/implot.cpp
+        ${IMPLOT_SOURCE_DIR}/implot_items.cpp
+        ${IMPLOT_SOURCE_DIR}/implot_demo.cpp
+)
+
 add_library(BML SHARED
         ${BML_SOURCES} ${BML_PUBLIC_HEADERS} ${BML_PRIVATE_HEADERS}
         ${IMGUI_SOURCES} ${IMGUI_HEADERS}
+        ${IMPLOT_SOURCES} ${IMPLOT_HEADERS}
 )
 
 target_include_directories(BML
@@ -164,6 +176,8 @@ install(FILES
         "${IMGUI_SOURCE_DIR}/imgui.h"
         "${IMGUI_SOURCE_DIR}/imgui_internal.h"
         "${IMGUI_SOURCE_DIR}/imstb_textedit.h"
+        "${IMPLOT_SOURCE_DIR}/implot.h"
+        "${IMPLOT_SOURCE_DIR}/implot_internal.h"
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
