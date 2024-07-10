@@ -26,6 +26,78 @@ namespace ExecuteBB {
 
 using namespace ScriptHelper;
 
+static ImFont *LoadFont(const char *filename, float size, const char *ranges, bool merge = false) {
+    ImGuiIO &io = ImGui::GetIO();
+
+    if (!filename || filename[0] == '\0') {
+        ImFontConfig config;
+        config.SizePixels = 32.0f;
+        return io.Fonts->AddFontDefault(&config);
+    }
+
+    std::string path = filename;
+    if (!utils::FileExistsUtf8(path)) {
+        path = BML_GetModManager()->GetDirectoryUtf8(BML_DIR_LOADER);
+        path.append("\\Fonts\\").append(filename);
+    }
+
+    if (size <= 0)
+        size = 32.0f;
+
+    const ImWchar *glyphRanges = nullptr;
+    if (strnicmp(ranges, "ChineseFull", 11) == 0) {
+        glyphRanges = io.Fonts->GetGlyphRangesChineseFull();
+    } else if (strnicmp(ranges, "Chinese", 7) == 0) {
+        glyphRanges = io.Fonts->GetGlyphRangesChineseSimplifiedCommon();
+    } else if (strnicmp(ranges, "Cyrillic", 8) == 0) {
+        glyphRanges = io.Fonts->GetGlyphRangesCyrillic();
+    } else if (strnicmp(ranges, "Greek", 5) == 0) {
+        glyphRanges = io.Fonts->GetGlyphRangesGreek();
+    } else if (strnicmp(ranges, "Korean", 6) == 0) {
+        glyphRanges = io.Fonts->GetGlyphRangesKorean();
+    } else if (strnicmp(ranges, "Japanese", 8) == 0) {
+        glyphRanges = io.Fonts->GetGlyphRangesJapanese();
+    } else if (strnicmp(ranges, "Thai", 4) == 0) {
+        glyphRanges = io.Fonts->GetGlyphRangesThai();
+    } else if (strnicmp(ranges, "Vietnamese", 10) == 0) {
+        glyphRanges = io.Fonts->GetGlyphRangesVietnamese();
+    }
+
+    ImFontConfig config;
+    config.SizePixels = size;
+    config.MergeMode = merge;
+    if (strnicmp(ranges, "Default", 7) != 0) {
+        // Set OversampleH/OversampleV to 1 to reduce the texture size.
+        config.OversampleH = config.OversampleV = 1;
+        config.PixelSnapH = true;
+    }
+
+    return io.Fonts->AddFontFromFileTTF(path.c_str(), size, &config, glyphRanges);
+}
+
+static std::string CreateTempMapFile(const std::wstring &path) {
+    if (path.empty() || !utils::FileExistsW(path))
+        return "";
+
+    wchar_t filename[1024];
+    wchar_t ext[64];
+    _wsplitpath(path.c_str(), nullptr, nullptr, filename, ext);
+
+    size_t hash = utils::HashString(filename);
+
+    wchar_t buf[1024];
+    _snwprintf(buf, sizeof(buf) / sizeof(wchar_t),
+               L"%s\\Maps\\%8X%s", BML_GetModManager()->GetDirectory(BML_DIR_TEMP), hash, ext);
+    buf[1023] = '\0';
+
+    if (!utils::DuplicateFileW(path, buf))
+        return "";
+
+    char str[1024];
+    utils::Utf16ToAnsi(buf, str, sizeof(str));
+    return str;
+}
+
 void ModMenu::Init() {
     m_Pages.push_back(std::make_unique<ModListPage>(this));
     m_Pages.push_back(std::make_unique<ModPage>(this));
@@ -970,10 +1042,27 @@ void BMLMod::InitConfigs() {
     m_FontSize->SetComment("The size of font (pixel).");
     m_FontSize->SetDefaultFloat(32.0f);
 
-    m_FontGlyphRanges = GetConfig()->GetProperty("GUI", "FontGlyphRanges");
-    m_FontGlyphRanges->SetComment("The Unicode ranges of font glyph."
-                                  " To display Chinese characters correctly, this option should be set to Chinese or ChineseFull");
-    m_FontGlyphRanges->SetDefaultString("Default");
+    m_FontRanges = GetConfig()->GetProperty("GUI", "FontRanges");
+    m_FontRanges->SetComment("The Unicode ranges of font glyph."
+                             " To display Chinese characters correctly, this option should be set to Chinese or ChineseFull");
+    m_FontRanges->SetDefaultString("Default");
+
+    m_EnableSecondaryFont = GetConfig()->GetProperty("GUI", "EnableSecondaryFont");
+    m_EnableSecondaryFont->SetComment("Enable secondary font.");
+    m_EnableSecondaryFont->SetDefaultBoolean(false);
+
+    m_SecondaryFontFilename = GetConfig()->GetProperty("GUI", "SecondaryFontFilename");
+    m_SecondaryFontFilename->SetComment("The filename of secondary font (the font filename should end with .ttf or .otf)");
+    m_SecondaryFontFilename->SetDefaultString("unifont.otf");
+
+    m_SecondaryFontSize = GetConfig()->GetProperty("GUI", "SecondaryFontSize");
+    m_SecondaryFontSize->SetComment("The size of secondary font (pixel).");
+    m_SecondaryFontSize->SetDefaultFloat(32.0f);
+
+    m_SecondaryFontRanges = GetConfig()->GetProperty("GUI", "SecondaryFontRanges");
+    m_SecondaryFontRanges->SetComment("The Unicode ranges of secondary font glyph."
+                                      " To display Chinese characters correctly, this option should be set to Chinese or ChineseFull");
+    m_SecondaryFontRanges->SetDefaultString("Default");
 }
 
 void BMLMod::RegisterCommands() {
@@ -995,72 +1084,16 @@ void BMLMod::InitGUI() {
     io.Fonts->Flags |= ImFontAtlasFlags_NoPowerOfTwoHeight;
     io.Fonts->TexDesiredWidth = 4096;
 
-    LoadFont();
+    LoadFont(m_FontFilename->GetString(), m_FontSize->GetFloat(), m_FontRanges->GetString());
+    if (m_EnableSecondaryFont->GetBoolean()) {
+        if (strcmp(m_FontFilename->GetString(), m_SecondaryFontFilename->GetString()) != 0 ||
+            strcmp(m_FontRanges->GetString(), m_SecondaryFontRanges->GetString()) != 0)
+            LoadFont(m_SecondaryFontFilename->GetString(), m_SecondaryFontSize->GetFloat(), m_SecondaryFontRanges->GetString(), true);
+    }
+    io.Fonts->Build();
 
     Bui::InitTextures(m_CKContext);
     Bui::InitMaterials(m_CKContext);
-}
-
-void BMLMod::LoadFont() {
-    ImGuiIO &io = ImGui::GetIO();
-
-    const char *filename = m_FontFilename->GetString();
-    if (filename && filename[0] != '\0') {
-        std::string path = BML_GetModManager()->GetDirectoryUtf8(BML_DIR_LOADER);
-        path.append("\\Fonts\\").append(filename);
-
-        float size = m_FontSize->GetFloat();
-        if (size <= 0)
-            size = 32.0f;
-
-        const ImWchar *glyphRanges = nullptr;
-        const char *ranges = m_FontGlyphRanges->GetString();
-        if (strnicmp(ranges, "ChineseFull", 12) == 0) {
-            glyphRanges = io.Fonts->GetGlyphRangesChineseFull();
-        } else if (strnicmp(ranges, "Chinese", 8) == 0) {
-            glyphRanges = io.Fonts->GetGlyphRangesChineseSimplifiedCommon();
-        }
-
-        ImFontConfig config;
-        config.SizePixels = size;
-        if (strnicmp(ranges, "Chinese", 7) == 0) {
-            // Set OversampleH/OversampleV to 1 to reduce the texture size.
-            config.OversampleH = config.OversampleV = 1;
-            config.PixelSnapH = true;
-        }
-
-        m_Font = io.Fonts->AddFontFromFileTTF(path.c_str(), size, &config, glyphRanges);
-    }
-
-    if (!m_Font) {
-        ImFontConfig config;
-        config.SizePixels = 32.0f;
-        m_Font = io.Fonts->AddFontDefault(&config);
-        GetLogger()->Warn("Can not load the specific font, use default font instead.");
-    }
-}
-
-std::string BMLMod::CreateTempMapFile(const std::wstring &path) {
-    if (path.empty() || !utils::FileExistsW(path))
-        return "";
-
-    wchar_t filename[1024];
-    wchar_t ext[64];
-    _wsplitpath(path.c_str(), nullptr, nullptr, filename, ext);
-
-    size_t hash = utils::HashString(filename);
-
-    wchar_t buf[1024];
-    _snwprintf(buf, sizeof(buf) / sizeof(wchar_t),
-               L"%s\\Maps\\%8X%s", BML_GetModManager()->GetDirectory(BML_DIR_TEMP), hash, ext);
-    buf[1023] = '\0';
-
-    if (!utils::DuplicateFileW(path, buf))
-        return "";
-
-    char str[1024];
-    utils::Utf16ToAnsi(buf, str, sizeof(str));
-    return str;
 }
 
 void BMLMod::OnEditScript_Base_EventHandler(CKBehavior *script) {
@@ -1550,9 +1583,9 @@ void BMLMod::OnProcess_HUD() {
     if (ImGui::Begin("HUD", nullptr, HUDFlags)) {
         ImDrawList *drawList = ImGui::GetWindowDrawList();
 
-        float oldScale = m_Font->Scale;
-        m_Font->Scale *= 1.2f;
-        ImGui::PushFont(m_Font);
+        float oldScale = ImGui::GetFont()->Scale;
+        ImGui::GetFont()->Scale *= 1.2f;
+        ImGui::PushFont(ImGui::GetFont());
 
         if (m_ShowTitle->GetBoolean()) {
             constexpr auto TitleText = "BML Plus " BML_VERSION;
@@ -1576,7 +1609,7 @@ void BMLMod::OnProcess_HUD() {
             drawList->AddText(ImVec2(vpSize.x * 0.05f, vpSize.y * 0.8f + srSize.y), IM_COL32_WHITE, m_SRScore);
         }
 
-        m_Font->Scale = oldScale;
+        ImGui::GetFont()->Scale = oldScale;
         ImGui::PopFont();
     }
     ImGui::End();
@@ -1598,7 +1631,6 @@ void BMLMod::OnProcess_CommandBar() {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleColor(ImGuiCol_WindowBg, Bui::GetMenuColor());
-    ImGui::PushFont(m_Font);
 
     const ImVec2 vpSize = ImGui::GetMainViewport()->Size;
     ImVec2 size(vpSize.x * 0.96f, 0.0f);
@@ -1696,7 +1728,6 @@ void BMLMod::OnProcess_CommandBar() {
 
     ImGui::End();
 
-    ImGui::PopFont();
     ImGui::PopStyleColor();
     ImGui::PopStyleVar(3);
 
@@ -1739,10 +1770,8 @@ void BMLMod::OnProcess_Menu() {
 }
 
 void BMLMod::OnDrawMenu() {
-    ImGui::PushFont(m_Font);
     m_ModMenu.Render();
     m_MapListPage->Render();
-    ImGui::PopFont();
 }
 
 void BMLMod::OnResize() {
