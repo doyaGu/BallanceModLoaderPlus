@@ -303,7 +303,7 @@ void MapListPage::OnAfterBegin() {
 
     ImGui::SetCursorScreenPos(Bui::GetMenuPos());
 
-    DrawCenteredText(m_Name.c_str());
+    DrawCenteredText(m_Title.c_str());
 
     ImGui::PushStyleColor(ImGuiCol_FrameBg, Bui::GetMenuColor());
 

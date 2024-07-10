@@ -172,7 +172,11 @@ namespace Bui {
 
     class Page : public Window {
     public:
-        explicit Page(std::string name) : Window(std::move(name)) { SetVisibility(false); }
+        explicit Page(std::string name) : Window(std::move(name)), m_Title(m_Name) { SetVisibility(false); }
+        Page(std::string name, std::string title) : Window(std::move(name)), m_Title(std::move(title)) { SetVisibility(false); }
+
+        const std::string &GetTitle() const { return m_Title; }
+        void SetTitle(const std::string &title) { m_Title = title; }
 
         int GetPage() const { return m_PageIndex; }
         void SetPage(int page) {
@@ -213,7 +217,7 @@ namespace Bui {
             if (!IsVisible())
                 return;
 
-            DrawCenteredText(m_Name.c_str());
+            DrawCenteredText(m_Title.c_str());
 
             if (m_PageIndex > 0 &&
                 LeftButton("PrevPage")) {
@@ -311,6 +315,7 @@ namespace Bui {
         }
 
     protected:
+        std::string m_Title;
         int m_PageIndex = 0;
         int m_PageCount = 1;
     };
