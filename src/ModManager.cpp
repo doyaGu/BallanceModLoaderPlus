@@ -235,7 +235,7 @@ bool ModManager::Shutdown() {
 
     ShutdownHooks();
 
-    utils::DeleteDir(m_TempDir);
+    utils::DeleteDirW(m_TempDir);
 
     onig_end();
 
@@ -254,7 +254,7 @@ void ModManager::LoadMods() {
     RegisterBuiltinMods();
 
     std::wstring path = m_LoaderDir + L"\\Mods";
-    if (utils::DirectoryExists(path)) {
+    if (utils::DirectoryExistsW(path)) {
         std::vector<std::wstring> mods;
         if (ExploreMods(path, mods) == 0) {
             m_Logger->Info("No mod is found.");
@@ -899,8 +899,8 @@ void ModManager::InitDirectories() {
 
     // Set up loader directory
     m_LoaderDir = m_GameDir + L"\\ModLoader";
-    if (!utils::DirectoryExists(m_LoaderDir)) {
-        utils::CreateDir(m_LoaderDir);
+    if (!utils::DirectoryExistsW(m_LoaderDir)) {
+        utils::CreateDirW(m_LoaderDir);
     }
 
     utils::Utf16ToUtf8(m_LoaderDir.c_str(), buf, sizeof(buf));
@@ -910,8 +910,8 @@ void ModManager::InitDirectories() {
     ::GetTempPathW(MAX_PATH, path);
     wcsncat(path, L"BML", MAX_PATH);
     m_TempDir = path;
-    if (!utils::DirectoryExists(m_TempDir)) {
-        utils::CreateDir(m_TempDir);
+    if (!utils::DirectoryExistsW(m_TempDir)) {
+        utils::CreateDirW(m_TempDir);
     }
 
     utils::Utf16ToUtf8(m_TempDir.c_str(), buf, sizeof(buf));
@@ -919,8 +919,8 @@ void ModManager::InitDirectories() {
 
     // Set up config directory
     m_ConfigDir = m_LoaderDir + L"\\Configs";
-    if (!utils::DirectoryExists(m_ConfigDir)) {
-        utils::CreateDir(m_ConfigDir);
+    if (!utils::DirectoryExistsW(m_ConfigDir)) {
+        utils::CreateDirW(m_ConfigDir);
     }
 
     utils::Utf16ToUtf8(m_ConfigDir.c_str(), buf, sizeof(buf));
@@ -1096,7 +1096,7 @@ bool ModManager::GetManagers() {
 }
 
 size_t ModManager::ExploreMods(const std::wstring &path, std::vector<std::wstring> &mods) {
-    if (path.empty() || !utils::DirectoryExists(path))
+    if (path.empty() || !utils::DirectoryExistsW(path))
         return 0;
 
     std::wstring p = path + L"\\*";
@@ -1116,7 +1116,7 @@ size_t ModManager::ExploreMods(const std::wstring &path, std::vector<std::wstrin
             if (_wcsicmp(ext, L".zip") == 0) {
                 std::wstring dest = m_TempDir;
                 dest.append(L"\\Mods\\").append(filename);
-                utils::ExtractZip(fullPath, dest);
+                utils::ExtractZipW(fullPath, dest);
                 ExploreMods(dest, mods);
             } else if (_wcsicmp(ext, L".bmodp") == 0) {
                 mods.push_back(fullPath);
@@ -1389,31 +1389,31 @@ void ModManager::AddDataPath(const char *path) {
     if (dataPath[dataPath.Length() - 1] != '\\')
         dataPath << '\\';
 
-    if (utils::DirectoryExists(dataPath.CStr()) &&
+    if (utils::DirectoryExistsA(dataPath.CStr()) &&
         m_PathManager->GetPathIndex(DATA_PATH_IDX, dataPath) == -1) {
         m_PathManager->AddPath(DATA_PATH_IDX, dataPath);
 
         XString subDataPath1 = dataPath + "3D Entities\\";
-        if (utils::DirectoryExists(subDataPath1.CStr()) &&
+        if (utils::DirectoryExistsA(subDataPath1.CStr()) &&
             m_PathManager->GetPathIndex(DATA_PATH_IDX, subDataPath1) == -1) {
             m_PathManager->AddPath(DATA_PATH_IDX, subDataPath1);
         }
 
         XString subDataPath2 = dataPath + "3D Entities\\PH\\";
-        if (utils::DirectoryExists(subDataPath2.CStr()) &&
+        if (utils::DirectoryExistsA(subDataPath2.CStr()) &&
             m_PathManager->GetPathIndex(DATA_PATH_IDX, subDataPath2) == -1) {
             m_PathManager->AddPath(DATA_PATH_IDX, subDataPath2);
         }
     }
 
     XString texturePath = dataPath + "Textures\\";
-    if (utils::DirectoryExists(texturePath.CStr()) &&
+    if (utils::DirectoryExistsA(texturePath.CStr()) &&
         m_PathManager->GetPathIndex(BITMAP_PATH_IDX, texturePath) == -1) {
         m_PathManager->AddPath(BITMAP_PATH_IDX, texturePath);
     }
 
     XString soundPath = dataPath + "Sounds\\";
-    if (utils::DirectoryExists(soundPath.CStr()) &&
+    if (utils::DirectoryExistsA(soundPath.CStr()) &&
         m_PathManager->GetPathIndex(SOUND_PATH_IDX, soundPath) == -1) {
         m_PathManager->AddPath(SOUND_PATH_IDX, soundPath);
     }

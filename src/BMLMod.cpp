@@ -384,7 +384,7 @@ void MapListPage::RefreshMaps() {
 }
 
 size_t MapListPage::ExploreMaps(const std::wstring &path, std::vector<MapInfo> &maps) {
-    if (path.empty() || !utils::DirectoryExists(path))
+    if (path.empty() || !utils::DirectoryExistsW(path))
         return 0;
 
     std::wstring p = path + L"\\*";
@@ -1034,7 +1034,7 @@ void BMLMod::LoadFont() {
 }
 
 std::string BMLMod::CreateTempMapFile(const std::wstring &path) {
-    if (path.empty() || !utils::FileExists(path))
+    if (path.empty() || !utils::FileExistsW(path))
         return "";
 
     wchar_t filename[1024];
@@ -1048,7 +1048,7 @@ std::string BMLMod::CreateTempMapFile(const std::wstring &path) {
                L"%s\\Maps\\%8X%s", BML_GetModManager()->GetDirectory(BML_DIR_TEMP), hash, ext);
     buf[1023] = '\0';
 
-    if (!utils::DuplicateFile(path, buf))
+    if (!utils::DuplicateFileW(path, buf))
         return "";
 
     char str[1024];

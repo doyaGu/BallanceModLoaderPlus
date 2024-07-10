@@ -4,22 +4,30 @@
 #include <string>
 
 namespace utils {
-    bool FileExists(const std::string &file);
-    bool FileExists(const std::wstring &file);
-    bool DirectoryExists(const std::string &dir);
-    bool DirectoryExists(const std::wstring &dir);
+    bool FileExistsA(const std::string &file);
+    bool FileExistsW(const std::wstring &file);
+    bool FileExistsUtf8(const std::string &file);
+    bool DirectoryExistsA(const std::string &dir);
+    bool DirectoryExistsW(const std::wstring &dir);
+    bool DirectoryExistsUtf8(const std::string &file);
 
-    bool CreateDir(const std::string &dir);
-    bool CreateDir(const std::wstring &dir);
+    bool CreateDirA(const std::string &dir);
+    bool CreateDirW(const std::wstring &dir);
+    bool CreateDirUtf8(const std::wstring &dir);
 
-    bool CreateFileTree(const std::string &file);
-    bool CreateFileTree(const std::wstring &file);
+    bool CreateFileTreeA(const std::string &file);
+    bool CreateFileTreeW(const std::wstring &file);
+    bool CreateFileTreeUtf8(const std::string &file);
 
-    bool DeleteDir(const std::wstring &path);
+    bool DeleteDirA(const std::string &path);
+    bool DeleteDirW(const std::wstring &path);
+    bool DeleteDirUtf8(const std::string &path);
 
-    bool DuplicateFile(const std::wstring &path, const std::wstring &dest);
+    bool DuplicateFileA(const std::string &path, const std::string &dest);
+    bool DuplicateFileW(const std::wstring &path, const std::wstring &dest);
+    bool DuplicateFileUtf8(const std::string &path, const std::string &dest);
 
-    bool ExtractZip(const std::wstring &path, const std::wstring &dest);
+    bool ExtractZipW(const std::wstring &path, const std::wstring &dest);
 }
 
 #endif // BML_PATHUTILS_H
