@@ -987,7 +987,13 @@ void BMLMod::RegisterCommands() {
 }
 
 void BMLMod::InitGUI() {
-    ImGui::GetIO().FontGlobalScale = m_WindowRect.GetHeight() / 1200.0f;
+    ImGuiIO &io = ImGui::GetIO();
+
+    io.FontGlobalScale = m_WindowRect.GetHeight() / 1200.0f;
+
+    // Make sure the font atlas doesn't get too large, otherwise weaker GPUs might reject it
+    io.Fonts->Flags |= ImFontAtlasFlags_NoPowerOfTwoHeight;
+    io.Fonts->TexDesiredWidth = 4096;
 
     LoadFont();
 
@@ -1020,6 +1026,7 @@ void BMLMod::LoadFont() {
         if (strnicmp(ranges, "Chinese", 7) == 0) {
             // Set OversampleH/OversampleV to 1 to reduce the texture size.
             config.OversampleH = config.OversampleV = 1;
+            config.PixelSnapH = true;
         }
 
         m_Font = io.Fonts->AddFontFromFileTTF(path.c_str(), size, &config, glyphRanges);
