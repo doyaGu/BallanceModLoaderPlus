@@ -301,9 +301,7 @@ void MapListPage::OnAfterBegin() {
     if (!IsVisible())
         return;
 
-    ImGui::SetCursorScreenPos(Bui::GetMenuPos());
-
-    DrawCenteredText(m_Title.c_str());
+    DrawCenteredText(m_Title.c_str(), 0.07);
 
     ImGui::PushStyleColor(ImGuiCol_FrameBg, Bui::GetMenuColor());
 
@@ -318,15 +316,15 @@ void MapListPage::OnAfterBegin() {
     ImGui::PopStyleColor();
 
     int count = (m_MapSearchBuf[0] == '\0') ? (int) m_Maps.size() : (int) m_MapSearchResult.size();
-    SetMaxPage(((count % 4) == 0) ? count / 4 : count / 4 + 1);
+    SetMaxPage(((count % 10) == 0) ? count / 10 : count / 10 + 1);
 
     if (m_PageIndex > 0 &&
-        LeftButton("PrevPage")) {
+        LeftButton("PrevPage", ImVec2(0.36f, 0.4f))) {
         PrevPage();
     }
 
     if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 &&
-        RightButton("NextPage")) {
+        RightButton("NextPage", ImVec2(0.6238f, 0.4f))) {
         NextPage();
     }
 }
