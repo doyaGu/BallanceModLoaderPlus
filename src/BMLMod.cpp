@@ -373,7 +373,7 @@ void MapListPage::OnAfterBegin() {
     if (!IsVisible())
         return;
 
-    DrawCenteredText(m_Title.c_str(), 0.07);
+    DrawCenteredText(m_Title.c_str(), 0.07f);
 
     ImGui::PushStyleColor(ImGuiCol_FrameBg, Bui::GetMenuColor());
 
