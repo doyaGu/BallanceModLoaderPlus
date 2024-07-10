@@ -192,9 +192,6 @@ private:
     void InitConfigs();
     void RegisterCommands();
     void InitGUI();
-    void LoadFont();
-
-    std::string CreateTempMapFile(const std::wstring &path);
 
     void OnEditScript_Base_EventHandler(CKBehavior *script);
     void OnEditScript_Menu_MenuInit(CKBehavior *script);
@@ -227,8 +224,6 @@ private:
 
     VxRect m_OldWindowRect;
     VxRect m_WindowRect;
-
-    ImFont *m_Font = nullptr;
 
     ModMenu m_ModMenu;
     std::unique_ptr<MapListPage> m_MapListPage;
@@ -271,7 +266,11 @@ private:
 
     IProperty *m_FontFilename = nullptr;
     IProperty *m_FontSize = nullptr;
-    IProperty *m_FontGlyphRanges = nullptr;
+    IProperty *m_FontRanges = nullptr;
+    IProperty *m_EnableSecondaryFont = nullptr;
+    IProperty *m_SecondaryFontFilename = nullptr;
+    IProperty *m_SecondaryFontSize = nullptr;
+    IProperty *m_SecondaryFontRanges = nullptr;
 
     CK2dEntity *m_Level01 = nullptr;
     CKBehavior *m_ExitStart = nullptr;
