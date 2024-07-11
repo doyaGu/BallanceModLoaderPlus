@@ -124,6 +124,7 @@ private:
 
     size_t ExploreMaps(const std::wstring &path, std::vector<MapInfo> &maps);
     void OnSearchMaps();
+    bool OnDrawEntry(std::size_t index, bool *v);
 
     BMLMod *m_Mod;
     char m_MapSearchBuf[65536] = {};
