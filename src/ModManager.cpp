@@ -543,6 +543,18 @@ bool ModManager::SaveConfig(Config *config) {
     return config->Save(configPath.c_str());
 }
 
+BML::IDataShare *ModManager::GetDataShare(const char *name) {
+    if (!name)
+        return m_DataShare;
+    return BML::DataShare::GetInstance(name);
+}
+
+BML::IEventPublisher *ModManager::GetEventPublisher(const char *name) {
+    if (!name)
+        return m_EventPublisher;
+    return BML::EventPublisher::GetInstance(name);
+}
+
 const wchar_t *ModManager::GetDirectory(DirectoryType type) {
     switch (type) {
         case BML_DIR_WORKING:
@@ -1417,16 +1429,4 @@ void ModManager::AddDataPath(const char *path) {
         m_PathManager->GetPathIndex(SOUND_PATH_IDX, soundPath) == -1) {
         m_PathManager->AddPath(SOUND_PATH_IDX, soundPath);
     }
-}
-
-BML::IDataShare *ModManager::GetDataShare(const char *name) {
-    if (!name)
-        return m_DataShare;
-    return BML::DataShare::GetInstance(name);
-}
-
-BML::IEventPublisher *ModManager::GetEventPublisher(const char *name) {
-    if (!name)
-        return m_EventPublisher;
-    return BML::EventPublisher::GetInstance(name);
 }
