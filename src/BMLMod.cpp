@@ -410,29 +410,13 @@ void MapListPage::OnDraw() {
 
     if (m_MapSearchBuf[0] == '\0') {
         DrawEntries([&](std::size_t index) {
-            if (index >= m_Maps.size())
-                return false;
-            auto &info = m_Maps[n + index];
-            if (Bui::LevelButton(info.name.c_str(), &v)) {
-                Hide();
-                m_Mod->OnCloseMapMenu(false);
-                m_Mod->LoadMap(info.path);
-            }
-            return true;
+            return OnDrawEntry(n + index, &v);
         }, ImVec2(0.4031f, 0.23f), 0.06f, 10);
     } else {
         DrawEntries([&](std::size_t index) {
             if (index >= m_MapSearchResult.size())
                 return false;
-
-            auto &info = m_Maps[m_MapSearchResult[n + index]];
-
-            if (Bui::LevelButton(info.name.c_str(), &v)) {
-                Hide();
-                m_Mod->OnCloseMapMenu(false);
-                m_Mod->LoadMap(info.path);
-            }
-            return true;
+            return OnDrawEntry(m_MapSearchResult[n + index], &v);
         }, ImVec2(0.4031f, 0.23f), 0.06f, 10);
     }
 }
@@ -527,6 +511,18 @@ void MapListPage::OnSearchMaps() {
     }
 
     onig_free(reg);
+}
+
+bool MapListPage::OnDrawEntry(std::size_t index, bool *v) {
+    if (index >= m_Maps.size())
+        return false;
+    auto &info = m_Maps[index];
+    if (Bui::LevelButton(info.name.c_str(), v)) {
+        Hide();
+        m_Mod->OnCloseMapMenu(false);
+        m_Mod->LoadMap(info.path);
+    }
+    return true;
 }
 
 void BMLMod::OnLoad() {
