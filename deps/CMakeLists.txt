@@ -4,6 +4,9 @@ add_subdirectory(minhook EXCLUDE_FROM_ALL)
 # zip
 add_subdirectory(zip EXCLUDE_FROM_ALL)
 
+# yyjson
+add_subdirectory(yyjson EXCLUDE_FROM_ALL)
+
 # Oniguruma
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
 add_subdirectory(oniguruma EXCLUDE_FROM_ALL)
