@@ -147,7 +147,7 @@ target_link_libraries(BML
         PUBLIC
         CK2 VxMath
         PRIVATE
-        minhook zip onig utf8
+        minhook zip yyjson onig utf8
 )
 
 target_compile_definitions(BML PRIVATE "BML_EXPORTS" "IMGUI_EXPORT")
