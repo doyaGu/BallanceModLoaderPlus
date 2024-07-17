@@ -119,8 +119,6 @@ void *DataShare::SetUserData(void *data, size_t type) {
 }
 
 DataShare::DataShare(std::string name) : m_Name(std::move(name)) {
-    AddRef();
-
     std::lock_guard<std::mutex> lock{s_MapMutex};
     s_DataShares[m_Name] = this;
 }

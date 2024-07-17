@@ -14,7 +14,7 @@ namespace BML {
      */
     class RefCount {
     public:
-        RefCount() : m_RefCount(0) {} /**< Default Constructor */
+        RefCount() : m_RefCount(1) {} /**< Default Constructor */
         explicit RefCount(int value) : m_RefCount(value) {} /**< Constructor */
         ~RefCount() = default; /**< Destructor */
 

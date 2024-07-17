@@ -423,8 +423,6 @@ void EventPublisher::SortListeners(EventType eventType) {
 }
 
 EventPublisher::EventPublisher(std::string name) : m_Name(std::move(name)) {
-    AddRef();
-
     std::lock_guard<std::mutex> lock{s_MapMutex};
     s_EventPublishers[m_Name] = this;
 }
