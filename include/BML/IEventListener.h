@@ -26,8 +26,26 @@ namespace BML {
          */
         class IEventListener {
         public:
+            /**
+             * @brief Called when an event is registered.
+             * @param eventType The type of the event.
+             * @param eventName The name of the event.
+             */
             virtual void OnRegister(EventType eventType, const char *eventName) {}
+
+            /**
+             * @brief Called when an event is unregistered.
+             * @param eventType The type of the event.
+             * @param eventName The name of the event.
+             */
             virtual void OnUnregister(EventType eventType, const char *eventName) {}
+
+            /**
+             * @brief Called when an event is renamed.
+             * @param eventType The type of the event.
+             * @param newName The new name of the event.
+             * @param oldName The old name of the event.
+             */
             virtual void OnEventRenamed(EventType eventType, const char *newName, const char *oldName) {}
 
             /**
