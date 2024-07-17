@@ -41,8 +41,8 @@ CKRenderContext *BML_GetRenderContext() {
 }
 
 ModManager::ModManager(CKContext *context)  : CKBaseManager(context, MOD_MANAGER_GUID, (CKSTRING) "Mod Manager") {
-    m_DataShare = BML::DataShare::Create("BML");
-    m_EventPublisher = BML::EventPublisher::Create("BML");
+    m_DataShare = new BML::DataShare("BML");
+    m_EventPublisher = new BML::EventPublisher("BML");
     g_ModManager = this;
     context->RegisterNewManager(this);
 }
