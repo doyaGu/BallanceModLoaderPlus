@@ -43,6 +43,8 @@ CKRenderContext *BML_GetRenderContext() {
 ModManager::ModManager(CKContext *context)  : CKBaseManager(context, MOD_MANAGER_GUID, (CKSTRING) "Mod Manager") {
     m_DataShare = new BML::DataShare("BML");
     m_EventPublisher = new BML::EventPublisher("BML");
+    m_Configuration = new BML::Configuration("BML");
+
     g_ModManager = this;
     context->RegisterNewManager(this);
 }
@@ -50,6 +52,8 @@ ModManager::ModManager(CKContext *context)  : CKBaseManager(context, MOD_MANAGER
 ModManager::~ModManager() {
     m_DataShare->Release();
     m_EventPublisher->Release();
+    m_Configuration->Release();
+
     g_ModManager = nullptr;
 }
 
@@ -553,6 +557,12 @@ BML::IEventPublisher *ModManager::GetEventPublisher(const char *name) {
     if (!name)
         return m_EventPublisher;
     return BML::EventPublisher::GetInstance(name);
+}
+
+BML::IConfiguration *ModManager::GetConfiguration(const char *name) {
+    if (!name)
+        return m_Configuration;
+    return BML::Configuration::GetInstance(name);
 }
 
 const wchar_t *ModManager::GetDirectory(DirectoryType type) {

@@ -17,6 +17,7 @@
 #include "BML/IMod.h"
 #include "DataShare.h"
 #include "EventPublisher.h"
+#include "Configuration.h"
 #include "Config.h"
 #include "Timer.h"
 #include "HookUtils.h"
@@ -113,6 +114,7 @@ public:
 
     BML::IDataShare *GetDataShare(const char *name) override;
     BML::IEventPublisher *GetEventPublisher(const char *name) override;
+    BML::IConfiguration *GetConfiguration(const char *name) override;
 
     const wchar_t *GetDirectory(DirectoryType type);
     const char *GetDirectoryUtf8(DirectoryType type);
@@ -340,6 +342,8 @@ protected:
 
     BML::DataShare *m_DataShare = nullptr;
     BML::EventPublisher *m_EventPublisher = nullptr;
+    BML::Configuration *m_Configuration = nullptr;
+
 
     FILE *m_Logfile = nullptr;
     ILogger *m_Logger = nullptr;

@@ -11,6 +11,7 @@
 #include "BML/IMessageReceiver.h"
 #include "BML/IDataShare.h"
 #include "BML/IEventPublisher.h"
+#include "BML/IConfiguration.h"
 
 class IMod;
 class InputHook;
@@ -102,6 +103,7 @@ public:
 
     virtual BML::IDataShare *GetDataShare(const char *name = nullptr) = 0;
     virtual BML::IEventPublisher *GetEventPublisher(const char *name = nullptr) = 0;
+    virtual BML::IConfiguration *GetConfiguration(const char *name = nullptr) = 0;
 };
 
 
