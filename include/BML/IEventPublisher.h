@@ -15,7 +15,7 @@ namespace BML {
         /**
          * @brief Interface for event publisher.
          *
-         * This class represents an interface for managing events and event types.
+         * The interface for managing events and event types.
          */
         class IEventPublisher {
         public:
@@ -145,16 +145,64 @@ namespace BML {
              */
             virtual bool RemoveListener(const char *eventName, IEventListener *listener) = 0;
 
+            /**
+             * @brief Removes all listeners for the specified event type.
+             * @param eventType The event type identifier to remove all listeners from.
+             * @return True if the listeners were removed successfully, false otherwise.
+             */
             virtual bool RemoveListeners(EventType eventType) = 0;
+
+            /**
+             * @brief Removes all listeners for the specified event name.
+             * @param eventName The name of the event to remove all listeners from.
+             * @return True if the listeners were removed successfully, false otherwise.
+             */
             virtual bool RemoveListeners(const char *eventName) = 0;
 
+            /**
+             * @brief Gets the listener with the specified name for the given event type.
+             * @param eventType The event type identifier.
+             * @param name The name of the listener.
+             * @return A pointer to the listener object, or nullptr if not found.
+             */
             virtual IEventListener *GetListener(EventType eventType, const char *name) = 0;
+
+            /**
+             * @brief Gets the listener with the specified name for the given event name.
+             * @param eventName The name of the event.
+             * @param name The name of the listener.
+             * @return A pointer to the listener object, or nullptr if not found.
+             */
             virtual IEventListener *GetListener(const char *eventName, const char *name) = 0;
 
+            /**
+             * @brief Gets the listener at the specified index for the given event type.
+             * @param eventType The event type identifier.
+             * @param index The index of the listener.
+             * @return A pointer to the listener object, or nullptr if not found.
+             */
             virtual IEventListener *GetListener(EventType eventType, std::size_t index) = 0;
+
+            /**
+             * @brief Gets the listener at the specified index for the given event name.
+             * @param eventName The name of the event.
+             * @param index The index of the listener.
+             * @return A pointer to the listener object, or nullptr if not found.
+             */
             virtual IEventListener *GetListener(const char *eventName, std::size_t index) = 0;
 
+            /**
+             * @brief Gets the total number of listeners for the given event type.
+             * @param eventType The event type identifier.
+             * @return The count of listeners.
+             */
             virtual std::size_t GetListenerCount(EventType eventType) = 0;
+
+            /**
+             * @brief Gets the total number of listeners for the given event name.
+             * @param eventName The name of the event.
+             * @return The count of listeners.
+             */
             virtual std::size_t GetListenerCount(const char *eventName) = 0;
 
             /**
