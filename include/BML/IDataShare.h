@@ -24,17 +24,21 @@ namespace BML {
         class IDataShare {
         public:
             /**
-             * @brief Increase the reference count of the logger object.
+             * @brief Increase the reference count of the data share object.
              * @return The new reference count.
              */
             virtual int AddRef() const = 0;
 
             /**
-             * @brief Decrease the reference count of the logger object.
+             * @brief Decrease the reference count of the data share object.
              * @return The new reference count.
              */
             virtual int Release() const = 0;
 
+            /**
+             * @brief Gets the name of the data share object.
+             * @return The name as a null-terminated string.
+             */
             virtual const char *GetName() const = 0;
 
             /**
