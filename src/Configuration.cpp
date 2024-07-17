@@ -784,7 +784,7 @@ void ConfigurationSection::ClearCallbacks(ConfigurationCallbackType type) {
 }
 
 void ConfigurationSection::InvokeCallbacks(ConfigurationCallbackType type, IConfigurationEntry *entry) {
-    assert(type >= 0 && type <= CFG_CB_MODIFY);
+    assert(type >= 0 && type < CFG_CB_COUNT);
     assert(entry != nullptr);
     for (auto &cb: m_Callbacks[type]) {
         cb.callback(this, entry, cb.arg);
