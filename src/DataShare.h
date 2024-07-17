@@ -14,7 +14,8 @@ namespace BML {
     class DataShare final : public IDataShare {
     public:
         static DataShare *GetInstance(const std::string &name);
-        static DataShare *Create(std::string name);
+
+        explicit DataShare(std::string name);
 
         DataShare(const DataShare &rhs) = delete;
         DataShare(DataShare &&rhs) noexcept = delete;
@@ -41,8 +42,6 @@ namespace BML {
         void *SetUserData(void *data, size_t type) override;
 
     private:
-        explicit DataShare(std::string name);
-
         struct Callback {
             DataShareCallback callback;
             void *userdata;

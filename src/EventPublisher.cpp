@@ -10,13 +10,14 @@ std::unordered_map<std::string, EventPublisher *> EventPublisher::s_EventPublish
 EventPublisher *EventPublisher::GetInstance(const std::string &name) {
     auto it = s_EventPublishers.find(name);
     if (it == s_EventPublishers.end()) {
-        return Create(name);
+        return new EventPublisher(name);
     }
     return it->second;
 }
 
-EventPublisher *EventPublisher::Create(std::string name) {
-    return new EventPublisher(std::move(name));
+EventPublisher::EventPublisher(std::string name) : m_Name(std::move(name)) {
+    std::lock_guard<std::mutex> lock{s_MapMutex};
+    s_EventPublishers[m_Name] = this;
 }
 
 EventPublisher::~EventPublisher() {
@@ -420,9 +421,4 @@ void EventPublisher::SortListeners(EventType eventType) {
         auto &listeners = it->second;
         std::sort(listeners.begin(), listeners.end());
     }
-}
-
-EventPublisher::EventPublisher(std::string name) : m_Name(std::move(name)) {
-    std::lock_guard<std::mutex> lock{s_MapMutex};
-    s_EventPublishers[m_Name] = this;
 }

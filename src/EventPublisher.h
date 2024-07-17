@@ -47,7 +47,8 @@ namespace BML {
     class EventPublisher final : public IEventPublisher {
     public:
         static EventPublisher *GetInstance(const std::string &name);
-        static EventPublisher *Create(std::string name);
+
+        explicit EventPublisher(std::string name);
 
         EventPublisher(const EventPublisher &rhs) = delete;
         EventPublisher(EventPublisher &&rhs) noexcept = delete;
@@ -99,8 +100,6 @@ namespace BML {
         void SortListeners(EventType eventType);
 
     private:
-        explicit EventPublisher(std::string name);
-
         std::string m_Name;
         mutable RefCount m_RefCount;
         std::mutex m_Mutex;

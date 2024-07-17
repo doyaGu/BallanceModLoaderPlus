@@ -10,13 +10,14 @@ std::unordered_map<std::string, DataShare *> DataShare::s_DataShares;
 DataShare *DataShare::GetInstance(const std::string &name) {
     auto it = s_DataShares.find(name);
     if (it == s_DataShares.end()) {
-        return Create(name);
+        return new DataShare(name);
     }
     return it->second;
 }
 
-DataShare *DataShare::Create(std::string name) {
-    return new DataShare(std::move(name));
+DataShare::DataShare(std::string name) : m_Name(std::move(name)) {
+    std::lock_guard<std::mutex> lock{s_MapMutex};
+    s_DataShares[m_Name] = this;
 }
 
 DataShare::~DataShare() {
@@ -152,11 +153,6 @@ void *DataShare::GetUserData(size_t type) const {
 
 void *DataShare::SetUserData(void *data, size_t type) {
     return m_UserData.SetData(data, type);
-}
-
-DataShare::DataShare(std::string name) : m_Name(std::move(name)) {
-    std::lock_guard<std::mutex> lock{s_MapMutex};
-    s_DataShares[m_Name] = this;
 }
 
 bool DataShare::AddCallbacks(const char *key, DataShareCallback callback, void *userdata) const {
