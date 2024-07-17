@@ -198,6 +198,8 @@ bool Configuration::RemoveSection(const char *parent, const char *name) {
 }
 
 bool Configuration::Read(char *buffer, size_t len) {
+    std::lock_guard<std::mutex> guard(m_RWLock);
+
     yyjson_read_flag flg = YYJSON_READ_ALLOW_COMMENTS | YYJSON_READ_ALLOW_INF_AND_NAN;
     yyjson_read_err err;
     yyjson_doc *doc = yyjson_read_opts(buffer, len, flg, nullptr, &err);
@@ -214,6 +216,8 @@ bool Configuration::Read(char *buffer, size_t len) {
 }
 
 char *Configuration::Write(size_t *len) {
+    std::lock_guard<std::mutex> guard(m_RWLock);
+
     yyjson_mut_doc *doc = yyjson_mut_doc_new(nullptr);
     if (!doc) {
         *len = 0;
@@ -252,6 +256,8 @@ void *Configuration::SetUserData(void *data, size_t type) {
 void Configuration::ConvertObjectToSection(yyjson_val *obj, ConfigurationSection *section) {
     if (!yyjson_is_obj(obj))
         return;
+
+    std::lock_guard<std::mutex> guard(m_RWLock);
 
     yyjson_val *key, *val;
     yyjson_obj_iter iter;
@@ -293,6 +299,8 @@ void Configuration::ConvertObjectToSection(yyjson_val *obj, ConfigurationSection
 void Configuration::ConvertArrayToSection(yyjson_val *arr, ConfigurationSection *section) {
     if (!yyjson_is_arr(arr))
         return;
+
+    std::lock_guard<std::mutex> guard(m_RWLock);
 
     char buf[32];
     size_t idx = 0;
