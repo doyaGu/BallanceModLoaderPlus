@@ -261,9 +261,8 @@ namespace utils {
             return false;
         }
 
-        char dp[1024];
-        Utf16ToAnsi(dest.c_str(), dp, 1024);
-        if (zip_stream_extract(buf, sz, dp, nullptr, nullptr) < 0)
+        std::string destPath = Utf16ToUtf8(dest);
+        if (zip_stream_extract(buf, sz, destPath.c_str(), nullptr, nullptr) < 0)
             return false;
 
         return true;
