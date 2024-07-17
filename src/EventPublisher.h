@@ -71,9 +71,9 @@ namespace BML {
         bool RenameEvent(EventType type, const char *name) override;
         bool RenameEvent(const char *oldName, const char *newName) override;
 
-        bool SendEvent(Event *event, IEventListener *listener) override;
-        bool SendEvent(EventType type, uint32_t value, uintptr_t param1, uintptr_t param2, IEventListener *listener) override;
-        bool SendEvent(const char *name, uint32_t value, uintptr_t param1, uintptr_t param2, IEventListener *listener) override;
+        bool SendEvent(Event *event, IEventListener *listener = nullptr) override;
+        bool SendEvent(EventType type, uint32_t value = 0, uintptr_t param1 = 0, uintptr_t param2 = 0, IEventListener *listener = nullptr) override;
+        bool SendEvent(const char *name, uint32_t value = 0, uintptr_t param1 = 0, uintptr_t param2 = 0, IEventListener *listener = nullptr) override;
 
         bool AddListener(EventType eventType, IEventListener *listener, const char *name, int priority) override;
         bool AddListener(const char *eventName, IEventListener *listener, const char *name, int priority) override;
