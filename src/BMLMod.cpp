@@ -526,6 +526,7 @@ bool MapListPage::OnDrawEntry(std::size_t index, bool *v) {
 }
 
 void BMLMod::OnLoad() {
+    m_DataShare = m_BML->GetDataShare();
     m_CKContext = m_BML->GetCKContext();
     m_RenderContext = m_BML->GetRenderContext();
     m_TimeManager = m_BML->GetTimeManager();
@@ -763,6 +764,9 @@ void BMLMod::LoadMap(const std::wstring &path) {
     m_CurLevel->SetElementValue(0, 0, &level);
     level--;
     SetParamValue(m_LevelRow, level);
+
+    std::string mapPath = utils::Utf16ToUtf8(path);
+    m_DataShare->Set("CustomMapName", mapPath.c_str(), mapPath.size() + 1);
 
     CKMessageManager *mm = m_CKContext->GetMessageManager();
     CKMessageType loadLevel = mm->AddMessageType((CKSTRING) "Load Level");

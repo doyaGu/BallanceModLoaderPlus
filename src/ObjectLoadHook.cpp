@@ -21,12 +21,12 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
         if (ctx->GetCurrentLevel()->GetLevelScene() == scene)
             addtoscene = FALSE;
 
-        CKSTRING fname = (CKSTRING) beh->GetInputParameterReadDataPtr(0);
-        CKSTRING mastername = (CKSTRING) beh->GetInputParameterReadDataPtr(1);
+        auto fname = (const char *) beh->GetInputParameterReadDataPtr(0);
+        auto mastername = (const char *) beh->GetInputParameterReadDataPtr(1);
         CK_CLASSID cid = CKCID_3DOBJECT;
         beh->GetInputParameterValue(2, &cid);
 
-        CK_LOAD_FLAGS loadoptions = CK_LOAD_FLAGS(CK_LOAD_DEFAULT | CK_LOAD_AUTOMATICMODE);
+        auto loadoptions = (CK_LOAD_FLAGS) (CK_LOAD_DEFAULT | CK_LOAD_AUTOMATICMODE);
         if (dynamic)
             loadoptions = (CK_LOAD_FLAGS) (loadoptions | CK_LOAD_AS_DYNAMIC_OBJECT);
 
@@ -121,6 +121,15 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
 
         CKBOOL isMap = strcmp(beh->GetOwnerScript()->GetName(), "Levelinit_build") == 0;
 
+        auto ds = BML_GetModManager()->GetDataShare(nullptr);
+
+        if (isMap) {
+            auto mapName = (const char *) ds->Get("CustomMapName", nullptr);
+            if (mapName) {
+                fname = mapName;
+            }
+        }
+
         BML_GetModManager()->BroadcastCallback(&IMod::OnLoadObject,
                                                fname, isMap, mastername, cid,
                                                addtoscene, reuseMeshes,
@@ -135,6 +144,10 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
                     BML_GetModManager()->BroadcastCallback(&IMod::OnLoadScript, fname, behavior);
                 }
             }
+        }
+
+        if (isMap) {
+            ds->Remove("CustomMapName");
         }
     }
 
