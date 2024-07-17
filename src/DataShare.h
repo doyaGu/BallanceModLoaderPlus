@@ -8,6 +8,7 @@
 #include "BML/IDataShare.h"
 #include "BML/DataBox.h"
 #include "BML/RefCount.h"
+#include "Variant.h"
 
 namespace BML {
     class DataShare final : public IDataShare {
@@ -30,10 +31,11 @@ namespace BML {
 
         void Request(const char *key, DataShareCallback callback, void *userdata) const override;
 
-        void *Get(const char *key) const override;
-        void *Set(const char *key, void *data) override;
-        void *Insert(const char *key, void *data) override;
-        void *Remove(const char *key) override;
+        const void *Get(const char *key, size_t *size) const override;
+        bool Copy(const char *key, void *buf, size_t size) const override;
+        bool Set(const char *key, const void *buf, size_t size) override;
+        bool Put(const char *key, const void *buf, size_t size) override;
+        bool Remove(const char *key) override;
 
         void *GetUserData(size_t type) const override;
         void *SetUserData(void *data, size_t type) override;
@@ -57,14 +59,14 @@ namespace BML {
         };
 
         bool AddCallbacks(const char *key, DataShareCallback callback, void *userdata) const;
-        void TriggerCallbacks(const char *key, void *data) const;
+        void TriggerCallbacks(const char *key, const void *data, size_t size) const;
 
         static bool ValidateKey(const char *key);
 
         std::string m_Name;
         mutable RefCount m_RefCount;
         mutable std::mutex m_RWLock;
-        std::unordered_map<std::string, void *> m_DataMap;
+        std::unordered_map<std::string, Variant> m_DataMap;
         mutable std::unordered_map<std::string, std::vector<Callback>> m_CallbackMap;
         DataBox m_UserData;
 

@@ -1,5 +1,7 @@
 #include "DataShare.h"
 
+#include <utility>
+
 using namespace BML;
 
 std::mutex DataShare::s_MapMutex;
@@ -40,7 +42,8 @@ const char *DataShare::GetName() const {
 }
 
 void DataShare::Request(const char *key, DataShareCallback callback, void *userdata) const {
-    if (!ValidateKey(key)) return;
+    if (!ValidateKey(key))
+        return;
 
     std::lock_guard<std::mutex> guard(m_RWLock);
 
@@ -48,66 +51,99 @@ void DataShare::Request(const char *key, DataShareCallback callback, void *userd
     if (it == m_DataMap.end()) {
         AddCallbacks(key, callback, userdata);
     } else {
-        TriggerCallbacks(key, it->second);
+        auto &data = it->second;
+        TriggerCallbacks(key, data.GetBuffer(), data.GetSize());
     }
 }
 
-void *DataShare::Get(const char *key) const {
-    if (!ValidateKey(key)) return nullptr;
+const void *DataShare::Get(const char *key, size_t *size) const {
+    if (!ValidateKey(key))
+        return nullptr;
 
     std::lock_guard<std::mutex> guard(m_RWLock);
 
     auto it = m_DataMap.find(key);
     if (it == m_DataMap.end())
         return nullptr;
-    return it->second;
+
+    auto &data = it->second;
+    if (size)
+        *size = data.GetSize();
+    return data.GetBuffer();
 }
 
-void *DataShare::Set(const char *key, void *data) {
-    if (!ValidateKey(key)) return nullptr;
+bool DataShare::Copy(const char *key, void *buf, size_t size) const {
+    if (!buf || size == 0)
+        return false;
+
+    if (!ValidateKey(key))
+        return false;
+
+    std::lock_guard<std::mutex> guard(m_RWLock);
+
+    auto it = m_DataMap.find(key);
+    if (it == m_DataMap.end())
+        return false;
+
+    auto &data = it->second;
+    memcpy(buf, data.GetBuffer(), std::max(data.GetSize(), size));
+    return true;
+}
+
+bool DataShare::Set(const char *key, const void *buf, size_t size) {
+    if (!ValidateKey(key))
+        return false;
 
     std::lock_guard<std::mutex> guard(m_RWLock);
 
     auto it = m_DataMap.find(key);
     if (it != m_DataMap.end()) {
-        auto prev = it->second;
-        m_DataMap[key] = data;
-        return prev;
+        m_DataMap[key].SetBuffer(buf, size);
     } else {
-        m_DataMap.emplace(key, data);
+        auto result = m_DataMap.emplace(key, Variant());
+        if (!result.second)
+            return false;
+        it = result.first;
+        it->second.SetBuffer(buf, size);
     }
 
-    TriggerCallbacks(key, data);
-    return nullptr;
+    auto &data = it->second;
+    TriggerCallbacks(key, data.GetBuffer(), data.GetSize());
+    return true;
 }
 
-void *DataShare::Insert(const char *key, void *data) {
-    if (!ValidateKey(key)) return nullptr;
+bool DataShare::Put(const char *key, const void *buf, size_t size) {
+    if (!ValidateKey(key))
+        return false;
 
     std::lock_guard<std::mutex> guard(m_RWLock);
 
     auto it = m_DataMap.find(key);
-    if (it != m_DataMap.end()) {
-        return it->second;
-    }
-    m_DataMap.emplace(key, data);
+    if (it != m_DataMap.end())
+        return false;
 
-    TriggerCallbacks(key, data);
-    return nullptr;
+    auto result = m_DataMap.emplace(key, Variant());
+    if (!result.second)
+        return false;
+    it = result.first;
+    auto &data = it->second;
+    data.SetBuffer(buf, size);
+    TriggerCallbacks(key, data.GetBuffer(), data.GetSize());
+    return true;
 }
 
-void *DataShare::Remove(const char *key) {
-    if (!ValidateKey(key)) return nullptr;
+bool DataShare::Remove(const char *key) {
+    if (!ValidateKey(key))
+        return false;
 
     std::lock_guard<std::mutex> guard(m_RWLock);
 
     auto it = m_DataMap.find(key);
     if (it == m_DataMap.end())
-        return nullptr;
+        return false;
 
-    auto prev = it->second;
     m_DataMap.erase(it);
-    return prev;
+    return true;
 }
 
 void *DataShare::GetUserData(size_t type) const {
@@ -130,11 +166,11 @@ bool DataShare::AddCallbacks(const char *key, DataShareCallback callback, void *
     return true;
 }
 
-void DataShare::TriggerCallbacks(const char *key, void *data) const {
+void DataShare::TriggerCallbacks(const char *key, const void *data, size_t size) const {
     auto it = m_CallbackMap.find(key);
     if (it != m_CallbackMap.end()) {
         for (auto &cb : it->second) {
-            cb.callback(key, data, cb.userdata);
+            cb.callback(key, data, size, cb.userdata);
         }
         m_CallbackMap.erase(it);
     }
