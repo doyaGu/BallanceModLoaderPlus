@@ -5,15 +5,18 @@
 #ifndef BML_IDATASHARE_H
 #define BML_IDATASHARE_H
 
+#include <cstddef>
+
 namespace BML {
-    inline namespace v1 {
+    inline namespace v2 {
         /**
          * @brief The callback function for data sharing.
          * @param key The key associated with the data.
          * @param data A pointer to the data.
+         * @param size The size of the data.
          * @param userdata A pointer to user-defined data.
          */
-        typedef void(*DataShareCallback)(const char *key, void *data, void *userdata);
+        typedef void(*DataShareCallback)(const char *key, const void *data, size_t size, void *userdata);
 
         /**
          * @brief The interface for data sharing.
@@ -43,34 +46,46 @@ namespace BML {
             virtual void Request(const char *key, DataShareCallback callback, void *userdata) const = 0;
 
             /**
-             * @brief Retrieves the data associated with the specified key.
-             * @param key The key associated with the data to retrieve.
+             * @brief Retrieves data associated with the specified key.
+             * @param key The key associated with the data.
+             * @param size A pointer to a size_t to store the size of the retrieved data.
              * @return A pointer to the data, or nullptr if not found.
              */
-            virtual void *Get(const char *key) const = 0;
+            virtual const void *Get(const char *key, size_t *size = nullptr) const = 0;
+
+            /**
+             * @brief Copies data associated with the specified key into the provided buffer.
+             * @param key The key associated with the data.
+             * @param buf The buffer to copy the data into.
+             * @param size The size of the buffer.
+             * @return True if the data was copied successfully, false otherwise.
+             */
+            virtual bool Copy(const char *key, void *buf, size_t size) const = 0;
 
             /**
              * @brief Sets the data associated with the specified key.
-             * @param key The key associated with the data to set.
-             * @param data A pointer to the data to set.
-             * @return A pointer to the previous data associated with the key, or nullptr if not found.
+             * @param key The key associated with the data.
+             * @param buf A pointer to the data to be set.
+             * @param size The size of the data.
+             * @return True if the data was set successfully, false otherwise.
              */
-            virtual void *Set(const char *key, void *data) = 0;
+            virtual bool Set(const char *key, const void *buf, size_t size) = 0;
 
             /**
-             * @brief Inserts the data associated with the specified key.
-             * @param key The key associated with the data to insert.
-             * @param data A pointer to the data to insert.
-             * @return A pointer to the previous data associated with the key, or nullptr if not found.
+             * @brief Puts the data associated with the specified key. If data already exists, returns false.
+             * @param key The key associated with the data.
+             * @param buf A pointer to the data to be put.
+             * @param size The size of the data.
+             * @return True if the data was put successfully, false otherwise.
              */
-            virtual void *Insert(const char *key, void *data) = 0;
+            virtual bool Put(const char *key, const void *buf, size_t size) = 0;
 
             /**
-             * @brief Removes the data associated with the specified key.
-             * @param key The key associated with the data to remove.
-             * @return A pointer to the removed data, or nullptr if not found.
+             * @brief Removes data associated with the specified key.
+             * @param key The key associated with the data to be removed.
+             * @return True if the data was removed successfully, false otherwise.
              */
-            virtual void *Remove(const char *key) = 0;
+            virtual bool Remove(const char *key) = 0;
 
             /**
              * @brief Retrieves the user data associated with the specified type.
