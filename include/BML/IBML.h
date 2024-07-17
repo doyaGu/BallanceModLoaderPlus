@@ -100,8 +100,8 @@ public:
 
     virtual void ExecuteCommand(const char *cmd) = 0;
 
-    virtual BML::IDataShare *GetDataShare(const char *name) = 0;
-    virtual BML::IEventPublisher *GetEventPublisher(const char *name) = 0;
+    virtual BML::IDataShare *GetDataShare(const char *name = nullptr) = 0;
+    virtual BML::IEventPublisher *GetEventPublisher(const char *name = nullptr) = 0;
 };
 
 
