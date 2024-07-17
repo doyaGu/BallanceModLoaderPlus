@@ -218,6 +218,8 @@ private:
     void OnOpenMapMenu();
     void OnCloseMapMenu(bool backToMenu = true);
 
+    BML::IDataShare *m_DataShare = nullptr;
+
     CKContext *m_CKContext = nullptr;
     CKRenderContext *m_RenderContext = nullptr;
     CKTimeManager *m_TimeManager = nullptr;
