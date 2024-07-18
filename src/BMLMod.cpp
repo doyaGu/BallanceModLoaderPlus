@@ -139,9 +139,11 @@ void ModMenuPage::OnClose() {
     m_Menu->ShowPrevPage();
 }
 
-void ModListPage::OnBegin() {
+void ModListPage::OnAfterBegin() {
     int count = ModMenu::GetBML()->GetModCount();
     SetMaxPage(((count % 4) == 0) ? count / 4 : count / 4 + 1);
+
+    Page::OnAfterBegin();
 }
 
 void ModListPage::OnDraw() {
