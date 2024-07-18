@@ -63,7 +63,7 @@ class ModListPage : public ModMenuPage {
 public:
     explicit ModListPage(ModMenu *menu) : ModMenuPage(menu, "Mod List") {}
 
-    void OnBegin() override;
+    void OnAfterBegin() override;
     void OnDraw() override;
 };
 
