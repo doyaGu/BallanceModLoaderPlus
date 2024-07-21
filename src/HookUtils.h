@@ -35,7 +35,7 @@ namespace utils {
 
     inline void **GetVTable(void *instance) {
         if (instance) {
-            return reinterpret_cast<void **>(*reinterpret_cast<void **>(instance));
+            return *reinterpret_cast<void ***>(instance);
         } else {
             return nullptr;
         }
@@ -54,13 +54,15 @@ namespace utils {
 
     template<typename T>
     inline void SaveVTable(void *instance, T &table) {
-        void **src = reinterpret_cast<void**>(&table);
-        void **dest = reinterpret_cast<void**>(*reinterpret_cast<void**>(instance));
-        uint32_t originalProtection = UnprotectRegion((void *) dest, sizeof(T));
-        for (size_t i = 0; i < sizeof(T) / sizeof(void *); ++i) {
-            dest[i] = src[i];
+        if (instance) {
+            void **src = reinterpret_cast<void**>(&table);
+            void **dest = reinterpret_cast<void**>(*reinterpret_cast<void**>(instance));
+            uint32_t originalProtection = UnprotectRegion((void *) dest, sizeof(T));
+            for (size_t i = 0; i < sizeof(T) / sizeof(void *); ++i) {
+                dest[i] = src[i];
+            }
+            ProtectRegion((void *) dest, sizeof(T), originalProtection);
         }
-        ProtectRegion((void *) dest, sizeof(T), originalProtection);
     }
 
     void *HookVirtualMethod(void *instance, void *hook, size_t offset);
