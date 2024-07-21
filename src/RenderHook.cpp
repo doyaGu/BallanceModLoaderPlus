@@ -642,8 +642,9 @@ void CKSceneGraphNode::NoTestsTraversal(CKRenderContext *Dev, CK_RENDER_FLAGS Fl
     SetAsPotentiallyVisible();
     SetAsInsideFrustum();
 
-    if ((m_Flags & 0x10) != 0)
+    if ((m_Flags & 0x10) != 0) {
         SortNodes();
+    }
 
     if (m_Entity->GetClassID() == CKCID_PLACE) {
         auto *place = (CKPlace *) m_Entity;
@@ -660,18 +661,21 @@ void CKSceneGraphNode::NoTestsTraversal(CKRenderContext *Dev, CK_RENDER_FLAGS Fl
         }
     }
 
-    if (m_Entity->GetClassID() == CKCID_CHARACTER)
-        m_Entity->ModifyMoveableFlags(VX_MOVEABLE_CHARACTERRENDERED, 0);
+    if (m_Entity) {
+        if (m_Entity->GetClassID() == CKCID_CHARACTER) {
+            m_Entity->ModifyMoveableFlags(VX_MOVEABLE_CHARACTERRENDERED, 0);
+        }
 
-    if ((dev->m_Mask & m_RenderContextMask) != 0 && m_Entity->IsToBeRendered()) {
-        m_Entity->ModifyMoveableFlags(0, VX_MOVEABLE_EXTENTSUPTODATE);
-        if (m_Entity->IsToBeRenderedLast()) {
-            m_TimeFpsCalc = dev->m_TimeFpsCalc;
-            rm->m_SceneGraphRootNode.AddTransparentObject(this);
-        } else {
-            dev->m_Stats.SceneTraversalTime += dev->m_SceneTraversalTimeProfiler.Current();
-            m_Entity->Render(dev, Flags);
-            dev->m_SceneTraversalTimeProfiler.Reset();
+        if ((dev->m_Mask & m_RenderContextMask) != 0 && m_Entity->IsToBeRendered()) {
+            m_Entity->ModifyMoveableFlags(0, VX_MOVEABLE_EXTENTSUPTODATE);
+            if (!m_Entity->IsToBeRenderedLast()) {
+                dev->m_Stats.SceneTraversalTime += dev->m_SceneTraversalTimeProfiler.Current();
+                m_Entity->Render(dev, Flags);
+                dev->m_SceneTraversalTimeProfiler.Reset();
+            } else {
+                m_TimeFpsCalc = dev->m_TimeFpsCalc;
+                rm->m_SceneGraphRootNode.AddTransparentObject(this);
+            }
         }
     }
 
