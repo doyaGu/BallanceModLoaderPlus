@@ -42,7 +42,7 @@ void UpdateDriverDescCaps(VxDriverDesc2 *desc);
 class CKCallbacksContainer {
 public:
     XClassArray<VxCallBack> m_PreCallBacks;
-    void *m_Args;
+    void *m_Callback;
     XClassArray<VxCallBack> m_PostCallBacks;
 };
 
@@ -420,6 +420,7 @@ public:
     void CallSprite3DBatches();
     CKBOOL UpdateProjection(CKBOOL force);
     void SetClipRect(VxRect &rect);
+    void AddExtents2D(const VxRect &rect, CKObject *obj);
 
     void SetFullViewport(CKViewportData &data, int width, int height);
 
@@ -428,6 +429,7 @@ public:
     CP_DECLARE_METHOD_PTRS(CKRenderContext, void, CallSprite3DBatches, ());
     CP_DECLARE_METHOD_PTRS(CKRenderContext, CKBOOL, UpdateProjection, (CKBOOL force));
     CP_DECLARE_METHOD_PTRS(CKRenderContext, void, SetClipRect, (VxRect &rect));
+    CP_DECLARE_METHOD_PTRS(CKRenderContext, void, AddExtents2D, (const VxRect &rect, CKObject *obj));
 
     static bool Hook(CKRenderContext *rc);
     static bool Unhook(CKRenderContext *rc);
@@ -549,10 +551,12 @@ public:
 #include "CK3dEntity.h"
 #undef CK_3DIMPLEMENTATION
 
+    CP_DECLARE_METHOD_HOOK(CKBOOL, Render, (CKRenderContext *Dev, CKDWORD Flags));
+
     void WorldMatrixChanged(CKBOOL invalidateBox, CKBOOL inverse);
 
-    static bool Hook(void *vtable, void *base);
-    static bool Unhook(void *vtable);
+    static bool Hook(void *base);
+    static bool Unhook(void *base);
 
     CK3dEntity *m_Parent;
     XObjectPointerArray m_Meshes;
@@ -578,6 +582,8 @@ public:
     CKSceneGraphNode *m_SceneGraphNode;
 
     CP_DECLARE_METHOD_PTRS(CK3dEntity, void, WorldMatrixChanged, (CKBOOL invalidateBox, CKBOOL inverse));
+
+    static CP_CLASS_VTABLE_NAME(CK3dEntity)<CK3dEntity> s_VTable;
 };
 
 class CP_HOOK_CLASS_NAME(CKCamera) : public CP_HOOK_CLASS_NAME(CK3dEntity) {
@@ -605,8 +611,8 @@ public:
 
     CKBOOL Setup(CKRasterizerContext *rst, int index);
 
-    static bool Hook(void *vtable, void *base);
-    static bool Unhook(void *vtable);
+    static bool Hook(void *base);
+    static bool Unhook(void *base);
 
     CKLightData m_LightData;
     CKDWORD m_Flags;
