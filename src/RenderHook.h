@@ -97,7 +97,7 @@ public:
     void DetachAll();
 
     static bool Hook(void *base);
-    static bool Unhook();
+    static bool Unhook(void *base);
 
     CKRenderContext *m_RenderContext;
     CKContext *m_Context;
@@ -156,7 +156,7 @@ public:
     void sub_100789A0();
 
     static bool Hook(void *base);
-    static bool Unhook();
+    static bool Unhook(void *base);
 
     CK3dEntity *m_Entity;
     CKDWORD m_TimeFpsCalc;
@@ -198,7 +198,7 @@ public:
     void AddTransparentObject(CKSceneGraphNode *node);
 
     static bool Hook(void *base);
-    static bool Unhook();
+    static bool Unhook(void *base);
 
     XClassArray<CKTransparentObject> m_TransparentObjects;
 
@@ -233,8 +233,8 @@ public:
 
     CP_DECLARE_METHOD_PTRS(CKRenderManager, CKRasterizerContext *, GetFullscreenContext, ());
 
-    static bool Hook(CKRenderManager *man);
-    static bool Unhook(CKRenderManager *man);
+    static bool Hook(void *base);
+    static bool Unhook(void *base);
 
     XClassArray<VxCallBack> m_TemporaryPreRenderCallbacks;
     XClassArray<VxCallBack> m_TemporaryPostRenderCallbacks;
@@ -431,8 +431,8 @@ public:
     CP_DECLARE_METHOD_PTRS(CKRenderContext, void, SetClipRect, (VxRect &rect));
     CP_DECLARE_METHOD_PTRS(CKRenderContext, void, AddExtents2D, (const VxRect &rect, CKObject *obj));
 
-    static bool Hook(CKRenderContext *rc);
-    static bool Unhook(CKRenderContext *rc);
+    static bool Hook(void *base);
+    static bool Unhook(void *base);
 
     WIN_HANDLE m_WinHandle;
     WIN_HANDLE m_AppHandle;
@@ -622,10 +622,8 @@ public:
 };
 
 namespace RenderHook {
-    bool HookRenderManager(CKRenderManager *man);
-    bool UnhookRenderManager(CKRenderManager *man);
-    bool HookRenderContext(CKRenderContext *rc);
-    bool UnhookRenderContext(CKRenderContext *rc);
+    bool HookRenderEngine();
+    bool UnhookRenderEngine();
 
     void DisableRender(bool disable);
     void EnableWidescreenFix(bool enable);
