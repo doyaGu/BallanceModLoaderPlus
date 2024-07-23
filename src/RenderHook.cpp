@@ -43,6 +43,8 @@ CKRenderContextSettings::CKRenderContextSettings(CKRasterizerContext *rst) {
     }
 }
 
+// CKRenderedScene
+
 CP_DEFINE_METHOD_PTRS(CKRenderedScene, Draw);
 CP_DEFINE_METHOD_PTRS(CKRenderedScene, SetDefaultRenderStates);
 CP_DEFINE_METHOD_PTRS(CKRenderedScene, SetupLights);
@@ -90,9 +92,9 @@ CKRenderedScene::~CKRenderedScene() {
 CKERROR CKRenderedScene::Draw(CK_RENDER_FLAGS Flags) {
 //    return CP_CALL_METHOD_ORIG(Draw, Flags);
 
-    auto *dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) m_RenderContext;
-    auto *rm = (CP_HOOK_CLASS_NAME(CKRenderManager) *) dev->m_RenderManager;
-    auto *rst = dev->m_RasterizerContext;
+    auto *const dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) m_RenderContext;
+    auto *const rm = (CP_HOOK_CLASS_NAME(CKRenderManager) *) dev->m_RenderManager;
+    auto *const rst = dev->m_RasterizerContext;
 
     SetDefaultRenderStates(rst);
 
@@ -236,8 +238,8 @@ CKERROR CKRenderedScene::Draw(CK_RENDER_FLAGS Flags) {
 void CKRenderedScene::SetDefaultRenderStates(CKRasterizerContext *rst) {
 //    CP_CALL_METHOD_ORIG(SetDefaultRenderStates, rst);
 
-    auto *dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) m_RenderContext;
-    auto *rm = (CP_HOOK_CLASS_NAME(CKRenderManager) *) dev->m_RenderManager;
+    auto *const dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) m_RenderContext;
+    auto *const rm = (CP_HOOK_CLASS_NAME(CKRenderManager) *) dev->m_RenderManager;
 
     rst->InvalidateStateCache(VXRENDERSTATE_FOGVERTEXMODE);
     rst->InvalidateStateCache(VXRENDERSTATE_FOGENABLE);
@@ -373,9 +375,9 @@ void CKRenderedScene::PrepareCameras(CK_RENDER_FLAGS Flags) {
         }
     }
 
-    auto *dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) m_RenderContext;
-    auto *attachedCamera = (CP_HOOK_CLASS_NAME(CKCamera) *) m_AttachedCamera;
-    auto *rootEntity = (CP_HOOK_CLASS_NAME(CK3dEntity) *) m_RootEntity;
+    auto *const dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) m_RenderContext;
+    auto *const attachedCamera = (CP_HOOK_CLASS_NAME(CKCamera) *) m_AttachedCamera;
+    auto *const rootEntity = (CP_HOOK_CLASS_NAME(CK3dEntity) *) m_RootEntity;
 
     if (attachedCamera && rootEntity) {
         rootEntity->m_WorldMatrix = attachedCamera->m_WorldMatrix;
@@ -402,9 +404,9 @@ void CKRenderedScene::PrepareCameras(CK_RENDER_FLAGS Flags) {
 void CKRenderedScene::ForceCameraSettingsUpdate() {
 //    CP_CALL_METHOD_ORIG(ForceCameraSettingsUpdate);
 
-    auto *dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) m_RenderContext;
-    auto *attachedCamera = (CP_HOOK_CLASS_NAME(CKCamera) *) m_AttachedCamera;
-    auto *rootEntity = (CP_HOOK_CLASS_NAME(CK3dEntity) *) m_RootEntity;
+    auto *const dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) m_RenderContext;
+    auto *const attachedCamera = (CP_HOOK_CLASS_NAME(CKCamera) *) m_AttachedCamera;
+    auto *const rootEntity = (CP_HOOK_CLASS_NAME(CK3dEntity) *) m_RootEntity;
 
     if (attachedCamera && rootEntity) {
         rootEntity->SetWorldMatrix(attachedCamera->m_WorldMatrix);
@@ -420,7 +422,7 @@ void CKRenderedScene::ForceCameraSettingsUpdate() {
 void CKRenderedScene::UpdateViewportSize(CKBOOL updateProjection, CK_RENDER_FLAGS Flags) {
 //    CP_CALL_METHOD_ORIG(UpdateViewportSize, force, Flags);
 
-    auto *dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) m_RenderContext;
+    auto *const dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) m_RenderContext;
 
     VxRect rect;
     dev->GetWindowRect(rect);
@@ -618,6 +620,8 @@ bool CKRenderedScene::Unhook(void *base) {
     return true;
 }
 
+// CKSceneGraphNode
+
 CP_DEFINE_METHOD_PTRS(CKSceneGraphNode, NoTestsTraversal);
 CP_DEFINE_METHOD_PTRS(CKSceneGraphNode, AddNode);
 CP_DEFINE_METHOD_PTRS(CKSceneGraphNode, RemoveNode);
@@ -636,9 +640,9 @@ CP_DEFINE_METHOD_PTRS(CKSceneGraphNode, InvalidateBox);
 void CKSceneGraphNode::NoTestsTraversal(CKRenderContext *Dev, CK_RENDER_FLAGS Flags) {
 //    CP_CALL_METHOD_ORIG(NoTestsTraversal, Dev, Flags);
 
-    auto *dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) Dev;
-    auto *rm = (CP_HOOK_CLASS_NAME(CKRenderManager) *) dev->m_RenderManager;
-    auto *rst = dev->m_RasterizerContext;
+    auto *const dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) Dev;
+    auto *const rm = (CP_HOOK_CLASS_NAME(CKRenderManager) *) dev->m_RenderManager;
+    auto *const rst = dev->m_RasterizerContext;
 
     CKBOOL needClip = FALSE;
     ++dev->m_SceneTraversalCalls;
@@ -960,6 +964,8 @@ bool CKSceneGraphNode::Unhook(void *base) {
     return true;
 }
 
+// CKSceneGraphRootNode
+
 CP_DEFINE_METHOD_PTRS(CKSceneGraphRootNode, RenderTransparents);
 CP_DEFINE_METHOD_PTRS(CKSceneGraphRootNode, SortTransparentObjects);
 CP_DEFINE_METHOD_PTRS(CKSceneGraphRootNode, Check);
@@ -968,8 +974,8 @@ CP_DEFINE_METHOD_PTRS(CKSceneGraphRootNode, Clear);
 void CKSceneGraphRootNode::RenderTransparents(CKRenderContext *Dev, CK_RENDER_FLAGS Flags) {
 //    CP_CALL_METHOD_ORIG(RenderTransparents, Dev, Flags);
 
-    auto *dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) Dev;
-    auto *rm = (CP_HOOK_CLASS_NAME(CKRenderManager) *) dev->m_RenderManager;
+    auto *const dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) Dev;
+    auto *const rm = (CP_HOOK_CLASS_NAME(CKRenderManager) *) dev->m_RenderManager;
 
     ++dev->m_SceneTraversalCalls;
 
@@ -1109,6 +1115,8 @@ bool CKSceneGraphRootNode::Unhook(void *base) {
     return true;
 }
 
+// CKRenderManager
+
 CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager> CP_HOOK_CLASS_NAME(CKRenderManager)::s_VTable = {};
 CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CKRenderManager), GetFullscreenContext);
 
@@ -1214,7 +1222,7 @@ void CP_RENDER_MANAGER_METHOD_NAME(FlushTextures)() {
 }
 
 CKRenderContext *CP_RENDER_MANAGER_METHOD_NAME(CreateRenderContext)(void *Window, int Driver, CKRECT *Rect, CKBOOL Fullscreen, int Bpp, int Zbpp, int StencilBpp, int RefreshRate) {
-    auto *dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) m_Context->CreateObject(CKCID_RENDERCONTEXT);
+    auto *const dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) m_Context->CreateObject(CKCID_RENDERCONTEXT);
     if (!dev)
         return nullptr;
 
@@ -1294,7 +1302,8 @@ bool CP_HOOK_CLASS_NAME(CKRenderManager)::Hook(void *base) {
     utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager>>(&table, s_VTable);
 
 #define HOOK_RENDER_MANAGER_VIRTUAL_METHOD(Instance, Name) \
-    utils::HookVirtualMethod(Instance, &CP_HOOK_CLASS_NAME(CKRenderManager)::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager>, Name) / sizeof(void*)))
+    utils::HookVirtualMethod(Instance, &CP_HOOK_CLASS_NAME(CKRenderManager)::CP_FUNC_HOOK_NAME(Name), \
+                             (offsetof(CP_CLASS_VTABLE_NAME(CKRenderManager)<CKRenderManager>, Name) / sizeof(void*)))
 
     HOOK_RENDER_MANAGER_VIRTUAL_METHOD(&table, GetRenderDriverCount);
     HOOK_RENDER_MANAGER_VIRTUAL_METHOD(&table, GetRenderDriverDescription);
@@ -1338,6 +1347,8 @@ bool CP_HOOK_CLASS_NAME(CKRenderManager)::Unhook(void *base) {
 
     return true;
 }
+
+// CKRenderContext
 
 bool CP_HOOK_CLASS_NAME(CKRenderContext)::s_DisableRender = false;
 bool CP_HOOK_CLASS_NAME(CKRenderContext)::s_EnableWidescreenFix = false;
@@ -2072,7 +2083,7 @@ bool CP_HOOK_CLASS_NAME(CKRenderContext)::Hook(void *base) {
 
 #define HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(Instance, Name) \
     utils::HookVirtualMethod(Instance, &CP_HOOK_CLASS_NAME(CKRenderContext)::CP_FUNC_HOOK_NAME(Name), \
-                            (offsetof(CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>, Name) / sizeof(void*)))
+                             (offsetof(CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>, Name) / sizeof(void*)))
 
     // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(&table, AddObject);
     // HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(&table, RemoveObject);
@@ -2214,7 +2225,7 @@ bool CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(void *base) {
 }
 
 void CP_HOOK_CLASS_NAME(CKRenderObject)::RemoveFromRenderContext(CKRenderContext *rc) {
-    auto *dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) rc;
+    auto *const dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) rc;
 
     m_Mask &= ~dev->m_Mask;
     if (CKIsChildClassOf(this, CKCID_3DENTITY) && !m_Context->IsInClearAll()) {
@@ -2226,13 +2237,220 @@ void CP_HOOK_CLASS_NAME(CKRenderObject)::RemoveFromRenderContext(CKRenderContext
     }
 }
 
+// CK2dEntity
+
+CP_CLASS_VTABLE_NAME(CK2dEntity)<CK2dEntity> CP_HOOK_CLASS_NAME(CK2dEntity)::s_VTable = {};
+CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CK2dEntity), UpdateExtents);
+
+#define CP_2D_ENTITY_METHOD_NAME(Name) CP_HOOK_CLASS_NAME(CK2dEntity)::CP_FUNC_HOOK_NAME(Name)
+
+CKERROR CP_2D_ENTITY_METHOD_NAME(Render)(CKRenderContext *Dev) {
+    if ((m_ObjectFlags & CK_OBJECT_HIERACHICALHIDE) != 0)
+        return CK_OK;
+
+    CKBOOL visible = FALSE;
+    if (IsVisible() && (IsInScene(m_Context->GetCurrentScene()) || (m_ObjectFlags & CK_OBJECT_INTERFACEOBJ) != 0))
+        visible = TRUE;
+
+    if (!visible && m_Children.IsEmpty())
+        return CK_OK;
+
+    auto *const dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) Dev;
+
+    CKBOOL updated = UpdateExtents(dev);
+
+    if (visible) {
+        if (m_Callbacks && m_Callbacks->m_PreCallBacks.Size() != 0) {
+            dev->m_SpriteCallbacksTimeProfiler.Reset();
+            dev->m_RasterizerContext->SetVertexShader(0);
+            for (auto it = m_Callbacks->m_PreCallBacks.Begin(); it != m_Callbacks->m_PreCallBacks.End(); ++it) {
+                ((CK_RENDEROBJECT_CALLBACK) it->callback)(dev, this, it->argument);
+            }
+            dev->m_Stats.SpriteCallbacksTime += dev->m_SpriteCallbacksTimeProfiler.Current();
+        }
+
+        if (updated)
+            Draw(dev);
+    }
+
+    for (auto it = m_Children.Begin(); it != m_Children.End(); ++it) {
+        auto *child = (CP_HOOK_CLASS_NAME(CK2dEntity) *) *it;
+        if (updated || (child->m_Flags & CK_2DENTITY_CLIPTOPARENT) == 0)
+            child->Render(dev);
+    }
+
+    if (visible && m_Callbacks && m_Callbacks->m_PostCallBacks.Size() != 0) {
+        dev->m_SpriteCallbacksTimeProfiler.Reset();
+        dev->m_RasterizerContext->SetVertexShader(0);
+        for (auto it = m_Callbacks->m_PostCallBacks.Begin(); it != m_Callbacks->m_PostCallBacks.End(); ++it) {
+            ((CK_RENDEROBJECT_CALLBACK) it->callback)(dev, this, it->argument);
+        }
+        dev->m_Stats.SpriteCallbacksTime += dev->m_SpriteCallbacksTimeProfiler.Current();
+    }
+
+    return CK_OK;
+}
+
+CKERROR CP_2D_ENTITY_METHOD_NAME(Draw)(CKRenderContext *Dev) {
+    auto *const dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) Dev;
+    auto *const rst = dev->m_RasterizerContext;
+
+    if (m_Material)
+    {
+        VxRect viewRect;
+        if ((m_Flags & CK_2DENTITY_CLIPTOCAMERAVIEW) == 0) {
+            dev->GetViewRect(viewRect);
+            VxRect windowRect;
+            dev->GetWindowRect(windowRect);
+            dev->SetFullViewport(rst->m_ViewportData, (int) windowRect.GetWidth(), (int) windowRect.GetHeight());
+            rst->SetViewport(&rst->m_ViewportData);
+        }
+
+        m_Material->SetAsCurrent(dev);
+        dev->SetState(VXRENDERSTATE_CULLMODE, VXCULL_NONE);
+        dev->SetState(VXRENDERSTATE_FOGENABLE, FALSE);
+        if (IsBackground())
+        {
+            dev->SetState(VXRENDERSTATE_ZFUNC, VXCMP_ALWAYS);
+            dev->SetState(VXRENDERSTATE_ZWRITEENABLE, FALSE);
+        }
+        VxDrawPrimitiveData *data = dev->GetDrawPrimitiveStructure(CKRST_DP_CL_VCT, 4);
+        VxColor diffuseColor = m_Material->GetDiffuse();
+        CKDWORD diffuse = RGBAFTOCOLOR(&diffuseColor);
+        VxFillStructure(4, data->ColorPtr, data->ColorStride, sizeof(CKDWORD), &diffuse);
+
+        if (m_Material->GetTexture()) {
+            XPtrStrided<VxUV> uvs(data->TexCoordPtr, data->TexCoordStride);
+            uvs->u = m_SrcRect.left;
+            uvs->v = m_SrcRect.top;
+            ++uvs;
+            uvs->u = m_SrcRect.right;
+            uvs->v = m_SrcRect.top;
+            ++uvs;
+            uvs->u = m_SrcRect.right;
+            uvs->v = m_SrcRect.bottom;
+            ++uvs;
+            uvs->u = m_SrcRect.left;
+            uvs->v = m_SrcRect.bottom;
+        }
+
+        XPtrStrided<VxVector4> positions(data->PositionPtr, data->PositionStride);
+        positions->Set(m_VtxPos.left + 0.5f, m_VtxPos.top + 0.5f, 0.0f, 1.0f);
+        ++positions;
+        positions->Set(m_VtxPos.right + 0.5f, m_VtxPos.top + 0.5f, 0.0f, 1.0f);
+        ++positions;
+        positions->Set(m_VtxPos.right + 0.5f, m_VtxPos.bottom + 0.5f, 0.0f, 1.0f);
+        ++positions;
+        positions->Set(m_VtxPos.left + 0.5f, m_VtxPos.bottom + 0.5f, 0.0f, 1.0f);
+
+        dev->DrawPrimitive(VX_TRIANGLEFAN, nullptr, 4, data);
+        dev->SetState(VXRENDERSTATE_FOGENABLE, dev->m_RenderedScene->m_FogMode != 0);
+        if ((m_Flags & CK_2DENTITY_CLIPTOCAMERAVIEW) == 0)
+        {
+            rst->m_ViewportData.ViewX = (int) viewRect.left;
+            rst->m_ViewportData.ViewY = (int) viewRect.top;
+            rst->m_ViewportData.ViewWidth = (int) viewRect.GetWidth();
+            rst->m_ViewportData.ViewHeight = (int) viewRect.GetHeight();
+            rst->SetViewport(&rst->m_ViewportData);
+        }
+    } else if (!m_Context->IsPlaying()) {
+        dev->SetState(VXRENDERSTATE_ALPHABLENDENABLE, TRUE);
+        dev->SetState(VXRENDERSTATE_ALPHATESTENABLE, FALSE);
+        dev->SetState(VXRENDERSTATE_SRCBLEND, VXBLEND_SRCALPHA);
+        dev->SetState(VXRENDERSTATE_DESTBLEND, VXBLEND_INVSRCALPHA);
+        dev->SetState(VXRENDERSTATE_CULLMODE, VXCULL_NONE);
+        dev->SetState(VXRENDERSTATE_ZWRITEENABLE, FALSE);
+        dev->SetState(VXRENDERSTATE_ZFUNC, VXCMP_ALWAYS);
+        dev->SetState(VXRENDERSTATE_FOGENABLE, FALSE);
+        dev->SetTexture(nullptr);
+
+        VxDrawPrimitiveData *data = dev->GetDrawPrimitiveStructure(CKRST_DP_CL_VCT, 4);
+        VxColor diffuseColor(0.0f, 0.0f, 0.0f);
+        CKDWORD diffuse = RGBAFTOCOLOR(&diffuseColor);
+        VxFillStructure(4, data->ColorPtr, data->ColorStride, sizeof(CKDWORD), &diffuse);
+
+        {
+            XPtrStrided<VxVector4> positions(data->PositionPtr, data->PositionStride);
+            positions->Set(m_VtxPos.left, m_VtxPos.top, 0.0f, 1.0f);
+            ++positions;
+            positions->Set(m_VtxPos.right, m_VtxPos.top, 0.0f, 1.0f);
+            ++positions;
+            positions->Set(m_VtxPos.right, m_VtxPos.bottom, 0.0f, 1.0f);
+            ++positions;
+            positions->Set(m_VtxPos.left, m_VtxPos.bottom, 0.0f, 1.0f);
+        }
+
+        dev->DrawPrimitive(VX_TRIANGLEFAN, nullptr, 4, data);
+        CKWORD *indices = dev->GetDrawPrimitiveIndices(5);
+        indices[0] = 0;
+        indices[1] = 1;
+        indices[2] = 2;
+        indices[3] = 3;
+        indices[4] = 0;
+
+        diffuse = A_MASK | R_MASK | G_MASK | B_MASK;
+
+        XPtrStrided<VxVector4> positions(data->PositionPtr, data->PositionStride);
+        positions->x -= 1.0f;
+        ++positions;
+        positions->x -= 1.0f;
+        ++positions;
+        positions->x -= 1.0f;
+        ++positions;
+        positions->x -= 1.0f;
+        VxFillStructure(4, data->ColorPtr, data->ColorStride, sizeof(CKDWORD), &diffuse);
+        dev->DrawPrimitive(VX_LINESTRIP, indices, 5, data);
+        dev->SetState(VXRENDERSTATE_FOGENABLE, dev->m_RenderedScene->m_FogMode != 0);
+    }
+
+    return CK_OK;
+}
+
+CKBOOL CP_HOOK_CLASS_NAME(CK2dEntity)::UpdateExtents(CKRenderContext *Dev) {
+    return CP_CALL_METHOD_ORIG_FORCE(CK2dEntity, UpdateExtents, Dev);
+}
+
+bool CP_HOOK_CLASS_NAME(CK2dEntity)::Hook(void *base) {
+    if (!base)
+        return false;
+
+    auto *table = utils::ForceReinterpretCast<CP_CLASS_VTABLE_NAME(CK2dEntity)<CK2dEntity> *>(base, 0x86378);
+
+#define HOOK_2D_ENTITY_VIRTUAL_METHOD(Instance, Name) \
+    utils::HookVirtualMethod(Instance, &CP_HOOK_CLASS_NAME(CK2dEntity)::CP_FUNC_HOOK_NAME(Name), \
+                             (offsetof(CP_CLASS_VTABLE_NAME(CK2dEntity)<CK2dEntity>, Name) / sizeof(void*)))
+
+    HOOK_2D_ENTITY_VIRTUAL_METHOD(&table, Render);
+    HOOK_2D_ENTITY_VIRTUAL_METHOD(&table, Draw);
+
+#undef HOOK_2D_ENTITY_VIRTUAL_METHOD
+
+    CP_ADD_METHOD_HOOK(UpdateExtents, base, 0x5CCE5);
+
+    return true;
+}
+
+bool CP_HOOK_CLASS_NAME(CK2dEntity)::Unhook(void *base) {
+    if (!base)
+        return false;
+
+    auto *table = utils::ForceReinterpretCast<CP_CLASS_VTABLE_NAME(CK2dEntity)<CK2dEntity> *>(base, 0x86378);
+    utils::SaveVTable<CP_CLASS_VTABLE_NAME(CK2dEntity)<CK2dEntity>>(&table, s_VTable);
+
+    CP_REMOVE_METHOD_HOOK(UpdateExtents);
+
+    return true;
+}
+
+// CK3dEntity
+
 CP_CLASS_VTABLE_NAME(CK3dEntity)<CK3dEntity> CP_HOOK_CLASS_NAME(CK3dEntity)::s_VTable = {};
 CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CK3dEntity), WorldMatrixChanged);
 
 #define CP_3D_ENTITY_METHOD_NAME(Name) CP_HOOK_CLASS_NAME(CK3dEntity)::CP_FUNC_HOOK_NAME(Name)
 
 CKBOOL CP_3D_ENTITY_METHOD_NAME(Render)(CKRenderContext *Dev, CKDWORD Flags) {
-    auto *dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) Dev;
+    auto *const dev = (CP_HOOK_CLASS_NAME(CKRenderContext) *) Dev;
 
     if (!m_CurrentMesh && !m_Callbacks)
         return FALSE;
@@ -2285,7 +2503,7 @@ CKBOOL CP_3D_ENTITY_METHOD_NAME(Render)(CKRenderContext *Dev, CKDWORD Flags) {
         if (m_Callbacks->m_PreCallBacks.Size() != 0) {
             dev->m_ObjectsCallbacksTimeProfiler.Reset();
             for (auto it = m_Callbacks->m_PreCallBacks.Begin(); it != m_Callbacks->m_PreCallBacks.End(); ++it) {
-                ((CK_RENDEROBJECT_CALLBACK) it->callback)(Dev, this, it->argument);
+                ((CK_RENDEROBJECT_CALLBACK) it->callback)(dev, this, it->argument);
             }
             dev->m_Stats.ObjectsCallbacksTime += dev->m_ObjectsCallbacksTimeProfiler.Current();
         }
@@ -2296,11 +2514,12 @@ CKBOOL CP_3D_ENTITY_METHOD_NAME(Render)(CKRenderContext *Dev, CKDWORD Flags) {
             dev->m_Stats.SkinTime += dev->m_SkinTimeProfiler.Current();
         }
 
-        if (m_Callbacks->m_Callback) {
-            ((CK_RENDEROBJECT_CALLBACK) m_Callbacks->m_Callback)(Dev, this, m_Callbacks->m_PostCallBacks.Begin());
+        if (m_Callbacks->m_OnCallBack) {
+            const VxCallBack *const cb = m_Callbacks->m_OnCallBack;
+            ((CK_RENDEROBJECT_CALLBACK) cb->callback)(dev, this, cb->argument);
         } else if (m_CurrentMesh && (m_CurrentMesh->GetFlags() & VXMESH_VISIBLE) != 0) {
             dev->m_Current3dEntity = (CK3dEntity *) this;
-            m_CurrentMesh->Render(Dev, (CK3dEntity *) this);
+            m_CurrentMesh->Render(dev, (CK3dEntity *) this);
             dev->m_Current3dEntity = nullptr;
         }
 
@@ -2308,13 +2527,13 @@ CKBOOL CP_3D_ENTITY_METHOD_NAME(Render)(CKRenderContext *Dev, CKDWORD Flags) {
             dev->m_ObjectsCallbacksTimeProfiler.Reset();
             dev->m_RasterizerContext->SetVertexShader(0);
             for (auto it = m_Callbacks->m_PostCallBacks.Begin(); it != m_Callbacks->m_PostCallBacks.End(); ++it) {
-                ((CK_RENDEROBJECT_CALLBACK) it->callback)(Dev, this, it->argument);
+                ((CK_RENDEROBJECT_CALLBACK) it->callback)(dev, this, it->argument);
             }
             dev->m_Stats.ObjectsCallbacksTime += dev->m_ObjectsCallbacksTimeProfiler.Current();
         }
     } else if (m_CurrentMesh && (m_CurrentMesh->GetFlags() & VXMESH_VISIBLE) != 0) {
         dev->m_Current3dEntity = (CK3dEntity *) this;
-        m_CurrentMesh->Render(Dev, (CK3dEntity *) this);
+        m_CurrentMesh->Render(dev, (CK3dEntity *) this);
         dev->m_Current3dEntity = nullptr;
     }
 
@@ -2350,7 +2569,8 @@ bool CP_HOOK_CLASS_NAME(CK3dEntity)::Hook(void *base) {
     auto *table = utils::ForceReinterpretCast<CP_CLASS_VTABLE_NAME(CK3dEntity)<CK3dEntity> *>(base, 0x83650);
 
 #define HOOK_3D_ENTITY_VIRTUAL_METHOD(Instance, Name) \
-    utils::HookVirtualMethod(Instance, &CP_HOOK_CLASS_NAME(CK3dEntity)::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CK3dEntity)<CK3dEntity>, Name) / sizeof(void*)))
+    utils::HookVirtualMethod(Instance, &CP_HOOK_CLASS_NAME(CK3dEntity)::CP_FUNC_HOOK_NAME(Name), \
+                             (offsetof(CP_CLASS_VTABLE_NAME(CK3dEntity)<CK3dEntity>, Name) / sizeof(void*)))
 
     HOOK_3D_ENTITY_VIRTUAL_METHOD(&table, Render);
 
@@ -2410,6 +2630,7 @@ namespace RenderHook {
         CP_HOOK_CLASS_NAME(CKRenderManager)::Hook(base);
         CP_HOOK_CLASS_NAME(CKRenderContext)::Hook(base);
 
+        CP_HOOK_CLASS_NAME(CK2dEntity)::Hook(base);
         CP_HOOK_CLASS_NAME(CK3dEntity)::Hook(base);
         CP_HOOK_CLASS_NAME(CKLight)::Hook(base);
 
@@ -2429,6 +2650,7 @@ namespace RenderHook {
         CP_HOOK_CLASS_NAME(CKRenderManager)::Unhook(base);
         CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(base);
 
+        CP_HOOK_CLASS_NAME(CK2dEntity)::Unhook(base);
         CP_HOOK_CLASS_NAME(CK3dEntity)::Unhook(base);
         CP_HOOK_CLASS_NAME(CKLight)::Unhook(base);
 
