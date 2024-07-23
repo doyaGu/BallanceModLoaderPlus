@@ -42,7 +42,7 @@ void UpdateDriverDescCaps(VxDriverDesc2 *desc);
 class CKCallbacksContainer {
 public:
     XClassArray<VxCallBack> m_PreCallBacks;
-    void *m_Callback;
+    VxCallBack *m_OnCallBack;
     XClassArray<VxCallBack> m_PostCallBacks;
 };
 
@@ -532,6 +532,14 @@ public:
 #include "CK2dEntity.h"
 #undef CK_3DIMPLEMENTATION
 
+    CP_DECLARE_METHOD_HOOK(CKERROR, Render, (CKRenderContext *Dev));
+    CP_DECLARE_METHOD_HOOK(CKERROR, Draw, (CKRenderContext *Dev));
+
+    CKBOOL UpdateExtents(CKRenderContext *Dev);
+
+    static bool Hook(void *base);
+    static bool Unhook(void *base);
+
     VxRect m_Rect;
     VxRect *m_HomogeneousRect;
     VxRect m_VtxPos;
@@ -542,6 +550,10 @@ public:
     XArray<CK2dEntity *> m_Children;
     VxRect m_SourceRect;
     CKDWORD m_ZOrder;
+
+    CP_DECLARE_METHOD_PTRS(CK2dEntity, CKBOOL, UpdateExtents, (CKRenderContext *Dev));
+
+    static CP_CLASS_VTABLE_NAME(CK2dEntity)<CK2dEntity> s_VTable;
 };
 
 class CP_HOOK_CLASS_NAME(CK3dEntity) : public CP_HOOK_CLASS_NAME(CKRenderObject) {
