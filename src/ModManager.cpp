@@ -977,13 +977,6 @@ bool ModManager::InitHooks() {
 
     m_InputHook = new InputHook(m_InputManager);
 
-    if (RenderHook::HookRenderEngine()) {
-        m_Logger->Info("Hook Render Engine Success");
-    } else {
-        m_Logger->Info("Hook Render Engine Failed");
-        result = false;
-    }
-
     if (HookObjectLoad()) {
         m_Logger->Info("Hook ObjectLoad Success");
     } else {
@@ -1008,13 +1001,6 @@ bool ModManager::ShutdownHooks() {
     bool result = true;
 
     delete m_InputHook;
-
-    if (RenderHook::UnhookRenderEngine()) {
-        m_Logger->Info("Unhook Render Engine Success");
-    } else {
-        m_Logger->Info("Unhook Render Engine Failed");
-        result = false;
-    }
 
     if (UnhookObjectLoad()) {
         m_Logger->Info("Unhook ObjectLoad Success");
