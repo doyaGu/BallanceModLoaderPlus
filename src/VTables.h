@@ -573,7 +573,6 @@ struct CP_CLASS_VTABLE_NAME(CK2dEntity) : public CP_CLASS_VTABLE_NAME(CKRenderOb
     CP_DECLARE_METHOD_PTR(T, CK2dEntity *, GetParent, () const);
     CP_DECLARE_METHOD_PTR(T, int, GetChildrenCount, () const);
     CP_DECLARE_METHOD_PTR(T, CK2dEntity *, GetChild, (int i) const);
-    CP_DECLARE_METHOD_PTR(T, CKBOOL, IsRootObject, ());
     CP_DECLARE_METHOD_PTR(T, CK2dEntity *, HierarchyParser, (CK2dEntity *current) const);
     CP_DECLARE_METHOD_PTR(T, void, SetMaterial, (CKMaterial *mat));
     CP_DECLARE_METHOD_PTR(T, CKMaterial *, GetMaterial, ());

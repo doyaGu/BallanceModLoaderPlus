@@ -102,7 +102,7 @@ CKERROR CKRenderedScene::Draw(CK_RENDER_FLAGS Flags) {
     if ((Flags & CK_RENDER_BACKGROUNDSPRITES) != 0 && rm->m_2DRootBack->GetChildrenCount()) {
         VxRect rect;
         dev->GetViewRect(rect);
-        dev->SetFullViewport(rst->m_ViewportData, dev->m_WindowRect.right, dev->m_WindowRect.bottom);
+        dev->SetFullViewport(rst->m_ViewportData, dev->m_Settings.m_Rect.right, dev->m_Settings.m_Rect.bottom);
         rst->SetViewport(&rst->m_ViewportData);
         rm->m_2DRootBack->Render(m_RenderContext);
         ResizeViewport(rect);
@@ -127,7 +127,7 @@ CKERROR CKRenderedScene::Draw(CK_RENDER_FLAGS Flags) {
             rst->SetTransformMatrix(VXMATRIX_PROJECTION, dev->m_ProjectionMatrix);
             rst->SetViewport(&dev->m_ViewportData);
 
-            VxRect rect(0.0f, 0.0f, (float) dev->m_WindowRect.right, (float) dev->m_WindowRect.bottom);
+            VxRect rect(0.0f, 0.0f, (float) dev->m_Settings.m_Rect.right, (float) dev->m_Settings.m_Rect.bottom);
             auto *background = dev->Get2dRoot(TRUE);
             background->SetRect(rect);
             auto *foreground = dev->Get2dRoot(FALSE);
@@ -206,7 +206,7 @@ CKERROR CKRenderedScene::Draw(CK_RENDER_FLAGS Flags) {
     if ((Flags & CK_RENDER_FOREGROUNDSPRITES) != 0 && rm->m_2DRootFore->GetChildrenCount() != 0) {
         VxRect rect;
         dev->GetViewRect(rect);
-        dev->SetFullViewport(rst->m_ViewportData, dev->m_WindowRect.right, dev->m_WindowRect.bottom);
+        dev->SetFullViewport(rst->m_ViewportData, dev->m_Settings.m_Rect.right, dev->m_Settings.m_Rect.bottom);
         rst->SetViewport(&rst->m_ViewportData);
         rm->m_2DRootFore->Render(m_RenderContext);
         ResizeViewport(rect);
@@ -435,8 +435,8 @@ void CKRenderedScene::UpdateViewportSize(CKBOOL updateProjection, CK_RENDER_FLAG
     if (m_AttachedCamera)
         m_AttachedCamera->GetAspectRatio(width, height);
 
-    int windowWidth = dev->m_WindowRect.right;
-    int windowHeight = dev->m_WindowRect.bottom;
+    int windowWidth = dev->m_Settings.m_Rect.right;
+    int windowHeight = dev->m_Settings.m_Rect.bottom;
 
     int viewWidth;
     int viewHeight;
@@ -1577,7 +1577,7 @@ CKERROR CP_RENDER_CONTEXT_METHOD_NAME(GoFullScreen)(int Width, int Height, int B
     if (rm->GetFullscreenContext())
         return CKERR_ALREADYFULLSCREEN;
 
-    m_RenderContextSettings = CKRenderContextSettings(m_RasterizerContext);
+    m_FullscreenSettings = CKRenderContextSettings(m_RasterizerContext);
     m_AppHandle = VxGetParent(m_WinHandle);
     VxGetWindowRect(m_WinHandle, &m_WinRect);
     VxScreenToClient(m_AppHandle, (CKPOINT *) &m_WinRect);
@@ -1594,12 +1594,12 @@ CKERROR CP_RENDER_CONTEXT_METHOD_NAME(GoFullScreen)(int Width, int Height, int B
     } else {
         VxSetParent(m_WinHandle, m_AppHandle);
         VxMoveWindow(m_WinHandle, m_WinRect.left, m_WinRect.top, m_WinRect.right - m_WinRect.left, m_WinRect.bottom - m_WinRect.top, FALSE);
-        rect.left = m_RenderContextSettings.m_Rect.left;
-        rect.top = m_RenderContextSettings.m_Rect.top;
-        rect.right = rect.left + m_RenderContextSettings.m_Rect.right;
-        rect.bottom = rect.top + m_RenderContextSettings.m_Rect.bottom;
+        rect.left = m_FullscreenSettings.m_Rect.left;
+        rect.top = m_FullscreenSettings.m_Rect.top;
+        rect.right = rect.left + m_FullscreenSettings.m_Rect.right;
+        rect.bottom = rect.top + m_FullscreenSettings.m_Rect.bottom;
         Create(m_WinHandle, m_DriverIndex, &rect, FALSE,
-               m_RenderContextSettings.m_Bpp, m_RenderContextSettings.m_Zbpp, m_RenderContextSettings.m_StencilBpp, 0);
+               m_FullscreenSettings.m_Bpp, m_FullscreenSettings.m_Zbpp, m_FullscreenSettings.m_StencilBpp, 0);
     }
 
     return err;
@@ -1621,13 +1621,13 @@ CKERROR CP_RENDER_CONTEXT_METHOD_NAME(StopFullScreen)() {
     VxMoveWindow(m_WinHandle, m_WinRect.left, m_WinRect.top, m_WinRect.right - m_WinRect.left, m_WinRect.bottom - m_WinRect.top, FALSE);
 
     CKRECT rect;
-    rect.left = m_RenderContextSettings.m_Rect.left;
-    rect.top = m_RenderContextSettings.m_Rect.top;
-    rect.right = rect.left + m_RenderContextSettings.m_Rect.right;
-    rect.bottom = rect.top + m_RenderContextSettings.m_Rect.bottom;
+    rect.left = m_FullscreenSettings.m_Rect.left;
+    rect.top = m_FullscreenSettings.m_Rect.top;
+    rect.right = rect.left + m_FullscreenSettings.m_Rect.right;
+    rect.bottom = rect.top + m_FullscreenSettings.m_Rect.bottom;
 
     CKERROR err = Create(m_WinHandle, m_DriverIndex, &rect, FALSE,
-                         m_RenderContextSettings.m_Bpp, m_RenderContextSettings.m_Zbpp, m_RenderContextSettings.m_StencilBpp, 0);
+                         m_FullscreenSettings.m_Bpp, m_FullscreenSettings.m_Zbpp, m_FullscreenSettings.m_StencilBpp, 0);
     m_RenderedScene->UpdateViewportSize(FALSE, CK_RENDER_USECURRENTSETTINGS);
 
     return err;
@@ -1699,8 +1699,8 @@ CKERROR CP_RENDER_CONTEXT_METHOD_NAME(Resize)(int PosX, int PosY, int SizeX, int
         return CKERR_ALREADYFULLSCREEN;
 
     if ((Flags & VX_RESIZE_NOMOVE) == 0) {
-        m_WindowRect.left = PosX;
-        m_WindowRect.top = PosY;
+        m_Settings.m_Rect.left = PosX;
+        m_Settings.m_Rect.top = PosY;
     }
 
     if ((Flags & VX_RESIZE_NOSIZE) == 0) {
@@ -1710,8 +1710,8 @@ CKERROR CP_RENDER_CONTEXT_METHOD_NAME(Resize)(int PosX, int PosY, int SizeX, int
             SizeX = rect.right;
             SizeY = rect.bottom;
         }
-        m_WindowRect.right = SizeX;
-        m_WindowRect.bottom = SizeY;
+        m_Settings.m_Rect.right = SizeX;
+        m_Settings.m_Rect.bottom = SizeY;
         m_ViewportData.ViewX = 0;
         m_ViewportData.ViewY = 0;
         m_ViewportData.ViewWidth = SizeX;
@@ -2021,7 +2021,104 @@ void CP_RENDER_CONTEXT_METHOD_NAME(GetStereoParameters)(float &EyeSeparation, fl
 }
 
 CKERROR CP_HOOK_CLASS_NAME(CKRenderContext)::Create(WIN_HANDLE Window, int Driver, CKRECT *Rect, CKBOOL Fullscreen, int Bpp, int Zbpp, int StencilBpp, int RefreshRate) {
-    return CP_CALL_METHOD_ORIG(Create, Window, Driver, Rect, Fullscreen, Bpp, Zbpp, StencilBpp, RefreshRate);
+//    return CP_CALL_METHOD_ORIG(Create, Window, Driver, Rect, Fullscreen, Bpp, Zbpp, StencilBpp, RefreshRate);
+
+    m_SmoothedFps = 0.0f;
+    m_TimeFpsCalc = 0;
+
+    m_RenderTimeProfiler.Reset();
+
+    m_FocalLength = 0.4f;
+    m_EyeSeparation = 100.0f;
+
+    auto *rm = (CP_HOOK_CLASS_NAME(CKRenderManager) *) m_RenderManager;
+
+    if (rm->GetFullscreenContext())
+        return CKERR_ALREADYFULLSCREEN;
+
+    if (m_RasterizerContext)
+        return CKERR_INVALIDRENDERCONTEXT;
+
+    // Skip Option ForceSoftware
+
+   if (Driver > rm->m_DriverCount)
+       return CK_OK;
+
+    m_RasterizerDriver = rm->m_Drivers[Driver].RasterizerDriver;
+    if (!m_RasterizerDriver)
+        return CK_OK;
+
+    m_WinHandle = Window;
+
+    CKRECT rect;
+    if (Rect)
+        rect = *Rect;
+    else
+        VxGetClientRect(m_WinHandle, &rect);
+
+    if (!Fullscreen)
+        m_DriverIndex = Driver;
+    m_DeviceValid = TRUE;
+
+    if (Fullscreen) {
+        m_AppHandle = VxGetParent(m_WinHandle);
+        VxSetParent(m_WinHandle, nullptr);
+        if (!VxMoveWindow(m_WinHandle, 0, 0, rect.right, rect.bottom, FALSE)) {
+            m_DeviceValid = FALSE;
+            return CKERR_INVALIDOPERATION;
+        }
+    }
+
+    SetFullViewport(m_ViewportData, rect.right - rect.left, rect.bottom - rect.top);
+    m_RasterizerContext = m_RasterizerDriver->CreateContext();
+    if (!m_RasterizerContext)
+        return CKERR_CANCREATERENDERCONTEXT;
+    m_RasterizerContext->m_Antialias = rm->m_Antialias.Value == TRUE;
+    m_RasterizerContext->m_EnableScreenDump = rm->m_EnableScreenDump.Value == TRUE;
+    m_RasterizerContext->m_EnsureVertexShader = rm->m_EnsureVertexShader.Value == TRUE;
+    CKBOOL result = m_RasterizerContext->Create(m_WinHandle,
+                                                rect.left,
+                                                rect.top,
+                                                rect.right - rect.left,
+                                                rect.bottom - rect.top,
+                                                Bpp,
+                                                Fullscreen,
+                                                RefreshRate,
+                                                Zbpp,
+                                                StencilBpp);
+    if (!result) {
+        m_RasterizerDriver->DestroyContext(m_RasterizerContext);
+        m_RasterizerContext = nullptr;
+        m_DeviceValid = FALSE;
+        return CKERR_CANCREATERENDERCONTEXT;
+    }
+
+    if (m_RasterizerContext)
+        m_RasterizerContext->SetTransparentMode(m_TransparentMode);
+    m_Fullscreen = Fullscreen;
+
+    m_Settings = CKRenderContextSettings(m_RasterizerContext);
+    if (!Fullscreen)
+        m_FullscreenSettings = m_Settings;
+
+    m_DeviceValid = FALSE;
+    m_ProjectionUpdated = FALSE;
+    m_Active = TRUE;
+    m_VertexBufferCount = 0;
+    m_DpFlags = 0;
+    m_VertexBufferIndex = 0;
+    m_StartIndex = -1;
+
+    if (Fullscreen && m_WinRect.left == -1 && m_WinRect.right == -1)
+    {
+        m_FullscreenSettings = CKRenderContextSettings(m_RasterizerContext);;
+        m_WinRect.left = 0;
+        m_WinRect.top = 0;
+        m_WinRect.right = m_FullscreenSettings.m_Rect.right;
+        m_WinRect.right = m_FullscreenSettings.m_Rect.bottom;
+    }
+
+    return CK_OK;
 }
 
 CKBOOL CP_HOOK_CLASS_NAME(CKRenderContext)::DestroyDevice() {
@@ -2050,7 +2147,7 @@ CKBOOL CP_HOOK_CLASS_NAME(CKRenderContext)::UpdateProjection(CKBOOL force) {
     m_RasterizerContext->SetViewport(&m_ViewportData);
     m_ProjectionUpdated = TRUE;
 
-    VxRect rect(0.0f, 0.0f, (float) m_WindowRect.right, (float) m_WindowRect.bottom);
+    VxRect rect(0.0f, 0.0f, (float) m_Settings.m_Rect.right, (float) m_Settings.m_Rect.bottom);
     auto *background = Get2dRoot(TRUE);
     background->SetRect(rect);
     auto *foreground = Get2dRoot(FALSE);

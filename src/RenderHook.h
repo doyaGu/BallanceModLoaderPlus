@@ -463,11 +463,8 @@ public:
     float m_FarPlane;
     VxMatrix m_ProjectionMatrix;
     CKViewportData m_ViewportData;
-    CKRECT m_WindowRect;
-    int m_Bpp;
-    int m_Zbpp;
-    int m_StencilBpp;
-    CKRenderContextSettings m_RenderContextSettings;
+    CKRenderContextSettings m_Settings;
+    CKRenderContextSettings m_FullscreenSettings;
     VxRect m_CurrentExtents;
     CKDWORD field_21C;
     CKDWORD m_TimeFpsCalc;
