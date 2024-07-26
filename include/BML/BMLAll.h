@@ -2,6 +2,7 @@
 #define BMLALL_H
 
 #include "BML/Defines.h"
+#include "BML/Guids.h"
 
 #include "BML/IBML.h"
 #include "BML/ILogger.h"

@@ -3,9 +3,6 @@
 
 #include "BML/Version.h"
 #include "BML/Export.h"
-#include "BML/Guids.h"
-
-#include "CKDefines.h"
 
 #ifndef BML_BEGIN_CDECLS
 #   ifdef __cplusplus

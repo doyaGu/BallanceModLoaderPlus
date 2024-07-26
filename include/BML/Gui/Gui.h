@@ -4,6 +4,8 @@
 #include <functional>
 #include <vector>
 
+#include "CKDefines.h"
+
 #include "BML/Defines.h"
 #include "BML/ExecuteBB.h"
 

@@ -12,6 +12,10 @@
 #include "BML/InputHook.h"
 #include "BML/ExecuteBB.h"
 #include "BML/ScriptHelper.h"
+#include "BML/Guids/Logics.h"
+#include "BML/Guids/Interface.h"
+#include "BML/Guids/TT_Toolbox_RT.h"
+
 #include "ModManager.h"
 #include "Commands.h"
 #include "Config.h"

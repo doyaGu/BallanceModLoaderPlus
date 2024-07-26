@@ -1,7 +1,11 @@
 #include "BML/ExecuteBB.h"
 
-#include "BML/Defines.h"
 #include "BML/ScriptHelper.h"
+#include "BML/Guids/Narratives.h"
+#include "BML/Guids/Interface.h"
+#include "BML/Guids/Logics.h"
+#include "BML/Guids/physics_RT.h"
+#include "BML/Guids/Hooks.h"
 
 #include "ModManager.h"
 
@@ -294,7 +298,7 @@ namespace ExecuteBB {
     }
 
     CKBehavior *CreateHookBlock(CKBehavior *script, CKBehaviorCallback callback, void *arg, int inCount, int outCount) {
-        CKBehavior *beh = CreateBB(script, BML_HOOKBLOCK_GUID);
+        CKBehavior *beh = CreateBB(script, HOOKS_HOOKBLOCK_GUID);
         beh->SetLocalParameterValue(0, &callback);
         beh->SetLocalParameterValue(1, &arg);
 

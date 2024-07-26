@@ -1,3 +1,5 @@
+#include "BML/Guids/physics_RT.h"
+
 #include "ModManager.h"
 #include "HookUtils.h"
 #include "VTables.h"

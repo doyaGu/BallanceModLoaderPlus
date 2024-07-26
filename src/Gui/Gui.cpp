@@ -3,6 +3,8 @@
 #include <utility>
 
 #include "BML/InputHook.h"
+#include "BML/Guids/Interface.h"
+
 #include "ModManager.h"
 
 using namespace BGui;

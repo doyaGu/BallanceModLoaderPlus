@@ -1,3 +1,5 @@
+#include "BML/Guids/Narratives.h"
+
 #include "ModManager.h"
 
 static CKBEHAVIORFCT g_ObjectLoad = nullptr;
