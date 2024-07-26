@@ -528,7 +528,7 @@ bool MapListPage::OnDrawEntry(std::size_t index, bool *v) {
 }
 
 void BMLMod::OnLoad() {
-    m_DataShare = m_BML->GetDataShare();
+    m_DataShare = BML_GetDataShare(nullptr);
     m_CKContext = m_BML->GetCKContext();
     m_RenderContext = m_BML->GetRenderContext();
     m_TimeManager = m_BML->GetTimeManager();

@@ -9,9 +9,6 @@
 #include "BML/ILogger.h"
 #include "BML/ICommand.h"
 #include "BML/IMessageReceiver.h"
-#include "BML/IDataShare.h"
-#include "BML/IEventPublisher.h"
-#include "BML/IConfiguration.h"
 
 class IMod;
 class InputHook;
@@ -100,11 +97,6 @@ public:
     virtual IMod *FindMod(const char *id) const = 0;
 
     virtual void ExecuteCommand(const char *cmd) = 0;
-
-    virtual BML::IDataShare *GetDataShare(const char *name = nullptr) = 0;
-    virtual BML::IEventPublisher *GetEventPublisher(const char *name = nullptr) = 0;
-    virtual BML::IConfiguration *GetConfiguration(const char *name = nullptr) = 0;
 };
-
 
 #endif // BML_IBML_H

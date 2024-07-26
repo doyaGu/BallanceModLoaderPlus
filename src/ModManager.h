@@ -112,9 +112,9 @@ public:
     ILogger *GetLogger() {return m_Logger; }
     FILE *GetLogFile() { return m_Logfile; }
 
-    BML::IDataShare *GetDataShare(const char *name) override;
-    BML::IEventPublisher *GetEventPublisher(const char *name) override;
-    BML::IConfiguration *GetConfiguration(const char *name) override;
+    BML::IDataShare *GetDataShare(const char *name = nullptr);
+    BML::IEventPublisher *GetEventPublisher(const char *name = nullptr);
+    BML::IConfiguration *GetConfiguration(const char *name = nullptr);
 
     const wchar_t *GetDirectory(DirectoryType type);
     const char *GetDirectoryUtf8(DirectoryType type);

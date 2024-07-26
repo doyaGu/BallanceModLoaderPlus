@@ -13,6 +13,31 @@
 #include "Overlay.h"
 #include "HookUtils.h"
 
+BML_BEGIN_CDECLS
+
+BML::IDataShare *BML_GetDataShare(const char *name) {
+    auto *manager = BML_GetModManager();
+    if (!manager)
+        return nullptr;
+    return manager->GetDataShare(name);
+}
+
+BML::IEventPublisher *BML_GetEventPublisher(const char *name) {
+    auto *manager = BML_GetModManager();
+    if (!manager)
+        return nullptr;
+    return manager->GetEventPublisher(name);
+}
+
+BML::IConfiguration *BML_GetConfiguration(const char *name) {
+    auto *manager = BML_GetModManager();
+    if (!manager)
+        return nullptr;
+    return manager->GetConfiguration(name);
+}
+
+BML_END_CDECLS
+
 CKERROR CreateModManager(CKContext *context) {
     new ModManager(context);
     return CK_OK;
