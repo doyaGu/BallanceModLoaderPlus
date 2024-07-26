@@ -3,6 +3,8 @@
 #include "BML/IBML.h"
 #include "BML/ExecuteBB.h"
 #include "BML/ScriptHelper.h"
+#include "BML/Guids/Logics.h"
+#include "BML/Guids/Narratives.h"
 
 using namespace ScriptHelper;
 

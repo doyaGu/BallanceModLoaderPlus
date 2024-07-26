@@ -3,6 +3,7 @@
 
 #include "Vx2dVector.h"
 #include "VxColor.h"
+#include "CKDefines.h"
 
 #include "BML/Defines.h"
 
