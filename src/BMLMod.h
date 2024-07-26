@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "BML/BML.h"
 #include "BML/IMod.h"
 #include "BML/IBML.h"
 #include "BML/Bui.h"
