@@ -481,8 +481,8 @@ public:
     VxTimeProfiler m_SpriteTimeProfiler;
     VxTimeProfiler m_TransparentObjectsSortTimeProfiler;
     CK3dEntity *m_Current3dEntity;
-    CKTexture *m_BufferTexture;
-    CKDWORD m_CubeMapFace;
+    CKTexture *m_TargetTexture;
+    CKRST_CUBEFACE m_CubeMapFace;
     float m_FocalLength;
     float m_EyeSeparation;
     CKDWORD m_Flags;
