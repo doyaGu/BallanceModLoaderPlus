@@ -308,8 +308,7 @@ public:
     virtual CKBOOL CopyToTexture(CKDWORD Texture, VxRect *Src, VxRect *Dest,
                                  CKRST_CUBEFACE Face = CKRST_CUBEFACE_XPOS) { return NULL; }
     //--- Try to set a texture as the target for rendering
-    virtual CKBOOL SetTargetTexture(CKDWORD TextureObject, int Width = 0, int Height = 0, CKRST_CUBEFACE Face = CKRST_CUBEFACE_XPOS,
-                                    CKBOOL GenerateMipMap = FALSE) { return FALSE; }
+    virtual CKBOOL SetTargetTexture(CKDWORD TextureObject, int Width = 0, int Height = 0, CKRST_CUBEFACE Face = CKRST_CUBEFACE_XPOS) { return FALSE; }
 
     //-------------------------------------------------------------
     //--- Sprites
