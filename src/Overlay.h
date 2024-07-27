@@ -41,6 +41,7 @@ namespace Overlay {
     void ImGuiShutdownRenderer(CKContext *context);
 
     void ImGuiNewFrame();
+    void ImGuiEndFrame();
     void ImGuiRender();
     void ImGuiOnRender();
 };
