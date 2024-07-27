@@ -2,7 +2,6 @@
 #define BML_BML_H
 
 #include "BML/Defines.h"
-#include "BML/IMessageReceiver.h"
 #include "BML/IDataShare.h"
 #include "BML/IEventPublisher.h"
 #include "BML/IConfiguration.h"
