@@ -176,8 +176,9 @@ CKERROR Narratives::ObjectLoader(CKContext *context, XObjectArray &objects, CKOb
     if (!filename || filename[0] == '\0')
         return CKERR_INVALIDPARAMETER;
 
+    CKLevel *level = context->GetCurrentLevel();
     CKScene *scene = context->GetCurrentScene();
-    if (context->GetCurrentLevel()->GetLevelScene() == scene)
+    if (level && level->GetLevelScene() == scene)
         addToScene = FALSE;
 
     auto loadOptions = CK_LOAD_FLAGS(CK_LOAD_DEFAULT | CK_LOAD_AUTOMATICMODE);
@@ -194,10 +195,6 @@ CKERROR Narratives::ObjectLoader(CKContext *context, XObjectArray &objects, CKOb
     if (err != CK_OK)
         return err;
 
-    CKLevel *level = context->GetCurrentLevel();
-    if (!level)
-        return CKERR_NOCURRENTLEVEL;
-
     CKObject *masterObject = nullptr;
     CKLevel *loadedLevel = nullptr;
 
@@ -210,7 +207,7 @@ CKERROR Narratives::ObjectLoader(CKContext *context, XObjectArray &objects, CKOb
 
         // We search here for the master object
         if (CKIsChildClassOf(o, filterClass)) {
-            if (masterObjectName && *masterObjectName != 0) {
+            if (masterObjectName && masterObjectName[0] != '\0') {
                 char *objectName = o->GetName();
                 if (objectName && !strcmp(objectName, masterObjectName)) {
                     masterObject = o;
@@ -229,32 +226,35 @@ CKERROR Narratives::ObjectLoader(CKContext *context, XObjectArray &objects, CKOb
         objects.PushBack(o->GetID());
     }
 
-    if (loadedLevel) {
-        // If a level is loaded, do a merge
-        level->Merge(loadedLevel, FALSE);
-        objects.RemoveObject(loadedLevel);
-        context->DestroyObject(loadedLevel);
-    } else {
-        // else add everything to the level / scene
-        level->BeginAddSequence(TRUE);
+    if (level) {
+        if (loadedLevel) {
+            // If a level is loaded, do a merge
+            level->Merge(loadedLevel, FALSE);
+            objects.RemoveObject(loadedLevel);
+            context->DestroyObject(loadedLevel);
+        } else {
+            // else add everything to the level / scene
+            level->BeginAddSequence(TRUE);
 
-        for (array->Reset(); !array->EndOfList(); array->Next()) {
-            CKObject *o = array->GetData(context);
-            if (CKIsChildClassOf(o, CKCID_SCENE)) {
-                level->AddScene((CKScene *) o);
-            } else {
-                level->AddObject(o);
+            for (array->Reset(); !array->EndOfList(); array->Next()) {
+                CKObject *o = array->GetData(context);
+                if (CKIsChildClassOf(o, CKCID_SCENE)) {
+                    level->AddScene((CKScene *) o);
+                } else {
+                    level->AddObject(o);
+                }
+
+                if (addToScene && CKIsChildClassOf(o, CKCID_SCENEOBJECT) && !(CKIsChildClassOf(o, CKCID_LEVEL) || CKIsChildClassOf(o, CKCID_SCENE)))
+                    scene->AddObjectToScene((CKSceneObject *) o);
             }
 
-            if (addToScene && CKIsChildClassOf(o, CKCID_SCENEOBJECT) && !(CKIsChildClassOf(o, CKCID_LEVEL) || CKIsChildClassOf(o, CKCID_SCENE)))
-                scene->AddObjectToScene((CKSceneObject *) o);
+            level->BeginAddSequence(FALSE);
         }
-
-        level->BeginAddSequence(FALSE);
     }
 
     DeleteCKObjectArray(array);
-    *pMasterObject = masterObject;
+    if (pMasterObject)
+        *pMasterObject = masterObject;
 
     return CK_OK;
 }
