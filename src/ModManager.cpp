@@ -70,36 +70,33 @@ CKERROR ModManager::OnCKEnd() {
 }
 
 CKERROR ModManager::OnCKPlay() {
-    if (m_Context->IsReseted() && m_Context->GetCurrentLevel() != nullptr) {
-        if (!m_RenderContext) {
-            m_RenderContext = m_Context->GetPlayerRenderContext();
-            m_Logger->Info("Get Render Context pointer 0x%08x", m_RenderContext);
+    if (m_Context->IsReseted() && m_Context->GetCurrentLevel() != nullptr && !m_RenderContext) {
+        m_RenderContext = m_Context->GetPlayerRenderContext();
+        m_Logger->Info("Get Render Context pointer 0x%08x", m_RenderContext);
 
-            Overlay::ImGuiInitRenderer(m_Context);
-        }
+        Overlay::ImGuiInitRenderer(m_Context);
+        Overlay::ImGuiContextScope scope;
 
-        if (!AreModsDown()) {
-            Overlay::ImGuiContextScope scope;
+        LoadMods();
+        InitMods();
 
-            LoadMods();
-            InitMods();
-        }
+        Overlay::ImGuiNewFrame();
     }
 
     return CK_OK;
 }
 
 CKERROR ModManager::OnCKReset() {
-    if (m_Context->GetCurrentLevel() != nullptr) {
-        if (!AreModsDown()) {
-            ShutdownMods();
-            UnloadMods();
-        }
+    if (m_Context->GetCurrentLevel() != nullptr && m_RenderContext) {
+        Overlay::ImGuiContextScope scope;
+        Overlay::ImGuiEndFrame();
 
-        if (m_RenderContext) {
-            Overlay::ImGuiShutdownRenderer(m_Context);
-            m_RenderContext = nullptr;
-        }
+        ShutdownMods();
+        UnloadMods();
+
+        Overlay::ImGuiShutdownRenderer(m_Context);
+
+        m_RenderContext = nullptr;
     }
 
     return CK_OK;
@@ -350,7 +347,6 @@ void ModManager::ShutdownMods() {
     m_CommandMap.clear();
 
     m_ModsInited = false;
-    m_ModsDown = true;
 }
 
 int ModManager::GetModCount() {

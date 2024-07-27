@@ -23,6 +23,7 @@ namespace Overlay {
     ImGuiContext *g_ImGuiContext = nullptr;
     bool g_ImGuiReady = false;
     bool g_RenderReady = false;
+    bool g_NewFrame = false;
 
     LRESULT OnWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         ImGuiContextScope scope;
@@ -142,6 +143,9 @@ namespace Overlay {
         ImGuiContextScope scope;
 
         ImGui_ImplWin32_Shutdown();
+
+        g_RenderReady = false;
+        g_ImGuiReady = false;
     }
 
     void ImGuiShutdownRenderer(CKContext *context) {
@@ -154,18 +158,28 @@ namespace Overlay {
     }
 
     void ImGuiNewFrame() {
-        if (g_ImGuiReady) {
+        if (g_ImGuiReady && !g_NewFrame) {
             g_RenderReady = false;
-
+ 
             ImGui_ImplWin32_NewFrame();
             ImGui_ImplCK2_NewFrame();
             ImGui::NewFrame();
+
+            g_NewFrame = true;
+        }
+    }
+
+    void ImGuiEndFrame() {
+        if (g_NewFrame) {
+            ImGui::EndFrame();
+            g_NewFrame = false;
         }
     }
 
     void ImGuiRender() {
-        if (g_ImGuiReady) {
+        if (g_NewFrame) {
             ImGui::Render();
+            g_NewFrame = false;
             g_RenderReady = true;
         }
     }

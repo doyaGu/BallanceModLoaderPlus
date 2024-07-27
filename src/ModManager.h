@@ -82,7 +82,6 @@ public:
     bool IsInitialized() const { return m_Initialized; }
     bool AreModsLoaded() const { return m_ModsLoaded; }
     bool AreModsInited() const { return m_ModsInited; }
-    bool AreModsDown() const { return m_ModsDown; }
 
     bool Init();
     bool Shutdown();
@@ -321,7 +320,6 @@ protected:
     bool m_Initialized = false;
     bool m_ModsLoaded = false;
     bool m_ModsInited = false;
-    bool m_ModsDown = false;
 
     bool m_Ingame = false;
     bool m_InLevel = false;
