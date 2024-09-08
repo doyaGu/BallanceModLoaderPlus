@@ -183,8 +183,21 @@ namespace Bui {
             if (page >= 0 && page < m_PageCount)
                 m_PageIndex = page;
         }
-        int NextPage() { return m_PageIndex < m_PageCount ? ++m_PageIndex : m_PageCount - 1; }
-        int PrevPage() { return m_PageIndex > 0 ? --m_PageIndex : 0; }
+
+        int NextPage() {
+            int oldPage = m_PageIndex;
+            m_PageIndex = m_PageIndex < m_PageCount ? m_PageIndex + 1 : m_PageCount - 1;
+            if (oldPage != m_PageIndex)
+                OnPageChanged(m_PageIndex, oldPage);
+            return m_PageIndex;
+        }
+        int PrevPage() {
+            int oldPage = m_PageIndex;
+            m_PageIndex = m_PageIndex > 0 ? m_PageIndex - 1 : 0;
+            if (oldPage != m_PageIndex)
+                OnPageChanged(m_PageIndex, oldPage);
+            return m_PageIndex;
+        }
 
         int GetMaxPage() const { return m_PageCount; }
         void SetMaxPage(int num) {
@@ -241,6 +254,7 @@ namespace Bui {
 
         virtual bool OnOpen() { return true; }
         virtual void OnClose() {}
+        virtual void OnPageChanged(int newPage, int oldPage) {}
         
         static std::size_t DrawEntries(const std::function<bool(std::size_t index)> &onEntry,
                                        const ImVec2 &pos = ImVec2(0.35f, 0.24f), float spacing = 0.14f, std::size_t capability = 4) {

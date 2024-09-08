@@ -313,7 +313,7 @@ void ModOptionPage::OnDraw() {
                         m_IntFlags[index] = 2;
                     }
                 }
-                if (ImGui::IsItemDeactivated() && m_IntFlags[index] == 2) {
+                if (ImGui::IsItemDeactivatedAfterEdit() && m_IntFlags[index] == 2) {
                     property->SetInteger(m_IntValues[index]);
                     m_IntFlags[index] = 1;
                 }
@@ -331,11 +331,11 @@ void ModOptionPage::OnDraw() {
                     m_FloatFlags[index] = 1;
                 }
                 if (Bui::InputFloatButton(property->GetName(), &m_FloatValues[index])) {
-                    if (fabs(m_FloatValues[index] - property->GetFloat()) < EPSILON) {
+                    if (fabs(m_FloatValues[index] - property->GetFloat()) > EPSILON) {
                         m_FloatFlags[index] = 2;
                     }
                 }
-                if (ImGui::IsItemDeactivated() && m_FloatFlags[index] == 2) {
+                if (ImGui::IsItemDeactivatedAfterEdit() && m_FloatFlags[index] == 2) {
                     property->SetFloat(m_FloatValues[index]);
                     m_FloatFlags[index] = 1;
                 }
@@ -357,6 +357,21 @@ void ModOptionPage::OnClose() {
     memset(m_IntFlags, 0, sizeof(m_IntFlags));
     memset(m_FloatFlags, 0, sizeof(m_FloatFlags));
     ModMenuPage::OnClose();
+}
+
+void ModOptionPage::OnPageChanged(int newPage, int oldPage) {
+    FlushBuffers();
+}
+
+void ModOptionPage::FlushBuffers() {
+    memset(m_Buffers, 0, sizeof(m_Buffers));
+    memset(m_BufferHashes, 0, sizeof(m_BufferHashes));
+    memset(m_KeyToggled, 0, sizeof(m_KeyToggled));
+    memset(m_KeyChord, 0, sizeof(m_KeyChord));
+    memset(m_IntFlags, 0, sizeof(m_IntFlags));
+    memset(m_FloatFlags, 0, sizeof(m_FloatFlags));
+    memset(m_IntValues, 0, sizeof(m_IntValues));
+    memset(m_FloatValues, 0, sizeof(m_FloatValues));
 }
 
 void ModOptionPage::ShowCommentBox(Property *property) {
