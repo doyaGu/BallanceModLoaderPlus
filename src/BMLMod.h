@@ -89,8 +89,11 @@ public:
     void OnAfterBegin() override;
     void OnDraw() override;
     void OnClose() override;
+    void OnPageChanged(int newPage, int oldPage) override;
 
 protected:
+    void FlushBuffers();
+
     static void ShowCommentBox(Property *property);
 
     Category *m_Category = nullptr;
