@@ -1,17 +1,16 @@
 #ifndef BML_BMLMOD_H
 #define BML_BMLMOD_H
 
-#include <string>
-#include <vector>
-
 #include "BML/BML.h"
 #include "BML/IMod.h"
 #include "BML/IBML.h"
 #include "BML/Bui.h"
 
 #include "Config.h"
-
-#define MSG_MAXSIZE 35
+#include "ModMenu.h"
+#include "MapMenu.h"
+#include "CommandBar.h"
+#include "MessageBoard.h"
 
 class BMLMod;
 
@@ -21,126 +20,9 @@ enum HudTypes {
     HUD_SR = 4,
 };
 
-class ModMenu;
-
-class ModMenuPage : public Bui::Page {
-public:
-    ModMenuPage(ModMenu *menu, std::string name);
-    ~ModMenuPage() override;
-
-    void OnClose() override;
-
-protected:
-    ModMenu *m_Menu;
-};
-
-class ModMenu : public Bui::Menu {
-public:
-    explicit ModMenu(BMLMod *mod) : m_Mod(mod) {}
-
-    void Init();
-    void Shutdown();
-
-    IMod *GetCurrentMod() const { return m_CurrentMod; };
-    void SetCurrentMod(IMod *mod) { m_CurrentMod = mod; };
-
-    Category *GetCurrentCategory() const { return m_CurrentCategory; };
-    void SetCurrentCategory(Category *category) { m_CurrentCategory = category; };
-
-    void OnOpen() override;
-    void OnClose() override;
-
-    static IBML *GetBML();
-    static Config *GetConfig(IMod *mod);
-
-private:
-    BMLMod *m_Mod;
-    IMod *m_CurrentMod = nullptr;
-    Category *m_CurrentCategory = nullptr;
-    std::vector<std::unique_ptr<ModMenuPage>> m_Pages;
-};
-
-class ModListPage : public ModMenuPage {
-public:
-    explicit ModListPage(ModMenu *menu) : ModMenuPage(menu, "Mod List") {}
-
-    void OnAfterBegin() override;
-    void OnDraw() override;
-};
-
-class ModPage : public ModMenuPage {
-public:
-    explicit ModPage(ModMenu *menu) : ModMenuPage(menu, "Mod Page") {}
-
-    void OnAfterBegin() override;
-    void OnDraw() override;
-
-protected:
-    static void ShowCommentBox(Category *category);
-
-    Config *m_Config = nullptr;
-    char m_TextBuf[1024] = {};
-};
-
-class ModOptionPage : public ModMenuPage {
-public:
-    explicit ModOptionPage(ModMenu *menu) : ModMenuPage(menu, "Mod Options") {}
-
-    void OnAfterBegin() override;
-    void OnDraw() override;
-    void OnClose() override;
-    void OnPageChanged(int newPage, int oldPage) override;
-
-protected:
-    void FlushBuffers();
-
-    static void ShowCommentBox(Property *property);
-
-    Category *m_Category = nullptr;
-    char m_Buffers[4][4096] = {};
-    size_t m_BufferHashes[4] = {};
-    bool m_KeyToggled[4] = {};
-    ImGuiKeyChord m_KeyChord[4] = {};
-    std::uint8_t m_IntFlags[4] = {};
-    std::uint8_t m_FloatFlags[4] = {};
-    int m_IntValues[4] = {};
-    float m_FloatValues[4] = {};
-};
-
-class MapListPage : public Bui::Page {
-public:
-    explicit MapListPage(BMLMod *mod) : Page("Custom Maps"), m_Mod(mod) {}
-    ~MapListPage() override = default;
-
-    void OnAfterBegin() override;
-    void OnDraw() override;
-
-    bool OnOpen() override;
-    void OnClose() override;
-
-    void RefreshMaps();
-
-private:
-    struct MapInfo {
-        std::string name;
-        std::wstring path;
-    };
-
-    size_t ExploreMaps(const std::wstring &path, std::vector<MapInfo> &maps);
-    void OnSearchMaps();
-    bool OnDrawEntry(std::size_t index, bool *v);
-
-    BMLMod *m_Mod;
-    char m_MapSearchBuf[65536] = {};
-    std::vector<size_t> m_MapSearchResult;
-    std::vector<MapInfo> m_Maps;
-};
-
 class BMLMod : public IMod {
-    friend class ModMenu;
-    friend class MapListPage;
 public:
-    explicit BMLMod(IBML *bml) : IMod(bml), m_ModMenu(this) {}
+    explicit BMLMod(IBML *bml) : IMod(bml), m_MapMenu(this) {}
 
     const char *GetID() override { return "BML"; }
     const char *GetVersion() override { return BML_VERSION; }
@@ -189,10 +71,6 @@ public:
     int GetHUD();
     void SetHUD(int mode);
 
-    void ToggleCommandBar(bool on = true);
-
-    int OnTextEdit(ImGuiInputTextCallbackData *data);
-
 private:
     void InitConfigs();
     void RegisterCommands();
@@ -233,23 +111,13 @@ private:
     VxRect m_WindowRect;
 
     ModMenu m_ModMenu;
-    std::unique_ptr<MapListPage> m_MapListPage;
+    MapMenu m_MapMenu;
+    CommandBar m_CommandBar;
+    MessageBoard m_MessageBoard;
 
 #ifndef NDEBUG
     bool m_ShowImGuiDemo = false;
 #endif
-
-    bool m_CmdTyping = false;
-    char m_CmdBuf[65536] = {};
-    std::vector<std::string> m_CmdHistory;
-    int m_HistoryPos = 0;
-
-    int m_MsgCount = 0;
-    struct {
-        char Text[256] = {};
-        float Timer = 0.0f;
-    } m_Msgs[MSG_MAXSIZE] = {};
-    float m_MsgMaxTimer = 6000; // ms
 
     int m_FPSCount = 0;
     int m_FPSTimer = 0;

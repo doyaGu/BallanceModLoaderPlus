@@ -3,7 +3,6 @@
 
 #include <string>
 #include <stack>
-#include <vector>
 #include <unordered_map>
 #include <functional>
 #include <utility>
@@ -12,7 +11,6 @@
 
 #include "BML/Export.h"
 #include "CKContext.h"
-#include "CKRenderContext.h"
 
 namespace Bui {
     enum ButtonType {
@@ -143,6 +141,7 @@ namespace Bui {
             OnEnd();
             m_Hovered = ImGui::IsWindowHovered();
             ImGui::End();
+            OnAfterEnd();
         }
 
         void Render() {
@@ -161,6 +160,7 @@ namespace Bui {
         virtual void OnAfterBegin() {}
         virtual void OnDraw() = 0;
         virtual void OnEnd() {}
+        virtual void OnAfterEnd() {}
         virtual void OnShow() {}
         virtual void OnHide() {}
 
@@ -337,6 +337,7 @@ namespace Bui {
     class Menu {
     public:
         Menu() = default;
+        virtual ~Menu() = default;
 
         bool AddPage(Page *page) {
             if (!page)
@@ -386,14 +387,17 @@ namespace Bui {
             m_CurrentPage->Show();
             return true;
         }
-        void ShowPrevPage() {
+        bool ShowPrevPage() {
             HidePage();
             auto *page = PopPage();
             m_CurrentPage = page;
-            if (m_CurrentPage)
-                m_CurrentPage->Show(); 
-            else
+            if (m_CurrentPage) {
+                m_CurrentPage->Show();
+                return true;
+            } else {
                 OnClose();
+                return false;
+            }
         }
 
         void HidePage() {
@@ -414,7 +418,8 @@ namespace Bui {
         }
 
         void Close() {
-            ShowPrevPage();
+            HidePage();
+            m_CurrentPage = PopPage();
             HidePage();
             OnClose();
         }
