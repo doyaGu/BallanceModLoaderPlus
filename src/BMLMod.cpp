@@ -1,9 +1,7 @@
 #include "BMLMod.h"
 
 #include <map>
-#include <io.h>
 
-#include <oniguruma.h>
 #include <utf8.h>
 #include "imgui_internal.h"
 
@@ -102,450 +100,6 @@ static std::string CreateTempMapFile(const std::wstring &path) {
     return str;
 }
 
-void ModMenu::Init() {
-    m_Pages.push_back(std::make_unique<ModListPage>(this));
-    m_Pages.push_back(std::make_unique<ModPage>(this));
-    m_Pages.push_back(std::make_unique<ModOptionPage>(this));
-}
-
-void ModMenu::Shutdown() {
-    m_Pages.clear();
-}
-
-void ModMenu::OnOpen() {
-    m_Mod->OnOpenModsMenu();
-}
-
-void ModMenu::OnClose() {
-    for (auto &page : m_Pages) {
-        page->SetPage(0);
-    }
-    m_Mod->OnCloseModsMenu();
-}
-
-IBML *ModMenu::GetBML() {
-    return static_cast<IBML *>(BML_GetModManager());
-}
-
-Config *ModMenu::GetConfig(IMod *mod) {
-    return BML_GetModManager()->GetConfig(mod);
-}
-
-ModMenuPage::ModMenuPage(ModMenu *menu, std::string name) : Page(std::move(name)), m_Menu(menu) {
-    m_Menu->AddPage(this);
-}
-
-ModMenuPage::~ModMenuPage() {
-    m_Menu->RemovePage(this);
-}
-
-void ModMenuPage::OnClose() {
-    m_Menu->ShowPrevPage();
-}
-
-void ModListPage::OnAfterBegin() {
-    int count = ModMenu::GetBML()->GetModCount();
-    SetMaxPage(((count % 4) == 0) ? count / 4 : count / 4 + 1);
-
-    Page::OnAfterBegin();
-}
-
-void ModListPage::OnDraw() {
-    const int n = GetPage() * 4;
-
-    DrawEntries([&](std::size_t index) {
-        IMod *mod = ModMenu::GetBML()->GetMod((int)(n + index));
-        if (!mod)
-            return false;
-
-        char buf[256];
-        sprintf(buf, "%s", mod->GetID());
-        if (Bui::MainButton(buf)) {
-            m_Menu->SetCurrentMod(mod);
-            m_Menu->ShowPage("Mod Page");
-        }
-        return true;
-    });
-}
-
-void ModPage::OnAfterBegin() {
-    if (!IsVisible())
-        return;
-
-    const auto menuPos = Bui::GetMenuPos();
-    const auto menuSize = Bui::GetMenuSize();
-
-    ImGui::SetCursorPosX(menuPos.x);
-    ImGui::Dummy(Bui::CoordToPixel(ImVec2(0.375f, 0.1f)));
-
-    auto *mod = m_Menu->GetCurrentMod();
-
-    ImGui::SetCursorPosX(menuPos.x);
-    WrappedText(mod->GetName(), menuSize.x, 1.2f);
-
-    snprintf(m_TextBuf, sizeof(m_TextBuf), "By %s", mod->GetAuthor());
-    ImGui::SetCursorPosX(menuPos.x);
-    WrappedText(m_TextBuf, menuSize.x);
-
-    snprintf(m_TextBuf, sizeof(m_TextBuf), "v%s", mod->GetVersion());
-    ImGui::SetCursorPosX(menuPos.x);
-    WrappedText(m_TextBuf, menuSize.x);
-
-    ImGui::SetCursorPosX(menuPos.x);
-    ImGui::NewLine();
-
-    ImGui::SetCursorPosX(menuPos.x);
-    WrappedText(mod->GetDescription(), menuSize.x);
-
-    m_Config = ModMenu::GetConfig(mod);
-    if (!m_Config)
-        return;
-
-    int count = (int) m_Config->GetCategoryCount();
-    SetMaxPage(((count % 4) == 0) ? count / 4 : count / 4 + 1);
-
-    if (m_PageIndex > 0 &&
-        LeftButton("PrevPage")) {
-        PrevPage();
-    }
-
-    if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 &&
-        RightButton("NextPage")) {
-        NextPage();
-    }
-}
-
-void ModPage::OnDraw() {
-    if (!m_Config)
-        return;
-
-    bool v = true;
-    const int n = GetPage() * 4;
-
-    DrawEntries([&](std::size_t index) {
-        Category *category = m_Config->GetCategory((int)(n + index));
-        if (!category)
-            return false;
-
-        if (Bui::LevelButton(category->GetName(), &v)) {
-            m_Menu->SetCurrentCategory(category);
-            m_Menu->ShowPage("Mod Options");
-        }
-
-        if (ImGui::IsItemHovered()) {
-            ShowCommentBox(category);
-        }
-        return true;
-    }, ImVec2(0.4031f, 0.5f), 0.06f, 4);
-}
-
-void ModPage::ShowCommentBox(Category *category) {
-    if (!category)
-        return;
-
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, Bui::GetMenuColor());
-
-    const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
-    const ImVec2 commentBoxPos(vpSize.x * 0.725f, vpSize.y * 0.4f);
-    const ImVec2 commentBoxSize(vpSize.x * 0.25f, vpSize.y * 0.2f);
-    ImGui::SetCursorScreenPos(commentBoxPos);
-    ImGui::BeginChild("ModComment", commentBoxSize);
-
-    WrappedText(category->GetName(), commentBoxSize.x);
-    WrappedText(category->GetComment(), commentBoxSize.x);
-
-    ImGui::EndChild();
-    ImGui::PopStyleColor();
-}
-
-void ModOptionPage::OnAfterBegin() {
-    m_Category = m_Menu->GetCurrentCategory();
-    if (!m_Category)
-        return;
-
-    int count = (int) m_Category->GetPropertyCount();
-    SetMaxPage(((count % 4) == 0) ? count / 4 : count / 4 + 1);
-
-    Page::OnAfterBegin();
-}
-
-void ModOptionPage::OnDraw() {
-    if (!m_Category)
-        return;
-
-    const int n = GetPage() * 4;
-
-    DrawEntries([&](std::size_t index) {
-        Property *property = m_Category->GetProperty((int)(n + index));
-        if (!property)
-            return false;
-
-        const char *name = property->GetName();
-        if (!name || name[0] == '\0')
-            return true;
-
-        switch (property->GetType()) {
-            case IProperty::STRING: {
-                if (m_BufferHashes[index] != property->GetHash()) {
-                    m_BufferHashes[index] = property->GetHash();
-                    strncpy(m_Buffers[index], property->GetString(), property->GetStringSize() + 1);
-                }
-                Bui::InputTextButton(property->GetName(), m_Buffers[index], sizeof(m_Buffers[index]));
-                if (ImGui::IsItemDeactivatedAfterEdit()) {
-                    m_BufferHashes[index] = utils::HashString(m_Buffers[index]);
-                    if (m_BufferHashes[index] != property->GetHash())
-                        property->SetString(m_Buffers[index]);
-                }
-            }
-                break;
-            case IProperty::BOOLEAN:
-                if (Bui::YesNoButton(property->GetName(), property->GetBooleanPtr())) {
-                    property->SetModified();
-                }
-                break;
-            case IProperty::INTEGER:
-                if (m_IntFlags[index] == 0) {
-                    m_IntValues[index] = property->GetInteger();
-                    m_IntFlags[index] = 1;
-                }
-                if (Bui::InputIntButton(property->GetName(), &m_IntValues[index])) {
-                    if (m_IntValues[index] != property->GetInteger()) {
-                        m_IntFlags[index] = 2;
-                    }
-                }
-                if (ImGui::IsItemDeactivatedAfterEdit() && m_IntFlags[index] == 2) {
-                    property->SetInteger(m_IntValues[index]);
-                    m_IntFlags[index] = 1;
-                }
-                break;
-            case IProperty::KEY:
-                m_KeyChord[index] = Bui::CKKeyToImGuiKey(property->GetKey());
-                if (Bui::KeyButton(property->GetName(), &m_KeyToggled[index], &m_KeyChord[index])) {
-                    m_KeyChord[index] &= ~ImGuiMod_Mask_;
-                    property->SetKey(Bui::ImGuiKeyToCKKey(static_cast<ImGuiKey>(m_KeyChord[index])));
-                }
-                break;
-            case IProperty::FLOAT:
-                if (m_FloatFlags[index] == 0) {
-                    m_FloatValues[index] = property->GetFloat();
-                    m_FloatFlags[index] = 1;
-                }
-                if (Bui::InputFloatButton(property->GetName(), &m_FloatValues[index])) {
-                    if (fabs(m_FloatValues[index] - property->GetFloat()) > EPSILON) {
-                        m_FloatFlags[index] = 2;
-                    }
-                }
-                if (ImGui::IsItemDeactivatedAfterEdit() && m_FloatFlags[index] == 2) {
-                    property->SetFloat(m_FloatValues[index]);
-                    m_FloatFlags[index] = 1;
-                }
-                break;
-            default:
-                ImGui::Dummy(Bui::GetButtonSize(Bui::BUTTON_OPTION));
-                break;
-        }
-
-        if (ImGui::IsItemHovered()) {
-            ShowCommentBox(property);
-        }
-
-        return true;
-    });
-}
-
-void ModOptionPage::OnClose() {
-    memset(m_IntFlags, 0, sizeof(m_IntFlags));
-    memset(m_FloatFlags, 0, sizeof(m_FloatFlags));
-    ModMenuPage::OnClose();
-}
-
-void ModOptionPage::OnPageChanged(int newPage, int oldPage) {
-    FlushBuffers();
-}
-
-void ModOptionPage::FlushBuffers() {
-    memset(m_Buffers, 0, sizeof(m_Buffers));
-    memset(m_BufferHashes, 0, sizeof(m_BufferHashes));
-    memset(m_KeyToggled, 0, sizeof(m_KeyToggled));
-    memset(m_KeyChord, 0, sizeof(m_KeyChord));
-    memset(m_IntFlags, 0, sizeof(m_IntFlags));
-    memset(m_FloatFlags, 0, sizeof(m_FloatFlags));
-    memset(m_IntValues, 0, sizeof(m_IntValues));
-    memset(m_FloatValues, 0, sizeof(m_FloatValues));
-}
-
-void ModOptionPage::ShowCommentBox(Property *property) {
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, Bui::GetMenuColor());
-
-    const ImVec2& vpSize = ImGui::GetMainViewport()->Size;
-    const ImVec2 commentBoxPos(vpSize.x * 0.725f, vpSize.y * 0.35f);
-    const ImVec2 commentBoxSize(vpSize.x * 0.25f, vpSize.y * 0.3f);
-    ImGui::SetCursorScreenPos(commentBoxPos);
-    ImGui::BeginChild("ModOptionComment", commentBoxSize);
-
-    WrappedText(property->GetName(), commentBoxSize.x);
-    WrappedText(property->GetComment(), commentBoxSize.x);
-
-    ImGui::EndChild();
-    ImGui::PopStyleColor();
-}
-
-void MapListPage::OnAfterBegin() {
-    if (!IsVisible())
-        return;
-
-    DrawCenteredText(m_Title.c_str(), 0.07f);
-
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, Bui::GetMenuColor());
-
-    const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
-    ImGui::SetCursorScreenPos(ImVec2(vpSize.x * 0.4f, vpSize.y * 0.18f));
-    ImGui::SetNextItemWidth(vpSize.x * 0.2f);
-
-    if (ImGui::InputText("##SearchBar", m_MapSearchBuf, IM_ARRAYSIZE(m_MapSearchBuf))) {
-        OnSearchMaps();
-    }
-
-    ImGui::PopStyleColor();
-
-    int count = (m_MapSearchBuf[0] == '\0') ? (int) m_Maps.size() : (int) m_MapSearchResult.size();
-    SetMaxPage(((count % 10) == 0) ? count / 10 : count / 10 + 1);
-
-    if (m_PageIndex > 0 &&
-        LeftButton("PrevPage", ImVec2(0.36f, 0.4f))) {
-        PrevPage();
-    }
-
-    if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 &&
-        RightButton("NextPage", ImVec2(0.6238f, 0.4f))) {
-        NextPage();
-    }
-}
-
-void MapListPage::OnDraw() {
-    if (m_Maps.empty())
-        return;
-
-    bool v = true;
-    const int n = GetPage() * 10;
-
-    if (m_MapSearchBuf[0] == '\0') {
-        DrawEntries([&](std::size_t index) {
-            return OnDrawEntry(n + index, &v);
-        }, ImVec2(0.4031f, 0.23f), 0.06f, 10);
-    } else {
-        DrawEntries([&](std::size_t index) {
-            if (index >= m_MapSearchResult.size())
-                return false;
-            return OnDrawEntry(m_MapSearchResult[n + index], &v);
-        }, ImVec2(0.4031f, 0.23f), 0.06f, 10);
-    }
-}
-
-bool MapListPage::OnOpen() {
-    m_Mod->OnOpenMapMenu();
-    RefreshMaps();
-    return true;
-}
-
-void MapListPage::OnClose() {
-    m_Mod->OnCloseMapMenu();
-}
-
-void MapListPage::RefreshMaps() {
-    std::wstring path = BML_GetModManager()->GetDirectory(BML_DIR_LOADER);
-    path.append(L"\\Maps");
-
-    m_Maps.clear();
-    ExploreMaps(path, m_Maps);
-}
-
-size_t MapListPage::ExploreMaps(const std::wstring &path, std::vector<MapInfo> &maps) {
-    if (path.empty() || !utils::DirectoryExistsW(path))
-        return 0;
-
-    std::wstring p = path + L"\\*";
-    _wfinddata_t fileinfo = {};
-    auto handle = _wfindfirst(p.c_str(), &fileinfo);
-    if (handle == -1)
-        return 0;
-
-    do {
-        if ((fileinfo.attrib & _A_SUBDIR) && wcscmp(fileinfo.name, L".") != 0 && wcscmp(fileinfo.name, L"..") != 0) {
-            ExploreMaps(p.assign(path).append(L"\\").append(fileinfo.name), maps);
-        } else {
-            std::wstring fullPath = path;
-            fullPath.append(L"\\").append(fileinfo.name);
-
-            wchar_t filename[1024];
-            wchar_t ext[64];
-            _wsplitpath(fileinfo.name, nullptr, nullptr, filename, ext);
-            if (wcsicmp(ext, L".nmo") == 0) {
-                MapInfo info;
-                char buffer[1024];
-                utils::Utf16ToUtf8(filename, buffer, sizeof(buffer));
-                info.name = buffer;
-                info.path = fullPath;
-                maps.push_back(std::move(info));
-            }
-        }
-    } while (_wfindnext(handle, &fileinfo) == 0);
-
-    _findclose(handle);
-
-    return maps.size();
-}
-
-void MapListPage::OnSearchMaps() {
-    m_MapSearchResult.clear();
-
-    if (m_MapSearchBuf[0] == '\0')
-        return;
-
-    auto *pattern = (OnigUChar *) m_MapSearchBuf;
-    regex_t *reg;
-    OnigErrorInfo einfo;
-
-    int r = onig_new(&reg, pattern, pattern + strlen((char *) pattern),
-                     ONIG_OPTION_DEFAULT, ONIG_ENCODING_UTF8, ONIG_SYNTAX_ASIS, &einfo);
-    if (r != ONIG_NORMAL) {
-        char s[ONIG_MAX_ERROR_MESSAGE_LEN];
-        onig_error_code_to_str((UChar *) s, r, &einfo);
-        m_Mod->GetLogger()->Error(s);
-        return;
-    }
-
-    for (size_t i = 0; i < m_Maps.size(); ++i) {
-        auto &name = m_Maps[i].name;
-        const auto *end = (const UChar *) (name.c_str() + name.size());
-        const auto *start = (const UChar *) name.c_str();
-        const auto *range = end;
-
-        r = onig_search(reg, start, end, start, range, nullptr, ONIG_OPTION_NONE);
-        if (r >= 0) {
-            m_MapSearchResult.push_back(i);
-        } else if (r != ONIG_MISMATCH) {
-            char s[ONIG_MAX_ERROR_MESSAGE_LEN];
-            onig_error_code_to_str((UChar *) s, r);
-            m_Mod->GetLogger()->Error(s);
-        }
-    }
-
-    onig_free(reg);
-}
-
-bool MapListPage::OnDrawEntry(std::size_t index, bool *v) {
-    if (index >= m_Maps.size())
-        return false;
-    auto &info = m_Maps[index];
-    if (Bui::LevelButton(info.name.c_str(), v)) {
-        Hide();
-        m_Mod->OnCloseMapMenu(false);
-        m_Mod->LoadMap(info.path);
-    }
-    return true;
-}
-
 void BMLMod::OnLoad() {
     m_DataShare = BML_GetDataShare(nullptr);
     m_CKContext = m_BML->GetCKContext();
@@ -561,12 +115,12 @@ void BMLMod::OnLoad() {
     InitGUI();
 
     m_ModMenu.Init();
-    m_MapListPage = std::make_unique<MapListPage>(this);
+    m_MapMenu.Init();
 }
 
 void BMLMod::OnUnload() {
     m_ModMenu.Shutdown();
-    m_MapListPage.reset();
+    m_MapMenu.Shutdown();
 }
 
 void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
@@ -652,8 +206,9 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
     } else if (prop == m_ShowSR && m_BML->IsIngame()) {
         m_SRShouldDraw = m_ShowSR->GetBoolean();
     } else if (prop == m_MsgDuration) {
-        m_MsgMaxTimer = m_MsgDuration->GetFloat() * 1000;
-        if (m_MsgMaxTimer < 2000) {
+        const float timer = m_MsgDuration->GetFloat() * 1000;
+        m_MessageBoard.SetMaxTimer(timer);
+        if (timer < 2000) {
             m_MsgDuration->SetFloat(2.0f);
         }
     } else if (prop == m_LanternAlphaTest) {
@@ -736,25 +291,12 @@ void BMLMod::OnCounterInactive() {
 }
 
 void BMLMod::AddIngameMessage(const char *msg) {
-    for (int i = std::min(MSG_MAXSIZE - 1, m_MsgCount) - 1; i >= 0; i--) {
-        const char *text = m_Msgs[i].Text;
-        strncpy(m_Msgs[i + 1].Text, text, 256);
-        m_Msgs[i + 1].Timer = m_Msgs[i].Timer;
-    }
-
-    strncpy(m_Msgs[0].Text, msg, 256);
-    m_Msgs[0].Timer = m_MsgMaxTimer;
-    m_MsgCount++;
-
+    m_MessageBoard.AddMessage(msg);
     GetLogger()->Info(msg);
 }
 
 void BMLMod::ClearIngameMessages() {
-    m_MsgCount = 0;
-    for (int i = 0; i < MSG_MAXSIZE; i++) {
-        m_Msgs[i].Text[0] = '\0';
-        m_Msgs[i].Timer = 0.0f;
-    }
+    m_MessageBoard.ClearMessages();
 }
 
 void BMLMod::OpenModsMenu() {
@@ -766,11 +308,11 @@ void BMLMod::CloseModsMenu() {
 }
 
 void BMLMod::OpenMapMenu() {
-    m_MapListPage->Open();
+    m_MapMenu.Open("Custom Maps");
 }
 
 void BMLMod::CloseMapMenu() {
-    m_MapListPage->Close();
+    m_MapMenu.Close();
 }
 
 void BMLMod::LoadMap(const std::wstring &path) {
@@ -839,171 +381,6 @@ void BMLMod::SetHUD(int mode) {
     m_ShowSR->SetBoolean((mode & HUD_SR) != 0);
 }
 
-void BMLMod::ToggleCommandBar(bool on) {
-    if (on) {
-        m_CmdTyping = true;
-        m_CmdBuf[0] = '\0';
-        m_InputHook->Block(CK_INPUT_DEVICE_KEYBOARD);
-        m_HistoryPos = (int)m_CmdHistory.size();
-    } else {
-        m_CmdTyping = false;
-        m_CmdBuf[0] = '\0';
-        m_BML->AddTimerLoop(1ul, [this] {
-            if (m_InputHook->oIsKeyDown(CKKEY_ESCAPE) || m_InputHook->oIsKeyDown(CKKEY_RETURN))
-                return true;
-            m_InputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
-            return false;
-        });
-    }
-}
-
-int BMLMod::OnTextEdit(ImGuiInputTextCallbackData *data) {
-    switch (data->EventFlag) {
-        case ImGuiInputTextFlags_CallbackCompletion: {
-            // Locate beginning of current word
-            const char *wordEnd = data->Buf + data->CursorPos;
-            const char *wordStart = wordEnd;
-            while (wordStart > data->Buf) {
-                const char c = wordStart[-1];
-                if (isspace(c))
-                    break;
-                --wordStart;
-            }
-
-            int argc = 1;
-            const char *cmdEnd;
-            const char *cmdStart;
-            if (wordStart == data->Buf) {
-                cmdEnd = wordEnd;
-                cmdStart = wordStart;
-            } else {
-                cmdEnd = wordStart;
-                cmdStart = cmdEnd;
-                while (cmdStart > data->Buf) {
-                    const char c = cmdStart[-1];
-                    if (isspace(c)) {
-                        ++argc;
-                        cmdEnd = &cmdStart[-1];
-                    }
-                    cmdStart--;
-                }
-            }
-
-            // Build a list of candidates
-            std::vector<std::string> candidates;
-            if (argc == 1) {
-                const int count = m_BML->GetCommandCount();
-                for (int i = 0; i < count; ++i) {
-                    ICommand *cmd = m_BML->GetCommand(i);
-                    if (cmd) {
-                        if (utf8ncasecmp(cmd->GetName().c_str(), cmdStart, (int)(cmdEnd - cmdStart)) == 0)
-                            candidates.push_back(cmd->GetName());
-                    }
-                }
-            } else {
-                size_t size = utf8size(cmdStart);
-                char *buf = new char[size + 1];
-                utf8ncpy(buf, cmdStart, size);
-
-                std::vector<std::string> args;
-
-                char *lp = &buf[0];
-                char *rp = lp;
-                char *end = lp + size;
-                utf8_int32_t cp, temp;
-                utf8codepoint(rp, &cp);
-                while (rp != end) {
-                    if (std::isspace(*rp) || *rp == '\0') {
-                        size_t len = rp - lp;
-                        if (len != 0) {
-                            char bk = *rp;
-                            *rp = '\0';
-                            args.emplace_back(lp);
-                            *rp = bk;
-                        }
-
-                        if (*rp != '\0') {
-                            while (std::isspace(*rp))
-                                ++rp;
-                            --rp;
-                        }
-
-                        lp = utf8codepoint(rp, &temp);
-                    }
-
-                    rp = utf8codepoint(rp, &cp);
-                }
-
-                delete[] buf;
-
-                ICommand *cmd = m_BML->FindCommand(args[0].c_str());
-                for (const auto &str : cmd->GetTabCompletion(m_BML, args)) {
-                    if (utils::StringStartsWith(str, args[args.size() - 1]))
-                        candidates.push_back(str);
-                }
-            }
-
-            if (!candidates.empty()) {
-                if (candidates.size() == 1) {
-                    // Single match. Delete the beginning of the word and replace it entirely so we've got nice casing.
-                    data->DeleteChars((int)(wordStart - data->Buf), (int)(wordEnd - wordStart));
-                    data->InsertChars(data->CursorPos, candidates[0].c_str());
-                    data->InsertChars(data->CursorPos, " ");
-                } else {
-                    // Multiple matches. Complete as much as we can..
-                    // So inputting "C"+Tab will complete to "CL" then display "CLEAR" and "CLASSIFY" as matches.
-                    int matchLen = (int)(wordEnd - wordStart);
-                    for (;;)
-                    {
-                        int c = 0;
-                        bool allCandidatesMatches = true;
-                        for (size_t i = 0; i < candidates.size() && allCandidatesMatches; i++)
-                            if (i == 0)
-                                c = toupper(candidates[i][matchLen]);
-                            else if (c == 0 || c != toupper(candidates[i][matchLen]))
-                                allCandidatesMatches = false;
-                        if (!allCandidatesMatches)
-                            break;
-                        matchLen++;
-                    }
-
-                    if (matchLen > 0)
-                    {
-                        data->DeleteChars((int)(wordStart - data->Buf), (int)(wordEnd - wordStart));
-                        data->InsertChars(data->CursorPos, candidates[0].c_str(), candidates[0].c_str() + matchLen);
-                        data->InsertChars(data->CursorPos, " ");
-                    }
-                }
-            }
-        }
-            break;
-        case ImGuiInputTextFlags_CallbackHistory: {
-            const unsigned int prevHistoryPos = m_HistoryPos;
-            if (data->EventKey == ImGuiKey_UpArrow) {
-                if (m_HistoryPos == -1)
-                    m_HistoryPos = (int)(m_CmdHistory.size() - 1);
-                else if (m_HistoryPos > 0)
-                    m_HistoryPos--;
-            } else if (data->EventKey == ImGuiKey_DownArrow) {
-                if (m_HistoryPos != -1)
-                    if (++m_HistoryPos >= (int)m_CmdHistory.size())
-                        m_HistoryPos = -1;
-            }
-
-            if (prevHistoryPos != m_HistoryPos) {
-                const std::string &historyStr = (m_HistoryPos >= 0) ? m_CmdHistory[m_HistoryPos] : "";
-                data->DeleteChars(0, data->BufTextLen);
-                data->InsertChars(0, historyStr.c_str());
-            }
-        }
-            break;
-        default:
-            break;
-    }
-
-    return 0;
-}
-
 void BMLMod::InitConfigs() {
     GetConfig()->SetCategoryComment("Misc", "Miscellaneous");
 
@@ -1041,8 +418,9 @@ void BMLMod::InitConfigs() {
 
     m_MsgDuration = GetConfig()->GetProperty("Misc", "MessageDuration");
     m_MsgDuration->SetComment("Maximum visible time of each notification message, measured in seconds (default: 6)");
-    m_MsgDuration->SetDefaultFloat(m_MsgMaxTimer / 1000);
-    m_MsgMaxTimer = m_MsgDuration->GetFloat() * 1000;
+
+    m_MsgDuration->SetDefaultFloat(m_MessageBoard.GetMaxTimer() / 1000);
+    m_MessageBoard.SetMaxTimer(m_MsgDuration->GetFloat() * 1000);
 
     m_CustomMapNumber = GetConfig()->GetProperty("Misc", "CustomMapNumber");
     m_CustomMapNumber->SetComment("Level number to use for custom maps (affects level bonus and sky textures)."
@@ -1540,11 +918,11 @@ void BMLMod::OnEditScript_Levelinit_build(CKBehavior *script) {
     CreateLink(loadLevel, bin, objLoad);
     m_MapFile = objLoad->GetInputParameter(0)->GetDirectSource();
 
-    CKBehavior *smat = ScriptHelper::FindFirstBB(script, "set Mapping and Textures");
+    CKBehavior *smat = FindFirstBB(script, "set Mapping and Textures");
     if (!smat) return;
-    CKBehavior *sml = ScriptHelper::FindFirstBB(smat, "Set Mat Laterne");
+    CKBehavior *sml = FindFirstBB(smat, "Set Mat Laterne");
     if (!sml) return;
-    CKBehavior *sat = ScriptHelper::FindFirstBB(sml, "Set Alpha Test");
+    CKBehavior *sat = FindFirstBB(sml, "Set Alpha Test");
     if (!sat) return;
 
     CKParameter *sate = sat->GetInputParameter(0)->GetDirectSource();
@@ -1636,127 +1014,19 @@ void BMLMod::OnProcess_HUD() {
     ImGui::End();
 }
 
-static int TextEditCallback(ImGuiInputTextCallbackData *data) {
-    auto *mod = (BMLMod *) data->UserData;
-    return mod->OnTextEdit(data);
-}
-
 void BMLMod::OnProcess_CommandBar() {
-    bool prev = m_CmdTyping;
-    if (!m_CmdTyping && ImGui::IsKeyPressed(ImGuiKey_Slash)) {
+    bool visible = m_CommandBar.IsVisible();
+    if (!visible && ImGui::IsKeyPressed(ImGuiKey_Slash)) {
         GetLogger()->Info("Toggle Command Bar");
-        ToggleCommandBar();
+        m_CommandBar.ToggleCommandBar();
     }
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, Bui::GetMenuColor());
+    m_MessageBoard.SetCommandBarVisible(visible);
+    if (visible)
+        m_MessageBoard.Show();
 
-    const ImVec2 vpSize = ImGui::GetMainViewport()->Size;
-    ImVec2 size(vpSize.x * 0.96f, 0.0f);
-
-    if (m_CmdTyping) {
-        const ImVec2 pos(vpSize.x * 0.02f, vpSize.y * 0.93f);
-        ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
-        ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-
-        if (!prev)
-            ImGui::SetNextWindowFocus();
-
-        ImGui::PushStyleColor(ImGuiCol_FrameBg, Bui::GetMenuColor());
-
-        constexpr ImGuiWindowFlags BarFlags = ImGuiWindowFlags_NoDecoration |
-                                              ImGuiWindowFlags_NoBackground |
-                                              ImGuiWindowFlags_NoResize |
-                                              ImGuiWindowFlags_NoCollapse |
-                                              ImGuiWindowFlags_NoMove |
-                                              ImGuiWindowFlags_NoNav;
-        ImGui::Begin("CommandBar", nullptr, BarFlags);
-
-        ImGui::SetNextItemWidth(size.x);
-
-        constexpr ImGuiInputTextFlags InputTextFlags = ImGuiInputTextFlags_EnterReturnsTrue |
-                                                       ImGuiInputTextFlags_EscapeClearsAll |
-                                                       ImGuiInputTextFlags_CallbackCompletion |
-                                                       ImGuiInputTextFlags_CallbackHistory;
-        if (ImGui::InputText("##CmdBar", m_CmdBuf, IM_ARRAYSIZE(m_CmdBuf), InputTextFlags,
-                             &TextEditCallback, (void *) this)) {
-            if (m_CmdBuf[0] != '\0') {
-                m_CmdHistory.emplace_back(m_CmdBuf);
-                m_BML->ExecuteCommand(m_CmdBuf);
-            }
-            ToggleCommandBar(false);
-        }
-
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape))
-            ToggleCommandBar(false);
-
-        ImGui::SetItemDefaultFocus();
-        if (!prev)
-            ImGui::SetKeyboardFocusHere(-1);
-
-        ImGui::End();
-        ImGui::PopStyleColor();
-    }
-
-    constexpr ImGuiWindowFlags MsgFlags = ImGuiWindowFlags_NoDecoration |
-                                          ImGuiWindowFlags_NoInputs |
-                                          ImGuiWindowFlags_NoMove |
-                                          ImGuiWindowFlags_NoResize |
-                                          ImGuiWindowFlags_NoCollapse |
-                                          ImGuiWindowFlags_NoBackground |
-                                          ImGuiWindowFlags_NoNav |
-                                          ImGuiWindowFlags_NoFocusOnAppearing |
-                                          ImGuiWindowFlags_NoBringToFrontOnFocus;
-
-    const int count = std::min(MSG_MAXSIZE, m_MsgCount);
-    float ly = ImGui::GetTextLineHeightWithSpacing();
-    ImVec2 pos(vpSize.x * 0.02f, vpSize.y * 0.9f - (float) count * ly);
-    size.y = (float) count * ly;
-    ImVec4 bgColorVec4 = Bui::GetMenuColor();
-
-    ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
-    ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-    ImGui::Begin("Messages", nullptr, MsgFlags);
-    ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
-
-    const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
-    const ImVec2 contentSize = ImGui::GetContentRegionMax();
-
-    ImVec2 msgPos = cursorPos;
-    ImDrawList *drawList = ImGui::GetWindowDrawList();
-
-    if (m_CmdTyping) {
-        for (int i = 0; i < count; i++) {
-            msgPos.y = cursorPos.y + (float) (count - i) * ly;
-
-            drawList->AddRectFilled(msgPos, ImVec2(msgPos.x + contentSize.x, msgPos.y + ly), ImGui::GetColorU32(bgColorVec4));
-            drawList->AddText(msgPos, IM_COL32_WHITE, m_Msgs[i].Text);
-        }
-    } else {
-        for (int i = 0; i < count; i++) {
-            const float timer = m_Msgs[i].Timer;
-            if (timer >= 0) {
-                msgPos.y = cursorPos.y + (float) (count - i) * ly;
-                bgColorVec4.w = std::min(110.0f, (timer / 20.0f)) / 255.0f;
-
-                drawList->AddRectFilled(msgPos, ImVec2(msgPos.x + contentSize.x, msgPos.y + ly), ImGui::GetColorU32(bgColorVec4));
-                drawList->AddText(msgPos, IM_COL32_WHITE, m_Msgs[i].Text);
-            }
-        }
-    }
-
-    ImGui::End();
-
-    ImGui::PopStyleColor();
-    ImGui::PopStyleVar(3);
-
-    CKStats stats;
-    m_CKContext->GetProfileStats(&stats);
-    for (int i = 0; i < count; i++) {
-        m_Msgs[i].Timer -= stats.TotalFrameTime;
-    }
+    m_CommandBar.Render();
+    m_MessageBoard.Render();
 }
 
 void BMLMod::OnProcess_Menu() {
@@ -1792,7 +1062,7 @@ void BMLMod::OnProcess_Menu() {
 
 void BMLMod::OnDrawMenu() {
     m_ModMenu.Render();
-    m_MapListPage->Render();
+    m_MapMenu.Render();
 }
 
 void BMLMod::OnResize() {
