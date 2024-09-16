@@ -40,13 +40,11 @@ void MessageBoard::OnDraw() {
     ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
 
     const float ly = ImGui::GetTextLineHeightWithSpacing();
-
     const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
-    const ImVec2 contentSize = ImGui::GetContentRegionMax();
+    const ImVec2 contentSize = ImGui::GetContentRegionAvail();
 
     ImVec2 msgPos = cursorPos;
     ImVec4 bgColorVec4 = Bui::GetMenuColor();
-
     ImDrawList *drawList = ImGui::GetWindowDrawList();
 
     if (m_IsCommandBarVisible) {
