@@ -172,8 +172,6 @@ void BMLMod::OnProcess() {
         OnResize();
     }
 
-    OnProcess_Fps();
-    OnProcess_SRTimer();
     OnProcess_HUD();
     OnProcess_CommandBar();
     OnProcess_Menu();
@@ -203,8 +201,12 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
             AdjustFrameRate(false, static_cast<float>(val));
         else
             AdjustFrameRate(true);
+    } else if (prop == m_ShowTitle) {
+        m_HUD.ShowTitle(m_ShowTitle->GetBoolean());
+    } else if (prop == m_ShowFPS) {
+        m_HUD.ShowFPS(m_ShowFPS->GetBoolean());
     } else if (prop == m_ShowSR && m_BML->IsIngame()) {
-        m_SRShouldDraw = m_ShowSR->GetBoolean();
+        m_HUD.ShowSRTimer(m_ShowSR->GetBoolean());
     } else if (prop == m_MsgDuration) {
         const float timer = m_MsgDuration->GetFloat() * 1000;
         m_MessageBoard.SetMaxTimer(timer);
@@ -243,6 +245,9 @@ void BMLMod::OnPreStartMenu() {
     }
 
     RenderHook::EnableWidescreenFix(m_WidescreenFix->GetBoolean());
+
+    m_HUD.ShowTitle(m_ShowTitle->GetBoolean());
+    m_HUD.ShowFPS(m_ShowFPS->GetBoolean());
 }
 
 void BMLMod::OnExitGame() {
@@ -262,32 +267,28 @@ void BMLMod::OnStartLevel() {
         else
             AdjustFrameRate(true);
     }
-    m_SRTimer = 0.0f;
-    strcpy(m_SRScore, "00:00:00.000");
-    if (m_ShowSR->GetBoolean()) {
-        m_SRShouldDraw = true;
-    }
+    m_HUD.ResetSRTimer(m_ShowSR->GetBoolean());
     SetParamValue(m_LoadCustom, FALSE);
 }
 
 void BMLMod::OnPostExitLevel() {
-    m_SRShouldDraw = false;
+    m_HUD.ShowSRTimer(false);
 }
 
 void BMLMod::OnPauseLevel() {
-    m_SRActivated = false;
+    m_HUD.ActivateSRTimer(false);
 }
 
 void BMLMod::OnUnpauseLevel() {
-    m_SRActivated = true;
+    m_HUD.ActivateSRTimer(true);
 }
 
 void BMLMod::OnCounterActive() {
-    m_SRActivated = true;
+    m_HUD.ActivateSRTimer(true);
 }
 
 void BMLMod::OnCounterInactive() {
-    m_SRActivated = false;
+    m_HUD.ActivateSRTimer(false);
 }
 
 void BMLMod::AddIngameMessage(const char *msg) {
@@ -342,6 +343,10 @@ void BMLMod::LoadMap(const std::wstring &path) {
     m_ExitStart->Activate();
 }
 
+float BMLMod::GetSRScore() const {
+    return m_HUD.GetSRScore();
+}
+
 int BMLMod::GetHSScore() {
     int points, lifes;
     CKDataArray *energy = m_BML->GetArrayByName("Energy");
@@ -377,8 +382,13 @@ int BMLMod::GetHUD() {
 
 void BMLMod::SetHUD(int mode) {
     m_ShowTitle->SetBoolean((mode & HUD_TITLE) != 0);
+    m_HUD.ShowTitle(m_ShowTitle->GetBoolean());
+
     m_ShowFPS->SetBoolean((mode & HUD_FPS) != 0);
+    m_HUD.ShowFPS(m_ShowFPS->GetBoolean());
+
     m_ShowSR->SetBoolean((mode & HUD_SR) != 0);
+    m_HUD.ShowSRTimer(m_ShowSR->GetBoolean());
 }
 
 void BMLMod::InitConfigs() {
@@ -940,78 +950,9 @@ void BMLMod::OnEditScript_ExtraLife_Fix(CKBehavior *script) {
         ->SetDirectSource(CreateParamValue<float>(script, "DeltaTime", CKPGUID_FLOAT, 20.0f));
 }
 
-void BMLMod::OnProcess_Fps() {
-    CKStats stats;
-    m_CKContext->GetProfileStats(&stats);
-    m_FPSCount += int(1000 / stats.TotalFrameTime);
-    if (++m_FPSTimer == 60) {
-        sprintf(m_FPSText, "FPS: %d", m_FPSCount / 60);
-        m_FPSTimer = 0;
-        m_FPSCount = 0;
-    }
-}
-
-void BMLMod::OnProcess_SRTimer() {
-    if (m_SRActivated) {
-        m_SRTimer += m_TimeManager->GetLastDeltaTime();
-        int counter = int(m_SRTimer);
-        int ms = counter % 1000;
-        counter /= 1000;
-        int s = counter % 60;
-        counter /= 60;
-        int m = counter % 60;
-        counter /= 60;
-        int h = counter % 100;
-        sprintf(m_SRScore, "%02d:%02d:%02d.%03d", h, m, s, ms);
-    }
-}
-
 void BMLMod::OnProcess_HUD() {
-    const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
-
-    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-    ImGui::SetNextWindowSize(vpSize);
-
-    constexpr ImGuiWindowFlags HUDFlags = ImGuiWindowFlags_NoDecoration |
-                                          ImGuiWindowFlags_NoBackground |
-                                          ImGuiWindowFlags_NoResize |
-                                          ImGuiWindowFlags_NoMove |
-                                          ImGuiWindowFlags_NoInputs |
-                                          ImGuiWindowFlags_NoBringToFrontOnFocus |
-                                          ImGuiWindowFlags_NoSavedSettings;
-    if (ImGui::Begin("HUD", nullptr, HUDFlags)) {
-        ImDrawList *drawList = ImGui::GetWindowDrawList();
-
-        float oldScale = ImGui::GetFont()->Scale;
-        ImGui::GetFont()->Scale *= 1.2f;
-        ImGui::PushFont(ImGui::GetFont());
-
-        if (m_ShowTitle->GetBoolean()) {
-            constexpr auto TitleText = "BML Plus " BML_VERSION;
-            const auto titleSize = ImGui::CalcTextSize(TitleText);
-            drawList->AddText(ImVec2((vpSize.x - titleSize.x) / 2.0f, 0), IM_COL32_WHITE, TitleText);
-        }
-
-        if (m_BML->IsCheatEnabled()) {
-            constexpr auto CheatText = "Cheat Mode Enabled";
-            const auto cheatSize = ImGui::CalcTextSize(CheatText);
-            drawList->AddText(ImVec2((vpSize.x - cheatSize.x) / 2.0f, vpSize.y * 0.85f), IM_COL32_WHITE, CheatText);
-        }
-
-        if (m_ShowFPS->GetBoolean()) {
-            drawList->AddText(ImVec2(0, 0), IM_COL32_WHITE, m_FPSText);
-        }
-
-        if (m_SRShouldDraw) {
-            drawList->AddText(ImVec2(vpSize.x * 0.03f, vpSize.y * 0.8f), IM_COL32_WHITE, "SR Timer");
-            auto srSize = ImGui::CalcTextSize(m_SRScore);
-            drawList->AddText(ImVec2(vpSize.x * 0.05f, vpSize.y * 0.8f + srSize.y), IM_COL32_WHITE, m_SRScore);
-        }
-
-        ImGui::GetFont()->Scale = oldScale;
-        ImGui::PopFont();
-    }
-    ImGui::End();
+    m_HUD.OnProcess();
+    m_HUD.Render();
 }
 
 void BMLMod::OnProcess_CommandBar() {

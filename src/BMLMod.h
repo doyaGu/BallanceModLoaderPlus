@@ -7,12 +7,11 @@
 #include "BML/Bui.h"
 
 #include "Config.h"
+#include "HUD.h"
 #include "ModMenu.h"
 #include "MapMenu.h"
 #include "CommandBar.h"
 #include "MessageBoard.h"
-
-class BMLMod;
 
 enum HudTypes {
     HUD_TITLE = 1,
@@ -63,7 +62,8 @@ public:
 
     void LoadMap(const std::wstring &path);
 
-    float GetSRScore() const { return m_SRTimer; }
+    float GetSRScore() const;
+
     int GetHSScore();
 
     void AdjustFrameRate(bool sync = false, float limit = 60.0f);
@@ -85,8 +85,6 @@ private:
     void OnEditScript_Levelinit_build(CKBehavior *script);
     void OnEditScript_ExtraLife_Fix(CKBehavior *script);
 
-    void OnProcess_Fps();
-    void OnProcess_SRTimer();
     void OnProcess_HUD();
     void OnProcess_CommandBar();
     void OnProcess_Menu();
@@ -110,6 +108,7 @@ private:
     VxRect m_OldWindowRect;
     VxRect m_WindowRect;
 
+    HUD m_HUD;
     ModMenu m_ModMenu;
     MapMenu m_MapMenu;
     CommandBar m_CommandBar;
@@ -118,14 +117,6 @@ private:
 #ifndef NDEBUG
     bool m_ShowImGuiDemo = false;
 #endif
-
-    int m_FPSCount = 0;
-    int m_FPSTimer = 0;
-    char m_FPSText[16] = {};
-    float m_SRTimer = 0.0f;
-    char m_SRScore[16] = {};
-    bool m_SRActivated = false;
-    bool m_SRShouldDraw = false;
 
     IProperty *m_ShowTitle = nullptr;
     IProperty *m_ShowFPS = nullptr;
