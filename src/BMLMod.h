@@ -89,14 +89,7 @@ private:
     void OnProcess_CommandBar();
     void OnProcess_Menu();
 
-    void OnDrawMenu();
     void OnResize();
-
-    void OnOpenModsMenu();
-    void OnCloseModsMenu();
-
-    void OnOpenMapMenu();
-    void OnCloseMapMenu(bool backToMenu = true);
 
     BML::IDataShare *m_DataShare = nullptr;
 

@@ -2,9 +2,6 @@
 
 #include <map>
 
-#include <utf8.h>
-#include "imgui_internal.h"
-
 #include "BML/Bui.h"
 #include "BML/Gui.h"
 #include "BML/InputHook.h"
@@ -998,47 +995,10 @@ void BMLMod::OnProcess_Menu() {
         ImGui::PopStyleVar(2);
     }
 
-    OnDrawMenu();
-}
-
-void BMLMod::OnDrawMenu() {
     m_ModMenu.Render();
     m_MapMenu.Render();
 }
 
 void BMLMod::OnResize() {
     ImGui::GetIO().FontGlobalScale = m_WindowRect.GetHeight() / 1200.0f;
-}
-
-void BMLMod::OnOpenModsMenu() {
-    m_InputHook->Block(CK_INPUT_DEVICE_KEYBOARD);
-}
-
-void BMLMod::OnCloseModsMenu() {
-    CKBehavior *beh = m_BML->GetScriptByName("Menu_Options");
-    m_CKContext->GetCurrentScene()->Activate(beh, true);
-    m_BML->AddTimerLoop(1ul, [this] {
-        if (m_InputHook->oIsKeyDown(CKKEY_ESCAPE) || m_InputHook->oIsKeyDown(CKKEY_RETURN))
-            return true;
-        m_InputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
-        return false;
-    });
-}
-
-void BMLMod::OnOpenMapMenu() {
-    m_InputHook->Block(CK_INPUT_DEVICE_KEYBOARD);
-}
-
-void BMLMod::OnCloseMapMenu(bool backToMenu) {
-    if (backToMenu) {
-        CKBehavior *beh = m_BML->GetScriptByName("Menu_Start");
-        m_CKContext->GetCurrentScene()->Activate(beh, true);
-    }
-
-    m_BML->AddTimerLoop(1ul, [this] {
-        if (m_InputHook->oIsKeyDown(CKKEY_ESCAPE) || m_InputHook->oIsKeyDown(CKKEY_RETURN))
-            return true;
-        m_InputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
-        return false;
-    });
 }
