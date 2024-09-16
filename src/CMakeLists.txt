@@ -30,6 +30,7 @@ set(BML_PRIVATE_HEADERS
         BMLMod.h
         NewBallTypeMod.h
 
+        HUD.h
         ModMenu.h
         MapMenu.h
         CommandBar.h
@@ -65,6 +66,7 @@ set(BML_SOURCES
         BMLMod.cpp
         NewBallTypeMod.cpp
 
+        HUD.cpp
         ModMenu.cpp
         MapMenu.cpp
         CommandBar.cpp
