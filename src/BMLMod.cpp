@@ -4,7 +4,6 @@
 
 #include "BML/Bui.h"
 #include "BML/Gui.h"
-#include "BML/InputHook.h"
 #include "BML/ExecuteBB.h"
 #include "BML/ScriptHelper.h"
 #include "BML/Guids/Logics.h"
@@ -102,7 +101,6 @@ void BMLMod::OnLoad() {
     m_CKContext = m_BML->GetCKContext();
     m_RenderContext = m_BML->GetRenderContext();
     m_TimeManager = m_BML->GetTimeManager();
-    m_InputHook = m_BML->GetInputManager();
     m_RenderContext->Get2dRoot(TRUE)->GetRect(m_WindowRect);
 
     ExecuteBB::Init();
