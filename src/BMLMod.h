@@ -4,9 +4,7 @@
 #include "BML/BML.h"
 #include "BML/IMod.h"
 #include "BML/IBML.h"
-#include "BML/Bui.h"
 
-#include "Config.h"
 #include "HUD.h"
 #include "ModMenu.h"
 #include "MapMenu.h"
@@ -96,7 +94,6 @@ private:
     CKContext *m_CKContext = nullptr;
     CKRenderContext *m_RenderContext = nullptr;
     CKTimeManager *m_TimeManager = nullptr;
-    InputHook *m_InputHook = nullptr;
 
     VxRect m_OldWindowRect;
     VxRect m_WindowRect;
