@@ -4,7 +4,7 @@
 
 #include "ModManager.h"
 
-MessageBoard::MessageBoard() : Bui::Window("MessageBoard") {
+MessageBoard::MessageBoard(const int size) : Bui::Window("MessageBoard"), m_Messages(size) {
     SetVisibility(false);
 }
 
@@ -23,8 +23,6 @@ ImGuiWindowFlags MessageBoard::GetFlags() {
 }
 
 void MessageBoard::OnBegin() {
-    const int count = std::min(MSG_MAXSIZE, m_MsgCount);
-    const float sy = static_cast<float>(count) * ImGui::GetTextLineHeightWithSpacing();
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
@@ -32,42 +30,41 @@ void MessageBoard::OnBegin() {
     ImGui::PushStyleColor(ImGuiCol_WindowBg, Bui::GetMenuColor());
 
     const ImVec2 vpSize = ImGui::GetMainViewport()->Size;
-    m_WindowPos = ImVec2(vpSize.x * 0.02f, vpSize.y * 0.9f - sy);
-    m_WindowSize = ImVec2(vpSize.x * 0.96f, sy);
 
-    ImGui::SetNextWindowPos(m_WindowPos, ImGuiCond_Always);
-    ImGui::SetNextWindowSize(m_WindowSize, ImGuiCond_Always);
+    const float sy = static_cast<float>(m_MessageCount) * ImGui::GetTextLineHeightWithSpacing();
+    ImGui::SetNextWindowPos(ImVec2(vpSize.x * 0.02f, vpSize.y * 0.9f - sy), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(vpSize.x * 0.96f, sy), ImGuiCond_Always);
 }
 
 void MessageBoard::OnDraw() {
-    const int count = std::min(MSG_MAXSIZE, m_MsgCount);
-    const float ly = ImGui::GetTextLineHeightWithSpacing();
-    ImVec4 bgColorVec4 = Bui::GetMenuColor();
-
     ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+
+    const float ly = ImGui::GetTextLineHeightWithSpacing();
 
     const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
     const ImVec2 contentSize = ImGui::GetContentRegionMax();
 
     ImVec2 msgPos = cursorPos;
+    ImVec4 bgColorVec4 = Bui::GetMenuColor();
+
     ImDrawList *drawList = ImGui::GetWindowDrawList();
 
     if (m_IsCommandBarVisible) {
-        for (int i = 0; i < count; i++) {
-            msgPos.y = cursorPos.y + static_cast<float>(count - i) * ly;
+        for (int i = 0; i < m_MessageCount; i++) {
+            msgPos.y = cursorPos.y + static_cast<float>(m_MessageCount - i) * ly;
 
             drawList->AddRectFilled(msgPos, ImVec2(msgPos.x + contentSize.x, msgPos.y + ly), ImGui::GetColorU32(bgColorVec4));
-            drawList->AddText(msgPos, IM_COL32_WHITE, m_Msgs[i].Text);
+            drawList->AddText(msgPos, IM_COL32_WHITE, m_Messages[i].GetMessage());
         }
     } else {
-        for (int i = 0; i < count; i++) {
-            const float timer = m_Msgs[i].Timer;
+        for (int i = 0; i < m_MessageCount; i++) {
+            const float timer = m_Messages[i].GetTimer();
             if (timer > 0) {
-                msgPos.y = cursorPos.y + static_cast<float>(count - i) * ly;
-                bgColorVec4.w = std::min(110.0f, (timer / 20.0f)) / 255.0f;
+                msgPos.y = cursorPos.y + static_cast<float>(m_MessageCount - i) * ly;
+                bgColorVec4.w = std::min(110.0f, timer / 20.0f) / 255.0f;
 
                 drawList->AddRectFilled(msgPos, ImVec2(msgPos.x + contentSize.x, msgPos.y + ly), ImGui::GetColorU32(bgColorVec4));
-                drawList->AddText(msgPos, IM_COL32_WHITE, m_Msgs[i].Text);
+                drawList->AddText(msgPos, IM_COL32_WHITE, m_Messages[i].GetMessage());
             }
         }
     }
@@ -80,36 +77,37 @@ void MessageBoard::OnAfterEnd() {
     CKStats stats;
     BML_GetCKContext()->GetProfileStats(&stats);
 
-    const int count = std::min(MSG_MAXSIZE, m_MsgCount);
-    for (int i = 0; i < count; i++) {
-        m_Msgs[i].Timer -= stats.TotalFrameTime;
-        if (m_Msgs[i].Timer == 0)
-            --m_DisplayMsgCount;
+    for (int i = 0; i < m_MessageCount; i++) {
+        m_Messages[i].timer -= stats.TotalFrameTime;
+        if (m_Messages[i].timer == 0)
+            --m_DisplayMessageCount;
     }
 
-    if (m_DisplayMsgCount == 0)
+    if (m_DisplayMessageCount == 0)
         Hide();
 }
 
 void MessageBoard::AddMessage(const char *msg) {
-    for (int i = std::min(MSG_MAXSIZE - 1, m_MsgCount) - 1; i >= 0; i--) {
-        const char *text = m_Msgs[i].Text;
-        strncpy(m_Msgs[i + 1].Text, text, 256);
-        m_Msgs[i + 1].Timer = m_Msgs[i].Timer;
+    if (m_MessageCount == m_Messages.size() && m_Messages[m_MessageCount - 1].timer > 0) {
+        --m_DisplayMessageCount;
     }
 
-    strncpy(m_Msgs[0].Text, msg, 256);
-    m_Msgs[0].Timer = m_MsgMaxTimer;
-    ++m_MsgCount;
-    ++m_DisplayMsgCount;
+    for (int i = std::min(m_MessageCount, static_cast<int>(m_Messages.size()) - 1) - 1; i >= 0; i--)
+        m_Messages[i + 1] = std::move(m_Messages[i]);
+    m_Messages[0] = std::move(MessageUnit(msg, m_MaxTimer));
+
+    if (m_MessageCount < static_cast<int>(m_Messages.size())) {
+        ++m_MessageCount;
+        ++m_DisplayMessageCount;
+    }
 }
 
 void MessageBoard::ClearMessages() {
-    m_MsgCount = 0;
-    m_DisplayMsgCount = 0;
-    for (auto &m_Msg : m_Msgs) {
-        m_Msg.Text[0] = '\0';
-        m_Msg.Timer = 0.0f;
+    m_MessageCount = 0;
+    m_DisplayMessageCount = 0;
+    for (auto &message : m_Messages) {
+        message.text.clear();
+        message.timer = 0.0f;
     }
 }
 
