@@ -57,6 +57,7 @@ EventType EventPublisher::AddEventType(const char *name) {
     m_EventTypeMap[eventName] = type;
     m_EventTypes.emplace_back(std::move(eventName));
     m_EventStatus.push_back(false);
+    m_EventListeners[type] = {};
     return type;
 }
 
