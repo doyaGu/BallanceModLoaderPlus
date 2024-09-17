@@ -108,8 +108,8 @@ public:
     bool LoadConfig(Config *config);
     bool SaveConfig(Config *config);
 
-    ILogger *GetLogger() {return m_Logger; }
-    FILE *GetLogFile() { return m_Logfile; }
+    ILogger *GetLogger() const {return m_Logger; }
+    FILE *GetLogFile() const { return m_Logfile; }
 
     BML::IDataShare *GetDataShare(const char *name = nullptr);
     BML::IEventPublisher *GetEventPublisher(const char *name = nullptr);
