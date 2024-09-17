@@ -58,7 +58,7 @@ void ModMenuPage::OnClose() {
 
 void ModListPage::OnAfterBegin() {
     int count = BML_GetModManager()->GetModCount();
-    SetMaxPage(((count % 4) == 0) ? count / 4 : count / 4 + 1);
+    SetMaxPage(count % 4 == 0 ? count / 4 : count / 4 + 1);
 
     Page::OnAfterBegin();
 }
@@ -136,7 +136,7 @@ void ModPage::OnDraw() {
     const int n = GetPage() * 4;
 
     DrawEntries([&](std::size_t index) {
-        Category *category = m_Config->GetCategory((int)(n + index));
+        Category *category = m_Config->GetCategory(static_cast<int>(n + index));
         if (!category)
             return false;
 
@@ -203,8 +203,8 @@ void ModOptionPage::OnAfterBegin() {
     if (!m_Category)
         return;
 
-    int count = (int) m_Category->GetPropertyCount();
-    SetMaxPage(((count % 4) == 0) ? count / 4 : count / 4 + 1);
+    int count = static_cast<int>(m_Category->GetPropertyCount());
+    SetMaxPage(count % 4 == 0 ? count / 4 : count / 4 + 1);
 
     Page::OnAfterBegin();
 }
@@ -216,7 +216,7 @@ void ModOptionPage::OnDraw() {
     const int n = GetPage() * 4;
 
     DrawEntries([&](std::size_t index) {
-        Property *property = m_Category->GetProperty((int)(n + index));
+        Property *property = m_Category->GetProperty(static_cast<int>(n + index));
         if (!property)
             return false;
 
