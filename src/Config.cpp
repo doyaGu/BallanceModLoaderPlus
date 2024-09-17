@@ -127,17 +127,12 @@ bool Config::Save(const wchar_t *path) {
         }
     }
 
-    for (auto iter = m_Categories.begin(); iter != m_Categories.end();) {
-        auto *category = (*iter);
-        if (category->GetPropertyCount() == 0)
-            iter = m_Categories.erase(iter);
-        else
-            iter++;
-    }
-
     out << "# Configuration File for Mod: " << m_Mod->GetName()
         << " - " << m_Mod->GetVersion() << std::endl << std::endl;
     for (auto *category: m_Categories) {
+        if (category->GetPropertyCount() == 0)
+            continue;
+
         out << "# " << category->m_Comment << std::endl;
         out << category->m_Name << " {" << std::endl << std::endl;
 
