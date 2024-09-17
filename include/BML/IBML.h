@@ -6,12 +6,11 @@
 #include "CKAll.h"
 
 #include "BML/Defines.h"
-#include "BML/ILogger.h"
 #include "BML/ICommand.h"
 #include "BML/IMessageReceiver.h"
+#include "BML/InputHook.h"
 
 class IMod;
-class InputHook;
 
 class BML_EXPORT IBML : public IMessageReceiver {
 public:

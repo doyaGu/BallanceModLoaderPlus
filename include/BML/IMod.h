@@ -8,13 +8,11 @@
 
 #include "BML/Defines.h"
 #include "BML/IMessageReceiver.h"
+#include "BML/ILogger.h"
+#include "BML/IConfig.h"
+#include "BML/ICommand.h"
 
-class IMod;
 class IBML;
-class ILogger;
-class ICommand;
-class IConfig;
-class IProperty;
 
 struct BMLVersion {
     int major, minor, build;
