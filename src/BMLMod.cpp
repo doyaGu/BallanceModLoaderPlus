@@ -106,11 +106,9 @@ void BMLMod::OnLoad() {
     ExecuteBB::Init();
 
     InitConfigs();
-    RegisterCommands();
     InitGUI();
 
-    m_ModMenu.Init();
-    m_MapMenu.Init();
+    RegisterCommands();
 }
 
 void BMLMod::OnUnload() {
@@ -469,16 +467,6 @@ void BMLMod::InitConfigs() {
     m_SecondaryFontRanges->SetDefaultString("Default");
 }
 
-void BMLMod::RegisterCommands() {
-    m_BML->RegisterCommand(new CommandBML());
-    m_BML->RegisterCommand(new CommandHelp());
-    m_BML->RegisterCommand(new CommandExit());
-    m_BML->RegisterCommand(new CommandEcho());
-    m_BML->RegisterCommand(new CommandCheat());
-    m_BML->RegisterCommand(new CommandClear(this));
-    m_BML->RegisterCommand(new CommandHUD(this));
-}
-
 void BMLMod::InitGUI() {
     ImGuiIO &io = ImGui::GetIO();
 
@@ -498,6 +486,19 @@ void BMLMod::InitGUI() {
 
     Bui::InitTextures(m_CKContext);
     Bui::InitMaterials(m_CKContext);
+
+    m_ModMenu.Init();
+    m_MapMenu.Init();
+}
+
+void BMLMod::RegisterCommands() {
+    m_BML->RegisterCommand(new CommandBML());
+    m_BML->RegisterCommand(new CommandHelp());
+    m_BML->RegisterCommand(new CommandExit());
+    m_BML->RegisterCommand(new CommandEcho());
+    m_BML->RegisterCommand(new CommandCheat());
+    m_BML->RegisterCommand(new CommandClear(this));
+    m_BML->RegisterCommand(new CommandHUD(this));
 }
 
 void BMLMod::OnEditScript_Base_EventHandler(CKBehavior *script) {
