@@ -153,7 +153,7 @@ void ModPage::OnDraw() {
         if (Bui::LevelButton(name, &v)) {
             m_Menu->SetCurrentCategory(category);
             if (custom) {
-                auto *page = (ModCustomPage *) m_Menu->GetPage("Custom Page");
+                auto *page = static_cast<ModCustomPage *>(m_Menu->GetPage("Custom Page"));
                 if (!page)
                     return true;
 
@@ -314,7 +314,7 @@ void ModOptionPage::FlushBuffers() {
     memset(m_FloatValues, 0, sizeof(m_FloatValues));
 }
 
-void ModOptionPage::ShowCommentBox(Property *property) {
+void ModOptionPage::ShowCommentBox(const Property *property) {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, Bui::GetMenuColor());
 
     const ImVec2& vpSize = ImGui::GetMainViewport()->Size;

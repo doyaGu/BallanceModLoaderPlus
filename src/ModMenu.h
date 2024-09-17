@@ -78,7 +78,7 @@ public:
 protected:
     void FlushBuffers();
 
-    static void ShowCommentBox(Property *property);
+    static void ShowCommentBox(const Property *property);
 
     Category *m_Category = nullptr;
     char m_Buffers[4][4096] = {};
