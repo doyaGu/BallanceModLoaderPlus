@@ -1,7 +1,5 @@
 #include "BML/ScriptHelper.h"
 
-#include "BML/Defines.h"
-
 namespace ScriptHelper {
     bool FindBB(CKBehavior *script, std::function<bool(CKBehavior *)> callback, const char *name, bool hierarchically,
                 int inputCnt, int outputCnt, int inputParamCnt, int outputParamCnt) {

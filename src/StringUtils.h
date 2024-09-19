@@ -1,8 +1,6 @@
 #ifndef BML_STRINGUTILS_H
 #define BML_STRINGUTILS_H
 
-#include <cctype>
-#include <cwctype>
 #include <string>
 #include <vector>
 

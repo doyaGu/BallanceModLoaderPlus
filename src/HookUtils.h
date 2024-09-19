@@ -2,8 +2,6 @@
 #define BML_HOOKUTILS_H
 
 #include <cstdint>
-#include <cassert>
-#include <cstring>
 
 namespace utils {
     void OutputDebugA(const char *format, ...);
@@ -21,7 +19,7 @@ namespace utils {
 
     template<typename T>
     T ForceReinterpretCast(void *base, size_t offset) {
-        void *p = reinterpret_cast<char *>(base) + offset;
+        void *p = static_cast<char *>(base) + offset;
         return *reinterpret_cast<T *>(&p);
     }
 
@@ -35,16 +33,16 @@ namespace utils {
 
     inline void **GetVTable(void *instance) {
         if (instance) {
-            return *reinterpret_cast<void ***>(instance);
+            return *static_cast<void ***>(instance);
         } else {
             return nullptr;
         }
     }
 
     template<typename T>
-    inline void LoadVTable(void *instance, T &table) {
+    void LoadVTable(void *instance, T &table) {
         if (instance) {
-            void **src = reinterpret_cast<void**>(*reinterpret_cast<void**>(instance));
+            void **src = static_cast<void**>(*static_cast<void**>(instance));
             void **dest = reinterpret_cast<void**>(&table);
             for (size_t i = 0; i < sizeof(T) / sizeof(void *); ++i) {
                 dest[i] = src[i];
@@ -53,22 +51,22 @@ namespace utils {
     }
 
     template<typename T>
-    inline void SaveVTable(void *instance, T &table) {
+    void SaveVTable(void *instance, T &table) {
         if (instance) {
             void **src = reinterpret_cast<void**>(&table);
-            void **dest = reinterpret_cast<void**>(*reinterpret_cast<void**>(instance));
-            uint32_t originalProtection = UnprotectRegion((void *) dest, sizeof(T));
+            void **dest = static_cast<void**>(*static_cast<void**>(instance));
+            uint32_t originalProtection = UnprotectRegion(dest, sizeof(T));
             for (size_t i = 0; i < sizeof(T) / sizeof(void *); ++i) {
                 dest[i] = src[i];
             }
-            ProtectRegion((void *) dest, sizeof(T), originalProtection);
+            ProtectRegion(dest, sizeof(T), originalProtection);
         }
     }
 
     void *HookVirtualMethod(void *instance, void *hook, size_t offset);
 
     template<typename T>
-    inline void *HookVirtualMethod(void *instance, T hook, size_t offset) {
+    void *HookVirtualMethod(void *instance, T hook, size_t offset) {
         return HookVirtualMethod(instance, TypeErase<T>(hook), offset);
     }
 }
