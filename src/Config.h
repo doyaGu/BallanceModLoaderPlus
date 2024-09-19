@@ -1,12 +1,9 @@
 #ifndef BML_CONFIG_H
 #define BML_CONFIG_H
 
-#include <algorithm>
-#include <cctype>
 #include <string>
 #include <vector>
 #include <sstream>
-#include <functional>
 
 #include "BML/IConfig.h"
 #include "BML/IMod.h"

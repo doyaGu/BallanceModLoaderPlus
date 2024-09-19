@@ -71,8 +71,8 @@ public:
 
 private:
     void InitConfigs();
-    void RegisterCommands();
     void InitGUI();
+    void RegisterCommands();
 
     void OnEditScript_Base_EventHandler(CKBehavior *script);
     void OnEditScript_Menu_MenuInit(CKBehavior *script);
