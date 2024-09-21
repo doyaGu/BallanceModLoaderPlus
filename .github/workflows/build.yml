@@ -10,10 +10,16 @@ jobs:
   build:
     runs-on: windows-latest
 
+    strategy:
+      matrix:
+        configuration: [Release, Debug]
+
     env:
-      VIRTOOLS_SDK_PATH: ${{ github.workspace }}/Virtools-SDK-2.1
       PROJECT_NAME: BallanceModLoaderPlus
-      
+      BASE_BUILD_DIR: ${{ github.workspace }}/build
+      BASE_DIST_DIR: ${{ github.workspace }}/dist
+      CMAKE_GENERATOR: "Ninja"
+
     steps:
     - name: Checkout source code
       uses: actions/checkout@v4
@@ -24,7 +30,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: doyaGu/Virtools-SDK-2.1
-        path: ${{ env.VIRTOOLS_SDK_PATH }}
+        path: ${{ github.workspace }}/Virtools-SDK-2.1
 
     - name: Get current branch and commit hash
       shell: bash
@@ -39,43 +45,22 @@ jobs:
       uses: TheMrMilchmann/setup-msvc-dev@v3.0.0
       with:
         arch: x86
-      
-    - name: Configure CMake for Release version
-      run: cmake -B ${{ github.workspace }}/build-release -DCMAKE_BUILD_TYPE=Release -A Win32
 
-    - name: Configure CMake for Debug version
-      run: cmake -B ${{ github.workspace }}/build-debug -DCMAKE_BUILD_TYPE=Debug -A Win32
-  
-    - name: Build Release version
-      # Build your program with the given configuration
-      run: cmake --build ${{ github.workspace }}/build-release --config Release
+    - name: Configure CMake
+      run: >
+        cmake -G "${{ env.CMAKE_GENERATOR }}" -B ${{ env.BASE_BUILD_DIR }}/${{ matrix.configuration }}
+        -DCMAKE_BUILD_TYPE=${{ matrix.configuration }}
+        -DVIRTOOLS_SDK_PATH=${{ github.workspace }}/Virtools-SDK-2.1
+        -DCMAKE_INSTALL_PREFIX=${{ env.BASE_DIST_DIR }}/${{ matrix.configuration }}
 
-    - name: Build Debug version
-      # Build your program with the given configuration
-      run: cmake --build ${{ github.workspace }}/build-debug --config Debug
+    - name: Build the project
+      run: cmake --build ${{ env.BASE_BUILD_DIR }}/${{ matrix.configuration }}
 
-    - name: Test Release version
-      working-directory: ${{ github.workspace }}/build-release
-      run: ctest -C Release
+    - name: Install binaries to distribution folder
+      run: cmake --install ${{ env.BASE_BUILD_DIR }}/${{ matrix.configuration }} --prefix ${{ env.BASE_DIST_DIR }}/${{ matrix.configuration }}
 
-    - name: Test Debug version
-      working-directory: ${{ github.workspace }}/build-debug
-      run: ctest -C Debug
-
-    - name: Install Release version
-      run: cmake --install ${{ github.workspace }}/build-release --prefix ${{ github.workspace }}/dist-release --config Release
-
-    - name: Install Debug version
-      run: cmake --install ${{ github.workspace }}/build-debug --prefix ${{ github.workspace }}/dist-debug --config Debug
-      
-    - name: Upload Release Artifact
+    - name: Upload build artifacts
       uses: actions/upload-artifact@v4.3.3
       with:
-        name: ${{env.PROJECT_NAME}}-${{env.GIT_SHA}}-Release
-        path: ${{github.workspace}}/dist-release
-
-    - name: Upload Debug Artifact
-      uses: actions/upload-artifact@v4.3.3
-      with:
-        name: ${{env.PROJECT_NAME}}-${{env.GIT_SHA}}-Debug
-        path: ${{github.workspace}}/dist-debug
+        name: ${{ env.PROJECT_NAME }}-${{ env.GIT_SHA }}-${{ matrix.configuration }}
+        path: ${{ env.BASE_DIST_DIR }}/${{ matrix.configuration }}
