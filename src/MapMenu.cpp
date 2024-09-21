@@ -155,7 +155,7 @@ size_t MapListPage::ExploreMaps(const std::wstring &path, std::vector<MapInfo> &
             wchar_t filename[1024];
             wchar_t ext[64];
             _wsplitpath(fileinfo.name, nullptr, nullptr, filename, ext);
-            if (wcsicmp(ext, L".nmo") == 0) {
+            if (wcsicmp(ext, L".nmo") == 0 || wcsicmp(ext, L".cmo") == 0) {
                 MapInfo info;
                 char buffer[1024];
                 utils::Utf16ToUtf8(filename, buffer, sizeof(buffer));
