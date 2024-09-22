@@ -53,10 +53,12 @@ jobs:
         -DCMAKE_INSTALL_PREFIX=${{ env.BASE_DIST_DIR }}/${{ matrix.configuration }}
 
     - name: Build the project
-      run: cmake --build ${{ env.BASE_BUILD_DIR }}/${{ matrix.configuration }}
+      run: cmake --build ${{ env.BASE_BUILD_DIR }}/${{ matrix.configuration }} --config ${{ matrix.configuration }}
 
     - name: Install binaries to distribution folder
-      run: cmake --install ${{ env.BASE_BUILD_DIR }}/${{ matrix.configuration }} --prefix ${{ env.BASE_DIST_DIR }}/${{ matrix.configuration }}
+      run: >
+        cmake --install ${{ env.BASE_BUILD_DIR }}/${{ matrix.configuration }}
+        --prefix ${{ env.BASE_DIST_DIR }}/${{ matrix.configuration }}  --config ${{ matrix.configuration }}
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4.3.3
