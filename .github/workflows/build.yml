@@ -18,7 +18,6 @@ jobs:
       PROJECT_NAME: BallanceModLoaderPlus
       BASE_BUILD_DIR: ${{ github.workspace }}/build
       BASE_DIST_DIR: ${{ github.workspace }}/dist
-      CMAKE_GENERATOR: "Ninja"
 
     steps:
     - name: Checkout source code
@@ -48,7 +47,7 @@ jobs:
 
     - name: Configure CMake
       run: >
-        cmake -G "${{ env.CMAKE_GENERATOR }}" -B ${{ env.BASE_BUILD_DIR }}/${{ matrix.configuration }}
+        cmake -B ${{ env.BASE_BUILD_DIR }}/${{ matrix.configuration }}
         -DCMAKE_BUILD_TYPE=${{ matrix.configuration }}
         -DVIRTOOLS_SDK_PATH=${{ github.workspace }}/Virtools-SDK-2.1
         -DCMAKE_INSTALL_PREFIX=${{ env.BASE_DIST_DIR }}/${{ matrix.configuration }}
