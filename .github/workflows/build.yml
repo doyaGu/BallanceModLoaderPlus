@@ -47,7 +47,7 @@ jobs:
 
     - name: Configure CMake
       run: >
-        cmake -B ${{ env.BASE_BUILD_DIR }}/${{ matrix.configuration }}
+        cmake -A Win32 -B ${{ env.BASE_BUILD_DIR }}/${{ matrix.configuration }}
         -DCMAKE_BUILD_TYPE=${{ matrix.configuration }}
         -DVIRTOOLS_SDK_PATH=${{ github.workspace }}/Virtools-SDK-2.1
         -DCMAKE_INSTALL_PREFIX=${{ env.BASE_DIST_DIR }}/${{ matrix.configuration }}
