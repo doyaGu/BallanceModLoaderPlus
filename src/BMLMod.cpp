@@ -322,7 +322,7 @@ void BMLMod::LoadMap(const std::wstring &path) {
     level--;
     SetParamValue(m_LevelRow, level);
 
-    std::string mapPath = utils::Utf16ToUtf8(path);
+    std::string mapPath = utils::Utf16ToAnsi(path);
     m_DataShare->Set("CustomMapName", mapPath.c_str(), mapPath.size() + 1);
 
     CKMessageManager *mm = m_CKContext->GetMessageManager();
