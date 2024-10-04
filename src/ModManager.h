@@ -299,13 +299,15 @@ protected:
     bool InitHooks();
     bool ShutdownHooks();
     bool GetManagers();
+    bool LoadConfiguration();
+    bool SaveConfiguration();
 
     size_t ExploreMods(const std::wstring &path, std::vector<std::wstring> &mods);
 
     std::shared_ptr<void> LoadLib(const wchar_t *path);
     bool UnloadLib(void *dllHandle);
 
-    bool LoadMod(const std::wstring &path);
+    IMod *LoadMod(const std::wstring &path);
     bool UnloadMod(const std::string &id);
 
     void RegisterBuiltinMods();
@@ -341,7 +343,6 @@ protected:
     BML::DataShare *m_DataShare = nullptr;
     BML::EventPublisher *m_EventPublisher = nullptr;
     BML::Configuration *m_Configuration = nullptr;
-
 
     FILE *m_Logfile = nullptr;
     ILogger *m_Logger = nullptr;

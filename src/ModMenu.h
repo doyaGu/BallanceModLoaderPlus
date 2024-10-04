@@ -2,6 +2,7 @@
 #define BML_MODMENU_H
 
 #include <vector>
+#include <unordered_set>
 #include <memory>
 
 #include "BML/BML.h"
@@ -27,11 +28,18 @@ public:
     void Init();
     void Shutdown();
 
-    IMod *GetCurrentMod() const { return m_CurrentMod; };
-    void SetCurrentMod(IMod *mod) { m_CurrentMod = mod; };
+    size_t GetModCount() const { return m_Mods->GetNumberOfSections(); }
+    BML::IConfigurationSection *GetModSection(size_t i) const { return m_Mods->GetSection(i); }
 
-    Category *GetCurrentCategory() const { return m_CurrentCategory; };
-    void SetCurrentCategory(Category *category) { m_CurrentCategory = category; };
+    IMod *GetCurrentMod() const { return m_CurrentMod; }
+    void SetCurrentMod(IMod *mod) { m_CurrentMod = mod; }
+
+    Category *GetCurrentCategory() const { return m_CurrentCategory; }
+    void SetCurrentCategory(Category *category) { m_CurrentCategory = category; }
+
+    bool IsInBlacklist(const std::string &name) const { return m_Blacklist.find(name) != m_Blacklist.end(); }
+    void AddToBlacklist(const std::string &name) { m_Blacklist.insert(name); }
+    void RemoveFromBlacklist(const std::string &name) { m_Blacklist.erase(name); }
 
     void OnOpen() override;
     void OnClose() override;
@@ -39,8 +47,10 @@ public:
     static Config *GetConfig(IMod *mod);
 
 private:
+    BML::IConfigurationSection *m_Mods = nullptr;
     IMod *m_CurrentMod = nullptr;
     Category *m_CurrentCategory = nullptr;
+    std::unordered_set<std::string> m_Blacklist;
     std::vector<std::unique_ptr<ModMenuPage>> m_Pages;
 };
 
