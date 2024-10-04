@@ -90,7 +90,6 @@ set(BML_SOURCES
         InputHook.cpp
         ObjectLoadHook.cpp
         PhysicsHook.cpp
-        TextureFont.cpp
 
         Narratives.cpp
         ExecuteBB.cpp
