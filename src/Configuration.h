@@ -44,9 +44,6 @@ namespace BML {
         size_t GetNumberOfEntriesRecursive() const override;
         size_t GetNumberOfSectionsRecursive() const override;
 
-        bool IsEntry(size_t index) override;
-        bool IsSection(size_t index) override;
-
         IConfigurationEntry *GetEntry(size_t index) const override;
         IConfigurationSection *GetSection(size_t index) const override;
 
@@ -120,9 +117,6 @@ namespace BML {
         size_t GetNumberOfEntriesRecursive() const override;
         size_t GetNumberOfSectionsRecursive() const override;
 
-        bool IsEntry(size_t index) const override;
-        bool IsSection(size_t index) const override;
-
         IConfigurationEntry *GetEntry(size_t index) const override;
         IConfigurationSection *GetSection(size_t index) const override;
 
@@ -176,9 +170,11 @@ namespace BML {
         mutable std::mutex m_RWLock;
         ConfigurationSection *m_Parent;
         std::string m_Name;
-        std::vector<std::tuple<uint8_t, Item>> m_Items;
-        std::unordered_map<std::string, ConfigurationSection *> m_Sections;
-        std::unordered_map<std::string, ConfigurationEntry *> m_Entries;
+        std::vector<std::tuple<uint8_t, Item>> m_Elements;
+        std::vector<ConfigurationSection *> m_Sections;
+        std::vector<ConfigurationEntry *> m_Entries;
+        std::unordered_map<std::string, ConfigurationSection *> m_SectionMap;
+        std::unordered_map<std::string, ConfigurationEntry *> m_EntryMap;
         std::vector<Callback> m_Callbacks[CFG_CB_COUNT];
         DataBox m_UserData;
     };
