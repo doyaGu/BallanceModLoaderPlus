@@ -65,14 +65,6 @@ size_t Configuration::GetNumberOfSectionsRecursive() const {
     return m_Root->GetNumberOfSectionsRecursive();
 }
 
-bool Configuration::IsEntry(size_t index) {
-    return m_Root->IsEntry(index);
-}
-
-bool Configuration::IsSection(size_t index) {
-    return m_Root->IsSection(index);
-}
-
 IConfigurationEntry *Configuration::GetEntry(size_t index) const {
     return m_Root->GetEntry(index);
 }
@@ -198,13 +190,13 @@ bool Configuration::RemoveSection(const char *parent, const char *name) {
 }
 
 bool Configuration::Read(char *buffer, size_t len) {
-    std::lock_guard<std::mutex> guard(m_RWLock);
-
     yyjson_read_flag flg = YYJSON_READ_ALLOW_COMMENTS | YYJSON_READ_ALLOW_INF_AND_NAN;
     yyjson_read_err err;
     yyjson_doc *doc = yyjson_read_opts(buffer, len, flg, nullptr, &err);
     if (!doc)
         return false;
+
+    std::lock_guard<std::mutex> guard(m_RWLock);
 
     Clear();
 
@@ -216,8 +208,6 @@ bool Configuration::Read(char *buffer, size_t len) {
 }
 
 char *Configuration::Write(size_t *len) {
-    std::lock_guard<std::mutex> guard(m_RWLock);
-
     yyjson_mut_doc *doc = yyjson_mut_doc_new(nullptr);
     if (!doc) {
         *len = 0;
@@ -257,8 +247,6 @@ void Configuration::ConvertObjectToSection(yyjson_val *obj, ConfigurationSection
     if (!yyjson_is_obj(obj))
         return;
 
-    std::lock_guard<std::mutex> guard(m_RWLock);
-
     yyjson_val *key, *val;
     yyjson_obj_iter iter;
     yyjson_obj_iter_init(obj, &iter);
@@ -285,7 +273,7 @@ void Configuration::ConvertObjectToSection(yyjson_val *obj, ConfigurationSection
                 section->AddEntryString(yyjson_get_str(key), yyjson_get_str(val));
                 break;
             case YYJSON_TYPE_NULL | YYJSON_SUBTYPE_NONE:
-//                LOG_TRACE("Configuration read: null will be ignored.");
+                // null will be ignored
                 break;
             case YYJSON_TYPE_ARR | YYJSON_SUBTYPE_NONE:
                 ConvertArrayToSection(val, (ConfigurationSection *) section->AddSection(yyjson_get_str(key)));
@@ -299,8 +287,6 @@ void Configuration::ConvertObjectToSection(yyjson_val *obj, ConfigurationSection
 void Configuration::ConvertArrayToSection(yyjson_val *arr, ConfigurationSection *section) {
     if (!yyjson_is_arr(arr))
         return;
-
-    std::lock_guard<std::mutex> guard(m_RWLock);
 
     char buf[32];
     size_t idx = 0;
@@ -329,7 +315,7 @@ void Configuration::ConvertArrayToSection(yyjson_val *arr, ConfigurationSection 
                 section->AddEntryString(buf, yyjson_get_str(val));
                 break;
             case YYJSON_TYPE_NULL | YYJSON_SUBTYPE_NONE:
-//                LOG_TRACE("Configuration read: null will be ignored.");
+                // null will be ignored.
                 break;
             case YYJSON_TYPE_ARR | YYJSON_SUBTYPE_NONE:
                 ConvertArrayToSection(val, (ConfigurationSection *) section->AddSection(buf));
@@ -377,34 +363,38 @@ int ConfigurationSection::Release() const {
 void ConfigurationSection::Clear() {
     std::lock_guard<std::mutex> guard(m_RWLock);
 
-    for (auto &pair: m_Entries) {
+    for (auto &pair: m_EntryMap) {
         auto *entry = pair.second;
         if (entry->Release() != 0) {
             entry->SetParent(nullptr);
         }
     }
+    m_EntryMap.clear();
     m_Entries.clear();
 
-    for (auto &pair: m_Sections) {
+    for (auto &pair: m_SectionMap) {
         auto *section = pair.second;
         if (section->Release() != 0) {
             section->SetParent(nullptr);
         }
     }
+    m_SectionMap.clear();
     m_Sections.clear();
+
+    m_Elements.clear();
 }
 
 size_t ConfigurationSection::GetNumberOfEntries() const {
-    return m_Entries.size();
+    return m_EntryMap.size();
 }
 
 size_t ConfigurationSection::GetNumberOfSections() const {
-    return m_Sections.size();
+    return m_SectionMap.size();
 }
 
 size_t ConfigurationSection::GetNumberOfEntriesRecursive() const {
     size_t count = 0;
-    for (auto &pair: m_Sections) {
+    for (auto &pair: m_SectionMap) {
         auto *section = pair.second;
         count += section->GetNumberOfEntriesRecursive();
     }
@@ -413,58 +403,37 @@ size_t ConfigurationSection::GetNumberOfEntriesRecursive() const {
 
 size_t ConfigurationSection::GetNumberOfSectionsRecursive() const {
     size_t count = 0;
-    for (auto &pair: m_Sections) {
+    for (auto &pair: m_SectionMap) {
         auto *section = pair.second;
         count += section->GetNumberOfSectionsRecursive();
     }
     return count + GetNumberOfSections();
 }
 
-
-bool ConfigurationSection::IsEntry(size_t index) const {
-    if (index >= m_Items.size())
-        return false;
-    return std::get<0>(m_Items[index]) == 0;
-}
-
-bool ConfigurationSection::IsSection(size_t index) const {
-    if (index >= m_Items.size())
-        return false;
-    return std::get<0>(m_Items[index]) == 1;
-}
-
 IConfigurationEntry *ConfigurationSection::GetEntry(size_t index) const {
-    if (index >= m_Items.size())
+    if (index >= m_Entries.size())
         return nullptr;
 
-    auto item = m_Items[index];
-    if (std::get<0>(item) == 0)
-        return std::get<1>(item).entry;
-    else
-        return nullptr;
+    return m_Entries[index];
 }
 
 IConfigurationSection *ConfigurationSection::GetSection(size_t index) const {
-    if (index >= m_Items.size())
+    if (index >= m_Sections.size())
         return nullptr;
 
-    auto item = m_Items[index];
-    if (std::get<0>(item) == 1)
-        return std::get<1>(item).section;
-    else
-        return nullptr;
+    return m_Sections[index];
 }
 
 IConfigurationEntry *ConfigurationSection::GetEntry(const char *name) const {
-    auto it = m_Entries.find(name);
-    if (it == m_Entries.end())
+    auto it = m_EntryMap.find(name);
+    if (it == m_EntryMap.end())
         return nullptr;
     return it->second;
 }
 
 IConfigurationSection *ConfigurationSection::GetSection(const char *name) const {
-    auto it = m_Sections.find(name);
-    if (it == m_Sections.end())
+    auto it = m_SectionMap.find(name);
+    if (it == m_SectionMap.end())
         return nullptr;
     return it->second;
 }
@@ -473,15 +442,16 @@ IConfigurationEntry *ConfigurationSection::AddEntry(const char *name) {
     if (!name)
         return nullptr;
 
-    auto *entry = (ConfigurationEntry *)GetEntry(name);
+    auto *entry = (ConfigurationEntry *) GetEntry(name);
     if (entry)
         return entry;
 
     std::lock_guard<std::mutex> guard(m_RWLock);
 
     entry = new ConfigurationEntry(this, name);
-    m_Items.emplace_back(0, entry);
-    m_Entries[entry->GetName()] = entry;
+    m_Elements.emplace_back(0, entry);
+    m_Entries.emplace_back(entry);
+    m_EntryMap[entry->GetName()] = entry;
 
     InvokeCallbacks(CFG_CB_ADD, entry);
     return entry;
@@ -491,8 +461,7 @@ IConfigurationEntry *ConfigurationSection::AddEntryBool(const char *name, bool v
     if (!name)
         return nullptr;
 
-
-    auto *entry = (ConfigurationEntry *)GetEntry(name);
+    auto *entry = (ConfigurationEntry *) GetEntry(name);
     if (entry) {
         entry->SetDefaultBool(value);
         return entry;
@@ -501,8 +470,9 @@ IConfigurationEntry *ConfigurationSection::AddEntryBool(const char *name, bool v
     std::lock_guard<std::mutex> guard(m_RWLock);
 
     entry = new ConfigurationEntry(this, name, value);
-    m_Items.emplace_back(0, entry);
-    m_Entries[entry->GetName()] = entry;
+    m_Elements.emplace_back(0, entry);
+    m_Entries.emplace_back(entry);
+    m_EntryMap[entry->GetName()] = entry;
 
     InvokeCallbacks(CFG_CB_ADD, entry);
     return entry;
@@ -512,7 +482,7 @@ IConfigurationEntry *ConfigurationSection::AddEntryUint32(const char *name, uint
     if (!name)
         return nullptr;
 
-    auto *entry = (ConfigurationEntry *)GetEntry(name);
+    auto *entry = (ConfigurationEntry *) GetEntry(name);
     if (entry) {
         entry->SetDefaultUint32(value);
         return entry;
@@ -521,8 +491,9 @@ IConfigurationEntry *ConfigurationSection::AddEntryUint32(const char *name, uint
     std::lock_guard<std::mutex> guard(m_RWLock);
 
     entry = new ConfigurationEntry(this, name, value);
-    m_Items.emplace_back(0, entry);
-    m_Entries[entry->GetName()] = entry;
+    m_Elements.emplace_back(0, entry);
+    m_Entries.emplace_back(entry);
+    m_EntryMap[entry->GetName()] = entry;
 
     InvokeCallbacks(CFG_CB_ADD, entry);
     return entry;
@@ -532,7 +503,7 @@ IConfigurationEntry *ConfigurationSection::AddEntryInt32(const char *name, int32
     if (!name)
         return nullptr;
 
-    auto *entry = (ConfigurationEntry *)GetEntry(name);
+    auto *entry = (ConfigurationEntry *) GetEntry(name);
     if (entry) {
         entry->SetDefaultInt32(value);
         return entry;
@@ -541,8 +512,9 @@ IConfigurationEntry *ConfigurationSection::AddEntryInt32(const char *name, int32
     std::lock_guard<std::mutex> guard(m_RWLock);
 
     entry = new ConfigurationEntry(this, name, value);
-    m_Items.emplace_back(0, entry);
-    m_Entries[entry->GetName()] = entry;
+    m_Elements.emplace_back(0, entry);
+    m_Entries.emplace_back(entry);
+    m_EntryMap[entry->GetName()] = entry;
 
     InvokeCallbacks(CFG_CB_ADD, entry);
     return entry;
@@ -552,7 +524,7 @@ IConfigurationEntry *ConfigurationSection::AddEntryUint64(const char *name, uint
     if (!name)
         return nullptr;
 
-    auto *entry = (ConfigurationEntry *)GetEntry(name);
+    auto *entry = (ConfigurationEntry *) GetEntry(name);
     if (entry) {
         entry->SetDefaultUint64(value);
         return entry;
@@ -561,8 +533,9 @@ IConfigurationEntry *ConfigurationSection::AddEntryUint64(const char *name, uint
     std::lock_guard<std::mutex> guard(m_RWLock);
 
     entry = new ConfigurationEntry(this, name, value);
-    m_Items.emplace_back(0, entry);
-    m_Entries[entry->GetName()] = entry;
+    m_Elements.emplace_back(0, entry);
+    m_Entries.emplace_back(entry);
+    m_EntryMap[entry->GetName()] = entry;
 
     InvokeCallbacks(CFG_CB_ADD, entry);
     return entry;
@@ -572,7 +545,7 @@ IConfigurationEntry *ConfigurationSection::AddEntryInt64(const char *name, int64
     if (!name)
         return nullptr;
 
-    auto *entry = (ConfigurationEntry *)GetEntry(name);
+    auto *entry = (ConfigurationEntry *) GetEntry(name);
     if (entry) {
         entry->SetDefaultInt64(value);
         return entry;
@@ -581,8 +554,9 @@ IConfigurationEntry *ConfigurationSection::AddEntryInt64(const char *name, int64
     std::lock_guard<std::mutex> guard(m_RWLock);
 
     entry = new ConfigurationEntry(this, name, value);
-    m_Items.emplace_back(0, entry);
-    m_Entries[entry->GetName()] = entry;
+    m_Elements.emplace_back(0, entry);
+    m_Entries.emplace_back(entry);
+    m_EntryMap[entry->GetName()] = entry;
 
     InvokeCallbacks(CFG_CB_ADD, entry);
     return entry;
@@ -592,7 +566,7 @@ IConfigurationEntry *ConfigurationSection::AddEntryFloat(const char *name, float
     if (!name)
         return nullptr;
 
-    auto *entry = (ConfigurationEntry *)GetEntry(name);
+    auto *entry = (ConfigurationEntry *) GetEntry(name);
     if (entry) {
         entry->SetDefaultFloat(value);
         return entry;
@@ -601,8 +575,9 @@ IConfigurationEntry *ConfigurationSection::AddEntryFloat(const char *name, float
     std::lock_guard<std::mutex> guard(m_RWLock);
 
     entry = new ConfigurationEntry(this, name, value);
-    m_Items.emplace_back(0, entry);
-    m_Entries[entry->GetName()] = entry;
+    m_Elements.emplace_back(0, entry);
+    m_Entries.emplace_back(entry);
+    m_EntryMap[entry->GetName()] = entry;
 
     InvokeCallbacks(CFG_CB_ADD, entry);
     return entry;
@@ -612,7 +587,7 @@ IConfigurationEntry *ConfigurationSection::AddEntryDouble(const char *name, doub
     if (!name)
         return nullptr;
 
-    auto *entry = (ConfigurationEntry *)GetEntry(name);
+    auto *entry = (ConfigurationEntry *) GetEntry(name);
     if (entry) {
         entry->SetDefaultDouble(value);
         return entry;
@@ -621,8 +596,9 @@ IConfigurationEntry *ConfigurationSection::AddEntryDouble(const char *name, doub
     std::lock_guard<std::mutex> guard(m_RWLock);
 
     entry = new ConfigurationEntry(this, name, value);
-    m_Items.emplace_back(0, entry);
-    m_Entries[entry->GetName()] = entry;
+    m_Elements.emplace_back(0, entry);
+    m_Entries.emplace_back(entry);
+    m_EntryMap[entry->GetName()] = entry;
 
     InvokeCallbacks(CFG_CB_ADD, entry);
     return entry;
@@ -635,7 +611,7 @@ IConfigurationEntry *ConfigurationSection::AddEntryString(const char *name, cons
     if (!value)
         value = "";
 
-    auto *entry = (ConfigurationEntry *)GetEntry(name);
+    auto *entry = (ConfigurationEntry *) GetEntry(name);
     if (entry) {
         entry->SetDefaultString(value);
         return entry;
@@ -644,8 +620,9 @@ IConfigurationEntry *ConfigurationSection::AddEntryString(const char *name, cons
     std::lock_guard<std::mutex> guard(m_RWLock);
 
     entry = new ConfigurationEntry(this, name, value);
-    m_Items.emplace_back(0, entry);
-    m_Entries[entry->GetName()] = entry;
+    m_Elements.emplace_back(0, entry);
+    m_Entries.emplace_back(entry);
+    m_EntryMap[entry->GetName()] = entry;
 
     InvokeCallbacks(CFG_CB_ADD, entry);
     return entry;
@@ -655,13 +632,17 @@ IConfigurationSection *ConfigurationSection::AddSection(const char *name) {
     if (!name)
         return nullptr;
 
+    auto *section = (ConfigurationSection *) GetSection(name);
+    if (section)
+        return section;
+
     std::lock_guard<std::mutex> guard(m_RWLock);
 
-    auto *section = new ConfigurationSection(this, name);
-    m_Items.emplace_back(1, section);
-    m_Sections[section->GetName()] = section;
+    section = new ConfigurationSection(this, name);
+    m_Elements.emplace_back(1, section);
+    m_Sections.emplace_back(section);
+    m_SectionMap[section->GetName()] = section;
 
-    InvokeCallbacks(CFG_CB_ADD, nullptr);
     return section;
 }
 
@@ -669,17 +650,18 @@ bool ConfigurationSection::RemoveEntry(const char *name) {
     if (!name)
         return false;
 
-    auto it = m_Entries.find(name);
-    if (it == m_Entries.end())
+    auto it = m_EntryMap.find(name);
+    if (it == m_EntryMap.end())
         return false;
 
     std::lock_guard<std::mutex> guard(m_RWLock);
 
     auto *entry = it->second;
-    auto del = std::remove_if(m_Items.begin(), m_Items.end(),
+    auto del = std::remove_if(m_Elements.begin(), m_Elements.end(),
                               [entry](const std::tuple<uint8_t, Item> &e) { return std::get<1>(e).entry == entry; });
-    m_Items.erase(del, m_Items.end());
-    m_Entries.erase(it);
+    m_Elements.erase(del, m_Elements.end());
+    m_Entries.erase(std::remove(m_Entries.begin(), m_Entries.end(), entry), m_Entries.end());
+    m_EntryMap.erase(it);
 
     InvokeCallbacks(CFG_CB_REMOVE, entry);
 
@@ -693,19 +675,20 @@ bool ConfigurationSection::RemoveSection(const char *name) {
     if (!name)
         return false;
 
-    auto it = m_Sections.find(name);
-    if (it == m_Sections.end())
+    auto it = m_SectionMap.find(name);
+    if (it == m_SectionMap.end())
         return false;
 
     std::lock_guard<std::mutex> guard(m_RWLock);
 
     auto *section = it->second;
-    auto del = std::remove_if(m_Items.begin(), m_Items.end(),
-                              [section](const std::tuple<uint8_t, Item> &e) { return std::get<1>(e).section == section; });
-    m_Items.erase(del, m_Items.end());
-    m_Sections.erase(it);
-
-    InvokeCallbacks(CFG_CB_REMOVE, nullptr);
+    auto del = std::remove_if(m_Elements.begin(), m_Elements.end(),
+                              [section](const std::tuple<uint8_t, Item> &e) {
+                                  return std::get<1>(e).section == section;
+                              });
+    m_Elements.erase(del, m_Elements.end());
+    m_Sections.erase(std::remove(m_Sections.begin(), m_Sections.end(), section), m_Sections.end());
+    m_SectionMap.erase(it);
 
     if (section->Release() != 0) {
         section->SetParent(nullptr);
@@ -727,10 +710,10 @@ yyjson_mut_val *ConfigurationSection::ToJsonObject(yyjson_mut_doc *doc) {
     if (!obj)
         return nullptr;
 
-    for (auto &item: m_Items) {
-        switch (std::get<0>(item)) {
+    for (auto &e: m_Elements) {
+        switch (std::get<0>(e)) {
             case 0: {
-                auto *entry = std::get<1>(item).entry;
+                auto *entry = std::get<1>(e).entry;
                 if (entry) {
                     yyjson_mut_val *key = entry->ToJsonKey(doc);
                     yyjson_mut_val *val = entry->ToJsonValue(doc);
@@ -738,9 +721,9 @@ yyjson_mut_val *ConfigurationSection::ToJsonObject(yyjson_mut_doc *doc) {
                         yyjson_mut_obj_add(obj, key, val);
                 }
             }
-                break;
+            break;
             case 1: {
-                auto *section = std::get<1>(item).section;
+                auto *section = std::get<1>(e).section;
                 if (section) {
                     yyjson_mut_val *key = section->ToJsonKey(doc);
                     yyjson_mut_val *val = section->ToJsonObject(doc);
@@ -748,7 +731,7 @@ yyjson_mut_val *ConfigurationSection::ToJsonObject(yyjson_mut_doc *doc) {
                         yyjson_mut_obj_add(obj, key, val);
                 }
             }
-                break;
+            break;
             default:
                 break;
         }
@@ -801,7 +784,7 @@ void *ConfigurationSection::SetUserData(void *data, size_t type) {
 
 ConfigurationEntry::ConfigurationEntry(ConfigurationSection *parent, const char *name)
     : m_Parent(parent), m_Name(name) {
-        assert(name != nullptr);
+    assert(name != nullptr);
 }
 
 ConfigurationEntry::ConfigurationEntry(ConfigurationSection *parent, const char *name, bool value)

@@ -67,22 +67,6 @@ namespace BML {
             virtual size_t GetNumberOfSectionsRecursive() const = 0;
 
             /**
-             * @brief Checks if the item at the specified index is a configuration entry.
-             *
-             * @param index The index to check.
-             * @return      True if the item at the index is an entry, false otherwise.
-             */
-            virtual bool IsEntry(size_t index) = 0;
-
-            /**
-             * @brief Checks if the item at the specified index is a configuration section.
-             *
-             * @param index The index to check.
-             * @return      True if the item at the index is a section, false otherwise.
-             */
-            virtual bool IsSection(size_t index) = 0;
-
-            /**
              * @brief Retrieves the configuration entry at the specified index.
              *
              * @param index The index of the entry to retrieve.
@@ -356,22 +340,6 @@ namespace BML {
              * @return The total number of subsections in the section and its subsections.
              */
             virtual size_t GetNumberOfSectionsRecursive() const = 0;
-
-            /**
-             * @brief Checks if an item at the given index is a config entry.
-             *
-             * @param index The index to check.
-             * @return True if the item is a config entry, false if not or index out of range.
-             */
-            virtual bool IsEntry(size_t index) const = 0;
-
-            /**
-             * @brief Checks if an item at the given index is a config section.
-             *
-             * @param index The index to check.
-             * @return True if the item is a config section, false if not or index out of range.
-             */
-            virtual bool IsSection(size_t index) const = 0;
 
             /**
              * @brief Retrieves a config entry by its index.
