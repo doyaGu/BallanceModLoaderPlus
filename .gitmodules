@@ -13,9 +13,6 @@
 [submodule "deps/oniguruma"]
 	path = deps/oniguruma
 	url = https://github.com/kkos/oniguruma
-[submodule "deps/implot"]
-	path = deps/implot
-	url = https://github.com/epezent/implot.git
 [submodule "deps/yyjson"]
 	path = deps/yyjson
 	url = https://github.com/ibireme/yyjson/
