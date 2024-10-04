@@ -38,7 +38,7 @@ CKRenderContext *BML_GetRenderContext() {
     return g_ModManager->GetRenderContext();
 }
 
-ModManager::ModManager(CKContext *context)  : CKBaseManager(context, MOD_MANAGER_GUID, (CKSTRING) "Mod Manager") {
+ModManager::ModManager(CKContext *context) : CKBaseManager(context, MOD_MANAGER_GUID, (CKSTRING) "Mod Manager") {
     m_DataShare = new BML::DataShare("BML");
     m_EventPublisher = new BML::EventPublisher("BML");
     m_Configuration = new BML::Configuration("BML");
@@ -192,7 +192,7 @@ bool ModManager::Init() {
 #endif
 
     OnigEncoding encodings[3] = {ONIG_ENCODING_ASCII, ONIG_ENCODING_UTF8, ONIG_ENCODING_UTF16_LE};
-    int err = onig_initialize(encodings, sizeof(encodings)/sizeof(encodings[0]));
+    int err = onig_initialize(encodings, sizeof(encodings) / sizeof(encodings[0]));
     if (err < 0) {
         m_Logger->Error("Failed to initialize regular expression functionality");
         return false;
@@ -217,6 +217,8 @@ bool ModManager::Init() {
         m_Logger->Error("Failed to initialize Win32 platform backend for ImGui");
     }
 
+    LoadConfiguration();
+
     m_Initialized = true;
     return true;
 }
@@ -224,6 +226,8 @@ bool ModManager::Init() {
 bool ModManager::Shutdown() {
     if (AreModsLoaded())
         UnloadMods();
+
+    SaveConfiguration();
 
     m_Logger->Info("Releasing Mod Loader");
 
@@ -250,26 +254,79 @@ void ModManager::LoadMods() {
     if (!IsInitialized() || AreModsLoaded())
         return;
 
+    std::unordered_set<std::string> modSet;
+    auto *modsSection = m_Configuration->AddSection(nullptr, "mods");
+    BML::IConfigurationSection *section = nullptr;
+    BML::IConfigurationEntry *entry = nullptr;
+
     RegisterBuiltinMods();
+
+    for (auto *mod: m_Mods) {
+        const char *id = mod->GetID();
+        modSet.emplace(id);
+        section = modsSection->AddSection(id);
+        section->AddEntryString("id", mod->GetID());
+        section->AddEntryString("version", mod->GetVersion());
+        section->AddEntryString("name", mod->GetName());
+        section->AddEntryString("author", mod->GetAuthor());
+        section->AddEntryString("description", mod->GetDescription());
+        section->AddEntryBool("builtin", true);
+    }
 
     std::wstring path = m_LoaderDir + L"\\Mods";
     if (utils::DirectoryExistsW(path)) {
-        std::vector<std::wstring> mods;
-        if (ExploreMods(path, mods) == 0) {
+        std::vector<std::wstring> modPaths;
+        if (ExploreMods(path, modPaths) == 0) {
             m_Logger->Info("No mod is found.");
         }
 
-        for (auto &mod: mods) {
-            if (LoadMod(mod)) {
+        for (auto &modPath: modPaths) {
+            IMod *mod = LoadMod(modPath);
+            if (mod) {
+                const char *id = mod->GetID();
+                if (modSet.find(id) != modSet.end()) {
+                    m_Logger->Warn("Duplicate Mod: %s", id);
+                    UnloadMod(id);
+                    continue;
+                }
+                modSet.emplace(id);
+
+                section = modsSection->AddSection(id);
+                entry = section->GetEntry("disabled");
+                if (entry && entry->GetBool()) {
+                    UnloadMod(id);
+                    continue;
+                }
+
+                section->AddEntryString("id", mod->GetID());
+                section->AddEntryString("version", mod->GetVersion());
+                section->AddEntryString("name", mod->GetName());
+                section->AddEntryString("author", mod->GetAuthor());
+                section->AddEntryString("description", mod->GetDescription());
+
                 wchar_t drive[4];
                 wchar_t dir[MAX_PATH];
-                _wsplitpath(mod.c_str(), drive, dir, nullptr, nullptr);
                 wchar_t wBuf[MAX_PATH];
-                _snwprintf(wBuf, MAX_PATH, L"%s%s", drive, dir);
                 char buf[1024];
+                _wsplitpath(modPath.c_str(), drive, dir, nullptr, nullptr);
+                _snwprintf(wBuf, MAX_PATH, L"%s%s", drive, dir);
                 utils::Utf16ToAnsi(wBuf, buf, MAX_PATH);
                 AddDataPath(buf);
             }
+        }
+
+        std::vector<std::string> sectionsToRemove;
+        const size_t count = modsSection->GetNumberOfSections();
+        for (size_t i = 0; i < count; i++) {
+            section = modsSection->GetSection(i);
+            const char *id = section->GetName();
+            if (modSet.find(id) == modSet.end()) {
+                sectionsToRemove.emplace_back(id);
+            }
+        }
+
+        for (const auto &id: sectionsToRemove) {
+            modsSection->RemoveSection(id.c_str());
         }
     }
 
@@ -705,27 +762,27 @@ void ModManager::SkipRenderForNextTick() {
 }
 
 void ModManager::RegisterBallType(const char *ballFile, const char *ballId, const char *ballName, const char *objName,
-                                 float friction, float elasticity, float mass, const char *collGroup,
-                                 float linearDamp, float rotDamp, float force, float radius) {
+                                  float friction, float elasticity, float mass, const char *collGroup,
+                                  float linearDamp, float rotDamp, float force, float radius) {
     m_BallTypeMod->RegisterBallType(ballFile, ballId, ballName, objName, friction, elasticity,
                                     mass, collGroup, linearDamp, rotDamp, force, radius);
 }
 
 void ModManager::RegisterFloorType(const char *floorName, float friction, float elasticity, float mass,
-                                  const char *collGroup, bool enableColl) {
+                                   const char *collGroup, bool enableColl) {
     m_BallTypeMod->RegisterFloorType(floorName, friction, elasticity, mass, collGroup, enableColl);
 }
 
 void ModManager::RegisterModulBall(const char *modulName, bool fixed, float friction, float elasticity, float mass,
-                                  const char *collGroup, bool frozen, bool enableColl, bool calcMassCenter,
-                                  float linearDamp, float rotDamp, float radius) {
+                                   const char *collGroup, bool frozen, bool enableColl, bool calcMassCenter,
+                                   float linearDamp, float rotDamp, float radius) {
     m_BallTypeMod->RegisterModulBall(modulName, fixed, friction, elasticity, mass, collGroup,
                                      frozen, enableColl, calcMassCenter, linearDamp, rotDamp, radius);
 }
 
 void ModManager::RegisterModulConvex(const char *modulName, bool fixed, float friction, float elasticity, float mass,
-                                    const char *collGroup, bool frozen, bool enableColl, bool calcMassCenter,
-                                    float linearDamp, float rotDamp) {
+                                     const char *collGroup, bool frozen, bool enableColl, bool calcMassCenter,
+                                     float linearDamp, float rotDamp) {
     m_BallTypeMod->RegisterModulConvex(modulName, fixed, friction, elasticity, mass, collGroup,
                                        frozen, enableColl, calcMassCenter, linearDamp, rotDamp);
 }
@@ -1038,7 +1095,7 @@ bool ModManager::GetManagers() {
         return false;
     }
 
-    m_InputManager = (CKInputManager *)m_Context->GetManagerByGuid(INPUT_MANAGER_GUID);
+    m_InputManager = (CKInputManager *) m_Context->GetManagerByGuid(INPUT_MANAGER_GUID);
     if (m_InputManager) {
         m_Logger->Info("Get Input Manager pointer 0x%08x", m_InputManager);
     } else {
@@ -1092,6 +1149,61 @@ bool ModManager::GetManagers() {
     } else {
         m_Logger->Info("Failed to get Time Manager");
         return false;
+    }
+
+    return true;
+}
+
+bool ModManager::LoadConfiguration() {
+    std::wstring path = GetDirectory(BML_DIR_CONFIG);
+    path.append(L"\\BML.json");
+    FILE *fp = _wfopen(path.c_str(), L"rb");
+    if (!fp)
+        return false;
+
+    fseek(fp, 0, SEEK_END);
+    long len = ftell(fp);
+    rewind(fp);
+
+    if (len == 0) {
+        fclose(fp);
+        return false;
+    }
+
+    char *json = new char[len + 1];
+    if (fread(json, sizeof(char), len, fp) != len) {
+        delete[] json;
+        fclose(fp);
+        return false;
+    }
+    json[len] = '\0';
+    fclose(fp);
+
+    if (!m_Configuration->Read(json, len)) {
+        delete[] json;
+        return false;
+    }
+
+    delete[] json;
+    return true;
+}
+
+bool ModManager::SaveConfiguration() {
+    size_t size = 0;
+    char *str = m_Configuration->Write(&size);
+    if (size != 0) {
+        std::wstring path = GetDirectory(BML_DIR_CONFIG);
+        path.append(L"\\BML.json");
+        FILE *fp = _wfopen(path.c_str(), L"w");
+        if (!fp)
+            return false;
+
+        if (fwrite(str, sizeof(char), size, fp) != size) {
+            fclose(fp);
+            return false;
+        }
+
+        fclose(fp);
     }
 
     return true;
@@ -1153,7 +1265,7 @@ std::shared_ptr<void> ModManager::LoadLib(const wchar_t *path) {
 
     if (!dllHandlePtr) {
         dllHandlePtr = std::shared_ptr<void>(dllHandle, [](void *ptr) {
-            ::FreeLibrary(reinterpret_cast<HMODULE>(ptr));
+            ::FreeLibrary(static_cast<HMODULE>(ptr));
         });
         it->second = dllHandlePtr;
     }
@@ -1172,24 +1284,23 @@ bool ModManager::UnloadLib(void *dllHandle) {
     return true;
 }
 
-bool ModManager::LoadMod(const std::wstring &path) {
+IMod *ModManager::LoadMod(const std::wstring &path) {
     wchar_t filename[MAX_PATH];
     _wsplitpath(path.c_str(), nullptr, nullptr, filename, nullptr);
 
     auto dllHandle = LoadLib(path.c_str());
     if (!dllHandle) {
         m_Logger->Error("Failed to load %s.", filename);
-        return false;
+        return nullptr;
     }
 
     constexpr const char *ENTRY_SYMBOL = "BMLEntry";
     typedef IMod *(*BMLEntryFunc)(IBML *);
 
-    auto func = reinterpret_cast<BMLEntryFunc>(::GetProcAddress(reinterpret_cast<HMODULE>(dllHandle.get()),
-                                                                ENTRY_SYMBOL));
+    auto func = reinterpret_cast<BMLEntryFunc>(::GetProcAddress(static_cast<HMODULE>(dllHandle.get()), ENTRY_SYMBOL));
     if (!func) {
         m_Logger->Error("%s does not export the required symbol: %s.", filename, ENTRY_SYMBOL);
-        return false;
+        return nullptr;
     }
 
     auto *bml = static_cast<IBML *>(this);
@@ -1197,13 +1308,13 @@ bool ModManager::LoadMod(const std::wstring &path) {
     if (!mod) {
         m_Logger->Error("No mod could be registered, %s will be unloaded.", filename);
         UnloadLib(dllHandle.get());
-        return false;
+        return nullptr;
     }
 
     if (!RegisterMod(mod, dllHandle))
-        return false;
+        return nullptr;
 
-    return true;
+    return mod;
 }
 
 bool ModManager::UnloadMod(const std::string &id) {
@@ -1280,8 +1391,7 @@ bool ModManager::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
     constexpr const char *EXIT_SYMBOL = "BMLExit";
     typedef void (*BMLExitFunc)(IMod *);
 
-    auto func = reinterpret_cast<BMLExitFunc>(::GetProcAddress(reinterpret_cast<HMODULE>(dllHandle.get()),
-                                                               EXIT_SYMBOL));
+    auto func = reinterpret_cast<BMLExitFunc>(::GetProcAddress(static_cast<HMODULE>(dllHandle.get()), EXIT_SYMBOL));
     if (func)
         func(mod);
 
@@ -1313,8 +1423,9 @@ void ModManager::FillCallbackMap(IMod *mod) {
     } blank(this);
 
     void **vtable[2] = {
-            *reinterpret_cast<void ***>(&blank),
-            *reinterpret_cast<void ***>(mod)};
+        *reinterpret_cast<void ***>(&blank),
+        *reinterpret_cast<void ***>(mod)
+    };
 
     int index = 0;
 #define CHECK_V_FUNC(IDX, FUNC)                             \

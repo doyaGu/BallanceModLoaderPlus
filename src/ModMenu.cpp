@@ -10,9 +10,36 @@ void ModMenu::Init() {
     m_Pages.push_back(std::make_unique<ModPage>(this));
     m_Pages.push_back(std::make_unique<ModOptionPage>(this));
     m_Pages.push_back(std::make_unique<ModCustomPage>(this));
+
+    auto *config = BML_GetConfiguration(nullptr);
+    m_Mods = config->AddSection(nullptr, "mods");
+
+    for (size_t i = 0; i < m_Mods->GetNumberOfSections(); ++i) {
+        auto *section = m_Mods->GetSection(i);
+        auto *entry = section->GetEntry("disabled");
+        if (entry && entry->GetType() == BML::CFG_ENTRY_BOOL && entry->GetBool()) {
+            m_Blacklist.insert(section->GetName());
+        }
+    }
 }
 
 void ModMenu::Shutdown() {
+    for (size_t i = 0; i < m_Mods->GetNumberOfSections(); ++i) {
+        auto *section = m_Mods->GetSection(i);
+        auto *entry = section->GetEntry("disabled");
+        if (entry) {
+            entry->SetBool(false);
+        }
+    }
+
+    for (const auto &id: m_Blacklist) {
+        auto *section = m_Mods->GetSection(id.c_str());
+        if (section) {
+            section->AddEntryBool("disabled", true);
+        }
+    }
+    m_Blacklist.clear();
+
     m_Pages.clear();
 }
 
@@ -21,7 +48,7 @@ void ModMenu::OnOpen() {
 }
 
 void ModMenu::OnClose() {
-    for (auto &page : m_Pages) {
+    for (auto &page: m_Pages) {
         page->SetPage(0);
     }
 
@@ -57,7 +84,7 @@ void ModMenuPage::OnClose() {
 }
 
 void ModListPage::OnAfterBegin() {
-    int count = BML_GetModManager()->GetModCount();
+    int count = static_cast<int>(m_Menu->GetModCount());
     SetMaxPage(count % 4 == 0 ? count / 4 : count / 4 + 1);
 
     Page::OnAfterBegin();
@@ -67,16 +94,41 @@ void ModListPage::OnDraw() {
     const int n = GetPage() * 4;
 
     DrawEntries([&](std::size_t index) {
-        IMod *mod = BML_GetModManager()->GetMod((int)(n + index));
-        if (!mod)
+        auto *section = m_Menu->GetModSection(static_cast<int>(n + index));
+        if (!section)
             return false;
 
-        char buf[256];
-        sprintf(buf, "%s", mod->GetID());
-        if (Bui::MainButton(buf)) {
-            m_Menu->SetCurrentMod(mod);
-            m_Menu->ShowPage("Mod Page");
+        const char *id = section->GetName();
+        bool blocked = m_Menu->IsInBlacklist(id);
+
+        if (blocked) {
+            ImGui::PushStyleColor(ImGuiCol_Text, Bui::GetMenuColor());
         }
+
+        if (Bui::MainButton(id)) {
+            IMod *mod = BML_GetModManager()->FindMod(id);
+            if (mod) {
+                m_Menu->SetCurrentMod(mod);
+                m_Menu->ShowPage("Mod Page");
+            }
+        }
+
+        if (ImGui::IsItemHovered() &&
+            (ImGui::IsKeyPressed(ImGuiKey_Backspace) || ImGui::IsKeyPressed(ImGuiKey_MouseRight))) {
+            auto *entry = section->GetEntry("builtin");
+            if (!entry || !entry->GetBool()) {
+                if (blocked) {
+                    m_Menu->RemoveFromBlacklist(id);
+                } else {
+                    m_Menu->AddToBlacklist(id);
+                }
+            }
+        }
+
+        if (blocked) {
+            ImGui::PopStyleColor();
+        }
+
         return true;
     });
 }
@@ -237,7 +289,7 @@ void ModOptionPage::OnDraw() {
                         property->SetString(m_Buffers[index]);
                 }
             }
-                break;
+            break;
             case IProperty::BOOLEAN:
                 if (Bui::YesNoButton(property->GetName(), property->GetBooleanPtr())) {
                     property->SetModified();
@@ -317,7 +369,7 @@ void ModOptionPage::FlushBuffers() {
 void ModOptionPage::ShowCommentBox(const Property *property) {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, Bui::GetMenuColor());
 
-    const ImVec2& vpSize = ImGui::GetMainViewport()->Size;
+    const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
     const ImVec2 commentBoxPos(vpSize.x * 0.725f, vpSize.y * 0.35f);
     const ImVec2 commentBoxSize(vpSize.x * 0.25f, vpSize.y * 0.3f);
     ImGui::SetCursorScreenPos(commentBoxPos);
@@ -356,15 +408,18 @@ void ModCustomPage::SetupEventListener(const char *mod) {
 
 void ModCustomPage::OnDraw() {
     if (m_OnDrawCustomPage != -1)
-        m_EventPublisher->SendEvent(m_OnDrawCustomPage, 0, (uintptr_t) m_Title.c_str(), (uintptr_t) m_EventPublisher, m_EventListener);
+        m_EventPublisher->SendEvent(m_OnDrawCustomPage, 0, (uintptr_t) m_Title.c_str(), (uintptr_t) m_EventPublisher,
+                                    m_EventListener);
 }
 
 void ModCustomPage::OnShow() {
     if (m_OnShowCustomPage != -1)
-        m_EventPublisher->SendEvent(m_OnShowCustomPage, 0, (uintptr_t) m_Title.c_str(), (uintptr_t) m_EventPublisher, m_EventListener);
+        m_EventPublisher->SendEvent(m_OnShowCustomPage, 0, (uintptr_t) m_Title.c_str(), (uintptr_t) m_EventPublisher,
+                                    m_EventListener);
 }
 
 void ModCustomPage::OnHide() {
     if (m_OnHideCustomPage != -1)
-        m_EventPublisher->SendEvent(m_OnHideCustomPage, 0, (uintptr_t) m_Title.c_str(), (uintptr_t) m_EventPublisher, m_EventListener);
+        m_EventPublisher->SendEvent(m_OnHideCustomPage, 0, (uintptr_t) m_Title.c_str(), (uintptr_t) m_EventPublisher,
+                                    m_EventListener);
 }
