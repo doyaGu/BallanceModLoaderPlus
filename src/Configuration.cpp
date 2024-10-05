@@ -273,7 +273,7 @@ void Configuration::ConvertObjectToSection(yyjson_val *obj, ConfigurationSection
                 section->AddEntryString(yyjson_get_str(key), yyjson_get_str(val));
                 break;
             case YYJSON_TYPE_NULL | YYJSON_SUBTYPE_NONE:
-                // null will be ignored
+                section->AddEntry(yyjson_get_str(key));
                 break;
             case YYJSON_TYPE_ARR | YYJSON_SUBTYPE_NONE:
                 ConvertArrayToSection(val, (ConfigurationSection *) section->AddSection(yyjson_get_str(key)));
@@ -315,7 +315,7 @@ void Configuration::ConvertArrayToSection(yyjson_val *arr, ConfigurationSection 
                 section->AddEntryString(buf, yyjson_get_str(val));
                 break;
             case YYJSON_TYPE_NULL | YYJSON_SUBTYPE_NONE:
-                // null will be ignored.
+                section->AddEntry(buf);
                 break;
             case YYJSON_TYPE_ARR | YYJSON_SUBTYPE_NONE:
                 ConvertArrayToSection(val, (ConfigurationSection *) section->AddSection(buf));
@@ -1141,6 +1141,8 @@ yyjson_mut_val *ConfigurationEntry::ToJsonValue(yyjson_mut_doc *doc) {
         return nullptr;
 
     switch (GetType()) {
+        case CFG_ENTRY_NONE:
+            return yyjson_mut_null(doc);
         case CFG_ENTRY_BOOL:
             return yyjson_mut_bool(doc, GetBool());
         case CFG_ENTRY_UINT:
