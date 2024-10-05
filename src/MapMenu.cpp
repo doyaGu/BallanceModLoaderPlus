@@ -15,8 +15,16 @@
 
 using namespace ScriptHelper;
 
+MapMenu::MapMenu(BMLMod *mod): m_Mod(mod), m_Maps(new MapEntry(nullptr, MAP_ENTRY_DIR)) {}
+
+MapMenu::~MapMenu() {
+    delete m_Maps;
+}
+
 void MapMenu::Init() {
     m_MapListPage = std::make_unique<MapListPage>(this);
+
+    RefreshMaps();
 }
 
 void MapMenu::Shutdown() {
@@ -59,6 +67,85 @@ void MapMenu::LoadMap(const std::wstring &path) {
     Close();
 }
 
+void MapMenu::RefreshMaps() {
+    std::wstring path = BML_GetModManager()->GetDirectory(BML_DIR_LOADER);
+    path.append(L"\\Maps");
+
+    if (!utils::DirectoryExistsW(path))
+        return;
+
+    auto *maps = new MapEntry(nullptr, MAP_ENTRY_DIR);
+    maps->name = "Maps";
+    maps->path = path;
+    if (ExploreMaps(maps)) {
+        delete m_Maps;
+        m_Maps = maps;
+    } else {
+        delete maps;
+    }
+
+    ResetCurrentMaps();
+}
+
+bool MapMenu::ExploreMaps(MapEntry *maps, int depth) {
+    if (depth <= 0)
+        return false;
+
+    if (!maps || maps->type != MAP_ENTRY_DIR || maps->path.empty())
+        return false;
+
+    const std::wstring p = maps->path + L"\\*";
+    _wfinddata_t fileinfo = {};
+    auto handle = _wfindfirst(p.c_str(), &fileinfo);
+    if (handle == -1)
+        return false;
+
+    do {
+        std::wstring fullPath = maps->path;
+        fullPath.append(L"\\").append(fileinfo.name);
+
+        if (fileinfo.attrib & _A_SUBDIR) {
+            if (wcscmp(fileinfo.name, L".") != 0 && wcscmp(fileinfo.name, L"..") != 0) {
+                wchar_t dir[1024];
+                _wsplitpath(fileinfo.name, nullptr, nullptr, dir, nullptr);
+
+                auto *entry = new MapEntry(maps, MAP_ENTRY_DIR);
+                entry->name = utils::Utf16ToUtf8(dir);
+                entry->path = fullPath;
+                maps->children.push_back(entry);
+                ExploreMaps(entry, depth - 1);
+            }
+        } else if (IsSupportedFileType(fileinfo.name)) {
+            wchar_t filename[1024];
+            _wsplitpath(fileinfo.name, nullptr, nullptr, filename, nullptr);
+
+            auto *entry = new MapEntry(maps, MAP_ENTRY_FILE);
+            entry->type = MAP_ENTRY_FILE;
+            entry->name = utils::Utf16ToUtf8(filename);
+            entry->path = fullPath;
+            maps->children.push_back(entry);
+        }
+    } while (_wfindnext(handle, &fileinfo) == 0);
+
+    _findclose(handle);
+
+    std::sort(maps->children.begin(), maps->children.end(), [](const MapEntry *a, const MapEntry *b) {
+        return a->type > b->type;
+    });
+
+    return !maps->children.empty();
+}
+
+bool MapMenu::IsSupportedFileType(const std::wstring &path) {
+    if (path.empty())
+        return false;
+
+    wchar_t ext[64];
+    _wsplitpath(path.c_str(), nullptr, nullptr, nullptr, ext);
+
+    return wcsicmp(ext, L".nmo") == 0 || wcsicmp(ext, L".cmo") == 0;
+}
+
 MapListPage::MapListPage(MapMenu *menu): Page("Custom Maps"), m_Menu(menu) {
     m_Menu->AddPage(this);
 }
@@ -73,6 +160,12 @@ void MapListPage::OnAfterBegin() {
 
     DrawCenteredText(m_Title.c_str(), 0.07f);
 
+    auto *maps = m_Menu->GetCurrentMaps();
+    if (!maps || maps->children.empty()) {
+        m_Count = 0;
+        return;
+    }
+
     ImGui::PushStyleColor(ImGuiCol_FrameBg, Bui::GetMenuColor());
 
     const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
@@ -85,8 +178,8 @@ void MapListPage::OnAfterBegin() {
 
     ImGui::PopStyleColor();
 
-    int count = (m_MapSearchBuf[0] == '\0') ? (int) m_Maps.size() : (int) m_MapSearchResult.size();
-    SetMaxPage(((count % 10) == 0) ? count / 10 : count / 10 + 1);
+    m_Count = IsSearching() ? (int) m_MapSearchResult.size() : (int) maps->children.size();
+    SetMaxPage(m_Count % 10 == 0 ? m_Count / 10 : m_Count / 10 + 1);
 
     if (m_PageIndex > 0 &&
         LeftButton("PrevPage", ImVec2(0.36f, 0.4f))) {
@@ -100,81 +193,48 @@ void MapListPage::OnAfterBegin() {
 }
 
 void MapListPage::OnDraw() {
-    if (m_Maps.empty())
+    if (m_Count == 0)
         return;
 
     bool v = true;
     const int n = GetPage() * 10;
 
-    if (m_MapSearchBuf[0] == '\0') {
-        DrawEntries([&](std::size_t index) {
-            return OnDrawEntry(n + index, &v);
-        }, ImVec2(0.4031f, 0.23f), 0.06f, 10);
-    } else {
+    if (IsSearching()) {
         DrawEntries([&](std::size_t index) {
             if (index >= m_MapSearchResult.size())
                 return false;
             return OnDrawEntry(m_MapSearchResult[n + index], &v);
         }, ImVec2(0.4031f, 0.23f), 0.06f, 10);
+    } else {
+        DrawEntries([&](std::size_t index) {
+            return OnDrawEntry(n + index, &v);
+        }, ImVec2(0.4031f, 0.23f), 0.06f, 10);
     }
 }
 
-void MapListPage::OnShow() {
-    RefreshMaps();
-}
-
 void MapListPage::OnClose() {
-    m_Menu->ShowPrevPage();
+    auto *maps = m_Menu->GetCurrentMaps();
+    if (maps && maps->parent) {
+        m_Menu->SetCurrentMaps(maps->parent);
+        Show();
+    } else {
+        m_Menu->ShowPrevPage();
+    }
 }
 
-void MapListPage::RefreshMaps() {
-    std::wstring path = BML_GetModManager()->GetDirectory(BML_DIR_LOADER);
-    path.append(L"\\Maps");
-
-    m_Maps.clear();
-    ExploreMaps(path, m_Maps);
+bool MapListPage::IsSearching() const {
+    return m_MapSearchBuf[0] != '\0';
 }
 
-size_t MapListPage::ExploreMaps(const std::wstring &path, std::vector<MapInfo> &maps) {
-    if (path.empty() || !utils::DirectoryExistsW(path))
-        return 0;
-
-    std::wstring p = path + L"\\*";
-    _wfinddata_t fileinfo = {};
-    auto handle = _wfindfirst(p.c_str(), &fileinfo);
-    if (handle == -1)
-        return 0;
-
-    do {
-        if ((fileinfo.attrib & _A_SUBDIR) && wcscmp(fileinfo.name, L".") != 0 && wcscmp(fileinfo.name, L"..") != 0) {
-            ExploreMaps(p.assign(path).append(L"\\").append(fileinfo.name), maps);
-        } else {
-            std::wstring fullPath = path;
-            fullPath.append(L"\\").append(fileinfo.name);
-
-            wchar_t filename[1024];
-            wchar_t ext[64];
-            _wsplitpath(fileinfo.name, nullptr, nullptr, filename, ext);
-            if (wcsicmp(ext, L".nmo") == 0 || wcsicmp(ext, L".cmo") == 0) {
-                MapInfo info;
-                char buffer[1024];
-                utils::Utf16ToUtf8(filename, buffer, sizeof(buffer));
-                info.name = buffer;
-                info.path = fullPath;
-                maps.push_back(std::move(info));
-            }
-        }
-    } while (_wfindnext(handle, &fileinfo) == 0);
-
-    _findclose(handle);
-
-    return maps.size();
+void MapListPage::ClearSearch() {
+    m_MapSearchBuf[0] = '\0';
+    m_MapSearchResult.clear();
 }
 
 void MapListPage::OnSearchMaps() {
     m_MapSearchResult.clear();
 
-    if (m_MapSearchBuf[0] == '\0')
+    if (!IsSearching() || m_Count == 0)
         return;
 
     auto *pattern = (OnigUChar *) m_MapSearchBuf;
@@ -190,8 +250,9 @@ void MapListPage::OnSearchMaps() {
         return;
     }
 
-    for (size_t i = 0; i < m_Maps.size(); ++i) {
-        auto &name = m_Maps[i].name;
+    const auto &maps = m_Menu->GetCurrentMaps()->children;
+    for (size_t i = 0; i < maps.size(); ++i) {
+        const auto &name = maps[i]->name;
         const auto *end = (const UChar *) (name.c_str() + name.size());
         const auto *start = (const UChar *) name.c_str();
         const auto *range = end;
@@ -209,16 +270,30 @@ void MapListPage::OnSearchMaps() {
     onig_free(reg);
 }
 
-bool MapListPage::OnDrawEntry(std::size_t index, bool *v) {
-    if (index >= m_Maps.size())
+bool MapListPage::OnDrawEntry(size_t index, bool *v) {
+    const auto &maps = m_Menu->GetCurrentMaps()->children;
+    if (index >= maps.size())
         return false;
-    auto &info = m_Maps[index];
-    if (Bui::LevelButton(info.name.c_str(), v)) {
-        Hide();
-        m_Menu->LoadMap(info.path);
+    auto &entry = maps[index];
+
+    if (entry->type == MAP_ENTRY_FILE) {
+        if (Bui::LevelButton(entry->name.c_str(), v)) {
+            Close();
+            m_Menu->LoadMap(entry->path);
+        }
+    } else {
+        ImGui::PushStyleColor(ImGuiCol_Text, 0xFFFFA500); // Orange Color
+
+        if (Bui::LevelButton(entry->name.c_str(), v)) {
+            m_Menu->SetCurrentMaps(entry);
+            ClearSearch();
+        }
+
+        ImGui::PopStyleColor();
     }
+
     if (m_Menu->ShouldShowTooltip() && ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s", info.name.c_str());
+        ImGui::SetTooltip("%s", entry->name.c_str());
     }
     return true;
 }
