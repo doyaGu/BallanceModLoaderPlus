@@ -217,8 +217,8 @@ bool MapListPage::OnDrawEntry(std::size_t index, bool *v) {
         Hide();
         m_Menu->LoadMap(info.path);
     }
-    // if (ImGui::IsItemHovered()) {
-    //     ImGui::SetTooltip("%s", info.name.c_str());
-    // }
+    if (m_Menu->ShouldShowTooltip() && ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", info.name.c_str());
+    }
     return true;
 }

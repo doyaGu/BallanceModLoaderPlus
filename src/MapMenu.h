@@ -52,12 +52,14 @@ public:
 
     void LoadMap(const std::wstring &path);
 
+    bool ShouldShowTooltip() const { return m_ShowTooltip; }
+    void SetShowTooltip(bool show) { m_ShowTooltip = show; }
+
 private:
     std::unique_ptr<MapListPage> m_MapListPage;
     BMLMod *m_Mod;
     bool m_MapLoaded = false;
+    bool m_ShowTooltip = false;
 };
-
-
 
 #endif // BML_MAPMENU_H
