@@ -26,16 +26,14 @@ void ModMenu::Init() {
 void ModMenu::Shutdown() {
     for (size_t i = 0; i < m_Mods->GetNumberOfSections(); ++i) {
         auto *section = m_Mods->GetSection(i);
-        auto *entry = section->GetEntry("disabled");
-        if (entry) {
-            entry->SetBool(false);
-        }
+        section->RemoveEntry("disabled");
     }
 
     for (const auto &id: m_Blacklist) {
         auto *section = m_Mods->GetSection(id.c_str());
         if (section) {
-            section->AddEntryBool("disabled", true);
+            auto *entry = section->AddEntry("disabled");
+			entry->SetBool(true);
         }
     }
     m_Blacklist.clear();
