@@ -278,7 +278,8 @@ bool MapListPage::OnDrawEntry(size_t index, bool *v) {
 
     if (entry->type == MAP_ENTRY_FILE) {
         if (Bui::LevelButton(entry->name.c_str(), v)) {
-            Close();
+            m_Menu->ResetCurrentMaps();
+            Hide();
             m_Menu->LoadMap(entry->path);
         }
     } else {
