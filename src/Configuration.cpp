@@ -643,7 +643,7 @@ IConfigurationSection *ConfigurationSection::AddSection(const char *name) {
     m_Sections.emplace_back(section);
     m_SectionMap[section->GetName()] = section;
 
-    m_Parent->InvokeCallbacks(CFG_CB_SECTION_ADD, nullptr, this);
+    InvokeCallbacks(CFG_CB_SECTION_ADD, nullptr, this);
     return section;
 }
 
@@ -695,7 +695,7 @@ bool ConfigurationSection::RemoveSection(const char *name) {
         section->SetParent(nullptr);
     }
 
-    m_Parent->InvokeCallbacks(CFG_CB_SECTION_REMOVE, nullptr, this);
+    InvokeCallbacks(CFG_CB_SECTION_REMOVE, nullptr, this);
     return true;
 }
 
