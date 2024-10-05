@@ -10,6 +10,31 @@
 class BMLMod;
 class MapMenu;
 
+enum MapEntryType {
+    MAP_ENTRY_FILE,
+    MAP_ENTRY_DIR
+};
+
+struct MapEntry {
+    MapEntry *parent = nullptr;
+    MapEntryType type;
+    std::string name;
+    std::wstring path;
+    std::vector<MapEntry *> children;
+
+    explicit MapEntry(MapEntry *parent, MapEntryType entryType) : parent(parent), type(entryType) {}
+
+    ~MapEntry() {
+        for (auto *child : children)
+            delete child;
+
+        if (parent) {
+            parent->children.erase(std::remove(parent->children.begin(), parent->children.end(), this),
+                                   parent->children.end());
+        }
+    }
+};
+
 class MapListPage : public Bui::Page {
 public:
     explicit MapListPage(MapMenu *menu);
@@ -18,30 +43,25 @@ public:
 
     void OnAfterBegin() override;
     void OnDraw() override;
-    void OnShow() override;
     void OnClose() override;
 
-    void RefreshMaps();
-
 private:
-    struct MapInfo {
-        std::string name;
-        std::wstring path;
-    };
-
-    size_t ExploreMaps(const std::wstring &path, std::vector<MapInfo> &maps);
+    bool IsSearching() const;
+    void ClearSearch();
     void OnSearchMaps();
-    bool OnDrawEntry(std::size_t index, bool *v);
+    bool OnDrawEntry(size_t index, bool *v);
 
     MapMenu *m_Menu;
+    int m_Count = 0;
     char m_MapSearchBuf[65536] = {};
     std::vector<size_t> m_MapSearchResult;
-    std::vector<MapInfo> m_Maps;
 };
 
 class MapMenu : public Bui::Menu {
 public:
-    explicit MapMenu(BMLMod *mod) : m_Mod(mod) {}
+    explicit MapMenu(BMLMod *mod);
+
+    ~MapMenu() override;
 
     void Init();
     void Shutdown();
@@ -51,15 +71,25 @@ public:
     void OnClose(bool backToMenu);
 
     void LoadMap(const std::wstring &path);
+    MapEntry *GetMaps() const { return m_Maps; }
+    MapEntry *GetCurrentMaps() const { return m_Current; }
+    void SetCurrentMaps(MapEntry *entry) { m_Current = entry; }
+    void ResetCurrentMaps() { m_Current = m_Maps; }
+    void RefreshMaps();
 
     bool ShouldShowTooltip() const { return m_ShowTooltip; }
     void SetShowTooltip(bool show) { m_ShowTooltip = show; }
 
 private:
-    std::unique_ptr<MapListPage> m_MapListPage;
+    bool ExploreMaps(MapEntry *maps, int depth = 8);
+    static bool IsSupportedFileType(const std::wstring &path);
+
     BMLMod *m_Mod;
     bool m_MapLoaded = false;
     bool m_ShowTooltip = false;
+    MapEntry *m_Maps = nullptr;
+    MapEntry *m_Current = nullptr;
+    std::unique_ptr<MapListPage> m_MapListPage;
 };
 
 #endif // BML_MAPMENU_H
