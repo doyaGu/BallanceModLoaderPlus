@@ -116,8 +116,9 @@ private:
     IProperty *m_LanternAlphaTest = nullptr;
     IProperty *m_WidescreenFix = nullptr;
     IProperty *m_FixLifeBall = nullptr;
-    IProperty* m_MsgDuration = nullptr;
-    IProperty* m_CustomMapNumber = nullptr;
+    IProperty *m_MsgDuration = nullptr;
+    IProperty *m_CustomMapNumber = nullptr;
+    IProperty *m_CustomMapTooltip = nullptr;
     IProperty *m_Overclock = nullptr;
 
     IProperty *m_FontFilename = nullptr;

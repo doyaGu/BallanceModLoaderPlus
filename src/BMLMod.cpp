@@ -220,6 +220,8 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
         }
     } else if (prop == m_WidescreenFix) {
         RenderHook::EnableWidescreenFix(m_WidescreenFix->GetBoolean());
+    } else if (prop == m_CustomMapTooltip) {
+        m_MapMenu.SetShowTooltip(m_CustomMapTooltip->GetBoolean());
     } else if (prop == m_Overclock) {
         for (int i = 0; i < 3; i++)
             m_OverclockLinks[i]->SetOutBehaviorIO(m_OverclockLinkIO[i][m_Overclock->GetBoolean()]);
@@ -421,7 +423,6 @@ void BMLMod::InitConfigs() {
 
     m_MsgDuration = GetConfig()->GetProperty("Misc", "MessageDuration");
     m_MsgDuration->SetComment("Maximum visible time of each notification message, measured in seconds (default: 6)");
-
     m_MsgDuration->SetDefaultFloat(m_MessageBoard.GetMaxTimer() / 1000);
     m_MessageBoard.SetMaxTimer(m_MsgDuration->GetFloat() * 1000);
 
@@ -429,6 +430,11 @@ void BMLMod::InitConfigs() {
     m_CustomMapNumber->SetComment("Level number to use for custom maps (affects level bonus and sky textures)."
                                   " Must be in the range of 1~13; 0 to randomly select one between 2 and 11");
     m_CustomMapNumber->SetDefaultInteger(0);
+
+    m_CustomMapTooltip = GetConfig()->GetProperty("Misc", "CustomMapTooltip");
+    m_CustomMapTooltip->SetComment("Show custom map's full name in tooltip");
+    m_CustomMapTooltip->SetDefaultBoolean(false);
+    m_MapMenu.SetShowTooltip(m_CustomMapTooltip->GetBoolean());
 
     m_Overclock = GetConfig()->GetProperty("Misc", "Overclock");
     m_Overclock->SetComment("Remove delay of spawn / respawn");
