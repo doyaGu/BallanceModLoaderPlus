@@ -453,7 +453,7 @@ IConfigurationEntry *ConfigurationSection::AddEntry(const char *name) {
     m_Entries.emplace_back(entry);
     m_EntryMap[entry->GetName()] = entry;
 
-    InvokeCallbacks(CFG_CB_ADD, entry);
+    InvokeCallbacks(CFG_CB_ENTRY_ADD, entry, nullptr);
     return entry;
 }
 
@@ -474,7 +474,7 @@ IConfigurationEntry *ConfigurationSection::AddEntryBool(const char *name, bool v
     m_Entries.emplace_back(entry);
     m_EntryMap[entry->GetName()] = entry;
 
-    InvokeCallbacks(CFG_CB_ADD, entry);
+    InvokeCallbacks(CFG_CB_ENTRY_ADD, entry, nullptr);
     return entry;
 }
 
@@ -495,7 +495,7 @@ IConfigurationEntry *ConfigurationSection::AddEntryUint32(const char *name, uint
     m_Entries.emplace_back(entry);
     m_EntryMap[entry->GetName()] = entry;
 
-    InvokeCallbacks(CFG_CB_ADD, entry);
+    InvokeCallbacks(CFG_CB_ENTRY_ADD, entry, nullptr);
     return entry;
 }
 
@@ -516,7 +516,7 @@ IConfigurationEntry *ConfigurationSection::AddEntryInt32(const char *name, int32
     m_Entries.emplace_back(entry);
     m_EntryMap[entry->GetName()] = entry;
 
-    InvokeCallbacks(CFG_CB_ADD, entry);
+    InvokeCallbacks(CFG_CB_ENTRY_ADD, entry, nullptr);
     return entry;
 }
 
@@ -537,7 +537,7 @@ IConfigurationEntry *ConfigurationSection::AddEntryUint64(const char *name, uint
     m_Entries.emplace_back(entry);
     m_EntryMap[entry->GetName()] = entry;
 
-    InvokeCallbacks(CFG_CB_ADD, entry);
+    InvokeCallbacks(CFG_CB_ENTRY_ADD, entry, nullptr);
     return entry;
 }
 
@@ -558,7 +558,7 @@ IConfigurationEntry *ConfigurationSection::AddEntryInt64(const char *name, int64
     m_Entries.emplace_back(entry);
     m_EntryMap[entry->GetName()] = entry;
 
-    InvokeCallbacks(CFG_CB_ADD, entry);
+    InvokeCallbacks(CFG_CB_ENTRY_ADD, entry, nullptr);
     return entry;
 }
 
@@ -579,7 +579,7 @@ IConfigurationEntry *ConfigurationSection::AddEntryFloat(const char *name, float
     m_Entries.emplace_back(entry);
     m_EntryMap[entry->GetName()] = entry;
 
-    InvokeCallbacks(CFG_CB_ADD, entry);
+    InvokeCallbacks(CFG_CB_ENTRY_ADD, entry, nullptr);
     return entry;
 }
 
@@ -600,7 +600,7 @@ IConfigurationEntry *ConfigurationSection::AddEntryDouble(const char *name, doub
     m_Entries.emplace_back(entry);
     m_EntryMap[entry->GetName()] = entry;
 
-    InvokeCallbacks(CFG_CB_ADD, entry);
+    InvokeCallbacks(CFG_CB_ENTRY_ADD, entry, nullptr);
     return entry;
 }
 
@@ -624,7 +624,7 @@ IConfigurationEntry *ConfigurationSection::AddEntryString(const char *name, cons
     m_Entries.emplace_back(entry);
     m_EntryMap[entry->GetName()] = entry;
 
-    InvokeCallbacks(CFG_CB_ADD, entry);
+    InvokeCallbacks(CFG_CB_ENTRY_ADD, entry, nullptr);
     return entry;
 }
 
@@ -643,6 +643,7 @@ IConfigurationSection *ConfigurationSection::AddSection(const char *name) {
     m_Sections.emplace_back(section);
     m_SectionMap[section->GetName()] = section;
 
+    m_Parent->InvokeCallbacks(CFG_CB_SECTION_ADD, nullptr, this);
     return section;
 }
 
@@ -663,7 +664,7 @@ bool ConfigurationSection::RemoveEntry(const char *name) {
     m_Entries.erase(std::remove(m_Entries.begin(), m_Entries.end(), entry), m_Entries.end());
     m_EntryMap.erase(it);
 
-    InvokeCallbacks(CFG_CB_REMOVE, entry);
+    InvokeCallbacks(CFG_CB_ENTRY_REMOVE, entry, nullptr);
 
     if (entry->Release() != 0) {
         entry->SetParent(nullptr);
@@ -693,6 +694,8 @@ bool ConfigurationSection::RemoveSection(const char *name) {
     if (section->Release() != 0) {
         section->SetParent(nullptr);
     }
+
+    m_Parent->InvokeCallbacks(CFG_CB_SECTION_REMOVE, nullptr, this);
     return true;
 }
 
@@ -766,11 +769,10 @@ void ConfigurationSection::ClearCallbacks(ConfigurationCallbackType type) {
         m_Callbacks[type].clear();
 }
 
-void ConfigurationSection::InvokeCallbacks(ConfigurationCallbackType type, IConfigurationEntry *entry) {
+void ConfigurationSection::InvokeCallbacks(ConfigurationCallbackType type, IConfigurationEntry *entry, IConfigurationSection *subsection) {
     assert(type >= 0 && type < CFG_CB_COUNT);
-    assert(entry != nullptr);
-    for (auto &cb: m_Callbacks[type]) {
-        cb.callback(this, entry, cb.arg);
+    for (const auto &cb: m_Callbacks[type]) {
+        cb.callback(this, entry, subsection, cb.arg);
     }
 }
 
@@ -1159,10 +1161,10 @@ void ConfigurationEntry::InvokeCallbacks(bool typeChanged, bool valueChanged) {
         return;
 
     if (typeChanged) {
-        m_Parent->InvokeCallbacks(CFG_CB_TYPE_CHANGE, this);
+        m_Parent->InvokeCallbacks(CFG_CB_ENTRY_TYPE_CHANGE, this, nullptr);
     }
 
     if (valueChanged) {
-        m_Parent->InvokeCallbacks(CFG_CB_VALUE_CHANGE, this);
+        m_Parent->InvokeCallbacks(CFG_CB_ENTRY_VALUE_CHANGE, this, nullptr);
     }
 }

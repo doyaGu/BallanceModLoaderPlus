@@ -142,7 +142,7 @@ namespace BML {
 
         bool AddCallback(ConfigurationCallbackType type, ConfigurationCallback callback, void *arg) override;
         void ClearCallbacks(ConfigurationCallbackType type) override;
-        void InvokeCallbacks(ConfigurationCallbackType type, IConfigurationEntry *entry) override;
+        void InvokeCallbacks(ConfigurationCallbackType type, IConfigurationEntry *entry, IConfigurationSection *subsection) override;
 
         void *GetUserData(size_t type) const override;
         void *SetUserData(void *data, size_t type) override;
