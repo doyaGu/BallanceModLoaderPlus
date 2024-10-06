@@ -109,9 +109,12 @@ void BMLMod::OnLoad() {
     InitGUI();
 
     RegisterCommands();
+
+    m_CommandBar.LoadHistory();
 }
 
 void BMLMod::OnUnload() {
+    m_CommandBar.SaveHistory();
     m_ModMenu.Shutdown();
     m_MapMenu.Shutdown();
 }
