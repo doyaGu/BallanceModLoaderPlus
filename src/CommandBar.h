@@ -16,6 +16,9 @@ public:
     void OnShow() override;
     void OnHide() override;
 
+    void LoadHistory();
+    void SaveHistory();
+
     void ToggleCommandBar(bool on = true);
 
     int OnTextEdit(ImGuiInputTextCallbackData *data);

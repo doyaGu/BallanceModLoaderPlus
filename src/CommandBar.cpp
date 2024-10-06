@@ -1,12 +1,16 @@
 #include "CommandBar.h"
 
+#include <sstream>
 #include <utf8.h>
 
 #include "BML/ICommand.h"
 #include "BML/InputHook.h"
 
 #include "ModManager.h"
+#include "PathUtils.h"
 #include "StringUtils.h"
+
+#define COMMAND_HISTORY_FILE L"\\CommandBar.history"
 
 CommandBar::CommandBar() : Window("CommandBar"), m_Buffer(65535, '\0') {
     SetVisibility(false);
@@ -76,6 +80,61 @@ void CommandBar::OnShow() {
 
 void CommandBar::OnHide() {
     m_VisiblePrev = true;
+}
+
+void CommandBar::LoadHistory() {
+    std::wstring path = BML_GetModManager()->GetDirectory(BML_DIR_LOADER);
+    path.append(COMMAND_HISTORY_FILE);
+
+    if (!utils::FileExistsW(path))
+        return;
+
+    FILE *fp = _wfopen(path.c_str(), L"rb");
+    if (!fp)
+        return;
+
+    fseek(fp, 0, SEEK_END);
+    long len = ftell(fp);
+    rewind(fp);
+
+    if (len == 0) {
+        fclose(fp);
+        return;
+    }
+
+    char *buf = new char[len + 1];
+    if (fread(buf, sizeof(char), len, fp) != len) {
+        delete[] buf;
+        fclose(fp);
+        return;
+    }
+
+    buf[len] = '\0';
+    fclose(fp);
+
+    std::istringstream iss(buf);
+    delete[] buf;
+
+    std::string line;
+    while (std::getline(iss, line))
+        m_History.emplace_back(line);
+}
+
+void CommandBar::SaveHistory() {
+    if (m_History.empty())
+        return;
+
+    std::wstring path = BML_GetModManager()->GetDirectory(BML_DIR_LOADER);
+    path.append(COMMAND_HISTORY_FILE);
+
+    FILE *fp = _wfopen(path.c_str(), L"wb");
+    if (!fp)
+        return;
+
+    for (const auto &str: m_History)
+        fprintf(fp, "%s\n", str.c_str());
+
+    fclose(fp);
 }
 
 void CommandBar::ToggleCommandBar(bool on) {
