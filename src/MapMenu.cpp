@@ -77,7 +77,7 @@ void MapMenu::RefreshMaps() {
     auto *maps = new MapEntry(nullptr, MAP_ENTRY_DIR);
     maps->name = "Maps";
     maps->path = path;
-    if (ExploreMaps(maps)) {
+    if (ExploreMaps(maps, m_MaxDepth)) {
         delete m_Maps;
         m_Maps = maps;
     } else {

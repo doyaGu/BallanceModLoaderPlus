@@ -185,14 +185,14 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
         if (prop->GetBoolean()) {
             AdjustFrameRate(false, 0);
         } else {
-            int val = m_FPSLimit->GetInteger();
+            const int val = m_FPSLimit->GetInteger();
             if (val > 0)
                 AdjustFrameRate(false, static_cast<float>(val));
             else
                 AdjustFrameRate(true);
         }
     } else if (prop == m_FPSLimit && !m_UnlockFPS->GetBoolean()) {
-        int val = prop->GetInteger();
+        const int val = prop->GetInteger();
         if (val > 0)
             AdjustFrameRate(false, static_cast<float>(val));
         else
@@ -203,12 +203,8 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
         m_HUD.ShowFPS(m_ShowFPS->GetBoolean());
     } else if (prop == m_ShowSR && m_BML->IsIngame()) {
         m_HUD.ShowSRTimer(m_ShowSR->GetBoolean());
-    } else if (prop == m_MsgDuration) {
-        const float timer = m_MsgDuration->GetFloat() * 1000;
-        m_MessageBoard.SetMaxTimer(timer);
-        if (timer < 2000) {
-            m_MsgDuration->SetFloat(2.0f);
-        }
+    } else if (prop == m_WidescreenFix) {
+        RenderHook::EnableWidescreenFix(m_WidescreenFix->GetBoolean());
     } else if (prop == m_LanternAlphaTest) {
         CKMaterial *mat = m_BML->GetMaterialByName("Laterne_Verlauf");
         if (mat) {
@@ -221,13 +217,19 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
             int ref = 0;
             mat->SetAlphaRef(ref);
         }
-    } else if (prop == m_WidescreenFix) {
-        RenderHook::EnableWidescreenFix(m_WidescreenFix->GetBoolean());
-    } else if (prop == m_CustomMapTooltip) {
-        m_MapMenu.SetShowTooltip(m_CustomMapTooltip->GetBoolean());
     } else if (prop == m_Overclock) {
         for (int i = 0; i < 3; i++)
             m_OverclockLinks[i]->SetOutBehaviorIO(m_OverclockLinkIO[i][m_Overclock->GetBoolean()]);
+    } else if (prop == m_MsgDuration) {
+        const float timer = m_MsgDuration->GetFloat() * 1000;
+        m_MessageBoard.SetMaxTimer(timer);
+        if (timer < 2000) {
+            m_MsgDuration->SetFloat(2.0f);
+        }
+    } else if (prop == m_MsgCapability) {
+        m_MessageBoard.ResizeMessages(m_MsgCapability->GetInteger());
+    } else if (prop == m_CustomMapTooltip) {
+        m_MapMenu.SetShowTooltip(m_CustomMapTooltip->GetBoolean());
     }
 }
 
@@ -259,7 +261,7 @@ void BMLMod::OnStartLevel() {
     if (m_UnlockFPS->GetBoolean()) {
         AdjustFrameRate(false, 0);
     } else {
-        int val = m_FPSLimit->GetInteger();
+        const int val = m_FPSLimit->GetInteger();
         if (val > 0)
             AdjustFrameRate(false, static_cast<float>(val));
         else
@@ -321,7 +323,7 @@ void BMLMod::LoadMap(const std::wstring &path) {
     std::string filename = CreateTempMapFile(path);
     SetParamString(m_MapFile, filename.c_str());
     SetParamValue(m_LoadCustom, TRUE);
-    int level = GetConfig()->GetProperty("Misc", "CustomMapNumber")->GetInteger();
+    int level = m_CustomMapNumber->GetInteger();
     level = (level >= 1 && level <= 13) ? level : rand() % 10 + 2;
     m_CurLevel->SetElementValue(0, 0, &level);
     level--;
@@ -390,60 +392,78 @@ void BMLMod::SetHUD(int mode) {
 }
 
 void BMLMod::InitConfigs() {
-    GetConfig()->SetCategoryComment("Misc", "Miscellaneous");
+    GetConfig()->SetCategoryComment("HUD", "HUD Settings");
 
-    m_ShowTitle = GetConfig()->GetProperty("Misc", "ShowTitle");
+    m_ShowTitle = GetConfig()->GetProperty("HUD", "ShowTitle");
     m_ShowTitle->SetComment("Show BML Title at top");
     m_ShowTitle->SetDefaultBoolean(true);
 
-    m_ShowFPS = GetConfig()->GetProperty("Misc", "ShowFPS");
+    m_ShowFPS = GetConfig()->GetProperty("HUD", "ShowFPS");
     m_ShowFPS->SetComment("Show FPS at top-left corner");
     m_ShowFPS->SetDefaultBoolean(true);
 
-    m_ShowSR = GetConfig()->GetProperty("Misc", "ShowSRTimer");
+    m_ShowSR = GetConfig()->GetProperty("HUD", "ShowSRTimer");
     m_ShowSR->SetComment("Show SR Timer above Time Score");
     m_ShowSR->SetDefaultBoolean(true);
 
-    m_UnlockFPS = GetConfig()->GetProperty("Misc", "UnlockFrameRate");
+    GetConfig()->SetCategoryComment("Graphics", "Graphics Settings");
+
+    m_UnlockFPS = GetConfig()->GetProperty("Graphics", "UnlockFrameRate");
     m_UnlockFPS->SetComment("Unlock Frame Rate Limitation");
     m_UnlockFPS->SetDefaultBoolean(false);
 
-    m_FPSLimit = GetConfig()->GetProperty("Misc", "SetMaxFrameRate");
+    m_FPSLimit = GetConfig()->GetProperty("Graphics", "SetMaxFrameRate");
     m_FPSLimit->SetComment("Set Frame Rate Limitation, this option will not work if frame rate is unlocked. Set to 0 will turn on VSync");
     m_FPSLimit->SetDefaultInteger(0);
 
-    m_LanternAlphaTest = GetConfig()->GetProperty("Misc", "LanternAlphaTest");
-    m_LanternAlphaTest->SetComment("Enable alpha test for lantern material, this option can increase FPS");
-    m_LanternAlphaTest->SetDefaultBoolean(true);
-
-    m_WidescreenFix = GetConfig()->GetProperty("Misc", "WidescreenFix");
+    m_WidescreenFix = GetConfig()->GetProperty("Graphics", "WidescreenFix");
     m_WidescreenFix->SetComment("Improve widescreen resolutions support");
     m_WidescreenFix->SetDefaultBoolean(false);
 
-    m_FixLifeBall = GetConfig()->GetProperty("Misc", "FixLifeBallFreeze");
+    GetConfig()->SetCategoryComment("Tweak", "Tweak Settings");
+
+    m_LanternAlphaTest = GetConfig()->GetProperty("Tweak", "LanternAlphaTest");
+    m_LanternAlphaTest->SetComment("Enable alpha test for lantern material, this option can increase FPS");
+    m_LanternAlphaTest->SetDefaultBoolean(true);
+
+    m_FixLifeBall = GetConfig()->GetProperty("Tweak", "FixLifeBallFreeze");
     m_FixLifeBall->SetComment("Game won't freeze when picking up life balls");
     m_FixLifeBall->SetDefaultBoolean(true);
 
-    m_MsgDuration = GetConfig()->GetProperty("Misc", "MessageDuration");
+    m_Overclock = GetConfig()->GetProperty("Tweak", "Overclock");
+    m_Overclock->SetComment("Remove delay of spawn / respawn");
+    m_Overclock->SetDefaultBoolean(false);
+
+    GetConfig()->SetCategoryComment("CommandBar", "Command Bar Settings");
+
+    m_MsgCapability = GetConfig()->GetProperty("CommandBar", "MessageCapability");
+    m_MsgCapability->SetComment("The maximum number of messages that can be displayed at the same time (default: 35)");
+    m_MsgCapability->SetDefaultInteger(35);
+    m_MessageBoard.ResizeMessages(m_MsgCapability->GetInteger());
+
+    m_MsgDuration = GetConfig()->GetProperty("CommandBar", "MessageDuration");
     m_MsgDuration->SetComment("Maximum visible time of each notification message, measured in seconds (default: 6)");
-    m_MsgDuration->SetDefaultFloat(m_MessageBoard.GetMaxTimer() / 1000);
+    m_MsgDuration->SetDefaultFloat(6);
     m_MessageBoard.SetMaxTimer(m_MsgDuration->GetFloat() * 1000);
 
-    m_CustomMapNumber = GetConfig()->GetProperty("Misc", "CustomMapNumber");
+    GetConfig()->SetCategoryComment("CustomMap", "Custom Map Settings");
+
+    m_CustomMapNumber = GetConfig()->GetProperty("CustomMap", "LevelNumber");
     m_CustomMapNumber->SetComment("Level number to use for custom maps (affects level bonus and sky textures)."
                                   " Must be in the range of 1~13; 0 to randomly select one between 2 and 11");
     m_CustomMapNumber->SetDefaultInteger(0);
 
-    m_CustomMapTooltip = GetConfig()->GetProperty("Misc", "CustomMapTooltip");
+    m_CustomMapTooltip = GetConfig()->GetProperty("CustomMap", "ShowTooltip");
     m_CustomMapTooltip->SetComment("Show custom map's full name in tooltip");
     m_CustomMapTooltip->SetDefaultBoolean(false);
     m_MapMenu.SetShowTooltip(m_CustomMapTooltip->GetBoolean());
 
-    m_Overclock = GetConfig()->GetProperty("Misc", "Overclock");
-    m_Overclock->SetComment("Remove delay of spawn / respawn");
-    m_Overclock->SetDefaultBoolean(false);
+    m_CustomMapMaxDepth = GetConfig()->GetProperty("CustomMap", "MaxDepth");
+    m_CustomMapMaxDepth->SetComment("The max depth of the nested subdirectories.");
+    m_CustomMapMaxDepth->SetDefaultInteger(8);
+    m_MapMenu.SetMaxDepth(m_CustomMapMaxDepth->GetInteger());
 
-    GetConfig()->SetCategoryComment("GUI", "Settings for BML's GUI");
+    GetConfig()->SetCategoryComment("GUI", "GUI Settings");
 
     m_FontFilename = GetConfig()->GetProperty("GUI", "FontFilename");
     m_FontFilename->SetComment("The filename of TrueType font (the font filename should end with .ttf or .otf)");

@@ -62,6 +62,8 @@ public:
     void AddMessage(const char *msg);
     void ClearMessages();
 
+    void ResizeMessages(int size);
+
     float GetMaxTimer() const {
         return m_MaxTimer;
     }

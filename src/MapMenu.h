@@ -80,6 +80,9 @@ public:
     bool ShouldShowTooltip() const { return m_ShowTooltip; }
     void SetShowTooltip(bool show) { m_ShowTooltip = show; }
 
+    int GetMaxDepth() const { return m_MaxDepth; }
+    void SetMaxDepth(int depth) { m_MaxDepth = depth; }
+
 private:
     bool ExploreMaps(MapEntry *maps, int depth = 8);
     static bool IsSupportedFileType(const std::wstring &path);
@@ -87,6 +90,7 @@ private:
     BMLMod *m_Mod;
     bool m_MapLoaded = false;
     bool m_ShowTooltip = false;
+    int m_MaxDepth = 8;
     MapEntry *m_Maps = nullptr;
     MapEntry *m_Current = nullptr;
     std::unique_ptr<MapListPage> m_MapListPage;

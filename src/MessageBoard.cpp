@@ -109,4 +109,13 @@ void MessageBoard::ClearMessages() {
     }
 }
 
+void MessageBoard::ResizeMessages(int size) {
+    if (size < 1)
+        return;
+
+    m_Messages.resize(size);
+    m_MessageCount = std::min(m_MessageCount, size);
+    m_DisplayMessageCount = std::min(m_DisplayMessageCount, size);
+}
+
 
