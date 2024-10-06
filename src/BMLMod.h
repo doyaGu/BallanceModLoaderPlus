@@ -111,15 +111,20 @@ private:
     IProperty *m_ShowTitle = nullptr;
     IProperty *m_ShowFPS = nullptr;
     IProperty *m_ShowSR = nullptr;
+
     IProperty *m_UnlockFPS = nullptr;
     IProperty *m_FPSLimit = nullptr;
-    IProperty *m_LanternAlphaTest = nullptr;
     IProperty *m_WidescreenFix = nullptr;
+
+    IProperty *m_LanternAlphaTest = nullptr;
     IProperty *m_FixLifeBall = nullptr;
+    IProperty *m_Overclock = nullptr;
+
+    IProperty *m_MsgCapability = nullptr;
     IProperty *m_MsgDuration = nullptr;
     IProperty *m_CustomMapNumber = nullptr;
     IProperty *m_CustomMapTooltip = nullptr;
-    IProperty *m_Overclock = nullptr;
+    IProperty *m_CustomMapMaxDepth = nullptr;
 
     IProperty *m_FontFilename = nullptr;
     IProperty *m_FontSize = nullptr;
