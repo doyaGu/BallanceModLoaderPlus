@@ -33,7 +33,7 @@ void ModMenu::Shutdown() {
         auto *section = m_Mods->GetSection(id.c_str());
         if (section) {
             auto *entry = section->AddEntry("disabled");
-			entry->SetBool(true);
+            entry->SetBool(true);
         }
     }
     m_Blacklist.clear();
@@ -82,10 +82,23 @@ void ModMenuPage::OnClose() {
 }
 
 void ModListPage::OnAfterBegin() {
+    if (!IsVisible())
+        return;
+
+    DrawCenteredText(m_Title.c_str());
+
     int count = static_cast<int>(m_Menu->GetModCount());
     SetMaxPage(count % 4 == 0 ? count / 4 : count / 4 + 1);
 
-    Page::OnAfterBegin();
+    if (m_PageIndex > 0 &&
+        LeftButton("PrevPage")) {
+        PrevPage();
+    }
+
+    if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 &&
+        RightButton("NextPage")) {
+        NextPage();
+    }
 }
 
 void ModListPage::OnDraw() {
@@ -166,16 +179,6 @@ void ModPage::OnAfterBegin() {
 
     int count = (int) m_Config->GetCategoryCount();
     SetMaxPage(((count % 4) == 0) ? count / 4 : count / 4 + 1);
-
-    if (m_PageIndex > 0 &&
-        LeftButton("PrevPage")) {
-        PrevPage();
-    }
-
-    if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 &&
-        RightButton("NextPage")) {
-        NextPage();
-    }
 }
 
 void ModPage::OnDraw() {
@@ -224,6 +227,16 @@ void ModPage::OnDraw() {
         }
         return true;
     }, ImVec2(0.4031f, 0.5f), 0.06f, 4);
+
+    if (m_PageIndex > 0 &&
+        LeftButton("PrevPage", ImVec2(0.35f, 0.59f))) {
+        PrevPage();
+    }
+
+    if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 &&
+        RightButton("NextPage", ImVec2(0.6138f, 0.59f))) {
+        NextPage();
+    }
 }
 
 void ModPage::ShowCommentBox(Category *category) {
