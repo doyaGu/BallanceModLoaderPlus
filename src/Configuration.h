@@ -15,6 +15,7 @@
 
 namespace BML {
     class ConfigurationSection;
+    class ConfigurationList;
     class ConfigurationEntry;
 
     class Configuration final : public IConfiguration {
@@ -36,18 +37,16 @@ namespace BML {
 
         const char *GetName() const override { return m_Name.c_str(); }
 
-        void Clear() override;
-
         size_t GetNumberOfEntries() const override;
+        size_t GetNumberOfLists() const override;
         size_t GetNumberOfSections() const override;
 
-        size_t GetNumberOfEntriesRecursive() const override;
-        size_t GetNumberOfSectionsRecursive() const override;
-
         IConfigurationEntry *GetEntry(size_t index) const override;
+        IConfigurationList *GetList(size_t index) const override;
         IConfigurationSection *GetSection(size_t index) const override;
 
         IConfigurationEntry *GetEntry(const char *name) override;
+        IConfigurationList *GetList(const char *name) override;
         IConfigurationSection *GetSection(const char *name) override;
 
         IConfigurationEntry *AddEntry(const char *parent, const char *name) override;
@@ -59,10 +58,14 @@ namespace BML {
         IConfigurationEntry *AddEntryFloat(const char *parent, const char *name, float value) override;
         IConfigurationEntry *AddEntryDouble(const char *parent, const char *name, double value) override;
         IConfigurationEntry *AddEntryString(const char *parent, const char *name, const char *value) override;
+        IConfigurationList *AddList(const char *parent, const char *name) override;
         IConfigurationSection *AddSection(const char *parent, const char *name) override;
 
         bool RemoveEntry(const char *parent, const char *name) override;
+        bool RemoveList(const char *parent, const char *name) override;
         bool RemoveSection(const char *parent, const char *name) override;
+
+        void Clear() override;
 
         bool Read(char *buffer, size_t len) override;
         char *Write(size_t *len) override;
@@ -109,18 +112,16 @@ namespace BML {
         IConfigurationSection *GetParent() const override { return m_Parent; }
         void SetParent(ConfigurationSection *parent) { m_Parent = parent; }
 
-        void Clear() override;
-
         size_t GetNumberOfEntries() const override;
+        size_t GetNumberOfLists() const override;
         size_t GetNumberOfSections() const override;
 
-        size_t GetNumberOfEntriesRecursive() const override;
-        size_t GetNumberOfSectionsRecursive() const override;
-
         IConfigurationEntry *GetEntry(size_t index) const override;
+        IConfigurationList *GetList(size_t index) const override;
         IConfigurationSection *GetSection(size_t index) const override;
 
         IConfigurationEntry *GetEntry(const char *name) const override;
+        IConfigurationList *GetList(const char *name) const override;
         IConfigurationSection *GetSection(const char *name) const override;
 
         IConfigurationEntry *AddEntry(const char *name) override;
@@ -132,37 +133,30 @@ namespace BML {
         IConfigurationEntry *AddEntryFloat(const char *name, float value) override;
         IConfigurationEntry *AddEntryDouble(const char *name, double value) override;
         IConfigurationEntry *AddEntryString(const char *name, const char *value) override;
+        IConfigurationList *AddList(const char *name) override;
         IConfigurationSection *AddSection(const char *name) override;
 
         bool RemoveEntry(const char *name) override;
+        bool RemoveList(const char *name) override;
         bool RemoveSection(const char *name) override;
+
+        void Clear() override;
 
         yyjson_mut_val *ToJsonKey(yyjson_mut_doc *doc);
         yyjson_mut_val *ToJsonObject(yyjson_mut_doc *doc);
 
         bool AddCallback(ConfigurationCallbackType type, ConfigurationCallback callback, void *arg) override;
         void ClearCallbacks(ConfigurationCallbackType type) override;
-        void InvokeCallbacks(ConfigurationCallbackType type, IConfigurationEntry *entry, IConfigurationSection *subsection) override;
-
-        void *GetUserData(size_t type) const override;
-        void *SetUserData(void *data, size_t type) override;
+        void InvokeCallbacks(ConfigurationCallbackType type, const ConfigurationItem &item) const;
 
     private:
-        union Item {
-            ConfigurationSection *section;
-            ConfigurationEntry *entry;
-
-            explicit Item(ConfigurationSection *s) : section(s) {}
-            explicit Item(ConfigurationEntry *e) : entry(e) {}
-        };
-
         struct Callback {
             ConfigurationCallback callback;
-            void *arg;
+            void *userdata;
 
-            Callback(ConfigurationCallback cb, void *data) : callback(cb), arg(data) {}
+            Callback(ConfigurationCallback cb, void *data) : callback(cb), userdata(data) {}
 
-            bool operator==(const Callback &rhs) const { return callback == rhs.callback && arg == rhs.arg; }
+            bool operator==(const Callback &rhs) const { return callback == rhs.callback && userdata == rhs.userdata; }
             bool operator!=(const Callback &rhs) const { return !(rhs == *this); }
         };
 
@@ -170,13 +164,94 @@ namespace BML {
         mutable std::mutex m_RWLock;
         ConfigurationSection *m_Parent;
         std::string m_Name;
-        std::vector<std::tuple<uint8_t, Item>> m_Elements;
-        std::vector<ConfigurationSection *> m_Sections;
+        std::vector<ConfigurationItem> m_Items;
         std::vector<ConfigurationEntry *> m_Entries;
-        std::unordered_map<std::string, ConfigurationSection *> m_SectionMap;
+        std::vector<ConfigurationList *> m_Lists;
+        std::vector<ConfigurationSection *> m_Sections;
         std::unordered_map<std::string, ConfigurationEntry *> m_EntryMap;
+        std::unordered_map<std::string, ConfigurationList *> m_ListMap;
+        std::unordered_map<std::string, ConfigurationSection *> m_SectionMap;
         std::vector<Callback> m_Callbacks[CFG_CB_COUNT];
-        DataBox m_UserData;
+    };
+
+    class ConfigurationList final : public IConfigurationList {
+    public:
+        ConfigurationList(ConfigurationSection *parent, const char *name);
+
+        ConfigurationList(const ConfigurationList &rhs) = delete;
+        ConfigurationList(ConfigurationList &&rhs) noexcept = delete;
+
+        ~ConfigurationList() override;
+
+        ConfigurationList &operator=(const ConfigurationList &rhs) = delete;
+        ConfigurationList &operator=(ConfigurationList &&rhs) noexcept = delete;
+
+        int AddRef() const override;
+        int Release() const override;
+
+        const char *GetName() const override { return m_Name.c_str(); }
+
+        IConfigurationSection *GetParent() const override { return m_Parent; }
+        void SetParent(ConfigurationSection *parent) { m_Parent = parent; }
+
+        size_t GetNumberOfValues() const override;
+
+        ConfigurationEntryType GetType(size_t index) const override;
+        size_t GetSize(size_t index) const override;
+
+        bool GetBool(size_t index) override;
+        uint32_t GetUint32(size_t index) override;
+        int32_t GetInt32(size_t index) override;
+        uint64_t GetUint64(size_t index) override;
+        int64_t GetInt64(size_t index) override;
+        float GetFloat(size_t index) override;
+        double GetDouble(size_t index) override;
+        const char *GetString(size_t index) const override;
+
+        void *GetValue(size_t index) { return &m_Values[index].GetValue(); }
+
+        void SetBool(size_t index, bool value) override;
+        void SetUint32(size_t index, uint32_t value) override;
+        void SetInt32(size_t index, int32_t value) override;
+        void SetUint64(size_t index, uint64_t value) override;
+        void SetInt64(size_t index, int64_t value) override;
+        void SetFloat(size_t index, float value) override;
+        void SetDouble(size_t index, double value) override;
+        void SetString(size_t index, const char *value) override;
+
+        void InsertBool(size_t index, bool value) override;
+        void InsertUint32(size_t index, uint32_t value) override;
+        void InsertInt32(size_t index, int32_t value) override;
+        void InsertUint64(size_t index, uint64_t value) override;
+        void InsertInt64(size_t index, int64_t value) override;
+        void InsertFloat(size_t index, float value) override;
+        void InsertDouble(size_t index, double value) override;
+        void InsertString(size_t index, const char *value) override;
+
+        void AppendBool(bool value) override;
+        void AppendUint32(uint32_t value) override;
+        void AppendInt32(int32_t value) override;
+        void AppendUint64(uint64_t value) override;
+        void AppendInt64(int64_t value) override;
+        void AppendFloat(float value) override;
+        void AppendDouble(double value) override;
+        void AppendString(const char *value) override;
+
+        bool Remove(size_t index) override;
+
+        void Clear() override;
+
+        yyjson_mut_val *ToJsonKey(yyjson_mut_doc *doc);
+        yyjson_mut_val *ToJsonArray(yyjson_mut_doc *doc);
+
+    private:
+        void InvokeCallbacks(bool typeChanged, bool valueChanged);
+
+        mutable RefCount m_RefCount;
+        mutable std::mutex m_RWLock;
+        ConfigurationSection *m_Parent;
+        std::string m_Name;
+        std::vector<Variant> m_Values;
     };
 
     class ConfigurationEntry final : public IConfigurationEntry {
@@ -207,7 +282,8 @@ namespace BML {
         IConfigurationSection *GetParent() const override { return m_Parent; }
         void SetParent(ConfigurationSection *parent) { m_Parent = parent; }
 
-        EntryType GetType() const override;
+        ConfigurationEntryType GetType() const override;
+        size_t GetSize() const override;
 
         bool GetBool() override { return m_Value.GetBool(); }
         uint32_t GetUint32() override { return static_cast<uint32_t>(m_Value.GetUint64()); }
@@ -241,9 +317,6 @@ namespace BML {
 
         void CopyValue(IConfigurationEntry *entry) override;
 
-        void *GetUserData(size_t type) const override;
-        void *SetUserData(void *data, size_t type) override;
-
         yyjson_mut_val *ToJsonKey(yyjson_mut_doc *doc);
         yyjson_mut_val *ToJsonValue(yyjson_mut_doc *doc);
 
@@ -256,7 +329,6 @@ namespace BML {
         std::string m_Name;
         Variant m_Value;
         size_t m_Hash = 0;
-        DataBox m_UserData;
     };
 }
 #endif // BML_CONFIGURATION_H

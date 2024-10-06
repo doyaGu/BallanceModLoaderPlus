@@ -10,7 +10,94 @@
 namespace BML {
     inline namespace v1 {
         class IConfigurationSection;
+        class IConfigurationList;
         class IConfigurationEntry;
+
+        /**
+         * @brief Enumeration of configuration types.
+         *
+         * This enumeration defines the available types for configuration objects.
+         */
+        enum ConfigurationType {
+            CFG_TYPE_NONE, /**< No configuration type. */
+            CFG_TYPE_ENTRY, /**< Configuration entry type. */
+            CFG_TYPE_LIST, /**< Configuration list type. */
+            CFG_TYPE_SECTION, /**< Configuration section type. */
+        };
+
+        /**
+         * @brief Enumeration of configuration entry types.
+         *
+         * This enumeration defines the available types for configuration entries.
+         */
+        enum ConfigurationEntryType {
+            CFG_ENTRY_NONE, /**< No entry type. */
+            CFG_ENTRY_BOOL, /**< Boolean entry type. */
+            CFG_ENTRY_UINT, /**< Unsigned integer entry type. */
+            CFG_ENTRY_INT, /**< Signed integer entry type. */
+            CFG_ENTRY_REAL, /**< Real number entry type. */
+            CFG_ENTRY_STR, /**< String entry type. */
+        };
+
+        /**
+         * @brief Enumeration of configuration callback types.
+         *
+         * This enumeration defines the types of configuration callback events.
+         */
+        enum ConfigurationCallbackType {
+            CFG_CB_ENTRY_ADD, /**< Configuration entry add event type. */
+            CFG_CB_ENTRY_REMOVE, /**< Configuration entry remove event type. */
+            CFG_CB_ENTRY_TYPE_CHANGE, /**< Configuration entry type change event type. */
+            CFG_CB_ENTRY_VALUE_CHANGE, /**< Configuration entry value change event type. */
+            CFG_CB_LIST_ADD, /**< Configuration list add event type. */
+            CFG_CB_LIST_REMOVE, /**< Configuration list remove event type. */
+            CFG_CB_SECTION_ADD, /**< Configuration section add event type. */
+            CFG_CB_SECTION_REMOVE, /**< Configuration section remove event type. */
+            CFG_CB_COUNT,
+        };
+
+        /**
+         * @brief Union for configuration data.
+         */
+        union ConfigurationData {
+            IConfigurationEntry *entry;
+            IConfigurationList *list;
+            IConfigurationSection *section;
+        };
+
+        /**
+         * @brief Structure for configuration item.
+         */
+        struct ConfigurationItem {
+            ConfigurationData data;
+            ConfigurationType type;
+
+            ConfigurationItem() : data(), type(CFG_TYPE_NONE) {
+            }
+
+            explicit ConfigurationItem(IConfigurationEntry *entry) : data(), type(CFG_TYPE_ENTRY) {
+                data.entry = entry;
+            }
+
+            explicit ConfigurationItem(IConfigurationList *list) : data(), type(CFG_TYPE_LIST) { data.list = list; }
+
+            explicit ConfigurationItem(IConfigurationSection *section) : data(), type(CFG_TYPE_SECTION) {
+                data.section = section;
+            }
+        };
+
+        /**
+         * @brief Structure for configuration callback arguments.
+         */
+        struct ConfigurationCallbackArgument {
+            const ConfigurationCallbackType type;
+            const ConfigurationItem item;
+        };
+
+        /**
+         * @brief Configuration callback function type.
+         */
+        typedef void (*ConfigurationCallback)(const ConfigurationCallbackArgument &arg, void *userdata);
 
         /**
          * @interface IConfiguration
@@ -38,15 +125,16 @@ namespace BML {
             virtual const char *GetName() const = 0;
 
             /**
-             * @brief Clear all entries and sections.
-             */
-            virtual void Clear() = 0;
-
-            /**
              * @brief Get the number of entries in the configuration.
              * @return The number of entries.
              */
             virtual size_t GetNumberOfEntries() const = 0;
+
+            /**
+             * @brief Get the number of lists in the configuration.
+             * @return The number of lists.
+             */
+            virtual size_t GetNumberOfLists() const = 0;
 
             /**
              * @brief Get the number of sections in the configuration.
@@ -55,23 +143,18 @@ namespace BML {
             virtual size_t GetNumberOfSections() const = 0;
 
             /**
-             * @brief Get the total number of entries, including nested sections.
-             * @return The number of entries.
-             */
-            virtual size_t GetNumberOfEntriesRecursive() const = 0;
-
-            /**
-             * @brief Get the total number of sections, including nested sections.
-             * @return The number of sections.
-             */
-            virtual size_t GetNumberOfSectionsRecursive() const = 0;
-
-            /**
              * @brief Retrieves the configuration entry at the specified index.
              * @param index The index of the entry to retrieve.
              * @return The configuration entry if found, nullptr otherwise.
              */
             virtual IConfigurationEntry *GetEntry(size_t index) const = 0;
+
+            /**
+            * @brief Retrieves the configuration list at the specified index.
+            * @param index The index of the list to retrieve.
+            * @return The configuration list if found, nullptr otherwise.
+            */
+            virtual IConfigurationList *GetList(size_t index) const = 0;
 
             /**
              * @brief Retrieves the configuration section at the specified index.
@@ -86,6 +169,14 @@ namespace BML {
              * @return The configuration entry if found, nullptr otherwise.
              */
             virtual IConfigurationEntry *GetEntry(const char *name) = 0;
+
+            /**
+             * @brief Retrieves the configuration list with the specified name.
+             *
+             * @param name The name of the list to retrieve.
+             * @return The configuration list if found, nullptr otherwise.
+             */
+            virtual IConfigurationList *GetList(const char *name) = 0;
 
             /**
              * @brief Retrieves the configuration section with the specified name.
@@ -176,10 +267,18 @@ namespace BML {
             virtual IConfigurationEntry *AddEntryString(const char *parent, const char *name, const char *value) = 0;
 
             /**
+            * @brief Add a new list in the configuration.
+            * @param parent The parent section name or nullptr for the root section.
+            * @param name The name of the list.
+            * @return The configuration list.
+            */
+            virtual IConfigurationList *AddList(const char *parent, const char *name) = 0;
+
+            /**
              * @brief Add a new section in the configuration.
              * @param parent The parent section name or nullptr for the root section.
              * @param name The name of the section.
-             * @return The configuration entry.
+             * @return The configuration section.
              */
             virtual IConfigurationSection *AddSection(const char *parent, const char *name) = 0;
 
@@ -192,12 +291,25 @@ namespace BML {
             virtual bool RemoveEntry(const char *parent, const char *name) = 0;
 
             /**
+             * @brief Remove a list from the configuration.
+             * @param parent The parent name of the list.
+             * @param name The name of the list to be removed.
+             * @return True if the list is successfully removed, false otherwise.
+             */
+            virtual bool RemoveList(const char *parent, const char *name) = 0;
+
+            /**
              * @brief Remove a section from the configuration.
              * @param parent The parent name of the section.
              * @param name The name of the section to be removed.
              * @return True if the section is successfully removed, false otherwise.
              */
             virtual bool RemoveSection(const char *parent, const char *name) = 0;
+
+            /**
+             * @brief Clear all entries and sections.
+             */
+            virtual void Clear() = 0;
 
             /**
              * @brief Reads the configuration data into the provided buffer.
@@ -240,26 +352,6 @@ namespace BML {
         };
 
         /**
-         * @brief Enumeration of configuration callback types.
-         *
-         * This enumeration defines the types of configuration callback events.
-         */
-        enum ConfigurationCallbackType {
-            CFG_CB_ENTRY_ADD, /**< Configuration add event type. */
-            CFG_CB_ENTRY_REMOVE, /**< Configuration remove event type. */
-            CFG_CB_ENTRY_TYPE_CHANGE, /**< Configuration type change event type. */
-            CFG_CB_ENTRY_VALUE_CHANGE, /**< Configuration value change event type. */
-            CFG_CB_SECTION_ADD, /**< Configuration add event type. */
-            CFG_CB_SECTION_REMOVE, /**< Configuration remove event type. */
-            CFG_CB_COUNT,
-        };
-
-        /**
-         * @brief Configuration callback function type.
-         */
-        typedef void (*ConfigurationCallback)(IConfigurationSection *parent, IConfigurationEntry *entry, IConfigurationSection *subsection, void *arg);
-
-        /**
          * @class IConfigurationSection
          * @brief The interface for configuration sections.
          *
@@ -292,15 +384,16 @@ namespace BML {
             virtual IConfigurationSection *GetParent() const = 0;
 
             /**
-             * @brief Clear all entries and subsections in the section.
-             */
-            virtual void Clear() = 0;
-
-            /**
              * @brief Get the number of entries in the section.
              * @return The number of entries in the section.
              */
             virtual size_t GetNumberOfEntries() const = 0;
+
+            /**
+             * @brief Get the number of lists in the section.
+             * @return The number of lists in the section.
+             */
+            virtual size_t GetNumberOfLists() const = 0;
 
             /**
              * @brief Get the number of subsections in the section.
@@ -309,23 +402,18 @@ namespace BML {
             virtual size_t GetNumberOfSections() const = 0;
 
             /**
-             * @brief Get the total number of entries in the section and its subsections recursively.
-             * @return The total number of entries in the section and its subsections.
-             */
-            virtual size_t GetNumberOfEntriesRecursive() const = 0;
-
-            /**
-             * @brief Get the total number of subsections in the section and its subsections recursively.
-             * @return The total number of subsections in the section and its subsections.
-             */
-            virtual size_t GetNumberOfSectionsRecursive() const = 0;
-
-            /**
              * @brief Retrieves a configuration entry by its index.
              * @param index The index of the entry.
              * @return The configuration entry if found, nullptr otherwise.
              */
             virtual IConfigurationEntry *GetEntry(size_t index) const = 0;
+
+            /**
+             * @brief Retrieves a configuration list by its index.
+             * @param index The index of the list.
+             * @return The configuration list if found, nullptr otherwise.
+             */
+            virtual IConfigurationList *GetList(size_t index) const = 0;
 
             /**
              * @brief Retrieves a configuration section by its index.
@@ -340,6 +428,13 @@ namespace BML {
              * @return The configuration entry if found, nullptr otherwise.
              */
             virtual IConfigurationEntry *GetEntry(const char *name) const = 0;
+
+            /**
+             * @brief Retrieves a configuration list by its name.
+             * @param name The name of the list.
+             * @return The configuration list if found, nullptr otherwise.
+             */
+            virtual IConfigurationList *GetList(const char *name) const = 0;
 
             /**
              * @brief Retrieves a configuration section by its name.
@@ -420,6 +515,13 @@ namespace BML {
             virtual IConfigurationEntry *AddEntryString(const char *name, const char *value) = 0;
 
             /**
+             * @brief Add a new list in the configuration section.
+             * @param name The name of the list.
+             * @return The configuration list.
+             */
+            virtual IConfigurationList *AddList(const char *name) = 0;
+
+            /**
               * @brief Add a new subsection in the configuration section.
               * @param name The name of the subsection.
               * @return The configuration section.
@@ -434,11 +536,23 @@ namespace BML {
             virtual bool RemoveEntry(const char *name) = 0;
 
             /**
+             * @brief Removes a list from the configuration section.
+             * @param name The name of the list to be removed.
+             * @return True if the removal was successful, false otherwise.
+             */
+            virtual bool RemoveList(const char *name) = 0;
+
+            /**
              * @brief Removes a subsection from the configuration section.
              * @param name The name of the subsection to be removed.
              * @return True if the removal was successful, false otherwise.
              */
             virtual bool RemoveSection(const char *name) = 0;
+
+            /**
+             * @brief Clear all entries and subsections in the section.
+             */
+            virtual void Clear() = 0;
 
             /**
              * @brief Add a callback function to be triggered for the specified event type.
@@ -455,52 +569,297 @@ namespace BML {
              */
             virtual void ClearCallbacks(ConfigurationCallbackType type) = 0;
 
-            /**
-             * @brief Invoke all callbacks registered for the specified event type.
-             *
-             * @param type The type of configuration callback event.
-             * @param entry The entry of configuration section.
-             * @param subsection The subsection of configuration section.
-             */
-            virtual void InvokeCallbacks(ConfigurationCallbackType type, IConfigurationEntry *entry, IConfigurationSection *subsection) = 0;
-
-            /**
-             * @brief Retrieves the user data associated with the specified type.
-             * @param type The type of the user data to retrieve.
-             * @return A pointer to the user data, or nullptr if not found.
-             */
-            virtual void *GetUserData(size_t type = 0) const = 0;
-
-            /**
-             * @brief Sets the user data associated with the specified type.
-             * @param data A pointer to the user data to set.
-             * @param type The type of the user data to set.
-             * @return A pointer to the previous user data associated with the type, or nullptr if not found.
-             */
-            virtual void *SetUserData(void *data, size_t type = 0) = 0;
-
         protected:
             virtual ~IConfigurationSection() = default;
         };
 
         /**
-         * @brief Enumeration of configuration entry types.
+         * @brief Interface for a configuration list.
          *
-         * This enumeration defines the available types for configuration entries.
+         * This interface provides methods to retrieve and set values for a configuration list.
          */
-        enum EntryType {
-            CFG_ENTRY_NONE, /**< No entry type. */
-            CFG_ENTRY_BOOL, /**< Boolean entry type. */
-            CFG_ENTRY_UINT, /**< Unsigned integer entry type. */
-            CFG_ENTRY_INT, /**< Signed integer entry type. */
-            CFG_ENTRY_REAL, /**< Real number entry type. */
-            CFG_ENTRY_STR, /**< String entry type. */
+        class IConfigurationList {
+        public:
+            /**
+             * @brief Increase the reference count of the configuration section object.
+             * @return The new reference count.
+             */
+            virtual int AddRef() const = 0;
+
+            /**
+             * @brief Decrease the reference count of the configuration section object.
+             * @return The new reference count.
+             */
+            virtual int Release() const = 0;
+
+            /**
+             * @brief Get the name of the configuration entry.
+             * @return The name of the configuration entry.
+             */
+            virtual const char *GetName() const = 0;
+
+            /**
+             * @brief Get the parent configuration section of the entry.
+             * @return The parent configuration section of the entry.
+             */
+            virtual IConfigurationSection *GetParent() const = 0;
+
+            /**
+             * @brief Get the number of values in the list.
+             * @return The number of values in the list.
+             */
+            virtual size_t GetNumberOfValues() const = 0;
+
+            /**
+             * @brief Get the type of the configuration entry.
+             * @param index The index of the value.
+             * @return The type of the configuration entry.
+             */
+            virtual ConfigurationEntryType GetType(size_t index) const = 0;
+
+            /**
+             * @brief Get the size of the configuration entry.
+             * @param index The index of the value.
+             * @return The type of the configuration entry.
+             */
+            virtual size_t GetSize(size_t index) const = 0;
+
+            /**
+             * @brief Get the boolean value of the configuration entry.
+             * @param index The index of the value.
+             * @return The boolean value of the configuration entry.
+             */
+            virtual bool GetBool(size_t index) = 0;
+
+            /**
+             * @brief Get the unsigned integer value of the configuration entry.
+             * @param index The index of the value.
+             * @return The unsigned integer value of the configuration entry.
+             */
+            virtual uint32_t GetUint32(size_t index) = 0;
+
+            /**
+             * @brief Get the signed integer value of the configuration entry.
+             * @param index The index of the value.
+             * @return The signed integer value of the configuration entry.
+             */
+            virtual int32_t GetInt32(size_t index) = 0;
+
+            /**
+             * @brief Get the unsigned 64-bit integer value of the configuration entry.
+             * @param index The index of the value.
+             * @return The unsigned 64-bit integer value of the configuration entry.
+             */
+            virtual uint64_t GetUint64(size_t index) = 0;
+
+            /**
+             * @brief Get the signed 64-bit integer value of the configuration entry.
+             * @param index The index of the value.
+             * @return The signed 64-bit integer value of the configuration entry.
+             */
+            virtual int64_t GetInt64(size_t index) = 0;
+
+            /**
+             * @brief Get the floating-point value of the configuration entry.
+             * @param index The index of the value.
+             * @return The floating-point value of the configuration entry.
+             */
+            virtual float GetFloat(size_t index) = 0;
+
+            /**
+             * @brief Get the double precision floating-point value of the configuration entry.
+             * @param index The index of the value.
+             * @return The double precision floating-point value of the configuration entry.
+             */
+            virtual double GetDouble(size_t index) = 0;
+
+            /**
+             * @brief Get the string value of the configuration entry.
+             * @param index The index of the value.
+             * @return The string value of the configuration entry.
+             */
+            virtual const char *GetString(size_t index) const = 0;
+
+            /**
+             * @brief Set the value as a boolean.
+             * @param index The index of the value to set.
+             * @param value The boolean value to set.
+             */
+            virtual void SetBool(size_t index, bool value) = 0;
+
+            /**
+             * @brief Set the value as an unsigned 32-bit integer.
+             * @param index The index of the value to set.
+             * @param value The unsigned 32-bit integer value to set.
+             */
+            virtual void SetUint32(size_t index, uint32_t value) = 0;
+
+            /**
+             * @brief Set the value as a signed 32-bit integer.
+             * @param index The index of the value to set.
+             * @param value The signed 32-bit integer value to set.
+             */
+            virtual void SetInt32(size_t index, int32_t value) = 0;
+
+            /**
+             * @brief Set the value as an unsigned 64-bit integer.
+             * @param index The index of the value to set.
+             * @param value The unsigned 64-bit integer value to set.
+             */
+            virtual void SetUint64(size_t index, uint64_t value) = 0;
+
+            /**
+             * @brief Set the value as a signed 64-bit integer.
+             * @param index The index of the value to set.
+             * @param value The signed 64-bit integer value to set.
+             */
+            virtual void SetInt64(size_t index, int64_t value) = 0;
+
+            /**
+             * @brief Set the value as a single-precision floating-point number.
+             * @param index The index of the value to set.
+             * @param value The single-precision floating-point value to set.
+             */
+            virtual void SetFloat(size_t index, float value) = 0;
+
+            /**
+             * @brief Set the value as a double-precision floating-point number.
+             * @param index The index of the value to set.
+             * @param value The double-precision floating-point value to set.
+             */
+            virtual void SetDouble(size_t index, double value) = 0;
+
+            /**
+             * @brief Set the value as a null-terminated string.
+             * @param index The index of the value to set.
+             * @param value The null-terminated string value to set.
+             */
+            virtual void SetString(size_t index, const char *value) = 0;
+
+            /**
+             * @brief Insert the value as a boolean.
+             * @param index The index of the value to insert.
+             * @param value The boolean value to insert.
+             */
+            virtual void InsertBool(size_t index, bool value) = 0;
+
+            /**
+             * @brief Insert the value as an unsigned 32-bit integer.
+             * @param index The index of the value to insert.
+             * @param value The unsigned 32-bit integer value to insert.
+             */
+            virtual void InsertUint32(size_t index, uint32_t value) = 0;
+
+            /**
+             * @brief Insert the value as a signed 32-bit integer.
+             * @param index The index of the value to insert.
+             * @param value The signed 32-bit integer value to insert.
+             */
+            virtual void InsertInt32(size_t index, int32_t value) = 0;
+
+            /**
+             * @brief Insert the value as an unsigned 64-bit integer.
+             * @param index The index of the value to insert.
+             * @param value The unsigned 64-bit integer value to insert.
+             */
+            virtual void InsertUint64(size_t index, uint64_t value) = 0;
+
+            /**
+             * @brief Insert the value as a signed 64-bit integer.
+             * @param index The index of the value to insert.
+             * @param value The signed 64-bit integer value to insert.
+             */
+            virtual void InsertInt64(size_t index, int64_t value) = 0;
+
+            /**
+             * @brief Insert the value as a single-precision floating-point number.
+             * @param index The index of the value to insert.
+             * @param value The single-precision floating-point value to insert.
+             */
+            virtual void InsertFloat(size_t index, float value) = 0;
+
+            /**
+             * @brief Insert the value as a double-precision floating-point number.
+             * @param index The index of the value to insert.
+             * @param value The double-precision floating-point value to insert.
+             */
+            virtual void InsertDouble(size_t index, double value) = 0;
+
+            /**
+             * @brief Insert the value as a null-terminated string.
+             * @param index The index of the value to insert.
+             * @param value The null-terminated string value to insert.
+             */
+            virtual void InsertString(size_t index, const char *value) = 0;
+
+            /**
+             * @brief Append the value as a boolean.
+             * @param value The boolean value to append.
+             */
+            virtual void AppendBool(bool value) = 0;
+
+            /**
+             * @brief Append the value as an unsigned 32-bit integer.
+             * @param value The unsigned 32-bit integer value to append.
+             */
+            virtual void AppendUint32(uint32_t value) = 0;
+
+            /**
+             * @brief Append the value as a signed 32-bit integer.
+             * @param value The signed 32-bit integer value to append.
+             */
+            virtual void AppendInt32(int32_t value) = 0;
+
+            /**
+             * @brief Append the value as an unsigned 64-bit integer.
+             * @param value The unsigned 64-bit integer value to append.
+             */
+            virtual void AppendUint64(uint64_t value) = 0;
+
+            /**
+             * @brief Append the value as a signed 64-bit integer.
+             * @param value The signed 64-bit integer value to append.
+             */
+            virtual void AppendInt64(int64_t value) = 0;
+
+            /**
+             * @brief Append the value as a single-precision floating-point number.
+             * @param value The single-precision floating-point value to append.
+             */
+            virtual void AppendFloat(float value) = 0;
+
+            /**
+             * @brief Append the value as a double-precision floating-point number.
+             * @param value The double-precision floating-point value to append.
+             */
+            virtual void AppendDouble(double value) = 0;
+
+            /**
+             * @brief Append the value as a null-terminated string.
+             * @param value The null-terminated string value to append.
+             */
+            virtual void AppendString(const char *value) = 0;
+
+            /**
+             * @brief Remove the value at the specified index.
+             * @param index The index of the value to remove.
+             * @return True if the value is successfully removed, false otherwise.
+             */
+            virtual bool Remove(size_t index) = 0;
+
+            /**
+             * @brief Clear all values in the list.
+             */
+            virtual void Clear() = 0;
+
+        protected:
+            virtual ~IConfigurationList() = default;
         };
 
         /**
          * @brief Interface for a configuration entry.
          *
-         * This interface provides methods to retrieve and set values for a configuration entry.
+         * This interface provides methods to retrieve and set value for a configuration entry.
          */
         class IConfigurationEntry {
         public:
@@ -532,7 +891,13 @@ namespace BML {
              * @brief Get the type of the configuration entry.
              * @return The type of the configuration entry.
              */
-            virtual EntryType GetType() const = 0;
+            virtual ConfigurationEntryType GetType() const = 0;
+
+            /**
+             * @brief Get the size of the configuration entry.
+             * @return The size of the configuration entry.
+             */
+            virtual size_t GetSize() const = 0;
 
             /**
              * @brief Get the boolean value of the configuration entry.
@@ -689,21 +1054,6 @@ namespace BML {
              * @param entry The configuration entry to copy the value from.
              */
             virtual void CopyValue(IConfigurationEntry *entry) = 0;
-
-            /**
-             * @brief Retrieves the user data associated with the specified type.
-             * @param type The type of the user data to retrieve.
-             * @return A pointer to the user data, or nullptr if not found.
-             */
-            virtual void *GetUserData(size_t type = 0) const = 0;
-
-            /**
-             * @brief Sets the user data associated with the specified type.
-             * @param data A pointer to the user data to set.
-             * @param type The type of the user data to set.
-             * @return A pointer to the previous user data associated with the type, or nullptr if not found.
-             */
-            virtual void *SetUserData(void *data, size_t type = 0) = 0;
 
         protected:
             virtual ~IConfigurationEntry() = default;
