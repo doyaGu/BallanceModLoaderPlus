@@ -852,6 +852,16 @@ namespace BML {
              */
             virtual void Clear() = 0;
 
+            /**
+             * @brief Resize the list.
+             */
+            virtual void Resize(size_t size) = 0;
+
+            /**
+             * @brief Reserve storage for the list.
+             */
+            virtual void Reserve(size_t size) = 0;
+
         protected:
             virtual ~IConfigurationList() = default;
         };

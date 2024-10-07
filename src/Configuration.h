@@ -241,12 +241,13 @@ namespace BML {
 
         void Clear() override;
 
+        void Resize(size_t size) override;
+        void Reserve(size_t size) override;
+
         yyjson_mut_val *ToJsonKey(yyjson_mut_doc *doc);
         yyjson_mut_val *ToJsonArray(yyjson_mut_doc *doc);
 
     private:
-        void InvokeCallbacks(bool typeChanged, bool valueChanged);
-
         mutable RefCount m_RefCount;
         mutable std::mutex m_RWLock;
         ConfigurationSection *m_Parent;
