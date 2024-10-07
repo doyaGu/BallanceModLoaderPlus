@@ -89,6 +89,7 @@ namespace BML {
              * @brief Send the given event to all appropriate listeners.
              *
              * @param event Pointer to the event to be sent.
+             * @param listener Pointer to the listener to send the event to.
              * @return True if the event was sent successfully, false otherwise.
              */
             virtual bool SendEvent(Event *event, IEventListener *listener = nullptr) = 0;
@@ -97,6 +98,10 @@ namespace BML {
              * @brief Send an event of the specified event type to all appropriate listeners.
              *
              * @param type The event type identifier.
+             * @param value The value of the event.
+             * @param param1 The first parameter of the event.
+             * @param param2 The second parameter of the event.
+             * @param listener Pointer to the listener to send the event to.
              * @return True if the event was sent successfully, false otherwise.
              */
             virtual bool SendEvent(EventType type, uint32_t value = 0, uintptr_t param1 = 0, uintptr_t param2 = 0, IEventListener *listener = nullptr) = 0;
@@ -105,6 +110,10 @@ namespace BML {
              * @brief Send an event with the specified event type name to all appropriate listeners.
              *
              * @param name The name of the event type.
+             * @param value The value of the event.
+             * @param param1 The first parameter of the event.
+             * @param param2 The second parameter of the event.
+             * @param listener Pointer to the listener to send the event to.
              * @return True if the event was sent successfully, false otherwise.
              */
             virtual bool SendEvent(const char *name, uint32_t value = 0, uintptr_t param1 = 0, uintptr_t param2 = 0, IEventListener *listener = nullptr) = 0;
@@ -114,6 +123,8 @@ namespace BML {
              *
              * @param eventType The event type identifier to listen for.
              * @param listener Pointer to the listener object to be added.
+             * @param name The name of the listener.
+             * @param priority The priority of the listener.
              * @return True if the listener was added successfully, false otherwise.
              */
             virtual bool AddListener(EventType eventType, IEventListener *listener, const char *name, int priority = 0) = 0;
@@ -123,6 +134,8 @@ namespace BML {
              *
              * @param eventName The name of the event to listen for.
              * @param listener Pointer to the listener object to be added.
+             * @param name The name of the listener.
+             * @param priority The priority of the listener.
              * @return True if the listener was added successfully, false otherwise.
              */
             virtual bool AddListener(const char *eventName, IEventListener *listener, const char *name, int priority = 0) = 0;
