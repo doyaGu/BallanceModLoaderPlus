@@ -108,6 +108,14 @@ private:
     bool m_ShowImGuiDemo = false;
 #endif
 
+    IProperty *m_FontFilename = nullptr;
+    IProperty *m_FontSize = nullptr;
+    IProperty *m_FontRanges = nullptr;
+    IProperty *m_EnableSecondaryFont = nullptr;
+    IProperty *m_SecondaryFontFilename = nullptr;
+    IProperty *m_SecondaryFontSize = nullptr;
+    IProperty *m_SecondaryFontRanges = nullptr;
+
     IProperty *m_ShowTitle = nullptr;
     IProperty *m_ShowFPS = nullptr;
     IProperty *m_ShowSR = nullptr;
@@ -125,14 +133,6 @@ private:
     IProperty *m_CustomMapNumber = nullptr;
     IProperty *m_CustomMapTooltip = nullptr;
     IProperty *m_CustomMapMaxDepth = nullptr;
-
-    IProperty *m_FontFilename = nullptr;
-    IProperty *m_FontSize = nullptr;
-    IProperty *m_FontRanges = nullptr;
-    IProperty *m_EnableSecondaryFont = nullptr;
-    IProperty *m_SecondaryFontFilename = nullptr;
-    IProperty *m_SecondaryFontSize = nullptr;
-    IProperty *m_SecondaryFontRanges = nullptr;
 
     CK2dEntity *m_Level01 = nullptr;
     CKBehavior *m_ExitStart = nullptr;

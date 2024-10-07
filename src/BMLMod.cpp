@@ -392,6 +392,38 @@ void BMLMod::SetHUD(int mode) {
 }
 
 void BMLMod::InitConfigs() {
+    GetConfig()->SetCategoryComment("GUI", "GUI Settings");
+
+    m_FontFilename = GetConfig()->GetProperty("GUI", "FontFilename");
+    m_FontFilename->SetComment("The filename of TrueType font (the font filename should end with .ttf or .otf)");
+    m_FontFilename->SetDefaultString("unifont.otf");
+
+    m_FontSize = GetConfig()->GetProperty("GUI", "FontSize");
+    m_FontSize->SetComment("The size of font (pixel).");
+    m_FontSize->SetDefaultFloat(32.0f);
+
+    m_FontRanges = GetConfig()->GetProperty("GUI", "FontRanges");
+    m_FontRanges->SetComment("The Unicode ranges of font glyph."
+                             " To display Chinese characters correctly, this option should be set to Chinese or ChineseFull");
+    m_FontRanges->SetDefaultString("Default");
+
+    m_EnableSecondaryFont = GetConfig()->GetProperty("GUI", "EnableSecondaryFont");
+    m_EnableSecondaryFont->SetComment("Enable secondary font.");
+    m_EnableSecondaryFont->SetDefaultBoolean(false);
+
+    m_SecondaryFontFilename = GetConfig()->GetProperty("GUI", "SecondaryFontFilename");
+    m_SecondaryFontFilename->SetComment("The filename of secondary font (the font filename should end with .ttf or .otf)");
+    m_SecondaryFontFilename->SetDefaultString("unifont.otf");
+
+    m_SecondaryFontSize = GetConfig()->GetProperty("GUI", "SecondaryFontSize");
+    m_SecondaryFontSize->SetComment("The size of secondary font (pixel).");
+    m_SecondaryFontSize->SetDefaultFloat(32.0f);
+
+    m_SecondaryFontRanges = GetConfig()->GetProperty("GUI", "SecondaryFontRanges");
+    m_SecondaryFontRanges->SetComment("The Unicode ranges of secondary font glyph."
+                                      " To display Chinese characters correctly, this option should be set to Chinese or ChineseFull");
+    m_SecondaryFontRanges->SetDefaultString("Default");
+
     GetConfig()->SetCategoryComment("HUD", "HUD Settings");
 
     m_ShowTitle = GetConfig()->GetProperty("HUD", "ShowTitle");
@@ -462,38 +494,6 @@ void BMLMod::InitConfigs() {
     m_CustomMapMaxDepth->SetComment("The max depth of the nested subdirectories.");
     m_CustomMapMaxDepth->SetDefaultInteger(8);
     m_MapMenu.SetMaxDepth(m_CustomMapMaxDepth->GetInteger());
-
-    GetConfig()->SetCategoryComment("GUI", "GUI Settings");
-
-    m_FontFilename = GetConfig()->GetProperty("GUI", "FontFilename");
-    m_FontFilename->SetComment("The filename of TrueType font (the font filename should end with .ttf or .otf)");
-    m_FontFilename->SetDefaultString("unifont.otf");
-
-    m_FontSize = GetConfig()->GetProperty("GUI", "FontSize");
-    m_FontSize->SetComment("The size of font (pixel).");
-    m_FontSize->SetDefaultFloat(32.0f);
-
-    m_FontRanges = GetConfig()->GetProperty("GUI", "FontRanges");
-    m_FontRanges->SetComment("The Unicode ranges of font glyph."
-                             " To display Chinese characters correctly, this option should be set to Chinese or ChineseFull");
-    m_FontRanges->SetDefaultString("Default");
-
-    m_EnableSecondaryFont = GetConfig()->GetProperty("GUI", "EnableSecondaryFont");
-    m_EnableSecondaryFont->SetComment("Enable secondary font.");
-    m_EnableSecondaryFont->SetDefaultBoolean(false);
-
-    m_SecondaryFontFilename = GetConfig()->GetProperty("GUI", "SecondaryFontFilename");
-    m_SecondaryFontFilename->SetComment("The filename of secondary font (the font filename should end with .ttf or .otf)");
-    m_SecondaryFontFilename->SetDefaultString("unifont.otf");
-
-    m_SecondaryFontSize = GetConfig()->GetProperty("GUI", "SecondaryFontSize");
-    m_SecondaryFontSize->SetComment("The size of secondary font (pixel).");
-    m_SecondaryFontSize->SetDefaultFloat(32.0f);
-
-    m_SecondaryFontRanges = GetConfig()->GetProperty("GUI", "SecondaryFontRanges");
-    m_SecondaryFontRanges->SetComment("The Unicode ranges of secondary font glyph."
-                                      " To display Chinese characters correctly, this option should be set to Chinese or ChineseFull");
-    m_SecondaryFontRanges->SetDefaultString("Default");
 }
 
 void BMLMod::InitGUI() {
