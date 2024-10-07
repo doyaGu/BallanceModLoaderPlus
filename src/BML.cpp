@@ -8,7 +8,6 @@
 #include "CKContext.h"
 
 #include "ModManager.h"
-#include "PluginManagerHook.h"
 #include "RenderHook.h"
 #include "Overlay.h"
 #include "HookUtils.h"
@@ -102,10 +101,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
                 utils::OutputDebugA("Fatal: Unable to initialize MinHook.\n");
                 return FALSE;
             }
-            if (!CP_HOOK_CLASS_NAME(CKPluginManager)::InitHooks()) {
-                utils::OutputDebugA("Fatal: Unable to hook CKPluginManager.\n");
-                return FALSE;
-            }
             if (!RenderHook::HookRenderEngine()) {
                 utils::OutputDebugA("Fatal: Unable to hook Render Engine.\n");
                 return FALSE;
@@ -125,7 +120,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
                 return FALSE;
             }
             RenderHook::UnhookRenderEngine();
-            CP_HOOK_CLASS_NAME(CKPluginManager)::ShutdownHooks();
             if (MH_Uninitialize() != MH_OK) {
                 utils::OutputDebugA("Fatal: Unable to uninitialize MinHook.\n");
                 return FALSE;
