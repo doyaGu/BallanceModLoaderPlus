@@ -220,6 +220,8 @@ void MapListPage::OnClose() {
     } else {
         m_Menu->ShowPrevPage();
     }
+
+    SetPage(0);
 }
 
 bool MapListPage::IsSearching() const {
@@ -279,6 +281,7 @@ bool MapListPage::OnDrawEntry(size_t index, bool *v) {
     if (entry->type == MAP_ENTRY_FILE) {
         if (Bui::LevelButton(entry->name.c_str(), v)) {
             m_Menu->ResetCurrentMaps();
+            SetPage(0);
             Hide();
             m_Menu->LoadMap(entry->path);
         }
@@ -296,5 +299,6 @@ bool MapListPage::OnDrawEntry(size_t index, bool *v) {
     if (m_Menu->ShouldShowTooltip() && ImGui::IsItemHovered()) {
         ImGui::SetTooltip("%s", entry->name.c_str());
     }
+
     return true;
 }
