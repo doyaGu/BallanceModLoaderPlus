@@ -1085,6 +1085,11 @@ void ConfigurationList::AppendString(const char *value) {
 }
 
 bool ConfigurationList::Remove(size_t index) {
+    if (index == -1) {
+        m_Values.pop_back();
+        return true;
+    }
+
     if (index < m_Values.size()) {
         m_Values.erase(m_Values.begin() + static_cast<int>(index));
         return true;
@@ -1094,6 +1099,14 @@ bool ConfigurationList::Remove(size_t index) {
 
 void ConfigurationList::Clear() {
     m_Values.clear();
+}
+
+void ConfigurationList::Resize(size_t size) {
+    m_Values.resize(size);
+}
+
+void ConfigurationList::Reserve(size_t size) {
+    m_Values.reserve(size);
 }
 
 yyjson_mut_val *ConfigurationList::ToJsonKey(yyjson_mut_doc *doc) {
