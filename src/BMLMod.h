@@ -104,6 +104,9 @@ private:
     CommandBar m_CommandBar;
     MessageBoard m_MessageBoard;
 
+    std::string m_ImGuiIniFilename;
+    std::string m_ImGuiLogFilename;
+
 #ifndef NDEBUG
     bool m_ShowImGuiDemo = false;
 #endif

@@ -24,7 +24,8 @@ ImGuiWindowFlags CommandBar::GetFlags() {
            ImGuiWindowFlags_NoResize |
            ImGuiWindowFlags_NoCollapse |
            ImGuiWindowFlags_NoMove |
-           ImGuiWindowFlags_NoNav;
+           ImGuiWindowFlags_NoNav |
+           ImGuiWindowFlags_NoSavedSettings;
 }
 
 void CommandBar::OnBegin() {
