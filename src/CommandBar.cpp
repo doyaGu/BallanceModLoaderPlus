@@ -146,6 +146,7 @@ void CommandBar::ToggleCommandBar(bool on) {
         m_HistoryIndex = static_cast<int>(m_History.size());
     } else {
         Hide();
+        ImGui::SetWindowFocus(nullptr);
         m_Buffer[0] = '\0';
         BML_GetModManager()->AddTimerLoop(1ul, [this, inputHook] {
             if (inputHook->oIsKeyDown(CKKEY_ESCAPE) || inputHook->oIsKeyDown(CKKEY_RETURN))
