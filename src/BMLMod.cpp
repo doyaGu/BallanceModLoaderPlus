@@ -499,6 +499,14 @@ void BMLMod::InitConfigs() {
 void BMLMod::InitGUI() {
     ImGuiIO &io = ImGui::GetIO();
 
+    std::string path = BML_GetModManager()->GetDirectoryUtf8(BML_DIR_LOADER);
+
+    m_ImGuiIniFilename = path + "\\ImGui.ini";
+    io.IniFilename = m_ImGuiIniFilename.c_str();
+
+    m_ImGuiLogFilename = path + "\\ImGui.log";
+    io.LogFilename = m_ImGuiLogFilename.c_str();
+
     io.FontGlobalScale = m_WindowRect.GetHeight() / 1200.0f;
 
     // Make sure the font atlas doesn't get too large, otherwise weaker GPUs might reject it
@@ -1009,7 +1017,8 @@ void BMLMod::OnProcess_Menu() {
                                                  ImGuiWindowFlags_NoNav |
                                                  ImGuiWindowFlags_AlwaysAutoResize |
                                                  ImGuiWindowFlags_NoFocusOnAppearing |
-                                                 ImGuiWindowFlags_NoBringToFrontOnFocus;
+                                                 ImGuiWindowFlags_NoBringToFrontOnFocus |
+                                                 ImGuiWindowFlags_NoSavedSettings;
 
         if (ImGui::Begin("Button_Custom_Maps", nullptr, ButtonFlags)) {
             if (Bui::RightButton("Enter_Custom_Maps")) {
