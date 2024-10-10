@@ -128,7 +128,7 @@ CKERROR ModManager::PostProcess() {
         if (!iter->Process(m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime()))
             iter = m_Timers.erase(iter);
         else
-            iter++;
+            ++iter;
     }
 
     BroadcastCallback(&IMod::OnProcess);
