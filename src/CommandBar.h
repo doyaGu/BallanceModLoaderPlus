@@ -18,6 +18,7 @@ public:
 
     void LoadHistory();
     void SaveHistory();
+    void ClearHistory();
 
     void ToggleCommandBar(bool on = true);
 

@@ -137,6 +137,11 @@ void CommandBar::SaveHistory() {
     fclose(fp);
 }
 
+void CommandBar::ClearHistory() {
+    m_History.clear();
+    m_HistoryIndex = 0;
+}
+
 void CommandBar::ToggleCommandBar(bool on) {
     auto *inputHook = BML_GetModManager()->GetInputManager();
     if (on) {
