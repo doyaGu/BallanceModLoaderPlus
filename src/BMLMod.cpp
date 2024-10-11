@@ -117,6 +117,13 @@ void BMLMod::OnUnload() {
     m_CommandBar.SaveHistory();
     m_ModMenu.Shutdown();
     m_MapMenu.Shutdown();
+
+    if (!m_EnableIniSettings->GetBoolean()) {
+        ImGui::GetIO().IniFilename = nullptr;
+        if (utils::FileExistsUtf8(m_ImGuiIniFilename)) {
+            utils::DeleteFileUtf8(m_ImGuiIniFilename);
+        }
+    }
 }
 
 void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
@@ -436,6 +443,10 @@ void BMLMod::InitConfigs() {
                                       " To display Chinese characters correctly, this option should be set to Chinese or ChineseFull");
     m_SecondaryFontRanges->SetDefaultString("Default");
 
+    m_EnableIniSettings = GetConfig()->GetProperty("GUI", "EnableIniSettings");
+    m_EnableIniSettings->SetComment("Enable loading and saving ImGui settings.");
+    m_EnableIniSettings->SetDefaultBoolean(true);
+
     GetConfig()->SetCategoryComment("HUD", "HUD Settings");
 
     m_ShowTitle = GetConfig()->GetProperty("HUD", "ShowTitle");
@@ -513,8 +524,10 @@ void BMLMod::InitGUI() {
 
     const std::string path = BML_GetModManager()->GetDirectoryUtf8(BML_DIR_LOADER);
 
-    m_ImGuiIniFilename = path + "\\ImGui.ini";
-    io.IniFilename = m_ImGuiIniFilename.c_str();
+    if (m_EnableIniSettings->GetBoolean()) {
+        m_ImGuiIniFilename = path + "\\ImGui.ini";
+        io.IniFilename = m_ImGuiIniFilename.c_str();
+    }
 
     m_ImGuiLogFilename = path + "\\ImGui.log";
     io.LogFilename = m_ImGuiLogFilename.c_str();

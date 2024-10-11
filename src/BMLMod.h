@@ -122,6 +122,7 @@ private:
     IProperty *m_SecondaryFontFilename = nullptr;
     IProperty *m_SecondaryFontSize = nullptr;
     IProperty *m_SecondaryFontRanges = nullptr;
+    IProperty *m_EnableIniSettings = nullptr;
 
     IProperty *m_ShowTitle = nullptr;
     IProperty *m_ShowFPS = nullptr;

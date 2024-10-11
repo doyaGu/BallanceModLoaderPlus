@@ -116,6 +116,25 @@ namespace utils {
         return CreateFileTreeW(utils::Utf8ToUtf16(file));
     }
 
+    bool DeleteFileA(const std::string &path) {
+        if (path.empty())
+            return false;
+        return ::DeleteFileA(path.c_str()) == TRUE;
+    }
+
+    bool DeleteFileW(const std::wstring &path) {
+        if (path.empty())
+            return false;
+        return ::DeleteFileW(path.c_str()) == TRUE;
+    }
+
+    bool DeleteFileUtf8(const std::string &path) {
+        if (path.empty())
+            return false;
+        const std::wstring file = Utf8ToUtf16(path);
+        return ::DeleteFileW(file.c_str()) == TRUE;
+    }
+
     bool DeleteDirA(const std::string &path) {
         if (path.empty())
             return false;
