@@ -366,6 +366,18 @@ void BMLMod::AdjustFrameRate(bool sync, float limit) {
     }
 }
 
+void BMLMod::PrintHistory() {
+    m_CommandBar.PrintHistory();
+}
+
+void BMLMod::ClearHistory() {
+    m_CommandBar.ClearHistory();
+}
+
+void BMLMod::ExecuteHistory(int index) {
+    m_CommandBar.ExecuteHistory(index);
+}
+
 int BMLMod::GetHUD() {
     int code = 0;
     if (m_ShowTitle->GetBoolean()) {
@@ -499,7 +511,7 @@ void BMLMod::InitConfigs() {
 void BMLMod::InitGUI() {
     ImGuiIO &io = ImGui::GetIO();
 
-    std::string path = BML_GetModManager()->GetDirectoryUtf8(BML_DIR_LOADER);
+    const std::string path = BML_GetModManager()->GetDirectoryUtf8(BML_DIR_LOADER);
 
     m_ImGuiIniFilename = path + "\\ImGui.ini";
     io.IniFilename = m_ImGuiIniFilename.c_str();
@@ -531,10 +543,11 @@ void BMLMod::InitGUI() {
 void BMLMod::RegisterCommands() {
     m_BML->RegisterCommand(new CommandBML());
     m_BML->RegisterCommand(new CommandHelp());
-    m_BML->RegisterCommand(new CommandExit());
-    m_BML->RegisterCommand(new CommandEcho());
     m_BML->RegisterCommand(new CommandCheat());
+    m_BML->RegisterCommand(new CommandEcho());
     m_BML->RegisterCommand(new CommandClear(this));
+    m_BML->RegisterCommand(new CommandHistory(this));
+    m_BML->RegisterCommand(new CommandExit());
     m_BML->RegisterCommand(new CommandHUD(this));
 }
 

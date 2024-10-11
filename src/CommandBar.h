@@ -16,9 +16,11 @@ public:
     void OnShow() override;
     void OnHide() override;
 
+    void PrintHistory();
+    void ExecuteHistory(int index);
+    void ClearHistory();
     void LoadHistory();
     void SaveHistory();
-    void ClearHistory();
 
     void ToggleCommandBar(bool on = true);
 
@@ -36,7 +38,7 @@ private:
     ImVec2 m_WindowSize;
     bool m_VisiblePrev = false;
     std::string m_Buffer;
-    int m_HistoryIndex = 0;
+    int m_HistoryIndex = -1;
     std::vector<std::string> m_History;
 };
 

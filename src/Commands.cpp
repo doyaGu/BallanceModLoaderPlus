@@ -30,8 +30,13 @@ void CommandHelp::Execute(IBML *bml, const std::vector<std::string> &args) {
     }
 }
 
-void CommandExit::Execute(IBML *bml, const std::vector<std::string> &args) {
-    bml->ExitGame();
+void CommandCheat::Execute(IBML *bml, const std::vector<std::string> &args) {
+    if (args.size() == 1) {
+        bml->EnableCheat(!bml->IsCheatEnabled());
+    } else {
+        bml->EnableCheat(ParseBoolean(args[1]));
+    }
+    bml->SendIngameMessage(bml->IsCheatEnabled() ? "Cheat Mode On" : "Cheat Mode Off");
 }
 
 void CommandEcho::Execute(IBML *bml, const std::vector<std::string> &args) {
@@ -44,17 +49,26 @@ void CommandEcho::Execute(IBML *bml, const std::vector<std::string> &args) {
     }
 }
 
-void CommandCheat::Execute(IBML *bml, const std::vector<std::string> &args) {
-    if (args.size() == 1) {
-        bml->EnableCheat(!bml->IsCheatEnabled());
-    } else {
-        bml->EnableCheat(ParseBoolean(args[1]));
-    }
-    bml->SendIngameMessage(bml->IsCheatEnabled() ? "Cheat Mode On" : "Cheat Mode Off");
-}
-
 void CommandClear::Execute(IBML *bml, const std::vector<std::string> &args) {
     m_BMLMod->ClearIngameMessages();
+}
+
+void CommandHistory::Execute(IBML *bml, const std::vector<std::string> &args) {
+    if (args.size() == 1) {
+        m_BMLMod->PrintHistory();
+    } else if (args.size() == 2) {
+        if (args[1] == "clear") {
+            m_BMLMod->ClearHistory();
+        } else {
+            int i = ParseInteger(args[1]);
+            if (i != 0)
+                m_BMLMod->ExecuteHistory(i + 1);
+        }
+    }
+}
+
+void CommandExit::Execute(IBML *bml, const std::vector<std::string> &args) {
+    bml->ExitGame();
 }
 
 CommandHUD::CommandHUD(BMLMod *mod) : m_BMLMod(mod) {
