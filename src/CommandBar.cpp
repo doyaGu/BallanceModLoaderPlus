@@ -56,8 +56,9 @@ void CommandBar::OnDraw() {
     if (ImGui::InputText("##CmdBar", &m_Buffer[0], m_Buffer.capacity() + 1, InputTextFlags,
                          &TextEditCallback, this)) {
         if (m_Buffer[0] != '\0') {
-            m_History.emplace_back(m_Buffer);
             BML_GetModManager()->ExecuteCommand(m_Buffer.c_str());
+            m_History.emplace_back(m_Buffer);
+            m_HistoryIndex = -1;
         }
         ToggleCommandBar(false);
     }
@@ -81,6 +82,27 @@ void CommandBar::OnShow() {
 
 void CommandBar::OnHide() {
     m_VisiblePrev = true;
+}
+
+void CommandBar::PrintHistory() {
+    const int count = static_cast<int>(m_History.size());
+    for (int i = 0; i < count; ++i) {
+        const std::string str = "[" + std::to_string(i + 1) + "] " + m_History[(count - 1) - i];
+        BML_GetModManager()->SendIngameMessage(str.c_str());
+    }
+}
+
+void CommandBar::ExecuteHistory(int index) {
+    if (index < 1 || index > static_cast<int>(m_History.size()))
+        return;
+
+    const std::string line = m_History[(m_History.size() - index)];
+    BML_GetModManager()->ExecuteCommand(line.c_str());
+}
+
+void CommandBar::ClearHistory() {
+    m_History.clear();
+    m_HistoryIndex = -1;
 }
 
 void CommandBar::LoadHistory() {
@@ -136,11 +158,6 @@ void CommandBar::SaveHistory() {
         fprintf(fp, "%s\n", str.c_str());
 
     fclose(fp);
-}
-
-void CommandBar::ClearHistory() {
-    m_History.clear();
-    m_HistoryIndex = 0;
 }
 
 void CommandBar::ToggleCommandBar(bool on) {

@@ -66,6 +66,10 @@ public:
 
     void AdjustFrameRate(bool sync = false, float limit = 60.0f);
 
+    void PrintHistory();
+    void ClearHistory();
+    void ExecuteHistory(int index);
+
     int GetHUD();
     void SetHUD(int mode);
 
