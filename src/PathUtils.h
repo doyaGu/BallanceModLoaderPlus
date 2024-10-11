@@ -19,6 +19,10 @@ namespace utils {
     bool CreateFileTreeW(const std::wstring &file);
     bool CreateFileTreeUtf8(const std::string &file);
 
+    bool DeleteFileA(const std::string &path);
+    bool DeleteFileW(const std::wstring &path);
+    bool DeleteFileUtf8(const std::string &path);
+
     bool DeleteDirA(const std::string &path);
     bool DeleteDirW(const std::wstring &path);
     bool DeleteDirUtf8(const std::string &path);
