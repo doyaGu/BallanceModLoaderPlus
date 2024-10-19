@@ -32,42 +32,42 @@ namespace Bui {
     };
 
     ImRect g_ButtonUVs[BUTTON_COUNT] = {
-            {ImVec2(0.0f, 0.51372f), ImVec2(1.0f, 0.7451f)},
-            {ImVec2(0.2392f, 0.75294f), ImVec2(0.8666f, 0.98431f)},
-            {ImVec2(0.0f, 0.0f), ImVec2(1.0f, 0.24706f)},
-            {ImVec2(0.0f, 0.247f), ImVec2(0.643f, 0.36863f)},
-            {ImVec2(0.0f, 0.40785f), ImVec2(1.0f, 0.51f)},
-            {ImVec2(0.0f, 0.82353f), ImVec2(0.226f, 0.9098f)},
-            {ImVec2(0.6392f, 0.24706f), ImVec2(0.78823f, 0.40392f)},
-            {ImVec2(0.7921f, 0.24706f), ImVec2(0.9412f, 0.40392f)},
-            {ImVec2(0.88627f, 0.8902f), ImVec2(0.96863f, 0.97255f)},
-            {ImVec2(0.88627f, 0.77804f), ImVec2(0.96863f, 0.8594f)},
+        {ImVec2(0.0f, 0.51372f), ImVec2(1.0f, 0.7451f)},
+        {ImVec2(0.2392f, 0.75294f), ImVec2(0.8666f, 0.98431f)},
+        {ImVec2(0.0f, 0.0f), ImVec2(1.0f, 0.24706f)},
+        {ImVec2(0.0f, 0.247f), ImVec2(0.643f, 0.36863f)},
+        {ImVec2(0.0f, 0.40785f), ImVec2(1.0f, 0.51f)},
+        {ImVec2(0.0f, 0.82353f), ImVec2(0.226f, 0.9098f)},
+        {ImVec2(0.6392f, 0.24706f), ImVec2(0.78823f, 0.40392f)},
+        {ImVec2(0.7921f, 0.24706f), ImVec2(0.9412f, 0.40392f)},
+        {ImVec2(0.88627f, 0.8902f), ImVec2(0.96863f, 0.97255f)},
+        {ImVec2(0.88627f, 0.77804f), ImVec2(0.96863f, 0.8594f)},
     };
 
     ImVec2 g_ButtonSizes[BUTTON_COUNT] = {
-            {0.3000f, 0.0938f},
-            {0.1875f, 0.0938f},
-            {0.3000f, 0.1000f},
-            {0.1938f, 0.0500f},
-            {0.3000f, 0.0396f},
-            {0.0700f, 0.0354f},
-            {0.0363f, 0.0517f},
-            {0.0363f, 0.0517f},
-            {0.0200f, 0.0267f},
-            {0.0200f, 0.0267f},
+        {0.3000f, 0.0938f},
+        {0.1875f, 0.0938f},
+        {0.3000f, 0.1000f},
+        {0.1938f, 0.0500f},
+        {0.3000f, 0.0396f},
+        {0.0700f, 0.0354f},
+        {0.0363f, 0.0517f},
+        {0.0363f, 0.0517f},
+        {0.0200f, 0.0267f},
+        {0.0200f, 0.0267f},
     };
 
     float g_ButtonIndent[BUTTON_COUNT] = {
-            0.055f,
-            0.049f,
-            0.055f,
-            0.037f,
-            0.0f,
-            0.0f,
-            0.0f,
-            0.0f,
-            0.0f,
-            0.0f,
+        0.055f,
+        0.049f,
+        0.055f,
+        0.037f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
     };
 
     CKTexture *g_Textures[TEXTURE_COUNT] = {};
@@ -93,7 +93,7 @@ namespace Bui {
         if (pm->ResolveFileName(fname, BITMAP_PATH_IDX) != CK_OK)
             return nullptr;
 
-        auto *tex = (CKTexture *)context->CreateObject(CKCID_TEXTURE, (CKSTRING) id);
+        auto *tex = (CKTexture *) context->CreateObject(CKCID_TEXTURE, (CKSTRING) id);
         if (!tex)
             return nullptr;
 
@@ -116,7 +116,7 @@ namespace Bui {
         g_Textures[TEXTURE_BUTTON_SPECIAL] = LoadTexture(context, "TEX_Button_Special", "Button01_special.tga");
         g_Textures[TEXTURE_FONT] = LoadTexture(context, "TEX_Font_1", "Font_1.tga");
 
-        for (auto *texture : g_Textures)
+        for (auto *texture: g_Textures)
             if (texture == nullptr)
                 return false;
 
@@ -254,7 +254,7 @@ namespace Bui {
         if (g_MenuClickMessageType == -1)
             return false;
 
-        g_Sounds = (CKGroup *)context->GetObjectByNameAndClass((CKSTRING) "All_Sound", CKCID_GROUP);
+        g_Sounds = (CKGroup *) context->GetObjectByNameAndClass((CKSTRING) "All_Sound", CKCID_GROUP);
         if (!g_Sounds)
             return false;
 
@@ -475,7 +475,7 @@ namespace Bui {
             case ImGuiKey_F10: return CKKEY_F10;
             case ImGuiKey_F11: return CKKEY_F11;
             case ImGuiKey_F12: return CKKEY_F12;
-            default: return (CKKEYBOARD)0;
+            default: return (CKKEYBOARD) 0;
         }
     }
 
@@ -931,7 +931,7 @@ namespace Bui {
 
     void PlayMenuClickSound() {
         if (g_Sounds)
-         g_MessageManager->SendMessageSingle(g_MenuClickMessageType, g_Sounds);
+            g_MessageManager->SendMessageSingle(g_MenuClickMessageType, g_Sounds);
     }
 
     ImVec2 GetMenuPos() {
@@ -1030,7 +1030,7 @@ namespace Bui {
         if (window->SkipItems)
             return false;
 
-        const ImGuiStyle& style = ImGui::GetStyle();
+        const ImGuiStyle &style = ImGui::GetStyle();
         const ImGuiID id = window->GetID(label);
 
         ImVec2 pos = window->DC.CursorPos;
@@ -1058,7 +1058,7 @@ namespace Bui {
         if (window->SkipItems)
             return false;
 
-        const ImGuiStyle& style = ImGui::GetStyle();
+        const ImGuiStyle &style = ImGui::GetStyle();
         const ImGuiID id = window->GetID(label);
 
         ImVec2 pos = window->DC.CursorPos;
@@ -1123,7 +1123,7 @@ namespace Bui {
         return TextImageButton(label, label, BUTTON_OPTION, flags);
     }
 
-    bool LevelButton(const char *label,  bool *v, ImGuiButtonFlags flags) {
+    bool LevelButton(const char *label, bool *v, ImGuiButtonFlags flags) {
         return TextImageButtonV(label, label, BUTTON_LEVEL, v, flags);
     }
 
@@ -1152,7 +1152,7 @@ namespace Bui {
         if (window->SkipItems)
             return false;
 
-        const ImGuiStyle& style = ImGui::GetStyle();
+        const ImGuiStyle &style = ImGui::GetStyle();
         const ImGuiID id = window->GetID(label);
         const ImVec2 textSize = ImGui::CalcTextSize(label, nullptr, true);
 
@@ -1217,7 +1217,7 @@ namespace Bui {
         if (window->SkipItems)
             return false;
 
-        const ImGuiStyle& style = ImGui::GetStyle();
+        const ImGuiStyle &style = ImGui::GetStyle();
         const ImGuiID id = window->GetID(label);
         const ImVec2 textSize = ImGui::CalcTextSize(label, nullptr, true);
 
@@ -1246,7 +1246,7 @@ namespace Bui {
         ImVec2 backup = ImGui::GetCursorScreenPos();
 
         float spacing = size.x * 0.05f;
-        ImVec2 smPos(pos.x + size.x * 0.27f,  pos.y + size.y * 0.43f);
+        ImVec2 smPos(pos.x + size.x * 0.27f, pos.y + size.y * 0.43f);
         ImGui::SetCursorScreenPos(smPos);
 
         ImGui::PushID(label);
@@ -1306,7 +1306,7 @@ namespace Bui {
         ImGui::RenderTextClipped(min, max, label, nullptr, &textSize, ImVec2(0.5f, 0.21f), &bb);
 
         ImVec2 backup = ImGui::GetCursorScreenPos();
-        ImVec2 smPos(pos.x + size.x * 0.24f,  pos.y + size.y * 0.45f);
+        ImVec2 smPos(pos.x + size.x * 0.24f, pos.y + size.y * 0.45f);
         ImGui::SetCursorScreenPos(smPos);
 
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.57f));
@@ -1355,7 +1355,7 @@ namespace Bui {
         ImGui::RenderTextClipped(min, max, label, nullptr, &textSize, ImVec2(0.5f, 0.21f), &bb);
 
         ImVec2 backup = ImGui::GetCursorScreenPos();
-        ImVec2 smPos(pos.x + size.x * 0.24f,  pos.y + size.y * 0.45f);
+        ImVec2 smPos(pos.x + size.x * 0.24f, pos.y + size.y * 0.45f);
         ImGui::SetCursorScreenPos(smPos);
 
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.57f));
@@ -1375,7 +1375,7 @@ namespace Bui {
         return changed;
     }
 
-    bool InputIntButton(const char *label, int* v, int step, int step_fast, ImGuiInputTextFlags flags) {
+    bool InputIntButton(const char *label, int *v, int step, int step_fast, ImGuiInputTextFlags flags) {
         ImGuiWindow *window = ImGui::GetCurrentWindow();
         if (window->SkipItems)
             return false;
@@ -1404,7 +1404,7 @@ namespace Bui {
         ImGui::RenderTextClipped(min, max, label, nullptr, &textSize, ImVec2(0.5f, 0.21f), &bb);
 
         ImVec2 backup = ImGui::GetCursorScreenPos();
-        ImVec2 smPos(pos.x + size.x * 0.24f,  pos.y + size.y * 0.45f);
+        ImVec2 smPos(pos.x + size.x * 0.24f, pos.y + size.y * 0.45f);
         ImGui::SetCursorScreenPos(smPos);
 
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.57f));
@@ -1426,5 +1426,4 @@ namespace Bui {
 
         return changed;
     }
-
 }
