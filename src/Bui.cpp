@@ -972,7 +972,7 @@ namespace Bui {
                 break;
         }
 
-        drawList->AddImage(g_Textures[texture], bb.Min, bb.Max, g_ButtonUVs[type].Min, g_ButtonUVs[type].Max);
+        drawList->AddImage((ImTextureID) g_Textures[texture], bb.Min, bb.Max, g_ButtonUVs[type].Min, g_ButtonUVs[type].Max);
     }
 
     void AddButtonImage(ImDrawList *drawList, const ImRect &bb, ButtonType type, int state, const char *text, const ImVec2 &text_align) {
@@ -1206,7 +1206,7 @@ namespace Bui {
             const ImVec2 uv0(0.005f, 0.3850f);
             const ImVec2 uv1(0.4320f, 0.4500f);
 
-            drawList->AddImage(g_Materials[MATERIAL_KEYS_HIGHLIGHT], min0, max0, uv0, uv1);
+            drawList->AddImage((ImTextureID) g_Materials[MATERIAL_KEYS_HIGHLIGHT], min0, max0, uv0, uv1);
         }
 
         return changed;
