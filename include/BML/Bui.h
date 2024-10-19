@@ -76,11 +76,14 @@ namespace Bui {
     BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, int state);
     BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, bool selected);
 
-    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, int state, const char *text);
-    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, bool selected, const char *text);
-
-    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, int state, const char *text, const ImVec2 &text_align);
-    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, bool selected, const char *text, const ImVec2 &text_align);
+    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, int state,
+                                   const char *text);
+    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, bool selected,
+                                   const char *text);
+    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, int state,
+                                   const char *text, const ImVec2 &text_align);
+    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, bool selected,
+                                   const char *text, const ImVec2 &text_align);
 
     BML_EXPORT bool MainButton(const char *label, ImGuiButtonFlags flags = 0);
     BML_EXPORT bool OkButton(const char *label, ImGuiButtonFlags flags = 0);
@@ -97,9 +100,12 @@ namespace Bui {
     BML_EXPORT bool RadioButton(const char *label, int *current_item, const char *const items[], int items_count);
     BML_EXPORT bool KeyButton(const char *label, bool *toggled, ImGuiKeyChord *key_chord);
 
-    BML_EXPORT bool InputTextButton(const char *label, char *buf, size_t buf_size, ImGuiInputTextFlags flags = 0, ImGuiInputTextCallback callback = nullptr, void *user_data = nullptr);
-    BML_EXPORT bool InputFloatButton(const char *label, float *v, float step = 0.0f, float step_fast = 0.0f, const char *format = "%.3f", ImGuiInputTextFlags flags = 0);
-    BML_EXPORT bool InputIntButton(const char *label, int* v, int step = 1, int step_fast = 100, ImGuiInputTextFlags flags = 0);
+    BML_EXPORT bool InputTextButton(const char *label, char *buf, size_t buf_size, ImGuiInputTextFlags flags = 0,
+                                    ImGuiInputTextCallback callback = nullptr, void *user_data = nullptr);
+    BML_EXPORT bool InputFloatButton(const char *label, float *v, float step = 0.0f, float step_fast = 0.0f,
+                                     const char *format = "%.3f", ImGuiInputTextFlags flags = 0);
+    BML_EXPORT bool InputIntButton(const char *label, int *v, int step = 1, int step_fast = 100,
+                                   ImGuiInputTextFlags flags = 0);
 
     class Window {
     public:
@@ -122,6 +128,7 @@ namespace Bui {
                 }
             }
         }
+
         void ToggleVisibility() { SetVisibility(!m_Visible); }
         void Show() { SetVisibility(true); }
         void Hide() { SetVisibility(false); }
@@ -255,9 +262,10 @@ namespace Bui {
         virtual bool OnOpen() { return true; }
         virtual void OnClose() {}
         virtual void OnPageChanged(int newPage, int oldPage) {}
-        
+
         static std::size_t DrawEntries(const std::function<bool(std::size_t index)> &onEntry,
-                                       const ImVec2 &pos = ImVec2(0.35f, 0.24f), float spacing = 0.14f, std::size_t capability = 4) {
+                                       const ImVec2 &pos = ImVec2(0.35f, 0.24f),
+                                       float spacing = 0.14f, size_t capability = 4) {
             auto oldPos = ImGui::GetCursorScreenPos();
 
             for (std::size_t i = 0; i < capability; ++i) {
@@ -337,6 +345,7 @@ namespace Bui {
     class Menu {
     public:
         Menu() = default;
+
         virtual ~Menu() = default;
 
         bool AddPage(Page *page) {
@@ -387,6 +396,7 @@ namespace Bui {
             m_CurrentPage->Show();
             return true;
         }
+
         bool ShowPrevPage() {
             HidePage();
             auto *page = PopPage();
@@ -432,6 +442,7 @@ namespace Bui {
             if (page)
                 m_PageStack.push(page);
         }
+
         Page *PopPage() {
             if (m_PageStack.empty())
                 return nullptr;
