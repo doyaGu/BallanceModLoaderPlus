@@ -256,6 +256,8 @@ bool ImGui_ImplCK2_CreateFontsTexture()
     if (texture == NULL)
         return false;
 
+    texture->ModifyObjectFlags(CK_OBJECT_NOTTOBESAVED | CK_OBJECT_NOTTOBEDELETED, 0);
+
     if (!texture->Create(width, height))
     {
         context->DestroyObject(texture);
