@@ -206,7 +206,7 @@ namespace Bui {
         mbi->SetTextureMagMode(VXTEXTUREFILTER_LINEAR);
         mbi->SetTextureAddressMode(VXTEXTURE_ADDRESSCLAMP);
 
-        mbi->EnablePerpectiveCorrection(TRUE);
+        mbi->EnablePerspectiveCorrection(TRUE);
 
         g_Materials[MATERIAL_BUTTON_INACTIVE] = mbi;
 
@@ -235,7 +235,7 @@ namespace Bui {
         mkh->SetTextureMagMode(VXTEXTUREFILTER_LINEAR);
         mkh->SetTextureAddressMode(VXTEXTURE_ADDRESSWRAP);
 
-        mkh->EnablePerpectiveCorrection(TRUE);
+        mkh->EnablePerspectiveCorrection(TRUE);
 
         g_Materials[MATERIAL_KEYS_HIGHLIGHT] = mkh;
 
