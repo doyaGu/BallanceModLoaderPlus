@@ -2,6 +2,8 @@
 #define BML_VARIANT_H
 
 #include <cstdint>
+#include <cmath>
+#include <limits>
 
 /** Type of Variant value (3 bit). */
 typedef uint8_t VariantType;
@@ -235,8 +237,8 @@ public:
     bool operator==(int32_t value) const { return IsInt32() && m_Value.i32 == value; }
     bool operator==(uint64_t value) const { return IsUint64() && m_Value.u64 == value; }
     bool operator==(int64_t value) const { return IsInt64() && m_Value.i64 == value; }
-    bool operator==(float value) const { return IsFloat32() && m_Value.f32 == value; }
-    bool operator==(double value) const { return IsFloat64() && m_Value.f64 == value; }
+    bool operator==(float value) const { return IsFloat32() && std::fabs(m_Value.f32 - value) < std::numeric_limits<float>::epsilon(); }
+    bool operator==(double value) const { return IsFloat64() && std::fabs(m_Value.f64 - value) < std::numeric_limits<double>::epsilon(); }
     bool operator==(const char *value) const;
     bool operator==(void *value) const { return IsPtr() && m_Value.ptr == value; }
 
