@@ -105,16 +105,6 @@ CKERROR ModManager::PreProcess() {
 
     Overlay::ImGuiNewFrame();
 
-    ImGuiIO &io = ImGui::GetIO();
-
-    if (io.WantCaptureKeyboard) {
-        m_InputHook->Block(CK_INPUT_DEVICE_KEYBOARD);
-    }
-
-    if (io.WantCaptureMouse) {
-        m_InputHook->Block(CK_INPUT_DEVICE_MOUSE);
-    }
-
     return CK_OK;
 }
 
@@ -133,23 +123,14 @@ CKERROR ModManager::PostProcess() {
 
     BroadcastCallback(&IMod::OnProcess);
 
-    ImGuiIO &io = ImGui::GetIO();
-    if (io.WantCaptureKeyboard) {
-        m_InputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
-    }
-
-    if (io.WantCaptureMouse) {
-        m_InputHook->Unblock(CK_INPUT_DEVICE_MOUSE);
-    }
-
     static bool cursorVisibilityChanged = false;
     if (!m_InputHook->GetCursorVisibility()) {
-        if (io.WantCaptureMouse) {
+        if (ImGui::GetIO().WantCaptureMouse) {
             m_InputHook->ShowCursor(TRUE);
             cursorVisibilityChanged = true;
         }
     } else if (cursorVisibilityChanged) {
-        if (!io.WantCaptureMouse) {
+        if (!ImGui::GetIO().WantCaptureMouse) {
             m_InputHook->ShowCursor(FALSE);
             cursorVisibilityChanged = false;
         }
