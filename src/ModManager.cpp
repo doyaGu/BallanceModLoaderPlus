@@ -38,6 +38,13 @@ CKRenderContext *BML_GetRenderContext() {
     return g_ModManager->GetRenderContext();
 }
 
+BML::IDataShare *BML_GetDataShare(const char *name) {
+    auto *manager = BML_GetModManager();
+    if (!manager)
+        return nullptr;
+    return manager->GetDataShare(name);
+}
+
 ModManager::ModManager(CKContext *context) : CKBaseManager(context, MOD_MANAGER_GUID, (CKSTRING) "Mod Manager") {
     m_DataShare = new BML::DataShare("BML");
 
