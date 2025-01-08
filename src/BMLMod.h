@@ -1,9 +1,9 @@
 #ifndef BML_BMLMOD_H
 #define BML_BMLMOD_H
 
-#include "BML/BML.h"
 #include "BML/IMod.h"
 #include "BML/IBML.h"
+#include "BML/IDataShare.h"
 
 #include "HUD.h"
 #include "ModMenu.h"
