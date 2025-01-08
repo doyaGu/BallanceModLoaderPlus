@@ -41,8 +41,6 @@ set(BML_PRIVATE_HEADERS
 
         RenderHook.h
 
-        Narratives.h
-
         Configuration.h
         DataShare.h
         EventPublisher.h
@@ -89,7 +87,6 @@ set(BML_SOURCES
         ObjectLoadHook.cpp
         PhysicsHook.cpp
 
-        Narratives.cpp
         ExecuteBB.cpp
         ScriptHelper.cpp
 
