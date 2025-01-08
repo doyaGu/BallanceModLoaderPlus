@@ -38,7 +38,6 @@ typedef enum DirectoryType {
 ModManager *BML_GetModManager();
 CKContext *BML_GetCKContext();
 CKRenderContext *BML_GetRenderContext();
-BML::IDataShare *BML_GetDataShare(const char *name);
 
 class ModManager : public CKBaseManager, public IBML {
 public:
