@@ -41,7 +41,6 @@ set(BML_PRIVATE_HEADERS
 
         RenderHook.h
 
-        Configuration.h
         DataShare.h
         Logger.h
         Config.h
@@ -89,7 +88,6 @@ set(BML_SOURCES
         ExecuteBB.cpp
         ScriptHelper.cpp
 
-        Configuration.cpp
         DataShare.cpp
         Logger.cpp
         Config.cpp
