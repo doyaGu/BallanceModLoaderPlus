@@ -8,7 +8,6 @@
 #include "BML/IDataShare.h"
 #include "BML/DataBox.h"
 #include "BML/RefCount.h"
-#include "Variant.h"
 
 namespace BML {
     class DataShare final : public IDataShare {
@@ -65,7 +64,7 @@ namespace BML {
         std::string m_Name;
         mutable RefCount m_RefCount;
         mutable std::mutex m_RWLock;
-        std::unordered_map<std::string, Variant> m_DataMap;
+        std::unordered_map<std::string, std::vector<uint8_t>> m_DataMap;
         mutable std::unordered_map<std::string, std::vector<Callback>> m_CallbackMap;
         DataBox m_UserData;
 

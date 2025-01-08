@@ -53,7 +53,7 @@ void DataShare::Request(const char *key, DataShareCallback callback, void *userd
         AddCallbacks(key, callback, userdata);
     } else {
         auto &data = it->second;
-        TriggerCallbacks(key, data.GetBuffer(), data.GetSize());
+        TriggerCallbacks(key, data.data(), data.size());
     }
 }
 
@@ -69,8 +69,8 @@ const void *DataShare::Get(const char *key, size_t *size) const {
 
     auto &data = it->second;
     if (size)
-        *size = data.GetSize();
-    return data.GetBuffer();
+        *size = data.size();
+    return data.data();
 }
 
 bool DataShare::Copy(const char *key, void *buf, size_t size) const {
@@ -87,7 +87,7 @@ bool DataShare::Copy(const char *key, void *buf, size_t size) const {
         return false;
 
     auto &data = it->second;
-    memcpy(buf, data.GetBuffer(), std::max(data.GetSize(), size));
+    memcpy(buf, data.data(), std::max(data.size(), size));
     return true;
 }
 
@@ -99,17 +99,21 @@ bool DataShare::Set(const char *key, const void *buf, size_t size) {
 
     auto it = m_DataMap.find(key);
     if (it != m_DataMap.end()) {
-        m_DataMap[key].SetBuffer(buf, size);
+        auto &data = it->second;
+        data.resize(size);
+        memcpy(data.data(), buf, size);
     } else {
-        auto result = m_DataMap.emplace(key, Variant());
+        auto result = m_DataMap.emplace(key, std::vector<uint8_t>());
         if (!result.second)
             return false;
         it = result.first;
-        it->second.SetBuffer(buf, size);
+        auto &data = it->second;
+        data.resize(size);
+        memcpy(data.data(), buf, size);
     }
 
     auto &data = it->second;
-    TriggerCallbacks(key, data.GetBuffer(), data.GetSize());
+    TriggerCallbacks(key, data.data(), data.size());
     return true;
 }
 
@@ -123,13 +127,14 @@ bool DataShare::Put(const char *key, const void *buf, size_t size) {
     if (it != m_DataMap.end())
         return false;
 
-    auto result = m_DataMap.emplace(key, Variant());
+    auto result = m_DataMap.emplace(key, std::vector<uint8_t>());
     if (!result.second)
         return false;
     it = result.first;
     auto &data = it->second;
-    data.SetBuffer(buf, size);
-    TriggerCallbacks(key, data.GetBuffer(), data.GetSize());
+    data.resize(size);
+    memcpy(data.data(), buf, size);
+    TriggerCallbacks(key, data.data(), data.size());
     return true;
 }
 
