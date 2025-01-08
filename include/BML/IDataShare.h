@@ -7,6 +7,8 @@
 
 #include <cstddef>
 
+#include "Defines.h"
+
 namespace BML {
     inline namespace v2 {
         /**
@@ -111,5 +113,7 @@ namespace BML {
         };
     }
 }
+
+BML_EXPORT BML::IDataShare *BML_GetDataShare(const char *name);
 
 #endif // BML_IDATASHARE_H
