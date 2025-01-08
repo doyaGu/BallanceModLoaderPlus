@@ -9,7 +9,6 @@ void ModMenu::Init() {
     m_Pages.push_back(std::make_unique<ModListPage>(this));
     m_Pages.push_back(std::make_unique<ModPage>(this));
     m_Pages.push_back(std::make_unique<ModOptionPage>(this));
-    m_Pages.push_back(std::make_unique<ModCustomPage>(this));
 
     auto *config = BML_GetConfiguration(nullptr);
     m_Mods = config->AddSection(nullptr, "mods");
@@ -197,29 +196,9 @@ void ModPage::OnDraw() {
         if (!name)
             return true;
 
-        bool custom = false;
-        if (name[0] == '@') {
-            custom = true;
-            ++name;
-        }
-
         if (Bui::LevelButton(name, &v)) {
             m_Menu->SetCurrentCategory(category);
-            if (custom) {
-                auto *page = static_cast<ModCustomPage *>(m_Menu->GetPage("Custom Page"));
-                if (!page)
-                    return true;
-
-                auto *mod = m_Config->GetMod();
-                if (!mod)
-                    return false;
-
-                page->SetupEventListener(mod->GetID());
-                page->SetTitle(category->GetName());
-                m_Menu->ShowPage("Custom Page");
-            } else {
                 m_Menu->ShowPage("Mod Options");
-            }
         }
 
         if (ImGui::IsItemHovered()) {
@@ -391,46 +370,4 @@ void ModOptionPage::ShowCommentBox(const Property *property) {
 
     ImGui::EndChild();
     ImGui::PopStyleColor();
-}
-
-ModCustomPage::ModCustomPage(ModMenu *menu) : ModMenuPage(menu, "Custom Page") {
-    m_EventPublisher = BML_GetModManager()->GetEventPublisher(nullptr);
-}
-
-void ModCustomPage::SetupEventListener(const char *mod) {
-    if (!mod)
-        return;
-
-    m_OnShowCustomPage = m_EventPublisher->AddEventType("OnShowCustomPage");
-    m_EventListener = m_EventPublisher->GetListener(m_OnShowCustomPage, mod);
-    if (!m_EventListener)
-        m_OnShowCustomPage = -1;
-
-    m_OnDrawCustomPage = m_EventPublisher->AddEventType("OnDrawCustomPage");
-    m_EventListener = m_EventPublisher->GetListener(m_OnDrawCustomPage, mod);
-    if (!m_EventListener)
-        m_OnDrawCustomPage = -1;
-
-    m_OnHideCustomPage = m_EventPublisher->AddEventType("OnHideCustomPage");
-    m_EventListener = m_EventPublisher->GetListener(m_OnHideCustomPage, mod);
-    if (!m_EventListener)
-        m_OnHideCustomPage = -1;
-}
-
-void ModCustomPage::OnDraw() {
-    if (m_OnDrawCustomPage != -1)
-        m_EventPublisher->SendEvent(m_OnDrawCustomPage, 0, (uintptr_t) m_Title.c_str(), (uintptr_t) m_EventPublisher,
-                                    m_EventListener);
-}
-
-void ModCustomPage::OnShow() {
-    if (m_OnShowCustomPage != -1)
-        m_EventPublisher->SendEvent(m_OnShowCustomPage, 0, (uintptr_t) m_Title.c_str(), (uintptr_t) m_EventPublisher,
-                                    m_EventListener);
-}
-
-void ModCustomPage::OnHide() {
-    if (m_OnHideCustomPage != -1)
-        m_EventPublisher->SendEvent(m_OnHideCustomPage, 0, (uintptr_t) m_Title.c_str(), (uintptr_t) m_EventPublisher,
-                                    m_EventListener);
 }
