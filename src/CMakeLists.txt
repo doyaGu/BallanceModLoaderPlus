@@ -43,7 +43,6 @@ set(BML_PRIVATE_HEADERS
 
         Configuration.h
         DataShare.h
-        EventPublisher.h
         Logger.h
         Config.h
         Timer.h
@@ -92,7 +91,6 @@ set(BML_SOURCES
 
         Configuration.cpp
         DataShare.cpp
-        EventPublisher.cpp
         Logger.cpp
         Config.cpp
         Timer.cpp
