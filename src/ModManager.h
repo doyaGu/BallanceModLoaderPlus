@@ -7,7 +7,6 @@
 #include <list>
 #include <vector>
 #include <unordered_map>
-#include <unordered_set>
 #include <memory>
 
 #include "CKBaseManager.h"
@@ -16,8 +15,6 @@
 #include "BML/IBML.h"
 #include "BML/IMod.h"
 #include "DataShare.h"
-#include "EventPublisher.h"
-#include "Configuration.h"
 #include "Config.h"
 #include "Timer.h"
 #include "HookUtils.h"
@@ -112,8 +109,6 @@ public:
     FILE *GetLogFile() const { return m_Logfile; }
 
     BML::IDataShare *GetDataShare(const char *name = nullptr);
-    BML::IEventPublisher *GetEventPublisher(const char *name = nullptr);
-    BML::IConfiguration *GetConfiguration(const char *name = nullptr);
 
     const wchar_t *GetDirectory(DirectoryType type);
     const char *GetDirectoryUtf8(DirectoryType type);
@@ -339,8 +334,6 @@ protected:
     std::string m_ConfigDirUtf8;
 
     BML::DataShare *m_DataShare = nullptr;
-    BML::EventPublisher *m_EventPublisher = nullptr;
-    BML::Configuration *m_Configuration = nullptr;
 
     FILE *m_Logfile = nullptr;
     ILogger *m_Logger = nullptr;
