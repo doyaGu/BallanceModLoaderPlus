@@ -9,34 +9,9 @@ void ModMenu::Init() {
     m_Pages.push_back(std::make_unique<ModListPage>(this));
     m_Pages.push_back(std::make_unique<ModPage>(this));
     m_Pages.push_back(std::make_unique<ModOptionPage>(this));
-
-    auto *config = BML_GetConfiguration(nullptr);
-    m_Mods = config->AddSection(nullptr, "mods");
-
-    for (size_t i = 0; i < m_Mods->GetNumberOfSections(); ++i) {
-        auto *section = m_Mods->GetSection(i);
-        auto *entry = section->GetEntry("disabled");
-        if (entry && entry->GetType() == BML::CFG_ENTRY_BOOL && entry->GetBool()) {
-            m_Blacklist.insert(section->GetName());
-        }
-    }
 }
 
 void ModMenu::Shutdown() {
-    for (size_t i = 0; i < m_Mods->GetNumberOfSections(); ++i) {
-        auto *section = m_Mods->GetSection(i);
-        section->RemoveEntry("disabled");
-    }
-
-    for (const auto &id: m_Blacklist) {
-        auto *section = m_Mods->GetSection(id.c_str());
-        if (section) {
-            auto *entry = section->AddEntry("disabled");
-            entry->SetBool(true);
-        }
-    }
-    m_Blacklist.clear();
-
     m_Pages.clear();
 }
 
@@ -86,7 +61,7 @@ void ModListPage::OnAfterBegin() {
 
     DrawCenteredText(m_Title.c_str());
 
-    int count = static_cast<int>(m_Menu->GetModCount());
+    int count = BML_GetModManager()->GetModCount();
     SetMaxPage(count % 4 == 0 ? count / 4 : count / 4 + 1);
 
     if (m_PageIndex > 0 &&
@@ -104,41 +79,14 @@ void ModListPage::OnDraw() {
     const int n = GetPage() * 4;
 
     DrawEntries([&](std::size_t index) {
-        auto *section = m_Menu->GetModSection(static_cast<int>(n + index));
-        if (!section)
+        IMod *mod = BML_GetModManager()->GetMod((int)(n + index));
+        if (!mod)
             return false;
-
-        const char *id = section->GetName();
-        bool blocked = m_Menu->IsInBlacklist(id);
-
-        if (blocked) {
-            ImGui::PushStyleColor(ImGuiCol_Text, Bui::GetMenuColor());
-        }
-
+        const char *id = mod->GetID();
         if (Bui::MainButton(id)) {
-            IMod *mod = BML_GetModManager()->FindMod(id);
-            if (mod) {
-                m_Menu->SetCurrentMod(mod);
-                m_Menu->ShowPage("Mod Page");
-            }
+            m_Menu->SetCurrentMod(mod);
+            m_Menu->ShowPage("Mod Page");
         }
-
-        if (ImGui::IsItemHovered() &&
-            (ImGui::IsKeyPressed(ImGuiKey_Backspace) || ImGui::IsKeyPressed(ImGuiKey_MouseRight))) {
-            auto *entry = section->GetEntry("builtin");
-            if (!entry || !entry->GetBool()) {
-                if (blocked) {
-                    m_Menu->RemoveFromBlacklist(id);
-                } else {
-                    m_Menu->AddToBlacklist(id);
-                }
-            }
-        }
-
-        if (blocked) {
-            ImGui::PopStyleColor();
-        }
-
         return true;
     });
 }
@@ -198,7 +146,7 @@ void ModPage::OnDraw() {
 
         if (Bui::LevelButton(name, &v)) {
             m_Menu->SetCurrentCategory(category);
-                m_Menu->ShowPage("Mod Options");
+            m_Menu->ShowPage("Mod Options");
         }
 
         if (ImGui::IsItemHovered()) {
