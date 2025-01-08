@@ -360,115 +360,55 @@ public:
     }
 
     bool GetBool() const {
-        return IsBool() && m_Value.b;
+        return m_Value.b;
     }
 
     char GetChar() const {
-        return IsChar() ? m_Value.c : '\0';
+        m_Value.c;
     }
 
     uint8_t GetUint8() const {
-        if (IsUint8())
-            return m_Value.u8;
-        else if (IsNum())
-            return GetInt8();
-        else
-            return 0;
+        return m_Value.u8;
     }
 
     int8_t GetInt8() const {
-        if (IsInt8())
-            return m_Value.i8;
-        else
-            return 0;
+        return m_Value.i8;
     }
 
     uint16_t GetUint16() const {
-        if (IsUint16())
-            return m_Value.u16;
-        else if (IsNum())
-            return GetInt16();
-        else
-            return 0;
+        return m_Value.u16;
     }
 
     int16_t GetInt16() const {
-        if (IsInt16())
-            return m_Value.i16;
-        else if (IsNum())
-            return GetUint8();
-        else
-            return 0;
+        return m_Value.i16;
     }
 
     uint32_t GetUint32() const {
-        if (IsUint32())
-            return m_Value.u32;
-        else if (IsNum())
-            return GetInt32();
-        else
-            return 0;
+        return m_Value.u32;
     }
 
     int32_t GetInt32() const {
-        if (IsInt32())
-            return m_Value.i32;
-        else if (IsNum())
-            return GetUint16();
-        else
-            return 0;
+        return m_Value.i32;
     }
 
     uint64_t GetUint64() const {
-        if (IsUint64())
-            return m_Value.u64;
-        else if (IsNum())
-            return GetInt64();
-        else
-            return 0;
+        return m_Value.u64;
     }
 
     int64_t GetInt64() const {
-        if (IsInt64())
-            return m_Value.i64;
-        else if (IsNum())
-            return GetUint32();
-        else
-            return 0;
+        return m_Value.i64;
     }
 
     float GetFloat32() const {
-        if (IsFloat32())
-            return m_Value.f32;
-        else if (IsFloat64())
-            return static_cast<float>(m_Value.f64);
-        else if (IsInt8())
-            return static_cast<float>(m_Value.i8);
-        else if (IsInt16())
-            return static_cast<float>(m_Value.i16);
-        else if (IsInt32())
-            return static_cast<float>(m_Value.i32);
-        else if (IsInt64())
-            return static_cast<float>(m_Value.i64);
-        else
-            return 0.0f;
+        if (IsFloat64())
+            return (float) m_Value.f64;
+        return m_Value.f32;
     }
 
     double GetFloat64() const {
-        if (IsFloat64())
-            return m_Value.f64;
-        else if (IsFloat32())
+        if (IsFloat32())
             return m_Value.f32;
-        else if (IsInt8())
-            return static_cast<float>(m_Value.i8);
-        else if (IsInt16())
-            return static_cast<float>(m_Value.i16);
-        else if (IsInt32())
-            return static_cast<float>(m_Value.i32);
-        else if (IsInt64())
-            return static_cast<float>(m_Value.i64);
-        else
-            return 0.0;
+        return m_Value.f64;
     }
 
     const char *GetString() const {
