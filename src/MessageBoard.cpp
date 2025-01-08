@@ -4,9 +4,7 @@
 
 #include "ModManager.h"
 
-MessageBoard::MessageBoard(const int size) : Bui::Window("MessageBoard"), m_Messages(size) {
-    SetVisibility(false);
-}
+MessageBoard::MessageBoard(const int size) : Bui::Window("MessageBoard"), m_Messages(size) {}
 
 MessageBoard::~MessageBoard() = default;
 
@@ -24,7 +22,6 @@ ImGuiWindowFlags MessageBoard::GetFlags() {
 }
 
 void MessageBoard::OnBegin() {
-
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));

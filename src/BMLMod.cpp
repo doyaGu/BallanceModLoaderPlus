@@ -1021,11 +1021,9 @@ void BMLMod::OnProcess_CommandBar() {
         m_CommandBar.ToggleCommandBar();
     }
 
-    m_MessageBoard.SetCommandBarVisible(visible);
-    if (visible)
-        m_MessageBoard.Show();
-
     m_CommandBar.Render();
+
+    m_MessageBoard.SetCommandBarVisible(visible);
     m_MessageBoard.Render();
 }
 
