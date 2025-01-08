@@ -100,25 +100,5 @@ protected:
     float m_FloatValues[4] = {};
 };
 
-class ModCustomPage : public ModMenuPage {
-public:
-    explicit ModCustomPage(ModMenu *menu);
-
-    void SetupEventListener(const char *mod);
-
-    void OnAfterBegin() override {}
-    void OnDraw() override;
-    void OnShow() override;
-    void OnHide() override;
-
-protected:
-    BML::IEventListener *m_EventListener = nullptr;
-    BML::IEventPublisher *m_EventPublisher = nullptr;
-
-    BML::EventType m_OnShowCustomPage = -1;
-    BML::EventType m_OnDrawCustomPage = -1;
-    BML::EventType m_OnHideCustomPage = -1;
-};
-
 
 #endif // BML_MODMENU_H
