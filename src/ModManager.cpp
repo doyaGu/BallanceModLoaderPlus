@@ -198,8 +198,6 @@ bool ModManager::Init() {
         m_Logger->Error("Failed to initialize Win32 platform backend for ImGui");
     }
 
-    LoadConfiguration();
-
     m_Initialized = true;
     return true;
 }
@@ -207,8 +205,6 @@ bool ModManager::Init() {
 bool ModManager::Shutdown() {
     if (AreModsLoaded())
         UnloadMods();
-
-    SaveConfiguration();
 
     m_Logger->Info("Releasing Mod Loader");
 
@@ -236,22 +232,12 @@ void ModManager::LoadMods() {
         return;
 
     std::unordered_set<std::string> modSet;
-    auto *modsSection = m_Configuration->AddSection(nullptr, "mods");
-    BML::IConfigurationSection *section = nullptr;
-    BML::IConfigurationEntry *entry = nullptr;
 
     RegisterBuiltinMods();
 
     for (auto *mod: m_Mods) {
         const char *id = mod->GetID();
         modSet.emplace(id);
-        section = modsSection->AddSection(id);
-        section->AddEntryString("id", mod->GetID());
-        section->AddEntryString("version", mod->GetVersion());
-        section->AddEntryString("name", mod->GetName());
-        section->AddEntryString("author", mod->GetAuthor());
-        section->AddEntryString("description", mod->GetDescription());
-        section->AddEntryBool("builtin", true);
     }
 
     std::wstring path = m_LoaderDir + L"\\Mods";
@@ -272,19 +258,6 @@ void ModManager::LoadMods() {
                 }
                 modSet.emplace(id);
 
-                section = modsSection->AddSection(id);
-                entry = section->GetEntry("disabled");
-                if (entry && entry->GetBool()) {
-                    UnloadMod(id);
-                    continue;
-                }
-
-                section->AddEntryString("id", mod->GetID());
-                section->AddEntryString("version", mod->GetVersion());
-                section->AddEntryString("name", mod->GetName());
-                section->AddEntryString("author", mod->GetAuthor());
-                section->AddEntryString("description", mod->GetDescription());
-
                 wchar_t drive[4];
                 wchar_t dir[MAX_PATH];
                 wchar_t wBuf[MAX_PATH];
@@ -294,20 +267,6 @@ void ModManager::LoadMods() {
                 utils::Utf16ToAnsi(wBuf, buf, MAX_PATH);
                 AddDataPath(buf);
             }
-        }
-
-        std::vector<std::string> sectionsToRemove;
-        const size_t count = modsSection->GetNumberOfSections();
-        for (size_t i = 0; i < count; i++) {
-            section = modsSection->GetSection(i);
-            const char *id = section->GetName();
-            if (modSet.find(id) == modSet.end()) {
-                sectionsToRemove.emplace_back(id);
-            }
-        }
-
-        for (const auto &id: sectionsToRemove) {
-            modsSection->RemoveSection(id.c_str());
         }
     }
 
@@ -1130,61 +1089,6 @@ bool ModManager::GetManagers() {
     } else {
         m_Logger->Info("Failed to get Time Manager");
         return false;
-    }
-
-    return true;
-}
-
-bool ModManager::LoadConfiguration() {
-    std::wstring path = GetDirectory(BML_DIR_CONFIG);
-    path.append(L"\\BML.json");
-    FILE *fp = _wfopen(path.c_str(), L"rb");
-    if (!fp)
-        return false;
-
-    fseek(fp, 0, SEEK_END);
-    long len = ftell(fp);
-    rewind(fp);
-
-    if (len == 0) {
-        fclose(fp);
-        return false;
-    }
-
-    char *json = new char[len + 1];
-    if (fread(json, sizeof(char), len, fp) != len) {
-        delete[] json;
-        fclose(fp);
-        return false;
-    }
-    json[len] = '\0';
-    fclose(fp);
-
-    if (!m_Configuration->Read(json, len)) {
-        delete[] json;
-        return false;
-    }
-
-    delete[] json;
-    return true;
-}
-
-bool ModManager::SaveConfiguration() {
-    size_t size = 0;
-    char *str = m_Configuration->Write(&size);
-    if (size != 0) {
-        std::wstring path = GetDirectory(BML_DIR_CONFIG);
-        path.append(L"\\BML.json");
-        FILE *fp = _wfopen(path.c_str(), L"w");
-        if (!fp)
-            return false;
-
-        if (fwrite(str, sizeof(char), size, fp) != size) {
-            fclose(fp);
-            return false;
-        }
-
-        fclose(fp);
     }
 
     return true;

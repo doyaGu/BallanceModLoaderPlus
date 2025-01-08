@@ -299,8 +299,6 @@ protected:
     bool InitHooks();
     bool ShutdownHooks();
     bool GetManagers();
-    bool LoadConfiguration();
-    bool SaveConfiguration();
 
     size_t ExploreMods(const std::wstring &path, std::vector<std::wstring> &mods);
 
