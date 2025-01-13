@@ -1,5 +1,7 @@
 #include "ModManager.h"
 
+#include <unordered_set>
+
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
