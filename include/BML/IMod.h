@@ -15,15 +15,15 @@
 class IBML;
 
 struct BMLVersion {
-    int major, minor, build;
+    int major, minor, patch;
 
-    BMLVersion() : major(BML_MAJOR_VER), minor(BML_MINOR_VER), build(BML_PATCH_VER) {}
-    BMLVersion(int mj, int mn, int bd) : major(mj), minor(mn), build(bd) {}
+    BMLVersion() : major(BML_MAJOR_VERSION), minor(BML_MINOR_VERSION), patch(BML_PATCH_VERSION) {}
+    BMLVersion(int mj, int mn, int bd) : major(mj), minor(mn), patch(bd) {}
 
     bool operator<(const BMLVersion &o) const {
         if (major == o.major) {
             if (minor == o.minor)
-                return build < o.build;
+                return patch < o.patch;
             return minor < o.minor;
         }
         return major < o.major;
@@ -35,7 +35,7 @@ struct BMLVersion {
 };
 
 #define DECLARE_BML_VERSION \
-    BMLVersion GetBMLVersion() override { return { BML_MAJOR_VER, BML_MINOR_VER, BML_PATCH_VER }; }
+    BMLVersion GetBMLVersion() override { return { BML_MAJOR_VERSION, BML_MINOR_VERSION, BML_PATCH_VERSION }; }
 
 class BML_EXPORT IMod : public IMessageReceiver {
 public:

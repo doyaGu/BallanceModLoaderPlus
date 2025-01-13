@@ -1231,7 +1231,7 @@ bool ModManager::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) 
     BMLVersion reqVer = mod->GetBMLVersion();
     if (curVer < reqVer) {
         m_Logger->Warn("Mod %s[%s] requires BML %d.%d.%d", mod->GetID(), mod->GetName(),
-                       reqVer.major, reqVer.minor, reqVer.build);
+                       reqVer.major, reqVer.minor, reqVer.patch);
         return false;
     }
 
