@@ -54,6 +54,7 @@ set(BML_PRIVATE_HEADERS
 
 set(BML_SOURCES
         BML.cpp
+
         HookBlock.cpp
         ModManager.cpp
 
@@ -167,7 +168,9 @@ install(FILES
         "${IMGUI_SOURCE_DIR}/imconfig.h"
         "${IMGUI_SOURCE_DIR}/imgui.h"
         "${IMGUI_SOURCE_DIR}/imgui_internal.h"
+        "${IMGUI_SOURCE_DIR}/imstb_rectpack.h"
         "${IMGUI_SOURCE_DIR}/imstb_textedit.h"
+        "${IMGUI_SOURCE_DIR}/imstb_truetype.h"
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
