@@ -272,7 +272,7 @@ size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
             }
         }
 
-        const float max = m_WindowSize.x * 0.8f;
+        const float max = m_WindowSize.x * 0.75f;
         float width = 0.0f;
         m_CandidatePages.push_back(0);
         for (int i = 0; i < (int) m_Candidates.size(); ++i) {
