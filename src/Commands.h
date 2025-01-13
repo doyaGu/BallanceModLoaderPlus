@@ -96,7 +96,7 @@ public:
     std::string GetDescription() override { return "Commands for HUD."; }
     bool IsCheat() override { return false; }
     void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; }
+    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {"title", "fps", "sr"}; }
 
 private:
     BMLMod *m_BMLMod;
