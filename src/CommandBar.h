@@ -24,6 +24,9 @@ public:
 
     void ToggleCommandBar(bool on = true);
 
+    void InvalidateCandidates();
+
+    size_t OnCompletion(const char *lineStart, const char *lineEnd);
     int OnTextEdit(ImGuiInputTextCallbackData *data);
 
     static int TextEditCallback(ImGuiInputTextCallbackData *data) {
@@ -31,15 +34,25 @@ public:
         return mod->OnTextEdit(data);
     }
 
+    static void StripLine(const char *&lineStart, const char *&lineEnd);
+    static int FirstToken(const char *tokenStart, const char *&tokenEnd);
+    static int LastToken(const char *&tokenStart, const char *tokenEnd);
+
     static std::vector<std::string> MakeArgs(const char *line);
 
 private:
     ImVec2 m_WindowPos;
     ImVec2 m_WindowSize;
     bool m_VisiblePrev = false;
+    bool m_Completion = false;
     std::string m_Buffer;
     int m_HistoryIndex = -1;
     std::vector<std::string> m_History;
+    size_t m_CandidateSelected = -1;
+    size_t m_CandidateIndex = 0;
+    int m_CandidatePage = 0;
+    int m_CandidateMaxCount = 8;
+    std::vector<std::string> m_Candidates;
 };
 
 #endif // BML_COMMANDBAR_H
