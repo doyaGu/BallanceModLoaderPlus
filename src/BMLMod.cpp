@@ -39,6 +39,12 @@ static ImFont *LoadFont(const char *filename, float size, const char *ranges, bo
         path.append("\\Fonts\\").append(filename);
     }
 
+    if (!utils::FileExistsUtf8(path)) {
+        ImFontConfig config;
+        config.SizePixels = 32.0f;
+        return io.Fonts->AddFontDefault(&config);
+    }
+
     if (size <= 0)
         size = 32.0f;
 
