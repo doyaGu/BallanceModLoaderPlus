@@ -29,8 +29,8 @@ struct MapEntry {
             delete child;
 
         if (parent) {
-            parent->children.erase(std::remove(parent->children.begin(), parent->children.end(), this),
-                                   parent->children.end());
+            auto it = std::remove(parent->children.begin(), parent->children.end(), this);
+            parent->children.erase(it, parent->children.end());
         }
     }
 };
