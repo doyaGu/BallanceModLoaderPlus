@@ -2,7 +2,6 @@
 #define BML_MODMENU_H
 
 #include <vector>
-#include <unordered_set>
 #include <memory>
 
 #include "BML/Bui.h"
@@ -90,6 +89,5 @@ protected:
     int m_IntValues[4] = {};
     float m_FloatValues[4] = {};
 };
-
 
 #endif // BML_MODMENU_H
