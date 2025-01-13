@@ -115,5 +115,3 @@ void MessageBoard::ResizeMessages(int size) {
     m_MessageCount = std::min(m_MessageCount, size);
     m_DisplayMessageCount = std::min(m_DisplayMessageCount, size);
 }
-
-
