@@ -8,7 +8,6 @@
 
 #include "ModManager.h"
 #include "PathUtils.h"
-#include "StringUtils.h"
 
 #define COMMAND_HISTORY_FILE L"\\CommandBar.history"
 
@@ -52,7 +51,9 @@ void CommandBar::OnDraw() {
                                                    ImGuiInputTextFlags_EscapeClearsAll |
                                                    ImGuiInputTextFlags_CallbackCompletion |
                                                    ImGuiInputTextFlags_CallbackHistory |
-                                                   ImGuiInputTextFlags_CallbackResize;
+                                                   ImGuiInputTextFlags_CallbackAlways |
+                                                   ImGuiInputTextFlags_CallbackResize |
+                                                   ImGuiInputTextFlags_CallbackEdit;
     if (ImGui::InputText("##CmdBar", &m_Buffer[0], m_Buffer.capacity() + 1, InputTextFlags,
                          &TextEditCallback, this)) {
         if (m_Buffer[0] != '\0') {
@@ -69,6 +70,43 @@ void CommandBar::OnDraw() {
     ImGui::SetItemDefaultFocus();
     if (!m_VisiblePrev)
         ImGui::SetKeyboardFocusHere(-1);
+
+    if (m_Completion) {
+        constexpr ImVec4 SelectedColor = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+        const int n = m_CandidatePage * m_CandidateMaxCount;
+        const int count = std::min(m_CandidateMaxCount, (int) (m_Candidates.size() - n));
+        for (int i = n; i < n + count; ++i) {
+            if (i != m_CandidateIndex) {
+                if (i < m_Candidates.size() - 1) {
+                    ImGui::Text("%s | ", m_Candidates[i].c_str());
+                    ImGui::SameLine();
+                } else {
+                    ImGui::Text("%s", m_Candidates[i].c_str());
+                }
+            } else {
+                const auto str = m_Candidates[i].c_str();
+
+                // Draw selected candidate background
+                ImDrawList *dl = ImGui::GetWindowDrawList();
+                ImVec2 p = ImGui::GetCursorScreenPos();
+                const ImVec2 size = ImGui::CalcTextSize(str);
+                dl->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y), IM_COL32_WHITE);
+
+                ImGui::TextColored(SelectedColor, "%s", str);
+
+                if (i < m_Candidates.size() - 1) {
+                    ImGui::SameLine();
+                    ImGui::Text(" | ");
+                    ImGui::SameLine();
+                }
+            }
+        }
+
+        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
+            m_CandidateSelected = m_CandidateIndex;
+        }
+    }
 }
 
 void CommandBar::OnAfterEnd() {
@@ -180,84 +218,89 @@ void CommandBar::ToggleCommandBar(bool on) {
     }
 }
 
+void CommandBar::InvalidateCandidates() {
+    m_CandidateSelected = -1;
+    m_Completion = false;
+    m_CandidateIndex = 0;
+    m_CandidatePage = 0;
+    m_Candidates.clear();
+}
+
+size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
+    const char *wordStart = lineStart;
+    int wordCount = LastToken(wordStart, lineEnd);
+
+    StripLine(lineStart, lineEnd);
+
+    if (m_Candidates.empty()) {
+        bool completeCmd = true;
+        const char *cmdEnd = lineEnd;
+        const char *cmdStart;
+
+        if (wordStart == lineStart) {
+            // If the cursor is at the beginning of the line, complete the command
+            cmdStart = wordStart;
+        } else {
+            // Otherwise, complete the argument
+            cmdStart = lineStart;
+            completeCmd = false;
+        }
+        const int cmdLength = FirstToken(cmdStart, cmdEnd);
+
+        if (completeCmd) {
+            // Add candidate commands
+            const int count = BML_GetModManager()->GetCommandCount();
+            for (int i = 0; i < count; ++i) {
+                ICommand *cmd = BML_GetModManager()->GetCommand(i);
+                if (cmd) {
+                    if (utf8ncasecmp(cmd->GetName().c_str(), cmdStart, cmdLength) == 0)
+                        m_Candidates.push_back(cmd->GetName());
+                }
+            }
+        } else {
+            // Add candidate arguments
+            const auto args = MakeArgs(cmdStart);
+            if (!args.empty()) {
+                ICommand *cmd = BML_GetModManager()->FindCommand(args[0].c_str());
+                if (cmd) {
+                    for (const auto &str : cmd->GetTabCompletion(BML_GetModManager(), args)) {
+                        if (utf8ncasecmp(str.c_str(), wordStart, wordCount) == 0)
+                            m_Candidates.push_back(str);
+                    }
+                }
+            }
+        }
+    } else {
+        m_CandidateIndex = (m_CandidateIndex + 1) % m_Candidates.size();
+        m_CandidatePage = (int) (m_CandidateIndex / m_CandidateMaxCount);
+    }
+
+    return m_Candidates.size();
+}
+
 int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
     switch (data->EventFlag) {
         case ImGuiInputTextFlags_CallbackCompletion: {
-            // Locate beginning of current word
-            const char *wordEnd = data->Buf + data->CursorPos;
+            OnCompletion(data->Buf, data->Buf + data->CursorPos);
 
-            const char *lineStart = data->Buf;
-            while (lineStart < wordEnd) {
-                const char c = *lineStart;
-                if (!std::isspace(c)) {
-                    break;
-                }
-                ++lineStart;
-            }
-            if (lineStart == wordEnd)
-                break;
+            const char *wordStart = data->Buf;
+            int wordCount = LastToken(wordStart, data->Buf + data->CursorPos);
 
-
-            const char *wordStart = wordEnd;
-            while (wordStart > lineStart) {
-                const char c = wordStart[-1];
-                if (std::isspace(c))
-                    break;
-                --wordStart;
-            }
-            const int wordCount = wordEnd - wordStart;
-
-            bool completeCmd = true;
-            const char *cmdEnd;
-            const char *cmdStart;
-
-            if (wordStart == lineStart) {
-                cmdEnd = wordEnd;
-                cmdStart = wordStart;
-            } else {
-                completeCmd = false;
-                cmdStart = lineStart;
-                cmdEnd = cmdStart;
-                for (char c = *cmdEnd; !isspace(c); ++cmdEnd, c = *cmdEnd) {}
-            }
-            const int cmdLength = cmdEnd - cmdStart;
-
-            std::vector<std::string> candidates;
-
-            if (completeCmd) {
-                const int count = BML_GetModManager()->GetCommandCount();
-                for (int i = 0; i < count; ++i) {
-                    ICommand *cmd = BML_GetModManager()->GetCommand(i);
-                    if (cmd) {
-                        if (utf8ncasecmp(cmd->GetName().c_str(), cmdStart, cmdLength) == 0)
-                            candidates.push_back(cmd->GetName());
-                    }
-                }
-            } else {
-                const auto args = MakeArgs(cmdStart);
-                if (!args.empty()) {
-                    ICommand *cmd = BML_GetModManager()->FindCommand(args[0].c_str());
-                    if (cmd) {
-                        for (const auto &str: cmd->GetTabCompletion(BML_GetModManager(), args)) {
-                            if (utf8ncasecmp(str.c_str(), wordStart, wordCount) == 0)
-                                candidates.push_back(str);
-                        }
-                    }
-                }
-            }
-
-            if (candidates.size() == 1) {
+            if (m_Candidates.size() == 1) {
+                // Single match. Delete the beginning of the word and replace it entirely so we've got nice casing
                 data->DeleteChars(wordStart - data->Buf, wordCount);
-                data->InsertChars(data->CursorPos, candidates[0].c_str());
-            } else if (candidates.size() > 1) {
+                data->InsertChars(data->CursorPos, m_Candidates[0].c_str());
+            } else if (m_Candidates.size() > 1) {
+                m_Completion = true;
+
                 // Multiple matches. Complete as much as we can..
                 // So inputting "C"+Tab will complete to "CL" then display "CLEAR" and "CLASSIFY" as matches.
-                int matchLen = wordCount;
+                int matchLen = 0;
                 for (;;) {
                     int c = 0;
                     bool allCandidatesMatches = true;
-                    for (std::size_t i = 0; i < candidates.size() && allCandidatesMatches; i++) {
-                        auto &candidate = candidates[i];
+                    for (std::size_t i = 0; i < m_Candidates.size() && allCandidatesMatches; i++) {
+                        auto &candidate = m_Candidates[i];
                         if (i == 0)
                             c = toupper(candidate[matchLen]);
                         else if (c == 0 || c != toupper(candidate[matchLen]))
@@ -270,11 +313,9 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
 
                 if (matchLen > 0) {
                     data->DeleteChars(wordStart - data->Buf, wordCount);
-                    const auto &best = candidates[0];
+                    const auto &best = m_Candidates[0];
                     data->InsertChars(data->CursorPos, best.c_str(), best.c_str() + matchLen);
                 }
-
-                BML_GetModManager()->SendIngameMessage(utils::JoinString(candidates, ", ").c_str());
             }
         }
         break;
@@ -298,6 +339,18 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
             }
         }
         break;
+        case ImGuiInputTextFlags_CallbackAlways: {
+            if (m_Completion && m_CandidateSelected != -1) {
+                const char *wordStart = data->Buf;
+                const char *wordEnd = data->Buf + data->CursorPos;
+                int wordCount = LastToken(wordStart, wordEnd);
+                data->DeleteChars(wordStart - data->Buf, wordCount);
+                data->InsertChars(data->CursorPos, m_Candidates[m_CandidateSelected].c_str());
+
+                InvalidateCandidates();
+            }
+        }
+        break;
         case ImGuiInputTextFlags_CallbackResize: {
             // Resize string callback
             IM_ASSERT(data->Buf == m_Buffer.c_str());
@@ -305,11 +358,73 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
             data->Buf = &m_Buffer[0];
         }
         break;
+        case ImGuiInputTextFlags_CallbackEdit: {
+            if (!m_Candidates.empty()) {
+                InvalidateCandidates();
+            }
+        }
+        break;
         default:
             break;
     }
 
     return 0;
+}
+
+void CommandBar::StripLine(const char *&lineStart, const char *&lineEnd) {
+    if (lineStart == lineEnd)
+        return;
+
+    // Skip white spaces at the beginning of the line
+    while (lineStart < lineEnd) {
+        const char c = *lineStart;
+        if (!std::isspace(c)) {
+            break;
+        }
+        ++lineStart;
+    }
+    if (lineStart == lineEnd)
+        return;
+
+    // Skip white spaces at the end of the line
+    while (lineEnd > lineStart) {
+        const char c = lineEnd[-1];
+        if (!std::isspace(c))
+            break;
+        --lineEnd;
+    }
+}
+
+int CommandBar::FirstToken(const char *tokenStart, const char *&tokenEnd) {
+    if (tokenStart == tokenEnd)
+        return 0;
+
+    const char *lineEnd = tokenEnd;
+    tokenEnd = tokenStart;
+    while (tokenEnd < lineEnd) {
+        const char c = *tokenEnd;
+        if (std::isspace(c))
+            break;
+        ++tokenEnd;
+    }
+
+    return tokenEnd - tokenStart;
+}
+
+int CommandBar::LastToken(const char *&tokenStart, const char *tokenEnd) {
+    if (tokenStart == tokenEnd)
+        return 0;
+
+    const char *lineStart = tokenStart;
+    tokenStart = tokenEnd;
+    while (tokenStart > lineStart) {
+        const char c = tokenStart[-1];
+        if (std::isspace(c))
+            break;
+        --tokenStart;
+    }
+
+    return tokenEnd - tokenStart;
 }
 
 std::vector<std::string> CommandBar::MakeArgs(const char *line) {
