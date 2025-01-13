@@ -185,8 +185,21 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
         case ImGuiInputTextFlags_CallbackCompletion: {
             // Locate beginning of current word
             const char *wordEnd = data->Buf + data->CursorPos;
+
+            const char *lineStart = data->Buf;
+            while (lineStart < wordEnd) {
+                const char c = *lineStart;
+                if (!std::isspace(c)) {
+                    break;
+                }
+                ++lineStart;
+            }
+            if (lineStart == wordEnd)
+                break;
+
+
             const char *wordStart = wordEnd;
-            while (wordStart > data->Buf) {
+            while (wordStart > lineStart) {
                 const char c = wordStart[-1];
                 if (std::isspace(c))
                     break;
@@ -197,16 +210,17 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
             bool completeCmd = true;
             const char *cmdEnd;
             const char *cmdStart;
-            if (wordStart == data->Buf) {
+
+            if (wordStart == lineStart) {
                 cmdEnd = wordEnd;
                 cmdStart = wordStart;
             } else {
                 completeCmd = false;
-                cmdStart = data->Buf;
+                cmdStart = lineStart;
                 cmdEnd = cmdStart;
                 for (char c = *cmdEnd; !isspace(c); ++cmdEnd, c = *cmdEnd) {}
             }
-            const int cmdCount = cmdEnd - cmdStart;
+            const int cmdLength = cmdEnd - cmdStart;
 
             std::vector<std::string> candidates;
 
@@ -215,17 +229,19 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
                 for (int i = 0; i < count; ++i) {
                     ICommand *cmd = BML_GetModManager()->GetCommand(i);
                     if (cmd) {
-                        if (utf8ncasecmp(cmd->GetName().c_str(), cmdStart, cmdCount) == 0)
+                        if (utf8ncasecmp(cmd->GetName().c_str(), cmdStart, cmdLength) == 0)
                             candidates.push_back(cmd->GetName());
                     }
                 }
             } else {
                 const auto args = MakeArgs(cmdStart);
-                ICommand *cmd = BML_GetModManager()->FindCommand(args[0].c_str());
-                if (cmd) {
-                    for (const auto &str: cmd->GetTabCompletion(BML_GetModManager(), args)) {
-                        if (utf8ncasecmp(str.c_str(), wordStart, wordCount) == 0)
-                            candidates.push_back(str);
+                if (!args.empty()) {
+                    ICommand *cmd = BML_GetModManager()->FindCommand(args[0].c_str());
+                    if (cmd) {
+                        for (const auto &str: cmd->GetTabCompletion(BML_GetModManager(), args)) {
+                            if (utf8ncasecmp(str.c_str(), wordStart, wordCount) == 0)
+                                candidates.push_back(str);
+                        }
                     }
                 }
             }
@@ -241,9 +257,10 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
                     int c = 0;
                     bool allCandidatesMatches = true;
                     for (std::size_t i = 0; i < candidates.size() && allCandidatesMatches; i++) {
+                        auto &candidate = candidates[i];
                         if (i == 0)
-                            c = toupper(candidates[i][matchLen]);
-                        else if (c == 0 || c != toupper(candidates[i][matchLen]))
+                            c = toupper(candidate[matchLen]);
+                        else if (c == 0 || c != toupper(candidate[matchLen]))
                             allCandidatesMatches = false;
                     }
                     if (!allCandidatesMatches)
@@ -253,7 +270,8 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
 
                 if (matchLen > 0) {
                     data->DeleteChars(wordStart - data->Buf, wordCount);
-                    data->InsertChars(data->CursorPos, candidates[0].c_str(), candidates[0].c_str() + matchLen);
+                    const auto &best = candidates[0];
+                    data->InsertChars(data->CursorPos, best.c_str(), best.c_str() + matchLen);
                 }
 
                 BML_GetModManager()->SendIngameMessage(utils::JoinString(candidates, ", ").c_str());
