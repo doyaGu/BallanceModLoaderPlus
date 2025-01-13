@@ -299,6 +299,7 @@ void BMLMod::OnCounterInactive() {
 }
 
 void BMLMod::AddIngameMessage(const char *msg) {
+    m_MessageBoard.Show();
     m_MessageBoard.AddMessage(msg);
     GetLogger()->Info(msg);
 }
