@@ -74,11 +74,12 @@ void CommandBar::OnDraw() {
     if (m_Completion) {
         constexpr ImVec4 SelectedColor = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
 
+        const int last = (int) (m_Candidates.size() - 1);
         const int n = m_CandidatePage * m_CandidateMaxCount;
         const int count = std::min(m_CandidateMaxCount, (int) (m_Candidates.size() - n));
         for (int i = n; i < n + count; ++i) {
             if (i != m_CandidateIndex) {
-                if (i < m_Candidates.size() - 1) {
+                if (i < last) {
                     ImGui::Text("%s | ", m_Candidates[i].c_str());
                     ImGui::SameLine();
                 } else {
@@ -95,7 +96,7 @@ void CommandBar::OnDraw() {
 
                 ImGui::TextColored(SelectedColor, "%s", str);
 
-                if (i < m_Candidates.size() - 1) {
+                if (i < last) {
                     ImGui::SameLine();
                     ImGui::Text(" | ");
                     ImGui::SameLine();
@@ -369,6 +370,11 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
     }
 
     return 0;
+}
+
+int CommandBar::TextEditCallback(ImGuiInputTextCallbackData *data) {
+    auto *mod = static_cast<CommandBar *>(data->UserData);
+    return mod->OnTextEdit(data);
 }
 
 void CommandBar::StripLine(const char *&lineStart, const char *&lineEnd) {
