@@ -24,7 +24,7 @@ BEGIN
             VALUE "FileDescription", "Mod Loader for Ballance"
             VALUE "FileVersion", BML_VERSION
             VALUE "InternalName", "BMLPlus.dll"
-            VALUE "LegalCopyright", "Copyright (C) 2024"
+            VALUE "LegalCopyright", "Copyright (C) 2025"
             VALUE "OriginalFilename", "BMLPlus.dll"
             VALUE "ProductName", "Ballance Mod Loader Plus"
             VALUE "ProductVersion", BML_VERSION
