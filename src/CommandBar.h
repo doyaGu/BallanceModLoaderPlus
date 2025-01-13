@@ -29,15 +29,10 @@ public:
     size_t OnCompletion(const char *lineStart, const char *lineEnd);
     int OnTextEdit(ImGuiInputTextCallbackData *data);
 
-    static int TextEditCallback(ImGuiInputTextCallbackData *data) {
-        auto *mod = static_cast<CommandBar *>(data->UserData);
-        return mod->OnTextEdit(data);
-    }
-
+    static int TextEditCallback(ImGuiInputTextCallbackData *data);
     static void StripLine(const char *&lineStart, const char *&lineEnd);
     static int FirstToken(const char *tokenStart, const char *&tokenEnd);
     static int LastToken(const char *&tokenStart, const char *tokenEnd);
-
     static std::vector<std::string> MakeArgs(const char *line);
 
 private:
