@@ -27,7 +27,7 @@ namespace utils {
     bool FileExistsUtf8(const std::string &file) {
         if (file.empty())
             return false;
-        return FileExistsW(utils::Utf8ToUtf16(file));
+        return FileExistsW(Utf8ToUtf16(file));
     }
 
     bool DirectoryExistsA(const std::string &dir) {
@@ -49,7 +49,7 @@ namespace utils {
     bool DirectoryExistsUtf8(const std::string &dir) {
         if (dir.empty())
             return false;
-        return DirectoryExistsW(utils::Utf8ToUtf16(dir));
+        return DirectoryExistsW(Utf8ToUtf16(dir));
     }
 
     bool CreateDirA(const std::string &dir) {
@@ -73,7 +73,7 @@ namespace utils {
     bool CreateDirUtf8(const std::string &dir) {
         if (dir.empty())
             return false;
-        return CreateDirW(utils::Utf8ToUtf16(dir));
+        return CreateDirW(Utf8ToUtf16(dir));
     }
 
     bool CreateFileTreeA(const std::string &file) {
@@ -113,7 +113,7 @@ namespace utils {
     bool CreateFileTreeUtf8(const std::string &file) {
         if (file.size() < 3)
             return false;
-        return CreateFileTreeW(utils::Utf8ToUtf16(file));
+        return CreateFileTreeW(Utf8ToUtf16(file));
     }
 
     bool DeleteFileA(const std::string &path) {
@@ -226,7 +226,7 @@ namespace utils {
     bool DeleteDirUtf8(const std::string &path) {
         if (path.empty())
             return false;
-        return DeleteDirW(utils::Utf8ToUtf16(path));
+        return DeleteDirW(Utf8ToUtf16(path));
     }
 
     bool DuplicateFileA(const std::string &path, const std::string &dest) {
@@ -250,7 +250,7 @@ namespace utils {
     }
 
     bool DuplicateFileUtf8(const std::string &path, const std::string &dest) {
-        return DuplicateFileW(utils::Utf8ToUtf16(path), utils::Utf8ToUtf16(dest));
+        return DuplicateFileW(Utf8ToUtf16(path), Utf8ToUtf16(dest));
     }
 
     bool ExtractZipW(const std::wstring &path, const std::wstring &dest) {
