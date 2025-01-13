@@ -46,7 +46,7 @@ private:
     size_t m_CandidateSelected = -1;
     size_t m_CandidateIndex = 0;
     int m_CandidatePage = 0;
-    int m_CandidateMaxCount = 8;
+    std::vector<int> m_CandidatePages;
     std::vector<std::string> m_Candidates;
 };
 

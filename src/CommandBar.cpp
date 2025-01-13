@@ -74,12 +74,11 @@ void CommandBar::OnDraw() {
     if (m_Completion) {
         constexpr ImVec4 SelectedColor = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
 
-        const int last = (int) (m_Candidates.size() - 1);
-        const int n = m_CandidatePage * m_CandidateMaxCount;
-        const int count = std::min(m_CandidateMaxCount, (int) (m_Candidates.size() - n));
-        for (int i = n; i < n + count; ++i) {
+        const int n = m_CandidatePage != m_CandidatePages.size() - 1 ?
+            m_CandidatePages[m_CandidatePage + 1] : (int) m_Candidates.size();
+        for (int i = m_CandidatePages[m_CandidatePage]; i < n; ++i) {
             if (i != m_CandidateIndex) {
-                if (i < last) {
+                if (i < n - 1) {
                     ImGui::Text("%s | ", m_Candidates[i].c_str());
                     ImGui::SameLine();
                 } else {
@@ -96,7 +95,7 @@ void CommandBar::OnDraw() {
 
                 ImGui::TextColored(SelectedColor, "%s", str);
 
-                if (i < last) {
+                if (i < n - 1) {
                     ImGui::SameLine();
                     ImGui::Text(" | ");
                     ImGui::SameLine();
@@ -224,6 +223,7 @@ void CommandBar::InvalidateCandidates() {
     m_Completion = false;
     m_CandidateIndex = 0;
     m_CandidatePage = 0;
+    m_CandidatePages.clear();
     m_Candidates.clear();
 }
 
@@ -271,9 +271,26 @@ size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
                 }
             }
         }
+
+        const float max = m_WindowSize.x * 0.8f;
+        float width = 0.0f;
+        m_CandidatePages.push_back(0);
+        for (int i = 0; i < (int) m_Candidates.size(); ++i) {
+            const ImVec2 size = ImGui::CalcTextSize(m_Candidates[i].c_str());
+            width += size.x;
+            if (width > max) {
+                m_CandidatePages.push_back(i);
+                width = 0.0f;
+            }
+        }
     } else {
         m_CandidateIndex = (m_CandidateIndex + 1) % m_Candidates.size();
-        m_CandidatePage = (int) (m_CandidateIndex / m_CandidateMaxCount);
+        for (int i = (int) (m_CandidatePages.size() - 1); i >= 0; --i) {
+            if ((int) m_CandidateIndex >= m_CandidatePages[i]) {
+                m_CandidatePage = i;
+                break;
+            }
+        }
     }
 
     return m_Candidates.size();
