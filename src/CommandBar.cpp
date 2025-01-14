@@ -499,9 +499,9 @@ std::vector<std::string> CommandBar::MakeArgs(const char *line) {
     utf8codepoint(rp, &cp);
     while (rp != end) {
         if (std::isspace(*rp) || *rp == '\0') {
-            size_t len = rp - lp;
+            const size_t len = rp - lp;
             if (len != 0) {
-                char bk = *rp;
+                const char bk = *rp;
                 *rp = '\0';
                 args.emplace_back(lp);
                 *rp = bk;
@@ -514,6 +514,10 @@ std::vector<std::string> CommandBar::MakeArgs(const char *line) {
             }
 
             lp = utf8codepoint(rp, &temp);
+            if (std::isspace(*rp) && *lp == '\0') {
+                args.emplace_back("");
+                break;
+            }
         }
 
         rp = utf8codepoint(rp, &cp);
