@@ -389,7 +389,8 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
         }
         break;
         case ImGuiInputTextFlags_CallbackAlways: {
-            if (m_Completion && m_CandidateSelected != -1) {
+            if (m_Completion) {
+                if (m_CandidateSelected != -1) {
                 const char *wordStart = data->Buf;
                 const char *wordEnd = data->Buf + data->CursorPos;
                 int wordCount = LastToken(wordStart, wordEnd);
@@ -398,6 +399,13 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
 
                 InvalidateCandidates();
             }
+
+                if (m_CursorPos != data->CursorPos) {
+                    InvalidateCandidates();
+                }
+            }
+
+            m_CursorPos = data->CursorPos;
         }
         break;
         case ImGuiInputTextFlags_CallbackResize: {

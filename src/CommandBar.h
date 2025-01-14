@@ -42,6 +42,7 @@ private:
     ImVec2 m_WindowSize;
     bool m_VisiblePrev = false;
     bool m_Completion = false;
+    int m_CursorPos = 0;
     std::string m_Buffer;
     int m_HistoryIndex = -1;
     std::vector<std::string> m_History;
