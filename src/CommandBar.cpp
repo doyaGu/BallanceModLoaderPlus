@@ -81,44 +81,47 @@ void CommandBar::OnDraw() {
         ImGui::SetKeyboardFocusHere(-1);
 
     if (m_Completion) {
-        constexpr ImVec4 SelectedColor = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
+        if (ImGui::BeginChild("##CmdHints")) {
+            constexpr ImVec4 SelectedColor = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
 
-        const int n = m_CandidatePage != m_CandidatePages.size() - 1 ?
-            m_CandidatePages[m_CandidatePage + 1] : (int) m_Candidates.size();
-        for (int i = m_CandidatePages[m_CandidatePage]; i < n; ++i) {
-            if (i != m_CandidateIndex) {
-                if (i < n - 1) {
-                    ImGui::Text("%s | ", m_Candidates[i].c_str());
-                    ImGui::SameLine();
+            const int n = m_CandidatePage != m_CandidatePages.size() - 1 ?
+                m_CandidatePages[m_CandidatePage + 1] : (int) m_Candidates.size();
+            for (int i = m_CandidatePages[m_CandidatePage]; i < n; ++i) {
+                if (i != m_CandidateIndex) {
+                    if (i < n - 1) {
+                        ImGui::Text("%s | ", m_Candidates[i].c_str());
+                        ImGui::SameLine();
+                    } else {
+                        ImGui::Text("%s", m_Candidates[i].c_str());
+                    }
                 } else {
-                    ImGui::Text("%s", m_Candidates[i].c_str());
-                }
-            } else {
-                const auto str = m_Candidates[i].c_str();
+                    const auto str = m_Candidates[i].c_str();
 
-                // Draw selected candidate background
-                ImDrawList *dl = ImGui::GetWindowDrawList();
-                ImVec2 p = ImGui::GetCursorScreenPos();
-                const ImVec2 size = ImGui::CalcTextSize(str);
-                dl->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y), IM_COL32_WHITE);
+                    // Draw selected candidate background
+                    ImDrawList *dl = ImGui::GetWindowDrawList();
+                    ImVec2 p = ImGui::GetCursorScreenPos();
+                    const ImVec2 size = ImGui::CalcTextSize(str);
+                    dl->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y), IM_COL32_WHITE);
 
-                ImGui::TextColored(SelectedColor, "%s", str);
+                    ImGui::TextColored(SelectedColor, "%s", str);
 
-                if (i < n - 1) {
-                    ImGui::SameLine();
-                    ImGui::Text(" | ");
-                    ImGui::SameLine();
+                    if (i < n - 1) {
+                        ImGui::SameLine();
+                        ImGui::Text(" | ");
+                        ImGui::SameLine();
+                    }
                 }
             }
-        }
 
-        if (ImGui::IsKeyDown(ImGuiKey_LeftShift) && ImGui::IsKeyPressed(ImGuiKey_Tab)) {
-            PrevCandidate();
-        }
+            if (ImGui::IsKeyDown(ImGuiKey_LeftShift) && ImGui::IsKeyPressed(ImGuiKey_Tab)) {
+                PrevCandidate();
+            }
 
-        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
-            m_CandidateSelected = m_CandidateIndex;
+            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
+                m_CandidateSelected = m_CandidateIndex;
+            }
         }
+        ImGui::EndChild();
     }
 }
 
@@ -391,14 +394,14 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
         case ImGuiInputTextFlags_CallbackAlways: {
             if (m_Completion) {
                 if (m_CandidateSelected != -1) {
-                const char *wordStart = data->Buf;
-                const char *wordEnd = data->Buf + data->CursorPos;
-                int wordCount = LastToken(wordStart, wordEnd);
-                data->DeleteChars(wordStart - data->Buf, wordCount);
-                data->InsertChars(data->CursorPos, m_Candidates[m_CandidateSelected].c_str());
+                    const char *wordStart = data->Buf;
+                    const char *wordEnd = data->Buf + data->CursorPos;
+                    int wordCount = LastToken(wordStart, wordEnd);
+                    data->DeleteChars(wordStart - data->Buf, wordCount);
+                    data->InsertChars(data->CursorPos, m_Candidates[m_CandidateSelected].c_str());
 
-                InvalidateCandidates();
-            }
+                    InvalidateCandidates();
+                }
 
                 if (m_CursorPos != data->CursorPos) {
                     InvalidateCandidates();
