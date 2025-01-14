@@ -71,7 +71,11 @@ public:
     std::string GetDescription() override { return "Manage command history."; }
     bool IsCheat() override { return false; }
     void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; }
+    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override {
+        if (args.size() == 2)
+            return {"clear"};
+        return {};
+    }
 
 private:
     BMLMod *m_BMLMod;
@@ -96,7 +100,13 @@ public:
     std::string GetDescription() override { return "Commands for HUD."; }
     bool IsCheat() override { return false; }
     void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {"title", "fps", "sr"}; }
+    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override {
+        if (args.size() == 2)
+            return {"title", "fps", "sr", "on", "off"};
+        if (args.size() == 3)
+            return {"on", "off"};
+        return {};
+    }
 
 private:
     BMLMod *m_BMLMod;
