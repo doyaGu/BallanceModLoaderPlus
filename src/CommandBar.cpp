@@ -45,7 +45,15 @@ void CommandBar::OnBegin() {
 }
 
 void CommandBar::OnDraw() {
-    ImGui::SetNextItemWidth(m_WindowSize.x);
+    ImGui::PushStyleColor(ImGuiCol_Button, Bui::GetMenuColor());
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Bui::GetMenuColor());
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, Bui::GetMenuColor());
+    ImGui::Button(">");
+    ImGui::PopStyleColor(3);
+    ImGui::SameLine();
+
+    const ImVec2 buttonSize = ImGui::GetItemRectSize();
+    ImGui::SetNextItemWidth(m_WindowSize.x * ((m_WindowSize.x - buttonSize.x) / m_WindowSize.x));
 
     constexpr ImGuiInputTextFlags InputTextFlags = ImGuiInputTextFlags_EnterReturnsTrue |
                                                    ImGuiInputTextFlags_EscapeClearsAll |
