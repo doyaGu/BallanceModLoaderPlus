@@ -342,6 +342,7 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
                 // Single match. Delete the beginning of the word and replace it entirely so we've got nice casing
                 data->DeleteChars(wordStart - data->Buf, wordCount);
                 data->InsertChars(data->CursorPos, m_Candidates[0].c_str());
+                data->InsertChars(data->CursorPos, " ");
             } else if (m_Candidates.size() > 1) {
                 m_Completion = true;
 
@@ -396,9 +397,10 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
                 if (m_CandidateSelected != -1) {
                     const char *wordStart = data->Buf;
                     const char *wordEnd = data->Buf + data->CursorPos;
-                    int wordCount = LastToken(wordStart, wordEnd);
+                    const int wordCount = LastToken(wordStart, wordEnd);
                     data->DeleteChars(wordStart - data->Buf, wordCount);
                     data->InsertChars(data->CursorPos, m_Candidates[m_CandidateSelected].c_str());
+                    data->InsertChars(data->CursorPos, " ");
 
                     InvalidateCandidates();
                 }
