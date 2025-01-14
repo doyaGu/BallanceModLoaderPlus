@@ -45,9 +45,10 @@ void CommandBar::OnBegin() {
 }
 
 void CommandBar::OnDraw() {
-    ImGui::PushStyleColor(ImGuiCol_Button, Bui::GetMenuColor());
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Bui::GetMenuColor());
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, Bui::GetMenuColor());
+    constexpr ImU32 ButtonColor = IM_COL32(169, 169, 169, 255); // Dark Grey
+    ImGui::PushStyleColor(ImGuiCol_Button, ButtonColor);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ButtonColor);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ButtonColor);
     ImGui::Button(">");
     ImGui::PopStyleColor(3);
     ImGui::SameLine();
