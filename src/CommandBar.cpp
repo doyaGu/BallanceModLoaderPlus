@@ -112,6 +112,12 @@ void CommandBar::OnDraw() {
                 NextCandidate();
             }
 
+            if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
+                PrevPageOfCandidates();
+            } else if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
+                NextPageOfCandidates();
+            }
+
             if (ImGui::IsKeyPressed(ImGuiKey_Enter)) {
                 m_CandidateSelected = m_CandidateIndex;
                 m_ShowHints = false;
@@ -265,6 +271,36 @@ void CommandBar::PrevCandidate() {
         if (m_CandidateIndex >= m_CandidatePages[i]) {
             m_CandidatePage = i;
             break;
+        }
+    }
+}
+
+void CommandBar::NextPageOfCandidates() {
+    if (m_CandidatePages.size() == 1) {
+        m_CandidateIndex = (int) m_Candidates.size() - 1;
+    } else {
+        const int nextPage = (m_CandidatePage + 1) % (int) m_CandidatePages.size();
+        const int nextIndex = nextPage > 0 ? m_CandidatePages[nextPage] - 1 : (int) m_Candidates.size() - 1;
+        if (m_CandidateIndex == nextIndex) {
+            m_CandidateIndex = m_CandidatePages[nextPage];
+            m_CandidatePage = nextPage;
+        } else {
+            m_CandidateIndex = nextIndex;
+        }
+    }
+}
+
+void CommandBar::PrevPageOfCandidates() {
+    if (m_CandidatePages.size() == 1) {
+        m_CandidateIndex = 0;
+    } else {
+        const int prevPage = m_CandidatePage > 0 ? (m_CandidatePage - 1) % (int) m_CandidatePages.size() : (int) m_CandidatePages.size() - 1;
+        const int prevIndex = m_CandidatePages[m_CandidatePage];
+        if (m_CandidateIndex == prevIndex) {
+            m_CandidateIndex = m_CandidatePage > 0 ? m_CandidatePages[prevPage + 1] - 1 : (int) m_Candidates.size() - 1;
+            m_CandidatePage = prevPage;
+        } else {
+            m_CandidateIndex = prevIndex;
         }
     }
 }

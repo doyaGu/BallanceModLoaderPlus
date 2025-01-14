@@ -26,6 +26,8 @@ public:
 
     void NextCandidate();
     void PrevCandidate();
+    void NextPageOfCandidates();
+    void PrevPageOfCandidates();
     void InvalidateCandidates();
 
     size_t OnCompletion(const char *lineStart, const char *lineEnd);
