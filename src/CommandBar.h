@@ -41,13 +41,13 @@ private:
     ImVec2 m_WindowPos;
     ImVec2 m_WindowSize;
     bool m_VisiblePrev = false;
-    bool m_Completion = false;
-    int m_CursorPos = 0;
+    bool m_ShowHints = false;
     std::string m_Buffer;
+    int m_CursorPos = 0;
     int m_HistoryIndex = -1;
     std::vector<std::string> m_History;
-    size_t m_CandidateSelected = -1;
-    size_t m_CandidateIndex = 0;
+    int m_CandidateSelected = -1;
+    int m_CandidateIndex = 0;
     int m_CandidatePage = 0;
     std::vector<int> m_CandidatePages;
     std::vector<std::string> m_Candidates;

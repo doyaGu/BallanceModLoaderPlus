@@ -73,14 +73,7 @@ void CommandBar::OnDraw() {
         ToggleCommandBar(false);
     }
 
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape))
-        ToggleCommandBar(false);
-
-    ImGui::SetItemDefaultFocus();
-    if (!m_VisiblePrev)
-        ImGui::SetKeyboardFocusHere(-1);
-
-    if (m_Completion) {
+    if (m_ShowHints) {
         if (ImGui::BeginChild("##CmdHints")) {
             constexpr ImVec4 SelectedColor = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
 
@@ -113,16 +106,34 @@ void CommandBar::OnDraw() {
                 }
             }
 
-            if (ImGui::IsKeyDown(ImGuiKey_LeftShift) && ImGui::IsKeyPressed(ImGuiKey_Tab)) {
+            if ((ImGui::IsKeyDown(ImGuiKey_LeftShift) && ImGui::IsKeyPressed(ImGuiKey_Tab)) || ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
                 PrevCandidate();
+            } else if (ImGui::IsKeyPressed(ImGuiKey_Tab) || ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
+                NextCandidate();
             }
 
-            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
+            if (ImGui::IsKeyPressed(ImGuiKey_Enter)) {
                 m_CandidateSelected = m_CandidateIndex;
+                m_ShowHints = false;
+            }
+
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+                InvalidateCandidates();
             }
         }
         ImGui::EndChild();
+    } else {
+        if (!m_Candidates.empty()) {
+            m_ShowHints = true;
+        }
+
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+            ToggleCommandBar(false);
     }
+
+    ImGui::SetItemDefaultFocus();
+    if (!m_VisiblePrev)
+        ImGui::SetKeyboardFocusHere(-1);
 }
 
 void CommandBar::OnAfterEnd() {
@@ -235,10 +246,10 @@ void CommandBar::ToggleCommandBar(bool on) {
 }
 
 void CommandBar::NextCandidate() {
-    m_CandidateIndex = (m_CandidateIndex + 1) % m_Candidates.size();
+    m_CandidateIndex = (m_CandidateIndex + 1) % (int) m_Candidates.size();
 
     for (int i = (int) (m_CandidatePages.size() - 1); i >= 0; --i) {
-        if ((int) m_CandidateIndex >= m_CandidatePages[i]) {
+        if (m_CandidateIndex >= m_CandidatePages[i]) {
             m_CandidatePage = i;
             break;
         }
@@ -247,11 +258,11 @@ void CommandBar::NextCandidate() {
 
 void CommandBar::PrevCandidate() {
     if (m_CandidateIndex == 0)
-        m_CandidateIndex = m_Candidates.size();
-    m_CandidateIndex = (m_CandidateIndex - 1) % m_Candidates.size();
+        m_CandidateIndex = (int) m_Candidates.size();
+    m_CandidateIndex = (m_CandidateIndex - 1) % (int) m_Candidates.size();
 
     for (int i = (int) (m_CandidatePages.size() - 1); i >= 0; --i) {
-        if ((int) m_CandidateIndex >= m_CandidatePages[i]) {
+        if (m_CandidateIndex >= m_CandidatePages[i]) {
             m_CandidatePage = i;
             break;
         }
@@ -260,11 +271,12 @@ void CommandBar::PrevCandidate() {
 
 void CommandBar::InvalidateCandidates() {
     m_CandidateSelected = -1;
-    m_Completion = false;
     m_CandidateIndex = 0;
     m_CandidatePage = 0;
     m_CandidatePages.clear();
     m_Candidates.clear();
+
+    m_ShowHints = false;
 }
 
 size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
@@ -344,8 +356,6 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
                 data->InsertChars(data->CursorPos, m_Candidates[0].c_str());
                 data->InsertChars(data->CursorPos, " ");
             } else if (m_Candidates.size() > 1) {
-                m_Completion = true;
-
                 // Multiple matches. Complete as much as we can..
                 // So inputting "C"+Tab will complete to "CL" then display "CLEAR" and "CLASSIFY" as matches.
                 int matchLen = 0;
@@ -373,6 +383,10 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
         }
         break;
         case ImGuiInputTextFlags_CallbackHistory: {
+            if (!m_Candidates.empty()) {
+                InvalidateCandidates();
+            }
+
             const unsigned int prevHistoryPos = m_HistoryIndex;
             if (data->EventKey == ImGuiKey_UpArrow) {
                 if (m_HistoryIndex == -1)
@@ -393,7 +407,7 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
         }
         break;
         case ImGuiInputTextFlags_CallbackAlways: {
-            if (m_Completion) {
+            if (!m_Candidates.empty()) {
                 if (m_CandidateSelected != -1) {
                     const char *wordStart = data->Buf;
                     const char *wordEnd = data->Buf + data->CursorPos;
