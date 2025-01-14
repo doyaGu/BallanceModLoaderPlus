@@ -45,7 +45,7 @@ void CommandBar::OnBegin() {
 }
 
 void CommandBar::OnDraw() {
-    constexpr ImU32 ButtonColor = IM_COL32(169, 169, 169, 255); // Dark Grey
+    constexpr ImU32 ButtonColor = IM_COL32(99, 99, 99, 255); // Dark Grey
     ImGui::PushStyleColor(ImGuiCol_Button, ButtonColor);
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ButtonColor);
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ButtonColor);
