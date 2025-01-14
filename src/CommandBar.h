@@ -24,6 +24,8 @@ public:
 
     void ToggleCommandBar(bool on = true);
 
+    void NextCandidate();
+    void PrevCandidate();
     void InvalidateCandidates();
 
     size_t OnCompletion(const char *lineStart, const char *lineEnd);

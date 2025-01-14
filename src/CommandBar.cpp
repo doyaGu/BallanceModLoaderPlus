@@ -112,6 +112,10 @@ void CommandBar::OnDraw() {
             }
         }
 
+        if (ImGui::IsKeyDown(ImGuiKey_LeftShift) && ImGui::IsKeyPressed(ImGuiKey_Tab)) {
+            PrevCandidate();
+        }
+
         if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
             m_CandidateSelected = m_CandidateIndex;
         }
@@ -227,6 +231,30 @@ void CommandBar::ToggleCommandBar(bool on) {
     }
 }
 
+void CommandBar::NextCandidate() {
+    m_CandidateIndex = (m_CandidateIndex + 1) % m_Candidates.size();
+
+    for (int i = (int) (m_CandidatePages.size() - 1); i >= 0; --i) {
+        if ((int) m_CandidateIndex >= m_CandidatePages[i]) {
+            m_CandidatePage = i;
+            break;
+        }
+    }
+}
+
+void CommandBar::PrevCandidate() {
+    if (m_CandidateIndex == 0)
+        m_CandidateIndex = m_Candidates.size();
+    m_CandidateIndex = (m_CandidateIndex - 1) % m_Candidates.size();
+
+    for (int i = (int) (m_CandidatePages.size() - 1); i >= 0; --i) {
+        if ((int) m_CandidateIndex >= m_CandidatePages[i]) {
+            m_CandidatePage = i;
+            break;
+        }
+    }
+}
+
 void CommandBar::InvalidateCandidates() {
     m_CandidateSelected = -1;
     m_Completion = false;
@@ -293,13 +321,7 @@ size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
             }
         }
     } else {
-        m_CandidateIndex = (m_CandidateIndex + 1) % m_Candidates.size();
-        for (int i = (int) (m_CandidatePages.size() - 1); i >= 0; --i) {
-            if ((int) m_CandidateIndex >= m_CandidatePages[i]) {
-                m_CandidatePage = i;
-                break;
-            }
-        }
+        NextCandidate();
     }
 
     return m_Candidates.size();
