@@ -77,6 +77,11 @@ void CommandBar::OnDraw() {
         if (ImGui::BeginChild("##CmdHints")) {
             constexpr ImVec4 SelectedColor = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
 
+            if (m_CandidatePage != 0) {
+                ImGui::TextUnformatted("< ");
+                ImGui::SameLine();
+            }
+
             const int n = m_CandidatePage != m_CandidatePages.size() - 1 ?
                 m_CandidatePages[m_CandidatePage + 1] : (int) m_Candidates.size();
             for (int i = m_CandidatePages[m_CandidatePage]; i < n; ++i) {
@@ -104,6 +109,11 @@ void CommandBar::OnDraw() {
                         ImGui::SameLine();
                     }
                 }
+            }
+
+            if (n != (int) m_Candidates.size()) {
+                ImGui::SameLine();
+                ImGui::TextUnformatted(" >");
             }
 
             if ((ImGui::IsKeyDown(ImGuiKey_LeftShift) && ImGui::IsKeyPressed(ImGuiKey_Tab)) || ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
@@ -362,14 +372,14 @@ size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
 
         const float max = m_WindowSize.x;
         const ImVec2 sepSize = ImGui::CalcTextSize(" | ");
-        float width = -sepSize.x;
+        float width = 0;
         m_CandidatePages.push_back(0);
         for (int i = 0; i < (int) m_Candidates.size(); ++i) {
             const ImVec2 size = ImGui::CalcTextSize(m_Candidates[i].c_str());
             width += size.x + sepSize.x;
             if (width > max) {
                 m_CandidatePages.push_back(i);
-                width = -sepSize.x;
+                width = 0;
             }
         }
     } else {
