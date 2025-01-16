@@ -372,15 +372,14 @@ size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
 
         const float max = m_WindowSize.x;
         const ImVec2 sepSize = ImGui::CalcTextSize(" | ");
-        const ImVec2 pageMarkerSize = ImGui::CalcTextSize(" >");
-        float width = -sepSize.x + pageMarkerSize.x;
+        float width = 0;
         m_CandidatePages.push_back(0);
         for (int i = 0; i < (int) m_Candidates.size(); ++i) {
             const ImVec2 size = ImGui::CalcTextSize(m_Candidates[i].c_str());
             width += size.x + sepSize.x;
             if (width > max) {
                 m_CandidatePages.push_back(i);
-                width = -sepSize.x + 2 * pageMarkerSize.x;
+                width = sepSize.x;
             }
         }
     } else {
