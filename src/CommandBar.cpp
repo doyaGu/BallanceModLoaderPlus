@@ -370,16 +370,19 @@ size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
             }
         }
 
-        const ImVec2 sepSize = ImGui::CalcTextSize(" | ");
-        const float max = m_WindowSize.x - 2 * sepSize.x;
-        float width = -sepSize.x;
+        auto &style = ImGui::GetStyle();
+        const float frame = (style.FramePadding.x + style.FrameBorderSize) * 2.0f;
+        const float sep = ImGui::CalcTextSize(" | ").x + frame;
+        const float marker = ImGui::CalcTextSize(" >").x + frame;
+        const float max = m_WindowSize.x;
+        float width = -sep + marker; // First page have at most 1 marker
         m_CandidatePages.push_back(0);
         for (int i = 0; i < (int) m_Candidates.size(); ++i) {
             const ImVec2 size = ImGui::CalcTextSize(m_Candidates[i].c_str());
-            width += size.x + sepSize.x;
+            width += size.x + sep;
             if (width > max) {
                 m_CandidatePages.push_back(i);
-                width = 0;
+                width = -sep + marker * 2.0f; // Next page have at most 2 markers
             }
         }
     } else {
