@@ -98,6 +98,8 @@ void CommandBar::OnDraw() {
                     // Draw selected candidate background
                     ImDrawList *dl = ImGui::GetWindowDrawList();
                     ImVec2 p = ImGui::GetCursorScreenPos();
+                    const auto &style = ImGui::GetStyle();
+                    p.y += style.FramePadding.y + style.FrameBorderSize;
                     const ImVec2 size = ImGui::CalcTextSize(str);
                     dl->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y), IM_COL32_WHITE);
 
@@ -370,7 +372,7 @@ size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
             }
         }
 
-        auto &style = ImGui::GetStyle();
+        const auto &style = ImGui::GetStyle();
         const float frame = (style.FramePadding.x + style.FrameBorderSize) * 2.0f;
         const float sep = ImGui::CalcTextSize(" | ").x + frame;
         const float marker = ImGui::CalcTextSize(" >").x + frame;
