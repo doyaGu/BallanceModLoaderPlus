@@ -370,16 +370,16 @@ size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
             }
         }
 
-        const float max = m_WindowSize.x;
         const ImVec2 sepSize = ImGui::CalcTextSize(" | ");
-        float width = 0;
+        const float max = m_WindowSize.x - 2 * sepSize.x;
+        float width = -sepSize.x;
         m_CandidatePages.push_back(0);
         for (int i = 0; i < (int) m_Candidates.size(); ++i) {
             const ImVec2 size = ImGui::CalcTextSize(m_Candidates[i].c_str());
             width += size.x + sepSize.x;
             if (width > max) {
                 m_CandidatePages.push_back(i);
-                width = sepSize.x;
+                width = 0;
             }
         }
     } else {
