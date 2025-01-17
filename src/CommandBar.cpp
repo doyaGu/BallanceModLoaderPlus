@@ -79,7 +79,7 @@ void CommandBar::OnDraw() {
 
             if (m_CandidatePage != 0) {
                 ImGui::TextUnformatted("< ");
-                ImGui::SameLine();
+                ImGui::SameLine(0, 0);
             }
 
             const int n = m_CandidatePage != m_CandidatePages.size() - 1 ?
@@ -88,7 +88,7 @@ void CommandBar::OnDraw() {
                 if (i != m_CandidateIndex) {
                     if (i < n - 1) {
                         ImGui::Text("%s | ", m_Candidates[i].c_str());
-                        ImGui::SameLine();
+                        ImGui::SameLine(0, 0);
                     } else {
                         ImGui::Text("%s", m_Candidates[i].c_str());
                     }
@@ -105,15 +105,15 @@ void CommandBar::OnDraw() {
                     ImGui::TextColored(SelectedColor, "%s", str);
 
                     if (i < n - 1) {
-                        ImGui::SameLine();
+                        ImGui::SameLine(0, 0);
                         ImGui::Text(" | ");
-                        ImGui::SameLine();
+                        ImGui::SameLine(0, 0);
                     }
                 }
             }
 
             if (n != (int) m_Candidates.size()) {
-                ImGui::SameLine();
+                ImGui::SameLine(0, 0);
                 ImGui::TextUnformatted(" >");
             }
 
@@ -371,10 +371,8 @@ size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
             }
         }
 
-        const auto &style = ImGui::GetStyle();
-        const float frame = (style.FramePadding.x + style.FrameBorderSize) * 2.0f;
-        const float sep = ImGui::CalcTextSize(" | ").x + frame;
-        const float marker = ImGui::CalcTextSize(" >").x + frame;
+        const float sep = ImGui::CalcTextSize(" | ").x;
+        const float marker = ImGui::CalcTextSize(" >").x;
         const float max = m_WindowSize.x;
         float width = marker; // First page have at most 1 marker
         m_CandidatePages.push_back(0);
