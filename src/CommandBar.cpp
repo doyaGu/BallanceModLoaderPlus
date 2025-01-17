@@ -353,8 +353,12 @@ size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
             for (int i = 0; i < count; ++i) {
                 ICommand *cmd = BML_GetModManager()->GetCommand(i);
                 if (cmd) {
-                    if (utf8ncasecmp(cmd->GetName().c_str(), cmdStart, cmdLength) == 0)
-                        m_Candidates.push_back(cmd->GetName());
+                    auto name = cmd->GetName();
+                    if (utf8ncasecmp(name.c_str(), cmdStart, cmdLength) == 0)
+                        m_Candidates.emplace_back(std::move(name));
+                    auto alias = cmd->GetAlias();
+                    if (!alias.empty() && utf8ncasecmp(alias.c_str(), cmdStart, cmdLength) == 0)
+                        m_Candidates.emplace_back(std::move(alias));
                 }
             }
         } else {
