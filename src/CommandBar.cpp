@@ -30,7 +30,7 @@ ImGuiWindowFlags CommandBar::GetFlags() {
 void CommandBar::OnBegin() {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_WindowBg, Bui::GetMenuColor());
     ImGui::PushStyleColor(ImGuiCol_FrameBg, Bui::GetMenuColor());
 
