@@ -334,16 +334,10 @@ void CommandBar::GenerateCandidatePages() {
 
     for (int i = 0; i < (int) m_Candidates.size(); ++i) {
         const ImVec2 size = ImGui::CalcTextSize(m_Candidates[i].c_str());
-        // Add indicator widths if it's not the first page
-        float effectiveMax = max;
-        if (m_CandidatePages.size() > 1) {
-            effectiveMax -= pager * 2; // Reserve space for "< " and " >"
-        }
-
         width += size.x + sep;
-        if (width > effectiveMax) {
+        if (width > max) {
             m_CandidatePages.push_back(i); // Start a new page
-            width = size.x - sep + pager * 2; // Reset width with indicators
+            width = size.x - sep + pager * 2;
         }
     }
 }
