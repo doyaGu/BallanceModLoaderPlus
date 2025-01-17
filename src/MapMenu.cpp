@@ -234,6 +234,7 @@ void MapListPage::ClearSearch() {
 }
 
 void MapListPage::OnSearchMaps() {
+    SetPage(0);
     m_MapSearchResult.clear();
 
     if (!IsSearching() || m_Count == 0)
