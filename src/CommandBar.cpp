@@ -470,10 +470,10 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
 
                     InvalidateCandidates();
                 }
-                }
+            }
 
-                if (m_CursorPos != data->CursorPos) {
-                    InvalidateCandidates();
+            if (m_CursorPos != data->CursorPos) {
+                InvalidateCandidates();
             }
 
             m_CursorPos = data->CursorPos;
