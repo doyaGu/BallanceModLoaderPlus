@@ -337,7 +337,7 @@ void CommandBar::GenerateCandidatePages() {
         width += size.x + sep;
         if (width > max) {
             m_CandidatePages.push_back(i); // Start a new page
-            width = size.x - sep + pager * 2;
+            width = size.x + pager * 2;
         }
     }
 }
