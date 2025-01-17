@@ -379,12 +379,13 @@ void ModManager::RegisterCommand(ICommand *cmd) {
     m_CommandMap[cmd->GetName()] = cmd;
     m_Commands.push_back(cmd);
 
-    if (!cmd->GetAlias().empty()) {
-        it = m_CommandMap.find(cmd->GetAlias());
+    const auto alias = cmd->GetAlias();
+    if (!alias.empty()) {
+        it = m_CommandMap.find(alias);
         if (it == m_CommandMap.end())
-            m_CommandMap[cmd->GetAlias()] = cmd;
+            m_CommandMap[alias] = cmd;
         else
-            m_Logger->Warn("Command Alias Conflict: %s is redefined.", cmd->GetAlias().c_str());
+            m_Logger->Warn("Command Alias Conflict: %s is redefined.", alias.c_str());
     }
 }
 
