@@ -98,7 +98,6 @@ void CommandBar::OnDraw() {
                     // Draw selected candidate background
                     ImDrawList *dl = ImGui::GetWindowDrawList();
                     ImVec2 p = ImGui::GetCursorScreenPos();
-                    p.y += ImGui::GetStyle().FramePadding.x; // Baseline offset
                     const ImVec2 size = ImGui::CalcTextSize(str);
                     dl->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y), IM_COL32_WHITE);
 
