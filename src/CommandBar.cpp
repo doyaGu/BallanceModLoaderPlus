@@ -320,6 +320,34 @@ void CommandBar::InvalidateCandidates() {
     m_ShowHints = false;
 }
 
+void CommandBar::GenerateCandidatePages() {
+    if (m_Candidates.empty())
+        return;
+
+    const float sep = ImGui::CalcTextSize(" | ").x;
+    const float pager = ImGui::CalcTextSize("< ").x;
+    const float max = m_WindowSize.x;
+    float width = -sep;
+
+    m_CandidatePages.clear();
+    m_CandidatePages.push_back(0); // Start the first page
+
+    for (int i = 0; i < (int) m_Candidates.size(); ++i) {
+        const ImVec2 size = ImGui::CalcTextSize(m_Candidates[i].c_str());
+        // Add indicator widths if it's not the first page
+        float effectiveMax = max;
+        if (m_CandidatePages.size() > 1) {
+            effectiveMax -= pager * 2; // Reserve space for "< " and " >"
+        }
+
+        width += size.x + sep;
+        if (width > effectiveMax) {
+            m_CandidatePages.push_back(i); // Start a new page
+            width = size.x - sep + pager * 2; // Reset width with indicators
+        }
+    }
+}
+
 size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
     const char *wordStart = lineStart;
     int wordCount = LastToken(wordStart, lineEnd);
@@ -369,18 +397,7 @@ size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
             }
         }
 
-        const float sep = ImGui::CalcTextSize(" | ").x;
-        const float max = m_WindowSize.x;
-        float width = sep;
-        m_CandidatePages.push_back(0);
-        for (int i = 0; i < (int) m_Candidates.size(); ++i) {
-            const ImVec2 size = ImGui::CalcTextSize(m_Candidates[i].c_str());
-            width += size.x + sep;
-            if (width > max) {
-                m_CandidatePages.push_back(i);
-                width = sep * 3.0f;
-            }
-        }
+        GenerateCandidatePages();
     } else {
         NextCandidate();
     }

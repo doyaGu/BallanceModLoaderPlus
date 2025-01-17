@@ -29,6 +29,7 @@ public:
     void NextPageOfCandidates();
     void PrevPageOfCandidates();
     void InvalidateCandidates();
+    void GenerateCandidatePages();
 
     size_t OnCompletion(const char *lineStart, const char *lineEnd);
     int OnTextEdit(ImGuiInputTextCallbackData *data);
