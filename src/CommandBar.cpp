@@ -85,13 +85,14 @@ void CommandBar::OnDraw() {
             const int n = m_CandidatePage != m_CandidatePages.size() - 1 ?
                 m_CandidatePages[m_CandidatePage + 1] : (int) m_Candidates.size();
             for (int i = m_CandidatePages[m_CandidatePage]; i < n; ++i) {
+                if (i != m_CandidatePages[m_CandidatePage]) {
+                    ImGui::SameLine(0, 0);
+                    ImGui::TextUnformatted(" | ");
+                    ImGui::SameLine(0, 0);
+                }
+
                 if (i != m_CandidateIndex) {
-                    if (i < n - 1) {
-                        ImGui::Text("%s | ", m_Candidates[i].c_str());
-                        ImGui::SameLine(0, 0);
-                    } else {
-                        ImGui::Text("%s", m_Candidates[i].c_str());
-                    }
+                    ImGui::Text("%s", m_Candidates[i].c_str());
                 } else {
                     const auto str = m_Candidates[i].c_str();
 
@@ -102,12 +103,6 @@ void CommandBar::OnDraw() {
                     dl->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y), IM_COL32_WHITE);
 
                     ImGui::TextColored(SelectedColor, "%s", str);
-
-                    if (i < n - 1) {
-                        ImGui::SameLine(0, 0);
-                        ImGui::Text(" | ");
-                        ImGui::SameLine(0, 0);
-                    }
                 }
             }
 
