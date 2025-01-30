@@ -130,7 +130,7 @@ bool MapMenu::ExploreMaps(MapEntry *maps, int depth) {
     _findclose(handle);
 
     std::sort(maps->children.begin(), maps->children.end(), [](const MapEntry *a, const MapEntry *b) {
-        return a->type > b->type;
+        return a->type < b->type || a->name < b->name;
     });
 
     return !maps->children.empty();

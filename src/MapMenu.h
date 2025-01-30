@@ -11,8 +11,8 @@ class BMLMod;
 class MapMenu;
 
 enum MapEntryType {
+    MAP_ENTRY_DIR,
     MAP_ENTRY_FILE,
-    MAP_ENTRY_DIR
 };
 
 struct MapEntry {
