@@ -18,7 +18,7 @@ CKERROR CreateModManager(CKContext *context) {
 }
 
 CKERROR RemoveModManager(CKContext *context) {
-    delete BML_GetModManager();
+    delete ModManager::GetManager(context);
     return CK_OK;
 }
 
