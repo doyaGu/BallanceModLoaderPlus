@@ -5,8 +5,6 @@
 #include <vector>
 #include <memory>
 
-#include <utf8.h>
-
 #include "BML/Bui.h"
 
 class BMLMod;
@@ -36,24 +34,24 @@ struct MapEntry {
         }
     }
 
-    friend bool operator<(const MapEntry &lhs, const MapEntry &rhs) {
-        if (lhs.type < rhs.type)
+    bool operator<(const MapEntry &rhs) const {
+        if (type < rhs.type)
             return true;
-        if (rhs.type < lhs.type)
+        if (rhs.type < type)
             return false;
-        return utf8cmp(lhs.name.c_str(), rhs.name.c_str()) < 0;
+        return path < rhs.path;
     }
 
-    friend bool operator<=(const MapEntry &lhs, const MapEntry &rhs) {
-        return !(rhs < lhs);
+    bool operator>(const MapEntry &rhs) const {
+        return rhs < *this;
     }
 
-    friend bool operator>(const MapEntry &lhs, const MapEntry &rhs) {
-        return rhs < lhs;
+    bool operator<=(const MapEntry &rhs) const {
+        return !(*this > rhs);
     }
 
-    friend bool operator>=(const MapEntry &lhs, const MapEntry &rhs) {
-        return !(lhs < rhs);
+    bool operator>=(const MapEntry &rhs) const {
+        return !(*this < rhs);
     }
 };
 
