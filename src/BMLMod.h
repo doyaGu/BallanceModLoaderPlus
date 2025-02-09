@@ -41,6 +41,7 @@ public:
     void OnModifyConfig(const char *category, const char *key, IProperty *prop) override;
 
     void OnPreStartMenu() override;
+    void OnPostStartMenu() override;
     void OnExitGame() override;
     void OnStartLevel() override;
     void OnPostExitLevel() override;
@@ -64,6 +65,7 @@ public:
 
     int GetHSScore();
 
+    void ApplyFrameRateSettings();
     void AdjustFrameRate(bool sync = false, float limit = 60.0f);
 
     void PrintHistory();

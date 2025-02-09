@@ -247,20 +247,14 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
 }
 
 void BMLMod::OnPreStartMenu() {
-    if (m_UnlockFPS->GetBoolean()) {
-        AdjustFrameRate(false, 0);
-    } else {
-        int val = m_FPSLimit->GetInteger();
-        if (val > 0)
-            AdjustFrameRate(false, static_cast<float>(val));
-        else
-            AdjustFrameRate(true);
-    }
-
     RenderHook::EnableWidescreenFix(m_WidescreenFix->GetBoolean());
 
     m_HUD.ShowTitle(m_ShowTitle->GetBoolean());
     m_HUD.ShowFPS(m_ShowFPS->GetBoolean());
+}
+
+void BMLMod::OnPostStartMenu() {
+    ApplyFrameRateSettings();
 }
 
 void BMLMod::OnExitGame() {
@@ -271,15 +265,8 @@ void BMLMod::OnExitGame() {
 }
 
 void BMLMod::OnStartLevel() {
-    if (m_UnlockFPS->GetBoolean()) {
-        AdjustFrameRate(false, 0);
-    } else {
-        const int val = m_FPSLimit->GetInteger();
-        if (val > 0)
-            AdjustFrameRate(false, static_cast<float>(val));
-        else
-            AdjustFrameRate(true);
-    }
+    ApplyFrameRateSettings();
+
     m_HUD.ResetSRTimer(m_ShowSR->GetBoolean());
     SetParamValue(m_LoadCustom, FALSE);
 }
@@ -367,6 +354,18 @@ int BMLMod::GetHSScore() {
     energy->GetElementValue(0, 0, &points);
     energy->GetElementValue(0, 1, &lifes);
     return points + lifes * 200;
+}
+
+void BMLMod::ApplyFrameRateSettings() {
+    if (m_UnlockFPS->GetBoolean()) {
+        AdjustFrameRate(false, 0);
+    } else {
+        int val = m_FPSLimit->GetInteger();
+        if (val > 0)
+            AdjustFrameRate(false, static_cast<float>(val));
+        else
+            AdjustFrameRate(true);
+    }
 }
 
 void BMLMod::AdjustFrameRate(bool sync, float limit) {
