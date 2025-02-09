@@ -114,6 +114,8 @@ namespace BML {
     }
 }
 
+BML_BEGIN_CDECLS
 BML_EXPORT BML::IDataShare *BML_GetDataShare(const char *name);
+BML_END_CDECLS
 
 #endif // BML_IDATASHARE_H
