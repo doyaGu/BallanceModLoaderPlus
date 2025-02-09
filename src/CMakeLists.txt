@@ -143,6 +143,10 @@ target_link_libraries(BML
         minhook zip onig utf8
 )
 
+target_compile_options(BML PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:$<$<CXX_COMPILER_ID:MSVC>:/Zc:char8_t->>
+)
+
 target_compile_definitions(BML PRIVATE "BML_EXPORTS" "IMGUI_EXPORT")
 
 set_target_properties(BML PROPERTIES
