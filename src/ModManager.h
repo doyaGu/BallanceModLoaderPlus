@@ -4,7 +4,6 @@
 #include <cstdio>
 #include <functional>
 #include <string>
-#include <list>
 #include <vector>
 #include <unordered_map>
 #include <memory>
@@ -14,9 +13,9 @@
 
 #include "BML/IBML.h"
 #include "BML/IMod.h"
+#include "BML/Scheduler.h"
 #include "DataShare.h"
 #include "Config.h"
-#include "Timer.h"
 #include "HookUtils.h"
 
 #ifndef MOD_MANAGER_GUID
@@ -178,6 +177,8 @@ public:
     void AddTimerLoop(CKDWORD delay, std::function<bool()> callback) override;
     void AddTimer(float delay, std::function<void()> callback) override;
     void AddTimerLoop(float delay, std::function<bool()> callback) override;
+
+    Scheduler &GetScheduler() { return m_Scheduler; }
 
     void ExitGame() override;
 
@@ -376,7 +377,7 @@ protected:
     typedef std::unordered_map<std::string, Config *> ConfigMap;
     ConfigMap m_ConfigMap;
 
-    std::list<Timer> m_Timers;
+    Scheduler m_Scheduler;
 
     std::unordered_map<void *, std::vector<IMod *>> m_CallbackMap;
 };

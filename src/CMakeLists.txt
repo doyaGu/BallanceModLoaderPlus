@@ -44,7 +44,6 @@ set(BML_PRIVATE_HEADERS
         DataShare.h
         Logger.h
         Config.h
-        Timer.h
 
         StringUtils.h
         PathUtils.h
@@ -91,7 +90,6 @@ set(BML_SOURCES
         DataShare.cpp
         Logger.cpp
         Config.cpp
-        Timer.cpp
 
         StringUtils.cpp
         PathUtils.cpp

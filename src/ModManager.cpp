@@ -119,14 +119,9 @@ CKERROR ModManager::PostProcess() {
     extern void PhysicsPostProcess();
     PhysicsPostProcess();
 
-    for (auto iter = m_Timers.begin(); iter != m_Timers.end();) {
-        if (!iter->Process(m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime()))
-            iter = m_Timers.erase(iter);
-        else
-            ++iter;
-    }
-
     BroadcastCallback(&IMod::OnProcess);
+
+    m_Scheduler.Update(m_TimeManager->GetLastDeltaTimeFree());
 
     static bool cursorVisibilityChanged = false;
     if (!m_InputHook->GetCursorVisibility()) {
@@ -642,19 +637,49 @@ void ModManager::Show(CKBeObject *obj, CK_OBJECT_SHOWOPTION show, bool hierarchy
 }
 
 void ModManager::AddTimer(CKDWORD delay, std::function<void()> callback) {
-    m_Timers.emplace_back(delay, callback, m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime());
+    Spawn(m_Scheduler,
+                 [](CKDWORD delay, std::function<void()> callback) -> Task {
+                     co_await WaitForFrames(static_cast<int>(delay));
+                     callback();
+                     co_return;
+                 },
+                 delay, std::move(callback));
 }
 
 void ModManager::AddTimerLoop(CKDWORD delay, std::function<bool()> callback) {
-    m_Timers.emplace_back(delay, callback, m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime());
+    Spawn(m_Scheduler,
+                 [](CKDWORD delay, std::function<bool()> callback) -> Task {
+                     while (true) {
+                         co_await WaitForFrames(static_cast<int>(delay));
+                         if (!callback())
+                             break;
+                     }
+                     co_return;
+                 },
+                 delay, std::move(callback));
 }
 
 void ModManager::AddTimer(float delay, std::function<void()> callback) {
-    m_Timers.emplace_back(delay, callback, m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime());
+    Spawn(m_Scheduler,
+                 [](float delay, std::function<void()> callback) -> Task {
+                     co_await WaitForMilliseconds(delay);
+                     callback();
+                     co_return;
+                 },
+                 delay, std::move(callback));
 }
 
 void ModManager::AddTimerLoop(float delay, std::function<bool()> callback) {
-    m_Timers.emplace_back(delay, callback, m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime());
+    Spawn(m_Scheduler,
+                 [](float delay, std::function<bool()> callback) -> Task {
+                     while (true) {
+                         co_await WaitForMilliseconds(delay);
+                         if (!callback())
+                             break;
+                     }
+                     co_return;
+                 },
+                 delay, std::move(callback));
 }
 
 void ModManager::ExitGame() {
