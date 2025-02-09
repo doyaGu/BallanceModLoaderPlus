@@ -45,7 +45,6 @@ set(BML_PRIVATE_HEADERS
         Logger.h
         Config.h
         Timer.h
-        Variant.h
 
         StringUtils.h
         PathUtils.h
@@ -93,7 +92,6 @@ set(BML_SOURCES
         Logger.cpp
         Config.cpp
         Timer.cpp
-        Variant.cpp
 
         StringUtils.cpp
         PathUtils.cpp
