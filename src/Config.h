@@ -4,10 +4,10 @@
 #include <string>
 #include <vector>
 #include <sstream>
+#include <variant>
 
 #include "BML/IConfig.h"
 #include "BML/IMod.h"
-#include "Variant.h"
 
 class Config;
 
@@ -56,7 +56,7 @@ public:
     void SetModified();
 
 private:
-    Variant m_Value;
+    std::variant<bool, int, float, std::string> m_Value;
     PropertyType m_Type = INTEGER;
     size_t m_Hash = 0;
     std::string m_Comment;

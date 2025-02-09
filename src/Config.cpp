@@ -315,27 +315,29 @@ Property::Property(Config *config, std::string category, std::string key) {
 }
 
 const char *Property::GetString() {
-    return m_Type == STRING ? m_Value.GetString() : "";
+    return m_Type == STRING ? std::get<std::string>(m_Value).c_str() : "";
 }
 
 bool Property::GetBoolean() {
-    return m_Type == BOOLEAN && m_Value.GetBool();
+    return m_Type == BOOLEAN && std::get<bool>(m_Value);
 }
 
 int Property::GetInteger() {
-    return m_Type == INTEGER ? m_Value.GetInt32() : 0;
+    return m_Type == INTEGER ? std::get<int>(m_Value) : 0;
 }
 
 float Property::GetFloat() {
-    return m_Type == FLOAT ? m_Value.GetFloat32() : 0.0f;
+    return m_Type == FLOAT ? std::get<float>(m_Value) : 0.0f;
 }
 
 CKKEYBOARD Property::GetKey() {
-    return m_Type == KEY ? (CKKEYBOARD) m_Value.GetInt32() : (CKKEYBOARD) 0;
+    return m_Type == KEY ? static_cast<CKKEYBOARD>(std::get<int>(m_Value)) : static_cast<CKKEYBOARD>(0);
 }
 
 void Property::SetString(const char *value) {
-    if (m_Type != STRING || m_Value != value) {
+    if (!value) value = "";
+    const auto &v = std::get<std::string>(m_Value);
+    if (m_Type != STRING || v != value) {
         m_Value = value;
         m_Type = STRING;
         m_Hash = utils::HashString(value);
@@ -344,7 +346,7 @@ void Property::SetString(const char *value) {
 }
 
 void Property::SetBoolean(bool value) {
-    if (m_Type != BOOLEAN || m_Value != value) {
+    if (m_Type != BOOLEAN || std::get<bool>(m_Value) != value) {
         m_Value = value;
         m_Type = BOOLEAN;
         SetModified();
@@ -352,7 +354,7 @@ void Property::SetBoolean(bool value) {
 }
 
 void Property::SetInteger(int value) {
-    if (m_Type != INTEGER || m_Value != value) {
+    if (m_Type != INTEGER || std::get<int>(m_Value) != value) {
         m_Value = value;
         m_Type = INTEGER;
         SetModified();
@@ -360,7 +362,7 @@ void Property::SetInteger(int value) {
 }
 
 void Property::SetFloat(float value) {
-    if (m_Type != FLOAT || m_Value != value) {
+    if (m_Type != FLOAT || std::get<float>(m_Value) != value) {
         m_Value = value;
         m_Type = FLOAT;
         SetModified();
@@ -368,8 +370,8 @@ void Property::SetFloat(float value) {
 }
 
 void Property::SetKey(CKKEYBOARD value) {
-    if (m_Type != KEY || m_Value != static_cast<int32_t>(value)) {
-        m_Value = static_cast<int32_t>(value);
+    if (m_Type != KEY || std::get<int>(m_Value) != static_cast<int>(value)) {
+        m_Value = static_cast<int>(value);
         m_Type = KEY;
         SetModified();
     }
@@ -414,8 +416,7 @@ void Property::SetDefaultKey(CKKEYBOARD value) {
 size_t Property::GetHash() {
     if (m_Type == STRING)
         return m_Hash;
-    else
-        return m_Value.GetValue().u32;
+    return std::get<int>(m_Value);
 }
 
 void Property::CopyValue(Property *o) {
@@ -444,31 +445,32 @@ void Property::CopyValue(Property *o) {
 size_t Property::GetStringSize() {
     if (GetType() != STRING)
         return 0;
-    return m_Value.GetSize();
+    const auto &v = std::get<std::string>(m_Value);
+    return v.size();
 }
 
 bool *Property::GetBooleanPtr() {
     if (GetType() != BOOLEAN)
         return nullptr;
-    return &m_Value.GetValue().b;
+    return &std::get<bool>(m_Value);
 }
 
 int *Property::GetIntegerPtr() {
     if (GetType() != INTEGER)
         return nullptr;
-    return &m_Value.GetValue().i32;
+    return &std::get<int>(m_Value);
 }
 
 float *Property::GetFloatPtr() {
     if (GetType() != FLOAT)
         return nullptr;
-    return &m_Value.GetValue().f32;
+    return &std::get<float>(m_Value);
 }
 
 CKKEYBOARD *Property::GetKeyPtr() {
     if (GetType() != KEY)
         return nullptr;
-    return reinterpret_cast<CKKEYBOARD *>(&m_Value.GetValue().i32);
+    return reinterpret_cast<CKKEYBOARD *>(&std::get<int>(m_Value));
 }
 
 void Property::SetModified() {
