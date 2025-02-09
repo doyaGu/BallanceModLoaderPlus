@@ -120,7 +120,6 @@ bool MapMenu::ExploreMaps(MapEntry *maps, int depth) {
             _wsplitpath(fileinfo.name, nullptr, nullptr, filename, nullptr);
 
             auto *entry = new MapEntry(maps, MAP_ENTRY_FILE);
-            entry->type = MAP_ENTRY_FILE;
             entry->name = utils::Utf16ToUtf8(filename);
             entry->path = fullPath;
             maps->children.push_back(entry);
@@ -129,9 +128,7 @@ bool MapMenu::ExploreMaps(MapEntry *maps, int depth) {
 
     _findclose(handle);
 
-    std::sort(maps->children.begin(), maps->children.end(), [](const MapEntry *a, const MapEntry *b) {
-        return a->type < b->type || a->name < b->name;
-    });
+    std::sort(maps->children.begin(), maps->children.end());
 
     return !maps->children.empty();
 }
