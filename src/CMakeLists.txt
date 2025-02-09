@@ -29,13 +29,13 @@ set(BML_PRIVATE_HEADERS
 
         BMLMod.h
         NewBallTypeMod.h
+        Commands.h
 
         HUD.h
         ModMenu.h
         MapMenu.h
         CommandBar.h
         MessageBoard.h
-        Commands.h
 
         Overlay.h
 
@@ -59,13 +59,13 @@ set(BML_SOURCES
         IMod.cpp
         BMLMod.cpp
         NewBallTypeMod.cpp
+        Commands.cpp
 
         HUD.cpp
         ModMenu.cpp
         MapMenu.cpp
         CommandBar.cpp
         MessageBoard.cpp
-        Commands.cpp
 
         Gui/Element.cpp
         Gui/Text.cpp
