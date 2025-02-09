@@ -6,7 +6,7 @@ project(BallanceModLoaderPlus
         DESCRIPTION "Renovated Mod Loader for Ballance"
         HOMEPAGE_URL https://github.com/doyaGu/BallanceModLoaderPlus)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED NO)
 set(CMAKE_CXX_EXTENSIONS YES)
 
