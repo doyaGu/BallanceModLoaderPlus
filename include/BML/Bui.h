@@ -9,10 +9,12 @@
 
 #include "imgui.h"
 
-#include "BML/Export.h"
 #include "CKContext.h"
 
+#include "BML/Export.h"
+
 namespace Bui {
+    // Enumeration for different types of buttons.
     enum ButtonType {
         BUTTON_MAIN,
         BUTTON_BACK,
@@ -28,63 +30,67 @@ namespace Bui {
         BUTTON_COUNT
     };
 
+    // Converts normalized coordinates (0.0-1.0) to pixel coordinates based on the main viewport size.
     inline ImVec2 CoordToPixel(const ImVec2 &coord) {
         const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
         return {vpSize.x * coord.x, vpSize.y * coord.y};
     }
 
+    // Initialization functions. Should not be called directly.
     BML_EXPORT bool InitTextures(CKContext *context);
     BML_EXPORT bool InitMaterials(CKContext *context);
     BML_EXPORT bool InitSounds(CKContext *context);
 
     BML_EXPORT ImGuiContext *GetImGuiContext();
 
+    // RAII helper class to temporarily switch the current ImGui context.
     class ImGuiContextScope {
     public:
-        explicit ImGuiContextScope(ImGuiContext *context = nullptr) {
-            m_ImGuiContext = (context != nullptr) ? context : ImGui::GetCurrentContext();
-            ImGui::SetCurrentContext(GetImGuiContext());
+        explicit ImGuiContextScope(ImGuiContext *newContext = nullptr)
+            : m_PreviousContext(ImGui::GetCurrentContext()) {
+            ImGui::SetCurrentContext(newContext ? newContext : GetImGuiContext());
         }
 
         ImGuiContextScope(const ImGuiContextScope &rhs) = delete;
         ImGuiContextScope(ImGuiContextScope &&rhs) noexcept = delete;
 
         ~ImGuiContextScope() {
-            ImGui::SetCurrentContext(m_ImGuiContext);
+            ImGui::SetCurrentContext(m_PreviousContext);
         }
 
         ImGuiContextScope &operator=(const ImGuiContextScope &rhs) = delete;
         ImGuiContextScope &operator=(ImGuiContextScope &&rhs) noexcept = delete;
 
     private:
-        ImGuiContext *m_ImGuiContext;
+        ImGuiContext *m_PreviousContext;
     };
 
+    // Loads a texture from file using a given CKContext.
     BML_EXPORT CKTexture *LoadTexture(CKContext *context, const char *id, const char *filename, int slot = 0);
 
+    // Menu properties functions.
     BML_EXPORT ImVec2 GetMenuPos();
     BML_EXPORT ImVec2 GetMenuSize();
     BML_EXPORT ImVec4 GetMenuColor();
 
+    // Button appearance and layout helpers.
     BML_EXPORT ImVec2 GetButtonSize(ButtonType type);
     BML_EXPORT float GetButtonIndent(ButtonType type);
 
+    // Key conversion functions.
     BML_EXPORT ImGuiKey CKKeyToImGuiKey(CKKEYBOARD key);
     BML_EXPORT CKKEYBOARD ImGuiKeyToCKKey(ImGuiKey key);
     BML_EXPORT bool KeyChordToString(ImGuiKeyChord key_chord, char *buf, size_t size);
 
+    // Functions to add button images to a draw list.
     BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, int state);
     BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, bool selected);
+    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, int state, const char *text);
+    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, bool selected, const char *text);
+    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, int state, const char *text, const ImVec2 &text_align);
+    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, bool selected, const char *text, const ImVec2 &text_align);
 
-    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, int state,
-                                   const char *text);
-    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, bool selected,
-                                   const char *text);
-    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, int state,
-                                   const char *text, const ImVec2 &text_align);
-    BML_EXPORT void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, bool selected,
-                                   const char *text, const ImVec2 &text_align);
-
+    // Button UI functions.
     BML_EXPORT bool MainButton(const char *label, ImGuiButtonFlags flags = 0);
     BML_EXPORT bool OkButton(const char *label, ImGuiButtonFlags flags = 0);
     BML_EXPORT bool BackButton(const char *label, ImGuiButtonFlags flags = 0);
@@ -100,21 +106,19 @@ namespace Bui {
     BML_EXPORT bool RadioButton(const char *label, int *current_item, const char *const items[], int items_count);
     BML_EXPORT bool KeyButton(const char *label, bool *toggled, ImGuiKeyChord *key_chord);
 
-    BML_EXPORT bool InputTextButton(const char *label, char *buf, size_t buf_size, ImGuiInputTextFlags flags = 0,
-                                    ImGuiInputTextCallback callback = nullptr, void *user_data = nullptr);
-    BML_EXPORT bool InputFloatButton(const char *label, float *v, float step = 0.0f, float step_fast = 0.0f,
-                                     const char *format = "%.3f", ImGuiInputTextFlags flags = 0);
-    BML_EXPORT bool InputIntButton(const char *label, int *v, int step = 1, int step_fast = 100,
-                                   ImGuiInputTextFlags flags = 0);
+    BML_EXPORT bool InputTextButton(const char *label, char *buf, size_t buf_size, ImGuiInputTextFlags flags = 0, ImGuiInputTextCallback callback = nullptr, void *user_data = nullptr);
+    BML_EXPORT bool InputFloatButton(const char *label, float *v, float step = 0.0f, float step_fast = 0.0f, const char *format = "%.3f", ImGuiInputTextFlags flags = 0);
+    BML_EXPORT bool InputIntButton(const char *label, int *v, int step = 1, int step_fast = 100, ImGuiInputTextFlags flags = 0);
 
+    // Base class representing a UI window.
     class Window {
     public:
-        explicit Window(std::string name) : m_Name(std::move(name)) {}
+        explicit Window(std::string name)
+            : m_Name(std::move(name)), m_Visible(true), m_Hovered(false) {}
 
         virtual ~Window() = default;
 
         const std::string &GetName() const { return m_Name; }
-
         bool IsVisible() const { return m_Visible; }
         bool IsHovered() const { return m_Hovered; }
 
@@ -154,11 +158,8 @@ namespace Bui {
         void Render() {
             if (!IsVisible())
                 return;
-
-            if (Begin()) {
+            if (Begin())
                 OnDraw();
-            }
-
             End();
         }
 
@@ -173,10 +174,11 @@ namespace Bui {
 
     protected:
         std::string m_Name;
-        bool m_Visible = true;
-        bool m_Hovered = false;
+        bool m_Visible;
+        bool m_Hovered;
     };
 
+    // Represents a paged UI window.
     class Page : public Window {
     public:
         explicit Page(std::string name) : Window(std::move(name)), m_Title(m_Name) { SetVisibility(false); }
@@ -187,22 +189,29 @@ namespace Bui {
 
         int GetPage() const { return m_PageIndex; }
         void SetPage(int page) {
-            if (page >= 0 && page < m_PageCount)
-                m_PageIndex = page;
+            if (page >= 0 && page < m_PageCount) {
+                if (m_PageIndex != page) {
+                    int oldPage = m_PageIndex;
+                    m_PageIndex = page;
+                    OnPageChanged(m_PageIndex, oldPage);
+                }
+            }
         }
 
         int NextPage() {
-            int oldPage = m_PageIndex;
-            m_PageIndex = m_PageIndex < m_PageCount ? m_PageIndex + 1 : m_PageCount - 1;
-            if (oldPage != m_PageIndex)
+            if (m_PageIndex < m_PageCount - 1) {
+                int oldPage = m_PageIndex;
+                ++m_PageIndex;
                 OnPageChanged(m_PageIndex, oldPage);
+            }
             return m_PageIndex;
         }
         int PrevPage() {
-            int oldPage = m_PageIndex;
-            m_PageIndex = m_PageIndex > 0 ? m_PageIndex - 1 : 0;
-            if (oldPage != m_PageIndex)
+            if (m_PageIndex > 0) {
+                int oldPage = m_PageIndex;
+                --m_PageIndex;
                 OnPageChanged(m_PageIndex, oldPage);
+            }
             return m_PageIndex;
         }
 
@@ -254,15 +263,15 @@ namespace Bui {
             if (!IsVisible())
                 return;
 
-            if (BackButton("Back")) {
+            if (BackButton("Back"))
                 Close();
-            }
         }
 
         virtual bool OnOpen() { return true; }
         virtual void OnClose() {}
         virtual void OnPageChanged(int newPage, int oldPage) {}
 
+        // Draw multiple entries. The provided callback should return false to stop drawing.
         static std::size_t DrawEntries(const std::function<bool(std::size_t index)> &onEntry,
                                        const ImVec2 &pos = ImVec2(0.35f, 0.24f),
                                        float spacing = 0.14f, size_t capability = 4) {
@@ -294,6 +303,7 @@ namespace Bui {
             return (Bui::RightButton(label.c_str()) || ImGui::IsKeyPressed(ImGuiKey_PageDown));
         }
 
+        // Draws wrapped text centered within a given length.
         static void WrappedText(const char *text, float length, float scale = 1.0f) {
             if (!text || text[0] == '\0')
                 return;
@@ -320,6 +330,7 @@ namespace Bui {
             ImGui::PopTextWrapPos();
         }
 
+        // Draws centered text at a specified vertical position.
         static void DrawCenteredText(const char *text, float y = 0.13f, float scale = 1.5f, ImU32 color = IM_COL32_WHITE) {
             if (!text || text[0] == '\0')
                 return;
@@ -342,6 +353,7 @@ namespace Bui {
         int m_PageCount = 1;
     };
 
+    // Manages multiple pages within a menu.
     class Menu {
     public:
         Menu() = default;
@@ -353,7 +365,7 @@ namespace Bui {
                 return false;
 
             const auto &name = page->GetName();
-            auto it = m_PageMap.find(name);
+            const auto it = m_PageMap.find(name);
             if (it != m_PageMap.end())
                 return false;
 
@@ -366,12 +378,11 @@ namespace Bui {
                 return false;
 
             const auto &name = page->GetName();
-            auto it = m_PageMap.find(name);
+            const auto it = m_PageMap.find(name);
             if (it == m_PageMap.end())
                 return false;
 
             HidePage();
-
             while (!m_PageStack.empty())
                 m_PageStack.pop();
 
@@ -380,7 +391,7 @@ namespace Bui {
         }
 
         Page *GetPage(const std::string &name) {
-            auto it = m_PageMap.find(name);
+            const auto it = m_PageMap.find(name);
             if (it == m_PageMap.end())
                 return nullptr;
             return m_PageMap[name];
@@ -430,7 +441,8 @@ namespace Bui {
         void Close() {
             HidePage();
             m_CurrentPage = PopPage();
-            HidePage();
+            if (m_CurrentPage)
+                m_CurrentPage->Hide();
             OnClose();
         }
 
