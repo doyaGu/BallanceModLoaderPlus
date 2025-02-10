@@ -8,6 +8,9 @@
 class BML_EXPORT Logger : public ILogger
 {
 public:
+	static Logger *GetDefault();
+	static void SetDefault(Logger *logger);
+
 	explicit Logger(const char *modName);
 
 	void Info(const char *fmt, ...) override;
@@ -17,7 +20,9 @@ public:
 private:
 	void Log(const char *level, const char *fmt, va_list args);
 
-    const char* m_ModName;
+    const char *m_ModName;
+
+	static Logger *m_DefaultLogger;
 };
 
 #endif // BML_LOGGER_H

@@ -7,7 +7,7 @@
 #include "BML/Guids/physics_RT.h"
 #include "BML/Guids/Hooks.h"
 
-#include "ModManager.h"
+#include "ModContext.h"
 
 using namespace ScriptHelper;
 
@@ -23,7 +23,7 @@ namespace ExecuteBB {
     void Init() {
         for (int i = 0; i < 8; i++)
             GameFonts[i] = i;
-        CKBehavior *ownerScript = BML_GetModManager()->GetScriptByName("Level_Init");
+        CKBehavior *ownerScript = BML_GetModContext()->GetScriptByName("Level_Init");
 
         bbPhysConv = CreatePhysicalizeConvex(ownerScript);
         bbPhysBall = CreatePhysicalizeBall(ownerScript);

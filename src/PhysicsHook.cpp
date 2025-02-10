@@ -1,6 +1,6 @@
 #include "BML/Guids/physics_RT.h"
 
-#include "ModManager.h"
+#include "ModContext.h"
 #include "HookUtils.h"
 #include "VTables.h"
 
@@ -135,7 +135,7 @@ int Physicalize(const CKBehaviorContext &behcontext) {
         VxVector shiftMassCenter;
         beh->GetLocalParameterValue(3, &shiftMassCenter);
 
-        BML_GetModManager()->BroadcastCallback(&IMod::OnPhysicalize, target,
+        BML_GetModContext()->BroadcastCallback(&IMod::OnPhysicalize, target,
                                                fixed, friction, elasticity, mass,
                                                collisionGroup, startFrozen, enableCollision,
                                                autoCalcMassCenter, linearSpeedDampening,
@@ -148,7 +148,7 @@ int Physicalize(const CKBehaviorContext &behcontext) {
         delete[] ballRadius;
         delete[] concaveMesh;
     } else {
-        BML_GetModManager()->BroadcastCallback(&IMod::OnUnphysicalize, target);
+        BML_GetModContext()->BroadcastCallback(&IMod::OnUnphysicalize, target);
     }
 
     return g_Physicalize(behcontext);

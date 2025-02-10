@@ -1,6 +1,6 @@
 #include "HUD.h"
 
-#include "ModManager.h"
+#include "ModContext.h"
 
 HUD::HUD() : Bui::Window("HUD") {
     SetVisibility(true);
@@ -41,7 +41,7 @@ void HUD::OnDraw() {
         drawList->AddText(ImVec2(0, 0), IM_COL32_WHITE, m_FPSText);
     }
 
-    if (BML_GetModManager()->IsCheatEnabled()) {
+    if (BML_GetModContext()->IsCheatEnabled()) {
         constexpr auto CheatText = "Cheat Mode Enabled";
         const auto cheatSize = ImGui::CalcTextSize(CheatText);
         drawList->AddText(ImVec2((contentSize.x - cheatSize.x) / 2.0f, contentSize.y * 0.85f), IM_COL32_WHITE, CheatText);

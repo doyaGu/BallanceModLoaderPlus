@@ -1,6 +1,6 @@
 #include "BML/Guids/Narratives.h"
 
-#include "ModManager.h"
+#include "ModContext.h"
 
 static CKBEHAVIORFCT g_ObjectLoad = nullptr;
 
@@ -123,7 +123,7 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
 
         CKBOOL isMap = strcmp(beh->GetOwnerScript()->GetName(), "Levelinit_build") == 0;
 
-        auto ds = BML_GetModManager()->GetDataShare(nullptr);
+        auto ds = BML_GetModContext()->GetDataShare(nullptr);
 
         if (isMap) {
             auto mapName = (const char *) ds->Get("CustomMapName", nullptr);
@@ -132,18 +132,18 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
             }
         }
 
-        BML_GetModManager()->BroadcastCallback(&IMod::OnLoadObject,
+        BML_GetModContext()->BroadcastCallback(&IMod::OnLoadObject,
                                                fname, isMap, mastername, cid,
                                                addtoscene, reuseMeshes,
                                                reuseMaterials, dynamic, oarray,
                                                masterobject);
 
         for (CK_ID *id = oarray->Begin(); id != oarray->End(); id++) {
-            CKObject *obj = BML_GetModManager()->GetCKContext()->GetObject(*id);
+            CKObject *obj = BML_GetModContext()->GetCKContext()->GetObject(*id);
             if (obj && obj->GetClassID() == CKCID_BEHAVIOR) {
                 auto *behavior = (CKBehavior *) obj;
                 if ((behavior->GetType() & CKBEHAVIORTYPE_SCRIPT) != 0) {
-                    BML_GetModManager()->BroadcastCallback(&IMod::OnLoadScript, fname, behavior);
+                    BML_GetModContext()->BroadcastCallback(&IMod::OnLoadScript, fname, behavior);
                 }
             }
         }

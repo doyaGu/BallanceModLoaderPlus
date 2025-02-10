@@ -5,7 +5,7 @@
 #include "BML/InputHook.h"
 #include "BML/Guids/Interface.h"
 
-#include "ModManager.h"
+#include "ModContext.h"
 
 using namespace BGui;
 
@@ -56,7 +56,7 @@ void Gui::OnMouseDown(float x, float y, CK_MOUSEBUTTON key) {
         }
 
         if (success) {
-            CKMessageManager *mm = BML_GetModManager()->GetMessageManager();
+            CKMessageManager *mm = BML_GetModContext()->GetMessageManager();
             CKMessageType msg = mm->AddMessageType("Menu_Click");
             mm->SendMessageSingle(msg, g_AllSound);
         }
@@ -276,7 +276,7 @@ void Gui::Process() {
     for (Element *element: m_Elements)
         element->Process();
 
-    InputHook *input = BML_GetModManager()->GetInputManager();
+    InputHook *input = BML_GetModContext()->GetInputManager();
     int cnt = (m_Block ? input->GetNumberOfKeyInBuffer() : input->oGetNumberOfKeyInBuffer());
     for (int i = 0; i < cnt; i++) {
         CKDWORD key;
@@ -330,15 +330,16 @@ void Gui::SetFocus(Input *input) {
 }
 
 void Gui::InitMaterials() {
-    g_Up = BML_GetModManager()->GetMaterialByName("M_Button_Up");
-    g_Inactive = BML_GetModManager()->GetMaterialByName("M_Button_Inactive");
-    g_Over = BML_GetModManager()->GetMaterialByName("M_Button_Over");
-    g_Field = BML_GetModManager()->GetMaterialByName("M_EntryBG");
-    g_Caret = BML_GetModManager()->GetMaterialByName("M_Caret");
-    g_Highlight = BML_GetModManager()->GetMaterialByName("M_Keys_Highlight");
-    g_AllSound = BML_GetModManager()->GetGroupByName("All_Sound");
+    auto *modContext = BML_GetModContext();
+    g_Up = modContext->GetMaterialByName("M_Button_Up");
+    g_Inactive = modContext->GetMaterialByName("M_Button_Inactive");
+    g_Over = modContext->GetMaterialByName("M_Button_Over");
+    g_Field = modContext->GetMaterialByName("M_EntryBG");
+    g_Caret = modContext->GetMaterialByName("M_Caret");
+    g_Highlight = modContext->GetMaterialByName("M_Keys_Highlight");
+    g_AllSound = modContext->GetGroupByName("All_Sound");
 
-    CKParameterManager *pm = BML_GetModManager()->GetParameterManager();
+    CKParameterManager *pm = modContext->GetParameterManager();
     CKEnumStruct *data = pm->GetEnumDescByType(pm->ParameterGuidToType(CKPGUID_FONTNAME));
     for (const char *avail_font: g_AvailFonts) {
         for (int i = 0; i < data->GetNumEnums(); i++) {

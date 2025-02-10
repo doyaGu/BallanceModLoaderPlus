@@ -1,7 +1,7 @@
 #include "BML/IMod.h"
 #include "Logger.h"
 #include "Config.h"
-#include "ModManager.h"
+#include "ModContext.h"
 
 ILogger *IMod::GetLogger() {
     if (m_Logger == nullptr)
@@ -13,7 +13,7 @@ IConfig *IMod::GetConfig() {
     if (m_Config == nullptr) {
         auto *config = new Config(this);
         m_Config = config;
-        BML_GetModManager()->AddConfig(config);
+        BML_GetModContext()->AddConfig(config);
     }
     return m_Config;
 }

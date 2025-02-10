@@ -1,7 +1,8 @@
 #include "BML/Gui/KeyInput.h"
 
+#include "ModContext.h"
 #include "BML/InputHook.h"
-#include "ModManager.h"
+#include "ModContext.h"
 
 using namespace BGui;
 
@@ -25,7 +26,7 @@ CKKEYBOARD KeyInput::GetKey() {
 void KeyInput::SetKey(CKKEYBOARD key) {
     m_Key = key;
     char name[0x100];
-    BML_GetModManager()->GetInputManager()->GetKeyName(key, name);
+    BML_GetModContext()->GetInputManager()->GetKeyName(key, name);
     SetText(name);
 }
 
