@@ -419,7 +419,7 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
                 for (;;) {
                     int c = 0;
                     bool allCandidatesMatches = true;
-                    for (std::size_t i = 0; i < m_Candidates.size() && allCandidatesMatches; i++) {
+                    for (size_t i = 0; i < m_Candidates.size() && allCandidatesMatches; i++) {
                         auto &candidate = m_Candidates[i];
                         if (i == 0)
                             c = toupper(candidate[matchLen]);
