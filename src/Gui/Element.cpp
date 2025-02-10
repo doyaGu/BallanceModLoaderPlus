@@ -1,6 +1,6 @@
 #include "BML/Gui/Element.h"
 
-#include "ModManager.h"
+#include "ModContext.h"
 
 using namespace BGui;
 

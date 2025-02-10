@@ -7,7 +7,7 @@
 #include "BML/InputHook.h"
 #include "BML/ScriptHelper.h"
 
-#include "ModManager.h"
+#include "ModContext.h"
 #include "StringUtils.h"
 #include "PathUtils.h"
 
@@ -32,7 +32,7 @@ void MapMenu::Shutdown() {
 }
 
 void MapMenu::OnOpen() {
-    BML_GetModManager()->GetInputManager()->Block(CK_INPUT_DEVICE_KEYBOARD);
+    BML_GetModContext()->GetInputManager()->Block(CK_INPUT_DEVICE_KEYBOARD);
 }
 
 void MapMenu::OnClose() {
@@ -45,7 +45,7 @@ void MapMenu::OnClose() {
 
 void MapMenu::OnClose(bool backToMenu) {
     auto *context = BML_GetCKContext();
-    auto *modManager = BML_GetModManager();
+    auto *modManager = BML_GetModContext();
     auto *inputHook = modManager->GetInputManager();
 
     if (backToMenu) {
@@ -68,7 +68,7 @@ void MapMenu::LoadMap(const std::wstring &path) {
 }
 
 void MapMenu::RefreshMaps() {
-    std::wstring path = BML_GetModManager()->GetDirectory(BML_DIR_LOADER);
+    std::wstring path = BML_GetModContext()->GetDirectory(BML_DIR_LOADER);
     path.append(L"\\Maps");
 
     if (!utils::DirectoryExistsW(path))
@@ -248,7 +248,7 @@ void MapListPage::OnSearchMaps() {
     if (r != ONIG_NORMAL) {
         char s[ONIG_MAX_ERROR_MESSAGE_LEN];
         onig_error_code_to_str((UChar *) s, r, &einfo);
-        BML_GetModManager()->GetLogger()->Error(s);
+        BML_GetModContext()->GetLogger()->Error(s);
         return;
     }
 
@@ -265,7 +265,7 @@ void MapListPage::OnSearchMaps() {
         } else if (r != ONIG_MISMATCH) {
             char s[ONIG_MAX_ERROR_MESSAGE_LEN];
             onig_error_code_to_str((UChar *) s, r);
-            BML_GetModManager()->GetLogger()->Error(s);
+            BML_GetModContext()->GetLogger()->Error(s);
         }
     }
 

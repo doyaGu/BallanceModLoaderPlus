@@ -2,7 +2,7 @@
 
 #include "BML/InputHook.h"
 
-#include "ModManager.h"
+#include "ModContext.h"
 #include "StringUtils.h"
 
 void ModMenu::Init() {
@@ -16,7 +16,7 @@ void ModMenu::Shutdown() {
 }
 
 void ModMenu::OnOpen() {
-    BML_GetModManager()->GetInputManager()->Block(CK_INPUT_DEVICE_KEYBOARD);
+    BML_GetModContext()->GetInputManager()->Block(CK_INPUT_DEVICE_KEYBOARD);
 }
 
 void ModMenu::OnClose() {
@@ -25,13 +25,13 @@ void ModMenu::OnClose() {
     }
 
     auto *context = BML_GetCKContext();
-    auto *modManager = BML_GetModManager();
-    auto *inputHook = modManager->GetInputManager();
+    auto *modContext = BML_GetModContext();
+    auto *inputHook = modContext->GetInputManager();
 
-    CKBehavior *beh = modManager->GetScriptByName("Menu_Options");
+    CKBehavior *beh = modContext->GetScriptByName("Menu_Options");
     context->GetCurrentScene()->Activate(beh, true);
 
-    modManager->AddTimerLoop(1ul, [this, inputHook] {
+    modContext->AddTimerLoop(1ul, [this, inputHook] {
         if (inputHook->oIsKeyDown(CKKEY_ESCAPE) || inputHook->oIsKeyDown(CKKEY_RETURN))
             return true;
         inputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
@@ -40,7 +40,7 @@ void ModMenu::OnClose() {
 }
 
 Config *ModMenu::GetConfig(IMod *mod) {
-    return BML_GetModManager()->GetConfig(mod);
+    return BML_GetModContext()->GetConfig(mod);
 }
 
 ModMenuPage::ModMenuPage(ModMenu *menu, std::string name) : Page(std::move(name)), m_Menu(menu) {
@@ -61,7 +61,7 @@ void ModListPage::OnAfterBegin() {
 
     DrawCenteredText(m_Title.c_str());
 
-    int count = BML_GetModManager()->GetModCount();
+    int count = BML_GetModContext()->GetModCount();
     SetMaxPage(count % 4 == 0 ? count / 4 : count / 4 + 1);
 
     if (m_PageIndex > 0 &&
@@ -79,7 +79,7 @@ void ModListPage::OnDraw() {
     const int n = GetPage() * 4;
 
     DrawEntries([&](std::size_t index) {
-        IMod *mod = BML_GetModManager()->GetMod((int)(n + index));
+        IMod *mod = BML_GetModContext()->GetMod((int)(n + index));
         if (!mod)
             return false;
         const char *id = mod->GetID();

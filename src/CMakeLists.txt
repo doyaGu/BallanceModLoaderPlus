@@ -26,6 +26,7 @@ set(BML_PUBLIC_HEADERS
 
 set(BML_PRIVATE_HEADERS
         ModManager.h
+        ModContext.h
 
         BMLMod.h
         NewBallTypeMod.h
@@ -41,6 +42,7 @@ set(BML_PRIVATE_HEADERS
 
         RenderHook.h
 
+        CommandContext.h
         DataShare.h
         Logger.h
         Config.h
@@ -55,6 +57,7 @@ set(BML_SOURCES
 
         HookBlock.cpp
         ModManager.cpp
+        ModContext.cpp
 
         IMod.cpp
         BMLMod.cpp
@@ -87,6 +90,7 @@ set(BML_SOURCES
         ExecuteBB.cpp
         ScriptHelper.cpp
 
+        CommandContext.cpp
         DataShare.cpp
         Logger.cpp
         Config.cpp

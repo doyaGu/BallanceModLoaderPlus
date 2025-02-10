@@ -1,8 +1,7 @@
 #include "BML/Gui/Input.h"
 
-#include "BML/InputHook.h"
 #include "BML/ScriptHelper.h"
-#include "ModManager.h"
+#include "ModContext.h"
 
 using namespace BGui;
 
@@ -70,7 +69,7 @@ void Input::OnCharTyped(CKDWORD key) {
             InvokeCallback(key);
             break;
         default:
-            char c = VxScanCodeToAscii(key, BML_GetModManager()->GetInputManager()->GetKeyboardState());
+            char c = VxScanCodeToAscii(key, BML_GetModContext()->GetInputManager()->GetKeyboardState());
             if (c) {
                 m_Text.insert(m_Caret++, 1, c);
                 changed = true;

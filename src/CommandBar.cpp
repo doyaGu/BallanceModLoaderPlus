@@ -6,7 +6,7 @@
 #include "BML/ICommand.h"
 #include "BML/InputHook.h"
 
-#include "ModManager.h"
+#include "ModContext.h"
 #include "PathUtils.h"
 
 #define COMMAND_HISTORY_FILE L"\\CommandBar.history"
@@ -66,7 +66,7 @@ void CommandBar::OnDraw() {
     if (ImGui::InputText("##CmdBar", &m_Buffer[0], m_Buffer.capacity() + 1, InputTextFlags,
                          &TextEditCallback, this)) {
         if (m_Buffer[0] != '\0') {
-            BML_GetModManager()->ExecuteCommand(m_Buffer.c_str());
+            BML_GetModContext()->ExecuteCommand(m_Buffer.c_str());
             m_History.emplace_back(m_Buffer);
             m_HistoryIndex = -1;
         }
@@ -164,7 +164,7 @@ void CommandBar::PrintHistory() {
     const int count = static_cast<int>(m_History.size());
     for (int i = 0; i < count; ++i) {
         const std::string str = "[" + std::to_string(i + 1) + "] " + m_History[(count - 1) - i];
-        BML_GetModManager()->SendIngameMessage(str.c_str());
+        BML_GetModContext()->SendIngameMessage(str.c_str());
     }
 }
 
@@ -173,7 +173,7 @@ void CommandBar::ExecuteHistory(int index) {
         return;
 
     const std::string line = m_History[(m_History.size() - index)];
-    BML_GetModManager()->ExecuteCommand(line.c_str());
+    BML_GetModContext()->ExecuteCommand(line.c_str());
 }
 
 void CommandBar::ClearHistory() {
@@ -182,7 +182,7 @@ void CommandBar::ClearHistory() {
 }
 
 void CommandBar::LoadHistory() {
-    std::wstring path = BML_GetModManager()->GetDirectory(BML_DIR_LOADER);
+    std::wstring path = BML_GetModContext()->GetDirectory(BML_DIR_LOADER);
     path.append(COMMAND_HISTORY_FILE);
 
     if (!utils::FileExistsW(path))
@@ -223,7 +223,7 @@ void CommandBar::SaveHistory() {
     if (m_History.empty())
         return;
 
-    std::wstring path = BML_GetModManager()->GetDirectory(BML_DIR_LOADER);
+    std::wstring path = BML_GetModContext()->GetDirectory(BML_DIR_LOADER);
     path.append(COMMAND_HISTORY_FILE);
 
     FILE *fp = _wfopen(path.c_str(), L"wb");
@@ -237,7 +237,7 @@ void CommandBar::SaveHistory() {
 }
 
 void CommandBar::ToggleCommandBar(bool on) {
-    auto *inputHook = BML_GetModManager()->GetInputManager();
+    auto *inputHook = BML_GetModContext()->GetInputManager();
     if (on) {
         Show();
         m_Buffer[0] = '\0';
@@ -247,7 +247,7 @@ void CommandBar::ToggleCommandBar(bool on) {
         Hide();
         ImGui::SetWindowFocus(nullptr);
         m_Buffer[0] = '\0';
-        BML_GetModManager()->AddTimerLoop(1ul, [this, inputHook] {
+        BML_GetModContext()->AddTimerLoop(1ul, [this, inputHook] {
             if (inputHook->oIsKeyDown(CKKEY_ESCAPE) || inputHook->oIsKeyDown(CKKEY_RETURN))
                 return true;
             inputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
@@ -365,9 +365,9 @@ size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
 
         if (completeCmd) {
             // Add candidate commands
-            const int count = BML_GetModManager()->GetCommandCount();
+            const int count = BML_GetModContext()->GetCommandCount();
             for (int i = 0; i < count; ++i) {
-                ICommand *cmd = BML_GetModManager()->GetCommand(i);
+                ICommand *cmd = BML_GetModContext()->GetCommand(i);
                 if (cmd) {
                     auto name = cmd->GetName();
                     if (utf8ncasecmp(name.c_str(), cmdStart, cmdLength) == 0)
@@ -381,9 +381,9 @@ size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
             // Add candidate arguments
             const auto args = MakeArgs(cmdStart);
             if (!args.empty()) {
-                ICommand *cmd = BML_GetModManager()->FindCommand(args[0].c_str());
+                ICommand *cmd = BML_GetModContext()->FindCommand(args[0].c_str());
                 if (cmd) {
-                    for (const auto &str : cmd->GetTabCompletion(BML_GetModManager(), args)) {
+                    for (const auto &str : cmd->GetTabCompletion(BML_GetModContext(), args)) {
                         if (utf8ncasecmp(str.c_str(), wordStart, wordCount) == 0)
                             m_Candidates.push_back(str);
                     }

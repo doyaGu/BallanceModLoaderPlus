@@ -7,7 +7,17 @@
 #endif
 #include <Windows.h>
 
-#include "ModManager.h"
+#include "ModContext.h"
+
+Logger *Logger::m_DefaultLogger = nullptr;
+
+Logger *Logger::GetDefault() {
+    return m_DefaultLogger;
+}
+
+void Logger::SetDefault(Logger *logger) {
+    m_DefaultLogger = logger;
+}
 
 Logger::Logger(const char *modName) : m_ModName(modName) {}
 
@@ -40,7 +50,7 @@ void Logger::Log(const char *level, const char *fmt, va_list args) {
 #ifdef _DEBUG
         stdout,
 #endif
-        BML_GetModManager()->GetLogFile()
+        BML_GetModContext()->GetLogFile()
     };
 
     for (FILE *file: out_files) {

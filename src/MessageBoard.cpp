@@ -2,7 +2,7 @@
 
 #include "imgui_internal.h"
 
-#include "ModManager.h"
+#include "ModContext.h"
 
 MessageBoard::MessageBoard(const int size) : Bui::Window("MessageBoard"), m_Messages(size) {}
 
