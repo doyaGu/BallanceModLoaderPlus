@@ -20,7 +20,7 @@ void ModMenu::OnOpen() {
 }
 
 void ModMenu::OnClose() {
-    for (auto &page: m_Pages) {
+    for (const auto &page: m_Pages) {
         page->SetPage(0);
     }
 
@@ -61,7 +61,7 @@ void ModListPage::OnAfterBegin() {
 
     DrawCenteredText(m_Title.c_str());
 
-    int count = BML_GetModContext()->GetModCount();
+    const int count = BML_GetModContext()->GetModCount();
     SetMaxPage(count % 4 == 0 ? count / 4 : count / 4 + 1);
 
     if (m_PageIndex > 0 &&
@@ -78,8 +78,8 @@ void ModListPage::OnAfterBegin() {
 void ModListPage::OnDraw() {
     const int n = GetPage() * 4;
 
-    DrawEntries([&](std::size_t index) {
-        IMod *mod = BML_GetModContext()->GetMod((int)(n + index));
+    DrawEntries([&](size_t index) {
+        IMod *mod = BML_GetModContext()->GetMod(static_cast<int>(n + index));
         if (!mod)
             return false;
         const char *id = mod->GetID();
@@ -135,7 +135,7 @@ void ModPage::OnDraw() {
     bool v = true;
     const int n = GetPage() * 4;
 
-    DrawEntries([&](std::size_t index) {
+    DrawEntries([&](size_t index) {
         Category *category = m_Config->GetCategory(static_cast<int>(n + index));
         if (!category)
             return false;
@@ -205,7 +205,7 @@ void ModOptionPage::OnDraw() {
 
     const int n = GetPage() * 4;
 
-    DrawEntries([&](std::size_t index) {
+    DrawEntries([&](size_t index) {
         Property *property = m_Category->GetProperty(static_cast<int>(n + index));
         if (!property)
             return false;

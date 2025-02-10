@@ -177,7 +177,7 @@ void MapListPage::OnAfterBegin() {
 
     ImGui::PopStyleColor();
 
-    m_Count = IsSearching() ? (int) m_MapSearchResult.size() : (int) maps->children.size();
+    m_Count = IsSearching() ? static_cast<int>(m_MapSearchResult.size()) : static_cast<int>(maps->children.size());
     SetMaxPage(m_Count % 10 == 0 ? m_Count / 10 : m_Count / 10 + 1);
 
     if (m_PageIndex > 0 &&
@@ -199,13 +199,13 @@ void MapListPage::OnDraw() {
     const int n = GetPage() * 10;
 
     if (IsSearching()) {
-        DrawEntries([&](std::size_t index) {
+        DrawEntries([&](size_t index) {
             if (index >= m_MapSearchResult.size())
                 return false;
             return OnDrawEntry(m_MapSearchResult[n + index], &v);
         }, ImVec2(0.4031f, 0.23f), 0.06f, 10);
     } else {
-        DrawEntries([&](std::size_t index) {
+        DrawEntries([&](size_t index) {
             return OnDrawEntry(n + index, &v);
         }, ImVec2(0.4031f, 0.23f), 0.06f, 10);
     }
