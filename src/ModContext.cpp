@@ -12,6 +12,8 @@
 #include <utf8.h>
 #include <oniguruma.h>
 
+#include "BML/Timer.h"
+
 #include "RenderHook.h"
 #include "Overlay.h"
 #include "Logger.h"
@@ -531,49 +533,19 @@ void ModContext::Show(CKBeObject *obj, CK_OBJECT_SHOWOPTION show, bool hierarchy
 }
 
 void ModContext::AddTimer(CKDWORD delay, std::function<void()> callback) {
-    Spawn(m_Scheduler,
-                 [](CKDWORD delay, std::function<void()> callback) -> Task {
-                     co_await WaitForFrames(static_cast<int>(delay));
-                     callback();
-                     co_return;
-                 },
-                 delay, std::move(callback));
+    Delay(static_cast<size_t>(delay), callback, m_TimeManager->GetMainTickCount());
 }
 
 void ModContext::AddTimerLoop(CKDWORD delay, std::function<bool()> callback) {
-    Spawn(m_Scheduler,
-                 [](CKDWORD delay, std::function<bool()> callback) -> Task {
-                     while (true) {
-                         co_await WaitForFrames(static_cast<int>(delay));
-                         if (!callback())
-                             break;
-                     }
-                     co_return;
-                 },
-                 delay, std::move(callback));
+    Interval(static_cast<size_t>(delay), callback, m_TimeManager->GetMainTickCount());
 }
 
 void ModContext::AddTimer(float delay, std::function<void()> callback) {
-    Spawn(m_Scheduler,
-                 [](float delay, std::function<void()> callback) -> Task {
-                     co_await WaitForMilliseconds(delay);
-                     callback();
-                     co_return;
-                 },
-                 delay, std::move(callback));
+    Delay(delay / 1000.0f, callback, m_TimeManager->GetAbsoluteTime() / 1000.0f);
 }
 
 void ModContext::AddTimerLoop(float delay, std::function<bool()> callback) {
-    Spawn(m_Scheduler,
-                 [](float delay, std::function<bool()> callback) -> Task {
-                     while (true) {
-                         co_await WaitForMilliseconds(delay);
-                         if (!callback())
-                             break;
-                     }
-                     co_return;
-                 },
-                 delay, std::move(callback));
+    Interval(delay / 1000.0f, callback, m_TimeManager->GetAbsoluteTime() / 1000.0f);
 }
 
 void ModContext::ExitGame() {
@@ -647,8 +619,8 @@ void ModContext::RegisterModul(const char *modulName) {
 }
 
 void ModContext::OnProcess() {
+    Timer::ProcessAll(m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime() / 1000.0f);
     BroadcastCallback(&IMod::OnProcess);
-    m_Scheduler.Update(m_TimeManager->GetLastDeltaTimeFree());
 }
 
 void ModContext::OnRender(CKRenderContext *dev) {

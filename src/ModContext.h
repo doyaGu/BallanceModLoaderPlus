@@ -10,7 +10,6 @@
 
 #include "BML/IBML.h"
 #include "BML/IMod.h"
-#include "BML/Scheduler.h"
 
 #include "Config.h"
 #include "DataShare.h"
@@ -96,7 +95,6 @@ public:
     const wchar_t *GetDirectory(DirectoryType type);
     const char *GetDirectoryUtf8(DirectoryType type);
 
-    BML::Scheduler &GetScheduler() { return m_Scheduler; }
     BML::CommandContext &GetCommandContext() { return m_CommandContext; }
     BML::IDataShare *GetDataShare(const char *name = nullptr);
 
@@ -308,7 +306,6 @@ private:
     std::string m_LoaderDirUtf8;
     std::string m_ConfigDirUtf8;
 
-    BML::Scheduler m_Scheduler;
     BML::CommandContext m_CommandContext;
     BML::DataShare *m_DataShare = nullptr;
 
