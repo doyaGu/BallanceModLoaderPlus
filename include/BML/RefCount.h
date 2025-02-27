@@ -31,13 +31,13 @@ namespace BML {
          * @brief Decrement reference count.
          * @return Current reference count.
          */
-        int Release() { return m_RefCount.fetch_sub(1, std::memory_order_release); }
+        int Release() { return m_RefCount.fetch_sub(1, std::memory_order_acq_rel); }
 
         /**
          * @brief Get reference count.
          * @return Current reference count.
          */
-        int GetCount() { return m_RefCount; }
+        int GetCount() { return m_RefCount.load(std::memory_order_relaxed); }
 
     private:
         std::atomic<int> m_RefCount; /**< Reference count. */
