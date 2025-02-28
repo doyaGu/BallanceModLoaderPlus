@@ -32,6 +32,10 @@ struct BMLVersion {
     bool operator>=(const BMLVersion &o) const {
         return !(*this < o);
     }
+
+    bool operator==(const BMLVersion &o) const {
+        return major == o.major && minor == o.minor && patch == o.patch;
+    }
 };
 
 #define DECLARE_BML_VERSION \
