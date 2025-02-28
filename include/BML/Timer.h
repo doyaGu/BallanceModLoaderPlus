@@ -109,7 +109,7 @@ namespace BML {
             /**
              * Set the delay in ticks
              */
-            Builder &WithDelay(size_t ticks) {
+            Builder &WithDelayTicks(size_t ticks) {
                 m_Delay.tick = ticks;
                 m_IsTickBased = true;
                 m_TimeBase = TICK;
@@ -119,7 +119,7 @@ namespace BML {
             /**
              * Set the delay in seconds
              */
-            Builder &WithDelay(float seconds) {
+            Builder &WithDelaySeconds(float seconds) {
                 m_Delay.time = seconds;
                 m_IsTickBased = false;
                 m_TimeBase = TIME;
@@ -129,7 +129,7 @@ namespace BML {
             /**
              * Set a one-time callback
              */
-            Builder &WithCallback(OnceCallback callback) {
+            Builder &WithOnceCallback(OnceCallback callback) {
                 m_OnceCallback = std::move(callback);
                 m_HasOnceCallback = true;
                 m_HasLoopCallback = false;
@@ -139,7 +139,7 @@ namespace BML {
             /**
              * Set a repeating callback
              */
-            Builder &WithCallback(LoopCallback callback) {
+            Builder &WithLoopCallback(LoopCallback callback) {
                 m_LoopCallback = std::move(callback);
                 m_HasLoopCallback = true;
                 m_HasOnceCallback = false;
@@ -501,39 +501,43 @@ namespace BML {
     //----------------------------------------------------------------------
 
     inline bool Timer::Process(size_t tick, float time) {
-        // Do nothing if timer is not running
         if (m_State != RUNNING) {
             return m_State != COMPLETED && m_State != CANCELLED;
         }
 
-        // Calculate progress and execute progress callback if set
         float progress = CalculateProgress(tick, time);
         if (m_HasProgressCallback) {
             ExecuteProgressCallback(progress);
         }
 
-        // Check if it's time to execute the callback
         if (IsTimeToExecute(tick, time)) {
-            // Execute the callback
             bool continueTimer = ExecuteCallback();
 
-            // If this is a repeating timer, decrement the counter
             if (m_Type == REPEAT && m_RemainingIterations > 0) {
                 m_CompletedIterations++;
                 m_RemainingIterations--;
             }
 
-            // Update the start time for the next execution
-            if (continueTimer && (m_Type == LOOP || (m_Type == REPEAT && m_RemainingIterations > 0))) {
-                UpdateStartTime(tick, time);
-                return true;
+            // Handle continuation based on timer type
+            if (m_Type == REPEAT) {
+                if (m_RemainingIterations > 0) {
+                    UpdateStartTime(tick, time);
+                    return true;
+                } else {
+                    m_State = COMPLETED;
+                    return false;
+                }
             } else {
-                m_State = COMPLETED;
-                return false;
+                if (continueTimer) {
+                    UpdateStartTime(tick, time);
+                    return true;
+                } else {
+                    m_State = COMPLETED;
+                    return false;
+                }
             }
         }
 
-        // Timer still active but not ready to execute
         return true;
     }
 
@@ -766,8 +770,8 @@ namespace BML {
     inline std::shared_ptr<Timer> Delay(size_t ticks, std::function<void()> callback, size_t currentTick) {
         Timer::OnceCallback onceCb = [cb = std::move(callback)](Timer &) { cb(); };
         return Timer::Builder()
-               .WithDelay(ticks)
-               .WithCallback(onceCb)
+               .WithDelayTicks(ticks)
+               .WithOnceCallback(onceCb)
                .WithType(Timer::ONCE)
                .WithTimeBase(Timer::TICK)
                .Build(currentTick, 0.0f);
@@ -776,8 +780,8 @@ namespace BML {
     inline std::shared_ptr<Timer> Delay(float seconds, std::function<void()> callback, float currentTime) {
         Timer::OnceCallback onceCb = [cb = std::move(callback)](Timer &) { cb(); };
         return Timer::Builder()
-               .WithDelay(seconds)
-               .WithCallback(onceCb)
+               .WithDelaySeconds(seconds)
+               .WithOnceCallback(onceCb)
                .WithType(Timer::ONCE)
                .WithTimeBase(Timer::TIME)
                .Build(0, currentTime);
@@ -786,8 +790,8 @@ namespace BML {
     inline std::shared_ptr<Timer> Interval(size_t ticks, std::function<bool()> callback, size_t currentTick) {
         Timer::LoopCallback loopCb = [cb = std::move(callback)](Timer &) { return cb(); };
         return Timer::Builder()
-               .WithDelay(ticks)
-               .WithCallback(loopCb)
+               .WithDelayTicks(ticks)
+               .WithLoopCallback(loopCb)
                .WithType(Timer::LOOP)
                .WithTimeBase(Timer::TICK)
                .Build(currentTick, 0.0f);
@@ -796,8 +800,8 @@ namespace BML {
     inline std::shared_ptr<Timer> Interval(float seconds, std::function<bool()> callback, float currentTime) {
         Timer::LoopCallback loopCb = [cb = std::move(callback)](Timer &) { return cb(); };
         return Timer::Builder()
-               .WithDelay(seconds)
-               .WithCallback(loopCb)
+               .WithDelaySeconds(seconds)
+               .WithLoopCallback(loopCb)
                .WithType(Timer::LOOP)
                .WithTimeBase(Timer::TIME)
                .Build(0, currentTime);
@@ -806,8 +810,8 @@ namespace BML {
     inline std::shared_ptr<Timer> Repeat(size_t ticks, int count, std::function<void()> callback, size_t currentTick) {
         Timer::OnceCallback onceCb = [cb = std::move(callback)](Timer &) { cb(); };
         return Timer::Builder()
-               .WithDelay(ticks)
-               .WithCallback(onceCb)
+               .WithDelayTicks(ticks)
+               .WithOnceCallback(onceCb)
                .WithType(Timer::REPEAT)
                .WithTimeBase(Timer::TICK)
                .WithRepeatCount(count)
@@ -817,8 +821,8 @@ namespace BML {
     inline std::shared_ptr<Timer> Repeat(float seconds, int count, std::function<void()> callback, float currentTime) {
         Timer::OnceCallback onceCb = [cb = std::move(callback)](Timer &) { cb(); };
         return Timer::Builder()
-               .WithDelay(seconds)
-               .WithCallback(onceCb)
+               .WithDelaySeconds(seconds)
+               .WithOnceCallback(onceCb)
                .WithType(Timer::REPEAT)
                .WithTimeBase(Timer::TIME)
                .WithRepeatCount(count)
@@ -831,9 +835,9 @@ namespace BML {
         };
 
         return Timer::Builder()
-            .WithDelay(ticks)
-            .WithCallback(loopCb)
-            .WithType(Timer::REPEAT)
+            .WithDelayTicks(ticks)
+            .WithLoopCallback(loopCb)
+            .WithType(Timer::LOOP)
             .WithTimeBase(Timer::TICK)
             .WithRepeatCount(count)
             .Build(currentTick, 0.0f);
@@ -845,9 +849,9 @@ namespace BML {
         };
 
         return Timer::Builder()
-            .WithDelay(seconds)
-            .WithCallback(loopCb)
-            .WithType(Timer::REPEAT)
+            .WithDelaySeconds(seconds)
+            .WithLoopCallback(loopCb)
+            .WithType(Timer::LOOP)
             .WithTimeBase(Timer::TIME)
             .WithRepeatCount(count)
             .Build(0, currentTime);
