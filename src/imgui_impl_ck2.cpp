@@ -242,51 +242,62 @@ bool ImGui_ImplCK2_CreateFontsTexture()
 {
     ImGuiIO &io = ImGui::GetIO();
     ImGui_ImplCK2_Data *bd = ImGui_ImplCK2_GetBackendData();
+
+    if (!bd || !bd->Context)
+        return false;
+
     CKContext *context = bd->Context;
+
+    // Check if font texture already exists
+    if (bd->FontTexture)
+    {
+        ImGui_ImplCK2_DestroyFontsTexture();
+    }
 
     // Build texture atlas
     unsigned char *pixels;
     int width, height;
     // Load as RGBA 32-bit (75% of the memory is wasted, but default font is so small) because it is more likely to be compatible with user's existing shaders.
-    io.Fonts->GetTexDataAsAlpha8(&pixels, &width, &height);
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+    if (!pixels)
+        return false;
 
     // Upload texture to graphics system
     // (Bilinear sampling is required by default. Set 'io.Fonts->Flags |= ImFontAtlasFlags_NoBakedLines' or 'style.AntiAliasedLinesUseTex = false' to allow point/nearest sampling)
     CKTexture *texture = (CKTexture *)context->CreateObject(CKCID_TEXTURE, (CKSTRING) "ImGuiFonts");
-    if (texture == NULL)
+    if (!texture)
         return false;
 
+    // Set texture to not be saved or deleted automatically
     texture->ModifyObjectFlags(CK_OBJECT_NOTTOBESAVED | CK_OBJECT_NOTTOBEDELETED, 0);
 
+    // Create texture and check for success
     if (!texture->Create(width, height))
     {
         context->DestroyObject(texture);
         return false;
     }
 
+    // Lock texture surface and copy pixel data
     CKBYTE *ptr = texture->LockSurfacePtr();
-    if (ptr)
+    if (!ptr)
     {
-        CKDWORD colorDef = RGBAITOCOLOR(0xff, 0xff, 0xff, 0x00);
-        VxFillStructure(width * height, (CKBYTE *)ptr, 4, 4, &colorDef);
-
-        const unsigned char *src = pixels;
-        CKBYTE *alphaDest = (CKBYTE *)ptr + 3;
-        for (int i = 0; i < height; i++)
-        {
-            for (int j = 0; j < width; j++, alphaDest += 4)
-            {
-                *alphaDest = *src++;
-            }
-        }
-
-        texture->ReleaseSurfacePtr();
+        context->DestroyObject(texture);
+        return false;
     }
 
+    // Copy pixel data
+    memcpy(ptr, pixels, width * height * 4);
+    texture->ReleaseSurfacePtr();
+
+    // Set optimal format for UI texture
     texture->SetDesiredVideoFormat(_32_ARGB8888);
 
+    // Force restore to video memory
+    texture->SystemToVideoMemory(bd->RenderContext, TRUE);
+
     // Store our identifier
-    io.Fonts->SetTexID((ImTextureID)(intptr_t)texture);
+    io.Fonts->SetTexID((ImTextureID)texture);
     bd->FontTexture = texture;
 
     return true;
@@ -296,10 +307,13 @@ void ImGui_ImplCK2_DestroyFontsTexture()
 {
     ImGuiIO &io = ImGui::GetIO();
     ImGui_ImplCK2_Data *bd = ImGui_ImplCK2_GetBackendData();
-    if (bd->FontTexture)
+    if (bd && bd->FontTexture)
     {
         io.Fonts->SetTexID(NULL);
-        bd->Context->DestroyObject(bd->FontTexture);
+        if (bd->Context)
+        {
+            bd->Context->DestroyObject(bd->FontTexture);
+        }
         bd->FontTexture = NULL;
     }
 }
