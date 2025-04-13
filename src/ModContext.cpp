@@ -23,6 +23,7 @@
 // Builtin Mods
 #include "BMLMod.h"
 #include "NewBallTypeMod.h"
+#include "PathUtils.h"
 
 extern HMODULE g_DllHandle;
 
@@ -134,7 +135,7 @@ void ModContext::Shutdown() {
     m_SoundManager = nullptr;
     m_TimeManager = nullptr;
 
-    utils::DeleteDirW(m_TempDir);
+    utils::DeleteDirectoryW(m_TempDir);
 
     onig_end();
 
@@ -176,14 +177,10 @@ bool ModContext::LoadMods() {
                 }
                 modSet.emplace(id);
 
-                wchar_t drive[4];
-                wchar_t dir[MAX_PATH];
-                wchar_t wBuf[MAX_PATH];
-                char buf[1024];
-                _wsplitpath(modPath.c_str(), drive, dir, nullptr, nullptr);
-                _snwprintf(wBuf, MAX_PATH, L"%s%s", drive, dir);
-                utils::Utf16ToAnsi(wBuf, buf, MAX_PATH);
-                AddDataPath(buf);
+                auto [drive, dir] = utils::GetDriveAndDirectoryW(modPath);
+                std::wstring drivePath = drive + dir;
+                std::string ansiPath = utils::Utf16ToAnsi(drivePath);
+                AddDataPath(ansiPath.c_str());
             }
         }
     }
@@ -412,10 +409,8 @@ bool ModContext::LoadConfig(Config *config) {
     if (!mod)
         return false;
 
-    wchar_t buf[256];
-    utils::AnsiToUtf16(mod->GetID(), buf, 256);
     std::wstring configPath = m_LoaderDir;
-    configPath.append(L"\\Configs\\").append(buf).append(L".cfg");
+    configPath.append(L"\\Configs\\").append(utils::ToWString(mod->GetID())).append(L".cfg");
     return config->Load(configPath.c_str());
 }
 
@@ -427,10 +422,8 @@ bool ModContext::SaveConfig(Config *config) {
     if (!mod)
         return false;
 
-    wchar_t buf[256];
-    utils::AnsiToUtf16(mod->GetID(), buf, 256);
     std::wstring configPath = m_LoaderDir;
-    configPath.append(L"\\Configs\\").append(buf).append(L".cfg");
+    configPath.append(L"\\Configs\\").append(utils::ToWString(mod->GetID())).append(L".cfg");
     return config->Save(configPath.c_str());
 }
 
@@ -769,8 +762,6 @@ void ModContext::OnPostLifeUp() {
 }
 
 void ModContext::InitDirectories() {
-    char buf[1024];
-
     wchar_t path[MAX_PATH];
     wchar_t drive[4];
     wchar_t dir[MAX_PATH];
@@ -779,9 +770,7 @@ void ModContext::InitDirectories() {
     _wgetcwd(path, MAX_PATH);
     path[MAX_PATH - 1] = '\0';
     m_WorkingDir = path;
-
-    utils::Utf16ToUtf8(m_WorkingDir.c_str(), buf, sizeof(buf));
-    m_WorkingDirUtf8 = buf;
+    m_WorkingDirUtf8 = utils::ToString(m_WorkingDir);
 
     // Set up game directory
     ::GetModuleFileNameW(nullptr, path, MAX_PATH);
@@ -793,38 +782,30 @@ void ModContext::InitDirectories() {
     wchar_t *s = wcsrchr(path, '\\');
     *s = '\0';
     m_GameDir = path;
-
-    utils::Utf16ToUtf8(m_GameDir.c_str(), buf, sizeof(buf));
-    m_GameDirUtf8 = buf;
+    m_GameDirUtf8 = utils::ToString(m_GameDir);
 
     // Set up loader directory
     m_LoaderDir = m_GameDir + L"\\ModLoader";
     if (!utils::DirectoryExistsW(m_LoaderDir)) {
-        utils::CreateDirW(m_LoaderDir);
+        utils::CreateDirectoryW(m_LoaderDir);
     }
-
-    utils::Utf16ToUtf8(m_LoaderDir.c_str(), buf, sizeof(buf));
-    m_LoaderDirUtf8 = buf;
+    m_LoaderDirUtf8 = utils::ToString(m_LoaderDir);
 
     // Set up temp directory
     ::GetTempPathW(MAX_PATH, path);
     wcsncat(path, L"BML", MAX_PATH);
     m_TempDir = path;
     if (!utils::DirectoryExistsW(m_TempDir)) {
-        utils::CreateDirW(m_TempDir);
+        utils::CreateDirectoryW(m_TempDir);
     }
-
-    utils::Utf16ToUtf8(m_TempDir.c_str(), buf, sizeof(buf));
-    m_TempDirUtf8 = buf;
+    m_TempDirUtf8 = utils::ToString(m_TempDir);
 
     // Set up config directory
     m_ConfigDir = m_LoaderDir + L"\\Configs";
     if (!utils::DirectoryExistsW(m_ConfigDir)) {
-        utils::CreateDirW(m_ConfigDir);
+        utils::CreateDirectoryW(m_ConfigDir);
     }
-
-    utils::Utf16ToUtf8(m_ConfigDir.c_str(), buf, sizeof(buf));
-    m_ConfigDirUtf8 = buf;
+    m_ConfigDirUtf8 = utils::ToString(m_ConfigDir);
 }
 
 void ModContext::InitLogger() {
