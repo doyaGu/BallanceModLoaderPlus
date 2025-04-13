@@ -82,23 +82,27 @@ static std::string CreateTempMapFile(const std::wstring &path) {
     if (path.empty() || !utils::FileExistsW(path))
         return "";
 
-    wchar_t filename[1024];
-    wchar_t ext[64];
-    _wsplitpath(path.c_str(), nullptr, nullptr, filename, ext);
+    std::wstring fileName = utils::GetFileNameW(path);
+    std::wstring fileNameWithoutExt = utils::RemoveExtensionW(fileName);
+    std::wstring extension = utils::GetExtensionW(path);
 
-    size_t hash = utils::HashString(filename);
+    size_t hash = utils::HashString(fileNameWithoutExt);
 
-    wchar_t buf[1024];
-    _snwprintf(buf, sizeof(buf) / sizeof(wchar_t),
-               L"%s\\Maps\\%8X%s", BML_GetModContext()->GetDirectory(BML_DIR_TEMP), hash, ext);
-    buf[1023] = '\0';
+    std::wstring tempDir = BML_GetModContext()->GetDirectory(BML_DIR_TEMP);
+    std::wstring mapsDir = utils::CombinePathW(tempDir, L"Maps");
 
-    if (!utils::DuplicateFileW(path, buf))
+    if (!utils::DirectoryExistsW(mapsDir))
+        utils::CreateDirectoryW(mapsDir);
+
+    wchar_t hashStr[9];
+    swprintf(hashStr, sizeof(hashStr) / sizeof(wchar_t), L"%08X", static_cast<unsigned int>(hash));
+
+    std::wstring destPath = utils::CombinePathW(mapsDir, std::wstring(hashStr) + extension);
+
+    if (!utils::CopyFileW(path, destPath))
         return "";
 
-    char str[1024];
-    utils::Utf16ToAnsi(buf, str, sizeof(str));
-    return str;
+    return utils::Utf16ToAnsi(destPath);
 }
 
 void BMLMod::OnLoad() {
@@ -338,7 +342,7 @@ void BMLMod::LoadMap(const std::wstring &path) {
     level--;
     SetParamValue(m_LevelRow, level);
 
-    std::string mapPath = utils::Utf16ToUtf8(path);
+    std::string mapPath = utils::ToString(path);
     m_DataShare->Set("CustomMapName", mapPath.c_str(), mapPath.size() + 1);
 
     CKMessageManager *mm = m_CKContext->GetMessageManager();
