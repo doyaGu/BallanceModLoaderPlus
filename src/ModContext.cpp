@@ -23,7 +23,6 @@
 // Builtin Mods
 #include "BMLMod.h"
 #include "NewBallTypeMod.h"
-#include "PathUtils.h"
 
 extern HMODULE g_DllHandle;
 
@@ -55,6 +54,7 @@ ModContext::ModContext(CKContext *context) {
 }
 
 ModContext::~ModContext() {
+    Shutdown();
     m_DataShare->Release();
     g_ModContext = nullptr;
 }
@@ -80,26 +80,38 @@ bool ModContext::Init() {
     int err = onig_initialize(encodings, sizeof(encodings) / sizeof(encodings[0]));
     if (err < 0) {
         m_Logger->Error("Failed to initialize regular expression functionality");
+        ShutdownLogger();
         return false;
     }
 
     if (!GetManagers()) {
         m_Logger->Error("Failed to get managers");
+        onig_end();
+        ShutdownLogger();
         return false;
     }
 
     if (!InitHooks()) {
         m_Logger->Error("Failed to initialize hooks");
+        onig_end();
+        ShutdownLogger();
         return false;
     }
 
     if (Overlay::ImGuiCreateContext() == nullptr) {
         m_Logger->Error("Failed to create ImGui context");
+        ShutdownHooks();
+        onig_end();
+        ShutdownLogger();
         return false;
     }
 
     if (!Overlay::ImGuiInitPlatform(m_CKContext)) {
         m_Logger->Error("Failed to initialize Win32 platform backend for ImGui");
+        Overlay::ImGuiDestroyContext();
+        ShutdownHooks();
+        onig_end();
+        ShutdownLogger();
     }
 
     SetFlags(BML_INITED);
@@ -151,42 +163,56 @@ bool ModContext::LoadMods() {
         return false;
 
     std::unordered_set<std::string> modSet;
+    std::vector<IMod *> loadedMods;
+    bool success = true;
 
-    RegisterBuiltinMods();
+    try {
+        RegisterBuiltinMods();
 
-    for (auto *mod: m_Mods) {
-        const char *id = mod->GetID();
-        modSet.emplace(id);
-    }
-
-    std::wstring path = m_LoaderDir + L"\\Mods";
-    if (utils::DirectoryExistsW(path)) {
-        std::vector<std::wstring> modPaths;
-        if (ExploreMods(path, modPaths) == 0) {
-            m_Logger->Info("No mod is found.");
+        for (auto *mod : m_Mods) {
+            const char *id = mod->GetID();
+            modSet.emplace(id);
         }
 
-        for (auto &modPath: modPaths) {
-            IMod *mod = LoadMod(modPath);
-            if (mod) {
-                const char *id = mod->GetID();
-                if (modSet.find(id) != modSet.end()) {
-                    m_Logger->Warn("Duplicate Mod: %s", id);
-                    UnloadMod(id);
-                    continue;
-                }
-                modSet.emplace(id);
+        std::wstring path = m_LoaderDir + L"\\Mods";
+        if (utils::DirectoryExistsW(path)) {
+            std::vector<std::wstring> modPaths;
+            if (ExploreMods(path, modPaths) == 0) {
+                m_Logger->Info("No mod is found.");
+            }
 
-                auto [drive, dir] = utils::GetDriveAndDirectoryW(modPath);
-                std::wstring drivePath = drive + dir;
-                std::string ansiPath = utils::Utf16ToAnsi(drivePath);
-                AddDataPath(ansiPath.c_str());
+            for (auto &modPath : modPaths) {
+                IMod *mod = LoadMod(modPath);
+                if (mod) {
+                    const char *id = mod->GetID();
+                    if (modSet.find(id) != modSet.end()) {
+                        m_Logger->Warn("Duplicate Mod: %s", id);
+                        UnloadMod(id);
+                        continue;
+                    }
+                    modSet.emplace(id);
+                    loadedMods.push_back(mod);
+
+                    auto [drive, dir] = utils::GetDriveAndDirectoryW(modPath);
+                    std::wstring drivePath = drive + dir;
+                    std::string ansiPath = utils::Utf16ToAnsi(drivePath);
+                    AddDataPath(ansiPath.c_str());
+                }
             }
         }
+
+        SetFlags(BML_MODS_LOADED);
+    } catch (const std::exception &e) {
+        m_Logger->Error("Exception during mod loading: %s", e.what());
+        success = false;
+
+        // Rollback loaded mods if there was an error
+        for (auto *mod : loadedMods) {
+            UnloadMod(mod->GetID());
+        }
     }
 
-    SetFlags(BML_MODS_LOADED);
-    return true;
+    return success;
 }
 
 void ModContext::UnloadMods() {
@@ -195,13 +221,19 @@ void ModContext::UnloadMods() {
 
     std::vector<std::string> modNames;
     modNames.reserve(m_Mods.size());
-    for (auto *mod: m_Mods) {
+    for (auto *mod : m_Mods) {
         modNames.emplace_back(mod->GetID());
     }
 
     for (auto rit = modNames.rbegin(); rit != modNames.rend(); ++rit) {
         UnloadMod(*rit);
     }
+
+    delete m_BallTypeMod;
+    m_BallTypeMod = nullptr;
+
+    delete m_BMLMod;
+    m_BMLMod = nullptr;
 
     ClearFlags(BML_MODS_LOADED);
 }
@@ -210,7 +242,7 @@ bool ModContext::InitMods() {
     if (!IsInited() || !AreModsLoaded() || AreModsInited())
         return false;
 
-    for (IMod *mod: m_Mods) {
+    for (IMod *mod : m_Mods) {
         m_Logger->Info("Loading Mod %s[%s] v%s by %s",
                        mod->GetID(), mod->GetName(), mod->GetVersion(), mod->GetAuthor());
 
@@ -218,7 +250,7 @@ bool ModContext::InitMods() {
         mod->OnLoad();
     }
 
-    for (Config *config: m_Configs)
+    for (Config *config : m_Configs)
         SaveConfig(config);
 
     m_CommandContext.SortCommands();
@@ -280,6 +312,7 @@ IMod *ModContext::FindMod(const char *id) const {
 }
 
 void ModContext::RegisterCommand(ICommand *cmd) {
+    std::lock_guard<std::mutex> lock(m_Mutex);
     m_CommandContext.RegisterCommand(cmd);
 }
 
@@ -353,6 +386,8 @@ void ModContext::ExecuteCommand(const char *cmd) {
 }
 
 bool ModContext::AddConfig(Config *config) {
+    std::lock_guard<std::mutex> lock(m_Mutex);
+
     if (!config)
         return false;
 
@@ -429,18 +464,18 @@ bool ModContext::SaveConfig(Config *config) {
 
 const wchar_t *ModContext::GetDirectory(DirectoryType type) {
     switch (type) {
-        case BML_DIR_WORKING:
-            return m_WorkingDir.c_str();
-        case BML_DIR_TEMP:
-            return m_TempDir.c_str();
-        case BML_DIR_GAME:
-            return m_GameDir.c_str();
-        case BML_DIR_LOADER:
-            return m_LoaderDir.c_str();
-        case BML_DIR_CONFIG:
-            return m_ConfigDir.c_str();
-        default:
-            break;
+    case BML_DIR_WORKING:
+        return m_WorkingDir.c_str();
+    case BML_DIR_TEMP:
+        return m_TempDir.c_str();
+    case BML_DIR_GAME:
+        return m_GameDir.c_str();
+    case BML_DIR_LOADER:
+        return m_LoaderDir.c_str();
+    case BML_DIR_CONFIG:
+        return m_ConfigDir.c_str();
+    default:
+        break;
     }
 
     return nullptr;
@@ -448,18 +483,18 @@ const wchar_t *ModContext::GetDirectory(DirectoryType type) {
 
 const char *ModContext::GetDirectoryUtf8(DirectoryType type) {
     switch (type) {
-        case BML_DIR_WORKING:
-            return m_WorkingDirUtf8.c_str();
-        case BML_DIR_TEMP:
-            return m_TempDirUtf8.c_str();
-        case BML_DIR_GAME:
-            return m_GameDirUtf8.c_str();
-        case BML_DIR_LOADER:
-            return m_LoaderDirUtf8.c_str();
-        case BML_DIR_CONFIG:
-            return m_ConfigDirUtf8.c_str();
-        default:
-            break;
+    case BML_DIR_WORKING:
+        return m_WorkingDirUtf8.c_str();
+    case BML_DIR_TEMP:
+        return m_TempDirUtf8.c_str();
+    case BML_DIR_GAME:
+        return m_GameDirUtf8.c_str();
+    case BML_DIR_LOADER:
+        return m_LoaderDirUtf8.c_str();
+    case BML_DIR_CONFIG:
+        return m_ConfigDirUtf8.c_str();
+    default:
+        break;
     }
 
     return nullptr;
@@ -473,6 +508,9 @@ BML::IDataShare *ModContext::GetDataShare(const char *name) {
 
 
 void ModContext::SetIC(CKBeObject *obj, bool hierarchy) {
+    if (!obj)
+        return;
+
     m_CKContext->GetCurrentScene()->SetObjectInitialValue(obj, CKSaveObjectState(obj));
 
     if (hierarchy) {
@@ -490,6 +528,9 @@ void ModContext::SetIC(CKBeObject *obj, bool hierarchy) {
 }
 
 void ModContext::RestoreIC(CKBeObject *obj, bool hierarchy) {
+    if (!obj)
+        return;
+
     CKStateChunk *chunk = m_CKContext->GetCurrentScene()->GetObjectInitialValue(obj);
     if (chunk)
         CKReadObjectState(obj, chunk);
@@ -542,8 +583,8 @@ void ModContext::AddTimerLoop(float delay, std::function<bool()> callback) {
 }
 
 void ModContext::ExitGame() {
+    OnExitGame();
     AddTimer(1ul, [this]() {
-        OnExitGame();
         ::PostMessage((HWND) m_CKContext->GetMainWindow(), 0x5FA, 0, 0);
     });
 }
@@ -834,30 +875,43 @@ void ModContext::ShutdownLogger() {
 extern bool HookObjectLoad();
 extern bool HookPhysicalize();
 
+extern bool UnhookObjectLoad();
+extern bool UnhookPhysicalize();
+
 bool ModContext::InitHooks() {
     bool result = true;
 
     m_InputHook = new InputHook(m_InputManager);
+    if (!m_InputHook) {
+        m_Logger->Error("Failed to create InputHook");
+        return false;
+    }
 
-    if (HookObjectLoad()) {
+    bool objectLoadHookSuccess = HookObjectLoad();
+    if (objectLoadHookSuccess) {
         m_Logger->Info("Hook ObjectLoad Success");
     } else {
-        m_Logger->Info("Hook ObjectLoad Failed");
+        m_Logger->Error("Hook ObjectLoad Failed");
         result = false;
     }
 
-    if (HookPhysicalize()) {
+    bool physicalizeHookSuccess = HookPhysicalize();
+    if (physicalizeHookSuccess) {
         m_Logger->Info("Hook Physicalize Success");
     } else {
-        m_Logger->Info("Hook Physicalize Failed");
+        m_Logger->Error("Hook Physicalize Failed");
         result = false;
+    }
+
+    if (!result) {
+        if (objectLoadHookSuccess) UnhookObjectLoad();
+        if (physicalizeHookSuccess) UnhookPhysicalize();
+        delete m_InputHook;
+        m_InputHook = nullptr;
     }
 
     return result;
 }
-
-extern bool UnhookObjectLoad();
-extern bool UnhookPhysicalize();
 
 bool ModContext::ShutdownHooks() {
     bool result = true;
@@ -986,8 +1040,16 @@ size_t ModContext::ExploreMods(const std::wstring &path, std::vector<std::wstrin
             if (_wcsicmp(ext, L".zip") == 0) {
                 std::wstring dest = m_TempDir;
                 dest.append(L"\\Mods\\").append(filename);
-                utils::ExtractZipW(fullPath, dest);
-                ExploreMods(dest, mods);
+
+                if (!utils::DirectoryExistsW(dest)) {
+                    utils::CreateDirectoryW(dest);
+                }
+
+                if (utils::ExtractZipW(fullPath, dest)) {
+                    ExploreMods(dest, mods);
+                } else {
+                    m_Logger->Error("Failed to extract zip file: %s", utils::Utf16ToAnsi(fullPath).c_str());
+                }
             } else if (_wcsicmp(ext, L".bmodp") == 0) {
                 mods.push_back(fullPath);
             }
@@ -1034,9 +1096,11 @@ bool ModContext::UnloadLib(void *dllHandle) {
     if (it == m_DllHandleToModsMap.end())
         return false;
 
-    for (auto *mod: it->second) {
+    for (auto *mod : it->second) {
         UnregisterMod(mod, m_ModToDllHandleMap[mod]);
     }
+
+    m_DllHandleToModsMap.erase(it);
     return true;
 }
 
@@ -1166,6 +1230,8 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
 }
 
 void ModContext::FillCallbackMap(IMod *mod) {
+    std::lock_guard<std::mutex> lock(m_Mutex);
+
     static class BlankMod : IMod {
     public:
         explicit BlankMod(IBML *bml) : IMod(bml) {}
