@@ -87,7 +87,7 @@ bool DataShare::Copy(const char *key, void *buf, size_t size) const {
         return false;
 
     auto &data = it->second;
-    memcpy(buf, data.data(), std::max(data.size(), size));
+    memcpy(buf, data.data(), std::min(data.size(), size));
     return true;
 }
 
@@ -162,8 +162,11 @@ void *DataShare::SetUserData(void *data, size_t type) {
 
 bool DataShare::AddCallbacks(const char *key, DataShareCallback callback, void *userdata) const {
     auto it = m_CallbackMap.find(key);
-    if (it == m_CallbackMap.end()) return false;
-    it->second.emplace_back(callback, userdata);
+    if (it == m_CallbackMap.end()) {
+        m_CallbackMap[key] = {Callback(callback, userdata)};
+    } else {
+        it->second.emplace_back(callback, userdata);
+    }
     return true;
 }
 
