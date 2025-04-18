@@ -1,4 +1,4 @@
-configure_file(Version.h.in "${BML_INCLUDE_DIR}/BML/Version.h")
+configure_file(Version.h.in "${BML_INCLUDE_DIR}/BML/Version.h" @ONLY)
 
 set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/Export.h
@@ -142,7 +142,7 @@ target_link_libraries(BML
 )
 
 target_compile_options(BML PRIVATE
-        $<$<COMPILE_LANGUAGE:CXX>:$<$<CXX_COMPILER_ID:MSVC>:/Zc:char8_t->>
+        $<$<CXX_COMPILER_ID:MSVC>:/Zc:char8_t->
 )
 
 target_compile_definitions(BML PRIVATE "BML_EXPORTS" "IMGUI_EXPORT")
@@ -159,13 +159,18 @@ add_custom_command(TARGET BML PRE_BUILD
         VERBATIM
 )
 
-install(TARGETS BML EXPORT BMLTargets
+install(TARGETS BML
+        EXPORT BMLTargets
         ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+        FILE_SET HEADERS DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
 )
 
-install(DIRECTORY "${BML_INCLUDE_DIR}/BML" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+install(DIRECTORY "${BML_INCLUDE_DIR}/BML"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+)
+
 install(FILES
         "${IMGUI_SOURCE_DIR}/imconfig.h"
         "${IMGUI_SOURCE_DIR}/imgui.h"
@@ -176,9 +181,13 @@ install(FILES
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
-install(EXPORT BMLTargets DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML")
+install(EXPORT BMLTargets
+        NAMESPACE BML::
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML"
+)
 
-configure_package_config_file("${PROJECT_SOURCE_DIR}/cmake/BMLConfig.cmake.in"
+configure_package_config_file(
+        "${PROJECT_SOURCE_DIR}/cmake/BMLConfig.cmake.in"
         "${CMAKE_CURRENT_BINARY_DIR}/BMLConfig.cmake"
         INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML"
 )

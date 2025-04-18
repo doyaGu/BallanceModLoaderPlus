@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.14)
 
 project(BallanceModLoaderPlus
         VERSION 0.3.6
@@ -7,8 +7,8 @@ project(BallanceModLoaderPlus
         HOMEPAGE_URL https://github.com/doyaGu/BallanceModLoaderPlus)
 
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED NO)
-set(CMAKE_CXX_EXTENSIONS YES)
+set(CMAKE_CXX_STANDARD_REQUIRED YES)
+set(CMAKE_CXX_EXTENSIONS NO)
 
 # Add path for custom modules
 list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -27,24 +27,27 @@ endif ()
 
 # Use relative paths
 if (WIN32)
-    set(CMAKE_USE_RELATIVE_PATHS TRUE)
     set(CMAKE_SUPPRESS_REGENERATION TRUE)
 endif ()
 
+# Define build type if not specified
 if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     message(STATUS "Setting build type to 'Release' as no build type was specified")
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the build type (Debug/Release)" FORCE)
+    # Define standard build type options for GUI
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif ()
 
+# Set default install path
 if (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "${PROJECT_SOURCE_DIR}/install" CACHE PATH "The root directory of the installation" FORCE)
     message(STATUS "Setting default install directory to ${CMAKE_INSTALL_PREFIX} as no install directory was specified")
 endif ()
 
-# Disable msvc unsafe warnings
+# Disable msvc unsafe warnings globally
 add_compile_definitions(
-        $<$<C_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>
-        $<$<C_COMPILER_ID:MSVC>:_CRT_NONSTDC_NO_WARNINGS>
+        $<$<CXX_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>
+        $<$<CXX_COMPILER_ID:MSVC>:_CRT_NONSTDC_NO_WARNINGS>
 )
 
 option(BML_BUILD_TESTS "Build the BML test suite" OFF)
