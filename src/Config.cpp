@@ -2,20 +2,22 @@
 
 #include <cstdio>
 #include <sstream>
-#include <utility>
+#include <algorithm>
 
 #include "StringUtils.h"
 
-Config::Config(IMod *mod) : m_Mod(mod), m_ModID(mod->GetID()) {}
+Config::Config(IMod *mod) : m_Mod(mod), m_ModID(mod ? mod->GetID() : "") {}
 
 Config::~Config() {
-    for (Category *cate: m_Categories)
+    for (Category *cate : m_Categories) {
         delete cate;
+    }
     m_Categories.clear();
+    m_CategoryMap.clear();
 }
 
 bool Config::Load(const wchar_t *path) {
-    if (!path || path[0] == '\0')
+    if (!path || path[0] == L'\0')
         return false;
 
     FILE *fp = _wfopen(path, L"rb");
@@ -26,14 +28,20 @@ bool Config::Load(const wchar_t *path) {
     size_t sz = ftell(fp);
     fseek(fp, 0, SEEK_SET);
 
-    auto *buf = new char[sz + 1];
-
-    if (fread(buf, sizeof(char), sz, fp) != sz) {
-        delete[] buf;
+    if (sz == 0) {
         fclose(fp);
         return false;
     }
+
+    auto *buf = new char[sz + 1];
+    size_t read = fread(buf, sizeof(char), sz, fp);
     fclose(fp);
+
+    if (read != sz) {
+        delete[] buf;
+        return false;
+    }
+
     buf[sz] = '\0';
 
     std::wstring wBuf = utils::Utf8ToUtf16(buf);
@@ -49,57 +57,88 @@ bool Config::Load(const wchar_t *path) {
             std::getline(in, wComment);
             utils::TrimString(wComment);
             comment = utils::Utf16ToUtf8(wComment);
-        } else if (wToken == L"{")
+        } else if (wToken == L"{") {
             inCate = true;
-        else if (wToken == L"}")
+        } else if (wToken == L"}") {
             inCate = false;
-        else if (inCate) {
+        } else if (inCate) {
             std::wstring wPropName;
-            in >> wPropName;
+            if (!(in >> wPropName)) break;
+
             std::string propName = utils::Utf16ToUtf8(wPropName);
-            auto *prop = new Property(nullptr, category, propName);
+            auto *prop = new Property(this, category, propName);
+
+            bool parseSuccess = false;
+
             switch (wToken[0]) {
-                case 'S': {
-                    std::wstring wValue;
-                    std::getline(in, wValue);
-                    utils::TrimString(wValue);
-                    std::string value = utils::Utf16ToUtf8(wValue);
-                    prop->SetDefaultString(value.c_str());
-                    break;
-                }
-                case 'B': {
-                    bool value;
-                    in >> value;
-                    prop->SetDefaultBoolean(value);
-                    break;
-                }
-                case 'K': {
-                    int value;
-                    in >> value;
-                    prop->SetDefaultKey(CKKEYBOARD(value));
-                    break;
-                }
-                case 'I': {
-                    int value;
-                    in >> value;
-                    prop->SetDefaultInteger(value);
-                    break;
-                }
-                case 'F': {
-                    float value;
-                    in >> value;
-                    prop->SetDefaultFloat(value);
-                    break;
-                }
+            case L'S': {
+                std::wstring wValue;
+                std::getline(in, wValue);
+                utils::TrimString(wValue);
+                std::string value = utils::Utf16ToUtf8(wValue);
+                prop->SetDefaultString(value.c_str());
+                parseSuccess = true;
+                break;
             }
+            case L'B': {
+                bool value;
+                if (in >> value) {
+                    prop->SetDefaultBoolean(value);
+                    parseSuccess = true;
+                }
+                break;
+            }
+            case L'K': {
+                int value;
+                if (in >> value) {
+                    prop->SetDefaultKey(static_cast<CKKEYBOARD>(value));
+                    parseSuccess = true;
+                }
+                break;
+            }
+            case L'I': {
+                int value;
+                if (in >> value) {
+                    prop->SetDefaultInteger(value);
+                    parseSuccess = true;
+                }
+                break;
+            }
+            case L'F': {
+                float value;
+                if (in >> value) {
+                    prop->SetDefaultFloat(value);
+                    parseSuccess = true;
+                }
+                break;
+            }
+            default:
+                break;
+            }
+
+            if (!parseSuccess) {
+                delete prop;
+                continue;
+            }
+
             prop->SetComment(comment.c_str());
-            GetCategory(category.c_str())->m_Properties.push_back(prop);
+
+            Category *cate = GetCategory(category.c_str());
+            if (cate) {
+                cate->m_Properties.push_back(prop);
+                cate->m_PropertyMap[propName] = prop;
+            } else {
+                delete prop;
+            }
         } else {
             wCategory = wToken;
             category = utils::Utf16ToUtf8(wCategory);
 
-            GetCategory(category.c_str())->m_Comment = comment;
-            wComment.clear();
+            Category *cate = GetCategory(category.c_str());
+            if (cate) {
+                cate->m_Comment = comment;
+            }
+            comment.clear();
         }
     }
 
@@ -107,7 +146,7 @@ bool Config::Load(const wchar_t *path) {
 }
 
 bool Config::Save(const wchar_t *path) {
-    if (!path || path[0] == '\0')
+    if (!path || path[0] == L'\0')
         return false;
 
     FILE *fp = _wfopen(path, L"wb");
@@ -116,66 +155,76 @@ bool Config::Save(const wchar_t *path) {
 
     std::ostringstream out;
 
-    for (auto *category: m_Categories) {
+    // Clean up properties without a config
+    for (auto *category : m_Categories) {
+        if (!category) continue;
+
         auto &props = category->m_Properties;
-        for (auto iter = props.begin(); iter != props.end();) {
-            if (!(*iter)->m_Config) {
-                delete (*iter);
-                iter = props.erase(iter);
-            } else
-                iter++;
+        for (auto it = props.begin(); it != props.end();) {
+            if (!(*it) || !(*it)->m_Config) {
+                if (*it) {
+                    category->m_PropertyMap.erase((*it)->m_Key);
+                    delete *it;
+                }
+                it = props.erase(it);
+            } else {
+                ++it;
+            }
         }
     }
 
-    out << "# Configuration File for Mod: " << m_Mod->GetName()
-        << " - " << m_Mod->GetVersion() << std::endl << std::endl;
-    for (auto *category: m_Categories) {
-        if (category->GetPropertyCount() == 0)
+    out << "# Configuration File for Mod: " << (m_Mod ? m_Mod->GetName() : "Unknown")
+        << " - " << (m_Mod ? m_Mod->GetVersion() : "Unknown") << std::endl << std::endl;
+
+    for (auto *category : m_Categories) {
+        if (!category || category->GetPropertyCount() == 0)
             continue;
 
         out << "# " << category->m_Comment << std::endl;
         out << category->m_Name << " {" << std::endl << std::endl;
 
-        for (auto property: category->m_Properties) {
+        for (auto *property : category->m_Properties) {
+            if (!property) continue;
+
             out << "\t# " << property->GetComment() << std::endl;
             out << "\t";
             switch (property->GetType()) {
-                case IProperty::STRING:
-                    out << "S ";
-                    break;
-                case IProperty::BOOLEAN:
-                    out << "B ";
-                    break;
-                case IProperty::FLOAT:
-                    out << "F ";
-                    break;
-                case IProperty::KEY:
-                    out << "K ";
-                    break;
-                case IProperty::INTEGER:
-                default:
-                    out << "I ";
-                    break;
+            case IProperty::STRING:
+                out << "S ";
+                break;
+            case IProperty::BOOLEAN:
+                out << "B ";
+                break;
+            case IProperty::FLOAT:
+                out << "F ";
+                break;
+            case IProperty::KEY:
+                out << "K ";
+                break;
+            case IProperty::INTEGER:
+            default:
+                out << "I ";
+                break;
             }
 
             out << property->m_Key << " ";
             switch (property->GetType()) {
-                case IProperty::STRING:
-                    out << property->GetString();
-                    break;
-                case IProperty::BOOLEAN:
-                    out << property->GetBoolean();
-                    break;
-                case IProperty::FLOAT:
-                    out << property->GetFloat();
-                    break;
-                case IProperty::KEY:
-                    out << (int) property->GetKey();
-                    break;
-                case IProperty::INTEGER:
-                default:
-                    out << property->GetInteger();
-                    break;
+            case IProperty::STRING:
+                out << property->GetString();
+                break;
+            case IProperty::BOOLEAN:
+                out << property->GetBoolean();
+                break;
+            case IProperty::FLOAT:
+                out << property->GetFloat();
+                break;
+            case IProperty::KEY:
+                out << static_cast<int>(property->GetKey());
+                break;
+            case IProperty::INTEGER:
+            default:
+                out << property->GetInteger();
+                break;
             }
 
             out << std::endl << std::endl;
@@ -185,41 +234,38 @@ bool Config::Save(const wchar_t *path) {
     }
 
     std::string buf = out.str();
-    if (fwrite(buf.c_str(), sizeof(char), buf.size(), fp) != buf.size()) {
-        fclose(fp);
-        return false;
-    }
-
+    bool success = (fwrite(buf.c_str(), sizeof(char), buf.size(), fp) == buf.size());
     fclose(fp);
-    return true;
+    return success;
 }
 
 bool Config::HasCategory(const char *category) {
     if (!category)
         return false;
 
-    for (Category *cate: m_Categories)
-        if (cate->m_Name == category)
-            return true;
-    return false;
+    return m_CategoryMap.find(category) != m_CategoryMap.end();
 }
 
 bool Config::HasKey(const char *category, const char *key) {
     if (!category || !key)
         return false;
 
-    auto *cate = GetCategory(category);
-    return cate->HasKey(key);
+    auto catIt = m_CategoryMap.find(category);
+    if (catIt == m_CategoryMap.end())
+        return false;
+
+    return catIt->second->HasKey(key);
 }
 
 IProperty *Config::GetProperty(const char *category, const char *key) {
     if (!category || !key)
         return nullptr;
 
-    auto *cate = GetCategory(category);
+    Category *cate = GetCategory(category);
     bool exist = cate->HasKey(key);
     Property *prop = cate->GetProperty(key);
     prop->m_Config = this;
+
     if (!exist) {
         prop->m_Type = IProperty::NONE;
         prop->m_Value = 0;
@@ -241,12 +287,13 @@ Category *Config::GetCategory(const char *name) {
         return nullptr;
 
     std::string n = name;
-    for (Category *cate: m_Categories)
-        if (cate->m_Name == n)
-            return cate;
+    auto it = m_CategoryMap.find(n);
+    if (it != m_CategoryMap.end())
+        return it->second;
 
     auto *cate = new Category(this, name);
     m_Categories.push_back(cate);
+    m_CategoryMap[n] = cate;
     return cate;
 }
 
@@ -266,13 +313,14 @@ void Config::SetCategoryComment(const char *category, const char *comment) {
     cate->SetComment(comment);
 }
 
-Category::Category(Config *config, std::string name)
-        : m_Config(config), m_Name(std::move(name)) {}
+Category::Category(Config *config, std::string name) : m_Config(config), m_Name(std::move(name)) {}
 
 Category::~Category() {
-    for (Property *prop: m_Properties)
+    for (Property *prop : m_Properties) {
         delete prop;
+    }
     m_Properties.clear();
+    m_PropertyMap.clear();
 }
 
 Property *Category::GetProperty(size_t i) {
@@ -286,24 +334,23 @@ Property *Category::GetProperty(const char *key) {
         return nullptr;
 
     std::string k = key;
-    for (Property *prop: m_Properties)
-        if (prop->m_Key == k)
-            return prop;
+    auto it = m_PropertyMap.find(k);
+    if (it != m_PropertyMap.end() && it->second) {
+        return it->second;
+    }
 
     auto *prop = new Property(m_Config, m_Name, k);
-    m_Properties.push_back(prop);
+    if (prop) {
+        m_Properties.push_back(prop);
+        m_PropertyMap[k] = prop;
+    }
     return prop;
 }
 
-bool Category::HasKey(const char *key) {
+bool Category::HasKey(const char *key) const {
     if (!key)
         return false;
-
-    for (Property *prop: m_Properties)
-        if (prop->m_Key == key)
-            return true;
-
-    return false;
+    return m_PropertyMap.find(key) != m_PropertyMap.end();
 }
 
 Property::Property(Config *config, std::string category, std::string key) {
@@ -315,11 +362,29 @@ Property::Property(Config *config, std::string category, std::string key) {
 }
 
 const char *Property::GetString() {
-    return m_Type == STRING ? std::get<std::string>(m_Value).c_str() : "";
+    try {
+        return m_Type == STRING ? std::get<std::string>(m_Value).c_str() : "";
+    } catch (const std::bad_variant_access &) {
+        m_Value = std::string(""); // Reset to empty string
+        m_Type = STRING;
+        return "";
+    }
+}
+
+size_t Property::GetStringSize() {
+    if (GetType() != STRING)
+        return 0;
+    return std::get<std::string>(m_Value).size();
 }
 
 bool Property::GetBoolean() {
-    return m_Type == BOOLEAN && std::get<bool>(m_Value);
+    try {
+        return m_Type == BOOLEAN ? std::get<bool>(m_Value) : false;
+    } catch (const std::bad_variant_access &) {
+        m_Value = false; // Reset to false
+        m_Type = BOOLEAN;
+        return false;
+    }
 }
 
 int Property::GetInteger() {
@@ -335,10 +400,12 @@ CKKEYBOARD Property::GetKey() {
 }
 
 void Property::SetString(const char *value) {
-    if (!value) value = "";
-    const auto &v = std::get<std::string>(m_Value);
-    if (m_Type != STRING || v != value) {
-        m_Value = value;
+    if (!value)
+        value = "";
+    std::string newValue = value;
+
+    if (m_Type != STRING || std::get<std::string>(m_Value) != newValue) {
+        m_Value = newValue;
         m_Type = STRING;
         m_Hash = utils::HashString(value);
         SetModified();
@@ -378,6 +445,9 @@ void Property::SetKey(CKKEYBOARD value) {
 }
 
 void Property::SetDefaultString(const char *value) {
+    if (!value)
+        value = "";
+
     if (m_Type != STRING) {
         m_Type = STRING;
         m_Hash = utils::HashString(value);
@@ -409,44 +479,44 @@ void Property::SetDefaultFloat(float value) {
 void Property::SetDefaultKey(CKKEYBOARD value) {
     if (m_Type != KEY) {
         m_Type = KEY;
-        m_Value = value;
+        m_Value = static_cast<int>(value);
     }
 }
 
-size_t Property::GetHash() {
+size_t Property::GetHash() const {
     if (m_Type == STRING)
         return m_Hash;
     return std::get<int>(m_Value);
 }
 
 void Property::CopyValue(Property *o) {
-    m_Type = o->GetType();
-    switch (m_Type) {
-        case INTEGER:
-            SetInteger(o->GetInteger());
-            break;
-        case FLOAT:
-            SetFloat(o->GetFloat());
-            break;
-        case BOOLEAN:
-            SetBoolean(o->GetBoolean());
-            break;
-        case KEY:
-            SetKey(o->GetKey());
-            break;
-        case STRING:
-            SetString(o->GetString());
-            break;
-        default:
-            break;
-    }
-}
+    if (!o) return;
 
-size_t Property::GetStringSize() {
-    if (GetType() != STRING)
-        return 0;
-    const auto &v = std::get<std::string>(m_Value);
-    return v.size();
+    switch (o->GetType()) {
+    case INTEGER:
+        SetInteger(o->GetInteger());
+        break;
+    case FLOAT:
+        SetFloat(o->GetFloat());
+        break;
+    case BOOLEAN:
+        SetBoolean(o->GetBoolean());
+        break;
+    case KEY:
+        SetKey(o->GetKey());
+        break;
+    case STRING:
+        SetString(o->GetString());
+        break;
+    case NONE:
+        // Nothing to copy for NONE type
+        break;
+    default:
+        // Handle unexpected type
+        m_Type = NONE;
+        m_Value = 0;
+        break;
+    }
 }
 
 bool *Property::GetBooleanPtr() {
@@ -474,6 +544,6 @@ CKKEYBOARD *Property::GetKeyPtr() {
 }
 
 void Property::SetModified() {
-    if (m_Config)
-        m_Config->m_Mod->OnModifyConfig(m_Category.c_str(), m_Key.c_str(), this);
+    if (m_Config && m_Config->GetMod())
+        m_Config->GetMod()->OnModifyConfig(m_Category.c_str(), m_Key.c_str(), this);
 }
