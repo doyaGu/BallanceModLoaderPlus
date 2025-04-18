@@ -279,7 +279,7 @@ void BMLMod::OnExitGame() {
 void BMLMod::OnStartLevel() {
     ApplyFrameRateSettings();
 
-    m_HUD.ResetSRTimer(m_ShowSR->GetBoolean());
+    m_HUD.ResetSRTimer(false, m_ShowSR->GetBoolean());
     SetParamValue(m_LoadCustom, FALSE);
 }
 
