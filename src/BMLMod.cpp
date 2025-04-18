@@ -279,7 +279,8 @@ void BMLMod::OnExitGame() {
 void BMLMod::OnStartLevel() {
     ApplyFrameRateSettings();
 
-    m_HUD.ResetSRTimer(false, m_ShowSR->GetBoolean());
+    m_HUD.ResetSRTimer();
+    m_HUD.ShowSRTimer(m_ShowSR->GetBoolean());
     SetParamValue(m_LoadCustom, FALSE);
 }
 
@@ -288,19 +289,19 @@ void BMLMod::OnPostExitLevel() {
 }
 
 void BMLMod::OnPauseLevel() {
-    m_HUD.ActivateSRTimer(false);
+    m_HUD.PauseSRTimer();
 }
 
 void BMLMod::OnUnpauseLevel() {
-    m_HUD.ActivateSRTimer(true);
+    m_HUD.StartSRTimer();
 }
 
 void BMLMod::OnCounterActive() {
-    m_HUD.ActivateSRTimer(true);
+    m_HUD.StartSRTimer();
 }
 
 void BMLMod::OnCounterInactive() {
-    m_HUD.ActivateSRTimer(false);
+    m_HUD.PauseSRTimer();
 }
 
 void BMLMod::AddIngameMessage(const char *msg) {
@@ -357,7 +358,7 @@ void BMLMod::LoadMap(const std::wstring &path) {
 }
 
 float BMLMod::GetSRScore() const {
-    return m_HUD.GetSRScore();
+    return m_HUD.GetSRTime();
 }
 
 int BMLMod::GetHSScore() {
