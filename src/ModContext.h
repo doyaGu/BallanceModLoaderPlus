@@ -348,6 +348,8 @@ private:
     ConfigMap m_ConfigMap;
 
     std::unordered_map<void *, std::vector<IMod *>> m_CallbackMap;
+
+    mutable std::mutex m_Mutex;
 };
 
 #endif // BML_MODCONTEXT_H
