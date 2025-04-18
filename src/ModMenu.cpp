@@ -31,7 +31,7 @@ void ModMenu::OnClose() {
     CKBehavior *beh = modContext->GetScriptByName("Menu_Options");
     context->GetCurrentScene()->Activate(beh, true);
 
-    modContext->AddTimerLoop(1ul, [this, inputHook] {
+    modContext->AddTimerLoop(1ul, [inputHook] {
         if (inputHook->oIsKeyDown(CKKEY_ESCAPE) || inputHook->oIsKeyDown(CKKEY_RETURN))
             return true;
         inputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
@@ -218,7 +218,9 @@ void ModOptionPage::OnDraw() {
             case IProperty::STRING: {
                 if (m_BufferHashes[index] != property->GetHash()) {
                     m_BufferHashes[index] = property->GetHash();
-                    strncpy(m_Buffers[index], property->GetString(), property->GetStringSize() + 1);
+                    size_t copySize = std::min(property->GetStringSize() + 1, sizeof(m_Buffers[index]) - 1);
+                    strncpy(m_Buffers[index], property->GetString(), copySize);
+                    m_Buffers[index][copySize] = '\0';
                 }
                 Bui::InputTextButton(property->GetName(), m_Buffers[index], sizeof(m_Buffers[index]));
                 if (ImGui::IsItemDeactivatedAfterEdit()) {
@@ -238,14 +240,11 @@ void ModOptionPage::OnDraw() {
                     m_IntValues[index] = property->GetInteger();
                     m_IntFlags[index] = 1;
                 }
-                if (Bui::InputIntButton(property->GetName(), &m_IntValues[index])) {
+                Bui::InputIntButton(property->GetName(), &m_IntValues[index]);
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
                     if (m_IntValues[index] != property->GetInteger()) {
-                        m_IntFlags[index] = 2;
+                        property->SetInteger(m_IntValues[index]);
                     }
-                }
-                if (ImGui::IsItemDeactivatedAfterEdit() && m_IntFlags[index] == 2) {
-                    property->SetInteger(m_IntValues[index]);
-                    m_IntFlags[index] = 1;
                 }
                 break;
             case IProperty::KEY:
@@ -260,14 +259,11 @@ void ModOptionPage::OnDraw() {
                     m_FloatValues[index] = property->GetFloat();
                     m_FloatFlags[index] = 1;
                 }
-                if (Bui::InputFloatButton(property->GetName(), &m_FloatValues[index])) {
+                Bui::InputFloatButton(property->GetName(), &m_FloatValues[index]);
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
                     if (fabs(m_FloatValues[index] - property->GetFloat()) > EPSILON) {
-                        m_FloatFlags[index] = 2;
+                        property->SetFloat(m_FloatValues[index]);
                     }
-                }
-                if (ImGui::IsItemDeactivatedAfterEdit() && m_FloatFlags[index] == 2) {
-                    property->SetFloat(m_FloatValues[index]);
-                    m_FloatFlags[index] = 1;
                 }
                 break;
             default:
