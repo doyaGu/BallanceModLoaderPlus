@@ -31,9 +31,10 @@ public:
         m_ShowSRTimer = show;
     }
 
-    void ResetSRTimer(bool show) {
+    void ResetSRTimer(bool activate = false, bool show = false) {
         m_SRTimer = 0.0f;
         strcpy(m_SRScore, "00:00:00.000");
+        ActivateSRTimer(activate);
         ShowSRTimer(show);
     }
 
@@ -47,9 +48,9 @@ private:
 
     int m_FPSCount = 0;
     int m_FPSTimer = 0;
-    char m_FPSText[16] = {};
+    char m_FPSText[16] = "FPS: 0";
     float m_SRTimer = 0.0f;
-    char m_SRScore[16] = {};
+    char m_SRScore[16] = "00:00:00.000";
     bool m_SRActivated = false;
     bool m_ShowSRTimer = false;
     bool m_ShowFPS = false;

@@ -27,7 +27,7 @@ void HUD::OnDraw() {
     const ImVec2 contentSize = ImGui::GetContentRegionAvail();
     ImDrawList *drawList = ImGui::GetWindowDrawList();
 
-    float oldScale = ImGui::GetFont()->Scale;
+    const float oldScale = ImGui::GetFont()->Scale;
     ImGui::GetFont()->Scale *= 1.2f;
     ImGui::PushFont(ImGui::GetFont());
 
@@ -49,7 +49,7 @@ void HUD::OnDraw() {
 
     if (m_ShowSRTimer) {
         drawList->AddText(ImVec2(contentSize.x * 0.03f, contentSize.y * 0.8f), IM_COL32_WHITE, "SR Timer");
-        auto srSize = ImGui::CalcTextSize(m_SRScore);
+        const auto srSize = ImGui::CalcTextSize(m_SRScore);
         drawList->AddText(ImVec2(contentSize.x * 0.05f, contentSize.y * 0.8f + srSize.y), IM_COL32_WHITE, m_SRScore);
     }
 
@@ -65,7 +65,12 @@ void HUD::OnProcess() {
 void HUD::OnProcess_Fps() {
     CKStats stats;
     BML_GetCKContext()->GetProfileStats(&stats);
-    m_FPSCount += int(1000 / stats.TotalFrameTime);
+
+    // Avoid division by zero
+    if (stats.TotalFrameTime > 0) {
+        m_FPSCount += static_cast<int>(1000.0f / stats.TotalFrameTime);
+    }
+
     if (++m_FPSTimer == 60) {
         sprintf(m_FPSText, "FPS: %d", m_FPSCount / 60);
         m_FPSTimer = 0;
@@ -76,14 +81,14 @@ void HUD::OnProcess_Fps() {
 void HUD::OnProcess_SRTimer() {
     if (m_SRActivated) {
         m_SRTimer += BML_GetCKContext()->GetTimeManager()->GetLastDeltaTime();
-        int counter = int(m_SRTimer);
-        int ms = counter % 1000;
+        int counter = static_cast<int>(m_SRTimer);
+        const int ms = counter % 1000;
         counter /= 1000;
-        int s = counter % 60;
+        const int s = counter % 60;
         counter /= 60;
-        int m = counter % 60;
+        const int m = counter % 60;
         counter /= 60;
-        int h = counter % 100;
+        const int h = counter % 100;
         sprintf(m_SRScore, "%02d:%02d:%02d.%03d", h, m, s, ms);
     }
 }
