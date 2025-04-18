@@ -25,12 +25,17 @@ struct MapEntry {
     explicit MapEntry(MapEntry *parent, MapEntryType entryType) : parent(parent), type(entryType) {}
 
     ~MapEntry() {
-        for (auto *child : children)
+        for (auto *child : children) {
+            child->parent = nullptr;
             delete child;
+        }
+        children.clear();
 
         if (parent) {
-            auto it = std::remove(parent->children.begin(), parent->children.end(), this);
-            parent->children.erase(it, parent->children.end());
+            auto it = std::find(parent->children.begin(), parent->children.end(), this);
+            if (it != parent->children.end()) {
+                parent->children.erase(it);
+            }
         }
     }
 
@@ -73,7 +78,7 @@ private:
 
     MapMenu *m_Menu;
     int m_Count = 0;
-    char m_MapSearchBuf[65536] = {};
+    char m_MapSearchBuf[1024] = {};
     std::vector<size_t> m_MapSearchResult;
 };
 

@@ -15,7 +15,8 @@
 
 using namespace ScriptHelper;
 
-MapMenu::MapMenu(BMLMod *mod): m_Mod(mod), m_Maps(new MapEntry(nullptr, MAP_ENTRY_DIR)) {}
+MapMenu::MapMenu(BMLMod *mod): m_Mod(mod), m_Maps(new MapEntry(nullptr, MAP_ENTRY_DIR)) {
+}
 
 MapMenu::~MapMenu() {
     delete m_Maps;
@@ -88,61 +89,83 @@ void MapMenu::RefreshMaps() {
 }
 
 bool MapMenu::ExploreMaps(MapEntry *maps, int depth) {
-    if (depth <= 0)
+    if (!maps || maps->type != MAP_ENTRY_DIR || maps->path.empty())
         return false;
 
-    if (!maps || maps->type != MAP_ENTRY_DIR || maps->path.empty())
+    if (depth <= 0)
         return false;
 
     const std::wstring p = maps->path + L"\\*";
     _wfinddata_t fileinfo = {};
     auto handle = _wfindfirst(p.c_str(), &fileinfo);
-    if (handle == -1)
+
+    if (handle == -1) {
+        int err = errno;
+        std::string errMsg = "Failed to explore maps directory " + utils::Utf16ToUtf8(maps->path) + ": ";
+        errMsg += strerror(err);
+        BML_GetModContext()->GetLogger()->Error(errMsg.c_str());
         return false;
+    }
 
-    do {
-        std::wstring fullPath = maps->path;
-        fullPath.append(L"\\").append(fileinfo.name);
+    bool foundAny = false;
+    try {
+        do {
+            std::wstring fullPath = maps->path;
+            fullPath.append(L"\\").append(fileinfo.name);
 
-        if (fileinfo.attrib & _A_SUBDIR) {
-            if (wcscmp(fileinfo.name, L".") != 0 && wcscmp(fileinfo.name, L"..") != 0) {
-                wchar_t dir[1024];
-                _wsplitpath(fileinfo.name, nullptr, nullptr, dir, nullptr);
+            if (fileinfo.attrib & _A_SUBDIR) {
+                if (wcscmp(fileinfo.name, L".") != 0 && wcscmp(fileinfo.name, L"..") != 0) {
+                    wchar_t dir[1024];
+                    _wsplitpath(fileinfo.name, nullptr, nullptr, dir, nullptr);
 
-                auto *entry = new MapEntry(maps, MAP_ENTRY_DIR);
-                entry->name = utils::Utf16ToUtf8(dir);
+                    auto *entry = new MapEntry(maps, MAP_ENTRY_DIR);
+                    entry->name = utils::Utf16ToUtf8(dir);
+                    entry->path = fullPath;
+                    maps->children.push_back(entry);
+                    if (ExploreMaps(entry, depth - 1))
+                        foundAny = true;
+                }
+            } else if (IsSupportedFileType(fileinfo.name)) {
+                wchar_t filename[1024];
+                _wsplitpath(fileinfo.name, nullptr, nullptr, filename, nullptr);
+
+                auto *entry = new MapEntry(maps, MAP_ENTRY_FILE);
+                entry->name = utils::Utf16ToUtf8(filename);
                 entry->path = fullPath;
                 maps->children.push_back(entry);
-                ExploreMaps(entry, depth - 1);
+                foundAny = true;
             }
-        } else if (IsSupportedFileType(fileinfo.name)) {
-            wchar_t filename[1024];
-            _wsplitpath(fileinfo.name, nullptr, nullptr, filename, nullptr);
-
-            auto *entry = new MapEntry(maps, MAP_ENTRY_FILE);
-            entry->name = utils::Utf16ToUtf8(filename);
-            entry->path = fullPath;
-            maps->children.push_back(entry);
-        }
-    } while (_wfindnext(handle, &fileinfo) == 0);
+        } while (_wfindnext(handle, &fileinfo) == 0);
+    } catch (const std::exception &e) {
+        BML_GetModContext()->GetLogger()->Error("Exception in ExploreMaps: %s", e.what());
+    }
+    catch (...) {
+        BML_GetModContext()->GetLogger()->Error("Unknown exception in ExploreMaps");
+    }
 
     _findclose(handle);
 
-    std::sort(maps->children.begin(), maps->children.end(), [](const MapEntry *lhs, const MapEntry *rhs) {
-        return *lhs < *rhs;
-    });
+    if (!maps->children.empty()) {
+        std::sort(maps->children.begin(), maps->children.end(), [](const MapEntry *lhs, const MapEntry *rhs) {
+            return *lhs < *rhs;
+        });
+        foundAny = true;
+    }
 
-    return !maps->children.empty();
+    return foundAny;
 }
 
 bool MapMenu::IsSupportedFileType(const std::wstring &path) {
     if (path.empty())
         return false;
 
-    wchar_t ext[64];
-    _wsplitpath(path.c_str(), nullptr, nullptr, nullptr, ext);
+    size_t dotPos = path.find_last_of(L'.');
+    if (dotPos == std::wstring::npos)
+        return false;
 
-    return wcsicmp(ext, L".nmo") == 0 || wcsicmp(ext, L".cmo") == 0;
+    std::wstring ext = path.substr(dotPos);
+
+    return _wcsicmp(ext.c_str(), L".nmo") == 0 || _wcsicmp(ext.c_str(), L".cmo") == 0;
 }
 
 MapListPage::MapListPage(MapMenu *menu): Page("Custom Maps"), m_Menu(menu) {
@@ -200,7 +223,7 @@ void MapListPage::OnDraw() {
 
     if (IsSearching()) {
         DrawEntries([&](size_t index) {
-            if (index >= m_MapSearchResult.size())
+            if (n + index >= m_MapSearchResult.size())
                 return false;
             return OnDrawEntry(m_MapSearchResult[n + index], &v);
         }, ImVec2(0.4031f, 0.23f), 0.06f, 10);
@@ -240,36 +263,43 @@ void MapListPage::OnSearchMaps() {
         return;
 
     auto *pattern = (OnigUChar *) m_MapSearchBuf;
-    regex_t *reg;
+    regex_t *reg = nullptr;
     OnigErrorInfo einfo;
 
-    int r = onig_new(&reg, pattern, pattern + strlen((char *) pattern),
-                     ONIG_OPTION_DEFAULT, ONIG_ENCODING_UTF8, ONIG_SYNTAX_ASIS, &einfo);
-    if (r != ONIG_NORMAL) {
-        char s[ONIG_MAX_ERROR_MESSAGE_LEN];
-        onig_error_code_to_str((UChar *) s, r, &einfo);
-        BML_GetModContext()->GetLogger()->Error(s);
-        return;
-    }
-
-    const auto &maps = m_Menu->GetCurrentMaps()->children;
-    for (size_t i = 0; i < maps.size(); ++i) {
-        const auto &name = maps[i]->name;
-        const auto *end = (const UChar *) (name.c_str() + name.size());
-        const auto *start = (const UChar *) name.c_str();
-        const auto *range = end;
-
-        r = onig_search(reg, start, end, start, range, nullptr, ONIG_OPTION_NONE);
-        if (r >= 0) {
-            m_MapSearchResult.push_back(i);
-        } else if (r != ONIG_MISMATCH) {
+    try {
+        int r = onig_new(&reg, pattern, pattern + strlen((char *) pattern),
+                         ONIG_OPTION_DEFAULT, ONIG_ENCODING_UTF8, ONIG_SYNTAX_ASIS, &einfo);
+        if (r != ONIG_NORMAL) {
             char s[ONIG_MAX_ERROR_MESSAGE_LEN];
-            onig_error_code_to_str((UChar *) s, r);
+            onig_error_code_to_str((UChar *) s, r, &einfo);
             BML_GetModContext()->GetLogger()->Error(s);
+            return;
         }
+
+        const auto &maps = m_Menu->GetCurrentMaps()->children;
+        for (size_t i = 0; i < maps.size(); ++i) {
+            const auto &name = maps[i]->name;
+            const auto *end = (const UChar *) (name.c_str() + name.size());
+            const auto *start = (const UChar *) name.c_str();
+            const auto *range = end;
+
+            r = onig_search(reg, start, end, start, range, nullptr, ONIG_OPTION_NONE);
+            if (r >= 0) {
+                m_MapSearchResult.push_back(i);
+            } else if (r != ONIG_MISMATCH) {
+                char s[ONIG_MAX_ERROR_MESSAGE_LEN];
+                onig_error_code_to_str((UChar *) s, r);
+                BML_GetModContext()->GetLogger()->Error(s);
+            }
+        }
+    } catch (...) {
+        if (reg)
+            onig_free(reg);
+        throw;
     }
 
-    onig_free(reg);
+    if (reg)
+        onig_free(reg);
 }
 
 bool MapListPage::OnDrawEntry(size_t index, bool *v) {
