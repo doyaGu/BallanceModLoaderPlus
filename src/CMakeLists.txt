@@ -1,5 +1,3 @@
-set(BML_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/include)
-
 configure_file(Version.h.in "${BML_INCLUDE_DIR}/BML/Version.h")
 
 set(BML_PUBLIC_HEADERS

@@ -47,7 +47,15 @@ add_compile_definitions(
         $<$<C_COMPILER_ID:MSVC>:_CRT_NONSTDC_NO_WARNINGS>
 )
 
+option(BML_BUILD_TESTS "Build the BML test suite" OFF)
+
+set(BML_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/include" CACHE INTERNAL "")
+set(BML_SOURCE_DIR "${PROJECT_SOURCE_DIR}/src" CACHE INTERNAL "")
+
 find_package(VirtoolsSDK REQUIRED)
 
 add_subdirectory(deps)
 add_subdirectory(src)
+if (BML_BUILD_TESTS)
+    add_subdirectory(tests)
+endif ()
