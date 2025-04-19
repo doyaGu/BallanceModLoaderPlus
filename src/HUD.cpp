@@ -376,7 +376,7 @@ void HUD::SetupDefaultElements() {
 
     // Cheat mode indicator (centered at bottom)
     m_CheatModeElement = std::make_unique<HUDElement>("Cheat Mode Enabled", AnchorPoint::BottomCenter);
-    m_CheatModeElement->SetOffset(0.0f, -0.10f);
+    m_CheatModeElement->SetOffset(0.0f, -0.12f);
     m_CheatModeElement->SetColor(IM_COL32(255, 200, 60, 255)); // Yellow-orange color
 }
 
