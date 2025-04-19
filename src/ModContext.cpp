@@ -367,7 +367,10 @@ void ModContext::ExecuteCommand(const char *cmd) {
 
     delete[] buf;
 
-    m_Logger->Info("Execute Command: %s", cmd);
+    if (args.empty()) {
+        m_BMLMod->AddIngameMessage("Error: Empty command");
+        return;
+    }
 
     ICommand *command = FindCommand(args[0].c_str());
     if (!command) {
@@ -379,6 +382,8 @@ void ModContext::ExecuteCommand(const char *cmd) {
         m_BMLMod->AddIngameMessage(("Error: Can not execute cheat command " + args[0]).c_str());
         return;
     }
+
+    m_Logger->Info("Execute Command: %s", cmd);
 
     BroadcastCallback(&IMod::OnPreCommandExecute, command, args);
     command->Execute(this, args);
