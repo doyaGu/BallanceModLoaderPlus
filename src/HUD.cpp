@@ -47,21 +47,16 @@ void HUDElement::Draw(ImDrawList *drawList, const ImVec2 &viewportSize) {
     if (!m_Visible || m_Text.empty() || !drawList)
         return;
 
-    // Store original font scale
     float oldScale = ImGui::GetFont()->Scale;
 
-    // Apply scale
     ImGui::GetFont()->Scale *= m_Scale;
     ImGui::PushFont(ImGui::GetFont());
 
-    // Calculate text size and position
     ImVec2 textSize = ImGui::CalcTextSize(m_Text.c_str());
     ImVec2 pos = CalculatePosition(textSize, viewportSize);
 
-    // Draw text
     drawList->AddText(pos, m_Color, m_Text.c_str());
 
-    // Restore font scale
     ImGui::GetFont()->Scale = oldScale;
     ImGui::PopFont();
 }
@@ -242,28 +237,23 @@ void HUD::OnDraw() {
     const ImVec2 viewportSize = ImGui::GetContentRegionAvail();
     ImDrawList *drawList = ImGui::GetWindowDrawList();
 
-    // Draw title element if visible
     if (m_TitleElement) {
         m_TitleElement->Draw(drawList, viewportSize);
     }
 
-    // Draw FPS element if visible
     if (m_FPSElement) {
         m_FPSElement->Draw(drawList, viewportSize);
     }
 
-    // Draw cheat mode indicator if enabled
     if (BML_GetModContext()->IsCheatEnabled() && m_CheatModeElement) {
         m_CheatModeElement->Draw(drawList, viewportSize);
     }
 
-    // Draw SR timer elements if visible
     if (m_SRTimerLabelElement && m_SRTimerValueElement) {
         m_SRTimerLabelElement->Draw(drawList, viewportSize);
         m_SRTimerValueElement->Draw(drawList, viewportSize);
     }
 
-    // Draw custom elements
     for (const auto &element : m_CustomElements) {
         element->Draw(drawList, viewportSize);
     }
