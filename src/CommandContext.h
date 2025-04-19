@@ -52,6 +52,8 @@ namespace BML {
         static char *AllocPrintfV(const char *format, va_list args);
         static char *AllocPrintf(const char *format, ...);
 
+        static std::vector<std::string> ParseCommandLine(const char *cmd);
+
     private:
         static bool ValidateCommandName(const char *name);
 

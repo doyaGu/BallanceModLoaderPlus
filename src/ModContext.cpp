@@ -332,41 +332,7 @@ void ModContext::ExecuteCommand(const char *cmd) {
     if (!cmd || cmd[0] == '\0')
         return;
 
-    size_t size = utf8size(cmd);
-    char *buf = new char[size + 1];
-    utf8ncpy(buf, cmd, size);
-
-    std::vector<std::string> args;
-
-    char *lp = &buf[0];
-    char *rp = lp;
-    char *end = lp + size;
-    utf8_int32_t cp, temp;
-    utf8codepoint(rp, &cp);
-    while (rp != end) {
-        if (utf8codepointsize(*rp) == 1 && std::isspace(*rp) || *rp == '\0') {
-            size_t len = rp - lp;
-            if (len != 0) {
-                char bk = *rp;
-                *rp = '\0';
-                args.emplace_back(lp);
-                *rp = bk;
-            }
-
-            if (*rp != '\0') {
-                while (utf8codepointsize(*rp) == 1 && std::isspace(*rp))
-                    ++rp;
-                --rp;
-            }
-
-            lp = utf8codepoint(rp, &temp);
-        }
-
-        rp = utf8codepoint(rp, &cp);
-    }
-
-    delete[] buf;
-
+    const auto args = CommandContext::ParseCommandLine(cmd);
     if (args.empty()) {
         m_BMLMod->AddIngameMessage("Error: Empty command");
         return;
