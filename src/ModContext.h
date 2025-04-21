@@ -300,8 +300,8 @@ private:
     bool UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle = nullptr);
 
     bool ResolveDependencies();
-    bool HasCircularDependencies(const std::string& modId, std::unordered_set<std::string>& visited, std::unordered_set<std::string>& inProgress);
-    std::vector<IMod*> SortModsByDependencies();
+    bool HasCircularDependencies(const std::string &modId, std::unordered_set<std::string> &visited, std::unordered_set<std::string> &inProgress);
+    std::vector<IMod *> SortModsByDependencies();
 
     void FillCallbackMap(IMod *mod);
 
