@@ -144,14 +144,12 @@ protected:
     virtual ILogger *GetLogger() final;
     virtual IConfig *GetConfig() final;
 
-    bool AddDependency(const std::string& modId, const BMLVersion& minVersion = BMLVersion(0, 0, 0)) {
-        return m_BML->RegisterDependency(this, modId.c_str(),
-                                        minVersion.major, minVersion.minor, minVersion.patch) == BML_OK;
+    bool AddDependency(const char *modId, const BMLVersion &minVersion = BMLVersion(0, 0, 0)) {
+        return m_BML->RegisterDependency(this, modId, minVersion.major, minVersion.minor, minVersion.patch) == BML_OK;
     }
 
-    bool AddOptionalDependency(const std::string& modId, const BMLVersion& minVersion = BMLVersion(0, 0, 0)) {
-        return m_BML->RegisterOptionalDependency(this, modId.c_str(),
-                                               minVersion.major, minVersion.minor, minVersion.patch) == BML_OK;
+    bool AddOptionalDependency(const char *modId, const BMLVersion &minVersion = BMLVersion(0, 0, 0)) {
+        return m_BML->RegisterOptionalDependency(this, modId, minVersion.major, minVersion.minor, minVersion.patch) == BML_OK;
     }
 
     bool CheckDependencies() {
