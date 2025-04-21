@@ -4,6 +4,7 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/Export.h
         ${BML_INCLUDE_DIR}/BML/Version.h
         ${BML_INCLUDE_DIR}/BML/Defines.h
+        ${BML_INCLUDE_DIR}/BML/Errors.h
         ${BML_INCLUDE_DIR}/BML/Utils.h
 
         ${BML_INCLUDE_DIR}/BML/ILogger.h
@@ -53,6 +54,7 @@ set(BML_PRIVATE_HEADERS
 
 set(BML_SOURCES
         BML.cpp
+        Errors.cpp
         Utils.cpp
 
         HookBlock.cpp
