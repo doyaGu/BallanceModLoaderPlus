@@ -214,6 +214,8 @@ public:
     void OnProcess();
     void OnRender(CKRenderContext *dev);
 
+    void OnLoadGame();
+
     void OnPreStartMenu() override;
     void OnPostStartMenu() override;
 

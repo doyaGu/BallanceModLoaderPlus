@@ -632,6 +632,20 @@ void ModContext::OnRender(CKRenderContext *dev) {
     BroadcastCallback(&IMod::OnRender, static_cast<CK_RENDER_FLAGS>(dev->GetCurrentRenderOptions()));
 }
 
+void ModContext::OnLoadGame() {
+    BroadcastCallback(&IMod::OnLoadObject, "base.cmo", false, "", CKCID_3DOBJECT,
+                      true, true, true, false, nullptr, nullptr);
+
+    int scriptCnt = m_CKContext->GetObjectsCountByClassID(CKCID_BEHAVIOR);
+    CK_ID *scripts = m_CKContext->GetObjectsListByClassID(CKCID_BEHAVIOR);
+    for (int i = 0; i < scriptCnt; i++) {
+        auto *behavior = (CKBehavior *) m_CKContext->GetObject(scripts[i]);
+        if (behavior->GetType() == CKBEHAVIORTYPE_SCRIPT) {
+            BroadcastCallback(&IMod::OnLoadScript, "base.cmo", behavior);
+        }
+    }
+}
+
 void ModContext::OnPreStartMenu() {
     BroadcastMessage("PreStartMenu", &IMod::OnPreStartMenu);
 }
