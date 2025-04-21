@@ -4,6 +4,7 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/Export.h
         ${BML_INCLUDE_DIR}/BML/Version.h
         ${BML_INCLUDE_DIR}/BML/Defines.h
+        ${BML_INCLUDE_DIR}/BML/Utils.h
 
         ${BML_INCLUDE_DIR}/BML/ILogger.h
         ${BML_INCLUDE_DIR}/BML/ICommand.h
@@ -52,6 +53,7 @@ set(BML_PRIVATE_HEADERS
 
 set(BML_SOURCES
         BML.cpp
+        Utils.cpp
 
         HookBlock.cpp
         ModManager.cpp
