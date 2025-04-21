@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "BML/IBML.h"
@@ -76,6 +77,14 @@ public:
     int GetModCount() override;
     IMod *GetMod(int index) override;
     IMod *FindMod(const char *id) const override;
+
+    int RegisterDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch) override;
+    int RegisterOptionalDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch) override;
+    int CheckDependencies(IMod *mod) const override;
+    int GetDependencyCount(IMod *mod) const override;
+    int GetDependencyInfo(IMod *mod, int index, char *dependencyId, int idSize,
+                          int *major, int *minor, int *patch, int *optional) const override;
+    int ClearDependencies(IMod *mod) override;
 
     void RegisterCommand(ICommand *cmd) override;
     int GetCommandCount() const override;
@@ -290,6 +299,10 @@ private:
     bool RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle = nullptr);
     bool UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle = nullptr);
 
+    bool ResolveDependencies();
+    bool HasCircularDependencies(const std::string& modId, std::unordered_set<std::string>& visited, std::unordered_set<std::string>& inProgress);
+    std::vector<IMod*> SortModsByDependencies();
+
     void FillCallbackMap(IMod *mod);
 
     void AddDataPath(const char *path);
@@ -344,6 +357,9 @@ private:
     std::vector<IMod *> m_Mods;
     typedef std::unordered_map<std::string, IMod *> ModMap;
     ModMap m_ModMap;
+
+    std::unordered_map<IMod*, std::vector<ModDependency>> m_ModDependencies;
+    std::unordered_map<std::string, std::vector<std::string>> m_DependencyGraph;
 
     std::vector<Config *> m_Configs;
     typedef std::unordered_map<std::string, Config *> ConfigMap;

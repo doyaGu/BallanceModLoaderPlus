@@ -235,6 +235,9 @@ void ModContext::UnloadMods() {
     delete m_BMLMod;
     m_BMLMod = nullptr;
 
+    m_ModDependencies.clear();
+    m_DependencyGraph.clear();
+
     ClearFlags(BML_MODS_LOADED);
 }
 
@@ -242,9 +245,19 @@ bool ModContext::InitMods() {
     if (!IsInited() || !AreModsLoaded() || AreModsInited())
         return false;
 
+    if (!ResolveDependencies()) {
+        m_Logger->Error("Failed to resolve mod dependencies");
+        return false;
+    }
+
     for (IMod *mod : m_Mods) {
         m_Logger->Info("Loading Mod %s[%s] v%s by %s",
                        mod->GetID(), mod->GetName(), mod->GetVersion(), mod->GetAuthor());
+
+        if (GetDependencyCount(mod) > 0 && CheckDependencies(mod) == 0) {
+            m_Logger->Error("Dependencies not satisfied for mod %s", mod->GetID());
+            continue; // Skip this mod but continue loading others
+        }
 
         FillCallbackMap(mod);
         mod->OnLoad();
@@ -255,17 +268,7 @@ bool ModContext::InitMods() {
 
     m_CommandContext.SortCommands();
 
-    BroadcastCallback(&IMod::OnLoadObject, "base.cmo", false, "", CKCID_3DOBJECT,
-                      true, true, true, false, nullptr, nullptr);
-
-    int scriptCnt = m_CKContext->GetObjectsCountByClassID(CKCID_BEHAVIOR);
-    CK_ID *scripts = m_CKContext->GetObjectsListByClassID(CKCID_BEHAVIOR);
-    for (int i = 0; i < scriptCnt; i++) {
-        auto *behavior = (CKBehavior *) m_CKContext->GetObject(scripts[i]);
-        if (behavior->GetType() == CKBEHAVIORTYPE_SCRIPT) {
-            BroadcastCallback(&IMod::OnLoadScript, "base.cmo", behavior);
-        }
-    }
+    OnLoadGame();
 
     SetFlags(BML_MODS_INITED);
     return true;
@@ -309,6 +312,149 @@ IMod *ModContext::FindMod(const char *id) const {
     if (iter == m_ModMap.end())
         return nullptr;
     return iter->second;
+}
+
+int ModContext::RegisterDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch) {
+    if (!mod || !dependencyId) {
+        return BML_ERROR_FAIL;
+    }
+
+    try {
+        ModDependency dep;
+        dep.id = BML_Strdup(dependencyId);
+        dep.minVersion = BMLVersion(major, minor, patch);
+        dep.optional = false;
+
+        m_ModDependencies[mod].push_back(dep);
+        return BML_OK;
+    } catch (...) {
+        return BML_ERROR_FAIL;
+    }
+}
+
+int ModContext::RegisterOptionalDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch) {
+    if (!mod || !dependencyId) {
+        return BML_ERROR_FAIL;
+    }
+
+    try {
+        ModDependency dep;
+        dep.id = BML_Strdup(dependencyId);
+        dep.minVersion = BMLVersion(major, minor, patch);
+        dep.optional = true;
+
+        m_ModDependencies[mod].push_back(dep);
+        return BML_OK;
+    } catch (...) {
+        return BML_ERROR_FAIL;
+    }
+}
+
+int ModContext::CheckDependencies(IMod *mod) const {
+    if (!mod) {
+        return 0; // Not satisfied
+    }
+
+    try {
+        auto it = m_ModDependencies.find(mod);
+        if (it == m_ModDependencies.end() || it->second.empty()) {
+            return 1; // No dependencies = satisfied
+        }
+
+        for (const auto &dep : it->second) {
+            IMod *depMod = FindMod(dep.id);
+
+            // Check if mod exists
+            if (!depMod) {
+                if (dep.optional) {
+                    // Optional dependency is missing, but that's okay
+                    continue;
+                }
+                // Required dependency is missing
+                return 0;
+            }
+
+            // Check version
+            BMLVersion modVersion;
+            if (std::string(depMod->GetVersion()).find_first_not_of("0123456789.") == std::string::npos) {
+                // Parse version if it's in the format "x.y.z"
+                sscanf(depMod->GetVersion(), "%d.%d.%d", &modVersion.major, &modVersion.minor, &modVersion.patch);
+            }
+
+            if (modVersion < dep.minVersion) {
+                if (dep.optional) {
+                    // Optional dependency version is too old, but that's okay
+                    continue;
+                }
+                // Required dependency version is too old
+                return 0;
+            }
+        }
+
+        return 1; // All dependencies satisfied
+    } catch (...) {
+        return 0; // Error, consider not satisfied
+    }
+}
+
+int ModContext::GetDependencyCount(IMod *mod) const {
+    if (!mod) {
+        return -1;
+    }
+
+    try {
+        auto it = m_ModDependencies.find(mod);
+        if (it == m_ModDependencies.end()) {
+            return 0;
+        }
+
+        return static_cast<int>(it->second.size());
+    } catch (...) {
+        return -1;
+    }
+}
+
+int ModContext::GetDependencyInfo(IMod *mod, int index, char *dependencyId, int idSize,
+                                  int *major, int *minor, int *patch, int *optional) const {
+    if (!mod || index < 0) {
+        return BML_ERROR_FAIL;
+    }
+
+    try {
+        auto it = m_ModDependencies.find(mod);
+        if (it == m_ModDependencies.end() || index >= static_cast<int>(it->second.size())) {
+            return BML_ERROR_NOT_FOUND;
+        }
+
+        const auto &dep = it->second[index];
+
+        if (dependencyId && idSize > 0) {
+            strncpy(dependencyId, dep.id, idSize - 1);
+            dependencyId[idSize - 1] = '\0';
+        }
+
+        if (major) *major = dep.minVersion.major;
+        if (minor) *minor = dep.minVersion.minor;
+        if (patch) *patch = dep.minVersion.patch;
+        if (optional) *optional = dep.optional ? 1 : 0;
+
+        return BML_OK;
+    } catch (...) {
+        return BML_ERROR_FAIL;
+    }
+}
+
+int ModContext::ClearDependencies(IMod *mod) {
+    if (!mod) {
+        return BML_ERROR_FAIL;
+    }
+
+    try {
+        m_ModDependencies.erase(mod);
+        return BML_OK;
+    } catch (...) {
+        return BML_ERROR_FAIL;
+    }
 }
 
 void ModContext::RegisterCommand(ICommand *cmd) {
@@ -1212,6 +1358,217 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
     }
 
     return true;
+}
+
+bool ModContext::ResolveDependencies() {
+    // Check if there are any dependencies to resolve
+    bool hasDependencies = false;
+    for (auto *mod : m_Mods) {
+        auto it = m_ModDependencies.find(mod);
+        if (it != m_ModDependencies.end() && !it->second.empty()) {
+            hasDependencies = true;
+            break;
+        }
+    }
+
+    // If no dependencies, keep original order
+    if (!hasDependencies) {
+        return true;
+    }
+
+    // Build dependency graph
+    m_DependencyGraph.clear();
+    std::unordered_set<std::string> involvedInDependencies;
+
+    for (auto *mod : m_Mods) {
+        std::string modId = mod->GetID();
+
+        auto it = m_ModDependencies.find(mod);
+        if (it != m_ModDependencies.end() && !it->second.empty()) {
+            std::vector<std::string> dependsOn;
+            for (const auto &dep : it->second) {
+                // Mark both this mod and its dependency as involved in dependency relationships
+                involvedInDependencies.insert(modId);
+                involvedInDependencies.insert(dep.id);
+
+                if (!dep.optional) {
+                    dependsOn.emplace_back(dep.id);
+                }
+            }
+
+            m_DependencyGraph[modId] = dependsOn;
+        } else {
+            // Still add to graph for dependency resolution, but mark as having no dependencies
+            m_DependencyGraph[modId] = {};
+        }
+    }
+
+    // Check for circular dependencies
+    std::unordered_set<std::string> visited;
+    std::unordered_set<std::string> inProgress;
+
+    for (const auto &pair : m_DependencyGraph) {
+        const auto &modId = pair.first;
+        if (visited.find(modId) == visited.end()) {
+            if (HasCircularDependencies(modId, visited, inProgress)) {
+                m_Logger->Error("Circular dependency detected involving mod %s", modId.c_str());
+                return false;
+            }
+        }
+    }
+
+    // Preserve original order for mods not involved in dependencies
+    std::vector<IMod *> newOrder;
+    std::unordered_set<std::string> processedMods;
+
+    // First add mods that aren't involved in any dependency relationships
+    for (auto *mod : m_Mods) {
+        std::string modId = mod->GetID();
+        if (involvedInDependencies.find(modId) == involvedInDependencies.end()) {
+            newOrder.push_back(mod);
+            processedMods.insert(modId);
+        }
+    }
+
+    // Then sort and add the mods involved in dependency relationships
+    std::vector<IMod *> dependencyMods;
+    for (auto *mod : m_Mods) {
+        std::string modId = mod->GetID();
+        if (processedMods.find(modId) == processedMods.end()) {
+            dependencyMods.push_back(mod);
+        }
+    }
+
+    if (!dependencyMods.empty()) {
+        // Sort mods with dependencies
+        std::unordered_map<std::string, IMod *> modMap;
+        for (auto *mod : dependencyMods) {
+            modMap[mod->GetID()] = mod;
+        }
+
+        std::vector<IMod *> sortedDependencyMods;
+        std::unordered_set<std::string> visitedForSort;
+
+        // Define a DFS function to traverse the dependency graph
+        std::function<void(const std::string &)> dfs = [&](const std::string &modId) {
+            if (visitedForSort.find(modId) != visitedForSort.end() ||
+                processedMods.find(modId) != processedMods.end()) {
+                return;
+            }
+
+            visitedForSort.insert(modId);
+
+            // Visit all dependencies first
+            auto it = m_DependencyGraph.find(modId);
+            if (it != m_DependencyGraph.end()) {
+                const auto &dependencies = it->second;
+                for (const auto &depId : dependencies) {
+                    if (m_DependencyGraph.find(depId) != m_DependencyGraph.end()) {
+                        dfs(depId);
+                    }
+                }
+            }
+
+            // Add the mod after all its dependencies
+            auto modIt = modMap.find(modId);
+            if (modIt != modMap.end()) {
+                sortedDependencyMods.push_back(modIt->second);
+            }
+        };
+
+        // Process all dependency mods
+        for (auto *mod : dependencyMods) {
+            dfs(mod->GetID());
+        }
+
+        // Add the sorted dependency mods to the new order
+        newOrder.insert(newOrder.end(), sortedDependencyMods.begin(), sortedDependencyMods.end());
+    }
+
+    // Check if we got all mods
+    if (newOrder.size() != m_Mods.size()) {
+        m_Logger->Error("Failed to sort mods by dependencies - mod count mismatch");
+        return false;
+    }
+
+    // Update mod order
+    m_Logger->Info("Reordering mods based on dependencies");
+    m_Mods = newOrder;
+
+    return true;
+}
+
+bool ModContext::HasCircularDependencies(const std::string &modId,
+                                         std::unordered_set<std::string> &visited,
+                                         std::unordered_set<std::string> &inProgress) {
+    visited.insert(modId);
+    inProgress.insert(modId);
+
+    auto it = m_DependencyGraph.find(modId);
+    if (it == m_DependencyGraph.end()) {
+        inProgress.erase(modId);
+        return false;
+    }
+
+    const auto &dependencies = it->second;
+    for (const auto &depId : dependencies) {
+        if (inProgress.find(depId) != inProgress.end()) {
+            return true; // Circular dependency found
+        }
+
+        if (visited.find(depId) == visited.end()) {
+            if (HasCircularDependencies(depId, visited, inProgress)) {
+                return true;
+            }
+        }
+    }
+
+    inProgress.erase(modId);
+    return false;
+}
+
+std::vector<IMod *> ModContext::SortModsByDependencies() {
+    std::vector<IMod *> result;
+    std::unordered_set<std::string> visited;
+    std::unordered_map<std::string, IMod *> modMap;
+
+    // Build mod map
+    for (auto *mod : m_Mods) {
+        modMap[mod->GetID()] = mod;
+    }
+
+    // Define a DFS function to traverse the dependency graph
+    std::function<void(const std::string &)> dfs = [&](const std::string &modId) {
+        if (visited.find(modId) != visited.end()) {
+            return;
+        }
+
+        visited.insert(modId);
+
+        // Visit all dependencies first
+        auto it = m_DependencyGraph.find(modId);
+        if (it != m_DependencyGraph.end()) {
+            const auto &dependencies = it->second;
+            for (const auto &depId : dependencies) {
+                if (m_DependencyGraph.find(depId) != m_DependencyGraph.end()) {
+                    dfs(depId);
+                }
+            }
+        }
+
+        // Add the mod after all its dependencies
+        auto modIt = modMap.find(modId);
+        if (modIt != modMap.end()) {
+            result.push_back(modIt->second);
+        }
+    };
+
+    // Process all mods
+    for (const auto &pair: m_DependencyGraph) {
+        dfs(pair.first);
+    }
+
+    return result;
 }
 
 void ModContext::FillCallbackMap(IMod *mod) {

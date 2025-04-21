@@ -23,4 +23,5 @@ IMod::~IMod() {
         delete m_Logger;
     if (m_Config)
         delete m_Config;
+    m_BML->ClearDependencies(this);
 }
