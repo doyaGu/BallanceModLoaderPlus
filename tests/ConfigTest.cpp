@@ -20,7 +20,8 @@ void Logger::SetDefault(Logger *logger) {
     m_DefaultLogger = logger;
 }
 
-Logger::Logger(const char *modName) : m_ModName(modName) {}
+Logger::Logger(const char *modName) : m_ModName(modName) {
+}
 
 void Logger::Info(const char *fmt, ...) {
     va_list args;
@@ -51,7 +52,7 @@ void Logger::Log(const char *level, const char *fmt, va_list args) {
         stdout,
     };
 
-    for (FILE *file: out_files) {
+    for (FILE *file : out_files) {
         fprintf(file, "[%02d/%02d/%d %02d:%02d:%02d.%03d] ", sys.wMonth, sys.wDay,
                 sys.wYear, sys.wHour, sys.wMinute, sys.wSecond, sys.wMilliseconds);
         fprintf(file, "[%s/%s]: ", m_ModName, level);
@@ -87,16 +88,18 @@ class MockMod : public IMod {
 public:
     explicit MockMod(IBML *bml) : IMod(bml) {}
 
-    const char* GetID() override { return "MockMod"; }
-    const char* GetName() override { return "MockModName"; }
-    const char* GetVersion() override { return "1.0"; }
-    const char* GetAuthor() override { return "Tester"; }
+    const char *GetID() override { return "MockMod"; }
+    const char *GetName() override { return "MockModName"; }
+    const char *GetVersion() override { return "1.0"; }
+    const char *GetAuthor() override { return "Tester"; }
+
     const char *GetDescription() override {
         return "Test description for the mock mod.";
     }
+
     DECLARE_BML_VERSION;
 
-    void OnModifyConfig(const char* category, const char* key, IProperty* prop) override {
+    void OnModifyConfig(const char *category, const char *key, IProperty *prop) override {
         modifiedCount++;
         lastCategory = category ? category : "";
         lastKey = key ? key : "";
@@ -106,7 +109,7 @@ public:
     std::atomic<int> modifiedCount{0};
     std::string lastCategory;
     std::string lastKey;
-    IProperty* lastProp = nullptr;
+    IProperty *lastProp = nullptr;
 };
 
 // Test fixture for Config tests
@@ -122,8 +125,8 @@ protected:
         delete mockMod;
     }
 
-    MockMod* mockMod;
-    Config* config;
+    MockMod *mockMod = nullptr;
+    Config *config = nullptr;
 };
 
 // Basic creation and destruction
@@ -132,7 +135,7 @@ TEST_F(ConfigTest, ConstructionDestruction) {
     EXPECT_EQ(mockMod, config->GetMod());
 
     // Test with null mod
-    Config* nullModConfig = new Config(nullptr);
+    Config *nullModConfig = new Config(nullptr);
     EXPECT_EQ(nullptr, nullModConfig->GetMod());
     delete nullModConfig;
 }
@@ -144,7 +147,7 @@ TEST_F(ConfigTest, CategoryManagement) {
     EXPECT_FALSE(config->HasCategory(nullptr));
 
     // Get non-existent category should create it
-    Category* cat = config->GetCategory("TestCategory");
+    Category *cat = config->GetCategory("TestCategory");
     ASSERT_NE(nullptr, cat);
     EXPECT_STREQ("TestCategory", cat->GetName());
 
@@ -152,7 +155,7 @@ TEST_F(ConfigTest, CategoryManagement) {
     EXPECT_TRUE(config->HasCategory("TestCategory"));
 
     // Get existing category should return same instance
-    Category* cat2 = config->GetCategory("TestCategory");
+    Category *cat2 = config->GetCategory("TestCategory");
     EXPECT_EQ(cat, cat2);
 
     // Test category comment
@@ -179,14 +182,14 @@ TEST_F(ConfigTest, PropertyManagement) {
     EXPECT_FALSE(config->HasKey(nullptr, nullptr));
 
     // Get non-existent property should create it
-    IProperty* prop = config->GetProperty("TestCategory", "TestKey");
+    IProperty *prop = config->GetProperty("TestCategory", "TestKey");
     ASSERT_NE(nullptr, prop);
 
     // Now HasKey should return true
     EXPECT_TRUE(config->HasKey("TestCategory", "TestKey"));
 
     // Get existing property should return same instance
-    IProperty* prop2 = config->GetProperty("TestCategory", "TestKey");
+    IProperty *prop2 = config->GetProperty("TestCategory", "TestKey");
     EXPECT_EQ(prop, prop2);
 
     // Test null parameters for GetProperty
@@ -198,7 +201,7 @@ TEST_F(ConfigTest, PropertyManagement) {
 // Property types and values
 TEST_F(ConfigTest, PropertyValues) {
     // String property
-    IProperty* strProp = config->GetProperty("TestCategory", "StringProp");
+    IProperty *strProp = config->GetProperty("TestCategory", "StringProp");
     strProp->SetString("Test String");
     EXPECT_EQ(IProperty::STRING, strProp->GetType());
     EXPECT_STREQ("Test String", strProp->GetString());
@@ -208,25 +211,25 @@ TEST_F(ConfigTest, PropertyValues) {
     EXPECT_STREQ("", strProp->GetString());
 
     // Boolean property
-    IProperty* boolProp = config->GetProperty("TestCategory", "BoolProp");
+    IProperty *boolProp = config->GetProperty("TestCategory", "BoolProp");
     boolProp->SetBoolean(true);
     EXPECT_EQ(IProperty::BOOLEAN, boolProp->GetType());
     EXPECT_TRUE(boolProp->GetBoolean());
 
     // Integer property
-    IProperty* intProp = config->GetProperty("TestCategory", "IntProp");
+    IProperty *intProp = config->GetProperty("TestCategory", "IntProp");
     intProp->SetInteger(42);
     EXPECT_EQ(IProperty::INTEGER, intProp->GetType());
     EXPECT_EQ(42, intProp->GetInteger());
 
     // Float property
-    IProperty* floatProp = config->GetProperty("TestCategory", "FloatProp");
+    IProperty *floatProp = config->GetProperty("TestCategory", "FloatProp");
     floatProp->SetFloat(3.14f);
     EXPECT_EQ(IProperty::FLOAT, floatProp->GetType());
     EXPECT_FLOAT_EQ(3.14f, floatProp->GetFloat());
 
     // Key property
-    IProperty* keyProp = config->GetProperty("TestCategory", "KeyProp");
+    IProperty *keyProp = config->GetProperty("TestCategory", "KeyProp");
     keyProp->SetKey(static_cast<CKKEYBOARD>(123));
     EXPECT_EQ(IProperty::KEY, keyProp->GetType());
     EXPECT_EQ(static_cast<CKKEYBOARD>(123), keyProp->GetKey());
@@ -242,37 +245,37 @@ TEST_F(ConfigTest, PropertyValues) {
 // Default values
 TEST_F(ConfigTest, DefaultValues) {
     // String default
-    IProperty* strProp = config->GetProperty("DefaultCategory", "StringProp");
+    IProperty *strProp = config->GetProperty("DefaultCategory", "StringProp");
     strProp->SetDefaultString("Default String");
     EXPECT_EQ(IProperty::STRING, strProp->GetType());
     EXPECT_STREQ("Default String", strProp->GetString());
 
     // Test null default string
-    IProperty* nullStrProp = config->GetProperty("DefaultCategory", "NullStringProp");
+    IProperty *nullStrProp = config->GetProperty("DefaultCategory", "NullStringProp");
     nullStrProp->SetDefaultString(nullptr);
     EXPECT_EQ(IProperty::STRING, nullStrProp->GetType());
     EXPECT_STREQ("", nullStrProp->GetString());
 
     // Boolean default
-    IProperty* boolProp = config->GetProperty("DefaultCategory", "BoolProp");
+    IProperty *boolProp = config->GetProperty("DefaultCategory", "BoolProp");
     boolProp->SetDefaultBoolean(true);
     EXPECT_EQ(IProperty::BOOLEAN, boolProp->GetType());
     EXPECT_TRUE(boolProp->GetBoolean());
 
     // Integer default
-    IProperty* intProp = config->GetProperty("DefaultCategory", "IntProp");
+    IProperty *intProp = config->GetProperty("DefaultCategory", "IntProp");
     intProp->SetDefaultInteger(42);
     EXPECT_EQ(IProperty::INTEGER, intProp->GetType());
     EXPECT_EQ(42, intProp->GetInteger());
 
     // Float default
-    IProperty* floatProp = config->GetProperty("DefaultCategory", "FloatProp");
+    IProperty *floatProp = config->GetProperty("DefaultCategory", "FloatProp");
     floatProp->SetDefaultFloat(3.14f);
     EXPECT_EQ(IProperty::FLOAT, floatProp->GetType());
     EXPECT_FLOAT_EQ(3.14f, floatProp->GetFloat());
 
     // Key default
-    IProperty* keyProp = config->GetProperty("DefaultCategory", "KeyProp");
+    IProperty *keyProp = config->GetProperty("DefaultCategory", "KeyProp");
     keyProp->SetDefaultKey(static_cast<CKKEYBOARD>(123));
     EXPECT_EQ(IProperty::KEY, keyProp->GetType());
     EXPECT_EQ(static_cast<CKKEYBOARD>(123), keyProp->GetKey());
@@ -285,7 +288,7 @@ TEST_F(ConfigTest, DefaultValues) {
 // Modification notification
 TEST_F(ConfigTest, ModificationNotification) {
     mockMod->modifiedCount = 0;
-    IProperty* prop = config->GetProperty("TestCategory", "TestProp");
+    IProperty *prop = config->GetProperty("TestCategory", "TestProp");
 
     // Set initial value
     prop->SetString("Initial");
@@ -303,8 +306,8 @@ TEST_F(ConfigTest, ModificationNotification) {
     EXPECT_EQ(2, mockMod->modifiedCount);
 
     // Test with null mod (shouldn't crash)
-    Config* nullModConfig = new Config(nullptr);
-    IProperty* nullModProp = nullModConfig->GetProperty("TestCategory", "TestProp");
+    Config *nullModConfig = new Config(nullptr);
+    IProperty *nullModProp = nullModConfig->GetProperty("TestCategory", "TestProp");
     nullModProp->SetString("Test"); // Shouldn't crash
     delete nullModConfig;
 }
@@ -312,7 +315,7 @@ TEST_F(ConfigTest, ModificationNotification) {
 // Property utility functions
 TEST_F(ConfigTest, PropertyUtilityFunctions) {
     // Test GetStringSize
-    Property* strProp = static_cast<Property*>(config->GetProperty("TestCategory", "StringProp"));
+    Property *strProp = static_cast<Property *>(config->GetProperty("TestCategory", "StringProp"));
     strProp->SetString("Test String");
     EXPECT_EQ(11u, strProp->GetStringSize());
 
@@ -332,17 +335,17 @@ TEST_F(ConfigTest, PropertyUtilityFunctions) {
     EXPECT_NE(hash1, strProp->GetHash());
 
     // Test GetXXXPtr functions
-    Property* boolProp = static_cast<Property*>(config->GetProperty("TestCategory", "BoolProp"));
+    Property *boolProp = static_cast<Property *>(config->GetProperty("TestCategory", "BoolProp"));
     boolProp->SetBoolean(true);
-    bool* boolPtr = boolProp->GetBooleanPtr();
+    bool *boolPtr = boolProp->GetBooleanPtr();
     ASSERT_NE(nullptr, boolPtr);
     EXPECT_TRUE(*boolPtr);
     *boolPtr = false;
     EXPECT_FALSE(boolProp->GetBoolean());
 
-    Property* intProp = static_cast<Property*>(config->GetProperty("TestCategory", "IntProp"));
+    Property *intProp = static_cast<Property *>(config->GetProperty("TestCategory", "IntProp"));
     intProp->SetInteger(42);
-    int* intPtr = intProp->GetIntegerPtr();
+    int *intPtr = intProp->GetIntegerPtr();
     ASSERT_NE(nullptr, intPtr);
     EXPECT_EQ(42, *intPtr);
     *intPtr = 24;
@@ -355,8 +358,8 @@ TEST_F(ConfigTest, PropertyUtilityFunctions) {
 
 // Property value copying
 TEST_F(ConfigTest, PropertyCopy) {
-    Property* srcProp = static_cast<Property*>(config->GetProperty("SourceCategory", "SourceProp"));
-    Property* destProp = static_cast<Property*>(config->GetProperty("DestCategory", "DestProp"));
+    Property *srcProp = static_cast<Property *>(config->GetProperty("SourceCategory", "SourceProp"));
+    Property *destProp = static_cast<Property *>(config->GetProperty("DestCategory", "DestProp"));
 
     // Test string copy
     srcProp->SetString("Test String");
@@ -378,14 +381,14 @@ TEST_F(ConfigTest, PropertyCopy) {
 // File I/O
 TEST_F(ConfigTest, FileIO) {
     // Create test config file
-    const wchar_t* filename = L"test_config.cfg";
+    const wchar_t *filename = L"test_config.cfg";
 
     // Set up some properties
-    IProperty* strProp = config->GetProperty("TestCategory", "StringProp");
+    IProperty *strProp = config->GetProperty("TestCategory", "StringProp");
     strProp->SetString("Test String");
     strProp->SetComment("String Property Comment");
 
-    IProperty* boolProp = config->GetProperty("TestCategory", "BoolProp");
+    IProperty *boolProp = config->GetProperty("TestCategory", "BoolProp");
     boolProp->SetBoolean(true);
 
     config->SetCategoryComment("TestCategory", "Test Category Comment");
@@ -394,8 +397,8 @@ TEST_F(ConfigTest, FileIO) {
     EXPECT_TRUE(config->Save(filename));
 
     // Create a new config and load the file
-    MockMod* newMockMod = new MockMod(nullptr);
-    Config* newConfig = new Config(newMockMod);
+    MockMod *newMockMod = new MockMod(nullptr);
+    Config *newConfig = new Config(newMockMod);
     EXPECT_TRUE(newConfig->Load(filename));
 
     // Check that properties were loaded correctly
@@ -403,12 +406,12 @@ TEST_F(ConfigTest, FileIO) {
     EXPECT_TRUE(newConfig->HasKey("TestCategory", "StringProp"));
     EXPECT_TRUE(newConfig->HasKey("TestCategory", "BoolProp"));
 
-    IProperty* loadedStrProp = newConfig->GetProperty("TestCategory", "StringProp");
+    IProperty *loadedStrProp = newConfig->GetProperty("TestCategory", "StringProp");
     EXPECT_EQ(IProperty::STRING, loadedStrProp->GetType());
     EXPECT_STREQ("Test String", loadedStrProp->GetString());
     EXPECT_STREQ("String Property Comment", static_cast<Property*>(loadedStrProp)->GetComment());
 
-    IProperty* loadedBoolProp = newConfig->GetProperty("TestCategory", "BoolProp");
+    IProperty *loadedBoolProp = newConfig->GetProperty("TestCategory", "BoolProp");
     EXPECT_EQ(IProperty::BOOLEAN, loadedBoolProp->GetType());
     EXPECT_TRUE(loadedBoolProp->GetBoolean());
 
@@ -439,7 +442,7 @@ TEST_F(ConfigTest, PropertyLookupPerformance) {
         std::string category = "PerfCategory" + std::to_string(c);
         for (int p = 0; p < PROPS_PER_CATEGORY; p++) {
             std::string key = "Prop" + std::to_string(p);
-            IProperty* prop = config->GetProperty(category.c_str(), key.c_str());
+            IProperty *prop = config->GetProperty(category.c_str(), key.c_str());
             prop->SetInteger(c * 1000 + p);
         }
     }
@@ -452,7 +455,7 @@ TEST_F(ConfigTest, PropertyLookupPerformance) {
         int p = i % PROPS_PER_CATEGORY;
         std::string category = "PerfCategory" + std::to_string(c);
         std::string key = "Prop" + std::to_string(p);
-        IProperty* prop = config->GetProperty(category.c_str(), key.c_str());
+        IProperty *prop = config->GetProperty(category.c_str(), key.c_str());
         int expected = c * 1000 + p;
         EXPECT_EQ(expected, prop->GetInteger());
     }
