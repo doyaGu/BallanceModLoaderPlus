@@ -1144,10 +1144,10 @@ bool ModContext::UnloadMod(const std::string &id) {
 
 void ModContext::RegisterBuiltinMods() {
     m_BMLMod = new BMLMod(this);
-    RegisterMod(m_BMLMod, nullptr);
+    RegisterMod(m_BMLMod);
 
     m_BallTypeMod = new NewBallTypeMod(this);
-    RegisterMod(m_BallTypeMod, nullptr);
+    RegisterMod(m_BallTypeMod);
 }
 
 bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) {

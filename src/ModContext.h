@@ -287,8 +287,8 @@ private:
 
     void RegisterBuiltinMods();
 
-    bool RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle);
-    bool UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle);
+    bool RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle = nullptr);
+    bool UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle = nullptr);
 
     void FillCallbackMap(IMod *mod);
 
