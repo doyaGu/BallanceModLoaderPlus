@@ -136,11 +136,10 @@ void BMLMod::OnUnload() {
     auto &cc = BML_GetModContext()->GetCommandContext();
     cc.ClearOutputCallback();
 
-    if (!m_EnableIniSettings->GetBoolean()) {
-        ImGui::GetIO().IniFilename = nullptr;
-        if (utils::FileExistsUtf8(m_ImGuiIniFilename)) {
-            utils::DeleteFileUtf8(m_ImGuiIniFilename);
-        }
+    if (m_EnableIniSettings->GetBoolean()) {
+        ImGui::SaveIniSettingsToDisk(m_ImGuiIniFilename.c_str());
+    } else if (utils::FileExistsUtf8(m_ImGuiIniFilename)) {
+        utils::DeleteFileUtf8(m_ImGuiIniFilename);
     }
 }
 
@@ -543,11 +542,7 @@ void BMLMod::InitGUI() {
 
     const std::string path = BML_GetModContext()->GetDirectoryUtf8(BML_DIR_LOADER);
 
-    if (m_EnableIniSettings->GetBoolean()) {
-        m_ImGuiIniFilename = path + "\\ImGui.ini";
-        io.IniFilename = m_ImGuiIniFilename.c_str();
-    }
-
+    m_ImGuiIniFilename = path + "\\ImGui.ini";
     m_ImGuiLogFilename = path + "\\ImGui.log";
     io.LogFilename = m_ImGuiLogFilename.c_str();
 
