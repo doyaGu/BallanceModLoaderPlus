@@ -6,10 +6,10 @@
 
 #include "CKAll.h"
 
-#include "BML/Utils.h"
+#include "BML/BML.h"
+#include "BML/IBML.h"
 #include "BML/ILogger.h"
 #include "BML/IConfig.h"
-#include "BML/IBML.h"
 
 struct BMLVersion {
     int major, minor, patch;

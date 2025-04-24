@@ -12,6 +12,7 @@
 #include <utf8.h>
 #include <oniguruma.h>
 
+#include "BML/BML.h"
 #include "BML/Timer.h"
 
 #include "RenderHook.h"
