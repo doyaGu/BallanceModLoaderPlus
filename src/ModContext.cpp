@@ -1575,7 +1575,7 @@ std::vector<IMod *> ModContext::SortModsByDependencies() {
 void ModContext::FillCallbackMap(IMod *mod) {
     std::lock_guard<std::mutex> lock(m_Mutex);
 
-    static class BlankMod : IMod {
+    class BlankMod : IMod {
     public:
         explicit BlankMod(IBML *bml) : IMod(bml) {}
 
