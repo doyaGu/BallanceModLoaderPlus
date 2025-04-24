@@ -1,5 +1,5 @@
-#ifndef BML_UTILS_H
-#define BML_UTILS_H
+#ifndef BML_H
+#define BML_H
 
 #include "BML/Defines.h"
 #include "BML/Version.h"
@@ -19,4 +19,4 @@ BML_EXPORT char *BML_Strdup(const char *str);
 
 BML_END_CDECLS
 
-#endif // BML_UTILS_H
+#endif //BML_H
