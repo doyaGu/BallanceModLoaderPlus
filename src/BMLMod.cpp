@@ -138,8 +138,6 @@ void BMLMod::OnUnload() {
 
     if (m_EnableIniSettings->GetBoolean()) {
         ImGui::SaveIniSettingsToDisk(m_ImGuiIniFilename.c_str());
-    } else if (utils::FileExistsUtf8(m_ImGuiIniFilename)) {
-        utils::DeleteFileUtf8(m_ImGuiIniFilename);
     }
 }
 
@@ -545,6 +543,12 @@ void BMLMod::InitGUI() {
     m_ImGuiIniFilename = path + "\\ImGui.ini";
     m_ImGuiLogFilename = path + "\\ImGui.log";
     io.LogFilename = m_ImGuiLogFilename.c_str();
+
+    if (m_EnableIniSettings->GetBoolean()) {
+        if (utils::FileExistsUtf8(m_ImGuiIniFilename)) {
+            ImGui::LoadIniSettingsFromDisk(m_ImGuiIniFilename.c_str());
+        }
+    }
 
     io.FontGlobalScale = m_WindowRect.GetHeight() / 1200.0f;
 
