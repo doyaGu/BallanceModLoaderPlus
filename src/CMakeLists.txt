@@ -185,7 +185,6 @@ install(FILES
 )
 
 install(EXPORT BMLTargets
-        NAMESPACE BML::
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML"
 )
 
