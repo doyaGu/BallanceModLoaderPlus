@@ -29,37 +29,7 @@ struct ImGui_ImplCK2_Data
     CKRenderContext *RenderContext;
     CKTexture *FontTexture;
 
-    bool UseHardwareVB;
-
-    // State cache to minimize redundant state changes
-    struct
-    {
-        CKDWORD StateCache[VXRENDERSTATE_MAXSTATE];
-        CKDWORD TextureStageStateCache[CKRST_TSS_MAXSTATE][CKRST_MAX_STAGES];
-        bool StateCacheValid;
-
-        // Previous states for restoration
-        VxRect PrevViewport;
-        CKDWORD PrevCullMode;
-        CKDWORD PrevAlphaBlend;
-        CKDWORD PrevSrcBlend;
-        CKDWORD PrevDestBlend;
-        CKDWORD PrevZEnable;
-        CKDWORD PrevZWriteEnable;
-        CKDWORD PrevAlphaTest;
-        CKDWORD PrevFillMode;
-        CKDWORD PrevShadeMode;
-        CKDWORD PrevLighting;
-
-        // Texture state tracking
-        CKTexture *CurrentTexture;
-    } Cache;
-
-    ImGui_ImplCK2_Data()
-    {
-        memset(this, 0, sizeof(*this));
-        UseHardwareVB = true;
-    }
+    ImGui_ImplCK2_Data() { memset(this, 0, sizeof(*this)); }
 };
 
 #ifdef IMGUI_USE_BGRA_PACKED_COLOR
@@ -75,98 +45,39 @@ static ImGui_ImplCK2_Data *ImGui_ImplCK2_GetBackendData()
     return ImGui::GetCurrentContext() ? (ImGui_ImplCK2_Data *)ImGui::GetIO().BackendRendererUserData : NULL;
 }
 
-// Save current render state for later restoration
-static void ImGui_ImplCK2_SaveRenderState()
-{
-    ImGui_ImplCK2_Data *bd = ImGui_ImplCK2_GetBackendData();
-    if (!bd || !bd->RenderContext)
-        return;
-
-    CKRenderContext *dev = bd->RenderContext;
-
-    // Save current viewport
-    dev->GetViewRect(bd->Cache.PrevViewport);
-
-    // Save key render states
-    bd->Cache.PrevCullMode = dev->GetState(VXRENDERSTATE_CULLMODE);
-    bd->Cache.PrevAlphaBlend = dev->GetState(VXRENDERSTATE_ALPHABLENDENABLE);
-    bd->Cache.PrevSrcBlend = dev->GetState(VXRENDERSTATE_SRCBLEND);
-    bd->Cache.PrevDestBlend = dev->GetState(VXRENDERSTATE_DESTBLEND);
-    bd->Cache.PrevZEnable = dev->GetState(VXRENDERSTATE_ZENABLE);
-    bd->Cache.PrevZWriteEnable = dev->GetState(VXRENDERSTATE_ZWRITEENABLE);
-    bd->Cache.PrevAlphaTest = dev->GetState(VXRENDERSTATE_ALPHATESTENABLE);
-    bd->Cache.PrevFillMode = dev->GetState(VXRENDERSTATE_FILLMODE);
-    bd->Cache.PrevShadeMode = dev->GetState(VXRENDERSTATE_SHADEMODE);
-    bd->Cache.PrevLighting = dev->GetState(VXRENDERSTATE_LIGHTING);
-}
-
-// Restore render state to what it was before ImGui rendering
-static void ImGui_ImplCK2_RestoreRenderState()
-{
-    ImGui_ImplCK2_Data *bd = ImGui_ImplCK2_GetBackendData();
-    if (!bd || !bd->RenderContext)
-        return;
-
-    CKRenderContext *dev = bd->RenderContext;
-
-    // Restore viewport
-    dev->SetViewRect(bd->Cache.PrevViewport);
-
-    // Restore key render states
-    dev->SetState(VXRENDERSTATE_CULLMODE, bd->Cache.PrevCullMode);
-    dev->SetState(VXRENDERSTATE_ALPHABLENDENABLE, bd->Cache.PrevAlphaBlend);
-    dev->SetState(VXRENDERSTATE_SRCBLEND, bd->Cache.PrevSrcBlend);
-    dev->SetState(VXRENDERSTATE_DESTBLEND, bd->Cache.PrevDestBlend);
-    dev->SetState(VXRENDERSTATE_ZENABLE, bd->Cache.PrevZEnable);
-    dev->SetState(VXRENDERSTATE_ZWRITEENABLE, bd->Cache.PrevZWriteEnable);
-    dev->SetState(VXRENDERSTATE_ALPHATESTENABLE, bd->Cache.PrevAlphaTest);
-    dev->SetState(VXRENDERSTATE_FILLMODE, bd->Cache.PrevFillMode);
-    dev->SetState(VXRENDERSTATE_SHADEMODE, bd->Cache.PrevShadeMode);
-    dev->SetState(VXRENDERSTATE_LIGHTING, bd->Cache.PrevLighting);
-
-    // Reset texture
-    dev->SetTexture(NULL);
-}
-
-static void ImGui_ImplCK2_SetupRenderState(ImDrawData *draw_data, bool force_reset = false)
+static void ImGui_ImplCK2_SetupRenderState(ImDrawData *draw_data)
 {
     ImGui_ImplCK2_Data *bd = ImGui_ImplCK2_GetBackendData();
     CKRenderContext *dev = bd->RenderContext;
 
-    if (!bd->Cache.StateCacheValid || force_reset)
-    {
-        // Setup viewport
-        VxRect viewport(0, 0, draw_data->DisplaySize.x, draw_data->DisplaySize.y);
-        dev->SetViewRect(viewport);
+    // Setup viewport
+    VxRect viewport(0, 0, draw_data->DisplaySize.x, draw_data->DisplaySize.y);
+    dev->SetViewRect(viewport);
 
-        // Setup render state: alpha-blending, no face culling, no depth testing, shade mode
-        dev->SetState(VXRENDERSTATE_FILLMODE, VXFILL_SOLID);
-        dev->SetState(VXRENDERSTATE_SHADEMODE, VXSHADE_GOURAUD);
-        dev->SetState(VXRENDERSTATE_CULLMODE, VXCULL_NONE);
-        dev->SetState(VXRENDERSTATE_WRAP0, 0);
-        dev->SetState(VXRENDERSTATE_SRCBLEND, VXBLEND_SRCALPHA);
-        dev->SetState(VXRENDERSTATE_DESTBLEND, VXBLEND_INVSRCALPHA);
-        dev->SetState(VXRENDERSTATE_ALPHATESTENABLE, FALSE);
-        dev->SetState(VXRENDERSTATE_ZWRITEENABLE, FALSE);
-        dev->SetState(VXRENDERSTATE_ZENABLE, FALSE);
-        dev->SetState(VXRENDERSTATE_ALPHABLENDENABLE, TRUE);
-        dev->SetState(VXRENDERSTATE_BLENDOP, VXBLENDOP_ADD);
-        dev->SetState(VXRENDERSTATE_FOGENABLE, FALSE);
-        dev->SetState(VXRENDERSTATE_SPECULARENABLE, FALSE);
-        dev->SetState(VXRENDERSTATE_STENCILENABLE, FALSE);
-        dev->SetState(VXRENDERSTATE_CLIPPING, TRUE);
-        dev->SetState(VXRENDERSTATE_LIGHTING, FALSE);
+    // Setup render state: alpha-blending, no face culling, no depth testing, shade mode
+    dev->SetState(VXRENDERSTATE_FILLMODE, VXFILL_SOLID);
+    dev->SetState(VXRENDERSTATE_SHADEMODE, VXSHADE_GOURAUD);
+    dev->SetState(VXRENDERSTATE_CULLMODE, VXCULL_NONE);
+    dev->SetState(VXRENDERSTATE_WRAP0, 0);
+    dev->SetState(VXRENDERSTATE_SRCBLEND, VXBLEND_SRCALPHA);
+    dev->SetState(VXRENDERSTATE_DESTBLEND, VXBLEND_INVSRCALPHA);
+    dev->SetState(VXRENDERSTATE_ALPHATESTENABLE, FALSE);
+    dev->SetState(VXRENDERSTATE_ZWRITEENABLE, FALSE);
+    dev->SetState(VXRENDERSTATE_ZENABLE, FALSE);
+    dev->SetState(VXRENDERSTATE_ALPHABLENDENABLE, TRUE);
+    dev->SetState(VXRENDERSTATE_BLENDOP, VXBLENDOP_ADD);
+    dev->SetState(VXRENDERSTATE_FOGENABLE, FALSE);
+    dev->SetState(VXRENDERSTATE_SPECULARENABLE, FALSE);
+    dev->SetState(VXRENDERSTATE_STENCILENABLE, FALSE);
+    dev->SetState(VXRENDERSTATE_CLIPPING, TRUE);
+    dev->SetState(VXRENDERSTATE_LIGHTING, FALSE);
 
-        // Setup texture stage states
-        dev->SetTextureStageState(CKRST_TSS_ADDRESS, VXTEXTURE_ADDRESSCLAMP);
-        dev->SetTextureStageState(CKRST_TSS_TEXTUREMAPBLEND, VXTEXTUREBLEND_MODULATEALPHA);
-        dev->SetTextureStageState(CKRST_TSS_STAGEBLEND, 0, 1);
-        dev->SetTextureStageState(CKRST_TSS_MINFILTER, VXTEXTUREFILTER_LINEAR);
-        dev->SetTextureStageState(CKRST_TSS_MAGFILTER, VXTEXTUREFILTER_LINEAR);
-
-        bd->Cache.CurrentTexture = NULL;
-        bd->Cache.StateCacheValid = true;
-    }
+    // Setup texture stage states
+    dev->SetTextureStageState(CKRST_TSS_ADDRESS, VXTEXTURE_ADDRESSCLAMP);
+    dev->SetTextureStageState(CKRST_TSS_TEXTUREMAPBLEND, VXTEXTUREBLEND_MODULATEALPHA);
+    dev->SetTextureStageState(CKRST_TSS_STAGEBLEND, 0, 1);
+    dev->SetTextureStageState(CKRST_TSS_MINFILTER, VXTEXTUREFILTER_LINEAR);
+    dev->SetTextureStageState(CKRST_TSS_MAGFILTER, VXTEXTUREFILTER_LINEAR);
 }
 
 // Render function.
@@ -183,9 +94,6 @@ void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
         return;
 
     CKRenderContext *dev = bd->RenderContext;
-
-    // Save current render state
-    ImGui_ImplCK2_SaveRenderState();
 
     // Setup desired render state
     ImGui_ImplCK2_SetupRenderState(draw_data);
@@ -210,20 +118,14 @@ void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
             const ImDrawVert *vtx_src = vtx_buffer;
             int vtx_count = cmd_list->VtxBuffer.Size;
 
-            // Create vertex buffer with optimized flags
-            data = dev->GetDrawPrimitiveStructure((CKRST_DPFLAGS)(CKRST_DP_CL_VCT | (bd->UseHardwareVB ? CKRST_DP_VBUFFER : 0)), vtx_count);
+            data = dev->GetDrawPrimitiveStructure((CKRST_DPFLAGS)(CKRST_DP_CL_VCT | CKRST_DP_VBUFFER), vtx_count);
             if (!data)
             {
-                // Fallback: Try without hardware VB
-                bd->UseHardwareVB = false;
-                data = dev->GetDrawPrimitiveStructure((CKRST_DPFLAGS)(CKRST_DP_CL_VCT), vtx_count);
-
-                // If still failing, skip this command list
+                data = dev->GetDrawPrimitiveStructure(CKRST_DP_CL_VCT, vtx_count);
                 if (!data)
                     continue;
             }
 
-            // Copy and convert vertices with optimal stride access
             XPtrStrided<VxVector4> positions(data->PositionPtr, data->PositionStride);
             XPtrStrided<CKDWORD> colors(data->ColorPtr, data->ColorStride);
             XPtrStrided<VxUV> uvs(data->TexCoordPtr, data->TexCoordStride);
@@ -253,7 +155,7 @@ void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
                 // User callback, registered via ImDrawList::AddCallback()
                 // (ImDrawCallback_ResetRenderState is a special callback value used by the user to request the renderer to reset render state.)
                 if (pcmd->UserCallback == ImDrawCallback_ResetRenderState)
-                    ImGui_ImplCK2_SetupRenderState(draw_data, true);
+                    ImGui_ImplCK2_SetupRenderState(draw_data);
                 else
                     pcmd->UserCallback(cmd_list, pcmd);
                 continue;
@@ -275,14 +177,12 @@ void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
             if (use_large_mesh_approach)
             {
                 const ImDrawVert *vtx_src = vtx_buffer + pcmd->VtxOffset;
-                int vtx_count = pcmd->ElemCount; // Use a tighter count for optimization
+                int vtx_count = pcmd->ElemCount;
 
-                // Create optimized vertex buffer just for this command
-                data = dev->GetDrawPrimitiveStructure((CKRST_DPFLAGS)(CKRST_DP_CL_VCT | (bd->UseHardwareVB ? CKRST_DP_VBUFFER : 0)), vtx_count);
+                data = dev->GetDrawPrimitiveStructure((CKRST_DPFLAGS)(CKRST_DP_CL_VCT | CKRST_DP_VBUFFER), vtx_count);
                 if (!data)
                 {
-                    // Fallback
-                    data = dev->GetDrawPrimitiveStructure((CKRST_DPFLAGS)(CKRST_DP_CL_VCT), vtx_count);
+                    data = dev->GetDrawPrimitiveStructure(CKRST_DP_CL_VCT, vtx_count);
                     if (!data)
                         continue;
                 }
@@ -313,28 +213,17 @@ void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
             if (obj->GetClassID() == CKCID_TEXTURE)
             {
                 CKTexture *texture = (CKTexture *)obj;
-                // Avoid redundant texture binding
-                if (bd->Cache.CurrentTexture != texture)
-                {
-                    dev->SetTexture(texture);
-                    bd->Cache.CurrentTexture = texture;
-                }
+                dev->SetTexture(texture);
                 dev->DrawPrimitive(VX_TRIANGLELIST, (CKWORD *)(idx_buffer + pcmd->IdxOffset), pcmd->ElemCount, data);
             }
             else if (obj->GetClassID() == CKCID_MATERIAL)
             {
-                // Custom material handling - preserve states that will be reset
-                bd->Cache.StateCacheValid = false;
                 ((CKMaterial *)obj)->SetAsCurrent(dev);
                 dev->DrawPrimitive(VX_TRIANGLELIST, (CKWORD *)(idx_buffer + pcmd->IdxOffset), pcmd->ElemCount, data);
-                // Restore ImGui render state after custom material
-                ImGui_ImplCK2_SetupRenderState(draw_data, true);
+                ImGui_ImplCK2_SetupRenderState(draw_data);
             }
         }
     }
-
-    // Restore render state
-    ImGui_ImplCK2_RestoreRenderState();
 }
 
 bool ImGui_ImplCK2_Init(CKContext *context)
@@ -358,14 +247,6 @@ bool ImGui_ImplCK2_Init(CKContext *context)
 
     bd->Context = context;
     bd->RenderContext = render_context;
-
-    // Detect capabilities and configure accordingly
-    VxDriverDesc *driver = context->GetRenderManager()->GetRenderDriverDescription(render_context->GetDriverIndex());
-    if (driver)
-    {
-        // Check for hardware vertex buffer support
-        bd->UseHardwareVB = (driver->Caps3D.CKRasterizerSpecificCaps & CKRST_SPECIFICCAPS_CANDOVERTEXBUFFER) != 0;
-    }
 
     return true;
 }
@@ -481,7 +362,4 @@ void ImGui_ImplCK2_NewFrame()
 
     if (!bd->FontTexture)
         ImGui_ImplCK2_CreateDeviceObjects();
-
-    // Invalid cache at the start of each frame to ensure correct state setup
-    bd->Cache.StateCacheValid = false;
 }
