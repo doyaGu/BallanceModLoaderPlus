@@ -126,6 +126,8 @@ void BMLMod::OnLoad() {
     RegisterCommands();
 
     m_CommandBar.LoadHistory();
+
+    RenderHook::EnableWidescreenFix(m_WidescreenFix->GetBoolean());
 }
 
 void BMLMod::OnUnload() {
@@ -256,8 +258,6 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
 }
 
 void BMLMod::OnPreStartMenu() {
-    RenderHook::EnableWidescreenFix(m_WidescreenFix->GetBoolean());
-
     m_HUD.ShowTitle(m_ShowTitle->GetBoolean());
     m_HUD.ShowFPS(m_ShowFPS->GetBoolean());
 }

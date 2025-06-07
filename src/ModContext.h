@@ -1,7 +1,6 @@
 #ifndef BML_MODCONTEXT_H
 #define BML_MODCONTEXT_H
 
-#include <cstdio>
 #include <functional>
 #include <memory>
 #include <string>

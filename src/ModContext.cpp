@@ -624,7 +624,6 @@ BML::IDataShare *ModContext::GetDataShare(const char *name) {
     return BML::DataShare::GetInstance(name);
 }
 
-
 void ModContext::SetIC(CKBeObject *obj, bool hierarchy) {
     if (!obj)
         return;
