@@ -3,7 +3,7 @@
 
 #define BML_MAJOR_VERSION 0
 #define BML_MINOR_VERSION 3
-#define BML_PATCH_VERSION 7
-#define BML_VERSION "0.3.7"
+#define BML_PATCH_VERSION 8
+#define BML_VERSION "0.3.8"
 
 #endif // BML_VERSION_H
