@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 
 project(BallanceModLoaderPlus
-        VERSION 0.3.7
+        VERSION 0.3.8
         LANGUAGES CXX
         DESCRIPTION "Renovated Mod Loader for Ballance"
         HOMEPAGE_URL https://github.com/doyaGu/BallanceModLoaderPlus)
