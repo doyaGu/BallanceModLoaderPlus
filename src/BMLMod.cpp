@@ -141,6 +141,16 @@ void BMLMod::OnUnload() {
     if (m_EnableIniSettings->GetBoolean()) {
         ImGui::SaveIniSettingsToDisk(m_ImGuiIniFilename.c_str());
     }
+
+    // Reset pointers to prevent use-after-free
+    m_Level01 = nullptr;
+    m_ExitStart = nullptr;
+    m_TimeManager = nullptr;
+    m_RenderContext = nullptr;
+
+    // Clear containers
+    m_WindowRect = VxRect();
+    m_OldWindowRect = VxRect();
 }
 
 void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
