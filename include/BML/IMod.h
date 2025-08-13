@@ -50,22 +50,29 @@ struct ModDependency {
     int optional; // (0 = required, 1 = optional)
 
     ModDependency() : id(nullptr), optional(0) {}
+
     ModDependency(const char *modId, const BMLVersion &version, int isOptional = 0)
         : minVersion(version), optional(isOptional) {
-        if (modId) {
+        if (modId && strlen(modId) > 0) {
             size_t len = strlen(modId);
             id = static_cast<char *>(BML_Malloc(len + 1));
-            strcpy(id, modId);
+            if (id) {
+                memcpy(id, modId, len);
+                id[len] = '\0';
+            }
         } else {
             id = nullptr;
         }
     }
 
     ModDependency(const ModDependency &other) : minVersion(other.minVersion), optional(other.optional) {
-        if (other.id) {
+        if (other.id && strlen(other.id) > 0) {
             size_t len = strlen(other.id);
             id = static_cast<char *>(BML_Malloc(len + 1));
-            strcpy(id, other.id);
+            if (id) {
+                memcpy(id, other.id, len);
+                id[len] = '\0';
+            }
         } else {
             id = nullptr;
         }
@@ -73,14 +80,18 @@ struct ModDependency {
 
     ModDependency &operator=(const ModDependency &other) {
         if (this != &other) {
-            delete[] id;
+            if (id) {
+                BML_Free(id);
+                id = nullptr;
+            }
 
-            if (other.id) {
+            if (other.id && strlen(other.id) > 0) {
                 size_t len = strlen(other.id);
                 id = static_cast<char *>(BML_Malloc(len + 1));
-                strcpy(id, other.id);
-            } else {
-                id = nullptr;
+                if (id) {
+                    memcpy(id, other.id, len);
+                    id[len] = '\0';
+                }
             }
 
             minVersion = other.minVersion;
@@ -90,8 +101,10 @@ struct ModDependency {
     }
 
     ~ModDependency() {
-        if (id)
+        if (id) {
             BML_Free(id);
+            id = nullptr;
+        }
     }
 
     int operator==(const ModDependency &other) const {
