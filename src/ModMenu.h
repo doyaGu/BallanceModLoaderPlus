@@ -67,7 +67,19 @@ protected:
 
 class ModOptionPage : public ModMenuPage {
 public:
-    explicit ModOptionPage(ModMenu *menu) : ModMenuPage(menu, "Mod Options") {}
+    explicit ModOptionPage(ModMenu *menu) : ModMenuPage(menu, "Mod Options") {
+        // Initialize buffers safely
+        for (int i = 0; i < 4; ++i) {
+            memset(m_Buffers[i], 0, sizeof(m_Buffers[i]));
+            m_BufferHashes[i] = 0;
+            m_KeyToggled[i] = false;
+            m_KeyChord[i] = ImGuiKey_None;
+            m_IntFlags[i] = 0;
+            m_FloatFlags[i] = 0;
+            m_IntValues[i] = 0;
+            m_FloatValues[i] = 0.0f;
+        }
+    }
 
     void OnAfterBegin() override;
     void OnDraw() override;
@@ -80,7 +92,9 @@ protected:
     static void ShowCommentBox(const Property *property);
 
     Category *m_Category = nullptr;
-    char m_Buffers[4][4096] = {};
+
+    static constexpr size_t BUFFER_SIZE = 4096;
+    char m_Buffers[4][BUFFER_SIZE] = {};
     size_t m_BufferHashes[4] = {};
     bool m_KeyToggled[4] = {};
     ImGuiKeyChord m_KeyChord[4] = {};
