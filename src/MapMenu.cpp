@@ -242,16 +242,21 @@ bool MapMenu::ExploreMaps(MapEntry *maps, int depth) {
 }
 
 bool MapMenu::IsSupportedFileType(const std::wstring &path) {
-    if (path.empty())
+    if (path.empty()) {
         return false;
+    }
 
     size_t dotPos = path.find_last_of(L'.');
-    if (dotPos == std::wstring::npos)
+    if (dotPos == std::wstring::npos || dotPos >= path.length() - 1) {
         return false;
+    }
 
     std::wstring ext = path.substr(dotPos);
 
-    return _wcsicmp(ext.c_str(), L".nmo") == 0 || _wcsicmp(ext.c_str(), L".cmo") == 0;
+    // Convert to lowercase for comparison
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
+
+    return ext == L".nmo" || ext == L".cmo";
 }
 
 MapListPage::MapListPage(MapMenu *menu): Page("Custom Maps"), m_Menu(menu) {
