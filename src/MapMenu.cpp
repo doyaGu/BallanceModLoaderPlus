@@ -121,67 +121,121 @@ void MapMenu::RefreshMaps() {
 }
 
 bool MapMenu::ExploreMaps(MapEntry *maps, int depth) {
-    if (!maps || maps->type != MAP_ENTRY_DIR || maps->path.empty())
+    if (!maps || maps->type != MAP_ENTRY_DIR || maps->path.empty()) {
         return false;
+    }
 
-    if (depth <= 0)
+    if (depth <= 0) {
         return false;
+    }
 
-    const std::wstring p = maps->path + L"\\*";
+    std::wstring searchPath = maps->path;
+    if (searchPath.length() > MAX_PATH) {
+        BML_GetModContext()->GetLogger()->Error("Path too long: %s", utils::Utf16ToUtf8(maps->path).c_str());
+        return false;
+    }
+
+    searchPath.append(L"\\*");
+
     _wfinddata_t fileinfo = {};
-    auto handle = _wfindfirst(p.c_str(), &fileinfo);
+    intptr_t handle = _wfindfirst(searchPath.c_str(), &fileinfo);
 
     if (handle == -1) {
         int err = errno;
-        std::string errMsg = "Failed to explore maps directory " + utils::Utf16ToUtf8(maps->path) + ": ";
-        errMsg += strerror(err);
-        BML_GetModContext()->GetLogger()->Error(errMsg.c_str());
+        if (err != ENOENT) {
+            std::string errMsg = "Failed to explore maps directory " + utils::Utf16ToUtf8(maps->path) + ": ";
+            errMsg += strerror(err);
+            BML_GetModContext()->GetLogger()->Error(errMsg.c_str());
+        }
         return false;
     }
 
     bool foundAny = false;
+
+    struct FileHandleGuard {
+        intptr_t handle;
+        explicit FileHandleGuard(intptr_t h) : handle(h) {}
+        ~FileHandleGuard() {
+            if (handle != -1) {
+                _findclose(handle);
+            }
+        }
+    } guard(handle);
+
     try {
         do {
+            // Skip current and parent directories
+            if (wcscmp(fileinfo.name, L".") == 0 || wcscmp(fileinfo.name, L"..") == 0) {
+                continue;
+            }
+
             std::wstring fullPath = maps->path;
+            if (fullPath.length() + wcslen(fileinfo.name) + 2 > MAX_PATH) {
+                BML_GetModContext()->GetLogger()->Warn("Skipping file with path too long: %s\\%s",
+                    utils::Utf16ToUtf8(maps->path).c_str(), utils::Utf16ToUtf8(fileinfo.name).c_str());
+                continue;
+            }
+
             fullPath.append(L"\\").append(fileinfo.name);
 
             if (fileinfo.attrib & _A_SUBDIR) {
-                if (wcscmp(fileinfo.name, L".") != 0 && wcscmp(fileinfo.name, L"..") != 0) {
-                    wchar_t dir[1024];
-                    _wsplitpath(fileinfo.name, nullptr, nullptr, dir, nullptr);
+                std::wstring dirName = fileinfo.name;
 
-                    auto *entry = new MapEntry(maps, MAP_ENTRY_DIR);
-                    entry->name = utils::Utf16ToUtf8(dir);
-                    entry->path = fullPath;
-                    maps->children.push_back(entry);
-                    if (ExploreMaps(entry, depth - 1))
-                        foundAny = true;
+                auto *entry = new(std::nothrow) MapEntry(maps, MAP_ENTRY_DIR);
+                if (!entry) {
+                    BML_GetModContext()->GetLogger()->Error("Memory allocation failed for directory entry");
+                    break;
+                }
+
+                entry->name = utils::Utf16ToUtf8(dirName);
+                entry->path = fullPath;
+
+                maps->children.push_back(entry);
+
+                if (ExploreMaps(entry, depth - 1)) {
+                    foundAny = true;
                 }
             } else if (IsSupportedFileType(fileinfo.name)) {
-                wchar_t filename[1024];
-                _wsplitpath(fileinfo.name, nullptr, nullptr, filename, nullptr);
+                std::wstring filename = fileinfo.name;
+                size_t dotPos = filename.find_last_of(L'.');
+                if (dotPos != std::wstring::npos) {
+                    filename = filename.substr(0, dotPos);
+                }
 
-                auto *entry = new MapEntry(maps, MAP_ENTRY_FILE);
+                auto *entry = new(std::nothrow) MapEntry(maps, MAP_ENTRY_FILE);
+                if (!entry) {
+                    BML_GetModContext()->GetLogger()->Error("Memory allocation failed for file entry");
+                    break;
+                }
+
                 entry->name = utils::Utf16ToUtf8(filename);
                 entry->path = fullPath;
+
                 maps->children.push_back(entry);
                 foundAny = true;
             }
         } while (_wfindnext(handle, &fileinfo) == 0);
+
     } catch (const std::exception &e) {
         BML_GetModContext()->GetLogger()->Error("Exception in ExploreMaps: %s", e.what());
-    }
-    catch (...) {
+        return false;
+    } catch (...) {
         BML_GetModContext()->GetLogger()->Error("Unknown exception in ExploreMaps");
+        return false;
     }
 
-    _findclose(handle);
-
+    // Sort children safely
     if (!maps->children.empty()) {
-        std::sort(maps->children.begin(), maps->children.end(), [](const MapEntry *lhs, const MapEntry *rhs) {
-            return *lhs < *rhs;
-        });
-        foundAny = true;
+        try {
+            std::sort(maps->children.begin(), maps->children.end(),
+                [](const MapEntry *lhs, const MapEntry *rhs) {
+                    if (!lhs || !rhs) return false;
+                    return *lhs < *rhs;
+                });
+            foundAny = true;
+        } catch (...) {
+            BML_GetModContext()->GetLogger()->Error("Failed to sort map entries");
+        }
     }
 
     return foundAny;
