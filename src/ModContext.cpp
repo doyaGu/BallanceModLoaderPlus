@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <unordered_set>
+#include <queue>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -352,49 +353,64 @@ int ModContext::RegisterOptionalDependency(IMod *mod, const char *dependencyId, 
 }
 
 int ModContext::CheckDependencies(IMod *mod) const {
-    if (!mod) {
-        return 0; // Not satisfied
-    }
+    if (!mod || !mod->GetID()) return 0;
+
+    // A relaxed semantic version parser:
+    // - Reads up to three numeric parts.
+    // - "1.2"     -> (1,2,0)
+    // - "1.2.3-x" -> (1,2,3)  (suffix ignored)
+    auto parseRelaxed = [](const char *s) -> BMLVersion {
+        if (!s || !*s) return BMLVersion(0, 0, 0);
+        int parts[3] = {0, 0, 0};
+        int n = 0;
+        const char *p = s;
+
+        // Scan digits, allow arbitrary separators/suffix after a part
+        while (*p && n < 3) {
+            // Skip non-digits until we find a digit
+            while (*p && (*p < '0' || *p > '9')) ++p;
+            if (!*p) break;
+
+            // Accumulate one integer part
+            int val = 0;
+            while (*p >= '0' && *p <= '9') {
+                val = val * 10 + (*p - '0');
+                ++p;
+            }
+            parts[n++] = val;
+
+            // Skip until next digit or end (tolerate '.', '-', '+', etc.)
+            while (*p && (*p < '0' || *p > '9')) ++p;
+        }
+        return BMLVersion(parts[0], parts[1], parts[2]);
+    };
 
     try {
         auto it = m_ModDependencies.find(mod);
-        if (it == m_ModDependencies.end() || it->second.empty()) {
-            return 1; // No dependencies = satisfied
-        }
+        if (it == m_ModDependencies.end()) return 1; // no deps => satisfied
 
         for (const auto &dep : it->second) {
-            IMod *depMod = FindMod(dep.id);
+            if (!dep.id || !*dep.id) continue;
 
-            // Check if mod exists
-            if (!depMod) {
-                if (dep.optional) {
-                    // Optional dependency is missing, but that's okay
-                    continue;
-                }
-                // Required dependency is missing
-                return 0;
+            // Lookup dependency mod
+            auto depIt = m_ModMap.find(dep.id);
+            if (depIt == m_ModMap.end()) {
+                if (!dep.optional) return 0; // required dep missing
+                continue;                    // optional dep missing -> ignore
             }
 
-            // Check version
-            BMLVersion modVersion;
-            if (std::string(depMod->GetVersion()).find_first_not_of("0123456789.") == std::string::npos) {
-                // Parse version if it's in the format "x.y.z"
-                sscanf(depMod->GetVersion(), "%d.%d.%d", &modVersion.major, &modVersion.minor, &modVersion.patch);
-            }
+            IMod *depMod = depIt->second;
+            const char *verStr = depMod ? depMod->GetVersion() : nullptr;
+            BMLVersion have = parseRelaxed(verStr);
 
-            if (modVersion < dep.minVersion) {
-                if (dep.optional) {
-                    // Optional dependency version is too old, but that's okay
-                    continue;
-                }
-                // Required dependency version is too old
-                return 0;
+            // If version is older than required and it's not optional -> not satisfied
+            if (have < dep.minVersion) {
+                if (!dep.optional) return 0;
             }
         }
-
-        return 1; // All dependencies satisfied
+        return 1;
     } catch (...) {
-        return 0; // Error, consider not satisfied
+        return 0; // treat unexpected errors as "unsatisfied"
     }
 }
 
@@ -417,7 +433,7 @@ int ModContext::GetDependencyCount(IMod *mod) const {
 
 int ModContext::GetDependencyInfo(IMod *mod, int index, char *dependencyId, int idSize,
                                   int *major, int *minor, int *patch, int *optional) const {
-    if (!mod || index < 0) {
+    if (!mod || index < 0 || (dependencyId && idSize <= 0)) {
         return BML_ERROR_FAIL;
     }
 
@@ -429,9 +445,16 @@ int ModContext::GetDependencyInfo(IMod *mod, int index, char *dependencyId, int 
 
         const auto &dep = it->second[index];
 
-        if (dependencyId && idSize > 0) {
-            strncpy(dependencyId, dep.id, idSize - 1);
-            dependencyId[idSize - 1] = '\0';
+        if (dependencyId && idSize > 0 && dep.id) {
+            size_t depIdLen = strlen(dep.id);
+            size_t copyLen = std::min(static_cast<size_t>(idSize - 1), depIdLen);
+
+            if (copyLen > 0) {
+                memcpy(dependencyId, dep.id, copyLen);
+            }
+            dependencyId[copyLen] = '\0'; // Guaranteed null termination
+        } else if (dependencyId && idSize > 0) {
+            dependencyId[0] = '\0'; // Empty string if no ID
         }
 
         if (major) *major = dep.minVersion.major;
@@ -1297,8 +1320,11 @@ void ModContext::RegisterBuiltinMods() {
 }
 
 bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) {
-    if (!mod)
-        return false;
+    // Allow registering built-in mods that don't come from a DLL (dllHandle can be null).
+    if (!mod) return false;
+
+    const char *modId = mod->GetID();
+    if (!modId || !*modId) return false;
 
     BMLVersion curVer;
     BMLVersion reqVer = mod->GetBMLVersion();
@@ -1308,267 +1334,256 @@ bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) 
         return false;
     }
 
-    bool inserted;
-    ModMap::iterator it;
-    std::tie(it, inserted) = m_ModMap.insert({mod->GetID(), mod});
-    if (!inserted) {
-        m_Logger->Error("Mod %s has already been registered.", mod->GetID());
-        return false;
-    }
+    // Reject duplicates
+    if (m_ModMap.find(modId) != m_ModMap.end()) return false;
 
+    // Record the mod in our registries
     m_Mods.push_back(mod);
+    m_ModMap.emplace(modId, mod);
 
-    auto mods = m_DllHandleToModsMap[dllHandle.get()];
-    mods.push_back(mod);
+    // If there is a real DLL handle, wire up the handle <-> mod mappings
+    if (dllHandle) {
+        m_ModToDllHandleMap[mod] = dllHandle;
 
-    m_ModToDllHandleMap.insert({mod, dllHandle});
+        void *raw = dllHandle.get();
+        m_DllHandleToModsMap[raw].push_back(mod);
+
+        // Keep a weak reference so we can check liveness without owning it
+        m_DllHandleMap[raw] = dllHandle;
+    }
 
     return true;
 }
 
 bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) {
-    if (!mod)
+    if (!mod || !dllHandle) {
         return false;
-
-    auto it = m_ModMap.find(mod->GetID());
-    if (it == m_ModMap.end())
-        return false;
-    m_ModMap.erase(it);
-
-    auto oit = std::find(m_Mods.begin(), m_Mods.end(), mod);
-    if (oit != m_Mods.end())
-        m_Mods.erase(oit);
-
-    constexpr const char *EXIT_SYMBOL = "BMLExit";
-    typedef void (*BMLExitFunc)(IMod *);
-
-    auto func = reinterpret_cast<BMLExitFunc>(::GetProcAddress(static_cast<HMODULE>(dllHandle.get()), EXIT_SYMBOL));
-    if (func)
-        func(mod);
-
-    auto mit = m_DllHandleToModsMap.find(dllHandle.get());
-    if (mit != m_DllHandleToModsMap.end()) {
-        auto &mods = mit->second;
-        mods.erase(std::remove(mods.begin(), mods.end(), mod), mods.end());
     }
 
-    auto dit = m_ModToDllHandleMap.find(mod);
-    if (dit != m_ModToDllHandleMap.end()) {
-        m_ModToDllHandleMap.erase(dit);
-    }
+    try {
+        const char *modId = mod->GetID();
+        if (!modId) {
+            return false;
+        }
 
-    return true;
+        // Remove from mod map
+        auto it = m_ModMap.find(modId);
+        if (it != m_ModMap.end()) {
+            m_ModMap.erase(it);
+        }
+
+        // Remove from mod vector
+        auto oit = std::find(m_Mods.begin(), m_Mods.end(), mod);
+        if (oit != m_Mods.end()) {
+            m_Mods.erase(oit);
+        }
+
+        // Call BMLExit function safely
+        constexpr const char *EXIT_SYMBOL = "BMLExit";
+        typedef void (*BMLExitFunc)(IMod *);
+
+        try {
+            auto func = reinterpret_cast<BMLExitFunc>(::GetProcAddress(static_cast<HMODULE>(dllHandle.get()), EXIT_SYMBOL));
+            if (func) {
+                func(mod);
+            }
+        } catch (...) {
+            // Continue cleanup even if BMLExit fails
+        }
+
+        // Clean up DLL handle mappings
+        auto mit = m_DllHandleToModsMap.find(dllHandle.get());
+        if (mit != m_DllHandleToModsMap.end()) {
+            auto &mods = mit->second;
+            mods.erase(std::remove(mods.begin(), mods.end(), mod), mods.end());
+
+            // Remove empty entries
+            if (mods.empty()) {
+                m_DllHandleToModsMap.erase(mit);
+            }
+        }
+
+        auto dit = m_ModToDllHandleMap.find(mod);
+        if (dit != m_ModToDllHandleMap.end()) {
+            m_ModToDllHandleMap.erase(dit);
+        }
+
+        // Clean up dependencies
+        m_ModDependencies.erase(mod);
+
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 bool ModContext::ResolveDependencies() {
-    // Check if there are any dependencies to resolve
-    bool hasDependencies = false;
-    for (auto *mod : m_Mods) {
-        auto it = m_ModDependencies.find(mod);
-        if (it != m_ModDependencies.end() && !it->second.empty()) {
-            hasDependencies = true;
-            break;
-        }
+    // Build a stable position map to keep deterministic ordering for nodes with the same in-degree
+    std::unordered_map<std::string, size_t> pos;
+    std::unordered_map<std::string, IMod *> modMap;
+    pos.reserve(m_Mods.size());
+    modMap.reserve(m_Mods.size());
+
+    for (size_t i = 0; i < m_Mods.size(); ++i) {
+        IMod *m = m_Mods[i];
+        if (!m || !m->GetID()) return false;
+        std::string id = m->GetID();
+        pos[id] = i;
+        modMap[id] = m;
     }
 
-    // If no dependencies, keep original order
-    if (!hasDependencies) {
-        return true;
-    }
-
-    // Build dependency graph
+    // Clear and (re)fill the externally visible graph for diagnostics/tools
     m_DependencyGraph.clear();
-    std::unordered_set<std::string> involvedInDependencies;
 
-    for (auto *mod : m_Mods) {
-        std::string modId = mod->GetID();
+    // adj: dependency -> [dependents]
+    std::unordered_map<std::string, std::vector<std::string>> adj;
+    std::unordered_map<std::string, int> inDegree;
 
-        auto it = m_ModDependencies.find(mod);
-        if (it != m_ModDependencies.end() && !it->second.empty()) {
-            std::vector<std::string> dependsOn;
-            for (const auto &dep : it->second) {
-                // Mark both this mod and its dependency as involved in dependency relationships
-                involvedInDependencies.insert(modId);
-                involvedInDependencies.insert(dep.id);
+    // Initialize in-degrees to 0 for all known mods
+    for (auto &kv : modMap) inDegree[kv.first] = 0;
 
-                if (!dep.optional) {
-                    dependsOn.emplace_back(dep.id);
-                }
+    // Collect edges and compute in-degree as "number of (present) dependencies" for each mod
+    for (IMod *m : m_Mods) {
+        const std::string mid = m->GetID();
+        auto it = m_ModDependencies.find(m);
+        if (it == m_ModDependencies.end()) continue;
+
+        std::unordered_set<std::string> seen; // deduplicate per mod
+        for (const auto &dep : it->second) {
+            if (!dep.id || !*dep.id) continue;
+            const std::string depId(dep.id);
+            if (!seen.insert(depId).second) continue; // skip duplicate dependency
+
+            auto depInSet = modMap.find(depId);
+            if (depInSet == modMap.end()) {
+                if (!dep.optional) return false;
+                continue;
             }
 
-            m_DependencyGraph[modId] = dependsOn;
-        } else {
-            // Still add to graph for dependency resolution, but mark as having no dependencies
-            m_DependencyGraph[modId] = {};
+            m_DependencyGraph[mid].push_back(depId); // mod -> dependsOn
+            adj[depId].push_back(mid);               // dep -> dependent
+            ++inDegree[mid];
         }
     }
 
-    // Check for circular dependencies
-    std::unordered_set<std::string> visited;
-    std::unordered_set<std::string> inProgress;
+    // Make adjacency stable (respect original m_Mods order for deterministic results)
+    for (auto &kv : adj) {
+        auto &v = kv.second;
+        std::stable_sort(v.begin(), v.end(), [&](const std::string &a, const std::string &b) {
+            return pos[a] < pos[b];
+        });
+    }
 
-    for (const auto &pair : m_DependencyGraph) {
-        const auto &modId = pair.first;
-        if (visited.find(modId) == visited.end()) {
-            if (HasCircularDependencies(modId, visited, inProgress)) {
-                m_Logger->Error("Circular dependency detected involving mod %s", modId.c_str());
-                return false;
-            }
+    // Kahn's algorithm with stable seeding by original order
+    std::queue<std::string> q;
+    // Seed queue with all nodes with inDegree == 0 in original order
+    for (IMod *m : m_Mods) {
+        const std::string id = m->GetID();
+        if (inDegree[id] == 0) q.push(id);
+    }
+
+    std::vector<IMod *> sorted;
+    sorted.reserve(m_Mods.size());
+
+    while (!q.empty()) {
+        std::string cur = q.front();
+        q.pop();
+        sorted.push_back(modMap[cur]);
+
+        auto ait = adj.find(cur);
+        if (ait == adj.end()) continue;
+
+        for (const std::string &nxt : ait->second) {
+            if (--inDegree[nxt] == 0) q.push(nxt);
         }
     }
 
-    // Preserve original order for mods not involved in dependencies
-    std::vector<IMod *> newOrder;
-    std::unordered_set<std::string> processedMods;
+    // If not all nodes were processed, there is a cycle
+    if (sorted.size() != m_Mods.size()) return false;
 
-    // First add mods that aren't involved in any dependency relationships
-    for (auto *mod : m_Mods) {
-        std::string modId = mod->GetID();
-        if (involvedInDependencies.find(modId) == involvedInDependencies.end()) {
-            newOrder.push_back(mod);
-            processedMods.insert(modId);
-        }
-    }
-
-    // Then sort and add the mods involved in dependency relationships
-    std::vector<IMod *> dependencyMods;
-    for (auto *mod : m_Mods) {
-        std::string modId = mod->GetID();
-        if (processedMods.find(modId) == processedMods.end()) {
-            dependencyMods.push_back(mod);
-        }
-    }
-
-    if (!dependencyMods.empty()) {
-        // Sort mods with dependencies
-        std::unordered_map<std::string, IMod *> modMap;
-        for (auto *mod : dependencyMods) {
-            modMap[mod->GetID()] = mod;
-        }
-
-        std::vector<IMod *> sortedDependencyMods;
-        std::unordered_set<std::string> visitedForSort;
-
-        // Define a DFS function to traverse the dependency graph
-        std::function<void(const std::string &)> dfs = [&](const std::string &modId) {
-            if (visitedForSort.find(modId) != visitedForSort.end() ||
-                processedMods.find(modId) != processedMods.end()) {
-                return;
-            }
-
-            visitedForSort.insert(modId);
-
-            // Visit all dependencies first
-            auto it = m_DependencyGraph.find(modId);
-            if (it != m_DependencyGraph.end()) {
-                const auto &dependencies = it->second;
-                for (const auto &depId : dependencies) {
-                    if (m_DependencyGraph.find(depId) != m_DependencyGraph.end()) {
-                        dfs(depId);
-                    }
-                }
-            }
-
-            // Add the mod after all its dependencies
-            auto modIt = modMap.find(modId);
-            if (modIt != modMap.end()) {
-                sortedDependencyMods.push_back(modIt->second);
-            }
-        };
-
-        // Process all dependency mods
-        for (auto *mod : dependencyMods) {
-            dfs(mod->GetID());
-        }
-
-        // Add the sorted dependency mods to the new order
-        newOrder.insert(newOrder.end(), sortedDependencyMods.begin(), sortedDependencyMods.end());
-    }
-
-    // Check if we got all mods
-    if (newOrder.size() != m_Mods.size()) {
-        m_Logger->Error("Failed to sort mods by dependencies - mod count mismatch");
-        return false;
-    }
-
-    // Update mod order
-    m_Logger->Info("Reordering mods based on dependencies");
-    m_Mods = newOrder;
-
+    m_Mods.swap(sorted);
     return true;
 }
 
 bool ModContext::HasCircularDependencies(const std::string &modId,
                                          std::unordered_set<std::string> &visited,
-                                         std::unordered_set<std::string> &inProgress) {
-    visited.insert(modId);
-    inProgress.insert(modId);
-
-    auto it = m_DependencyGraph.find(modId);
-    if (it == m_DependencyGraph.end()) {
-        inProgress.erase(modId);
+                                         std::unordered_set<std::string> &inStack) {
+    if (!visited.insert(modId).second) {
+        // already visited outside this path
         return false;
     }
+    inStack.insert(modId);
 
-    const auto &dependencies = it->second;
-    for (const auto &depId : dependencies) {
-        if (inProgress.find(depId) != inProgress.end()) {
-            return true; // Circular dependency found
-        }
-
-        if (visited.find(depId) == visited.end()) {
-            if (HasCircularDependencies(depId, visited, inProgress)) {
-                return true;
-            }
+    auto it = m_DependencyGraph.find(modId);
+    if (it != m_DependencyGraph.end()) {
+        for (const auto &depId : it->second) {
+            if (inStack.count(depId)) return true; // back-edge
+            if (HasCircularDependencies(depId, visited, inStack)) return true;
         }
     }
 
-    inProgress.erase(modId);
+    inStack.erase(modId);
     return false;
 }
 
 std::vector<IMod *> ModContext::SortModsByDependencies() {
-    std::vector<IMod *> result;
-    std::unordered_set<std::string> visited;
+    // Build maps and stable positions from current m_Mods
     std::unordered_map<std::string, IMod *> modMap;
-
-    // Build mod map
-    for (auto *mod : m_Mods) {
-        modMap[mod->GetID()] = mod;
+    std::unordered_map<std::string, size_t> pos;
+    modMap.reserve(m_Mods.size());
+    for (size_t i = 0; i < m_Mods.size(); ++i) {
+        modMap[m_Mods[i]->GetID()] = m_Mods[i];
+        pos[m_Mods[i]->GetID()] = i;
     }
 
-    // Define a DFS function to traverse the dependency graph
-    std::function<void(const std::string &)> dfs = [&](const std::string &modId) {
-        if (visited.find(modId) != visited.end()) {
-            return;
-        }
+    // Build adjacency (dep -> dependents) and in-degree (dependency count)
+    std::unordered_map<std::string, std::vector<std::string>> adj;
+    std::unordered_map<std::string, int> inDegree;
+    for (const auto &kv : modMap) inDegree[kv.first] = 0;
 
-        visited.insert(modId);
+    for (IMod *m : m_Mods) {
+        auto it = m_ModDependencies.find(m);
+        if (it == m_ModDependencies.end()) continue;
 
-        // Visit all dependencies first
-        auto it = m_DependencyGraph.find(modId);
-        if (it != m_DependencyGraph.end()) {
-            const auto &dependencies = it->second;
-            for (const auto &depId : dependencies) {
-                if (m_DependencyGraph.find(depId) != m_DependencyGraph.end()) {
-                    dfs(depId);
-                }
+        std::unordered_set<std::string> seen;
+        const std::string mid = m->GetID();
+        for (const auto &dep : it->second) {
+            if (!dep.id || !*dep.id) continue;
+            const std::string depId(dep.id);
+            if (!seen.insert(depId).second) continue; // dedup
+            if (!modMap.count(depId)) {
+                if (!dep.optional) return {}; // unsatisfied required dep
+                continue;                     // optional missing -> ignore
             }
+            adj[depId].push_back(mid);
+            ++inDegree[mid];
         }
-
-        // Add the mod after all its dependencies
-        auto modIt = modMap.find(modId);
-        if (modIt != modMap.end()) {
-            result.push_back(modIt->second);
-        }
-    };
-
-    // Process all mods
-    for (const auto &pair: m_DependencyGraph) {
-        dfs(pair.first);
+    }
+    for (auto &kv : adj) {
+        auto &v = kv.second;
+        std::stable_sort(v.begin(), v.end(), [&](const std::string &a, const std::string &b) {
+            return pos[a] < pos[b];
+        });
     }
 
-    return result;
+    // Kahn (stable seeding by original order)
+    std::queue<std::string> q;
+    for (IMod *m : m_Mods) if (inDegree[m->GetID()] == 0) q.push(m->GetID());
+
+    std::vector<IMod *> order;
+    order.reserve(m_Mods.size());
+    while (!q.empty()) {
+        auto cur = q.front();
+        q.pop();
+        order.push_back(modMap[cur]);
+        auto it = adj.find(cur);
+        if (it == adj.end()) continue;
+        for (const auto &nxt : it->second) {
+            if (--inDegree[nxt] == 0) q.push(nxt);
+        }
+    }
+    if (order.size() != m_Mods.size()) return {}; // cycle detected
+    return order;
 }
 
 void ModContext::FillCallbackMap(IMod *mod) {
