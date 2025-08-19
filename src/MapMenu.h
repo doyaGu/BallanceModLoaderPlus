@@ -21,17 +21,27 @@ struct MapEntry {
     std::string name;
     std::wstring path;
     std::vector<MapEntry *> children;
+    bool m_BeingDeleted = false;
 
     explicit MapEntry(MapEntry *parent, MapEntryType entryType) : parent(parent), type(entryType) {}
 
     ~MapEntry() {
+        if (m_BeingDeleted) {
+            return; // Prevent recursive deletion
+        }
+        m_BeingDeleted = true;
+
+        // Safely delete all children first
         for (auto *child : children) {
-            child->parent = nullptr;
-            delete child;
+            if (child && !child->m_BeingDeleted) {
+                child->parent = nullptr; // Break parent link to prevent recursion
+                delete child;
+            }
         }
         children.clear();
 
-        if (parent) {
+        // Remove from parent's children list safely
+        if (parent && !parent->m_BeingDeleted) {
             auto it = std::find(parent->children.begin(), parent->children.end(), this);
             if (it != parent->children.end()) {
                 parent->children.erase(it);
