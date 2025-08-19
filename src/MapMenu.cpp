@@ -63,9 +63,27 @@ void MapMenu::OnClose(bool backToMenu) {
 }
 
 void MapMenu::LoadMap(const std::wstring &path) {
-    m_Mod->LoadMap(path);
-    m_MapLoaded = true;
-    Close();
+    if (path.empty()) {
+        BML_GetModContext()->GetLogger()->Error("Attempted to load empty map path");
+        return;
+    }
+
+    if (!utils::FileExistsW(path)) {
+        BML_GetModContext()->GetLogger()->Error("Map file does not exist: %s", utils::Utf16ToUtf8(path).c_str());
+        return;
+    }
+
+    try {
+        m_Mod->LoadMap(path);
+        m_MapLoaded = true;
+        Close();
+    } catch (const std::exception &e) {
+        BML_GetModContext()->GetLogger()->Error("Exception loading map: %s", e.what());
+        m_MapLoaded = false;
+    } catch (...) {
+        BML_GetModContext()->GetLogger()->Error("Unknown exception loading map");
+        m_MapLoaded = false;
+    }
 }
 
 void MapMenu::RefreshMaps() {
