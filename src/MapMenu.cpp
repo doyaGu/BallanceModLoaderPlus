@@ -394,10 +394,31 @@ void MapListPage::OnSearchMaps() {
 }
 
 bool MapListPage::OnDrawEntry(size_t index, bool *v) {
-    const auto &maps = m_Menu->GetCurrentMaps()->children;
-    if (index >= maps.size())
+    auto *currentMaps = m_Menu->GetCurrentMaps();
+    if (!currentMaps || currentMaps->children.empty()) {
         return false;
-    auto &entry = maps[index];
+    }
+
+    const auto &maps = currentMaps->children;
+    size_t realIndex;
+
+    if (IsSearching()) {
+        if (index >= m_MapSearchResult.size()) {
+            return false;
+        }
+        realIndex = m_MapSearchResult[index];
+    } else {
+        realIndex = index;
+    }
+
+    if (realIndex >= maps.size()) {
+        return false;
+    }
+
+    auto &entry = maps[realIndex];
+    if (!entry) {
+        return false;
+    }
 
     if (entry->type == MAP_ENTRY_FILE) {
         if (Bui::LevelButton(entry->name.c_str(), v)) {
