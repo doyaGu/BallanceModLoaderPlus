@@ -40,11 +40,10 @@ struct MapEntry {
     }
 
     bool operator<(const MapEntry &rhs) const {
-        if (type < rhs.type)
-            return true;
-        if (rhs.type < type)
-            return false;
-        return path < rhs.path;
+        if (type != rhs.type) {
+            return type < rhs.type;
+        }
+        return name < rhs.name;
     }
 
     bool operator>(const MapEntry &rhs) const {
@@ -52,7 +51,7 @@ struct MapEntry {
     }
 
     bool operator<=(const MapEntry &rhs) const {
-        return !(*this > rhs);
+        return !(rhs < *this);
     }
 
     bool operator>=(const MapEntry &rhs) const {
