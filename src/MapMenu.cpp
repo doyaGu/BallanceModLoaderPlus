@@ -90,20 +90,34 @@ void MapMenu::RefreshMaps() {
     std::wstring path = BML_GetModContext()->GetDirectory(BML_DIR_LOADER);
     path.append(L"\\Maps");
 
-    if (!utils::DirectoryExistsW(path))
+    if (!utils::DirectoryExistsW(path)) {
+        BML_GetModContext()->GetLogger()->Info("Maps directory does not exist: %s", utils::Utf16ToUtf8(path).c_str());
         return;
-
-    auto *maps = new MapEntry(nullptr, MAP_ENTRY_DIR);
-    maps->name = "Maps";
-    maps->path = path;
-    if (ExploreMaps(maps, m_MaxDepth)) {
-        delete m_Maps;
-        m_Maps = maps;
-    } else {
-        delete maps;
     }
 
-    ResetCurrentMaps();
+    auto *newMaps = new(std::nothrow) MapEntry(nullptr, MAP_ENTRY_DIR);
+    if (!newMaps) {
+        BML_GetModContext()->GetLogger()->Error("Failed to allocate memory for maps root");
+        return;
+    }
+
+    newMaps->name = "Maps";
+    newMaps->path = path;
+
+    try {
+        if (ExploreMaps(newMaps, m_MaxDepth)) {
+            // Only replace if successful
+            delete m_Maps;
+            m_Maps = newMaps;
+            ResetCurrentMaps();
+        } else {
+            delete newMaps;
+            BML_GetModContext()->GetLogger()->Warn("No maps found in directory");
+        }
+    } catch (...) {
+        delete newMaps;
+        BML_GetModContext()->GetLogger()->Error("Exception during map refresh");
+    }
 }
 
 bool MapMenu::ExploreMaps(MapEntry *maps, int depth) {
