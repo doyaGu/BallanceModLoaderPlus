@@ -225,8 +225,9 @@ void ModOptionPage::OnDraw() {
                 Bui::InputTextButton(property->GetName(), m_Buffers[index], sizeof(m_Buffers[index]));
                 if (ImGui::IsItemDeactivatedAfterEdit()) {
                     m_BufferHashes[index] = utils::HashString(m_Buffers[index]);
-                    if (m_BufferHashes[index] != property->GetHash())
+                    if (m_BufferHashes[index] != property->GetHash()) {
                         property->SetString(m_Buffers[index]);
+                    }
                 }
             }
             break;
