@@ -283,7 +283,7 @@ bool MapListPage::IsSearching() const {
 }
 
 void MapListPage::ClearSearch() {
-    m_MapSearchBuf[0] = '\0';
+    memset(m_MapSearchBuf, 0, sizeof(m_MapSearchBuf));
     m_MapSearchResult.clear();
 }
 
