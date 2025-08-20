@@ -15,17 +15,19 @@
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 namespace Overlay {
-    typedef BOOL (WINAPI *LPFNPEEKMESSAGEA)(LPMSG, HWND, UINT, UINT, UINT);
-    typedef BOOL (WINAPI *LPFNGETMESSAGEA)(LPMSG, HWND, UINT, UINT);
+    typedef BOOL (WINAPI *LPFNPEEKMESSAGE)(LPMSG, HWND, UINT, UINT, UINT);
+    typedef BOOL (WINAPI *LPFNGETMESSAGE)(LPMSG, HWND, UINT, UINT);
 
-    LPFNPEEKMESSAGEA g_OrigPeekMessageA = nullptr;
-    LPFNGETMESSAGEA g_OrigGetMessageA = nullptr;
+    LPFNPEEKMESSAGE g_OrigPeekMessageA = nullptr;
+    LPFNPEEKMESSAGE g_OrigPeekMessageW = nullptr;
+    LPFNGETMESSAGE g_OrigGetMessageA = nullptr;
+    LPFNGETMESSAGE g_OrigGetMessageW = nullptr;
     ImGuiContext *g_ImGuiContext = nullptr;
     bool g_ImGuiReady = false;
     bool g_RenderReady = false;
     bool g_NewFrame = false;
 
-    LRESULT OnWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    LRESULT OnWndProcA(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         ImGuiContextScope scope;
 
         LRESULT res;
@@ -50,11 +52,29 @@ namespace Overlay {
         return res;
     }
 
+    LRESULT OnWndProcW(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+        ImGuiContextScope scope;
+
+        return ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
+    }
+
     extern "C" BOOL WINAPI HookPeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg) {
         if (!g_OrigPeekMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg))
             return FALSE;
 
-        if (lpMsg->hwnd != nullptr && (wRemoveMsg & PM_REMOVE) != 0 && OnWndProc(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
+        if (lpMsg->hwnd != nullptr && (wRemoveMsg & PM_REMOVE) != 0 && OnWndProcA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
+            TranslateMessage(lpMsg);
+            lpMsg->message = WM_NULL;
+        }
+
+        return TRUE;
+    }
+
+    extern "C" BOOL WINAPI HookPeekMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg) {
+        if (!g_OrigPeekMessageW(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg))
+            return FALSE;
+
+        if (lpMsg->hwnd != nullptr && (wRemoveMsg & PM_REMOVE) != 0 && OnWndProcW(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
             TranslateMessage(lpMsg);
             lpMsg->message = WM_NULL;
         }
@@ -66,7 +86,18 @@ namespace Overlay {
         if (!g_OrigGetMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax))
             return FALSE;
 
-        if (lpMsg->hwnd != nullptr && OnWndProc(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
+        if (lpMsg->hwnd != nullptr && OnWndProcA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
+            TranslateMessage(lpMsg);
+            lpMsg->message = WM_NULL;
+        }
+        return lpMsg->message != WM_QUIT;
+    }
+
+    extern "C" BOOL WINAPI HookGetMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax) {
+        if (!g_OrigGetMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax))
+            return FALSE;
+
+        if (lpMsg->hwnd != nullptr && OnWndProcW(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
             TranslateMessage(lpMsg);
             lpMsg->message = WM_NULL;
         }
@@ -82,6 +113,14 @@ namespace Overlay {
             MH_EnableHook((LPVOID) &GetMessageA) != MH_OK) {
             return false;
         }
+        if (MH_CreateHookApi(L"user32", "PeekMessageW", (LPVOID) &HookPeekMessageW, (LPVOID *) &g_OrigPeekMessageW) != MH_OK ||
+            MH_EnableHook((LPVOID) &PeekMessageW) != MH_OK) {
+            return false;
+        }
+        if (MH_CreateHookApi(L"user32", "GetMessageW", (LPVOID) &HookGetMessageW, (LPVOID *) &g_OrigGetMessageW) != MH_OK ||
+            MH_EnableHook((LPVOID) &GetMessageW) != MH_OK) {
+            return false;
+        }
         return true;
     }
 
@@ -89,6 +128,10 @@ namespace Overlay {
         if (MH_DisableHook((LPVOID) &PeekMessageA) != MH_OK)
             return false;
         if (MH_DisableHook((LPVOID) &GetMessageA) != MH_OK)
+            return false;
+        if (MH_DisableHook((LPVOID) &PeekMessageW) != MH_OK)
+            return false;
+        if (MH_DisableHook((LPVOID) &GetMessageW) != MH_OK)
             return false;
         return true;
     }
