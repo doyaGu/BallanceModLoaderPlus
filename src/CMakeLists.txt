@@ -148,7 +148,9 @@ target_compile_options(BML PRIVATE
         $<$<CXX_COMPILER_ID:MSVC>:/Zc:char8_t->
 )
 
-target_compile_definitions(BML PRIVATE "BML_EXPORTS" "IMGUI_EXPORT")
+target_compile_definitions(BML PRIVATE
+        BML_EXPORTS IMGUI_EXPORT
+)
 
 set_target_properties(BML PROPERTIES
         OUTPUT_NAME "BMLPlus"
