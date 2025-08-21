@@ -23,14 +23,12 @@
 // Using Dear ImGui via a shared library is not recommended, because of function call overhead and because we don't guarantee backward nor forward ABI compatibility.
 // - Windows DLL users: heaps and globals are not shared across DLL boundaries! You will need to call SetCurrentContext() + SetAllocatorFunctions()
 //   for each static/DLL boundary you are calling from. Read "Context and Memory Allocators" section of imgui.cpp for more details.
-//#define IMGUI_API __declspec(dllexport)                   // MSVC Windows: DLL export
-//#define IMGUI_API __declspec(dllimport)                   // MSVC Windows: DLL import
-//#define IMGUI_API __attribute__((visibility("default")))  // GCC/Clang: override visibility when set is hidden
 #ifdef IMGUI_EXPORT
 #define IMGUI_API __declspec(dllexport)                     // MSVC Windows: DLL export
 #else
 #define IMGUI_API __declspec(dllimport)                     // MSVC Windows: DLL import
 #endif
+//#define IMGUI_API __attribute__((visibility("default")))  // GCC/Clang: override visibility when set is hidden
 
 //---- Don't define obsolete functions/enums/behaviors. Consider enabling from time to time after updating to clean your code of obsolete function/names.
 //#define IMGUI_DISABLE_OBSOLETE_FUNCTIONS
@@ -93,8 +91,7 @@
 
 //---- Use FreeType + plutosvg or lunasvg to render OpenType SVG fonts (SVGinOT)
 // Only works in combination with IMGUI_ENABLE_FREETYPE.
-// - lunasvg is currently easier to acquire/install, as e.g. it is part of vcpkg.
-// - plutosvg will support more fonts and may load them faster. It currently requires to be built manually but it is fairly easy. See misc/freetype/README for instructions.
+// - plutosvg is currently easier to install, as e.g. it is part of vcpkg. It will support more fonts and may load them faster. See misc/freetype/README for instructions.
 // - Both require headers to be available in the include path + program to be linked with the library code (not provided).
 // - (note: lunasvg implementation is based on Freetype's rsvg-port.c which is licensed under CeCILL-C Free Software License Agreement)
 //#define IMGUI_ENABLE_FREETYPE_PLUTOSVG
@@ -134,6 +131,10 @@
 // (use 'Metrics->Tools->Item Picker' to pick widgets with the mouse and break into them for easy debugging.)
 //#define IM_DEBUG_BREAK  IM_ASSERT(0)
 //#define IM_DEBUG_BREAK  __debugbreak()
+
+//---- Debug Tools: Enable highlight ID conflicts _before_ hovering items. When io.ConfigDebugHighlightIdConflicts is set.
+// (THIS WILL SLOW DOWN DEAR IMGUI. Only use occasionally and disable after use)
+//#define IMGUI_DEBUG_HIGHLIGHT_ALL_ID_CONFLICTS
 
 //---- Debug Tools: Enable slower asserts
 //#define IMGUI_DEBUG_PARANOID
