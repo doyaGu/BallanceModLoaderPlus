@@ -1,6 +1,8 @@
 #ifndef BML_COMMANDBAR_H
 #define BML_COMMANDBAR_H
 
+#include <unordered_set>
+
 #include "BML/Bui.h"
 
 class CommandBar : public Bui::Window {
@@ -49,6 +51,7 @@ private:
     int m_CursorPos = 0;
     int m_HistoryIndex = -1;
     std::vector<std::string> m_History;
+    std::unordered_set<std::string> m_HistorySet;
     int m_CandidateSelected = -1;
     int m_CandidateIndex = 0;
     int m_CandidatePage = 0;
