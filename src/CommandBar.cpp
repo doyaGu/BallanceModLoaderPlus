@@ -67,8 +67,11 @@ void CommandBar::OnDraw() {
                          &TextEditCallback, this)) {
         if (m_Buffer[0] != '\0') {
             BML_GetModContext()->ExecuteCommand(m_Buffer.c_str());
-            m_History.emplace_back(m_Buffer);
-            m_HistoryIndex = -1;
+            if (m_HistorySet.find(m_Buffer) == m_HistorySet.end()) {
+                m_HistorySet.insert(m_Buffer);
+                m_History.emplace_back(m_Buffer);
+                m_HistoryIndex = -1;
+            }
         }
         ToggleCommandBar(false);
     }
@@ -178,6 +181,7 @@ void CommandBar::ExecuteHistory(int index) {
 
 void CommandBar::ClearHistory() {
     m_History.clear();
+    m_HistorySet.clear();
     m_HistoryIndex = -1;
 }
 
@@ -215,8 +219,14 @@ void CommandBar::LoadHistory() {
     delete[] buf;
 
     std::string line;
-    while (std::getline(iss, line))
+    while (std::getline(iss, line)) {
+        if (line.empty() || line[0] == '\0')
+            continue;
+        if (m_HistorySet.find(line) != m_HistorySet.end())
+            continue;
+
         m_History.emplace_back(line);
+    }
 }
 
 void CommandBar::SaveHistory() {
