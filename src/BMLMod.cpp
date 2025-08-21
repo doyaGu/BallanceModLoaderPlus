@@ -260,8 +260,6 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
         if (timer < 2000) {
             m_MsgDuration->SetFloat(2.0f);
         }
-    } else if (prop == m_MsgCapability) {
-        m_MessageBoard.ResizeMessages(m_MsgCapability->GetInteger());
     } else if (prop == m_CustomMapTooltip) {
         m_MapMenu.SetShowTooltip(m_CustomMapTooltip->GetBoolean());
     }
@@ -516,11 +514,6 @@ void BMLMod::InitConfigs() {
     m_Overclock->SetDefaultBoolean(false);
 
     GetConfig()->SetCategoryComment("CommandBar", "Command Bar Settings");
-
-    m_MsgCapability = GetConfig()->GetProperty("CommandBar", "MessageCapability");
-    m_MsgCapability->SetComment("The maximum number of messages that can be displayed at the same time (default: 35)");
-    m_MsgCapability->SetDefaultInteger(35);
-    m_MessageBoard.ResizeMessages(m_MsgCapability->GetInteger());
 
     m_MsgDuration = GetConfig()->GetProperty("CommandBar", "MessageDuration");
     m_MsgDuration->SetComment("Maximum visible time of each notification message, measured in seconds (default: 6)");
