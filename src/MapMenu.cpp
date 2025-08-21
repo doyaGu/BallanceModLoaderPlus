@@ -271,7 +271,7 @@ void MapListPage::OnAfterBegin() {
     if (!IsVisible())
         return;
 
-    DrawCenteredText(m_Title.c_str(), 0.07f);
+    Bui::Title(m_Title.c_str(), 0.07f);
 
     auto *maps = m_Menu->GetCurrentMaps();
     if (!maps || maps->children.empty()) {
@@ -292,15 +292,15 @@ void MapListPage::OnAfterBegin() {
     ImGui::PopStyleColor();
 
     m_Count = IsSearching() ? static_cast<int>(m_MapSearchResult.size()) : static_cast<int>(maps->children.size());
-    SetMaxPage(m_Count % 10 == 0 ? m_Count / 10 : m_Count / 10 + 1);
+    SetPageCount(m_Count % 10 == 0 ? m_Count / 10 : m_Count / 10 + 1);
 
     if (m_PageIndex > 0 &&
-        LeftButton("PrevPage", ImVec2(0.36f, 0.4f))) {
+        Bui::NavLeft(0.36f, 0.4f)) {
         PrevPage();
     }
 
     if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 &&
-        RightButton("NextPage", ImVec2(0.6238f, 0.4f))) {
+        Bui::NavRight(0.6238f, 0.4f)) {
         NextPage();
     }
 }
@@ -313,15 +313,15 @@ void MapListPage::OnDraw() {
     const int n = GetPage() * 10;
 
     if (IsSearching()) {
-        DrawEntries([&](size_t index) {
+        Bui::Entries([&](size_t index) {
             if (n + index >= m_MapSearchResult.size())
                 return false;
             return OnDrawEntry(m_MapSearchResult[n + index], &v);
-        }, ImVec2(0.4031f, 0.23f), 0.06f, 10);
+        }, 0.4031f, 0.23f, 0.06f, 10);
     } else {
-        DrawEntries([&](size_t index) {
+        Bui::Entries([&](size_t index) {
             return OnDrawEntry(n + index, &v);
-        }, ImVec2(0.4031f, 0.23f), 0.06f, 10);
+        }, 0.4031f, 0.23f, 0.06f, 10);
     }
 }
 

@@ -12,7 +12,7 @@
 #define COMMAND_HISTORY_FILE L"\\CommandBar.history"
 
 CommandBar::CommandBar() : Window("CommandBar"), m_Buffer(65535, '\0') {
-    SetVisibility(false);
+    Hide();
 }
 
 CommandBar::~CommandBar() = default;

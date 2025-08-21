@@ -59,26 +59,19 @@ void ModListPage::OnAfterBegin() {
     if (!IsVisible())
         return;
 
-    DrawCenteredText(m_Title.c_str());
+    Bui::Title(m_Title.c_str());
 
     const int count = BML_GetModContext()->GetModCount();
-    SetMaxPage(count % 4 == 0 ? count / 4 : count / 4 + 1);
+    SetPageCount(count % 4 == 0 ? count / 4 : count / 4 + 1);
 
-    if (m_PageIndex > 0 &&
-        LeftButton("PrevPage")) {
-        PrevPage();
-    }
-
-    if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 &&
-        RightButton("NextPage")) {
-        NextPage();
-    }
+    if (m_PageIndex > 0 && Bui::NavLeft()) PrevPage();
+    if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 && Bui::NavRight()) NextPage();
 }
 
 void ModListPage::OnDraw() {
     const int n = GetPage() * 4;
 
-    DrawEntries([&](size_t index) {
+    Bui::Entries([&](size_t index) {
         IMod *mod = BML_GetModContext()->GetMod(static_cast<int>(n + index));
         if (!mod)
             return false;
@@ -88,7 +81,7 @@ void ModListPage::OnDraw() {
             m_Menu->ShowPage("Mod Page");
         }
         return true;
-    });
+    }, 0.35f, 0.24f, 0.14f, 4);
 }
 
 void ModPage::OnAfterBegin() {
@@ -104,28 +97,28 @@ void ModPage::OnAfterBegin() {
     auto *mod = m_Menu->GetCurrentMod();
 
     ImGui::SetCursorPosX(menuPos.x);
-    WrappedText(mod->GetName(), menuSize.x, 1.2f);
+    Bui::WrappedText(mod->GetName(), menuSize.x, 1.2f);
 
     snprintf(m_TextBuf, sizeof(m_TextBuf), "By %s", mod->GetAuthor());
     ImGui::SetCursorPosX(menuPos.x);
-    WrappedText(m_TextBuf, menuSize.x);
+    Bui::WrappedText(m_TextBuf, menuSize.x);
 
     snprintf(m_TextBuf, sizeof(m_TextBuf), "v%s", mod->GetVersion());
     ImGui::SetCursorPosX(menuPos.x);
-    WrappedText(m_TextBuf, menuSize.x);
+    Bui::WrappedText(m_TextBuf, menuSize.x);
 
     ImGui::SetCursorPosX(menuPos.x);
     ImGui::NewLine();
 
     ImGui::SetCursorPosX(menuPos.x);
-    WrappedText(mod->GetDescription(), menuSize.x);
+    Bui::WrappedText(mod->GetDescription(), menuSize.x);
 
     m_Config = ModMenu::GetConfig(mod);
     if (!m_Config)
         return;
 
     int count = (int) m_Config->GetCategoryCount();
-    SetMaxPage(((count % 4) == 0) ? count / 4 : count / 4 + 1);
+    SetPageCount(((count % 4) == 0) ? count / 4 : count / 4 + 1);
 }
 
 void ModPage::OnDraw() {
@@ -135,7 +128,7 @@ void ModPage::OnDraw() {
     bool v = true;
     const int n = GetPage() * 4;
 
-    DrawEntries([&](size_t index) {
+    Bui::Entries([&](size_t index) {
         Category *category = m_Config->GetCategory(static_cast<int>(n + index));
         if (!category)
             return false;
@@ -153,15 +146,15 @@ void ModPage::OnDraw() {
             ShowCommentBox(category);
         }
         return true;
-    }, ImVec2(0.4031f, 0.5f), 0.06f, 4);
+    }, 0.4031f, 0.5f, 0.06f, 4);
 
     if (m_PageIndex > 0 &&
-        LeftButton("PrevPage", ImVec2(0.35f, 0.59f))) {
+        Bui::NavLeft(0.35f, 0.59f)) {
         PrevPage();
     }
 
     if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 &&
-        RightButton("NextPage", ImVec2(0.6138f, 0.59f))) {
+        Bui::NavRight(0.6138f, 0.59f)) {
         NextPage();
     }
 }
@@ -181,8 +174,8 @@ void ModPage::ShowCommentBox(Category *category) {
     const char *name = category->GetName();
     if (name[0] == '@')
         ++name;
-    WrappedText(name, commentBoxSize.x);
-    WrappedText(category->GetComment(), commentBoxSize.x);
+    Bui::WrappedText(name, commentBoxSize.x);
+    Bui::WrappedText(category->GetComment(), commentBoxSize.x);
 
     ImGui::EndChild();
     ImGui::PopStyleColor();
@@ -194,7 +187,7 @@ void ModOptionPage::OnAfterBegin() {
         return;
 
     int count = static_cast<int>(m_Category->GetPropertyCount());
-    SetMaxPage(count % 4 == 0 ? count / 4 : count / 4 + 1);
+    SetPageCount(count % 4 == 0 ? count / 4 : count / 4 + 1);
 
     Page::OnAfterBegin();
 }
@@ -205,7 +198,7 @@ void ModOptionPage::OnDraw() {
 
     const int n = GetPage() * 4;
 
-    DrawEntries([&](size_t index) {
+    Bui::Entries([&](size_t index) {
         Property *property = m_Category->GetProperty(static_cast<int>(n + index));
         if (!property)
             return false;
@@ -277,7 +270,7 @@ void ModOptionPage::OnDraw() {
         }
 
         return true;
-    });
+    }, 0.35f, 0.24f, 0.14f, 4);
 }
 
 void ModOptionPage::OnClose() {
@@ -310,8 +303,8 @@ void ModOptionPage::ShowCommentBox(const Property *property) {
     ImGui::SetCursorScreenPos(commentBoxPos);
     ImGui::BeginChild("ModOptionComment", commentBoxSize);
 
-    WrappedText(property->GetName(), commentBoxSize.x);
-    WrappedText(property->GetComment(), commentBoxSize.x);
+    Bui::WrappedText(property->GetName(), commentBoxSize.x);
+    Bui::WrappedText(property->GetComment(), commentBoxSize.x);
 
     ImGui::EndChild();
     ImGui::PopStyleColor();
