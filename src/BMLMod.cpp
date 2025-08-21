@@ -26,10 +26,19 @@ using namespace ScriptHelper;
 static ImFont *LoadFont(const char *filename, float size, const char *ranges, bool merge = false) {
     ImGuiIO &io = ImGui::GetIO();
 
+    // Normalize size and defaults
+    if (size <= 0)
+        size = 32.0f;
+
+    auto AddDefaultFont = [&]() -> ImFont * {
+        ImFontConfig cfg;
+        cfg.SizePixels = size;
+        cfg.MergeMode = false;
+        return io.Fonts->AddFontDefault(&cfg);
+    };
+
     if (!filename || filename[0] == '\0') {
-        ImFontConfig config;
-        config.SizePixels = 32.0f;
-        return io.Fonts->AddFontDefault(&config);
+        return AddDefaultFont();
     }
 
     std::string path = filename;
@@ -39,13 +48,8 @@ static ImFont *LoadFont(const char *filename, float size, const char *ranges, bo
     }
 
     if (!utils::FileExistsUtf8(path)) {
-        ImFontConfig config;
-        config.SizePixels = 32.0f;
-        return io.Fonts->AddFontDefault(&config);
+        return AddDefaultFont();
     }
-
-    if (size <= 0)
-        size = 32.0f;
 
     const ImWchar *glyphRanges = nullptr;
     if (strnicmp(ranges, "ChineseFull", 11) == 0) {
@@ -69,13 +73,16 @@ static ImFont *LoadFont(const char *filename, float size, const char *ranges, bo
     ImFontConfig config;
     config.SizePixels = size;
     config.MergeMode = merge;
-    if (strnicmp(ranges, "Default", 7) != 0) {
-        // Set OversampleH/OversampleV to 1 to reduce the texture size.
-        config.OversampleH = config.OversampleV = 1;
-        config.PixelSnapH = true;
-    }
 
-    return io.Fonts->AddFontFromFileTTF(path.c_str(), size, &config, glyphRanges);
+    // Safety: if asked to merge but no base font exists, disable merge so we don't end up merging into "nothing".
+    if (config.MergeMode && io.Fonts->Fonts.empty())
+        config.MergeMode = false;
+
+    ImFont *font = io.Fonts->AddFontFromFileTTF(path.c_str(), size, &config, glyphRanges);
+    if (!font)
+        return AddDefaultFont();
+
+    return font;
 }
 
 static std::string CreateTempMapFile(const std::wstring &path) {
@@ -553,17 +560,15 @@ void BMLMod::InitGUI() {
         }
     }
 
-    io.FontGlobalScale = m_WindowRect.GetHeight() / 1200.0f;
-
-    // Make sure the font atlas doesn't get too large, otherwise weaker GPUs might reject it
-    io.Fonts->Flags |= ImFontAtlasFlags_NoPowerOfTwoHeight;
-    io.Fonts->TexDesiredWidth = 4096;
+    // 1.92: FontGlobalScale moved to style.FontScaleMain
+    ImGui::GetStyle().FontScaleMain = m_WindowRect.GetHeight() / 1200.0f;
 
     LoadFont(m_FontFilename->GetString(), m_FontSize->GetFloat(), m_FontRanges->GetString());
     if (m_EnableSecondaryFont->GetBoolean()) {
         if (strcmp(m_FontFilename->GetString(), m_SecondaryFontFilename->GetString()) != 0 ||
-            strcmp(m_FontRanges->GetString(), m_SecondaryFontRanges->GetString()) != 0)
+            strcmp(m_FontRanges->GetString(), m_SecondaryFontRanges->GetString()) != 0) {
             LoadFont(m_SecondaryFontFilename->GetString(), m_SecondaryFontSize->GetFloat(), m_SecondaryFontRanges->GetString(), true);
+        }
     }
     io.Fonts->Build();
 
@@ -1082,5 +1087,6 @@ void BMLMod::OnProcess_Menu() {
 }
 
 void BMLMod::OnResize() {
-    ImGui::GetIO().FontGlobalScale = m_WindowRect.GetHeight() / 1200.0f;
+    ImGuiStyle &style = ImGui::GetStyle();
+    style.FontScaleMain = m_WindowRect.GetHeight() / 1200.0f;
 }
