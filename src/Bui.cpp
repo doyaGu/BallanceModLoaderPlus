@@ -1024,28 +1024,29 @@ namespace Bui {
     }
 
     void WrappedText(const char *text, float width, float scale) {
-        if (!text || text[0] == '\0') return;
+        if (!text || !*text) return;
 
-        const float start_x = ImGui::GetCursorPosX();
+        const float startX = ImGui::GetCursorPosX();
+        const bool doScale = (scale != 1.0f);
 
-        if (scale != 1.0f) {
-            ImFont *f = ImGui::GetFont();
-            ImGui::PushFont(f, f->LegacySize * scale);
-            const float textWidth = ImGui::CalcTextSize(text).x;
-            const float indent = (width - textWidth) * 0.5f;
-            if (indent > 0) ImGui::SetCursorPosX(start_x + indent);
+        if (doScale)
+            ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * scale);
+
+        if (width > 0.0f) {
+            const float textW = ImGui::CalcTextSize(text).x;
+            const float indent = (width - textW) * 0.5f;
+            if (indent > 0.0f)
+                ImGui::SetCursorPosX(startX + indent);
+
             ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + width);
             ImGui::TextUnformatted(text);
             ImGui::PopTextWrapPos();
-            ImGui::PopFont();
         } else {
-            const float textWidth = ImGui::CalcTextSize(text).x;
-            const float indent = (width - textWidth) * 0.5f;
-            if (indent > 0) ImGui::SetCursorPosX(start_x + indent);
-            ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + width);
             ImGui::TextUnformatted(text);
-            ImGui::PopTextWrapPos();
         }
+
+        if (doScale)
+            ImGui::PopFont();
     }
 
     bool NavLeft(float x, float y) {
@@ -1066,22 +1067,23 @@ namespace Bui {
         });
     }
 
-    void Title(const char *text, float y, float scale) {
-        if (!text || text[0] == '\0') return;
+    void Title(const char *text, float y, float scale, ImU32 color) {
+        if (!text || !*text) return;
 
-        ImFont *f = ImGui::GetFont();
-        ImGui::PushFont(f, f->LegacySize * scale);
+        const float sizeBase = ImGui::GetStyle().FontSizeBase * (scale > 0.0f ? scale : 1.0f);
 
+        // Measure at the desired size
+        ImGui::PushFont(nullptr, sizeBase);
         const ImVec2 titleSize = ImGui::CalcTextSize(text);
-        const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
-
-        ImGui::GetWindowDrawList()->AddText(
-            ImVec2((vpSize.x - titleSize.x) * 0.5f, vpSize.y * y),
-            IM_COL32_WHITE,
-            text
-        );
-
         ImGui::PopFont();
+
+        // Center on main viewport (absolute coords)
+        const ImGuiViewport *vp = ImGui::GetMainViewport();
+        const ImVec2 pos(vp->Pos.x + (vp->Size.x - titleSize.x) * 0.5f,
+                         vp->Pos.y + vp->Size.y * y);
+
+        // Draw without disturbing the current font stack
+        ImGui::GetForegroundDrawList()->AddText(ImGui::GetFont(), sizeBase, pos, color, text);
     }
 
     bool SearchBar(char *buffer, size_t bufferSize, float x, float y, float width) {
