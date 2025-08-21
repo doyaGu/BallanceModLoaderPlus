@@ -3,6 +3,7 @@
 // Implemented features:
 //  [X] Renderer: User texture binding.
 //  [X] Renderer: Large meshes support (64k+ vertices) with 16-bit indices.
+//  [X] Renderer: Texture updates support for dynamic font atlas (ImGuiBackendFlags_RendererHasTextures).
 
 // You can use unmodified imgui_impl_* files in your project. See examples/ folder for examples of using this.
 // Prefer including the entire imgui/ repository into your project (either as a copy or as a submodule), and only build the backends you need.
@@ -11,6 +12,8 @@
 
 // CHANGELOG
 // (minor and older changes stripped away, please see git history for details)
+//  2025-08-20: Virtools: Added support for ImGuiBackendFlags_RendererHasTextures, for dynamic font atlas.
+//  2025-08-20: Virtools: Changed default texture sampler to Clamp instead of Repeat/Wrap.
 
 #include "imgui.h"
 #include "imgui_impl_ck2.h"
@@ -80,6 +83,121 @@ static void ImGui_ImplCK2_SetupRenderState(ImDrawData *draw_data)
     dev->SetTextureStageState(CKRST_TSS_MAGFILTER, VXTEXTUREFILTER_LINEAR);
 }
 
+// Copy texture region with optional format conversion
+static void ImGui_ImplCK2_CopyTextureRegion(bool tex_use_colors, const ImU32 *src, int src_pitch, ImU32 *dst, int dst_pitch, int w, int h)
+{
+
+    for (int y = 0; y < h; y++)
+    {
+        const ImU32 *src_p = (const ImU32 *)(const void *)((const unsigned char *)src + src_pitch * y);
+        ImU32 *dst_p = (ImU32 *)(void *)((unsigned char *)dst + dst_pitch * y);
+#ifndef IMGUI_USE_BGRA_PACKED_COLOR
+        if (tex_use_colors)
+        {
+            for (int x = w; x > 0; x--, src_p++, dst_p++) // Convert copy
+                *dst_p = IMGUI_COL_TO_ARGB(*src_p);
+        }
+#else
+        memcpy(dst_p, src_p, w * 4); // Raw copy
+#endif
+    }
+}
+
+void ImGui_ImplCK2_UpdateTexture(ImTextureData *tex)
+{
+    ImGui_ImplCK2_Data *bd = ImGui_ImplCK2_GetBackendData();
+
+    if (tex->Status == ImTextureStatus_WantCreate)
+    {
+        // Create and upload new texture to graphics system
+        IM_ASSERT(tex->TexID == ImTextureID_Invalid && tex->BackendUserData == nullptr);
+        IM_ASSERT(tex->Format == ImTextureFormat_RGBA32);
+
+        CKTexture *ck_tex = (CKTexture *)bd->Context->CreateObject(CKCID_TEXTURE, (CKSTRING) "ImGuiDynamicTexture");
+        if (!ck_tex)
+        {
+            IM_ASSERT(ck_tex && "Backend failed to create texture!");
+            return;
+        }
+
+        // Set texture to not be saved or deleted automatically
+        ck_tex->ModifyObjectFlags(CK_OBJECT_NOTTOBESAVED | CK_OBJECT_NOTTOBEDELETED, 0);
+
+        // Create texture and check for success
+        if (!ck_tex->Create(tex->Width, tex->Height))
+        {
+            bd->Context->DestroyObject(ck_tex);
+            return;
+        }
+
+        // Lock texture surface and copy pixel data
+        CKBYTE *ptr = ck_tex->LockSurfacePtr();
+        if (!ptr)
+        {
+            bd->Context->DestroyObject(ck_tex);
+            return;
+        }
+
+        // Copy pixel data
+        ImGui_ImplCK2_CopyTextureRegion(tex->UseColors, (ImU32 *)tex->GetPixels(), tex->Width * 4, (ImU32 *)ptr, tex->Width * 4, tex->Width, tex->Height);
+        ck_tex->ReleaseSurfacePtr();
+
+        // Set optimal format for UI texture
+        ck_tex->SetDesiredVideoFormat(_32_ARGB8888);
+
+        // Force restore to video memory
+        if (!ck_tex->SystemToVideoMemory(bd->RenderContext, TRUE))
+        {
+            bd->Context->DestroyObject(ck_tex);
+            return;
+        }
+
+        // Only set identifiers after ALL operations succeeded
+        tex->SetTexID((ImTextureID)ck_tex);
+        // BackendUserData not used in this implementation
+        tex->SetStatus(ImTextureStatus_OK);
+    }
+    else if (tex->Status == ImTextureStatus_WantUpdates)
+    {
+        // Update selected blocks. We only ever write to textures regions which have never been used before!
+        CKTexture *ck_tex = (CKTexture *)tex->TexID;
+
+        // Lock texture surface for partial update
+        CKBYTE *ptr = ck_tex->LockSurfacePtr();
+        if (!ptr)
+            return; // Failed to lock, don't mark as OK
+
+        for (ImTextureRect &r : tex->Updates)
+        {
+            // Copy each update rectangle
+            const ImU32 *src_data = (ImU32 *)tex->GetPixelsAt(r.x, r.y);
+            ImU32 *dst_data = (ImU32 *)ptr + r.x + r.y * tex->Width;
+            ImGui_ImplCK2_CopyTextureRegion(tex->UseColors, src_data, tex->Width * 4, dst_data, tex->Width * 4, r.w, r.h);
+        }
+        ck_tex->ReleaseSurfacePtr();
+
+        // Force restore to video memory
+        if (!ck_tex->SystemToVideoMemory(bd->RenderContext, TRUE))
+            return; // Failed to upload, don't mark as OK
+
+        tex->SetStatus(ImTextureStatus_OK);
+    }
+    else if (tex->Status == ImTextureStatus_WantDestroy)
+    {
+        CKTexture *ck_tex = (CKTexture *)tex->TexID;
+        if (ck_tex == nullptr)
+            return;
+        IM_ASSERT(tex->TexID == (ImTextureID)ck_tex);
+
+        bd->Context->DestroyObject(ck_tex);
+
+        // Clear identifiers and mark as destroyed (in order to allow e.g. calling InvalidateDeviceObjects while running)
+        tex->SetTexID(ImTextureID_Invalid);
+        tex->BackendUserData = nullptr;
+        tex->SetStatus(ImTextureStatus_Destroyed);
+    }
+}
+
 // Render function.
 void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
 {
@@ -94,6 +212,13 @@ void ImGui_ImplCK2_RenderDrawData(ImDrawData *draw_data)
         return;
 
     CKRenderContext *dev = bd->RenderContext;
+
+    // Catch up with texture updates. Most of the times, the list will have 1 element with an OK status, aka nothing to do.
+    // (This almost always points to ImGui::GetPlatformIO().Textures[] but is part of ImDrawData to allow overriding or disabling texture updates).
+    if (draw_data->Textures != nullptr)
+        for (ImTextureData *tex : *draw_data->Textures)
+            if (tex->Status != ImTextureStatus_OK)
+                ImGui_ImplCK2_UpdateTexture(tex);
 
     // Setup desired render state
     ImGui_ImplCK2_SetupRenderState(draw_data);
@@ -244,6 +369,10 @@ bool ImGui_ImplCK2_Init(CKContext *context)
     io.BackendRendererUserData = (void *)bd;
     io.BackendRendererName = "imgui_impl_ck2";
     io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset; // We can honor the ImDrawCmd::VtxOffset field, allowing for large meshes.
+    io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;  // We can honor ImGuiPlatformIO::Textures[] requests during render.
+
+    ImGuiPlatformIO &platform_io = ImGui::GetPlatformIO();
+    platform_io.Renderer_TextureMaxWidth = platform_io.Renderer_TextureMaxHeight = 4096;
 
     bd->Context = context;
     bd->RenderContext = render_context;
@@ -257,109 +386,35 @@ void ImGui_ImplCK2_Shutdown()
     IM_ASSERT(bd != NULL && "No renderer backend to shutdown, or already shutdown?");
     ImGuiIO &io = ImGui::GetIO();
 
-    ImGui_ImplCK2_DestroyDeviceObjects();
+    ImGui_ImplCK2_InvalidateDeviceObjects();
 
     io.BackendRendererName = NULL;
     io.BackendRendererUserData = NULL;
-    io.BackendFlags &= ~ImGuiBackendFlags_RendererHasVtxOffset;
+    io.BackendFlags &= ~(ImGuiBackendFlags_RendererHasVtxOffset | ImGuiBackendFlags_RendererHasTextures);
     IM_DELETE(bd);
-}
-
-bool ImGui_ImplCK2_CreateFontsTexture()
-{
-    ImGuiIO &io = ImGui::GetIO();
-    ImGui_ImplCK2_Data *bd = ImGui_ImplCK2_GetBackendData();
-
-    if (!bd || !bd->Context)
-        return false;
-
-    CKContext *context = bd->Context;
-
-    // Check if font texture already exists
-    if (bd->FontTexture)
-    {
-        ImGui_ImplCK2_DestroyFontsTexture();
-    }
-
-    // Build texture atlas
-    unsigned char *pixels;
-    int width, height;
-    // Load as RGBA 32-bit (75% of the memory is wasted, but default font is so small) because it is more likely to be compatible with user's existing shaders.
-    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-    if (!pixels)
-        return false;
-
-    // Upload texture to graphics system
-    // (Bilinear sampling is required by default. Set 'io.Fonts->Flags |= ImFontAtlasFlags_NoBakedLines' or 'style.AntiAliasedLinesUseTex = false' to allow point/nearest sampling)
-    CKTexture *texture = (CKTexture *)context->CreateObject(CKCID_TEXTURE, (CKSTRING) "ImGuiFonts");
-    if (!texture)
-        return false;
-
-    // Set texture to not be saved or deleted automatically
-    texture->ModifyObjectFlags(CK_OBJECT_NOTTOBESAVED | CK_OBJECT_NOTTOBEDELETED, 0);
-
-    // Create texture and check for success
-    if (!texture->Create(width, height))
-    {
-        context->DestroyObject(texture);
-        return false;
-    }
-
-    // Lock texture surface and copy pixel data
-    CKBYTE *ptr = texture->LockSurfacePtr();
-    if (!ptr)
-    {
-        context->DestroyObject(texture);
-        return false;
-    }
-
-    // Copy pixel data
-    memcpy(ptr, pixels, width * height * 4);
-    texture->ReleaseSurfacePtr();
-
-    // Set optimal format for UI texture
-    texture->SetDesiredVideoFormat(_32_ARGB8888);
-
-    // Force restore to video memory
-    texture->SystemToVideoMemory(bd->RenderContext, TRUE);
-
-    // Store our identifier
-    io.Fonts->SetTexID((ImTextureID)texture);
-    bd->FontTexture = texture;
-
-    return true;
-}
-
-void ImGui_ImplCK2_DestroyFontsTexture()
-{
-    ImGuiIO &io = ImGui::GetIO();
-    ImGui_ImplCK2_Data *bd = ImGui_ImplCK2_GetBackendData();
-    if (bd && bd->FontTexture)
-    {
-        io.Fonts->SetTexID(NULL);
-        if (bd->Context)
-        {
-            bd->Context->DestroyObject(bd->FontTexture);
-        }
-        bd->FontTexture = NULL;
-    }
 }
 
 bool ImGui_ImplCK2_CreateDeviceObjects()
 {
-    return ImGui_ImplCK2_CreateFontsTexture();
+    ImGui_ImplCK2_Data *bd = ImGui_ImplCK2_GetBackendData();
+    if (!bd || !bd->Context)
+        return false;
+    return true;
 }
 
-void ImGui_ImplCK2_DestroyDeviceObjects()
+void ImGui_ImplCK2_InvalidateDeviceObjects()
 {
-    ImGui_ImplCK2_DestroyFontsTexture();
+    // Destroy all textures
+    for (ImTextureData *tex : ImGui::GetPlatformIO().Textures)
+        if (tex->RefCount == 1)
+        {
+            tex->SetStatus(ImTextureStatus_WantDestroy);
+            ImGui_ImplCK2_UpdateTexture(tex);
+        }
 }
 
 void ImGui_ImplCK2_NewFrame()
 {
     ImGui_ImplCK2_Data *bd = ImGui_ImplCK2_GetBackendData();
     IM_ASSERT(bd != NULL && "Did you call ImGui_ImplCK2_Init()?");
-
-    if (!bd->FontTexture)
-        ImGui_ImplCK2_CreateDeviceObjects();
 }
