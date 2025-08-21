@@ -212,7 +212,7 @@ namespace Bui {
     BML_EXPORT bool NavBack(float x = 0.4031f, float y = 0.85f);
 
     // UI component helpers
-    BML_EXPORT void Title(const char *text, float y = 0.13f, float scale = 1.5f);
+    BML_EXPORT void Title(const char *text, float y = 0.13f, float scale = 1.5f, ImU32 color = IM_COL32_WHITE);
     BML_EXPORT bool SearchBar(char *buffer, size_t bufferSize, float x = 0.4f, float y = 0.18f, float width = 0.2f);
 
     // =============================================================================
