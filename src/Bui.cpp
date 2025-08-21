@@ -480,407 +480,13 @@ namespace Bui {
     }
 
     bool KeyChordToString(ImGuiKeyChord key_chord, char *buf, size_t size) {
-        if (key_chord == 0 || !buf || size == 0)
+        if (!buf || size == 0 || key_chord == 0)
             return false;
 
-        auto key = static_cast<ImGuiKey>(key_chord & ~ImGuiMod_Mask_);
-
-        if (key == ImGuiKey_None)
+        const char *s = ImGui::GetKeyChordName(key_chord);
+        if (!s || *s == '\0')
             return false;
-
-        buf[0] = '\0';
-        if ((key_chord & ImGuiMod_Ctrl) != 0)
-            strncpy(buf, "Ctrl ", size);
-
-        if ((key_chord & ImGuiMod_Shift) != 0)
-            strncpy(buf, "Shift ", size);
-
-        if ((key_chord & ImGuiMod_Alt) != 0)
-            strncpy(buf, "Alt ", size);
-
-        if ((key_chord & ImGuiMod_Super) != 0)
-            strncpy(buf, "Win ", size);
-
-        const char *s;
-        switch (key) {
-            case ImGuiKey_Tab:
-                s = "Tab";
-                break;
-            case ImGuiKey_LeftArrow:
-                s = "Left";
-                break;
-            case ImGuiKey_RightArrow:
-                s = "Right";
-                break;
-            case ImGuiKey_UpArrow:
-                s = "Up";
-                break;
-            case ImGuiKey_DownArrow:
-                s = "Down";
-                break;
-            case ImGuiKey_PageUp:
-                s = "PageUp";
-                break;
-            case ImGuiKey_PageDown:
-                s = "PageDown";
-                break;
-            case ImGuiKey_Home:
-                s = "Home";
-                break;
-            case ImGuiKey_End:
-                s = "End";
-                break;
-            case ImGuiKey_Insert:
-                s = "Insert";
-                break;
-            case ImGuiKey_Delete:
-                s = "Delete";
-                break;
-            case ImGuiKey_Backspace:
-                s = "Backspace";
-                break;
-            case ImGuiKey_Space:
-                s = "Space";
-                break;
-            case ImGuiKey_Enter:
-                s = "Enter";
-                break;
-            case ImGuiKey_Escape:
-                s = "Escape";
-                break;
-            case ImGuiKey_LeftCtrl:
-                s = "LeftCtrl";
-                break;
-            case ImGuiKey_LeftShift:
-                s = "LeftShift";
-                break;
-            case ImGuiKey_LeftAlt:
-                s = "LeftAlt";
-                break;
-            case ImGuiKey_LeftSuper:
-                s = "LeftSuper";
-                break;
-            case ImGuiKey_RightCtrl:
-                s = "RightCtrl";
-                break;
-            case ImGuiKey_RightShift:
-                s = "RightShift";
-                break;
-            case ImGuiKey_RightAlt:
-                s = "RightAlt";
-                break;
-            case ImGuiKey_RightSuper:
-                s = "RightSuper";
-                break;
-            case ImGuiKey_Menu:
-                s = "Menu";
-                break;
-            case ImGuiKey_0:
-                s = "0";
-                break;
-            case ImGuiKey_1:
-                s = "1";
-                break;
-            case ImGuiKey_2:
-                s = "2";
-                break;
-            case ImGuiKey_3:
-                s = "3";
-                break;
-            case ImGuiKey_4:
-                s = "4";
-                break;
-            case ImGuiKey_5:
-                s = "5";
-                break;
-            case ImGuiKey_6:
-                s = "6";
-                break;
-            case ImGuiKey_7:
-                s = "7";
-                break;
-            case ImGuiKey_8:
-                s = "8";
-                break;
-            case ImGuiKey_9:
-                s = "9";
-                break;
-            case ImGuiKey_A:
-                s = "A";
-                break;
-            case ImGuiKey_B:
-                s = "B";
-                break;
-            case ImGuiKey_C:
-                s = "C";
-                break;
-            case ImGuiKey_D:
-                s = "D";
-                break;
-            case ImGuiKey_E:
-                s = "E";
-                break;
-            case ImGuiKey_F:
-                s = "F";
-                break;
-            case ImGuiKey_G:
-                s = "G";
-                break;
-            case ImGuiKey_H:
-                s = "H";
-                break;
-            case ImGuiKey_I:
-                s = "I";
-                break;
-            case ImGuiKey_J:
-                s = "J";
-                break;
-            case ImGuiKey_K:
-                s = "K";
-                break;
-            case ImGuiKey_L:
-                s = "L";
-                break;
-            case ImGuiKey_M:
-                s = "M";
-                break;
-            case ImGuiKey_N:
-                s = "N";
-                break;
-            case ImGuiKey_O:
-                s = "O";
-                break;
-            case ImGuiKey_P:
-                s = "P";
-                break;
-            case ImGuiKey_Q:
-                s = "Q";
-                break;
-            case ImGuiKey_R:
-                s = "R";
-                break;
-            case ImGuiKey_S:
-                s = "S";
-                break;
-            case ImGuiKey_T:
-                s = "T";
-                break;
-            case ImGuiKey_U:
-                s = "U";
-                break;
-            case ImGuiKey_V:
-                s = "V";
-                break;
-            case ImGuiKey_W:
-                s = "W";
-                break;
-            case ImGuiKey_X:
-                s = "X";
-                break;
-            case ImGuiKey_Y:
-                s = "Y";
-                break;
-            case ImGuiKey_Z:
-                s = "Z";
-                break;
-            case ImGuiKey_F1:
-                s = "F1";
-                break;
-            case ImGuiKey_F2:
-                s = "F2";
-                break;
-            case ImGuiKey_F3:
-                s = "F3";
-                break;
-            case ImGuiKey_F4:
-                s = "F4";
-                break;
-            case ImGuiKey_F5:
-                s = "F5";
-                break;
-            case ImGuiKey_F6:
-                s = "F6";
-                break;
-            case ImGuiKey_F7:
-                s = "F7";
-                break;
-            case ImGuiKey_F8:
-                s = "F8";
-                break;
-            case ImGuiKey_F9:
-                s = "F9";
-                break;
-            case ImGuiKey_F10:
-                s = "F10";
-                break;
-            case ImGuiKey_F11:
-                s = "F11";
-                break;
-            case ImGuiKey_F12:
-                s = "F12";
-                break;
-            case ImGuiKey_F13:
-                s = "F13";
-                break;
-            case ImGuiKey_F14:
-                s = "F14";
-                break;
-            case ImGuiKey_F15:
-                s = "F15";
-                break;
-            case ImGuiKey_F16:
-                s = "F16";
-                break;
-            case ImGuiKey_F17:
-                s = "F17";
-                break;
-            case ImGuiKey_F18:
-                s = "F18";
-                break;
-            case ImGuiKey_F19:
-                s = "F19";
-                break;
-            case ImGuiKey_F20:
-                s = "F20";
-                break;
-            case ImGuiKey_F21:
-                s = "F21";
-                break;
-            case ImGuiKey_F22:
-                s = "F22";
-                break;
-            case ImGuiKey_F23:
-                s = "F23";
-                break;
-            case ImGuiKey_F24:
-                s = "F24";
-                break;
-            case ImGuiKey_Apostrophe:
-                s = "'";
-                break;
-            case ImGuiKey_Comma:
-                s = ",";
-                break;
-            case ImGuiKey_Minus:
-                s = "-";
-                break;
-            case ImGuiKey_Period:
-                s = ".";
-                break;
-            case ImGuiKey_Slash:
-                s = "/";
-                break;
-            case ImGuiKey_Semicolon:
-                s = ";";
-                break;
-            case ImGuiKey_Equal:
-                s = "=";
-                break;
-            case ImGuiKey_LeftBracket:
-                s = "<";
-                break;
-            case ImGuiKey_Backslash:
-                s = "\\";
-                break;
-            case ImGuiKey_RightBracket:
-                s = ">";
-                break;
-            case ImGuiKey_GraveAccent:
-                s = "`";
-                break;
-            case ImGuiKey_CapsLock:
-                s = "CapsLock";
-                break;
-            case ImGuiKey_ScrollLock:
-                s = "ScrollLock";
-                break;
-            case ImGuiKey_NumLock:
-                s = "NumLock";
-                break;
-            case ImGuiKey_PrintScreen:
-                s = "PrintScreen";
-                break;
-            case ImGuiKey_Pause:
-                s = "Pause";
-                break;
-            case ImGuiKey_Keypad0:
-                s = "Num0";
-                break;
-            case ImGuiKey_Keypad1:
-                s = "Num1";
-                break;
-            case ImGuiKey_Keypad2:
-                s = "Num2";
-                break;
-            case ImGuiKey_Keypad3:
-                s = "Num3";
-                break;
-            case ImGuiKey_Keypad4:
-                s = "Num4";
-                break;
-            case ImGuiKey_Keypad5:
-                s = "Num5";
-                break;
-            case ImGuiKey_Keypad6:
-                s = "Num6";
-                break;
-            case ImGuiKey_Keypad7:
-                s = "Num7";
-                break;
-            case ImGuiKey_Keypad8:
-                s = "Num8";
-                break;
-            case ImGuiKey_Keypad9:
-                s = "Num9";
-                break;
-            case ImGuiKey_KeypadDecimal:
-                s = "NumDecimal";
-                break;
-            case ImGuiKey_KeypadDivide:
-                s = "Num/";
-                break;
-            case ImGuiKey_KeypadMultiply:
-                s = "Num*";
-                break;
-            case ImGuiKey_KeypadSubtract:
-                s = "Num-";
-                break;
-            case ImGuiKey_KeypadAdd:
-                s = "Num+";
-                break;
-            case ImGuiKey_KeypadEnter:
-                s = "NumEnter";
-                break;
-            case ImGuiKey_KeypadEqual:
-                s = "Num=";
-                break;
-            case ImGuiKey_MouseLeft:
-                s = "MouseLeft";
-                break;
-            case ImGuiKey_MouseRight:
-                s = "MouseRight";
-                break;
-            case ImGuiKey_MouseMiddle:
-                s = "MouseMiddle";
-                break;
-            case ImGuiKey_MouseX1:
-                s = "MouseX1";
-                break;
-            case ImGuiKey_MouseX2:
-                s = "MouseX2";
-                break;
-            case ImGuiKey_MouseWheelX:
-                s = "MouseWheelX";
-                break;
-            case ImGuiKey_MouseWheelY:
-                s = "MouseWheelY";
-                break;
-            default:
-                s = "";
-                break;
-        }
-
-        strncat(buf, s, size - 6);
+        ImStrncpy(buf, s, (int) size);
         return true;
     }
 
@@ -889,34 +495,24 @@ namespace Bui {
 
         ImGuiIO &io = ImGui::GetIO();
 
-        if (io.KeyCtrl) {
-            chord |= ImGuiKey_ModCtrl;
-        }
-
-        if (io.KeyShift) {
-            chord |= ImGuiKey_ModShift;
-        }
-
-        if (io.KeyAlt) {
-            chord |= ImGuiKey_ModAlt;
-        }
-
-        if (io.KeySuper) {
-            chord |= ImGuiKey_ModSuper;
-        }
+        // Use ImGuiMod_* flags for chord modifiers (unified since 1.89+).
+        if (io.KeyCtrl)  chord |= ImGuiMod_Ctrl;
+        if (io.KeyShift) chord |= ImGuiMod_Shift;
+        if (io.KeyAlt)   chord |= ImGuiMod_Alt;
+        if (io.KeySuper) chord |= ImGuiMod_Super;
 
         for (int key = ImGuiKey_Tab; key < ImGuiKey_AppBack; ++key) {
             if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(key))) {
-                if ((chord & ImGuiKey_ModCtrl) != 0 && (key == ImGuiKey_LeftCtrl || key == ImGuiKey_RightCtrl))
+                if ((chord & ImGuiMod_Ctrl) != 0 && (key == ImGuiKey_LeftCtrl || key == ImGuiKey_RightCtrl))
                     continue;
 
-                if ((chord & ImGuiKey_ModShift) != 0 && (key == ImGuiKey_LeftShift || key == ImGuiKey_RightShift))
+                if ((chord & ImGuiMod_Shift) != 0 && (key == ImGuiKey_LeftShift || key == ImGuiKey_RightShift))
                     continue;
 
-                if ((chord & ImGuiKey_ModAlt) != 0 && (key == ImGuiKey_LeftAlt || key == ImGuiKey_RightAlt))
+                if ((chord & ImGuiMod_Alt) != 0 && (key == ImGuiKey_LeftAlt || key == ImGuiKey_RightAlt))
                     continue;
 
-                if ((chord & ImGuiKey_ModSuper) != 0 && (key == ImGuiKey_LeftSuper || key == ImGuiKey_RightSuper))
+                if ((chord & ImGuiMod_Super) != 0 && (key == ImGuiKey_LeftSuper || key == ImGuiKey_RightSuper))
                     continue;
 
                 chord |= key;
@@ -1206,7 +802,7 @@ namespace Bui {
             const ImVec2 uv0(0.005f, 0.3850f);
             const ImVec2 uv1(0.4320f, 0.4500f);
 
-            drawList->AddImage((ImTextureID) g_Materials[MATERIAL_KEYS_HIGHLIGHT], min0, max0, uv0, uv1);
+            drawList->AddImage(g_Materials[MATERIAL_KEYS_HIGHLIGHT], min0, max0, uv0, uv1);
         }
 
         return changed;
@@ -1217,7 +813,6 @@ namespace Bui {
         if (window->SkipItems)
             return false;
 
-        const ImGuiStyle &style = ImGui::GetStyle();
         const ImGuiID id = window->GetID(label);
         const ImVec2 textSize = ImGui::CalcTextSize(label, nullptr, true);
 
@@ -1228,8 +823,10 @@ namespace Bui {
         ImGui::BeginGroup();
 
         ImGui::ItemSize(bb);
-        if (!ImGui::ItemAdd(bb, id))
+        if (!ImGui::ItemAdd(bb, id)) {
+            ImGui::EndGroup();
             return false;
+        }
 
         bool hovered, held;
         bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
@@ -1243,34 +840,29 @@ namespace Bui {
         const ImVec2 max(bb.Max.x - indent, bb.Max.y);
         ImGui::RenderTextClipped(min, max, label, nullptr, &textSize, ImVec2(0.5f, 0.21f), &bb);
 
+        // Inline "Yes / No"
         ImVec2 backup = ImGui::GetCursorScreenPos();
-
         float spacing = size.x * 0.05f;
         ImVec2 smPos(pos.x + size.x * 0.27f, pos.y + size.y * 0.43f);
         ImGui::SetCursorScreenPos(smPos);
 
         ImGui::PushID(label);
-
         bool yf = *v;
         bool yes = SmallButton("Yes", &yf);
-
         ImGui::SameLine(0, spacing);
-
         bool nf = !*v;
         bool no = SmallButton("No", &nf);
-
         ImGui::PopID();
 
         ImGui::SetCursorScreenPos(backup);
-
+        ImGui::Dummy(ImVec2(0.0f, 0.0f));
         ImGui::EndGroup();
 
         if (yes || no) {
             *v = yes;
             return true;
-        } else {
-            return false;
         }
+        return false;
     }
 
     bool RadioButton(const char *label, int *current_item, const char *const items[], int items_count) {
@@ -1292,8 +884,10 @@ namespace Bui {
         ImGui::BeginGroup();
 
         ImGui::ItemSize(bb);
-        if (!ImGui::ItemAdd(bb, id))
+        if (!ImGui::ItemAdd(bb, id)) {
+            ImGui::EndGroup();
             return false;
+        }
 
         bool hovered, held;
         ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
@@ -1310,7 +904,6 @@ namespace Bui {
         ImGui::SetCursorScreenPos(smPos);
 
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.57f));
-
         ImGui::SetNextItemWidth(size.x * 0.6f);
 
         ImGui::PushID(label);
@@ -1320,7 +913,7 @@ namespace Bui {
         ImGui::PopStyleColor();
 
         ImGui::SetCursorScreenPos(backup);
-
+        ImGui::Dummy(ImVec2(0.0f, 0.0f));
         ImGui::EndGroup();
 
         return changed;
@@ -1341,8 +934,10 @@ namespace Bui {
         ImGui::BeginGroup();
 
         ImGui::ItemSize(bb);
-        if (!ImGui::ItemAdd(bb, id))
+        if (!ImGui::ItemAdd(bb, id)) {
+            ImGui::EndGroup();
             return false;
+        }
 
         bool hovered, held;
         ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
@@ -1359,7 +954,6 @@ namespace Bui {
         ImGui::SetCursorScreenPos(smPos);
 
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.57f));
-
         ImGui::SetNextItemWidth(size.x * 0.6f);
 
         ImGui::PushID(label);
@@ -1369,7 +963,7 @@ namespace Bui {
         ImGui::PopStyleColor();
 
         ImGui::SetCursorScreenPos(backup);
-
+        ImGui::Dummy(ImVec2(0.0f, 0.0f));
         ImGui::EndGroup();
 
         return changed;
@@ -1390,8 +984,10 @@ namespace Bui {
         ImGui::BeginGroup();
 
         ImGui::ItemSize(bb);
-        if (!ImGui::ItemAdd(bb, id))
+        if (!ImGui::ItemAdd(bb, id)) {
+            ImGui::EndGroup();
             return false;
+        }
 
         bool hovered, held;
         ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
@@ -1421,9 +1017,82 @@ namespace Bui {
         ImGui::PopStyleColor(4);
 
         ImGui::SetCursorScreenPos(backup);
-
+        ImGui::Dummy(ImVec2(0.0f, 0.0f));
         ImGui::EndGroup();
 
         return changed;
+    }
+
+    void WrappedText(const char *text, float width, float scale) {
+        if (!text || text[0] == '\0') return;
+
+        const float start_x = ImGui::GetCursorPosX();
+
+        if (scale != 1.0f) {
+            ImFont *f = ImGui::GetFont();
+            ImGui::PushFont(f, f->LegacySize * scale);
+            const float textWidth = ImGui::CalcTextSize(text).x;
+            const float indent = (width - textWidth) * 0.5f;
+            if (indent > 0) ImGui::SetCursorPosX(start_x + indent);
+            ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + width);
+            ImGui::TextUnformatted(text);
+            ImGui::PopTextWrapPos();
+            ImGui::PopFont();
+        } else {
+            const float textWidth = ImGui::CalcTextSize(text).x;
+            const float indent = (width - textWidth) * 0.5f;
+            if (indent > 0) ImGui::SetCursorPosX(start_x + indent);
+            ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + width);
+            ImGui::TextUnformatted(text);
+            ImGui::PopTextWrapPos();
+        }
+    }
+
+    bool NavLeft(float x, float y) {
+        return At(x, y, []() {
+            return LeftButton("PrevPage") || ImGui::IsKeyPressed(ImGuiKey_PageUp);
+        });
+    }
+
+    bool NavRight(float x, float y) {
+        return At(x, y, []() {
+            return RightButton("NextPage") || ImGui::IsKeyPressed(ImGuiKey_PageDown);
+        });
+    }
+
+    bool NavBack(float x, float y) {
+        return At(x, y, []() {
+            return BackButton("Back") || ImGui::IsKeyPressed(ImGuiKey_Escape);
+        });
+    }
+
+    void Title(const char *text, float y, float scale) {
+        if (!text || text[0] == '\0') return;
+
+        ImFont *f = ImGui::GetFont();
+        ImGui::PushFont(f, f->LegacySize * scale);
+
+        const ImVec2 titleSize = ImGui::CalcTextSize(text);
+        const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
+
+        ImGui::GetWindowDrawList()->AddText(
+            ImVec2((vpSize.x - titleSize.x) * 0.5f, vpSize.y * y),
+            IM_COL32_WHITE,
+            text
+        );
+
+        ImGui::PopFont();
+    }
+
+    bool SearchBar(char *buffer, size_t bufferSize, float x, float y, float width) {
+        return At(x, y, [=]() {
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, GetMenuColor());
+            ImGui::SetNextItemWidth(ImGui::GetMainViewport()->Size.x * width);
+
+            bool changed = ImGui::InputText("##SearchBar", buffer, bufferSize);
+
+            ImGui::PopStyleColor();
+            return changed;
+        });
     }
 }

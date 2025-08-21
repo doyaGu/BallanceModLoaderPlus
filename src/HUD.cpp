@@ -212,7 +212,7 @@ void FpsCounter::RecalculateAverage() {
 }
 
 HUD::HUD() : Bui::Window("HUD") {
-    SetVisibility(true);
+    Show();
     SetupDefaultElements();
 }
 
