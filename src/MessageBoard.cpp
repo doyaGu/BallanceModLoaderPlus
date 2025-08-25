@@ -1,11 +1,10 @@
 #include "MessageBoard.h"
 
+#include <cmath>
 #include <sstream>
 #include <cstdarg>
 #include <algorithm>
 #include <regex>
-#include <cstring>
-#include <cmath>
 #include <stack>
 
 #include "imgui_internal.h"
