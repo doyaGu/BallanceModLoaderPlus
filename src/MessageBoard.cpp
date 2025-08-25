@@ -92,7 +92,7 @@ void MessageBoard::MessageUnit::SetMessage(const char *msg) {
 }
 
 float MessageBoard::MessageUnit::GetTextHeight(float wrapWidth) const {
-    if (cachedHeight < 0.0f || std::abs(cachedWrapWidth - wrapWidth) > 1.0f) {
+    if (cachedHeight < 0.0f || std::abs(cachedWrapWidth - wrapWidth) >= 0.5f) {
         if (segments.empty()) {
             cachedHeight = ImGui::GetTextLineHeightWithSpacing();
         } else {
