@@ -863,7 +863,7 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
             drawList->AddRectFilled(
                 ImVec2(currentPos.x - 4.0f, currentPos.y - 2.0f),
                 ImVec2(currentPos.x + wrapWidth + 4.0f, currentPos.y + msgHeight + 2.0f),
-                ImGui::GetColorU32(bgColor)
+                ImGui::GetColorU32(ImVec4(bgColor.x, bgColor.y, bgColor.z, bgColor.w * alpha))
             );
 
             DrawMessageText(drawList, msg, currentPos, wrapWidth, alpha);
