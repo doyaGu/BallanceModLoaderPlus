@@ -759,20 +759,13 @@ void MessageBoard::OnBegin() {
     const float windowWidth = vpSize.x * 0.96f;
     const float wrapWidth = windowWidth - 16.0f;
 
-    float contentHeight;
-    float posY;
+    const float maxHeight = vpSize.y * 0.7f;
 
-    if (m_IsCommandBarVisible) {
-        // When command bar is visible, take up more space and allow scrolling
-        contentHeight = vpSize.y * 0.6f; // 60% of screen height
-        posY = vpSize.y * 0.3f;          // Start at 30% from top
-    } else {
-        // Normal mode - size based on visible content
-        contentHeight = CalculateContentHeight(wrapWidth);
-        posY = vpSize.y * 0.9f - contentHeight;
-    }
+    float actualContentHeight = CalculateContentHeight(wrapWidth);
+    float contentHeight = std::min(actualContentHeight, maxHeight);
 
     const float posX = vpSize.x * 0.02f;
+    const float posY = vpSize.y * 0.9f - contentHeight;
 
     ImGui::SetNextWindowPos(ImVec2(posX, posY), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(windowWidth, contentHeight), ImGuiCond_Always);
