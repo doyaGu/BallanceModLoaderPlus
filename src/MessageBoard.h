@@ -4,8 +4,6 @@
 #include <vector>
 #include <string>
 #include <algorithm>
-#include <cstring>
-#include <cmath>
 
 #include "BML/Bui.h"
 
