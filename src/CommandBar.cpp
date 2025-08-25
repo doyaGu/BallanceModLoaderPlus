@@ -63,15 +63,17 @@ void CommandBar::OnDraw() {
                                                    ImGuiInputTextFlags_CallbackAlways |
                                                    ImGuiInputTextFlags_CallbackResize |
                                                    ImGuiInputTextFlags_CallbackEdit;
-    if (ImGui::InputText("##CmdBar", &m_Buffer[0], m_Buffer.capacity() + 1, InputTextFlags,
-                         &TextEditCallback, this)) {
+    if (ImGui::InputText("##CmdBar", &m_Buffer[0], m_Buffer.capacity() + 1, InputTextFlags, &TextEditCallback, this)) {
         if (m_Buffer[0] != '\0') {
             BML_GetModContext()->ExecuteCommand(m_Buffer.c_str());
-            if (m_HistorySet.find(m_Buffer) == m_HistorySet.end()) {
-                m_HistorySet.insert(m_Buffer);
-                m_History.emplace_back(m_Buffer);
-                m_HistoryIndex = -1;
+
+            auto it = std::find(m_History.begin(), m_History.end(), m_Buffer);
+            if (it != m_History.end()) {
+                m_History.erase(it);
             }
+
+            m_History.emplace_back(m_Buffer);
+            m_HistoryIndex = -1;
         }
         ToggleCommandBar(false);
     }
@@ -181,7 +183,6 @@ void CommandBar::ExecuteHistory(int index) {
 
 void CommandBar::ClearHistory() {
     m_History.clear();
-    m_HistorySet.clear();
     m_HistoryIndex = -1;
 }
 
@@ -222,8 +223,11 @@ void CommandBar::LoadHistory() {
     while (std::getline(iss, line)) {
         if (line.empty() || line[0] == '\0')
             continue;
-        if (m_HistorySet.find(line) != m_HistorySet.end())
-            continue;
+
+        auto it = std::find(m_History.begin(), m_History.end(), line);
+        if (it != m_History.end()) {
+            m_History.erase(it);
+        }
 
         m_History.emplace_back(line);
     }
