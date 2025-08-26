@@ -65,27 +65,24 @@ void ModPage::OnPostBegin() {
     const auto menuPos = Bui::GetMenuPos();
     const auto menuSize = Bui::GetMenuSize();
 
-    ImGui::SetCursorPosX(menuPos.x);
-    ImGui::Dummy(Bui::CoordToPixel(ImVec2(0.375f, 0.1f)));
+    const float titleX = menuPos.x * 1.03f;
+    const float titleWidth = menuSize.x * 0.95f;
+
+    ImGui::Dummy(Bui::CoordToPixel(ImVec2(1.0f, 0.1f)));
 
     auto *mod = dynamic_cast<ModMenu *>(m_Menu)->GetCurrentMod();
 
-    ImGui::SetCursorPosX(menuPos.x);
-    Bui::WrappedText(mod->GetName(), menuSize.x, 1.2f);
+    Bui::WrappedText(mod->GetName(), titleWidth, titleX, 1.2f);
 
     snprintf(m_TextBuf, sizeof(m_TextBuf), "By %s", mod->GetAuthor());
-    ImGui::SetCursorPosX(menuPos.x);
-    Bui::WrappedText(m_TextBuf, menuSize.x);
+    Bui::WrappedText(m_TextBuf, titleWidth, titleX);
 
     snprintf(m_TextBuf, sizeof(m_TextBuf), "v%s", mod->GetVersion());
-    ImGui::SetCursorPosX(menuPos.x);
-    Bui::WrappedText(m_TextBuf, menuSize.x);
+    Bui::WrappedText(m_TextBuf, titleWidth, titleX);
 
-    ImGui::SetCursorPosX(menuPos.x);
     ImGui::NewLine();
 
-    ImGui::SetCursorPosX(menuPos.x);
-    Bui::WrappedText(mod->GetDescription(), menuSize.x);
+    Bui::WrappedText(mod->GetDescription(), titleWidth, titleX);
 
     m_Config = ModMenu::GetConfig(mod);
     if (!m_Config)

@@ -1029,10 +1029,10 @@ namespace Bui {
         return changed;
     }
 
-    void WrappedText(const char *text, float width, float scale) {
+    void WrappedText(const char *text, float width, float baseX, float scale) {
         if (!text || !*text) return;
 
-        const float startX = ImGui::GetCursorPosX();
+        const float startX = abs(baseX) < EPSILON ? ImGui::GetCursorPosX() : baseX;
         const bool doScale = (scale != 1.0f);
 
         if (doScale)
@@ -1043,6 +1043,8 @@ namespace Bui {
             const float indent = (width - textW) * 0.5f;
             if (indent > 0.0f)
                 ImGui::SetCursorPosX(startX + indent);
+            else
+                ImGui::SetCursorPosX(startX);
 
             ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + width);
             ImGui::TextUnformatted(text);

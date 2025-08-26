@@ -193,7 +193,7 @@ namespace Bui {
                                    int step_fast = 100, ImGuiInputTextFlags flags = 0);
 
     // Text rendering helper
-    BML_EXPORT void WrappedText(const char *text, float width, float scale = 1.0f);
+    BML_EXPORT void WrappedText(const char *text, float width, float baseX = 0.0f, float scale = 1.0f);
 
     // =============================================================================
     // HIGH-LEVEL UI HELPERS
