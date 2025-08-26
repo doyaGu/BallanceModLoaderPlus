@@ -12,39 +12,6 @@
 #include "ModContext.h"
 
 namespace {
-    int HexVal(char c) {
-        if (c >= '0' && c <= '9') return c - '0';
-        if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
-        if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
-        return -1;
-    }
-
-    bool IsValidCodePoint(unsigned int cp) {
-        // Valid range per Unicode/UTF-8: <= 0x10FFFF and not a surrogate.
-        if (cp > 0x10FFFF) return false;                // RFC 3629 limit
-        if (cp >= 0xD800 && cp <= 0xDFFF) return false; // surrogate range
-        return true;
-    }
-
-    void AppendUTF8(std::string &out, unsigned int cp) {
-        if (cp <= 0x7F) {
-            out += static_cast<char>(cp);
-        } else if (cp <= 0x7FF) {
-            out += static_cast<char>(0xC0 | (cp >> 6));
-            out += static_cast<char>(0x80 | (cp & 0x3F));
-        } else if (cp <= 0xFFFF) {
-            out += static_cast<char>(0xE0 | (cp >> 12));
-            out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-            out += static_cast<char>(0x80 | (cp & 0x3F));
-        } else {
-            // cp <= 0x10FFFF
-            out += static_cast<char>(0xF0 | (cp >> 18));
-            out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
-            out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-            out += static_cast<char>(0x80 | (cp & 0x3F));
-        }
-    }
-
     // Apply dim effect to color
     ImU32 ApplyDimEffect(ImU32 color) {
         const ImU32 r = ((color >> IM_COL32_R_SHIFT) & 0xFF) / 2;
@@ -75,17 +42,16 @@ namespace {
 }
 
 // MessageUnit Implementation
-MessageBoard::MessageUnit::MessageUnit(const char *msg, float timer, bool processEscapes)
-    : originalText(msg ? msg : ""), timer(timer), escapeProcessed(processEscapes) {
+MessageBoard::MessageUnit::MessageUnit(const char *msg, float timer)
+    : originalText(msg ? msg : ""), timer(timer) {
     if (msg && strlen(msg) > 0) {
         ParseAnsiEscapeCodes();
     }
 }
 
-void MessageBoard::MessageUnit::SetMessage(const char *msg, bool processEscapes) {
+void MessageBoard::MessageUnit::SetMessage(const char *msg) {
     if (!msg) return;
     originalText = msg;
-    escapeProcessed = processEscapes;
 
     segments.clear();
     hasControlSequences = false;
@@ -163,136 +129,6 @@ void MessageBoard::MessageUnit::Reset() {
     cachedHeight = -1.0f;
     cachedWrapWidth = -1.0f;
     hasControlSequences = false;
-    escapeProcessed = false;
-}
-
-std::string MessageBoard::MessageUnit::ProcessEscapeSequences(const char *text) {
-    if (!text) return "";
-
-    std::string result;
-    result.reserve(std::strlen(text));
-
-    const char *p = text;
-    while (*p) {
-        if (*p == '\\' && *(p + 1)) {
-            ++p; // Skip backslash
-            switch (*p) {
-                case 'a': result += '\a'; break;
-                case 'b': result += '\b'; break;
-                case 'f': result += '\f'; break;
-                case 'n': result += '\n'; break;
-                case 'r': result += '\r'; break;
-                case 't': result += '\t'; break;
-                case 'v': result += '\v'; break;
-                case '\\': result += '\\'; break;
-                case '\'': result += '\''; break;
-                case '"': result += '"'; break;
-                case '?': result += '?'; break;
-                case 'e': result += '\033'; break; // ESC character
-
-                // Octal escape: up to 3 octal digits (includes \0)
-                case '0': case '1': case '2': case '3':
-                case '4': case '5': case '6': case '7': {
-                    unsigned int value = 0;
-                    int digits = 0;
-                    while (digits < 3 && *p >= '0' && *p <= '7') {
-                        value = (value * 8) + static_cast<unsigned int>(*p - '0');
-                        ++p; ++digits;
-                    }
-                    result += static_cast<char>(value & 0xFF);
-                    --p; // will be incremented below
-                    break;
-                }
-
-                // Hex escape: \xHH (unlimited length as per C standard)
-                case 'x': {
-                    ++p;
-                    unsigned int value = 0;
-                    int digits = 0, hv;
-                    while ((hv = HexVal(*p)) != -1) {
-                        value = (value << 4) + static_cast<unsigned int>(hv);
-                        ++p; ++digits;
-                    }
-                    if (digits > 0) {
-                        result += static_cast<char>(value & 0xFF);
-                        --p;
-                    } else {
-                        result += '\\'; result += 'x'; --p;
-                    }
-                    break;
-                }
-
-                // Unicode escapes: \uXXXX (4 hex) and \UXXXXXXXX (8 hex)
-                case 'u':
-                case 'U': {
-                    const char kind = *p;
-                    const int need = (kind == 'u') ? 4 : 8;
-                    ++p;
-                    unsigned int cp = 0;
-                    int digits = 0, hv;
-                    const char *digits_begin = p;
-
-                    while (digits < need && (hv = HexVal(*p)) != -1) {
-                        cp = (cp << 4) + static_cast<unsigned int>(hv);
-                        ++p; ++digits;
-                    }
-
-                    if (digits == need) {
-                        // Handle surrogate pairs for \u
-                        if (kind == 'u' && cp >= 0xD800 && cp <= 0xDBFF) {
-                            // High surrogate, check for low surrogate
-                            const char* save_pos = p;
-                            if (*p == '\\' && *(p + 1) == 'u') {
-                                p += 2;
-                                unsigned int lo = 0;
-                                int lo_digits = 0;
-                                while (lo_digits < 4 && (hv = HexVal(*p)) != -1) {
-                                    lo = (lo << 4) + static_cast<unsigned int>(hv);
-                                    ++p; ++lo_digits;
-                                }
-                                if (lo_digits == 4 && lo >= 0xDC00 && lo <= 0xDFFF) {
-                                    // Valid surrogate pair
-                                    unsigned int code = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
-                                    AppendUTF8(result, code);
-                                    --p;
-                                    break;
-                                }
-                            }
-                            // Not a valid surrogate pair, restore position
-                            p = save_pos;
-                        }
-
-                        if (IsValidCodePoint(cp)) {
-                            AppendUTF8(result, cp);
-                            --p;
-                        } else {
-                            // Invalid code point, emit literally
-                            result += '\\'; result += kind;
-                            while (digits_begin < p) { result += *digits_begin++; }
-                            --p;
-                        }
-                    } else {
-                        // Incomplete sequence, emit literally
-                        result += '\\'; result += kind;
-                        while (digits_begin < p) { result += *digits_begin++; }
-                        --p;
-                    }
-                    break;
-                }
-
-                default:
-                    // Unknown escape: keep backslash and char
-                    result += '\\';
-                    result += *p;
-                    break;
-            }
-            ++p;
-        } else {
-            result += *p++;
-        }
-    }
-
-    return result;
 }
 
 void MessageBoard::MessageUnit::ParseAnsiEscapeCodes() {
@@ -303,14 +139,7 @@ void MessageBoard::MessageUnit::ParseAnsiEscapeCodes() {
         return;
     }
 
-    std::string processedText;
-    if (escapeProcessed) {
-        processedText = ProcessEscapeSequences(originalText.c_str());
-    } else {
-        processedText = originalText;
-    }
-
-    const char *p = processedText.c_str();
+    const char *p = originalText.c_str();
 
     ConsoleColor currentColor;
     std::string currentSegment;
@@ -426,7 +255,7 @@ void MessageBoard::MessageUnit::ParseAnsiEscapeCodes() {
 
     // Ensure at least one segment exists
     if (segments.empty()) {
-        segments.emplace_back(std::move(processedText), ConsoleColor());
+        segments.emplace_back(originalText, ConsoleColor());
     }
 }
 
@@ -1153,7 +982,7 @@ void MessageBoard::UpdateTimers(float deltaTime) {
     }
 }
 
-void MessageBoard::AddMessageInternal(const char *msg, bool processEscapes) {
+void MessageBoard::AddMessageInternal(const char *msg) {
     if (!msg || strlen(msg) == 0) return;
 
     if (m_MessageCount == static_cast<int>(m_Messages.size()) &&
@@ -1166,9 +995,7 @@ void MessageBoard::AddMessageInternal(const char *msg, bool processEscapes) {
         m_Messages[i + 1] = std::move(m_Messages[i]);
     }
 
-    // Only process escapes if both requested and ANSI is enabled
-    bool shouldProcessEscapes = processEscapes && m_AnsiEnabled;
-    m_Messages[0] = MessageUnit(msg, m_MaxTimer, shouldProcessEscapes);
+    m_Messages[0] = MessageUnit(msg, m_MaxTimer);
 
     if (m_MessageCount < static_cast<int>(m_Messages.size())) {
         ++m_MessageCount;
@@ -1204,7 +1031,7 @@ void MessageBoard::HandleScrolling(float contentHeight, float windowHeight) {
             m_ScrollY += windowHeight * 0.8f;
             m_ScrollToBottom = false;
         }
-        if (ImGui::IsKeyPressed(ImGuiKey_Home, false)) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Home)) {
             m_ScrollY = 0.0f;
             m_ScrollToBottom = false;
         }
@@ -1292,8 +1119,8 @@ void MessageBoard::OnAfterEnd() {
 }
 
 // Public interface
-void MessageBoard::AddMessage(const char *msg, bool processEscapes) {
-    AddMessageInternal(msg, processEscapes);
+void MessageBoard::AddMessage(const char *msg) {
+    AddMessageInternal(msg);
 }
 
 void MessageBoard::Printf(const char *format, ...) {
@@ -1306,7 +1133,7 @@ void MessageBoard::Printf(const char *format, ...) {
     va_end(args);
 
     if (result > 0) {
-        AddMessage(buffer); // Plain text
+        AddMessage(buffer);
     }
 }
 
@@ -1327,7 +1154,7 @@ void MessageBoard::PrintfColored(ImU32 color, const char *format, ...) {
         char coloredBuffer[4200];
         snprintf(coloredBuffer, sizeof(coloredBuffer),
                  "\033[38;2;%u;%u;%um%s\033[0m", r, g, b, buffer);
-        AddMessage(coloredBuffer); // Use ANSI message for colored output
+        AddMessage(coloredBuffer);
     }
 }
 
@@ -1345,32 +1172,4 @@ void MessageBoard::ResizeMessages(int size) {
     m_Messages.resize(size);
     m_MessageCount = std::min(m_MessageCount, size);
     m_DisplayMessageCount = std::min(m_DisplayMessageCount, size);
-}
-
-// Static utilities
-std::string MessageBoard::ProcessEscapeSequences(const char *text) {
-    return MessageUnit::ProcessEscapeSequences(text);
-}
-
-std::string MessageBoard::StripAnsiCodes(const char *text) {
-    if (!text) return "";
-
-    std::string result;
-    result.reserve(strlen(text));
-    const char *p = text;
-
-    while (*p) {
-        if (*p == '\033' && *(p + 1) == '[') {
-            p += 2;
-            while (*p && *p != 'm' && *p != 'A' && *p != 'B' && *p != 'C' && *p != 'D' &&
-                   *p != 'H' && *p != 'f' && *p != 'J' && *p != 'K' && *p != 's' && *p != 'u') {
-                ++p;
-            }
-            if (*p) ++p; // Skip the final command character
-        } else {
-            result += *p++;
-        }
-    }
-
-    return result;
 }

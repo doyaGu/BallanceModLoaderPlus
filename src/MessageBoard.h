@@ -64,7 +64,7 @@ public:
     struct TextSegment {
         std::string text;
         ConsoleColor color;
-        int cursorX = -1; // Cursor position for this segment (-1 = no cursor change)
+        int cursorX = -1;
         int cursorY = -1;
         bool isClearScreen = false;
         bool isClearLine = false;
@@ -93,10 +93,9 @@ public:
         mutable float cachedHeight = -1.0f;
         mutable float cachedWrapWidth = -1.0f;
         bool hasControlSequences = false;
-        bool escapeProcessed = false;
 
         MessageUnit() = default;
-        MessageUnit(const char *msg, float timer, bool processEscapes = false);
+        MessageUnit(const char *msg, float timer);
 
         MessageUnit(MessageUnit &&other) noexcept = default;
         MessageUnit &operator=(MessageUnit &&other) noexcept = default;
@@ -105,13 +104,11 @@ public:
         MessageUnit &operator=(const MessageUnit &other) = default;
 
         const char *GetMessage() const { return originalText.c_str(); }
-        void SetMessage(const char *msg, bool processEscapes = false);
+        void SetMessage(const char *msg);
         float GetTimer() const { return timer; }
         void SetTimer(float t) { timer = t; }
         float GetTextHeight(float wrapWidth) const;
         void Reset();
-
-        static std::string ProcessEscapeSequences(const char *text);
 
     private:
         void ParseAnsiEscapeCodes();
@@ -127,7 +124,7 @@ public:
     ~MessageBoard() override;
 
     // Message management
-    void AddMessage(const char *msg, bool processEscapes = false);
+    void AddMessage(const char *msg);
     void Printf(const char *format, ...);
     void PrintfColored(ImU32 color, const char *format, ...);
     void ClearMessages();
@@ -167,10 +164,6 @@ public:
     bool IsScrolledToBottom() const { return m_ScrollToBottom; }
     bool HasScrollableContent() const { return m_IsCommandBarVisible && m_MaxScrollY > 0.0f; }
 
-    // Static utilities
-    static std::string ProcessEscapeSequences(const char *text);
-    static std::string StripAnsiCodes(const char *text);
-
 protected:
     ImGuiWindowFlags GetFlags() override;
     void OnBegin() override;
@@ -204,7 +197,7 @@ private:
 
     // Core operations
     void UpdateTimers(float deltaTime);
-    void AddMessageInternal(const char *msg, bool processEscapes);
+    void AddMessageInternal(const char *msg);
     void HandleScrolling(float contentHeight, float windowHeight);
     void UpdateScrollBounds(float contentHeight, float windowHeight);
     float CalculateTotalContentHeight(float wrapWidth) const;
