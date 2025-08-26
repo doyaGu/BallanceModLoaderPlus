@@ -3,6 +3,8 @@
 #include "BML/IBML.h"
 #include "BMLMod.h"
 
+#include "StringUtils.h"
+
 void CommandBML::Execute(IBML *bml, const std::vector<std::string> &args) {
     bml->SendIngameMessage("Ballance Mod Loader Plus " BML_VERSION);
     bml->SendIngameMessage((std::to_string(bml->GetModCount()) + " Mods Installed:").data());
@@ -40,13 +42,117 @@ void CommandCheat::Execute(IBML *bml, const std::vector<std::string> &args) {
 }
 
 void CommandEcho::Execute(IBML *bml, const std::vector<std::string> &args) {
-    if (args.size() > 1) {
-        std::string str;
-        for (size_t i = 1; i < args.size(); ++i)
-            str.append(args[i]).append(" ");
-        str.pop_back();
-        bml->SendIngameMessage(str.c_str());
+    if (!bml) return;
+
+    // No args -> print newline
+    if (args.size() <= 1) {
+        bml->SendIngameMessage("\n");
+        return;
     }
+
+    EchoOpts opt;
+    size_t idx = 1;
+
+    // Option parsing:
+    // - consume a standalone "--"
+    // - consume only tokens of the form -[n,e,E]+
+    // - stop (do not consume) on first non-option or unknown option
+    while (idx < args.size()) {
+        const std::string &tok = args[idx];
+
+        if (tok == "--") {
+            // explicit end of options, do not emit it
+            ++idx;
+            break;
+        }
+
+        if (tok.size() >= 2 && tok[0] == '-') {
+            // Check if token is entirely composed of recognized flags
+            bool recognized = true;
+            for (size_t i = 1; i < tok.size(); ++i) {
+                char c = tok[i];
+                if (c != 'n' && c != 'e' && c != 'E') {
+                    recognized = false;
+                    break;
+                }
+            }
+
+            if (recognized) {
+                ParseEchoOptionToken(tok, opt); // update flags
+                ++idx; // consume this option token
+                continue;
+            }
+            // Unknown option like "-x": stop parsing and treat it as data
+        }
+
+        // Non-option token: stop parsing
+        break;
+    }
+
+    std::string out = JoinArgs(args, idx);
+
+    bool suppressNewlineViaC = false;
+    if (opt.interpretEscapes) {
+        // \c truncation is handled before unescaping, as in bash echo -e
+        suppressNewlineViaC = ApplyBackslashCTrunc(out);
+        out = utils::UnescapeString(out.c_str());
+    }
+
+    if (!(opt.noNewline || suppressNewlineViaC)) {
+        out.push_back('\n');
+    }
+
+    bml->SendIngameMessage(out.c_str());
+}
+
+// Parse echo options within a single recognized token like "-neE"
+void CommandEcho::ParseEchoOptionToken(const std::string &tok, EchoOpts &opt) {
+    // precondition: tok.size() >= 2 && tok[0] == '-'
+    for (size_t i = 1; i < tok.size(); ++i) {
+        const char c = tok[i];
+        switch (c) {
+        case 'n': opt.noNewline = true;
+            break;
+        case 'e': opt.interpretEscapes = true;
+            break;
+        case 'E': opt.interpretEscapes = false;
+            break;
+        default: opt.parsingOptions = false;
+            return; // unknown flag -> stop option mode
+        }
+    }
+}
+
+// Join args with spaces from given index
+std::string CommandEcho::JoinArgs(const std::vector<std::string>& args, size_t start) {
+    std::string s;
+    for (size_t i = start; i < args.size(); ++i) {
+        if (i > start) s.push_back(' ');
+        s.append(args[i]);
+    }
+    return s;
+}
+
+// Handle \c (truncate output and suppress newline)
+bool CommandEcho::ApplyBackslashCTrunc(std::string& s) {
+    bool stop = false;
+    size_t i = 0;
+    while (i < s.size()) {
+        if (s[i] == '\\') {
+            size_t j = i;
+            while (j < s.size() && s[j] == '\\') ++j;
+            bool escaped = ((j - i) % 2 == 1);
+            if (escaped && j < s.size() && s[j] == 'c') {
+                s.erase(i);
+                stop = true;
+                break;
+            }
+            i = j + (escaped ? 1 : 0);
+        } else {
+            ++i;
+        }
+    }
+    return stop;
 }
 
 void CommandClear::Execute(IBML *bml, const std::vector<std::string> &args) {

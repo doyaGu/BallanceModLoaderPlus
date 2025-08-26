@@ -45,6 +45,16 @@ public:
     bool IsCheat() override { return false; }
     void Execute(IBML *bml, const std::vector<std::string> &args) override;
     const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; }
+
+    struct EchoOpts {
+        bool interpretEscapes = false; // -e
+        bool noNewline        = false; // -n
+        bool parsingOptions   = true;  // stop at first non-option or "--"
+    };
+
+    static void ParseEchoOptionToken(const std::string &tok, EchoOpts &opt);
+    static std::string JoinArgs(const std::vector<std::string> &args, size_t start);
+    static bool ApplyBackslashCTrunc(std::string &s);
 };
 
 class CommandClear : public ICommand {
