@@ -1,9 +1,11 @@
 #ifndef BML_BUI_H
 #define BML_BUI_H
 
+#include <cassert>
 #include <string>
 #include <stack>
 #include <unordered_map>
+#include <memory>
 #include <type_traits>
 
 #include "imgui.h"
@@ -225,7 +227,7 @@ namespace Bui {
     // Base window class
     class Window {
     public:
-        explicit Window(std::string name) : m_Name(std::move(name)), m_Visible(true) {}
+        explicit Window(std::string name) : m_Name(std::move(name)), m_Visible(true), m_ShouldHide(false) {}
 
         virtual ~Window() = default;
 
@@ -254,8 +256,9 @@ namespace Bui {
             OnBegin();
             bool keepVisible = true;
             const bool notCollapsed = ImGui::Begin(m_Name.c_str(), &keepVisible, GetFlags());
-            if (!keepVisible)
-                Hide();
+            if (!keepVisible) {
+                m_ShouldHide = true;
+            }
             if (notCollapsed)
                 OnAfterBegin();
             return notCollapsed;
@@ -270,13 +273,20 @@ namespace Bui {
         // Rendering
         void Render() {
             if (!IsVisible()) return;
+
             if (Begin())
                 OnDraw();
             End();
+
+            if (m_ShouldHide) {
+                Hide();
+                m_ShouldHide = false;
+            }
         }
 
         // Virtual interface
         virtual ImGuiWindowFlags GetFlags() { return 0; }
+
         virtual void OnBegin() {}
         virtual void OnAfterBegin() {}
         virtual void OnDraw() = 0;
@@ -288,17 +298,22 @@ namespace Bui {
     protected:
         std::string m_Name;
         bool m_Visible;
+        bool m_ShouldHide;
     };
 
     // Page class for menu pages
     class Page : public Window {
     public:
-        explicit Page(std::string name) : Window(std::move(name)), m_Title(m_Name) { Hide(); }
-        Page(std::string name, std::string title) : Window(std::move(name)), m_Title(std::move(title)) { Hide(); }
+        explicit Page(std::string name) : Window(std::move(name)), m_Title(m_Name), m_Menu(nullptr) { Hide(); }
+        Page(std::string name, std::string title) : Window(std::move(name)), m_Title(std::move(title)), m_Menu(nullptr) { Hide(); }
 
         // Properties
         const std::string &GetTitle() const { return m_Title; }
         void SetTitle(const std::string &title) { m_Title = title; }
+
+        // Menu integration
+        Menu *GetMenu() const { return m_Menu; }
+        void SetMenu(Menu *menu) { m_Menu = menu; }
 
         // Page navigation
         int GetPage() const { return m_PageIndex; }
@@ -347,21 +362,14 @@ namespace Bui {
             if (!IsVisible())
                 return;
 
-            // Standard page layout
-            Title(m_Name.c_str());
+            Title(m_Title.c_str());
 
             // Navigation
             if (m_PageIndex > 0 && NavLeft()) PrevPage();
             if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 && NavRight()) NextPage();
         }
 
-        void OnEnd() override {
-            if (!IsVisible())
-                return;
-
-            if (NavBack())
-                Close();
-        }
+        void OnEnd() override;
 
         virtual bool OnOpen() { return true; }
         virtual void OnClose() {}
@@ -371,6 +379,7 @@ namespace Bui {
         std::string m_Title;
         int m_PageIndex = 0;
         int m_PageCount = 1;
+        Menu *m_Menu;
     };
 
     // Menu class for managing multiple pages
@@ -381,26 +390,58 @@ namespace Bui {
         virtual ~Menu() = default;
 
         // Page management
-        bool AddPage(Page *page) {
+        bool AddPage(std::unique_ptr<Page> page) {
             if (!page) return false;
 
             const std::string &name = page->GetName();
             if (m_Pages.find(name) != m_Pages.end()) return false;
 
-            m_Pages[name] = page;
+            m_Pages[name] = std::move(page);
             return true;
         }
 
-        bool RemovePage(Page *page) {
-            if (!page) return false;
+        // Template factory method for creating pages
+        template <typename PageType, typename... Args>
+        PageType *CreatePage(Args &&... args) {
+            static_assert(std::is_base_of_v<Page, PageType>, "PageType must inherit from Page");
 
-            const std::string &name = page->GetName();
+            auto page = std::make_unique<PageType>(std::forward<Args>(args)...);
+            PageType *pagePtr = page.get();
+
+            // Set menu association after construction
+            pagePtr->SetMenu(this);
+
+            if (AddPage(std::move(page))) {
+                return pagePtr;
+            }
+
+            return nullptr;
+        }
+
+        bool RemovePage(const std::string &name) {
             const auto it = m_Pages.find(name);
             if (it == m_Pages.end()) return false;
 
+            Page *page = it->second.get();
+
             if (m_CurrentPage == page) {
-                HidePage();
+                CloseCurrentPage();
                 while (!m_PageStack.empty()) m_PageStack.pop();
+            }
+
+            // Clean up the stack, remove all occurrences of this page
+            std::stack<Page *> tempStack;
+            while (!m_PageStack.empty()) {
+                Page *stackPage = m_PageStack.top();
+                m_PageStack.pop();
+                if (stackPage != page) {
+                    tempStack.push(stackPage);
+                }
+            }
+            // Rebuild stack without the removed page
+            while (!tempStack.empty()) {
+                m_PageStack.push(tempStack.top());
+                tempStack.pop();
             }
 
             m_Pages.erase(it);
@@ -409,26 +450,27 @@ namespace Bui {
 
         Page *GetPage(const std::string &name) {
             const auto it = m_Pages.find(name);
-            return (it != m_Pages.end()) ? it->second : nullptr;
+            return (it != m_Pages.end()) ? it->second.get() : nullptr;
         }
 
         // Navigation
-        bool ShowPage(const std::string &name) {
+        bool OpenPage(const std::string &name) {
             Page *page = GetPage(name);
             if (!page) return false;
 
             PushPage(m_CurrentPage);
             m_CurrentPage = page;
-            m_CurrentPage->Show();
+            m_CurrentPage->Open();
             return true;
         }
 
-        bool ShowPrevPage() {
-            HidePage();
+        bool OpenPrevPage() {
+            assert(m_CurrentPage != nullptr);
+            CloseCurrentPage();
             Page *page = PopPage();
             m_CurrentPage = page;
             if (m_CurrentPage) {
-                m_CurrentPage->Show();
+                m_CurrentPage->Open();
                 return true;
             } else {
                 OnClose();
@@ -436,22 +478,34 @@ namespace Bui {
             }
         }
 
-        void HidePage() {
+        void CloseCurrentPage() {
             if (m_CurrentPage) {
-                m_CurrentPage->Hide();
+                m_CurrentPage->Close();
                 m_CurrentPage = nullptr;
             }
         }
 
         // Menu operations
         void Open(const std::string &name) {
-            if (ShowPage(name)) OnOpen();
+            // Clear navigation history when opening a new menu session
+            while (!m_PageStack.empty()) m_PageStack.pop();
+            CloseCurrentPage();
+
+            Page *page = GetPage(name);
+            if (page) {
+                m_CurrentPage = page;
+                m_CurrentPage->Open();
+                OnOpen();
+            }
+            // Note: If page is not found, menu is left in inactive state
         }
 
         void Close() {
-            HidePage();
-            m_CurrentPage = PopPage();
-            if (m_CurrentPage) m_CurrentPage->Hide();
+            CloseCurrentPage();
+            while (!m_PageStack.empty()) {
+                m_PageStack.pop();
+            }
+            m_CurrentPage = nullptr;
             OnClose();
         }
 
@@ -464,8 +518,12 @@ namespace Bui {
         virtual void OnClose() = 0;
 
     protected:
+        static constexpr size_t MAX_NAVIGATION_DEPTH = 32;
+
         void PushPage(Page *page) {
-            if (page) m_PageStack.push(page);
+            if (page && m_PageStack.size() < MAX_NAVIGATION_DEPTH) {
+                m_PageStack.push(page);
+            }
         }
 
         Page *PopPage() {
@@ -477,8 +535,21 @@ namespace Bui {
 
         Page *m_CurrentPage = nullptr;
         std::stack<Page *> m_PageStack;
-        std::unordered_map<std::string, Page *> m_Pages;
+        std::unordered_map<std::string, std::unique_ptr<Page>> m_Pages;
     };
+
+    inline void Page::OnEnd() {
+        if (!IsVisible())
+            return;
+
+        if (NavBack()) {
+            if (m_Menu) {
+                m_Menu->OpenPrevPage();
+            } else {
+                Close();
+            }
+        }
+    }
 }
 
 #endif // BML_BUI_H
