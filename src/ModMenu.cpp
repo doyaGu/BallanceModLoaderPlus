@@ -6,13 +6,9 @@
 #include "StringUtils.h"
 
 void ModMenu::Init() {
-    m_Pages.push_back(std::make_unique<ModListPage>(this));
-    m_Pages.push_back(std::make_unique<ModPage>(this));
-    m_Pages.push_back(std::make_unique<ModOptionPage>(this));
-}
-
-void ModMenu::Shutdown() {
-    m_Pages.clear();
+    CreatePage<ModListPage>();
+    CreatePage<ModPage>();
+    CreatePage<ModOptionPage>();
 }
 
 void ModMenu::OnOpen() {
@@ -20,10 +16,6 @@ void ModMenu::OnOpen() {
 }
 
 void ModMenu::OnClose() {
-    for (const auto &page: m_Pages) {
-        page->SetPage(0);
-    }
-
     auto *context = BML_GetCKContext();
     auto *modContext = BML_GetModContext();
     auto *inputHook = modContext->GetInputManager();
@@ -41,18 +33,6 @@ void ModMenu::OnClose() {
 
 Config *ModMenu::GetConfig(IMod *mod) {
     return BML_GetModContext()->GetConfig(mod);
-}
-
-ModMenuPage::ModMenuPage(ModMenu *menu, std::string name) : Page(std::move(name)), m_Menu(menu) {
-    m_Menu->AddPage(this);
-}
-
-ModMenuPage::~ModMenuPage() {
-    m_Menu->RemovePage(this);
-}
-
-void ModMenuPage::OnClose() {
-    m_Menu->ShowPrevPage();
 }
 
 void ModListPage::OnAfterBegin() {
@@ -77,8 +57,8 @@ void ModListPage::OnDraw() {
             return false;
         const char *id = mod->GetID();
         if (Bui::MainButton(id)) {
-            m_Menu->SetCurrentMod(mod);
-            m_Menu->ShowPage("Mod Page");
+            dynamic_cast<ModMenu *>(m_Menu)->SetCurrentMod(mod);
+            m_Menu->OpenPage("Mod Page");
         }
         return true;
     }, 0.35f, 0.24f, 0.14f, 4);
@@ -94,7 +74,7 @@ void ModPage::OnAfterBegin() {
     ImGui::SetCursorPosX(menuPos.x);
     ImGui::Dummy(Bui::CoordToPixel(ImVec2(0.375f, 0.1f)));
 
-    auto *mod = m_Menu->GetCurrentMod();
+    auto *mod = dynamic_cast<ModMenu *>(m_Menu)->GetCurrentMod();
 
     ImGui::SetCursorPosX(menuPos.x);
     Bui::WrappedText(mod->GetName(), menuSize.x, 1.2f);
@@ -138,8 +118,8 @@ void ModPage::OnDraw() {
             return true;
 
         if (Bui::LevelButton(name, &v)) {
-            m_Menu->SetCurrentCategory(category);
-            m_Menu->ShowPage("Mod Options");
+            dynamic_cast<ModMenu *>(m_Menu)->SetCurrentCategory(category);
+            m_Menu->OpenPage("Mod Options");
         }
 
         if (ImGui::IsItemHovered()) {
@@ -179,17 +159,6 @@ void ModPage::ShowCommentBox(Category *category) {
 
     ImGui::EndChild();
     ImGui::PopStyleColor();
-}
-
-void ModOptionPage::OnAfterBegin() {
-    m_Category = m_Menu->GetCurrentCategory();
-    if (!m_Category)
-        return;
-
-    int count = static_cast<int>(m_Category->GetPropertyCount());
-    SetPageCount(count % 4 == 0 ? count / 4 : count / 4 + 1);
-
-    Page::OnAfterBegin();
 }
 
 void ModOptionPage::OnDraw() {
@@ -273,10 +242,19 @@ void ModOptionPage::OnDraw() {
     }, 0.35f, 0.24f, 0.14f, 4);
 }
 
+bool ModOptionPage::OnOpen() {
+    m_Category = dynamic_cast<ModMenu *>(m_Menu)->GetCurrentCategory();
+    if (!m_Category)
+        return false;
+
+    int count = static_cast<int>(m_Category->GetPropertyCount());
+    SetPageCount(count % 4 == 0 ? count / 4 : count / 4 + 1);
+    return true;
+}
+
 void ModOptionPage::OnClose() {
     memset(m_IntFlags, 0, sizeof(m_IntFlags));
     memset(m_FloatFlags, 0, sizeof(m_FloatFlags));
-    ModMenuPage::OnClose();
 }
 
 void ModOptionPage::OnPageChanged(int newPage, int oldPage) {

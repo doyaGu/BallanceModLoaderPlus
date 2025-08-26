@@ -71,9 +71,7 @@ struct MapEntry {
 
 class MapListPage : public Bui::Page {
 public:
-    explicit MapListPage(MapMenu *menu);
-
-    ~MapListPage() override;
+    MapListPage(): Page("Custom Maps") {}
 
     void OnAfterBegin() override;
     void OnDraw() override;
@@ -85,7 +83,6 @@ private:
     void OnSearchMaps();
     bool OnDrawEntry(size_t index, bool *v);
 
-    MapMenu *m_Menu;
     int m_Count = 0;
     char m_MapSearchBuf[1024] = {};
     std::vector<size_t> m_MapSearchResult;
@@ -98,7 +95,6 @@ public:
     ~MapMenu() override;
 
     void Init();
-    void Shutdown();
 
     void OnOpen() override;
     void OnClose() override;
@@ -127,7 +123,6 @@ private:
     int m_MaxDepth = 8;
     MapEntry *m_Maps = nullptr;
     MapEntry *m_Current = nullptr;
-    std::unique_ptr<MapListPage> m_MapListPage;
 };
 
 #endif // BML_MAPMENU_H

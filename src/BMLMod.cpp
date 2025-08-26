@@ -139,8 +139,6 @@ void BMLMod::OnLoad() {
 
 void BMLMod::OnUnload() {
     m_CommandBar.SaveHistory();
-    m_ModMenu.Shutdown();
-    m_MapMenu.Shutdown();
 
     auto &cc = BML_GetModContext()->GetCommandContext();
     cc.ClearOutputCallback();
