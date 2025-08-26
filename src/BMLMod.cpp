@@ -1040,7 +1040,7 @@ void BMLMod::OnProcess_HUD() {
 
 void BMLMod::OnProcess_CommandBar() {
     bool visible = m_CommandBar.IsVisible();
-    if (!visible && ImGui::IsKeyPressed(ImGuiKey_Slash)) {
+    if (!visible && ImGui::IsKeyPressed(ImGuiKey_Slash, false)) {
         GetLogger()->Info("Toggle Command Bar");
         m_CommandBar.ToggleCommandBar();
     }
