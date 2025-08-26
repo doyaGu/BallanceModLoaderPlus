@@ -116,7 +116,7 @@ void CommandBar::OnDraw() {
                 ImGui::TextUnformatted(" >");
             }
 
-            if ((ImGui::IsKeyDown(ImGuiKey_LeftShift) && ImGui::IsKeyPressed(ImGuiKey_Tab)) || ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
+            if (ImGui::IsKeyChordPressed(ImGuiMod_Shift | ImGuiKey_Tab) || ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
                 PrevCandidate();
             } else if (ImGui::IsKeyPressed(ImGuiKey_Tab) || ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
                 NextCandidate();
@@ -128,12 +128,12 @@ void CommandBar::OnDraw() {
                 NextPageOfCandidates();
             }
 
-            if (ImGui::IsKeyPressed(ImGuiKey_Enter)) {
+            if (ImGui::IsKeyPressed(ImGuiKey_Enter, false)) {
                 m_CandidateSelected = m_CandidateIndex;
                 m_ShowHints = false;
             }
 
-            if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
                 InvalidateCandidates();
             }
         }
@@ -143,7 +143,7 @@ void CommandBar::OnDraw() {
             m_ShowHints = true;
         }
 
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
             ToggleCommandBar(false);
     }
 
