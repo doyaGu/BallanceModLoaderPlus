@@ -138,6 +138,9 @@ namespace Bui {
     BML_EXPORT ImVec2 GetButtonSize(ButtonType type);
     BML_EXPORT float GetButtonIndent(ButtonType type);
 
+    BML_EXPORT ImVec2 GetButtonSizeInCoord(ButtonType type);
+    BML_EXPORT float GetButtonIndentInCoord(ButtonType type);
+
     // Key conversion functions
     BML_EXPORT ImGuiKey CKKeyToImGuiKey(CKKEYBOARD key);
     BML_EXPORT CKKEYBOARD ImGuiKeyToCKKey(ImGuiKey key);
