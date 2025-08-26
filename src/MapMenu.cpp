@@ -49,7 +49,7 @@ void MapMenu::OnClose(bool backToMenu) {
         context->GetCurrentScene()->Activate(beh, true);
     }
 
-    modManager->AddTimerLoop(1ul, [this, inputHook] {
+    modManager->AddTimerLoop(1ul, [inputHook] {
         if (inputHook->oIsKeyDown(CKKEY_ESCAPE) || inputHook->oIsKeyDown(CKKEY_RETURN))
             return true;
         inputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
@@ -71,7 +71,6 @@ void MapMenu::LoadMap(const std::wstring &path) {
     try {
         m_Mod->LoadMap(path);
         m_MapLoaded = true;
-        Close();
     } catch (const std::exception &e) {
         BML_GetModContext()->GetLogger()->Error("Exception loading map: %s", e.what());
         m_MapLoaded = false;
@@ -309,16 +308,19 @@ void MapListPage::OnDraw() {
     }
 }
 
-void MapListPage::OnClose() {
-    auto *maps = dynamic_cast<MapMenu *>(m_Menu)->GetCurrentMaps();
-    if (maps && maps->parent) {
-        dynamic_cast<MapMenu *>(m_Menu)->SetCurrentMaps(maps->parent);
-        Show();
-    } else {
-        m_Menu->OpenPrevPage();
-    }
+void MapListPage::OnAfterEnd() {
+    if (m_ShouldClose) {
+        m_ShouldClose = false;
+        auto *maps = dynamic_cast<MapMenu *>(m_Menu)->GetCurrentMaps();
+        if (maps && maps->parent) {
+            dynamic_cast<MapMenu *>(m_Menu)->SetCurrentMaps(maps->parent);
+            Show();
+        } else {
+            m_Menu->OpenPrevPage();
+        }
 
-    SetPage(0);
+        SetPage(0);
+    }
 }
 
 bool MapListPage::IsSearching() const {
@@ -407,9 +409,8 @@ bool MapListPage::OnDrawEntry(size_t index, bool *v) {
     if (entry->type == MAP_ENTRY_FILE) {
         if (Bui::LevelButton(entry->name.c_str(), v)) {
             dynamic_cast<MapMenu *>(m_Menu)->ResetCurrentMaps();
-            SetPage(0);
-            Hide();
             dynamic_cast<MapMenu *>(m_Menu)->LoadMap(entry->path);
+            m_ShouldClose = true;
         }
     } else {
         ImGui::PushStyleColor(ImGuiCol_Text, 0xFFFFA500); // Orange Color

@@ -75,7 +75,7 @@ public:
 
     void OnAfterBegin() override;
     void OnDraw() override;
-    void OnClose() override;
+    void OnAfterEnd() override;
 
 private:
     bool IsSearching() const;
@@ -83,6 +83,7 @@ private:
     void OnSearchMaps();
     bool OnDrawEntry(size_t index, bool *v);
 
+    bool m_ShouldClose = false;
     int m_Count = 0;
     char m_MapSearchBuf[1024] = {};
     std::vector<size_t> m_MapSearchResult;
