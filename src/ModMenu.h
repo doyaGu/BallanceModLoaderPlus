@@ -10,21 +10,9 @@
 
 class ModMenu;
 
-class ModMenuPage : public Bui::Page {
-public:
-    ModMenuPage(ModMenu *menu, std::string name);
-    ~ModMenuPage() override;
-
-    void OnClose() override;
-
-protected:
-    ModMenu *m_Menu;
-};
-
 class ModMenu : public Bui::Menu {
 public:
     void Init();
-    void Shutdown();
 
     IMod *GetCurrentMod() const { return m_CurrentMod; }
     void SetCurrentMod(IMod *mod) { m_CurrentMod = mod; }
@@ -40,20 +28,19 @@ public:
 private:
     IMod *m_CurrentMod = nullptr;
     Category *m_CurrentCategory = nullptr;
-    std::vector<std::unique_ptr<ModMenuPage>> m_Pages;
 };
 
-class ModListPage : public ModMenuPage {
+class ModListPage : public Bui::Page {
 public:
-    explicit ModListPage(ModMenu *menu) : ModMenuPage(menu, "Mod List") {}
+    explicit ModListPage() : Bui::Page("Mod List") {}
 
     void OnAfterBegin() override;
     void OnDraw() override;
 };
 
-class ModPage : public ModMenuPage {
+class ModPage : public Bui::Page {
 public:
-    explicit ModPage(ModMenu *menu) : ModMenuPage(menu, "Mod Page") {}
+    explicit ModPage() : Bui::Page("Mod Page") {}
 
     void OnAfterBegin() override;
     void OnDraw() override;
@@ -65,24 +52,12 @@ protected:
     char m_TextBuf[1024] = {};
 };
 
-class ModOptionPage : public ModMenuPage {
+class ModOptionPage : public Bui::Page {
 public:
-    explicit ModOptionPage(ModMenu *menu) : ModMenuPage(menu, "Mod Options") {
-        // Initialize buffers safely
-        for (int i = 0; i < 4; ++i) {
-            memset(m_Buffers[i], 0, sizeof(m_Buffers[i]));
-            m_BufferHashes[i] = 0;
-            m_KeyToggled[i] = false;
-            m_KeyChord[i] = ImGuiKey_None;
-            m_IntFlags[i] = 0;
-            m_FloatFlags[i] = 0;
-            m_IntValues[i] = 0;
-            m_FloatValues[i] = 0.0f;
-        }
-    }
+    explicit ModOptionPage() : Bui::Page("Mod Options") {}
 
-    void OnAfterBegin() override;
     void OnDraw() override;
+    bool OnOpen() override;
     void OnClose() override;
     void OnPageChanged(int newPage, int oldPage) override;
 

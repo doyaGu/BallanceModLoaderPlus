@@ -15,21 +15,16 @@
 
 using namespace ScriptHelper;
 
-MapMenu::MapMenu(BMLMod *mod): m_Mod(mod), m_Maps(new MapEntry(nullptr, MAP_ENTRY_DIR)) {
-}
+MapMenu::MapMenu(BMLMod *mod): m_Mod(mod), m_Maps(new MapEntry(nullptr, MAP_ENTRY_DIR)) {}
 
 MapMenu::~MapMenu() {
     delete m_Maps;
 }
 
 void MapMenu::Init() {
-    m_MapListPage = std::make_unique<MapListPage>(this);
+    CreatePage<MapListPage>();
 
     RefreshMaps();
-}
-
-void MapMenu::Shutdown() {
-    m_MapListPage.reset();
 }
 
 void MapMenu::OnOpen() {
@@ -259,21 +254,13 @@ bool MapMenu::IsSupportedFileType(const std::wstring &path) {
     return ext == L".nmo" || ext == L".cmo";
 }
 
-MapListPage::MapListPage(MapMenu *menu): Page("Custom Maps"), m_Menu(menu) {
-    m_Menu->AddPage(this);
-}
-
-MapListPage::~MapListPage() {
-    m_Menu->RemovePage(this);
-}
-
 void MapListPage::OnAfterBegin() {
     if (!IsVisible())
         return;
 
     Bui::Title(m_Title.c_str(), 0.07f);
 
-    auto *maps = m_Menu->GetCurrentMaps();
+    auto *maps = dynamic_cast<MapMenu *>(m_Menu)->GetCurrentMaps();
     if (!maps || maps->children.empty()) {
         m_Count = 0;
         return;
@@ -326,12 +313,12 @@ void MapListPage::OnDraw() {
 }
 
 void MapListPage::OnClose() {
-    auto *maps = m_Menu->GetCurrentMaps();
+    auto *maps = dynamic_cast<MapMenu *>(m_Menu)->GetCurrentMaps();
     if (maps && maps->parent) {
-        m_Menu->SetCurrentMaps(maps->parent);
+        dynamic_cast<MapMenu *>(m_Menu)->SetCurrentMaps(maps->parent);
         Show();
     } else {
-        m_Menu->ShowPrevPage();
+        m_Menu->OpenPrevPage();
     }
 
     SetPage(0);
@@ -367,7 +354,7 @@ void MapListPage::OnSearchMaps() {
             return;
         }
 
-        const auto &maps = m_Menu->GetCurrentMaps()->children;
+        const auto &maps = dynamic_cast<MapMenu *>(m_Menu)->GetCurrentMaps()->children;
         for (size_t i = 0; i < maps.size(); ++i) {
             const auto &name = maps[i]->name;
             const auto *end = (const UChar *) (name.c_str() + name.size());
@@ -394,7 +381,7 @@ void MapListPage::OnSearchMaps() {
 }
 
 bool MapListPage::OnDrawEntry(size_t index, bool *v) {
-    auto *currentMaps = m_Menu->GetCurrentMaps();
+    auto *currentMaps = dynamic_cast<MapMenu *>(m_Menu)->GetCurrentMaps();
     if (!currentMaps || currentMaps->children.empty()) {
         return false;
     }
@@ -422,23 +409,23 @@ bool MapListPage::OnDrawEntry(size_t index, bool *v) {
 
     if (entry->type == MAP_ENTRY_FILE) {
         if (Bui::LevelButton(entry->name.c_str(), v)) {
-            m_Menu->ResetCurrentMaps();
+            dynamic_cast<MapMenu *>(m_Menu)->ResetCurrentMaps();
             SetPage(0);
             Hide();
-            m_Menu->LoadMap(entry->path);
+            dynamic_cast<MapMenu *>(m_Menu)->LoadMap(entry->path);
         }
     } else {
         ImGui::PushStyleColor(ImGuiCol_Text, 0xFFFFA500); // Orange Color
 
         if (Bui::LevelButton(entry->name.c_str(), v)) {
-            m_Menu->SetCurrentMaps(entry);
+            dynamic_cast<MapMenu *>(m_Menu)->SetCurrentMaps(entry);
             ClearSearch();
         }
 
         ImGui::PopStyleColor();
     }
 
-    if (m_Menu->ShouldShowTooltip() && ImGui::IsItemHovered()) {
+    if (dynamic_cast<MapMenu *>(m_Menu)->ShouldShowTooltip() && ImGui::IsItemHovered()) {
         ImGui::SetTooltip("%s", entry->name.c_str());
     }
 
