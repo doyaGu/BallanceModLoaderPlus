@@ -36,9 +36,6 @@ Config *ModMenu::GetConfig(IMod *mod) {
 }
 
 void ModListPage::OnAfterBegin() {
-    if (!IsVisible())
-        return;
-
     Bui::Title(m_Title.c_str());
 
     const int count = BML_GetModContext()->GetModCount();
@@ -65,9 +62,6 @@ void ModListPage::OnDraw() {
 }
 
 void ModPage::OnAfterBegin() {
-    if (!IsVisible())
-        return;
-
     const auto menuPos = Bui::GetMenuPos();
     const auto menuSize = Bui::GetMenuSize();
 
@@ -162,9 +156,6 @@ void ModPage::ShowCommentBox(Category *category) {
 }
 
 void ModOptionPage::OnAfterBegin() {
-    if (!IsVisible())
-        return;
-
     Bui::Title(m_Name.c_str(), 0.13f, 1.5f,  m_HasPendingChanges ? IM_COL32(255, 255, 128, 255) : IM_COL32_WHITE);
 
     // Navigation
@@ -230,9 +221,6 @@ void ModOptionPage::OnDraw() {
 }
 
 void ModOptionPage::OnEnd() {
-    if (!IsVisible())
-        return;
-
     // Show save/revert buttons if there are pending changes
     if (m_HasPendingChanges) {
         const float x = Bui::GetButtonSizeInCoord(Bui::BUTTON_SMALL).x;
