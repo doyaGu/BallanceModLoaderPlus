@@ -212,7 +212,7 @@ void BMLMod::OnProcess() {
     OnProcess_Menu();
 
 #ifndef NDEBUG
-    if (ImGui::IsKeyChordPressed(ImGuiMod_Shift | ImGuiMod_Alt | ImGuiKey_F5))
+    if (ImGui::IsKeyChordPressed(ImGuiMod_Shift | ImGuiMod_Alt | ImGuiKey_F5), false)
         m_ShowImGuiDemo = !m_ShowImGuiDemo;
     if (m_ShowImGuiDemo)
         ImGui::ShowDemoWindow(&m_ShowImGuiDemo);
