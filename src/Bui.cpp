@@ -552,6 +552,14 @@ namespace Bui {
         return g_ButtonIndent[type] * ImGui::GetMainViewport()->Size.x;
     }
 
+    ImVec2 GetButtonSizeInCoord(ButtonType type) {
+        return g_ButtonSizes[type];
+    }
+
+    float GetButtonIndentInCoord(ButtonType type) {
+        return g_ButtonIndent[type];
+    }
+
     void AddButtonImage(ImDrawList *drawList, const ImRect &bb, ButtonType type, int state) {
         assert(drawList != nullptr);
 
@@ -626,7 +634,6 @@ namespace Bui {
         if (window->SkipItems)
             return false;
 
-        const ImGuiStyle &style = ImGui::GetStyle();
         const ImGuiID id = window->GetID(label);
 
         ImVec2 pos = window->DC.CursorPos;
@@ -654,7 +661,6 @@ namespace Bui {
         if (window->SkipItems)
             return false;
 
-        const ImGuiStyle &style = ImGui::GetStyle();
         const ImGuiID id = window->GetID(label);
 
         ImVec2 pos = window->DC.CursorPos;
