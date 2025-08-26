@@ -104,7 +104,7 @@ public:
     ~HUD() override;
 
     ImGuiWindowFlags GetFlags() override;
-    void OnBegin() override;
+    void OnPreBegin() override;
     void OnDraw() override;
 
     void OnProcess();

@@ -253,7 +253,7 @@ bool MapMenu::IsSupportedFileType(const std::wstring &path) {
     return ext == L".nmo" || ext == L".cmo";
 }
 
-void MapListPage::OnAfterBegin() {
+void MapListPage::OnPostBegin() {
     Bui::Title(m_Title.c_str(), 0.07f);
 
     auto *maps = dynamic_cast<MapMenu *>(m_Menu)->GetCurrentMaps();
@@ -308,7 +308,7 @@ void MapListPage::OnDraw() {
     }
 }
 
-void MapListPage::OnAfterEnd() {
+void MapListPage::OnPostEnd() {
     if (m_ShouldClose) {
         m_ShouldClose = false;
         auto *maps = dynamic_cast<MapMenu *>(m_Menu)->GetCurrentMaps();

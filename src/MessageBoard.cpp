@@ -590,7 +590,7 @@ float MessageBoard::CalculateContentHeight(float wrapWidth) const {
     return totalHeight;
 }
 
-void MessageBoard::OnBegin() {
+void MessageBoard::OnPreBegin() {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
@@ -1102,7 +1102,7 @@ float MessageBoard::CalculateTotalContentHeight(float wrapWidth) const {
     return totalHeight;
 }
 
-void MessageBoard::OnAfterEnd() {
+void MessageBoard::OnPostEnd() {
     ImGui::PopStyleColor();
     ImGui::PopStyleVar(3);
 

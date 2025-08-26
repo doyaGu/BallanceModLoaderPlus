@@ -73,9 +73,9 @@ class MapListPage : public Bui::Page {
 public:
     MapListPage(): Page("Custom Maps") {}
 
-    void OnAfterBegin() override;
+    void OnPostBegin() override;
     void OnDraw() override;
-    void OnAfterEnd() override;
+    void OnPostEnd() override;
 
 private:
     bool IsSearching() const;

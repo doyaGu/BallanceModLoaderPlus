@@ -27,7 +27,7 @@ ImGuiWindowFlags CommandBar::GetFlags() {
            ImGuiWindowFlags_NoSavedSettings;
 }
 
-void CommandBar::OnBegin() {
+void CommandBar::OnPreBegin() {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 1.0f));
@@ -152,7 +152,7 @@ void CommandBar::OnDraw() {
         ImGui::SetKeyboardFocusHere(-1);
 }
 
-void CommandBar::OnAfterEnd() {
+void CommandBar::OnPostEnd() {
     ImGui::PopStyleColor(2);
     ImGui::PopStyleVar(3);
 }

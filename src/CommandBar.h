@@ -10,9 +10,9 @@ public:
 
     ImGuiWindowFlags GetFlags() override;
 
-    void OnBegin() override;
+    void OnPreBegin() override;
     void OnDraw() override;
-    void OnAfterEnd() override;
+    void OnPostEnd() override;
     void OnShow() override;
     void OnHide() override;
 
