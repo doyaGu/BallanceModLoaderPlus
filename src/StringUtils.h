@@ -192,6 +192,11 @@ namespace utils {
         return hash;
     }
 
+    std::string EscapeString(const char *str);
+    std::string UnescapeString(const char *str);
+
+    std::string StripAnsiCodes(const char *str);
+
     // Legacy compatibility functions
     inline bool StringStartsWith(const std::string &s1, const std::string &s2) {
         return StartsWith(s1, s2);
