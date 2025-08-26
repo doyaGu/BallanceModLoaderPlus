@@ -112,7 +112,7 @@ namespace utils {
     }
 #endif
 
-    std::string EscapeString(const char *str) {
+    std::string UnescapeString(const char *str) {
         if (!str) return "";
 
         std::string result;
@@ -241,7 +241,7 @@ namespace utils {
         return result;
     }
 
-    std::string UnescapeString(const char *str) {
+    std::string EscapeString(const char *str) {
         // Inverse of EscapeString: encode control chars, quotes, backslash,
         // and all non-ASCII as C/Unicode escapes. Avoid \x to prevent
         // ambiguous concatenation with following hex digits.
