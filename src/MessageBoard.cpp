@@ -75,17 +75,23 @@ namespace {
 }
 
 // MessageUnit Implementation
-MessageBoard::MessageUnit::MessageUnit(const char *msg, float timer)
-    : originalText(msg ? msg : ""), timer(timer) {
+MessageBoard::MessageUnit::MessageUnit(const char *msg, float timer, bool processEscapes)
+    : originalText(msg ? msg : ""), timer(timer), escapeProcessed(processEscapes) {
     if (msg && strlen(msg) > 0) {
         ParseAnsiEscapeCodes();
     }
 }
 
-void MessageBoard::MessageUnit::SetMessage(const char *msg) {
+void MessageBoard::MessageUnit::SetMessage(const char *msg, bool processEscapes) {
     if (!msg) return;
     originalText = msg;
+    escapeProcessed = processEscapes;
+
+    segments.clear();
+    hasControlSequences = false;
+
     ParseAnsiEscapeCodes();
+
     cachedHeight = -1.0f;
     cachedWrapWidth = -1.0f;
 }
@@ -157,6 +163,7 @@ void MessageBoard::MessageUnit::Reset() {
     cachedHeight = -1.0f;
     cachedWrapWidth = -1.0f;
     hasControlSequences = false;
+    escapeProcessed = false;
 }
 
 std::string MessageBoard::MessageUnit::ProcessEscapeSequences(const char *text) {
@@ -296,7 +303,13 @@ void MessageBoard::MessageUnit::ParseAnsiEscapeCodes() {
         return;
     }
 
-    std::string processedText = ProcessEscapeSequences(originalText.c_str());
+    std::string processedText;
+    if (escapeProcessed) {
+        processedText = ProcessEscapeSequences(originalText.c_str());
+    } else {
+        processedText = originalText;
+    }
+
     const char *p = processedText.c_str();
 
     ConsoleColor currentColor;
@@ -374,7 +387,7 @@ void MessageBoard::MessageUnit::ParseAnsiEscapeCodes() {
                     }
 
                     case 's': // Save cursor position
-                        cursorStack.push(CursorPosition(virtualCursorX, virtualCursorY));
+                        cursorStack.emplace(virtualCursorX, virtualCursorY);
                         break;
 
                     case 'u': // Restore cursor position
@@ -413,7 +426,7 @@ void MessageBoard::MessageUnit::ParseAnsiEscapeCodes() {
 
     // Ensure at least one segment exists
     if (segments.empty()) {
-        segments.emplace_back(processedText, ConsoleColor());
+        segments.emplace_back(std::move(processedText), ConsoleColor());
     }
 }
 
@@ -624,13 +637,13 @@ ImU32 MessageBoard::MessageUnit::Get256Color(int colorIndex) {
     if (colorIndex < 16) {
         return GetStandardColor(colorIndex % 8, colorIndex >= 8);
     } else if (colorIndex < 232) {
-        // Fixed 6x6x6 color cube with correct xterm values
+        // 6x6x6 color cube with xterm values
         int idx = colorIndex - 16;
         int r6 = (idx / 36) % 6;
         int g6 = ((idx % 36) / 6) % 6;
         int b6 = idx % 6;
 
-        // Correct xterm 256-color cube values
+        // xterm 256-color cube values
         static const int values[6] = {0, 95, 135, 175, 215, 255};
         int r = values[r6];
         int g = values[g6];
@@ -999,7 +1012,7 @@ void MessageBoard::DrawTextSegment(ImDrawList *drawList, const TextSegment &segm
     ImU32 fgColor = renderColor.foreground;
     ImU32 bgColor = applyAlpha(renderColor.background);
 
-    // Apply effects to foreground color
+    // Apply effects to foreground color only if ANSI is enabled
     if (m_AnsiEnabled) {
         if (renderColor.dim) {
             fgColor = ApplyDimEffect(fgColor);
@@ -1140,7 +1153,7 @@ void MessageBoard::UpdateTimers(float deltaTime) {
     }
 }
 
-void MessageBoard::AddMessageInternal(const char *msg) {
+void MessageBoard::AddMessageInternal(const char *msg, bool processEscapes) {
     if (!msg || strlen(msg) == 0) return;
 
     if (m_MessageCount == static_cast<int>(m_Messages.size()) &&
@@ -1153,7 +1166,9 @@ void MessageBoard::AddMessageInternal(const char *msg) {
         m_Messages[i + 1] = std::move(m_Messages[i]);
     }
 
-    m_Messages[0] = MessageUnit(msg, m_MaxTimer);
+    // Only process escapes if both requested and ANSI is enabled
+    bool shouldProcessEscapes = processEscapes && m_AnsiEnabled;
+    m_Messages[0] = MessageUnit(msg, m_MaxTimer, shouldProcessEscapes);
 
     if (m_MessageCount < static_cast<int>(m_Messages.size())) {
         ++m_MessageCount;
@@ -1161,7 +1176,7 @@ void MessageBoard::AddMessageInternal(const char *msg) {
     ++m_DisplayMessageCount;
 
     // Auto-scroll to bottom for new messages only if we were already at bottom
-    // or if scrolling isn't active (no overflow)
+    // or if scrolling isn't active
     if (m_IsCommandBarVisible && (m_ScrollToBottom || m_MaxScrollY <= 0.0f)) {
         m_ScrollToBottom = true;
     }
@@ -1189,7 +1204,7 @@ void MessageBoard::HandleScrolling(float contentHeight, float windowHeight) {
             m_ScrollY += windowHeight * 0.8f;
             m_ScrollToBottom = false;
         }
-        if (ImGui::IsKeyPressed(ImGuiKey_Home)) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Home, false)) {
             m_ScrollY = 0.0f;
             m_ScrollToBottom = false;
         }
@@ -1245,7 +1260,7 @@ float MessageBoard::CalculateTotalContentHeight(float wrapWidth) const {
     float totalHeight = verticalPadding;
     int processedCount = 0;
 
-    // Calculate height for all messages (not just visible ones when command bar is shown)
+    // Calculate height for all messages
     for (int i = 0; i < m_MessageCount; i++) {
         const MessageUnit &msg = m_Messages[i];
         if (m_IsCommandBarVisible || ShouldShowMessage(msg)) {
@@ -1277,8 +1292,8 @@ void MessageBoard::OnAfterEnd() {
 }
 
 // Public interface
-void MessageBoard::AddMessage(const char *msg) {
-    AddMessageInternal(msg);
+void MessageBoard::AddMessage(const char *msg, bool processEscapes) {
+    AddMessageInternal(msg, processEscapes);
 }
 
 void MessageBoard::Printf(const char *format, ...) {
@@ -1291,7 +1306,7 @@ void MessageBoard::Printf(const char *format, ...) {
     va_end(args);
 
     if (result > 0) {
-        AddMessage(buffer);
+        AddMessage(buffer); // Plain text
     }
 }
 
@@ -1311,8 +1326,8 @@ void MessageBoard::PrintfColored(ImU32 color, const char *format, ...) {
 
         char coloredBuffer[4200];
         snprintf(coloredBuffer, sizeof(coloredBuffer),
-                 "\\033[38;2;%u;%u;%um%s\\033[0m", r, g, b, buffer);
-        AddMessage(coloredBuffer);
+                 "\033[38;2;%u;%u;%um%s\033[0m", r, g, b, buffer);
+        AddMessage(coloredBuffer); // Use ANSI message for colored output
     }
 }
 

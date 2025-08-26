@@ -93,20 +93,19 @@ public:
         mutable float cachedHeight = -1.0f;
         mutable float cachedWrapWidth = -1.0f;
         bool hasControlSequences = false;
+        bool escapeProcessed = false;
 
         MessageUnit() = default;
-        MessageUnit(const char *msg, float timer);
+        MessageUnit(const char *msg, float timer, bool processEscapes = false);
 
-        // Move semantics for efficient array operations
         MessageUnit(MessageUnit &&other) noexcept = default;
         MessageUnit &operator=(MessageUnit &&other) noexcept = default;
 
-        // Copy operations
         MessageUnit(const MessageUnit &other) = default;
         MessageUnit &operator=(const MessageUnit &other) = default;
 
         const char *GetMessage() const { return originalText.c_str(); }
-        void SetMessage(const char *msg);
+        void SetMessage(const char *msg, bool processEscapes = false);
         float GetTimer() const { return timer; }
         void SetTimer(float t) { timer = t; }
         float GetTextHeight(float wrapWidth) const;
@@ -128,7 +127,7 @@ public:
     ~MessageBoard() override;
 
     // Message management
-    void AddMessage(const char *msg);
+    void AddMessage(const char *msg, bool processEscapes = false);
     void Printf(const char *format, ...);
     void PrintfColored(ImU32 color, const char *format, ...);
     void ClearMessages();
@@ -205,7 +204,7 @@ private:
 
     // Core operations
     void UpdateTimers(float deltaTime);
-    void AddMessageInternal(const char *msg);
+    void AddMessageInternal(const char *msg, bool processEscapes);
     void HandleScrolling(float contentHeight, float windowHeight);
     void UpdateScrollBounds(float contentHeight, float windowHeight);
     float CalculateTotalContentHeight(float wrapWidth) const;
