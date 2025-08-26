@@ -170,30 +170,14 @@ void ModOptionPage::OnAfterBegin() {
     // Navigation
     if (m_PageIndex > 0 && Bui::NavLeft()) PrevPage();
     if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 && Bui::NavRight()) NextPage();
+
+    // Update pending changes status
+    m_HasPendingChanges = HasPendingChanges();
 }
 
 void ModOptionPage::OnDraw() {
     if (!m_Category)
         return;
-
-    // Update pending changes status
-    m_HasPendingChanges = HasPendingChanges();
-
-    // Show save/revert buttons if there are pending changes
-    if (m_HasPendingChanges) {
-        const float x = Bui::GetButtonSizeInCoord(Bui::BUTTON_SMALL).x;
-        Bui::At(0.5f - (x + 0.04f), 0.795f, [&]() {
-            if (Bui::SmallButton("Save")) {
-                SaveChanges();
-            }
-        });
-
-        Bui::At(0.54f, 0.795f, [&]() {
-            if (Bui::SmallButton("Revert")) {
-                RevertChanges();
-            }
-        });
-    }
 
     const int n = GetPage() * 4;
 
@@ -243,6 +227,35 @@ void ModOptionPage::OnDraw() {
 
         return true;
     }, 0.35f, 0.24f, 0.14f, 4);
+}
+
+void ModOptionPage::OnEnd() {
+    if (!IsVisible())
+        return;
+
+    // Show save/revert buttons if there are pending changes
+    if (m_HasPendingChanges) {
+        const float x = Bui::GetButtonSizeInCoord(Bui::BUTTON_SMALL).x;
+        Bui::At(0.5f - (x + 0.04f), 0.85f, [&]() {
+            if (Bui::SmallButton("Save")) {
+                SaveChanges();
+            }
+        });
+
+        Bui::At(0.54f, 0.85f, [&]() {
+            if (Bui::SmallButton("Revert")) {
+                RevertChanges();
+            }
+        });
+    } else {
+        if (Bui::NavBack()) {
+            if (m_Menu) {
+                m_Menu->OpenPrevPage();
+            } else {
+                Close();
+            }
+        }
+    }
 }
 
 bool ModOptionPage::OnOpen() {
