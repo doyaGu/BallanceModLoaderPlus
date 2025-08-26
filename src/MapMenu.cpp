@@ -255,9 +255,6 @@ bool MapMenu::IsSupportedFileType(const std::wstring &path) {
 }
 
 void MapListPage::OnAfterBegin() {
-    if (!IsVisible())
-        return;
-
     Bui::Title(m_Title.c_str(), 0.07f);
 
     auto *maps = dynamic_cast<MapMenu *>(m_Menu)->GetCurrentMaps();

@@ -359,9 +359,6 @@ namespace Bui {
         }
 
         void OnAfterBegin() override {
-            if (!IsVisible())
-                return;
-
             Title(m_Title.c_str());
 
             // Navigation
@@ -539,9 +536,6 @@ namespace Bui {
     };
 
     inline void Page::OnEnd() {
-        if (!IsVisible())
-            return;
-
         if (NavBack()) {
             if (m_Menu) {
                 m_Menu->OpenPrevPage();
