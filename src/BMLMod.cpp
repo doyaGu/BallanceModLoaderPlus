@@ -455,7 +455,7 @@ void BMLMod::InitConfigs() {
     m_FontRanges = GetConfig()->GetProperty("GUI", "FontRanges");
     m_FontRanges->SetComment("The Unicode ranges of font glyph."
                              " To display Chinese characters correctly, this option should be set to Chinese or ChineseFull");
-    m_FontRanges->SetDefaultString("Default");
+    m_FontRanges->SetDefaultString("ChineseFull");
 
     m_EnableSecondaryFont = GetConfig()->GetProperty("GUI", "EnableSecondaryFont");
     m_EnableSecondaryFont->SetComment("Enable secondary font.");
@@ -472,7 +472,7 @@ void BMLMod::InitConfigs() {
     m_SecondaryFontRanges = GetConfig()->GetProperty("GUI", "SecondaryFontRanges");
     m_SecondaryFontRanges->SetComment("The Unicode ranges of secondary font glyph."
                                       " To display Chinese characters correctly, this option should be set to Chinese or ChineseFull");
-    m_SecondaryFontRanges->SetDefaultString("Default");
+    m_SecondaryFontRanges->SetDefaultString("ChineseFull");
 
     m_EnableIniSettings = GetConfig()->GetProperty("GUI", "EnableIniSettings");
     m_EnableIniSettings->SetComment("Enable loading and saving ImGui settings.");
