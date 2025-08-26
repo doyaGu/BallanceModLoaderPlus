@@ -8,14 +8,14 @@
 #include "BML/Bui.h"
 
 /**
- * MessageBoard - ANSI-capable scrollable message display system
+ * MessageBoard - ANSI color-capable scrollable message display system
  *
  * Features:
- * - Full ANSI escape sequence support (colors, formatting, cursor control)
+ * - ANSI color and text formatting support
  * - Automatic message expiration with timers
  * - Scrollable view when command bar is visible
- * - Unicode support including surrogate pairs
- * - Consistent text measurement and rendering
+ * - Unicode support
+ * - Style system integration for DPI scaling and theme support
  *
  * Two display modes:
  * 1. Normal mode: Messages fade out based on timer, no input allowed
@@ -26,8 +26,6 @@
  * - Page Up/Down: Large scroll steps
  * - Home/End: Go to top/bottom
  * - Up/Down arrows: Single line steps
- *
- * The scrollbar only appears when there's more content than fits in the window.
  */
 class MessageBoard : public Bui::Window {
 public:
@@ -52,7 +50,6 @@ public:
             ConsoleColor result = *this;
             if (reverse) {
                 std::swap(result.foreground, result.background);
-                // Ensure background has alpha if swapped
                 if ((result.background & 0xFF000000) == 0) {
                     result.background |= 0xFF000000;
                 }
@@ -64,26 +61,8 @@ public:
     struct TextSegment {
         std::string text;
         ConsoleColor color;
-        int cursorX = -1;
-        int cursorY = -1;
-        bool isClearScreen = false;
-        bool isClearLine = false;
 
         TextSegment(std::string t, ConsoleColor c) : text(std::move(t)), color(c) {}
-        TextSegment(std::string t, ConsoleColor c, int x, int y) : text(std::move(t)), color(c), cursorX(x), cursorY(y) {}
-
-        // Special control segments
-        static TextSegment ClearScreen(ConsoleColor c) {
-            TextSegment seg("", c);
-            seg.isClearScreen = true;
-            return seg;
-        }
-
-        static TextSegment ClearLine(ConsoleColor c) {
-            TextSegment seg("", c);
-            seg.isClearLine = true;
-            return seg;
-        }
     };
 
     struct MessageUnit {
@@ -92,14 +71,12 @@ public:
         float timer = 0.0f;
         mutable float cachedHeight = -1.0f;
         mutable float cachedWrapWidth = -1.0f;
-        bool hasControlSequences = false;
 
         MessageUnit() = default;
         MessageUnit(const char *msg, float timer);
 
         MessageUnit(MessageUnit &&other) noexcept = default;
         MessageUnit &operator=(MessageUnit &&other) noexcept = default;
-
         MessageUnit(const MessageUnit &other) = default;
         MessageUnit &operator=(const MessageUnit &other) = default;
 
@@ -112,9 +89,8 @@ public:
 
     private:
         void ParseAnsiEscapeCodes();
-        static ConsoleColor ParseAnsiColor(const std::string &sequence, ConsoleColor currentColor);
-        static bool ParseCursorMovement(const std::string &sequence, int &deltaX, int &deltaY, bool &absolute);
-        static bool ParseScreenControl(const std::string &sequence, bool &clearScreen, bool &clearLine);
+
+        static ConsoleColor ParseAnsiColorSequence(const std::string &sequence, const ConsoleColor &currentColor);
         static ImU32 GetStandardColor(int colorCode, bool bright = false);
         static ImU32 Get256Color(int colorIndex);
         static ImU32 GetRgbColor(int r, int g, int b);
@@ -132,28 +108,13 @@ public:
 
     // Settings
     void SetMaxTimer(float maxTimer) { m_MaxTimer = std::max(100.0f, maxTimer); }
-    void SetCommandBarVisible(bool visible); // When true, shows all messages and enables scrolling when needed
+    void SetCommandBarVisible(bool visible);
     void SetAnsiEnabled(bool enabled) { m_AnsiEnabled = enabled; }
 
     // Scrolling control (only active when command bar is visible)
-    void SetScrollPosition(float scrollY) {
-        if (m_IsCommandBarVisible && m_MaxScrollY > 0.0f) {
-            m_ScrollY = std::clamp(scrollY, 0.0f, m_MaxScrollY);
-            m_ScrollToBottom = (m_ScrollY >= m_MaxScrollY - 1.0f);
-        }
-    }
-    void ScrollToTop() {
-        if (m_IsCommandBarVisible) {
-            m_ScrollY = 0.0f;
-            m_ScrollToBottom = false;
-        }
-    }
-    void ScrollToBottom() {
-        if (m_IsCommandBarVisible) {
-            m_ScrollY = m_MaxScrollY;
-            m_ScrollToBottom = true;
-        }
-    }
+    void SetScrollPosition(float scrollY);
+    void ScrollToTop();
+    void ScrollToBottom();
 
     // Getters
     float GetMaxTimer() const { return m_MaxTimer; }
@@ -171,14 +132,7 @@ protected:
     void OnPostEnd() override;
 
 private:
-    // Cursor save/restore stack
-    struct CursorPosition {
-        int x = 0, y = 0;
-        CursorPosition() = default;
-        CursorPosition(int x, int y) : x(x), y(y) {}
-    };
-
-    // Visibility and state helpers
+    // Visibility and state
     bool ShouldShowMessage(const MessageUnit &msg) const;
     float GetMessageAlpha(const MessageUnit &msg) const;
     int CountVisibleMessages() const;
@@ -186,13 +140,16 @@ private:
 
     // Layout calculation
     float CalculateContentHeight(float wrapWidth) const;
+    float CalculateDisplayHeight(float contentHeight) const;
 
-    // Rendering system
+    // Rendering
     void RenderMessages(ImDrawList *drawList, ImVec2 startPos, float wrapWidth);
     void DrawMessageText(ImDrawList *drawList, const MessageUnit &message, const ImVec2 &pos, float wrapWidth, float alpha);
-    void DrawTextSegment(ImDrawList *drawList, const TextSegment &segment, ImVec2 &currentPos, float wrapWidth, float alpha, const ImVec2 &contentStart, const ImVec2 &contentSize);
+    void DrawTextSegment(ImDrawList *drawList, const TextSegment &segment, ImVec2 &currentPos, float wrapWidth, float alpha);
     void RenderText(ImDrawList *drawList, const std::string &text, const ImVec2 &pos, ImU32 color, const ConsoleColor &effects) const;
     void DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &contentPos, const ImVec2 &contentSize);
+
+    // Text processing
     static void HandleSpecialCharacter(char ch, ImVec2 &currentPos, const ImVec2 &startPos, float wrapWidth);
 
     // Core operations
@@ -200,23 +157,29 @@ private:
     void AddMessageInternal(const char *msg);
     void HandleScrolling(float contentHeight, float windowHeight);
     void UpdateScrollBounds(float contentHeight, float windowHeight);
-    float CalculateTotalContentHeight(float wrapWidth) const;
 
     // Message storage
     std::vector<MessageUnit> m_Messages;
     int m_MessageCount = 0;
-    int m_DisplayMessageCount = 0; // Count of messages with active timers
+    int m_DisplayMessageCount = 0;
 
     // Configuration
     bool m_IsCommandBarVisible = false;
     bool m_AnsiEnabled = true;
-    float m_MaxTimer = 6000.0f; // 6 seconds default (assuming milliseconds)
-    float m_BlinkTime = 0.0f; // Global blink time for consistent blinking
+    float m_MaxTimer = 6000.0f;
+    float m_BlinkTime = 0.0f;
 
     // Scrolling state
     float m_ScrollY = 0.0f;
     float m_MaxScrollY = 0.0f;
-    bool m_ScrollToBottom = true; // Auto-scroll to bottom for new messages
+    bool m_ScrollToBottom = true;
+
+    // Style-derived layout cache (updated in OnPreBegin before style overrides)
+    float m_PadX = 8.0f;           // Content area horizontal padding
+    float m_PadY = 8.0f;           // Content area vertical padding
+    float m_MessageGap = 4.0f;     // Spacing between message blocks
+    float m_ScrollbarW = 8.0f;     // Scrollbar width
+    float m_ScrollbarPad = 2.0f;   // Scrollbar edge padding
 };
 
 #endif // BML_MESSAGEBOARD_H

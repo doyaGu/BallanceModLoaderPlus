@@ -5,10 +5,8 @@
 #include <cstdarg>
 #include <algorithm>
 #include <regex>
-#include <stack>
 
 #include "imgui_internal.h"
-
 #include "ModContext.h"
 
 namespace {
@@ -21,27 +19,26 @@ namespace {
         return IM_COL32(r, g, b, a);
     }
 
-    // Apply blink effect (simple alpha modulation)
+    // Apply blink effect (alpha modulation)
     ImU32 ApplyBlinkEffect(ImU32 color, float time) {
-        const float alpha = (std::sin(time * 4.0f) + 1.0f) * 0.5f; // 0-1 range
+        const float alpha = (std::sin(time * 4.0f) + 1.0f) * 0.5f;
         const ImU32 originalAlpha = (color >> IM_COL32_A_SHIFT) & 0xFF;
         const ImU32 newAlpha = static_cast<ImU32>(originalAlpha * alpha);
         return (color & 0x00FFFFFF) | (newAlpha << IM_COL32_A_SHIFT);
     }
 
-    // Helper to calculate wrapped text size consistently
+    // Calculate wrapped text size consistently
     ImVec2 CalcWrappedTextSize(const std::string &text, float wrapWidth) {
         if (text.empty()) return ImVec2(0, 0);
-
-        if (wrapWidth <= 0) {
-            return ImGui::CalcTextSize(text.c_str());
-        }
-
+        if (wrapWidth <= 0) return ImGui::CalcTextSize(text.c_str());
         return ImGui::CalcTextSize(text.c_str(), nullptr, false, wrapWidth);
     }
 }
 
+// =============================================================================
 // MessageUnit Implementation
+// =============================================================================
+
 MessageBoard::MessageUnit::MessageUnit(const char *msg, float timer)
     : originalText(msg ? msg : ""), timer(timer) {
     if (msg && strlen(msg) > 0) {
@@ -51,15 +48,13 @@ MessageBoard::MessageUnit::MessageUnit(const char *msg, float timer)
 
 void MessageBoard::MessageUnit::SetMessage(const char *msg) {
     if (!msg) return;
+
     originalText = msg;
-
     segments.clear();
-    hasControlSequences = false;
-
-    ParseAnsiEscapeCodes();
-
     cachedHeight = -1.0f;
     cachedWrapWidth = -1.0f;
+
+    ParseAnsiEscapeCodes();
 }
 
 float MessageBoard::MessageUnit::GetTextHeight(float wrapWidth) const {
@@ -72,10 +67,7 @@ float MessageBoard::MessageUnit::GetTextHeight(float wrapWidth) const {
             const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
 
             for (const auto &segment : segments) {
-                // Skip control segments for height calculation
-                if (segment.isClearScreen || segment.isClearLine || segment.text.empty()) {
-                    continue;
-                }
+                if (segment.text.empty()) continue;
 
                 size_t pos = 0;
                 while (pos < segment.text.length()) {
@@ -128,28 +120,22 @@ void MessageBoard::MessageUnit::Reset() {
     timer = 0.0f;
     cachedHeight = -1.0f;
     cachedWrapWidth = -1.0f;
-    hasControlSequences = false;
 }
 
 void MessageBoard::MessageUnit::ParseAnsiEscapeCodes() {
     segments.clear();
-    hasControlSequences = false;
 
     if (originalText.empty()) {
         return;
     }
 
     const char *p = originalText.c_str();
-
     ConsoleColor currentColor;
     std::string currentSegment;
-    int virtualCursorX = 0;
-    int virtualCursorY = 0;
-    std::stack<CursorPosition> cursorStack;
 
     while (*p) {
         if (*p == '\033' && *(p + 1) == '[') {
-            // Save current segment
+            // Save current text segment
             if (!currentSegment.empty()) {
                 segments.emplace_back(std::move(currentSegment), currentColor);
                 currentSegment.clear();
@@ -159,86 +145,16 @@ void MessageBoard::MessageUnit::ParseAnsiEscapeCodes() {
             p += 2; // Skip \033[
             std::string sequence;
 
-            while (*p && *p != 'm' && *p != 'A' && *p != 'B' && *p != 'C' && *p != 'D' &&
-                   *p != 'H' && *p != 'f' && *p != 'J' && *p != 'K' && *p != 's' && *p != 'u' &&
-                   sequence.length() < 50) {
+            // Only parse color/style sequences (ending with 'm')
+            while (*p && *p != 'm' && sequence.length() < 50) {
                 sequence += *p++;
             }
 
-            if (*p) {
-                char command = *p++;
-                hasControlSequences = true;
-
-                switch (command) {
-                    case 'm': // Color and style
-                        if (sequence == "0" || sequence.empty()) {
-                            currentColor = ConsoleColor(); // Reset to defaults
-                        } else {
-                            currentColor = ParseAnsiColor(sequence, currentColor);
-                        }
-                        break;
-
-                    case 'A': case 'B': case 'C': case 'D': // Cursor movement
-                    case 'H': case 'f': { // Cursor position
-                        int deltaX = 0, deltaY = 0;
-                        bool absolute = false;
-                        if (ParseCursorMovement(sequence + command, deltaX, deltaY, absolute)) {
-                            if (absolute) {
-                                virtualCursorX = deltaX;
-                                virtualCursorY = deltaY;
-                            } else {
-                                virtualCursorX += deltaX;
-                                virtualCursorY += deltaY;
-                            }
-                            // Create segment with cursor position info
-                            segments.emplace_back("", currentColor, virtualCursorX, virtualCursorY);
-                        }
-                        break;
-                    }
-
-                    case 'J': { // Screen clearing
-                        int mode = sequence.empty() ? 0 : std::stoi(sequence);
-                        if (mode == 2) { // Clear entire screen
-                            segments.push_back(TextSegment::ClearScreen(currentColor));
-                            virtualCursorX = 0;
-                            virtualCursorY = 0;
-                        }
-                        break;
-                    }
-
-                    case 'K': { // Line clearing
-                        int mode = sequence.empty() ? 0 : std::stoi(sequence);
-                        segments.push_back(TextSegment::ClearLine(currentColor));
-                        if (mode == 0 || mode == 2) { // Clear to end or entire line
-                            virtualCursorX = 0;
-                        }
-                        break;
-                    }
-
-                    case 's': // Save cursor position
-                        cursorStack.emplace(virtualCursorX, virtualCursorY);
-                        break;
-
-                    case 'u': // Restore cursor position
-                        if (!cursorStack.empty()) {
-                            CursorPosition pos = cursorStack.top();
-                            cursorStack.pop();
-                            virtualCursorX = pos.x;
-                            virtualCursorY = pos.y;
-                            segments.emplace_back("", currentColor, virtualCursorX, virtualCursorY);
-                        }
-                        break;
-
-                    default:
-                        // Unknown sequence - treat as literal
-                        currentSegment += '\033';
-                        currentSegment += '[';
-                        currentSegment += sequence;
-                        currentSegment += command;
-                        break;
-                }
+            if (*p == 'm') {
+                p++; // Skip the 'm'
+                currentColor = ParseAnsiColorSequence(sequence, currentColor);
             } else {
-                // Invalid sequence - treat as literal
+                // Invalid sequence - treat as literal text
                 currentSegment += '\033';
                 currentSegment += '[';
                 currentSegment += sequence;
@@ -259,8 +175,8 @@ void MessageBoard::MessageUnit::ParseAnsiEscapeCodes() {
     }
 }
 
-MessageBoard::ConsoleColor MessageBoard::MessageUnit::ParseAnsiColor(const std::string &sequence, ConsoleColor currentColor) {
-    ConsoleColor color = currentColor; // Start with current state
+MessageBoard::ConsoleColor MessageBoard::MessageUnit::ParseAnsiColorSequence(const std::string &sequence, const ConsoleColor &currentColor) {
+    ConsoleColor color = currentColor;
     if (sequence.empty()) return color;
 
     // Parse semicolon-separated codes
@@ -273,7 +189,6 @@ MessageBoard::ConsoleColor MessageBoard::MessageUnit::ParseAnsiColor(const std::
                 if (!codeStr.empty() && std::all_of(codeStr.begin(), codeStr.end(), ::isdigit)) {
                     int code = std::stoi(codeStr);
                     if (code >= 0) {
-                        // Remove arbitrary upper limit
                         codes.push_back(code);
                     }
                 }
@@ -282,6 +197,7 @@ MessageBoard::ConsoleColor MessageBoard::MessageUnit::ParseAnsiColor(const std::
         }
     }
 
+    // Process each color code
     for (size_t i = 0; i < codes.size(); ++i) {
         int code = codes[i];
 
@@ -328,107 +244,32 @@ MessageBoard::ConsoleColor MessageBoard::MessageUnit::ParseAnsiColor(const std::
             // Default foreground color
             color.foreground = IM_COL32_WHITE;
         } else if (code == 49) {
-            // Default background color (transparent)
+            // Default background color
             color.background = IM_COL32(0, 0, 0, 0);
-        } else if (code == 1) {
-            color.bold = true;
-        } else if (code == 2) {
-            color.dim = true;
-        } else if (code == 3) {
-            color.italic = true;
-        } else if (code == 4) {
-            color.underline = true;
-        } else if (code == 5 || code == 6) {
-            color.blink = true;
-        } else if (code == 7) {
-            color.reverse = true;
-        } else if (code == 8) {
-            color.hidden = true;
-        } else if (code == 9) {
-            color.strikethrough = true;
-        } else if (code == 21 || code == 22) {
-            color.bold = false;
-            color.dim = false;
-        } else if (code == 23) {
-            color.italic = false;
-        } else if (code == 24) {
-            color.underline = false;
-        } else if (code == 25) {
-            color.blink = false;
-        } else if (code == 27) {
-            color.reverse = false;
-        } else if (code == 28) {
-            color.hidden = false;
-        } else if (code == 29) {
-            color.strikethrough = false;
+        } else {
+            // Style codes
+            switch (code) {
+            case 1: color.bold = true; break;
+            case 2: color.dim = true; break;
+            case 3: color.italic = true; break;
+            case 4: color.underline = true; break;
+            case 5: case 6: color.blink = true; break;
+            case 7: color.reverse = true; break;
+            case 8: color.hidden = true; break;
+            case 9: color.strikethrough = true; break;
+            case 21: case 22: color.bold = false; color.dim = false; break;
+            case 23: color.italic = false; break;
+            case 24: color.underline = false; break;
+            case 25: color.blink = false; break;
+            case 27: color.reverse = false; break;
+            case 28: color.hidden = false; break;
+            case 29: color.strikethrough = false; break;
+            default: break; // Ignore unknown codes
+            }
         }
     }
 
     return color;
-}
-
-bool MessageBoard::MessageUnit::ParseCursorMovement(const std::string &sequence, int &deltaX, int &deltaY, bool &absolute) {
-    if (sequence.empty()) return false;
-
-    char command = sequence.back();
-    std::string params = sequence.substr(0, sequence.length() - 1);
-
-    deltaX = 0;
-    deltaY = 0;
-    absolute = false;
-
-    switch (command) {
-        case 'A': // Cursor up
-            deltaY = params.empty() ? -1 : -std::stoi(params);
-            break;
-        case 'B': // Cursor down
-            deltaY = params.empty() ? 1 : std::stoi(params);
-            break;
-        case 'C': // Cursor right
-            deltaX = params.empty() ? 1 : std::stoi(params);
-            break;
-        case 'D': // Cursor left
-            deltaX = params.empty() ? -1 : -std::stoi(params);
-            break;
-        case 'H': case 'f': { // Cursor position
-            absolute = true;
-            size_t semicolon = params.find(';');
-            if (semicolon != std::string::npos) {
-                deltaY = params.empty() || params.substr(0, semicolon).empty() ? 0 : std::stoi(params.substr(0, semicolon)) - 1;
-                deltaX = params.substr(semicolon + 1).empty() ? 0 : std::stoi(params.substr(semicolon + 1)) - 1;
-            } else {
-                deltaY = params.empty() ? 0 : std::stoi(params) - 1;
-                deltaX = 0;
-            }
-            break;
-        }
-        default:
-            return false;
-    }
-    return true;
-}
-
-bool MessageBoard::MessageUnit::ParseScreenControl(const std::string &sequence, bool &clearScreen, bool &clearLine) {
-    if (sequence.empty()) return false;
-
-    char command = sequence.back();
-    std::string params = sequence.substr(0, sequence.length() - 1);
-    int param = params.empty() ? 0 : std::stoi(params);
-
-    clearScreen = false;
-    clearLine = false;
-
-    switch (command) {
-        case 'J': // Clear screen
-            clearScreen = (param == 2); // Only support full screen clear
-            break;
-        case 'K': // Clear line
-            clearLine = true; // Support line clear
-            break;
-        default:
-            return false;
-    }
-    return true;
 }
 
 ImU32 MessageBoard::MessageUnit::GetStandardColor(int colorCode, bool bright) {
@@ -466,13 +307,12 @@ ImU32 MessageBoard::MessageUnit::Get256Color(int colorIndex) {
     if (colorIndex < 16) {
         return GetStandardColor(colorIndex % 8, colorIndex >= 8);
     } else if (colorIndex < 232) {
-        // 6x6x6 color cube with xterm values
+        // 6x6x6 color cube
         int idx = colorIndex - 16;
         int r6 = (idx / 36) % 6;
         int g6 = ((idx % 36) / 6) % 6;
         int b6 = idx % 6;
 
-        // xterm 256-color cube values
         static const int values[6] = {0, 95, 135, 175, 215, 255};
         int r = values[r6];
         int g = values[g6];
@@ -495,13 +335,20 @@ ImU32 MessageBoard::MessageUnit::GetRgbColor(int r, int g, int b) {
     );
 }
 
+// =============================================================================
 // MessageBoard Implementation
+// =============================================================================
+
 MessageBoard::MessageBoard(int size) : Bui::Window("MessageBoard") {
     if (size < 1) size = 500;
     m_Messages.resize(size);
 }
 
 MessageBoard::~MessageBoard() = default;
+
+// =============================================================================
+// Configuration and State Management
+// =============================================================================
 
 ImGuiWindowFlags MessageBoard::GetFlags() {
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration |
@@ -513,7 +360,6 @@ ImGuiWindowFlags MessageBoard::GetFlags() {
                              ImGuiWindowFlags_NoFocusOnAppearing |
                              ImGuiWindowFlags_NoBringToFrontOnFocus;
 
-    // Allow input when command bar is visible for scrolling
     if (!m_IsCommandBarVisible) {
         flags |= ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav;
     }
@@ -526,11 +372,10 @@ void MessageBoard::SetCommandBarVisible(bool visible) {
         m_IsCommandBarVisible = visible;
 
         if (visible) {
-            // When showing command bar, start scrolled to bottom
             m_ScrollToBottom = true;
             Show();
         } else {
-            // When hiding command bar, reset all scroll state
+            // Reset scroll state when hiding command bar
             m_ScrollY = 0.0f;
             m_MaxScrollY = 0.0f;
             m_ScrollToBottom = true;
@@ -538,20 +383,45 @@ void MessageBoard::SetCommandBarVisible(bool visible) {
     }
 }
 
+void MessageBoard::SetScrollPosition(float scrollY) {
+    if (m_IsCommandBarVisible && m_MaxScrollY > 0.0f) {
+        m_ScrollY = std::clamp(scrollY, 0.0f, m_MaxScrollY);
+        m_ScrollToBottom = (m_ScrollY >= m_MaxScrollY - 0.5f);
+    }
+}
+
+void MessageBoard::ScrollToTop() {
+    if (m_IsCommandBarVisible) {
+        m_ScrollY = 0.0f;
+        m_ScrollToBottom = false;
+    }
+}
+
+void MessageBoard::ScrollToBottom() {
+    if (m_IsCommandBarVisible) {
+        m_ScrollY = m_MaxScrollY;
+        m_ScrollToBottom = true;
+    }
+}
+
+// =============================================================================
+// Height Calculation System (Redesigned)
+// =============================================================================
+
 bool MessageBoard::ShouldShowMessage(const MessageUnit &msg) const {
     return m_IsCommandBarVisible || msg.GetTimer() > 0;
 }
 
 float MessageBoard::GetMessageAlpha(const MessageUnit &msg) const {
     if (m_IsCommandBarVisible) {
-        return 0.7f; // Dimmed when command bar is visible
+        return 180.0f / 255.0f;
     }
 
     if (msg.GetTimer() <= 0) {
-        return 0.0f; // Hidden if timer expired
+        return 0.0f;
     }
 
-    return std::min(128.0f, msg.GetTimer() / 20.0f) / 255.0f;
+    return std::min(180.0f, msg.GetTimer() / 20.0f) / 255.0f;
 }
 
 int MessageBoard::CountVisibleMessages() const {
@@ -564,33 +434,53 @@ int MessageBoard::CountVisibleMessages() const {
     return count;
 }
 
-float MessageBoard::CalculateContentHeight(float wrapWidth) const {
-    const float messageGap = 4.0f;
-    const float verticalPadding = 16.0f;
+bool MessageBoard::HasVisibleContent() const {
+    if (m_IsCommandBarVisible) {
+        return m_MessageCount > 0;
+    }
+    return m_DisplayMessageCount > 0;
+}
 
-    float totalHeight = verticalPadding;
+float MessageBoard::CalculateContentHeight(float wrapWidth) const {
+    float contentHeight = 0.0f;
     int visibleCount = 0;
 
     for (int i = 0; i < m_MessageCount; i++) {
         const MessageUnit &msg = m_Messages[i];
         if (ShouldShowMessage(msg)) {
-            totalHeight += msg.GetTextHeight(wrapWidth);
+            contentHeight += msg.GetTextHeight(wrapWidth);
             if (visibleCount > 0) {
-                totalHeight += messageGap;
+                contentHeight += m_MessageGap;
             }
             visibleCount++;
         }
     }
 
-    const float minHeight = ImGui::GetTextLineHeightWithSpacing() + verticalPadding;
-    if (visibleCount > 0 && totalHeight < minHeight) {
-        totalHeight = minHeight;
-    }
-
-    return totalHeight;
+    // Return pure content height (no padding)
+    return std::max(contentHeight, ImGui::GetTextLineHeightWithSpacing());
 }
 
+float MessageBoard::CalculateDisplayHeight(float contentHeight) const {
+    // Add padding to content height to get total display height needed
+    return contentHeight + m_PadY * 2.0f;
+}
+
+// =============================================================================
+// Window Rendering
+// =============================================================================
+
 void MessageBoard::OnPreBegin() {
+    // Pre-read style values BEFORE pushing style overrides
+    const ImGuiStyle &style = ImGui::GetStyle();
+
+    // Cache style-derived layout parameters with fallbacks
+    m_PadX = (style.WindowPadding.x > 0.0f) ? style.WindowPadding.x : (style.FramePadding.x * 2.0f);
+    m_PadY = (style.WindowPadding.y > 0.0f) ? style.WindowPadding.y : (style.FramePadding.y * 2.0f);
+    m_MessageGap = (style.ItemSpacing.y > 0.0f) ? style.ItemSpacing.y : 4.0f;
+    m_ScrollbarW = (style.ScrollbarSize > 0.0f) ? style.ScrollbarSize : 8.0f;
+    m_ScrollbarPad = (style.ItemInnerSpacing.x > 0.0f) ? (style.ItemInnerSpacing.x * 0.5f) : 2.0f;
+
+    // Push style overrides
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
@@ -598,18 +488,20 @@ void MessageBoard::OnPreBegin() {
 
     const ImVec2 vpSize = ImGui::GetMainViewport()->Size;
     const float windowWidth = vpSize.x * 0.96f;
-    const float wrapWidth = windowWidth - 16.0f;
+    const float wrapWidth = windowWidth - m_PadX * 2.0f;
+    const float maxDisplayHeight = vpSize.y * 0.8f;
 
-    const float maxHeight = vpSize.y * 0.7f;
+    const float contentHeight = CalculateContentHeight(wrapWidth);
+    const float displayHeight = CalculateDisplayHeight(contentHeight);
+    float windowHeight = std::min(displayHeight, maxDisplayHeight);
 
-    float actualContentHeight = CalculateContentHeight(wrapWidth);
-    float contentHeight = std::min(actualContentHeight, maxHeight);
+    const float bottomAnchor = vpSize.y * 0.9f;
+    float posY = bottomAnchor - windowHeight;
 
     const float posX = vpSize.x * 0.02f;
-    const float posY = vpSize.y * 0.9f - contentHeight;
 
     ImGui::SetNextWindowPos(ImVec2(posX, posY), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(windowWidth, contentHeight), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(windowWidth, windowHeight), ImGuiCond_Always);
 }
 
 void MessageBoard::OnDraw() {
@@ -621,219 +513,96 @@ void MessageBoard::OnDraw() {
 
     const ImVec2 contentPos = ImGui::GetCursorScreenPos();
     const ImVec2 contentSize = ImGui::GetContentRegionAvail();
-    const float wrapWidth = contentSize.x - 16.0f;
+    const float wrapWidth = contentSize.x - m_PadX * 2.0f;
+
+    // Calculate content dimensions for scrolling
+    const float contentHeight = CalculateContentHeight(wrapWidth);
+    const float availableContentHeight = contentSize.y - m_PadY * 2.0f;
+
     bool needsScrollbar = false;
 
     // Handle scrolling when command bar is visible
     if (m_IsCommandBarVisible) {
-        const float totalContentHeight = CalculateTotalContentHeight(wrapWidth);
-        const float windowHeight = contentSize.y - 16.0f; // Account for padding
-
-        needsScrollbar = totalContentHeight > windowHeight;
+        needsScrollbar = contentHeight > availableContentHeight;
 
         if (needsScrollbar) {
-            UpdateScrollBounds(totalContentHeight, windowHeight);
-            HandleScrolling(totalContentHeight, windowHeight);
+            UpdateScrollBounds(contentHeight, availableContentHeight);
+            HandleScrolling(contentHeight, availableContentHeight);
         } else {
-            // No scrolling needed, reset scroll state
             m_ScrollY = 0.0f;
             m_MaxScrollY = 0.0f;
             m_ScrollToBottom = true;
         }
-    } else {
-        // Reset scroll when command bar is hidden
-        m_ScrollY = 0.0f;
-        m_MaxScrollY = 0.0f;
-        m_ScrollToBottom = true;
     }
 
     ImDrawList *drawList = ImGui::GetWindowDrawList();
-    ImVec2 startPos = ImVec2(contentPos.x + 8.0f, contentPos.y + 8.0f - m_ScrollY);
+    ImVec2 startPos = ImVec2(contentPos.x + m_PadX, contentPos.y + m_PadY - m_ScrollY);
 
     // Set up clipping for scrollable content
     if (m_IsCommandBarVisible) {
-        drawList->PushClipRect(
-            contentPos,
-            ImVec2(contentPos.x + contentSize.x, contentPos.y + contentSize.y),
-            true
-        );
+        const ImVec2 clipMin = ImVec2(contentPos.x + m_PadX, contentPos.y + m_PadY);
+        const ImVec2 clipMax = ImVec2(contentPos.x + contentSize.x - m_PadX, contentPos.y + contentSize.y - m_PadY);
+        drawList->PushClipRect(clipMin, clipMax, true);
     }
 
     RenderMessages(drawList, startPos, wrapWidth);
 
     if (m_IsCommandBarVisible) {
         drawList->PopClipRect();
-
-        // Only draw scroll indicators when scrolling is actually needed
         if (needsScrollbar && m_MaxScrollY > 0.0f) {
             DrawScrollIndicators(drawList, contentPos, contentSize);
         }
     }
 }
 
-bool MessageBoard::HasVisibleContent() const {
-    if (m_IsCommandBarVisible) {
-        return m_MessageCount > 0;
-    }
-    return m_DisplayMessageCount > 0;
-}
-
 void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float wrapWidth) {
-    const float messageGap = 4.0f;
     ImVec4 bgColor = Bui::GetMenuColor();
     ImVec2 currentPos = startPos;
 
     for (int i = m_MessageCount - 1; i >= 0; i--) {
         const MessageUnit &msg = m_Messages[i];
-
-        // Show all messages when command bar is visible, otherwise only visible ones
         bool shouldShow = m_IsCommandBarVisible || ShouldShowMessage(msg);
 
         if (shouldShow) {
-            float alpha = GetMessageAlpha(msg);
-
+            const float alpha = GetMessageAlpha(msg);
             const float msgHeight = msg.GetTextHeight(wrapWidth);
 
+            // Draw background with style-derived padding
             drawList->AddRectFilled(
-                ImVec2(currentPos.x - 4.0f, currentPos.y - 2.0f),
-                ImVec2(currentPos.x + wrapWidth + 4.0f, currentPos.y + msgHeight + 2.0f),
+                ImVec2(currentPos.x - m_PadX * 0.5f, currentPos.y - m_PadY * 0.25f),
+                ImVec2(currentPos.x + wrapWidth + m_PadX * 0.5f, currentPos.y + msgHeight + m_PadY * 0.25f),
                 ImGui::GetColorU32(ImVec4(bgColor.x, bgColor.y, bgColor.z, bgColor.w * alpha))
             );
 
             DrawMessageText(drawList, msg, currentPos, wrapWidth, alpha);
-
-            currentPos.y += msgHeight + messageGap;
+            currentPos.y += msgHeight + m_MessageGap;
         }
-    }
-}
-
-void MessageBoard::DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &contentPos, const ImVec2 &contentSize) {
-    if (m_MaxScrollY <= 0.0f) return; // Don't draw if no scrolling is needed
-
-    const float scrollbarWidth = 8.0f;
-    const float scrollbarPadding = 2.0f;
-
-    // Scrollbar background
-    const ImVec2 scrollbarStart = ImVec2(
-        contentPos.x + contentSize.x - scrollbarWidth - scrollbarPadding,
-        contentPos.y + scrollbarPadding
-    );
-    const ImVec2 scrollbarEnd = ImVec2(
-        contentPos.x + contentSize.x - scrollbarPadding,
-        contentPos.y + contentSize.y - scrollbarPadding
-    );
-
-    drawList->AddRectFilled(
-        scrollbarStart,
-        scrollbarEnd,
-        IM_COL32(60, 60, 60, 100) // Semi-transparent dark background
-    );
-
-    // Scrollbar handle
-    const float scrollbarHeight = scrollbarEnd.y - scrollbarStart.y;
-    const float totalContentHeight = m_MaxScrollY + (contentSize.y - 16.0f); // Total height including visible area
-    const float visibleRatio = (contentSize.y - 16.0f) / totalContentHeight;
-    const float handleHeight = std::max(20.0f, scrollbarHeight * visibleRatio);
-    const float handlePos = (m_ScrollY / m_MaxScrollY) * (scrollbarHeight - handleHeight);
-
-    const ImVec2 handleStart = ImVec2(
-        scrollbarStart.x + 1.0f,
-        scrollbarStart.y + handlePos
-    );
-    const ImVec2 handleEnd = ImVec2(
-        scrollbarEnd.x - 1.0f,
-        handleStart.y + handleHeight
-    );
-
-    drawList->AddRectFilled(
-        handleStart,
-        handleEnd,
-        IM_COL32(150, 150, 150, 200) // Semi-transparent light handle
-    );
-
-    // Show scroll position indicator only if we're not at the top
-    if (m_ScrollY > 0.0f || !m_ScrollToBottom) {
-        const float scrollPercent = (m_MaxScrollY > 0) ? (m_ScrollY / m_MaxScrollY) * 100.0f : 0.0f;
-        char scrollText[32];
-        snprintf(scrollText, sizeof(scrollText), "%.0f%%", scrollPercent);
-
-        const ImVec2 textSize = ImGui::CalcTextSize(scrollText);
-        const ImVec2 textPos = ImVec2(
-            contentPos.x + contentSize.x - textSize.x - scrollbarWidth - scrollbarPadding - 8.0f,
-            contentPos.y + 4.0f
-        );
-
-        // Text background
-        drawList->AddRectFilled(
-            ImVec2(textPos.x - 2.0f, textPos.y - 2.0f),
-            ImVec2(textPos.x + textSize.x + 2.0f, textPos.y + textSize.y + 2.0f),
-            IM_COL32(0, 0, 0, 150)
-        );
-
-        // Text
-        drawList->AddText(textPos, IM_COL32(255, 255, 255, 200), scrollText);
     }
 }
 
 void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &message, const ImVec2 &startPos, float wrapWidth, float alpha) {
     ImVec2 currentPos = startPos;
-    const ImVec2 contentSize = ImGui::GetContentRegionAvail();
 
     for (const auto &segment : message.segments) {
-        // Handle cursor positioning if specified
-        if (segment.cursorX >= 0 || segment.cursorY >= 0) {
-            if (segment.cursorX >= 0) {
-                currentPos.x = startPos.x + segment.cursorX * ImGui::CalcTextSize(" ").x;
-            }
-            if (segment.cursorY >= 0) {
-                currentPos.y = startPos.y + segment.cursorY * ImGui::GetTextLineHeightWithSpacing();
-            }
-        }
-
-        DrawTextSegment(drawList, segment, currentPos, wrapWidth, alpha, startPos, contentSize);
+        DrawTextSegment(drawList, segment, currentPos, wrapWidth, alpha);
     }
 }
 
-void MessageBoard::DrawTextSegment(ImDrawList *drawList, const TextSegment &segment, ImVec2 &currentPos, float wrapWidth, float alpha, const ImVec2 &contentStart, const ImVec2 &contentSize) {
-    // Handle control segments
-    if (segment.isClearScreen) {
-        // Clear the entire content area
-        drawList->AddRectFilled(
-            contentStart,
-            ImVec2(contentStart.x + contentSize.x, contentStart.y + contentSize.y),
-            IM_COL32(0, 0, 0, static_cast<int>(alpha * 255))
-        );
-        currentPos = contentStart;
-        return;
-    }
-
-    if (segment.isClearLine) {
-        // Clear from current position to end of line
-        const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
-        drawList->AddRectFilled(
-            ImVec2(currentPos.x, currentPos.y),
-            ImVec2(contentStart.x + wrapWidth, currentPos.y + lineHeight),
-            IM_COL32(0, 0, 0, static_cast<int>(alpha * 255))
-        );
-        return;
-    }
-
+void MessageBoard::DrawTextSegment(ImDrawList *drawList, const TextSegment &segment, ImVec2 &currentPos, float wrapWidth, float alpha) {
     if (segment.text.empty()) return;
 
-    const ImVec2 startPos = contentStart;
+    const ImVec2 startPos = ImVec2(currentPos.x, currentPos.y);
     const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
 
-    // Get rendered color (with reverse effect applied)
+    // Get rendered color with reverse effect applied
     ConsoleColor renderColor = m_AnsiEnabled
                                    ? segment.color.GetRendered()
                                    : ConsoleColor(segment.color.foreground, IM_COL32(0, 0, 0, 0));
 
-    // Apply alpha while preserving original alpha information
+    // Apply alpha to colors
     const auto applyAlpha = [alpha](ImU32 color) {
         const ImU32 originalAlpha = (color >> IM_COL32_A_SHIFT) & 0xFF;
-        if (originalAlpha == 0) {
-            return ImU32(0);
-        }
+        if (originalAlpha == 0) return ImU32(0);
         const ImU32 newAlpha = static_cast<ImU32>(static_cast<float>(originalAlpha) * alpha);
         return (color & 0x00FFFFFF) | (newAlpha << IM_COL32_A_SHIFT);
     };
@@ -841,7 +610,7 @@ void MessageBoard::DrawTextSegment(ImDrawList *drawList, const TextSegment &segm
     ImU32 fgColor = renderColor.foreground;
     ImU32 bgColor = applyAlpha(renderColor.background);
 
-    // Apply effects to foreground color only if ANSI is enabled
+    // Apply effects to foreground color if ANSI is enabled
     if (m_AnsiEnabled) {
         if (renderColor.dim) {
             fgColor = ApplyDimEffect(fgColor);
@@ -850,11 +619,11 @@ void MessageBoard::DrawTextSegment(ImDrawList *drawList, const TextSegment &segm
             fgColor = ApplyBlinkEffect(fgColor, m_BlinkTime);
         }
         if (renderColor.hidden) {
-            fgColor = bgColor; // Hidden text same color as background
+            fgColor = bgColor;
         }
     }
 
-    // Process text with proper handling of special characters
+    // Process text with special character handling
     size_t pos = 0;
     while (pos < segment.text.length()) {
         size_t nextSpecial = pos;
@@ -865,14 +634,14 @@ void MessageBoard::DrawTextSegment(ImDrawList *drawList, const TextSegment &segm
             nextSpecial++;
         }
 
-        // Render regular text
+        // Render text chunk
         if (nextSpecial > pos) {
             std::string textChunk = segment.text.substr(pos, nextSpecial - pos);
             float remainingWidth = std::max(0.0f, wrapWidth - (currentPos.x - startPos.x));
 
-            // Use consistent text size calculation
             ImVec2 textSize = CalcWrappedTextSize(textChunk, remainingWidth);
 
+            // Word wrap if needed
             if (currentPos.x + textSize.x > startPos.x + wrapWidth && currentPos.x > startPos.x) {
                 currentPos.y += lineHeight;
                 currentPos.x = startPos.x;
@@ -880,16 +649,17 @@ void MessageBoard::DrawTextSegment(ImDrawList *drawList, const TextSegment &segm
                 textSize = CalcWrappedTextSize(textChunk, remainingWidth);
             }
 
-            // Draw background if it has alpha > 0
+            // Draw background if visible
             if ((bgColor >> IM_COL32_A_SHIFT) > 0) {
+                const float bgPadding = m_PadY * 0.125f;
                 drawList->AddRectFilled(
-                    ImVec2(currentPos.x - 1.0f, currentPos.y - 1.0f),
-                    ImVec2(currentPos.x + textSize.x + 1.0f, currentPos.y + textSize.y + 1.0f),
+                    ImVec2(currentPos.x - bgPadding, currentPos.y - bgPadding),
+                    ImVec2(currentPos.x + textSize.x + bgPadding, currentPos.y + textSize.y + bgPadding),
                     bgColor
                 );
             }
 
-            // Draw text with effects
+            // Render text with effects
             RenderText(drawList, textChunk, currentPos, fgColor, renderColor);
             currentPos.x += textSize.x;
         }
@@ -910,7 +680,7 @@ void MessageBoard::RenderText(ImDrawList *drawList, const std::string &text, con
         return;
     }
 
-    // Bold effect (render slightly offset)
+    // Bold effect (render with slight offset)
     if (effects.bold) {
         drawList->AddText(ImVec2(pos.x + 0.5f, pos.y), color, text.c_str());
         drawList->AddText(ImVec2(pos.x, pos.y + 0.5f), color, text.c_str());
@@ -945,90 +715,55 @@ void MessageBoard::HandleSpecialCharacter(char ch, ImVec2 &currentPos, const ImV
     const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
 
     switch (ch) {
-        case '\n':
+    case '\n':
+        currentPos.y += lineHeight;
+        currentPos.x = startPos.x;
+        break;
+    case '\r':
+        currentPos.x = startPos.x;
+        break;
+    case '\t': {
+        const float charWidth = ImGui::CalcTextSize(" ").x;
+        const float tabWidth = charWidth * 8.0f;
+        const float currentOffset = currentPos.x - startPos.x;
+        const float nextTab = ((int) (currentOffset / tabWidth) + 1) * tabWidth;
+        currentPos.x = startPos.x + nextTab;
+
+        if (currentPos.x > startPos.x + wrapWidth) {
             currentPos.y += lineHeight;
             currentPos.x = startPos.x;
-            break;
-        case '\r':
-            currentPos.x = startPos.x;
-            break;
-        case '\t': {
-            const float charWidth = ImGui::CalcTextSize(" ").x;
-            const float tabWidth = charWidth * 8.0f;
-            const float currentOffset = currentPos.x - startPos.x;
-            const float nextTab = ((int)(currentOffset / tabWidth) + 1) * tabWidth;
-            currentPos.x = startPos.x + nextTab;
-
-            if (currentPos.x > startPos.x + wrapWidth) {
-                currentPos.y += lineHeight;
-                currentPos.x = startPos.x;
-            }
-            break;
         }
-        default:
-            break;
+        break;
+    }
+    default:
+        break;
     }
 }
 
-void MessageBoard::UpdateTimers(float deltaTime) {
-    for (int i = 0; i < m_MessageCount; i++) {
-        if (m_Messages[i].timer > 0.0f) {
-            m_Messages[i].timer -= deltaTime;
-            if (m_Messages[i].timer <= 0.0f) {
-                m_Messages[i].timer = 0.0f;
-                --m_DisplayMessageCount;
-            }
-        }
-    }
-}
+// =============================================================================
+// Scrolling System
+// =============================================================================
 
-void MessageBoard::AddMessageInternal(const char *msg) {
-    if (!msg || strlen(msg) == 0) return;
-
-    if (m_MessageCount == static_cast<int>(m_Messages.size()) &&
-        m_Messages[m_MessageCount - 1].GetTimer() > 0) {
-        --m_DisplayMessageCount;
-    }
-
-    const int shiftCount = std::min(m_MessageCount, static_cast<int>(m_Messages.size()) - 1);
-    for (int i = shiftCount - 1; i >= 0; i--) {
-        m_Messages[i + 1] = std::move(m_Messages[i]);
-    }
-
-    m_Messages[0] = MessageUnit(msg, m_MaxTimer);
-
-    if (m_MessageCount < static_cast<int>(m_Messages.size())) {
-        ++m_MessageCount;
-    }
-    ++m_DisplayMessageCount;
-
-    // Auto-scroll to bottom for new messages only if we were already at bottom
-    // or if scrolling isn't active
-    if (m_IsCommandBarVisible && (m_ScrollToBottom || m_MaxScrollY <= 0.0f)) {
-        m_ScrollToBottom = true;
-    }
-}
-
-void MessageBoard::HandleScrolling(float contentHeight, float windowHeight) {
+void MessageBoard::HandleScrolling(float contentHeight, float availableHeight) {
     if (!m_IsCommandBarVisible || m_MaxScrollY <= 0.0f) return;
 
     const ImGuiIO &io = ImGui::GetIO();
 
-    // Handle mouse wheel scrolling
+    // Mouse wheel scrolling
     if (ImGui::IsWindowHovered() && io.MouseWheel != 0.0f) {
         const float scrollSpeed = ImGui::GetTextLineHeightWithSpacing() * 3.0f;
         m_ScrollY -= io.MouseWheel * scrollSpeed;
-        m_ScrollToBottom = false; // Disable auto-scroll when user manually scrolls
+        m_ScrollToBottom = false;
     }
 
-    // Handle keyboard scrolling
+    // Keyboard scrolling
     if (ImGui::IsWindowFocused()) {
         if (ImGui::IsKeyPressed(ImGuiKey_PageUp)) {
-            m_ScrollY -= windowHeight * 0.8f;
+            m_ScrollY -= availableHeight * 0.8f;
             m_ScrollToBottom = false;
         }
         if (ImGui::IsKeyPressed(ImGuiKey_PageDown)) {
-            m_ScrollY += windowHeight * 0.8f;
+            m_ScrollY += availableHeight * 0.8f;
             m_ScrollToBottom = false;
         }
         if (ImGui::IsKeyPressed(ImGuiKey_Home)) {
@@ -1045,7 +780,7 @@ void MessageBoard::HandleScrolling(float contentHeight, float windowHeight) {
         }
         if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
             m_ScrollY += ImGui::GetTextLineHeightWithSpacing();
-            if (m_ScrollY >= m_MaxScrollY) {
+            if (m_ScrollY >= m_MaxScrollY - 0.5f) {
                 m_ScrollToBottom = true;
             }
         }
@@ -1054,71 +789,146 @@ void MessageBoard::HandleScrolling(float contentHeight, float windowHeight) {
     // Clamp scroll position
     m_ScrollY = std::clamp(m_ScrollY, 0.0f, m_MaxScrollY);
 
-    // Check if we're at the bottom for auto-scroll
-    if (m_ScrollY >= m_MaxScrollY - 1.0f) {
+    // Check if at bottom for auto-scroll
+    if (m_ScrollY >= m_MaxScrollY - 0.5f) {
         m_ScrollToBottom = true;
     }
 }
 
-void MessageBoard::UpdateScrollBounds(float contentHeight, float windowHeight) {
-    // Only set scroll bounds if content actually overflows
-    if (contentHeight > windowHeight) {
-        m_MaxScrollY = contentHeight - windowHeight;
+void MessageBoard::UpdateScrollBounds(float contentHeight, float availableHeight) {
+    if (contentHeight > availableHeight) {
+        m_MaxScrollY = contentHeight - availableHeight;
 
-        // Auto-scroll to bottom if enabled
         if (m_ScrollToBottom) {
             m_ScrollY = m_MaxScrollY;
         }
 
-        // Ensure scroll position is valid
         m_ScrollY = std::clamp(m_ScrollY, 0.0f, m_MaxScrollY);
     } else {
-        // Content fits in window, no scrolling needed
         m_MaxScrollY = 0.0f;
         m_ScrollY = 0.0f;
         m_ScrollToBottom = true;
     }
 }
 
-float MessageBoard::CalculateTotalContentHeight(float wrapWidth) const {
-    const float messageGap = 4.0f;
-    const float verticalPadding = 16.0f;
+void MessageBoard::DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &contentPos, const ImVec2 &contentSize) {
+    if (m_MaxScrollY <= 0.0f) return;
 
-    float totalHeight = verticalPadding;
-    int processedCount = 0;
+    // Scrollbar background
+    const ImVec2 scrollbarStart = ImVec2(
+        contentPos.x + contentSize.x - m_ScrollbarW - m_ScrollbarPad,
+        contentPos.y + m_ScrollbarPad
+    );
+    const ImVec2 scrollbarEnd = ImVec2(
+        contentPos.x + contentSize.x - m_ScrollbarPad,
+        contentPos.y + contentSize.y - m_ScrollbarPad
+    );
 
-    // Calculate height for all messages
+    drawList->AddRectFilled(scrollbarStart, scrollbarEnd, IM_COL32(60, 60, 60, 100));
+
+    // Scrollbar handle
+    const float scrollbarHeight = scrollbarEnd.y - scrollbarStart.y;
+    const float availableContentHeight = contentSize.y - m_PadY * 2.0f;
+    const float contentHeight = m_MaxScrollY + availableContentHeight;
+    const float visibleRatio = availableContentHeight / contentHeight;
+    const float handleHeight = std::max(ImGui::GetStyle().GrabMinSize, scrollbarHeight * visibleRatio);
+    const float handlePos = (m_MaxScrollY > 0.0f ? m_ScrollY / m_MaxScrollY : 0.0f) * (scrollbarHeight - handleHeight);
+
+    const ImVec2 handleStart = ImVec2(scrollbarStart.x + 1.0f, scrollbarStart.y + handlePos);
+    const ImVec2 handleEnd = ImVec2(scrollbarEnd.x - 1.0f, handleStart.y + handleHeight);
+
+    drawList->AddRectFilled(handleStart, handleEnd, IM_COL32(150, 150, 150, 200));
+
+    // Scroll position indicator
+    if (m_ScrollY > 0.0f || !m_ScrollToBottom) {
+        const float scrollPercent = (m_MaxScrollY > 0) ? (m_ScrollY / m_MaxScrollY) * 100.0f : 0.0f;
+        char scrollText[32];
+        snprintf(scrollText, sizeof(scrollText), "%.0f%%", scrollPercent);
+
+        const ImVec2 textSize = ImGui::CalcTextSize(scrollText);
+        const ImVec2 textPos = ImVec2(
+            contentPos.x + contentSize.x - textSize.x - m_ScrollbarW - m_ScrollbarPad - m_PadX,
+            contentPos.y + m_PadY * 0.5f
+        );
+
+        // Text background
+        drawList->AddRectFilled(
+            ImVec2(textPos.x - m_PadX * 0.25f, textPos.y - m_PadY * 0.25f),
+            ImVec2(textPos.x + textSize.x + m_PadX * 0.25f, textPos.y + textSize.y + m_PadY * 0.25f),
+            IM_COL32(0, 0, 0, 150)
+        );
+
+        // Text
+        drawList->AddText(textPos, IM_COL32(255, 255, 255, 200), scrollText);
+    }
+}
+
+// =============================================================================
+// Message Management
+// =============================================================================
+
+void MessageBoard::UpdateTimers(float deltaTime) {
     for (int i = 0; i < m_MessageCount; i++) {
-        const MessageUnit &msg = m_Messages[i];
-        if (m_IsCommandBarVisible || ShouldShowMessage(msg)) {
-            totalHeight += msg.GetTextHeight(wrapWidth);
-            if (processedCount > 0) {
-                totalHeight += messageGap;
+        if (m_Messages[i].timer > 0.0f) {
+            m_Messages[i].timer -= deltaTime;
+            if (m_Messages[i].timer <= 0.0f) {
+                m_Messages[i].timer = 0.0f;
+                --m_DisplayMessageCount;
             }
-            processedCount++;
         }
     }
+}
 
-    return totalHeight;
+void MessageBoard::AddMessageInternal(const char *msg) {
+    if (!msg || strlen(msg) == 0) return;
+
+    // Update display count
+    if (m_MessageCount == static_cast<int>(m_Messages.size()) && m_Messages[m_MessageCount - 1].GetTimer() > 0) {
+        --m_DisplayMessageCount;
+    }
+
+    // Shift messages
+    const int shiftCount = std::min(m_MessageCount, static_cast<int>(m_Messages.size()) - 1);
+    for (int i = shiftCount - 1; i >= 0; i--) {
+        m_Messages[i + 1] = std::move(m_Messages[i]);
+    }
+
+    // Add new message
+    m_Messages[0] = MessageUnit(msg, m_MaxTimer);
+
+    if (m_MessageCount < static_cast<int>(m_Messages.size())) {
+        ++m_MessageCount;
+    }
+    ++m_DisplayMessageCount;
+
+    // Auto-scroll to bottom for new messages
+    if (m_IsCommandBarVisible && (m_ScrollToBottom || m_MaxScrollY <= 0.0f)) {
+        m_ScrollToBottom = true;
+    }
 }
 
 void MessageBoard::OnPostEnd() {
     ImGui::PopStyleColor();
     ImGui::PopStyleVar(3);
 
+    // Update timers
     CKStats stats;
     BML_GetCKContext()->GetProfileStats(&stats);
     UpdateTimers(stats.TotalFrameTime);
 
-    // Update global blink time for consistent blinking
+    // Update blink time
     m_BlinkTime = static_cast<float>(ImGui::GetTime());
 
+    // Hide if no visible content
     if (!m_IsCommandBarVisible && m_DisplayMessageCount == 0) {
         Hide();
     }
 }
 
-// Public interface
+// =============================================================================
+// Public Interface
+// =============================================================================
+
 void MessageBoard::AddMessage(const char *msg) {
     AddMessageInternal(msg);
 }
@@ -1152,8 +962,7 @@ void MessageBoard::PrintfColored(ImU32 color, const char *format, ...) {
         const ImU32 b = (color >> IM_COL32_B_SHIFT) & 0xFF;
 
         char coloredBuffer[4200];
-        snprintf(coloredBuffer, sizeof(coloredBuffer),
-                 "\033[38;2;%u;%u;%um%s\033[0m", r, g, b, buffer);
+        snprintf(coloredBuffer, sizeof(coloredBuffer), "\033[38;2;%u;%u;%um%s\033[0m", r, g, b, buffer);
         AddMessage(coloredBuffer);
     }
 }
