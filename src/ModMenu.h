@@ -58,6 +58,7 @@ public:
 
     void OnAfterBegin() override;
     void OnDraw() override;
+    void OnEnd() override;
     bool OnOpen() override;
     void OnClose() override;
     void OnPageChanged(int newPage, int oldPage) override;
