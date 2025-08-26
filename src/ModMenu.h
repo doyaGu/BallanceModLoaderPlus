@@ -56,6 +56,7 @@ class ModOptionPage : public Bui::Page {
 public:
     explicit ModOptionPage() : Bui::Page("Mod Options") {}
 
+    void OnAfterBegin() override;
     void OnDraw() override;
     bool OnOpen() override;
     void OnClose() override;
@@ -63,12 +64,19 @@ public:
 
 protected:
     void FlushBuffers();
+    void LoadOriginalValues();
+    void SaveChanges();
+    void RevertChanges();
+    bool HasPendingChanges() const;
 
     static void ShowCommentBox(const Property *property);
 
     Category *m_Category = nullptr;
+    bool m_HasPendingChanges = false;
 
     static constexpr size_t BUFFER_SIZE = 4096;
+
+    // Current working values
     char m_Buffers[4][BUFFER_SIZE] = {};
     size_t m_BufferHashes[4] = {};
     bool m_KeyToggled[4] = {};
@@ -77,6 +85,14 @@ protected:
     std::uint8_t m_FloatFlags[4] = {};
     int m_IntValues[4] = {};
     float m_FloatValues[4] = {};
+    bool m_BoolValues[4] = {};
+
+    // Original values
+    char m_OriginalBuffers[4][BUFFER_SIZE] = {};
+    int m_OriginalIntValues[4] = {};
+    float m_OriginalFloatValues[4] = {};
+    bool m_OriginalBoolValues[4] = {};
+    ImGuiKeyChord m_OriginalKeyChord[4] = {};
 };
 
 #endif // BML_MODMENU_H
