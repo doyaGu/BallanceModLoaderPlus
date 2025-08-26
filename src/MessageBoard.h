@@ -166,9 +166,9 @@ public:
 
 protected:
     ImGuiWindowFlags GetFlags() override;
-    void OnBegin() override;
+    void OnPreBegin() override;
     void OnDraw() override;
-    void OnAfterEnd() override;
+    void OnPostEnd() override;
 
 private:
     // Cursor save/restore stack

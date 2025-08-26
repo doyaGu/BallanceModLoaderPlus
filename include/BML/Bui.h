@@ -253,21 +253,21 @@ namespace Bui {
         void Toggle() { m_Visible ? Hide() : Show(); }
 
         bool Begin() {
-            OnBegin();
+            OnPreBegin();
             bool keepVisible = true;
             const bool notCollapsed = ImGui::Begin(m_Name.c_str(), &keepVisible, GetFlags());
             if (!keepVisible) {
                 m_ShouldHide = true;
             }
             if (notCollapsed)
-                OnAfterBegin();
+                OnPostBegin();
             return notCollapsed;
         }
 
         void End() {
-            OnEnd();
+            OnPreEnd();
             ImGui::End();
-            OnAfterEnd();
+            OnPostEnd();
         }
 
         // Rendering
@@ -287,11 +287,11 @@ namespace Bui {
         // Virtual interface
         virtual ImGuiWindowFlags GetFlags() { return 0; }
 
-        virtual void OnBegin() {}
-        virtual void OnAfterBegin() {}
+        virtual void OnPreBegin() {}
+        virtual void OnPostBegin() {}
         virtual void OnDraw() = 0;
-        virtual void OnEnd() {}
-        virtual void OnAfterEnd() {}
+        virtual void OnPreEnd() {}
+        virtual void OnPostEnd() {}
         virtual void OnShow() {}
         virtual void OnHide() {}
 
@@ -352,13 +352,13 @@ namespace Bui {
                    ImGuiWindowFlags_NoSavedSettings;
         }
 
-        void OnBegin() override {
+        void OnPreBegin() override {
             const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
             ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Appearing);
             ImGui::SetNextWindowSize(ImVec2(vpSize.x, vpSize.y), ImGuiCond_Appearing);
         }
 
-        void OnAfterBegin() override {
+        void OnPostBegin() override {
             Title(m_Title.c_str());
 
             // Navigation
@@ -366,7 +366,7 @@ namespace Bui {
             if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 && NavRight()) NextPage();
         }
 
-        void OnEnd() override;
+        void OnPreEnd() override;
 
         virtual bool OnOpen() { return true; }
         virtual void OnClose() {}
@@ -535,7 +535,7 @@ namespace Bui {
         std::unordered_map<std::string, std::unique_ptr<Page>> m_Pages;
     };
 
-    inline void Page::OnEnd() {
+    inline void Page::OnPreEnd() {
         if (NavBack()) {
             if (m_Menu) {
                 m_Menu->OpenPrevPage();

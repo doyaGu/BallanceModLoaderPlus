@@ -35,7 +35,7 @@ Config *ModMenu::GetConfig(IMod *mod) {
     return BML_GetModContext()->GetConfig(mod);
 }
 
-void ModListPage::OnAfterBegin() {
+void ModListPage::OnPostBegin() {
     Bui::Title(m_Title.c_str());
 
     const int count = BML_GetModContext()->GetModCount();
@@ -61,7 +61,7 @@ void ModListPage::OnDraw() {
     }, 0.35f, 0.24f, 0.14f, 4);
 }
 
-void ModPage::OnAfterBegin() {
+void ModPage::OnPostBegin() {
     const auto menuPos = Bui::GetMenuPos();
     const auto menuSize = Bui::GetMenuSize();
 
@@ -155,7 +155,7 @@ void ModPage::ShowCommentBox(Category *category) {
     ImGui::PopStyleColor();
 }
 
-void ModOptionPage::OnAfterBegin() {
+void ModOptionPage::OnPostBegin() {
     Bui::Title(m_Name.c_str(), 0.13f, 1.5f,  m_HasPendingChanges ? IM_COL32(255, 255, 128, 255) : IM_COL32_WHITE);
 
     // Navigation
@@ -220,7 +220,7 @@ void ModOptionPage::OnDraw() {
     }, 0.35f, 0.24f, 0.14f, 4);
 }
 
-void ModOptionPage::OnEnd() {
+void ModOptionPage::OnPreEnd() {
     // Show save/revert buttons if there are pending changes
     if (m_HasPendingChanges) {
         const float x = Bui::GetButtonSizeInCoord(Bui::BUTTON_SMALL).x;

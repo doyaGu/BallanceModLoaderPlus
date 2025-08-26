@@ -34,7 +34,7 @@ class ModListPage : public Bui::Page {
 public:
     explicit ModListPage() : Bui::Page("Mod List") {}
 
-    void OnAfterBegin() override;
+    void OnPostBegin() override;
     void OnDraw() override;
 };
 
@@ -42,7 +42,7 @@ class ModPage : public Bui::Page {
 public:
     explicit ModPage() : Bui::Page("Mod Page") {}
 
-    void OnAfterBegin() override;
+    void OnPostBegin() override;
     void OnDraw() override;
 
 protected:
@@ -56,9 +56,9 @@ class ModOptionPage : public Bui::Page {
 public:
     explicit ModOptionPage() : Bui::Page("Mod Options") {}
 
-    void OnAfterBegin() override;
+    void OnPostBegin() override;
     void OnDraw() override;
-    void OnEnd() override;
+    void OnPreEnd() override;
     bool OnOpen() override;
     void OnClose() override;
     void OnPageChanged(int newPage, int oldPage) override;

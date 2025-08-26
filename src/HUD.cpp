@@ -228,7 +228,7 @@ ImGuiWindowFlags HUD::GetFlags() {
         ImGuiWindowFlags_NoSavedSettings;
 }
 
-void HUD::OnBegin() {
+void HUD::OnPreBegin() {
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
     ImGui::SetNextWindowSize(ImGui::GetMainViewport()->Size);
 }
