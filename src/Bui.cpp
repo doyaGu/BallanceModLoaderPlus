@@ -1032,24 +1032,25 @@ namespace Bui {
     void WrappedText(const char *text, float width, float baseX, float scale) {
         if (!text || !*text) return;
 
-        const float startX = abs(baseX) < EPSILON ? ImGui::GetCursorPosX() : baseX;
+        const float startX = (fabsf(baseX) < EPSILON) ? ImGui::GetCursorPosX() : baseX;
         const bool doScale = (scale != 1.0f);
 
         if (doScale)
             ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * scale);
 
         if (width > 0.0f) {
-            const float textW = ImGui::CalcTextSize(text).x;
-            const float indent = (width - textW) * 0.5f;
-            if (indent > 0.0f)
-                ImGui::SetCursorPosX(startX + indent);
-            else
-                ImGui::SetCursorPosX(startX);
+            const ImVec2 sz = ImGui::CalcTextSize(text, nullptr, false, width);
+            float indent = (width - sz.x) * 0.5f;
+            if (indent < 0.0f) indent = 0.0f;
 
+            ImGui::SetCursorPosX(startX + indent);
             ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + width);
             ImGui::TextUnformatted(text);
             ImGui::PopTextWrapPos();
         } else {
+            const float avail = ImGui::GetContentRegionAvail().x;
+            const ImVec2 sz = ImGui::CalcTextSize(text);
+            ImGui::SetCursorPosX(startX + (avail - sz.x) * 0.5f);
             ImGui::TextUnformatted(text);
         }
 
