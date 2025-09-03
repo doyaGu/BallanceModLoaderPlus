@@ -296,6 +296,21 @@ namespace utils {
     inline std::string Utf16ToAnsi(const wchar_t *wstr) {
         return wstr ? ToString(std::wstring(wstr), false) : std::string();
     }
+
+    enum CompareFlags : uint32_t {
+        kNone                 = 0,
+        kLinguisticIgnoreCase = 1u << 0,
+        kIgnoreWidth          = 1u << 1,
+        kDigitsAsNumbers      = 1u << 2
+    };
+
+    constexpr uint32_t kDefaultCompareFlags = kLinguisticIgnoreCase | kIgnoreWidth | kDigitsAsNumbers;
+
+    int CompareString(const std::wstring &a, const std::wstring &b,
+                      uint32_t flags = kDefaultCompareFlags, const std::wstring &localeName = std::wstring());
+
+    int CompareString(const std::string &aUtf8, const std::string &bUtf8,
+                      uint32_t flags = kDefaultCompareFlags, const std::wstring &localeName = std::wstring());
 };
 
 #endif // BML_STRINGUTILS_H
