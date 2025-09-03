@@ -208,8 +208,8 @@ void BMLMod::OnProcess() {
     }
 
     OnProcess_HUD();
-    OnProcess_CommandBar();
     OnProcess_Menu();
+    OnProcess_CommandBar();
 
 #ifndef NDEBUG
     if (ImGui::IsKeyChordPressed(ImGuiMod_Shift | ImGuiMod_Alt | ImGuiKey_F5), false)
