@@ -178,8 +178,8 @@ private:
     float m_MaxTimer = 6000.0f;
 
     // Color tuning
-    float m_ColorSaturation = 0.65f;
-    float m_ColorValue = 0.95f;
+    float m_ColorSaturation = 0.85f;
+    float m_ColorValue = 1.25f;
 
     // Scrolling state
     float m_ScrollY = 0.0f;
