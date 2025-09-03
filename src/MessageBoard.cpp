@@ -903,11 +903,8 @@ void MessageBoard::DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &cont
 
     // Scroll position indicator
     if (m_ScrollY > 0.0f || !m_ScrollToBottom) {
-        const float scrollPercent = (m.maxScroll > 0.0f) ? (m.scrollY / m.maxScroll) * 100.0f : 0.0f;
-        char scrollText[32];
-        snprintf(scrollText, sizeof(scrollText), "%.0f%%", scrollPercent);
-
-        const ImVec2 textSize = ImGui::CalcTextSize(scrollText);
+        const std::string scrollText = FormatScrollPercent(contentHeight, visibleHeight);
+        const ImVec2 textSize = ImGui::CalcTextSize(scrollText.c_str());
         const ImVec2 textPos = ImVec2(
             contentPos.x + contentSize.x - textSize.x - m_ScrollbarW - m_ScrollbarPad - m_PadX,
             contentPos.y + m_PadY * 0.5f
@@ -921,7 +918,7 @@ void MessageBoard::DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &cont
         );
 
         // Text
-        drawList->AddText(textPos, IM_COL32(255, 255, 255, 200), scrollText);
+        drawList->AddText(textPos, IM_COL32(255, 255, 255, 200), scrollText.c_str());
     }
 }
 
@@ -957,6 +954,14 @@ void MessageBoard::SetScrollYClamped(float y) {
 
 void MessageBoard::SyncScrollBottomFlag() {
     m_ScrollToBottom = (m_ScrollY >= m_MaxScrollY - kScrollEpsilon);
+}
+
+std::string MessageBoard::FormatScrollPercent(float contentHeight, float visibleHeight) const {
+    const ScrollMetrics m = GetScrollMetrics(contentHeight, visibleHeight);
+    const float pct = (m.maxScroll > 0.0f) ? (m.scrollRatio * 100.0f) : 0.0f;
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%.0f%%", pct);
+    return std::string(buf);
 }
 
 // =============================================================================

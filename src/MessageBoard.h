@@ -88,6 +88,15 @@ public:
         static ImU32 GetRgbColor(int r, int g, int b);
     };
 
+    struct ScrollMetrics {
+        float contentHeight;
+        float visibleHeight;
+        float maxScroll;
+        float scrollY;
+        float scrollRatio;   // 0..1, position along scroll range
+        float visibleRatio;  // 0..1, visibleHeight/contentHeight
+    };
+
     explicit MessageBoard(int size = 500);
     ~MessageBoard() override;
 
@@ -112,6 +121,10 @@ public:
     void ScrollToTop();
     void ScrollToBottom();
 
+    // Scrolling metrics and display helpers
+    ScrollMetrics GetScrollMetrics(float contentHeight, float visibleHeight) const;
+    std::string FormatScrollPercent(float contentHeight, float visibleHeight) const;
+
     // Getters
     float GetMaxTimer() const { return m_MaxTimer; }
     bool IsCommandBarVisible() const { return m_IsCommandBarVisible; }
@@ -128,15 +141,6 @@ protected:
     void OnPostEnd() override;
 
 private:
-    struct ScrollMetrics {
-        float contentHeight;
-        float visibleHeight;
-        float maxScroll;
-        float scrollY;
-        float scrollRatio;   // 0..1, position along scroll range
-        float visibleRatio;  // 0..1, visibleHeight/contentHeight
-    };
-
     // Visibility and state
     bool ShouldShowMessage(const MessageUnit &msg) const;
     float GetMessageAlpha(const MessageUnit &msg) const;
@@ -160,7 +164,6 @@ private:
 
     // Utilities
     ImU32 ToneColor(ImU32 c) const;
-    ScrollMetrics GetScrollMetrics(float contentHeight, float visibleHeight) const;
     void SetScrollYClamped(float y);
     void SyncScrollBottomFlag();
 
