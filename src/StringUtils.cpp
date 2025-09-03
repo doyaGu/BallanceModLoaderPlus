@@ -392,4 +392,50 @@ namespace utils {
 
         return result;
     }
+
+    DWORD MapFlags(uint32_t f) {
+        DWORD w = 0;
+        if (f & kLinguisticIgnoreCase) w |= LINGUISTIC_IGNORECASE;
+        if (f & kIgnoreWidth) w |= NORM_IGNOREWIDTH;
+        if (f & kDigitsAsNumbers) w |= SORT_DIGITSASNUMBERS;
+        return w;
+    }
+
+    inline LPCWSTR ToLocaleName(const std::wstring &name) {
+        return name.empty() ? LOCALE_NAME_USER_DEFAULT : name.c_str();
+    }
+
+    inline int ToTri(const int cstr) {
+        if (cstr == 0) return 0;
+        return cstr - 2;
+    }
+
+#undef CompareString
+
+    int CompareString(const std::wstring &a, const std::wstring &b,
+                      uint32_t flags, const std::wstring &localeName) {
+        const int r = ::CompareStringEx(ToLocaleName(localeName), MapFlags(flags),
+            a.c_str(), -1,
+            b.c_str(), -1,
+            nullptr, nullptr, 0);
+        if (r == 0) {
+            return (a < b) ? -1 : (a > b ? 1 : 0);
+        }
+        return ToTri(r);
+    }
+
+    int CompareString(const std::string &aUtf8, const std::string &bUtf8,
+                      uint32_t flags, const std::wstring &localeName) {
+        const std::wstring wa = Utf8ToUtf16(aUtf8);
+        const std::wstring wb = Utf8ToUtf16(bUtf8);
+
+        const int r = ::CompareStringEx(ToLocaleName(localeName), MapFlags(flags),
+            wa.c_str(), -1,
+            wb.c_str(), -1,
+            nullptr, nullptr, 0);
+        if (r == 0) {
+            return (aUtf8 < bUtf8) ? -1 : (aUtf8 > bUtf8 ? 1 : 0);
+        }
+        return ToTri(r);
+    }
 }
