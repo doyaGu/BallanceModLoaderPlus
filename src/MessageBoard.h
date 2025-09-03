@@ -26,9 +26,6 @@ static constexpr float kAuxStrokeAlphaScale = 0.5f;
  *
  * Scrolling controls (when command bar visible AND content overflows):
  * - Mouse wheel: Scroll up/down
- * - Page Up/Down: Large scroll steps
- * - Home/End: Go to top/bottom
- * - Up/Down arrows: Single line steps
  */
 class MessageBoard : public Bui::Window {
 public:

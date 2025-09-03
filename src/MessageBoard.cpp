@@ -854,28 +854,6 @@ void MessageBoard::HandleScrolling(float availableHeight) {
         SetScrollYClamped(m_ScrollY - io.MouseWheel * scrollSpeed);
     }
 
-    // Keyboard scrolling
-    if (ImGui::IsWindowFocused()) {
-        if (ImGui::IsKeyPressed(ImGuiKey_PageUp)) {
-            SetScrollYClamped(m_ScrollY - availableHeight * 0.8f);
-        }
-        if (ImGui::IsKeyPressed(ImGuiKey_PageDown)) {
-            SetScrollYClamped(m_ScrollY + availableHeight * 0.8f);
-        }
-        if (ImGui::IsKeyPressed(ImGuiKey_Home)) {
-            SetScrollYClamped(0.0f);
-        }
-        if (ImGui::IsKeyPressed(ImGuiKey_End)) {
-            SetScrollYClamped(m_MaxScrollY);
-        }
-        if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
-            SetScrollYClamped(m_ScrollY - ImGui::GetTextLineHeightWithSpacing());
-        }
-        if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
-            SetScrollYClamped(m_ScrollY + ImGui::GetTextLineHeightWithSpacing());
-        }
-    }
-
     // Final clamp and bottom sync (in case no inputs were pressed this frame but bounds changed)
     SetScrollYClamped(m_ScrollY);
 }
