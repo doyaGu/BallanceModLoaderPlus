@@ -50,9 +50,6 @@ public:
             ConsoleColor result = *this;
             if (reverse) {
                 std::swap(result.foreground, result.background);
-                if ((result.background & 0xFF000000) == 0) {
-                    result.background |= 0xFF000000;
-                }
             }
             return result;
         }
