@@ -7,6 +7,9 @@
 
 #include "BML/Bui.h"
 
+// Minimum alpha used when drawing auxiliary strokes (e.g., faux-bold offsets)
+static constexpr float kAuxStrokeAlphaScale = 0.5f;
+
 /**
  * MessageBoard - ANSI color-capable scrollable message display system
  *
@@ -31,28 +34,23 @@ class MessageBoard : public Bui::Window {
 public:
     struct ConsoleColor {
         ImU32 foreground = IM_COL32_WHITE;
-        ImU32 background = IM_COL32(0, 0, 0, 0);
+        ImU32 background = IM_COL32_BLACK_TRANS;
+
         bool bold = false;
-        bool dim = false;
         bool italic = false;
         bool underline = false;
-        bool blink = false;
-        bool reverse = false;
         bool strikethrough = false;
+        bool dim = false;
         bool hidden = false;
+        bool reverse = false;
 
         ConsoleColor() = default;
         explicit ConsoleColor(ImU32 fg) : foreground(fg) {}
         ConsoleColor(ImU32 fg, ImU32 bg) : foreground(fg), background(bg) {}
 
-        // Apply reverse video effect
-        ConsoleColor GetRendered() const {
-            ConsoleColor result = *this;
-            if (reverse) {
-                std::swap(result.foreground, result.background);
-            }
-            return result;
-        }
+        // Returns the final colors after applying reverse video and "hidden".
+        // Guarantees foreground alpha > 0 when reverse is set by synthesizing a fallback BG.
+        ConsoleColor GetRendered() const;
     };
 
     struct TextSegment {
@@ -133,6 +131,15 @@ protected:
     void OnPostEnd() override;
 
 private:
+    struct ScrollMetrics {
+        float contentHeight;
+        float visibleHeight;
+        float maxScroll;
+        float scrollY;
+        float scrollRatio;   // 0..1, position along scroll range
+        float visibleRatio;  // 0..1, visibleHeight/contentHeight
+    };
+
     // Visibility and state
     bool ShouldShowMessage(const MessageUnit &msg) const;
     float GetMessageAlpha(const MessageUnit &msg) const;
@@ -146,18 +153,19 @@ private:
     // Rendering
     void RenderMessages(ImDrawList *drawList, ImVec2 startPos, float wrapWidth);
     void DrawMessageText(ImDrawList *drawList, const MessageUnit &message, const ImVec2 &pos, float wrapWidth, float alpha);
-    void DrawTextSegment(ImDrawList *drawList, const TextSegment &segment, ImVec2 &currentPos, float wrapWidth, float alpha);
-    void RenderText(ImDrawList *drawList, const std::string &text, const ImVec2 &pos, ImU32 color, const ConsoleColor &effects) const;
-    void DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &contentPos, const ImVec2 &contentSize);
-
-    // Text processing
-    static void HandleSpecialCharacter(char ch, ImVec2 &currentPos, const ImVec2 &startPos, float wrapWidth);
+    void DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &contentPos, const ImVec2 &contentSize, float contentHeight, float visibleHeight);
 
     // Core operations
     void UpdateTimers(float deltaTime);
     void AddMessageInternal(const char *msg);
-    void HandleScrolling(float contentHeight, float windowHeight);
+    void HandleScrolling(float visibleHeight);
     void UpdateScrollBounds(float contentHeight, float windowHeight);
+
+    // Utilities
+    ImU32 ToneColor(ImU32 c) const;
+    ScrollMetrics GetScrollMetrics(float contentHeight, float visibleHeight) const;
+    void SetScrollYClamped(float y);
+    void SyncScrollBottomFlag();
 
     // Message storage
     std::vector<MessageUnit> m_Messages;
@@ -168,7 +176,6 @@ private:
     bool m_IsCommandBarVisible = false;
     bool m_AnsiEnabled = true;
     float m_MaxTimer = 6000.0f;
-    float m_BlinkTime = 0.0f;
 
     // Color tuning
     float m_ColorSaturation = 0.65f;
@@ -179,12 +186,12 @@ private:
     float m_MaxScrollY = 0.0f;
     bool m_ScrollToBottom = true;
 
-    // Style-derived layout cache (updated in OnPreBegin before style overrides)
-    float m_PadX = 8.0f;           // Content area horizontal padding
-    float m_PadY = 8.0f;           // Content area vertical padding
-    float m_MessageGap = 4.0f;     // Spacing between message blocks
-    float m_ScrollbarW = 8.0f;     // Scrollbar width
-    float m_ScrollbarPad = 2.0f;   // Scrollbar edge padding
+    // Style-derived layout cache
+    float m_PadX = 8.0f;         // Content area horizontal padding
+    float m_PadY = 8.0f;         // Content area vertical padding
+    float m_MessageGap = 4.0f;   // Spacing between message blocks
+    float m_ScrollbarW = 8.0f;   // Scrollbar width
+    float m_ScrollbarPad = 2.0f; // Scrollbar edge padding
 };
 
 #endif // BML_MESSAGEBOARD_H
