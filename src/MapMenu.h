@@ -25,36 +25,9 @@ struct MapEntry {
 
     explicit MapEntry(MapEntry *parent, MapEntryType entryType) : parent(parent), type(entryType) {}
 
-    ~MapEntry() {
-        if (m_BeingDeleted) {
-            return; // Prevent recursive deletion
-        }
-        m_BeingDeleted = true;
+    ~MapEntry();
 
-        // Safely delete all children first
-        for (auto *child : children) {
-            if (child && !child->m_BeingDeleted) {
-                child->parent = nullptr; // Break parent link to prevent recursion
-                delete child;
-            }
-        }
-        children.clear();
-
-        // Remove from parent's children list safely
-        if (parent && !parent->m_BeingDeleted) {
-            auto it = std::find(parent->children.begin(), parent->children.end(), this);
-            if (it != parent->children.end()) {
-                parent->children.erase(it);
-            }
-        }
-    }
-
-    bool operator<(const MapEntry &rhs) const {
-        if (type != rhs.type) {
-            return type < rhs.type;
-        }
-        return name < rhs.name;
-    }
+    bool operator<(const MapEntry &rhs) const;
 
     bool operator>(const MapEntry &rhs) const {
         return rhs < *this;

@@ -15,6 +15,37 @@
 
 using namespace ScriptHelper;
 
+MapEntry::~MapEntry() {
+    if (m_BeingDeleted) {
+        return; // Prevent recursive deletion
+    }
+    m_BeingDeleted = true;
+
+    // Safely delete all children first
+    for (auto *child : children) {
+        if (child && !child->m_BeingDeleted) {
+            child->parent = nullptr; // Break parent link to prevent recursion
+            delete child;
+        }
+    }
+    children.clear();
+
+    // Remove from parent's children list safely
+    if (parent && !parent->m_BeingDeleted) {
+        auto it = std::find(parent->children.begin(), parent->children.end(), this);
+        if (it != parent->children.end()) {
+            parent->children.erase(it);
+        }
+    }
+}
+
+bool MapEntry::operator<(const MapEntry &rhs) const {
+    if (type != rhs.type) {
+        return type < rhs.type;
+    }
+    return utils::CompareString(name, rhs.name) < 0;
+}
+
 MapMenu::MapMenu(BMLMod *mod): m_Mod(mod), m_Maps(new MapEntry(nullptr, MAP_ENTRY_DIR)) {}
 
 MapMenu::~MapMenu() {
