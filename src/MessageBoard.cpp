@@ -947,37 +947,35 @@ void MessageBoard::AddMessage(const char *msg) {
 }
 
 void MessageBoard::Printf(const char *format, ...) {
-    if (!format) return;
-
-    char buffer[4096];
     va_list args;
     va_start(args, format);
-    const int result = vsnprintf(buffer, sizeof(buffer), format, args);
+    int needed = vsnprintf(nullptr, 0, format, args);
     va_end(args);
-
-    if (result > 0) {
-        AddMessage(buffer);
-    }
+    if (needed < 0) return;
+    std::string buf((size_t) needed + 1, '\0');
+    va_start(args, format);
+    vsnprintf(buf.data(), buf.size(), format, args);
+    va_end(args);
+    AddMessage(buf.c_str());
 }
 
 void MessageBoard::PrintfColored(ImU32 color, const char *format, ...) {
-    if (!format) return;
-
-    char buffer[4096];
     va_list args;
     va_start(args, format);
-    const int result = vsnprintf(buffer, sizeof(buffer), format, args);
+    int needed = vsnprintf(nullptr, 0, format, args);
+    va_end(args);
+    if (needed < 0) return;
+    std::string buf((size_t) needed + 1, '\0');
+    va_start(args, format);
+    vsnprintf(buf.data(), buf.size(), format, args);
     va_end(args);
 
-    if (result > 0) {
-        const ImU32 r = (color >> IM_COL32_R_SHIFT) & 0xFF;
-        const ImU32 g = (color >> IM_COL32_G_SHIFT) & 0xFF;
-        const ImU32 b = (color >> IM_COL32_B_SHIFT) & 0xFF;
+    const ImU32 r = (color >> IM_COL32_R_SHIFT) & 0xFF;
+    const ImU32 g = (color >> IM_COL32_G_SHIFT) & 0xFF;
+    const ImU32 b = (color >> IM_COL32_B_SHIFT) & 0xFF;
 
-        char coloredBuffer[4200];
-        snprintf(coloredBuffer, sizeof(coloredBuffer), "\033[38;2;%u;%u;%um%s\033[0m", r, g, b, buffer);
-        AddMessage(coloredBuffer);
-    }
+    std::string coloredBuffer = "\033[38;2;" + std::to_string(r) + ";" + std::to_string(g) + ";" + std::to_string(b) + "m" + buf + "\033[0m";
+    AddMessage(coloredBuffer.c_str());
 }
 
 void MessageBoard::ClearMessages() {
