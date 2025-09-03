@@ -386,22 +386,7 @@ bool MapListPage::OnDrawEntry(size_t index, bool *v) {
     }
 
     const auto &maps = currentMaps->children;
-    size_t realIndex;
-
-    if (IsSearching()) {
-        if (index >= m_MapSearchResult.size()) {
-            return false;
-        }
-        realIndex = m_MapSearchResult[index];
-    } else {
-        realIndex = index;
-    }
-
-    if (realIndex >= maps.size()) {
-        return false;
-    }
-
-    auto &entry = maps[realIndex];
+    auto &entry = maps[index];
     if (!entry) {
         return false;
     }
