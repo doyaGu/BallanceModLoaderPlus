@@ -607,8 +607,21 @@ void MessageBoard::DrawTextSegment(ImDrawList *drawList, const TextSegment &segm
         return (color & 0x00FFFFFF) | (newAlpha << IM_COL32_A_SHIFT);
     };
 
-    ImU32 fgColor = renderColor.foreground;
-    ImU32 bgColor = applyAlpha(renderColor.background);
+    auto tone = [this](ImU32 c)-> ImU32 {
+        if (((c >> IM_COL32_A_SHIFT) & 0xFF) == 0) return c;
+        float r = ((c >> IM_COL32_R_SHIFT) & 0xFF) / 255.0f;
+        float g = ((c >> IM_COL32_G_SHIFT) & 0xFF) / 255.0f;
+        float b = ((c >> IM_COL32_B_SHIFT) & 0xFF) / 255.0f;
+        float h, s, v;
+        ImGui::ColorConvertRGBtoHSV(r, g, b, h, s, v);
+        s *= m_ColorSaturation;
+        v = ImClamp(v * m_ColorValue, 0.0f, 1.0f);
+        ImGui::ColorConvertHSVtoRGB(h, s, v, r, g, b);
+        return IM_COL32((int)(r * 255.0f), (int)(g * 255.0f), (int)(b * 255.0f), (c >> IM_COL32_A_SHIFT) & 0xFF);
+    };
+
+    ImU32 fgColor = m_AnsiEnabled ? tone(renderColor.foreground) : renderColor.foreground;
+    ImU32 bgColor = m_AnsiEnabled ? applyAlpha(tone(renderColor.background)) : applyAlpha(renderColor.background);
 
     // Apply effects to foreground color if ANSI is enabled
     if (m_AnsiEnabled) {

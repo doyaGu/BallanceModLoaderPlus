@@ -108,6 +108,10 @@ public:
     void SetCommandBarVisible(bool visible);
     void SetAnsiEnabled(bool enabled) { m_AnsiEnabled = enabled; }
 
+    // Modern color tuning
+    void SetColorSaturation(float s) { m_ColorSaturation = std::clamp(s, 0.0f, 1.0f); }
+    void SetColorValue(float v) { m_ColorValue = std::clamp(v, 0.0f, 1.5f); }
+
     // Scrolling control (only active when command bar is visible)
     void SetScrollPosition(float scrollY);
     void ScrollToTop();
@@ -165,6 +169,10 @@ private:
     bool m_AnsiEnabled = true;
     float m_MaxTimer = 6000.0f;
     float m_BlinkTime = 0.0f;
+
+    // Color tuning
+    float m_ColorSaturation = 0.65f;
+    float m_ColorValue = 0.95f;
 
     // Scrolling state
     float m_ScrollY = 0.0f;
