@@ -1,5 +1,6 @@
 #include "MessageBoard.h"
 
+#include <cmath>
 #include <cstdarg>
 #include <algorithm>
 
@@ -783,58 +784,101 @@ void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &mess
     std::vector<LayoutLine> lines;
     LayoutSegmentsToLines(message.segments, wrapWidth, lines);
 
-    const float font_sz = ImGui::GetFontSize();
+    const float fontSize = ImGui::GetFontSize();
 
     for (const auto &line : lines) {
-        float x = startPos.x;
+        // Pass 1: merge adjacent background spans into runs and draw them once.
+        struct BgRun { float x0, x1; ImU32 col; };
+        std::vector<BgRun> runs;
+
+        float x_for_bg = startPos.x;
+        bool has_open_run = false;
+        BgRun cur{};
+
         for (const auto &sp : line.spans) {
             const Seg *seg = sp.seg;
+
             if (!seg) {
-                x += sp.width;
+                // advance, nothing to draw
+                x_for_bg += sp.width;
                 continue;
             }
 
-            // Resolve final colors for this segment
+            // Resolve final bg color for this span
+            ConsoleColor rc = m_AnsiEnabled
+                                  ? seg->color.GetRendered()
+                                  : ConsoleColor(seg->color.foreground, IM_COL32(0, 0, 0, 0));
+            ImU32 bgBase = m_AnsiEnabled ? ToneColor(rc.background) : rc.background;
+            ImU32 bg = ApplyAlpha(bgBase, alpha);
+            const bool draw_bg = (!sp.is_tab) && (((bg >> IM_COL32_A_SHIFT) & 0xFF) != 0) && (sp.b < sp.e);
+
+            if (draw_bg) {
+                const float x0 = x_for_bg;
+                const float x1 = x_for_bg + sp.width;
+                if (has_open_run && cur.col == bg && std::abs(cur.x1 - x0) <= 0.25f) {
+                    // extend current run contiguously
+                    cur.x1 = x1;
+                } else {
+                    // flush previous run
+                    if (has_open_run) runs.push_back(cur);
+                    cur = BgRun{x0, x1, bg};
+                    has_open_run = true;
+                }
+            } else {
+                // gap breaks run
+                if (has_open_run) { runs.push_back(cur); has_open_run = false; }
+            }
+
+            x_for_bg += sp.width;
+        }
+        if (has_open_run) runs.push_back(cur);
+
+        // Draw merged background runs without inflation to avoid overlaps.
+        for (const BgRun &r : runs) {
+            drawList->AddRectFilled(
+                ImVec2(r.x0, cursor.y),
+                ImVec2(r.x1, cursor.y + fontSize),
+                r.col
+            );
+        }
+
+        // Pass 2: draw text and decorations (no background here)
+        float x = startPos.x;
+        for (const auto &sp : line.spans) {
+            const Seg *seg = sp.seg;
+            if (!seg) { x += sp.width; continue; }
+
             ConsoleColor rc = m_AnsiEnabled
                                   ? seg->color.GetRendered()
                                   : ConsoleColor(seg->color.foreground, IM_COL32(0, 0, 0, 0));
 
             ImU32 fg = m_AnsiEnabled ? ToneColor(rc.foreground) : rc.foreground;
-            ImU32 bgBase = m_AnsiEnabled ? ToneColor(rc.background) : rc.background;
-            ImU32 bg = ApplyAlpha(bgBase, alpha);
-
             if (m_AnsiEnabled) {
                 if (rc.dim) fg = ApplyDimEffect(fg);
-                if (rc.hidden) fg = bg; // render as background color
+                if (rc.hidden) {
+                    // Render hidden text as its background color, with message alpha already applied in BG pass.
+                    ImU32 bgBase = m_AnsiEnabled ? ToneColor(rc.background) : rc.background;
+                    fg = ApplyAlpha(bgBase, alpha);
+                }
             }
             const bool fauxBold = rc.bold;
 
-            // Background (skip for tabs and when alpha=0)
-            if (!sp.is_tab && ((bg >> IM_COL32_A_SHIFT) & 0xFF) != 0) {
-                drawList->AddRectFilled(
-                    ImVec2(x - kBgInflate, cursor.y - kBgInflate),
-                    ImVec2(x + sp.width + kBgInflate, cursor.y + font_sz + kBgInflate),
-                    bg
-                );
-            }
-
-            // Text
             if (!sp.is_tab && sp.b < sp.e) {
                 AddTextMaybeBold(drawList, ImVec2(x, cursor.y), fg, sp.b, sp.e, fauxBold);
 
-                // Decorations
                 if (rc.underline) {
-                    const float y = UnderlineY(cursor.y, font_sz);
+                    const float y = UnderlineY(cursor.y, fontSize);
                     drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width, y), fg);
                 }
                 if (rc.strikethrough) {
-                    const float y = StrikeY(cursor.y, font_sz);
+                    const float y = StrikeY(cursor.y, fontSize);
                     drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width, y), fg);
                 }
             }
 
             x += sp.width;
         }
+
         cursor.y += ImGui::GetTextLineHeightWithSpacing();
     }
 }
