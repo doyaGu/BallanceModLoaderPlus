@@ -404,6 +404,87 @@ TEST_F(StringUtilsTest, LegacyCompatibility) {
     }
 }
 
+// Test ANSI stripping covers CSI/OSC/DCS/SOS/PM/APC and single ESC forms
+TEST_F(StringUtilsTest, StripAnsiCodes) {
+    // Simple SGR coloring
+    {
+        std::string s = std::string("Hello ") + "\x1b[31m" + "Red" + "\x1b[0m" + " World";
+        EXPECT_EQ("Hello Red World", utils::StripAnsiCodes(s.c_str()));
+    }
+
+    // Multiple CSI sequences
+    {
+        std::string s = std::string("Start ") + "\x1b[2J" + "\x1b[H" + "Done";
+        EXPECT_EQ("Start Done", utils::StripAnsiCodes(s.c_str()));
+    }
+
+    // OSC with BEL terminator
+    {
+        std::string s = std::string("A ") + "\x1b]0;MyTitle\x07" + " B";
+        EXPECT_EQ("A  B", utils::StripAnsiCodes(s.c_str()));
+    }
+
+    // OSC with ST (ESC \\) terminator
+    {
+        std::string s = std::string("X ") + "\x1b]1337;url=http://example/\x1b\\" + " Y";
+        EXPECT_EQ("X  Y", utils::StripAnsiCodes(s.c_str()));
+    }
+
+    // DCS ... ST
+    {
+        std::string s = std::string("L ") + "\x1bPqabc\x1b\\" + " R";
+        EXPECT_EQ("L  R", utils::StripAnsiCodes(s.c_str()));
+    }
+
+    // PM ... ST
+    {
+        std::string s = std::string("P ") + "\x1b^payload\x1b\\" + " Q";
+        EXPECT_EQ("P  Q", utils::StripAnsiCodes(s.c_str()));
+    }
+
+    // APC ... ST
+    {
+        std::string s = std::string("I ") + "\x1b_payload\x1b\\" + " J";
+        EXPECT_EQ("I  J", utils::StripAnsiCodes(s.c_str()));
+    }
+
+    // 8-bit CSI (C1) form
+    {
+        std::string s = std::string("x ") + "\x9B31m" + "RED" + "\x9B0m" + " y";
+        EXPECT_EQ("x RED y", utils::StripAnsiCodes(s.c_str()));
+    }
+
+    // 8-bit OSC with ST
+    {
+        std::string s = std::string("x ") + "\x9D0;title\x9C" + " y";
+        EXPECT_EQ("x  y", utils::StripAnsiCodes(s.c_str()));
+    }
+
+    // 8-bit DCS with ST
+    {
+        std::string s = std::string("x ") + "\x90some-data\x9C" + " y";
+        EXPECT_EQ("x  y", utils::StripAnsiCodes(s.c_str()));
+    }
+
+    // Common two-byte ESC forms (RI/NEL/HTS/DEC save/restore)
+    {
+        std::string s = std::string("a ") + "\x1bM" + " b " + "\x1bE" + " c";
+        EXPECT_EQ("a  b  c", utils::StripAnsiCodes(s.c_str()));
+    }
+
+    // Charset/designate and DEC line attributes (3-byte typical)
+    {
+        std::string s = std::string("u ") + "\x1b(B" + " v " + "\x1b#8" + " w";
+        EXPECT_EQ("u  v  w", utils::StripAnsiCodes(s.c_str()));
+    }
+
+    // Unknown ESC fallthrough: drop ESC and the next char
+    {
+        std::string s = std::string("left ") + "\x1b`" + " right";
+        EXPECT_EQ("left  right", utils::StripAnsiCodes(s.c_str()));
+    }
+}
+
 // Main function that runs all the tests
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
