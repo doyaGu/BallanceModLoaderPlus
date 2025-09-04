@@ -37,6 +37,7 @@ set(BML_PRIVATE_HEADERS
         MapMenu.h
         CommandBar.h
         MessageBoard.h
+        AnsiPalette.h
 
         Overlay.h
 
@@ -70,6 +71,7 @@ set(BML_SOURCES
         MapMenu.cpp
         CommandBar.cpp
         MessageBoard.cpp
+        AnsiPalette.cpp
 
         Gui/Element.cpp
         Gui/Text.cpp

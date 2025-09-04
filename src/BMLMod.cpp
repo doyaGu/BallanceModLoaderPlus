@@ -132,6 +132,9 @@ void BMLMod::OnLoad() {
 
     RegisterCommands();
 
+    // Ensure a sample palette file exists for user customization
+    m_MessageBoard.SavePaletteSampleIfMissing();
+
     m_CommandBar.LoadHistory();
 
     RenderHook::EnableWidescreenFix(m_WidescreenFix->GetBoolean());

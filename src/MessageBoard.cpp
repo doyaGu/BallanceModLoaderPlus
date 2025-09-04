@@ -4,13 +4,14 @@
 #include <cstdarg>
 #include <algorithm>
 
+#include <utf8.h>
+
 #include "imgui_internal.h"
 #include "ModContext.h"
 
 namespace {
     // Configuration constants
     constexpr int kTabColumns = 4;      // 4-space tab stops
-    constexpr float kBgInflate = 1.0f;  // pixel inflate for text background boxes
     constexpr float kScrollEpsilon = 0.5f; // tolerance for bottom checks
 
     // --- Text layout primitives (word-wrapping without ImGui's built-in wrap) ---
@@ -21,7 +22,7 @@ namespace {
         const char *b;
         const char *e;
         float width;
-        bool is_tab;
+        bool isTab;
     };
 
     struct LayoutLine {
@@ -30,9 +31,12 @@ namespace {
     };
 
     const char *Utf8Next(const char *s, const char *end) {
-        unsigned int c = 0;
-        int n = ImTextCharFromUtf8(&c, s, end);
-        return (n > 0) ? (s + n) : (s + 1);
+        if (!s || s >= end) return s;
+        utf8_int32_t cp = 0;
+        const char *next = (const char *) utf8codepoint((const utf8_int8_t *) s, &cp);
+        if (!next) return s + 1; // fail-safe advance
+        // Clamp to end to avoid walking past segment end
+        return next > end ? end : next;
     }
 
     // Measure [b,e)
@@ -41,7 +45,7 @@ namespace {
         return font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, b, e, nullptr).x;
     }
 
-    // Greedy word-wrapping layouter. Respects '\n', treats '\\r' as return-to-line-start (overlay), expands tabs to 8 spaces width.
+    // Greedy word-wrapping layouter. Respects '\n', treats '\\r' as return-to-line-start (overlay), expands tabs to 4 spaces width.
     // Produces lines of spans, each span is a slice of an input segment, carrying its style.
     void LayoutSegmentsToLines(const std::vector<Seg> &segments, float wrapWidth, std::vector<LayoutLine> &outLines) {
         outLines.clear();
@@ -105,25 +109,28 @@ namespace {
 
                 // Build next token: continuous run of non-space, or a run of spaces
                 const char *t = p;
-                unsigned int c = 0;
-                int n = ImTextCharFromUtf8(&c, t, end);
-                if (n <= 0) n = 1;
-                bool tokenIsSpace = (c == ' ');
+                utf8_int32_t c = 0;
+                const char *tNext = (const char *) utf8codepoint((const utf8_int8_t *) t, &c);
+                if (!tNext || tNext <= t) tNext = t + 1;
+                bool tokenIsSpace = (c == ' ' || c == 0x3000);
                 const char *q = p;
                 if (tokenIsSpace) {
                     // Consume spaces only (not tabs/newlines, handled above)
-                    while (q < end && *q == ' ') q++;
+                    while (q < end) {
+                        utf8_int32_t sc = 0;
+                        const char *nn = (const char *) utf8codepoint((const utf8_int8_t *) q, &sc);
+                        if (!nn || nn <= q) { q++; break; }
+                        if (!(sc == ' ' || sc == 0x3000)) break;
+                        q = nn;
+                    }
                 } else {
                     // Consume until space or control
                     while (q < end) {
                         const char *next = Utf8Next(q, end);
-                        if (next <= q) {
-                            q++;
-                            break;
-                        }
-                        unsigned int cc = 0;
-                        ImTextCharFromUtf8(&cc, q, end);
-                        if (cc == ' ' || cc == '\t' || cc == '\n' || cc == '\r') break;
+                        if (next <= q) { q++; break; }
+                        utf8_int32_t cc = 0;
+                        (void) utf8codepoint((const utf8_int8_t *) q, &cc);
+                        if (cc == ' ' || cc == 0x3000 || cc == '\t' || cc == '\n' || cc == '\r') break;
                         q = next;
                     }
                 }
@@ -162,35 +169,35 @@ namespace {
                     avail = wrapWidth;
                 }
 
-                // Token longer than entire line, split inside it greedily
+                // Token longer than entire line, split inside it by advancing per codepoint
                 const char *start = p;
                 while (start < q) {
-                    const char *lo = start;
-                    const char *hi = q;
-                    const char *best = start;
-                    // Binary search for the longest prefix <= avail
-                    while (lo < hi) {
-                        // mid as pointer: step by characters to split correctly
-                        const char *mid = lo;
-                        // advance mid by half distance in bytes, then correct to char boundary
-                        size_t half = (size_t) ((hi - lo) / 2);
-                        mid += half;
-                        // backtrack to start of a UTF-8 sequence
-                        while (mid > lo && ((*mid & 0xC0) == 0x80)) mid--;
-                        if (mid <= start) mid = Utf8Next(mid, q);
-                        float ww = Measure(font, fontSize, start, mid);
+                    const char *cur = start;
+                    const char *lastFit = start;
+                    // Greedily extend until we no longer fit
+                    while (cur < q) {
+                        const char *next = Utf8Next(cur, q);
+                        if (next <= cur) { next = cur + 1; }
+                        float ww = Measure(font, fontSize, start, next);
                         if (ww <= avail + 0.0001f) {
-                            best = mid;
-                            lo = mid + 1;
-                        } else { hi = mid; }
+                            lastFit = next;
+                            cur = next;
+                        } else {
+                            break;
+                        }
                     }
-                    if (best == start) {
-                        // Ensure we advance at least one char to avoid infinite loop
-                        best = Utf8Next(start, q);
+                    if (lastFit == start) {
+                        // Even a single codepoint doesn't fit the remaining space; force one and wrap
+                        const char *one = Utf8Next(start, q);
+                        if (one <= start) one = start + 1;
+                        float ww = Measure(font, fontSize, start, one);
+                        EmitSpan(&seg, start, one, ww, false);
+                        start = one;
+                    } else {
+                        float ww = Measure(font, fontSize, start, lastFit);
+                        EmitSpan(&seg, start, lastFit, ww, false);
+                        start = lastFit;
                     }
-                    float ww = Measure(font, fontSize, start, best);
-                    EmitSpan(&seg, start, best, ww, false);
-                    start = best;
                     if (start < q) {
                         NewLine();
                         trimLeadingSpace = true; // following chunk is continuation of split token
@@ -234,13 +241,32 @@ namespace {
         drawList->AddText(ImVec2(pos.x, pos.y + 1.0f), colHalf, begin, end);
     }
 
-    // Compute underline Y (baseline-ish) and strike-through Y (midline-ish)
-    float UnderlineY(float lineTop, float lineH) {
-        return lineTop + lineH - 1.0f;
+    // Compute underline Y using line top + font metrics.
+    // lineTop is the y passed to AddText() (top of the line box).
+    float UnderlineY(float lineTop, float fontSize) {
+        ImFont *font = ImGui::GetFont();
+        ImFontBaked *baked = font ? font->GetFontBaked(fontSize) : nullptr;
+        const float ascent = baked ? ImMax(0.0f, baked->Ascent) : fontSize * 0.8f;
+        const float descent_mag = baked ? ImMax(0.0f, -baked->Descent) : fontSize * 0.2f;
+        const float baseline = lineTop + ascent;
+        // Place underline halfway into descent area, clamped to [1px, descent-1px]
+        const float offset = ImClamp(descent_mag * 0.5f, 1.0f, ImMax(1.0f, descent_mag - 1.0f));
+        return baseline + offset;
     }
 
-    float StrikeY(float lineTop, float lineH) {
-        return lineTop + lineH * 0.5f;
+    // Compute strike-through around mid x-height from line top.
+    float StrikeY(float lineTop, float fontSize) {
+        ImFont *font = ImGui::GetFont();
+        ImFontBaked *baked = font ? font->GetFontBaked(fontSize) : nullptr;
+        const float ascent = baked ? ImMax(0.0f, baked->Ascent) : fontSize * 0.8f;
+        // Position at ~55% of ascent from top of line
+        return lineTop + ascent * 0.55f;
+    }
+
+    // Line thickness scaling based on font size (approx. CSS behavior: ~1px at ~18px, 2px at ~36px, 3px at ~54px)
+    float DecoThickness(float fontSize) {
+        float t = std::round(fontSize / 18.0f);
+        return ImClamp(t, 1.0f, 4.0f);
     }
 }
 
@@ -372,29 +398,31 @@ MessageBoard::ConsoleColor MessageBoard::MessageUnit::ParseAnsiColorSequence(con
             // Reset all
             color = ConsoleColor();
         } else if (code >= 30 && code <= 37) {
-            // Standard foreground colors
-            color.foreground = GetStandardColor(code - 30);
+            // Standard foreground colors -> mark palette index 0..7
+            color.fgIsAnsi256 = true; color.fgAnsiIndex = code - 30;
         } else if (code >= 40 && code <= 47) {
-            // Standard background colors
-            color.background = GetStandardColor(code - 40);
+            // Standard background colors -> mark palette index 0..7
+            color.bgIsAnsi256 = true; color.bgAnsiIndex = code - 40;
             color.background = (color.background & 0x00FFFFFF) | 0xFF000000;
         } else if (code >= 90 && code <= 97) {
-            // Bright foreground colors
-            color.foreground = GetStandardColor(code - 90, true);
+            // Bright foreground colors -> mark palette index 8..15
+            color.fgIsAnsi256 = true; color.fgAnsiIndex = (code - 90) + 8;
         } else if (code >= 100 && code <= 107) {
-            // Bright background colors
-            color.background = GetStandardColor(code - 100, true);
+            // Bright background colors -> mark palette index 8..15
+            color.bgIsAnsi256 = true; color.bgAnsiIndex = (code - 100) + 8;
             color.background = (color.background & 0x00FFFFFF) | 0xFF000000;
         } else if ((code == 38 || code == 48) && i + 1 < codes.size()) {
             // Extended color codes
             bool isBackground = (code == 48);
             if (codes[i + 1] == 5 && i + 2 < codes.size()) {
                 // 256-color mode
-                ImU32 colorValue = Get256Color(codes[i + 2]);
                 if (isBackground) {
-                    color.background = (colorValue & 0x00FFFFFF) | 0xFF000000;
+                    color.bgIsAnsi256 = true;
+                    color.bgAnsiIndex = codes[i + 2];
+                    color.background = (color.background & 0x00FFFFFF) | 0xFF000000;
                 } else {
-                    color.foreground = colorValue;
+                    color.fgIsAnsi256 = true;
+                    color.fgAnsiIndex = codes[i + 2];
                 }
                 i += 2;
             } else if (codes[i + 1] == 2 && i + 4 < codes.size()) {
@@ -402,17 +430,21 @@ MessageBoard::ConsoleColor MessageBoard::MessageUnit::ParseAnsiColorSequence(con
                 ImU32 colorValue = GetRgbColor(codes[i + 2], codes[i + 3], codes[i + 4]);
                 if (isBackground) {
                     color.background = (colorValue & 0x00FFFFFF) | 0xFF000000;
+                    color.bgIsAnsi256 = false; color.bgAnsiIndex = -1;
                 } else {
                     color.foreground = colorValue;
+                    color.fgIsAnsi256 = false; color.fgAnsiIndex = -1;
                 }
                 i += 4;
             }
         } else if (code == 39) {
             // Default foreground color
             color.foreground = IM_COL32_WHITE;
+            color.fgIsAnsi256 = false; color.fgAnsiIndex = -1;
         } else if (code == 49) {
             // Default background color
             color.background = IM_COL32(0, 0, 0, 0);
+            color.bgIsAnsi256 = false; color.bgAnsiIndex = -1;
         } else {
             // Style codes
             switch (code) {
@@ -441,59 +473,6 @@ MessageBoard::ConsoleColor MessageBoard::MessageUnit::ParseAnsiColorSequence(con
     return color;
 }
 
-ImU32 MessageBoard::MessageUnit::GetStandardColor(int colorCode, bool bright) {
-    static constexpr ImU32 standardColors[] = {
-        IM_COL32(0, 0, 0, 255),      // Black
-        IM_COL32(128, 0, 0, 255),    // Red
-        IM_COL32(0, 128, 0, 255),    // Green
-        IM_COL32(128, 128, 0, 255),  // Yellow
-        IM_COL32(0, 0, 128, 255),    // Blue
-        IM_COL32(128, 0, 128, 255),  // Magenta
-        IM_COL32(0, 128, 128, 255),  // Cyan
-        IM_COL32(192, 192, 192, 255) // White
-    };
-
-    static constexpr ImU32 brightColors[] = {
-        IM_COL32(128, 128, 128, 255), // Bright Black
-        IM_COL32(255, 0, 0, 255),     // Bright Red
-        IM_COL32(0, 255, 0, 255),     // Bright Green
-        IM_COL32(255, 255, 0, 255),   // Bright Yellow
-        IM_COL32(0, 0, 255, 255),     // Bright Blue
-        IM_COL32(255, 0, 255, 255),   // Bright Magenta
-        IM_COL32(0, 255, 255, 255),   // Bright Cyan
-        IM_COL32(255, 255, 255, 255)  // Bright White
-    };
-
-    if (colorCode >= 0 && colorCode < 8) {
-        return bright ? brightColors[colorCode] : standardColors[colorCode];
-    }
-    return IM_COL32_WHITE;
-}
-
-ImU32 MessageBoard::MessageUnit::Get256Color(int colorIndex) {
-    if (colorIndex < 0 || colorIndex > 255) return IM_COL32_WHITE;
-
-    if (colorIndex < 16) {
-        return GetStandardColor(colorIndex % 8, colorIndex >= 8);
-    } else if (colorIndex < 232) {
-        // 6x6x6 color cube
-        int idx = colorIndex - 16;
-        int r6 = (idx / 36) % 6;
-        int g6 = ((idx % 36) / 6) % 6;
-        int b6 = idx % 6;
-
-        static const int values[6] = {0, 95, 135, 175, 215, 255};
-        int r = values[r6];
-        int g = values[g6];
-        int b = values[b6];
-
-        return IM_COL32(r, g, b, 255);
-    } else {
-        // Grayscale ramp
-        int gray = std::min(255, 8 + (colorIndex - 232) * 10);
-        return IM_COL32(gray, gray, gray, 255);
-    }
-}
 
 ImU32 MessageBoard::MessageUnit::GetRgbColor(int r, int g, int b) {
     return IM_COL32(
@@ -518,9 +497,12 @@ MessageBoard::ConsoleColor MessageBoard::ConsoleColor::GetRendered() const {
             const ImVec4 c = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
             bg = ImGui::GetColorU32(c);
         }
-        ImU32 tmp_fg = r.foreground;
+        ImU32 fg = r.foreground;
         r.foreground = bg;
-        r.background = tmp_fg;
+        r.background = fg;
+        // Keep palette indices consistent with swapped channels
+        std::swap(r.fgIsAnsi256, r.bgIsAnsi256);
+        std::swap(r.fgAnsiIndex, r.bgAnsiIndex);
     }
     if (hidden) {
         // Render text as background color (maintain alpha), but don't force full invisibility.
@@ -605,14 +587,14 @@ bool MessageBoard::ShouldShowMessage(const MessageUnit &msg) const {
 
 float MessageBoard::GetMessageAlpha(const MessageUnit &msg) const {
     if (m_IsCommandBarVisible) {
-        return 180.0f / 255.0f;
+        return 155.0f / 255.0f;
     }
 
     if (msg.GetTimer() <= 0) {
         return 0.0f;
     }
 
-    return std::min(180.0f, msg.GetTimer() / 20.0f) / 255.0f;
+    return std::min(155.0f, msg.GetTimer() / 20.0f) / 255.0f;
 }
 
 int MessageBoard::CountVisibleMessages() const {
@@ -664,12 +646,18 @@ void MessageBoard::OnPreBegin() {
     // Pre-read style values BEFORE pushing style overrides
     const ImGuiStyle &style = ImGui::GetStyle();
 
-    // Cache style-derived layout parameters with fallbacks
-    m_PadX = (style.WindowPadding.x > 0.0f) ? style.WindowPadding.x : (style.FramePadding.x * 2.0f);
-    m_PadY = (style.WindowPadding.y > 0.0f) ? style.WindowPadding.y : (style.FramePadding.y * 2.0f);
-    m_MessageGap = (style.ItemSpacing.y > 0.0f) ? style.ItemSpacing.y : 4.0f;
-    m_ScrollbarW = (style.ScrollbarSize > 0.0f) ? style.ScrollbarSize : 8.0f;
-    m_ScrollbarPad = (style.ItemInnerSpacing.x > 0.0f) ? (style.ItemInnerSpacing.x * 0.5f) : 2.0f;
+    // Scale layout parameters with current font size (fallback to style when larger)
+    const float fs = ImGui::GetFontSize();
+    const float pad_x_scaled = fs * 0.5f;    // ~8px @16pt
+    const float pad_y_scaled = fs * 0.5f;    // ~8px @16pt
+    const float gap_scaled = fs * 0.25f;     // ~4px @16pt
+    const float sb_w_scaled = fs * 0.5f;     // ~8px @16pt
+    const float sb_pad_scaled = fs * 0.125f; // ~2px @16pt
+    m_PadX = ImMax((style.WindowPadding.x > 0.0f) ? style.WindowPadding.x : 0.0f, pad_x_scaled);
+    m_PadY = ImMax((style.WindowPadding.y > 0.0f) ? style.WindowPadding.y : 0.0f, pad_y_scaled);
+    m_MessageGap = ImMax((style.ItemSpacing.y > 0.0f) ? style.ItemSpacing.y : 0.0f, gap_scaled);
+    m_ScrollbarW = ImMax((style.ScrollbarSize > 0.0f) ? style.ScrollbarSize : 0.0f, sb_w_scaled);
+    m_ScrollbarPad = ImMax((style.ItemInnerSpacing.x > 0.0f) ? (style.ItemInnerSpacing.x * 0.5f) : 0.0f, sb_pad_scaled);
 
     // Push style overrides
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
@@ -787,12 +775,20 @@ void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &mess
     const float fontSize = ImGui::GetFontSize();
 
     for (const auto &line : lines) {
+        // Fetch font metrics for this line (cursor.y is line top)
+        ImFont *font = ImGui::GetFont();
+        ImFontBaked *baked = font ? font->GetFontBaked(fontSize) : nullptr;
+        const float ascent = baked ? ImMax(0.0f, baked->Ascent) : fontSize * 0.8f;
+        const float descentMag = baked ? ImMax(0.0f, -baked->Descent) : fontSize * 0.2f;
+        const float lineTop = cursor.y;
+        const float lineBottom = cursor.y + ascent + descentMag;
+
         // Pass 1: merge adjacent background spans into runs and draw them once.
         struct BgRun { float x0, x1; ImU32 col; };
         std::vector<BgRun> runs;
 
-        float x_for_bg = startPos.x;
-        bool has_open_run = false;
+        float xForBg = startPos.x;
+        bool hasOpenRun = false;
         BgRun cur{};
 
         for (const auto &sp : line.spans) {
@@ -800,7 +796,7 @@ void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &mess
 
             if (!seg) {
                 // advance, nothing to draw
-                x_for_bg += sp.width;
+                xForBg += sp.width;
                 continue;
             }
 
@@ -808,36 +804,45 @@ void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &mess
             ConsoleColor rc = m_AnsiEnabled
                                   ? seg->color.GetRendered()
                                   : ConsoleColor(seg->color.foreground, IM_COL32(0, 0, 0, 0));
-            ImU32 bgBase = m_AnsiEnabled ? ToneColor(rc.background) : rc.background;
+            ImU32 bgBase = rc.background;
+            if (m_AnsiEnabled) {
+                if (rc.bgIsAnsi256 && rc.bgAnsiIndex >= 0) {
+                    m_Palette.EnsureInitialized();
+                    if (m_Palette.IsActive()) {
+                        m_Palette.GetColor(rc.bgAnsiIndex, bgBase);
+                    }
+                }
+                // No color toning
+            }
             ImU32 bg = ApplyAlpha(bgBase, alpha);
-            const bool draw_bg = (!sp.is_tab) && (((bg >> IM_COL32_A_SHIFT) & 0xFF) != 0) && (sp.b < sp.e);
+            const bool drawBg = (!sp.isTab) && (((bg >> IM_COL32_A_SHIFT) & 0xFF) != 0) && (sp.b < sp.e);
 
-            if (draw_bg) {
-                const float x0 = x_for_bg;
-                const float x1 = x_for_bg + sp.width;
-                if (has_open_run && cur.col == bg && std::abs(cur.x1 - x0) <= 0.25f) {
+            if (drawBg) {
+                const float x0 = xForBg;
+                const float x1 = xForBg + sp.width;
+                if (hasOpenRun && cur.col == bg && std::abs(cur.x1 - x0) <= 0.25f) {
                     // extend current run contiguously
                     cur.x1 = x1;
                 } else {
                     // flush previous run
-                    if (has_open_run) runs.push_back(cur);
+                    if (hasOpenRun) runs.push_back(cur);
                     cur = BgRun{x0, x1, bg};
-                    has_open_run = true;
+                    hasOpenRun = true;
                 }
             } else {
                 // gap breaks run
-                if (has_open_run) { runs.push_back(cur); has_open_run = false; }
+                if (hasOpenRun) { runs.push_back(cur); hasOpenRun = false; }
             }
 
-            x_for_bg += sp.width;
+            xForBg += sp.width;
         }
-        if (has_open_run) runs.push_back(cur);
+        if (hasOpenRun) runs.push_back(cur);
 
         // Draw merged background runs without inflation to avoid overlaps.
         for (const BgRun &r : runs) {
             drawList->AddRectFilled(
-                ImVec2(r.x0, cursor.y),
-                ImVec2(r.x1, cursor.y + fontSize),
+                ImVec2(r.x0, lineTop),
+                ImVec2(r.x1, lineBottom),
                 r.col
             );
         }
@@ -852,27 +857,52 @@ void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &mess
                                   ? seg->color.GetRendered()
                                   : ConsoleColor(seg->color.foreground, IM_COL32(0, 0, 0, 0));
 
-            ImU32 fg = m_AnsiEnabled ? ToneColor(rc.foreground) : rc.foreground;
+            ImU32 fg = rc.foreground;
+            if (m_AnsiEnabled) {
+                if (rc.fgIsAnsi256 && rc.fgAnsiIndex >= 0) {
+                    m_Palette.EnsureInitialized();
+                    if (m_Palette.IsActive()) {
+                        m_Palette.GetColor(rc.fgAnsiIndex, fg);
+                    }
+                }
+                // No color toning
+            }
             if (m_AnsiEnabled) {
                 if (rc.dim) fg = ApplyDimEffect(fg);
                 if (rc.hidden) {
                     // Render hidden text as its background color, with message alpha already applied in BG pass.
-                    ImU32 bgBase = m_AnsiEnabled ? ToneColor(rc.background) : rc.background;
-                    fg = ApplyAlpha(bgBase, alpha);
+                    ImU32 bgBase2 = rc.background;
+                    if (rc.bgIsAnsi256 && rc.bgAnsiIndex >= 0) {
+                        m_Palette.EnsureInitialized();
+                        if (m_Palette.IsActive()) {
+                            m_Palette.GetColor(rc.bgAnsiIndex, bgBase2);
+                        }
+                        // preserve palette
+                        fg = ApplyAlpha(bgBase2, alpha);
+                    } else {
+                        // no toning for non-palette colors either
+                        fg = ApplyAlpha(bgBase2, alpha);
+                    }
                 }
             }
             const bool fauxBold = rc.bold;
 
-            if (!sp.is_tab && sp.b < sp.e) {
-                AddTextMaybeBold(drawList, ImVec2(x, cursor.y), fg, sp.b, sp.e, fauxBold);
+            if (!sp.isTab && sp.b < sp.e) {
+                // Use line top for AddText position to align with ImGui expectations
+                AddTextMaybeBold(drawList, ImVec2(x, lineTop), fg, sp.b, sp.e, fauxBold);
 
                 if (rc.underline) {
-                    const float y = UnderlineY(cursor.y, fontSize);
-                    drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width, y), fg);
+                    float y = UnderlineY(lineTop, fontSize);
+                    float th = DecoThickness(fontSize);
+                    // Align odd thickness to pixel centers for crisper AA lines
+                    if (fmodf(th, 2.0f) != 0.0f) y = floorf(y) + 0.5f; else y = roundf(y);
+                    drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width, y), fg, th);
                 }
                 if (rc.strikethrough) {
-                    const float y = StrikeY(cursor.y, fontSize);
-                    drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width, y), fg);
+                    float y = StrikeY(lineTop, fontSize);
+                    float th = DecoThickness(fontSize);
+                    if (fmodf(th, 2.0f) != 0.0f) y = floorf(y) + 0.5f; else y = roundf(y);
+                    drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width, y), fg, th);
                 }
             }
 
@@ -964,20 +994,6 @@ void MessageBoard::DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &cont
         // Text
         drawList->AddText(textPos, IM_COL32(255, 255, 255, 200), scrollText.c_str());
     }
-}
-
-ImU32 MessageBoard::ToneColor(ImU32 c) const {
-    const int a = (c >> IM_COL32_A_SHIFT) & 0xFF;
-    if (a == 0) return c;
-    float r = ((c >> IM_COL32_R_SHIFT) & 0xFF) / 255.0f;
-    float g = ((c >> IM_COL32_G_SHIFT) & 0xFF) / 255.0f;
-    float b = ((c >> IM_COL32_B_SHIFT) & 0xFF) / 255.0f;
-    float h, s, v;
-    ImGui::ColorConvertRGBtoHSV(r, g, b, h, s, v);
-    s = ImClamp(s * m_ColorSaturation, 0.0f, 1.0f);
-    v = ImClamp(v * m_ColorValue, 0.0f, 1.0f);
-    ImGui::ColorConvertHSVtoRGB(h, s, v, r, g, b);
-    return IM_COL32((int)(r * 255.0f + 0.5f), (int)(g * 255.0f + 0.5f), (int)(b * 255.0f + 0.5f), a);
 }
 
 MessageBoard::ScrollMetrics MessageBoard::GetScrollMetrics(float contentHeight, float visibleHeight) const {
