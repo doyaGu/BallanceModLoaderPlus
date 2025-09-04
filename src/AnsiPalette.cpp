@@ -55,15 +55,6 @@ std::wstring Ansi256Palette::GetFilePathW() const {
 }
 
 void Ansi256Palette::BuildDefault() {
-    // default generation parameters
-    m_CubeSat = 0.60f;
-    m_CubeVal = 1.00f;
-    int defaults[6] = {0, 95, 135, 175, 215, 255};
-    for (int i = 0; i < 6; ++i) m_CubeValues[i] = defaults[i];
-    m_GrayStart = 8;
-    m_GrayStep = 10;
-    m_GrayScale = 0.95f;
-    m_GrayBias = 6.0f;
     // Standard 0-7 (xterm-like)
     ImU32 stdc[8] = {
         RGBA(0x00, 0x00, 0x00), // black
@@ -91,26 +82,21 @@ void Ansi256Palette::BuildDefault() {
     }
     for (int i = 0; i < 8; ++i) { m_Palette[i] = stdc[i]; }
     for (int i = 0; i < 8; ++i) { m_Palette[i + 8] = brtc[i]; }
-    // 6x6x6 cube 16..231 softened
+    // 6x6x6 cube 16..231 (xterm standard)
     static const int values[6] = {0, 95, 135, 175, 215, 255};
     for (int idx = 16; idx < 232; ++idx) {
         int v = idx - 16;
         int r6 = (v / 36) % 6;
         int g6 = ((v % 36) / 6) % 6;
         int b6 = v % 6;
-        float r = values[r6] / 255.0f;
-        float g = values[g6] / 255.0f;
-        float b = values[b6] / 255.0f;
-        float h, s, val;
-        ImGui::ColorConvertRGBtoHSV(r, g, b, h, s, val);
-        s *= 0.60f;
-        ImGui::ColorConvertHSVtoRGB(h, s, val, r, g, b);
-        m_Palette[idx] = RGBA((int) (r * 255.0f + 0.5f), (int) (g * 255.0f + 0.5f), (int) (b * 255.0f + 0.5f));
+        int r = values[r6];
+        int g = values[g6];
+        int b = values[b6];
+        m_Palette[idx] = RGBA(r, g, b);
     }
-    // Gray 232..255 softened
+    // Gray 232..255 (xterm standard)
     for (int idx = 232; idx < 256; ++idx) {
-        int base = 8 + (idx - 232) * 10;
-        int gray = std::clamp((int) std::round(base * 0.95 + 6.0), 0, 255);
+        int gray = 8 + (idx - 232) * 10;
         m_Palette[idx] = RGBA(gray, gray, gray);
     }
     m_Active = true;
@@ -203,6 +189,13 @@ void Ansi256Palette::ParseBuffer(const std::string &buf) {
         while (i > 0 && (s[i - 1] == ' ' || s[i - 1] == '\t' || s[i - 1] == '\r')) --i;
         s.erase(i);
     };
+    auto isNumber = [](const std::string &s) -> bool {
+        if (s.empty()) return false;
+        for (unsigned char ch : s) {
+            if (ch < '0' || ch > '9') return false;
+        }
+        return true;
+    };
     while (pos < buf.size()) {
         size_t line_end = buf.find_first_of("\r\n", pos);
         size_t n = (line_end == std::string::npos) ? (buf.size() - pos) : (line_end - pos);
@@ -250,57 +243,23 @@ void Ansi256Palette::ParseBuffer(const std::string &buf) {
                 continue;
             }
             // allow numeric indices too
-            int idx = std::stoi(lkey);
-            if ((section == "standard" && idx >= 0 && idx <= 7) || (section == "bright" && idx >= 8 && idx <= 15)) {
-                setIndexColor(idx, val);
-                continue;
+            if (isNumber(lkey)) {
+                int idx = std::stoi(lkey);
+                if ((section == "standard" && idx >= 0 && idx <= 7) || (section == "bright" && idx >= 8 && idx <= 15)) {
+                    setIndexColor(idx, val);
+                }
             }
         } else if (section == "cube") {
-            if (lkey == "saturation" || lkey == "sat") {
-                m_CubeSat = std::clamp(std::stof(val), 0.0f, 2.0f);
-                continue;
-            }
-            if (lkey == "value" || lkey == "val") {
-                m_CubeVal = std::clamp(std::stof(val), 0.0f, 2.0f);
-                continue;
-            }
-            if (lkey == "values") {
-                int got = 0;
-                std::string tmp = val;
-                for (int i = 0; i < 6; i++) {
-                    int t = 0;
-                    if (sscanf(tmp.c_str(), "%d%*[^0-9]%n", &t, &got) >= 1) {
-                        m_CubeValues[i] = std::clamp(t, 0, 255);
-                        tmp = tmp.substr(got);
-                    }
-                }
-                continue;
-            }
-            // index override within cube range
-            int idx = std::stoi(lkey);
-            if (idx >= 16 && idx <= 231) {
-                setIndexColor(idx, val);
+            // index override within cube range only (no tuning keys)
+            if (isNumber(lkey)) {
+                int idx = std::stoi(lkey);
+                if (idx >= 16 && idx <= 231) setIndexColor(idx, val);
             }
         } else if (section == "gray" || section == "grayscale") {
-            if (lkey == "start") {
-                m_GrayStart = std::clamp(std::stoi(val), 0, 255);
-                continue;
-            }
-            if (lkey == "step") {
-                m_GrayStep = std::clamp(std::stoi(val), 0, 255);
-                continue;
-            }
-            if (lkey == "scale") {
-                m_GrayScale = std::clamp(std::stof(val), 0.0f, 3.0f);
-                continue;
-            }
-            if (lkey == "bias") {
-                m_GrayBias = std::clamp(std::stof(val), -255.0f, 255.0f);
-                continue;
-            }
-            int idx = std::stoi(lkey);
-            if (idx >= 232 && idx <= 255) {
-                setIndexColor(idx, val);
+            // index override within gray range only (no tuning keys)
+            if (isNumber(lkey)) {
+                int idx = std::stoi(lkey);
+                if (idx >= 232 && idx <= 255) setIndexColor(idx, val);
             }
         } else if (section == "overrides") {
             size_t dash = lkey.find('-');
@@ -332,28 +291,23 @@ void Ansi256Palette::ParseBuffer(const std::string &buf) {
 }
 
 void Ansi256Palette::RebuildCubeAndGray() {
-    // Cube 16..231
+    // Cube 16..231 (standard xterm)
     for (int idx = 16; idx < 232; ++idx) {
         if (m_HasOverride[idx]) continue;
         int v = idx - 16;
         int r6 = (v / 36) % 6;
         int g6 = ((v % 36) / 6) % 6;
         int b6 = v % 6;
-        float r = m_CubeValues[r6] / 255.0f;
-        float g = m_CubeValues[g6] / 255.0f;
-        float b = m_CubeValues[b6] / 255.0f;
-        float h, s, val;
-        ImGui::ColorConvertRGBtoHSV(r, g, b, h, s, val);
-        s = std::clamp(s * m_CubeSat, 0.0f, 1.0f);
-        val = std::clamp(val * m_CubeVal, 0.0f, 1.0f);
-        ImGui::ColorConvertHSVtoRGB(h, s, val, r, g, b);
-        m_Palette[idx] = RGBA((int) (r * 255.0f + 0.5f), (int) (g * 255.0f + 0.5f), (int) (b * 255.0f + 0.5f));
+        static const int values[6] = {0, 95, 135, 175, 215, 255};
+        int r = values[r6];
+        int g = values[g6];
+        int b = values[b6];
+        m_Palette[idx] = RGBA(r, g, b);
     }
-    // Gray 232..255
+    // Gray 232..255 (standard xterm)
     for (int idx = 232; idx < 256; ++idx) {
         if (m_HasOverride[idx]) continue;
-        int base = m_GrayStart + (idx - 232) * m_GrayStep;
-        int gray = std::clamp((int) std::round(base * m_GrayScale + m_GrayBias), 0, 255);
+        int gray = 8 + (idx - 232) * 10;
         m_Palette[idx] = RGBA(gray, gray, gray);
     }
 }
@@ -422,11 +376,11 @@ bool Ansi256Palette::SaveSampleIfMissing() {
     FILE *fp = _wfopen(path.c_str(), L"wb");
     if (!fp) return false;
     const char *sample =
-        "# Ansi256Palette.cfg (human-friendly)\n"
-        "# Sections: [meta], [standard], [bright], [cube], [gray], [overrides]\n"
+        "# Ansi256Palette.cfg\n"
+        "# Sections: [meta], [standard], [bright], [overrides]\n"
         "# Colors accept #RRGGBB or R,G,B. Lines starting with # or ; are comments.\n\n"
         "[meta]\n"
-        "# Base preset for 0..15: nord | onedark\n"
+        "# Optional base preset for 0..15: nord | onedark\n"
         "base = nord\n\n"
         "[standard]  # indices 0..7\n"
         "black  = #3B4252\n"
@@ -446,16 +400,7 @@ bool Ansi256Palette::SaveSampleIfMissing() {
         "magenta= #B48EAD\n"
         "cyan   = #8FBCBB\n"
         "white  = #ECEFF4\n\n"
-        "[cube]      # 16..231 generation parameters (HSV scaling)\n"
-        "saturation = 0.60\n"
-        "value      = 1.00\n"
-        "values     = 0,95,135,175,215,255\n\n"
-        "[gray]      # 232..255 generation parameters\n"
-        "start = 8\n"
-        "step  = 10\n"
-        "scale = 0.95\n"
-        "bias  = 6.0\n\n"
-        "[overrides] # override any index or range\n"
+        "[overrides] # override any index or range (0..255)\n"
         "# 196 = #FF0000\n"
         "# 232-239 = 180,180,180\n";
     fwrite(sample, 1, strlen(sample), fp);

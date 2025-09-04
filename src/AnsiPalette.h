@@ -41,16 +41,6 @@ private:
     void RebuildCubeAndGray();
     void ApplyBase16(const std::string &base);
     std::wstring GetFilePathW() const;
-
-    // Parameters for generating cube (16..231) and gray (232..255)
-    float m_CubeSat = 0.60f;                           // HSV saturation multiplier
-    float m_CubeVal = 1.00f;                           // HSV value multiplier
-    int m_CubeValues[6] = {0, 95, 135, 175, 215, 255}; // 6x6x6 base levels
-
-    int m_GrayStart = 8;       // base start value
-    int m_GrayStep = 10;       // increment per step
-    float m_GrayScale = 0.95f; // scaling factor
-    float m_GrayBias = 6.0f;   // bias added after scaling
 };
 
 #endif // BML_ANSI_PALETTE_H
