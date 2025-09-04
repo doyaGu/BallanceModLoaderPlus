@@ -7,6 +7,8 @@
 
 #include "BML/Bui.h"
 
+#include "AnsiPalette.h"
+
 // Minimum alpha used when drawing auxiliary strokes (e.g., faux-bold offsets)
 static constexpr float kAuxStrokeAlphaScale = 0.5f;
 
@@ -40,6 +42,12 @@ public:
         bool dim = false;
         bool hidden = false;
         bool reverse = false;
+
+        // Origin markers for 256-color palette application
+        bool fgIsAnsi256 = false;
+        bool bgIsAnsi256 = false;
+        int  fgAnsiIndex = -1;
+        int  bgAnsiIndex = -1;
 
         ConsoleColor() = default;
         explicit ConsoleColor(ImU32 fg) : foreground(fg) {}
@@ -83,8 +91,7 @@ public:
         void ParseAnsiEscapeCodes();
 
         static ConsoleColor ParseAnsiColorSequence(const std::string &sequence, const ConsoleColor &currentColor);
-        static ImU32 GetStandardColor(int colorCode, bool bright = false);
-        static ImU32 Get256Color(int colorIndex);
+
         static ImU32 GetRgbColor(int r, int g, int b);
     };
 
@@ -107,14 +114,15 @@ public:
     void ClearMessages();
     void ResizeMessages(int size);
 
+    // Palette operations
+    bool ReloadPaletteFromFile() { return m_Palette.ReloadFromFile(); }
+    bool SavePaletteSampleIfMissing() { return m_Palette.SaveSampleIfMissing(); }
+    std::wstring GetPaletteConfigPathW() const { return m_Palette.GetConfigPathW(); }
+
     // Settings
     void SetMaxTimer(float maxTimer) { m_MaxTimer = std::max(100.0f, maxTimer); }
     void SetCommandBarVisible(bool visible);
     void SetAnsiEnabled(bool enabled) { m_AnsiEnabled = enabled; }
-
-    // Modern color tuning
-    void SetColorSaturation(float s) { m_ColorSaturation = std::clamp(s, 0.0f, 1.0f); }
-    void SetColorValue(float v) { m_ColorValue = std::clamp(v, 0.0f, 1.5f); }
 
     // Scrolling control (only active when command bar is visible)
     void SetScrollPosition(float scrollY);
@@ -163,7 +171,6 @@ private:
     void UpdateScrollBounds(float contentHeight, float windowHeight);
 
     // Utilities
-    ImU32 ToneColor(ImU32 c) const;
     void SetScrollYClamped(float y);
     void SyncScrollBottomFlag();
 
@@ -177,10 +184,6 @@ private:
     bool m_AnsiEnabled = true;
     float m_MaxTimer = 6000.0f;
 
-    // Color tuning
-    float m_ColorSaturation = 0.85f;
-    float m_ColorValue = 1.25f;
-
     // Scrolling state
     float m_ScrollY = 0.0f;
     float m_MaxScrollY = 0.0f;
@@ -192,6 +195,9 @@ private:
     float m_MessageGap = 4.0f;   // Spacing between message blocks
     float m_ScrollbarW = 8.0f;   // Scrollbar width
     float m_ScrollbarPad = 2.0f; // Scrollbar edge padding
+
+    // ANSI 256-color palette
+    Ansi256Palette m_Palette;
 };
 
 #endif // BML_MESSAGEBOARD_H
