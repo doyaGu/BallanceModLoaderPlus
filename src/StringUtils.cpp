@@ -373,24 +373,107 @@ namespace utils {
     std::string StripAnsiCodes(const char *str) {
         if (!str) return "";
 
-        std::string result;
-        result.reserve(strlen(str));
-        const char *p = str;
+        auto is_final_byte = [](unsigned char c) {
+            return c >= 0x40 && c <= 0x7E; // ECMA-48 final byte
+        };
 
+        std::string out;
+        out.reserve(std::strlen(str));
+
+        const unsigned char *p = reinterpret_cast<const unsigned char *>(str);
         while (*p) {
-            if (*p == '\033' && *(p + 1) == '[') {
-                p += 2;
-                while (*p && *p != 'm' && *p != 'A' && *p != 'B' && *p != 'C' && *p != 'D' &&
-                       *p != 'H' && *p != 'f' && *p != 'J' && *p != 'K' && *p != 's' && *p != 'u') {
-                    ++p;
-                       }
-                if (*p) ++p; // Skip the final command character
-            } else {
-                result += *p++;
-            }
-        }
+            unsigned char c = *p;
+            if (c == 0x1B) {
+                // ESC ...
+                if (!p[1]) break; // dangling ESC at end
+                unsigned char a = p[1];
 
-        return result;
+                // CSI: ESC [ ... final
+                if (a == '[') {
+                    p += 2;
+                    // parameters (0x30-0x3F), intermediates (0x20-0x2F) then final (0x40-0x7E)
+                    while (*p && !is_final_byte(*p)) ++p;
+                    if (*p) ++p; // consume final
+                    continue;
+                }
+
+                // OSC: ESC ] ... BEL (0x07) or ST (ESC \\)
+                if (a == ']') {
+                    p += 2;
+                    while (*p) {
+                        if (*p == 0x07) { ++p; break; } // BEL terminator
+                        if (*p == 0x1B && p[1] == '\\') { p += 2; break; } // ST
+                        ++p;
+                    }
+                    continue;
+                }
+
+                // DCS, SOS, PM, APC: ESC P/X/^/_ ... ST (ESC \\)
+                if (a == 'P' || a == 'X' || a == '^' || a == '_') {
+                    p += 2;
+                    while (*p) {
+                        if (*p == 0x1B && p[1] == '\\') { p += 2; break; }
+                        ++p;
+                    }
+                    continue;
+                }
+
+                // Two-byte control functions frequently used
+                if (a == 'N' || a == 'O' || a == 'c' || a == '7' || a == '8' || a == '=' || a == '>' ||
+                    a == 'D' || a == 'E' || a == 'H' || a == 'M' || a == 'Z') {
+                    p += 2; // drop ESC <char>
+                    continue;
+                }
+
+                // Designate, charset, S7C1T/S8C1T, DEC line attributes: ESC <prefix> <final>
+                if (a == '#' || a == '(' || a == ')' || a == '*' || a == '+' || a == '-' || a == '.' || a == ' ') {
+                    // Consume ESC, prefix, and at most one following byte if present
+                    if (p[2]) p += 3; else p += 2;
+                    continue;
+                }
+
+                // Fallback: unknown ESC sequence, drop ESC and next byte if present
+                p += p[1] ? 2 : 1;
+                continue;
+            }
+
+            // 8-bit C1 control codes (ECMA-48)
+            if (c == 0x9B) { // CSI
+                ++p;
+                while (*p && !is_final_byte(*p)) ++p;
+                if (*p) ++p;
+                continue;
+            } else if (c == 0x9D) { // OSC (String to BEL or ST)
+                ++p;
+                while (*p) {
+                    if (*p == 0x9C || *p == 0x07) { ++p; break; } // ST or BEL
+                    if (*p == 0x1B && p[1] == '\\') { p += 2; break; }
+                    ++p;
+                }
+                continue;
+            } else if (c == 0x90) { // DCS ... ST
+                ++p;
+                while (*p) {
+                    if (*p == 0x9C) { ++p; break; }
+                    if (*p == 0x1B && p[1] == '\\') { p += 2; break; }
+                    ++p;
+                }
+                continue;
+            } else if (c == 0x98 || c == 0x9E || c == 0x9F) { // SOS, PM, APC ... ST
+                ++p;
+                while (*p) {
+                    if (*p == 0x9C) { ++p; break; }
+                    if (*p == 0x1B && p[1] == '\\') { p += 2; break; }
+                    ++p;
+                }
+                continue;
+            }
+
+            // Default: copy byte as-is
+            out.push_back(static_cast<char>(c));
+            ++p;
+        }
+        return out;
     }
 
     DWORD MapFlags(uint32_t f) {
