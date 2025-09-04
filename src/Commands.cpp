@@ -1,6 +1,7 @@
 #include "Commands.h"
 
 #include "BML/IBML.h"
+#include "BML/BML.h"
 #include "BMLMod.h"
 
 #include "StringUtils.h"
@@ -211,5 +212,31 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
             }
         }
         m_BMLMod->SetHUD(state);
+    }
+}
+
+void CommandPalette::Execute(IBML *bml, const std::vector<std::string> &args) {
+    if (!m_BMLMod) return;
+    auto &mb = m_BMLMod->GetMessageBoard();
+    if (args.size() <= 1 || args[1] == "reload") {
+        const bool loaded = mb.ReloadPaletteFromFile();
+        const std::wstring path = mb.GetPaletteConfigPathW();
+        if (loaded) {
+            char *pathAnsi = BML_Utf16ToAnsi(path.c_str());
+            bml->SendIngameMessage((std::string("[palette] reloaded from ") + pathAnsi + "\n").c_str());
+            delete[] pathAnsi;
+        } else {
+            bml->SendIngameMessage("[palette] no config found, using default.\n");
+        }
+    } else if (args[1] == "sample") {
+        const bool written = mb.SavePaletteSampleIfMissing();
+        const std::wstring path = mb.GetPaletteConfigPathW();
+        char *pathAnsi = BML_Utf16ToAnsi(path.c_str());
+        if (written) {
+            bml->SendIngameMessage((std::string("[palette] sample created: ") + pathAnsi + "\n").c_str());
+        } else {
+            bml->SendIngameMessage((std::string("[palette] sample exists: ") + pathAnsi + "\n").c_str());
+        }
+        delete[] pathAnsi;
     }
 }
