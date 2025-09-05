@@ -332,8 +332,10 @@ namespace Bui {
         void PrevPage() { SetPage(m_PageIndex - 1); }
 
         void SetPageCount(int count) {
-            m_PageCount = std::max(1, count);
-            if (m_PageIndex >= m_PageCount) {
+            m_PageCount = std::max(0, count);
+            if (m_PageCount == 0) {
+                m_PageIndex = 0;
+            } else if (m_PageIndex >= m_PageCount) {
                 SetPage(m_PageCount - 1);
             }
         }
@@ -375,7 +377,7 @@ namespace Bui {
     protected:
         std::string m_Title;
         int m_PageIndex = 0;
-        int m_PageCount = 1;
+        int m_PageCount = 0;
         Menu *m_Menu;
     };
 
