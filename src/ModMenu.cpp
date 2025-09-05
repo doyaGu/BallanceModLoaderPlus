@@ -12,23 +12,11 @@ void ModMenu::Init() {
 }
 
 void ModMenu::OnOpen() {
-    BML_GetModContext()->GetInputManager()->Block(CK_INPUT_DEVICE_KEYBOARD);
+    Bui::BlockKeyboardInput();
 }
 
 void ModMenu::OnClose() {
-    auto *context = BML_GetCKContext();
-    auto *modContext = BML_GetModContext();
-    auto *inputHook = modContext->GetInputManager();
-
-    CKBehavior *beh = modContext->GetScriptByName("Menu_Options");
-    context->GetCurrentScene()->Activate(beh, true);
-
-    modContext->AddTimerLoop(1ul, [inputHook] {
-        if (inputHook->oIsKeyDown(CKKEY_ESCAPE) || inputHook->oIsKeyDown(CKKEY_RETURN))
-            return true;
-        inputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
-        return false;
-    });
+    Bui::TransitionToScriptAndUnblock("Menu_Options");
 }
 
 Config *ModMenu::GetConfig(IMod *mod) {
@@ -39,10 +27,10 @@ void ModListPage::OnPostBegin() {
     Bui::Title(m_Title.c_str());
 
     const int count = BML_GetModContext()->GetModCount();
-    SetPageCount(count % 4 == 0 ? count / 4 : count / 4 + 1);
+    SetPageCount(Bui::CalcPageCount(count, 4));
 
-    if (m_PageIndex > 0 && Bui::NavLeft()) PrevPage();
-    if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 && Bui::NavRight()) NextPage();
+    if (Bui::CanPrevPage(m_PageIndex) && Bui::NavLeft()) PrevPage();
+    if (Bui::CanNextPage(m_PageIndex, count, 4) && Bui::NavRight()) NextPage();
 }
 
 void ModListPage::OnDraw() {
@@ -89,7 +77,7 @@ void ModPage::OnPostBegin() {
         return;
 
     int count = (int) m_Config->GetCategoryCount();
-    SetPageCount(((count % 4) == 0) ? count / 4 : count / 4 + 1);
+    SetPageCount(Bui::CalcPageCount(count, 4));
 }
 
 void ModPage::OnDraw() {
@@ -119,12 +107,14 @@ void ModPage::OnDraw() {
         return true;
     }, 0.4031f, 0.5f, 0.06f, 4);
 
-    if (m_PageIndex > 0 &&
+    const int totalCategories = m_Config ? (int)m_Config->GetCategoryCount() : 0;
+
+    if (Bui::CanPrevPage(m_PageIndex) &&
         Bui::NavLeft(0.35f, 0.59f)) {
         PrevPage();
     }
 
-    if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 &&
+    if (Bui::CanNextPage(m_PageIndex, totalCategories, 4) &&
         Bui::NavRight(0.6138f, 0.59f)) {
         NextPage();
     }
@@ -156,8 +146,9 @@ void ModOptionPage::OnPostBegin() {
     Bui::Title(m_Name.c_str(), 0.13f, 1.5f,  m_HasPendingChanges ? IM_COL32(255, 255, 128, 255) : IM_COL32_WHITE);
 
     // Navigation
-    if (m_PageIndex > 0 && Bui::NavLeft()) PrevPage();
-    if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 && Bui::NavRight()) NextPage();
+    const int totalProps = m_Category ? (int)m_Category->GetPropertyCount() : 0;
+    if (Bui::CanPrevPage(m_PageIndex) && Bui::NavLeft()) PrevPage();
+    if (Bui::CanNextPage(m_PageIndex, totalProps, 4) && Bui::NavRight()) NextPage();
 
     // Update pending changes status
     m_HasPendingChanges = HasPendingChanges();
@@ -249,7 +240,7 @@ bool ModOptionPage::OnOpen() {
         return false;
 
     int count = static_cast<int>(m_Category->GetPropertyCount());
-    SetPageCount(count % 4 == 0 ? count / 4 : count / 4 + 1);
+    SetPageCount(Bui::CalcPageCount(count, 4));
 
     FlushBuffers();
     LoadOriginalValues();

@@ -59,7 +59,7 @@ void MapMenu::Init() {
 }
 
 void MapMenu::OnOpen() {
-    BML_GetModContext()->GetInputManager()->Block(CK_INPUT_DEVICE_KEYBOARD);
+    Bui::BlockKeyboardInput();
 }
 
 void MapMenu::OnClose() {
@@ -71,21 +71,10 @@ void MapMenu::OnClose() {
 }
 
 void MapMenu::OnClose(bool backToMenu) {
-    auto *context = BML_GetCKContext();
-    auto *modManager = BML_GetModContext();
-    auto *inputHook = modManager->GetInputManager();
-
-    if (backToMenu) {
-        CKBehavior *beh = modManager->GetScriptByName("Menu_Start");
-        context->GetCurrentScene()->Activate(beh, true);
-    }
-
-    modManager->AddTimerLoop(1ul, [inputHook] {
-        if (inputHook->oIsKeyDown(CKKEY_ESCAPE) || inputHook->oIsKeyDown(CKKEY_RETURN))
-            return true;
-        inputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
-        return false;
-    });
+    if (backToMenu)
+        Bui::TransitionToScriptAndUnblock("Menu_Start");
+    else
+        Bui::UnblockKeyboardAfterRelease();
 }
 
 void MapMenu::LoadMap(const std::wstring &path) {
@@ -306,14 +295,16 @@ void MapListPage::OnPostBegin() {
     ImGui::PopStyleColor();
 
     m_Count = IsSearching() ? static_cast<int>(m_MapSearchResult.size()) : static_cast<int>(maps->children.size());
-    SetPageCount(m_Count % 10 == 0 ? m_Count / 10 : m_Count / 10 + 1);
+    // Keep page count in sync with total entries (10 per page)
+    SetPageCount(Bui::CalcPageCount(m_Count, 10));
 
-    if (m_PageIndex > 0 &&
+    if (Bui::CanPrevPage(m_PageIndex) &&
         Bui::NavLeft(0.36f, 0.4f)) {
         PrevPage();
     }
 
-    if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 &&
+    // Only show Next when there are more items beyond the current page
+    if (Bui::CanNextPage(m_PageIndex, m_Count, 10) &&
         Bui::NavRight(0.6238f, 0.4f)) {
         NextPage();
     }
@@ -334,6 +325,9 @@ void MapListPage::OnDraw() {
         }, 0.4031f, 0.23f, 0.06f, 10);
     } else {
         Bui::Entries([&](size_t index) {
+            // Stop drawing when exceeding available items on this page
+            if (n + static_cast<int>(index) >= m_Count)
+                return false;
             return OnDrawEntry(n + index, &v);
         }, 0.4031f, 0.23f, 0.06f, 10);
     }
@@ -433,6 +427,8 @@ bool MapListPage::OnDrawEntry(size_t index, bool *v) {
 
         if (Bui::LevelButton(entry->name.c_str(), v)) {
             dynamic_cast<MapMenu *>(m_Menu)->SetCurrentMaps(entry);
+            // When entering a folder, reset to first page to avoid stale index
+            SetPage(0);
             ClearSearch();
         }
 
