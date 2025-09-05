@@ -1055,7 +1055,10 @@ void MessageBoard::UpdateTimers(float deltaTime) {
 }
 
 void MessageBoard::AddMessageInternal(const char *msg) {
-    if (!msg || strlen(msg) == 0) return;
+    if (!msg) return;
+
+    if (msg[0] == '\0')
+        msg = "\n"; // treat empty messages as newlines
 
     // Update display count
     if (m_MessageCount == static_cast<int>(m_Messages.size()) && m_Messages[m_MessageCount - 1].GetTimer() > 0) {
