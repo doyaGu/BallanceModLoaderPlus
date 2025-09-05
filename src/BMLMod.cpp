@@ -119,6 +119,11 @@ void BMLMod::OnLoad() {
     m_TimeManager = m_BML->GetTimeManager();
     m_RenderContext->Get2dRoot(TRUE)->GetRect(m_WindowRect);
 
+    // Configure AnsiPalette to use the ModLoader directory for config/themes
+    AnsiPalette::SetLoaderDirProvider([]() -> std::wstring {
+        return BML_GetModContext()->GetDirectory(BML_DIR_LOADER);
+    });
+
     ExecuteBB::Init();
 
     InitConfigs();
