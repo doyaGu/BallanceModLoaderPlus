@@ -10,6 +10,9 @@
 
 #include "imgui_internal.h"
 
+#include "BML/InputHook.h"
+
+#include "ModContext.h"
 #include "Overlay.h"
 
 namespace Bui {
@@ -541,7 +544,7 @@ namespace Bui {
     }
 
     ImVec4 GetMenuColor() {
-        return {0.0f, 0.0f, 0.0f, 0.57f};
+        return {0.0f, 0.0f, 0.0f, 155.0f / 255.0f};
     }
 
     ImVec2 GetButtonSize(ButtonType type) {
@@ -1074,6 +1077,39 @@ namespace Bui {
         return At(x, y, []() {
             return BackButton("Back") || ImGui::IsKeyPressed(ImGuiKey_Escape);
         });
+    }
+
+    void BlockKeyboardInput() {
+        auto *ctx = BML_GetModContext();
+        if (!ctx) return;
+        ctx->GetInputManager()->Block(CK_INPUT_DEVICE_KEYBOARD);
+    }
+
+    void ActivateScript(const char *scriptName) {
+        if (!scriptName || !*scriptName) return;
+        auto *mod = BML_GetModContext();
+        auto *ck = BML_GetCKContext();
+        if (!mod || !ck) return;
+        CKBehavior *beh = mod->GetScriptByName(scriptName);
+        if (beh && ck->GetCurrentScene())
+            ck->GetCurrentScene()->Activate(beh, true);
+    }
+
+    void UnblockKeyboardAfterRelease() {
+        auto *mod = BML_GetModContext();
+        if (!mod) return;
+        auto *input = mod->GetInputManager();
+        mod->AddTimerLoop(1ul, [input] {
+            if (input->oIsKeyDown(CKKEY_ESCAPE) || input->oIsKeyDown(CKKEY_RETURN))
+                return true; // keep waiting while keys are down
+            input->Unblock(CK_INPUT_DEVICE_KEYBOARD);
+            return false; // stop loop
+        });
+    }
+
+    void TransitionToScriptAndUnblock(const char *scriptName) {
+        ActivateScript(scriptName);
+        UnblockKeyboardAfterRelease();
     }
 
     void Title(const char *text, float y, float scale, ImU32 color) {
