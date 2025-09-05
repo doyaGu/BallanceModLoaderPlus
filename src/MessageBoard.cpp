@@ -403,14 +403,12 @@ MessageBoard::ConsoleColor MessageBoard::MessageUnit::ParseAnsiColorSequence(con
         } else if (code >= 40 && code <= 47) {
             // Standard background colors -> mark palette index 0..7
             color.bgIsAnsi256 = true; color.bgAnsiIndex = code - 40;
-            color.background = (color.background & 0x00FFFFFF) | 0xFF000000;
         } else if (code >= 90 && code <= 97) {
             // Bright foreground colors -> mark palette index 8..15
             color.fgIsAnsi256 = true; color.fgAnsiIndex = (code - 90) + 8;
         } else if (code >= 100 && code <= 107) {
             // Bright background colors -> mark palette index 8..15
             color.bgIsAnsi256 = true; color.bgAnsiIndex = (code - 100) + 8;
-            color.background = (color.background & 0x00FFFFFF) | 0xFF000000;
         } else if ((code == 38 || code == 48) && i + 1 < codes.size()) {
             // Extended color codes
             bool isBackground = (code == 48);
@@ -419,7 +417,6 @@ MessageBoard::ConsoleColor MessageBoard::MessageUnit::ParseAnsiColorSequence(con
                 if (isBackground) {
                     color.bgIsAnsi256 = true;
                     color.bgAnsiIndex = codes[i + 2];
-                    color.background = (color.background & 0x00FFFFFF) | 0xFF000000;
                 } else {
                     color.fgIsAnsi256 = true;
                     color.fgAnsiIndex = codes[i + 2];
@@ -429,7 +426,7 @@ MessageBoard::ConsoleColor MessageBoard::MessageUnit::ParseAnsiColorSequence(con
                 // RGB mode
                 ImU32 colorValue = GetRgbColor(codes[i + 2], codes[i + 3], codes[i + 4]);
                 if (isBackground) {
-                    color.background = (colorValue & 0x00FFFFFF) | 0xFF000000;
+                    color.background = colorValue;
                     color.bgIsAnsi256 = false; color.bgAnsiIndex = -1;
                 } else {
                     color.foreground = colorValue;

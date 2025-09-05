@@ -4,7 +4,9 @@
 #include "BML/BML.h"
 #include "BMLMod.h"
 
+#include "ModContext.h"
 #include "StringUtils.h"
+#include "AnsiPalette.h"
 
 void CommandBML::Execute(IBML *bml, const std::vector<std::string> &args) {
     bml->SendIngameMessage("Ballance Mod Loader Plus " BML_VERSION);
@@ -80,7 +82,7 @@ void CommandEcho::Execute(IBML *bml, const std::vector<std::string> &args) {
 
             if (recognized) {
                 ParseEchoOptionToken(tok, opt); // update flags
-                ++idx; // consume this option token
+                ++idx;                          // consume this option token
                 continue;
             }
             // Unknown option like "-x": stop parsing and treat it as data
@@ -125,7 +127,7 @@ void CommandEcho::ParseEchoOptionToken(const std::string &tok, EchoOpts &opt) {
 }
 
 // Join args with spaces from given index
-std::string CommandEcho::JoinArgs(const std::vector<std::string>& args, size_t start) {
+std::string CommandEcho::JoinArgs(const std::vector<std::string> &args, size_t start) {
     std::string s;
     for (size_t i = start; i < args.size(); ++i) {
         if (i > start) s.push_back(' ');
@@ -135,7 +137,7 @@ std::string CommandEcho::JoinArgs(const std::vector<std::string>& args, size_t s
 }
 
 // Handle \c (truncate output and suppress newline)
-bool CommandEcho::ApplyBackslashCTrunc(std::string& s) {
+bool CommandEcho::ApplyBackslashCTrunc(std::string &s) {
     bool stop = false;
     size_t i = 0;
     while (i < s.size()) {
@@ -238,5 +240,101 @@ void CommandPalette::Execute(IBML *bml, const std::vector<std::string> &args) {
             bml->SendIngameMessage((std::string("[palette] sample exists: ") + pathAnsi + "\n").c_str());
         }
         delete[] pathAnsi;
+    } else if (args[1] == "list") {
+        // List available themes using palette API
+        AnsiPalette pal;
+        auto names = pal.GetAvailableThemes();
+        std::string activeTheme = pal.GetActiveThemeName();
+        if (names.empty()) {
+            std::wstring themesDir = pal.GetThemesDirW();
+            char *dirAnsi = BML_Utf16ToAnsi(themesDir.c_str());
+            std::string msg = std::string("[palette] no themes found in ") + (dirAnsi ? dirAnsi : "(null)") + ".";
+            if (dirAnsi) delete[] dirAnsi;
+            msg += " active: ";
+            msg += (activeTheme.empty() ? "none*" : activeTheme.c_str());
+            msg += "\n";
+            bml->SendIngameMessage(msg.c_str());
+        } else {
+            std::string line = "[palette] themes";
+            line += " (active: ";
+            line += (activeTheme.empty() ? "none*" : activeTheme.c_str());
+            line += "):";
+            std::string activeLower = activeTheme;
+            for (char &c : activeLower) c = (char) tolower((unsigned char) c);
+            for (const auto &nm : names) {
+                std::string nmLower = nm;
+                for (char &c : nmLower) c = (char) tolower((unsigned char) c);
+                line += " ";
+                line += nm;
+                if (!activeLower.empty() && nmLower == activeLower) line += "*"; // highlight current
+            }
+            line += "\n";
+            bml->SendIngameMessage(line.c_str());
+        }
+    } else if (args[1] == "show") {
+        // Print resolved theme chain top -> parent -> ... -> root, with paths and missing notes
+        AnsiPalette tmp;
+        const auto chain = tmp.GetResolvedThemeChain();
+        if (chain.empty()) {
+            bml->SendIngameMessage("[palette] chain: none*\n");
+            return;
+        }
+        std::string line = "[palette] chain: ";
+        for (size_t i = 0; i < chain.size(); ++i) {
+            if (i) line += " -> ";
+            line += chain[i].name;
+            line += " (";
+            if (!chain[i].path.empty()) {
+                char *p = BML_Utf16ToAnsi(chain[i].path.c_str());
+                if (p) {
+                    line += p;
+                    delete[] p;
+                }
+            }
+            line += chain[i].exists ? ")" : ", missing)";
+        }
+        line += "\n";
+        bml->SendIngameMessage(line.c_str());
+    } else if (args[1] == "theme") {
+        if (args.size() < 3) {
+            bml->SendIngameMessage("Usage: palette theme <name>\n");
+            return;
+        }
+        const std::string &name = args[2];
+        AnsiPalette pal;
+        pal.SaveSampleIfMissing();
+        bool ok = pal.SetActiveThemeName(name);
+        // Reload
+        const bool loaded = mb.ReloadPaletteFromFile();
+        if (ok && loaded) {
+            std::string nameLower = utils::ToLower(name);
+            std::string msg = (nameLower == "none")
+                                  ? "[palette] theme cleared, using defaults + local overrides.\n"
+                                  : (std::string("[palette] theme set to ") + name + ", reloaded.\n");
+            bml->SendIngameMessage(msg.c_str());
+        } else if (!ok) {
+            bml->SendIngameMessage("[palette] failed to update config.\n");
+        } else {
+            bml->SendIngameMessage("[palette] no config found, using default.\n");
+        }
     }
+}
+
+const std::vector<std::string> CommandPalette::GetTabCompletion(IBML *bml, const std::vector<std::string> &args) {
+    if (args.size() == 2) return {"reload", "sample", "list", "theme", "show"};
+    if (args.size() == 3 && args[1] == std::string("theme")) {
+        // Dynamic theme names + 'none' using palette API
+        std::vector<std::string> out;
+        out.emplace_back("none");
+        AnsiPalette pal;
+        auto names = pal.GetAvailableThemes();
+        const std::string &prefix = args[2];
+        std::string prefixLower = utils::ToLower(prefix);
+        for (auto &name : names) {
+            std::string low = utils::ToLower(name);
+            if (prefix.empty() || utils::StartsWith(low, prefixLower)) out.push_back(name);
+        }
+        return out;
+    }
+    return {};
 }
