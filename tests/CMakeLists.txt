@@ -64,3 +64,15 @@ add_bml_test(ConfigTest
         CK2
         VxMath
 )
+
+add_bml_test(AnsiPaletteTest
+        SOURCES
+        AnsiPaletteTest.cpp
+        ${BML_SOURCE_DIR}/AnsiPalette.cpp
+        ${BML_SOURCE_DIR}/StringUtils.cpp
+        ${BML_SOURCE_DIR}/PathUtils.cpp
+        DEPENDENCIES
+        zip
+)
+# Need ImGui headers for AnsiPalette
+target_include_directories(AnsiPaletteTest PRIVATE ${IMGUI_SOURCE_DIR})
