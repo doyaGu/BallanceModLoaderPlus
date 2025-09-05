@@ -216,6 +216,27 @@ namespace Bui {
     BML_EXPORT bool NavRight(float x = 0.6038f, float y = 0.124f);
     BML_EXPORT bool NavBack(float x = 0.4031f, float y = 0.85f);
 
+    // Pagination helpers
+    inline bool CanPrevPage(int pageIndex) {
+        return pageIndex > 0;
+    }
+
+    inline bool CanNextPage(int pageIndex, int totalCount, int pageSize) {
+        if (pageSize <= 0)
+            return false;
+        // There is a next page only if items remain beyond current page
+        return totalCount > (pageIndex + 1) * pageSize;
+    }
+
+    inline int CalcPageCount(int totalCount, int pageSize) {
+        if (pageSize <= 0)
+            return 0;
+        if (totalCount <= 0)
+            return 0;
+        // ceil(totalCount / pageSize)
+        return (totalCount + pageSize - 1) / pageSize;
+    }
+
     // Menu lifecycle helpers
     BML_EXPORT void BlockKeyboardInput();
     BML_EXPORT void ActivateScript(const char *scriptName);
