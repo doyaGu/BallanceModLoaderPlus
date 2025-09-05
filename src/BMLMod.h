@@ -141,6 +141,10 @@ private:
     IProperty *m_Overclock = nullptr;
 
     IProperty *m_MsgDuration = nullptr;
+    IProperty *m_MsgTabColumns = nullptr;
+    IProperty *m_MsgBackgroundAlpha = nullptr;
+    IProperty *m_WindowBackgroundAlpha = nullptr;
+    IProperty *m_MsgFadeMaxAlpha = nullptr;
     IProperty *m_CustomMapNumber = nullptr;
     IProperty *m_CustomMapTooltip = nullptr;
     IProperty *m_CustomMapMaxDepth = nullptr;

@@ -10,8 +10,8 @@
 #include "ModContext.h"
 
 namespace {
-    // Configuration constants
-    constexpr int kTabColumns = 4;      // 4-space tab stops
+    // Default constants (can be overridden by member settings)
+    constexpr int kDefaultTabColumns = 4;  // default 4-space tab stops
     constexpr float kScrollEpsilon = 0.5f; // tolerance for bottom checks
 
     // --- Text layout primitives (word-wrapping without ImGui's built-in wrap) ---
@@ -45,9 +45,9 @@ namespace {
         return font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, b, e, nullptr).x;
     }
 
-    // Greedy word-wrapping layouter. Respects '\n', treats '\\r' as return-to-line-start (overlay), expands tabs to 4 spaces width.
+    // Greedy word-wrapping layouter. Respects '\n', treats '\\r' as return-to-line-start (overlay), expands tabs to N columns (configurable).
     // Produces lines of spans, each span is a slice of an input segment, carrying its style.
-    void LayoutSegmentsToLines(const std::vector<Seg> &segments, float wrapWidth, std::vector<LayoutLine> &outLines) {
+    void LayoutSegmentsToLines(const std::vector<Seg> &segments, float wrapWidth, int tabColumns, std::vector<LayoutLine> &outLines) {
         outLines.clear();
         if (wrapWidth <= 0.0f) {
             // Degenerate: put everything on separate lines with no width constraints
@@ -94,7 +94,8 @@ namespace {
                 }
                 if (*p == '\t') {
                     // Expand to next tab stop relative to current x
-                    const float tabW = spaceW * kTabColumns;
+                    const float cols = (tabColumns > 0 ? (float)tabColumns : (float)kDefaultTabColumns);
+                    const float tabW = spaceW * cols;
                     const float nextTab = (static_cast<int>(x / tabW) + 1) * tabW;
                     const float w = nextTab - x;
                     // If doesn't fit on this line, wrap first
@@ -234,7 +235,7 @@ namespace {
         drawList->AddText(pos, col, begin, end);
         if (!fauxBold) return;
         const float a = ((col >> IM_COL32_A_SHIFT) & 0xFF) / 255.0f;
-        const float aHalfF = ImClamp(a * kAuxStrokeAlphaScale, 0.0f, 1.0f);
+        const float aHalfF = std::clamp(a * kAuxStrokeAlphaScale, 0.0f, 1.0f);
         const ImU32 aHalf = (ImU32) (aHalfF * 255.0f + 0.5f);
         const ImU32 colHalf = (col & ~IM_COL32_A_MASK) | (aHalf << IM_COL32_A_SHIFT);
         drawList->AddText(ImVec2(pos.x + 1.0f, pos.y), colHalf, begin, end);
@@ -250,7 +251,7 @@ namespace {
         const float descent_mag = baked ? ImMax(0.0f, -baked->Descent) : fontSize * 0.2f;
         const float baseline = lineTop + ascent;
         // Place underline halfway into descent area, clamped to [1px, descent-1px]
-        const float offset = ImClamp(descent_mag * 0.5f, 1.0f, ImMax(1.0f, descent_mag - 1.0f));
+        const float offset = std::clamp(descent_mag * 0.5f, 1.0f, ImMax(1.0f, descent_mag - 1.0f));
         return baseline + offset;
     }
 
@@ -266,7 +267,7 @@ namespace {
     // Line thickness scaling based on font size (approx. CSS behavior: ~1px at ~18px, 2px at ~36px, 3px at ~54px)
     float DecoThickness(float fontSize) {
         float t = std::round(fontSize / 18.0f);
-        return ImClamp(t, 1.0f, 4.0f);
+        return std::clamp(t, 1.0f, 4.0f);
     }
 }
 
@@ -292,14 +293,14 @@ void MessageBoard::MessageUnit::SetMessage(const char *msg) {
     ParseAnsiEscapeCodes();
 }
 
-float MessageBoard::MessageUnit::GetTextHeight(float wrapWidth) const {
+float MessageBoard::MessageUnit::GetTextHeight(float wrapWidth, int tabColumns) const {
     if (cachedHeight >= 0.0f && std::abs(cachedWrapWidth - wrapWidth) < 0.5f)
         return cachedHeight;
 
     const float lineH = ImGui::GetTextLineHeightWithSpacing();
 
     std::vector<LayoutLine> lines;
-    LayoutSegmentsToLines(segments, wrapWidth, lines);
+    LayoutSegmentsToLines(segments, wrapWidth, tabColumns, lines);
     const auto lineCount = static_cast<float>(lines.size());
 
     cachedHeight = ImMax(lineH, lineCount * lineH);
@@ -583,15 +584,17 @@ bool MessageBoard::ShouldShowMessage(const MessageUnit &msg) const {
 }
 
 float MessageBoard::GetMessageAlpha(const MessageUnit &msg) const {
+    const float maxAlpha = std::clamp(m_FadeMaxAlpha, 0.0f, 1.0f);
     if (m_IsCommandBarVisible) {
-        return 155.0f / 255.0f;
+        return maxAlpha;
     }
 
     if (msg.GetTimer() <= 0) {
         return 0.0f;
     }
 
-    return std::min(155.0f, msg.GetTimer() / 20.0f) / 255.0f;
+    const float maxAlpha255 = maxAlpha * 255.0f;
+    return std::min(maxAlpha255, msg.GetTimer() / 20.0f) / 255.0f;
 }
 
 int MessageBoard::CountVisibleMessages() const {
@@ -618,7 +621,7 @@ float MessageBoard::CalculateContentHeight(float wrapWidth) const {
     for (int i = 0; i < m_MessageCount; i++) {
         const MessageUnit &msg = m_Messages[i];
         if (ShouldShowMessage(msg)) {
-            contentHeight += msg.GetTextHeight(wrapWidth);
+            contentHeight += msg.GetTextHeight(wrapWidth, m_TabColumns);
             if (visibleCount > 0) {
                 contentHeight += m_MessageGap;
             }
@@ -660,7 +663,9 @@ void MessageBoard::OnPreBegin() {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, Bui::GetMenuColor());
+    ImVec4 winBg = m_HasCustomWindowBg ? m_WindowBgColor : Bui::GetMenuColor();
+    winBg.w = std::clamp(winBg.w * std::clamp(m_WindowBgAlphaScale, 0.0f, 1.0f), 0.0f, 1.0f);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, winBg);
 
     const ImVec2 vpSize = ImGui::GetMainViewport()->Size;
     const float windowWidth = vpSize.x * 0.96f;
@@ -685,7 +690,10 @@ void MessageBoard::OnDraw() {
         return;
     }
 
-    ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+    // Keep messages on top in normal mode; when command bar is visible,
+    // allow the command bar to overlay the message board if they overlap.
+    if (!m_IsCommandBarVisible)
+        ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
 
     const ImVec2 contentPos = ImGui::GetCursorScreenPos();
     const ImVec2 contentSize = ImGui::GetContentRegionAvail();
@@ -738,7 +746,7 @@ void MessageBoard::OnDraw() {
 }
 
 void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float wrapWidth) {
-    ImVec4 bgColor = Bui::GetMenuColor();
+    ImVec4 bgColorBase = m_HasCustomMessageBg ? m_MessageBgColor : Bui::GetMenuColor();
     ImVec2 currentPos = startPos;
 
     for (int i = m_MessageCount - 1; i >= 0; i--) {
@@ -747,13 +755,15 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
 
         if (shouldShow) {
             const float alpha = GetMessageAlpha(msg);
-            const float msgHeight = msg.GetTextHeight(wrapWidth);
+            const float msgHeight = msg.GetTextHeight(wrapWidth, m_TabColumns);
 
             // Draw background with style-derived padding
+            const float finalAlpha = std::clamp(bgColorBase.w * std::clamp(m_MessageBgAlphaScale, 0.0f, 1.0f) * alpha, 0.0f, 1.0f);
+            ImVec4 bg = ImVec4(bgColorBase.x, bgColorBase.y, bgColorBase.z, finalAlpha);
             drawList->AddRectFilled(
                 ImVec2(currentPos.x - m_PadX * 0.5f, currentPos.y - m_PadY * 0.25f),
                 ImVec2(currentPos.x + wrapWidth + m_PadX * 0.5f, currentPos.y + msgHeight + m_PadY * 0.25f),
-                ImGui::GetColorU32(ImVec4(bgColor.x, bgColor.y, bgColor.z, bgColor.w * alpha))
+                ImGui::GetColorU32(bg)
             );
 
             DrawMessageText(drawList, msg, currentPos, wrapWidth, alpha);
@@ -767,7 +777,7 @@ void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &mess
 
     // Prepare layout
     std::vector<LayoutLine> lines;
-    LayoutSegmentsToLines(message.segments, wrapWidth, lines);
+    LayoutSegmentsToLines(message.segments, wrapWidth, m_TabColumns, lines);
 
     const float fontSize = ImGui::GetFontSize();
 
@@ -809,8 +819,8 @@ void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &mess
                         m_Palette.GetColor(rc.bgAnsiIndex, bgBase);
                     }
                 }
-                // No color toning
             }
+
             ImU32 bg = ApplyAlpha(bgBase, alpha);
             const bool drawBg = (!sp.isTab) && (((bg >> IM_COL32_A_SHIFT) & 0xFF) != 0) && (sp.b < sp.e);
 
@@ -946,6 +956,13 @@ void MessageBoard::UpdateScrollBounds(float contentHeight, float availableHeight
     }
 }
 
+void MessageBoard::InvalidateLayoutCache() {
+    for (auto &m : m_Messages) {
+        m.cachedHeight = -1.0f;
+        m.cachedWrapWidth = -1.0f;
+    }
+}
+
 void MessageBoard::DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &contentPos, const ImVec2 &contentSize, float contentHeight, float visibleHeight) {
     if (m_MaxScrollY <= 0.0f) return;
 
@@ -996,9 +1013,9 @@ void MessageBoard::DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &cont
 MessageBoard::ScrollMetrics MessageBoard::GetScrollMetrics(float contentHeight, float visibleHeight) const {
     ScrollMetrics m{};
     m.contentHeight = std::max(0.0f, contentHeight);
-    m.visibleHeight = ImClamp(visibleHeight, 1.0f, std::max(1.0f, m.contentHeight));
+    m.visibleHeight = std::clamp(visibleHeight, 1.0f, std::max(1.0f, m.contentHeight));
     m.maxScroll = std::max(0.0f, m.contentHeight - m.visibleHeight);
-    m.scrollY = ImClamp(m_ScrollY, 0.0f, m.maxScroll);
+    m.scrollY = std::clamp(m_ScrollY, 0.0f, m.maxScroll);
     m.scrollRatio = (m.maxScroll > 0.0f) ? (m.scrollY / m.maxScroll) : 0.0f;
     m.visibleRatio = (m.contentHeight > 0.0f) ? (m.visibleHeight / m.contentHeight) : 1.0f;
     return m;
@@ -1134,4 +1151,54 @@ void MessageBoard::ResizeMessages(int size) {
     m_Messages.resize(size);
     m_MessageCount = std::min(m_MessageCount, size);
     m_DisplayMessageCount = std::min(m_DisplayMessageCount, size);
+}
+
+// =============================================================================
+// Configuration API
+// =============================================================================
+
+void MessageBoard::SetTabColumns(int columns) {
+    int c = std::clamp(columns, 1, 64);
+    if (m_TabColumns != c) {
+        m_TabColumns = c;
+        InvalidateLayoutCache();
+    }
+}
+
+void MessageBoard::SetWindowBackgroundColor(ImVec4 color) {
+    m_HasCustomWindowBg = true;
+    m_WindowBgColor = color;
+}
+
+void MessageBoard::SetWindowBackgroundColorU32(ImU32 color) {
+    SetWindowBackgroundColor(ImGui::ColorConvertU32ToFloat4(color));
+}
+
+void MessageBoard::ClearWindowBackgroundColor() {
+    m_HasCustomWindowBg = false;
+}
+
+void MessageBoard::SetMessageBackgroundColor(ImVec4 color) {
+    m_HasCustomMessageBg = true;
+    m_MessageBgColor = color;
+}
+
+void MessageBoard::SetMessageBackgroundColorU32(ImU32 color) {
+    SetMessageBackgroundColor(ImGui::ColorConvertU32ToFloat4(color));
+}
+
+void MessageBoard::ClearMessageBackgroundColor() {
+    m_HasCustomMessageBg = false;
+}
+
+void MessageBoard::SetWindowBackgroundAlpha(float alpha) {
+    m_WindowBgAlphaScale = std::clamp(alpha, 0.0f, 1.0f);
+}
+
+void MessageBoard::SetMessageBackgroundAlpha(float alpha) {
+    m_MessageBgAlphaScale = std::clamp(alpha, 0.0f, 1.0f);
+}
+
+void MessageBoard::SetFadeMaxAlpha(float alpha) {
+    m_FadeMaxAlpha = std::clamp(alpha, 0.0f, 1.0f);
 }
