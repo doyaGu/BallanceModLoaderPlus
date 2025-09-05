@@ -1,6 +1,7 @@
 #include "BMLMod.h"
 
 #include <map>
+#include <algorithm>
 
 #include "BML/Bui.h"
 #include "BML/Gui.h"
@@ -15,6 +16,7 @@
 #include "Commands.h"
 #include "StringUtils.h"
 #include "PathUtils.h"
+#include "AnsiPalette.h"
 
 namespace ExecuteBB {
     void Init();
@@ -273,6 +275,14 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
         if (timer < 2000) {
             m_MsgDuration->SetFloat(2.0f);
         }
+    } else if (prop == m_MsgTabColumns) {
+        m_MessageBoard.SetTabColumns(std::max(1, m_MsgTabColumns->GetInteger()));
+    } else if (prop == m_MsgBackgroundAlpha) {
+        m_MessageBoard.SetMessageBackgroundAlpha(std::clamp(m_MsgBackgroundAlpha->GetFloat(), 0.0f, 1.0f));
+    } else if (prop == m_WindowBackgroundAlpha) {
+        m_MessageBoard.SetWindowBackgroundAlpha(std::clamp(m_WindowBackgroundAlpha->GetFloat(), 0.0f, 1.0f));
+    } else if (prop == m_MsgFadeMaxAlpha) {
+        m_MessageBoard.SetFadeMaxAlpha(std::clamp(m_MsgFadeMaxAlpha->GetFloat(), 0.0f, 1.0f));
     } else if (prop == m_CustomMapTooltip) {
         m_MapMenu.SetShowTooltip(m_CustomMapTooltip->GetBoolean());
     }
@@ -531,9 +541,29 @@ void BMLMod::InitConfigs() {
     GetConfig()->SetCategoryComment("CommandBar", "Command Bar Settings");
 
     m_MsgDuration = GetConfig()->GetProperty("CommandBar", "MessageDuration");
-    m_MsgDuration->SetComment("Maximum visible time of each notification message, measured in seconds (default: 6)");
+    m_MsgDuration->SetComment("Maximum visible time of each notification message, in seconds (default: 6)");
     m_MsgDuration->SetDefaultFloat(6);
     m_MessageBoard.SetMaxTimer(m_MsgDuration->GetFloat() * 1000);
+
+    m_MsgTabColumns = GetConfig()->GetProperty("CommandBar", "TabColumns");
+    m_MsgTabColumns->SetComment("Tab width in columns for message wrapping (1..64, default: 4)");
+    m_MsgTabColumns->SetDefaultInteger(4);
+    m_MessageBoard.SetTabColumns(std::max(1, m_MsgTabColumns->GetInteger()));
+
+    m_MsgBackgroundAlpha = GetConfig()->GetProperty("CommandBar", "MessageBackgroundAlpha");
+    m_MsgBackgroundAlpha->SetComment("Alpha scale for message backgrounds (0..1, default: 0.80)");
+    m_MsgBackgroundAlpha->SetDefaultFloat(0.80f);
+    m_MessageBoard.SetMessageBackgroundAlpha(std::clamp(m_MsgBackgroundAlpha->GetFloat(), 0.0f, 1.0f));
+
+    m_WindowBackgroundAlpha = GetConfig()->GetProperty("CommandBar", "WindowBackgroundAlpha");
+    m_WindowBackgroundAlpha->SetComment("Alpha scale for message window background (0..1, default: 1.0)");
+    m_WindowBackgroundAlpha->SetDefaultFloat(1.0f);
+    m_MessageBoard.SetWindowBackgroundAlpha(std::clamp(m_WindowBackgroundAlpha->GetFloat(), 0.0f, 1.0f));
+
+    m_MsgFadeMaxAlpha = GetConfig()->GetProperty("CommandBar", "FadeMaxAlpha");
+    m_MsgFadeMaxAlpha->SetComment("Maximum text/background alpha in notifications (0..1, default: 1.0)");
+    m_MsgFadeMaxAlpha->SetDefaultFloat(1.0f);
+    m_MessageBoard.SetFadeMaxAlpha(std::clamp(m_MsgFadeMaxAlpha->GetFloat(), 0.0f, 1.0f));
 
     GetConfig()->SetCategoryComment("CustomMap", "Custom Map Settings");
 

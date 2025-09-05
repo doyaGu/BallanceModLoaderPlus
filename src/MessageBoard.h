@@ -84,7 +84,7 @@ public:
         void SetMessage(const char *msg);
         float GetTimer() const { return timer; }
         void SetTimer(float t) { timer = t; }
-        float GetTextHeight(float wrapWidth) const;
+        float GetTextHeight(float wrapWidth, int tabColumns) const;
         void Reset();
 
     private:
@@ -113,6 +113,32 @@ public:
     void PrintfColored(ImU32 color, const char *format, ...);
     void ClearMessages();
     void ResizeMessages(int size);
+
+    // Appearance and layout configuration
+    void SetTabColumns(int columns);
+    int GetTabColumns() const { return m_TabColumns; }
+
+    void SetWindowBackgroundColor(ImVec4 color);
+    void SetWindowBackgroundColorU32(ImU32 color);
+    bool HasCustomWindowBackground() const { return m_HasCustomWindowBg; }
+    ImVec4 GetWindowBackgroundColor() const { return m_WindowBgColor; }
+    void ClearWindowBackgroundColor();
+
+    void SetMessageBackgroundColor(ImVec4 color);
+    void SetMessageBackgroundColorU32(ImU32 color);
+    bool HasCustomMessageBackground() const { return m_HasCustomMessageBg; }
+    ImVec4 GetMessageBackgroundColor() const { return m_MessageBgColor; }
+    void ClearMessageBackgroundColor();
+
+    // Alpha controls (0..1)
+    void SetWindowBackgroundAlpha(float alpha);
+    float GetWindowBackgroundAlpha() const { return m_WindowBgAlphaScale; }
+    void SetMessageBackgroundAlpha(float alpha);
+    float GetMessageBackgroundAlpha() const { return m_MessageBgAlphaScale; }
+
+    // Fade maximum alpha for messages (0..1)
+    void SetFadeMaxAlpha(float alpha);
+    float GetFadeMaxAlpha() const { return m_FadeMaxAlpha; }
 
     // Palette operations
     bool ReloadPaletteFromFile() { return m_Palette.ReloadFromFile(); }
@@ -169,6 +195,7 @@ private:
     void AddMessageInternal(const char *msg);
     void HandleScrolling(float visibleHeight);
     void UpdateScrollBounds(float contentHeight, float windowHeight);
+    void InvalidateLayoutCache();
 
     // Utilities
     void SetScrollYClamped(float y);
@@ -197,7 +224,17 @@ private:
     float m_ScrollbarPad = 2.0f; // Scrollbar edge padding
 
     // ANSI 256-color palette
-    Ansi256Palette m_Palette;
+    AnsiPalette m_Palette;
+
+    // Configurable behavior
+    int m_TabColumns = 4;            // Tab size in columns
+    bool m_HasCustomWindowBg = false;
+    bool m_HasCustomMessageBg = false;
+    ImVec4 m_WindowBgColor = {};        // If !m_HasCustomWindowBg, use Bui::GetMenuColor()
+    ImVec4 m_MessageBgColor = {};       // If !m_HasCustomMessageBg, use Bui::GetMenuColor()
+    float m_WindowBgAlphaScale = 1.0f;
+    float m_MessageBgAlphaScale = 1.0f;
+    float m_FadeMaxAlpha = 1.0f;
 };
 
 #endif // BML_MESSAGEBOARD_H
