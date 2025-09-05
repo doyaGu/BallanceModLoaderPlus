@@ -135,10 +135,7 @@ public:
     std::string GetDescription() override { return "Manage ANSI 256-color palette."; }
     bool IsCheat() override { return false; }
     void Execute(IBML *bml, const std::vector<std::string> &args) override;
-    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override {
-        if (args.size() == 2) return {"reload", "sample"};
-        return {};
-    }
+    const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
 private:
     BMLMod *m_BMLMod;
 };
