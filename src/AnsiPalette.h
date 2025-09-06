@@ -10,6 +10,10 @@ class AnsiPalette {
 public:
     AnsiPalette();
 
+    // Callback provider types
+    using LoaderDirProvider = std::wstring (*)();
+    using LogProvider = void (*)(int level, const char *message);
+
     // Ensure default palette is built and file overrides applied once.
     void EnsureInitialized();
 
@@ -39,7 +43,13 @@ public:
 
     // Allow injecting loader directory provider (returns absolute path to ModLoader dir).
     // If not set, implementation falls back to current working directory.
-    static void SetLoaderDirProvider(std::wstring (*provider)());
+    static void SetLoaderDirProvider(LoaderDirProvider provider);
+    static LoaderDirProvider GetLoaderDirProvider();
+
+    // Allow injecting a logger sink: level (0=info,1=warn,2=error), message (UTF-8).
+    // If not set, logging is suppressed.
+    static void SetLoggerProvider(LogProvider logger);
+    static LogProvider GetLoggerProvider();
 
     struct ThemeChainEntry {
         std::string name;     // theme logical name (UTF-8/ANSI)
@@ -59,8 +69,39 @@ public:
     // Set active theme name in main config. Pass empty string or "none" to clear.
     // Returns true if file was written successfully.
     bool SetActiveThemeName(const std::string &name);
+    // Remove the entire [theme] section from config (reset to defaults).
+    bool ResetThemeOptions();
+    // Set a single option in [theme] section (also accepts 'base' to set active theme).
+    // Performs basic validation & normalization (booleans, enums, numeric ranges).
+    // Returns true if file was written successfully (false on invalid input or write failure).
+    bool SetThemeOption(const std::string &key, const std::string &value);
+
+    // Runtime getters for current modes and options (after EnsureInitialized/ReloadFromFile)
+    bool GetCubeMixFromTheme() const { return m_CubeMixFromTheme; }
+    bool GetGrayMixFromTheme() const { return m_GrayMixFromTheme; }
+    float GetMixStrength() const { return m_MixStrength; }
+    bool GetToningEnabled() const { return m_ToningEnabled; }
+    float GetToneBrightness() const { return m_ToneBrightness; }
+    float GetToneSaturation() const { return m_ToneSaturation; }
+    bool GetLinearMix() const { return m_LinearMix; }
 
 private:
+    void BuildDefault();
+    void ParseBuffer(const std::string &buf);
+    void RebuildCubeAndGray();
+    ImU32 ApplyToning(ImU32 col) const;
+    void ApplyThemeChainAndBuffer(const std::string &buf);
+    void EnsureConfigExists();
+    static void RgbToHsv(float r, float g, float b, float &h, float &s, float &v);
+    static void HsvToRgb(float h, float s, float v, float &r, float &g, float &b);
+    static float SrgbToLinear(float c);
+    static float LinearToSrgb(float c);
+    std::wstring GetFilePathW() const;
+    std::wstring GetLoaderDirW() const;
+
+    static LoaderDirProvider s_LoaderDirProvider;
+    static LogProvider s_LogProvider;
+
     bool m_Initialized;
     bool m_Active;
     ImU32 m_Palette[256] = {};
@@ -77,18 +118,10 @@ private:
     bool m_GrayMixFromTheme = false;
     // Strength of mixing from theme when enabled, 0 = standard, 1 = full theme colors
     float m_MixStrength = 1.0f;     // [0, 1], blend theme-mix vs standard
-
-    void BuildDefault();
-    void ParseBuffer(const std::string &buf);
-    void RebuildCubeAndGray();
-    ImU32 ApplyToning(ImU32 col) const;
-    void ApplyThemeChainAndBuffer(const std::string &buf);
-    static void RgbToHsv(float r, float g, float b, float &h, float &s, float &v);
-    static void HsvToRgb(float h, float s, float v, float &r, float &g, float &b);
-    std::wstring GetFilePathW() const;
-    std::wstring GetLoaderDirW() const;
-
-    static std::wstring (*s_LoaderDirProvider)();
+    // Whether to interpolate/mix in linear-light (sRGB linearized) space instead of gamma-encoded sRGB
+    bool m_LinearMix = false;
+    // Parsing context label for diagnostics (UTF-8), set by caller before ParseBuffer.
+    std::string m_ParseOrigin;
 };
 
 #endif // BML_ANSI_PALETTE_H
