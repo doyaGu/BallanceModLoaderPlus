@@ -27,10 +27,12 @@ namespace {
     }
 
     void AppendUTF8(std::string &out, unsigned int cp) {
-        char buf[4];
+        char buf[5] = {0}; // Ensure null termination
         const size_t n = utf8codepointsize(static_cast<utf8_int32_t>(cp));
-        utf8catcodepoint(reinterpret_cast<utf8_int8_t*>(buf), static_cast<utf8_int32_t>(cp), n);
-        out.append(buf, buf + n);
+        if (n > 0 && n <= 4) {
+            utf8catcodepoint(reinterpret_cast<utf8_int8_t*>(buf), static_cast<utf8_int32_t>(cp), n);
+            out.append(buf, n);
+        }
     }
 }
 
@@ -139,19 +141,14 @@ namespace utils {
                     break;
                 }
 
-                // Hex escape: \xHH (exactly two uppercase hex digits). If not matched, emit literally.
+                // Hex escape: \xHH (exactly two hex digits). If not matched, emit literally.
                 case 'x': {
                     ++p;
                     const char *digitsStart = p;
-                    auto hexUpper = [](char ch) -> int {
-                        if (ch >= '0' && ch <= '9') return ch - '0';
-                        if (ch >= 'A' && ch <= 'F') return 10 + (ch - 'A');
-                        return -1;
-                    };
                     unsigned int value = 0;
                     int digits = 0;
                     int hv;
-                    while (digits < 2 && (hv = hexUpper(*p)) != -1) {
+                    while (digits < 2 && (hv = HexVal(*p)) != -1) {
                         value = (value << 4) + static_cast<unsigned int>(hv);
                         ++p; ++digits;
                     }
@@ -159,7 +156,7 @@ namespace utils {
                         result += static_cast<char>(value & 0xFF);
                         --p; // point to last consumed so outer ++p moves to next
                     } else {
-                        // Not exactly 2 uppercase hex digits: emit literal \x and keep following chars
+                        // Not exactly 2 hex digits: emit literal \x and keep following chars
                         result += '\\';
                         result += 'x';
                         p = digitsStart - 1; // let loop process from the first non-escaped char
@@ -314,7 +311,7 @@ namespace utils {
                 if (guess == 0 || static_cast<size_t>(end - p) < guess) {
                     appendX(*p);
                     ++p;
-                } else if (utf8nvalid(reinterpret_cast<const utf8_int8_t*>(p), guess) != nullptr) {
+                } else if (utf8nvalid(reinterpret_cast<const utf8_int8_t*>(p), guess) == nullptr) {
                     appendX(*p);
                     ++p;
                 } else {
