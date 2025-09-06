@@ -1,6 +1,8 @@
 #include "CommandBar.h"
 
+#include <cstring>
 #include <sstream>
+
 #include <utf8.h>
 
 #include "BML/ICommand.h"
@@ -360,6 +362,8 @@ size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
     const char *wordStart = lineStart;
     int wordCount = LastToken(wordStart, lineEnd);
 
+    // Preserve raw end so arg parsing can keep empty-last-arg cases
+    const char *rawLineEnd = lineEnd;
     StripLine(lineStart, lineEnd);
 
     if (m_Candidates.empty()) {
@@ -392,8 +396,8 @@ size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
                 }
             }
         } else {
-            // Add candidate arguments
-            const auto args = MakeArgs(cmdStart);
+            // Add candidate arguments (consider only text up to the cursor, preserving trailing space)
+            const auto args = MakeArgsRange(cmdStart, rawLineEnd);
             if (!args.empty()) {
                 ICommand *cmd = BML_GetModContext()->FindCommand(args[0].c_str());
                 if (cmd) {
@@ -419,13 +423,27 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
             OnCompletion(data->Buf, data->Buf + data->CursorPos);
 
             const char *wordStart = data->Buf;
-            int wordCount = LastToken(wordStart, data->Buf + data->CursorPos);
+            const char *cursor = data->Buf + data->CursorPos;
+            int wordCount = LastToken(wordStart, cursor);
+            // Compute right-side remainder of the token so we can replace the whole token
+            const char *textEnd = data->Buf + data->BufTextLen;
+            const char *p = cursor;
+            while (p < textEnd && !std::isspace(*p)) ++p;
+            const int rightCount = static_cast<int>(p - cursor);
+            const int totalDelete = wordCount + rightCount;
+            const int deletePos = static_cast<int>(wordStart - data->Buf);
 
             if (m_Candidates.size() == 1) {
                 // Single match. Delete the beginning of the word and replace it entirely so we've got nice casing
-                data->DeleteChars(wordStart - data->Buf, wordCount);
-                data->InsertChars(data->CursorPos, m_Candidates[0].c_str());
-                data->InsertChars(data->CursorPos, " ");
+                data->DeleteChars(deletePos, totalDelete);
+                const char *ins = m_Candidates[0].c_str();
+                data->InsertChars(deletePos, ins);
+                // Add a space only if there isn't already whitespace after the token
+                bool hasSpaceAfter = (p < textEnd) && std::isspace(*p);
+                if (!hasSpaceAfter) {
+                    const int insertedLen = static_cast<int>(strlen(ins));
+                    data->InsertChars(deletePos + insertedLen, " ");
+                }
             } else if (m_Candidates.size() > 1) {
                 // Multiple matches. Complete as much as we can..
                 // So inputting "C"+Tab will complete to "CL" then display "CLEAR" and "CLASSIFY" as matches.
@@ -446,9 +464,9 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
                 }
 
                 if (matchLen > 0) {
-                    data->DeleteChars(wordStart - data->Buf, wordCount);
+                    data->DeleteChars(deletePos, totalDelete);
                     const auto &best = m_Candidates[0];
-                    data->InsertChars(data->CursorPos, best.c_str(), best.c_str() + matchLen);
+                    data->InsertChars(deletePos, best.c_str(), best.c_str() + matchLen);
                 }
             }
         }
@@ -481,11 +499,22 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
             if (!m_Candidates.empty()) {
                 if (m_CandidateSelected != -1) {
                     const char *wordStart = data->Buf;
-                    const char *wordEnd = data->Buf + data->CursorPos;
-                    const int wordCount = LastToken(wordStart, wordEnd);
-                    data->DeleteChars(wordStart - data->Buf, wordCount);
-                    data->InsertChars(data->CursorPos, m_Candidates[m_CandidateSelected].c_str());
-                    data->InsertChars(data->CursorPos, " ");
+                    const char *cursor = data->Buf + data->CursorPos;
+                    const int leftCount = LastToken(wordStart, cursor);
+                    const char *textEnd = data->Buf + data->BufTextLen;
+                    const char *p = cursor;
+                    while (p < textEnd && !std::isspace(*p)) ++p;
+                    const int rightCount = static_cast<int>(p - cursor);
+                    const int totalDelete = leftCount + rightCount;
+                    const int deletePos = static_cast<int>(wordStart - data->Buf);
+                    data->DeleteChars(deletePos, totalDelete);
+                    const char *ins = m_Candidates[m_CandidateSelected].c_str();
+                    data->InsertChars(deletePos, ins);
+                    bool hasSpaceAfter = (p < textEnd) && std::isspace(*p);
+                    if (!hasSpaceAfter) {
+                        const int insertedLen = static_cast<int>(strlen(ins));
+                        data->InsertChars(deletePos + insertedLen, " ");
+                    }
 
                     InvalidateCandidates();
                 }
@@ -624,4 +653,19 @@ std::vector<std::string> CommandBar::MakeArgs(const char *line) {
     delete[] buf;
 
     return std::move(args);
+}
+
+std::vector<std::string> CommandBar::MakeArgsRange(const char *begin, const char *end) {
+    if (!begin || !end || begin >= end)
+        return {};
+
+    const size_t size = static_cast<size_t>(end - begin);
+    char *buf = new char[size + 1];
+    // Copy bytes as-is and NUL-terminate; downstream parser will handle tokenization
+    memcpy(buf, begin, size);
+    buf[size] = '\0';
+
+    auto args = MakeArgs(buf);
+    delete[] buf;
+    return args;
 }
