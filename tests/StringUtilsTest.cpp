@@ -301,7 +301,8 @@ TEST_F(StringUtilsTest, StringConversion) {
     
     // Test with non-ASCII characters
     {
-        std::string utf8 = "Hello 你好 World";
+        // Build a non-ASCII UTF-8 string without embedding source-encoding dependent literals
+        std::string utf8 = std::string("Hello ") + utils::Utf16ToUtf8(L"\u4F60\u597D") + " World";
         std::wstring utf16 = utils::Utf8ToUtf16(utf8);
         std::string back = utils::Utf16ToUtf8(utf16);
         EXPECT_EQ(utf8, back);
@@ -450,13 +451,14 @@ TEST_F(StringUtilsTest, StripAnsiCodes) {
 
     // 8-bit CSI (C1) form
     {
-        std::string s = std::string("x ") + "\x9B31m" + "RED" + "\x9B0m" + " y";
+        // Split hex escapes from hex digits to avoid MSVC \x... greediness
+        std::string s = std::string("x ") + "\x9B" "31m" + "RED" + "\x9B" "0m" + " y";
         EXPECT_EQ("x RED y", utils::StripAnsiCodes(s.c_str()));
     }
 
     // 8-bit OSC with ST
     {
-        std::string s = std::string("x ") + "\x9D0;title\x9C" + " y";
+        std::string s = std::string("x ") + "\x9D" "0;title" + "\x9C" + " y";
         EXPECT_EQ("x  y", utils::StripAnsiCodes(s.c_str()));
     }
 
@@ -468,7 +470,7 @@ TEST_F(StringUtilsTest, StripAnsiCodes) {
 
     // Common two-byte ESC forms (RI/NEL/HTS/DEC save/restore)
     {
-        std::string s = std::string("a ") + "\x1bM" + " b " + "\x1bE" + " c";
+        std::string s = std::string("a ") + "\x1b" "M" + " b " + "\x1b" "E" + " c";
         EXPECT_EQ("a  b  c", utils::StripAnsiCodes(s.c_str()));
     }
 
@@ -483,7 +485,236 @@ TEST_F(StringUtilsTest, StripAnsiCodes) {
         std::string s = std::string("left ") + "\x1b`" + " right";
         EXPECT_EQ("left  right", utils::StripAnsiCodes(s.c_str()));
     }
+
+    // Incomplete/dangling sequences
+    {
+        // Dangling ESC at end
+        std::string s = std::string("tail ") + "\x1b";
+        EXPECT_EQ("tail ", utils::StripAnsiCodes(s.c_str()));
+
+        // Incomplete CSI without final byte
+        std::string t = std::string("pre ") + "\x1b[31" + " post";
+        EXPECT_EQ("pre  post", utils::StripAnsiCodes(t.c_str()));
+    }
 }
+
+// Test unescaping of C/Unicode escape sequences and edge cases
+TEST_F(StringUtilsTest, UnescapeString) {
+    // Basic C escapes
+    {
+        std::string s = "A\\nB\\tC\\rD\\bE\\fF\\vG\\\\H\\\"I\\\'J\\?K\\eL";
+        std::string u = utils::UnescapeString(s.c_str());
+        std::string expected;
+        expected += 'A'; expected += '\n'; expected += 'B'; expected += '\t'; expected += 'C';
+        expected += '\r'; expected += 'D'; expected += '\b'; expected += 'E'; expected += '\f';
+        expected += 'F'; expected += '\v'; expected += 'G'; expected += '\\'; expected += 'H';
+        expected += '"'; expected += 'I'; expected += '\''; expected += 'J'; expected += '?';
+        expected += 'K'; expected += '\033'; expected += 'L';
+        EXPECT_EQ(expected, u);
+    }
+
+    // Octal escapes: up to 3 digits (including \0)
+    {
+        // Construct "A<0x41>B" without relying on extended \x parsing
+        std::string expected = "A";
+        expected.push_back(char(0x41));
+        expected.push_back('B');
+        EXPECT_EQ(expected, std::string("A") + char(0x41) + "B");
+
+        std::string s = "X\\101Y\\0Z\\777W"; // 101(oct)='A', 0 -> NUL, 777(oct)=511 -> 0xFF
+        std::string u = utils::UnescapeString(s.c_str());
+        ASSERT_EQ(7u, u.size());
+        EXPECT_EQ('X', u[0]);
+        EXPECT_EQ('A', u[1]);
+        EXPECT_EQ('Y', u[2]);
+        EXPECT_EQ('\0', u[3]);
+        EXPECT_EQ('Z', u[4]);
+        EXPECT_EQ(char(0xFF), u[5]);
+        EXPECT_EQ('W', u[6]);
+        (void)u; // silence unused warning when expectations fail on some toolchains
+    }
+
+    // Hex escapes: \x with exactly two uppercase hex digits
+    {
+        std::string s1 = "P\\x41Q";   // 0x41 -> 'A'
+        std::string s2 = "R\\x42S";   // 0x42 -> 'B'
+        std::string s3 = "T\\xFFU";   // 0xFF -> 0xFF
+        EXPECT_EQ("PAQ", utils::UnescapeString(s1.c_str()));
+        EXPECT_EQ("RBS", utils::UnescapeString(s2.c_str()));
+        std::string u3 = utils::UnescapeString(s3.c_str());
+        ASSERT_EQ(3u, u3.size());
+        EXPECT_EQ('T', u3[0]);
+        EXPECT_EQ(char(0xFF), u3[1]);
+        EXPECT_EQ('U', u3[2]);
+
+        // Incomplete/invalid hex (lowercase letters): emit literally
+        EXPECT_EQ("foo\\xbar", utils::UnescapeString("foo\\xbar"));
+    }
+
+    // Unicode escapes: \uXXXX and \UXXXXXXXX, surrogate pair handling
+    {
+        // Simple BMP
+        EXPECT_EQ("A", utils::UnescapeString("\\u0041"));
+
+        // Surrogate pair: U+1D11E MUSICAL SYMBOL G CLEF
+        std::string gclef_utf8 = utils::Utf16ToUtf8(L"\xD834\xDD1E");
+        EXPECT_EQ(gclef_utf8, utils::UnescapeString("\\uD834\\uDD1E"));
+
+        // Non-BMP via \U
+        EXPECT_EQ("\xF0\x9F\x98\x80", // 😀 as UTF-8
+                  utils::UnescapeString("\\U0001F600"));
+
+        // Invalid code point: > U+10FFFF should be emitted literally
+        EXPECT_EQ("\\U110000", utils::UnescapeString("\\U110000"));
+
+        // Lone high surrogate should be emitted literally
+        EXPECT_EQ("\\uD834", utils::UnescapeString("\\uD834"));
+        // Incomplete unicode sequence
+        EXPECT_EQ("X\\u12Y", utils::UnescapeString("X\\u12Y"));
+    }
+
+    // Unknown escape should keep backslash
+    {
+        EXPECT_EQ("x\\z", utils::UnescapeString("x\\z"));
+    }
+
+    // Trailing backslash remains
+    {
+        EXPECT_EQ("backslash\\", utils::UnescapeString("backslash\\"));
+    }
+}
+
+// Test escaping to a safe textual form and round-tripping back
+TEST_F(StringUtilsTest, EscapeStringAndRoundTrip) {
+    // ASCII with controls and quotes
+    {
+        std::string original;
+        original += 'H'; original += 'e'; original += 'l'; original += 'l'; original += 'o';
+        original += '\n'; original += '\t'; original += ' '; original += '"'; original += '\\'; original += '\'';
+        original += '\r'; original += '\v'; original += '\f'; original += '\b'; original += char(0x1B); // ESC
+        std::string escaped = utils::EscapeString(original.c_str());
+        // Spot-check a few segments
+        EXPECT_NE(std::string::npos, escaped.find("\\n"));
+        EXPECT_NE(std::string::npos, escaped.find("\\t"));
+        EXPECT_NE(std::string::npos, escaped.find("\\\""));
+        EXPECT_NE(std::string::npos, escaped.find("\\\\"));
+        EXPECT_NE(std::string::npos, escaped.find("\\'"));
+        EXPECT_NE(std::string::npos, escaped.find("\\e"));
+
+        // Round-trip
+        std::string round = utils::UnescapeString(escaped.c_str());
+        EXPECT_EQ(original, round);
+    }
+
+    // Non-ASCII UTF-8 including BMP and non-BMP
+    {
+        std::string original = std::string("Hello ") +
+                               utils::Utf16ToUtf8(L"\u4F60\u597D") + // BMP CJK: U+4F60 U+597D
+                               " ";
+        // U+1F600 and U+1D11E
+        original += "\xF0\x9F\x98\x80"; // U+1F600 in UTF-8
+        original += utils::Utf16ToUtf8(L"\xD834\xDD1E"); // U+1D11E
+
+        std::string escaped = utils::EscapeString(original.c_str());
+        // Expect \uXXXX or \UXXXXXXXX sequences present
+        EXPECT_NE(std::string::npos, escaped.find("\\u"));
+        EXPECT_NE(std::string::npos, escaped.find("\\U"));
+
+        // Round-trip back to original bytes
+        std::string round = utils::UnescapeString(escaped.c_str());
+        EXPECT_EQ(original, round);
+    }
+
+    // Invalid UTF-8 bytes get preserved as \u00XX
+    {
+        std::string s;
+        s.push_back(char(0xC0)); // invalid leading continuation
+        s.push_back(char(0xAF));
+        std::string escaped = utils::EscapeString(s.c_str());
+        EXPECT_NE(std::string::npos, escaped.find("\\xC0"));
+        EXPECT_NE(std::string::npos, escaped.find("\\xAF"));
+        EXPECT_EQ(s, utils::UnescapeString(escaped.c_str()));
+    }
+}
+
+// Extra SplitString overload coverage and edge cases
+TEST_F(StringUtilsTest, SplitStringExtras) {
+    // Single char delimiter overload
+    {
+        std::string s = "a:b::c:";
+        auto v = utils::SplitString(s, ':');
+        ASSERT_EQ(5u, v.size());
+        EXPECT_EQ("a", v[0]);
+        EXPECT_EQ("b", v[1]);
+        EXPECT_EQ("", v[2]);
+        EXPECT_EQ("c", v[3]);
+        EXPECT_EQ("", v[4]);
+    }
+    // C-string delimiter overload
+    {
+        std::string s = "xx||yy||||zz";
+        auto v = utils::SplitString(s, "||");
+        ASSERT_EQ(4u, v.size());
+        EXPECT_EQ("xx", v[0]);
+        EXPECT_EQ("yy", v[1]);
+        EXPECT_EQ("", v[2]);
+        EXPECT_EQ("zz", v[3]);
+    }
+    // Delim not present
+    {
+        std::string s = "abcdef";
+        auto v = utils::SplitString(s, ',');
+        ASSERT_EQ(1u, v.size());
+        EXPECT_EQ("abcdef", v[0]);
+    }
+    // Wide single char delimiter
+    {
+        std::wstring s = L"x;y;z";
+        auto v = utils::SplitString(s, L';');
+        ASSERT_EQ(3u, v.size());
+        EXPECT_EQ(L"x", v[0]);
+        EXPECT_EQ(L"y", v[1]);
+        EXPECT_EQ(L"z", v[2]);
+    }
+}
+
+// Extra JoinString overload coverage
+TEST_F(StringUtilsTest, JoinStringExtras) {
+    // C-string delimiter
+    {
+        std::vector<std::string> v = {"a", "b", "c"};
+        EXPECT_EQ("a--b--c", utils::JoinString(v, "--"));
+    }
+    // Wide single char delimiter
+    {
+        std::vector<std::wstring> v = {L"\u7532", L"\u4E59", L"\u4E19"}; // U+7532, U+4E59, U+4E19
+        EXPECT_EQ(L"\u7532|\u4E59|\u4E19", utils::JoinString(v, L'|'));
+    }
+}
+
+#ifdef _WIN32
+// Windows-only: CompareString behavior and flags
+TEST_F(StringUtilsTest, CompareStringFlags) {
+    using utils::CompareFlags;
+
+    // Case-insensitive by flag
+    EXPECT_EQ(0, utils::CompareString(L"apple", L"APPLE", CompareFlags::kLinguisticIgnoreCase));
+
+    // Width-insensitive: halfwidth vs fullwidth
+    EXPECT_EQ(0, utils::CompareString(L"A", L"\uFF21", CompareFlags::kIgnoreWidth)); // fullwidth 'A'
+
+    // Digits as numbers: "a10" > "a2"
+    EXPECT_LT(utils::CompareString(L"a2", L"a10", CompareFlags::kDigitsAsNumbers), 0);
+    EXPECT_GT(utils::CompareString(L"a10", L"a2", CompareFlags::kDigitsAsNumbers), 0);
+
+    // Default flags combine the three; numeric comparison makes "2" < "10"
+    EXPECT_LT(utils::CompareString(L"\uFF21pple2", L"apple10"), 0);
+    EXPECT_LT(utils::CompareString(L"a2", L"a10"), 0);
+
+    // UTF-8 overload mirrors wide one (ASCII scope)
+    EXPECT_EQ(0, utils::CompareString(std::string("Test"), std::string("test"), CompareFlags::kLinguisticIgnoreCase));
+}
+#endif
 
 // Main function that runs all the tests
 int main(int argc, char **argv) {
