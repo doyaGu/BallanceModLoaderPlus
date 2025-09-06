@@ -41,6 +41,8 @@ add_bml_test(StringUtilsTest
         SOURCES
         StringUtilsTest.cpp
         ${BML_SOURCE_DIR}/StringUtils.cpp
+        DEPENDENCIES
+        utf8
 )
 
 add_bml_test(PathUtilsTest
@@ -49,7 +51,7 @@ add_bml_test(PathUtilsTest
         ${BML_SOURCE_DIR}/StringUtils.cpp
         ${BML_SOURCE_DIR}/PathUtils.cpp
         DEPENDENCIES
-        zip
+        utf8 zip
 )
 
 add_bml_test(ConfigTest
@@ -60,7 +62,7 @@ add_bml_test(ConfigTest
         ${BML_SOURCE_DIR}/StringUtils.cpp
         ${BML_SOURCE_DIR}/PathUtils.cpp
         DEPENDENCIES
-        zip
+        utf8 zip
         CK2
         VxMath
 )
@@ -72,7 +74,7 @@ add_bml_test(AnsiPaletteTest
         ${BML_SOURCE_DIR}/StringUtils.cpp
         ${BML_SOURCE_DIR}/PathUtils.cpp
         DEPENDENCIES
-        zip
+        utf8 zip
 )
 # Need ImGui headers for AnsiPalette
 target_include_directories(AnsiPaletteTest PRIVATE ${IMGUI_SOURCE_DIR})
