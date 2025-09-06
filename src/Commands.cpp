@@ -272,7 +272,7 @@ void CommandPalette::Execute(IBML *bml, const std::vector<std::string> &args) {
             bml->SendIngameMessage(line.c_str());
         }
     } else if (args[1] == "show") {
-        // Print resolved theme chain top -> parent -> ... -> root, with paths and missing notes
+        // Print resolved theme chain top -> parent -> ... -> root
         AnsiPalette tmp;
         const auto chain = tmp.GetResolvedThemeChain();
         if (chain.empty()) {
@@ -283,15 +283,7 @@ void CommandPalette::Execute(IBML *bml, const std::vector<std::string> &args) {
         for (size_t i = 0; i < chain.size(); ++i) {
             if (i) line += " -> ";
             line += chain[i].name;
-            line += " (";
-            if (!chain[i].path.empty()) {
-                char *p = BML_Utf16ToAnsi(chain[i].path.c_str());
-                if (p) {
-                    line += p;
-                    delete[] p;
-                }
-            }
-            line += chain[i].exists ? ")" : ", missing)";
+            if (!chain[i].exists) line += " (missing)";
         }
         line += "\n";
         bml->SendIngameMessage(line.c_str());
@@ -317,11 +309,119 @@ void CommandPalette::Execute(IBML *bml, const std::vector<std::string> &args) {
         } else {
             bml->SendIngameMessage("[palette] no config found, using default.\n");
         }
+    } else if (args[1] == "info") {
+        // Print current palette options/modes
+        AnsiPalette pal;
+        pal.ReloadFromFile();
+        std::string theme = pal.GetActiveThemeName();
+        std::string cube = pal.GetCubeMixFromTheme() ? "theme" : "standard";
+        std::string gray = pal.GetGrayMixFromTheme() ? "theme" : "standard";
+        std::string space = pal.GetLinearMix() ? "linear" : "srgb";
+        float mix = pal.GetMixStrength();
+        bool toning = pal.GetToningEnabled();
+        float tb = pal.GetToneBrightness();
+        float ts = pal.GetToneSaturation();
+        char buf[256];
+        snprintf(buf, sizeof(buf), "[palette] info: theme=%s cube=%s gray=%s mix=%.2f space=%s toning=%s tb=%.2f ts=%.2f\n",
+                 (theme.empty() ? "none" : theme.c_str()), cube.c_str(), gray.c_str(), mix, space.c_str(),
+                 toning ? "on" : "off", tb, ts);
+        bml->SendIngameMessage(buf);
+        // Explanations & tips
+        bml->SendIngameMessage("[palette] cube: standard=xterm 6x6x6; theme=from bright primaries\n");
+        bml->SendIngameMessage("[palette] gray: standard=xterm gray ramp; theme=black-white mix\n");
+        bml->SendIngameMessage("[palette] tips: set cube gray/mix/space/toning via 'palette set'\n");
+        bml->SendIngameMessage("          e.g. palette set cube theme | palette set mix_strength 0.7\n");
+        bml->SendIngameMessage("          e.g. palette set mix_space linear | palette set gray standard\n");
+    } else if (args[1] == "set") {
+        // palette set <option> <value>
+        if (args.size() < 4) {
+            bml->SendIngameMessage("Usage: palette set <cube|gray|mix_strength|mix_space|toning|tone_brightness|tone_saturation> <value>\n");
+            return;
+        }
+        std::string opt = utils::ToLower(args[2]);
+        // Join remaining tokens to accept values like "70 %" with space or quoted
+        std::string val;
+        for (size_t i = 3; i < args.size(); ++i) {
+            if (i > 3) val.push_back(' ');
+            val += args[i];
+        }
+        // Strip surrounding quotes and trim
+        val = utils::TrimStringCopy(val);
+        if (!val.empty() && ((val.front() == '"' && val.back() == '"') || (val.front() == '\'' && val.back() == '\'')) && val.size() >= 2) {
+            val = val.substr(1, val.size() - 2);
+            val = utils::TrimStringCopy(val);
+        }
+        // Normalize some common shorthands
+        if (opt == "linear") opt = "mix_space";
+        if (opt == "mix") opt = "mix_strength";
+        if (opt == "grey") opt = "gray";
+        if (opt == "tone_enable" || opt == "enable_toning") opt = "toning";
+        AnsiPalette pal;
+        pal.SaveSampleIfMissing();
+        bool ok = pal.SetThemeOption(opt, val);
+        const bool loaded = mb.ReloadPaletteFromFile();
+        if (ok && loaded) {
+            bml->SendIngameMessage("[palette] option updated.\n");
+        } else if (!ok) {
+            // Provide range tips for numeric keys
+            if (opt == "mix_strength") {
+                bml->SendIngameMessage("[palette] invalid mix_strength. Expect 0..1 or percent (e.g., 70%).\n");
+            } else if (opt == "tone_brightness" || opt == "tone_saturation") {
+                bml->SendIngameMessage("[palette] invalid value. Expect in [-1..1].\n");
+            } else {
+                bml->SendIngameMessage("[palette] failed to update config.\n");
+            }
+        } else {
+            bml->SendIngameMessage("[palette] no config found, using default.\n");
+        }
+    } else if (args[1] == "get") {
+        // palette get <option>
+        if (args.size() < 3) {
+            bml->SendIngameMessage("Usage: palette get <theme|cube|gray|mix_strength|mix_space|toning|tone_brightness|tone_saturation>\n");
+            return;
+        }
+        std::string key = utils::ToLower(args[2]);
+        if (key == "grey") key = "gray";
+        if (key == "linear") key = "mix_space";
+        AnsiPalette pal;
+        pal.ReloadFromFile();
+        char buf[192]; buf[0] = 0;
+        if (key == "theme" || key == "base") {
+            std::string theme = pal.GetActiveThemeName();
+            snprintf(buf, sizeof(buf), "[palette] theme = %s\n", theme.empty() ? "none" : theme.c_str());
+        } else if (key == "cube") {
+            snprintf(buf, sizeof(buf), "[palette] cube = %s\n", pal.GetCubeMixFromTheme() ? "theme" : "standard");
+        } else if (key == "gray") {
+            snprintf(buf, sizeof(buf), "[palette] gray = %s\n", pal.GetGrayMixFromTheme() ? "theme" : "standard");
+        } else if (key == "mix_strength" || key == "mix") {
+            snprintf(buf, sizeof(buf), "[palette] mix_strength = %.2f\n", pal.GetMixStrength());
+        } else if (key == "mix_space") {
+            snprintf(buf, sizeof(buf), "[palette] mix_space = %s\n", pal.GetLinearMix() ? "linear" : "srgb");
+        } else if (key == "toning") {
+            snprintf(buf, sizeof(buf), "[palette] toning = %s\n", pal.GetToningEnabled() ? "on" : "off");
+        } else if (key == "tone_brightness") {
+            snprintf(buf, sizeof(buf), "[palette] tone_brightness = %.2f\n", pal.GetToneBrightness());
+        } else if (key == "tone_saturation") {
+            snprintf(buf, sizeof(buf), "[palette] tone_saturation = %.2f\n", pal.GetToneSaturation());
+        } else {
+            bml->SendIngameMessage("[palette] unknown option.\n");
+            return;
+        }
+        if (buf[0]) bml->SendIngameMessage(buf);
+    } else if (args[1] == "reset") {
+        // Remove [theme] section and reload -> default behavior
+        AnsiPalette pal;
+        pal.SaveSampleIfMissing();
+        bool ok = pal.ResetThemeOptions();
+        const bool loaded = mb.ReloadPaletteFromFile();
+        if (ok && loaded) bml->SendIngameMessage("[palette] theme reset. Using defaults.\n");
+        else if (!ok) bml->SendIngameMessage("[palette] failed to update config.\n");
+        else bml->SendIngameMessage("[palette] no config found, using default.\n");
     }
 }
 
 const std::vector<std::string> CommandPalette::GetTabCompletion(IBML *bml, const std::vector<std::string> &args) {
-    if (args.size() == 2) return {"reload", "sample", "list", "theme", "show"};
+    if (args.size() == 2) return {"reload", "sample", "list", "theme", "show", "info", "set", "get", "reset"};
     if (args.size() == 3 && args[1] == std::string("theme")) {
         // Dynamic theme names + 'none' using palette API
         std::vector<std::string> out;
@@ -335,6 +435,19 @@ const std::vector<std::string> CommandPalette::GetTabCompletion(IBML *bml, const
             if (prefix.empty() || utils::StartsWith(low, prefixLower)) out.push_back(name);
         }
         return out;
+    }
+    if (args.size() == 3 && args[1] == std::string("set")) {
+        return {"cube", "gray", "mix_strength", "mix_space", "toning", "tone_brightness", "tone_saturation"};
+    }
+    if (args.size() == 3 && args[1] == std::string("get")) {
+        return {"theme", "cube", "gray", "mix_strength", "mix_space", "toning", "tone_brightness", "tone_saturation"};
+    }
+    if (args.size() == 4 && args[1] == std::string("set")) {
+        std::string opt = utils::ToLower(args[2]);
+        if (opt == "cube" || opt == "gray") return {"standard", "theme", "on", "off"};
+        if (opt == "mix_space") return {"linear", "srgb", "on", "off"};
+        if (opt == "toning") return {"on", "off"};
+        // For numeric options, no static suggestions
     }
     return {};
 }
