@@ -945,7 +945,7 @@ std::string AnsiPalette::GetActiveThemeName() const {
     if (!utils::FileExistsW(cfg)) return {};
     std::wstring contentW = utils::ReadTextFileW(cfg);
     if (contentW.empty()) return {};
-    std::string content = utils::Utf16ToAnsi(contentW);
+    std::string content = utils::Utf16ToUtf8(contentW);
     if (content.empty()) return {};
     std::string name = ExtractThemeName(content);
     if (name == "none") return {}; // normalize to empty
@@ -979,7 +979,7 @@ std::vector<AnsiPalette::ThemeChainEntry> AnsiPalette::GetResolvedThemeChain() c
         // Read parent
         std::wstring w = utils::ReadTextFileW(p);
         if (w.empty()) break;
-        std::string b = utils::Utf16ToAnsi(w);
+        std::string b = utils::Utf16ToUtf8(w);
         if (b.empty()) break;
         std::string parent = ExtractThemeName(b);
         if (parent.empty() || parent == "none") break;
@@ -1003,7 +1003,7 @@ std::vector<std::string> AnsiPalette::GetAvailableThemes() const {
     }
     out.reserve(uniq.size());
     for (const auto &w : uniq) {
-        std::string name = utils::Utf16ToAnsi(w);
+        std::string name = utils::Utf16ToUtf8(w);
         if (!name.empty()) out.push_back(name);
     }
     return out;
@@ -1014,7 +1014,7 @@ bool AnsiPalette::SetActiveThemeName(const std::string &name) {
     std::wstring cfg = GetFilePathW();
 
     std::wstring contentW = utils::ReadTextFileW(cfg);
-    std::string content = utils::Utf16ToAnsi(contentW);
+    std::string content = utils::Utf16ToUtf8(contentW);
     if (content.empty()) content = "";
 
     const std::string nameLower = utils::ToLower(name);
@@ -1029,7 +1029,7 @@ bool AnsiPalette::SetActiveThemeName(const std::string &name) {
     }
 
     std::string out = ApplyThemeMutationsToContent(content, mut);
-    std::wstring outW(out.begin(), out.end());
+    std::wstring outW = utils::Utf8ToUtf16(out);
     return utils::WriteTextFileW(cfg, outW);
 }
 
@@ -1154,13 +1154,22 @@ static std::string ApplyThemeMutationsToContent(const std::string &content, cons
     std::string section;
     bool inTheme = false;
     bool touched = false; // whether we replaced/removed/inserted
+    bool hadThemeSection = false; // track if we encountered a [theme] section
 
     size_t pos = 0;
-    while (pos <= content.size()) {
+    while (pos < content.size()) {
         size_t line_end = content.find_first_of("\r\n", pos);
         size_t n = (line_end == std::string::npos) ? (content.size() - pos) : (line_end - pos);
         std::string line = content.substr(pos, n);
-        pos = (line_end == std::string::npos) ? content.size() + 1 : (line_end + 1);
+        if (line_end == std::string::npos) {
+            pos = content.size(); // End of content
+        } else {
+            // Skip over line ending characters (\r\n or \n or \r)
+            pos = line_end + 1;
+            if (pos < content.size() && content[line_end] == '\r' && content[pos] == '\n') {
+                pos++; // Skip \n after \r in \r\n sequence
+            }
+        }
 
         std::string trimmed = utils::TrimStringCopy(line);
         // Section header
@@ -1178,16 +1187,29 @@ static std::string ApplyThemeMutationsToContent(const std::string &content, cons
             }
             section = utils::ToLower(trimmed.substr(1, trimmed.size() - 2));
             inTheme = (section == "theme");
+            if (inTheme) {
+                hadThemeSection = true;
+            }
             AppendWithNewline(out, line);
             continue;
         }
 
         if (inTheme) {
+            // Skip comments and empty lines in theme section
+            if (trimmed.empty() || trimmed[0] == '#' || trimmed[0] == ';') {
+                AppendWithNewline(out, line);
+                continue;
+            }
+            
             // For each line inside theme, decide if to drop/replace
             size_t eq = trimmed.find('=');
-            std::string lhs = (eq != std::string::npos)
-                                  ? utils::TrimStringCopy(trimmed.substr(0, eq))
-                                  : utils::TrimStringCopy(trimmed);
+            if (eq == std::string::npos) {
+                // No = found, preserve the line as-is
+                AppendWithNewline(out, line);
+                continue;
+            }
+            
+            std::string lhs = utils::TrimStringCopy(trimmed.substr(0, eq));
             bool matched = false;
             for (auto it = upserts.begin(); it != upserts.end();) {
                 if (!lhs.empty() && (ThemeKeyMatches(lhs, it->first) || utils::ToLower(lhs) == it->first)) {
@@ -1205,8 +1227,19 @@ static std::string ApplyThemeMutationsToContent(const std::string &content, cons
         AppendWithNewline(out, line);
     }
 
-    // If upserts remain and no [theme] encountered or we didn't inject yet
-    if (!upserts.empty()) {
+    // Handle case where we were still in [theme] section at end of content
+    if (inTheme) {
+        for (auto &kv : upserts) {
+            if (kv.second != "\x01__REMOVE__") {
+                AppendWithNewline(out, kv.first + " = " + kv.second);
+                touched = true;
+            }
+        }
+        upserts.clear();
+    }
+
+    // If upserts remain and no [theme] section was encountered, create new [theme] section
+    if (!upserts.empty() && !hadThemeSection) {
         if (!out.empty() && out.back() != '\n') out += '\n';
         out += "[theme]\n";
         for (auto &kv : upserts) {
@@ -1224,7 +1257,7 @@ bool AnsiPalette::SetThemeOption(const std::string &key, const std::string &valu
     std::wstring cfg = GetFilePathW();
 
     std::wstring contentW = utils::ReadTextFileW(cfg);
-    std::string content = utils::Utf16ToAnsi(contentW);
+    std::string content = utils::Utf16ToUtf8(contentW);
     if (content.empty()) content = "";
 
     // Canonical key + validation
@@ -1236,7 +1269,7 @@ bool AnsiPalette::SetThemeOption(const std::string &key, const std::string &valu
     std::vector<std::pair<std::string, std::string>> mut;
     mut.emplace_back(ckey, vnorm);
     std::string out = ApplyThemeMutationsToContent(content, mut);
-    std::wstring outW(out.begin(), out.end());
+    std::wstring outW = utils::Utf8ToUtf16(out);
     return utils::WriteTextFileW(cfg, outW);
 }
 
@@ -1244,7 +1277,7 @@ bool AnsiPalette::ResetThemeOptions() {
     std::wstring cfg = GetFilePathW();
     if (!utils::FileExistsW(cfg)) return true; // nothing to reset
     std::wstring contentW = utils::ReadTextFileW(cfg);
-    std::string content = utils::Utf16ToAnsi(contentW);
+    std::string content = utils::Utf16ToUtf8(contentW);
     if (content.empty()) return true;
 
     std::string out;
@@ -1275,7 +1308,7 @@ bool AnsiPalette::ResetThemeOptions() {
         AppendWithNewline(out, line);
     }
 
-    std::wstring outW(out.begin(), out.end());
+    std::wstring outW = utils::Utf8ToUtf16(out);
     return utils::WriteTextFileW(cfg, outW);
 }
 
