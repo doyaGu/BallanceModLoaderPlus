@@ -7,6 +7,7 @@
 #include <string>
 #include <algorithm>
 #include <set>
+#include <map>
 
 #include "PathUtils.h"
 #include "StringUtils.h"
@@ -26,13 +27,31 @@ AnsiPalette::AnsiPalette() : m_Initialized(false), m_Active(false) {
     m_CubeMixFromTheme = false;
     m_GrayMixFromTheme = false;
     m_MixStrength = 1.0f;
+    m_LinearMix = false;
 }
 
-// Optional external provider for ModLoader directory
-std::wstring (*AnsiPalette::s_LoaderDirProvider)() = nullptr;
+// Optional external providers
+AnsiPalette::LoaderDirProvider AnsiPalette::s_LoaderDirProvider = nullptr;
+AnsiPalette::LogProvider AnsiPalette::s_LogProvider = nullptr;
 
-void AnsiPalette::SetLoaderDirProvider(std::wstring (*provider)()) {
+void AnsiPalette::SetLoaderDirProvider(LoaderDirProvider provider) {
     s_LoaderDirProvider = provider;
+}
+
+AnsiPalette::LoaderDirProvider AnsiPalette::GetLoaderDirProvider() { return s_LoaderDirProvider; }
+
+void AnsiPalette::SetLoggerProvider(LogProvider logger) {
+    s_LogProvider = logger;
+}
+
+AnsiPalette::LogProvider AnsiPalette::GetLoggerProvider() { return s_LogProvider; }
+
+// internal logging helper
+static void AP_Log(int level, const std::string &msg) {
+    const auto logger = AnsiPalette::GetLoggerProvider();
+    if (logger) {
+        logger(level, msg.c_str());
+    }
 }
 
 ImU32 AnsiPalette::RGBA(unsigned r, unsigned g, unsigned b, unsigned a) {
@@ -40,6 +59,7 @@ ImU32 AnsiPalette::RGBA(unsigned r, unsigned g, unsigned b, unsigned a) {
 }
 
 ImU32 AnsiPalette::HexToImU32(const char *hex) {
+    if (!hex) return IM_COL32_WHITE;
     auto hv = [](char c) -> int {
         if (c >= '0' && c <= '9') return c - '0';
         if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
@@ -133,9 +153,44 @@ void AnsiPalette::BuildDefault() {
     m_Active = true;
 }
 
+// -----------
+// Local helpers (INI parsing utilities)
+// -----------
+
 static std::string ToLowerStr(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char) std::tolower(c); });
     return s;
+}
+
+static void LTrim(std::string &s) {
+    size_t i = 0;
+    while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) ++i;
+    if (i) s.erase(0, i);
+}
+
+static void RTrim(std::string &s) {
+    size_t i = s.size();
+    while (i > 0 && (s[i - 1] == ' ' || s[i - 1] == '\t' || s[i - 1] == '\r')) --i;
+    if (i < s.size()) s.erase(i);
+}
+
+static void Trim(std::string &s) {
+    RTrim(s);
+    LTrim(s);
+}
+
+static bool IsNumberStr(const std::string &s) {
+    if (s.empty()) return false;
+    size_t i = 0;
+    if (s[0] == '+' || s[0] == '-') {
+        if (s.size() == 1) return false;
+        i = 1;
+    }
+    for (; i < s.size(); ++i) {
+        unsigned char ch = (unsigned char)s[i];
+        if (ch < '0' || ch > '9') return false;
+    }
+    return true;
 }
 
 static bool ParseColorVal(const std::string &val, ImU32 &out) {
@@ -143,19 +198,33 @@ static bool ParseColorVal(const std::string &val, ImU32 &out) {
         out = AnsiPalette::HexToImU32(val.c_str() + 1);
         return true;
     }
-    int r = 0, g = 0, b = 0, a = 255;
-    if (sscanf(val.c_str(), "%d%*[, ]%d%*[, ]%d%*[, ]%d", &r, &g, &b, &a) == 4) {
-        r = std::clamp(r, 0, 255);
-        g = std::clamp(g, 0, 255);
-        b = std::clamp(b, 0, 255);
-        a = std::clamp(a, 0, 255);
+    // Flexible numeric parsing: accept separators such as commas, spaces, semicolons, tabs, slashes, pipes, colons
+    int vals[4] = {0, 0, 0, 255};
+    int count = 0;
+    int cur = 0;
+    bool in_num = false;
+    for (size_t i = 0; i < val.size(); ++i) {
+        unsigned char ch = (unsigned char)val[i];
+        if (ch >= '0' && ch <= '9') {
+            in_num = true;
+            cur = cur * 10 + (ch - '0');
+            if (cur > 9999) cur = 9999; // clamp to avoid overflow
+        } else {
+            if (in_num) {
+                if (count < 4) vals[count++] = cur;
+                cur = 0;
+                in_num = false;
+            }
+            // else skip separator character
+        }
+    }
+    if (in_num && count < 4) vals[count++] = cur;
+    if (count == 3 || count == 4) {
+        int r = std::clamp(vals[0], 0, 255);
+        int g = std::clamp(vals[1], 0, 255);
+        int b = std::clamp(vals[2], 0, 255);
+        int a = (count == 4) ? std::clamp(vals[3], 0, 255) : 255;
         out = AnsiPalette::RGBA((unsigned) r, (unsigned) g, (unsigned) b, (unsigned) a);
-        return true;
-    } else if (sscanf(val.c_str(), "%d%*[, ]%d%*[, ]%d", &r, &g, &b) == 3) {
-        r = std::clamp(r, 0, 255);
-        g = std::clamp(g, 0, 255);
-        b = std::clamp(b, 0, 255);
-        out = AnsiPalette::RGBA((unsigned) r, (unsigned) g, (unsigned) b, 255);
         return true;
     }
     return false;
@@ -164,30 +233,13 @@ static bool ParseColorVal(const std::string &val, ImU32 &out) {
 void AnsiPalette::ParseBuffer(const std::string &buf) {
     std::string section;
     size_t pos = 0;
-    auto ltrim = [](std::string &s) {
-        size_t i = 0;
-        while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) ++i;
-        s.erase(0, i);
-    };
-    auto rtrim = [](std::string &s) {
-        size_t i = s.size();
-        while (i > 0 && (s[i - 1] == ' ' || s[i - 1] == '\t' || s[i - 1] == '\r')) --i;
-        s.erase(i);
-    };
-    auto isNumber = [](const std::string &s) -> bool {
-        if (s.empty()) return false;
-        for (unsigned char ch : s) {
-            if (ch < '0' || ch > '9') return false;
-        }
-        return true;
-    };
     while (pos < buf.size()) {
         size_t line_end = buf.find_first_of("\r\n", pos);
         size_t n = (line_end == std::string::npos) ? (buf.size() - pos) : (line_end - pos);
         std::string line = buf.substr(pos, n);
         pos = (line_end == std::string::npos) ? buf.size() : (line_end + 1);
-        ltrim(line);
-        rtrim(line);
+        LTrim(line);
+        RTrim(line);
         if (line.empty() || line[0] == '#' || line[0] == ';') continue;
         if (line.front() == '[' && line.back() == ']') {
             section = ToLowerStr(line.substr(1, line.size() - 2));
@@ -198,10 +250,10 @@ void AnsiPalette::ParseBuffer(const std::string &buf) {
         size_t eq = line.find('=');
         if (eq == std::string::npos) continue;
         std::string key = line.substr(0, eq), val = line.substr(eq + 1);
-        ltrim(key);
-        rtrim(key);
-        ltrim(val);
-        rtrim(val);
+        LTrim(key);
+        RTrim(key);
+        LTrim(val);
+        RTrim(val);
         std::string lkey = ToLowerStr(key);
 
         auto setIndexColor = [&](int idx, const std::string &v) {
@@ -209,6 +261,13 @@ void AnsiPalette::ParseBuffer(const std::string &buf) {
             if (ParseColorVal(v, c)) {
                 m_Palette[idx] = c;
                 m_HasOverride[idx] = true;
+            } else {
+                if (!m_ParseOrigin.empty()) {
+                    AP_Log(1, std::string("AnsiPalette: invalid color value '") + v + "' for index " + std::to_string(idx) +
+                                 " in [" + section + "] at " + m_ParseOrigin);
+                } else {
+                    AP_Log(1, std::string("AnsiPalette: invalid color value '") + v + "' for index " + std::to_string(idx));
+                }
             }
         };
 
@@ -228,7 +287,7 @@ void AnsiPalette::ParseBuffer(const std::string &buf) {
                 continue;
             }
             // Allow numeric indices too
-            if (isNumber(lkey)) {
+            if (IsNumberStr(lkey)) {
                 int idx = std::stoi(lkey);
                 if ((section == "standard" && idx >= 0 && idx <= 7) || (section == "bright" && idx >= 8 && idx <= 15)) {
                     setIndexColor(idx, val);
@@ -236,33 +295,41 @@ void AnsiPalette::ParseBuffer(const std::string &buf) {
             }
         } else if (section == "cube") {
             // Index override within cube range only (no tuning keys)
-            if (isNumber(lkey)) {
+            if (IsNumberStr(lkey)) {
                 int idx = std::stoi(lkey);
                 if (idx >= 16 && idx <= 231) setIndexColor(idx, val);
             }
         } else if (section == "gray" || section == "grayscale") {
             // Index override within gray range only (no tuning keys)
-            if (isNumber(lkey)) {
+            if (IsNumberStr(lkey)) {
                 int idx = std::stoi(lkey);
                 if (idx >= 232 && idx <= 255) setIndexColor(idx, val);
             }
         } else if (section == "overrides") {
-            size_t dash = lkey.find('-');
+            size_t dash = lkey.rfind('-');
             if (dash != std::string::npos) {
                 std::string as = lkey.substr(0, dash);
                 std::string bs = lkey.substr(dash + 1);
-                if (isNumber(as) && isNumber(bs)) {
+                Trim(as);
+                Trim(bs);
+                if (IsNumberStr(as) && IsNumberStr(bs)) {
                     int a = std::stoi(as);
                     int b = std::stoi(bs);
                     if (a > b) std::swap(a, b);
                     a = std::max(0, a);
                     b = std::min(255, b);
                     for (int i = a; i <= b; ++i) setIndexColor(i, val);
+                } else {
+                    AP_Log(1, std::string("AnsiPalette: invalid range '") + lkey + "' in [overrides]" +
+                                 (m_ParseOrigin.empty() ? std::string("") : (" at " + m_ParseOrigin)));
                 }
-            } else if (isNumber(lkey)) {
+            } else if (IsNumberStr(lkey)) {
                 int idx = std::stoi(lkey);
                 if (idx >= 0 && idx <= 255) {
                     setIndexColor(idx, val);
+                } else {
+                    AP_Log(1, std::string("AnsiPalette: override index out of range '") + lkey + "'" +
+                                 (m_ParseOrigin.empty() ? std::string("") : (" at " + m_ParseOrigin)));
                 }
             }
         } else if (section == "theme") {
@@ -275,32 +342,60 @@ void AnsiPalette::ParseBuffer(const std::string &buf) {
                     m_CubeMixFromTheme = true;
                 } else if (v == "standard" || v == "xterm" || v == "0" || v == "false" || v == "off" || v == "no") {
                     m_CubeMixFromTheme = false;
+                } else {
+                    AP_Log(1, std::string("AnsiPalette: invalid value for 'cube': '") + val + "'" +
+                                 (m_ParseOrigin.empty() ? std::string("") : (" at " + m_ParseOrigin)));
                 }
-            } else if (lkey == "gray" || lkey == "grey" || lkey == "gray_mode" || lkey == "grey_mode" || lkey == "gray_from_theme" || lkey == "grey_from_theme") {
+            } else if (lkey == "gray" || lkey == "grey" || lkey == "gray_mode" || lkey == "grey_mode" || lkey ==
+                "gray_from_theme" || lkey == "grey_from_theme") {
                 std::string v = ToLowerStr(val);
                 if (v == "theme" || v == "mix" || v == "1" || v == "true" || v == "on" || v == "yes") {
                     m_GrayMixFromTheme = true;
                 } else if (v == "standard" || v == "xterm" || v == "0" || v == "false" || v == "off" || v == "no") {
                     m_GrayMixFromTheme = false;
+                } else {
+                    AP_Log(1, std::string("AnsiPalette: invalid value for 'gray': '") + val + "'" +
+                                 (m_ParseOrigin.empty() ? std::string("") : (" at " + m_ParseOrigin)));
                 }
             } else if (lkey == "tone_brightness") {
                 try {
                     m_ToneBrightness = std::clamp(std::stof(val), -1.0f, 1.0f);
-                } catch (...) {}
+                } catch (...) {
+                    AP_Log(1, std::string("AnsiPalette: invalid float for 'tone_brightness': '") + val + "' (range -1..1)" +
+                                 (m_ParseOrigin.empty() ? std::string("") : (" at " + m_ParseOrigin)));
+                }
             } else if (lkey == "tone_saturation") {
                 try {
                     m_ToneSaturation = std::clamp(std::stof(val), -1.0f, 1.0f);
-                } catch (...) {}
+                } catch (...) {
+                    AP_Log(1, std::string("AnsiPalette: invalid float for 'tone_saturation': '") + val + "' (range -1..1)" +
+                                 (m_ParseOrigin.empty() ? std::string("") : (" at " + m_ParseOrigin)));
+                }
             } else if (lkey == "mix_strength" || lkey == "mix" || lkey == "mix_intensity" || lkey == "mix_saturation") {
                 try {
                     float f = std::stof(val);
                     if (f > 1.0f) f *= 0.01f; // allow percent
                     m_MixStrength = std::clamp(f, 0.0f, 1.0f);
-                } catch (...) {}
+                } catch (...) {
+                    AP_Log(1, std::string("AnsiPalette: invalid float for 'mix_strength': '") + val + "' (range 0..1 or percent)" +
+                                 (m_ParseOrigin.empty() ? std::string("") : (" at " + m_ParseOrigin)));
+                }
+            } else if (lkey == "linear_mix" || lkey == "linear" || lkey == "mix_linear") {
+                std::string v = ToLowerStr(val);
+                m_LinearMix = (v == "1" || v == "true" || v == "on" || v == "yes");
+            } else if (lkey == "mix_space" || lkey == "mix_colorspace" || lkey == "mix_colourspace" || lkey ==
+                "color_space" || lkey == "colour_space") {
+                std::string v = ToLowerStr(val);
+                if (v == "linear" || v == "linear-light" || v == "linear_rgb" || v == "linear-rgb") m_LinearMix = true;
+                else if (v == "srgb" || v == "gamma" || v == "perceptual") m_LinearMix = false;
+                else {
+                    AP_Log(1, std::string("AnsiPalette: invalid value for 'mix_space': '") + val + "' (srgb|linear)" +
+                                 (m_ParseOrigin.empty() ? std::string("") : (" at " + m_ParseOrigin)));
+                }
             }
         } else {
             // Backward compatible: key as index only if numeric
-            if (isNumber(lkey)) {
+            if (IsNumberStr(lkey)) {
                 int idx = std::stoi(lkey);
                 if (idx >= 0 && idx <= 255) {
                     setIndexColor(idx, val);
@@ -327,76 +422,147 @@ void AnsiPalette::RebuildCubeAndGray() {
             m_Palette[idx] = RGBA(r, g, b);
         }
     } else {
-        // Mix cube colors from theme primaries (bright red/green/blue),
-        // then blend with standard cube by m_MixStrength.
-        auto to_f = [](ImU32 c, int shift) -> float {
-            return ((c >> shift) & 0xFF) / 255.0f;
+        // Mix cube colors by trilinear interpolation of theme corners:
+        // corners: black(0), bright primaries (9,10,12), bright secondaries (11,13,14), bright white(15).
+        const bool useLinear = m_LinearMix;
+        auto to_f = [](ImU32 c, int shift) -> float { return ((c >> shift) & 0xFF) / 255.0f; };
+        auto colf = [&](int idx, float &r, float &g, float &b) {
+            ImU32 c = m_Palette[idx];
+            r = to_f(c, IM_COL32_R_SHIFT);
+            g = to_f(c, IM_COL32_G_SHIFT);
+            b = to_f(c, IM_COL32_B_SHIFT);
         };
-        ImU32 redC   = m_Palette[8 + 1]; // bright red index 9
-        ImU32 greenC = m_Palette[8 + 2]; // bright green index 10
-        ImU32 blueC  = m_Palette[8 + 4]; // bright blue index 12
-        float Rr = to_f(redC,   IM_COL32_R_SHIFT), Rg = to_f(redC,   IM_COL32_G_SHIFT), Rb = to_f(redC,   IM_COL32_B_SHIFT);
-        float Gr = to_f(greenC, IM_COL32_R_SHIFT), Gg = to_f(greenC, IM_COL32_G_SHIFT), Gb = to_f(greenC, IM_COL32_B_SHIFT);
-        float Br = to_f(blueC,  IM_COL32_R_SHIFT), Bg = to_f(blueC,  IM_COL32_G_SHIFT), Bb = to_f(blueC,  IM_COL32_B_SHIFT);
-        float w[6]; for (int i = 0; i < 6; ++i) w[i] = values[i] / 255.0f;
+        // Corner colors as floats
+        float c000_r, c000_g, c000_b;
+        colf(0, c000_r, c000_g, c000_b); // black
+        float c100_r, c100_g, c100_b;
+        colf(8 + 1, c100_r, c100_g, c100_b); // bright red
+        float c010_r, c010_g, c010_b;
+        colf(8 + 2, c010_r, c010_g, c010_b); // bright green
+        float c001_r, c001_g, c001_b;
+        colf(8 + 4, c001_r, c001_g, c001_b); // bright blue
+        float c110_r, c110_g, c110_b;
+        colf(8 + 3, c110_r, c110_g, c110_b); // bright yellow
+        float c101_r, c101_g, c101_b;
+        colf(8 + 5, c101_r, c101_g, c101_b); // bright magenta
+        float c011_r, c011_g, c011_b;
+        colf(8 + 6, c011_r, c011_g, c011_b); // bright cyan
+        float c111_r, c111_g, c111_b;
+        colf(8 + 7, c111_r, c111_g, c111_b); // bright white
+
+        if (useLinear) {
+            // Convert corners to linear-light space
+            auto conv = [&](float &r, float &g, float &b) {
+                r = SrgbToLinear(r);
+                g = SrgbToLinear(g);
+                b = SrgbToLinear(b);
+            };
+            conv(c000_r, c000_g, c000_b);
+            conv(c100_r, c100_g, c100_b);
+            conv(c010_r, c010_g, c010_b);
+            conv(c001_r, c001_g, c001_b);
+            conv(c110_r, c110_g, c110_b);
+            conv(c101_r, c101_g, c101_b);
+            conv(c011_r, c011_g, c011_b);
+            conv(c111_r, c111_g, c111_b);
+        }
+
+        float w6[6];
+        for (int i = 0; i < 6; ++i) w6[i] = values[i] / 255.0f;
         for (int idx = 16; idx < 232; ++idx) {
             if (m_HasOverride[idx]) continue;
             int v = idx - 16;
             int r6 = (v / 36) % 6;
             int g6 = ((v % 36) / 6) % 6;
             int b6 = v % 6;
-            // Theme-mix in 0..1
-            float wR = w[r6], wG = w[g6], wB = w[b6];
-            float rr = wR * Rr + wG * Gr + wB * Br;
-            float gg = wR * Rg + wG * Gg + wB * Bg;
-            float bb = wR * Rb + wG * Gb + wB * Bb;
-            // Standard in 0..1
-            float sr = w[r6];
-            float sg = w[g6];
-            float sb = w[b6];
-            // Blend
+
+            // Coordinates in 0..1 along each axis; if linear mixing, linearize coordinates too
+            float r = useLinear ? SrgbToLinear(w6[r6]) : w6[r6];
+            float g = useLinear ? SrgbToLinear(w6[g6]) : w6[g6];
+            float b = useLinear ? SrgbToLinear(w6[b6]) : w6[b6];
+            float ir = 1.0f - r, ig = 1.0f - g, ib = 1.0f - b;
+
+            // Trilinear interpolation from 8 corners
+            float rr =
+                c000_r * (ir * ig * ib) + c100_r * (r * ig * ib) + c010_r * (ir * g * ib) + c001_r * (ir * ig * b) +
+                c110_r * (r * g * ib) + c101_r * (r * ig * b) + c011_r * (ir * g * b) + c111_r * (r * g * b);
+            float gg =
+                c000_g * (ir * ig * ib) + c100_g * (r * ig * ib) + c010_g * (ir * g * ib) + c001_g * (ir * ig * b) +
+                c110_g * (r * g * ib) + c101_g * (r * ig * b) + c011_g * (ir * g * b) + c111_g * (r * g * b);
+            float bb =
+                c000_b * (ir * ig * ib) + c100_b * (r * ig * ib) + c010_b * (ir * g * ib) + c001_b * (ir * ig * b) +
+                c110_b * (r * g * ib) + c101_b * (r * ig * b) + c011_b * (ir * g * b) + c111_b * (r * g * b);
+
+            // Standard cube in 0..1 for blending
+            float sr = r, sg = g, sb = b;
             float t = m_MixStrength;
             float fr = sr * (1.0f - t) + rr * t;
             float fg = sg * (1.0f - t) + gg * t;
             float fb = sb * (1.0f - t) + bb * t;
-            int ri = (int)std::round(std::clamp(fr, 0.0f, 1.0f) * 255.0f);
-            int gi = (int)std::round(std::clamp(fg, 0.0f, 1.0f) * 255.0f);
-            int bi = (int)std::round(std::clamp(fb, 0.0f, 1.0f) * 255.0f);
-            m_Palette[idx] = RGBA((unsigned)ri, (unsigned)gi, (unsigned)bi);
+            // Convert back to sRGB if we mixed in linear space
+            if (useLinear) {
+                fr = LinearToSrgb(fr);
+                fg = LinearToSrgb(fg);
+                fb = LinearToSrgb(fb);
+            }
+            int ri = (int) std::round(std::clamp(fr, 0.0f, 1.0f) * 255.0f);
+            int gi = (int) std::round(std::clamp(fg, 0.0f, 1.0f) * 255.0f);
+            int bi = (int) std::round(std::clamp(fb, 0.0f, 1.0f) * 255.0f);
+            m_Palette[idx] = RGBA((unsigned) ri, (unsigned) gi, (unsigned) bi);
         }
     }
     // Gray 232..255
     if (!m_GrayMixFromTheme) {
-        // standard xterm ramp (8..238 step 10)
+        // Standard xterm ramp (8..238 step 10)
         for (int idx = 232; idx < 256; ++idx) {
             if (m_HasOverride[idx]) continue;
             int gray = 8 + (idx - 232) * 10;
             m_Palette[idx] = RGBA(gray, gray, gray);
         }
     } else {
-        // mix between theme black (index 0) and theme white (index 7),
+        // Mix between theme black (index 0) and theme white (index 7),
         // then blend with standard gray by m_MixStrength.
+        const bool useLinear = m_LinearMix;
         ImU32 cBlack = m_Palette[0];
         ImU32 cWhite = m_Palette[7];
-        auto chan = [](ImU32 c, int sh){ return (float)((c >> sh) & 0xFF) / 255.0f; };
-        float br = chan(cBlack, IM_COL32_R_SHIFT), bg = chan(cBlack, IM_COL32_G_SHIFT), bb = chan(cBlack, IM_COL32_B_SHIFT);
-        float wr = chan(cWhite, IM_COL32_R_SHIFT), wg = chan(cWhite, IM_COL32_G_SHIFT), wb = chan(cWhite, IM_COL32_B_SHIFT);
+        auto chan = [](ImU32 c, int sh) { return (float) ((c >> sh) & 0xFF) / 255.0f; };
+        float br = chan(cBlack, IM_COL32_R_SHIFT), bg = chan(cBlack, IM_COL32_G_SHIFT), bb = chan(
+                  cBlack, IM_COL32_B_SHIFT);
+        float wr = chan(cWhite, IM_COL32_R_SHIFT), wg = chan(cWhite, IM_COL32_G_SHIFT), wb = chan(
+                  cWhite, IM_COL32_B_SHIFT);
+        if (useLinear) {
+            br = SrgbToLinear(br);
+            bg = SrgbToLinear(bg);
+            bb = SrgbToLinear(bb);
+            wr = SrgbToLinear(wr);
+            wg = SrgbToLinear(wg);
+            wb = SrgbToLinear(wb);
+        }
         for (int idx = 232; idx < 256; ++idx) {
             if (m_HasOverride[idx]) continue;
             int gray = 8 + (idx - 232) * 10; // 8..238
-            float t = (float)gray / 255.0f;   // map to 0..~0.933 to keep xterm-style headroom
+            // Normalize 8..238 onto 0..1 for theme interpolation, so corners hit theme black/white.
+            float t = (float) (gray - 8) / 230.0f;
             float tr = br * (1.0f - t) + wr * t;
             float tg = bg * (1.0f - t) + wg * t;
             float tb = bb * (1.0f - t) + wb * t;
-            float sr = gray / 255.0f, sg = sr, sb = sr;
+            // Standard gray in chosen space
+            float sr = gray / 255.0f;
+            if (useLinear) sr = SrgbToLinear(sr);
+            float sg = sr, sb = sr;
             float ms = m_MixStrength;
             float fr = sr * (1.0f - ms) + tr * ms;
             float fg = sg * (1.0f - ms) + tg * ms;
             float fb = sb * (1.0f - ms) + tb * ms;
-            int ri = (int)std::round(std::clamp(fr, 0.0f, 1.0f) * 255.0f);
-            int gi = (int)std::round(std::clamp(fg, 0.0f, 1.0f) * 255.0f);
-            int bi = (int)std::round(std::clamp(fb, 0.0f, 1.0f) * 255.0f);
-            m_Palette[idx] = RGBA((unsigned)ri, (unsigned)gi, (unsigned)bi);
+            if (useLinear) {
+                fr = LinearToSrgb(fr);
+                fg = LinearToSrgb(fg);
+                fb = LinearToSrgb(fb);
+            }
+            int ri = (int) std::round(std::clamp(fr, 0.0f, 1.0f) * 255.0f);
+            int gi = (int) std::round(std::clamp(fg, 0.0f, 1.0f) * 255.0f);
+            int bi = (int) std::round(std::clamp(fb, 0.0f, 1.0f) * 255.0f);
+            m_Palette[idx] = RGBA((unsigned) ri, (unsigned) gi, (unsigned) bi);
         }
     }
 }
@@ -416,7 +582,12 @@ void AnsiPalette::EnsureInitialized() {
                 std::string buf;
                 buf.resize((size_t) len);
                 if (fread(buf.data(), 1, (size_t) len, fp) != (size_t) len) buf.clear();
-                if (!buf.empty()) ApplyThemeChainAndBuffer(buf);
+                if (!buf.empty()) {
+                    const std::string old = m_ParseOrigin;
+                    m_ParseOrigin = utils::Utf16ToUtf8(path);
+                    ApplyThemeChainAndBuffer(buf);
+                    m_ParseOrigin = old;
+                }
             }
             fclose(fp);
         }
@@ -434,15 +605,22 @@ bool AnsiPalette::ReloadFromFile() {
         return false;
     }
     FILE *fp = _wfopen(path.c_str(), L"rb");
-    if (!fp) { m_Initialized = true; return false; }
+    if (!fp) {
+        m_Initialized = true;
+        return false;
+    }
     fseek(fp, 0, SEEK_END);
     long len = ftell(fp);
     rewind(fp);
     bool ok = false;
     if (len > 0) {
-        std::string buf; buf.resize((size_t) len);
+        std::string buf;
+        buf.resize((size_t) len);
         if (fread(buf.data(), 1, (size_t) len, fp) == (size_t) len) {
+            std::string old = m_ParseOrigin;
+            m_ParseOrigin = utils::Utf16ToUtf8(path);
             ApplyThemeChainAndBuffer(buf);
+            m_ParseOrigin = old;
             ok = true;
         }
     }
@@ -464,7 +642,8 @@ bool AnsiPalette::SaveSampleIfMissing() {
         const char *sample =
             "# palette.ini\n"
             "# Sections: [theme], [standard], [bright], [cube], [gray], [overrides]\n"
-            "# Colors accept #RRGGBB, #AARRGGBB, or R,G,B[,A]. Lines starting with # or ; are comments.\n\n"
+            "# Colors accept #RRGGBB, #AARRGGBB, or R,G,B[,A] with flexible separators (space/comma/semicolon).\n"
+            "# Lines starting with # or ; are comments.\n\n"
             "[theme]\n"
             "# Import the nord theme by default:\n"
             "base = nord\n"
@@ -474,6 +653,9 @@ bool AnsiPalette::SaveSampleIfMissing() {
             "tone_saturation = 0\n"
             "# Mix strength for theme-based cube/gray [0..1] or percent\n"
             "mix_strength = 1\n"
+            "# Mix color space: srgb (default) or linear\n"
+            "# mix_space = linear\n"
+            "# Or enable with boolean: linear_mix = on\n"
             "# Cube mode: standard (xterm) or theme (mix from primaries)\n"
             "# cube = standard\n"
             "# Gray mode: standard (xterm) or theme (mix between theme black/white)\n"
@@ -497,9 +679,14 @@ bool AnsiPalette::SaveSampleIfMissing() {
     std::wstring themesDir = GetThemesDirW();
     if (!utils::DirectoryExistsW(themesDir)) utils::CreateDirectoryW(themesDir);
     auto write_theme_if_missing = [&](const wchar_t *name, const char *content) {
-        std::wstring p = themesDir; p.append(L"\\"); p.append(name).append(L".ini");
+        std::wstring p = themesDir;
+        p.append(L"\\");
+        p.append(name).append(L".ini");
         if (!utils::FileExistsW(p)) {
-            FILE *f = _wfopen(p.c_str(), L"wb"); if (!f) return; fwrite(content, 1, strlen(content), f); fclose(f);
+            FILE *f = _wfopen(p.c_str(), L"wb");
+            if (!f) return;
+            fwrite(content, 1, strlen(content), f);
+            fclose(f);
         }
     };
 
@@ -510,6 +697,7 @@ bool AnsiPalette::SaveSampleIfMissing() {
         "# You may chain to a parent theme here, e.g.:\n"
         "# base = parent-theme-name\n"
         "mix_strength = 1\n"
+        "mix_space = linear\n"
         "cube = theme\n"
         "gray = theme\n\n"
         "# Standard (0..7)\n"
@@ -540,6 +728,7 @@ bool AnsiPalette::SaveSampleIfMissing() {
         "[theme]\n"
         "# Atom One Dark inspired ANSI palette\n"
         "mix_strength = 1\n"
+        "mix_space = linear\n"
         "cube = theme\n"
         "gray = theme\n\n"
         "# Standard (0..7)\n"
@@ -583,6 +772,10 @@ bool AnsiPalette::IsActive() const {
 
 std::wstring AnsiPalette::GetConfigPathW() const { return GetFilePathW(); }
 
+// Forward declarations for helpers used before their definitions
+static void AppendWithNewline(std::string &out, const std::string &line);
+static std::string ApplyThemeMutationsToContent(const std::string &content, const std::vector<std::pair<std::string, std::string>> &mut);
+
 std::wstring AnsiPalette::ResolveThemePathW(const std::wstring &name) const {
     if (name.empty()) return L"";
     std::wstring themes = GetThemesDirW();
@@ -595,7 +788,7 @@ std::wstring AnsiPalette::ResolveThemePathW(const std::wstring &name) const {
     std::wstring ext = utils::GetExtensionW(name);
     if (!ext.empty()) {
         std::wstring el = ext;
-        std::transform(el.begin(), el.end(), el.begin(), [](wchar_t c){ return (wchar_t)std::towlower(c); });
+        std::transform(el.begin(), el.end(), el.begin(), [](wchar_t c) { return (wchar_t) std::towlower(c); });
         if (el == L".ini" || el == L".theme") {
             if (try_name(name)) return cand;
         }
@@ -609,26 +802,31 @@ std::wstring AnsiPalette::ResolveThemePathW(const std::wstring &name) const {
 std::string AnsiPalette::ExtractThemeName(const std::string &buf) {
     std::string section;
     size_t pos = 0;
-    auto ltrim = [](std::string &s) {
-        size_t i = 0; while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) ++i; s.erase(0, i);
-    };
-    auto rtrim = [](std::string &s) {
-        size_t i = s.size(); while (i > 0 && (s[i-1] == ' ' || s[i-1] == '\t' || s[i-1] == '\r')) --i; s.erase(i);
-    };
     while (pos < buf.size()) {
         size_t line_end = buf.find_first_of("\r\n", pos);
         size_t n = (line_end == std::string::npos) ? (buf.size() - pos) : (line_end - pos);
         std::string line = buf.substr(pos, n);
         pos = (line_end == std::string::npos) ? buf.size() : (line_end + 1);
-        ltrim(line); rtrim(line);
-        if (line.empty() || line[0]=='#' || line[0]==';') continue;
-        if (line.front()=='[' && line.back()==']') { section = ToLowerStr(line.substr(1, line.size()-2)); continue; }
-        size_t eq = line.find('='); if (eq == std::string::npos) continue;
+        LTrim(line);
+        RTrim(line);
+        if (line.empty() || line[0] == '#' || line[0] == ';') continue;
+        if (line.front() == '[' && line.back() == ']') {
+            section = ToLowerStr(line.substr(1, line.size() - 2));
+            continue;
+        }
+        size_t eq = line.find('=');
+        if (eq == std::string::npos) continue;
         std::string key = line.substr(0, eq), val = line.substr(eq + 1);
-        ltrim(key); rtrim(key); ltrim(val); rtrim(val);
+        LTrim(key);
+        RTrim(key);
+        LTrim(val);
+        RTrim(val);
         std::string lkey = ToLowerStr(key);
         if ((section == "theme") && (lkey == "theme" || lkey == "base")) {
-            return ToLowerStr(val);
+            std::string v = ToLowerStr(val);
+            // Treat explicit 'none' as empty (no active theme)
+            if (v == "none") return {};
+            return v;
         }
     }
     return {};
@@ -641,7 +839,14 @@ void AnsiPalette::ApplyThemeChainAndBuffer(const std::string &buf) {
         auto toW = [](const std::string &s) { return std::wstring(s.begin(), s.end()); };
         auto applyThemeRecursive = [&](auto &self, const std::wstring &nameW) -> void {
             std::wstring themePath = ResolveThemePathW(nameW);
-            if (themePath.empty() || !utils::FileExistsW(themePath) || visited.count(themePath)) return;
+            if (themePath.empty() || !utils::FileExistsW(themePath)) {
+                AP_Log(1, std::string("AnsiPalette: theme not found: ") + utils::Utf16ToUtf8(nameW));
+                return;
+            }
+            if (visited.count(themePath)) {
+                AP_Log(1, std::string("AnsiPalette: theme cycle detected at ") + utils::Utf16ToUtf8(themePath));
+                return;
+            }
             visited.insert(themePath);
             FILE *ft = _wfopen(themePath.c_str(), L"rb");
             if (!ft) return;
@@ -656,7 +861,10 @@ void AnsiPalette::ApplyThemeChainAndBuffer(const std::string &buf) {
                     if (!parent.empty() && parent != "none") {
                         self(self, toW(parent));
                     }
+                    std::string old = m_ParseOrigin;
+                    m_ParseOrigin = utils::Utf16ToUtf8(themePath);
                     ParseBuffer(tbuf);
+                    m_ParseOrigin = old;
                 }
             }
             fclose(ft);
@@ -673,7 +881,10 @@ void AnsiPalette::RgbToHsv(float r, float g, float b, float &h, float &s, float 
     const float d = mx - mn;
     v = mx;
     s = (mx == 0.0f) ? 0.0f : d / mx;
-    if (d == 0.0f) { h = 0.0f; return; }
+    if (d == 0.0f) {
+        h = 0.0f;
+        return;
+    }
     if (mx == r) h = (g - b) / d + (g < b ? 6.0f : 0.0f);
     else if (mx == g) h = (b - r) / d + 2.0f;
     else h = (r - g) / d + 4.0f;
@@ -681,8 +892,12 @@ void AnsiPalette::RgbToHsv(float r, float g, float b, float &h, float &s, float 
 }
 
 void AnsiPalette::HsvToRgb(float h, float s, float v, float &r, float &g, float &b) {
-    if (s <= 0.0f) { r = g = b = v; return; }
-    h = std::fmodf(h, 1.0f); if (h < 0.0f) h += 1.0f;
+    if (s <= 0.0f) {
+        r = g = b = v;
+        return;
+    }
+    h = std::fmodf(h, 1.0f);
+    if (h < 0.0f) h += 1.0f;
     const float i = std::floor(h * 6.0f);
     const float f = h * 6.0f - i;
     const float p = v * (1.0f - s);
@@ -696,6 +911,18 @@ void AnsiPalette::HsvToRgb(float h, float s, float v, float &r, float &g, float 
         case 4: r = t; g = p; b = v; break;
         case 5: r = v; g = p; b = q; break;
     }
+}
+
+// sRGB <-> Linear conversions (component in [0,1])
+float AnsiPalette::SrgbToLinear(float c) {
+    if (c <= 0.04045f) return c / 12.92f;
+    return std::pow((c + 0.055f) / 1.055f, 2.4f);
+}
+
+float AnsiPalette::LinearToSrgb(float c) {
+    c = std::max(0.0f, std::min(1.0f, c));
+    if (c <= 0.0031308f) return 12.92f * c;
+    return 1.055f * std::pow(c, 1.0f / 2.4f) - 0.055f;
 }
 
 ImU32 AnsiPalette::ApplyToning(ImU32 col) const {
@@ -720,7 +947,9 @@ std::string AnsiPalette::GetActiveThemeName() const {
     if (contentW.empty()) return {};
     std::string content = utils::Utf16ToAnsi(contentW);
     if (content.empty()) return {};
-    return ExtractThemeName(content);
+    std::string name = ExtractThemeName(content);
+    if (name == "none") return {}; // normalize to empty
+    return name;
 }
 
 std::vector<AnsiPalette::ThemeChainEntry> AnsiPalette::GetResolvedThemeChain() const {
@@ -728,7 +957,7 @@ std::vector<AnsiPalette::ThemeChainEntry> AnsiPalette::GetResolvedThemeChain() c
     std::string top = GetActiveThemeName();
     if (top.empty() || top == "none") return chain;
 
-    auto toW = [](const std::string &s){ return std::wstring(s.begin(), s.end()); };
+    auto toW = [](const std::string &s) { return std::wstring(s.begin(), s.end()); };
     std::set<std::wstring> visited;
     std::string cur = top;
     while (true) {
@@ -781,17 +1010,8 @@ std::vector<std::string> AnsiPalette::GetAvailableThemes() const {
 }
 
 bool AnsiPalette::SetActiveThemeName(const std::string &name) {
+    EnsureConfigExists();
     std::wstring cfg = GetFilePathW();
-    if (!utils::FileExistsW(cfg)) {
-        // Try to generate a sample config first
-        if (!SaveSampleIfMissing()) {
-            // Ensure directory exists at least
-            std::wstring dir = GetLoaderDirW();
-            if (!utils::DirectoryExistsW(dir)) utils::CreateDirectoryW(dir);
-            // Create a minimal file
-            utils::WriteTextFileW(cfg, L"[theme]\n");
-        }
-    }
 
     std::wstring contentW = utils::ReadTextFileW(cfg);
     std::string content = utils::Utf16ToAnsi(contentW);
@@ -800,17 +1020,142 @@ bool AnsiPalette::SetActiveThemeName(const std::string &name) {
     const std::string nameLower = utils::ToLower(name);
     const bool clear = nameLower.empty() || nameLower == "none";
 
+    std::vector<std::pair<std::string, std::string>> mut;
+    if (clear) {
+        mut.emplace_back("base", std::string("\x01__REMOVE__"));
+        mut.emplace_back("theme", std::string("\x01__REMOVE__"));
+    } else {
+        mut.emplace_back("base", name);
+    }
+
+    std::string out = ApplyThemeMutationsToContent(content, mut);
+    std::wstring outW(out.begin(), out.end());
+    return utils::WriteTextFileW(cfg, outW);
+}
+
+// Internal helpers for editing [theme] section
+static void AppendWithNewline(std::string &out, const std::string &line) {
+    out += line;
+    if (!line.empty() && line.back() != '\n' && line.back() != '\r')
+        out += '\n';
+}
+
+static std::string CanonThemeKey(const std::string &key) {
+    std::string k = utils::ToLower(key);
+    if (k == "grey") k = "gray";
+    if (k == "linear" || k == "linear_mix" || k == "mix_linear" || k == "mix_colorspace" || k == "mix_colourspace" || k
+        == "color_space" || k == "colour_space") k = "mix_space";
+    if (k == "mix" || k == "mix_intensity" || k == "mix_saturation") k = "mix_strength";
+    if (k == "tone_enable" || k == "enable_toning") k = "toning";
+    if (k == "cube_mode" || k == "cube_from_theme") k = "cube";
+    if (k == "gray_mode" || k == "grey_mode" || k == "gray_from_theme" || k == "grey_from_theme") k = "gray";
+    return k;
+}
+
+static bool ThemeKeyMatches(const std::string &lhs, const std::string &canonical) {
+    std::string l = utils::ToLower(lhs);
+    if (l == canonical) return true;
+    if (canonical == "cube") return (l == "cube_mode" || l == "cube_from_theme");
+    if (canonical == "gray") return (l == "grey" || l == "gray_mode" || l == "grey_mode" || l == "gray_from_theme" || l
+        == "grey_from_theme");
+    if (canonical == "toning") return (l == "tone_enable" || l == "enable_toning");
+    if (canonical == "mix_strength") return (l == "mix" || l == "mix_intensity" || l == "mix_saturation");
+    if (canonical == "mix_space") return (l == "mix_colorspace" || l == "mix_colourspace" || l == "color_space" || l ==
+        "colour_space" || l == "linear_mix" || l == "linear" || l == "mix_linear");
+    return false;
+}
+
+// Validate and normalize value for a given canonical key. Returns false if invalid.
+static bool ValidateThemeOptionValue(const std::string &ckey, const std::string &input, std::string &out_value) {
+    const std::string v = utils::ToLower(utils::TrimStringCopy(input));
+    if (ckey == "cube" || ckey == "gray") {
+        if (v == "standard" || v == "xterm" || v == "0" || v == "false" || v == "off" || v == "no") {
+            out_value = "standard";
+            return true;
+        }
+        if (v == "theme" || v == "mix" || v == "1" || v == "true" || v == "on" || v == "yes") {
+            out_value = "theme";
+            return true;
+        }
+        return false;
+    }
+    if (ckey == "mix_space") {
+        if (v == "linear" || v == "on" || v == "true" || v == "yes") {
+            out_value = "linear";
+            return true;
+        }
+        if (v == "srgb" || v == "gamma" || v == "off" || v == "false" || v == "no") {
+            out_value = "srgb";
+            return true;
+        }
+        return false;
+    }
+    if (ckey == "toning") {
+        if (v == "1" || v == "true" || v == "on" || v == "yes") {
+            out_value = "on";
+            return true;
+        }
+        if (v == "0" || v == "false" || v == "off" || v == "no") {
+            out_value = "off";
+            return true;
+        }
+        return false;
+    }
+    if (ckey == "mix_strength") {
+        try {
+            std::string vv = v;
+            if (!vv.empty() && vv.back() == '%') vv.pop_back();
+            float f = std::stof(vv);
+            if (!std::isfinite(f)) return false;
+            if (!v.empty() && v.back() == '%') {
+                f *= 0.01f; // percent input
+            } else if (f > 1.0f) {
+                f *= 0.01f; // plain number >1, treat as percent for convenience
+            }
+            f = std::clamp(f, 0.0f, 1.0f);
+            std::string buf(32, '\0');
+            snprintf(buf.data(), buf.size(), "%.3f", f);
+            out_value = utils::TrimStringCopy(buf);
+            return true;
+        } catch (...) { return false; }
+    }
+    if (ckey == "tone_brightness" || ckey == "tone_saturation") {
+        try {
+            float f = std::stof(v);
+            if (!std::isfinite(f)) return false;
+            f = std::clamp(f, -1.0f, 1.0f);
+            std::string buf(32, '\0');
+            snprintf(buf.data(), buf.size(), "%.3f", f);
+            out_value = utils::TrimStringCopy(buf);
+            return true;
+        } catch (...) { return false; }
+    }
+    if (ckey == "base") {
+        // Accept any non-empty token (theme name), normalize to lower-case base? preserve
+        out_value = input;
+        return true;
+    }
+    // Unknown keys: allow passthrough
+    out_value = input;
+    return true;
+}
+
+// Apply mutations to [theme] section. When removing keys, pass empty optional (value == "\x01__REMOVE__").
+static std::string ApplyThemeMutationsToContent(const std::string &content, const std::vector<std::pair<std::string, std::string>> &mut) {
+    // Build maps of canonical keys -> value or removal marker
+    std::map<std::string, std::string> upserts; // key -> value ; value=="\x01__REMOVE__" means remove
+    for (auto &kv : mut) {
+        std::string ckey = CanonThemeKey(kv.first);
+        // normalize value now? keep raw; SetThemeOption will pre-validate
+        upserts[ckey] = kv.second;
+    }
+
     std::string out;
     std::string section;
     bool inTheme = false;
-    bool themeSectionExists = false;
-    bool baseInsertedInTheme = false;
+    bool touched = false; // whether we replaced/removed/inserted
 
     size_t pos = 0;
-    auto append_newline_if_needed = [&](const std::string &s) {
-        if (!s.empty() && s.back() != '\n' && s.back() != '\r') out += '\n';
-    };
-
     while (pos <= content.size()) {
         size_t line_end = content.find_first_of("\r\n", pos);
         size_t n = (line_end == std::string::npos) ? (content.size() - pos) : (line_end - pos);
@@ -820,48 +1165,127 @@ bool AnsiPalette::SetActiveThemeName(const std::string &name) {
         std::string trimmed = utils::TrimStringCopy(line);
         // Section header
         if (!trimmed.empty() && trimmed.front() == '[' && trimmed.back() == ']') {
-            // Before switching out of [theme], if we wanted to set and haven't inserted base, we already insert at header time
+            // On exit of [theme] without touching, we may need to inject
+            if (inTheme) {
+                for (auto &kv : upserts) {
+                    if (kv.second != "\x01__REMOVE__") {
+                        AppendWithNewline(out, kv.first + " = " + kv.second);
+                        touched = true;
+                    }
+                }
+                // mark as consumed by clearing map so we don't append again at end
+                upserts.clear();
+            }
             section = utils::ToLower(trimmed.substr(1, trimmed.size() - 2));
             inTheme = (section == "theme");
-            if (inTheme) {
-                themeSectionExists = true;
-                baseInsertedInTheme = false;
-                // Write header line
-                out += line;
-                append_newline_if_needed(line);
-                // Insert base line at start of [theme] if setting
-                if (!clear) {
-                    out += "base = "; out += name; out += "\n";
-                    baseInsertedInTheme = true;
-                }
-                continue;
-            }
-            // Non-theme section: just copy header
-            out += line; append_newline_if_needed(line);
+            AppendWithNewline(out, line);
             continue;
         }
 
-        // Within a section: possibly drop/replace lines
-        if (!section.empty()) {
-            std::string l = utils::ToLower(trimmed);
-            if (section == "theme") {
-                if (!l.empty() && (utils::StartsWith(l, std::string("base")) || utils::StartsWith(l, std::string("theme")))) {
-                    // Drop existing base/theme lines. We already inserted a fresh base at section start if needed.
-                    continue;
-                }
+        if (inTheme) {
+            // For each line inside theme, decide if to drop/replace
+            size_t eq = trimmed.find('=');
+            std::string lhs = (eq != std::string::npos)
+                                  ? utils::TrimStringCopy(trimmed.substr(0, eq))
+                                  : utils::TrimStringCopy(trimmed);
+            bool matched = false;
+            for (auto it = upserts.begin(); it != upserts.end();) {
+                if (!lhs.empty() && (ThemeKeyMatches(lhs, it->first) || utils::ToLower(lhs) == it->first)) {
+                    // replace or remove
+                    if (it->second != "\x01__REMOVE__") { AppendWithNewline(out, it->first + " = " + it->second); }
+                    touched = true;
+                    it = upserts.erase(it);
+                    matched = true;
+                    break;
+                } else ++it;
             }
+            if (matched) continue; // line consumed
         }
-        // Default: copy line
-        out += line; if (line_end != std::string::npos) out += "\n";
+
+        AppendWithNewline(out, line);
     }
 
-    // If setting and no [theme] section existed, append it at end
-    if (!clear && !themeSectionExists) {
+    // If upserts remain and no [theme] encountered or we didn't inject yet
+    if (!upserts.empty()) {
         if (!out.empty() && out.back() != '\n') out += '\n';
         out += "[theme]\n";
-        out += "base = "; out += name; out += "\n";
+        for (auto &kv : upserts) {
+            if (kv.second != "\x01__REMOVE__") {
+                out += kv.first + " = " + kv.second + "\n";
+                touched = true;
+            }
+        }
+    }
+    return out;
+}
+
+bool AnsiPalette::SetThemeOption(const std::string &key, const std::string &value) {
+    EnsureConfigExists();
+    std::wstring cfg = GetFilePathW();
+
+    std::wstring contentW = utils::ReadTextFileW(cfg);
+    std::string content = utils::Utf16ToAnsi(contentW);
+    if (content.empty()) content = "";
+
+    // Canonical key + validation
+    std::string ckey = CanonThemeKey(key);
+    std::string vnorm;
+    if (!ValidateThemeOptionValue(ckey, value, vnorm)) return false;
+
+    // Apply generic mutation (upsert or remove when value marker provided)
+    std::vector<std::pair<std::string, std::string>> mut;
+    mut.emplace_back(ckey, vnorm);
+    std::string out = ApplyThemeMutationsToContent(content, mut);
+    std::wstring outW(out.begin(), out.end());
+    return utils::WriteTextFileW(cfg, outW);
+}
+
+bool AnsiPalette::ResetThemeOptions() {
+    std::wstring cfg = GetFilePathW();
+    if (!utils::FileExistsW(cfg)) return true; // nothing to reset
+    std::wstring contentW = utils::ReadTextFileW(cfg);
+    std::string content = utils::Utf16ToAnsi(contentW);
+    if (content.empty()) return true;
+
+    std::string out;
+    bool inTheme = false;
+    size_t pos = 0;
+    while (pos <= content.size()) {
+        size_t line_end = content.find_first_of("\r\n", pos);
+        size_t n = (line_end == std::string::npos) ? (content.size() - pos) : (line_end - pos);
+        std::string line = content.substr(pos, n);
+        pos = (line_end == std::string::npos) ? content.size() + 1 : (line_end + 1);
+
+        std::string trimmed = utils::TrimStringCopy(line);
+        if (!trimmed.empty() && trimmed.front() == '[' && trimmed.back() == ']') {
+            std::string section = utils::ToLower(trimmed.substr(1, trimmed.size() - 2));
+            inTheme = (section == "theme");
+            if (inTheme) {
+                // Skip header and all subsequent lines until next section
+                continue;
+            } else {
+                AppendWithNewline(out, line);
+                continue;
+            }
+        }
+        if (inTheme) {
+            // skip lines inside [theme]
+            continue;
+        }
+        AppendWithNewline(out, line);
     }
 
     std::wstring outW(out.begin(), out.end());
     return utils::WriteTextFileW(cfg, outW);
+}
+
+void AnsiPalette::EnsureConfigExists() {
+    std::wstring cfg = GetFilePathW();
+    if (utils::FileExistsW(cfg)) return;
+    // Try writing sample, otherwise ensure dir and minimal header
+    if (!SaveSampleIfMissing()) {
+        std::wstring dir = GetLoaderDirW();
+        if (!utils::DirectoryExistsW(dir)) utils::CreateDirectoryW(dir);
+        utils::WriteTextFileW(cfg, L"[theme]\n");
+    }
 }
