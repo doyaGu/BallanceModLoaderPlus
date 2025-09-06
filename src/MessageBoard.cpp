@@ -9,248 +9,325 @@
 #include "imgui_internal.h"
 #include "ModContext.h"
 
-namespace {
-    // Default constants (can be overridden by member settings)
+// Grouped helpers for layout, colors, metrics and rendering.
+namespace MsgText {
+    // Default constants
     constexpr int kDefaultTabColumns = 4;  // default 4-space tab stops
     constexpr float kScrollEpsilon = 0.5f; // tolerance for bottom checks
 
-    // Grouped helpers for layout, colors, metrics and rendering.
-    namespace MsgText {
-        using Seg = MessageBoard::TextSegment;
+    using Seg = MessageBoard::TextSegment;
 
-        struct Layout {
-            struct Span { const Seg *seg; const char *b; const char *e; float width; bool isTab; };
-            struct Line { std::vector<Span> spans; float width = 0.0f; };
+    struct Layout {
+        struct Span { const Seg *seg; const char *b; const char *e; float width; bool isTab; };
+        struct Line { std::vector<Span> spans; float width = 0.0f; };
 
-            static const char *Utf8Next(const char *s, const char *end) {
-                if (!s || s >= end) return s;
-                utf8_int32_t cp = 0;
-                const char *next = (const char *) utf8codepoint((const utf8_int8_t *) s, &cp);
-                if (!next) return s + 1; // fail-safe advance
-                return next > end ? end : next;
-            }
-            static float Measure(ImFont *font, float fontSize, const char *b, const char *e) {
-                if (b == e) return 0.0f;
-                return font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, b, e, nullptr).x;
-            }
-            // Greedy wrap into lines of spans.
-            static void BuildLines(const std::vector<Seg> &segments, float wrapWidth, int tabColumns, std::vector<Line> &outLines) {
-                outLines.clear();
-                if (wrapWidth <= 0.0f) wrapWidth = FLT_MAX;
+        static const char *Utf8Next(const char *s, const char *end) {
+            if (!s || s >= end) return s;
+            utf8_int32_t cp = 0;
+            const char *next = (const char *) utf8codepoint((const utf8_int8_t *) s, &cp);
+            if (!next) return s + 1;
+            return next > end ? end : next;
+        }
 
-                ImFont *font = ImGui::GetFont();
-                const float fontSize = ImGui::GetFontSize();
-                const float spaceW = ImGui::CalcTextSize(" ").x;
+        static float Measure(ImFont *font, float fontSize, const char *b, const char *e) {
+            if (b == e) return 0.0f;
+            return font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, b, e, nullptr).x;
+        }
 
-                Line line;
-                float x = 0.0f;
-                bool trimLeadingSpace = false; // only after a soft-wrap
+        // Greedy wrap into lines of spans.
+        static void BuildLines(const std::vector<Seg>& segments, float wrapWidth, int tabColumns, float fontSize, std::vector<Line>& outLines) {
+            outLines.clear();
+            if (wrapWidth <= 0.0f) wrapWidth = FLT_MAX;
 
-                auto NewLine = [&]() {
-                    outLines.push_back(std::move(line));
-                    line = Line();
-                    x = 0.0f;
-                };
-                auto EmitSpan = [&](const Seg *seg, const char *b, const char *e, float w, bool isTab) {
-                    line.spans.push_back(Span{seg, b, e, w, isTab});
-                    x += w;
-                    if (x > line.width) line.width = x;
-                };
+            ImFont *font = ImGui::GetFont();
+            const char *kSpace = " ";
+            const float spaceW = Measure(font, fontSize, kSpace, kSpace + 1);
 
-                for (const Seg &seg : segments) {
-                    const char *p = seg.text.c_str();
-                    const char *end = p + seg.text.size();
-                    while (p < end) {
-                        if (*p == '\n') { NewLine(); trimLeadingSpace = false; ++p; continue; }
-                        if (*p == '\r') { x = 0.0f; ++p; continue; }
-                        if (*p == '\t') {
-                            const float cols = (tabColumns > 0 ? (float)tabColumns : (float)kDefaultTabColumns);
-                            const float tabW = spaceW * cols;
-                            const float nextTab = (static_cast<int>(x / tabW) + 1) * tabW;
-                            const float w = nextTab - x;
-                            if (x > 0.0f && (x + w) > wrapWidth + 0.0001f) { NewLine(); trimLeadingSpace = true; }
-                            EmitSpan(&seg, p, p /*empty*/, w, true);
-                            ++p; continue;
-                        }
+            Line line;
+            float x = 0.0f;
+            bool trimLeadingSpace = false;
 
-                        // Build next token: run of spaces or non-spaces
-                        const char *t = p; utf8_int32_t c = 0; const char *tNext = (const char*)utf8codepoint((const utf8_int8_t*)t, &c);
-                        if (!tNext || tNext <= t) tNext = t + 1;
-                        bool tokenIsSpace = (c == ' ' || c == 0x3000);
-                        const char *q = p;
-                        if (tokenIsSpace) {
-                            while (q < end) {
-                                utf8_int32_t sc = 0; const char *nn = (const char*)utf8codepoint((const utf8_int8_t*)q, &sc);
-                                if (!nn || nn <= q) { q++; break; }
-                                if (!(sc == ' ' || sc == 0x3000)) break; q = nn;
-                            }
-                        } else {
-                            while (q < end) {
-                                const char *next = Utf8Next(q, end);
-                                if (next <= q) { q++; break; }
-                                utf8_int32_t cc = 0; (void)utf8codepoint((const utf8_int8_t*)q, &cc);
-                                if (cc == ' ' || cc == 0x3000 || cc == '\t' || cc == '\n' || cc == '\r') break;
-                                q = next;
-                            }
-                        }
+            auto NewLine = [&]() {
+                outLines.push_back(std::move(line));
+                line = Line();
+                x = 0.0f;
+            };
+            auto EmitSpan = [&](const Seg *seg, const char *b, const char *e, float w, bool isTab) {
+                line.spans.push_back(Span{seg, b, e, w, isTab});
+                x += w;
+                if (x > line.width) line.width = x;
+            };
 
-                        if (x == 0.0f && tokenIsSpace && trimLeadingSpace) { p = q; continue; }
-
-                        float w = Measure(font, fontSize, p, q);
-                        auto WrapLine = [&]() { if (!line.spans.empty()) NewLine(); };
-                        float avail = wrapWidth - x;
-                        if (w <= avail + 0.0001f) { EmitSpan(&seg, p, q, w, false); p = q; continue; }
-
-                        if (x > 0.0f) {
-                            WrapLine(); trimLeadingSpace = true; if (tokenIsSpace) { p = q; continue; } avail = wrapWidth;
-                        }
-
-                        // Split inside long token
-                        const char *start = p;
-                        while (start < q) {
-                            const char *cur = start; const char *lastFit = start;
-                            while (cur < q) {
-                                const char *next = Utf8Next(cur, q); if (next <= cur) { next = cur + 1; }
-                                float ww = Measure(font, fontSize, start, next);
-                                if (ww <= avail + 0.0001f) { lastFit = next; cur = next; } else { break; }
-                            }
-                            if (lastFit == start) {
-                                const char *one = Utf8Next(start, q); if (one <= start) one = start + 1;
-                                float ww = Measure(font, fontSize, start, one);
-                                EmitSpan(&seg, start, one, ww, false); start = one;
-                            } else {
-                                float ww = Measure(font, fontSize, start, lastFit);
-                                EmitSpan(&seg, start, lastFit, ww, false); start = lastFit;
-                            }
-                            if (start < q) { NewLine(); trimLeadingSpace = true; avail = wrapWidth; }
-                        }
-                        p = q;
+            for (const Seg &seg : segments) {
+                const char *p = seg.text.c_str();
+                const char *end = p + seg.text.size();
+                while (p < end) {
+                    if (*p == '\n') { NewLine(); trimLeadingSpace = false; ++p; continue; }
+                    if (*p == '\r') { x = 0.0f; ++p; continue; }
+                    if (*p == '\t') {
+                        const float cols = (tabColumns > 0 ? (float) tabColumns : (float) kDefaultTabColumns);
+                        const float tabW = spaceW * cols;
+                        const float nextTab = (static_cast<int>(x / tabW) + 1) * tabW;
+                        const float w = nextTab - x;
+                        if (x > 0.0f && (x + w) > wrapWidth + 0.0001f) { NewLine(); trimLeadingSpace = true; }
+                        EmitSpan(&seg, p, p /*empty*/, w, true);
+                        ++p; continue;
                     }
+
+                    // Tokenize: spaces vs non-spaces
+                    const char *t = p; utf8_int32_t c = 0; const char *tNext = (const char *) utf8codepoint((const utf8_int8_t *) t, &c);
+                    if (!tNext || tNext <= t) tNext = t + 1;
+                    bool tokenIsSpace = (c == ' ' || c == 0x3000);
+                    const char *q = p;
+                    if (tokenIsSpace) {
+                        while (q < end) {
+                            utf8_int32_t sc = 0;
+                            const char *nn = (const char *) utf8codepoint((const utf8_int8_t *) q, &sc);
+                            if (!nn || nn <= q) { q++; break; }
+                            if (!(sc == ' ' || sc == 0x3000)) break; q = nn;
+                        }
+                    } else {
+                        while (q < end) {
+                            const char *next = Utf8Next(q, end);
+                            if (next <= q) { q++; break; }
+                            utf8_int32_t cc = 0; (void)utf8codepoint((const utf8_int8_t*)q, &cc);
+                            if (cc == ' ' || cc == 0x3000 || cc == '\t' || cc == '\n' || cc == '\r') break;
+                            q = next;
+                        }
+                    }
+
+                    if (x == 0.0f && tokenIsSpace && trimLeadingSpace) { p = q; continue; }
+
+                    float w = Measure(font, fontSize, p, q);
+                    auto WrapLine = [&]() { if (!line.spans.empty()) NewLine(); };
+                    float avail = wrapWidth - x;
+                    if (w <= avail + 0.0001f) { EmitSpan(&seg, p, q, w, false); p = q; continue; }
+
+                    if (x > 0.0f) {
+                        WrapLine(); trimLeadingSpace = true; if (tokenIsSpace) { p = q; continue; } avail = wrapWidth;
+                    }
+
+                    // Split long token
+                    const char *start = p;
+                    while (start < q) {
+                        const char *cur = start; const char *lastFit = start;
+                        while (cur < q) {
+                            const char *next = Utf8Next(cur, q); if (next <= cur) { next = cur + 1; }
+                            float ww = Measure(font, fontSize, start, next);
+                            if (ww <= avail + 0.0001f) { lastFit = next; cur = next; } else { break; }
+                        }
+                        if (lastFit == start) {
+                            const char *one = Utf8Next(start, q); if (one <= start) one = start + 1;
+                            float ww = Measure(font, fontSize, start, one);
+                            EmitSpan(&seg, start, one, ww, false); start = one;
+                        } else {
+                            float ww = Measure(font, fontSize, start, lastFit);
+                            EmitSpan(&seg, start, lastFit, ww, false); start = lastFit;
+                        }
+                        if (start < q) { NewLine(); trimLeadingSpace = true; avail = wrapWidth; }
+                    }
+                    p = q;
                 }
-                if (!line.spans.empty() || outLines.empty()) outLines.push_back(std::move(line));
             }
+            if (!line.spans.empty() || outLines.empty()) outLines.push_back(std::move(line));
+        }
+    };
+
+    struct Color {
+        static ImU32 ApplyDim(ImU32 color) {
+            const ImU32 r = ((color >> IM_COL32_R_SHIFT) & 0xFF) / 2;
+            const ImU32 g = ((color >> IM_COL32_G_SHIFT) & 0xFF) / 2;
+            const ImU32 b = ((color >> IM_COL32_B_SHIFT) & 0xFF) / 2;
+            const ImU32 a = (color >> IM_COL32_A_SHIFT) & 0xFF;
+            return IM_COL32(r, g, b, a);
+        }
+
+        static ImU32 ApplyAlpha(ImU32 color, float alpha) {
+            const ImU32 originalAlpha = (color >> IM_COL32_A_SHIFT) & 0xFF;
+            if (originalAlpha == 0) return ImU32(0);
+            const ImU32 newAlpha = (ImU32) (std::clamp(alpha, 0.0f, 1.0f) * (float) originalAlpha);
+            return (color & 0x00FFFFFF) | (newAlpha << IM_COL32_A_SHIFT);
+        }
+    };
+
+    struct Metrics {
+        static float UnderlineY(float lineTop, float fontSize) {
+            ImFont *font = ImGui::GetFont();
+            const float usedSize = (fontSize > 0.0f) ? fontSize : ImGui::GetFontSize();
+            ImFontBaked *baked = font ? font->GetFontBaked(usedSize) : nullptr;
+
+            const float ascent = baked ? ImMax(0.0f, baked->Ascent) : usedSize * 0.8f;
+            const float descent_mag = baked ? ImMax(0.0f, -baked->Descent) : usedSize * 0.2f;
+            const float baseline = lineTop + ascent;
+            const float offset = std::clamp(descent_mag * 0.5f, 1.0f, ImMax(1.0f, descent_mag - 1.0f));
+            return baseline + offset;
+        }
+
+        static float StrikeY(float lineTop, float fontSize) {
+            ImFont *font = ImGui::GetFont();
+            const float usedSize = (fontSize > 0.0f) ? fontSize : ImGui::GetFontSize();
+            ImFontBaked *baked = font ? font->GetFontBaked(usedSize) : nullptr;
+            const float ascent = baked ? ImMax(0.0f, baked->Ascent) : usedSize * 0.8f;
+            return lineTop + ascent * 0.6f;
+        }
+
+        static float Thickness(float fontSize) {
+            float t = std::round(fontSize / 18.0f);
+            return std::clamp(t, 1.0f, 4.0f);
+        }
+    };
+
+    struct Renderer {
+        static constexpr float kItalicShearBase = 0.16f;
+        static constexpr float kItalicShearSizeMin = 12.0f;
+        static constexpr float kItalicShearSizeMax = 36.0f;
+        static constexpr float kItalicShearFactorMin = 0.85f;
+        static constexpr float kItalicShearFactorMax = 1.20f;
+
+        struct BoldParams {
+            int rings = 1;
+            bool includeDiagonals = true;
+            float baseOffsetPx = 0.60f;
+            float alphaScale = 0.55f;
+            float alphaDecay = 0.80f;
+            float sizeMinPx = 12.0f;
+            float sizeMaxPx = 36.0f;
+            float offsetScaleMin = 0.75f;
+            float offsetScaleMax = 1.15f;
         };
 
-        struct Color {
-            static ImU32 ApplyDim(ImU32 color) {
-                const ImU32 r = ((color >> IM_COL32_R_SHIFT) & 0xFF) / 2;
-                const ImU32 g = ((color >> IM_COL32_G_SHIFT) & 0xFF) / 2;
-                const ImU32 b = ((color >> IM_COL32_B_SHIFT) & 0xFF) / 2;
-                const ImU32 a = (color >> IM_COL32_A_SHIFT) & 0xFF;
-                return IM_COL32(r, g, b, a);
-            }
-            static ImU32 ApplyAlpha(ImU32 color, float alpha) {
-                const ImU32 originalAlpha = (color >> IM_COL32_A_SHIFT) & 0xFF;
-                if (originalAlpha == 0) return ImU32(0);
-                const ImU32 newAlpha = (ImU32)(std::clamp(alpha, 0.0f, 1.0f) * (float)originalAlpha);
-                return (color & 0x00FFFFFF) | (newAlpha << IM_COL32_A_SHIFT);
-            }
-        };
+        static const BoldParams &DefaultBold() {
+            static BoldParams k{};
+            return k;
+        }
 
-        struct Metrics {
-            static float UnderlineY(float lineTop, float fontSize) {
-                ImFont *font = ImGui::GetFont();
-                ImFontBaked *baked = font ? font->GetFontBaked(fontSize) : nullptr;
-                const float ascent = baked ? ImMax(0.0f, baked->Ascent) : fontSize * 0.8f;
-                const float descent_mag = baked ? ImMax(0.0f, -baked->Descent) : fontSize * 0.2f;
-                const float baseline = lineTop + ascent;
-                const float offset = std::clamp(descent_mag * 0.5f, 1.0f, ImMax(1.0f, descent_mag - 1.0f));
-                return baseline + offset;
-            }
-            static float StrikeY(float lineTop, float fontSize) {
-                ImFont *font = ImGui::GetFont();
-                ImFontBaked *baked = font ? font->GetFontBaked(fontSize) : nullptr;
-                const float ascent = baked ? ImMax(0.0f, baked->Ascent) : fontSize * 0.8f;
-                return lineTop + ascent * 0.55f;
-            }
-            static float Thickness(float fontSize) {
-                float t = std::round(fontSize / 18.0f);
-                return std::clamp(t, 1.0f, 4.0f);
-            }
-        };
+        static float ComputeItalicShear(float fontSize) {
+            const float fs = std::clamp(fontSize, kItalicShearSizeMin, kItalicShearSizeMax);
+            const float t = (fs - kItalicShearSizeMin) / (kItalicShearSizeMax - kItalicShearSizeMin);
+            const float factor = kItalicShearFactorMin + (kItalicShearFactorMax - kItalicShearFactorMin) * t;
+            return kItalicShearBase * factor;
+        }
 
-        struct Renderer {
-            // Base shear for faux-italic (clockwise). Adjusted slightly by font size.
-            static constexpr float kItalicShearBase = 0.16f; // ~9.1° at reference size
-            // Easy-to-tune internal parameters for size-adaptive shear
-            static constexpr float kItalicShearSizeMin = 12.0f;  // px
-            static constexpr float kItalicShearSizeMax = 36.0f;  // px
-            static constexpr float kItalicShearFactorMin = 0.85f; // at min size
-            static constexpr float kItalicShearFactorMax = 1.20f; // at max size
+        static float ComputeBoldOffsetScale(float fontSize, const BoldParams &bp) {
+            const float fs = std::clamp(fontSize, bp.sizeMinPx, bp.sizeMaxPx);
+            const float t = (fs - bp.sizeMinPx) / (bp.sizeMaxPx - bp.sizeMinPx + 1e-5f);
+            return bp.offsetScaleMin + (bp.offsetScaleMax - bp.offsetScaleMin) * t;
+        }
 
-            // Size-adaptive shear: dampen at small sizes to reduce aliasing, gently boost at large sizes.
-            // Reference span: 12..36 px -> factor 0.85..1.20
-            static float ComputeItalicShear(float fontSize) {
-                const float fs = std::clamp(fontSize, kItalicShearSizeMin, kItalicShearSizeMax);
-                const float t = (fs - kItalicShearSizeMin) / (kItalicShearSizeMax - kItalicShearSizeMin); // 0..1
-                const float factor = kItalicShearFactorMin + (kItalicShearFactorMax - kItalicShearFactorMin) * t;
-                return kItalicShearBase * factor;
+        static void BuildBoldOffsets(float pixelOffset, int rings, bool includeDiag, std::vector<ImVec2> &out) {
+            out.clear();
+            auto push4 = [&](float d) {
+                out.emplace_back(+d, 0.0f);
+                out.emplace_back(-d, 0.0f);
+                out.emplace_back(0.0f, +d);
+                out.emplace_back(0.0f, -d);
+            };
+            auto pushDiag = [&](float d) {
+                const float dd = d * 0.70710678f;
+                out.emplace_back(+dd, +dd);
+                out.emplace_back(-dd, +dd);
+                out.emplace_back(+dd, -dd);
+                out.emplace_back(-dd, -dd);
+            };
+            for (int r = 1; r <= std::max(1, rings); ++r) {
+                float d = pixelOffset * r;
+                push4(d);
+                if (includeDiag) pushDiag(d);
             }
+        }
 
-            static void AddTextStyled(ImDrawList *drawList, ImFont *font, float fontSize, const ImVec2 &pos, ImU32 col,
-                                      const char *begin, const char *end, bool italic, bool fauxBold) {
-                if (!italic) {
-                    drawList->AddText(pos, col, begin, end);
-                    if (!fauxBold) return;
-                    const float a = ((col >> IM_COL32_A_SHIFT) & 0xFF) / 255.0f;
-                    const float ah = std::clamp(a * kAuxStrokeAlphaScale, 0.0f, 1.0f);
-                    const ImU32 aHalf = (ImU32)(ah * 255.0f + 0.5f);
-                    const ImU32 colHalf = (col & ~IM_COL32_A_MASK) | (aHalf << IM_COL32_A_SHIFT);
-                    drawList->AddText(ImVec2(pos.x + 1.0f, pos.y), colHalf, begin, end);
-                    drawList->AddText(ImVec2(pos.x, pos.y + 1.0f), colHalf, begin, end);
+        static void AddTextStyled(ImDrawList *drawList, ImFont *font, float fontSize, const ImVec2 &pos, ImU32 col,
+                                  const char *begin, const char *end, bool italic, bool fauxBold) {
+            AddTextStyledEx(drawList, font, fontSize, pos, col, begin, end, italic, fauxBold, DefaultBold());
+        }
+
+        static void AddTextStyledEx(ImDrawList *drawList, ImFont *font, float fontSize, const ImVec2 &pos, ImU32 col,
+                                    const char *begin, const char *end, bool italic, bool fauxBold, const BoldParams &bp) {
+            const float usedSize = (fontSize > 0.0f) ? fontSize : ImGui::GetFontSize();
+
+            auto drawOncePlain = [&](const ImVec2 &p, ImU32 c) {
+                drawList->AddText(font, usedSize, p, c, begin, end);
+            };
+
+            auto drawOnceItalic = [&](const ImVec2 &p, ImU32 c) {
+                if ((c & IM_COL32_A_MASK) == 0) return;
+                ImFontBaked *baked = font ? font->GetFontBaked(usedSize) : nullptr;
+                if (!baked) {
+                    drawOncePlain(p, c);
                     return;
                 }
 
-                // Italic path: shear glyph quads
-                auto draw_once = [&](const ImVec2 &p, ImU32 c) {
-                    if ((c & IM_COL32_A_MASK) == 0) return;
-                    ImFontBaked *baked = font ? font->GetFontBaked(fontSize) : nullptr;
-                    if (!baked) { drawList->AddText(p, c, begin, end); return; }
-                    const float scale = (fontSize >= 0.0f) ? (fontSize / baked->Size) : 1.0f;
-                    // Use subpixel origin for smoother sheared edges
-                    const float x0 = p.x;
-                    const float y0 = p.y;
-                    // Shear factor and anchor: baseline-anchored slight clockwise slant
-                    const float shear = ComputeItalicShear(fontSize);
-                    const float ascent = ImMax(0.0f, baked->Ascent);
-                    const float anchor_y = y0 + ascent;
+                const float scale = (usedSize >= 0.0f) ? (usedSize / baked->Size) : 1.0f;
+                const float x0 = p.x, y0 = p.y;
+                const float shear = ComputeItalicShear(usedSize);
+                const float ascent = ImMax(0.0f, baked->Ascent);
+                const float anchorY = y0 + ascent;
 
-                    const char *s = begin; float x = x0;
-                    while (s < end) {
-                        utf8_int32_t code = 0; const char *next = (const char*)utf8codepoint((const utf8_int8_t*)s, &code);
-                        if (!next || next <= s) next = s + 1;
-                        const ImFontGlyph *g = baked->FindGlyph((ImWchar)code);
-                        if (g && g->Visible) {
-                            float x1 = x + g->X0 * scale, x2 = x + g->X1 * scale;
-                            float y1 = y0 + g->Y0 * scale, y2 = y0 + g->Y1 * scale;
-                            float u1 = g->U0, v1 = g->V0, u2 = g->U1, v2 = g->V1;
-                            // Shear relative to anchor: dx(y) = shear * (anchor_y - y)
-                            const float dx1 = shear * (anchor_y - y1);
-                            const float dx2 = shear * (anchor_y - y2);
-                            drawList->PrimReserve(6, 4);
-                            drawList->PrimQuadUV(ImVec2(x1 + dx1, y1), ImVec2(x2 + dx1, y1),
-                                                 ImVec2(x2 + dx2, y2), ImVec2(x1 + dx2, y2),
-                                                 ImVec2(u1, v1), ImVec2(u2, v1), ImVec2(u2, v2), ImVec2(u1, v2), c);
-                            x += g->AdvanceX * scale;
-                        } else {
-                            x += baked->FallbackAdvanceX * scale;
-                        }
-                        s = next;
+                drawList->PushTextureID(font->ContainerAtlas->TexRef);
+
+                const char *s = begin;
+                float x = x0;
+                while (s < end) {
+                    utf8_int32_t code = 0;
+                    const char *next = (const char *) utf8codepoint((const utf8_int8_t *) s, &code);
+                    if (!next || next <= s) next = s + 1;
+                    const ImFontGlyph *g = baked->FindGlyph((ImWchar) code);
+                    if (g && g->Visible) {
+                        float x1 = x + g->X0 * scale, x2 = x + g->X1 * scale;
+                        float y1 = y0 + g->Y0 * scale, y2 = y0 + g->Y1 * scale;
+                        float u1 = g->U0, v1 = g->V0, u2 = g->U1, v2 = g->V1;
+                        const float dx1 = shear * (anchorY - y1);
+                        const float dx2 = shear * (anchorY - y2);
+                        drawList->PrimReserve(6, 4);
+                        drawList->PrimQuadUV(
+                            ImVec2(x1 + dx1, y1), ImVec2(x2 + dx1, y1),
+                            ImVec2(x2 + dx2, y2), ImVec2(x1 + dx2, y2),
+                            ImVec2(u1, v1), ImVec2(u2, v1), ImVec2(u2, v2), ImVec2(u1, v2), c);
+                        x += g->AdvanceX * scale;
+                    } else {
+                        x += baked->GetCharAdvance((ImWchar) code) * scale;
                     }
-                };
+                    s = next;
+                }
 
-                draw_once(pos, col);
-                if (!fauxBold) return;
-                const float a = ((col >> IM_COL32_A_SHIFT) & 0xFF) / 255.0f;
-                const float ah = std::clamp(a * kAuxStrokeAlphaScale, 0.0f, 1.0f);
-                const ImU32 aHalf = (ImU32)(ah * 255.0f + 0.5f);
-                const ImU32 colHalf = (col & ~IM_COL32_A_MASK) | (aHalf << IM_COL32_A_SHIFT);
-                draw_once(ImVec2(pos.x + 1.0f, pos.y), colHalf);
-                draw_once(ImVec2(pos.x, pos.y + 1.0f), colHalf);
+                drawList->PopTextureID();
+            };
+
+            auto draw_once = [&](const ImVec2 &p, ImU32 c) {
+                if (!italic) drawOncePlain(p, c);
+                else drawOnceItalic(p, c);
+            };
+
+            draw_once(pos, col);
+
+            if (!fauxBold) return;
+
+            const float ofsScale = ComputeBoldOffsetScale(usedSize, bp);
+            // Clamp to reasonable range
+            float pxOffset = bp.baseOffsetPx * ofsScale;
+            pxOffset = std::clamp(pxOffset, 0.35f, 0.85f);
+            if (usedSize <= 14.0f) // Small font, reduce bold offset
+                pxOffset = std::max(0.35f, pxOffset * 0.85f);
+            std::vector<ImVec2> offsets;
+            BuildBoldOffsets(pxOffset, bp.rings, bp.includeDiagonals, offsets);
+
+            const float baseAlpha = ((col >> IM_COL32_A_SHIFT) & 0xFF) / 255.0f;
+            float ringAlpha = std::clamp(baseAlpha * bp.alphaScale, 0.0f, 1.0f);
+            if (usedSize <= 14.0f) // Small font, reduce bold alpha
+                ringAlpha *= 0.85f;
+            int perRing = bp.includeDiagonals ? 8 : 4;
+            if (perRing <= 0) perRing = 4;
+
+            for (int i = 0; i < (int) offsets.size(); ++i) {
+                const int ringIndex = i / perRing;
+                float alphaForThis = ringAlpha * std::pow(std::max(0.0f, bp.alphaDecay), (float) ringIndex);
+                ImU32 a = (ImU32) std::round(std::clamp(alphaForThis, 0.0f, 1.0f) * 255.0f);
+                ImU32 colHalf = (col & ~IM_COL32_A_MASK) | (a << IM_COL32_A_SHIFT);
+                draw_once(ImVec2(pos.x + offsets[i].x, pos.y + offsets[i].y), colHalf);
             }
-        };
-    } // namespace MsgText
-}
+        }
+    };
+} // namespace MsgText
 
 // =============================================================================
 // MessageUnit Implementation
@@ -275,15 +352,17 @@ void MessageBoard::MessageUnit::SetMessage(const char *msg) {
 }
 
 float MessageBoard::MessageUnit::GetTextHeight(float wrapWidth, int tabColumns) const {
+    const float usedFontSize = ImGui::GetFontSize();
+
     if (cachedHeight >= 0.0f && std::abs(cachedWrapWidth - wrapWidth) < 0.5f)
         return cachedHeight;
 
     const float lineH = ImGui::GetTextLineHeightWithSpacing();
 
     std::vector<MsgText::Layout::Line> lines;
-    MsgText::Layout::BuildLines(segments, wrapWidth, tabColumns, lines);
-    const auto lineCount = static_cast<float>(lines.size());
+    MsgText::Layout::BuildLines(segments, wrapWidth, tabColumns, usedFontSize, lines);
 
+    const float lineCount = (float)lines.size();
     cachedHeight = ImMax(lineH, lineCount * lineH);
     cachedWrapWidth = wrapWidth;
     return cachedHeight;
@@ -756,51 +835,45 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
 void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &message, const ImVec2 &startPos, float wrapWidth, float alpha) {
     ImVec2 cursor = startPos;
 
-    // Prepare layout
-    std::vector<MsgText::Layout::Line> lines;
-    MsgText::Layout::BuildLines(message.segments, wrapWidth, m_TabColumns, lines);
-
+    // Unify font size and baked data
+    ImFont *font = ImGui::GetFont();
     const float fontSize = ImGui::GetFontSize();
+    ImFontBaked *baked = font ? font->GetFontBaked(fontSize) : nullptr;
 
-        for (const auto &line : lines) {
-            // Fetch font metrics for this line (cursor.y is line top)
-            ImFont *font = ImGui::GetFont();
-            ImFontBaked *baked = font ? font->GetFontBaked(fontSize) : nullptr;
-            const float ascent = baked ? ImMax(0.0f, baked->Ascent) : fontSize * 0.8f;
-            const float descentMag = baked ? ImMax(0.0f, -baked->Descent) : fontSize * 0.2f;
-            const float lineTop = cursor.y;
-            const float lineBottom = cursor.y + ascent + descentMag;
-            const float italicShearForEffects = MsgText::Renderer::ComputeItalicShear(fontSize);
+    // Pre-fetch line metrics (prefer Ascent/Descent if baked is not null)
+    const float ascent = baked ? ImMax(0.0f, baked->Ascent) : fontSize * 0.8f;
+    const float descentMag = baked ? ImMax(0.0f, -baked->Descent) : fontSize * 0.2f;
+    const float lineStep = ImGui::GetTextLineHeightWithSpacing();
+    const float italicShear = MsgText::Renderer::ComputeItalicShear(fontSize);
 
-        // Pass 1: merge adjacent background spans into runs and draw them once.
+    // Layout: use the same font size to ensure consistency with rendering
+    std::vector<MsgText::Layout::Line> lines;
+    MsgText::Layout::BuildLines(message.segments, wrapWidth, m_TabColumns, fontSize, lines);
+
+    for (const auto &line : lines) {
+        const float lineTop = cursor.y;
+        const float lineBottom = cursor.y + ascent + descentMag;
+
+        // Pass 1: Merge and draw background runs
         struct BgRun { float x0, x1; ImU32 col; };
         std::vector<BgRun> runs;
-
         float xForBg = startPos.x;
         bool hasOpenRun = false;
         BgRun cur{};
 
         for (const auto &sp : line.spans) {
-            const MessageBoard::TextSegment *seg = sp.seg;
+            const TextSegment *seg = sp.seg;
 
-            if (!seg) {
-                // advance, nothing to draw
-                xForBg += sp.width;
-                continue;
-            }
+            if (!seg) { xForBg += sp.width; continue; }
 
-            // Resolve final bg color for this span
             ConsoleColor rc = m_AnsiEnabled
-                                  ? seg->color.GetRendered()
-                                  : ConsoleColor(seg->color.foreground, IM_COL32(0, 0, 0, 0));
+                                ? seg->color.GetRendered()
+                                : ConsoleColor(seg->color.foreground, IM_COL32(0,0,0,0));
+
             ImU32 bgBase = rc.background;
-            if (m_AnsiEnabled) {
-                if (rc.bgIsAnsi256 && rc.bgAnsiIndex >= 0) {
-                    m_Palette.EnsureInitialized();
-                    if (m_Palette.IsActive()) {
-                        m_Palette.GetColor(rc.bgAnsiIndex, bgBase);
-                    }
-                }
+            if (m_AnsiEnabled && rc.bgIsAnsi256 && rc.bgAnsiIndex >= 0) {
+                m_Palette.EnsureInitialized();
+                if (m_Palette.IsActive()) m_Palette.GetColor(rc.bgAnsiIndex, bgBase);
             }
 
             ImU32 bg = MsgText::Color::ApplyAlpha(bgBase, alpha);
@@ -808,43 +881,36 @@ void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &mess
 
             if (drawBg) {
                 const float x0 = xForBg;
-                // Extend background to cover slanted top-right edge when italic is active
                 float italicPad = 0.0f;
                 if (m_AnsiEnabled && rc.italic) {
-                    italicPad = ImMax(0.0f, italicShearForEffects) * (lineBottom - lineTop);
+                    // Reserve horizontal padding for italic top-right silhouette (related to line height)
+                    italicPad = ImMax(0.0f, italicShear) * (lineBottom - lineTop);
                 }
                 const float x1 = xForBg + sp.width + italicPad;
+
                 if (hasOpenRun && cur.col == bg && std::abs(cur.x1 - x0) <= 0.25f) {
-                    // extend current run contiguously
-                    cur.x1 = x1;
+                    cur.x1 = x1; // Merge with current run
                 } else {
-                    // flush previous run
                     if (hasOpenRun) runs.push_back(cur);
                     cur = BgRun{x0, x1, bg};
                     hasOpenRun = true;
                 }
             } else {
-                // gap breaks run
                 if (hasOpenRun) { runs.push_back(cur); hasOpenRun = false; }
             }
-
             xForBg += sp.width;
         }
         if (hasOpenRun) runs.push_back(cur);
 
         // Draw merged background runs without inflation to avoid overlaps.
         for (const BgRun &r : runs) {
-            drawList->AddRectFilled(
-                ImVec2(r.x0, lineTop),
-                ImVec2(r.x1, lineBottom),
-                r.col
-            );
+            drawList->AddRectFilled(ImVec2(r.x0, lineTop), ImVec2(r.x1, lineBottom), r.col);
         }
 
-        // Pass 2: draw text and decorations (no background here)
+        // Pass 2: Text and decoration lines
         float x = startPos.x;
         for (const auto &sp : line.spans) {
-            const MessageBoard::TextSegment *seg = sp.seg;
+            const TextSegment *seg = sp.seg;
             if (!seg) { x += sp.width; continue; }
 
             ConsoleColor rc = m_AnsiEnabled
@@ -855,42 +921,31 @@ void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &mess
             if (m_AnsiEnabled) {
                 if (rc.fgIsAnsi256 && rc.fgAnsiIndex >= 0) {
                     m_Palette.EnsureInitialized();
-                    if (m_Palette.IsActive()) {
-                        m_Palette.GetColor(rc.fgAnsiIndex, fg);
-                    }
+                    if (m_Palette.IsActive()) m_Palette.GetColor(rc.fgAnsiIndex, fg);
                 }
-                // No color toning
-            }
-            if (m_AnsiEnabled) {
                 if (rc.dim) fg = MsgText::Color::ApplyDim(fg);
                 if (rc.hidden) {
                     // Render hidden text as its background color, with message alpha already applied in BG pass.
                     ImU32 bgBase2 = rc.background;
                     if (rc.bgIsAnsi256 && rc.bgAnsiIndex >= 0) {
                         m_Palette.EnsureInitialized();
-                        if (m_Palette.IsActive()) {
-                            m_Palette.GetColor(rc.bgAnsiIndex, bgBase2);
-                        }
-                        // preserve palette
-                        fg = MsgText::Color::ApplyAlpha(bgBase2, alpha);
-                    } else {
-                        // no toning for non-palette colors either
-                        fg = MsgText::Color::ApplyAlpha(bgBase2, alpha);
+                        if (m_Palette.IsActive()) m_Palette.GetColor(rc.bgAnsiIndex, bgBase2);
                     }
+                    fg = MsgText::Color::ApplyAlpha(bgBase2, alpha);
                 }
             }
+
             const bool fauxBold = rc.bold;
             const bool italic = rc.italic;
 
             if (!sp.isTab && sp.b < sp.e) {
-                // Use line top for AddText position to align with ImGui expectations
-                MsgText::Renderer::AddTextStyled(drawList, ImGui::GetFont(), fontSize, ImVec2(x, lineTop), fg,
-                                                sp.b, sp.e, italic, fauxBold);
+                // Use line top as draw y, font size = fontSize
+                MsgText::Renderer::AddTextStyled(drawList, font, fontSize, ImVec2(x, lineTop), fg, sp.b, sp.e, italic, fauxBold);
 
                 if (rc.underline) {
                     float y = MsgText::Metrics::UnderlineY(lineTop, fontSize);
                     float th = MsgText::Metrics::Thickness(fontSize);
-                    float italicPad = (m_AnsiEnabled && rc.italic) ? ImMax(0.0f, italicShearForEffects) * (lineBottom - lineTop) : 0.0f;
+                    const float italicPad = (m_AnsiEnabled && rc.italic) ? ImMax(0.0f, italicShear) * (lineBottom - lineTop) : 0.0f;
                     // Align odd thickness to pixel centers for crisper AA lines
                     if (fmodf(th, 2.0f) != 0.0f) y = floorf(y) + 0.5f; else y = roundf(y);
                     drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width + italicPad, y), fg, th);
@@ -898,7 +953,7 @@ void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &mess
                 if (rc.strikethrough) {
                     float y = MsgText::Metrics::StrikeY(lineTop, fontSize);
                     float th = MsgText::Metrics::Thickness(fontSize);
-                    float italicPad = (m_AnsiEnabled && rc.italic) ? ImMax(0.0f, italicShearForEffects) * (lineBottom - lineTop) : 0.0f;
+                    const float italicPad = (m_AnsiEnabled && rc.italic) ? ImMax(0.0f, italicShear) * (lineBottom - lineTop) : 0.0f;
                     if (fmodf(th, 2.0f) != 0.0f) y = floorf(y) + 0.5f; else y = roundf(y);
                     drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width + italicPad, y), fg, th);
                 }
@@ -907,7 +962,7 @@ void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &mess
             x += sp.width;
         }
 
-        cursor.y += ImGui::GetTextLineHeightWithSpacing();
+        cursor.y += lineStep;
     }
 }
 
@@ -1014,11 +1069,11 @@ MessageBoard::ScrollMetrics MessageBoard::GetScrollMetrics(float contentHeight, 
 
 void MessageBoard::SetScrollYClamped(float y) {
     m_ScrollY = std::clamp(y, 0.0f, m_MaxScrollY);
-    m_ScrollToBottom = (m_ScrollY >= m_MaxScrollY - kScrollEpsilon);
+    m_ScrollToBottom = (m_ScrollY >= m_MaxScrollY - MsgText::kScrollEpsilon);
 }
 
 void MessageBoard::SyncScrollBottomFlag() {
-    m_ScrollToBottom = (m_ScrollY >= m_MaxScrollY - kScrollEpsilon);
+    m_ScrollToBottom = (m_ScrollY >= m_MaxScrollY - MsgText::kScrollEpsilon);
 }
 
 std::string MessageBoard::FormatScrollPercent(float contentHeight, float visibleHeight) const {
