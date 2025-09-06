@@ -26,7 +26,7 @@ AnsiPalette::AnsiPalette() : m_Initialized(false), m_Active(false) {
     // Generation defaults
     m_CubeMixFromTheme = false;
     m_GrayMixFromTheme = false;
-    m_MixStrength = 1.0f;
+    m_MixStrength = 0.65f;
     m_LinearMix = false;
 }
 
@@ -652,7 +652,7 @@ bool AnsiPalette::SaveSampleIfMissing() {
             "tone_brightness = 0\n"
             "tone_saturation = 0\n"
             "# Mix strength for theme-based cube/gray [0..1] or percent\n"
-            "mix_strength = 1\n"
+            "mix_strength = 0.65\n"
             "# Mix color space: srgb (default) or linear\n"
             "# mix_space = linear\n"
             "# Or enable with boolean: linear_mix = on\n"
@@ -696,7 +696,7 @@ bool AnsiPalette::SaveSampleIfMissing() {
         "[theme]\n"
         "# You may chain to a parent theme here, e.g.:\n"
         "# base = parent-theme-name\n"
-        "mix_strength = 1\n"
+        "mix_strength = 0.65\n"
         "mix_space = linear\n"
         "cube = theme\n"
         "gray = theme\n\n"
@@ -727,7 +727,7 @@ bool AnsiPalette::SaveSampleIfMissing() {
         "# theme: one-dark\n"
         "[theme]\n"
         "# Atom One Dark inspired ANSI palette\n"
-        "mix_strength = 1\n"
+        "mix_strength = 0.65\n"
         "mix_space = linear\n"
         "cube = theme\n"
         "gray = theme\n\n"

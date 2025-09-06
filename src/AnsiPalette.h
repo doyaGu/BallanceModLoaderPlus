@@ -117,7 +117,7 @@ private:
     // Gray generation mode: false -> standard xterm ramp; true -> mix between theme black/white
     bool m_GrayMixFromTheme = false;
     // Strength of mixing from theme when enabled, 0 = standard, 1 = full theme colors
-    float m_MixStrength = 1.0f;     // [0, 1], blend theme-mix vs standard
+    float m_MixStrength = 0.65f;     // [0, 1], blend theme-mix vs standard
     // Whether to interpolate/mix in linear-light (sRGB linearized) space instead of gamma-encoded sRGB
     bool m_LinearMix = false;
     // Parsing context label for diagnostics (UTF-8), set by caller before ParseBuffer.
