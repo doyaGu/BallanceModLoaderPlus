@@ -311,13 +311,13 @@ namespace utils {
                 if (guess == 0 || static_cast<size_t>(end - p) < guess) {
                     appendX(*p);
                     ++p;
-                } else if (utf8nvalid(reinterpret_cast<const utf8_int8_t*>(p), guess) == nullptr) {
+                } else if (utf8nvalid(reinterpret_cast<const utf8_int8_t*>(p), guess) != nullptr) {
                     appendX(*p);
                     ++p;
                 } else {
                     utf8_int32_t cp2;
                     (void)utf8codepoint(reinterpret_cast<const utf8_int8_t*>(p), &cp2);
-                    if ((cp2 >= 0xD800 && cp2 <= 0xDFFF) || cp2 > 0x10FFFF) {
+                    if (cp2 < 0 || (cp2 >= 0xD800 && cp2 <= 0xDFFF) || cp2 > 0x10FFFF) {
                         appendX(*p);
                         ++p;
                     } else {
