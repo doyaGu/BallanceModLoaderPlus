@@ -82,6 +82,8 @@ add_bml_test(AnsiPaletteTest
         SOURCES
         AnsiPaletteTest.cpp
         ${BML_SOURCE_DIR}/AnsiPalette.cpp
+        ${BML_SOURCE_DIR}/IniFile.cpp
+        ${BML_SOURCE_DIR}/IniFile.h
         ${BML_SOURCE_DIR}/StringUtils.cpp
         ${BML_SOURCE_DIR}/PathUtils.cpp
         DEPENDENCIES
