@@ -186,14 +186,14 @@ namespace MsgText {
 
         struct BoldParams {
             int rings = 1;
-            bool includeDiagonals = true;
-            float baseOffsetPx = 0.60f;
-            float alphaScale = 0.55f;
+            bool includeDiagonals = false;
+            float baseOffsetPx = 0.35f;
+            float alphaScale = 0.30f;
             float alphaDecay = 0.80f;
             float sizeMinPx = 12.0f;
             float sizeMaxPx = 36.0f;
-            float offsetScaleMin = 0.75f;
-            float offsetScaleMax = 1.15f;
+            float offsetScaleMin = 0.6f;
+            float offsetScaleMax = 1.0f;
         };
 
         static const BoldParams &DefaultBold() {
@@ -303,9 +303,8 @@ namespace MsgText {
             if (!fauxBold) return;
 
             const float ofsScale = ComputeBoldOffsetScale(usedSize, bp);
-            // Clamp to reasonable range
             float pxOffset = bp.baseOffsetPx * ofsScale;
-            pxOffset = std::clamp(pxOffset, 0.35f, 0.85f);
+            pxOffset = std::clamp(pxOffset, 0.30f, 0.60f);
             if (usedSize <= 14.0f) // Small font, reduce bold offset
                 pxOffset = std::max(0.35f, pxOffset * 0.85f);
             std::vector<ImVec2> offsets;
