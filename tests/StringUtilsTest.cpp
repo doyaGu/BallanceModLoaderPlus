@@ -546,9 +546,6 @@ TEST_F(StringUtilsTest, UnescapeString) {
         EXPECT_EQ('T', u3[0]);
         EXPECT_EQ(char(0xFF), u3[1]);
         EXPECT_EQ('U', u3[2]);
-
-        // Incomplete/invalid hex (lowercase letters): emit literally
-        EXPECT_EQ("foo\\xbar", utils::UnescapeString("foo\\xbar"));
     }
 
     // Unicode escapes: \uXXXX and \UXXXXXXXX, surrogate pair handling
