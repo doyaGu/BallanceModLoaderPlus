@@ -416,6 +416,8 @@ bool MapListPage::OnDrawEntry(size_t index, bool *v) {
         return false;
     }
 
+    ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.8f);
+
     if (entry->type == MAP_ENTRY_FILE) {
         if (Bui::LevelButton(entry->name.c_str(), v)) {
             dynamic_cast<MapMenu *>(m_Menu)->ResetCurrentMaps();
@@ -434,6 +436,8 @@ bool MapListPage::OnDrawEntry(size_t index, bool *v) {
 
         ImGui::PopStyleColor();
     }
+
+    ImGui::PopFont();
 
     if (dynamic_cast<MapMenu *>(m_Menu)->ShouldShowTooltip() && ImGui::IsItemHovered()) {
         ImGui::SetTooltip("%s", entry->name.c_str());
