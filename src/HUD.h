@@ -8,6 +8,9 @@
 
 #include "BML/Bui.h"
 
+#include "AnsiText.h"
+#include "AnsiPalette.h"
+
 enum class AnchorPoint {
     TopLeft,
     TopCenter,
@@ -39,9 +42,10 @@ public:
     virtual void Draw(ImDrawList *drawList, const ImVec2 &viewportSize);
 
     ImVec2 CalculatePosition(const ImVec2 &textSize, const ImVec2 &viewportSize) const;
+    ImVec2 CalculateAnsiTextSize(const ImVec2 &viewportSize) const;
 
 protected:
-    std::string m_Text;
+    AnsiText::AnsiString m_AnsiText;
     AnchorPoint m_Anchor;
     ImVec2 m_Offset;
     ImU32 m_Color;
@@ -68,7 +72,7 @@ public:
 private:
     float m_Time;                     // Time in milliseconds
     bool m_Running;                   // Is timer running?
-    mutable char m_FormattedTime[16]; // Formatted time string
+    mutable char m_FormattedTime[16] = {}; // Formatted time string
 
     void UpdateFormattedTime() const;
 };
@@ -123,6 +127,7 @@ public:
     float GetSRTime() const;
 
     HUDElement *AddElement(const char *text, AnchorPoint anchor = AnchorPoint::TopLeft);
+    HUDElement *AddAnsiElement(const char *ansiText, AnchorPoint anchor = AnchorPoint::TopLeft);
 
     bool RemoveElement(HUDElement *element);
 
