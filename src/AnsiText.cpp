@@ -582,7 +582,7 @@ namespace AnsiText {
         const float ascent = baked ? std::max(0.0f, baked->Ascent) : usedFontSize * 0.8f;
         const float descentMag = baked ? std::max(0.0f, -baked->Descent) : usedFontSize * 0.2f;
         const float lineStep = ImGui::GetTextLineHeightWithSpacing();
-        const float italicShear = Renderer::ComputeItalicShear(usedFontSize);
+        const float italicShear = ComputeItalicShear(usedFontSize);
 
         // Layout
         std::vector<Layout::Line> lines;
@@ -683,7 +683,7 @@ namespace AnsiText {
                 const bool italic = rc.italic;
 
                 if (!sp.isTab && sp.b < sp.e) {
-                    Renderer::AddTextStyled(drawList, font, usedFontSize, ImVec2(x, lineTop), fg, sp.b, sp.e, italic, fauxBold);
+                    AddTextStyled(drawList, font, usedFontSize, ImVec2(x, lineTop), fg, sp.b, sp.e, italic, fauxBold);
 
                     if (rc.underline) {
                         float y = Metrics::UnderlineY(lineTop, usedFontSize);
