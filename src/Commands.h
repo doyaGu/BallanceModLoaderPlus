@@ -7,6 +7,8 @@ class BMLMod;
 
 class CommandBML : public ICommand {
 public:
+    CommandBML() = default;
+
     std::string GetName() override { return "bml"; }
     std::string GetAlias() override { return ""; }
     std::string GetDescription() override { return "Show Information about Ballance Mod Loader."; }
@@ -17,6 +19,8 @@ public:
 
 class CommandHelp : public ICommand {
 public:
+    CommandHelp() = default;
+
     std::string GetName() override { return "help"; }
     std::string GetAlias() override { return "?"; }
     std::string GetDescription() override { return "Show Help Information about Existing Commands."; }
@@ -27,6 +31,8 @@ public:
 
 class CommandCheat : public ICommand {
 public:
+    CommandCheat() = default;
+
     std::string GetName() override { return "cheat"; }
     std::string GetAlias() override { return ""; }
     std::string GetDescription() override { return "Enable or Disable Cheat Mode."; }
@@ -39,6 +45,8 @@ public:
 
 class CommandEcho : public ICommand {
 public:
+    CommandEcho() = default;
+
     std::string GetName() override { return "echo"; }
     std::string GetAlias() override { return ""; }
     std::string GetDescription() override { return "Output a line of string."; }
@@ -97,6 +105,8 @@ private:
 
 class CommandExit : public ICommand {
 public:
+    CommandExit() = default;
+
     std::string GetName() override { return "exit"; }
     std::string GetAlias() override { return ""; }
     std::string GetDescription() override { return "Exit the game."; }
