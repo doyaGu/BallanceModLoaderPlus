@@ -16,7 +16,7 @@ class AnsiPalette;
  */
 namespace AnsiText {
     // Default tab size in columns
-    constexpr int kDefaultTabColumns = 4;
+    constexpr int kDefaultTabColumns = 8;
 
     // ANSI color and formatting state
     struct ConsoleColor {
@@ -71,7 +71,7 @@ namespace AnsiText {
         std::vector<TextSegment> m_Segments;
 
         void ParseAnsiEscapeCodes();
-        static ConsoleColor ParseAnsiColorSequence(const std::string &sequence, const ConsoleColor &currentColor);
+        static ConsoleColor ParseAnsiColorSequence(const char *sequence, size_t length, const ConsoleColor &currentColor);
         static ImU32 GetRgbColor(int r, int g, int b);
     };
 

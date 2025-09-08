@@ -64,35 +64,42 @@ namespace AnsiText {
             return;
         }
 
-        const char* p = m_OriginalText.c_str();
+        // Reserve space to reduce reallocations
+        m_Segments.reserve(8); // Most strings have few segments
+
+        const char *p = m_OriginalText.c_str();
+        const char *const end = p + m_OriginalText.size();
         ConsoleColor currentColor;
         std::string currentSegment;
+        currentSegment.reserve(256); // Reserve space to reduce reallocations
 
-        while (*p) {
-            if (*p == '\033' && *(p + 1) == '[') {
+        while (p < end) {
+            if (*p == '\033' && p + 1 < end && *(p + 1) == '[') {
                 // Save current text segment
                 if (!currentSegment.empty()) {
                     m_Segments.emplace_back(std::move(currentSegment), currentColor);
                     currentSegment.clear();
+                    currentSegment.reserve(256);
                 }
 
                 // Parse escape sequence
                 p += 2; // Skip \033[
-                std::string sequence;
+                const char* seqStart = p;
 
-                // Only parse color/style sequences (ending with 'm')
-                while (*p && *p != 'm' && sequence.length() < 50) {
-                    sequence += *p++;
+                // Find end of sequence
+                while (p < end && *p != 'm' && (p - seqStart) < 50) {
+                    ++p;
                 }
 
-                if (*p == 'm') {
+                if (p < end && *p == 'm') {
+                    // Parse sequence directly from buffer
+                    currentColor = ParseAnsiColorSequence(seqStart, p - seqStart, currentColor);
                     p++; // Skip the 'm'
-                    currentColor = ParseAnsiColorSequence(sequence, currentColor);
                 } else {
                     // Invalid sequence - treat as literal text
                     currentSegment += '\033';
                     currentSegment += '[';
-                    currentSegment += sequence;
+                    currentSegment.append(seqStart, p);
                 }
             } else {
                 currentSegment += *p++;
@@ -110,25 +117,33 @@ namespace AnsiText {
         }
     }
 
-    ConsoleColor AnsiString::ParseAnsiColorSequence(const std::string &sequence, const ConsoleColor &currentColor) {
+    ConsoleColor AnsiString::ParseAnsiColorSequence(const char *sequence, size_t length, const ConsoleColor &currentColor) {
         ConsoleColor color = currentColor;
-        if (sequence.empty()) return color;
+        if (length == 0) return color;
 
         // Parse semicolon-separated codes
         std::vector<int> codes;
-        size_t start = 0;
-        for (size_t pos = 0; pos <= sequence.length(); ++pos) {
-            if (pos == sequence.length() || sequence[pos] == ';') {
-                if (pos > start) {
-                    std::string codeStr = sequence.substr(start, pos - start);
-                    if (!codeStr.empty() && std::all_of(codeStr.begin(), codeStr.end(), ::isdigit)) {
-                        int code = std::stoi(codeStr);
-                        if (code >= 0) {
-                            codes.push_back(code);
-                        }
-                    }
-                }
-                start = pos + 1;
+        codes.reserve(8); // Most sequences have few codes
+
+        const char *p = sequence;
+        const char *const end = sequence + length;
+
+        while (p < end) {
+            // Skip whitespace and separators
+            while (p < end && (*p == ';' || *p == ' ')) ++p;
+            if (p >= end) break;
+
+            // Parse integer directly
+            int code = 0;
+            const char *numStart = p;
+            while (p < end && *p >= '0' && *p <= '9') {
+                code = code * 10 + (*p - '0');
+                ++p;
+            }
+
+            // Only add valid codes
+            if (p > numStart && code >= 0) {
+                codes.push_back(code);
             }
         }
 
@@ -242,17 +257,22 @@ namespace AnsiText {
         outLines.clear();
         if (wrapWidth <= 0.0f) wrapWidth = FLT_MAX;
 
-        ImFont* font = ImGui::GetFont();
-        const char* kSpace = " ";
-        const float spaceW = Measure(font, fontSize, kSpace, kSpace + 1);
+        // Reserve space to reduce reallocations
+        outLines.reserve(std::max(1, (int)(segments.size() / 4))); // Estimate lines based on segments
+
+        ImFont *font = ImGui::GetFont();
+        static const char *kSpace = " ";
+        const float spaceW = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, kSpace, kSpace + 1, nullptr).x;
 
         Line line;
+        line.spans.reserve(8); // Reserve space for spans to reduce reallocations
         float x = 0.0f;
         bool trimLeadingSpace = false;
 
         auto NewLine = [&]() {
             outLines.push_back(std::move(line));
             line = Line();
+            line.spans.reserve(8); // Reserve space for new line
             x = 0.0f;
         };
         auto EmitSpan = [&](const TextSegment *seg, const char *b, const char *e, float w, bool isTab) {
@@ -262,8 +282,8 @@ namespace AnsiText {
         };
 
         for (const TextSegment &seg : segments) {
-            const char* p = seg.text.c_str();
-            const char* end = p + seg.text.size();
+            const char *p = seg.text.c_str();
+            const char *end = p + seg.text.size();
             while (p < end) {
                 if (*p == '\n') { NewLine(); trimLeadingSpace = false; ++p; continue; }
                 if (*p == '\r') { x = 0.0f; ++p; continue; }
@@ -382,8 +402,8 @@ namespace AnsiText {
     }
 
     float Metrics::Thickness(float fontSize) {
-        float t = std::round(fontSize / 18.0f);
-        return std::clamp(t, 1.0f, 4.0f);
+        const float t = std::round(fontSize * 0.0555555556f); // 1/18 = 0.0555555556
+        return t < 1.0f ? 1.0f : (t > 4.0f ? 4.0f : t);
     }
 
     float CalculateHeight(const AnsiString &text, float wrapWidth, float fontSize, int tabColumns) {
@@ -598,6 +618,7 @@ namespace AnsiText {
                 ImU32 col;
             };
             std::vector<BgRun> runs;
+            runs.reserve(line.spans.size() / 2); // Estimate runs based on spans
             float xForBg = startPos.x;
             bool hasOpenRun = false;
             BgRun cur{};
@@ -625,7 +646,8 @@ namespace AnsiText {
                     const float x0 = xForBg;
                     float italicPad = 0.0f;
                     if (rc.italic) {
-                        italicPad = std::max(0.0f, italicShear) * (lineBottom - lineTop);
+                        const float pad = italicShear * (lineBottom - lineTop);
+                        italicPad = pad > 0.0f ? pad : 0.0f;
                     }
                     const float x1 = xForBg + sp.width + italicPad;
 
@@ -685,21 +707,26 @@ namespace AnsiText {
                 if (!sp.isTab && sp.b < sp.e) {
                     AddTextStyled(drawList, font, usedFontSize, ImVec2(x, lineTop), fg, sp.b, sp.e, italic, fauxBold);
 
+                    // Calculate italic padding once if needed for decorations
+                    float italicPadForDecorations = 0.0f;
+                    if (rc.italic && (rc.underline || rc.strikethrough)) {
+                        const float pad = italicShear * (lineBottom - lineTop);
+                        italicPadForDecorations = pad > 0.0f ? pad : 0.0f;
+                    }
+                    
                     if (rc.underline) {
                         float y = Metrics::UnderlineY(lineTop, usedFontSize);
                         float th = Metrics::Thickness(usedFontSize);
-                        const float italicPad = (rc.italic) ? std::max(0.0f, italicShear) * (lineBottom - lineTop) : 0.0f;
-                        if (fmodf(th, 2.0f) != 0.0f) y = floorf(y) + 0.5f;
+                        if ((static_cast<int>(th) & 1) != 0) y = floorf(y) + 0.5f;
                         else y = roundf(y);
-                        drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width + italicPad, y), fg, th);
+                        drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width + italicPadForDecorations, y), fg, th);
                     }
                     if (rc.strikethrough) {
                         float y = Metrics::StrikeY(lineTop, usedFontSize);
                         float th = Metrics::Thickness(usedFontSize);
-                        const float italicPad = (rc.italic) ? std::max(0.0f, italicShear) * (lineBottom - lineTop) : 0.0f;
-                        if (fmodf(th, 2.0f) != 0.0f) y = floorf(y) + 0.5f;
+                        if ((static_cast<int>(th) & 1) != 0) y = floorf(y) + 0.5f;
                         else y = roundf(y);
-                        drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width + italicPad, y), fg, th);
+                        drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width + italicPadForDecorations, y), fg, th);
                     }
                 }
 
