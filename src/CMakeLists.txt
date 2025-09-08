@@ -38,6 +38,7 @@ set(BML_PRIVATE_HEADERS
         CommandBar.h
         MessageBoard.h
         AnsiPalette.h
+        AnsiText.h
 
         Overlay.h
 
@@ -73,6 +74,7 @@ set(BML_SOURCES
         CommandBar.cpp
         MessageBoard.cpp
         AnsiPalette.cpp
+        AnsiText.cpp
 
         Gui/Element.cpp
         Gui/Text.cpp

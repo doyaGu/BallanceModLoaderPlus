@@ -218,11 +218,11 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
 }
 
 void CommandPalette::Execute(IBML *bml, const std::vector<std::string> &args) {
-    if (!m_BMLMod) return;
-    auto &mb = m_BMLMod->GetMessageBoard();
+    AnsiPalette &palette = AnsiText::Renderer::DefaultPalette();
+
     if (args.size() <= 1 || args[1] == "reload") {
-        const bool loaded = mb.ReloadPaletteFromFile();
-        const std::wstring path = mb.GetPaletteConfigPathW();
+        const bool loaded = palette.ReloadFromFile();
+        const std::wstring path = palette.GetConfigPathW();
         if (loaded) {
             char *pathAnsi = BML_Utf16ToAnsi(path.c_str());
             bml->SendIngameMessage((std::string("[palette] reloaded from ") + pathAnsi + "\n").c_str());
@@ -231,8 +231,8 @@ void CommandPalette::Execute(IBML *bml, const std::vector<std::string> &args) {
             bml->SendIngameMessage("[palette] no config found, using default.\n");
         }
     } else if (args[1] == "sample") {
-        const bool written = mb.SavePaletteSampleIfMissing();
-        const std::wstring path = mb.GetPaletteConfigPathW();
+        const bool written = palette.ReloadFromFile();
+        const std::wstring path = palette.GetConfigPathW();
         char *pathAnsi = BML_Utf16ToAnsi(path.c_str());
         if (written) {
             bml->SendIngameMessage((std::string("[palette] sample created: ") + pathAnsi + "\n").c_str());
@@ -297,7 +297,7 @@ void CommandPalette::Execute(IBML *bml, const std::vector<std::string> &args) {
         pal.SaveSampleIfMissing();
         bool ok = pal.SetActiveThemeName(name);
         // Reload
-        const bool loaded = mb.ReloadPaletteFromFile();
+        const bool loaded = palette.ReloadFromFile();
         if (ok && loaded) {
             std::string nameLower = utils::ToLower(name);
             std::string msg = (nameLower == "none")
@@ -359,7 +359,7 @@ void CommandPalette::Execute(IBML *bml, const std::vector<std::string> &args) {
         AnsiPalette pal;
         pal.SaveSampleIfMissing();
         bool ok = pal.SetThemeOption(opt, val);
-        const bool loaded = mb.ReloadPaletteFromFile();
+        const bool loaded = palette.ReloadFromFile();
         if (ok && loaded) {
             bml->SendIngameMessage("[palette] option updated.\n");
         } else if (!ok) {
@@ -413,7 +413,7 @@ void CommandPalette::Execute(IBML *bml, const std::vector<std::string> &args) {
         AnsiPalette pal;
         pal.SaveSampleIfMissing();
         bool ok = pal.ResetThemeOptions();
-        const bool loaded = mb.ReloadPaletteFromFile();
+        const bool loaded = palette.ReloadFromFile();
         if (ok && loaded) bml->SendIngameMessage("[palette] theme reset. Using defaults.\n");
         else if (!ok) bml->SendIngameMessage("[palette] failed to update config.\n");
         else bml->SendIngameMessage("[palette] no config found, using default.\n");

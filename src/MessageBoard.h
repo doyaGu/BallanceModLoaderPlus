@@ -8,9 +8,7 @@
 #include "BML/Bui.h"
 
 #include "AnsiPalette.h"
-
-// Minimum alpha used when drawing auxiliary strokes (e.g., faux-bold offsets)
-static constexpr float kAuxStrokeAlphaScale = 0.5f;
+#include "AnsiText.h"
 
 /**
  * MessageBoard - ANSI color-capable scrollable message display system
@@ -31,43 +29,11 @@ static constexpr float kAuxStrokeAlphaScale = 0.5f;
  */
 class MessageBoard : public Bui::Window {
 public:
-    struct ConsoleColor {
-        ImU32 foreground = IM_COL32_WHITE;
-        ImU32 background = IM_COL32_BLACK_TRANS;
-
-        bool bold = false;
-        bool italic = false;
-        bool underline = false;
-        bool strikethrough = false;
-        bool dim = false;
-        bool hidden = false;
-        bool reverse = false;
-
-        // Origin markers for 256-color palette application
-        bool fgIsAnsi256 = false;
-        bool bgIsAnsi256 = false;
-        int  fgAnsiIndex = -1;
-        int  bgAnsiIndex = -1;
-
-        ConsoleColor() = default;
-        explicit ConsoleColor(ImU32 fg) : foreground(fg) {}
-        ConsoleColor(ImU32 fg, ImU32 bg) : foreground(fg), background(bg) {}
-
-        // Returns the final colors after applying reverse video and "hidden".
-        // Guarantees foreground alpha > 0 when reverse is set by synthesizing a fallback BG.
-        ConsoleColor GetRendered() const;
-    };
-
-    struct TextSegment {
-        std::string text;
-        ConsoleColor color;
-
-        TextSegment(std::string t, ConsoleColor c) : text(std::move(t)), color(c) {}
-    };
+    using ConsoleColor = AnsiText::ConsoleColor;
+    using TextSegment = AnsiText::TextSegment;
 
     struct MessageUnit {
-        std::string originalText;
-        std::vector<TextSegment> segments;
+        AnsiText::AnsiString ansiText;
         float timer = 0.0f;
         mutable float cachedHeight = -1.0f;
         mutable float cachedWrapWidth = -1.0f;
@@ -80,19 +46,13 @@ public:
         MessageUnit(const MessageUnit &other) = default;
         MessageUnit &operator=(const MessageUnit &other) = default;
 
-        const char *GetMessage() const { return originalText.c_str(); }
+        const char *GetMessage() const { return ansiText.GetOriginalText().c_str(); }
         void SetMessage(const char *msg);
         float GetTimer() const { return timer; }
         void SetTimer(float t) { timer = t; }
         float GetTextHeight(float wrapWidth, int tabColumns) const;
+        const std::vector<TextSegment> &GetSegments() const { return ansiText.GetSegments(); }
         void Reset();
-
-    private:
-        void ParseAnsiEscapeCodes();
-
-        static ConsoleColor ParseAnsiColorSequence(const std::string &sequence, const ConsoleColor &currentColor);
-
-        static ImU32 GetRgbColor(int r, int g, int b);
     };
 
     struct ScrollMetrics {
@@ -116,7 +76,7 @@ public:
 
     // Appearance and layout configuration
     void SetTabColumns(int columns);
-    int GetTabColumns() const { return m_TabColumns; }
+    int GetTabColumns() const;
 
     void SetWindowBackgroundColor(ImVec4 color);
     void SetWindowBackgroundColorU32(ImU32 color);
@@ -140,15 +100,9 @@ public:
     void SetFadeMaxAlpha(float alpha);
     float GetFadeMaxAlpha() const { return m_FadeMaxAlpha; }
 
-    // Palette operations
-    bool ReloadPaletteFromFile() { return m_Palette.ReloadFromFile(); }
-    bool SavePaletteSampleIfMissing() { return m_Palette.SaveSampleIfMissing(); }
-    std::wstring GetPaletteConfigPathW() const { return m_Palette.GetConfigPathW(); }
-
     // Settings
     void SetMaxTimer(float maxTimer) { m_MaxTimer = std::max(100.0f, maxTimer); }
     void SetCommandBarVisible(bool visible);
-    void SetAnsiEnabled(bool enabled) { m_AnsiEnabled = enabled; }
 
     // Scrolling control (only active when command bar is visible)
     void SetScrollPosition(float scrollY);
@@ -162,7 +116,6 @@ public:
     // Getters
     float GetMaxTimer() const { return m_MaxTimer; }
     bool IsCommandBarVisible() const { return m_IsCommandBarVisible; }
-    bool IsAnsiEnabled() const { return m_AnsiEnabled; }
     float GetScrollY() const { return m_IsCommandBarVisible ? m_ScrollY : 0.0f; }
     float GetMaxScrollY() const { return m_IsCommandBarVisible ? m_MaxScrollY : 0.0f; }
     bool IsScrolledToBottom() const { return m_ScrollToBottom; }
@@ -208,7 +161,6 @@ private:
 
     // Configuration
     bool m_IsCommandBarVisible = false;
-    bool m_AnsiEnabled = true;
     float m_MaxTimer = 6000.0f;
 
     // Scrolling state
@@ -222,12 +174,10 @@ private:
     float m_MessageGap = 4.0f;   // Spacing between message blocks
     float m_ScrollbarW = 8.0f;   // Scrollbar width
     float m_ScrollbarPad = 2.0f; // Scrollbar edge padding
-
-    // ANSI 256-color palette
-    AnsiPalette m_Palette;
+    float m_ScrollEpsilon = 0.5f; // Scrollbar tolerance for bottom checks
 
     // Configurable behavior
-    int m_TabColumns = 4;            // Tab size in columns
+    int m_TabColumns = AnsiText::kDefaultTabColumns; // Tab size in columns
     bool m_HasCustomWindowBg = false;
     bool m_HasCustomMessageBg = false;
     ImVec4 m_WindowBgColor = {};        // If !m_HasCustomWindowBg, use Bui::GetMenuColor()
