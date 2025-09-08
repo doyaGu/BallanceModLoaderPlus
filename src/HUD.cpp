@@ -3,20 +3,19 @@
 #include "ModContext.h"
 
 HUDElement::HUDElement(const char *text, AnchorPoint anchor)
-    : m_Text(text ? text : ""),
+    : m_AnsiText(text ? text : ""),
       m_Anchor(anchor),
       m_Offset(0.0f, 0.0f),
       m_Color(IM_COL32_WHITE),
       m_Scale(1.0f),
-      m_Visible(true) {
-}
+      m_Visible(true) {}
 
 void HUDElement::SetText(const char *text) {
-    m_Text = text ? text : "";
+    m_AnsiText.SetText(text ? text : "");
 }
 
 const char *HUDElement::GetText() const {
-    return m_Text.c_str();
+    return m_AnsiText.GetOriginalText().c_str();
 }
 
 void HUDElement::SetVisible(bool visible) {
@@ -44,20 +43,21 @@ void HUDElement::SetScale(float scale) {
 }
 
 void HUDElement::Draw(ImDrawList *drawList, const ImVec2 &viewportSize) {
-    if (!m_Visible || m_Text.empty() || !drawList)
+    if (!m_Visible || m_AnsiText.IsEmpty() || !drawList)
         return;
 
-    float oldScale = ImGui::GetFont()->Scale;
+    const float fontSize = ImGui::GetStyle().FontSizeBase * m_Scale;
 
-    ImGui::GetFont()->Scale *= m_Scale;
-    ImGui::PushFont(ImGui::GetFont());
+    ImGui::PushFont(nullptr, fontSize);
 
-    ImVec2 textSize = ImGui::CalcTextSize(m_Text.c_str());
-    ImVec2 pos = CalculatePosition(textSize, viewportSize);
+    if (!m_AnsiText.IsEmpty()) {
+        ImVec2 textSize = CalculateAnsiTextSize(viewportSize);
+        ImVec2 pos = CalculatePosition(textSize, viewportSize);
 
-    drawList->AddText(pos, m_Color, m_Text.c_str());
+        const float alpha = ((m_Color >> IM_COL32_A_SHIFT) & 0xFF) / 255.0f;
+        AnsiText::Renderer::DrawText(drawList, m_AnsiText, pos, FLT_MAX, alpha, fontSize);
+    }
 
-    ImGui::GetFont()->Scale = oldScale;
     ImGui::PopFont();
 }
 
@@ -100,6 +100,15 @@ ImVec2 HUDElement::CalculatePosition(const ImVec2 &textSize, const ImVec2 &viewp
     pos.y += m_Offset.y * viewportSize.y;
 
     return pos;
+}
+
+ImVec2 HUDElement::CalculateAnsiTextSize(const ImVec2 &viewportSize) const {
+    if (m_AnsiText.IsEmpty()) {
+        return ImVec2(0.0f, 0.0f);
+    }
+    
+    const float fontSize = ImGui::GetFontSize() * m_Scale;
+    return AnsiText::CalculateSize(m_AnsiText, FLT_MAX, fontSize);
 }
 
 SRTimer::SRTimer() : m_Time(0.0f), m_Running(false) {
@@ -335,6 +344,13 @@ float HUD::GetSRTime() const {
 
 HUDElement *HUD::AddElement(const char *text, AnchorPoint anchor) {
     auto element = std::make_unique<HUDElement>(text, anchor);
+    HUDElement *elementPtr = element.get();
+    m_CustomElements.push_back(std::move(element));
+    return elementPtr;
+}
+
+HUDElement *HUD::AddAnsiElement(const char *ansiText, AnchorPoint anchor) {
+    auto element = std::make_unique<HUDElement>(ansiText, anchor);
     HUDElement *elementPtr = element.get();
     m_CustomElements.push_back(std::move(element));
     return elementPtr;
