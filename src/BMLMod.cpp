@@ -140,7 +140,7 @@ void BMLMod::OnLoad() {
     RegisterCommands();
 
     // Ensure a sample palette file exists for user customization
-    m_MessageBoard.SavePaletteSampleIfMissing();
+    AnsiText::Renderer::DefaultPalette().SaveSampleIfMissing();
 
     m_CommandBar.LoadHistory();
 
@@ -626,7 +626,7 @@ void BMLMod::RegisterCommands() {
     m_BML->RegisterCommand(new CommandHistory(this));
     m_BML->RegisterCommand(new CommandExit());
     m_BML->RegisterCommand(new CommandHUD(this));
-    m_BML->RegisterCommand(new CommandPalette(this));
+    m_BML->RegisterCommand(new CommandPalette());
 }
 
 void BMLMod::OnEditScript_Base_EventHandler(CKBehavior *script) {

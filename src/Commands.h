@@ -139,15 +139,14 @@ private:
 
 class CommandPalette : public ICommand {
 public:
-    explicit CommandPalette(BMLMod *mod) : m_BMLMod(mod) {}
+    CommandPalette() = default;
+
     std::string GetName() override { return "palette"; }
     std::string GetAlias() override { return "pal"; }
     std::string GetDescription() override { return "Manage ANSI 256-color palette."; }
     bool IsCheat() override { return false; }
     void Execute(IBML *bml, const std::vector<std::string> &args) override;
     const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
-private:
-    BMLMod *m_BMLMod;
 };
 
 #endif // BML_COMMANDS_H
