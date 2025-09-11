@@ -280,51 +280,90 @@ void MessageBoard::OnDraw() {
 
 void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float wrapWidth) {
     ImVec4 bgColorBase = m_HasCustomMessageBg ? m_MessageBgColor : Bui::GetMenuColor();
-    ImVec2 currentPos = startPos;
 
-    // Manual culling against current clip rect to avoid issuing offscreen draw calls
-    const ImVec2 clip_min = drawList->GetClipRectMin();
-    const ImVec2 clip_max = drawList->GetClipRectMax();
+    // Prepare visible indices (display order: newest first) and cached heights
+    std::vector<int> indices;
+    indices.reserve(m_MessageCount);
+    std::vector<float> heights;
+    heights.reserve(m_MessageCount);
 
-    for (int i = m_MessageCount - 1; i >= 0; i--) {
+    for (int i = m_MessageCount - 1; i >= 0; --i) {
         const MessageUnit &msg = m_Messages[i];
         const bool shouldShow = m_IsCommandBarVisible || ShouldShowMessage(msg);
         if (!shouldShow)
             continue;
+        indices.push_back(i);
+        heights.push_back(msg.GetTextHeight(wrapWidth, m_TabColumns));
+    }
 
-        // Use cached height (recomputed only when wrap width changes)
-        const float msgHeight = msg.GetTextHeight(wrapWidth, m_TabColumns);
+    const int n = (int)indices.size();
+    if (n == 0)
+        return;
 
-        // If the entire message block is above the clip rect, skip and advance
-        if ((currentPos.y + msgHeight) < clip_min.y) {
-            currentPos.y += msgHeight + m_MessageGap;
-            continue;
+    // Precompute offsets (top Y of each message relative to startPos.y) and bottoms
+    std::vector<float> offsets;
+    offsets.resize(n);
+    std::vector<float> bottoms;
+    bottoms.resize(n);
+    float acc = 0.0f;
+    for (int j = 0; j < n; ++j) {
+        offsets[j] = acc;
+        const float h = heights[j];
+        bottoms[j] = acc + h;                 // bottom Y (relative)
+        acc += h + m_MessageGap;              // advance incl. gap (gap after last is harmless)
+    }
+
+    // Determine visible index range against current clip rect
+    const ImVec2 clip_min = drawList->GetClipRectMin();
+    const ImVec2 clip_max = drawList->GetClipRectMax();
+    const float clipMinRel = clip_min.y - startPos.y;
+    const float clipMaxRel = clip_max.y - startPos.y;
+
+    auto lb = std::lower_bound(bottoms.begin(), bottoms.end(), clipMinRel);
+    int begin = (int)std::distance(bottoms.begin(), lb);
+    auto ub = std::upper_bound(offsets.begin(), offsets.end(), clipMaxRel);
+    int end = (int)std::distance(offsets.begin(), ub);
+    begin = std::clamp(begin, 0, n);
+    end = std::clamp(end, begin, n);
+
+    // Use ImGuiListClipper to iterate the visible range (for correctness and consistency with other code)
+    ImGuiListClipper clipper;
+    // Anchor clipper cursor to our content start so its internal math stays consistent
+    ImGui::SetCursorScreenPos(startPos);
+    clipper.Begin(n, 1.0f); // items_height non-zero to skip measurement path
+    clipper.IncludeItemsByIndex(begin, end);
+    while (clipper.Step()) {
+        // Draw only our intended [begin, end) range to preserve behavior
+        const int ds = ImMax(clipper.DisplayStart, begin);
+        const int de = ImMin(clipper.DisplayEnd, end);
+        for (int j = ds; j < de; ++j) {
+            const int i = indices[j];
+            const MessageUnit &msg = m_Messages[i];
+
+            const float msgHeight = heights[j];
+            ImVec2 pos = ImVec2(startPos.x, startPos.y + offsets[j]);
+
+            const float alpha = GetMessageAlpha(msg);
+            if (alpha <= 0.0f)
+                continue;
+
+            // Background
+            const float finalAlpha = std::clamp(bgColorBase.w * std::clamp(m_MessageBgAlphaScale, 0.0f, 1.0f) * alpha, 0.0f, 1.0f);
+            if (finalAlpha > 0.0f) {
+                const ImVec4 bg = ImVec4(bgColorBase.x, bgColorBase.y, bgColorBase.z, finalAlpha);
+                drawList->AddRectFilled(
+                    ImVec2(pos.x - m_PadX * 0.5f, pos.y - m_PadY * 0.25f),
+                    ImVec2(pos.x + wrapWidth + m_PadX * 0.5f, pos.y + msgHeight + m_PadY * 0.25f),
+                    ImGui::GetColorU32(bg)
+                );
+            }
+
+            // Text
+            DrawMessageText(drawList, msg, pos, wrapWidth, alpha);
+
+            // Feed clipper a logical item advance (height + gap). We don't rely on its cursor for drawing.
+            ImGui::ItemSize(ImVec2(0.0f, msgHeight + m_MessageGap));
         }
-        // If the next message block starts below the clip rect, we can stop
-        if (currentPos.y > clip_max.y) {
-            break;
-        }
-
-        const float alpha = GetMessageAlpha(msg);
-        if (alpha <= 0.0f) {
-            currentPos.y += msgHeight + m_MessageGap;
-            continue;
-        }
-
-        // Background
-        const float finalAlpha = std::clamp(bgColorBase.w * std::clamp(m_MessageBgAlphaScale, 0.0f, 1.0f) * alpha, 0.0f, 1.0f);
-        if (finalAlpha > 0.0f) {
-            const ImVec4 bg = ImVec4(bgColorBase.x, bgColorBase.y, bgColorBase.z, finalAlpha);
-            drawList->AddRectFilled(
-                ImVec2(currentPos.x - m_PadX * 0.5f, currentPos.y - m_PadY * 0.25f),
-                ImVec2(currentPos.x + wrapWidth + m_PadX * 0.5f, currentPos.y + msgHeight + m_PadY * 0.25f),
-                ImGui::GetColorU32(bg)
-            );
-        }
-
-        // Text
-        DrawMessageText(drawList, msg, currentPos, wrapWidth, alpha);
-        currentPos.y += msgHeight + m_MessageGap;
     }
 }
 
