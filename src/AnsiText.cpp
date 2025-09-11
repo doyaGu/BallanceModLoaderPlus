@@ -12,9 +12,15 @@ namespace AnsiText {
     // Global configuration
     // =============================================================================
     static Sgr21Policy g_Sgr21Policy = Sgr21Policy::DoubleUnderline;
+    static const AnsiPalette *g_PreResolvePalette = nullptr;
+    static bool g_PreResolveEnabled = false;
 
     void SetSgr21Policy(Sgr21Policy policy) { g_Sgr21Policy = policy; }
     Sgr21Policy GetSgr21Policy() { return g_Sgr21Policy; }
+    void SetPreResolvePalette(const AnsiPalette *palette) { g_PreResolvePalette = palette; }
+    const AnsiPalette *GetPreResolvePalette() { return g_PreResolvePalette; }
+    void SetPreResolveEnabled(bool enabled) { g_PreResolveEnabled = enabled; }
+    bool GetPreResolveEnabled() { return g_PreResolveEnabled; }
 
     // =============================================================================
     // ConsoleColor Implementation
@@ -48,16 +54,26 @@ namespace AnsiText {
     // AnsiString Implementation
     // =============================================================================
 
-    AnsiString::AnsiString(const char *text) {
-        SetText(text);
-    }
+    AnsiString::AnsiString(const char *text) { SetText(text); }
+    AnsiString::AnsiString(const std::string &text) { SetText(text); }
+    AnsiString::AnsiString(std::string &&text) { SetText(std::move(text)); }
 
     void AnsiString::SetText(const char *text) {
-        if (!text) return;
+        if (!text) { Clear(); return; }
+        AssignAndParse(std::string(text));
+    }
 
-        m_OriginalText = text;
+    void AnsiString::SetText(const std::string &text) {
+        AssignAndParse(std::string(text));
+    }
+
+    void AnsiString::SetText(std::string &&text) {
+        AssignAndParse(std::move(text));
+    }
+
+    void AnsiString::AssignAndParse(std::string &&text) {
+        m_OriginalText = std::move(text);
         m_Segments.clear();
-
         ParseAnsiEscapeCodes();
     }
 
@@ -130,6 +146,33 @@ namespace AnsiText {
 
         if (m_Segments.empty())
             m_Segments.emplace_back(end, end, ConsoleColor());
+
+        // Optional pre-resolve of ANSI 256-color indices to RGBA using a fixed palette
+        if (g_PreResolveEnabled && g_PreResolvePalette) {
+            const_cast<AnsiPalette *>(g_PreResolvePalette)->EnsureInitialized();
+            const bool active = g_PreResolvePalette->IsActive();
+            if (active) {
+                for (auto &seg : m_Segments) {
+                    ConsoleColor &cc = seg.color;
+                    if (cc.fgIsAnsi256 && cc.fgAnsiIndex >= 0) {
+                        ImU32 col = cc.foreground;
+                        if (g_PreResolvePalette->GetColor(cc.fgAnsiIndex, col)) {
+                            cc.foreground = col;
+                            cc.fgIsAnsi256 = false;
+                            cc.fgAnsiIndex = -1;
+                        }
+                    }
+                    if (cc.bgIsAnsi256 && cc.bgAnsiIndex >= 0) {
+                        ImU32 col = cc.background;
+                        if (g_PreResolvePalette->GetColor(cc.bgAnsiIndex, col)) {
+                            cc.background = col;
+                            cc.bgIsAnsi256 = false;
+                            cc.bgAnsiIndex = -1;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     ConsoleColor AnsiString::ParseAnsiColorSequence(const char *sequence, size_t length, const ConsoleColor &currentColor,
@@ -286,6 +329,8 @@ namespace AnsiText {
         outLines.reserve(std::max(1, (int)(segments.size() / 4))); // Estimate lines based on segments
 
         ImFont *font = ImGui::GetFont();
+        ImFontBaked *baked = font ? font->GetFontBaked(fontSize) : nullptr;
+        const float scale = (fontSize > 0.0f && baked) ? (fontSize / baked->Size) : 1.0f;
         static const char *kSpace = " ";
         const float spaceW = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, kSpace, kSpace + 1, nullptr).x;
 
@@ -360,45 +405,81 @@ namespace AnsiText {
                     }
                 } else {
                     while (q < end) {
-                        const char *next = NextGrapheme(q, end);
-                        if (next <= q) { q++; break; }
-                        utf8_int32_t cc = 0; (void)utf8codepoint((const utf8_int8_t*)q, &cc);
+                        utf8_int32_t cc = 0;
+                        const char *nn = (const char*) utf8codepoint((const utf8_int8_t*) q, &cc);
+                        if (!nn || nn <= q) { q++; break; }
                         if (cc == ' ' || cc == 0x3000 || cc == '\t' || cc == '\n' || cc == '\r') break;
-                        q = next;
+                        q = nn;
                     }
                 }
 
                 if (x == 0.0f && tokenIsSpace && trimLeadingSpace) { p = q; continue; }
 
-                float w = Measure(font, fontSize, p, q);
+                // Fast measurement of a short UTF-8 range using baked advances
+                auto MeasureRangeFast = [&](const char* b, const char* e) -> float {
+                    if (!baked) return Measure(font, fontSize, b, e);
+                    float sum = 0.0f;
+                    const char* s = b;
+                    while (s < e) {
+                        utf8_int32_t cp = 0;
+                        const char* next = (const char*)utf8codepoint((const utf8_int8_t*)s, &cp);
+                        if (!next || next <= s) next = s + 1;
+                        float adv;
+                        if ((unsigned)cp < (unsigned)baked->IndexAdvanceX.Size) {
+                            adv = baked->IndexAdvanceX.Data[cp];
+                            if (adv < 0.0f) adv = baked->GetCharAdvance((ImWchar)cp);
+                        } else {
+                            adv = baked->GetCharAdvance((ImWchar)cp);
+                        }
+                        sum += adv * scale;
+                        s = next;
+                    }
+                    return sum;
+                };
+
                 auto WrapLine = [&]() { if (!line.spans.empty()) NewLine(); };
                 float avail = wrapWidth - x;
+
+                if (tokenIsSpace) {
+                    float w = MeasureRangeFast(p, q);
+                    if (w <= avail + 0.0001f) { EmitSpan(&seg, p, q, w, false); p = q; continue; }
+                    if (x > 0.0f) { WrapLine(); trimLeadingSpace = true; p = q; continue; }
+                    // If avail is too small to fit spaces at line start, just consume them without emitting.
+                    p = q; continue;
+                }
+                // Quick width check for whole token to avoid unnecessary grapheme scanning
+                float w = Measure(font, fontSize, p, q);
                 if (w <= avail + 0.0001f) { EmitSpan(&seg, p, q, w, false); p = q; continue; }
 
-                if (x > 0.0f) {
-                    WrapLine(); trimLeadingSpace = true; if (tokenIsSpace) { p = q; continue; } avail = wrapWidth;
-                }
+                if (x > 0.0f) { WrapLine(); trimLeadingSpace = true; avail = wrapWidth; }
 
-                // Split long token
-                const char* start = p;
-                while (start < q) {
-                    const char* cur = start; const char* lastFit = start;
-                    while (cur < q) {
-                        const char* next = NextGrapheme(cur, q); if (next <= cur) { next = cur + 1; }
-                        float ww = Measure(font, fontSize, start, next);
-                        if (ww <= avail + 0.0001f) { lastFit = next; cur = next; } else { break; }
-                    }
-                    if (lastFit == start) {
-                        const char* one = NextGrapheme(start, q); if (one <= start) one = start + 1;
-                        float ww = Measure(font, fontSize, start, one);
-                        EmitSpan(&seg, start, one, ww, false); start = one;
+                // Split long token incrementally by grapheme, accumulate widths without extra allocations
+                const char* slice_b = p;
+                const char* cur = p;
+                float acc = 0.0f;
+                while (cur < q) {
+                    const char* next = NextGrapheme(cur, q);
+                    if (next <= cur) next = cur + 1;
+                    float dw = MeasureRangeFast(cur, next);
+                    if (acc + dw <= avail + 0.0001f) {
+                        acc += dw;
+                        cur = next;
                     } else {
-                        float ww = Measure(font, fontSize, start, lastFit);
-                        EmitSpan(&seg, start, lastFit, ww, false); start = lastFit;
+                        if (cur == slice_b) {
+                            // Force one grapheme to progress
+                            EmitSpan(&seg, cur, next, dw, false);
+                            cur = next;
+                        } else {
+                            EmitSpan(&seg, slice_b, cur, acc, false);
+                        }
+                        NewLine(); trimLeadingSpace = true; avail = wrapWidth;
+                        slice_b = cur; acc = 0.0f;
                     }
-                    if (start < q) { NewLine(); trimLeadingSpace = true; avail = wrapWidth; }
                 }
-                p = q;
+                if (cur > slice_b) {
+                    EmitSpan(&seg, slice_b, cur, acc, false);
+                }
+                p = q; continue;
             }
         }
 
@@ -754,7 +835,8 @@ namespace AnsiText {
                             if (palette->IsActive()) palette->GetColor(
                                 rc.bgAnsiIndex, bgBase2);
                         }
-                        fg = Color::ApplyAlpha(bgBase2, alpha);
+                        // Use background color as text color; alpha will be applied once below.
+                        fg = bgBase2;
                     }
 
                     fg = Color::ApplyAlpha(fg, alpha);

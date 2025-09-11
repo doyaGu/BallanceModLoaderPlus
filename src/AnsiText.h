@@ -6,6 +6,11 @@
 
 #include "imgui.h"
 
+// Fallback for portability across Dear ImGui versions
+#ifndef IM_COL32_BLACK_TRANS
+#define IM_COL32_BLACK_TRANS IM_COL32(0, 0, 0, 0)
+#endif
+
 // Forward declaration
 class AnsiPalette;
 
@@ -54,16 +59,27 @@ namespace AnsiText {
         // Returns the final colors after applying reverse video and "hidden".
         ConsoleColor GetRendered() const;
 
-        // Comparisons for segment fusion
-        friend bool operator==(const ConsoleColor& a, const ConsoleColor& b) {
-            return a.foreground==b.foreground && a.background==b.background &&
-                   a.fgIsAnsi256==b.fgIsAnsi256 && a.bgIsAnsi256==b.bgIsAnsi256 &&
-                   a.fgAnsiIndex==b.fgAnsiIndex && a.bgAnsiIndex==b.bgAnsiIndex &&
-                   a.bold==b.bold && a.dim==b.dim && a.italic==b.italic &&
-                   a.underline==b.underline && a.doubleUnderline==b.doubleUnderline && a.strikethrough==b.strikethrough &&
-                   a.hidden==b.hidden && a.reverse==b.reverse;
+        // Comparisons for segment fusion (ignore RGBA when palette indices are used)
+        friend bool operator==(const ConsoleColor &a, const ConsoleColor &b) {
+            if (a.fgIsAnsi256 != b.fgIsAnsi256) return false;
+            if (a.bgIsAnsi256 != b.bgIsAnsi256) return false;
+            if (a.fgIsAnsi256) {
+                if (a.fgAnsiIndex != b.fgAnsiIndex) return false;
+            } else {
+                if (a.foreground != b.foreground) return false;
+            }
+            if (a.bgIsAnsi256) {
+                if (a.bgAnsiIndex != b.bgAnsiIndex) return false;
+            } else {
+                if (a.background != b.background) return false;
+            }
+            return a.bold == b.bold && a.dim == b.dim && a.italic == b.italic &&
+                a.underline == b.underline && a.doubleUnderline == b.doubleUnderline && a.strikethrough == b.
+                strikethrough &&
+                a.hidden == b.hidden && a.reverse == b.reverse;
         }
-        friend bool operator!=(const ConsoleColor& a, const ConsoleColor& b) { return !(a==b); }
+
+        friend bool operator!=(const ConsoleColor &a, const ConsoleColor &b) { return !(a == b); }
     };
 
     // Text segment with associated ANSI formatting
@@ -82,9 +98,13 @@ namespace AnsiText {
     public:
         AnsiString() = default;
         explicit AnsiString(const char *text);
+        explicit AnsiString(const std::string &text);
+        explicit AnsiString(std::string &&text);
 
         // Parses text, producing zero-copy segments and fusing adjacent-equal styles.
         void SetText(const char *text);
+        void SetText(const std::string &text);
+        void SetText(std::string &&text);
 
         const std::string &GetOriginalText() const { return m_OriginalText; }
         const std::vector<TextSegment> &GetSegments() const { return m_Segments; }
@@ -103,6 +123,7 @@ namespace AnsiText {
         bool m_HasReverse = false;     // Any SGR 7 encountered (conservative)
 
         void ParseAnsiEscapeCodes();
+        void AssignAndParse(std::string &&text);
         static ConsoleColor ParseAnsiColorSequence(const char *sequence, size_t length, const ConsoleColor &currentColor,
                                                   bool *out_hasAnsi256Bg = nullptr, bool *out_hasTrueColorBg = nullptr,
                                                   bool *out_hasReverse = nullptr);
@@ -150,6 +171,13 @@ namespace AnsiText {
     // Global configurable behavior
     void SetSgr21Policy(Sgr21Policy policy);
     Sgr21Policy GetSgr21Policy();
+
+    // Optional: pre-resolve ANSI 256-color indices to RGBA at parse-time when using a fixed palette.
+    // This avoids per-span palette lookups during rendering. Disabled by default.
+    void SetPreResolvePalette(const AnsiPalette *palette);
+    const AnsiPalette *GetPreResolvePalette();
+    void SetPreResolveEnabled(bool enabled);
+    bool GetPreResolveEnabled();
 
     // Text rendering with style support
     namespace Renderer {
