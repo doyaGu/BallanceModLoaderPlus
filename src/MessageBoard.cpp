@@ -65,7 +65,9 @@ ImGuiWindowFlags MessageBoard::GetFlags() {
                              ImGuiWindowFlags_NoBackground |
                              ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_NoFocusOnAppearing |
-                             ImGuiWindowFlags_NoBringToFrontOnFocus;
+                             ImGuiWindowFlags_NoBringToFrontOnFocus |
+                             ImGuiWindowFlags_NoScrollbar |
+                             ImGuiWindowFlags_NoScrollWithMouse;
 
     if (!m_IsCommandBarVisible) {
         flags |= ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav;
@@ -154,13 +156,13 @@ float MessageBoard::CalculateContentHeight(float wrapWidth) const {
     for (int i = 0; i < m_MessageCount; i++) {
         const MessageUnit &msg = m_Messages[i];
         if (ShouldShowMessage(msg)) {
-            contentHeight += AnsiText::CalculateHeight(msg.ansiText, wrapWidth, 0, m_TabColumns);
-            if (visibleCount > 0) {
-                contentHeight += m_MessageGap;
-            }
+            contentHeight += msg.GetTextHeight(wrapWidth, m_TabColumns);
             visibleCount++;
         }
     }
+
+    if (visibleCount > 1)
+        contentHeight += m_MessageGap * (visibleCount - 1);
 
     // Return pure content height (no padding)
     return std::max(contentHeight, ImGui::GetTextLineHeightWithSpacing());
@@ -180,7 +182,7 @@ void MessageBoard::OnPreBegin() {
     const ImGuiStyle &style = ImGui::GetStyle();
 
     // Scale layout parameters with current font size (fallback to style when larger)
-    const float fs = ImGui::GetFontSize();
+    const float fs = ImGui::GetStyle().FontSizeBase;
     const float pad_x_scaled = fs * 0.5f;    // ~8px @16pt
     const float pad_y_scaled = fs * 0.5f;    // ~8px @16pt
     const float gap_scaled = fs * 0.25f;     // ~4px @16pt
@@ -210,8 +212,7 @@ void MessageBoard::OnPreBegin() {
     float windowHeight = std::min(displayHeight, maxDisplayHeight);
 
     const float bottomAnchor = vpSize.y * 0.9f;
-    float posY = bottomAnchor - windowHeight;
-
+    const float posY = bottomAnchor - windowHeight;
     const float posX = vpSize.x * 0.02f;
 
     ImGui::SetNextWindowPos(ImVec2(posX, posY), ImGuiCond_Always);
@@ -259,22 +260,21 @@ void MessageBoard::OnDraw() {
 
     ImDrawList *drawList = ImGui::GetWindowDrawList();
     const ImVec2 contentStart = ImVec2(contentPos.x + m_PadX, contentPos.y + m_PadY);
-    ImVec2 startPos = ImVec2(contentStart.x, contentStart.y - m_ScrollY);
 
-    // Set up clipping for scrollable content
-    if (m_IsCommandBarVisible) {
-        const ImVec2 clipMin = ImVec2(contentPos.x + m_PadX, contentPos.y + m_PadY);
-        const ImVec2 clipMax = ImVec2(contentPos.x + contentSize.x - m_PadX - (needsScrollbar ? (m_ScrollbarW + m_ScrollbarPad * 2.0f) : 0.0f), contentPos.y + contentSize.y - m_PadY);
-        drawList->PushClipRect(clipMin, clipMax, true);
-    }
+    ImVec2 startPos = ImVec2(contentStart.x, contentStart.y - m_ScrollY);
+    // Set up clipping for content area
+    const ImVec2 clipMin = ImVec2(contentPos.x + m_PadX, contentPos.y + m_PadY);
+    const ImVec2 clipMax = ImVec2(
+        contentPos.x + contentSize.x - m_PadX - (m_IsCommandBarVisible && needsScrollbar ? (m_ScrollbarW + m_ScrollbarPad * 2.0f) : 0.0f),
+        contentPos.y + contentSize.y - m_PadY
+    );
+    drawList->PushClipRect(clipMin, clipMax, true);
 
     RenderMessages(drawList, startPos, wrapWidth);
 
-    if (m_IsCommandBarVisible) {
-        drawList->PopClipRect();
-        if (needsScrollbar && m_MaxScrollY > 0.0f) {
-            DrawScrollIndicators(drawList, contentPos, contentSize, contentHeight, availableContentHeight);
-        }
+    drawList->PopClipRect();
+    if (m_IsCommandBarVisible && needsScrollbar && m_MaxScrollY > 0.0f) {
+        DrawScrollIndicators(drawList, contentPos, contentSize, contentHeight, availableContentHeight);
     }
 }
 
@@ -282,26 +282,49 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
     ImVec4 bgColorBase = m_HasCustomMessageBg ? m_MessageBgColor : Bui::GetMenuColor();
     ImVec2 currentPos = startPos;
 
+    // Manual culling against current clip rect to avoid issuing offscreen draw calls
+    const ImVec2 clip_min = drawList->GetClipRectMin();
+    const ImVec2 clip_max = drawList->GetClipRectMax();
+
     for (int i = m_MessageCount - 1; i >= 0; i--) {
         const MessageUnit &msg = m_Messages[i];
-        bool shouldShow = m_IsCommandBarVisible || ShouldShowMessage(msg);
+        const bool shouldShow = m_IsCommandBarVisible || ShouldShowMessage(msg);
+        if (!shouldShow)
+            continue;
 
-        if (shouldShow) {
-            const float alpha = GetMessageAlpha(msg);
-            const float msgHeight = AnsiText::CalculateHeight(msg.ansiText, wrapWidth, 0, m_TabColumns);
+        // Use cached height (recomputed only when wrap width changes)
+        const float msgHeight = msg.GetTextHeight(wrapWidth, m_TabColumns);
 
-            // Draw background with style-derived padding
-            const float finalAlpha = std::clamp(bgColorBase.w * std::clamp(m_MessageBgAlphaScale, 0.0f, 1.0f) * alpha, 0.0f, 1.0f);
-            ImVec4 bg = ImVec4(bgColorBase.x, bgColorBase.y, bgColorBase.z, finalAlpha);
+        // If the entire message block is above the clip rect, skip and advance
+        if ((currentPos.y + msgHeight) < clip_min.y) {
+            currentPos.y += msgHeight + m_MessageGap;
+            continue;
+        }
+        // If the next message block starts below the clip rect, we can stop
+        if (currentPos.y > clip_max.y) {
+            break;
+        }
+
+        const float alpha = GetMessageAlpha(msg);
+        if (alpha <= 0.0f) {
+            currentPos.y += msgHeight + m_MessageGap;
+            continue;
+        }
+
+        // Background
+        const float finalAlpha = std::clamp(bgColorBase.w * std::clamp(m_MessageBgAlphaScale, 0.0f, 1.0f) * alpha, 0.0f, 1.0f);
+        if (finalAlpha > 0.0f) {
+            const ImVec4 bg = ImVec4(bgColorBase.x, bgColorBase.y, bgColorBase.z, finalAlpha);
             drawList->AddRectFilled(
                 ImVec2(currentPos.x - m_PadX * 0.5f, currentPos.y - m_PadY * 0.25f),
                 ImVec2(currentPos.x + wrapWidth + m_PadX * 0.5f, currentPos.y + msgHeight + m_PadY * 0.25f),
                 ImGui::GetColorU32(bg)
             );
-
-            DrawMessageText(drawList, msg, currentPos, wrapWidth, alpha);
-            currentPos.y += msgHeight + m_MessageGap;
         }
+
+        // Text
+        DrawMessageText(drawList, msg, currentPos, wrapWidth, alpha);
+        currentPos.y += msgHeight + m_MessageGap;
     }
 }
 
@@ -320,7 +343,8 @@ void MessageBoard::HandleScrolling(float availableHeight) {
 
     // Mouse wheel scrolling
     if (ImGui::IsWindowHovered() && io.MouseWheel != 0.0f) {
-        const float scrollSpeed = ImGui::GetTextLineHeightWithSpacing() * 3.0f;
+        const ImGuiStyle &st = ImGui::GetStyle();
+        const float scrollSpeed = (st.FontSizeBase + st.ItemSpacing.y) * 3.0f;
         SetScrollYClamped(m_ScrollY - io.MouseWheel * scrollSpeed);
     }
 
