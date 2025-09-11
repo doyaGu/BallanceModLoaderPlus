@@ -67,11 +67,14 @@ namespace AnsiText {
     };
 
     // Text segment with associated ANSI formatting
+    // Zero-copy: hold begin/end pointers into AnsiString::m_OriginalText
     struct TextSegment {
-        std::string text;
+        const char *begin = nullptr;
+        const char *end = nullptr;
         ConsoleColor color;
 
-        TextSegment(std::string t, ConsoleColor c) : text(std::move(t)), color(c) {}
+        TextSegment() = default;
+        TextSegment(const char *b, const char *e, ConsoleColor c) : begin(b), end(e), color(c) {}
     };
 
     // Parsed ANSI text ready for rendering
@@ -85,6 +88,9 @@ namespace AnsiText {
 
         const std::string &GetOriginalText() const { return m_OriginalText; }
         const std::vector<TextSegment> &GetSegments() const { return m_Segments; }
+        bool HasAnsi256Background() const { return m_HasAnsi256BG; }
+        bool HasTrueColorBackground() const { return m_HasTrueColorBG; }
+        bool HasReverse() const { return m_HasReverse; }
 
         void Clear();
         bool IsEmpty() const { return m_Segments.empty(); }
@@ -92,9 +98,14 @@ namespace AnsiText {
     private:
         std::string m_OriginalText;
         std::vector<TextSegment> m_Segments;
+        bool m_HasAnsi256BG = false;   // Any 40-47/100-107 or 48;5 background used
+        bool m_HasTrueColorBG = false; // Any 48;2;r;g;b background used
+        bool m_HasReverse = false;     // Any SGR 7 encountered (conservative)
 
         void ParseAnsiEscapeCodes();
-        static ConsoleColor ParseAnsiColorSequence(const char *sequence, size_t length, const ConsoleColor &currentColor);
+        static ConsoleColor ParseAnsiColorSequence(const char *sequence, size_t length, const ConsoleColor &currentColor,
+                                                  bool *out_hasAnsi256Bg = nullptr, bool *out_hasTrueColorBg = nullptr,
+                                                  bool *out_hasReverse = nullptr);
         static ImU32 GetRgbColor(int r, int g, int b);
     };
 

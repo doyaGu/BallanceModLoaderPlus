@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <algorithm>
+#include <cstring>
 #include <utf8.h>
 
 #include "AnsiPalette.h"
@@ -68,178 +69,141 @@ namespace AnsiText {
     void AnsiString::ParseAnsiEscapeCodes() {
         m_Segments.clear();
 
-        if (m_OriginalText.empty()) {
+        if (m_OriginalText.empty())
+            return;
+
+        const char *const base = m_OriginalText.c_str();
+        const char *const end = base + m_OriginalText.size();
+
+        // Reset aggregate flags
+        m_HasAnsi256BG = false;
+        m_HasTrueColorBG = false;
+        m_HasReverse = false;
+
+        // Fast path: no ESC present -> single zero-copy segment
+        if (std::memchr(base, '\033', (size_t)(end - base)) == nullptr) {
+            m_Segments.emplace_back(base, end, ConsoleColor());
             return;
         }
 
-        // Reserve space to reduce reallocations
-        m_Segments.reserve(8); // Most strings have few segments
-
-        const char *p = m_OriginalText.c_str();
-        const char *const end = p + m_OriginalText.size();
+        // General parser with zero-copy segments
+        m_Segments.reserve(8);
         ConsoleColor currentColor;
-        std::string currentSegment;
-        currentSegment.reserve(256); // Reserve space to reduce reallocations
+        const char *p = base;
+        const char *segStart = base;
 
         while (p < end) {
-            if (*p == '\033' && p + 1 < end && *(p + 1) == '[') {
-                // Save current text segment (merge with previous if same style)
-                if (!currentSegment.empty()) {
-                    if (!m_Segments.empty() && m_Segments.back().color == currentColor) {
-                        m_Segments.back().text.append(currentSegment);
-                    } else {
-                        m_Segments.emplace_back(std::move(currentSegment), currentColor);
+            if ((end - p) >= 2 && p[0] == '\033' && p[1] == '[') {
+                const char *seqStart = p + 2;
+                const int kMaxSeqLen = 64;
+                int n = 0;
+                const char *q = seqStart;
+                while (q < end && *q != 'm' && n < kMaxSeqLen) { ++q; ++n; }
+                if (q < end && *q == 'm') {
+                    // Flush preceding text [segStart, p)
+                    if (segStart < p) {
+                        if (!m_Segments.empty() && m_Segments.back().color == currentColor && m_Segments.back().end == segStart) {
+                            m_Segments.back().end = p;
+                        } else {
+                            m_Segments.emplace_back(segStart, p, currentColor);
+                        }
                     }
-                    currentSegment.clear();
-                    currentSegment.reserve(256);
+                    currentColor = ParseAnsiColorSequence(seqStart, (size_t)(q - seqStart), currentColor,
+                                                         &m_HasAnsi256BG, &m_HasTrueColorBG, &m_HasReverse);
+                    p = q + 1;      // skip 'm'
+                    segStart = p;
+                    continue;
                 }
+                // invalid/incomplete sequence: treat bytes as literal
+            }
+            ++p;
+        }
 
-                // Parse escape sequence
-                p += 2; // Skip \033[
-                const char* seqStart = p;
-
-                // Find end of sequence
-                while (p < end && *p != 'm' && (p - seqStart) < 50) {
-                    ++p;
-                }
-
-                if (p < end && *p == 'm') {
-                    // Parse sequence directly from buffer
-                    currentColor = ParseAnsiColorSequence(seqStart, p - seqStart, currentColor);
-                    p++; // Skip the 'm'
-                } else {
-                    // Invalid sequence - treat as literal text
-                    currentSegment += '\033';
-                    currentSegment += '[';
-                    currentSegment.append(seqStart, p);
-                }
+        // Flush tail
+        if (segStart < end) {
+            if (!m_Segments.empty() && m_Segments.back().color == currentColor && m_Segments.back().end == segStart) {
+                m_Segments.back().end = end;
             } else {
-                currentSegment += *p++;
+                m_Segments.emplace_back(segStart, end, currentColor);
             }
         }
 
-        // Add final segment (merge with previous if same style)
-        if (!currentSegment.empty()) {
-            if (!m_Segments.empty() && m_Segments.back().color == currentColor) {
-                m_Segments.back().text.append(currentSegment);
-            } else {
-                m_Segments.emplace_back(std::move(currentSegment), currentColor);
-            }
-        }
-
-        // Ensure at least one segment exists
-        if (m_Segments.empty()) {
-            m_Segments.emplace_back(m_OriginalText, ConsoleColor());
-        }
+        if (m_Segments.empty())
+            m_Segments.emplace_back(end, end, ConsoleColor());
     }
 
-    ConsoleColor AnsiString::ParseAnsiColorSequence(const char *sequence, size_t length, const ConsoleColor &currentColor) {
+    ConsoleColor AnsiString::ParseAnsiColorSequence(const char *sequence, size_t length, const ConsoleColor &currentColor,
+                                                    bool *out_hasAnsi256Bg, bool *out_hasTrueColorBg, bool *out_hasReverse) {
         ConsoleColor color = currentColor;
         if (length == 0) return color;
 
-        // Parse semicolon-separated codes
-        std::vector<int> codes;
-        codes.reserve(8); // Most sequences have few codes
-
         const char *p = sequence;
-        const char *const end = sequence + length;
+        const char *const e = sequence + length;
 
-        while (p < end) {
-            // Skip whitespace and separators
-            while (p < end && (*p == ';' || *p == ' ')) ++p;
-            if (p >= end) break;
+        auto skip_sep = [&]() { while (p < e && (*p == ';' || *p == ' ')) ++p; };
+        auto read_int = [&](int &out) -> bool {
+            skip_sep();
+            if (p >= e || *p < '0' || *p > '9') return false;
+            int v = 0;
+            while (p < e && *p >= '0' && *p <= '9') { v = v * 10 + (*p - '0'); ++p; }
+            out = v; return true;
+        };
 
-            // Parse integer directly
-            int code = 0;
-            const char *numStart = p;
-            while (p < end && *p >= '0' && *p <= '9') {
-                code = code * 10 + (*p - '0');
-                ++p;
-            }
+        int code = 0;
+        while (read_int(code)) {
+            if (code == 0) { color = ConsoleColor(); continue; }
 
-            // Only add valid codes
-            if (p > numStart && code >= 0) {
-                codes.push_back(code);
-            }
-        }
+            if (code >= 30 && code <= 37) { color.fgIsAnsi256 = true; color.fgAnsiIndex = code - 30; continue; }
+            if (code >= 40 && code <= 47) { color.bgIsAnsi256 = true; color.bgAnsiIndex = code - 40; if (out_hasAnsi256Bg) *out_hasAnsi256Bg = true; continue; }
+            if (code >= 90 && code <= 97) { color.fgIsAnsi256 = true; color.fgAnsiIndex = (code - 90) + 8; continue; }
+            if (code >= 100 && code <= 107){ color.bgIsAnsi256 = true; color.bgAnsiIndex = (code - 100) + 8; if (out_hasAnsi256Bg) *out_hasAnsi256Bg = true; continue; }
 
-        // Process each color code
-        for (size_t i = 0; i < codes.size(); ++i) {
-            int code = codes[i];
-
-            if (code == 0) {
-                // Reset all
-                color = ConsoleColor();
-            } else if (code >= 30 && code <= 37) {
-                // Standard foreground colors -> mark palette index 0..7
-                color.fgIsAnsi256 = true; color.fgAnsiIndex = code - 30;
-            } else if (code >= 40 && code <= 47) {
-                // Standard background colors -> mark palette index 0..7
-                color.bgIsAnsi256 = true; color.bgAnsiIndex = code - 40;
-            } else if (code >= 90 && code <= 97) {
-                // Bright foreground colors -> mark palette index 8..15
-                color.fgIsAnsi256 = true; color.fgAnsiIndex = (code - 90) + 8;
-            } else if (code >= 100 && code <= 107) {
-                // Bright background colors -> mark palette index 8..15
-                color.bgIsAnsi256 = true; color.bgAnsiIndex = (code - 100) + 8;
-            } else if ((code == 38 || code == 48) && i + 1 < codes.size()) {
-                // Extended color codes
-                bool isBackground = (code == 48);
-                if (codes[i + 1] == 5 && i + 2 < codes.size()) {
-                    // 256-color mode
-                    int idx = std::clamp(codes[i + 2], 0, 255);
-                    if (isBackground) { color.bgIsAnsi256 = true; color.bgAnsiIndex = idx; }
-                    else { color.fgIsAnsi256 = true; color.fgAnsiIndex = idx; }
-                    i += 2;
-                } else if (codes[i + 1] == 2 && i + 4 < codes.size()) {
-                    // RGB mode
-                    ImU32 colorValue = GetRgbColor(codes[i + 2], codes[i + 3], codes[i + 4]);
-                    if (isBackground) {
-                        color.background = colorValue;
-                        color.bgIsAnsi256 = false; color.bgAnsiIndex = -1;
-                    } else {
-                        color.foreground = colorValue;
-                        color.fgIsAnsi256 = false; color.fgAnsiIndex = -1;
-                    }
-                    i += 4;
+            if (code == 38 || code == 48) {
+                const bool isBg = (code == 48);
+                int mode = -1;
+                if (!read_int(mode)) break;
+                if (mode == 5) {
+                    int idx = 0; if (!read_int(idx)) break;
+                    idx = std::clamp(idx, 0, 255);
+                    if (isBg) { color.bgIsAnsi256 = true; color.bgAnsiIndex = idx; if (out_hasAnsi256Bg) *out_hasAnsi256Bg = true; }
+                    else      { color.fgIsAnsi256 = true; color.fgAnsiIndex = idx; }
+                    continue;
                 }
-            } else if (code == 39) {
-                // Default foreground color -> use style text color
-                color.foreground = ImGui::GetColorU32(ImGuiCol_Text);
-                color.fgIsAnsi256 = false; color.fgAnsiIndex = -1;
-            } else if (code == 49) {
-                // Default background color
-                color.background = IM_COL32(0, 0, 0, 0);
-                color.bgIsAnsi256 = false; color.bgAnsiIndex = -1;
-            } else {
-                // Style codes
-                switch (code) {
+                if (mode == 2) {
+                    int r=0,g=0,b=0; if (!read_int(r) || !read_int(g) || !read_int(b)) break;
+                    ImU32 v = GetRgbColor(r, g, b);
+                    if (isBg) { color.background = v; color.bgIsAnsi256 = false; color.bgAnsiIndex = -1; if (out_hasTrueColorBg) *out_hasTrueColorBg = true; }
+                    else      { color.foreground = v; color.fgIsAnsi256 = false; color.fgAnsiIndex = -1; }
+                    continue;
+                }
+                // Unknown sub-mode, ignore
+                continue;
+            }
+
+            if (code == 39) { color.foreground = ImGui::GetColorU32(ImGuiCol_Text); color.fgIsAnsi256 = false; color.fgAnsiIndex = -1; continue; }
+            if (code == 49) { color.background = IM_COL32(0, 0, 0, 0); color.bgIsAnsi256 = false; color.bgAnsiIndex = -1; continue; }
+
+            switch (code) {
                 case 1: color.bold = true; break;
                 case 2: color.dim = true; break;
                 case 3: color.italic = true; break;
                 case 4: color.underline = true; color.doubleUnderline = false; break;
-                // 5/6: blink (unsupported/no-op)
-                case 5: case 6: break;
-                case 7: color.reverse = true; break;
+                case 5: case 6: /* blink no-op */ break;
+                case 7: color.reverse = true; if (out_hasReverse) *out_hasReverse = true; break;
                 case 8: color.hidden = true; break;
                 case 9: color.strikethrough = true; break;
                 case 21:
-                    if (GetSgr21Policy() == Sgr21Policy::DoubleUnderline) {
-                        color.underline = true; color.doubleUnderline = true;
-                    } else {
-                        color.bold = false; color.dim = false;
-                    }
+                    if (GetSgr21Policy() == Sgr21Policy::DoubleUnderline) { color.underline = true; color.doubleUnderline = true; }
+                    else { color.bold = false; color.dim = false; }
                     break;
                 case 22: color.bold = false; color.dim = false; break;
                 case 23: color.italic = false; break;
                 case 24: color.underline = false; color.doubleUnderline = false; break;
-                // 25: blink off (unsupported/no-op)
-                case 25: break;
+                case 25: /* blink off no-op */ break;
                 case 27: color.reverse = false; break;
                 case 28: color.hidden = false; break;
                 case 29: color.strikethrough = false; break;
-                default: break; // Ignore unknown codes
-                }
+                default: break; // ignore unknown
             }
         }
 
@@ -325,6 +289,28 @@ namespace AnsiText {
         static const char *kSpace = " ";
         const float spaceW = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, kSpace, kSpace + 1, nullptr).x;
 
+        // Fast path: no wrapping requested and text contains no tabs/newlines.
+        if (wrapWidth == FLT_MAX) {
+            bool hasSpecial = false;
+            for (const TextSegment &seg : segments) {
+                const char *p = seg.begin, *e = seg.end;
+                while (p < e) { char ch = *p++; if (ch == '\n' || ch == '\r' || ch == '\t') { hasSpecial = true; break; } }
+                if (hasSpecial) break;
+            }
+            if (!hasSpecial) {
+                Line lineFast; lineFast.spans.reserve(segments.size());
+                float xsum = 0.0f;
+                for (const TextSegment &seg : segments) {
+                    float w = Measure(font, fontSize, seg.begin, seg.end);
+                    lineFast.spans.push_back(Span{&seg, seg.begin, seg.end, w, false});
+                    xsum += w;
+                }
+                lineFast.width = xsum;
+                outLines.push_back(std::move(lineFast));
+                return;
+            }
+        }
+
         Line line;
         line.spans.reserve(8); // Reserve space for spans to reduce reallocations
         float x = 0.0f;
@@ -343,8 +329,8 @@ namespace AnsiText {
         };
 
         for (const TextSegment &seg : segments) {
-            const char *p = seg.text.c_str();
-            const char *end = p + seg.text.size();
+            const char *p = seg.begin;
+            const char *end = seg.end;
             while (p < end) {
                 if (*p == '\n') { NewLine(); trimLeadingSpace = false; ++p; continue; }
                 if (*p == '\r') { x = 0.0f; ++p; continue; }
@@ -675,68 +661,76 @@ namespace AnsiText {
                 const float lineTop = startPos.y + lineIndex * lineStep;
                 const float lineBottom = lineTop + ascent + descentMag;
 
-                // Pass 1: Merge and draw background runs
-                struct BgRun {
-                    float x0, x1;
-                    ImU32 col;
-                };
-                std::vector<BgRun> runs;
-                runs.reserve(line.spans.size() / 2); // Estimate runs based on spans
-                float xForBg = startPos.x;
-                bool hasOpenRun = false;
-                BgRun cur{};
-
-                for (const auto &sp : line.spans) {
-                    const TextSegment *seg = sp.seg;
-
-                    if (!seg) {
+                // Background pass (optional pre-scan fast path only when no wrap requested)
+                auto draw_background_runs = [&]() {
+                    struct BgRun { float x0, x1; ImU32 col; };
+                    std::vector<BgRun> runs; runs.reserve(line.spans.size() / 2);
+                    float xForBg = startPos.x; bool hasOpenRun = false; BgRun cur{};
+                    for (const auto &sp : line.spans) {
+                        const TextSegment *seg = sp.seg;
+                        if (!seg) { xForBg += sp.width; continue; }
+                        ConsoleColor rc = seg->color.GetRendered();
+                        ImU32 bgBase = rc.background;
+                        if (rc.bgIsAnsi256 && rc.bgAnsiIndex >= 0) {
+                            const_cast<AnsiPalette *>(palette)->EnsureInitialized();
+                            if (palette->IsActive()) palette->GetColor(rc.bgAnsiIndex, bgBase);
+                        }
+                        ImU32 bg = Color::ApplyAlpha(bgBase, alpha);
+                        const bool drawBg = (!sp.isTab) && (((bg >> IM_COL32_A_SHIFT) & 0xFF) != 0) && (sp.b < sp.e);
+                        if (drawBg) {
+                            const float x0 = xForBg;
+                            float italicPad = 0.0f;
+                            if (rc.italic) { const float pad = italicShear * (lineBottom - lineTop); italicPad = pad > 0.0f ? pad : 0.0f; }
+                            const float x1 = xForBg + sp.width + italicPad;
+                            if (hasOpenRun && cur.col == bg && std::abs(cur.x1 - x0) <= 0.25f) cur.x1 = x1;
+                            else { if (hasOpenRun) runs.push_back(cur); cur = BgRun{x0, x1, bg}; hasOpenRun = true; }
+                        } else { if (hasOpenRun) { runs.push_back(cur); hasOpenRun = false; } }
                         xForBg += sp.width;
-                        continue;
                     }
+                    if (hasOpenRun) runs.push_back(cur);
+                    for (const BgRun &r : runs) drawList->AddRectFilled(ImVec2(r.x0, lineTop), ImVec2(r.x1, lineBottom), r.col);
+                };
 
-                    ConsoleColor rc = seg->color.GetRendered();
-
-                    ImU32 bgBase = rc.background;
-                    if (rc.bgIsAnsi256 && rc.bgAnsiIndex >= 0) {
-                        const_cast<AnsiPalette *>(palette)->EnsureInitialized();
-                        if (palette->IsActive()) palette->GetColor(rc.bgAnsiIndex, bgBase);
-                    }
-
-                    ImU32 bg = Color::ApplyAlpha(bgBase, alpha);
-                    const bool drawBg = (!sp.isTab) && (((bg >> IM_COL32_A_SHIFT) & 0xFF) != 0) && (sp.b < sp.e);
-
-                    if (drawBg) {
-                        const float x0 = xForBg;
-                        float italicPad = 0.0f;
-                        if (rc.italic) {
-                            const float pad = italicShear * (lineBottom - lineTop);
-                            italicPad = pad > 0.0f ? pad : 0.0f;
-                        }
-                        const float x1 = xForBg + sp.width + italicPad;
-
-                        if (hasOpenRun && cur.col == bg && std::abs(cur.x1 - x0) <= 0.25f) {
-                            cur.x1 = x1; // Merge with current run
-                        } else {
-                            if (hasOpenRun) runs.push_back(cur);
-                            cur = BgRun{x0, x1, bg};
-                            hasOpenRun = true;
-                        }
+                if (wrapWidth == FLT_MAX) {
+                    // If palette inactive and text has no true-color backgrounds, all backgrounds render as transparent -> skip entirely
+                    const bool paletteInactive = !palette->IsActive();
+                    if (paletteInactive && !text.HasTrueColorBackground() && !text.HasReverse()) {
+                        // nothing to draw for backgrounds on this line
                     } else {
-                        if (hasOpenRun) {
-                            runs.push_back(cur);
-                            hasOpenRun = false;
+                        // Per-line fast-path: if all backgrounds are fully transparent, skip building runs
+                        bool any_bg = false;
+                        for (const auto &sp_check : line.spans) {
+                            const TextSegment *seg_check = sp_check.seg;
+                            if (!seg_check) continue;
+                            if (sp_check.isTab || !(sp_check.b < sp_check.e)) continue;
+                            ConsoleColor rc_check = seg_check->color.GetRendered();
+                            ImU32 bgBaseCheck = rc_check.background;
+                            if (rc_check.bgIsAnsi256 && rc_check.bgAnsiIndex >= 0) {
+                                const_cast<AnsiPalette *>(palette)->EnsureInitialized();
+                                if (palette->IsActive()) palette->GetColor(rc_check.bgAnsiIndex, bgBaseCheck);
+                            }
+                            ImU32 bgCheck = Color::ApplyAlpha(bgBaseCheck, alpha);
+                            if (((bgCheck >> IM_COL32_A_SHIFT) & 0xFF) != 0) { any_bg = true; break; }
                         }
+                        if (any_bg) draw_background_runs();
                     }
-                    xForBg += sp.width;
-                }
-                if (hasOpenRun) runs.push_back(cur);
-
-                // Draw merged background runs
-                for (const BgRun &r : runs) {
-                    drawList->AddRectFilled(ImVec2(r.x0, lineTop), ImVec2(r.x1, lineBottom), r.col);
+                } else {
+                    // With wrapping, always build runs (cost amortized by fewer long lines)
+                    draw_background_runs();
                 }
 
                 // Pass 2: Text and decoration lines
+                bool any_decor = true;
+                if (wrapWidth != FLT_MAX) {
+                    any_decor = false;
+                    for (const auto &sp_check : line.spans) {
+                        const TextSegment *seg_check = sp_check.seg;
+                        if (!seg_check) continue;
+                        if (sp_check.isTab || !(sp_check.b < sp_check.e)) continue;
+                        ConsoleColor rc_check = seg_check->color.GetRendered();
+                        if (rc_check.underline || rc_check.doubleUnderline || rc_check.strikethrough) { any_decor = true; break; }
+                    }
+                }
                 float x = startPos.x;
                 for (const auto &sp : line.spans) {
                     const TextSegment *seg = sp.seg;
@@ -770,32 +764,34 @@ namespace AnsiText {
                     if (!sp.isTab && sp.b < sp.e) {
                         AddTextStyled(drawList, font, usedFontSize, ImVec2(x, lineTop), fg, sp.b, sp.e, italic, fauxBold);
 
-                        // Calculate italic padding once if needed for decorations
-                        float italicPadForDecorations = 0.0f;
-                        if (rc.italic && (rc.underline || rc.strikethrough)) {
-                            const float pad = italicShear * (lineBottom - lineTop);
-                            italicPadForDecorations = pad > 0.0f ? pad : 0.0f;
-                        }
-
-                        if (rc.underline) {
-                            float y = Metrics::UnderlineY(lineTop, usedFontSize);
-                            float th = Metrics::Thickness(usedFontSize);
-                            if ((static_cast<int>(th) & 1) != 0) y = floorf(y) + 0.5f;
-                            else y = roundf(y);
-                            drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width + italicPadForDecorations, y), fg, th);
-                            if (rc.doubleUnderline) {
-                                float y2 = y + th + 1.0f;
-                                if ((static_cast<int>(th) & 1) != 0) y2 = floorf(y2) + 0.5f;
-                                else y2 = roundf(y2);
-                                drawList->AddLine(ImVec2(x, y2), ImVec2(x + sp.width + italicPadForDecorations, y2), fg, th);
+                        if (any_decor) {
+                            // Calculate italic padding once if needed for decorations
+                            float italicPadForDecorations = 0.0f;
+                            if (rc.italic && (rc.underline || rc.strikethrough)) {
+                                const float pad = italicShear * (lineBottom - lineTop);
+                                italicPadForDecorations = pad > 0.0f ? pad : 0.0f;
                             }
-                        }
-                        if (rc.strikethrough) {
-                            float y = Metrics::StrikeY(lineTop, usedFontSize);
-                            float th = Metrics::Thickness(usedFontSize);
-                            if ((static_cast<int>(th) & 1) != 0) y = floorf(y) + 0.5f;
-                            else y = roundf(y);
-                            drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width + italicPadForDecorations, y), fg, th);
+
+                            if (rc.underline) {
+                                float y = Metrics::UnderlineY(lineTop, usedFontSize);
+                                float th = Metrics::Thickness(usedFontSize);
+                                if ((static_cast<int>(th) & 1) != 0) y = floorf(y) + 0.5f;
+                                else y = roundf(y);
+                                drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width + italicPadForDecorations, y), fg, th);
+                                if (rc.doubleUnderline) {
+                                    float y2 = y + th + 1.0f;
+                                    if ((static_cast<int>(th) & 1) != 0) y2 = floorf(y2) + 0.5f;
+                                    else y2 = roundf(y2);
+                                    drawList->AddLine(ImVec2(x, y2), ImVec2(x + sp.width + italicPadForDecorations, y2), fg, th);
+                                }
+                            }
+                            if (rc.strikethrough) {
+                                float y = Metrics::StrikeY(lineTop, usedFontSize);
+                                float th = Metrics::Thickness(usedFontSize);
+                                if ((static_cast<int>(th) & 1) != 0) y = floorf(y) + 0.5f;
+                                else y = roundf(y);
+                                drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width + italicPadForDecorations, y), fg, th);
+                            }
                         }
                     }
 
