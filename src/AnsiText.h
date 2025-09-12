@@ -101,6 +101,12 @@ namespace AnsiText {
         explicit AnsiString(const std::string &text);
         explicit AnsiString(std::string &&text);
 
+        // Custom copy/move to keep zero-copy TextSegment pointers valid across ownership changes.
+        AnsiString(const AnsiString &other);
+        AnsiString &operator=(const AnsiString &other);
+        AnsiString(AnsiString &&other) noexcept;
+        AnsiString &operator=(AnsiString &&other) noexcept;
+
         // Parses text, producing zero-copy segments and fusing adjacent-equal styles.
         void SetText(const char *text);
         void SetText(const std::string &text);
@@ -124,6 +130,7 @@ namespace AnsiText {
 
         void ParseAnsiEscapeCodes();
         void AssignAndParse(std::string &&text);
+        void RebindSegmentsPointers(const char *oldBase, const char *newBase);
         static ConsoleColor ParseAnsiColorSequence(const char *sequence, size_t length, const ConsoleColor &currentColor,
                                                   bool *out_hasAnsi256Bg = nullptr, bool *out_hasTrueColorBg = nullptr,
                                                   bool *out_hasReverse = nullptr);
