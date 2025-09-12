@@ -1,6 +1,7 @@
 #include "Commands.h"
 
 #include <sstream>
+#include <cctype>
 
 #include "BML/IBML.h"
 #include "BML/BML.h"
@@ -212,7 +213,7 @@ static bool ParseColor(const std::string &s, ImU32 &out) {
     int r = 0, g = 0, b = 0, a = 255; int n = 0;
     char c;
     std::stringstream ss(v);
-    if (ss >> r) { ++n; if (ss >> c && (c==','||c==';'||c==' ')) {} if (ss >> g) { ++n; if (ss >> c) {} if (ss >> b) { ++n; if (ss >> c) {} if (ss >> a) ++n; } } }
+    if (ss >> r) { ++n; if (ss >> c && (c == ',' || c == ';' || c == ' ')) {} if (ss >> g) { ++n; if (ss >> c) {} if (ss >> b) { ++n; if (ss >> c) {} if (ss >> a) ++n; } } }
     if (n >= 3) { out = IM_COL32(std::clamp(r,0,255), std::clamp(g,0,255), std::clamp(b,0,255), std::clamp(a,0,255)); return true; }
     return false;
 }
@@ -234,19 +235,40 @@ static AlignY ParseAlignY(const std::string &s, bool &ok) {
     return AlignY::Top;
 }
 
-// Join args from index, strip surrounding double quotes if present, then unescape C-style sequences.
+// Join args from index, robustly strip a single pair of surrounding double quotes (if present),
+// then unescape C/Unicode-style sequences. Keeps inner escaped quotes (\").
 static std::string JoinStripQuotesUnescape(const std::vector<std::string> &args, size_t start) {
-    std::string s;
+    // Pre-reserve to reduce reallocations
+    size_t total = 0;
+    for (size_t i = start; i < args.size(); ++i) total += args[i].size() + 1;
+    if (total) --total;
+    std::string s; s.reserve(total);
     for (size_t i = start; i < args.size(); ++i) {
         if (i > start) s.push_back(' ');
         s.append(args[i]);
     }
-    auto ltrim = [](std::string &str){ size_t i = 0; while (i < str.size() && isspace((unsigned char)str[i])) ++i; if (i) str.erase(0,i); };
-    auto rtrim = [](std::string &str){ size_t i = str.size(); while (i > 0 && isspace((unsigned char)str[i - 1])) --i; if (i<str.size()) str.erase(i); };
-    ltrim(s); rtrim(s);
-    if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
-        s = s.substr(1, s.size() - 2);
+
+    // Compute trimmed extents without altering content yet
+    size_t i = 0, j = s.size();
+    while (i < j && isspace((unsigned char)s[i])) ++i;
+    while (j > i && isspace((unsigned char)s[j - 1])) --j;
+
+    auto is_unescaped_trailing_quote = [&](size_t pos) {
+        // s[pos] is '"'; count preceding backslashes
+        size_t k = pos; size_t bs = 0;
+        while (k > i && s[k - 1] == '\\') { ++bs; --k; }
+        return (bs % 2) == 0; // even => not escaped
+    };
+
+    if (j > i + 1 && s[i] == '"' && s[j - 1] == '"' && is_unescaped_trailing_quote(j - 1)) {
+        // Strip only the outer pair spanning the full non-space range
+        s = s.substr(i + 1, (j - 1) - (i + 1));
+    } else if (i != 0 || j != s.size()) {
+        // No outer quotes: slice to trimmed content
+        s = s.substr(i, j - i);
     }
+
+    // Unescape sequences like \n, \t, \", \xHH, \uXXXX, etc.
     s = utils::UnescapeString(s.c_str());
     return s;
 }
@@ -435,7 +457,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         if (!dest) { bml->SendIngameMessage("[hud] invalid destination\n"); return; }
         auto up = hud.CloneElement(srcE);
         if (!up) { bml->SendIngameMessage("[hud] copy failed\n"); return; }
-        if (newName.empty()) { size_t dot = src.find_last_of('.'); newName = (dot==std::string::npos)?src:src.substr(dot+1); }
+        if (newName.empty()) { size_t dot = src.find_last_of('.'); newName = (dot == std::string::npos) ? src : src.substr(dot + 1); }
         hud.AttachToContainer(dest, std::move(up), newName);
         bml->SendIngameMessage("[hud] copied\n");
         return;
@@ -447,7 +469,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         if (!srcE) { bml->SendIngameMessage("[hud] source not found\n"); return; }
         auto up = hud.CloneElement(srcE);
         if (!up) { bml->SendIngameMessage("[hud] clone failed\n"); return; }
-        if (newName.empty()) { size_t dot = src.find_last_of('.'); newName = (dot==std::string::npos)?src:src.substr(dot+1); }
+        if (newName.empty()) { size_t dot = src.find_last_of('.'); newName = (dot == std::string::npos) ? src : src.substr(dot + 1); }
         // If active page is set and default container mapping exists, attach under it; else root
         if (!hud.GetActivePage().empty()) {
             const std::string &pc = hud.GetPageDefaultContainer(hud.GetActivePage());
