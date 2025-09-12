@@ -570,6 +570,8 @@ void MessageBoard::Printf(const char *format, ...) {
     va_start(args, format);
     vsnprintf(buf.data(), buf.size(), format, args);
     va_end(args);
+    // Remove the embedded NUL we reserved space for
+    buf.resize((size_t)needed);
     AddMessage(buf.c_str());
 }
 
@@ -583,6 +585,7 @@ void MessageBoard::PrintfColored(ImU32 color, const char *format, ...) {
     va_start(args, format);
     vsnprintf(buf.data(), buf.size(), format, args);
     va_end(args);
+    buf.resize((size_t)needed);
 
     const ImU32 r = (color >> IM_COL32_R_SHIFT) & 0xFF;
     const ImU32 g = (color >> IM_COL32_G_SHIFT) & 0xFF;
