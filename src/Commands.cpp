@@ -209,11 +209,11 @@ static bool ParseColor(const std::string &s, ImU32 &out) {
         return true;
     }
     // r,g,b[,a]
-    int r=0,g=0,b=0,a=255; int n=0;
+    int r = 0, g = 0, b = 0, a = 255; int n = 0;
     char c;
     std::stringstream ss(v);
     if (ss >> r) { ++n; if (ss >> c && (c==','||c==';'||c==' ')) {} if (ss >> g) { ++n; if (ss >> c) {} if (ss >> b) { ++n; if (ss >> c) {} if (ss >> a) ++n; } } }
-    if (n>=3) { out = IM_COL32(std::clamp(r,0,255), std::clamp(g,0,255), std::clamp(b,0,255), std::clamp(a,0,255)); return true; }
+    if (n >= 3) { out = IM_COL32(std::clamp(r,0,255), std::clamp(g,0,255), std::clamp(b,0,255), std::clamp(a,0,255)); return true; }
     return false;
 }
 
@@ -222,7 +222,8 @@ static AlignX ParseAlignX(const std::string &s, bool &ok) {
     if (t == "left" || t == "l") return AlignX::Left;
     if (t == "center" || t == "c" || t == "middle" || t == "m") return AlignX::Center;
     if (t == "right" || t == "r") return AlignX::Right;
-    ok=false; return AlignX::Left;
+    ok = false;
+    return AlignX::Left;
 }
 static AlignY ParseAlignY(const std::string &s, bool &ok) {
     std::string t = utils::ToLower(s); ok = true;
@@ -231,6 +232,23 @@ static AlignY ParseAlignY(const std::string &s, bool &ok) {
     if (t == "bottom" || t == "b") return AlignY::Bottom;
     ok = false;
     return AlignY::Top;
+}
+
+// Join args from index, strip surrounding double quotes if present, then unescape C-style sequences.
+static std::string JoinStripQuotesUnescape(const std::vector<std::string> &args, size_t start) {
+    std::string s;
+    for (size_t i = start; i < args.size(); ++i) {
+        if (i > start) s.push_back(' ');
+        s.append(args[i]);
+    }
+    auto ltrim = [](std::string &str){ size_t i = 0; while (i < str.size() && isspace((unsigned char)str[i])) ++i; if (i) str.erase(0,i); };
+    auto rtrim = [](std::string &str){ size_t i = str.size(); while (i > 0 && isspace((unsigned char)str[i - 1])) --i; if (i<str.size()) str.erase(i); };
+    ltrim(s); rtrim(s);
+    if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
+        s = s.substr(1, s.size() - 2);
+    }
+    s = utils::UnescapeString(s.c_str());
+    return s;
 }
 
 void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
@@ -262,8 +280,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         if (dot == std::string::npos) {
             HUDElement *e = hud.GetOrCreate(id);
             if (args.size() >= 4) {
-                std::string txt; for (size_t i = 3; i < args.size(); ++i) { if (i>3) txt.push_back(' '); txt += args[i]; }
-                txt = utils::UnescapeString(txt.c_str());
+                std::string txt = JoinStripQuotesUnescape(args, 3);
                 e->SetText(txt.c_str());
             }
             bml->SendIngameMessage(("[hud] added '" + id + "'\n").c_str());
@@ -273,8 +290,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
             HUDElement *child = hud.GetOrCreateChild(contId, childId);
             if (!child) { bml->SendIngameMessage("[hud] container not found\n"); return; }
             if (args.size() >= 4) {
-                std::string txt; for (size_t i = 3; i < args.size(); ++i) { if (i>3) txt.push_back(' '); txt += args[i]; }
-                txt = utils::UnescapeString(txt.c_str());
+                std::string txt = JoinStripQuotesUnescape(args, 3);
                 child->SetText(txt.c_str());
             }
             bml->SendIngameMessage(("[hud] added child '" + childId + "' in '" + contId + "'\n").c_str());
@@ -324,12 +340,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         HUDElement *cont = (containerId.find('.') == std::string::npos) ? hud.Find(containerId) : hud.FindByPath(containerId);
         auto *c = dynamic_cast<HUDContainer *>(cont);
         if (!c) { bml->SendIngameMessage("[hud] container not found\n"); return; }
-        std::string txt;
-        for (size_t i = 5; i < args.size(); ++i) {
-            if (i > 5) txt.push_back(' ');
-            txt += args[i];
-        }
-        txt = utils::UnescapeString(txt.c_str());
+        std::string txt = JoinStripQuotesUnescape(args, 5);
         HUDElement *child = c->AddChildNamed(childId, ""); if (!txt.empty()) child->SetText(txt.c_str());
         // no global registry for child id to avoid conflicts; future work could add nested naming
         bml->SendIngameMessage("[hud] child added\n");
@@ -549,8 +560,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         const std::string &id = args[2];
         HUDElement *e = (id.find('.') == std::string::npos) ? hud.GetOrCreate(id) : hud.FindByPath(id);
         if (!e) { bml->SendIngameMessage("[hud] not found\n"); return; }
-        std::string txt; for (size_t i = 3; i < args.size(); ++i) { if (i>3) txt.push_back(' '); txt += args[i]; }
-        txt = utils::UnescapeString(txt.c_str());
+        std::string txt = JoinStripQuotesUnescape(args, 3);
         e->SetText(txt.c_str());
         return;
     }
@@ -613,16 +623,16 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         if (what == "border_thickness" && args.size() >= 5) { e->SetPanelBorderThickness((float) atof(args[4].c_str())); return; }
         if (what == "rounding" && args.size() >= 5) { e->SetPanelRounding((float) atof(args[4].c_str())); return; }
         if (what == "page" && args.size() >= 5) { e->SetPage(args[4]); return; }
-        if (what == "template" && args.size() >= 5) { std::string txt; for (size_t i = 4; i < args.size(); ++i) { if(i > 4) txt.push_back(' '); txt += args[i]; } txt = utils::UnescapeString(txt.c_str()); e->SetTemplate(txt); return; }
+        if (what == "template" && args.size() >= 5) { std::string txt = JoinStripQuotesUnescape(args, 4); e->SetTemplate(txt); return; }
         // Container-specific options
         auto *c = dynamic_cast<HUDContainer*>(e);
         if (c) {
             if (what == "spacing" && args.size() >= 5) { c->SetSpacing((float)atof(args[4].c_str())); return; }
             if (what == "cols" && args.size() >= 5) { c->SetGridCols(std::max(1, ParseInteger(args[4]))); return; }
-            if (what == "align_x" && args.size() >= 5) { bool ok=true; c->SetAlignX(ParseAlignX(args[4], ok)); return; }
-            if (what == "align_y" && args.size() >= 5) { bool ok=true; c->SetAlignY(ParseAlignY(args[4], ok)); return; }
-            if (what == "cell_align_x" && args.size() >= 5) { bool ok=true; c->SetCellAlignX(ParseAlignX(args[4], ok)); return; }
-            if (what == "cell_align_y" && args.size() >= 5) { bool ok=true; c->SetCellAlignY(ParseAlignY(args[4], ok)); return; }
+            if (what == "align_x" && args.size() >= 5) { bool ok = true; c->SetAlignX(ParseAlignX(args[4], ok)); return; }
+            if (what == "align_y" && args.size() >= 5) { bool ok = true; c->SetAlignY(ParseAlignY(args[4], ok)); return; }
+            if (what == "cell_align_x" && args.size() >= 5) { bool ok = true; c->SetCellAlignX(ParseAlignX(args[4], ok)); return; }
+            if (what == "cell_align_y" && args.size() >= 5) { bool ok = true; c->SetCellAlignY(ParseAlignY(args[4], ok)); return; }
         }
         return;
     }
