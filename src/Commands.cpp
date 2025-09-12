@@ -263,6 +263,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
             HUDElement *e = hud.GetOrCreate(id);
             if (args.size() >= 4) {
                 std::string txt; for (size_t i = 3; i < args.size(); ++i) { if (i>3) txt.push_back(' '); txt += args[i]; }
+                txt = utils::UnescapeString(txt.c_str());
                 e->SetText(txt.c_str());
             }
             bml->SendIngameMessage(("[hud] added '" + id + "'\n").c_str());
@@ -273,6 +274,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
             if (!child) { bml->SendIngameMessage("[hud] container not found\n"); return; }
             if (args.size() >= 4) {
                 std::string txt; for (size_t i = 3; i < args.size(); ++i) { if (i>3) txt.push_back(' '); txt += args[i]; }
+                txt = utils::UnescapeString(txt.c_str());
                 child->SetText(txt.c_str());
             }
             bml->SendIngameMessage(("[hud] added child '" + childId + "' in '" + contId + "'\n").c_str());
@@ -327,6 +329,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
             if (i > 5) txt.push_back(' ');
             txt += args[i];
         }
+        txt = utils::UnescapeString(txt.c_str());
         HUDElement *child = c->AddChildNamed(childId, ""); if (!txt.empty()) child->SetText(txt.c_str());
         // no global registry for child id to avoid conflicts; future work could add nested naming
         bml->SendIngameMessage("[hud] child added\n");
@@ -547,6 +550,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         HUDElement *e = (id.find('.') == std::string::npos) ? hud.GetOrCreate(id) : hud.FindByPath(id);
         if (!e) { bml->SendIngameMessage("[hud] not found\n"); return; }
         std::string txt; for (size_t i = 3; i < args.size(); ++i) { if (i>3) txt.push_back(' '); txt += args[i]; }
+        txt = utils::UnescapeString(txt.c_str());
         e->SetText(txt.c_str());
         return;
     }
@@ -609,7 +613,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         if (what == "border_thickness" && args.size() >= 5) { e->SetPanelBorderThickness((float) atof(args[4].c_str())); return; }
         if (what == "rounding" && args.size() >= 5) { e->SetPanelRounding((float) atof(args[4].c_str())); return; }
         if (what == "page" && args.size() >= 5) { e->SetPage(args[4]); return; }
-        if (what == "template" && args.size() >= 5) { std::string txt; for (size_t i=4;i<args.size();++i){ if(i>4) txt.push_back(' '); txt+=args[i]; } e->SetTemplate(txt); return; }
+        if (what == "template" && args.size() >= 5) { std::string txt; for (size_t i = 4; i < args.size(); ++i) { if(i > 4) txt.push_back(' '); txt += args[i]; } txt = utils::UnescapeString(txt.c_str()); e->SetTemplate(txt); return; }
         // Container-specific options
         auto *c = dynamic_cast<HUDContainer*>(e);
         if (c) {
@@ -730,8 +734,7 @@ void CommandPalette::Execute(IBML *bml, const std::vector<std::string> &args) {
         float ts = pal.GetToneSaturation();
         char buf[256];
         snprintf(buf, sizeof(buf), "[palette] info: theme=%s cube=%s gray=%s mix=%.2f space=%s toning=%s tb=%.2f ts=%.2f\n",
-                 (theme.empty() ? "none" : theme.c_str()), cube.c_str(), gray.c_str(), mix, space.c_str(),
-                 toning ? "on" : "off", tb, ts);
+                 (theme.empty() ? "none" : theme.c_str()), cube.c_str(), gray.c_str(), mix, space.c_str(), toning ? "on" : "off", tb, ts);
         bml->SendIngameMessage(buf);
         // Explanations & tips
         bml->SendIngameMessage("[palette] cube: standard=xterm 6x6x6; theme=from bright primaries\n");
@@ -834,7 +837,7 @@ const std::vector<std::string> CommandPalette::GetTabCompletion(IBML *bml, const
         std::vector<std::string> out;
         out.emplace_back("none");
         AnsiPalette pal;
-        auto names = pal.GetAvailableThemes();
+        const auto names = pal.GetAvailableThemes();
         const std::string &prefix = args[2];
         std::string prefixLower = utils::ToLower(prefix);
         for (auto &name : names) {
