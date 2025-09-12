@@ -75,6 +75,8 @@ public:
     int GetHUD();
     void SetHUD(int mode);
 
+    HUD &GetHUDWindow() { return m_HUD; }
+
     MessageBoard &GetMessageBoard() { return m_MessageBoard; }
 
 private:
