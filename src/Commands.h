@@ -126,9 +126,9 @@ public:
     void Execute(IBML *bml, const std::vector<std::string> &args) override;
     const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override {
         if (args.size() == 2)
-            return {"title", "fps", "sr", "on", "off"};
-        if (args.size() == 3)
-            return {"on", "off"};
+            return {"on", "off", "title", "fps", "sr", "add", "text", "set", "del", "list", "get", "vstack", "hstack", "grid", "child", "page", "load", "save", "savetree", "sample", "help", "mv", "rename", "cp", "clone"};
+        if (args.size() >= 3 && args[1] == std::string("set"))
+            return {"pos", "scale", "visible", "wrap_px", "wrap_frac", "tabs", "panel", "panel_bg", "panel_border", "padding", "border_thickness", "rounding", "page", "template", "spacing", "cols", "align_x", "align_y", "cell_align_x", "cell_align_y"};
         return {};
     }
 
