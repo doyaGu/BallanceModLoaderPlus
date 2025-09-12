@@ -6,6 +6,7 @@
 #include <utf8.h>
 
 #include "AnsiPalette.h"
+#include "StringUtils.h"
 
 namespace AnsiText {
     // =============================================================================
@@ -58,17 +59,113 @@ namespace AnsiText {
     AnsiString::AnsiString(const std::string &text) { SetText(text); }
     AnsiString::AnsiString(std::string &&text) { SetText(std::move(text)); }
 
+    void AnsiString::RebindSegmentsPointers(const char *oldBase, const char *newBase) {
+        if (!oldBase || !newBase) return;
+        if (oldBase == newBase) return;
+        for (auto &seg : m_Segments) {
+            if (seg.begin && seg.end) {
+                ptrdiff_t offB = seg.begin - oldBase;
+                ptrdiff_t offE = seg.end   - oldBase;
+                if (offB >= 0 && offE >= offB) {
+                    seg.begin = newBase + offB;
+                    seg.end   = newBase + offE;
+                } else {
+                    // Fallback safety: if offsets look invalid, clear pointers to avoid UB
+                    seg.begin = seg.end = newBase;
+                }
+            }
+        }
+    }
+
+    AnsiString::AnsiString(const AnsiString &other) {
+        // Deep copy text then segments, adjust pointers to this->text buffer
+        const char *srcBase = other.m_OriginalText.c_str();
+        m_OriginalText = other.m_OriginalText;
+        m_Segments = other.m_Segments;
+        m_HasAnsi256BG = other.m_HasAnsi256BG;
+        m_HasTrueColorBG = other.m_HasTrueColorBG;
+        m_HasReverse = other.m_HasReverse;
+        const char *dstBase = m_OriginalText.c_str();
+        RebindSegmentsPointers(srcBase, dstBase);
+    }
+
+    AnsiString &AnsiString::operator=(const AnsiString &other) {
+        if (this == &other) return *this;
+        const char *srcBase = other.m_OriginalText.c_str();
+        m_OriginalText = other.m_OriginalText;
+        m_Segments = other.m_Segments;
+        m_HasAnsi256BG = other.m_HasAnsi256BG;
+        m_HasTrueColorBG = other.m_HasTrueColorBG;
+        m_HasReverse = other.m_HasReverse;
+        const char *dstBase = m_OriginalText.c_str();
+        RebindSegmentsPointers(srcBase, dstBase);
+        return *this;
+    }
+
+    AnsiString::AnsiString(AnsiString &&other) noexcept {
+        const char *srcBase = other.m_OriginalText.c_str();
+        m_OriginalText = std::move(other.m_OriginalText);
+        m_Segments = std::move(other.m_Segments);
+        m_HasAnsi256BG = other.m_HasAnsi256BG;
+        m_HasTrueColorBG = other.m_HasTrueColorBG;
+        m_HasReverse = other.m_HasReverse;
+        const char *dstBase = m_OriginalText.c_str();
+        RebindSegmentsPointers(srcBase, dstBase);
+    }
+
+    AnsiString &AnsiString::operator=(AnsiString &&other) noexcept {
+        if (this == &other) return *this;
+        const char *srcBase = other.m_OriginalText.c_str();
+        m_OriginalText = std::move(other.m_OriginalText);
+        m_Segments = std::move(other.m_Segments);
+        m_HasAnsi256BG = other.m_HasAnsi256BG;
+        m_HasTrueColorBG = other.m_HasTrueColorBG;
+        m_HasReverse = other.m_HasReverse;
+        const char *dstBase = m_OriginalText.c_str();
+        RebindSegmentsPointers(srcBase, dstBase);
+        return *this;
+    }
+
+    static bool IsValidUtf8Z(const char *s) {
+        if (!s) return true;
+        return utf8valid(reinterpret_cast<const utf8_int8_t *>(s)) == nullptr;
+    }
+
+    static std::string NormalizeToUtf8(const char *s) {
+        if (!s) return std::string();
+        // Fast path: already valid UTF-8
+        if (IsValidUtf8Z(s)) return std::string(s);
+        // Fallback: treat input as ANSI/ACP and convert to UTF-8
+        // This covers cases where callers pass local-encoded strings.
+        std::wstring w = utils::AnsiToUtf16(s);
+        return utils::Utf16ToUtf8(w);
+    }
+
+    static std::string NormalizeToUtf8(const std::string &s) {
+        if (s.empty()) return s;
+        if (utf8valid(reinterpret_cast<const utf8_int8_t*>(s.c_str())) == nullptr) return s;
+        std::wstring w = utils::AnsiToUtf16(s.c_str());
+        return utils::Utf16ToUtf8(w);
+    }
+
     void AnsiString::SetText(const char *text) {
         if (!text) { Clear(); return; }
-        AssignAndParse(std::string(text));
+        AssignAndParse(NormalizeToUtf8(text));
     }
 
     void AnsiString::SetText(const std::string &text) {
-        AssignAndParse(std::string(text));
+        AssignAndParse(NormalizeToUtf8(text));
     }
 
     void AnsiString::SetText(std::string &&text) {
-        AssignAndParse(std::move(text));
+        if (text.empty()) { Clear(); return; }
+        // Validate and normalize without extra copies when possible
+        if (utf8valid(reinterpret_cast<const utf8_int8_t*>(text.c_str())) == nullptr) {
+            AssignAndParse(std::move(text));
+        } else {
+            std::wstring w = utils::AnsiToUtf16(text.c_str());
+            AssignAndParse(utils::Utf16ToUtf8(w));
+        }
     }
 
     void AnsiString::AssignAndParse(std::string &&text) {
@@ -80,6 +177,9 @@ namespace AnsiText {
     void AnsiString::Clear() {
         m_OriginalText.clear();
         m_Segments.clear();
+        m_HasAnsi256BG = false;
+        m_HasTrueColorBG = false;
+        m_HasReverse = false;
     }
 
     void AnsiString::ParseAnsiEscapeCodes() {
@@ -90,6 +190,12 @@ namespace AnsiText {
 
         const char *const base = m_OriginalText.c_str();
         const char *const end = base + m_OriginalText.size();
+        // Skip UTF-8 BOM if present to avoid rendering garbage at start of first line
+        const char *const start = ((end - base) >= 3 &&
+                                   (unsigned char)base[0] == 0xEF &&
+                                   (unsigned char)base[1] == 0xBB &&
+                                   (unsigned char)base[2] == 0xBF)
+                                  ? (base + 3) : base;
 
         // Reset aggregate flags
         m_HasAnsi256BG = false;
@@ -97,25 +203,42 @@ namespace AnsiText {
         m_HasReverse = false;
 
         // Fast path: no ESC present -> single zero-copy segment
-        if (std::memchr(base, '\033', (size_t)(end - base)) == nullptr) {
-            m_Segments.emplace_back(base, end, ConsoleColor());
+        if (std::memchr(start, 0x1B, (size_t)(end - start)) == nullptr &&
+            std::memchr(start, 0x9B, (size_t)(end - start)) == nullptr) {
+            m_Segments.emplace_back(start, end, ConsoleColor());
             return;
         }
 
         // General parser with zero-copy segments
         m_Segments.reserve(8);
         ConsoleColor currentColor;
-        const char *p = base;
-        const char *segStart = base;
+        const char *p = start;
+        const char *segStart = start;
 
         while (p < end) {
             if ((end - p) >= 2 && p[0] == '\033' && p[1] == '[') {
                 const char *seqStart = p + 2;
-                const int kMaxSeqLen = 64;
-                int n = 0;
+
+                // Finite-state scan per ECMA-48: parameters (0x30-0x3F), intermediates (0x20-0x2F), final (0x40-0x7E)
                 const char *q = seqStart;
-                while (q < end && *q != 'm' && n < kMaxSeqLen) { ++q; ++n; }
-                if (q < end && *q == 'm') {
+                bool sawFinal = false;
+                bool isSGR = false;
+
+                // Consume parameter bytes
+                while (q < end) {
+                    unsigned char ch = (unsigned char)*q;
+                    if (ch >= 0x30 && ch <= 0x3F) { ++q; continue; } // params: 0-9:;<=>?
+                    if (ch >= 0x20 && ch <= 0x2F) { ++q; continue; } // intermediates (rare for SGR)
+                    if (ch >= 0x40 && ch <= 0x7E) {                    // final byte
+                        sawFinal = true;
+                        isSGR = (ch == 'm');
+                        break;
+                    }
+                    // Any other byte (including ESC, C0 controls) -> abort CSI parsing
+                    break;
+                }
+
+                if (sawFinal && isSGR) {
                     // Flush preceding text [segStart, p)
                     if (segStart < p) {
                         if (!m_Segments.empty() && m_Segments.back().color == currentColor && m_Segments.back().end == segStart) {
@@ -124,13 +247,39 @@ namespace AnsiText {
                             m_Segments.emplace_back(segStart, p, currentColor);
                         }
                     }
-                    currentColor = ParseAnsiColorSequence(seqStart, (size_t)(q - seqStart), currentColor,
-                                                         &m_HasAnsi256BG, &m_HasTrueColorBG, &m_HasReverse);
-                    p = q + 1;      // skip 'm'
+                    currentColor = ParseAnsiColorSequence(seqStart, (size_t)(q - seqStart), currentColor, &m_HasAnsi256BG, &m_HasTrueColorBG, &m_HasReverse);
+                    p = q + 1;      // skip final 'm'
                     segStart = p;
                     continue;
                 }
-                // invalid/incomplete sequence: treat bytes as literal
+                // Not an SGR (or incomplete): fall through to treat bytes literally
+            }
+            else if ((end - p) >= 1 && (unsigned char)p[0] == 0x9B) { // 8-bit C1 CSI variant
+                const char *seqStart = p + 1;
+                const char *q = seqStart;
+                bool sawFinal = false;
+                bool isSGR = false;
+                while (q < end) {
+                    unsigned char ch = (unsigned char)*q;
+                    if (ch >= 0x30 && ch <= 0x3F) { ++q; continue; }
+                    if (ch >= 0x20 && ch <= 0x2F) { ++q; continue; }
+                    if (ch >= 0x40 && ch <= 0x7E) { sawFinal = true; isSGR = (ch == 'm'); break; }
+                    break;
+                }
+                if (sawFinal && isSGR) {
+                    if (segStart < p) {
+                        if (!m_Segments.empty() && m_Segments.back().color == currentColor && m_Segments.back().end == segStart) {
+                            m_Segments.back().end = p;
+                        } else {
+                            m_Segments.emplace_back(segStart, p, currentColor);
+                        }
+                    }
+                    currentColor = ParseAnsiColorSequence(seqStart, (size_t)(q - seqStart), currentColor, &m_HasAnsi256BG, &m_HasTrueColorBG, &m_HasReverse);
+                    p = q + 1; // skip final 'm'
+                    segStart = p;
+                    continue;
+                }
+                // else treat as literal
             }
             ++p;
         }
@@ -183,9 +332,9 @@ namespace AnsiText {
         const char *p = sequence;
         const char *const e = sequence + length;
 
-        auto skip_sep = [&]() { while (p < e && (*p == ';' || *p == ' ')) ++p; };
-        auto read_int = [&](int &out) -> bool {
-            skip_sep();
+        auto skipSep = [&]() { while (p < e && (*p == ';' || *p == ' ')) ++p; };
+        auto readInt = [&](int &out) -> bool {
+            skipSep();
             if (p >= e || *p < '0' || *p > '9') return false;
             int v = 0;
             while (p < e && *p >= '0' && *p <= '9') { v = v * 10 + (*p - '0'); ++p; }
@@ -193,7 +342,7 @@ namespace AnsiText {
         };
 
         int code = 0;
-        while (read_int(code)) {
+        while (readInt(code)) {
             if (code == 0) { color = ConsoleColor(); continue; }
 
             if (code >= 30 && code <= 37) { color.fgIsAnsi256 = true; color.fgAnsiIndex = code - 30; continue; }
@@ -204,16 +353,16 @@ namespace AnsiText {
             if (code == 38 || code == 48) {
                 const bool isBg = (code == 48);
                 int mode = -1;
-                if (!read_int(mode)) break;
+                if (!readInt(mode)) break;
                 if (mode == 5) {
-                    int idx = 0; if (!read_int(idx)) break;
+                    int idx = 0; if (!readInt(idx)) break;
                     idx = std::clamp(idx, 0, 255);
                     if (isBg) { color.bgIsAnsi256 = true; color.bgAnsiIndex = idx; if (out_hasAnsi256Bg) *out_hasAnsi256Bg = true; }
                     else      { color.fgIsAnsi256 = true; color.fgAnsiIndex = idx; }
                     continue;
                 }
                 if (mode == 2) {
-                    int r=0,g=0,b=0; if (!read_int(r) || !read_int(g) || !read_int(b)) break;
+                    int r=0,g=0,b=0; if (!readInt(r) || !readInt(g) || !readInt(b)) break;
                     ImU32 v = GetRgbColor(r, g, b);
                     if (isBg) { color.background = v; color.bgIsAnsi256 = false; color.bgAnsiIndex = -1; if (out_hasTrueColorBg) *out_hasTrueColorBg = true; }
                     else      { color.foreground = v; color.fgIsAnsi256 = false; color.fgAnsiIndex = -1; }
@@ -724,6 +873,14 @@ namespace AnsiText {
         const float usedFontSize = (fontSize > 0.0f) ? fontSize : ImGui::GetStyle().FontSizeBase;
         ImFontBaked *baked = font ? font->GetFontBaked(usedFontSize) : nullptr;
 
+        // Ensure font atlas texture is bound for the duration of this text draw to avoid accidental use
+        // of a previously-bound texture (which may cause random-looking glyphs on first line).
+        bool pushedFontTex = false;
+        if (font && font->ContainerAtlas) {
+            drawList->PushTextureID(font->ContainerAtlas->TexRef);
+            pushedFontTex = true;
+        }
+
         // Pre-fetch line metrics
         const float ascent = baked ? std::max(0.0f, baked->Ascent) : usedFontSize * 0.8f;
         const float descentMag = baked ? std::max(0.0f, -baked->Descent) : usedFontSize * 0.2f;
@@ -881,5 +1038,8 @@ namespace AnsiText {
                 }
             }
         }
+
+        if (pushedFontTex)
+            drawList->PopTextureID();
     }
 } // namespace AnsiText
