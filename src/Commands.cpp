@@ -9,6 +9,7 @@
 
 #include "ModContext.h"
 #include "StringUtils.h"
+#include "PathUtils.h"
 #include "AnsiPalette.h"
 
 void CommandBML::Execute(IBML *bml, const std::vector<std::string> &args) {
@@ -300,20 +301,24 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         const std::string &id = args[2];
         size_t dot = id.find('.');
         if (dot == std::string::npos) {
-            HUDElement *e = hud.GetOrCreate(id);
+            auto e = hud.GetOrCreate(id);
             if (args.size() >= 4) {
                 std::string txt = JoinStripQuotesUnescape(args, 3);
-                e->SetText(txt.c_str());
+                if (auto textElement = HUDCast<HUDText>(e)) {
+                    textElement->SetText(txt.c_str());
+                }
             }
             bml->SendIngameMessage(("[hud] added '" + id + "'\n").c_str());
         } else {
             std::string contId = id.substr(0, dot);
             std::string childId = id.substr(dot + 1);
-            HUDElement *child = hud.GetOrCreateChild(contId, childId);
+            auto child = hud.GetOrCreateChild(contId, childId);
             if (!child) { bml->SendIngameMessage("[hud] container not found\n"); return; }
             if (args.size() >= 4) {
                 std::string txt = JoinStripQuotesUnescape(args, 3);
-                child->SetText(txt.c_str());
+                if (auto textElement = HUDCast<HUDText>(child)) {
+                    textElement->SetText(txt.c_str());
+                }
             }
             bml->SendIngameMessage(("[hud] added child '" + childId + "' in '" + contId + "'\n").c_str());
         }
@@ -322,15 +327,14 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
     if (args.size() >= 3 && (args[1] == "vstack" || args[1] == "hstack")) {
         const std::string &id = args[2];
         size_t lastDot = id.find_last_of('.');
-        HUDContainer *c = nullptr;
+        std::shared_ptr<HUDContainer> c = nullptr;
         if (lastDot == std::string::npos) {
-            c = (args[1] == std::string("vstack")) ? hud.AddVStack() : hud.AddHStack();
-            hud.Register(id, c);
+            c = (args[1] == std::string("vstack")) ? hud.AddVStack(id) : hud.AddHStack(id);
         } else {
             std::string parentPath = id.substr(0, lastDot);
             std::string childName = id.substr(lastDot + 1);
-            HUDElement *pe = hud.FindByPath(parentPath);
-            auto *pc = dynamic_cast<HUDContainer *>(pe);
+            auto pe = hud.FindByPath(parentPath);
+            auto pc = HUDCast<HUDContainer>(pe);
             if (!pc) { bml->SendIngameMessage("[hud] parent container not found\n"); return; }
             HUDLayoutKind kind = (args[1] == std::string("hstack")) ? HUDLayoutKind::Horizontal : HUDLayoutKind::Vertical;
             c = pc->AddContainerChild(kind, childName, 1);
@@ -341,14 +345,14 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
     }
     if (args.size() >= 4 && args[1] == "grid") {
         const std::string &id = args[2]; int cols = std::max(1, ParseInteger(args[3]));
-        size_t lastDot = id.find_last_of('.'); HUDContainer *c = nullptr;
+        size_t lastDot = id.find_last_of('.'); std::shared_ptr<HUDContainer> c = nullptr;
         if (lastDot == std::string::npos) {
-            c = hud.AddGrid(cols); hud.Register(id, c);
+            c = hud.AddGrid(id, cols);
         } else {
             std::string parentPath = id.substr(0, lastDot);
             std::string childName = id.substr(lastDot + 1);
-            HUDElement *pe = hud.FindByPath(parentPath);
-            auto *pc = dynamic_cast<HUDContainer *>(pe);
+            auto pe = hud.FindByPath(parentPath);
+            auto pc = HUDCast<HUDContainer>(pe);
             if (!pc) { bml->SendIngameMessage("[hud] parent container not found\n"); return; }
             c = pc->AddContainerChild(HUDLayoutKind::Grid, childName, cols);
             hud.Register(id, c);
@@ -359,53 +363,25 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
     if (args.size() >= 5 && args[1] == "child" && args[2] == std::string("add")) {
         const std::string &containerId = args[3];
         const std::string &childId = args[4];
-        HUDElement *cont = (containerId.find('.') == std::string::npos) ? hud.Find(containerId) : hud.FindByPath(containerId);
-        auto *c = dynamic_cast<HUDContainer *>(cont);
+        auto cont = (containerId.find('.') == std::string::npos) ? hud.Find(containerId) : hud.FindByPath(containerId);
+        auto c = HUDCast<HUDContainer>(cont);
         if (!c) { bml->SendIngameMessage("[hud] container not found\n"); return; }
         std::string txt = JoinStripQuotesUnescape(args, 5);
-        HUDElement *child = c->AddChildNamed(childId, ""); if (!txt.empty()) child->SetText(txt.c_str());
+        auto child = c->AddChildNamed(childId, "");
+        if (!txt.empty()) {
+            if (child) {
+                child->SetText(txt.c_str());
+            }
+        }
         // no global registry for child id to avoid conflicts; future work could add nested naming
         bml->SendIngameMessage("[hud] child added\n");
-        return;
-    }
-    if (args.size() >= 3 && args[1] == "load") {
-        // hud load <relative|absolute path>
-        std::string p; for (size_t i=2;i<args.size();++i){ if(i>2) p.push_back(' '); p+=args[i]; }
-        std::wstring wp = utils::ToWString(p);
-        if (hud.LoadConfig(wp)) bml->SendIngameMessage("[hud] config loaded\n"); else bml->SendIngameMessage("[hud] failed to load config\n");
-        return;
-    }
-    if (args.size() >= 2 && args[1] == "save") {
-        std::wstring wp;
-        if (args.size() >= 3) wp = utils::ToWString(args[2]);
-        else {
-            std::string dir = BML_GetModContext()->GetDirectoryUtf8(BML_DIR_LOADER);
-            wp = utils::ToWString(dir + "\\hud.ini");
-        }
-        if (hud.SaveConfigIni(wp)) bml->SendIngameMessage("[hud] config saved\n"); else bml->SendIngameMessage("[hud] failed to save config\n");
-        return;
-    }
-    if (args.size() >= 3 && args[1] == "savetree") {
-        const std::string &pathArg = args[2];
-        std::wstring wp;
-        if (args.size() >= 4) wp = utils::ToWString(args[3]);
-        else {
-            std::string dir = BML_GetModContext()->GetDirectoryUtf8(BML_DIR_LOADER);
-            wp = utils::ToWString(dir + "\\hud_subtree.ini");
-        }
-        if (hud.SaveSubtreeIni(wp, pathArg)) bml->SendIngameMessage("[hud] subtree saved\n"); else bml->SendIngameMessage("[hud] subtree save failed\n");
-        return;
-    }
-    if (args.size() >= 2 && args[1] == "sample") {
-        bool wrote = hud.SaveSampleIfMissing();
-        bml->SendIngameMessage(wrote ? "[hud] sample created (hud.ini)\n" : "[hud] sample exists\n");
         return;
     }
     if (args.size() >= 4 && args[1] == "mv") {
         const std::string &src = args[2];
         const std::string &dst = args[3];
         std::string newName = (args.size() >= 5) ? args[4] : std::string();
-        HUDContainer *dest = hud.EnsureContainerPath(dst, HUDLayoutKind::Vertical);
+        auto dest = hud.EnsureContainerPath(dst, HUDLayoutKind::Vertical);
         if (!dest) { bml->SendIngameMessage("[hud] invalid destination\n"); return; }
         auto up = hud.StealByPath(src);
         if (!up) { bml->SendIngameMessage("[hud] source not found\n"); return; }
@@ -424,7 +400,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         size_t dot = path.find_last_of('.');
         if (dot == std::string::npos) {
             // root-level
-            HUDElement *e = hud.Find(path);
+            auto e = hud.Find(path);
             if (!e) { bml->SendIngameMessage("[hud] not found\n"); return; }
             // Update global name mapping
             // Remove old
@@ -436,8 +412,8 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         } else {
             std::string parentPath = path.substr(0, dot);
             std::string oldName = path.substr(dot + 1);
-            HUDElement *pe = hud.FindByPath(parentPath);
-            auto *pc = dynamic_cast<HUDContainer *>(pe);
+            auto pe = hud.FindByPath(parentPath);
+            auto pc = HUDCast<HUDContainer>(pe);
             if (!pc) { bml->SendIngameMessage("[hud] parent not found\n"); return; }
             // Re-map
             auto up = pc->StealChild(oldName);
@@ -451,9 +427,9 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         const std::string &src = args[2];
         const std::string &dst = args[3];
         std::string newName = (args.size() >= 5) ? args[4] : std::string();
-        HUDElement *srcE = hud.FindByPath(src);
+        auto srcE = hud.FindByPath(src);
         if (!srcE) { bml->SendIngameMessage("[hud] source not found\n"); return; }
-        HUDContainer *dest = hud.EnsureContainerPath(dst, HUDLayoutKind::Vertical);
+        auto dest = hud.EnsureContainerPath(dst, HUDLayoutKind::Vertical);
         if (!dest) { bml->SendIngameMessage("[hud] invalid destination\n"); return; }
         auto up = hud.CloneElement(srcE);
         if (!up) { bml->SendIngameMessage("[hud] copy failed\n"); return; }
@@ -465,7 +441,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
     if (args.size() >= 3 && args[1] == "clone") {
         const std::string &src = args[2];
         std::string newName = (args.size() >= 4) ? args[3] : std::string();
-        HUDElement *srcE = hud.FindByPath(src);
+        auto srcE = hud.FindByPath(src);
         if (!srcE) { bml->SendIngameMessage("[hud] source not found\n"); return; }
         auto up = hud.CloneElement(srcE);
         if (!up) { bml->SendIngameMessage("[hud] clone failed\n"); return; }
@@ -474,7 +450,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         if (!hud.GetActivePage().empty()) {
             const std::string &pc = hud.GetPageDefaultContainer(hud.GetActivePage());
             if (!pc.empty()) {
-                HUDContainer *dest = hud.EnsureContainerPath(pc, HUDLayoutKind::Vertical);
+                auto dest = hud.EnsureContainerPath(pc, HUDLayoutKind::Vertical);
                 if (dest) { hud.AttachToContainer(dest, std::move(up), newName); bml->SendIngameMessage("[hud] cloned\n"); return; }
             }
             // fallback: set page and attach to root
@@ -542,15 +518,11 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         bml->SendIngameMessage("  hud set <id> pos <anchor> [x y]   : set position\n");
         bml->SendIngameMessage("  hud set <id> scale <f>|visible on|off|wrap_px <px>|wrap_frac <f>|tabs <n>\n");
         bml->SendIngameMessage("  hud set <id> panel on|off|panel_bg <col>|panel_border <col>|padding <px>|border_thickness <px>|rounding <px>\n");
-        bml->SendIngameMessage("  hud set <id> page <name>|template <text>\n");
+        bml->SendIngameMessage("  hud set <id> page <name>\n");
         bml->SendIngameMessage("  hud vstack|hstack <id>            : create container\n");
         bml->SendIngameMessage("  hud grid <id> <cols>              : create grid container\n");
         bml->SendIngameMessage("  hud child add <container> <child> [ansi_text]\n");
         bml->SendIngameMessage("  hud set <container> spacing <px>|cols <n>|align_x <l|c|r>|align_y <t|m|b>|cell_align_x <...>|cell_align_y <...>\n");
-        bml->SendIngameMessage("  hud load <path>                    : load config (ini)\n");
-        bml->SendIngameMessage("  hud save [path]                    : save current HUD\n");
-        bml->SendIngameMessage("  hud savetree <path> [file]        : save subtree to INI\n");
-        bml->SendIngameMessage("  hud sample                         : create sample hud.ini\n");
         bml->SendIngameMessage("  hud mv <src> <dstContainer> [new] : move element/container under container\n");
         bml->SendIngameMessage("  hud rename <path> <newName>       : rename element/container\n");
         bml->SendIngameMessage("  hud cp <src> <dstContainer> [new] : copy element/container under container\n");
@@ -570,34 +542,28 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         bml->SendIngameMessage((std::string("[hud] active page = ") + (name.empty()?"<all>":name) + "\n").c_str());
         return;
     }
-    if (args.size() >= 2 && args[1] == "dump") {
-        std::string root;
-        if (args.size() >= 3) root = args[2];
-        std::string outline = hud.DumpOutline(root);
-        if (outline.empty()) bml->SendIngameMessage("[hud] no elements\n");
-        else bml->SendIngameMessage(outline.c_str());
-        return;
-    }
     if (args.size() >= 3 && args[1] == "text") {
         const std::string &id = args[2];
-        HUDElement *e = (id.find('.') == std::string::npos) ? hud.GetOrCreate(id) : hud.FindByPath(id);
+        auto e = (id.find('.') == std::string::npos) ? hud.GetOrCreate(id) : hud.FindByPath(id);
         if (!e) { bml->SendIngameMessage("[hud] not found\n"); return; }
         std::string txt = JoinStripQuotesUnescape(args, 3);
-        e->SetText(txt.c_str());
+        if (auto textElement = HUDCast<HUDText>(e)) {
+            textElement->SetText(txt.c_str());
+        }
         return;
     }
     if (args.size() >= 3 && args[1] == "del") {
         const std::string &id = args[2];
-        HUDElement *e = (id.find('.') == std::string::npos) ? hud.Find(id) : hud.FindByPath(id);
+        auto e = (id.find('.') == std::string::npos) ? hud.Find(id) : hud.FindByPath(id);
         if (!e) { bml->SendIngameMessage("[hud] not found\n"); return; }
-        auto *c = dynamic_cast<HUDContainer*>(e);
+        auto c = HUDCast<HUDContainer>(e);
         if (c) {
             bool confirmed = false;
             for (size_t i = 3; i < args.size(); ++i) {
                 std::string f = utils::ToLower(args[i]);
                 if (f == "--yes" || f == "-y" || f == "--force") { confirmed = true; break; }
             }
-            if (!confirmed && !c->Children().empty()) {
+            if (!confirmed && c->GetChildCount() > 0) {
                 bml->SendIngameMessage("[hud] container not empty. Use --yes to confirm.\n");
                 return;
             }
@@ -616,7 +582,7 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
     }
     if (args.size() >= 3 && args[1] == "get") {
         const std::string &id = args[2];
-        HUDElement *e = (id.find('.') == std::string::npos) ? hud.Find(id) : hud.FindByPath(id);
+        auto e = (id.find('.') == std::string::npos) ? hud.Find(id) : hud.FindByPath(id);
         if (!e) { bml->SendIngameMessage("[hud] not found\n"); return; }
         std::string info = "[hud] "; info += id; info += ": "; info += (e->IsVisible()?"visible":"hidden"); info += "; page="; info += e->GetPage(); info += "\n";
         bml->SendIngameMessage(info.c_str());
@@ -624,20 +590,23 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
     }
     if (args.size() >= 5 && args[1] == "set") {
         const std::string &id = args[2];
-        HUDElement *e = (id.find('.') == std::string::npos) ? hud.GetOrCreate(id) : hud.FindByPath(id);
+        auto e = (id.find('.') == std::string::npos) ? hud.GetOrCreate(id) : hud.FindByPath(id);
         const std::string what = utils::ToLower(args[3]);
         if (what == "pos") {
             bool ok=false; AnchorPoint ap = ParseAnchor(args[4], ok);
             if (!ok) { bml->SendIngameMessage("[hud] pos <anchor> [x y]\n"); return; }
             float ox = 0.0f, oy = 0.0f;
             if (args.size() >= 7) { ox = (float) atof(args[5].c_str()); oy = (float) atof(args[6].c_str()); }
-            e->SetAnchor(ap); e->SetOffset(ox, oy); return;
+            e->SetAnchor(ap); e->SetOffsetPixels(ox, oy); return;
         }
-        if (what == "scale" && args.size() >= 5) { e->SetScale((float) atof(args[4].c_str())); return; }
+        // Text-specific properties - only apply to HUDText elements
+        if (auto textElement = HUDCast<HUDText>(e)) {
+            if (what == "scale" && args.size() >= 5) { textElement->SetScale((float) atof(args[4].c_str())); return; }
+            if (what == "wrap_px" && args.size() >= 5) { textElement->SetWrapWidthPx((float) atof(args[4].c_str())); return; }
+            if (what == "wrap_frac" && args.size() >= 5) { textElement->SetWrapWidthFrac((float) atof(args[4].c_str())); return; }
+            if (what == "tabs" && args.size() >= 5) { textElement->SetTabColumns(std::max(1, ParseInteger(args[4]))); return; }
+        }
         if (what == "visible" && args.size() >= 5) { e->SetVisible(ParseBoolean(args[4])); return; }
-        if (what == "wrap_px" && args.size() >= 5) { e->SetWrapWidthPx((float) atof(args[4].c_str())); return; }
-        if (what == "wrap_frac" && args.size() >= 5) { e->SetWrapWidthFrac((float) atof(args[4].c_str())); return; }
-        if (what == "tabs" && args.size() >= 5) { e->SetTabColumns(std::max(1, ParseInteger(args[4]))); return; }
         if (what == "panel" && args.size() >= 5) { e->EnablePanel(ParseBoolean(args[4])); return; }
         if (what == "panel_bg" && args.size() >= 5) { ImU32 col; if (ParseColor(args[4], col)) { e->SetPanelBgColor(col); } return; }
         if (what == "panel_border" && args.size() >= 5) { ImU32 col; if (ParseColor(args[4], col)) { e->SetPanelBorderColor(col); } return; }
@@ -645,9 +614,8 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         if (what == "border_thickness" && args.size() >= 5) { e->SetPanelBorderThickness((float) atof(args[4].c_str())); return; }
         if (what == "rounding" && args.size() >= 5) { e->SetPanelRounding((float) atof(args[4].c_str())); return; }
         if (what == "page" && args.size() >= 5) { e->SetPage(args[4]); return; }
-        if (what == "template" && args.size() >= 5) { std::string txt = JoinStripQuotesUnescape(args, 4); e->SetTemplate(txt); return; }
         // Container-specific options
-        auto *c = dynamic_cast<HUDContainer*>(e);
+        auto c = HUDCast<HUDContainer>(e);
         if (c) {
             if (what == "spacing" && args.size() >= 5) { c->SetSpacing((float)atof(args[4].c_str())); return; }
             if (what == "cols" && args.size() >= 5) { c->SetGridCols(std::max(1, ParseInteger(args[4]))); return; }
@@ -658,6 +626,14 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
         }
         return;
     }
+}
+
+const std::vector<std::string> CommandHUD::GetTabCompletion(IBML *bml, const std::vector<std::string> &args) {
+    if (args.size() == 2)
+        return {"on", "off", "title", "fps", "sr", "add", "text", "set", "del", "list", "get", "vstack", "hstack", "grid", "child", "page", "help", "mv", "rename", "cp", "clone"};
+    if (args.size() >= 3 && args[1] == std::string("set"))
+        return {"pos", "scale", "visible", "wrap_px", "wrap_frac", "tabs", "text_align", "panel", "panel_bg", "panel_border", "padding", "border_thickness", "rounding", "page", "spacing", "cols", "align_x", "align_y", "cell_align_x", "cell_align_y"};
+    return {};
 }
 
 void CommandPalette::Execute(IBML *bml, const std::vector<std::string> &args) {

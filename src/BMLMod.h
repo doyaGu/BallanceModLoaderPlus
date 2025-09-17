@@ -6,6 +6,8 @@
 #include "BML/IDataShare.h"
 
 #include "HUD.h"
+#include "FpsCounter.h"
+#include "SRTimer.h"
 #include "ModMenu.h"
 #include "MapMenu.h"
 #include "CommandBar.h"
@@ -79,6 +81,20 @@ public:
 
     MessageBoard &GetMessageBoard() { return m_MessageBoard; }
 
+    // Built-in HUD element controls
+    void ShowTitle(bool show);
+    void ShowFPS(bool show);
+    void ShowSRTimer(bool show);
+
+    // Timer controls
+    void StartSRTimer();
+    void PauseSRTimer();
+    void ResetSRTimer();
+    float GetSRTime() const;
+
+    // FPS controls
+    void SetFPSUpdateFrequency(uint32_t frames);
+
 private:
     void InitConfigs();
     void InitGUI();
@@ -99,6 +115,11 @@ private:
 
     void OnResize();
 
+    // HUD builtin methods
+    void SetupDefaultHUDElements();
+    void UpdateTimerDisplay();
+    void UpdateCheatState();
+
     BML::IDataShare *m_DataShare = nullptr;
 
     CKContext *m_CKContext = nullptr;
@@ -113,6 +134,17 @@ private:
     MapMenu m_MapMenu;
     CommandBar m_CommandBar;
     MessageBoard m_MessageBoard;
+
+    // HUD builtin components
+    FpsCounter m_FPSCounter;
+    SRTimer m_SRTimer;
+    bool m_LastCheatState = false;
+
+    // Cached HUD element references for performance
+    std::shared_ptr<HUDElement> m_HUDTitleElement;
+    std::shared_ptr<HUDElement> m_HUDFpsElement;
+    std::shared_ptr<HUDElement> m_HUDSRElement;
+    std::shared_ptr<HUDElement> m_HUDCheatElement;
 
     std::string m_ImGuiIniFilename;
     std::string m_ImGuiLogFilename;
