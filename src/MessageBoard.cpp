@@ -23,14 +23,16 @@ void MessageBoard::MessageUnit::SetMessage(const char *msg) {
     ansiText.SetText(msg);
     cachedHeight = -1.0f;
     cachedWrapWidth = -1.0f;
+    cachedLineSpacing = -1.0f;
 }
 
-float MessageBoard::MessageUnit::GetTextHeight(float wrapWidth, int tabColumns) const {
-    if (cachedHeight >= 0.0f && std::abs(cachedWrapWidth - wrapWidth) < 0.5f)
+float MessageBoard::MessageUnit::GetTextHeight(float wrapWidth, int tabColumns, float lineSpacing) const {
+    if (cachedHeight >= 0.0f && std::abs(cachedWrapWidth - wrapWidth) < 0.5f && std::abs(cachedLineSpacing - lineSpacing) < 0.5f)
         return cachedHeight;
 
-    cachedHeight = AnsiText::CalculateHeight(ansiText, wrapWidth, 0, tabColumns);
+    cachedHeight = AnsiText::CalculateHeight(ansiText, wrapWidth, 0, tabColumns, lineSpacing);
     cachedWrapWidth = wrapWidth;
+    cachedLineSpacing = lineSpacing;
     return cachedHeight;
 }
 
@@ -39,6 +41,7 @@ void MessageBoard::MessageUnit::Reset() {
     timer = 0.0f;
     cachedHeight = -1.0f;
     cachedWrapWidth = -1.0f;
+    cachedLineSpacing = -1.0f;
 }
 
 
@@ -156,7 +159,7 @@ float MessageBoard::CalculateContentHeight(float wrapWidth) const {
     for (int i = 0; i < m_MessageCount; i++) {
         const MessageUnit &msg = m_Messages[i];
         if (ShouldShowMessage(msg)) {
-            contentHeight += msg.GetTextHeight(wrapWidth, m_TabColumns);
+            contentHeight += msg.GetTextHeight(wrapWidth, m_TabColumns, m_MessageGap);
             visibleCount++;
         }
     }
@@ -293,7 +296,7 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
         if (!shouldShow)
             continue;
         indices.push_back(i);
-        heights.push_back(msg.GetTextHeight(wrapWidth, m_TabColumns));
+        heights.push_back(msg.GetTextHeight(wrapWidth, m_TabColumns, m_MessageGap));
     }
 
     const int n = (int)indices.size();
@@ -368,7 +371,7 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
 }
 
 void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &message, const ImVec2 &startPos, float wrapWidth, float alpha) {
-    AnsiText::Renderer::DrawText(drawList, message.ansiText, startPos, wrapWidth, alpha);
+    AnsiText::Renderer::DrawText(drawList, message.ansiText, startPos, wrapWidth, alpha, 0.0f, m_TabColumns, nullptr, m_MessageGap);
 }
 
 // =============================================================================
