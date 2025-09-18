@@ -683,13 +683,14 @@ namespace AnsiText {
         return t < 1.0f ? 1.0f : (t > 4.0f ? 4.0f : t);
     }
 
-    float CalculateHeight(const AnsiString &text, float wrapWidth, float fontSize, int tabColumns) {
+    float CalculateHeight(const AnsiString &text, float wrapWidth, float fontSize, int tabColumns, float lineSpacing) {
         if (text.IsEmpty()) {
             return ImGui::GetTextLineHeightWithSpacing();
         }
 
         const float usedFontSize = (fontSize > 0.0f) ? fontSize : ImGui::GetStyle().FontSizeBase;
-        const float lineH = usedFontSize + ImGui::GetStyle().ItemSpacing.y;
+        const float spacing = (lineSpacing >= 0.0f) ? lineSpacing : ImGui::GetStyle().ItemSpacing.y;
+        const float lineH = usedFontSize + spacing;
 
         std::vector<Layout::Line> lines;
         Layout::BuildLines(text.GetSegments(), wrapWidth, tabColumns, usedFontSize, lines);
@@ -698,13 +699,14 @@ namespace AnsiText {
         return std::max(lineH, lineCount * lineH);
     }
 
-    ImVec2 CalculateSize(const AnsiString &text, float wrapWidth, float fontSize, int tabColumns) {
+    ImVec2 CalculateSize(const AnsiString &text, float wrapWidth, float fontSize, int tabColumns, float lineSpacing) {
         if (text.IsEmpty()) {
             return ImVec2(0.0f, ImGui::GetTextLineHeightWithSpacing());
         }
 
         const float usedFontSize = (fontSize > 0.0f) ? fontSize : ImGui::GetStyle().FontSizeBase;
-        const float lineH = usedFontSize + ImGui::GetStyle().ItemSpacing.y;
+        const float spacing = (lineSpacing >= 0.0f) ? lineSpacing : ImGui::GetStyle().ItemSpacing.y;
+        const float lineH = usedFontSize + spacing;
 
         std::vector<Layout::Line> lines;
         Layout::BuildLines(text.GetSegments(), wrapWidth, tabColumns, usedFontSize, lines);
@@ -864,7 +866,7 @@ namespace AnsiText {
     }
 
     void Renderer::DrawText(ImDrawList *drawList, const AnsiString &text, const ImVec2 &startPos, float wrapWidth,
-                      float alpha, float fontSize, int tabColumns, const AnsiPalette *palette) {
+                      float alpha, float fontSize, int tabColumns, const AnsiPalette *palette, float lineSpacing) {
         if (!palette)
             palette = &DefaultPalette();
 
@@ -884,7 +886,8 @@ namespace AnsiText {
         // Pre-fetch line metrics
         const float ascent = baked ? std::max(0.0f, baked->Ascent) : usedFontSize * 0.8f;
         const float descentMag = baked ? std::max(0.0f, -baked->Descent) : usedFontSize * 0.2f;
-        const float lineStep = usedFontSize + ImGui::GetStyle().ItemSpacing.y;
+        const float spacing = (lineSpacing >= 0.0f) ? lineSpacing : ImGui::GetStyle().ItemSpacing.y;
+        const float lineStep = usedFontSize + spacing;
         const float italicShear = ComputeItalicShear(usedFontSize);
 
         // Layout

@@ -37,6 +37,7 @@ public:
         float timer = 0.0f;
         mutable float cachedHeight = -1.0f;
         mutable float cachedWrapWidth = -1.0f;
+        mutable float cachedLineSpacing = -1.0f;
 
         MessageUnit() = default;
         MessageUnit(const char *msg, float timer);
@@ -50,7 +51,7 @@ public:
         void SetMessage(const char *msg);
         float GetTimer() const { return timer; }
         void SetTimer(float t) { timer = t; }
-        float GetTextHeight(float wrapWidth, int tabColumns) const;
+        float GetTextHeight(float wrapWidth, int tabColumns, float lineSpacing) const;
         const std::vector<TextSegment> &GetSegments() const { return ansiText.GetSegments(); }
         void Reset();
     };
