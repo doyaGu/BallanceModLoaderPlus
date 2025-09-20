@@ -172,8 +172,8 @@ namespace AnsiText {
         float Thickness(float fontSize);
     };
 
-    float CalculateHeight(const AnsiString &text, float wrapWidth, float fontSize = 0.0f, int tabColumns = kDefaultTabColumns, float lineSpacing = -1.0f);
-    ImVec2 CalculateSize(const AnsiString &text, float wrapWidth, float fontSize = 0.0f, int tabColumns = kDefaultTabColumns, float lineSpacing = -1.0f);
+    float CalculateHeight(const AnsiString &text, float wrapWidth, float fontSize = 0.0f, float lineSpacing = -1.0f, int tabColumns = kDefaultTabColumns);
+    ImVec2 CalculateSize(const AnsiString &text, float wrapWidth, float fontSize = 0.0f, float lineSpacing = -1.0f, int tabColumns = kDefaultTabColumns);
 
     // Global configurable behavior
     void SetSgr21Policy(Sgr21Policy policy);
@@ -211,7 +211,7 @@ namespace AnsiText {
                              const char *begin, const char *end, bool italic, bool fauxBold, const BoldParams &bp);
 
         void DrawText(ImDrawList *drawList, const AnsiString &text, const ImVec2 &startPos, float wrapWidth,
-                      float alpha = 1.0f, float fontSize = 0.0f, int tabColumns = kDefaultTabColumns, const AnsiPalette *palette = nullptr, float lineSpacing = -1.0f);
+                      float alpha = 1.0f, float fontSize = 0.0f, float lineSpacing = -1.0f, int tabColumns = kDefaultTabColumns, const AnsiPalette *palette = nullptr);
     };
 } // namespace AnsiText
 

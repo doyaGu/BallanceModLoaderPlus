@@ -51,7 +51,7 @@ public:
         void SetMessage(const char *msg);
         float GetTimer() const { return timer; }
         void SetTimer(float t) { timer = t; }
-        float GetTextHeight(float wrapWidth, int tabColumns, float lineSpacing) const;
+        float GetTextHeight(float wrapWidth, float lineSpacing, int tabColumns) const;
         const std::vector<TextSegment> &GetSegments() const { return ansiText.GetSegments(); }
         void Reset();
     };

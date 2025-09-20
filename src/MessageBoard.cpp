@@ -26,11 +26,11 @@ void MessageBoard::MessageUnit::SetMessage(const char *msg) {
     cachedLineSpacing = -1.0f;
 }
 
-float MessageBoard::MessageUnit::GetTextHeight(float wrapWidth, int tabColumns, float lineSpacing) const {
+float MessageBoard::MessageUnit::GetTextHeight(float wrapWidth, float lineSpacing, int tabColumns) const {
     if (cachedHeight >= 0.0f && std::abs(cachedWrapWidth - wrapWidth) < 0.5f && std::abs(cachedLineSpacing - lineSpacing) < 0.5f)
         return cachedHeight;
 
-    cachedHeight = AnsiText::CalculateHeight(ansiText, wrapWidth, 0, tabColumns, lineSpacing);
+    cachedHeight = AnsiText::CalculateHeight(ansiText, wrapWidth, 0, lineSpacing, tabColumns);
     cachedWrapWidth = wrapWidth;
     cachedLineSpacing = lineSpacing;
     return cachedHeight;
@@ -159,7 +159,7 @@ float MessageBoard::CalculateContentHeight(float wrapWidth) const {
     for (int i = 0; i < m_MessageCount; i++) {
         const MessageUnit &msg = m_Messages[i];
         if (ShouldShowMessage(msg)) {
-            contentHeight += msg.GetTextHeight(wrapWidth, m_TabColumns, m_MessageGap);
+            contentHeight += msg.GetTextHeight(wrapWidth, m_MessageGap, m_TabColumns);
             visibleCount++;
         }
     }
@@ -296,7 +296,7 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
         if (!shouldShow)
             continue;
         indices.push_back(i);
-        heights.push_back(msg.GetTextHeight(wrapWidth, m_TabColumns, m_MessageGap));
+        heights.push_back(msg.GetTextHeight(wrapWidth, m_MessageGap, m_TabColumns));
     }
 
     const int n = (int)indices.size();

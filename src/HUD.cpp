@@ -407,7 +407,7 @@ ImVec2 HUDText::CalculateAnsiTextSize(const ImVec2 &viewportSize) const {
     }
 
     // Calculate new size
-    const ImVec2 size = AnsiText::CalculateSize(m_AnsiText, wrapWidth, fontSize, m_TabColumns);
+    const ImVec2 size = AnsiText::CalculateSize(m_AnsiText, wrapWidth, fontSize, -1.0f, m_TabColumns);
 
     // Update cache
     m_MeasureCache.textVersion = m_TextVersion;
