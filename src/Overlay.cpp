@@ -94,7 +94,7 @@ namespace Overlay {
     }
 
     extern "C" BOOL WINAPI HookGetMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax) {
-        if (!g_OrigGetMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax))
+        if (!g_OrigGetMessageW(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax))
             return FALSE;
 
         if (lpMsg->hwnd != nullptr && OnWndProcW(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
