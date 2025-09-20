@@ -1115,20 +1115,15 @@ namespace Bui {
     void Title(const char *text, float y, float scale, ImU32 color) {
         if (!text || !*text) return;
 
-        const float sizeBase = ImGui::GetStyle().FontSizeBase * (scale > 0.0f ? scale : 1.0f);
+        ImFont *font = ImGui::GetFont();
+        const float size = ImGui::GetFontSize() * (scale > 0.0f ? scale : 1.0f);
 
-        // Measure at the desired size
-        ImGui::PushFont(nullptr, sizeBase);
-        const ImVec2 titleSize = ImGui::CalcTextSize(text);
-        ImGui::PopFont();
+        const ImVec2 titleSize = font->CalcTextSizeA(size, FLT_MAX, 0.0f, text);
 
-        // Center on main viewport (absolute coords)
         const ImGuiViewport *vp = ImGui::GetMainViewport();
-        const ImVec2 pos(vp->Pos.x + (vp->Size.x - titleSize.x) * 0.5f,
-                         vp->Pos.y + vp->Size.y * y);
+        const ImVec2 pos(IM_FLOOR(vp->Pos.x + (vp->Size.x - titleSize.x) * 0.5f), IM_FLOOR(vp->Pos.y + vp->Size.y * y));
 
-        // Draw without disturbing the current font stack
-        ImGui::GetForegroundDrawList()->AddText(ImGui::GetFont(), sizeBase, pos, color, text);
+        ImGui::GetForegroundDrawList()->AddText(font, size, pos, color, text);
     }
 
     bool SearchBar(char *buffer, size_t bufferSize, float x, float y, float width) {
