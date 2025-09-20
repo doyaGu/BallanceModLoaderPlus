@@ -383,7 +383,7 @@ void HUDText::Draw(ImDrawList* drawList, const ImVec2& viewportSize) {
         * std::clamp(m_LocalAlpha, 0.0f, 1.0f);
 
     // Renderer must use AddText(font, fontSize, pos, color, text, ..., wrapWidth)
-    AnsiText::Renderer::DrawText(drawList, m_AnsiText, pos, wrapWidth, alpha, fontSize, m_TabColumns);
+    AnsiText::Renderer::DrawText(drawList, m_AnsiText, pos, wrapWidth, alpha, fontSize, -1.0f, m_TabColumns);
 }
 
 ImVec2 HUDText::GetElementSize(const ImVec2 &viewportSize) const {
