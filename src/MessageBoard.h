@@ -38,6 +38,7 @@ public:
         mutable float cachedHeight = -1.0f;
         mutable float cachedWrapWidth = -1.0f;
         mutable float cachedLineSpacing = -1.0f;
+        mutable float cachedFontPixels = -1.0f;
 
         MessageUnit() = default;
         MessageUnit(const char *msg, float timer);

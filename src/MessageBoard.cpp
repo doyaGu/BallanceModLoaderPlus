@@ -1,5 +1,6 @@
 #include "MessageBoard.h"
 
+#include <cmath>
 #include <cstdarg>
 #include <algorithm>
 
@@ -24,15 +25,20 @@ void MessageBoard::MessageUnit::SetMessage(const char *msg) {
     cachedHeight = -1.0f;
     cachedWrapWidth = -1.0f;
     cachedLineSpacing = -1.0f;
+    cachedFontPixels = -1.0f;
 }
 
 float MessageBoard::MessageUnit::GetTextHeight(float wrapWidth, float lineSpacing, int tabColumns) const {
-    if (cachedHeight >= 0.0f && std::abs(cachedWrapWidth - wrapWidth) < 0.5f && std::abs(cachedLineSpacing - lineSpacing) < 0.5f)
+    const float fontPixelSize = ImGui::GetFontSize();
+    if (cachedHeight >= 0.0f && std::abs(cachedWrapWidth - wrapWidth) < 0.5f &&
+        std::abs(cachedLineSpacing - lineSpacing) < 0.5f &&
+        std::fabs(cachedFontPixels - fontPixelSize) < 1e-3f)
         return cachedHeight;
 
     cachedHeight = AnsiText::CalculateHeight(ansiText, wrapWidth, 0, lineSpacing, tabColumns);
     cachedWrapWidth = wrapWidth;
     cachedLineSpacing = lineSpacing;
+    cachedFontPixels = fontPixelSize;
     return cachedHeight;
 }
 
@@ -42,6 +48,7 @@ void MessageBoard::MessageUnit::Reset() {
     cachedHeight = -1.0f;
     cachedWrapWidth = -1.0f;
     cachedLineSpacing = -1.0f;
+    cachedFontPixels = -1.0f;
 }
 
 // =============================================================================
@@ -379,7 +386,8 @@ void MessageBoard::HandleScrolling(float visibleHeight) {
     // Mouse wheel scrolling
     if (ImGui::IsWindowHovered() && io.MouseWheel != 0.0f) {
         const ImGuiStyle &st = ImGui::GetStyle();
-        const float scrollSpeed = (st.FontSizeBase + st.ItemSpacing.y) * 3.0f;
+        const float fontPixelSize = ImGui::GetFontSize();
+        const float scrollSpeed = (fontPixelSize + st.ItemSpacing.y) * 3.0f;
         SetScrollYClamped(m_ScrollY - io.MouseWheel * scrollSpeed);
     }
 
