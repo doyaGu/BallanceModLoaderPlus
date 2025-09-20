@@ -1,4 +1,4 @@
-#include "AnsiText.h"
+﻿#include "AnsiText.h"
 
 #include <cmath>
 #include <algorithm>
@@ -689,25 +689,32 @@ namespace AnsiText {
         }
 
         const float usedFontSize = (fontSize > 0.0f) ? fontSize : ImGui::GetStyle().FontSizeBase;
+        ImFont *font = ImGui::GetFont();
+        ImFontBaked *baked = font ? font->GetFontBaked(usedFontSize) : nullptr;
+        const float ascent = baked ? std::max(0.0f, baked->Ascent) : usedFontSize * 0.8f;
+        const float descentMag = baked ? std::max(0.0f, -baked->Descent) : usedFontSize * 0.2f;
+        const float lineHeight = std::max(usedFontSize, ascent + descentMag);
         const float spacing = (lineSpacing >= 0.0f) ? lineSpacing : ImGui::GetStyle().ItemSpacing.y;
-        const float lineStep = usedFontSize + spacing;
 
         std::vector<Layout::Line> lines;
         Layout::BuildLines(text.GetSegments(), wrapWidth, tabColumns, usedFontSize, lines);
 
         const float lineCount = lines.empty() ? 1.0f : static_cast<float>(lines.size());
-        const float contentHeight = usedFontSize + (lineCount - 1.0f) * lineStep;
-        return std::max(lineStep, contentHeight);
+        const float totalSpacing = spacing * std::max(0.0f, lineCount - 1.0f);
+        return lineHeight * lineCount + totalSpacing;
     }
-
     ImVec2 CalculateSize(const AnsiString &text, float wrapWidth, float fontSize, float lineSpacing, int tabColumns) {
         if (text.IsEmpty()) {
             return {0.0f, ImGui::GetTextLineHeightWithSpacing()};
         }
 
         const float usedFontSize = (fontSize > 0.0f) ? fontSize : ImGui::GetStyle().FontSizeBase;
+        ImFont *font = ImGui::GetFont();
+        ImFontBaked *baked = font ? font->GetFontBaked(usedFontSize) : nullptr;
+        const float ascent = baked ? std::max(0.0f, baked->Ascent) : usedFontSize * 0.8f;
+        const float descentMag = baked ? std::max(0.0f, -baked->Descent) : usedFontSize * 0.2f;
+        const float lineHeight = std::max(usedFontSize, ascent + descentMag);
         const float spacing = (lineSpacing >= 0.0f) ? lineSpacing : ImGui::GetStyle().ItemSpacing.y;
-        const float lineStep = usedFontSize + spacing;
 
         std::vector<Layout::Line> lines;
         Layout::BuildLines(text.GetSegments(), wrapWidth, tabColumns, usedFontSize, lines);
@@ -718,7 +725,8 @@ namespace AnsiText {
         }
 
         const float lineCount = lines.empty() ? 1.0f : static_cast<float>(lines.size());
-        const float height = std::max(lineStep, usedFontSize + (lineCount - 1.0f) * lineStep);
+        const float totalSpacing = spacing * std::max(0.0f, lineCount - 1.0f);
+        const float height = lineHeight * lineCount + totalSpacing;
         return ImVec2(maxWidth, height);
     }
 
@@ -889,7 +897,8 @@ namespace AnsiText {
         const float ascent = baked ? std::max(0.0f, baked->Ascent) : usedFontSize * 0.8f;
         const float descentMag = baked ? std::max(0.0f, -baked->Descent) : usedFontSize * 0.2f;
         const float spacing = (lineSpacing >= 0.0f) ? lineSpacing : ImGui::GetStyle().ItemSpacing.y;
-        const float lineStep = usedFontSize + spacing;
+        const float lineHeight = std::max(usedFontSize, ascent + descentMag);
+        const float lineStep = lineHeight + spacing;
         const float italicShear = ComputeItalicShear(usedFontSize);
 
         // Layout
@@ -902,7 +911,7 @@ namespace AnsiText {
             for (int lineIndex = clipper.DisplayStart; lineIndex < clipper.DisplayEnd; ++lineIndex) {
                 const auto &line = lines[(size_t)lineIndex];
                 const float lineTop = startPos.y + lineIndex * lineStep;
-                const float lineBottom = lineTop + ascent + descentMag;
+                const float lineBottom = lineTop + lineHeight;
 
                 // Background pass (optional pre-scan fast path only when no wrap requested)
                 auto draw_background_runs = [&]() {
