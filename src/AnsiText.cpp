@@ -660,7 +660,7 @@ namespace AnsiText {
 
     float Metrics::UnderlineY(float lineTop, float fontSize) {
         ImFont *font = ImGui::GetFont();
-        const float usedSize = (fontSize > 0.0f) ? fontSize : ImGui::GetStyle().FontSizeBase;
+        const float usedSize = (fontSize > 0.0f) ? fontSize : ImGui::GetFontSize();
         ImFontBaked *baked = font ? font->GetFontBaked(usedSize) : nullptr;
 
         const float ascent = baked ? std::max(0.0f, baked->Ascent) : usedSize * 0.8f;
@@ -672,7 +672,7 @@ namespace AnsiText {
 
     float Metrics::StrikeY(float lineTop, float fontSize) {
         ImFont *font = ImGui::GetFont();
-        const float usedSize = (fontSize > 0.0f) ? fontSize : ImGui::GetStyle().FontSizeBase;
+        const float usedSize = (fontSize > 0.0f) ? fontSize : ImGui::GetFontSize();
         ImFontBaked *baked = font ? font->GetFontBaked(usedSize) : nullptr;
         const float ascent = baked ? std::max(0.0f, baked->Ascent) : usedSize * 0.8f;
         return lineTop + ascent * 0.6f;
@@ -688,16 +688,18 @@ namespace AnsiText {
             return ImGui::GetTextLineHeightWithSpacing();
         }
 
-        const float usedFontSize = (fontSize > 0.0f) ? fontSize : ImGui::GetStyle().FontSizeBase;
         ImFont *font = ImGui::GetFont();
-        ImFontBaked *baked = font ? font->GetFontBaked(usedFontSize) : nullptr;
-        const float ascent = baked ? std::max(0.0f, baked->Ascent) : usedFontSize * 0.8f;
-        const float descentMag = baked ? std::max(0.0f, -baked->Descent) : usedFontSize * 0.2f;
-        const float lineHeight = std::max(usedFontSize, ascent + descentMag);
-        const float spacing = (lineSpacing >= 0.0f) ? lineSpacing : ImGui::GetStyle().ItemSpacing.y;
+        const float resolvedFontSize = (fontSize > 0.0f) ? fontSize : ImGui::GetFontSize();
+        ImFontBaked *baked = font ? font->GetFontBaked(resolvedFontSize) : nullptr;
+        const float ascent = baked ? std::max(0.0f, baked->Ascent) : resolvedFontSize * 0.8f;
+        const float descentMag = baked ? std::max(0.0f, -baked->Descent) : resolvedFontSize * 0.2f;
+        const float lineHeight = std::max(resolvedFontSize, ascent + descentMag);
+        const float styleBase = ImGui::GetFontSize();
+        const float scale = (styleBase > 0.0f) ? (resolvedFontSize / styleBase) : 1.0f;
+        const float spacing = (lineSpacing >= 0.0f) ? lineSpacing : (ImGui::GetStyle().ItemSpacing.y * scale);
 
         std::vector<Layout::Line> lines;
-        Layout::BuildLines(text.GetSegments(), wrapWidth, tabColumns, usedFontSize, lines);
+        Layout::BuildLines(text.GetSegments(), wrapWidth, tabColumns, resolvedFontSize, lines);
 
         const float lineCount = lines.empty() ? 1.0f : static_cast<float>(lines.size());
         const float totalSpacing = spacing * std::max(0.0f, lineCount - 1.0f);
@@ -708,16 +710,18 @@ namespace AnsiText {
             return {0.0f, ImGui::GetTextLineHeightWithSpacing()};
         }
 
-        const float usedFontSize = (fontSize > 0.0f) ? fontSize : ImGui::GetStyle().FontSizeBase;
         ImFont *font = ImGui::GetFont();
-        ImFontBaked *baked = font ? font->GetFontBaked(usedFontSize) : nullptr;
-        const float ascent = baked ? std::max(0.0f, baked->Ascent) : usedFontSize * 0.8f;
-        const float descentMag = baked ? std::max(0.0f, -baked->Descent) : usedFontSize * 0.2f;
-        const float lineHeight = std::max(usedFontSize, ascent + descentMag);
-        const float spacing = (lineSpacing >= 0.0f) ? lineSpacing : ImGui::GetStyle().ItemSpacing.y;
+        const float resolvedFontSize = (fontSize > 0.0f) ? fontSize : ImGui::GetFontSize();
+        ImFontBaked *baked = font ? font->GetFontBaked(resolvedFontSize) : nullptr;
+        const float ascent = baked ? std::max(0.0f, baked->Ascent) : resolvedFontSize * 0.8f;
+        const float descentMag = baked ? std::max(0.0f, -baked->Descent) : resolvedFontSize * 0.2f;
+        const float lineHeight = std::max(resolvedFontSize, ascent + descentMag);
+        const float styleBase = ImGui::GetFontSize();
+        const float scale = (styleBase > 0.0f) ? (resolvedFontSize / styleBase) : 1.0f;
+        const float spacing = (lineSpacing >= 0.0f) ? lineSpacing : (ImGui::GetStyle().ItemSpacing.y * scale);
 
         std::vector<Layout::Line> lines;
-        Layout::BuildLines(text.GetSegments(), wrapWidth, tabColumns, usedFontSize, lines);
+        Layout::BuildLines(text.GetSegments(), wrapWidth, tabColumns, resolvedFontSize, lines);
 
         float maxWidth = 0.0f;
         for (const auto &line : lines) {
@@ -792,23 +796,23 @@ namespace AnsiText {
 
     void Renderer::AddTextStyledEx(ImDrawList *drawList, ImFont *font, float fontSize, const ImVec2 &pos, ImU32 col,
                                    const char *begin, const char *end, bool italic, bool fauxBold, const BoldParams &bp) {
-        const float usedSize = (fontSize > 0.0f) ? fontSize : ImGui::GetStyle().FontSizeBase;
+        const float resolvedSize = (fontSize > 0.0f) ? fontSize : ImGui::GetFontSize();
 
         auto drawOncePlain = [&](const ImVec2 &p, ImU32 c) {
-            drawList->AddText(font, usedSize, p, c, begin, end);
+            drawList->AddText(font, resolvedSize, p, c, begin, end);
         };
 
         auto drawOnceItalic = [&](const ImVec2 &p, ImU32 c) {
             if ((c & IM_COL32_A_MASK) == 0) return;
-            ImFontBaked *baked = font ? font->GetFontBaked(usedSize) : nullptr;
+            ImFontBaked *baked = font ? font->GetFontBaked(resolvedSize) : nullptr;
             if (!baked) {
                 drawOncePlain(p, c);
                 return;
             }
 
-            const float scale = (usedSize >= 0.0f) ? (usedSize / baked->Size) : 1.0f;
+            const float scale = (resolvedSize >= 0.0f) ? (resolvedSize / baked->Size) : 1.0f;
             const float x0 = p.x, y0 = p.y;
-            const float shear = ComputeItalicShear(usedSize);
+            const float shear = ComputeItalicShear(resolvedSize);
             const float ascent = std::max(0.0f, baked->Ascent);
             const float anchorY = y0 + ascent;
 
@@ -851,17 +855,17 @@ namespace AnsiText {
 
         if (!fauxBold) return;
 
-        const float ofsScale = ComputeBoldOffsetScale(usedSize, bp);
+        const float ofsScale = ComputeBoldOffsetScale(resolvedSize, bp);
         float pxOffset = bp.baseOffsetPx * ofsScale;
         pxOffset = std::clamp(pxOffset, 0.30f, 0.60f);
-        if (usedSize <= 14.0f) // Small font, reduce bold offset
+        if (resolvedSize <= 14.0f) // Small font, reduce bold offset
             pxOffset = std::max(0.35f, pxOffset * 0.85f);
         std::vector<ImVec2> offsets;
         BuildBoldOffsets(pxOffset, bp.rings, bp.includeDiagonals, offsets);
 
         const float baseAlpha = ((col >> IM_COL32_A_SHIFT) & 0xFF) / 255.0f;
         float ringAlpha = std::clamp(baseAlpha * bp.alphaScale, 0.0f, 1.0f);
-        if (usedSize <= 14.0f) // Small font, reduce bold alpha
+        if (resolvedSize <= 14.0f) // Small font, reduce bold alpha
             ringAlpha *= 0.85f;
         int perRing = bp.includeDiagonals ? 8 : 4;
         if (perRing <= 0) perRing = 4;
@@ -882,8 +886,8 @@ namespace AnsiText {
 
         // Unify font size and baked data
         ImFont *font = ImGui::GetFont();
-        const float usedFontSize = (fontSize > 0.0f) ? fontSize : ImGui::GetStyle().FontSizeBase;
-        ImFontBaked *baked = font ? font->GetFontBaked(usedFontSize) : nullptr;
+        const float resolvedFontSize = (fontSize > 0.0f) ? fontSize : ImGui::GetFontSize();
+        ImFontBaked *baked = font ? font->GetFontBaked(resolvedFontSize) : nullptr;
 
         // Ensure font atlas texture is bound for the duration of this text draw to avoid accidental use
         // of a previously-bound texture (which may cause random-looking glyphs on first line).
@@ -894,16 +898,18 @@ namespace AnsiText {
         }
 
         // Pre-fetch line metrics
-        const float ascent = baked ? std::max(0.0f, baked->Ascent) : usedFontSize * 0.8f;
-        const float descentMag = baked ? std::max(0.0f, -baked->Descent) : usedFontSize * 0.2f;
-        const float spacing = (lineSpacing >= 0.0f) ? lineSpacing : ImGui::GetStyle().ItemSpacing.y;
-        const float lineHeight = std::max(usedFontSize, ascent + descentMag);
+        const float ascent = baked ? std::max(0.0f, baked->Ascent) : resolvedFontSize * 0.8f;
+        const float descentMag = baked ? std::max(0.0f, -baked->Descent) : resolvedFontSize * 0.2f;
+        const float styleBase = ImGui::GetFontSize();
+        const float scale = (styleBase > 0.0f) ? (resolvedFontSize / styleBase) : 1.0f;
+        const float spacing = (lineSpacing >= 0.0f) ? lineSpacing : (ImGui::GetStyle().ItemSpacing.y * scale);
+        const float lineHeight = std::max(resolvedFontSize, ascent + descentMag);
         const float lineStep = lineHeight + spacing;
-        const float italicShear = ComputeItalicShear(usedFontSize);
+        const float italicShear = ComputeItalicShear(resolvedFontSize);
 
         // Layout
         std::vector<Layout::Line> lines;
-        Layout::BuildLines(text.GetSegments(), wrapWidth, tabColumns, usedFontSize, lines);
+        Layout::BuildLines(text.GetSegments(), wrapWidth, tabColumns, resolvedFontSize, lines);
 
         ImGuiListClipper clipper;
         clipper.Begin((int)lines.size(), lineStep);
@@ -1015,7 +1021,7 @@ namespace AnsiText {
                     const bool italic = rc.italic;
 
                     if (!sp.isTab && sp.b < sp.e) {
-                        AddTextStyled(drawList, font, usedFontSize, ImVec2(x, lineTop), fg, sp.b, sp.e, italic, fauxBold);
+                        AddTextStyled(drawList, font, resolvedFontSize, ImVec2(x, lineTop), fg, sp.b, sp.e, italic, fauxBold);
 
                         if (any_decor) {
                             // Calculate italic padding once if needed for decorations
@@ -1026,8 +1032,8 @@ namespace AnsiText {
                             }
 
                             if (rc.underline) {
-                                float y = Metrics::UnderlineY(lineTop, usedFontSize);
-                                float th = Metrics::Thickness(usedFontSize);
+                                float y = Metrics::UnderlineY(lineTop, resolvedFontSize);
+                                float th = Metrics::Thickness(resolvedFontSize);
                                 if ((static_cast<int>(th) & 1) != 0) y = floorf(y) + 0.5f;
                                 else y = roundf(y);
                                 drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width + italicPadForDecorations, y), fg, th);
@@ -1039,8 +1045,8 @@ namespace AnsiText {
                                 }
                             }
                             if (rc.strikethrough) {
-                                float y = Metrics::StrikeY(lineTop, usedFontSize);
-                                float th = Metrics::Thickness(usedFontSize);
+                                float y = Metrics::StrikeY(lineTop, resolvedFontSize);
+                                float th = Metrics::Thickness(resolvedFontSize);
                                 if ((static_cast<int>(th) & 1) != 0) y = floorf(y) + 0.5f;
                                 else y = roundf(y);
                                 drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width + italicPadForDecorations, y), fg, th);

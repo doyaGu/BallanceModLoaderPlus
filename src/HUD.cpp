@@ -1,8 +1,9 @@
 #include "HUD.h"
 
+#include <cmath>
+#include <cassert>
 #include <algorithm>
 #include <unordered_map>
-#include <cassert>
 
 #include "AnsiPalette.h"
 #include "IniFile.h"
@@ -358,7 +359,7 @@ void HUDText::FromIni(const IniFile &ini, const std::string &section) {
 void HUDText::Draw(ImDrawList* drawList, const ImVec2& viewportSize) {
     if (!m_Visible || m_AnsiText.IsEmpty() || !drawList) return;
 
-    const float fontSize = ImGui::GetStyle().FontSizeBase * m_Scale;
+    const float fontSize = ImGui::GetFontSize() * m_Scale;
     if (fontSize <= 0.0f) return;
 
     const float wrapWidth = ResolveWrapWidth(viewportSize);
@@ -379,8 +380,7 @@ void HUDText::Draw(ImDrawList* drawList, const ImVec2& viewportSize) {
     HUDElement::Draw(drawList, viewportSize);
 
     // Effective alpha
-    const float alpha = std::clamp(m_InheritedAlpha, 0.0f, 1.0f)
-        * std::clamp(m_LocalAlpha, 0.0f, 1.0f);
+    const float alpha = std::clamp(m_InheritedAlpha, 0.0f, 1.0f) * std::clamp(m_LocalAlpha, 0.0f, 1.0f);
 
     // Renderer must use AddText(font, fontSize, pos, color, text, ..., wrapWidth)
     AnsiText::Renderer::DrawText(drawList, m_AnsiText, pos, wrapWidth, alpha, fontSize, -1.0f, m_TabColumns);
@@ -393,16 +393,18 @@ ImVec2 HUDText::GetElementSize(const ImVec2 &viewportSize) const {
 ImVec2 HUDText::CalculateAnsiTextSize(const ImVec2 &viewportSize) const {
     if (m_AnsiText.IsEmpty()) return {0, 0};
 
-    const float fontSize = ImGui::GetStyle().FontSizeBase * m_Scale;
+    const float fontSize = ImGui::GetFontSize() * m_Scale;
     if (fontSize <= 0.0f) return {0, 0};
 
+    const float fontPixelSize = ImGui::GetFontSize();
     const float wrapWidth = ResolveWrapWidth(viewportSize);
 
     // Check cache validity
     if (m_MeasureCache.textVersion == m_TextVersion &&
         m_MeasureCache.wrapWidth == wrapWidth &&
         m_MeasureCache.fontSize == fontSize &&
-        m_MeasureCache.tabCols == m_TabColumns) {
+        m_MeasureCache.tabCols == m_TabColumns &&
+        std::fabs(m_MeasureCache.fontPixelSize - fontPixelSize) < 1e-3f) {
         return m_MeasureCache.size;
     }
 
@@ -413,6 +415,7 @@ ImVec2 HUDText::CalculateAnsiTextSize(const ImVec2 &viewportSize) const {
     m_MeasureCache.textVersion = m_TextVersion;
     m_MeasureCache.wrapWidth = wrapWidth;
     m_MeasureCache.fontSize = fontSize;
+    m_MeasureCache.fontPixelSize = fontPixelSize;
     m_MeasureCache.tabCols = m_TabColumns;
     m_MeasureCache.size = size;
 

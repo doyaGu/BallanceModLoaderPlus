@@ -319,6 +319,7 @@ private:
         float wrapWidth = -1.0f;
         float fontSize = -1.0f;
         int tabCols = -1;
+        float fontPixelSize = -1.0f;
         ImVec2 size = ImVec2(0, 0);
     } m_MeasureCache;
 
