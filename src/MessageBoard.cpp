@@ -184,18 +184,11 @@ void MessageBoard::OnPreBegin() {
     // Pre-read style values BEFORE pushing style overrides
     const ImGuiStyle &style = ImGui::GetStyle();
 
-    // Scale layout parameters with current font size (fallback to style when larger)
-    const float fs = ImGui::GetStyle().FontSizeBase;
-    const float pad_x_scaled = fs * 0.5f;    // ~8px @16pt
-    const float pad_y_scaled = fs * 0.5f;    // ~8px @16pt
-    const float gap_scaled = fs * 0.25f;     // ~4px @16pt
-    const float sb_w_scaled = fs * 0.5f;     // ~8px @16pt
-    const float sb_pad_scaled = fs * 0.125f; // ~2px @16pt
-    m_PadX = ImMax((style.WindowPadding.x > 0.0f) ? style.WindowPadding.x : 0.0f, pad_x_scaled);
-    m_PadY = ImMax((style.WindowPadding.y > 0.0f) ? style.WindowPadding.y : 0.0f, pad_y_scaled);
-    m_MessageGap = ImMax((style.ItemSpacing.y > 0.0f) ? style.ItemSpacing.y : 0.0f, gap_scaled);
-    m_ScrollbarW = ImMax((style.ScrollbarSize > 0.0f) ? style.ScrollbarSize : 0.0f, sb_w_scaled);
-    m_ScrollbarPad = ImMax((style.ItemInnerSpacing.x > 0.0f) ? (style.ItemInnerSpacing.x * 0.5f) : 0.0f, sb_pad_scaled);
+    m_PadX = (style.WindowPadding.x > 0.0f) ? style.WindowPadding.x : 0.0f;
+    m_PadY = (style.WindowPadding.y > 0.0f) ? style.WindowPadding.y : 0.0f;
+    m_MessageGap = (style.ItemSpacing.y > 0.0f) ? style.ItemSpacing.y : 0.0f;
+    m_ScrollbarW = (style.ScrollbarSize > 0.0f) ? style.ScrollbarSize : 0.0f;
+    m_ScrollbarPad = (style.ItemInnerSpacing.x > 0.0f) ? (style.ItemInnerSpacing.x * 0.5f) : 0.0f;
 
     // Push style overrides
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
