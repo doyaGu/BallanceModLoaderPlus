@@ -44,7 +44,6 @@ void MessageBoard::MessageUnit::Reset() {
     cachedLineSpacing = -1.0f;
 }
 
-
 // =============================================================================
 // MessageBoard Implementation
 // =============================================================================
@@ -186,7 +185,8 @@ void MessageBoard::OnPreBegin() {
 
     m_PadX = (style.WindowPadding.x > 0.0f) ? style.WindowPadding.x : 0.0f;
     m_PadY = (style.WindowPadding.y > 0.0f) ? style.WindowPadding.y : 0.0f;
-    m_MessageGap = (style.ItemSpacing.y > 0.0f) ? style.ItemSpacing.y : 0.0f;
+    const float styleGap = (style.ItemSpacing.y > 0.0f) ? style.ItemSpacing.y : 0.0f;
+    m_MessageGap = m_LineSpacingOverride ? m_CustomLineSpacing : styleGap;
     m_ScrollbarW = (style.ScrollbarSize > 0.0f) ? style.ScrollbarSize : 0.0f;
     m_ScrollbarPad = (style.ItemInnerSpacing.x > 0.0f) ? (style.ItemInnerSpacing.x * 0.5f) : 0.0f;
 
@@ -371,7 +371,7 @@ void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &mess
 // Scrolling System
 // =============================================================================
 
-void MessageBoard::HandleScrolling(float availableHeight) {
+void MessageBoard::HandleScrolling(float visibleHeight) {
     if (!m_IsCommandBarVisible || m_MaxScrollY <= 0.0f) return;
 
     const ImGuiIO &io = ImGui::GetIO();
@@ -408,6 +408,7 @@ void MessageBoard::InvalidateLayoutCache() {
     for (auto &m : m_Messages) {
         m.cachedHeight = -1.0f;
         m.cachedWrapWidth = -1.0f;
+        m.cachedLineSpacing = -1.0f;
     }
 }
 
@@ -623,6 +624,27 @@ int MessageBoard::GetTabColumns() const {
     return m_TabColumns;
 }
 
+void MessageBoard::SetLineSpacing(float spacing) {
+    if (spacing >= 0.0f) {
+        const float clamped = std::max(0.0f, spacing);
+        if (!m_LineSpacingOverride || std::abs(m_CustomLineSpacing - clamped) > 0.01f) {
+            m_LineSpacingOverride = true;
+            m_CustomLineSpacing = clamped;
+            m_MessageGap = clamped;
+            InvalidateLayoutCache();
+        }
+    } else if (m_LineSpacingOverride) {
+        m_LineSpacingOverride = false;
+        const ImGuiStyle &style = ImGui::GetStyle();
+        m_MessageGap = (style.ItemSpacing.y > 0.0f) ? style.ItemSpacing.y : 0.0f;
+        InvalidateLayoutCache();
+    }
+}
+
+float MessageBoard::GetLineSpacing() const {
+    return m_LineSpacingOverride ? m_CustomLineSpacing : -1.0f;
+}
+
 void MessageBoard::SetWindowBackgroundColor(ImVec4 color) {
     m_HasCustomWindowBg = true;
     m_WindowBgColor = color;
@@ -660,3 +682,4 @@ void MessageBoard::SetMessageBackgroundAlpha(float alpha) {
 void MessageBoard::SetFadeMaxAlpha(float alpha) {
     m_FadeMaxAlpha = std::clamp(alpha, 0.0f, 1.0f);
 }
+
