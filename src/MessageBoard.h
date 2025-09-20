@@ -78,6 +78,8 @@ public:
     // Appearance and layout configuration
     void SetTabColumns(int columns);
     int GetTabColumns() const;
+    void SetLineSpacing(float spacing);
+    float GetLineSpacing() const;
 
     void SetWindowBackgroundColor(ImVec4 color);
     void SetWindowBackgroundColorU32(ImU32 color);
@@ -173,6 +175,8 @@ private:
     float m_PadX = 8.0f;         // Content area horizontal padding
     float m_PadY = 8.0f;         // Content area vertical padding
     float m_MessageGap = 4.0f;   // Spacing between message blocks
+    bool m_LineSpacingOverride = false;
+    float m_CustomLineSpacing = 0.0f;
     float m_ScrollbarW = 8.0f;   // Scrollbar width
     float m_ScrollbarPad = 2.0f; // Scrollbar edge padding
     float m_ScrollEpsilon = 0.5f; // Scrollbar tolerance for bottom checks
@@ -189,3 +193,4 @@ private:
 };
 
 #endif // BML_MESSAGEBOARD_H
+

@@ -292,6 +292,8 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
         }
     } else if (prop == m_MsgTabColumns) {
         m_MessageBoard.SetTabColumns(std::max(1, m_MsgTabColumns->GetInteger()));
+    } else if (prop == m_MsgLineSpacing) {
+        m_MessageBoard.SetLineSpacing(m_MsgLineSpacing->GetFloat());
     } else if (prop == m_MsgBackgroundAlpha) {
         m_MessageBoard.SetMessageBackgroundAlpha(std::clamp(m_MsgBackgroundAlpha->GetFloat(), 0.0f, 1.0f));
     } else if (prop == m_WindowBackgroundAlpha) {
@@ -564,6 +566,11 @@ void BMLMod::InitConfigs() {
     m_MsgTabColumns->SetComment("Tab width in columns for message wrapping (1..64, default: 4)");
     m_MsgTabColumns->SetDefaultInteger(4);
     m_MessageBoard.SetTabColumns(std::max(1, m_MsgTabColumns->GetInteger()));
+
+    m_MsgLineSpacing = GetConfig()->GetProperty("CommandBar", "LineSpacing");
+    m_MsgLineSpacing->SetComment("Line spacing between wrapped lines in messages (-1 to follow ImGui style).");
+    m_MsgLineSpacing->SetDefaultFloat(-1.0f);
+    m_MessageBoard.SetLineSpacing(m_MsgLineSpacing->GetFloat());
 
     m_MsgBackgroundAlpha = GetConfig()->GetProperty("CommandBar", "MessageBackgroundAlpha");
     m_MsgBackgroundAlpha->SetComment("Alpha scale for message backgrounds (0..1, default: 0.80)");
