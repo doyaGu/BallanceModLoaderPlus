@@ -47,6 +47,7 @@ public:
     MapListPage(): Page("Custom Maps") {}
 
     void OnPostBegin() override;
+    void OnPreEnd() override;
     void OnDraw() override;
     void OnPostEnd() override;
 
