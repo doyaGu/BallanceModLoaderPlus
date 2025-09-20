@@ -310,6 +310,32 @@ void MapListPage::OnPostBegin() {
     }
 }
 
+void MapListPage::OnPreEnd() {
+    auto *mapMenu = dynamic_cast<MapMenu *>(m_Menu);
+    if (!mapMenu) {
+        Page::OnPreEnd();
+        return;
+    }
+
+    MapEntry *current = mapMenu->GetCurrentMaps();
+    if (!Bui::NavBack()) {
+        return;
+    }
+
+    if (current && current->parent) {
+        mapMenu->SetCurrentMaps(current->parent);
+        SetPage(0);
+        ClearSearch();
+        return;
+    }
+
+    if (m_Menu) {
+        m_Menu->OpenPrevPage();
+    } else {
+        Close();
+    }
+}
+
 void MapListPage::OnDraw() {
     if (m_Count == 0)
         return;
