@@ -683,30 +683,31 @@ namespace AnsiText {
         return t < 1.0f ? 1.0f : (t > 4.0f ? 4.0f : t);
     }
 
-    float CalculateHeight(const AnsiString &text, float wrapWidth, float fontSize, int tabColumns, float lineSpacing) {
+    float CalculateHeight(const AnsiString &text, float wrapWidth, float fontSize, float lineSpacing, int tabColumns) {
         if (text.IsEmpty()) {
             return ImGui::GetTextLineHeightWithSpacing();
         }
 
         const float usedFontSize = (fontSize > 0.0f) ? fontSize : ImGui::GetStyle().FontSizeBase;
         const float spacing = (lineSpacing >= 0.0f) ? lineSpacing : ImGui::GetStyle().ItemSpacing.y;
-        const float lineH = usedFontSize + spacing;
+        const float lineStep = usedFontSize + spacing;
 
         std::vector<Layout::Line> lines;
         Layout::BuildLines(text.GetSegments(), wrapWidth, tabColumns, usedFontSize, lines);
 
-        const float lineCount = static_cast<float>(lines.size());
-        return std::max(lineH, lineCount * lineH);
+        const float lineCount = lines.empty() ? 1.0f : static_cast<float>(lines.size());
+        const float contentHeight = usedFontSize + (lineCount - 1.0f) * lineStep;
+        return std::max(lineStep, contentHeight);
     }
 
-    ImVec2 CalculateSize(const AnsiString &text, float wrapWidth, float fontSize, int tabColumns, float lineSpacing) {
+    ImVec2 CalculateSize(const AnsiString &text, float wrapWidth, float fontSize, float lineSpacing, int tabColumns) {
         if (text.IsEmpty()) {
-            return ImVec2(0.0f, ImGui::GetTextLineHeightWithSpacing());
+            return {0.0f, ImGui::GetTextLineHeightWithSpacing()};
         }
 
         const float usedFontSize = (fontSize > 0.0f) ? fontSize : ImGui::GetStyle().FontSizeBase;
         const float spacing = (lineSpacing >= 0.0f) ? lineSpacing : ImGui::GetStyle().ItemSpacing.y;
-        const float lineH = usedFontSize + spacing;
+        const float lineStep = usedFontSize + spacing;
 
         std::vector<Layout::Line> lines;
         Layout::BuildLines(text.GetSegments(), wrapWidth, tabColumns, usedFontSize, lines);
@@ -716,7 +717,8 @@ namespace AnsiText {
             maxWidth = std::max(maxWidth, line.width);
         }
 
-        const float height = std::max(lineH, (float) lines.size() * lineH);
+        const float lineCount = lines.empty() ? 1.0f : static_cast<float>(lines.size());
+        const float height = std::max(lineStep, usedFontSize + (lineCount - 1.0f) * lineStep);
         return ImVec2(maxWidth, height);
     }
 
@@ -866,7 +868,7 @@ namespace AnsiText {
     }
 
     void Renderer::DrawText(ImDrawList *drawList, const AnsiString &text, const ImVec2 &startPos, float wrapWidth,
-                      float alpha, float fontSize, int tabColumns, const AnsiPalette *palette, float lineSpacing) {
+                      float alpha, float fontSize, float lineSpacing, int tabColumns, const AnsiPalette *palette) {
         if (!palette)
             palette = &DefaultPalette();
 
