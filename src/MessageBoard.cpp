@@ -342,27 +342,27 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
         for (int j = ds; j < de; ++j) {
             const int i = indices[j];
             const MessageUnit &msg = m_Messages[i];
-
             const float msgHeight = heights[j];
             ImVec2 pos = ImVec2(startPos.x, startPos.y + offsets[j]);
 
+            // Keep ImGui cursor in sync with the draw position so nested clippers work while scrolling.
+            ImGui::SetCursorScreenPos(pos);
+
             const float alpha = GetMessageAlpha(msg);
-            if (alpha <= 0.0f)
-                continue;
+            if (alpha > 0.0f) {
+                const float finalAlpha = std::clamp(bgColorBase.w * std::clamp(m_MessageBgAlphaScale, 0.0f, 1.0f) * alpha, 0.0f, 1.0f);
+                if (finalAlpha > 0.0f) {
+                    const ImVec4 bg = ImVec4(bgColorBase.x, bgColorBase.y, bgColorBase.z, finalAlpha);
+                    drawList->AddRectFilled(
+                        ImVec2(pos.x - m_PadX * 0.5f, pos.y - m_PadY * 0.25f),
+                        ImVec2(pos.x + wrapWidth + m_PadX * 0.5f, pos.y + msgHeight + m_PadY * 0.25f),
+                        ImGui::GetColorU32(bg)
+                    );
+                }
 
-            // Background
-            const float finalAlpha = std::clamp(bgColorBase.w * std::clamp(m_MessageBgAlphaScale, 0.0f, 1.0f) * alpha, 0.0f, 1.0f);
-            if (finalAlpha > 0.0f) {
-                const ImVec4 bg = ImVec4(bgColorBase.x, bgColorBase.y, bgColorBase.z, finalAlpha);
-                drawList->AddRectFilled(
-                    ImVec2(pos.x - m_PadX * 0.5f, pos.y - m_PadY * 0.25f),
-                    ImVec2(pos.x + wrapWidth + m_PadX * 0.5f, pos.y + msgHeight + m_PadY * 0.25f),
-                    ImGui::GetColorU32(bg)
-                );
+                // Text
+                DrawMessageText(drawList, msg, pos, wrapWidth, alpha);
             }
-
-            // Text
-            DrawMessageText(drawList, msg, pos, wrapWidth, alpha);
 
             // Feed clipper a logical item advance (height + gap). We don't rely on its cursor for drawing.
             ImGui::ItemSize(ImVec2(0.0f, msgHeight + m_MessageGap));
@@ -371,7 +371,7 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
 }
 
 void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &message, const ImVec2 &startPos, float wrapWidth, float alpha) {
-    AnsiText::Renderer::DrawText(drawList, message.ansiText, startPos, wrapWidth, alpha, 0.0f, m_TabColumns, nullptr, m_MessageGap);
+    AnsiText::Renderer::DrawText(drawList, message.ansiText, startPos, wrapWidth, alpha, 0.0f, m_MessageGap, m_TabColumns, nullptr);
 }
 
 // =============================================================================
