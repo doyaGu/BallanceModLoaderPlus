@@ -415,7 +415,7 @@ CKBOOL InputHook::oIsKeyPressed(CKDWORD iKey) {
 }
 
 CKBOOL InputHook::oIsKeyReleased(CKDWORD iKey) {
-    return Impl::IsKeyUpOriginal(iKey) && Impl::s_LastKeyboardState[iKey];
+    return Impl::IsKeyToggledOriginal(iKey, nullptr) && Impl::s_LastKeyboardState[iKey];
 }
 
 CKBOOL InputHook::oIsKeyDown(CKDWORD iKey, CKDWORD *oStamp) {
