@@ -1,66 +1,41 @@
-#include "IniFile.h"
-#include "PathUtils.h"
-#include "StringUtils.h"
-#include <utf8.h>
+﻿#include "IniFile.h"
+
 #include <algorithm>
 #include <sstream>
 #include <cctype>
-#include <cstring>
 #include <memory>
+#include <utility>
+
+#include <utf8.h>
+
+#include "PathUtils.h"
+#include "StringUtils.h"
 
 // Section implementation
-void IniFile::Section::RebuildKeyIndex(bool caseSensitive) const {
-    // The parent IniFile class should be calling this method with proper parameters
-    // For now, we need to ensure the key normalization is consistent
-    // The proper fix would be to refactor this architecture
-    
+void IniFile::Section::RebuildKeyIndex(const std::function<std::string(const std::string &)> &normalizer) const {
+    if (!m_KeyIndexDirty) {
+        return;
+    }
+
     m_KeyIndex.clear();
     m_KeyIndex.reserve(entries.size());
+
+    if (!normalizer) {
+        m_KeyIndexDirty = false;
+        return;
+    }
 
     for (size_t i = 0; i < entries.size(); ++i) {
         const auto &entry = entries[i];
         if (!entry.isComment && !entry.isEmpty && !entry.key.empty()) {
-            // Normalize key using the exact same logic as NormalizeUtf8Key method
-            std::string normalizedKey = entry.key;
-            
-            // Step 1: Trim whitespace (matching TrimUtf8String behavior)
-            // Find first non-whitespace UTF-8 character
-            size_t start = 0;
-            while (start < normalizedKey.size()) {
-                if (normalizedKey[start] != ' ' && normalizedKey[start] != '\t' && 
-                    normalizedKey[start] != '\r' && normalizedKey[start] != '\n') {
-                    break;
-                }
-                start++;
+            std::string normalizedKey = normalizer(entry.key);
+            if (!normalizedKey.empty()) {
+                m_KeyIndex[std::move(normalizedKey)] = i;
             }
-            
-            if (start == normalizedKey.size()) continue; // All whitespace
-            
-            // Find last non-whitespace UTF-8 character
-            size_t end = normalizedKey.size();
-            while (end > start) {
-                char c = normalizedKey[end - 1];
-                if (c != ' ' && c != '\t' && c != '\r' && c != '\n') {
-                    break;
-                }
-                end--;
-            }
-            
-            normalizedKey = normalizedKey.substr(start, end - start);
-
-            // Step 2: Convert to lowercase if case insensitive (matching ToLowerUtf8 behavior)
-            if (!caseSensitive) {
-                utf8_int8_t *strCopy = utf8dup((const utf8_int8_t *) normalizedKey.c_str());
-                if (strCopy) {
-                    utf8lwr(strCopy);
-                    normalizedKey = std::string((char *) strCopy);
-                    free(strCopy);
-                }
-            }
-
-            m_KeyIndex[normalizedKey] = i;
         }
     }
+
+    m_KeyIndexDirty = false;
 }
 
 IniFile::KeyValue *IniFile::Section::FindKey(const std::string &normalizedKey) const {
@@ -270,6 +245,12 @@ bool IniFile::ParseFromString(const std::string &content) {
         }
     }
 
+    if (normalizedContent.size() >= 3 &&
+        static_cast<unsigned char>(normalizedContent[0]) == 0xEF &&
+        static_cast<unsigned char>(normalizedContent[1]) == 0xBB &&
+        static_cast<unsigned char>(normalizedContent[2]) == 0xBF) {
+        normalizedContent.erase(0, 3);
+    }
     std::istringstream stream(normalizedContent);
     std::string line;
     Section *currentSection = nullptr;
@@ -544,8 +525,8 @@ bool IniFile::RemoveSection(const std::string &sectionName) {
         while (!prevSection.entries.empty() && prevSection.entries.back().isEmpty) {
             prevSection.entries.pop_back();
         }
-        // Rebuild the key index for the modified previous section
-        prevSection.RebuildKeyIndex(m_CaseSensitive);
+        // Mark key index dirty after trimming entries
+        prevSection.MarkKeyIndexDirty();
     }
 
     m_Sections.erase(m_Sections.begin() + index);
@@ -567,8 +548,7 @@ bool IniFile::HasKey(const std::string &sectionName, const std::string &key) con
     const Section *section = GetSection(sectionName);
     if (!section) return false;
 
-    std::string normalizedKey = NormalizeUtf8Key(key);
-    return section->FindKey(normalizedKey) != nullptr;
+    return FindKeyInSection(section, key) != nullptr;
 }
 
 std::string IniFile::GetValue(const std::string &sectionName, const std::string &key,
@@ -576,8 +556,7 @@ std::string IniFile::GetValue(const std::string &sectionName, const std::string 
     const Section *section = GetSection(sectionName);
     if (!section) return defaultValue;
 
-    std::string normalizedKey = NormalizeUtf8Key(key);
-    const KeyValue *entry = section->FindKey(normalizedKey);
+    const KeyValue *entry = FindKeyInSection(section, key);
     return entry ? entry->value : defaultValue;
 }
 
@@ -602,8 +581,7 @@ bool IniFile::SetValue(const std::string &sectionName, const std::string &key, c
     }
 
     // Try to find existing key
-    std::string normalizedKey = NormalizeUtf8Key(key);
-    KeyValue *entry = section->FindKey(normalizedKey);
+    KeyValue *entry = FindKeyInSection(section, key);
     if (entry) {
         entry->value = value;
         // Preserve the inline comment when updating the value
@@ -619,23 +597,21 @@ bool IniFile::SetValue(const std::string &sectionName, const std::string &key, c
 
     // Find the best insertion position - before any trailing empty lines or comments
     size_t insertPos = section->entries.size();
-    
+
     // Scan backwards from the end to find the last non-empty, non-comment entry
     for (size_t i = section->entries.size(); i > 0; --i) {
-        const KeyValue &entry = section->entries[i - 1];
-        if (entry.isEmpty || entry.isComment) {
+        const KeyValue &existing = section->entries[i - 1];
+        if (existing.isEmpty || existing.isComment) {
             insertPos = i - 1;
         } else {
             // Found a real key-value entry, insert after it
             break;
         }
     }
-    
+
     // Insert the new entry at the calculated position
     section->entries.emplace(section->entries.begin() + insertPos, key, value);
-
-    // Update the key index for this section
-    section->RebuildKeyIndex(m_CaseSensitive);
+    section->MarkKeyIndexDirty();
 
     return true;
 }
@@ -654,8 +630,7 @@ std::string IniFile::GetInlineComment(const std::string &sectionName, const std:
     const Section *section = GetSection(sectionName);
     if (!section) return "";
 
-    std::string normalizedKey = NormalizeUtf8Key(key);
-    const KeyValue *entry = section->FindKey(normalizedKey);
+    const KeyValue *entry = FindKeyInSection(section, key);
     return entry ? entry->inlineComment : "";
 }
 
@@ -663,8 +638,7 @@ bool IniFile::SetInlineComment(const std::string &sectionName, const std::string
     Section *section = GetSection(sectionName);
     if (!section) return false;
 
-    std::string normalizedKey = NormalizeUtf8Key(key);
-    KeyValue *entry = section->FindKey(normalizedKey);
+    KeyValue *entry = FindKeyInSection(section, key);
     if (!entry) return false;
 
     // Normalize the comment format - ensure it starts with # if not empty
@@ -683,8 +657,7 @@ std::string IniFile::GetPrecedingComment(const std::string &sectionName, const s
     const Section *section = GetSection(sectionName);
     if (!section) return "";
 
-    std::string normalizedKey = NormalizeUtf8Key(key);
-    const KeyValue *entry = section->FindKey(normalizedKey);
+    const KeyValue *entry = FindKeyInSection(section, key);
     return entry ? entry->precedingComment : "";
 }
 
@@ -692,8 +665,7 @@ bool IniFile::SetPrecedingComment(const std::string &sectionName, const std::str
     Section *section = GetSection(sectionName);
     if (!section) return false;
 
-    std::string normalizedKey = NormalizeUtf8Key(key);
-    KeyValue *entry = section->FindKey(normalizedKey);
+    KeyValue *entry = FindKeyInSection(section, key);
     if (!entry) return false;
 
     entry->precedingComment = comment;
@@ -716,7 +688,7 @@ bool IniFile::RemoveKey(const std::string &sectionName, const std::string &key) 
     section->entries.erase(it, section->entries.end());
 
     if (removed) {
-        section->RebuildKeyIndex(m_CaseSensitive);
+        section->MarkKeyIndexDirty();
     }
 
     return removed;
@@ -797,7 +769,7 @@ bool IniFile::ApplyMutations(const std::string &sectionName,
         KeyValue &entry = section->entries[index];
         entry.key = mut->key;
         entry.value = mut->value;
-        entry.originalLine = mut->key + " = " + mut->value;
+        entry.originalLine = FormatKeyValueWithComment(entry.key, entry.value, entry.inlineComment);
     }
 
     // 2. Apply remove operations (reverse order)
@@ -818,8 +790,8 @@ bool IniFile::ApplyMutations(const std::string &sectionName,
         section->entries.emplace_back(mut->key, mut->value);
     }
 
-    // Rebuild the key index since we modified entries
-    section->RebuildKeyIndex(m_CaseSensitive);
+    // Mark the key index dirty since we modified entries
+    section->MarkKeyIndexDirty();
 
     return true;
 }
@@ -831,6 +803,9 @@ void IniFile::SetSectionInsertionLogic(SectionInsertLogic logic) {
 void IniFile::SetCaseSensitive(bool caseSensitive) {
     if (m_CaseSensitive != caseSensitive) {
         m_CaseSensitive = caseSensitive;
+        for (auto &section : m_Sections) {
+            section.MarkKeyIndexDirty();
+        }
         // Rebuild all indices since case sensitivity changed
         RebuildSectionIndex();
     }
@@ -885,103 +860,112 @@ bool IniFile::ParseKeyValueWithComment(const std::string &line, std::string &key
 
     key = TrimUtf8String(line.substr(0, eq));
     std::string valueAndComment = line.substr(eq + 1);
-    
 
-    // Look for comment markers in the value part
-    // Be smart about # - if it's immediately after whitespace and followed by hex digits,
-    // it's likely a color value, not a comment
+    bool inQuotes = false;
     size_t commentPos = std::string::npos;
     for (size_t i = 0; i < valueAndComment.size(); ++i) {
         char ch = valueAndComment[i];
-        if (ch == '#' || ch == ';') {
-            // Check if it's not within quotes (basic quote handling)
-            bool inQuotes = false;
-            for (size_t j = 0; j < i; ++j) {
-                if (valueAndComment[j] == '"') {
-                    inQuotes = !inQuotes;
+
+        if (ch == '"') {
+            inQuotes = !inQuotes;
+            continue;
+        }
+
+        if (inQuotes || (ch != '#' && ch != ';')) {
+            continue;
+        }
+
+        size_t prevIdx = i;
+        while (prevIdx > 0 && (valueAndComment[prevIdx - 1] == ' ' || valueAndComment[prevIdx - 1] == '\t')) {
+            --prevIdx;
+        }
+        char prevNonWhitespace = (prevIdx > 0) ? valueAndComment[prevIdx - 1] : '\0';
+
+        size_t nextIdx = i + 1;
+        while (nextIdx < valueAndComment.size() && (valueAndComment[nextIdx] == ' ' || valueAndComment[nextIdx] == '\t')) {
+            ++nextIdx;
+        }
+        char nextNonWhitespace = (nextIdx < valueAndComment.size()) ? valueAndComment[nextIdx] : '\0';
+
+        bool immediateWhitespace = (i == 0) || valueAndComment[i - 1] == ' ' || valueAndComment[i - 1] == '\t';
+
+        if (ch == '#') {
+            if (!immediateWhitespace) {
+                continue;
+            }
+
+            size_t hexDigits = 0;
+            for (size_t j = i + 1; j < valueAndComment.size() && hexDigits < 8; ++j) {
+                char c = valueAndComment[j];
+                if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+                    ++hexDigits;
+                } else {
+                    break;
                 }
             }
-            if (!inQuotes) {
-                // Special handling for # and ; in ANSI color contexts
-                if (ch == '#') {
-                    // Check if this # is likely a hex color value
-                    // Heuristic: if # is at the start or preceded by whitespace, and followed by 3-8 hex digits, it's probably a color
-                    bool precedingWhitespace = (i == 0);
-                    if (!precedingWhitespace && i > 0) {
-                        char prevChar = valueAndComment[i-1];
-                        precedingWhitespace = (prevChar == ' ' || prevChar == '\t');
-                    }
-                    
-                    if (precedingWhitespace) {
-                        // Count hex digits after #
-                        size_t hexDigits = 0;
-                        for (size_t j = i + 1; j < valueAndComment.size() && hexDigits < 8; ++j) {
-                            char c = valueAndComment[j];
-                            if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-                                hexDigits++;
-                            } else {
-                                break;
-                            }
-                        }
-                        
-                        // If we found 3, 4, 6, or 8 hex digits (common color formats), treat as color value
-                        if (hexDigits == 3 || hexDigits == 4 || hexDigits == 6 || hexDigits == 8) {
-                            // Check if this is the only value, or if there's a space after the hex digits for a real comment
-                            size_t afterHex = i + 1 + hexDigits;
-                            bool hasCommentAfter = false;
-                            if (afterHex < valueAndComment.size()) {
-                                // Skip whitespace
-                                while (afterHex < valueAndComment.size() && (valueAndComment[afterHex] == ' ' || valueAndComment[afterHex] == '\t')) {
-                                    afterHex++;
-                                }
-                                // If there's non-whitespace content after, it could be a comment
-                                if (afterHex < valueAndComment.size()) {
-                                    hasCommentAfter = true;
-                                    commentPos = afterHex;
-                                }
-                            }
-                            if (!hasCommentAfter) {
-                                continue; // Don't treat this # as a comment marker
-                            } else {
-                                break; // Found comment after the hex color
-                            }
-                        }
-                    }
-                } else if (ch == ';') {
-                    // Special handling for ; - if it appears to be part of a numeric value list (like "5;6;7;8"), don't treat as comment
-                    // Heuristic: if the semicolon is surrounded by digits or at the end of digits, it's likely a separator
-                    bool precedingDigit = (i > 0 && std::isdigit(static_cast<unsigned char>(valueAndComment[i-1])));
-                    bool followingDigit = (i + 1 < valueAndComment.size() && std::isdigit(static_cast<unsigned char>(valueAndComment[i+1])));
-                    
-                    if (precedingDigit && followingDigit) {
-                        // This semicolon is between digits, likely a separator, not a comment
-                        continue;
-                    } else if (precedingDigit) {
-                        // Check if there are more digits later in the string separated by semicolons
-                        bool hasMoreDigitSeparators = false;
-                        for (size_t j = i + 1; j < valueAndComment.size(); ++j) {
-                            char c = valueAndComment[j];
-                            if (std::isdigit(static_cast<unsigned char>(c))) {
-                                hasMoreDigitSeparators = true;
-                                break;
-                            } else if (c == ';') {
-                                continue; // Skip more semicolons
-                            } else if (c == ' ' || c == '\t') {
-                                continue; // Skip whitespace  
-                            } else {
-                                break; // Found non-digit, non-semicolon, non-whitespace
-                            }
-                        }
-                        if (hasMoreDigitSeparators) {
-                            continue; // Don't treat as comment
-                        }
-                    }
+
+            if (hexDigits == 3 || hexDigits == 4 || hexDigits == 6 || hexDigits == 8) {
+                size_t afterHex = i + 1 + hexDigits;
+                while (afterHex < valueAndComment.size() && (valueAndComment[afterHex] == ' ' || valueAndComment[afterHex] == '\t')) {
+                    ++afterHex;
                 }
-                
-                // If we get here, treat as a normal comment marker
+                if (afterHex >= valueAndComment.size()) {
+                    continue;
+                }
+                commentPos = afterHex;
+                break;
+            }
+
+            commentPos = i;
+            break;
+        } else {
+            bool prevIsDigit = std::isdigit(static_cast<unsigned char>(prevNonWhitespace));
+            bool nextIsDigit = std::isdigit(static_cast<unsigned char>(nextNonWhitespace));
+            bool nextIsEnd = (nextIdx >= valueAndComment.size());
+            bool prevIsSemicolon = (prevNonWhitespace == ';');
+
+            bool digitAhead = false;
+            for (size_t j = i + 1; j < valueAndComment.size(); ++j) {
+                char c = valueAndComment[j];
+                if (c == ' ' || c == '\t') {
+                    continue;
+                }
+                if (c == ';') {
+                    continue;
+                }
+                digitAhead = std::isdigit(static_cast<unsigned char>(c));
+                break;
+            }
+
+            if (prevIsDigit && nextIsDigit) {
+                continue;
+            }
+
+            if (prevIsDigit && nextIsEnd) {
+                continue;
+            }
+
+            if (prevIsDigit && nextNonWhitespace == ';' && digitAhead) {
+                continue;
+            }
+
+            if (prevIsSemicolon) {
                 commentPos = i;
                 break;
             }
+
+            bool prevIsAlpha = std::isalpha(static_cast<unsigned char>(prevNonWhitespace));
+
+            if (!immediateWhitespace) {
+                if (prevIsAlpha && nextIsDigit) {
+                    commentPos = i;
+                    break;
+                }
+                continue;
+            }
+
+            commentPos = i;
+            break;
         }
     }
 
@@ -992,7 +976,6 @@ bool IniFile::ParseKeyValueWithComment(const std::string &line, std::string &key
         value = TrimUtf8String(valueAndComment);
         comment.clear();
     }
-    
 
     return !key.empty();
 }
@@ -1112,18 +1095,21 @@ size_t IniFile::GetDefaultSectionInsertPosition(const std::string &sectionName) 
 void IniFile::RebuildSectionIndex() const {
     m_SectionIndex.clear();
     m_SectionIndex.reserve(m_Sections.size());
+    const auto normalizeSection = [this](const std::string &name) { return NormalizeUtf8SectionName(name); };
+    const auto normalizeKey = [this](const std::string &key) { return NormalizeUtf8Key(key); };
 
     for (size_t i = 0; i < m_Sections.size(); ++i) {
-        std::string normalized = NormalizeUtf8SectionName(m_Sections[i].name);
+        std::string normalized = normalizeSection(m_Sections[i].name);
+        // Later sections override earlier ones for lookups while preserving duplicates in m_Sections
         m_SectionIndex[normalized] = i;
-        // Also rebuild key index for each section
-        m_Sections[i].RebuildKeyIndex(m_CaseSensitive);
+        m_Sections[i].RebuildKeyIndex(normalizeKey);
     }
 }
 
 IniFile::KeyValue *IniFile::FindKeyInSection(Section *section, const std::string &key) {
     if (!section) return nullptr;
 
+    section->RebuildKeyIndex([this](const std::string &candidate) { return NormalizeUtf8Key(candidate); });
     std::string normalizedKey = NormalizeUtf8Key(key);
     return section->FindKey(normalizedKey);
 }
@@ -1131,6 +1117,7 @@ IniFile::KeyValue *IniFile::FindKeyInSection(Section *section, const std::string
 const IniFile::KeyValue *IniFile::FindKeyInSection(const Section *section, const std::string &key) const {
     if (!section) return nullptr;
 
+    section->RebuildKeyIndex([this](const std::string &candidate) { return NormalizeUtf8Key(candidate); });
     std::string normalizedKey = NormalizeUtf8Key(key);
     return section->FindKey(normalizedKey);
 }

@@ -36,6 +36,7 @@ public:
         std::string headerLine;
         std::vector<KeyValue> entries;
         mutable std::unordered_map<std::string, size_t> m_KeyIndex; // For O(1) key lookup
+        mutable bool m_KeyIndexDirty = true;
         size_t lineNumber = 0;
 
         Section() = default;
@@ -43,7 +44,8 @@ public:
         explicit Section(const std::string &sectionName) : name(sectionName), headerLine("[" + sectionName + "]") {}
 
         // Update key index after modifications - must be called when entries change
-        void RebuildKeyIndex(bool caseSensitive) const;
+        void RebuildKeyIndex(const std::function<std::string(const std::string &)> &normalizer) const;
+        void MarkKeyIndexDirty() const { m_KeyIndexDirty = true; }
 
         // Find key with O(1) lookup
         KeyValue *FindKey(const std::string &normalizedKey) const;
@@ -180,3 +182,6 @@ private:
 };
 
 #endif // BML_INIFILE_H
+
+
+
