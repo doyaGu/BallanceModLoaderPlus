@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
-#include <thread>
+
 #include <chrono>
 
 #include <windows.h>
@@ -20,8 +20,7 @@ void Logger::SetDefault(Logger *logger) {
     m_DefaultLogger = logger;
 }
 
-Logger::Logger(const char *modName) : m_ModName(modName) {
-}
+Logger::Logger(const char *modName) : m_ModName(modName) {}
 
 void Logger::Info(const char *fmt, ...) {
     va_list args;

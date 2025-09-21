@@ -4,7 +4,9 @@
 #include <sstream>
 #include <algorithm>
 
+#ifndef BML_TEST
 #include "ModContext.h"
+#endif
 #include "StringUtils.h"
 
 Config::Config(IMod *mod) : m_Mod(mod), m_ModID(mod ? mod->GetID() : "") {}
@@ -547,6 +549,8 @@ CKKEYBOARD *Property::GetKeyPtr() {
 void Property::SetModified() {
     if (m_Config && m_Config->GetMod()) {
         m_Config->GetMod()->OnModifyConfig(m_Category.c_str(), m_Key.c_str(), this);
+#ifndef BML_TEST
         BML_GetModContext()->SaveConfig(m_Config);
+#endif
     }
 }

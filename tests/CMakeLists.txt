@@ -28,7 +28,7 @@ function(add_bml_test test_name)
             ${TEST_DEPENDENCIES}
     )
 
-    target_compile_definitions(${test_name} PRIVATE "BML_EXPORTS")
+    target_compile_definitions(${test_name} PRIVATE "BML_EXPORTS" "BML_TEST")
 
     set_target_properties(${test_name} PROPERTIES FOLDER "Tests")
 endfunction()
