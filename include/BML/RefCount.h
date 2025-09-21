@@ -27,15 +27,7 @@ namespace BML {
 
         // Fast path bump: relaxed is sufficient (doesn't publish object state).
         uint32_t AddRef() noexcept {
-#if !defined(NDEBUG)
-            // Optional: saturate in debug to catch leaks gone wild
-            uint32_t old = m_RefCount.fetch_add(1, std::memory_order_relaxed);
-            if (old == std::numeric_limits<uint32_t>::max())
-                __builtin_trap(); // or assert(false)
-            return old + 1;
-#else
             return m_RefCount.fetch_add(1, std::memory_order_relaxed) + 1;
-#endif
         }
 
         // Try to add only if object is still "live" (count > 0). Prevents resurrection.
