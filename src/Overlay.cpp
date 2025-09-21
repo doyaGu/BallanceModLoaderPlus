@@ -4,8 +4,9 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <Windows.h>
+#include <CommCtrl.h>
 
-#include <MinHook.h>
+#include <vector>
 
 #include "imgui_internal.h"
 #include "imgui_impl_ck2.h"
@@ -15,126 +16,93 @@
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 namespace Overlay {
-    typedef BOOL (WINAPI *LPFNPEEKMESSAGE)(LPMSG, HWND, UINT, UINT, UINT);
-    typedef BOOL (WINAPI *LPFNGETMESSAGE)(LPMSG, HWND, UINT, UINT);
+    namespace {
+        constexpr UINT_PTR kImGuiSubclassId = 0x1A2B3C4D;
+        HWND g_SubclassTarget = nullptr;
+        bool g_SubclassInstalled = false;
 
-    LPFNPEEKMESSAGE g_OrigPeekMessageA = nullptr;
-    LPFNPEEKMESSAGE g_OrigPeekMessageW = nullptr;
-    LPFNGETMESSAGE g_OrigGetMessageA = nullptr;
-    LPFNGETMESSAGE g_OrigGetMessageW = nullptr;
+        LRESULT CALLBACK ImGuiSubProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
+
+        bool RemoveImGuiSubclass() {
+            if (!g_SubclassInstalled || !g_SubclassTarget) {
+                g_SubclassTarget = nullptr;
+                g_SubclassInstalled = false;
+                return true;
+            }
+
+            bool removed = ::RemoveWindowSubclass(g_SubclassTarget, ImGuiSubProc, kImGuiSubclassId) != FALSE;
+            g_SubclassTarget = nullptr;
+            g_SubclassInstalled = false;
+            return removed;
+        }
+
+        bool InstallImGuiSubclass(HWND hwnd) {
+            if (!hwnd)
+                return false;
+
+            if (g_SubclassInstalled) {
+                if (g_SubclassTarget == hwnd)
+                    return true;
+                if (!RemoveImGuiSubclass())
+                    return false;
+            }
+
+            if (!::SetWindowSubclass(hwnd, ImGuiSubProc, kImGuiSubclassId, 0))
+                return false;
+
+            g_SubclassTarget = hwnd;
+            g_SubclassInstalled = true;
+            return true;
+        }
+
+        void HandleImeComposition(HWND hWnd, LPARAM lParam) {
+            if ((lParam & GCS_RESULTSTR) == 0)
+                return;
+
+            HIMC hImc = ImmGetContext(hWnd);
+            if (!hImc)
+                return;
+
+            LONG lengthInBytes = ImmGetCompositionStringW(hImc, GCS_RESULTSTR, nullptr, 0);
+            if (lengthInBytes > 0) {
+                size_t length = static_cast<size_t>(lengthInBytes) / sizeof(WCHAR);
+                std::vector<WCHAR> buffer(length + 1, L'\0');
+                ImmGetCompositionStringW(hImc, GCS_RESULTSTR, buffer.data(), lengthInBytes);
+                for (size_t i = 0; i < length; ++i) {
+                    ImGui::GetIO().AddInputCharacterUTF16(buffer[i]);
+                }
+            }
+
+            ImmReleaseContext(hWnd, hImc);
+        }
+
+        LRESULT CALLBACK ImGuiSubProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
+            if (!GetImGuiContext())
+                return DefSubclassProc(hWnd, msg, wParam, lParam);
+
+            ImGuiContextScope scope;
+
+            if (msg == WM_IME_COMPOSITION) {
+                HandleImeComposition(hWnd, lParam);
+                return 0;
+            }
+
+            if (msg == WM_NCDESTROY) {
+                RemoveImGuiSubclass();
+            }
+
+            LRESULT imguiResult = ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
+            if (imguiResult != 0)
+                return imguiResult;
+
+            return DefSubclassProc(hWnd, msg, wParam, lParam);
+        }
+    }
 
     ImGuiContext *g_ImGuiContext = nullptr;
     bool g_ImGuiReady = false;
     bool g_RenderReady = false;
     bool g_NewFrame = false;
-
-    LRESULT OnWndProcA(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-        ImGuiContextScope scope;
-
-        if (msg == WM_IME_COMPOSITION) {
-            if (lParam & GCS_RESULTSTR) {
-                HIMC hIMC = ImmGetContext(hWnd);
-                LONG len = ImmGetCompositionStringW(hIMC, GCS_RESULTSTR, nullptr, 0) / (LONG) sizeof(WCHAR);
-                auto *buf = new WCHAR[len + 1];
-                ImmGetCompositionStringW(hIMC, GCS_RESULTSTR, buf, len * sizeof(WCHAR));
-                buf[len] = L'\0';
-                ImmReleaseContext(hWnd, hIMC);
-                for (int i = 0; i < len; ++i) {
-                    ImGui::GetIO().AddInputCharacterUTF16(buf[i]);
-                }
-                delete[] buf;
-            }
-            return 1;
-        }
-
-        return ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
-    }
-
-    LRESULT OnWndProcW(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-        ImGuiContextScope scope;
-
-        return ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
-    }
-
-    extern "C" BOOL WINAPI HookPeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg) {
-        if (!g_OrigPeekMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg))
-            return FALSE;
-
-        if (lpMsg->hwnd && (wRemoveMsg & PM_REMOVE) != 0) {
-            if (OnWndProcA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
-                lpMsg->message = WM_NULL;
-            }
-        }
-
-        return TRUE;
-    }
-
-    extern "C" BOOL WINAPI HookPeekMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg) {
-        if (!g_OrigPeekMessageW(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg))
-            return FALSE;
-
-        if (lpMsg->hwnd && (wRemoveMsg & PM_REMOVE) != 0) {
-            if (OnWndProcW(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
-                lpMsg->message = WM_NULL;
-            }
-        }
-
-        return TRUE;
-    }
-
-    extern "C" BOOL WINAPI HookGetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax) {
-        if (!g_OrigGetMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax))
-            return FALSE;
-
-        if (lpMsg->hwnd && OnWndProcA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
-            lpMsg->message = WM_NULL;
-        }
-
-        return lpMsg->message != WM_QUIT;
-    }
-
-    extern "C" BOOL WINAPI HookGetMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax) {
-        if (!g_OrigGetMessageW(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax))
-            return FALSE;
-
-        if (lpMsg->hwnd && OnWndProcW(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
-            lpMsg->message = WM_NULL;
-        }
-
-        return lpMsg->message != WM_QUIT;
-    }
-
-    bool ImGuiInstallWin32Hooks() {
-        if (MH_CreateHookApi(L"user32", "PeekMessageA", (LPVOID) &HookPeekMessageA, (LPVOID *) &g_OrigPeekMessageA) != MH_OK ||
-            MH_EnableHook((LPVOID) &PeekMessageA) != MH_OK) {
-            return false;
-        }
-        if (MH_CreateHookApi(L"user32", "GetMessageA", (LPVOID) &HookGetMessageA, (LPVOID *) &g_OrigGetMessageA) != MH_OK ||
-            MH_EnableHook((LPVOID) &GetMessageA) != MH_OK) {
-            return false;
-        }
-        if (MH_CreateHookApi(L"user32", "PeekMessageW", (LPVOID) &HookPeekMessageW, (LPVOID *) &g_OrigPeekMessageW) != MH_OK ||
-            MH_EnableHook((LPVOID) &PeekMessageW) != MH_OK) {
-            return false;
-        }
-        if (MH_CreateHookApi(L"user32", "GetMessageW", (LPVOID) &HookGetMessageW, (LPVOID *) &g_OrigGetMessageW) != MH_OK ||
-            MH_EnableHook((LPVOID) &GetMessageW) != MH_OK) {
-            return false;
-        }
-        return true;
-    }
-
-    bool ImGuiUninstallWin32Hooks() {
-        if (MH_DisableHook((LPVOID) &PeekMessageA) != MH_OK)
-            return false;
-        if (MH_DisableHook((LPVOID) &GetMessageA) != MH_OK)
-            return false;
-        if (MH_DisableHook((LPVOID) &PeekMessageW) != MH_OK)
-            return false;
-        if (MH_DisableHook((LPVOID) &GetMessageW) != MH_OK)
-            return false;
-        return true;
-    }
 
     ImGuiContext *GetImGuiContext() {
         return g_ImGuiContext;
@@ -164,7 +132,14 @@ namespace Overlay {
     bool ImGuiInitPlatform(CKContext *context) {
         ImGuiContextScope scope;
 
-        if (!ImGui_ImplWin32_Init(context->GetMainWindow()))
+        HWND hwnd = context ? (HWND) context->GetMainWindow() : nullptr;
+        if (!hwnd)
+            return false;
+
+        if (!ImGui_ImplWin32_Init(hwnd))
+            return false;
+
+        if (!InstallImGuiSubclass(hwnd))
             return false;
 
         return true;
@@ -183,8 +158,10 @@ namespace Overlay {
     }
 
     void ImGuiShutdownPlatform(CKContext *context) {
+        (void) context;
         ImGuiContextScope scope;
 
+        RemoveImGuiSubclass();
         ImGui_ImplWin32_Shutdown();
 
         g_RenderReady = false;
@@ -203,7 +180,7 @@ namespace Overlay {
     void ImGuiNewFrame() {
         if (g_ImGuiReady && !g_NewFrame) {
             g_RenderReady = false;
- 
+
             ImGui_ImplWin32_NewFrame();
             ImGui_ImplCK2_NewFrame();
             ImGui::NewFrame();

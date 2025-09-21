@@ -97,7 +97,7 @@ bool ModContext::Init() {
         return false;
     }
 
-    if (Overlay::ImGuiCreateContext() == nullptr) {
+    if (!Overlay::ImGuiCreateContext()) {
         m_Logger->Error("Failed to create ImGui context");
         ShutdownHooks();
         onig_end();
