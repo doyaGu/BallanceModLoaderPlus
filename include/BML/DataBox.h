@@ -1,62 +1,78 @@
 /**
  * @file DataBox.h
- * @brief The class implements data storage box.
+ * @brief Thread-safe storage for arbitrary user data slots keyed by a size_t "type".
  */
 #ifndef BML_DATABOX_H
 #define BML_DATABOX_H
 
 #include <mutex>
-#include <vector>
+#include <unordered_map>
+#include <utility>
 
 namespace BML {
     /**
-     * @brief A container for storing user data.
+     * @brief A container for storing user data pointers keyed by a caller-provided "type".
+     *
+     * Notes:
+     *  - Uses an unordered_map<size_t, void*> under a single mutex: O(1) avg lookups.
+     *  - Never casts pointers to integers (avoids 32/64-bit truncation pitfalls). :contentReference[oaicite:2]{index=2}
+     *  - SetData returns the previous pointer (or nullptr if none).
+     *  - No ownership semantics: callers manage the lifetime of stored pointers.
      */
     class DataBox {
     public:
-        /**
-         * @brief Retrieves the data associated with the specified type.
-         * @param type The type of the data to retrieve.
-         * @return A pointer to the data of the specified type, or nullptr if not found.
-         */
-        void *GetData(size_t type) const {
-            std::lock_guard<std::mutex> guard(m_RWLock);
+        DataBox() = default;
+        DataBox(const DataBox &) = delete;
+        DataBox &operator=(const DataBox &) = delete;
 
-            const auto n = m_UserData.size();
-            for (size_t i = 0; i < n; i += 2) {
-                if (m_UserData[i] == type)
-                    return reinterpret_cast<void *>(m_UserData[i + 1]);
-            }
-            return nullptr;
+        /**
+         * @brief Get the pointer stored for @p type, or nullptr if absent.
+         */
+        void *GetData(std::size_t type) const noexcept {
+            std::lock_guard<std::mutex> g(m_RWLock);
+            const auto it = m_UserData.find(type);
+            return (it == m_UserData.end()) ? nullptr : it->second;
         }
 
         /**
-         * @brief Sets the data of the specified type.
-         * @param data A pointer to the data to set.
-         * @param type The type of the data to set.
-         * @return A pointer to the previous data of the specified type, or nullptr if not found.
+         * @brief Set the pointer for @p type. Returns the previous pointer (or nullptr).
          */
-        void *SetData(void *data, size_t type) {
-            std::lock_guard<std::mutex> guard(m_RWLock);
+        void *SetData(void *data, std::size_t type) noexcept {
+            std::lock_guard<std::mutex> g(m_RWLock);
+            auto &slot = m_UserData[type];
+            void *prev = slot;
+            slot = data;
+            return prev;
+        }
 
-            const auto n = m_UserData.size();
-            for (size_t i = 0; i < n; i += 2) {
-                if (m_UserData[i] == type) {
-                    void *oldData = reinterpret_cast<void *>(m_UserData[i + 1]);
-                    m_UserData[i + 1] = reinterpret_cast<size_t>(data);
-                    return oldData;
-                }
-            }
+        /**
+         * @brief Remove an entry; returns the removed pointer (or nullptr if none).
+         */
+        void *RemoveData(std::size_t type) noexcept {
+            std::lock_guard<std::mutex> g(m_RWLock);
+            const auto it = m_UserData.find(type);
+            if (it == m_UserData.end()) return nullptr;
+            void *prev = it->second;
+            m_UserData.erase(it);
+            return prev;
+        }
 
-            m_UserData.push_back(type);
-            m_UserData.push_back(reinterpret_cast<size_t>(data));
-            return nullptr;
+        /// Clear all entries (does not free what pointers point to).
+        void Clear() noexcept {
+            std::lock_guard<std::mutex> g(m_RWLock);
+            m_UserData.clear();
+        }
+
+        /// Number of stored entries.
+        std::size_t Size() const noexcept {
+            std::lock_guard<std::mutex> g(m_RWLock);
+            return m_UserData.size();
         }
 
     private:
-        mutable std::mutex m_RWLock; /**< A mutex for thread-safe access to the user data. */
-        std::vector<size_t> m_UserData; /**< The storage for user data. */
+        mutable std::mutex m_RWLock;
+        std::unordered_map<std::size_t, void *> m_UserData;
     };
-}
+} // namespace BML
 
 #endif // BML_DATABOX_H
