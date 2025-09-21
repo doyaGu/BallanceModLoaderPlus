@@ -817,19 +817,31 @@ std::wstring AnsiPalette::ResolveThemePathW(const std::wstring &name) const {
     return L"";
 }
 
+// Fetch active theme assignment, honoring legacy aliases.
+static std::string ResolveThemeBaseValue(const IniFile &ini) {
+    auto fetch = [&](const char *section, const char *key) -> std::string {
+        std::string value = utils::TrimStringCopy(ini.GetValue(section, key));
+        return value.empty() ? std::string() : value;
+    };
+
+    std::string value = fetch("theme", "base");
+    if (!value.empty()) return value;
+    value = fetch("theme", "theme");
+    if (!value.empty()) return value;
+    return {};
+}
+
 std::string AnsiPalette::ExtractThemeName(const std::string &buf) {
     IniFile ini;
     if (!ini.ParseFromString(buf)) {
         return {};
     }
 
-    // Look for "base" key in [theme] section
-    std::string themeName = ini.GetValue("theme", "base");
+    std::string themeName = ResolveThemeBaseValue(ini);
     if (themeName.empty()) {
-        themeName = "none"; // default if no base specified
+        return {};
     }
 
-    // Treat explicit 'none' as empty (no active theme)
     std::string lowerTheme = utils::ToLower(themeName);
     if (lowerTheme == "none") {
         return {};
@@ -955,12 +967,11 @@ std::string AnsiPalette::GetActiveThemeName() const {
         return {};
     }
 
-    std::string name = ini.GetValue("theme", "base");
+    std::string name = ResolveThemeBaseValue(ini);
     if (name.empty()) {
-        name = "none"; // default if no base specified
+        return {};
     }
 
-    // Normalize to lowercase and handle "none"
     name = utils::ToLower(name);
     if (name == "none") return {};
     return name;
@@ -1033,16 +1044,20 @@ bool AnsiPalette::SetActiveThemeName(const std::string &name) {
         ini.Clear();
     }
 
-    const std::string nameLower = utils::ToLower(name);
-    const bool clear = nameLower.empty() || nameLower == "none";
+    const std::string trimmed = utils::TrimStringCopy(name);
+    const std::string nameLower = utils::ToLower(trimmed);
+    const bool clear = trimmed.empty() || nameLower == "none";
+
+    auto clearKeys = [&](const char *section) {
+        ini.RemoveKey(section, "base");
+        ini.RemoveKey(section, "theme");
+    };
 
     if (clear) {
-        // Remove both base and theme keys
-        ini.SetValue("theme", "base", "none");
-        // If theme section becomes empty except for comments, we could remove it,
-        // but let's keep it for consistency
+        clearKeys("theme");
     } else {
-        ini.SetValue("theme", "base", name);
+        clearKeys("theme");
+        ini.SetValue("theme", "base", trimmed);
     }
 
     return ini.WriteToFile(cfg);
