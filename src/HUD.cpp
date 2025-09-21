@@ -1078,19 +1078,28 @@ void HUD::OnDraw() {
     }
 }
 
+static void UpdateElementTree(const std::shared_ptr<HUDElement> &element, float deltaTime) {
+    if (!element) return;
+
+    element->UpdateAnimations(deltaTime);
+
+    if (auto container = HUDCast<HUDContainer>(element)) {
+        container->TickFade(deltaTime);
+
+        const size_t childCount = container->GetChildCount();
+        for (size_t i = 0; i < childCount; ++i) {
+            if (auto child = container->GetChild(i)) {
+                UpdateElementTree(child, deltaTime);
+            }
+        }
+    }
+}
+
 void HUD::OnProcess() {
     const float deltaTime = ImGui::GetIO().DeltaTime;
 
     for (auto &element : m_Elements) {
-        if (element) {
-            // Update animations
-            element->UpdateAnimations(deltaTime);
-
-            // Update container fade animations
-            if (auto container = HUDCast<HUDContainer>(element)) {
-                container->TickFade(deltaTime);
-            }
-        }
+        UpdateElementTree(element, deltaTime);
     }
 }
 
