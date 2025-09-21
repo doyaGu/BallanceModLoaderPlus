@@ -391,7 +391,7 @@ void BMLMod::LoadMap(const std::wstring &path) {
     SetParamValue(m_LevelRow, level);
 
     std::string mapPath = utils::ToString(path);
-    m_DataShare->Set("CustomMapName", mapPath.c_str(), mapPath.size() + 1);
+    BML_DataShare_Set(m_DataShare, "CustomMapName", mapPath.c_str(), mapPath.size() + 1);
 
     CKMessageManager *mm = m_CKContext->GetMessageManager();
     CKMessageType loadLevel = mm->AddMessageType((CKSTRING) "Load Level");
@@ -1278,3 +1278,4 @@ void BMLMod::SetFPSUpdateFrequency(uint32_t frames) {
     if (m_FPSCounter.GetUpdateFrequency() == (frames > 0 ? frames : 1)) return;
     m_FPSCounter.SetUpdateFrequency(frames);
 }
+

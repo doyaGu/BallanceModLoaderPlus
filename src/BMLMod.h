@@ -3,7 +3,7 @@
 
 #include "BML/IMod.h"
 #include "BML/IBML.h"
-#include "BML/IDataShare.h"
+#include "BML/DataShare.h"
 
 #include "HUD.h"
 #include "FpsCounter.h"
@@ -120,7 +120,7 @@ private:
     void UpdateTimerDisplay();
     void UpdateCheatState();
 
-    BML::IDataShare *m_DataShare = nullptr;
+    BML_DataShare *m_DataShare = nullptr;
 
     CKContext *m_CKContext = nullptr;
     CKRenderContext *m_RenderContext = nullptr;
@@ -196,3 +196,4 @@ private:
 };
 
 #endif // BML_BMLMOD_H
+

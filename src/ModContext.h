@@ -12,7 +12,7 @@
 #include "BML/IMod.h"
 
 #include "Config.h"
-#include "DataShare.h"
+#include "DataShare.hpp"
 #include "CommandContext.h"
 #include "HookUtils.h"
 
@@ -104,7 +104,7 @@ public:
     const char *GetDirectoryUtf8(DirectoryType type);
 
     BML::CommandContext &GetCommandContext() { return m_CommandContext; }
-    BML::IDataShare *GetDataShare(const char *name = nullptr);
+    BML_DataShare *GetDataShare(const char *name = nullptr);
 
     CKContext *GetCKContext() override { return m_CKContext; }
     CKRenderContext *GetRenderContext() override { return m_CKContext->GetPlayerRenderContext(); }
