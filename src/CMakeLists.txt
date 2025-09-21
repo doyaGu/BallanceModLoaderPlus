@@ -153,6 +153,7 @@ target_link_libraries(BML
         CK2 VxMath
         PRIVATE
         minhook zip onig utf8
+        Comctl32
 )
 
 target_compile_definitions(BML PRIVATE

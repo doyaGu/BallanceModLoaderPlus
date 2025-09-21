@@ -29,9 +29,6 @@ namespace Overlay {
         ImGuiContext *m_ImGuiContext;
     };
 
-    bool ImGuiInstallWin32Hooks();
-    bool ImGuiUninstallWin32Hooks();
-
     ImGuiContext *ImGuiCreateContext();
     void ImGuiDestroyContext();
 
