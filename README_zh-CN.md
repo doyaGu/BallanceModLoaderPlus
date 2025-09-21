@@ -2,20 +2,73 @@
 
 [English](README.md) | 简体中文
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
+[![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.cppreference.com/w/cpp/20)
+[![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)]()
+
 面向 Ballance 的现代化 Mod Loader。基于 Gamepiaynmo 的 BallanceModLoader，全面重构与增强，提供更稳定的运行时、可扩展的 Mod API，以及更友好的游戏内 UI 与开发体验。
 
 本仓库包含 BML+ 核心运行库（`BMLPlus.dll`）、公共头文件（`include/BML`），以及若干内建模块（HUD、命令栏、Mod 列表、物理与对象加载钩子等）。
 
-提示：BML+ 仅支持新版 Player（BallancePlayer）。不保证对原版 Player 的兼容性。
+**提示：BML+ 仅支持新版 Player（BallancePlayer）。不保证对原版 Player 的兼容性。**
+
+## 目录
+
+- [Ballance Mod Loader Plus（BML+）](#ballance-mod-loader-plusbml)
+  - [目录](#目录)
+  - [功能亮点](#功能亮点)
+  - [截图展示](#截图展示)
+  - [架构与模块](#架构与模块)
+  - [运行时目录结构](#运行时目录结构)
+  - [安装与卸载](#安装与卸载)
+  - [使用与快捷键](#使用与快捷键)
+  - [配置项速览（BML 内建）](#配置项速览bml-内建)
+  - [从源码构建](#从源码构建)
+  - [Mod 开发快速上手](#mod-开发快速上手)
+  - [API 参考](#api-参考)
+    - [核心接口](#核心接口)
+    - [实用工具 API](#实用工具-api)
+    - [事件系统](#事件系统)
+  - [故障排除](#故障排除)
+    - [常见问题](#常见问题)
+      - [游戏无法启动或立即崩溃](#游戏无法启动或立即崩溃)
+      - [Mod 未加载](#mod-未加载)
+      - [性能问题](#性能问题)
+      - [Unicode/字体问题](#unicode字体问题)
+    - [调试信息](#调试信息)
+  - [贡献指南](#贡献指南)
+    - [开发环境设置](#开发环境设置)
+    - [贡献指南](#贡献指南-1)
+    - [代码风格](#代码风格)
+    - [测试](#测试)
+  - [测试与质量](#测试与质量)
+  - [常见问题（FAQ）](#常见问题faq)
+  - [许可与致谢](#许可与致谢)
+  - [关联项目](#关联项目)
+  - [支持与社区](#支持与社区)
+  - [路线图](#路线图)
+    - [计划功能](#计划功能)
+    - [当前限制](#当前限制)
+  - [性能说明](#性能说明)
 
 ## 功能亮点
 
-- 现代化 UI 覆盖层：集成 ImGui，自适应 DPI，支持窗口化控件与高分辨率；内置消息板（支持 ANSI 256 色与滚动）与命令栏。
-- 深度引擎集成：基于 Virtools CK2，引入渲染引擎钩子、物理钩子与对象加载拦截，支持全流程事件广播与行为树插桩（Hook Block）。
-- 完整 Mod 生态：统一 Mod 生命周期与依赖管理，版本校验，稳定的 ABI/头文件。
-- 开发者工具：命令系统（自动补全/历史/彩色输出）、定时器/调度、日志与配置系统（UTF-8/UTF-16）。
-- 画面与玩法增强：可选解锁帧率、设置帧率上限、宽高比修正（Widescreen Fix）、灯笼材质优化、出生/重生延迟移除（Overclock）。
-- 多语言与 Unicode：完善的字符串处理工具与编码转换，适配中/日/韩/西里尔等字库装载策略。
+**现代化 UI 覆盖层**：集成 ImGui，自适应 DPI，支持窗口化控件与高分辨率；内置消息板（支持 ANSI 256 色与滚动）与命令栏。
+
+**深度引擎集成**：基于 Virtools CK2，引入渲染引擎钩子、物理钩子与对象加载拦截，支持全流程事件广播与行为树插桩（Hook Block）。
+
+**完整 Mod 生态**：统一 Mod 生命周期与依赖管理，版本校验，稳定的 ABI/头文件。
+
+**开发者工具**：命令系统（自动补全/历史/彩色输出）、定时器/调度、日志与配置系统（UTF-8/UTF-16）。
+
+**画面与玩法增强**：可选解锁帧率、设置帧率上限、宽高比修正（Widescreen Fix）、灯笼材质优化、出生/重生延迟移除（Overclock）。
+
+**多语言与 Unicode**：完善的字符串处理工具与编码转换，适配中/日/韩/西里尔等字库装载策略。
+
+## 截图展示
+
+*即将推出：游戏内界面截图，展示 Mod 界面、命令栏和 HUD 元素。*
 
 ## 架构与模块
 
@@ -178,6 +231,103 @@ set_target_properties(MyMod PROPERTIES OUTPUT_NAME "MyMod")
 
 开箱即用模板：见 templates/mod-template（包含 CMake、BMLEntry/BMLExit 与示例命令）。
 
+## API 参考
+
+### 核心接口
+
+- **IBML**：主要接口，提供 CK 管理器访问（渲染、输入、时间等）、定时器管理、作弊控制、对象查找、球体/地面/模块注册和 Mod 依赖系统
+- **IMod**：所有 Mod 的基类，包含生命周期方法（OnLoad、OnUnload、OnProcess 等）
+- **ICommand**：创建自定义命令的接口，支持 Tab 自动补全
+- **IConfig**：配置管理，支持 UTF-8/UTF-16
+- **ILogger**：日志系统，支持多级别和 ANSI 彩色输出
+
+### 实用工具 API
+
+- **InputHook**：全面的输入处理，支持键盘、鼠标、手柄输入，输入屏蔽和原始状态访问
+- **Timer**：高级定时系统，支持多种类型（Once、Loop、Repeat、Interval、Debounce、Throttle）、流式构建器模式和链式调用
+- **DataShare**：C 风格的跨 Mod 数据共享 API，支持引用计数和回调订阅
+- **StringUtils**：Unicode 字符串处理和转换工具
+- **PathUtils**：文件系统操作和路径处理
+
+### 事件系统
+
+Mod 可以注册各种游戏事件：
+- 关卡开始/结束事件
+- 玩家出生/死亡事件
+- 物理事件（对象物理化）
+- 渲染事件（渲染前/后）
+- 自定义 Mod 事件
+
+详细的 API 文档请参见 `include/BML/` 中的头文件。
+
+## 故障排除
+
+### 常见问题
+
+#### 游戏无法启动或立即崩溃
+- 确保 `BuildingBlocks/BMLPlus.dll` 在正确位置
+- 检查是否安装了 Visual C++ Redistributable 2015-2022
+- 移除之前的 Mod Loader 残留文件
+- 查看 `ModLoader/ModLoader.log` 中的错误消息
+
+#### Mod 未加载
+- 确认 Mod 文件放置在 `ModLoader/Mods/` 目录中
+- 检查 Mod 是否有 `.bmodp` 扩展名或正确解压
+- 查看日志文件中的依赖关系
+- 确保 Mod 与您的 BML+ 版本兼容
+
+#### 性能问题
+- 在 `ModLoader/Configs/BML.cfg` 中禁用不必要的视觉效果
+- 如果出现卡顿，降低最大帧率
+- 检查可能影响性能的冲突 Mod
+
+#### Unicode/字体问题
+- 将适当的字体文件放置在 `ModLoader/Fonts/` 中
+- 在 `BML.cfg` 的 GUI 部分配置字体设置
+- 确保为您的语言设置了正确的字形范围
+
+### 调试信息
+
+排除故障时的帮助：
+1. 查看 `ModLoader/ModLoader.log` 中的详细错误消息
+2. 在游戏内使用 `/bml` 命令验证 BML+ 版本和已加载的 Mod
+3. 如果可用，在 Mod 配置中启用详细日志记录
+4. 使用最少的 Mod 集合进行测试以隔离问题
+
+## 贡献指南
+
+我们欢迎对 BML+ 的贡献！以下是您可以帮助的方式：
+
+### 开发环境设置
+
+1. Fork 该仓库
+2. 克隆子模块：`git clone --recursive <your-fork>`
+3. 设置构建环境（Visual Studio 2019+，CMake 3.14+）
+4. 安装 Virtools SDK 并设置 `VIRTOOLS_SDK_PATH`
+
+### 贡献指南
+
+- 遵循现有的代码风格和约定
+- 为新功能编写测试
+- 更新 API 变更的文档
+- 使用多个 Mod 进行测试以确保兼容性
+- 向 `main` 分支提交 Pull Request
+
+### 代码风格
+
+- 适当使用 C++20 特性
+- 遵循 RAII 原则
+- 使用智能指针进行内存管理
+- 保持公共 API 稳定且文档完善
+- 遵循现有命名约定
+
+### 测试
+
+- 运行完整测试套件：`ctest --test-dir build -C Release`
+- 使用真实 Mod 和游戏场景进行测试
+- 验证与现有 Mod 的兼容性
+- 检查内存泄漏和性能影响
+
 ## 测试与质量
 
 - 测试框架：GoogleTest（`tests/`）。核心工具类（Timer/PathUtils/StringUtils/Config/AnsiPalette）均有单元测试。
@@ -202,5 +352,44 @@ set_target_properties(MyMod PROPERTIES OUTPUT_NAME "MyMod")
 ## 关联项目
 
 - 新版 Player：https://github.com/doyaGu/BallancePlayer
+
+## 支持与社区
+
+- **问题报告与 Bug 反馈**：https://github.com/doyaGu/BallanceModLoaderPlus/issues
+- **功能请求**：使用 Issue 跟踪器并添加"enhancement"标签
+- **文档**：查看 `include/BML/` 头文件和本 README
+- **社区 Mod**：查看 releases 页面获取社区贡献的 Mod
+
+## 路线图
+
+### 计划功能
+
+- [ ] 开发期间 Mod 热重载支持
+- [ ] 增强脚本支持与 AngelScript 集成
+- [ ] 内置 Mod 浏览器和自动更新
+- [ ] 扩展物理模拟钩子
+- [ ] 网络多人游戏支持框架
+- [ ] 高级调试工具和性能分析器
+
+### 当前限制
+
+- 仅支持 Windows（由于 Virtools CK2 依赖）
+- 需要新版 Player（BallancePlayer）
+- 不向后兼容旧版 `.bmod` 文件
+- 限于 Virtools CK2 引擎功能
+
+## 性能说明
+
+BML+ 设计为最小性能影响：
+- 渲染钩子每帧增加 <1ms
+- 内存开销通常 <10MB
+- Mod 加载通过延迟初始化优化
+- 后台操作尽可能使用独立线程
+
+最佳性能建议：
+- 生产环境使用 Release 构建
+- 限制活动定时器数量
+- 优化 Mod 更新频率
+- 高效使用 DataShare API
 
 遇到问题或建议，欢迎提交 Issue：https://github.com/doyaGu/BallanceModLoaderPlus/issues

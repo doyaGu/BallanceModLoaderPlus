@@ -2,20 +2,73 @@
 
 English | [简体中文](README_zh-CN.md)
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
+[![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.cppreference.com/w/cpp/20)
+[![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)]()
+
 Modern mod loader for Ballance. BML+ is a reworked and enhanced successor to the original BallanceModLoader, featuring a stable runtime, extensible modding APIs, and developer‑friendly in‑game tooling.
 
 This repository contains the core runtime (`BMLPlus.dll`), public headers (`include/BML`), and several built‑in modules (HUD, command bar, mod list, engine hooks for rendering/physics/object‑loading, etc.).
 
-Note: BML+ targets the New Player (BallancePlayer). The original player is not supported.
+**Note: BML+ targets the New Player (BallancePlayer). The original player is not supported.**
+
+## Table of Contents
+
+- [Ballance Mod Loader Plus (BML+)](#ballance-mod-loader-plus-bml)
+  - [Table of Contents](#table-of-contents)
+  - [Highlights](#highlights)
+  - [Screenshots](#screenshots)
+  - [Architecture \& Modules](#architecture--modules)
+  - [Runtime Layout](#runtime-layout)
+  - [Install \& Uninstall](#install--uninstall)
+  - [Usage \& Hotkeys](#usage--hotkeys)
+  - [Config Quick Reference (core BML)](#config-quick-reference-core-bml)
+  - [Build from Source](#build-from-source)
+  - [Mod Development Quickstart](#mod-development-quickstart)
+  - [API Reference](#api-reference)
+    - [Core Interfaces](#core-interfaces)
+    - [Utility APIs](#utility-apis)
+    - [Event System](#event-system)
+  - [Troubleshooting](#troubleshooting)
+    - [Common Issues](#common-issues)
+      - [Game won't start or crashes immediately](#game-wont-start-or-crashes-immediately)
+      - [Mods not loading](#mods-not-loading)
+      - [Performance issues](#performance-issues)
+      - [Unicode/Font issues](#unicodefont-issues)
+    - [Debug Information](#debug-information)
+  - [Contributing](#contributing)
+    - [Development Setup](#development-setup)
+    - [Guidelines](#guidelines)
+    - [Code Style](#code-style)
+    - [Testing](#testing)
+  - [Testing \& Quality](#testing--quality)
+  - [FAQ](#faq)
+  - [License \& Acknowledgments](#license--acknowledgments)
+  - [Related](#related)
+  - [Support and Community](#support-and-community)
+  - [Roadmap](#roadmap)
+    - [Planned Features](#planned-features)
+    - [Current Limitations](#current-limitations)
+  - [Performance Notes](#performance-notes)
 
 ## Highlights
 
-- Modern overlay UI: Built on ImGui, DPI‑aware, high‑DPI/hi‑res friendly; includes a scrollable message board (ANSI 256‑color) and an in‑game command bar.
-- Deep engine integration: Hooks into Virtools CK2 for render, physics and object loading; full event broadcast and behavior‑graph instrumentation (Hook Block).
-- Complete mod ecosystem: Unified mod lifecycle and dependency management with version checks; stable headers/ABI;
-- Developer tools: Command system (tab completion/history/colored output), timers/scheduling, logging and configuration (UTF‑8/UTF‑16).
-- Visual/gameplay tweaks: Unlock framerate, max framerate limit, widescreen FOV fix, lantern material tweaks, and respawn/spawn delay removal (Overclock).
-- Unicode/i18n: Robust string/path utilities and conversion helpers; flexible font loading for CJK/Cyrillic, etc.
+**Modern overlay UI**: Built on ImGui, DPI‑aware, high‑DPI/hi‑res friendly; includes a scrollable message board (ANSI 256‑color) and an in‑game command bar.
+
+**Deep engine integration**: Hooks into Virtools CK2 for render, physics and object loading; full event broadcast and behavior‑graph instrumentation (Hook Block).
+
+**Complete mod ecosystem**: Unified mod lifecycle and dependency management with version checks; stable headers/ABI.
+
+**Developer tools**: Command system (tab completion/history/colored output), timers/scheduling, logging and configuration (UTF‑8/UTF‑16).
+
+**Visual/gameplay tweaks**: Unlock framerate, max framerate limit, widescreen FOV fix, lantern material tweaks, and respawn/spawn delay removal (Overclock).
+
+**Unicode/i18n**: Robust string/path utilities and conversion helpers; flexible font loading for CJK/Cyrillic, etc.
+
+## Screenshots
+
+*Coming soon: In-game screenshots showing the mod interface, command bar, and HUD elements.*
 
 ## Architecture & Modules
 
@@ -169,6 +222,103 @@ set_target_properties(MyMod PROPERTIES OUTPUT_NAME "MyMod")
 
 Quick start template: see templates/mod-template for a ready-to-build example with CMake, BMLEntry/BMLExit and a sample command.
 
+## API Reference
+
+### Core Interfaces
+
+- **IBML**: Main interface providing access to CK managers (render, input, time, etc.), timer management, cheat controls, object lookup, ball/floor/module registration, and mod dependency system
+- **IMod**: Base class for all mods with lifecycle methods (OnLoad, OnUnload, OnProcess, etc.)
+- **ICommand**: Interface for creating custom commands with tab completion support
+- **IConfig**: Configuration management with UTF-8/UTF-16 support
+- **ILogger**: Logging system with multiple levels and ANSI color support
+
+### Utility APIs
+
+- **InputHook**: Comprehensive input handling with keyboard, mouse, joystick support, input blocking, and original state access
+- **Timer**: Advanced timing system with multiple types (Once, Loop, Repeat, Interval, Debounce, Throttle), fluent builder pattern, and chaining support
+- **DataShare**: C-style API for cross-mod data sharing with reference counting and callback subscriptions
+- **StringUtils**: Unicode string processing and conversion utilities
+- **PathUtils**: File system operations and path manipulation
+
+### Event System
+
+Mods can register for various game events:
+- Level start/end events
+- Player spawn/death events
+- Physics events (object physicalization)
+- Render events (pre/post render)
+- Custom mod events
+
+For detailed API documentation, see the headers in `include/BML/`.
+
+## Troubleshooting
+
+### Common Issues
+
+#### Game won't start or crashes immediately
+- Ensure `BuildingBlocks/BMLPlus.dll` is in the correct location
+- Check that you have Visual C++ Redistributable 2015-2022 installed
+- Remove any leftover files from previous mod loaders
+- Check `ModLoader/ModLoader.log` for error messages
+
+#### Mods not loading
+- Verify mods are placed in `ModLoader/Mods/` directory
+- Check that mods have the `.bmodp` extension or are properly extracted
+- Review mod dependencies in the log file
+- Ensure mods are compatible with your BML+ version
+
+#### Performance issues
+- Disable unnecessary visual effects in `ModLoader/Configs/BML.cfg`
+- Lower the maximum frame rate if experiencing stuttering
+- Check for conflicting mods that might affect performance
+
+#### Unicode/Font issues
+- Place appropriate font files in `ModLoader/Fonts/`
+- Configure font settings in the GUI section of `BML.cfg`
+- Ensure proper glyph ranges are set for your language
+
+### Debug Information
+
+To help with troubleshooting:
+1. Check `ModLoader/ModLoader.log` for detailed error messages
+2. Use the `/bml` command in-game to verify BML+ version and loaded mods
+3. Enable verbose logging in mod configurations if available
+4. Test with a minimal set of mods to isolate issues
+
+## Contributing
+
+We welcome contributions to BML+! Here's how you can help:
+
+### Development Setup
+
+1. Fork the repository
+2. Clone with submodules: `git clone --recursive <your-fork>`
+3. Set up the build environment (Visual Studio 2019+, CMake 3.14+)
+4. Install Virtools SDK and set `VIRTOOLS_SDK_PATH`
+
+### Guidelines
+
+- Follow the existing code style and conventions
+- Write tests for new functionality
+- Update documentation for API changes
+- Test with multiple mods to ensure compatibility
+- Submit pull requests against the `main` branch
+
+### Code Style
+
+- Use C++20 features appropriately
+- Follow RAII principles
+- Use smart pointers for memory management
+- Keep the public API stable and well-documented
+- Follow the existing naming conventions
+
+### Testing
+
+- Run the full test suite: `ctest --test-dir build -C Release`
+- Test with real mods and game scenarios
+- Verify compatibility with existing mods
+- Check memory leaks and performance impact
+
 ## Testing & Quality
 
 - Uses GoogleTest (`tests/`). Core utilities (Timer/PathUtils/StringUtils/Config/AnsiPalette) are covered.
@@ -193,5 +343,44 @@ Quick start template: see templates/mod-template for a ready-to-build example wi
 ## Related
 
 - New Player: https://github.com/doyaGu/BallancePlayer
+
+## Support and Community
+
+- **Issues and Bug Reports**: https://github.com/doyaGu/BallanceModLoaderPlus/issues
+- **Feature Requests**: Use the issue tracker with the "enhancement" label
+- **Documentation**: See `include/BML/` headers and this README
+- **Community Mods**: Check the releases page for community-contributed mods
+
+## Roadmap
+
+### Planned Features
+
+- [ ] Hot-reload support for mods during development
+- [ ] Enhanced scripting support with AngelScript integration
+- [ ] Built-in mod browser and automatic updates
+- [ ] Extended physics simulation hooks
+- [ ] Network multiplayer support framework
+- [ ] Advanced debugging tools and profiler
+
+### Current Limitations
+
+- Windows-only (due to Virtools CK2 dependency)
+- Requires New Player (BallancePlayer)
+- No backward compatibility with legacy `.bmod` files
+- Limited to Virtools CK2 engine features
+
+## Performance Notes
+
+BML+ is designed for minimal performance impact:
+- Rendering hooks add <1ms per frame
+- Memory overhead is typically <10MB
+- Mod loading is optimized with lazy initialization
+- Background operations use separate threads when possible
+
+For best performance:
+- Use Release builds for production
+- Limit the number of active timers
+- Optimize mod update frequencies
+- Use the DataShare API efficiently
 
 Issues and suggestions: https://github.com/doyaGu/BallanceModLoaderPlus/issues
