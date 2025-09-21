@@ -111,6 +111,40 @@ TEST_F(TimerTest, TimeBasedTimer) {
     EXPECT_TRUE(callbackExecuted);
 }
 
+// REALTIME timers should ignore global time scale adjustments
+TEST_F(TimerTest, RealTimeIgnoresTimeScale) {
+    float currentTime = 1.0f;
+    bool timeCallbackExecuted = false;
+    bool realtimeCallbackExecuted = false;
+
+    auto timeTimer = Timer::Builder()
+        .WithDelaySeconds(0.5f)
+        .WithTimeBase(Timer::TIME)
+        .WithOnceCallback([&timeCallbackExecuted](Timer &) {
+            timeCallbackExecuted = true;
+        })
+        .Build(0, currentTime);
+
+    auto realtimeTimer = Timer::Builder()
+        .WithDelaySeconds(0.5f)
+        .WithTimeBase(Timer::REALTIME)
+        .WithOnceCallback([&realtimeCallbackExecuted](Timer &) {
+            realtimeCallbackExecuted = true;
+        })
+        .Build(0, currentTime);
+
+    Timer::SetTimeScale(0.5f); // slow down TIME-based timers only
+
+    AdvanceTime(currentTime, 0.5f);
+    Timer::ProcessAll(0, currentTime);
+    EXPECT_TRUE(realtimeCallbackExecuted);
+    EXPECT_FALSE(timeCallbackExecuted);
+
+    AdvanceTime(currentTime, 0.5f);
+    Timer::ProcessAll(0, currentTime);
+    EXPECT_TRUE(timeCallbackExecuted);
+}
+
 // Test LOOP timer
 TEST_F(TimerTest, LoopExecution) {
     size_t currentTick = 100;
@@ -141,6 +175,30 @@ TEST_F(TimerTest, LoopExecution) {
     AdvanceTicks(currentTick, 10);
     timer->Process(currentTick, 0.0f);
     EXPECT_EQ(3, callbackCount);
+    EXPECT_EQ(Timer::COMPLETED, timer->GetState());
+}
+
+// LOOP timers with an explicit repeat count should honor it even if the callback keeps returning true
+TEST_F(TimerTest, LoopRepeatCountHonored) {
+    size_t currentTick = 100;
+    int callbackCount = 0;
+
+    auto timer = Timer::Builder()
+        .WithDelayTicks(5)
+        .WithType(Timer::LOOP)
+        .WithRepeatCount(2)
+        .WithLoopCallback([&callbackCount](Timer &) {
+            callbackCount++;
+            return true; // Would keep going without the repeat cap
+        })
+        .Build(currentTick, 0.0f);
+
+    for (int i = 0; i < 4; ++i) {
+        AdvanceTicks(currentTick, 5);
+        Timer::ProcessAll(currentTick, 0.0f);
+    }
+
+    EXPECT_EQ(2, callbackCount);
     EXPECT_EQ(Timer::COMPLETED, timer->GetState());
 }
 
@@ -286,7 +344,7 @@ TEST_F(TimerTest, PauseResume) {
     // Advance time and pause
     AdvanceTicks(currentTick, 20);
     timer->Process(currentTick, 0.0f);
-    timer->Pause();
+    timer->PauseAt(currentTick, 0.0f);
     EXPECT_EQ(Timer::PAUSED, timer->GetState());
 
     // Advance more time while paused
@@ -295,11 +353,37 @@ TEST_F(TimerTest, PauseResume) {
     EXPECT_FALSE(callbackExecuted);
 
     // Resume and finish
-    timer->Resume();
+    timer->ResumeAt(currentTick, 0.0f);
     EXPECT_EQ(Timer::RUNNING, timer->GetState());
     AdvanceTicks(currentTick, 30);
     timer->Process(currentTick, 0.0f);
     EXPECT_TRUE(callbackExecuted);
+}
+
+// Timers created in a paused state must be resumed explicitly before they can fire
+TEST_F(TimerTest, StartPausedTimerRequiresResume) {
+    size_t currentTick = 100;
+    bool callbackExecuted = false;
+
+    auto timer = Timer::Builder()
+        .WithDelayTicks(10)
+        .WithSimpleCallback([&callbackExecuted]() {
+            callbackExecuted = true;
+        })
+        .StartPaused()
+        .Build(currentTick, 0.0f);
+
+    EXPECT_EQ(Timer::PAUSED, timer->GetState());
+
+    AdvanceTicks(currentTick, 10);
+    Timer::ProcessAll(currentTick, 0.0f);
+    EXPECT_FALSE(callbackExecuted);
+
+    timer->ResumeAt(currentTick, 0.0f);
+    AdvanceTicks(currentTick, 10);
+    Timer::ProcessAll(currentTick, 0.0f);
+    EXPECT_TRUE(callbackExecuted);
+    EXPECT_EQ(Timer::COMPLETED, timer->GetState());
 }
 
 // Test reset
@@ -624,7 +708,7 @@ TEST_F(TimerTest, GlobalOperations) {
     }
 
     // Pause all timers
-    Timer::PauseAll();
+    Timer::PauseAll(currentTick, 0.0f);
 
     // Advance time - no callbacks should execute
     AdvanceTicks(currentTick, 100);
@@ -632,10 +716,17 @@ TEST_F(TimerTest, GlobalOperations) {
     EXPECT_EQ(0, callbackCount);
 
     // Resume all timers
-    Timer::ResumeAll();
+    Timer::ResumeAll(currentTick, 0.0f);
 
-    // Process - all should execute
+    // Immediately after resume nothing should fire until time advances again
     Timer::ProcessAll(currentTick, 0.0f);
+    EXPECT_EQ(0, callbackCount);
+
+    // Advance time and allow timers to complete
+    for (int i = 0; i < 5; i++) {
+        AdvanceTicks(currentTick, 10);
+        Timer::ProcessAll(currentTick, 0.0f);
+    }
     EXPECT_EQ(5, callbackCount);
 
     // Create more timers
@@ -655,6 +746,30 @@ TEST_F(TimerTest, GlobalOperations) {
     AdvanceTicks(currentTick, 100);
     Timer::ProcessAll(currentTick, 0.0f);
     EXPECT_EQ(5, callbackCount);
+}
+
+// Legacy overloads that do not accept explicit tick/time should still pause and resume timers
+TEST_F(TimerTest, GlobalPauseResumeLegacyOverloads) {
+    size_t currentTick = 100;
+    int callbackCount = 0;
+
+    Timer::Builder()
+        .WithDelayTicks(10)
+        .WithSimpleCallback([&callbackCount]() {
+            callbackCount++;
+        })
+        .Build(currentTick, 0.0f);
+
+    Timer::PauseAll();
+
+    AdvanceTicks(currentTick, 20);
+    Timer::ProcessAll(currentTick, 0.0f);
+    EXPECT_EQ(0, callbackCount);
+
+    Timer::ResumeAll();
+    AdvanceTicks(currentTick, 10);
+    Timer::ProcessAll(currentTick, 0.0f);
+    EXPECT_EQ(1, callbackCount);
 }
 
 // Make sure find functions handle non-existent entities gracefully
@@ -697,31 +812,56 @@ TEST_F(TimerTest, DebounceExecution) {
     int callbackCount = 0;
 
     auto debounceTimer = Timer::Builder()
-        .WithDelayTicks(30)
-        .WithType(Timer::DEBOUNCE)
+        .AsDebounced(30)
         .WithSimpleCallback([&callbackCount]() {
             callbackCount++;
         })
         .Build(currentTick, 0.0f);
+
+    // Initial signal to start the quiet period
+    debounceTimer->Signal(currentTick, 0.0f);
 
     // Advance time a bit (not enough to trigger)
     AdvanceTicks(currentTick, 20);
     debounceTimer->Process(currentTick, 0.0f);
     EXPECT_EQ(0, callbackCount);
 
-    // "Restart" the debounce by processing again (simulates user input)
-    debounceTimer->Process(currentTick, 0.0f);
+    // Another event arrives, restart the quiet period
+    debounceTimer->Signal(currentTick, 0.0f);
 
-    // Advance time a bit more (not enough to trigger)
+    // Advance time a bit more (still not enough to trigger)
     AdvanceTicks(currentTick, 20);
     debounceTimer->Process(currentTick, 0.0f);
     EXPECT_EQ(0, callbackCount);
 
-    // Let enough time pass to finally trigger
+    // Let enough time pass with no events to trigger the callback
     AdvanceTicks(currentTick, 30);
     debounceTimer->Process(currentTick, 0.0f);
     EXPECT_EQ(1, callbackCount);
-    EXPECT_EQ(Timer::COMPLETED, debounceTimer->GetState());
+    EXPECT_EQ(Timer::IDLE, debounceTimer->GetState());
+}
+
+// Debounce timers can be re-armed after they fire
+TEST_F(TimerTest, DebounceMultipleSignals) {
+    size_t currentTick = 100;
+    int callbackCount = 0;
+
+    auto debounceTimer = Timer::Builder()
+        .AsDebounced(20)
+        .WithSimpleCallback([&callbackCount]() {
+            callbackCount++;
+        })
+        .Build(currentTick, 0.0f);
+
+    debounceTimer->Signal(currentTick, 0.0f);
+    AdvanceTicks(currentTick, 20);
+    Timer::ProcessAll(currentTick, 0.0f);
+    EXPECT_EQ(1, callbackCount);
+
+    debounceTimer->Signal(currentTick, 0.0f);
+    AdvanceTicks(currentTick, 20);
+    Timer::ProcessAll(currentTick, 0.0f);
+    EXPECT_EQ(2, callbackCount);
 }
 
 // Test THROTTLE timer type
@@ -754,6 +894,44 @@ TEST_F(TimerTest, ThrottleExecution) {
     AdvanceTicks(currentTick, 10);
     throttleTimer->Process(currentTick, 0.0f);
     EXPECT_EQ(2, callbackCount);
+}
+
+// ProcessAll should honor timer priorities when several timers mature simultaneously
+TEST_F(TimerTest, ProcessAllHonorsPriorities) {
+    size_t currentTick = 100;
+    std::vector<int> executionOrder;
+
+    Timer::Builder()
+        .WithDelayTicks(10)
+        .WithPriority(-1)
+        .WithOnceCallback([&executionOrder](Timer &) {
+            executionOrder.push_back(-1);
+        })
+        .Build(currentTick, 0.0f);
+
+    Timer::Builder()
+        .WithDelayTicks(10)
+        .WithPriority(1)
+        .WithOnceCallback([&executionOrder](Timer &) {
+            executionOrder.push_back(1);
+        })
+        .Build(currentTick, 0.0f);
+
+    Timer::Builder()
+        .WithDelayTicks(10)
+        .WithPriority(3)
+        .WithOnceCallback([&executionOrder](Timer &) {
+            executionOrder.push_back(3);
+        })
+        .Build(currentTick, 0.0f);
+
+    AdvanceTicks(currentTick, 10);
+    Timer::ProcessAll(currentTick, 0.0f);
+
+    ASSERT_EQ(3u, executionOrder.size());
+    EXPECT_EQ(3, executionOrder[0]);
+    EXPECT_EQ(1, executionOrder[1]);
+    EXPECT_EQ(-1, executionOrder[2]);
 }
 
 // Test Timer Chaining
@@ -794,6 +972,36 @@ TEST_F(TimerTest, TimerChaining) {
     AdvanceTicks(currentTick, 20);
     Timer::ProcessAll(currentTick, 0.0f);
     EXPECT_EQ(2, executionOrder.size());
+    EXPECT_EQ(2, executionOrder[1]);
+}
+
+// Chained builder callbacks should create and execute a brand new timer once the first completes
+TEST_F(TimerTest, ChainedBuilderCreatesNewTimer) {
+    size_t currentTick = 100;
+    std::vector<int> executionOrder;
+
+    auto firstTimer = Timer::Builder()
+        .WithDelayTicks(10)
+        .WithSimpleCallback([&executionOrder]() {
+            executionOrder.push_back(1);
+        })
+        .WithChainedTimer([&executionOrder]() {
+            return Timer::Builder()
+                .WithDelayTicks(5)
+                .WithSimpleCallback([&executionOrder]() {
+                    executionOrder.push_back(2);
+                });
+        })
+        .Build(currentTick, 0.0f);
+
+    AdvanceTicks(currentTick, 10);
+    Timer::ProcessAll(currentTick, 0.0f);
+    EXPECT_EQ(1u, executionOrder.size());
+    EXPECT_EQ(1, executionOrder[0]);
+
+    AdvanceTicks(currentTick, 5);
+    Timer::ProcessAll(currentTick, 0.0f);
+    ASSERT_EQ(2u, executionOrder.size());
     EXPECT_EQ(2, executionOrder[1]);
 }
 
