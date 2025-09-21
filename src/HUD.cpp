@@ -1440,17 +1440,30 @@ std::shared_ptr<HUDElement> HUD::ResolveAbsolutePath(const std::vector<std::stri
 }
 
 std::shared_ptr<HUDElement> HUD::ResolveRelativePath(const std::vector<std::string> &segments) const {
-    // Try from any named root
+    if (segments.empty()) return nullptr;
+
+    const std::string &first = segments[0];
+    if (!first.empty()) {
+        const auto directIt = m_Named.find(first);
+        if (directIt != m_Named.end()) {
+            if (auto root = directIt->second.lock()) {
+                if (segments.size() == 1) {
+                    return root;
+                }
+                if (auto resolved = DescendPath(root, segments, 1)) {
+                    return resolved;
+                }
+            }
+        }
+    }
+
     for (const auto &[rootName, weakRoot] : m_Named) {
         auto root = weakRoot.lock();
         if (!root) continue;
 
-        if (auto element = ResolveAbsolutePath([&] {
-            std::vector<std::string> tmp{"" /* leading slash */, rootName};
-            tmp.insert(tmp.end(), segments.begin(), segments.end());
-            return tmp;
-        }()))
+        if (auto element = DescendPath(root, segments, 0)) {
             return element;
+        }
     }
     return nullptr;
 }
