@@ -44,14 +44,11 @@ CKRenderContext *BML_GetRenderContext() {
     return g_ModContext ? g_ModContext->GetRenderContext() : nullptr;
 }
 
-IDataShare *BML_GetDataShare(const char *name) {
-    return g_ModContext ? g_ModContext->GetDataShare(name) : nullptr;
-}
-
 ModContext::ModContext(CKContext *context) {
     assert(context != nullptr);
     m_CKContext = context;
-    m_DataShare = new DataShare("BML");
+    m_DataShare = DataShare::GetInstance("BML");
+    if (m_DataShare) m_DataShare->AddRef();
     g_ModContext = this;
 }
 
@@ -641,10 +638,10 @@ const char *ModContext::GetDirectoryUtf8(DirectoryType type) {
     return nullptr;
 }
 
-BML::IDataShare *ModContext::GetDataShare(const char *name) {
-    if (!name)
-        return m_DataShare;
-    return BML::DataShare::GetInstance(name);
+BML_DataShare *ModContext::GetDataShare(const char *name) {
+    if (!name || !*name)
+        return reinterpret_cast<BML_DataShare *>(m_DataShare);
+    return reinterpret_cast<BML_DataShare *>(BML::DataShare::GetInstance(name));
 }
 
 void ModContext::SetIC(CKBeObject *obj, bool hierarchy) {

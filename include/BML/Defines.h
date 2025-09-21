@@ -24,4 +24,7 @@
 #define MAX_PATH 260
 #endif
 
+#include <stddef.h>
+#include <stdint.h>
+
 #endif // BML_DEFINES_H

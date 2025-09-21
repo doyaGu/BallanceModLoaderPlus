@@ -13,6 +13,7 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/IMessageReceiver.h
         ${BML_INCLUDE_DIR}/BML/IBML.h
         ${BML_INCLUDE_DIR}/BML/IMod.h
+        ${BML_INCLUDE_DIR}/BML/DataShare.h
 
         ${BML_INCLUDE_DIR}/BML/Bui.h
         ${BML_INCLUDE_DIR}/BML/Gui.h
@@ -47,7 +48,7 @@ set(BML_PRIVATE_HEADERS
         RenderHook.h
 
         CommandContext.h
-        DataShare.h
+        DataShare.hpp
         Logger.h
         Config.h
 

@@ -123,10 +123,10 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
 
         CKBOOL isMap = strcmp(beh->GetOwnerScript()->GetName(), "Levelinit_build") == 0;
 
-        auto ds = BML_GetModContext()->GetDataShare(nullptr);
+        BML_DataShare *ds = BML_GetModContext()->GetDataShare(nullptr);
 
-        if (isMap) {
-            auto mapName = (const char *) ds->Get("CustomMapName", nullptr);
+        if (isMap && ds) {
+            const char *mapName = static_cast<const char *>(BML_DataShare_Get(ds, "CustomMapName", nullptr));
             if (mapName) {
                 fname = mapName;
             }
@@ -148,8 +148,8 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
             }
         }
 
-        if (isMap) {
-            ds->Remove("CustomMapName");
+        if (isMap && ds) {
+            BML_DataShare_Remove(ds, "CustomMapName");
         }
     }
 
