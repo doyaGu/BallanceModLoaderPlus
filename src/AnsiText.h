@@ -1,6 +1,7 @@
 #ifndef BML_ANSITEXT_H
 #define BML_ANSITEXT_H
 
+#include <cfloat>
 #include <vector>
 #include <string>
 
@@ -74,16 +75,13 @@ namespace AnsiText {
                 if (a.background != b.background) return false;
             }
             return a.bold == b.bold && a.dim == b.dim && a.italic == b.italic &&
-                a.underline == b.underline && a.doubleUnderline == b.doubleUnderline && a.strikethrough == b.
-                strikethrough &&
-                a.hidden == b.hidden && a.reverse == b.reverse;
+                   a.underline == b.underline && a.doubleUnderline == b.doubleUnderline &&
+                   a.strikethrough == b.strikethrough && a.hidden == b.hidden && a.reverse == b.reverse;
         }
 
         friend bool operator!=(const ConsoleColor &a, const ConsoleColor &b) { return !(a == b); }
     };
 
-    // Text segment with associated ANSI formatting
-    // Zero-copy: hold begin/end pointers into AnsiString::m_OriginalText
     struct TextSegment {
         const char *begin = nullptr;
         const char *end = nullptr;
@@ -93,7 +91,6 @@ namespace AnsiText {
         TextSegment(const char *b, const char *e, ConsoleColor c) : begin(b), end(e), color(c) {}
     };
 
-    // Parsed ANSI text ready for rendering
     class AnsiString {
     public:
         AnsiString() = default;
@@ -101,13 +98,11 @@ namespace AnsiText {
         explicit AnsiString(const std::string &text);
         explicit AnsiString(std::string &&text);
 
-        // Custom copy/move to keep zero-copy TextSegment pointers valid across ownership changes.
         AnsiString(const AnsiString &other);
         AnsiString &operator=(const AnsiString &other);
         AnsiString(AnsiString &&other) noexcept;
         AnsiString &operator=(AnsiString &&other) noexcept;
 
-        // Parses text, producing zero-copy segments and fusing adjacent-equal styles.
         void SetText(const char *text);
         void SetText(const std::string &text);
         void SetText(std::string &&text);
@@ -132,48 +127,36 @@ namespace AnsiText {
         void AssignAndParse(std::string &&text);
         void RebindSegmentsPointers(const char *oldBase, const char *newBase);
         static ConsoleColor ParseAnsiColorSequence(const char *sequence, size_t length, const ConsoleColor &currentColor,
-                                                  bool *out_hasAnsi256Bg = nullptr, bool *out_hasTrueColorBg = nullptr,
-                                                  bool *out_hasReverse = nullptr);
+                                                  bool *out_hasAnsi256Bg = nullptr, bool *out_hasTrueColorBg = nullptr, bool *out_hasReverse = nullptr);
         static ImU32 GetRgbColor(int r, int g, int b);
     };
 
-    // Layout and text measurement utilities
-    struct Layout {
-        // A materialized piece of a TextSegment on a line (may be a sub-slice).
-        struct Span {
-            const TextSegment *seg = nullptr;
-            const char *b = nullptr;
-            const char *e = nullptr;
-            float width = 0.0f; // precomputed width in pixels
-            bool isTab = false;
-        };
-
-        struct Line {
-            std::vector<Span> spans;
-            float width = 0.0f;
-        };
-
-        static const char *Utf8Next(const char *s, const char *end);
-        static const char *NextGrapheme(const char *s, const char *end);
-        static float Measure(ImFont *font, float fontSize, const char *b, const char *e);
-        static void BuildLines(const std::vector<TextSegment> &segments, float wrapWidth, int tabColumns, float fontSize, std::vector<Line> &outLines);
+    struct TextOptions {
+        ImFont *font = nullptr;
+        float fontSize = 0.0f;
+        float wrapWidth = FLT_MAX;
+        float alpha = 1.0f;
+        float lineSpacing = -1.0f;
+        int tabColumns = kDefaultTabColumns;
+        const AnsiPalette *palette = nullptr;
     };
 
-    // Color manipulation utilities
-    namespace Color {
-        ImU32 ApplyDim(ImU32 color);
-        ImU32 ApplyAlpha(ImU32 color, float alpha);
-    };
+    ImVec2 CalcTextSize(const AnsiString &text, const TextOptions &options = {});
+    float CalcTextHeight(const AnsiString &text, const TextOptions &options = {});
+    ImVec2 CalcTextSize(const char *text, const TextOptions &options = {});
+    float CalcTextHeight(const char *text, const TextOptions &options = {});
+    ImVec2 CalcTextSize(const std::string &text, const TextOptions &options = {});
+    float CalcTextHeight(const std::string &text, const TextOptions &options = {});
 
-    // Text decoration metrics
-    namespace Metrics {
-        float UnderlineY(float lineTop, float fontSize);
-        float StrikeY(float lineTop, float fontSize);
-        float Thickness(float fontSize);
-    };
+    void RenderText(ImDrawList *drawList, const AnsiString &text, const ImVec2 &pos, const TextOptions &options = {});
+    void RenderText(ImDrawList *drawList, const char *text, const ImVec2 &pos, const TextOptions &options = {});
+    void RenderText(ImDrawList *drawList, const std::string &text, const ImVec2 &pos, const TextOptions &options = {});
 
-    float CalculateHeight(const AnsiString &text, float wrapWidth, float fontSize = 0.0f, float lineSpacing = -1.0f, int tabColumns = kDefaultTabColumns);
-    ImVec2 CalculateSize(const AnsiString &text, float wrapWidth, float fontSize = 0.0f, float lineSpacing = -1.0f, int tabColumns = kDefaultTabColumns);
+    void TextAnsi(const AnsiString &text, const TextOptions &options = {});
+    void TextUnformatted(const char *text, const TextOptions &options = {});
+    void TextUnformatted(const std::string &text, const TextOptions &options = {});
+    void TextV(const char *fmt, va_list args, const TextOptions &options = {});
+    void Text(const char *fmt, ...);
 
     // Global configurable behavior
     void SetSgr21Policy(Sgr21Policy policy);
@@ -186,7 +169,37 @@ namespace AnsiText {
     void SetPreResolveEnabled(bool enabled);
     bool GetPreResolveEnabled();
 
-    // Text rendering with style support
+    namespace Layout {
+        struct Span {
+            const TextSegment *seg = nullptr;
+            const char *b = nullptr;
+            const char *e = nullptr;
+            float width = 0.0f;
+            bool isTab = false;
+        };
+
+        struct Line {
+            std::vector<Span> spans;
+            float width = 0.0f;
+        };
+
+        const char *Utf8Next(const char *s, const char *end);
+        const char *NextGrapheme(const char *s, const char *end);
+        float Measure(ImFont *font, float fontSize, const char *b, const char *e);
+        void BuildLines(ImFont *font, const std::vector<TextSegment> &segments, float wrapWidth, int tabColumns, float fontSize, std::vector<Line> &outLines);
+    }
+
+    namespace Color {
+        ImU32 ApplyDim(ImU32 color);
+        ImU32 ApplyAlpha(ImU32 color, float alpha);
+    }
+
+    namespace Metrics {
+        float UnderlineY(float lineTop, float fontSize);
+        float StrikeY(float lineTop, float fontSize);
+        float Thickness(float fontSize);
+    }
+
     namespace Renderer {
         struct BoldParams {
             int rings = 1;
@@ -210,9 +223,8 @@ namespace AnsiText {
         void AddTextStyledEx(ImDrawList *drawList, ImFont *font, float fontSize, const ImVec2 &pos, ImU32 col,
                              const char *begin, const char *end, bool italic, bool fauxBold, const BoldParams &bp);
 
-        void DrawText(ImDrawList *drawList, const AnsiString &text, const ImVec2 &startPos, float wrapWidth,
-                      float alpha = 1.0f, float fontSize = 0.0f, float lineSpacing = -1.0f, int tabColumns = kDefaultTabColumns, const AnsiPalette *palette = nullptr);
-    };
-} // namespace AnsiText
+        void DrawText(ImDrawList *drawList, const AnsiString &text, const ImVec2 &startPos, const TextOptions &options = {});
+    }
+}
 
 #endif // BML_ANSITEXT_H

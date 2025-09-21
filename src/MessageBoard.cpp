@@ -35,7 +35,12 @@ float MessageBoard::MessageUnit::GetTextHeight(float wrapWidth, float lineSpacin
         std::fabs(cachedFontPixels - fontPixelSize) < 1e-3f)
         return cachedHeight;
 
-    cachedHeight = AnsiText::CalculateHeight(ansiText, wrapWidth, 0, lineSpacing, tabColumns);
+    AnsiText::TextOptions measure;
+    measure.font = ImGui::GetFont();
+    measure.wrapWidth = wrapWidth;
+    measure.lineSpacing = lineSpacing;
+    measure.tabColumns = tabColumns;
+    cachedHeight = AnsiText::CalcTextHeight(ansiText, measure);
     cachedWrapWidth = wrapWidth;
     cachedLineSpacing = lineSpacing;
     cachedFontPixels = fontPixelSize;
@@ -371,7 +376,13 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
 }
 
 void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &message, const ImVec2 &startPos, float wrapWidth, float alpha) {
-    AnsiText::Renderer::DrawText(drawList, message.ansiText, startPos, wrapWidth, alpha, 0.0f, m_MessageGap, m_TabColumns, nullptr);
+    AnsiText::TextOptions drawOptions;
+    drawOptions.font = ImGui::GetFont();
+    drawOptions.wrapWidth = wrapWidth;
+    drawOptions.alpha = alpha;
+    drawOptions.lineSpacing = m_MessageGap;
+    drawOptions.tabColumns = m_TabColumns;
+    AnsiText::Renderer::DrawText(drawList, message.ansiText, startPos, drawOptions);
 }
 
 // =============================================================================

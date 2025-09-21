@@ -5,6 +5,8 @@
 #include <cstring>
 #include <utf8.h>
 
+#include "imgui_internal.h"
+
 #include "AnsiPalette.h"
 #include "StringUtils.h"
 
@@ -22,6 +24,54 @@ namespace AnsiText {
     const AnsiPalette *GetPreResolvePalette() { return g_PreResolvePalette; }
     void SetPreResolveEnabled(bool enabled) { g_PreResolveEnabled = enabled; }
     bool GetPreResolveEnabled() { return g_PreResolveEnabled; }
+
+    namespace {
+        struct ResolvedTextOptions {
+            ImFont *font = nullptr;
+            ImFontBaked *baked = nullptr;
+            float fontSize = 0.0f;
+            float wrapWidth = FLT_MAX;
+            float alpha = 1.0f;
+            float lineSpacing = 0.0f;
+            int tabColumns = kDefaultTabColumns;
+            const AnsiPalette *palette = nullptr;
+            float lineHeight = 0.0f;
+        };
+
+        ResolvedTextOptions ResolveTextOptions(const TextOptions &options) {
+            ResolvedTextOptions r;
+            r.font = options.font ? options.font : ImGui::GetFont();
+            if (!r.font) return r;
+
+            // Use GetFontSize() to allow global scaling to affect resolved font size
+            float resolvedFontSize = (options.fontSize > 0.0f) ? options.fontSize : ImGui::GetFontSize();
+            r.fontSize = resolvedFontSize;
+
+            r.baked = r.font->GetFontBaked(r.fontSize);
+
+            // wrap width
+            if (options.wrapWidth > 0.0f && options.wrapWidth < FLT_MAX)
+                r.wrapWidth = options.wrapWidth;
+            else
+                r.wrapWidth = FLT_MAX;
+
+            r.alpha = std::clamp(options.alpha, 0.0f, 1.0f);
+            r.tabColumns = options.tabColumns > 0 ? options.tabColumns : kDefaultTabColumns;
+
+            // ascent / descent fallback if baked metrics not available
+            const float ascent = r.baked ? std::max(0.0f, r.baked->Ascent) : r.fontSize * 0.8f;
+            const float descentMag = r.baked ? std::max(0.0f, -r.baked->Descent) : r.fontSize * 0.2f;
+            r.lineHeight = std::max(r.fontSize, ascent + descentMag);
+
+            // compute lineSpacing based on style, scaled
+            float styleFontSize = ImGui::GetFontSize();
+            float scaleFactor = (styleFontSize > 0.0f) ? (r.fontSize / styleFontSize) : 1.0f;
+            r.lineSpacing = (options.lineSpacing >= 0.0f) ? options.lineSpacing : (ImGui::GetStyle().ItemSpacing.y * scaleFactor);
+
+            r.palette = options.palette;
+            return r;
+        }
+    }
 
     // =============================================================================
     // ConsoleColor Implementation
@@ -466,18 +516,18 @@ namespace AnsiText {
     }
 
     float Layout::Measure(ImFont *font, float fontSize, const char *b, const char *e) {
-        if (b == e) return 0.0f;
+        if (!font || b == e) return 0.0f;
         return font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, b, e, nullptr).x;
     }
 
-    void Layout::BuildLines(const std::vector<TextSegment> &segments, float wrapWidth, int tabColumns, float fontSize, std::vector<Line> &outLines) {
+    void Layout::BuildLines(ImFont *font, const std::vector<TextSegment> &segments, float wrapWidth, int tabColumns, float fontSize, std::vector<Line> &outLines) {
         outLines.clear();
         if (wrapWidth <= 0.0f) wrapWidth = FLT_MAX;
+        if (!font) return;
 
         // Reserve space to reduce reallocations
         outLines.reserve(std::max(1, (int)(segments.size() / 4))); // Estimate lines based on segments
 
-        ImFont *font = ImGui::GetFont();
         ImFontBaked *baked = font ? font->GetFontBaked(fontSize) : nullptr;
         const float scale = (fontSize > 0.0f && baked) ? (fontSize / baked->Size) : 1.0f;
         static const char *kSpace = " ";
@@ -683,45 +733,32 @@ namespace AnsiText {
         return t < 1.0f ? 1.0f : (t > 4.0f ? 4.0f : t);
     }
 
-    float CalculateHeight(const AnsiString &text, float wrapWidth, float fontSize, float lineSpacing, int tabColumns) {
+    float CalcTextHeight(const AnsiString &text, const TextOptions &options) {
         if (text.IsEmpty()) {
             return ImGui::GetTextLineHeightWithSpacing();
         }
 
-        ImFont *font = ImGui::GetFont();
-        const float resolvedFontSize = (fontSize > 0.0f) ? fontSize : ImGui::GetFontSize();
-        ImFontBaked *baked = font ? font->GetFontBaked(resolvedFontSize) : nullptr;
-        const float ascent = baked ? std::max(0.0f, baked->Ascent) : resolvedFontSize * 0.8f;
-        const float descentMag = baked ? std::max(0.0f, -baked->Descent) : resolvedFontSize * 0.2f;
-        const float lineHeight = std::max(resolvedFontSize, ascent + descentMag);
-        const float styleBase = ImGui::GetFontSize();
-        const float scale = (styleBase > 0.0f) ? (resolvedFontSize / styleBase) : 1.0f;
-        const float spacing = (lineSpacing >= 0.0f) ? lineSpacing : (ImGui::GetStyle().ItemSpacing.y * scale);
+        ResolvedTextOptions resolved = ResolveTextOptions(options);
+        if (!resolved.font) return 0.0f;
 
         std::vector<Layout::Line> lines;
-        Layout::BuildLines(text.GetSegments(), wrapWidth, tabColumns, resolvedFontSize, lines);
+        Layout::BuildLines(resolved.font, text.GetSegments(), resolved.wrapWidth, resolved.tabColumns, resolved.fontSize, lines);
 
         const float lineCount = lines.empty() ? 1.0f : static_cast<float>(lines.size());
-        const float totalSpacing = spacing * std::max(0.0f, lineCount - 1.0f);
-        return lineHeight * lineCount + totalSpacing;
+        const float totalSpacing = resolved.lineSpacing * std::max(0.0f, lineCount - 1.0f);
+        return resolved.lineHeight * lineCount + totalSpacing;
     }
-    ImVec2 CalculateSize(const AnsiString &text, float wrapWidth, float fontSize, float lineSpacing, int tabColumns) {
+
+    ImVec2 CalcTextSize(const AnsiString &text, const TextOptions &options) {
         if (text.IsEmpty()) {
-            return {0.0f, ImGui::GetTextLineHeightWithSpacing()};
+            return ImVec2(0.0f, ImGui::GetTextLineHeightWithSpacing());
         }
 
-        ImFont *font = ImGui::GetFont();
-        const float resolvedFontSize = (fontSize > 0.0f) ? fontSize : ImGui::GetFontSize();
-        ImFontBaked *baked = font ? font->GetFontBaked(resolvedFontSize) : nullptr;
-        const float ascent = baked ? std::max(0.0f, baked->Ascent) : resolvedFontSize * 0.8f;
-        const float descentMag = baked ? std::max(0.0f, -baked->Descent) : resolvedFontSize * 0.2f;
-        const float lineHeight = std::max(resolvedFontSize, ascent + descentMag);
-        const float styleBase = ImGui::GetFontSize();
-        const float scale = (styleBase > 0.0f) ? (resolvedFontSize / styleBase) : 1.0f;
-        const float spacing = (lineSpacing >= 0.0f) ? lineSpacing : (ImGui::GetStyle().ItemSpacing.y * scale);
+        ResolvedTextOptions resolved = ResolveTextOptions(options);
+        if (!resolved.font) return ImVec2(0.0f, 0.0f);
 
         std::vector<Layout::Line> lines;
-        Layout::BuildLines(text.GetSegments(), wrapWidth, tabColumns, resolvedFontSize, lines);
+        Layout::BuildLines(resolved.font, text.GetSegments(), resolved.wrapWidth, resolved.tabColumns, resolved.fontSize, lines);
 
         float maxWidth = 0.0f;
         for (const auto &line : lines) {
@@ -729,9 +766,102 @@ namespace AnsiText {
         }
 
         const float lineCount = lines.empty() ? 1.0f : static_cast<float>(lines.size());
-        const float totalSpacing = spacing * std::max(0.0f, lineCount - 1.0f);
-        const float height = lineHeight * lineCount + totalSpacing;
+        const float totalSpacing = resolved.lineSpacing * std::max(0.0f, lineCount - 1.0f);
+        const float height = resolved.lineHeight * lineCount + totalSpacing;
         return ImVec2(maxWidth, height);
+    }
+
+    float CalcTextHeight(const char *text, const TextOptions &options) {
+        if (!text) return 0.0f;
+        AnsiString ansi(text);
+        return CalcTextHeight(ansi, options);
+    }
+
+    float CalcTextHeight(const std::string &text, const TextOptions &options) {
+        AnsiString ansi(text);
+        return CalcTextHeight(ansi, options);
+    }
+
+    ImVec2 CalcTextSize(const char *text, const TextOptions &options) {
+        if (!text) return {0.0f, 0.0f};
+        AnsiString ansi(text);
+        return CalcTextSize(ansi, options);
+    }
+
+    ImVec2 CalcTextSize(const std::string &text, const TextOptions &options) {
+        AnsiString ansi(text);
+        return CalcTextSize(ansi, options);
+    }
+
+    void RenderText(ImDrawList *drawList, const AnsiString &text, const ImVec2 &pos, const TextOptions &options) {
+        if (!drawList) return;
+        Renderer::DrawText(drawList, text, pos, options);
+    }
+
+    void RenderText(ImDrawList *drawList, const char *text, const ImVec2 &pos, const TextOptions &options) {
+        if (!text) return;
+        AnsiString ansi(text);
+        RenderText(drawList, ansi, pos, options);
+    }
+
+    void RenderText(ImDrawList *drawList, const std::string &text, const ImVec2 &pos, const TextOptions &options) {
+        AnsiString ansi(text);
+        RenderText(drawList, ansi, pos, options);
+    }
+
+    void TextAnsi(const AnsiString &text, const TextOptions &options) {
+        ImGuiWindow *window = ImGui::GetCurrentWindow();
+        if (!window || window->SkipItems) return;
+
+        TextOptions effective = options;
+        if (effective.wrapWidth == FLT_MAX) {
+            float wrapWidth = ImGui::CalcWrapWidthForPos(window->DC.CursorPos, window->DC.TextWrapPos);
+            if (wrapWidth < FLT_MAX)
+                effective.wrapWidth = wrapWidth;
+        }
+
+        const ImVec2 size = CalcTextSize(text, effective);
+        const ImVec2 min(window->DC.CursorPos);
+        const ImVec2 max(min.x + size.x, min.y + size.y);
+        const ImRect bb(min, max);
+        ImGui::ItemSize(size, 0.0f);
+        if (!ImGui::ItemAdd(bb, 0))
+            return;
+
+        RenderText(window->DrawList, text, bb.Min, effective);
+    }
+
+    void TextUnformatted(const char *text, const TextOptions &options) {
+        if (!text) return;
+        AnsiString ansi(text);
+        TextAnsi(ansi, options);
+    }
+
+    void TextUnformatted(const std::string &text, const TextOptions &options) {
+        AnsiString ansi(text);
+        TextAnsi(ansi, options);
+    }
+
+    void TextV(const char *fmt, va_list args, const TextOptions &options) {
+        if (!fmt) return;
+        const char *textBegin = nullptr;
+        const char *textEnd = nullptr;
+        ImFormatStringToTempBufferV(&textBegin, &textEnd, fmt, args);
+        if (!textBegin || textBegin == textEnd) {
+            AnsiString empty;
+            TextAnsi(empty, options);
+            return;
+        }
+        AnsiString ansi(std::string(textBegin, textEnd));
+        TextAnsi(ansi, options);
+    }
+
+    void Text(const char *fmt, ...) {
+        if (!fmt) return;
+        va_list args;
+        va_start(args, fmt);
+        TextV(fmt, args);
+        va_end(args);
     }
 
     // =============================================================================
@@ -879,37 +1009,35 @@ namespace AnsiText {
         }
     }
 
-    void Renderer::DrawText(ImDrawList *drawList, const AnsiString &text, const ImVec2 &startPos, float wrapWidth,
-                      float alpha, float fontSize, float lineSpacing, int tabColumns, const AnsiPalette *palette) {
-        if (!palette)
-            palette = &DefaultPalette();
+    void Renderer::DrawText(ImDrawList *drawList, const AnsiString &text, const ImVec2 &startPos, const TextOptions &options) {
+        if (!drawList) return;
+        if (text.IsEmpty()) return;
 
-        // Unify font size and baked data
-        ImFont *font = ImGui::GetFont();
-        const float resolvedFontSize = (fontSize > 0.0f) ? fontSize : ImGui::GetFontSize();
-        ImFontBaked *baked = font ? font->GetFontBaked(resolvedFontSize) : nullptr;
+        ResolvedTextOptions resolved = ResolveTextOptions(options);
+        if (!resolved.font) return;
 
-        // Ensure font atlas texture is bound for the duration of this text draw to avoid accidental use
-        // of a previously-bound texture (which may cause random-looking glyphs on first line).
+        ImFont *font = resolved.font;
+        ImFontBaked *baked = resolved.baked;
+        const float resolvedFontSize = resolved.fontSize;
+        const float wrapWidth = resolved.wrapWidth;
+        const float alpha = resolved.alpha;
+        const float spacing = resolved.lineSpacing;
+        const float lineHeight = resolved.lineHeight;
+        const float lineStep = lineHeight + spacing;
+        const float italicShear = ComputeItalicShear(resolvedFontSize);
+        const int tabColumns = resolved.tabColumns;
+        const AnsiPalette *palette = resolved.palette ? resolved.palette : &DefaultPalette();
+
+        if (alpha <= 0.0f) return;
+
         bool pushedFontTex = false;
         if (font && font->ContainerAtlas) {
             drawList->PushTextureID(font->ContainerAtlas->TexRef);
             pushedFontTex = true;
         }
 
-        // Pre-fetch line metrics
-        const float ascent = baked ? std::max(0.0f, baked->Ascent) : resolvedFontSize * 0.8f;
-        const float descentMag = baked ? std::max(0.0f, -baked->Descent) : resolvedFontSize * 0.2f;
-        const float styleBase = ImGui::GetFontSize();
-        const float scale = (styleBase > 0.0f) ? (resolvedFontSize / styleBase) : 1.0f;
-        const float spacing = (lineSpacing >= 0.0f) ? lineSpacing : (ImGui::GetStyle().ItemSpacing.y * scale);
-        const float lineHeight = std::max(resolvedFontSize, ascent + descentMag);
-        const float lineStep = lineHeight + spacing;
-        const float italicShear = ComputeItalicShear(resolvedFontSize);
-
-        // Layout
         std::vector<Layout::Line> lines;
-        Layout::BuildLines(text.GetSegments(), wrapWidth, tabColumns, resolvedFontSize, lines);
+        Layout::BuildLines(font, text.GetSegments(), wrapWidth, tabColumns, resolvedFontSize, lines);
 
         ImGuiListClipper clipper;
         clipper.Begin((int)lines.size(), lineStep);
@@ -1009,8 +1137,7 @@ namespace AnsiText {
                         ImU32 bgBase2 = rc.background;
                         if (rc.bgIsAnsi256 && rc.bgAnsiIndex >= 0) {
                             const_cast<AnsiPalette *>(palette)->EnsureInitialized();
-                            if (palette->IsActive()) palette->GetColor(
-                                rc.bgAnsiIndex, bgBase2);
+                            if (palette->IsActive()) palette->GetColor(rc.bgAnsiIndex, bgBase2);
                         }
                         // Use background color as text color; alpha will be applied once below.
                         fg = bgBase2;

@@ -382,8 +382,13 @@ void HUDText::Draw(ImDrawList* drawList, const ImVec2& viewportSize) {
     // Effective alpha
     const float alpha = std::clamp(m_InheritedAlpha, 0.0f, 1.0f) * std::clamp(m_LocalAlpha, 0.0f, 1.0f);
 
-    // Renderer must use AddText(font, fontSize, pos, color, text, ..., wrapWidth)
-    AnsiText::Renderer::DrawText(drawList, m_AnsiText, pos, wrapWidth, alpha, fontSize, -1.0f, m_TabColumns);
+    AnsiText::TextOptions drawOptions;
+    drawOptions.font = ImGui::GetFont();
+    drawOptions.fontSize = fontSize;
+    drawOptions.wrapWidth = wrapWidth;
+    drawOptions.alpha = alpha;
+    drawOptions.tabColumns = m_TabColumns;
+    AnsiText::Renderer::DrawText(drawList, m_AnsiText, pos, drawOptions);
 }
 
 ImVec2 HUDText::GetElementSize(const ImVec2 &viewportSize) const {
@@ -408,8 +413,12 @@ ImVec2 HUDText::CalculateAnsiTextSize(const ImVec2 &viewportSize) const {
         return m_MeasureCache.size;
     }
 
-    // Calculate new size
-    const ImVec2 size = AnsiText::CalculateSize(m_AnsiText, wrapWidth, fontSize, -1.0f, m_TabColumns);
+    AnsiText::TextOptions measureOptions;
+    measureOptions.font = ImGui::GetFont();
+    measureOptions.fontSize = fontSize;
+    measureOptions.wrapWidth = wrapWidth;
+    measureOptions.tabColumns = m_TabColumns;
+    const ImVec2 size = AnsiText::CalcTextSize(m_AnsiText, measureOptions);
 
     // Update cache
     m_MeasureCache.textVersion = m_TextVersion;
