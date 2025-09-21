@@ -42,7 +42,7 @@
   - `ICommand`：命令系统接口，带补全/解析工具。
   - `InputHook`：统一键鼠/手柄输入封装，可屏蔽输入并拿到原始状态。
   - `Timer`：多类型定时器（Once/Loop/Repeat/Interval/Debounce/Throttle）与链式构建器。
-  - `IDataShare`：跨 Mod 数据共享与订阅。
+  - `DataShare API (BML_DataShare_*)`：跨 Mod 数据共享与订阅。
   - 工具：路径/字符串/内存/Zip/ANSI 调色板 等。
 
 ## 运行时目录结构
@@ -161,7 +161,7 @@ extern "C" __declspec(dllexport) void BMLExit(IMod* mod) {
 - `ICommand`：实现自定义命令（见 `include/BML/ICommand.h`）。
 - `InputHook`：读取/屏蔽输入（见 `include/BML/InputHook.h`）。
 - `Timer`：高级计时与节流/防抖（见 `include/BML/Timer.h`）。
-- `IDataShare`：跨 Mod 数据共享（见 `include/BML/IDataShare.h` 与 `src/DataShare.*`）。
+- `DataShare API (BML_DataShare_*)`：跨 Mod 数据共享（见 `include/BML/DataShare.h` 与 `src/DataShare.*`）。
 
 依赖声明：
 - 在 Mod 构造或 `OnLoad` 阶段通过 `AddDependency("OtherMod", {1,2,3})` 与 `AddOptionalDependency(...)` 注册。

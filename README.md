@@ -42,7 +42,7 @@ Note: BML+ targets the New Player (BallancePlayer). The original player is not s
   - `ICommand`: command interface with helpers for parsing/completion.
   - `InputHook`: unified input access with blocking/original state helpers.
   - `Timer`: Once/Loop/Repeat/Interval/Debounce/Throttle with fluent builder and chaining.
-  - `IDataShare`: inter‑mod data sharing and subscriptions.
+  - `DataShare API (BML_DataShare_*)`: inter‑mod data sharing and subscriptions.
   - Utilities: path/string/memory/zip/ANSI palette tools.
 
 ## Runtime Layout
@@ -152,7 +152,7 @@ Key APIs:
 - `ICommand`: create custom commands.
 - `InputHook`: read/block inputs.
 - `Timer`: advanced timing and debounce/throttle helpers.
-- `IDataShare`: cross‑mod data sharing.
+- `DataShare API (BML_DataShare_*)`: cross‑mod data sharing.
 
 Declaring deps:
 - Call `AddDependency("OtherMod", {major,minor,patch})` or `AddOptionalDependency(...)` during construction/`OnLoad`.
