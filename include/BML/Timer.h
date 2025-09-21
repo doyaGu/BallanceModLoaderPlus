@@ -1,15 +1,15 @@
 #ifndef BML_TIMER_H
 #define BML_TIMER_H
 
-#include <functional>
-#include <string>
-#include <memory>
+#include <algorithm>
 #include <atomic>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <algorithm>
-#include <mutex>
 
 #undef max
 #undef min
@@ -100,13 +100,15 @@ namespace BML {
                 m_Type(ONCE),
                 m_TimeBase(TICK),
                 m_RepeatCount(1),
+                m_RepeatCountExplicit(false),
                 m_Easing(LINEAR),
                 m_Priority(0),
                 m_HasProgressCallback(false),
                 m_HasOnceCallback(false),
                 m_HasLoopCallback(false),
                 m_HasSimpleCallback(false),
-                m_HasChainedTimer(false) {
+                m_HasChainedTimer(false),
+                m_StartPaused(false) {
             }
 
             Builder &WithName(const std::string &name) {
@@ -114,17 +116,9 @@ namespace BML {
                 return *this;
             }
 
-            Builder &WithDelayTicks(size_t ticks) {
-                m_Delay = TimeValue(ticks);
-                m_TimeBase = TICK;
-                return *this;
-            }
+            Builder &WithDelayTicks(size_t ticks) { return SetDelay(TimeValue(ticks), TICK); }
 
-            Builder &WithDelaySeconds(float seconds) {
-                m_Delay = TimeValue(seconds);
-                m_TimeBase = TIME;
-                return *this;
-            }
+            Builder &WithDelaySeconds(float seconds) { return SetDelay(TimeValue(seconds), TIME); }
 
             Builder &WithOnceCallback(OnceCallback callback) {
                 m_OnceCallback = std::move(callback);
@@ -162,6 +156,7 @@ namespace BML {
 
             Builder &WithRepeatCount(int count) {
                 m_RepeatCount = count > 0 ? count : 1;
+                m_RepeatCountExplicit = true;
                 return *this;
             }
 
@@ -188,23 +183,18 @@ namespace BML {
                 return *this;
             }
 
-            Builder &AsDebounced(size_t delayTicks) {
-                m_Type = DEBOUNCE;
-                m_Delay = TimeValue(delayTicks);
-                m_TimeBase = TICK;
-                return *this;
-            }
+            Builder &AsDebounced(size_t delayTicks) { return SetSpecialDelay(delayTicks, DEBOUNCE, true); }
 
-            Builder &AsThrottled(size_t delayTicks) {
-                m_Type = THROTTLE;
-                m_Delay = TimeValue(delayTicks);
-                m_TimeBase = TICK;
-                return *this;
-            }
+            Builder &AsThrottled(size_t delayTicks) { return SetSpecialDelay(delayTicks, THROTTLE, false); }
 
             Builder &WithChainedTimer(std::function<Builder()> chainedTimerBuilder) {
                 m_ChainedTimerBuilder = std::move(chainedTimerBuilder);
                 m_HasChainedTimer = true;
+                return *this;
+            }
+
+            Builder &StartPaused() {
+                m_StartPaused = true;
                 return *this;
             }
 
@@ -223,6 +213,18 @@ namespace BML {
         private:
             friend class Timer;
 
+            Builder &SetDelay(TimeValue value, TimeBase base) {
+                m_Delay = value;
+                m_TimeBase = base;
+                return *this;
+            }
+
+            Builder &SetSpecialDelay(size_t ticks, Type type, bool startPaused) {
+                m_Type = type;
+                m_StartPaused = startPaused;
+                return SetDelay(TimeValue(ticks), TICK);
+            }
+
             std::string m_Name;
             TimeValue m_Delay;
             OnceCallback m_OnceCallback;
@@ -231,6 +233,7 @@ namespace BML {
             Type m_Type;
             TimeBase m_TimeBase;
             int m_RepeatCount;
+            bool m_RepeatCountExplicit;
             Easing m_Easing;
             ProgressCallback m_ProgressCallback;
             int8_t m_Priority;
@@ -241,6 +244,7 @@ namespace BML {
             bool m_HasSimpleCallback;
             std::function<Builder()> m_ChainedTimerBuilder;
             bool m_HasChainedTimer;
+            bool m_StartPaused;
         };
 
         ~Timer() {
@@ -262,6 +266,9 @@ namespace BML {
         }
 
         bool Process(size_t tick, float time) {
+            m_LastProcessedTick = tick;
+            m_LastProcessedTime = time;
+
             if (m_State != RUNNING) {
                 return m_State != COMPLETED && m_State != CANCELLED;
             }
@@ -280,25 +287,25 @@ namespace BML {
                     m_LastExecutionTime = time;
                 }
 
-                if (m_Type == REPEAT && m_RemainingIterations > 0) {
+                if (HasFiniteIterations() && m_RemainingIterations > 0) {
                     m_CompletedIterations++;
                     m_RemainingIterations--;
                 }
 
                 // Handle timer type specific behavior
                 if (m_Type == DEBOUNCE) {
-                    m_State = COMPLETED;
-                    return false;
+                    m_State = IDLE;
+                    return true;
                 } else if (m_Type == THROTTLE) {
                     return true; // Throttle timers always continue
-                } else if (m_Type == REPEAT) {
-                    if (m_RemainingIterations > 0) {
+                } else if (HasFiniteIterations()) {
+                    if (continueTimer && m_RemainingIterations > 0) {
                         UpdateStartTime(tick, time);
                         return true;
-                    } else {
-                        m_State = COMPLETED;
-                        return false;
                     }
+
+                    m_State = COMPLETED;
+                    return false;
                 } else {
                     if (continueTimer) {
                         UpdateStartTime(tick, time);
@@ -308,9 +315,6 @@ namespace BML {
                         return false;
                     }
                 }
-            } else if (m_Type == DEBOUNCE) {
-                // For DEBOUNCE, reset the start time if called before quiet period ends
-                UpdateStartTime(tick, time);
             }
 
             return true;
@@ -318,33 +322,57 @@ namespace BML {
 
         // Timer control methods
         void Pause() {
-            if (m_State == RUNNING) {
-                m_State = PAUSED;
-                // Store the current pause time
-                if (m_TimeBase == TICK) {
-                    m_Pause = TimeValue(m_Start.GetTicks());
-                } else {
-                    m_Pause = TimeValue(m_Start.GetSeconds());
-                }
-            }
+            PauseAt(m_LastProcessedTick, m_LastProcessedTime);
         }
 
         void Resume() {
             if (m_State == PAUSED) {
+                ResumeAt(m_LastProcessedTick, m_LastProcessedTime);
+            }
+        }
+
+        void PauseAt(size_t tick, float time) {
+            if (m_State == RUNNING) {
+                m_State = PAUSED;
+                m_Pause = MakeTimeValue(tick, time);
+                m_LastProcessedTick = tick;
+                m_LastProcessedTime = time;
+            }
+        }
+
+        void ResumeAt(size_t tick, float time) {
+            if (m_State == PAUSED) {
+                if (m_TimeBase == TICK) {
+                    m_Start.SetTicks(m_Start.GetTicks() + CalculatePausedTicks(tick));
+                } else {
+                    m_Start.SetSeconds(m_Start.GetSeconds() + CalculatePausedSeconds(time));
+                }
                 m_State = RUNNING;
+                m_LastProcessedTick = tick;
+                m_LastProcessedTime = time;
             }
         }
 
         void Reset(size_t tick, float time) {
-            if (m_TimeBase == TICK) {
-                m_Start = TimeValue(tick);
-            } else {
-                m_Start = TimeValue(time);
-            }
+            SetStartFromCurrent(tick, time);
 
             m_State = RUNNING;
             m_RemainingIterations = m_TotalIterations;
             m_CompletedIterations = 0;
+            m_LastProcessedTick = tick;
+            m_LastProcessedTime = time;
+            m_Pause = m_Start;
+        }
+
+        void Signal(size_t tick, float time) {
+            if (m_Type == DEBOUNCE) {
+                m_State = RUNNING;
+                m_RemainingIterations = m_TotalIterations;
+                m_CompletedIterations = 0;
+                UpdateStartTime(tick, time);
+                m_LastProcessedTick = tick;
+                m_LastProcessedTime = time;
+            }
         }
 
         void Cancel() {
@@ -496,11 +524,27 @@ namespace BML {
             }
         }
 
+        static void PauseAll(size_t tick, float time) {
+            std::lock_guard<std::mutex> lock(GetMutex());
+
+            for (auto &pair : GetTimersMap()) {
+                pair.second->PauseAt(tick, time);
+            }
+        }
+
         static void PauseAll() {
             std::lock_guard<std::mutex> lock(GetMutex());
 
             for (auto &pair : GetTimersMap()) {
                 pair.second->Pause();
+            }
+        }
+
+        static void ResumeAll(size_t tick, float time) {
+            std::lock_guard<std::mutex> lock(GetMutex());
+
+            for (auto &pair : GetTimersMap()) {
+                pair.second->ResumeAt(tick, time);
             }
         }
 
@@ -525,6 +569,11 @@ namespace BML {
                     timersToProcess.push_back(pair.second);
                 }
             }
+
+            std::stable_sort(timersToProcess.begin(), timersToProcess.end(),
+                              [](const std::shared_ptr<Timer> &a, const std::shared_ptr<Timer> &b) {
+                                  return a->GetPriority() > b->GetPriority();
+                              });
 
             // Process each timer without holding the lock
             for (auto &timer : timersToProcess) {
@@ -569,12 +618,7 @@ namespace BML {
 
                 // Start any chained timers outside the lock
                 for (auto &timer : timersToStart) {
-                    timer->m_State = RUNNING;
-                    if (timer->m_TimeBase == TICK) {
-                        timer->m_Start = TimeValue(tick);
-                    } else {
-                        timer->m_Start = TimeValue(time);
-                    }
+                    timer->Reset(tick, time);
                 }
 
                 // Handle any builders that need to create new timers
@@ -621,6 +665,11 @@ namespace BML {
                 };
                 first->m_HasChainedTimer = true;
                 first->m_NextTimer = second;
+                second->Pause();
+                second->m_RemainingIterations = second->m_TotalIterations;
+                second->m_CompletedIterations = 0;
+                second->m_LastExecutionTick = 0;
+                second->m_LastExecutionTime = 0.0f;
             }
             return second;
         }
@@ -632,7 +681,7 @@ namespace BML {
               m_Name(builder.m_Name.empty() ? "Timer_" + std::to_string(m_Id) : builder.m_Name),
               m_Type(builder.m_Type),
               m_TimeBase(builder.m_TimeBase),
-              m_State(RUNNING),
+              m_State(builder.m_StartPaused ? PAUSED : RUNNING),
               m_Priority(builder.m_Priority),
               m_Easing(builder.m_Easing),
               m_HasOnceCallback(builder.m_HasOnceCallback),
@@ -644,16 +693,15 @@ namespace BML {
               m_HasChainedTimer(builder.m_HasChainedTimer),
               // Initialize with 0 for throttle to indicate first execution
               m_LastExecutionTick(0),
-              m_LastExecutionTime(0.0f) {
+              m_LastExecutionTime(0.0f),
+              m_LastProcessedTick(tick),
+              m_LastProcessedTime(time) {
             // Set delay based on time base
             m_Delay = builder.m_Delay;
 
             // Set start time
-            if (m_TimeBase == TICK) {
-                m_Start = TimeValue(tick);
-            } else {
-                m_Start = TimeValue(time);
-            }
+            SetStartFromCurrent(tick, time);
+            m_Pause = m_Start;
 
             // Set callbacks
             if (builder.m_HasOnceCallback) {
@@ -674,6 +722,10 @@ namespace BML {
 
             // Set iteration counts based on timer type
             if (m_Type == REPEAT) {
+                int repeatCount = builder.m_RepeatCountExplicit ? builder.m_RepeatCount : 1;
+                m_TotalIterations = repeatCount;
+                m_RemainingIterations = repeatCount;
+            } else if (m_Type == LOOP && builder.m_RepeatCountExplicit) {
                 m_TotalIterations = builder.m_RepeatCount;
                 m_RemainingIterations = builder.m_RepeatCount;
             } else if (m_Type == ONCE || m_Type == DEBOUNCE) {
@@ -693,17 +745,20 @@ namespace BML {
                 size_t start = m_Start.GetTicks();
                 size_t delay = m_Delay.GetTicks();
                 size_t elapsed = tick >= start ? tick - start : 0;
-                float linearProgress = delay > 0
-                                           ? static_cast<float>(elapsed) / static_cast<float>(delay)
-                                           : 1.0f;
-                return ApplyEasing(std::max(0.0f, std::min(linearProgress, 1.0f)));
-            } else {
-                float start = m_Start.GetSeconds();
-                float delay = m_Delay.GetSeconds();
-                float elapsed = time >= start ? (time - start) * GetTimeScale() : 0.0f;
-                float linearProgress = delay > 0.0f ? elapsed / delay : 1.0f;
-                return ApplyEasing(std::max(0.0f, std::min(linearProgress, 1.0f)));
+                return ApplyEasing(ClampProgress(ComputeLinearProgress(static_cast<float>(elapsed), static_cast<float>(delay))));
             }
+
+            float startSeconds = m_Start.GetSeconds();
+            float delaySeconds = m_Delay.GetSeconds();
+            float elapsedSeconds = 0.0f;
+
+            if (m_TimeBase == TIME) {
+                elapsedSeconds = time >= startSeconds ? (time - startSeconds) * GetTimeScale() : 0.0f;
+            } else {
+                elapsedSeconds = time >= startSeconds ? (time - startSeconds) : 0.0f;
+            }
+
+            return ApplyEasing(ClampProgress(ComputeLinearProgress(elapsedSeconds, delaySeconds)));
         }
 
         float ApplyEasing(float linearProgress) const {
@@ -737,38 +792,44 @@ namespace BML {
 
                     // Otherwise, check if enough time has passed since last execution
                     return (tick - m_LastExecutionTick) >= m_Delay.GetTicks();
-                } else {
+                } else if (m_TimeBase == TIME) {
                     // Time-based version
                     if (m_LastExecutionTime == 0.0f) {
                         return true;
                     }
 
                     return (time - m_LastExecutionTime) * GetTimeScale() >= m_Delay.GetSeconds();
+                } else {
+                    if (m_LastExecutionTime == 0.0f) {
+                        return true;
+                    }
+
+                    return (time - m_LastExecutionTime) >= m_Delay.GetSeconds();
                 }
             } else if (m_Type == DEBOUNCE) {
                 // Debounce implementation...
                 if (m_TimeBase == TICK) {
                     return (tick - m_Start.GetTicks()) >= m_Delay.GetTicks();
-                } else {
+                } else if (m_TimeBase == TIME) {
                     return (time - m_Start.GetSeconds()) * GetTimeScale() >= m_Delay.GetSeconds();
+                } else {
+                    return (time - m_Start.GetSeconds()) >= m_Delay.GetSeconds();
                 }
             } else {
                 // Normal timer behavior
                 if (m_TimeBase == TICK) {
                     return m_Start.GetTicks() + m_Delay.GetTicks() <= tick;
-                } else {
+                } else if (m_TimeBase == TIME) {
                     float adjustedDelay = m_Delay.GetSeconds() / GetTimeScale();
                     return m_Start.GetSeconds() + adjustedDelay <= time;
+                } else {
+                    return m_Start.GetSeconds() + m_Delay.GetSeconds() <= time;
                 }
             }
         }
 
         void UpdateStartTime(size_t tick, float time) {
-            if (m_TimeBase == TICK) {
-                m_Start = TimeValue(tick);
-            } else {
-                m_Start = TimeValue(time);
-            }
+            SetStartFromCurrent(tick, time);
         }
 
         bool ExecuteCallback() {
@@ -792,6 +853,32 @@ namespace BML {
             }
 
             return continueTimer;
+        }
+
+        bool HasFiniteIterations() const {
+            return m_TotalIterations > 0;
+        }
+
+        void SetStartFromCurrent(size_t tick, float time) { m_Start = MakeTimeValue(tick, time); }
+
+        TimeValue MakeTimeValue(size_t tick, float time) const {
+            return (m_TimeBase == TICK) ? TimeValue(tick) : TimeValue(time);
+        }
+
+        static float ClampProgress(float value) {
+            return std::max(0.0f, std::min(value, 1.0f));
+        }
+
+        static float ComputeLinearProgress(float elapsed, float delay) {
+            return (delay > 0.0f) ? (elapsed / delay) : 1.0f;
+        }
+
+        size_t CalculatePausedTicks(size_t tick) const {
+            return (tick > m_Pause.GetTicks()) ? (tick - m_Pause.GetTicks()) : 0;
+        }
+
+        float CalculatePausedSeconds(float time) const {
+            return std::max(0.0f, time - m_Pause.GetSeconds());
         }
 
         // Static helper methods
@@ -832,6 +919,8 @@ namespace BML {
         TimeValue m_Pause;
         size_t m_LastExecutionTick;
         float m_LastExecutionTime;
+        size_t m_LastProcessedTick;
+        float m_LastProcessedTime;
 
         // Callbacks
         OnceCallback m_OnceCallback;
