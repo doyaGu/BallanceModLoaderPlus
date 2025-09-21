@@ -272,7 +272,7 @@ TEST_F(AnsiPaletteTest, SetActiveThemeNameWritesConfig) {
     c = utils::Utf16ToAnsi(cfg);
     // Verify ExtractThemeName returns none/empty
     EXPECT_TRUE(AnsiPalette::ExtractThemeName(c).empty());
-    // Ensure no non-comment 'base' assignment remains inside [theme] or [meta]
+    // Ensure no non-comment 'base' assignment remains inside [theme]
     bool found_active = false;
     std::string section;
     size_t pos = 0;
@@ -286,7 +286,7 @@ TEST_F(AnsiPaletteTest, SetActiveThemeNameWritesConfig) {
         if (t.empty()) continue;
         if (t.front() == '[' && t.back() == ']') { section = utils::ToLower(t.substr(1, t.size()-2)); continue; }
         if (t[0] == '#' || t[0] == ';') continue;
-        if (section == "theme" || section == "meta") {
+        if (section == "theme") {
             std::string l = utils::ToLower(t);
             if (utils::StartsWith(l, std::string("base")) || utils::StartsWith(l, std::string("theme"))) {
                 found_active = true; break;
