@@ -28,52 +28,6 @@ namespace Overlay {
     bool g_RenderReady = false;
     bool g_NewFrame = false;
 
-    static bool ShouldFeedImGui(UINT msg) {
-        switch (msg) {
-        // Mouse
-        case WM_MOUSEMOVE:
-        case WM_NCMOUSEMOVE:
-        case WM_MOUSELEAVE:
-        case WM_NCMOUSELEAVE:
-        case WM_LBUTTONDOWN:
-        case WM_LBUTTONDBLCLK:
-        case WM_RBUTTONDOWN:
-        case WM_RBUTTONDBLCLK:
-        case WM_MBUTTONDOWN:
-        case WM_MBUTTONDBLCLK:
-        case WM_XBUTTONDOWN:
-        case WM_XBUTTONDBLCLK:
-        case WM_LBUTTONUP:
-        case WM_RBUTTONUP:
-        case WM_MBUTTONUP:
-        case WM_XBUTTONUP:
-        case WM_MOUSEWHEEL:
-        case WM_MOUSEHWHEEL:
-        // Keyboard
-        case WM_KEYDOWN:
-        case WM_SYSKEYDOWN:
-        case WM_KEYUP:
-        case WM_SYSKEYUP:
-        case WM_CHAR:
-        case WM_SYSCHAR:
-        // IME
-        case WM_IME_STARTCOMPOSITION:
-        case WM_IME_COMPOSITION:
-        case WM_IME_ENDCOMPOSITION:
-        case WM_INPUTLANGCHANGE:
-        // Focus
-        case WM_SETFOCUS:
-        case WM_KILLFOCUS:
-        // Cursor
-        case WM_SETCURSOR:
-        // Device
-        case WM_DEVICECHANGE:
-            return true;
-        default:
-            return false;
-        }
-    }
-
     LRESULT OnWndProcA(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         ImGuiContextScope scope;
 
@@ -106,7 +60,7 @@ namespace Overlay {
         if (!g_OrigPeekMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg))
             return FALSE;
 
-        if (lpMsg->hwnd && (wRemoveMsg & PM_REMOVE) != 0 && ShouldFeedImGui(lpMsg->message)) {
+        if (lpMsg->hwnd && (wRemoveMsg & PM_REMOVE) != 0) {
             if (OnWndProcA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
                 lpMsg->message = WM_NULL;
             }
@@ -119,7 +73,7 @@ namespace Overlay {
         if (!g_OrigPeekMessageW(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg))
             return FALSE;
 
-        if (lpMsg->hwnd && (wRemoveMsg & PM_REMOVE) != 0 && ShouldFeedImGui(lpMsg->message)) {
+        if (lpMsg->hwnd && (wRemoveMsg & PM_REMOVE) != 0) {
             if (OnWndProcW(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
                 lpMsg->message = WM_NULL;
             }
@@ -129,31 +83,25 @@ namespace Overlay {
     }
 
     extern "C" BOOL WINAPI HookGetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax) {
-        BOOL ret = g_OrigGetMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax);
-        if (ret == -1) return ret;
-        if (ret == 0)  return 0;
+        if (!g_OrigGetMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax))
+            return FALSE;
 
-        if (lpMsg->hwnd && ShouldFeedImGui(lpMsg->message)) {
-            if (OnWndProcA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
-                lpMsg->message = WM_NULL;
-            }
+        if (lpMsg->hwnd && OnWndProcA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
+            lpMsg->message = WM_NULL;
         }
 
-        return 1;
+        return lpMsg->message != WM_QUIT;
     }
 
     extern "C" BOOL WINAPI HookGetMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax) {
-        BOOL ret = g_OrigGetMessageW(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax);
-        if (ret == -1) return ret;
-        if (ret == 0)  return 0;
+        if (!g_OrigGetMessageW(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax))
+            return FALSE;
 
-        if (lpMsg->hwnd && ShouldFeedImGui(lpMsg->message)) {
-            if (OnWndProcW(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
-                lpMsg->message = WM_NULL;
-            }
+        if (lpMsg->hwnd && OnWndProcW(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
+            lpMsg->message = WM_NULL;
         }
 
-        return 1;
+        return lpMsg->message != WM_QUIT;
     }
 
     bool ImGuiInstallWin32Hooks() {
