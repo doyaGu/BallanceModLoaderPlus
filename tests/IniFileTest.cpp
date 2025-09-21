@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+﻿#include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "IniFile.h"
 #include "StringUtils.h"
@@ -421,6 +421,25 @@ TEST_F(IniFileTest, ApplyMutationsMixed) {
     EXPECT_EQ("updated", ini.GetValue("section", "update_me"));
     EXPECT_FALSE(ini.HasKey("section", "remove_me"));
     EXPECT_EQ("added", ini.GetValue("section", "add_me"));
+}
+
+TEST_F(IniFileTest, ApplyMutationsPreservesInlineComment) {
+    IniFile ini;
+    std::string content = R"([section]
+key = value  # keep comment
+)";
+
+    ASSERT_TRUE(ini.ParseFromString(content));
+
+    std::vector<IniFile::Mutation> mutations = {
+        {"key", "updated", false}
+    };
+
+    ASSERT_TRUE(ini.ApplyMutations("section", mutations));
+    EXPECT_EQ("# keep comment", ini.GetInlineComment("section", "key"));
+
+    std::string output = ini.WriteToString();
+    EXPECT_THAT(output, HasSubstr("key = updated  # keep comment"));
 }
 
 // Custom section insertion logic
@@ -1272,4 +1291,103 @@ second = second_value
     // Verify order: first should come before second, and new_key should be inserted properly  
     EXPECT_LT(firstPos, secondPos) << "first should still appear before second after modification";
     EXPECT_LT(newKeyPos, themePos + result2.find("\n\n", themePos)) << "new_key should be within theme section";
+}
+
+TEST_F(IniFileTest, ParseStripsUtf8Bom) {
+    IniFile ini;
+    std::string content = "\xEF\xBB\xBF[section]\nkey=value\n";
+
+    EXPECT_TRUE(ini.ParseFromString(content));
+    EXPECT_TRUE(ini.HasSection("section"));
+    EXPECT_FALSE(ini.HasSection("\xEF\xBB\xBFsection"));
+    EXPECT_EQ("value", ini.GetValue("section", "key"));
+}
+
+TEST_F(IniFileTest, UnicodeWhitespaceKeysNormalizeCorrectly) {
+    IniFile ini;
+    std::string content = "[sec]\n\xC2\xA0Key\xC2\xA0 = value\n";
+
+    ASSERT_TRUE(ini.ParseFromString(content));
+    EXPECT_TRUE(ini.HasKey("sec", "Key"));
+    EXPECT_EQ("value", ini.GetValue("sec", "Key"));
+    EXPECT_EQ("value", ini.GetValue("sec", "\xC2\xA0Key\xC2\xA0"));
+
+    EXPECT_TRUE(ini.SetValue("sec", "Key", "updated"));
+    EXPECT_EQ("updated", ini.GetValue("sec", "Key"));
+}
+
+TEST_F(IniFileTest, InlineCommentRequiresWhitespaceAndRespectsHeuristics) {
+    IniFile ini;
+    std::string content = R"([section]
+color = #ffcc00
+color_with_comment = #ffcc00  # color comment
+path = C:\Program Files;Games
+list = 5;6;7;8
+list_spaced = 1 ; 2 ; 3 ; 4
+quoted = "value # inside"
+value_with_comment = foo # trailing comment
+no_space_hash = foo#bar
+semi_comment = foo ; trailing
+)";
+
+    ASSERT_TRUE(ini.ParseFromString(content));
+
+
+    EXPECT_EQ("#ffcc00", ini.GetValue("section", "color"));
+    EXPECT_EQ("", ini.GetInlineComment("section", "color"));
+
+    EXPECT_EQ("#ffcc00", ini.GetValue("section", "color_with_comment"));
+    EXPECT_EQ("# color comment", ini.GetInlineComment("section", "color_with_comment"));
+
+    EXPECT_EQ(R"(C:\Program Files;Games)", ini.GetValue("section", "path"));
+    EXPECT_EQ("", ini.GetInlineComment("section", "path"));
+
+    EXPECT_EQ("5;6;7;8", ini.GetValue("section", "list"));
+    EXPECT_EQ("", ini.GetInlineComment("section", "list"));
+
+    EXPECT_EQ("1 ; 2 ; 3 ; 4", ini.GetValue("section", "list_spaced"));
+    EXPECT_EQ("", ini.GetInlineComment("section", "list_spaced"));
+
+    EXPECT_EQ("\"value # inside\"", ini.GetValue("section", "quoted"));
+    EXPECT_EQ("", ini.GetInlineComment("section", "quoted"));
+
+    EXPECT_EQ("foo", ini.GetValue("section", "value_with_comment"));
+    EXPECT_EQ("# trailing comment", ini.GetInlineComment("section", "value_with_comment"));
+
+    EXPECT_EQ("foo#bar", ini.GetValue("section", "no_space_hash"));
+    EXPECT_EQ("", ini.GetInlineComment("section", "no_space_hash"));
+
+    EXPECT_EQ("foo", ini.GetValue("section", "semi_comment"));
+    EXPECT_EQ("; trailing", ini.GetInlineComment("section", "semi_comment"));
+}
+
+TEST_F(IniFileTest, DuplicateSectionsPreservedLastWinsLookup) {
+    IniFile ini;
+    std::string content = R"([section]
+key = original
+[section]
+key = override
+other = data
+)";
+
+    ASSERT_TRUE(ini.ParseFromString(content));
+
+    const auto &sections = ini.GetSections();
+    ASSERT_EQ(2u, sections.size());
+    EXPECT_EQ("override", ini.GetValue("section", "key"));
+
+    IniFile::Section *lookupSection = ini.GetSection("section");
+    ASSERT_NE(nullptr, lookupSection);
+    ASSERT_FALSE(lookupSection->entries.empty());
+    EXPECT_EQ("override", lookupSection->entries.front().value);
+
+    EXPECT_EQ("original", sections.front().entries.front().value);
+
+    std::string output = ini.WriteToString();
+    size_t first = output.find("[section]");
+    ASSERT_NE(std::string::npos, first);
+    size_t second = output.find("[section]", first + 1);
+    EXPECT_NE(std::string::npos, second);
+    EXPECT_NE(std::string::npos, output.find("key = original"));
+    EXPECT_NE(std::string::npos, output.find("key = override"));
 }
