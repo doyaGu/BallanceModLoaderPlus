@@ -1656,3 +1656,85 @@ TEST_F(IniFileTest, EdgeCaseLengthsWithUnicodeCharacters) {
 
     EXPECT_TRUE(ini.SetValue(unicodeSectionName, unicodeKeyName, "value"));
 }
+
+// Header comment tests
+TEST_F(IniFileTest, HandlesHeaderComments) {
+    const std::string content = R"INI(; BallanceModLoaderPlus Configuration
+; This file contains mod settings
+; Author: Test User
+
+[Graphics]
+Width = 1920
+Height = 1080
+)INI";
+
+    IniFile ini;
+    ASSERT_TRUE(ini.ParseFromString(content));
+
+    std::string headerComment = ini.GetHeaderComment();
+    EXPECT_FALSE(headerComment.empty());
+    EXPECT_NE(headerComment.find("BallanceModLoaderPlus Configuration"), std::string::npos);
+    EXPECT_NE(headerComment.find("This file contains mod settings"), std::string::npos);
+    EXPECT_NE(headerComment.find("Author: Test User"), std::string::npos);
+}
+
+TEST_F(IniFileTest, SetsAndGetsHeaderComments) {
+    IniFile ini;
+    ASSERT_TRUE(ini.SetValue("Test", "Value", "123"));
+
+    // Test setting header comment
+    std::string comment = "Configuration File\nGenerated automatically\nDo not edit manually";
+    ASSERT_TRUE(ini.SetHeaderComment(comment));
+
+    std::string retrieved = ini.GetHeaderComment();
+    EXPECT_NE(retrieved.find("Configuration File"), std::string::npos);
+    EXPECT_NE(retrieved.find("Generated automatically"), std::string::npos);
+    EXPECT_NE(retrieved.find("Do not edit manually"), std::string::npos);
+}
+
+TEST_F(IniFileTest, HeaderCommentRoundTrip) {
+    IniFile original;
+    ASSERT_TRUE(original.SetValue("Graphics", "Width", "1920"));
+    ASSERT_TRUE(original.SetHeaderComment("Configuration Header\nLine 2\nLine 3"));
+
+    std::string serialized = original.WriteToString();
+    EXPECT_NE(serialized.find("; Configuration Header"), std::string::npos);
+    EXPECT_NE(serialized.find("; Line 2"), std::string::npos);
+    EXPECT_NE(serialized.find("; Line 3"), std::string::npos);
+
+    IniFile restored;
+    ASSERT_TRUE(restored.ParseFromString(serialized));
+
+    std::string restoredComment = restored.GetHeaderComment();
+    EXPECT_NE(restoredComment.find("Configuration Header"), std::string::npos);
+    EXPECT_NE(restoredComment.find("Line 2"), std::string::npos);
+    EXPECT_NE(restoredComment.find("Line 3"), std::string::npos);
+}
+
+TEST_F(IniFileTest, ClearHeaderComment) {
+    IniFile ini;
+    ASSERT_TRUE(ini.SetHeaderComment("Initial comment"));
+    EXPECT_FALSE(ini.GetHeaderComment().empty());
+
+    ini.ClearHeaderComment();
+    EXPECT_TRUE(ini.GetHeaderComment().empty());
+}
+
+TEST_F(IniFileTest, HeaderCommentFormattingWithoutPrefix) {
+    IniFile ini;
+    ASSERT_TRUE(ini.SetHeaderComment("Line without prefix\nAnother line"));
+
+    std::string comment = ini.GetHeaderComment();
+    EXPECT_NE(comment.find("; Line without prefix"), std::string::npos);
+    EXPECT_NE(comment.find("; Another line"), std::string::npos);
+}
+
+TEST_F(IniFileTest, HeaderCommentWithDifferentCommentStyles) {
+    IniFile ini;
+    ASSERT_TRUE(ini.SetHeaderComment("# Hash comment\n; Semicolon comment\nNo prefix"));
+
+    std::string comment = ini.GetHeaderComment();
+    EXPECT_NE(comment.find("# Hash comment"), std::string::npos);
+    EXPECT_NE(comment.find("; Semicolon comment"), std::string::npos);
+    EXPECT_NE(comment.find("; No prefix"), std::string::npos);
+}
