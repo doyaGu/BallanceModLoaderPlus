@@ -1,4 +1,4 @@
- #include "Config.h"
+#include "Config.h"
 
 #include <cstdio>
 #include <sstream>
@@ -23,51 +23,125 @@ bool Config::Load(const wchar_t *path) {
     if (!path || path[0] == L'\0')
         return false;
 
-    std::wstring wPath(path);
-    if (!m_CfgFile.ParseFromFile(wPath)) {
+    FILE *fp = _wfopen(path, L"rb");
+    if (!fp)
+        return false;
+
+    fseek(fp, 0, SEEK_END);
+    size_t sz = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    if (sz == 0) {
+        fclose(fp);
         return false;
     }
 
-    // Convert CfgFile data to Config's internal structure
-    for (const std::string& categoryName : m_CfgFile.GetCategoryNames()) {
-        const CfgFile::Category* cfgCategory = m_CfgFile.GetCategory(categoryName);
-        if (!cfgCategory) continue;
+    auto *buf = new char[sz + 1];
+    size_t read = fread(buf, sizeof(char), sz, fp);
+    fclose(fp);
 
-        Category* cate = GetCategory(categoryName.c_str());
-        if (cate) {
-            cate->m_Comment = cfgCategory->comment;
-        }
+    if (read != sz) {
+        delete[] buf;
+        return false;
+    }
 
-        for (const CfgFile::Property& cfgProp : cfgCategory->properties) {
-            auto* prop = new Property(this, categoryName, cfgProp.name);
-            prop->SetComment(cfgProp.comment.c_str());
+    buf[sz] = '\0';
 
-            switch (cfgProp.type) {
-            case CfgPropertyType::STRING:
-                prop->SetDefaultString(cfgProp.GetString().c_str());
+    std::wstring wBuf = utils::Utf8ToUtf16(buf);
+    delete[] buf;
+
+    std::wistringstream in(wBuf);
+    std::wstring wToken, wComment, wCategory;
+    std::string comment, category;
+    bool inCate = false;
+
+    while (in >> wToken) {
+        if (wToken == L"#") {
+            std::getline(in, wComment);
+            utils::TrimString(wComment);
+            comment = utils::Utf16ToUtf8(wComment);
+        } else if (wToken == L"{") {
+            inCate = true;
+        } else if (wToken == L"}") {
+            inCate = false;
+        } else if (inCate) {
+            std::wstring wPropName;
+            if (!(in >> wPropName)) break;
+
+            std::string propName = utils::Utf16ToUtf8(wPropName);
+            auto *prop = new Property(this, category, propName);
+
+            bool parseSuccess = false;
+
+            switch (wToken[0]) {
+            case L'S': {
+                std::wstring wValue;
+                std::getline(in, wValue);
+                utils::TrimString(wValue);
+                std::string value = utils::Utf16ToUtf8(wValue);
+                prop->SetDefaultString(value.c_str());
+                parseSuccess = true;
                 break;
-            case CfgPropertyType::BOOLEAN:
-                prop->SetDefaultBoolean(cfgProp.GetBoolean());
+            }
+            case L'B': {
+                bool value;
+                if (in >> value) {
+                    prop->SetDefaultBoolean(value);
+                    parseSuccess = true;
+                }
                 break;
-            case CfgPropertyType::INTEGER:
-                prop->SetDefaultInteger(cfgProp.GetInteger());
+            }
+            case L'K': {
+                int value;
+                if (in >> value) {
+                    prop->SetDefaultKey(static_cast<CKKEYBOARD>(value));
+                    parseSuccess = true;
+                }
                 break;
-            case CfgPropertyType::FLOAT:
-                prop->SetDefaultFloat(cfgProp.GetFloat());
+            }
+            case L'I': {
+                int value;
+                if (in >> value) {
+                    prop->SetDefaultInteger(value);
+                    parseSuccess = true;
+                }
                 break;
-            case CfgPropertyType::KEY:
-                prop->SetDefaultKey(static_cast<CKKEYBOARD>(cfgProp.GetInteger()));
+            }
+            case L'F': {
+                float value;
+                if (in >> value) {
+                    prop->SetDefaultFloat(value);
+                    parseSuccess = true;
+                }
                 break;
+            }
             default:
                 break;
             }
 
+            if (!parseSuccess) {
+                delete prop;
+                continue;
+            }
+
+            prop->SetComment(comment.c_str());
+
+            Category *cate = GetCategory(category.c_str());
             if (cate) {
                 cate->m_Properties.push_back(prop);
-                cate->m_PropertyMap[cfgProp.name] = prop;
+                cate->m_PropertyMap[propName] = prop;
             } else {
                 delete prop;
             }
+        } else {
+            wCategory = wToken;
+            category = utils::Utf16ToUtf8(wCategory);
+
+            Category *cate = GetCategory(category.c_str());
+            if (cate) {
+                cate->m_Comment = comment;
+            }
+            comment.clear();
         }
     }
 
@@ -77,6 +151,12 @@ bool Config::Load(const wchar_t *path) {
 bool Config::Save(const wchar_t *path) {
     if (!path || path[0] == L'\0')
         return false;
+
+    FILE *fp = _wfopen(path, L"wb");
+    if (!fp)
+        return false;
+
+    std::ostringstream out;
 
     // Clean up properties without a config
     for (auto *category : m_Categories) {
@@ -96,76 +176,70 @@ bool Config::Save(const wchar_t *path) {
         }
     }
 
-    // Clear and rebuild CfgFile from current Config state
-    m_CfgFile.Clear();
-
-    // Add mod header comment
-    std::string headerComment = "Configuration File for Mod: " +
-        (m_Mod ? std::string(m_Mod->GetName()) : "Unknown") +
-        " - " +
-        (m_Mod ? std::string(m_Mod->GetVersion()) : "Unknown");
+    out << "# Configuration File for Mod: " << (m_Mod ? m_Mod->GetName() : "Unknown")
+        << " - " << (m_Mod ? m_Mod->GetVersion() : "Unknown") << std::endl << std::endl;
 
     for (auto *category : m_Categories) {
         if (!category || category->GetPropertyCount() == 0)
             continue;
 
-        CfgFile::Category* cfgCategory = m_CfgFile.AddCategory(category->m_Name);
-        if (!cfgCategory) continue;
-
-        cfgCategory->comment = category->m_Comment;
+        out << "# " << category->m_Comment << std::endl;
+        out << category->m_Name << " {" << std::endl << std::endl;
 
         for (auto *property : category->m_Properties) {
             if (!property) continue;
 
-            CfgPropertyType cfgType;
+            out << "\t# " << property->GetComment() << std::endl;
+            out << "\t";
             switch (property->GetType()) {
             case IProperty::STRING:
-                cfgType = CfgPropertyType::STRING;
+                out << "S ";
                 break;
             case IProperty::BOOLEAN:
-                cfgType = CfgPropertyType::BOOLEAN;
+                out << "B ";
                 break;
             case IProperty::FLOAT:
-                cfgType = CfgPropertyType::FLOAT;
+                out << "F ";
                 break;
             case IProperty::KEY:
-                cfgType = CfgPropertyType::KEY;
+                out << "K ";
                 break;
             case IProperty::INTEGER:
             default:
-                cfgType = CfgPropertyType::INTEGER;
+                out << "I ";
                 break;
             }
 
-            CfgFile::Property* cfgProp = cfgCategory->AddProperty(property->m_Key, cfgType);
-            if (!cfgProp) continue;
-
-            cfgProp->comment = property->GetComment();
-
+            out << property->m_Key << " ";
             switch (property->GetType()) {
             case IProperty::STRING:
-                cfgProp->SetString(property->GetString());
+                out << property->GetString();
                 break;
             case IProperty::BOOLEAN:
-                cfgProp->SetBoolean(property->GetBoolean());
+                out << property->GetBoolean();
                 break;
             case IProperty::FLOAT:
-                cfgProp->SetFloat(property->GetFloat());
+                out << property->GetFloat();
                 break;
             case IProperty::KEY:
-                cfgProp->type = CfgPropertyType::KEY;
-                cfgProp->value = static_cast<int>(property->GetKey());
+                out << static_cast<int>(property->GetKey());
                 break;
             case IProperty::INTEGER:
             default:
-                cfgProp->SetInteger(property->GetInteger());
+                out << property->GetInteger();
                 break;
             }
+
+            out << std::endl << std::endl;
         }
+
+        out << "}" << std::endl << std::endl;
     }
 
-    std::wstring wPath(path);
-    return m_CfgFile.WriteToFile(wPath);
+    std::string buf = out.str();
+    bool success = (fwrite(buf.c_str(), sizeof(char), buf.size(), fp) == buf.size());
+    fclose(fp);
+    return success;
 }
 
 bool Config::HasCategory(const char *category) {
