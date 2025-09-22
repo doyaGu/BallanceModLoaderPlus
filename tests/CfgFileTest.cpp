@@ -863,3 +863,27 @@ TEST_F(CfgFileTest, HeaderCommentFormattingWithoutPrefix) {
     EXPECT_NE(comment.find("# Line without prefix"), std::string::npos);
     EXPECT_NE(comment.find("# Another line"), std::string::npos);
 }
+
+TEST_F(CfgFileTest, HandlesUtf8Filenames) {
+    CfgFile cfg;
+
+    // Create test configuration
+    ASSERT_TRUE(cfg.SetStringProperty("Test", "Value", "UTF-8 Test"));
+    ASSERT_TRUE(cfg.SetIntegerProperty("Test", "Number", 42));
+
+    std::string utf8Filename = "test_utf8_config.cfg";
+
+    // Test UTF-8 filename write
+    ASSERT_TRUE(cfg.WriteToFile(utf8Filename)) << cfg.GetLastError();
+
+    // Test UTF-8 filename read
+    CfgFile cfg2;
+    ASSERT_TRUE(cfg2.ParseFromFile(utf8Filename)) << cfg2.GetLastError();
+
+    // Verify content
+    EXPECT_EQ(cfg2.GetStringProperty("Test", "Value"), "UTF-8 Test");
+    EXPECT_EQ(cfg2.GetIntegerProperty("Test", "Number"), 42);
+
+    // Clean up
+    std::remove(utf8Filename.c_str());
+}
