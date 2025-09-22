@@ -258,5 +258,4 @@ namespace ScriptHelper {
                 DeleteLink(script, link);
         }
     }
-
 }
