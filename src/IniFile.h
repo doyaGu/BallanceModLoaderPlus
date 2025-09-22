@@ -90,6 +90,11 @@ public:
     std::string GetPrecedingComment(const std::string &sectionName, const std::string &key) const;
     bool SetPrecedingComment(const std::string &sectionName, const std::string &key, const std::string &comment);
 
+    // Header comment operations
+    std::string GetHeaderComment() const;
+    bool SetHeaderComment(const std::string &comment);
+    void ClearHeaderComment();
+
     // Bulk operations
     struct Mutation {
         std::string key;
@@ -181,6 +186,3 @@ private:
 };
 
 #endif // BML_INIFILE_H
-
-
-
