@@ -9,6 +9,8 @@
 #include "BML/IConfig.h"
 #include "BML/IMod.h"
 
+#include "CfgFile.h"
+
 class Config;
 
 class Property : public IProperty {
@@ -120,6 +122,7 @@ public:
 private:
     IMod *m_Mod;
     std::string m_ModID;
+    CfgFile m_CfgFile;
 
     std::vector<Category *> m_Categories;
     std::unordered_map<std::string, Category *> m_CategoryMap;
