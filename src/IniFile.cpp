@@ -672,6 +672,54 @@ bool IniFile::SetPrecedingComment(const std::string &sectionName, const std::str
     return true;
 }
 
+std::string IniFile::GetHeaderComment() const {
+    if (m_LeadingComments.empty()) {
+        return "";
+    }
+
+    std::string result;
+    for (const auto &line : m_LeadingComments) {
+        if (!result.empty()) {
+            result += "\n";
+        }
+        result += line;
+    }
+    return result;
+}
+
+bool IniFile::SetHeaderComment(const std::string &comment) {
+    m_LeadingComments.clear();
+
+    if (comment.empty()) {
+        return true;
+    }
+
+    // Split comment into lines and format as comments
+    std::istringstream iss(comment);
+    std::string line;
+    while (std::getline(iss, line)) {
+        // Remove trailing whitespace
+        while (!line.empty() && std::isspace(line.back())) {
+            line.pop_back();
+        }
+
+        // Add comment prefix if not present
+        if (line.empty()) {
+            m_LeadingComments.push_back(";");
+        } else if (line.front() != ';' && line.front() != '#') {
+            m_LeadingComments.push_back("; " + line);
+        } else {
+            m_LeadingComments.push_back(line);
+        }
+    }
+
+    return true;
+}
+
+void IniFile::ClearHeaderComment() {
+    m_LeadingComments.clear();
+}
+
 bool IniFile::RemoveKey(const std::string &sectionName, const std::string &key) {
     Section *section = GetSection(sectionName);
     if (!section) return false;
