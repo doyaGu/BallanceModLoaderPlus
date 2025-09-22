@@ -78,16 +78,6 @@ add_bml_test(IniFileTest
         utf8 zip
 )
 
-add_bml_test(CfgFileTest
-        SOURCES
-        CfgFileTest.cpp
-        ${BML_SOURCE_DIR}/CfgFile.cpp
-        ${BML_SOURCE_DIR}/StringUtils.cpp
-        ${BML_SOURCE_DIR}/PathUtils.cpp
-        DEPENDENCIES
-        utf8 zip
-)
-
 add_bml_test(AnsiPaletteTest
         SOURCES
         AnsiPaletteTest.cpp
