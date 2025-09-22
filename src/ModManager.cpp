@@ -74,24 +74,21 @@ CKERROR ModManager::PostProcess() {
     m_ModContext->OnProcess();
 
     auto *inputHook = m_ModContext->GetInputManager();
+    ImGuiIO &io = ImGui::GetIO();
 
-    static bool cursorVisibilityChanged = false;
-    if (!inputHook->GetCursorVisibility()) {
-        if (ImGui::GetIO().WantCaptureMouse) {
+    const bool uiNeedsMouse = io.WantCaptureMouse;
+    if (uiNeedsMouse) {
+        io.MouseDrawCursor = false;
+        if (!inputHook->GetCursorVisibility())
             inputHook->ShowCursor(TRUE);
-            cursorVisibilityChanged = true;
-        }
-    } else if (cursorVisibilityChanged) {
-        if (!ImGui::GetIO().WantCaptureMouse) {
+    } else {
+        io.MouseDrawCursor = false;
+        if (inputHook->GetCursorVisibility())
             inputHook->ShowCursor(FALSE);
-            cursorVisibilityChanged = false;
-        }
     }
 
     Overlay::ImGuiRender();
-
     inputHook->Process();
-
     return CK_OK;
 }
 
