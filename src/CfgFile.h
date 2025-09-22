@@ -101,8 +101,10 @@ public:
     // File operations
     bool ParseFromString(const std::string &content);
     bool ParseFromFile(const std::wstring &filePath);
+    bool ParseFromFile(const std::string &filePath);
     std::string WriteToString() const;
     bool WriteToFile(const std::wstring &filePath) const;
+    bool WriteToFile(const std::string &filePath) const;
 
     // Category operations
     bool HasCategory(const std::string &categoryName) const;

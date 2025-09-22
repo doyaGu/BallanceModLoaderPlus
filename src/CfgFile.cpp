@@ -675,6 +675,23 @@ bool CfgFile::ParseFromFile(const std::wstring &filePath) {
     return ParseFromString(content);
 }
 
+bool CfgFile::ParseFromFile(const std::string &filePath) {
+    ClearError();
+
+    if (filePath.empty()) {
+        SetError("Empty file path");
+        return false;
+    }
+
+    if (m_StrictUtf8 && !IsValidUtf8(filePath)) {
+        SetError("Invalid UTF-8 in file path: " + filePath);
+        return false;
+    }
+
+    std::wstring wFilePath = utils::Utf8ToUtf16(filePath);
+    return ParseFromFile(wFilePath);
+}
+
 std::string CfgFile::WriteToString() const {
     std::ostringstream out;
     out << std::boolalpha;
@@ -795,6 +812,23 @@ bool CfgFile::WriteToFile(const std::wstring &filePath) const {
     }
 
     return success;
+}
+
+bool CfgFile::WriteToFile(const std::string &filePath) const {
+    const_cast<CfgFile *>(this)->ClearError();
+
+    if (filePath.empty()) {
+        SetError("Empty file path");
+        return false;
+    }
+
+    if (m_StrictUtf8 && !IsValidUtf8(filePath)) {
+        SetError("Invalid UTF-8 in file path: " + filePath);
+        return false;
+    }
+
+    std::wstring wFilePath = utils::Utf8ToUtf16(filePath);
+    return WriteToFile(wFilePath);
 }
 
 bool CfgFile::HasCategory(const std::string &categoryName) const {
