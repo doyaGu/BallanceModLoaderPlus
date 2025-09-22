@@ -52,6 +52,7 @@ set(BML_PRIVATE_HEADERS
         Logger.h
         Config.h
 
+        CfgFile.h
         IniFile.h
         StringUtils.h
         PathUtils.h
@@ -106,6 +107,7 @@ set(BML_SOURCES
         Logger.cpp
         Config.cpp
 
+        CfgFile.cpp
         IniFile.cpp
         StringUtils.cpp
         PathUtils.cpp
