@@ -6,7 +6,6 @@
 #include <vector>
 #include <unordered_map>
 #include <functional>
-#include <memory>
 
 /**
  * A UTF-8 aware utility class for parsing and modifying INI files.
