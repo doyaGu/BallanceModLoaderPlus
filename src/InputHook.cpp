@@ -8,8 +8,18 @@ struct InputHook::Impl {
     static unsigned char s_LastKeyboardState[256];
     static Vx2DVector s_LastMousePosition;
     static int s_BlockedDevice[CK_INPUT_DEVICE_COUNT];
+    static int s_CursorLeaseCount;
+    static bool s_WeMadeCursorVisible;
     static CKInputManager *s_InputManager;
     static CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager> s_VTable;
+
+    static bool EngineCursorVisible() {
+        return s_InputManager ? !!s_InputManager->GetCursorVisibility() : true;
+    }
+
+    static void EngineSetCursorVisible(bool vis) {
+        if (s_InputManager) s_InputManager->ShowCursor(vis ? TRUE : FALSE);
+    }
 
     CP_DECLARE_METHOD_HOOK(CKERROR, PostProcess, ()) { return CK_OK; }
 
@@ -217,9 +227,7 @@ struct InputHook::Impl {
     }
 
     static void Hook(CKInputManager *im) {
-        if (!im)
-            return;
-
+        if (!im) return;
         s_InputManager = im;
         utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>>(s_InputManager, s_VTable);
 
@@ -260,7 +268,9 @@ unsigned char InputHook::Impl::s_KeyboardState[256] = {};
 unsigned char InputHook::Impl::s_LastKeyboardState[256] = {};
 Vx2DVector InputHook::Impl::s_LastMousePosition;
 int InputHook::Impl::s_BlockedDevice[CK_INPUT_DEVICE_COUNT] = {};
-CKInputManager* InputHook::Impl::s_InputManager = nullptr;
+int InputHook::Impl::s_CursorLeaseCount = 0;
+bool InputHook::Impl::s_WeMadeCursorVisible = false;
+CKInputManager *InputHook::Impl::s_InputManager = nullptr;
 CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager> InputHook::Impl::s_VTable = {};
 
 InputHook::InputHook(CKInputManager *input) : m_Impl(new Impl) {
@@ -383,11 +393,33 @@ void InputHook::Pause(CKBOOL pause) {
 }
 
 void InputHook::ShowCursor(CKBOOL iShow) {
-    Impl::s_InputManager->ShowCursor(iShow);
+    if (!Impl::s_InputManager) return;
+
+    if (iShow) {
+        if (Impl::s_CursorLeaseCount == 0) {
+            if (!Impl::EngineCursorVisible()) {
+                Impl::EngineSetCursorVisible(true);
+                Impl::s_WeMadeCursorVisible = true;
+            } else {
+                Impl::s_WeMadeCursorVisible = false;
+            }
+        }
+        ++Impl::s_CursorLeaseCount;
+    } else {
+        if (Impl::s_CursorLeaseCount > 0)
+            --Impl::s_CursorLeaseCount;
+
+        if (Impl::s_CursorLeaseCount == 0) {
+            if (Impl::s_WeMadeCursorVisible && Impl::EngineCursorVisible()) {
+                Impl::EngineSetCursorVisible(false);
+            }
+            Impl::s_WeMadeCursorVisible = false;
+        }
+    }
 }
 
 CKBOOL InputHook::GetCursorVisibility() {
-    return Impl::s_InputManager->GetCursorVisibility();
+    return Impl::s_InputManager ? Impl::s_InputManager->GetCursorVisibility() : TRUE;
 }
 
 VXCURSOR_POINTER InputHook::GetSystemCursor() {
