@@ -356,7 +356,7 @@ namespace utils {
                     continue;
                 }
 
-                // OSC: ESC ] … (terminated by BEL or ST `ESC \`)
+                // OSC: ESC ] ... (terminated by BEL or ST `ESC \`)
                 if (a == ']') {
                     p += 2;
                     while (*p) {
@@ -367,7 +367,7 @@ namespace utils {
                     continue;
                 }
 
-                // DCS/SOS/PM/APC: ESC P/X/^/_ … ST
+                // DCS/SOS/PM/APC: ESC P/X/^/_ ... ST
                 if (a == 'P' || a == 'X' || a == '^' || a == '_') {
                     p += 2;
                     while (*p) {
@@ -385,7 +385,7 @@ namespace utils {
                 continue;
             }
 
-            // Do NOT special-case 0x80–0x9F (C1) here, they are UTF-8 continuation bytes.
+            // Do NOT special-case 0x80-0x9F (C1) here, they are UTF-8 continuation bytes.
             out.push_back(static_cast<char>(c));
             ++p;
         }
