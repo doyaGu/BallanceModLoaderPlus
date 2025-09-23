@@ -534,7 +534,7 @@ void BMLMod::InitConfigs() {
 
     m_FPSUpdateFrequency = GetConfig()->GetProperty("HUD", "FPSUpdateFrequency");
     m_FPSUpdateFrequency->SetComment("FPS counter update frequency in frames (higher values = less frequent updates, better performance)");
-    m_FPSUpdateFrequency->SetDefaultInteger(10);
+    m_FPSUpdateFrequency->SetDefaultInteger(30);
 
     GetConfig()->SetCategoryComment("Graphics", "Graphics Settings");
 
