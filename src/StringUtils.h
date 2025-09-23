@@ -297,6 +297,10 @@ namespace utils {
         return wstr ? ToString(std::wstring(wstr), false) : std::string();
     }
 
+    inline std::string Utf8ToAnsi(const char *str) {
+        return str ? ToString(ToWString(std::string(str), true), false) : std::string();
+    }
+
     enum CompareFlags : uint32_t {
         kNone                 = 0,
         kLinguisticIgnoreCase = 1u << 0,
