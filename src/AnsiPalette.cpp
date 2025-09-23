@@ -213,8 +213,37 @@ static bool ParseColorVal(const std::string &val, ImU32 &out) {
     return false;
 }
 
+void AnsiPalette::ConfigureIniFile(IniFile &ini) {
+    // Set AnsiPalette-specific section insertion logic
+    // Theme sections go first, overrides go last, other sections in between
+    ini.SetSectionInsertionLogic([](const std::vector<IniFile::Section> &sections, const std::string &sectionName) -> size_t {
+        std::string lower = utils::ToLower(sectionName);
+
+        // Theme section goes first
+        if (lower == "theme") {
+            return 0;
+        }
+
+        // Overrides section goes last
+        if (lower == "overrides") {
+            return sections.size();
+        }
+
+        // Other sections go after theme but before overrides
+        for (size_t i = 0; i < sections.size(); ++i) {
+            std::string existingLower = utils::ToLower(sections[i].name);
+            if (existingLower == "overrides") {
+                return i;
+            }
+        }
+
+        return sections.size();
+    });
+}
+
 void AnsiPalette::ParseBuffer(const std::string &buf) {
     IniFile ini;
+    ConfigureIniFile(ini);
     if (!ini.ParseFromString(buf)) {
         return; // Parse error
     }
@@ -833,6 +862,7 @@ static std::string ResolveThemeBaseValue(const IniFile &ini) {
 
 std::string AnsiPalette::ExtractThemeName(const std::string &buf) {
     IniFile ini;
+    ConfigureIniFile(ini);
     if (!ini.ParseFromString(buf)) {
         return {};
     }
@@ -963,6 +993,7 @@ std::string AnsiPalette::GetActiveThemeName() const {
     if (!utils::FileExistsW(cfg)) return {};
 
     IniFile ini;
+    ConfigureIniFile(ini);
     if (!ini.ParseFromFile(cfg)) {
         return {};
     }
@@ -1039,6 +1070,7 @@ bool AnsiPalette::SetActiveThemeName(const std::string &name) {
     std::wstring cfg = GetFilePathW();
 
     IniFile ini;
+    ConfigureIniFile(ini);
     if (!ini.ParseFromFile(cfg)) {
         // If parsing fails but file exists, try to create minimal structure
         ini.Clear();
@@ -1156,6 +1188,7 @@ bool AnsiPalette::SetThemeOption(const std::string &key, const std::string &valu
     std::wstring cfg = GetFilePathW();
 
     IniFile ini;
+    ConfigureIniFile(ini);
     if (!ini.ParseFromFile(cfg)) {
         // If parsing fails but file exists, try to create minimal structure
         ini.Clear();
@@ -1177,6 +1210,7 @@ bool AnsiPalette::ResetThemeOptions() {
     if (!utils::FileExistsW(cfg)) return true; // nothing to reset
 
     IniFile ini;
+    ConfigureIniFile(ini);
     if (!ini.ParseFromFile(cfg)) {
         return false; // parsing error
     }
