@@ -154,6 +154,9 @@ void BMLMod::OnLoad() {
     m_HUDFpsElement = m_HUD.Find("fps");
     m_HUDSRElement = m_HUD.Find("sr");
     m_HUDCheatElement = m_HUD.Find("cheat");
+
+    // Apply initial FPS update frequency setting
+    SetFPSUpdateFrequency(m_FPSUpdateFrequency->GetInteger());
 }
 
 void BMLMod::OnUnload() {
@@ -267,6 +270,8 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
         ShowFPS(m_ShowFPS->GetBoolean());
     } else if (prop == m_ShowSR && m_BML->IsIngame()) {
         ShowSRTimer(m_ShowSR->GetBoolean());
+    } else if (prop == m_FPSUpdateFrequency) {
+        SetFPSUpdateFrequency(m_FPSUpdateFrequency->GetInteger());
     } else if (prop == m_WidescreenFix) {
         RenderHook::EnableWidescreenFix(m_WidescreenFix->GetBoolean());
     } else if (prop == m_LanternAlphaTest) {
@@ -526,6 +531,10 @@ void BMLMod::InitConfigs() {
     m_ShowSR = GetConfig()->GetProperty("HUD", "ShowSRTimer");
     m_ShowSR->SetComment("Show SR Timer above Time Score");
     m_ShowSR->SetDefaultBoolean(true);
+
+    m_FPSUpdateFrequency = GetConfig()->GetProperty("HUD", "FPSUpdateFrequency");
+    m_FPSUpdateFrequency->SetComment("FPS counter update frequency in frames (higher values = less frequent updates, better performance)");
+    m_FPSUpdateFrequency->SetDefaultInteger(10);
 
     GetConfig()->SetCategoryComment("Graphics", "Graphics Settings");
 

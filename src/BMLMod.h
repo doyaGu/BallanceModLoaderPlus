@@ -165,6 +165,7 @@ private:
     IProperty *m_ShowTitle = nullptr;
     IProperty *m_ShowFPS = nullptr;
     IProperty *m_ShowSR = nullptr;
+    IProperty *m_FPSUpdateFrequency = nullptr;
 
     IProperty *m_UnlockFPS = nullptr;
     IProperty *m_FPSLimit = nullptr;
