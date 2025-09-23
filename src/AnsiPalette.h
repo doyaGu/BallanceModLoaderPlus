@@ -6,6 +6,9 @@
 
 #include "imgui.h"
 
+// Forward declaration
+class IniFile;
+
 class AnsiPalette {
 public:
     AnsiPalette();
@@ -92,6 +95,7 @@ private:
     ImU32 ApplyToning(ImU32 col) const;
     void ApplyThemeChainAndBuffer(const std::string &buf);
     void EnsureConfigExists();
+    static void ConfigureIniFile(IniFile &ini);
     static void RgbToHsv(float r, float g, float b, float &h, float &s, float &v);
     static void HsvToRgb(float h, float s, float v, float &r, float &g, float &b);
     static float SrgbToLinear(float c);
