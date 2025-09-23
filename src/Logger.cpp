@@ -46,14 +46,14 @@ void Logger::Log(const char *level, const char *fmt, va_list args) {
     SYSTEMTIME sys;
     GetLocalTime(&sys);
 
-    FILE *out_files[] = {
+    FILE *outFiles[] = {
 #ifdef _DEBUG
         stdout,
 #endif
         BML_GetModContext()->GetLogFile()
     };
 
-    for (FILE *file: out_files) {
+    for (FILE *file: outFiles) {
         fprintf(file, "[%02d/%02d/%d %02d:%02d:%02d.%03d] ", sys.wMonth, sys.wDay,
                 sys.wYear, sys.wHour, sys.wMinute, sys.wSecond, sys.wMilliseconds);
         fprintf(file, "[%s/%s]: ", m_ModName, level);
