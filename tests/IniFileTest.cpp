@@ -442,19 +442,21 @@ key = value  # keep comment
     EXPECT_THAT(output, HasSubstr("key = updated  # keep comment"));
 }
 
-// Custom section insertion logic
+// Default section insertion logic
 TEST_F(IniFileTest, DefaultSectionInsertionOrder) {
     IniFile ini;
-    
-    // Default logic: theme first, overrides last, others in between
+
+    // Default logic: append at end (sections in creation order)
     ini.AddSection("normal");
     ini.AddSection("overrides");
     ini.AddSection("theme");
     ini.AddSection("another");
-    
+
     auto names = ini.GetSectionNames();
-    EXPECT_EQ("theme", names[0]);      // theme goes first
-    EXPECT_EQ("overrides", names.back()); // overrides goes last
+    EXPECT_EQ("normal", names[0]);      // first section added
+    EXPECT_EQ("overrides", names[1]);   // second section added
+    EXPECT_EQ("theme", names[2]);       // third section added
+    EXPECT_EQ("another", names[3]);     // fourth section added
 }
 
 TEST_F(IniFileTest, CustomSectionInsertionLogic) {
