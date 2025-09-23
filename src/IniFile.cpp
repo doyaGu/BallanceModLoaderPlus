@@ -45,30 +45,8 @@ IniFile::KeyValue *IniFile::Section::FindKey(const std::string &normalizedKey) c
 }
 
 IniFile::IniFile() {
-    // Default section insertion logic - theme sections go first, overrides go last
-    m_SectionInsertLogic = [](const std::vector<Section> &sections, const std::string &sectionName) -> size_t {
-        std::string lower = utils::ToLower(sectionName);
-
-        // Theme section goes first
-        if (lower == "theme") {
-            return 0;
-        }
-
-        // Overrides section goes last
-        if (lower == "overrides") {
-            return sections.size();
-        }
-
-        // Other sections go after theme but before overrides
-        for (size_t i = 0; i < sections.size(); ++i) {
-            std::string existingLower = utils::ToLower(sections[i].name);
-            if (existingLower == "overrides") {
-                return i;
-            }
-        }
-
-        return sections.size();
-    };
+    // Default section insertion logic, append at end (generic behavior)
+    m_SectionInsertLogic = nullptr; // No custom logic by default
 }
 
 IniFile::~IniFile() {
