@@ -331,133 +331,61 @@ namespace utils {
     }
 
     std::string StripAnsiCodes(const char *str) {
-        if (!str) return "";
-
-        auto isFinalByte = [](unsigned char c) {
-            return c >= 0x40 && c <= 0x7E; // ECMA-48 final byte
-        };
-        auto isKnownCSIFinal = [](unsigned char c) {
-            // Be conservative: support common CSI finals used by typical terminals
-            switch (c) {
-                case 'A': case 'B': case 'C': case 'D': // CUU/CUD/CUF/CUB
-                case 'E': case 'F': case 'G':           // CNL/CPL/CHA
-                case 'H': case 'f':                     // CUP/HVP
-                case 'J': case 'K':                     // ED/EL
-                case 'S': case 'T':                     // SU/SD
-                case 'm':                               // SGR
-                case 'n': case 's': case 'u':           // DSR/SCP/RCP
-                    return true;
-                default:
-                    return false;
-            }
-        };
+        if (!str) return {};
+        auto isFinal = [](unsigned char c){ return c >= 0x40 && c <= 0x7E; };  // ECMA-48 final
+        auto isParam = [](unsigned char c){ return c >= 0x30 && c <= 0x3F; };  // 0..9:;<=>?
+        auto isInter = [](unsigned char c){ return c >= 0x20 && c <= 0x2F; };  // SP..'/'
 
         std::string out;
         out.reserve(std::strlen(str));
 
         const auto *p = reinterpret_cast<const unsigned char *>(str);
         while (*p) {
-            unsigned char c = *p;
-            if (c == 0x1B) {
-                // ESC ...
-                if (!p[1]) break; // dangling ESC at end
-                unsigned char a = p[1];
+            const unsigned char c = *p;
 
-                // CSI: ESC [ ... final
+            if (c == 0x1B) { // ESC ...
+                if (!p[1]) break;
+                const unsigned char a = p[1];
+
+                // CSI: ESC [ params inter final
                 if (a == '[') {
                     p += 2;
-                    // parameters (0x30-0x3F), intermediates (0x20-0x2F) then final (0x40-0x7E)
-                    const unsigned char *q = p;
-                    while (*q && (*q >= 0x30 && *q <= 0x3F)) ++q; // parameters
-                    const unsigned char *r = q;
-                    while (*q && (*q >= 0x20 && *q <= 0x2F)) ++q; // intermediates
-                    if (*q && isFinalByte(*q)) {
-                        if (isKnownCSIFinal(*q)) {
-                            p = q + 1; // consume full sequence
-                        } else {
-                            // Unknown final: drop ESC+[ and params only; preserve intermediates and final
-                            p = r;
-                        }
-                    } else {
-                        // No final: drop ESC+[ and params only; keep intermediates
-                        p = r;
-                    }
+                    while (*p && isParam(*p)) ++p;
+                    while (*p && isInter(*p)) ++p;
+                    if (*p && isFinal(*p)) ++p; // consume final
                     continue;
                 }
 
-                // OSC: ESC ] ... BEL (0x07) or ST (ESC \\)
+                // OSC: ESC ] … (terminated by BEL or ST `ESC \`)
                 if (a == ']') {
                     p += 2;
                     while (*p) {
-                        if (*p == 0x07) { ++p; break; } // BEL terminator
+                        if (*p == 0x07) { ++p; break; } // BEL
                         if (*p == 0x1B && p[1] == '\\') { p += 2; break; } // ST
                         ++p;
                     }
                     continue;
                 }
 
-                // DCS, SOS, PM, APC: ESC P/X/^/_ ... ST (ESC \\)
+                // DCS/SOS/PM/APC: ESC P/X/^/_ … ST
                 if (a == 'P' || a == 'X' || a == '^' || a == '_') {
                     p += 2;
                     while (*p) {
-                        if (*p == 0x1B && p[1] == '\\') { p += 2; break; }
+                        if (*p == 0x1B && p[1] == '\\') { p += 2; break; } // ST
                         ++p;
                     }
                     continue;
                 }
 
-                // Two-byte control functions frequently used
-                if (a == 'N' || a == 'O' || a == 'c' || a == '7' || a == '8' || a == '=' || a == '>' ||
-                    a == 'D' || a == 'E' || a == 'H' || a == 'M' || a == 'Z') {
-                    p += 2; // drop ESC <char>
-                    continue;
-                }
-
-                // Designate, charset, S7C1T/S8C1T, DEC line attributes: ESC <prefix> <final>
-                if (a == '#' || a == '(' || a == ')' || a == '*' || a == '+' || a == '-' || a == '.' || a == ' ') {
-                    // Consume ESC, prefix, and at most one following byte if present
-                    if (p[2]) p += 3; else p += 2;
-                    continue;
-                }
-
-                // Fallback: unknown ESC sequence, drop ESC and next byte if present
-                p += p[1] ? 2 : 1;
+                // Generic ESC: ESC inter* final?
+                ++p; // after ESC
+                while (*p && isInter(*p)) ++p; // intermediates
+                if (*p && isFinal(*p)) ++p; // optional final
+                else if (*p) ++p; // malformed: drop one byte
                 continue;
             }
 
-            // 8-bit C1 control codes (ECMA-48)
-            if (c == 0x9B) { // CSI
-                ++p;
-                while (*p && !isFinalByte(*p)) ++p;
-                if (*p) ++p;
-                continue;
-            } else if (c == 0x9D) { // OSC (String to BEL or ST)
-                ++p;
-                while (*p) {
-                    if (*p == 0x9C || *p == 0x07) { ++p; break; } // ST or BEL
-                    if (*p == 0x1B && p[1] == '\\') { p += 2; break; }
-                    ++p;
-                }
-                continue;
-            } else if (c == 0x90) { // DCS ... ST
-                ++p;
-                while (*p) {
-                    if (*p == 0x9C) { ++p; break; }
-                    if (*p == 0x1B && p[1] == '\\') { p += 2; break; }
-                    ++p;
-                }
-                continue;
-            } else if (c == 0x98 || c == 0x9E || c == 0x9F) { // SOS, PM, APC ... ST
-                ++p;
-                while (*p) {
-                    if (*p == 0x9C) { ++p; break; }
-                    if (*p == 0x1B && p[1] == '\\') { p += 2; break; }
-                    ++p;
-                }
-                continue;
-            }
-
-            // Default: copy byte as-is
+            // Do NOT special-case 0x80–0x9F (C1) here, they are UTF-8 continuation bytes.
             out.push_back(static_cast<char>(c));
             ++p;
         }
