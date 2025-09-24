@@ -78,11 +78,9 @@ CKERROR ModManager::PostProcess() {
 
     const bool uiNeedsMouse = io.WantCaptureMouse;
     if (uiNeedsMouse) {
-        io.MouseDrawCursor = false;
         if (!inputHook->GetCursorVisibility())
             inputHook->ShowCursor(TRUE);
     } else {
-        io.MouseDrawCursor = false;
         if (inputHook->GetCursorVisibility())
             inputHook->ShowCursor(FALSE);
     }
