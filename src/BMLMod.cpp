@@ -240,7 +240,7 @@ void BMLMod::OnProcess() {
     OnProcess_CommandBar();
 
 #ifndef NDEBUG
-    if (ImGui::IsKeyChordPressed(ImGuiMod_Shift | ImGuiMod_Alt | ImGuiKey_F5), false)
+    if (ImGui::IsKeyChordPressed(ImGuiMod_Shift | ImGuiMod_Alt | ImGuiKey_F5))
         m_ShowImGuiDemo = !m_ShowImGuiDemo;
     if (m_ShowImGuiDemo)
         ImGui::ShowDemoWindow(&m_ShowImGuiDemo);
