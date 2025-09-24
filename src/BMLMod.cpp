@@ -617,6 +617,8 @@ void BMLMod::InitConfigs() {
 void BMLMod::InitGUI() {
     ImGuiIO &io = ImGui::GetIO();
 
+    io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+
     const std::string path = BML_GetModContext()->GetDirectoryUtf8(BML_DIR_LOADER);
 
     m_ImGuiIniFilename = path + "\\ImGui.ini";
