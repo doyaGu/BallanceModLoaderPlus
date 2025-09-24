@@ -62,7 +62,6 @@ namespace Overlay {
 
         if (lpMsg->hwnd && (wRemoveMsg & PM_REMOVE) != 0) {
             if (OnWndProcA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
-                TranslateMessage(lpMsg);
                 lpMsg->message = WM_NULL;
             }
         }
@@ -76,7 +75,6 @@ namespace Overlay {
 
         if (lpMsg->hwnd && (wRemoveMsg & PM_REMOVE) != 0) {
             if (OnWndProcW(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
-                TranslateMessage(lpMsg);
                 lpMsg->message = WM_NULL;
             }
         }
@@ -89,7 +87,6 @@ namespace Overlay {
             return FALSE;
 
         if (lpMsg->hwnd && OnWndProcA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
-            TranslateMessage(lpMsg);
             lpMsg->message = WM_NULL;
         }
 
@@ -101,7 +98,6 @@ namespace Overlay {
             return FALSE;
 
         if (lpMsg->hwnd && OnWndProcW(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
-            TranslateMessage(lpMsg);
             lpMsg->message = WM_NULL;
         }
 
