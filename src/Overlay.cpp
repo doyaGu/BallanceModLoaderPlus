@@ -23,6 +23,7 @@ namespace Overlay {
     LPFNGETMESSAGE g_OrigGetMessageA = nullptr;
     LPFNGETMESSAGE g_OrigGetMessageW = nullptr;
 
+    HWND g_hWnd = nullptr;
     ImGuiContext *g_ImGuiContext = nullptr;
     bool g_ImGuiReady = false;
     bool g_RenderReady = false;
@@ -60,7 +61,7 @@ namespace Overlay {
         if (!g_OrigPeekMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg))
             return FALSE;
 
-        if (lpMsg->hwnd && (wRemoveMsg & PM_REMOVE) != 0) {
+        if (g_hWnd && lpMsg->hwnd == g_hWnd && (wRemoveMsg & PM_REMOVE) != 0) {
             if (OnWndProcA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
                 lpMsg->message = WM_NULL;
             }
@@ -73,7 +74,7 @@ namespace Overlay {
         if (!g_OrigPeekMessageW(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg))
             return FALSE;
 
-        if (lpMsg->hwnd && (wRemoveMsg & PM_REMOVE) != 0) {
+        if (g_hWnd && lpMsg->hwnd == g_hWnd && (wRemoveMsg & PM_REMOVE) != 0) {
             if (OnWndProcW(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
                 lpMsg->message = WM_NULL;
             }
@@ -86,7 +87,7 @@ namespace Overlay {
         if (!g_OrigGetMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax))
             return FALSE;
 
-        if (lpMsg->hwnd && OnWndProcA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
+        if (g_hWnd && lpMsg->hwnd == g_hWnd && OnWndProcA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
             lpMsg->message = WM_NULL;
         }
 
@@ -97,7 +98,7 @@ namespace Overlay {
         if (!g_OrigGetMessageW(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax))
             return FALSE;
 
-        if (lpMsg->hwnd && OnWndProcW(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
+        if (g_hWnd && lpMsg->hwnd == g_hWnd && OnWndProcW(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
             lpMsg->message = WM_NULL;
         }
 
@@ -164,7 +165,8 @@ namespace Overlay {
     bool ImGuiInitPlatform(CKContext *context) {
         ImGuiContextScope scope;
 
-        if (!ImGui_ImplWin32_Init(context->GetMainWindow()))
+        g_hWnd = static_cast<HWND>(context->GetMainWindow());
+        if (!ImGui_ImplWin32_Init(g_hWnd))
             return false;
 
         return true;
@@ -187,6 +189,7 @@ namespace Overlay {
 
         ImGui_ImplWin32_Shutdown();
 
+        g_hWnd = nullptr;
         g_RenderReady = false;
         g_ImGuiReady = false;
     }
