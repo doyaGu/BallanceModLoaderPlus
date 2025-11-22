@@ -3,6 +3,9 @@
 
 #include <vector>
 #include <memory>
+#include <string>
+#include <unordered_map>
+#include <array>
 
 #include "BML/Bui.h"
 
@@ -64,36 +67,39 @@ public:
     void OnPageChanged(int newPage, int oldPage) override;
 
 protected:
-    void FlushBuffers();
-    void LoadOriginalValues();
+    struct PropertyState {
+        Property *property = nullptr;
+        IProperty::PropertyType type = IProperty::INTEGER;
+        std::string stringValue;
+        std::string originalString;
+        bool boolValue = false;
+        bool originalBool = false;
+        int intValue = 0;
+        int originalInt = 0;
+        float floatValue = 0.0f;
+        float originalFloat = 0.0f;
+        ImGuiKeyChord keyChord = 0;
+        ImGuiKeyChord originalKeyChord = 0;
+        bool dirty = false;
+    };
+
+    void BindPageStates(int pageIndex);
     void SaveChanges();
     void RevertChanges();
     bool HasPendingChanges() const;
+    void UpdateStateDirty(PropertyState *state);
 
     static void ShowCommentBox(const Property *property);
 
     Category *m_Category = nullptr;
     bool m_HasPendingChanges = false;
 
+    std::unordered_map<Property *, PropertyState> m_PropertyStates;
+    std::array<PropertyState *, 4> m_CurrentStates = {};
+
     static constexpr size_t BUFFER_SIZE = 4096;
-
-    // Current working values
-    char m_Buffers[4][BUFFER_SIZE] = {};
-    size_t m_BufferHashes[4] = {};
+    char m_StringBuffers[4][BUFFER_SIZE] = {};
     bool m_KeyToggled[4] = {};
-    ImGuiKeyChord m_KeyChord[4] = {};
-    std::uint8_t m_IntFlags[4] = {};
-    std::uint8_t m_FloatFlags[4] = {};
-    int m_IntValues[4] = {};
-    float m_FloatValues[4] = {};
-    bool m_BoolValues[4] = {};
-
-    // Original values
-    char m_OriginalBuffers[4][BUFFER_SIZE] = {};
-    int m_OriginalIntValues[4] = {};
-    float m_OriginalFloatValues[4] = {};
-    bool m_OriginalBoolValues[4] = {};
-    ImGuiKeyChord m_OriginalKeyChord[4] = {};
 };
 
 #endif // BML_MODMENU_H
