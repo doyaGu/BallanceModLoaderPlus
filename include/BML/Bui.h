@@ -12,7 +12,7 @@
 
 #include "CKContext.h"
 
-#include "BML/Export.h"
+#include "BML/Defines.h"
 
 namespace Bui {
     // Forward declarations

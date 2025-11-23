@@ -3,10 +3,8 @@ configure_file(Version.h.in "${BML_INCLUDE_DIR}/BML/Version.h" @ONLY)
 add_subdirectory(Utils)
 
 set(BML_PUBLIC_HEADERS
-        ${BML_INCLUDE_DIR}/BML/Export.h
         ${BML_INCLUDE_DIR}/BML/Version.h
         ${BML_INCLUDE_DIR}/BML/Defines.h
-        ${BML_INCLUDE_DIR}/BML/Errors.h
         ${BML_INCLUDE_DIR}/BML/BML.h
 
         ${BML_INCLUDE_DIR}/BML/ILogger.h

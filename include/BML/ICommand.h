@@ -1,11 +1,13 @@
 #ifndef BML_ICOMMAND_H
 #define BML_ICOMMAND_H
 
+#include <cfloat>
+#include <climits>
 #include <vector>
 #include <string>
 #include <algorithm>
 
-#include "BML/Export.h"
+#include "BML/Defines.h"
 
 class IBML;
 

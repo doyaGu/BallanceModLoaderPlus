@@ -3,7 +3,6 @@
 
 #include "BML/Defines.h"
 #include "BML/Version.h"
-#include "BML/Errors.h"
 
 BML_BEGIN_CDECLS
 
