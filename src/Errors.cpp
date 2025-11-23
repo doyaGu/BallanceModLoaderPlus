@@ -1,4 +1,4 @@
-#include "BML/Errors.h"
+#include "BML/Defines.h"
 
 
 const char *BML_GetErrorString(int errorCode) {

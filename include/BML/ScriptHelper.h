@@ -5,7 +5,7 @@
 
 #include "CKAll.h"
 
-#include "BML/Export.h"
+#include "BML/Defines.h"
 
 namespace ScriptHelper {
     BML_EXPORT bool FindBB(CKBehavior *script, std::function<bool(CKBehavior *)> callback, const char *name = nullptr,
