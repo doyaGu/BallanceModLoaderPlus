@@ -1,8 +1,11 @@
 #ifndef BML_MODMENU_H
 #define BML_MODMENU_H
 
-#include <vector>
+#include <array>
 #include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 #include "BML/Bui.h"
 

@@ -1,5 +1,7 @@
 #include "ModMenu.h"
 
+#include <cmath>
+
 #include "BML/InputHook.h"
 
 #include "ModContext.h"
