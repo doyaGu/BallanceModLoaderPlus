@@ -294,6 +294,18 @@ void MapListPage::OnPostBegin() {
 
     ImGui::PopStyleColor();
 
+    // When not searching, ensure current directory entries are shown as "directories first, then by name"
+    if (!IsSearching() && !maps->children.empty()) {
+        try {
+            std::sort(maps->children.begin(), maps->children.end(), [](const MapEntry *lhs, const MapEntry *rhs) {
+                if (!lhs || !rhs) return false;
+                return *lhs < *rhs; // operator< implements dir-first then name
+            });
+        } catch (...) {
+            BML_GetModContext()->GetLogger()->Error("Failed to sort current directory entries");
+        }
+    }
+
     m_Count = IsSearching() ? static_cast<int>(m_MapSearchResult.size()) : static_cast<int>(maps->children.size());
     // Keep page count in sync with total entries (10 per page)
     SetPageCount(Bui::CalcPageCount(m_Count, 10));
@@ -350,11 +362,12 @@ void MapListPage::OnDraw() {
             return OnDrawEntry(m_MapSearchResult[n + index], &v);
         }, 0.4031f, 0.23f, 0.06f, 10);
     } else {
+        auto *currentMaps = dynamic_cast<MapMenu *>(m_Menu)->GetCurrentMaps();
+        const auto &maps = currentMaps->children;
         Bui::Entries([&](size_t index) {
-            // Stop drawing when exceeding available items on this page
-            if (n + static_cast<int>(index) >= m_Count)
+            if (n + index >= maps.size())
                 return false;
-            return OnDrawEntry(n + index, &v);
+            return OnDrawEntry(maps[n + index], &v);
         }, 0.4031f, 0.23f, 0.06f, 10);
     }
 }
@@ -387,7 +400,7 @@ void MapListPage::OnSearchMaps() {
     SetPage(0);
     m_MapSearchResult.clear();
 
-    if (!IsSearching() || m_Count == 0)
+    if (!IsSearching())
         return;
 
     auto *pattern = (OnigUChar *) m_MapSearchBuf;
@@ -404,20 +417,41 @@ void MapListPage::OnSearchMaps() {
             return;
         }
 
-        const auto &maps = dynamic_cast<MapMenu *>(m_Menu)->GetCurrentMaps()->children;
-        for (size_t i = 0; i < maps.size(); ++i) {
-            const auto &name = maps[i]->name;
-            const auto *end = (const UChar *) (name.c_str() + name.size());
-            const auto *start = (const UChar *) name.c_str();
-            const auto *range = end;
+        // Depth-first traversal starting at current maps to search across subfolders
+        auto *root = dynamic_cast<MapMenu *>(m_Menu)->GetCurrentMaps();
+        if (!root) {
+            onig_free(reg);
+            return;
+        }
 
-            r = onig_search(reg, start, end, start, range, nullptr, ONIG_OPTION_NONE);
-            if (r >= 0) {
-                m_MapSearchResult.push_back(i);
-            } else if (r != ONIG_MISMATCH) {
-                char s[ONIG_MAX_ERROR_MESSAGE_LEN];
-                onig_error_code_to_str((UChar *) s, r);
-                BML_GetModContext()->GetLogger()->Error(s);
+        std::vector<MapEntry *> stack;
+        stack.reserve(64);
+        stack.push_back(root);
+
+        while (!stack.empty()) {
+            MapEntry *node = stack.back();
+            stack.pop_back();
+
+            for (MapEntry *child : node->children) {
+                if (!child) continue;
+
+                const auto &name = child->name;
+                const auto *end = (const UChar *) (name.c_str() + name.size());
+                const auto *start = (const UChar *) name.c_str();
+                const auto *range = end;
+
+                r = onig_search(reg, start, end, start, range, nullptr, ONIG_OPTION_NONE);
+                if (r >= 0) {
+                    m_MapSearchResult.push_back(child);
+                } else if (r != ONIG_MISMATCH) {
+                    char s[ONIG_MAX_ERROR_MESSAGE_LEN];
+                    onig_error_code_to_str((UChar *) s, r);
+                    BML_GetModContext()->GetLogger()->Error(s);
+                }
+
+                if (child->type == MAP_ENTRY_DIR) {
+                    stack.push_back(child);
+                }
             }
         }
     } catch (...) {
@@ -428,34 +462,38 @@ void MapListPage::OnSearchMaps() {
 
     if (reg)
         onig_free(reg);
+
+    // Sort search results: directories first, then by name
+    if (!m_MapSearchResult.empty()) {
+        try {
+            std::sort(m_MapSearchResult.begin(), m_MapSearchResult.end(), [](const MapEntry *a, const MapEntry *b) {
+                if (a->type != b->type) return a->type < b->type; // MAP_ENTRY_DIR < MAP_ENTRY_FILE
+                return utils::CompareString(a->name, b->name) < 0;
+            });
+        } catch (...) {
+            BML_GetModContext()->GetLogger()->Error("Failed to sort search results");
+        }
+    }
 }
 
-bool MapListPage::OnDrawEntry(size_t index, bool *v) {
-    auto *currentMaps = dynamic_cast<MapMenu *>(m_Menu)->GetCurrentMaps();
-    if (!currentMaps || currentMaps->children.empty()) {
-        return false;
-    }
-
-    const auto &maps = currentMaps->children;
-    auto &entry = maps[index];
-    if (!entry) {
-        return false;
-    }
+bool MapListPage::OnDrawEntry(MapEntry *entry, bool *v) {
+    if (!entry) return false;
 
     ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.8f);
 
     if (entry->type == MAP_ENTRY_FILE) {
         if (Bui::LevelButton(entry->name.c_str(), v)) {
+            // Reset to root before loading map to close the menu properly
             dynamic_cast<MapMenu *>(m_Menu)->ResetCurrentMaps();
             dynamic_cast<MapMenu *>(m_Menu)->LoadMap(entry->path);
             m_ShouldClose = true;
         }
     } else {
-        ImGui::PushStyleColor(ImGuiCol_Text, 0xFFFFA500); // Orange Color
+        ImGui::PushStyleColor(ImGuiCol_Text, 0xFFFFA500); // Orange Color for directory
 
         if (Bui::LevelButton(entry->name.c_str(), v)) {
             dynamic_cast<MapMenu *>(m_Menu)->SetCurrentMaps(entry);
-            // When entering a folder, reset to first page to avoid stale index
+            // When entering a folder from search or normal list, reset to first page and clear search
             SetPage(0);
             ClearSearch();
         }

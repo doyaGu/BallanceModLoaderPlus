@@ -55,12 +55,14 @@ private:
     bool IsSearching() const;
     void ClearSearch();
     void OnSearchMaps();
-    bool OnDrawEntry(size_t index, bool *v);
+    // Draw by direct entry pointer (used for both normal list and recursive search results)
+    bool OnDrawEntry(MapEntry *entry, bool *v);
 
     bool m_ShouldClose = false;
     int m_Count = 0;
     char m_MapSearchBuf[1024] = {};
-    std::vector<size_t> m_MapSearchResult;
+    // Store pointers to entries to support recursive results across subfolders
+    std::vector<MapEntry *> m_MapSearchResult;
 };
 
 class MapMenu : public Bui::Menu {
