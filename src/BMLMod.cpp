@@ -14,9 +14,10 @@
 #include "ModContext.h"
 #include "RenderHook.h"
 #include "Commands.h"
+#include "AnsiPalette.h"
 #include "StringUtils.h"
 #include "PathUtils.h"
-#include "AnsiPalette.h"
+#include "EventHook.h"
 
 namespace ExecuteBB {
     void Init();

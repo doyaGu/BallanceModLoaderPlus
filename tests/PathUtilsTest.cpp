@@ -1,10 +1,12 @@
-#include "PathUtils.h"
-#include "StringUtils.h"
 #include <gtest/gtest.h>
+
 #include <fstream>
 #include <vector>
 #include <cstdio>
 #include <algorithm>
+
+#include "Utils/PathUtils.h"
+#include "Utils/StringUtils.h"
 
 // Test fixture for path operations
 class PathUtilsTest : public ::testing::Test {
@@ -45,7 +47,7 @@ protected:
     
     std::wstring CreateTestFileW(const std::wstring& filename, const std::wstring& content = L"test content") {
         std::wstring filePath = utils::CombinePathW(testDirW, filename);
-        std::wofstream file(filePath);
+        std::wofstream file(filePath.c_str());
         file << content;
         file.close();
         return filePath;

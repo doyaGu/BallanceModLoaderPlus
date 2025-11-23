@@ -1,8 +1,53 @@
 #ifndef BML_PATHUTILS_H
 #define BML_PATHUTILS_H
 
+#include <cstdint>
 #include <string>
 #include <vector>
+
+// Undefine Windows API macros that conflict with our function names
+#ifdef CreateDirectoryA
+#undef CreateDirectoryA
+#endif
+#ifdef CreateDirectoryW
+#undef CreateDirectoryW
+#endif
+#ifdef DeleteFileA
+#undef DeleteFileA
+#endif
+#ifdef DeleteFileW
+#undef DeleteFileW
+#endif
+#ifdef CopyFileA
+#undef CopyFileA
+#endif
+#ifdef CopyFileW
+#undef CopyFileW
+#endif
+#ifdef MoveFileA
+#undef MoveFileA
+#endif
+#ifdef MoveFileW
+#undef MoveFileW
+#endif
+#ifdef GetTempPathA
+#undef GetTempPathA
+#endif
+#ifdef GetTempPathW
+#undef GetTempPathW
+#endif
+#ifdef GetCurrentDirectoryA
+#undef GetCurrentDirectoryA
+#endif
+#ifdef GetCurrentDirectoryW
+#undef GetCurrentDirectoryW
+#endif
+#ifdef SetCurrentDirectoryA
+#undef SetCurrentDirectoryA
+#endif
+#ifdef SetCurrentDirectoryW
+#undef SetCurrentDirectoryW
+#endif
 
 namespace utils {
     // File existence checks

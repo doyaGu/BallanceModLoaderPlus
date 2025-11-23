@@ -1300,7 +1300,7 @@ namespace utils {
         if (!FileExistsW(path))
             return L"";
 
-        std::wifstream file(path);
+        std::wifstream file(path.c_str());
         if (!file.is_open())
             return L"";
 
@@ -1338,7 +1338,7 @@ namespace utils {
                 return false;
         }
 
-        std::wofstream file(path);
+        std::wofstream file(path.c_str());
         if (!file.is_open())
             return false;
 

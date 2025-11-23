@@ -2,7 +2,7 @@
 
 #include <cmath>
 #include <algorithm>
-#include <cstring>
+
 #include <utf8.h>
 
 #include "imgui_internal.h"
