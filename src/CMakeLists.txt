@@ -1,5 +1,7 @@
 configure_file(Version.h.in "${BML_INCLUDE_DIR}/BML/Version.h" @ONLY)
 
+add_subdirectory(Utils)
+
 set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/Export.h
         ${BML_INCLUDE_DIR}/BML/Version.h
@@ -51,11 +53,6 @@ set(BML_PRIVATE_HEADERS
         DataShare.hpp
         Logger.h
         Config.h
-
-        IniFile.h
-        StringUtils.h
-        PathUtils.h
-        HookUtils.h
 )
 
 set(BML_SOURCES
@@ -106,11 +103,6 @@ set(BML_SOURCES
         Logger.cpp
         Config.cpp
 
-        IniFile.cpp
-        StringUtils.cpp
-        PathUtils.cpp
-        HookUtils.cpp
-
         BML.rc
 )
 
@@ -152,7 +144,8 @@ target_link_libraries(BML
         PUBLIC
         CK2 VxMath
         PRIVATE
-        minhook zip onig utf8
+        BMLUtils
+        minhook onig
 )
 
 target_compile_definitions(BML PRIVATE

@@ -1,12 +1,15 @@
 #include "StringUtils.h"
 
+#include <cstring>
+
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <Windows.h>
 #else
-#include <codecvt>
+#include <climits>
+#include <locale>
 #endif
 
 #include <utf8.h>
@@ -34,6 +37,111 @@ namespace {
             out.append(buf, n);
         }
     }
+
+#ifndef _WIN32
+    std::wstring Utf8ToWideFallback(const std::string &value) {
+        if (value.empty())
+            return L"";
+
+        std::wstring result;
+        result.reserve(value.size());
+        const auto *cur = reinterpret_cast<const utf8_int8_t *>(value.data());
+        const auto *end = cur + value.size();
+        while (cur < end) {
+            size_t remaining = static_cast<size_t>(end - cur);
+            size_t needed = utf8codepointcalcsize(cur);
+            if (needed == 0 || needed > remaining) {
+                ++cur;
+                result.push_back(static_cast<wchar_t>(0xFFFD));
+                continue;
+            }
+
+            utf8_int32_t cp = 0;
+            const auto *next = utf8codepoint(cur, &cp);
+            if (next == cur) {
+                ++cur;
+                continue;
+            }
+
+            cur = next;
+            if (cp < 0 || cp > 0x10FFFF)
+                cp = 0xFFFD;
+
+#if WCHAR_MAX <= 0xFFFF
+            if (cp >= 0x10000) {
+                cp -= 0x10000;
+                result.push_back(static_cast<wchar_t>(0xD800 + ((cp >> 10) & 0x3FF)));
+                result.push_back(static_cast<wchar_t>(0xDC00 + (cp & 0x3FF)));
+            } else {
+                result.push_back(static_cast<wchar_t>(cp));
+            }
+#else
+            result.push_back(static_cast<wchar_t>(cp));
+#endif
+        }
+
+        return result;
+    }
+
+    std::wstring LocaleToWideFallback(const std::string &value) {
+        if (value.empty())
+            return L"";
+
+        std::wstring result;
+        result.reserve(value.size());
+        std::locale loc("");
+        const auto &facet = std::use_facet<std::ctype<wchar_t>>(loc);
+        for (char ch : value)
+            result.push_back(facet.widen(ch));
+        return result;
+    }
+
+    std::string WideToUtf8Fallback(const std::wstring &value) {
+        if (value.empty())
+            return {};
+
+        std::string result;
+        result.reserve(value.size());
+#if WCHAR_MAX <= 0xFFFF
+        for (size_t i = 0; i < value.size(); ++i) {
+            unsigned int cp = static_cast<unsigned int>(value[i]);
+            if (cp >= 0xD800 && cp <= 0xDBFF) {
+                if (i + 1 < value.size()) {
+                    unsigned int low = static_cast<unsigned int>(value[i + 1]);
+                    if (low >= 0xDC00 && low <= 0xDFFF) {
+                        cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
+                        ++i;
+                    } else {
+                        cp = 0xFFFD;
+                    }
+                } else {
+                    cp = 0xFFFD;
+                }
+            } else if (cp >= 0xDC00 && cp <= 0xDFFF) {
+                cp = 0xFFFD;
+            }
+            AppendUTF8(result, cp);
+        }
+#else
+        for (wchar_t ch : value)
+            AppendUTF8(result, static_cast<unsigned int>(ch));
+#endif
+        return result;
+    }
+
+    std::string WideToLocaleFallback(const std::wstring &value) {
+        if (value.empty())
+            return {};
+
+        std::string result;
+        result.reserve(value.size());
+        std::locale loc("");
+        const auto &facet = std::use_facet<std::ctype<wchar_t>>(loc);
+        for (wchar_t ch : value)
+            result.push_back(facet.narrow(ch, '?'));
+        return result;
+    }
+#endif // _WIN32
 }
 
 namespace utils {
@@ -65,41 +173,14 @@ namespace utils {
         return result;
     }
 #else
-    // Cross-platform implementation using C++11 std::wstring_convert
-    std::wstring ToWString(const std::string& str, bool isUtf8) {
+    std::wstring ToWString(const std::string &str, bool isUtf8) {
         if (str.empty()) return L"";
-
-        if (isUtf8) {
-            std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
-            return converter.from_bytes(str);
-        } else {
-            // For non-UTF8, use locale-dependent conversion
-            std::wstring result;
-            result.reserve(str.size());
-            std::locale loc("");
-            for (char c : str) {
-                result.push_back(std::use_facet<std::ctype<wchar_t>>(loc).widen(c));
-            }
-            return result;
-        }
+        return isUtf8 ? Utf8ToWideFallback(str) : LocaleToWideFallback(str);
     }
 
-    std::string ToString(const std::wstring& wstr, bool toUtf8) {
+    std::string ToString(const std::wstring &wstr, bool toUtf8) {
         if (wstr.empty()) return "";
-
-        if (toUtf8) {
-            std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
-            return converter.to_bytes(wstr);
-        } else {
-            // For non-UTF8, use locale-dependent conversion
-            std::string result;
-            result.reserve(wstr.size());
-            std::locale loc("");
-            for (wchar_t c : wstr) {
-                result.push_back(std::use_facet<std::ctype<wchar_t>>(loc).narrow(c, '?'));
-            }
-            return result;
-        }
+        return toUtf8 ? WideToUtf8Fallback(wstr) : WideToLocaleFallback(wstr);
     }
 #endif
 
@@ -335,11 +416,47 @@ namespace utils {
         auto isFinal = [](unsigned char c){ return c >= 0x40 && c <= 0x7E; };  // ECMA-48 final
         auto isParam = [](unsigned char c){ return c >= 0x30 && c <= 0x3F; };  // 0..9:;<=>?
         auto isInter = [](unsigned char c){ return c >= 0x20 && c <= 0x2F; };  // SP..'/'
+        auto isCsiInter = [](unsigned char c){ return c >= 0x21 && c <= 0x2F; }; // exclude SP to avoid eating text
 
         std::string out;
         out.reserve(std::strlen(str));
 
         const auto *p = reinterpret_cast<const unsigned char *>(str);
+
+        auto consumeCsi = [&](size_t lead) {
+            const unsigned char *seq = p + lead;
+            if (!*seq) { p = seq; return; }
+            while (*seq && isParam(*seq)) ++seq;
+            const unsigned char *interBegin = seq;
+            while (*seq && isCsiInter(*seq)) ++seq;
+            if (*seq && isFinal(*seq)) {
+                p = seq + 1;
+            } else {
+                p = interBegin;
+            }
+        };
+
+        auto consumeOsc = [&](size_t lead) {
+            const unsigned char *seq = p + lead;
+            while (*seq) {
+                if (*seq == 0x07) { p = seq + 1; return; } // BEL terminator
+                if (*seq == 0x1B && seq[1] == '\\') { p = seq + 2; return; } // ESC \ (ST)
+                if (*seq == 0x9C) { p = seq + 1; return; } // 8-bit ST
+                ++seq;
+            }
+            p = seq; // ran off end, drop the sequence
+        };
+
+        auto consumeStTerminated = [&](size_t lead) {
+            const unsigned char *seq = p + lead;
+            while (*seq) {
+                if (*seq == 0x1B && seq[1] == '\\') { p = seq + 2; return; }
+                if (*seq == 0x9C) { p = seq + 1; return; }
+                ++seq;
+            }
+            p = seq;
+        };
+
         while (*p) {
             const unsigned char c = *p;
 
@@ -349,31 +466,19 @@ namespace utils {
 
                 // CSI: ESC [ params inter final
                 if (a == '[') {
-                    p += 2;
-                    while (*p && isParam(*p)) ++p;
-                    while (*p && isInter(*p)) ++p;
-                    if (*p && isFinal(*p)) ++p; // consume final
+                    consumeCsi(2);
                     continue;
                 }
 
-                // OSC: ESC ] ... (terminated by BEL or ST `ESC \`)
+                // OSC: ESC ] ... (terminated by BEL or ST `ESC \\`/0x9C)
                 if (a == ']') {
-                    p += 2;
-                    while (*p) {
-                        if (*p == 0x07) { ++p; break; } // BEL
-                        if (*p == 0x1B && p[1] == '\\') { p += 2; break; } // ST
-                        ++p;
-                    }
+                    consumeOsc(2);
                     continue;
                 }
 
                 // DCS/SOS/PM/APC: ESC P/X/^/_ ... ST
                 if (a == 'P' || a == 'X' || a == '^' || a == '_') {
-                    p += 2;
-                    while (*p) {
-                        if (*p == 0x1B && p[1] == '\\') { p += 2; break; } // ST
-                        ++p;
-                    }
+                    consumeStTerminated(2);
                     continue;
                 }
 
@@ -385,7 +490,15 @@ namespace utils {
                 continue;
             }
 
-            // Do NOT special-case 0x80-0x9F (C1) here, they are UTF-8 continuation bytes.
+            // C1 control equivalents (8-bit forms)
+            if (c == 0x9B) { consumeCsi(1); continue; }           // CSI
+            if (c == 0x9D) { consumeOsc(1); continue; }            // OSC
+            if (c == 0x90 || c == 0x98 || c == 0x9E || c == 0x9F) {
+                consumeStTerminated(1);                            // DCS/SOS/PM/APC
+                continue;
+            }
+            if (c == 0x9C) { ++p; continue; }                      // ST terminator
+
             out.push_back(static_cast<char>(c));
             ++p;
         }

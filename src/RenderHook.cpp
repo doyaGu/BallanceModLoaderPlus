@@ -4,8 +4,8 @@
 
 #include <MinHook.h>
 
-#include "HookUtils.h"
 #include "VTables.h"
+#include "HookUtils.h"
 
 #define CP_ADD_METHOD_HOOK(Name, Base, Offset) \
         { CP_FUNC_TARGET_PTR_NAME(Name) = utils::ForceReinterpretCast<CP_FUNC_TYPE_NAME(Name)>(Base, Offset); } \

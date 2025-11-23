@@ -5,8 +5,8 @@
 #include <cwchar>
 
 #include "AnsiPalette.h"
-#include "StringUtils.h"
-#include "PathUtils.h"
+#include "Utils/StringUtils.h"
+#include "Utils/PathUtils.h"
 
 #include "imgui.h"
 

@@ -8,9 +8,9 @@
 #include "BMLMod.h"
 
 #include "ModContext.h"
+#include "AnsiPalette.h"
 #include "StringUtils.h"
 #include "PathUtils.h"
-#include "AnsiPalette.h"
 
 void CommandBML::Execute(IBML *bml, const std::vector<std::string> &args) {
     bml->SendIngameMessage("Ballance Mod Loader Plus " BML_VERSION);

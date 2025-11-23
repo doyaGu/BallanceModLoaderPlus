@@ -1,8 +1,8 @@
 #include "BML/Guids/physics_RT.h"
 
 #include "ModContext.h"
-#include "HookUtils.h"
 #include "VTables.h"
+#include "HookUtils.h"
 
 class CKIpionManager : public CKBaseManager {
 public:

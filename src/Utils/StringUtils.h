@@ -1,6 +1,7 @@
 #ifndef BML_STRINGUTILS_H
 #define BML_STRINGUTILS_H
 
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <algorithm>
@@ -315,6 +316,6 @@ namespace utils {
 
     int CompareString(const std::string &aUtf8, const std::string &bUtf8,
                       uint32_t flags = kDefaultCompareFlags, const std::wstring &localeName = std::wstring());
-};
+} // namespace utils
 
 #endif // BML_STRINGUTILS_H

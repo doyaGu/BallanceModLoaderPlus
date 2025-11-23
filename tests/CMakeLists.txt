@@ -40,7 +40,7 @@ add_bml_test(TimerTest
 add_bml_test(StringUtilsTest
         SOURCES
         StringUtilsTest.cpp
-        ${BML_SOURCE_DIR}/StringUtils.cpp
+        ${BML_SOURCE_DIR}/Utils/StringUtils.cpp
         DEPENDENCIES
         utf8
 )
@@ -48,10 +48,10 @@ add_bml_test(StringUtilsTest
 add_bml_test(PathUtilsTest
         SOURCES
         PathUtilsTest.cpp
-        ${BML_SOURCE_DIR}/StringUtils.cpp
-        ${BML_SOURCE_DIR}/PathUtils.cpp
+        ${BML_SOURCE_DIR}/Utils/StringUtils.cpp
+        ${BML_SOURCE_DIR}/Utils/PathUtils.cpp
         DEPENDENCIES
-        utf8 zip
+        utf8 zip shlwapi
 )
 
 add_bml_test(ConfigTest
@@ -59,8 +59,8 @@ add_bml_test(ConfigTest
         ConfigTest.cpp
         ${BML_SOURCE_DIR}/Config.cpp
         ${BML_SOURCE_DIR}/Config.h
-        ${BML_SOURCE_DIR}/StringUtils.cpp
-        ${BML_SOURCE_DIR}/PathUtils.cpp
+        ${BML_SOURCE_DIR}/Utils/StringUtils.cpp
+        ${BML_SOURCE_DIR}/Utils/PathUtils.cpp
         DEPENDENCIES
         utf8 zip
         CK2
@@ -70,10 +70,10 @@ add_bml_test(ConfigTest
 add_bml_test(IniFileTest
         SOURCES
         IniFileTest.cpp
-        ${BML_SOURCE_DIR}/IniFile.cpp
-        ${BML_SOURCE_DIR}/IniFile.h
-        ${BML_SOURCE_DIR}/StringUtils.cpp
-        ${BML_SOURCE_DIR}/PathUtils.cpp
+        ${BML_SOURCE_DIR}/Utils/IniFile.cpp
+        ${BML_SOURCE_DIR}/Utils/IniFile.h
+        ${BML_SOURCE_DIR}/Utils/StringUtils.cpp
+        ${BML_SOURCE_DIR}/Utils/PathUtils.cpp
         DEPENDENCIES
         utf8 zip
 )
@@ -82,10 +82,10 @@ add_bml_test(AnsiPaletteTest
         SOURCES
         AnsiPaletteTest.cpp
         ${BML_SOURCE_DIR}/AnsiPalette.cpp
-        ${BML_SOURCE_DIR}/IniFile.cpp
-        ${BML_SOURCE_DIR}/IniFile.h
-        ${BML_SOURCE_DIR}/StringUtils.cpp
-        ${BML_SOURCE_DIR}/PathUtils.cpp
+        ${BML_SOURCE_DIR}/Utils/IniFile.cpp
+        ${BML_SOURCE_DIR}/Utils/IniFile.h
+        ${BML_SOURCE_DIR}/Utils/StringUtils.cpp
+        ${BML_SOURCE_DIR}/Utils/PathUtils.cpp
         DEPENDENCIES
         utf8 zip
 )
