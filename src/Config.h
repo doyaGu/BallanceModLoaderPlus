@@ -1,5 +1,5 @@
-#ifndef BML_CONFIG_H
-#define BML_CONFIG_H
+#ifndef BML_CONFIG_INTERNAL_H
+#define BML_CONFIG_INTERNAL_H
 
 #include <string>
 #include <vector>
@@ -125,4 +125,4 @@ private:
     std::unordered_map<std::string, Category *> m_CategoryMap;
 };
 
-#endif // BML_CONFIG_H
+#endif // BML_CONFIG_INTERNAL_H
