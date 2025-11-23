@@ -2,8 +2,8 @@
 
 #include <utf8.h>
 
-#include "StringUtils.h"
 #include "Logger.h"
+#include "StringUtils.h"
 
 #define MAX_CMD_NAME_LENGTH 256
 

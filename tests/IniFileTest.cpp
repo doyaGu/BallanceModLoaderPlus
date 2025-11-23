@@ -1,10 +1,12 @@
 ﻿#include <gtest/gtest.h>
 #include <gmock/gmock.h>
-#include "IniFile.h"
-#include "StringUtils.h"
-#include "PathUtils.h"
+
 #include <filesystem>
 #include <fstream>
+
+#include "Utils/IniFile.h"
+#include "Utils/StringUtils.h"
+#include "Utils/PathUtils.h"
 
 using namespace testing;
 

@@ -1,7 +1,7 @@
 #include "BML/InputHook.h"
 
-#include "HookUtils.h"
 #include "VTables.h"
+#include "HookUtils.h"
 
 struct InputHook::Impl {
     static unsigned char s_KeyboardState[256];

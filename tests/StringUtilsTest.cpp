@@ -1,9 +1,11 @@
-#include "StringUtils.h"
 #include <gtest/gtest.h>
+
 #include <vector>
 #include <string>
 #include <locale>
 #include <algorithm>
+
+#include "Utils/StringUtils.h"
 
 class StringUtilsTest : public ::testing::Test {
 protected:
