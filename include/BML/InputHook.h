@@ -3,7 +3,7 @@
 
 #include "CKInputManager.h"
 
-#include "BML/Export.h"
+#include "BML/Defines.h"
 
 typedef enum CK_INPUT_DEVICE {
     CK_INPUT_DEVICE_KEYBOARD = 0,

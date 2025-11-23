@@ -7,7 +7,6 @@
 
 #include <atomic>
 #include <cstdint>
-#include <limits>
 
 namespace BML {
     class RefCount {
