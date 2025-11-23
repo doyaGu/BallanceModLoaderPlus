@@ -1,8 +1,6 @@
 #ifndef BML_MODMENU_H
 #define BML_MODMENU_H
 
-#include <vector>
-#include <memory>
 #include <string>
 #include <unordered_map>
 #include <array>

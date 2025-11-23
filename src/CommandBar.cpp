@@ -1,6 +1,5 @@
 #include "CommandBar.h"
 
-#include <cstring>
 #include <sstream>
 
 #include <utf8.h>
