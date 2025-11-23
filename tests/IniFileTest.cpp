@@ -4,9 +4,9 @@
 #include <filesystem>
 #include <fstream>
 
-#include "Utils/IniFile.h"
-#include "Utils/StringUtils.h"
-#include "Utils/PathUtils.h"
+#include "IniFile.h"
+#include "StringUtils.h"
+#include "PathUtils.h"
 
 using namespace testing;
 

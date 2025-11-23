@@ -31,6 +31,8 @@ function(add_bml_test test_name)
     target_compile_definitions(${test_name} PRIVATE "BML_EXPORTS" "BML_TEST")
 
     set_target_properties(${test_name} PROPERTIES FOLDER "Tests")
+
+    add_test(NAME ${test_name} COMMAND $<TARGET_FILE:${test_name}>)
 endfunction()
 
 add_bml_test(TimerTest
@@ -40,18 +42,15 @@ add_bml_test(TimerTest
 add_bml_test(StringUtilsTest
         SOURCES
         StringUtilsTest.cpp
-        ${BML_SOURCE_DIR}/Utils/StringUtils.cpp
         DEPENDENCIES
-        utf8
+        BMLUtils
 )
 
 add_bml_test(PathUtilsTest
         SOURCES
         PathUtilsTest.cpp
-        ${BML_SOURCE_DIR}/Utils/StringUtils.cpp
-        ${BML_SOURCE_DIR}/Utils/PathUtils.cpp
         DEPENDENCIES
-        utf8 zip shlwapi
+        BMLUtils
 )
 
 add_bml_test(ConfigTest
@@ -59,10 +58,8 @@ add_bml_test(ConfigTest
         ConfigTest.cpp
         ${BML_SOURCE_DIR}/Config.cpp
         ${BML_SOURCE_DIR}/Config.h
-        ${BML_SOURCE_DIR}/Utils/StringUtils.cpp
-        ${BML_SOURCE_DIR}/Utils/PathUtils.cpp
         DEPENDENCIES
-        utf8 zip
+        BMLUtils
         CK2
         VxMath
 )
@@ -70,24 +67,16 @@ add_bml_test(ConfigTest
 add_bml_test(IniFileTest
         SOURCES
         IniFileTest.cpp
-        ${BML_SOURCE_DIR}/Utils/IniFile.cpp
-        ${BML_SOURCE_DIR}/Utils/IniFile.h
-        ${BML_SOURCE_DIR}/Utils/StringUtils.cpp
-        ${BML_SOURCE_DIR}/Utils/PathUtils.cpp
         DEPENDENCIES
-        utf8 zip
+        BMLUtils
 )
 
 add_bml_test(AnsiPaletteTest
         SOURCES
         AnsiPaletteTest.cpp
         ${BML_SOURCE_DIR}/AnsiPalette.cpp
-        ${BML_SOURCE_DIR}/Utils/IniFile.cpp
-        ${BML_SOURCE_DIR}/Utils/IniFile.h
-        ${BML_SOURCE_DIR}/Utils/StringUtils.cpp
-        ${BML_SOURCE_DIR}/Utils/PathUtils.cpp
         DEPENDENCIES
-        utf8 zip
+        BMLUtils
 )
 # Need ImGui headers for AnsiPalette
 target_include_directories(AnsiPaletteTest PRIVATE ${IMGUI_SOURCE_DIR})

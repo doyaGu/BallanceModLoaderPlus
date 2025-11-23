@@ -5,8 +5,8 @@
 #include <cstdio>
 #include <algorithm>
 
-#include "Utils/PathUtils.h"
-#include "Utils/StringUtils.h"
+#include "PathUtils.h"
+#include "StringUtils.h"
 
 // Test fixture for path operations
 class PathUtilsTest : public ::testing::Test {

@@ -7,7 +7,7 @@
 #ifndef BML_TEST
 #include "ModContext.h"
 #endif
-#include "Utils/StringUtils.h"
+#include "StringUtils.h"
 
 Config::Config(IMod *mod) : m_Mod(mod), m_ModID(mod ? mod->GetID() : "") {}
 
