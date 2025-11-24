@@ -13,6 +13,8 @@
 #include "CommandBar.h"
 #include "MessageBoard.h"
 
+class EventHookRegistrar;
+
 enum HudTypes {
     HUD_TITLE = 1,
     HUD_FPS = 2,
@@ -96,6 +98,8 @@ public:
     void SetFPSUpdateFrequency(uint32_t frames);
 
 private:
+    friend class EventHookRegistrar;
+
     void InitConfigs();
     void InitGUI();
     void RegisterCommands();
