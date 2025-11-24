@@ -946,7 +946,9 @@ namespace AnsiText {
             const float ascent = std::max(0.0f, baked->Ascent);
             const float anchorY = y0 + ascent;
 
-            drawList->PushTextureID(font->ContainerAtlas->TexRef);
+            ImFontAtlas *atlas = font ? font->OwnerAtlas : nullptr;
+            if (atlas)
+                drawList->PushTextureID(atlas->TexRef);
 
             const char *s = begin;
             float x = x0;
@@ -973,7 +975,8 @@ namespace AnsiText {
                 s = next;
             }
 
-            drawList->PopTextureID();
+            if (atlas)
+                drawList->PopTextureID();
         };
 
         auto draw_once = [&](const ImVec2 &p, ImU32 c) {
@@ -1031,8 +1034,8 @@ namespace AnsiText {
         if (alpha <= 0.0f) return;
 
         bool pushedFontTex = false;
-        if (font && font->ContainerAtlas) {
-            drawList->PushTextureID(font->ContainerAtlas->TexRef);
+        if (font && font->OwnerAtlas) {
+            drawList->PushTextureID(font->OwnerAtlas->TexRef);
             pushedFontTex = true;
         }
 
