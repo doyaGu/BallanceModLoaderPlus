@@ -42,6 +42,7 @@ set(BML_PRIVATE_HEADERS
         MessageBoard.h
         AnsiPalette.h
         AnsiText.h
+        EventHook.h
 
         Overlay.h
 
@@ -75,6 +76,7 @@ set(BML_SOURCES
         MessageBoard.cpp
         AnsiPalette.cpp
         AnsiText.cpp
+        EventHook.cpp
 
         Gui/Element.cpp
         Gui/Text.cpp
