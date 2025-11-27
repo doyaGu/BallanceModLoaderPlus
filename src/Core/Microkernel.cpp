@@ -18,7 +18,9 @@ namespace {
 struct MicrokernelState {
     ModuleRuntime runtime;
     ModuleBootstrapDiagnostics diagnostics;
-    bool initialized{false};
+    bool core_initialized{false};
+    bool modules_discovered{false};
+    bool modules_loaded{false};
     std::vector<BML_BootstrapManifestError> public_manifest_errors;
     std::vector<const char *> public_dependency_chain;
     std::vector<const char *> public_load_order;
@@ -217,18 +219,38 @@ void UpdatePublicDiagnostics(MicrokernelState &state) {
 
 } // namespace
 
-bool DiscoverModules() {
+bool InitializeCore() {
     auto &state = State();
-    if (state.initialized)
+    if (state.core_initialized)
         return true;
 
-    DebugLog("Phase 1: Discovering modules...");
+    DebugLog("Phase 0: Initializing core...");
 
     // Initialize context with runtime version
     auto &ctx = Context::Instance();
     ctx.Initialize({0, 4, 0});
 
+    // Register core APIs
     RegisterCoreApis();
+
+    state.core_initialized = true;
+    DebugLog("Core initialized successfully");
+    return true;
+}
+
+bool DiscoverModules() {
+    auto &state = State();
+    
+    // Core must be initialized first
+    if (!state.core_initialized) {
+        DebugLog("DiscoverModules: Core not initialized");
+        return false;
+    }
+    
+    if (state.modules_discovered)
+        return true;
+
+    DebugLog("Phase 1: Discovering modules...");
 
     ModuleBootstrapDiagnostics diag;
     auto modsDir = DetectModsDirectory();
@@ -246,13 +268,21 @@ bool DiscoverModules() {
     state.diagnostics = diag;
     UpdatePublicDiagnostics(state);
     EmitDiagnostics(diag);
+    state.modules_discovered = true;
     DebugLog("Module discovery completed successfully");
     return true;
 }
 
 bool LoadDiscoveredModules() {
     auto &state = State();
-    if (state.initialized)
+    
+    // Modules must be discovered first
+    if (!state.modules_discovered) {
+        DebugLog("LoadDiscoveredModules: Modules not discovered");
+        return false;
+    }
+    
+    if (state.modules_loaded)
         return true;
 
     DebugLog("Phase 2: Loading discovered modules...");
@@ -276,7 +306,7 @@ bool LoadDiscoveredModules() {
         UpdatePublicDiagnostics(sharedState);
         EmitDiagnostics(new_diag);
     });
-    state.initialized = true;
+    state.modules_loaded = true;
     EmitDiagnostics(diag);
     DebugLog("Modules loaded successfully");
     return true;
@@ -284,7 +314,7 @@ bool LoadDiscoveredModules() {
 
 void ShutdownMicrokernel() {
     auto &state = State();
-    if (!state.initialized)
+    if (!state.core_initialized)
         return;
 
     DebugLog("Shutting down microkernel...");
@@ -307,7 +337,9 @@ void ShutdownMicrokernel() {
     state.public_load_error = {};
     state.public_diagnostics = {};
 
-    state.initialized = false;
+    state.core_initialized = false;
+    state.modules_discovered = false;
+    state.modules_loaded = false;
     DebugLog("Microkernel shut down");
 }
 

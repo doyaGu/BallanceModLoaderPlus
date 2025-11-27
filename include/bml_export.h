@@ -66,8 +66,9 @@ typedef struct BML_ModDetachArgs {
 typedef BML_Result (*PFN_BML_ModEntrypoint)(BML_ModEntrypointCommand command, void *command_args);
 
 /* Runtime lifecycle entry points (Core exports) */
-BML_API BML_Result bmlAttach(void);
-BML_API BML_Result bmlLoadModules(void);
+BML_API BML_Result bmlAttach(void);           /**< Initialize BML Core only */
+BML_API BML_Result bmlDiscoverModules(void);  /**< Scan and validate mods (Phase 1) */
+BML_API BML_Result bmlLoadModules(void);      /**< Load discovered mods (Phase 2) */
 BML_API void bmlDetach(void);
 
 /* API lookup - String-based (legacy, compatible) */

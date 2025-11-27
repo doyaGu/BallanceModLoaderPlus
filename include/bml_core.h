@@ -121,6 +121,68 @@ typedef BML_Result (*PFN_BML_ContextRelease)(BML_Context ctx);
  */
 typedef BML_Context (*PFN_BML_GetGlobalContext)(void);
 
+/**
+ * @brief Function pointer type for setting user data on context
+ * 
+ * Associates an opaque user data pointer with the context using a key.
+ * This allows mods and subsystems to store arbitrary data that can be
+ * retrieved later. Each key can have one associated value.
+ * 
+ * @param[in] ctx Context handle
+ * @param[in] key Unique key string identifying this data slot
+ * @param[in] data Opaque pointer to user data (may be NULL to clear)
+ * @param[in] destructor Optional destructor called when data is replaced or context is destroyed (may be NULL)
+ * @return BML_RESULT_OK on success
+ * @return BML_RESULT_INVALID_HANDLE if ctx is NULL
+ * @return BML_RESULT_INVALID_ARGUMENT if key is NULL
+ * 
+ * @threadsafe Yes - uses internal synchronization
+ * @since 0.4.0
+ * 
+ * @note The destructor is called with the old data when:
+ *       - New data is set for the same key
+ *       - Data is cleared (set to NULL)
+ *       - Context is destroyed
+ * 
+ * @code
+ * // Store CKContext pointer (registered by ModLoader)
+ * bmlContextSetUserData(ctx, "virtools.ckcontext", ckContext, NULL);
+ * 
+ * // Store custom data with destructor
+ * bmlContextSetUserData(ctx, "mymod.state", state, MyStateDestructor);
+ * @endcode
+ * 
+ * @see PFN_BML_ContextGetUserData for retrieving data
+ */
+typedef void (*BML_UserDataDestructor)(void *data);
+typedef BML_Result (*PFN_BML_ContextSetUserData)(BML_Context ctx, const char *key, void *data, BML_UserDataDestructor destructor);
+
+/**
+ * @brief Function pointer type for getting user data from context
+ * 
+ * Retrieves the user data pointer previously associated with the given key.
+ * 
+ * @param[in] ctx Context handle
+ * @param[in] key Key string identifying the data slot
+ * @param[out] out_data Receives the user data pointer (NULL if not found)
+ * @return BML_RESULT_OK on success (even if key not found, out_data will be NULL)
+ * @return BML_RESULT_INVALID_HANDLE if ctx is NULL
+ * @return BML_RESULT_INVALID_ARGUMENT if key or out_data is NULL
+ * 
+ * @threadsafe Yes - uses internal synchronization
+ * @since 0.4.0
+ * 
+ * @code
+ * // Retrieve CKContext (set by ModLoader)
+ * void* ckContext = NULL;
+ * if (bmlContextGetUserData(ctx, "virtools.ckcontext", &ckContext) == BML_RESULT_OK && ckContext) {
+ *     CKContext* ck = (CKContext*)ckContext;
+ *     // Use ckContext...
+ * }
+ * @endcode
+ */
+typedef BML_Result (*PFN_BML_ContextGetUserData)(BML_Context ctx, const char *key, void **out_data);
+
 /** @} */ /* end CoreContext group */
 
 /* ========================================================================
@@ -453,6 +515,8 @@ typedef struct BML_CoreApi {
     PFN_BML_ContextRelease          ContextRelease;          /**< @see PFN_BML_ContextRelease */
     PFN_BML_GetGlobalContext        GetGlobalContext;        /**< @see PFN_BML_GetGlobalContext */
     PFN_BML_GetRuntimeVersion       GetRuntimeVersion;       /**< @see PFN_BML_GetRuntimeVersion */
+    PFN_BML_ContextSetUserData      ContextSetUserData;      /**< @see PFN_BML_ContextSetUserData */
+    PFN_BML_ContextGetUserData      ContextGetUserData;      /**< @see PFN_BML_ContextGetUserData */
     PFN_BML_RequestCapability       RequestCapability;       /**< @see PFN_BML_RequestCapability */
     PFN_BML_CheckCapability         CheckCapability;         /**< @see PFN_BML_CheckCapability */
     PFN_BML_GetModId                GetModId;                /**< @see PFN_BML_GetModId */
@@ -621,6 +685,12 @@ extern PFN_BML_GetGlobalContext        bmlGetGlobalContext;
 
 /** @brief Get runtime version @see PFN_BML_GetRuntimeVersion */
 extern PFN_BML_GetRuntimeVersion       bmlGetRuntimeVersion;
+
+/** @brief Set user data on context @see PFN_BML_ContextSetUserData */
+extern PFN_BML_ContextSetUserData      bmlContextSetUserData;
+
+/** @brief Get user data from context @see PFN_BML_ContextGetUserData */
+extern PFN_BML_ContextGetUserData      bmlContextGetUserData;
 
 /** @brief Request a capability for mod @see PFN_BML_RequestCapability */
 extern PFN_BML_RequestCapability       bmlRequestCapability;

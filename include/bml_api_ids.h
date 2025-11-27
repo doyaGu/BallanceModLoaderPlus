@@ -46,17 +46,20 @@
 
 /** @brief Core lifecycle */
 #define BML_API_ID_bmlAttach            1u
-#define BML_API_ID_bmlLoadModules       2u
-#define BML_API_ID_bmlDetach            3u
-#define BML_API_ID_bmlGetProcAddress    4u
-#define BML_API_ID_bmlGetProcAddressById 5u
-#define BML_API_ID_bmlGetApiId          6u
+#define BML_API_ID_bmlDiscoverModules   2u
+#define BML_API_ID_bmlLoadModules       3u
+#define BML_API_ID_bmlDetach            4u
+#define BML_API_ID_bmlGetProcAddress    5u
+#define BML_API_ID_bmlGetProcAddressById 6u
+#define BML_API_ID_bmlGetApiId          7u
 
 /** @brief Context management */
 #define BML_API_ID_bmlContextRetain     10u
 #define BML_API_ID_bmlContextRelease    11u
 #define BML_API_ID_bmlGetGlobalContext  12u
 #define BML_API_ID_bmlGetRuntimeVersion 13u
+#define BML_API_ID_bmlContextSetUserData 14u
+#define BML_API_ID_bmlContextGetUserData 15u
 
 /** @brief Capability system */
 #define BML_API_ID_bmlRequestCapability 20u
