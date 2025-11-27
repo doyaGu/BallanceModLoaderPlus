@@ -1,5 +1,6 @@
 #include "ApiRegistrationMacros.h"
 #include "MemoryManager.h"
+#include "bml_capabilities.h"
 
 #include "bml_memory.h"
 
@@ -25,24 +26,24 @@ void RegisterMemoryApis() {
     BML_BEGIN_API_REGISTRATION();
 
     /* Basic allocation - direct functions, no error guard */
-    BML_REGISTER_API(bmlAlloc, BML_API_Alloc);
-    BML_REGISTER_API(bmlCalloc, BML_API_Calloc);
-    BML_REGISTER_API(bmlRealloc, BML_API_Realloc);
-    BML_REGISTER_API(bmlFree, BML_API_Free);
+    BML_REGISTER_API_WITH_CAPS(bmlAlloc, BML_API_Alloc, BML_CAP_MEMORY_BASIC);
+    BML_REGISTER_API_WITH_CAPS(bmlCalloc, BML_API_Calloc, BML_CAP_MEMORY_BASIC);
+    BML_REGISTER_API_WITH_CAPS(bmlRealloc, BML_API_Realloc, BML_CAP_MEMORY_BASIC);
+    BML_REGISTER_API_WITH_CAPS(bmlFree, BML_API_Free, BML_CAP_MEMORY_BASIC);
 
     /* Aligned allocation */
-    BML_REGISTER_API(bmlAllocAligned, BML_API_AllocAligned);
-    BML_REGISTER_API(bmlFreeAligned, BML_API_FreeAligned);
+    BML_REGISTER_API_WITH_CAPS(bmlAllocAligned, BML_API_AllocAligned, BML_CAP_MEMORY_ALIGNED);
+    BML_REGISTER_API_WITH_CAPS(bmlFreeAligned, BML_API_FreeAligned, BML_CAP_MEMORY_ALIGNED);
 
     /* Memory pools - guarded for error handling */
-    BML_REGISTER_API_GUARDED(bmlMemoryPoolCreate, "memory.pool", BML_API_MemoryPoolCreate);
-    BML_REGISTER_API(bmlMemoryPoolAlloc, BML_API_MemoryPoolAlloc);
-    BML_REGISTER_API(bmlMemoryPoolFree, BML_API_MemoryPoolFree);
-    BML_REGISTER_API(bmlMemoryPoolDestroy, BML_API_MemoryPoolDestroy);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlMemoryPoolCreate, "memory.pool", BML_API_MemoryPoolCreate, BML_CAP_MEMORY_POOL);
+    BML_REGISTER_API_WITH_CAPS(bmlMemoryPoolAlloc, BML_API_MemoryPoolAlloc, BML_CAP_MEMORY_POOL);
+    BML_REGISTER_API_WITH_CAPS(bmlMemoryPoolFree, BML_API_MemoryPoolFree, BML_CAP_MEMORY_POOL);
+    BML_REGISTER_API_WITH_CAPS(bmlMemoryPoolDestroy, BML_API_MemoryPoolDestroy, BML_CAP_MEMORY_POOL);
 
     /* Statistics and capabilities */
-    BML_REGISTER_CAPS_API(bmlGetMemoryStats, "memory.stats", BML_API_GetMemoryStats);
-    BML_REGISTER_CAPS_API(bmlGetMemoryCaps, "memory.caps", BML_API_GetMemoryCaps);
+    BML_REGISTER_CAPS_API_WITH_CAPS(bmlGetMemoryStats, "memory.stats", BML_API_GetMemoryStats, BML_CAP_MEMORY_BASIC);
+    BML_REGISTER_CAPS_API_WITH_CAPS(bmlGetMemoryCaps, "memory.caps", BML_API_GetMemoryCaps, BML_CAP_MEMORY_BASIC);
 }
 
 } // namespace BML::Core

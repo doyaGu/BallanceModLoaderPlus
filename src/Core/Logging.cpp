@@ -20,6 +20,7 @@
 #include "ModHandle.h"
 #include "CoreErrors.h"
 #include "bml_api_ids.h"
+#include "bml_capabilities.h"
 
 #include "bml_logging.h"
 
@@ -340,18 +341,21 @@ BML_Result BML_API_ClearLogSinkOverride() {
 // ============================================================================
 
 void RegisterLoggingApis() {
-    auto &registry = ApiRegistry::Instance();
+    BML_BEGIN_API_REGISTRATION();
     
-    // Core logging APIs (variadic functions - must be registered manually)
-    // LogMessage and LogMessageVa are variadic and cannot use BML_REGISTER_API macro
-    registry.Register("bmlLog", reinterpret_cast<void *>(LogMessage), BML_API_ID_bmlLog);
-    registry.Register("bmlLogVa", reinterpret_cast<void *>(LogMessageVa), BML_API_ID_bmlLogVa);
-    registry.Register("bmlSetLogFilter", reinterpret_cast<void *>(SetLogFilter), BML_API_ID_bmlSetLogFilter);
+    // Core logging APIs - variadic functions need manual registration with full metadata
+    // Note: These are thread-safe (FREE threading model)
+    detail::RegisterApiWithMetadata(registry, "bmlLog", BML_API_ID_bmlLog,
+        reinterpret_cast<void *>(LogMessage), BML_CAP_LOGGING);
+    detail::RegisterApiWithMetadata(registry, "bmlLogVa", BML_API_ID_bmlLogVa,
+        reinterpret_cast<void *>(LogMessageVa), BML_CAP_LOGGING);
+    detail::RegisterApiWithMetadata(registry, "bmlSetLogFilter", BML_API_ID_bmlSetLogFilter,
+        reinterpret_cast<void *>(SetLogFilter), BML_CAP_LOGGING);
     
-    // Guarded APIs
-    BML_REGISTER_API_GUARDED(bmlGetLoggingCaps, "logging", BML_API_GetLoggingCaps);
-    BML_REGISTER_API_GUARDED(bmlRegisterLogSinkOverride, "logging", BML_API_RegisterLogSinkOverride);
-    BML_REGISTER_API_GUARDED(bmlClearLogSinkOverride, "logging", BML_API_ClearLogSinkOverride);
+    // Guarded APIs with capabilities
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlGetLoggingCaps, "logging", BML_API_GetLoggingCaps, BML_CAP_LOGGING);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlRegisterLogSinkOverride, "logging", BML_API_RegisterLogSinkOverride, BML_CAP_LOGGING);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlClearLogSinkOverride, "logging", BML_API_ClearLogSinkOverride, BML_CAP_LOGGING);
 }
 
 BML_Result RegisterLogSinkOverride(const BML_LogSinkOverrideDesc *desc) {

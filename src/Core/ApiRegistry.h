@@ -148,21 +148,6 @@ public:
         uint32_t depends_mask;
     };
 
-    // String-based API (legacy, maintained for compatibility)
-    /**
-     * @brief Register an API with explicit stable ID
-     * 
-     * CRITICAL: api_id must be a stable ID from bml_api_ids.h
-     * IDs must never change once assigned (binary compatibility requirement).
-     * 
-     * @param name API function name (for debugging and string-based lookup)
-     * @param pointer Function pointer to the API implementation
-     * @param api_id Stable API ID from bml_api_ids.h (e.g., BML_API_ID_bmlImcPublish)
-     * 
-     * @warning Will log a warning if api_id collides with an existing registration
-     */
-    void Register(const std::string &name, void *pointer, BML_ApiId api_id);
-    
     void *Get(const std::string &name) const;
     void *GetWithoutCount(const std::string &name) const;
     uint64_t GetCallCount(const std::string &name) const;

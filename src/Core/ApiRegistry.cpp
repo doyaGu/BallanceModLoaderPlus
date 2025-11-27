@@ -56,20 +56,6 @@ ApiRegistry &ApiRegistry::Instance() {
     return registry;
 }
 
-void ApiRegistry::Register(const std::string &name, void *pointer, BML_ApiId api_id) {
-    std::unique_lock lock(g_Mutex);
-    if (api_id == BML_API_INVALID_ID) {
-        DebugWarning(("Invalid API ID (0) for '" + name + "'").c_str());
-        return;
-    }
-
-    if (!CanRegisterLocked(name, api_id)) {
-        return;
-    }
-
-    RegisterEntryLocked(name, pointer, api_id);
-}
-
 void *ApiRegistry::Get(const std::string &name) const {
     std::shared_lock lock(g_Mutex);
     auto name_it = m_NameToId.find(name);
