@@ -5,17 +5,18 @@
 #include <cwchar>
 #include <cwctype>
 #include <cstring>
+#include <string>
+#include <utility>
+#include <vector>
 #include <filesystem>
+
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <windows.h>
-#include <string>
-#include <utility>
-#include <vector>
+#include <Windows.h>
 
 #include "bml_export.h"
 #include "bml_hot_reload.h"
@@ -27,9 +28,8 @@
 #include "SemanticVersion.h"
 
 namespace BML::Core {
-
-// Destructor must be defined here where HotReloadMonitor is complete
-ModuleRuntime::~ModuleRuntime() = default;
+    // Destructor must be defined here where HotReloadMonitor is complete
+    ModuleRuntime::~ModuleRuntime() = default;
 
     namespace {
         uint16_t ClampVersionComponent(int value) {
@@ -245,7 +245,8 @@ ModuleRuntime::~ModuleRuntime() = default;
         Context::Instance().ShutdownModules();
     }
 
-    void ModuleRuntime::RecordLoadOrder(const std::vector<ResolvedNode> &order, ModuleBootstrapDiagnostics &diag) const {
+    void ModuleRuntime::RecordLoadOrder(const std::vector<ResolvedNode> &order,
+                                        ModuleBootstrapDiagnostics &diag) const {
         diag.load_order.clear();
         diag.load_order.reserve(order.size());
         for (const auto &node : order) {
@@ -345,11 +346,11 @@ ModuleRuntime::~ModuleRuntime() = default;
     void ModuleRuntime::BroadcastLifecycleEvent(const char *topic, const std::vector<LoadedModule> &modules) const {
         if (!topic)
             return;
-        
+
         BML_TopicId topic_id;
         if (ImcBus::Instance().GetTopicId(topic, &topic_id) != BML_RESULT_OK)
             return;
-            
+
         for (const auto &module : modules) {
             if (!module.manifest)
                 continue;

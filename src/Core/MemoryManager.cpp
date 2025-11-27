@@ -17,7 +17,6 @@
 #endif
 
 #include "CoreErrors.h"
-#include "DiagnosticManager.h"
 #include "FixedBlockPool.h"
 
 namespace BML::Core {
@@ -241,12 +240,12 @@ namespace BML::Core {
     BML_Result MemoryManager::CreatePool(size_t block_size, uint32_t initial_blocks, BML_MemoryPool *out_pool) {
         if (!out_pool) {
             return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "memory", "bmlMemoryPoolCreate",
-                                "out_pool is NULL", 0);
+                                         "out_pool is NULL", 0);
         }
 
         if (block_size < kMinPoolBlockSize || block_size > kMaxPoolBlockSize) {
             return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "memory", "bmlMemoryPoolCreate",
-                                "block_size out of valid range", 0);
+                                         "block_size out of valid range", 0);
         }
 
         try {
@@ -265,10 +264,10 @@ namespace BML::Core {
             return BML_RESULT_OK;
         } catch (const std::bad_alloc &) {
             return SetLastErrorAndReturn(BML_RESULT_OUT_OF_MEMORY, "memory", "bmlMemoryPoolCreate",
-                                "Failed to allocate pool", 0);
+                                         "Failed to allocate pool", 0);
         } catch (...) {
             return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "memory", "bmlMemoryPoolCreate",
-                                "Unknown error creating pool", 0);
+                                         "Unknown error creating pool", 0);
         }
     }
 
@@ -325,9 +324,9 @@ namespace BML::Core {
             if (allocs > frees) {
                 // Log warning about leaked blocks
                 char buf[256];
-                snprintf(buf, sizeof(buf), 
+                snprintf(buf, sizeof(buf),
                          "[BML Memory] WARNING: Pool destroyed with %llu leaked blocks (block_size=%zu)\n",
-                         (unsigned long long)(allocs - frees), pool_impl->block_size);
+                         (unsigned long long) (allocs - frees), pool_impl->block_size);
                 OutputDebugStringA(buf);
             }
             m_pools.erase(it);
@@ -337,12 +336,12 @@ namespace BML::Core {
     BML_Result MemoryManager::GetStats(BML_MemoryStats *out_stats) {
         if (!out_stats) {
             return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "memory", "bmlGetMemoryStats",
-                                "out_stats is NULL", 0);
+                                         "out_stats is NULL", 0);
         }
 
         if (!m_tracking_enabled.load(std::memory_order_relaxed)) {
             return SetLastErrorAndReturn(BML_RESULT_UNSUPPORTED, "memory", "bmlGetMemoryStats",
-                                "Memory tracking is disabled", 0);
+                                         "Memory tracking is disabled", 0);
         }
 
         out_stats->total_allocated = m_total_allocated.load(std::memory_order_relaxed);
@@ -357,11 +356,11 @@ namespace BML::Core {
     BML_Result MemoryManager::GetCaps(BML_MemoryCaps *out_caps) {
         if (!out_caps) {
             return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "memory", "bmlGetMemoryCaps",
-                                "out_caps is NULL", 0);
+                                         "out_caps is NULL", 0);
         }
 
         out_caps->struct_size = sizeof(BML_MemoryCaps);
-        out_caps->api_version = {2, 1, 0};
+        out_caps->api_version = bmlGetApiVersion();
 
         out_caps->capability_flags =
             BML_MEMORY_CAP_BASIC_ALLOC |
@@ -444,7 +443,7 @@ namespace BML::Core {
         uint64_t current = m_active_alloc_count.load(std::memory_order_relaxed);
         while (current > 0) {
             if (m_active_alloc_count.compare_exchange_weak(current, current - 1,
-                    std::memory_order_relaxed, std::memory_order_relaxed)) {
+                                                           std::memory_order_relaxed, std::memory_order_relaxed)) {
                 break;
             }
         }
@@ -454,7 +453,7 @@ namespace BML::Core {
             uint64_t total = m_total_allocated.load(std::memory_order_relaxed);
             while (total >= size) {
                 if (m_total_allocated.compare_exchange_weak(total, total - size,
-                        std::memory_order_relaxed, std::memory_order_relaxed)) {
+                                                            std::memory_order_relaxed, std::memory_order_relaxed)) {
                     break;
                 }
             }
@@ -489,66 +488,3 @@ namespace BML::Core {
     }
 #endif
 } // namespace BML::Core
-
-// ============================================================================
-// C API Implementation
-// ============================================================================
-
-extern "C" {
-void *BML_API_Alloc(size_t size) {
-    return BML::Core::MemoryManager::Instance().Alloc(size);
-}
-
-void *BML_API_Calloc(size_t count, size_t size) {
-    return BML::Core::MemoryManager::Instance().Calloc(count, size);
-}
-
-void *BML_API_Realloc(void *ptr, size_t new_size) {
-    // Legacy API - uses inaccurate tracking
-    return BML::Core::MemoryManager::Instance().ReallocUnknownSize(ptr, new_size);
-}
-
-void *BML_API_ReallocEx(void *ptr, size_t old_size, size_t new_size) {
-    return BML::Core::MemoryManager::Instance().Realloc(ptr, old_size, new_size);
-}
-
-void BML_API_Free(void *ptr) {
-    BML::Core::MemoryManager::Instance().Free(ptr);
-}
-
-void BML_API_FreeWithSize(void *ptr, size_t size) {
-    BML::Core::MemoryManager::Instance().FreeWithSize(ptr, size);
-}
-
-void *BML_API_AllocAligned(size_t size, size_t alignment) {
-    return BML::Core::MemoryManager::Instance().AllocAligned(size, alignment);
-}
-
-void BML_API_FreeAligned(void *ptr) {
-    BML::Core::MemoryManager::Instance().FreeAligned(ptr);
-}
-
-BML_Result BML_API_MemoryPoolCreate(size_t block_size, uint32_t initial_blocks, BML_MemoryPool *out_pool) {
-    return BML::Core::MemoryManager::Instance().CreatePool(block_size, initial_blocks, out_pool);
-}
-
-void *BML_API_MemoryPoolAlloc(BML_MemoryPool pool) {
-    return BML::Core::MemoryManager::Instance().PoolAlloc(pool);
-}
-
-void BML_API_MemoryPoolFree(BML_MemoryPool pool, void *ptr) {
-    BML::Core::MemoryManager::Instance().PoolFree(pool, ptr);
-}
-
-void BML_API_MemoryPoolDestroy(BML_MemoryPool pool) {
-    BML::Core::MemoryManager::Instance().DestroyPool(pool);
-}
-
-BML_Result BML_API_GetMemoryStats(BML_MemoryStats *out_stats) {
-    return BML::Core::MemoryManager::Instance().GetStats(out_stats);
-}
-
-BML_Result BML_API_GetMemoryCaps(BML_MemoryCaps *out_caps) {
-    return BML::Core::MemoryManager::Instance().GetCaps(out_caps);
-}
-} // extern "C"
