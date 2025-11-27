@@ -81,13 +81,13 @@ namespace BML::Core {
         try {
             if (event_buffer_.size() < MAX_EVENTS) {
                 event_buffer_.push_back(std::move(evt));
-                total_events_++;
-                total_scopes_++;
+                ++total_events_;
+                ++total_scopes_;
             } else {
-                dropped_events_++;
+                ++dropped_events_;
             }
         } catch (...) {
-            dropped_events_++;
+            ++dropped_events_;
         }
         LeaveCriticalSection(&buffer_lock_);
     }
@@ -113,12 +113,12 @@ namespace BML::Core {
         try {
             if (event_buffer_.size() < MAX_EVENTS) {
                 event_buffer_.push_back(std::move(evt));
-                total_events_++;
+                ++total_events_;
             } else {
-                dropped_events_++;
+                ++dropped_events_;
             }
         } catch (...) {
-            dropped_events_++;
+            ++dropped_events_;
         }
         LeaveCriticalSection(&buffer_lock_);
     }
@@ -138,12 +138,12 @@ namespace BML::Core {
         try {
             if (event_buffer_.size() < MAX_EVENTS) {
                 event_buffer_.push_back(std::move(evt));
-                total_events_++;
+                ++total_events_;
             } else {
-                dropped_events_++;
+                ++dropped_events_;
             }
         } catch (...) {
-            dropped_events_++;
+            ++dropped_events_;
         }
         LeaveCriticalSection(&buffer_lock_);
     }
@@ -169,12 +169,12 @@ namespace BML::Core {
         try {
             if (event_buffer_.size() < MAX_EVENTS) {
                 event_buffer_.push_back(std::move(evt));
-                total_events_++;
+                ++total_events_;
             } else {
-                dropped_events_++;
+                ++dropped_events_;
             }
         } catch (...) {
-            dropped_events_++;
+            ++dropped_events_;
         }
         LeaveCriticalSection(&buffer_lock_);
     }
@@ -192,12 +192,12 @@ namespace BML::Core {
         try {
             if (event_buffer_.size() < MAX_EVENTS) {
                 event_buffer_.push_back(std::move(evt));
-                total_events_++;
+                ++total_events_;
             } else {
-                dropped_events_++;
+                ++dropped_events_;
             }
         } catch (...) {
-            dropped_events_++;
+            ++dropped_events_;
         }
         LeaveCriticalSection(&buffer_lock_);
     }
@@ -270,22 +270,20 @@ namespace BML::Core {
             events_snapshot = event_buffer_; // Copy while holding lock
         } catch (...) {
             LeaveCriticalSection(&buffer_lock_);
-            SetLastError(BML_RESULT_OUT_OF_MEMORY, "Failed to copy event buffer",
-                                    "bmlFlushProfilingData");
+            SetLastError(BML_RESULT_OUT_OF_MEMORY, "Failed to copy event buffer", "bmlFlushProfilingData");
             return BML_RESULT_OUT_OF_MEMORY;
         }
         LeaveCriticalSection(&buffer_lock_);
 
         // RAII wrapper for FILE* handle
         struct FileGuard {
-            FILE* fp;
+            FILE *fp;
             ~FileGuard() { if (fp) fclose(fp); }
         };
 
         FILE *fp = fopen(filename, "w");
         if (!fp) {
-            SetLastError(BML_RESULT_IO_ERROR, "Failed to open trace file for writing",
-                                    "bmlFlushProfilingData");
+            SetLastError(BML_RESULT_IO_ERROR, "Failed to open trace file for writing", "bmlFlushProfilingData");
             return BML_RESULT_IO_ERROR;
         }
         FileGuard guard{fp};
@@ -312,8 +310,7 @@ namespace BML::Core {
 
     BML_Result ProfilingManager::GetProfilingStats(BML_ProfilingStats *out_stats) {
         if (!out_stats) {
-            SetLastError(BML_RESULT_INVALID_ARGUMENT, "out_stats is NULL",
-                                    "bmlGetProfilingStats");
+            SetLastError(BML_RESULT_INVALID_ARGUMENT, "out_stats is NULL", "bmlGetProfilingStats");
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
@@ -333,8 +330,7 @@ namespace BML::Core {
 
     BML_Result ProfilingManager::GetProfilingCaps(BML_ProfilingCaps *out_caps) {
         if (!out_caps) {
-            SetLastError(BML_RESULT_INVALID_ARGUMENT, "out_caps is NULL",
-                                    "bmlGetProfilingCaps");
+            SetLastError(BML_RESULT_INVALID_ARGUMENT, "out_caps is NULL", "bmlGetProfilingCaps");
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
@@ -349,11 +345,5 @@ namespace BML::Core {
         out_caps->event_buffer_size = MAX_EVENTS;
 
         return BML_RESULT_OK;
-    }
-
-    void ProfilingManager::IncrementApiCallCount(const char *api_name) {
-        // API call counting is now handled automatically in ApiRegistry::Get()
-        // This function is kept for compatibility but is effectively a no-op
-        (void) api_name;
     }
 } // namespace BML::Core

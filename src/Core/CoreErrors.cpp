@@ -11,101 +11,98 @@
 #include "Logging.h"
 
 namespace BML::Core {
+    namespace {
+        /* ========================================================================
+         * Thread-Local Error Storage (Task 1.1)
+         * ======================================================================== */
 
-namespace {
+        /**
+         * @brief Thread-local storage for last error information
+         */
+        struct ThreadLocalError {
+            BML_Result code = BML_RESULT_OK;
+            std::string message;
+            std::string api_name;
+            std::string source_file;
+            int source_line = 0;
+            bool has_error = false;
+        };
 
-/* ========================================================================
- * Thread-Local Error Storage (Task 1.1)
- * ======================================================================== */
+        thread_local ThreadLocalError g_lastError;
 
-/**
- * @brief Thread-local storage for last error information
- */
-struct ThreadLocalError {
-    BML_Result code = BML_RESULT_OK;
-    std::string message;
-    std::string api_name;
-    std::string source_file;
-    int source_line = 0;
-    bool has_error = false;
-};
+        std::string_view NormalizeSubsystem(std::string_view subsystem) {
+            return subsystem.empty() ? std::string_view{"core"} : subsystem;
+        }
 
-thread_local ThreadLocalError g_lastError;
+        void LogTranslation(std::string_view subsystem, const CoreResult &result) {
+            const std::string tag{subsystem};
+            const char *message = result.message.empty() ? "Unhandled exception" : result.message.c_str();
+            CoreLog(BML_LOG_ERROR, tag.c_str(), "%s (code=%d)", message, static_cast<int>(result.code));
+        }
 
-std::string_view NormalizeSubsystem(std::string_view subsystem) {
-    return subsystem.empty() ? std::string_view{"core"} : subsystem;
-}
+        std::string BuildExceptionMessage(const std::exception &ex) {
+            std::string message = ex.what() ? ex.what() : typeid(ex).name();
+            try {
+                std::rethrow_if_nested(ex);
+            } catch (const std::exception &nested) {
+                message.append(" -> ").append(BuildExceptionMessage(nested));
+            } catch (...) {
+                message.append(" -> <non-standard nested>");
+            }
+            return message;
+        }
+    } // namespace
 
-void LogTranslation(std::string_view subsystem, const CoreResult &result) {
-    const std::string tag{subsystem};
-    const char *message = result.message.empty() ? "Unhandled exception" : result.message.c_str();
-    CoreLog(BML_LOG_ERROR, tag.c_str(), "%s (code=%d)", message, static_cast<int>(result.code));
-}
+    /* ========================================================================
+     * Error Handling Implementation (Task 1.1)
+     * ======================================================================== */
 
-std::string BuildExceptionMessage(const std::exception &ex) {
-    std::string message = ex.what() ? ex.what() : typeid(ex).name();
-    try {
-        std::rethrow_if_nested(ex);
-    } catch (const std::exception &nested) {
-        message.append(" -> ").append(BuildExceptionMessage(nested));
-    } catch (...) {
-        message.append(" -> <non-standard nested>");
+    void SetLastError(BML_Result code,
+                      const char *message,
+                      const char *api_name,
+                      const char *source_file,
+                      int source_line) {
+        g_lastError.code = code;
+        g_lastError.message = message ? message : "";
+        g_lastError.api_name = api_name ? api_name : "";
+        g_lastError.source_file = source_file ? source_file : "";
+        g_lastError.source_line = source_line;
+        g_lastError.has_error = (code != BML_RESULT_OK);
     }
-    return message;
-}
 
-} // namespace
+    BML_Result GetLastErrorInfo(BML_ErrorInfo *out_info) {
+        if (!out_info) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
 
-/* ========================================================================
- * Error Handling Implementation (Task 1.1)
- * ======================================================================== */
+        if (out_info->struct_size < sizeof(BML_ErrorInfo)) {
+            return BML_RESULT_INVALID_SIZE;
+        }
 
-void SetLastError(BML_Result code, 
-                  const char* message,
-                  const char* api_name,
-                  const char* source_file,
-                  int source_line) {
-    g_lastError.code = code;
-    g_lastError.message = message ? message : "";
-    g_lastError.api_name = api_name ? api_name : "";
-    g_lastError.source_file = source_file ? source_file : "";
-    g_lastError.source_line = source_line;
-    g_lastError.has_error = (code != BML_RESULT_OK);
-}
+        if (!g_lastError.has_error) {
+            return BML_RESULT_NOT_FOUND;
+        }
 
-BML_Result GetLastErrorInfo(BML_ErrorInfo* out_info) {
-    if (!out_info) {
-        return BML_RESULT_INVALID_ARGUMENT;
+        out_info->result_code = g_lastError.code;
+        out_info->message = g_lastError.message.empty() ? nullptr : g_lastError.message.c_str();
+        out_info->source_file = g_lastError.source_file.empty() ? nullptr : g_lastError.source_file.c_str();
+        out_info->source_line = g_lastError.source_line;
+        out_info->api_name = g_lastError.api_name.empty() ? nullptr : g_lastError.api_name.c_str();
+
+        return BML_RESULT_OK;
     }
-    
-    if (out_info->struct_size < sizeof(BML_ErrorInfo)) {
-        return BML_RESULT_INVALID_SIZE;
-    }
-    
-    if (!g_lastError.has_error) {
-        return BML_RESULT_NOT_FOUND;
-    }
-    
-    out_info->result_code = g_lastError.code;
-    out_info->message = g_lastError.message.empty() ? nullptr : g_lastError.message.c_str();
-    out_info->source_file = g_lastError.source_file.empty() ? nullptr : g_lastError.source_file.c_str();
-    out_info->source_line = g_lastError.source_line;
-    out_info->api_name = g_lastError.api_name.empty() ? nullptr : g_lastError.api_name.c_str();
-    
-    return BML_RESULT_OK;
-}
 
-void ClearLastErrorInfo() {
-    g_lastError.has_error = false;
-    g_lastError.code = BML_RESULT_OK;
-    g_lastError.message.clear();
-    g_lastError.api_name.clear();
-    g_lastError.source_file.clear();
-    g_lastError.source_line = 0;
-}
+    void ClearLastErrorInfo() {
+        g_lastError.has_error = false;
+        g_lastError.code = BML_RESULT_OK;
+        g_lastError.message.clear();
+        g_lastError.api_name.clear();
+        g_lastError.source_file.clear();
+        g_lastError.source_line = 0;
+    }
 
-const char* GetErrorString(BML_Result result) {
-    switch (result) {
+    const char *GetErrorString(BML_Result result) {
+        switch (result) {
         // Generic errors
         case BML_RESULT_OK: return "OK";
         case BML_RESULT_FAIL: return "Generic failure";
@@ -173,90 +170,89 @@ const char* GetErrorString(BML_Result result) {
 
         default:
             return "Unknown error code";
+        }
     }
-}
 
-CoreResult TranslateException(std::string_view subsystem) {
-    CoreResult result{};
-    result.code = BML_RESULT_FAIL;
+    CoreResult TranslateException(std::string_view subsystem) {
+        CoreResult result{};
+        result.code = BML_RESULT_FAIL;
 
-    auto current = std::current_exception();
-    if (!current) {
-        result.message = "Unknown exception";
+        auto current = std::current_exception();
+        if (!current) {
+            result.message = "Unknown exception";
+            LogTranslation(NormalizeSubsystem(subsystem), result);
+            return result;
+        }
+
+        try {
+            std::rethrow_exception(current);
+        } catch (const std::bad_alloc &ex) {
+            result.code = BML_RESULT_OUT_OF_MEMORY;
+            result.message = BuildExceptionMessage(ex);
+        } catch (const std::invalid_argument &ex) {
+            result.code = BML_RESULT_INVALID_ARGUMENT;
+            result.message = BuildExceptionMessage(ex);
+        } catch (const std::out_of_range &ex) {
+            result.code = BML_RESULT_INVALID_ARGUMENT;
+            result.message = BuildExceptionMessage(ex);
+        } catch (const std::domain_error &ex) {
+            result.code = BML_RESULT_INVALID_ARGUMENT;
+            result.message = BuildExceptionMessage(ex);
+        } catch (const std::length_error &ex) {
+            result.code = BML_RESULT_INVALID_ARGUMENT;
+            result.message = BuildExceptionMessage(ex);
+        } catch (const std::overflow_error &ex) {
+            result.code = BML_RESULT_INVALID_ARGUMENT;
+            result.message = BuildExceptionMessage(ex);
+        } catch (const std::underflow_error &ex) {
+            result.code = BML_RESULT_INVALID_ARGUMENT;
+            result.message = BuildExceptionMessage(ex);
+        } catch (const std::range_error &ex) {
+            result.code = BML_RESULT_INVALID_ARGUMENT;
+            result.message = BuildExceptionMessage(ex);
+        } catch (const std::logic_error &ex) {
+            result.code = BML_RESULT_INVALID_STATE;
+            result.message = BuildExceptionMessage(ex);
+        } catch (const std::filesystem::filesystem_error &ex) {
+            result.code = BML_RESULT_IO_ERROR;
+            std::ostringstream oss;
+            oss << ex.what();
+            if (!ex.path1().empty())
+                oss << " [" << ex.path1().string() << ']';
+            if (!ex.path2().empty())
+                oss << " [" << ex.path2().string() << ']';
+            result.message = oss.str();
+            try {
+                std::rethrow_if_nested(ex);
+            } catch (const std::exception &nested) {
+                result.message.append(" -> ").append(BuildExceptionMessage(nested));
+            } catch (...) {
+                result.message.append(" -> <non-standard nested>");
+            }
+        } catch (const std::system_error &ex) {
+            result.code = BML_RESULT_FAIL;
+            std::ostringstream oss;
+            oss << ex.what() << " (errno=" << ex.code().value() << ')';
+            result.message = oss.str();
+            try {
+                std::rethrow_if_nested(ex);
+            } catch (const std::exception &nested) {
+                result.message.append(" -> ").append(BuildExceptionMessage(nested));
+            } catch (...) {
+                result.message.append(" -> <non-standard nested>");
+            }
+        } catch (const std::runtime_error &ex) {
+            result.code = BML_RESULT_FAIL;
+            result.message = BuildExceptionMessage(ex);
+        } catch (const std::exception &ex) {
+            result.code = BML_RESULT_FAIL;
+            result.message = BuildExceptionMessage(ex);
+        } catch (...) {
+            result.code = BML_RESULT_FAIL;
+            result.message = "Unknown exception";
+        }
+
         LogTranslation(NormalizeSubsystem(subsystem), result);
         return result;
     }
-
-    try {
-        std::rethrow_exception(current);
-    } catch (const std::bad_alloc &ex) {
-        result.code = BML_RESULT_OUT_OF_MEMORY;
-        result.message = BuildExceptionMessage(ex);
-    } catch (const std::invalid_argument &ex) {
-        result.code = BML_RESULT_INVALID_ARGUMENT;
-        result.message = BuildExceptionMessage(ex);
-    } catch (const std::out_of_range &ex) {
-        result.code = BML_RESULT_INVALID_ARGUMENT;
-        result.message = BuildExceptionMessage(ex);
-    } catch (const std::domain_error &ex) {
-        result.code = BML_RESULT_INVALID_ARGUMENT;
-        result.message = BuildExceptionMessage(ex);
-    } catch (const std::length_error &ex) {
-        result.code = BML_RESULT_INVALID_ARGUMENT;
-        result.message = BuildExceptionMessage(ex);
-    } catch (const std::overflow_error &ex) {
-        result.code = BML_RESULT_INVALID_ARGUMENT;
-        result.message = BuildExceptionMessage(ex);
-    } catch (const std::underflow_error &ex) {
-        result.code = BML_RESULT_INVALID_ARGUMENT;
-        result.message = BuildExceptionMessage(ex);
-    } catch (const std::range_error &ex) {
-        result.code = BML_RESULT_INVALID_ARGUMENT;
-        result.message = BuildExceptionMessage(ex);
-    } catch (const std::logic_error &ex) {
-        result.code = BML_RESULT_INVALID_STATE;
-        result.message = BuildExceptionMessage(ex);
-    } catch (const std::filesystem::filesystem_error &ex) {
-        result.code = BML_RESULT_IO_ERROR;
-        std::ostringstream oss;
-        oss << ex.what();
-        if (!ex.path1().empty())
-            oss << " [" << ex.path1().string() << ']';
-        if (!ex.path2().empty())
-            oss << " [" << ex.path2().string() << ']';
-        result.message = oss.str();
-        try {
-            std::rethrow_if_nested(ex);
-        } catch (const std::exception &nested) {
-            result.message.append(" -> ").append(BuildExceptionMessage(nested));
-        } catch (...) {
-            result.message.append(" -> <non-standard nested>");
-        }
-    } catch (const std::system_error &ex) {
-        result.code = BML_RESULT_FAIL;
-        std::ostringstream oss;
-        oss << ex.what() << " (errno=" << ex.code().value() << ')';
-        result.message = oss.str();
-        try {
-            std::rethrow_if_nested(ex);
-        } catch (const std::exception &nested) {
-            result.message.append(" -> ").append(BuildExceptionMessage(nested));
-        } catch (...) {
-            result.message.append(" -> <non-standard nested>");
-        }
-    } catch (const std::runtime_error &ex) {
-        result.code = BML_RESULT_FAIL;
-        result.message = BuildExceptionMessage(ex);
-    } catch (const std::exception &ex) {
-        result.code = BML_RESULT_FAIL;
-        result.message = BuildExceptionMessage(ex);
-    } catch (...) {
-        result.code = BML_RESULT_FAIL;
-        result.message = "Unknown exception";
-    }
-
-    LogTranslation(NormalizeSubsystem(subsystem), result);
-    return result;
-}
-
 } // namespace BML::Core

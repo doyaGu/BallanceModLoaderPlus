@@ -2,7 +2,6 @@
 #define BML_CORE_SYNC_MANAGER_H
 
 #include <atomic>
-#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -101,8 +100,7 @@ namespace BML::Core {
         uint32_t max_count;
 
         SemaphoreImpl(uint32_t initial, uint32_t maximum)
-            : handle(CreateSemaphoreW(nullptr, initial, maximum, nullptr)), max_count(maximum) {
-        }
+            : handle(CreateSemaphoreW(nullptr, initial, maximum, nullptr)), max_count(maximum) {}
 
         ~SemaphoreImpl() {
             if (handle) {
@@ -203,6 +201,9 @@ namespace BML::Core {
     public:
         static SyncManager &Instance();
 
+        SyncManager(const SyncManager &) = delete;
+        SyncManager &operator=(const SyncManager &) = delete;
+
         // Mutex operations
         BML_Result CreateMutex(BML_Mutex *out_mutex);
         void DestroyMutex(BML_Mutex mutex);
@@ -264,9 +265,6 @@ namespace BML::Core {
     private:
         SyncManager();
         ~SyncManager() = default;
-
-        SyncManager(const SyncManager &) = delete;
-        SyncManager &operator=(const SyncManager &) = delete;
 
         bool IsValidMutex(BML_Mutex mutex) const;
         bool IsValidRwLock(BML_RwLock lock) const;
