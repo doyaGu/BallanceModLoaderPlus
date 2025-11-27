@@ -415,10 +415,6 @@ namespace utils {
                 return false;
         }
 
-        // Check if file is a zip
-        if (!StringEndsWithCaseInsensitive(path, L".zip"))
-            return false;
-
         // Open the zip file
         FILE *fp = nullptr;
         if (_wfopen_s(&fp, path.c_str(), L"rb") != 0 || !fp)
