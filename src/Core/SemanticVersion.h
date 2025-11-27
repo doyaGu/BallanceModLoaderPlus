@@ -9,11 +9,15 @@ struct SemanticVersion {
     int major{0};
     int minor{0};
     int patch{0};
+    std::string prerelease;  // e.g., "alpha", "beta.1", "rc.2"
 };
 
 enum class VersionOperator {
     Exact,
-    GreaterEqual,
+    GreaterEqual,    // ">="
+    Greater,         // ">"
+    LessEqual,       // "<="
+    Less,            // "<"
     Compatible,      // "^"
     ApproximatelyEquivalent // "~"
 };
