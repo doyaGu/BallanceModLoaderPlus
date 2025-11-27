@@ -10,6 +10,7 @@
 #include "ImcBus.h"
 #include "bml_imc.h"
 #include "bml_api_ids.h"
+#include "bml_capabilities.h"
 
 namespace BML::Core {
 
@@ -139,44 +140,44 @@ BML_Result BML_API_ImcGetTopicName(BML_TopicId topic, char *buffer, size_t buffe
 // ============================================================================
 
 void RegisterImcApis() {
-    auto &registry = ApiRegistry::Instance();
+    BML_BEGIN_API_REGISTRATION();
 
     // ID Resolution
-    BML_REGISTER_API_GUARDED(bmlImcGetTopicId, "imc", BML_API_ImcGetTopicId);
-    BML_REGISTER_API_GUARDED(bmlImcGetRpcId, "imc", BML_API_ImcGetRpcId);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcGetTopicId, "imc", BML_API_ImcGetTopicId, BML_CAP_IMC_BASIC | BML_CAP_IMC_ID_BASED);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcGetRpcId, "imc", BML_API_ImcGetRpcId, BML_CAP_IMC_RPC | BML_CAP_IMC_ID_BASED);
 
     // Pub/Sub
-    BML_REGISTER_API_GUARDED(bmlImcPublish, "imc", BML_API_ImcPublish);
-    BML_REGISTER_API_GUARDED(bmlImcPublishBuffer, "imc", BML_API_ImcPublishBuffer);
-    BML_REGISTER_API_GUARDED(bmlImcPublishMulti, "imc", BML_API_ImcPublishMulti);
-    BML_REGISTER_API_GUARDED(bmlImcSubscribe, "imc", BML_API_ImcSubscribe);
-    BML_REGISTER_API_GUARDED(bmlImcSubscribeEx, "imc", BML_API_ImcSubscribeEx);
-    BML_REGISTER_API_GUARDED(bmlImcUnsubscribe, "imc", BML_API_ImcUnsubscribe);
-    BML_REGISTER_API_GUARDED(bmlImcSubscriptionIsActive, "imc", BML_API_ImcSubscriptionIsActive);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcPublish, "imc", BML_API_ImcPublish, BML_CAP_IMC_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcPublishBuffer, "imc", BML_API_ImcPublishBuffer, BML_CAP_IMC_BASIC | BML_CAP_IMC_BUFFER);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcPublishMulti, "imc", BML_API_ImcPublishMulti, BML_CAP_IMC_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcSubscribe, "imc", BML_API_ImcSubscribe, BML_CAP_IMC_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcSubscribeEx, "imc", BML_API_ImcSubscribeEx, BML_CAP_IMC_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcUnsubscribe, "imc", BML_API_ImcUnsubscribe, BML_CAP_IMC_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcSubscriptionIsActive, "imc", BML_API_ImcSubscriptionIsActive, BML_CAP_IMC_BASIC);
 
     // RPC
-    BML_REGISTER_API_GUARDED(bmlImcRegisterRpc, "imc", BML_API_ImcRegisterRpc);
-    BML_REGISTER_API_GUARDED(bmlImcUnregisterRpc, "imc", BML_API_ImcUnregisterRpc);
-    BML_REGISTER_API_GUARDED(bmlImcCallRpc, "imc", BML_API_ImcCallRpc);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcRegisterRpc, "imc", BML_API_ImcRegisterRpc, BML_CAP_IMC_RPC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcUnregisterRpc, "imc", BML_API_ImcUnregisterRpc, BML_CAP_IMC_RPC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcCallRpc, "imc", BML_API_ImcCallRpc, BML_CAP_IMC_RPC);
 
     // Futures
-    BML_REGISTER_API_GUARDED(bmlImcFutureAwait, "imc", BML_API_ImcFutureAwait);
-    BML_REGISTER_API_GUARDED(bmlImcFutureGetResult, "imc", BML_API_ImcFutureGetResult);
-    BML_REGISTER_API_GUARDED(bmlImcFutureGetState, "imc", BML_API_ImcFutureGetState);
-    BML_REGISTER_API_GUARDED(bmlImcFutureCancel, "imc", BML_API_ImcFutureCancel);
-    BML_REGISTER_API_GUARDED(bmlImcFutureOnComplete, "imc", BML_API_ImcFutureOnComplete);
-    BML_REGISTER_API_GUARDED(bmlImcFutureRelease, "imc", BML_API_ImcFutureRelease);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcFutureAwait, "imc", BML_API_ImcFutureAwait, BML_CAP_IMC_FUTURE);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcFutureGetResult, "imc", BML_API_ImcFutureGetResult, BML_CAP_IMC_FUTURE);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcFutureGetState, "imc", BML_API_ImcFutureGetState, BML_CAP_IMC_FUTURE);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcFutureCancel, "imc", BML_API_ImcFutureCancel, BML_CAP_IMC_FUTURE);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcFutureOnComplete, "imc", BML_API_ImcFutureOnComplete, BML_CAP_IMC_FUTURE);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcFutureRelease, "imc", BML_API_ImcFutureRelease, BML_CAP_IMC_FUTURE);
 
     // Runtime
-    BML_REGISTER_API_VOID_GUARDED(bmlImcPump, "imc", BML_API_ImcPump);
+    BML_REGISTER_API_VOID_GUARDED_WITH_CAPS(bmlImcPump, "imc", BML_API_ImcPump, BML_CAP_IMC_DISPATCH);
 
     // Diagnostics
-    BML_REGISTER_API_GUARDED(bmlGetImcCaps, "imc", BML_API_GetImcCaps);
-    BML_REGISTER_API_GUARDED(bmlImcGetSubscriptionStats, "imc", BML_API_ImcGetSubscriptionStats);
-    BML_REGISTER_API_GUARDED(bmlImcGetStats, "imc", BML_API_ImcGetStats);
-    BML_REGISTER_API_GUARDED(bmlImcResetStats, "imc", BML_API_ImcResetStats);
-    BML_REGISTER_API_GUARDED(bmlImcGetTopicInfo, "imc", BML_API_ImcGetTopicInfo);
-    BML_REGISTER_API_GUARDED(bmlImcGetTopicName, "imc", BML_API_ImcGetTopicName);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlGetImcCaps, "imc", BML_API_GetImcCaps, BML_CAP_IMC_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcGetSubscriptionStats, "imc", BML_API_ImcGetSubscriptionStats, BML_CAP_IMC_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcGetStats, "imc", BML_API_ImcGetStats, BML_CAP_IMC_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcResetStats, "imc", BML_API_ImcResetStats, BML_CAP_IMC_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcGetTopicInfo, "imc", BML_API_ImcGetTopicInfo, BML_CAP_IMC_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcGetTopicName, "imc", BML_API_ImcGetTopicName, BML_CAP_IMC_BASIC);
 }
 
 } // namespace BML::Core

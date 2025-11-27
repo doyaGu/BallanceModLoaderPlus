@@ -1,6 +1,7 @@
 #include "ConfigStore.h"
 #include "ApiRegistrationMacros.h"
 #include "bml_api_ids.h"
+#include "bml_capabilities.h"
 
 #include <Windows.h>
 
@@ -757,27 +758,27 @@ BML_Result BML_API_RegisterConfigLoadHooks(const BML_ConfigLoadHooks *hooks) {
 // ============================================================================
 
 void RegisterConfigApis() {
-    auto &registry = ApiRegistry::Instance();
+    BML_BEGIN_API_REGISTRATION();
     
     // Core config APIs
-    BML_REGISTER_API_GUARDED(bmlConfigGet, "config", BML_API_ConfigGet);
-    BML_REGISTER_API_GUARDED(bmlConfigSet, "config", BML_API_ConfigSet);
-    BML_REGISTER_API_GUARDED(bmlConfigReset, "config", BML_API_ConfigReset);
-    BML_REGISTER_API_GUARDED(bmlConfigEnumerate, "config", BML_API_ConfigEnumerate);
-    BML_REGISTER_API_GUARDED(bmlGetConfigCaps, "config", BML_API_GetConfigCaps);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigGet, "config", BML_API_ConfigGet, BML_CAP_CONFIG_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigSet, "config", BML_API_ConfigSet, BML_CAP_CONFIG_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigReset, "config", BML_API_ConfigReset, BML_CAP_CONFIG_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigEnumerate, "config", BML_API_ConfigEnumerate, BML_CAP_CONFIG_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlGetConfigCaps, "config", BML_API_GetConfigCaps, BML_CAP_CONFIG_BASIC);
     
     // Type-safe accessors
-    BML_REGISTER_API_GUARDED(bmlConfigGetInt, "config", BML_API_ConfigGetInt);
-    BML_REGISTER_API_GUARDED(bmlConfigGetFloat, "config", BML_API_ConfigGetFloat);
-    BML_REGISTER_API_GUARDED(bmlConfigGetBool, "config", BML_API_ConfigGetBool);
-    BML_REGISTER_API_GUARDED(bmlConfigGetString, "config", BML_API_ConfigGetString);
-    BML_REGISTER_API_GUARDED(bmlConfigSetInt, "config", BML_API_ConfigSetInt);
-    BML_REGISTER_API_GUARDED(bmlConfigSetFloat, "config", BML_API_ConfigSetFloat);
-    BML_REGISTER_API_GUARDED(bmlConfigSetBool, "config", BML_API_ConfigSetBool);
-    BML_REGISTER_API_GUARDED(bmlConfigSetString, "config", BML_API_ConfigSetString);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigGetInt, "config", BML_API_ConfigGetInt, BML_CAP_CONFIG_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigGetFloat, "config", BML_API_ConfigGetFloat, BML_CAP_CONFIG_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigGetBool, "config", BML_API_ConfigGetBool, BML_CAP_CONFIG_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigGetString, "config", BML_API_ConfigGetString, BML_CAP_CONFIG_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigSetInt, "config", BML_API_ConfigSetInt, BML_CAP_CONFIG_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigSetFloat, "config", BML_API_ConfigSetFloat, BML_CAP_CONFIG_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigSetBool, "config", BML_API_ConfigSetBool, BML_CAP_CONFIG_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigSetString, "config", BML_API_ConfigSetString, BML_CAP_CONFIG_BASIC);
     
     // Config hooks registration
-    BML_REGISTER_API_GUARDED(bmlRegisterConfigLoadHooks, "config", BML_API_RegisterConfigLoadHooks);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlRegisterConfigLoadHooks, "config", BML_API_RegisterConfigLoadHooks, BML_CAP_CONFIG_BASIC);
 }
 
 BML_Result RegisterConfigLoadHooks(const BML_ConfigLoadHooks *hooks) {

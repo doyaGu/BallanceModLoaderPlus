@@ -1,5 +1,6 @@
 #include "ApiRegistrationMacros.h"
 #include "SyncManager.h"
+#include "bml_capabilities.h"
 
 #include "bml_sync.h"
 
@@ -70,62 +71,63 @@ void RegisterSyncApis() {
     BML_BEGIN_API_REGISTRATION();
     
     /* Mutex APIs */
-    BML_REGISTER_API_GUARDED(bmlMutexCreate, "sync.mutex", BML_API_MutexCreate);
-    BML_REGISTER_API(bmlMutexDestroy, BML_API_MutexDestroy);
-    BML_REGISTER_API(bmlMutexLock, BML_API_MutexLock);
-    BML_REGISTER_API(bmlMutexTryLock, BML_API_MutexTryLock);
-    BML_REGISTER_API(bmlMutexUnlock, BML_API_MutexUnlock);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlMutexCreate, "sync.mutex", BML_API_MutexCreate, BML_CAP_SYNC_MUTEX);
+    BML_REGISTER_API_WITH_CAPS(bmlMutexDestroy, BML_API_MutexDestroy, BML_CAP_SYNC_MUTEX);
+    BML_REGISTER_API_WITH_CAPS(bmlMutexLock, BML_API_MutexLock, BML_CAP_SYNC_MUTEX);
+    BML_REGISTER_API_WITH_CAPS(bmlMutexTryLock, BML_API_MutexTryLock, BML_CAP_SYNC_MUTEX);
+    BML_REGISTER_API_WITH_CAPS(bmlMutexUnlock, BML_API_MutexUnlock, BML_CAP_SYNC_MUTEX);
     
     /* RwLock APIs */
-    BML_REGISTER_API_GUARDED(bmlRwLockCreate, "sync.rwlock", BML_API_RwLockCreate);
-    BML_REGISTER_API(bmlRwLockDestroy, BML_API_RwLockDestroy);
-    BML_REGISTER_API(bmlRwLockReadLock, BML_API_RwLockReadLock);
-    BML_REGISTER_API(bmlRwLockTryReadLock, BML_API_RwLockTryReadLock);
-    BML_REGISTER_API(bmlRwLockWriteLock, BML_API_RwLockWriteLock);
-    BML_REGISTER_API(bmlRwLockTryWriteLock, BML_API_RwLockTryWriteLock);
-    BML_REGISTER_API(bmlRwLockUnlock, BML_API_RwLockUnlock);
-    BML_REGISTER_API(bmlRwLockReadUnlock, BML_API_RwLockReadUnlock);
-    BML_REGISTER_API(bmlRwLockWriteUnlock, BML_API_RwLockWriteUnlock);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlRwLockCreate, "sync.rwlock", BML_API_RwLockCreate, BML_CAP_SYNC_RWLOCK);
+    BML_REGISTER_API_WITH_CAPS(bmlRwLockDestroy, BML_API_RwLockDestroy, BML_CAP_SYNC_RWLOCK);
+    BML_REGISTER_API_WITH_CAPS(bmlRwLockReadLock, BML_API_RwLockReadLock, BML_CAP_SYNC_RWLOCK);
+    BML_REGISTER_API_WITH_CAPS(bmlRwLockTryReadLock, BML_API_RwLockTryReadLock, BML_CAP_SYNC_RWLOCK);
+    BML_REGISTER_API_WITH_CAPS(bmlRwLockWriteLock, BML_API_RwLockWriteLock, BML_CAP_SYNC_RWLOCK);
+    BML_REGISTER_API_WITH_CAPS(bmlRwLockTryWriteLock, BML_API_RwLockTryWriteLock, BML_CAP_SYNC_RWLOCK);
+    BML_REGISTER_API_WITH_CAPS(bmlRwLockUnlock, BML_API_RwLockUnlock, BML_CAP_SYNC_RWLOCK);
+    BML_REGISTER_API_WITH_CAPS(bmlRwLockReadUnlock, BML_API_RwLockReadUnlock, BML_CAP_SYNC_RWLOCK);
+    BML_REGISTER_API_WITH_CAPS(bmlRwLockWriteUnlock, BML_API_RwLockWriteUnlock, BML_CAP_SYNC_RWLOCK);
 
     /* Atomic APIs - direct, no guard needed */
-    BML_REGISTER_API(bmlAtomicIncrement32, BML_API_AtomicIncrement32);
-    BML_REGISTER_API(bmlAtomicDecrement32, BML_API_AtomicDecrement32);
-    BML_REGISTER_API(bmlAtomicAdd32, BML_API_AtomicAdd32);
-    BML_REGISTER_API(bmlAtomicCompareExchange32, BML_API_AtomicCompareExchange32);
-    BML_REGISTER_API(bmlAtomicExchange32, BML_API_AtomicExchange32);
-    BML_REGISTER_API(bmlAtomicLoadPtr, BML_API_AtomicLoadPtr);
-    BML_REGISTER_API(bmlAtomicStorePtr, BML_API_AtomicStorePtr);
-    BML_REGISTER_API(bmlAtomicCompareExchangePtr, BML_API_AtomicCompareExchangePtr);
+    BML_REGISTER_API_WITH_CAPS(bmlAtomicIncrement32, BML_API_AtomicIncrement32, BML_CAP_SYNC_ATOMIC);
+    BML_REGISTER_API_WITH_CAPS(bmlAtomicDecrement32, BML_API_AtomicDecrement32, BML_CAP_SYNC_ATOMIC);
+    BML_REGISTER_API_WITH_CAPS(bmlAtomicAdd32, BML_API_AtomicAdd32, BML_CAP_SYNC_ATOMIC);
+    BML_REGISTER_API_WITH_CAPS(bmlAtomicCompareExchange32, BML_API_AtomicCompareExchange32, BML_CAP_SYNC_ATOMIC);
+    BML_REGISTER_API_WITH_CAPS(bmlAtomicExchange32, BML_API_AtomicExchange32, BML_CAP_SYNC_ATOMIC);
+    BML_REGISTER_API_WITH_CAPS(bmlAtomicLoadPtr, BML_API_AtomicLoadPtr, BML_CAP_SYNC_ATOMIC);
+    BML_REGISTER_API_WITH_CAPS(bmlAtomicStorePtr, BML_API_AtomicStorePtr, BML_CAP_SYNC_ATOMIC);
+    BML_REGISTER_API_WITH_CAPS(bmlAtomicCompareExchangePtr, BML_API_AtomicCompareExchangePtr, BML_CAP_SYNC_ATOMIC);
     
     /* Semaphore APIs */
-    BML_REGISTER_API_GUARDED(bmlSemaphoreCreate, "sync.semaphore", BML_API_SemaphoreCreate);
-    BML_REGISTER_API(bmlSemaphoreDestroy, BML_API_SemaphoreDestroy);
-    BML_REGISTER_API_GUARDED(bmlSemaphoreWait, "sync.semaphore", BML_API_SemaphoreWait);
-    BML_REGISTER_API_GUARDED(bmlSemaphoreSignal, "sync.semaphore", BML_API_SemaphoreSignal);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlSemaphoreCreate, "sync.semaphore", BML_API_SemaphoreCreate, BML_CAP_SYNC_SEMAPHORE);
+    BML_REGISTER_API_WITH_CAPS(bmlSemaphoreDestroy, BML_API_SemaphoreDestroy, BML_CAP_SYNC_SEMAPHORE);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlSemaphoreWait, "sync.semaphore", BML_API_SemaphoreWait, BML_CAP_SYNC_SEMAPHORE);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlSemaphoreSignal, "sync.semaphore", BML_API_SemaphoreSignal, BML_CAP_SYNC_SEMAPHORE);
     
     /* TLS APIs */
-    BML_REGISTER_API_GUARDED(bmlTlsCreate, "sync.tls", BML_API_TlsCreate);
-    BML_REGISTER_API(bmlTlsDestroy, BML_API_TlsDestroy);
-    BML_REGISTER_API(bmlTlsGet, BML_API_TlsGet);
-    BML_REGISTER_API_GUARDED(bmlTlsSet, "sync.tls", BML_API_TlsSet);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlTlsCreate, "sync.tls", BML_API_TlsCreate, BML_CAP_SYNC_TLS);
+    BML_REGISTER_API_WITH_CAPS(bmlTlsDestroy, BML_API_TlsDestroy, BML_CAP_SYNC_TLS);
+    BML_REGISTER_API_WITH_CAPS(bmlTlsGet, BML_API_TlsGet, BML_CAP_SYNC_TLS);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlTlsSet, "sync.tls", BML_API_TlsSet, BML_CAP_SYNC_TLS);
     
     /* CondVar APIs */
-    BML_REGISTER_API_GUARDED(bmlCondVarCreate, "sync.condvar", BML_API_CondVarCreate);
-    BML_REGISTER_API(bmlCondVarDestroy, BML_API_CondVarDestroy);
-    BML_REGISTER_API(bmlCondVarWait, BML_API_CondVarWait);
-    BML_REGISTER_API_GUARDED(bmlCondVarWaitTimeout, "sync.condvar", BML_API_CondVarWaitTimeout);
-    BML_REGISTER_API(bmlCondVarSignal, BML_API_CondVarSignal);
-    BML_REGISTER_API(bmlCondVarBroadcast, BML_API_CondVarBroadcast);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlCondVarCreate, "sync.condvar", BML_API_CondVarCreate, BML_CAP_SYNC_MUTEX);
+    BML_REGISTER_API_WITH_CAPS(bmlCondVarDestroy, BML_API_CondVarDestroy, BML_CAP_SYNC_MUTEX);
+    BML_REGISTER_API_WITH_CAPS(bmlCondVarWait, BML_API_CondVarWait, BML_CAP_SYNC_MUTEX);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlCondVarWaitTimeout, "sync.condvar", BML_API_CondVarWaitTimeout, BML_CAP_SYNC_MUTEX);
+    BML_REGISTER_API_WITH_CAPS(bmlCondVarSignal, BML_API_CondVarSignal, BML_CAP_SYNC_MUTEX);
+    BML_REGISTER_API_WITH_CAPS(bmlCondVarBroadcast, BML_API_CondVarBroadcast, BML_CAP_SYNC_MUTEX);
     
     /* SpinLock APIs */
-    BML_REGISTER_API_GUARDED(bmlSpinLockCreate, "sync.spinlock", BML_API_SpinLockCreate);
-    BML_REGISTER_API(bmlSpinLockDestroy, BML_API_SpinLockDestroy);
-    BML_REGISTER_API(bmlSpinLockLock, BML_API_SpinLockLock);
-    BML_REGISTER_API(bmlSpinLockTryLock, BML_API_SpinLockTryLock);
-    BML_REGISTER_API(bmlSpinLockUnlock, BML_API_SpinLockUnlock);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlSpinLockCreate, "sync.spinlock", BML_API_SpinLockCreate, BML_CAP_SYNC_MUTEX);
+    BML_REGISTER_API_WITH_CAPS(bmlSpinLockDestroy, BML_API_SpinLockDestroy, BML_CAP_SYNC_MUTEX);
+    BML_REGISTER_API_WITH_CAPS(bmlSpinLockLock, BML_API_SpinLockLock, BML_CAP_SYNC_MUTEX);
+    BML_REGISTER_API_WITH_CAPS(bmlSpinLockTryLock, BML_API_SpinLockTryLock, BML_CAP_SYNC_MUTEX);
+    BML_REGISTER_API_WITH_CAPS(bmlSpinLockUnlock, BML_API_SpinLockUnlock, BML_CAP_SYNC_MUTEX);
     
     /* Capabilities */
-    BML_REGISTER_CAPS_API(bmlGetSyncCaps, "sync.caps", BML_API_GetSyncCaps);
+    BML_REGISTER_CAPS_API_WITH_CAPS(bmlGetSyncCaps, "sync.caps", BML_API_GetSyncCaps, 
+        BML_CAP_SYNC_MUTEX | BML_CAP_SYNC_RWLOCK | BML_CAP_SYNC_SEMAPHORE | BML_CAP_SYNC_ATOMIC | BML_CAP_SYNC_TLS);
 }
 
 } // namespace BML::Core

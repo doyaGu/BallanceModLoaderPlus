@@ -5,6 +5,7 @@
 
 #include "bml_errors.h"
 #include "bml_api_ids.h"
+#include "bml_capabilities.h"
 
 namespace BML::Core {
 
@@ -19,10 +20,10 @@ extern "C" {
 // ============================================================================
 
 void RegisterDiagnosticApis() {
-    auto& registry = ApiRegistry::Instance();
+    BML_BEGIN_API_REGISTRATION();
     
-    BML_REGISTER_API_GUARDED(bmlGetLastError, "diagnostics", BML_API_GetLastError);
-    BML_REGISTER_API(bmlClearLastError, BML_API_ClearLastError);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlGetLastError, "diagnostics", BML_API_GetLastError, BML_CAP_DIAGNOSTICS);
+    BML_REGISTER_API_WITH_CAPS(bmlClearLastError, BML_API_ClearLastError, BML_CAP_DIAGNOSTICS);
 }
 
 } // namespace BML::Core

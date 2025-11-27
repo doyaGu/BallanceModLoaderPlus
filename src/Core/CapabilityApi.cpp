@@ -12,10 +12,8 @@
  * @see docs/api-improvements/03-feature-extensions.md for design
  */
 
-// Include BML/Version.h first before other headers that may conflict
-#include "BML/Version.h"  // For BML_MAJOR_VERSION, BML_MINOR_VERSION, BML_PATCH_VERSION
-
 #include "bml_capabilities.h"
+#include "bml_version.h"
 #include "ApiRegistrationMacros.h"
 #include "ApiRegistry.h"
 #include "Context.h"
@@ -43,9 +41,9 @@ static int BML_CheckCompatibility(const BML_VersionRequirement* requirement) {
     }
     
     // Check BML version
-    uint16_t current_major = BML_MAJOR_VERSION;
-    uint16_t current_minor = BML_MINOR_VERSION;
-    uint16_t current_patch = BML_PATCH_VERSION;
+    uint16_t current_major = BML_API_VERSION_MAJOR;
+    uint16_t current_minor = BML_API_VERSION_MINOR;
+    uint16_t current_patch = BML_API_VERSION_PATCH;
     
     // Major version must match exactly (breaking changes)
     if (current_major != requirement->min_major) {
@@ -188,18 +186,18 @@ void RegisterCapabilityApis() {
     BML_BEGIN_API_REGISTRATION();
     
     /* Capability queries - simple functions */
-    BML_REGISTER_API(bmlQueryCapabilities, BML_QueryCapabilities);
-    BML_REGISTER_API(bmlHasCapability, BML_HasCapability);
-    BML_REGISTER_API(bmlCheckCompatibility, BML_CheckCompatibility);
+    BML_REGISTER_API_WITH_CAPS(bmlQueryCapabilities, BML_QueryCapabilities, BML_CAP_CAPABILITY_QUERY);
+    BML_REGISTER_API_WITH_CAPS(bmlHasCapability, BML_HasCapability, BML_CAP_CAPABILITY_QUERY);
+    BML_REGISTER_API_WITH_CAPS(bmlCheckCompatibility, BML_CheckCompatibility, BML_CAP_CAPABILITY_QUERY);
     
     /* API discovery */
-    BML_REGISTER_API(bmlGetApiDescriptor, BML_GetApiDescriptor);
-    BML_REGISTER_API(bmlGetApiDescriptorByName, BML_GetApiDescriptorByName);
-    BML_REGISTER_API(bmlEnumerateApis, BML_EnumerateApis);
-    BML_REGISTER_API(bmlGetApiIntroducedVersion, BML_GetApiIntroducedVersion);
+    BML_REGISTER_API_WITH_CAPS(bmlGetApiDescriptor, BML_GetApiDescriptor, BML_CAP_CAPABILITY_QUERY);
+    BML_REGISTER_API_WITH_CAPS(bmlGetApiDescriptorByName, BML_GetApiDescriptorByName, BML_CAP_CAPABILITY_QUERY);
+    BML_REGISTER_API_WITH_CAPS(bmlEnumerateApis, BML_EnumerateApis, BML_CAP_CAPABILITY_QUERY);
+    BML_REGISTER_API_WITH_CAPS(bmlGetApiIntroducedVersion, BML_GetApiIntroducedVersion, BML_CAP_CAPABILITY_QUERY);
     
     /* Extension registration */
-    BML_REGISTER_API(bmlRegisterExtensionApi, BML_RegisterExtensionApi);
+    BML_REGISTER_API_WITH_CAPS(bmlRegisterExtensionApi, BML_RegisterExtensionApi, BML_CAP_EXTENSION_BASIC);
 }
 
 } // namespace BML::Core

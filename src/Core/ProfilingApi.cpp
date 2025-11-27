@@ -1,5 +1,6 @@
 #include "ProfilingManager.h"
 #include "ApiRegistrationMacros.h"
+#include "bml_capabilities.h"
 
 namespace BML::Core {
 
@@ -80,28 +81,28 @@ void RegisterProfilingApis() {
     BML_BEGIN_API_REGISTRATION();
 
     /* Trace Events - simple functions, no error guard needed */
-    BML_REGISTER_API(bmlTraceBegin, Impl_TraceBegin);
-    BML_REGISTER_API(bmlTraceEnd, Impl_TraceEnd);
-    BML_REGISTER_API(bmlTraceInstant, Impl_TraceInstant);
-    BML_REGISTER_API(bmlTraceSetThreadName, Impl_TraceSetThreadName);
-    BML_REGISTER_API(bmlTraceCounter, Impl_TraceCounter);
-    BML_REGISTER_API(bmlTraceFrameMark, Impl_TraceFrameMark);
+    BML_REGISTER_API_WITH_CAPS(bmlTraceBegin, Impl_TraceBegin, BML_CAP_PROFILING_TRACE);
+    BML_REGISTER_API_WITH_CAPS(bmlTraceEnd, Impl_TraceEnd, BML_CAP_PROFILING_TRACE);
+    BML_REGISTER_API_WITH_CAPS(bmlTraceInstant, Impl_TraceInstant, BML_CAP_PROFILING_TRACE);
+    BML_REGISTER_API_WITH_CAPS(bmlTraceSetThreadName, Impl_TraceSetThreadName, BML_CAP_PROFILING_TRACE);
+    BML_REGISTER_API_WITH_CAPS(bmlTraceCounter, Impl_TraceCounter, BML_CAP_PROFILING_TRACE);
+    BML_REGISTER_API_WITH_CAPS(bmlTraceFrameMark, Impl_TraceFrameMark, BML_CAP_PROFILING_TRACE);
 
     /* Performance Counters - simple getters */
-    BML_REGISTER_API(bmlGetApiCallCount, Impl_GetApiCallCount);
-    BML_REGISTER_API(bmlGetTotalAllocBytes, Impl_GetTotalAllocBytes);
-    BML_REGISTER_API(bmlGetTimestampNs, Impl_GetTimestampNs);
-    BML_REGISTER_API(bmlGetCpuFrequency, Impl_GetCpuFrequency);
+    BML_REGISTER_API_WITH_CAPS(bmlGetApiCallCount, Impl_GetApiCallCount, BML_CAP_PROFILING_STATS);
+    BML_REGISTER_API_WITH_CAPS(bmlGetTotalAllocBytes, Impl_GetTotalAllocBytes, BML_CAP_PROFILING_STATS);
+    BML_REGISTER_API_WITH_CAPS(bmlGetTimestampNs, Impl_GetTimestampNs, BML_CAP_PROFILING_STATS);
+    BML_REGISTER_API_WITH_CAPS(bmlGetCpuFrequency, Impl_GetCpuFrequency, BML_CAP_PROFILING_STATS);
 
     /* Backend Control */
-    BML_REGISTER_API(bmlGetProfilerBackend, Impl_GetProfilerBackend);
-    BML_REGISTER_API_GUARDED(bmlSetProfilingEnabled, "profiling", Impl_SetProfilingEnabled);
-    BML_REGISTER_API(bmlIsProfilingEnabled, Impl_IsProfilingEnabled);
-    BML_REGISTER_API_GUARDED(bmlFlushProfilingData, "profiling", Impl_FlushProfilingData);
+    BML_REGISTER_API_WITH_CAPS(bmlGetProfilerBackend, Impl_GetProfilerBackend, BML_CAP_PROFILING_TRACE);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlSetProfilingEnabled, "profiling", Impl_SetProfilingEnabled, BML_CAP_PROFILING_TRACE);
+    BML_REGISTER_API_WITH_CAPS(bmlIsProfilingEnabled, Impl_IsProfilingEnabled, BML_CAP_PROFILING_TRACE);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlFlushProfilingData, "profiling", Impl_FlushProfilingData, BML_CAP_PROFILING_TRACE);
 
     /* Statistics */
-    BML_REGISTER_CAPS_API(bmlGetProfilingStats, "profiling.stats", Impl_GetProfilingStats);
-    BML_REGISTER_CAPS_API(bmlGetProfilingCaps, "profiling.caps", Impl_GetProfilingCaps);
+    BML_REGISTER_CAPS_API_WITH_CAPS(bmlGetProfilingStats, "profiling.stats", Impl_GetProfilingStats, BML_CAP_PROFILING_STATS);
+    BML_REGISTER_CAPS_API_WITH_CAPS(bmlGetProfilingCaps, "profiling.caps", Impl_GetProfilingCaps, BML_CAP_PROFILING_TRACE | BML_CAP_PROFILING_STATS);
 }
 
 } // namespace BML::Core

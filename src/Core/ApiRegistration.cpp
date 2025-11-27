@@ -1,5 +1,6 @@
 #include "ApiRegistration.h"
 #include "ApiRegistry.h"
+#include "ApiRegistrationMacros.h"
 
 #include <algorithm>
 #include <iterator>
@@ -7,6 +8,7 @@
 #include "bml_core.h"
 #include "bml_api_ids.h"
 #include "bml_version.h"
+#include "bml_capabilities.h"
 
 #include "Context.h"
 #include "ModHandle.h"
@@ -17,32 +19,14 @@ namespace BML::Core {
 
 namespace {
 
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
 Context *FromHandle(BML_Context ctx) {
     if (!ctx)
         return nullptr;
     return reinterpret_cast<Context *>(ctx);
-}
-
-BML_Result ContextRetain(BML_Context ctx) {
-    auto *context = FromHandle(ctx);
-    if (!context)
-        return BML_RESULT_INVALID_ARGUMENT;
-    return context->RetainHandle();
-}
-
-BML_Result ContextRelease(BML_Context ctx) {
-    auto *context = FromHandle(ctx);
-    if (!context)
-        return BML_RESULT_INVALID_ARGUMENT;
-    return context->ReleaseHandle();
-}
-
-BML_Context GetGlobalContext() {
-    return Context::Instance().GetHandle();
-}
-
-const BML_Version *GetRuntimeVersion() {
-    return &Context::Instance().GetRuntimeVersion();
 }
 
 BML_Mod_T *ResolveMod(BML_Mod mod) {
@@ -51,7 +35,33 @@ BML_Mod_T *ResolveMod(BML_Mod mod) {
     return ctx.ResolveModHandle(target);
 }
 
-BML_Result RequestCapability(BML_Mod mod, const char *capability_id) {
+// ============================================================================
+// Core API Implementations
+// ============================================================================
+
+BML_Result BML_API_ContextRetain(BML_Context ctx) {
+    auto *context = FromHandle(ctx);
+    if (!context)
+        return BML_RESULT_INVALID_ARGUMENT;
+    return context->RetainHandle();
+}
+
+BML_Result BML_API_ContextRelease(BML_Context ctx) {
+    auto *context = FromHandle(ctx);
+    if (!context)
+        return BML_RESULT_INVALID_ARGUMENT;
+    return context->ReleaseHandle();
+}
+
+BML_Context BML_API_GetGlobalContext() {
+    return Context::Instance().GetHandle();
+}
+
+const BML_Version *BML_API_GetRuntimeVersion() {
+    return &Context::Instance().GetRuntimeVersion();
+}
+
+BML_Result BML_API_RequestCapability(BML_Mod mod, const char *capability_id) {
     if (!capability_id)
         return BML_RESULT_INVALID_ARGUMENT;
     auto *handle = ResolveMod(mod);
@@ -61,7 +71,7 @@ BML_Result RequestCapability(BML_Mod mod, const char *capability_id) {
     return it != handle->capabilities.end() ? BML_RESULT_OK : BML_RESULT_NOT_FOUND;
 }
 
-BML_Result CheckCapability(BML_Mod mod, const char *capability_id, BML_Bool *out_supported) {
+BML_Result BML_API_CheckCapability(BML_Mod mod, const char *capability_id, BML_Bool *out_supported) {
     if (out_supported)
         *out_supported = BML_FALSE;
     if (!capability_id)
@@ -75,7 +85,7 @@ BML_Result CheckCapability(BML_Mod mod, const char *capability_id, BML_Bool *out
     return BML_RESULT_OK;
 }
 
-BML_Result GetModId(BML_Mod mod, const char **out_id) {
+BML_Result BML_API_GetModId(BML_Mod mod, const char **out_id) {
     if (!out_id)
         return BML_RESULT_INVALID_ARGUMENT;
     auto *handle = ResolveMod(mod);
@@ -85,7 +95,7 @@ BML_Result GetModId(BML_Mod mod, const char **out_id) {
     return BML_RESULT_OK;
 }
 
-BML_Result GetModVersion(BML_Mod mod, BML_Version *out_version) {
+BML_Result BML_API_GetModVersion(BML_Mod mod, BML_Version *out_version) {
     if (!out_version)
         return BML_RESULT_INVALID_ARGUMENT;
     auto *handle = ResolveMod(mod);
@@ -95,7 +105,7 @@ BML_Result GetModVersion(BML_Mod mod, BML_Version *out_version) {
     return BML_RESULT_OK;
 }
 
-BML_Result RegisterShutdownHook(BML_Mod mod, BML_ShutdownCallback callback, void *user_data) {
+BML_Result BML_API_RegisterShutdownHook(BML_Mod mod, BML_ShutdownCallback callback, void *user_data) {
     if (!callback)
         return BML_RESULT_INVALID_ARGUMENT;
     auto *handle = ResolveMod(mod);
@@ -105,7 +115,7 @@ BML_Result RegisterShutdownHook(BML_Mod mod, BML_ShutdownCallback callback, void
     return BML_RESULT_OK;
 }
 
-BML_Result SetCurrentModule(BML_Mod mod) {
+BML_Result BML_API_SetCurrentModule(BML_Mod mod) {
     if (!mod) {
         Context::SetCurrentModule(nullptr);
         return BML_RESULT_OK;
@@ -117,11 +127,11 @@ BML_Result SetCurrentModule(BML_Mod mod) {
     return BML_RESULT_OK;
 }
 
-BML_Mod GetCurrentModuleHandle() {
+BML_Mod BML_API_GetCurrentModule() {
     return Context::GetCurrentModule();
 }
 
-BML_Result GetCoreCaps(BML_CoreCaps *out_caps) {
+BML_Result BML_API_GetCoreCaps(BML_CoreCaps *out_caps) {
     if (!out_caps)
         return BML_RESULT_INVALID_ARGUMENT;
     BML_CoreCaps caps{};
@@ -138,6 +148,10 @@ BML_Result GetCoreCaps(BML_CoreCaps *out_caps) {
     *out_caps = caps;
     return BML_RESULT_OK;
 }
+
+// ============================================================================
+// Core API Subsystem Descriptors
+// ============================================================================
 
 enum CoreApiMask : uint32_t {
     CORE_API_LOGGING = 1u << 0,
@@ -170,84 +184,36 @@ constexpr ApiRegistry::CoreApiDescriptor kCoreApiDescriptors[] = {
 } // namespace
 
 void RegisterCoreApis() {
-    auto &registry = ApiRegistry::Instance();
+    BML_BEGIN_API_REGISTRATION();
 
-    auto register_core_api = [&](const char* name, BML_ApiId id, void* pointer) {
-        ApiRegistry::ApiMetadata meta{};
-        meta.name = name;
-        meta.id = id;
-        meta.pointer = pointer;
-        meta.version_major = BML_API_VERSION_MAJOR;
-        meta.version_minor = BML_API_VERSION_MINOR;
-        meta.version_patch = BML_API_VERSION_PATCH;
-        meta.type = BML_API_TYPE_CORE;
-        meta.threading = BML_THREADING_FREE;
-        meta.provider_mod = "BML";
-        registry.RegisterApi(meta);
-    };
+    // Context management APIs
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlContextRetain, "core.context", BML_API_ContextRetain, BML_CAP_CONTEXT);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlContextRelease, "core.context", BML_API_ContextRelease, BML_CAP_CONTEXT);
+    BML_REGISTER_API_WITH_CAPS(bmlGetGlobalContext, BML_API_GetGlobalContext, BML_CAP_CONTEXT);
+    BML_REGISTER_API_WITH_CAPS(bmlGetRuntimeVersion, BML_API_GetRuntimeVersion, BML_CAP_RUNTIME);
 
-    register_core_api("bmlContextRetain", BML_API_ID_bmlContextRetain, reinterpret_cast<void *>(+[](BML_Context ctx) {
-        return GuardResult("core.context", [ctx] {
-            return ContextRetain(ctx);
-        });
-    }));
-    register_core_api("bmlContextRelease", BML_API_ID_bmlContextRelease, reinterpret_cast<void *>(+[](BML_Context ctx) {
-        return GuardResult("core.context", [ctx] {
-            return ContextRelease(ctx);
-        });
-    }));
-    register_core_api("bmlGetGlobalContext", BML_API_ID_bmlGetGlobalContext, reinterpret_cast<void *>(GetGlobalContext));
-    register_core_api("bmlGetRuntimeVersion", BML_API_ID_bmlGetRuntimeVersion, reinterpret_cast<void *>(GetRuntimeVersion));
-    register_core_api("bmlRequestCapability", BML_API_ID_bmlRequestCapability, reinterpret_cast<void *>(+[](BML_Mod mod, const char *capability_id) {
-        return GuardResult("core.capabilities", [mod, capability_id] {
-            return RequestCapability(mod, capability_id);
-        });
-    }));
-    register_core_api("bmlCheckCapability", BML_API_ID_bmlCheckCapability, reinterpret_cast<void *>(+[](BML_Mod mod, const char *capability_id, BML_Bool *out_supported) {
-        return GuardResult("core.capabilities", [mod, capability_id, out_supported] {
-            return CheckCapability(mod, capability_id, out_supported);
-        });
-    }));
-    register_core_api("bmlGetModId", BML_API_ID_bmlGetModId, reinterpret_cast<void *>(+[](BML_Mod mod, const char **out_id) {
-        return GuardResult("core.metadata", [mod, out_id] {
-            return GetModId(mod, out_id);
-        });
-    }));
-    register_core_api("bmlGetModVersion", BML_API_ID_bmlGetModVersion, reinterpret_cast<void *>(+[](BML_Mod mod, BML_Version *out_version) {
-        return GuardResult("core.metadata", [mod, out_version] {
-            return GetModVersion(mod, out_version);
-        });
-    }));
-    register_core_api("bmlRegisterShutdownHook", BML_API_ID_bmlRegisterShutdownHook, reinterpret_cast<void *>(+[](BML_Mod mod, BML_ShutdownCallback callback, void *user_data) {
-        return GuardResult("core.lifecycle", [mod, callback, user_data] {
-            return RegisterShutdownHook(mod, callback, user_data);
-        });
-    }));
-    register_core_api("bmlSetCurrentModule", BML_API_ID_bmlSetCurrentModule, reinterpret_cast<void *>(+[](BML_Mod mod) {
-        return GuardResult("core.lifecycle", [mod] {
-            return SetCurrentModule(mod);
-        });
-    }));
-    register_core_api("bmlGetCurrentModule", BML_API_ID_bmlGetCurrentModule, reinterpret_cast<void *>(+[]() {
-        return GetCurrentModuleHandle();
-    }));
-    register_core_api("bmlGetCoreCaps", BML_API_ID_bmlGetCoreCaps, reinterpret_cast<void *>(+[](BML_CoreCaps *out_caps) {
-        return GuardResult("core.runtime", [out_caps] {
-            return GetCoreCaps(out_caps);
-        });
-    }));
+    // Capability APIs
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlRequestCapability, "core.capabilities", BML_API_RequestCapability, BML_CAP_CAPABILITY_QUERY);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlCheckCapability, "core.capabilities", BML_API_CheckCapability, BML_CAP_CAPABILITY_QUERY);
 
-    // Error handling APIs (Task 1.1)
-    register_core_api("bmlGetLastError", BML_API_ID_bmlGetLastError, reinterpret_cast<void *>(+[](BML_ErrorInfo *out_info) {
-        return GetLastErrorInfo(out_info);
-    }));
-    register_core_api("bmlClearLastError", BML_API_ID_bmlClearLastError, reinterpret_cast<void *>(+[]() {
-        ClearLastErrorInfo();
-    }));
-    register_core_api("bmlGetErrorString", BML_API_ID_bmlGetErrorString, reinterpret_cast<void *>(+[](BML_Result result) {
-        return GetErrorString(result);
-    }));
+    // Module metadata APIs
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlGetModId, "core.metadata", BML_API_GetModId, BML_CAP_MOD_INFO);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlGetModVersion, "core.metadata", BML_API_GetModVersion, BML_CAP_MOD_INFO);
 
+    // Lifecycle APIs
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlRegisterShutdownHook, "core.lifecycle", BML_API_RegisterShutdownHook, BML_CAP_LIFECYCLE);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlSetCurrentModule, "core.lifecycle", BML_API_SetCurrentModule, BML_CAP_MOD_INFO);
+    BML_REGISTER_API_WITH_CAPS(bmlGetCurrentModule, BML_API_GetCurrentModule, BML_CAP_MOD_INFO);
+
+    // Runtime capabilities API
+    BML_REGISTER_CAPS_API_WITH_CAPS(bmlGetCoreCaps, "core.runtime", BML_API_GetCoreCaps, BML_CAP_RUNTIME);
+
+    // Error handling APIs
+    BML_REGISTER_API_WITH_CAPS(bmlGetLastError, GetLastErrorInfo, BML_CAP_DIAGNOSTICS);
+    BML_REGISTER_API_WITH_CAPS(bmlClearLastError, ClearLastErrorInfo, BML_CAP_DIAGNOSTICS);
+    BML_REGISTER_API_WITH_CAPS(bmlGetErrorString, GetErrorString, BML_CAP_DIAGNOSTICS);
+
+    // Register all subsystem APIs in dependency order
     registry.RegisterCoreApiSet(kCoreApiDescriptors, std::size(kCoreApiDescriptors));
 }
 
