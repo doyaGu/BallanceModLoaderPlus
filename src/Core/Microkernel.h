@@ -7,6 +7,9 @@
 
 namespace BML::Core {
 
+// Phase 0: Initialize BML Core (context, API registry) - safe in DllMain
+bool InitializeCore();
+
 // Phase 1: Discover and validate modules (safe to call in DllMain)
 bool DiscoverModules();
 
