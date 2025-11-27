@@ -11,6 +11,8 @@
         { "pointer": "bmlContextRelease", "required": true },
         { "pointer": "bmlGetGlobalContext", "required": true },
         { "pointer": "bmlGetRuntimeVersion", "required": true },
+        { "pointer": "bmlContextSetUserData", "required": true },
+        { "pointer": "bmlContextGetUserData", "required": true },
         { "pointer": "bmlRequestCapability", "required": true },
         { "pointer": "bmlCheckCapability", "required": true },
         { "pointer": "bmlGetModId", "required": true },

@@ -6,12 +6,18 @@
 using BML::Core::ApiRegistry;
 
 extern "C" BML_API BML_Result bmlAttach(void) {
-    // Phase 1: Discover modules (safe in DllMain)
-    // Only scan and validate, don't load DLLs yet
-    if (!BML::Core::DiscoverModules())
+    // Phase 0: Initialize core only (safe in DllMain)
+    // Creates context, registers core APIs
+    if (!BML::Core::InitializeCore())
         return BML_RESULT_FAIL;
     
     return BML_RESULT_OK;
+}
+
+extern "C" BML_API BML_Result bmlDiscoverModules(void) {
+    // Phase 1: Discover modules (call after bmlAttach)
+    // Scans for mods, validates manifests, resolves dependencies
+    return BML::Core::DiscoverModules() ? BML_RESULT_OK : BML_RESULT_FAIL;
 }
 
 extern "C" BML_API BML_Result bmlLoadModules(void) {
