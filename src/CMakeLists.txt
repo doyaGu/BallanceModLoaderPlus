@@ -1,6 +1,7 @@
 configure_file(Version.h.in "${BML_INCLUDE_DIR}/BML/Version.h" @ONLY)
 
 add_subdirectory(Utils)
+add_subdirectory(Core)
 
 set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/Version.h
@@ -126,12 +127,15 @@ set(IMGUI_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/imgui_impl_ck2.cpp
 )
 
-add_library(BML SHARED
-        ${BML_SOURCES} ${BML_PUBLIC_HEADERS} ${BML_PRIVATE_HEADERS}
-        ${IMGUI_SOURCES} ${IMGUI_HEADERS}
+add_library(BMLPlus SHARED
+        ${BML_SOURCES}
+        ${BML_PUBLIC_HEADERS}
+        ${BML_PRIVATE_HEADERS}
+        ${IMGUI_SOURCES}
+        ${IMGUI_HEADERS}
 )
 
-target_include_directories(BML
+target_include_directories(BMLPlus
         PUBLIC
         $<BUILD_INTERFACE:${BML_INCLUDE_DIR}>
         $<BUILD_INTERFACE:${IMGUI_SOURCE_DIR}>
@@ -140,7 +144,7 @@ target_include_directories(BML
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_link_libraries(BML
+target_link_libraries(BMLPlus
         PUBLIC
         CK2 VxMath
         PRIVATE
@@ -148,23 +152,22 @@ target_link_libraries(BML
         minhook onig
 )
 
-target_compile_definitions(BML PRIVATE
+target_compile_definitions(BMLPlus PRIVATE
         BML_EXPORTS IMGUI_EXPORT
 )
 
-set_target_properties(BML PROPERTIES
-        OUTPUT_NAME "BMLPlus"
+set_target_properties(BMLPlus PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 )
 
-add_custom_command(TARGET BML PRE_BUILD
+add_custom_command(TARGET BMLPlus PRE_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/imconfig.h" "${IMGUI_SOURCE_DIR}"
         VERBATIM
 )
 
-install(TARGETS BML
+install(TARGETS BMLPlus
         EXPORT BMLTargets
         ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
