@@ -22,9 +22,14 @@ static std::string Trim(const std::string &str) {
 static bool ParseInt(const std::string &text, int &out) {
     if (text.empty())
         return false;
+    // Check for negative numbers - reject them
+    if (text[0] == '-')
+        return false;
     char *end = nullptr;
     long value = std::strtol(text.c_str(), &end, 10);
     if (end == text.c_str() || *end != '\0')
+        return false;
+    if (value < 0)  // Additional safety check
         return false;
     out = static_cast<int>(value);
     return true;
@@ -37,14 +42,26 @@ bool ParseSemanticVersion(const std::string &text, SemanticVersion &out_version)
     if (trimmed.empty())
         return false;
 
+    // Check for prerelease suffix (e.g., "1.0.0-alpha" or "1.0.0-rc.1")
+    std::string version_part = trimmed;
+    std::string prerelease_part;
+    size_t hyphen_pos = trimmed.find('-');
+    if (hyphen_pos != std::string::npos) {
+        version_part = trimmed.substr(0, hyphen_pos);
+        prerelease_part = trimmed.substr(hyphen_pos + 1);
+        // Validate prerelease is not empty
+        if (prerelease_part.empty())
+            return false;
+    }
+
     int parts[3] = {0, 0, 0};
     size_t begin = 0;
     size_t part_index = 0;
-    while (begin <= trimmed.size() && part_index < 3) {
-        size_t end = trimmed.find('.', begin);
+    while (begin <= version_part.size() && part_index < 3) {
+        size_t end = version_part.find('.', begin);
         if (end == std::string::npos)
-            end = trimmed.size();
-        auto token = trimmed.substr(begin, end - begin);
+            end = version_part.size();
+        auto token = version_part.substr(begin, end - begin);
         int value = 0;
         if (!ParseInt(token, value))
             return false;
@@ -55,6 +72,7 @@ bool ParseSemanticVersion(const std::string &text, SemanticVersion &out_version)
     out_version.major = parts[0];
     out_version.minor = parts[1];
     out_version.patch = parts[2];
+    out_version.prerelease = prerelease_part;
     return true;
 }
 
@@ -77,6 +95,15 @@ bool ParseSemanticVersionRange(const std::string &text,
     if (trimmed.rfind(">=", 0) == 0) {
         op = VersionOperator::GreaterEqual;
         offset = 2;
+    } else if (trimmed.rfind("<=", 0) == 0) {
+        op = VersionOperator::LessEqual;
+        offset = 2;
+    } else if (trimmed[0] == '>') {
+        op = VersionOperator::Greater;
+        offset = 1;
+    } else if (trimmed[0] == '<') {
+        op = VersionOperator::Less;
+        offset = 1;
     } else if (trimmed[0] == '^') {
         op = VersionOperator::Compatible;
         offset = 1;
@@ -119,22 +146,54 @@ static bool ApproximateMatch(const SemanticVersion &requested, const SemanticVer
            actual.patch >= requested.patch;
 }
 
+// Compare prerelease strings according to semver spec
+// Returns: -1 if a < b, 0 if a == b, 1 if a > b
+// Empty prerelease has higher precedence than non-empty (1.0.0 > 1.0.0-alpha)
+static int ComparePrereleases(const std::string &a, const std::string &b) {
+    if (a.empty() && b.empty())
+        return 0;
+    if (a.empty())
+        return 1;  // no prerelease > prerelease
+    if (b.empty())
+        return -1; // prerelease < no prerelease
+    
+    // Simple lexicographic comparison for prerelease identifiers
+    // A full implementation would split by '.' and compare each identifier
+    if (a < b) return -1;
+    if (a > b) return 1;
+    return 0;
+}
+
+// Compare two semantic versions
+// Returns: -1 if a < b, 0 if a == b, 1 if a > b
+static int CompareVersions(const SemanticVersion &a, const SemanticVersion &b) {
+    if (a.major != b.major)
+        return a.major < b.major ? -1 : 1;
+    if (a.minor != b.minor)
+        return a.minor < b.minor ? -1 : 1;
+    if (a.patch != b.patch)
+        return a.patch < b.patch ? -1 : 1;
+    return ComparePrereleases(a.prerelease, b.prerelease);
+}
+
 bool IsVersionSatisfied(const SemanticVersionRange &range,
                         const SemanticVersion &version) {
     if (!range.parsed)
         return true; // treat unknown expressions as satisfied
 
+    int cmp = CompareVersions(version, range.version);
+
     switch (range.op) {
         case VersionOperator::Exact:
-            return version.major == range.version.major &&
-                   version.minor == range.version.minor &&
-                   version.patch == range.version.patch;
+            return cmp == 0;
         case VersionOperator::GreaterEqual:
-            if (version.major != range.version.major)
-                return version.major > range.version.major;
-            if (version.minor != range.version.minor)
-                return version.minor >= range.version.minor;
-            return version.patch >= range.version.patch;
+            return cmp >= 0;
+        case VersionOperator::Greater:
+            return cmp > 0;
+        case VersionOperator::LessEqual:
+            return cmp <= 0;
+        case VersionOperator::Less:
+            return cmp < 0;
         case VersionOperator::Compatible:
             return CompatibleMatch(range.version, version);
         case VersionOperator::ApproximatelyEquivalent:
