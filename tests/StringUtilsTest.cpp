@@ -5,7 +5,7 @@
 #include <locale>
 #include <algorithm>
 
-#include "Utils/StringUtils.h"
+#include "StringUtils.h"
 
 class StringUtilsTest : public ::testing::Test {
 protected:
