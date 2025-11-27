@@ -380,7 +380,7 @@ static bool VersionLessThan(const SemanticVersion& a, const SemanticVersion& b) 
 }
 
 static bool VersionEqual(const SemanticVersion& a, const SemanticVersion& b) {
-    return a.major == b.major && a.minor == b.minor && a.patch == b.patch;
+    return a.major == b.major && a.minor == b.minor && a.patch == b.patch && a.prerelease == b.prerelease;
 }
 
 TEST_F(SemanticVersionTests, VersionComparisonHelper_LessThan) {
@@ -430,6 +430,200 @@ TEST_F(SemanticVersionTests, ParseMultipleRangesIndependently) {
     EXPECT_EQ(range2.version.major, 2);
     EXPECT_EQ(range1.op, VersionOperator::Compatible);
     EXPECT_EQ(range2.op, VersionOperator::GreaterEqual);
+}
+
+// ============================================================================
+// New Operator Tests (>, <=, <)
+// ============================================================================
+
+TEST_F(SemanticVersionTests, ParseGreaterRange) {
+    SemanticVersionRange range;
+    std::string error;
+    EXPECT_TRUE(ParseSemanticVersionRange(">1.0.0", range, error));
+    EXPECT_TRUE(range.parsed);
+    EXPECT_EQ(range.op, VersionOperator::Greater);
+    EXPECT_EQ(range.version.major, 1);
+    EXPECT_EQ(range.version.minor, 0);
+    EXPECT_EQ(range.version.patch, 0);
+}
+
+TEST_F(SemanticVersionTests, ParseLessEqualRange) {
+    SemanticVersionRange range;
+    std::string error;
+    EXPECT_TRUE(ParseSemanticVersionRange("<=2.5.0", range, error));
+    EXPECT_TRUE(range.parsed);
+    EXPECT_EQ(range.op, VersionOperator::LessEqual);
+    EXPECT_EQ(range.version.major, 2);
+    EXPECT_EQ(range.version.minor, 5);
+}
+
+TEST_F(SemanticVersionTests, ParseLessRange) {
+    SemanticVersionRange range;
+    std::string error;
+    EXPECT_TRUE(ParseSemanticVersionRange("<3.0.0", range, error));
+    EXPECT_TRUE(range.parsed);
+    EXPECT_EQ(range.op, VersionOperator::Less);
+    EXPECT_EQ(range.version.major, 3);
+}
+
+TEST_F(SemanticVersionTests, GreaterRangeSatisfied) {
+    SemanticVersionRange range;
+    std::string error;
+    
+    ASSERT_TRUE(ParseSemanticVersionRange(">1.5.0", range, error));
+    
+    SemanticVersion v1, v2, v3;
+    ParseSemanticVersion("1.5.0", v1);  // exact - should NOT satisfy
+    ParseSemanticVersion("1.5.1", v2);  // higher patch - should satisfy
+    ParseSemanticVersion("1.4.9", v3);  // lower - should NOT satisfy
+    
+    EXPECT_FALSE(IsVersionSatisfied(range, v1));
+    EXPECT_TRUE(IsVersionSatisfied(range, v2));
+    EXPECT_FALSE(IsVersionSatisfied(range, v3));
+}
+
+TEST_F(SemanticVersionTests, LessEqualRangeSatisfied) {
+    SemanticVersionRange range;
+    std::string error;
+    
+    ASSERT_TRUE(ParseSemanticVersionRange("<=2.0.0", range, error));
+    
+    SemanticVersion v1, v2, v3;
+    ParseSemanticVersion("2.0.0", v1);  // exact - should satisfy
+    ParseSemanticVersion("1.9.9", v2);  // lower - should satisfy
+    ParseSemanticVersion("2.0.1", v3);  // higher - should NOT satisfy
+    
+    EXPECT_TRUE(IsVersionSatisfied(range, v1));
+    EXPECT_TRUE(IsVersionSatisfied(range, v2));
+    EXPECT_FALSE(IsVersionSatisfied(range, v3));
+}
+
+TEST_F(SemanticVersionTests, LessRangeSatisfied) {
+    SemanticVersionRange range;
+    std::string error;
+    
+    ASSERT_TRUE(ParseSemanticVersionRange("<2.0.0", range, error));
+    
+    SemanticVersion v1, v2, v3;
+    ParseSemanticVersion("1.9.9", v1);  // lower - should satisfy
+    ParseSemanticVersion("2.0.0", v2);  // exact - should NOT satisfy
+    ParseSemanticVersion("2.0.1", v3);  // higher - should NOT satisfy
+    
+    EXPECT_TRUE(IsVersionSatisfied(range, v1));
+    EXPECT_FALSE(IsVersionSatisfied(range, v2));
+    EXPECT_FALSE(IsVersionSatisfied(range, v3));
+}
+
+// ============================================================================
+// Negative Version Number Tests
+// ============================================================================
+
+TEST_F(SemanticVersionTests, RejectNegativeMajorVersion) {
+    SemanticVersion v;
+    EXPECT_FALSE(ParseSemanticVersion("-1.0.0", v));
+}
+
+TEST_F(SemanticVersionTests, RejectNegativeMinorVersion) {
+    SemanticVersion v;
+    EXPECT_FALSE(ParseSemanticVersion("1.-2.0", v));
+}
+
+TEST_F(SemanticVersionTests, RejectNegativePatchVersion) {
+    SemanticVersion v;
+    EXPECT_FALSE(ParseSemanticVersion("1.0.-3", v));
+}
+
+// ============================================================================
+// Prerelease Version Tests
+// ============================================================================
+
+TEST_F(SemanticVersionTests, ParsePrereleaseAlpha) {
+    SemanticVersion v;
+    EXPECT_TRUE(ParseSemanticVersion("1.0.0-alpha", v));
+    EXPECT_EQ(v.major, 1);
+    EXPECT_EQ(v.minor, 0);
+    EXPECT_EQ(v.patch, 0);
+    EXPECT_EQ(v.prerelease, "alpha");
+}
+
+TEST_F(SemanticVersionTests, ParsePrereleaseBetaWithNumber) {
+    SemanticVersion v;
+    EXPECT_TRUE(ParseSemanticVersion("2.1.0-beta.2", v));
+    EXPECT_EQ(v.major, 2);
+    EXPECT_EQ(v.minor, 1);
+    EXPECT_EQ(v.patch, 0);
+    EXPECT_EQ(v.prerelease, "beta.2");
+}
+
+TEST_F(SemanticVersionTests, ParsePrereleaseReleaseCandidate) {
+    SemanticVersion v;
+    EXPECT_TRUE(ParseSemanticVersion("3.0.0-rc.1", v));
+    EXPECT_EQ(v.major, 3);
+    EXPECT_EQ(v.minor, 0);
+    EXPECT_EQ(v.patch, 0);
+    EXPECT_EQ(v.prerelease, "rc.1");
+}
+
+TEST_F(SemanticVersionTests, ParsePrereleaseComplex) {
+    SemanticVersion v;
+    EXPECT_TRUE(ParseSemanticVersion("1.0.0-alpha.beta.1", v));
+    EXPECT_EQ(v.prerelease, "alpha.beta.1");
+}
+
+TEST_F(SemanticVersionTests, ParseEmptyPrereleaseIsSuffix) {
+    SemanticVersion v;
+    // "1.0.0-" should fail - prerelease cannot be empty
+    EXPECT_FALSE(ParseSemanticVersion("1.0.0-", v));
+}
+
+TEST_F(SemanticVersionTests, PrereleaseHasLowerPrecedence) {
+    SemanticVersionRange range;
+    std::string error;
+    
+    // 1.0.0-alpha should be less than 1.0.0 (release)
+    ASSERT_TRUE(ParseSemanticVersionRange(">=1.0.0", range, error));
+    
+    SemanticVersion prerelease, release;
+    ParseSemanticVersion("1.0.0-alpha", prerelease);
+    ParseSemanticVersion("1.0.0", release);
+    
+    // Prerelease should NOT satisfy >= release version
+    EXPECT_FALSE(IsVersionSatisfied(range, prerelease));
+    // Release should satisfy >= release version
+    EXPECT_TRUE(IsVersionSatisfied(range, release));
+}
+
+TEST_F(SemanticVersionTests, PrereleaseComparisonOrder) {
+    SemanticVersionRange range;
+    std::string error;
+    
+    // >1.0.0-alpha should be satisfied by 1.0.0-beta (alphabetically greater)
+    ASSERT_TRUE(ParseSemanticVersionRange(">1.0.0-alpha", range, error));
+    
+    SemanticVersion alpha, beta, release;
+    ParseSemanticVersion("1.0.0-alpha", alpha);
+    ParseSemanticVersion("1.0.0-beta", beta);
+    ParseSemanticVersion("1.0.0", release);
+    
+    EXPECT_FALSE(IsVersionSatisfied(range, alpha));  // exact, not greater
+    EXPECT_TRUE(IsVersionSatisfied(range, beta));    // beta > alpha
+    EXPECT_TRUE(IsVersionSatisfied(range, release)); // release > prerelease
+}
+
+TEST_F(SemanticVersionTests, ExactMatchWithPrerelease) {
+    SemanticVersionRange range;
+    std::string error;
+    
+    ASSERT_TRUE(ParseSemanticVersionRange("1.0.0-rc.1", range, error));
+    
+    SemanticVersion exact, different_prerelease, release;
+    ParseSemanticVersion("1.0.0-rc.1", exact);
+    ParseSemanticVersion("1.0.0-rc.2", different_prerelease);
+    ParseSemanticVersion("1.0.0", release);
+    
+    EXPECT_TRUE(IsVersionSatisfied(range, exact));
+    EXPECT_FALSE(IsVersionSatisfied(range, different_prerelease));
+    EXPECT_FALSE(IsVersionSatisfied(range, release));
 }
 
 } // namespace
