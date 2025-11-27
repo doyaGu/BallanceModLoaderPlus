@@ -103,6 +103,7 @@ set(BML_SOURCES
         DataShare.cpp
         Logger.cpp
         Config.cpp
+        Api.cpp
 
         BML.rc
 )
