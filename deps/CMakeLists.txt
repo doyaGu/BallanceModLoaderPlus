@@ -4,6 +4,11 @@ add_subdirectory(minhook EXCLUDE_FROM_ALL)
 # zip
 add_subdirectory(zip EXCLUDE_FROM_ALL)
 
+# tomlplusplus
+set(TOML_BUILD_TESTS OFF CACHE BOOL "")
+set(TOML_BUILD_EXAMPLES OFF CACHE BOOL "")
+add_subdirectory(tomlplusplus EXCLUDE_FROM_ALL)
+
 # Oniguruma
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
 add_subdirectory(oniguruma EXCLUDE_FROM_ALL)
