@@ -1,0 +1,238 @@
+{
+  "$schema": "./bml_loader_manifest.schema.json",
+  "version": "0.4.0",
+  "description": "BML API manifest - defines API loading order and requirements",
+  "groups": [
+    {
+      "name": "Core",
+      "header": "bml_core.h",
+      "apis": [
+        { "pointer": "bmlContextRetain", "required": true },
+        { "pointer": "bmlContextRelease", "required": true },
+        { "pointer": "bmlGetGlobalContext", "required": true },
+        { "pointer": "bmlGetRuntimeVersion", "required": true },
+        { "pointer": "bmlRequestCapability", "required": true },
+        { "pointer": "bmlCheckCapability", "required": true },
+        { "pointer": "bmlGetModId", "required": true },
+        { "pointer": "bmlGetModVersion", "required": true },
+        { "pointer": "bmlRegisterShutdownHook", "required": true },
+        { "pointer": "bmlGetCoreCaps", "required": true },
+        { "pointer": "bmlSetCurrentModule", "required": false },
+        { "pointer": "bmlGetCurrentModule", "required": false }
+      ]
+    },
+    {
+      "name": "Logging",
+      "header": "bml_logging.h",
+      "apis": [
+        { "pointer": "bmlLog", "required": true },
+        { "pointer": "bmlLogVa", "required": false },
+        { "pointer": "bmlSetLogFilter", "required": false },
+        { "pointer": "bmlGetLoggingCaps", "required": true }
+      ]
+    },
+    {
+      "name": "Configuration",
+      "header": "bml_config.h",
+      "apis": [
+        { "pointer": "bmlConfigGet", "required": true },
+        { "pointer": "bmlConfigSet", "required": true },
+        { "pointer": "bmlConfigReset", "required": false },
+        { "pointer": "bmlConfigEnumerate", "required": false },
+        { "pointer": "bmlConfigGetInt", "required": false },
+        { "pointer": "bmlConfigGetFloat", "required": false },
+        { "pointer": "bmlConfigGetBool", "required": false },
+        { "pointer": "bmlConfigGetString", "required": false },
+        { "pointer": "bmlConfigSetInt", "required": false },
+        { "pointer": "bmlConfigSetFloat", "required": false },
+        { "pointer": "bmlConfigSetBool", "required": false },
+        { "pointer": "bmlConfigSetString", "required": false },
+        { "pointer": "bmlGetConfigCaps", "required": true }
+      ]
+    },
+    {
+      "name": "IMC",
+      "header": "bml_imc.h",
+      "apis": [
+        { "pointer": "bmlImcGetTopicId", "required": true },
+        { "pointer": "bmlImcGetRpcId", "required": false },
+        { "pointer": "bmlImcPublish", "required": true },
+        { "pointer": "bmlImcPublishBuffer", "required": false },
+        { "pointer": "bmlImcSubscribe", "required": true },
+        { "pointer": "bmlImcUnsubscribe", "required": true },
+        { "pointer": "bmlImcSubscriptionIsActive", "required": false },
+        { "pointer": "bmlImcRegisterRpc", "required": false },
+        { "pointer": "bmlImcUnregisterRpc", "required": false },
+        { "pointer": "bmlImcCallRpc", "required": false },
+        { "pointer": "bmlImcFutureAwait", "required": false },
+        { "pointer": "bmlImcFutureGetResult", "required": false },
+        { "pointer": "bmlImcFutureGetState", "required": false },
+        { "pointer": "bmlImcFutureCancel", "required": false },
+        { "pointer": "bmlImcFutureOnComplete", "required": false },
+        { "pointer": "bmlImcFutureRelease", "required": false },
+        { "pointer": "bmlImcPump", "required": false },
+        { "pointer": "bmlGetImcCaps", "required": true },
+        { "pointer": "bmlImcSubscribeEx", "required": false },
+        { "pointer": "bmlImcGetSubscriptionStats", "required": false },
+        { "pointer": "bmlImcPublishMulti", "required": false },
+        { "pointer": "bmlImcGetStats", "required": false },
+        { "pointer": "bmlImcResetStats", "required": false },
+        { "pointer": "bmlImcGetTopicInfo", "required": false },
+        { "pointer": "bmlImcGetTopicName", "required": false }
+      ]
+    },
+    {
+      "name": "Resource",
+      "header": "bml_resource.h",
+      "apis": [
+        { "pointer": "bmlHandleCreate", "required": false },
+        { "pointer": "bmlHandleRetain", "required": false },
+        { "pointer": "bmlHandleRelease", "required": false },
+        { "pointer": "bmlHandleValidate", "required": false },
+        { "pointer": "bmlHandleAttachUserData", "required": false },
+        { "pointer": "bmlHandleGetUserData", "required": false },
+        { "pointer": "bmlGetResourceCaps", "required": false }
+      ]
+    },
+    {
+      "name": "Extension",
+      "header": "bml_extension.h",
+      "apis": [
+        { "pointer": "bmlExtensionRegister", "required": true },
+        { "pointer": "bmlExtensionQuery", "required": true },
+        { "pointer": "bmlExtensionLoad", "required": true },
+        { "pointer": "bmlExtensionLoadVersioned", "required": false },
+        { "pointer": "bmlExtensionEnumerate", "required": false },
+        { "pointer": "bmlExtensionUnregister", "required": false },
+        { "pointer": "bmlGetExtensionCaps", "required": true },
+        { "pointer": "bmlRegisterConfigLoadHooks", "required": false },
+        { "pointer": "bmlRegisterLogSinkOverride", "required": false },
+        { "pointer": "bmlClearLogSinkOverride", "required": false },
+        { "pointer": "bmlRegisterResourceType", "required": false }
+      ]
+    },
+    {
+      "name": "Diagnostics",
+      "header": "bml_errors.h",
+      "apis": [
+        { "pointer": "bmlGetLastError", "required": false },
+        { "pointer": "bmlClearLastError", "required": false },
+        { "pointer": "bmlGetErrorString", "required": false }
+      ]
+    },
+    {
+      "name": "Memory",
+      "header": "bml_memory.h",
+      "apis": [
+        { "pointer": "bmlAlloc", "required": false },
+        { "pointer": "bmlCalloc", "required": false },
+        { "pointer": "bmlRealloc", "required": false },
+        { "pointer": "bmlFree", "required": false },
+        { "pointer": "bmlAllocAligned", "required": false },
+        { "pointer": "bmlFreeAligned", "required": false },
+        { "pointer": "bmlMemoryPoolCreate", "required": false },
+        { "pointer": "bmlMemoryPoolAlloc", "required": false },
+        { "pointer": "bmlMemoryPoolFree", "required": false },
+        { "pointer": "bmlMemoryPoolDestroy", "required": false },
+        { "pointer": "bmlGetMemoryStats", "required": false },
+        { "pointer": "bmlGetMemoryCaps", "required": false }
+      ]
+    },
+    {
+      "name": "Synchronization",
+      "header": "bml_sync.h",
+      "apis": [
+        { "pointer": "bmlMutexCreate", "required": false },
+        { "pointer": "bmlMutexDestroy", "required": false },
+        { "pointer": "bmlMutexLock", "required": false },
+        { "pointer": "bmlMutexTryLock", "required": false },
+        { "pointer": "bmlMutexUnlock", "required": false },
+        { "pointer": "bmlRwLockCreate", "required": false },
+        { "pointer": "bmlRwLockDestroy", "required": false },
+        { "pointer": "bmlRwLockReadLock", "required": false },
+        { "pointer": "bmlRwLockTryReadLock", "required": false },
+        { "pointer": "bmlRwLockWriteLock", "required": false },
+        { "pointer": "bmlRwLockTryWriteLock", "required": false },
+        { "pointer": "bmlRwLockUnlock", "required": false },
+        { "pointer": "bmlAtomicIncrement32", "required": false },
+        { "pointer": "bmlAtomicDecrement32", "required": false },
+        { "pointer": "bmlAtomicAdd32", "required": false },
+        { "pointer": "bmlAtomicCompareExchange32", "required": false },
+        { "pointer": "bmlAtomicExchange32", "required": false },
+        { "pointer": "bmlAtomicLoadPtr", "required": false },
+        { "pointer": "bmlAtomicStorePtr", "required": false },
+        { "pointer": "bmlAtomicCompareExchangePtr", "required": false },
+        { "pointer": "bmlSemaphoreCreate", "required": false },
+        { "pointer": "bmlSemaphoreDestroy", "required": false },
+        { "pointer": "bmlSemaphoreWait", "required": false },
+        { "pointer": "bmlSemaphoreSignal", "required": false },
+        { "pointer": "bmlTlsCreate", "required": false },
+        { "pointer": "bmlTlsDestroy", "required": false },
+        { "pointer": "bmlTlsGet", "required": false },
+        { "pointer": "bmlTlsSet", "required": false },
+        { "pointer": "bmlCondVarCreate", "required": false },
+        { "pointer": "bmlCondVarDestroy", "required": false },
+        { "pointer": "bmlCondVarWait", "required": false },
+        { "pointer": "bmlCondVarWaitTimeout", "required": false },
+        { "pointer": "bmlCondVarSignal", "required": false },
+        { "pointer": "bmlCondVarBroadcast", "required": false },
+        { "pointer": "bmlSpinLockCreate", "required": false },
+        { "pointer": "bmlSpinLockDestroy", "required": false },
+        { "pointer": "bmlSpinLockLock", "required": false },
+        { "pointer": "bmlSpinLockTryLock", "required": false },
+        { "pointer": "bmlSpinLockUnlock", "required": false },
+        { "pointer": "bmlGetSyncCaps", "required": false }
+      ]
+    },
+    {
+      "name": "Profiling",
+      "header": "bml_profiling.h",
+      "apis": [
+        { "pointer": "bmlTraceBegin", "required": false },
+        { "pointer": "bmlTraceEnd", "required": false },
+        { "pointer": "bmlTraceInstant", "required": false },
+        { "pointer": "bmlTraceSetThreadName", "required": false },
+        { "pointer": "bmlTraceCounter", "required": false },
+        { "pointer": "bmlTraceFrameMark", "required": false },
+        { "pointer": "bmlGetApiCallCount", "required": false },
+        { "pointer": "bmlGetTotalAllocBytes", "required": false },
+        { "pointer": "bmlGetTimestampNs", "required": false },
+        { "pointer": "bmlGetCpuFrequency", "required": false },
+        { "pointer": "bmlGetProfilerBackend", "required": false },
+        { "pointer": "bmlSetProfilingEnabled", "required": false },
+        { "pointer": "bmlIsProfilingEnabled", "required": false },
+        { "pointer": "bmlFlushProfilingData", "required": false },
+        { "pointer": "bmlGetProfilingStats", "required": false },
+        { "pointer": "bmlGetProfilingCaps", "required": false }
+      ]
+    },
+    {
+      "name": "API Tracing",
+      "header": "bml_api_tracing.h",
+      "apis": [
+        { "pointer": "bmlEnableApiTracing", "required": false },
+        { "pointer": "bmlIsApiTracingEnabled", "required": false },
+        { "pointer": "bmlSetTraceCallback", "required": false },
+        { "pointer": "bmlGetApiStats", "required": false },
+        { "pointer": "bmlEnumerateApiStats", "required": false },
+        { "pointer": "bmlDumpApiStats", "required": false },
+        { "pointer": "bmlResetApiStats", "required": false },
+        { "pointer": "bmlValidateApiId", "required": false }
+      ]
+    },
+    {
+      "name": "Capabilities",
+      "header": "bml_capabilities.h",
+      "apis": [
+        { "pointer": "bmlQueryCapabilities", "required": false },
+        { "pointer": "bmlHasCapability", "required": false },
+        { "pointer": "bmlCheckCompatibility", "required": false },
+        { "pointer": "bmlGetApiDescriptor", "required": false },
+        { "pointer": "bmlGetApiDescriptorByName", "required": false },
+        { "pointer": "bmlEnumerateApis", "required": false },
+        { "pointer": "bmlGetApiIntroducedVersion", "required": false },
+        { "pointer": "bmlRegisterExtensionApi", "required": false }
+      ]
+    }
+  ]
+}
