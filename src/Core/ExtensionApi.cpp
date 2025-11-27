@@ -236,16 +236,16 @@ static BML_Result BML_API_GetExtensionCaps(BML_ExtensionCaps* out_caps) {
 namespace BML::Core {
 
 void RegisterExtensionApis() {
-    auto& registry = ApiRegistry::Instance();
+    BML_BEGIN_API_REGISTRATION();
 
     // Extension Management APIs
-    BML_REGISTER_API_GUARDED(bmlExtensionRegister, "extension", BML_API_ExtensionRegister);
-    BML_REGISTER_API_GUARDED(bmlExtensionQuery, "extension", BML_API_ExtensionQuery);
-    BML_REGISTER_API_GUARDED(bmlExtensionLoad, "extension", BML_API_ExtensionLoad);
-    BML_REGISTER_API_GUARDED(bmlExtensionLoadVersioned, "extension", BML_API_ExtensionLoadVersioned);
-    BML_REGISTER_API_GUARDED(bmlExtensionEnumerate, "extension", BML_API_ExtensionEnumerate);
-    BML_REGISTER_API_GUARDED(bmlExtensionUnregister, "extension", BML_API_ExtensionUnregister);
-    BML_REGISTER_API_GUARDED(bmlGetExtensionCaps, "extension", BML_API_GetExtensionCaps);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionRegister, "extension", BML_API_ExtensionRegister, BML_CAP_EXTENSION_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionQuery, "extension", BML_API_ExtensionQuery, BML_CAP_EXTENSION_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionLoad, "extension", BML_API_ExtensionLoad, BML_CAP_EXTENSION_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionLoadVersioned, "extension", BML_API_ExtensionLoadVersioned, BML_CAP_EXTENSION_VERSIONED);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionEnumerate, "extension", BML_API_ExtensionEnumerate, BML_CAP_EXTENSION_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionUnregister, "extension", BML_API_ExtensionUnregister, BML_CAP_EXTENSION_BASIC);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlGetExtensionCaps, "extension", BML_API_GetExtensionCaps, BML_CAP_EXTENSION_BASIC);
 }
 
 } // namespace BML::Core

@@ -58,6 +58,10 @@ typedef uint64_t BML_ApiCapability;
 #define BML_CAP_EXTENSION_BASIC (1ULL << 24)  /**< Basic extension system */
 #define BML_CAP_EXTENSION_VERSIONED (1ULL << 25) /**< Versioned extension loading */
 #define BML_CAP_EXTENSION_IMGUI (1ULL << 26)  /**< ImGui extension available */
+#define BML_CAP_CONTEXT         (1ULL << 27)  /**< Context management APIs */
+#define BML_CAP_RUNTIME         (1ULL << 28)  /**< Runtime query APIs */
+#define BML_CAP_MOD_INFO        (1ULL << 29)  /**< Mod metadata APIs */
+#define BML_CAP_LIFECYCLE       (1ULL << 30)  /**< Lifecycle management (shutdown hooks) */
 
 /* Resource/Memory Capabilities (32-47) */
 #define BML_CAP_MEMORY_POOL     (1ULL << 32)  /**< Memory pool support */
@@ -67,10 +71,14 @@ typedef uint64_t BML_ApiCapability;
 /* Profiling Capabilities (48-55) */
 #define BML_CAP_PROFILING_TRACE (1ULL << 48)  /**< Tracing support */
 #define BML_CAP_PROFILING_STATS (1ULL << 49)  /**< Statistics collection */
+#define BML_CAP_API_TRACING     (1ULL << 50)  /**< API call tracing */
+#define BML_CAP_DIAGNOSTICS     (1ULL << 51)  /**< Diagnostics/error handling */
+#define BML_CAP_CAPABILITY_QUERY (1ULL << 52) /**< Capability query system */
 
 /* Configuration Capabilities (56-63) */
 #define BML_CAP_CONFIG_BASIC    (1ULL << 56)  /**< Basic configuration */
 #define BML_CAP_LOGGING         (1ULL << 57)  /**< Logging support */
+#define BML_CAP_MEMORY_BASIC    (1ULL << 58)  /**< Basic memory allocation */
 
 /* ========================================================================
  * API Type Classification

@@ -9,6 +9,7 @@
 #include "ModHandle.h"
 #include "CoreErrors.h"
 #include "bml_api_ids.h"
+#include "bml_capabilities.h"
 
 #include <algorithm>
 #include <atomic>
@@ -442,19 +443,19 @@ BML_Result BML_API_RegisterResourceType(const BML_ResourceTypeDesc* desc, BML_Ha
 // ============================================================================
 
 void RegisterResourceApis() {
-    auto& registry = ApiRegistry::Instance();
+    BML_BEGIN_API_REGISTRATION();
 
     // Handle management APIs
-    BML_REGISTER_API_GUARDED(bmlHandleCreate, "resource", BML_API_HandleCreate);
-    BML_REGISTER_API_GUARDED(bmlHandleRetain, "resource", BML_API_HandleRetain);
-    BML_REGISTER_API_GUARDED(bmlHandleRelease, "resource", BML_API_HandleRelease);
-    BML_REGISTER_API_GUARDED(bmlHandleValidate, "resource", BML_API_HandleValidate);
-    BML_REGISTER_API_GUARDED(bmlHandleAttachUserData, "resource", BML_API_HandleAttachUserData);
-    BML_REGISTER_API_GUARDED(bmlHandleGetUserData, "resource", BML_API_HandleGetUserData);
-    BML_REGISTER_API_GUARDED(bmlGetResourceCaps, "resource", BML_API_GetResourceCaps);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlHandleCreate, "resource", BML_API_HandleCreate, BML_CAP_HANDLE_SYSTEM);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlHandleRetain, "resource", BML_API_HandleRetain, BML_CAP_HANDLE_SYSTEM);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlHandleRelease, "resource", BML_API_HandleRelease, BML_CAP_HANDLE_SYSTEM);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlHandleValidate, "resource", BML_API_HandleValidate, BML_CAP_HANDLE_SYSTEM);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlHandleAttachUserData, "resource", BML_API_HandleAttachUserData, BML_CAP_HANDLE_SYSTEM);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlHandleGetUserData, "resource", BML_API_HandleGetUserData, BML_CAP_HANDLE_SYSTEM);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlGetResourceCaps, "resource", BML_API_GetResourceCaps, BML_CAP_HANDLE_SYSTEM);
     
     // Resource type registration
-    BML_REGISTER_API_GUARDED(bmlRegisterResourceType, "resource", BML_API_RegisterResourceType);
+    BML_REGISTER_API_GUARDED_WITH_CAPS(bmlRegisterResourceType, "resource", BML_API_RegisterResourceType, BML_CAP_HANDLE_SYSTEM);
 }
 
 BML_Result RegisterResourceType(const BML_ResourceTypeDesc *desc, BML_HandleType *out_type) {

@@ -7,6 +7,7 @@
 #include "ApiRegistrationMacros.h"
 #include "ApiRegistry.h"
 #include "Context.h"
+#include "bml_capabilities.h"
 
 #include <atomic>
 #include <chrono>
@@ -301,16 +302,16 @@ void RegisterTracingApis() {
     BML_BEGIN_API_REGISTRATION();
     
     /* Tracing control */
-    BML_REGISTER_API(bmlEnableApiTracing, BML_EnableApiTracing);
-    BML_REGISTER_API(bmlIsApiTracingEnabled, BML_IsApiTracingEnabled);
-    BML_REGISTER_API(bmlSetTraceCallback, BML_SetTraceCallback);
+    BML_REGISTER_API_WITH_CAPS(bmlEnableApiTracing, BML_EnableApiTracing, BML_CAP_API_TRACING);
+    BML_REGISTER_API_WITH_CAPS(bmlIsApiTracingEnabled, BML_IsApiTracingEnabled, BML_CAP_API_TRACING);
+    BML_REGISTER_API_WITH_CAPS(bmlSetTraceCallback, BML_SetTraceCallback, BML_CAP_API_TRACING);
     
     /* Statistics */
-    BML_REGISTER_API(bmlGetApiStats, BML_GetApiStats);
-    BML_REGISTER_API(bmlEnumerateApiStats, BML_EnumerateApiStats);
-    BML_REGISTER_API(bmlDumpApiStats, BML_DumpApiStats);
-    BML_REGISTER_API(bmlResetApiStats, BML_ResetApiStats);
-    BML_REGISTER_API(bmlValidateApiId, BML_ValidateApiId);
+    BML_REGISTER_API_WITH_CAPS(bmlGetApiStats, BML_GetApiStats, BML_CAP_API_TRACING);
+    BML_REGISTER_API_WITH_CAPS(bmlEnumerateApiStats, BML_EnumerateApiStats, BML_CAP_API_TRACING);
+    BML_REGISTER_API_WITH_CAPS(bmlDumpApiStats, BML_DumpApiStats, BML_CAP_API_TRACING);
+    BML_REGISTER_API_WITH_CAPS(bmlResetApiStats, BML_ResetApiStats, BML_CAP_API_TRACING);
+    BML_REGISTER_API_WITH_CAPS(bmlValidateApiId, BML_ValidateApiId, BML_CAP_API_TRACING);
 }
 
 } // namespace BML::Core
