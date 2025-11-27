@@ -146,7 +146,7 @@ add_bml_test(CoreApisTests
         SOURCES
         CoreApisTests.cpp
         ModuleLoaderStub.cpp
-        ${BML_SOURCE_DIR}/Core/ApiRegistration.cpp
+        ${BML_SOURCE_DIR}/Core/CoreApi.cpp
         ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp

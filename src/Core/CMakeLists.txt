@@ -2,11 +2,12 @@
 set(BML_CORE_SOURCES
         DllMain.cpp
         ApiRegistry.cpp
-        ApiRegistration.cpp
-        ApiTracing.cpp
+        CoreApi.cpp
+        TracingApi.cpp
         CapabilityApi.cpp
         Context.cpp
         CoreErrors.cpp
+        ConfigApi.cpp
         ConfigStore.cpp
         DependencyResolver.cpp
         DiagnosticManager.cpp
@@ -29,6 +30,7 @@ set(BML_CORE_SOURCES
         Microkernel.cpp
         ImcBus.cpp
         ImcApi.cpp
+        LoggingApi.cpp
         Logging.cpp
         SemanticVersion.cpp
 )

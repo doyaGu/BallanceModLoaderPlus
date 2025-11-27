@@ -12,7 +12,6 @@
 #include "ModuleLoader.h"
 
 namespace BML::Core {
-
     struct ModuleBootstrapDiagnostics {
         std::vector<ManifestParseError> manifest_errors;
         DependencyResolutionError dependency_error;
@@ -24,7 +23,7 @@ namespace BML::Core {
     class ModuleRuntime {
     public:
         ModuleRuntime() = default;
-        ~ModuleRuntime();  // Defined in .cpp where HotReloadMonitor is complete
+        ~ModuleRuntime(); // Defined in .cpp where HotReloadMonitor is complete
         ModuleRuntime(const ModuleRuntime &) = delete;
         ModuleRuntime &operator=(const ModuleRuntime &) = delete;
 

@@ -39,9 +39,9 @@ namespace BML::Core {
         void *Alloc(size_t size);
         void *Calloc(size_t count, size_t size);
         void *Realloc(void *ptr, size_t old_size, size_t new_size);
-        void *ReallocUnknownSize(void *ptr, size_t new_size);  // Legacy, inaccurate tracking
+        void *ReallocUnknownSize(void *ptr, size_t new_size); // Legacy, inaccurate tracking
         void Free(void *ptr);
-        void FreeWithSize(void *ptr, size_t size);  // For accurate deallocation tracking
+        void FreeWithSize(void *ptr, size_t size); // For accurate deallocation tracking
 
         // Aligned allocation
         void *AllocAligned(size_t size, size_t alignment);
@@ -61,9 +61,9 @@ namespace BML::Core {
         void SetTrackingEnabled(bool enabled) { m_tracking_enabled.store(enabled, std::memory_order_relaxed); }
         bool IsTrackingEnabled() const { return m_tracking_enabled.load(std::memory_order_relaxed); }
 
-    #if defined(BML_TEST)
+#if defined(BML_TEST)
         void ResetStatsForTesting();
-    #endif
+#endif
 
     private:
         MemoryManager();

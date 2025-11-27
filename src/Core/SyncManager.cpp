@@ -9,7 +9,6 @@
 #include "DiagnosticManager.h"
 
 namespace BML::Core {
-
     class DeadlockDetector {
     public:
         bool OnLockWait(void *lock_key, DWORD thread_id) {
@@ -121,7 +120,8 @@ namespace BML::Core {
         std::unordered_map<void *, LockState> m_locks;
     };
 
-    SyncManager::SyncManager() : m_deadlock_detector(std::make_unique<DeadlockDetector>()) {}
+    SyncManager::SyncManager() : m_deadlock_detector(std::make_unique<DeadlockDetector>()) {
+    }
 
     namespace {
         inline BML_Result ReportInvalidSyncCall(const char *api_name, const char *message) {
@@ -141,7 +141,7 @@ namespace BML::Core {
     BML_Result SyncManager::CreateMutex(BML_Mutex *out_mutex) {
         if (!out_mutex) {
             return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "sync", "bmlMutexCreate",
-                                "out_mutex is NULL", 0);
+                                         "out_mutex is NULL", 0);
         }
 
         try {
@@ -154,10 +154,10 @@ namespace BML::Core {
             return BML_RESULT_OK;
         } catch (const std::bad_alloc &) {
             return SetLastErrorAndReturn(BML_RESULT_OUT_OF_MEMORY, "sync", "bmlMutexCreate",
-                                "Failed to allocate mutex", 0);
+                                         "Failed to allocate mutex", 0);
         } catch (...) {
             return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlMutexCreate",
-                                "Unknown error creating mutex", 0);
+                                         "Unknown error creating mutex", 0);
         }
     }
 
@@ -244,7 +244,7 @@ namespace BML::Core {
     BML_Result SyncManager::CreateRwLock(BML_RwLock *out_lock) {
         if (!out_lock) {
             return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "sync", "bmlRwLockCreate",
-                                "out_lock is NULL", 0);
+                                         "out_lock is NULL", 0);
         }
 
         try {
@@ -257,10 +257,10 @@ namespace BML::Core {
             return BML_RESULT_OK;
         } catch (const std::bad_alloc &) {
             return SetLastErrorAndReturn(BML_RESULT_OUT_OF_MEMORY, "sync", "bmlRwLockCreate",
-                                "Failed to allocate read-write lock", 0);
+                                         "Failed to allocate read-write lock", 0);
         } catch (...) {
             return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlRwLockCreate",
-                                "Unknown error creating read-write lock", 0);
+                                         "Unknown error creating read-write lock", 0);
         }
     }
 
@@ -564,12 +564,12 @@ namespace BML::Core {
     BML_Result SyncManager::CreateSemaphore(uint32_t initial_count, uint32_t max_count, BML_Semaphore *out_semaphore) {
         if (!out_semaphore) {
             return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "sync", "bmlSemaphoreCreate",
-                                "out_semaphore is NULL", 0);
+                                         "out_semaphore is NULL", 0);
         }
 
         if (initial_count > max_count) {
             return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "sync", "bmlSemaphoreCreate",
-                                "initial_count > max_count", 0);
+                                         "initial_count > max_count", 0);
         }
 
         try {
@@ -578,7 +578,7 @@ namespace BML::Core {
             if (!impl->handle) {
                 delete impl;
                 return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlSemaphoreCreate",
-                                    "CreateSemaphore failed", ::GetLastError());
+                                             "CreateSemaphore failed", ::GetLastError());
             }
 
             std::lock_guard<std::mutex> lock(m_semaphore_registry_lock);
@@ -588,10 +588,10 @@ namespace BML::Core {
             return BML_RESULT_OK;
         } catch (const std::bad_alloc &) {
             return SetLastErrorAndReturn(BML_RESULT_OUT_OF_MEMORY, "sync", "bmlSemaphoreCreate",
-                                "Failed to allocate semaphore", 0);
+                                         "Failed to allocate semaphore", 0);
         } catch (...) {
             return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlSemaphoreCreate",
-                                "Unknown error creating semaphore", 0);
+                                         "Unknown error creating semaphore", 0);
         }
     }
 
@@ -630,10 +630,10 @@ namespace BML::Core {
             return BML_RESULT_TIMEOUT;
         case WAIT_FAILED:
             return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlSemaphoreWait",
-                                "WaitForSingleObject failed", ::GetLastError());
+                                         "WaitForSingleObject failed", ::GetLastError());
         default:
             return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlSemaphoreWait",
-                                "Unexpected wait result", result);
+                                         "Unexpected wait result", result);
         }
     }
 
@@ -650,7 +650,7 @@ namespace BML::Core {
 
         if (!ReleaseSemaphore(impl->handle, count, nullptr)) {
             return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlSemaphoreSignal",
-                                "ReleaseSemaphore failed", ::GetLastError());
+                                         "ReleaseSemaphore failed", ::GetLastError());
         }
 
         return BML_RESULT_OK;
@@ -673,7 +673,7 @@ namespace BML::Core {
     BML_Result SyncManager::CreateTls(BML_TlsDestructor destructor, BML_TlsKey *out_key) {
         if (!out_key) {
             return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "sync", "bmlTlsCreate",
-                                "out_key is NULL", 0);
+                                         "out_key is NULL", 0);
         }
 
         try {
@@ -682,7 +682,7 @@ namespace BML::Core {
             if (impl->fls_index == FLS_OUT_OF_INDEXES) {
                 delete impl;
                 return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlTlsCreate",
-                                    "FlsAlloc failed", ::GetLastError());
+                                             "FlsAlloc failed", ::GetLastError());
             }
 
             std::lock_guard<std::mutex> lock(m_tls_registry_lock);
@@ -692,10 +692,10 @@ namespace BML::Core {
             return BML_RESULT_OK;
         } catch (const std::bad_alloc &) {
             return SetLastErrorAndReturn(BML_RESULT_OUT_OF_MEMORY, "sync", "bmlTlsCreate",
-                                "Failed to allocate TLS key", 0);
+                                         "Failed to allocate TLS key", 0);
         } catch (...) {
             return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlTlsCreate",
-                                "Unknown error creating TLS key", 0);
+                                         "Unknown error creating TLS key", 0);
         }
     }
 
@@ -768,7 +768,7 @@ namespace BML::Core {
                     wrapper = new TlsValueWrapper{value, impl->destructor};
                 } catch (const std::bad_alloc &) {
                     return SetLastErrorAndReturn(BML_RESULT_OUT_OF_MEMORY, "sync", "bmlTlsSet",
-                                        "Failed to allocate TLS wrapper", 0);
+                                                 "Failed to allocate TLS wrapper", 0);
                 }
             } else {
                 wrapper->value = value;
@@ -777,16 +777,16 @@ namespace BML::Core {
 
             if (!FlsSetValue(impl->fls_index, wrapper)) {
                 if (!existing) {
-                    delete wrapper;  // Only delete if we created it
+                    delete wrapper; // Only delete if we created it
                 }
                 return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlTlsSet",
-                                    "FlsSetValue failed", ::GetLastError());
+                                             "FlsSetValue failed", ::GetLastError());
             }
         } else {
             // No destructor - store value directly
             if (!FlsSetValue(impl->fls_index, value)) {
                 return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlTlsSet",
-                                    "FlsSetValue failed", ::GetLastError());
+                                             "FlsSetValue failed", ::GetLastError());
             }
         }
 
@@ -810,7 +810,7 @@ namespace BML::Core {
     BML_Result SyncManager::CreateCondVar(BML_CondVar *out_condvar) {
         if (!out_condvar) {
             return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "sync", "bmlCondVarCreate",
-                                "out_condvar is NULL", 0);
+                                         "out_condvar is NULL", 0);
         }
 
         try {
@@ -823,10 +823,10 @@ namespace BML::Core {
             return BML_RESULT_OK;
         } catch (const std::bad_alloc &) {
             return SetLastErrorAndReturn(BML_RESULT_OUT_OF_MEMORY, "sync", "bmlCondVarCreate",
-                                "Failed to allocate condition variable", 0);
+                                         "Failed to allocate condition variable", 0);
         } catch (...) {
             return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlCondVarCreate",
-                                "Unknown error creating condition variable", 0);
+                                         "Unknown error creating condition variable", 0);
         }
     }
 
@@ -870,7 +870,7 @@ namespace BML::Core {
         if (!result) {
             DWORD error = ::GetLastError();
             return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlCondVarWait",
-                                "SleepConditionVariableCS failed", error);
+                                         "SleepConditionVariableCS failed", error);
         }
 
         return BML_RESULT_OK;
@@ -898,10 +898,10 @@ namespace BML::Core {
             DWORD error = ::GetLastError();
             if (error == ERROR_TIMEOUT) {
                 return SetLastErrorAndReturn(BML_RESULT_TIMEOUT, "sync", "bmlCondVarWaitTimeout",
-                                    "Wait timed out", error);
+                                             "Wait timed out", error);
             }
             return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlCondVarWaitTimeout",
-                                "SleepConditionVariableCS failed", error);
+                                         "SleepConditionVariableCS failed", error);
         }
 
         return BML_RESULT_OK;
@@ -944,7 +944,7 @@ namespace BML::Core {
     BML_Result SyncManager::CreateSpinLock(BML_SpinLock *out_lock) {
         if (!out_lock) {
             return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "sync", "bmlSpinLockCreate",
-                                "out_lock is NULL", 0);
+                                         "out_lock is NULL", 0);
         }
 
         try {
@@ -957,10 +957,10 @@ namespace BML::Core {
             return BML_RESULT_OK;
         } catch (const std::bad_alloc &) {
             return SetLastErrorAndReturn(BML_RESULT_OUT_OF_MEMORY, "sync", "bmlSpinLockCreate",
-                                "Failed to allocate spin lock", 0);
+                                         "Failed to allocate spin lock", 0);
         } catch (...) {
             return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlSpinLockCreate",
-                                "Unknown error creating spin lock", 0);
+                                         "Unknown error creating spin lock", 0);
         }
     }
 
@@ -1159,11 +1159,11 @@ namespace BML::Core {
     BML_Result SyncManager::GetCaps(BML_SyncCaps *out_caps) {
         if (!out_caps) {
             return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "sync", "bmlGetSyncCaps",
-                                "out_caps is NULL", 0);
+                                         "out_caps is NULL", 0);
         }
 
         out_caps->struct_size = sizeof(BML_SyncCaps);
-        out_caps->api_version = {2, 1, 0};
+        out_caps->api_version = bmlGetApiVersion();
         out_caps->capability_flags =
             BML_SYNC_CAP_MUTEX |
             BML_SYNC_CAP_RWLOCK |
@@ -1177,188 +1177,3 @@ namespace BML::Core {
     }
 } // namespace BML::Core
 
-// ============================================================================
-// C API Implementation
-// ============================================================================
-
-extern "C" {
-
-using namespace BML::Core;
-
-// Mutex
-BML_Result BML_API_MutexCreate(BML_Mutex *out_mutex) {
-    return SyncManager::Instance().CreateMutex(out_mutex);
-}
-
-void BML_API_MutexDestroy(BML_Mutex mutex) {
-    SyncManager::Instance().DestroyMutex(mutex);
-}
-
-void BML_API_MutexLock(BML_Mutex mutex) {
-    SyncManager::Instance().LockMutex(mutex);
-}
-
-BML_Bool BML_API_MutexTryLock(BML_Mutex mutex) {
-    return SyncManager::Instance().TryLockMutex(mutex);
-}
-
-void BML_API_MutexUnlock(BML_Mutex mutex) {
-    SyncManager::Instance().UnlockMutex(mutex);
-}
-
-// RwLock
-BML_Result BML_API_RwLockCreate(BML_RwLock *out_lock) {
-    return SyncManager::Instance().CreateRwLock(out_lock);
-}
-
-void BML_API_RwLockDestroy(BML_RwLock lock) {
-    SyncManager::Instance().DestroyRwLock(lock);
-}
-
-void BML_API_RwLockReadLock(BML_RwLock lock) {
-    SyncManager::Instance().ReadLockRwLock(lock);
-}
-
-BML_Bool BML_API_RwLockTryReadLock(BML_RwLock lock) {
-    return SyncManager::Instance().TryReadLockRwLock(lock);
-}
-
-void BML_API_RwLockWriteLock(BML_RwLock lock) {
-    SyncManager::Instance().WriteLockRwLock(lock);
-}
-
-BML_Bool BML_API_RwLockTryWriteLock(BML_RwLock lock) {
-    return SyncManager::Instance().TryWriteLockRwLock(lock);
-}
-
-void BML_API_RwLockUnlock(BML_RwLock lock) {
-    SyncManager::Instance().UnlockRwLock(lock);
-}
-
-void BML_API_RwLockReadUnlock(BML_RwLock lock) {
-    SyncManager::Instance().ReadUnlockRwLock(lock);
-}
-
-void BML_API_RwLockWriteUnlock(BML_RwLock lock) {
-    SyncManager::Instance().WriteUnlockRwLock(lock);
-}
-
-// Atomics
-int32_t BML_API_AtomicIncrement32(volatile int32_t *value) {
-    return SyncManager::AtomicIncrement32(value);
-}
-
-int32_t BML_API_AtomicDecrement32(volatile int32_t *value) {
-    return SyncManager::AtomicDecrement32(value);
-}
-
-int32_t BML_API_AtomicAdd32(volatile int32_t *value, int32_t addend) {
-    return SyncManager::AtomicAdd32(value, addend);
-}
-
-int32_t BML_API_AtomicCompareExchange32(volatile int32_t *dest, int32_t exchange, int32_t comparand) {
-    return SyncManager::AtomicCompareExchange32(dest, exchange, comparand);
-}
-
-int32_t BML_API_AtomicExchange32(volatile int32_t *dest, int32_t new_value) {
-    return SyncManager::AtomicExchange32(dest, new_value);
-}
-
-void *BML_API_AtomicLoadPtr(void *volatile*ptr) {
-    return SyncManager::AtomicLoadPtr(ptr);
-}
-
-void BML_API_AtomicStorePtr(void *volatile*ptr, void *value) {
-    SyncManager::AtomicStorePtr(ptr, value);
-}
-
-void *BML_API_AtomicCompareExchangePtr(void *volatile*dest, void *exchange, void *comparand) {
-    return SyncManager::AtomicCompareExchangePtr(dest, exchange, comparand);
-}
-
-// Semaphore
-BML_Result BML_API_SemaphoreCreate(uint32_t initial_count, uint32_t max_count, BML_Semaphore *out_semaphore) {
-    return SyncManager::Instance().CreateSemaphore(initial_count, max_count, out_semaphore);
-}
-
-void BML_API_SemaphoreDestroy(BML_Semaphore semaphore) {
-    SyncManager::Instance().DestroySemaphore(semaphore);
-}
-
-BML_Result BML_API_SemaphoreWait(BML_Semaphore semaphore, uint32_t timeout_ms) {
-    return SyncManager::Instance().WaitSemaphore(semaphore, timeout_ms);
-}
-
-BML_Result BML_API_SemaphoreSignal(BML_Semaphore semaphore, uint32_t count) {
-    return SyncManager::Instance().SignalSemaphore(semaphore, count);
-}
-
-// TLS
-BML_Result BML_API_TlsCreate(BML_TlsDestructor destructor, BML_TlsKey *out_key) {
-    return SyncManager::Instance().CreateTls(destructor, out_key);
-}
-
-void BML_API_TlsDestroy(BML_TlsKey key) {
-    SyncManager::Instance().DestroyTls(key);
-}
-
-void *BML_API_TlsGet(BML_TlsKey key) {
-    return SyncManager::Instance().GetTls(key);
-}
-
-BML_Result BML_API_TlsSet(BML_TlsKey key, void *value) {
-    return SyncManager::Instance().SetTls(key, value);
-}
-
-// CondVar
-BML_Result BML_API_CondVarCreate(BML_CondVar *out_condvar) {
-    return SyncManager::Instance().CreateCondVar(out_condvar);
-}
-
-void BML_API_CondVarDestroy(BML_CondVar condvar) {
-    SyncManager::Instance().DestroyCondVar(condvar);
-}
-
-BML_Result BML_API_CondVarWait(BML_CondVar condvar, BML_Mutex mutex) {
-    return SyncManager::Instance().WaitCondVar(condvar, mutex);
-}
-
-BML_Result BML_API_CondVarWaitTimeout(BML_CondVar condvar, BML_Mutex mutex, uint32_t timeout_ms) {
-    return SyncManager::Instance().WaitCondVarTimeout(condvar, mutex, timeout_ms);
-}
-
-BML_Result BML_API_CondVarSignal(BML_CondVar condvar) {
-    return SyncManager::Instance().SignalCondVar(condvar);
-}
-
-BML_Result BML_API_CondVarBroadcast(BML_CondVar condvar) {
-    return SyncManager::Instance().BroadcastCondVar(condvar);
-}
-
-// SpinLock
-BML_Result BML_API_SpinLockCreate(BML_SpinLock *out_lock) {
-    return SyncManager::Instance().CreateSpinLock(out_lock);
-}
-
-void BML_API_SpinLockDestroy(BML_SpinLock lock) {
-    SyncManager::Instance().DestroySpinLock(lock);
-}
-
-void BML_API_SpinLockLock(BML_SpinLock lock) {
-    SyncManager::Instance().LockSpinLock(lock);
-}
-
-BML_Bool BML_API_SpinLockTryLock(BML_SpinLock lock) {
-    return SyncManager::Instance().TryLockSpinLock(lock);
-}
-
-void BML_API_SpinLockUnlock(BML_SpinLock lock) {
-    SyncManager::Instance().UnlockSpinLock(lock);
-}
-
-// Capabilities
-BML_Result BML_API_GetSyncCaps(BML_SyncCaps *out_caps) {
-    return SyncManager::Instance().GetCaps(out_caps);
-}
-
-} // extern "C"
