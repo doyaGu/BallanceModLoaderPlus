@@ -56,6 +56,7 @@ add_compile_options(
 )
 
 option(BML_BUILD_TESTS "Build the BML test suite" OFF)
+option(BML_BUILD_BENCHMARKS "Build the BML benchmark suite" OFF)
 
 set(BML_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/include" CACHE INTERNAL "")
 set(BML_SOURCE_DIR "${PROJECT_SOURCE_DIR}/src" CACHE INTERNAL "")
@@ -65,5 +66,10 @@ find_package(VirtoolsSDK REQUIRED)
 add_subdirectory(deps)
 add_subdirectory(src)
 if (BML_BUILD_TESTS)
+    include(CTest)
+    enable_testing()
     add_subdirectory(tests)
+endif ()
+if (BML_BUILD_BENCHMARKS)
+    add_subdirectory(benchmarks)
 endif ()
