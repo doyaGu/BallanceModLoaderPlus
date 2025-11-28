@@ -17,6 +17,7 @@
 #endif
 #include <Windows.h>
 
+#include "bml_core.h"
 #include "bml_errors.h"
 #include "bml_types.h"
 
@@ -73,6 +74,10 @@ namespace BML::Core {
         BML_Result ReleaseHandle();
         uint32_t GetRetainCountForTest() const;
 
+        // User data management
+        BML_Result SetUserData(const char *key, void *data, BML_UserDataDestructor destructor);
+        BML_Result GetUserData(const char *key, void **out_data) const;
+
         static std::wstring SanitizeIdentifierForFilename(const std::string &value);
 
     private:
@@ -96,6 +101,14 @@ namespace BML::Core {
         std::atomic<uint32_t> m_RetainCount{0};
         bool m_CleanupRequested{false};
         std::atomic<bool> m_Initialized{false};
+
+        // User data storage
+        struct UserDataEntry {
+            void *data;
+            BML_UserDataDestructor destructor;
+        };
+        std::unordered_map<std::string, UserDataEntry> m_UserData;
+        mutable std::mutex m_UserDataMutex;
     };
 } // namespace BML::Core
 

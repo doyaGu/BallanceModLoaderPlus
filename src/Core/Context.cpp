@@ -187,6 +187,17 @@ namespace BML::Core {
         // Clear all manifests
         m_Manifests.clear();
 
+        // Clean up user data (call destructors)
+        {
+            std::lock_guard<std::mutex> user_data_lock(m_UserDataMutex);
+            for (auto &entry : m_UserData) {
+                if (entry.second.destructor && entry.second.data) {
+                    entry.second.destructor(entry.second.data);
+                }
+            }
+            m_UserData.clear();
+        }
+
         // Note: Extension registrations are cleaned up per-provider during module shutdown
         // ApiRegistry::Clear() is not called here as it would remove core APIs
 
@@ -414,5 +425,46 @@ namespace BML::Core {
 
     uint32_t Context::GetRetainCountForTest() const {
         return m_RetainCount.load(std::memory_order_acquire);
+    }
+
+    BML_Result Context::SetUserData(const char *key, void *data, BML_UserDataDestructor destructor) {
+        if (!key)
+            return BML_RESULT_INVALID_ARGUMENT;
+
+        std::lock_guard<std::mutex> lock(m_UserDataMutex);
+
+        // If key already exists, call destructor on old data first
+        auto it = m_UserData.find(key);
+        if (it != m_UserData.end()) {
+            if (it->second.destructor && it->second.data) {
+                it->second.destructor(it->second.data);
+            }
+            if (data) {
+                it->second.data = data;
+                it->second.destructor = destructor;
+            } else {
+                m_UserData.erase(it);
+            }
+        } else if (data) {
+            m_UserData[key] = {data, destructor};
+        }
+
+        return BML_RESULT_OK;
+    }
+
+    BML_Result Context::GetUserData(const char *key, void **out_data) const {
+        if (!key || !out_data)
+            return BML_RESULT_INVALID_ARGUMENT;
+
+        std::lock_guard<std::mutex> lock(m_UserDataMutex);
+
+        auto it = m_UserData.find(key);
+        if (it != m_UserData.end()) {
+            *out_data = it->second.data;
+            return BML_RESULT_OK;
+        }
+
+        *out_data = nullptr;
+        return BML_RESULT_NOT_FOUND;
     }
 } // namespace BML::Core
