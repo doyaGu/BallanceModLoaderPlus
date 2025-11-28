@@ -79,6 +79,24 @@ namespace BML::Core {
         return context->ReleaseHandle();
     }
 
+    BML_Result BML_API_ContextSetUserData(BML_Context ctx, const char *key, void *data, BML_UserDataDestructor destructor) {
+        auto *context = FromHandle(ctx);
+        if (!context)
+            return BML_RESULT_INVALID_HANDLE;
+        if (!key)
+            return BML_RESULT_INVALID_ARGUMENT;
+        return context->SetUserData(key, data, destructor);
+    }
+
+    BML_Result BML_API_ContextGetUserData(BML_Context ctx, const char *key, void **out_data) {
+        auto *context = FromHandle(ctx);
+        if (!context)
+            return BML_RESULT_INVALID_HANDLE;
+        if (!key || !out_data)
+            return BML_RESULT_INVALID_ARGUMENT;
+        return context->GetUserData(key, out_data);
+    }
+
     BML_Context BML_API_GetGlobalContext() {
         return Context::Instance().GetHandle();
     }
@@ -182,6 +200,8 @@ namespace BML::Core {
         // Context management APIs
         BML_REGISTER_API_GUARDED_WITH_CAPS(bmlContextRetain, "core.context", BML_API_ContextRetain, BML_CAP_CONTEXT);
         BML_REGISTER_API_GUARDED_WITH_CAPS(bmlContextRelease, "core.context", BML_API_ContextRelease, BML_CAP_CONTEXT);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlContextSetUserData, "core.context", BML_API_ContextSetUserData, BML_CAP_CONTEXT);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlContextGetUserData, "core.context", BML_API_ContextGetUserData, BML_CAP_CONTEXT);
         BML_REGISTER_API_WITH_CAPS(bmlGetGlobalContext, BML_API_GetGlobalContext, BML_CAP_CONTEXT);
         BML_REGISTER_API_WITH_CAPS(bmlGetRuntimeVersion, BML_API_GetRuntimeVersion, BML_CAP_RUNTIME);
 
