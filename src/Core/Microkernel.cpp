@@ -9,6 +9,7 @@
 #include "Context.h"
 #include "HotReloadMonitor.h"  // Required for ModuleRuntime destructor
 #include "ImcBus.h"
+#include "Logging.h"
 #include "StringUtils.h"
 
 namespace BML::Core {
@@ -33,20 +34,9 @@ namespace BML::Core {
             return state;
         }
 
-        std::string Narrow(const std::wstring &value) {
-            if (value.empty())
-                return {};
-            int required = WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
-            if (required <= 0)
-                return {};
-            std::string buffer(static_cast<size_t>(required), '\0');
-            WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), buffer.data(), required, nullptr, nullptr);
-            return buffer;
-        }
-
-        void DebugLog(const std::string &message) {
-            std::string line = "[BML microkernel] " + message + "\n";
-            OutputDebugStringA(line.c_str());
+        // Use CoreLog for consistent logging
+        inline void DebugLog(const std::string &message) {
+            CoreLog(BML_LOG_DEBUG, "microkernel", "%s", message.c_str());
         }
 
         std::wstring GetEnvironmentOverride() {
@@ -75,7 +65,7 @@ namespace BML::Core {
         std::wstring DetectModsDirectory() {
             auto overridePath = GetEnvironmentOverride();
             if (!overridePath.empty()) {
-                DebugLog("Using BML_MODS_DIR override: " + Narrow(overridePath));
+                DebugLog("Using BML_MODS_DIR override: " + utils::Utf16ToUtf8(overridePath));
                 return overridePath;
             }
 
@@ -135,7 +125,7 @@ namespace BML::Core {
                 std::ostringstream oss;
                 oss << "Module load failed: id=" << diag.load_error.id << ", reason=" << diag.load_error.message;
                 if (!diag.load_error.path.empty()) {
-                    oss << ", path=" << Narrow(diag.load_error.path);
+                    oss << ", path=" << utils::Utf16ToUtf8(diag.load_error.path);
                 }
                 if (diag.load_error.system_code != 0) {
                     oss << ", code=" << diag.load_error.system_code;

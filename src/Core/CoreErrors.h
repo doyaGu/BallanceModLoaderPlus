@@ -31,7 +31,7 @@ namespace BML::Core {
     CoreResult TranslateException(std::string_view subsystem);
 
     /**
-     * @brief Set the last error for the current thread (Task 1.1)
+     * @brief Set the last error for the current thread
      *
      * @param code Result code
      * @param message Error message (copied internally)
@@ -88,7 +88,7 @@ namespace BML::Core {
     }
 
     /**
-     * @brief Get the last error for the current thread (Task 1.1)
+     * @brief Get the last error for the current thread
      *
      * @param out_info Pointer to receive error information
      * @return BML_RESULT_OK if error info available, BML_RESULT_NOT_FOUND otherwise
@@ -96,12 +96,12 @@ namespace BML::Core {
     BML_Result GetLastErrorInfo(BML_ErrorInfo *out_info);
 
     /**
-     * @brief Clear the last error for the current thread (Task 1.1)
+     * @brief Clear the last error for the current thread
      */
     void ClearLastErrorInfo();
 
     /**
-     * @brief Convert a result code to a string (Task 1.1)
+     * @brief Convert a result code to a string
      *
      * @param result The result code
      * @return Static string describing the error

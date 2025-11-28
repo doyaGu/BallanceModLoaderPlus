@@ -73,7 +73,7 @@
 #define BML_API_ID_bmlSetCurrentModule  33u
 #define BML_API_ID_bmlGetCurrentModule  34u
 
-/** @brief Diagnostics / Error Handling (Task 1.1) */
+/** @brief Diagnostics / Error Handling */
 #define BML_API_ID_bmlGetLastError      40u
 #define BML_API_ID_bmlClearLastError    41u
 #define BML_API_ID_bmlGetErrorString    42u
@@ -198,14 +198,18 @@
 #define BML_API_ID_bmlExtensionRegister         6000u
 #define BML_API_ID_bmlExtensionQuery            6001u
 #define BML_API_ID_bmlExtensionLoad             6002u
-#define BML_API_ID_bmlExtensionLoadVersioned    6003u
-#define BML_API_ID_bmlExtensionEnumerate        6004u
-#define BML_API_ID_bmlExtensionUnregister       6005u
-#define BML_API_ID_bmlGetExtensionCaps          6006u
-#define BML_API_ID_bmlRegisterConfigLoadHooks   6010u
-#define BML_API_ID_bmlRegisterLogSinkOverride   6011u
-#define BML_API_ID_bmlClearLogSinkOverride      6012u
-#define BML_API_ID_bmlRegisterResourceType      6013u
+#define BML_API_ID_bmlExtensionEnumerate        6003u
+#define BML_API_ID_bmlExtensionUnregister       6004u
+#define BML_API_ID_bmlGetExtensionCaps          6005u
+#define BML_API_ID_bmlExtensionCount            6006u
+#define BML_API_ID_bmlExtensionUpdateApi        6007u
+#define BML_API_ID_bmlExtensionDeprecate        6008u
+#define BML_API_ID_bmlExtensionAddListener      6009u
+#define BML_API_ID_bmlExtensionRemoveListener   6010u
+#define BML_API_ID_bmlRegisterConfigLoadHooks   6020u
+#define BML_API_ID_bmlRegisterLogSinkOverride   6021u
+#define BML_API_ID_bmlClearLogSinkOverride      6022u
+#define BML_API_ID_bmlRegisterResourceType      6023u
 
 /* ========================================================================
  * Synchronization APIs (7000-7999)
@@ -319,9 +323,6 @@
 #define BML_API_ID_bmlGetApiDescriptorByName 9004u
 #define BML_API_ID_bmlEnumerateApis         9005u
 #define BML_API_ID_bmlGetApiIntroducedVersion 9006u
-
-/** @brief Unified extension registration */
-#define BML_API_ID_bmlRegisterExtensionApi  9007u
 
 /* ========================================================================
  * Reserved for Future Use (10000+)

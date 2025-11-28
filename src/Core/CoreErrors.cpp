@@ -8,27 +8,11 @@
 #include <cstring>
 #include <typeinfo>
 
+#include "DiagnosticManager.h"
 #include "Logging.h"
 
 namespace BML::Core {
     namespace {
-        /* ========================================================================
-         * Thread-Local Error Storage (Task 1.1)
-         * ======================================================================== */
-
-        /**
-         * @brief Thread-local storage for last error information
-         */
-        struct ThreadLocalError {
-            BML_Result code = BML_RESULT_OK;
-            std::string message;
-            std::string api_name;
-            std::string source_file;
-            int source_line = 0;
-            bool has_error = false;
-        };
-
-        thread_local ThreadLocalError g_lastError;
 
         std::string_view NormalizeSubsystem(std::string_view subsystem) {
             return subsystem.empty() ? std::string_view{"core"} : subsystem;
@@ -54,7 +38,7 @@ namespace BML::Core {
     } // namespace
 
     /* ========================================================================
-     * Error Handling Implementation (Task 1.1)
+     * Error Handling Implementation
      * ======================================================================== */
 
     void SetLastError(BML_Result code,
@@ -62,43 +46,18 @@ namespace BML::Core {
                       const char *api_name,
                       const char *source_file,
                       int source_line) {
-        g_lastError.code = code;
-        g_lastError.message = message ? message : "";
-        g_lastError.api_name = api_name ? api_name : "";
-        g_lastError.source_file = source_file ? source_file : "";
-        g_lastError.source_line = source_line;
-        g_lastError.has_error = (code != BML_RESULT_OK);
+        // Delegate to DiagnosticManager to maintain single source of truth
+        DiagnosticManager::Instance().SetError(code, message, api_name, source_file, source_line);
     }
 
     BML_Result GetLastErrorInfo(BML_ErrorInfo *out_info) {
-        if (!out_info) {
-            return BML_RESULT_INVALID_ARGUMENT;
-        }
-
-        if (out_info->struct_size < sizeof(BML_ErrorInfo)) {
-            return BML_RESULT_INVALID_SIZE;
-        }
-
-        if (!g_lastError.has_error) {
-            return BML_RESULT_NOT_FOUND;
-        }
-
-        out_info->result_code = g_lastError.code;
-        out_info->message = g_lastError.message.empty() ? nullptr : g_lastError.message.c_str();
-        out_info->source_file = g_lastError.source_file.empty() ? nullptr : g_lastError.source_file.c_str();
-        out_info->source_line = g_lastError.source_line;
-        out_info->api_name = g_lastError.api_name.empty() ? nullptr : g_lastError.api_name.c_str();
-
-        return BML_RESULT_OK;
+        // Delegate to DiagnosticManager to maintain single source of truth
+        return DiagnosticManager::Instance().GetLastError(out_info);
     }
 
     void ClearLastErrorInfo() {
-        g_lastError.has_error = false;
-        g_lastError.code = BML_RESULT_OK;
-        g_lastError.message.clear();
-        g_lastError.api_name.clear();
-        g_lastError.source_file.clear();
-        g_lastError.source_line = 0;
+        // Delegate to DiagnosticManager to maintain single source of truth
+        DiagnosticManager::Instance().ClearLastError();
     }
 
     const char *GetErrorString(BML_Result result) {

@@ -1,7 +1,6 @@
 /**
  * @file SyncPrimitivesTest.cpp
  * @brief Tests for synchronization primitives (CondVar, SpinLock)
- * @since BML 0.4.0 - Task 3.3
  */
 
 #include <gtest/gtest.h>

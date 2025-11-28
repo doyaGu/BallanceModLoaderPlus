@@ -8,7 +8,7 @@
 BML_BEGIN_CDECLS
 
 /**
- * @brief Configuration key identifier (Task 1.2)
+ * @brief Configuration key identifier
  */
 typedef struct BML_ConfigKey {
     size_t struct_size;    /**< sizeof(BML_ConfigKey), must be first field */
@@ -27,11 +27,11 @@ typedef enum BML_ConfigType {
     BML_CONFIG_INT  = 1,
     BML_CONFIG_FLOAT = 2,
     BML_CONFIG_STRING = 3,
-    _BML_CONFIG_TYPE_FORCE_32BIT = 0x7FFFFFFF  /**< Force 32-bit enum (Task 1.4) */
+    _BML_CONFIG_TYPE_FORCE_32BIT = 0x7FFFFFFF  /**< Force 32-bit enum */
 } BML_ConfigType;
 
 /**
- * @brief Configuration value container (Task 1.2)
+ * @brief Configuration value container
  */
 typedef struct BML_ConfigValue {
     size_t struct_size;    /**< sizeof(BML_ConfigValue), must be first field */
@@ -76,11 +76,11 @@ typedef enum BML_ConfigCapabilityFlags {
     BML_CONFIG_CAP_RESET          = 1u << 2,
     BML_CONFIG_CAP_ENUMERATE      = 1u << 3,
     BML_CONFIG_CAP_PERSISTENCE    = 1u << 4,
-    _BML_CONFIG_CAP_FORCE_32BIT   = 0x7FFFFFFF  /**< Force 32-bit enum (Task 1.4) */
+    _BML_CONFIG_CAP_FORCE_32BIT   = 0x7FFFFFFF  /**< Force 32-bit enum */
 } BML_ConfigCapabilityFlags;
 
 /**
- * @brief Configuration store capabilities (Task 1.2)
+ * @brief Configuration store capabilities
  */
 typedef struct BML_ConfigStoreCaps {
     size_t struct_size;              /**< sizeof(BML_ConfigStoreCaps), must be first field */
@@ -109,7 +109,6 @@ typedef struct BML_ConfigStoreCaps {
  * @return BML_RESULT_INVALID_ARGUMENT if out_caps is NULL
  * 
  * @threadsafe Yes
- * @since 0.4.0
  * 
  * @code
  * BML_ConfigStoreCaps caps = BML_CONFIG_STORE_CAPS_INIT;
@@ -133,7 +132,6 @@ typedef BML_Result (*PFN_BML_GetConfigCaps)(BML_ConfigStoreCaps *out_caps);
  * @return BML_RESULT_NOT_FOUND if key doesn't exist
  * 
  * @threadsafe Yes (read operation)
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ConfigGet)(BML_Mod mod, const BML_ConfigKey *key, BML_ConfigValue *out_value);
 
@@ -150,7 +148,6 @@ typedef BML_Result (*PFN_BML_ConfigGet)(BML_Mod mod, const BML_ConfigKey *key, B
  * @return BML_RESULT_IO_ERROR if config file cannot be written
  * 
  * @threadsafe No (use external synchronization for concurrent writes)
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ConfigSet)(BML_Mod mod, const BML_ConfigKey *key, const BML_ConfigValue *value);
 
@@ -165,11 +162,10 @@ typedef BML_Result (*PFN_BML_ConfigSet)(BML_Mod mod, const BML_ConfigKey *key, c
  * @return BML_RESULT_NOT_FOUND if key doesn't exist
  * 
  * @threadsafe No (use external synchronization for concurrent modifications)
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ConfigReset)(BML_Mod mod, const BML_ConfigKey *key);
 /**
- * @brief Config enumeration callback (Task 2.3 - unified signature)
+ * @brief Config enumeration callback
  * @param[in] ctx BML context (first parameter for consistency)
  * @param[in] key Configuration key
  * @param[in] value Configuration value
@@ -260,6 +256,53 @@ extern PFN_BML_ConfigSetInt     bmlConfigSetInt;
 extern PFN_BML_ConfigSetFloat   bmlConfigSetFloat;
 extern PFN_BML_ConfigSetBool    bmlConfigSetBool;
 extern PFN_BML_ConfigSetString  bmlConfigSetString;
+
+/* ========================================================================
+ * Config Load Hooks (for observing config file loading)
+ * ======================================================================== */
+
+/**
+ * @brief Context information for config load callbacks
+ */
+typedef struct BML_ConfigLoadContext {
+    size_t struct_size;          /**< sizeof(BML_ConfigLoadContext), must be first */
+    BML_Version api_version;     /**< API version */
+    BML_Mod mod;                 /**< Mod whose config is being loaded */
+    const char* mod_id;          /**< Mod ID string (may be NULL) */
+    const char* config_path;     /**< Path to config file (may be NULL) */
+} BML_ConfigLoadContext;
+
+#define BML_CONFIG_LOAD_CONTEXT_INIT { sizeof(BML_ConfigLoadContext), BML_VERSION_INIT(0,0,0), NULL, NULL, NULL }
+
+/**
+ * @brief Callback for config file load events
+ * @param ctx BML context
+ * @param load_ctx Config load context with mod and file info
+ * @param user_data User context from registration
+ */
+typedef void (*BML_ConfigLoadCallback)(BML_Context ctx, const BML_ConfigLoadContext* load_ctx, void* user_data);
+
+/**
+ * @brief Descriptor for registering config load hooks
+ */
+typedef struct BML_ConfigLoadHooks {
+    size_t struct_size;              /**< sizeof(BML_ConfigLoadHooks), must be first */
+    BML_ConfigLoadCallback on_pre_load;   /**< Called before config file is loaded */
+    BML_ConfigLoadCallback on_post_load;  /**< Called after config file is loaded */
+    void* user_data;                 /**< User context passed to callbacks */
+} BML_ConfigLoadHooks;
+
+#define BML_CONFIG_LOAD_HOOKS_INIT { sizeof(BML_ConfigLoadHooks), NULL, NULL, NULL }
+
+/**
+ * @brief Register config load hooks to observe config file loading
+ * @param hooks Hook descriptor
+ * @return BML_RESULT_OK on success
+ * @return BML_RESULT_INVALID_ARGUMENT if hooks is invalid
+ */
+typedef BML_Result (*PFN_BML_RegisterConfigLoadHooks)(const BML_ConfigLoadHooks* hooks);
+
+extern PFN_BML_RegisterConfigLoadHooks bmlRegisterConfigLoadHooks;
 
 BML_END_CDECLS
 
