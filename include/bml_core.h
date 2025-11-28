@@ -466,53 +466,6 @@ typedef BML_Result (*PFN_BML_RegisterShutdownHook)(BML_Mod mod, BML_ShutdownCall
 /** @} */ /* end CoreShutdown group */
 
 /* ========================================================================
- * Core API Structure
- * ======================================================================== */
-
-/**
- * @defgroup CoreApiStruct Core API Table
- * @brief Function pointer table for Core API dispatch
- * @{
- */
-
-/**
- * @brief Core API function pointer table
- * 
- * Contains all function pointers for the Core API subsystem. This structure
- * is populated by the loader during initialization and provides access to
- * all core functionality.
- * 
- * @note Members may be NULL if the corresponding feature is not supported
- *       by the runtime. Always check before calling.
- * 
- * @code
- * // Example: Direct use of API table (advanced usage)
- * BML_CoreApi* core = GetCoreApiTable();
- * if (core && core->GetRuntimeVersion) {
- *     const BML_Version* ver = core->GetRuntimeVersion();
- * }
- * @endcode
- * 
- */
-typedef struct BML_CoreApi {
-    PFN_BML_ContextRetain           ContextRetain;           /**< @see PFN_BML_ContextRetain */
-    PFN_BML_ContextRelease          ContextRelease;          /**< @see PFN_BML_ContextRelease */
-    PFN_BML_GetGlobalContext        GetGlobalContext;        /**< @see PFN_BML_GetGlobalContext */
-    PFN_BML_GetRuntimeVersion       GetRuntimeVersion;       /**< @see PFN_BML_GetRuntimeVersion */
-    PFN_BML_ContextSetUserData      ContextSetUserData;      /**< @see PFN_BML_ContextSetUserData */
-    PFN_BML_ContextGetUserData      ContextGetUserData;      /**< @see PFN_BML_ContextGetUserData */
-    PFN_BML_RequestCapability       RequestCapability;       /**< @see PFN_BML_RequestCapability */
-    PFN_BML_CheckCapability         CheckCapability;         /**< @see PFN_BML_CheckCapability */
-    PFN_BML_GetModId                GetModId;                /**< @see PFN_BML_GetModId */
-    PFN_BML_GetModVersion           GetModVersion;           /**< @see PFN_BML_GetModVersion */
-    PFN_BML_RegisterShutdownHook    RegisterShutdownHook;    /**< @see PFN_BML_RegisterShutdownHook */
-    PFN_BML_SetCurrentModule        SetCurrentModule;        /**< @see PFN_BML_SetCurrentModule */
-    PFN_BML_GetCurrentModule        GetCurrentModule;        /**< @see PFN_BML_GetCurrentModule */
-} BML_CoreApi;
-
-/** @} */ /* end CoreApiStruct group */
-
-/* ========================================================================
  * Core Capability Flags
  * ======================================================================== */
 
