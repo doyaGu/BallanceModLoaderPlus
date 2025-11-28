@@ -201,11 +201,6 @@ namespace BML::Core {
         // Runtime capabilities API
         BML_REGISTER_CAPS_API_WITH_CAPS(bmlCoreGetCaps, "core.runtime", BML_API_CoreGetCaps, BML_CAP_RUNTIME);
 
-        // Error handling APIs
-        BML_REGISTER_API_WITH_CAPS(bmlGetLastError, GetLastErrorInfo, BML_CAP_DIAGNOSTICS);
-        BML_REGISTER_API_WITH_CAPS(bmlClearLastError, ClearLastErrorInfo, BML_CAP_DIAGNOSTICS);
-        BML_REGISTER_API_WITH_CAPS(bmlGetErrorString, GetErrorString, BML_CAP_DIAGNOSTICS);
-
         // Register all subsystem APIs in dependency order
         registry.RegisterCoreApiSet(kCoreApiDescriptors, std::size(kCoreApiDescriptors));
     }

@@ -237,14 +237,14 @@
 #define BML_API_ID_bmlRwLockWriteLockTimeout 7020u
 
 /** @brief Atomic operations */
-#define BML_API_ID_bmlAtomicIncrement32        7020u
-#define BML_API_ID_bmlAtomicDecrement32        7021u
-#define BML_API_ID_bmlAtomicAdd32              7022u
-#define BML_API_ID_bmlAtomicCompareExchange32  7023u
-#define BML_API_ID_bmlAtomicExchange32         7024u
-#define BML_API_ID_bmlAtomicLoadPtr            7025u
-#define BML_API_ID_bmlAtomicStorePtr           7026u
-#define BML_API_ID_bmlAtomicCompareExchangePtr 7027u
+#define BML_API_ID_bmlAtomicIncrement32        7050u
+#define BML_API_ID_bmlAtomicDecrement32        7051u
+#define BML_API_ID_bmlAtomicAdd32              7052u
+#define BML_API_ID_bmlAtomicCompareExchange32  7053u
+#define BML_API_ID_bmlAtomicExchange32         7054u
+#define BML_API_ID_bmlAtomicLoadPtr            7055u
+#define BML_API_ID_bmlAtomicStorePtr           7056u
+#define BML_API_ID_bmlAtomicCompareExchangePtr 7057u
 
 /** @brief Semaphore operations */
 #define BML_API_ID_bmlSemaphoreCreate   7030u
