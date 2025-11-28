@@ -237,26 +237,26 @@
 #define BML_API_ID_bmlRwLockWriteLockTimeout 7020u
 
 /** @brief Atomic operations */
-#define BML_API_ID_bmlAtomicIncrement32        7050u
-#define BML_API_ID_bmlAtomicDecrement32        7051u
-#define BML_API_ID_bmlAtomicAdd32              7052u
-#define BML_API_ID_bmlAtomicCompareExchange32  7053u
-#define BML_API_ID_bmlAtomicExchange32         7054u
-#define BML_API_ID_bmlAtomicLoadPtr            7055u
-#define BML_API_ID_bmlAtomicStorePtr           7056u
-#define BML_API_ID_bmlAtomicCompareExchangePtr 7057u
+#define BML_API_ID_bmlAtomicIncrement32        7030u
+#define BML_API_ID_bmlAtomicDecrement32        7031u
+#define BML_API_ID_bmlAtomicAdd32              7032u
+#define BML_API_ID_bmlAtomicCompareExchange32  7033u
+#define BML_API_ID_bmlAtomicExchange32         7034u
+#define BML_API_ID_bmlAtomicLoadPtr            7035u
+#define BML_API_ID_bmlAtomicStorePtr           7036u
+#define BML_API_ID_bmlAtomicCompareExchangePtr 7037u
 
 /** @brief Semaphore operations */
-#define BML_API_ID_bmlSemaphoreCreate   7030u
-#define BML_API_ID_bmlSemaphoreDestroy  7031u
-#define BML_API_ID_bmlSemaphoreWait     7032u
-#define BML_API_ID_bmlSemaphoreSignal   7033u
+#define BML_API_ID_bmlSemaphoreCreate   7040u
+#define BML_API_ID_bmlSemaphoreDestroy  7041u
+#define BML_API_ID_bmlSemaphoreWait     7042u
+#define BML_API_ID_bmlSemaphoreSignal   7043u
 
 /** @brief Thread-local storage */
-#define BML_API_ID_bmlTlsCreate         7040u
-#define BML_API_ID_bmlTlsDestroy        7041u
-#define BML_API_ID_bmlTlsGet            7042u
-#define BML_API_ID_bmlTlsSet            7043u
+#define BML_API_ID_bmlTlsCreate         7050u
+#define BML_API_ID_bmlTlsDestroy        7051u
+#define BML_API_ID_bmlTlsGet            7052u
+#define BML_API_ID_bmlTlsSet            7053u
 
 /** @brief Condition variables */
 #define BML_API_ID_bmlCondVarCreate         7060u
@@ -274,7 +274,7 @@
 #define BML_API_ID_bmlSpinLockUnlock    7074u
 
 /** @brief Sync capabilities */
-#define BML_API_ID_bmlSyncGetCaps       7050u
+#define BML_API_ID_bmlSyncGetCaps       7080u
 
 /* ========================================================================
  * Profiling APIs (8000-8999)
