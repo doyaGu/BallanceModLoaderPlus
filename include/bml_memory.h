@@ -223,7 +223,7 @@ extern PFN_BML_MemoryPoolFree     bmlMemoryPoolFree;
 extern PFN_BML_MemoryPoolDestroy  bmlMemoryPoolDestroy;
 
 extern PFN_BML_GetMemoryStats     bmlGetMemoryStats;
-extern PFN_BML_MemoryGetCaps         bmlMemoryGetCaps;
+extern PFN_BML_MemoryGetCaps      bmlMemoryGetCaps;
 
 BML_END_CDECLS
 
