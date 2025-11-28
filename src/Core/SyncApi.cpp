@@ -26,6 +26,10 @@ namespace BML::Core {
         SyncManager::Instance().UnlockMutex(mutex);
     }
 
+    BML_Result BML_API_MutexLockTimeout(BML_Mutex mutex, uint32_t timeout_ms) {
+        return SyncManager::Instance().LockMutexTimeout(mutex, timeout_ms);
+    }
+
     // RwLock
     BML_Result BML_API_RwLockCreate(BML_RwLock *out_lock) {
         return SyncManager::Instance().CreateRwLock(out_lock);
@@ -43,12 +47,20 @@ namespace BML::Core {
         return SyncManager::Instance().TryReadLockRwLock(lock);
     }
 
+    BML_Result BML_API_RwLockReadLockTimeout(BML_RwLock lock, uint32_t timeout_ms) {
+        return SyncManager::Instance().ReadLockRwLockTimeout(lock, timeout_ms);
+    }
+
     void BML_API_RwLockWriteLock(BML_RwLock lock) {
         SyncManager::Instance().WriteLockRwLock(lock);
     }
 
     BML_Bool BML_API_RwLockTryWriteLock(BML_RwLock lock) {
         return SyncManager::Instance().TryWriteLockRwLock(lock);
+    }
+
+    BML_Result BML_API_RwLockWriteLockTimeout(BML_RwLock lock, uint32_t timeout_ms) {
+        return SyncManager::Instance().WriteLockRwLockTimeout(lock, timeout_ms);
     }
 
     void BML_API_RwLockUnlock(BML_RwLock lock) {
@@ -177,7 +189,7 @@ namespace BML::Core {
     }
 
     // Capabilities
-    BML_Result BML_API_GetSyncCaps(BML_SyncCaps *out_caps) {
+    BML_Result BML_API_SyncGetCaps(BML_SyncCaps *out_caps) {
         return SyncManager::Instance().GetCaps(out_caps);
     }
 
@@ -189,6 +201,7 @@ namespace BML::Core {
         BML_REGISTER_API_WITH_CAPS(bmlMutexDestroy, BML_API_MutexDestroy, BML_CAP_SYNC_MUTEX);
         BML_REGISTER_API_WITH_CAPS(bmlMutexLock, BML_API_MutexLock, BML_CAP_SYNC_MUTEX);
         BML_REGISTER_API_WITH_CAPS(bmlMutexTryLock, BML_API_MutexTryLock, BML_CAP_SYNC_MUTEX);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlMutexLockTimeout, "sync.mutex", BML_API_MutexLockTimeout, BML_CAP_SYNC_MUTEX);
         BML_REGISTER_API_WITH_CAPS(bmlMutexUnlock, BML_API_MutexUnlock, BML_CAP_SYNC_MUTEX);
 
         /* RwLock APIs */
@@ -196,8 +209,10 @@ namespace BML::Core {
         BML_REGISTER_API_WITH_CAPS(bmlRwLockDestroy, BML_API_RwLockDestroy, BML_CAP_SYNC_RWLOCK);
         BML_REGISTER_API_WITH_CAPS(bmlRwLockReadLock, BML_API_RwLockReadLock, BML_CAP_SYNC_RWLOCK);
         BML_REGISTER_API_WITH_CAPS(bmlRwLockTryReadLock, BML_API_RwLockTryReadLock, BML_CAP_SYNC_RWLOCK);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlRwLockReadLockTimeout, "sync.rwlock", BML_API_RwLockReadLockTimeout, BML_CAP_SYNC_RWLOCK);
         BML_REGISTER_API_WITH_CAPS(bmlRwLockWriteLock, BML_API_RwLockWriteLock, BML_CAP_SYNC_RWLOCK);
         BML_REGISTER_API_WITH_CAPS(bmlRwLockTryWriteLock, BML_API_RwLockTryWriteLock, BML_CAP_SYNC_RWLOCK);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlRwLockWriteLockTimeout, "sync.rwlock", BML_API_RwLockWriteLockTimeout, BML_CAP_SYNC_RWLOCK);
         BML_REGISTER_API_WITH_CAPS(bmlRwLockUnlock, BML_API_RwLockUnlock, BML_CAP_SYNC_RWLOCK);
         BML_REGISTER_API_WITH_CAPS(bmlRwLockReadUnlock, BML_API_RwLockReadUnlock, BML_CAP_SYNC_RWLOCK);
         BML_REGISTER_API_WITH_CAPS(bmlRwLockWriteUnlock, BML_API_RwLockWriteUnlock, BML_CAP_SYNC_RWLOCK);
@@ -240,7 +255,7 @@ namespace BML::Core {
         BML_REGISTER_API_WITH_CAPS(bmlSpinLockUnlock, BML_API_SpinLockUnlock, BML_CAP_SYNC_MUTEX);
 
         /* Capabilities */
-        BML_REGISTER_CAPS_API_WITH_CAPS(bmlGetSyncCaps, "sync.caps", BML_API_GetSyncCaps,
+        BML_REGISTER_CAPS_API_WITH_CAPS(bmlSyncGetCaps, "sync.caps", BML_API_SyncGetCaps,
                                         BML_CAP_SYNC_MUTEX | BML_CAP_SYNC_RWLOCK | BML_CAP_SYNC_SEMAPHORE | BML_CAP_SYNC_ATOMIC | BML_CAP_SYNC_TLS);
     }
 } // namespace BML::Core

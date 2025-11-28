@@ -67,7 +67,7 @@ namespace BML::Core {
         return ProfilingManager::Instance().GetProfilingStats(out_stats);
     }
 
-    BML_Result BML_API_GetProfilingCaps(BML_ProfilingCaps *out_caps) {
+    BML_Result BML_API_ProfilingGetCaps(BML_ProfilingCaps *out_caps) {
         return ProfilingManager::Instance().GetProfilingCaps(out_caps);
     }
 
@@ -96,6 +96,6 @@ namespace BML::Core {
 
         /* Statistics */
         BML_REGISTER_CAPS_API_WITH_CAPS(bmlGetProfilingStats, "profiling.stats", BML_API_GetProfilingStats, BML_CAP_PROFILING_STATS);
-        BML_REGISTER_CAPS_API_WITH_CAPS(bmlGetProfilingCaps, "profiling.caps", BML_API_GetProfilingCaps, BML_CAP_PROFILING_TRACE | BML_CAP_PROFILING_STATS);
+        BML_REGISTER_CAPS_API_WITH_CAPS(bmlProfilingGetCaps, "profiling.caps", BML_API_ProfilingGetCaps, BML_CAP_PROFILING_TRACE | BML_CAP_PROFILING_STATS);
     }
 } // namespace BML::Core

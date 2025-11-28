@@ -229,14 +229,14 @@ typedef BML_Result (*PFN_BML_HandleGetUserData)(const BML_HandleDesc *desc, void
  *
  * @code
  * BML_ResourceCaps caps = BML_RESOURCE_CAPS_INIT;
- * if (bmlGetResourceCaps(&caps) == BML_OK) {
+ * if (bmlResourceGetCaps(&caps) == BML_OK) {
  *     if (caps.capability_flags & BML_RESOURCE_CAP_USER_DATA) {
  *         // User data feature is available
  *     }
  * }
  * @endcode
  */
-typedef BML_Result (*PFN_BML_GetResourceCaps)(BML_ResourceCaps *out_caps);
+typedef BML_Result (*PFN_BML_ResourceGetCaps)(BML_ResourceCaps *out_caps);
 
 extern PFN_BML_HandleCreate        bmlHandleCreate;
 extern PFN_BML_HandleRetain        bmlHandleRetain;
@@ -244,7 +244,7 @@ extern PFN_BML_HandleRelease       bmlHandleRelease;
 extern PFN_BML_HandleValidate      bmlHandleValidate;
 extern PFN_BML_HandleAttachUserData bmlHandleAttachUserData;
 extern PFN_BML_HandleGetUserData    bmlHandleGetUserData;
-extern PFN_BML_GetResourceCaps      bmlGetResourceCaps;
+extern PFN_BML_ResourceGetCaps           bmlResourceGetCaps;
 extern PFN_BML_RegisterResourceType bmlRegisterResourceType;
 
 BML_END_CDECLS

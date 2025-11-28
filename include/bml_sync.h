@@ -21,6 +21,18 @@
 
 BML_BEGIN_CDECLS
 
+/* ========== Timeout Constants ========== */
+
+/**
+ * @brief No timeout (non-blocking operation fails immediately if cannot acquire)
+ */
+#define BML_TIMEOUT_NONE     0u
+
+/**
+ * @brief Infinite timeout (blocking operation)
+ */
+#define BML_TIMEOUT_INFINITE 0xFFFFFFFFu
+
 /* ========== Type-Safe Handle Declarations ========== */
 
 /**
@@ -105,6 +117,20 @@ typedef void (*PFN_BML_MutexLock)(BML_Mutex mutex);
 typedef BML_Bool (*PFN_BML_MutexTryLock)(BML_Mutex mutex);
 
 /**
+ * @brief Lock a mutex with timeout
+ * 
+ * @param[in] mutex Mutex handle
+ * @param[in] timeout_ms Timeout in milliseconds (BML_TIMEOUT_NONE for non-blocking,
+ *                       BML_TIMEOUT_INFINITE for blocking)
+ * @return BML_RESULT_OK if lock acquired
+ * @return BML_RESULT_TIMEOUT if timeout expired
+ * @return BML_RESULT_INVALID_HANDLE if mutex is invalid
+ * 
+ * @threadsafe Yes
+ */
+typedef BML_Result (*PFN_BML_MutexLockTimeout)(BML_Mutex mutex, uint32_t timeout_ms);
+
+/**
  * @brief Unlock a mutex
  * 
  * @param[in] mutex Mutex handle
@@ -159,6 +185,20 @@ typedef void (*PFN_BML_RwLockReadLock)(BML_RwLock lock);
 typedef BML_Bool (*PFN_BML_RwLockTryReadLock)(BML_RwLock lock);
 
 /**
+ * @brief Acquire read lock with timeout
+ * 
+ * @param[in] lock Lock handle
+ * @param[in] timeout_ms Timeout in milliseconds (BML_TIMEOUT_NONE for non-blocking,
+ *                       BML_TIMEOUT_INFINITE for blocking)
+ * @return BML_RESULT_OK if lock acquired
+ * @return BML_RESULT_TIMEOUT if timeout expired
+ * @return BML_RESULT_INVALID_HANDLE if lock is invalid
+ * 
+ * @threadsafe Yes
+ */
+typedef BML_Result (*PFN_BML_RwLockReadLockTimeout)(BML_RwLock lock, uint32_t timeout_ms);
+
+/**
  * @brief Acquire write lock (exclusive access)
  * 
  * @param[in] lock Lock handle
@@ -178,6 +218,20 @@ typedef void (*PFN_BML_RwLockWriteLock)(BML_RwLock lock);
  * @threadsafe Yes
  */
 typedef BML_Bool (*PFN_BML_RwLockTryWriteLock)(BML_RwLock lock);
+
+/**
+ * @brief Acquire write lock with timeout
+ * 
+ * @param[in] lock Lock handle
+ * @param[in] timeout_ms Timeout in milliseconds (BML_TIMEOUT_NONE for non-blocking,
+ *                       BML_TIMEOUT_INFINITE for blocking)
+ * @return BML_RESULT_OK if lock acquired
+ * @return BML_RESULT_TIMEOUT if timeout expired
+ * @return BML_RESULT_INVALID_HANDLE if lock is invalid
+ * 
+ * @threadsafe Yes
+ */
+typedef BML_Result (*PFN_BML_RwLockWriteLockTimeout)(BML_RwLock lock, uint32_t timeout_ms);
 
 /**
  * @brief Release read or write lock (auto-detects lock type)
@@ -447,7 +501,7 @@ typedef struct BML_SyncCaps {
  */
 #define BML_SYNC_CAPS_INIT { sizeof(BML_SyncCaps), BML_VERSION_INIT(0,0,0), 0 }
 
-typedef BML_Result (*PFN_BML_GetSyncCaps)(BML_SyncCaps *out_caps);
+typedef BML_Result (*PFN_BML_SyncGetCaps)(BML_SyncCaps *out_caps);
 
 /* ========== Condition Variable API ========== */
 
@@ -581,18 +635,21 @@ extern PFN_BML_MutexCreate          bmlMutexCreate;
 extern PFN_BML_MutexDestroy         bmlMutexDestroy;
 extern PFN_BML_MutexLock            bmlMutexLock;
 extern PFN_BML_MutexTryLock         bmlMutexTryLock;
+extern PFN_BML_MutexLockTimeout     bmlMutexLockTimeout;
 extern PFN_BML_MutexUnlock          bmlMutexUnlock;
 
 /* Read-Write Lock */
-extern PFN_BML_RwLockCreate         bmlRwLockCreate;
-extern PFN_BML_RwLockDestroy        bmlRwLockDestroy;
-extern PFN_BML_RwLockReadLock       bmlRwLockReadLock;
-extern PFN_BML_RwLockTryReadLock    bmlRwLockTryReadLock;
-extern PFN_BML_RwLockWriteLock      bmlRwLockWriteLock;
-extern PFN_BML_RwLockTryWriteLock   bmlRwLockTryWriteLock;
-extern PFN_BML_RwLockUnlock         bmlRwLockUnlock;
-extern PFN_BML_RwLockReadUnlock     bmlRwLockReadUnlock;
-extern PFN_BML_RwLockWriteUnlock    bmlRwLockWriteUnlock;
+extern PFN_BML_RwLockCreate             bmlRwLockCreate;
+extern PFN_BML_RwLockDestroy            bmlRwLockDestroy;
+extern PFN_BML_RwLockReadLock           bmlRwLockReadLock;
+extern PFN_BML_RwLockTryReadLock        bmlRwLockTryReadLock;
+extern PFN_BML_RwLockReadLockTimeout    bmlRwLockReadLockTimeout;
+extern PFN_BML_RwLockWriteLock          bmlRwLockWriteLock;
+extern PFN_BML_RwLockTryWriteLock       bmlRwLockTryWriteLock;
+extern PFN_BML_RwLockWriteLockTimeout   bmlRwLockWriteLockTimeout;
+extern PFN_BML_RwLockUnlock             bmlRwLockUnlock;
+extern PFN_BML_RwLockReadUnlock         bmlRwLockReadUnlock;
+extern PFN_BML_RwLockWriteUnlock        bmlRwLockWriteUnlock;
 
 /* Atomics */
 extern PFN_BML_AtomicIncrement32        bmlAtomicIncrement32;
@@ -632,7 +689,7 @@ extern PFN_BML_SpinLockTryLock      bmlSpinLockTryLock;
 extern PFN_BML_SpinLockUnlock       bmlSpinLockUnlock;
 
 /* Capability Query */
-extern PFN_BML_GetSyncCaps          bmlGetSyncCaps;
+extern PFN_BML_SyncGetCaps          bmlSyncGetCaps;
 
 BML_END_CDECLS
 

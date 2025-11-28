@@ -92,7 +92,7 @@ namespace BML::Core {
         ImcBus::Instance().Pump(max_per_sub);
     }
 
-    BML_Result BML_API_GetImcCaps(BML_ImcCaps *out_caps) {
+    BML_Result BML_API_ImcGetCaps(BML_ImcCaps *out_caps) {
         if (!out_caps)
             return BML_RESULT_INVALID_ARGUMENT;
 
@@ -159,7 +159,7 @@ namespace BML::Core {
         BML_REGISTER_API_VOID_GUARDED_WITH_CAPS(bmlImcPump, "imc", BML_API_ImcPump, BML_CAP_IMC_DISPATCH);
 
         // Diagnostics
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlGetImcCaps, "imc", BML_API_GetImcCaps, BML_CAP_IMC_BASIC);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcGetCaps, "imc", BML_API_ImcGetCaps, BML_CAP_IMC_BASIC);
         BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcGetSubscriptionStats, "imc", BML_API_ImcGetSubscriptionStats, BML_CAP_IMC_BASIC);
         BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcGetStats, "imc", BML_API_ImcGetStats, BML_CAP_IMC_BASIC);
         BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcResetStats, "imc", BML_API_ImcResetStats, BML_CAP_IMC_BASIC);

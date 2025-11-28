@@ -355,7 +355,7 @@ namespace BML::Core {
 
     BML_Result MemoryManager::GetCaps(BML_MemoryCaps *out_caps) {
         if (!out_caps) {
-            return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "memory", "bmlGetMemoryCaps",
+            return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "memory", "bmlMemoryGetCaps",
                                          "out_caps is NULL", 0);
         }
 

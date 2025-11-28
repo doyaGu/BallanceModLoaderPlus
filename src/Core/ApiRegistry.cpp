@@ -1,15 +1,9 @@
 #include "ApiRegistry.h"
 
-#include <cstring>
 #include <mutex>
 #include <shared_mutex>
 #include <stdexcept>
 #include <vector>
-
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
 
 #include "Context.h"
 #include "Logging.h"
@@ -167,7 +161,7 @@ namespace BML::Core {
     }
 
     // ========================================================================
-    // Extended API Registration
+    // API Registration
     // ========================================================================
 
     void ApiRegistry::RegisterApi(const ApiMetadata &metadata) {
@@ -570,6 +564,93 @@ namespace BML::Core {
 
         // Invalidate TLS caches
         g_CacheVersion.fetch_add(1, std::memory_order_release);
+
+        return true;
+    }
+
+    bool ApiRegistry::UpdateApiTable(const std::string &name, const void *api_table, size_t api_size) {
+        if (!api_table || api_size == 0) {
+            return false;
+        }
+
+        std::unique_lock lock(g_Mutex);
+
+        auto id_it = m_NameToId.find(name);
+        if (id_it == m_NameToId.end()) {
+            return false;
+        }
+
+        BML_ApiId id = id_it->second;
+        auto meta_it = m_Metadata.find(id);
+        if (meta_it == m_Metadata.end()) {
+            return false;
+        }
+
+        // Only extensions can have their API table updated
+        if (meta_it->second.type != BML_API_TYPE_EXTENSION) {
+            return false;
+        }
+
+        // Update the API table pointer and size
+        meta_it->second.pointer = const_cast<void *>(api_table);
+        meta_it->second.api_size = api_size;
+
+        // Update the direct table if applicable
+        if (id < MAX_DIRECT_API_ID) {
+            m_DirectTable[id].store(const_cast<void *>(api_table), std::memory_order_release);
+        }
+
+        // Update the ID table
+        auto entry_it = m_IdTable.find(id);
+        if (entry_it != m_IdTable.end()) {
+            entry_it->second.pointer = const_cast<void *>(api_table);
+        }
+
+        // Invalidate TLS caches
+        g_CacheVersion.fetch_add(1, std::memory_order_release);
+
+        char buf[128];
+        snprintf(buf, sizeof(buf), "Updated API table: %s (size=%zu)", name.c_str(), api_size);
+        DebugInfo(buf);
+
+        return true;
+    }
+
+    bool ApiRegistry::MarkDeprecated(const std::string &name, const char *replacement, const char *message) {
+        std::unique_lock lock(g_Mutex);
+
+        auto id_it = m_NameToId.find(name);
+        if (id_it == m_NameToId.end()) {
+            return false;
+        }
+
+        BML_ApiId id = id_it->second;
+        auto meta_it = m_Metadata.find(id);
+        if (meta_it == m_Metadata.end()) {
+            return false;
+        }
+
+        // Store deprecation info in description (simple approach)
+        // Note: A full implementation would add dedicated deprecation fields
+        std::string deprecation_info = "[DEPRECATED]";
+        if (replacement) {
+            deprecation_info += " Use: ";
+            deprecation_info += replacement;
+        }
+        if (message) {
+            deprecation_info += " - ";
+            deprecation_info += message;
+        }
+
+        // Store the deprecation string
+        auto stored = std::make_unique<std::string>(std::move(deprecation_info));
+        const char *desc = stored->c_str();
+        m_StringStorage.push_back(std::move(stored));
+        meta_it->second.description = desc;
+
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Marked API as deprecated: %s", name.c_str());
+        DebugInfo(buf);
 
         return true;
     }

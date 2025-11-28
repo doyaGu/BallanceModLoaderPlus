@@ -206,7 +206,7 @@ typedef struct BML_MemoryCaps {
     BML_ThreadingModel threading_model;
 } BML_MemoryCaps;
 
-typedef BML_Result (*PFN_BML_GetMemoryCaps)(BML_MemoryCaps *out_caps);
+typedef BML_Result (*PFN_BML_MemoryGetCaps)(BML_MemoryCaps *out_caps);
 
 /* ========== Global Function Pointers ========== */
 
@@ -223,7 +223,7 @@ extern PFN_BML_MemoryPoolFree     bmlMemoryPoolFree;
 extern PFN_BML_MemoryPoolDestroy  bmlMemoryPoolDestroy;
 
 extern PFN_BML_GetMemoryStats     bmlGetMemoryStats;
-extern PFN_BML_GetMemoryCaps      bmlGetMemoryCaps;
+extern PFN_BML_MemoryGetCaps         bmlMemoryGetCaps;
 
 BML_END_CDECLS
 

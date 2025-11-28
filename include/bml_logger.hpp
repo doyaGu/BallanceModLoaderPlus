@@ -26,9 +26,9 @@ namespace bml {
      * @return Capabilities if successful
      */
     inline std::optional<BML_LogCaps> GetLoggingCaps() {
-        if (!bmlGetLoggingCaps) return std::nullopt;
+        if (!bmlLoggingGetCaps) return std::nullopt;
         BML_LogCaps caps = BML_LOG_CAPS_INIT;
-        if (bmlGetLoggingCaps(&caps) == BML_RESULT_OK) {
+        if (bmlLoggingGetCaps(&caps) == BML_RESULT_OK) {
             return caps;
         }
         return std::nullopt;
@@ -42,14 +42,6 @@ namespace bml {
     inline bool HasLoggingCap(BML_LogCapabilityFlags flag) {
         auto caps = GetLoggingCaps();
         return caps && (caps->capability_flags & flag);
-    }
-
-    /**
-     * @brief Set the minimum log severity filter
-     * @param level Minimum severity level to log
-     */
-    inline void SetLogFilter(LogLevel level) {
-        if (bmlSetLogFilter) bmlSetLogFilter(static_cast<BML_LogSeverity>(level));
     }
 
     // ============================================================================
@@ -67,6 +59,14 @@ namespace bml {
         Error = BML_LOG_ERROR,
         Fatal = BML_LOG_FATAL
     };
+
+    /**
+     * @brief Set the minimum log severity filter
+     * @param level Minimum severity level to log
+     */
+    inline void SetLogFilter(LogLevel level) {
+        if (bmlSetLogFilter) bmlSetLogFilter(static_cast<BML_LogSeverity>(level));
+    }
 
     // ============================================================================
     // Logger Wrapper
@@ -95,8 +95,7 @@ namespace bml {
          * @param ctx The BML context handle
          * @param tag Optional tag for log messages
          */
-        explicit Logger(BML_Context ctx, std::string_view tag = "")
-            : m_ctx(ctx), m_tag(tag) {}
+        explicit Logger(BML_Context ctx, std::string_view tag = "") : m_ctx(ctx), m_tag(tag) {}
 
         // ========================================================================
         // Generic Log
