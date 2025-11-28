@@ -25,9 +25,9 @@ namespace bml {
      * @return Capabilities if successful
      */
     inline std::optional<BML_ResourceCaps> GetResourceCaps() {
-        if (!bmlGetResourceCaps) return std::nullopt;
+        if (!bmlResourceGetCaps) return std::nullopt;
         BML_ResourceCaps caps = BML_RESOURCE_CAPS_INIT;
-        if (bmlGetResourceCaps(&caps) == BML_RESULT_OK) {
+        if (bmlResourceGetCaps(&caps) == BML_RESULT_OK) {
             return caps;
         }
         return std::nullopt;

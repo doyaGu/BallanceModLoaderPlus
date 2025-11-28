@@ -28,9 +28,9 @@ namespace bml {
      * @return Capabilities if successful
      */
     inline std::optional<BML_ImcCaps> GetImcCaps() {
-        if (!bmlGetImcCaps) return std::nullopt;
+        if (!bmlImcGetCaps) return std::nullopt;
         BML_ImcCaps caps = BML_IMC_CAPS_INIT;
-        if (bmlGetImcCaps(&caps) == BML_RESULT_OK) {
+        if (bmlImcGetCaps(&caps) == BML_RESULT_OK) {
             return caps;
         }
         return std::nullopt;

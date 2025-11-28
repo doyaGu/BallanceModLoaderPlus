@@ -227,6 +227,55 @@ namespace BML::Core {
         LeaveCriticalSection(&impl->cs);
     }
 
+    BML_Result SyncManager::LockMutexTimeout(BML_Mutex mutex, uint32_t timeout_ms) {
+        if (!ValidateMutexHandle(mutex, "bmlMutexLockTimeout")) {
+            return BML_RESULT_INVALID_HANDLE;
+        }
+
+        auto *impl = reinterpret_cast<MutexImpl *>(mutex);
+        DWORD thread_id = ::GetCurrentThreadId();
+
+        // Handle special timeout values
+        if (timeout_ms == BML_TIMEOUT_INFINITE) {
+            // Use blocking lock
+            EnterCriticalSection(&impl->cs);
+            m_deadlock_detector->OnLockAcquired(impl, thread_id);
+            return BML_RESULT_OK;
+        }
+
+        if (timeout_ms == BML_TIMEOUT_NONE) {
+            // Non-blocking try
+            if (TryEnterCriticalSection(&impl->cs)) {
+                m_deadlock_detector->OnLockAcquired(impl, thread_id);
+                return BML_RESULT_OK;
+            }
+            return BML_RESULT_TIMEOUT;
+        }
+
+        // Spin with timeout using high-resolution timer
+        LARGE_INTEGER freq, start, now;
+        QueryPerformanceFrequency(&freq);
+        QueryPerformanceCounter(&start);
+
+        double timeout_sec = timeout_ms / 1000.0;
+
+        while (true) {
+            if (TryEnterCriticalSection(&impl->cs)) {
+                m_deadlock_detector->OnLockAcquired(impl, thread_id);
+                return BML_RESULT_OK;
+            }
+
+            QueryPerformanceCounter(&now);
+            double elapsed = static_cast<double>(now.QuadPart - start.QuadPart) / freq.QuadPart;
+            if (elapsed >= timeout_sec) {
+                return BML_RESULT_TIMEOUT;
+            }
+
+            // Yield to avoid busy-spinning
+            ::SwitchToThread();
+        }
+    }
+
     bool SyncManager::IsValidMutex(BML_Mutex mutex) const {
         if (!mutex) {
             return false;
@@ -350,6 +399,74 @@ namespace BML::Core {
         return BML_FALSE;
     }
 
+    BML_Result SyncManager::ReadLockRwLockTimeout(BML_RwLock lock, uint32_t timeout_ms) {
+        if (!ValidateRwLockHandle(lock, "bmlRwLockReadLockTimeout")) {
+            return BML_RESULT_INVALID_HANDLE;
+        }
+
+        auto *impl = reinterpret_cast<RwLockImpl *>(lock);
+        auto state = impl->GetThreadState();
+        DWORD thread_id = ::GetCurrentThreadId();
+
+        if (state.write_depth > 0) {
+            return SetLastErrorAndReturn(BML_RESULT_SYNC_DEADLOCK, "sync", "bmlRwLockReadLockTimeout",
+                                         "Cannot acquire read lock while holding write lock in the same thread", 0);
+        }
+
+        // If already holding read lock, increment depth (recursive)
+        if (state.read_depth > 0) {
+            if (state.read_depth == RwLockImpl::kMaxRecursionDepth) {
+                return SetLastErrorAndReturn(BML_RESULT_FAIL, "sync", "bmlRwLockReadLockTimeout",
+                                             "Read lock recursion depth exceeded", 0);
+            }
+            state.read_depth++;
+            impl->SetThreadState(state);
+            return BML_RESULT_OK;
+        }
+
+        // Handle special timeout values
+        if (timeout_ms == BML_TIMEOUT_INFINITE) {
+            AcquireSRWLockShared(&impl->srw);
+            state.read_depth = 1;
+            impl->SetThreadState(state);
+            m_deadlock_detector->OnLockAcquired(impl, thread_id);
+            return BML_RESULT_OK;
+        }
+
+        if (timeout_ms == BML_TIMEOUT_NONE) {
+            if (TryAcquireSRWLockShared(&impl->srw)) {
+                state.read_depth = 1;
+                impl->SetThreadState(state);
+                m_deadlock_detector->OnLockAcquired(impl, thread_id);
+                return BML_RESULT_OK;
+            }
+            return BML_RESULT_TIMEOUT;
+        }
+
+        // Spin with timeout
+        LARGE_INTEGER freq, start, now;
+        QueryPerformanceFrequency(&freq);
+        QueryPerformanceCounter(&start);
+        double timeout_sec = timeout_ms / 1000.0;
+
+        while (true) {
+            if (TryAcquireSRWLockShared(&impl->srw)) {
+                state.read_depth = 1;
+                impl->SetThreadState(state);
+                m_deadlock_detector->OnLockAcquired(impl, thread_id);
+                return BML_RESULT_OK;
+            }
+
+            QueryPerformanceCounter(&now);
+            double elapsed = static_cast<double>(now.QuadPart - start.QuadPart) / freq.QuadPart;
+            if (elapsed >= timeout_sec) {
+                return BML_RESULT_TIMEOUT;
+            }
+
+            ::SwitchToThread();
+        }
+    }
+
     void SyncManager::WriteLockRwLock(BML_RwLock lock) {
         if (!ValidateRwLockHandle(lock, "bmlRwLockWriteLock")) {
             return;
@@ -419,6 +536,74 @@ namespace BML::Core {
             return BML_TRUE;
         }
         return BML_FALSE;
+    }
+
+    BML_Result SyncManager::WriteLockRwLockTimeout(BML_RwLock lock, uint32_t timeout_ms) {
+        if (!ValidateRwLockHandle(lock, "bmlRwLockWriteLockTimeout")) {
+            return BML_RESULT_INVALID_HANDLE;
+        }
+
+        auto *impl = reinterpret_cast<RwLockImpl *>(lock);
+        auto state = impl->GetThreadState();
+        DWORD thread_id = ::GetCurrentThreadId();
+
+        // If already holding write lock, increment depth (recursive)
+        if (state.write_depth > 0) {
+            if (state.write_depth == RwLockImpl::kMaxRecursionDepth) {
+                return SetLastErrorAndReturn(BML_RESULT_FAIL, "sync", "bmlRwLockWriteLockTimeout",
+                                             "Write lock recursion depth exceeded", 0);
+            }
+            state.write_depth++;
+            impl->SetThreadState(state);
+            return BML_RESULT_OK;
+        }
+
+        if (state.read_depth > 0) {
+            return SetLastErrorAndReturn(BML_RESULT_SYNC_DEADLOCK, "sync", "bmlRwLockWriteLockTimeout",
+                                         "Cannot upgrade read lock to write lock without unlocking", 0);
+        }
+
+        // Handle special timeout values
+        if (timeout_ms == BML_TIMEOUT_INFINITE) {
+            AcquireSRWLockExclusive(&impl->srw);
+            state.write_depth = 1;
+            impl->SetThreadState(state);
+            m_deadlock_detector->OnLockAcquired(impl, thread_id);
+            return BML_RESULT_OK;
+        }
+
+        if (timeout_ms == BML_TIMEOUT_NONE) {
+            if (TryAcquireSRWLockExclusive(&impl->srw)) {
+                state.write_depth = 1;
+                impl->SetThreadState(state);
+                m_deadlock_detector->OnLockAcquired(impl, thread_id);
+                return BML_RESULT_OK;
+            }
+            return BML_RESULT_TIMEOUT;
+        }
+
+        // Spin with timeout
+        LARGE_INTEGER freq, start, now;
+        QueryPerformanceFrequency(&freq);
+        QueryPerformanceCounter(&start);
+        double timeout_sec = timeout_ms / 1000.0;
+
+        while (true) {
+            if (TryAcquireSRWLockExclusive(&impl->srw)) {
+                state.write_depth = 1;
+                impl->SetThreadState(state);
+                m_deadlock_detector->OnLockAcquired(impl, thread_id);
+                return BML_RESULT_OK;
+            }
+
+            QueryPerformanceCounter(&now);
+            double elapsed = static_cast<double>(now.QuadPart - start.QuadPart) / freq.QuadPart;
+            if (elapsed >= timeout_sec) {
+                return BML_RESULT_TIMEOUT;
+            }
+
+            ::SwitchToThread();
+        }
     }
 
     void SyncManager::UnlockRwLock(BML_RwLock lock) {
@@ -1158,7 +1343,7 @@ namespace BML::Core {
 
     BML_Result SyncManager::GetCaps(BML_SyncCaps *out_caps) {
         if (!out_caps) {
-            return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "sync", "bmlGetSyncCaps",
+            return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "sync", "bmlSyncGetCaps",
                                          "out_caps is NULL", 0);
         }
 

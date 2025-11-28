@@ -58,7 +58,7 @@ namespace BML::Core {
         return MemoryManager::Instance().GetStats(out_stats);
     }
 
-    BML_Result BML_API_GetMemoryCaps(BML_MemoryCaps *out_caps) {
+    BML_Result BML_API_MemoryGetCaps(BML_MemoryCaps *out_caps) {
         return MemoryManager::Instance().GetCaps(out_caps);
     }
 
@@ -83,6 +83,6 @@ namespace BML::Core {
 
         /* Statistics and capabilities */
         BML_REGISTER_CAPS_API_WITH_CAPS(bmlGetMemoryStats, "memory.stats", BML_API_GetMemoryStats, BML_CAP_MEMORY_BASIC);
-        BML_REGISTER_CAPS_API_WITH_CAPS(bmlGetMemoryCaps, "memory.caps", BML_API_GetMemoryCaps, BML_CAP_MEMORY_BASIC);
+        BML_REGISTER_CAPS_API_WITH_CAPS(bmlMemoryGetCaps, "memory.caps", BML_API_MemoryGetCaps, BML_CAP_MEMORY_BASIC);
     }
 } // namespace BML::Core

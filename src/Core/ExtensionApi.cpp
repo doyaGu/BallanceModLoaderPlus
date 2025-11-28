@@ -13,8 +13,44 @@
 #include <unordered_map>
 #include <mutex>
 #include <atomic>
+#include <cstring>
 
 namespace BML::Core {
+    // ========================================================================
+    // Simple Glob Pattern Matching
+    // ========================================================================
+
+    /**
+     * @brief Match a string against a glob pattern
+     * Supports: * (any chars), ? (single char)
+     */
+    static bool GlobMatch(const char *pattern, const char *str) {
+        if (!pattern || !str) return false;
+
+        while (*pattern && *str) {
+            if (*pattern == '*') {
+                // Skip consecutive asterisks
+                while (*pattern == '*') pattern++;
+                if (!*pattern) return true; // Trailing * matches everything
+
+                // Try matching rest of pattern at each position
+                while (*str) {
+                    if (GlobMatch(pattern, str)) return true;
+                    str++;
+                }
+                return false;
+            } else if (*pattern == '?' || *pattern == *str) {
+                pattern++;
+                str++;
+            } else {
+                return false;
+            }
+        }
+
+        // Skip trailing asterisks
+        while (*pattern == '*') pattern++;
+        return *pattern == '\0' && *str == '\0';
+    }
 
     // ========================================================================
     // Lifecycle Listener Storage
@@ -23,17 +59,17 @@ namespace BML::Core {
     struct ListenerEntry {
         BML_ExtensionEventCallback callback;
         uint32_t event_mask;
-        void* user_data;
+        void *user_data;
     };
 
     static std::mutex s_listenerMutex;
     static std::unordered_map<uint64_t, ListenerEntry> s_listeners;
     static std::atomic<uint64_t> s_nextListenerId{1};
 
-    static void NotifyListeners(BML_ExtensionEvent event, const BML_ExtensionInfo* info) {
+    static void NotifyListeners(BML_ExtensionEvent event, const BML_ExtensionInfo *info) {
         std::lock_guard<std::mutex> lock(s_listenerMutex);
         uint32_t eventBit = 1u << static_cast<uint32_t>(event);
-        for (const auto& [id, entry] : s_listeners) {
+        for (const auto &[id, entry] : s_listeners) {
             if (entry.event_mask == 0 || (entry.event_mask & eventBit)) {
                 entry.callback(nullptr, event, info, entry.user_data);
             }
@@ -41,10 +77,41 @@ namespace BML::Core {
     }
 
     // ========================================================================
+    // Extension Reference Counting
+    // ========================================================================
+
+    static std::mutex s_refCountMutex;
+    static std::unordered_map<std::string, uint32_t> s_extensionRefCounts;
+
+    static void IncrementRefCount(const std::string &name) {
+        std::lock_guard<std::mutex> lock(s_refCountMutex);
+        s_extensionRefCounts[name]++;
+    }
+
+    static bool DecrementRefCount(const std::string &name) {
+        std::lock_guard<std::mutex> lock(s_refCountMutex);
+        auto it = s_extensionRefCounts.find(name);
+        if (it == s_extensionRefCounts.end() || it->second == 0) {
+            return false;
+        }
+        it->second--;
+        if (it->second == 0) {
+            s_extensionRefCounts.erase(it);
+        }
+        return true;
+    }
+
+    static uint32_t GetRefCountInternal(const std::string &name) {
+        std::lock_guard<std::mutex> lock(s_refCountMutex);
+        auto it = s_extensionRefCounts.find(name);
+        return (it != s_extensionRefCounts.end()) ? it->second : 0;
+    }
+
+    // ========================================================================
     // Core Extension APIs
     // ========================================================================
 
-    BML_Result BML_API_ExtensionRegister(const BML_ExtensionDesc* desc) {
+    BML_Result BML_API_ExtensionRegister(const BML_ExtensionDesc *desc) {
         if (!desc || !desc->name || !desc->api_table || desc->api_size == 0) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
@@ -55,7 +122,7 @@ namespace BML::Core {
             return BML_RESULT_INVALID_CONTEXT;
         }
 
-        auto* mod_handle = Context::Instance().ResolveModHandle(current_mod);
+        auto *mod_handle = Context::Instance().ResolveModHandle(current_mod);
         if (!mod_handle) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
@@ -87,9 +154,15 @@ namespace BML::Core {
         return BML_RESULT_OK;
     }
 
-    BML_Result BML_API_ExtensionUnregister(const char* name) {
+    BML_Result BML_API_ExtensionUnregister(const char *name) {
         if (!name) {
             return BML_RESULT_INVALID_ARGUMENT;
+        }
+
+        // Check reference count - cannot unregister if still in use
+        uint32_t ref_count = GetRefCountInternal(std::string(name));
+        if (ref_count > 0) {
+            return BML_RESULT_EXTENSION_IN_USE;
         }
 
         // Get current module to verify ownership
@@ -98,7 +171,7 @@ namespace BML::Core {
             return BML_RESULT_INVALID_CONTEXT;
         }
 
-        auto* mod_handle = Context::Instance().ResolveModHandle(current_mod);
+        auto *mod_handle = Context::Instance().ResolveModHandle(current_mod);
         if (!mod_handle) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
@@ -127,7 +200,7 @@ namespace BML::Core {
         return success ? BML_RESULT_OK : BML_RESULT_NOT_FOUND;
     }
 
-    BML_Result BML_API_ExtensionQuery(const char* name, BML_ExtensionInfo* out_info) {
+    BML_Result BML_API_ExtensionQuery(const char *name, BML_ExtensionInfo *out_info) {
         if (!name) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
@@ -153,10 +226,10 @@ namespace BML::Core {
     }
 
     BML_Result BML_API_ExtensionLoad(
-        const char* name,
-        const BML_Version* required_version,
-        void** out_api,
-        BML_ExtensionInfo* out_info
+        const char *name,
+        const BML_Version *required_version,
+        void **out_api,
+        BML_ExtensionInfo *out_info
     ) {
         if (!name || !out_api) {
             return BML_RESULT_INVALID_ARGUMENT;
@@ -165,7 +238,7 @@ namespace BML::Core {
         uint32_t required_major = required_version ? required_version->major : 0;
         uint32_t required_minor = required_version ? required_version->minor : 0;
 
-        const void* api = nullptr;
+        const void *api = nullptr;
         uint32_t actual_major = 0, actual_minor = 0;
 
         bool compatible = ApiRegistry::Instance().LoadVersioned(
@@ -185,7 +258,10 @@ namespace BML::Core {
             return BML_RESULT_NOT_FOUND;
         }
 
-        *out_api = const_cast<void*>(api);
+        *out_api = const_cast<void *>(api);
+
+        // Increment reference count on successful load
+        IncrementRefCount(std::string(name));
 
         if (out_info) {
             ApiRegistry::ApiMetadata meta;
@@ -203,10 +279,44 @@ namespace BML::Core {
         return BML_RESULT_OK;
     }
 
+    BML_Result BML_API_ExtensionUnload(const char *name) {
+        if (!name) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+
+        // Check if extension exists
+        ApiRegistry::ApiMetadata meta;
+        if (!ApiRegistry::Instance().TryGetMetadata(std::string(name), meta)) {
+            return BML_RESULT_NOT_FOUND;
+        }
+
+        // Decrement reference count
+        if (!DecrementRefCount(std::string(name))) {
+            return BML_RESULT_FAIL; // Not loaded by this module
+        }
+
+        return BML_RESULT_OK;
+    }
+
+    BML_Result BML_API_ExtensionGetRefCount(const char *name, uint32_t *out_count) {
+        if (!name || !out_count) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+
+        // Check if extension exists
+        ApiRegistry::ApiMetadata meta;
+        if (!ApiRegistry::Instance().TryGetMetadata(std::string(name), meta)) {
+            return BML_RESULT_NOT_FOUND;
+        }
+
+        *out_count = GetRefCountInternal(std::string(name));
+        return BML_RESULT_OK;
+    }
+
     BML_Result BML_API_ExtensionEnumerate(
-        const BML_ExtensionFilter* filter,
+        const BML_ExtensionFilter *filter,
         BML_ExtensionEnumCallback callback,
-        void* user_data
+        void *user_data
     ) {
         if (!callback) {
             return BML_RESULT_INVALID_ARGUMENT;
@@ -214,23 +324,21 @@ namespace BML::Core {
 
         struct EnumContext {
             BML_ExtensionEnumCallback callback;
-            void* user_data;
-            const BML_ExtensionFilter* filter;
+            void *user_data;
+            const BML_ExtensionFilter *filter;
         };
 
         EnumContext ctx{callback, user_data, filter};
 
         ApiRegistry::Instance().Enumerate(
-            [](BML_Context bmlCtx, const BML_ApiDescriptor* desc, void* raw_ctx) -> BML_Bool {
-                auto* ctx = static_cast<EnumContext*>(raw_ctx);
+            [](BML_Context bmlCtx, const BML_ApiDescriptor *desc, void *raw_ctx) -> BML_Bool {
+                auto *ctx = static_cast<EnumContext *>(raw_ctx);
 
                 // Apply filter if specified
                 if (ctx->filter) {
-                    // Name pattern filter
+                    // Name pattern filter (glob matching)
                     if (ctx->filter->name_pattern) {
-                        // Simple prefix match for now
-                        // TODO: Implement proper glob matching
-                        if (strstr(desc->name, ctx->filter->name_pattern) == nullptr) {
+                        if (!GlobMatch(ctx->filter->name_pattern, desc->name)) {
                             return BML_TRUE; // Skip, continue
                         }
                     }
@@ -261,7 +369,7 @@ namespace BML::Core {
         return BML_RESULT_OK;
     }
 
-    BML_Result BML_API_ExtensionCount(const BML_ExtensionFilter* filter, uint32_t* out_count) {
+    BML_Result BML_API_ExtensionCount(const BML_ExtensionFilter *filter, uint32_t *out_count) {
         if (!out_count) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
@@ -278,11 +386,11 @@ namespace BML::Core {
         // Count with filter
         uint32_t count = 0;
         BML_API_ExtensionEnumerate(filter,
-            [](BML_Context, const BML_ExtensionInfo*, void* ud) -> BML_Bool {
-                (*static_cast<uint32_t*>(ud))++;
-                return BML_TRUE;
-            },
-            &count
+                                   [](BML_Context, const BML_ExtensionInfo *, void *ud) -> BML_Bool {
+                                       (*static_cast<uint32_t *>(ud))++;
+                                       return BML_TRUE;
+                                   },
+                                   &count
         );
         *out_count = count;
         return BML_RESULT_OK;
@@ -292,7 +400,7 @@ namespace BML::Core {
     // Update APIs
     // ========================================================================
 
-    BML_Result BML_API_ExtensionUpdateApi(const char* name, const void* api_table, size_t api_size) {
+    BML_Result BML_API_ExtensionUpdateApi(const char *name, const void *api_table, size_t api_size) {
         if (!name || !api_table || api_size == 0) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
@@ -303,7 +411,7 @@ namespace BML::Core {
             return BML_RESULT_INVALID_CONTEXT;
         }
 
-        auto* mod_handle = Context::Instance().ResolveModHandle(current_mod);
+        auto *mod_handle = Context::Instance().ResolveModHandle(current_mod);
         if (!mod_handle) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
@@ -317,15 +425,23 @@ namespace BML::Core {
             return BML_RESULT_PERMISSION_DENIED;
         }
 
-        // TODO: Implement UpdateApiTable in ApiRegistry
-        // For now, return NOT_SUPPORTED
-        (void)api_table;
-        (void)api_size;
+        bool success = ApiRegistry::Instance().UpdateApiTable(name, api_table, api_size);
+        if (!success) {
+            return BML_RESULT_FAIL;
+        }
 
-        return BML_RESULT_NOT_SUPPORTED;
+        // Notify listeners of API update
+        BML_ExtensionInfo info = BML_EXTENSION_INFO_INIT;
+        info.name = name;
+        info.version = bmlMakeVersion(meta.version_major, meta.version_minor, meta.version_patch);
+        info.provider_id = meta.provider_mod;
+        info.api_size = api_size;
+        NotifyListeners(BML_EXTENSION_EVENT_REGISTERED, &info); // Re-use registered event
+
+        return BML_RESULT_OK;
     }
 
-    BML_Result BML_API_ExtensionDeprecate(const char* name, const char* replacement, const char* message) {
+    BML_Result BML_API_ExtensionDeprecate(const char *name, const char *replacement, const char *message) {
         if (!name) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
@@ -336,7 +452,7 @@ namespace BML::Core {
             return BML_RESULT_INVALID_CONTEXT;
         }
 
-        auto* mod_handle = Context::Instance().ResolveModHandle(current_mod);
+        auto *mod_handle = Context::Instance().ResolveModHandle(current_mod);
         if (!mod_handle) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
@@ -350,10 +466,10 @@ namespace BML::Core {
             return BML_RESULT_PERMISSION_DENIED;
         }
 
-        // TODO: Implement MarkDeprecated in ApiRegistry
-        // For now, just notify listeners and return OK
-        (void)replacement;
-        (void)message;
+        bool success = ApiRegistry::Instance().MarkDeprecated(name, replacement, message);
+        if (!success) {
+            return BML_RESULT_FAIL;
+        }
 
         BML_ExtensionInfo info = BML_EXTENSION_INFO_INIT;
         info.name = name;
@@ -374,8 +490,8 @@ namespace BML::Core {
     BML_Result BML_API_ExtensionAddListener(
         BML_ExtensionEventCallback callback,
         uint32_t event_mask,
-        void* user_data,
-        uint64_t* out_id
+        void *user_data,
+        uint64_t *out_id
     ) {
         if (!callback || !out_id) {
             return BML_RESULT_INVALID_ARGUMENT;
@@ -403,7 +519,7 @@ namespace BML::Core {
     // Capability Query
     // ========================================================================
 
-    BML_Result BML_API_GetExtensionCaps(BML_ExtensionCaps* out_caps) {
+    BML_Result BML_API_ExtensionGetCaps(BML_ExtensionCaps *out_caps) {
         if (!out_caps) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
@@ -438,23 +554,37 @@ namespace BML::Core {
         BML_BEGIN_API_REGISTRATION();
 
         // Core Extension APIs
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionRegister, "extension", BML_API_ExtensionRegister, BML_CAP_EXTENSION_BASIC);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionUnregister, "extension", BML_API_ExtensionUnregister, BML_CAP_EXTENSION_BASIC);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionQuery, "extension", BML_API_ExtensionQuery, BML_CAP_EXTENSION_BASIC);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionLoad, "extension", BML_API_ExtensionLoad, BML_CAP_EXTENSION_BASIC);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionEnumerate, "extension", BML_API_ExtensionEnumerate, BML_CAP_EXTENSION_BASIC);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionCount, "extension", BML_API_ExtensionCount, BML_CAP_EXTENSION_BASIC);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionRegister, "extension", BML_API_ExtensionRegister,
+                                           BML_CAP_EXTENSION_BASIC);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionUnregister, "extension", BML_API_ExtensionUnregister,
+                                           BML_CAP_EXTENSION_BASIC);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionQuery, "extension", BML_API_ExtensionQuery,
+                                           BML_CAP_EXTENSION_BASIC);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionLoad, "extension", BML_API_ExtensionLoad,
+                                           BML_CAP_EXTENSION_BASIC);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionUnload, "extension", BML_API_ExtensionUnload,
+                                           BML_CAP_EXTENSION_BASIC);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionGetRefCount, "extension", BML_API_ExtensionGetRefCount,
+                                           BML_CAP_EXTENSION_BASIC);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionEnumerate, "extension", BML_API_ExtensionEnumerate,
+                                           BML_CAP_EXTENSION_BASIC);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionCount, "extension", BML_API_ExtensionCount,
+                                           BML_CAP_EXTENSION_BASIC);
 
         // Update APIs
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionUpdateApi, "extension", BML_API_ExtensionUpdateApi, BML_CAP_EXTENSION_BASIC);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionDeprecate, "extension", BML_API_ExtensionDeprecate, BML_CAP_EXTENSION_BASIC);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionUpdateApi, "extension", BML_API_ExtensionUpdateApi,
+                                           BML_CAP_EXTENSION_BASIC);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionDeprecate, "extension", BML_API_ExtensionDeprecate,
+                                           BML_CAP_EXTENSION_BASIC);
 
         // Lifecycle APIs
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionAddListener, "extension", BML_API_ExtensionAddListener, BML_CAP_EXTENSION_BASIC);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionRemoveListener, "extension", BML_API_ExtensionRemoveListener, BML_CAP_EXTENSION_BASIC);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionAddListener, "extension", BML_API_ExtensionAddListener,
+                                           BML_CAP_EXTENSION_BASIC);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionRemoveListener, "extension", BML_API_ExtensionRemoveListener,
+                                           BML_CAP_EXTENSION_BASIC);
 
         // Capability Query
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlGetExtensionCaps, "extension", BML_API_GetExtensionCaps, BML_CAP_EXTENSION_BASIC);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlExtensionGetCaps, "extension", BML_API_ExtensionGetCaps,
+                                           BML_CAP_EXTENSION_BASIC);
     }
-
 } // namespace BML::Core

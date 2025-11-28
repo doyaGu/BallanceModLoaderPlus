@@ -259,7 +259,7 @@ typedef struct BML_ProfilingCaps {
  */
 #define BML_PROFILING_CAPS_INIT { sizeof(BML_ProfilingCaps), BML_VERSION_INIT(0,0,0), 0, BML_PROFILER_NONE, 0, 0 }
 
-typedef BML_Result (*PFN_BML_GetProfilingCaps)(BML_ProfilingCaps *out_caps);
+typedef BML_Result (*PFN_BML_ProfilingGetCaps)(BML_ProfilingCaps *out_caps);
 
 /* ========== Global Function Pointers ========== */
 
@@ -281,7 +281,7 @@ extern PFN_BML_IsProfilingEnabled   bmlIsProfilingEnabled;
 extern PFN_BML_FlushProfilingData   bmlFlushProfilingData;
 
 extern PFN_BML_GetProfilingStats    bmlGetProfilingStats;
-extern PFN_BML_GetProfilingCaps     bmlGetProfilingCaps;
+extern PFN_BML_ProfilingGetCaps          bmlProfilingGetCaps;
 
 BML_END_CDECLS
 

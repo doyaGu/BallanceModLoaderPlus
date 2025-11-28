@@ -418,7 +418,7 @@ namespace BML::Core {
         return BML_HandleGetUserDataImpl(desc, out_user_data);
     }
 
-    BML_Result BML_API_GetResourceCaps(BML_ResourceCaps *out_caps) {
+    BML_Result BML_API_ResourceGetCaps(BML_ResourceCaps *out_caps) {
         return BML_GetResourceCapsImpl(out_caps);
     }
 
@@ -436,7 +436,7 @@ namespace BML::Core {
         BML_REGISTER_API_GUARDED_WITH_CAPS(bmlHandleValidate, "resource", BML_API_HandleValidate, BML_CAP_HANDLE_SYSTEM);
         BML_REGISTER_API_GUARDED_WITH_CAPS(bmlHandleAttachUserData, "resource", BML_API_HandleAttachUserData, BML_CAP_HANDLE_SYSTEM);
         BML_REGISTER_API_GUARDED_WITH_CAPS(bmlHandleGetUserData, "resource", BML_API_HandleGetUserData, BML_CAP_HANDLE_SYSTEM);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlGetResourceCaps, "resource", BML_API_GetResourceCaps, BML_CAP_HANDLE_SYSTEM);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlResourceGetCaps, "resource", BML_API_ResourceGetCaps, BML_CAP_HANDLE_SYSTEM);
 
         // Resource type registration
         BML_REGISTER_API_GUARDED_WITH_CAPS(bmlRegisterResourceType, "resource", BML_API_RegisterResourceType, BML_CAP_HANDLE_SYSTEM);

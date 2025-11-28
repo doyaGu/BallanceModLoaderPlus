@@ -27,10 +27,10 @@ namespace bml {
      * @return Capabilities if successful
      */
     inline std::optional<BML_MemoryCaps> GetMemoryCaps() {
-        if (!bmlGetMemoryCaps) return std::nullopt;
+        if (!bmlMemoryGetCaps) return std::nullopt;
         BML_MemoryCaps caps{};
         caps.struct_size = sizeof(BML_MemoryCaps);
-        if (bmlGetMemoryCaps(&caps) == BML_RESULT_OK) {
+        if (bmlMemoryGetCaps(&caps) == BML_RESULT_OK) {
             return caps;
         }
         return std::nullopt;
