@@ -5,6 +5,7 @@ add_executable(ImcBenchmark
         ${BML_SOURCE_DIR}/Core/ImcApi.cpp
         ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
