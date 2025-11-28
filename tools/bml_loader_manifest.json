@@ -101,16 +101,16 @@
       "header": "bml_extension.h",
       "apis": [
         { "pointer": "bmlExtensionRegister", "required": true },
+        { "pointer": "bmlExtensionUnregister", "required": false },
         { "pointer": "bmlExtensionQuery", "required": true },
         { "pointer": "bmlExtensionLoad", "required": true },
-        { "pointer": "bmlExtensionLoadVersioned", "required": false },
         { "pointer": "bmlExtensionEnumerate", "required": false },
-        { "pointer": "bmlExtensionUnregister", "required": false },
-        { "pointer": "bmlGetExtensionCaps", "required": true },
-        { "pointer": "bmlRegisterConfigLoadHooks", "required": false },
-        { "pointer": "bmlRegisterLogSinkOverride", "required": false },
-        { "pointer": "bmlClearLogSinkOverride", "required": false },
-        { "pointer": "bmlRegisterResourceType", "required": false }
+        { "pointer": "bmlExtensionCount", "required": false },
+        { "pointer": "bmlExtensionUpdateApi", "required": false },
+        { "pointer": "bmlExtensionDeprecate", "required": false },
+        { "pointer": "bmlExtensionAddListener", "required": false },
+        { "pointer": "bmlExtensionRemoveListener", "required": false },
+        { "pointer": "bmlGetExtensionCaps", "required": true }
       ]
     },
     {
@@ -232,8 +232,7 @@
         { "pointer": "bmlGetApiDescriptor", "required": false },
         { "pointer": "bmlGetApiDescriptorByName", "required": false },
         { "pointer": "bmlEnumerateApis", "required": false },
-        { "pointer": "bmlGetApiIntroducedVersion", "required": false },
-        { "pointer": "bmlRegisterExtensionApi", "required": false }
+        { "pointer": "bmlGetApiIntroducedVersion", "required": false }
       ]
     }
   ]

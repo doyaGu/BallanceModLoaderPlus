@@ -47,11 +47,13 @@ static void RegisterMockProc(const char* name, void* func) {
 
 // Register all required APIs (names must match kBmlApiEntries in bml_loader_autogen.h)
 static void RegisterAllRequiredApis() {
-    // Core APIs (required)
+    // Core APIs (required - 12 total)
     RegisterMockProc("bmlContextRetain", (void*)DummyFunc);
     RegisterMockProc("bmlContextRelease", (void*)DummyFunc);
     RegisterMockProc("bmlGetGlobalContext", (void*)DummyFunc);
     RegisterMockProc("bmlGetRuntimeVersion", (void*)DummyFunc);
+    RegisterMockProc("bmlContextSetUserData", (void*)DummyFunc);
+    RegisterMockProc("bmlContextGetUserData", (void*)DummyFunc);
     RegisterMockProc("bmlRequestCapability", (void*)DummyFunc);
     RegisterMockProc("bmlCheckCapability", (void*)DummyFunc);
     RegisterMockProc("bmlGetModId", (void*)DummyFunc);
@@ -59,23 +61,23 @@ static void RegisterAllRequiredApis() {
     RegisterMockProc("bmlRegisterShutdownHook", (void*)DummyFunc);
     RegisterMockProc("bmlGetCoreCaps", (void*)DummyFunc);
 
-    // Logging APIs
+    // Logging APIs (required - 2 total)
     RegisterMockProc("bmlLog", (void*)DummyFunc);
     RegisterMockProc("bmlGetLoggingCaps", (void*)DummyFunc);
 
-    // Config APIs (required)
+    // Config APIs (required - 3 total)
     RegisterMockProc("bmlConfigGet", (void*)DummyFunc);
     RegisterMockProc("bmlConfigSet", (void*)DummyFunc);
     RegisterMockProc("bmlGetConfigCaps", (void*)DummyFunc);
 
-    // IMC APIs (required)
+    // IMC APIs (required - 5 total)
     RegisterMockProc("bmlImcGetTopicId", (void*)DummyFunc);
     RegisterMockProc("bmlImcPublish", (void*)DummyFunc);
     RegisterMockProc("bmlImcSubscribe", (void*)DummyFunc);
     RegisterMockProc("bmlImcUnsubscribe", (void*)DummyFunc);
     RegisterMockProc("bmlGetImcCaps", (void*)DummyFunc);
 
-    // Extension APIs (required)
+    // Extension APIs (required - 4 total)
     RegisterMockProc("bmlExtensionRegister", (void*)DummyFunc);
     RegisterMockProc("bmlExtensionQuery", (void*)DummyFunc);
     RegisterMockProc("bmlExtensionLoad", (void*)DummyFunc);
@@ -200,6 +202,8 @@ TEST_F(LoaderTest, LoadAPI_MultipleOptionalApisMissing_Success) {
     RegisterMockProc("bmlContextRelease", (void*)DummyFunc);
     RegisterMockProc("bmlGetGlobalContext", (void*)DummyFunc);
     RegisterMockProc("bmlGetRuntimeVersion", (void*)DummyFunc);
+    RegisterMockProc("bmlContextSetUserData", (void*)DummyFunc);
+    RegisterMockProc("bmlContextGetUserData", (void*)DummyFunc);
     RegisterMockProc("bmlRequestCapability", (void*)DummyFunc);
     RegisterMockProc("bmlCheckCapability", (void*)DummyFunc);
     RegisterMockProc("bmlGetModId", (void*)DummyFunc);

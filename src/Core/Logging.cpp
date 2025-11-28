@@ -163,7 +163,6 @@ namespace BML::Core {
             info.message = body.c_str();
             info.formatted_line = formatted.c_str();
 
-            // Unified callback signature (ctx, info, user_data)
             // Exception isolation: failing override should not crash the logger
             try {
                 desc.dispatch(Context::Instance().GetHandle(), &info, desc.user_data);

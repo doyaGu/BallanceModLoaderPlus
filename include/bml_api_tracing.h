@@ -24,11 +24,11 @@
 BML_BEGIN_CDECLS
 
 /* ========================================================================
- * Callback Types (Task 2.3 - unified signature)
+ * Callback Types
  * ======================================================================== */
 
 /**
- * @brief Trace callback for API call tracing (Task 2.3 - unified signature)
+ * @brief Trace callback for API call tracing
  * 
  * @param[in] ctx BML context (first parameter for consistency)
  * @param[in] api_name Name of the API being called
@@ -49,7 +49,7 @@ typedef void (*PFN_BML_TraceCallback)(
 );
 
 /* ========================================================================
- * API Statistics Structure (Task 1.2)
+ * API Statistics Structure
  * ======================================================================== */
 
 /**
@@ -73,7 +73,7 @@ typedef struct BML_ApiStats {
 #define BML_API_STATS_INIT { sizeof(BML_ApiStats), 0, NULL, 0, 0, 0, 0, 0 }
 
 /**
- * @brief Callback for enumerating API statistics (Task 2.3 - unified signature)
+ * @brief Callback for enumerating API statistics
  * 
  * @param[in] ctx BML context (first parameter for consistency)
  * @param[in] stats Pointer to statistics for one API

@@ -62,7 +62,6 @@ HookRecorder &GetHookRecorder() {
         auto *instance = new HookRecorder();
         BML_ConfigLoadHooks hooks{};
         hooks.struct_size = sizeof(BML_ConfigLoadHooks);
-        // Task 2.3: unified callback signature (ctx, load_ctx, user_data)
         hooks.on_pre_load = [](BML_Context, const BML_ConfigLoadContext *, void *user_data) {
             auto *rec = static_cast<HookRecorder *>(user_data);
             rec->Record(HookPhase::Pre);

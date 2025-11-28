@@ -1,5 +1,5 @@
-#ifndef CORE_PROFILING_MANAGER_H
-#define CORE_PROFILING_MANAGER_H
+#ifndef BML_CORE_PROFILING_MANAGER_H
+#define BML_CORE_PROFILING_MANAGER_H
 
 #include "bml_profiling.h"
 
@@ -92,4 +92,4 @@ namespace BML::Core {
     };
 } // namespace BML::Core
 
-#endif /* CORE_PROFILING_MANAGER_H */
+#endif /* BML_CORE_PROFILING_MANAGER_H */

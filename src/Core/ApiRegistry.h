@@ -196,15 +196,10 @@ namespace BML::Core {
         void Clear();
         void RegisterCoreApiSet(const CoreApiDescriptor *descriptors, size_t count);
 
-        /* ====================================================================
-         * Extended API Registration (Unified Core + Extension)
-         * ==================================================================== */
-
         /**
          * @brief Register an API with full metadata
          *
-         * This is the unified registration method that supports both core
-         * and extension APIs with complete metadata.
+         * Registers an API using the provided metadata structure.
          *
          * @param metadata Full API metadata structure
          */

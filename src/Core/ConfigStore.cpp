@@ -17,6 +17,7 @@
 #include "ModHandle.h"
 #include "ModManifest.h"
 #include "CoreErrors.h"
+#include "Logging.h"
 
 #include "StringUtils.h"
 
@@ -32,9 +33,9 @@ namespace BML::Core {
         std::vector<BML_ConfigLoadHooks> g_ConfigHooks;
         std::shared_mutex g_ConfigHooksMutex;
 
-        void DebugLog(const std::string &message) {
-            std::string line = "[BML config] " + message + '\n';
-            OutputDebugStringA(line.c_str());
+        // Use CoreLog for consistent logging
+        inline void DebugLog(const std::string &message) {
+            CoreLog(BML_LOG_DEBUG, "config.store", "%s", message.c_str());
         }
 
         BML_Mod ResolveTargetMod(BML_Mod handle) {
@@ -134,7 +135,7 @@ namespace BML::Core {
         loadCtx.mod_id = doc.owner ? doc.owner->id.c_str() : nullptr;
         loadCtx.config_path = configPath;
 
-        // Get BML_Context for callbacks (Task 2.3)
+        // Get BML_Context for callbacks
         BML_Context bmlCtx = Context::Instance().GetHandle();
 
         for (const auto &entry : snapshot) {
@@ -142,7 +143,6 @@ namespace BML::Core {
             if (callback) {
                 // Exception isolation: one failing hook should not abort others
                 try {
-                    // Task 2.3: unified callback signature (ctx, load_ctx, user_data)
                     callback(bmlCtx, &loadCtx, entry.user_data);
                 } catch (const std::exception &ex) {
                     DebugLog(std::string("ConfigStore: hook exception: ") + ex.what());

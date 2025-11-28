@@ -122,38 +122,39 @@ TEST(BMLWrapperTest, Imc_Subscription_RAII) {
 // ============================================================================
 
 TEST(BMLWrapperTest, Extension_RegisterSignature) {
-    bml::Extension ext;
-    
     struct TestApi {
         void (*DoSomething)();
     };
     
     static TestApi api = { []() {} };
     
-    bool result = ext.Register("TEST_EXT", 1, 0, &api, sizeof(api));
+    BML_ExtensionDesc desc = BML_EXTENSION_DESC_INIT;
+    desc.name = "TEST_EXT";
+    desc.version = bmlMakeVersion(1, 0, 0);
+    desc.api_table = &api;
+    desc.api_size = sizeof(api);
+    
+    bool result = bml::Extension::Register(desc);
     EXPECT_FALSE(result); // No API loaded
 }
 
 TEST(BMLWrapperTest, Extension_QuerySignature) {
-    bml::Extension ext;
-    
-    auto info = ext.Query("TEST_EXT");
+    auto info = bml::Extension::Query("TEST_EXT");
     EXPECT_FALSE(info.has_value()); // No API loaded
 }
 
 TEST(BMLWrapperTest, Extension_LoadSignature) {
-    bml::Extension ext;
-    
-    auto api = ext.Load("TEST_EXT");
-    EXPECT_FALSE(api.has_value()); // No API loaded
+    struct TestApi { int dummy; };
+    auto api = bml::Extension::Load<TestApi>("TEST_EXT");
+    EXPECT_EQ(api, nullptr); // No API loaded
 }
 
 TEST(BMLWrapperTest, Extension_LoadVersionedSignature) {
-    bml::Extension ext;
-    
-    uint32_t actual_major = 0, actual_minor = 0;
-    auto api = ext.LoadVersioned("TEST_EXT", 1, 0, &actual_major, &actual_minor);
-    EXPECT_FALSE(api.has_value()); // No API loaded
+    struct TestApi { int dummy; };
+    bml::ExtensionInfo info;
+    BML_Version req = bmlMakeVersion(1, 0, 0);
+    auto api = bml::Extension::Load<TestApi>("TEST_EXT", req, &info);
+    EXPECT_EQ(api, nullptr); // No API loaded
 }
 
 // ============================================================================
@@ -279,12 +280,11 @@ TEST(BMLWrapperTest, FullWorkflow_CompilationCheck) {
     //     // Handle event
     // });
     
-    // 6. Query extension
-    bml::Extension ext;
-    auto imgui_info = ext.Query("BML_EXT_ImGui");
+    // 6. Query extension (using static method)
+    auto imgui_info = bml::Extension::Query("BML_EXT_ImGui");
     if (imgui_info) {
         logger.Info("ImGui extension available: v%d.%d", 
-                   imgui_info->version_major, imgui_info->version_minor);
+                   imgui_info->version.major, imgui_info->version.minor);
     }
     
     // 7. Cleanup

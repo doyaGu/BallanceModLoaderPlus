@@ -311,7 +311,6 @@ typedef enum BML_FutureState {
  * @return BML_RESULT_INVALID_ARGUMENT if name or out_id is NULL
  * 
  * @threadsafe Yes
- * @since 0.4.0
  * 
  * @code
  * BML_TopicId topic;
@@ -329,7 +328,6 @@ typedef BML_Result (*PFN_BML_ImcGetTopicId)(const char *name, BML_TopicId *out_i
  * @return BML_OK on success
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ImcGetRpcId)(const char *name, BML_RpcId *out_id);
 
@@ -351,7 +349,6 @@ typedef BML_Result (*PFN_BML_ImcGetRpcId)(const char *name, BML_RpcId *out_id);
  * @return BML_RESULT_INVALID_ARGUMENT if topic is BML_TOPIC_ID_INVALID
  * 
  * @threadsafe Yes
- * @since 0.4.0
  * 
  * @code
  * float delta_time = 0.016f;
@@ -374,7 +371,6 @@ typedef BML_Result (*PFN_BML_ImcPublish)(BML_TopicId topic,
  * @return BML_RESULT_OK on success
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ImcPublishBuffer)(BML_TopicId topic,
                                                const BML_ImcBuffer *buffer);
@@ -389,7 +385,6 @@ typedef BML_Result (*PFN_BML_ImcPublishBuffer)(BML_TopicId topic,
  * @return BML_RESULT_OK on success
  * 
  * @threadsafe Yes
- * @since 0.4.0
  * 
  * @code
  * void on_physics_tick(BML_Context ctx, BML_TopicId topic, 
@@ -418,7 +413,6 @@ typedef BML_Result (*PFN_BML_ImcSubscribe)(BML_TopicId topic,
  * @return BML_RESULT_INVALID_HANDLE if sub is invalid
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ImcUnsubscribe)(BML_Subscription sub);
 
@@ -430,7 +424,6 @@ typedef BML_Result (*PFN_BML_ImcUnsubscribe)(BML_Subscription sub);
  * @return BML_RESULT_OK on success
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ImcSubscriptionIsActive)(BML_Subscription sub,
                                                        BML_Bool *out_active);
@@ -446,7 +439,6 @@ typedef BML_Result (*PFN_BML_ImcSubscriptionIsActive)(BML_Subscription sub,
  * @return BML_RESULT_OK on success
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ImcSubscribeEx)(BML_TopicId topic,
                                              BML_ImcHandler handler,
@@ -462,7 +454,6 @@ typedef BML_Result (*PFN_BML_ImcSubscribeEx)(BML_TopicId topic,
  * @return BML_RESULT_OK on success
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ImcGetSubscriptionStats)(BML_Subscription sub,
                                                        BML_SubscriptionStats *stats);
@@ -479,7 +470,6 @@ typedef BML_Result (*PFN_BML_ImcGetSubscriptionStats)(BML_Subscription sub,
  * @return BML_RESULT_OK on success
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ImcPublishMulti)(const BML_TopicId *topics,
                                                size_t count,
@@ -502,7 +492,6 @@ typedef BML_Result (*PFN_BML_ImcPublishMulti)(const BML_TopicId *topics,
  * @return BML_RESULT_ALREADY_EXISTS if handler already registered
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ImcRegisterRpc)(BML_RpcId rpc_id,
                                              BML_RpcHandler handler,
@@ -515,7 +504,6 @@ typedef BML_Result (*PFN_BML_ImcRegisterRpc)(BML_RpcId rpc_id,
  * @return BML_RESULT_OK on success
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ImcUnregisterRpc)(BML_RpcId rpc_id);
 
@@ -529,7 +517,6 @@ typedef BML_Result (*PFN_BML_ImcUnregisterRpc)(BML_RpcId rpc_id);
  * @return BML_RESULT_NOT_FOUND if no handler registered
  * 
  * @threadsafe Yes
- * @since 0.4.0
  * 
  * @code
  * BML_ImcMessage req = BML_IMC_MSG(&query, sizeof(query));
@@ -562,7 +549,6 @@ typedef BML_Result (*PFN_BML_ImcCallRpc)(BML_RpcId rpc_id,
  * @return BML_RESULT_TIMEOUT if timeout expired
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ImcFutureAwait)(BML_Future future, uint32_t timeout_ms);
 
@@ -575,7 +561,6 @@ typedef BML_Result (*PFN_BML_ImcFutureAwait)(BML_Future future, uint32_t timeout
  * @return BML_RESULT_NOT_FOUND if future not yet complete
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ImcFutureGetResult)(BML_Future future,
                                                   BML_ImcMessage *out_message);
@@ -588,7 +573,6 @@ typedef BML_Result (*PFN_BML_ImcFutureGetResult)(BML_Future future,
  * @return BML_RESULT_OK on success
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ImcFutureGetState)(BML_Future future,
                                                 BML_FutureState *out_state);
@@ -600,7 +584,6 @@ typedef BML_Result (*PFN_BML_ImcFutureGetState)(BML_Future future,
  * @return BML_RESULT_OK on success
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ImcFutureCancel)(BML_Future future);
 
@@ -613,7 +596,6 @@ typedef BML_Result (*PFN_BML_ImcFutureCancel)(BML_Future future);
  * @return BML_RESULT_OK on success
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ImcFutureOnComplete)(BML_Future future,
                                                    BML_FutureCallback callback,
@@ -628,7 +610,6 @@ typedef BML_Result (*PFN_BML_ImcFutureOnComplete)(BML_Future future,
  * @return BML_RESULT_OK on success
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ImcFutureRelease)(BML_Future future);
 
@@ -644,7 +625,6 @@ typedef BML_Result (*PFN_BML_ImcFutureRelease)(BML_Future future);
  * @param[in] max_per_sub Maximum messages to process per subscription (0 = all)
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef void (*PFN_BML_ImcPump)(size_t max_per_sub);
 
@@ -659,7 +639,6 @@ typedef void (*PFN_BML_ImcPump)(size_t max_per_sub);
  * @return BML_RESULT_OK on success
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ImcGetStats)(BML_ImcStats *stats);
 
@@ -669,7 +648,6 @@ typedef BML_Result (*PFN_BML_ImcGetStats)(BML_ImcStats *stats);
  * @return BML_RESULT_OK on success
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ImcResetStats)(void);
 
@@ -682,7 +660,6 @@ typedef BML_Result (*PFN_BML_ImcResetStats)(void);
  * @return BML_RESULT_NOT_FOUND if topic doesn't exist
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ImcGetTopicInfo)(BML_TopicId topic_id, BML_TopicInfo *info);
 
@@ -698,7 +675,6 @@ typedef BML_Result (*PFN_BML_ImcGetTopicInfo)(BML_TopicId topic_id, BML_TopicInf
  * @return BML_RESULT_BUFFER_TOO_SMALL if buffer too small
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_ImcGetTopicName)(BML_TopicId topic_id,
                                                char *name_buffer,

@@ -18,7 +18,6 @@ namespace BML::Core {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
-        // Task 1.2: Validate struct_size
         if (out_error->struct_size < sizeof(BML_ErrorInfo)) {
             return BML_RESULT_INVALID_SIZE;
         }

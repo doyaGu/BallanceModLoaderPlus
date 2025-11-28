@@ -12,21 +12,17 @@
 #include <Windows.h>
 
 #include "Context.h"
+#include "Logging.h"
 
 namespace BML::Core {
     namespace {
-        void DebugWarning(const char *message) {
-            std::string line = "[BML ApiRegistry] WARNING: ";
-            line += message;
-            line += "\n";
-            OutputDebugStringA(line.c_str());
+        // Use CoreLog for consistent logging across the codebase
+        inline void DebugWarning(const char *message) {
+            CoreLog(BML_LOG_WARN, "api.registry", "%s", message);
         }
 
-        void DebugInfo(const char *message) {
-            std::string line = "[BML ApiRegistry] INFO: ";
-            line += message;
-            line += "\n";
-            OutputDebugStringA(line.c_str());
+        inline void DebugInfo(const char *message) {
+            CoreLog(BML_LOG_DEBUG, "api.registry", "%s", message);
         }
     }
 
@@ -171,7 +167,7 @@ namespace BML::Core {
     }
 
     // ========================================================================
-    // Extended API Registration (Unified Core + Extension)
+    // Extended API Registration
     // ========================================================================
 
     void ApiRegistry::RegisterApi(const ApiMetadata &metadata) {
@@ -453,7 +449,7 @@ namespace BML::Core {
     }
 
     // ========================================================================
-    // Extension Management (Unified with Core)
+    // Extension Management
     // ========================================================================
 
     bool ApiRegistry::LoadVersioned(

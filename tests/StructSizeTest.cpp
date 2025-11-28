@@ -2,10 +2,8 @@
  * @file StructSizeTest.cpp
  * @brief Tests to verify struct_size field placement and initialization
  * 
- * Task 1.2: Ensure all public structures have struct_size as the first field
+ * Ensure all public structures have struct_size as the first field
  * and provide proper initialization macros.
- * 
- * @since 0.4.0
  */
 
 #include <gtest/gtest.h>
@@ -22,7 +20,7 @@
 #include "bml_profiling.h"
 
 /**
- * @brief Test suite for struct_size field validation (Task 1.2)
+ * @brief Test suite for struct_size field validation
  * 
  * Verifies that:
  * 1. All structures have struct_size as the first field (offset 0)
@@ -35,7 +33,7 @@ protected:
 };
 
 /* ========================================================================
- * Task 1.2: Verify struct_size is at offset 0
+ * Verify struct_size is at offset 0
  * ======================================================================== */
 
 TEST_F(StructSizeTest, BML_Version_StructSizeOffset) {
@@ -79,7 +77,7 @@ TEST_F(StructSizeTest, BML_ApiStats_StructSizeOffset) {
 }
 
 /* ========================================================================
- * Task 1.2: Verify initialization macros set correct struct_size
+ * Verify initialization macros set correct struct_size
  * ======================================================================== */
 
 TEST_F(StructSizeTest, BML_VERSION_INIT_StructSize) {
@@ -132,7 +130,7 @@ TEST_F(StructSizeTest, BML_VERSION_REQUIREMENT_INIT_StructSize) {
 }
 
 /* ========================================================================
- * Task 1.4: Verify enum sizes are 32-bit
+ * Verify enum sizes are 32-bit
  * ======================================================================== */
 
 TEST_F(StructSizeTest, EnumSizes_Are32Bit) {

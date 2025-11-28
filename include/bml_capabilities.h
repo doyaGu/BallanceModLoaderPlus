@@ -113,7 +113,7 @@ typedef enum BML_ApiType {
 #define BML_MAX_API_ID 100000u
 
 /* ========================================================================
- * Version Requirement Structure (Task 1.2)
+ * Version Requirement Structure
  * ======================================================================== */
 
 /**
@@ -139,7 +139,7 @@ typedef struct BML_VersionRequirement {
     { sizeof(BML_VersionRequirement), (maj), (min), (pat), 0, 0 }
 
 /* ========================================================================
- * API Descriptor Structure (Task 1.2)
+ * API Descriptor Structure
  * ======================================================================== */
 
 /**
@@ -224,7 +224,7 @@ typedef BML_Bool (*PFN_BML_GetApiDescriptor)(uint32_t id, BML_ApiDescriptor* out
 typedef BML_Bool (*PFN_BML_GetApiDescriptorByName)(const char* name, BML_ApiDescriptor* out_desc);
 
 /**
- * @brief Callback type for API enumeration (Task 2.3 - unified signature)
+ * @brief Callback type for API enumeration
  * 
  * @param[in] ctx BML context (first parameter for consistency)
  * @param[in] desc Pointer to API descriptor
@@ -288,16 +288,6 @@ extern PFN_BML_GetApiDescriptor        bmlGetApiDescriptor;
 extern PFN_BML_GetApiDescriptorByName  bmlGetApiDescriptorByName;
 extern PFN_BML_EnumerateApis           bmlEnumerateApis;
 extern PFN_BML_GetApiIntroducedVersion bmlGetApiIntroducedVersion;
-extern PFN_BML_RegisterExtensionApi    bmlRegisterExtensionApi;
-
-/**
- * @brief Macro to simplify extension registration
- * 
- * Usage:
- *   BML_REGISTER_EXTENSION("MyMod_EXT_Custom", 1, 0, my_api_table);
- */
-#define BML_REGISTER_EXTENSION(name, major, minor, api_table) \
-    (bmlRegisterExtensionApi ? bmlRegisterExtensionApi(name, major, minor, &api_table, sizeof(api_table)) : 0)
 
 BML_END_CDECLS
 

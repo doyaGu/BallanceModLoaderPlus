@@ -35,7 +35,6 @@
  * }
  * @endcode
  * 
- * @since 0.4.0
  * @see bml_context.hpp for C++ RAII wrappers
  * @see bml_core.hpp for C++ convenience functions
  */
@@ -70,7 +69,6 @@ BML_BEGIN_CDECLS
  * @return BML_RESULT_INVALID_HANDLE if ctx is NULL or invalid
  * 
  * @threadsafe Yes - uses atomic reference counting
- * @since 0.4.0
  * 
  * @see PFN_BML_ContextRelease for releasing references
  * @see PFN_BML_GetGlobalContext for obtaining the global context
@@ -89,7 +87,6 @@ typedef BML_Result (*PFN_BML_ContextRetain)(BML_Context ctx);
  * @return BML_RESULT_INVALID_HANDLE if ctx is NULL or already released
  * 
  * @threadsafe Yes - uses atomic reference counting
- * @since 0.4.0
  * 
  * @warning Do not use the context after releasing the last reference
  * 
@@ -107,7 +104,6 @@ typedef BML_Result (*PFN_BML_ContextRelease)(BML_Context ctx);
  * @return Global context handle, or NULL if BML is not initialized
  * 
  * @threadsafe Yes - returns immutable singleton reference
- * @since 0.4.0
  * 
  * @note The returned context does not need to be released unless you
  *       explicitly called bmlContextRetain() on it
@@ -137,7 +133,6 @@ typedef BML_Context (*PFN_BML_GetGlobalContext)(void);
  * @return BML_RESULT_INVALID_ARGUMENT if key is NULL
  * 
  * @threadsafe Yes - uses internal synchronization
- * @since 0.4.0
  * 
  * @note The destructor is called with the old data when:
  *       - New data is set for the same key
@@ -170,7 +165,6 @@ typedef BML_Result (*PFN_BML_ContextSetUserData)(BML_Context ctx, const char *ke
  * @return BML_RESULT_INVALID_ARGUMENT if key or out_data is NULL
  * 
  * @threadsafe Yes - uses internal synchronization
- * @since 0.4.0
  * 
  * @code
  * // Retrieve CKContext (set by ModLoader)
@@ -204,7 +198,6 @@ typedef BML_Result (*PFN_BML_ContextGetUserData)(BML_Context ctx, const char *ke
  * @return Pointer to static version structure, or NULL on error
  * 
  * @threadsafe Yes - returns pointer to static data
- * @since 0.4.0
  * 
  * @code
  * const BML_Version* ver = bmlGetRuntimeVersion();
@@ -243,7 +236,6 @@ typedef const BML_Version *(*PFN_BML_GetRuntimeVersion)(void);
  * @return BML_RESULT_INVALID_ARGUMENT if mod or capability_id is NULL
  * 
  * @threadsafe Yes
- * @since 0.4.0
  * 
  * @code
  * BML_Result result = bmlRequestCapability(my_mod, "bml.profiling");
@@ -268,7 +260,6 @@ typedef BML_Result (*PFN_BML_RequestCapability)(BML_Mod mod, const char *capabil
  * @return BML_RESULT_INVALID_ARGUMENT if any parameter is NULL
  * 
  * @threadsafe Yes
- * @since 0.4.0
  * 
  * @code
  * BML_Bool supported = BML_FALSE;
@@ -305,7 +296,6 @@ typedef BML_Result (*PFN_BML_CheckCapability)(BML_Mod mod, const char *capabilit
  * @return BML_RESULT_INVALID_ARGUMENT if out_id is NULL
  * 
  * @threadsafe Yes - returns pointer to immutable data
- * @since 0.4.0
  * 
  * @note The returned string is owned by the mod and remains valid for its lifetime
  * 
@@ -331,7 +321,6 @@ typedef BML_Result (*PFN_BML_GetModId)(BML_Mod mod, const char **out_id);
  * @return BML_RESULT_INVALID_SIZE if out_version->struct_size is incorrect
  * 
  * @threadsafe Yes
- * @since 0.4.0
  * 
  * @code
  * BML_Version version = BML_VERSION_INIT(0, 0, 0);
@@ -366,7 +355,6 @@ typedef BML_Result (*PFN_BML_GetModVersion)(BML_Mod mod, BML_Version *out_versio
  * @return BML_RESULT_NOT_SUPPORTED if TLS is not available
  * 
  * @threadsafe Yes - uses per-thread storage
- * @since 0.4.0
  * 
  * @note Previous binding is overwritten; use CurrentModuleScope for RAII
  * 
@@ -395,7 +383,6 @@ typedef BML_Result (*PFN_BML_SetCurrentModule)(BML_Mod mod);
  * @return Module handle bound to current thread, or NULL if none
  * 
  * @threadsafe Yes - uses per-thread storage
- * @since 0.4.0
  * 
  * @code
  * BML_Mod current = bmlGetCurrentModule();
@@ -431,7 +418,6 @@ typedef BML_Mod (*PFN_BML_GetCurrentModule)(void);
  * 
  * @note Called from main thread during shutdown sequence
  * @note Keep implementation fast; avoid blocking operations
- * @since 0.4.0
  * 
  * @code
  * void MyShutdownHandler(BML_Context ctx, void* user_data) {
@@ -458,7 +444,6 @@ typedef void (*BML_ShutdownCallback)(BML_Context ctx, void *user_data);
  * @return BML_RESULT_OUT_OF_MEMORY if hook storage is exhausted
  * 
  * @threadsafe Yes - hook list is synchronized
- * @since 0.4.0
  * 
  * @warning Hooks cannot be unregistered; ensure user_data remains valid
  * 
@@ -508,7 +493,6 @@ typedef BML_Result (*PFN_BML_RegisterShutdownHook)(BML_Mod mod, BML_ShutdownCall
  * }
  * @endcode
  * 
- * @since 0.4.0
  */
 typedef struct BML_CoreApi {
     PFN_BML_ContextRetain           ContextRetain;           /**< @see PFN_BML_ContextRetain */
@@ -551,8 +535,6 @@ typedef struct BML_CoreApi {
  *     }
  * }
  * @endcode
- * 
- * @since 0.4.0
  */
 typedef enum BML_CoreCapabilityFlags {
     /** @brief Context retain/release APIs available */
@@ -596,8 +578,6 @@ typedef enum BML_CoreCapabilityFlags {
  *            caps.threading_model == BML_THREADING_FREE ? "Free" : "Other");
  * }
  * @endcode
- * 
- * @since 0.4.0
  */
 typedef struct BML_CoreCaps {
     /** @brief Size of this structure, must be first field for ABI extension */
@@ -642,7 +622,6 @@ typedef struct BML_CoreCaps {
  * @return BML_RESULT_INVALID_SIZE if out_caps->struct_size is incorrect
  * 
  * @threadsafe Yes
- * @since 0.4.0
  * 
  * @code
  * BML_CoreCaps caps = BML_CORE_CAPS_INIT;

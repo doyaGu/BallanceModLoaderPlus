@@ -9,7 +9,6 @@
  * like Tracy, Chrome Tracing, and RenderDoc.
  */
 
-
 #include "bml_types.h"
 #include "bml_errors.h"
 #include "bml_version.h"
@@ -156,7 +155,7 @@ typedef enum BML_ProfilerBackend {
     BML_PROFILER_TRACY,             /**< Tracy profiler */
     BML_PROFILER_RENDERDOC,         /**< RenderDoc markers */
     BML_PROFILER_CUSTOM,            /**< Custom backend */
-    _BML_PROFILER_BACKEND_FORCE_32BIT = 0x7FFFFFFF  /**< Force 32-bit enum (Task 1.4) */
+    _BML_PROFILER_BACKEND_FORCE_32BIT = 0x7FFFFFFF  /**< Force 32-bit enum */
 } BML_ProfilerBackend;
 
 /**
@@ -201,7 +200,7 @@ typedef BML_Bool (*PFN_BML_IsProfilingEnabled)(void);
  */
 typedef BML_Result (*PFN_BML_FlushProfilingData)(const char *filename);
 
-/* ========== Profiling Statistics (Task 1.2) ========== */
+/* ========== Profiling Statistics ========== */
 
 /**
  * @brief Profiling statistics
@@ -231,7 +230,7 @@ typedef struct BML_ProfilingStats {
  */
 typedef BML_Result (*PFN_BML_GetProfilingStats)(BML_ProfilingStats *out_stats);
 
-/* ========== Capability Query (Task 1.2 & 1.4) ========== */
+/* ========== Capability Query ========== */
 
 typedef enum BML_ProfilingCapabilityFlags {
     BML_PROFILING_CAP_TRACE_EVENTS      = 1u << 0,
@@ -243,7 +242,7 @@ typedef enum BML_ProfilingCapabilityFlags {
 } BML_ProfilingCapabilityFlags;
 
 /**
- * @brief Profiling subsystem capabilities (Task 1.2)
+ * @brief Profiling subsystem capabilities
  */
 typedef struct BML_ProfilingCaps {
     size_t struct_size;             /**< sizeof(BML_ProfilingCaps), must be first field */
