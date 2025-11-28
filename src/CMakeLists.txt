@@ -2,6 +2,7 @@ configure_file(Version.h.in "${BML_INCLUDE_DIR}/BML/Version.h" @ONLY)
 
 add_subdirectory(Utils)
 add_subdirectory(Core)
+add_subdirectory(ModLoader)
 
 set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/Version.h
