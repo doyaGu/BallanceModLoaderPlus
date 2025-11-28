@@ -22,5 +22,6 @@ namespace BML::Core {
 
         BML_REGISTER_API_GUARDED_WITH_CAPS(bmlGetLastError, "diagnostics", BML_API_GetLastError, BML_CAP_DIAGNOSTICS);
         BML_REGISTER_API_WITH_CAPS(bmlClearLastError, BML_API_ClearLastError, BML_CAP_DIAGNOSTICS);
+        BML_REGISTER_API_WITH_CAPS(bmlGetErrorString, GetErrorString, BML_CAP_DIAGNOSTICS);
     }
 } // namespace BML::Core
