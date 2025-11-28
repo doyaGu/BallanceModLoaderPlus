@@ -163,12 +163,6 @@ typedef struct BML_LogCaps {
 
 typedef BML_Result (*PFN_BML_LoggingGetCaps)(BML_LogCaps *out_caps);
 
-typedef struct BML_LoggerApi {
-    PFN_BML_Log Log;
-    PFN_BML_LogVa LogVa;
-    PFN_BML_SetLogFilter SetFilter;
-} BML_LoggerApi;
-
 extern PFN_BML_Log bmlLog;
 extern PFN_BML_LogVa bmlLogVa;
 extern PFN_BML_SetLogFilter bmlSetLogFilter;

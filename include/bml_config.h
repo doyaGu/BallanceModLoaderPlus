@@ -278,13 +278,6 @@ typedef BML_Result (*PFN_BML_ConfigEnumerate)(BML_Mod mod,
                                               BML_ConfigEnumCallback callback,
                                               void *user_data);
 
-typedef struct BML_ConfigApi {
-    PFN_BML_ConfigGet Get;
-    PFN_BML_ConfigSet Set;
-    PFN_BML_ConfigReset Reset;
-    PFN_BML_ConfigEnumerate Enumerate;
-} BML_ConfigApi;
-
 extern PFN_BML_ConfigGet bmlConfigGet;
 extern PFN_BML_ConfigSet bmlConfigSet;
 extern PFN_BML_ConfigReset bmlConfigReset;
