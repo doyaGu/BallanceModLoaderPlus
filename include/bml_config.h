@@ -6,6 +6,7 @@
 #include "bml_version.h"
 
 BML_BEGIN_CDECLS
+
 /**
  * @brief Configuration key identifier
  */
