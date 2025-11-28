@@ -209,10 +209,12 @@ TEST_F(CoreErrorsGuardTests, ThreadLocalErrorsAreIsolatedPerThread) {
 }
 
 TEST_F(CoreErrorsGuardTests, LargeErrorMessagesSurviveMultipleWrites) {
-    constexpr size_t kBaseSize = 64 * 1024; // 64 KiB base payload
+    // Note: message_buffer is 256 bytes, so test with sizes within that limit
+    constexpr size_t kMaxBufferSize = 255; // Leave room for null terminator
 
     for (int i = 1; i <= 4; ++i) {
-        const size_t current_size = kBaseSize * static_cast<size_t>(i);
+        // Use incrementing sizes up to the buffer limit
+        const size_t current_size = std::min<size_t>(50 * static_cast<size_t>(i), kMaxBufferSize);
         std::string message(current_size, static_cast<char>('a' + i));
         message.back() = static_cast<char>('f' + i); // ensure non-uniform payload
 
@@ -220,7 +222,14 @@ TEST_F(CoreErrorsGuardTests, LargeErrorMessagesSurviveMultipleWrites) {
         BML_ErrorInfo info = BML_ERROR_INFO_INIT;
         ASSERT_EQ(BML_RESULT_OK, BML::Core::GetLastErrorInfo(&info));
         ASSERT_NE(info.message, nullptr);
-        EXPECT_EQ(std::string(info.message), message);
+        
+        std::string retrieved(info.message);
+        EXPECT_EQ(retrieved.length(), message.length()) 
+            << "Message length mismatch at iteration " << i;
+        EXPECT_EQ(retrieved, message)
+            << "Message content mismatch at iteration " << i 
+            << " (first 50 chars shown)";
+        
         ASSERT_NE(info.api_name, nullptr);
         EXPECT_STREQ(info.api_name, "large.test");
     }

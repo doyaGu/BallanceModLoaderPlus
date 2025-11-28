@@ -117,6 +117,7 @@ add_bml_test(ImcBusTest
         ${BML_SOURCE_DIR}/Core/ImcBus.cpp
         ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
@@ -136,7 +137,7 @@ add_bml_test(CppWrapperTest
         CppWrapperTest.cpp
 )
 
-# Task 1.2/1.4: Struct size and enum validation tests
+# Struct size and enum validation tests
 add_bml_test(StructSizeTest
         SOURCES
         StructSizeTest.cpp
@@ -148,12 +149,15 @@ add_bml_test(CoreApisTests
         ModuleLoaderStub.cpp
         ${BML_SOURCE_DIR}/Core/CoreApi.cpp
         ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/ConfigApi.cpp
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/ImcApi.cpp
         ${BML_SOURCE_DIR}/Core/ImcBus.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
+        ${BML_SOURCE_DIR}/Core/LoggingApi.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
         BMLUtils
@@ -168,6 +172,7 @@ add_bml_test(ApiRegistryTests
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
@@ -183,6 +188,7 @@ add_bml_test(ContextLifecycleTests
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
@@ -195,9 +201,11 @@ add_bml_test(ConfigStoreConcurrencyTests
         ConfigStoreConcurrencyTests.cpp
         ModuleLoaderStub.cpp
         ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/ConfigApi.cpp
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
@@ -212,6 +220,7 @@ add_bml_test(ResourceHandleLifecycleTests
         ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
@@ -225,6 +234,7 @@ add_bml_test(MemoryManagerTests
         MemoryManagerTests.cpp
         TestLoggingStub.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/MemoryManager.cpp
         DEPENDENCIES
         BMLUtils
@@ -238,6 +248,7 @@ add_bml_test(ExtensionApiValidationTests
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/ExtensionApi.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
@@ -254,7 +265,9 @@ add_bml_test(LoggingSinkOverrideTests
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
+        ${BML_SOURCE_DIR}/Core/LoggingApi.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
         BMLUtils
@@ -269,8 +282,10 @@ add_bml_test(CoreErrorsGuardTests
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
-        ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
+        ${BML_SOURCE_DIR}/Core/LoggingApi.cpp
+        ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
         BMLUtils
         tomlplusplus::tomlplusplus
@@ -324,6 +339,7 @@ add_bml_test(ApiImprovementsTest
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
@@ -331,7 +347,7 @@ add_bml_test(ApiImprovementsTest
         tomlplusplus::tomlplusplus
 )
 
-# Sync Primitives Test (Task 3.3 - CondVar, SpinLock)
+# Sync Primitives Test
 add_bml_test(SyncPrimitivesTest
         SOURCES
         SyncPrimitivesTest.cpp
@@ -340,6 +356,7 @@ add_bml_test(SyncPrimitivesTest
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/SyncManager.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
@@ -367,6 +384,7 @@ add_bml_test(SyncManagerTests
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         DEPENDENCIES
@@ -381,6 +399,7 @@ add_bml_test(ModuleLoaderTests
         ModuleLoaderStub.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/DependencyResolver.cpp
         ${BML_SOURCE_DIR}/Core/SemanticVersion.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp

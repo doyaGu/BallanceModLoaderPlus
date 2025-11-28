@@ -13,8 +13,6 @@
  * - All create/destroy functions are thread-safe
  * - All lock/unlock operations are thread-safe
  * - Destroying a primitive while in use is undefined behavior
- * 
- * @since 0.4.0
  */
 
 #include "bml_types.h"
@@ -23,7 +21,7 @@
 
 BML_BEGIN_CDECLS
 
-/* ========== Type-Safe Handle Declarations (Task 1.3) ========== */
+/* ========== Type-Safe Handle Declarations ========== */
 
 /**
  * @brief Opaque mutex handle
@@ -432,8 +430,8 @@ typedef enum BML_SyncCapabilityFlags {
     BML_SYNC_CAP_ATOMICS        = 1u << 2,
     BML_SYNC_CAP_SEMAPHORE      = 1u << 3,
     BML_SYNC_CAP_TLS            = 1u << 4,
-    BML_SYNC_CAP_CONDVAR        = 1u << 5,  /**< Condition variable support (Task 3.3) */
-    BML_SYNC_CAP_SPINLOCK       = 1u << 6,  /**< Spin lock support (Task 3.3) */
+    BML_SYNC_CAP_CONDVAR        = 1u << 5,  /**< Condition variable support */
+    BML_SYNC_CAP_SPINLOCK       = 1u << 6,  /**< Spin lock support */
     _BML_SYNC_CAP_FORCE_32BIT   = 0x7FFFFFFF  /**< Force 32-bit enum */
 } BML_SyncCapabilityFlags;
 
@@ -451,7 +449,7 @@ typedef struct BML_SyncCaps {
 
 typedef BML_Result (*PFN_BML_GetSyncCaps)(BML_SyncCaps *out_caps);
 
-/* ========== Condition Variable API (Task 3.3) ========== */
+/* ========== Condition Variable API ========== */
 
 /**
  * @brief Create a condition variable
@@ -461,7 +459,6 @@ typedef BML_Result (*PFN_BML_GetSyncCaps)(BML_SyncCaps *out_caps);
  * @return BML_RESULT_OUT_OF_MEMORY if allocation failed
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_CondVarCreate)(BML_CondVar *out_condvar);
 
@@ -471,7 +468,6 @@ typedef BML_Result (*PFN_BML_CondVarCreate)(BML_CondVar *out_condvar);
  * @param[in] condvar Condition variable handle
  * 
  * @threadsafe No (ensure no thread is waiting)
- * @since 0.4.0
  */
 typedef void (*PFN_BML_CondVarDestroy)(BML_CondVar condvar);
 
@@ -486,14 +482,13 @@ typedef void (*PFN_BML_CondVarDestroy)(BML_CondVar condvar);
  * @return BML_RESULT_OK when signaled
  * 
  * @threadsafe Yes
- * @since 0.4.0
  * 
  * @warning Spurious wakeups may occur; always check the condition in a loop
  */
 typedef BML_Result (*PFN_BML_CondVarWait)(BML_CondVar condvar, BML_Mutex mutex);
 
 /**
- * @brief Wait on a condition variable with timeout (Task 3.3)
+ * @brief Wait on a condition variable with timeout
  * 
  * @param[in] condvar Condition variable handle
  * @param[in] mutex Mutex handle (must be locked by caller)
@@ -502,7 +497,6 @@ typedef BML_Result (*PFN_BML_CondVarWait)(BML_CondVar condvar, BML_Mutex mutex);
  * @return BML_RESULT_TIMEOUT if timeout expired
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_CondVarWaitTimeout)(BML_CondVar condvar, BML_Mutex mutex, uint32_t timeout_ms);
 
@@ -513,7 +507,6 @@ typedef BML_Result (*PFN_BML_CondVarWaitTimeout)(BML_CondVar condvar, BML_Mutex 
  * @return BML_RESULT_OK on success
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_CondVarSignal)(BML_CondVar condvar);
 
@@ -524,11 +517,10 @@ typedef BML_Result (*PFN_BML_CondVarSignal)(BML_CondVar condvar);
  * @return BML_RESULT_OK on success
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_CondVarBroadcast)(BML_CondVar condvar);
 
-/* ========== Spin Lock API (Task 3.3) ========== */
+/* ========== Spin Lock API ========== */
 
 /**
  * @brief Create a spin lock
@@ -540,7 +532,6 @@ typedef BML_Result (*PFN_BML_CondVarBroadcast)(BML_CondVar condvar);
  * @return BML_RESULT_OK on success
  * 
  * @threadsafe Yes
- * @since 0.4.0
  * 
  * @warning Do not use for operations that may block or take significant time
  */
@@ -552,7 +543,6 @@ typedef BML_Result (*PFN_BML_SpinLockCreate)(BML_SpinLock *out_lock);
  * @param[in] lock Spin lock handle
  * 
  * @threadsafe No
- * @since 0.4.0
  */
 typedef void (*PFN_BML_SpinLockDestroy)(BML_SpinLock lock);
 
@@ -562,7 +552,6 @@ typedef void (*PFN_BML_SpinLockDestroy)(BML_SpinLock lock);
  * @param[in] lock Spin lock handle
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef void (*PFN_BML_SpinLockLock)(BML_SpinLock lock);
 
@@ -573,7 +562,6 @@ typedef void (*PFN_BML_SpinLockLock)(BML_SpinLock lock);
  * @return BML_TRUE if acquired, BML_FALSE otherwise
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef BML_Bool (*PFN_BML_SpinLockTryLock)(BML_SpinLock lock);
 
@@ -583,7 +571,6 @@ typedef BML_Bool (*PFN_BML_SpinLockTryLock)(BML_SpinLock lock);
  * @param[in] lock Spin lock handle
  * 
  * @threadsafe Yes
- * @since 0.4.0
  */
 typedef void (*PFN_BML_SpinLockUnlock)(BML_SpinLock lock);
 
@@ -629,7 +616,7 @@ extern PFN_BML_TlsDestroy           bmlTlsDestroy;
 extern PFN_BML_TlsGet               bmlTlsGet;
 extern PFN_BML_TlsSet               bmlTlsSet;
 
-/* Condition Variable (Task 3.3) */
+/* Condition Variable */
 extern PFN_BML_CondVarCreate        bmlCondVarCreate;
 extern PFN_BML_CondVarDestroy       bmlCondVarDestroy;
 extern PFN_BML_CondVarWait          bmlCondVarWait;
@@ -637,7 +624,7 @@ extern PFN_BML_CondVarWaitTimeout   bmlCondVarWaitTimeout;
 extern PFN_BML_CondVarSignal        bmlCondVarSignal;
 extern PFN_BML_CondVarBroadcast     bmlCondVarBroadcast;
 
-/* Spin Lock (Task 3.3) */
+/* Spin Lock */
 extern PFN_BML_SpinLockCreate       bmlSpinLockCreate;
 extern PFN_BML_SpinLockDestroy      bmlSpinLockDestroy;
 extern PFN_BML_SpinLockLock         bmlSpinLockLock;

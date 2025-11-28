@@ -23,7 +23,7 @@
 BML_BEGIN_CDECLS
 
 /* ========================================================================
- * Type-Safe Handle Declaration Macro (Task 1.3)
+ * Type-Safe Handle Declaration Macro
  * ======================================================================== */
 
 /**
@@ -52,7 +52,46 @@ BML_BEGIN_CDECLS
 #endif
 
 /* ========================================================================
- * Thread Safety Annotation Macros (Task 1.5)
+ * Convenience Macros
+ * ======================================================================== */
+
+/**
+ * @def BML_UNUSED
+ * @brief Mark a parameter as intentionally unused
+ */
+#define BML_UNUSED(x) ((void)(x))
+
+/**
+ * @def BML_ARRAY_SIZE
+ * @brief Get the number of elements in a static array
+ */
+#define BML_ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+
+/**
+ * @def BML_STRINGIFY
+ * @brief Convert a macro argument to a string literal
+ */
+#define BML_STRINGIFY_(x) #x
+#define BML_STRINGIFY(x) BML_STRINGIFY_(x)
+
+/**
+ * @def BML_CONCAT
+ * @brief Concatenate two macro arguments
+ */
+#define BML_CONCAT_(a, b) a##b
+#define BML_CONCAT(a, b) BML_CONCAT_(a, b)
+
+/**
+ * @def BML_VERSION_STRING
+ * @brief Full version string for display
+ */
+#define BML_VERSION_STRING \
+    BML_STRINGIFY(BML_API_VERSION_MAJOR) "." \
+    BML_STRINGIFY(BML_API_VERSION_MINOR) "." \
+    BML_STRINGIFY(BML_API_VERSION_PATCH)
+
+/* ========================================================================
+ * Thread Safety Annotation Macros
  * ======================================================================== */
 
 /**
@@ -82,7 +121,7 @@ BML_BEGIN_CDECLS
 #define BML_MAIN_THREAD_ONLY
 
 /* ========================================================================
- * Opaque Handle Type Declarations (Task 1.3)
+ * Opaque Handle Type Declarations
  * ======================================================================== */
 
 /**
@@ -130,11 +169,11 @@ typedef enum BML_ThreadingModel {
     BML_THREADING_SINGLE = 0,      /**< Single-threaded only */
     BML_THREADING_APARTMENT = 1,   /**< Thread-affinity required */
     BML_THREADING_FREE = 2,        /**< Fully thread-safe */
-    _BML_THREADING_MODEL_FORCE_32BIT = 0x7FFFFFFF  /**< Force 32-bit enum (Task 1.4) */
+    _BML_THREADING_MODEL_FORCE_32BIT = 0x7FFFFFFF  /**< Force 32-bit enum */
 } BML_ThreadingModel;
 
 /* ========================================================================
- * Version Structure (Task 1.2)
+ * Version Structure
  * ======================================================================== */
 
 /**
@@ -187,7 +226,7 @@ static inline uint32_t bmlVersionToUint(const BML_Version *version) {
 }
 
 /* ========================================================================
- * Error Information Structure (Task 1.1)
+ * Error Information Structure
  * ======================================================================== */
 
 /**

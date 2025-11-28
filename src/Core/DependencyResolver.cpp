@@ -13,10 +13,6 @@
 
 namespace BML::Core {
     namespace {
-        std::string Narrow(const std::wstring &wide) {
-            return wide.empty() ? std::string() : utils::Utf16ToUtf8(wide);
-        }
-
         struct ReadyNode {
             size_t order{std::numeric_limits<size_t>::max()};
             std::string id;
@@ -127,7 +123,7 @@ namespace BML::Core {
                 auto appendPath = [&](const ModManifest *manifest) {
                     if (!manifest)
                         return;
-                    out_error.chain.push_back(Narrow(manifest->manifest_path));
+                    out_error.chain.push_back(utils::Utf16ToUtf8(manifest->manifest_path));
                 };
                 appendPath(node.manifest);
                 for (const auto *dup : node.duplicates) {
@@ -242,7 +238,7 @@ namespace BML::Core {
             }
         }
 
-        std::priority_queue<ReadyNode, std::vector<ReadyNode>, std::greater<ReadyNode>> ready;
+        std::priority_queue<ReadyNode, std::vector<ReadyNode>, std::greater<>> ready;
         for (const auto &[id, node] : graph) {
             if (node.incoming == 0) {
                 ready.push({orderOf(id), id});

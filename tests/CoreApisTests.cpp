@@ -57,7 +57,6 @@ ConfigHookCapture &GetConfigHookCapture() {
         auto *state = new ConfigHookCapture();
         BML_ConfigLoadHooks hooks{};
         hooks.struct_size = sizeof(BML_ConfigLoadHooks);
-        // Task 2.3: unified callback signature (ctx, load_ctx, user_data)
         hooks.on_pre_load = [](BML_Context, const BML_ConfigLoadContext *, void *user_data) {
             auto *capture = static_cast<ConfigHookCapture *>(user_data);
             std::lock_guard<std::mutex> lock(capture->mutex);

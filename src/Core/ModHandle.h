@@ -26,7 +26,7 @@ namespace BML::Core {
 
 struct BML_Mod_T {
     struct ShutdownHook {
-        BML_ShutdownCallback callback{nullptr}; // Task 2.3 - unified callback signature
+        BML_ShutdownCallback callback{nullptr};
         void *user_data{nullptr};
     };
 

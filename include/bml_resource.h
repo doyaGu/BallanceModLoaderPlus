@@ -10,7 +10,7 @@ BML_BEGIN_CDECLS
 typedef uint32_t BML_HandleType;
 
 /**
- * @brief Handle descriptor (Task 1.2)
+ * @brief Handle descriptor
  */
 typedef struct BML_HandleDesc {
     size_t struct_size;    /**< sizeof(BML_HandleDesc), must be first field */
@@ -25,16 +25,52 @@ typedef struct BML_HandleDesc {
  */
 #define BML_HANDLE_DESC_INIT { sizeof(BML_HandleDesc), 0, 0, 0 }
 
+/* ========================================================================
+ * Custom Resource Type Registration
+ * ======================================================================== */
+
+/**
+ * @brief Callback for finalizing a resource handle when released
+ * @param ctx BML context
+ * @param desc The handle being finalized
+ * @param user_data User data from resource type registration
+ */
+typedef void (*BML_ResourceHandleFinalize)(BML_Context ctx, const BML_HandleDesc* desc, void* user_data);
+
+/**
+ * @brief Descriptor for registering a custom resource type
+ */
+typedef struct BML_ResourceTypeDesc {
+    size_t struct_size;                  /**< sizeof(BML_ResourceTypeDesc), must be first */
+    const char* name;                    /**< Human-readable type name (required) */
+    BML_ResourceHandleFinalize on_finalize; /**< Called when handle ref count reaches 0 */
+    void* user_data;                     /**< User context for callbacks */
+} BML_ResourceTypeDesc;
+
+#define BML_RESOURCE_TYPE_DESC_INIT { sizeof(BML_ResourceTypeDesc), NULL, NULL, NULL }
+
+/**
+ * @brief Register a custom resource type
+ * @param desc Resource type descriptor
+ * @param out_type Receives the allocated type ID
+ * @return BML_RESULT_OK on success
+ */
+typedef BML_Result (*PFN_BML_RegisterResourceType)(const BML_ResourceTypeDesc* desc, BML_HandleType* out_type);
+
+/* ========================================================================
+ * Capability Flags
+ * ======================================================================== */
+
 typedef enum BML_ResourceCapabilityFlags {
     BML_RESOURCE_CAP_STRONG_REFERENCES  = 1u << 0,
     BML_RESOURCE_CAP_USER_DATA          = 1u << 1,
     BML_RESOURCE_CAP_THREAD_SAFE        = 1u << 2,
     BML_RESOURCE_CAP_TYPE_ISOLATION     = 1u << 3,
-    _BML_RESOURCE_CAP_FORCE_32BIT       = 0x7FFFFFFF  /**< Force 32-bit enum (Task 1.4) */
+    _BML_RESOURCE_CAP_FORCE_32BIT       = 0x7FFFFFFF  /**< Force 32-bit enum */
 } BML_ResourceCapabilityFlags;
 
 /**
- * @brief Resource API capabilities (Task 1.2)
+ * @brief Resource API capabilities
  */
 typedef struct BML_ResourceCaps {
     size_t struct_size;           /**< sizeof(BML_ResourceCaps), must be first field */
@@ -65,7 +101,6 @@ typedef struct BML_ResourceCaps {
  * @return BML_ERROR_OUT_OF_MEMORY if no handle slots are available.
  *
  * @threadsafe Yes, if BML_RESOURCE_CAP_THREAD_SAFE capability is present.
- * @since 0.4.0
  *
  * @code
  * BML_HandleDesc desc = BML_HANDLE_DESC_INIT;
@@ -91,7 +126,6 @@ typedef BML_Result (*PFN_BML_HandleCreate)(BML_HandleType type, BML_HandleDesc *
  * @return BML_ERROR_INVALID_HANDLE if the handle is invalid or already released.
  *
  * @threadsafe Yes, if BML_RESOURCE_CAP_THREAD_SAFE capability is present.
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_HandleRetain)(const BML_HandleDesc *desc);
 
@@ -108,7 +142,6 @@ typedef BML_Result (*PFN_BML_HandleRetain)(const BML_HandleDesc *desc);
  * @return BML_ERROR_INVALID_HANDLE if the handle is invalid or already released.
  *
  * @threadsafe Yes, if BML_RESOURCE_CAP_THREAD_SAFE capability is present.
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_HandleRelease)(const BML_HandleDesc *desc);
 
@@ -126,7 +159,6 @@ typedef BML_Result (*PFN_BML_HandleRelease)(const BML_HandleDesc *desc);
  * @return BML_ERROR_INVALID_PARAM if desc or out_valid is NULL.
  *
  * @threadsafe Yes, if BML_RESOURCE_CAP_THREAD_SAFE capability is present.
- * @since 0.4.0
  *
  * @code
  * BML_Bool valid = BML_FALSE;
@@ -153,7 +185,6 @@ typedef BML_Result (*PFN_BML_HandleValidate)(const BML_HandleDesc *desc, BML_Boo
  * @return BML_ERROR_NOT_SUPPORTED if BML_RESOURCE_CAP_USER_DATA is not available.
  *
  * @threadsafe Yes, if BML_RESOURCE_CAP_THREAD_SAFE capability is present.
- * @since 0.4.0
  */
 typedef BML_Result (*PFN_BML_HandleAttachUserData)(const BML_HandleDesc *desc, void *user_data);
 
@@ -172,7 +203,6 @@ typedef BML_Result (*PFN_BML_HandleAttachUserData)(const BML_HandleDesc *desc, v
  * @return BML_ERROR_NOT_SUPPORTED if BML_RESOURCE_CAP_USER_DATA is not available.
  *
  * @threadsafe Yes, if BML_RESOURCE_CAP_THREAD_SAFE capability is present.
- * @since 0.4.0
  *
  * @code
  * void *data = NULL;
@@ -196,7 +226,6 @@ typedef BML_Result (*PFN_BML_HandleGetUserData)(const BML_HandleDesc *desc, void
  * @return BML_ERROR_INVALID_PARAM if out_caps is NULL.
  *
  * @threadsafe Yes
- * @since 0.4.0
  *
  * @code
  * BML_ResourceCaps caps = BML_RESOURCE_CAPS_INIT;
@@ -216,6 +245,7 @@ extern PFN_BML_HandleValidate      bmlHandleValidate;
 extern PFN_BML_HandleAttachUserData bmlHandleAttachUserData;
 extern PFN_BML_HandleGetUserData    bmlHandleGetUserData;
 extern PFN_BML_GetResourceCaps      bmlGetResourceCaps;
+extern PFN_BML_RegisterResourceType bmlRegisterResourceType;
 
 BML_END_CDECLS
 

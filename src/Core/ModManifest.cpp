@@ -11,15 +11,11 @@
 #include "StringUtils.h"
 
 namespace BML::Core {
-    static std::string Narrow(const std::wstring &wide) {
-        return utils::Utf16ToUtf8(wide);
-    }
-
     static void SetParseError(ManifestParseError &error,
                               const std::wstring &path,
                               const std::string &message) {
         error.message = message;
-        error.file = Narrow(path);
+        error.file = utils::Utf16ToUtf8(path);
     }
 
     static bool ReadString(const toml::node *node, std::string &out) {
@@ -203,7 +199,7 @@ namespace BML::Core {
     bool ManifestParser::ParseFile(const std::wstring &path,
                                    ModManifest &out_manifest,
                                    ManifestParseError &out_error) const {
-        std::string narrowPath = Narrow(path);
+        std::string narrowPath = utils::Utf16ToUtf8(path);
         toml::table table;
         try {
             table = toml::parse_file(narrowPath);

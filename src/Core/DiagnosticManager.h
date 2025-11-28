@@ -13,8 +13,6 @@ namespace BML::Core {
      *
      * Stores detailed error information for the current thread.
      * Automatically managed via TLS.
-     *
-     * Updated for Task 1.1: Uses new BML_ErrorInfo structure from bml_types.h
      */
     struct ErrorContext {
         BML_ErrorInfo info{};
@@ -70,7 +68,6 @@ namespace BML::Core {
      * @brief Diagnostic manager for error tracking
      *
      * Manages thread-local error contexts and provides error query APIs.
-     * Updated for Task 1.1 to use new BML_ErrorInfo structure.
      */
     class DiagnosticManager {
     public:

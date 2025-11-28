@@ -11,8 +11,6 @@
  * - Error retrieval APIs (bmlGetLastError, bmlGetErrorString)
  * - Bootstrap diagnostics structures
  * - C++ exception support
- * 
- * @since 0.4.0
  */
 
 #include "bml_types.h"
@@ -324,7 +322,6 @@ typedef struct BML_BootstrapDiagnostics {
  * @return BML_RESULT_NOT_FOUND if no error information is available
  * 
  * @threadsafe Yes (uses thread-local storage)
- * @since 0.4.0
  * 
  * @code
  * BML_Result result = bmlSomeApi(...);
@@ -342,7 +339,6 @@ typedef BML_Result (*PFN_BML_GetLastError)(BML_ErrorInfo* out_info);
  * @brief Clear the last error information for the current thread
  * 
  * @threadsafe Yes (uses thread-local storage)
- * @since 0.4.0
  */
 typedef void (*PFN_BML_ClearLastError)(void);
 
@@ -353,7 +349,6 @@ typedef void (*PFN_BML_ClearLastError)(void);
  * @return Static string describing the error (never NULL)
  * 
  * @threadsafe Yes (returns static strings)
- * @since 0.4.0
  * 
  * @code
  * BML_Result result = bmlSomeApi(...);
