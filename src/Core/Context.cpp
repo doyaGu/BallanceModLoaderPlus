@@ -125,17 +125,12 @@ namespace BML::Core {
 
             FILE *file = nullptr;
 #if defined(_MSC_VER)
-            _wfopen_s(&file, path.c_str(), L"a, ccs=UTF-8");
-#else
-            file = _wfopen(path.c_str(), L"a, ccs=UTF-8");
-#endif
-            if (!file) {
-#if defined(_MSC_VER)
-                _wfopen_s(&file, path.c_str(), L"a");
-#else
-                file = _wfopen(path.c_str(), L"a");
-#endif
+            if (_wfopen_s(&file, path.c_str(), L"a") != 0) {
+                file = nullptr;
             }
+#else
+            file = _wfopen(path.c_str(), L"a");
+#endif
             return file;
         }
     }

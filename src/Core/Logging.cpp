@@ -23,6 +23,12 @@
 
 #include "bml_logging.h"
 
+#if defined(_MSC_VER)
+#define BML_SAFE_FPRINTF(stream, ...) ::fprintf_s(stream, __VA_ARGS__)
+#else
+#define BML_SAFE_FPRINTF(stream, ...) std::fprintf(stream, __VA_ARGS__)
+#endif
+
 namespace BML::Core {
     namespace {
         std::mutex g_LogMutex;
@@ -121,9 +127,10 @@ namespace BML::Core {
         }
 
         void WriteLineLocked(BML_Mod_T *mod, const std::string &line) {
+#ifndef NDEBUG
             std::string debugLine = line;
             debugLine.push_back('\n');
-
+#endif
             std::scoped_lock lock(g_LogMutex);
             FILE *target = nullptr;
             if (mod && mod->log_file) {
@@ -133,10 +140,12 @@ namespace BML::Core {
                 target = stdout;
             }
             if (target) {
-                fprintf(target, "%s\n", line.c_str());
+                BML_SAFE_FPRINTF(target, "%s\n", line.c_str());
                 fflush(target);
             }
+#ifndef NDEBUG
             OutputDebugStringA(debugLine.c_str());
+#endif
         }
 
         bool TryDispatchOverride(BML_Mod_T *mod,
@@ -352,3 +361,5 @@ namespace BML::Core {
         return BML_RESULT_OK;
     }
 } // namespace BML::Core
+
+#undef BML_SAFE_FPRINTF
