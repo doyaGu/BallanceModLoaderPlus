@@ -81,7 +81,8 @@ namespace BML::Core {
             }
             path.resize(copied);
             std::filesystem::path exe(path);
-            return (exe.parent_path() / L"Mods").wstring();
+            // Default to ../Mods (parent of bin directory)
+            return (exe.parent_path().parent_path() / L"Mods").wstring();
         }
 
         void EmitDiagnostics(const ModuleBootstrapDiagnostics &diag) {
