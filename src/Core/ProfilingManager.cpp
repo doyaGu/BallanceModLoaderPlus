@@ -330,7 +330,7 @@ namespace BML::Core {
 
     BML_Result ProfilingManager::GetProfilingCaps(BML_ProfilingCaps *out_caps) {
         if (!out_caps) {
-            SetLastError(BML_RESULT_INVALID_ARGUMENT, "out_caps is NULL", "bmlGetProfilingCaps");
+            SetLastError(BML_RESULT_INVALID_ARGUMENT, "out_caps is NULL", "bmlProfilingGetCaps");
             return BML_RESULT_INVALID_ARGUMENT;
         }
 

@@ -625,14 +625,14 @@ typedef struct BML_CoreCaps {
  * 
  * @code
  * BML_CoreCaps caps = BML_CORE_CAPS_INIT;
- * if (bmlGetCoreCaps(&caps) == BML_RESULT_OK) {
+ * if (bmlCoreGetCaps(&caps) == BML_RESULT_OK) {
  *     if (caps.capability_flags & BML_CORE_CAP_SHUTDOWN_HOOKS) {
  *         // Can use shutdown hooks
  *     }
  * }
  * @endcode
  */
-typedef BML_Result (*PFN_BML_GetCoreCaps)(BML_CoreCaps *out_caps);
+typedef BML_Result (*PFN_BML_CoreGetCaps)(BML_CoreCaps *out_caps);
 
 /** @} */ /* end CoreCaps group */
 
@@ -692,8 +692,8 @@ extern PFN_BML_SetCurrentModule        bmlSetCurrentModule;
 /** @brief Get thread-local module @see PFN_BML_GetCurrentModule */
 extern PFN_BML_GetCurrentModule        bmlGetCurrentModule;
 
-/** @brief Query Core capabilities @see PFN_BML_GetCoreCaps */
-extern PFN_BML_GetCoreCaps             bmlGetCoreCaps;
+/** @brief Query Core capabilities @see PFN_BML_CoreGetCaps */
+extern PFN_BML_CoreGetCaps             bmlCoreGetCaps;
 
 /** @} */ /* end CoreGlobals group */
 

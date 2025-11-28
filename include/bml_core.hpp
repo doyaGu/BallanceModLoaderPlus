@@ -74,9 +74,9 @@ namespace bml {
      * @return Capabilities if successful
      */
     inline std::optional<BML_CoreCaps> GetCoreCaps() {
-        if (!bmlGetCoreCaps) return std::nullopt;
+        if (!bmlCoreGetCaps) return std::nullopt;
         BML_CoreCaps caps = BML_CORE_CAPS_INIT;
-        if (bmlGetCoreCaps(&caps) == BML_RESULT_OK) {
+        if (bmlCoreGetCaps(&caps) == BML_RESULT_OK) {
             return caps;
         }
         return std::nullopt;

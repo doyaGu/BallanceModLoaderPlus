@@ -208,9 +208,9 @@ namespace bml {
      * @return Optional containing capabilities if successful
      */
     inline std::optional<BML_ConfigStoreCaps> GetConfigCaps() {
-        if (!bmlGetConfigCaps) return std::nullopt;
+        if (!bmlConfigGetCaps) return std::nullopt;
         BML_ConfigStoreCaps caps = BML_CONFIG_STORE_CAPS_INIT;
-        if (bmlGetConfigCaps(&caps) == BML_RESULT_OK) {
+        if (bmlConfigGetCaps(&caps) == BML_RESULT_OK) {
             return caps;
         }
         return std::nullopt;
@@ -224,6 +224,179 @@ namespace bml {
     inline bool HasConfigCap(BML_ConfigCapabilityFlags flag) {
         auto caps = GetConfigCaps();
         return caps && (caps->feature_flags & flag);
+    }
+
+    // ============================================================================
+    // ConfigBatch - RAII wrapper for atomic multi-key config updates
+    // ============================================================================
+
+    /**
+     * @brief RAII wrapper for atomic configuration batch operations
+     *
+     * Groups multiple config changes into an atomic transaction that either
+     * succeeds entirely or fails without partial changes.
+     *
+     * Example:
+     *   {
+     *       bml::ConfigBatch batch(mod);
+     *       if (batch.Valid()) {
+     *           batch.Set("video", "width", 1920);
+     *           batch.Set("video", "height", 1080);
+     *           batch.Set("video", "fullscreen", true);
+     *           batch.Commit();  // All or nothing
+     *       }
+     *   }  // Automatically discards if not committed
+     */
+    class ConfigBatch {
+    public:
+        /**
+         * @brief Begin a new configuration batch
+         * @param mod The mod handle
+         */
+        explicit ConfigBatch(BML_Mod mod) : m_batch(nullptr), m_committed(false) {
+            if (bmlConfigBatchBegin) {
+                bmlConfigBatchBegin(mod, &m_batch);
+            }
+        }
+
+        ~ConfigBatch() {
+            if (m_batch && !m_committed && bmlConfigBatchDiscard) {
+                bmlConfigBatchDiscard(m_batch);
+            }
+        }
+
+        // Non-copyable, movable
+        ConfigBatch(const ConfigBatch &) = delete;
+        ConfigBatch &operator=(const ConfigBatch &) = delete;
+
+        ConfigBatch(ConfigBatch &&other) noexcept
+            : m_batch(other.m_batch), m_committed(other.m_committed) {
+            other.m_batch = nullptr;
+            other.m_committed = true;
+        }
+
+        ConfigBatch &operator=(ConfigBatch &&other) noexcept {
+            if (this != &other) {
+                if (m_batch && !m_committed && bmlConfigBatchDiscard) {
+                    bmlConfigBatchDiscard(m_batch);
+                }
+                m_batch = other.m_batch;
+                m_committed = other.m_committed;
+                other.m_batch = nullptr;
+                other.m_committed = true;
+            }
+            return *this;
+        }
+
+        /**
+         * @brief Check if the batch was successfully created
+         * @return true if batch handle is valid
+         */
+        [[nodiscard]] bool Valid() const { return m_batch != nullptr; }
+
+        /**
+         * @brief Check if the batch has been committed
+         * @return true if already committed
+         */
+        [[nodiscard]] bool IsCommitted() const { return m_committed; }
+
+        /**
+         * @brief Queue a generic config value change
+         * @param key Configuration key
+         * @param value Configuration value
+         * @return true if successfully queued
+         */
+        bool Set(const BML_ConfigKey *key, const BML_ConfigValue *value) {
+            if (!m_batch || m_committed || !bmlConfigBatchSet) return false;
+            return bmlConfigBatchSet(m_batch, key, value) == BML_RESULT_OK;
+        }
+
+        /**
+         * @brief Queue an integer config value change
+         */
+        bool Set(std::string_view category, std::string_view key, int32_t value) {
+            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
+            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_INT, {}};
+            cfg_value.data.int_value = value;
+            return Set(&cfg_key, &cfg_value);
+        }
+
+        /**
+         * @brief Queue a float config value change
+         */
+        bool Set(std::string_view category, std::string_view key, float value) {
+            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
+            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_FLOAT, {}};
+            cfg_value.data.float_value = value;
+            return Set(&cfg_key, &cfg_value);
+        }
+
+        /**
+         * @brief Queue a boolean config value change
+         */
+        bool Set(std::string_view category, std::string_view key, bool value) {
+            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
+            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_BOOL, {}};
+            cfg_value.data.bool_value = value ? 1 : 0;
+            return Set(&cfg_key, &cfg_value);
+        }
+
+        /**
+         * @brief Queue a string config value change
+         */
+        bool Set(std::string_view category, std::string_view key, std::string_view value) {
+            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
+            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_STRING, {}};
+            cfg_value.data.string_value = value.data();
+            return Set(&cfg_key, &cfg_value);
+        }
+
+        /**
+         * @brief Atomically commit all queued changes
+         * @return true if all changes were successfully applied
+         */
+        bool Commit() {
+            if (!m_batch || m_committed || !bmlConfigBatchCommit) return false;
+            BML_Result result = bmlConfigBatchCommit(m_batch);
+            if (result == BML_RESULT_OK) {
+                m_committed = true;
+                m_batch = nullptr; // Handle consumed by commit
+                return true;
+            }
+            return false;
+        }
+
+        /**
+         * @brief Discard all queued changes without applying
+         * @return true if successfully discarded
+         */
+        bool Discard() {
+            if (!m_batch || m_committed || !bmlConfigBatchDiscard) return false;
+            BML_Result result = bmlConfigBatchDiscard(m_batch);
+            if (result == BML_RESULT_OK) {
+                m_committed = true; // Mark as consumed
+                m_batch = nullptr;
+                return true;
+            }
+            return false;
+        }
+
+        /**
+         * @brief Get the underlying handle (for advanced usage)
+         */
+        [[nodiscard]] BML_ConfigBatch Handle() const { return m_batch; }
+
+    private:
+        BML_ConfigBatch m_batch;
+        bool m_committed;
+    };
+
+    /**
+     * @brief Check if batch config operations are supported
+     * @return true if batch operations are available
+     */
+    inline bool HasConfigBatch() {
+        return HasConfigCap(BML_CONFIG_CAP_BATCH);
     }
 } // namespace bml
 

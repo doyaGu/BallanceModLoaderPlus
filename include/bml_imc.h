@@ -708,7 +708,7 @@ typedef struct BML_ImcCaps {
 
 #define BML_IMC_CAPS_INIT { sizeof(BML_ImcCaps), BML_VERSION_INIT(0,0,0), 0, 0, 0, 0 }
 
-typedef BML_Result (*PFN_BML_GetImcCaps)(BML_ImcCaps *out_caps);
+typedef BML_Result (*PFN_BML_ImcGetCaps)(BML_ImcCaps *out_caps);
 
 /* ========================================================================
  * Global Function Pointers
@@ -740,7 +740,7 @@ extern PFN_BML_ImcFutureRelease      bmlImcFutureRelease;
 
 /* Pump & Caps */
 extern PFN_BML_ImcPump               bmlImcPump;
-extern PFN_BML_GetImcCaps            bmlGetImcCaps;
+extern PFN_BML_ImcGetCaps            bmlImcGetCaps;
 
 /* Extended Subscribe */
 extern PFN_BML_ImcSubscribeEx        bmlImcSubscribeEx;

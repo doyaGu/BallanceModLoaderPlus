@@ -247,6 +247,33 @@ namespace bml {
             return nullptr;
         }
 
+        /**
+         * @brief Unload an extension (decrement reference count)
+         * @param name Extension name
+         * @return true if successful
+         * 
+         * @note Must be called for each successful Load() call to allow
+         *       proper cleanup when extension is unregistered.
+         */
+        static bool Unload(std::string_view name) {
+            if (!bmlExtensionUnload) return false;
+            return bmlExtensionUnload(name.data()) == BML_RESULT_OK;
+        }
+
+        /**
+         * @brief Get extension reference count
+         * @param name Extension name
+         * @return Reference count, or 0 if extension not found or API unavailable
+         */
+        static uint32_t GetRefCount(std::string_view name) {
+            if (!bmlExtensionGetRefCount) return 0;
+            uint32_t count = 0;
+            if (bmlExtensionGetRefCount(name.data(), &count) == BML_RESULT_OK) {
+                return count;
+            }
+            return 0;
+        }
+
         // ========================================================================
         // Enumeration
         // ========================================================================
@@ -328,9 +355,9 @@ namespace bml {
          * @brief Get extension system capabilities
          */
         static std::optional<BML_ExtensionCaps> GetCapabilities() {
-            if (!bmlGetExtensionCaps) return std::nullopt;
+            if (!bmlExtensionGetCaps) return std::nullopt;
             BML_ExtensionCaps caps = BML_EXTENSION_CAPS_INIT;
-            if (bmlGetExtensionCaps(&caps) == BML_RESULT_OK) {
+            if (bmlExtensionGetCaps(&caps) == BML_RESULT_OK) {
                 return caps;
             }
             return std::nullopt;

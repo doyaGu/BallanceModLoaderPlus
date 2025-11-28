@@ -159,6 +159,7 @@ enum {
     BML_RESULT_EXTENSION_INCOMPATIBLE = -203,       /**< Extension incompatible (major version mismatch) */
     BML_RESULT_EXTENSION_ALREADY_REGISTERED = -204, /**< Extension name already in use */
     BML_RESULT_EXTENSION_INVALID_NAME = -205,       /**< Invalid extension name format */
+    BML_RESULT_EXTENSION_IN_USE = -206,             /**< Extension still has active references */
     
     /* ========== IMC (Inter-Mod Communication) Errors (-300 to -399) ========== */
     BML_RESULT_IMC_QUEUE_FULL = -300,           /**< IMC message queue is full */

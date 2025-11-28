@@ -16,7 +16,7 @@
 #include "bml_capabilities.h"
 
 namespace BML::Core {
-    BML_Result BML_API_GetLoggingCaps(BML_LogCaps *out_caps) {
+    BML_Result BML_API_LoggingGetCaps(BML_LogCaps *out_caps) {
         return GetLoggingCaps(out_caps);
     }
 
@@ -41,7 +41,7 @@ namespace BML::Core {
                                         reinterpret_cast<void *>(SetLogFilter), BML_CAP_LOGGING);
 
         // Guarded APIs with capabilities
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlGetLoggingCaps, "logging", BML_API_GetLoggingCaps, BML_CAP_LOGGING);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlLoggingGetCaps, "logging", BML_API_LoggingGetCaps, BML_CAP_LOGGING);
         BML_REGISTER_API_GUARDED_WITH_CAPS(bmlRegisterLogSinkOverride, "logging", BML_API_RegisterLogSinkOverride, BML_CAP_LOGGING);
         BML_REGISTER_API_GUARDED_WITH_CAPS(bmlClearLogSinkOverride, "logging", BML_API_ClearLogSinkOverride, BML_CAP_LOGGING);
     }

@@ -306,6 +306,10 @@ typedef BML_Result (*PFN_BML_ExtensionRegister)(const BML_ExtensionDesc *desc);
  * @return BML_RESULT_OK on success
  * @return BML_RESULT_NOT_FOUND if extension doesn't exist
  * @return BML_RESULT_PERMISSION_DENIED if caller is not the owner
+ * @return BML_RESULT_EXTENSION_IN_USE if extension has active references
+ * 
+ * @note Extensions with active references (loaded by other modules) cannot be
+ *       unregistered. Use bmlExtensionGetRefCount() to check reference count.
  */
 typedef BML_Result (*PFN_BML_ExtensionUnregister)(const char *name);
 
@@ -323,6 +327,11 @@ typedef BML_Result (*PFN_BML_ExtensionQuery)(
 
 /**
  * @brief Loads an extension's API table with version checking
+ * 
+ * This function increments the extension's reference count. Each successful
+ * call to bmlExtensionLoad must be paired with a call to bmlExtensionUnload
+ * to decrement the reference count.
+ * 
  * @param name Extension name
  * @param required_version Minimum required version (major must match exactly, minor/patch are minimum)
  * @param out_api Receives pointer to the API table
@@ -330,12 +339,42 @@ typedef BML_Result (*PFN_BML_ExtensionQuery)(
  * @return BML_RESULT_OK on success
  * @return BML_RESULT_NOT_FOUND if extension doesn't exist
  * @return BML_RESULT_VERSION_MISMATCH if version is incompatible
+ * 
+ * @note Call bmlExtensionUnload() when finished using the extension to
+ *       decrement the reference count and allow proper cleanup.
  */
 typedef BML_Result (*PFN_BML_ExtensionLoad)(
     const char *name,
     const BML_Version *required_version,
     void **out_api,
     BML_ExtensionInfo *out_info
+);
+
+/**
+ * @brief Unloads an extension (decrements reference count)
+ * 
+ * Decrements the reference count for an extension previously loaded via
+ * bmlExtensionLoad. When the reference count reaches zero, the extension
+ * can be safely unregistered.
+ * 
+ * @param name Extension name
+ * @return BML_RESULT_OK on success
+ * @return BML_RESULT_NOT_FOUND if extension doesn't exist
+ * @return BML_RESULT_FAIL if extension was not loaded by this module
+ */
+typedef BML_Result (*PFN_BML_ExtensionUnload)(const char *name);
+
+/**
+ * @brief Gets the current reference count for an extension
+ * 
+ * @param name Extension name
+ * @param out_count Receives the reference count
+ * @return BML_RESULT_OK on success
+ * @return BML_RESULT_NOT_FOUND if extension doesn't exist
+ */
+typedef BML_Result (*PFN_BML_ExtensionGetRefCount)(
+    const char *name,
+    uint32_t *out_count
 );
 
 /**
@@ -429,7 +468,7 @@ typedef BML_Result (*PFN_BML_ExtensionRemoveListener)(uint64_t id);
  * @param out_caps Receives capabilities
  * @return BML_RESULT_OK on success
  */
-typedef BML_Result (*PFN_BML_GetExtensionCaps)(BML_ExtensionCaps *out_caps);
+typedef BML_Result (*PFN_BML_ExtensionGetCaps)(BML_ExtensionCaps *out_caps);
 
 /** @} */ /* end of ExtensionAPI group */
 
@@ -448,6 +487,8 @@ extern PFN_BML_ExtensionRegister bmlExtensionRegister;
 extern PFN_BML_ExtensionUnregister bmlExtensionUnregister;
 extern PFN_BML_ExtensionQuery bmlExtensionQuery;
 extern PFN_BML_ExtensionLoad bmlExtensionLoad;
+extern PFN_BML_ExtensionUnload bmlExtensionUnload;
+extern PFN_BML_ExtensionGetRefCount bmlExtensionGetRefCount;
 extern PFN_BML_ExtensionEnumerate bmlExtensionEnumerate;
 extern PFN_BML_ExtensionCount bmlExtensionCount;
 
@@ -460,7 +501,7 @@ extern PFN_BML_ExtensionAddListener bmlExtensionAddListener;
 extern PFN_BML_ExtensionRemoveListener bmlExtensionRemoveListener;
 
 /* Capability query */
-extern PFN_BML_GetExtensionCaps bmlGetExtensionCaps;
+extern PFN_BML_ExtensionGetCaps bmlExtensionGetCaps;
 
 /** @} */
 

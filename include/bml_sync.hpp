@@ -26,9 +26,9 @@ namespace bml {
      * @return Capabilities if successful
      */
     inline std::optional<BML_SyncCaps> GetSyncCaps() {
-        if (!bmlGetSyncCaps) return std::nullopt;
+        if (!bmlSyncGetCaps) return std::nullopt;
         BML_SyncCaps caps = BML_SYNC_CAPS_INIT;
-        if (bmlGetSyncCaps(&caps) == BML_RESULT_OK) {
+        if (bmlSyncGetCaps(&caps) == BML_RESULT_OK) {
             return caps;
         }
         return std::nullopt;
@@ -121,6 +121,17 @@ namespace bml {
         }
 
         /**
+         * @brief Lock the mutex with timeout
+         * @param timeout_ms Timeout in milliseconds (BML_TIMEOUT_NONE for non-blocking,
+         *                   BML_TIMEOUT_INFINITE for blocking)
+         * @return BML_RESULT_OK if lock acquired, BML_RESULT_TIMEOUT on timeout
+         */
+        BML_Result lock_timeout(uint32_t timeout_ms) {
+            if (!bmlMutexLockTimeout) return BML_RESULT_NOT_FOUND;
+            return bmlMutexLockTimeout(m_handle, timeout_ms);
+        }
+
+        /**
          * @brief Unlock the mutex
          */
         void unlock() {
@@ -206,6 +217,16 @@ namespace bml {
             return bmlRwLockTryReadLock && bmlRwLockTryReadLock(m_handle) != BML_FALSE;
         }
 
+        /**
+         * @brief Acquire read lock with timeout
+         * @param timeout_ms Timeout in milliseconds
+         * @return BML_RESULT_OK if lock acquired, BML_RESULT_TIMEOUT on timeout
+         */
+        BML_Result lock_shared_timeout(uint32_t timeout_ms) {
+            if (!bmlRwLockReadLockTimeout) return BML_RESULT_NOT_FOUND;
+            return bmlRwLockReadLockTimeout(m_handle, timeout_ms);
+        }
+
         void unlock_shared() {
             if (bmlRwLockReadUnlock) bmlRwLockReadUnlock(m_handle);
         }
@@ -216,6 +237,16 @@ namespace bml {
 
         bool try_lock() {
             return bmlRwLockTryWriteLock && bmlRwLockTryWriteLock(m_handle) != BML_FALSE;
+        }
+
+        /**
+         * @brief Acquire write lock with timeout
+         * @param timeout_ms Timeout in milliseconds
+         * @return BML_RESULT_OK if lock acquired, BML_RESULT_TIMEOUT on timeout
+         */
+        BML_Result lock_timeout(uint32_t timeout_ms) {
+            if (!bmlRwLockWriteLockTimeout) return BML_RESULT_NOT_FOUND;
+            return bmlRwLockWriteLockTimeout(m_handle, timeout_ms);
         }
 
         void unlock() {

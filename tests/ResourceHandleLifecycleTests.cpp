@@ -346,8 +346,8 @@ TEST_F(ResourceHandleLifecycleTests, AttachUserDataOnReleasedHandleReturnsError)
 }
 
 TEST_F(ResourceHandleLifecycleTests, ResourceCapsReportsCorrectCapabilities) {
-    using PFN_GetResourceCaps = BML_Result (*)(BML_ResourceCaps *);
-    auto getCaps = Lookup<PFN_GetResourceCaps>("bmlGetResourceCaps");
+    using PFN_ResourceGetCaps = BML_Result (*)(BML_ResourceCaps *);
+    auto getCaps = Lookup<PFN_ResourceGetCaps>("bmlResourceGetCaps");
     ASSERT_NE(getCaps, nullptr);
     
     BML_ResourceCaps caps = BML_RESOURCE_CAPS_INIT;

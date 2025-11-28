@@ -262,6 +262,26 @@ namespace BML::Core {
         bool Unregister(const std::string &name);
 
         /**
+         * @brief Update an extension's API table
+         *
+         * @param name Extension name
+         * @param api_table New API table pointer
+         * @param api_size Size of new API table
+         * @return true if updated successfully
+         */
+        bool UpdateApiTable(const std::string &name, const void *api_table, size_t api_size);
+
+        /**
+         * @brief Mark an extension as deprecated
+         *
+         * @param name Extension name
+         * @param replacement Replacement extension name (optional)
+         * @param message Deprecation message (optional)
+         * @return true if marked successfully
+         */
+        bool MarkDeprecated(const std::string &name, const char *replacement, const char *message);
+
+        /**
          * @brief Get extension count
          *
          * @return Number of registered extension APIs

@@ -161,7 +161,7 @@ typedef struct BML_LogCaps {
  */
 #define BML_LOG_CAPS_INIT { sizeof(BML_LogCaps), BML_VERSION_INIT(0,0,0), 0, 0, BML_LOG_CREATE_DESC_INIT, BML_THREADING_SINGLE }
 
-typedef BML_Result (*PFN_BML_GetLoggingCaps)(BML_LogCaps *out_caps);
+typedef BML_Result (*PFN_BML_LoggingGetCaps)(BML_LogCaps *out_caps);
 
 typedef struct BML_LoggerApi {
     PFN_BML_Log Log;
@@ -172,7 +172,7 @@ typedef struct BML_LoggerApi {
 extern PFN_BML_Log bmlLog;
 extern PFN_BML_LogVa bmlLogVa;
 extern PFN_BML_SetLogFilter bmlSetLogFilter;
-extern PFN_BML_GetLoggingCaps bmlGetLoggingCaps;
+extern PFN_BML_LoggingGetCaps bmlLoggingGetCaps;
 extern PFN_BML_RegisterLogSinkOverride bmlRegisterLogSinkOverride;
 extern PFN_BML_ClearLogSinkOverride bmlClearLogSinkOverride;
 

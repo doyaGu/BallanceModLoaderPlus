@@ -226,7 +226,7 @@ TEST_F(LoggingSinkOverrideTests, ShutdownExceptionDoesNotCrash) {
 }
 
 TEST_F(LoggingSinkOverrideTests, GetLoggingCapsReturnsValidCaps) {
-    auto get_caps = Lookup<PFN_BML_GetLoggingCaps>("bmlGetLoggingCaps");
+    auto get_caps = Lookup<PFN_BML_LoggingGetCaps>("bmlLoggingGetCaps");
     ASSERT_NE(get_caps, nullptr);
 
     BML_LogCaps caps = BML_LOG_CAPS_INIT;
@@ -242,7 +242,7 @@ TEST_F(LoggingSinkOverrideTests, GetLoggingCapsReturnsValidCaps) {
 }
 
 TEST_F(LoggingSinkOverrideTests, GetLoggingCapsRejectsNullPointer) {
-    auto get_caps = Lookup<PFN_BML_GetLoggingCaps>("bmlGetLoggingCaps");
+    auto get_caps = Lookup<PFN_BML_LoggingGetCaps>("bmlLoggingGetCaps");
     ASSERT_NE(get_caps, nullptr);
 
     EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, get_caps(nullptr));

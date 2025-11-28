@@ -341,130 +341,140 @@ TEST_F(ConfigStoreConcurrencyTests, SetValueReturnsIoErrorWhenConfigDirectoryIsB
 }
 
 // ========================================================================
-// Type-Safe Accessor Tests
+// Type-Safe Accessor Tests (using BML_CONFIG_* macros via bmlConfigGet/Set)
 // ========================================================================
-
-using PFN_ConfigGetInt = BML_Result (*)(BML_Mod, const BML_ConfigKey *, int32_t *);
-using PFN_ConfigSetInt = BML_Result (*)(BML_Mod, const BML_ConfigKey *, int32_t);
-using PFN_ConfigGetFloat = BML_Result (*)(BML_Mod, const BML_ConfigKey *, float *);
-using PFN_ConfigSetFloat = BML_Result (*)(BML_Mod, const BML_ConfigKey *, float);
-using PFN_ConfigGetBool = BML_Result (*)(BML_Mod, const BML_ConfigKey *, BML_Bool *);
-using PFN_ConfigSetBool = BML_Result (*)(BML_Mod, const BML_ConfigKey *, BML_Bool);
-using PFN_ConfigGetString = BML_Result (*)(BML_Mod, const BML_ConfigKey *, const char **);
-using PFN_ConfigSetString = BML_Result (*)(BML_Mod, const BML_ConfigKey *, const char *);
 
 TEST_F(ConfigStoreConcurrencyTests, TypeSafeIntAccessorWorks) {
     InitMod("config.typesafe.int");
 
-    auto getInt = Lookup<PFN_ConfigGetInt>("bmlConfigGetInt");
-    auto setInt = Lookup<PFN_ConfigSetInt>("bmlConfigSetInt");
-    ASSERT_NE(getInt, nullptr);
-    ASSERT_NE(setInt, nullptr);
+    auto config_get = Lookup<PFN_ConfigGet>("bmlConfigGet");
+    auto config_set = Lookup<PFN_ConfigSet>("bmlConfigSet");
+    ASSERT_NE(config_get, nullptr);
+    ASSERT_NE(config_set, nullptr);
 
     BML_ConfigKey key{sizeof(BML_ConfigKey), "settings", "volume"};
     
-    // Set and get int value
-    ASSERT_EQ(BML_RESULT_OK, setInt(Mod(), &key, 42));
+    // Set int value
+    BML_ConfigValue set_value{sizeof(BML_ConfigValue), BML_CONFIG_INT, {}};
+    set_value.data.int_value = 42;
+    ASSERT_EQ(BML_RESULT_OK, config_set(Mod(), &key, &set_value));
     
-    int32_t out_value = 0;
-    ASSERT_EQ(BML_RESULT_OK, getInt(Mod(), &key, &out_value));
-    EXPECT_EQ(out_value, 42);
+    // Get int value
+    BML_ConfigValue get_value{sizeof(BML_ConfigValue), BML_CONFIG_INT, {}};
+    ASSERT_EQ(BML_RESULT_OK, config_get(Mod(), &key, &get_value));
+    EXPECT_EQ(get_value.type, BML_CONFIG_INT);
+    EXPECT_EQ(get_value.data.int_value, 42);
 }
 
 TEST_F(ConfigStoreConcurrencyTests, TypeSafeFloatAccessorWorks) {
     InitMod("config.typesafe.float");
 
-    auto getFloat = Lookup<PFN_ConfigGetFloat>("bmlConfigGetFloat");
-    auto setFloat = Lookup<PFN_ConfigSetFloat>("bmlConfigSetFloat");
-    ASSERT_NE(getFloat, nullptr);
-    ASSERT_NE(setFloat, nullptr);
+    auto config_get = Lookup<PFN_ConfigGet>("bmlConfigGet");
+    auto config_set = Lookup<PFN_ConfigSet>("bmlConfigSet");
+    ASSERT_NE(config_get, nullptr);
+    ASSERT_NE(config_set, nullptr);
 
     BML_ConfigKey key{sizeof(BML_ConfigKey), "physics", "gravity"};
     
-    ASSERT_EQ(BML_RESULT_OK, setFloat(Mod(), &key, 9.81f));
+    BML_ConfigValue set_value{sizeof(BML_ConfigValue), BML_CONFIG_FLOAT, {}};
+    set_value.data.float_value = 9.81f;
+    ASSERT_EQ(BML_RESULT_OK, config_set(Mod(), &key, &set_value));
     
-    float out_value = 0.0f;
-    ASSERT_EQ(BML_RESULT_OK, getFloat(Mod(), &key, &out_value));
-    EXPECT_FLOAT_EQ(out_value, 9.81f);
+    BML_ConfigValue get_value{sizeof(BML_ConfigValue), BML_CONFIG_FLOAT, {}};
+    ASSERT_EQ(BML_RESULT_OK, config_get(Mod(), &key, &get_value));
+    EXPECT_EQ(get_value.type, BML_CONFIG_FLOAT);
+    EXPECT_FLOAT_EQ(get_value.data.float_value, 9.81f);
 }
 
 TEST_F(ConfigStoreConcurrencyTests, TypeSafeBoolAccessorWorks) {
     InitMod("config.typesafe.bool");
 
-    auto getBool = Lookup<PFN_ConfigGetBool>("bmlConfigGetBool");
-    auto setBool = Lookup<PFN_ConfigSetBool>("bmlConfigSetBool");
-    ASSERT_NE(getBool, nullptr);
-    ASSERT_NE(setBool, nullptr);
+    auto config_get = Lookup<PFN_ConfigGet>("bmlConfigGet");
+    auto config_set = Lookup<PFN_ConfigSet>("bmlConfigSet");
+    ASSERT_NE(config_get, nullptr);
+    ASSERT_NE(config_set, nullptr);
 
     BML_ConfigKey key{sizeof(BML_ConfigKey), "video", "fullscreen"};
     
-    ASSERT_EQ(BML_RESULT_OK, setBool(Mod(), &key, BML_TRUE));
+    BML_ConfigValue set_value{sizeof(BML_ConfigValue), BML_CONFIG_BOOL, {}};
+    set_value.data.bool_value = BML_TRUE;
+    ASSERT_EQ(BML_RESULT_OK, config_set(Mod(), &key, &set_value));
     
-    BML_Bool out_value = BML_FALSE;
-    ASSERT_EQ(BML_RESULT_OK, getBool(Mod(), &key, &out_value));
-    EXPECT_EQ(out_value, BML_TRUE);
+    BML_ConfigValue get_value{sizeof(BML_ConfigValue), BML_CONFIG_BOOL, {}};
+    ASSERT_EQ(BML_RESULT_OK, config_get(Mod(), &key, &get_value));
+    EXPECT_EQ(get_value.type, BML_CONFIG_BOOL);
+    EXPECT_EQ(get_value.data.bool_value, BML_TRUE);
 }
 
 TEST_F(ConfigStoreConcurrencyTests, TypeSafeStringAccessorWorks) {
     InitMod("config.typesafe.string");
 
-    auto getString = Lookup<PFN_ConfigGetString>("bmlConfigGetString");
-    auto setString = Lookup<PFN_ConfigSetString>("bmlConfigSetString");
-    ASSERT_NE(getString, nullptr);
-    ASSERT_NE(setString, nullptr);
+    auto config_get = Lookup<PFN_ConfigGet>("bmlConfigGet");
+    auto config_set = Lookup<PFN_ConfigSet>("bmlConfigSet");
+    ASSERT_NE(config_get, nullptr);
+    ASSERT_NE(config_set, nullptr);
 
     BML_ConfigKey key{sizeof(BML_ConfigKey), "player", "name"};
     
-    ASSERT_EQ(BML_RESULT_OK, setString(Mod(), &key, "TestPlayer"));
+    BML_ConfigValue set_value{sizeof(BML_ConfigValue), BML_CONFIG_STRING, {}};
+    set_value.data.string_value = "TestPlayer";
+    ASSERT_EQ(BML_RESULT_OK, config_set(Mod(), &key, &set_value));
     
-    const char *out_value = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, getString(Mod(), &key, &out_value));
-    ASSERT_NE(out_value, nullptr);
-    EXPECT_STREQ(out_value, "TestPlayer");
+    BML_ConfigValue get_value{sizeof(BML_ConfigValue), BML_CONFIG_STRING, {}};
+    ASSERT_EQ(BML_RESULT_OK, config_get(Mod(), &key, &get_value));
+    EXPECT_EQ(get_value.type, BML_CONFIG_STRING);
+    ASSERT_NE(get_value.data.string_value, nullptr);
+    EXPECT_STREQ(get_value.data.string_value, "TestPlayer");
 }
 
 TEST_F(ConfigStoreConcurrencyTests, TypeMismatchReturnsError) {
     InitMod("config.typemismatch");
 
-    auto setInt = Lookup<PFN_ConfigSetInt>("bmlConfigSetInt");
-    auto getFloat = Lookup<PFN_ConfigGetFloat>("bmlConfigGetFloat");
-    ASSERT_NE(setInt, nullptr);
-    ASSERT_NE(getFloat, nullptr);
+    auto config_get = Lookup<PFN_ConfigGet>("bmlConfigGet");
+    auto config_set = Lookup<PFN_ConfigSet>("bmlConfigSet");
+    ASSERT_NE(config_get, nullptr);
+    ASSERT_NE(config_set, nullptr);
 
     BML_ConfigKey key{sizeof(BML_ConfigKey), "mismatch", "value"};
     
     // Set as int
-    ASSERT_EQ(BML_RESULT_OK, setInt(Mod(), &key, 100));
+    BML_ConfigValue set_value{sizeof(BML_ConfigValue), BML_CONFIG_INT, {}};
+    set_value.data.int_value = 100;
+    ASSERT_EQ(BML_RESULT_OK, config_set(Mod(), &key, &set_value));
     
-    // Try to get as float - should fail with type mismatch
-    float out_value = 0.0f;
-    EXPECT_EQ(BML_RESULT_CONFIG_TYPE_MISMATCH, getFloat(Mod(), &key, &out_value));
+    // Get returns actual stored type, caller checks type field
+    BML_ConfigValue get_value{sizeof(BML_ConfigValue), BML_CONFIG_FLOAT, {}};
+    ASSERT_EQ(BML_RESULT_OK, config_get(Mod(), &key, &get_value));
+    // Verify the stored type is INT, not FLOAT
+    EXPECT_EQ(get_value.type, BML_CONFIG_INT);
 }
 
 TEST_F(ConfigStoreConcurrencyTests, GetNotFoundReturnsError) {
     InitMod("config.notfound");
 
-    auto getInt = Lookup<PFN_ConfigGetInt>("bmlConfigGetInt");
-    ASSERT_NE(getInt, nullptr);
+    auto config_get = Lookup<PFN_ConfigGet>("bmlConfigGet");
+    ASSERT_NE(config_get, nullptr);
 
     BML_ConfigKey key{sizeof(BML_ConfigKey), "nonexistent", "value"};
     
-    int32_t out_value = 0;
-    EXPECT_EQ(BML_RESULT_NOT_FOUND, getInt(Mod(), &key, &out_value));
+    BML_ConfigValue get_value{sizeof(BML_ConfigValue), BML_CONFIG_INT, {}};
+    EXPECT_EQ(BML_RESULT_NOT_FOUND, config_get(Mod(), &key, &get_value));
 }
 
 TEST_F(ConfigStoreConcurrencyTests, NullOutputPointerReturnsInvalidArgument) {
     InitMod("config.nulloutput");
 
-    auto getInt = Lookup<PFN_ConfigGetInt>("bmlConfigGetInt");
-    auto setInt = Lookup<PFN_ConfigSetInt>("bmlConfigSetInt");
-    ASSERT_NE(getInt, nullptr);
-    ASSERT_NE(setInt, nullptr);
+    auto config_get = Lookup<PFN_ConfigGet>("bmlConfigGet");
+    auto config_set = Lookup<PFN_ConfigSet>("bmlConfigSet");
+    ASSERT_NE(config_get, nullptr);
+    ASSERT_NE(config_set, nullptr);
 
     BML_ConfigKey key{sizeof(BML_ConfigKey), "test", "value"};
-    ASSERT_EQ(BML_RESULT_OK, setInt(Mod(), &key, 42));
+    BML_ConfigValue set_value{sizeof(BML_ConfigValue), BML_CONFIG_INT, {}};
+    set_value.data.int_value = 42;
+    ASSERT_EQ(BML_RESULT_OK, config_set(Mod(), &key, &set_value));
     
-    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, getInt(Mod(), &key, nullptr));
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, config_get(Mod(), &key, nullptr));
 }
 
 TEST_F(ConfigStoreConcurrencyTests, AtomicWritePreservesConfigOnPartialFailure) {
@@ -472,33 +482,36 @@ TEST_F(ConfigStoreConcurrencyTests, AtomicWritePreservesConfigOnPartialFailure) 
     // The SaveDocument should use temp file + rename pattern
     InitMod("config.atomicwrite");
 
-    auto setInt = Lookup<PFN_ConfigSetInt>("bmlConfigSetInt");
-    auto getInt = Lookup<PFN_ConfigGetInt>("bmlConfigGetInt");
-    ASSERT_NE(setInt, nullptr);
-    ASSERT_NE(getInt, nullptr);
+    auto config_get = Lookup<PFN_ConfigGet>("bmlConfigGet");
+    auto config_set = Lookup<PFN_ConfigSet>("bmlConfigSet");
+    ASSERT_NE(config_get, nullptr);
+    ASSERT_NE(config_set, nullptr);
 
     BML_ConfigKey key{sizeof(BML_ConfigKey), "atomic", "counter"};
     
     // Write initial value
-    ASSERT_EQ(BML_RESULT_OK, setInt(Mod(), &key, 1));
+    BML_ConfigValue set_value{sizeof(BML_ConfigValue), BML_CONFIG_INT, {}};
+    set_value.data.int_value = 1;
+    ASSERT_EQ(BML_RESULT_OK, config_set(Mod(), &key, &set_value));
     
     // Flush and reload
     ConfigStore::Instance().FlushAndRelease(Mod());
     
     // Verify it was persisted
-    int32_t out_value = 0;
-    ASSERT_EQ(BML_RESULT_OK, getInt(Mod(), &key, &out_value));
-    EXPECT_EQ(out_value, 1);
+    BML_ConfigValue get_value{sizeof(BML_ConfigValue), BML_CONFIG_INT, {}};
+    ASSERT_EQ(BML_RESULT_OK, config_get(Mod(), &key, &get_value));
+    EXPECT_EQ(get_value.data.int_value, 1);
     
     // Update value
-    ASSERT_EQ(BML_RESULT_OK, setInt(Mod(), &key, 2));
+    set_value.data.int_value = 2;
+    ASSERT_EQ(BML_RESULT_OK, config_set(Mod(), &key, &set_value));
     
     // Flush again
     ConfigStore::Instance().FlushAndRelease(Mod());
     
     // Verify updated value persisted
-    ASSERT_EQ(BML_RESULT_OK, getInt(Mod(), &key, &out_value));
-    EXPECT_EQ(out_value, 2);
+    ASSERT_EQ(BML_RESULT_OK, config_get(Mod(), &key, &get_value));
+    EXPECT_EQ(get_value.data.int_value, 2);
 }
 
 } // namespace

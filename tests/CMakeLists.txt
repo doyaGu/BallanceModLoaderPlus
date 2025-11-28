@@ -213,6 +213,40 @@ add_bml_test(ConfigStoreConcurrencyTests
         tomlplusplus::tomlplusplus
 )
 
+add_bml_test(ConfigBatchApiTests
+        SOURCES
+        ConfigBatchApiTests.cpp
+        ModuleLoaderStub.cpp
+        ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/ConfigApi.cpp
+        ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
+        ${BML_SOURCE_DIR}/Core/Context.cpp
+        ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
+        ${BML_SOURCE_DIR}/Core/Logging.cpp
+        ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
+        DEPENDENCIES
+        BMLUtils
+        tomlplusplus::tomlplusplus
+)
+
+add_bml_test(ConfigMigrationTests
+        SOURCES
+        ConfigMigrationTests.cpp
+        ModuleLoaderStub.cpp
+        ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/ConfigApi.cpp
+        ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
+        ${BML_SOURCE_DIR}/Core/Context.cpp
+        ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
+        ${BML_SOURCE_DIR}/Core/Logging.cpp
+        ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
+        DEPENDENCIES
+        BMLUtils
+        tomlplusplus::tomlplusplus
+)
+
 add_bml_test(ResourceHandleLifecycleTests
         SOURCES
         ResourceHandleLifecycleTests.cpp
@@ -243,6 +277,23 @@ add_bml_test(MemoryManagerTests
 add_bml_test(ExtensionApiValidationTests
         SOURCES
         ExtensionApiValidationTests.cpp
+        ModuleLoaderStub.cpp
+        ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
+        ${BML_SOURCE_DIR}/Core/Context.cpp
+        ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
+        ${BML_SOURCE_DIR}/Core/ExtensionApi.cpp
+        ${BML_SOURCE_DIR}/Core/Logging.cpp
+        ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
+        DEPENDENCIES
+        BMLUtils
+        tomlplusplus::tomlplusplus
+)
+
+add_bml_test(ExtensionRefCountAndGlobTests
+        SOURCES
+        ExtensionRefCountAndGlobTests.cpp
         ModuleLoaderStub.cpp
         ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp

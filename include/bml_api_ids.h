@@ -64,7 +64,7 @@
 /** @brief Capability system */
 #define BML_API_ID_bmlRequestCapability 20u
 #define BML_API_ID_bmlCheckCapability   21u
-#define BML_API_ID_bmlGetCoreCaps       22u
+#define BML_API_ID_bmlCoreGetCaps       22u
 
 /** @brief Module metadata */
 #define BML_API_ID_bmlGetModId          30u
@@ -117,7 +117,7 @@
 #define BML_API_ID_bmlImcFutureRelease           1035u
 
 /** @brief Diagnostics & Statistics */
-#define BML_API_ID_bmlGetImcCaps                 1040u
+#define BML_API_ID_bmlImcGetCaps                 1040u
 #define BML_API_ID_bmlImcGetStats                1041u
 #define BML_API_ID_bmlImcResetStats              1042u
 #define BML_API_ID_bmlImcGetSubscriptionStats    1043u
@@ -135,15 +135,13 @@
 #define BML_API_ID_bmlConfigSet         2001u
 #define BML_API_ID_bmlConfigReset       2002u
 #define BML_API_ID_bmlConfigEnumerate   2003u
-#define BML_API_ID_bmlGetConfigCaps     2004u
-#define BML_API_ID_bmlConfigGetInt      2010u
-#define BML_API_ID_bmlConfigGetFloat    2011u
-#define BML_API_ID_bmlConfigGetBool     2012u
-#define BML_API_ID_bmlConfigGetString   2013u
-#define BML_API_ID_bmlConfigSetInt      2020u
-#define BML_API_ID_bmlConfigSetFloat    2021u
-#define BML_API_ID_bmlConfigSetBool     2022u
-#define BML_API_ID_bmlConfigSetString   2023u
+#define BML_API_ID_bmlConfigGetCaps     2004u
+
+/** @brief Batch operations (v0.4.0) */
+#define BML_API_ID_bmlConfigBatchBegin   2010u
+#define BML_API_ID_bmlConfigBatchSet     2011u
+#define BML_API_ID_bmlConfigBatchCommit  2012u
+#define BML_API_ID_bmlConfigBatchDiscard 2013u
 
 /* ========================================================================
  * Logging APIs (3000-3999)
@@ -152,7 +150,7 @@
 #define BML_API_ID_bmlLog               3000u
 #define BML_API_ID_bmlLogVa             3001u
 #define BML_API_ID_bmlSetLogFilter      3002u
-#define BML_API_ID_bmlGetLoggingCaps    3003u
+#define BML_API_ID_bmlLoggingGetCaps        3003u
 
 /* ========================================================================
  * Module Management APIs (4000-4999)
@@ -180,7 +178,7 @@
 
 /** @brief Memory stats */
 #define BML_API_ID_bmlGetMemoryStats    5020u
-#define BML_API_ID_bmlGetMemoryCaps     5021u
+#define BML_API_ID_bmlMemoryGetCaps        5021u
 
 /** @brief Handle management */
 #define BML_API_ID_bmlHandleCreate      5030u
@@ -189,7 +187,7 @@
 #define BML_API_ID_bmlHandleValidate    5033u
 #define BML_API_ID_bmlHandleAttachUserData 5034u
 #define BML_API_ID_bmlHandleGetUserData 5035u
-#define BML_API_ID_bmlGetResourceCaps   5036u
+#define BML_API_ID_bmlResourceGetCaps        5036u
 
 /* ========================================================================
  * Extension System APIs (6000-6999)
@@ -200,12 +198,14 @@
 #define BML_API_ID_bmlExtensionLoad             6002u
 #define BML_API_ID_bmlExtensionEnumerate        6003u
 #define BML_API_ID_bmlExtensionUnregister       6004u
-#define BML_API_ID_bmlGetExtensionCaps          6005u
+#define BML_API_ID_bmlExtensionGetCaps          6005u
 #define BML_API_ID_bmlExtensionCount            6006u
 #define BML_API_ID_bmlExtensionUpdateApi        6007u
 #define BML_API_ID_bmlExtensionDeprecate        6008u
 #define BML_API_ID_bmlExtensionAddListener      6009u
 #define BML_API_ID_bmlExtensionRemoveListener   6010u
+#define BML_API_ID_bmlExtensionUnload           6011u
+#define BML_API_ID_bmlExtensionGetRefCount      6012u
 #define BML_API_ID_bmlRegisterConfigLoadHooks   6020u
 #define BML_API_ID_bmlRegisterLogSinkOverride   6021u
 #define BML_API_ID_bmlClearLogSinkOverride      6022u
@@ -221,17 +221,20 @@
 #define BML_API_ID_bmlMutexLock         7002u
 #define BML_API_ID_bmlMutexTryLock      7003u
 #define BML_API_ID_bmlMutexUnlock       7004u
+#define BML_API_ID_bmlMutexLockTimeout  7005u
 
 /** @brief Read-write lock operations */
-#define BML_API_ID_bmlRwLockCreate      7010u
-#define BML_API_ID_bmlRwLockDestroy     7011u
-#define BML_API_ID_bmlRwLockReadLock    7012u
-#define BML_API_ID_bmlRwLockTryReadLock 7013u
-#define BML_API_ID_bmlRwLockWriteLock   7014u
-#define BML_API_ID_bmlRwLockTryWriteLock 7015u
-#define BML_API_ID_bmlRwLockUnlock      7016u
-#define BML_API_ID_bmlRwLockReadUnlock  7017u
-#define BML_API_ID_bmlRwLockWriteUnlock 7018u
+#define BML_API_ID_bmlRwLockCreate          7010u
+#define BML_API_ID_bmlRwLockDestroy         7011u
+#define BML_API_ID_bmlRwLockReadLock        7012u
+#define BML_API_ID_bmlRwLockTryReadLock     7013u
+#define BML_API_ID_bmlRwLockWriteLock       7014u
+#define BML_API_ID_bmlRwLockTryWriteLock    7015u
+#define BML_API_ID_bmlRwLockUnlock          7016u
+#define BML_API_ID_bmlRwLockReadUnlock      7017u
+#define BML_API_ID_bmlRwLockWriteUnlock     7018u
+#define BML_API_ID_bmlRwLockReadLockTimeout 7019u
+#define BML_API_ID_bmlRwLockWriteLockTimeout 7020u
 
 /** @brief Atomic operations */
 #define BML_API_ID_bmlAtomicIncrement32 7020u
@@ -271,7 +274,7 @@
 #define BML_API_ID_bmlSpinLockUnlock    7074u
 
 /** @brief Sync capabilities */
-#define BML_API_ID_bmlGetSyncCaps       7050u
+#define BML_API_ID_bmlSyncGetCaps       7050u
 
 /* ========================================================================
  * Profiling APIs (8000-8999)
@@ -297,7 +300,7 @@
 #define BML_API_ID_bmlIsProfilingEnabled 8022u
 #define BML_API_ID_bmlFlushProfilingData 8023u
 #define BML_API_ID_bmlGetProfilingStats 8024u
-#define BML_API_ID_bmlGetProfilingCaps  8025u
+#define BML_API_ID_bmlProfilingGetCaps       8025u
 
 /** @brief API Tracing (v0.5.0) */
 #define BML_API_ID_bmlEnableApiTracing    8030u

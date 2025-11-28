@@ -158,7 +158,7 @@ namespace BML::Core {
         return Context::GetCurrentModule();
     }
 
-    BML_Result BML_API_GetCoreCaps(BML_CoreCaps *out_caps) {
+    BML_Result BML_API_CoreGetCaps(BML_CoreCaps *out_caps) {
         if (!out_caps)
             return BML_RESULT_INVALID_ARGUMENT;
         BML_CoreCaps caps{};
@@ -199,7 +199,7 @@ namespace BML::Core {
         BML_REGISTER_API_WITH_CAPS(bmlGetCurrentModule, BML_API_GetCurrentModule, BML_CAP_MOD_INFO);
 
         // Runtime capabilities API
-        BML_REGISTER_CAPS_API_WITH_CAPS(bmlGetCoreCaps, "core.runtime", BML_API_GetCoreCaps, BML_CAP_RUNTIME);
+        BML_REGISTER_CAPS_API_WITH_CAPS(bmlCoreGetCaps, "core.runtime", BML_API_CoreGetCaps, BML_CAP_RUNTIME);
 
         // Error handling APIs
         BML_REGISTER_API_WITH_CAPS(bmlGetLastError, GetLastErrorInfo, BML_CAP_DIAGNOSTICS);

@@ -11,8 +11,6 @@
 #include <utility>
 #include <vector>
 
-#include <toml++/toml.hpp>
-
 #include "Context.h"
 #include "ModHandle.h"
 #include "ModManifest.h"
@@ -387,19 +385,27 @@ namespace BML::Core {
         try {
             toml::table root = toml::parse_file(narrowPath.c_str());
 
-            // Check schema version for future migration support
-            constexpr int32_t kCurrentSchemaVersion = 1;
+            // Check schema version and perform migration if needed
             int32_t fileSchemaVersion = 1; // Default for files without version field
             if (auto version = root["schema_version"].value<int64_t>()) {
                 fileSchemaVersion = static_cast<int32_t>(*version);
             }
 
-            // Future: Add migration logic here when schema changes
-            // if (fileSchemaVersion < kCurrentSchemaVersion) {
-            //     MigrateConfig(root, fileSchemaVersion, kCurrentSchemaVersion);
-            // }
-            (void) fileSchemaVersion; // Suppress unused warning for now
-            (void) kCurrentSchemaVersion;
+            // Perform migration if schema version is outdated
+            if (fileSchemaVersion < kConfigSchemaVersion) {
+                if (MigrateConfig(root, fileSchemaVersion, kConfigSchemaVersion)) {
+                    // Update schema version in the document
+                    root.insert_or_assign("schema_version", static_cast<int64_t>(kConfigSchemaVersion));
+                    DebugLog("ConfigStore: migrated config from version " +
+                        std::to_string(fileSchemaVersion) + " to " +
+                        std::to_string(kConfigSchemaVersion));
+                } else {
+                    DebugLog("ConfigStore: migration failed from version " +
+                        std::to_string(fileSchemaVersion) + " to " +
+                        std::to_string(kConfigSchemaVersion));
+                    // Continue loading with best effort even if migration fails
+                }
+            }
 
             if (auto *array = root["entry"].as_array()) {
                 for (const toml::node &node : *array) {
@@ -470,7 +476,8 @@ namespace BML::Core {
                 }
             }
         } catch (const toml::parse_error &err) {
-            DebugLog(std::string("ConfigStore: parse failed for ") + narrowPath + ": " + std::string(err.description()));
+            DebugLog(
+                std::string("ConfigStore: parse failed for ") + narrowPath + ": " + std::string(err.description()));
             return false;
         } catch (const std::exception &ex) {
             DebugLog(std::string("ConfigStore: error reading ") + narrowPath + ": " + ex.what());
@@ -594,65 +601,150 @@ namespace BML::Core {
         return category.entries[key->name];
     }
 
-    // Type-safe accessor helpers
-    BML_Result GetTypedValue(BML_Mod mod, const BML_ConfigKey *key, BML_ConfigType expected, void *out) {
-        if (!key || !out)
-            return BML_RESULT_INVALID_ARGUMENT;
+    // ========================================================================
+    // Batch Operations Implementation
+    // ========================================================================
 
-        BML_ConfigValue value{};
-        value.struct_size = sizeof(BML_ConfigValue);
-        BML_Result result = ConfigStore::Instance().GetValue(mod, key, &value);
-        if (result != BML_RESULT_OK)
-            return result;
-
-        if (value.type != expected)
-            return BML_RESULT_CONFIG_TYPE_MISMATCH;
-
-        switch (expected) {
-        case BML_CONFIG_BOOL:
-            *static_cast<BML_Bool *>(out) = value.data.bool_value;
-            break;
-        case BML_CONFIG_INT:
-            *static_cast<int32_t *>(out) = value.data.int_value;
-            break;
-        case BML_CONFIG_FLOAT:
-            *static_cast<float *>(out) = value.data.float_value;
-            break;
-        case BML_CONFIG_STRING:
-            *static_cast<const char **>(out) = value.data.string_value;
-            break;
-        default:
+    BML_Result ConfigStore::BatchBegin(BML_Mod mod, BML_ConfigBatch *out_batch) {
+        if (!out_batch) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
+
+        auto batch_ctx = std::make_unique<ConfigBatchContext>();
+        batch_ctx->mod = mod;
+
+        // Generate unique batch ID
+        uintptr_t batch_id = m_NextBatchId.fetch_add(1, std::memory_order_relaxed);
+        auto *batch_ptr = reinterpret_cast<BML_ConfigBatch_T *>(batch_id);
+
+        {
+            std::lock_guard<std::mutex> lock(m_BatchMutex);
+            m_Batches[batch_ptr] = std::move(batch_ctx);
+        }
+
+        *out_batch = batch_ptr;
         return BML_RESULT_OK;
     }
 
-    BML_Result SetTypedValue(BML_Mod mod, const BML_ConfigKey *key, BML_ConfigType type, const void *val) {
-        if (!key)
+    BML_Result ConfigStore::BatchSet(BML_ConfigBatch batch, const BML_ConfigKey *key, const BML_ConfigValue *value) {
+        if (!batch || !key || !value) {
             return BML_RESULT_INVALID_ARGUMENT;
+        }
+        if (!key->category || !key->name) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
 
-        BML_ConfigValue value{};
-        value.struct_size = sizeof(BML_ConfigValue);
-        value.type = type;
+        std::lock_guard<std::mutex> lock(m_BatchMutex);
 
-        switch (type) {
+        auto it = m_Batches.find(batch);
+        if (it == m_Batches.end()) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+
+        ConfigBatchContext *ctx = it->second.get();
+        if (ctx->committed || ctx->discarded) {
+            return BML_RESULT_INVALID_STATE;
+        }
+
+        // Create batch entry
+        ConfigBatchEntry entry;
+        entry.category = key->category;
+        entry.name = key->name;
+        entry.value.type = value->type;
+
+        switch (value->type) {
         case BML_CONFIG_BOOL:
-            value.data.bool_value = *static_cast<const BML_Bool *>(val);
+            entry.value.bool_value = value->data.bool_value;
             break;
         case BML_CONFIG_INT:
-            value.data.int_value = *static_cast<const int32_t *>(val);
+            entry.value.int_value = value->data.int_value;
             break;
         case BML_CONFIG_FLOAT:
-            value.data.float_value = *static_cast<const float *>(val);
+            entry.value.float_value = value->data.float_value;
             break;
         case BML_CONFIG_STRING:
-            value.data.string_value = static_cast<const char *>(val);
+            entry.value.string_value = value->data.string_value ? value->data.string_value : "";
             break;
         default:
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
-        return ConfigStore::Instance().SetValue(mod, key, &value);
+        ctx->entries.push_back(std::move(entry));
+        return BML_RESULT_OK;
+    }
+
+    BML_Result ConfigStore::BatchCommit(BML_ConfigBatch batch) {
+        if (!batch) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+
+        std::unique_ptr<ConfigBatchContext> batch_ctx;
+
+        {
+            std::lock_guard<std::mutex> lock(m_BatchMutex);
+            auto it = m_Batches.find(batch);
+            if (it == m_Batches.end()) {
+                return BML_RESULT_INVALID_ARGUMENT;
+            }
+
+            ConfigBatchContext *ctx = it->second.get();
+            if (ctx->committed || ctx->discarded) {
+                return BML_RESULT_INVALID_STATE;
+            }
+
+            ctx->committed = true;
+            batch_ctx = std::move(it->second);
+            m_Batches.erase(it);
+        }
+
+        // Apply all changes atomically to the document
+        ConfigDocument *doc = GetOrCreateDocument(batch_ctx->mod);
+        if (!doc) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+
+        // First ensure the document is loaded (may acquire doc->mutex internally)
+        EnsureLoaded(*doc);
+
+        {
+            std::unique_lock doc_lock(doc->mutex);
+
+            // Apply all batch entries
+            for (const auto &entry : batch_ctx->entries) {
+                auto &category = doc->categories[entry.category];
+                auto &config_entry = category.entries[entry.name];
+                config_entry = entry.value;
+            }
+
+            // Save document
+            if (!SaveDocument(*doc)) {
+                return BML_RESULT_IO_ERROR;
+            }
+        }
+
+        return BML_RESULT_OK;
+    }
+
+    BML_Result ConfigStore::BatchDiscard(BML_ConfigBatch batch) {
+        if (!batch) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+
+        std::lock_guard<std::mutex> lock(m_BatchMutex);
+
+        auto it = m_Batches.find(batch);
+        if (it == m_Batches.end()) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+
+        ConfigBatchContext *ctx = it->second.get();
+        if (ctx->committed || ctx->discarded) {
+            return BML_RESULT_INVALID_STATE;
+        }
+
+        ctx->discarded = true;
+        m_Batches.erase(it);
+        return BML_RESULT_OK;
     }
 
     BML_Result RegisterConfigLoadHooks(const BML_ConfigLoadHooks *hooks) {
@@ -672,5 +764,135 @@ namespace BML::Core {
         }
 
         return BML_RESULT_OK;
+    }
+
+    // ========================================================================
+    // Migration Implementation
+    // ========================================================================
+
+    BML_Result ConfigStore::RegisterMigration(int32_t from_version, int32_t to_version,
+                                              ConfigMigrationFn migrate, void *user_data) {
+        if (!migrate) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+        if (from_version >= to_version) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+        if (from_version < 0 || to_version < 0) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+
+        std::lock_guard<std::mutex> lock(m_MigrationMutex);
+
+        // Check for duplicate registration
+        for (const auto &entry : m_Migrations) {
+            if (entry.from_version == from_version && entry.to_version == to_version) {
+                return BML_RESULT_ALREADY_EXISTS;
+            }
+        }
+
+        ConfigMigrationEntry entry;
+        entry.from_version = from_version;
+        entry.to_version = to_version;
+        entry.migrate = migrate;
+        entry.user_data = user_data;
+        m_Migrations.push_back(entry);
+
+        DebugLog("ConfigStore: registered migration from v" + std::to_string(from_version) +
+            " to v" + std::to_string(to_version));
+        return BML_RESULT_OK;
+    }
+
+    void ConfigStore::ClearMigrations() {
+        std::lock_guard<std::mutex> lock(m_MigrationMutex);
+        m_Migrations.clear();
+    }
+
+    size_t ConfigStore::GetMigrationCount() const {
+        std::lock_guard<std::mutex> lock(m_MigrationMutex);
+        return m_Migrations.size();
+    }
+
+    std::vector<ConfigMigrationEntry> ConfigStore::BuildMigrationPath(int32_t from_version, int32_t to_version) const {
+        // Lock is assumed to be held by caller
+        std::vector<ConfigMigrationEntry> path;
+
+        if (from_version >= to_version) {
+            return path; // No migration needed or invalid
+        }
+
+        // Use a greedy approach: find migrations that progress towards target
+        // This allows for both direct jumps (v1->v3) and step-by-step (v1->v2->v3)
+        int32_t current = from_version;
+
+        while (current < to_version) {
+            // Find the best migration from current version
+            // Prefer direct jump to target, otherwise closest increment
+            const ConfigMigrationEntry *best = nullptr;
+
+            for (const auto &entry : m_Migrations) {
+                if (entry.from_version == current && entry.to_version <= to_version) {
+                    if (!best || entry.to_version > best->to_version) {
+                        best = &entry;
+                    }
+                }
+            }
+
+            if (!best) {
+                // No migration path found
+                DebugLog("ConfigStore: no migration path from v" + std::to_string(current) +
+                    " to v" + std::to_string(to_version));
+                return {}; // Return empty to indicate failure
+            }
+
+            path.push_back(*best);
+            current = best->to_version;
+        }
+
+        return path;
+    }
+
+    bool ConfigStore::MigrateConfig(toml::table &root, int32_t from_version, int32_t to_version) {
+        if (from_version >= to_version) {
+            return true; // Nothing to do
+        }
+
+        std::vector<ConfigMigrationEntry> migration_path;
+        {
+            std::lock_guard<std::mutex> lock(m_MigrationMutex);
+            migration_path = BuildMigrationPath(from_version, to_version);
+        }
+
+        if (migration_path.empty()) {
+            // No registered migrations - this is OK for v1 configs
+            // They use the current format and don't need migration
+            if (from_version == 1 && to_version == kConfigSchemaVersion) {
+                return true;
+            }
+            DebugLog("ConfigStore: no migration path available from v" +
+                std::to_string(from_version) + " to v" + std::to_string(to_version));
+            return false;
+        }
+
+        // Execute migrations in sequence
+        for (const auto &migration : migration_path) {
+            DebugLog("ConfigStore: executing migration v" + std::to_string(migration.from_version) +
+                " -> v" + std::to_string(migration.to_version));
+
+            try {
+                if (!migration.migrate(root, migration.from_version, migration.to_version, migration.user_data)) {
+                    DebugLog("ConfigStore: migration function returned false");
+                    return false;
+                }
+            } catch (const std::exception &ex) {
+                DebugLog(std::string("ConfigStore: migration threw exception: ") + ex.what());
+                return false;
+            } catch (...) {
+                DebugLog("ConfigStore: migration threw unknown exception");
+                return false;
+            }
+        }
+
+        return true;
     }
 } // namespace BML::Core

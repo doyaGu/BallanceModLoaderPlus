@@ -66,7 +66,7 @@ TEST_F(ExtensionApiValidationTests, RegisterQueryLoadEnumerateAndUnregister) {
     auto load = Lookup<PFN_BML_ExtensionLoad>("bmlExtensionLoad");
     auto enumerate = Lookup<PFN_BML_ExtensionEnumerate>("bmlExtensionEnumerate");
     auto unregister = Lookup<PFN_BML_ExtensionUnregister>("bmlExtensionUnregister");
-    auto get_caps = Lookup<PFN_BML_GetExtensionCaps>("bmlGetExtensionCaps");
+    auto get_caps = Lookup<PFN_BML_ExtensionGetCaps>("bmlExtensionGetCaps");
 
     ASSERT_NE(reg, nullptr);
     ASSERT_NE(query, nullptr);

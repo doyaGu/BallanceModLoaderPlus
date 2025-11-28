@@ -59,29 +59,29 @@ static void RegisterAllRequiredApis() {
     RegisterMockProc("bmlGetModId", (void*)DummyFunc);
     RegisterMockProc("bmlGetModVersion", (void*)DummyFunc);
     RegisterMockProc("bmlRegisterShutdownHook", (void*)DummyFunc);
-    RegisterMockProc("bmlGetCoreCaps", (void*)DummyFunc);
+    RegisterMockProc("bmlCoreGetCaps", (void*)DummyFunc);
 
     // Logging APIs (required - 2 total)
     RegisterMockProc("bmlLog", (void*)DummyFunc);
-    RegisterMockProc("bmlGetLoggingCaps", (void*)DummyFunc);
+    RegisterMockProc("bmlLoggingGetCaps", (void*)DummyFunc);
 
     // Config APIs (required - 3 total)
     RegisterMockProc("bmlConfigGet", (void*)DummyFunc);
     RegisterMockProc("bmlConfigSet", (void*)DummyFunc);
-    RegisterMockProc("bmlGetConfigCaps", (void*)DummyFunc);
+    RegisterMockProc("bmlConfigGetCaps", (void*)DummyFunc);
 
     // IMC APIs (required - 5 total)
     RegisterMockProc("bmlImcGetTopicId", (void*)DummyFunc);
     RegisterMockProc("bmlImcPublish", (void*)DummyFunc);
     RegisterMockProc("bmlImcSubscribe", (void*)DummyFunc);
     RegisterMockProc("bmlImcUnsubscribe", (void*)DummyFunc);
-    RegisterMockProc("bmlGetImcCaps", (void*)DummyFunc);
+    RegisterMockProc("bmlImcGetCaps", (void*)DummyFunc);
 
     // Extension APIs (required - 4 total)
     RegisterMockProc("bmlExtensionRegister", (void*)DummyFunc);
     RegisterMockProc("bmlExtensionQuery", (void*)DummyFunc);
     RegisterMockProc("bmlExtensionLoad", (void*)DummyFunc);
-    RegisterMockProc("bmlGetExtensionCaps", (void*)DummyFunc);
+    RegisterMockProc("bmlExtensionGetCaps", (void*)DummyFunc);
 }
 
 // Now include the loader implementation
@@ -209,21 +209,21 @@ TEST_F(LoaderTest, LoadAPI_MultipleOptionalApisMissing_Success) {
     RegisterMockProc("bmlGetModId", (void*)DummyFunc);
     RegisterMockProc("bmlGetModVersion", (void*)DummyFunc);
     RegisterMockProc("bmlRegisterShutdownHook", (void*)DummyFunc);
-    RegisterMockProc("bmlGetCoreCaps", (void*)DummyFunc);
+    RegisterMockProc("bmlCoreGetCaps", (void*)DummyFunc);
     RegisterMockProc("bmlLog", (void*)DummyFunc);
     RegisterMockProc("bmlConfigGet", (void*)DummyFunc);
     RegisterMockProc("bmlConfigSet", (void*)DummyFunc);
-    RegisterMockProc("bmlGetLoggingCaps", (void*)DummyFunc);
-    RegisterMockProc("bmlGetConfigCaps", (void*)DummyFunc);
+    RegisterMockProc("bmlLoggingGetCaps", (void*)DummyFunc);
+    RegisterMockProc("bmlConfigGetCaps", (void*)DummyFunc);
     RegisterMockProc("bmlImcGetTopicId", (void*)DummyFunc);
     RegisterMockProc("bmlImcPublish", (void*)DummyFunc);
     RegisterMockProc("bmlImcSubscribe", (void*)DummyFunc);
     RegisterMockProc("bmlImcUnsubscribe", (void*)DummyFunc);
-    RegisterMockProc("bmlGetImcCaps", (void*)DummyFunc);
+    RegisterMockProc("bmlImcGetCaps", (void*)DummyFunc);
     RegisterMockProc("bmlExtensionRegister", (void*)DummyFunc);
     RegisterMockProc("bmlExtensionQuery", (void*)DummyFunc);
     RegisterMockProc("bmlExtensionLoad", (void*)DummyFunc);
-    RegisterMockProc("bmlGetExtensionCaps", (void*)DummyFunc);
+    RegisterMockProc("bmlExtensionGetCaps", (void*)DummyFunc);
     // Skip: bmlLogVa, bmlSetLogFilter, bmlConfigReset, bmlConfigEnumerate,
     //       bmlImcPump, bmlImcPublishBuffer, all RPC APIs, all Handle APIs
     

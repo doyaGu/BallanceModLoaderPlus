@@ -18,7 +18,7 @@
         { "pointer": "bmlGetModId", "required": true },
         { "pointer": "bmlGetModVersion", "required": true },
         { "pointer": "bmlRegisterShutdownHook", "required": true },
-        { "pointer": "bmlGetCoreCaps", "required": true },
+        { "pointer": "bmlCoreGetCaps", "required": true },
         { "pointer": "bmlSetCurrentModule", "required": false },
         { "pointer": "bmlGetCurrentModule", "required": false }
       ]
@@ -30,7 +30,7 @@
         { "pointer": "bmlLog", "required": true },
         { "pointer": "bmlLogVa", "required": false },
         { "pointer": "bmlSetLogFilter", "required": false },
-        { "pointer": "bmlGetLoggingCaps", "required": true }
+        { "pointer": "bmlLoggingGetCaps", "required": true }
       ]
     },
     {
@@ -41,15 +41,11 @@
         { "pointer": "bmlConfigSet", "required": true },
         { "pointer": "bmlConfigReset", "required": false },
         { "pointer": "bmlConfigEnumerate", "required": false },
-        { "pointer": "bmlConfigGetInt", "required": false },
-        { "pointer": "bmlConfigGetFloat", "required": false },
-        { "pointer": "bmlConfigGetBool", "required": false },
-        { "pointer": "bmlConfigGetString", "required": false },
-        { "pointer": "bmlConfigSetInt", "required": false },
-        { "pointer": "bmlConfigSetFloat", "required": false },
-        { "pointer": "bmlConfigSetBool", "required": false },
-        { "pointer": "bmlConfigSetString", "required": false },
-        { "pointer": "bmlGetConfigCaps", "required": true }
+        { "pointer": "bmlConfigGetCaps", "required": true },
+        { "pointer": "bmlConfigBatchBegin", "required": false },
+        { "pointer": "bmlConfigBatchSet", "required": false },
+        { "pointer": "bmlConfigBatchCommit", "required": false },
+        { "pointer": "bmlConfigBatchDiscard", "required": false }
       ]
     },
     {
@@ -73,7 +69,7 @@
         { "pointer": "bmlImcFutureOnComplete", "required": false },
         { "pointer": "bmlImcFutureRelease", "required": false },
         { "pointer": "bmlImcPump", "required": false },
-        { "pointer": "bmlGetImcCaps", "required": true },
+        { "pointer": "bmlImcGetCaps", "required": true },
         { "pointer": "bmlImcSubscribeEx", "required": false },
         { "pointer": "bmlImcGetSubscriptionStats", "required": false },
         { "pointer": "bmlImcPublishMulti", "required": false },
@@ -93,7 +89,7 @@
         { "pointer": "bmlHandleValidate", "required": false },
         { "pointer": "bmlHandleAttachUserData", "required": false },
         { "pointer": "bmlHandleGetUserData", "required": false },
-        { "pointer": "bmlGetResourceCaps", "required": false }
+        { "pointer": "bmlResourceGetCaps", "required": false }
       ]
     },
     {
@@ -104,13 +100,15 @@
         { "pointer": "bmlExtensionUnregister", "required": false },
         { "pointer": "bmlExtensionQuery", "required": true },
         { "pointer": "bmlExtensionLoad", "required": true },
+        { "pointer": "bmlExtensionUnload", "required": false },
+        { "pointer": "bmlExtensionGetRefCount", "required": false },
         { "pointer": "bmlExtensionEnumerate", "required": false },
         { "pointer": "bmlExtensionCount", "required": false },
         { "pointer": "bmlExtensionUpdateApi", "required": false },
         { "pointer": "bmlExtensionDeprecate", "required": false },
         { "pointer": "bmlExtensionAddListener", "required": false },
         { "pointer": "bmlExtensionRemoveListener", "required": false },
-        { "pointer": "bmlGetExtensionCaps", "required": true }
+        { "pointer": "bmlExtensionGetCaps", "required": true }
       ]
     },
     {
@@ -137,7 +135,7 @@
         { "pointer": "bmlMemoryPoolFree", "required": false },
         { "pointer": "bmlMemoryPoolDestroy", "required": false },
         { "pointer": "bmlGetMemoryStats", "required": false },
-        { "pointer": "bmlGetMemoryCaps", "required": false }
+        { "pointer": "bmlMemoryGetCaps", "required": false }
       ]
     },
     {
@@ -148,13 +146,16 @@
         { "pointer": "bmlMutexDestroy", "required": false },
         { "pointer": "bmlMutexLock", "required": false },
         { "pointer": "bmlMutexTryLock", "required": false },
+        { "pointer": "bmlMutexLockTimeout", "required": false },
         { "pointer": "bmlMutexUnlock", "required": false },
         { "pointer": "bmlRwLockCreate", "required": false },
         { "pointer": "bmlRwLockDestroy", "required": false },
         { "pointer": "bmlRwLockReadLock", "required": false },
         { "pointer": "bmlRwLockTryReadLock", "required": false },
+        { "pointer": "bmlRwLockReadLockTimeout", "required": false },
         { "pointer": "bmlRwLockWriteLock", "required": false },
         { "pointer": "bmlRwLockTryWriteLock", "required": false },
+        { "pointer": "bmlRwLockWriteLockTimeout", "required": false },
         { "pointer": "bmlRwLockUnlock", "required": false },
         { "pointer": "bmlAtomicIncrement32", "required": false },
         { "pointer": "bmlAtomicDecrement32", "required": false },
@@ -183,7 +184,7 @@
         { "pointer": "bmlSpinLockLock", "required": false },
         { "pointer": "bmlSpinLockTryLock", "required": false },
         { "pointer": "bmlSpinLockUnlock", "required": false },
-        { "pointer": "bmlGetSyncCaps", "required": false }
+        { "pointer": "bmlSyncGetCaps", "required": false }
       ]
     },
     {
@@ -205,7 +206,7 @@
         { "pointer": "bmlIsProfilingEnabled", "required": false },
         { "pointer": "bmlFlushProfilingData", "required": false },
         { "pointer": "bmlGetProfilingStats", "required": false },
-        { "pointer": "bmlGetProfilingCaps", "required": false }
+        { "pointer": "bmlProfilingGetCaps", "required": false }
       ]
     },
     {

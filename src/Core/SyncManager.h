@@ -209,6 +209,7 @@ namespace BML::Core {
         void DestroyMutex(BML_Mutex mutex);
         void LockMutex(BML_Mutex mutex);
         BML_Bool TryLockMutex(BML_Mutex mutex);
+        BML_Result LockMutexTimeout(BML_Mutex mutex, uint32_t timeout_ms);
         void UnlockMutex(BML_Mutex mutex);
 
         // RwLock operations
@@ -216,8 +217,10 @@ namespace BML::Core {
         void DestroyRwLock(BML_RwLock lock);
         void ReadLockRwLock(BML_RwLock lock);
         BML_Bool TryReadLockRwLock(BML_RwLock lock);
+        BML_Result ReadLockRwLockTimeout(BML_RwLock lock, uint32_t timeout_ms);
         void WriteLockRwLock(BML_RwLock lock);
         BML_Bool TryWriteLockRwLock(BML_RwLock lock);
+        BML_Result WriteLockRwLockTimeout(BML_RwLock lock, uint32_t timeout_ms);
         void UnlockRwLock(BML_RwLock lock);
         void ReadUnlockRwLock(BML_RwLock lock);
         void WriteUnlockRwLock(BML_RwLock lock);
