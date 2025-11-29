@@ -156,13 +156,13 @@ void ModManager::PublishLifecycleEvent(const char *topic) {
     }
 
     if (topicId) {
-        s_ImcPublish(topicId, nullptr, 0, nullptr);
+        s_ImcPublish(topicId, nullptr, 0);
     }
 }
 
 void ModManager::PublishProcessEvent(float deltaTime) {
     if (!s_ImcPublish || !s_TopicPostProcess) return;
-    s_ImcPublish(s_TopicPostProcess, &deltaTime, sizeof(float), nullptr);
+    s_ImcPublish(s_TopicPostProcess, &deltaTime, sizeof(float));
 }
 
 CKERROR ModManager::OnCKInit() {
@@ -180,7 +180,7 @@ CKERROR ModManager::OnCKInit() {
         payload.struct_size = sizeof(payload);
         payload.context = m_Context;
         payload.main_window = m_Context ? m_Context->GetMainWindow() : nullptr;
-        s_ImcPublish(s_TopicEngineInit, &payload, sizeof(payload), nullptr);
+        s_ImcPublish(s_TopicEngineInit, &payload, sizeof(payload));
     }
 
     return CK_OK;
@@ -191,7 +191,7 @@ CKERROR ModManager::OnCKEnd() {
 
     // Publish engine end event
     if (s_ImcPublish && s_TopicEngineEnd) {
-        s_ImcPublish(s_TopicEngineEnd, nullptr, 0, nullptr);
+        s_ImcPublish(s_TopicEngineEnd, nullptr, 0);
     }
 
     m_EngineReady = false;
@@ -205,7 +205,7 @@ CKERROR ModManager::OnCKPause() {
 
     // Publish engine pause event
     if (s_ImcPublish && s_TopicEnginePause) {
-        s_ImcPublish(s_TopicEnginePause, nullptr, 0, nullptr);
+        s_ImcPublish(s_TopicEnginePause, nullptr, 0);
     }
 
     return CK_OK;
@@ -239,7 +239,7 @@ CKERROR ModManager::OnCKPlay() {
             payload.render_context = m_RenderContext;
             payload.render_window = m_RenderContext ? m_RenderContext->GetWindowHandle() : nullptr;
             payload.is_resume = BML_FALSE;
-            s_ImcPublish(s_TopicEnginePlay, &payload, sizeof(payload), nullptr);
+            s_ImcPublish(s_TopicEnginePlay, &payload, sizeof(payload));
         }
     }
 
@@ -252,7 +252,7 @@ CKERROR ModManager::OnCKReset() {
 
         // Publish engine reset event
         if (s_ImcPublish && s_TopicEngineReset) {
-            s_ImcPublish(s_TopicEngineReset, nullptr, 0, nullptr);
+            s_ImcPublish(s_TopicEngineReset, nullptr, 0);
         }
 
         m_RenderContext = nullptr;
@@ -267,7 +267,7 @@ CKERROR ModManager::OnCKPostReset() {
 
     // Publish engine post-reset event
     if (s_ImcPublish && s_TopicEnginePostReset) {
-        s_ImcPublish(s_TopicEnginePostReset, nullptr, 0, nullptr);
+        s_ImcPublish(s_TopicEnginePostReset, nullptr, 0);
     }
 
     return CK_OK;
@@ -281,7 +281,7 @@ CKERROR ModManager::PreProcess() {
 
     // Publish pre-process event
     if (s_ImcPublish && s_TopicPreProcess) {
-        s_ImcPublish(s_TopicPreProcess, nullptr, 0, nullptr);
+        s_ImcPublish(s_TopicPreProcess, nullptr, 0);
     }
 
     return CK_OK;
@@ -296,7 +296,7 @@ CKERROR ModManager::PostProcess() {
 
     // Publish post-process event with delta time
     if (s_ImcPublish && s_TopicPostProcess) {
-        s_ImcPublish(s_TopicPostProcess, &deltaTime, sizeof(float), nullptr);
+        s_ImcPublish(s_TopicPostProcess, &deltaTime, sizeof(float));
     }
 
     return CK_OK;
@@ -305,7 +305,7 @@ CKERROR ModManager::PostProcess() {
 CKERROR ModManager::OnPreRender(CKRenderContext *dev) {
     // Publish pre-render event
     if (s_ImcPublish && s_TopicPreRender) {
-        s_ImcPublish(s_TopicPreRender, dev, sizeof(void *), nullptr);
+        s_ImcPublish(s_TopicPreRender, dev, sizeof(void *));
     }
 
     return CK_OK;
@@ -314,7 +314,7 @@ CKERROR ModManager::OnPreRender(CKRenderContext *dev) {
 CKERROR ModManager::OnPostRender(CKRenderContext *dev) {
     // Publish post-render event
     if (s_ImcPublish && s_TopicPostRender) {
-        s_ImcPublish(s_TopicPostRender, dev, sizeof(void *), nullptr);
+        s_ImcPublish(s_TopicPostRender, dev, sizeof(void *));
     }
 
     return CK_OK;
@@ -323,7 +323,7 @@ CKERROR ModManager::OnPostRender(CKRenderContext *dev) {
 CKERROR ModManager::OnPostSpriteRender(CKRenderContext *dev) {
     // Publish post-sprite-render event (for overlay rendering)
     if (s_ImcPublish && s_TopicPostSpriteRender) {
-        s_ImcPublish(s_TopicPostSpriteRender, dev, sizeof(void *), nullptr);
+        s_ImcPublish(s_TopicPostSpriteRender, dev, sizeof(void *));
     }
 
     return CK_OK;
