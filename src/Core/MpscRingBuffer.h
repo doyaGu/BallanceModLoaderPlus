@@ -8,10 +8,47 @@
 #include <vector>
 
 namespace BML::Core {
-    // Lock-free multi-producer / single-consumer ring buffer based on
-    // Dmitry Vyukov's bounded MPMC queue algorithm (specialized here for 1 consumer).
-    // Each slot carries a sequence counter so producers can reserve exclusive access
-    // without global locks while the single consumer drains entries in order.
+    /**
+     * @brief Lock-free Multi-Producer Single-Consumer (MPSC) Ring Buffer
+     *
+     * A high-performance bounded queue based on Dmitry Vyukov's bounded MPMC
+     * queue algorithm, specialized for single-consumer scenarios.
+     *
+     * ## Design Overview
+     *
+     * Each slot contains a sequence counter that enables producers to reserve
+     * exclusive access without global locks. The consumer drains entries in order.
+     *
+     * ### Memory Ordering
+     *
+     * - **Enqueue (producers)**: Uses acquire on sequence read, release on sequence write
+     * - **Dequeue (consumer)**: Uses acquire on sequence read, release on sequence write
+     * - **Head/Tail updates**: Use relaxed ordering (protected by CAS loops)
+     *
+     * ### Capacity Normalization
+     *
+     * Capacity is rounded up to the next power of 2 for efficient index masking.
+     * Minimum capacity is 2 to ensure correct sequence number behavior.
+     *
+     * ### Starvation Prevention
+     *
+     * When used with PriorityMessageQueue, the queue participates in a weighted
+     * fair queuing scheme that guarantees low-priority messages are not starved.
+     *
+     * ## Thread Safety
+     *
+     * - Multiple threads can call Enqueue() concurrently (wait-free)
+     * - Only ONE thread should call Dequeue() (not thread-safe for multiple consumers)
+     * - IsEmpty() and ApproximateSize() are safe to call from any thread
+     *
+     * ## Performance Characteristics
+     *
+     * - O(1) Enqueue (amortized, may spin briefly under contention)
+     * - O(1) Dequeue (wait-free)
+     * - Cache-line friendly slot layout
+     *
+     * @tparam T Value type (must be move or copy constructible)
+     */
     template <typename T>
     class MpscRingBuffer {
         static_assert(std::is_move_constructible_v<T> || std::is_copy_constructible_v<T>,
