@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file bml_extension.hpp
  * @brief BML C++ Extension Wrapper
  *
@@ -78,64 +78,64 @@ namespace bml {
     class ExtensionBuilder {
     public:
         explicit ExtensionBuilder(std::string_view name) {
-            m_desc = BML_EXTENSION_DESC_INIT;
-            m_name = std::string(name);
-            m_desc.name = m_name.c_str();
+            m_Desc = BML_EXTENSION_DESC_INIT;
+            m_Name = std::string(name);
+            m_Desc.name = m_Name.c_str();
         }
 
         ExtensionBuilder &Version(uint16_t major, uint16_t minor = 0, uint16_t patch = 0) {
-            m_desc.version = bmlMakeVersion(major, minor, patch);
+            m_Desc.version = bmlMakeVersion(major, minor, patch);
             return *this;
         }
 
         ExtensionBuilder &Version(const BML_Version &ver) {
-            m_desc.version = ver;
+            m_Desc.version = ver;
             return *this;
         }
 
         template <typename T>
         ExtensionBuilder &Api(const T *table) {
-            m_desc.api_table = table;
-            m_desc.api_size = sizeof(T);
+            m_Desc.api_table = table;
+            m_Desc.api_size = sizeof(T);
             return *this;
         }
 
         ExtensionBuilder &Api(const void *table, size_t size) {
-            m_desc.api_table = table;
-            m_desc.api_size = size;
+            m_Desc.api_table = table;
+            m_Desc.api_size = size;
             return *this;
         }
 
         ExtensionBuilder &Description(std::string_view desc) {
-            m_description = std::string(desc);
-            m_desc.description = m_description.c_str();
+            m_Description = std::string(desc);
+            m_Desc.description = m_Description.c_str();
             return *this;
         }
 
         ExtensionBuilder &Capabilities(uint64_t caps) {
-            m_desc.capabilities = caps;
+            m_Desc.capabilities = caps;
             return *this;
         }
 
         ExtensionBuilder &Tags(std::initializer_list<const char *> tags) {
-            m_tags.clear();
-            m_tagPtrs.clear();
+            m_Tags.clear();
+            m_TagPtrs.clear();
             for (const auto &tag : tags) {
-                m_tags.emplace_back(tag);
+                m_Tags.emplace_back(tag);
             }
-            for (const auto &tag : m_tags) {
-                m_tagPtrs.push_back(tag.c_str());
+            for (const auto &tag : m_Tags) {
+                m_TagPtrs.push_back(tag.c_str());
             }
-            m_desc.tags = m_tagPtrs.data();
-            m_desc.tag_count = static_cast<uint32_t>(m_tags.size());
+            m_Desc.tags = m_TagPtrs.data();
+            m_Desc.tag_count = static_cast<uint32_t>(m_Tags.size());
             return *this;
         }
 
         template <typename OnLoad, typename OnUnload>
         ExtensionBuilder &Lifecycle(OnLoad onLoad, OnUnload onUnload, void *userData = nullptr) {
-            m_desc.on_load = onLoad;
-            m_desc.on_unload = onUnload;
-            m_desc.user_data = userData;
+            m_Desc.on_load = onLoad;
+            m_Desc.on_unload = onUnload;
+            m_Desc.user_data = userData;
             return *this;
         }
 
@@ -145,17 +145,17 @@ namespace bml {
          */
         bool Register() {
             if (!bmlExtensionRegister) return false;
-            return bmlExtensionRegister(&m_desc) == BML_RESULT_OK;
+            return bmlExtensionRegister(&m_Desc) == BML_RESULT_OK;
         }
 
-        const BML_ExtensionDesc &Descriptor() const { return m_desc; }
+        const BML_ExtensionDesc &Descriptor() const { return m_Desc; }
 
     private:
-        BML_ExtensionDesc m_desc{};
-        std::string m_name;
-        std::string m_description;
-        std::vector<std::string> m_tags;
-        std::vector<const char *> m_tagPtrs;
+        BML_ExtensionDesc m_Desc{};
+        std::string m_Name;
+        std::string m_Description;
+        std::vector<std::string> m_Tags;
+        std::vector<const char *> m_TagPtrs;
     };
 
     // ============================================================================
@@ -386,25 +386,25 @@ namespace bml {
         ExtensionListener() = default;
 
         ExtensionListener(Callback callback, uint32_t event_mask = 0)
-            : m_callback(std::move(callback)) {
-            if (bmlExtensionAddListener && m_callback) {
+            : m_Callback(std::move(callback)) {
+            if (bmlExtensionAddListener && m_Callback) {
                 bmlExtensionAddListener(
                     [](BML_Context, BML_ExtensionEvent event, const BML_ExtensionInfo *info, void *ud) {
                         auto *self = static_cast<ExtensionListener *>(ud);
-                        if (self->m_callback && info) {
-                            self->m_callback(event, ExtensionInfo(*info));
+                        if (self->m_Callback && info) {
+                            self->m_Callback(event, ExtensionInfo(*info));
                         }
                     },
                     event_mask,
                     this,
-                    &m_id
+                    &m_Id
                 );
             }
         }
 
         ~ExtensionListener() {
-            if (m_id != 0 && bmlExtensionRemoveListener) {
-                bmlExtensionRemoveListener(m_id);
+            if (m_Id != 0 && bmlExtensionRemoveListener) {
+                bmlExtensionRemoveListener(m_Id);
             }
         }
 
@@ -414,29 +414,30 @@ namespace bml {
 
         // Movable
         ExtensionListener(ExtensionListener &&other) noexcept
-            : m_id(other.m_id), m_callback(std::move(other.m_callback)) {
-            other.m_id = 0;
+            : m_Id(other.m_Id), m_Callback(std::move(other.m_Callback)) {
+            other.m_Id = 0;
         }
 
         ExtensionListener &operator=(ExtensionListener &&other) noexcept {
             if (this != &other) {
-                if (m_id != 0 && bmlExtensionRemoveListener) {
-                    bmlExtensionRemoveListener(m_id);
+                if (m_Id != 0 && bmlExtensionRemoveListener) {
+                    bmlExtensionRemoveListener(m_Id);
                 }
-                m_id = other.m_id;
-                m_callback = std::move(other.m_callback);
-                other.m_id = 0;
+                m_Id = other.m_Id;
+                m_Callback = std::move(other.m_Callback);
+                other.m_Id = 0;
             }
             return *this;
         }
 
-        bool IsValid() const { return m_id != 0; }
-        uint64_t Id() const { return m_id; }
+        bool IsValid() const { return m_Id != 0; }
+        uint64_t Id() const { return m_Id; }
 
     private:
-        uint64_t m_id{0};
-        Callback m_callback;
+        uint64_t m_Id{0};
+        Callback m_Callback;
     };
 } // namespace bml
 
 #endif /* BML_EXTENSION_HPP */
+

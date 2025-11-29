@@ -42,8 +42,8 @@ namespace BML::Core {
             uint32_t incoming_edges{0};
         };
 
-        std::unordered_map<std::string, Node> m_nodes;
-        std::vector<std::string> m_registrationOrder;
+        std::unordered_map<std::string, Node> m_Nodes;
+        std::vector<std::string> m_RegistrationOrder;
     };
 } // namespace BML::Core
 

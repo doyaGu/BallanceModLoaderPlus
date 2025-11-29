@@ -202,7 +202,7 @@ TEST_F(ImcBusTest, PublishesToSubscribedHandler) {
     ASSERT_NE(sub, nullptr);
 
     const std::string payload = "hello";
-    EXPECT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, payload.data(), payload.size(), nullptr));
+    EXPECT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, payload.data(), payload.size()));
 
     ImcBus::Instance().Pump(0);
 
@@ -254,7 +254,7 @@ TEST_F(ImcBusTest, UnsubscribeStopsDelivery) {
     EXPECT_EQ(BML_RESULT_OK, ImcBus::Instance().Unsubscribe(sub));
 
     const uint8_t value = 42;
-    EXPECT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &value, sizeof(value), nullptr));
+    EXPECT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &value, sizeof(value)));
     ImcBus::Instance().Pump(0);
 
     EXPECT_EQ(state.call_count.load(), 0u);
@@ -291,7 +291,7 @@ TEST_F(ImcBusTest, MultipleSubscribersReceiveMessages) {
     ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Subscribe(topic, CollectingHandler, &state2, &sub2));
 
     const uint8_t data = 123;
-    EXPECT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &data, sizeof(data), nullptr));
+    EXPECT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &data, sizeof(data)));
     ImcBus::Instance().Pump(0);
 
     EXPECT_EQ(state1.call_count.load(), 1u);
@@ -313,7 +313,7 @@ TEST_F(ImcBusTest, TopicDiagnosticsReflectRegistry) {
     EXPECT_EQ(std::strlen(kTopicName), name_length);
 
     const uint8_t payload = 0x5Au;
-    EXPECT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &payload, sizeof(payload), nullptr));
+    EXPECT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &payload, sizeof(payload)));
 
     BML_TopicInfo info = BML_TOPIC_INFO_INIT;
     ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().GetTopicInfo(topic, &info));
@@ -332,7 +332,7 @@ TEST_F(ImcBusTest, UnsubscribeWaitsForInFlightHandlers) {
     ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Subscribe(topic, BlockingHandler, &handler_state, &sub));
 
     const uint8_t payload = 0x11u;
-    EXPECT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &payload, sizeof(payload), nullptr));
+    EXPECT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &payload, sizeof(payload)));
 
     std::thread pump_thread([] {
         ImcBus::Instance().Pump(0);
@@ -483,11 +483,11 @@ TEST_F(ImcBusTest, FutureOnCompleteCallbackWorks) {
 // ========================================================================
 
 TEST_F(ImcBusTest, PublishRejectsInvalidInput) {
-    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, ImcBus::Instance().Publish(BML_TOPIC_ID_INVALID, nullptr, 0, nullptr));
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, ImcBus::Instance().Publish(BML_TOPIC_ID_INVALID, nullptr, 0));
     
     BML_TopicId topic;
     ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().GetTopicId("valid", &topic));
-    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, ImcBus::Instance().Publish(topic, nullptr, 10, nullptr));  // data null but size > 0
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, ImcBus::Instance().Publish(topic, nullptr, 10));  // data null but size > 0
 }
 
 TEST_F(ImcBusTest, SubscribeRejectsInvalidInput) {
@@ -509,7 +509,7 @@ TEST_F(ImcBusTest, PublishToEmptyTopicSucceeds) {
     ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().GetTopicId("empty.topic", &topic));
     
     const uint8_t data = 1;
-    EXPECT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &data, sizeof(data), nullptr));
+    EXPECT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &data, sizeof(data)));
 }
 
 // ========================================================================
@@ -550,7 +550,7 @@ TEST_F(ImcBusTest, PumpBudgetDistributesLoadAcrossSubscribers) {
 
     // Publish 4 messages
     for (int i = 1; i <= 4; ++i) {
-        ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &i, sizeof(i), nullptr));
+        ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &i, sizeof(i)));
     }
 
     // Each subscriber should have 4 messages to process
@@ -580,7 +580,7 @@ TEST_F(ImcBusTest, PublishingResumesAfterPumpClearsQueue) {
     // Publish a bunch of messages - they queue up
     constexpr int COUNT = 50;
     for (int i = 0; i < COUNT; ++i) {
-        ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &i, sizeof(i), nullptr));
+        ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &i, sizeof(i)));
     }
 
     // Pump clears the queue
@@ -589,7 +589,7 @@ TEST_F(ImcBusTest, PublishingResumesAfterPumpClearsQueue) {
 
     // More publishes should work
     int v = 999;
-    ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &v, sizeof(v), nullptr));
+    ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &v, sizeof(v)));
     ImcBus::Instance().Pump(0);
     EXPECT_EQ(cap.count.load(), COUNT + 1);
     EXPECT_EQ(cap.values.back(), 999);
@@ -662,19 +662,19 @@ TEST_F(ImcBusTest, HighPriorityMessagesProcessedFirst) {
     // Publish messages with different priorities (LOW first, URGENT last)
     BML_ImcMessage msg_low = BML_IMC_MESSAGE_INIT;
     msg_low.priority = BML_IMC_PRIORITY_LOW;
-    ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, nullptr, 0, &msg_low));
+    ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().PublishEx(topic, &msg_low));
 
     BML_ImcMessage msg_normal = BML_IMC_MESSAGE_INIT;
     msg_normal.priority = BML_IMC_PRIORITY_NORMAL;
-    ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, nullptr, 0, &msg_normal));
+    ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().PublishEx(topic, &msg_normal));
 
     BML_ImcMessage msg_high = BML_IMC_MESSAGE_INIT;
     msg_high.priority = BML_IMC_PRIORITY_HIGH;
-    ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, nullptr, 0, &msg_high));
+    ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().PublishEx(topic, &msg_high));
 
     BML_ImcMessage msg_urgent = BML_IMC_MESSAGE_INIT;
     msg_urgent.priority = BML_IMC_PRIORITY_URGENT;
-    ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, nullptr, 0, &msg_urgent));
+    ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().PublishEx(topic, &msg_urgent));
 
     // Pump all messages
     ImcBus::Instance().Pump(0);
@@ -701,7 +701,7 @@ TEST_F(ImcBusTest, PriorityFilterRespectsMinPriority) {
     for (uint32_t p = BML_IMC_PRIORITY_LOW; p <= BML_IMC_PRIORITY_URGENT; ++p) {
         BML_ImcMessage msg = BML_IMC_MESSAGE_INIT;
         msg.priority = p;
-        ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, nullptr, 0, &msg));
+        ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().PublishEx(topic, &msg));
     }
 
     ImcBus::Instance().Pump(0);
@@ -730,7 +730,7 @@ TEST_F(ImcBusTest, BackpressureDropNewestPolicy) {
 
     // Fill queue beyond capacity - new messages should be dropped
     for (int i = 0; i < 20; ++i) {
-        EXPECT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &i, sizeof(i), nullptr));
+        EXPECT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &i, sizeof(i)));
     }
 
     ImcBus::Instance().Pump(0);
@@ -760,7 +760,7 @@ TEST_F(ImcBusTest, BackpressureDropOldestPolicy) {
 
     // Fill queue and overflow - old messages should be dropped
     for (int i = 0; i < 20; ++i) {
-        EXPECT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &i, sizeof(i), nullptr));
+        EXPECT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic, &i, sizeof(i)));
     }
 
     ImcBus::Instance().Pump(0);
@@ -791,7 +791,7 @@ TEST_F(ImcBusTest, BackpressureFailPolicy) {
     // Overflow the queue - should start returning WOULD_BLOCK
     bool got_would_block = false;
     for (int i = 0; i < 100; ++i) {
-        BML_Result res = ImcBus::Instance().Publish(topic, &i, sizeof(i), nullptr);
+        BML_Result res = ImcBus::Instance().Publish(topic, &i, sizeof(i));
         if (res == BML_RESULT_WOULD_BLOCK) {
             got_would_block = true;
             break;
@@ -880,7 +880,7 @@ TEST_F(ImcBusTest, ConcurrentPublishersDoNotCrash) {
         threads.emplace_back([&, t]() {
             for (int i = 0; i < kMessagesPerThread; ++i) {
                 int value = t * 1000 + i;
-                BML_Result res = ImcBus::Instance().Publish(topic, &value, sizeof(value), nullptr);
+                BML_Result res = ImcBus::Instance().Publish(topic, &value, sizeof(value));
                 if (res != BML_RESULT_OK) {
                     publish_failed.fetch_add(1, std::memory_order_relaxed);
                 }

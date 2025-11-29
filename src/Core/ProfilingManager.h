@@ -42,9 +42,9 @@ namespace BML::Core {
         uint64_t GetCpuFrequency();
 
         /* Backend Control */
-        BML_ProfilerBackend GetProfilerBackend() const { return backend_; }
+        BML_ProfilerBackend GetProfilerBackend() const { return m_Backend; }
         BML_Result SetProfilingEnabled(BML_Bool enable);
-        BML_Bool IsProfilingEnabled() const { return enabled_ ? BML_TRUE : BML_FALSE; }
+        BML_Bool IsProfilingEnabled() const { return m_Enabled ? BML_TRUE : BML_FALSE; }
         BML_Result FlushProfilingData(const char *filename);
 
         /* Statistics */
@@ -74,18 +74,18 @@ namespace BML::Core {
         ThreadContext &GetThreadContext();
         void WriteJsonEvent(const TraceEvent &evt, FILE *fp);
 
-        BML_ProfilerBackend backend_;
-        std::atomic<bool> enabled_;
+        BML_ProfilerBackend m_Backend;
+        std::atomic<bool> m_Enabled;
 
-        std::atomic<uint64_t> total_events_;
-        std::atomic<uint64_t> total_scopes_;
-        std::atomic<uint64_t> dropped_events_;
+        std::atomic<uint64_t> m_TotalEvents;
+        std::atomic<uint64_t> m_TotalScopes;
+        std::atomic<uint64_t> m_DroppedEvents;
 
-        std::vector<TraceEvent> event_buffer_;
-        CRITICAL_SECTION buffer_lock_;
+        std::vector<TraceEvent> m_EventBuffer;
+        CRITICAL_SECTION m_BufferLock;
 
-        uint64_t qpc_frequency_;
-        uint64_t startup_time_ns_;
+        uint64_t m_QpcFrequency;
+        uint64_t m_StartupTimeNs;
 
         static constexpr size_t MAX_EVENTS = 100000;
         static constexpr size_t MAX_SCOPE_DEPTH = 64;

@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "HotReloadMonitor.h"
+#include "HotReloadCoordinator.h"
 #include "ModuleDiscovery.h"
 #include "ModuleLoader.h"
 
@@ -23,7 +23,7 @@ namespace BML::Core {
     class ModuleRuntime {
     public:
         ModuleRuntime() = default;
-        ~ModuleRuntime(); // Defined in .cpp where HotReloadMonitor is complete
+        ~ModuleRuntime(); // Defined in .cpp where HotReloadCoordinator is complete
         ModuleRuntime(const ModuleRuntime &) = delete;
         ModuleRuntime &operator=(const ModuleRuntime &) = delete;
 
@@ -45,23 +45,24 @@ namespace BML::Core {
         void RecordLoadOrder(const std::vector<ResolvedNode> &order, ModuleBootstrapDiagnostics &diag) const;
         bool ReloadModulesInternal(ModuleBootstrapDiagnostics &out_diag);
         void BroadcastLifecycleEvent(const char *topic, const std::vector<LoadedModule> &modules) const;
-        void UpdateHotReloadWatchList();
-        void EnsureHotReloadMonitor();
-        void StopHotReloadMonitor();
-        void HandleHotReloadTrigger();
+        void UpdateHotReloadRegistration();
+        void EnsureHotReloadCoordinator();
+        void StopHotReloadCoordinator();
+        void HandleHotReloadNotify(const std::string &mod_id, ReloadResult result,
+                                   unsigned int version, ReloadFailure failure);
         bool ShouldEnableHotReload() const;
-        std::vector<std::wstring> BuildWatchPaths() const;
+        std::wstring GetHotReloadTempDirectory() const;
         void ApplyDiagnostics(const ModuleBootstrapDiagnostics &diag) const;
 
         // State for two-phase loading
-        std::wstring discovered_mods_dir_;
-        std::vector<ResolvedNode> discovered_order_;
+        std::wstring m_DiscoveredModsDir;
+        std::vector<ResolvedNode> m_DiscoveredOrder;
 
-        bool hot_reload_enabled_{false};
-        std::unique_ptr<HotReloadMonitor> hot_reload_monitor_;
-        std::function<void(const ModuleBootstrapDiagnostics &)> diag_callback_;
-        mutable std::mutex reload_mutex_;
-        bool reload_in_progress_{false};
+        bool m_HotReloadEnabled{false};
+        std::unique_ptr<HotReloadCoordinator> m_HotReloadCoordinator;
+        std::function<void(const ModuleBootstrapDiagnostics &)> m_DiagCallback;
+        mutable std::mutex m_ReloadMutex;
+        bool m_ReloadInProgress{false};
     };
 } // namespace BML::Core
 

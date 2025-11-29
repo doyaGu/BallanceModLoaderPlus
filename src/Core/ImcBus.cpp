@@ -34,6 +34,7 @@
 #include "ApiRegistry.h"
 #include "Context.h"
 #include "FixedBlockPool.h"
+#include "Logging.h"
 #include "MpscRingBuffer.h"
 #include "CoreErrors.h"
 
@@ -616,6 +617,8 @@ namespace BML::Core {
     // Other types from anonymous namespace are accessible via unqualified lookup in same TU
 
     namespace {
+        constexpr char kImcLogCategory[] = "imc.bus";
+
         // ImcBusImpl - Core Implementation
         // ========================================================================
 
@@ -628,7 +631,8 @@ namespace BML::Core {
             BML_Result GetRpcId(const char *name, BML_RpcId *out_id);
 
             // Pub/Sub (Core)
-            BML_Result Publish(BML_TopicId topic, const void *data, size_t size, const BML_ImcMessage *msg);
+            BML_Result Publish(BML_TopicId topic, const void *data, size_t size);
+            BML_Result PublishEx(BML_TopicId topic, const BML_ImcMessage *msg);
             BML_Result PublishBuffer(BML_TopicId topic, const BML_ImcBuffer *buffer);
             BML_Result Subscribe(BML_TopicId topic, BML_ImcHandler handler, void *user_data, BML_Subscription *out_sub);
             BML_Result Unsubscribe(BML_Subscription sub);
@@ -1014,13 +1018,25 @@ namespace BML::Core {
         // Pub/Sub API
         // ========================================================================
 
-        BML_Result ImcBusImpl::Publish(BML_TopicId topic, const void *data, size_t size, const BML_ImcMessage *msg) {
+        BML_Result ImcBusImpl::Publish(BML_TopicId topic, const void *data, size_t size) {
             if (topic == BML_TOPIC_ID_INVALID)
                 return BML_RESULT_INVALID_ARGUMENT;
             if (size > 0 && !data)
                 return BML_RESULT_INVALID_ARGUMENT;
 
-            auto *message = CreateMessage(topic, data, size, msg, nullptr);
+            auto *message = CreateMessage(topic, data, size, nullptr, nullptr);
+            return DispatchMessage(topic, message);
+        }
+
+        BML_Result ImcBusImpl::PublishEx(BML_TopicId topic, const BML_ImcMessage *msg) {
+            if (topic == BML_TOPIC_ID_INVALID)
+                return BML_RESULT_INVALID_ARGUMENT;
+            if (!msg)
+                return BML_RESULT_INVALID_ARGUMENT;
+            if (msg->size > 0 && !msg->data)
+                return BML_RESULT_INVALID_ARGUMENT;
+
+            auto *message = CreateMessage(topic, msg->data, msg->size, msg, nullptr);
             return DispatchMessage(topic, message);
         }
 
@@ -1194,12 +1210,17 @@ namespace BML::Core {
 
             std::unique_lock lock(m_RpcMutex);
             auto [it, inserted] = m_RpcHandlers.emplace(rpc_id, RpcHandlerEntry{});
-            if (!inserted)
+            if (!inserted) {
+                CoreLog(BML_LOG_WARN, kImcLogCategory,
+                        "RPC handler already registered for ID 0x%08X", rpc_id);
                 return BML_RESULT_ALREADY_EXISTS;
+            }
 
             it->second.handler = handler;
             it->second.user_data = user_data;
             it->second.owner = Context::GetCurrentModule();
+            CoreLog(BML_LOG_DEBUG, kImcLogCategory,
+                    "Registered RPC handler for ID 0x%08X", rpc_id);
             return BML_RESULT_OK;
         }
 
@@ -1213,6 +1234,8 @@ namespace BML::Core {
                 return BML_RESULT_NOT_FOUND;
 
             m_RpcHandlers.erase(it);
+            CoreLog(BML_LOG_DEBUG, kImcLogCategory,
+                    "Unregistered RPC handler for ID 0x%08X", rpc_id);
             return BML_RESULT_OK;
         }
 
@@ -1566,8 +1589,12 @@ namespace BML::Core {
         return GetBus().GetRpcId(name, out_id);
     }
 
-    BML_Result ImcBus::Publish(BML_TopicId topic, const void *data, size_t size, const BML_ImcMessage *msg) {
-        return GetBus().Publish(topic, data, size, msg);
+    BML_Result ImcBus::Publish(BML_TopicId topic, const void *data, size_t size) {
+        return GetBus().Publish(topic, data, size);
+    }
+
+    BML_Result ImcBus::PublishEx(BML_TopicId topic, const BML_ImcMessage *msg) {
+        return GetBus().PublishEx(topic, msg);
     }
 
     BML_Result ImcBus::PublishBuffer(BML_TopicId topic, const BML_ImcBuffer *buffer) {

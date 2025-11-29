@@ -33,6 +33,9 @@ namespace BML::Core {
     public:
         static MemoryManager &Instance();
 
+        MemoryManager(const MemoryManager &) = delete;
+        MemoryManager &operator=(const MemoryManager &) = delete;
+
         // Basic allocation
         // Note: Standard Free() cannot track deallocation size accurately.
         // Use FreeWithSize() for precise statistics when the size is known.
@@ -69,9 +72,6 @@ namespace BML::Core {
         MemoryManager();
         ~MemoryManager() = default;
 
-        MemoryManager(const MemoryManager &) = delete;
-        MemoryManager &operator=(const MemoryManager &) = delete;
-
         // Allocation tracking
         void TrackAllocation(size_t size);
         void TrackDeallocation(size_t size);
@@ -83,11 +83,11 @@ namespace BML::Core {
         void *ReallocInternal(void *ptr, size_t new_size);
 
         // Statistics
-        std::atomic<uint64_t> m_total_allocated{0};
-        std::atomic<uint64_t> m_peak_allocated{0};
-        std::atomic<uint64_t> m_alloc_count{0};
-        std::atomic<uint64_t> m_free_count{0};
-        std::atomic<uint64_t> m_active_alloc_count{0};
+        std::atomic<uint64_t> m_TotalAllocated{0};
+        std::atomic<uint64_t> m_PeakAllocated{0};
+        std::atomic<uint64_t> m_AllocCount{0};
+        std::atomic<uint64_t> m_FreeCount{0};
+        std::atomic<uint64_t> m_ActiveAllocCount{0};
 
         // Configuration
         std::atomic<bool> m_tracking_enabled{true};
@@ -96,8 +96,8 @@ namespace BML::Core {
         static constexpr size_t kMaxPoolBlockSize = 1024 * 1024; // 1 MB
 
         // Pool registry
-        std::mutex m_pool_mutex;
-        std::vector<std::unique_ptr<MemoryPoolImpl>> m_pools;
+        std::mutex m_PoolMutex;
+        std::vector<std::unique_ptr<MemoryPoolImpl>> m_Pools;
     };
 } // namespace BML::Core
 

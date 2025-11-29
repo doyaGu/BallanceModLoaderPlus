@@ -18,8 +18,6 @@
 #include "ApiRegistrationMacros.h"
 #include "Context.h"
 #include "ModHandle.h"
-#include "CoreErrors.h"
-#include "bml_api_ids.h"
 
 #include "bml_logging.h"
 

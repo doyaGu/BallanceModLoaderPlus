@@ -168,8 +168,7 @@ namespace BML::Core {
         BML_TlsDestructor destructor;
 
         TlsKeyImpl(BML_TlsDestructor dtor)
-            : fls_index(FlsAlloc(dtor ? FlsCallback : nullptr)), destructor(dtor) {
-        }
+            : fls_index(FlsAlloc(dtor ? FlsCallback : nullptr)), destructor(dtor) {}
 
         ~TlsKeyImpl() {
             if (fls_index != FLS_OUT_OF_INDEXES) {
@@ -286,25 +285,25 @@ namespace BML::Core {
         void ReportLockMisuse(const char *api, const char *message) const;
         BML_Result ReportDeadlock(const char *api) const;
 
-        std::mutex m_mutex_registry_lock;
-        std::vector<MutexImpl *> m_mutexes;
+        std::mutex m_MutexRegistryLock;
+        std::vector<MutexImpl *> m_Mutexes;
 
-        std::mutex m_rwlock_registry_lock;
-        std::vector<RwLockImpl *> m_rwlocks;
+        std::mutex m_RWLockRegistryLock;
+        std::vector<RwLockImpl *> m_RWLocks;
 
-        std::mutex m_semaphore_registry_lock;
-        std::vector<SemaphoreImpl *> m_semaphores;
+        std::mutex m_SemaphoreRegistryLock;
+        std::vector<SemaphoreImpl *> m_Semaphores;
 
-        std::mutex m_tls_registry_lock;
-        std::vector<TlsKeyImpl *> m_tls_keys;
+        std::mutex m_TLSRegistryLock;
+        std::vector<TlsKeyImpl *> m_TLSKeys;
 
-        std::mutex m_condvar_registry_lock;
-        std::vector<CondVarImpl *> m_condvars;
+        std::mutex m_CondVarRegistryLock;
+        std::vector<CondVarImpl *> m_CondVars;
 
-        std::mutex m_spinlock_registry_lock;
-        std::vector<SpinLockImpl *> m_spinlocks;
+        std::mutex m_SpinlockRegistryLock;
+        std::vector<SpinLockImpl *> m_Spinlocks;
 
-        std::unique_ptr<DeadlockDetector> m_deadlock_detector;
+        std::unique_ptr<DeadlockDetector> m_DeadlockDetector;
     };
 } // namespace BML::Core
 

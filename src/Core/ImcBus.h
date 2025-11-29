@@ -35,8 +35,10 @@ namespace BML::Core {
         // Pub/Sub
         BML_Result Publish(BML_TopicId topic,
                            const void *data,
-                           size_t size,
-                           const BML_ImcMessage *msg);
+                           size_t size);
+
+        BML_Result PublishEx(BML_TopicId topic,
+                             const BML_ImcMessage *msg);
 
         BML_Result PublishBuffer(BML_TopicId topic,
                                  const BML_ImcBuffer *buffer);

@@ -64,6 +64,7 @@ TEST_F(ExtensionApiValidationTests, RegisterQueryLoadEnumerateAndUnregister) {
     auto reg = Lookup<PFN_BML_ExtensionRegister>("bmlExtensionRegister");
     auto query = Lookup<PFN_BML_ExtensionQuery>("bmlExtensionQuery");
     auto load = Lookup<PFN_BML_ExtensionLoad>("bmlExtensionLoad");
+    auto unload = Lookup<PFN_BML_ExtensionUnload>("bmlExtensionUnload");
     auto enumerate = Lookup<PFN_BML_ExtensionEnumerate>("bmlExtensionEnumerate");
     auto unregister = Lookup<PFN_BML_ExtensionUnregister>("bmlExtensionUnregister");
     auto get_caps = Lookup<PFN_BML_ExtensionGetCaps>("bmlExtensionGetCaps");
@@ -117,6 +118,9 @@ TEST_F(ExtensionApiValidationTests, RegisterQueryLoadEnumerateAndUnregister) {
     ASSERT_EQ(BML_RESULT_OK, enumerate(nullptr, callback, &enumerated));
     ASSERT_EQ(enumerated.size(), 1u);
     EXPECT_EQ(enumerated[0], "Test.Extension");
+
+    // Unload before unregistering to decrement refcount
+    ASSERT_EQ(BML_RESULT_OK, unload("Test.Extension"));
 
     ASSERT_EQ(BML_RESULT_OK, unregister("Test.Extension"));
     EXPECT_EQ(BML_RESULT_NOT_FOUND, query("Test.Extension", nullptr));

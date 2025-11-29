@@ -8,10 +8,13 @@
 #include "ConfigStore.h"
 #include "ApiRegistry.h"
 #include "ResourceApi.h"
+#include "Logging.h"
+#include "StringUtils.h"
 
 namespace BML::Core {
     namespace {
         thread_local BML_Mod g_CurrentModule = nullptr;
+        constexpr const char kContextLogCategory[] = "context";
 
         uint16_t ClampVersionComponent(int value) {
             if (value < 0)
@@ -68,33 +71,9 @@ namespace BML::Core {
         if (value.empty())
             return L"mod";
 
-        auto try_convert = [&](DWORD flags, std::wstring &out) -> bool {
-            if (value.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
-                return false;
-            int required = MultiByteToWideChar(CP_UTF8,
-                                               flags,
-                                               value.data(),
-                                               static_cast<int>(value.size()),
-                                               nullptr,
-                                               0);
-            if (required <= 0)
-                return false;
-            out.resize(required);
-            int written = MultiByteToWideChar(CP_UTF8,
-                                              flags,
-                                              value.data(),
-                                              static_cast<int>(value.size()),
-                                              out.data(),
-                                              required);
-            return written > 0;
-        };
-
-        std::wstring converted;
-        if (!try_convert(MB_ERR_INVALID_CHARS, converted)) {
-            converted.clear();
-            if (!try_convert(0, converted)) {
-                return FallbackSanitizedIdentifier(value);
-            }
+        std::wstring converted = utils::Utf8ToUtf16(value);
+        if (converted.empty()) {
+            return FallbackSanitizedIdentifier(value);
         }
 
         FilterInvalidFilenameChars(converted);
@@ -149,14 +128,14 @@ namespace BML::Core {
     void Context::Initialize(const BML_Version &runtime_version) {
         std::lock_guard<std::mutex> lock(m_StateMutex);
         if (m_Initialized.load(std::memory_order_acquire)) {
-            OutputDebugStringA("[BML Context] Warning: Initialize() called on already-initialized context\n");
+            CoreLog(BML_LOG_WARN, kContextLogCategory, "Initialize() called on already-initialized context");
             return;
         }
 
         m_RuntimeVersion = runtime_version;
         m_CleanupRequested = false;
         m_Initialized.store(true, std::memory_order_release);
-        OutputDebugStringA("[BML Context] Initialized\n");
+        CoreLog(BML_LOG_INFO, kContextLogCategory, "Context initialized");
     }
 
     void Context::Cleanup() {
@@ -168,7 +147,7 @@ namespace BML::Core {
 
         m_CleanupRequested = true;
 
-        OutputDebugStringA("[BML Context] Starting cleanup...\n");
+        CoreLog(BML_LOG_INFO, kContextLogCategory, "Starting cleanup");
 
         {
             std::unique_lock<std::mutex> retain_lock(m_RetainMutex);
@@ -201,7 +180,7 @@ namespace BML::Core {
         m_Initialized.store(false, std::memory_order_release);
         m_CleanupRequested = false;
 
-        OutputDebugStringA("[BML Context] Cleanup complete\n");
+        CoreLog(BML_LOG_INFO, kContextLogCategory, "Cleanup complete");
     }
 
     BML_Context Context::GetHandle() {
@@ -345,12 +324,10 @@ namespace BML::Core {
                 try {
                     hook.callback(ctx, hook.user_data);
                 } catch (...) {
-                    char buf[256];
-                    snprintf(buf,
-                             sizeof(buf),
-                             "[BML Context] Exception in shutdown hook for module: %s\n",
-                             module_it->mod_handle->id.c_str());
-                    OutputDebugStringA(buf);
+                    CoreLog(BML_LOG_WARN,
+                            kContextLogCategory,
+                            "Exception in shutdown hook for module '%s'",
+                            module_it->mod_handle->id.c_str());
                 }
             }
         }
@@ -370,13 +347,7 @@ namespace BML::Core {
     }
 
     BML_Mod_T *Context::FindModHandleLocked(BML_Mod mod) {
-        if (!mod)
-            return nullptr;
-        for (auto &module : m_LoadedModules) {
-            if (module.mod_handle && module.mod_handle.get() == mod)
-                return module.mod_handle.get();
-        }
-        return mod;
+        return const_cast<BML_Mod_T *>(static_cast<const Context *>(this)->FindModHandleLocked(mod));
     }
 
     const BML_Mod_T *Context::FindModHandleLocked(BML_Mod mod) const {

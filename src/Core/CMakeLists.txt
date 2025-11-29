@@ -25,8 +25,9 @@ set(BML_CORE_SOURCES
         ModuleDiscovery.cpp
         ModuleLoader.cpp
         ModuleRuntime.cpp
-        HotReloadMonitor.cpp
-        HotReloadWatchList.cpp
+        FileSystemWatcher.cpp
+        ReloadableModuleSlot.cpp
+        HotReloadCoordinator.cpp
         Microkernel.cpp
         ImcBus.cpp
         ImcApi.cpp
@@ -78,6 +79,7 @@ target_link_libraries(BML
         PRIVATE
         BMLUtils
         tomlplusplus::tomlplusplus
+        efsw
 )
 
 target_compile_definitions(BML PRIVATE

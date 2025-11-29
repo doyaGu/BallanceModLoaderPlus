@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file bml_hot_reload.hpp
  * @brief BML C++ Hot Reload Wrapper
  * 
@@ -26,8 +26,8 @@ namespace bml {
      * Example:
      *   auto event = bml::ModLifecycleEvent::Parse(payload, payload_len);
      *   if (event) {
-     *       std::cout << "Mod: " << event->mod_id() << std::endl;
-     *       std::cout << "Version: " << event->version_string() << std::endl;
+     *       std::cout << "Mod: " << event->ModId() << std::endl;
+     *       std::cout << "Version: " << event->VersionString() << std::endl;
      *   }
      */
     class ModLifecycleEvent {
@@ -50,69 +50,69 @@ namespace bml {
          * @brief Get the mod ID
          * @return Mod ID string view
          */
-        std::string_view mod_id() const noexcept {
-            return std::string_view(m_event.mod_id, m_event.mod_id_length);
+        std::string_view ModId() const noexcept {
+            return std::string_view(m_Event.mod_id, m_Event.mod_id_length);
         }
 
         /**
          * @brief Get the mod ID as a string
          * @return Mod ID string
          */
-        std::string mod_id_string() const {
-            return std::string(m_event.mod_id, m_event.mod_id_length);
+        std::string ModIdString() const {
+            return std::string(m_Event.mod_id, m_Event.mod_id_length);
         }
 
         /**
          * @brief Get the mod version
          * @return Version value (use BML_VERSION_* macros to extract parts)
          */
-        BML_Version version() const noexcept {
-            return m_event.version;
+        BML_Version Version() const noexcept {
+            return m_Event.version;
         }
 
         /**
          * @brief Get the major version number
          */
-        uint16_t version_major() const noexcept {
-            return m_event.version.major;
+        uint16_t VersionMajor() const noexcept {
+            return m_Event.version.major;
         }
 
         /**
          * @brief Get the minor version number
          */
-        uint16_t version_minor() const noexcept {
-            return m_event.version.minor;
+        uint16_t VersionMinor() const noexcept {
+            return m_Event.version.minor;
         }
 
         /**
          * @brief Get the patch version number
          */
-        uint16_t version_patch() const noexcept {
-            return m_event.version.patch;
+        uint16_t VersionPatch() const noexcept {
+            return m_Event.version.patch;
         }
 
         /**
          * @brief Get the version as a string "major.minor.patch"
          * @return Version string
          */
-        std::string version_string() const {
-            return std::to_string(version_major()) + "." +
-                std::to_string(version_minor()) + "." +
-                std::to_string(version_patch());
+        std::string VersionString() const {
+            return std::to_string(VersionMajor()) + "." +
+                std::to_string(VersionMinor()) + "." +
+                std::to_string(VersionPatch());
         }
 
         /**
          * @brief Access the underlying C struct
          */
-        const BML_ModLifecycleEvent &handle() const noexcept {
-            return m_event;
+        const BML_ModLifecycleEvent &Handle() const noexcept {
+            return m_Event;
         }
 
     private:
         explicit ModLifecycleEvent(const BML_ModLifecycleEvent &event)
-            : m_event(event) {}
+            : m_Event(event) {}
 
-        BML_ModLifecycleEvent m_event;
+        BML_ModLifecycleEvent m_Event;
     };
 
     // ============================================================================
@@ -123,7 +123,7 @@ namespace bml {
      * @brief Builder for creating mod lifecycle event payloads
      *
      * Example:
-     *   auto payload = bml::ModLifecycleEventBuilder("MyMod", 1, 0, 0).build();
+     *   auto payload = bml::ModLifecycleEventBuilder("MyMod", 1, 0, 0).Build();
      *   imc.Publish("mod.loaded", payload.data(), payload.size());
      */
     class ModLifecycleEventBuilder {
@@ -139,7 +139,7 @@ namespace bml {
                                  uint16_t major = 0,
                                  uint16_t minor = 0,
                                  uint16_t patch = 0)
-            : m_mod_id(mod_id), m_version(bmlMakeVersion(major, minor, patch)) {}
+            : m_ModId(mod_id), m_Version(bmlMakeVersion(major, minor, patch)) {}
 
         /**
          * @brief Construct a builder with a version struct
@@ -147,30 +147,31 @@ namespace bml {
          * @param version Version structure
          */
         ModLifecycleEventBuilder(std::string_view mod_id, BML_Version version)
-            : m_mod_id(mod_id), m_version(version) {}
+            : m_ModId(mod_id), m_Version(version) {}
 
         /**
          * @brief Build the wire-format payload
          * @return Payload data as a vector
          */
-        std::vector<uint8_t> build() const {
+        std::vector<uint8_t> Build() const {
             std::vector<uint8_t> result;
-            result.resize(sizeof(BML_ModLifecycleWireHeader) + m_mod_id.size());
+            result.resize(sizeof(BML_ModLifecycleWireHeader) + m_ModId.size());
 
             BML_ModLifecycleWireHeader header{};
-            header.version = m_version;
-            header.id_length = static_cast<uint32_t>(m_mod_id.size());
+            header.version = m_Version;
+            header.id_length = static_cast<uint32_t>(m_ModId.size());
 
             std::memcpy(result.data(), &header, sizeof(header));
-            std::memcpy(result.data() + sizeof(header), m_mod_id.data(), m_mod_id.size());
+            std::memcpy(result.data() + sizeof(header), m_ModId.data(), m_ModId.size());
 
             return result;
         }
 
     private:
-        std::string m_mod_id;
-        BML_Version m_version;
+        std::string m_ModId;
+        BML_Version m_Version;
     };
 } // namespace bml
 
 #endif // BML_HOT_RELOAD_HPP
+

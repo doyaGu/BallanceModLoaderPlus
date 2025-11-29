@@ -73,6 +73,9 @@ namespace BML::Core {
     public:
         static DiagnosticManager &Instance();
 
+        DiagnosticManager(const DiagnosticManager &) = delete;
+        DiagnosticManager &operator=(const DiagnosticManager &) = delete;
+
         // Error context management
         BML_Result GetLastError(BML_ErrorInfo *out_error);
         void ClearLastError();
@@ -87,9 +90,6 @@ namespace BML::Core {
     private:
         DiagnosticManager() = default;
         ~DiagnosticManager() = default;
-
-        DiagnosticManager(const DiagnosticManager &) = delete;
-        DiagnosticManager &operator=(const DiagnosticManager &) = delete;
 
         // Get thread-local error context
         ErrorContext &GetThreadContext();

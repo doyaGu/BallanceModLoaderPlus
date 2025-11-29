@@ -6,9 +6,12 @@
 
 #include "Context.h"
 #include "StringUtils.h"
+#include "Logging.h"
 
 namespace BML::Core {
     namespace {
+        constexpr char kModuleLoaderLogCategory[] = "module.loader";
+
         std::wstring ResolveEntryPath(const ModManifest &manifest) {
             std::string entry = manifest.package.entry;
             if (entry.empty()) {
@@ -199,11 +202,13 @@ namespace BML::Core {
                 try {
                     it->entrypoint(BML_MOD_ENTRYPOINT_DETACH, &detach);
                 } catch (const std::exception &ex) {
-                    std::string msg = "[BML ModuleLoader] Exception during detach of '" + it->id + "': " + ex.what() + "\n";
-                    OutputDebugStringA(msg.c_str());
+                    CoreLog(BML_LOG_ERROR, kModuleLoaderLogCategory,
+                            "Exception during detach of '%s': %s",
+                            it->id.c_str(), ex.what());
                 } catch (...) {
-                    std::string msg = "[BML ModuleLoader] Unknown exception during detach of '" + it->id + "'\n";
-                    OutputDebugStringA(msg.c_str());
+                    CoreLog(BML_LOG_ERROR, kModuleLoaderLogCategory,
+                            "Unknown exception during detach of '%s'",
+                            it->id.c_str());
                 }
             }
             if (it->handle) {

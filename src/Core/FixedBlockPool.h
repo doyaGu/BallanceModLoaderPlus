@@ -21,9 +21,7 @@ namespace BML::Core {
     // Blocks are carved from chunks and recycled without touching the OS once warmed up.
     class FixedBlockPool {
     public:
-        explicit FixedBlockPool(size_t blockSize,
-                       size_t blocksPerChunk = 1024,
-                       size_t threadCacheSize = 64)
+        explicit FixedBlockPool(size_t blockSize, size_t blocksPerChunk = 1024, size_t threadCacheSize = 64)
             : m_BlockSize(blockSize),
               m_BlockStride(AlignUp(std::max(blockSize, sizeof(FreeNode)), alignof(std::max_align_t))),
               m_BlocksPerChunk(std::max<size_t>(blocksPerChunk, 1)),

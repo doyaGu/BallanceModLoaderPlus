@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file bml_result.hpp
  * @brief BML C++ Result Type and Error Handling
  * 
@@ -30,17 +30,17 @@ namespace bml {
      *   }
      *
      *   // Usage 1: value_or
-     *   auto val = GetValue().value_or("default");
+     *   auto val = GetValue().ValueOr("default");
      *
      *   // Usage 2: check and throw
-     *   auto val = GetValue().value(); // throws on error
+     *   auto val = GetValue().Value(); // throws on error
      *
      *   // Usage 3: explicit check
      *   auto result = GetValue();
      *   if (result) {
-     *       use(result.value());
+     *       use(result.Value());
      *   } else {
-     *       handle_error(result.error());
+     *       handle_error(result.Error());
      *   }
      */
     template <typename T>
@@ -50,23 +50,23 @@ namespace bml {
          * @brief Construct a successful result
          * @param value The value
          */
-        Result(T value) : m_value(std::move(value)), m_error(BML_RESULT_OK) {}
+        Result(T value) : m_Value(std::move(value)), m_Error(BML_RESULT_OK) {}
 
         /**
          * @brief Construct a failed result
          * @param error The error code
          */
-        Result(BML_Result error) : m_error(error) {}
+        Result(BML_Result error) : m_Error(error) {}
 
         /**
          * @brief Check if result is successful
          */
-        bool ok() const noexcept { return m_error == BML_RESULT_OK; }
+        bool Ok() const noexcept { return m_Error == BML_RESULT_OK; }
 
         /**
          * @brief Check if result is successful (bool conversion)
          */
-        explicit operator bool() const noexcept { return ok(); }
+        explicit operator bool() const noexcept { return Ok(); }
 
         // ========================================================================
         // Value Access
@@ -76,27 +76,27 @@ namespace bml {
          * @brief Get the value (lvalue reference)
          * @throws bml::Exception if result is an error
          */
-        T &value() & {
-            if (!ok()) throw Exception(m_error);
-            return *m_value;
+        T &Value() & {
+            if (!Ok()) throw Exception(m_Error);
+            return *m_Value;
         }
 
         /**
          * @brief Get the value (const lvalue reference)
          * @throws bml::Exception if result is an error
          */
-        const T &value() const & {
-            if (!ok()) throw Exception(m_error);
-            return *m_value;
+        const T &Value() const & {
+            if (!Ok()) throw Exception(m_Error);
+            return *m_Value;
         }
 
         /**
          * @brief Get the value (rvalue reference)
          * @throws bml::Exception if result is an error
          */
-        T &&value() && {
-            if (!ok()) throw Exception(m_error);
-            return std::move(*m_value);
+        T &&Value() && {
+            if (!Ok()) throw Exception(m_Error);
+            return std::move(*m_Value);
         }
 
         /**
@@ -104,8 +104,8 @@ namespace bml {
          * @param default_value Value to return if result is an error
          * @return The value or default
          */
-        T value_or(T default_value) const & {
-            return ok() ? *m_value : std::move(default_value);
+        T ValueOr(T default_value) const & {
+            return Ok() ? *m_Value : std::move(default_value);
         }
 
         /**
@@ -113,8 +113,8 @@ namespace bml {
          * @param default_value Value to return if result is an error
          * @return The value or default
          */
-        T value_or(T default_value) && {
-            return ok() ? std::move(*m_value) : std::move(default_value);
+        T ValueOr(T default_value) && {
+            return Ok() ? std::move(*m_Value) : std::move(default_value);
         }
 
         // ========================================================================
@@ -124,13 +124,13 @@ namespace bml {
         /**
          * @brief Get the error code
          */
-        BML_Result error() const noexcept { return m_error; }
+        BML_Result Error() const noexcept { return m_Error; }
 
         /**
          * @brief Get the error message
          */
-        const char *error_message() const noexcept {
-            return bmlGetErrorString ? bmlGetErrorString(m_error) : "Unknown error";
+        const char *ErrorMessage() const noexcept {
+            return bmlGetErrorString ? bmlGetErrorString(m_Error) : "Unknown error";
         }
 
         // ========================================================================
@@ -146,10 +146,10 @@ namespace bml {
         template <typename F>
         auto map(F &&f) const & -> Result<decltype(f(std::declval<const T &>()))> {
             using U = decltype(f(std::declval<const T &>()));
-            if (ok()) {
-                return Result<U>(f(*m_value));
+            if (Ok()) {
+                return Result<U>(f(*m_Value));
             }
-            return Result<U>(m_error);
+            return Result<U>(m_Error);
         }
 
         /**
@@ -161,10 +161,10 @@ namespace bml {
         template <typename F>
         auto map(F &&f) && -> Result<decltype(f(std::declval<T>()))> {
             using U = decltype(f(std::declval<T>()));
-            if (ok()) {
-                return Result<U>(f(std::move(*m_value)));
+            if (Ok()) {
+                return Result<U>(f(std::move(*m_Value)));
             }
-            return Result<U>(m_error);
+            return Result<U>(m_Error);
         }
 
         /**
@@ -175,11 +175,11 @@ namespace bml {
          */
         template <typename F>
         auto and_then(F &&f) const & -> decltype(f(std::declval<const T &>())) {
-            if (ok()) {
-                return f(*m_value);
+            if (Ok()) {
+                return f(*m_Value);
             }
             using ResultType = decltype(f(std::declval<const T &>()));
-            return ResultType(m_error);
+            return ResultType(m_Error);
         }
 
         /**
@@ -190,11 +190,11 @@ namespace bml {
          */
         template <typename F>
         auto and_then(F &&f) && -> decltype(f(std::declval<T>())) {
-            if (ok()) {
-                return f(std::move(*m_value));
+            if (Ok()) {
+                return f(std::move(*m_Value));
             }
             using ResultType = decltype(f(std::declval<T>()));
-            return ResultType(m_error);
+            return ResultType(m_Error);
         }
 
         /**
@@ -205,15 +205,15 @@ namespace bml {
          */
         template <typename F>
         Result<T> or_else(F &&f) const & {
-            if (ok()) {
+            if (Ok()) {
                 return *this;
             }
-            return Result<T>(f(m_error));
+            return Result<T>(f(m_Error));
         }
 
     private:
-        std::optional<T> m_value;
-        BML_Result m_error;
+        std::optional<T> m_Value;
+        BML_Result m_Error;
     };
 
     /**
@@ -222,25 +222,25 @@ namespace bml {
     template <>
     class Result<void> {
     public:
-        Result() : m_error(BML_RESULT_OK) {}
+        Result() : m_Error(BML_RESULT_OK) {}
 
-        Result(BML_Result error) : m_error(error) {}
+        Result(BML_Result error) : m_Error(error) {}
 
-        bool ok() const noexcept { return m_error == BML_RESULT_OK; }
-        explicit operator bool() const noexcept { return ok(); }
+        bool Ok() const noexcept { return m_Error == BML_RESULT_OK; }
+        explicit operator bool() const noexcept { return Ok(); }
 
-        BML_Result error() const noexcept { return m_error; }
+        BML_Result Error() const noexcept { return m_Error; }
 
-        const char *error_message() const noexcept {
-            return bmlGetErrorString ? bmlGetErrorString(m_error) : "Unknown error";
+        const char *ErrorMessage() const noexcept {
+            return bmlGetErrorString ? bmlGetErrorString(m_Error) : "Unknown error";
         }
 
-        void value() const {
-            if (!ok()) throw Exception(m_error);
+        void Value() const {
+            if (!Ok()) throw Exception(m_Error);
         }
 
     private:
-        BML_Result m_error;
+        BML_Result m_Error;
     };
 
     // ============================================================================
@@ -299,7 +299,7 @@ namespace bml {
      */
 #define BML_TRY(expr) do { \
     auto _result = (expr); \
-    if (!_result.ok()) return _result.error(); \
+    if (!_result.Ok()) return _result.Error(); \
 } while(0)
 
     /**
@@ -314,9 +314,10 @@ namespace bml {
      */
 #define BML_TRY_ASSIGN(var, expr) do { \
     auto _result = (expr); \
-    if (!_result.ok()) return _result.error(); \
-    var = std::move(_result).value(); \
+    if (!_result.Ok()) return _result.Error(); \
+    var = std::move(_result).Value(); \
 } while(0)
 } // namespace bml
 
 #endif /* BML_RESULT_HPP */
+

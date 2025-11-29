@@ -88,7 +88,7 @@ namespace bml {
          * @param tag Optional tag for log messages
          */
         explicit Logger(Context ctx, std::string_view tag = "")
-            : m_ctx(ctx.handle()), m_tag(tag) {}
+            : m_ctx(ctx.Handle()), m_tag(tag) {}
 
         /**
          * @brief Construct a logger with raw context handle

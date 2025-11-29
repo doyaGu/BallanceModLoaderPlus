@@ -39,10 +39,13 @@
  * BML_Subscription sub;
  * bmlImcSubscribeEx(topic, my_handler, user_data, &opts, &sub);
  * 
- * // 3. Publish with priority
+ * // 3a. Simple publish (most common)
+ * bmlImcPublish(topic, &my_data, sizeof(my_data));
+ * 
+ * // 3b. Publish with options (priority, flags, etc.)
  * BML_ImcMessage msg = BML_IMC_MSG(&my_data, sizeof(my_data));
  * msg.priority = BML_IMC_PRIORITY_HIGH;
- * bmlImcPublish(topic, my_data, sizeof(my_data), &msg);
+ * bmlImcPublishEx(topic, &msg);
  * 
  * // 4. Cleanup
  * bmlImcUnsubscribe(sub);
@@ -336,15 +339,14 @@ typedef BML_Result (*PFN_BML_ImcGetRpcId)(const char *name, BML_RpcId *out_id);
  * ======================================================================== */
 
 /**
- * @brief Publish a message to a topic.
+ * @brief Publish a message to a topic (simple version).
  * 
- * Message is delivered to all active subscribers. Payload is copied unless
- * using zero-copy buffer variant.
+ * Message is delivered to all active subscribers. Payload is copied.
+ * For advanced options (priority, flags, etc.), use bmlImcPublishEx.
  * 
  * @param[in] topic   Topic ID from bmlImcGetTopicId()
  * @param[in] data    Payload data (may be NULL if size is 0)
  * @param[in] size    Payload size in bytes
- * @param[in] msg     Optional message metadata (may be NULL)
  * @return BML_RESULT_OK on success (even if no subscribers)
  * @return BML_RESULT_INVALID_ARGUMENT if topic is BML_TOPIC_ID_INVALID
  * 
@@ -352,13 +354,35 @@ typedef BML_Result (*PFN_BML_ImcGetRpcId)(const char *name, BML_RpcId *out_id);
  * 
  * @code
  * float delta_time = 0.016f;
- * bmlImcPublish(physics_tick_topic, &delta_time, sizeof(delta_time), NULL);
+ * bmlImcPublish(physics_tick_topic, &delta_time, sizeof(delta_time));
  * @endcode
  */
 typedef BML_Result (*PFN_BML_ImcPublish)(BML_TopicId topic,
                                          const void *data,
-                                         size_t size,
-                                         const BML_ImcMessage *msg);
+                                         size_t size);
+
+/**
+ * @brief Publish a message to a topic with extended options.
+ * 
+ * Message is delivered to all active subscribers. Payload is copied unless
+ * using zero-copy buffer variant. Use this for advanced features like
+ * priority, flags, or custom message metadata.
+ * 
+ * @param[in] topic   Topic ID from bmlImcGetTopicId()
+ * @param[in] msg     Message with payload and metadata (must not be NULL)
+ * @return BML_RESULT_OK on success (even if no subscribers)
+ * @return BML_RESULT_INVALID_ARGUMENT if topic is invalid or msg is NULL
+ * 
+ * @threadsafe Yes
+ * 
+ * @code
+ * BML_ImcMessage msg = BML_IMC_MSG(&my_data, sizeof(my_data));
+ * msg.priority = BML_IMC_PRIORITY_HIGH;
+ * bmlImcPublishEx(physics_tick_topic, &msg);
+ * @endcode
+ */
+typedef BML_Result (*PFN_BML_ImcPublishEx)(BML_TopicId topic,
+                                           const BML_ImcMessage *msg);
 
 /**
  * @brief Publish a zero-copy buffer to a topic.
@@ -720,6 +744,7 @@ extern PFN_BML_ImcGetRpcId           bmlImcGetRpcId;
 
 /* Pub/Sub */
 extern PFN_BML_ImcPublish            bmlImcPublish;
+extern PFN_BML_ImcPublishEx          bmlImcPublishEx;
 extern PFN_BML_ImcPublishBuffer      bmlImcPublishBuffer;
 extern PFN_BML_ImcSubscribe          bmlImcSubscribe;
 extern PFN_BML_ImcUnsubscribe        bmlImcUnsubscribe;

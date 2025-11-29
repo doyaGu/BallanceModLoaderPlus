@@ -14,29 +14,29 @@ namespace BML::Core {
     }
 
     ProfilingManager::ProfilingManager()
-        : backend_(BML_PROFILER_CHROME_TRACING),
-          enabled_(false),
-          total_events_(0),
-          total_scopes_(0),
-          dropped_events_(0),
-          buffer_lock_(),
-          qpc_frequency_(0),
-          startup_time_ns_(0) {
-        InitializeCriticalSection(&buffer_lock_);
-        event_buffer_.reserve(MAX_EVENTS);
+        : m_Backend(BML_PROFILER_CHROME_TRACING),
+          m_Enabled(false),
+          m_TotalEvents(0),
+          m_TotalScopes(0),
+          m_DroppedEvents(0),
+          m_BufferLock(),
+          m_QpcFrequency(0),
+          m_StartupTimeNs(0) {
+        InitializeCriticalSection(&m_BufferLock);
+        m_EventBuffer.reserve(MAX_EVENTS);
 
         // Get QPC frequency
         LARGE_INTEGER freq;
         if (QueryPerformanceFrequency(&freq)) {
-            qpc_frequency_ = freq.QuadPart;
+            m_QpcFrequency = freq.QuadPart;
         }
 
         // Record startup time
-        startup_time_ns_ = GetTimestampNs();
+        m_StartupTimeNs = GetTimestampNs();
     }
 
     ProfilingManager::~ProfilingManager() {
-        DeleteCriticalSection(&buffer_lock_);
+        DeleteCriticalSection(&m_BufferLock);
     }
 
     uint64_t ProfilingManager::GetTimestampNs() {
@@ -46,11 +46,11 @@ namespace BML::Core {
         }
 
         // Convert to nanoseconds
-        return (counter.QuadPart * 1000000000ULL) / qpc_frequency_;
+        return (counter.QuadPart * 1000000000ULL) / m_QpcFrequency;
     }
 
     uint64_t ProfilingManager::GetCpuFrequency() {
-        return qpc_frequency_;
+        return m_QpcFrequency;
     }
 
     ProfilingManager::ThreadContext &ProfilingManager::GetThreadContext() {
@@ -59,12 +59,12 @@ namespace BML::Core {
     }
 
     void ProfilingManager::TraceBegin(const char *name, const char *category) {
-        if (!enabled_) return;
+        if (!m_Enabled) return;
         if (!name) return;
 
         auto &ctx = GetThreadContext();
         if (ctx.scope_stack.size() >= MAX_SCOPE_DEPTH) {
-            dropped_events_++;
+            m_DroppedEvents++;
             return;
         }
 
@@ -74,26 +74,26 @@ namespace BML::Core {
         evt.type = TraceEvent::BEGIN;
         evt.name = name;
         if (category) evt.category = category;
-        evt.timestamp_ns = GetTimestampNs() - startup_time_ns_;
+        evt.timestamp_ns = GetTimestampNs() - m_StartupTimeNs;
         evt.thread_id = GetCurrentThreadId();
 
-        EnterCriticalSection(&buffer_lock_);
+        EnterCriticalSection(&m_BufferLock);
         try {
-            if (event_buffer_.size() < MAX_EVENTS) {
-                event_buffer_.push_back(std::move(evt));
-                ++total_events_;
-                ++total_scopes_;
+            if (m_EventBuffer.size() < MAX_EVENTS) {
+                m_EventBuffer.push_back(std::move(evt));
+                ++m_TotalEvents;
+                ++m_TotalScopes;
             } else {
-                ++dropped_events_;
+                ++m_DroppedEvents;
             }
         } catch (...) {
-            ++dropped_events_;
+            ++m_DroppedEvents;
         }
-        LeaveCriticalSection(&buffer_lock_);
+        LeaveCriticalSection(&m_BufferLock);
     }
 
     void ProfilingManager::TraceEnd() {
-        if (!enabled_) return;
+        if (!m_Enabled) return;
 
         auto &ctx = GetThreadContext();
         if (ctx.scope_stack.empty()) {
@@ -106,46 +106,46 @@ namespace BML::Core {
         TraceEvent evt;
         evt.type = TraceEvent::END;
         evt.name = name;
-        evt.timestamp_ns = GetTimestampNs() - startup_time_ns_;
+        evt.timestamp_ns = GetTimestampNs() - m_StartupTimeNs;
         evt.thread_id = GetCurrentThreadId();
 
-        EnterCriticalSection(&buffer_lock_);
+        EnterCriticalSection(&m_BufferLock);
         try {
-            if (event_buffer_.size() < MAX_EVENTS) {
-                event_buffer_.push_back(std::move(evt));
-                ++total_events_;
+            if (m_EventBuffer.size() < MAX_EVENTS) {
+                m_EventBuffer.push_back(std::move(evt));
+                ++m_TotalEvents;
             } else {
-                ++dropped_events_;
+                ++m_DroppedEvents;
             }
         } catch (...) {
-            ++dropped_events_;
+            ++m_DroppedEvents;
         }
-        LeaveCriticalSection(&buffer_lock_);
+        LeaveCriticalSection(&m_BufferLock);
     }
 
     void ProfilingManager::TraceInstant(const char *name, const char *category) {
-        if (!enabled_) return;
+        if (!m_Enabled) return;
         if (!name) return;
 
         TraceEvent evt;
         evt.type = TraceEvent::INSTANT;
         evt.name = name;
         if (category) evt.category = category;
-        evt.timestamp_ns = GetTimestampNs() - startup_time_ns_;
+        evt.timestamp_ns = GetTimestampNs() - m_StartupTimeNs;
         evt.thread_id = GetCurrentThreadId();
 
-        EnterCriticalSection(&buffer_lock_);
+        EnterCriticalSection(&m_BufferLock);
         try {
-            if (event_buffer_.size() < MAX_EVENTS) {
-                event_buffer_.push_back(std::move(evt));
-                ++total_events_;
+            if (m_EventBuffer.size() < MAX_EVENTS) {
+                m_EventBuffer.push_back(std::move(evt));
+                ++m_TotalEvents;
             } else {
-                ++dropped_events_;
+                ++m_DroppedEvents;
             }
         } catch (...) {
-            ++dropped_events_;
+            ++m_DroppedEvents;
         }
-        LeaveCriticalSection(&buffer_lock_);
+        LeaveCriticalSection(&m_BufferLock);
     }
 
     void ProfilingManager::TraceSetThreadName(const char *name) {
@@ -155,51 +155,51 @@ namespace BML::Core {
     }
 
     void ProfilingManager::TraceCounter(const char *name, int64_t value) {
-        if (!enabled_) return;
+        if (!m_Enabled) return;
         if (!name) return;
 
         TraceEvent evt;
         evt.type = TraceEvent::COUNTER;
         evt.name = name;
-        evt.timestamp_ns = GetTimestampNs() - startup_time_ns_;
+        evt.timestamp_ns = GetTimestampNs() - m_StartupTimeNs;
         evt.thread_id = GetCurrentThreadId();
         evt.counter_value = value;
 
-        EnterCriticalSection(&buffer_lock_);
+        EnterCriticalSection(&m_BufferLock);
         try {
-            if (event_buffer_.size() < MAX_EVENTS) {
-                event_buffer_.push_back(std::move(evt));
-                ++total_events_;
+            if (m_EventBuffer.size() < MAX_EVENTS) {
+                m_EventBuffer.push_back(std::move(evt));
+                ++m_TotalEvents;
             } else {
-                ++dropped_events_;
+                ++m_DroppedEvents;
             }
         } catch (...) {
-            ++dropped_events_;
+            ++m_DroppedEvents;
         }
-        LeaveCriticalSection(&buffer_lock_);
+        LeaveCriticalSection(&m_BufferLock);
     }
 
     void ProfilingManager::TraceFrameMark() {
-        if (!enabled_) return;
+        if (!m_Enabled) return;
 
         TraceEvent evt;
         evt.type = TraceEvent::FRAME;
         evt.name = "Frame";
-        evt.timestamp_ns = GetTimestampNs() - startup_time_ns_;
+        evt.timestamp_ns = GetTimestampNs() - m_StartupTimeNs;
         evt.thread_id = GetCurrentThreadId();
 
-        EnterCriticalSection(&buffer_lock_);
+        EnterCriticalSection(&m_BufferLock);
         try {
-            if (event_buffer_.size() < MAX_EVENTS) {
-                event_buffer_.push_back(std::move(evt));
-                ++total_events_;
+            if (m_EventBuffer.size() < MAX_EVENTS) {
+                m_EventBuffer.push_back(std::move(evt));
+                ++m_TotalEvents;
             } else {
-                ++dropped_events_;
+                ++m_DroppedEvents;
             }
         } catch (...) {
-            ++dropped_events_;
+            ++m_DroppedEvents;
         }
-        LeaveCriticalSection(&buffer_lock_);
+        LeaveCriticalSection(&m_BufferLock);
     }
 
     uint64_t ProfilingManager::GetApiCallCount(const char *api_name) {
@@ -218,7 +218,7 @@ namespace BML::Core {
     }
 
     BML_Result ProfilingManager::SetProfilingEnabled(BML_Bool enable) {
-        enabled_ = (enable == BML_TRUE);
+        m_Enabled = (enable == BML_TRUE);
         return BML_RESULT_OK;
     }
 
@@ -265,15 +265,15 @@ namespace BML::Core {
 
         // Extract events under lock to minimize lock contention during file I/O
         std::vector<TraceEvent> events_snapshot;
-        EnterCriticalSection(&buffer_lock_);
+        EnterCriticalSection(&m_BufferLock);
         try {
-            events_snapshot = event_buffer_; // Copy while holding lock
+            events_snapshot = m_EventBuffer; // Copy while holding lock
         } catch (...) {
-            LeaveCriticalSection(&buffer_lock_);
+            LeaveCriticalSection(&m_BufferLock);
             SetLastError(BML_RESULT_OUT_OF_MEMORY, "Failed to copy event buffer", "bmlFlushProfilingData");
             return BML_RESULT_OUT_OF_MEMORY;
         }
-        LeaveCriticalSection(&buffer_lock_);
+        LeaveCriticalSection(&m_BufferLock);
 
         // RAII wrapper for FILE* handle
         struct FileGuard {
@@ -314,15 +314,15 @@ namespace BML::Core {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
-        out_stats->total_events = total_events_;
-        out_stats->total_scopes = total_scopes_;
-        out_stats->dropped_events = dropped_events_;
-        out_stats->memory_used_bytes = event_buffer_.capacity() * sizeof(TraceEvent);
+        out_stats->total_events = m_TotalEvents;
+        out_stats->total_scopes = m_TotalScopes;
+        out_stats->dropped_events = m_DroppedEvents;
+        out_stats->memory_used_bytes = m_EventBuffer.capacity() * sizeof(TraceEvent);
 
-        EnterCriticalSection(&buffer_lock_);
+        EnterCriticalSection(&m_BufferLock);
         size_t active = 0;
         // Count active scopes across all threads (simplified)
-        LeaveCriticalSection(&buffer_lock_);
+        LeaveCriticalSection(&m_BufferLock);
         out_stats->active_scopes = active;
 
         return BML_RESULT_OK;
@@ -340,7 +340,7 @@ namespace BML::Core {
             BML_PROFILING_CAP_TRACE_EVENTS |
             BML_PROFILING_CAP_COUNTERS |
             BML_PROFILING_CAP_MEMORY_TRACKING;
-        out_caps->active_backend = backend_;
+        out_caps->active_backend = m_Backend;
         out_caps->max_scope_depth = MAX_SCOPE_DEPTH;
         out_caps->event_buffer_size = MAX_EVENTS;
 

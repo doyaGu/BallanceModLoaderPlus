@@ -77,7 +77,7 @@ namespace bml {
      *
      * Example:
      *   if (auto api = bml::ApiDescriptor::ByName("bmlLog")) {
-     *       std::cout << api->name() << " v" << api->versionMajor() << std::endl;
+     *       std::cout << api->Name() << " v" << api->VersionMajor() << std::endl;
      *   }
      */
     class ApiDescriptor {
@@ -116,22 +116,22 @@ namespace bml {
         // Accessors
         // ========================================================================
 
-        uint32_t id() const noexcept { return m_desc.id; }
-        const char *name() const noexcept { return m_desc.name; }
-        BML_ApiType type() const noexcept { return m_desc.type; }
-        uint16_t versionMajor() const noexcept { return m_desc.version_major; }
-        uint16_t versionMinor() const noexcept { return m_desc.version_minor; }
-        uint16_t versionPatch() const noexcept { return m_desc.version_patch; }
-        uint64_t capabilities() const noexcept { return m_desc.capabilities; }
-        BML_ThreadingModel threading() const noexcept { return m_desc.threading; }
-        const char *provider() const noexcept { return m_desc.provider_mod; }
-        const char *description() const noexcept { return m_desc.description; }
-        uint64_t callCount() const noexcept { return m_desc.call_count; }
+        uint32_t Id() const noexcept { return m_Desc.id; }
+        const char *Name() const noexcept { return m_Desc.name; }
+        BML_ApiType Type() const noexcept { return m_Desc.type; }
+        uint16_t VersionMajor() const noexcept { return m_Desc.version_major; }
+        uint16_t VersionMinor() const noexcept { return m_Desc.version_minor; }
+        uint16_t VersionPatch() const noexcept { return m_Desc.version_patch; }
+        uint64_t Capabilities() const noexcept { return m_Desc.capabilities; }
+        BML_ThreadingModel Threading() const noexcept { return m_Desc.threading; }
+        const char *Provider() const noexcept { return m_Desc.provider_mod; }
+        const char *Description() const noexcept { return m_Desc.description; }
+        uint64_t CallCount() const noexcept { return m_Desc.call_count; }
 
         /**
          * @brief Get the raw descriptor
          */
-        const BML_ApiDescriptor &raw() const noexcept { return m_desc; }
+        const BML_ApiDescriptor &Raw() const noexcept { return m_Desc; }
 
         // ========================================================================
         // Utility Methods
@@ -142,32 +142,32 @@ namespace bml {
          * @param cap Capability flag
          * @return true if API has the capability
          */
-        bool hasCapability(uint64_t cap) const noexcept {
-            return (m_desc.capabilities & cap) == cap;
+        bool HasCapability(uint64_t cap) const noexcept {
+            return (m_Desc.capabilities & cap) == cap;
         }
 
         /**
          * @brief Check if API is thread-safe
          * @return true if API can be called from any thread
          */
-        bool isThreadSafe() const noexcept {
-            return m_desc.threading == BML_THREADING_FREE;
+        bool IsThreadSafe() const noexcept {
+            return m_Desc.threading == BML_THREADING_FREE;
         }
 
         /**
          * @brief Get encoded version as single uint32_t
          * @return Version encoded as (major << 16) | (minor << 8) | patch
          */
-        uint32_t encodedVersion() const noexcept {
-            return (static_cast<uint32_t>(m_desc.version_major) << 16) |
-                (static_cast<uint32_t>(m_desc.version_minor) << 8) |
-                static_cast<uint32_t>(m_desc.version_patch);
+        uint32_t EncodedVersion() const noexcept {
+            return (static_cast<uint32_t>(m_Desc.version_major) << 16) |
+                (static_cast<uint32_t>(m_Desc.version_minor) << 8) |
+                static_cast<uint32_t>(m_Desc.version_patch);
         }
 
     private:
-        explicit ApiDescriptor(const BML_ApiDescriptor &desc) : m_desc(desc) {}
+        explicit ApiDescriptor(const BML_ApiDescriptor &desc) : m_Desc(desc) {}
 
-        BML_ApiDescriptor m_desc{};
+        BML_ApiDescriptor m_Desc{};
     };
 
     // ============================================================================
@@ -188,27 +188,27 @@ namespace bml {
      *   }, BML_API_TYPE_EXTENSION);
      */
     template <typename Callback>
-    inline void EnumerateApis(Callback &&callback, int type_filter = -1) {
+    inline void EnumerateApis(Callback &&callback, int typeFilter = -1) {
         if (!bmlEnumerateApis) return;
 
         struct Context {
             Callback *cb;
         } ctx{&callback};
 
-        auto wrapper = [](BML_Context, const BML_ApiDescriptor *desc, void *user_data) -> BML_Bool {
-            auto *c = static_cast<Context *>(user_data);
+        auto wrapper = [](BML_Context, const BML_ApiDescriptor *desc, void *userData) -> BML_Bool {
+            auto *c = static_cast<Context *>(userData);
             return (*c->cb)(*desc) ? BML_TRUE : BML_FALSE;
         };
 
-        bmlEnumerateApis(wrapper, &ctx, static_cast<BML_ApiType>(type_filter));
+        bmlEnumerateApis(wrapper, &ctx, static_cast<BML_ApiType>(typeFilter));
     }
 
     /**
      * @brief Get all APIs as a vector
-     * @param type_filter Filter by API type, -1 for all
+     * @param typeFilter Filter by API type, -1 for all
      * @return Vector of API descriptors
      */
-    inline std::vector<ApiDescriptor> GetAllApis(int type_filter = -1) {
+    inline std::vector<ApiDescriptor> GetAllApis(int typeFilter = -1) {
         std::vector<ApiDescriptor> result;
         EnumerateApis([&result](const BML_ApiDescriptor &desc) {
             auto api = ApiDescriptor::ById(desc.id);
@@ -216,7 +216,7 @@ namespace bml {
                 result.push_back(std::move(*api));
             }
             return true;
-        }, type_filter);
+        }, typeFilter);
         return result;
     }
 

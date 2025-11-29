@@ -55,6 +55,7 @@
         { "pointer": "bmlImcGetTopicId", "required": true },
         { "pointer": "bmlImcGetRpcId", "required": false },
         { "pointer": "bmlImcPublish", "required": true },
+        { "pointer": "bmlImcPublishEx", "required": false },
         { "pointer": "bmlImcPublishBuffer", "required": false },
         { "pointer": "bmlImcSubscribe", "required": true },
         { "pointer": "bmlImcUnsubscribe", "required": true },
