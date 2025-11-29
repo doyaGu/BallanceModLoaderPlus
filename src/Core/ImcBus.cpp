@@ -329,9 +329,36 @@ namespace {
     // Priority Queue for Messages
     // ========================================================================
 
-    // Lock-free priority queue with 4 priority levels and starvation mitigation.
-    // Uses a weighted fair queuing approach: higher priority levels get more dequeue
-    // opportunities but lower priorities are guaranteed some throughput.
+    /**
+     * @brief Lock-free priority queue with starvation prevention
+     *
+     * Implements a 4-level priority system (LOW=0, NORMAL=1, HIGH=2, URGENT=3)
+     * with a weighted fair queuing approach to prevent low-priority message starvation.
+     *
+     * ## Starvation Prevention Algorithm
+     *
+     * The dequeue algorithm uses a counter-based fairness mechanism:
+     *
+     * 1. **URGENT (level 3)**: Always processed first, no quota limit
+     *    - Used for critical system messages that cannot be delayed
+     *
+     * 2. **HIGH (level 2)**: Processed after URGENT, participates in quota
+     *    - Combined with URGENT for "high priority drain counter"
+     *
+     * 3. **NORMAL/LOW fairness**: Every 16 high-priority drains, the algorithm
+     *    forces a LOW or NORMAL message to be processed (if available)
+     *    - This guarantees low-priority messages are processed at least
+     *      once per 16 high-priority messages
+     *    - Prevents indefinite starvation under sustained high-priority load
+     *
+     * ## Performance Characteristics
+     *
+     * - Enqueue: O(1), delegates to underlying MpscRingBuffer
+     * - Dequeue: O(1) amortized, checks levels in priority order
+     * - Memory: O(capacity_per_level * 4 levels)
+     *
+     * @tparam T Message pointer type (typically QueuedMessage*)
+     */
     template <typename T>
     class PriorityMessageQueue {
     public:
@@ -916,8 +943,21 @@ namespace BML::Core {
                     return BML_RESULT_OK;
                 }
 
-                // Set ref_count BEFORE releasing lock to prevent race with subscription release
-                // +1 for our own reference that we'll release at the end
+                // THREAD SAFETY ANALYSIS:
+                // Setting ref_count while holding m_Mutex is critical for correctness.
+                // The race condition we prevent:
+                //   1. Thread A: Sets ref_count = valid_count + 1 (our ref + subscriber refs)
+                //   2. Thread B: Calls Unsubscribe() and removes subscription from m_TopicMap
+                //   3. Thread A: Releases lock and tries to dispatch to that subscription
+                //
+                // By setting ref_count BEFORE releasing the lock:
+                //   - All subscriptions we counted are still valid (can't be removed while we hold lock)
+                //   - Once we release the lock, subscriptions may be removed, but the message's
+                //     ref_count is already set correctly for the number of deliveries we'll attempt
+                //   - If a subscription is removed after we release the lock, DispatchToSubscription
+                //     will safely detect the closed state and skip it (releasing the unused ref)
+                //
+                // The +1 is our own reference that we release at the end of DispatchMessage.
                 message->ref_count.store(valid_count + 1, std::memory_order_release);
 
                 // Second pass: collect targets and increment their ref counts
