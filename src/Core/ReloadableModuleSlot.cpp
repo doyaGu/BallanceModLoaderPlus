@@ -346,18 +346,32 @@ namespace BML::Core {
     bool ReloadableModuleSlot::TryRollback() {
         if (m_LastWorkingVersion == 0) {
             CoreLog(BML_LOG_ERROR, kLogCategory,
-                    "Cannot rollback: no previous working version");
+                    "Cannot rollback module '%s': no previous working version available. "
+                    "This typically means the initial load failed.",
+                    GetModId().c_str());
             m_LastFailure = ReloadFailure::InitialFailure;
             return false;
         }
 
         CoreLog(BML_LOG_WARN, kLogCategory,
-                "Rolling back to version %u", m_LastWorkingVersion);
+                "Rolling back module '%s' from version %u to last known working version %u. "
+                "Last failure: %s (system error: %lu)",
+                GetModId().c_str(), m_Version, m_LastWorkingVersion,
+                ReloadFailureToString(m_LastFailure), m_LastSystemError);
 
         if (LoadVersion(m_LastWorkingVersion, true)) {
+            CoreLog(BML_LOG_INFO, kLogCategory,
+                    "Rollback successful: module '%s' restored to version %u",
+                    GetModId().c_str(), m_Version);
             m_LastFailure = ReloadFailure::None;
             return true;
         }
+
+        CoreLog(BML_LOG_ERROR, kLogCategory,
+                "Rollback failed: could not restore module '%s' to version %u. "
+                "Failure reason: %s (system error: %lu)",
+                GetModId().c_str(), m_LastWorkingVersion,
+                ReloadFailureToString(m_LastFailure), m_LastSystemError);
         return false;
     }
 
