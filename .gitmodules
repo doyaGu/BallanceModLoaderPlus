@@ -16,3 +16,6 @@
 [submodule "deps/tomlplusplus"]
 	path = deps/tomlplusplus
 	url = https://github.com/marzer/tomlplusplus.git
+[submodule "deps/efsw"]
+	path = deps/efsw
+	url = https://github.com/SpartanJ/efsw.git
