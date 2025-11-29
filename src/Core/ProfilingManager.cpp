@@ -77,19 +77,20 @@ namespace BML::Core {
         evt.timestamp_ns = GetTimestampNs() - m_StartupTimeNs;
         evt.thread_id = GetCurrentThreadId();
 
-        EnterCriticalSection(&m_BufferLock);
-        try {
-            if (m_EventBuffer.size() < MAX_EVENTS) {
-                m_EventBuffer.push_back(std::move(evt));
-                ++m_TotalEvents;
-                ++m_TotalScopes;
-            } else {
+        {
+            CriticalSectionGuard guard(m_BufferLock);
+            try {
+                if (m_EventBuffer.size() < MAX_EVENTS) {
+                    m_EventBuffer.push_back(std::move(evt));
+                    ++m_TotalEvents;
+                    ++m_TotalScopes;
+                } else {
+                    ++m_DroppedEvents;
+                }
+            } catch (...) {
                 ++m_DroppedEvents;
             }
-        } catch (...) {
-            ++m_DroppedEvents;
         }
-        LeaveCriticalSection(&m_BufferLock);
     }
 
     void ProfilingManager::TraceEnd() {
@@ -109,18 +110,19 @@ namespace BML::Core {
         evt.timestamp_ns = GetTimestampNs() - m_StartupTimeNs;
         evt.thread_id = GetCurrentThreadId();
 
-        EnterCriticalSection(&m_BufferLock);
-        try {
-            if (m_EventBuffer.size() < MAX_EVENTS) {
-                m_EventBuffer.push_back(std::move(evt));
-                ++m_TotalEvents;
-            } else {
+        {
+            CriticalSectionGuard guard(m_BufferLock);
+            try {
+                if (m_EventBuffer.size() < MAX_EVENTS) {
+                    m_EventBuffer.push_back(std::move(evt));
+                    ++m_TotalEvents;
+                } else {
+                    ++m_DroppedEvents;
+                }
+            } catch (...) {
                 ++m_DroppedEvents;
             }
-        } catch (...) {
-            ++m_DroppedEvents;
         }
-        LeaveCriticalSection(&m_BufferLock);
     }
 
     void ProfilingManager::TraceInstant(const char *name, const char *category) {
@@ -134,18 +136,19 @@ namespace BML::Core {
         evt.timestamp_ns = GetTimestampNs() - m_StartupTimeNs;
         evt.thread_id = GetCurrentThreadId();
 
-        EnterCriticalSection(&m_BufferLock);
-        try {
-            if (m_EventBuffer.size() < MAX_EVENTS) {
-                m_EventBuffer.push_back(std::move(evt));
-                ++m_TotalEvents;
-            } else {
+        {
+            CriticalSectionGuard guard(m_BufferLock);
+            try {
+                if (m_EventBuffer.size() < MAX_EVENTS) {
+                    m_EventBuffer.push_back(std::move(evt));
+                    ++m_TotalEvents;
+                } else {
+                    ++m_DroppedEvents;
+                }
+            } catch (...) {
                 ++m_DroppedEvents;
             }
-        } catch (...) {
-            ++m_DroppedEvents;
         }
-        LeaveCriticalSection(&m_BufferLock);
     }
 
     void ProfilingManager::TraceSetThreadName(const char *name) {
@@ -165,18 +168,19 @@ namespace BML::Core {
         evt.thread_id = GetCurrentThreadId();
         evt.counter_value = value;
 
-        EnterCriticalSection(&m_BufferLock);
-        try {
-            if (m_EventBuffer.size() < MAX_EVENTS) {
-                m_EventBuffer.push_back(std::move(evt));
-                ++m_TotalEvents;
-            } else {
+        {
+            CriticalSectionGuard guard(m_BufferLock);
+            try {
+                if (m_EventBuffer.size() < MAX_EVENTS) {
+                    m_EventBuffer.push_back(std::move(evt));
+                    ++m_TotalEvents;
+                } else {
+                    ++m_DroppedEvents;
+                }
+            } catch (...) {
                 ++m_DroppedEvents;
             }
-        } catch (...) {
-            ++m_DroppedEvents;
         }
-        LeaveCriticalSection(&m_BufferLock);
     }
 
     void ProfilingManager::TraceFrameMark() {
@@ -188,18 +192,19 @@ namespace BML::Core {
         evt.timestamp_ns = GetTimestampNs() - m_StartupTimeNs;
         evt.thread_id = GetCurrentThreadId();
 
-        EnterCriticalSection(&m_BufferLock);
-        try {
-            if (m_EventBuffer.size() < MAX_EVENTS) {
-                m_EventBuffer.push_back(std::move(evt));
-                ++m_TotalEvents;
-            } else {
+        {
+            CriticalSectionGuard guard(m_BufferLock);
+            try {
+                if (m_EventBuffer.size() < MAX_EVENTS) {
+                    m_EventBuffer.push_back(std::move(evt));
+                    ++m_TotalEvents;
+                } else {
+                    ++m_DroppedEvents;
+                }
+            } catch (...) {
                 ++m_DroppedEvents;
             }
-        } catch (...) {
-            ++m_DroppedEvents;
         }
-        LeaveCriticalSection(&m_BufferLock);
     }
 
     uint64_t ProfilingManager::GetApiCallCount(const char *api_name) {
@@ -265,15 +270,15 @@ namespace BML::Core {
 
         // Extract events under lock to minimize lock contention during file I/O
         std::vector<TraceEvent> events_snapshot;
-        EnterCriticalSection(&m_BufferLock);
-        try {
-            events_snapshot = m_EventBuffer; // Copy while holding lock
-        } catch (...) {
-            LeaveCriticalSection(&m_BufferLock);
-            SetLastError(BML_RESULT_OUT_OF_MEMORY, "Failed to copy event buffer", "bmlFlushProfilingData");
-            return BML_RESULT_OUT_OF_MEMORY;
+        {
+            CriticalSectionGuard guard(m_BufferLock);
+            try {
+                events_snapshot = m_EventBuffer; // Copy while holding lock
+            } catch (...) {
+                SetLastError(BML_RESULT_OUT_OF_MEMORY, "Failed to copy event buffer", "bmlFlushProfilingData");
+                return BML_RESULT_OUT_OF_MEMORY;
+            }
         }
-        LeaveCriticalSection(&m_BufferLock);
 
         // RAII wrapper for FILE* handle
         struct FileGuard {
@@ -319,10 +324,12 @@ namespace BML::Core {
         out_stats->dropped_events = m_DroppedEvents;
         out_stats->memory_used_bytes = m_EventBuffer.capacity() * sizeof(TraceEvent);
 
-        EnterCriticalSection(&m_BufferLock);
         size_t active = 0;
-        // Count active scopes across all threads (simplified)
-        LeaveCriticalSection(&m_BufferLock);
+        {
+            CriticalSectionGuard guard(m_BufferLock);
+            // Count active scopes across all threads (simplified)
+            // Note: actual per-thread scope tracking would require additional data structures
+        }
         out_stats->active_scopes = active;
 
         return BML_RESULT_OK;
