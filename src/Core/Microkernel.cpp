@@ -7,7 +7,7 @@
 
 #include "ApiRegistration.h"
 #include "Context.h"
-#include "HotReloadMonitor.h"  // Required for ModuleRuntime destructor
+#include "HotReloadCoordinator.h"  // Required for ModuleRuntime destructor
 #include "ImcBus.h"
 #include "Logging.h"
 #include "StringUtils.h"

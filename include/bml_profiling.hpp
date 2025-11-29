@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file bml_profiling.hpp
  * @brief BML C++ Profiling and Tracing Wrapper
  * 
@@ -226,14 +226,14 @@ namespace bml {
     class ConditionalScopedTrace {
     public:
         ConditionalScopedTrace(const char *name, const char *category = nullptr)
-            : m_active(IsProfilingEnabled()) {
-            if (m_active && bmlTraceBegin) {
+            : m_Active(IsProfilingEnabled()) {
+            if (m_Active && bmlTraceBegin) {
                 bmlTraceBegin(name, category);
             }
         }
 
         ~ConditionalScopedTrace() {
-            if (m_active && bmlTraceEnd) {
+            if (m_Active && bmlTraceEnd) {
                 bmlTraceEnd();
             }
         }
@@ -242,7 +242,7 @@ namespace bml {
         ConditionalScopedTrace &operator=(const ConditionalScopedTrace &) = delete;
 
     private:
-        bool m_active;
+        bool m_Active;
     };
 
     // ============================================================================
@@ -255,50 +255,50 @@ namespace bml {
      * Example:
      *   bml::Timer timer;
      *   DoWork();
-     *   auto elapsed_ns = timer.elapsedNs();
-     *   auto elapsed_ms = timer.elapsedMs();
+     *   auto elapsed_ns = timer.ElapsedNs();
+     *   auto elapsed_ms = timer.ElapsedMs();
      */
     class Timer {
     public:
-        Timer() : m_start(GetTimestampNs()) {}
+        Timer() : m_Start(GetTimestampNs()) {}
 
         /**
          * @brief Reset the timer
          */
         void reset() {
-            m_start = GetTimestampNs();
+            m_Start = GetTimestampNs();
         }
 
         /**
          * @brief Get elapsed time in nanoseconds
          */
-        uint64_t elapsedNs() const {
-            return GetTimestampNs() - m_start;
+        uint64_t ElapsedNs() const {
+            return GetTimestampNs() - m_Start;
         }
 
         /**
          * @brief Get elapsed time in microseconds
          */
-        double elapsedUs() const {
-            return static_cast<double>(elapsedNs()) / 1000.0;
+        double ElapsedUs() const {
+            return static_cast<double>(ElapsedNs()) / 1000.0;
         }
 
         /**
          * @brief Get elapsed time in milliseconds
          */
-        double elapsedMs() const {
-            return static_cast<double>(elapsedNs()) / 1000000.0;
+        double ElapsedMs() const {
+            return static_cast<double>(ElapsedNs()) / 1000000.0;
         }
 
         /**
          * @brief Get elapsed time in seconds
          */
-        double elapsedSec() const {
-            return static_cast<double>(elapsedNs()) / 1000000000.0;
+        double ElapsedSec() const {
+            return static_cast<double>(ElapsedNs()) / 1000000000.0;
         }
 
     private:
-        uint64_t m_start;
+        uint64_t m_Start;
     };
 
     // ============================================================================
@@ -337,3 +337,4 @@ namespace bml {
 } // namespace bml
 
 #endif /* BML_PROFILING_HPP */
+

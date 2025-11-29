@@ -96,12 +96,13 @@
 
 /** @brief Pub/Sub */
 #define BML_API_ID_bmlImcPublish                 1010u
-#define BML_API_ID_bmlImcPublishBuffer           1011u
-#define BML_API_ID_bmlImcPublishMulti            1012u
-#define BML_API_ID_bmlImcSubscribe               1013u
-#define BML_API_ID_bmlImcSubscribeEx             1014u
-#define BML_API_ID_bmlImcUnsubscribe             1015u
-#define BML_API_ID_bmlImcSubscriptionIsActive    1016u
+#define BML_API_ID_bmlImcPublishEx               1011u
+#define BML_API_ID_bmlImcPublishBuffer           1012u
+#define BML_API_ID_bmlImcPublishMulti            1013u
+#define BML_API_ID_bmlImcSubscribe               1014u
+#define BML_API_ID_bmlImcSubscribeEx             1015u
+#define BML_API_ID_bmlImcUnsubscribe             1016u
+#define BML_API_ID_bmlImcSubscriptionIsActive    1017u
 
 /** @brief RPC */
 #define BML_API_ID_bmlImcRegisterRpc             1020u

@@ -56,40 +56,40 @@ namespace bml {
      */
     class Context {
     public:
-        Context() : m_ctx(nullptr) {}
+        Context() : m_Ctx(nullptr) {}
 
-        explicit Context(BML_Context ctx) : m_ctx(ctx) {}
+        explicit Context(BML_Context ctx) : m_Ctx(ctx) {}
 
         /**
          * @brief Get the underlying handle
          */
-        BML_Context handle() const noexcept { return m_ctx; }
+        BML_Context Handle() const noexcept { return m_Ctx; }
 
         /**
          * @brief Check if context is valid
          */
-        explicit operator bool() const noexcept { return m_ctx != nullptr; }
+        explicit operator bool() const noexcept { return m_Ctx != nullptr; }
 
         /**
          * @brief Retain (increment reference count)
          * @return true if successful
          */
-        bool retain() const {
-            if (!m_ctx || !bmlContextRetain) return false;
-            return bmlContextRetain(m_ctx) == BML_RESULT_OK;
+        bool Retain() const {
+            if (!m_Ctx || !bmlContextRetain) return false;
+            return bmlContextRetain(m_Ctx) == BML_RESULT_OK;
         }
 
         /**
          * @brief Release (decrement reference count)
          * @return true if successful
          */
-        bool release() const {
-            if (!m_ctx || !bmlContextRelease) return false;
-            return bmlContextRelease(m_ctx) == BML_RESULT_OK;
+        bool Release() const {
+            if (!m_Ctx || !bmlContextRelease) return false;
+            return bmlContextRelease(m_Ctx) == BML_RESULT_OK;
         }
 
     private:
-        BML_Context m_ctx;
+        BML_Context m_Ctx;
     };
 
     // ============================================================================
@@ -109,21 +109,21 @@ namespace bml {
      */
     class ScopedContext {
     public:
-        ScopedContext() : m_ctx(nullptr) {}
+        ScopedContext() : m_Ctx(nullptr) {}
 
         /**
          * @brief Construct and retain context
          * @param ctx Context to wrap (will be retained)
          */
-        explicit ScopedContext(BML_Context ctx) : m_ctx(ctx) {
-            if (m_ctx && bmlContextRetain) {
-                bmlContextRetain(m_ctx);
+        explicit ScopedContext(BML_Context ctx) : m_Ctx(ctx) {
+            if (m_Ctx && bmlContextRetain) {
+                bmlContextRetain(m_Ctx);
             }
         }
 
         ~ScopedContext() {
-            if (m_ctx && bmlContextRelease) {
-                bmlContextRelease(m_ctx);
+            if (m_Ctx && bmlContextRelease) {
+                bmlContextRelease(m_Ctx);
             }
         }
 
@@ -132,27 +132,27 @@ namespace bml {
         ScopedContext &operator=(const ScopedContext &) = delete;
 
         // Movable
-        ScopedContext(ScopedContext &&other) noexcept : m_ctx(other.m_ctx) {
-            other.m_ctx = nullptr;
+        ScopedContext(ScopedContext &&other) noexcept : m_Ctx(other.m_Ctx) {
+            other.m_Ctx = nullptr;
         }
 
         ScopedContext &operator=(ScopedContext &&other) noexcept {
             if (this != &other) {
-                if (m_ctx && bmlContextRelease) {
-                    bmlContextRelease(m_ctx);
+                if (m_Ctx && bmlContextRelease) {
+                    bmlContextRelease(m_Ctx);
                 }
-                m_ctx = other.m_ctx;
-                other.m_ctx = nullptr;
+                m_Ctx = other.m_Ctx;
+                other.m_Ctx = nullptr;
             }
             return *this;
         }
 
-        BML_Context handle() const noexcept { return m_ctx; }
-        Context context() const noexcept { return Context(m_ctx); }
-        explicit operator bool() const noexcept { return m_ctx != nullptr; }
+        BML_Context Handle() const noexcept { return m_Ctx; }
+        Context GetContext() const noexcept { return Context(m_Ctx); }
+        explicit operator bool() const noexcept { return m_Ctx != nullptr; }
 
     private:
-        BML_Context m_ctx;
+        BML_Context m_Ctx;
     };
 
     // ============================================================================

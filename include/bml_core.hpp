@@ -103,28 +103,28 @@ namespace bml {
      */
     class Mod {
     public:
-        Mod() : m_mod(nullptr) {}
+        Mod() : m_Mod(nullptr) {}
 
-        explicit Mod(BML_Mod mod) : m_mod(mod) {}
+        explicit Mod(BML_Mod mod) : m_Mod(mod) {}
 
         /**
          * @brief Get the underlying handle
          */
-        BML_Mod handle() const noexcept { return m_mod; }
+        BML_Mod Handle() const noexcept { return m_Mod; }
 
         /**
          * @brief Check if handle is valid
          */
-        explicit operator bool() const noexcept { return m_mod != nullptr; }
+        explicit operator bool() const noexcept { return m_Mod != nullptr; }
 
         /**
          * @brief Get the mod ID
          * @return Mod ID if available
          */
         std::optional<const char *> GetId() const {
-            if (!bmlGetModId || !m_mod) return std::nullopt;
+            if (!bmlGetModId || !m_Mod) return std::nullopt;
             const char *id = nullptr;
-            if (bmlGetModId(m_mod, &id) == BML_RESULT_OK && id) {
+            if (bmlGetModId(m_Mod, &id) == BML_RESULT_OK && id) {
                 return id;
             }
             return std::nullopt;
@@ -135,9 +135,9 @@ namespace bml {
          * @return Version if available
          */
         std::optional<BML_Version> GetVersion() const {
-            if (!bmlGetModVersion || !m_mod) return std::nullopt;
+            if (!bmlGetModVersion || !m_Mod) return std::nullopt;
             BML_Version version = BML_VERSION_INIT(0, 0, 0);
-            if (bmlGetModVersion(m_mod, &version) == BML_RESULT_OK) {
+            if (bmlGetModVersion(m_Mod, &version) == BML_RESULT_OK) {
                 return version;
             }
             return std::nullopt;
@@ -145,30 +145,30 @@ namespace bml {
 
         /**
          * @brief Request a capability for this mod
-         * @param capability_id Capability identifier
+         * @param capabilityId Capability identifier
          * @return true if request succeeded
          */
-        bool RequestCapability(const char *capability_id) const {
-            if (!bmlRequestCapability || !m_mod || !capability_id) return false;
-            return bmlRequestCapability(m_mod, capability_id) == BML_RESULT_OK;
+        bool RequestCapability(const char *capabilityId) const {
+            if (!bmlRequestCapability || !m_Mod || !capabilityId) return false;
+            return bmlRequestCapability(m_Mod, capabilityId) == BML_RESULT_OK;
         }
 
         /**
          * @brief Check if a capability is supported for this mod
-         * @param capability_id Capability identifier
+         * @param capabilityId Capability identifier
          * @return true if capability is supported
          */
-        bool CheckCapability(const char *capability_id) const {
-            if (!bmlCheckCapability || !m_mod || !capability_id) return false;
+        bool CheckCapability(const char *capabilityId) const {
+            if (!bmlCheckCapability || !m_Mod || !capabilityId) return false;
             BML_Bool supported = BML_FALSE;
-            if (bmlCheckCapability(m_mod, capability_id, &supported) == BML_RESULT_OK) {
+            if (bmlCheckCapability(m_Mod, capabilityId, &supported) == BML_RESULT_OK) {
                 return supported != BML_FALSE;
             }
             return false;
         }
 
     private:
-        BML_Mod m_mod;
+        BML_Mod m_Mod;
     };
 
     // ============================================================================
@@ -201,18 +201,18 @@ namespace bml {
     public:
         explicit CurrentModuleScope(BML_Mod mod) {
             if (bmlGetCurrentModule) {
-                previous_ = bmlGetCurrentModule();
-                has_previous_ = true;
+                m_Previous = bmlGetCurrentModule();
+                m_HasPrevious = true;
             }
             if (bmlSetCurrentModule) {
                 bmlSetCurrentModule(mod);
-                active_ = true;
+                m_Active = true;
             }
         }
 
         ~CurrentModuleScope() {
-            if (active_ && bmlSetCurrentModule) {
-                bmlSetCurrentModule(has_previous_ ? previous_ : nullptr);
+            if (m_Active && bmlSetCurrentModule) {
+                bmlSetCurrentModule(m_HasPrevious ? m_Previous : nullptr);
             }
         }
 
@@ -220,31 +220,31 @@ namespace bml {
         CurrentModuleScope &operator=(const CurrentModuleScope &) = delete;
 
         CurrentModuleScope(CurrentModuleScope &&other) noexcept
-            : previous_(other.previous_), has_previous_(other.has_previous_), active_(other.active_) {
-            other.active_ = false;
-            other.has_previous_ = false;
-            other.previous_ = nullptr;
+            : m_Previous(other.m_Previous), m_HasPrevious(other.m_HasPrevious), m_Active(other.m_Active) {
+            other.m_Active = false;
+            other.m_HasPrevious = false;
+            other.m_Previous = nullptr;
         }
 
         CurrentModuleScope &operator=(CurrentModuleScope &&other) noexcept {
             if (this != &other) {
-                if (active_ && bmlSetCurrentModule) {
-                    bmlSetCurrentModule(has_previous_ ? previous_ : nullptr);
+                if (m_Active && bmlSetCurrentModule) {
+                    bmlSetCurrentModule(m_HasPrevious ? m_Previous : nullptr);
                 }
-                previous_ = other.previous_;
-                has_previous_ = other.has_previous_;
-                active_ = other.active_;
-                other.active_ = false;
-                other.has_previous_ = false;
-                other.previous_ = nullptr;
+                m_Previous = other.m_Previous;
+                m_HasPrevious = other.m_HasPrevious;
+                m_Active = other.m_Active;
+                other.m_Active = false;
+                other.m_HasPrevious = false;
+                other.m_Previous = nullptr;
             }
             return *this;
         }
 
     private:
-        BML_Mod previous_{nullptr};
-        bool has_previous_{false};
-        bool active_{false};
+        BML_Mod m_Previous{nullptr};
+        bool m_HasPrevious{false};
+        bool m_Active{false};
     };
 
     // ============================================================================
@@ -287,16 +287,16 @@ namespace bml {
          * @param callback Callback to invoke on shutdown
          */
         ShutdownHook(BML_Mod mod, std::function<void()> callback)
-            : m_storage(std::make_unique<detail::ShutdownHookStorage>()) {
+            : m_Storage(std::make_unique<detail::ShutdownHookStorage>()) {
             if (!bmlRegisterShutdownHook || !mod) {
                 throw Exception(BML_RESULT_NOT_FOUND, "Shutdown hook API unavailable");
             }
 
-            m_storage->callback = std::move(callback);
+            m_Storage->callback = std::move(callback);
 
-            auto result = bmlRegisterShutdownHook(mod, detail::ShutdownHookStorage::Invoke, m_storage.get());
+            auto result = bmlRegisterShutdownHook(mod, detail::ShutdownHookStorage::Invoke, m_Storage.get());
             if (result != BML_RESULT_OK) {
-                m_storage.reset();
+                m_Storage.reset();
                 throw Exception(result, "Failed to register shutdown hook");
             }
         }
@@ -312,10 +312,10 @@ namespace bml {
         /**
          * @brief Check if hook is registered
          */
-        explicit operator bool() const noexcept { return m_storage != nullptr; }
+        explicit operator bool() const noexcept { return m_Storage != nullptr; }
 
     private:
-        std::unique_ptr<detail::ShutdownHookStorage> m_storage;
+        std::unique_ptr<detail::ShutdownHookStorage> m_Storage;
     };
 
     /**
@@ -331,7 +331,7 @@ namespace bml {
         auto *storage = new detail::ShutdownHookStorage();
         storage->callback = std::move(callback);
 
-        return bmlRegisterShutdownHook(mod.handle(), detail::ShutdownHookStorage::Invoke, storage) == BML_RESULT_OK;
+        return bmlRegisterShutdownHook(mod.Handle(), detail::ShutdownHookStorage::Invoke, storage) == BML_RESULT_OK;
     }
 } // namespace bml
 

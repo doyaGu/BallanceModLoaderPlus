@@ -23,15 +23,18 @@
 #include "bml_imc.h"
 
 #include "Context.h"
-#include "HotReloadMonitor.h"
+#include "HotReloadCoordinator.h"
 #include "ImcBus.h"
 #include "SemanticVersion.h"
+#include "Logging.h"
 
 namespace BML::Core {
-    // Destructor must be defined here where HotReloadMonitor is complete
+    // Destructor must be defined here where HotReloadCoordinator is complete
     ModuleRuntime::~ModuleRuntime() = default;
 
     namespace {
+        constexpr char kModuleRuntimeLogCategory[] = "module.runtime";
+
         uint16_t ClampVersionComponent(int value) {
             if (value < 0)
                 return 0;
@@ -104,8 +107,8 @@ namespace BML::Core {
     } // namespace
     bool ModuleRuntime::Initialize(const std::wstring &mods_dir, ModuleBootstrapDiagnostics &out_diag) {
         out_diag = {};
-        hot_reload_enabled_ = ShouldEnableHotReload();
-        discovered_mods_dir_ = mods_dir;
+        m_HotReloadEnabled = ShouldEnableHotReload();
+        m_DiscoveredModsDir = mods_dir;
 
         ManifestLoadResult manifestResult;
         if (!LoadManifestsFromDirectory(mods_dir, manifestResult)) {
@@ -128,7 +131,7 @@ namespace BML::Core {
         }
 
         RecordLoadOrder(loadOrder, out_diag);
-        discovered_order_ = loadOrder;
+        m_DiscoveredOrder = loadOrder;
 
         auto &ctx = Context::Instance();
         for (auto &manifest : manifestResult.manifests) {
@@ -152,11 +155,11 @@ namespace BML::Core {
             ctx.AddLoadedModule(std::move(module));
         }
 
-        if (hot_reload_enabled_) {
-            EnsureHotReloadMonitor();
-            UpdateHotReloadWatchList();
+        if (m_HotReloadEnabled) {
+            EnsureHotReloadCoordinator();
+            UpdateHotReloadRegistration();
         } else {
-            StopHotReloadMonitor();
+            StopHotReloadCoordinator();
         }
 
         return true;
@@ -164,7 +167,7 @@ namespace BML::Core {
 
     bool ModuleRuntime::DiscoverAndValidate(const std::wstring &mods_dir, ModuleBootstrapDiagnostics &out_diag) {
         out_diag = {};
-        hot_reload_enabled_ = ShouldEnableHotReload();
+        m_HotReloadEnabled = ShouldEnableHotReload();
 
         ManifestLoadResult manifestResult;
         if (!LoadManifestsFromDirectory(mods_dir, manifestResult)) {
@@ -189,8 +192,8 @@ namespace BML::Core {
         RecordLoadOrder(loadOrder, out_diag);
 
         // Store for later loading
-        discovered_mods_dir_ = mods_dir;
-        discovered_order_ = std::move(loadOrder);
+        m_DiscoveredModsDir = mods_dir;
+        m_DiscoveredOrder = std::move(loadOrder);
 
         // Register manifests with context
         auto &ctx = Context::Instance();
@@ -204,7 +207,7 @@ namespace BML::Core {
     bool ModuleRuntime::LoadDiscovered(ModuleBootstrapDiagnostics &out_diag) {
         out_diag = {};
 
-        if (discovered_order_.empty()) {
+        if (m_DiscoveredOrder.empty()) {
             // Nothing discovered yet
             return false;
         }
@@ -213,7 +216,7 @@ namespace BML::Core {
         std::vector<LoadedModule> loadedModules;
         ModuleLoadError loadError;
 
-        if (!LoadModules(discovered_order_,
+        if (!LoadModules(m_DiscoveredOrder,
                          ctx,
                          &bmlGetProcAddress,
                          loadedModules,
@@ -228,20 +231,20 @@ namespace BML::Core {
             ctx.AddLoadedModule(std::move(module));
         }
 
-        RecordLoadOrder(discovered_order_, out_diag);
+        RecordLoadOrder(m_DiscoveredOrder, out_diag);
 
-        if (hot_reload_enabled_) {
-            EnsureHotReloadMonitor();
-            UpdateHotReloadWatchList();
+        if (m_HotReloadEnabled) {
+            EnsureHotReloadCoordinator();
+            UpdateHotReloadRegistration();
         } else {
-            StopHotReloadMonitor();
+            StopHotReloadCoordinator();
         }
         return true;
     }
 
     void ModuleRuntime::Shutdown() {
-        diag_callback_ = nullptr;
-        StopHotReloadMonitor();
+        m_DiagCallback = nullptr;
+        StopHotReloadCoordinator();
         Context::Instance().ShutdownModules();
     }
 
@@ -256,23 +259,23 @@ namespace BML::Core {
 
     bool ModuleRuntime::ReloadModules(ModuleBootstrapDiagnostics &out_diag) {
         out_diag = {};
-        std::unique_lock lock(reload_mutex_);
-        if (reload_in_progress_) {
+        std::unique_lock lock(m_ReloadMutex);
+        if (m_ReloadInProgress) {
             out_diag.load_error.message = "Reload already in progress";
             return false;
         }
-        reload_in_progress_ = true;
+        m_ReloadInProgress = true;
         lock.unlock();
 
         bool success = ReloadModulesInternal(out_diag);
 
         lock.lock();
-        reload_in_progress_ = false;
+        m_ReloadInProgress = false;
         lock.unlock();
 
-        if (hot_reload_enabled_) {
-            EnsureHotReloadMonitor();
-            UpdateHotReloadWatchList();
+        if (m_HotReloadEnabled) {
+            EnsureHotReloadCoordinator();
+            UpdateHotReloadRegistration();
         }
 
         ApplyDiagnostics(out_diag);
@@ -280,11 +283,11 @@ namespace BML::Core {
     }
 
     void ModuleRuntime::SetDiagnosticsCallback(std::function<void(const ModuleBootstrapDiagnostics &)> callback) {
-        diag_callback_ = std::move(callback);
+        m_DiagCallback = std::move(callback);
     }
 
     bool ModuleRuntime::ReloadModulesInternal(ModuleBootstrapDiagnostics &out_diag) {
-        if (discovered_mods_dir_.empty()) {
+        if (m_DiscoveredModsDir.empty()) {
             out_diag.load_error.message = "Hot reload requested before discovery";
             return false;
         }
@@ -296,7 +299,7 @@ namespace BML::Core {
         // Note: Extensions are cleaned up per-provider in ShutdownModules()
 
         ManifestLoadResult manifestResult;
-        if (!LoadManifestsFromDirectory(discovered_mods_dir_, manifestResult)) {
+        if (!LoadManifestsFromDirectory(m_DiscoveredModsDir, manifestResult)) {
             out_diag.manifest_errors = manifestResult.errors;
             return false;
         }
@@ -315,7 +318,7 @@ namespace BML::Core {
         }
 
         RecordLoadOrder(loadOrder, out_diag);
-        discovered_order_ = loadOrder;
+        m_DiscoveredOrder = loadOrder;
 
         for (auto &manifest : manifestResult.manifests) {
             ctx.RegisterManifest(std::move(manifest));
@@ -355,39 +358,106 @@ namespace BML::Core {
             if (!module.manifest)
                 continue;
             auto payload = BuildLifecyclePayload(*module.manifest);
-            ImcBus::Instance().Publish(topic_id, payload.data(), payload.size(), nullptr);
+            ImcBus::Instance().Publish(topic_id, payload.data(), payload.size());
         }
     }
 
-    void ModuleRuntime::UpdateHotReloadWatchList() {
-        if (!hot_reload_enabled_ || !hot_reload_monitor_)
+    void ModuleRuntime::UpdateHotReloadRegistration() {
+        if (!m_HotReloadEnabled || !m_HotReloadCoordinator)
             return;
-        hot_reload_monitor_->UpdateWatchList(BuildWatchPaths());
+
+        // Unregister all existing modules first
+        auto registered = m_HotReloadCoordinator->GetRegisteredModules();
+        for (const auto &id : registered) {
+            m_HotReloadCoordinator->UnregisterModule(id);
+        }
+
+        // Register loaded modules for hot reload
+        const auto &manifests = Context::Instance().GetManifests();
+        for (const auto &manifest : manifests) {
+            if (!manifest)
+                continue;
+
+            // Build DLL path from manifest
+            std::wstring dll_path;
+            if (!manifest->package.entry.empty()) {
+                std::filesystem::path entry_path(manifest->package.entry);
+                if (entry_path.is_relative()) {
+                    std::filesystem::path base(manifest->directory);
+                    entry_path = base / entry_path;
+                }
+                dll_path = entry_path.lexically_normal().wstring();
+            } else if (!manifest->package.id.empty()) {
+                std::filesystem::path base(manifest->directory);
+                dll_path = (base / (manifest->package.id + ".dll")).lexically_normal().wstring();
+            }
+
+            if (dll_path.empty())
+                continue;
+
+            // Skip if in cache directory
+            if (IsCacheSubPath(std::filesystem::path(dll_path)))
+                continue;
+
+            HotReloadModuleEntry entry;
+            entry.id = manifest->package.id;
+            entry.dll_path = dll_path;
+            entry.watch_path = std::filesystem::path(manifest->directory).lexically_normal().wstring();
+            entry.manifest = manifest.get();
+
+            m_HotReloadCoordinator->RegisterModule(entry);
+        }
     }
 
-    void ModuleRuntime::EnsureHotReloadMonitor() {
-        if (!hot_reload_enabled_)
+    void ModuleRuntime::EnsureHotReloadCoordinator() {
+        if (!m_HotReloadEnabled)
             return;
-        if (!hot_reload_monitor_) {
-            hot_reload_monitor_ = std::make_unique<HotReloadMonitor>();
-            hot_reload_monitor_->SetCallback([this] { HandleHotReloadTrigger(); });
-            hot_reload_monitor_->Start();
+        if (!m_HotReloadCoordinator) {
+            m_HotReloadCoordinator = std::make_unique<HotReloadCoordinator>(Context::Instance());
+
+            HotReloadSettings settings;
+            settings.enabled = true;
+            settings.debounce = std::chrono::milliseconds(500);
+            settings.temp_directory = GetHotReloadTempDirectory();
+            m_HotReloadCoordinator->Configure(settings);
+
+            m_HotReloadCoordinator->SetNotifyCallback(
+                [this](const std::string &mod_id, ReloadResult result,
+                       unsigned int version, ReloadFailure failure) {
+                    HandleHotReloadNotify(mod_id, result, version, failure);
+                });
+
+            m_HotReloadCoordinator->Start();
         }
     }
 
-    void ModuleRuntime::StopHotReloadMonitor() {
-        if (hot_reload_monitor_) {
-            hot_reload_monitor_->Stop();
-            hot_reload_monitor_.reset();
+    void ModuleRuntime::StopHotReloadCoordinator() {
+        if (m_HotReloadCoordinator) {
+            m_HotReloadCoordinator->Stop();
+            m_HotReloadCoordinator.reset();
         }
     }
 
-    void ModuleRuntime::HandleHotReloadTrigger() {
-        ModuleBootstrapDiagnostics diag;
-        if (ReloadModules(diag)) {
-            OutputDebugStringA("[BML hot reload] Modules reloaded\n");
-        } else {
-            OutputDebugStringA("[BML hot reload] Reload failed\n");
+    void ModuleRuntime::HandleHotReloadNotify(const std::string &mod_id, ReloadResult result,
+                                              unsigned int version, ReloadFailure failure) {
+        // For now, we still do a full reload when any module changes
+        // In the future, this could be optimized to reload only the changed module
+        if (result == ReloadResult::Success || result == ReloadResult::RolledBack) {
+            CoreLog(BML_LOG_INFO, kModuleRuntimeLogCategory,
+                    "Hot reload notification: mod '%s' version %u, result=%d",
+                    mod_id.c_str(), version, static_cast<int>(result));
+
+            // Trigger full reload for now (matching old behavior)
+            ModuleBootstrapDiagnostics diag;
+            if (ReloadModules(diag)) {
+                CoreLog(BML_LOG_INFO, kModuleRuntimeLogCategory, "Hot reload succeeded");
+            } else {
+                CoreLog(BML_LOG_ERROR, kModuleRuntimeLogCategory, "Hot reload failed");
+            }
+        } else if (result != ReloadResult::NoChange) {
+            CoreLog(BML_LOG_WARN, kModuleRuntimeLogCategory,
+                    "Hot reload failed for mod '%s': result=%d, failure=%d",
+                    mod_id.c_str(), static_cast<int>(result), static_cast<int>(failure));
         }
     }
 
@@ -395,33 +465,20 @@ namespace BML::Core {
         return IsHotReloadEnvEnabled();
     }
 
-    std::vector<std::wstring> ModuleRuntime::BuildWatchPaths() const {
-        std::vector<std::wstring> paths;
-        if (!discovered_mods_dir_.empty()) {
-            std::filesystem::path mods(discovered_mods_dir_);
-            paths.emplace_back(mods.lexically_normal().wstring());
+    std::wstring ModuleRuntime::GetHotReloadTempDirectory() const {
+        // Use system temp directory with BML subfolder
+        wchar_t temp_path[MAX_PATH];
+        DWORD len = GetTempPathW(MAX_PATH, temp_path);
+        if (len == 0 || len >= MAX_PATH) {
+            return L"";
         }
-
-        const auto &manifests = Context::Instance().GetManifests();
-        for (const auto &manifest : manifests) {
-            if (!manifest)
-                continue;
-            if (!manifest->directory.empty()) {
-                std::filesystem::path dir(manifest->directory);
-                if (!IsCacheSubPath(dir)) {
-                    paths.emplace_back(dir.lexically_normal().wstring());
-                }
-            }
-            if (!manifest->source_archive.empty()) {
-                std::filesystem::path archive(manifest->source_archive);
-                paths.emplace_back(archive.lexically_normal().wstring());
-            }
-        }
-        return paths;
+        std::filesystem::path temp_dir(temp_path);
+        temp_dir /= L"BML_HotReload";
+        return temp_dir.wstring();
     }
 
     void ModuleRuntime::ApplyDiagnostics(const ModuleBootstrapDiagnostics &diag) const {
-        if (diag_callback_)
-            diag_callback_(diag);
+        if (m_DiagCallback)
+            m_DiagCallback(diag);
     }
 } // namespace BML::Core

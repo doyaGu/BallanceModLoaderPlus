@@ -21,8 +21,12 @@ namespace BML::Core {
         return ImcBus::Instance().GetRpcId(name, out_id);
     }
 
-    BML_Result BML_API_ImcPublish(BML_TopicId topic, const void *data, size_t size, const BML_ImcMessage *msg) {
-        return ImcBus::Instance().Publish(topic, data, size, msg);
+    BML_Result BML_API_ImcPublish(BML_TopicId topic, const void *data, size_t size) {
+        return ImcBus::Instance().Publish(topic, data, size);
+    }
+
+    BML_Result BML_API_ImcPublishEx(BML_TopicId topic, const BML_ImcMessage *msg) {
+        return ImcBus::Instance().PublishEx(topic, msg);
     }
 
     BML_Result BML_API_ImcPublishBuffer(BML_TopicId topic, const BML_ImcBuffer *buffer) {
@@ -135,6 +139,7 @@ namespace BML::Core {
 
         // Pub/Sub
         BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcPublish, "imc", BML_API_ImcPublish, BML_CAP_IMC_BASIC);
+        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcPublishEx, "imc", BML_API_ImcPublishEx, BML_CAP_IMC_BASIC);
         BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcPublishBuffer, "imc", BML_API_ImcPublishBuffer, BML_CAP_IMC_BASIC | BML_CAP_IMC_BUFFER);
         BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcPublishMulti, "imc", BML_API_ImcPublishMulti, BML_CAP_IMC_BASIC);
         BML_REGISTER_API_GUARDED_WITH_CAPS(bmlImcSubscribe, "imc", BML_API_ImcSubscribe, BML_CAP_IMC_BASIC);

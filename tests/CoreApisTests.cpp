@@ -293,7 +293,7 @@ TEST_F(CoreApisTests, ImcBroadcastPreservesPublishOrderPerSubscriber) {
     constexpr size_t kMessages = 256;
     for (size_t i = 0; i < kMessages; ++i) {
         uint32_t payload = static_cast<uint32_t>(i);
-        ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic_id, &payload, sizeof(payload), nullptr));
+        ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic_id, &payload, sizeof(payload)));
     }
 
     ImcBus::Instance().Pump(0);

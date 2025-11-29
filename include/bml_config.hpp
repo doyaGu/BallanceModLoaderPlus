@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file bml_config.hpp
  * @brief BML C++ Configuration Wrapper
  * 
@@ -33,7 +33,7 @@ namespace bml {
          * @brief Construct a config wrapper for a mod
          * @param mod The mod handle
          */
-        explicit Config(BML_Mod mod) : m_mod(mod) {}
+        explicit Config(BML_Mod mod) : m_Mod(mod) {}
 
         // ========================================================================
         // String Accessors
@@ -49,7 +49,7 @@ namespace bml {
             if (!bmlConfigGet) return std::nullopt;
             BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
             BML_ConfigValue value = {sizeof(BML_ConfigValue), BML_CONFIG_STRING, {}};
-            auto result = bmlConfigGet(m_mod, &cfg_key, &value);
+            auto result = bmlConfigGet(m_Mod, &cfg_key, &value);
             if (result == BML_RESULT_OK && value.type == BML_CONFIG_STRING) {
                 return std::string(value.data.string_value);
             }
@@ -68,7 +68,7 @@ namespace bml {
             BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
             BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_STRING, {}};
             cfg_value.data.string_value = value.data();
-            return bmlConfigSet(m_mod, &cfg_key, &cfg_value) == BML_RESULT_OK;
+            return bmlConfigSet(m_Mod, &cfg_key, &cfg_value) == BML_RESULT_OK;
         }
 
         // ========================================================================
@@ -85,7 +85,7 @@ namespace bml {
             if (!bmlConfigGet) return std::nullopt;
             BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
             BML_ConfigValue value = {sizeof(BML_ConfigValue), BML_CONFIG_INT, {}};
-            auto result = bmlConfigGet(m_mod, &cfg_key, &value);
+            auto result = bmlConfigGet(m_Mod, &cfg_key, &value);
             if (result == BML_RESULT_OK && value.type == BML_CONFIG_INT) {
                 return value.data.int_value;
             }
@@ -104,7 +104,7 @@ namespace bml {
             BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
             BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_INT, {}};
             cfg_value.data.int_value = value;
-            return bmlConfigSet(m_mod, &cfg_key, &cfg_value) == BML_RESULT_OK;
+            return bmlConfigSet(m_Mod, &cfg_key, &cfg_value) == BML_RESULT_OK;
         }
 
         // ========================================================================
@@ -121,7 +121,7 @@ namespace bml {
             if (!bmlConfigGet) return std::nullopt;
             BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
             BML_ConfigValue value = {sizeof(BML_ConfigValue), BML_CONFIG_FLOAT, {}};
-            auto result = bmlConfigGet(m_mod, &cfg_key, &value);
+            auto result = bmlConfigGet(m_Mod, &cfg_key, &value);
             if (result == BML_RESULT_OK && value.type == BML_CONFIG_FLOAT) {
                 return value.data.float_value;
             }
@@ -140,7 +140,7 @@ namespace bml {
             BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
             BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_FLOAT, {}};
             cfg_value.data.float_value = value;
-            return bmlConfigSet(m_mod, &cfg_key, &cfg_value) == BML_RESULT_OK;
+            return bmlConfigSet(m_Mod, &cfg_key, &cfg_value) == BML_RESULT_OK;
         }
 
         // ========================================================================
@@ -157,7 +157,7 @@ namespace bml {
             if (!bmlConfigGet) return std::nullopt;
             BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
             BML_ConfigValue value = {sizeof(BML_ConfigValue), BML_CONFIG_BOOL, {}};
-            auto result = bmlConfigGet(m_mod, &cfg_key, &value);
+            auto result = bmlConfigGet(m_Mod, &cfg_key, &value);
             if (result == BML_RESULT_OK && value.type == BML_CONFIG_BOOL) {
                 return value.data.bool_value != 0;
             }
@@ -176,7 +176,7 @@ namespace bml {
             BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
             BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_BOOL, {}};
             cfg_value.data.bool_value = value ? 1 : 0;
-            return bmlConfigSet(m_mod, &cfg_key, &cfg_value) == BML_RESULT_OK;
+            return bmlConfigSet(m_Mod, &cfg_key, &cfg_value) == BML_RESULT_OK;
         }
 
         // ========================================================================
@@ -192,11 +192,11 @@ namespace bml {
         bool Reset(std::string_view category, std::string_view key) {
             if (!bmlConfigReset) return false;
             BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
-            return bmlConfigReset(m_mod, &cfg_key) == BML_RESULT_OK;
+            return bmlConfigReset(m_Mod, &cfg_key) == BML_RESULT_OK;
         }
 
     private:
-        BML_Mod m_mod;
+        BML_Mod m_Mod;
     };
 
     // ============================================================================
@@ -253,15 +253,15 @@ namespace bml {
          * @brief Begin a new configuration batch
          * @param mod The mod handle
          */
-        explicit ConfigBatch(BML_Mod mod) : m_batch(nullptr), m_committed(false) {
+        explicit ConfigBatch(BML_Mod mod) : m_Batch(nullptr), m_Committed(false) {
             if (bmlConfigBatchBegin) {
-                bmlConfigBatchBegin(mod, &m_batch);
+                bmlConfigBatchBegin(mod, &m_Batch);
             }
         }
 
         ~ConfigBatch() {
-            if (m_batch && !m_committed && bmlConfigBatchDiscard) {
-                bmlConfigBatchDiscard(m_batch);
+            if (m_Batch && !m_Committed && bmlConfigBatchDiscard) {
+                bmlConfigBatchDiscard(m_Batch);
             }
         }
 
@@ -270,20 +270,20 @@ namespace bml {
         ConfigBatch &operator=(const ConfigBatch &) = delete;
 
         ConfigBatch(ConfigBatch &&other) noexcept
-            : m_batch(other.m_batch), m_committed(other.m_committed) {
-            other.m_batch = nullptr;
-            other.m_committed = true;
+            : m_Batch(other.m_Batch), m_Committed(other.m_Committed) {
+            other.m_Batch = nullptr;
+            other.m_Committed = true;
         }
 
         ConfigBatch &operator=(ConfigBatch &&other) noexcept {
             if (this != &other) {
-                if (m_batch && !m_committed && bmlConfigBatchDiscard) {
-                    bmlConfigBatchDiscard(m_batch);
+                if (m_Batch && !m_Committed && bmlConfigBatchDiscard) {
+                    bmlConfigBatchDiscard(m_Batch);
                 }
-                m_batch = other.m_batch;
-                m_committed = other.m_committed;
-                other.m_batch = nullptr;
-                other.m_committed = true;
+                m_Batch = other.m_Batch;
+                m_Committed = other.m_Committed;
+                other.m_Batch = nullptr;
+                other.m_Committed = true;
             }
             return *this;
         }
@@ -292,13 +292,13 @@ namespace bml {
          * @brief Check if the batch was successfully created
          * @return true if batch handle is valid
          */
-        [[nodiscard]] bool Valid() const { return m_batch != nullptr; }
+        [[nodiscard]] bool Valid() const { return m_Batch != nullptr; }
 
         /**
          * @brief Check if the batch has been committed
          * @return true if already committed
          */
-        [[nodiscard]] bool IsCommitted() const { return m_committed; }
+        [[nodiscard]] bool IsCommitted() const { return m_Committed; }
 
         /**
          * @brief Queue a generic config value change
@@ -307,8 +307,8 @@ namespace bml {
          * @return true if successfully queued
          */
         bool Set(const BML_ConfigKey *key, const BML_ConfigValue *value) {
-            if (!m_batch || m_committed || !bmlConfigBatchSet) return false;
-            return bmlConfigBatchSet(m_batch, key, value) == BML_RESULT_OK;
+            if (!m_Batch || m_Committed || !bmlConfigBatchSet) return false;
+            return bmlConfigBatchSet(m_Batch, key, value) == BML_RESULT_OK;
         }
 
         /**
@@ -356,11 +356,11 @@ namespace bml {
          * @return true if all changes were successfully applied
          */
         bool Commit() {
-            if (!m_batch || m_committed || !bmlConfigBatchCommit) return false;
-            BML_Result result = bmlConfigBatchCommit(m_batch);
+            if (!m_Batch || m_Committed || !bmlConfigBatchCommit) return false;
+            BML_Result result = bmlConfigBatchCommit(m_Batch);
             if (result == BML_RESULT_OK) {
-                m_committed = true;
-                m_batch = nullptr; // Handle consumed by commit
+                m_Committed = true;
+                m_Batch = nullptr; // Handle consumed by commit
                 return true;
             }
             return false;
@@ -371,11 +371,11 @@ namespace bml {
          * @return true if successfully discarded
          */
         bool Discard() {
-            if (!m_batch || m_committed || !bmlConfigBatchDiscard) return false;
-            BML_Result result = bmlConfigBatchDiscard(m_batch);
+            if (!m_Batch || m_Committed || !bmlConfigBatchDiscard) return false;
+            BML_Result result = bmlConfigBatchDiscard(m_Batch);
             if (result == BML_RESULT_OK) {
-                m_committed = true; // Mark as consumed
-                m_batch = nullptr;
+                m_Committed = true; // Mark as consumed
+                m_Batch = nullptr;
                 return true;
             }
             return false;
@@ -384,11 +384,11 @@ namespace bml {
         /**
          * @brief Get the underlying handle (for advanced usage)
          */
-        [[nodiscard]] BML_ConfigBatch Handle() const { return m_batch; }
+        [[nodiscard]] BML_ConfigBatch Handle() const { return m_Batch; }
 
     private:
-        BML_ConfigBatch m_batch;
-        bool m_committed;
+        BML_ConfigBatch m_Batch;
+        bool m_Committed;
     };
 
     /**
