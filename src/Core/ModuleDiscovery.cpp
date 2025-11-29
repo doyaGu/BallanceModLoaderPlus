@@ -6,6 +6,7 @@
 #include <sstream>
 #include <vector>
 
+#include "Logging.h"
 #include "ModManifest.h"
 #include "PathUtils.h"
 #include "StringUtils.h"
@@ -14,6 +15,7 @@ namespace BML::Core {
     namespace fs = std::filesystem;
 
     namespace {
+        constexpr char kDiscoveryLogCategory[] = "module.discovery";
         constexpr const wchar_t *kArchiveExtension = L".bp";
         constexpr const wchar_t *kArchiveCacheDir = L".bp-cache";
 
@@ -119,8 +121,13 @@ namespace BML::Core {
         fs::path root(mods_dir);
         std::error_code ec;
         if (!fs::exists(root, ec) || !fs::is_directory(root, ec)) {
+            CoreLog(BML_LOG_DEBUG, kDiscoveryLogCategory,
+                    "Mods directory does not exist: %s", utils::Utf16ToUtf8(mods_dir).c_str());
             return true;
         }
+
+        CoreLog(BML_LOG_INFO, kDiscoveryLogCategory,
+                "Scanning mods directory: %s", utils::Utf16ToUtf8(mods_dir).c_str());
 
         bool cacheInitialized = false;
         fs::path cacheRoot;
@@ -153,6 +160,10 @@ namespace BML::Core {
             } else {
                 manifest->source_archive.clear();
             }
+            CoreLog(BML_LOG_DEBUG, kDiscoveryLogCategory,
+                    "Loaded manifest: %s from %s",
+                    manifest->package.id.c_str(),
+                    utils::Utf16ToUtf8(manifest_path.wstring()).c_str());
             out_result.manifests.emplace_back(std::move(manifest));
         };
 
@@ -183,6 +194,9 @@ namespace BML::Core {
             }
         }
 
+        CoreLog(BML_LOG_INFO, kDiscoveryLogCategory,
+                "Discovery complete: %zu manifests, %zu errors",
+                out_result.manifests.size(), out_result.errors.size());
         return out_result.errors.empty();
     }
 

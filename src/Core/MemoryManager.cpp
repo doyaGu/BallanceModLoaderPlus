@@ -1,4 +1,4 @@
-#include "MemoryManager.h"
+﻿#include "MemoryManager.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -257,9 +257,9 @@ namespace BML::Core {
                 64 // thread cache size
             );
 
-            std::lock_guard<std::mutex> lock(m_pool_mutex);
-            m_pools.push_back(std::move(pool_impl));
-            *out_pool = reinterpret_cast<BML_MemoryPool>(m_pools.back().get());
+            std::lock_guard<std::mutex> lock(m_PoolMutex);
+            m_Pools.push_back(std::move(pool_impl));
+            *out_pool = reinterpret_cast<BML_MemoryPool>(m_Pools.back().get());
 
             return BML_RESULT_OK;
         } catch (const std::bad_alloc &) {
@@ -308,15 +308,15 @@ namespace BML::Core {
             return;
         }
 
-        std::lock_guard<std::mutex> lock(m_pool_mutex);
+        std::lock_guard<std::mutex> lock(m_PoolMutex);
 
-        auto it = std::find_if(m_pools.begin(), m_pools.end(),
+        auto it = std::find_if(m_Pools.begin(), m_Pools.end(),
                                [pool](const std::unique_ptr<MemoryPoolImpl> &p) {
                                    return p.get() == reinterpret_cast<MemoryPoolImpl *>(pool);
                                }
         );
 
-        if (it != m_pools.end()) {
+        if (it != m_Pools.end()) {
             // Check for leaked blocks
             auto *pool_impl = it->get();
             uint64_t allocs = pool_impl->alloc_count.load(std::memory_order_relaxed);
@@ -329,7 +329,7 @@ namespace BML::Core {
                          (unsigned long long) (allocs - frees), pool_impl->block_size);
                 OutputDebugStringA(buf);
             }
-            m_pools.erase(it);
+            m_Pools.erase(it);
         }
     }
 
@@ -344,11 +344,11 @@ namespace BML::Core {
                                          "Memory tracking is disabled", 0);
         }
 
-        out_stats->total_allocated = m_total_allocated.load(std::memory_order_relaxed);
-        out_stats->peak_allocated = m_peak_allocated.load(std::memory_order_relaxed);
-        out_stats->total_alloc_count = m_alloc_count.load(std::memory_order_relaxed);
-        out_stats->total_free_count = m_free_count.load(std::memory_order_relaxed);
-        out_stats->active_alloc_count = m_active_alloc_count.load(std::memory_order_relaxed);
+        out_stats->total_allocated = m_TotalAllocated.load(std::memory_order_relaxed);
+        out_stats->peak_allocated = m_PeakAllocated.load(std::memory_order_relaxed);
+        out_stats->total_alloc_count = m_AllocCount.load(std::memory_order_relaxed);
+        out_stats->total_free_count = m_FreeCount.load(std::memory_order_relaxed);
+        out_stats->active_alloc_count = m_ActiveAllocCount.load(std::memory_order_relaxed);
 
         return BML_RESULT_OK;
     }
@@ -421,15 +421,15 @@ namespace BML::Core {
     }
 
     void MemoryManager::TrackAllocation(size_t size) {
-        m_alloc_count.fetch_add(1, std::memory_order_relaxed);
-        m_active_alloc_count.fetch_add(1, std::memory_order_relaxed);
+        m_AllocCount.fetch_add(1, std::memory_order_relaxed);
+        m_ActiveAllocCount.fetch_add(1, std::memory_order_relaxed);
 
-        uint64_t new_total = m_total_allocated.fetch_add(size, std::memory_order_relaxed) + size;
+        uint64_t new_total = m_TotalAllocated.fetch_add(size, std::memory_order_relaxed) + size;
 
         // Update peak (racy but acceptable for statistics)
-        uint64_t current_peak = m_peak_allocated.load(std::memory_order_relaxed);
+        uint64_t current_peak = m_PeakAllocated.load(std::memory_order_relaxed);
         while (new_total > current_peak) {
-            if (m_peak_allocated.compare_exchange_weak(current_peak, new_total,
+            if (m_PeakAllocated.compare_exchange_weak(current_peak, new_total,
                                                        std::memory_order_relaxed)) {
                 break;
             }
@@ -437,12 +437,12 @@ namespace BML::Core {
     }
 
     void MemoryManager::TrackDeallocation(size_t size) {
-        m_free_count.fetch_add(1, std::memory_order_relaxed);
+        m_FreeCount.fetch_add(1, std::memory_order_relaxed);
 
         // Use compare-exchange to safely decrement active count without underflow
-        uint64_t current = m_active_alloc_count.load(std::memory_order_relaxed);
+        uint64_t current = m_ActiveAllocCount.load(std::memory_order_relaxed);
         while (current > 0) {
-            if (m_active_alloc_count.compare_exchange_weak(current, current - 1,
+            if (m_ActiveAllocCount.compare_exchange_weak(current, current - 1,
                                                            std::memory_order_relaxed, std::memory_order_relaxed)) {
                 break;
             }
@@ -450,9 +450,9 @@ namespace BML::Core {
 
         if (size > 0) {
             // Use compare-exchange to safely subtract without underflow
-            uint64_t total = m_total_allocated.load(std::memory_order_relaxed);
+            uint64_t total = m_TotalAllocated.load(std::memory_order_relaxed);
             while (total >= size) {
-                if (m_total_allocated.compare_exchange_weak(total, total - size,
+                if (m_TotalAllocated.compare_exchange_weak(total, total - size,
                                                             std::memory_order_relaxed, std::memory_order_relaxed)) {
                     break;
                 }
@@ -469,9 +469,9 @@ namespace BML::Core {
     }
 
     bool MemoryManager::IsValidPool(BML_MemoryPool pool) const {
-        std::lock_guard<std::mutex> lock(const_cast<std::mutex &>(m_pool_mutex));
+        std::lock_guard<std::mutex> lock(const_cast<std::mutex &>(m_PoolMutex));
 
-        return std::any_of(m_pools.begin(), m_pools.end(),
+        return std::any_of(m_Pools.begin(), m_Pools.end(),
                            [pool](const std::unique_ptr<MemoryPoolImpl> &p) {
                                return p.get() == reinterpret_cast<MemoryPoolImpl *>(pool);
                            }
@@ -480,11 +480,11 @@ namespace BML::Core {
 
 #if defined(BML_TEST)
     void MemoryManager::ResetStatsForTesting() {
-        m_total_allocated.store(0, std::memory_order_relaxed);
-        m_peak_allocated.store(0, std::memory_order_relaxed);
-        m_alloc_count.store(0, std::memory_order_relaxed);
-        m_free_count.store(0, std::memory_order_relaxed);
-        m_active_alloc_count.store(0, std::memory_order_relaxed);
+        m_TotalAllocated.store(0, std::memory_order_relaxed);
+        m_PeakAllocated.store(0, std::memory_order_relaxed);
+        m_AllocCount.store(0, std::memory_order_relaxed);
+        m_FreeCount.store(0, std::memory_order_relaxed);
+        m_ActiveAllocCount.store(0, std::memory_order_relaxed);
     }
 #endif
 } // namespace BML::Core

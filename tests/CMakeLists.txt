@@ -93,6 +93,7 @@ add_bml_test(ManifestParserTest
 add_bml_test(ModuleDiscoveryTest
         SOURCES
         ModuleDiscoveryTest.cpp
+        TestLoggingStub.cpp
         ${BML_SOURCE_DIR}/Core/ModuleDiscovery.cpp
         ${BML_SOURCE_DIR}/Core/ModManifest.cpp
         ${BML_SOURCE_DIR}/Core/DependencyResolver.cpp
@@ -104,6 +105,7 @@ add_bml_test(ModuleDiscoveryTest
 add_bml_test(DependencyResolverTest
         SOURCES
         DependencyResolverTest.cpp
+        TestLoggingStub.cpp
         ${BML_SOURCE_DIR}/Core/DependencyResolver.cpp
         ${BML_SOURCE_DIR}/Core/SemanticVersion.cpp
         DEPENDENCIES
@@ -125,6 +127,11 @@ add_bml_test(ImcBusTest
         DEPENDENCIES
         BMLUtils
         tomlplusplus::tomlplusplus
+)
+
+add_bml_test(ImcCppWrapperTest
+        SOURCES
+        ImcCppWrapperTest.cpp
 )
 
 add_bml_test(LoaderTest
@@ -342,6 +349,62 @@ add_bml_test(CoreErrorsGuardTests
         tomlplusplus::tomlplusplus
 )
 
+# FileSystemWatcher Tests (unit tests for efsw wrapper)
+add_bml_test(FileSystemWatcherTests
+        SOURCES
+        FileSystemWatcherTests.cpp
+        TestLoggingStub.cpp
+        ${BML_SOURCE_DIR}/Core/FileSystemWatcher.cpp
+        DEPENDENCIES
+        BMLUtils
+        efsw
+)
+
+# ReloadableModuleSlot Tests (unit tests for DLL version management)
+add_bml_test(ReloadableModuleSlotTests
+        SOURCES
+        ReloadableModuleSlotTests.cpp
+        ModuleLoaderStub.cpp
+        ExportStub.cpp
+        ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
+        ${BML_SOURCE_DIR}/Core/Context.cpp
+        ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
+        ${BML_SOURCE_DIR}/Core/Logging.cpp
+        ${BML_SOURCE_DIR}/Core/ModManifest.cpp
+        ${BML_SOURCE_DIR}/Core/ReloadableModuleSlot.cpp
+        ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
+        ${BML_SOURCE_DIR}/Core/SemanticVersion.cpp
+        DEPENDENCIES
+        BMLUtils
+        tomlplusplus::tomlplusplus
+)
+
+# HotReloadCoordinator Tests (unit tests for reload coordination)
+add_bml_test(HotReloadCoordinatorTests
+        SOURCES
+        HotReloadCoordinatorTests.cpp
+        ModuleLoaderStub.cpp
+        ExportStub.cpp
+        ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
+        ${BML_SOURCE_DIR}/Core/Context.cpp
+        ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
+        ${BML_SOURCE_DIR}/Core/FileSystemWatcher.cpp
+        ${BML_SOURCE_DIR}/Core/HotReloadCoordinator.cpp
+        ${BML_SOURCE_DIR}/Core/Logging.cpp
+        ${BML_SOURCE_DIR}/Core/ModManifest.cpp
+        ${BML_SOURCE_DIR}/Core/ReloadableModuleSlot.cpp
+        ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
+        ${BML_SOURCE_DIR}/Core/SemanticVersion.cpp
+        DEPENDENCIES
+        BMLUtils
+        tomlplusplus::tomlplusplus
+        efsw
+)
+
 # HotReloadIntegrationTests requires full BML runtime with exported functions.
 # TODO: Link to BML.dll for proper integration testing or mock bmlGetProcAddress.
 # Disabled for now as it's an integration test.
@@ -363,8 +426,9 @@ add_bml_test(HotReloadIntegrationTests
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DependencyResolver.cpp
-        ${BML_SOURCE_DIR}/Core/HotReloadMonitor.cpp
-        ${BML_SOURCE_DIR}/Core/HotReloadWatchList.cpp
+        ${BML_SOURCE_DIR}/Core/FileSystemWatcher.cpp
+        ${BML_SOURCE_DIR}/Core/ReloadableModuleSlot.cpp
+        ${BML_SOURCE_DIR}/Core/HotReloadCoordinator.cpp
         ${BML_SOURCE_DIR}/Core/ImcBus.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ModuleDiscovery.cpp
@@ -374,6 +438,7 @@ add_bml_test(HotReloadIntegrationTests
         DEPENDENCIES
         BMLUtils
         tomlplusplus::tomlplusplus
+        efsw
 )
 
 add_dependencies(HotReloadIntegrationTests HotReloadSampleMod)

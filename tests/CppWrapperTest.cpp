@@ -38,14 +38,14 @@ TEST(BMLWrapperTest, LoadAPI_InvalidPointer) {
 TEST(BMLWrapperTest, Context_DefaultConstruction) {
     bml::Context ctx;
     EXPECT_FALSE(ctx);
-    EXPECT_EQ(ctx.handle(), nullptr);
+    EXPECT_EQ(ctx.Handle(), nullptr);
 }
 
 TEST(BMLWrapperTest, Context_ExplicitConstruction) {
     BML_Context raw_ctx = reinterpret_cast<BML_Context>(0x12345678);
     bml::Context ctx(raw_ctx);
     EXPECT_TRUE(ctx);
-    EXPECT_EQ(ctx.handle(), raw_ctx);
+    EXPECT_EQ(ctx.Handle(), raw_ctx);
 }
 
 // ============================================================================
@@ -82,38 +82,29 @@ TEST(BMLWrapperTest, Config_APISignatures) {
 // ============================================================================
 
 TEST(BMLWrapperTest, Imc_PublishSignature) {
-    bml::Context ctx(reinterpret_cast<BML_Context>(0x1));
-    bml::Imc imc(ctx);
-    
     // Verify API signature compiles
     float data = 1.0f;
     // Will fail without real API but should compile
-    bool result = imc.Publish("test_event", &data, sizeof(data));
+    bool result = bml::imc::Bus::Publish("test_event", &data, sizeof(data));
     EXPECT_FALSE(result); // No API loaded
 }
 
 TEST(BMLWrapperTest, Imc_PublishTemplateSignature) {
-    bml::Context ctx(reinterpret_cast<BML_Context>(0x1));
-    bml::Imc imc(ctx);
-    
     struct TestData {
         int x;
         float y;
     };
     
     TestData data = { 42, 3.14f };
-    bool result = imc.Publish("test_event", data);
+    bool result = bml::imc::Bus::Publish("test_event", data);
     EXPECT_FALSE(result); // No API loaded
 }
 
 TEST(BMLWrapperTest, Imc_Subscription_RAII) {
-    bml::Context ctx(reinterpret_cast<BML_Context>(0x1));
-    bml::Imc imc(ctx);
-    
     // Test that Subscription is movable but not copyable
-    static_assert(!std::is_copy_constructible_v<bml::Imc::Subscription>, 
+    static_assert(!std::is_copy_constructible_v<bml::imc::Subscription>, 
                   "Subscription should not be copyable");
-    static_assert(std::is_move_constructible_v<bml::Imc::Subscription>,
+    static_assert(std::is_move_constructible_v<bml::imc::Subscription>,
                   "Subscription should be movable");
 }
 
@@ -244,13 +235,13 @@ TEST(BMLWrapperTest, Config_TypeSafety) {
 
 TEST(BMLWrapperTest, ImcSubscription_MoveSemantics) {
     // Verify move constructor and assignment work
-    bml::Imc::Subscription sub1;
+    bml::imc::Subscription sub1;
     EXPECT_FALSE(sub1);
     
-    bml::Imc::Subscription sub2 = std::move(sub1);
+    bml::imc::Subscription sub2 = std::move(sub1);
     EXPECT_FALSE(sub2);
     
-    bml::Imc::Subscription sub3;
+    bml::imc::Subscription sub3;
     sub3 = std::move(sub2);
     EXPECT_FALSE(sub3);
 }
@@ -272,11 +263,11 @@ TEST(BMLWrapperTest, FullWorkflow_CompilationCheck) {
     bml::Logger logger(ctx, "MyMod");
     logger.Info("Mod initialized");
     
-    // 4. Create IMC client
-    bml::Imc imc(ctx);
+    // 4. IMC publishing (using static Bus methods)
+    // bml::imc::Bus::Publish("BML/Game/Process", data);
     
     // 5. Subscribe to events
-    // auto sub = imc.Subscribe("BML/Game/Process", [](const void* data, size_t size) {
+    // auto sub = bml::imc::Bus::Subscribe("BML/Game/Process", [](const bml::imc::Message& msg) {
     //     // Handle event
     // });
     

@@ -8,6 +8,7 @@
 #include "ApiRegistrationMacros.h"
 #include "ApiRegistry.h"
 #include "Context.h"
+#include "Logging.h"
 
 #include <atomic>
 #include <chrono>
@@ -16,6 +17,8 @@
 #include <unordered_map>
 
 namespace {
+    constexpr char kTracingLogCategory[] = "api.tracing";
+
     // Global state
     std::atomic<bool> g_TracingEnabled{false};
     PFN_BML_TraceCallback g_TraceCallback = nullptr;
@@ -39,11 +42,10 @@ namespace {
             BML_Context ctx = BML::Core::Context::Instance().GetHandle();
             g_TraceCallback(ctx, api_name, args, result, duration_ns, g_TraceUserData);
         } else {
-            // Default: OutputDebugString
-            char buf[512];
-            snprintf(buf, sizeof(buf), "[BML Trace] %s(%s) -> %d (%.2f μs)\n",
-                     api_name, args ? args : "", result, duration_ns / 1000.0);
-            OutputDebugStringA(buf);
+            BML::Core::CoreLog(BML_LOG_DEBUG, kTracingLogCategory,
+                    "%s(%s) -> %d (%.2f us)",
+                    api_name ? api_name : "<null>", args ? args : "",
+                    result, duration_ns / 1000.0);
         }
     }
 
@@ -217,21 +219,19 @@ namespace BML::Core {
 
     BML_Bool BML_ValidateApiId(uint32_t api_id, const char *context) {
         if (api_id == 0) {
-            char buf[256];
-            snprintf(buf, sizeof(buf), "[BML] WARNING: Invalid API ID (0) in context: %s",
-                     context ? context : "unknown");
-            OutputDebugStringA(buf);
+            CoreLog(BML_LOG_WARN, kTracingLogCategory,
+                    "Invalid API ID (0) in context: %s",
+                    context ? context : "unknown");
             return BML_FALSE;
         }
 
         // Check if ID is registered
         BML::Core::ApiRegistry::ApiMetadata meta;
         if (!BML::Core::ApiRegistry::Instance().TryGetMetadata(api_id, meta)) {
-            char buf[256];
-            snprintf(buf, sizeof(buf), "[BML] WARNING: Unregistered API ID (%u) in context: %s",
-                     api_id, context ? context : "unknown");
-            OutputDebugStringA(buf);
-            return BML_FALSE;
+                CoreLog(BML_LOG_WARN, kTracingLogCategory,
+                    "Unregistered API ID (%u) in context: %s",
+                    api_id, context ? context : "unknown");
+                return BML_FALSE;
         }
 
         return BML_TRUE;

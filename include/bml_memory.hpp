@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file bml_memory.hpp
  * @brief BML C++ Memory Management Wrapper
  * 
@@ -220,19 +220,19 @@ namespace bml {
          * @throws bml::Exception if creation fails
          */
         MemoryPool(size_t block_size, uint32_t initial_blocks = 32)
-            : m_handle(nullptr), m_block_size(block_size) {
+            : m_Handle(nullptr), m_BlockSize(block_size) {
             if (!bmlMemoryPoolCreate) {
                 throw Exception(BML_RESULT_NOT_FOUND, "MemoryPool API unavailable");
             }
-            auto result = bmlMemoryPoolCreate(block_size, initial_blocks, &m_handle);
+            auto result = bmlMemoryPoolCreate(block_size, initial_blocks, &m_Handle);
             if (result != BML_RESULT_OK) {
                 throw Exception(result, "Failed to create memory pool");
             }
         }
 
         ~MemoryPool() {
-            if (m_handle && bmlMemoryPoolDestroy) {
-                bmlMemoryPoolDestroy(m_handle);
+            if (m_Handle && bmlMemoryPoolDestroy) {
+                bmlMemoryPoolDestroy(m_Handle);
             }
         }
 
@@ -242,18 +242,18 @@ namespace bml {
 
         // Movable
         MemoryPool(MemoryPool &&other) noexcept
-            : m_handle(other.m_handle), m_block_size(other.m_block_size) {
-            other.m_handle = nullptr;
+            : m_Handle(other.m_Handle), m_BlockSize(other.m_BlockSize) {
+            other.m_Handle = nullptr;
         }
 
         MemoryPool &operator=(MemoryPool &&other) noexcept {
             if (this != &other) {
-                if (m_handle && bmlMemoryPoolDestroy) {
-                    bmlMemoryPoolDestroy(m_handle);
+                if (m_Handle && bmlMemoryPoolDestroy) {
+                    bmlMemoryPoolDestroy(m_Handle);
                 }
-                m_handle = other.m_handle;
-                m_block_size = other.m_block_size;
-                other.m_handle = nullptr;
+                m_Handle = other.m_Handle;
+                m_BlockSize = other.m_BlockSize;
+                other.m_Handle = nullptr;
             }
             return *this;
         }
@@ -263,7 +263,7 @@ namespace bml {
          * @return Pointer to block, or nullptr on failure
          */
         void *alloc() {
-            return bmlMemoryPoolAlloc ? bmlMemoryPoolAlloc(m_handle) : nullptr;
+            return bmlMemoryPoolAlloc ? bmlMemoryPoolAlloc(m_Handle) : nullptr;
         }
 
         /**
@@ -286,7 +286,7 @@ namespace bml {
          * @param ptr Pointer allocated from this pool
          */
         void free(void *ptr) {
-            if (bmlMemoryPoolFree) bmlMemoryPoolFree(m_handle, ptr);
+            if (bmlMemoryPoolFree) bmlMemoryPoolFree(m_Handle, ptr);
         }
 
         /**
@@ -305,16 +305,16 @@ namespace bml {
         /**
          * @brief Get block size
          */
-        size_t block_size() const noexcept { return m_block_size; }
+        size_t BlockSize() const noexcept { return m_BlockSize; }
 
         /**
          * @brief Get the underlying handle
          */
-        BML_MemoryPool handle() const noexcept { return m_handle; }
+        BML_MemoryPool Handle() const noexcept { return m_Handle; }
 
     private:
-        BML_MemoryPool m_handle;
-        size_t m_block_size;
+        BML_MemoryPool m_Handle;
+        size_t m_BlockSize;
     };
 
     // ============================================================================
@@ -344,7 +344,7 @@ namespace bml {
             return PoolObject(&pool, ptr);
         }
 
-        PoolObject() : m_pool(nullptr), m_ptr(nullptr) {}
+        PoolObject() : m_Pool(nullptr), m_Ptr(nullptr) {}
 
         ~PoolObject() {
             reset();
@@ -356,18 +356,18 @@ namespace bml {
 
         // Movable
         PoolObject(PoolObject &&other) noexcept
-            : m_pool(other.m_pool), m_ptr(other.m_ptr) {
-            other.m_pool = nullptr;
-            other.m_ptr = nullptr;
+            : m_Pool(other.m_Pool), m_Ptr(other.m_Ptr) {
+            other.m_Pool = nullptr;
+            other.m_Ptr = nullptr;
         }
 
         PoolObject &operator=(PoolObject &&other) noexcept {
             if (this != &other) {
                 reset();
-                m_pool = other.m_pool;
-                m_ptr = other.m_ptr;
-                other.m_pool = nullptr;
-                other.m_ptr = nullptr;
+                m_Pool = other.m_Pool;
+                m_Ptr = other.m_Ptr;
+                other.m_Pool = nullptr;
+                other.m_Ptr = nullptr;
             }
             return *this;
         }
@@ -376,25 +376,26 @@ namespace bml {
          * @brief Reset and free the object
          */
         void reset() {
-            if (m_ptr && m_pool) {
-                m_pool->free(m_ptr);
+            if (m_Ptr && m_Pool) {
+                m_Pool->free(m_Ptr);
             }
-            m_ptr = nullptr;
-            m_pool = nullptr;
+            m_Ptr = nullptr;
+            m_Pool = nullptr;
         }
 
-        T *get() const noexcept { return m_ptr; }
-        T *operator->() const noexcept { return m_ptr; }
-        T &operator*() const noexcept { return *m_ptr; }
+        T *get() const noexcept { return m_Ptr; }
+        T *operator->() const noexcept { return m_Ptr; }
+        T &operator*() const noexcept { return *m_Ptr; }
 
-        explicit operator bool() const noexcept { return m_ptr != nullptr; }
+        explicit operator bool() const noexcept { return m_Ptr != nullptr; }
 
     private:
-        PoolObject(MemoryPool *pool, T *ptr) : m_pool(pool), m_ptr(ptr) {}
+        PoolObject(MemoryPool *pool, T *ptr) : m_Pool(pool), m_Ptr(ptr) {}
 
-        MemoryPool *m_pool;
-        T *m_ptr;
+        MemoryPool *m_Pool;
+        T *m_Ptr;
     };
 } // namespace bml
 
 #endif /* BML_MEMORY_HPP */
+

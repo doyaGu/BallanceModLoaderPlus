@@ -8,11 +8,14 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "Logging.h"
 #include "SemanticVersion.h"
 #include "StringUtils.h"
 
 namespace BML::Core {
     namespace {
+        constexpr char kDepResolverLogCategory[] = "dependency.resolver";
+
         struct ReadyNode {
             size_t order{std::numeric_limits<size_t>::max()};
             std::string id;
@@ -82,22 +85,27 @@ namespace BML::Core {
     } // namespace
 
     void DependencyResolver::RegisterManifest(const ModManifest &manifest) {
-        auto [it, inserted] = m_nodes.emplace(manifest.package.id, Node{});
+        auto [it, inserted] = m_Nodes.emplace(manifest.package.id, Node{});
         if (inserted) {
-            m_registrationOrder.push_back(manifest.package.id);
+            m_RegistrationOrder.push_back(manifest.package.id);
             it->second.manifest = &manifest;
+            CoreLog(BML_LOG_DEBUG, kDepResolverLogCategory,
+                    "Registered manifest: %s v%s",
+                    manifest.package.id.c_str(), manifest.package.version.c_str());
         } else {
             if (!it->second.manifest) {
                 it->second.manifest = &manifest;
             } else {
                 it->second.duplicates.push_back(&manifest);
+                CoreLog(BML_LOG_WARN, kDepResolverLogCategory,
+                        "Duplicate manifest detected: %s", manifest.package.id.c_str());
             }
         }
     }
 
     void DependencyResolver::Clear() {
-        m_nodes.clear();
-        m_registrationOrder.clear();
+        m_Nodes.clear();
+        m_RegistrationOrder.clear();
     }
 
     bool DependencyResolver::Resolve(std::vector<ResolvedNode> &out_order,
@@ -114,7 +122,7 @@ namespace BML::Core {
         out_error = {};
 
         // Detect duplicate IDs early
-        for (const auto &[id, node] : m_nodes) {
+        for (const auto &[id, node] : m_Nodes) {
             if (!node.duplicates.empty()) {
                 std::ostringstream oss;
                 oss << "Duplicate module id '" << id << "' found";
@@ -134,16 +142,16 @@ namespace BML::Core {
         }
 
         std::unordered_map<std::string, TempNode> graph;
-        graph.reserve(m_nodes.size());
-        for (const auto &[id, node] : m_nodes) {
+        graph.reserve(m_Nodes.size());
+        for (const auto &[id, node] : m_Nodes) {
             graph.emplace(id, TempNode{node.manifest});
         }
 
         // Precompute registration order for deterministic traversal
         std::unordered_map<std::string, size_t> orderIndex;
-        orderIndex.reserve(m_registrationOrder.size());
-        for (size_t i = 0; i < m_registrationOrder.size(); ++i) {
-            orderIndex[m_registrationOrder[i]] = i;
+        orderIndex.reserve(m_RegistrationOrder.size());
+        for (size_t i = 0; i < m_RegistrationOrder.size(); ++i) {
+            orderIndex[m_RegistrationOrder[i]] = i;
         }
         auto orderOf = [&](const std::string &id) {
             auto it = orderIndex.find(id);
@@ -151,14 +159,14 @@ namespace BML::Core {
         };
 
         // Conflict detection
-        for (const auto &[id, node] : m_nodes) {
+        for (const auto &[id, node] : m_Nodes) {
             const auto *manifest = node.manifest;
             if (!manifest)
                 continue;
 
             for (const auto &conflict : manifest->conflicts) {
-                auto otherIt = m_nodes.find(conflict.id);
-                if (otherIt == m_nodes.end() || !otherIt->second.manifest)
+                auto otherIt = m_Nodes.find(conflict.id);
+                if (otherIt == m_Nodes.end() || !otherIt->second.manifest)
                     continue;
 
                 const auto *otherManifest = otherIt->second.manifest;
@@ -185,7 +193,7 @@ namespace BML::Core {
         // Build dependency edges
         std::unordered_map<std::string, std::vector<std::string>> adjacency;
 
-        for (const auto &[id, node] : m_nodes) {
+        for (const auto &[id, node] : m_Nodes) {
             const auto *manifest = node.manifest;
             if (!manifest)
                 continue;
@@ -272,7 +280,7 @@ namespace BML::Core {
 
         out_order.reserve(resolved.size());
         for (const auto &id : resolved) {
-            const auto &node = m_nodes.at(id);
+            const auto &node = m_Nodes.at(id);
             out_order.push_back({id, node.manifest});
         }
 
