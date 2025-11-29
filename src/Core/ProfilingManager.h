@@ -74,6 +74,21 @@ namespace BML::Core {
         ThreadContext &GetThreadContext();
         void WriteJsonEvent(const TraceEvent &evt, FILE *fp);
 
+        // RAII wrapper for CRITICAL_SECTION to ensure proper unlock on all exit paths
+        class CriticalSectionGuard {
+        public:
+            explicit CriticalSectionGuard(CRITICAL_SECTION &cs) : m_cs(cs) {
+                EnterCriticalSection(&m_cs);
+            }
+            ~CriticalSectionGuard() {
+                LeaveCriticalSection(&m_cs);
+            }
+            CriticalSectionGuard(const CriticalSectionGuard &) = delete;
+            CriticalSectionGuard &operator=(const CriticalSectionGuard &) = delete;
+        private:
+            CRITICAL_SECTION &m_cs;
+        };
+
         BML_ProfilerBackend m_Backend;
         std::atomic<bool> m_Enabled;
 
