@@ -33,6 +33,28 @@ namespace BML::Core {
             return IsVersionSatisfied(range, version);
         }
 
+        std::string DescribeManifest(const ModManifest *manifest) {
+            if (!manifest)
+                return std::string{"<unknown manifest>"};
+
+            std::ostringstream oss;
+            oss << manifest->package.id;
+            if (!manifest->package.version.empty()) {
+                oss << "@" << manifest->package.version;
+            }
+            if (!manifest->manifest_path.empty()) {
+                oss << " (" << utils::Utf16ToUtf8(manifest->manifest_path) << ")";
+            }
+            return oss.str();
+        }
+
+        std::string DescribeDependencyRequirement(const ModDependency &dependency) {
+            if (!dependency.requirement.parsed || dependency.requirement.raw_expression.empty()) {
+                return dependency.id;
+            }
+            return dependency.id + " " + dependency.requirement.raw_expression;
+        }
+
         bool ExtractCycle(const std::unordered_map<std::string, std::vector<std::string>> &adj,
                           std::vector<std::string> &out_chain) {
             enum class State { Unvisited, Visiting, Visited };
@@ -121,6 +143,12 @@ namespace BML::Core {
         out_warnings.clear();
         out_error = {};
 
+        auto appendManifestToChain = [&](const ModManifest *manifest) {
+            if (!manifest)
+                return;
+            out_error.chain.push_back(DescribeManifest(manifest));
+        };
+
         // Detect duplicate IDs early
         for (const auto &[id, node] : m_Nodes) {
             if (!node.duplicates.empty()) {
@@ -128,14 +156,9 @@ namespace BML::Core {
                 oss << "Duplicate module id '" << id << "' found";
                 out_error.message = oss.str();
                 out_error.chain.clear();
-                auto appendPath = [&](const ModManifest *manifest) {
-                    if (!manifest)
-                        return;
-                    out_error.chain.push_back(utils::Utf16ToUtf8(manifest->manifest_path));
-                };
-                appendPath(node.manifest);
+                appendManifestToChain(node.manifest);
                 for (const auto *dup : node.duplicates) {
-                    appendPath(dup);
+                    appendManifestToChain(dup);
                 }
                 return false;
             }
@@ -174,8 +197,8 @@ namespace BML::Core {
                     continue;
 
                 std::ostringstream oss;
-                oss << "Conflict detected: " << manifest->package.id << " cannot load alongside "
-                    << otherManifest->package.id;
+                oss << "Conflict detected: " << DescribeManifest(manifest)
+                    << " cannot load alongside " << DescribeManifest(otherManifest);
                 if (conflict.requirement.parsed) {
                     oss << " (constraint " << conflict.requirement.raw_expression
                         << " matches installed version " << otherManifest->package.version << ")";
@@ -185,13 +208,14 @@ namespace BML::Core {
                 }
 
                 out_error.message = oss.str();
-                out_error.chain = {manifest->package.id, otherManifest->package.id};
+                out_error.chain = {DescribeManifest(manifest), DescribeManifest(otherManifest)};
                 return false;
             }
         }
 
         // Build dependency edges
         std::unordered_map<std::string, std::vector<std::string>> adjacency;
+        std::unordered_set<std::string> warningDedup;
 
         for (const auto &[id, node] : m_Nodes) {
             const auto *manifest = node.manifest;
@@ -199,30 +223,41 @@ namespace BML::Core {
                 continue;
 
             for (const auto &dep : manifest->dependencies) {
+                if (dep.id == manifest->package.id) {
+                    out_error.message = "Module '" + manifest->package.id + "' cannot depend on itself";
+                    out_error.chain = {DescribeManifest(manifest)};
+                    return false;
+                }
+
                 auto depIt = graph.find(dep.id);
                 if (depIt == graph.end()) {
                     if (dep.optional) {
                         DependencyWarning warning;
                         warning.mod_id = manifest->package.id;
                         warning.dependency_id = dep.id;
-                        warning.message = "Optional dependency '" + dep.id + "' not found";
-                        out_warnings.push_back(std::move(warning));
+                        warning.message = "Optional dependency '" + DescribeDependencyRequirement(dep) +
+                            "' not found for module '" + manifest->package.id + "'";
+                        std::string key = manifest->package.id + "->" + dep.id + ":missing";
+                        if (warningDedup.insert(key).second) {
+                            CoreLog(BML_LOG_WARN, kDepResolverLogCategory,
+                                    "%s", warning.message.c_str());
+                            out_warnings.push_back(std::move(warning));
+                        }
                         continue;
                     }
-                    out_error.message = "Missing required dependency: " + dep.id;
-                    out_error.chain = {manifest->package.id, dep.id};
+                    out_error.message = "Module '" + manifest->package.id + "' requires missing dependency '"
+                        + DescribeDependencyRequirement(dep) + "'";
+                    out_error.chain = {DescribeManifest(manifest), dep.id};
                     return false;
                 }
 
                 const auto *depManifest = depIt->second.manifest;
                 if (depManifest && dep.requirement.parsed) {
                     if (!IsVersionSatisfied(dep.requirement, depManifest->package.parsed_version)) {
-                        out_error.message = "Version constraint not satisfied for dependency: " + dep.id;
-                        out_error.chain = {
-                            manifest->package.id,
-                            dep.id + " (requires " + dep.requirement.raw_expression +
-                            " but found " + depManifest->package.version + ")"
-                        };
+                        out_error.message = "Module '" + manifest->package.id + "' requires '" + dep.id +
+                            "' " + dep.requirement.raw_expression + " but found " +
+                            depManifest->package.version;
+                        out_error.chain = {DescribeManifest(manifest), DescribeManifest(depManifest)};
                         return false;
                     }
 
@@ -234,7 +269,12 @@ namespace BML::Core {
                         warning.message = "Dependency '" + dep.id + "' version " + depManifest->package.version +
                             " satisfies requirement " + dep.requirement.raw_expression +
                             " but is at minimum version. " + suggestion;
-                        out_warnings.push_back(std::move(warning));
+                        std::string key = manifest->package.id + "->" + dep.id + ":outdated";
+                        if (warningDedup.insert(key).second) {
+                            CoreLog(BML_LOG_WARN, kDepResolverLogCategory,
+                                    "%s", warning.message.c_str());
+                            out_warnings.push_back(std::move(warning));
+                        }
                     }
                 }
 
