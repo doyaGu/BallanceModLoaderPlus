@@ -76,6 +76,7 @@ namespace BML::Core {
         void TrackAllocation(size_t size);
         void TrackDeallocation(size_t size);
         void TrackReallocation(size_t old_size, size_t new_size);
+        void FreeInternal(void *ptr, size_t override_size, bool override_valid);
 
         // Pool management
         bool IsValidPool(BML_MemoryPool pool) const;
