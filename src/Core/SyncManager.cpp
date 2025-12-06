@@ -1,6 +1,7 @@
 #include "SyncManager.h"
 
 #include <algorithm>
+#include <functional>
 #include <new>
 #include <unordered_map>
 #include <unordered_set>
@@ -32,6 +33,22 @@ namespace BML::Core {
 
             LockState &lock_state = m_locks[lock_key];
             lock_state.owners[thread_id]++;
+        }
+
+        void OnLockWaitCancelled(void *lock_key, DWORD thread_id) {
+            std::lock_guard<std::mutex> guard(m_mutex);
+            auto thread_it = m_threads.find(thread_id);
+            if (thread_it == m_threads.end()) {
+                return;
+            }
+
+            auto &thread_state = thread_it->second;
+            if (thread_state.waiting_lock == lock_key) {
+                thread_state.waiting_lock = nullptr;
+                if (thread_state.held_locks.empty()) {
+                    m_threads.erase(thread_it);
+                }
+            }
         }
 
         void OnLockReleased(void *lock_key, DWORD thread_id) {
@@ -119,6 +136,52 @@ namespace BML::Core {
         std::unordered_map<DWORD, ThreadState> m_threads;
         std::unordered_map<void *, LockState> m_locks;
     };
+
+    namespace {
+        class WaitRegistration {
+        public:
+            using Reporter = std::function<BML_Result()>;
+
+            WaitRegistration(DeadlockDetector *detector,
+                             void *lock_key,
+                             DWORD thread_id,
+                             Reporter reporter)
+                : m_detector(detector),
+                  m_lock_key(lock_key),
+                  m_thread_id(thread_id),
+                  m_reporter(std::move(reporter)) {}
+
+            BML_Result Ensure() {
+                if (m_registered || !m_detector) {
+                    return BML_RESULT_OK;
+                }
+                if (m_detector->OnLockWait(m_lock_key, m_thread_id)) {
+                    return m_reporter ? m_reporter() : BML_RESULT_SYNC_DEADLOCK;
+                }
+                m_registered = true;
+                return BML_RESULT_OK;
+            }
+
+            void Cancel() {
+                if (!m_registered || !m_detector) {
+                    return;
+                }
+                m_detector->OnLockWaitCancelled(m_lock_key, m_thread_id);
+                m_registered = false;
+            }
+
+            void MarkAcquired() {
+                m_registered = false;
+            }
+
+        private:
+            DeadlockDetector *m_detector{};
+            void *m_lock_key{};
+            DWORD m_thread_id{0};
+            Reporter m_reporter;
+            bool m_registered{false};
+        };
+    } // namespace
 
     SyncManager::SyncManager() : m_DeadlockDetector(std::make_unique<DeadlockDetector>()) {
     }
@@ -235,10 +298,26 @@ namespace BML::Core {
         auto *impl = reinterpret_cast<MutexImpl *>(mutex);
         DWORD thread_id = ::GetCurrentThreadId();
 
+        WaitRegistration wait_reg(
+            m_DeadlockDetector.get(),
+            impl,
+            thread_id,
+            [this]() { return ReportDeadlock("bmlMutexLockTimeout"); });
+
         // Handle special timeout values
         if (timeout_ms == BML_TIMEOUT_INFINITE) {
-            // Use blocking lock
+            if (TryEnterCriticalSection(&impl->cs)) {
+                m_DeadlockDetector->OnLockAcquired(impl, thread_id);
+                return BML_RESULT_OK;
+            }
+
+            auto status = wait_reg.Ensure();
+            if (status != BML_RESULT_OK) {
+                return status;
+            }
+
             EnterCriticalSection(&impl->cs);
+            wait_reg.MarkAcquired();
             m_DeadlockDetector->OnLockAcquired(impl, thread_id);
             return BML_RESULT_OK;
         }
@@ -261,13 +340,20 @@ namespace BML::Core {
 
         while (true) {
             if (TryEnterCriticalSection(&impl->cs)) {
+                wait_reg.MarkAcquired();
                 m_DeadlockDetector->OnLockAcquired(impl, thread_id);
                 return BML_RESULT_OK;
+            }
+
+            auto status = wait_reg.Ensure();
+            if (status != BML_RESULT_OK) {
+                return status;
             }
 
             QueryPerformanceCounter(&now);
             double elapsed = static_cast<double>(now.QuadPart - start.QuadPart) / freq.QuadPart;
             if (elapsed >= timeout_sec) {
+                wait_reg.Cancel();
                 return BML_RESULT_TIMEOUT;
             }
 
@@ -425,11 +511,30 @@ namespace BML::Core {
         }
 
         // Handle special timeout values
+        WaitRegistration wait_reg(
+            m_DeadlockDetector.get(),
+            impl,
+            thread_id,
+            [this]() { return ReportDeadlock("bmlRwLockReadLockTimeout"); });
+
         if (timeout_ms == BML_TIMEOUT_INFINITE) {
+            if (TryAcquireSRWLockShared(&impl->srw)) {
+                state.read_depth = 1;
+                impl->SetThreadState(state);
+                m_DeadlockDetector->OnLockAcquired(impl, thread_id);
+                return BML_RESULT_OK;
+            }
+
+            auto status = wait_reg.Ensure();
+            if (status != BML_RESULT_OK) {
+                return status;
+            }
+
             AcquireSRWLockShared(&impl->srw);
+            wait_reg.MarkAcquired();
+            m_DeadlockDetector->OnLockAcquired(impl, thread_id);
             state.read_depth = 1;
             impl->SetThreadState(state);
-            m_DeadlockDetector->OnLockAcquired(impl, thread_id);
             return BML_RESULT_OK;
         }
 
@@ -451,15 +556,22 @@ namespace BML::Core {
 
         while (true) {
             if (TryAcquireSRWLockShared(&impl->srw)) {
+                wait_reg.MarkAcquired();
                 state.read_depth = 1;
                 impl->SetThreadState(state);
                 m_DeadlockDetector->OnLockAcquired(impl, thread_id);
                 return BML_RESULT_OK;
             }
 
+            auto status = wait_reg.Ensure();
+            if (status != BML_RESULT_OK) {
+                return status;
+            }
+
             QueryPerformanceCounter(&now);
             double elapsed = static_cast<double>(now.QuadPart - start.QuadPart) / freq.QuadPart;
             if (elapsed >= timeout_sec) {
+                wait_reg.Cancel();
                 return BML_RESULT_TIMEOUT;
             }
 
@@ -564,11 +676,30 @@ namespace BML::Core {
         }
 
         // Handle special timeout values
+        WaitRegistration wait_reg(
+            m_DeadlockDetector.get(),
+            impl,
+            thread_id,
+            [this]() { return ReportDeadlock("bmlRwLockWriteLockTimeout"); });
+
         if (timeout_ms == BML_TIMEOUT_INFINITE) {
+            if (TryAcquireSRWLockExclusive(&impl->srw)) {
+                state.write_depth = 1;
+                impl->SetThreadState(state);
+                m_DeadlockDetector->OnLockAcquired(impl, thread_id);
+                return BML_RESULT_OK;
+            }
+
+            auto status = wait_reg.Ensure();
+            if (status != BML_RESULT_OK) {
+                return status;
+            }
+
             AcquireSRWLockExclusive(&impl->srw);
+            wait_reg.MarkAcquired();
+            m_DeadlockDetector->OnLockAcquired(impl, thread_id);
             state.write_depth = 1;
             impl->SetThreadState(state);
-            m_DeadlockDetector->OnLockAcquired(impl, thread_id);
             return BML_RESULT_OK;
         }
 
@@ -590,15 +721,22 @@ namespace BML::Core {
 
         while (true) {
             if (TryAcquireSRWLockExclusive(&impl->srw)) {
+                wait_reg.MarkAcquired();
                 state.write_depth = 1;
                 impl->SetThreadState(state);
                 m_DeadlockDetector->OnLockAcquired(impl, thread_id);
                 return BML_RESULT_OK;
             }
 
+            auto status = wait_reg.Ensure();
+            if (status != BML_RESULT_OK) {
+                return status;
+            }
+
             QueryPerformanceCounter(&now);
             double elapsed = static_cast<double>(now.QuadPart - start.QuadPart) / freq.QuadPart;
             if (elapsed >= timeout_sec) {
+                wait_reg.Cancel();
                 return BML_RESULT_TIMEOUT;
             }
 
@@ -805,18 +943,53 @@ namespace BML::Core {
         }
 
         auto *impl = reinterpret_cast<SemaphoreImpl *>(semaphore);
+        DWORD thread_id = ::GetCurrentThreadId();
 
-        DWORD result = WaitForSingleObject(impl->handle, timeout_ms);
+        WaitRegistration wait_reg(
+            m_DeadlockDetector.get(),
+            impl,
+            thread_id,
+            [this]() { return ReportDeadlock("bmlSemaphoreWait"); });
+
+        auto handle_acquired = [&]() {
+            wait_reg.MarkAcquired();
+            m_DeadlockDetector->OnLockAcquired(impl, thread_id);
+        };
+
+        auto immediate_result = WaitForSingleObject(impl->handle, 0);
+        if (immediate_result == WAIT_OBJECT_0) {
+            handle_acquired();
+            return BML_RESULT_OK;
+        }
+        if (immediate_result == WAIT_FAILED) {
+            return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlSemaphoreWait",
+                                         "WaitForSingleObject failed", ::GetLastError());
+        }
+        if (timeout_ms == BML_TIMEOUT_NONE) {
+            return BML_RESULT_TIMEOUT;
+        }
+
+        BML_Result wait_status = wait_reg.Ensure();
+        if (wait_status != BML_RESULT_OK) {
+            return wait_status;
+        }
+
+        DWORD wait_duration = (timeout_ms == BML_TIMEOUT_INFINITE) ? INFINITE : timeout_ms;
+        DWORD result = WaitForSingleObject(impl->handle, wait_duration);
 
         switch (result) {
         case WAIT_OBJECT_0:
+            handle_acquired();
             return BML_RESULT_OK;
         case WAIT_TIMEOUT:
+            wait_reg.Cancel();
             return BML_RESULT_TIMEOUT;
         case WAIT_FAILED:
+            wait_reg.Cancel();
             return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlSemaphoreWait",
                                          "WaitForSingleObject failed", ::GetLastError());
         default:
+            wait_reg.Cancel();
             return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlSemaphoreWait",
                                          "Unexpected wait result", result);
         }
@@ -836,6 +1009,11 @@ namespace BML::Core {
         if (!ReleaseSemaphore(impl->handle, count, nullptr)) {
             return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlSemaphoreSignal",
                                          "ReleaseSemaphore failed", ::GetLastError());
+        }
+
+        DWORD thread_id = ::GetCurrentThreadId();
+        for (uint32_t i = 0; i < count; ++i) {
+            m_DeadlockDetector->OnLockReleased(impl, thread_id);
         }
 
         return BML_RESULT_OK;
