@@ -15,10 +15,50 @@
 #include <mutex>
 #include <atomic>
 #include <cstring>
+#include <string>
 
 namespace BML::Core {
     namespace {
         constexpr char kExtensionLogCategory[] = "extension";
+
+        constexpr size_t kExtensionDescMinSize = sizeof(BML_ExtensionDesc);
+        constexpr size_t kExtensionInfoMinSize = sizeof(BML_ExtensionInfo);
+        constexpr size_t kExtensionCapsMinSize = sizeof(BML_ExtensionCaps);
+        constexpr size_t kExtensionFilterMinSize = sizeof(BML_ExtensionFilter);
+
+        bool HasValidExtensionDesc(const BML_ExtensionDesc *desc) {
+            return desc && desc->struct_size >= kExtensionDescMinSize;
+        }
+
+        bool HasValidExtensionInfo(const BML_ExtensionInfo *info) {
+            return info && info->struct_size >= kExtensionInfoMinSize;
+        }
+
+        bool HasValidExtensionCaps(const BML_ExtensionCaps *caps) {
+            return caps && caps->struct_size >= kExtensionCapsMinSize;
+        }
+
+        bool HasValidExtensionFilter(const BML_ExtensionFilter *filter) {
+            return filter && filter->struct_size >= kExtensionFilterMinSize;
+        }
+
+        void PopulateExtensionInfo(const ApiRegistry::ApiMetadata &meta,
+                                   BML_ExtensionInfo *out_info,
+                                   BML_ExtensionState state = BML_EXTENSION_STATE_ACTIVE) {
+            if (!out_info) {
+                return;
+            }
+
+            BML_ExtensionInfo info = BML_EXTENSION_INFO_INIT;
+            info.name = meta.name;
+            info.provider_id = meta.provider_mod;
+            info.version = bmlMakeVersion(meta.version_major, meta.version_minor, meta.version_patch);
+            info.state = state;
+            info.description = meta.description;
+            info.api_size = meta.api_size;
+            info.capabilities = meta.capabilities;
+            *out_info = info;
+        }
     }
 
     // ========================================================================
@@ -117,7 +157,7 @@ namespace BML::Core {
     // ========================================================================
 
     BML_Result BML_API_ExtensionRegister(const BML_ExtensionDesc *desc) {
-        if (!desc || !desc->name || !desc->api_table || desc->api_size == 0) {
+        if (!HasValidExtensionDesc(desc) || !desc->name || !desc->api_table || desc->api_size == 0) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
@@ -223,6 +263,10 @@ namespace BML::Core {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
+        if (out_info && !HasValidExtensionInfo(out_info)) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+
         ApiRegistry::ApiMetadata meta;
         bool found = ApiRegistry::Instance().TryGetMetadata(std::string(name), meta);
 
@@ -231,13 +275,7 @@ namespace BML::Core {
         }
 
         if (out_info) {
-            out_info->struct_size = sizeof(BML_ExtensionInfo);
-            out_info->name = meta.name;
-            out_info->version = bmlMakeVersion(meta.version_major, meta.version_minor, meta.version_patch);
-            out_info->provider_id = meta.provider_mod;
-            out_info->description = meta.description;
-            out_info->api_size = meta.api_size;
-            out_info->state = BML_EXTENSION_STATE_ACTIVE;
+            PopulateExtensionInfo(meta, out_info);
         }
 
         return BML_RESULT_OK;
@@ -249,7 +287,7 @@ namespace BML::Core {
         void **out_api,
         BML_ExtensionInfo *out_info
     ) {
-        if (!name || !out_api) {
+        if (!name || !out_api || (out_info && !HasValidExtensionInfo(out_info))) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
@@ -284,13 +322,7 @@ namespace BML::Core {
         if (out_info) {
             ApiRegistry::ApiMetadata meta;
             if (ApiRegistry::Instance().TryGetMetadata(std::string(name), meta)) {
-                out_info->struct_size = sizeof(BML_ExtensionInfo);
-                out_info->name = meta.name;
-                out_info->version = bmlMakeVersion(meta.version_major, meta.version_minor, meta.version_patch);
-                out_info->provider_id = meta.provider_mod;
-                out_info->description = meta.description;
-                out_info->api_size = meta.api_size;
-                out_info->state = BML_EXTENSION_STATE_ACTIVE;
+                PopulateExtensionInfo(meta, out_info);
             }
         }
 
@@ -340,6 +372,10 @@ namespace BML::Core {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
+        if (filter && !HasValidExtensionFilter(filter)) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+
         struct EnumContext {
             BML_ExtensionEnumCallback callback;
             void *user_data;
@@ -352,32 +388,75 @@ namespace BML::Core {
             [](BML_Context bmlCtx, const BML_ApiDescriptor *desc, void *raw_ctx) -> BML_Bool {
                 auto *ctx = static_cast<EnumContext *>(raw_ctx);
 
-                // Apply filter if specified
-                if (ctx->filter) {
-                    // Name pattern filter (glob matching)
-                    if (ctx->filter->name_pattern) {
-                        if (!GlobMatch(ctx->filter->name_pattern, desc->name)) {
-                            return BML_TRUE; // Skip, continue
-                        }
+                ApiRegistry::ApiMetadata meta{};
+                bool have_meta = desc && desc->name &&
+                    ApiRegistry::Instance().TryGetMetadata(std::string(desc->name), meta);
+                if (!have_meta && desc) {
+                    meta.name = desc->name;
+                    meta.provider_mod = desc->provider_mod;
+                    meta.version_major = static_cast<uint16_t>(desc->version_major);
+                    meta.version_minor = static_cast<uint16_t>(desc->version_minor);
+                    meta.version_patch = static_cast<uint16_t>(desc->version_patch);
+                    meta.capabilities = desc->capabilities;
+                    meta.description = desc->description;
+                    meta.api_size = 0;
+                }
+
+                const BML_ExtensionFilter *filter = ctx->filter;
+                if (filter && desc) {
+                    if (filter->name_pattern && !GlobMatch(filter->name_pattern, desc->name)) {
+                        return BML_TRUE;
                     }
-                    // Version filter - check if extension version >= min_version
-                    if (ctx->filter->min_version.major > 0 || ctx->filter->min_version.minor > 0) {
-                        if (desc->version_major < ctx->filter->min_version.major) {
+                    if (filter->provider_pattern) {
+                        const char *provider = meta.provider_mod ? meta.provider_mod : "";
+                        if (!GlobMatch(filter->provider_pattern, provider)) {
                             return BML_TRUE;
                         }
-                        if (desc->version_major == ctx->filter->min_version.major &&
-                            desc->version_minor < ctx->filter->min_version.minor) {
+                    }
+
+                    const auto &min = filter->min_version;
+                    if (min.major || min.minor || min.patch) {
+                        if (meta.version_major < min.major) {
+                            return BML_TRUE;
+                        }
+                        if (meta.version_major == min.major && meta.version_minor < min.minor) {
+                            return BML_TRUE;
+                        }
+                        if (meta.version_major == min.major && meta.version_minor == min.minor &&
+                            meta.version_patch < min.patch) {
+                            return BML_TRUE;
+                        }
+                    }
+
+                    const auto &max = filter->max_version;
+                    if (max.major || max.minor || max.patch) {
+                        if (meta.version_major > max.major) {
+                            return BML_TRUE;
+                        }
+                        if (meta.version_major == max.major && meta.version_minor > max.minor) {
+                            return BML_TRUE;
+                        }
+                        if (meta.version_major == max.major && meta.version_minor == max.minor &&
+                            meta.version_patch > max.patch) {
+                            return BML_TRUE;
+                        }
+                    }
+
+                    if (filter->required_caps &&
+                        (meta.capabilities & filter->required_caps) != filter->required_caps) {
+                        return BML_TRUE;
+                    }
+
+                    if (filter->include_states) {
+                        constexpr uint32_t kActiveBit = 1u << static_cast<uint32_t>(BML_EXTENSION_STATE_ACTIVE);
+                        if ((filter->include_states & kActiveBit) == 0) {
                             return BML_TRUE;
                         }
                     }
                 }
 
                 BML_ExtensionInfo info = BML_EXTENSION_INFO_INIT;
-                info.name = desc->name;
-                info.version = bmlMakeVersion(desc->version_major, desc->version_minor, 0);
-                info.provider_id = desc->provider_mod;
-                info.description = desc->description;
-
+                PopulateExtensionInfo(meta, &info);
                 return ctx->callback(bmlCtx, &info, ctx->user_data);
             },
             &ctx,
@@ -392,6 +471,10 @@ namespace BML::Core {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
+        if (filter && !HasValidExtensionFilter(filter)) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+
         if (!filter) {
             // Fast path: no filter
             size_t count = ApiRegistry::Instance().GetExtensionCount();
@@ -403,13 +486,17 @@ namespace BML::Core {
 
         // Count with filter
         uint32_t count = 0;
-        BML_API_ExtensionEnumerate(filter,
-                                   [](BML_Context, const BML_ExtensionInfo *, void *ud) -> BML_Bool {
-                                       (*static_cast<uint32_t *>(ud))++;
-                                       return BML_TRUE;
-                                   },
-                                   &count
+        BML_Result enumerate_result = BML_API_ExtensionEnumerate(
+            filter,
+            [](BML_Context, const BML_ExtensionInfo *, void *ud) -> BML_Bool {
+                (*static_cast<uint32_t *>(ud))++;
+                return BML_TRUE;
+            },
+            &count
         );
+        if (enumerate_result != BML_RESULT_OK) {
+            return enumerate_result;
+        }
         *out_count = count;
         return BML_RESULT_OK;
     }
@@ -538,7 +625,7 @@ namespace BML::Core {
     // ========================================================================
 
     BML_Result BML_API_ExtensionGetCaps(BML_ExtensionCaps *out_caps) {
-        if (!out_caps) {
+        if (!HasValidExtensionCaps(out_caps)) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
