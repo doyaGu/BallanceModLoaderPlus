@@ -340,6 +340,66 @@ TEST_F(ConfigStoreConcurrencyTests, SetValueReturnsIoErrorWhenConfigDirectoryIsB
     EXPECT_EQ(BML_RESULT_IO_ERROR, config_set(Mod(), &key, &value));
 }
 
+TEST_F(ConfigStoreConcurrencyTests, ConfigFilesUseSanitizedModIds) {
+    const std::filesystem::path safe_dir = temp_root_ / "sanitized-mod";
+    InitMod("config:invalid?mod", safe_dir);
+
+    auto config_set = Lookup<PFN_ConfigSet>("bmlConfigSet");
+    ASSERT_NE(config_set, nullptr);
+
+    const BML_ConfigKey key{sizeof(BML_ConfigKey), "category", "entry"};
+    BML_ConfigValue value{};
+    value.struct_size = sizeof(BML_ConfigValue);
+    value.type = BML_CONFIG_BOOL;
+    value.data.bool_value = BML_TRUE;
+
+    EXPECT_EQ(BML_RESULT_OK, config_set(Mod(), &key, &value));
+
+    const std::filesystem::path config_dir = safe_dir / "config";
+    ASSERT_TRUE(std::filesystem::exists(config_dir));
+
+    bool found_toml = false;
+    for (const auto &entry : std::filesystem::directory_iterator(config_dir)) {
+        if (!entry.is_regular_file()) {
+            continue;
+        }
+        if (entry.path().extension() == ".toml") {
+            const std::wstring filename = entry.path().filename().wstring();
+            EXPECT_EQ(filename.find(L':'), std::wstring::npos);
+            EXPECT_EQ(filename.find(L'?'), std::wstring::npos);
+            found_toml = true;
+        }
+    }
+
+    EXPECT_TRUE(found_toml);
+}
+
+TEST_F(ConfigStoreConcurrencyTests, BatchCommitFailsWhenDocumentCannotLoad) {
+    InitMod("config.batch.invalid");
+
+    // Create invalid config file to force parse failure during EnsureLoaded
+    const std::filesystem::path config_dir = std::filesystem::path(manifest_->directory) / "config";
+    std::filesystem::create_directories(config_dir);
+    const std::filesystem::path config_file = config_dir / "config.batch.invalid.toml";
+    {
+        std::ofstream stream(config_file, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(stream.is_open());
+        stream << "entry = ["; // malformed TOML
+    }
+
+    BML_ConfigBatch batch{};
+    ASSERT_EQ(BML_RESULT_OK, ConfigStore::Instance().BatchBegin(Mod(), &batch));
+
+    const BML_ConfigKey key{sizeof(BML_ConfigKey), "broken", "value"};
+    BML_ConfigValue value{};
+    value.struct_size = sizeof(BML_ConfigValue);
+    value.type = BML_CONFIG_INT;
+    value.data.int_value = 5;
+    ASSERT_EQ(BML_RESULT_OK, ConfigStore::Instance().BatchSet(batch, &key, &value));
+
+    EXPECT_EQ(BML_RESULT_IO_ERROR, ConfigStore::Instance().BatchCommit(batch));
+}
+
 // ========================================================================
 // Type-Safe Accessor Tests (using BML_CONFIG_* macros via bmlConfigGet/Set)
 // ========================================================================

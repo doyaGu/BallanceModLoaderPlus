@@ -103,9 +103,9 @@ TEST(DependencyResolverTest, MissingRequiredDependencyFails) {
     std::vector<BML::Core::DependencyWarning> warnings;
     BML::Core::DependencyResolutionError error;
     EXPECT_FALSE(resolver.Resolve(order, warnings, error));
-    EXPECT_NE(error.message.find("Missing required dependency"), std::string::npos);
+    EXPECT_NE(error.message.find("requires missing dependency"), std::string::npos);
     ASSERT_EQ(error.chain.size(), 2u);
-    EXPECT_EQ(error.chain[0], "addon");
+    EXPECT_NE(error.chain[0].find("addon"), std::string::npos);
     EXPECT_EQ(error.chain[1], "missing");
 }
 
@@ -125,6 +125,8 @@ TEST(DependencyResolverTest, OptionalDependencyCanBeMissing) {
     EXPECT_EQ(order[0].id, "addon");
     ASSERT_EQ(warnings.size(), 1u);
     EXPECT_NE(warnings[0].message.find("Optional dependency"), std::string::npos);
+    EXPECT_NE(warnings[0].message.find("optional.mod"), std::string::npos);
+    EXPECT_NE(warnings[0].message.find("addon"), std::string::npos);
 }
 
 TEST(DependencyResolverTest, VersionConstraintMismatchFails) {
@@ -141,9 +143,10 @@ TEST(DependencyResolverTest, VersionConstraintMismatchFails) {
     std::vector<BML::Core::DependencyWarning> warnings;
     BML::Core::DependencyResolutionError error;
     EXPECT_FALSE(resolver.Resolve(order, warnings, error));
-    EXPECT_NE(error.message.find("Version constraint"), std::string::npos);
+    EXPECT_NE(error.message.find("requires 'core'"), std::string::npos);
     ASSERT_EQ(error.chain.size(), 2u);
-    EXPECT_EQ(error.chain[0], "addon");
+    EXPECT_NE(error.chain[0].find("addon"), std::string::npos);
+    EXPECT_NE(error.chain[1].find("core"), std::string::npos);
 }
 
 TEST(DependencyResolverTest, DetectsCycles) {
@@ -242,8 +245,44 @@ TEST(DependencyResolverTest, ConflictRulesBlockCoexistence) {
     EXPECT_FALSE(resolver.Resolve(order, warnings, error));
     EXPECT_NE(error.message.find("Conflict detected"), std::string::npos);
     ASSERT_EQ(error.chain.size(), 2u);
-    EXPECT_EQ(error.chain[0], "addon");
-    EXPECT_EQ(error.chain[1], "runtime");
+    EXPECT_NE(error.chain[0].find("addon"), std::string::npos);
+    EXPECT_NE(error.chain[1].find("runtime"), std::string::npos);
+}
+
+TEST(DependencyResolverTest, SelfDependencyFails) {
+    auto manifest = CreateManifest(
+        "loop", "1.0.0", std::vector{MakeDependency("loop", ">=1.0")}
+    );
+
+    BML::Core::DependencyResolver resolver;
+    resolver.RegisterManifest(manifest);
+
+    std::vector<BML::Core::ResolvedNode> order;
+    std::vector<BML::Core::DependencyWarning> warnings;
+    BML::Core::DependencyResolutionError error;
+    EXPECT_FALSE(resolver.Resolve(order, warnings, error));
+    EXPECT_NE(error.message.find("cannot depend on itself"), std::string::npos);
+    ASSERT_EQ(error.chain.size(), 1u);
+    EXPECT_NE(error.chain[0].find("loop"), std::string::npos);
+}
+
+TEST(DependencyResolverTest, DuplicateOptionalWarningsAreDeduplicated) {
+    auto manifest = CreateManifest("addon", "1.0.0",
+        std::vector{
+            MakeDependency("optional.mod", "^1.0", true),
+            MakeDependency("optional.mod", "^1.0", true)
+        });
+
+    BML::Core::DependencyResolver resolver;
+    resolver.RegisterManifest(manifest);
+
+    std::vector<BML::Core::ResolvedNode> order;
+    std::vector<BML::Core::DependencyWarning> warnings;
+    BML::Core::DependencyResolutionError error;
+    EXPECT_TRUE(resolver.Resolve(order, warnings, error));
+    ASSERT_EQ(order.size(), 1u);
+    ASSERT_EQ(warnings.size(), 1u) << "Optional dependency warning should be deduplicated";
+    EXPECT_EQ(warnings[0].dependency_id, "optional.mod");
 }
 
 TEST(DependencyResolverTest, RegistrationOrderIsStableWithoutDependencies) {

@@ -100,6 +100,19 @@ TEST_F(ResourceHandleLifecycleTests, FinalizeRunsExactlyOncePerHandleUnderConcur
     EXPECT_EQ(finalize_counter.load(std::memory_order_relaxed), static_cast<int>(kHandles));
 }
 
+TEST_F(ResourceHandleLifecycleTests, CreateRejectsDescriptorWithMismatchedStructSize) {
+    auto create = Lookup<PFN_HandleCreate>("bmlHandleCreate");
+    ASSERT_NE(create, nullptr);
+
+    std::atomic<int> finalize_counter{0};
+    BML_HandleType type = RegisterCountingType(finalize_counter);
+
+    BML_HandleDesc desc{};
+    desc.struct_size = sizeof(BML_HandleDesc) - 4; // Intentionally too small
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, create(type, &desc));
+    EXPECT_EQ(finalize_counter.load(), 0);
+}
+
 TEST_F(ResourceHandleLifecycleTests, SlotReuseIncrementsGenerationAndInvalidatesOldDescriptors) {
     auto create = Lookup<PFN_HandleCreate>("bmlHandleCreate");
     auto release = Lookup<PFN_HandleRelease>("bmlHandleRelease");
@@ -231,6 +244,50 @@ TEST_F(ResourceHandleLifecycleTests, RetainOnReleasedHandleReturnsError) {
     EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, retain(&desc));
 }
 
+TEST_F(ResourceHandleLifecycleTests, HandleOpsRejectShrunkStructs) {
+    auto create = Lookup<PFN_HandleCreate>("bmlHandleCreate");
+    auto retain = Lookup<PFN_HandleRetain>("bmlHandleRetain");
+    auto release = Lookup<PFN_HandleRelease>("bmlHandleRelease");
+    auto attach = Lookup<PFN_HandleAttachUserData>("bmlHandleAttachUserData");
+    auto get_user_data = Lookup<PFN_HandleGetUserData>("bmlHandleGetUserData");
+    auto validate = Lookup<PFN_HandleValidate>("bmlHandleValidate");
+    ASSERT_NE(create, nullptr);
+    ASSERT_NE(retain, nullptr);
+    ASSERT_NE(release, nullptr);
+    ASSERT_NE(attach, nullptr);
+    ASSERT_NE(get_user_data, nullptr);
+    ASSERT_NE(validate, nullptr);
+
+    std::atomic<int> finalize_counter{0};
+    BML_HandleType type = RegisterCountingType(finalize_counter);
+
+    BML_HandleDesc desc = BML_HANDLE_DESC_INIT;
+    ASSERT_EQ(BML_RESULT_OK, create(type, &desc));
+
+    auto shrink = [&](auto fn) {
+        desc.struct_size = sizeof(BML_HandleDesc) - 1;
+        EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, fn(&desc));
+        desc.struct_size = sizeof(BML_HandleDesc);
+    };
+
+    shrink(retain);
+    shrink(release);
+    shrink([&](const BML_HandleDesc *d) { return attach(d, nullptr); });
+    shrink([&](const BML_HandleDesc *d) {
+        void *value = nullptr;
+        return get_user_data(d, &value);
+    });
+    shrink([&](const BML_HandleDesc *d) {
+        BML_Bool valid = BML_FALSE;
+        return validate(d, &valid);
+    });
+
+    // Restore valid struct size and clean up
+    desc.struct_size = sizeof(BML_HandleDesc);
+    EXPECT_EQ(BML_RESULT_OK, release(&desc));
+    EXPECT_EQ(finalize_counter.load(), 1);
+}
+
 TEST_F(ResourceHandleLifecycleTests, ValidateOnReleasedHandleReturnsFalse) {
     auto create = Lookup<PFN_HandleCreate>("bmlHandleCreate");
     auto release = Lookup<PFN_HandleRelease>("bmlHandleRelease");
@@ -358,6 +415,16 @@ TEST_F(ResourceHandleLifecycleTests, ResourceCapsReportsCorrectCapabilities) {
     EXPECT_TRUE(caps.capability_flags & BML_RESOURCE_CAP_USER_DATA);
     EXPECT_TRUE(caps.capability_flags & BML_RESOURCE_CAP_THREAD_SAFE);
     EXPECT_TRUE(caps.capability_flags & BML_RESOURCE_CAP_TYPE_ISOLATION);
+}
+
+TEST_F(ResourceHandleLifecycleTests, ResourceCapsRejectsMismatchedStructSize) {
+    using PFN_ResourceGetCaps = BML_Result (*)(BML_ResourceCaps *);
+    auto getCaps = Lookup<PFN_ResourceGetCaps>("bmlResourceGetCaps");
+    ASSERT_NE(getCaps, nullptr);
+
+    BML_ResourceCaps caps{};
+    caps.struct_size = sizeof(BML_ResourceCaps) - 1;
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, getCaps(&caps));
 }
 
 } // namespace

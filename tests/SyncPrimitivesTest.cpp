@@ -485,6 +485,260 @@ TEST_F(SyncPrimitivesTest, CondVarWaitDeadlockDetectionWithExtraMutex) {
     SyncManager::Instance().DestroyMutex(signal_mutex);
 }
 
+TEST_F(SyncPrimitivesTest, MutexTimeoutDeadlockDetectionSetsLastError) {
+    BML_Mutex first = nullptr;
+    BML_Mutex second = nullptr;
+    ASSERT_EQ(SyncManager::Instance().CreateMutex(&first), BML_RESULT_OK);
+    ASSERT_EQ(SyncManager::Instance().CreateMutex(&second), BML_RESULT_OK);
+
+    std::mutex state_mutex;
+    std::condition_variable state_cv;
+    bool a_has_first = false;
+    bool b_has_second = false;
+    bool a_attempting_second = false;
+
+    std::promise<DeadlockInfo> result_promise;
+    auto result_future = result_promise.get_future();
+
+    std::thread thread_a([&]() {
+        SyncManager::Instance().LockMutex(first);
+        {
+            std::lock_guard<std::mutex> guard(state_mutex);
+            a_has_first = true;
+        }
+        state_cv.notify_all();
+
+        {
+            std::unique_lock<std::mutex> lk(state_mutex);
+            state_cv.wait(lk, [&] { return b_has_second; });
+            a_attempting_second = true;
+        }
+        state_cv.notify_all();
+
+        auto result = SyncManager::Instance().LockMutexTimeout(second, 1000);
+        if (result == BML_RESULT_OK) {
+            SyncManager::Instance().UnlockMutex(second);
+        }
+        SyncManager::Instance().UnlockMutex(first);
+    });
+
+    std::thread thread_b([&]() {
+        BML::Core::ClearLastErrorInfo();
+        {
+            std::unique_lock<std::mutex> lk(state_mutex);
+            state_cv.wait(lk, [&] { return a_has_first; });
+        }
+
+        SyncManager::Instance().LockMutex(second);
+        {
+            std::lock_guard<std::mutex> guard(state_mutex);
+            b_has_second = true;
+        }
+        state_cv.notify_all();
+
+        {
+            std::unique_lock<std::mutex> lk(state_mutex);
+            state_cv.wait(lk, [&] { return a_attempting_second; });
+        }
+
+        auto lock_result = SyncManager::Instance().LockMutexTimeout(first, 1000);
+        DeadlockInfo info{};
+        info.code = lock_result;
+        if (lock_result == BML_RESULT_SYNC_DEADLOCK) {
+            BML_ErrorInfo err = BML_ERROR_INFO_INIT;
+            if (BML::Core::GetLastErrorInfo(&err) == BML_RESULT_OK && err.api_name) {
+                info.api = err.api_name;
+            }
+        }
+
+        if (lock_result == BML_RESULT_OK) {
+            SyncManager::Instance().UnlockMutex(first);
+        }
+        SyncManager::Instance().UnlockMutex(second);
+        result_promise.set_value(info);
+    });
+
+    auto info = result_future.get();
+    thread_a.join();
+    thread_b.join();
+
+    EXPECT_EQ(info.code, BML_RESULT_SYNC_DEADLOCK);
+    EXPECT_EQ(info.api, "bmlMutexLockTimeout");
+
+    SyncManager::Instance().DestroyMutex(second);
+    SyncManager::Instance().DestroyMutex(first);
+}
+
+TEST_F(SyncPrimitivesTest, RwLockWriteTimeoutDeadlockDetectionSetsLastError) {
+    BML_RwLock first = nullptr;
+    BML_RwLock second = nullptr;
+    ASSERT_EQ(SyncManager::Instance().CreateRwLock(&first), BML_RESULT_OK);
+    ASSERT_EQ(SyncManager::Instance().CreateRwLock(&second), BML_RESULT_OK);
+
+    std::mutex state_mutex;
+    std::condition_variable state_cv;
+    bool a_has_first = false;
+    bool b_has_second = false;
+    bool a_attempting_second = false;
+
+    std::promise<DeadlockInfo> result_promise;
+    auto result_future = result_promise.get_future();
+
+    std::thread thread_a([&]() {
+        SyncManager::Instance().WriteLockRwLock(first);
+        {
+            std::lock_guard<std::mutex> guard(state_mutex);
+            a_has_first = true;
+        }
+        state_cv.notify_all();
+
+        {
+            std::unique_lock<std::mutex> lk(state_mutex);
+            state_cv.wait(lk, [&] { return b_has_second; });
+            a_attempting_second = true;
+        }
+        state_cv.notify_all();
+
+        auto result = SyncManager::Instance().WriteLockRwLockTimeout(second, 1000);
+        if (result == BML_RESULT_OK) {
+            SyncManager::Instance().WriteUnlockRwLock(second);
+        }
+        SyncManager::Instance().WriteUnlockRwLock(first);
+    });
+
+    std::thread thread_b([&]() {
+        BML::Core::ClearLastErrorInfo();
+        {
+            std::unique_lock<std::mutex> lk(state_mutex);
+            state_cv.wait(lk, [&] { return a_has_first; });
+        }
+
+        SyncManager::Instance().WriteLockRwLock(second);
+        {
+            std::lock_guard<std::mutex> guard(state_mutex);
+            b_has_second = true;
+        }
+        state_cv.notify_all();
+
+        {
+            std::unique_lock<std::mutex> lk(state_mutex);
+            state_cv.wait(lk, [&] { return a_attempting_second; });
+        }
+
+        auto lock_result = SyncManager::Instance().WriteLockRwLockTimeout(first, 1000);
+        DeadlockInfo info{};
+        info.code = lock_result;
+        if (lock_result == BML_RESULT_SYNC_DEADLOCK) {
+            BML_ErrorInfo err = BML_ERROR_INFO_INIT;
+            if (BML::Core::GetLastErrorInfo(&err) == BML_RESULT_OK && err.api_name) {
+                info.api = err.api_name;
+            }
+        }
+
+        if (lock_result == BML_RESULT_OK) {
+            SyncManager::Instance().WriteUnlockRwLock(first);
+        }
+        SyncManager::Instance().WriteUnlockRwLock(second);
+        result_promise.set_value(info);
+    });
+
+    auto info = result_future.get();
+    thread_a.join();
+    thread_b.join();
+
+    EXPECT_EQ(info.code, BML_RESULT_SYNC_DEADLOCK);
+    EXPECT_EQ(info.api, "bmlRwLockWriteLockTimeout");
+
+    SyncManager::Instance().DestroyRwLock(second);
+    SyncManager::Instance().DestroyRwLock(first);
+}
+
+TEST_F(SyncPrimitivesTest, SemaphoreWaitDeadlockDetectionSetsLastError) {
+    BML_Semaphore first = nullptr;
+    BML_Semaphore second = nullptr;
+    ASSERT_EQ(SyncManager::Instance().CreateSemaphore(1, 1, &first), BML_RESULT_OK);
+    ASSERT_EQ(SyncManager::Instance().CreateSemaphore(1, 1, &second), BML_RESULT_OK);
+
+    std::mutex state_mutex;
+    std::condition_variable state_cv;
+    bool a_has_first = false;
+    bool b_has_second = false;
+    bool a_attempting_second = false;
+
+    std::promise<DeadlockInfo> result_promise;
+    auto result_future = result_promise.get_future();
+
+    std::thread thread_a([&]() {
+        ASSERT_EQ(SyncManager::Instance().WaitSemaphore(first, BML_TIMEOUT_INFINITE), BML_RESULT_OK);
+        {
+            std::lock_guard<std::mutex> guard(state_mutex);
+            a_has_first = true;
+        }
+        state_cv.notify_all();
+
+        {
+            std::unique_lock<std::mutex> lk(state_mutex);
+            state_cv.wait(lk, [&] { return b_has_second; });
+            a_attempting_second = true;
+        }
+        state_cv.notify_all();
+
+        auto result = SyncManager::Instance().WaitSemaphore(second, 1000);
+        if (result == BML_RESULT_OK) {
+            SyncManager::Instance().SignalSemaphore(second, 1);
+        }
+        SyncManager::Instance().SignalSemaphore(first, 1);
+    });
+
+    std::thread thread_b([&]() {
+        BML::Core::ClearLastErrorInfo();
+        {
+            std::unique_lock<std::mutex> lk(state_mutex);
+            state_cv.wait(lk, [&] { return a_has_first; });
+        }
+
+        ASSERT_EQ(SyncManager::Instance().WaitSemaphore(second, BML_TIMEOUT_INFINITE), BML_RESULT_OK);
+        {
+            std::lock_guard<std::mutex> guard(state_mutex);
+            b_has_second = true;
+        }
+        state_cv.notify_all();
+
+        {
+            std::unique_lock<std::mutex> lk(state_mutex);
+            state_cv.wait(lk, [&] { return a_attempting_second; });
+        }
+
+        BML::Core::ClearLastErrorInfo();
+        auto lock_result = SyncManager::Instance().WaitSemaphore(first, 1000);
+
+        DeadlockInfo info{};
+        info.code = lock_result;
+        if (lock_result == BML_RESULT_SYNC_DEADLOCK) {
+            BML_ErrorInfo err = BML_ERROR_INFO_INIT;
+            if (BML::Core::GetLastErrorInfo(&err) == BML_RESULT_OK && err.api_name) {
+                info.api = err.api_name;
+            }
+        }
+
+        if (lock_result == BML_RESULT_OK) {
+            SyncManager::Instance().SignalSemaphore(first, 1);
+        }
+        SyncManager::Instance().SignalSemaphore(second, 1);
+        result_promise.set_value(info);
+    });
+
+    auto info = result_future.get();
+    thread_a.join();
+    thread_b.join();
+
+    EXPECT_EQ(info.code, BML_RESULT_SYNC_DEADLOCK);
+    EXPECT_EQ(info.api, "bmlSemaphoreWait");
+
+    SyncManager::Instance().DestroySemaphore(second);
+    SyncManager::Instance().DestroySemaphore(first);
+}
+
 // ============================================================================
 // Capabilities Test
 // ============================================================================
