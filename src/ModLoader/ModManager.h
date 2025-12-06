@@ -21,7 +21,7 @@
 
 // ModLoader Manager GUID
 #ifndef MOD_MANAGER_GUID
-#define MOD_MANAGER_GUID CKGUID(0x32a40332, 0x3bf12a51)
+#define MOD_MANAGER_GUID CKGUID(0xba95b7f,0x66d726ea)
 #endif
 
 /**
