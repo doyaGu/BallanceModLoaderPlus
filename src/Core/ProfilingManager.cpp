@@ -5,6 +5,7 @@
 #include "MemoryManager.h"
 
 #include <cstdio>
+#include <mutex>
 #include <unordered_map>
 
 namespace BML::Core {
@@ -25,10 +26,12 @@ namespace BML::Core {
         InitializeCriticalSection(&m_BufferLock);
         m_EventBuffer.reserve(MAX_EVENTS);
 
-        // Get QPC frequency
+        // Get QPC frequency (default to 10MHz if query fails)
         LARGE_INTEGER freq;
-        if (QueryPerformanceFrequency(&freq)) {
+        if (QueryPerformanceFrequency(&freq) && freq.QuadPart > 0) {
             m_QpcFrequency = freq.QuadPart;
+        } else {
+            m_QpcFrequency = 10000000ULL; // 10 MHz fallback
         }
 
         // Record startup time
@@ -41,12 +44,14 @@ namespace BML::Core {
 
     uint64_t ProfilingManager::GetTimestampNs() {
         LARGE_INTEGER counter;
-        if (!QueryPerformanceCounter(&counter)) {
+        if (!QueryPerformanceCounter(&counter) || m_QpcFrequency == 0) {
             return 0;
         }
 
-        // Convert to nanoseconds
-        return (counter.QuadPart * 1000000000ULL) / m_QpcFrequency;
+        // Convert to nanoseconds (avoid overflow by dividing first for large values)
+        const uint64_t seconds = counter.QuadPart / m_QpcFrequency;
+        const uint64_t remainder = counter.QuadPart % m_QpcFrequency;
+        return seconds * 1000000000ULL + (remainder * 1000000000ULL) / m_QpcFrequency;
     }
 
     uint64_t ProfilingManager::GetCpuFrequency() {
@@ -227,36 +232,63 @@ namespace BML::Core {
         return BML_RESULT_OK;
     }
 
+    // Helper function to escape JSON strings
+    static std::string EscapeJsonString(const std::string &input) {
+        std::string output;
+        output.reserve(input.size() + 8); // Reserve extra space for escapes
+        for (char c : input) {
+            switch (c) {
+            case '"': output += "\\\""; break;
+            case '\\': output += "\\\\"; break;
+            case '\b': output += "\\b"; break;
+            case '\f': output += "\\f"; break;
+            case '\n': output += "\\n"; break;
+            case '\r': output += "\\r"; break;
+            case '\t': output += "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    // Control characters: output as \uXXXX
+                    char buf[8];
+                    snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(c));
+                    output += buf;
+                } else {
+                    output += c;
+                }
+                break;
+            }
+        }
+        return output;
+    }
+
     void ProfilingManager::WriteJsonEvent(const TraceEvent &evt, FILE *fp) {
         const char *phase = "";
         switch (evt.type) {
-        case TraceEvent::BEGIN: phase = "B";
-            break;
-        case TraceEvent::END: phase = "E";
-            break;
-        case TraceEvent::INSTANT: phase = "i";
-            break;
-        case TraceEvent::COUNTER: phase = "C";
-            break;
-        case TraceEvent::FRAME: phase = "i";
-            break;
+        case TraceEvent::BEGIN: phase = "B"; break;
+        case TraceEvent::END: phase = "E"; break;
+        case TraceEvent::INSTANT: phase = "i"; break;
+        case TraceEvent::COUNTER: phase = "C"; break;
+        case TraceEvent::FRAME: phase = "i"; break;
         }
 
+        // Escape name and category for JSON safety
+        std::string escapedName = EscapeJsonString(evt.name);
+        std::string escapedCategory = EscapeJsonString(evt.category);
+
         // Convert ns to microseconds (Chrome Tracing uses μs)
-        double ts_us = evt.timestamp_ns / 1000.0;
+        double ts_us = static_cast<double>(evt.timestamp_ns) / 1000.0;
 
         fprintf(fp, "    {\"name\":\"%s\",\"ph\":\"%s\",\"ts\":%.3f,\"pid\":1,\"tid\":%llu",
-                evt.name.c_str(), phase, ts_us, evt.thread_id);
+                escapedName.c_str(), phase, ts_us, static_cast<unsigned long long>(evt.thread_id));
 
         if (!evt.category.empty()) {
-            fprintf(fp, ",\"cat\":\"%s\"", evt.category.c_str());
+            fprintf(fp, ",\"cat\":\"%s\"", escapedCategory.c_str());
         }
 
         if (evt.type == TraceEvent::COUNTER) {
-            fprintf(fp, ",\"args\":{\"%s\":%lld}", evt.name.c_str(), evt.counter_value);
+            fprintf(fp, ",\"args\":{\"%s\":%lld}", escapedName.c_str(), static_cast<long long>(evt.counter_value));
         }
 
-        if (evt.type == TraceEvent::INSTANT) {
+        if (evt.type == TraceEvent::INSTANT || evt.type == TraceEvent::FRAME) {
             fprintf(fp, ",\"s\":\"t\""); // thread scope
         }
 
@@ -273,11 +305,18 @@ namespace BML::Core {
         {
             CriticalSectionGuard guard(m_BufferLock);
             try {
-                events_snapshot = m_EventBuffer; // Copy while holding lock
+                events_snapshot = std::move(m_EventBuffer); // Move to avoid copy
+                m_EventBuffer.clear();
+                m_EventBuffer.reserve(MAX_EVENTS); // Re-reserve for next batch
             } catch (...) {
-                SetLastError(BML_RESULT_OUT_OF_MEMORY, "Failed to copy event buffer", "bmlFlushProfilingData");
+                SetLastError(BML_RESULT_OUT_OF_MEMORY, "Failed to move event buffer", "bmlFlushProfilingData");
                 return BML_RESULT_OUT_OF_MEMORY;
             }
+        }
+
+        if (events_snapshot.empty()) {
+            // Nothing to flush
+            return BML_RESULT_OK;
         }
 
         // RAII wrapper for FILE* handle
@@ -288,6 +327,17 @@ namespace BML::Core {
 
         FILE *fp = fopen(filename, "w");
         if (!fp) {
+            // Restore events on failure
+            {
+                CriticalSectionGuard guard(m_BufferLock);
+                try {
+                    m_EventBuffer.insert(m_EventBuffer.begin(), 
+                        std::make_move_iterator(events_snapshot.begin()),
+                        std::make_move_iterator(events_snapshot.end()));
+                } catch (...) {
+                    // Events lost on restore failure - log but don't fail
+                }
+            }
             SetLastError(BML_RESULT_IO_ERROR, "Failed to open trace file for writing", "bmlFlushProfilingData");
             return BML_RESULT_IO_ERROR;
         }
@@ -319,18 +369,18 @@ namespace BML::Core {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
-        out_stats->total_events = m_TotalEvents;
-        out_stats->total_scopes = m_TotalScopes;
-        out_stats->dropped_events = m_DroppedEvents;
-        out_stats->memory_used_bytes = m_EventBuffer.capacity() * sizeof(TraceEvent);
+        out_stats->total_events = m_TotalEvents.load(std::memory_order_relaxed);
+        out_stats->total_scopes = m_TotalScopes.load(std::memory_order_relaxed);
+        out_stats->dropped_events = m_DroppedEvents.load(std::memory_order_relaxed);
 
-        size_t active = 0;
         {
             CriticalSectionGuard guard(m_BufferLock);
-            // Count active scopes across all threads (simplified)
-            // Note: actual per-thread scope tracking would require additional data structures
+            out_stats->memory_used_bytes = m_EventBuffer.capacity() * sizeof(TraceEvent);
         }
-        out_stats->active_scopes = active;
+
+        // Note: Per-thread active scope tracking would require additional data structures.
+        // For now, report 0 as we cannot reliably count across all thread-local contexts.
+        out_stats->active_scopes = 0;
 
         return BML_RESULT_OK;
     }
