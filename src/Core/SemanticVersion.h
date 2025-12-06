@@ -9,6 +9,7 @@ namespace BML::Core {
         int minor{0};
         int patch{0};
         std::string prerelease; // e.g., "alpha", "beta.1", "rc.2"
+        std::string build_metadata; // e.g., "build.45"
     };
 
     enum class VersionOperator {
@@ -26,9 +27,12 @@ namespace BML::Core {
         VersionOperator op{VersionOperator::Exact};
         SemanticVersion version{};
         bool parsed{false};
+        int parsed_components{0};
     };
 
-    bool ParseSemanticVersion(const std::string &text, SemanticVersion &out_version);
+    bool ParseSemanticVersion(const std::string &text,
+                              SemanticVersion &out_version,
+                              int *out_component_count = nullptr);
     bool ParseSemanticVersionRange(const std::string &text,
                                    SemanticVersionRange &out_range,
                                    std::string &out_error);
