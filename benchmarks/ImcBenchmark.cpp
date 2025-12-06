@@ -166,7 +166,7 @@ PubSubMetrics RunPubSubBenchmark(const BenchConfig &config) {
     for (size_t i = 0; i < config.messages; ++i) {
         const auto sent_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch()).count();
         std::memcpy(payload.data(), &sent_ns, sizeof(int64_t));
-        EnsureOk(bus.Publish(topic_id, payload.data(), payload_size, nullptr), "Publish");
+        EnsureOk(bus.Publish(topic_id, payload.data(), payload_size), "Publish");
         if (config.pump_budget != 0 && ((i + 1) % config.pump_budget == 0)) {
             bus.Pump(config.pump_budget);
         }
