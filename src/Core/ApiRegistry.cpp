@@ -179,25 +179,32 @@ namespace BML::Core {
     ) {
         std::unique_lock lock(g_Mutex);
 
+        if (!api_table || api_size == 0) {
+            DebugWarning("Extension registration requires non-null API table and size");
+            return BML_API_INVALID_ID;
+        }
+
         if (!CanRegisterLocked(name, BML_API_INVALID_ID)) {
             return BML_API_INVALID_ID;
         }
 
         BML_ApiId new_id = m_NextExtensionId.load(std::memory_order_relaxed);
-        if (new_id >= BML_MAX_API_ID) {
-            DebugWarning("Extension ID space exhausted");
-            return BML_API_INVALID_ID;
+        while (true) {
+            if (new_id >= BML_MAX_API_ID) {
+                DebugWarning("Extension ID space exhausted");
+                return BML_API_INVALID_ID;
+            }
+            if (m_NextExtensionId.compare_exchange_weak(
+                    new_id,
+                    new_id + 1,
+                    std::memory_order_relaxed,
+                    std::memory_order_relaxed)) {
+                break;
+            }
         }
-        m_NextExtensionId.fetch_add(1, std::memory_order_relaxed);
 
-        auto name_ptr = std::make_unique<std::string>(name);
-        auto provider_ptr = std::make_unique<std::string>(provider_id);
-
-        const char *name_cstr = name_ptr->c_str();
-        const char *provider_cstr = provider_ptr->c_str();
-
-        m_StringStorage.push_back(std::move(name_ptr));
-        m_StringStorage.push_back(std::move(provider_ptr));
+        const char *name_cstr = StoreString(name.c_str());
+        const char *provider_cstr = StoreString(provider_id.c_str());
 
         ApiMetadata meta;
         meta.name = name_cstr;
@@ -674,18 +681,25 @@ namespace BML::Core {
             return;
         }
 
-        m_Metadata[metadata.id] = metadata;
-        RegisterEntryLocked(name_str, metadata.pointer, metadata.id);
-        m_TotalCapabilities.fetch_or(metadata.capabilities, std::memory_order_relaxed);
+        ApiMetadata stored_metadata = metadata;
+        stored_metadata.name = StoreString(metadata.name);
+        stored_metadata.provider_mod = StoreString(metadata.provider_mod);
+        if (metadata.description) {
+            stored_metadata.description = StoreString(metadata.description);
+        }
+
+        m_Metadata[stored_metadata.id] = stored_metadata;
+        RegisterEntryLocked(name_str, stored_metadata.pointer, stored_metadata.id);
+        m_TotalCapabilities.fetch_or(stored_metadata.capabilities, std::memory_order_relaxed);
 
         char buf[256];
         snprintf(buf,
                  sizeof(buf),
                  "Registered API: %s (ID=%u, type=%d, caps=0x%llx)",
-                 metadata.name,
-                 metadata.id,
-                 metadata.type,
-                 static_cast<unsigned long long>(metadata.capabilities));
+                 stored_metadata.name,
+                 stored_metadata.id,
+                 stored_metadata.type,
+                 static_cast<unsigned long long>(stored_metadata.capabilities));
         DebugInfo(buf);
     }
 
@@ -730,6 +744,17 @@ namespace BML::Core {
             total |= pair.second.capabilities;
         }
         m_TotalCapabilities.store(total, std::memory_order_relaxed);
+    }
+
+    const char *ApiRegistry::StoreString(const char *value) {
+        if (!value) {
+            return nullptr;
+        }
+
+        auto stored = std::make_unique<std::string>(value);
+        const char *ptr = stored->c_str();
+        m_StringStorage.push_back(std::move(stored));
+        return ptr;
     }
 
     void *ApiRegistry::ResolvePointerLocked(BML_ApiId api_id, bool increment_counts) const {

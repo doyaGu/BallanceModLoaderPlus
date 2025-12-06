@@ -409,6 +409,7 @@ namespace BML::Core {
         bool CanRegisterLocked(const std::string &name, BML_ApiId api_id) const;
         void InvalidateTlsCachesLocked();
         void RecalculateTotalCapabilitiesLocked();
+        const char *StoreString(const char *value);
         void *ResolvePointerLocked(BML_ApiId api_id, bool increment_counts) const;
     };
 } // namespace BML::Core
