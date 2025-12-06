@@ -34,8 +34,6 @@
  * 
  * Example:
  *   #define BML_API_ID_bmlImcPublish 1000u  // v0.4.0 - permanent forever
- * 
- * @see docs/stable-id/API_ID_STABILITY.md for detailed rules
  */
 
 #include "bml_types.h"
