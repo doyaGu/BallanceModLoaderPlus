@@ -113,6 +113,8 @@ namespace BML::Core {
         ManifestLoadResult manifestResult;
         if (!LoadManifestsFromDirectory(mods_dir, manifestResult)) {
             out_diag.manifest_errors = manifestResult.errors;
+            Context::Instance().ClearManifests();
+            ApplyDiagnostics(out_diag);
             return false;
         }
 
@@ -122,6 +124,8 @@ namespace BML::Core {
         if (!BuildLoadOrder(manifestResult, loadOrder, warnings, depError)) {
             out_diag.manifest_errors = manifestResult.errors;
             out_diag.dependency_error = depError;
+            Context::Instance().ClearManifests();
+            ApplyDiagnostics(out_diag);
             return false;
         }
 
@@ -148,6 +152,7 @@ namespace BML::Core {
             out_diag.load_error = loadError;
             ctx.ShutdownModules();
             ctx.ClearManifests();
+            ApplyDiagnostics(out_diag);
             return false;
         }
 
@@ -162,6 +167,7 @@ namespace BML::Core {
             StopHotReloadCoordinator();
         }
 
+        ApplyDiagnostics(out_diag);
         return true;
     }
 
@@ -172,6 +178,8 @@ namespace BML::Core {
         ManifestLoadResult manifestResult;
         if (!LoadManifestsFromDirectory(mods_dir, manifestResult)) {
             out_diag.manifest_errors = manifestResult.errors;
+            Context::Instance().ClearManifests();
+            ApplyDiagnostics(out_diag);
             return false;
         }
 
@@ -181,6 +189,7 @@ namespace BML::Core {
         if (!BuildLoadOrder(manifestResult, loadOrder, warnings, depError)) {
             out_diag.manifest_errors = manifestResult.errors;
             out_diag.dependency_error = depError;
+            ApplyDiagnostics(out_diag);
             return false;
         }
 
@@ -201,6 +210,7 @@ namespace BML::Core {
             ctx.RegisterManifest(std::move(manifest));
         }
 
+        ApplyDiagnostics(out_diag);
         return true;
     }
 
@@ -209,6 +219,7 @@ namespace BML::Core {
 
         if (m_DiscoveredOrder.empty()) {
             // Nothing discovered yet
+            ApplyDiagnostics(out_diag);
             return false;
         }
 
@@ -224,6 +235,7 @@ namespace BML::Core {
             out_diag.load_error = loadError;
             ctx.ShutdownModules();
             ctx.ClearManifests();
+            ApplyDiagnostics(out_diag);
             return false;
         }
 
@@ -239,6 +251,7 @@ namespace BML::Core {
         } else {
             StopHotReloadCoordinator();
         }
+        ApplyDiagnostics(out_diag);
         return true;
     }
 
@@ -262,6 +275,7 @@ namespace BML::Core {
         std::unique_lock lock(m_ReloadMutex);
         if (m_ReloadInProgress) {
             out_diag.load_error.message = "Reload already in progress";
+            ApplyDiagnostics(out_diag);
             return false;
         }
         m_ReloadInProgress = true;
@@ -289,6 +303,7 @@ namespace BML::Core {
     bool ModuleRuntime::ReloadModulesInternal(ModuleBootstrapDiagnostics &out_diag) {
         if (m_DiscoveredModsDir.empty()) {
             out_diag.load_error.message = "Hot reload requested before discovery";
+            ApplyDiagnostics(out_diag);
             return false;
         }
 
@@ -301,6 +316,7 @@ namespace BML::Core {
         ManifestLoadResult manifestResult;
         if (!LoadManifestsFromDirectory(m_DiscoveredModsDir, manifestResult)) {
             out_diag.manifest_errors = manifestResult.errors;
+            ApplyDiagnostics(out_diag);
             return false;
         }
 
@@ -310,6 +326,7 @@ namespace BML::Core {
         if (!BuildLoadOrder(manifestResult, loadOrder, warnings, depError)) {
             out_diag.manifest_errors = manifestResult.errors;
             out_diag.dependency_error = depError;
+            ApplyDiagnostics(out_diag);
             return false;
         }
 
@@ -335,6 +352,7 @@ namespace BML::Core {
             ctx.ShutdownModules();
             ctx.ClearManifests();
             // Note: Extensions cleaned up in ShutdownModules()
+            ApplyDiagnostics(out_diag);
             return false;
         }
 
@@ -343,6 +361,7 @@ namespace BML::Core {
         }
 
         BroadcastLifecycleEvent("BML/System/ModReload", ctx.GetLoadedModules());
+        ApplyDiagnostics(out_diag);
         return true;
     }
 
