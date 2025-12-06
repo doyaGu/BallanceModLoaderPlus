@@ -85,11 +85,12 @@ namespace bml {
     /**
      * @brief Resize allocated memory
      * @param ptr Pointer to memory
+     * @param old_size Original size in bytes
      * @param new_size New size in bytes
      * @return Pointer to resized memory, or nullptr on failure
      */
-    inline void *Realloc(void *ptr, size_t new_size) {
-        return bmlRealloc ? bmlRealloc(ptr, new_size) : nullptr;
+    inline void *Realloc(void *ptr, size_t old_size, size_t new_size) {
+        return bmlRealloc ? bmlRealloc(ptr, old_size, new_size) : nullptr;
     }
 
     /**

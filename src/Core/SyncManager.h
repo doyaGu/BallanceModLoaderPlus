@@ -22,7 +22,7 @@ namespace BML::Core {
     struct MutexImpl {
         CRITICAL_SECTION cs;
 
-        MutexImpl() {
+        MutexImpl() : cs() {
             InitializeCriticalSection(&cs);
         }
 
@@ -52,7 +52,7 @@ namespace BML::Core {
 
         static constexpr uint16_t kMaxRecursionDepth = 0xFFFF;
 
-        RwLockImpl() : tls_index(TlsAlloc()) {
+        RwLockImpl() : srw(), tls_index(TlsAlloc()) {
             InitializeSRWLock(&srw);
         }
 
@@ -167,7 +167,7 @@ namespace BML::Core {
         DWORD fls_index;
         BML_TlsDestructor destructor;
 
-        TlsKeyImpl(BML_TlsDestructor dtor)
+        explicit TlsKeyImpl(BML_TlsDestructor dtor)
             : fls_index(FlsAlloc(dtor ? FlsCallback : nullptr)), destructor(dtor) {}
 
         ~TlsKeyImpl() {
