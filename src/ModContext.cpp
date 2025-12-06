@@ -1001,14 +1001,26 @@ void ModContext::InitDirectories() {
 
 void ModContext::InitLogger() {
     std::wstring logfilePath = m_LoaderDir + L"\\ModLoader.log";
+    m_Logfile = nullptr;
+#if defined(_MSC_VER)
+    if (_wfopen_s(&m_Logfile, logfilePath.c_str(), L"w") != 0) {
+        m_Logfile = nullptr;
+    }
+#else
     m_Logfile = _wfopen(logfilePath.c_str(), L"w");
+#endif
     auto *logger = new Logger("ModLoader");
     Logger::SetDefault(logger);
     m_Logger = logger;
 
 #ifdef _DEBUG
     AllocConsole();
+#if defined(_MSC_VER)
+    FILE *console = nullptr;
+    freopen_s(&console, "CONOUT$", "w", stdout);
+#else
     freopen("CONOUT$", "w", stdout);
+#endif
 #endif
 }
 
@@ -1019,7 +1031,10 @@ void ModContext::ShutdownLogger() {
 
     Logger::SetDefault(nullptr);
     delete m_Logger;
-    fclose(m_Logfile);
+    if (m_Logfile) {
+        fclose(m_Logfile);
+        m_Logfile = nullptr;
+    }
 }
 
 extern bool HookObjectLoad();
