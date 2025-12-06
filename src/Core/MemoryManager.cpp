@@ -38,6 +38,7 @@ namespace BML::Core {
             uint32_t magic{0};
             uint32_t flags{0};
             size_t size{0};
+            size_t alignment{0};
             void *original_ptr{nullptr};
         };
 
@@ -105,6 +106,7 @@ namespace BML::Core {
         metadata->magic = kAllocationMagic;
         metadata->flags = 0;
         metadata->size = size;
+        metadata->alignment = kMetadataAlignment;
         metadata->original_ptr = raw_ptr;
 
         if (m_tracking_enabled.load(std::memory_order_relaxed)) {
@@ -138,6 +140,7 @@ namespace BML::Core {
         metadata->magic = kAllocationMagic;
         metadata->flags = 0;
         metadata->size = payload_size;
+        metadata->alignment = kMetadataAlignment;
         metadata->original_ptr = raw_ptr;
 
         if (m_tracking_enabled.load(std::memory_order_relaxed)) {
@@ -174,24 +177,11 @@ namespace BML::Core {
     }
 
     void MemoryManager::Free(void *ptr) {
-        if (ptr == nullptr) {
-            return;
-        }
-
-        auto *metadata = GetMetadata(ptr);
-        if (!metadata) {
-            return;
-        }
-
-        if (m_tracking_enabled.load(std::memory_order_relaxed)) {
-            TrackDeallocation(metadata->size);
-        }
-
-        std::free(metadata->original_ptr);
+        FreeInternal(ptr, 0, false);
     }
 
-    void MemoryManager::FreeWithSize(void *ptr, size_t /*size*/) {
-        Free(ptr);
+    void MemoryManager::FreeWithSize(void *ptr, size_t size) {
+        FreeInternal(ptr, size, size > 0);
     }
 
     void *MemoryManager::AllocAligned(size_t size, size_t alignment) {
@@ -203,6 +193,7 @@ namespace BML::Core {
             return nullptr;
         }
 
+        const size_t requested_alignment = alignment;
         alignment = std::max(alignment, kMetadataAlignment);
 
         size_t total_size = 0;
@@ -224,6 +215,7 @@ namespace BML::Core {
         metadata->magic = kAllocationMagic;
         metadata->flags = kAllocationFlagAligned;
         metadata->size = size;
+        metadata->alignment = requested_alignment;
         metadata->original_ptr = raw_ptr;
 
         if (m_tracking_enabled.load(std::memory_order_relaxed)) {
@@ -387,7 +379,8 @@ namespace BML::Core {
 
         size_t previous_size = metadata->size;
         if (metadata->flags & kAllocationFlagAligned) {
-            void *replacement = Alloc(new_size);
+            const size_t alignment = (metadata->alignment > 0) ? metadata->alignment : kMetadataAlignment;
+            void *replacement = AllocAligned(new_size, alignment);
             if (!replacement) {
                 return nullptr;
             }
@@ -411,6 +404,7 @@ namespace BML::Core {
         new_metadata->magic = kAllocationMagic;
         new_metadata->flags = 0;
         new_metadata->size = new_size;
+        new_metadata->alignment = kMetadataAlignment;
         new_metadata->original_ptr = new_raw;
 
         if (m_tracking_enabled.load(std::memory_order_relaxed)) {
@@ -466,6 +460,28 @@ namespace BML::Core {
         } else if (old_size > new_size) {
             TrackDeallocation(old_size - new_size);
         }
+    }
+
+    void MemoryManager::FreeInternal(void *ptr, size_t override_size, bool override_valid) {
+        if (ptr == nullptr) {
+            return;
+        }
+
+        auto *metadata = GetMetadata(ptr);
+        if (!metadata) {
+            if (override_valid && m_tracking_enabled.load(std::memory_order_relaxed)) {
+                TrackDeallocation(override_size);
+            }
+            return;
+        }
+
+        const size_t tracked_size = (override_valid && override_size > 0) ? override_size : metadata->size;
+
+        if (m_tracking_enabled.load(std::memory_order_relaxed)) {
+            TrackDeallocation(tracked_size);
+        }
+
+        std::free(metadata->original_ptr);
     }
 
     bool MemoryManager::IsValidPool(BML_MemoryPool pool) const {
