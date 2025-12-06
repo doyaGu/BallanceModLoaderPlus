@@ -1,4 +1,4 @@
-#include "DataShare.hpp"
+﻿#include "DataShare.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -8,7 +8,7 @@
 namespace BML {
     // ----------------------- Static registry ------------------------------------
 
-    std::mutex DataShare::s_RegMutex;
+    std::mutex DataShare::s_RegistryMutex;
     std::unordered_map<std::string, DataShare *> DataShare::s_Registry;
 
     // ----------------------- DataShare: lifecycle --------------------------------
@@ -22,7 +22,7 @@ namespace BML {
         }
         CancelPendingCallbacks();
         // Unregister self
-        std::lock_guard<std::mutex> g(s_RegMutex);
+        std::lock_guard<std::mutex> g(s_RegistryMutex);
         const auto it = s_Registry.find(m_Name);
         if (it != s_Registry.end() && it->second == this)
             s_Registry.erase(it);
@@ -43,7 +43,7 @@ namespace BML {
 
     DataShare *DataShare::GetInstance(const char *name) {
         if (!name) name = "BML";
-        std::lock_guard<std::mutex> g(s_RegMutex);
+        std::lock_guard<std::mutex> g(s_RegistryMutex);
         auto &p = s_Registry[std::string(name)];
         if (!p) p = new DataShare(std::string(name));
         return p;
@@ -52,7 +52,7 @@ namespace BML {
     void DataShare::DestroyAllInstances() {
         std::unordered_map<std::string, DataShare*> victims;
         {
-            std::lock_guard<std::mutex> g(s_RegMutex);
+            std::lock_guard<std::mutex> g(s_RegistryMutex);
             if (s_Registry.empty()) return;
             victims.swap(s_Registry);
         }

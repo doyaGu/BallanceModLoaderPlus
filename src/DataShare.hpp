@@ -74,7 +74,7 @@ namespace BML {
         mutable RefCount m_Ref;
         const std::string m_Name;
 
-        static std::mutex s_RegMutex;
+        static std::mutex s_RegistryMutex;
         static std::unordered_map<std::string, DataShare *> s_Registry;
     };
 
