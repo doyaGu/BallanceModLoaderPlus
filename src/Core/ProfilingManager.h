@@ -58,12 +58,12 @@ namespace BML::Core {
         struct TraceEvent {
             enum Type { BEGIN, END, INSTANT, COUNTER, FRAME };
 
-            Type type;
+            Type type = BEGIN;
             std::string name;
             std::string category;
-            uint64_t timestamp_ns;
-            uint64_t thread_id;
-            int64_t counter_value;
+            uint64_t timestamp_ns = 0;
+            uint64_t thread_id = 0;
+            int64_t counter_value = 0;
         };
 
         struct ThreadContext {
