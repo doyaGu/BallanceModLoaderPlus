@@ -19,6 +19,16 @@ namespace BML::Core {
         constexpr const wchar_t *kArchiveExtension = L".bp";
         constexpr const wchar_t *kArchiveCacheDir = L".bp-cache";
 
+        void LogFilesystemError(const char *action, const fs::path &target, const std::error_code &ec) {
+            if (!ec)
+                return;
+            CoreLog(BML_LOG_WARN, kDiscoveryLogCategory,
+                    "%s failed for %s: %s",
+                    action,
+                    utils::Utf16ToUtf8(target.wstring()).c_str(),
+                    ec.message().c_str());
+        }
+
         bool EqualsIgnoreCase(const std::wstring &lhs, const wchar_t *rhs) {
             if (!rhs)
                 return lhs.empty();
@@ -49,10 +59,13 @@ namespace BML::Core {
             fs::path cache = mods_dir / kArchiveCacheDir;
             std::error_code ec;
             fs::remove_all(cache, ec);
+            LogFilesystemError("remove cache directory", cache, ec);
             ec.clear();
             fs::create_directories(cache, ec);
-            if (ec)
+            if (ec) {
+                LogFilesystemError("create cache directory", cache, ec);
                 return {};
+            }
             return cache;
         }
 
@@ -66,18 +79,28 @@ namespace BML::Core {
 
                 std::vector<fs::path> subdirs;
                 bool hasFiles = false;
-                for (const auto &entry : fs::directory_iterator(current, ec)) {
-                    if (ec)
-                        break;
+                std::error_code iterEc;
+                fs::directory_iterator iter(current,
+                                             fs::directory_options::skip_permission_denied,
+                                             iterEc);
+                fs::directory_iterator end;
+                while (!iterEc && iter != end) {
+                    const auto &entry = *iter;
                     if (entry.is_directory()) {
                         subdirs.push_back(entry.path());
                     } else if (entry.is_regular_file()) {
                         hasFiles = true;
                         break;
                     }
+                    iter.increment(iterEc);
                 }
 
-                if (ec || hasFiles || subdirs.size() != 1)
+                if (iterEc) {
+                    LogFilesystemError("iterate extracted archive", current, iterEc);
+                    break;
+                }
+
+                if (hasFiles || subdirs.size() != 1)
                     break;
 
                 current = subdirs[0];
@@ -167,23 +190,30 @@ namespace BML::Core {
             out_result.manifests.emplace_back(std::move(manifest));
         };
 
-        for (const auto &entry : fs::directory_iterator(root, ec)) {
-            if (ec)
-                break;
+        std::error_code iterEc;
+        fs::directory_iterator iter(root,
+                                    fs::directory_options::skip_permission_denied,
+                                    iterEc);
+        fs::directory_iterator end;
+        while (!iterEc && iter != end) {
+            const auto &entry = *iter;
 
             if (entry.is_directory()) {
-                if (IsCacheDirectory(entry.path()))
-                    continue;
-                tryLoadFromDirectory(entry.path(), nullptr);
+                if (!IsCacheDirectory(entry.path()))
+                    tryLoadFromDirectory(entry.path(), nullptr);
+                iter.increment(iterEc);
                 continue;
             }
 
-            if (!entry.is_regular_file() || !HasBpExtension(entry.path()))
+            if (!entry.is_regular_file() || !HasBpExtension(entry.path())) {
+                iter.increment(iterEc);
                 continue;
+            }
 
             auto cache = ensureCache();
             if (cache.empty()) {
                 AddExtractionError(entry.path(), "unable to prepare archive cache directory", out_result);
+                iter.increment(iterEc);
                 continue;
             }
 
@@ -192,6 +222,12 @@ namespace BML::Core {
                 fs::path archive_path = entry.path();
                 tryLoadFromDirectory(extracted, &archive_path);
             }
+
+            iter.increment(iterEc);
+        }
+
+        if (iterEc) {
+            LogFilesystemError("iterate mods directory", root, iterEc);
         }
 
         CoreLog(BML_LOG_INFO, kDiscoveryLogCategory,
