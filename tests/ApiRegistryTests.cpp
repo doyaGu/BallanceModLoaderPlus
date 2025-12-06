@@ -111,6 +111,40 @@ TEST_F(ApiRegistryTest, TlsCacheInvalidatesAfterUnregister) {
     EXPECT_EQ(registry.GetByIdCached(kId), nullptr);
 }
 
+TEST_F(ApiRegistryTest, RegisterApiCopiesNameAndProviderStrings) {
+    auto &registry = ApiRegistry::Instance();
+    std::string dynamicName = "dynamic.api";
+    std::string dynamicProvider = "provider.dynamic";
+
+    ApiRegistry::ApiMetadata meta{};
+    meta.name = dynamicName.c_str();
+    meta.id = 515;
+    meta.pointer = reinterpret_cast<void *>(+DummyFuncA);
+    meta.version_major = 1;
+    meta.version_minor = 0;
+    meta.capabilities = 0;
+    meta.type = BML_API_TYPE_CORE;
+    meta.threading = BML_THREADING_FREE;
+    meta.provider_mod = dynamicProvider.c_str();
+
+    const char *name_ptr = meta.name;
+    const char *provider_ptr = meta.provider_mod;
+
+    registry.RegisterApi(meta);
+
+    const std::string expected_name = "dynamic.api";
+    const std::string expected_provider = "provider.dynamic";
+    dynamicName.assign("mutated-name");
+    dynamicProvider.assign("mutated-provider");
+
+    const auto *stored = registry.QueryApi(meta.id);
+    ASSERT_NE(stored, nullptr);
+    EXPECT_STREQ(stored->name, expected_name.c_str());
+    EXPECT_STREQ(stored->provider_mod, expected_provider.c_str());
+    EXPECT_NE(stored->name, name_ptr);
+    EXPECT_NE(stored->provider_mod, provider_ptr);
+}
+
 TEST_F(ApiRegistryTest, CapabilitiesRecomputedAfterProviderUnregister) {
     auto &registry = ApiRegistry::Instance();
     ApiRegistry::ApiMetadata meta{};
@@ -128,6 +162,27 @@ TEST_F(ApiRegistryTest, CapabilitiesRecomputedAfterProviderUnregister) {
     EXPECT_EQ(registry.GetTotalCapabilities(), BML_CAP_EXTENSION_BASIC);
     EXPECT_EQ(registry.UnregisterByProvider("provider.test"), 1u);
     EXPECT_EQ(registry.GetTotalCapabilities(), 0u);
+}
+
+TEST_F(ApiRegistryTest, RegisterExtensionValidatesApiTable) {
+    auto &registry = ApiRegistry::Instance();
+    EXPECT_EQ(registry.RegisterExtension(
+                  "ext.null",
+                  1,
+                  0,
+                  nullptr,
+                  sizeof(void *),
+                  "provider"),
+              BML_API_INVALID_ID);
+
+    EXPECT_EQ(registry.RegisterExtension(
+                  "ext.zero",
+                  1,
+                  0,
+                  reinterpret_cast<void *>(+DummyFuncA),
+                  0,
+                  "provider"),
+              BML_API_INVALID_ID);
 }
 
 TEST_F(ApiRegistryTest, RegisterExtensionRejectsConcurrentDuplicates) {

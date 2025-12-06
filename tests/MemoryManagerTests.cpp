@@ -39,6 +39,33 @@ TEST_F(MemoryManagerTest, TracksAllocAndFreeBytes) {
     EXPECT_GE(stats.peak_allocated, 256u);
 }
 
+TEST_F(MemoryManagerTest, AllocatorSmokeTest) {
+    auto &manager = BML::Core::MemoryManager::Instance();
+
+    void *alloc_block = manager.Alloc(128);
+    ASSERT_NE(alloc_block, nullptr);
+
+    void *calloc_block = manager.Calloc(4, 32);
+    ASSERT_NE(calloc_block, nullptr);
+
+    void *realloc_block = manager.Realloc(alloc_block, 128, 256);
+    ASSERT_NE(realloc_block, nullptr);
+
+    void *aligned_block = manager.AllocAligned(64, 64);
+    ASSERT_NE(aligned_block, nullptr);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(aligned_block) % 64u, 0u);
+
+    manager.FreeWithSize(calloc_block, 4 * 32);
+    manager.Free(realloc_block);
+    manager.FreeAligned(aligned_block);
+
+    BML_MemoryStats stats{};
+    ASSERT_EQ(manager.GetStats(&stats), BML_RESULT_OK);
+    EXPECT_EQ(stats.total_allocated, 0u);
+    EXPECT_EQ(stats.active_alloc_count, 0u);
+    EXPECT_GE(stats.peak_allocated, 256u);
+}
+
 TEST_F(MemoryManagerTest, ReallocPreservesDataAndStats) {
     auto &manager = BML::Core::MemoryManager::Instance();
 

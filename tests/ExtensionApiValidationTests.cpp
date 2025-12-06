@@ -103,6 +103,8 @@ TEST_F(ExtensionApiValidationTests, RegisterQueryLoadEnumerateAndUnregister) {
     EXPECT_STREQ(info.provider_id, "ext.provider");
     EXPECT_EQ(info.version.major, 1u);
     EXPECT_EQ(info.version.minor, 2u);
+    EXPECT_EQ(info.api_size, sizeof(api));
+    EXPECT_NE(info.capabilities, 0u);
 
     void *loaded = nullptr;
     BML_Version req_ver = bmlMakeVersion(1, 0, 0);
@@ -124,6 +126,105 @@ TEST_F(ExtensionApiValidationTests, RegisterQueryLoadEnumerateAndUnregister) {
 
     ASSERT_EQ(BML_RESULT_OK, unregister("Test.Extension"));
     EXPECT_EQ(BML_RESULT_NOT_FOUND, query("Test.Extension", nullptr));
+}
+
+TEST_F(ExtensionApiValidationTests, RegisterRejectsUndersizedDescriptor) {
+    auto reg = Lookup<PFN_BML_ExtensionRegister>("bmlExtensionRegister");
+    ASSERT_NE(reg, nullptr);
+
+    auto provider = MakeMod("ext.invalid.desc");
+    Context::SetCurrentModule(provider);
+
+    int api = 1;
+    BML_ExtensionDesc desc = BML_EXTENSION_DESC_INIT;
+    desc.struct_size = sizeof(BML_ExtensionDesc) - 4;
+    desc.name = "Invalid.Desc";
+    desc.version = bmlMakeVersion(1, 0, 0);
+    desc.api_table = &api;
+    desc.api_size = sizeof(api);
+
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, reg(&desc));
+}
+
+TEST_F(ExtensionApiValidationTests, QueryRejectsUndersizedInfoStruct) {
+    auto reg = Lookup<PFN_BML_ExtensionRegister>("bmlExtensionRegister");
+    auto query = Lookup<PFN_BML_ExtensionQuery>("bmlExtensionQuery");
+    ASSERT_NE(reg, nullptr);
+    ASSERT_NE(query, nullptr);
+
+    auto provider = MakeMod("ext.query.size");
+    Context::SetCurrentModule(provider);
+
+    int api = 2;
+    BML_ExtensionDesc desc = BML_EXTENSION_DESC_INIT;
+    desc.name = "Query.Size";
+    desc.version = bmlMakeVersion(1, 0, 0);
+    desc.api_table = &api;
+    desc.api_size = sizeof(api);
+    ASSERT_EQ(BML_RESULT_OK, reg(&desc));
+
+    BML_ExtensionInfo info{};
+    info.struct_size = sizeof(BML_ExtensionInfo) - 4;
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, query("Query.Size", &info));
+}
+
+TEST_F(ExtensionApiValidationTests, LoadRejectsUndersizedInfoStruct) {
+    auto reg = Lookup<PFN_BML_ExtensionRegister>("bmlExtensionRegister");
+    auto load = Lookup<PFN_BML_ExtensionLoad>("bmlExtensionLoad");
+    ASSERT_NE(reg, nullptr);
+    ASSERT_NE(load, nullptr);
+
+    auto provider = MakeMod("ext.load.size");
+    Context::SetCurrentModule(provider);
+
+    int api = 3;
+    BML_ExtensionDesc desc = BML_EXTENSION_DESC_INIT;
+    desc.name = "Load.Size";
+    desc.version = bmlMakeVersion(1, 0, 0);
+    desc.api_table = &api;
+    desc.api_size = sizeof(api);
+    ASSERT_EQ(BML_RESULT_OK, reg(&desc));
+
+    void *loaded = nullptr;
+    BML_Version req = bmlMakeVersion(1, 0, 0);
+    BML_ExtensionInfo info{};
+    info.struct_size = sizeof(BML_ExtensionInfo) - 8;
+
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, load("Load.Size", &req, &loaded, &info));
+}
+
+TEST_F(ExtensionApiValidationTests, EnumerateRejectsUndersizedFilter) {
+    auto enumerate = Lookup<PFN_BML_ExtensionEnumerate>("bmlExtensionEnumerate");
+    ASSERT_NE(enumerate, nullptr);
+
+    BML_ExtensionFilter filter{};
+    filter.struct_size = sizeof(BML_ExtensionFilter) - 4;
+
+    auto callback = +[](BML_Context, const BML_ExtensionInfo *, void *) -> BML_Bool {
+        return BML_TRUE;
+    };
+
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, enumerate(&filter, callback, nullptr));
+}
+
+TEST_F(ExtensionApiValidationTests, CountRejectsUndersizedFilter) {
+    auto count = Lookup<PFN_BML_ExtensionCount>("bmlExtensionCount");
+    ASSERT_NE(count, nullptr);
+
+    BML_ExtensionFilter filter{};
+    filter.struct_size = sizeof(BML_ExtensionFilter) - 4;
+
+    uint32_t value = 0;
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, count(&filter, &value));
+}
+
+TEST_F(ExtensionApiValidationTests, CapsRequireSizedStruct) {
+    auto get_caps = Lookup<PFN_BML_ExtensionGetCaps>("bmlExtensionGetCaps");
+    ASSERT_NE(get_caps, nullptr);
+
+    BML_ExtensionCaps caps{};
+    caps.struct_size = sizeof(BML_ExtensionCaps) - 4;
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, get_caps(&caps));
 }
 
 TEST_F(ExtensionApiValidationTests, UnregisterRequiresOwnership) {
