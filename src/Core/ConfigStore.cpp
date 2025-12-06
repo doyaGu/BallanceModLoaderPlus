@@ -2,6 +2,7 @@
 #include "ApiRegistrationMacros.h"
 
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -107,6 +108,57 @@ namespace BML::Core {
             if (value == kTypeString)
                 return BML_CONFIG_STRING;
             return std::nullopt;
+        }
+
+        std::wstring SanitizeFileName(std::wstring name) {
+            if (name.empty()) {
+                return std::wstring(L"mod");
+            }
+
+            constexpr wchar_t whitespace_chars[] = L" \t\r\n.";
+            const std::wstring whitespace(whitespace_chars);
+
+            auto trim = [&](bool from_start) {
+                size_t pos = from_start ? name.find_first_not_of(whitespace)
+                                        : name.find_last_not_of(whitespace);
+                if (pos == std::wstring::npos) {
+                    name.clear();
+                } else if (from_start) {
+                    name.erase(0, pos);
+                } else {
+                    name.erase(pos + 1);
+                }
+            };
+
+            trim(true);
+            trim(false);
+
+            static const std::wstring invalid_chars = L"<>:\"/\\|?*";
+            for (auto &ch : name) {
+                if (ch < 0x20 || invalid_chars.find(ch) != std::wstring::npos) {
+                    ch = L'_';
+                }
+            }
+
+            if (name.empty()) {
+                name.assign(L"mod");
+            }
+
+            static const std::array<std::wstring, 22> reserved_names = {
+                L"CON", L"PRN", L"AUX", L"NUL",
+                L"COM1", L"COM2", L"COM3", L"COM4", L"COM5", L"COM6", L"COM7", L"COM8", L"COM9",
+                L"LPT1", L"LPT2", L"LPT3", L"LPT4", L"LPT5", L"LPT6", L"LPT7", L"LPT8", L"LPT9"
+            };
+
+            std::wstring upper = utils::ToUpper(name);
+            for (const auto &reserved : reserved_names) {
+                if (upper == reserved) {
+                    name.push_back(L'_');
+                    break;
+                }
+            }
+
+            return name;
         }
     } // namespace
 
@@ -502,8 +554,7 @@ namespace BML::Core {
         toml::table root;
 
         // Write schema version for future migration support
-        constexpr int64_t kCurrentSchemaVersion = 1;
-        root.insert_or_assign("schema_version", kCurrentSchemaVersion);
+        root.insert_or_assign("schema_version", static_cast<int64_t>(kConfigSchemaVersion));
 
         toml::array entries;
 
@@ -582,6 +633,7 @@ namespace BML::Core {
         std::error_code ec;
         std::filesystem::create_directories(dir, ec);
         auto safeName = mod.id.empty() ? std::wstring(L"mod") : utils::ToWString(mod.id);
+        safeName = SanitizeFileName(std::move(safeName));
         std::filesystem::path full = dir / (safeName + L".toml");
         return full.wstring();
     }
@@ -630,7 +682,7 @@ namespace BML::Core {
         if (!batch || !key || !value) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
-        if (!key->category || !key->name) {
+        if (!ValidateKey(key) || !ValidateValue(value)) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
@@ -704,7 +756,9 @@ namespace BML::Core {
         }
 
         // First ensure the document is loaded (may acquire doc->mutex internally)
-        EnsureLoaded(*doc);
+        if (!EnsureLoaded(*doc)) {
+            return BML_RESULT_IO_ERROR;
+        }
 
         {
             std::unique_lock doc_lock(doc->mutex);
