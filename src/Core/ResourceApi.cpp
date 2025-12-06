@@ -99,6 +99,17 @@ namespace {
         }
         return "BML";
     }
+
+    constexpr size_t kHandleDescMinSize = sizeof(BML_HandleDesc);
+    constexpr size_t kResourceCapsMinSize = sizeof(BML_ResourceCaps);
+
+    bool HasValidHandleDescriptor(const BML_HandleDesc *desc) {
+        return desc && desc->struct_size >= kHandleDescMinSize;
+    }
+
+    bool HasValidCapsStruct(const BML_ResourceCaps *caps) {
+        return caps && caps->struct_size >= kResourceCapsMinSize;
+    }
 } // namespace
 
 /* ============================================================================
@@ -106,7 +117,7 @@ namespace {
  * ============================================================================ */
 
 static BML_Result BML_HandleCreateImpl(BML_HandleType type, BML_HandleDesc *out_desc) {
-    if (!out_desc) {
+    if (!HasValidHandleDescriptor(out_desc)) {
         return BML_RESULT_INVALID_ARGUMENT;
     }
 
@@ -152,7 +163,7 @@ static BML_Result BML_HandleCreateImpl(BML_HandleType type, BML_HandleDesc *out_
 }
 
 static BML_Result BML_HandleRetainImpl(const BML_HandleDesc *desc) {
-    if (!desc) {
+    if (!HasValidHandleDescriptor(desc)) {
         return BML_RESULT_INVALID_ARGUMENT;
     }
 
@@ -177,7 +188,7 @@ static BML_Result BML_HandleRetainImpl(const BML_HandleDesc *desc) {
 }
 
 static BML_Result BML_HandleReleaseImpl(const BML_HandleDesc *desc) {
-    if (!desc) {
+    if (!HasValidHandleDescriptor(desc)) {
         return BML_RESULT_INVALID_ARGUMENT;
     }
 
@@ -287,7 +298,7 @@ static BML_Result BML_HandleReleaseImpl(const BML_HandleDesc *desc) {
 }
 
 static BML_Result BML_HandleValidateImpl(const BML_HandleDesc *desc, BML_Bool *out_valid) {
-    if (!desc || !out_valid) {
+    if (!HasValidHandleDescriptor(desc) || !out_valid) {
         return BML_RESULT_INVALID_ARGUMENT;
     }
 
@@ -314,7 +325,7 @@ static BML_Result BML_HandleValidateImpl(const BML_HandleDesc *desc, BML_Bool *o
 }
 
 static BML_Result BML_HandleAttachUserDataImpl(const BML_HandleDesc *desc, void *user_data) {
-    if (!desc) {
+    if (!HasValidHandleDescriptor(desc)) {
         return BML_RESULT_INVALID_ARGUMENT;
     }
 
@@ -339,7 +350,7 @@ static BML_Result BML_HandleAttachUserDataImpl(const BML_HandleDesc *desc, void 
 }
 
 static BML_Result BML_HandleGetUserDataImpl(const BML_HandleDesc *desc, void **out_user_data) {
-    if (!desc || !out_user_data) {
+    if (!HasValidHandleDescriptor(desc) || !out_user_data) {
         return BML_RESULT_INVALID_ARGUMENT;
     }
 
@@ -364,7 +375,7 @@ static BML_Result BML_HandleGetUserDataImpl(const BML_HandleDesc *desc, void **o
 }
 
 static BML_Result BML_GetResourceCapsImpl(BML_ResourceCaps *out_caps) {
-    if (!out_caps)
+    if (!HasValidCapsStruct(out_caps))
         return BML_RESULT_INVALID_ARGUMENT;
     size_t type_count = 0;
     {
