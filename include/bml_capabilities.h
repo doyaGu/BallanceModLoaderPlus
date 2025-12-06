@@ -15,8 +15,6 @@
  *   } else {
  *       // Fallback to basic pub/sub
  *   }
- * 
- * @see docs/api-improvements/03-feature-extensions.md
  */
 
 #include "bml_types.h"

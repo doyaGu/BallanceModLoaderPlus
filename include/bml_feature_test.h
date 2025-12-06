@@ -19,8 +19,6 @@
  *   if (BML_RUNTIME_HAS(BML_CAP_IMC_RPC)) {
  *       // Use RPC
  *   }
- * 
- * @see docs/api-improvements/03-feature-extensions.md
  */
 
 #include "bml_version.h"
