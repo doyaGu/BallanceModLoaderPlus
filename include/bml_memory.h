@@ -53,6 +53,7 @@ typedef void *(*PFN_BML_Calloc)(size_t count, size_t size);
  * @brief Resize previously allocated memory
  * 
  * @param[in] ptr Pointer to memory allocated by bmlAlloc/bmlCalloc/bmlRealloc
+ * @param[in] old_size Original size in bytes (for accurate tracking)
  * @param[in] new_size New size in bytes
  * @return Pointer to resized memory, or NULL on failure
  * 
@@ -63,7 +64,7 @@ typedef void *(*PFN_BML_Calloc)(size_t count, size_t size);
  * @note Original content is preserved up to min(old_size, new_size)
  * @note If reallocation fails, original pointer remains valid
  */
-typedef void *(*PFN_BML_Realloc)(void *ptr, size_t new_size);
+typedef void *(*PFN_BML_Realloc)(void *ptr, size_t old_size, size_t new_size);
 
 /**
  * @brief Free memory allocated by BML

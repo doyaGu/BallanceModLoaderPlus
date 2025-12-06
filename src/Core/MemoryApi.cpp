@@ -13,12 +13,7 @@ namespace BML::Core {
         return MemoryManager::Instance().Calloc(count, size);
     }
 
-    void *BML_API_Realloc(void *ptr, size_t new_size) {
-        // Legacy API - uses inaccurate tracking
-        return MemoryManager::Instance().ReallocUnknownSize(ptr, new_size);
-    }
-
-    void *BML_API_ReallocEx(void *ptr, size_t old_size, size_t new_size) {
+    void *BML_API_Realloc(void *ptr, size_t old_size, size_t new_size) {
         return MemoryManager::Instance().Realloc(ptr, old_size, new_size);
     }
 
