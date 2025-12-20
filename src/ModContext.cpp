@@ -61,6 +61,8 @@ bool ModContext::Init() {
     if (IsInited())
         return true;
 
+    srand(static_cast<unsigned int>(time(nullptr)));
+
     InitDirectories();
 
     InitLogger();
