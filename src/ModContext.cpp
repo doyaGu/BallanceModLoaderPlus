@@ -560,6 +560,7 @@ bool ModContext::RemoveConfig(Config *config) {
     if (it != m_ConfigMap.end()) {
         SaveConfig(config);
         m_Configs.erase(std::remove(m_Configs.begin(), m_Configs.end(), it->second), m_Configs.end());
+        m_ConfigMap.erase(it);
     }
 
     return true;

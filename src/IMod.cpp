@@ -21,7 +21,12 @@ IConfig *IMod::GetConfig() {
 IMod::~IMod() {
     if (m_Logger)
         delete m_Logger;
-    if (m_Config)
+    if (m_Config) {
+        if (auto *ctx = BML_GetModContext()) {
+            ctx->RemoveConfig(static_cast<Config *>(m_Config));
+        }
         delete m_Config;
-    m_BML->ClearDependencies(this);
+    }
+    if (m_BML)
+        m_BML->ClearDependencies(this);
 }
