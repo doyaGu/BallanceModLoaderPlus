@@ -28,7 +28,7 @@ void *BML_Realloc(void *ptr, size_t size) {
 }
 
 void BML_Free(void *ptr) {
-    return free(ptr);
+    free(ptr);
 }
 
 void BML_FreeString(char *str) {
@@ -663,7 +663,13 @@ int BML_GetDriveAndDirectoryA(const char *path, char **drive, char **directory) 
     *drive = BML_Strdup(result.first.c_str());
     *directory = BML_Strdup(result.second.c_str());
 
-    return (*drive && *directory) ? 1 : 0;
+    if (*drive && *directory) return 1;
+
+    free(*drive);
+    free(*directory);
+    *drive = nullptr;
+    *directory = nullptr;
+    return 0;
 }
 
 int BML_GetDriveAndDirectoryW(const wchar_t *path, wchar_t **drive, wchar_t **directory) {
@@ -693,7 +699,13 @@ int BML_GetDriveAndDirectoryUtf8(const char *path, char **drive, char **director
     *drive = BML_Strdup(result.first.c_str());
     *directory = BML_Strdup(result.second.c_str());
 
-    return (*drive && *directory) ? 1 : 0;
+    if (*drive && *directory) return 1;
+
+    free(*drive);
+    free(*directory);
+    *drive = nullptr;
+    *directory = nullptr;
+    return 0;
 }
 
 char *BML_GetFileNameA(const char *path) {
@@ -1010,13 +1022,19 @@ int BML_GetFileTimeUtf8(const char *path, int64_t *creationTime, int64_t *lastAc
 char *BML_ReadTextFileA(const char *path) {
     if (!path) return nullptr;
     std::string result = utils::ReadTextFileA(path);
-    return result.empty() ? nullptr : BML_Strdup(result.c_str());
+    if (!result.empty()) return BML_Strdup(result.c_str());
+
+    // Distinguish empty-but-existing files from failure.
+    return (utils::FileExistsA(path) && utils::GetFileSizeA(path) == 0) ? BML_Strdup("") : nullptr;
 }
 
 wchar_t *BML_ReadTextFileW(const wchar_t *path) {
     if (!path) return nullptr;
     std::wstring result = utils::ReadTextFileW(path);
-    if (result.empty()) return nullptr;
+    if (result.empty()) {
+        // Distinguish empty-but-existing files from failure.
+        return (utils::FileExistsW(path) && utils::GetFileSizeW(path) == 0) ? BML_Utf8ToUtf16("") : nullptr;
+    }
 
     wchar_t *copy = static_cast<wchar_t *>(malloc((result.length() + 1) * sizeof(wchar_t)));
     if (copy) wcscpy(copy, result.c_str());
@@ -1026,7 +1044,10 @@ wchar_t *BML_ReadTextFileW(const wchar_t *path) {
 char *BML_ReadTextFileUtf8(const char *path) {
     if (!path) return nullptr;
     std::string result = utils::ReadTextFileUtf8(path);
-    return result.empty() ? nullptr : BML_Strdup(result.c_str());
+    if (!result.empty()) return BML_Strdup(result.c_str());
+
+    // Distinguish empty-but-existing files from failure.
+    return (utils::FileExistsUtf8(path) && utils::GetFileSizeUtf8(path) == 0) ? BML_Strdup("") : nullptr;
 }
 
 int BML_WriteTextFileA(const char *path, const char *content) {
@@ -1048,7 +1069,8 @@ int BML_ReadBinaryFileA(const char *path, uint8_t **data, size_t *size) {
     if (result.empty()) {
         *data = nullptr;
         *size = 0;
-        return 0;
+        // Distinguish empty-but-existing files from failure.
+        return (utils::FileExistsA(path) && utils::GetFileSizeA(path) == 0) ? 1 : 0;
     }
 
     *size = result.size();
@@ -1069,7 +1091,8 @@ int BML_ReadBinaryFileW(const wchar_t *path, uint8_t **data, size_t *size) {
     if (result.empty()) {
         *data = nullptr;
         *size = 0;
-        return 0;
+        // Distinguish empty-but-existing files from failure.
+        return (utils::FileExistsW(path) && utils::GetFileSizeW(path) == 0) ? 1 : 0;
     }
 
     *size = result.size();
@@ -1090,7 +1113,8 @@ int BML_ReadBinaryFileUtf8(const char *path, uint8_t **data, size_t *size) {
     if (result.empty()) {
         *data = nullptr;
         *size = 0;
-        return 0;
+        // Distinguish empty-but-existing files from failure.
+        return (utils::FileExistsUtf8(path) && utils::GetFileSizeUtf8(path) == 0) ? 1 : 0;
     }
 
     *size = result.size();
