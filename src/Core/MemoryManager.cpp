@@ -18,6 +18,7 @@
 
 #include "CoreErrors.h"
 #include "FixedBlockPool.h"
+#include "PlatformCompat.h"
 
 namespace BML::Core {
     namespace {

@@ -32,16 +32,16 @@ namespace BML::Core {
         template <typename R, typename... Args>
         struct IsFunctionPointer<R (*)(Args...)> : std::true_type {};
 
-        template <auto Func, typename DomainTag>
+        template <auto Func, typename DomainTag, typename ApiNameTag>
         struct GuardedWrapper {
             static_assert(sizeof(Func) == 0,
                           "BML_REGISTER_API_GUARDED requires a function returning BML_Result");
         };
 
-        template <typename... Args, BML_Result (*Func)(Args...), typename DomainTag>
-        struct GuardedWrapper<Func, DomainTag> {
+        template <typename... Args, BML_Result (*Func)(Args...), typename DomainTag, typename ApiNameTag>
+        struct GuardedWrapper<Func, DomainTag, ApiNameTag> {
             static BML_Result Invoke(Args... args) {
-                return GuardResult(DomainTag::Value(), [&]() -> BML_Result {
+                return GuardResult(DomainTag::Value(), ApiNameTag::Value(), [&]() -> BML_Result {
                     return Func(args...);
                 });
             }
@@ -51,16 +51,16 @@ namespace BML::Core {
             }
         };
 
-        template <auto Func, typename DomainTag>
+        template <auto Func, typename DomainTag, typename ApiNameTag>
         struct VoidGuardedWrapper {
             static_assert(sizeof(Func) == 0,
                           "BML_REGISTER_API_VOID_GUARDED requires a void function");
         };
 
-        template <typename... Args, void (*Func)(Args...), typename DomainTag>
-        struct VoidGuardedWrapper<Func, DomainTag> {
+        template <typename... Args, void (*Func)(Args...), typename DomainTag, typename ApiNameTag>
+        struct VoidGuardedWrapper<Func, DomainTag, ApiNameTag> {
             static void Invoke(Args... args) {
-                GuardVoid(DomainTag::Value(), [&]() {
+                GuardVoid(DomainTag::Value(), ApiNameTag::Value(), [&]() {
                     Func(args...);
                 });
             }
@@ -161,12 +161,15 @@ namespace BML::Core {
     /**
      * @brief Internal macro for guarded API registration with metadata
      */
-#define BML_DETAIL_REGISTER_API_GUARDED_META(name, domain, func, caps, domain_tag, wrapper_type) \
+#define BML_DETAIL_REGISTER_API_GUARDED_META(name, domain, func, caps, domain_tag, api_name_tag, wrapper_type) \
     do {                                                                               \
         struct domain_tag {                                                            \
             static constexpr const char *Value() { return domain; }                    \
         };                                                                             \
-        using wrapper_type = ::BML::Core::detail::GuardedWrapper<func, domain_tag>;    \
+        struct api_name_tag {                                                          \
+            static constexpr const char *Value() { return #name; }                     \
+        };                                                                             \
+        using wrapper_type = ::BML::Core::detail::GuardedWrapper<func, domain_tag, api_name_tag>; \
         ::BML::Core::detail::RegisterApiWithMetadata(                                  \
             registry, #name, BML_API_ID_##name,                                        \
             reinterpret_cast<void *>(wrapper_type::Get()), (caps));                    \
@@ -179,6 +182,7 @@ namespace BML::Core {
     BML_DETAIL_REGISTER_API_GUARDED_META(                                              \
         name, domain, func, 0,                                                         \
         BML_DETAIL_UNIQUE_NAME(_BmlDomainTag),                                         \
+        BML_DETAIL_UNIQUE_NAME(_BmlApiNameTag),                                        \
         BML_DETAIL_UNIQUE_NAME(_BmlGuardWrapper))
 
     /**
@@ -188,17 +192,21 @@ namespace BML::Core {
     BML_DETAIL_REGISTER_API_GUARDED_META(                                              \
         name, domain, func, caps,                                                      \
         BML_DETAIL_UNIQUE_NAME(_BmlDomainTag),                                         \
+        BML_DETAIL_UNIQUE_NAME(_BmlApiNameTag),                                        \
         BML_DETAIL_UNIQUE_NAME(_BmlGuardWrapper))
 
     /**
      * @brief Internal macro for void guarded API registration with metadata
      */
-#define BML_DETAIL_REGISTER_API_VOID_GUARDED_META(name, domain, func, caps, domain_tag, wrapper) \
+#define BML_DETAIL_REGISTER_API_VOID_GUARDED_META(name, domain, func, caps, domain_tag, api_name_tag, wrapper) \
     do {                                                                               \
         struct domain_tag {                                                            \
             static constexpr const char *Value() { return domain; }                    \
         };                                                                             \
-        using wrapper = ::BML::Core::detail::VoidGuardedWrapper<func, domain_tag>;     \
+        struct api_name_tag {                                                          \
+            static constexpr const char *Value() { return #name; }                     \
+        };                                                                             \
+        using wrapper = ::BML::Core::detail::VoidGuardedWrapper<func, domain_tag, api_name_tag>; \
         ::BML::Core::detail::RegisterApiWithMetadata(                                  \
             registry, #name, BML_API_ID_##name,                                        \
             reinterpret_cast<void *>(wrapper::Get()), (caps));                         \
@@ -211,6 +219,7 @@ namespace BML::Core {
     BML_DETAIL_REGISTER_API_VOID_GUARDED_META(                                         \
         name, domain, func, 0,                                                         \
         BML_DETAIL_UNIQUE_NAME(_BmlDomainTag),                                         \
+        BML_DETAIL_UNIQUE_NAME(_BmlApiNameTag),                                        \
         BML_DETAIL_UNIQUE_NAME(_BmlVoidWrapper))
 
     /**
@@ -220,6 +229,7 @@ namespace BML::Core {
     BML_DETAIL_REGISTER_API_VOID_GUARDED_META(                                         \
         name, domain, func, caps,                                                      \
         BML_DETAIL_UNIQUE_NAME(_BmlDomainTag),                                         \
+        BML_DETAIL_UNIQUE_NAME(_BmlApiNameTag),                                        \
         BML_DETAIL_UNIQUE_NAME(_BmlVoidWrapper))
 
     // =========================================================================

@@ -79,6 +79,7 @@ namespace BML::Core {
         // Error context management
         BML_Result GetLastError(BML_ErrorInfo *out_error);
         void ClearLastError();
+        bool HasLastError() const;
 
         // Set error (internal use)
         void SetError(BML_Result code,

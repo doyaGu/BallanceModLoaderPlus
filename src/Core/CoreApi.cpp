@@ -102,7 +102,9 @@ namespace BML::Core {
     }
 
     const BML_Version *BML_API_GetRuntimeVersion() {
-        return &Context::Instance().GetRuntimeVersion();
+        thread_local BML_Version version_snapshot{};
+        version_snapshot = Context::Instance().GetRuntimeVersionCopy();
+        return &version_snapshot;
     }
 
     BML_Result BML_API_RequestCapability(BML_Mod mod, const char *capability_id) {
@@ -176,12 +178,25 @@ namespace BML::Core {
         return Context::GetCurrentModule();
     }
 
+    uint32_t BML_API_GetLoadedModuleCount() {
+        const auto snapshot = Context::Instance().GetLoadedModuleSnapshot();
+        return static_cast<uint32_t>(snapshot.size());
+    }
+
+    BML_Mod BML_API_GetLoadedModuleAt(uint32_t index) {
+        const auto snapshot = Context::Instance().GetLoadedModuleSnapshot();
+        if (index >= snapshot.size()) {
+            return nullptr;
+        }
+        return snapshot[index].mod_handle;
+    }
+
     BML_Result BML_API_CoreGetCaps(BML_CoreCaps *out_caps) {
         if (!out_caps)
             return BML_RESULT_INVALID_ARGUMENT;
         BML_CoreCaps caps{};
         caps.struct_size = sizeof(BML_CoreCaps);
-        caps.runtime_version = Context::Instance().GetRuntimeVersion();
+        caps.runtime_version = Context::Instance().GetRuntimeVersionCopy();
         caps.api_version = bmlGetApiVersion();
         caps.capability_flags = BML_CORE_CAP_CONTEXT_RETAIN |
             BML_CORE_CAP_RUNTIME_QUERY |
@@ -217,6 +232,8 @@ namespace BML::Core {
         BML_REGISTER_API_GUARDED_WITH_CAPS(bmlRegisterShutdownHook, "core.lifecycle", BML_API_RegisterShutdownHook, BML_CAP_LIFECYCLE);
         BML_REGISTER_API_GUARDED_WITH_CAPS(bmlSetCurrentModule, "core.lifecycle", BML_API_SetCurrentModule, BML_CAP_MOD_INFO);
         BML_REGISTER_API_WITH_CAPS(bmlGetCurrentModule, BML_API_GetCurrentModule, BML_CAP_MOD_INFO);
+        BML_REGISTER_API_WITH_CAPS(bmlGetLoadedModuleCount, BML_API_GetLoadedModuleCount, BML_CAP_MOD_INFO);
+        BML_REGISTER_API_WITH_CAPS(bmlGetLoadedModuleAt, BML_API_GetLoadedModuleAt, BML_CAP_MOD_INFO);
 
         // Runtime capabilities API
         BML_REGISTER_CAPS_API_WITH_CAPS(bmlCoreGetCaps, "core.runtime", BML_API_CoreGetCaps, BML_CAP_RUNTIME);

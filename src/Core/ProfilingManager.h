@@ -3,15 +3,11 @@
 
 #include "bml_profiling.h"
 
-#include <vector>
-#include <string>
 #include <atomic>
+#include <mutex>
+#include <string>
 #include <thread>
-
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
+#include <vector>
 
 namespace BML::Core {
     /**
@@ -74,21 +70,6 @@ namespace BML::Core {
         ThreadContext &GetThreadContext();
         void WriteJsonEvent(const TraceEvent &evt, FILE *fp);
 
-        // RAII wrapper for CRITICAL_SECTION to ensure proper unlock on all exit paths
-        class CriticalSectionGuard {
-        public:
-            explicit CriticalSectionGuard(CRITICAL_SECTION &cs) : m_cs(cs) {
-                EnterCriticalSection(&m_cs);
-            }
-            ~CriticalSectionGuard() {
-                LeaveCriticalSection(&m_cs);
-            }
-            CriticalSectionGuard(const CriticalSectionGuard &) = delete;
-            CriticalSectionGuard &operator=(const CriticalSectionGuard &) = delete;
-        private:
-            CRITICAL_SECTION &m_cs;
-        };
-
         BML_ProfilerBackend m_Backend;
         std::atomic<bool> m_Enabled;
 
@@ -97,7 +78,7 @@ namespace BML::Core {
         std::atomic<uint64_t> m_DroppedEvents;
 
         std::vector<TraceEvent> m_EventBuffer;
-        CRITICAL_SECTION m_BufferLock;
+        std::mutex m_BufferLock;
 
         uint64_t m_QpcFrequency;
         uint64_t m_StartupTimeNs;

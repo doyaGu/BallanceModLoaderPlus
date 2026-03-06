@@ -3,6 +3,7 @@
 #include "ApiRegistry.h"
 #include "ApiRegistrationMacros.h"
 #include "Context.h"
+#include "ExtensionStateHooks.h"
 #include "Logging.h"
 #include "ModHandle.h"
 #include "CoreErrors.h"
@@ -16,6 +17,7 @@
 #include <atomic>
 #include <cstring>
 #include <string>
+#include <vector>
 
 namespace BML::Core {
     namespace {
@@ -42,9 +44,85 @@ namespace BML::Core {
             return filter && filter->struct_size >= kExtensionFilterMinSize;
         }
 
+        struct ExtensionMetadata {
+            std::string provider_id;
+            std::string description;
+            uint64_t capabilities{0};
+            std::vector<std::string> tags;
+            std::vector<const char *> tag_ptrs;
+            BML_ExtensionState state{BML_EXTENSION_STATE_ACTIVE};
+            std::string replacement_name;
+            std::string deprecation_message;
+            void (*on_load)(BML_Context ctx, const char *consumer_id, void *user_data){nullptr};
+            void (*on_unload)(BML_Context ctx, const char *consumer_id, void *user_data){nullptr};
+            void *user_data{nullptr};
+        };
+
+        std::mutex s_extensionMetaMutex;
+        std::unordered_map<std::string, ExtensionMetadata> s_extensionMetadata;
+
+        void RefreshTagPointers(ExtensionMetadata &metadata) {
+            metadata.tag_ptrs.clear();
+            metadata.tag_ptrs.reserve(metadata.tags.size());
+            for (const auto &tag : metadata.tags) {
+                metadata.tag_ptrs.push_back(tag.c_str());
+            }
+        }
+
+        void CopyTagsFromDesc(const BML_ExtensionDesc *desc, ExtensionMetadata &metadata) {
+            metadata.tags.clear();
+            if (!desc || !desc->tags || desc->tag_count == 0) {
+                RefreshTagPointers(metadata);
+                return;
+            }
+
+            metadata.tags.reserve(desc->tag_count);
+            for (uint32_t i = 0; i < desc->tag_count; ++i) {
+                const char *tag = desc->tags[i];
+                if (tag && tag[0] != '\0') {
+                    metadata.tags.emplace_back(tag);
+                }
+            }
+            RefreshTagPointers(metadata);
+        }
+
+        bool TryGetExtensionMetadataCopy(const std::string &name, ExtensionMetadata &out) {
+            std::lock_guard<std::mutex> lock(s_extensionMetaMutex);
+            auto it = s_extensionMetadata.find(name);
+            if (it == s_extensionMetadata.end()) {
+                return false;
+            }
+            out = it->second;
+            RefreshTagPointers(out);
+            return true;
+        }
+
+        std::string GetCurrentConsumerId() {
+            auto *mod = Context::Instance().ResolveModHandle(Context::GetCurrentModule());
+            return mod ? mod->id : std::string{};
+        }
+
+        void InvokeLifecycleHook(
+            void (*hook)(BML_Context ctx, const char *consumer_id, void *user_data),
+            void *user_data
+        ) {
+            if (!hook) {
+                return;
+            }
+
+            std::string consumer_id = GetCurrentConsumerId();
+            const char *consumer = consumer_id.empty() ? nullptr : consumer_id.c_str();
+            try {
+                hook(Context::Instance().GetHandle(), consumer, user_data);
+            } catch (...) {
+                CoreLog(BML_LOG_WARN, kExtensionLogCategory,
+                        "Extension lifecycle callback threw an exception");
+            }
+        }
+
         void PopulateExtensionInfo(const ApiRegistry::ApiMetadata &meta,
                                    BML_ExtensionInfo *out_info,
-                                   BML_ExtensionState state = BML_EXTENSION_STATE_ACTIVE) {
+                                   const ExtensionMetadata *extra) {
             if (!out_info) {
                 return;
             }
@@ -53,11 +131,40 @@ namespace BML::Core {
             info.name = meta.name;
             info.provider_id = meta.provider_mod;
             info.version = bmlMakeVersion(meta.version_major, meta.version_minor, meta.version_patch);
-            info.state = state;
+            info.state = BML_EXTENSION_STATE_ACTIVE;
             info.description = meta.description;
             info.api_size = meta.api_size;
             info.capabilities = meta.capabilities;
+
+            if (extra) {
+                if (!extra->provider_id.empty()) {
+                    info.provider_id = extra->provider_id.c_str();
+                }
+                if (!extra->description.empty()) {
+                    info.description = extra->description.c_str();
+                }
+                info.capabilities = extra->capabilities;
+                info.state = extra->state;
+                info.tags = extra->tag_ptrs.empty() ? nullptr : extra->tag_ptrs.data();
+                info.tag_count = static_cast<uint32_t>(extra->tag_ptrs.size());
+                info.replacement_name = extra->replacement_name.empty() ? nullptr : extra->replacement_name.c_str();
+                info.deprecation_message = extra->deprecation_message.empty() ? nullptr : extra->deprecation_message.c_str();
+            }
+
             *out_info = info;
+        }
+
+        void PopulateExtensionInfo(const ApiRegistry::ApiMetadata &meta,
+                                   BML_ExtensionInfo *out_info) {
+            const ExtensionMetadata *extra = nullptr;
+            std::lock_guard<std::mutex> lock(s_extensionMetaMutex);
+            if (meta.name) {
+                auto it = s_extensionMetadata.find(meta.name);
+                if (it != s_extensionMetadata.end()) {
+                    extra = &it->second;
+                }
+            }
+            PopulateExtensionInfo(meta, out_info, extra);
         }
     }
 
@@ -112,11 +219,29 @@ namespace BML::Core {
     static std::atomic<uint64_t> s_nextListenerId{1};
 
     static void NotifyListeners(BML_ExtensionEvent event, const BML_ExtensionInfo *info) {
-        std::lock_guard<std::mutex> lock(s_listenerMutex);
+        std::vector<ListenerEntry> listeners;
+        {
+            std::lock_guard<std::mutex> lock(s_listenerMutex);
+            uint32_t eventBit = 1u << static_cast<uint32_t>(event);
+            listeners.reserve(s_listeners.size());
+            for (const auto &[id, entry] : s_listeners) {
+                (void) id;
+                if (entry.callback && (entry.event_mask == 0 || (entry.event_mask & eventBit))) {
+                    listeners.push_back(entry);
+                }
+            }
+        }
+
+        BML_Context ctx = Context::Instance().GetHandle();
         uint32_t eventBit = 1u << static_cast<uint32_t>(event);
-        for (const auto &[id, entry] : s_listeners) {
+        for (const auto &entry : listeners) {
             if (entry.event_mask == 0 || (entry.event_mask & eventBit)) {
-                entry.callback(nullptr, event, info, entry.user_data);
+                try {
+                    entry.callback(ctx, event, info, entry.user_data);
+                } catch (...) {
+                    CoreLog(BML_LOG_WARN, kExtensionLogCategory,
+                            "Extension listener callback threw an exception");
+                }
             }
         }
     }
@@ -152,6 +277,11 @@ namespace BML::Core {
         return (it != s_extensionRefCounts.end()) ? it->second : 0;
     }
 
+    static void ClearRefCount(const std::string &name) {
+        std::lock_guard<std::mutex> lock(s_refCountMutex);
+        s_extensionRefCounts.erase(name);
+    }
+
     // ========================================================================
     // Core Extension APIs
     // ========================================================================
@@ -172,6 +302,10 @@ namespace BML::Core {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
+        const uint64_t extension_caps = (desc->capabilities != 0)
+            ? desc->capabilities
+            : static_cast<uint64_t>(BML_CAP_EXTENSION_BASIC);
+
         // Register through ApiRegistry
         BML_ApiId id = ApiRegistry::Instance().RegisterExtension(
             desc->name,
@@ -179,7 +313,9 @@ namespace BML::Core {
             desc->version.minor,
             desc->api_table,
             desc->api_size,
-            mod_handle->id
+            mod_handle->id,
+            extension_caps,
+            desc->description
         );
 
         if (id == BML_API_INVALID_ID) {
@@ -194,13 +330,30 @@ namespace BML::Core {
                 desc->name, desc->version.major, desc->version.minor,
                 mod_handle->id.c_str());
 
+        {
+            std::lock_guard<std::mutex> lock(s_extensionMetaMutex);
+            ExtensionMetadata metadata;
+            metadata.provider_id = mod_handle->id;
+            metadata.description = desc->description ? desc->description : "";
+            metadata.capabilities = extension_caps;
+            metadata.state = BML_EXTENSION_STATE_ACTIVE;
+            metadata.replacement_name.clear();
+            metadata.deprecation_message.clear();
+            metadata.on_load = desc->on_load;
+            metadata.on_unload = desc->on_unload;
+            metadata.user_data = desc->user_data;
+            CopyTagsFromDesc(desc, metadata);
+            s_extensionMetadata[desc->name] = std::move(metadata);
+        }
+        ClearRefCount(desc->name);
+
         // Notify listeners
         BML_ExtensionInfo info = BML_EXTENSION_INFO_INIT;
         info.name = desc->name;
         info.version = desc->version;
         info.description = desc->description;
         info.api_size = desc->api_size;
-        info.capabilities = desc->capabilities;
+        info.capabilities = extension_caps;
         info.provider_id = mod_handle->id.c_str();
         NotifyListeners(BML_EXTENSION_EVENT_REGISTERED, &info);
 
@@ -244,12 +397,15 @@ namespace BML::Core {
 
         // Create info for notification
         BML_ExtensionInfo info = BML_EXTENSION_INFO_INIT;
-        info.name = meta.name;
-        info.version = bmlMakeVersion(meta.version_major, meta.version_minor, meta.version_patch);
-        info.provider_id = meta.provider_mod;
+        PopulateExtensionInfo(meta, &info);
 
         bool success = ApiRegistry::Instance().Unregister(name);
         if (success) {
+            {
+                std::lock_guard<std::mutex> lock(s_extensionMetaMutex);
+                s_extensionMetadata.erase(name);
+            }
+            ClearRefCount(name);
             CoreLog(BML_LOG_INFO, kExtensionLogCategory,
                     "Unregistered extension '%s'", name);
             NotifyListeners(BML_EXTENSION_EVENT_UNREGISTERED, &info);
@@ -317,11 +473,17 @@ namespace BML::Core {
         *out_api = const_cast<void *>(api);
 
         // Increment reference count on successful load
-        IncrementRefCount(std::string(name));
+        std::string name_key(name);
+        IncrementRefCount(name_key);
+
+        ExtensionMetadata metadata;
+        if (TryGetExtensionMetadataCopy(name_key, metadata)) {
+            InvokeLifecycleHook(metadata.on_load, metadata.user_data);
+        }
 
         if (out_info) {
             ApiRegistry::ApiMetadata meta;
-            if (ApiRegistry::Instance().TryGetMetadata(std::string(name), meta)) {
+            if (ApiRegistry::Instance().TryGetMetadata(name_key, meta)) {
                 PopulateExtensionInfo(meta, out_info);
             }
         }
@@ -334,15 +496,22 @@ namespace BML::Core {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
+        std::string name_key(name);
+
         // Check if extension exists
         ApiRegistry::ApiMetadata meta;
-        if (!ApiRegistry::Instance().TryGetMetadata(std::string(name), meta)) {
+        if (!ApiRegistry::Instance().TryGetMetadata(name_key, meta)) {
             return BML_RESULT_NOT_FOUND;
         }
 
         // Decrement reference count
-        if (!DecrementRefCount(std::string(name))) {
+        if (!DecrementRefCount(name_key)) {
             return BML_RESULT_FAIL; // Not loaded by this module
+        }
+
+        ExtensionMetadata metadata;
+        if (TryGetExtensionMetadataCopy(name_key, metadata)) {
+            InvokeLifecycleHook(metadata.on_unload, metadata.user_data);
         }
 
         return BML_RESULT_OK;
@@ -402,6 +571,12 @@ namespace BML::Core {
                     meta.api_size = 0;
                 }
 
+                ExtensionMetadata extension_meta;
+                bool has_extension_meta = desc && desc->name &&
+                    TryGetExtensionMetadataCopy(desc->name, extension_meta);
+                BML_ExtensionState extension_state = has_extension_meta ?
+                    extension_meta.state : BML_EXTENSION_STATE_ACTIVE;
+
                 const BML_ExtensionFilter *filter = ctx->filter;
                 if (filter && desc) {
                     if (filter->name_pattern && !GlobMatch(filter->name_pattern, desc->name)) {
@@ -448,15 +623,36 @@ namespace BML::Core {
                     }
 
                     if (filter->include_states) {
-                        constexpr uint32_t kActiveBit = 1u << static_cast<uint32_t>(BML_EXTENSION_STATE_ACTIVE);
-                        if ((filter->include_states & kActiveBit) == 0) {
+                        uint32_t state_bit = 1u << static_cast<uint32_t>(extension_state);
+                        if ((filter->include_states & state_bit) == 0) {
                             return BML_TRUE;
+                        }
+                    }
+
+                    if (filter->required_tags && filter->required_tag_count > 0) {
+                        if (!has_extension_meta) {
+                            return BML_TRUE;
+                        }
+
+                        for (uint32_t i = 0; i < filter->required_tag_count; ++i) {
+                            const char *required = filter->required_tags[i];
+                            if (!required || required[0] == '\0') {
+                                continue;
+                            }
+                            auto it = std::find(extension_meta.tags.begin(), extension_meta.tags.end(), required);
+                            if (it == extension_meta.tags.end()) {
+                                return BML_TRUE;
+                            }
                         }
                     }
                 }
 
                 BML_ExtensionInfo info = BML_EXTENSION_INFO_INIT;
-                PopulateExtensionInfo(meta, &info);
+                if (has_extension_meta) {
+                    PopulateExtensionInfo(meta, &info, &extension_meta);
+                } else {
+                    PopulateExtensionInfo(meta, &info);
+                }
                 return ctx->callback(bmlCtx, &info, ctx->user_data);
             },
             &ctx,
@@ -541,7 +737,7 @@ namespace BML::Core {
         info.version = bmlMakeVersion(meta.version_major, meta.version_minor, meta.version_patch);
         info.provider_id = meta.provider_mod;
         info.api_size = api_size;
-        NotifyListeners(BML_EXTENSION_EVENT_REGISTERED, &info); // Re-use registered event
+        NotifyListeners(BML_EXTENSION_EVENT_UPDATED, &info);
 
         return BML_RESULT_OK;
     }
@@ -574,6 +770,16 @@ namespace BML::Core {
         bool success = ApiRegistry::Instance().MarkDeprecated(name, replacement, message);
         if (!success) {
             return BML_RESULT_FAIL;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(s_extensionMetaMutex);
+            auto it = s_extensionMetadata.find(name);
+            if (it != s_extensionMetadata.end()) {
+                it->second.state = BML_EXTENSION_STATE_DEPRECATED;
+                it->second.replacement_name = replacement ? replacement : "";
+                it->second.deprecation_message = message ? message : "";
+            }
         }
 
         BML_ExtensionInfo info = BML_EXTENSION_INFO_INIT;
@@ -651,11 +857,41 @@ namespace BML::Core {
         return BML_RESULT_OK;
     }
 
+    void CleanupExtensionStateForProvider(const std::string &provider_id) {
+        if (provider_id.empty()) {
+            return;
+        }
+
+        std::vector<std::string> removed;
+        {
+            std::lock_guard<std::mutex> lock(s_extensionMetaMutex);
+            for (auto it = s_extensionMetadata.begin(); it != s_extensionMetadata.end();) {
+                if (it->second.provider_id == provider_id) {
+                    removed.push_back(it->first);
+                    it = s_extensionMetadata.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
+
+        if (removed.empty()) {
+            return;
+        }
+
+        std::lock_guard<std::mutex> ref_lock(s_refCountMutex);
+        for (const auto &name : removed) {
+            s_extensionRefCounts.erase(name);
+        }
+    }
+
     // ========================================================================
     // Registration
     // ========================================================================
 
     void RegisterExtensionApis() {
+        SetExtensionProviderCleanupHook(&CleanupExtensionStateForProvider);
+
         BML_BEGIN_API_REGISTRATION();
 
         // Core Extension APIs

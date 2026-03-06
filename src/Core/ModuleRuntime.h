@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "Context.h"
 #include "HotReloadCoordinator.h"
 #include "ModuleDiscovery.h"
 #include "ModuleLoader.h"
@@ -27,8 +28,6 @@ namespace BML::Core {
         ModuleRuntime(const ModuleRuntime &) = delete;
         ModuleRuntime &operator=(const ModuleRuntime &) = delete;
 
-        bool Initialize(const std::wstring &mods_dir, ModuleBootstrapDiagnostics &out_diag);
-
         // Phase 1: Discover and validate modules without loading DLLs
         bool DiscoverAndValidate(const std::wstring &mods_dir, ModuleBootstrapDiagnostics &out_diag);
 
@@ -37,6 +36,8 @@ namespace BML::Core {
 
         bool ReloadModules(ModuleBootstrapDiagnostics &out_diag);
 
+        void Update();
+
         void Shutdown();
 
         void SetDiagnosticsCallback(std::function<void(const ModuleBootstrapDiagnostics &)> callback);
@@ -44,7 +45,7 @@ namespace BML::Core {
     private:
         void RecordLoadOrder(const std::vector<ResolvedNode> &order, ModuleBootstrapDiagnostics &diag) const;
         bool ReloadModulesInternal(ModuleBootstrapDiagnostics &out_diag);
-        void BroadcastLifecycleEvent(const char *topic, const std::vector<LoadedModule> &modules) const;
+        void BroadcastLifecycleEvent(const char *topic, const std::vector<LoadedModuleSnapshot> &modules) const;
         void UpdateHotReloadRegistration();
         void EnsureHotReloadCoordinator();
         void StopHotReloadCoordinator();

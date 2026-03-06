@@ -1,7 +1,11 @@
 #include "ReloadableModuleSlot.h"
 
+#include <cerrno>
 #include <cstring>
 #include <system_error>
+#if !defined(_WIN32)
+#include <dlfcn.h>
+#endif
 
 #include "Context.h"
 #include "Logging.h"
@@ -52,6 +56,26 @@ namespace BML::Core {
                 case ReloadFailure::Other: return "Other";
                 default: return "Unknown";
             }
+        }
+
+        void CloseModuleHandle(HMODULE handle) {
+            if (!handle) {
+                return;
+            }
+#if defined(_WIN32)
+            FreeLibrary(handle);
+#else
+            dlclose(handle);
+#endif
+        }
+
+        PFN_BML_ModEntrypoint ResolveEntrypoint(HMODULE handle) {
+#if defined(_WIN32)
+            return reinterpret_cast<PFN_BML_ModEntrypoint>(GetProcAddress(handle, "BML_ModEntrypoint"));
+#else
+            dlerror();
+            return reinterpret_cast<PFN_BML_ModEntrypoint>(dlsym(handle, "BML_ModEntrypoint"));
+#endif
         }
     }
 
@@ -174,6 +198,9 @@ namespace BML::Core {
 
     const std::string& ReloadableModuleSlot::GetModId() const {
         static const std::string empty;
+        if (!m_Config.mod_id.empty()) {
+            return m_Config.mod_id;
+        }
         if (m_Config.manifest) {
             return m_Config.manifest->package.id;
         }
@@ -229,18 +256,43 @@ namespace BML::Core {
     }
 
     HMODULE ReloadableModuleSlot::LoadDll(const std::wstring& path) {
-        HMODULE handle = LoadLibraryW(path.c_str());
+        HMODULE handle = nullptr;
+#if defined(_WIN32)
+        handle = LoadLibraryW(path.c_str());
         if (!handle) {
             m_LastSystemError = GetLastError();
             CoreLog(BML_LOG_ERROR, kLogCategory,
                     "LoadLibrary failed for '%ls': error %lu",
                     path.c_str(), m_LastSystemError);
         }
+#else
+        std::string path_utf8 = utils::Utf16ToUtf8(path);
+        if (path_utf8.empty()) {
+            m_LastSystemError = static_cast<DWORD>(EINVAL);
+            CoreLog(BML_LOG_ERROR, kLogCategory,
+                    "Failed to convert module path to UTF-8");
+            return nullptr;
+        }
+
+        dlerror();
+        handle = dlopen(path_utf8.c_str(), RTLD_NOW);
+        if (!handle) {
+            m_LastSystemError = static_cast<DWORD>(errno);
+            const char *err = dlerror();
+            CoreLog(BML_LOG_ERROR, kLogCategory,
+                    "dlopen failed for '%s': %s",
+                    path_utf8.c_str(), err ? err : "unknown error");
+        }
+#endif
         return handle;
     }
 
     bool ReloadableModuleSlot::LoadVersion(unsigned int version, bool is_rollback) {
         std::wstring dll_path;
+        const unsigned int previous_version = m_Version;
+        const unsigned int previous_last_working = m_LastWorkingVersion;
+        const unsigned int previous_next_version = m_NextVersion;
+        const auto previous_write_time = m_LastWriteTime;
 
         if (!is_rollback) {
             // Copy to temp with version number
@@ -249,8 +301,6 @@ namespace BML::Core {
                 return false;
             }
             dll_path = MakeVersionPath(version);
-            m_LastWorkingVersion = m_Version;
-            m_NextVersion = version + 1;
         } else {
             // Use existing versioned copy for rollback
             dll_path = MakeVersionPath(version);
@@ -261,8 +311,6 @@ namespace BML::Core {
                 m_LastFailure = ReloadFailure::BadImage;
                 return false;
             }
-            // Don't rollback to this version again if it crashes
-            m_LastWorkingVersion = version > 0 ? version - 1 : 0;
         }
 
         // Load the DLL
@@ -273,12 +321,18 @@ namespace BML::Core {
         }
 
         // Find entrypoint
-        auto entrypoint = reinterpret_cast<PFN_BML_ModEntrypoint>(
-            GetProcAddress(handle, "BML_ModEntrypoint"));
+        auto entrypoint = ResolveEntrypoint(handle);
         if (!entrypoint) {
+#if !defined(_WIN32)
+            const char *err = dlerror();
+            if (err) {
+                CoreLog(BML_LOG_ERROR, kLogCategory,
+                        "BML_ModEntrypoint lookup failed: %s", err);
+            }
+#endif
             CoreLog(BML_LOG_ERROR, kLogCategory,
                     "BML_ModEntrypoint not found in '%ls'", dll_path.c_str());
-            FreeLibrary(handle);
+            CloseModuleHandle(handle);
             m_LastFailure = ReloadFailure::BadImage;
             return false;
         }
@@ -290,8 +344,6 @@ namespace BML::Core {
 
         m_Handle = handle;
         m_Entrypoint = entrypoint;
-        m_Version = version;
-        m_LastWriteTime = GetFileWriteTime(m_Config.dll_path);
 
         // Restore state if this is a reload (not first load)
         if (is_rollback) {
@@ -305,11 +357,25 @@ namespace BML::Core {
         if (result < 0) {
             CoreLog(BML_LOG_ERROR, kLogCategory,
                     "Entrypoint attach returned %d", result);
-            FreeLibrary(handle);
+            CloseModuleHandle(handle);
             m_Handle = nullptr;
             m_Entrypoint = nullptr;
+            m_Version = previous_version;
+            m_LastWorkingVersion = previous_last_working;
+            m_NextVersion = previous_next_version;
+            m_LastWriteTime = previous_write_time;
             m_LastFailure = ReloadFailure::UserError;
             return false;
+        }
+
+        m_Version = version;
+        m_LastWriteTime = GetFileWriteTime(m_Config.dll_path);
+        if (is_rollback) {
+            // Don't rollback to this version again if it crashes.
+            m_LastWorkingVersion = version > 0 ? version - 1 : 0;
+        } else {
+            m_LastWorkingVersion = previous_version;
+            m_NextVersion = version + 1;
         }
 
         CoreLog(BML_LOG_DEBUG, kLogCategory,
@@ -336,7 +402,7 @@ namespace BML::Core {
             }
         }
 
-        FreeLibrary(m_Handle);
+        CloseModuleHandle(m_Handle);
         m_Handle = nullptr;
         m_Entrypoint = nullptr;
 
@@ -390,6 +456,7 @@ namespace BML::Core {
     }
 
     int ReloadableModuleSlot::FilterException(unsigned long code, ReloadFailure& out_failure) {
+#if defined(_MSC_VER) && !defined(__MINGW32__)
         switch (code) {
             case EXCEPTION_ACCESS_VIOLATION:
                 out_failure = ReloadFailure::SegFault;
@@ -417,6 +484,11 @@ namespace BML::Core {
                 // Don't handle unknown exceptions
                 return EXCEPTION_CONTINUE_SEARCH;
         }
+#else
+        (void)code;
+        out_failure = ReloadFailure::Other;
+        return 0;
+#endif
     }
 
     int ReloadableModuleSlot::InvokeEntrypoint(ReloadOp op) {
@@ -425,6 +497,27 @@ namespace BML::Core {
         ReloadFailure caught_failure = ReloadFailure::None;
         int result = -1;
 
+        auto invoke = [&]() -> int {
+            if (op == ReloadOp::Load) {
+                BML_ModAttachArgs attach{};
+                attach.struct_size = sizeof(attach);
+                attach.api_version = BML_MOD_ENTRYPOINT_API_VERSION;
+                attach.mod = m_ModHandle.get();
+                attach.get_proc = m_Config.get_proc;
+                attach.get_proc_by_id = m_Config.get_proc_by_id;
+                attach.get_api_id = m_Config.get_api_id;
+                attach.reserved = nullptr;
+                return m_Entrypoint(BML_MOD_ENTRYPOINT_ATTACH, &attach);
+            }
+
+            BML_ModDetachArgs detach{};
+            detach.struct_size = sizeof(detach);
+            detach.api_version = BML_MOD_ENTRYPOINT_API_VERSION;
+            detach.mod = m_ModHandle.get();
+            detach.reserved = nullptr;
+            return m_Entrypoint(BML_MOD_ENTRYPOINT_DETACH, &detach);
+        };
+
         // Set current module context
         BML_Mod previous_mod = Context::GetCurrentModule();
         Context::SetCurrentModule(m_ModHandle.get());
@@ -432,31 +525,26 @@ namespace BML::Core {
 #if defined(_MSC_VER) && !defined(__MINGW32__)
         // Use SEH to catch crashes
         __try {
-#endif
-            if (op == ReloadOp::Load) {
-                BML_ModAttachArgs attach{};
-                attach.struct_size = sizeof(attach);
-                attach.api_version = BML_MOD_ENTRYPOINT_API_VERSION;
-                attach.mod = m_ModHandle.get();
-                attach.get_proc = m_Config.get_proc;
-                attach.get_proc_by_id = &bmlGetProcAddressById;
-                attach.get_api_id = &bmlGetApiId;
-                attach.reserved = nullptr;
-                result = m_Entrypoint(BML_MOD_ENTRYPOINT_ATTACH, &attach);
-            } else {
-                BML_ModDetachArgs detach{};
-                detach.struct_size = sizeof(detach);
-                detach.api_version = BML_MOD_ENTRYPOINT_API_VERSION;
-                detach.mod = m_ModHandle.get();
-                detach.reserved = nullptr;
-                result = m_Entrypoint(BML_MOD_ENTRYPOINT_DETACH, &detach);
-            }
-#if defined(_MSC_VER) && !defined(__MINGW32__)
+            result = invoke();
         } __except (FilterException(GetExceptionCode(), caught_failure)) {
             CoreLog(BML_LOG_ERROR, kLogCategory,
                     "Exception caught in entrypoint: %s",
                     ReloadFailureToString(caught_failure));
             m_LastFailure = caught_failure;
+            result = -1;
+        }
+#else
+        try {
+            result = invoke();
+        } catch (const std::exception &ex) {
+            CoreLog(BML_LOG_ERROR, kLogCategory,
+                    "C++ exception in entrypoint: %s", ex.what());
+            m_LastFailure = ReloadFailure::Other;
+            result = -1;
+        } catch (...) {
+            CoreLog(BML_LOG_ERROR, kLogCategory,
+                    "Unknown exception in entrypoint");
+            m_LastFailure = ReloadFailure::Other;
             result = -1;
         }
 #endif

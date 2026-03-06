@@ -4,23 +4,16 @@
 #include <chrono>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
-
 #include "bml_export.h"
+#include "ModManifest.h"
 #include "ModHandle.h"
+#include "PlatformCompat.h"
 
 namespace BML::Core {
-
-    struct ModManifest;
     class Context;
 
     /**
@@ -67,9 +60,12 @@ namespace BML::Core {
     struct ReloadableSlotConfig {
         std::wstring dll_path;          ///< Original DLL path (source)
         std::wstring temp_directory;    ///< Directory for versioned copies
-        const ModManifest* manifest{nullptr};  ///< Mod manifest
+        std::string mod_id;             ///< Module identifier
+        std::optional<ModManifest> manifest;   ///< Mod manifest snapshot
         Context* context{nullptr};      ///< BML context
-        PFN_BML_GetProcAddress get_proc{nullptr};  ///< API lookup function
+        PFN_BML_GetProcAddress get_proc{nullptr};              ///< Name-based API lookup function
+        PFN_BML_GetProcAddressById get_proc_by_id{nullptr};  ///< API lookup function
+        PFN_BML_GetApiId get_api_id{nullptr};                 ///< Name-to-ID lookup function
     };
 
     /**
@@ -90,7 +86,9 @@ namespace BML::Core {
      * config.dll_path = L"C:/Mods/MyMod/MyMod.dll";
      * config.temp_directory = L"C:/Temp/BML_HotReload";
      * config.context = &context;
-     * config.get_proc = &bmlGetProcAddress;
+    * config.get_proc = &bmlGetProcAddress;
+    * config.get_proc_by_id = &bmlGetProcAddressById;
+    * config.get_api_id = &bmlGetApiId;
      *
      * if (slot.Initialize(config)) {
      *     // In game loop:

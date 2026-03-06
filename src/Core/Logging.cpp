@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdarg>
 #include <cstdio>
+#include <ctime>
 #include <mutex>
 #include <shared_mutex>
 #include <sstream>
@@ -94,19 +96,28 @@ namespace BML::Core {
                               BML_LogSeverity level,
                               const char *tag,
                               const std::string &message) {
-            SYSTEMTIME sys;
-            GetLocalTime(&sys);
+            auto now = std::chrono::system_clock::now();
+            auto now_time_t = std::chrono::system_clock::to_time_t(now);
+            auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now.time_since_epoch()) % std::chrono::milliseconds(1000);
+
+            std::tm local_tm{};
+#if defined(_WIN32)
+            localtime_s(&local_tm, &now_time_t);
+#else
+            localtime_r(&now_time_t, &local_tm);
+#endif
             char timestamp[64];
             int written = snprintf(timestamp,
                                    sizeof(timestamp),
                                    "%04u-%02u-%02u %02u:%02u:%02u.%03u",
-                                   sys.wYear,
-                                   sys.wMonth,
-                                   sys.wDay,
-                                   sys.wHour,
-                                   sys.wMinute,
-                                   sys.wSecond,
-                                   sys.wMilliseconds);
+                                   static_cast<unsigned>(local_tm.tm_year + 1900),
+                                   static_cast<unsigned>(local_tm.tm_mon + 1),
+                                   static_cast<unsigned>(local_tm.tm_mday),
+                                   static_cast<unsigned>(local_tm.tm_hour),
+                                   static_cast<unsigned>(local_tm.tm_min),
+                                   static_cast<unsigned>(local_tm.tm_sec),
+                                   static_cast<unsigned>(millis.count()));
             if (written < 0) {
                 timestamp[0] = '\0';
             }
@@ -197,6 +208,7 @@ namespace BML::Core {
             if (!caller)
                 return nullptr;
 
+#if defined(_WIN32)
             HMODULE module = nullptr;
             if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                                    GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
@@ -206,6 +218,9 @@ namespace BML::Core {
                     return ctx.ResolveModHandle(handle);
                 }
             }
+#else
+            (void) caller;
+#endif
             return nullptr;
         }
 

@@ -3,6 +3,9 @@
 #include "bml_export.h"
 
 #include <filesystem>
+#if !defined(_WIN32)
+#include <dlfcn.h>
+#endif
 
 #include "Context.h"
 #include "StringUtils.h"
@@ -12,12 +15,22 @@ namespace BML::Core {
     namespace {
         constexpr char kModuleLoaderLogCategory[] = "module.loader";
 
+        const char *DefaultModuleExtension() {
+#if defined(_WIN32)
+            return ".dll";
+#elif defined(__APPLE__)
+            return ".dylib";
+#else
+            return ".so";
+#endif
+        }
+
         std::wstring ResolveEntryPath(const ModManifest &manifest) {
             std::string entry = manifest.package.entry;
             if (entry.empty()) {
                 entry = manifest.package.id;
                 if (!entry.empty()) {
-                    entry += ".dll";
+                    entry += DefaultModuleExtension();
                 }
             }
 
@@ -33,7 +46,8 @@ namespace BML::Core {
             return entryPath.lexically_normal().wstring();
         }
 
-        std::string FormatSystemMessage(DWORD code) {
+        std::string FormatSystemMessage(long code) {
+#if defined(_WIN32)
             if (code == 0)
                 return {};
 
@@ -41,7 +55,7 @@ namespace BML::Core {
             DWORD flags = FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
             DWORD length = FormatMessageW(flags,
                                           nullptr,
-                                          code,
+                                          static_cast<DWORD>(code),
                                           MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                                           reinterpret_cast<LPWSTR>(&buffer),
                                           0,
@@ -56,6 +70,11 @@ namespace BML::Core {
                 return utils::Utf16ToUtf8(message_w);
             }
             return "system error " + std::to_string(code);
+#else
+            (void) code;
+            const char *message = dlerror();
+            return message ? message : "dynamic loader error";
+#endif
         }
 
         void Rollback(std::vector<LoadedModule> &loaded, Context &context) {
@@ -66,6 +85,8 @@ namespace BML::Core {
     bool LoadModules(const std::vector<ResolvedNode> &order,
                      Context &context,
                      PFN_BML_GetProcAddress get_proc,
+                     PFN_BML_GetProcAddressById get_proc_by_id,
+                     PFN_BML_GetApiId get_api_id,
                      std::vector<LoadedModule> &out_modules,
                      ModuleLoadError &out_error) {
         out_modules.clear();
@@ -103,21 +124,52 @@ namespace BML::Core {
             }
             out_error.path = dllPath;
 
-            HMODULE handle = LoadLibraryW(dllPath.c_str());
+            HMODULE handle = nullptr;
+#if defined(_WIN32)
+            handle = LoadLibraryW(dllPath.c_str());
+#else
+            std::string dllPathUtf8 = utils::Utf16ToUtf8(dllPath);
+            if (!dllPathUtf8.empty()) {
+                dlerror(); // Clear any stale error before dlopen/dlsym.
+                handle = dlopen(dllPathUtf8.c_str(), RTLD_NOW);
+            }
+#endif
             if (!handle) {
                 out_error.id = node.id;
-                out_error.system_code = static_cast<long>(GetLastError());
-                out_error.message = "LoadLibrary failed: " + FormatSystemMessage(static_cast<DWORD>(out_error.system_code));
+                out_error.system_code =
+#if defined(_WIN32)
+                    static_cast<long>(GetLastError());
+#else
+                    0;
+#endif
+                out_error.message = "LoadLibrary failed: " + FormatSystemMessage(out_error.system_code);
                 Rollback(out_modules, context);
                 return false;
             }
 
-            auto entrypoint = reinterpret_cast<PFN_BML_ModEntrypoint>(GetProcAddress(handle, "BML_ModEntrypoint"));
+            auto closeModule = [](HMODULE module_handle) {
+#if defined(_WIN32)
+                FreeLibrary(module_handle);
+#else
+                dlclose(module_handle);
+#endif
+            };
+
+            auto getProc = [](HMODULE module_handle, const char *symbol) -> void * {
+#if defined(_WIN32)
+                return reinterpret_cast<void *>(GetProcAddress(module_handle, symbol));
+#else
+                dlerror();
+                return dlsym(module_handle, symbol);
+#endif
+            };
+
+            auto entrypoint = reinterpret_cast<PFN_BML_ModEntrypoint>(getProc(handle, "BML_ModEntrypoint"));
             if (!entrypoint) {
                 out_error.id = node.id;
                 out_error.message = "BML_ModEntrypoint export not found";
                 out_error.system_code = 0;
-                FreeLibrary(handle);
+                closeModule(handle);
                 Rollback(out_modules, context);
                 return false;
             }
@@ -129,7 +181,7 @@ namespace BML::Core {
                 out_error.id = node.id;
                 out_error.message = "Failed to create module handle";
                 out_error.system_code = 0;
-                FreeLibrary(handle);
+                closeModule(handle);
                 Rollback(out_modules, context);
                 return false;
             }
@@ -152,15 +204,15 @@ namespace BML::Core {
             attach.api_version = BML_MOD_ENTRYPOINT_API_VERSION;
             attach.mod = modHandle.get();
             attach.get_proc = get_proc;
-            attach.get_proc_by_id = &bmlGetProcAddressById; // Fast path (v0.4.1+)
-            attach.get_api_id = &bmlGetApiId;               // ID query (v0.4.1+)
+            attach.get_proc_by_id = get_proc_by_id;
+            attach.get_api_id = get_api_id;
             attach.reserved = nullptr;
             initResult = entrypoint(BML_MOD_ENTRYPOINT_ATTACH, &attach);
             if (initResult != BML_RESULT_OK) {
                 out_error.id = node.id;
                 out_error.message = "BML_ModEntrypoint attach returned " + std::to_string(initResult);
                 out_error.system_code = 0;
-                FreeLibrary(handle);
+                closeModule(handle);
                 Rollback(out_modules, context);
                 return false;
             }
@@ -212,7 +264,11 @@ namespace BML::Core {
                 }
             }
             if (it->handle) {
+#if defined(_WIN32)
                 FreeLibrary(it->handle);
+#else
+                dlclose(it->handle);
+#endif
                 it->handle = nullptr;
             }
         }

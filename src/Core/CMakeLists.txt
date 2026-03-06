@@ -1,6 +1,5 @@
 # Core sources
 set(BML_CORE_SOURCES
-        DllMain.cpp
         ApiRegistry.cpp
         CoreApi.cpp
         TracingApi.cpp
@@ -17,17 +16,7 @@ set(BML_CORE_SOURCES
         ResourceApi.cpp
         MemoryManager.cpp
         MemoryApi.cpp
-        SyncManager.cpp
-        SyncApi.cpp
-        ProfilingManager.cpp
-        ProfilingApi.cpp
         ModManifest.cpp
-        ModuleDiscovery.cpp
-        ModuleLoader.cpp
-        ModuleRuntime.cpp
-        FileSystemWatcher.cpp
-        ReloadableModuleSlot.cpp
-        HotReloadCoordinator.cpp
         Microkernel.cpp
         ImcBus.cpp
         ImcApi.cpp
@@ -35,6 +24,35 @@ set(BML_CORE_SOURCES
         Logging.cpp
         SemanticVersion.cpp
 )
+
+if (WIN32)
+    list(APPEND BML_CORE_SOURCES
+            DllMain.cpp
+            SyncManager.cpp
+            SyncApi.cpp
+            ProfilingManager.cpp
+            ProfilingApi.cpp
+            ModuleDiscovery.cpp
+            ModuleLoader.cpp
+            ModuleRuntime.cpp
+            FileSystemWatcher.cpp
+            ReloadableModuleSlot.cpp
+            HotReloadCoordinator.cpp
+    )
+else ()
+    list(APPEND BML_CORE_SOURCES
+            SyncManagerPosix.cpp
+            SyncApi.cpp
+            ProfilingManager.cpp
+            ProfilingApi.cpp
+            ModuleDiscovery.cpp
+            ModuleLoader.cpp
+            ModuleRuntime.cpp
+            FileSystemWatcher.cpp
+            ReloadableModuleSlot.cpp
+            HotReloadCoordinator.cpp
+    )
+endif ()
 
 set(BML_CORE_HEADERS
         ApiRegistry.h
@@ -82,6 +100,10 @@ target_link_libraries(BML
         efsw
 )
 
+if (UNIX AND NOT APPLE)
+    target_link_libraries(BML PRIVATE dl)
+endif ()
+
 target_compile_definitions(BML PRIVATE
         BML_BUILD_DLL
 )
@@ -93,18 +115,20 @@ set_target_properties(BML PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 )
 
-# Core driver executable for testing
-add_executable(BMLCoreDriver
-        driver/CoreDriver.cpp
-)
+if (WIN32)
+    # Core driver executable for testing
+    add_executable(BMLCoreDriver
+            driver/CoreDriver.cpp
+    )
 
-target_include_directories(BMLCoreDriver PRIVATE ${BML_INCLUDE_DIR})
+    target_include_directories(BMLCoreDriver PRIVATE ${BML_INCLUDE_DIR})
 
-target_link_libraries(BMLCoreDriver PRIVATE BML)
+    target_link_libraries(BMLCoreDriver PRIVATE BML)
 
-set_target_properties(BMLCoreDriver PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-)
+    set_target_properties(BMLCoreDriver PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    )
+endif ()
 
 # Install targets
 install(TARGETS BML

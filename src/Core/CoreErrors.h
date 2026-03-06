@@ -9,6 +9,7 @@
 #include "bml_errors.h"
 #include "bml_types.h"
 #include "Logging.h"
+#include "DiagnosticManager.h"
 
 namespace BML::Core {
     namespace detail {
@@ -29,6 +30,8 @@ namespace BML::Core {
      * @brief Translate current exception to CoreResult
      */
     CoreResult TranslateException(std::string_view subsystem);
+
+    const char *GetErrorString(BML_Result result);
 
     /**
      * @brief Set the last error for the current thread
@@ -87,6 +90,19 @@ namespace BML::Core {
         return code;
     }
 
+    inline BML_Result SetDefaultLastErrorIfMissing(BML_Result code,
+                                                   const char *api_name = nullptr,
+                                                   const char *source_file = nullptr,
+                                                   int source_line = 0) {
+        if (code == BML_RESULT_OK)
+            return BML_RESULT_OK;
+
+        if (!DiagnosticManager::Instance().HasLastError()) {
+            SetLastError(code, GetErrorString(code), api_name, source_file, source_line);
+        }
+        return code;
+    }
+
     /**
      * @brief Get the last error for the current thread
      *
@@ -106,7 +122,6 @@ namespace BML::Core {
      * @param result The result code
      * @return Static string describing the error
      */
-    const char *GetErrorString(BML_Result result);
 
     /**
      * @brief Macro to set error with file/line info
@@ -117,25 +132,53 @@ namespace BML::Core {
 #define BML_SET_ERROR_API(code, message, api_name) \
     BML::Core::SetLastError((code), (message), (api_name), __FILE__, __LINE__)
 
+#define BML_RETURN_ERROR(code, message) \
+    return BML::Core::SetLastErrorAndReturn((code), nullptr, nullptr, (message), 0)
+
+#define BML_RETURN_ERROR_API(code, api_name, message) \
+    return BML::Core::SetLastErrorAndReturn((code), nullptr, (api_name), (message), 0)
+
     template <typename Fn>
-    BML_Result GuardResult(std::string_view subsystem, Fn &&fn) noexcept {
+    BML_Result GuardResult(std::string_view subsystem,
+                           const char *api_name,
+                           Fn &&fn) noexcept {
         try {
-            return static_cast<BML_Result>(std::forward<Fn>(fn)());
+            ClearLastErrorInfo();
+            const auto result = static_cast<BML_Result>(std::forward<Fn>(fn)());
+            if (result == BML_RESULT_OK) {
+                ClearLastErrorInfo();
+                return result;
+            }
+            return SetDefaultLastErrorIfMissing(result, api_name);
         } catch (...) {
             auto result = TranslateException(subsystem);
-            detail::SetLastErrorNoThrow(result.code, result.message.c_str());
+            detail::SetLastErrorNoThrow(result.code, result.message.c_str(), api_name);
             return result.code;
         }
     }
 
     template <typename Fn>
-    void GuardVoid(std::string_view subsystem, Fn &&fn) noexcept {
+    BML_Result GuardResult(std::string_view subsystem, Fn &&fn) noexcept {
+        return GuardResult(subsystem, nullptr, std::forward<Fn>(fn));
+    }
+
+    template <typename Fn>
+    void GuardVoid(std::string_view subsystem,
+                   const char *api_name,
+                   Fn &&fn) noexcept {
         try {
+            ClearLastErrorInfo();
             std::forward<Fn>(fn)();
+            ClearLastErrorInfo();
         } catch (...) {
             auto result = TranslateException(subsystem);
-            detail::SetLastErrorNoThrow(result.code, result.message.c_str());
+            detail::SetLastErrorNoThrow(result.code, result.message.c_str(), api_name);
         }
+    }
+
+    template <typename Fn>
+    void GuardVoid(std::string_view subsystem, Fn &&fn) noexcept {
+        GuardVoid(subsystem, nullptr, std::forward<Fn>(fn));
     }
 } // namespace BML::Core
 

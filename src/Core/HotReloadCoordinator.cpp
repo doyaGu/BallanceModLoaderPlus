@@ -12,12 +12,25 @@ namespace BML::Core {
     namespace {
         constexpr char kLogCategory[] = "hot.reload";
 
-        bool IsDllFile(const std::string& filename) {
-            if (filename.size() < 4) return false;
-            std::string ext = filename.substr(filename.size() - 4);
-            // Case-insensitive comparison
-            for (auto& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            return ext == ".dll";
+        bool IsModuleBinaryFile(const std::string& filename) {
+            auto pos = filename.find_last_of('.');
+            if (pos == std::string::npos) {
+                return false;
+            }
+
+            std::string ext = filename.substr(pos);
+            for (auto& c : ext) {
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            }
+
+            if (ext == ".dll") {
+                return true;
+            }
+#if defined(__APPLE__)
+            return ext == ".dylib";
+#else
+            return ext == ".so";
+#endif
         }
 
         const char* ReloadResultToString(ReloadResult result) {
@@ -31,6 +44,15 @@ namespace BML::Core {
                 case ReloadResult::RolledBack: return "RolledBack";
                 default: return "Unknown";
             }
+        }
+
+        std::filesystem::path NormalizePath(const std::filesystem::path& path) {
+            std::error_code ec;
+            auto normalized = std::filesystem::weakly_canonical(path, ec);
+            if (ec) {
+                normalized = path.lexically_normal();
+            }
+            return normalized;
         }
     }
 
@@ -89,9 +111,12 @@ namespace BML::Core {
         ReloadableSlotConfig config;
         config.dll_path = entry.dll_path;
         config.temp_directory = m_Settings.temp_directory;
+        config.mod_id = entry.id;
         config.manifest = entry.manifest;
         config.context = &m_Context;
         config.get_proc = &bmlGetProcAddress;
+        config.get_proc_by_id = &bmlGetProcAddressById;
+        config.get_api_id = &bmlGetApiId;
 
         if (!slot_entry.slot->Initialize(config)) {
             CoreLog(BML_LOG_ERROR, kLogCategory,
@@ -200,38 +225,46 @@ namespace BML::Core {
     }
 
     void HotReloadCoordinator::Update() {
-        if (!m_Settings.enabled) return;
-
-        std::lock_guard lock(m_Mutex);
-        if (!m_Running) return;
-
+        {
+            std::lock_guard lock(m_Mutex);
+            if (!m_Settings.enabled || !m_Running) {
+                return;
+            }
+        }
         ProcessScheduledReloads();
     }
 
     ReloadResult HotReloadCoordinator::ForceReload(const std::string& mod_id) {
-        std::lock_guard lock(m_Mutex);
+        ReloadNotifyCallback callback;
+        unsigned int version = 0;
+        ReloadFailure failure = ReloadFailure::None;
+        ReloadResult result = ReloadResult::LoadFailed;
 
-        auto it = m_Slots.find(mod_id);
-        if (it == m_Slots.end()) {
-            CoreLog(BML_LOG_ERROR, kLogCategory,
-                    "Cannot force reload: module '%s' not registered", mod_id.c_str());
-            return ReloadResult::LoadFailed;
+        {
+            std::lock_guard lock(m_Mutex);
+
+            auto it = m_Slots.find(mod_id);
+            if (it == m_Slots.end()) {
+                CoreLog(BML_LOG_ERROR, kLogCategory,
+                        "Cannot force reload: module '%s' not registered", mod_id.c_str());
+                return ReloadResult::LoadFailed;
+            }
+
+            if (!it->second.slot) {
+                return ReloadResult::LoadFailed;
+            }
+
+            CoreLog(BML_LOG_INFO, kLogCategory,
+                    "Force reloading module '%s'", mod_id.c_str());
+
+            result = it->second.slot->ForceReload();
+            version = it->second.slot->GetVersion();
+            failure = it->second.slot->GetLastFailure();
+            callback = m_NotifyCallback;
         }
 
-        if (!it->second.slot) {
-            return ReloadResult::LoadFailed;
-        }
-
-        CoreLog(BML_LOG_INFO, kLogCategory,
-                "Force reloading module '%s'", mod_id.c_str());
-
-        auto result = it->second.slot->ForceReload();
-
-        // Notify callback
-        if (m_NotifyCallback) {
-            m_NotifyCallback(mod_id, result,
-                it->second.slot->GetVersion(),
-                it->second.slot->GetLastFailure());
+        if (callback) {
+            callback(mod_id, result, version, failure);
         }
 
         return result;
@@ -261,12 +294,11 @@ namespace BML::Core {
     }
 
     void HotReloadCoordinator::OnFileChanged(const FileEvent& event) {
-        // Only care about DLL modifications
-        if (event.action != FileAction::Modified) return;
-        if (!IsDllFile(event.filename)) return;
+        if (event.action != FileAction::Modified) {
+            return;
+        }
 
-        // Find which module this file belongs to
-        std::string mod_id = FindModuleByPath(event.directory, event.filename);
+        std::string mod_id = FindModuleForEvent(event.directory, event.filename);
         if (mod_id.empty()) {
             CoreLog(BML_LOG_DEBUG, kLogCategory,
                     "Ignoring change to unregistered file: %s/%s",
@@ -275,13 +307,15 @@ namespace BML::Core {
         }
 
         CoreLog(BML_LOG_DEBUG, kLogCategory,
-                "Detected change to module '%s' DLL", mod_id.c_str());
+                "Detected watched change for module '%s': %s/%s",
+                mod_id.c_str(), event.directory.c_str(), event.filename.c_str());
 
-        // Schedule reload with debouncing
-        ScheduleReload(mod_id);
+        // The runtime owns the live module state, so watcher-driven events debounce
+        // into a full runtime reload instead of attaching another ad-hoc slot instance.
+        ScheduleReload(mod_id, true);
     }
 
-    void HotReloadCoordinator::ScheduleReload(const std::string& mod_id) {
+    void HotReloadCoordinator::ScheduleReload(const std::string& mod_id, bool requires_runtime_reload) {
         std::lock_guard lock(m_Mutex);
 
         auto now = std::chrono::steady_clock::now();
@@ -292,6 +326,7 @@ namespace BML::Core {
             if (sr.mod_id == mod_id) {
                 // Update fire time (reset debounce)
                 sr.fire_time = fire_time;
+                sr.requires_runtime_reload = sr.requires_runtime_reload || requires_runtime_reload;
                 CoreLog(BML_LOG_DEBUG, kLogCategory,
                         "Reset debounce for module '%s'", mod_id.c_str());
                 return;
@@ -299,75 +334,98 @@ namespace BML::Core {
         }
 
         // Add new scheduled reload
-        m_Scheduled.push_back({mod_id, fire_time});
+        m_Scheduled.push_back({mod_id, fire_time, requires_runtime_reload});
         CoreLog(BML_LOG_DEBUG, kLogCategory,
-                "Scheduled reload for module '%s' (debounce %lldms)",
-                mod_id.c_str(), static_cast<long long>(m_Settings.debounce.count()));
+                "Scheduled reload for module '%s' (debounce %lldms, runtime_reload=%s)",
+                mod_id.c_str(),
+                static_cast<long long>(m_Settings.debounce.count()),
+                requires_runtime_reload ? "true" : "false");
     }
 
     void HotReloadCoordinator::ProcessScheduledReloads() {
-        auto now = std::chrono::steady_clock::now();
+        std::vector<ScheduledReload> ready;
+        {
+            std::lock_guard lock(m_Mutex);
+            if (!m_Running) {
+                return;
+            }
 
-        // Find reloads that are ready
-        std::vector<std::string> ready;
-        for (auto it = m_Scheduled.begin(); it != m_Scheduled.end(); ) {
-            if (now >= it->fire_time) {
-                ready.push_back(it->mod_id);
-                it = m_Scheduled.erase(it);
-            } else {
-                ++it;
+            const auto now = std::chrono::steady_clock::now();
+            for (auto it = m_Scheduled.begin(); it != m_Scheduled.end();) {
+                if (now >= it->fire_time) {
+                    ready.push_back(*it);
+                    it = m_Scheduled.erase(it);
+                } else {
+                    ++it;
+                }
             }
         }
 
-        // Process ready reloads
-        for (const auto& mod_id : ready) {
-            auto it = m_Slots.find(mod_id);
-            if (it == m_Slots.end() || !it->second.slot) {
+        for (const auto &scheduled : ready) {
+            ReloadNotifyCallback callback;
+            ReloadResult result = ReloadResult::LoadFailed;
+            unsigned int version = 0;
+            ReloadFailure failure = ReloadFailure::None;
+            bool processed = false;
+
+            {
+                std::lock_guard lock(m_Mutex);
+                auto it = m_Slots.find(scheduled.mod_id);
+                if (it == m_Slots.end() || !it->second.slot) {
+                    continue;
+                }
+
+                CoreLog(BML_LOG_INFO, kLogCategory,
+                        "Processing scheduled reload for module '%s'", scheduled.mod_id.c_str());
+
+                if (scheduled.requires_runtime_reload) {
+                    result = ReloadResult::Success;
+                    version = it->second.slot->GetVersion();
+                    failure = ReloadFailure::None;
+                } else {
+                    result = it->second.slot->Reload();
+                    version = it->second.slot->GetVersion();
+                    failure = it->second.slot->GetLastFailure();
+                }
+                callback = m_NotifyCallback;
+                processed = true;
+            }
+
+            if (!processed) {
                 continue;
             }
 
             CoreLog(BML_LOG_INFO, kLogCategory,
-                    "Processing scheduled reload for module '%s'", mod_id.c_str());
-
-            auto result = it->second.slot->Reload();
-
-            CoreLog(BML_LOG_INFO, kLogCategory,
                     "Reload of '%s' completed: %s (version %u)",
-                    mod_id.c_str(), ReloadResultToString(result),
-                    it->second.slot->GetVersion());
+                    scheduled.mod_id.c_str(), ReloadResultToString(result), version);
 
-            // Notify callback
-            if (m_NotifyCallback) {
-                m_NotifyCallback(mod_id, result,
-                    it->second.slot->GetVersion(),
-                    it->second.slot->GetLastFailure());
+            if (callback) {
+                callback(scheduled.mod_id, result, version, failure);
             }
         }
     }
 
-    std::string HotReloadCoordinator::FindModuleByPath(const std::string& dir,
-                                                        const std::string& filename) {
+    std::string HotReloadCoordinator::FindModuleForEvent(const std::string& dir,
+                                                          const std::string& filename) {
         std::lock_guard lock(m_Mutex);
 
-        // Normalize the full path
-        std::filesystem::path full_path = std::filesystem::path(dir) / filename;
-        std::error_code ec;
-        auto normalized = std::filesystem::weakly_canonical(full_path, ec);
-        if (ec) {
-            normalized = full_path;
-        }
+        const auto event_path = NormalizePath(std::filesystem::path(dir) / filename);
 
-        // Search for matching module
+        // Search for a direct DLL match first.
         for (const auto& [id, entry] : m_Slots) {
             if (entry.info.dll_path.empty()) continue;
 
-            std::filesystem::path dll_path(entry.info.dll_path);
-            auto dll_normalized = std::filesystem::weakly_canonical(dll_path, ec);
-            if (ec) {
-                dll_normalized = dll_path;
+            if (event_path == NormalizePath(std::filesystem::path(entry.info.dll_path))) {
+                return id;
             }
+        }
 
-            if (normalized == dll_normalized) {
+        // Manifest edits should also trigger a runtime reload, but unrelated files
+        // in the module root should not.
+        for (const auto& [id, entry] : m_Slots) {
+            if (!entry.info.manifest || entry.info.manifest->manifest_path.empty()) continue;
+
+            if (event_path == NormalizePath(std::filesystem::path(entry.info.manifest->manifest_path))) {
                 return id;
             }
         }
@@ -376,3 +434,5 @@ namespace BML::Core {
     }
 
 } // namespace BML::Core
+
+

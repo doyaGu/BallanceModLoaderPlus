@@ -5,16 +5,9 @@
 #include <string>
 #include <vector>
 
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
-
 #include "bml_export.h"
 
+#include "PlatformCompat.h"
 #include "DependencyResolver.h"
 #include "ModHandle.h"
 #include "ModManifest.h"
@@ -41,6 +34,8 @@ namespace BML::Core {
     bool LoadModules(const std::vector<ResolvedNode> &order,
                      Context &context,
                      PFN_BML_GetProcAddress get_proc,
+                     PFN_BML_GetProcAddressById get_proc_by_id,
+                     PFN_BML_GetApiId get_api_id,
                      std::vector<LoadedModule> &out_modules,
                      ModuleLoadError &out_error);
 

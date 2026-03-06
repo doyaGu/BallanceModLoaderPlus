@@ -222,7 +222,9 @@ namespace BML::Core {
             uint32_t version_minor,
             const void *api_table,
             size_t api_size,
-            const std::string &provider_id
+            const std::string &provider_id,
+            uint64_t capabilities = BML_CAP_EXTENSION_BASIC,
+            const char *description = nullptr
         );
 
         /**

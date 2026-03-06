@@ -2,14 +2,25 @@
 #define BML_CORE_SYNC_MANAGER_H
 
 #include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <mutex>
+#include <unordered_map>
 #include <vector>
 
+#if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <Windows.h>
+#else
+#include <condition_variable>
+#include <pthread.h>
+#include <semaphore>
+#include <shared_mutex>
+#endif
 
 #include "bml_sync.h"
 
@@ -20,6 +31,7 @@ namespace BML::Core {
      * @brief Mutex implementation using Windows CRITICAL_SECTION
      */
     struct MutexImpl {
+#if defined(_WIN32)
         CRITICAL_SECTION cs;
 
         MutexImpl() : cs() {
@@ -32,6 +44,15 @@ namespace BML::Core {
 
         MutexImpl(const MutexImpl &) = delete;
         MutexImpl &operator=(const MutexImpl &) = delete;
+#else
+        std::recursive_timed_mutex mutex;
+
+        MutexImpl() = default;
+        ~MutexImpl() = default;
+
+        MutexImpl(const MutexImpl &) = delete;
+        MutexImpl &operator=(const MutexImpl &) = delete;
+#endif
     };
 
     /**
@@ -42,6 +63,7 @@ namespace BML::Core {
      * for proper release (ReleaseSRWLockShared vs ReleaseSRWLockExclusive).
      */
     struct RwLockImpl {
+#if defined(_WIN32)
         SRWLOCK srw;
         DWORD tls_index;  // TLS slot to track per-thread state
 
@@ -90,12 +112,46 @@ namespace BML::Core {
                             static_cast<ULONG_PTR>(state.read_depth);
             TlsSetValue(tls_index, reinterpret_cast<LPVOID>(raw));
         }
+#else
+        std::shared_timed_mutex rw;
+
+        struct ThreadState {
+            uint16_t read_depth{0};
+            uint16_t write_depth{0};
+        };
+
+        static constexpr uint16_t kMaxRecursionDepth = 0xFFFF;
+        inline static thread_local std::unordered_map<const RwLockImpl *, ThreadState> tls_state{};
+
+        RwLockImpl() = default;
+        ~RwLockImpl() = default;
+
+        RwLockImpl(const RwLockImpl &) = delete;
+        RwLockImpl &operator=(const RwLockImpl &) = delete;
+
+        ThreadState GetThreadState() const {
+            auto it = tls_state.find(this);
+            if (it == tls_state.end()) {
+                return {};
+            }
+            return it->second;
+        }
+
+        void SetThreadState(const ThreadState &state) {
+            if (state.read_depth == 0 && state.write_depth == 0) {
+                tls_state.erase(this);
+                return;
+            }
+            tls_state[this] = state;
+        }
+#endif
     };
 
     /**
      * @brief Semaphore implementation using Windows Semaphore
      */
     struct SemaphoreImpl {
+#if defined(_WIN32)
         HANDLE handle;
         uint32_t max_count;
 
@@ -110,12 +166,31 @@ namespace BML::Core {
 
         SemaphoreImpl(const SemaphoreImpl &) = delete;
         SemaphoreImpl &operator=(const SemaphoreImpl &) = delete;
+#else
+        static constexpr std::ptrdiff_t kLeastMaxCount =
+            static_cast<std::ptrdiff_t>(std::numeric_limits<int32_t>::max());
+
+        std::counting_semaphore<kLeastMaxCount> semaphore;
+        uint32_t max_count;
+        std::atomic<uint32_t> available;
+
+        SemaphoreImpl(uint32_t initial, uint32_t maximum)
+            : semaphore(static_cast<std::ptrdiff_t>(initial)),
+              max_count(maximum),
+              available(initial) {}
+
+        ~SemaphoreImpl() = default;
+
+        SemaphoreImpl(const SemaphoreImpl &) = delete;
+        SemaphoreImpl &operator=(const SemaphoreImpl &) = delete;
+#endif
     };
 
     /**
      * @brief Condition variable implementation using Windows CONDITION_VARIABLE
      */
     struct CondVarImpl {
+#if defined(_WIN32)
         CONDITION_VARIABLE cv;
 
         CondVarImpl() {
@@ -127,6 +202,15 @@ namespace BML::Core {
 
         CondVarImpl(const CondVarImpl &) = delete;
         CondVarImpl &operator=(const CondVarImpl &) = delete;
+#else
+        std::condition_variable_any cv;
+
+        CondVarImpl() = default;
+        ~CondVarImpl() = default;
+
+        CondVarImpl(const CondVarImpl &) = delete;
+        CondVarImpl &operator=(const CondVarImpl &) = delete;
+#endif
     };
 
     /**
@@ -164,6 +248,7 @@ namespace BML::Core {
      * thread-local resources.
      */
     struct TlsKeyImpl {
+#if defined(_WIN32)
         DWORD fls_index;
         BML_TlsDestructor destructor;
 
@@ -191,6 +276,39 @@ namespace BML::Core {
                 delete wrapper;
             }
         }
+#else
+        pthread_key_t key{};
+        BML_TlsDestructor destructor{nullptr};
+        bool valid{false};
+
+        explicit TlsKeyImpl(BML_TlsDestructor dtor)
+            : key{},
+              destructor(dtor),
+              valid(false) {
+            valid = (pthread_key_create(&key, dtor ? TlsDestructorTrampoline : nullptr) == 0);
+        }
+
+        ~TlsKeyImpl() {
+            if (valid) {
+                pthread_key_delete(key);
+            }
+        }
+
+        TlsKeyImpl(const TlsKeyImpl &) = delete;
+        TlsKeyImpl &operator=(const TlsKeyImpl &) = delete;
+
+        static void TlsDestructorTrampoline(void *data) {
+            if (!data) {
+                return;
+            }
+
+            auto *wrapper = static_cast<TlsValueWrapper *>(data);
+            if (wrapper->destructor && wrapper->value) {
+                wrapper->destructor(wrapper->value);
+            }
+            delete wrapper;
+        }
+#endif
     };
 
     /**

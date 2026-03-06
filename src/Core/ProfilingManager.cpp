@@ -4,11 +4,17 @@
 #include "DiagnosticManager.h"
 #include "MemoryManager.h"
 
+#include <chrono>
 #include <cstdio>
-#include <mutex>
-#include <unordered_map>
+#include <functional>
 
 namespace BML::Core {
+    namespace {
+        uint64_t CurrentThreadToken() {
+            return static_cast<uint64_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
+        }
+    } // namespace
+
     ProfilingManager &ProfilingManager::Instance() {
         static ProfilingManager instance;
         return instance;
@@ -20,38 +26,19 @@ namespace BML::Core {
           m_TotalEvents(0),
           m_TotalScopes(0),
           m_DroppedEvents(0),
-          m_BufferLock(),
-          m_QpcFrequency(0),
+          m_QpcFrequency(1000000000ULL),
           m_StartupTimeNs(0) {
-        InitializeCriticalSection(&m_BufferLock);
         m_EventBuffer.reserve(MAX_EVENTS);
-
-        // Get QPC frequency (default to 10MHz if query fails)
-        LARGE_INTEGER freq;
-        if (QueryPerformanceFrequency(&freq) && freq.QuadPart > 0) {
-            m_QpcFrequency = freq.QuadPart;
-        } else {
-            m_QpcFrequency = 10000000ULL; // 10 MHz fallback
-        }
 
         // Record startup time
         m_StartupTimeNs = GetTimestampNs();
     }
 
-    ProfilingManager::~ProfilingManager() {
-        DeleteCriticalSection(&m_BufferLock);
-    }
+    ProfilingManager::~ProfilingManager() = default;
 
     uint64_t ProfilingManager::GetTimestampNs() {
-        LARGE_INTEGER counter;
-        if (!QueryPerformanceCounter(&counter) || m_QpcFrequency == 0) {
-            return 0;
-        }
-
-        // Convert to nanoseconds (avoid overflow by dividing first for large values)
-        const uint64_t seconds = counter.QuadPart / m_QpcFrequency;
-        const uint64_t remainder = counter.QuadPart % m_QpcFrequency;
-        return seconds * 1000000000ULL + (remainder * 1000000000ULL) / m_QpcFrequency;
+        const auto now = std::chrono::steady_clock::now().time_since_epoch();
+        return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
     }
 
     uint64_t ProfilingManager::GetCpuFrequency() {
@@ -80,10 +67,10 @@ namespace BML::Core {
         evt.name = name;
         if (category) evt.category = category;
         evt.timestamp_ns = GetTimestampNs() - m_StartupTimeNs;
-        evt.thread_id = GetCurrentThreadId();
+        evt.thread_id = CurrentThreadToken();
 
         {
-            CriticalSectionGuard guard(m_BufferLock);
+            std::lock_guard<std::mutex> guard(m_BufferLock);
             try {
                 if (m_EventBuffer.size() < MAX_EVENTS) {
                     m_EventBuffer.push_back(std::move(evt));
@@ -113,10 +100,10 @@ namespace BML::Core {
         evt.type = TraceEvent::END;
         evt.name = name;
         evt.timestamp_ns = GetTimestampNs() - m_StartupTimeNs;
-        evt.thread_id = GetCurrentThreadId();
+        evt.thread_id = CurrentThreadToken();
 
         {
-            CriticalSectionGuard guard(m_BufferLock);
+            std::lock_guard<std::mutex> guard(m_BufferLock);
             try {
                 if (m_EventBuffer.size() < MAX_EVENTS) {
                     m_EventBuffer.push_back(std::move(evt));
@@ -139,10 +126,10 @@ namespace BML::Core {
         evt.name = name;
         if (category) evt.category = category;
         evt.timestamp_ns = GetTimestampNs() - m_StartupTimeNs;
-        evt.thread_id = GetCurrentThreadId();
+        evt.thread_id = CurrentThreadToken();
 
         {
-            CriticalSectionGuard guard(m_BufferLock);
+            std::lock_guard<std::mutex> guard(m_BufferLock);
             try {
                 if (m_EventBuffer.size() < MAX_EVENTS) {
                     m_EventBuffer.push_back(std::move(evt));
@@ -170,11 +157,11 @@ namespace BML::Core {
         evt.type = TraceEvent::COUNTER;
         evt.name = name;
         evt.timestamp_ns = GetTimestampNs() - m_StartupTimeNs;
-        evt.thread_id = GetCurrentThreadId();
+        evt.thread_id = CurrentThreadToken();
         evt.counter_value = value;
 
         {
-            CriticalSectionGuard guard(m_BufferLock);
+            std::lock_guard<std::mutex> guard(m_BufferLock);
             try {
                 if (m_EventBuffer.size() < MAX_EVENTS) {
                     m_EventBuffer.push_back(std::move(evt));
@@ -195,10 +182,10 @@ namespace BML::Core {
         evt.type = TraceEvent::FRAME;
         evt.name = "Frame";
         evt.timestamp_ns = GetTimestampNs() - m_StartupTimeNs;
-        evt.thread_id = GetCurrentThreadId();
+        evt.thread_id = CurrentThreadToken();
 
         {
-            CriticalSectionGuard guard(m_BufferLock);
+            std::lock_guard<std::mutex> guard(m_BufferLock);
             try {
                 if (m_EventBuffer.size() < MAX_EVENTS) {
                     m_EventBuffer.push_back(std::move(evt));
@@ -303,7 +290,7 @@ namespace BML::Core {
         // Extract events under lock to minimize lock contention during file I/O
         std::vector<TraceEvent> events_snapshot;
         {
-            CriticalSectionGuard guard(m_BufferLock);
+            std::lock_guard<std::mutex> guard(m_BufferLock);
             try {
                 events_snapshot = std::move(m_EventBuffer); // Move to avoid copy
                 m_EventBuffer.clear();
@@ -329,7 +316,7 @@ namespace BML::Core {
         if (!fp) {
             // Restore events on failure
             {
-                CriticalSectionGuard guard(m_BufferLock);
+                std::lock_guard<std::mutex> guard(m_BufferLock);
                 try {
                     m_EventBuffer.insert(m_EventBuffer.begin(), 
                         std::make_move_iterator(events_snapshot.begin()),
@@ -374,7 +361,7 @@ namespace BML::Core {
         out_stats->dropped_events = m_DroppedEvents.load(std::memory_order_relaxed);
 
         {
-            CriticalSectionGuard guard(m_BufferLock);
+            std::lock_guard<std::mutex> guard(m_BufferLock);
             out_stats->memory_used_bytes = m_EventBuffer.capacity() * sizeof(TraceEvent);
         }
 

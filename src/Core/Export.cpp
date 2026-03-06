@@ -25,8 +25,24 @@ BML_API BML_Result bmlLoadModules(void) {
     return BML::Core::LoadDiscoveredModules() ? BML_RESULT_OK : BML_RESULT_FAIL;
 }
 
+BML_API BML_Result bmlBootstrap(const BML_BootstrapConfig *config) {
+    return BML::Core::Bootstrap(config);
+}
+
+BML_API void bmlUpdate(void) {
+    BML::Core::UpdateMicrokernel();
+}
+
 BML_API void bmlDetach(void) {
     BML::Core::ShutdownMicrokernel();
+}
+
+BML_API void bmlShutdown(void) {
+    BML::Core::ShutdownMicrokernel();
+}
+
+BML_API BML_BootstrapState bmlGetBootstrapState(void) {
+    return BML::Core::GetBootstrapState();
 }
 
 BML_API void *bmlGetProcAddress(const char *proc_name) {

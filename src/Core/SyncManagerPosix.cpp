@@ -1,8 +1,12 @@
 #include "SyncManager.h"
 
+#if !defined(_WIN32)
+
 #include <algorithm>
+#include <chrono>
 #include <functional>
 #include <new>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -10,9 +14,17 @@
 #include "DiagnosticManager.h"
 
 namespace BML::Core {
+    using ThreadId = std::uint64_t;
+
+    namespace {
+        ThreadId GetCurrentThreadToken() {
+            return static_cast<ThreadId>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
+        }
+    } // namespace
+
     class DeadlockDetector {
     public:
-        bool OnLockWait(void *lock_key, DWORD thread_id) {
+        bool OnLockWait(void *lock_key, ThreadId thread_id) {
             std::lock_guard<std::mutex> guard(m_mutex);
             ThreadState &thread_state = m_threads[thread_id];
             if (m_deadlocked_threads.erase(thread_id) != 0) {
@@ -21,19 +33,19 @@ namespace BML::Core {
             }
             thread_state.waiting_lock = lock_key;
             std::unordered_set<void *> lock_visited;
-            std::unordered_set<DWORD> thread_visited;
+            std::unordered_set<ThreadId> thread_visited;
             bool has_cycle = DetectCycle(lock_key, thread_id, lock_visited, thread_visited);
             if (has_cycle) {
                 thread_state.waiting_lock = nullptr;
                 m_deadlocked_threads.insert(thread_id);
-                for (DWORD cycle_thread : thread_visited) {
+                for (ThreadId cycle_thread : thread_visited) {
                     m_deadlocked_threads.insert(cycle_thread);
                 }
             }
             return has_cycle;
         }
 
-        void OnLockAcquired(void *lock_key, DWORD thread_id) {
+        void OnLockAcquired(void *lock_key, ThreadId thread_id) {
             std::lock_guard<std::mutex> guard(m_mutex);
             m_deadlocked_threads.erase(thread_id);
             ThreadState &thread_state = m_threads[thread_id];
@@ -44,7 +56,7 @@ namespace BML::Core {
             lock_state.owners[thread_id]++;
         }
 
-        void OnLockWaitCancelled(void *lock_key, DWORD thread_id) {
+        void OnLockWaitCancelled(void *lock_key, ThreadId thread_id) {
             std::lock_guard<std::mutex> guard(m_mutex);
             auto thread_it = m_threads.find(thread_id);
             if (thread_it == m_threads.end()) {
@@ -61,7 +73,7 @@ namespace BML::Core {
             }
         }
 
-        void OnLockReleased(void *lock_key, DWORD thread_id) {
+        void OnLockReleased(void *lock_key, ThreadId thread_id) {
             std::lock_guard<std::mutex> guard(m_mutex);
             auto thread_it = m_threads.find(thread_id);
             if (thread_it != m_threads.end()) {
@@ -93,7 +105,7 @@ namespace BML::Core {
             }
         }
 
-        bool ConsumeDeadlock(DWORD thread_id) {
+        bool ConsumeDeadlock(ThreadId thread_id) {
             std::lock_guard<std::mutex> guard(m_mutex);
             return m_deadlocked_threads.erase(thread_id) != 0;
         }
@@ -105,13 +117,13 @@ namespace BML::Core {
         };
 
         struct LockState {
-            std::unordered_map<DWORD, uint32_t> owners;
+            std::unordered_map<ThreadId, uint32_t> owners;
         };
 
         bool DetectCycle(void *lock_key,
-                         DWORD target_thread,
+                         ThreadId target_thread,
                          std::unordered_set<void *> &lock_visited,
-                         std::unordered_set<DWORD> &thread_visited) {
+                         std::unordered_set<ThreadId> &thread_visited) {
             if (!lock_key) {
                 return false;
             }
@@ -126,7 +138,7 @@ namespace BML::Core {
             }
 
             for (const auto &owner_pair : lock_it->second.owners) {
-                DWORD owner_thread = owner_pair.first;
+                ThreadId owner_thread = owner_pair.first;
                 if (owner_thread == target_thread) {
                     return true;
                 }
@@ -149,9 +161,9 @@ namespace BML::Core {
         }
 
         std::mutex m_mutex;
-        std::unordered_map<DWORD, ThreadState> m_threads;
+        std::unordered_map<ThreadId, ThreadState> m_threads;
         std::unordered_map<void *, LockState> m_locks;
-        std::unordered_set<DWORD> m_deadlocked_threads;
+        std::unordered_set<ThreadId> m_deadlocked_threads;
     };
 
     namespace {
@@ -161,7 +173,7 @@ namespace BML::Core {
 
             WaitRegistration(DeadlockDetector *detector,
                              void *lock_key,
-                             DWORD thread_id,
+                             ThreadId thread_id,
                              Reporter reporter)
                 : m_detector(detector),
                   m_lock_key(lock_key),
@@ -194,20 +206,17 @@ namespace BML::Core {
         private:
             DeadlockDetector *m_detector{};
             void *m_lock_key{};
-            DWORD m_thread_id{0};
+            ThreadId m_thread_id{0};
             Reporter m_reporter;
             bool m_registered{false};
         };
-    } // namespace
 
-    SyncManager::SyncManager() : m_DeadlockDetector(std::make_unique<DeadlockDetector>()) {
-    }
-
-    namespace {
         inline BML_Result ReportInvalidSyncCall(const char *api_name, const char *message) {
             return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "sync", api_name, message, 0);
         }
     } // namespace
+
+    SyncManager::SyncManager() : m_DeadlockDetector(std::make_unique<DeadlockDetector>()) {}
 
     SyncManager &SyncManager::Instance() {
         static SyncManager instance;
@@ -266,9 +275,9 @@ namespace BML::Core {
         }
 
         auto *impl = reinterpret_cast<MutexImpl *>(mutex);
-        DWORD thread_id = ::GetCurrentThreadId();
+        ThreadId thread_id = GetCurrentThreadToken();
 
-        if (TryEnterCriticalSection(&impl->cs)) {
+        if (impl->mutex.try_lock()) {
             m_DeadlockDetector->OnLockAcquired(impl, thread_id);
             return;
         }
@@ -278,7 +287,7 @@ namespace BML::Core {
             return;
         }
 
-        EnterCriticalSection(&impl->cs);
+        impl->mutex.lock();
         m_DeadlockDetector->OnLockAcquired(impl, thread_id);
     }
 
@@ -288,8 +297,8 @@ namespace BML::Core {
         }
 
         auto *impl = reinterpret_cast<MutexImpl *>(mutex);
-        DWORD thread_id = ::GetCurrentThreadId();
-        if (TryEnterCriticalSection(&impl->cs)) {
+        ThreadId thread_id = GetCurrentThreadToken();
+        if (impl->mutex.try_lock()) {
             m_DeadlockDetector->OnLockAcquired(impl, thread_id);
             return BML_TRUE;
         }
@@ -302,9 +311,9 @@ namespace BML::Core {
         }
 
         auto *impl = reinterpret_cast<MutexImpl *>(mutex);
-        DWORD thread_id = ::GetCurrentThreadId();
+        ThreadId thread_id = GetCurrentThreadToken();
         m_DeadlockDetector->OnLockReleased(impl, thread_id);
-        LeaveCriticalSection(&impl->cs);
+        impl->mutex.unlock();
     }
 
     BML_Result SyncManager::LockMutexTimeout(BML_Mutex mutex, uint32_t timeout_ms) {
@@ -313,7 +322,7 @@ namespace BML::Core {
         }
 
         auto *impl = reinterpret_cast<MutexImpl *>(mutex);
-        DWORD thread_id = ::GetCurrentThreadId();
+        ThreadId thread_id = GetCurrentThreadToken();
 
         WaitRegistration wait_reg(
             m_DeadlockDetector.get(),
@@ -321,9 +330,8 @@ namespace BML::Core {
             thread_id,
             [this]() { return ReportDeadlock("bmlMutexLockTimeout"); });
 
-        // Handle special timeout values
         if (timeout_ms == BML_TIMEOUT_INFINITE) {
-            if (TryEnterCriticalSection(&impl->cs)) {
+            if (impl->mutex.try_lock()) {
                 m_DeadlockDetector->OnLockAcquired(impl, thread_id);
                 return BML_RESULT_OK;
             }
@@ -333,49 +341,57 @@ namespace BML::Core {
                 return status;
             }
 
-            EnterCriticalSection(&impl->cs);
+            impl->mutex.lock();
             wait_reg.MarkAcquired();
             m_DeadlockDetector->OnLockAcquired(impl, thread_id);
             return BML_RESULT_OK;
         }
 
         if (timeout_ms == BML_TIMEOUT_NONE) {
-            // Non-blocking try
-            if (TryEnterCriticalSection(&impl->cs)) {
+            if (impl->mutex.try_lock()) {
                 m_DeadlockDetector->OnLockAcquired(impl, thread_id);
                 return BML_RESULT_OK;
             }
             return BML_RESULT_TIMEOUT;
         }
 
-        // Spin with timeout using high-resolution timer
-        LARGE_INTEGER freq, start, now;
-        QueryPerformanceFrequency(&freq);
-        QueryPerformanceCounter(&start);
+        if (impl->mutex.try_lock()) {
+            m_DeadlockDetector->OnLockAcquired(impl, thread_id);
+            return BML_RESULT_OK;
+        }
 
-        double timeout_sec = timeout_ms / 1000.0;
+        auto status = wait_reg.Ensure();
+        if (status != BML_RESULT_OK) {
+            return status;
+        }
 
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
         while (true) {
-            if (TryEnterCriticalSection(&impl->cs)) {
-                wait_reg.MarkAcquired();
-                m_DeadlockDetector->OnLockAcquired(impl, thread_id);
-                return BML_RESULT_OK;
-            }
-
             auto status = wait_reg.Ensure();
             if (status != BML_RESULT_OK) {
                 return status;
             }
 
-            QueryPerformanceCounter(&now);
-            double elapsed = static_cast<double>(now.QuadPart - start.QuadPart) / freq.QuadPart;
-            if (elapsed >= timeout_sec) {
+            const auto now = std::chrono::steady_clock::now();
+            if (now >= deadline) {
                 wait_reg.Cancel();
                 return BML_RESULT_TIMEOUT;
             }
 
-            // Yield to avoid busy-spinning
-            ::SwitchToThread();
+            auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+            if (remaining <= std::chrono::milliseconds::zero()) {
+                wait_reg.Cancel();
+                return BML_RESULT_TIMEOUT;
+            }
+            if (remaining > std::chrono::milliseconds(1)) {
+                remaining = std::chrono::milliseconds(1);
+            }
+
+            if (impl->mutex.try_lock_for(remaining)) {
+                wait_reg.MarkAcquired();
+                m_DeadlockDetector->OnLockAcquired(impl, thread_id);
+                return BML_RESULT_OK;
+            }
         }
     }
 
@@ -442,7 +458,7 @@ namespace BML::Core {
 
         auto *impl = reinterpret_cast<RwLockImpl *>(lock);
         auto state = impl->GetThreadState();
-        DWORD thread_id = ::GetCurrentThreadId();
+        ThreadId thread_id = GetCurrentThreadToken();
 
         if (state.write_depth > 0) {
             ReportLockMisuse("bmlRwLockReadLock", "Cannot acquire read lock while holding write lock in the same thread");
@@ -450,14 +466,14 @@ namespace BML::Core {
         }
 
         if (state.read_depth == 0) {
-            if (TryAcquireSRWLockShared(&impl->srw)) {
+            if (impl->rw.try_lock_shared()) {
                 m_DeadlockDetector->OnLockAcquired(impl, thread_id);
             } else {
                 if (m_DeadlockDetector->OnLockWait(impl, thread_id)) {
                     ReportDeadlock("bmlRwLockReadLock");
                     return;
                 }
-                AcquireSRWLockShared(&impl->srw);
+                impl->rw.lock_shared();
                 m_DeadlockDetector->OnLockAcquired(impl, thread_id);
             }
         } else if (state.read_depth == RwLockImpl::kMaxRecursionDepth) {
@@ -476,7 +492,7 @@ namespace BML::Core {
 
         auto *impl = reinterpret_cast<RwLockImpl *>(lock);
         auto state = impl->GetThreadState();
-        DWORD thread_id = ::GetCurrentThreadId();
+        ThreadId thread_id = GetCurrentThreadToken();
 
         if (state.write_depth > 0) {
             ReportLockMisuse("bmlRwLockTryReadLock", "Cannot acquire read lock while holding write lock in the same thread");
@@ -493,7 +509,7 @@ namespace BML::Core {
             return BML_TRUE;
         }
 
-        if (TryAcquireSRWLockShared(&impl->srw)) {
+        if (impl->rw.try_lock_shared()) {
             state.read_depth = 1;
             impl->SetThreadState(state);
             m_DeadlockDetector->OnLockAcquired(impl, thread_id);
@@ -509,14 +525,13 @@ namespace BML::Core {
 
         auto *impl = reinterpret_cast<RwLockImpl *>(lock);
         auto state = impl->GetThreadState();
-        DWORD thread_id = ::GetCurrentThreadId();
+        ThreadId thread_id = GetCurrentThreadToken();
 
         if (state.write_depth > 0) {
             return SetLastErrorAndReturn(BML_RESULT_SYNC_DEADLOCK, "sync", "bmlRwLockReadLockTimeout",
                                          "Cannot acquire read lock while holding write lock in the same thread", 0);
         }
 
-        // If already holding read lock, increment depth (recursive)
         if (state.read_depth > 0) {
             if (state.read_depth == RwLockImpl::kMaxRecursionDepth) {
                 return SetLastErrorAndReturn(BML_RESULT_FAIL, "sync", "bmlRwLockReadLockTimeout",
@@ -527,7 +542,6 @@ namespace BML::Core {
             return BML_RESULT_OK;
         }
 
-        // Handle special timeout values
         WaitRegistration wait_reg(
             m_DeadlockDetector.get(),
             impl,
@@ -535,7 +549,7 @@ namespace BML::Core {
             [this]() { return ReportDeadlock("bmlRwLockReadLockTimeout"); });
 
         if (timeout_ms == BML_TIMEOUT_INFINITE) {
-            if (TryAcquireSRWLockShared(&impl->srw)) {
+            if (impl->rw.try_lock_shared()) {
                 state.read_depth = 1;
                 impl->SetThreadState(state);
                 m_DeadlockDetector->OnLockAcquired(impl, thread_id);
@@ -547,7 +561,7 @@ namespace BML::Core {
                 return status;
             }
 
-            AcquireSRWLockShared(&impl->srw);
+            impl->rw.lock_shared();
             wait_reg.MarkAcquired();
             m_DeadlockDetector->OnLockAcquired(impl, thread_id);
             state.read_depth = 1;
@@ -556,7 +570,7 @@ namespace BML::Core {
         }
 
         if (timeout_ms == BML_TIMEOUT_NONE) {
-            if (TryAcquireSRWLockShared(&impl->srw)) {
+            if (impl->rw.try_lock_shared()) {
                 state.read_depth = 1;
                 impl->SetThreadState(state);
                 m_DeadlockDetector->OnLockAcquired(impl, thread_id);
@@ -565,34 +579,47 @@ namespace BML::Core {
             return BML_RESULT_TIMEOUT;
         }
 
-        // Spin with timeout
-        LARGE_INTEGER freq, start, now;
-        QueryPerformanceFrequency(&freq);
-        QueryPerformanceCounter(&start);
-        double timeout_sec = timeout_ms / 1000.0;
+        if (impl->rw.try_lock_shared()) {
+            state.read_depth = 1;
+            impl->SetThreadState(state);
+            m_DeadlockDetector->OnLockAcquired(impl, thread_id);
+            return BML_RESULT_OK;
+        }
 
+        auto status = wait_reg.Ensure();
+        if (status != BML_RESULT_OK) {
+            return status;
+        }
+
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
         while (true) {
-            if (TryAcquireSRWLockShared(&impl->srw)) {
+            auto status = wait_reg.Ensure();
+            if (status != BML_RESULT_OK) {
+                return status;
+            }
+
+            const auto now = std::chrono::steady_clock::now();
+            if (now >= deadline) {
+                wait_reg.Cancel();
+                return BML_RESULT_TIMEOUT;
+            }
+
+            auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+            if (remaining <= std::chrono::milliseconds::zero()) {
+                wait_reg.Cancel();
+                return BML_RESULT_TIMEOUT;
+            }
+            if (remaining > std::chrono::milliseconds(1)) {
+                remaining = std::chrono::milliseconds(1);
+            }
+
+            if (impl->rw.try_lock_shared_for(remaining)) {
                 wait_reg.MarkAcquired();
                 state.read_depth = 1;
                 impl->SetThreadState(state);
                 m_DeadlockDetector->OnLockAcquired(impl, thread_id);
                 return BML_RESULT_OK;
             }
-
-            auto status = wait_reg.Ensure();
-            if (status != BML_RESULT_OK) {
-                return status;
-            }
-
-            QueryPerformanceCounter(&now);
-            double elapsed = static_cast<double>(now.QuadPart - start.QuadPart) / freq.QuadPart;
-            if (elapsed >= timeout_sec) {
-                wait_reg.Cancel();
-                return BML_RESULT_TIMEOUT;
-            }
-
-            ::SwitchToThread();
         }
     }
 
@@ -603,7 +630,7 @@ namespace BML::Core {
 
         auto *impl = reinterpret_cast<RwLockImpl *>(lock);
         auto state = impl->GetThreadState();
-        DWORD thread_id = ::GetCurrentThreadId();
+        ThreadId thread_id = GetCurrentThreadToken();
 
         if (state.write_depth > 0) {
             if (state.write_depth == RwLockImpl::kMaxRecursionDepth) {
@@ -620,14 +647,14 @@ namespace BML::Core {
             return;
         }
 
-        if (TryAcquireSRWLockExclusive(&impl->srw)) {
+        if (impl->rw.try_lock()) {
             m_DeadlockDetector->OnLockAcquired(impl, thread_id);
         } else {
             if (m_DeadlockDetector->OnLockWait(impl, thread_id)) {
                 ReportDeadlock("bmlRwLockWriteLock");
                 return;
             }
-            AcquireSRWLockExclusive(&impl->srw);
+            impl->rw.lock();
             m_DeadlockDetector->OnLockAcquired(impl, thread_id);
         }
         state.write_depth = 1;
@@ -641,7 +668,7 @@ namespace BML::Core {
 
         auto *impl = reinterpret_cast<RwLockImpl *>(lock);
         auto state = impl->GetThreadState();
-        DWORD thread_id = ::GetCurrentThreadId();
+        ThreadId thread_id = GetCurrentThreadToken();
 
         if (state.write_depth > 0) {
             if (state.write_depth == RwLockImpl::kMaxRecursionDepth) {
@@ -658,7 +685,7 @@ namespace BML::Core {
             return BML_FALSE;
         }
 
-        if (TryAcquireSRWLockExclusive(&impl->srw)) {
+        if (impl->rw.try_lock()) {
             state.write_depth = 1;
             impl->SetThreadState(state);
             m_DeadlockDetector->OnLockAcquired(impl, thread_id);
@@ -674,9 +701,8 @@ namespace BML::Core {
 
         auto *impl = reinterpret_cast<RwLockImpl *>(lock);
         auto state = impl->GetThreadState();
-        DWORD thread_id = ::GetCurrentThreadId();
+        ThreadId thread_id = GetCurrentThreadToken();
 
-        // If already holding write lock, increment depth (recursive)
         if (state.write_depth > 0) {
             if (state.write_depth == RwLockImpl::kMaxRecursionDepth) {
                 return SetLastErrorAndReturn(BML_RESULT_FAIL, "sync", "bmlRwLockWriteLockTimeout",
@@ -692,7 +718,6 @@ namespace BML::Core {
                                          "Cannot upgrade read lock to write lock without unlocking", 0);
         }
 
-        // Handle special timeout values
         WaitRegistration wait_reg(
             m_DeadlockDetector.get(),
             impl,
@@ -704,7 +729,7 @@ namespace BML::Core {
                 if (was_waiting) {
                     wait_reg.Cancel();
                 }
-                ReleaseSRWLockExclusive(&impl->srw);
+                impl->rw.unlock();
                 return ReportDeadlock("bmlRwLockWriteLockTimeout");
             }
 
@@ -718,7 +743,7 @@ namespace BML::Core {
         };
 
         if (timeout_ms == BML_TIMEOUT_INFINITE) {
-            if (TryAcquireSRWLockExclusive(&impl->srw)) {
+            if (impl->rw.try_lock()) {
                 return complete_acquire(false);
             }
 
@@ -727,41 +752,51 @@ namespace BML::Core {
                 return status;
             }
 
-            AcquireSRWLockExclusive(&impl->srw);
+            impl->rw.lock();
             return complete_acquire(true);
         }
 
         if (timeout_ms == BML_TIMEOUT_NONE) {
-            if (TryAcquireSRWLockExclusive(&impl->srw)) {
+            if (impl->rw.try_lock()) {
                 return complete_acquire(false);
             }
             return BML_RESULT_TIMEOUT;
         }
 
-        // Spin with timeout
-        LARGE_INTEGER freq, start, now;
-        QueryPerformanceFrequency(&freq);
-        QueryPerformanceCounter(&start);
-        double timeout_sec = timeout_ms / 1000.0;
+        if (impl->rw.try_lock()) {
+            return complete_acquire(false);
+        }
 
+        auto status = wait_reg.Ensure();
+        if (status != BML_RESULT_OK) {
+            return status;
+        }
+
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
         while (true) {
-            if (TryAcquireSRWLockExclusive(&impl->srw)) {
-                return complete_acquire(true);
-            }
-
             auto status = wait_reg.Ensure();
             if (status != BML_RESULT_OK) {
                 return status;
             }
 
-            QueryPerformanceCounter(&now);
-            double elapsed = static_cast<double>(now.QuadPart - start.QuadPart) / freq.QuadPart;
-            if (elapsed >= timeout_sec) {
+            const auto now = std::chrono::steady_clock::now();
+            if (now >= deadline) {
                 wait_reg.Cancel();
                 return BML_RESULT_TIMEOUT;
             }
 
-            ::SwitchToThread();
+            auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+            if (remaining <= std::chrono::milliseconds::zero()) {
+                wait_reg.Cancel();
+                return BML_RESULT_TIMEOUT;
+            }
+            if (remaining > std::chrono::milliseconds(1)) {
+                remaining = std::chrono::milliseconds(1);
+            }
+
+            if (impl->rw.try_lock_for(remaining)) {
+                return complete_acquire(true);
+            }
         }
     }
 
@@ -772,12 +807,12 @@ namespace BML::Core {
 
         auto *impl = reinterpret_cast<RwLockImpl *>(lock);
         auto state = impl->GetThreadState();
-        DWORD thread_id = ::GetCurrentThreadId();
+        ThreadId thread_id = GetCurrentThreadToken();
 
         if (state.write_depth > 0) {
             state.write_depth--;
             if (state.write_depth == 0) {
-                ReleaseSRWLockExclusive(&impl->srw);
+                impl->rw.unlock();
                 m_DeadlockDetector->OnLockReleased(impl, thread_id);
             }
             impl->SetThreadState(state);
@@ -787,7 +822,7 @@ namespace BML::Core {
         if (state.read_depth > 0) {
             state.read_depth--;
             if (state.read_depth == 0) {
-                ReleaseSRWLockShared(&impl->srw);
+                impl->rw.unlock_shared();
                 m_DeadlockDetector->OnLockReleased(impl, thread_id);
             }
             impl->SetThreadState(state);
@@ -804,7 +839,7 @@ namespace BML::Core {
 
         auto *impl = reinterpret_cast<RwLockImpl *>(lock);
         auto state = impl->GetThreadState();
-        DWORD thread_id = ::GetCurrentThreadId();
+        ThreadId thread_id = GetCurrentThreadToken();
 
         if (state.write_depth > 0) {
             ReportLockMisuse("bmlRwLockReadUnlock", "Cannot perform read unlock while holding a write lock");
@@ -818,7 +853,7 @@ namespace BML::Core {
 
         state.read_depth--;
         if (state.read_depth == 0) {
-            ReleaseSRWLockShared(&impl->srw);
+            impl->rw.unlock_shared();
             m_DeadlockDetector->OnLockReleased(impl, thread_id);
         }
         impl->SetThreadState(state);
@@ -831,7 +866,7 @@ namespace BML::Core {
 
         auto *impl = reinterpret_cast<RwLockImpl *>(lock);
         auto state = impl->GetThreadState();
-        DWORD thread_id = ::GetCurrentThreadId();
+        ThreadId thread_id = GetCurrentThreadToken();
 
         if (state.write_depth == 0) {
             ReportLockMisuse("bmlRwLockWriteUnlock", "Write unlock called without a matching lock");
@@ -840,7 +875,7 @@ namespace BML::Core {
 
         state.write_depth--;
         if (state.write_depth == 0) {
-            ReleaseSRWLockExclusive(&impl->srw);
+            impl->rw.unlock();
             m_DeadlockDetector->OnLockReleased(impl, thread_id);
         }
         impl->SetThreadState(state);
@@ -857,48 +892,53 @@ namespace BML::Core {
     }
 
     // ============================================================================
-    // Atomic Operations (inlined Windows Interlocked functions)
+    // Atomic Operations
     // ============================================================================
 
     int32_t SyncManager::AtomicIncrement32(volatile int32_t *value) {
-        return InterlockedIncrement(reinterpret_cast<volatile LONG *>(value));
+        return __atomic_add_fetch(const_cast<int32_t *>(value), 1, __ATOMIC_SEQ_CST);
     }
 
     int32_t SyncManager::AtomicDecrement32(volatile int32_t *value) {
-        return InterlockedDecrement(reinterpret_cast<volatile LONG *>(value));
+        return __atomic_sub_fetch(const_cast<int32_t *>(value), 1, __ATOMIC_SEQ_CST);
     }
 
     int32_t SyncManager::AtomicAdd32(volatile int32_t *value, int32_t addend) {
-        return InterlockedExchangeAdd(reinterpret_cast<volatile LONG *>(value), addend);
+        return __atomic_fetch_add(const_cast<int32_t *>(value), addend, __ATOMIC_SEQ_CST);
     }
 
     int32_t SyncManager::AtomicCompareExchange32(volatile int32_t *dest, int32_t exchange, int32_t comparand) {
-        return InterlockedCompareExchange(
-            reinterpret_cast<volatile LONG *>(dest),
-            exchange,
-            comparand
-        );
+        int32_t expected = comparand;
+        __atomic_compare_exchange_n(const_cast<int32_t *>(dest),
+                                    &expected,
+                                    exchange,
+                                    false,
+                                    __ATOMIC_SEQ_CST,
+                                    __ATOMIC_SEQ_CST);
+        return expected;
     }
 
     int32_t SyncManager::AtomicExchange32(volatile int32_t *dest, int32_t new_value) {
-        return InterlockedExchange(reinterpret_cast<volatile LONG *>(dest), new_value);
+        return __atomic_exchange_n(const_cast<int32_t *>(dest), new_value, __ATOMIC_SEQ_CST);
     }
 
-    void *SyncManager::AtomicLoadPtr(void *volatile*ptr) {
-        // On x86/x64, pointer reads are atomic
-        // Use MemoryBarrier for strict ordering
-        void *value = *ptr;
-        MemoryBarrier();
-        return value;
+    void *SyncManager::AtomicLoadPtr(void *volatile *ptr) {
+        return __atomic_load_n(const_cast<void **>(ptr), __ATOMIC_SEQ_CST);
     }
 
-    void SyncManager::AtomicStorePtr(void *volatile*ptr, void *value) {
-        // Use InterlockedExchangePointer for atomic store
-        InterlockedExchangePointer(ptr, value);
+    void SyncManager::AtomicStorePtr(void *volatile *ptr, void *value) {
+        __atomic_store_n(const_cast<void **>(ptr), value, __ATOMIC_SEQ_CST);
     }
 
-    void *SyncManager::AtomicCompareExchangePtr(void *volatile*dest, void *exchange, void *comparand) {
-        return InterlockedCompareExchangePointer(dest, exchange, comparand);
+    void *SyncManager::AtomicCompareExchangePtr(void *volatile *dest, void *exchange, void *comparand) {
+        void *expected = comparand;
+        __atomic_compare_exchange_n(const_cast<void **>(dest),
+                                    &expected,
+                                    exchange,
+                                    false,
+                                    __ATOMIC_SEQ_CST,
+                                    __ATOMIC_SEQ_CST);
+        return expected;
     }
 
     // ============================================================================
@@ -916,14 +956,13 @@ namespace BML::Core {
                                          "initial_count > max_count", 0);
         }
 
+        if (max_count > static_cast<uint32_t>(SemaphoreImpl::kLeastMaxCount)) {
+            return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "sync", "bmlSemaphoreCreate",
+                                         "max_count exceeds platform limit", 0);
+        }
+
         try {
             auto *impl = new SemaphoreImpl(initial_count, max_count);
-
-            if (!impl->handle) {
-                delete impl;
-                return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlSemaphoreCreate",
-                                             "CreateSemaphore failed", ::GetLastError());
-            }
 
             std::lock_guard<std::mutex> lock(m_SemaphoreRegistryLock);
             m_Semaphores.push_back(impl);
@@ -964,7 +1003,7 @@ namespace BML::Core {
         }
 
         auto *impl = reinterpret_cast<SemaphoreImpl *>(semaphore);
-        DWORD thread_id = ::GetCurrentThreadId();
+        ThreadId thread_id = GetCurrentThreadToken();
 
         WaitRegistration wait_reg(
             m_DeadlockDetector.get(),
@@ -973,18 +1012,14 @@ namespace BML::Core {
             [this]() { return ReportDeadlock("bmlSemaphoreWait"); });
 
         auto handle_acquired = [&]() {
+            impl->available.fetch_sub(1, std::memory_order_acq_rel);
             wait_reg.MarkAcquired();
             m_DeadlockDetector->OnLockAcquired(impl, thread_id);
         };
 
-        auto immediate_result = WaitForSingleObject(impl->handle, 0);
-        if (immediate_result == WAIT_OBJECT_0) {
+        if (impl->semaphore.try_acquire()) {
             handle_acquired();
             return BML_RESULT_OK;
-        }
-        if (immediate_result == WAIT_FAILED) {
-            return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlSemaphoreWait",
-                                         "WaitForSingleObject failed", ::GetLastError());
         }
         if (timeout_ms == BML_TIMEOUT_NONE) {
             return BML_RESULT_TIMEOUT;
@@ -995,25 +1030,19 @@ namespace BML::Core {
             return wait_status;
         }
 
-        DWORD wait_duration = (timeout_ms == BML_TIMEOUT_INFINITE) ? INFINITE : timeout_ms;
-        DWORD result = WaitForSingleObject(impl->handle, wait_duration);
-
-        switch (result) {
-        case WAIT_OBJECT_0:
+        if (timeout_ms == BML_TIMEOUT_INFINITE) {
+            impl->semaphore.acquire();
             handle_acquired();
             return BML_RESULT_OK;
-        case WAIT_TIMEOUT:
-            wait_reg.Cancel();
-            return BML_RESULT_TIMEOUT;
-        case WAIT_FAILED:
-            wait_reg.Cancel();
-            return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlSemaphoreWait",
-                                         "WaitForSingleObject failed", ::GetLastError());
-        default:
-            wait_reg.Cancel();
-            return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlSemaphoreWait",
-                                         "Unexpected wait result", result);
         }
+
+        if (impl->semaphore.try_acquire_for(std::chrono::milliseconds(timeout_ms))) {
+            handle_acquired();
+            return BML_RESULT_OK;
+        }
+
+        wait_reg.Cancel();
+        return BML_RESULT_TIMEOUT;
     }
 
     BML_Result SyncManager::SignalSemaphore(BML_Semaphore semaphore, uint32_t count) {
@@ -1022,17 +1051,30 @@ namespace BML::Core {
         }
 
         if (count == 0) {
-            return BML_RESULT_OK; // No-op
+            return BML_RESULT_OK;
         }
 
         auto *impl = reinterpret_cast<SemaphoreImpl *>(semaphore);
 
-        if (!ReleaseSemaphore(impl->handle, count, nullptr)) {
-            return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlSemaphoreSignal",
-                                         "ReleaseSemaphore failed", ::GetLastError());
+        uint32_t current = impl->available.load(std::memory_order_acquire);
+        for (;;) {
+            if (count > impl->max_count - current) {
+                return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlSemaphoreSignal",
+                                             "Signal count exceeds maximum semaphore count", 0);
+            }
+
+            uint32_t desired = current + count;
+            if (impl->available.compare_exchange_weak(current,
+                                                      desired,
+                                                      std::memory_order_acq_rel,
+                                                      std::memory_order_acquire)) {
+                break;
+            }
         }
 
-        DWORD thread_id = ::GetCurrentThreadId();
+        impl->semaphore.release(static_cast<std::ptrdiff_t>(count));
+
+        ThreadId thread_id = GetCurrentThreadToken();
         for (uint32_t i = 0; i < count; ++i) {
             m_DeadlockDetector->OnLockReleased(impl, thread_id);
         }
@@ -1063,10 +1105,10 @@ namespace BML::Core {
         try {
             auto *impl = new TlsKeyImpl(destructor);
 
-            if (impl->fls_index == FLS_OUT_OF_INDEXES) {
+            if (!impl->valid) {
                 delete impl;
                 return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlTlsCreate",
-                                             "FlsAlloc failed", ::GetLastError());
+                                             "pthread_key_create failed", 0);
             }
 
             std::lock_guard<std::mutex> lock(m_TLSRegistryLock);
@@ -1098,6 +1140,15 @@ namespace BML::Core {
             return;
         }
 
+        if (impl->destructor) {
+            void *existing = pthread_getspecific(impl->key);
+            if (existing) {
+                auto *wrapper = static_cast<TlsValueWrapper *>(existing);
+                delete wrapper;
+                pthread_setspecific(impl->key, nullptr);
+            }
+        }
+
         delete impl;
         m_TLSKeys.erase(it);
     }
@@ -1108,11 +1159,10 @@ namespace BML::Core {
         }
 
         auto *impl = reinterpret_cast<TlsKeyImpl *>(key);
-        void *stored = FlsGetValue(impl->fls_index);
+        void *stored = pthread_getspecific(impl->key);
         if (!stored) {
             return nullptr;
         }
-        // If destructor is set, we stored a wrapper
         if (impl->destructor) {
             auto *wrapper = static_cast<TlsValueWrapper *>(stored);
             return wrapper->value;
@@ -1127,10 +1177,8 @@ namespace BML::Core {
 
         auto *impl = reinterpret_cast<TlsKeyImpl *>(key);
 
-        // If destructor is set, use wrapper for proper cleanup on thread exit
         if (impl->destructor) {
-            // Get existing wrapper if any
-            void *existing = FlsGetValue(impl->fls_index);
+            void *existing = pthread_getspecific(impl->key);
             TlsValueWrapper *wrapper = nullptr;
 
             if (existing) {
@@ -1138,15 +1186,13 @@ namespace BML::Core {
             }
 
             if (value == nullptr) {
-                // Setting to null - free wrapper if exists
                 if (wrapper) {
                     delete wrapper;
-                    FlsSetValue(impl->fls_index, nullptr);
+                    pthread_setspecific(impl->key, nullptr);
                 }
                 return BML_RESULT_OK;
             }
 
-            // Create new wrapper or reuse existing
             if (!wrapper) {
                 try {
                     wrapper = new TlsValueWrapper{value, impl->destructor};
@@ -1159,18 +1205,17 @@ namespace BML::Core {
                 wrapper->destructor = impl->destructor;
             }
 
-            if (!FlsSetValue(impl->fls_index, wrapper)) {
+            if (pthread_setspecific(impl->key, wrapper) != 0) {
                 if (!existing) {
-                    delete wrapper; // Only delete if we created it
+                    delete wrapper;
                 }
                 return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlTlsSet",
-                                             "FlsSetValue failed", ::GetLastError());
+                                             "pthread_setspecific failed", 0);
             }
         } else {
-            // No destructor - store value directly
-            if (!FlsSetValue(impl->fls_index, value)) {
+            if (pthread_setspecific(impl->key, value) != 0) {
                 return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlTlsSet",
-                                             "FlsSetValue failed", ::GetLastError());
+                                             "pthread_setspecific failed", 0);
             }
         }
 
@@ -1241,22 +1286,18 @@ namespace BML::Core {
 
         auto *cv_impl = reinterpret_cast<CondVarImpl *>(condvar);
         auto *mutex_impl = reinterpret_cast<MutexImpl *>(mutex);
-        DWORD thread_id = ::GetCurrentThreadId();
+        ThreadId thread_id = GetCurrentThreadToken();
 
         m_DeadlockDetector->OnLockReleased(mutex_impl, thread_id);
         if (m_DeadlockDetector->OnLockWait(mutex_impl, thread_id)) {
             return ReportDeadlock("bmlCondVarWait");
         }
 
-        BOOL result = SleepConditionVariableCS(&cv_impl->cv, &mutex_impl->cs, INFINITE);
+        std::unique_lock<std::recursive_timed_mutex> guard(mutex_impl->mutex, std::adopt_lock);
+        cv_impl->cv.wait(guard);
+        guard.release();
 
         m_DeadlockDetector->OnLockAcquired(mutex_impl, thread_id);
-        if (!result) {
-            DWORD error = ::GetLastError();
-            return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlCondVarWait",
-                                         "SleepConditionVariableCS failed", error);
-        }
-
         return BML_RESULT_OK;
     }
 
@@ -1266,26 +1307,27 @@ namespace BML::Core {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
+        if (timeout_ms == BML_TIMEOUT_INFINITE) {
+            return WaitCondVar(condvar, mutex);
+        }
+
         auto *cv_impl = reinterpret_cast<CondVarImpl *>(condvar);
         auto *mutex_impl = reinterpret_cast<MutexImpl *>(mutex);
-        DWORD thread_id = ::GetCurrentThreadId();
+        ThreadId thread_id = GetCurrentThreadToken();
 
         m_DeadlockDetector->OnLockReleased(mutex_impl, thread_id);
         if (m_DeadlockDetector->OnLockWait(mutex_impl, thread_id)) {
             return ReportDeadlock("bmlCondVarWaitTimeout");
         }
 
-        BOOL result = SleepConditionVariableCS(&cv_impl->cv, &mutex_impl->cs, timeout_ms);
+        std::unique_lock<std::recursive_timed_mutex> guard(mutex_impl->mutex, std::adopt_lock);
+        auto status = cv_impl->cv.wait_for(guard, std::chrono::milliseconds(timeout_ms));
+        guard.release();
 
         m_DeadlockDetector->OnLockAcquired(mutex_impl, thread_id);
-        if (!result) {
-            DWORD error = ::GetLastError();
-            if (error == ERROR_TIMEOUT) {
-                return SetLastErrorAndReturn(BML_RESULT_TIMEOUT, "sync", "bmlCondVarWaitTimeout",
-                                             "Wait timed out", error);
-            }
-            return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlCondVarWaitTimeout",
-                                         "SleepConditionVariableCS failed", error);
+        if (status == std::cv_status::timeout) {
+            return SetLastErrorAndReturn(BML_RESULT_TIMEOUT, "sync", "bmlCondVarWaitTimeout",
+                                         "Wait timed out", 0);
         }
 
         return BML_RESULT_OK;
@@ -1297,7 +1339,7 @@ namespace BML::Core {
         }
 
         auto *impl = reinterpret_cast<CondVarImpl *>(condvar);
-        WakeConditionVariable(&impl->cv);
+        impl->cv.notify_one();
         return BML_RESULT_OK;
     }
 
@@ -1307,7 +1349,7 @@ namespace BML::Core {
         }
 
         auto *impl = reinterpret_cast<CondVarImpl *>(condvar);
-        WakeAllConditionVariable(&impl->cv);
+        impl->cv.notify_all();
         return BML_RESULT_OK;
     }
 
@@ -1373,7 +1415,7 @@ namespace BML::Core {
         }
 
         auto *impl = reinterpret_cast<SpinLockImpl *>(lock);
-        DWORD thread_id = ::GetCurrentThreadId();
+        ThreadId thread_id = GetCurrentThreadToken();
 
         auto try_fast_acquire = [&]() -> bool {
             uint32_t expected = impl->now_serving.load(std::memory_order_acquire);
@@ -1397,7 +1439,7 @@ namespace BML::Core {
 
         uint32_t ticket = impl->next_ticket.fetch_add(1, std::memory_order_acq_rel);
 
-        constexpr uint32_t kActiveSpinLimit = 1 << 12;
+        constexpr uint32_t kActiveSpinLimit = 1u << 12u;
         uint32_t spin_count = 0;
         for (;;) {
             uint32_t current = impl->now_serving.load(std::memory_order_acquire);
@@ -1407,11 +1449,11 @@ namespace BML::Core {
             }
 
             if (spin_count < kActiveSpinLimit) {
-                YieldProcessor();
+                // Busy-spin for short waits.
             } else if (spin_count < kActiveSpinLimit * 2) {
-                SwitchToThread();
+                std::this_thread::yield();
             } else {
-                Sleep(0);
+                std::this_thread::sleep_for(std::chrono::milliseconds(0));
             }
             ++spin_count;
         }
@@ -1423,7 +1465,7 @@ namespace BML::Core {
         }
 
         auto *impl = reinterpret_cast<SpinLockImpl *>(lock);
-        DWORD thread_id = ::GetCurrentThreadId();
+        ThreadId thread_id = GetCurrentThreadToken();
         uint32_t expected = impl->now_serving.load(std::memory_order_acquire);
         if (impl->next_ticket.compare_exchange_strong(expected, expected + 1,
                                                       std::memory_order_acquire,
@@ -1440,7 +1482,7 @@ namespace BML::Core {
         }
 
         auto *impl = reinterpret_cast<SpinLockImpl *>(lock);
-        DWORD thread_id = ::GetCurrentThreadId();
+        ThreadId thread_id = GetCurrentThreadToken();
         m_DeadlockDetector->OnLockReleased(impl, thread_id);
         impl->now_serving.fetch_add(1, std::memory_order_release);
     }
@@ -1561,3 +1603,4 @@ namespace BML::Core {
     }
 } // namespace BML::Core
 
+#endif // !defined(_WIN32)

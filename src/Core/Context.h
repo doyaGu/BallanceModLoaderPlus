@@ -2,32 +2,44 @@
 #define BML_CORE_CONTEXT_H
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
 
 #include "bml_core.h"
 #include "bml_errors.h"
 #include "bml_types.h"
 
+#include "PlatformCompat.h"
 #include "ModHandle.h"
 #include "ModManifest.h"
 #include "ModuleLoader.h"
 
 namespace BML::Core {
+    struct LoadedModuleSnapshot {
+        std::string id;
+        std::optional<ModManifest> manifest;
+        HMODULE handle{nullptr};
+        PFN_BML_ModEntrypoint entrypoint{nullptr};
+        std::wstring path;
+        BML_Mod mod_handle{nullptr};
+    };
+
     class Context {
     public:
+        enum class ShutdownState {
+            Running,
+            ShutdownRequested,
+            DrainingRetains,
+            ShuttingDownModules,
+            Stopped,
+        };
+
         static Context &Instance();
 
         BML_Context GetHandle();
@@ -50,11 +62,11 @@ namespace BML::Core {
         bool IsInitialized() const { return m_Initialized.load(std::memory_order_acquire); }
 
         void RegisterManifest(std::unique_ptr<ModManifest> manifest);
-        const std::vector<std::unique_ptr<ModManifest>> &GetManifests() const;
+        std::vector<ModManifest> GetManifestSnapshot() const;
         void ClearManifests();
 
         void AddLoadedModule(LoadedModule module);
-        const std::vector<LoadedModule> &GetLoadedModules() const;
+        std::vector<LoadedModuleSnapshot> GetLoadedModuleSnapshot() const;
         void ShutdownModules();
 
         std::unique_ptr<BML_Mod_T> CreateModHandle(const ModManifest &manifest) const;
@@ -68,7 +80,8 @@ namespace BML::Core {
         static BML_Mod GetCurrentModule();
 
         void SetRuntimeVersion(const BML_Version &version);
-        const BML_Version &GetRuntimeVersion() const;
+        BML_Version GetRuntimeVersionCopy() const;
+        ShutdownState GetShutdownState() const;
 
         BML_Result RetainHandle();
         BML_Result ReleaseHandle();
@@ -89,6 +102,15 @@ namespace BML::Core {
         void ShutdownModulesLocked();
         BML_Mod_T *FindModHandleLocked(BML_Mod mod);
         const BML_Mod_T *FindModHandleLocked(BML_Mod mod) const;
+        void RecordRetainEvent(bool is_retain, uint32_t count_after);
+        void LogRetainWaitStatus(std::chrono::milliseconds elapsed) const;
+
+        struct RetainEvent {
+            uint64_t sequence{0};
+            uint64_t thread_token{0};
+            uint32_t count_after{0};
+            bool is_retain{false};
+        };
 
         std::vector<std::unique_ptr<ModManifest>> m_Manifests;
         std::vector<LoadedModule> m_LoadedModules;
@@ -97,10 +119,14 @@ namespace BML::Core {
         BML_Version m_RuntimeVersion{};
         mutable std::mutex m_StateMutex;
         mutable std::mutex m_RetainMutex;
+        mutable std::mutex m_RetainTraceMutex;
         std::condition_variable m_RetainCv;
         std::atomic<uint32_t> m_RetainCount{0};
+        std::atomic<ShutdownState> m_ShutdownState{ShutdownState::Stopped};
         bool m_CleanupRequested{false};
         std::atomic<bool> m_Initialized{false};
+        std::vector<RetainEvent> m_RetainTrace;
+        uint64_t m_RetainTraceSequence{0};
 
         // User data storage
         struct UserDataEntry {

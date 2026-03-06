@@ -36,6 +36,11 @@ namespace BML::Core {
         ctx.Clear();
     }
 
+    bool DiagnosticManager::HasLastError() const {
+        const auto &ctx = g_ThreadErrorContext;
+        return ctx.has_error;
+    }
+
     void DiagnosticManager::SetError(BML_Result code,
                                      const char *message,
                                      const char *api_name,

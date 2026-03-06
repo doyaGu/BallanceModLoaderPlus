@@ -175,7 +175,9 @@ namespace BML::Core {
         uint32_t version_minor,
         const void *api_table,
         size_t api_size,
-        const std::string &provider_id
+        const std::string &provider_id,
+        uint64_t capabilities,
+        const char *description
     ) {
         std::unique_lock lock(g_Mutex);
 
@@ -213,11 +215,11 @@ namespace BML::Core {
         meta.version_major = static_cast<uint16_t>(version_major);
         meta.version_minor = static_cast<uint16_t>(version_minor);
         meta.version_patch = 0;
-        meta.capabilities = BML_CAP_EXTENSION_BASIC;
+        meta.capabilities = capabilities;
         meta.type = BML_API_TYPE_EXTENSION;
         meta.threading = BML_THREADING_FREE;
         meta.provider_mod = provider_cstr;
-        meta.description = nullptr;
+        meta.description = description;
         meta.api_size = api_size;
 
         RegisterApiLocked(meta);

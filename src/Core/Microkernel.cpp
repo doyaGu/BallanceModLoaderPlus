@@ -1,5 +1,6 @@
 #include "Microkernel.h"
 
+#include <cstdlib>
 #include <filesystem>
 #include <sstream>
 #include <string>
@@ -7,7 +8,6 @@
 
 #include "ApiRegistration.h"
 #include "Context.h"
-#include "HotReloadCoordinator.h"  // Required for ModuleRuntime destructor
 #include "ImcBus.h"
 #include "Logging.h"
 #include "StringUtils.h"
@@ -20,8 +20,10 @@ namespace BML::Core {
             bool core_initialized{false};
             bool modules_discovered{false};
             bool modules_loaded{false};
+            BML_BootstrapState bootstrap_state{BML_BOOTSTRAP_STATE_NOT_STARTED};
             std::vector<BML_BootstrapManifestError> public_manifest_errors;
             std::vector<const char *> public_dependency_chain;
+            std::vector<BML_BootstrapDependencyWarning> public_dependency_warnings;
             std::vector<const char *> public_load_order;
             std::string load_error_path_utf8;
             BML_BootstrapDependencyError public_dependency_error{};
@@ -40,6 +42,7 @@ namespace BML::Core {
         }
 
         std::wstring GetEnvironmentOverride() {
+#if defined(_WIN32)
             DWORD required = GetEnvironmentVariableW(L"BML_MODS_DIR", nullptr, 0);
             if (required == 0)
                 return {};
@@ -55,6 +58,16 @@ namespace BML::Core {
                 buffer.pop_back();
             if (buffer.empty())
                 return {};
+#else
+            const char *raw = std::getenv("BML_MODS_DIR");
+            if (!raw || raw[0] == '\0') {
+                return {};
+            }
+            std::wstring buffer = utils::Utf8ToUtf16(raw);
+            if (buffer.empty()) {
+                return {};
+            }
+#endif
 
             std::filesystem::path overridePath(buffer);
             if (!overridePath.is_absolute())
@@ -69,6 +82,7 @@ namespace BML::Core {
                 return overridePath;
             }
 
+#if defined(_WIN32)
             std::wstring path(260, L'\0');
             DWORD copied = 0;
             while (true) {
@@ -83,6 +97,21 @@ namespace BML::Core {
             std::filesystem::path exe(path);
             // Default to ../Mods (parent of bin directory)
             return (exe.parent_path().parent_path() / L"Mods").wstring();
+#else
+            std::filesystem::path cwd = std::filesystem::current_path();
+            return (cwd / "Mods").wstring();
+#endif
+        }
+
+        std::wstring ResolveBootstrapModsDirectory(const BML_BootstrapConfig *config) {
+            if (config && config->mods_dir_utf8 && config->mods_dir_utf8[0] != '\0') {
+                std::wstring path = utils::Utf8ToUtf16(config->mods_dir_utf8);
+                if (!path.empty()) {
+                    return std::filesystem::absolute(std::filesystem::path(path)).lexically_normal().wstring();
+                }
+            }
+
+            return DetectModsDirectory();
         }
 
         void EmitDiagnostics(const ModuleBootstrapDiagnostics &diag) {
@@ -181,6 +210,16 @@ namespace BML::Core {
                 state.public_dependency_error.chain_count = static_cast<uint32_t>(state.public_dependency_chain.size());
             }
 
+            state.public_dependency_warnings.clear();
+            state.public_dependency_warnings.reserve(diag.dependency_warnings.size());
+            for (const auto &warning : diag.dependency_warnings) {
+                BML_BootstrapDependencyWarning entry{};
+                entry.module_id = warning.mod_id.empty() ? nullptr : warning.mod_id.c_str();
+                entry.dependency_id = warning.dependency_id.empty() ? nullptr : warning.dependency_id.c_str();
+                entry.message = warning.message.empty() ? nullptr : warning.message.c_str();
+                state.public_dependency_warnings.push_back(entry);
+            }
+
             if (!diag.load_error.message.empty()) {
                 state.public_load_error.has_error = 1;
                 state.public_load_error.module_id = diag.load_error.id.empty() ? nullptr : diag.load_error.id.c_str();
@@ -201,6 +240,8 @@ namespace BML::Core {
             state.public_diagnostics.manifest_errors = state.public_manifest_errors.empty() ? nullptr : state.public_manifest_errors.data();
             state.public_diagnostics.manifest_error_count = static_cast<uint32_t>(state.public_manifest_errors.size());
             state.public_diagnostics.dependency_error = state.public_dependency_error;
+            state.public_diagnostics.dependency_warnings = state.public_dependency_warnings.empty() ? nullptr : state.public_dependency_warnings.data();
+            state.public_diagnostics.dependency_warning_count = static_cast<uint32_t>(state.public_dependency_warnings.size());
             state.public_diagnostics.load_error = state.public_load_error;
             state.public_diagnostics.load_order = state.public_load_order.empty() ? nullptr : state.public_load_order.data();
             state.public_diagnostics.load_order_count = static_cast<uint32_t>(state.public_load_order.size());
@@ -222,16 +263,21 @@ namespace BML::Core {
         RegisterCoreApis();
 
         state.core_initialized = true;
+        state.bootstrap_state = BML_BOOTSTRAP_STATE_CORE_INITIALIZED;
         DebugLog("Core initialized successfully");
         return true;
     }
 
     bool DiscoverModules() {
+        return DiscoverModulesInDirectory(DetectModsDirectory());
+    }
+
+    bool DiscoverModulesInDirectory(const std::wstring &mods_dir) {
         auto &state = State();
 
         // Core must be initialized first
         if (!state.core_initialized) {
-            DebugLog("DiscoverModules: Core not initialized");
+            DebugLog("DiscoverModulesInDirectory: Core not initialized");
             return false;
         }
 
@@ -241,10 +287,9 @@ namespace BML::Core {
         DebugLog("Phase 1: Discovering modules...");
 
         ModuleBootstrapDiagnostics diag;
-        auto modsDir = DetectModsDirectory();
 
         // Only discover and validate, don't load DLLs yet
-        if (!state.runtime.DiscoverAndValidate(modsDir, diag)) {
+        if (!state.runtime.DiscoverAndValidate(mods_dir, diag)) {
             state.diagnostics = diag;
             UpdatePublicDiagnostics(state);
             EmitDiagnostics(diag);
@@ -257,6 +302,7 @@ namespace BML::Core {
         UpdatePublicDiagnostics(state);
         EmitDiagnostics(diag);
         state.modules_discovered = true;
+        state.bootstrap_state = BML_BOOTSTRAP_STATE_MODULES_DISCOVERED;
         DebugLog("Module discovery completed successfully");
         return true;
     }
@@ -295,9 +341,51 @@ namespace BML::Core {
             EmitDiagnostics(new_diag);
         });
         state.modules_loaded = true;
+        state.bootstrap_state = BML_BOOTSTRAP_STATE_READY;
         EmitDiagnostics(diag);
         DebugLog("Modules loaded successfully");
         return true;
+    }
+
+    BML_Result Bootstrap(const BML_BootstrapConfig *config) {
+        if (config && config->struct_size < sizeof(BML_BootstrapConfig)) {
+            return BML_RESULT_INVALID_SIZE;
+        }
+
+        const uint32_t flags = config ? config->flags : BML_BOOTSTRAP_FLAG_NONE;
+        if ((flags & BML_BOOTSTRAP_FLAG_SKIP_DISCOVERY) != 0 && (flags & BML_BOOTSTRAP_FLAG_SKIP_LOAD) == 0) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+
+        if (!InitializeCore()) {
+            return BML_RESULT_FAIL;
+        }
+
+        if ((flags & BML_BOOTSTRAP_FLAG_SKIP_DISCOVERY) != 0) {
+            return BML_RESULT_OK;
+        }
+
+        if (!DiscoverModulesInDirectory(ResolveBootstrapModsDirectory(config))) {
+            return BML_RESULT_FAIL;
+        }
+
+        if ((flags & BML_BOOTSTRAP_FLAG_SKIP_LOAD) != 0) {
+            return BML_RESULT_OK;
+        }
+
+        return LoadDiscoveredModules() ? BML_RESULT_OK : BML_RESULT_FAIL;
+    }
+
+    BML_BootstrapState GetBootstrapState() {
+        return State().bootstrap_state;
+    }
+
+    void UpdateMicrokernel() {
+        auto &state = State();
+        if (!state.core_initialized || !state.modules_loaded) {
+            return;
+        }
+        state.runtime.Update();
     }
 
     void ShutdownMicrokernel() {
@@ -328,6 +416,7 @@ namespace BML::Core {
         state.core_initialized = false;
         state.modules_discovered = false;
         state.modules_loaded = false;
+        state.bootstrap_state = BML_BOOTSTRAP_STATE_SHUTDOWN;
         DebugLog("Microkernel shut down");
     }
 

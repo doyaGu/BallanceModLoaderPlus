@@ -1,12 +1,16 @@
 #include "Context.h"
 
 #include <cstdio>
+#include <chrono>
 #include <filesystem>
 #include <limits>
+#include <sstream>
 #include <system_error>
+#include <thread>
 
 #include "ConfigStore.h"
 #include "ApiRegistry.h"
+#include "ExtensionStateHooks.h"
 #include "ResourceApi.h"
 #include "Logging.h"
 #include "StringUtils.h"
@@ -14,6 +18,7 @@
 namespace BML::Core {
     namespace {
         thread_local BML_Mod g_CurrentModule = nullptr;
+        std::atomic<ExtensionProviderCleanupHook> g_ExtensionCleanupHook{nullptr};
         constexpr const char kContextLogCategory[] = "context";
 
         uint16_t ClampVersionComponent(int value) {
@@ -25,6 +30,9 @@ namespace BML::Core {
         }
 
         constexpr wchar_t kInvalidFilenameChars[] = L"<>:\"/\\|?*";
+        constexpr auto kCleanupRetainWarnAfter = std::chrono::seconds(2);
+        constexpr auto kCleanupRetainWarnInterval = std::chrono::seconds(2);
+        constexpr auto kCleanupRetainPollInterval = std::chrono::milliseconds(250);
 
         void FilterInvalidFilenameChars(std::wstring &value) {
             auto replace_if_invalid = [](wchar_t ch) -> wchar_t {
@@ -64,6 +72,10 @@ namespace BML::Core {
             if (ascii.empty())
                 ascii = L"mod";
             return ascii;
+        }
+
+        uint64_t GetThreadToken() {
+            return static_cast<uint64_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
         }
     } // namespace
 
@@ -107,8 +119,13 @@ namespace BML::Core {
             if (_wfopen_s(&file, path.c_str(), L"a") != 0) {
                 file = nullptr;
             }
-#else
+#elif defined(_WIN32)
             file = _wfopen(path.c_str(), L"a");
+#else
+            std::string utf8_path = utils::Utf16ToUtf8(path);
+            if (!utf8_path.empty()) {
+                file = std::fopen(utf8_path.c_str(), "a");
+            }
 #endif
             return file;
         }
@@ -123,6 +140,18 @@ namespace BML::Core {
         // Constructor only sets defaults; actual initialization happens in Initialize()
         m_RuntimeVersion = {0, 4, 0};
         m_Initialized.store(false, std::memory_order_relaxed);
+        m_ShutdownState.store(ShutdownState::Stopped, std::memory_order_relaxed);
+    }
+
+    void SetExtensionProviderCleanupHook(ExtensionProviderCleanupHook hook) {
+        g_ExtensionCleanupHook.store(hook, std::memory_order_release);
+    }
+
+    void RunExtensionProviderCleanupHook(const std::string &provider_id) {
+        auto hook = g_ExtensionCleanupHook.load(std::memory_order_acquire);
+        if (!provider_id.empty() && hook) {
+            hook(provider_id);
+        }
     }
 
     void Context::Initialize(const BML_Version &runtime_version) {
@@ -134,6 +163,12 @@ namespace BML::Core {
 
         m_RuntimeVersion = runtime_version;
         m_CleanupRequested = false;
+        m_ShutdownState.store(ShutdownState::Running, std::memory_order_release);
+        {
+            std::lock_guard<std::mutex> retain_trace_lock(m_RetainTraceMutex);
+            m_RetainTrace.clear();
+            m_RetainTraceSequence = 0;
+        }
         m_Initialized.store(true, std::memory_order_release);
         CoreLog(BML_LOG_INFO, kContextLogCategory, "Context initialized");
     }
@@ -142,20 +177,34 @@ namespace BML::Core {
         std::unique_lock<std::mutex> state_lock(m_StateMutex);
         if (!m_Initialized.load(std::memory_order_acquire))
             return;
-        if (m_CleanupRequested)
+        if (m_CleanupRequested || m_ShutdownState.load(std::memory_order_acquire) != ShutdownState::Running)
             return;
 
         m_CleanupRequested = true;
+        m_ShutdownState.store(ShutdownState::ShutdownRequested, std::memory_order_release);
 
         CoreLog(BML_LOG_INFO, kContextLogCategory, "Starting cleanup");
 
         {
             std::unique_lock<std::mutex> retain_lock(m_RetainMutex);
-            m_RetainCv.wait(retain_lock, [this] {
-                return m_RetainCount.load(std::memory_order_acquire) == 0;
-            });
+            m_ShutdownState.store(ShutdownState::DrainingRetains, std::memory_order_release);
+            const auto wait_start = std::chrono::steady_clock::now();
+            auto next_warning_at = wait_start + kCleanupRetainWarnAfter;
+            while (m_RetainCount.load(std::memory_order_acquire) != 0) {
+                m_RetainCv.wait_for(retain_lock, kCleanupRetainPollInterval, [this] {
+                    return m_RetainCount.load(std::memory_order_acquire) == 0;
+                });
+
+                const auto now = std::chrono::steady_clock::now();
+                if (m_RetainCount.load(std::memory_order_acquire) != 0 && now >= next_warning_at) {
+                    LogRetainWaitStatus(
+                        std::chrono::duration_cast<std::chrono::milliseconds>(now - wait_start));
+                    next_warning_at = now + kCleanupRetainWarnInterval;
+                }
+            }
         }
 
+        m_ShutdownState.store(ShutdownState::ShuttingDownModules, std::memory_order_release);
         ShutdownModulesLocked();
 
         // Clear all manifests
@@ -179,6 +228,7 @@ namespace BML::Core {
         m_RuntimeVersion = bmlGetApiVersion();
         m_Initialized.store(false, std::memory_order_release);
         m_CleanupRequested = false;
+        m_ShutdownState.store(ShutdownState::Stopped, std::memory_order_release);
 
         CoreLog(BML_LOG_INFO, kContextLogCategory, "Cleanup complete");
     }
@@ -196,8 +246,16 @@ namespace BML::Core {
         m_Manifests.emplace_back(std::move(manifest));
     }
 
-    const std::vector<std::unique_ptr<ModManifest>> &Context::GetManifests() const {
-        return m_Manifests;
+    std::vector<ModManifest> Context::GetManifestSnapshot() const {
+        std::lock_guard<std::mutex> lock(m_StateMutex);
+        std::vector<ModManifest> snapshot;
+        snapshot.reserve(m_Manifests.size());
+        for (const auto &manifest : m_Manifests) {
+            if (manifest) {
+                snapshot.push_back(*manifest);
+            }
+        }
+        return snapshot;
     }
 
     void Context::ClearManifests() {
@@ -219,8 +277,23 @@ namespace BML::Core {
         m_LoadedModules.emplace_back(std::move(module));
     }
 
-    const std::vector<LoadedModule> &Context::GetLoadedModules() const {
-        return m_LoadedModules;
+    std::vector<LoadedModuleSnapshot> Context::GetLoadedModuleSnapshot() const {
+        std::lock_guard<std::mutex> lock(m_StateMutex);
+        std::vector<LoadedModuleSnapshot> snapshot;
+        snapshot.reserve(m_LoadedModules.size());
+        for (const auto &module : m_LoadedModules) {
+            LoadedModuleSnapshot entry;
+            entry.id = module.id;
+            if (module.manifest) {
+                entry.manifest = *module.manifest;
+            }
+            entry.handle = module.handle;
+            entry.entrypoint = module.entrypoint;
+            entry.path = module.path;
+            entry.mod_handle = module.mod_handle.get();
+            snapshot.push_back(std::move(entry));
+        }
+        return snapshot;
     }
 
     void Context::ShutdownModules() {
@@ -289,8 +362,13 @@ namespace BML::Core {
         m_RuntimeVersion = version;
     }
 
-    const BML_Version &Context::GetRuntimeVersion() const {
+    BML_Version Context::GetRuntimeVersionCopy() const {
+        std::lock_guard<std::mutex> lock(m_StateMutex);
         return m_RuntimeVersion;
+    }
+
+    Context::ShutdownState Context::GetShutdownState() const {
+        return m_ShutdownState.load(std::memory_order_acquire);
     }
 
     void Context::ShutdownModulesLocked() {
@@ -337,6 +415,7 @@ namespace BML::Core {
             if (!module.mod_handle)
                 continue;
             ConfigStore::Instance().FlushAndRelease(module.mod_handle.get());
+            RunExtensionProviderCleanupHook(module.mod_handle->id);
             apiRegistry.UnregisterByProvider(module.mod_handle->id);
             UnregisterResourceTypesForProvider(module.mod_handle->id);
         }
@@ -357,16 +436,19 @@ namespace BML::Core {
             if (module.mod_handle && module.mod_handle.get() == mod)
                 return module.mod_handle.get();
         }
-        return mod;
+        return nullptr;
     }
 
     BML_Result Context::RetainHandle() {
+        if (m_ShutdownState.load(std::memory_order_acquire) != ShutdownState::Running)
+            return BML_RESULT_INVALID_STATE;
         std::lock_guard<std::mutex> lock(m_StateMutex);
         if (!m_Initialized.load(std::memory_order_acquire))
             return BML_RESULT_NOT_INITIALIZED;
         if (m_CleanupRequested)
             return BML_RESULT_INVALID_STATE;
-        m_RetainCount.fetch_add(1, std::memory_order_acq_rel);
+        uint32_t count_after = m_RetainCount.fetch_add(1, std::memory_order_acq_rel) + 1;
+        RecordRetainEvent(true, count_after);
         return BML_RESULT_OK;
     }
 
@@ -379,6 +461,7 @@ namespace BML::Core {
                                                     current - 1,
                                                     std::memory_order_acq_rel,
                                                     std::memory_order_acquire)) {
+                RecordRetainEvent(false, current - 1);
                 break;
             }
         }
@@ -391,6 +474,52 @@ namespace BML::Core {
 
     uint32_t Context::GetRetainCountForTest() const {
         return m_RetainCount.load(std::memory_order_acquire);
+    }
+
+    void Context::RecordRetainEvent(bool is_retain, uint32_t count_after) {
+        std::lock_guard<std::mutex> lock(m_RetainTraceMutex);
+        constexpr size_t kMaxRetainTraceEntries = 16;
+        RetainEvent event;
+        event.sequence = ++m_RetainTraceSequence;
+        event.thread_token = GetThreadToken();
+        event.count_after = count_after;
+        event.is_retain = is_retain;
+
+        if (m_RetainTrace.size() < kMaxRetainTraceEntries) {
+            m_RetainTrace.push_back(event);
+        } else {
+            const size_t index = static_cast<size_t>(m_RetainTraceSequence % kMaxRetainTraceEntries);
+            m_RetainTrace[index] = event;
+        }
+    }
+
+    void Context::LogRetainWaitStatus(std::chrono::milliseconds elapsed) const {
+        const uint32_t retain_count = m_RetainCount.load(std::memory_order_acquire);
+
+        std::vector<RetainEvent> retain_trace;
+        {
+            std::lock_guard<std::mutex> lock(m_RetainTraceMutex);
+            retain_trace = m_RetainTrace;
+        }
+
+        std::sort(retain_trace.begin(), retain_trace.end(), [](const RetainEvent &lhs, const RetainEvent &rhs) {
+            return lhs.sequence < rhs.sequence;
+        });
+
+        std::ostringstream oss;
+        oss << "Cleanup is waiting for " << retain_count
+            << " retained context handle(s) after " << elapsed.count() << " ms";
+        if (!retain_trace.empty()) {
+            oss << "; recent retain activity:";
+            for (const auto &event : retain_trace) {
+                oss << " [#" << event.sequence
+                    << ' ' << (event.is_retain ? "retain" : "release")
+                    << " thread=" << event.thread_token
+                    << " count=" << event.count_after << ']';
+            }
+        }
+
+        CoreLog(BML_LOG_WARN, kContextLogCategory, "%s", oss.str().c_str());
     }
 
     BML_Result Context::SetUserData(const char *key, void *data, BML_UserDataDestructor destructor) {
@@ -431,6 +560,6 @@ namespace BML::Core {
         }
 
         *out_data = nullptr;
-        return BML_RESULT_NOT_FOUND;
+        return BML_RESULT_OK;
     }
 } // namespace BML::Core

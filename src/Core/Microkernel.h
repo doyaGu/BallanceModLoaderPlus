@@ -1,6 +1,9 @@
 #ifndef BML_CORE_MICROKERNEL_H
 #define BML_CORE_MICROKERNEL_H
 
+#include <string>
+
+#include "bml_bootstrap.h"
 #include "bml_errors.h"
 
 #include "ModuleRuntime.h"
@@ -11,9 +14,16 @@ namespace BML::Core {
 
     // Phase 1: Discover and validate modules (safe to call in DllMain)
     bool DiscoverModules();
+    bool DiscoverModulesInDirectory(const std::wstring &mods_dir);
 
     // Phase 2: Load discovered modules (call when CKContext is available)
     bool LoadDiscoveredModules();
+
+    BML_Result Bootstrap(const BML_BootstrapConfig *config);
+    BML_BootstrapState GetBootstrapState();
+
+    // Main-loop update hook for deferred runtime tasks (e.g. hot reload processing)
+    void UpdateMicrokernel();
 
     void ShutdownMicrokernel();
     const ModuleBootstrapDiagnostics &GetBootstrapDiagnostics();

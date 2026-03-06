@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -32,7 +33,7 @@ namespace BML::Core {
         std::string id;                       ///< Module ID
         std::wstring dll_path;                ///< Path to the DLL
         std::wstring watch_path;              ///< Directory to watch for changes
-        const ModManifest *manifest{nullptr}; ///< Module manifest
+        std::optional<ModManifest> manifest;  ///< Module manifest snapshot
     };
 
     /**
@@ -170,13 +171,13 @@ namespace BML::Core {
         void OnFileChanged(const FileEvent &event);
 
         // Schedule a module for reload (with debouncing)
-        void ScheduleReload(const std::string &mod_id);
+        void ScheduleReload(const std::string &mod_id, bool requires_runtime_reload);
 
         // Process all scheduled reloads
         void ProcessScheduledReloads();
 
-        // Find module ID by file path
-        std::string FindModuleByPath(const std::string &dir, const std::string &filename);
+        // Find the module affected by a file change inside a watched module directory
+        std::string FindModuleForEvent(const std::string &dir, const std::string &filename);
 
         // Reference to BML context
         Context &m_Context;
@@ -201,6 +202,7 @@ namespace BML::Core {
         struct ScheduledReload {
             std::string mod_id;
             std::chrono::steady_clock::time_point fire_time; // When to actually reload
+            bool requires_runtime_reload{false};
         };
 
         std::vector<ScheduledReload> m_Scheduled;
@@ -214,3 +216,4 @@ namespace BML::Core {
 } // namespace BML::Core
 
 #endif // BML_CORE_HOT_RELOAD_COORDINATOR_H
+
