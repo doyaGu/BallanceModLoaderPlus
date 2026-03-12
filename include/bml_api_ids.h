@@ -70,6 +70,8 @@
 #define BML_API_ID_bmlRegisterShutdownHook 32u
 #define BML_API_ID_bmlSetCurrentModule     33u
 #define BML_API_ID_bmlGetCurrentModule     34u
+#define BML_API_ID_bmlGetLoadedModuleCount 35u
+#define BML_API_ID_bmlGetLoadedModuleAt    36u
 
 /** @brief Diagnostics / Error Handling */
 #define BML_API_ID_bmlGetLastError         40u

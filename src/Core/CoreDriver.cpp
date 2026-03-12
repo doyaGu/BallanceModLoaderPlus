@@ -3,12 +3,10 @@
 #endif
 #include <Windows.h>
 
+#include <exception>
 #include <filesystem>
 #include <iostream>
 #include <string>
-#include <vector>
-#include <exception>
-#include <cstring>
 
 #include "bml_export.h"
 
@@ -89,6 +87,17 @@ std::wstring Utf8ToWide(const char *text) {
     return buffer;
 }
 
+std::string WideToUtf8(const std::wstring &text) {
+    if (text.empty())
+        return {};
+    int required = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (required <= 1)
+        return {};
+    std::string buffer(static_cast<size_t>(required - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, buffer.data(), required - 1, nullptr, nullptr);
+    return buffer;
+}
+
 void PrintManifestErrors(const BML_BootstrapDiagnostics *diag) {
     if (!diag || diag->manifest_error_count == 0 || !diag->manifest_errors)
         return;
@@ -126,6 +135,22 @@ void PrintDependencyError(const BML_BootstrapDiagnostics *diag) {
         }
     }
     std::cout << std::endl;
+}
+
+void PrintDependencyWarnings(const BML_BootstrapDiagnostics *diag) {
+    if (!diag || diag->dependency_warning_count == 0 || !diag->dependency_warnings)
+        return;
+
+    std::cout << "Dependency warnings (" << diag->dependency_warning_count << "):" << std::endl;
+    for (uint32_t i = 0; i < diag->dependency_warning_count; ++i) {
+        const auto &warning = diag->dependency_warnings[i];
+        std::cout << "  - mod=" << (warning.module_id ? warning.module_id : "<unknown>")
+                  << ", dependency=" << (warning.dependency_id ? warning.dependency_id : "<unknown>");
+        if (warning.message && std::strlen(warning.message) > 0) {
+            std::cout << ": " << warning.message;
+        }
+        std::cout << std::endl;
+    }
 }
 
 void PrintLoadError(const BML_BootstrapDiagnostics *diag) {
@@ -208,27 +233,34 @@ int wmain(int argc, wchar_t **argv) {
         std::wcout << L"[driver] WARNING: directory does not exist." << std::endl;
     }
 
-    BML_Result attach = bmlAttach();
-    if (attach != BML_RESULT_OK) {
-        std::wcout << L"[driver] bmlAttach failed: " << attach << std::endl;
+    std::string modsDirUtf8 = WideToUtf8(modsDirWide);
+
+    BML_BootstrapConfig config = BML_BOOTSTRAP_CONFIG_INIT;
+    config.flags = BML_BOOTSTRAP_FLAG_SKIP_LOAD;
+    config.mods_dir_utf8 = modsDirUtf8.empty() ? nullptr : modsDirUtf8.c_str();
+
+    BML_Result bootstrap = bmlBootstrap(&config);
+    if (bootstrap != BML_RESULT_OK) {
+        std::wcout << L"[driver] bmlBootstrap failed: " << bootstrap << std::endl;
         return 3;
     }
 
     const BML_BootstrapDiagnostics *diag = bmlGetBootstrapDiagnostics();
     PrintManifestErrors(diag);
     PrintDependencyError(diag);
+    PrintDependencyWarnings(diag);
     PrintLoadError(diag);
     if (opts.listOrder || (diag && diag->load_order_count > 0)) {
         PrintLoadOrder(diag);
     }
 
-    bmlDetach();
+    bmlShutdown();
 
     if (!modsDirWide.empty()) {
         SetEnvironmentVariableW(L"BML_MODS_DIR", nullptr);
     }
 
-    if (!DiagnosticsAreClean(diag)) {
+    if (!DiagnosticsAreClean(diag) || bootstrap != BML_RESULT_OK) {
         std::wcout << L"[driver] Bootstrap completed with issues." << std::endl;
         return 4;
     }

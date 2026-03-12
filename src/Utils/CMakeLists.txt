@@ -1,16 +1,23 @@
 set(BML_UTILS_HEADERS
-        IniFile.h
         StringUtils.h
-        PathUtils.h
-        HookUtils.h
 )
 
 set(BML_UTILS_SOURCES
-        IniFile.cpp
         StringUtils.cpp
-        PathUtils.cpp
-        HookUtils.cpp
 )
+
+if (WIN32)
+    list(APPEND BML_UTILS_HEADERS
+            IniFile.h
+            PathUtils.h
+            HookUtils.h
+    )
+    list(APPEND BML_UTILS_SOURCES
+            IniFile.cpp
+            PathUtils.cpp
+            HookUtils.cpp
+    )
+endif ()
 
 add_library(BMLUtils STATIC
     ${BML_UTILS_SOURCES}
@@ -28,5 +35,6 @@ target_link_libraries(BMLUtils
 )
 
 set_target_properties(BMLUtils PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
         FOLDER "Core"
 )

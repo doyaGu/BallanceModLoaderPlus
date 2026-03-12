@@ -17,6 +17,7 @@
 #include <optional>
 #include <functional>
 #include <memory>
+#include <vector>
 
 namespace bml {
     // ============================================================================
@@ -192,6 +193,24 @@ namespace bml {
     inline std::optional<Mod> GetCurrentModule() {
         if (!bmlGetCurrentModule) return std::nullopt;
         return Mod(bmlGetCurrentModule());
+    }
+
+    /**
+     * @brief Enumerate loaded modules as lightweight Mod wrappers.
+     * @return Snapshot vector of loaded modules. Empty if APIs are unavailable.
+     */
+    inline std::vector<Mod> GetLoadedModules() {
+        std::vector<Mod> modules;
+        if (!bmlGetLoadedModuleCount || !bmlGetLoadedModuleAt) return modules;
+        const uint32_t count = bmlGetLoadedModuleCount();
+        modules.reserve(count);
+        for (uint32_t index = 0; index < count; ++index) {
+            BML_Mod mod = bmlGetLoadedModuleAt(index);
+            if (mod) {
+                modules.emplace_back(mod);
+            }
+        }
+        return modules;
     }
 
     /**

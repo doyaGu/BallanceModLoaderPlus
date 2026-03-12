@@ -1,0 +1,9 @@
+[package]
+id = "com.bml.render"
+name = "BML Render Module"
+version = "0.4.0"
+authors = ["BML Team"]
+description = "Rendering module for BML v0.4 - manages ImGui rendering lifecycle"
+
+[dependencies]
+# No dependencies - completely independent module

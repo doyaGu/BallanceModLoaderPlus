@@ -646,6 +646,45 @@ namespace BML::Core {
     namespace {
         constexpr char kImcLogCategory[] = "imc.bus";
 
+        // ========================================================================
+        // TopicSnapshot - Immutable snapshot for RCU-style lock-free reads
+        // ========================================================================
+
+        struct TopicSnapshot {
+            std::unordered_map<BML_TopicId, std::vector<BML_Subscription_T *>> topic_subs;
+            std::vector<BML_Subscription_T *> all_subs;
+            std::atomic<uint32_t> ref_count{0};
+
+            TopicSnapshot() = default;
+
+            // Non-copyable, non-movable (due to atomic)
+            TopicSnapshot(const TopicSnapshot &) = delete;
+            TopicSnapshot &operator=(const TopicSnapshot &) = delete;
+        };
+
+        // ========================================================================
+        // RAII guard for snapshot reference counting
+        // ========================================================================
+
+        class SnapshotGuard {
+        public:
+            explicit SnapshotGuard(TopicSnapshot *snap) noexcept : m_Snap(snap) {
+                if (m_Snap)
+                    m_Snap->ref_count.fetch_add(1, std::memory_order_acq_rel);
+            }
+            ~SnapshotGuard() {
+                if (m_Snap)
+                    m_Snap->ref_count.fetch_sub(1, std::memory_order_acq_rel);
+            }
+            SnapshotGuard(const SnapshotGuard &) = delete;
+            SnapshotGuard &operator=(const SnapshotGuard &) = delete;
+
+            TopicSnapshot *get() const noexcept { return m_Snap; }
+            explicit operator bool() const noexcept { return m_Snap != nullptr; }
+        private:
+            TopicSnapshot *m_Snap;
+        };
+
         // ImcBusImpl - Core Implementation
         // ========================================================================
 
@@ -706,16 +745,27 @@ namespace BML::Core {
             void ReleaseMessage(QueuedMessage *message);
             void DropPendingMessages(BML_Subscription_T *sub);
             size_t DrainSubscription(BML_Subscription_T *sub, size_t budget);
-            void RemoveFromTopicLocked(BML_TopicId topic, SubscriptionPtr handle);
+            void RemoveFromMutableTopicMap(BML_TopicId topic, SubscriptionPtr handle);
             void ProcessRpcRequest(RpcRequest *request);
             void DrainRpcQueue(size_t budget);
             void ApplyBackpressure(BML_Subscription_T *sub, QueuedMessage *message);
 
-            mutable std::shared_mutex m_Mutex;
+            // RCU snapshot management (called under m_WriteMutex)
+            void PublishNewSnapshot();
+            void RetireOldSnapshots();
+
+            // Write-side mutex (Subscribe/Unsubscribe only — infrequent)
+            std::mutex m_WriteMutex;
+            // Lock-free read snapshot (Publish/Pump read atomically)
+            std::atomic<TopicSnapshot *> m_Snapshot{nullptr};
+            // Old snapshots pending retirement
+            std::vector<TopicSnapshot *> m_RetiredSnapshots;
+
             mutable std::shared_mutex m_RpcMutex;
 
-            // Topic subscriptions (ID-based only)
-            std::unordered_map<BML_TopicId, std::vector<SubscriptionPtr>> m_TopicMap;
+            // Mutable topic map (only accessed under m_WriteMutex)
+            std::unordered_map<BML_TopicId, std::vector<SubscriptionPtr>> m_MutableTopicMap;
+            // Subscription ownership (only mutated under m_WriteMutex)
             std::unordered_map<SubscriptionPtr, std::unique_ptr<BML_Subscription_T>> m_Subscriptions;
 
             // RPC handlers (ID-based only)
@@ -763,6 +813,8 @@ namespace BML::Core {
             : m_MessagePool(sizeof(QueuedMessage)),
               m_RpcRequestPool(sizeof(RpcRequest)),
               m_RpcQueue(std::make_unique<MpscRingBuffer<RpcRequest *>>(kDefaultRpcQueueCapacity)) {
+            // Start with an empty snapshot for lock-free reads
+            m_Snapshot.store(new TopicSnapshot(), std::memory_order_release);
         }
 
         ImcBusImpl &GetBus() {
@@ -915,76 +967,49 @@ namespace BML::Core {
             // Register topic in registry for name lookup
             GetTopicRegistry().IncrementMessageCount(topic);
 
-            std::vector<SubscriptionPtr> targets;
-            {
-                std::shared_lock lock(m_Mutex);
-                auto it = m_TopicMap.find(topic);
-                if (it == m_TopicMap.end()) {
-                    ReleaseMessage(message);
-                    return BML_RESULT_OK;
-                }
-                targets.reserve(it->second.size());
-
-                // First pass: count valid targets and set message ref_count while holding lock
-                // This ensures ref_count is set before any subscription can be released
-                size_t valid_count = 0;
-                for (auto handle : it->second) {
-                    auto subIt = m_Subscriptions.find(handle);
-                    if (subIt == m_Subscriptions.end())
-                        continue;
-                    auto *sub = subIt->second.get();
-                    if (sub->closed.load(std::memory_order_acquire) || !sub->handler || !sub->queue)
-                        continue;
-                    ++valid_count;
-                }
-
-                if (valid_count == 0) {
-                    ReleaseMessage(message);
-                    return BML_RESULT_OK;
-                }
-
-                // THREAD SAFETY ANALYSIS:
-                // Setting ref_count while holding m_Mutex is critical for correctness.
-                // The race condition we prevent:
-                //   1. Thread A: Sets ref_count = valid_count + 1 (our ref + subscriber refs)
-                //   2. Thread B: Calls Unsubscribe() and removes subscription from m_TopicMap
-                //   3. Thread A: Releases lock and tries to dispatch to that subscription
-                //
-                // By setting ref_count BEFORE releasing the lock:
-                //   - All subscriptions we counted are still valid (can't be removed while we hold lock)
-                //   - Once we release the lock, subscriptions may be removed, but the message's
-                //     ref_count is already set correctly for the number of deliveries we'll attempt
-                //   - If a subscription is removed after we release the lock, DispatchToSubscription
-                //     will safely detect the closed state and skip it (releasing the unused ref)
-                //
-                // The +1 is our own reference that we release at the end of DispatchMessage.
-                message->ref_count.store(valid_count + 1, std::memory_order_release);
-
-                // Second pass: collect targets and increment their ref counts
-                for (auto handle : it->second) {
-                    auto subIt = m_Subscriptions.find(handle);
-                    if (subIt == m_Subscriptions.end())
-                        continue;
-                    auto *sub = subIt->second.get();
-                    if (sub->closed.load(std::memory_order_acquire) || !sub->handler || !sub->queue)
-                        continue;
-                    sub->ref_count.fetch_add(1, std::memory_order_relaxed);
-                    targets.push_back(handle);
-                }
+            // Lock-free snapshot read (RCU pattern)
+            SnapshotGuard guard(m_Snapshot.load(std::memory_order_acquire));
+            if (!guard) {
+                ReleaseMessage(message);
+                return BML_RESULT_OK;
             }
 
-            // Note: message->ref_count is already set above, we just need to proceed with dispatch
+            auto it = guard.get()->topic_subs.find(topic);
+            if (it == guard.get()->topic_subs.end() || it->second.empty()) {
+                ReleaseMessage(message);
+                return BML_RESULT_OK;
+            }
+
+            // First pass: count valid targets
+            std::vector<BML_Subscription_T *> targets;
+            targets.reserve(it->second.size());
+            for (auto *sub : it->second) {
+                if (sub->closed.load(std::memory_order_acquire) || !sub->handler || !sub->queue)
+                    continue;
+                targets.push_back(sub);
+            }
+
+            if (targets.empty()) {
+                ReleaseMessage(message);
+                return BML_RESULT_OK;
+            }
+
+            // THREAD SAFETY: ref_count is set before dispatch; snapshot guard
+            // keeps the snapshot alive so subscription pointers remain valid.
+            // Unsubscribe waits for sub->ref_count == 0 before destroying.
+            message->ref_count.store(static_cast<uint32_t>(targets.size()) + 1, std::memory_order_release);
+
+            for (auto *sub : targets) {
+                sub->ref_count.fetch_add(1, std::memory_order_relaxed);
+            }
 
             uint32_t delivered = 0;
-            for (auto handle : targets) {
-                auto *sub = reinterpret_cast<BML_Subscription_T *>(handle);
+            for (auto *sub : targets) {
                 if (DispatchToSubscription(sub, message) == BML_RESULT_OK) {
                     ++delivered;
                 } else {
-                    // Subscription didn't take ownership, release its ref
                     ReleaseMessage(message);
                 }
-                // Release subscription ref
                 sub->ref_count.fetch_sub(1, std::memory_order_acq_rel);
             }
 
@@ -1044,13 +1069,58 @@ namespace BML::Core {
             return processed;
         }
 
-        void ImcBusImpl::RemoveFromTopicLocked(BML_TopicId topic, SubscriptionPtr handle) {
-            auto it = m_TopicMap.find(topic);
-            if (it != m_TopicMap.end()) {
+        void ImcBusImpl::RemoveFromMutableTopicMap(BML_TopicId topic, SubscriptionPtr handle) {
+            auto it = m_MutableTopicMap.find(topic);
+            if (it != m_MutableTopicMap.end()) {
                 auto &vec = it->second;
                 vec.erase(std::remove(vec.begin(), vec.end(), handle), vec.end());
                 if (vec.empty())
-                    m_TopicMap.erase(it);
+                    m_MutableTopicMap.erase(it);
+            }
+        }
+
+        void ImcBusImpl::PublishNewSnapshot() {
+            // Build new immutable snapshot from current mutable state
+            auto *snap = new TopicSnapshot();
+            for (auto &[topic, handles] : m_MutableTopicMap) {
+                auto &subs = snap->topic_subs[topic];
+                subs.reserve(handles.size());
+                for (auto handle : handles) {
+                    auto subIt = m_Subscriptions.find(handle);
+                    if (subIt != m_Subscriptions.end()) {
+                        auto *sub = subIt->second.get();
+                        if (!sub->closed.load(std::memory_order_acquire)) {
+                            subs.push_back(sub);
+                        }
+                    }
+                }
+            }
+            // Build flat list for Pump
+            snap->all_subs.reserve(m_Subscriptions.size());
+            for (auto &[handle, sub] : m_Subscriptions) {
+                if (!sub->closed.load(std::memory_order_acquire)) {
+                    snap->all_subs.push_back(sub.get());
+                }
+            }
+
+            // Atomically swap in the new snapshot
+            TopicSnapshot *old = m_Snapshot.exchange(snap, std::memory_order_acq_rel);
+            if (old) {
+                m_RetiredSnapshots.push_back(old);
+            }
+
+            RetireOldSnapshots();
+        }
+
+        void ImcBusImpl::RetireOldSnapshots() {
+            auto it = m_RetiredSnapshots.begin();
+            while (it != m_RetiredSnapshots.end()) {
+                if ((*it)->ref_count.load(std::memory_order_acquire) == 0) {
+                    delete *it;
+                    it = m_RetiredSnapshots.erase(it);
+                } else {
+                    ++it;
+                }
             }
         }
 
@@ -1139,9 +1209,10 @@ namespace BML::Core {
 
             BML_Subscription handle = subscription.get();
             {
-                std::unique_lock lock(m_Mutex);
-                m_TopicMap[topic].push_back(handle);
+                std::lock_guard lock(m_WriteMutex);
+                m_MutableTopicMap[topic].push_back(handle);
                 m_Subscriptions.emplace(handle, std::move(subscription));
+                PublishNewSnapshot();
             }
 
             *out_sub = handle;
@@ -1154,7 +1225,7 @@ namespace BML::Core {
             if (!out_stats)
                 return BML_RESULT_INVALID_ARGUMENT;
 
-            std::shared_lock lock(m_Mutex);
+            std::lock_guard lock(m_WriteMutex);
             auto it = m_Subscriptions.find(sub);
             if (it == m_Subscriptions.end())
                 return BML_RESULT_INVALID_HANDLE;
@@ -1200,17 +1271,18 @@ namespace BML::Core {
             std::unique_ptr<BML_Subscription_T> owned;
             BML_Subscription_T *raw = nullptr;
             {
-                std::unique_lock lock(m_Mutex);
+                std::lock_guard lock(m_WriteMutex);
                 auto it = m_Subscriptions.find(sub);
                 if (it == m_Subscriptions.end())
                     return BML_RESULT_INVALID_HANDLE;
 
                 auto *s = it->second.get();
                 s->closed.store(true, std::memory_order_release);
-                RemoveFromTopicLocked(s->topic_id, sub);
+                RemoveFromMutableTopicMap(s->topic_id, sub);
                 owned = std::move(it->second);
                 raw = owned.get();
                 m_Subscriptions.erase(it);
+                PublishNewSnapshot();
             }
 
             if (raw) {
@@ -1229,7 +1301,7 @@ namespace BML::Core {
             if (!out_active)
                 return BML_RESULT_INVALID_ARGUMENT;
 
-            std::shared_lock lock(m_Mutex);
+            std::lock_guard lock(m_WriteMutex);
             auto it = m_Subscriptions.find(sub);
             if (it == m_Subscriptions.end()) {
                 *out_active = BML_FALSE;
@@ -1488,33 +1560,43 @@ namespace BML::Core {
             // Drain RPC queue
             DrainRpcQueue(max_per_sub);
 
-            // Drain subscription queues
-            std::vector<BML_Subscription_T *> subs;
-            {
-                std::shared_lock lock(m_Mutex);
-                subs.reserve(m_Subscriptions.size());
-                for (auto &[handle, sub] : m_Subscriptions) {
-                    if (!sub->closed.load(std::memory_order_acquire)) {
-                        sub->ref_count.fetch_add(1, std::memory_order_relaxed);
-                        subs.push_back(sub.get());
-                    }
-                }
-            }
+            // Lock-free snapshot read for subscription draining (RCU pattern)
+            SnapshotGuard guard(m_Snapshot.load(std::memory_order_acquire));
+            if (!guard)
+                return;
 
-            for (auto *sub : subs) {
+            for (auto *sub : guard.get()->all_subs) {
+                if (sub->closed.load(std::memory_order_acquire))
+                    continue;
+                sub->ref_count.fetch_add(1, std::memory_order_relaxed);
                 DrainSubscription(sub, max_per_sub);
                 sub->ref_count.fetch_sub(1, std::memory_order_acq_rel);
             }
         }
 
         void ImcBusImpl::Shutdown() {
-            std::unique_lock lock(m_Mutex);
+            std::lock_guard lock(m_WriteMutex);
             for (auto &[handle, sub] : m_Subscriptions) {
                 sub->closed.store(true, std::memory_order_release);
                 DropPendingMessages(sub.get());
             }
             m_Subscriptions.clear();
-            m_TopicMap.clear();
+            m_MutableTopicMap.clear();
+
+            // Replace snapshot with empty one
+            TopicSnapshot *old = m_Snapshot.exchange(new TopicSnapshot(), std::memory_order_acq_rel);
+            if (old) {
+                m_RetiredSnapshots.push_back(old);
+            }
+
+            // Clean up all retired snapshots (spin until all readers are done)
+            for (auto *snap : m_RetiredSnapshots) {
+                while (snap->ref_count.load(std::memory_order_acquire) != 0) {
+                    std::this_thread::yield();
+                }
+                delete snap;
+            }
+            m_RetiredSnapshots.clear();
         }
 
         // ========================================================================
@@ -1536,7 +1618,7 @@ namespace BML::Core {
 
             // Count active subscriptions and topics
             {
-                std::shared_lock lock(m_Mutex);
+                std::lock_guard lock(m_WriteMutex);
                 out_stats->active_subscriptions = m_Subscriptions.size();
             }
             out_stats->active_topics = GetTopicRegistry().GetTopicCount();
@@ -1564,12 +1646,16 @@ namespace BML::Core {
             out_info->topic_id = topic;
             out_info->message_count = GetTopicRegistry().GetMessageCount(topic);
 
-            // Get subscription info
+            // Get subscription info from snapshot (lock-free read)
             {
-                std::shared_lock lock(m_Mutex);
-                auto it = m_TopicMap.find(topic);
-                if (it != m_TopicMap.end()) {
-                    out_info->subscriber_count = it->second.size();
+                SnapshotGuard guard(m_Snapshot.load(std::memory_order_acquire));
+                if (guard) {
+                    auto it = guard.get()->topic_subs.find(topic);
+                    if (it != guard.get()->topic_subs.end()) {
+                        out_info->subscriber_count = it->second.size();
+                    } else {
+                        out_info->subscriber_count = 0;
+                    }
                 } else {
                     out_info->subscriber_count = 0;
                 }

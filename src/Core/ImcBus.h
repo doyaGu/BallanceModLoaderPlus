@@ -8,7 +8,8 @@ namespace BML::Core {
      * @brief Robust, high-performance IMC Bus implementation
      *
      * Features:
-     * - Lock-free MPSC queues for high throughput
+     * - RCU-style epoch snapshots for lock-free Publish/Pump hot paths
+     * - Lock-free MPSC ring buffers per subscription for queuing
      * - Priority message queues
      * - Zero-copy buffer support
      * - Per-subscription message filtering

@@ -1,0 +1,10 @@
+[package]
+id = "com.bml.objectload"
+name = "BML ObjectLoad Module"
+version = "0.4.0"
+authors = ["BML Team"]
+description = "Object loading hook module for BML - provides OnLoadObject and OnLoadScript callbacks"
+entry = "BML_ObjectLoad.dll"
+
+[dependencies]
+# No dependencies - this is a core system module

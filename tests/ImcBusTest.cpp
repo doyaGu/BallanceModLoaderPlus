@@ -907,4 +907,75 @@ TEST_F(ImcBusTest, ConcurrentPublishersDoNotCrash) {
     EXPECT_EQ(BML_RESULT_OK, ImcBus::Instance().Unsubscribe(sub));
 }
 
+// ========================================================================
+// RCU Snapshot Concurrency Stress Test
+// ========================================================================
+
+TEST_F(ImcBusTest, ConcurrentPublishWithSubscribeUnsubscribeRace) {
+    // Stress test: multiple publisher threads race against subscribe/unsubscribe
+    // to verify the RCU snapshot mechanism handles concurrent mutation safely.
+    BML_TopicId topic;
+    ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().GetTopicId("stress.rcu.race", &topic));
+
+    std::atomic<uint32_t> total_received{0};
+    std::atomic<bool> stop{false};
+
+    auto counting_handler = [](BML_Context, BML_TopicId, const BML_ImcMessage *, void *ud) {
+        static_cast<std::atomic<uint32_t> *>(ud)->fetch_add(1, std::memory_order_relaxed);
+    };
+
+    // Start with one subscription
+    BML_Subscription initial_sub = nullptr;
+    ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Subscribe(topic, counting_handler, &total_received, &initial_sub));
+
+    constexpr int kPublishThreads = 3;
+    constexpr int kMessagesPerThread = 200;
+    std::vector<std::thread> threads;
+
+    // Publisher threads: continuously publish while subs change
+    for (int t = 0; t < kPublishThreads; ++t) {
+        threads.emplace_back([&, t]() {
+            for (int i = 0; i < kMessagesPerThread; ++i) {
+                int value = t * 1000 + i;
+                ImcBus::Instance().Publish(topic, &value, sizeof(value));
+            }
+        });
+    }
+
+    // Subscribe/unsubscribe churn thread
+    threads.emplace_back([&]() {
+        for (int cycle = 0; cycle < 20 && !stop.load(std::memory_order_relaxed); ++cycle) {
+            BML_Subscription sub = nullptr;
+            BML_Result res = ImcBus::Instance().Subscribe(topic, counting_handler, &total_received, &sub);
+            if (res == BML_RESULT_OK && sub) {
+                std::this_thread::yield();
+                ImcBus::Instance().Unsubscribe(sub);
+            }
+        }
+    });
+
+    // Pump thread: drain messages concurrently
+    threads.emplace_back([&]() {
+        for (int i = 0; i < 50 && !stop.load(std::memory_order_relaxed); ++i) {
+            ImcBus::Instance().Pump(0);
+            std::this_thread::yield();
+        }
+    });
+
+    for (auto &t : threads) {
+        t.join();
+    }
+    stop.store(true, std::memory_order_release);
+
+    // Final drain
+    for (int i = 0; i < 10; ++i) {
+        ImcBus::Instance().Pump(0);
+    }
+
+    // The initial subscriber should have received some messages
+    EXPECT_GT(total_received.load(), 0u);
+
+    EXPECT_EQ(BML_RESULT_OK, ImcBus::Instance().Unsubscribe(initial_sub));
+}
+
 } // namespace

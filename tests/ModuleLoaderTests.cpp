@@ -75,7 +75,7 @@ TEST_F(ModuleLoaderTests, LoadModulesWithEmptyOrder) {
     ModuleLoadError error;
     
     // Empty order should succeed trivially
-    bool result = LoadModules(order, Context::Instance(), nullptr, modules, error);
+    bool result = LoadModules(order, Context::Instance(), nullptr, nullptr, nullptr, modules, error);
     EXPECT_TRUE(result);
     EXPECT_TRUE(modules.empty());
 }
@@ -95,7 +95,7 @@ TEST_F(ModuleLoaderTests, LoadModulesWithNonExistentDll) {
     // - May return false with error for non-existent DLL
     // - May skip and return true with empty modules
     // Either is acceptable as long as no crash
-    bool result = LoadModules(order, Context::Instance(), nullptr, modules, error);
+    bool result = LoadModules(order, Context::Instance(), &bmlGetProcAddress, &bmlGetProcAddressById, &bmlGetApiId, modules, error);
     
     if (!result) {
         // If it failed, check error is set
@@ -116,7 +116,7 @@ TEST_F(ModuleLoaderTests, LoadModulesWithEmptyDllPath) {
     ModuleLoadError error;
     
     // Empty DLL path should fail or be handled gracefully
-    bool result = LoadModules(order, Context::Instance(), nullptr, modules, error);
+    bool result = LoadModules(order, Context::Instance(), &bmlGetProcAddress, &bmlGetProcAddressById, &bmlGetApiId, modules, error);
     // The result depends on implementation - it may skip or fail
     // Just verify no crash occurs
     EXPECT_TRUE(result || !error.message.empty());

@@ -9,10 +9,11 @@
 #define BML_LOADER_IMPLEMENTATION
 #include "bml.hpp"
 
-// Mock bmlGetProcAddress for testing
-static void* MockGetProcAddress(const char* name) {
+// Mock bmlGetProcAddressById for testing
+static void* MockGetProcAddressById(BML_ApiId api_id) {
     // Return fake function pointers for testing
     // In real scenario, this would be provided by BML.dll
+    (void)api_id;
     return nullptr;
 }
 
@@ -254,7 +255,7 @@ TEST(BMLWrapperTest, FullWorkflow_CompilationCheck) {
     // This test verifies that a typical mod workflow compiles correctly
     
     // 1. Load API
-    bml::LoadAPI(MockGetProcAddress);
+    bml::LoadAPI(MockGetProcAddressById);
     
     // 2. Get context
     auto ctx = bml::GetGlobalContext();

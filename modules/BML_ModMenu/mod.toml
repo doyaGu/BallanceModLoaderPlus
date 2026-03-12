@@ -1,0 +1,10 @@
+id = "com.bml.modmenu"
+name = "BML_ModMenu"
+version = "0.4.0"
+description = "Module-native loaded-module and config browser"
+
+[dependencies]
+"com.bml.ui" = "*"
+"com.bml.input" = "*"
+
+capabilities = ["menu.modules", "menu.config"]

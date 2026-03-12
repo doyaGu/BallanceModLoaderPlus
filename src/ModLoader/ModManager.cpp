@@ -24,15 +24,19 @@
 #include "bml_imc.h"
 #include "bml_core.h"
 #include "bml_engine_events.h"
+#include "bml_topics.h"
 #include "bml_virtools.h"
 
 // External function from Entry.cpp to get BML API
 extern void* ModLoaderGetProcAddress(const char* name);
+extern void ModLoaderUpdateCore();
 
 // IMC function pointers (loaded from Core)
 static PFN_BML_ImcGetTopicId s_ImcGetTopicId = nullptr;
 static PFN_BML_ImcPublish s_ImcPublish = nullptr;
 static PFN_BML_ImcPump s_ImcPump = nullptr;
+static PFN_BML_ImcSubscribe s_ImcSubscribe = nullptr;
+static PFN_BML_ImcUnsubscribe s_ImcUnsubscribe = nullptr;
 
 // Context function pointers (loaded from Core)
 static PFN_BML_ContextSetUserData s_ContextSetUserData = nullptr;
@@ -69,6 +73,8 @@ void ModManager::InitializeIMCTopics() {
     s_ImcGetTopicId = (PFN_BML_ImcGetTopicId) ModLoaderGetProcAddress("bmlImcGetTopicId");
     s_ImcPublish = (PFN_BML_ImcPublish) ModLoaderGetProcAddress("bmlImcPublish");
     s_ImcPump = (PFN_BML_ImcPump) ModLoaderGetProcAddress("bmlImcPump");
+    s_ImcSubscribe = (PFN_BML_ImcSubscribe) ModLoaderGetProcAddress("bmlImcSubscribe");
+    s_ImcUnsubscribe = (PFN_BML_ImcUnsubscribe) ModLoaderGetProcAddress("bmlImcUnsubscribe");
 
     if (!s_ImcGetTopicId || !s_ImcPublish || !s_ImcPump) {
         OutputDebugStringA("ModManager: Warning - Failed to load IMC API.\n");
@@ -76,19 +82,19 @@ void ModManager::InitializeIMCTopics() {
     }
 
     // Register topic IDs - Engine lifecycle
-    s_ImcGetTopicId("BML/Engine/Init", &s_TopicEngineInit);
-    s_ImcGetTopicId("BML/Engine/End", &s_TopicEngineEnd);
-    s_ImcGetTopicId("BML/Engine/Play", &s_TopicEnginePlay);
-    s_ImcGetTopicId("BML/Engine/Pause", &s_TopicEnginePause);
-    s_ImcGetTopicId("BML/Engine/Reset", &s_TopicEngineReset);
-    s_ImcGetTopicId("BML/Engine/PostReset", &s_TopicEnginePostReset);
+    s_ImcGetTopicId(BML_TOPIC_ENGINE_INIT, &s_TopicEngineInit);
+    s_ImcGetTopicId(BML_TOPIC_ENGINE_END, &s_TopicEngineEnd);
+    s_ImcGetTopicId(BML_TOPIC_ENGINE_PLAY, &s_TopicEnginePlay);
+    s_ImcGetTopicId(BML_TOPIC_ENGINE_PAUSE, &s_TopicEnginePause);
+    s_ImcGetTopicId(BML_TOPIC_ENGINE_RESET, &s_TopicEngineReset);
+    s_ImcGetTopicId(BML_TOPIC_ENGINE_POST_RESET, &s_TopicEnginePostReset);
     // Frame processing
-    s_ImcGetTopicId("BML/Engine/PreProcess", &s_TopicPreProcess);
-    s_ImcGetTopicId("BML/Engine/PostProcess", &s_TopicPostProcess);
+    s_ImcGetTopicId(BML_TOPIC_ENGINE_PRE_PROCESS, &s_TopicPreProcess);
+    s_ImcGetTopicId(BML_TOPIC_ENGINE_POST_PROCESS, &s_TopicPostProcess);
     // Rendering
-    s_ImcGetTopicId("BML/Engine/PreRender", &s_TopicPreRender);
-    s_ImcGetTopicId("BML/Engine/PostRender", &s_TopicPostRender);
-    s_ImcGetTopicId("BML/Engine/PostSpriteRender", &s_TopicPostSpriteRender);
+    s_ImcGetTopicId(BML_TOPIC_ENGINE_PRE_RENDER, &s_TopicPreRender);
+    s_ImcGetTopicId(BML_TOPIC_ENGINE_POST_RENDER, &s_TopicPostRender);
+    s_ImcGetTopicId(BML_TOPIC_ENGINE_POST_SPRITE_RENDER, &s_TopicPostSpriteRender);
 
     OutputDebugStringA("ModManager: IMC topics initialized.\n");
 }
@@ -288,6 +294,9 @@ CKERROR ModManager::PreProcess() {
 }
 
 CKERROR ModManager::PostProcess() {
+    // Drive deferred core work on the main loop (hot reload debounce/reload processing).
+    ModLoaderUpdateCore();
+
     // Calculate delta time
     CKTimeManager *timeMgr = m_Context->GetTimeManager();
     float currentTime = timeMgr ? timeMgr->GetTime() : 0.0f;

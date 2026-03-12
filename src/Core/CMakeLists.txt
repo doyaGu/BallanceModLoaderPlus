@@ -40,6 +40,7 @@ if (WIN32)
             HotReloadCoordinator.cpp
     )
 else ()
+    # Non-Windows: uses SyncManagerPosix; stubs live in stubs/ (see stubs/README.md)
     list(APPEND BML_CORE_SOURCES
             SyncManagerPosix.cpp
             SyncApi.cpp
@@ -115,21 +116,6 @@ set_target_properties(BML PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 )
 
-if (WIN32)
-    # Core driver executable for testing
-    add_executable(BMLCoreDriver
-            driver/CoreDriver.cpp
-    )
-
-    target_include_directories(BMLCoreDriver PRIVATE ${BML_INCLUDE_DIR})
-
-    target_link_libraries(BMLCoreDriver PRIVATE BML)
-
-    set_target_properties(BMLCoreDriver PROPERTIES
-            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-    )
-endif ()
-
 # Install targets
 install(TARGETS BML
         EXPORT BMLCoreTargets
@@ -142,3 +128,22 @@ install(EXPORT BMLCoreTargets
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BMLCore"
         NAMESPACE BML::
 )
+
+# Standalone diagnostic driver (Windows only)
+if (WIN32)
+    add_executable(BMLCoreDriver
+        CoreDriver.cpp
+    )
+
+    target_include_directories(BMLCoreDriver PRIVATE
+        ${BML_INCLUDE_DIR}
+    )
+
+    target_link_libraries(BMLCoreDriver PRIVATE
+        BML
+    )
+
+    set_target_properties(BMLCoreDriver PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    )
+endif ()

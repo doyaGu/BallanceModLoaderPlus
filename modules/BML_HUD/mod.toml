@@ -1,0 +1,10 @@
+id = "com.bml.hud"
+name = "BML_HUD"
+version = "0.4.0"
+description = "Module-native HUD slice"
+
+[dependencies]
+"com.bml.ui" = "*"
+"com.bml.console" = ">=0.4.0"
+
+capabilities = ["hud.display", "console.command"]

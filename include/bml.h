@@ -42,7 +42,7 @@
  * #include <bml_loader.h>
  * 
  * // Initialize:
- * bmlLoadAPI(get_proc_fn);
+ * bmlLoadAPI(get_proc_fn, get_proc_by_id_fn);
  * @endcode
  * 
  * @section cpp_usage Usage (C++)

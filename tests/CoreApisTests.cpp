@@ -26,6 +26,7 @@
 #include "bml_imc.h"
 #include "bml_logging.h"
 #include "bml_resource.h"
+#include "bml_version.h"
 
 using BML::Core::ApiRegistry;
 using BML::Core::ConfigStore;
@@ -80,6 +81,9 @@ ConfigHookCapture &GetConfigHookCapture() {
 class CoreApisTests : public ::testing::Test {
 protected:
     void SetUp() override {
+        Context::SetCurrentModule(nullptr);
+        Context::Instance().Cleanup();
+        Context::Instance().Initialize(bmlGetApiVersion());
         ApiRegistry::Instance().Clear();
         Context::SetCurrentModule(nullptr);
         ImcBus::Instance().Shutdown();
@@ -90,33 +94,46 @@ protected:
 
     void TearDown() override {
         ImcBus::Instance().Shutdown();
-        if (mod_handle_) {
-            ConfigStore::Instance().FlushAndRelease(mod_handle_.get());
-        }
         Context::SetCurrentModule(nullptr);
+        Context::Instance().Cleanup();
+        manifests_.clear();
         std::error_code ec;
         std::filesystem::remove_all(temp_root_, ec);
     }
 
-    void InitConfigBackedMod(const std::string &id) {
-        manifest_ = std::make_unique<BML::Core::ModManifest>();
-        manifest_->package.id = id;
-        manifest_->package.name = id;
-        manifest_->package.version = "1.0.0";
-        manifest_->package.parsed_version = {1, 0, 0};
-        manifest_->directory = (temp_root_ / id).wstring();
-        std::filesystem::create_directories(manifest_->directory);
-        manifest_->manifest_path = manifest_->directory + L"/manifest.toml";
-        mod_handle_ = Context::Instance().CreateModHandle(*manifest_);
-        Context::SetCurrentModule(mod_handle_.get());
+    BML_Mod CreateTrackedMod(const std::string &id) {
+        auto manifest = std::make_unique<BML::Core::ModManifest>();
+        manifest->package.id = id;
+        manifest->package.name = id;
+        manifest->package.version = "1.0.0";
+        manifest->package.parsed_version = {1, 0, 0};
+        manifest->directory = (temp_root_ / id).wstring();
+        std::filesystem::create_directories(manifest->directory);
+        manifest->manifest_path = manifest->directory + L"/manifest.toml";
+
+        auto handle = Context::Instance().CreateModHandle(*manifest);
+        BML::Core::LoadedModule module{};
+        module.id = id;
+        module.manifest = manifest.get();
+        module.mod_handle = std::move(handle);
+        Context::Instance().AddLoadedModule(std::move(module));
+
+        BML_Mod mod = Context::Instance().GetModHandleById(id);
+        manifests_.push_back(std::move(manifest));
+        return mod;
     }
 
-    BML_Mod Mod() const { return mod_handle_ ? mod_handle_.get() : nullptr; }
+    void InitConfigBackedMod(const std::string &id) {
+        mod_handle_ = CreateTrackedMod(id);
+        Context::SetCurrentModule(mod_handle_);
+    }
+
+    BML_Mod Mod() const { return mod_handle_; }
 
     static std::atomic<uint64_t> test_counter_;
     std::filesystem::path temp_root_;
-    std::unique_ptr<BML::Core::ModManifest> manifest_;
-    std::unique_ptr<BML_Mod_T> mod_handle_;
+    std::vector<std::unique_ptr<BML::Core::ModManifest>> manifests_;
+    BML_Mod mod_handle_{nullptr};
 };
 
 std::atomic<uint64_t> CoreApisTests::test_counter_{1};
@@ -161,6 +178,7 @@ TEST_F(CoreApisTests, MultiThreadedHandleCreationAndRelease) {
             handles[index].reserve(kPerThread);
             for (size_t i = 0; i < kPerThread; ++i) {
                 BML_HandleDesc desc{};
+                desc.struct_size = sizeof(BML_HandleDesc);
                 ASSERT_EQ(BML_RESULT_OK, create_fn(handle_type, &desc));
                 BML_Bool valid = BML_FALSE;
                 ASSERT_EQ(BML_RESULT_OK, validate_fn(&desc, &valid));
@@ -298,7 +316,7 @@ TEST_F(CoreApisTests, ImcBroadcastPreservesPublishOrderPerSubscriber) {
 
     ImcBus::Instance().Pump(0);
 
-    auto validate = [](OrderingCapture &capture) {
+    auto validate = [kMessages](OrderingCapture &capture) {
         std::lock_guard<std::mutex> lock(capture.mutex);
         ASSERT_EQ(capture.values.size(), kMessages);
         for (size_t i = 0; i < kMessages; ++i) {
@@ -321,25 +339,32 @@ TEST_F(CoreApisTests, SetCurrentModuleApiIsThreadLocal) {
     ASSERT_NE(set_fn, nullptr);
     ASSERT_NE(get_fn, nullptr);
 
-    auto primary = std::make_unique<BML_Mod_T>();
-    primary->id = "coreapis.primary";
-    ASSERT_EQ(BML_RESULT_OK, set_fn(primary.get()));
-    EXPECT_EQ(get_fn(), primary.get());
+    auto primary = CreateTrackedMod("coreapis.primary");
+    auto worker = CreateTrackedMod("coreapis.worker");
 
-    auto worker = std::make_unique<BML_Mod_T>();
-    worker->id = "coreapis.worker";
+    ASSERT_NE(primary, nullptr);
+    ASSERT_NE(worker, nullptr);
+
+    auto *untracked = new BML_Mod_T();
+    untracked->id = "coreapis.untracked";
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, set_fn(untracked));
+    delete untracked;
+
+    ASSERT_EQ(BML_RESULT_OK, set_fn(primary));
+    EXPECT_EQ(get_fn(), primary);
+
     std::atomic<BML_Mod> worker_seen{nullptr};
 
     std::thread background([&] {
         EXPECT_EQ(get_fn(), nullptr);
-        ASSERT_EQ(BML_RESULT_OK, set_fn(worker.get()));
+        ASSERT_EQ(BML_RESULT_OK, set_fn(worker));
         worker_seen.store(get_fn(), std::memory_order_release);
         ASSERT_EQ(BML_RESULT_OK, set_fn(nullptr));
     });
     background.join();
 
-    EXPECT_EQ(worker_seen.load(std::memory_order_acquire), worker.get());
-    EXPECT_EQ(get_fn(), primary.get());
+    EXPECT_EQ(worker_seen.load(std::memory_order_acquire), worker);
+    EXPECT_EQ(get_fn(), primary);
 
     ASSERT_EQ(BML_RESULT_OK, set_fn(nullptr));
     EXPECT_EQ(get_fn(), nullptr);

@@ -154,6 +154,35 @@ TEST_F(CoreErrorsGuardTests, SuccessfulLambdaReturnsOkWithoutLog) {
     EXPECT_TRUE(logs_.empty());
 }
 
+TEST_F(CoreErrorsGuardTests, OrdinaryFailureSetsDefaultLastError) {
+    auto result = BML::Core::GuardResult("guard.default", "bmlTestDefaultFailure", [] {
+        return BML_RESULT_INVALID_ARGUMENT;
+    });
+
+    EXPECT_EQ(result, BML_RESULT_INVALID_ARGUMENT);
+
+    BML_ErrorInfo info = BML_ERROR_INFO_INIT;
+    ASSERT_EQ(BML_RESULT_OK, BML::Core::GetLastErrorInfo(&info));
+    EXPECT_EQ(info.result_code, BML_RESULT_INVALID_ARGUMENT);
+    ASSERT_NE(info.message, nullptr);
+    EXPECT_STREQ(info.message, "Invalid argument");
+    ASSERT_NE(info.api_name, nullptr);
+    EXPECT_STREQ(info.api_name, "bmlTestDefaultFailure");
+}
+
+TEST_F(CoreErrorsGuardTests, SuccessfulGuardClearsPreviousLastError) {
+    BML::Core::SetLastError(BML_RESULT_FAIL, "stale", "bmlTestStale");
+
+    auto result = BML::Core::GuardResult("guard.clear", [] {
+        return BML_RESULT_OK;
+    });
+
+    EXPECT_EQ(result, BML_RESULT_OK);
+
+    BML_ErrorInfo info = BML_ERROR_INFO_INIT;
+    EXPECT_EQ(BML_RESULT_NOT_FOUND, BML::Core::GetLastErrorInfo(&info));
+}
+
 TEST_F(CoreErrorsGuardTests, GuardVoidTranslatesExceptionsAndLogs) {
     InstallCaptureSink();
 

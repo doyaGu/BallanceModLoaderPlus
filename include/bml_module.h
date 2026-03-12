@@ -28,7 +28,7 @@
  *
  * namespace {
  * BML_Result OnAttach(const BML_ModAttachArgs *args) {
- *     BML_Result res = bmlLoadAPI(args->get_proc);
+ *     BML_Result res = bmlLoadAPI(args->get_proc, args->get_proc_by_id);
  *     if (res != BML_RESULT_OK) {
  *         return res;
  *     }

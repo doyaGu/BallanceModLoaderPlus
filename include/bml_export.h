@@ -3,6 +3,7 @@
 
 #include "bml_types.h"
 #include "bml_errors.h"   /* Includes diagnostics */
+#include "bml_bootstrap.h"
 #include "bml_version.h"
 #include "bml_api_ids.h"
 
@@ -44,15 +45,15 @@ typedef enum BML_ModEntrypointCommand {
 	BML_MOD_ENTRYPOINT_DETACH = 2
 } BML_ModEntrypointCommand;
 
-#define BML_MOD_ENTRYPOINT_API_VERSION 1u
+#define BML_MOD_ENTRYPOINT_API_VERSION 2u
 
 typedef struct BML_ModAttachArgs {
 	uint32_t struct_size;
 	uint32_t api_version;
 	BML_Mod mod;
 	PFN_BML_GetProcAddress get_proc;
-	PFN_BML_GetProcAddressById get_proc_by_id;  /* Fast path (v0.4.1+) */
-	PFN_BML_GetApiId get_api_id;                /* Get ID from name (v0.4.1+) */
+	PFN_BML_GetProcAddressById get_proc_by_id;
+	PFN_BML_GetApiId get_api_id;
 	void *reserved;
 } BML_ModAttachArgs;
 
@@ -69,12 +70,16 @@ typedef BML_Result (*PFN_BML_ModEntrypoint)(BML_ModEntrypointCommand command, vo
 BML_API BML_Result bmlAttach(void);           /**< Initialize BML Core only */
 BML_API BML_Result bmlDiscoverModules(void);  /**< Scan and validate mods (Phase 1) */
 BML_API BML_Result bmlLoadModules(void);      /**< Load discovered mods (Phase 2) */
+BML_API BML_Result bmlBootstrap(const BML_BootstrapConfig *config);
+BML_API void bmlUpdate(void);                 /**< Drive deferred runtime work (main loop) */
 BML_API void bmlDetach(void);
+BML_API void bmlShutdown(void);
+BML_API BML_BootstrapState bmlGetBootstrapState(void);
 
-/* API lookup - String-based (legacy, compatible) */
+/* API lookup - String-based */
 BML_API void *bmlGetProcAddress(const char *proc_name);
 
-/* API lookup - ID-based (fast path, v0.4.1+) */
+/* API lookup - ID-based fast path */
 /**
  * @brief Get API pointer using pre-computed ID (fast path)
  * 

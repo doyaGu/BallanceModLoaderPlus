@@ -31,10 +31,12 @@ BML_BEGIN_CDECLS
 
 /*
  * Call bmlLoadAPI at the very beginning of your mod entry point to populate
- * the global function pointers. If the return value is not OK, abort your
- * initialization and propagate the error back to the host.
+ * the global function pointers. Name-based lookup is mandatory because mods
+ * may need to query dynamically appended APIs; ID-based lookup is an optional
+ * fast path for the built-in stable API surface.
  */
-BML_Result bmlLoadAPI(PFN_BML_GetProcAddress get_proc);
+BML_Result bmlLoadAPI(PFN_BML_GetProcAddress get_proc,
+					  PFN_BML_GetProcAddressById get_proc_by_id);
 
 /*
  * Reset every global function pointer back to nullptr. Call this during mod

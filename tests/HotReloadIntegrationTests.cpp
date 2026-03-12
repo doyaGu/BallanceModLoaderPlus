@@ -187,8 +187,12 @@ TEST(HotReloadIntegrationTests, ReloadsSampleModWhenManifestChanges) {
     BML::Core::ModuleRuntime runtime;
     RuntimeGuard runtime_guard{runtime};
 
+    BML::Core::ModuleBootstrapDiagnostics discover_diag;
+    ASSERT_TRUE(runtime.DiscoverAndValidate(mods_dir.wstring(), discover_diag))
+        << "Discover failed: " << discover_diag.dependency_error.message;
+
     BML::Core::ModuleBootstrapDiagnostics initial_diag;
-    ASSERT_TRUE(runtime.Initialize(mods_dir.wstring(), initial_diag))
+    ASSERT_TRUE(runtime.LoadDiscovered(initial_diag))
         << "Initial load failed: " << initial_diag.load_error.message;
 
     ASSERT_TRUE(WaitForLogSequence(log_path, {"init:1"}, 5s))

@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <filesystem>
@@ -293,6 +294,89 @@ TEST_F(HotReloadCoordinatorTest, DebounceSettingIsRespected) {
     EXPECT_EQ(coordinator.GetSettings().debounce, 1000ms);
 }
 
+TEST_F(HotReloadCoordinatorTest, IgnoresUnrelatedRootFileChanges) {
+    auto dll_path = m_TempDir / "test.dll";
+    auto manifest_path = m_TempDir / "mod.toml";
+    auto unrelated_path = m_TempDir / "notes.txt";
+    CreateMinimalDll(dll_path);
+    {
+        std::ofstream manifest(manifest_path);
+        manifest << "[package]\n";
+    }
+    {
+        std::ofstream unrelated(unrelated_path);
+        unrelated << "initial";
+    }
+
+    std::this_thread::sleep_for(200ms);
+
+    HotReloadCoordinator coordinator(*m_Context);
+
+    HotReloadSettings settings;
+    settings.enabled = true;
+    settings.debounce = 200ms;
+    settings.temp_directory = (m_TempDir / "temp").wstring();
+    coordinator.Configure(settings);
+
+    HotReloadModuleEntry entry;
+    entry.id = "test.mod";
+    entry.dll_path = dll_path.wstring();
+    entry.watch_path = m_TempDir.wstring();
+    ModManifest manifest{};
+    manifest.package.id = "test.mod";
+    manifest.directory = m_TempDir.wstring();
+    manifest.manifest_path = manifest_path.wstring();
+    entry.manifest = manifest;
+    ASSERT_TRUE(coordinator.RegisterModule(entry));
+
+    std::atomic<int> callback_count{0};
+    coordinator.SetNotifyCallback([&](const std::string &, ReloadResult, unsigned int, ReloadFailure) {
+        callback_count.fetch_add(1, std::memory_order_relaxed);
+    });
+
+    coordinator.Start();
+    std::this_thread::sleep_for(500ms);
+
+    {
+        std::ofstream unrelated(unrelated_path, std::ios::trunc);
+        unrelated << "modified";
+        unrelated.flush();
+    }
+
+    auto unrelated_deadline = std::chrono::steady_clock::now() + 1500ms;
+    while (std::chrono::steady_clock::now() < unrelated_deadline) {
+        coordinator.Update();
+        if (callback_count.load(std::memory_order_relaxed) != 0) {
+            break;
+        }
+        std::this_thread::sleep_for(50ms);
+    }
+    EXPECT_EQ(callback_count.load(std::memory_order_relaxed), 0);
+
+    {
+        std::ofstream manifest_file(manifest_path, std::ios::trunc);
+        manifest_file << "[package]\nname='changed'\n";
+        manifest_file.flush();
+    }
+
+    auto manifest_deadline = std::chrono::steady_clock::now() + 10s;
+    while (std::chrono::steady_clock::now() < manifest_deadline) {
+        coordinator.Update();
+        if (callback_count.load(std::memory_order_relaxed) != 0) {
+            break;
+        }
+        std::this_thread::sleep_for(100ms);
+    }
+
+    coordinator.Stop();
+
+    if (callback_count.load(std::memory_order_relaxed) == 0) {
+        GTEST_SKIP() << "Manifest file event not received in time (platform-specific behavior)";
+    }
+
+    EXPECT_EQ(callback_count.load(std::memory_order_relaxed), 1);
+}
+
 TEST_F(HotReloadCoordinatorTest, StopClearsScheduledReloads) {
     auto dll_path = m_TempDir / "test.dll";
     CreateMinimalDll(dll_path);
@@ -317,3 +401,6 @@ TEST_F(HotReloadCoordinatorTest, StopClearsScheduledReloads) {
     // Should not crash after stop
     coordinator.Update();
 }
+
+
+

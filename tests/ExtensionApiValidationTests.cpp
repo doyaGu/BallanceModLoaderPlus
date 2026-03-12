@@ -20,6 +20,9 @@ namespace {
 class ExtensionApiValidationTests : public ::testing::Test {
 protected:
     void SetUp() override {
+        Context::SetCurrentModule(nullptr);
+        Context::Instance().Cleanup();
+        Context::Instance().Initialize(bmlGetApiVersion());
         ApiRegistry::Instance().Clear();
         Context::SetCurrentModule(nullptr);
         BML::Core::RegisterExtensionApis();
@@ -27,7 +30,7 @@ protected:
 
     void TearDown() override {
         Context::SetCurrentModule(nullptr);
-        mods_.clear();
+        Context::Instance().Cleanup();
         manifests_.clear();
     }
 
@@ -49,15 +52,20 @@ protected:
         manifest->directory = L"";
         manifest->manifest_path = L"";
         auto handle = Context::Instance().CreateModHandle(*manifest);
-        BML_Mod mod = handle.get();
+
+        BML::Core::LoadedModule module{};
+        module.id = id;
+        module.manifest = manifest.get();
+        module.mod_handle = std::move(handle);
+        Context::Instance().AddLoadedModule(std::move(module));
+
+        BML_Mod mod = Context::Instance().GetModHandleById(id);
         manifests_.push_back(std::move(manifest));
-        mods_.push_back(std::move(handle));
         return mod;
     }
 
 private:
     std::vector<std::unique_ptr<BML::Core::ModManifest>> manifests_;
-    std::vector<std::unique_ptr<BML_Mod_T>> mods_;
 };
 
 TEST_F(ExtensionApiValidationTests, RegisterQueryLoadEnumerateAndUnregister) {
@@ -325,6 +333,105 @@ TEST_F(ExtensionApiValidationTests, ExtensionCountWorks) {
     uint32_t new_count = 0;
     ASSERT_EQ(BML_RESULT_OK, count(nullptr, &new_count));
     EXPECT_EQ(new_count, initial_count + 2);
+}
+
+TEST_F(ExtensionApiValidationTests, DeprecatedStateIsReportedByQueryAndLoad) {
+    auto reg = Lookup<PFN_BML_ExtensionRegister>("bmlExtensionRegister");
+    auto dep = Lookup<PFN_BML_ExtensionDeprecate>("bmlExtensionDeprecate");
+    auto query = Lookup<PFN_BML_ExtensionQuery>("bmlExtensionQuery");
+    auto load = Lookup<PFN_BML_ExtensionLoad>("bmlExtensionLoad");
+    auto unload = Lookup<PFN_BML_ExtensionUnload>("bmlExtensionUnload");
+
+    ASSERT_NE(reg, nullptr);
+    ASSERT_NE(dep, nullptr);
+    ASSERT_NE(query, nullptr);
+    ASSERT_NE(load, nullptr);
+    ASSERT_NE(unload, nullptr);
+
+    auto provider = MakeMod("deprecated.provider");
+    Context::SetCurrentModule(provider);
+
+    int api = 11;
+    BML_ExtensionDesc desc = BML_EXTENSION_DESC_INIT;
+    desc.name = "Deprecated.Extension";
+    desc.version = bmlMakeVersion(1, 0, 0);
+    desc.api_table = &api;
+    desc.api_size = sizeof(api);
+    desc.description = "deprecated test";
+    ASSERT_EQ(BML_RESULT_OK, reg(&desc));
+
+    ASSERT_EQ(BML_RESULT_OK, dep("Deprecated.Extension", "Replacement.Extension", "moved"));
+
+    BML_ExtensionInfo info = BML_EXTENSION_INFO_INIT;
+    ASSERT_EQ(BML_RESULT_OK, query("Deprecated.Extension", &info));
+    EXPECT_EQ(BML_EXTENSION_STATE_DEPRECATED, info.state);
+    ASSERT_NE(info.replacement_name, nullptr);
+    EXPECT_STREQ("Replacement.Extension", info.replacement_name);
+    ASSERT_NE(info.deprecation_message, nullptr);
+    EXPECT_STREQ("moved", info.deprecation_message);
+
+    void *loaded = nullptr;
+    BML_Version req = bmlMakeVersion(1, 0, 0);
+    BML_ExtensionInfo load_info = BML_EXTENSION_INFO_INIT;
+    ASSERT_EQ(BML_RESULT_OK, load("Deprecated.Extension", &req, &loaded, &load_info));
+    EXPECT_EQ(BML_EXTENSION_STATE_DEPRECATED, load_info.state);
+    ASSERT_EQ(BML_RESULT_OK, unload("Deprecated.Extension"));
+}
+
+TEST_F(ExtensionApiValidationTests, QueryInfoPointersStayStableAcrossQueries) {
+    auto reg = Lookup<PFN_BML_ExtensionRegister>("bmlExtensionRegister");
+    auto query = Lookup<PFN_BML_ExtensionQuery>("bmlExtensionQuery");
+
+    ASSERT_NE(reg, nullptr);
+    ASSERT_NE(query, nullptr);
+
+    auto provider = MakeMod("stable.provider");
+    Context::SetCurrentModule(provider);
+
+    int api1 = 1;
+    const char *tags1[] = {"alpha"};
+    BML_ExtensionDesc first = BML_EXTENSION_DESC_INIT;
+    first.name = "Stable.First";
+    first.version = bmlMakeVersion(1, 0, 0);
+    first.api_table = &api1;
+    first.api_size = sizeof(api1);
+    first.description = "first description";
+    first.tags = tags1;
+    first.tag_count = 1;
+    ASSERT_EQ(BML_RESULT_OK, reg(&first));
+
+    int api2 = 2;
+    const char *tags2[] = {"beta"};
+    BML_ExtensionDesc second = BML_EXTENSION_DESC_INIT;
+    second.name = "Stable.Second";
+    second.version = bmlMakeVersion(1, 0, 0);
+    second.api_table = &api2;
+    second.api_size = sizeof(api2);
+    second.description = "second description";
+    second.tags = tags2;
+    second.tag_count = 1;
+    ASSERT_EQ(BML_RESULT_OK, reg(&second));
+
+    BML_ExtensionInfo first_info = BML_EXTENSION_INFO_INIT;
+    BML_ExtensionInfo second_info = BML_EXTENSION_INFO_INIT;
+    ASSERT_EQ(BML_RESULT_OK, query("Stable.First", &first_info));
+    ASSERT_EQ(BML_RESULT_OK, query("Stable.Second", &second_info));
+
+    ASSERT_NE(first_info.name, nullptr);
+    EXPECT_STREQ("Stable.First", first_info.name);
+    ASSERT_NE(first_info.description, nullptr);
+    EXPECT_STREQ("first description", first_info.description);
+    ASSERT_NE(first_info.tags, nullptr);
+    ASSERT_GE(first_info.tag_count, 1u);
+    EXPECT_STREQ("alpha", first_info.tags[0]);
+
+    ASSERT_NE(second_info.name, nullptr);
+    EXPECT_STREQ("Stable.Second", second_info.name);
+    ASSERT_NE(second_info.description, nullptr);
+    EXPECT_STREQ("second description", second_info.description);
+    ASSERT_NE(second_info.tags, nullptr);
+    ASSERT_GE(second_info.tag_count, 1u);
+    EXPECT_STREQ("beta", second_info.tags[0]);
 }
 
 } // namespace

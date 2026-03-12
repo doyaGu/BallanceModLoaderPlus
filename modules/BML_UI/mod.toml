@@ -1,0 +1,9 @@
+[package]
+id = "com.bml.ui"
+name = "BML UI System"
+version = "0.4.0"
+authors = ["Gamepiaynmo", "YingChe", "Kakuty"]
+description = "ImGui overlay lifecycle and base UI infrastructure for BML"
+entry = "BML_UI.dll"
+
+capabilities = ["ui.overlay", "ui.imgui"]

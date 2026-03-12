@@ -70,7 +70,7 @@ BML_Result HandleAttach(const BML_ModAttachArgs *args) {
     g_State.mod = args->mod;
     g_State.log_path = GetLogPath();
 
-    BML_Result res = bmlLoadAPI(args->get_proc);
+    BML_Result res = bmlLoadAPI(args->get_proc, args->get_proc_by_id);
     if (res != BML_RESULT_OK)
         return res;
 

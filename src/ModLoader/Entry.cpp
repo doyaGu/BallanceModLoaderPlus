@@ -23,6 +23,7 @@
 #include "CKContext.h"
 
 // BML Core types only (no linking)
+#include "bml_bootstrap.h"
 #include "bml_types.h"
 #include "bml_errors.h"
 
@@ -35,17 +36,17 @@
 static HMODULE s_hBML = nullptr;
 
 // Function pointer types
-typedef BML_Result (*PFN_bmlAttach)(void);
-typedef BML_Result (*PFN_bmlDiscoverModules)(void);
-typedef BML_Result (*PFN_bmlLoadModules)(void);
-typedef void (*PFN_bmlDetach)(void);
+typedef BML_Result (*PFN_bmlBootstrap)(const BML_BootstrapConfig *config);
+typedef void (*PFN_bmlShutdown)(void);
+typedef BML_BootstrapState (*PFN_bmlGetBootstrapState)(void);
+typedef void (*PFN_bmlUpdate)(void);
 typedef void* (*PFN_bmlGetProcAddress)(const char*);
 
 // Function pointers
-static PFN_bmlAttach s_bmlAttach = nullptr;
-static PFN_bmlDiscoverModules s_bmlDiscoverModules = nullptr;
-static PFN_bmlLoadModules s_bmlLoadModules = nullptr;
-static PFN_bmlDetach s_bmlDetach = nullptr;
+static PFN_bmlBootstrap s_bmlBootstrap = nullptr;
+static PFN_bmlShutdown s_bmlShutdown = nullptr;
+static PFN_bmlGetBootstrapState s_bmlGetBootstrapState = nullptr;
+static PFN_bmlUpdate s_bmlUpdate = nullptr;
 static PFN_bmlGetProcAddress s_bmlGetProcAddress = nullptr;
 
 static bool LoadBMLAPI() {
@@ -55,13 +56,13 @@ static bool LoadBMLAPI() {
         return false;
     }
 
-    s_bmlAttach = (PFN_bmlAttach)::GetProcAddress(s_hBML, "bmlAttach");
-    s_bmlDiscoverModules = (PFN_bmlDiscoverModules)::GetProcAddress(s_hBML, "bmlDiscoverModules");
-    s_bmlLoadModules = (PFN_bmlLoadModules)::GetProcAddress(s_hBML, "bmlLoadModules");
-    s_bmlDetach = (PFN_bmlDetach)::GetProcAddress(s_hBML, "bmlDetach");
+    s_bmlBootstrap = (PFN_bmlBootstrap)::GetProcAddress(s_hBML, "bmlBootstrap");
+    s_bmlShutdown = (PFN_bmlShutdown)::GetProcAddress(s_hBML, "bmlShutdown");
+    s_bmlGetBootstrapState = (PFN_bmlGetBootstrapState)::GetProcAddress(s_hBML, "bmlGetBootstrapState");
+    s_bmlUpdate = (PFN_bmlUpdate)::GetProcAddress(s_hBML, "bmlUpdate");
     s_bmlGetProcAddress = (PFN_bmlGetProcAddress)::GetProcAddress(s_hBML, "bmlGetProcAddress");
 
-    if (!s_bmlAttach || !s_bmlDiscoverModules || !s_bmlLoadModules || !s_bmlDetach || !s_bmlGetProcAddress) {
+    if (!s_bmlBootstrap || !s_bmlShutdown || !s_bmlGetBootstrapState || !s_bmlGetProcAddress) {
         OutputDebugStringA("ModLoader: Fatal - BML.dll missing required exports.\n");
         ::FreeLibrary(s_hBML);
         s_hBML = nullptr;
@@ -72,10 +73,10 @@ static bool LoadBMLAPI() {
 }
 
 static void UnloadBMLAPI() {
-    s_bmlAttach = nullptr;
-    s_bmlDiscoverModules = nullptr;
-    s_bmlLoadModules = nullptr;
-    s_bmlDetach = nullptr;
+    s_bmlBootstrap = nullptr;
+    s_bmlShutdown = nullptr;
+    s_bmlGetBootstrapState = nullptr;
+    s_bmlUpdate = nullptr;
     s_bmlGetProcAddress = nullptr;
 
     if (s_hBML) {
@@ -87,6 +88,12 @@ static void UnloadBMLAPI() {
 // Accessor for ModManager to get bmlGetProcAddress
 void* ModLoaderGetProcAddress(const char* name) {
     return s_bmlGetProcAddress ? s_bmlGetProcAddress(name) : nullptr;
+}
+
+void ModLoaderUpdateCore() {
+    if (s_bmlUpdate) {
+        s_bmlUpdate();
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -142,16 +149,15 @@ PLUGIN_EXPORT CKPluginInfo *CKGetPluginInfo(int Index) {
 PLUGIN_EXPORT void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg);
 
 void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg) {
-    // Discover modules
-    if (!s_bmlDiscoverModules || s_bmlDiscoverModules() != BML_RESULT_OK) {
-        OutputDebugStringA("ModLoader: Fatal - Unable to discover modules.\n");
-        if (s_bmlDetach) s_bmlDetach();
+    BML_BootstrapConfig config = BML_BOOTSTRAP_CONFIG_INIT;
+    if (!s_bmlBootstrap || s_bmlBootstrap(&config) != BML_RESULT_OK) {
+        OutputDebugStringA("ModLoader: Fatal - Unable to bootstrap modules.\n");
+        if (s_bmlShutdown) s_bmlShutdown();
         return;
     }
 
-    // Load discovered modules
-    if (!s_bmlLoadModules || s_bmlLoadModules() != BML_RESULT_OK) {
-        OutputDebugStringA("ModLoader: Warning - Failed to load some modules.\n");
+    if (s_bmlGetBootstrapState && s_bmlGetBootstrapState() != BML_BOOTSTRAP_STATE_READY) {
+        OutputDebugStringA("ModLoader: Warning - Bootstrap completed without reaching ready state.\n");
     }
 
     RegisterBehavior(reg, FillBehaviorHookBlockDecl);
@@ -213,38 +219,37 @@ static bool UnhookCreateCKBehaviorPrototypeRuntime() {
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
     switch (fdwReason) {
-    case DLL_PROCESS_ATTACH:
-        // Phase 0: Load BML.dll dynamically
+    case DLL_PROCESS_ATTACH: {
         if (!LoadBMLAPI()) {
             return FALSE;
         }
 
-        // Phase 1: Initialize BML Core microkernel
-        if (!s_bmlAttach || s_bmlAttach() != BML_RESULT_OK) {
-            OutputDebugStringA("ModLoader: Fatal - Unable to initialize BML Core microkernel.\n");
+        BML_BootstrapConfig config = BML_BOOTSTRAP_CONFIG_INIT;
+        config.flags = BML_BOOTSTRAP_FLAG_SKIP_DISCOVERY | BML_BOOTSTRAP_FLAG_SKIP_LOAD;
+        if (!s_bmlBootstrap || s_bmlBootstrap(&config) != BML_RESULT_OK) {
+            OutputDebugStringA("ModLoader: Fatal - Unable to initialize BML Core bootstrap.\n");
             UnloadBMLAPI();
             return FALSE;
         }
 
-        // Phase 2: Initialize MinHook
         if (MH_Initialize() != MH_OK) {
             OutputDebugStringA("ModLoader: Fatal - Unable to initialize MinHook.\n");
-            if (s_bmlDetach) s_bmlDetach();
+            if (s_bmlShutdown) s_bmlShutdown();
             UnloadBMLAPI();
             return FALSE;
         }
 
-        // Phase 3: Hook behavior prototype creation
         if (!HookCreateCKBehaviorPrototypeRuntime()) {
             OutputDebugStringA("ModLoader: Fatal - Unable to hook CKBehaviorPrototypeRuntime.\n");
             MH_Uninitialize();
-            if (s_bmlDetach) s_bmlDetach();
+            if (s_bmlShutdown) s_bmlShutdown();
             UnloadBMLAPI();
             return FALSE;
         }
 
         OutputDebugStringA("ModLoader: Initialized successfully.\n");
         break;
+    }
 
     case DLL_PROCESS_DETACH:
         // Cleanup in reverse order
@@ -254,10 +259,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
             OutputDebugStringA("ModLoader: Warning - Unable to uninitialize MinHook.\n");
         }
 
-        // Shutdown Core microkernel
-        if (s_bmlDetach) s_bmlDetach();
+        if (s_bmlShutdown) s_bmlShutdown();
 
-        // Unload BML.dll
         UnloadBMLAPI();
 
         OutputDebugStringA("ModLoader: Shutdown complete.\n");

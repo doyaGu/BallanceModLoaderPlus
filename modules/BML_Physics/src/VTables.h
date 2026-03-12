@@ -1,4 +1,4 @@
-#ifndef BML_VTABLES_H
+﻿#ifndef BML_VTABLES_H
 #define BML_VTABLES_H
 
 #include "CKBaseManager.h"

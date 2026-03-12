@@ -20,11 +20,13 @@ namespace bml {
 
     /**
      * @brief Load all BML API function pointers
-     * @param get_proc Function to retrieve API pointers
+     * @param get_proc Function to retrieve API pointers by name
+     * @param get_proc_by_id Optional function to retrieve API pointers by stable ID
      * @return true if successful
      */
-    inline bool LoadAPI(PFN_BML_GetProcAddress get_proc) {
-        return bmlLoadAPI(get_proc) == BML_RESULT_OK;
+    inline bool LoadAPI(PFN_BML_GetProcAddress get_proc,
+                        PFN_BML_GetProcAddressById get_proc_by_id = nullptr) {
+        return bmlLoadAPI(get_proc, get_proc_by_id) == BML_RESULT_OK;
     }
 
     /**

@@ -279,6 +279,15 @@ typedef struct BML_BootstrapDependencyError {
 } BML_BootstrapDependencyError;
 
 /**
+ * @brief Non-fatal dependency warning details
+ */
+typedef struct BML_BootstrapDependencyWarning {
+    const char *module_id;      /**< Module that emitted the warning */
+    const char *dependency_id;  /**< Dependency referenced by the warning */
+    const char *message;        /**< Warning message */
+} BML_BootstrapDependencyWarning;
+
+/**
  * @brief Module loading error details
  */
 typedef struct BML_BootstrapLoadError {
@@ -292,14 +301,18 @@ typedef struct BML_BootstrapLoadError {
 
 /**
  * @brief Complete bootstrap diagnostics
- * 
- * Returned by bmlAttach() to provide detailed error information
- * when mod loading fails.
+ *
+ * Snapshot of diagnostics produced by the staged bootstrap flow.
+ *
+ * Query this after bmlDiscoverModules() to inspect manifest and dependency
+ * issues, and again after bmlLoadModules() to inspect module load failures.
  */
 typedef struct BML_BootstrapDiagnostics {
     const BML_BootstrapManifestError *manifest_errors;  /**< Array of manifest errors */
     uint32_t manifest_error_count;                      /**< Number of manifest errors */
     BML_BootstrapDependencyError dependency_error;      /**< Dependency resolution error */
+    const BML_BootstrapDependencyWarning *dependency_warnings; /**< Array of non-fatal dependency warnings */
+    uint32_t dependency_warning_count;                  /**< Number of dependency warnings */
     BML_BootstrapLoadError load_error;                  /**< Module load error */
     const char **load_order;                            /**< Resolved load order (for debugging) */
     uint32_t load_order_count;                          /**< Number of modules in load order */

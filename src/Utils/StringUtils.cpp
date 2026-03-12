@@ -9,6 +9,7 @@
 #include <Windows.h>
 #else
 #include <climits>
+#include <cwctype>
 #include <locale>
 #endif
 
@@ -505,6 +506,7 @@ namespace utils {
         return out;
     }
 
+#if defined(_WIN32)
     DWORD MapFlags(uint32_t f) {
         DWORD w = 0;
         if (f & kLinguisticIgnoreCase) w |= LINGUISTIC_IGNORECASE;
@@ -550,4 +552,27 @@ namespace utils {
         }
         return ToTri(r);
     }
+#else
+    int CompareString(const std::wstring &a, const std::wstring &b,
+                      uint32_t flags, const std::wstring &localeName) {
+        (void) localeName;
+        if (flags & kLinguisticIgnoreCase) {
+            std::wstring lowerA = a;
+            std::wstring lowerB = b;
+            for (auto &ch : lowerA) ch = static_cast<wchar_t>(std::towlower(ch));
+            for (auto &ch : lowerB) ch = static_cast<wchar_t>(std::towlower(ch));
+            if (lowerA < lowerB) return -1;
+            if (lowerA > lowerB) return 1;
+            return 0;
+        }
+        if (a < b) return -1;
+        if (a > b) return 1;
+        return 0;
+    }
+
+    int CompareString(const std::string &aUtf8, const std::string &bUtf8,
+                      uint32_t flags, const std::wstring &localeName) {
+        return CompareString(Utf8ToUtf16(aUtf8), Utf8ToUtf16(bUtf8), flags, localeName);
+    }
+#endif
 }

@@ -1,0 +1,15 @@
+[package]
+id = "com.bml.mapmenu"
+name = "BML Map Menu"
+version = "0.4.0"
+authors = ["BML Team"]
+description = "Module-native custom map browser and loader"
+entry = "BML_MapMenu.dll"
+
+[dependencies]
+"com.bml.ui" = ">=0.4.0"
+"com.bml.console" = ">=0.4.0"
+"com.bml.input" = ">=0.4.0"
+"com.bml.objectload" = ">=0.4.0"
+
+capabilities = ["menu.custom-maps", "custom-map.load"]

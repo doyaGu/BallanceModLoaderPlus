@@ -15,6 +15,7 @@
 #include "bml_export.h"
 #include "bml_hot_reload.h"
 #include "bml_imc.h"
+#include "bml_topics.h"
 
 #include "Context.h"
 #include "HotReloadCoordinator.h"
@@ -256,7 +257,7 @@ namespace BML::Core {
         }
 
         auto &ctx = Context::Instance();
-        BroadcastLifecycleEvent("BML/System/ModUnload", ctx.GetLoadedModuleSnapshot());
+        BroadcastLifecycleEvent(BML_TOPIC_SYSTEM_MOD_UNLOAD, ctx.GetLoadedModuleSnapshot());
         ctx.ShutdownModules();
         ctx.ClearManifests();
         // Note: Extensions are cleaned up per-provider in ShutdownModules()
@@ -311,7 +312,7 @@ namespace BML::Core {
             ctx.AddLoadedModule(std::move(module));
         }
 
-        BroadcastLifecycleEvent("BML/System/ModReload", ctx.GetLoadedModuleSnapshot());
+        BroadcastLifecycleEvent(BML_TOPIC_SYSTEM_MOD_RELOAD, ctx.GetLoadedModuleSnapshot());
         ApplyDiagnostics(out_diag);
         return true;
     }

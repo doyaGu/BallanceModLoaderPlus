@@ -1,5 +1,7 @@
 # MinHook
-add_subdirectory(minhook EXCLUDE_FROM_ALL)
+if (WIN32)
+    add_subdirectory(minhook EXCLUDE_FROM_ALL)
+endif ()
 
 # zip
 add_subdirectory(zip EXCLUDE_FROM_ALL)

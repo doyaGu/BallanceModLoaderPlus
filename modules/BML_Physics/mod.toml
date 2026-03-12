@@ -1,0 +1,9 @@
+[package]
+id = "com.bml.physics"
+name = "BML Physics Module"
+version = "0.4.0"
+authors = ["BML Team"]
+description = "Physics hook module for BML - provides CKIpionManager integration and Physicalize callbacks"
+
+[dependencies]
+# No dependencies - this is a core system module

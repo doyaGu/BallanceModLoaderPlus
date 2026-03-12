@@ -11,8 +11,10 @@
  * - Shutdown hook registration
  * 
  * @section core_threading Threading Model
- * All Core APIs are thread-safe unless otherwise noted. Context reference
- * counting uses atomic operations, and thread-local module binding uses TLS.
+ * Core APIs support concurrent access for thread-local state, retained context
+ * handles, and internally synchronized stores. Global lifecycle transitions
+ * such as attach, discover, load, and detach should still be serialized by
+ * the host.
  * 
  * @section core_lifecycle Lifecycle
  * The global context is created during BML initialization and remains valid
@@ -195,9 +197,9 @@ typedef BML_Result (*PFN_BML_ContextGetUserData)(BML_Context ctx, const char *ke
  * Returns the version of the currently running BML runtime. This may
  * differ from the API version if the runtime has been updated.
  * 
- * @return Pointer to static version structure, or NULL on error
- * 
- * @threadsafe Yes - returns pointer to static data
+ * @return Pointer to a thread-local version snapshot, or NULL on error
+ *
+ * @threadsafe Yes - each calling thread receives its own stable snapshot
  * 
  * @code
  * const BML_Version* ver = bmlGetRuntimeVersion();
@@ -394,6 +396,29 @@ typedef BML_Result (*PFN_BML_SetCurrentModule)(BML_Mod mod);
  * @endcode
  */
 typedef BML_Mod (*PFN_BML_GetCurrentModule)(void);
+
+/**
+ * @brief Function pointer type for getting the number of loaded modules.
+ *
+ * Returns the number of module handles currently loaded into the runtime.
+ * The result can be paired with PFN_BML_GetLoadedModuleAt to iterate all
+ * loaded modules.
+ *
+ * @return Number of currently loaded modules.
+ *
+ * @threadsafe Yes
+ */
+typedef uint32_t (*PFN_BML_GetLoadedModuleCount)(void);
+
+/**
+ * @brief Function pointer type for getting a loaded module handle by index.
+ *
+ * @param[in] index Zero-based module index in the current loaded-module snapshot.
+ * @return Module handle for the given index, or NULL if the index is out of range.
+ *
+ * @threadsafe Yes
+ */
+typedef BML_Mod (*PFN_BML_GetLoadedModuleAt)(uint32_t index);
 
 /** @} */ /* end CoreTLS group */
 
@@ -644,6 +669,12 @@ extern PFN_BML_SetCurrentModule        bmlSetCurrentModule;
 
 /** @brief Get thread-local module @see PFN_BML_GetCurrentModule */
 extern PFN_BML_GetCurrentModule        bmlGetCurrentModule;
+
+/** @brief Get loaded module count @see PFN_BML_GetLoadedModuleCount */
+extern PFN_BML_GetLoadedModuleCount    bmlGetLoadedModuleCount;
+
+/** @brief Get loaded module by index @see PFN_BML_GetLoadedModuleAt */
+extern PFN_BML_GetLoadedModuleAt       bmlGetLoadedModuleAt;
 
 /** @brief Query Core capabilities @see PFN_BML_CoreGetCaps */
 extern PFN_BML_CoreGetCaps             bmlCoreGetCaps;

@@ -160,11 +160,11 @@ def render_entries_array(entries: list[ManifestEntry], groups: list[ManifestGrou
                 lines.append(f"    /* {group.name} */")
                 for entry in group.apis:
                     required = "1" if entry.required else "0"
-                    lines.append(f'    {{"{entry.pointer}", BML_ASSIGN_PTR({entry.pointer}), {required}}},')
+                    lines.append(f'    {{"{entry.pointer}", BML_API_ID_{entry.pointer}, BML_ASSIGN_PTR({entry.pointer}), {required}}},')
     else:
         for entry in entries:
             required = "1" if entry.required else "0"
-            lines.append(f'    {{"{entry.pointer}", BML_ASSIGN_PTR({entry.pointer}), {required}}},')
+            lines.append(f'    {{"{entry.pointer}", BML_API_ID_{entry.pointer}, BML_ASSIGN_PTR({entry.pointer}), {required}}},')
     
     lines.append("};")
     return "\n".join(lines)
@@ -218,6 +218,7 @@ def generate_loader(root: Path) -> str:
         "",
         "typedef struct BML_ApiEntry {",
         "    const char *name;",
+        "    BML_ApiId id;",
         "    void **target;",
         "    int required;",
         "} BML_ApiEntry;",
@@ -230,14 +231,19 @@ def generate_loader(root: Path) -> str:
         " * Public Loader Functions",
         " * ======================================================================== */",
         "",
-        "BML_Result bmlLoadAPI(PFN_BML_GetProcAddress get_proc) {",
+        "BML_Result bmlLoadAPI(PFN_BML_GetProcAddress get_proc,",
+        "                      PFN_BML_GetProcAddressById get_proc_by_id) {",
         "    size_t i;",
         "",
         "    if (!get_proc)",
         "        return BML_RESULT_INVALID_ARGUMENT;",
         "",
         "    for (i = 0; i < " + entry_count + "; ++i) {",
-        "        void *proc = get_proc(kBmlApiEntries[i].name);",
+        "        void *proc = NULL;",
+        "        if (get_proc_by_id)",
+        "            proc = get_proc_by_id(kBmlApiEntries[i].id);",
+        "        if (!proc)",
+        "            proc = get_proc(kBmlApiEntries[i].name);",
         "        if (!proc) {",
         "            if (kBmlApiEntries[i].required) {",
         "                bmlUnloadAPI();",

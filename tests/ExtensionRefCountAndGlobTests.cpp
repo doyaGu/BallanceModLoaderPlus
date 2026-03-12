@@ -34,6 +34,9 @@ using PFN_ExtensionCount = BML_Result (*)(const BML_ExtensionFilter *, uint32_t 
 class ExtensionRefCountTests : public ::testing::Test {
 protected:
     void SetUp() override {
+        Context::SetCurrentModule(nullptr);
+        Context::Instance().Cleanup();
+        Context::Instance().Initialize(bmlGetApiVersion());
         ApiRegistry::Instance().Clear();
         Context::SetCurrentModule(nullptr);
         BML::Core::RegisterExtensionApis();
@@ -41,7 +44,7 @@ protected:
 
     void TearDown() override {
         Context::SetCurrentModule(nullptr);
-        mods_.clear();
+        Context::Instance().Cleanup();
         manifests_.clear();
     }
 
@@ -63,15 +66,20 @@ protected:
         manifest->directory = L"";
         manifest->manifest_path = L"";
         auto handle = Context::Instance().CreateModHandle(*manifest);
-        BML_Mod mod = handle.get();
+
+        BML::Core::LoadedModule module{};
+        module.id = id;
+        module.manifest = manifest.get();
+        module.mod_handle = std::move(handle);
+        Context::Instance().AddLoadedModule(std::move(module));
+
+        BML_Mod mod = Context::Instance().GetModHandleById(id);
         manifests_.push_back(std::move(manifest));
-        mods_.push_back(std::move(handle));
         return mod;
     }
 
 private:
     std::vector<std::unique_ptr<BML::Core::ModManifest>> manifests_;
-    std::vector<std::unique_ptr<BML_Mod_T>> mods_;
 };
 
 // ============================================================================
