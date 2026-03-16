@@ -25,6 +25,7 @@
 #include "bml_interface.hpp"
 #include "bml_topics.h"
 #include "bml_ui_host.h"
+#include "bml_ui_helpers.hpp"
 #include "bml_virtools.h"
 #include "bml_virtools.hpp"
 #include "bml_virtools_payloads.h"
@@ -99,21 +100,9 @@ public:
     BML_Result OnAttach(bml::ModuleServices &services) override {
         m_Subs = services.CreateSubscriptions();
 
-        m_WindowRegistry = bml::AcquireInterface<BML_UIDrawRegistry>(BML_UI_WINDOW_REGISTRY_INTERFACE_ID, 1, 0, 0);
-        if (!m_WindowRegistry) {
+        m_DrawReg = bml::ui::RegisterWindowDraw("bml.modmenu.window", 10, DrawCallback, this, BML_UI_LAYER_MENU);
+        if (!m_DrawReg) {
             return BML_RESULT_NOT_FOUND;
-        }
-
-        BML_UIDrawDesc draw_desc = BML_UI_DRAW_DESC_INIT;
-        draw_desc.id = "bml.modmenu.window";
-        draw_desc.layer = BML_UI_LAYER_MENU;
-        draw_desc.priority = 10;
-        draw_desc.callback = DrawCallback;
-        draw_desc.user_data = this;
-        BML_Result draw_result = m_WindowRegistry->Register(&draw_desc, &m_WindowRegistration);
-        if (draw_result != BML_RESULT_OK) {
-            m_WindowRegistry.Reset();
-            return draw_result;
         }
 
         m_InputCaptureService = bml::AcquireInterface<BML_InputCaptureInterface>(BML_INPUT_CAPTURE_INTERFACE_ID, 1, 0, 0);
@@ -177,13 +166,9 @@ public:
 
     BML_Result OnPrepareDetach() override {
         CloseMenu();
-        if (m_WindowRegistration && m_WindowRegistry) {
-            m_WindowRegistry->Unregister(m_WindowRegistration);
-            m_WindowRegistration = nullptr;
-        }
+        m_DrawReg.Reset();
         MenuRuntime::SetInputService(nullptr);
         m_InputCaptureService.Reset();
-        m_WindowRegistry.Reset();
         return BML_RESULT_OK;
     }
 
@@ -195,7 +180,7 @@ public:
 
         MenuRuntime::SetInputService(nullptr);
         m_InputCaptureService.Reset();
-        m_WindowRegistry.Reset();
+        m_DrawReg.Reset();
 
         m_Context = nullptr;
         m_AssetsReady = false;
@@ -462,8 +447,7 @@ private:
     bml::imc::SubscriptionManager m_Subs;
     ModMenu m_Menu;
     CKContext *m_Context = nullptr;
-    bml::InterfaceLease<BML_UIDrawRegistry> m_WindowRegistry;
-    BML_InterfaceRegistration m_WindowRegistration = nullptr;
+    bml::ui::DrawRegistration m_DrawReg;
     bml::InterfaceLease<BML_InputCaptureInterface> m_InputCaptureService;
     bool m_Visible = false;
     bool m_AssetsReady = false;

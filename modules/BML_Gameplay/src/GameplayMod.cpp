@@ -17,6 +17,7 @@
 #include "bml_interface.hpp"
 #include "bml_topics.h"
 #include "bml_ui_host.h"
+#include "bml_ui_helpers.hpp"
 #include "bml_virtools.h"
 #include "bml_virtools.hpp"
 #include "bml_virtools_payloads.h"
@@ -74,8 +75,7 @@ class GameplayMod : public bml::Module {
     std::unordered_set<CK_ID> m_PatchedScripts;
     CKBehaviorLink *m_OverclockLinks[3] = {};
     CKBehaviorIO *m_OverclockLinkIO[3][2] = {};
-    bml::InterfaceLease<BML_UIDrawRegistry> m_OverlayRegistry;
-    BML_InterfaceRegistration m_OverlayRegistration = nullptr;
+    bml::ui::DrawRegistration m_DrawReg;
     FpsCounter m_FpsCounter;
     SRTimer m_SRTimer;
     bool m_CheatEnabled = false;
@@ -421,21 +421,9 @@ public:
         RefreshConfig();
         ApplyLanternMaterial();
 
-        m_OverlayRegistry = bml::AcquireInterface<BML_UIDrawRegistry>(BML_UI_OVERLAY_REGISTRY_INTERFACE_ID, 1, 0, 0);
-        if (!m_OverlayRegistry) {
+        m_DrawReg = bml::ui::RegisterOverlayDraw("bml.gameplay.overlay", 25, DrawOverlay, this);
+        if (!m_DrawReg) {
             return BML_RESULT_NOT_FOUND;
-        }
-
-        BML_UIDrawDesc drawDesc = BML_UI_DRAW_DESC_INIT;
-        drawDesc.id = "bml.gameplay.overlay";
-        drawDesc.layer = BML_UI_LAYER_OVERLAY;
-        drawDesc.priority = 25;
-        drawDesc.callback = DrawOverlay;
-        drawDesc.user_data = this;
-        BML_Result drawResult = m_OverlayRegistry->Register(&drawDesc, &m_OverlayRegistration);
-        if (drawResult != BML_RESULT_OK) {
-            m_OverlayRegistry.Reset();
-            return drawResult;
         }
 
         UpdateCheatState();
@@ -472,11 +460,7 @@ public:
         });
 
         if (m_Subs.Count() < 9) {
-            if (m_OverlayRegistration && m_OverlayRegistry) {
-                m_OverlayRegistry->Unregister(m_OverlayRegistration);
-                m_OverlayRegistration = nullptr;
-            }
-            m_OverlayRegistry.Reset();
+            m_DrawReg.Reset();
             Services().Log().Error("Failed to subscribe to gameplay and HUD topics");
             return BML_RESULT_FAIL;
         }
@@ -486,11 +470,7 @@ public:
     }
 
     BML_Result OnPrepareDetach() override {
-        if (m_OverlayRegistration && m_OverlayRegistry) {
-            m_OverlayRegistry->Unregister(m_OverlayRegistration);
-            m_OverlayRegistration = nullptr;
-        }
-        m_OverlayRegistry.Reset();
+        m_DrawReg.Reset();
         return BML_RESULT_OK;
     }
 
@@ -502,11 +482,7 @@ public:
             m_OverclockLinkIO[index][1] = nullptr;
         }
 
-        if (m_OverlayRegistration && m_OverlayRegistry) {
-            m_OverlayRegistry->Unregister(m_OverlayRegistration);
-            m_OverlayRegistration = nullptr;
-        }
-        m_OverlayRegistry.Reset();
+        m_DrawReg.Reset();
         m_CheatEnabled = false;
         m_SrVisible = false;
         m_SrAlpha = 1.0f;

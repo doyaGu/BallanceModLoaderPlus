@@ -40,6 +40,7 @@
 #include "bml_virtools_payloads.h"
 #include "bml_topics.h"
 #include "bml_ui_host.h"
+#include "bml_ui_helpers.hpp"
 #include "BML/Guids/Logics.h"
 
 #include "BML/ScriptGraph.h"
@@ -237,8 +238,7 @@ std::string CreateTempMapFile(const std::wstring &path) {
 
 class MapMenuMod : public bml::Module {
     bml::imc::SubscriptionManager m_Subs;
-    bml::InterfaceLease<BML_UIDrawRegistry> m_WindowRegistry;
-    BML_InterfaceRegistration m_WindowRegistration = nullptr;
+    bml::ui::DrawRegistration m_DrawReg;
     bml::InterfaceLease<BML_InputCaptureInterface> m_InputCaptureService;
     BML_InputCaptureToken m_InputCaptureToken = nullptr;
     bml::InterfaceLease<BML_ConsoleCommandRegistry> m_ConsoleRegistry;
@@ -605,20 +605,8 @@ public:
     BML_Result OnAttach(bml::ModuleServices &services) override {
         m_Subs = services.CreateSubscriptions();
 
-        m_WindowRegistry = bml::AcquireInterface<BML_UIDrawRegistry>(BML_UI_WINDOW_REGISTRY_INTERFACE_ID, 1, 0, 0);
-        if (!m_WindowRegistry) return BML_RESULT_NOT_FOUND;
-
-        BML_UIDrawDesc draw_desc = BML_UI_DRAW_DESC_INIT;
-        draw_desc.id = "bml.mapmenu.window";
-        draw_desc.layer = BML_UI_LAYER_WINDOW;
-        draw_desc.priority = 0;
-        draw_desc.callback = DrawCallback;
-        draw_desc.user_data = this;
-        BML_Result draw_result = m_WindowRegistry->Register(&draw_desc, &m_WindowRegistration);
-        if (draw_result != BML_RESULT_OK) {
-            m_WindowRegistry.Reset();
-            return draw_result;
-        }
+        m_DrawReg = bml::ui::RegisterWindowDraw("bml.mapmenu.window", 0, DrawCallback, this);
+        if (!m_DrawReg) return BML_RESULT_NOT_FOUND;
 
         EnsureDefaultConfig();
         RefreshConfig();
@@ -685,12 +673,8 @@ public:
             m_ConsoleRegistry->UnregisterCommand("mapmenu");
             m_ConsoleRegistry.Reset();
         }
-        if (m_WindowRegistration && m_WindowRegistry) {
-            m_WindowRegistry->Unregister(m_WindowRegistration);
-            m_WindowRegistration = nullptr;
-        }
+        m_DrawReg.Reset();
         m_InputCaptureService.Reset();
-        m_WindowRegistry.Reset();
         return BML_RESULT_OK;
     }
 
@@ -705,7 +689,7 @@ public:
             m_InputCaptureToken = nullptr;
         }
         m_InputCaptureService.Reset();
-        m_WindowRegistry.Reset();
+        m_DrawReg.Reset();
         m_Context = nullptr;
         m_ExitStart = nullptr;
         m_LoadCustom = nullptr;
