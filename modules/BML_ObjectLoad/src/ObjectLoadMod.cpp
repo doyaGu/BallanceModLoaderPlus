@@ -7,6 +7,7 @@
 #include "bml_module.hpp"
 #include "bml_builtin_interfaces.h"
 #include "bml_engine_events.h"
+#include "bml_engine_events.hpp"
 #include "bml_topics.h"
 #include "bml_virtools.h"
 #include "bml_virtools.hpp"
@@ -47,21 +48,17 @@ public:
         EnsureHookReady(context, "OnAttach");
 
         m_Subs.Add(BML_TOPIC_ENGINE_INIT, [this](const bml::imc::Message &msg) {
-            auto *payload = msg.As<BML_EngineInitEvent>();
-            if (!payload || payload->struct_size < sizeof(BML_EngineInitEvent) || !payload->context) {
+            auto *payload = bml::ValidateEnginePayload<BML_EngineInitEvent>(msg);
+            if (!payload) {
                 Services().Log().Warn("Engine/Init payload invalid for ObjectLoad module");
                 return;
             }
-
             EnsureHookReady(payload->context, "Engine/Init");
         });
 
         m_Subs.Add(BML_TOPIC_ENGINE_PLAY, [this](const bml::imc::Message &msg) {
-            auto *payload = msg.As<BML_EnginePlayEvent>();
-            if (!payload || payload->struct_size < sizeof(BML_EnginePlayEvent) || !payload->context) {
-                return;
-            }
-
+            auto *payload = bml::ValidateEnginePayload<BML_EnginePlayEvent>(msg);
+            if (!payload) return;
             EnsureHookReady(payload->context, "Engine/Play");
         });
 

@@ -3,6 +3,7 @@
 #include "bml_builtin_interfaces.h"
 #include "bml_config.hpp"
 #include "bml_engine_events.h"
+#include "bml_engine_events.hpp"
 #include "bml_game_topics.h"
 #include "bml_topics.h"
 #include "bml_virtools.h"
@@ -71,8 +72,8 @@ public:
         ApplyConfig();
 
         m_Subs.Add(BML_TOPIC_ENGINE_INIT, [this](const bml::imc::Message &msg) {
-            auto *payload = msg.As<BML_EngineInitEvent>();
-            if (!payload || payload->struct_size < sizeof(BML_EngineInitEvent) || !payload->context) {
+            auto *payload = bml::ValidateEnginePayload<BML_EngineInitEvent>(msg);
+            if (!payload) {
                 Services().Log().Warn("Engine/Init payload invalid for render module");
                 return;
             }

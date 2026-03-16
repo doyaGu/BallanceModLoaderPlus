@@ -18,6 +18,7 @@
 #include "bml_module.hpp"
 #include "bml_builtin_interfaces.h"
 #include "bml_engine_events.h"
+#include "bml_engine_events.hpp"
 #include "bml_imgui.hpp"
 #include "bml_input.h"
 #include "bml_input_control.h"
@@ -121,16 +122,14 @@ public:
         m_Menu.Init();
 
         m_Subs.Add(BML_TOPIC_ENGINE_INIT, [this](const bml::imc::Message &msg) {
-            auto *payload = msg.As<BML_EngineInitEvent>();
-            if (!payload || !payload->context) {
-                return;
-            }
+            auto *payload = bml::ValidateEnginePayload<BML_EngineInitEvent>(msg);
+            if (!payload) return;
             SetContext(payload->context);
         });
 
         m_Subs.Add(BML_TOPIC_ENGINE_PLAY, [this](const bml::imc::Message &msg) {
-            auto *payload = msg.As<BML_EnginePlayEvent>();
-            if (payload && payload->context) {
+            auto *payload = bml::ValidateEnginePayload<BML_EnginePlayEvent>(msg);
+            if (payload) {
                 SetContext(payload->context);
             } else if (!m_Context) {
                 SetContext(bml::virtools::GetCKContext(Services()));

@@ -18,6 +18,7 @@
 #include "bml_ui_host.h"
 #include "bml_config.hpp"
 #include "bml_engine_events.h"
+#include "bml_engine_events.hpp"
 #include "bml_topics.h"
 #include "bml_virtools.h"
 #include "bml_virtools.hpp"
@@ -448,8 +449,8 @@ class UIMod : public bml::Module {
     }
 
     void HandleEngineInit(const bml::imc::Message &msg) {
-        auto *payload = msg.As<BML_EngineInitEvent>();
-        if (!payload || payload->struct_size < sizeof(BML_EngineInitEvent) || !payload->context) {
+        auto *payload = bml::ValidateEnginePayload<BML_EngineInitEvent>(msg);
+        if (!payload) {
             Services().Log().Warn( "Engine/Init message has null CKContext");
             return;
         }
@@ -459,8 +460,8 @@ class UIMod : public bml::Module {
     }
 
     void HandleEnginePlay(const bml::imc::Message &msg) {
-        auto *payload = msg.As<BML_EnginePlayEvent>();
-        if (!payload || payload->struct_size < sizeof(BML_EnginePlayEvent) || !payload->context) {
+        auto *payload = bml::ValidateEnginePayload<BML_EnginePlayEvent>(msg);
+        if (!payload) {
             Services().Log().Warn( "Engine/Play payload missing CKContext");
             return;
         }
