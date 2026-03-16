@@ -13,7 +13,7 @@
 
 class PhysicsMod : public bml::Module {
     bml::imc::SubscriptionManager m_Subs;
-    bool m_HookInitialized = false;
+    bool m_HookReady = false;
 
 public:
     BML_Result OnAttach(bml::ModuleServices &services) override {
@@ -22,7 +22,7 @@ public:
         Services().Log().Info("Initializing BML Physics Module v0.4.0");
 
         m_Subs.Add(BML_TOPIC_ENGINE_INIT, [this](const bml::imc::Message &msg) {
-            if (m_HookInitialized) return;
+            if (m_HookReady) return;
 
             auto *payload = bml::ValidateEnginePayload<BML_EngineInitEvent>(msg);
             if (!payload) {
@@ -31,7 +31,7 @@ public:
             }
 
             if (BML_Physics::InitializePhysicsHook(payload->context, Services())) {
-                m_HookInitialized = true;
+                m_HookReady = true;
                 Services().Log().Info("Physics hooks initialized on Engine/Init event");
             } else {
                 Services().Log().Warn("Physics hook initialization failed, will retry on next Engine/Init");

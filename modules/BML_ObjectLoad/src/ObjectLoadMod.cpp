@@ -17,7 +17,7 @@
 
 class ObjectLoadMod : public bml::Module {
     bml::imc::SubscriptionManager m_Subs;
-    bool m_HookInitialized = false;
+    bool m_HookReady = false;
 
 public:
     bool EnsureHookReady(CKContext *context, const char *source) {
@@ -25,13 +25,13 @@ public:
             return false;
         }
 
-        if (!m_HookInitialized) {
+        if (!m_HookReady) {
             if (!BML_ObjectLoad::InitializeObjectLoadHook(context, Services())) {
                 Services().Log().Warn("ObjectLoad hook initialization failed from %s", source ? source : "");
                 return false;
             }
 
-            m_HookInitialized = true;
+            m_HookReady = true;
             Services().Log().Info("ObjectLoad hook initialized from %s", source ? source : "");
         }
 
@@ -73,7 +73,7 @@ public:
     void OnDetach() override {
         Services().Log().Info("Shutting down BML ObjectLoad Module");
         BML_ObjectLoad::ShutdownObjectLoadHook();
-        m_HookInitialized = false;
+        m_HookReady = false;
     }
 };
 

@@ -258,7 +258,7 @@ const BML_InputCaptureInterface kInputCaptureService = {
 class InputMod : public bml::Module {
     bml::imc::SubscriptionManager m_Subs;
     bml::PublishedInterface m_Published;
-    bool m_HooksInitialized = false;
+    bool m_HookReady = false;
 
 public:
     BML_Result OnAttach(bml::ModuleServices &services) override {
@@ -267,7 +267,7 @@ public:
         services.Log().Info("Initializing BML Input Module v0.4.0");
 
         m_Subs.Add(BML_TOPIC_ENGINE_INIT, [this](const bml::imc::Message &msg) {
-            if (m_HooksInitialized) return;
+            if (m_HookReady) return;
 
             auto *payload = bml::ValidateEnginePayload<BML_EngineInitEvent>(msg);
             if (!payload) {
@@ -283,7 +283,7 @@ public:
             }
 
             if (BML_Input::InitInputHook(inputManager, Services())) {
-                m_HooksInitialized = true;
+                m_HookReady = true;
                 Services().Log().Info("Input hooks initialized on Engine/Init event");
             } else {
                 Services().Log().Error("Input hook initialization failed; will retry on next Engine/Init event");
@@ -320,9 +320,9 @@ public:
         Services().Log().Info("Shutting down BML Input Module");
         (void)m_Published.Reset();
         GetCaptureCoordinator().Reset();
-        if (m_HooksInitialized) {
+        if (m_HookReady) {
             BML_Input::ShutdownInputHook();
-            m_HooksInitialized = false;
+            m_HookReady = false;
         }
     }
 };

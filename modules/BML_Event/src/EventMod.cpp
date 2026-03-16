@@ -14,7 +14,7 @@ class EventMod : public bml::Module {
     bml::imc::SubscriptionManager m_Subs;
     bool m_ScanCompleted = false;
 
-    void EnsureHooksReady(CKContext *context, const char *source) {
+    void EnsureHookReady(CKContext *context, const char *source) {
         if (!context) {
             return;
         }
@@ -39,7 +39,7 @@ public:
         Services().Log().Info("Initializing BML Event Module v0.4.0");
 
         CKContext *context = bml::virtools::GetCKContext(Services());
-        EnsureHooksReady(context, "OnAttach");
+        EnsureHookReady(context, "OnAttach");
 
         m_Subs.Add(BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT, [this](const bml::imc::Message &msg) {
             auto *payload = msg.As<BML_LegacyScriptLoadPayload>();
@@ -54,13 +54,13 @@ public:
         m_Subs.Add(BML_TOPIC_ENGINE_INIT, [this](const bml::imc::Message &msg) {
             auto *payload = bml::ValidateEnginePayload<BML_EngineInitEvent>(msg);
             if (!payload) return;
-            EnsureHooksReady(payload->context, "Engine/Init");
+            EnsureHookReady(payload->context, "Engine/Init");
         });
 
         m_Subs.Add(BML_TOPIC_ENGINE_PLAY, [this](const bml::imc::Message &msg) {
             auto *payload = bml::ValidateEnginePayload<BML_EnginePlayEvent>(msg);
             if (!payload) return;
-            EnsureHooksReady(payload->context, "Engine/Play");
+            EnsureHookReady(payload->context, "Engine/Play");
         });
 
         if (m_Subs.Empty()) {

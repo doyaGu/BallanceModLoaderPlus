@@ -14,7 +14,7 @@
 
 class RenderMod : public bml::Module {
     bml::imc::SubscriptionManager m_Subs;
-    bool m_HookInitialized = false;
+    bool m_HookReady = false;
     bool m_WidescreenFix = false;
     bool m_UnlockFrameRate = false;
     int32_t m_MaxFrameRate = 0;
@@ -78,8 +78,8 @@ public:
                 return;
             }
 
-            if (!m_HookInitialized && BML_Render::InitRenderHook(Services())) {
-                m_HookInitialized = true;
+            if (!m_HookReady && BML_Render::InitRenderHook(Services())) {
+                m_HookReady = true;
                 RefreshConfig();
                 ApplyConfig();
                 Services().Log().Info("Render hooks initialized on Engine/Init event");
@@ -88,7 +88,7 @@ public:
 
         m_Subs.Add(BML_TOPIC_ENGINE_END, [this](const bml::imc::Message &) {
             BML_Render::ShutdownRenderHook();
-            m_HookInitialized = false;
+            m_HookReady = false;
         });
 
         m_Subs.Add(BML_TOPIC_GAME_MENU_POST_START, [this](const bml::imc::Message &) {
@@ -112,7 +112,7 @@ public:
     void OnDetach() override {
         Services().Log().Info("Shutting down BML Render Module");
         BML_Render::ShutdownRenderHook();
-        m_HookInitialized = false;
+        m_HookReady = false;
     }
 };
 
