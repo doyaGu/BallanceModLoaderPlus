@@ -635,7 +635,7 @@ public:
 
     BML_Result OnAttach(bml::ModuleServices &services) override {
         m_Subs = services.CreateSubscriptions();
-        m_HostRuntime = Acquire<BML_HostRuntimeInterface>(BML_CORE_HOST_RUNTIME_INTERFACE_ID, 1);
+        m_HostRuntime = Services().Acquire<BML_HostRuntimeInterface>(BML_CORE_HOST_RUNTIME_INTERFACE_ID, 1);
         if (!m_HostRuntime) {
             return BML_RESULT_NOT_FOUND;
         }

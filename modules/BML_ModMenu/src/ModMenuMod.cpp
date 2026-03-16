@@ -105,7 +105,7 @@ public:
             return BML_RESULT_NOT_FOUND;
         }
 
-        m_InputCaptureService = bml::AcquireInterface<BML_InputCaptureInterface>(BML_INPUT_CAPTURE_INTERFACE_ID, 1, 0, 0);
+        m_InputCaptureService = Services().Acquire<BML_InputCaptureInterface>(BML_INPUT_CAPTURE_INTERFACE_ID, 1, 0, 0);
         MenuRuntime::SetInputService(m_InputCaptureService.Get());
 
         m_Menu.Init();

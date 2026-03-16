@@ -1019,7 +1019,7 @@ public:
     BML_Result OnAttach(bml::ModuleServices &services) override {
         g_ConsoleServices = &services;
         m_Subs = services.CreateSubscriptions();
-        m_HostRuntime = Acquire<BML_HostRuntimeInterface>(BML_CORE_HOST_RUNTIME_INTERFACE_ID, 1);
+        m_HostRuntime = Services().Acquire<BML_HostRuntimeInterface>(BML_CORE_HOST_RUNTIME_INTERFACE_ID, 1);
         if (!m_HostRuntime) {
             return BML_RESULT_NOT_FOUND;
         }
@@ -1033,7 +1033,7 @@ public:
             return BML_RESULT_NOT_FOUND;
         }
 
-        m_InputCaptureService = bml::AcquireInterface<BML_InputCaptureInterface>(BML_INPUT_CAPTURE_INTERFACE_ID, 1, 0, 0);
+        m_InputCaptureService = Services().Acquire<BML_InputCaptureInterface>(BML_INPUT_CAPTURE_INTERFACE_ID, 1, 0, 0);
         if (m_InputCaptureService) {
             m_InputCapture.SetService(m_InputCaptureService.Get());
         } else {

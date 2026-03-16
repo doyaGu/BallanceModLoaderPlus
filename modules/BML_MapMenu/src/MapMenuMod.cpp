@@ -607,7 +607,7 @@ public:
         EnsureDefaultConfig();
         RefreshConfig();
 
-        m_InputCaptureService = bml::AcquireInterface<BML_InputCaptureInterface>(BML_INPUT_CAPTURE_INTERFACE_ID, 1, 0, 0);
+        m_InputCaptureService = Services().Acquire<BML_InputCaptureInterface>(BML_INPUT_CAPTURE_INTERFACE_ID, 1, 0, 0);
         if (m_InputCaptureService) {
             m_InputCapture.SetService(m_InputCaptureService.Get());
         } else {
@@ -646,7 +646,7 @@ public:
 
         if (m_Subs.Count() < 4) return BML_RESULT_FAIL;
 
-        m_ConsoleRegistry = bml::AcquireInterface<BML_ConsoleCommandRegistry>(
+        m_ConsoleRegistry = Services().Acquire<BML_ConsoleCommandRegistry>(
             BML_CONSOLE_COMMAND_REGISTRY_INTERFACE_ID, 1, 0, 0);
         if (m_ConsoleRegistry) {
             BML_ConsoleCommandDesc desc = BML_CONSOLE_COMMAND_DESC_INIT;
