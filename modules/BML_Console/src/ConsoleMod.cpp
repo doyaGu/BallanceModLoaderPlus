@@ -25,6 +25,7 @@
 #include "bml_console.h"
 #include "bml_imgui.hpp"
 #include "bml_input_control.h"
+#include "bml_input_capture.hpp"
 #include "bml_interface.hpp"
 #include "bml_topics.h"
 #include "bml_ui_host.h"
@@ -95,9 +96,9 @@ class ConsoleMod : public bml::Module {
     bml::imc::SubscriptionManager m_Subs;
     bml::ui::DrawRegistration m_DrawReg;
     bml::InterfaceLease<BML_InputCaptureInterface> m_InputCaptureService;
+    bml::InputCaptureGuard m_InputCapture;
     bml::InterfaceLease<BML_HostRuntimeInterface> m_HostRuntime;
     bml::PublishedInterface m_PublishedService;
-    BML_InputCaptureToken m_InputCaptureToken = nullptr;
     BML_TopicId m_TopicCommand = 0;
 
     CommandRegistry m_Registry;
@@ -257,16 +258,10 @@ class ConsoleMod : public bml::Module {
         m_Visible = visible;
         m_FocusInput = visible;
         m_VisiblePrev = !visible;
-        if (m_InputCaptureService) {
-            if (visible && !m_InputCaptureToken) {
-                BML_InputCaptureDesc capture = BML_INPUT_CAPTURE_DESC_INIT;
-                capture.flags = BML_INPUT_CAPTURE_FLAG_BLOCK_KEYBOARD;
-                capture.cursor_visible = -1;
-                capture.priority = 100;
-                m_InputCaptureService->AcquireCapture(&capture, &m_InputCaptureToken);
-            } else if (!visible) {
-                m_PendingKeyboardUnblock = m_InputCaptureToken != nullptr;
-            }
+        if (visible) {
+            m_InputCapture.Acquire(BML_INPUT_CAPTURE_FLAG_BLOCK_KEYBOARD, -1, 100);
+        } else {
+            m_PendingKeyboardUnblock = m_InputCapture.IsHeld();
         }
         if (visible) {
             m_InputBuffer[0] = '\0';
@@ -280,10 +275,7 @@ class ConsoleMod : public bml::Module {
     }
 
     void ReleaseInputCapture() {
-        if (m_InputCaptureToken && m_InputCaptureService) {
-            m_InputCaptureService->ReleaseCapture(m_InputCaptureToken);
-            m_InputCaptureToken = nullptr;
-        }
+        m_InputCapture.Release();
         m_PendingKeyboardUnblock = false;
     }
 
@@ -1042,7 +1034,9 @@ public:
         }
 
         m_InputCaptureService = bml::AcquireInterface<BML_InputCaptureInterface>(BML_INPUT_CAPTURE_INTERFACE_ID, 1, 0, 0);
-        if (!m_InputCaptureService) {
+        if (m_InputCaptureService) {
+            m_InputCapture.SetService(m_InputCaptureService.Get());
+        } else {
             Services().Log().Warn("Failed to acquire input capture service; console input capture will be limited");
         }
 

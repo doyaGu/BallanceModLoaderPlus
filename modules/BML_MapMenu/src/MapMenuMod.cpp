@@ -36,6 +36,7 @@
 #include "bml_imc_state.h"
 #include "bml_input.h"
 #include "bml_input_control.h"
+#include "bml_input_capture.hpp"
 #include "bml_interface.hpp"
 #include "bml_virtools_payloads.h"
 #include "bml_topics.h"
@@ -240,7 +241,7 @@ class MapMenuMod : public bml::Module {
     bml::imc::SubscriptionManager m_Subs;
     bml::ui::DrawRegistration m_DrawReg;
     bml::InterfaceLease<BML_InputCaptureInterface> m_InputCaptureService;
-    BML_InputCaptureToken m_InputCaptureToken = nullptr;
+    bml::InputCaptureGuard m_InputCapture;
     bml::InterfaceLease<BML_ConsoleCommandRegistry> m_ConsoleRegistry;
     BML_TopicId m_TopicConsoleOutput = 0;
     BML_TopicId m_TopicCustomMapName = 0;
@@ -431,17 +432,12 @@ class MapMenuMod : public bml::Module {
         if (visible) {
             m_MapLoaded = false;
         }
-        if (m_InputCaptureService) {
-            if (visible && !m_InputCaptureToken) {
-                BML_InputCaptureDesc capture = BML_INPUT_CAPTURE_DESC_INIT;
-                capture.flags = BML_INPUT_CAPTURE_FLAG_BLOCK_KEYBOARD | BML_INPUT_CAPTURE_FLAG_BLOCK_MOUSE;
-                capture.cursor_visible = 1;
-                capture.priority = 100;
-                m_InputCaptureService->AcquireCapture(&capture, &m_InputCaptureToken);
-            } else if (!visible && m_InputCaptureToken) {
-                m_InputCaptureService->ReleaseCapture(m_InputCaptureToken);
-                m_InputCaptureToken = nullptr;
-            }
+        if (visible) {
+            m_InputCapture.Acquire(
+                BML_INPUT_CAPTURE_FLAG_BLOCK_KEYBOARD | BML_INPUT_CAPTURE_FLAG_BLOCK_MOUSE,
+                1, 100);
+        } else {
+            m_InputCapture.Release();
         }
         if (visible) {
             if (m_MapTreeDirty || !m_MapRoot) {
@@ -612,7 +608,9 @@ public:
         RefreshConfig();
 
         m_InputCaptureService = bml::AcquireInterface<BML_InputCaptureInterface>(BML_INPUT_CAPTURE_INTERFACE_ID, 1, 0, 0);
-        if (!m_InputCaptureService) {
+        if (m_InputCaptureService) {
+            m_InputCapture.SetService(m_InputCaptureService.Get());
+        } else {
             Services().Log().Warn("Failed to acquire input capture service; map menu will not capture input");
         }
 
@@ -684,10 +682,7 @@ public:
             m_ConsoleRegistry->UnregisterCommand("mapmenu");
             m_ConsoleRegistry.Reset();
         }
-        if (m_InputCaptureToken && m_InputCaptureService) {
-            m_InputCaptureService->ReleaseCapture(m_InputCaptureToken);
-            m_InputCaptureToken = nullptr;
-        }
+        m_InputCapture.Release();
         m_InputCaptureService.Reset();
         m_DrawReg.Reset();
         m_Context = nullptr;
