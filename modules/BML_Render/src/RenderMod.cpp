@@ -1,146 +1,118 @@
-﻿#include "bml_module.h"
 #define BML_LOADER_IMPLEMENTATION
-#include "bml_loader.h"
+#include "bml_module.hpp"
+#include "bml_builtin_interfaces.h"
+#include "bml_config.hpp"
+#include "bml_engine_events.h"
+#include "bml_game_topics.h"
 #include "bml_topics.h"
-#include "RenderMod.h"
+#include "bml_virtools.h"
+#include "bml_virtools.hpp"
+
 #include "RenderHook.h"
+#include "CKTimeManager.h"
 
-// Forward declarations
-static void OnEngineInit(BML_Context ctx, BML_TopicId topic, const BML_ImcMessage* msg, void* user_data);
-static void OnEngineShutdown(BML_Context ctx, BML_TopicId topic, const BML_ImcMessage* msg, void* user_data);
+class RenderMod : public bml::Module {
+    bml::imc::SubscriptionManager m_Subs;
+    bool m_HookInitialized = false;
+    bool m_WidescreenFix = false;
+    bool m_UnlockFrameRate = false;
+    int32_t m_MaxFrameRate = 0;
 
-static BML_Mod g_ModHandle = nullptr;
-static BML_Subscription g_EngineInitSub = nullptr;
-static BML_Subscription g_EngineShutdownSub = nullptr;
-
-// Cached topic IDs
-static BML_TopicId g_TopicEngineInit = 0;
-static BML_TopicId g_TopicEngineShutdown = 0;
-
-namespace {
-
-void ReleaseSubscriptions() {
-    if (g_EngineInitSub) {
-        bmlImcUnsubscribe(g_EngineInitSub);
-        g_EngineInitSub = nullptr;
-    }
-    if (g_EngineShutdownSub) {
-        bmlImcUnsubscribe(g_EngineShutdownSub);
-        g_EngineShutdownSub = nullptr;
-    }
-}
-
-BML_Result ValidateAttachArgs(const BML_ModAttachArgs* args) {
-    if (!args || args->struct_size != sizeof(BML_ModAttachArgs) || args->mod == nullptr || args->get_proc == nullptr) {
-        return BML_RESULT_INVALID_ARGUMENT;
-    }
-    if (args->api_version != BML_MOD_ENTRYPOINT_API_VERSION) {
-        return BML_RESULT_VERSION_MISMATCH;
-    }
-    return BML_RESULT_OK;
-}
-
-BML_Result ValidateDetachArgs(const BML_ModDetachArgs* args) {
-    if (!args || args->struct_size != sizeof(BML_ModDetachArgs) || args->mod == nullptr) {
-        return BML_RESULT_INVALID_ARGUMENT;
-    }
-    if (args->api_version != BML_MOD_ENTRYPOINT_API_VERSION) {
-        return BML_RESULT_VERSION_MISMATCH;
-    }
-    return BML_RESULT_OK;
-}
-
-BML_Result HandleAttach(const BML_ModAttachArgs* args) {
-    BML_Result validation = ValidateAttachArgs(args);
-    if (validation != BML_RESULT_OK) {
-        return validation;
-    }
-
-    g_ModHandle = args->mod;
-
-    BML_Result result = bmlLoadAPI(args->get_proc, args->get_proc_by_id);
-    if (result != BML_RESULT_OK) {
-        return result;
-    }
-
-    bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_Render", "Initializing BML Render Module v0.4.0");
-
-    // Get topic IDs for engine lifecycle events
-    bmlImcGetTopicId(BML_TOPIC_ENGINE_INIT, &g_TopicEngineInit);
-    bmlImcGetTopicId(BML_TOPIC_ENGINE_END, &g_TopicEngineShutdown);
-
-    // Subscribe to engine lifecycle events
-    result = bmlImcSubscribe(g_TopicEngineInit, OnEngineInit, nullptr, &g_EngineInitSub);
-    if (result != BML_RESULT_OK) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_ERROR, "BML_Render", "Failed to subscribe to Engine/Init");
-        bmlUnloadAPI();
-        return result;
-    }
-
-    result = bmlImcSubscribe(g_TopicEngineShutdown, OnEngineShutdown, nullptr, &g_EngineShutdownSub);
-    if (result != BML_RESULT_OK) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_ERROR, "BML_Render", "Failed to subscribe to Engine/Shutdown");
-        ReleaseSubscriptions();
-        bmlUnloadAPI();
-        return result;
-    }
-
-    // Initialize render hooks immediately (CK2_3D.dll should be loaded)
-    if (!BML_Render::InitRenderHook()) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_WARN, "BML_Render", 
-               "Render hooks not initialized (CK2_3D.dll not ready), will retry on Engine/Init");
-    }
-
-    bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_Render", "BML Render Module initialized successfully");
-    return BML_RESULT_OK;
-}
-
-BML_Result HandleDetach(const BML_ModDetachArgs* args) {
-    BML_Result validation = ValidateDetachArgs(args);
-    if (validation != BML_RESULT_OK) {
-        return validation;
-    }
-
-    bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_Render", "Shutting down BML Render Module");
-
-    // Shutdown render hooks
-    BML_Render::ShutdownRenderHook();
-
-    ReleaseSubscriptions();
-    bmlUnloadAPI();
-    g_ModHandle = nullptr;
-    return BML_RESULT_OK;
-}
-
-} // namespace
-
-BML_MODULE_ENTRY BML_Result BML_ModEntrypoint(BML_ModEntrypointCommand cmd, void* data) {
-    switch (cmd) {
-    case BML_MOD_ENTRYPOINT_ATTACH:
-        return HandleAttach(static_cast<const BML_ModAttachArgs*>(data));
-    case BML_MOD_ENTRYPOINT_DETACH:
-        return HandleDetach(static_cast<const BML_ModDetachArgs*>(data));
-    default:
-        return BML_RESULT_INVALID_ARGUMENT;
-    }
-}
-
-// Engine lifecycle event handlers
-static void OnEngineInit(BML_Context ctx, BML_TopicId topic, const BML_ImcMessage* msg, void* user_data) {
-    (void)ctx; (void)topic; (void)msg; (void)user_data;
-    
-    // Try to initialize render hooks if not already done
-    if (!BML_Render::IsRenderHookActive()) {
-        if (BML_Render::InitRenderHook()) {
-            bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_Render", 
-                   "Render hooks initialized on Engine/Init event");
+    void EnsureDefaultConfig() {
+        auto config = Services().Config();
+        if (!config.GetBool("Graphics", "WidescreenFix").has_value()) {
+            config.SetBool("Graphics", "WidescreenFix", false);
+        }
+        if (!config.GetBool("Graphics", "UnlockFrameRate").has_value()) {
+            config.SetBool("Graphics", "UnlockFrameRate", false);
+        }
+        if (!config.GetInt("Graphics", "SetMaxFrameRate").has_value()) {
+            config.SetInt("Graphics", "SetMaxFrameRate", 0);
         }
     }
-}
 
-static void OnEngineShutdown(BML_Context ctx, BML_TopicId topic, const BML_ImcMessage* msg, void* user_data) {
-    (void)ctx; (void)topic; (void)msg; (void)user_data;
-    
-    // Shutdown render hooks before engine shutdown
-    BML_Render::ShutdownRenderHook();
-}
+    void RefreshConfig() {
+        auto config = Services().Config();
+        m_WidescreenFix = config.GetBool("Graphics", "WidescreenFix").value_or(false);
+        m_UnlockFrameRate = config.GetBool("Graphics", "UnlockFrameRate").value_or(false);
+        m_MaxFrameRate = config.GetInt("Graphics", "SetMaxFrameRate").value_or(0);
+    }
+
+    void ApplyConfig() {
+        BML_Render::EnableWidescreenFix(m_WidescreenFix);
+
+        auto *timeManager = bml::virtools::GetTimeManager(Services());
+        if (!timeManager) {
+            return;
+        }
+
+        if (m_UnlockFrameRate) {
+            timeManager->ChangeLimitOptions(CK_FRAMERATE_FREE);
+            return;
+        }
+
+        if (m_MaxFrameRate > 0) {
+            timeManager->ChangeLimitOptions(CK_FRAMERATE_LIMIT);
+            timeManager->SetFrameRateLimit(static_cast<float>(m_MaxFrameRate));
+            return;
+        }
+
+        timeManager->ChangeLimitOptions(CK_FRAMERATE_SYNC);
+    }
+
+public:
+    BML_Result OnAttach(bml::ModuleServices &services) override {
+        m_Subs = services.CreateSubscriptions();
+
+        Services().Log().Info("Initializing BML Render Module v0.4.0");
+
+        EnsureDefaultConfig();
+        RefreshConfig();
+        ApplyConfig();
+
+        m_Subs.Add(BML_TOPIC_ENGINE_INIT, [this](const bml::imc::Message &msg) {
+            auto *payload = msg.As<BML_EngineInitEvent>();
+            if (!payload || payload->struct_size < sizeof(BML_EngineInitEvent) || !payload->context) {
+                Services().Log().Warn("Engine/Init payload invalid for render module");
+                return;
+            }
+
+            if (!m_HookInitialized && BML_Render::InitRenderHook(Services())) {
+                m_HookInitialized = true;
+                RefreshConfig();
+                ApplyConfig();
+                Services().Log().Info("Render hooks initialized on Engine/Init event");
+            }
+        });
+
+        m_Subs.Add(BML_TOPIC_ENGINE_END, [this](const bml::imc::Message &) {
+            BML_Render::ShutdownRenderHook();
+            m_HookInitialized = false;
+        });
+
+        m_Subs.Add(BML_TOPIC_GAME_MENU_POST_START, [this](const bml::imc::Message &) {
+            RefreshConfig();
+            ApplyConfig();
+        });
+        m_Subs.Add(BML_TOPIC_GAME_LEVEL_START, [this](const bml::imc::Message &) {
+            RefreshConfig();
+            ApplyConfig();
+        });
+
+        if (m_Subs.Count() < 4) {
+            Services().Log().Error("Failed to subscribe to engine lifecycle events");
+            return BML_RESULT_FAIL;
+        }
+
+        Services().Log().Info("BML Render Module initialized - waiting for Engine/Init");
+        return BML_RESULT_OK;
+    }
+
+    void OnDetach() override {
+        Services().Log().Info("Shutting down BML Render Module");
+        BML_Render::ShutdownRenderHook();
+        m_HookInitialized = false;
+    }
+};
+
+BML_DEFINE_MODULE(RenderMod)

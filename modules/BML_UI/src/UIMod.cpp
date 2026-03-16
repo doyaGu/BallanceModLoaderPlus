@@ -1,497 +1,1006 @@
 /**
  * @file UIMod.cpp
  * @brief BML_UI Module Entry Point and API Implementation
- * 
+ *
  * This module provides the core UI infrastructure for BML:
  * - ImGui overlay lifecycle management (internal)
- * - ANSI palette and text rendering (public API)
+ * - Typed UI draw registries (public interface)
  * - Win32 input hooks for ImGui (internal)
- * 
- * ImGui is exported directly from this DLL.
- * Public APIs are registered through BML's API registry for ABI stability.
+ *
+ * ImGui is exposed through the typed interface runtime.
  */
 
-#include "bml_module.h"
 #define BML_LOADER_IMPLEMENTATION
-#include "bml_loader.h"
-#include "bml_ui.h"
-#include "bml_extension.h"
+#include "bml_module.hpp"
+#include "bml_builtin_interfaces.h"
+#include "bml_imgui.h"
+#include "bml_interface.h"
+#include "bml_ui_host.h"
+#include "bml_config.hpp"
 #include "bml_engine_events.h"
 #include "bml_topics.h"
+#include "bml_virtools.h"
+#include "bml_virtools.hpp"
+
+#include "imgui.h"
+#include "imgui_internal.h"
 
 #include "Overlay.h"
-#include "AnsiPalette.h"
-#include "AnsiText.h"
 
 #include "CKContext.h"
-
-//=============================================================================
-// Module State
-//=============================================================================
-
-static BML_Mod g_ModHandle = nullptr;
-static BML_Subscription g_EngineInitSub = nullptr;
-static BML_Subscription g_EngineShutdownSub = nullptr;
-static BML_Subscription g_PreProcessSub = nullptr;
-static BML_Subscription g_PostProcessSub = nullptr;
-static BML_Subscription g_PreRenderSub = nullptr;
-static BML_Subscription g_PostRenderSub = nullptr;
-
-// Cached topic IDs
-static BML_TopicId g_TopicEngineInit = 0;
-static BML_TopicId g_TopicEngineShutdown = 0;
-static BML_TopicId g_TopicPreProcess = 0;
-static BML_TopicId g_TopicPostProcess = 0;
-static BML_TopicId g_TopicPreRender = 0;
-static BML_TopicId g_TopicPostRender = 0;
-static BML_TopicId g_TopicUIDraw = 0;
-
-// Module state
-static bool g_Initialized = false;
-static CKContext* g_CKContext = nullptr;
-
-// Global palette instance
-static AnsiPalette g_GlobalPalette;
-
-//=============================================================================
-// Public API Implementation Functions
-//=============================================================================
-
-// ---- Core ----
-
-static void* API_GetImGuiContext() {
-    return Overlay::GetImGuiContext();
-}
-
-// ---- ANSI Palette ----
-
-static void* API_GetGlobalPalette() {
-    return &g_GlobalPalette;
-}
-
-static void API_PaletteEnsureInit(void* palette) {
-    if (palette) {
-        static_cast<AnsiPalette*>(palette)->EnsureInitialized();
-    }
-}
-
-static int API_PaletteReload(void* palette) {
-    if (palette) {
-        return static_cast<AnsiPalette*>(palette)->ReloadFromFile() ? 1 : 0;
-    }
-    return 0;
-}
-
-static int API_PaletteGetColor(void* palette, int index, uint32_t* out_color) {
-    if (palette && out_color) {
-        ImU32 col;
-        if (static_cast<AnsiPalette*>(palette)->GetColor(index, col)) {
-            *out_color = col;
-            return 1;
-        }
-    }
-    return 0;
-}
-
-static int API_PaletteIsActive(void* palette) {
-    if (palette) {
-        return static_cast<AnsiPalette*>(palette)->IsActive() ? 1 : 0;
-    }
-    return 0;
-}
-
-static void API_PaletteSetDirProvider(PFN_BML_UI_LoaderDirProvider provider) {
-    AnsiPalette::SetLoaderDirProvider(reinterpret_cast<AnsiPalette::LoaderDirProvider>(provider));
-}
-
-static void API_PaletteSetLogProvider(PFN_BML_UI_LogProvider provider) {
-    AnsiPalette::SetLoggerProvider(reinterpret_cast<AnsiPalette::LogProvider>(provider));
-}
-
-// ---- ANSI Text Rendering ----
-
-static void API_RenderAnsiText(const char* text) {
-    if (text && g_Initialized) {
-        Overlay::ImGuiContextScope scope;
-        g_GlobalPalette.EnsureInitialized();
-        AnsiText::TextUnformatted(text);
-    }
-}
-
-static void API_RenderAnsiTextEx(const char* text, void* palette) {
-    if (text && g_Initialized) {
-        Overlay::ImGuiContextScope scope;
-        AnsiPalette* pal = palette ? static_cast<AnsiPalette*>(palette) : &g_GlobalPalette;
-        pal->EnsureInitialized();
-        AnsiText::SetPreResolvePalette(pal);
-        AnsiText::TextUnformatted(text);
-        AnsiText::SetPreResolvePalette(nullptr);
-    }
-}
-
-static void API_CalcAnsiTextSize(const char* text, float* out_width, float* out_height) {
-    if (text && g_Initialized) {
-        Overlay::ImGuiContextScope scope;
-        ImVec2 size = AnsiText::CalcTextSize(text);
-        if (out_width) *out_width = size.x;
-        if (out_height) *out_height = size.y;
-    } else {
-        if (out_width) *out_width = 0.0f;
-        if (out_height) *out_height = 0.0f;
-    }
-}
-
-static void* API_ParseAnsiText(const char* text) {
-    if (!text) return nullptr;
-    // Placeholder for future implementation
-    return nullptr;
-}
-
-static void API_FreeAnsiSegments(void* segments) {
-    (void)segments;
-}
-
-//=============================================================================
-// API Registration
-//=============================================================================
-
-static const BML_UI_ApiTable g_UIApiTable = {
-    sizeof(BML_UI_ApiTable),
-    BML_UI_API_VERSION,
-
-    // Core
-    reinterpret_cast<PFN_bmlUIGetImGuiContext>(API_GetImGuiContext),
-
-    // ANSI Palette
-    reinterpret_cast<PFN_bmlUIGetGlobalPalette>(API_GetGlobalPalette),
-    API_PaletteEnsureInit,
-    API_PaletteReload,
-    API_PaletteGetColor,
-    API_PaletteIsActive,
-    API_PaletteSetDirProvider,
-    API_PaletteSetLogProvider,
-
-    // ANSI Text
-    API_RenderAnsiText,
-    API_RenderAnsiTextEx,
-    API_CalcAnsiTextSize,
-    reinterpret_cast<PFN_bmlUIParseAnsiText>(API_ParseAnsiText),
-    API_FreeAnsiSegments,
-};
-
-static bool RegisterUIApis() {
-    // Register BML_UI as an extension so consumers can use bmlExtensionLoad
-    BML_ExtensionDesc desc = BML_EXTENSION_DESC_INIT;
-    desc.name = BML_UI_EXTENSION_NAME;
-    desc.version = bmlMakeVersion(0, 4, 0);
-    desc.api_table = &g_UIApiTable;
-    desc.api_size = sizeof(BML_UI_ApiTable);
-    desc.description = "BML UI module providing ImGui overlay and ANSI text rendering";
-
-    BML_Result result = bmlExtensionRegister(&desc);
-    if (result != BML_RESULT_OK) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_ERROR, "BML_UI",
-               "Failed to register BML_UI extension (result=%d)", result);
-        return false;
-    }
-
-    bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_UI", "Public APIs registered via Extension system");
-    return true;
-}
-
-//=============================================================================
-// Event Handlers (Internal)
-//=============================================================================
-
-static void OnEngineInit(BML_Context ctx, BML_TopicId topic, const BML_ImcMessage* msg, void* user_data) {
-    (void)ctx;
-    (void)topic;
-    (void)user_data;
-
-    if (!msg || !msg->data || msg->size < sizeof(BML_EngineInitEvent)) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_WARN, "BML_UI", "Invalid Engine/Init message");
-        return;
-    }
-
-    auto* payload = static_cast<const BML_EngineInitEvent*>(msg->data);
-    if (payload->struct_size < sizeof(BML_EngineInitEvent) || !payload->context) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_WARN, "BML_UI", "Engine/Init message has null CKContext");
-        return;
-    }
-
-    g_CKContext = payload->context;
-
-    // Create ImGui context
-    if (!Overlay::ImGuiCreateContext()) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_ERROR, "BML_UI", "Failed to create ImGui context");
-        return;
-    }
-
-    // Initialize platform backend
-    if (!Overlay::ImGuiInitPlatform(g_CKContext)) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_ERROR, "BML_UI", "Failed to initialize ImGui platform backend");
-        Overlay::ImGuiDestroyContext();
-        return;
-    }
-
-    // Initialize renderer backend
-    if (!Overlay::ImGuiInitRenderer(g_CKContext)) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_ERROR, "BML_UI", "Failed to initialize ImGui renderer backend");
-        Overlay::ImGuiShutdownPlatform(g_CKContext);
-        Overlay::ImGuiDestroyContext();
-        return;
-    }
-
-    // Initialize global palette
-    g_GlobalPalette.EnsureInitialized();
-
-    g_Initialized = true;
-    bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_UI", "ImGui initialized successfully");
-}
-
-static void OnEngineShutdown(BML_Context ctx, BML_TopicId topic, const BML_ImcMessage* msg, void* user_data) {
-    (void)ctx;
-    (void)topic;
-    (void)msg;
-    (void)user_data;
-
-    if (g_CKContext && Overlay::GetImGuiContext()) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_UI", "Shutting down ImGui");
-        Overlay::ImGuiShutdownRenderer(g_CKContext);
-        Overlay::ImGuiShutdownPlatform(g_CKContext);
-        Overlay::ImGuiDestroyContext();
-    }
-
-    g_CKContext = nullptr;
-    g_Initialized = false;
-}
-
-static void OnPreProcess(BML_Context ctx, BML_TopicId topic, const BML_ImcMessage* msg, void* user_data) {
-    (void)ctx;
-    (void)topic;
-    (void)msg;
-    (void)user_data;
-
-    if (g_Initialized) {
-        Overlay::ImGuiContextScope scope;
-        Overlay::ImGuiNewFrame();
-    }
-}
-
-static void OnPostProcess(BML_Context ctx, BML_TopicId topic, const BML_ImcMessage* msg, void* user_data) {
-    (void)ctx;
-    (void)topic;
-    (void)msg;
-    (void)user_data;
-
-    if (g_Initialized) {
-        Overlay::ImGuiContextScope scope;
-        if (g_TopicUIDraw) {
-            bmlImcPublish(g_TopicUIDraw, nullptr, 0);
-        }
-        Overlay::ImGuiEndFrame();
-    }
-}
-
-static void OnPreRender(BML_Context ctx, BML_TopicId topic, const BML_ImcMessage* msg, void* user_data) {
-    (void)ctx;
-    (void)topic;
-    (void)msg;
-    (void)user_data;
-
-    if (g_Initialized) {
-        Overlay::ImGuiRender();
-    }
-}
-
-static void OnPostRender(BML_Context ctx, BML_TopicId topic, const BML_ImcMessage* msg, void* user_data) {
-    (void)ctx;
-    (void)topic;
-    (void)msg;
-    (void)user_data;
-
-    if (g_Initialized) {
-        Overlay::ImGuiOnRender();
-    }
-}
-
-//=============================================================================
-// Module Lifecycle
-//=============================================================================
+#include "CK2dEntity.h"
+#include "CKRenderContext.h"
+#include "PathUtils.h"
+#include "StringUtils.h"
+#include <MinHook.h>
+#include <algorithm>
+#include <cfloat>
+#include <cmath>
+#include <cstring>
+#include <filesystem>
+#include <mutex>
+#include <vector>
 
 namespace {
+constexpr bool kDebugOverlayMarker = false;
+constexpr bool kDebugSubmitOnPostRender = true;
 
-void ReleaseSubscriptions() {
-    if (g_EngineInitSub) {
-        bmlImcUnsubscribe(g_EngineInitSub);
-        g_EngineInitSub = nullptr;
+std::string BuildFontPath(const std::string &loaderDirUtf8, const char *filename) {
+    if (!filename || filename[0] == '\0') {
+        return "";
     }
-    if (g_EngineShutdownSub) {
-        bmlImcUnsubscribe(g_EngineShutdownSub);
-        g_EngineShutdownSub = nullptr;
+
+    std::string path = filename;
+    if (!utils::FileExistsUtf8(path)) {
+        path = loaderDirUtf8;
+        path.append("\\Fonts\\").append(filename);
     }
-    if (g_PreProcessSub) {
-        bmlImcUnsubscribe(g_PreProcessSub);
-        g_PreProcessSub = nullptr;
-    }
-    if (g_PostProcessSub) {
-        bmlImcUnsubscribe(g_PostProcessSub);
-        g_PostProcessSub = nullptr;
-    }
-    if (g_PreRenderSub) {
-        bmlImcUnsubscribe(g_PreRenderSub);
-        g_PreRenderSub = nullptr;
-    }
-    if (g_PostRenderSub) {
-        bmlImcUnsubscribe(g_PostRenderSub);
-        g_PostRenderSub = nullptr;
-    }
+
+    return path;
 }
 
-BML_Result ValidateAttachArgs(const BML_ModAttachArgs* args) {
-    if (!args || args->struct_size != sizeof(BML_ModAttachArgs) || args->mod == nullptr || args->get_proc == nullptr) {
-        return BML_RESULT_INVALID_ARGUMENT;
+ImFont *LoadConfiguredFont(const std::string &loaderDirUtf8, const char *filename, float size, const char *ranges, bool merge = false) {
+    ImGuiIO &io = ImGui::GetIO();
+    if (size <= 0.0f) {
+        size = 32.0f;
     }
-    if (args->api_version != BML_MOD_ENTRYPOINT_API_VERSION) {
-        return BML_RESULT_VERSION_MISMATCH;
+
+    auto addDefaultFont = [&]() -> ImFont * {
+        ImFontConfig config;
+        config.SizePixels = size;
+        config.MergeMode = false;
+        return io.Fonts->AddFontDefault(&config);
+    };
+
+    std::string path = BuildFontPath(loaderDirUtf8, filename);
+    if (path.empty() || !utils::FileExistsUtf8(path)) {
+        return addDefaultFont();
     }
-    return BML_RESULT_OK;
+
+    const ImWchar *glyphRanges = nullptr;
+    if (_strnicmp(ranges, "ChineseFull", 11) == 0) {
+        glyphRanges = io.Fonts->GetGlyphRangesChineseFull();
+    } else if (_strnicmp(ranges, "Chinese", 7) == 0) {
+        glyphRanges = io.Fonts->GetGlyphRangesChineseSimplifiedCommon();
+    } else if (_strnicmp(ranges, "Cyrillic", 8) == 0) {
+        glyphRanges = io.Fonts->GetGlyphRangesCyrillic();
+    } else if (_strnicmp(ranges, "Greek", 5) == 0) {
+        glyphRanges = io.Fonts->GetGlyphRangesGreek();
+    } else if (_strnicmp(ranges, "Korean", 6) == 0) {
+        glyphRanges = io.Fonts->GetGlyphRangesKorean();
+    } else if (_strnicmp(ranges, "Japanese", 8) == 0) {
+        glyphRanges = io.Fonts->GetGlyphRangesJapanese();
+    } else if (_strnicmp(ranges, "Thai", 4) == 0) {
+        glyphRanges = io.Fonts->GetGlyphRangesThai();
+    } else if (_strnicmp(ranges, "Vietnamese", 10) == 0) {
+        glyphRanges = io.Fonts->GetGlyphRangesVietnamese();
+    }
+
+    ImFontConfig config;
+    config.SizePixels = size;
+    config.MergeMode = merge;
+    if (config.MergeMode && io.Fonts->Fonts.empty()) {
+        config.MergeMode = false;
+    }
+
+    ImFont *font = io.Fonts->AddFontFromFileTTF(path.c_str(), size, &config, glyphRanges);
+    return font ? font : addDefaultFont();
+}
 }
 
-BML_Result ValidateDetachArgs(const BML_ModDetachArgs* args) {
-    if (!args || args->struct_size != sizeof(BML_ModDetachArgs) || args->mod == nullptr) {
-        return BML_RESULT_INVALID_ARGUMENT;
+// =============================================================================
+// UIMod Class
+// =============================================================================
+
+struct UIDrawContribution {
+    BML_InterfaceRegistration registration{nullptr};
+    std::string id;
+    BML_UILayer layer{BML_UI_LAYER_WINDOW};
+    int32_t priority{0};
+    uint32_t order{0};
+    PFN_BML_UIDrawCallback callback{nullptr};
+    void *user_data{nullptr};
+};
+extern const BML_UIDrawRegistry g_WindowRegistry;
+extern const BML_UIDrawRegistry g_OverlayRegistry;
+extern const BML_ImGuiApi g_ImGuiApi;
+
+class UIMod : public bml::Module {
+    bml::imc::SubscriptionManager m_Subs;
+    CKContext *m_CKContext = nullptr;
+    CKRenderContext *m_RenderContext = nullptr;
+    bool m_ContextCreated = false;
+    bool m_PlatformReady = false;
+    bool m_RendererReady = false;
+    bool m_GuiResourcesReady = false;
+    bool m_LoggedFirstUIDraw = false;
+    bool m_LoggedFirstPostRenderSubmit = false;
+    bool m_LoggedFirstSpriteSubmit = false;
+    bool m_LoggedValidSpriteSubmit = false;
+    bool m_LoggedFirstRenderData = false;
+    bool m_LoggedValidRenderData = false;
+    bool m_LoggedDisplaySizeFallback = false;
+    bool m_LoggedPreProcessEntry = false;
+    bool m_LoggedPreProcessMetrics = false;
+    bool m_LoggedPostProcessMetrics = false;
+    bool m_LoggedPostProcessBootstrap = false;
+    bool m_LoggedFirstPostRenderPayload = false;
+    bool m_LoggedFirstPostSpritePayload = false;
+    VxRect m_WindowRect;
+    VxRect m_OldWindowRect;
+    std::wstring m_LoaderDirW;
+    std::string m_LoaderDirUtf8;
+    std::string m_ImGuiIniFilename;
+    std::string m_ImGuiLogFilename;
+    std::string m_FontFilename = "unifont.otf";
+    float m_FontSize = 32.0f;
+    std::string m_FontRanges = "ChineseFull";
+    bool m_EnableSecondaryFont = false;
+    std::string m_SecondaryFontFilename = "unifont.otf";
+    float m_SecondaryFontSize = 32.0f;
+    std::string m_SecondaryFontRanges = "ChineseFull";
+    bool m_EnableIniSettings = true;
+    std::string m_ProviderId;
+    std::mutex m_DrawMutex;
+    std::vector<UIDrawContribution> m_WindowContributions;
+    std::vector<UIDrawContribution> m_OverlayContributions;
+    uint32_t m_NextDrawOrder = 1;
+    uint64_t m_FrameId = 0;
+    DWORD m_UiThreadId = 0;
+    bml::InterfaceLease<BML_HostRuntimeInterface> m_HostRuntime;
+    bml::PublishedInterface m_WindowRegistryInterface;
+    bml::PublishedInterface m_OverlayRegistryInterface;
+    bml::PublishedInterface m_ImGuiInterface;
+
+    void EnsureDefaultConfig() {
+        auto config = Services().Config();
+
+        if (!config.GetString("GUI", "FontFilename").has_value()) {
+            config.SetString("GUI", "FontFilename", "unifont.otf");
+        }
+        if (!config.GetFloat("GUI", "FontSize").has_value()) {
+            config.SetFloat("GUI", "FontSize", 32.0f);
+        }
+        if (!config.GetString("GUI", "FontRanges").has_value()) {
+            config.SetString("GUI", "FontRanges", "ChineseFull");
+        }
+        if (!config.GetBool("GUI", "EnableSecondaryFont").has_value()) {
+            config.SetBool("GUI", "EnableSecondaryFont", false);
+        }
+        if (!config.GetString("GUI", "SecondaryFontFilename").has_value()) {
+            config.SetString("GUI", "SecondaryFontFilename", "unifont.otf");
+        }
+        if (!config.GetFloat("GUI", "SecondaryFontSize").has_value()) {
+            config.SetFloat("GUI", "SecondaryFontSize", 32.0f);
+        }
+        if (!config.GetString("GUI", "SecondaryFontRanges").has_value()) {
+            config.SetString("GUI", "SecondaryFontRanges", "ChineseFull");
+        }
+        if (!config.GetBool("GUI", "EnableIniSettings").has_value()) {
+            config.SetBool("GUI", "EnableIniSettings", true);
+        }
     }
-    if (args->api_version != BML_MOD_ENTRYPOINT_API_VERSION) {
-        return BML_RESULT_VERSION_MISMATCH;
-    }
-    return BML_RESULT_OK;
-}
 
-BML_Result HandleAttach(const BML_ModAttachArgs* args) {
-    BML_Result validation = ValidateAttachArgs(args);
-    if (validation != BML_RESULT_OK) {
-        return validation;
-    }
-
-    g_ModHandle = args->mod;
-
-    BML_Result result = bmlLoadAPI(args->get_proc, args->get_proc_by_id);
-    if (result != BML_RESULT_OK) {
-        return result;
+    void RefreshGuiConfig() {
+        auto config = Services().Config();
+        m_FontFilename = config.GetString("GUI", "FontFilename").value_or("unifont.otf");
+        m_FontSize = config.GetFloat("GUI", "FontSize").value_or(32.0f);
+        m_FontRanges = config.GetString("GUI", "FontRanges").value_or("ChineseFull");
+        m_EnableSecondaryFont = config.GetBool("GUI", "EnableSecondaryFont").value_or(false);
+        m_SecondaryFontFilename = config.GetString("GUI", "SecondaryFontFilename").value_or("unifont.otf");
+        m_SecondaryFontSize = config.GetFloat("GUI", "SecondaryFontSize").value_or(32.0f);
+        m_SecondaryFontRanges = config.GetString("GUI", "SecondaryFontRanges").value_or("ChineseFull");
+        m_EnableIniSettings = config.GetBool("GUI", "EnableIniSettings").value_or(true);
     }
 
-    bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_UI", "Initializing BML UI Module v0.4.0");
+    void InitializeLoaderPaths() {
+        if (!m_LoaderDirW.empty()) {
+            return;
+        }
 
-    // Install Win32 message hooks for ImGui input handling
-    if (!Overlay::ImGuiInstallWin32Hooks()) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_ERROR, "BML_UI", "Failed to install Win32 hooks for ImGui");
-        bmlUnloadAPI();
-        return BML_RESULT_INTERNAL_ERROR;
+        wchar_t modulePath[MAX_PATH] = {};
+        GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
+        std::filesystem::path loaderPath = std::filesystem::path(modulePath).parent_path().parent_path() / "ModLoader";
+        m_LoaderDirW = loaderPath.wstring();
+        m_LoaderDirUtf8 = utils::Utf16ToUtf8(m_LoaderDirW);
     }
 
-    // Register public APIs
-    if (!RegisterUIApis()) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_ERROR, "BML_UI", "Failed to register UI APIs");
+    void SaveIniSettings() {
+        if (!m_EnableIniSettings || m_ImGuiIniFilename.empty() || !Overlay::GetImGuiContext()) {
+            return;
+        }
+
+        Overlay::ImGuiContextScope scope;
+        ImGui::SaveIniSettingsToDisk(m_ImGuiIniFilename.c_str());
+    }
+
+    void EnsureGuiResourcesReady() {
+        if (m_GuiResourcesReady || !Overlay::GetImGuiContext()) {
+            return;
+        }
+
+        InitializeLoaderPaths();
+        RefreshGuiConfig();
+
+        Overlay::ImGuiContextScope scope;
+        ImGuiIO &io = ImGui::GetIO();
+        io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+
+        m_ImGuiIniFilename = m_LoaderDirUtf8 + "\\ImGui.ini";
+        m_ImGuiLogFilename = m_LoaderDirUtf8 + "\\ImGui.log";
+        io.LogFilename = m_ImGuiLogFilename.c_str();
+
+        if (m_EnableIniSettings && utils::FileExistsUtf8(m_ImGuiIniFilename)) {
+            ImGui::LoadIniSettingsFromDisk(m_ImGuiIniFilename.c_str());
+        }
+
+        if (m_RenderContext) {
+            VxRect windowRect;
+            if (auto *root = m_RenderContext->Get2dRoot(TRUE)) {
+                root->GetRect(windowRect);
+                if (windowRect.GetHeight() > 0) {
+                    ImGui::GetStyle().FontScaleMain = static_cast<float>(windowRect.GetHeight()) / 1200.0f;
+                }
+            }
+        }
+
+        io.Fonts->Clear();
+        LoadConfiguredFont(m_LoaderDirUtf8, m_FontFilename.c_str(), m_FontSize, m_FontRanges.c_str());
+        if (m_EnableSecondaryFont) {
+            const bool sameFont = m_FontFilename == m_SecondaryFontFilename && m_FontRanges == m_SecondaryFontRanges;
+            if (!sameFont) {
+                LoadConfiguredFont(
+                    m_LoaderDirUtf8,
+                    m_SecondaryFontFilename.c_str(),
+                    m_SecondaryFontSize,
+                    m_SecondaryFontRanges.c_str(),
+                    true);
+            }
+        }
+
+        io.Fonts->Build();
+        m_GuiResourcesReady = true;
+        Services().Log().Info(
+            "GUI resources initialized: font='%s' size=%.1f scale=%.3f ini=%d",
+            m_FontFilename.c_str(),
+            m_FontSize,
+            ImGui::GetStyle().FontScaleMain,
+            m_EnableIniSettings ? 1 : 0);
+    }
+
+    void OnResize() {
+        if (m_WindowRect.GetHeight() > 0) {
+            ImGui::GetStyle().FontScaleMain = static_cast<float>(m_WindowRect.GetHeight()) / 1200.0f;
+        }
+    }
+
+    void SyncFrameMetrics() {
+        if (!m_RenderContext || !Overlay::GetImGuiContext()) {
+            return;
+        }
+
+        auto *root = m_RenderContext->Get2dRoot(TRUE);
+        if (!root) {
+            return;
+        }
+
+        m_OldWindowRect = m_WindowRect;
+        root->GetRect(m_WindowRect);
+        if (m_WindowRect != m_OldWindowRect) {
+            OnResize();
+        }
+
+        const float width = static_cast<float>(m_WindowRect.GetWidth());
+        const float height = static_cast<float>(m_WindowRect.GetHeight());
+        if (width <= 0.0f || height <= 0.0f) {
+            return;
+        }
+
+        ImGuiIO &io = ImGui::GetIO();
+        ImGuiViewport *viewport = ImGui::GetMainViewport();
+        io.DisplaySize = ImVec2(width, height);
+        io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+        viewport->Pos = ImVec2(0.0f, 0.0f);
+        viewport->Size = ImVec2(width, height);
+        if (!m_LoggedDisplaySizeFallback) {
+            m_LoggedDisplaySizeFallback = true;
+            Services().Log().Info( "Applied frame metrics from render root: %.0fx%.0f", width, height);
+        }
+    }
+
+    bool RefreshRenderContextFromContext() {
+        if (m_RenderContext || !m_CKContext) {
+            return m_RenderContext != nullptr;
+        }
+
+        m_RenderContext = m_CKContext->GetPlayerRenderContext();
+        return m_RenderContext != nullptr;
+    }
+
+    bool EnsureContextCreated() {
+        if (m_ContextCreated) {
+            return true;
+        }
+
+        if (!Overlay::ImGuiCreateContext()) {
+            Services().Log().Error( "Failed to create ImGui context");
+            return false;
+        }
+
+        m_ContextCreated = true;
+        return true;
+    }
+
+    bool EnsurePlatformReady(CKContext *context) {
+        if (!context) {
+            return false;
+        }
+
+        m_CKContext = context;
+        if (m_PlatformReady) {
+            return true;
+        }
+
+        if (!EnsureContextCreated()) {
+            return false;
+        }
+
+        if (!Overlay::ImGuiInitPlatform(m_CKContext)) {
+            Services().Log().Error( "Failed to initialize ImGui platform backend");
+            DestroyAllUiState();
+            return false;
+        }
+
+        m_PlatformReady = true;
+        Services().Log().Info( "ImGui platform initialized successfully");
+        return true;
+    }
+
+    bool EnsureRendererReady() {
+        if (m_RendererReady) {
+            return true;
+        }
+
+        RefreshRenderContextFromContext();
+        if (!m_CKContext || !m_RenderContext) {
+            return false;
+        }
+
+        if (!EnsurePlatformReady(m_CKContext)) {
+            return false;
+        }
+
+        if (!Overlay::ImGuiInitRenderer(m_CKContext)) {
+            Services().Log().Error( "Failed to initialize ImGui renderer backend");
+            return false;
+        }
+
+        EnsureGuiResourcesReady();
+
+        m_RendererReady = true;
+        Services().Log().Info( "ImGui renderer initialized successfully");
+        return true;
+    }
+
+    void TryBootstrapFromRuntime() {
+        if (!m_CKContext) {
+            m_CKContext = bml::virtools::GetCKContext(Services());
+        }
+
+        if (!m_RenderContext) {
+            m_RenderContext = bml::virtools::GetRenderContext(Services());
+        }
+
+        RefreshRenderContextFromContext();
+
+        if (m_CKContext) {
+            EnsurePlatformReady(m_CKContext);
+        }
+
+        if (m_CKContext && m_RenderContext) {
+            EnsureRendererReady();
+        }
+    }
+
+    void DestroyRenderer() {
+        if (!m_CKContext || !m_RendererReady || !Overlay::GetImGuiContext()) {
+            m_RendererReady = false;
+            return;
+        }
+
+        Overlay::ImGuiShutdownRenderer(m_CKContext);
+        m_RendererReady = false;
+    }
+
+    void DestroyAllUiState() {
+        DestroyRenderer();
+
+        if (m_CKContext && m_PlatformReady && Overlay::GetImGuiContext()) {
+            Overlay::ImGuiShutdownPlatform(m_CKContext);
+        }
+        m_PlatformReady = false;
+
+        m_GuiResourcesReady = false;
+        if (m_ContextCreated && Overlay::GetImGuiContext()) {
+            Overlay::ImGuiDestroyContext();
+        }
+        m_ContextCreated = false;
+    }
+
+    void HandleEngineInit(const bml::imc::Message &msg) {
+        auto *payload = msg.As<BML_EngineInitEvent>();
+        if (!payload || payload->struct_size < sizeof(BML_EngineInitEvent) || !payload->context) {
+            Services().Log().Warn( "Engine/Init message has null CKContext");
+            return;
+        }
+
+        m_CKContext = payload->context;
+        EnsurePlatformReady(m_CKContext);
+    }
+
+    void HandleEnginePlay(const bml::imc::Message &msg) {
+        auto *payload = msg.As<BML_EnginePlayEvent>();
+        if (!payload || payload->struct_size < sizeof(BML_EnginePlayEvent) || !payload->context) {
+            Services().Log().Warn( "Engine/Play payload missing CKContext");
+            return;
+        }
+
+        m_CKContext = payload->context;
+        if (payload->render_context) {
+            m_RenderContext = payload->render_context;
+        } else {
+            RefreshRenderContextFromContext();
+        }
+
+        if (!EnsurePlatformReady(m_CKContext)) {
+            return;
+        }
+        if (EnsureRendererReady()) {
+            Overlay::ImGuiContextScope scope;
+            SyncFrameMetrics();
+            Overlay::ImGuiNewFrame();
+            SyncFrameMetrics();
+        }
+    }
+
+    void HandleEngineReset() {
+        if (m_RendererReady) {
+            Services().Log().Info( "Shutting down ImGui renderer");
+            Overlay::ImGuiContextScope scope;
+            Overlay::ImGuiEndFrame();
+        }
+        DestroyRenderer();
+        m_RenderContext = nullptr;
+    }
+
+    void HandleEngineShutdown() {
+        if (m_ContextCreated || m_PlatformReady || m_RendererReady) {
+            Services().Log().Info( "Shutting down ImGui");
+        }
+        DestroyAllUiState();
+        m_CKContext = nullptr;
+        m_RenderContext = nullptr;
+    }
+
+public:
+    bool IsInitialized() const { return m_RendererReady; }
+    const char *GetProviderId() const { return m_ProviderId.c_str(); }
+
+    BML_Result ValidateMainThreadAccess() const {
+        return GetCurrentThreadId() == m_UiThreadId ? BML_RESULT_OK : BML_RESULT_WRONG_THREAD;
+    }
+
+    BML_Result ValidateCurrentFrameAccess() const {
+        if (ValidateMainThreadAccess() != BML_RESULT_OK) {
+            return BML_RESULT_WRONG_THREAD;
+        }
+        if (!m_RendererReady || !Overlay::GetImGuiContext() || !Overlay::ImGuiHasPendingFrame()) {
+            return BML_RESULT_INVALID_STATE;
+        }
+        return BML_RESULT_OK;
+    }
+
+    BML_Result RegisterDrawContribution(bool overlay,
+                                        const BML_UIDrawDesc *desc,
+                                        BML_InterfaceRegistration *out_registration) {
+        if (!desc || desc->struct_size < sizeof(BML_UIDrawDesc) || !desc->id ||
+            !desc->callback || !out_registration) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+        if (!m_HostRuntime) {
+            return BML_RESULT_NOT_SUPPORTED;
+        }
+
+        const char *interfaceId = overlay ? BML_UI_OVERLAY_REGISTRY_INTERFACE_ID
+                                          : BML_UI_WINDOW_REGISTRY_INTERFACE_ID;
+        BML_Result registration_result = m_HostRuntime->RegisterContribution(m_Handle, interfaceId, out_registration);
+        if (registration_result != BML_RESULT_OK) {
+            return registration_result;
+        }
+
+        UIDrawContribution contribution;
+        contribution.registration = *out_registration;
+        contribution.id = desc->id;
+        contribution.layer = desc->layer;
+        contribution.priority = desc->priority;
+        contribution.order = m_NextDrawOrder++;
+        contribution.callback = desc->callback;
+        contribution.user_data = desc->user_data;
+
+        try {
+            std::lock_guard<std::mutex> lock(m_DrawMutex);
+            auto &container = overlay ? m_OverlayContributions : m_WindowContributions;
+            container.push_back(std::move(contribution));
+        } catch (...) {
+            (void) m_HostRuntime->UnregisterContribution(*out_registration);
+            *out_registration = nullptr;
+            return BML_RESULT_OUT_OF_MEMORY;
+        }
+        return BML_RESULT_OK;
+    }
+
+    BML_Result UnregisterDrawContribution(bool overlay, BML_InterfaceRegistration registration) {
+        if (!registration) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+        if (!m_HostRuntime) {
+            return BML_RESULT_NOT_SUPPORTED;
+        }
+
+        std::lock_guard<std::mutex> lock(m_DrawMutex);
+        auto &container = overlay ? m_OverlayContributions : m_WindowContributions;
+        auto it = std::find_if(container.begin(), container.end(),
+                               [registration](const UIDrawContribution &entry) {
+                                   return entry.registration == registration;
+                               });
+        if (it == container.end()) {
+            return BML_RESULT_NOT_FOUND;
+        }
+
+        BML_Result unregister_result = m_HostRuntime->UnregisterContribution(registration);
+        if (unregister_result != BML_RESULT_OK) {
+            return unregister_result;
+        }
+
+        container.erase(it);
+        return BML_RESULT_OK;
+    }
+
+    void ExecuteDrawContributions(bool overlay) {
+        std::vector<UIDrawContribution> snapshot;
+        {
+            std::lock_guard<std::mutex> lock(m_DrawMutex);
+            snapshot = overlay ? m_OverlayContributions : m_WindowContributions;
+        }
+
+        std::stable_sort(snapshot.begin(), snapshot.end(),
+                         [](const UIDrawContribution &lhs, const UIDrawContribution &rhs) {
+                             if (lhs.priority != rhs.priority) {
+                                 return lhs.priority < rhs.priority;
+                             }
+                             return lhs.order < rhs.order;
+                         });
+
+        for (const auto &entry : snapshot) {
+            if (!entry.callback) {
+                continue;
+            }
+
+            try {
+                ImGuiIO &io = ImGui::GetIO();
+                ImGuiViewport *viewport = ImGui::GetMainViewport();
+                BML_UIDrawContext ctx = BML_UI_DRAW_CONTEXT_INIT;
+                ctx.imgui = &g_ImGuiApi;
+                ctx.layer = entry.layer;
+                if (viewport) {
+                    ctx.viewport_pos.x = viewport->Pos.x;
+                    ctx.viewport_pos.y = viewport->Pos.y;
+                    ctx.viewport_size.x = viewport->Size.x;
+                    ctx.viewport_size.y = viewport->Size.y;
+                }
+                ctx.input.delta_time = io.DeltaTime;
+                ctx.input.mouse_wheel = io.MouseWheel;
+                ctx.input.key_ctrl = io.KeyCtrl ? BML_TRUE : BML_FALSE;
+                ctx.input.key_shift = io.KeyShift ? BML_TRUE : BML_FALSE;
+                ctx.input.key_alt = io.KeyAlt ? BML_TRUE : BML_FALSE;
+                ctx.input.key_super = io.KeySuper ? BML_TRUE : BML_FALSE;
+                ctx.frame_id = m_FrameId;
+                entry.callback(&ctx, entry.user_data);
+            } catch (...) {
+                Services().Log().Error( "Draw contribution '%s' raised an exception", entry.id.c_str());
+            }
+        }
+    }
+
+    BML_Result OnAttach(bml::ModuleServices &services) override {
+        m_Subs = services.CreateSubscriptions();
+        m_HostRuntime = Acquire<BML_HostRuntimeInterface>(BML_CORE_HOST_RUNTIME_INTERFACE_ID, 1);
+        if (!m_HostRuntime) {
+            return BML_RESULT_NOT_FOUND;
+        }
+
+        Services().Log().Info("Initializing BML UI Module v0.4.0");
+        m_UiThreadId = GetCurrentThreadId();
+        const char *mod_id = nullptr;
+        if (Services().Builtins().Module->GetModId(m_Handle, &mod_id) == BML_RESULT_OK && mod_id) {
+            m_ProviderId = mod_id;
+        }
+        EnsureDefaultConfig();
+        InitializeLoaderPaths();
+
+        if (MH_Initialize() != MH_OK) {
+            Services().Log().Error( "Failed to initialize MinHook");
+            return BML_RESULT_INTERNAL_ERROR;
+        }
+
+        if (!Overlay::ImGuiInstallWin32Hooks()) {
+            Services().Log().Error( "Failed to install Win32 hooks for ImGui");
+            MH_Uninitialize();
+            return BML_RESULT_INTERNAL_ERROR;
+        }
+
+        m_WindowRegistryInterface = Publish(
+            BML_UI_WINDOW_REGISTRY_INTERFACE_ID,
+            &g_WindowRegistry,
+            1,
+            0,
+            0,
+            BML_INTERFACE_FLAG_IMMUTABLE | BML_INTERFACE_FLAG_HOST_OWNED | BML_INTERFACE_FLAG_MAIN_THREAD_ONLY);
+        if (!m_WindowRegistryInterface) {
+            Overlay::ImGuiUninstallWin32Hooks();
+            MH_Uninitialize();
+            return BML_RESULT_FAIL;
+        }
+
+        m_OverlayRegistryInterface = Publish(
+            BML_UI_OVERLAY_REGISTRY_INTERFACE_ID,
+            &g_OverlayRegistry,
+            1,
+            0,
+            0,
+            BML_INTERFACE_FLAG_IMMUTABLE | BML_INTERFACE_FLAG_HOST_OWNED | BML_INTERFACE_FLAG_MAIN_THREAD_ONLY);
+        if (!m_OverlayRegistryInterface) {
+            (void) m_WindowRegistryInterface.Reset();
+            Overlay::ImGuiUninstallWin32Hooks();
+            MH_Uninitialize();
+            return BML_RESULT_FAIL;
+        }
+
+        m_ImGuiInterface = Publish(
+            BML_UI_IMGUI_INTERFACE_ID,
+            &g_ImGuiApi,
+            1,
+            0,
+            0,
+            BML_INTERFACE_FLAG_IMMUTABLE | BML_INTERFACE_FLAG_MAIN_THREAD_ONLY);
+        if (!m_ImGuiInterface) {
+            (void) m_OverlayRegistryInterface.Reset();
+            (void) m_WindowRegistryInterface.Reset();
+            Overlay::ImGuiUninstallWin32Hooks();
+            MH_Uninitialize();
+            return BML_RESULT_FAIL;
+        }
+
+        m_Subs.Add(BML_TOPIC_ENGINE_INIT, [this](const bml::imc::Message &msg) {
+            HandleEngineInit(msg);
+        });
+
+        m_Subs.Add(BML_TOPIC_ENGINE_PLAY, [this](const bml::imc::Message &msg) {
+            HandleEnginePlay(msg);
+        });
+
+        m_Subs.Add(BML_TOPIC_ENGINE_RESET, [this](const bml::imc::Message &) {
+            HandleEngineReset();
+        });
+
+        m_Subs.Add(BML_TOPIC_ENGINE_END, [this](const bml::imc::Message &) {
+            HandleEngineShutdown();
+        });
+
+        m_Subs.Add(BML_TOPIC_ENGINE_PRE_PROCESS, [this](const bml::imc::Message &) {
+            if (m_RendererReady) {
+                Overlay::ImGuiContextScope scope;
+                if (!m_LoggedPreProcessEntry) {
+                    m_LoggedPreProcessEntry = true;
+                    Services().Log().Info(
+                        "Pre-process entry: ctx=%p render_ctx=%p platform=%d renderer=%d",
+                        m_CKContext,
+                        m_RenderContext,
+                        m_PlatformReady ? 1 : 0,
+                        m_RendererReady ? 1 : 0);
+                }
+                Overlay::ImGuiNewFrame();
+                SyncFrameMetrics();
+                if (!m_LoggedPreProcessMetrics) {
+                    m_LoggedPreProcessMetrics = true;
+                    ImGuiIO &io = ImGui::GetIO();
+                    ImGuiViewport *viewport = ImGui::GetMainViewport();
+                    Services().Log().Info(
+                        "Pre-process metrics: io_display=(%.1f,%.1f) viewport=(%.1f,%.1f)",
+                        io.DisplaySize.x,
+                        io.DisplaySize.y,
+                        viewport ? viewport->Size.x : -1.0f,
+                        viewport ? viewport->Size.y : -1.0f);
+                }
+            }
+        });
+
+        m_Subs.Add(BML_TOPIC_ENGINE_POST_PROCESS, [this](const bml::imc::Message &) {
+            if (m_RendererReady) {
+                Overlay::ImGuiContextScope scope;
+                SyncFrameMetrics();
+                if (!m_LoggedPostProcessMetrics) {
+                    m_LoggedPostProcessMetrics = true;
+                    ImGuiIO &io = ImGui::GetIO();
+                    ImGuiViewport *viewport = ImGui::GetMainViewport();
+                    Services().Log().Info(
+                        "Post-process metrics: io_display=(%.1f,%.1f) viewport=(%.1f,%.1f)",
+                        io.DisplaySize.x,
+                        io.DisplaySize.y,
+                        viewport ? viewport->Size.x : -1.0f,
+                        viewport ? viewport->Size.y : -1.0f);
+                }
+                ExecuteDrawContributions(false);
+                ExecuteDrawContributions(true);
+                ++m_FrameId;
+                if (!m_LoggedFirstUIDraw) {
+                    m_LoggedFirstUIDraw = true;
+                    Services().Log().Info( "First typed UI registry frame executed");
+                }
+                if (kDebugOverlayMarker) {
+                    ImDrawList *drawList = ImGui::GetForegroundDrawList();
+                    const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+                    drawList->AddRectFilled(
+                        ImVec2(center.x - 160.0f, center.y - 70.0f),
+                        ImVec2(center.x + 160.0f, center.y + 70.0f),
+                        IM_COL32(255, 32, 32, 160),
+                        12.0f);
+                    drawList->AddText(
+                        ImVec2(center.x - 110.0f, center.y - 12.0f),
+                        IM_COL32_WHITE,
+                        "BML_UI DEBUG");
+                }
+            }
+        });
+
+        m_Subs.Add(BML_TOPIC_ENGINE_POST_RENDER, [this](const bml::imc::Message &msg) {
+            if (!m_RendererReady || !kDebugSubmitOnPostRender) {
+                return;
+            }
+
+            CKRenderContext *payloadDev = nullptr;
+            (void)msg.CopyTo(payloadDev);
+            if (!m_LoggedFirstPostRenderPayload) {
+                m_LoggedFirstPostRenderPayload = true;
+                Services().Log().Info(
+                    "Post-render payload: event_dev=%p cached_render_ctx=%p",
+                    payloadDev,
+                    m_RenderContext);
+            }
+
+            Overlay::ImGuiContextScope scope;
+            SyncFrameMetrics();
+            if (!Overlay::ImGuiHasPendingFrame()) {
+                return;
+            }
+
+            Overlay::ImGuiRender();
+            if (!m_LoggedFirstRenderData) {
+                m_LoggedFirstRenderData = true;
+                ImDrawData *drawData = ImGui::GetDrawData();
+                ImGuiIO &io = ImGui::GetIO();
+                Services().Log().Info(
+                    "First render data: ctx=%p draw_ctx=%p cmd_lists=%d total_vtx=%d total_idx=%d fonts=%d tex_id=%p draw_display=(%.1f,%.1f) io_display=(%.1f,%.1f) viewport=(%.1f,%.1f)",
+                    ImGui::GetCurrentContext(),
+                    Overlay::GetImGuiContext(),
+                    drawData ? drawData->CmdListsCount : -1,
+                    drawData ? drawData->TotalVtxCount : -1,
+                    drawData ? drawData->TotalIdxCount : -1,
+                    io.Fonts ? io.Fonts->Fonts.Size : -1,
+                    io.Fonts ? io.Fonts->TexID : nullptr,
+                    drawData ? drawData->DisplaySize.x : -1.0f,
+                    drawData ? drawData->DisplaySize.y : -1.0f,
+                    io.DisplaySize.x,
+                    io.DisplaySize.y,
+                    ImGui::GetMainViewport() ? ImGui::GetMainViewport()->Size.x : -1.0f,
+                    ImGui::GetMainViewport() ? ImGui::GetMainViewport()->Size.y : -1.0f);
+            }
+            if (!m_LoggedValidRenderData) {
+                ImDrawData *drawData = ImGui::GetDrawData();
+                if (drawData && drawData->CmdListsCount > 0 &&
+                    drawData->DisplaySize.x > 0.0f && drawData->DisplaySize.y > 0.0f) {
+                    m_LoggedValidRenderData = true;
+                    Services().Log().Info(
+                        "First valid render data: cmd_lists=%d total_vtx=%d draw_display=(%.1f,%.1f) io_display=(%.1f,%.1f) viewport=(%.1f,%.1f)",
+                        drawData->CmdListsCount,
+                        drawData->TotalVtxCount,
+                        drawData->DisplaySize.x,
+                        drawData->DisplaySize.y,
+                        ImGui::GetIO().DisplaySize.x,
+                        ImGui::GetIO().DisplaySize.y,
+                        ImGui::GetMainViewport() ? ImGui::GetMainViewport()->Size.x : -1.0f,
+                        ImGui::GetMainViewport() ? ImGui::GetMainViewport()->Size.y : -1.0f);
+                }
+            }
+            if (!m_LoggedFirstPostRenderSubmit) {
+                m_LoggedFirstPostRenderSubmit = true;
+                Services().Log().Info( "Finalized ImGui frame on post-render");
+            }
+        });
+
+        m_Subs.Add(BML_TOPIC_ENGINE_POST_SPRITE_RENDER, [this](const bml::imc::Message &msg) {
+            if (!m_RendererReady) {
+                TryBootstrapFromRuntime();
+            }
+            if (m_RendererReady) {
+                CKRenderContext *payloadDev = nullptr;
+                (void)msg.CopyTo(payloadDev);
+                if (!m_LoggedFirstPostSpritePayload) {
+                    m_LoggedFirstPostSpritePayload = true;
+                    Services().Log().Info(
+                        "Post-sprite payload: event_dev=%p cached_render_ctx=%p",
+                        payloadDev,
+                        m_RenderContext);
+                }
+                const bool hadRenderableDrawData = Overlay::ImGuiHasRenderableDrawData();
+                Overlay::ImGuiOnRender();
+                if (!m_LoggedFirstSpriteSubmit) {
+                    m_LoggedFirstSpriteSubmit = true;
+                    Services().Log().Info( "First post-sprite render submit");
+                }
+                if (hadRenderableDrawData && !m_LoggedValidSpriteSubmit) {
+                    m_LoggedValidSpriteSubmit = true;
+                    Services().Log().Info( "Submitted valid draw data on post-sprite render");
+                }
+            }
+        });
+
+        if (m_Subs.Count() < 2) {
+            Services().Log().Error("Failed to subscribe to engine lifecycle events");
+            (void) m_ImGuiInterface.Reset();
+            (void) m_OverlayRegistryInterface.Reset();
+            (void) m_WindowRegistryInterface.Reset();
+            Overlay::ImGuiUninstallWin32Hooks();
+            MH_Uninitialize();
+            return BML_RESULT_FAIL;
+        }
+
+        TryBootstrapFromRuntime();
+
+        Services().Log().Info("BML UI Module initialized - waiting for engine events");
+        return BML_RESULT_OK;
+    }
+
+    void OnDetach() override {
+        Services().Log().Info("Shutting down BML UI Module");
+
+        if ((m_ContextCreated || m_PlatformReady || m_RendererReady) && Overlay::GetImGuiContext()) {
+            SaveIniSettings();
+            DestroyAllUiState();
+        }
+
         Overlay::ImGuiUninstallWin32Hooks();
-        bmlUnloadAPI();
-        return BML_RESULT_INTERNAL_ERROR;
+        MH_Uninitialize();
+        (void) m_ImGuiInterface.Reset();
+        (void) m_OverlayRegistryInterface.Reset();
+        (void) m_WindowRegistryInterface.Reset();
+
+        {
+            std::lock_guard<std::mutex> lock(m_DrawMutex);
+            m_WindowContributions.clear();
+            m_OverlayContributions.clear();
+            m_NextDrawOrder = 1;
+        }
+
+        m_CKContext = nullptr;
+        m_RenderContext = nullptr;
+        m_ContextCreated = false;
+        m_PlatformReady = false;
+        m_RendererReady = false;
+        m_GuiResourcesReady = false;
+        m_LoggedFirstUIDraw = false;
+        m_LoggedFirstSpriteSubmit = false;
+        m_LoggedValidSpriteSubmit = false;
+        m_LoggedFirstRenderData = false;
+        m_LoggedValidRenderData = false;
+        m_LoggedDisplaySizeFallback = false;
+        m_LoggedPreProcessEntry = false;
+        m_LoggedPreProcessMetrics = false;
+        m_LoggedPostProcessMetrics = false;
+        m_LoggedPostProcessBootstrap = false;
+        m_LoggedFirstPostRenderPayload = false;
+        m_LoggedFirstPostSpritePayload = false;
+        m_WindowRect = VxRect();
+        m_OldWindowRect = VxRect();
+        m_LoggedFirstPostRenderSubmit = false;
+        m_FrameId = 0;
+        m_HostRuntime.Reset();
     }
+};
 
-    // Get topic IDs for engine lifecycle and render events
-    bmlImcGetTopicId(BML_TOPIC_ENGINE_INIT, &g_TopicEngineInit);
-    bmlImcGetTopicId(BML_TOPIC_ENGINE_END, &g_TopicEngineShutdown);
-    bmlImcGetTopicId(BML_TOPIC_ENGINE_PRE_PROCESS, &g_TopicPreProcess);
-    bmlImcGetTopicId(BML_TOPIC_ENGINE_POST_PROCESS, &g_TopicPostProcess);
-    bmlImcGetTopicId(BML_TOPIC_ENGINE_POST_RENDER, &g_TopicPreRender);
-    bmlImcGetTopicId(BML_TOPIC_ENGINE_POST_SPRITE_RENDER, &g_TopicPostRender);
-    bmlImcGetTopicId(BML_TOPIC_UI_DRAW, &g_TopicUIDraw);
+// =============================================================================
+// Public API Implementation Functions
+// =============================================================================
 
-    // Subscribe to engine lifecycle events
-    result = bmlImcSubscribe(g_TopicEngineInit, OnEngineInit, nullptr, &g_EngineInitSub);
-    if (result != BML_RESULT_OK) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_ERROR, "BML_UI", "Failed to subscribe to Engine/Init");
-        Overlay::ImGuiUninstallWin32Hooks();
-        bmlUnloadAPI();
-        return result;
-    }
-
-    result = bmlImcSubscribe(g_TopicEngineShutdown, OnEngineShutdown, nullptr, &g_EngineShutdownSub);
-    if (result != BML_RESULT_OK) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_ERROR, "BML_UI", "Failed to subscribe to Engine/Shutdown");
-        ReleaseSubscriptions();
-        Overlay::ImGuiUninstallWin32Hooks();
-        bmlUnloadAPI();
-        return result;
-    }
-
-    // Subscribe to process events for ImGui frame lifecycle
-    bmlImcSubscribe(g_TopicPreProcess, OnPreProcess, nullptr, &g_PreProcessSub);
-    bmlImcSubscribe(g_TopicPostProcess, OnPostProcess, nullptr, &g_PostProcessSub);
-
-    // Subscribe to render events
-    bmlImcSubscribe(g_TopicPreRender, OnPreRender, nullptr, &g_PreRenderSub);
-    bmlImcSubscribe(g_TopicPostRender, OnPostRender, nullptr, &g_PostRenderSub);
-
-    bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_UI", "BML UI Module initialized - waiting for engine events");
-    return BML_RESULT_OK;
+static UIMod *GetUI() {
+    return bml::detail::ModuleEntryHelper<UIMod>::GetInstance();
 }
 
-BML_Result HandleDetach(const BML_ModDetachArgs* args) {
-    BML_Result validation = ValidateDetachArgs(args);
-    if (validation != BML_RESULT_OK) {
-        return validation;
-    }
-
-    bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_UI", "Shutting down BML UI Module");
-
-    // Shutdown ImGui if still initialized
-    if (g_CKContext && Overlay::GetImGuiContext()) {
-        Overlay::ImGuiShutdownRenderer(g_CKContext);
-        Overlay::ImGuiShutdownPlatform(g_CKContext);
-        Overlay::ImGuiDestroyContext();
-    }
-
-    // Uninstall Win32 hooks
-    Overlay::ImGuiUninstallWin32Hooks();
-
-    // Unregister extension before releasing subscriptions and API
-    bmlExtensionUnregister(BML_UI_EXTENSION_NAME);
-
-    ReleaseSubscriptions();
-    bmlUnloadAPI();
-    g_ModHandle = nullptr;
-    g_CKContext = nullptr;
-    g_Initialized = false;
-
-    return BML_RESULT_OK;
+static BML_Result API_RegisterWindowContribution(const BML_UIDrawDesc *desc,
+                                                 BML_InterfaceRegistration *out_registration) {
+    auto *ui = GetUI();
+    return ui ? ui->RegisterDrawContribution(false, desc, out_registration) : BML_RESULT_NOT_FOUND;
 }
 
-} // anonymous namespace
-
-//=============================================================================
-// Module Entry Point
-//=============================================================================
-
-BML_MODULE_ENTRY BML_Result BML_ModEntrypoint(BML_ModEntrypointCommand cmd, void* data) {
-    switch (cmd) {
-    case BML_MOD_ENTRYPOINT_ATTACH:
-        return HandleAttach(static_cast<const BML_ModAttachArgs*>(data));
-    case BML_MOD_ENTRYPOINT_DETACH:
-        return HandleDetach(static_cast<const BML_ModDetachArgs*>(data));
-    default:
-        return BML_RESULT_INVALID_ARGUMENT;
-    }
+static BML_Result API_UnregisterWindowContribution(BML_InterfaceRegistration registration) {
+    auto *ui = GetUI();
+    return ui ? ui->UnregisterDrawContribution(false, registration) : BML_RESULT_NOT_FOUND;
 }
 
-// DEPRECATED: Direct DLL exports kept for backward compatibility.
-// New consumers should use bmlExtensionLoad(BML_UI_EXTENSION_NAME, ...) instead.
-extern "C" __declspec(dllexport) const BML_UI_ApiTable* bmlUIGetApiTable() {
-    return &g_UIApiTable;
+static BML_Result API_RegisterOverlayContribution(const BML_UIDrawDesc *desc,
+                                                  BML_InterfaceRegistration *out_registration) {
+    auto *ui = GetUI();
+    return ui ? ui->RegisterDrawContribution(true, desc, out_registration) : BML_RESULT_NOT_FOUND;
 }
 
-// DEPRECATED: Use bmlExtensionLoad(BML_UI_EXTENSION_NAME, ...) to get the API table,
-// then call apiTable->GetImGuiContext() instead.
-extern "C" __declspec(dllexport) void* bmlUIGetImGuiContext() {
-    return API_GetImGuiContext();
+static BML_Result API_UnregisterOverlayContribution(BML_InterfaceRegistration registration) {
+    auto *ui = GetUI();
+    return ui ? ui->UnregisterDrawContribution(true, registration) : BML_RESULT_NOT_FOUND;
 }
+
+const BML_UIDrawRegistry g_WindowRegistry = {
+    1,
+    0,
+    API_RegisterWindowContribution,
+    API_UnregisterWindowContribution
+};
+
+const BML_UIDrawRegistry g_OverlayRegistry = {
+    1,
+    0,
+    API_RegisterOverlayContribution,
+    API_UnregisterOverlayContribution
+};
+
+static BML_Result API_ValidateMainThreadAccess() {
+    auto *ui = GetUI();
+    return ui ? ui->ValidateMainThreadAccess() : BML_RESULT_NOT_FOUND;
+}
+
+static BML_Result API_ValidateCurrentFrameAccess() {
+    auto *ui = GetUI();
+    return ui ? ui->ValidateCurrentFrameAccess() : BML_RESULT_NOT_FOUND;
+}
+
+const BML_ImGuiApi g_ImGuiApi = {
+    sizeof(BML_ImGuiApi),
+    1,
+    0,
+    ImGui::GetVersion(),
+    "cimgui",
+    API_ValidateMainThreadAccess,
+    API_ValidateCurrentFrameAccess,
+#include "bml_imgui_api_init.inc"
+};
+
+BML_DEFINE_MODULE(UIMod)

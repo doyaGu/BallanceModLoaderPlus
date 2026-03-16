@@ -10,506 +10,466 @@
 #include <Windows.h>
 #include <dinput.h>
 
-#include <algorithm>
-#include <array>
 #include <cstdio>
 #include <cstring>
 #include <string>
-#include <vector>
-
-#include "imgui.h"
-
-#include "bml_config.h"
-#include "bml_extension.h"
-#include "bml_input.h"
-#include "bml_module.h"
-#include "bml_topics.h"
-#include "bml_ui.h"
 
 #define BML_LOADER_IMPLEMENTATION
-#include "bml_loader.h"
+#include "bml_module.hpp"
+#include "bml_builtin_interfaces.h"
+#include "bml_engine_events.h"
+#include "bml_imgui.hpp"
+#include "bml_input.h"
+#include "bml_input_control.h"
+#include "bml_interface.hpp"
+#include "bml_topics.h"
+#include "bml_ui_host.h"
+#include "bml_virtools.h"
+#include "bml_virtools.hpp"
+#include "bml_virtools_payloads.h"
+
+#include "BML/Menu.h"
+#include "BML/Guids/Hooks.h"
+#include "BML/Guids/Interface.h"
+#include "BML/Guids/TT_Toolbox_RT.h"
+#include "BML/ScriptGraph.h"
+#include "CKAll.h"
+
+#include "MenuRegistry.h"
+#include "MenuRuntime.h"
+#include "ModMenu.h"
 
 namespace {
-constexpr size_t kStringBufferSize = 512;
+using CKBehaviorCallback = int (*)(const CKBehaviorContext *behcontext, void *arg);
 
-struct ModuleInfo {
-    BML_Mod handle = nullptr;
-    std::string id;
-    BML_Version version = BML_VERSION_INIT(0, 0, 0);
-};
-
-struct ConfigEntry {
-    std::string category;
-    std::string name;
-    BML_ConfigType type = BML_CONFIG_STRING;
-    bool boolValue = false;
-    int intValue = 0;
-    float floatValue = 0.0f;
-    std::string stringValue;
-    std::string draftString;
-};
-
-BML_Mod g_ModHandle = nullptr;
-BML_Subscription g_DrawSub = nullptr;
-BML_Subscription g_KeyDownSub = nullptr;
-BML_TopicId g_TopicDraw = 0;
-BML_TopicId g_TopicKeyDown = 0;
-static BML_UI_ApiTable *g_UiApi = nullptr;
-PFN_bmlUIGetImGuiContext g_GetImGuiContext = nullptr;
-BML_InputExtension *g_InputExtension = nullptr;
-bool g_InputExtensionLoaded = false;
-
-bool g_Visible = false;
-std::vector<ModuleInfo> g_Modules;
-std::vector<ConfigEntry> g_ConfigEntries;
-int g_SelectedModuleIndex = 0;
-
-std::string FormatVersion(const BML_Version &version) {
-    char buffer[32] = {};
-    std::snprintf(buffer, sizeof(buffer), "%u.%u.%u", version.major, version.minor, version.patch);
-    return buffer;
+CK2dEntity *FindNamed2dEntity(CKContext *context, const char *name) {
+    if (!context || !name || !*name) {
+        return nullptr;
+    }
+    return static_cast<CK2dEntity *>(context->GetObjectByNameAndClass((CKSTRING) name, CKCID_2DENTITY));
 }
 
-void SetVisible(bool visible) {
-    if (g_Visible == visible) {
-        return;
+CKDataArray *FindNamedArray(CKContext *context, const char *name) {
+    if (!context || !name || !*name) {
+        return nullptr;
     }
-    g_Visible = visible;
-    if (g_InputExtension) {
-        if (visible) {
-            g_InputExtension->BlockDevice(BML_INPUT_DEVICE_KEYBOARD);
-            g_InputExtension->BlockDevice(BML_INPUT_DEVICE_MOUSE);
-            g_InputExtension->ShowCursor(true);
-        } else {
-            g_InputExtension->UnblockDevice(BML_INPUT_DEVICE_MOUSE);
-            g_InputExtension->UnblockDevice(BML_INPUT_DEVICE_KEYBOARD);
-            g_InputExtension->ShowCursor(false);
-        }
-    }
+    return static_cast<CKDataArray *>(context->GetObjectByNameAndClass((CKSTRING) name, CKCID_DATAARRAY));
 }
 
-bool ValidateModuleIndex(int index) {
-    return index >= 0 && index < static_cast<int>(g_Modules.size());
-}
-
-void RefreshModules() {
-    std::string previousSelection;
-    if (ValidateModuleIndex(g_SelectedModuleIndex)) {
-        previousSelection = g_Modules[static_cast<size_t>(g_SelectedModuleIndex)].id;
+CKBehavior *CreateHookBlock(bml::Graph &graph, CKBehaviorCallback callback, void *arg,
+    int inputCount = 1, int outputCount = 1) {
+    CKBehavior *behavior = graph.CreateBehavior(HOOKS_HOOKBLOCK_GUID).Get();
+    if (!behavior) {
+        return nullptr;
     }
 
-    g_Modules.clear();
-    if (!bmlGetLoadedModuleCount || !bmlGetLoadedModuleAt) {
-        g_SelectedModuleIndex = 0;
-        return;
+    behavior->SetLocalParameterValue(0, &callback);
+    behavior->SetLocalParameterValue(1, &arg);
+
+    char name[16] = {};
+    for (int index = 0; index < inputCount; ++index) {
+        std::snprintf(name, sizeof(name), "In %d", index);
+        behavior->CreateInput(name);
+    }
+    for (int index = 0; index < outputCount; ++index) {
+        std::snprintf(name, sizeof(name), "Out %d", index);
+        behavior->CreateOutput(name);
     }
 
-    const uint32_t count = bmlGetLoadedModuleCount();
-    g_Modules.reserve(count);
-    for (uint32_t index = 0; index < count; ++index) {
-        BML_Mod mod = bmlGetLoadedModuleAt(index);
-        if (!mod) {
-            continue;
-        }
-        ModuleInfo info;
-        info.handle = mod;
-        const char *id = nullptr;
-        if (bmlGetModId && bmlGetModId(mod, &id) == BML_RESULT_OK && id) {
-            info.id = id;
-        } else {
-            info.id = "<unknown>";
-        }
-        if (bmlGetModVersion) {
-            bmlGetModVersion(mod, &info.version);
-        }
-        g_Modules.push_back(std::move(info));
-    }
-
-    std::sort(g_Modules.begin(), g_Modules.end(), [](const ModuleInfo &lhs, const ModuleInfo &rhs) {
-        return lhs.id < rhs.id;
-    });
-
-    g_SelectedModuleIndex = 0;
-    if (!previousSelection.empty()) {
-        for (size_t index = 0; index < g_Modules.size(); ++index) {
-            if (g_Modules[index].id == previousSelection) {
-                g_SelectedModuleIndex = static_cast<int>(index);
-                break;
-            }
-        }
-    }
-}
-
-void ConfigEnumCallback(BML_Context, const BML_ConfigKey *key, const BML_ConfigValue *value, void *user_data) {
-    if (!key || !value || !user_data) {
-        return;
-    }
-
-    auto *entries = static_cast<std::vector<ConfigEntry> *>(user_data);
-    ConfigEntry entry;
-    entry.category = key->category ? key->category : "";
-    entry.name = key->name ? key->name : "";
-    entry.type = value->type;
-    switch (value->type) {
-    case BML_CONFIG_BOOL:
-        entry.boolValue = value->data.bool_value != 0;
-        break;
-    case BML_CONFIG_INT:
-        entry.intValue = value->data.int_value;
-        break;
-    case BML_CONFIG_FLOAT:
-        entry.floatValue = value->data.float_value;
-        break;
-    case BML_CONFIG_STRING:
-        entry.stringValue = value->data.string_value ? value->data.string_value : "";
-        entry.draftString = entry.stringValue;
-        break;
-    default:
-        break;
-    }
-    entries->push_back(std::move(entry));
-}
-
-void RefreshSelectedConfig() {
-    g_ConfigEntries.clear();
-    if (!ValidateModuleIndex(g_SelectedModuleIndex) || !bmlConfigEnumerate) {
-        return;
-    }
-
-    bmlConfigEnumerate(g_Modules[static_cast<size_t>(g_SelectedModuleIndex)].handle, ConfigEnumCallback, &g_ConfigEntries);
-    std::sort(g_ConfigEntries.begin(), g_ConfigEntries.end(), [](const ConfigEntry &lhs, const ConfigEntry &rhs) {
-        if (lhs.category != rhs.category) {
-            return lhs.category < rhs.category;
-        }
-        return lhs.name < rhs.name;
-    });
-}
-
-bool CommitBool(ConfigEntry &entry, bool value) {
-    if (!ValidateModuleIndex(g_SelectedModuleIndex) || !bmlConfigSet) {
-        return false;
-    }
-    BML_ConfigKey key = BML_CONFIG_KEY_INIT(entry.category.c_str(), entry.name.c_str());
-    BML_ConfigValue configValue = BML_CONFIG_VALUE_INIT_BOOL(value ? BML_TRUE : BML_FALSE);
-    if (bmlConfigSet(g_Modules[static_cast<size_t>(g_SelectedModuleIndex)].handle, &key, &configValue) != BML_RESULT_OK) {
-        return false;
-    }
-    entry.boolValue = value;
-    return true;
-}
-
-bool CommitInt(ConfigEntry &entry, int value) {
-    if (!ValidateModuleIndex(g_SelectedModuleIndex) || !bmlConfigSet) {
-        return false;
-    }
-    BML_ConfigKey key = BML_CONFIG_KEY_INIT(entry.category.c_str(), entry.name.c_str());
-    BML_ConfigValue configValue = BML_CONFIG_VALUE_INIT_INT(value);
-    if (bmlConfigSet(g_Modules[static_cast<size_t>(g_SelectedModuleIndex)].handle, &key, &configValue) != BML_RESULT_OK) {
-        return false;
-    }
-    entry.intValue = value;
-    return true;
-}
-
-bool CommitFloat(ConfigEntry &entry, float value) {
-    if (!ValidateModuleIndex(g_SelectedModuleIndex) || !bmlConfigSet) {
-        return false;
-    }
-    BML_ConfigKey key = BML_CONFIG_KEY_INIT(entry.category.c_str(), entry.name.c_str());
-    BML_ConfigValue configValue = BML_CONFIG_VALUE_INIT_FLOAT(value);
-    if (bmlConfigSet(g_Modules[static_cast<size_t>(g_SelectedModuleIndex)].handle, &key, &configValue) != BML_RESULT_OK) {
-        return false;
-    }
-    entry.floatValue = value;
-    return true;
-}
-
-bool CommitString(ConfigEntry &entry, const std::string &value) {
-    if (!ValidateModuleIndex(g_SelectedModuleIndex) || !bmlConfigSet) {
-        return false;
-    }
-    BML_ConfigKey key = BML_CONFIG_KEY_INIT(entry.category.c_str(), entry.name.c_str());
-    BML_ConfigValue configValue = BML_CONFIG_VALUE_INIT_STRING(value.c_str());
-    if (bmlConfigSet(g_Modules[static_cast<size_t>(g_SelectedModuleIndex)].handle, &key, &configValue) != BML_RESULT_OK) {
-        return false;
-    }
-    entry.stringValue = value;
-    entry.draftString = value;
-    return true;
-}
-
-bool ResetEntry(const ConfigEntry &entry) {
-    if (!ValidateModuleIndex(g_SelectedModuleIndex) || !bmlConfigReset) {
-        return false;
-    }
-    BML_ConfigKey key = BML_CONFIG_KEY_INIT(entry.category.c_str(), entry.name.c_str());
-    return bmlConfigReset(g_Modules[static_cast<size_t>(g_SelectedModuleIndex)].handle, &key) == BML_RESULT_OK;
-}
-
-BML_Result ValidateAttachArgs(const BML_ModAttachArgs *args) {
-    if (!args || args->struct_size != sizeof(BML_ModAttachArgs) || args->mod == nullptr || args->get_proc == nullptr) {
-        return BML_RESULT_INVALID_ARGUMENT;
-    }
-    return args->api_version == BML_MOD_ENTRYPOINT_API_VERSION ? BML_RESULT_OK : BML_RESULT_VERSION_MISMATCH;
-}
-
-BML_Result ValidateDetachArgs(const BML_ModDetachArgs *args) {
-    if (!args || args->struct_size != sizeof(BML_ModDetachArgs) || args->mod == nullptr) {
-        return BML_RESULT_INVALID_ARGUMENT;
-    }
-    return args->api_version == BML_MOD_ENTRYPOINT_API_VERSION ? BML_RESULT_OK : BML_RESULT_VERSION_MISMATCH;
-}
-
-void ReleaseSubscriptions() {
-    if (g_DrawSub) {
-        bmlImcUnsubscribe(g_DrawSub);
-        g_DrawSub = nullptr;
-    }
-    if (g_KeyDownSub) {
-        bmlImcUnsubscribe(g_KeyDownSub);
-        g_KeyDownSub = nullptr;
-    }
-}
-
-void RenderModuleList() {
-    if (ImGui::BeginChild("##module-list", ImVec2(240.0f, 0.0f), true)) {
-        for (size_t index = 0; index < g_Modules.size(); ++index) {
-            const ModuleInfo &module = g_Modules[index];
-            const bool selected = static_cast<int>(index) == g_SelectedModuleIndex;
-            if (ImGui::Selectable(module.id.c_str(), selected)) {
-                g_SelectedModuleIndex = static_cast<int>(index);
-                RefreshSelectedConfig();
-            }
-            ImGui::SameLine();
-            ImGui::TextDisabled("v%s", FormatVersion(module.version).c_str());
-        }
-    }
-    ImGui::EndChild();
-}
-
-void RenderConfigPanel() {
-    if (ImGui::BeginChild("##config-panel", ImVec2(0.0f, 0.0f), true)) {
-        if (!ValidateModuleIndex(g_SelectedModuleIndex)) {
-            ImGui::TextUnformatted("No loaded modules.");
-            ImGui::EndChild();
-            return;
-        }
-
-        const ModuleInfo &module = g_Modules[static_cast<size_t>(g_SelectedModuleIndex)];
-        ImGui::Text("Module: %s", module.id.c_str());
-        ImGui::SameLine();
-        if (ImGui::SmallButton("Refresh")) {
-            RefreshModules();
-            RefreshSelectedConfig();
-        }
-        ImGui::Separator();
-
-        if (g_ConfigEntries.empty()) {
-            ImGui::TextUnformatted("No config entries registered for this module.");
-            ImGui::EndChild();
-            return;
-        }
-
-        std::string currentCategory;
-        for (size_t index = 0; index < g_ConfigEntries.size(); ++index) {
-            ConfigEntry &entry = g_ConfigEntries[index];
-            if (entry.category != currentCategory) {
-                currentCategory = entry.category;
-                ImGui::SeparatorText(currentCategory.c_str());
-            }
-
-            ImGui::PushID(static_cast<int>(index));
-            const std::string label = entry.name + "##value";
-
-            switch (entry.type) {
-            case BML_CONFIG_BOOL: {
-                bool value = entry.boolValue;
-                if (ImGui::Checkbox(label.c_str(), &value)) {
-                    CommitBool(entry, value);
-                }
-                break;
-            }
-            case BML_CONFIG_INT: {
-                int value = entry.intValue;
-                if (ImGui::InputInt(label.c_str(), &value)) {
-                    CommitInt(entry, value);
-                }
-                break;
-            }
-            case BML_CONFIG_FLOAT: {
-                float value = entry.floatValue;
-                if (ImGui::InputFloat(label.c_str(), &value, 0.1f, 1.0f, "%.3f")) {
-                    CommitFloat(entry, value);
-                }
-                break;
-            }
-            case BML_CONFIG_STRING: {
-                char buffer[kStringBufferSize] = {};
-                std::strncpy(buffer, entry.draftString.c_str(), kStringBufferSize - 1);
-                if (ImGui::InputText(label.c_str(), buffer, sizeof(buffer))) {
-                    entry.draftString = buffer;
-                }
-                if (ImGui::IsItemDeactivatedAfterEdit() && entry.draftString != entry.stringValue) {
-                    CommitString(entry, entry.draftString);
-                }
-                break;
-            }
-            default:
-                ImGui::TextDisabled("%s: unsupported", entry.name.c_str());
-                break;
-            }
-
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Reset")) {
-                if (ResetEntry(entry)) {
-                    RefreshSelectedConfig();
-                    ImGui::PopID();
-                    break;
-                }
-            }
-            ImGui::PopID();
-        }
-    }
-    ImGui::EndChild();
-}
-
-void RenderWindow() {
-    if (!g_Visible) {
-        return;
-    }
-
-    ImGuiViewport *viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x * 0.08f, viewport->Pos.y + viewport->Size.y * 0.08f), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(viewport->Size.x * 0.84f, viewport->Size.y * 0.78f), ImGuiCond_Always);
-
-    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse |
-        ImGuiWindowFlags_NoSavedSettings;
-    if (ImGui::Begin("BML Module Menu", nullptr, flags)) {
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-            SetVisible(false);
-        }
-        RenderModuleList();
-        ImGui::SameLine();
-        RenderConfigPanel();
-    }
-    ImGui::End();
-}
-
-void OnDraw(BML_Context, BML_TopicId, const BML_ImcMessage *, void *) {
-    if (!g_GetImGuiContext) {
-        return;
-    }
-    ImGuiContext *context = static_cast<ImGuiContext *>(g_GetImGuiContext());
-    if (!context) {
-        return;
-    }
-    ImGui::SetCurrentContext(context);
-    RenderWindow();
-}
-
-void OnKeyDown(BML_Context, BML_TopicId, const BML_ImcMessage *msg, void *) {
-    if (!msg || !msg->data || msg->size < sizeof(BML_KeyDownEvent)) {
-        return;
-    }
-    const auto *event = static_cast<const BML_KeyDownEvent *>(msg->data);
-    if (event->repeat) {
-        return;
-    }
-    if (event->key_code == DIK_F1) {
-        if (!g_Visible) {
-            RefreshModules();
-            RefreshSelectedConfig();
-        }
-        SetVisible(!g_Visible);
-    }
-}
-
-BML_Result HandleAttach(const BML_ModAttachArgs *args) {
-    const BML_Result validation = ValidateAttachArgs(args);
-    if (validation != BML_RESULT_OK) {
-        return validation;
-    }
-
-    g_ModHandle = args->mod;
-    BML_Result result = bmlLoadAPI(args->get_proc, args->get_proc_by_id);
-    if (result != BML_RESULT_OK) {
-        return result;
-    }
-
-    {
-        BML_Version uiReqVer = bmlMakeVersion(0, 4, 0);
-        BML_Result uiResult = bmlExtensionLoad(BML_UI_EXTENSION_NAME, &uiReqVer, reinterpret_cast<void **>(&g_UiApi), nullptr);
-        if (uiResult != BML_RESULT_OK || !g_UiApi) {
-            bmlUnloadAPI();
-            g_ModHandle = nullptr;
-            return BML_RESULT_NOT_FOUND;
-        }
-        g_GetImGuiContext = g_UiApi->GetImGuiContext;
-    }
-
-    BML_Version requiredVersion = bmlMakeVersion(1, 0, 0);
-    result = bmlExtensionLoad(BML_INPUT_EXTENSION_NAME, &requiredVersion, reinterpret_cast<void **>(&g_InputExtension), nullptr);
-    if (result == BML_RESULT_OK) {
-        g_InputExtensionLoaded = true;
-    } else {
-        g_InputExtension = nullptr;
-        g_InputExtensionLoaded = false;
-        bmlLog(bmlGetGlobalContext(), BML_LOG_WARN, "BML_ModMenu", "Failed to load BML_EXT_Input; menu will not capture input");
-    }
-
-    RefreshModules();
-    RefreshSelectedConfig();
-
-    bmlImcGetTopicId(BML_TOPIC_UI_DRAW, &g_TopicDraw);
-    bmlImcGetTopicId(BML_TOPIC_INPUT_KEY_DOWN, &g_TopicKeyDown);
-
-    if ((result = bmlImcSubscribe(g_TopicDraw, OnDraw, nullptr, &g_DrawSub)) != BML_RESULT_OK) {
-        bmlUnloadAPI();
-        g_ModHandle = nullptr;
-        return result;
-    }
-    if ((result = bmlImcSubscribe(g_TopicKeyDown, OnKeyDown, nullptr, &g_KeyDownSub)) != BML_RESULT_OK) {
-        ReleaseSubscriptions();
-        bmlUnloadAPI();
-        g_ModHandle = nullptr;
-        return result;
-    }
-
-    bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_ModMenu", "Module menu initialized; press F1 to open");
-    return BML_RESULT_OK;
-}
-
-BML_Result HandleDetach(const BML_ModDetachArgs *args) {
-    const BML_Result validation = ValidateDetachArgs(args);
-    if (validation != BML_RESULT_OK) {
-        return validation;
-    }
-
-    SetVisible(false);
-    ReleaseSubscriptions();
-    if (g_InputExtensionLoaded) {
-        bmlExtensionUnload(BML_INPUT_EXTENSION_NAME);
-        g_InputExtensionLoaded = false;
-    }
-    g_InputExtension = nullptr;
-    g_Modules.clear();
-    g_ConfigEntries.clear();
-    g_GetImGuiContext = nullptr;
-    bmlExtensionUnload(BML_UI_EXTENSION_NAME);
-    g_UiApi = nullptr;
-    g_ModHandle = nullptr;
-    bmlUnloadAPI();
-    return BML_RESULT_OK;
+    return behavior;
 }
 } // namespace
 
-BML_MODULE_ENTRY BML_Result BML_ModEntrypoint(BML_ModEntrypointCommand cmd, void *data) {
-    switch (cmd) {
-    case BML_MOD_ENTRYPOINT_ATTACH:
-        return HandleAttach(static_cast<const BML_ModAttachArgs *>(data));
-    case BML_MOD_ENTRYPOINT_DETACH:
-        return HandleDetach(static_cast<const BML_ModDetachArgs *>(data));
-    default:
-        return BML_RESULT_INVALID_ARGUMENT;
+class ModMenuMod : public bml::Module {
+public:
+    static void DrawCallback(const BML_UIDrawContext *ctx, void *user_data) {
+        auto *self = static_cast<ModMenuMod *>(user_data);
+        if (!self || !ctx) {
+            return;
+        }
+        if (!self->m_Visible) {
+            return;
+        }
+        BML_IMGUI_SCOPE_FROM_CONTEXT(ctx);
+        self->m_Menu.Render();
+        self->m_Visible = self->m_Menu.IsOpen();
     }
-}
+
+    BML_Result OnAttach(bml::ModuleServices &services) override {
+        m_Subs = services.CreateSubscriptions();
+
+        m_WindowRegistry = bml::AcquireInterface<BML_UIDrawRegistry>(BML_UI_WINDOW_REGISTRY_INTERFACE_ID, 1, 0, 0);
+        if (!m_WindowRegistry) {
+            return BML_RESULT_NOT_FOUND;
+        }
+
+        BML_UIDrawDesc draw_desc = BML_UI_DRAW_DESC_INIT;
+        draw_desc.id = "bml.modmenu.window";
+        draw_desc.layer = BML_UI_LAYER_MENU;
+        draw_desc.priority = 10;
+        draw_desc.callback = DrawCallback;
+        draw_desc.user_data = this;
+        BML_Result draw_result = m_WindowRegistry->Register(&draw_desc, &m_WindowRegistration);
+        if (draw_result != BML_RESULT_OK) {
+            m_WindowRegistry.Reset();
+            return draw_result;
+        }
+
+        m_InputCaptureService = bml::AcquireInterface<BML_InputCaptureInterface>(BML_INPUT_CAPTURE_INTERFACE_ID, 1, 0, 0);
+        MenuRuntime::SetInputService(m_InputCaptureService.Get());
+
+        m_Menu.Init();
+
+        m_Subs.Add(BML_TOPIC_ENGINE_INIT, [this](const bml::imc::Message &msg) {
+            auto *payload = msg.As<BML_EngineInitEvent>();
+            if (!payload || !payload->context) {
+                return;
+            }
+            SetContext(payload->context);
+        });
+
+        m_Subs.Add(BML_TOPIC_ENGINE_PLAY, [this](const bml::imc::Message &msg) {
+            auto *payload = msg.As<BML_EnginePlayEvent>();
+            if (payload && payload->context) {
+                SetContext(payload->context);
+            } else if (!m_Context) {
+                SetContext(bml::virtools::GetCKContext(Services()));
+            }
+
+            EnsureAssetsReady();
+        });
+
+        m_Subs.Add(BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT, [this](const bml::imc::Message &msg) {
+            auto *payload = msg.As<BML_LegacyScriptLoadPayload>();
+            if (!payload || !payload->script) {
+                return;
+            }
+
+            const char *scriptName = payload->script->GetName();
+            if (!scriptName || std::strcmp(scriptName, "Menu_Options") != 0) {
+                return;
+            }
+
+            SetContext(static_cast<CKContext *>(payload->script->GetCKContext()));
+            if (!m_OptionsEntryInstalled && PatchOptionsMenu(payload->script)) {
+                m_OptionsEntryInstalled = true;
+                Services().Log().Info("Inserted Mods button into Menu_Options");
+            }
+        });
+
+        m_Subs.Add(BML_TOPIC_INPUT_KEY_UP, [](const bml::imc::Message &msg) {
+            auto *event = msg.As<BML_KeyUpEvent>();
+            if (!event) {
+                return;
+            }
+            MenuRuntime::OnKeyUp(event->key_code);
+        });
+
+        m_Subs.Add(BML_TOPIC_INPUT_KEY_DOWN, [](const bml::imc::Message &msg) {
+            auto *event = msg.As<BML_KeyDownEvent>();
+            if (!event) {
+                return;
+            }
+            MenuRuntime::OnKeyDown(event->key_code);
+        });
+
+        return m_Subs.Count() >= 6 ? BML_RESULT_OK : BML_RESULT_FAIL;
+    }
+
+    BML_Result OnPrepareDetach() override {
+        CloseMenu();
+        if (m_WindowRegistration && m_WindowRegistry) {
+            m_WindowRegistry->Unregister(m_WindowRegistration);
+            m_WindowRegistration = nullptr;
+        }
+        MenuRuntime::SetInputService(nullptr);
+        m_InputCaptureService.Reset();
+        m_WindowRegistry.Reset();
+        return BML_RESULT_OK;
+    }
+
+    void OnDetach() override {
+        CloseMenu();
+
+        MenuRegistry::Instance().Reset();
+        MenuRuntime::Reset();
+
+        MenuRuntime::SetInputService(nullptr);
+        m_InputCaptureService.Reset();
+        m_WindowRegistry.Reset();
+
+        m_Context = nullptr;
+        m_AssetsReady = false;
+        m_OptionsEntryInstalled = false;
+    }
+
+private:
+    static int OpenMenuCallback(const CKBehaviorContext *, void *arg) {
+        auto *self = static_cast<ModMenuMod *>(arg);
+        if (self) {
+            self->OpenMenu();
+        }
+        return CKBR_OK;
+    }
+
+    void SetContext(CKContext *context) {
+        if (!context) {
+            return;
+        }
+
+        m_Context = context;
+        MenuRegistry::Instance().Initialize(m_Context, Services().Builtins().Module, Services().Builtins().Config);
+        MenuRuntime::Initialize(m_Context, m_InputCaptureService.Get());
+    }
+
+    void EnsureAssetsReady() {
+        if (m_AssetsReady || !m_Context) {
+            return;
+        }
+
+        m_AssetsReady = Menu::InitTextures(m_Context) &&
+            Menu::InitMaterials(m_Context) &&
+            Menu::InitSounds(m_Context);
+    }
+
+    void OpenMenu() {
+        if (!m_Context) {
+            SetContext(bml::virtools::GetCKContext(Services()));
+        }
+
+        EnsureAssetsReady();
+        if (!m_Context || !m_AssetsReady) {
+            return;
+        }
+
+        m_Menu.Open("Mod List");
+        m_Visible = m_Menu.IsOpen();
+    }
+
+    void CloseMenu() {
+        if (!m_Visible) {
+            return;
+        }
+
+        m_Menu.Close();
+        m_Visible = false;
+    }
+
+    bool PatchOptionsMenu(CKBehavior *script) {
+        if (!script) {
+            return false;
+        }
+
+        CKContext *context = static_cast<CKContext *>(script->GetCKContext());
+        if (!context) {
+            return false;
+        }
+
+        if (FindNamed2dEntity(context, "M_Options_But_4")) {
+            return true;
+        }
+
+        CK2dEntity *buttons[6] = {};
+        buttons[0] = FindNamed2dEntity(context, "M_Options_Title");
+        for (int i = 1; i < 4; ++i) {
+            char buttonName[] = "M_Options_But_X";
+            buttonName[14] = static_cast<char>('0' + i);
+            buttons[i] = FindNamed2dEntity(context, buttonName);
+        }
+        buttons[5] = FindNamed2dEntity(context, "M_Options_But_Back");
+
+        for (int i = 0; i < 4; ++i) {
+            if (!buttons[i]) {
+                return false;
+            }
+        }
+        if (!buttons[5]) {
+            return false;
+        }
+
+        buttons[4] = static_cast<CK2dEntity *>(context->CopyObject(buttons[1]));
+        if (!buttons[4]) {
+            return false;
+        }
+        buttons[4]->SetName("M_Options_But_4");
+
+        for (int i = 0; i < 5; ++i) {
+            Vx2DVector position;
+            buttons[i]->GetPosition(position, true);
+            position.y = 0.1f + 0.14f * static_cast<float>(i);
+            buttons[i]->SetPosition(position, true);
+        }
+
+        CKDataArray *showHideArray = FindNamedArray(context, "Menu_Options_ShowHide");
+        if (!showHideArray) {
+            return false;
+        }
+        showHideArray->InsertRow(3);
+        showHideArray->SetElementObject(3, 0, buttons[4]);
+        CKBOOL show = TRUE;
+        showHideArray->SetElementValue(3, 1, &show, sizeof(show));
+
+        bml::Graph scriptGraph(script);
+        CKBehavior *optionsGraph = scriptGraph.Find("Options Menu").Get();
+        if (!optionsGraph) {
+            return false;
+        }
+
+        bml::Graph options(optionsGraph);
+        CKBehavior *upSop = nullptr;
+        CKBehavior *downSop = nullptr;
+        options.FindAll([&](CKBehavior *behavior) {
+            CKBehavior *previous = options.From(behavior).Prev().Get();
+            const char *name = previous ? previous->GetName() : nullptr;
+            if (name && std::strcmp(name, "Set 2D Material") == 0) {
+                upSop = behavior;
+            }
+            if (name && std::strcmp(name, "Send Message") == 0) {
+                downSop = behavior;
+            }
+            return !(upSop && downSop);
+        }, "Switch On Parameter");
+
+        CKBehavior *upPs = nullptr;
+        CKBehavior *downPs = nullptr;
+        options.FindAll([&](CKBehavior *behavior) {
+            CKBehavior *next = options.From(behavior).Next().Get();
+            const char *name = next ? next->GetName() : nullptr;
+            if (name && std::strcmp(name, "Keyboard") == 0) {
+                upPs = behavior;
+            }
+            if (name && std::strcmp(name, "Send Message") == 0) {
+                downPs = behavior;
+            }
+            return !(upPs && downPs);
+        }, "Parameter Selector");
+
+        if (!upSop || !downSop || !upPs || !downPs) {
+            return false;
+        }
+
+        CKParameterLocal *pin = options.Param("Pin 5", CKPGUID_INT, 4);
+        if (!pin) {
+            return false;
+        }
+
+        upSop->CreateInputParameter("Pin 5", CKPGUID_INT)->SetDirectSource(pin);
+        upSop->CreateOutput("Out 5");
+        downSop->CreateInputParameter("Pin 5", CKPGUID_INT)->SetDirectSource(pin);
+        downSop->CreateOutput("Out 5");
+        upPs->CreateInputParameter("pIn 4", CKPGUID_INT)->SetDirectSource(pin);
+        upPs->CreateInput("In 4");
+        downPs->CreateInputParameter("pIn 4", CKPGUID_INT)->SetDirectSource(pin);
+        downPs->CreateInput("In 4");
+
+        CKBehavior *text2d = options.CreateBehavior(VT_INTERFACE_2DTEXT, true).Get();
+        CKBehavior *pushButton = options.CreateBehavior(TT_TOOLBOX_RT_TTPUSHBUTTON2, true).Get();
+        CKBehavior *text2dRef = options.Find("2D Text").Get();
+        CKBehavior *nop = options.Find("Nop").Get();
+        if (!text2d || !pushButton || !text2dRef || !nop) {
+            return false;
+        }
+
+        CKParameterLocal *entity2d = options.Param("Button", CKPGUID_2DENTITY, static_cast<CKObject *>(buttons[4]));
+        CKParameterLocal *buttonName = options.ParamString("Text", "Mods");
+        if (!entity2d || !buttonName) {
+            return false;
+        }
+
+        int textFlags = 0;
+        text2dRef->GetLocalParameterValue(0, &textFlags);
+        text2d->SetLocalParameterValue(0, &textFlags, sizeof(textFlags));
+
+        text2d->GetTargetParameter()->SetDirectSource(entity2d);
+        pushButton->GetTargetParameter()->SetDirectSource(entity2d);
+        text2d->GetInputParameter(0)->ShareSourceWith(text2dRef->GetInputParameter(0));
+        text2d->GetInputParameter(1)->SetDirectSource(buttonName);
+        for (int i = 2; i < 6; ++i) {
+            text2d->GetInputParameter(i)->ShareSourceWith(text2dRef->GetInputParameter(i));
+        }
+
+        CKBehaviorLink *link = options.From(upSop).NextLink(nullptr, 4, 0);
+        if (!link) {
+            return false;
+        }
+        link->SetInBehaviorIO(upSop->GetOutput(5));
+
+        options.Link(upSop, text2d, 4, 0);
+        options.Link(text2d, nop, 0, 0);
+        options.Link(text2d, pushButton, 0, 0);
+
+        link = options.From(upPs).PrevLink(nullptr, 1, 3);
+        if (!link) {
+            return false;
+        }
+        link->SetOutBehaviorIO(upPs->GetInput(4));
+
+        link = options.From(downPs).PrevLink(nullptr, 2, 3);
+        if (!link) {
+            return false;
+        }
+        link->SetOutBehaviorIO(downPs->GetInput(4));
+
+        options.Link(pushButton, upPs, 1, 3);
+        options.Link(pushButton, downPs, 2, 3);
+
+        optionsGraph->CreateOutput("Button 5 Pressed");
+        options.Link(downSop, optionsGraph->GetOutput(4), 5);
+
+        link = scriptGraph.From(optionsGraph).NextLink(nullptr, 3, 0);
+        if (!link) {
+            return false;
+        }
+        link->SetInBehaviorIO(optionsGraph->GetOutput(4));
+
+        CKBehavior *modsMenu = CreateHookBlock(scriptGraph, OpenMenuCallback, this);
+        CKBehavior *exit = scriptGraph.Find("Exit", false, 1, 0).Get();
+        if (!modsMenu || !exit) {
+            return false;
+        }
+
+        scriptGraph.Link(optionsGraph, modsMenu, 3, 0);
+        scriptGraph.Link(modsMenu, exit, 0, 0);
+
+        CKBehavior *keyboard = options.Find("Keyboard").Get();
+        if (!keyboard) {
+            return false;
+        }
+
+        bml::Graph keyboardGraph(keyboard);
+        keyboardGraph.FindAll([&](CKBehavior *behavior) {
+            CKParameter *source = behavior->GetInputParameter(0)->GetRealSource();
+            if (!source || bml::GetParam<CKKEYBOARD>(source) != CKKEY_ESCAPE) {
+                return true;
+            }
+
+            CKBehavior *identity = keyboardGraph.From(behavior).Next().Get();
+            if (!identity || identity->GetInputParameterCount() <= 0) {
+                return false;
+            }
+
+            CKParameter *identitySource = identity->GetInputParameter(0)->GetRealSource();
+            if (!identitySource) {
+                return false;
+            }
+
+            bml::SetParam(identitySource, 4);
+            return false;
+        }, "Secure Key");
+
+        return true;
+    }
+
+    bml::imc::SubscriptionManager m_Subs;
+    ModMenu m_Menu;
+    CKContext *m_Context = nullptr;
+    bml::InterfaceLease<BML_UIDrawRegistry> m_WindowRegistry;
+    BML_InterfaceRegistration m_WindowRegistration = nullptr;
+    bml::InterfaceLease<BML_InputCaptureInterface> m_InputCaptureService;
+    bool m_Visible = false;
+    bool m_AssetsReady = false;
+    bool m_OptionsEntryInstalled = false;
+};
+
+BML_DEFINE_MODULE(ModMenuMod)
+
