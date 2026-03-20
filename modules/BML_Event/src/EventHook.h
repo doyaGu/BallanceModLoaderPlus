@@ -10,18 +10,33 @@
 #define BML_EVENT_EVENTHOOK_H
 
 #include "CKAll.h"
+#include "bml_builtin_interfaces.h"
+#include "bml_services.hpp"
 
 namespace BML_Event {
 
 /**
  * @brief Initialize event hooks
- * 
+ *
  * Registers topic IDs and sets up for script hooking.
- * 
+ * Uses ModuleServices pattern to access core services.
+ *
  * @param ctx CKContext
+ * @param services Module services for logging
  * @return true on success
  */
-bool InitEventHooks(CKContext *ctx);
+bool InitEventHooks(CKContext *ctx, const bml::ModuleServices &services);
+
+/**
+ * @brief Scan already-loaded scripts and register event hooks.
+ *
+ * Restores the legacy startup behavior where base scripts were processed even
+ * if the event module attached after they had already been loaded.
+ *
+ * @param ctx CKContext
+ * @return Number of scripts processed
+ */
+int ScanLoadedScripts(CKContext *ctx);
 
 /**
  * @brief Shutdown event hooks

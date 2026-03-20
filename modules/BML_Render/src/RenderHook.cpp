@@ -5,7 +5,6 @@
  * Self-contained render hook that provides:
  * - CKRenderContext::Render VTable hook
  * - CKRenderContext::UpdateProjection member function hook
- * - Pre/Post render IMC event publishing
  */
 
 #include "RenderHook.h"
@@ -13,59 +12,39 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+
 #include <Windows.h>
+
 #include <MinHook.h>
 
-#include "bml_loader.h"
-#include "bml_topics.h"
+#include "HookUtils.h"
+#include "bml_services.hpp"
 
 namespace BML_Render {
 
-//-----------------------------------------------------------------------------
-// Utility Functions
-//-----------------------------------------------------------------------------
+namespace {
+const bml::ModuleServices *s_ModServices = nullptr;
 
-template<typename T>
-static T ForceReinterpretCast(void* base, size_t offset) {
-    void* p = static_cast<char*>(base) + offset;
-    return *reinterpret_cast<T*>(&p);
-}
+void Log(BML_LogSeverity severity, const char *message) {
+    if (!s_ModServices || !message) {
+        return;
+    }
 
-static void* GetModuleBaseAddress(const char* moduleName) {
-    HMODULE hModule = GetModuleHandleA(moduleName);
-    return hModule ? reinterpret_cast<void*>(hModule) : nullptr;
+    switch (severity) {
+        case BML_LOG_INFO:
+            s_ModServices->Log().Info(message);
+            break;
+        case BML_LOG_WARN:
+            s_ModServices->Log().Warn(message);
+            break;
+        case BML_LOG_ERROR:
+            s_ModServices->Log().Error(message);
+            break;
+        default:
+            break;
+    }
 }
-
-static uint32_t UnprotectRegion(void* region, size_t size) {
-    DWORD oldProtect = 0;
-    VirtualProtect(region, size, PAGE_EXECUTE_READWRITE, &oldProtect);
-    return oldProtect;
-}
-
-static void ProtectRegion(void* region, size_t size, uint32_t protection) {
-    DWORD oldProtect;
-    VirtualProtect(region, size, protection, &oldProtect);
-}
-
-template<typename T>
-static void LoadVTable(void** vtablePtr, T& dest) {
-    memcpy(&dest, *vtablePtr, sizeof(T));
-}
-
-template<typename T>
-static void SaveVTable(void** vtablePtr, const T& src) {
-    uint32_t oldProtect = UnprotectRegion(*vtablePtr, sizeof(T));
-    memcpy(*vtablePtr, &src, sizeof(T));
-    ProtectRegion(*vtablePtr, sizeof(T), oldProtect);
-}
-
-template<typename T, typename F>
-static void HookVirtualMethod(T** instance, F hookFunc, size_t vtableIndex) {
-    void** vtable = *reinterpret_cast<void***>(instance);
-    uint32_t oldProtect = UnprotectRegion(&vtable[vtableIndex], sizeof(void*));
-    vtable[vtableIndex] = *reinterpret_cast<void**>(&hookFunc);
-    ProtectRegion(&vtable[vtableIndex], sizeof(void*), oldProtect);
-}
+} // namespace
 
 //-----------------------------------------------------------------------------
 // Static State
@@ -80,10 +59,6 @@ CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CKRenderContext), UpdateProjection);
 
 static bool s_Initialized = false;
 
-// IMC topic IDs
-static BML_TopicId s_TopicPreRender = 0;
-static BML_TopicId s_TopicPostRender = 0;
-
 //-----------------------------------------------------------------------------
 // Hook Implementations
 //-----------------------------------------------------------------------------
@@ -92,21 +67,9 @@ CKERROR CP_HOOK_CLASS_NAME(CKRenderContext)::RenderHook(CK_RENDER_FLAGS Flags) {
     if (s_DisableRender)
         return CK_OK;
 
-    // Publish pre-render event
-    if (s_TopicPreRender != 0) {
-        bmlImcPublish(s_TopicPreRender, &Flags, sizeof(Flags));
-    }
-
     // Call original Render method via saved VTable
     auto originalRender = s_VTable.Render;
-    CKERROR result = CP_CALL_METHOD_PTR(this, originalRender, Flags);
-
-    // Publish post-render event
-    if (s_TopicPostRender != 0) {
-        bmlImcPublish(s_TopicPostRender, &Flags, sizeof(Flags));
-    }
-
-    return result;
+    return CP_CALL_METHOD_PTR(this, originalRender, Flags);
 }
 
 CKBOOL CP_HOOK_CLASS_NAME(CKRenderContext)::UpdateProjection(CKBOOL force) {
@@ -147,24 +110,23 @@ bool CP_HOOK_CLASS_NAME(CKRenderContext)::Hook(void *base) {
         return false;
 
     // Get VTable pointer at offset 0x86AF8 in CK2_3D.dll
-    auto *table = ForceReinterpretCast<CKRenderContextVTable<CKRenderContext>*>(base, 0x86AF8);
+    auto *table = utils::ForceReinterpretCast<CKRenderContextVTable<CKRenderContext> *>(base, 0x86AF8);
     
     // Save original VTable
-    LoadVTable<CKRenderContextVTable<CKRenderContext>>(reinterpret_cast<void**>(&table), s_VTable);
+    utils::LoadVTable<CKRenderContextVTable<CKRenderContext>>(&table, s_VTable);
 
     // Hook Render method via VTable
     constexpr size_t RenderVTableIndex = offsetof(CKRenderContextVTable<CKRenderContext>, Render) / sizeof(void*);
-    HookVirtualMethod(&table, &CP_HOOK_CLASS_NAME(CKRenderContext)::RenderHook, RenderVTableIndex);
+    utils::HookVirtualMethod(&table, &CP_HOOK_CLASS_NAME(CKRenderContext)::RenderHook, RenderVTableIndex);
 
     // Hook UpdateProjection via MinHook (non-virtual member function at offset 0x6C68D)
-    CP_FUNC_TARGET_PTR_NAME(UpdateProjection) = ForceReinterpretCast<CP_FUNC_TYPE_NAME(UpdateProjection)>(base, 0x6C68D);
+    CP_FUNC_TARGET_PTR_NAME(UpdateProjection) = utils::ForceReinterpretCast<CP_FUNC_TYPE_NAME(UpdateProjection)>(base, 0x6C68D);
     
     if (MH_CreateHook(*reinterpret_cast<LPVOID*>(&CP_FUNC_TARGET_PTR_NAME(UpdateProjection)),
                       *reinterpret_cast<LPVOID*>(&CP_FUNC_PTR_NAME(UpdateProjection)),
                       reinterpret_cast<LPVOID*>(&CP_FUNC_ORIG_PTR_NAME(UpdateProjection))) != MH_OK ||
         MH_EnableHook(*reinterpret_cast<LPVOID*>(&CP_FUNC_TARGET_PTR_NAME(UpdateProjection))) != MH_OK) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_WARN, "BML_Render",
-               "Failed to hook UpdateProjection - widescreen fix may not work");
+        Log(BML_LOG_WARN, "Failed to hook UpdateProjection - widescreen fix may not work");
         // Non-fatal, continue with Render hook only
     }
 
@@ -176,8 +138,8 @@ bool CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(void *base) {
         return false;
 
     // Restore VTable
-    auto *table = ForceReinterpretCast<CKRenderContextVTable<CKRenderContext>*>(base, 0x86AF8);
-    SaveVTable<CKRenderContextVTable<CKRenderContext>>(reinterpret_cast<void**>(&table), s_VTable);
+    auto *table = utils::ForceReinterpretCast<CKRenderContextVTable<CKRenderContext> *>(base, 0x86AF8);
+    utils::SaveVTable<CKRenderContextVTable<CKRenderContext>>(&table, s_VTable);
 
     // Remove UpdateProjection hook
     if (CP_FUNC_TARGET_PTR_NAME(UpdateProjection)) {
@@ -192,54 +154,49 @@ bool CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(void *base) {
 // Public API
 //-----------------------------------------------------------------------------
 
-bool InitRenderHook() {
+bool InitRenderHook(const bml::ModuleServices &services) {
     if (s_Initialized)
         return true;
 
-    void *base = GetModuleBaseAddress("CK2_3D.dll");
+    s_ModServices = &services;
+
+    void *base = utils::GetModuleBaseAddress("CK2_3D.dll");
     if (!base) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_ERROR, "BML_Render",
-               "Failed to get CK2_3D.dll base address");
+        Log(BML_LOG_ERROR, "Failed to get CK2_3D.dll base address");
         return false;
     }
 
     // Initialize MinHook
     MH_STATUS status = MH_Initialize();
     if (status != MH_OK && status != MH_ERROR_ALREADY_INITIALIZED) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_ERROR, "BML_Render",
-               "Failed to initialize MinHook");
+        Log(BML_LOG_ERROR, "Failed to initialize MinHook");
         return false;
     }
 
-    // Get topic IDs for events
-    bmlImcGetTopicId(BML_TOPIC_ENGINE_PRE_RENDER, &s_TopicPreRender);
-    bmlImcGetTopicId(BML_TOPIC_ENGINE_POST_RENDER, &s_TopicPostRender);
-
     // Install hooks
     if (!CP_HOOK_CLASS_NAME(CKRenderContext)::Hook(base)) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_ERROR, "BML_Render",
-               "Failed to install render hooks");
+        Log(BML_LOG_ERROR, "Failed to install render hooks");
         return false;
     }
 
     s_Initialized = true;
-    bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_Render",
-           "Render engine hooks initialized (Render + UpdateProjection)");
+    Log(BML_LOG_INFO, "Render engine hooks initialized (Render + UpdateProjection)");
     return true;
 }
 
 void ShutdownRenderHook() {
-    if (!s_Initialized)
+    if (!s_Initialized) {
         return;
+    }
 
-    void *base = GetModuleBaseAddress("CK2_3D.dll");
+    void *base = utils::GetModuleBaseAddress("CK2_3D.dll");
     if (base) {
         CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(base);
     }
 
     s_Initialized = false;
-    bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_Render",
-           "Render engine hooks shutdown");
+    Log(BML_LOG_INFO, "Render engine hooks shutdown");
+    s_ModServices = nullptr;
 }
 
 void DisableRender(bool disable) {

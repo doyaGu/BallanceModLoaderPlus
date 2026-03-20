@@ -16,8 +16,7 @@
 #include "bml_imgui.hpp"
 #include "bml_interface.hpp"
 #include "bml_topics.h"
-#include "bml_ui_host.h"
-#include "bml_ui_helpers.hpp"
+#include "bml_ui.hpp"
 #include "bml_virtools.h"
 #include "bml_virtools.hpp"
 #include "bml_virtools_payloads.h"
@@ -31,8 +30,6 @@
 
 namespace {
 constexpr uint32_t kDefaultFpsUpdateFrequency = 30;
-constexpr const char *kInternalCheatStateKey = "bml.internal.cheat_enabled";
-
 struct GameplaySettings {
     bool lanternAlphaTest = true;
     bool fixLifeBallFreeze = true;
@@ -254,7 +251,7 @@ class GameplayMod : public bml::Module {
         ApplyOverclockSetting();
     }
 
-    void HandleScriptLoad(const BML_LegacyScriptLoadPayload *payload) {
+    void HandleScriptLoad(const BML_ScriptLoadEvent *payload) {
         if (!payload || !payload->script) {
             return;
         }
@@ -285,21 +282,12 @@ class GameplayMod : public bml::Module {
         }
     }
 
-    void UpdateCheatState() {
-        m_CheatEnabled = false;
-        void *raw = bml::virtools::GetUserData<void>(Services(), kInternalCheatStateKey);
-        if (raw) {
-            m_CheatEnabled = *static_cast<bool *>(raw);
-        }
-    }
-
     void TickHud(float deltaSeconds) {
         if (deltaSeconds <= 0.0f) {
             return;
         }
 
         RefreshConfig();
-        UpdateCheatState();
 
         m_FpsCounter.Update(deltaSeconds);
         m_SRTimer.Update(deltaSeconds);
@@ -361,7 +349,7 @@ class GameplayMod : public bml::Module {
         const float baseX = viewportPos.x + viewportSize.x * 0.03f;
         const float baseY = viewportPos.y + viewportSize.y * 0.845f;
 
-        AddOutlinedText(drawList, font, ImGui::GetFontSize(), ImVec2(baseX, baseY), color, "SR Timer");
+        AddOutlinedText(drawList, font, ImGui::GetFontSize(), ImVec2(baseX, baseY), color, Services().Locale()["hud.sr_timer"]);
         AddOutlinedText(
             drawList,
             font,
@@ -376,15 +364,15 @@ class GameplayMod : public bml::Module {
             return;
         }
 
-        static constexpr char kCheatText[] = "Cheat Mode Enabled";
+        const char *cheatText = Services().Locale()["hud.cheat_enabled"];
         ImDrawList *drawList = ImGui::GetForegroundDrawList();
         ImFont *font = ImGui::GetFont();
         const float size = ImGui::GetFontSize();
-        const ImVec2 textSize = font->CalcTextSizeA(size, FLT_MAX, 0.0f, kCheatText);
+        const ImVec2 textSize = font->CalcTextSizeA(size, FLT_MAX, 0.0f, cheatText);
         const ImVec2 pos(
             viewportPos.x + (viewportSize.x - textSize.x) * 0.5f,
             viewportPos.y + viewportSize.y * 0.88f);
-        AddOutlinedText(drawList, font, size, pos, IM_COL32(255, 200, 60, 255), kCheatText);
+        AddOutlinedText(drawList, font, size, pos, IM_COL32(255, 200, 60, 255), cheatText);
     }
 
     void RenderHud() const {
@@ -417,22 +405,28 @@ public:
     BML_Result OnAttach(bml::ModuleServices &services) override {
         m_Subs = services.CreateSubscriptions();
 
+        Services().Locale().Load(nullptr);
+
         EnsureDefaultConfig();
         RefreshConfig();
         ApplyLanternMaterial();
 
-        m_DrawReg = bml::ui::RegisterOverlayDraw("bml.gameplay.overlay", 25, DrawOverlay, this);
+        m_DrawReg = bml::ui::RegisterDraw("bml.gameplay.overlay", 25, DrawOverlay, this);
         if (!m_DrawReg) {
             return BML_RESULT_NOT_FOUND;
         }
 
-        UpdateCheatState();
+        m_Subs.Add(BML_TOPIC_STATE_CHEAT_ENABLED, [this](const bml::imc::Message &msg) {
+            const auto *value = msg.As<BML_Bool>();
+            m_CheatEnabled = value && (*value == BML_TRUE);
+        });
 
         m_Subs.Add(BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT, [this](const bml::imc::Message &msg) {
-            HandleScriptLoad(msg.As<BML_LegacyScriptLoadPayload>());
+            HandleScriptLoad(msg.As<BML_ScriptLoadEvent>());
         });
-        m_Subs.Add(BML_TOPIC_ENGINE_POST_PROCESS, [this](const bml::imc::Message &) {
-            TickHud(1.0f / 60.0f);
+        m_Subs.Add(BML_TOPIC_ENGINE_POST_PROCESS, [this](const bml::imc::Message &msg) {
+            const float *dt = msg.As<float>();
+            TickHud(dt ? *dt : (1.0f / 60.0f));
         });
         m_Subs.Add(BML_TOPIC_GAME_MENU_PRE_START, [this](const bml::imc::Message &) {
             m_SrVisible = false;
@@ -459,7 +453,7 @@ public:
             m_SRTimer.Pause();
         });
 
-        if (m_Subs.Count() < 9) {
+        if (m_Subs.Count() < 10) {
             m_DrawReg.Reset();
             Services().Log().Error("Failed to subscribe to gameplay and HUD topics");
             return BML_RESULT_FAIL;

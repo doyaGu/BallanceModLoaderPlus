@@ -10,6 +10,8 @@
 #define BML_OBJECTLOAD_HOOK_H
 
 #include "CKContext.h"
+#include "bml_builtin_interfaces.h"
+#include "bml_services.hpp"
 
 namespace BML_ObjectLoad {
     /**
@@ -17,11 +19,25 @@ namespace BML_ObjectLoad {
      *
      * Hooks into the ObjectLoad behavior to provide callbacks
      * when objects and scripts are loaded.
+     * Uses ModuleServices pattern to access core services.
      *
      * @param context CKContext for the current session
+     * @param services Module services for logging
      * @return true if hooks were installed successfully
      */
-    bool InitializeObjectLoadHook(CKContext *context);
+    bool InitializeObjectLoadHook(CKContext *context, const bml::ModuleServices &services);
+
+    /**
+     * @brief Publish the initial base-game object/script snapshot.
+     *
+     * Restores the legacy OnLoadGame behavior by emitting one synthetic
+     * OnLoadObject event followed by OnLoadScript events for already-loaded
+     * scripts once the base runtime is ready.
+     *
+     * @param context CKContext for the current session
+     * @return true if the snapshot was published, or had already been published
+     */
+    bool PublishInitialLoadSnapshot(CKContext *context);
 
     /**
      * @brief Shutdown object load hooks

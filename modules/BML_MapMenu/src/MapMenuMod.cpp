@@ -12,7 +12,7 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
+#include <cstring>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -33,18 +33,18 @@
 #include "bml_engine_events.h"
 #include "bml_engine_events.hpp"
 #include "bml_imgui.hpp"
-#include "bml_imc_state.h"
+#include "bml_imc.h"
 #include "bml_input.h"
 #include "bml_input_control.h"
 #include "bml_input_capture.hpp"
 #include "bml_interface.hpp"
 #include "bml_virtools_payloads.h"
 #include "bml_topics.h"
-#include "bml_ui_host.h"
-#include "bml_ui_helpers.hpp"
+#include "bml_ui.hpp"
 #include "BML/Guids/Logics.h"
 
 #include "BML/ScriptGraph.h"
+#include "StringUtils.h"
 
 namespace {
 namespace fs = std::filesystem;
@@ -70,65 +70,21 @@ struct MapMenuSettings {
     int openKey = kDefaultOpenKey;
 };
 
-std::string TrimCopy(const std::string &text) {
-    size_t start = 0;
-    while (start < text.size() && std::isspace(static_cast<unsigned char>(text[start])) != 0) ++start;
-    size_t end = text.size();
-    while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1])) != 0) --end;
-    return text.substr(start, end - start);
-}
-
-std::string ToLowerAscii(std::string value) {
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
-        return static_cast<char>(std::tolower(ch));
-    });
-    return value;
-}
-
 void AddCompletionIfMatches(const char *candidate, const std::string &prefix,
     PFN_BML_ConsoleCompletionSink sink, void *sinkUserData) {
     if (!candidate || !sink) return;
-    const std::string loweredCandidate = ToLowerAscii(candidate);
+    const std::string loweredCandidate = utils::ToLower(std::string(candidate));
     if (prefix.empty() || loweredCandidate.rfind(prefix, 0) == 0) sink(candidate, sinkUserData);
-}
-
-std::wstring Utf8ToWide(const std::string &value) {
-    if (value.empty()) return {};
-    int size = MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, nullptr, 0);
-    if (size <= 0) return {};
-    std::wstring result(static_cast<size_t>(size - 1), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, result.data(), size);
-    return result;
-}
-
-std::string WideToUtf8(const std::wstring &value) {
-    if (value.empty()) return {};
-    int size = WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    if (size <= 0) return {};
-    std::string result(static_cast<size_t>(size - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, result.data(), size, nullptr, nullptr);
-    return result;
-}
-
-std::string WideToAnsi(const std::wstring &value) {
-    if (value.empty()) return {};
-    int size = WideCharToMultiByte(CP_ACP, 0, value.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    if (size <= 0) return {};
-    std::string result(static_cast<size_t>(size - 1), '\0');
-    WideCharToMultiByte(CP_ACP, 0, value.c_str(), -1, result.data(), size, nullptr, nullptr);
-    return result;
 }
 
 bool ContainsCaseInsensitive(std::string_view haystack, std::string_view needle) {
     if (needle.empty()) return true;
-    const std::string loweredHaystack = ToLowerAscii(std::string(haystack));
-    const std::string loweredNeedle = ToLowerAscii(std::string(needle));
-    return loweredHaystack.find(loweredNeedle) != std::string::npos;
+    return utils::Contains(std::string(haystack), std::string(needle), false);
 }
 
 std::wstring GetLoaderDir() {
     wchar_t modulePath[MAX_PATH] = {};
-    DWORD length = GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
+    DWORD length = ::GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
     if (length == 0 || length >= MAX_PATH) return L"ModLoader";
     fs::path exePath(modulePath);
     return (exePath.parent_path() / L"ModLoader").wstring();
@@ -146,7 +102,7 @@ std::wstring GetTempMapsDir() {
 }
 
 std::string FormatPathForUi(const std::wstring &path) {
-    std::string utf8 = WideToUtf8(path);
+    std::string utf8 = utils::ToString(path);
     return utf8.empty() ? "<invalid path>" : utf8;
 }
 
@@ -162,7 +118,7 @@ std::unique_ptr<MapEntry> BuildMapTree(const fs::path &directory,
     bool &hadEnumerationError) {
     auto root = std::make_unique<MapEntry>();
     root->type = EntryType::Directory;
-    root->name = directory.filename().empty() ? "Maps" : WideToUtf8(directory.filename().wstring());
+    root->name = directory.filename().empty() ? "Maps" : utils::ToString(directory.filename().wstring());
     if (root->name.empty()) root->name = "Maps";
     root->path = directory.wstring();
 
@@ -181,7 +137,7 @@ std::unique_ptr<MapEntry> BuildMapTree(const fs::path &directory,
         const bool lhsDir = lhs.is_directory();
         const bool rhsDir = rhs.is_directory();
         if (lhsDir != rhsDir) return lhsDir > rhsDir;
-        return WideToUtf8(lhs.path().filename().wstring()) < WideToUtf8(rhs.path().filename().wstring());
+        return utils::ToString(lhs.path().filename().wstring()) < utils::ToString(rhs.path().filename().wstring());
     });
 
     for (const fs::directory_entry &entry : entries) {
@@ -189,7 +145,7 @@ std::unique_ptr<MapEntry> BuildMapTree(const fs::path &directory,
         if (entry.is_directory()) {
             std::unique_ptr<MapEntry> child = BuildMapTree(fullPath, depth - 1, foundAny, hadEnumerationError);
             child->type = EntryType::Directory;
-            child->name = WideToUtf8(fullPath.filename().wstring());
+            child->name = utils::ToString(fullPath.filename().wstring());
             child->path = fullPath.wstring();
             if (!child->children.empty()) foundAny = true;
             root->children.push_back(std::move(child));
@@ -198,7 +154,7 @@ std::unique_ptr<MapEntry> BuildMapTree(const fs::path &directory,
         if (!entry.is_regular_file() || !IsSupportedFileType(fullPath.wstring())) continue;
         auto child = std::make_unique<MapEntry>();
         child->type = EntryType::File;
-        child->name = WideToUtf8(fullPath.stem().wstring());
+        child->name = utils::ToString(fullPath.stem().wstring());
         child->path = fullPath.wstring();
         root->children.push_back(std::move(child));
         foundAny = true;
@@ -233,7 +189,7 @@ std::string CreateTempMapFile(const std::wstring &path) {
     const fs::path destination = tempDir / (std::wstring(hashBuffer) + extension);
     fs::copy_file(source, destination, fs::copy_options::overwrite_existing, ec);
     if (ec) return {};
-    return WideToAnsi(destination.wstring());
+    return utils::ToString(destination.wstring(), false);
 }
 } // namespace
 
@@ -248,6 +204,7 @@ class MapMenuMod : public bml::Module {
 
     CKContext *m_Context = nullptr;
     CKBehavior *m_ExitStart = nullptr;
+    CK_ID m_StartButtonId = 0;
     CKParameter *m_LoadCustom = nullptr;
     CKParameter *m_MapFile = nullptr;
     CKParameter *m_LevelRow = nullptr;
@@ -272,11 +229,28 @@ class MapMenuMod : public bml::Module {
     }
 
     void PublishConsoleMessage(const std::string &message, uint32_t flags = BML_CONSOLE_OUTPUT_FLAG_SYSTEM) {
-        if (m_TopicConsoleOutput == 0 || message.empty()) return;
-        BML_ConsoleOutputEvent event = BML_CONSOLE_OUTPUT_EVENT_INIT;
-        event.message_utf8 = message.c_str();
-        event.flags = flags;
-        Services().Builtins().ImcBus->Publish(m_TopicConsoleOutput, &event, sizeof(event));
+        auto *imcBus = Services().Builtins().ImcBus;
+        if (!imcBus || !imcBus->PublishBuffer || m_TopicConsoleOutput == 0 || message.empty()) return;
+
+        const size_t textSize = message.size() + 1;
+        const size_t totalSize = sizeof(BML_ConsoleOutputEvent) + textSize;
+        auto *storage = static_cast<char *>(std::malloc(totalSize));
+        if (!storage) return;
+
+        auto *event = reinterpret_cast<BML_ConsoleOutputEvent *>(storage);
+        *event = BML_CONSOLE_OUTPUT_EVENT_INIT;
+        event->message_utf8 = storage + sizeof(BML_ConsoleOutputEvent);
+        event->flags = flags;
+        std::memcpy(const_cast<char *>(event->message_utf8), message.c_str(), textSize);
+
+        BML_ImcBuffer buffer = BML_IMC_BUFFER_INIT;
+        buffer.data = event;
+        buffer.size = totalSize;
+        buffer.cleanup = [](const void *, size_t, void *user_data) {
+            std::free(user_data);
+        };
+        buffer.cleanup_user_data = storage;
+        imcBus->PublishBuffer(m_TopicConsoleOutput, &buffer);
     }
 
     void EnsureDefaultConfig() {
@@ -327,7 +301,7 @@ class MapMenuMod : public bml::Module {
     void RefreshSearchResults() {
         m_SearchResults.clear();
         if (!m_MapRoot) return;
-        const std::string query = TrimCopy(m_SearchBuffer.data());
+        const std::string query = utils::TrimStringCopy(std::string(m_SearchBuffer.data()));
         if (query.empty()) return;
         RebuildSearchResults(m_MapRoot.get(), query);
     }
@@ -407,13 +381,13 @@ class MapMenuMod : public bml::Module {
         }
         CKMessageType loadLevelMessage = messageManager->AddMessageType((CKSTRING)"Load Level");
         CKMessageType loadMenuMessage = messageManager->AddMessageType((CKSTRING)"Menu_Load");
-        const std::string originalMapPath = WideToUtf8(path);
-        const auto *imcState = Services().Builtins().ImcState;
-        if (m_TopicCustomMapName != 0 && imcState && imcState->PublishState && !originalMapPath.empty()) {
+        const std::string originalMapPath = utils::ToString(path);
+        const auto *imcBus = Services().Builtins().ImcBus;
+        if (m_TopicCustomMapName != 0 && imcBus && imcBus->PublishState && !originalMapPath.empty()) {
             BML_ImcMessage state_message = BML_IMC_MESSAGE_INIT;
             state_message.data = originalMapPath.c_str();
             state_message.size = originalMapPath.size() + 1;
-            imcState->PublishState(m_TopicCustomMapName, &state_message);
+            imcBus->PublishState(m_TopicCustomMapName, &state_message);
         }
         messageManager->SendMessageSingle(loadLevelMessage, m_Context->GetCurrentLevel());
         messageManager->SendMessageSingle(loadMenuMessage, allSound);
@@ -477,7 +451,7 @@ class MapMenuMod : public bml::Module {
 
     void RenderSearchResults() {
         if (m_SearchResults.empty()) {
-            ImGui::TextDisabled("No matching maps.");
+            ImGui::TextDisabled("%s", Services().Locale()["window.no_matching"]);
             return;
         }
         for (const MapEntry *entry : m_SearchResults) {
@@ -497,7 +471,9 @@ class MapMenuMod : public bml::Module {
 
     void RenderMainMenuButton() {
         if (m_Visible || !m_Context || !m_Settings.enabled) return;
-        CK2dEntity *startButton = GetNamed2dEntity("M_Start_But_01");
+        auto *startButton = m_StartButtonId
+            ? static_cast<CK2dEntity *>(m_Context->GetObject(m_StartButtonId))
+            : nullptr;
         if (!startButton || !startButton->IsVisible()) return;
         const ImVec2 viewportSize = ImGui::GetMainViewport()->Size;
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
@@ -507,7 +483,7 @@ class MapMenuMod : public bml::Module {
             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysAutoResize |
             ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings;
         if (ImGui::Begin("BML_MapMenu_Button", nullptr, flags)) {
-            if (ImGui::Button("Custom Maps")) SetVisible(true);
+            if (ImGui::Button(Services().Locale()["window.title"])) SetVisible(true);
         }
         ImGui::End();
         ImGui::PopStyleVar(2);
@@ -524,32 +500,33 @@ class MapMenuMod : public bml::Module {
             ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImVec2(viewport->Size.x * 0.78f, viewport->Size.y * 0.78f), ImGuiCond_Always);
         const ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings;
-        if (ImGui::Begin("Custom Maps", nullptr, flags)) {
+        const auto &loc = Services().Locale();
+        if (ImGui::Begin(loc["window.title"], nullptr, flags)) {
             if (m_FocusSearch) {
                 ImGui::SetKeyboardFocusHere();
                 m_FocusSearch = false;
             }
-            if (ImGui::InputTextWithHint("##map-search", "Search maps", m_SearchBuffer.data(), m_SearchBuffer.size()))
+            if (ImGui::InputTextWithHint("##map-search", loc["window.search_hint"], m_SearchBuffer.data(), m_SearchBuffer.size()))
                 RefreshSearchResults();
             ImGui::SameLine();
-            if (ImGui::Button("Refresh")) {
+            if (ImGui::Button(loc["window.refresh"])) {
                 RefreshMapTree();
                 RefreshSearchResults();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Close") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+            if (ImGui::Button(loc["window.close"]) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
                 SetVisible(false);
             }
             ImGui::Separator();
             if (!m_MapRoot) {
-                ImGui::TextDisabled("Maps directory is not available.");
-            } else if (TrimCopy(m_SearchBuffer.data()).empty()) {
+                ImGui::TextDisabled("%s", loc["window.no_maps_dir"]);
+            } else if (utils::TrimStringCopy(std::string(m_SearchBuffer.data())).empty()) {
                 if (!m_MapRoot->children.empty()) {
                     for (const std::unique_ptr<MapEntry> &child : m_MapRoot->children) {
                         if (RenderMapEntry(child.get())) break;
                     }
                 } else {
-                    ImGui::TextDisabled("No maps found under %s", FormatPathForUi(m_MapRoot->path).c_str());
+                    ImGui::TextDisabled("%s %s", loc["window.no_maps_found"], FormatPathForUi(m_MapRoot->path).c_str());
                 }
             } else {
                 RenderSearchResults();
@@ -557,9 +534,9 @@ class MapMenuMod : public bml::Module {
             ImGui::Separator();
             if (m_SelectedEntry) {
                 ImGui::TextWrapped("Selected: %s", FormatPathForUi(m_SelectedEntry->path).c_str());
-                if (ImGui::Button("Load Selected")) LoadMap(m_SelectedEntry->path);
+                if (ImGui::Button(loc["window.load"])) LoadMap(m_SelectedEntry->path);
             } else {
-                ImGui::TextDisabled("Select a map to load.");
+                ImGui::TextDisabled("%s", loc["window.select_prompt"]);
             }
         }
         ImGui::End();
@@ -570,15 +547,15 @@ class MapMenuMod : public bml::Module {
         auto *self = static_cast<MapMenuMod *>(ud);
         if (!invocation || invocation->argc == 0 || !invocation->argv_utf8 || !invocation->argv_utf8[0])
             return BML_RESULT_INVALID_ARGUMENT;
-        if (invocation->argc == 1 || (invocation->argc >= 2 && ToLowerAscii(invocation->argv_utf8[1]) == "open")) {
+        if (invocation->argc == 1 || (invocation->argc >= 2 && utils::ToLower(std::string(invocation->argv_utf8[1])) == "open")) {
             self->SetVisible(true);
             return BML_RESULT_OK;
         }
-        if (ToLowerAscii(invocation->argv_utf8[1]) == "close") {
+        if (utils::ToLower(std::string(invocation->argv_utf8[1])) == "close") {
             self->SetVisible(false);
             return BML_RESULT_OK;
         }
-        if (ToLowerAscii(invocation->argv_utf8[1]) == "refresh") {
+        if (utils::ToLower(std::string(invocation->argv_utf8[1])) == "refresh") {
             self->RefreshMapTree();
             self->RefreshSearchResults();
             self->PublishConsoleMessage("[mapmenu] refreshed custom map list");
@@ -591,7 +568,7 @@ class MapMenuMod : public bml::Module {
     static void CompleteMapMenuCommand(const BML_ConsoleCompletionContext *context,
         PFN_BML_ConsoleCompletionSink sink, void *sinkUserData, void *) {
         if (!context || !sink || context->token_index != 1) return;
-        const std::string prefix = context->current_token_utf8 ? ToLowerAscii(context->current_token_utf8) : std::string();
+        const std::string prefix = context->current_token_utf8 ? utils::ToLower(std::string(context->current_token_utf8)) : std::string();
         AddCompletionIfMatches("open", prefix, sink, sinkUserData);
         AddCompletionIfMatches("close", prefix, sink, sinkUserData);
         AddCompletionIfMatches("refresh", prefix, sink, sinkUserData);
@@ -601,13 +578,15 @@ public:
     BML_Result OnAttach(bml::ModuleServices &services) override {
         m_Subs = services.CreateSubscriptions();
 
-        m_DrawReg = bml::ui::RegisterWindowDraw("bml.mapmenu.window", 0, DrawCallback, this);
+        Services().Locale().Load(nullptr);
+
+        m_DrawReg = bml::ui::RegisterDraw("bml.mapmenu.window", 0, DrawCallback, this);
         if (!m_DrawReg) return BML_RESULT_NOT_FOUND;
 
         EnsureDefaultConfig();
         RefreshConfig();
 
-        m_InputCaptureService = Services().Acquire<BML_InputCaptureInterface>(BML_INPUT_CAPTURE_INTERFACE_ID, 1, 0, 0);
+        m_InputCaptureService = Services().Acquire<BML_InputCaptureInterface>();
         if (m_InputCaptureService) {
             m_InputCapture.SetService(m_InputCaptureService.Get());
         } else {
@@ -631,7 +610,7 @@ public:
         });
 
         m_Subs.Add(BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT, [this](const bml::imc::Message &msg) {
-            auto *payload = msg.As<BML_LegacyScriptLoadPayload>();
+            auto *payload = msg.As<BML_ScriptLoadEvent>();
             if (!payload || !payload->script) return;
             const char *scriptName = payload->script->GetName();
             if (!scriptName) return;
@@ -640,14 +619,16 @@ public:
                     PublishConsoleMessage("[mapmenu] custom map load hook armed");
                 return;
             }
-            if (strcmp(scriptName, "Menu_Start") == 0)
+            if (strcmp(scriptName, "Menu_Start") == 0) {
                 m_ExitStart = bml::Graph(payload->script).Find("Exit");
+                CK2dEntity *btn = GetNamed2dEntity("M_Start_But_01");
+                m_StartButtonId = btn ? btn->GetID() : 0;
+            }
         });
 
         if (m_Subs.Count() < 4) return BML_RESULT_FAIL;
 
-        m_ConsoleRegistry = Services().Acquire<BML_ConsoleCommandRegistry>(
-            BML_CONSOLE_COMMAND_REGISTRY_INTERFACE_ID, 1, 0, 0);
+        m_ConsoleRegistry = Services().Acquire<BML_ConsoleCommandRegistry>();
         if (m_ConsoleRegistry) {
             BML_ConsoleCommandDesc desc = BML_CONSOLE_COMMAND_DESC_INIT;
             desc.name_utf8 = "mapmenu";
@@ -687,6 +668,7 @@ public:
         m_DrawReg.Reset();
         m_Context = nullptr;
         m_ExitStart = nullptr;
+        m_StartButtonId = 0;
         m_LoadCustom = nullptr;
         m_MapFile = nullptr;
         m_LevelRow = nullptr;

@@ -24,13 +24,12 @@
 #include "bml_input_control.h"
 #include "bml_interface.hpp"
 #include "bml_topics.h"
-#include "bml_ui_host.h"
-#include "bml_ui_helpers.hpp"
+#include "bml_ui.hpp"
 #include "bml_virtools.h"
 #include "bml_virtools.hpp"
 #include "bml_virtools_payloads.h"
 
-#include "BML/Menu.h"
+#include "bml_menu.hpp"
 #include "BML/Guids/Hooks.h"
 #include "BML/Guids/Interface.h"
 #include "BML/Guids/TT_Toolbox_RT.h"
@@ -100,12 +99,12 @@ public:
     BML_Result OnAttach(bml::ModuleServices &services) override {
         m_Subs = services.CreateSubscriptions();
 
-        m_DrawReg = bml::ui::RegisterWindowDraw("bml.modmenu.window", 10, DrawCallback, this, BML_UI_LAYER_MENU);
+        m_DrawReg = bml::ui::RegisterDraw("bml.modmenu.window", 10, DrawCallback, this);
         if (!m_DrawReg) {
             return BML_RESULT_NOT_FOUND;
         }
 
-        m_InputCaptureService = Services().Acquire<BML_InputCaptureInterface>(BML_INPUT_CAPTURE_INTERFACE_ID, 1, 0, 0);
+        m_InputCaptureService = Services().Acquire<BML_InputCaptureInterface>();
         MenuRuntime::SetInputService(m_InputCaptureService.Get());
 
         m_Menu.Init();
@@ -128,7 +127,7 @@ public:
         });
 
         m_Subs.Add(BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT, [this](const bml::imc::Message &msg) {
-            auto *payload = msg.As<BML_LegacyScriptLoadPayload>();
+            auto *payload = msg.As<BML_ScriptLoadEvent>();
             if (!payload || !payload->script) {
                 return;
             }

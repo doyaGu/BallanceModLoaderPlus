@@ -4,6 +4,10 @@ name = "BML Input Module"
 version = "0.4.0"
 authors = ["BML Team"]
 description = "Input management module for BML - provides keyboard, mouse, and joystick input handling"
+entry = "BML_Input.dll"
+
+[provides]
+"bml.input.capture" = "1.0.0"
 
 [dependencies]
 # No dependencies - this is a core system module

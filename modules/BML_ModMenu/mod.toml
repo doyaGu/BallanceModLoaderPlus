@@ -1,10 +1,15 @@
+capabilities = ["menu.modules", "menu.config"]
+
+[package]
 id = "com.bml.modmenu"
 name = "BML_ModMenu"
 version = "0.4.0"
 description = "Module-native loaded-module and config browser"
+entry = "BML_ModMenu.dll"
 
 [dependencies]
-"com.bml.ui" = "*"
-"com.bml.input" = "*"
+"com.bml.ui" = ">=0.4.0"
+"com.bml.menu" = ">=0.4.0"
+"com.bml.input" = ">=0.4.0"
+"com.bml.objectload" = ">=0.4.0"
 
-capabilities = ["menu.modules", "menu.config"]

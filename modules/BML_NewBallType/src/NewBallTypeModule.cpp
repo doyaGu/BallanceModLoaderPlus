@@ -146,13 +146,12 @@ public:
         m_Subs = services.CreateSubscriptions();
 
         auto *ctx = bml::virtools::GetCKContext(Services());
-        m_Runtime.SetRuntimeInterfaces(Services().Builtins().Context, Services().Builtins().Logging);
+        m_Runtime.SetServices(&Services());
         m_Runtime.SetContext(ctx);
         m_Runtime.InitObjectLoader(ctx);
 
         static const BML_NewBallTypeInterface kService = {
-            1,
-            0,
+            BML_IFACE_HEADER(BML_NewBallTypeInterface, BML_NEWBALLTYPE_INTERFACE_ID, 1, 0),
             &ExtRegisterBallType,
             &ExtRegisterFloorType,
             &ExtRegisterModuleBall,
@@ -173,7 +172,7 @@ public:
         }
 
         m_Subs.Add(BML_TOPIC_OBJECTLOAD_LOAD_OBJECT, [this](const bml::imc::Message &msg) {
-            auto *payload = msg.As<BML_LegacyObjectLoadPayload>();
+            auto *payload = msg.As<BML_ObjectLoadEvent>();
             if (!payload) {
                 return;
             }
@@ -188,7 +187,7 @@ public:
         });
 
         m_Subs.Add(BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT, [this](const bml::imc::Message &msg) {
-            auto *payload = msg.As<BML_LegacyScriptLoadPayload>();
+            auto *payload = msg.As<BML_ScriptLoadEvent>();
             if (!payload || !payload->script) {
                 return;
             }

@@ -1,6 +1,8 @@
 #ifndef BML_EVENT_TOPICS_H
 #define BML_EVENT_TOPICS_H
 
+#include "bml_game_topics.h"
+
 /**
  * @file EventTopics.h
  * @brief Game Event Topic ID Constants for IMC Pub/Sub

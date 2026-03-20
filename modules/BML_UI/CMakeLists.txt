@@ -1,14 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(BML_UI VERSION 0.4.0 LANGUAGES CXX)
-
-set(BML_UI_OUTPUT_DIR "${CMAKE_BINARY_DIR}/Mods/BML_UI")
-
-# C++20 standard
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# ImGui sources
 set(IMGUI_SOURCES
     ${IMGUI_SOURCE_DIR}/imgui.cpp
     ${IMGUI_SOURCE_DIR}/imgui_draw.cpp
@@ -27,70 +18,50 @@ set(IMGUI_HEADERS
     ${IMGUI_SOURCE_DIR}/backends/imgui_impl_win32.h
 )
 
-# Module sources
-set(BML_UI_SOURCES
-    src/UIMod.cpp
-    src/Overlay.cpp
-    src/imgui_impl_ck2.cpp
-    src/AnsiPalette.cpp
-    src/AnsiText.cpp
+# Public API headers for consumers of this module
+add_library(BML_UI_api INTERFACE)
+target_include_directories(BML_UI_api INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:modules/BML_UI/include>
+)
+bml_register_module_api(BML_UI_api)
+
+bml_add_module(BML_UI
+    SOURCES
+        src/UIMod.cpp
+        src/Win32Hooks.cpp
+        src/imgui_impl_ck2.cpp
+        ${CIMGUI_SOURCE_DIR}/cimgui.cpp
+        src/UIMod.h
+        src/Win32Hooks.h
+        src/imgui_impl_ck2.h
+        ${IMGUI_SOURCES}
+        ${IMGUI_HEADERS}
+    MANIFEST mod.toml
+    INCLUDE_DIRS
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src/Utils
+        ${CIMGUI_SOURCE_DIR}
+        ${VIRTOOLS_SDK_INCLUDE_DIR}
+        ${IMGUI_SOURCE_DIR}
+    LINK_LIBRARIES
+        VirtoolsSDK::CK2
+        VirtoolsSDK::VxMath
+        minhook
+        BML_Utils
+    COMPILE_DEFINITIONS
+        BML_EXPORTS
+        IMGUI_EXPORT
 )
 
-set(BML_UI_HEADERS
-    src/UIMod.h
-    src/Overlay.h
-    src/imgui_impl_ck2.h
-    src/AnsiPalette.h
-    src/AnsiText.h
-)
-
-# Create shared library (DLL)
-add_library(BML_UI SHARED
-    ${BML_UI_SOURCES}
-    ${BML_UI_HEADERS}
-    ${IMGUI_SOURCES}
-    ${IMGUI_HEADERS}
-)
-
-# Include directories
-target_include_directories(BML_UI PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src       # For shared headers
-    ${VIRTOOLS_SDK_INCLUDE_DIR}
-    ${IMGUI_SOURCE_DIR}
-)
-
-# Link dependencies
-target_link_libraries(BML_UI PRIVATE
-    VirtoolsSDK::CK2
-    VirtoolsSDK::VxMath
-    minhook
-    BMLUtils    # For IniFile, PathUtils, StringUtils used by AnsiPalette
-)
-
-# Compile definitions
-target_compile_definitions(BML_UI PRIVATE
-    BML_UI_EXPORTS
-    IMGUI_EXPORT
-)
-
-# Output configuration
-set_target_properties(BML_UI PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${BML_UI_OUTPUT_DIR}
-    LIBRARY_OUTPUT_DIRECTORY ${BML_UI_OUTPUT_DIR}
+target_compile_options(BML_UI PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/FS>
 )
 
 add_custom_command(TARGET BML_UI PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/src/imconfig.h" "${IMGUI_SOURCE_DIR}"
-        VERBATIM
-)
-
-# Copy mod.toml to output directory
-add_custom_command(TARGET BML_UI POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_SOURCE_DIR}/mod.toml
-        $<TARGET_FILE_DIR:BML_UI>/mod.toml
+    COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/src/Utils/imconfig.h" "${IMGUI_SOURCE_DIR}"
+    VERBATIM
 )
 
 install(TARGETS BML_UI
@@ -100,4 +71,9 @@ install(TARGETS BML_UI
 
 install(FILES mod.toml
     DESTINATION Mods/BML_UI
+)
+
+install(DIRECTORY include/
+    DESTINATION modules/BML_UI/include
+    COMPONENT sdk
 )

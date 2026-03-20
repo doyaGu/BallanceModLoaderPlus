@@ -1,36 +1,32 @@
 /**
  * @file EventHook.cpp
  * @brief Game Event Hook Implementation for BML_Event Module
- * 
- * Hooks game scripts to capture and publish game events via IMC.
- * Uses ScriptHelper for script manipulation and ModLoader's HookBlock BB.
+ *
+ * Restores the original BML script hook topology while publishing IMC topics
+ * instead of dispatching legacy IMessageReceiver callbacks.
  */
 
 #include "EventHook.h"
-#include "EventTopics.h"
-#include "ScriptHelper.h"
-#include "BML/Guids/Hooks.h"
 
-#include "bml_loader.h"
+#include <cstdarg>
+#include <cstdio>
+#include <cstring>
+#include <unordered_set>
+
+#include "BML/Guids/Hooks.h"
+#include "BML/ScriptGraph.h"
+#include "bml_services.hpp"
+#include "bml_topics.h"
+#include "EventTopics.h"
 
 namespace BML_Event {
 
-using namespace ScriptHelper;
-
-// Custom callback type matching HookBlock's expectation
 typedef int (*CKBehaviorCallback)(const CKBehaviorContext *behcontext, void *arg);
 
-//-----------------------------------------------------------------------------
-// Static State
-//-----------------------------------------------------------------------------
+namespace {
 
-static CKContext *s_Context = nullptr;
-static bool s_Initialized = false;
+const bml::ModuleServices *s_ModServices = nullptr;
 
-// Cached topic IDs for all events
-static BML_TopicId s_Topics[40] = {0};
-
-// Topic indices (matching EventTopics.h order)
 enum TopicIndex {
     IDX_PRE_START_MENU = 0,
     IDX_POST_START_MENU,
@@ -68,353 +64,555 @@ enum TopicIndex {
     IDX_MAX
 };
 
-//-----------------------------------------------------------------------------
-// IMC Event Publishing Callback
-//-----------------------------------------------------------------------------
-
 struct HookCallbackData {
     int topicIndex;
 };
 
-static HookCallbackData s_CallbackData[IDX_MAX];
+static CKContext *s_Context = nullptr;
+static bool s_Initialized = false;
+static BML_TopicId s_Topics[IDX_MAX] = {};
+static HookCallbackData s_CallbackData[IDX_MAX] = {};
+
+// Retained state topic IDs
+static BML_TopicId s_TopicGamePhase = 0;
+static BML_TopicId s_TopicPaused = 0;
+
+static void PublishRetainedState(const BML_ImcBusInterface *imc, BML_TopicId topic,
+                                  const void *data, size_t size) {
+    if (!imc || !imc->PublishState || topic == 0) return;
+    BML_ImcMessage msg = BML_IMC_MESSAGE_INIT;
+    msg.data = data;
+    msg.size = size;
+    imc->PublishState(topic, &msg);
+}
+
+static void UpdateGamePhase(BML_GamePhase phase) {
+    if (!s_ModServices) return;
+    auto *imc = s_ModServices->Builtins().ImcBus;
+    uint32_t value = static_cast<uint32_t>(phase);
+    PublishRetainedState(imc, s_TopicGamePhase, &value, sizeof(value));
+}
+
+static void UpdatePaused(BML_Bool paused) {
+    if (!s_ModServices) return;
+    auto *imc = s_ModServices->Builtins().ImcBus;
+    PublishRetainedState(imc, s_TopicPaused, &paused, sizeof(paused));
+}
+
+static std::unordered_set<CK_ID> s_BaseScripts;
+static std::unordered_set<CK_ID> s_GameplayIngameScripts;
+static std::unordered_set<CK_ID> s_GameplayEnergyScripts;
+static std::unordered_set<CK_ID> s_GameplayEventsScripts;
+
+static void Log(BML_LogSeverity severity, const char *format, ...) {
+    if (!s_ModServices) {
+        return;
+    }
+
+    va_list args;
+    va_start(args, format);
+    char buffer[512] = {};
+    std::vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+
+    auto &logger = s_ModServices->Log();
+    switch (severity) {
+        case BML_LOG_INFO: logger.Info("%s", buffer); break;
+        case BML_LOG_WARN: logger.Warn("%s", buffer); break;
+        case BML_LOG_ERROR: logger.Error("%s", buffer); break;
+        default: logger.Info("%s", buffer); break;
+    }
+}
 
 static int PublishEventCallback(const CKBehaviorContext *behcontext, void *arg) {
     (void)behcontext;
-    
+
     auto *data = static_cast<HookCallbackData *>(arg);
-    if (!data || data->topicIndex < 0 || data->topicIndex >= IDX_MAX)
+    if (!data || data->topicIndex < 0 || data->topicIndex >= IDX_MAX) {
         return CKBR_OK;
-    
-    BML_TopicId topic = s_Topics[data->topicIndex];
-    if (topic != 0) {
-        bmlImcPublish(topic, nullptr, 0);
     }
-    
+
+    const BML_TopicId topic = s_Topics[data->topicIndex];
+    if (topic != 0 && s_ModServices) {
+        auto *imc_bus = s_ModServices->Builtins().ImcBus;
+        if (imc_bus && imc_bus->Publish) {
+            imc_bus->Publish(topic, nullptr, 0);
+        }
+
+        // Update retained game state based on event type
+        switch (data->topicIndex) {
+        case IDX_POST_START_MENU:
+            UpdateGamePhase(BML_GAME_PHASE_MENU);
+            break;
+        case IDX_PRE_LOAD_LEVEL:
+            UpdateGamePhase(BML_GAME_PHASE_LOADING);
+            break;
+        case IDX_START_LEVEL:
+            UpdateGamePhase(BML_GAME_PHASE_PLAYING);
+            UpdatePaused(BML_FALSE);
+            break;
+        case IDX_PAUSE_LEVEL:
+            UpdateGamePhase(BML_GAME_PHASE_PAUSED);
+            UpdatePaused(BML_TRUE);
+            break;
+        case IDX_UNPAUSE_LEVEL:
+            UpdateGamePhase(BML_GAME_PHASE_PLAYING);
+            UpdatePaused(BML_FALSE);
+            break;
+        case IDX_POST_EXIT_LEVEL:
+            UpdateGamePhase(BML_GAME_PHASE_MENU);
+            UpdatePaused(BML_FALSE);
+            break;
+        default:
+            break;
+        }
+    }
+
     return CKBR_OK;
 }
 
-//-----------------------------------------------------------------------------
-// HookBlock Creation (using ModLoader's registered BB)
-//-----------------------------------------------------------------------------
-
-static CKBehavior *CreateHookBlock(CKBehavior *script, CKBehaviorCallback callback, void *arg,
+static CKBehavior *CreateHookBlock(bml::Graph &graph, CKBehaviorCallback callback, void *arg,
                                    int inCount = 1, int outCount = 1) {
-    CKBehavior *beh = CreateBB(script, HOOKS_HOOKBLOCK_GUID);
-    if (!beh) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_ERROR, "BML_Event",
-               "Failed to create HookBlock BB - ModLoader may not have registered it");
+    CKBehavior *behavior = graph.CreateBehavior(HOOKS_HOOKBLOCK_GUID);
+    if (!behavior) {
+        Log(BML_LOG_ERROR, "Failed to create HookBlock BB");
         return nullptr;
     }
-    
-    beh->SetLocalParameterValue(0, &callback);
-    beh->SetLocalParameterValue(1, &arg);
 
-    XString pinName = "In ";
-    for (int i = 0; i < inCount; i++) {
-        beh->CreateInput((pinName << i).Str());
+    behavior->SetLocalParameterValue(0, &callback);
+    behavior->SetLocalParameterValue(1, &arg);
+
+    XString inputName = "In ";
+    for (int index = 0; index < inCount; ++index) {
+        behavior->CreateInput((inputName << index).Str());
     }
 
-    XString poutName = "Out ";
-    for (int i = 0; i < outCount; i++) {
-        beh->CreateOutput((poutName << i).Str());
+    XString outputName = "Out ";
+    for (int index = 0; index < outCount; ++index) {
+        behavior->CreateOutput((outputName << index).Str());
     }
 
-    return beh;
+    return behavior;
 }
 
-//-----------------------------------------------------------------------------
-// Helper Functions
-//-----------------------------------------------------------------------------
-
-static CKBehavior *CreateEventPublisher(CKBehavior *script, int topicIndex) {
-    if (topicIndex < 0 || topicIndex >= IDX_MAX)
+static CKBehavior *CreateEventPublisher(bml::Graph &graph, int topicIndex) {
+    if (topicIndex < 0 || topicIndex >= IDX_MAX) {
         return nullptr;
-    
+    }
+
     s_CallbackData[topicIndex].topicIndex = topicIndex;
-    return CreateHookBlock(script, PublishEventCallback, &s_CallbackData[topicIndex]);
+    return CreateHookBlock(graph, PublishEventCallback, &s_CallbackData[topicIndex]);
 }
 
-//-----------------------------------------------------------------------------
-// Topic Registration
-//-----------------------------------------------------------------------------
-
-static void RegisterTopics() {
-    bmlImcGetTopicId(TOPIC_PRE_START_MENU, &s_Topics[IDX_PRE_START_MENU]);
-    bmlImcGetTopicId(TOPIC_POST_START_MENU, &s_Topics[IDX_POST_START_MENU]);
-    bmlImcGetTopicId(TOPIC_EXIT_GAME, &s_Topics[IDX_EXIT_GAME]);
-    bmlImcGetTopicId(TOPIC_PRE_LOAD_LEVEL, &s_Topics[IDX_PRE_LOAD_LEVEL]);
-    bmlImcGetTopicId(TOPIC_POST_LOAD_LEVEL, &s_Topics[IDX_POST_LOAD_LEVEL]);
-    bmlImcGetTopicId(TOPIC_START_LEVEL, &s_Topics[IDX_START_LEVEL]);
-    bmlImcGetTopicId(TOPIC_PRE_RESET_LEVEL, &s_Topics[IDX_PRE_RESET_LEVEL]);
-    bmlImcGetTopicId(TOPIC_POST_RESET_LEVEL, &s_Topics[IDX_POST_RESET_LEVEL]);
-    bmlImcGetTopicId(TOPIC_PAUSE_LEVEL, &s_Topics[IDX_PAUSE_LEVEL]);
-    bmlImcGetTopicId(TOPIC_UNPAUSE_LEVEL, &s_Topics[IDX_UNPAUSE_LEVEL]);
-    bmlImcGetTopicId(TOPIC_PRE_EXIT_LEVEL, &s_Topics[IDX_PRE_EXIT_LEVEL]);
-    bmlImcGetTopicId(TOPIC_POST_EXIT_LEVEL, &s_Topics[IDX_POST_EXIT_LEVEL]);
-    bmlImcGetTopicId(TOPIC_PRE_NEXT_LEVEL, &s_Topics[IDX_PRE_NEXT_LEVEL]);
-    bmlImcGetTopicId(TOPIC_POST_NEXT_LEVEL, &s_Topics[IDX_POST_NEXT_LEVEL]);
-    bmlImcGetTopicId(TOPIC_PRE_END_LEVEL, &s_Topics[IDX_PRE_END_LEVEL]);
-    bmlImcGetTopicId(TOPIC_POST_END_LEVEL, &s_Topics[IDX_POST_END_LEVEL]);
-    bmlImcGetTopicId(TOPIC_DEAD, &s_Topics[IDX_DEAD]);
-    bmlImcGetTopicId(TOPIC_BALL_OFF, &s_Topics[IDX_BALL_OFF]);
-    bmlImcGetTopicId(TOPIC_COUNTER_ACTIVE, &s_Topics[IDX_COUNTER_ACTIVE]);
-    bmlImcGetTopicId(TOPIC_COUNTER_INACTIVE, &s_Topics[IDX_COUNTER_INACTIVE]);
-    bmlImcGetTopicId(TOPIC_PRE_CHECKPOINT, &s_Topics[IDX_PRE_CHECKPOINT]);
-    bmlImcGetTopicId(TOPIC_POST_CHECKPOINT, &s_Topics[IDX_POST_CHECKPOINT]);
-    bmlImcGetTopicId(TOPIC_LEVEL_FINISH, &s_Topics[IDX_LEVEL_FINISH]);
-    bmlImcGetTopicId(TOPIC_GAME_OVER, &s_Topics[IDX_GAME_OVER]);
-    bmlImcGetTopicId(TOPIC_EXTRA_POINT, &s_Topics[IDX_EXTRA_POINT]);
-    bmlImcGetTopicId(TOPIC_PRE_LIFE_UP, &s_Topics[IDX_PRE_LIFE_UP]);
-    bmlImcGetTopicId(TOPIC_POST_LIFE_UP, &s_Topics[IDX_POST_LIFE_UP]);
-    bmlImcGetTopicId(TOPIC_PRE_SUB_LIFE, &s_Topics[IDX_PRE_SUB_LIFE]);
-    bmlImcGetTopicId(TOPIC_POST_SUB_LIFE, &s_Topics[IDX_POST_SUB_LIFE]);
-    bmlImcGetTopicId(TOPIC_BALL_NAV_ACTIVE, &s_Topics[IDX_BALL_NAV_ACTIVE]);
-    bmlImcGetTopicId(TOPIC_BALL_NAV_INACTIVE, &s_Topics[IDX_BALL_NAV_INACTIVE]);
-    bmlImcGetTopicId(TOPIC_CAM_NAV_ACTIVE, &s_Topics[IDX_CAM_NAV_ACTIVE]);
-    bmlImcGetTopicId(TOPIC_CAM_NAV_INACTIVE, &s_Topics[IDX_CAM_NAV_INACTIVE]);
-}
-
-//-----------------------------------------------------------------------------
-// Public API Implementation
-//-----------------------------------------------------------------------------
-
-bool InitEventHooks(CKContext *ctx) {
-    if (s_Initialized)
-        return true;
-    
-    if (!ctx) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_ERROR, "BML_Event",
-               "Cannot initialize event hooks: CKContext is null");
+static bool MarkRegistered(std::unordered_set<CK_ID> &registry, CKBehavior *script) {
+    if (!script) {
         return false;
     }
-    
-    s_Context = ctx;
-    
-    // Register all topic IDs
-    RegisterTopics();
-    
-    // Initialize callback data
-    for (int i = 0; i < IDX_MAX; i++) {
-        s_CallbackData[i].topicIndex = i;
+
+    const CK_ID id = script->GetID();
+    return registry.insert(id).second;
+}
+
+static void InsertPublisher(bml::Graph &graph, CKBehaviorLink *link, int topicIndex) {
+    if (!link) return;
+    CKBehavior *publisher = CreateEventPublisher(graph, topicIndex);
+    if (!publisher) return;
+    graph.Insert(link, publisher);
+}
+
+static void LinkPublisher(bml::Graph &graph, CKBehavior *source, int topicIndex,
+                          int inPos = 0, int outPos = 0, int delay = 0) {
+    if (!source) return;
+    CKBehavior *publisher = CreateEventPublisher(graph, topicIndex);
+    if (!publisher) return;
+    graph.Link(source, publisher, inPos, outPos, delay);
+}
+
+static void RegisterTopics() {
+    if (!s_ModServices) {
+        return;
     }
-    
+
+    auto *imcBus = s_ModServices->Builtins().ImcBus;
+    if (!imcBus || !imcBus->GetTopicId) {
+        return;
+    }
+    imcBus->GetTopicId(TOPIC_PRE_START_MENU, &s_Topics[IDX_PRE_START_MENU]);
+    imcBus->GetTopicId(TOPIC_POST_START_MENU, &s_Topics[IDX_POST_START_MENU]);
+    imcBus->GetTopicId(TOPIC_EXIT_GAME, &s_Topics[IDX_EXIT_GAME]);
+    imcBus->GetTopicId(TOPIC_PRE_LOAD_LEVEL, &s_Topics[IDX_PRE_LOAD_LEVEL]);
+    imcBus->GetTopicId(TOPIC_POST_LOAD_LEVEL, &s_Topics[IDX_POST_LOAD_LEVEL]);
+    imcBus->GetTopicId(TOPIC_START_LEVEL, &s_Topics[IDX_START_LEVEL]);
+    imcBus->GetTopicId(TOPIC_PRE_RESET_LEVEL, &s_Topics[IDX_PRE_RESET_LEVEL]);
+    imcBus->GetTopicId(TOPIC_POST_RESET_LEVEL, &s_Topics[IDX_POST_RESET_LEVEL]);
+    imcBus->GetTopicId(TOPIC_PAUSE_LEVEL, &s_Topics[IDX_PAUSE_LEVEL]);
+    imcBus->GetTopicId(TOPIC_UNPAUSE_LEVEL, &s_Topics[IDX_UNPAUSE_LEVEL]);
+    imcBus->GetTopicId(TOPIC_PRE_EXIT_LEVEL, &s_Topics[IDX_PRE_EXIT_LEVEL]);
+    imcBus->GetTopicId(TOPIC_POST_EXIT_LEVEL, &s_Topics[IDX_POST_EXIT_LEVEL]);
+    imcBus->GetTopicId(TOPIC_PRE_NEXT_LEVEL, &s_Topics[IDX_PRE_NEXT_LEVEL]);
+    imcBus->GetTopicId(TOPIC_POST_NEXT_LEVEL, &s_Topics[IDX_POST_NEXT_LEVEL]);
+    imcBus->GetTopicId(TOPIC_PRE_END_LEVEL, &s_Topics[IDX_PRE_END_LEVEL]);
+    imcBus->GetTopicId(TOPIC_POST_END_LEVEL, &s_Topics[IDX_POST_END_LEVEL]);
+    imcBus->GetTopicId(TOPIC_DEAD, &s_Topics[IDX_DEAD]);
+    imcBus->GetTopicId(TOPIC_BALL_OFF, &s_Topics[IDX_BALL_OFF]);
+    imcBus->GetTopicId(TOPIC_COUNTER_ACTIVE, &s_Topics[IDX_COUNTER_ACTIVE]);
+    imcBus->GetTopicId(TOPIC_COUNTER_INACTIVE, &s_Topics[IDX_COUNTER_INACTIVE]);
+    imcBus->GetTopicId(TOPIC_PRE_CHECKPOINT, &s_Topics[IDX_PRE_CHECKPOINT]);
+    imcBus->GetTopicId(TOPIC_POST_CHECKPOINT, &s_Topics[IDX_POST_CHECKPOINT]);
+    imcBus->GetTopicId(TOPIC_LEVEL_FINISH, &s_Topics[IDX_LEVEL_FINISH]);
+    imcBus->GetTopicId(TOPIC_GAME_OVER, &s_Topics[IDX_GAME_OVER]);
+    imcBus->GetTopicId(TOPIC_EXTRA_POINT, &s_Topics[IDX_EXTRA_POINT]);
+    imcBus->GetTopicId(TOPIC_PRE_LIFE_UP, &s_Topics[IDX_PRE_LIFE_UP]);
+    imcBus->GetTopicId(TOPIC_POST_LIFE_UP, &s_Topics[IDX_POST_LIFE_UP]);
+    imcBus->GetTopicId(TOPIC_PRE_SUB_LIFE, &s_Topics[IDX_PRE_SUB_LIFE]);
+    imcBus->GetTopicId(TOPIC_POST_SUB_LIFE, &s_Topics[IDX_POST_SUB_LIFE]);
+    imcBus->GetTopicId(TOPIC_BALL_NAV_ACTIVE, &s_Topics[IDX_BALL_NAV_ACTIVE]);
+    imcBus->GetTopicId(TOPIC_BALL_NAV_INACTIVE, &s_Topics[IDX_BALL_NAV_INACTIVE]);
+    imcBus->GetTopicId(TOPIC_CAM_NAV_ACTIVE, &s_Topics[IDX_CAM_NAV_ACTIVE]);
+    imcBus->GetTopicId(TOPIC_CAM_NAV_INACTIVE, &s_Topics[IDX_CAM_NAV_INACTIVE]);
+
+    // Retained state topics
+    imcBus->GetTopicId(BML_TOPIC_STATE_GAME_PHASE, &s_TopicGamePhase);
+    imcBus->GetTopicId(BML_TOPIC_STATE_PAUSED, &s_TopicPaused);
+
+    // Publish initial state
+    UpdateGamePhase(BML_GAME_PHASE_IDLE);
+    UpdatePaused(BML_FALSE);
+}
+
+static bool IsScriptBehavior(CKObject *object) {
+    if (!object || object->GetClassID() != CKCID_BEHAVIOR) {
+        return false;
+    }
+
+    auto *behavior = static_cast<CKBehavior *>(object);
+    return (behavior->GetType() & CKBEHAVIORTYPE_SCRIPT) != 0;
+}
+
+} // namespace
+
+bool InitEventHooks(CKContext *ctx, const bml::ModuleServices &services) {
+    if (s_Initialized) {
+        return true;
+    }
+
+    if (!ctx) {
+        Log(BML_LOG_ERROR, "Cannot initialize event hooks: CKContext is null");
+        return false;
+    }
+
+    s_ModServices = &services;
+    s_Context = ctx;
+    RegisterTopics();
+    for (int index = 0; index < IDX_MAX; ++index) {
+        s_CallbackData[index].topicIndex = index;
+    }
+
     s_Initialized = true;
-    bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_Event",
-           "Event hooks initialized");
+    Log(BML_LOG_INFO, "Event hooks initialized");
     return true;
 }
 
 void ShutdownEventHooks() {
+    Log(BML_LOG_INFO, "Event hooks shutdown");
+
     s_Context = nullptr;
     s_Initialized = false;
-    
-    bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_Event",
-           "Event hooks shutdown");
+    s_TopicGamePhase = 0;
+    s_TopicPaused = 0;
+    s_BaseScripts.clear();
+    s_GameplayIngameScripts.clear();
+    s_GameplayEnergyScripts.clear();
+    s_GameplayEventsScripts.clear();
+    s_ModServices = nullptr;
+}
+
+int ScanLoadedScripts(CKContext *ctx) {
+    if (!ctx || !s_ModServices) {
+        return 0;
+    }
+
+    const int behaviorCount = ctx->GetObjectsCountByClassID(CKCID_BEHAVIOR);
+    CK_ID *behaviorIds = ctx->GetObjectsListByClassID(CKCID_BEHAVIOR);
+    if (behaviorCount <= 0 || !behaviorIds) {
+        return 0;
+    }
+
+    int processed = 0;
+    for (int index = 0; index < behaviorCount; ++index) {
+        CKObject *object = ctx->GetObject(behaviorIds[index]);
+        if (!IsScriptBehavior(object)) {
+            continue;
+        }
+
+        OnScriptLoaded("base.cmo", static_cast<CKBehavior *>(object));
+        ++processed;
+    }
+
+    Log(BML_LOG_INFO, "Scanned %d loaded scripts for event hook registration", processed);
+    return processed;
 }
 
 bool RegisterBaseEventHandler(CKBehavior *script) {
-    if (!s_Initialized || !script) {
+    if (!s_Initialized || !script || !MarkRegistered(s_BaseScripts, script)) {
         return false;
     }
 
-    bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_Event", 
-           "Registering Level Manager hooks");
-
-    // Hook PreStartMenu - before showing start menu
-    CKBehavior *preStartMenu = FindFirstBB(script, "show_Title Menu");
-    if (preStartMenu) {
-        InsertBB(script, FindPreviousLink(script, preStartMenu),
-                 CreateEventPublisher(script, IDX_PRE_START_MENU));
+    bml::Graph graph(script);
+    auto sw = graph.Find("Switch On Message", false, 2, 11, 11, 0);
+    if (!sw) {
+        Log(BML_LOG_WARN, "Failed to locate base event handler switch block");
+        return false;
     }
 
-    // Hook PostStartMenu - after start menu is shown
-    CKBehavior *postStartMenu = FindFirstBB(script, "Title Menu Ingame");
-    if (postStartMenu) {
-        InsertBB(script, FindPreviousLink(script, postStartMenu),
-                 CreateEventPublisher(script, IDX_POST_START_MENU));
+    InsertPublisher(graph, graph.From(sw).Out(0).Next().NextLink(), IDX_PRE_START_MENU);
+    LinkPublisher(graph, graph.From(sw).Out(0).Next().End(), IDX_POST_START_MENU);
+
+    InsertPublisher(graph, graph.From(sw).Out(1).Next().NextLink(), IDX_EXIT_GAME);
+
+    auto loadLevelChain = graph.From(sw).Out(2).Next().Next().Next();
+    InsertPublisher(graph, loadLevelChain.NextLink(), IDX_PRE_LOAD_LEVEL);
+    LinkPublisher(graph, graph.From(sw).Out(2).Next().End(), IDX_POST_LOAD_LEVEL);
+
+    LinkPublisher(graph, graph.From(sw).Out(3).Next().End(), IDX_START_LEVEL);
+
+    auto resetLevel = graph.Find("reset Level");
+    if (resetLevel) {
+        bml::Graph rl(resetLevel);
+        auto resetChain = rl.From(resetLevel->GetInput(0)).Next().Next();
+        InsertPublisher(rl, resetChain.NextLink(), IDX_PRE_RESET_LEVEL);
+        LinkPublisher(graph, graph.From(sw).Out(4).Next().End(), IDX_POST_RESET_LEVEL);
     }
 
-    // Hook ExitGame - when exiting game
-    CKBehavior *exitGame = FindFirstBB(script, "Exit_To_System");
-    if (exitGame) {
-        InsertBB(script, FindPreviousLink(script, exitGame),
-                 CreateEventPublisher(script, IDX_EXIT_GAME));
+    LinkPublisher(graph, graph.From(sw).Out(5).Next().End(), IDX_PAUSE_LEVEL);
+    LinkPublisher(graph, graph.From(sw).Out(6).Next().End(), IDX_UNPAUSE_LEVEL);
+
+    auto deleteCS = graph.Find("DeleteCollisionSurfaces");
+    CKBehavior *bs = deleteCS ? graph.From(deleteCS).Next() : nullptr;
+    auto exitLevelChain = graph.From(sw).Out(7).Skip(5);
+    InsertPublisher(graph, exitLevelChain.NextLink(), IDX_PRE_EXIT_LEVEL);
+    if (bs) {
+        InsertPublisher(graph, graph.From(bs).Next(nullptr, 0).NextLink(), IDX_POST_EXIT_LEVEL);
     }
 
-    // Hook PreLoadLevel - before loading level
-    CKBehavior *loadLevel = FindFirstBB(script, "load_levelinit_nmo");
-    if (loadLevel) {
-        InsertBB(script, FindPreviousLink(script, loadLevel),
-                 CreateEventPublisher(script, IDX_PRE_LOAD_LEVEL));
+    auto nextLevelChain = graph.From(sw).Out(8).Skip(5);
+    InsertPublisher(graph, nextLevelChain.NextLink(), IDX_PRE_NEXT_LEVEL);
+    if (bs) {
+        InsertPublisher(graph, graph.From(bs).Next(nullptr, 1).NextLink(), IDX_POST_NEXT_LEVEL);
     }
 
-    // Hook PostLoadLevel - after level is loaded
-    CKBehavior *postLoad = FindFirstBB(script, "Start_Level_01");
-    if (postLoad) {
-        InsertBB(script, FindPreviousLink(script, postLoad),
-                 CreateEventPublisher(script, IDX_POST_LOAD_LEVEL));
-    }
+    LinkPublisher(graph, graph.From(sw).Out(9).Next().End(), IDX_DEAD);
 
-    // Hook StartLevel - when level starts
-    CKBehavior *startLevel = FindFirstBB(script, "Ballrun_Continue");
-    if (startLevel) {
-        InsertBB(script, FindPreviousLink(script, startLevel),
-                 CreateEventPublisher(script, IDX_START_LEVEL));
+    auto highscore = graph.Find("Highscore");
+    if (highscore) {
+        highscore->AddOutput("Out");
+        bml::Graph hsGraph(highscore);
+        highscore.FindAll([&hsGraph](CKBehavior *behavior) {
+            hsGraph.Link(behavior, hsGraph.Raw()->GetOutput(0));
+            return true;
+        }, "Activate Script");
+
+        InsertPublisher(graph, graph.From(sw).Out(10).Next().NextLink(), IDX_PRE_END_LEVEL);
+        LinkPublisher(graph, highscore, IDX_POST_END_LEVEL);
     }
 
     return true;
 }
 
 bool RegisterGameplayIngame(CKBehavior *script) {
-    if (!s_Initialized || !script) {
+    if (!s_Initialized || !script || !MarkRegistered(s_GameplayIngameScripts, script)) {
         return false;
     }
 
-    bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_Event", 
-           "Registering Gameplay_Ingame hooks");
-
-    // Hook Pause events
-    CKBehavior *pauseMenu = FindFirstBB(script, "pause_on");
-    if (pauseMenu) {
-        InsertBB(script, FindPreviousLink(script, pauseMenu),
-                 CreateEventPublisher(script, IDX_PAUSE_LEVEL));
+    bml::Graph graph(script);
+    auto camNavOnOff = graph.Find("CamNav On/Off");
+    auto ballNavOnOff = graph.Find("BallNav On/Off");
+    CKMessageManager *messageManager = s_Context ? s_Context->GetMessageManager() : nullptr;
+    if (!camNavOnOff || !ballNavOnOff || !messageManager) {
+        Log(BML_LOG_WARN, "Failed to locate gameplay ingame navigation blocks");
+        return false;
     }
 
-    CKBehavior *unpauseMenu = FindFirstBB(script, "pause_off");
-    if (unpauseMenu) {
-        InsertBB(script, FindPreviousLink(script, unpauseMenu),
-                 CreateEventPublisher(script, IDX_UNPAUSE_LEVEL));
-    }
+    CKMessageType camOn = messageManager->AddMessageType("CamNav activate");
+    CKMessageType camOff = messageManager->AddMessageType("CamNav deactivate");
+    CKMessageType ballOn = messageManager->AddMessageType("BallNav activate");
+    CKMessageType ballOff = messageManager->AddMessageType("BallNav deactivate");
 
-    // Hook Reset level events
-    CKBehavior *resetLevel = FindFirstBB(script, "restart_level");
-    if (resetLevel) {
-        InsertBB(script, FindPreviousLink(script, resetLevel),
-                 CreateEventPublisher(script, IDX_PRE_RESET_LEVEL));
-        CreateLink(script, resetLevel, CreateEventPublisher(script, IDX_POST_RESET_LEVEL));
-    }
+    CKBehavior *camOnWait = nullptr;
+    CKBehavior *camOffWait = nullptr;
+    camNavOnOff.FindAll([camOn, camOff, &camOnWait, &camOffWait](CKBehavior *behavior) {
+        auto message = bml::GetParam<CKMessageType>(behavior->GetInputParameter(0)->GetDirectSource());
+        if (message == camOn) camOnWait = behavior;
+        if (message == camOff) camOffWait = behavior;
+        return true;
+    }, "Wait Message");
 
-    // Hook Exit level events
-    CKBehavior *exitLevel = FindFirstBB(script, "exit_level");
-    if (exitLevel) {
-        InsertBB(script, FindPreviousLink(script, exitLevel),
-                 CreateEventPublisher(script, IDX_PRE_EXIT_LEVEL));
-        CreateLink(script, exitLevel, CreateEventPublisher(script, IDX_POST_EXIT_LEVEL));
-    }
+    CKBehavior *ballOnWait = nullptr;
+    CKBehavior *ballOffWait = nullptr;
+    ballNavOnOff.FindAll([ballOn, ballOff, &ballOnWait, &ballOffWait](CKBehavior *behavior) {
+        auto message = bml::GetParam<CKMessageType>(behavior->GetInputParameter(0)->GetDirectSource());
+        if (message == ballOn) ballOnWait = behavior;
+        if (message == ballOff) ballOffWait = behavior;
+        return true;
+    }, "Wait Message");
 
-    // Hook Dead event
-    CKBehavior *dead = FindFirstBB(script, "Death_Reset");
-    if (dead) {
-        InsertBB(script, FindPreviousLink(script, dead),
-                 CreateEventPublisher(script, IDX_DEAD));
-    }
+    bml::Graph camGraph(camNavOnOff);
+    bml::Graph ballGraph(ballNavOnOff);
 
-    // Hook Ball navigation toggle
-    CKBehavior *ballNav = FindFirstBB(script, "Switch On Ball Navigation");
-    if (ballNav) {
-        InsertBB(script, FindNextLink(script, ballNav, nullptr, -1, 0),
-                 CreateEventPublisher(script, IDX_BALL_NAV_ACTIVE));
-        InsertBB(script, FindNextLink(script, ballNav, nullptr, -1, 1),
-                 CreateEventPublisher(script, IDX_BALL_NAV_INACTIVE));
+    if (camOnWait) {
+        CKBehavior *publisher = CreateEventPublisher(camGraph, IDX_CAM_NAV_ACTIVE);
+        if (publisher) camGraph.Link(camOnWait, publisher);
     }
-
-    // Hook Camera navigation toggle
-    CKBehavior *camNav = FindFirstBB(script, "Switch On Cam Navigation");
-    if (camNav) {
-        InsertBB(script, FindNextLink(script, camNav, nullptr, -1, 0),
-                 CreateEventPublisher(script, IDX_CAM_NAV_ACTIVE));
-        InsertBB(script, FindNextLink(script, camNav, nullptr, -1, 1),
-                 CreateEventPublisher(script, IDX_CAM_NAV_INACTIVE));
+    if (camOffWait) {
+        CKBehavior *publisher = CreateEventPublisher(camGraph, IDX_CAM_NAV_INACTIVE);
+        if (publisher) camGraph.Link(camOffWait, publisher);
+    }
+    if (ballOnWait) {
+        CKBehavior *publisher = CreateEventPublisher(ballGraph, IDX_BALL_NAV_ACTIVE);
+        if (publisher) ballGraph.Link(ballOnWait, publisher);
+    }
+    if (ballOffWait) {
+        CKBehavior *publisher = CreateEventPublisher(ballGraph, IDX_BALL_NAV_INACTIVE);
+        if (publisher) ballGraph.Link(ballOffWait, publisher);
     }
 
     return true;
 }
 
 bool RegisterGameplayEnergy(CKBehavior *script) {
-    if (!s_Initialized || !script) {
+    if (!s_Initialized || !script || !MarkRegistered(s_GameplayEnergyScripts, script)) {
         return false;
     }
 
-    bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_Event", 
-           "Registering Gameplay_Energy hooks");
+    bml::Graph graph(script);
+    auto switchOnMessage = graph.Find("Switch On Message");
+    if (switchOnMessage) {
+        InsertPublisher(graph, graph.From(switchOnMessage).NextLink(nullptr, 3), IDX_COUNTER_ACTIVE);
+        InsertPublisher(graph, graph.From(switchOnMessage).NextLink(nullptr, 1), IDX_COUNTER_INACTIVE);
+    }
 
-    // Hook ball off events (falling off the map)
-    CKBehavior *ballOff = FindFirstBB(script, "BallManager_ResetBall");
-    if (ballOff) {
-        InsertBB(script, FindPreviousLink(script, ballOff),
-                 CreateEventPublisher(script, IDX_BALL_OFF));
+    CKMessageManager *messageManager = s_Context ? s_Context->GetMessageManager() : nullptr;
+    if (!messageManager) {
+        return switchOnMessage != nullptr;
+    }
+
+    CKMessageType lifeUp = messageManager->AddMessageType("Life_Up");
+    CKMessageType ballOff = messageManager->AddMessageType("Ball Off");
+    CKMessageType subLife = messageManager->AddMessageType("Sub Life");
+    CKMessageType extraPoint = messageManager->AddMessageType("Extrapoint");
+
+    CKBehavior *lifeUpWait = nullptr;
+    CKBehavior *ballOffWait = nullptr;
+    CKBehavior *subLifeWait = nullptr;
+    CKBehavior *extraPointWait = nullptr;
+    graph.FindAll([lifeUp, ballOff, subLife, extraPoint,
+                   &lifeUpWait, &ballOffWait, &subLifeWait, &extraPointWait](CKBehavior *behavior) {
+        auto message = bml::GetParam<CKMessageType>(behavior->GetInputParameter(0)->GetDirectSource());
+        if (message == lifeUp) lifeUpWait = behavior;
+        if (message == ballOff) ballOffWait = behavior;
+        if (message == subLife) subLifeWait = behavior;
+        if (message == extraPoint) extraPointWait = behavior;
+        return true;
+    }, "Wait Message");
+
+    if (lifeUpWait) {
+        CKBehavior *preLifeUp = CreateEventPublisher(graph, IDX_PRE_LIFE_UP);
+        CKBehaviorLink *link = graph.From(lifeUpWait).NextLink("add Life");
+        if (preLifeUp && link) {
+            graph.Insert(link, preLifeUp);
+            LinkPublisher(graph, graph.From(preLifeUp).End(), IDX_POST_LIFE_UP);
+        }
+    }
+
+    if (ballOffWait) {
+        InsertPublisher(graph, graph.From(ballOffWait).NextLink("Delayer"), IDX_BALL_OFF);
+    }
+
+    if (subLifeWait) {
+        CKBehavior *preSubLife = CreateEventPublisher(graph, IDX_PRE_SUB_LIFE);
+        CKBehaviorLink *link = graph.From(subLifeWait).NextLink("sub Life");
+        if (preSubLife && link) {
+            graph.Insert(link, preSubLife);
+            LinkPublisher(graph, graph.From(preSubLife).End(), IDX_POST_SUB_LIFE);
+        }
+    }
+
+    if (extraPointWait) {
+        InsertPublisher(graph, graph.From(extraPointWait).NextLink("Show"), IDX_EXTRA_POINT);
     }
 
     return true;
 }
 
 bool RegisterGameplayEvents(CKBehavior *script) {
-    if (!s_Initialized || !script) {
+    if (!s_Initialized || !script || !MarkRegistered(s_GameplayEventsScripts, script)) {
         return false;
     }
 
-    bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_Event", 
-           "Registering Gameplay_Events hooks");
-
-    // Hook counter events
-    CKBehavior *counter = FindFirstBB(script, "Counter");
-    if (counter) {
-        InsertBB(script, FindNextLink(script, counter, nullptr, -1, 0),
-                 CreateEventPublisher(script, IDX_COUNTER_ACTIVE));
-        InsertBB(script, FindNextLink(script, counter, nullptr, -1, 1),
-                 CreateEventPublisher(script, IDX_COUNTER_INACTIVE));
+    CKMessageManager *messageManager = s_Context ? s_Context->GetMessageManager() : nullptr;
+    if (!messageManager) {
+        Log(BML_LOG_WARN, "Cannot register gameplay events without message manager");
+        return false;
     }
 
-    // Hook checkpoint events
-    CKBehavior *checkpoint = FindFirstBB(script, "set_checkpoint");
-    if (checkpoint) {
-        InsertBB(script, FindPreviousLink(script, checkpoint),
-                 CreateEventPublisher(script, IDX_PRE_CHECKPOINT));
-        CreateLink(script, checkpoint, CreateEventPublisher(script, IDX_POST_CHECKPOINT));
+    bml::Graph graph(script);
+
+    CKMessageType checkpoint = messageManager->AddMessageType("Checkpoint reached");
+    CKMessageType gameOver = messageManager->AddMessageType("Game Over");
+    CKMessageType levelFinish = messageManager->AddMessageType("Level_Finish");
+
+    CKBehavior *checkpointWait = nullptr;
+    CKBehavior *gameOverWait = nullptr;
+    CKBehavior *levelFinishWait = nullptr;
+    graph.FindAll([checkpoint, gameOver, levelFinish,
+                   &checkpointWait, &gameOverWait, &levelFinishWait](CKBehavior *behavior) {
+        auto message = bml::GetParam<CKMessageType>(behavior->GetInputParameter(0)->GetDirectSource());
+        if (message == checkpoint) checkpointWait = behavior;
+        if (message == gameOver) gameOverWait = behavior;
+        if (message == levelFinish) levelFinishWait = behavior;
+        return true;
+    }, "Wait Message");
+
+    if (checkpointWait) {
+        CKBehavior *preCheckpoint = CreateEventPublisher(graph, IDX_PRE_CHECKPOINT);
+        CKBehaviorLink *link = graph.From(checkpointWait).NextLink("set Resetpoint");
+        if (preCheckpoint && link) {
+            graph.Insert(link, preCheckpoint);
+            LinkPublisher(graph, graph.From(preCheckpoint).End(), IDX_POST_CHECKPOINT);
+        }
     }
 
-    // Hook extra point event
-    CKBehavior *extraPoint = FindFirstBB(script, "Extra Point");
-    if (extraPoint) {
-        InsertBB(script, FindNextLink(script, extraPoint),
-                 CreateEventPublisher(script, IDX_EXTRA_POINT));
+    if (gameOverWait) {
+        InsertPublisher(graph, graph.From(gameOverWait).NextLink("Send Message"), IDX_GAME_OVER);
     }
 
-    // Hook life up events
-    CKBehavior *lifeUp = FindFirstBB(script, "add_life");
-    if (lifeUp) {
-        InsertBB(script, FindPreviousLink(script, lifeUp),
-                 CreateEventPublisher(script, IDX_PRE_LIFE_UP));
-        CreateLink(script, lifeUp, CreateEventPublisher(script, IDX_POST_LIFE_UP));
-    }
-
-    // Hook sub life events
-    CKBehavior *subLife = FindFirstBB(script, "sub_life");
-    if (subLife) {
-        InsertBB(script, FindPreviousLink(script, subLife),
-                 CreateEventPublisher(script, IDX_PRE_SUB_LIFE));
-        CreateLink(script, subLife, CreateEventPublisher(script, IDX_POST_SUB_LIFE));
+    if (levelFinishWait) {
+        InsertPublisher(graph, graph.From(levelFinishWait).NextLink("Send Message"), IDX_LEVEL_FINISH);
     }
 
     return true;
 }
 
 void OnScriptLoaded(const char *filename, CKBehavior *script) {
-    if (!s_Initialized || !script || !filename)
+    if (!s_Initialized || !script) {
         return;
+    }
 
     const char *scriptName = script->GetName();
-    if (!scriptName)
+    if (!scriptName) {
         return;
+    }
 
-    // Check for known scripts and register appropriate hooks
-    if (strcmp(scriptName, "base.nmo") == 0 || strstr(filename, "base.nmo")) {
+    if (std::strcmp(scriptName, "Event_handler") == 0 ||
+        (filename && std::strstr(filename, "base.nmo") != nullptr) ||
+        std::strcmp(scriptName, "Level Manager") == 0 ||
+        std::strcmp(scriptName, "Gameplay.nmo Level Manager") == 0) {
         RegisterBaseEventHandler(script);
-    } else if (strcmp(scriptName, "Gameplay_Ingame") == 0) {
+    } else if (std::strcmp(scriptName, "Gameplay_Ingame") == 0) {
         RegisterGameplayIngame(script);
-    } else if (strcmp(scriptName, "Gameplay_Energy") == 0) {
+    } else if (std::strcmp(scriptName, "Gameplay_Energy") == 0) {
         RegisterGameplayEnergy(script);
-    } else if (strcmp(scriptName, "Gameplay_Events") == 0) {
+    } else if (std::strcmp(scriptName, "Gameplay_Events") == 0) {
         RegisterGameplayEvents(script);
     }
 }

@@ -3,7 +3,6 @@
  * @brief CK2 Render Engine Hook for BML_Render Module
  * 
  * Provides hooks for CK2_3D.dll render context to enable:
- * - Pre/Post render event publishing via IMC
  * - Render skip functionality
  * - Widescreen FOV fix via UpdateProjection hook
  */
@@ -16,6 +15,8 @@
 #include "CK2dEntity.h"
 
 #include "Macros.h"
+#include "bml_builtin_interfaces.h"
+#include "bml_services.hpp"
 
 // Forward declarations
 class CKRenderedScene;
@@ -190,9 +191,10 @@ public:
 
 /**
  * @brief Initialize render engine hooks
+ * @param services Module services for logging
  * @return true on success, false on failure
  */
-bool InitRenderHook();
+bool InitRenderHook(const bml::ModuleServices &services);
 
 /**
  * @brief Shutdown render engine hooks

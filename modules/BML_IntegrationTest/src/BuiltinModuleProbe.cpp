@@ -38,8 +38,7 @@
 #include "bml_input_control.h"
 #include "bml_interface.hpp"
 #include "bml_topics.h"
-#include "bml_ui_host.h"
-#include "bml_ui_helpers.hpp"
+#include "bml_ui.hpp"
 
 namespace {
 struct ConfigEntrySnapshot {
@@ -376,7 +375,7 @@ private:
     void LoadServices() {
         bml::CurrentModuleScope scope(m_Handle, m_Module.Get());
 
-        m_DrawReg = bml::ui::RegisterWindowDraw("bml.inttest.builtin_probe", 1000, DrawProbeCallback, this);
+        m_DrawReg = bml::ui::RegisterDraw("bml.inttest.builtin_probe", 1000, DrawProbeCallback, this);
         m_UiLoaded = static_cast<bool>(m_DrawReg);
 
         m_InputCaptureService = bml::AcquireInterface<BML_InputCaptureInterface>(BML_INPUT_CAPTURE_INTERFACE_ID, 1, 0, 0);
@@ -399,7 +398,7 @@ private:
 
     void PublishSyntheticKey(uint32_t key_code) {
         const BML_KeyDownEvent event{key_code, key_code, 0u, false};
-        bml::imc::Bus::Publish(BML_TOPIC_INPUT_KEY_DOWN, event, m_ImcBus.Get());
+        bml::imc::publish(BML_TOPIC_INPUT_KEY_DOWN, event, m_ImcBus.Get());
     }
 
     void RunCommandProbes() {

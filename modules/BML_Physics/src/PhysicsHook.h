@@ -10,19 +10,23 @@
 #define BML_PHYSICS_HOOK_H
 
 #include "CKBaseManager.h"
+#include "bml_builtin_interfaces.h"
+#include "bml_services.hpp"
 
 namespace BML_Physics {
 
 /**
  * @brief Initialize physics hooks
- * 
+ *
  * Hooks into CKIpionManager and Physicalize behavior to provide
  * physics-related callbacks to mods.
- * 
+ * Uses ModuleServices pattern to access core services.
+ *
  * @param context CKContext for the current session
+ * @param services Module services for logging
  * @return true if hooks were installed successfully
  */
-bool InitializePhysicsHook(CKContext *context);
+bool InitializePhysicsHook(CKContext *context, const bml::ModuleServices &services);
 
 /**
  * @brief Shutdown physics hooks

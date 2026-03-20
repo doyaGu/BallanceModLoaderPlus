@@ -246,8 +246,7 @@ BML_Result Input_QueryEffectiveState(BML_InputCaptureState *out_state) {
 }
 
 const BML_InputCaptureInterface kInputCaptureService = {
-    1,
-    0,
+    BML_IFACE_HEADER(BML_InputCaptureInterface, BML_INPUT_CAPTURE_INTERFACE_ID, 1, 0),
     Input_AcquireCapture,
     Input_UpdateCapture,
     Input_ReleaseCapture,

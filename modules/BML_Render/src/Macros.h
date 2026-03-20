@@ -54,7 +54,7 @@
 
 // MinHook-based member function hook macros
 #define CP_ADD_METHOD_HOOK(Name, Base, Offset) \
-    { CP_FUNC_TARGET_PTR_NAME(Name) = ForceReinterpretCast<CP_FUNC_TYPE_NAME(Name)>(Base, Offset); } \
+    { CP_FUNC_TARGET_PTR_NAME(Name) = utils::ForceReinterpretCast<CP_FUNC_TYPE_NAME(Name)>(Base, Offset); } \
     if ((MH_CreateHook(*reinterpret_cast<LPVOID *>(&CP_FUNC_TARGET_PTR_NAME(Name)), \
                        *reinterpret_cast<LPVOID *>(&CP_FUNC_PTR_NAME(Name)), \
                        reinterpret_cast<LPVOID *>(&CP_FUNC_ORIG_PTR_NAME(Name))) != MH_OK || \

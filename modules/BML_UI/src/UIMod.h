@@ -1,7 +1,7 @@
 /**
  * @file UIMod.h
  * @brief BML_UI Module - ImGui Overlay and UI Infrastructure
- * 
+ *
  * This module manages the ImGui overlay lifecycle and provides
  * base UI infrastructure for BML. It subscribes to engine lifecycle
  * and render events to coordinate ImGui frame management.
@@ -30,12 +30,6 @@ void Shutdown();
  * @return true if the module is initialized and ready
  */
 bool IsInitialized();
-
-/**
- * @brief Get the ImGui context managed by this module
- * @return Pointer to the ImGui context, or nullptr if not initialized
- */
-void* GetImGuiContext();
 
 } // namespace BML_UI
 

@@ -42,7 +42,7 @@ public:
         EnsureHookReady(context, "OnAttach");
 
         m_Subs.Add(BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT, [this](const bml::imc::Message &msg) {
-            auto *payload = msg.As<BML_LegacyScriptLoadPayload>();
+            auto *payload = msg.As<BML_ScriptLoadEvent>();
             if (!payload || !payload->script) return;
 
             CKContext *context = payload->script->GetCKContext();

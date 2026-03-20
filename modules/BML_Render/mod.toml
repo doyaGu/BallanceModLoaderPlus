@@ -3,7 +3,8 @@ id = "com.bml.render"
 name = "BML Render Module"
 version = "0.4.0"
 authors = ["BML Team"]
-description = "Rendering module for BML v0.4 - manages ImGui rendering lifecycle"
+description = "Rendering module for BML v0.4 - installs render hooks and widescreen projection fix"
+entry = "BML_Render.dll"
 
 [dependencies]
 # No dependencies - completely independent module

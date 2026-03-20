@@ -16,67 +16,147 @@
 #include "CKAll.h"
 #include "BML/Guids/Narratives.h"
 
+#include "bml_services.hpp"
 #include "bml_virtools_payloads.h"
 #include "bml_topics.h"
-
-// BML Core APIs (via loader)
-#include "bml_loader.h"
 
 namespace BML_ObjectLoad {
     //-----------------------------------------------------------------------------
     // Hook State
     //-----------------------------------------------------------------------------
 
+    namespace {
+    const bml::ModuleServices *s_ModServices = nullptr;
+    }
+
     static CKContext *s_Context = nullptr;
     static CKBEHAVIORFCT g_OriginalObjectLoad = nullptr;
+    static bool s_InitialSnapshotPublished = false;
 
     // Cached topic IDs
     static BML_TopicId s_TopicLoadObject = 0;
     static BML_TopicId s_TopicLoadScript = 0;
+    static BML_TopicId s_TopicCustomMapName = 0;
+    static constexpr const char *kInitialLoadFilename = "base.cmo";
+
+    static void Log(BML_LogSeverity severity, const char *message) {
+        if (!s_ModServices || !message) {
+            return;
+        }
+
+        auto &logger = s_ModServices->Log();
+        switch (severity) {
+            case BML_LOG_INFO: logger.Info("%s", message); break;
+            case BML_LOG_WARN: logger.Warn("%s", message); break;
+            case BML_LOG_ERROR: logger.Error("%s", message); break;
+            default: logger.Info("%s", message); break;
+        }
+    }
 
     //-----------------------------------------------------------------------------
     // ObjectLoad Behavior Hook
     //-----------------------------------------------------------------------------
 
-    static char *DuplicateCString(const char *value) {
-        if (!value) {
-            return nullptr;
+    static bool PublishObjectLoadEvent(const char *filename,
+                                       const char *mastername,
+                                       CK_CLASSID cid,
+                                       CKBOOL addtoscene,
+                                       CKBOOL reuseMeshes,
+                                       CKBOOL reuseMaterials,
+                                       CKBOOL dynamic,
+                                       CKObject *masterobject,
+                                       CKBOOL isMap,
+                                       const CK_ID *objectIds,
+                                       uint32_t objectCount) {
+        auto *imcBus = s_ModServices ? s_ModServices->Builtins().ImcBus : nullptr;
+        if (!imcBus || !imcBus->PublishBuffer || s_TopicLoadObject == 0)
+            return false;
+
+        const size_t filenameSize = filename ? std::strlen(filename) + 1 : 0;
+        const size_t masterNameSize = mastername ? std::strlen(mastername) + 1 : 0;
+        const size_t objectIdsSize = static_cast<size_t>(objectCount) * sizeof(CK_ID);
+        const size_t totalSize = sizeof(BML_ObjectLoadEvent) + filenameSize + masterNameSize + objectIdsSize;
+        auto *storage = static_cast<char *>(std::malloc(totalSize));
+        if (!storage) {
+            return false;
         }
 
-        const size_t length = std::strlen(value) + 1;
-        auto *copy = static_cast<char *>(std::malloc(length));
-        if (copy) {
-            std::memcpy(copy, value, length);
+        auto *event = reinterpret_cast<BML_ObjectLoadEvent *>(storage);
+        std::memset(event, 0, sizeof(BML_ObjectLoadEvent));
+        char *cursor = storage + sizeof(BML_ObjectLoadEvent);
+
+        if (filenameSize > 0) {
+            event->filename = cursor;
+            std::memcpy(cursor, filename, filenameSize);
+            cursor += filenameSize;
         }
-        return copy;
+        if (masterNameSize > 0) {
+            event->master_name = cursor;
+            std::memcpy(cursor, mastername, masterNameSize);
+            cursor += masterNameSize;
+        }
+        if (objectIdsSize > 0 && objectIds) {
+            event->object_ids = reinterpret_cast<const CK_ID *>(cursor);
+            std::memcpy(cursor, objectIds, objectIdsSize);
+        }
+
+        event->class_id = cid;
+        event->add_to_scene = addtoscene;
+        event->reuse_meshes = reuseMeshes;
+        event->reuse_materials = reuseMaterials;
+        event->dynamic = dynamic;
+        event->master_object = masterobject;
+        event->is_map = isMap;
+        event->object_count = objectCount;
+
+        BML_ImcBuffer buffer = BML_IMC_BUFFER_INIT;
+        buffer.data = event;
+        buffer.size = totalSize;
+        buffer.cleanup = [](const void *, size_t, void *user_data) {
+            std::free(user_data);
+        };
+        buffer.cleanup_user_data = storage;
+        return imcBus->PublishBuffer(s_TopicLoadObject, &buffer) == BML_RESULT_OK;
     }
 
-    static void CleanupObjectLoadPayload(const void *data, size_t size, void *user_data) {
-        (void)size;
-        (void)user_data;
+    static bool PublishScriptLoadEvent(const char *filename, CKBehavior *script, CKBOOL isMap) {
+        auto *imcBus = s_ModServices ? s_ModServices->Builtins().ImcBus : nullptr;
+        if (!imcBus || !imcBus->PublishBuffer || s_TopicLoadScript == 0 || !script)
+            return false;
 
-        auto *payload = static_cast<BML_LegacyObjectLoadPayload *>(const_cast<void *>(data));
-        if (!payload) {
-            return;
+        const size_t filenameSize = filename ? std::strlen(filename) + 1 : 0;
+        const size_t totalSize = sizeof(BML_ScriptLoadEvent) + filenameSize;
+        auto *storage = static_cast<char *>(std::malloc(totalSize));
+        if (!storage) {
+            return false;
         }
 
-        std::free(const_cast<char *>(payload->filename));
-        std::free(const_cast<char *>(payload->master_name));
-        delete[] payload->object_ids;
-        delete payload;
+        auto *event = reinterpret_cast<BML_ScriptLoadEvent *>(storage);
+        std::memset(event, 0, sizeof(BML_ScriptLoadEvent));
+        if (filenameSize > 0) {
+            event->filename = storage + sizeof(BML_ScriptLoadEvent);
+            std::memcpy(const_cast<char *>(event->filename), filename, filenameSize);
+        }
+        event->script = script;
+        event->is_map = isMap;
+
+        BML_ImcBuffer buffer = BML_IMC_BUFFER_INIT;
+        buffer.data = event;
+        buffer.size = totalSize;
+        buffer.cleanup = [](const void *, size_t, void *user_data) {
+            std::free(user_data);
+        };
+        buffer.cleanup_user_data = storage;
+        return imcBus->PublishBuffer(s_TopicLoadScript, &buffer) == BML_RESULT_OK;
     }
 
-    static void CleanupScriptLoadPayload(const void *data, size_t size, void *user_data) {
-        (void)size;
-        (void)user_data;
-
-        auto *payload = static_cast<BML_LegacyScriptLoadPayload *>(const_cast<void *>(data));
-        if (!payload) {
-            return;
+    static bool IsScriptBehavior(CKObject *object) {
+        if (!object || object->GetClassID() != CKCID_BEHAVIOR) {
+            return false;
         }
 
-        std::free(const_cast<char *>(payload->filename));
-        delete payload;
+        auto *behavior = static_cast<CKBehavior *>(object);
+        return (behavior->GetType() & CKBEHAVIORTYPE_SCRIPT) != 0;
     }
 
     /**
@@ -200,54 +280,47 @@ namespace BML_ObjectLoad {
             beh->SetOutputParameterObject(1, masterobject);
 
             CKBOOL isMap = strcmp(beh->GetOwnerScript()->GetName(), "Levelinit_build") == 0;
-
-            // Publish OnLoadObject event via IMC
-            if (bmlImcPublishBuffer && s_TopicLoadObject) {
-                auto *payload = new BML_LegacyObjectLoadPayload{};
-                payload->struct_size = sizeof(BML_LegacyObjectLoadPayload);
-                payload->filename = DuplicateCString(fname);
-                payload->master_name = DuplicateCString(mastername);
-                payload->class_id = cid;
-                payload->add_to_scene = addtoscene;
-                payload->reuse_meshes = reuseMeshes;
-                payload->reuse_materials = reuseMaterials;
-                payload->dynamic = dynamic;
-                payload->master_object = masterobject;
-                payload->is_map = isMap ? TRUE : FALSE;
-                payload->object_count = static_cast<uint32_t>(oarray->Size());
-                payload->object_ids = payload->object_count > 0 ? new CK_ID[payload->object_count] : nullptr;
-
-                for (uint32_t index = 0; index < payload->object_count; ++index) {
-                    payload->object_ids[index] = *(oarray->Begin() + index);
+            if (s_ModServices && isMap && s_TopicCustomMapName != 0) {
+                auto *imcBus = s_ModServices->Builtins().ImcBus;
+                if (imcBus && imcBus->CopyState) {
+                    char custom_map_name[MAX_PATH] = {};
+                    size_t state_size = 0;
+                    if (imcBus->CopyState(s_TopicCustomMapName,
+                                            custom_map_name,
+                                            sizeof(custom_map_name),
+                                            &state_size,
+                                            nullptr) == BML_RESULT_OK &&
+                        custom_map_name[0] != '\0') {
+                        fname = custom_map_name;
+                    }
                 }
-
-                BML_ImcBuffer buffer = BML_IMC_BUFFER_INIT;
-                buffer.data = payload;
-                buffer.size = sizeof(BML_LegacyObjectLoadPayload);
-                buffer.cleanup = &CleanupObjectLoadPayload;
-                bmlImcPublishBuffer(s_TopicLoadObject, &buffer);
             }
 
-            // Publish OnLoadScript events for loaded scripts
-            if (bmlImcPublishBuffer && s_TopicLoadScript) {
-                for (CK_ID *id = oarray->Begin(); id != oarray->End(); id++) {
-                    CKObject *obj = ctx->GetObject(*id);
-                    if (obj && obj->GetClassID() == CKCID_BEHAVIOR) {
-                        auto *behavior = (CKBehavior *) obj;
-                        if ((behavior->GetType() & CKBEHAVIORTYPE_SCRIPT) != 0) {
-                            auto *scriptPayload = new BML_LegacyScriptLoadPayload{};
-                            scriptPayload->struct_size = sizeof(BML_LegacyScriptLoadPayload);
-                            scriptPayload->filename = DuplicateCString(fname);
-                            scriptPayload->script = behavior;
-                            scriptPayload->is_map = isMap ? TRUE : FALSE;
+            // Publish OnLoadObject event via IMC
+            PublishObjectLoadEvent(fname,
+                                   mastername,
+                                   cid,
+                                   addtoscene,
+                                   reuseMeshes,
+                                   reuseMaterials,
+                                   dynamic,
+                                   masterobject,
+                                   isMap ? TRUE : FALSE,
+                                   oarray->Begin(),
+                                   static_cast<uint32_t>(oarray->Size()));
 
-                            BML_ImcBuffer buffer = BML_IMC_BUFFER_INIT;
-                            buffer.data = scriptPayload;
-                            buffer.size = sizeof(BML_LegacyScriptLoadPayload);
-                            buffer.cleanup = &CleanupScriptLoadPayload;
-                            bmlImcPublishBuffer(s_TopicLoadScript, &buffer);
-                        }
-                    }
+            // Publish OnLoadScript events for loaded scripts
+            for (CK_ID *id = oarray->Begin(); id != oarray->End(); id++) {
+                CKObject *obj = ctx->GetObject(*id);
+                if (IsScriptBehavior(obj)) {
+                    PublishScriptLoadEvent(fname, static_cast<CKBehavior *>(obj), isMap ? TRUE : FALSE);
+                }
+            }
+
+            if (s_ModServices && isMap && s_TopicCustomMapName != 0) {
+                auto *imcBus = s_ModServices->Builtins().ImcBus;
+                if (imcBus && imcBus->ClearState) {
+                    imcBus->ClearState(s_TopicCustomMapName);
                 }
             }
         }
@@ -270,16 +343,18 @@ namespace BML_ObjectLoad {
     // Public API
     //-----------------------------------------------------------------------------
 
-    bool InitializeObjectLoadHook(CKContext *context) {
+    bool InitializeObjectLoadHook(CKContext *context, const bml::ModuleServices &services) {
         if (!context)
             return false;
 
+        s_ModServices = &services;
         s_Context = context;
 
-        // Register topics using loader API
-        if (bmlImcGetTopicId) {
-            bmlImcGetTopicId(BML_TOPIC_OBJECTLOAD_LOAD_OBJECT, &s_TopicLoadObject);
-            bmlImcGetTopicId(BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT, &s_TopicLoadScript);
+        auto *imcBus = s_ModServices->Builtins().ImcBus;
+        if (imcBus && imcBus->GetTopicId) {
+            imcBus->GetTopicId(BML_TOPIC_OBJECTLOAD_LOAD_OBJECT, &s_TopicLoadObject);
+            imcBus->GetTopicId(BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT, &s_TopicLoadScript);
+            imcBus->GetTopicId(BML_TOPIC_STATE_CUSTOM_MAP_NAME, &s_TopicCustomMapName);
         }
 
         // Hook ObjectLoad BB
@@ -288,10 +363,65 @@ namespace BML_ObjectLoad {
             if (!g_OriginalObjectLoad)
                 g_OriginalObjectLoad = objectLoadProto->GetFunction();
             objectLoadProto->SetFunction(&ObjectLoadHook);
+            PublishInitialLoadSnapshot(context);
             return true;
         }
 
         return false;
+    }
+
+    bool PublishInitialLoadSnapshot(CKContext *context) {
+        if (!context) {
+            return false;
+        }
+
+        if (s_InitialSnapshotPublished) {
+            return true;
+        }
+
+        const int behaviorCount = context->GetObjectsCountByClassID(CKCID_BEHAVIOR);
+        CK_ID *behaviorIds = context->GetObjectsListByClassID(CKCID_BEHAVIOR);
+        if (behaviorCount <= 0 || !behaviorIds) {
+            return false;
+        }
+
+        int publishedScripts = 0;
+        if (s_TopicLoadObject != 0) {
+            PublishObjectLoadEvent(kInitialLoadFilename,
+                                   "",
+                                   CKCID_3DOBJECT,
+                                   TRUE,
+                                   TRUE,
+                                   TRUE,
+                                   FALSE,
+                                   nullptr,
+                                   FALSE,
+                                   nullptr,
+                                   0);
+        }
+
+        for (int index = 0; index < behaviorCount; ++index) {
+            CKObject *object = context->GetObject(behaviorIds[index]);
+            if (!IsScriptBehavior(object)) {
+                continue;
+            }
+
+            if (PublishScriptLoadEvent(kInitialLoadFilename,
+                                       static_cast<CKBehavior *>(object),
+                                       FALSE)) {
+                ++publishedScripts;
+            }
+        }
+
+        if (publishedScripts == 0 && s_TopicLoadObject == 0) {
+            return false;
+        }
+
+        s_InitialSnapshotPublished = true;
+        if (s_ModServices) {
+            s_ModServices->Log().Info("Published initial load snapshot for %d scripts", publishedScripts);
+        }
+        return true;
     }
 
     void ShutdownObjectLoadHook() {
@@ -300,5 +430,12 @@ namespace BML_ObjectLoad {
         if (objectLoadProto && g_OriginalObjectLoad) {
             objectLoadProto->SetFunction(g_OriginalObjectLoad);
         }
+
+        s_Context = nullptr;
+        s_InitialSnapshotPublished = false;
+        s_TopicLoadObject = 0;
+        s_TopicLoadScript = 0;
+        s_TopicCustomMapName = 0;
+        s_ModServices = nullptr;
     }
 } // namespace BML_ObjectLoad

@@ -1,3 +1,5 @@
+capabilities = ["event-topics", "game-lifecycle", "gameplay-events"]
+
 [package]
 id = "com.bml.event"
 name = "BML Event System"
@@ -8,5 +10,3 @@ entry = "BML_Event.dll"
 
 [dependencies]
 "com.bml.objectload" = ">=0.4.0"
-
-capabilities = ["event-topics", "game-lifecycle", "gameplay-events"]

@@ -1,25 +1,19 @@
-/**
- * @file InputHook.cpp
- * @brief CKInputManager VTable Hook Implementation for BML_Input Module
- * 
- * Self-contained input hook that intercepts CKInputManager methods
- * and publishes input events via IMC.
- */
-
 #include "InputHook.h"
-#include "VTables.h"
-#include "HookUtils.h"
 
-#include "bml_loader.h"
-#include "bml_topics.h"
-
+#include <cstdarg>
+#include <cstdio>
 #include <cstring>
 
-namespace BML_Input {
+#include "HookUtils.h"
+#include "VTables.h"
 
-//-----------------------------------------------------------------------------
-// Input Event Structures (published via IMC)
-//-----------------------------------------------------------------------------
+#include "bml_topics.h"
+#include "bml_services.hpp"
+
+namespace BML_Input {
+namespace {
+
+const bml::ModuleServices *s_ModServices = nullptr;
 
 struct KeyDownEvent {
     uint32_t key_code;
@@ -43,164 +37,156 @@ struct MouseMoveEvent {
 };
 
 struct MouseButtonEvent {
-    uint32_t button;  // 0=left, 1=right, 2=middle
+    uint32_t button;
     bool down;
     uint32_t timestamp;
 };
 
-//-----------------------------------------------------------------------------
-// Static State
-//-----------------------------------------------------------------------------
+struct InputState {
+    bool initialized = false;
+    CKInputManager *input_manager = nullptr;
+    CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager> vtable = {};
+    int blocked_devices[INPUT_DEVICE_COUNT] = {};
+    unsigned char last_keyboard_state[256] = {};
+    Vx2DVector last_mouse_position = {0.0f, 0.0f};
+    CKBYTE last_mouse_buttons[4] = {};
+    BML_TopicId topic_key_down = 0;
+    BML_TopicId topic_key_up = 0;
+    BML_TopicId topic_mouse_button = 0;
+    BML_TopicId topic_mouse_move = 0;
+};
 
-static bool s_Initialized = false;
-static CKInputManager *s_InputManager = nullptr;
-static CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager> s_VTable = {};
+InputState g_State;
 
-// Device blocking
-static int s_BlockedDevices[INPUT_DEVICE_COUNT] = {0};
+bool PublishInputMessage(BML_TopicId topic, const void *data, size_t size) {
+    auto *imc_bus = s_ModServices ? s_ModServices->Builtins().ImcBus : nullptr;
+    if (!imc_bus || !imc_bus->Publish || topic == 0) {
+        return false;
+    }
+    return imc_bus->Publish(topic, data, size) == BML_RESULT_OK;
+}
 
-// State tracking for event detection
-static unsigned char s_LastKeyboardState[256] = {};
-static Vx2DVector s_LastMousePosition = {0, 0};
-static CKBYTE s_LastMouseButtons[4] = {0};
-
-// Cached topic IDs
-static BML_TopicId s_TopicKeyDown = 0;
-static BML_TopicId s_TopicKeyUp = 0;
-static BML_TopicId s_TopicMouseButton = 0;
-static BML_TopicId s_TopicMouseMove = 0;
-
-//-----------------------------------------------------------------------------
-// VTable Method Hooks
-//-----------------------------------------------------------------------------
-
-// Hook class to intercept CKInputManager methods
 struct InputManagerHook {
-    // PostProcess hook - called each frame
     CP_DECLARE_METHOD_HOOK(CKERROR, PostProcess, ()) {
         return CK_OK;
     }
 
-    CP_DECLARE_METHOD_HOOK(CKBOOL, IsKeyDown, (CKDWORD iKey, CKDWORD *oStamp)) {
-        if (s_BlockedDevices[INPUT_DEVICE_KEYBOARD] > 0)
+    CP_DECLARE_METHOD_HOOK(CKBOOL, IsKeyDown, (CKDWORD key, CKDWORD *stamp)) {
+        if (IsDeviceBlocked(INPUT_DEVICE_KEYBOARD))
             return FALSE;
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.IsKeyDown, iKey, oStamp);
+        return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.IsKeyDown, key, stamp);
     }
 
-    CP_DECLARE_METHOD_HOOK(CKBOOL, IsKeyUp, (CKDWORD iKey)) {
-        if (s_BlockedDevices[INPUT_DEVICE_KEYBOARD] > 0)
+    CP_DECLARE_METHOD_HOOK(CKBOOL, IsKeyUp, (CKDWORD key)) {
+        if (IsDeviceBlocked(INPUT_DEVICE_KEYBOARD))
             return FALSE;
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.IsKeyUp, iKey);
+        return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.IsKeyUp, key);
     }
 
-    CP_DECLARE_METHOD_HOOK(CKBOOL, IsKeyToggled, (CKDWORD iKey, CKDWORD *oStamp)) {
-        if (s_BlockedDevices[INPUT_DEVICE_KEYBOARD] > 0)
+    CP_DECLARE_METHOD_HOOK(CKBOOL, IsKeyToggled, (CKDWORD key, CKDWORD *stamp)) {
+        if (IsDeviceBlocked(INPUT_DEVICE_KEYBOARD))
             return FALSE;
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.IsKeyToggled, iKey, oStamp);
+        return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.IsKeyToggled, key, stamp);
     }
 
     CP_DECLARE_METHOD_HOOK(unsigned char *, GetKeyboardState, ()) {
-        static unsigned char emptyState[256] = {};
-        if (s_BlockedDevices[INPUT_DEVICE_KEYBOARD] > 0)
-            return emptyState;
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetKeyboardState);
+        static unsigned char keyboard_state[256] = {};
+        if (IsDeviceBlocked(INPUT_DEVICE_KEYBOARD))
+            return keyboard_state;
+        return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.GetKeyboardState);
     }
 
     CP_DECLARE_METHOD_HOOK(int, GetNumberOfKeyInBuffer, ()) {
-        if (s_BlockedDevices[INPUT_DEVICE_KEYBOARD] > 0)
+        if (IsDeviceBlocked(INPUT_DEVICE_KEYBOARD))
             return 0;
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetNumberOfKeyInBuffer);
+        return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.GetNumberOfKeyInBuffer);
     }
 
-    CP_DECLARE_METHOD_HOOK(int, GetKeyFromBuffer, (int i, CKDWORD &oKey, CKDWORD *oTimeStamp)) {
-        if (s_BlockedDevices[INPUT_DEVICE_KEYBOARD] > 0)
+    CP_DECLARE_METHOD_HOOK(int, GetKeyFromBuffer, (int index, CKDWORD &outKey, CKDWORD *outStamp)) {
+        if (IsDeviceBlocked(INPUT_DEVICE_KEYBOARD))
             return NO_KEY;
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetKeyFromBuffer, i, oKey, oTimeStamp);
+        return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.GetKeyFromBuffer, index, outKey, outStamp);
     }
 
-    CP_DECLARE_METHOD_HOOK(CKBOOL, IsMouseButtonDown, (CK_MOUSEBUTTON iButton)) {
-        if (s_BlockedDevices[INPUT_DEVICE_MOUSE] > 0)
+    CP_DECLARE_METHOD_HOOK(CKBOOL, IsMouseButtonDown, (CK_MOUSEBUTTON button)) {
+        if (IsDeviceBlocked(INPUT_DEVICE_MOUSE))
             return FALSE;
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.IsMouseButtonDown, iButton);
+        return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.IsMouseButtonDown, button);
     }
 
-    CP_DECLARE_METHOD_HOOK(CKBOOL, IsMouseClicked, (CK_MOUSEBUTTON iButton)) {
-        if (s_BlockedDevices[INPUT_DEVICE_MOUSE] > 0)
+    CP_DECLARE_METHOD_HOOK(CKBOOL, IsMouseClicked, (CK_MOUSEBUTTON button)) {
+        if (IsDeviceBlocked(INPUT_DEVICE_MOUSE))
             return FALSE;
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.IsMouseClicked, iButton);
+        return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.IsMouseClicked, button);
     }
 
-    CP_DECLARE_METHOD_HOOK(CKBOOL, IsMouseToggled, (CK_MOUSEBUTTON iButton)) {
-        if (s_BlockedDevices[INPUT_DEVICE_MOUSE] > 0)
+    CP_DECLARE_METHOD_HOOK(CKBOOL, IsMouseToggled, (CK_MOUSEBUTTON button)) {
+        if (IsDeviceBlocked(INPUT_DEVICE_MOUSE))
             return FALSE;
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.IsMouseToggled, iButton);
+        return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.IsMouseToggled, button);
     }
 
-    CP_DECLARE_METHOD_HOOK(void, GetMouseButtonsState, (CKBYTE oStates[4])) {
-        if (s_BlockedDevices[INPUT_DEVICE_MOUSE] > 0) {
-            memset(oStates, KS_IDLE, sizeof(CKBYTE) * 4);
+    CP_DECLARE_METHOD_HOOK(void, GetMouseButtonsState, (CKBYTE outStates[4])) {
+        if (IsDeviceBlocked(INPUT_DEVICE_MOUSE)) {
+            std::memset(outStates, KS_IDLE, sizeof(CKBYTE) * 4);
             return;
         }
-        CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetMouseButtonsState, oStates);
+        CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.GetMouseButtonsState, outStates);
     }
 
-    CP_DECLARE_METHOD_HOOK(void, GetMousePosition, (Vx2DVector &oPosition, CKBOOL iAbsolute)) {
-        if (s_BlockedDevices[INPUT_DEVICE_MOUSE] > 0)
+    CP_DECLARE_METHOD_HOOK(void, GetMousePosition, (Vx2DVector &outPosition, CKBOOL absolute)) {
+        if (IsDeviceBlocked(INPUT_DEVICE_MOUSE))
             return;
-        CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetMousePosition, oPosition, iAbsolute);
+        CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.GetMousePosition, outPosition, absolute);
     }
 
-    CP_DECLARE_METHOD_HOOK(void, GetMouseRelativePosition, (VxVector &oPosition)) {
-        if (s_BlockedDevices[INPUT_DEVICE_MOUSE] > 0)
+    CP_DECLARE_METHOD_HOOK(void, GetMouseRelativePosition, (VxVector &outPosition)) {
+        if (IsDeviceBlocked(INPUT_DEVICE_MOUSE))
             return;
-        CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetMouseRelativePosition, oPosition);
+        CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.GetMouseRelativePosition, outPosition);
     }
 
-    CP_DECLARE_METHOD_HOOK(void, GetJoystickPosition, (int iJoystick, VxVector *oPosition)) {
-        if (s_BlockedDevices[INPUT_DEVICE_JOYSTICK] > 0)
+    CP_DECLARE_METHOD_HOOK(void, GetJoystickPosition, (int joystick, VxVector *outPosition)) {
+        if (IsDeviceBlocked(INPUT_DEVICE_JOYSTICK))
             return;
-        CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetJoystickPosition, iJoystick, oPosition);
+        CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.GetJoystickPosition, joystick, outPosition);
     }
 
-    CP_DECLARE_METHOD_HOOK(void, GetJoystickRotation, (int iJoystick, VxVector *oRotation)) {
-        if (s_BlockedDevices[INPUT_DEVICE_JOYSTICK] > 0)
+    CP_DECLARE_METHOD_HOOK(void, GetJoystickRotation, (int joystick, VxVector *outRotation)) {
+        if (IsDeviceBlocked(INPUT_DEVICE_JOYSTICK))
             return;
-        CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetJoystickRotation, iJoystick, oRotation);
+        CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.GetJoystickRotation, joystick, outRotation);
     }
 
-    CP_DECLARE_METHOD_HOOK(void, GetJoystickSliders, (int iJoystick, Vx2DVector *oPosition)) {
-        if (s_BlockedDevices[INPUT_DEVICE_JOYSTICK] > 0)
+    CP_DECLARE_METHOD_HOOK(void, GetJoystickSliders, (int joystick, Vx2DVector *outPosition)) {
+        if (IsDeviceBlocked(INPUT_DEVICE_JOYSTICK))
             return;
-        CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetJoystickSliders, iJoystick, oPosition);
+        CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.GetJoystickSliders, joystick, outPosition);
     }
 
-    CP_DECLARE_METHOD_HOOK(void, GetJoystickPointOfViewAngle, (int iJoystick, float *oAngle)) {
-        if (s_BlockedDevices[INPUT_DEVICE_JOYSTICK] > 0)
+    CP_DECLARE_METHOD_HOOK(void, GetJoystickPointOfViewAngle, (int joystick, float *outAngle)) {
+        if (IsDeviceBlocked(INPUT_DEVICE_JOYSTICK))
             return;
-        CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetJoystickPointOfViewAngle, iJoystick, oAngle);
+        CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.GetJoystickPointOfViewAngle, joystick, outAngle);
     }
 
-    CP_DECLARE_METHOD_HOOK(CKDWORD, GetJoystickButtonsState, (int iJoystick)) {
-        if (s_BlockedDevices[INPUT_DEVICE_JOYSTICK] > 0)
+    CP_DECLARE_METHOD_HOOK(CKDWORD, GetJoystickButtonsState, (int joystick)) {
+        if (IsDeviceBlocked(INPUT_DEVICE_JOYSTICK))
             return 0;
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetJoystickButtonsState, iJoystick);
+        return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.GetJoystickButtonsState, joystick);
     }
 
-    CP_DECLARE_METHOD_HOOK(CKBOOL, IsJoystickButtonDown, (int iJoystick, int iButton)) {
-        if (s_BlockedDevices[INPUT_DEVICE_JOYSTICK] > 0)
+    CP_DECLARE_METHOD_HOOK(CKBOOL, IsJoystickButtonDown, (int joystick, int button)) {
+        if (IsDeviceBlocked(INPUT_DEVICE_JOYSTICK))
             return FALSE;
-        return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.IsJoystickButtonDown, iJoystick, iButton);
+        return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.IsJoystickButtonDown, joystick, button);
     }
 };
 
-//-----------------------------------------------------------------------------
-// Helper Functions
-//-----------------------------------------------------------------------------
-
-static void InstallVTableHooks() {
+void InstallVTableHooks() {
 #define HOOK_INPUT_METHOD(Name) \
-    utils::HookVirtualMethod(s_InputManager, &InputManagerHook::CP_FUNC_HOOK_NAME(Name), \
-                             (offsetof(CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>, Name) / sizeof(void*)))
+    utils::HookVirtualMethod(g_State.input_manager, &InputManagerHook::CP_FUNC_HOOK_NAME(Name), \
+        (offsetof(CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>, Name) / sizeof(void *)))
 
     HOOK_INPUT_METHOD(PostProcess);
     HOOK_INPUT_METHOD(IsKeyDown);
@@ -225,170 +211,350 @@ static void InstallVTableHooks() {
 #undef HOOK_INPUT_METHOD
 }
 
-static void PublishKeyboardEvents(unsigned char *currentState) {
-    if (!s_TopicKeyDown || !s_TopicKeyUp)
+CKERROR PostProcessOriginal() {
+    return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.PostProcess);
+}
+
+CKBOOL IsKeyDownOriginal(CKDWORD key, CKDWORD *stamp) {
+    return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.IsKeyDown, key, stamp);
+}
+
+CKBOOL IsKeyUpOriginal(CKDWORD key) {
+    return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.IsKeyUp, key);
+}
+
+CKBOOL IsKeyToggledOriginal(CKDWORD key, CKDWORD *stamp) {
+    return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.IsKeyToggled, key, stamp);
+}
+
+unsigned char *GetKeyboardStateOriginal() {
+    return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.GetKeyboardState);
+}
+
+int GetNumberOfKeyInBufferOriginal() {
+    return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.GetNumberOfKeyInBuffer);
+}
+
+int GetKeyFromBufferOriginal(int index, CKDWORD &outKey, CKDWORD *outStamp) {
+    return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.GetKeyFromBuffer, index, outKey, outStamp);
+}
+
+CKBOOL IsMouseButtonDownOriginal(CK_MOUSEBUTTON button) {
+    return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.IsMouseButtonDown, button);
+}
+
+CKBOOL IsMouseClickedOriginal(CK_MOUSEBUTTON button) {
+    return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.IsMouseClicked, button);
+}
+
+CKBOOL IsMouseToggledOriginal(CK_MOUSEBUTTON button) {
+    return CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.IsMouseToggled, button);
+}
+
+void GetMouseButtonsStateOriginal(CKBYTE outStates[4]) {
+    CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.GetMouseButtonsState, outStates);
+}
+
+void GetMousePositionOriginal(Vx2DVector &outPosition, CKBOOL absolute) {
+    CP_CALL_METHOD_PTR(g_State.input_manager, g_State.vtable.GetMousePosition, outPosition, absolute);
+}
+
+void PublishKeyboardEvents(unsigned char *currentState) {
+    if (!s_ModServices || !g_State.topic_key_down || !g_State.topic_key_up || !currentState)
         return;
 
-    for (int i = 0; i < 256; ++i) {
-        // Key pressed (down transition)
-        if (currentState[i] && !s_LastKeyboardState[i]) {
-            KeyDownEvent event;
-            event.key_code = i;
-            event.scan_code = 0;
-            event.timestamp = 0;
-            event.repeat = false;
-            bmlImcPublish(s_TopicKeyDown, &event, sizeof(event));
-        }
-        // Key released (up transition)
-        else if (!currentState[i] && s_LastKeyboardState[i]) {
-            KeyUpEvent event;
-            event.key_code = i;
-            event.scan_code = 0;
-            event.timestamp = 0;
-            bmlImcPublish(s_TopicKeyUp, &event, sizeof(event));
+    for (int index = 0; index < 256; ++index) {
+        if (currentState[index] && !g_State.last_keyboard_state[index]) {
+            KeyDownEvent event{};
+            event.key_code = static_cast<uint32_t>(index);
+            if (PublishInputMessage(g_State.topic_key_down, &event, sizeof(event))) {
+                g_State.last_keyboard_state[index] = currentState[index];
+            }
+        } else if (!currentState[index] && g_State.last_keyboard_state[index]) {
+            KeyUpEvent event{};
+            event.key_code = static_cast<uint32_t>(index);
+            if (PublishInputMessage(g_State.topic_key_up, &event, sizeof(event))) {
+                g_State.last_keyboard_state[index] = currentState[index];
+            }
+        } else {
+            g_State.last_keyboard_state[index] = currentState[index];
         }
     }
 }
 
-static void PublishMouseEvents() {
-    if (!s_TopicMouseButton || !s_TopicMouseMove)
+void PublishMouseEvents() {
+    if (!s_ModServices || !g_State.topic_mouse_button || !g_State.topic_mouse_move)
         return;
 
-    // Get current mouse button states
-    CKBYTE mouseStates[4];
-    CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetMouseButtonsState, mouseStates);
+    CKBYTE mouseStates[4] = {};
+    GetMouseButtonsStateOriginal(mouseStates);
 
-    // Check button state changes
     for (int button = 0; button < 3; ++button) {
-        bool wasDown = (s_LastMouseButtons[button] == KS_PRESSED) || 
-                       (s_LastMouseButtons[button] != KS_IDLE && s_LastMouseButtons[button] != KS_RELEASED);
-        bool isDown = (mouseStates[button] == KS_PRESSED) || 
-                      (mouseStates[button] != KS_IDLE && mouseStates[button] != KS_RELEASED);
+        const bool wasDown = (g_State.last_mouse_buttons[button] == KS_PRESSED) ||
+            (g_State.last_mouse_buttons[button] != KS_IDLE && g_State.last_mouse_buttons[button] != KS_RELEASED);
+        const bool isDown = (mouseStates[button] == KS_PRESSED) ||
+            (mouseStates[button] != KS_IDLE && mouseStates[button] != KS_RELEASED);
 
         if (isDown != wasDown) {
-            MouseButtonEvent event;
-            event.button = button;
+            MouseButtonEvent event{};
+            event.button = static_cast<uint32_t>(button);
             event.down = isDown;
-            event.timestamp = 0;
-            bmlImcPublish(s_TopicMouseButton, &event, sizeof(event));
+            if (PublishInputMessage(g_State.topic_mouse_button, &event, sizeof(event))) {
+                g_State.last_mouse_buttons[button] = mouseStates[button];
+            }
+        } else {
+            g_State.last_mouse_buttons[button] = mouseStates[button];
         }
     }
 
-    // Get current mouse position
-    Vx2DVector currentPos;
-    CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetMousePosition, currentPos, FALSE);
-
-    // Check mouse movement
-    if (currentPos.x != s_LastMousePosition.x || currentPos.y != s_LastMousePosition.y) {
-        MouseMoveEvent event;
+    Vx2DVector currentPos{};
+    GetMousePositionOriginal(currentPos, FALSE);
+    if (currentPos.x != g_State.last_mouse_position.x || currentPos.y != g_State.last_mouse_position.y) {
+        MouseMoveEvent event{};
         event.x = currentPos.x;
         event.y = currentPos.y;
-        event.rel_x = currentPos.x - s_LastMousePosition.x;
-        event.rel_y = currentPos.y - s_LastMousePosition.y;
+        event.rel_x = currentPos.x - g_State.last_mouse_position.x;
+        event.rel_y = currentPos.y - g_State.last_mouse_position.y;
         event.absolute = false;
-        bmlImcPublish(s_TopicMouseMove, &event, sizeof(event));
+        if (PublishInputMessage(g_State.topic_mouse_move, &event, sizeof(event))) {
+            g_State.last_mouse_position = currentPos;
+        }
+    } else {
+        g_State.last_mouse_position = currentPos;
     }
-
-    // Update last states
-    memcpy(s_LastMouseButtons, mouseStates, sizeof(s_LastMouseButtons));
-    s_LastMousePosition = currentPos;
 }
 
-//-----------------------------------------------------------------------------
-// Public API
-//-----------------------------------------------------------------------------
+} // namespace
 
-bool InitInputHook(CKInputManager *inputManager) {
-    if (s_Initialized)
+bool InitInputHook(CKInputManager *inputManager, const bml::ModuleServices &services) {
+    if (g_State.initialized)
         return true;
 
+    s_ModServices = &services;
+
     if (!inputManager) {
-        bmlLog(bmlGetGlobalContext(), BML_LOG_ERROR, "BML_Input",
-               "Cannot initialize input hook: CKInputManager is null");
+        s_ModServices->Log().Error("Cannot initialize input hook: CKInputManager is null");
         return false;
     }
 
-    s_InputManager = inputManager;
+    g_State.input_manager = inputManager;
+    utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>>(g_State.input_manager, g_State.vtable);
 
-    // Save original VTable
-    utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>>(s_InputManager, s_VTable);
+    auto *imc_bus = s_ModServices->Builtins().ImcBus;
+    if (imc_bus && imc_bus->GetTopicId) {
+        imc_bus->GetTopicId(BML_TOPIC_INPUT_KEY_DOWN, &g_State.topic_key_down);
+        imc_bus->GetTopicId(BML_TOPIC_INPUT_KEY_UP, &g_State.topic_key_up);
+        imc_bus->GetTopicId(BML_TOPIC_INPUT_MOUSE_BUTTON, &g_State.topic_mouse_button);
+        imc_bus->GetTopicId(BML_TOPIC_INPUT_MOUSE_MOVE, &g_State.topic_mouse_move);
+    }
 
-    // Register topic IDs
-    bmlImcGetTopicId(BML_TOPIC_INPUT_KEY_DOWN, &s_TopicKeyDown);
-    bmlImcGetTopicId(BML_TOPIC_INPUT_KEY_UP, &s_TopicKeyUp);
-    bmlImcGetTopicId(BML_TOPIC_INPUT_MOUSE_BUTTON, &s_TopicMouseButton);
-    bmlImcGetTopicId(BML_TOPIC_INPUT_MOUSE_MOVE, &s_TopicMouseMove);
-
-    // Install hooks
     InstallVTableHooks();
 
-    // Initialize state
-    memset(s_BlockedDevices, 0, sizeof(s_BlockedDevices));
-    memset(s_LastKeyboardState, 0, sizeof(s_LastKeyboardState));
-    memset(s_LastMouseButtons, 0, sizeof(s_LastMouseButtons));
-    s_LastMousePosition = {0, 0};
+    std::memset(g_State.blocked_devices, 0, sizeof(g_State.blocked_devices));
+    std::memset(g_State.last_keyboard_state, 0, sizeof(g_State.last_keyboard_state));
+    std::memset(g_State.last_mouse_buttons, 0, sizeof(g_State.last_mouse_buttons));
+    g_State.last_mouse_position = {0.0f, 0.0f};
+    g_State.initialized = true;
 
-    s_Initialized = true;
-    bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_Input",
-           "Input hooks initialized successfully");
+    s_ModServices->Log().Info("Input hooks initialized successfully");
     return true;
 }
 
 void ShutdownInputHook() {
-    if (!s_Initialized)
+    if (!g_State.initialized)
         return;
 
-    // Restore original VTable
-    if (s_InputManager) {
-        utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>>(s_InputManager, s_VTable);
+    if (g_State.input_manager) {
+        utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>>(g_State.input_manager, g_State.vtable);
     }
 
-    s_InputManager = nullptr;
-    s_Initialized = false;
+    if (s_ModServices) {
+        s_ModServices->Log().Info("Input hooks shutdown");
+    }
+    g_State = {};
+    s_ModServices = nullptr;
+}
 
-    bmlLog(bmlGetGlobalContext(), BML_LOG_INFO, "BML_Input",
-           "Input hooks shutdown");
+void EnableKeyboardRepetition(CKBOOL enable) {
+    if (g_State.input_manager)
+        g_State.input_manager->EnableKeyboardRepetition(enable);
+}
+
+CKBOOL IsKeyboardRepetitionEnabled() {
+    return g_State.input_manager ? g_State.input_manager->IsKeyboardRepetitionEnabled() : FALSE;
+}
+
+CKBOOL IsKeyDown(CKDWORD key, CKDWORD *stamp) {
+    return g_State.input_manager ? g_State.input_manager->IsKeyDown(key, stamp) : FALSE;
+}
+
+CKBOOL IsKeyUp(CKDWORD key) {
+    return g_State.input_manager ? g_State.input_manager->IsKeyUp(key) : FALSE;
+}
+
+CKBOOL IsKeyToggled(CKDWORD key, CKDWORD *stamp) {
+    return g_State.input_manager ? g_State.input_manager->IsKeyToggled(key, stamp) : FALSE;
+}
+
+CKBOOL IsKeyPressed(CKDWORD key) {
+    if (IsDeviceBlocked(INPUT_DEVICE_KEYBOARD) || !g_State.input_manager)
+        return FALSE;
+    return IsKeyDownOriginal(key, nullptr) && !g_State.last_keyboard_state[key];
+}
+
+CKBOOL IsKeyReleased(CKDWORD key) {
+    if (IsDeviceBlocked(INPUT_DEVICE_KEYBOARD) || !g_State.input_manager)
+        return FALSE;
+    return IsKeyToggledOriginal(key, nullptr) && g_State.last_keyboard_state[key];
+}
+
+void GetKeyName(CKDWORD key, CKSTRING outKeyName) {
+    if (g_State.input_manager)
+        g_State.input_manager->GetKeyName(key, outKeyName);
+}
+
+CKDWORD GetKeyFromName(CKSTRING keyName) {
+    return g_State.input_manager ? g_State.input_manager->GetKeyFromName(keyName) : 0;
+}
+
+unsigned char *GetKeyboardState() {
+    return g_State.input_manager ? g_State.input_manager->GetKeyboardState() : nullptr;
+}
+
+CKBOOL IsKeyboardAttached() {
+    return g_State.input_manager ? g_State.input_manager->IsKeyboardAttached() : FALSE;
+}
+
+int GetNumberOfKeyInBuffer() {
+    return g_State.input_manager ? g_State.input_manager->GetNumberOfKeyInBuffer() : 0;
+}
+
+int GetKeyFromBuffer(int index, CKDWORD &outKey, CKDWORD *outTimestamp) {
+    return g_State.input_manager ? g_State.input_manager->GetKeyFromBuffer(index, outKey, outTimestamp) : NO_KEY;
+}
+
+CKBOOL IsMouseButtonDown(CK_MOUSEBUTTON button) {
+    return g_State.input_manager ? g_State.input_manager->IsMouseButtonDown(button) : FALSE;
+}
+
+CKBOOL IsMouseClicked(CK_MOUSEBUTTON button) {
+    return g_State.input_manager ? g_State.input_manager->IsMouseClicked(button) : FALSE;
+}
+
+CKBOOL IsMouseToggled(CK_MOUSEBUTTON button) {
+    return g_State.input_manager ? g_State.input_manager->IsMouseToggled(button) : FALSE;
+}
+
+void GetMouseButtonsState(CKBYTE outStates[4]) {
+    if (g_State.input_manager)
+        g_State.input_manager->GetMouseButtonsState(outStates);
+}
+
+void GetMousePosition(Vx2DVector &outPosition, CKBOOL absolute) {
+    if (g_State.input_manager)
+        g_State.input_manager->GetMousePosition(outPosition, absolute);
+}
+
+void GetMouseRelativePosition(VxVector &outPosition) {
+    if (g_State.input_manager)
+        g_State.input_manager->GetMouseRelativePosition(outPosition);
+}
+
+void GetLastMousePosition(Vx2DVector &position) {
+    position = g_State.last_mouse_position;
+}
+
+CKBOOL IsMouseAttached() {
+    return g_State.input_manager ? g_State.input_manager->IsMouseAttached() : FALSE;
+}
+
+CKBOOL IsJoystickAttached(int joystick) {
+    return g_State.input_manager ? g_State.input_manager->IsJoystickAttached(joystick) : FALSE;
+}
+
+void GetJoystickPosition(int joystick, VxVector *outPosition) {
+    if (g_State.input_manager)
+        g_State.input_manager->GetJoystickPosition(joystick, outPosition);
+}
+
+void GetJoystickRotation(int joystick, VxVector *outRotation) {
+    if (g_State.input_manager)
+        g_State.input_manager->GetJoystickRotation(joystick, outRotation);
+}
+
+void GetJoystickSliders(int joystick, Vx2DVector *outPosition) {
+    if (g_State.input_manager)
+        g_State.input_manager->GetJoystickSliders(joystick, outPosition);
+}
+
+void GetJoystickPointOfViewAngle(int joystick, float *outAngle) {
+    if (g_State.input_manager)
+        g_State.input_manager->GetJoystickPointOfViewAngle(joystick, outAngle);
+}
+
+CKDWORD GetJoystickButtonsState(int joystick) {
+    return g_State.input_manager ? g_State.input_manager->GetJoystickButtonsState(joystick) : 0;
+}
+
+CKBOOL IsJoystickButtonDown(int joystick, int button) {
+    return g_State.input_manager ? g_State.input_manager->IsJoystickButtonDown(joystick, button) : FALSE;
+}
+
+void Pause(CKBOOL pause) {
+    if (g_State.input_manager)
+        g_State.input_manager->Pause(pause);
+}
+
+void ShowCursor(CKBOOL show) {
+    if (g_State.input_manager)
+        g_State.input_manager->ShowCursor(show);
+}
+
+CKBOOL GetCursorVisibility() {
+    return g_State.input_manager ? g_State.input_manager->GetCursorVisibility() : FALSE;
+}
+
+VXCURSOR_POINTER GetSystemCursor() {
+    return g_State.input_manager ? g_State.input_manager->GetSystemCursor() : static_cast<VXCURSOR_POINTER>(0);
+}
+
+void SetSystemCursor(VXCURSOR_POINTER cursor) {
+    if (g_State.input_manager)
+        g_State.input_manager->SetSystemCursor(cursor);
 }
 
 void BlockDevice(InputDevice device) {
-    if (device < INPUT_DEVICE_COUNT) {
-        ++s_BlockedDevices[device];
-    }
+    if (device >= 0 && device < INPUT_DEVICE_COUNT)
+        ++g_State.blocked_devices[device];
 }
 
 void UnblockDevice(InputDevice device) {
-    if (device < INPUT_DEVICE_COUNT && s_BlockedDevices[device] > 0) {
-        --s_BlockedDevices[device];
-    }
+    if (device >= 0 && device < INPUT_DEVICE_COUNT && g_State.blocked_devices[device] > 0)
+        --g_State.blocked_devices[device];
 }
 
 int IsDeviceBlocked(InputDevice device) {
-    if (device < INPUT_DEVICE_COUNT) {
-        return s_BlockedDevices[device];
-    }
+    if (device >= 0 && device < INPUT_DEVICE_COUNT)
+        return g_State.blocked_devices[device];
     return 0;
 }
 
 void ProcessInput() {
-    if (!s_Initialized || !s_InputManager)
+    if (!g_State.initialized || !g_State.input_manager)
         return;
 
-    // Call original PostProcess
-    CP_CALL_METHOD_PTR(s_InputManager, s_VTable.PostProcess);
+    PostProcessOriginal();
 
-    // Get current keyboard state and publish events
-    unsigned char *currentKeyState = CP_CALL_METHOD_PTR(s_InputManager, s_VTable.GetKeyboardState);
-    if (currentKeyState) {
-        PublishKeyboardEvents(currentKeyState);
-        memcpy(s_LastKeyboardState, currentKeyState, sizeof(s_LastKeyboardState));
+    unsigned char *currentKeyboardState = GetKeyboardStateOriginal();
+    if (currentKeyboardState) {
+        PublishKeyboardEvents(currentKeyboardState);
     }
 
-    // Publish mouse events
     PublishMouseEvents();
 }
 
 bool IsInputHookActive() {
-    return s_Initialized;
+    return g_State.initialized;
 }
 
 } // namespace BML_Input

@@ -18,12 +18,14 @@
 #include "VTables.h"
 #include "HookUtils.h"
 
+#include "bml_services.hpp"
 #include "bml_virtools_payloads.h"
 
-// BML Core APIs (via loader)
-#include "bml_loader.h"
-
 namespace BML_Physics {
+
+namespace {
+const bml::ModuleServices *s_ModServices = nullptr;
+}
 
 //-----------------------------------------------------------------------------
 // CKIpionManager interface (physics manager)
@@ -46,7 +48,7 @@ struct PhysicsHookState {
     static CKIpionManager *s_IpionManager;
     static CP_CLASS_VTABLE_NAME(CKIpionManager) s_VTable;
     static CKContext *s_Context;
-    
+
     // Cached topic IDs
     static BML_TopicId s_TopicPhysicalize;
     static BML_TopicId s_TopicUnphysicalize;
@@ -104,36 +106,8 @@ BML_TopicId PhysicsHookState::s_TopicUnphysicalize = 0;
 
 static CKBEHAVIORFCT g_OriginalPhysicalize = nullptr;
 
-static char *DuplicateCString(const char *value) {
-    if (!value) {
-        return nullptr;
-    }
-
-    const size_t length = std::strlen(value) + 1;
-    auto *copy = static_cast<char *>(std::malloc(length));
-    if (copy) {
-        std::memcpy(copy, value, length);
-    }
-    return copy;
-}
-
-static void CleanupPhysicalizePayload(const void *data, size_t size, void *user_data) {
-    (void)size;
-    (void)user_data;
-
-    auto *payload = static_cast<BML_LegacyPhysicalizePayload *>(const_cast<void *>(data));
-    if (!payload) {
-        return;
-    }
-
-    std::free(const_cast<char *>(payload->collision_group));
-    std::free(const_cast<char *>(payload->collision_surface));
-    delete[] payload->convex_meshes;
-    delete[] payload->ball_centers;
-    delete[] payload->ball_radii;
-    delete[] payload->concave_meshes;
-    delete payload;
-}
+// (DuplicateCString and CleanupPhysicalizePayload removed -- events are now
+// stack-local POD published via Publish(), not heap-allocated PublishBuffer())
 
 /**
  * @brief Physicalize behavior hook
@@ -148,97 +122,67 @@ int PhysicalizeHook(const CKBehaviorContext &behcontext) {
 
     if (physicalize) {
         // Publish OnPhysicalize event via IMC
-        if (bmlImcPublishBuffer && PhysicsHookState::s_TopicPhysicalize) {
-            CKBOOL fixed = FALSE;
-            beh->GetInputParameterValue(FIXED, &fixed);
+        auto *imcBus = s_ModServices ? s_ModServices->Builtins().ImcBus : nullptr;
+        if (imcBus && imcBus->Publish && PhysicsHookState::s_TopicPhysicalize) {
+            BML_PhysicalizeEvent event{};
+            event.target = target;
 
-            float friction = 0.4f;
-            beh->GetInputParameterValue(FRICTION, &friction);
+            beh->GetInputParameterValue(FIXED, &event.fixed);
+            beh->GetInputParameterValue(FRICTION, &event.friction);
+            beh->GetInputParameterValue(ELASTICITY, &event.elasticity);
+            beh->GetInputParameterValue(MASS, &event.mass);
+            event.collision_group = (CKSTRING) beh->GetInputParameterReadDataPtr(COLLISION_GROUP);
+            beh->GetInputParameterValue(START_FROZEN, &event.start_frozen);
+            beh->GetInputParameterValue(ENABLE_COLLISION, &event.enable_collision);
+            beh->GetInputParameterValue(AUTOMATIC_CALCULATE_MASS_CENTER, &event.auto_calc_mass_center);
+            beh->GetInputParameterValue(LINEAR_SPEED_DAMPENING, &event.linear_speed_dampening);
+            beh->GetInputParameterValue(ROT_SPEED_DAMPENING, &event.rot_speed_dampening);
+            event.collision_surface = (CKSTRING) beh->GetInputParameterReadDataPtr(COLLISION_SURFACE);
 
-            float elasticity = 0.5f;
-            beh->GetInputParameterValue(ELASTICITY, &elasticity);
+            beh->GetLocalParameterValue(0, &event.convex_count);
+            beh->GetLocalParameterValue(1, &event.ball_count);
+            beh->GetLocalParameterValue(2, &event.concave_count);
 
-            float mass = 1.0f;
-            beh->GetInputParameterValue(MASS, &mass);
+            // Stack-local arrays for borrowed CK pointers
+            constexpr int kMaxConvex = 32, kMaxBall = 32, kMaxConcave = 32;
+            CKMesh *convexMeshes[kMaxConvex]{};
+            VxVector ballCenters[kMaxBall]{};
+            float ballRadii[kMaxBall]{};
+            CKMesh *concaveMeshes[kMaxConcave]{};
 
-            CKSTRING collisionGroup = (CKSTRING) beh->GetInputParameterReadDataPtr(COLLISION_GROUP);
-
-            CKBOOL startFrozen = FALSE;
-            beh->GetInputParameterValue(START_FROZEN, &startFrozen);
-
-            CKBOOL enableCollision = TRUE;
-            beh->GetInputParameterValue(ENABLE_COLLISION, &enableCollision);
-
-            CKBOOL autoCalcMassCenter = TRUE;
-            beh->GetInputParameterValue(AUTOMATIC_CALCULATE_MASS_CENTER, &autoCalcMassCenter);
-
-            float linearSpeedDampening = 0.1f;
-            beh->GetInputParameterValue(LINEAR_SPEED_DAMPENING, &linearSpeedDampening);
-
-            float rotSpeedDampening = 0.1f;
-            beh->GetInputParameterValue(ROT_SPEED_DAMPENING, &rotSpeedDampening);
-
-            auto collisionSurface = (CKSTRING) beh->GetInputParameterReadDataPtr(COLLISION_SURFACE);
-
-            int convexCount = 1;
-            beh->GetLocalParameterValue(0, &convexCount);
-
-            int ballCount = 0;
-            beh->GetLocalParameterValue(1, &ballCount);
-
-            int concaveCount = 0;
-            beh->GetLocalParameterValue(2, &concaveCount);
-
-            auto *payload = new BML_LegacyPhysicalizePayload{};
-            payload->struct_size = sizeof(BML_LegacyPhysicalizePayload);
-            payload->target = target;
-            payload->fixed = fixed;
-            payload->friction = friction;
-            payload->elasticity = elasticity;
-            payload->mass = mass;
-            payload->collision_group = DuplicateCString(collisionGroup);
-            payload->start_frozen = startFrozen;
-            payload->enable_collision = enableCollision;
-            payload->auto_calc_mass_center = autoCalcMassCenter;
-            payload->linear_speed_dampening = linearSpeedDampening;
-            payload->rot_speed_dampening = rotSpeedDampening;
-            payload->collision_surface = DuplicateCString(collisionSurface);
-            payload->convex_count = convexCount;
-            payload->ball_count = ballCount;
-            payload->concave_count = concaveCount;
-            payload->convex_meshes = convexCount > 0 ? new CKMesh *[convexCount] : nullptr;
-            payload->ball_centers = ballCount > 0 ? new VxVector[ballCount] : nullptr;
-            payload->ball_radii = ballCount > 0 ? new float[ballCount] : nullptr;
-            payload->concave_meshes = concaveCount > 0 ? new CKMesh *[concaveCount] : nullptr;
+            event.convex_count = (std::min)(event.convex_count, kMaxConvex);
+            event.ball_count = (std::min)(event.ball_count, kMaxBall);
+            event.concave_count = (std::min)(event.concave_count, kMaxConcave);
 
             int pos = CONVEX;
-            for (int index = 0; index < convexCount; ++index) {
-                payload->convex_meshes[index] = (CKMesh *) beh->GetInputParameterObject(pos + index);
+            for (int i = 0; i < event.convex_count; ++i)
+                convexMeshes[i] = (CKMesh *) beh->GetInputParameterObject(pos + i);
+            pos += event.convex_count;
+
+            for (int i = 0; i < event.ball_count; ++i) {
+                beh->GetInputParameterValue(pos + 2 * i, &ballCenters[i]);
+                beh->GetInputParameterValue(pos + 2 * i + 1, &ballRadii[i]);
             }
-            pos += convexCount;
+            pos += event.ball_count * 2;
 
-            for (int index = 0; index < ballCount; ++index) {
-                beh->GetInputParameterValue(pos + 2 * index, &payload->ball_centers[index]);
-                beh->GetInputParameterValue(pos + 2 * index + 1, &payload->ball_radii[index]);
-            }
-            pos += ballCount * 2;
+            for (int i = 0; i < event.concave_count; ++i)
+                concaveMeshes[i] = (CKMesh *) beh->GetInputParameterObject(pos + i);
 
-            for (int index = 0; index < concaveCount; ++index) {
-                payload->concave_meshes[index] = (CKMesh *) beh->GetInputParameterObject(pos + index);
-            }
+            event.convex_meshes = convexMeshes;
+            event.ball_centers = ballCenters;
+            event.ball_radii = ballRadii;
+            event.concave_meshes = concaveMeshes;
 
-            beh->GetLocalParameterValue(3, &payload->mass_center);
+            beh->GetLocalParameterValue(3, &event.mass_center);
 
-            BML_ImcBuffer buffer = BML_IMC_BUFFER_INIT;
-            buffer.data = payload;
-            buffer.size = sizeof(BML_LegacyPhysicalizePayload);
-            buffer.cleanup = &CleanupPhysicalizePayload;
-            bmlImcPublishBuffer(PhysicsHookState::s_TopicPhysicalize, &buffer);
+            imcBus->Publish(PhysicsHookState::s_TopicPhysicalize, &event, sizeof(event));
         }
     } else {
         // Publish OnUnphysicalize event via IMC
-        if (bmlImcPublish && PhysicsHookState::s_TopicUnphysicalize) {
-            bmlImcPublish(
+        if (s_ModServices && s_ModServices->Builtins().ImcBus &&
+            s_ModServices->Builtins().ImcBus->Publish &&
+            PhysicsHookState::s_TopicUnphysicalize) {
+            s_ModServices->Builtins().ImcBus->Publish(
                 PhysicsHookState::s_TopicUnphysicalize,
                 &target,
                 sizeof(target)
@@ -254,18 +198,20 @@ int PhysicalizeHook(const CKBehaviorContext &behcontext) {
 // Public API
 //-----------------------------------------------------------------------------
 
-bool InitializePhysicsHook(CKContext *context) {
+bool InitializePhysicsHook(CKContext *context, const bml::ModuleServices &services) {
     if (!context)
         return false;
-        
+
+    s_ModServices = &services;
     PhysicsHookState::s_Context = context;
-    
-    // Register topics using loader API
-    if (bmlImcGetTopicId) {
-        bmlImcGetTopicId("Physics/Physicalize", &PhysicsHookState::s_TopicPhysicalize);
-        bmlImcGetTopicId("Physics/Unphysicalize", &PhysicsHookState::s_TopicUnphysicalize);
+
+    // Register topics through module services
+    auto *imcBus = s_ModServices->Builtins().ImcBus;
+    if (imcBus && imcBus->GetTopicId) {
+        imcBus->GetTopicId("Physics/Physicalize", &PhysicsHookState::s_TopicPhysicalize);
+        imcBus->GetTopicId("Physics/Unphysicalize", &PhysicsHookState::s_TopicUnphysicalize);
     }
-    
+
     // Hook IpionManager
     auto *im = (CKIpionManager *) context->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
     PhysicsHookState::Hook(im);
@@ -273,22 +219,27 @@ bool InitializePhysicsHook(CKContext *context) {
     // Hook Physicalize BB
     CKBehaviorPrototype *physicalizeProto = CKGetPrototypeFromGuid(PHYSICS_RT_PHYSICALIZE);
     if (physicalizeProto) {
-        if (!g_OriginalPhysicalize) 
+        if (!g_OriginalPhysicalize)
             g_OriginalPhysicalize = physicalizeProto->GetFunction();
         physicalizeProto->SetFunction(&PhysicalizeHook);
     }
-    
+
     return true;
 }
 
 void ShutdownPhysicsHook() {
     PhysicsHookState::Unhook();
+    PhysicsHookState::s_Context = nullptr;
+    PhysicsHookState::s_TopicPhysicalize = 0;
+    PhysicsHookState::s_TopicUnphysicalize = 0;
 
     // Restore Physicalize BB
     CKBehaviorPrototype *physicalizeProto = CKGetPrototypeFromGuid(PHYSICS_RT_PHYSICALIZE);
     if (physicalizeProto && g_OriginalPhysicalize) {
         physicalizeProto->SetFunction(g_OriginalPhysicalize);
     }
+
+    s_ModServices = nullptr;
 }
 
 void PhysicsPostProcess() {

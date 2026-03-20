@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <string>
@@ -28,11 +29,10 @@
 #include "bml_input_capture.hpp"
 #include "bml_interface.hpp"
 #include "bml_topics.h"
-#include "bml_ui_host.h"
-#include "bml_ui_helpers.hpp"
+#include "bml_ui.hpp"
 #include "bml_virtools.h"
 
-#include "BML/Menu.h"
+#include "bml_menu.hpp"
 
 #include "AnsiPalette.h"
 #include "AnsiText.h"
@@ -88,8 +88,6 @@ void ConsolePaletteLogger(int level, const char *message) {
 }
 } // namespace
 
-ImGuiContext *GImGui = nullptr;
-
 extern BML_ConsoleCommandRegistry g_ConsoleRegistryService;
 
 class ConsoleMod : public bml::Module {
@@ -100,6 +98,7 @@ class ConsoleMod : public bml::Module {
     bml::InterfaceLease<BML_HostRuntimeInterface> m_HostRuntime;
     bml::PublishedInterface m_PublishedService;
     BML_TopicId m_TopicCommand = 0;
+    BML_TopicId m_TopicCheatState = 0;
 
     CommandRegistry m_Registry;
     CommandHistory m_History;
@@ -119,15 +118,11 @@ class ConsoleMod : public bml::Module {
     static void DrawCallback(const BML_UIDrawContext *ctx, void *user_data) {
         auto *self = static_cast<ConsoleMod *>(user_data);
         if (self && ctx) {
-            ImGuiContext *previousContext = GImGui;
-            if (ctx->imgui && ctx->imgui->igGetCurrentContext) {
-                GImGui = ctx->imgui->igGetCurrentContext();
-            }
             BML_IMGUI_SCOPE_FROM_CONTEXT(ctx);
             self->RenderUiFrame();
-            GImGui = previousContext;
         }
     }
+
     int m_CandidateIndex = 0;
     int m_CandidatePage = 0;
     std::vector<int> m_CandidatePages;
@@ -136,7 +131,7 @@ class ConsoleMod : public bml::Module {
     float m_MaxScrollY = 0.0f;
     bool m_ScrollToBottom = true;
 
-    // ── Context accessors ───────────────────────────────────────────────
+    // -- Context accessors -----------------------------------------------
 
     BML_Mod FindLoadedModuleById(std::string_view id) const {
         const std::string loweredId = ToLowerAscii(id);
@@ -176,13 +171,25 @@ class ConsoleMod : public bml::Module {
 
     BML_Result SetCheatState(bool enabled) {
         void *raw = nullptr;
+        BML_Result result;
         if (Services().Builtins().Context->GetUserData(Services().GlobalContext(), kInternalCheatStateKey, &raw) == BML_RESULT_OK && raw) {
             *static_cast<bool *>(raw) = enabled;
-            return BML_RESULT_OK;
+            result = BML_RESULT_OK;
+        } else {
+            auto *state = new bool(enabled);
+            result = Services().Builtins().Context->SetUserData(Services().GlobalContext(), kInternalCheatStateKey, state, DestroyBoolState);
+            if (result != BML_RESULT_OK) delete state;
         }
-        auto *state = new bool(enabled);
-        const BML_Result result = Services().Builtins().Context->SetUserData(Services().GlobalContext(), kInternalCheatStateKey, state, DestroyBoolState);
-        if (result != BML_RESULT_OK) delete state;
+        if (result == BML_RESULT_OK && m_TopicCheatState != 0) {
+            BML_Bool value = enabled ? BML_TRUE : BML_FALSE;
+            BML_ImcMessage msg = BML_IMC_MSG(&value, sizeof(value));
+            auto *imcBus = Services().Builtins().ImcBus;
+            if (imcBus->PublishState) {
+                imcBus->PublishState(m_TopicCheatState, &msg);
+            } else {
+                imcBus->Publish(m_TopicCheatState, &value, sizeof(value));
+            }
+        }
         return result;
     }
 
@@ -192,7 +199,7 @@ class ConsoleMod : public bml::Module {
         return palette.ReloadFromFile();
     }
 
-    // ── Config ──────────────────────────────────────────────────────────
+    // -- Config ----------------------------------------------------------
 
     void EnsureDefaultConfig() {
         auto config = Services().Config();
@@ -220,13 +227,13 @@ class ConsoleMod : public bml::Module {
         m_Settings.fadeMaxAlpha = ClampUnit(config.GetFloat("CommandBar", "FadeMaxAlpha").value_or(1.0f));
     }
 
-    // ── History path ────────────────────────────────────────────────────
+    // -- History path ----------------------------------------------------
 
     std::filesystem::path GetHistoryPath() const {
         return ResolveLoaderFilePath(kCommandHistoryFileName);
     }
 
-    // ── Message helpers ─────────────────────────────────────────────────
+    // -- Message helpers -------------------------------------------------
 
     void AddMessage(std::string text, uint32_t flags = BML_CONSOLE_OUTPUT_FLAG_NONE, float ttl = -1.0f) {
         m_MessageBoard.Add(std::move(text), flags, ttl, m_Visible, m_Settings.messageDuration);
@@ -241,9 +248,39 @@ class ConsoleMod : public bml::Module {
     }
 
     BML_Result PublishCommand(const std::string &command) {
-        BML_ConsoleCommandEvent event = BML_CONSOLE_COMMAND_EVENT_INIT;
-        event.command_utf8 = command.c_str();
-        return Services().Builtins().ImcBus->Publish(m_TopicCommand, &event, sizeof(event));
+        auto *imcBus = Services().Builtins().ImcBus;
+        if (!imcBus || !imcBus->PublishBuffer || m_TopicCommand == 0 || command.empty()) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+
+        if (imcBus->GetTopicInfo) {
+            BML_TopicInfo topicInfo = BML_TOPIC_INFO_INIT;
+            if (imcBus->GetTopicInfo(m_TopicCommand, &topicInfo) == BML_RESULT_OK &&
+                topicInfo.subscriber_count == 0) {
+                return BML_RESULT_IMC_NO_SUBSCRIBERS;
+            }
+        }
+
+        const size_t textSize = command.size() + 1;
+        const size_t totalSize = sizeof(BML_ConsoleCommandEvent) + textSize;
+        auto *storage = static_cast<char *>(std::malloc(totalSize));
+        if (!storage) {
+            return BML_RESULT_OUT_OF_MEMORY;
+        }
+
+        auto *event = reinterpret_cast<BML_ConsoleCommandEvent *>(storage);
+        *event = BML_CONSOLE_COMMAND_EVENT_INIT;
+        event->command_utf8 = storage + sizeof(BML_ConsoleCommandEvent);
+        std::memcpy(const_cast<char *>(event->command_utf8), command.c_str(), textSize);
+
+        BML_ImcBuffer buffer = BML_IMC_BUFFER_INIT;
+        buffer.data = event;
+        buffer.size = totalSize;
+        buffer.cleanup = [](const void *, size_t, void *user_data) {
+            std::free(user_data);
+        };
+        buffer.cleanup_user_data = storage;
+        return imcBus->PublishBuffer(m_TopicCommand, &buffer);
     }
 
     void ClearPaletteProviders() const {
@@ -251,7 +288,7 @@ class ConsoleMod : public bml::Module {
         AnsiPalette::SetLoaderDirProvider(nullptr);
     }
 
-    // ── Console visibility ──────────────────────────────────────────────
+    // -- Console visibility ----------------------------------------------
 
     void SetConsoleVisible(bool visible) {
         if (m_Visible == visible) return;
@@ -293,7 +330,7 @@ class ConsoleMod : public bml::Module {
         RenderCommandBar();
     }
 
-    // ── Command execution ───────────────────────────────────────────────
+    // -- Command execution -----------------------------------------------
 
     BML_Result ConsoleExecuteCommand(const char *commandUtf8) {
         if (!commandUtf8) return BML_RESULT_INVALID_ARGUMENT;
@@ -324,7 +361,7 @@ class ConsoleMod : public bml::Module {
         }
     }
 
-    // ── Completion helpers ──────────────────────────────────────────────
+    // -- Completion helpers ----------------------------------------------
 
     static void StripLine(const char *&lineStart, const char *&lineEnd) {
         if (lineStart == lineEnd) return;
@@ -538,7 +575,7 @@ class ConsoleMod : public bml::Module {
             m_CandidatePages, m_CandidateIndex, m_CandidatePage);
     }
 
-    // ── Rendering ───────────────────────────────────────────────────────
+    // -- Rendering -------------------------------------------------------
 
     float ComputeMessageAlpha(const ConsoleMessage &message) const {
         const float maxAlpha = ClampUnit(m_Settings.fadeMaxAlpha);
@@ -645,8 +682,6 @@ class ConsoleMod : public bml::Module {
         if (!m_Visible) flags |= ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav;
 
         if (ImGui::Begin("##BMLConsoleMessages", nullptr, flags)) {
-            if (!m_Visible) ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
-
             const ImVec2 contentPos = ImGui::GetCursorScreenPos();
             const ImVec2 contentSize = ImGui::GetContentRegionAvail();
             const float availableHeight = contentSize.y - padY * 2.0f;
@@ -720,16 +755,16 @@ class ConsoleMod : public bml::Module {
             ImVec4 bgBase = Menu::GetMenuColor();
             ImGui::SetCursorScreenPos(startPos);
             const BML_ImGuiApi *imguiApi = bml::imgui::GetCurrentApi();
-            ImGuiListClipper *clipper = imguiApi && imguiApi->ImGuiListClipper_ImGuiListClipper
-                ? imguiApi->ImGuiListClipper_ImGuiListClipper()
+            ImGuiListClipper *clipper = imguiApi && imguiApi->list_clipper && imguiApi->list_clipper->New
+                ? imguiApi->list_clipper->New()
                 : nullptr;
-            if (clipper && imguiApi->ImGuiListClipper_Begin && imguiApi->ImGuiListClipper_IncludeItemsByIndex &&
-                imguiApi->ImGuiListClipper_Step) {
-                imguiApi->ImGuiListClipper_Begin(clipper, static_cast<int>(indices.size()), 1.0f);
-                imguiApi->ImGuiListClipper_IncludeItemsByIndex(clipper, begin, end);
+            if (clipper && imguiApi->list_clipper->Begin && imguiApi->list_clipper->IncludeItemsByIndex &&
+                imguiApi->list_clipper->Step) {
+                imguiApi->list_clipper->Begin(clipper, static_cast<int>(indices.size()), 1.0f);
+                imguiApi->list_clipper->IncludeItemsByIndex(clipper, begin, end);
             }
 
-            while (clipper && imguiApi->ImGuiListClipper_Step && imguiApi->ImGuiListClipper_Step(clipper)) {
+            while (clipper && imguiApi->list_clipper->Step && imguiApi->list_clipper->Step(clipper)) {
                 const int displayStart = (std::max)(clipper->DisplayStart, begin);
                 const int displayEnd = (std::min)(clipper->DisplayEnd, end);
                 for (int index = displayStart; index < displayEnd; ++index) {
@@ -756,16 +791,16 @@ class ConsoleMod : public bml::Module {
                         options.palette = palettePtr;
                         AnsiText::RenderText(drawList, message.text, pos, options);
                     }
-                    ImGui::ItemSize(ImVec2(0.0f, messageHeight + lineSpacing));
+                    ImGui::Dummy(ImVec2(0.0f, messageHeight + lineSpacing));
                 }
             }
 
             if (clipper) {
-                if (imguiApi->ImGuiListClipper_End) {
-                    imguiApi->ImGuiListClipper_End(clipper);
+                if (imguiApi->list_clipper->End) {
+                    imguiApi->list_clipper->End(clipper);
                 }
-                if (imguiApi->ImGuiListClipper_destroy) {
-                    imguiApi->ImGuiListClipper_destroy(clipper);
+                if (imguiApi->list_clipper->destroy) {
+                    imguiApi->list_clipper->destroy(clipper);
                 }
             }
 
@@ -889,7 +924,7 @@ class ConsoleMod : public bml::Module {
         m_VisiblePrev = true;
     }
 
-    // ── Builtin context wiring (static trampolines) ────────────────────
+    // -- Builtin context wiring (static trampolines) --------------------
 
     void SetupBuiltinContext() {
         m_BuiltinCtx.messageBoard = &m_MessageBoard;
@@ -1019,7 +1054,7 @@ public:
     BML_Result OnAttach(bml::ModuleServices &services) override {
         g_ConsoleServices = &services;
         m_Subs = services.CreateSubscriptions();
-        m_HostRuntime = Services().Acquire<BML_HostRuntimeInterface>(BML_CORE_HOST_RUNTIME_INTERFACE_ID, 1);
+        m_HostRuntime = Services().Acquire<BML_HostRuntimeInterface>();
         if (!m_HostRuntime) {
             return BML_RESULT_NOT_FOUND;
         }
@@ -1027,13 +1062,13 @@ public:
         AnsiPalette::SetLoaderDirProvider(ConsolePaletteLoaderDirProvider);
         AnsiPalette::SetLoggerProvider(ConsolePaletteLogger);
 
-        m_DrawReg = bml::ui::RegisterWindowDraw("bml.console.window", 50, DrawCallback, this);
+        m_DrawReg = bml::ui::RegisterDraw("bml.console.window", 50, DrawCallback, this);
         if (!m_DrawReg) {
             ClearPaletteProviders();
             return BML_RESULT_NOT_FOUND;
         }
 
-        m_InputCaptureService = Services().Acquire<BML_InputCaptureInterface>(BML_INPUT_CAPTURE_INTERFACE_ID, 1, 0, 0);
+        m_InputCaptureService = Services().Acquire<BML_InputCaptureInterface>();
         if (m_InputCaptureService) {
             m_InputCapture.SetService(m_InputCaptureService.Get());
         } else {
@@ -1042,8 +1077,6 @@ public:
 
         EnsureDefaultConfig();
         RefreshConfig();
-        m_History.Load(GetHistoryPath());
-        SetCheatState(false);
 
         if (Services().Builtins().ImcBus->GetTopicId(BML_TOPIC_CONSOLE_COMMAND, &m_TopicCommand) != BML_RESULT_OK) {
             m_DrawReg.Reset();
@@ -1051,6 +1084,9 @@ public:
             ClearPaletteProviders();
             return BML_RESULT_FAIL;
         }
+        Services().Builtins().ImcBus->GetTopicId(BML_TOPIC_STATE_CHEAT_ENABLED, &m_TopicCheatState);
+        m_History.Load(GetHistoryPath());
+        SetCheatState(false);
 
         SetupBuiltinContext();
         RegisterBuiltins(m_Registry, &m_BuiltinCtx);
@@ -1117,7 +1153,7 @@ public:
 };
 
 BML_ConsoleCommandRegistry g_ConsoleRegistryService = {
-    1, 0,
+    BML_IFACE_HEADER(BML_ConsoleCommandRegistry, BML_CONSOLE_COMMAND_REGISTRY_INTERFACE_ID, 1, 0),
     ConsoleMod::Service_RegisterCommand,
     ConsoleMod::Service_UnregisterCommand,
     ConsoleMod::Service_ExecuteCommand,
@@ -1125,4 +1161,3 @@ BML_ConsoleCommandRegistry g_ConsoleRegistryService = {
 };
 
 BML_DEFINE_MODULE(ConsoleMod)
-

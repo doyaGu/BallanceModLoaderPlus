@@ -1,23 +1,11 @@
-/**
- * @file InputHook.h
- * @brief CKInputManager VTable Hook for BML_Input Module
- * 
- * Self-contained input hook implementation that:
- * - Intercepts CKInputManager VTable methods
- * - Provides device blocking functionality
- * - Publishes input events via IMC
- */
-
 #ifndef BML_INPUT_INPUTHOOK_H
 #define BML_INPUT_INPUTHOOK_H
 
 #include "CKInputManager.h"
+#include "bml_services.hpp"
 
 namespace BML_Input {
 
-/**
- * @brief Input device types
- */
 enum InputDevice {
     INPUT_DEVICE_KEYBOARD = 0,
     INPUT_DEVICE_MOUSE = 1,
@@ -25,55 +13,52 @@ enum InputDevice {
     INPUT_DEVICE_COUNT = 3
 };
 
-/**
- * @brief Initialize the input hook
- * 
- * Hooks CKInputManager VTable to intercept input methods and
- * publish events via IMC.
- * 
- * @param inputManager The CKInputManager instance to hook
- * @return true on success, false on failure
- */
-bool InitInputHook(CKInputManager *inputManager);
-
-/**
- * @brief Shutdown the input hook
- * 
- * Restores original VTable and cleans up resources.
- */
+bool InitInputHook(CKInputManager *inputManager, const bml::ModuleServices &services);
 void ShutdownInputHook();
 
-/**
- * @brief Block input from a device
- * @param device The device to block
- */
+void EnableKeyboardRepetition(CKBOOL enable = TRUE);
+CKBOOL IsKeyboardRepetitionEnabled();
+
+CKBOOL IsKeyDown(CKDWORD key, CKDWORD *stamp = nullptr);
+CKBOOL IsKeyUp(CKDWORD key);
+CKBOOL IsKeyToggled(CKDWORD key, CKDWORD *stamp = nullptr);
+CKBOOL IsKeyPressed(CKDWORD key);
+CKBOOL IsKeyReleased(CKDWORD key);
+
+void GetKeyName(CKDWORD key, CKSTRING outKeyName);
+CKDWORD GetKeyFromName(CKSTRING keyName);
+unsigned char *GetKeyboardState();
+CKBOOL IsKeyboardAttached();
+int GetNumberOfKeyInBuffer();
+int GetKeyFromBuffer(int index, CKDWORD &outKey, CKDWORD *outTimestamp = nullptr);
+
+CKBOOL IsMouseButtonDown(CK_MOUSEBUTTON button);
+CKBOOL IsMouseClicked(CK_MOUSEBUTTON button);
+CKBOOL IsMouseToggled(CK_MOUSEBUTTON button);
+void GetMouseButtonsState(CKBYTE outStates[4]);
+void GetMousePosition(Vx2DVector &outPosition, CKBOOL absolute = TRUE);
+void GetMouseRelativePosition(VxVector &outPosition);
+void GetLastMousePosition(Vx2DVector &position);
+CKBOOL IsMouseAttached();
+
+CKBOOL IsJoystickAttached(int joystick);
+void GetJoystickPosition(int joystick, VxVector *outPosition);
+void GetJoystickRotation(int joystick, VxVector *outRotation);
+void GetJoystickSliders(int joystick, Vx2DVector *outPosition);
+void GetJoystickPointOfViewAngle(int joystick, float *outAngle);
+CKDWORD GetJoystickButtonsState(int joystick);
+CKBOOL IsJoystickButtonDown(int joystick, int button);
+
+void Pause(CKBOOL pause);
+void ShowCursor(CKBOOL show);
+CKBOOL GetCursorVisibility();
+VXCURSOR_POINTER GetSystemCursor();
+void SetSystemCursor(VXCURSOR_POINTER cursor);
+
 void BlockDevice(InputDevice device);
-
-/**
- * @brief Unblock input from a device
- * @param device The device to unblock
- */
 void UnblockDevice(InputDevice device);
-
-/**
- * @brief Check if a device is blocked
- * @param device The device to check
- * @return Block count (0 if not blocked)
- */
 int IsDeviceBlocked(InputDevice device);
-
-/**
- * @brief Process input and publish events
- * 
- * Called each frame to detect input state changes and
- * publish corresponding IMC events.
- */
 void ProcessInput();
-
-/**
- * @brief Check if input hooks are active
- * @return true if hooks are installed
- */
 bool IsInputHookActive();
 
 } // namespace BML_Input

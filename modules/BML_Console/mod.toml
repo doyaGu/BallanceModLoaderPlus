@@ -1,3 +1,5 @@
+capabilities = ["console.ui", "console.command", "console.output", "bml.internal.runtime"]
+
 [package]
 id = "com.bml.console"
 name = "BML Console"
@@ -6,8 +8,11 @@ authors = ["BML Team"]
 description = "Module-native command bar and message board"
 entry = "BML_Console.dll"
 
+[provides]
+"bml.console.command_registry" = "1.0.0"
+
 [dependencies]
 "com.bml.ui" = ">=0.4.0"
+"com.bml.menu" = ">=0.4.0"
 "com.bml.input" = ">=0.4.0"
 
-capabilities = ["console.ui", "console.command", "console.output"]
