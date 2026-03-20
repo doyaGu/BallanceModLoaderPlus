@@ -4,52 +4,17 @@
  */
 
 #define BML_LOADER_IMPLEMENTATION
-#include "bml_module.hpp"
-#include "bml_builtin_interfaces.h"
-#include "bml_topics.h"
-#include "bml_engine_events.h"
-#include "bml_engine_events.hpp"
-#include "bml_hook_context.h"
+#include "bml_hook_module.hpp"
 #include "PhysicsHook.h"
 
-class PhysicsMod : public bml::Module {
-    bml::imc::SubscriptionManager m_Subs;
-    bool m_HookReady = false;
+class PhysicsMod : public bml::HookModule {
+    const char *HookLogCategory() const override { return "BML_Physics"; }
 
-public:
-    BML_Result OnAttach(bml::ModuleServices &services) override {
-        m_Subs = services.CreateSubscriptions();
-
-        Services().Log().Info("Initializing BML Physics Module v0.4.0");
-
-        m_Subs.Add(BML_TOPIC_ENGINE_INIT, [this](const bml::imc::Message &msg) {
-            if (m_HookReady) return;
-
-            auto *payload = bml::ValidateEnginePayload<BML_EngineInitEvent>(msg);
-            if (!payload) {
-                Services().Log().Warn("Engine/Init payload invalid for physics module");
-                return;
-            }
-
-            auto hookCtx = BML_MakeHookContext(Services(), "BML_Physics");
-            if (BML_Physics::InitializePhysicsHook(payload->context, &hookCtx)) {
-                m_HookReady = true;
-                Services().Log().Info("Physics hooks initialized on Engine/Init event");
-            } else {
-                Services().Log().Warn("Physics hook initialization failed, will retry on next Engine/Init");
-            }
-        });
-
-        if (m_Subs.Empty()) {
-            Services().Log().Error("Failed to subscribe to Engine/Init events");
-            return BML_RESULT_FAIL;
-        }
-
-        return BML_RESULT_OK;
+    bool InitHook(CKContext *ctx, const BML_HookContext *hctx) override {
+        return BML_Physics::InitializePhysicsHook(ctx, hctx);
     }
 
-    void OnDetach() override {
-        Services().Log().Info("Shutting down BML Physics Module");
+    void ShutdownHook() override {
         BML_Physics::ShutdownPhysicsHook();
     }
 };

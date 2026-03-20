@@ -9,19 +9,14 @@
  */
 
 #define BML_LOADER_IMPLEMENTATION
-#include "bml_module.hpp"
-#include "bml_builtin_interfaces.h"
+#include "bml_hook_module.hpp"
 #include "bml_input_control.h"
-#include "bml_topics.h"
-#include "bml_engine_events.h"
-#include "bml_engine_events.hpp"
 
 #include <mutex>
 #include <new>
 #include <thread>
 #include <unordered_map>
 
-#include "bml_hook_context.h"
 #include "InputHook.h"
 
 #include "CKContext.h"
@@ -255,50 +250,29 @@ const BML_InputCaptureInterface kInputCaptureService = {
 };
 } // namespace
 
-class InputMod : public bml::Module {
-    bml::imc::SubscriptionManager m_Subs;
+class InputMod : public bml::HookModule {
     bml::PublishedInterface m_Published;
-    bool m_HookReady = false;
 
-public:
-    BML_Result OnAttach(bml::ModuleServices &services) override {
-        m_Subs = services.CreateSubscriptions();
+    const char *HookLogCategory() const override { return "BML_Input"; }
 
-        services.Log().Info("Initializing BML Input Module v0.4.0");
+    bool InitHook(CKContext *ctx, const BML_HookContext *hctx) override {
+        auto *im = static_cast<CKInputManager *>(
+            ctx->GetManagerByGuid(INPUT_MANAGER_GUID));
+        if (!im) {
+            Services().Log().Warn("CKInputManager not available yet - retrying next Engine/Init");
+            return false;
+        }
+        return BML_Input::InitInputHook(im, hctx);
+    }
 
-        m_Subs.Add(BML_TOPIC_ENGINE_INIT, [this](const bml::imc::Message &msg) {
-            if (m_HookReady) return;
+    void ShutdownHook() override {
+        BML_Input::ShutdownInputHook();
+    }
 
-            auto *payload = bml::ValidateEnginePayload<BML_EngineInitEvent>(msg);
-            if (!payload) {
-                Services().Log().Warn("Engine/Init payload invalid for input module");
-                return;
-            }
-
-            CKInputManager *inputManager = static_cast<CKInputManager *>(
-                payload->context->GetManagerByGuid(INPUT_MANAGER_GUID));
-            if (!inputManager) {
-                Services().Log().Warn("CKInputManager not available yet - retrying next Engine/Init");
-                return;
-            }
-
-            auto hookCtx = BML_MakeHookContext(Services(), "BML_Input");
-            if (BML_Input::InitInputHook(inputManager, &hookCtx)) {
-                m_HookReady = true;
-                Services().Log().Info("Input hooks initialized on Engine/Init event");
-            } else {
-                Services().Log().Error("Input hook initialization failed; will retry on next Engine/Init event");
-            }
-        });
-
+    BML_Result OnModuleAttach(bml::ModuleServices &services) override {
         m_Subs.Add(BML_TOPIC_ENGINE_POST_PROCESS, [](const bml::imc::Message &) {
             BML_Input::ProcessInput();
         });
-
-        if (m_Subs.Count() < 2) {
-            services.Log().Error("Failed to subscribe to engine events");
-            return BML_RESULT_FAIL;
-        }
 
         GetCaptureCoordinator().SetMainThread(std::this_thread::get_id());
 
@@ -313,18 +287,12 @@ public:
             return BML_RESULT_FAIL;
         }
 
-        services.Log().Info("BML Input Module initialized - waiting for Engine/Init");
         return BML_RESULT_OK;
     }
 
-    void OnDetach() override {
-        Services().Log().Info("Shutting down BML Input Module");
+    void OnModuleDetach() override {
         (void)m_Published.Reset();
         GetCaptureCoordinator().Reset();
-        if (m_HookReady) {
-            BML_Input::ShutdownInputHook();
-            m_HookReady = false;
-        }
     }
 };
 

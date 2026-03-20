@@ -1,21 +1,14 @@
 #define BML_LOADER_IMPLEMENTATION
-#include "bml_module.hpp"
-#include "bml_builtin_interfaces.h"
+#include "bml_hook_module.hpp"
 #include "bml_config.hpp"
-#include "bml_engine_events.h"
-#include "bml_engine_events.hpp"
 #include "bml_game_topics.h"
-#include "bml_topics.h"
 #include "bml_virtools.h"
 #include "bml_virtools.hpp"
 
-#include "bml_hook_context.h"
 #include "RenderHook.h"
 #include "CKTimeManager.h"
 
-class RenderMod : public bml::Module {
-    bml::imc::SubscriptionManager m_Subs;
-    bool m_HookReady = false;
+class RenderMod : public bml::HookModule {
     bool m_WidescreenFix = false;
     bool m_UnlockFrameRate = false;
     int32_t m_MaxFrameRate = 0;
@@ -62,31 +55,23 @@ class RenderMod : public bml::Module {
         timeManager->ChangeLimitOptions(CK_FRAMERATE_SYNC);
     }
 
-public:
-    BML_Result OnAttach(bml::ModuleServices &services) override {
-        m_Subs = services.CreateSubscriptions();
+    const char *HookLogCategory() const override { return "BML_Render"; }
 
-        Services().Log().Info("Initializing BML Render Module v0.4.0");
+    bool InitHook(CKContext *, const BML_HookContext *hctx) override {
+        if (!BML_Render::InitRenderHook(hctx)) return false;
+        RefreshConfig();
+        ApplyConfig();
+        return true;
+    }
 
+    void ShutdownHook() override {
+        BML_Render::ShutdownRenderHook();
+    }
+
+    BML_Result OnModuleAttach(bml::ModuleServices &) override {
         EnsureDefaultConfig();
         RefreshConfig();
         ApplyConfig();
-
-        m_Subs.Add(BML_TOPIC_ENGINE_INIT, [this](const bml::imc::Message &msg) {
-            auto *payload = bml::ValidateEnginePayload<BML_EngineInitEvent>(msg);
-            if (!payload) {
-                Services().Log().Warn("Engine/Init payload invalid for render module");
-                return;
-            }
-
-            auto hookCtx = BML_MakeHookContext(Services(), "BML_Render");
-            if (!m_HookReady && BML_Render::InitRenderHook(&hookCtx)) {
-                m_HookReady = true;
-                RefreshConfig();
-                ApplyConfig();
-                Services().Log().Info("Render hooks initialized on Engine/Init event");
-            }
-        });
 
         m_Subs.Add(BML_TOPIC_ENGINE_END, [this](const bml::imc::Message &) {
             BML_Render::ShutdownRenderHook();
@@ -102,19 +87,7 @@ public:
             ApplyConfig();
         });
 
-        if (m_Subs.Count() < 4) {
-            Services().Log().Error("Failed to subscribe to engine lifecycle events");
-            return BML_RESULT_FAIL;
-        }
-
-        Services().Log().Info("BML Render Module initialized - waiting for Engine/Init");
         return BML_RESULT_OK;
-    }
-
-    void OnDetach() override {
-        Services().Log().Info("Shutting down BML Render Module");
-        BML_Render::ShutdownRenderHook();
-        m_HookReady = false;
     }
 };
 
