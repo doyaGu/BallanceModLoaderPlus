@@ -16,7 +16,8 @@ namespace BML::Core {
         constexpr uint16_t kCoreMemoryInterfaceMinor = 0;
         constexpr uint16_t kCoreResourceInterfaceMinor = 0;
         constexpr uint16_t kCoreDiagnosticInterfaceMinor = 0;
-        constexpr uint16_t kImcBusInterfaceMinor = 1;
+        constexpr uint16_t kImcBusInterfaceMinor = 2;
+        constexpr uint16_t kRpcInterfaceMinor = 0;
         constexpr uint16_t kCoreTimerInterfaceMinor = 0;
         constexpr uint16_t kCoreHookRegistryInterfaceMinor = 0;
         constexpr uint16_t kCoreLocaleInterfaceMinor = 0;
@@ -110,6 +111,7 @@ namespace BML::Core {
         BML_CoreResourceInterface g_CoreResourceInterface{};
         BML_CoreDiagnosticInterface g_CoreDiagnosticInterface{};
         BML_ImcBusInterface g_ImcBusInterface{};
+        BML_RpcInterface g_RpcInterface{};
         BML_CoreTimerInterface g_CoreTimerInterface{};
         BML_CoreLocaleInterface g_CoreLocaleInterface{};
         BML_CoreHookRegistryInterface g_CoreHookRegistryInterface{};
@@ -254,14 +256,13 @@ namespace BML::Core {
             BML_API_EnumerateByProvider,
             BML_API_EnumerateByCapability,
         };
-        // IMC Bus
+        // IMC Bus (pub/sub, state, pump, stats only)
         g_ImcBusInterface = {
             BML_IFACE_HEADER(BML_ImcBusInterface,
                              BML_IMC_BUS_INTERFACE_ID,
                              1,
                              kImcBusInterfaceMinor),
             ResolveApi<PFN_BML_ImcGetTopicId>("bmlImcGetTopicId"),
-            ResolveApi<PFN_BML_ImcGetRpcId>("bmlImcGetRpcId"),
             ResolveApi<PFN_BML_ImcPublish>("bmlImcPublish"),
             ResolveApi<PFN_BML_ImcPublishEx>("bmlImcPublishEx"),
             ResolveApi<PFN_BML_ImcPublishBuffer>("bmlImcPublishBuffer"),
@@ -273,15 +274,6 @@ namespace BML::Core {
             ResolveApi<PFN_BML_ImcSubscribeInterceptEx>("bmlImcSubscribeInterceptEx"),
             ResolveApi<PFN_BML_ImcUnsubscribe>("bmlImcUnsubscribe"),
             ResolveApi<PFN_BML_ImcSubscriptionIsActive>("bmlImcSubscriptionIsActive"),
-            ResolveApi<PFN_BML_ImcRegisterRpc>("bmlImcRegisterRpc"),
-            ResolveApi<PFN_BML_ImcUnregisterRpc>("bmlImcUnregisterRpc"),
-            ResolveApi<PFN_BML_ImcCallRpc>("bmlImcCallRpc"),
-            ResolveApi<PFN_BML_ImcFutureAwait>("bmlImcFutureAwait"),
-            ResolveApi<PFN_BML_ImcFutureGetResult>("bmlImcFutureGetResult"),
-            ResolveApi<PFN_BML_ImcFutureGetState>("bmlImcFutureGetState"),
-            ResolveApi<PFN_BML_ImcFutureCancel>("bmlImcFutureCancel"),
-            ResolveApi<PFN_BML_ImcFutureOnComplete>("bmlImcFutureOnComplete"),
-            ResolveApi<PFN_BML_ImcFutureRelease>("bmlImcFutureRelease"),
             ResolveApi<PFN_BML_ImcPublishState>("bmlImcPublishState"),
             ResolveApi<PFN_BML_ImcCopyState>("bmlImcCopyState"),
             ResolveApi<PFN_BML_ImcClearState>("bmlImcClearState"),
@@ -291,7 +283,23 @@ namespace BML::Core {
             ResolveApi<PFN_BML_ImcResetStats>("bmlImcResetStats"),
             ResolveApi<PFN_BML_ImcGetTopicInfo>("bmlImcGetTopicInfo"),
             ResolveApi<PFN_BML_ImcGetTopicName>("bmlImcGetTopicName"),
-            // RPC v1.1
+        };
+        // RPC (request/response, futures, middleware, streaming)
+        g_RpcInterface = {
+            BML_IFACE_HEADER(BML_RpcInterface,
+                             BML_RPC_INTERFACE_ID,
+                             1,
+                             kRpcInterfaceMinor),
+            ResolveApi<PFN_BML_ImcGetRpcId>("bmlImcGetRpcId"),
+            ResolveApi<PFN_BML_ImcRegisterRpc>("bmlImcRegisterRpc"),
+            ResolveApi<PFN_BML_ImcUnregisterRpc>("bmlImcUnregisterRpc"),
+            ResolveApi<PFN_BML_ImcCallRpc>("bmlImcCallRpc"),
+            ResolveApi<PFN_BML_ImcFutureAwait>("bmlImcFutureAwait"),
+            ResolveApi<PFN_BML_ImcFutureGetResult>("bmlImcFutureGetResult"),
+            ResolveApi<PFN_BML_ImcFutureGetState>("bmlImcFutureGetState"),
+            ResolveApi<PFN_BML_ImcFutureCancel>("bmlImcFutureCancel"),
+            ResolveApi<PFN_BML_ImcFutureOnComplete>("bmlImcFutureOnComplete"),
+            ResolveApi<PFN_BML_ImcFutureRelease>("bmlImcFutureRelease"),
             ResolveApi<PFN_BML_ImcRegisterRpcEx>("bmlImcRegisterRpcEx"),
             ResolveApi<PFN_BML_ImcCallRpcEx>("bmlImcCallRpcEx"),
             ResolveApi<PFN_BML_ImcFutureGetError>("bmlImcFutureGetError"),
@@ -477,6 +485,11 @@ namespace BML::Core {
                                  sizeof(g_ImcBusInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE,
                                  bmlMakeVersion(1, kImcBusInterfaceMinor, 0));
+        RegisterBuiltinInterface(BML_RPC_INTERFACE_ID,
+                                 &g_RpcInterface,
+                                 sizeof(g_RpcInterface),
+                                 BML_INTERFACE_FLAG_IMMUTABLE,
+                                 bmlMakeVersion(1, kRpcInterfaceMinor, 0));
         RegisterBuiltinInterface(BML_CORE_TIMER_INTERFACE_ID,
                                  &g_CoreTimerInterface,
                                  sizeof(g_CoreTimerInterface),
@@ -517,6 +530,7 @@ namespace BML::Core {
         out.Resource = &g_CoreResourceInterface;
         out.Diagnostic = &g_CoreDiagnosticInterface;
         out.ImcBus = &g_ImcBusInterface;
+        out.Rpc = &g_RpcInterface;
         out.Timer = &g_CoreTimerInterface;
         out.Locale = &g_CoreLocaleInterface;
         out.HookRegistry = &g_CoreHookRegistryInterface;

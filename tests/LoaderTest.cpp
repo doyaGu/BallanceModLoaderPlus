@@ -270,7 +270,6 @@ namespace {
     BML_ImcBusInterface g_ImcBusInterface{
         BML_IFACE_HEADER(BML_ImcBusInterface, BML_IMC_BUS_INTERFACE_ID, 1, 0),
         DummyGetTopicId,
-        DummyGetRpcId,
         DummyPublish,
         DummyPublishEx,
         DummyPublishBuffer,
@@ -282,15 +281,6 @@ namespace {
         nullptr, // SubscribeInterceptEx
         DummyUnsubscribe,
         DummySubscriptionIsActive,
-        DummyRegisterRpc,
-        DummyUnregisterRpc,
-        DummyCallRpc,
-        DummyFutureAwait,
-        DummyFutureGetResult,
-        DummyFutureGetState,
-        DummyFutureCancel,
-        DummyFutureOnComplete,
-        DummyFutureRelease,
         DummyPublishState,
         DummyCopyState,
         DummyClearState,

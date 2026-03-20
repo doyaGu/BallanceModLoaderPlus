@@ -29,6 +29,7 @@ BML_BEGIN_CDECLS
 #define BML_CORE_RESOURCE_INTERFACE_ID      "bml.core.resource"
 #define BML_CORE_DIAGNOSTIC_INTERFACE_ID    "bml.core.diagnostic"
 #define BML_IMC_BUS_INTERFACE_ID            "bml.imc.bus"
+#define BML_RPC_INTERFACE_ID               "bml.imc.rpc"
 #define BML_CORE_TIMER_INTERFACE_ID         "bml.core.timer"
 #define BML_CORE_HOOK_REGISTRY_INTERFACE_ID "bml.core.hook_registry"
 #define BML_CORE_LOCALE_INTERFACE_ID        "bml.core.locale"
@@ -189,9 +190,8 @@ typedef struct BML_CoreDiagnosticInterface {
 
 typedef struct BML_ImcBusInterface {
     BML_InterfaceHeader header;
-    /* Topic / RPC resolution */
+    /* Topic resolution */
     PFN_BML_ImcGetTopicId GetTopicId;
-    PFN_BML_ImcGetRpcId GetRpcId;
     /* Publish */
     PFN_BML_ImcPublish Publish;
     PFN_BML_ImcPublishEx PublishEx;
@@ -205,17 +205,6 @@ typedef struct BML_ImcBusInterface {
     PFN_BML_ImcSubscribeInterceptEx SubscribeInterceptEx;
     PFN_BML_ImcUnsubscribe Unsubscribe;
     PFN_BML_ImcSubscriptionIsActive SubscriptionIsActive;
-    /* RPC */
-    PFN_BML_ImcRegisterRpc RegisterRpc;
-    PFN_BML_ImcUnregisterRpc UnregisterRpc;
-    PFN_BML_ImcCallRpc CallRpc;
-    /* Futures */
-    PFN_BML_ImcFutureAwait FutureAwait;
-    PFN_BML_ImcFutureGetResult FutureGetResult;
-    PFN_BML_ImcFutureGetState FutureGetState;
-    PFN_BML_ImcFutureCancel FutureCancel;
-    PFN_BML_ImcFutureOnComplete FutureOnComplete;
-    PFN_BML_ImcFutureRelease FutureRelease;
     /* Retained state */
     PFN_BML_ImcPublishState PublishState;
     PFN_BML_ImcCopyState CopyState;
@@ -228,7 +217,28 @@ typedef struct BML_ImcBusInterface {
     PFN_BML_ImcResetStats ResetStats;
     PFN_BML_ImcGetTopicInfo GetTopicInfo;
     PFN_BML_ImcGetTopicName GetTopicName;
-    /* RPC v1.1 -- introspection, errors, options, middleware, streaming */
+} BML_ImcBusInterface;
+
+/* ========================================================================
+ * RPC -- request/response, futures, middleware, streaming
+ * ======================================================================== */
+
+typedef struct BML_RpcInterface {
+    BML_InterfaceHeader header;
+    /* RPC ID resolution */
+    PFN_BML_ImcGetRpcId GetRpcId;
+    /* Basic RPC */
+    PFN_BML_ImcRegisterRpc RegisterRpc;
+    PFN_BML_ImcUnregisterRpc UnregisterRpc;
+    PFN_BML_ImcCallRpc CallRpc;
+    /* Futures */
+    PFN_BML_ImcFutureAwait FutureAwait;
+    PFN_BML_ImcFutureGetResult FutureGetResult;
+    PFN_BML_ImcFutureGetState FutureGetState;
+    PFN_BML_ImcFutureCancel FutureCancel;
+    PFN_BML_ImcFutureOnComplete FutureOnComplete;
+    PFN_BML_ImcFutureRelease FutureRelease;
+    /* Extended RPC (v1.1) -- introspection, errors, options, middleware, streaming */
     PFN_BML_ImcRegisterRpcEx RegisterRpcEx;
     PFN_BML_ImcCallRpcEx CallRpcEx;
     PFN_BML_ImcFutureGetError FutureGetError;
@@ -242,7 +252,7 @@ typedef struct BML_ImcBusInterface {
     PFN_BML_ImcStreamComplete StreamComplete;
     PFN_BML_ImcStreamError StreamError;
     PFN_BML_ImcCallStreamingRpc CallStreamingRpc;
-} BML_ImcBusInterface;
+} BML_RpcInterface;
 
 /* ========================================================================
  * Timer -- one-shot, repeating, frame-based scheduling

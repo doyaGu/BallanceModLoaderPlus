@@ -274,7 +274,6 @@ namespace {
             BML_IFACE_HEADER(BML_ImcBusInterface, BML_IMC_BUS_INTERFACE_ID, 1, 0)
         };
         bus.GetTopicId = &MockGetTopicId;
-        bus.GetRpcId = &MockGetRpcId;
         bus.Publish = &MockPublish;
         bus.PublishEx = &MockPublishEx;
         bus.PublishBuffer = &MockPublishBuffer;
@@ -282,30 +281,37 @@ namespace {
         bus.SubscribeEx = &MockSubscribeEx;
         bus.Unsubscribe = &MockUnsubscribe;
         bus.SubscriptionIsActive = &MockSubscriptionIsActive;
-        bus.RegisterRpc = &MockRegisterRpc;
-        bus.UnregisterRpc = &MockUnregisterRpc;
-        bus.CallRpc = &MockCallRpc;
-        bus.FutureAwait = &MockFutureAwait;
-        bus.FutureGetResult = &MockFutureGetResult;
-        bus.FutureGetState = &MockFutureGetState;
-        bus.FutureCancel = &MockFutureCancel;
-        bus.FutureOnComplete = &MockFutureOnComplete;
-        bus.FutureRelease = &MockFutureRelease;
         bus.Pump = &MockPump;
         bus.GetSubscriptionStats = &MockGetSubscriptionStats;
         bus.GetStats = &MockGetStats;
         bus.ResetStats = &MockResetStats;
         bus.GetTopicInfo = &MockGetTopicInfo;
         bus.GetTopicName = &MockGetTopicName;
-        // RPC v1.1
-        bus.RegisterRpcEx = &MockRegisterRpcEx;
-        bus.CallRpcEx = &MockCallRpcEx;
-        bus.FutureGetError = &MockFutureGetError;
-        bus.GetRpcInfo = &MockGetRpcInfo;
-        bus.GetRpcName = &MockGetRpcName;
-        bus.AddRpcMiddleware = &MockAddRpcMiddleware;
-        bus.RemoveRpcMiddleware = &MockRemoveRpcMiddleware;
         return bus;
+    }
+
+    BML_RpcInterface MakeMockRpc() {
+        BML_RpcInterface rpc{
+            BML_IFACE_HEADER(BML_RpcInterface, BML_RPC_INTERFACE_ID, 1, 0)
+        };
+        rpc.GetRpcId = &MockGetRpcId;
+        rpc.RegisterRpc = &MockRegisterRpc;
+        rpc.UnregisterRpc = &MockUnregisterRpc;
+        rpc.CallRpc = &MockCallRpc;
+        rpc.FutureAwait = &MockFutureAwait;
+        rpc.FutureGetResult = &MockFutureGetResult;
+        rpc.FutureGetState = &MockFutureGetState;
+        rpc.FutureCancel = &MockFutureCancel;
+        rpc.FutureOnComplete = &MockFutureOnComplete;
+        rpc.FutureRelease = &MockFutureRelease;
+        rpc.RegisterRpcEx = &MockRegisterRpcEx;
+        rpc.CallRpcEx = &MockCallRpcEx;
+        rpc.FutureGetError = &MockFutureGetError;
+        rpc.GetRpcInfo = &MockGetRpcInfo;
+        rpc.GetRpcName = &MockGetRpcName;
+        rpc.AddRpcMiddleware = &MockAddRpcMiddleware;
+        rpc.RemoveRpcMiddleware = &MockRemoveRpcMiddleware;
+        return rpc;
     }
 
     void ResetImcMockState() {
@@ -553,13 +559,13 @@ TEST(ImcCppWrapperTest, RpcFromId) {
 
 TEST(ImcCppWrapperTest, RpcUsesExplicitBus) {
     ResetImcMockState();
-    BML_ImcBusInterface bus = MakeMockBus();
+    BML_RpcInterface rpcIface = MakeMockRpc();
 
-    Rpc rpc("test/rpc", &bus);
+    Rpc rpc("test/rpc", &rpcIface);
     ASSERT_TRUE(rpc.Valid());
     EXPECT_EQ(g_ImcMockState.rpc_id, rpc.Id());
 
-    RpcClient client(rpc, &bus);
+    RpcClient client(rpc, &rpcIface);
     auto future = client.Call(int(7));
     ASSERT_TRUE(future.Valid());
     EXPECT_TRUE(future.Wait(10));
@@ -582,7 +588,7 @@ TEST(ImcCppWrapperTest, RpcUsesExplicitBus) {
     {
         RpcServer server("test/rpc", [](const Message &) {
             return std::vector<uint8_t>{};
-        }, &bus);
+        }, &rpcIface);
         EXPECT_TRUE(server.Valid());
     }
 
@@ -592,9 +598,9 @@ TEST(ImcCppWrapperTest, RpcUsesExplicitBus) {
 
 TEST(ImcCppWrapperTest, RpcClientFromRpcReusesSourceBus) {
     ResetImcMockState();
-    BML_ImcBusInterface bus = MakeMockBus();
+    BML_RpcInterface rpcIface = MakeMockRpc();
 
-    Rpc rpc("test/rpc", &bus);
+    Rpc rpc("test/rpc", &rpcIface);
     ASSERT_TRUE(rpc.Valid());
 
     RpcClient client(rpc);
@@ -605,9 +611,9 @@ TEST(ImcCppWrapperTest, RpcClientFromRpcReusesSourceBus) {
 
 TEST(ImcCppWrapperTest, RpcFutureResultMessageSurvivesStackClobber) {
     ResetImcMockState();
-    BML_ImcBusInterface bus = MakeMockBus();
+    BML_RpcInterface rpcIface = MakeMockRpc();
 
-    RpcClient client("test/rpc", &bus);
+    RpcClient client("test/rpc", &rpcIface);
     auto future = client.Call(int(7));
     ASSERT_TRUE(future.Valid());
     ASSERT_TRUE(future.Wait(10));
@@ -716,13 +722,13 @@ TEST(ImcCppWrapperTest, SubscriptionCanUseExtendedOnlyBus) {
 
 TEST(ImcCppWrapperTest, WrapperGuardsV11MembersByInterfaceSize) {
     ResetImcMockState();
-    BML_ImcBusInterface bus = MakeMockBus();
-    bus.header.struct_size = offsetof(BML_ImcBusInterface, RegisterRpcEx);
+    BML_RpcInterface rpcIface = MakeMockRpc();
+    rpcIface.header.struct_size = offsetof(BML_RpcInterface, RegisterRpcEx);
 
-    EXPECT_FALSE(bml::imc::getRpcInfo(g_ImcMockState.rpc_id, &bus).has_value());
-    EXPECT_FALSE(bml::imc::getRpcName(g_ImcMockState.rpc_id, &bus).has_value());
+    EXPECT_FALSE(bml::imc::getRpcInfo(g_ImcMockState.rpc_id, &rpcIface).has_value());
+    EXPECT_FALSE(bml::imc::getRpcName(g_ImcMockState.rpc_id, &rpcIface).has_value());
 
-    RpcClient client("test/rpc", &bus);
+    RpcClient client("test/rpc", &rpcIface);
     RpcCallOptions opts;
     EXPECT_FALSE(client.Call(int(7), opts).Valid());
 
@@ -741,7 +747,9 @@ TEST(ImcCppWrapperTest, WrapperRetriesLongNames) {
     ASSERT_TRUE(topicName.has_value());
     EXPECT_EQ(g_ImcMockState.topic_name, *topicName);
 
-    auto rpcName = bml::imc::getRpcName(g_ImcMockState.rpc_id, &bus);
+    BML_RpcInterface rpcIface = MakeMockRpc();
+    g_ImcMockState.rpc_name.assign(320, 'r');
+    auto rpcName = bml::imc::getRpcName(g_ImcMockState.rpc_id, &rpcIface);
     ASSERT_TRUE(rpcName.has_value());
     EXPECT_EQ(g_ImcMockState.rpc_name, *rpcName);
 }
@@ -770,14 +778,14 @@ TEST(ImcCppWrapperTest, ConvenienceFunctions) {
 
 TEST(ImcCppWrapperTest, RpcServerCopiesStringViewBeforeLookup) {
     ResetImcMockState();
-    BML_ImcBusInterface bus = MakeMockBus();
+    BML_RpcInterface rpcIface = MakeMockRpc();
 
     std::string storage = "test/rpc suffix";
     std::string_view rpcView(storage.data(), std::strlen("test/rpc"));
 
     RpcServer server(rpcView, [](const Message &) {
         return std::vector<uint8_t>{};
-    }, &bus);
+    }, &rpcIface);
     ASSERT_TRUE(server.Valid());
     EXPECT_EQ("test/rpc", g_ImcMockState.last_rpc_name);
 }
@@ -796,9 +804,9 @@ TEST(ImcCppWrapperTest, RpcCallOptionsBuilder) {
 
 TEST(ImcCppWrapperTest, RpcClientCallWithOptions) {
     ResetImcMockState();
-    BML_ImcBusInterface bus = MakeMockBus();
+    BML_RpcInterface rpcIface = MakeMockRpc();
 
-    RpcClient client("test/rpc", &bus);
+    RpcClient client("test/rpc", &rpcIface);
     ASSERT_TRUE(client.Valid());
 
     RpcCallOptions opts;
@@ -813,7 +821,8 @@ TEST(ImcCppWrapperTest, RpcFutureError) {
     BML_ImcBusInterface bus = MakeMockBus();
 
     // MockFutureGetError returns OK/empty, so Error() should return nullopt
-    RpcFuture future(g_ImcMockState.future, &bus);
+    BML_RpcInterface rpcIface = MakeMockRpc();
+    RpcFuture future(g_ImcMockState.future, &rpcIface);
     auto err = future.Error();
     EXPECT_FALSE(err.has_value());
 
@@ -823,11 +832,11 @@ TEST(ImcCppWrapperTest, RpcFutureError) {
 
 TEST(ImcCppWrapperTest, RpcServerInfo) {
     ResetImcMockState();
-    BML_ImcBusInterface bus = MakeMockBus();
+    BML_RpcInterface rpcIface = MakeMockRpc();
 
     RpcServer server("test/rpc", [](const Message &) {
         return std::vector<uint8_t>{};
-    }, &bus);
+    }, &rpcIface);
     ASSERT_TRUE(server.Valid());
 
     auto info = server.Info();
@@ -843,9 +852,9 @@ TEST(ImcCppWrapperTest, RpcServiceManagerDefaultEmpty) {
 
 TEST(ImcCppWrapperTest, RpcServiceManagerAddAndClear) {
     ResetImcMockState();
-    BML_ImcBusInterface bus = MakeMockBus();
+    BML_RpcInterface rpcIface = MakeMockRpc();
 
-    RpcServiceManager mgr(&bus);
+    RpcServiceManager mgr(&rpcIface);
     EXPECT_TRUE(mgr.AddServer("test/rpc", [](const Message &) {
         return std::vector<uint8_t>{};
     }));
@@ -859,7 +868,8 @@ TEST(ImcCppWrapperTest, RpcGetInfoFreeFunction) {
     ResetImcMockState();
     BML_ImcBusInterface bus = MakeMockBus();
 
-    auto info = bml::imc::getRpcInfo(g_ImcMockState.rpc_id, &bus);
+    BML_RpcInterface rpcIface = MakeMockRpc();
+    auto info = bml::imc::getRpcInfo(g_ImcMockState.rpc_id, &rpcIface);
     ASSERT_TRUE(info.has_value());
     EXPECT_EQ(info->rpc_id, g_ImcMockState.rpc_id);
 }
@@ -868,16 +878,17 @@ TEST(ImcCppWrapperTest, RpcGetNameFreeFunction) {
     ResetImcMockState();
     BML_ImcBusInterface bus = MakeMockBus();
 
-    auto name = bml::imc::getRpcName(g_ImcMockState.rpc_id, &bus);
+    BML_RpcInterface rpcIface = MakeMockRpc();
+    auto name = bml::imc::getRpcName(g_ImcMockState.rpc_id, &rpcIface);
     ASSERT_TRUE(name.has_value());
     EXPECT_EQ(*name, "test/rpc");
 }
 
 TEST(ImcCppWrapperTest, RpcServiceManagerAddServerAndCall) {
     ResetImcMockState();
-    BML_ImcBusInterface bus = MakeMockBus();
+    BML_RpcInterface rpcIface = MakeMockRpc();
 
-    RpcServiceManager mgr(&bus);
+    RpcServiceManager mgr(&rpcIface);
     EXPECT_TRUE(mgr.AddServer("test/rpc", [](const Message &) {
         return std::vector<uint8_t>{1, 2, 3};
     }));
@@ -891,7 +902,7 @@ TEST(ImcCppWrapperTest, RpcServiceManagerAddServerAndCall) {
 
 TEST(ImcCppWrapperTest, RpcMiddlewareRegistrationRAII) {
     ResetImcMockState();
-    BML_ImcBusInterface bus = MakeMockBus();
+    BML_RpcInterface rpcIface = MakeMockRpc();
 
     // AddRpcMiddleware mock just returns OK
     {
@@ -900,7 +911,7 @@ TEST(ImcCppWrapperTest, RpcMiddlewareRegistrationRAII) {
                const BML_ImcBuffer *, BML_Result, void *) -> BML_Result {
                 return BML_RESULT_OK;
             },
-            0, nullptr, &bus);
+            0, nullptr, &rpcIface);
         EXPECT_TRUE(reg.Valid());
     }
     // Destructor calls RemoveRpcMiddleware -- no crash = success
@@ -908,14 +919,14 @@ TEST(ImcCppWrapperTest, RpcMiddlewareRegistrationRAII) {
 
 TEST(ImcCppWrapperTest, RpcMiddlewareRegistrationMoveOnly) {
     ResetImcMockState();
-    BML_ImcBusInterface bus = MakeMockBus();
+    BML_RpcInterface rpcIface = MakeMockRpc();
 
     auto mw = [](BML_Context, BML_RpcId, BML_Bool, const BML_ImcMessage *,
                   const BML_ImcBuffer *, BML_Result, void *) -> BML_Result {
         return BML_RESULT_OK;
     };
 
-    RpcMiddlewareRegistration reg1(mw, 0, nullptr, &bus);
+    RpcMiddlewareRegistration reg1(mw, 0, nullptr, &rpcIface);
     EXPECT_TRUE(reg1.Valid());
 
     RpcMiddlewareRegistration reg2(std::move(reg1));
@@ -925,9 +936,9 @@ TEST(ImcCppWrapperTest, RpcMiddlewareRegistrationMoveOnly) {
 
 TEST(ImcCppWrapperTest, RpcServiceManagerManagedMiddleware) {
     ResetImcMockState();
-    BML_ImcBusInterface bus = MakeMockBus();
+    BML_RpcInterface rpcIface = MakeMockRpc();
 
-    RpcServiceManager mgr(&bus);
+    RpcServiceManager mgr(&rpcIface);
     EXPECT_TRUE(mgr.AddMiddleware(
         [](BML_Context, BML_RpcId, BML_Bool, const BML_ImcMessage *,
            const BML_ImcBuffer *, BML_Result, void *) -> BML_Result {
