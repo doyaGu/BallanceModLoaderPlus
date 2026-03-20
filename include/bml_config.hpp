@@ -1,13 +1,14 @@
-﻿/**
+/**
  * @file bml_config.hpp
  * @brief BML C++ Configuration Wrapper
- * 
+ *
  * Provides type-safe, RAII-friendly access to BML configuration.
  */
 
 #ifndef BML_CONFIG_HPP
 #define BML_CONFIG_HPP
 
+#include "bml_builtin_interfaces.h"
 #include "bml_config.h"
 
 #include <string>
@@ -26,6 +27,8 @@ namespace bml {
      *   bml::Config config(mod);
      *   config.SetString("mymod", "key", "value");
      *   auto value = config.GetString("mymod", "key").value_or("default");
+     *
+     * @note All string parameters must be null-terminated C strings.
      */
     class Config {
     public:
@@ -33,7 +36,8 @@ namespace bml {
          * @brief Construct a config wrapper for a mod
          * @param mod The mod handle
          */
-        explicit Config(BML_Mod mod) : m_Mod(mod) {}
+        explicit Config(BML_Mod mod, const BML_CoreConfigInterface *configInterface = nullptr)
+            : m_Mod(mod), m_ConfigInterface(configInterface) {}
 
         // ========================================================================
         // String Accessors
@@ -41,15 +45,15 @@ namespace bml {
 
         /**
          * @brief Get a string configuration value
-         * @param category Configuration category
-         * @param key Configuration key
+         * @param category Configuration category (null-terminated)
+         * @param key Configuration key (null-terminated)
          * @return The value if found, std::nullopt otherwise
          */
-        std::optional<std::string> GetString(std::string_view category, std::string_view key) const {
-            if (!bmlConfigGet) return std::nullopt;
-            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
-            BML_ConfigValue value = {sizeof(BML_ConfigValue), BML_CONFIG_STRING, {}};
-            auto result = bmlConfigGet(m_Mod, &cfg_key, &value);
+        std::optional<std::string> GetString(const char *category, const char *key) const {
+            if (!m_ConfigInterface || !m_ConfigInterface->Get) return std::nullopt;
+            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
+            BML_ConfigValue value = {sizeof(BML_ConfigValue), BML_CONFIG_STRING, {}, 0, 0};
+            auto result = m_ConfigInterface->Get(m_Mod, &cfg_key, &value);
             if (result == BML_RESULT_OK && value.type == BML_CONFIG_STRING) {
                 return std::string(value.data.string_value);
             }
@@ -58,17 +62,17 @@ namespace bml {
 
         /**
          * @brief Set a string configuration value
-         * @param category Configuration category
-         * @param key Configuration key
-         * @param value Value to set
+         * @param category Configuration category (null-terminated)
+         * @param key Configuration key (null-terminated)
+         * @param value Value to set (null-terminated)
          * @return true if successful
          */
-        bool SetString(std::string_view category, std::string_view key, std::string_view value) {
-            if (!bmlConfigSet) return false;
-            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
-            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_STRING, {}};
-            cfg_value.data.string_value = value.data();
-            return bmlConfigSet(m_Mod, &cfg_key, &cfg_value) == BML_RESULT_OK;
+        bool SetString(const char *category, const char *key, const char *value) {
+            if (!m_ConfigInterface || !m_ConfigInterface->Set) return false;
+            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
+            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_STRING, {}, 0, 0};
+            cfg_value.data.string_value = value;
+            return m_ConfigInterface->Set(m_Mod, &cfg_key, &cfg_value) == BML_RESULT_OK;
         }
 
         // ========================================================================
@@ -77,15 +81,15 @@ namespace bml {
 
         /**
          * @brief Get an integer configuration value
-         * @param category Configuration category
-         * @param key Configuration key
+         * @param category Configuration category (null-terminated)
+         * @param key Configuration key (null-terminated)
          * @return The value if found, std::nullopt otherwise
          */
-        std::optional<int32_t> GetInt(std::string_view category, std::string_view key) const {
-            if (!bmlConfigGet) return std::nullopt;
-            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
-            BML_ConfigValue value = {sizeof(BML_ConfigValue), BML_CONFIG_INT, {}};
-            auto result = bmlConfigGet(m_Mod, &cfg_key, &value);
+        std::optional<int32_t> GetInt(const char *category, const char *key) const {
+            if (!m_ConfigInterface || !m_ConfigInterface->Get) return std::nullopt;
+            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
+            BML_ConfigValue value = {sizeof(BML_ConfigValue), BML_CONFIG_INT, {}, 0, 0};
+            auto result = m_ConfigInterface->Get(m_Mod, &cfg_key, &value);
             if (result == BML_RESULT_OK && value.type == BML_CONFIG_INT) {
                 return value.data.int_value;
             }
@@ -94,17 +98,17 @@ namespace bml {
 
         /**
          * @brief Set an integer configuration value
-         * @param category Configuration category
-         * @param key Configuration key
+         * @param category Configuration category (null-terminated)
+         * @param key Configuration key (null-terminated)
          * @param value Value to set
          * @return true if successful
          */
-        bool SetInt(std::string_view category, std::string_view key, int32_t value) {
-            if (!bmlConfigSet) return false;
-            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
-            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_INT, {}};
+        bool SetInt(const char *category, const char *key, int32_t value) {
+            if (!m_ConfigInterface || !m_ConfigInterface->Set) return false;
+            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
+            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_INT, {}, 0, 0};
             cfg_value.data.int_value = value;
-            return bmlConfigSet(m_Mod, &cfg_key, &cfg_value) == BML_RESULT_OK;
+            return m_ConfigInterface->Set(m_Mod, &cfg_key, &cfg_value) == BML_RESULT_OK;
         }
 
         // ========================================================================
@@ -113,15 +117,15 @@ namespace bml {
 
         /**
          * @brief Get a float configuration value
-         * @param category Configuration category
-         * @param key Configuration key
+         * @param category Configuration category (null-terminated)
+         * @param key Configuration key (null-terminated)
          * @return The value if found, std::nullopt otherwise
          */
-        std::optional<float> GetFloat(std::string_view category, std::string_view key) const {
-            if (!bmlConfigGet) return std::nullopt;
-            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
-            BML_ConfigValue value = {sizeof(BML_ConfigValue), BML_CONFIG_FLOAT, {}};
-            auto result = bmlConfigGet(m_Mod, &cfg_key, &value);
+        std::optional<float> GetFloat(const char *category, const char *key) const {
+            if (!m_ConfigInterface || !m_ConfigInterface->Get) return std::nullopt;
+            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
+            BML_ConfigValue value = {sizeof(BML_ConfigValue), BML_CONFIG_FLOAT, {}, 0, 0};
+            auto result = m_ConfigInterface->Get(m_Mod, &cfg_key, &value);
             if (result == BML_RESULT_OK && value.type == BML_CONFIG_FLOAT) {
                 return value.data.float_value;
             }
@@ -130,17 +134,17 @@ namespace bml {
 
         /**
          * @brief Set a float configuration value
-         * @param category Configuration category
-         * @param key Configuration key
+         * @param category Configuration category (null-terminated)
+         * @param key Configuration key (null-terminated)
          * @param value Value to set
          * @return true if successful
          */
-        bool SetFloat(std::string_view category, std::string_view key, float value) {
-            if (!bmlConfigSet) return false;
-            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
-            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_FLOAT, {}};
+        bool SetFloat(const char *category, const char *key, float value) {
+            if (!m_ConfigInterface || !m_ConfigInterface->Set) return false;
+            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
+            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_FLOAT, {}, 0, 0};
             cfg_value.data.float_value = value;
-            return bmlConfigSet(m_Mod, &cfg_key, &cfg_value) == BML_RESULT_OK;
+            return m_ConfigInterface->Set(m_Mod, &cfg_key, &cfg_value) == BML_RESULT_OK;
         }
 
         // ========================================================================
@@ -149,15 +153,15 @@ namespace bml {
 
         /**
          * @brief Get a boolean configuration value
-         * @param category Configuration category
-         * @param key Configuration key
+         * @param category Configuration category (null-terminated)
+         * @param key Configuration key (null-terminated)
          * @return The value if found, std::nullopt otherwise
          */
-        std::optional<bool> GetBool(std::string_view category, std::string_view key) const {
-            if (!bmlConfigGet) return std::nullopt;
-            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
-            BML_ConfigValue value = {sizeof(BML_ConfigValue), BML_CONFIG_BOOL, {}};
-            auto result = bmlConfigGet(m_Mod, &cfg_key, &value);
+        std::optional<bool> GetBool(const char *category, const char *key) const {
+            if (!m_ConfigInterface || !m_ConfigInterface->Get) return std::nullopt;
+            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
+            BML_ConfigValue value = {sizeof(BML_ConfigValue), BML_CONFIG_BOOL, {}, 0, 0};
+            auto result = m_ConfigInterface->Get(m_Mod, &cfg_key, &value);
             if (result == BML_RESULT_OK && value.type == BML_CONFIG_BOOL) {
                 return value.data.bool_value != 0;
             }
@@ -166,17 +170,70 @@ namespace bml {
 
         /**
          * @brief Set a boolean configuration value
-         * @param category Configuration category
-         * @param key Configuration key
+         * @param category Configuration category (null-terminated)
+         * @param key Configuration key (null-terminated)
          * @param value Value to set
          * @return true if successful
          */
-        bool SetBool(std::string_view category, std::string_view key, bool value) {
-            if (!bmlConfigSet) return false;
-            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
-            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_BOOL, {}};
+        bool SetBool(const char *category, const char *key, bool value) {
+            if (!m_ConfigInterface || !m_ConfigInterface->Set) return false;
+            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
+            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_BOOL, {}, 0, 0};
             cfg_value.data.bool_value = value ? 1 : 0;
-            return bmlConfigSet(m_Mod, &cfg_key, &cfg_value) == BML_RESULT_OK;
+            return m_ConfigInterface->Set(m_Mod, &cfg_key, &cfg_value) == BML_RESULT_OK;
+        }
+
+        // ========================================================================
+        // Default-Value Shortcuts (v1.1 vtable)
+        // ========================================================================
+
+        /**
+         * @brief Get an integer, returning default_value if not found
+         */
+        int32_t GetInt(const char *category, const char *key, int32_t default_value) const {
+            if (m_ConfigInterface && m_ConfigInterface->GetInt) {
+                int32_t out = default_value;
+                m_ConfigInterface->GetInt(m_Mod, category, key, default_value, &out);
+                return out;
+            }
+            return GetInt(category, key).value_or(default_value);
+        }
+
+        /**
+         * @brief Get a float, returning default_value if not found
+         */
+        float GetFloat(const char *category, const char *key, float default_value) const {
+            if (m_ConfigInterface && m_ConfigInterface->GetFloat) {
+                float out = default_value;
+                m_ConfigInterface->GetFloat(m_Mod, category, key, default_value, &out);
+                return out;
+            }
+            return GetFloat(category, key).value_or(default_value);
+        }
+
+        /**
+         * @brief Get a bool, returning default_value if not found
+         */
+        bool GetBool(const char *category, const char *key, bool default_value) const {
+            if (m_ConfigInterface && m_ConfigInterface->GetBool) {
+                BML_Bool out = default_value ? BML_TRUE : BML_FALSE;
+                m_ConfigInterface->GetBool(m_Mod, category, key, out, &out);
+                return out != 0;
+            }
+            return GetBool(category, key).value_or(default_value);
+        }
+
+        /**
+         * @brief Get a string, returning default_value if not found
+         * @warning The returned string is a copy, unlike the C API variant
+         */
+        std::string GetString(const char *category, const char *key, const char *default_value) const {
+            if (m_ConfigInterface && m_ConfigInterface->GetString) {
+                const char *out = default_value;
+                m_ConfigInterface->GetString(m_Mod, category, key, default_value, &out);
+                return out ? std::string(out) : std::string();
+            }
+            return GetString(category, key).value_or(default_value ? default_value : "");
         }
 
         // ========================================================================
@@ -185,46 +242,20 @@ namespace bml {
 
         /**
          * @brief Reset a configuration value to its default
-         * @param category Configuration category
-         * @param key Configuration key
+         * @param category Configuration category (null-terminated)
+         * @param key Configuration key (null-terminated)
          * @return true if successful
          */
-        bool Reset(std::string_view category, std::string_view key) {
-            if (!bmlConfigReset) return false;
-            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
-            return bmlConfigReset(m_Mod, &cfg_key) == BML_RESULT_OK;
+        bool Reset(const char *category, const char *key) {
+            if (!m_ConfigInterface || !m_ConfigInterface->Reset) return false;
+            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
+            return m_ConfigInterface->Reset(m_Mod, &cfg_key) == BML_RESULT_OK;
         }
 
     private:
         BML_Mod m_Mod;
+        const BML_CoreConfigInterface *m_ConfigInterface;
     };
-
-    // ============================================================================
-    // Config Capability Queries
-    // ============================================================================
-
-    /**
-     * @brief Get configuration store capabilities
-     * @return Optional containing capabilities if successful
-     */
-    inline std::optional<BML_ConfigStoreCaps> GetConfigCaps() {
-        if (!bmlConfigGetCaps) return std::nullopt;
-        BML_ConfigStoreCaps caps = BML_CONFIG_STORE_CAPS_INIT;
-        if (bmlConfigGetCaps(&caps) == BML_RESULT_OK) {
-            return caps;
-        }
-        return std::nullopt;
-    }
-
-    /**
-     * @brief Check if a specific config capability is available
-     * @param flag The capability flag to check (BML_ConfigCapabilityFlags)
-     * @return true if the capability is available
-     */
-    inline bool HasConfigCap(BML_ConfigCapabilityFlags flag) {
-        auto caps = GetConfigCaps();
-        return caps && (caps->feature_flags & flag);
-    }
 
     // ============================================================================
     // ConfigBatch - RAII wrapper for atomic multi-key config updates
@@ -246,6 +277,8 @@ namespace bml {
      *           batch.Commit();  // All or nothing
      *       }
      *   }  // Automatically discards if not committed
+     *
+     * @note All string parameters must be null-terminated C strings.
      */
     class ConfigBatch {
     public:
@@ -253,15 +286,16 @@ namespace bml {
          * @brief Begin a new configuration batch
          * @param mod The mod handle
          */
-        explicit ConfigBatch(BML_Mod mod) : m_Batch(nullptr), m_Committed(false) {
-            if (bmlConfigBatchBegin) {
-                bmlConfigBatchBegin(mod, &m_Batch);
+        explicit ConfigBatch(BML_Mod mod, const BML_CoreConfigInterface *configInterface = nullptr)
+            : m_Batch(nullptr), m_Committed(false), m_ConfigInterface(configInterface) {
+            if (m_ConfigInterface && m_ConfigInterface->BatchBegin) {
+                m_ConfigInterface->BatchBegin(mod, &m_Batch);
             }
         }
 
         ~ConfigBatch() {
-            if (m_Batch && !m_Committed && bmlConfigBatchDiscard) {
-                bmlConfigBatchDiscard(m_Batch);
+            if (m_Batch && !m_Committed && m_ConfigInterface && m_ConfigInterface->BatchDiscard) {
+                m_ConfigInterface->BatchDiscard(m_Batch);
             }
         }
 
@@ -270,20 +304,25 @@ namespace bml {
         ConfigBatch &operator=(const ConfigBatch &) = delete;
 
         ConfigBatch(ConfigBatch &&other) noexcept
-            : m_Batch(other.m_Batch), m_Committed(other.m_Committed) {
+            : m_Batch(other.m_Batch),
+              m_Committed(other.m_Committed),
+              m_ConfigInterface(other.m_ConfigInterface) {
             other.m_Batch = nullptr;
             other.m_Committed = true;
+            other.m_ConfigInterface = nullptr;
         }
 
         ConfigBatch &operator=(ConfigBatch &&other) noexcept {
             if (this != &other) {
-                if (m_Batch && !m_Committed && bmlConfigBatchDiscard) {
-                    bmlConfigBatchDiscard(m_Batch);
+                if (m_Batch && !m_Committed && m_ConfigInterface && m_ConfigInterface->BatchDiscard) {
+                    m_ConfigInterface->BatchDiscard(m_Batch);
                 }
                 m_Batch = other.m_Batch;
                 m_Committed = other.m_Committed;
+                m_ConfigInterface = other.m_ConfigInterface;
                 other.m_Batch = nullptr;
                 other.m_Committed = true;
+                other.m_ConfigInterface = nullptr;
             }
             return *this;
         }
@@ -307,16 +346,16 @@ namespace bml {
          * @return true if successfully queued
          */
         bool Set(const BML_ConfigKey *key, const BML_ConfigValue *value) {
-            if (!m_Batch || m_Committed || !bmlConfigBatchSet) return false;
-            return bmlConfigBatchSet(m_Batch, key, value) == BML_RESULT_OK;
+            if (!m_Batch || m_Committed || !m_ConfigInterface || !m_ConfigInterface->BatchSet) return false;
+            return m_ConfigInterface->BatchSet(m_Batch, key, value) == BML_RESULT_OK;
         }
 
         /**
          * @brief Queue an integer config value change
          */
-        bool Set(std::string_view category, std::string_view key, int32_t value) {
-            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
-            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_INT, {}};
+        bool Set(const char *category, const char *key, int32_t value) {
+            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
+            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_INT, {}, 0, 0};
             cfg_value.data.int_value = value;
             return Set(&cfg_key, &cfg_value);
         }
@@ -324,9 +363,9 @@ namespace bml {
         /**
          * @brief Queue a float config value change
          */
-        bool Set(std::string_view category, std::string_view key, float value) {
-            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
-            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_FLOAT, {}};
+        bool Set(const char *category, const char *key, float value) {
+            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
+            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_FLOAT, {}, 0, 0};
             cfg_value.data.float_value = value;
             return Set(&cfg_key, &cfg_value);
         }
@@ -334,9 +373,9 @@ namespace bml {
         /**
          * @brief Queue a boolean config value change
          */
-        bool Set(std::string_view category, std::string_view key, bool value) {
-            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
-            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_BOOL, {}};
+        bool Set(const char *category, const char *key, bool value) {
+            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
+            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_BOOL, {}, 0, 0};
             cfg_value.data.bool_value = value ? 1 : 0;
             return Set(&cfg_key, &cfg_value);
         }
@@ -344,10 +383,10 @@ namespace bml {
         /**
          * @brief Queue a string config value change
          */
-        bool Set(std::string_view category, std::string_view key, std::string_view value) {
-            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category.data(), key.data()};
-            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_STRING, {}};
-            cfg_value.data.string_value = value.data();
+        bool Set(const char *category, const char *key, const char *value) {
+            BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
+            BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_STRING, {}, 0, 0};
+            cfg_value.data.string_value = value;
             return Set(&cfg_key, &cfg_value);
         }
 
@@ -356,8 +395,8 @@ namespace bml {
          * @return true if all changes were successfully applied
          */
         bool Commit() {
-            if (!m_Batch || m_Committed || !bmlConfigBatchCommit) return false;
-            BML_Result result = bmlConfigBatchCommit(m_Batch);
+            if (!m_Batch || m_Committed || !m_ConfigInterface || !m_ConfigInterface->BatchCommit) return false;
+            BML_Result result = m_ConfigInterface->BatchCommit(m_Batch);
             if (result == BML_RESULT_OK) {
                 m_Committed = true;
                 m_Batch = nullptr; // Handle consumed by commit
@@ -371,8 +410,8 @@ namespace bml {
          * @return true if successfully discarded
          */
         bool Discard() {
-            if (!m_Batch || m_Committed || !bmlConfigBatchDiscard) return false;
-            BML_Result result = bmlConfigBatchDiscard(m_Batch);
+            if (!m_Batch || m_Committed || !m_ConfigInterface || !m_ConfigInterface->BatchDiscard) return false;
+            BML_Result result = m_ConfigInterface->BatchDiscard(m_Batch);
             if (result == BML_RESULT_OK) {
                 m_Committed = true; // Mark as consumed
                 m_Batch = nullptr;
@@ -389,15 +428,9 @@ namespace bml {
     private:
         BML_ConfigBatch m_Batch;
         bool m_Committed;
+        const BML_CoreConfigInterface *m_ConfigInterface;
     };
 
-    /**
-     * @brief Check if batch config operations are supported
-     * @return true if batch operations are available
-     */
-    inline bool HasConfigBatch() {
-        return HasConfigCap(BML_CONFIG_CAP_BATCH);
-    }
 } // namespace bml
 
 #endif /* BML_CONFIG_HPP */

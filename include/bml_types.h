@@ -162,15 +162,27 @@ typedef uint32_t BML_Bool;
 #define BML_FALSE 0u
 #define BML_TRUE  1u
 
+/* ========================================================================
+ * Game Phase Enum
+ * ======================================================================== */
+
 /**
- * @brief Threading model for API functions
+ * @brief Game phase enumeration for BML/State/GamePhase retained topic.
+ *
+ * Published as a uint32_t payload via IMC retained state.
+ *
+ * @note Transitions between levels (exit/next) briefly remain at their
+ *       prior phase (PLAYING or PAUSED) until the next phase-changing event.
+ *       There is no explicit EXITING phase.
  */
-typedef enum BML_ThreadingModel {
-    BML_THREADING_SINGLE = 0,      /**< Single-threaded only */
-    BML_THREADING_APARTMENT = 1,   /**< Thread-affinity required */
-    BML_THREADING_FREE = 2,        /**< Fully thread-safe */
-    _BML_THREADING_MODEL_FORCE_32BIT = 0x7FFFFFFF  /**< Force 32-bit enum */
-} BML_ThreadingModel;
+typedef enum BML_GamePhase {
+    BML_GAME_PHASE_IDLE      = 0, /**< No active game (e.g. before engine init) */
+    BML_GAME_PHASE_MENU      = 1, /**< In the start menu */
+    BML_GAME_PHASE_LOADING   = 2, /**< Loading a level */
+    BML_GAME_PHASE_PLAYING   = 3, /**< Actively playing a level */
+    BML_GAME_PHASE_PAUSED    = 4, /**< Level is paused */
+    _BML_GAME_PHASE_FORCE_32BIT = 0x7FFFFFFF
+} BML_GamePhase;
 
 /* ========================================================================
  * Version Structure
@@ -233,7 +245,7 @@ static inline uint32_t bmlVersionToUint(const BML_Version *version) {
  * @brief Extended error information
  * 
  * Provides detailed error context beyond the basic BML_Result code.
- * Retrieved via bmlGetLastError() after an API call returns an error.
+ * Retrieved via PFN_BML_GetLastError after an API call returns an error.
  */
 typedef struct BML_ErrorInfo {
     size_t struct_size;        /**< sizeof(BML_ErrorInfo), must be first field */
@@ -290,9 +302,5 @@ BML_TYPES_STATIC_ASSERT(BML_TYPES_OFFSETOF(BML_Version, struct_size) == 0,
     "BML_Version.struct_size must be at offset 0");
 BML_TYPES_STATIC_ASSERT(BML_TYPES_OFFSETOF(BML_ErrorInfo, struct_size) == 0,
     "BML_ErrorInfo.struct_size must be at offset 0");
-
-/* Verify enum sizes are 32-bit for ABI stability */
-BML_TYPES_STATIC_ASSERT(sizeof(BML_ThreadingModel) == sizeof(int32_t),
-    "BML_ThreadingModel must be 32-bit");
 
 #endif /* BML_TYPES_H */

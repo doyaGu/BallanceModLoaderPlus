@@ -7,6 +7,10 @@
  * 
  * Provides tools for performance analysis compatible with external profilers
  * like Tracy, Chrome Tracing, and RenderDoc.
+ *
+ * Profiling proc pointers are runtime services. Resolve them through
+ * `bmlGetProcAddress(...)`; the bootstrap loader does not publish profiling
+ * globals.
  */
 
 #include "bml_types.h"
@@ -30,9 +34,9 @@ BML_BEGIN_CDECLS
  * 
  * @code
  * void MyFunction() {
- *     bmlTraceBegin("MyFunction", "gameplay");
+ *     traceBegin("MyFunction", "gameplay");
  *     // ... work ...
- *     bmlTraceEnd();
+ *     traceEnd();
  * }
  * @endcode
  */
@@ -81,8 +85,8 @@ typedef void (*PFN_BML_TraceSetThreadName)(const char *name);
  * @note Useful for tracking memory usage, FPS, entity count, etc.
  * 
  * @code
- * bmlTraceCounter("EntityCount", entity_mgr.count());
- * bmlTraceCounter("MemoryMB", allocated_bytes / (1024*1024));
+ * traceCounter("EntityCount", entity_mgr.count());
+ * traceCounter("MemoryMB", allocated_bytes / (1024*1024));
  * @endcode
  */
 typedef void (*PFN_BML_TraceCounter)(const char *name, int64_t value);
@@ -101,7 +105,7 @@ typedef void (*PFN_BML_TraceFrameMark)(void);
 /**
  * @brief Get total number of API calls
  * 
- * @param[in] api_name API function name (e.g., "bmlLog", "bmlConfigGet")
+ * @param[in] api_name API function name (e.g., "bmlImcPublish", "bmlConfigGet")
  * @return Call count since startup, or 0 if tracking disabled
  * 
  * @threadsafe Yes
@@ -127,9 +131,9 @@ typedef uint64_t (*PFN_BML_GetTotalAllocBytes)(void);
  * @note Use for manual timing measurements
  * 
  * @code
- * uint64_t start = bmlGetTimestampNs();
+ * uint64_t start = getTimestampNs();
  * DoWork();
- * uint64_t end = bmlGetTimestampNs();
+ * uint64_t end = getTimestampNs();
  * printf("Elapsed: %llu ns\n", end - start);
  * @endcode
  */
@@ -230,92 +234,7 @@ typedef struct BML_ProfilingStats {
  */
 typedef BML_Result (*PFN_BML_GetProfilingStats)(BML_ProfilingStats *out_stats);
 
-/* ========== Capability Query ========== */
-
-typedef enum BML_ProfilingCapabilityFlags {
-    BML_PROFILING_CAP_TRACE_EVENTS      = 1u << 0,
-    BML_PROFILING_CAP_COUNTERS          = 1u << 1,
-    BML_PROFILING_CAP_API_CALL_TRACKING = 1u << 2,
-    BML_PROFILING_CAP_MEMORY_TRACKING   = 1u << 3,
-    BML_PROFILING_CAP_EXTERNAL_BACKEND  = 1u << 4,
-    _BML_PROFILING_CAP_FORCE_32BIT      = 0x7FFFFFFF  /**< Force 32-bit enum */
-} BML_ProfilingCapabilityFlags;
-
-/**
- * @brief Profiling subsystem capabilities
- */
-typedef struct BML_ProfilingCaps {
-    size_t struct_size;             /**< sizeof(BML_ProfilingCaps), must be first field */
-    BML_Version api_version;        /**< API version */
-    uint32_t capability_flags;      /**< Bitmask of BML_ProfilingCapabilityFlags */
-    BML_ProfilerBackend active_backend; /**< Currently active profiler backend */
-    uint32_t max_scope_depth;       /**< Maximum nested scope depth */
-    uint32_t event_buffer_size;     /**< Size of event buffer */
-} BML_ProfilingCaps;
-
-/**
- * @def BML_PROFILING_CAPS_INIT
- * @brief Static initializer for BML_ProfilingCaps
- */
-#define BML_PROFILING_CAPS_INIT { sizeof(BML_ProfilingCaps), BML_VERSION_INIT(0,0,0), 0, BML_PROFILER_NONE, 0, 0 }
-
-typedef BML_Result (*PFN_BML_ProfilingGetCaps)(BML_ProfilingCaps *out_caps);
-
-/* ========== Global Function Pointers ========== */
-
-extern PFN_BML_TraceBegin           bmlTraceBegin;
-extern PFN_BML_TraceEnd             bmlTraceEnd;
-extern PFN_BML_TraceInstant         bmlTraceInstant;
-extern PFN_BML_TraceSetThreadName   bmlTraceSetThreadName;
-extern PFN_BML_TraceCounter         bmlTraceCounter;
-extern PFN_BML_TraceFrameMark       bmlTraceFrameMark;
-
-extern PFN_BML_GetApiCallCount      bmlGetApiCallCount;
-extern PFN_BML_GetTotalAllocBytes   bmlGetTotalAllocBytes;
-extern PFN_BML_GetTimestampNs       bmlGetTimestampNs;
-extern PFN_BML_GetCpuFrequency      bmlGetCpuFrequency;
-
-extern PFN_BML_GetProfilerBackend   bmlGetProfilerBackend;
-extern PFN_BML_SetProfilingEnabled  bmlSetProfilingEnabled;
-extern PFN_BML_IsProfilingEnabled   bmlIsProfilingEnabled;
-extern PFN_BML_FlushProfilingData   bmlFlushProfilingData;
-
-extern PFN_BML_GetProfilingStats    bmlGetProfilingStats;
-extern PFN_BML_ProfilingGetCaps          bmlProfilingGetCaps;
 
 BML_END_CDECLS
-
-/* ========== Scoped Trace (RAII-style for C++) ========== */
-
-#ifdef __cplusplus
-/**
- * @brief RAII trace scope for C++
- *
- * @code
- * void MyFunction() {
- *     BML_TRACE_SCOPE("MyFunction", "gameplay");
- *     // ... work ...
- *     // Automatically calls bmlTraceEnd() on scope exit
- * }
- * @endcode
- */
-#define BML_TRACE_SCOPE(name, category) \
-BML::ScopedTrace _bml_trace_scope((name), (category))
-
-namespace BML {
-    class ScopedTrace {
-    public:
-        ScopedTrace(const char *name, const char *category) {
-            bmlTraceBegin(name, category);
-        }
-        ~ScopedTrace() {
-            bmlTraceEnd();
-        }
-    private:
-        ScopedTrace(const ScopedTrace&) = delete;
-        ScopedTrace& operator=(const ScopedTrace&) = delete;
-    };
-}
-#endif
 
 #endif /* BML_PROFILING_H */

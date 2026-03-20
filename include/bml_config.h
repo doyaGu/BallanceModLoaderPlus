@@ -1,3 +1,12 @@
+/**
+ * @file bml_config.h
+ * @brief Configuration storage API
+ *
+ * Config APIs are runtime services. Resolve these function pointers through
+ * `bmlGetProcAddress(...)` in C code or acquire `bml.core.config` in module
+ * code. The bootstrap loader does not publish config globals.
+ */
+
 #ifndef BML_CONFIG_H
 #define BML_CONFIG_H
 
@@ -27,11 +36,21 @@ typedef enum BML_ConfigType {
     BML_CONFIG_INT               = 1,
     BML_CONFIG_FLOAT             = 2,
     BML_CONFIG_STRING            = 3,
+    BML_CONFIG_BLOB              = 4, /**< Binary blob (base64 in TOML) */
     _BML_CONFIG_TYPE_FORCE_32BIT = 0x7FFFFFFF /**< Force 32-bit enum */
 } BML_ConfigType;
 
+/** @brief Config entry flags */
+#define BML_CONFIG_FLAG_NONE     0u
+/** @brief Entry is internal (not shown in ModMenu UI) */
+#define BML_CONFIG_FLAG_INTERNAL (1u << 0)
+
 /**
  * @brief Configuration value container
+ *
+ * New fields (blob_size, flags) are appended at the end for ABI compatibility.
+ * Old code with smaller struct_size simply doesn't see them, and the runtime
+ * treats absent fields as zero (no blob, no flags).
  */
 typedef struct BML_ConfigValue {
     size_t struct_size;  /**< sizeof(BML_ConfigValue), must be first field */
@@ -41,44 +60,55 @@ typedef struct BML_ConfigValue {
         int32_t int_value;
         float float_value;
         const char *string_value;
+        const void *blob_value;  /**< Pointer to blob data (type == BML_CONFIG_BLOB) */
     } data;
+    size_t blob_size;    /**< Blob size in bytes (only when type == BML_CONFIG_BLOB) */
+    uint32_t flags;      /**< BML_CONFIG_FLAG_* */
 } BML_ConfigValue;
 
 /**
  * @def BML_CONFIG_VALUE_INIT_BOOL
  * @brief Static initializer for boolean config value
  */
-#define BML_CONFIG_VALUE_INIT_BOOL(v) { sizeof(BML_ConfigValue), BML_CONFIG_BOOL, { .bool_value = (v) } }
+#define BML_CONFIG_VALUE_INIT_BOOL(v) { sizeof(BML_ConfigValue), BML_CONFIG_BOOL, { .bool_value = (v) }, 0, 0 }
 
 /**
  * @def BML_CONFIG_VALUE_INIT_INT
  * @brief Static initializer for integer config value
  */
-#define BML_CONFIG_VALUE_INIT_INT(v) { sizeof(BML_ConfigValue), BML_CONFIG_INT, { .int_value = (v) } }
+#define BML_CONFIG_VALUE_INIT_INT(v) { sizeof(BML_ConfigValue), BML_CONFIG_INT, { .int_value = (v) }, 0, 0 }
 
 /**
  * @def BML_CONFIG_VALUE_INIT_FLOAT
  * @brief Static initializer for float config value
  */
-#define BML_CONFIG_VALUE_INIT_FLOAT(v) { sizeof(BML_ConfigValue), BML_CONFIG_FLOAT, { .float_value = (v) } }
+#define BML_CONFIG_VALUE_INIT_FLOAT(v) { sizeof(BML_ConfigValue), BML_CONFIG_FLOAT, { .float_value = (v) }, 0, 0 }
 
 /**
  * @def BML_CONFIG_VALUE_INIT_STRING
  * @brief Static initializer for string config value
  */
-#define BML_CONFIG_VALUE_INIT_STRING(v) { sizeof(BML_ConfigValue), BML_CONFIG_STRING, { .string_value = (v) } }
+#define BML_CONFIG_VALUE_INIT_STRING(v) { sizeof(BML_ConfigValue), BML_CONFIG_STRING, { .string_value = (v) }, 0, 0 }
+
+/**
+ * @def BML_CONFIG_VALUE_INIT_BLOB
+ * @brief Static initializer for binary blob config value
+ */
+#define BML_CONFIG_VALUE_INIT_BLOB(ptr, sz) { sizeof(BML_ConfigValue), BML_CONFIG_BLOB, { .blob_value = (ptr) }, (sz), 0 }
+
+/**
+ * @def BML_CONFIG_VALUE_INIT_INTERNAL_INT
+ * @brief Static initializer for internal (hidden from UI) integer config value
+ */
+#define BML_CONFIG_VALUE_INIT_INTERNAL_INT(v) { sizeof(BML_ConfigValue), BML_CONFIG_INT, { .int_value = (v) }, 0, BML_CONFIG_FLAG_INTERNAL }
+
+/**
+ * @def BML_CONFIG_VALUE_INIT_INTERNAL_STRING
+ * @brief Static initializer for internal (hidden from UI) string config value
+ */
+#define BML_CONFIG_VALUE_INIT_INTERNAL_STRING(v) { sizeof(BML_ConfigValue), BML_CONFIG_STRING, { .string_value = (v) }, 0, BML_CONFIG_FLAG_INTERNAL }
 
 #define BML_CONFIG_TYPE_MASK(type) (1u << (type))
-
-typedef enum BML_ConfigCapabilityFlags {
-    BML_CONFIG_CAP_GET          = 1u << 0,
-    BML_CONFIG_CAP_SET          = 1u << 1,
-    BML_CONFIG_CAP_RESET        = 1u << 2,
-    BML_CONFIG_CAP_ENUMERATE    = 1u << 3,
-    BML_CONFIG_CAP_PERSISTENCE  = 1u << 4,
-    BML_CONFIG_CAP_BATCH        = 1u << 5,   /**< Batch operations supported */
-    _BML_CONFIG_CAP_FORCE_32BIT = 0x7FFFFFFF /**< Force 32-bit enum */
-} BML_ConfigCapabilityFlags;
 
 /* ========================================================================
  * Config Batch Operations
@@ -111,10 +141,10 @@ BML_DECLARE_HANDLE(BML_ConfigBatch);
  *
  * @code
  * BML_ConfigBatch batch;
- * if (bmlConfigBatchBegin(mod, &batch) == BML_RESULT_OK) {
- *     bmlConfigBatchSet(batch, &key1, &value1);
- *     bmlConfigBatchSet(batch, &key2, &value2);
- *     bmlConfigBatchCommit(batch);  // Atomic commit
+ * if (configBatchBegin(mod, &batch) == BML_RESULT_OK) {
+ *     configBatchSet(batch, &key1, &value1);
+ *     configBatchSet(batch, &key2, &value2);
+ *     configBatchCommit(batch);  // Atomic commit
  * }
  * @endcode
  */
@@ -124,7 +154,7 @@ typedef BML_Result (*PFN_BML_ConfigBatchBegin)(BML_Mod mod, BML_ConfigBatch *out
  * @brief Queue a configuration value change in a batch
  *
  * Adds a key-value pair to the batch. The change is not applied until
- * bmlConfigBatchCommit is called.
+ * PFN_BML_ConfigBatchCommit is called.
  *
  * @param[in] batch Batch handle from bmlConfigBatchBegin. Must not be NULL.
  * @param[in] key Configuration key. Must not be NULL. struct_size must be initialized.
@@ -176,46 +206,6 @@ typedef BML_Result (*PFN_BML_ConfigBatchCommit)(BML_ConfigBatch batch);
  * @note Always succeeds for valid uncommitted batches.
  */
 typedef BML_Result (*PFN_BML_ConfigBatchDiscard)(BML_ConfigBatch batch);
-
-/**
- * @brief Configuration store capabilities
- */
-typedef struct BML_ConfigStoreCaps {
-    size_t struct_size;                 /**< sizeof(BML_ConfigStoreCaps), must be first field */
-    BML_Version api_version;            /**< API version */
-    uint32_t feature_flags;             /**< Bitmask of BML_ConfigCapabilityFlags */
-    uint32_t supported_type_mask;       /**< Bitmask of supported BML_ConfigType values */
-    uint32_t max_category_length;       /**< Maximum category name length */
-    uint32_t max_name_length;           /**< Maximum key name length */
-    uint32_t max_string_bytes;          /**< Maximum string value length */
-    BML_ThreadingModel threading_model; /**< Threading model of Config APIs */
-} BML_ConfigStoreCaps;
-
-/**
- * @def BML_CONFIG_STORE_CAPS_INIT
- * @brief Static initializer for BML_ConfigStoreCaps
- */
-#define BML_CONFIG_STORE_CAPS_INIT { sizeof(BML_ConfigStoreCaps), BML_VERSION_INIT(0,0,0), 0, 0, 0, 0, 0, BML_THREADING_SINGLE }
-
-/**
- * @brief Get configuration store capabilities
- *
- * @param[out] out_caps Pointer to receive capabilities. Must not be NULL.
- *                      The struct_size field should be pre-initialized.
- *
- * @return BML_RESULT_OK on success
- * @return BML_RESULT_INVALID_ARGUMENT if out_caps is NULL
- *
- * @threadsafe Yes
- *
- * @code
- * BML_ConfigStoreCaps caps = BML_CONFIG_STORE_CAPS_INIT;
- * if (bmlConfigGetCaps(&caps) == BML_RESULT_OK) {
- *     printf("Max string: %u bytes\n", caps.max_string_bytes);
- * }
- * @endcode
- */
-typedef BML_Result (*PFN_BML_ConfigGetCaps)(BML_ConfigStoreCaps *out_caps);
 
 /**
  * @brief Get a configuration value
@@ -278,172 +268,94 @@ typedef BML_Result (*PFN_BML_ConfigEnumerate)(BML_Mod mod,
                                               BML_ConfigEnumCallback callback,
                                               void *user_data);
 
-extern PFN_BML_ConfigGet bmlConfigGet;
-extern PFN_BML_ConfigSet bmlConfigSet;
-extern PFN_BML_ConfigReset bmlConfigReset;
-extern PFN_BML_ConfigEnumerate bmlConfigEnumerate;
-extern PFN_BML_ConfigGetCaps bmlConfigGetCaps;
-
-/* Batch operations */
-extern PFN_BML_ConfigBatchBegin bmlConfigBatchBegin;
-extern PFN_BML_ConfigBatchSet bmlConfigBatchSet;
-extern PFN_BML_ConfigBatchCommit bmlConfigBatchCommit;
-extern PFN_BML_ConfigBatchDiscard bmlConfigBatchDiscard;
-
 /* ========================================================================
- * Type-Safe Config Accessors (Convenience Macros)
+ * Config Typed Shortcuts
  *
- * These inline macros provide type-safe access without the overhead of
- * separate API function pointers. They expand to calls to bmlConfigGet/Set
- * with proper type handling.
+ * Convenience wrappers that combine key lookup + type extraction in one call.
+ * If the key is not found, the default_value is returned with BML_RESULT_OK.
  * ======================================================================== */
 
 /**
- * @def BML_CONFIG_GET_INT
- * @brief Get an integer configuration value
- * @param mod Mod handle (can be NULL)
- * @param category Category string
- * @param name Key name string
- * @param out_value Pointer to int32_t to receive value
- * @return BML_Result
+ * @brief Get an integer config value with default fallback
+ *
+ * @param[in] mod Mod handle. Can be NULL to use current module context.
+ * @param[in] category Config category. Must not be NULL.
+ * @param[in] name Config key name. Must not be NULL.
+ * @param[in] default_value Value returned if key not found
+ * @param[out] out_value Receives the value. Must not be NULL.
+ *
+ * @return BML_RESULT_OK on success (key found or default returned)
+ * @return BML_RESULT_INVALID_ARGUMENT if category, name, or out_value is NULL
+ * @return BML_RESULT_CONFIG_TYPE_MISMATCH if key exists but is not an integer
+ *
+ * @threadsafe Yes
  */
-#define BML_CONFIG_GET_INT(mod, category, name, out_value) \
-    bml_config_get_int_inline((mod), (category), (name), (out_value))
+typedef BML_Result (*PFN_BML_ConfigGetInt)(BML_Mod mod, const char *category,
+                                           const char *name, int32_t default_value,
+                                           int32_t *out_value);
 
 /**
- * @def BML_CONFIG_GET_FLOAT
- * @brief Get a float configuration value
+ * @brief Get a float config value with default fallback
+ *
+ * @param[in] mod Mod handle. Can be NULL to use current module context.
+ * @param[in] category Config category. Must not be NULL.
+ * @param[in] name Config key name. Must not be NULL.
+ * @param[in] default_value Value returned if key not found
+ * @param[out] out_value Receives the value. Must not be NULL.
+ *
+ * @return BML_RESULT_OK on success (key found or default returned)
+ * @return BML_RESULT_INVALID_ARGUMENT if category, name, or out_value is NULL
+ * @return BML_RESULT_CONFIG_TYPE_MISMATCH if key exists but is not a float
+ *
+ * @threadsafe Yes
  */
-#define BML_CONFIG_GET_FLOAT(mod, category, name, out_value) \
-    bml_config_get_float_inline((mod), (category), (name), (out_value))
+typedef BML_Result (*PFN_BML_ConfigGetFloat)(BML_Mod mod, const char *category,
+                                              const char *name, float default_value,
+                                              float *out_value);
 
 /**
- * @def BML_CONFIG_GET_BOOL
- * @brief Get a boolean configuration value
+ * @brief Get a boolean config value with default fallback
+ *
+ * @param[in] mod Mod handle. Can be NULL to use current module context.
+ * @param[in] category Config category. Must not be NULL.
+ * @param[in] name Config key name. Must not be NULL.
+ * @param[in] default_value Value returned if key not found
+ * @param[out] out_value Receives the value. Must not be NULL.
+ *
+ * @return BML_RESULT_OK on success (key found or default returned)
+ * @return BML_RESULT_INVALID_ARGUMENT if category, name, or out_value is NULL
+ * @return BML_RESULT_CONFIG_TYPE_MISMATCH if key exists but is not a boolean
+ *
+ * @threadsafe Yes
  */
-#define BML_CONFIG_GET_BOOL(mod, category, name, out_value) \
-    bml_config_get_bool_inline((mod), (category), (name), (out_value))
+typedef BML_Result (*PFN_BML_ConfigGetBool)(BML_Mod mod, const char *category,
+                                             const char *name, BML_Bool default_value,
+                                             BML_Bool *out_value);
 
 /**
- * @def BML_CONFIG_GET_STRING
- * @brief Get a string configuration value
+ * @brief Get a string config value with default fallback
+ *
+ * @param[in] mod Mod handle. Can be NULL to use current module context.
+ * @param[in] category Config category. Must not be NULL.
+ * @param[in] name Config key name. Must not be NULL.
+ * @param[in] default_value Value returned if key not found (may be NULL)
+ * @param[out] out_value Receives pointer to the string. Must not be NULL.
+ *                       If default returned, points to default_value.
+ *
+ * @return BML_RESULT_OK on success (key found or default returned)
+ * @return BML_RESULT_INVALID_ARGUMENT if category, name, or out_value is NULL
+ * @return BML_RESULT_CONFIG_TYPE_MISMATCH if key exists but is not a string
+ *
+ * @threadsafe Yes (internally synchronized read)
+ * @warning The returned string pointer for found keys points into the config
+ *          store's internal storage. It is valid until the next ConfigSet or
+ *          ConfigReset on the same key. Copy immediately if needed across
+ *          mutation boundaries. When the default is returned, the pointer
+ *          equals default_value and has whatever lifetime the caller gave it.
  */
-#define BML_CONFIG_GET_STRING(mod, category, name, out_value) \
-    bml_config_get_string_inline((mod), (category), (name), (out_value))
-
-/**
- * @def BML_CONFIG_SET_INT
- * @brief Set an integer configuration value
- */
-#define BML_CONFIG_SET_INT(mod, category, name, value) \
-    bml_config_set_int_inline((mod), (category), (name), (value))
-
-/**
- * @def BML_CONFIG_SET_FLOAT
- * @brief Set a float configuration value
- */
-#define BML_CONFIG_SET_FLOAT(mod, category, name, value) \
-    bml_config_set_float_inline((mod), (category), (name), (value))
-
-/**
- * @def BML_CONFIG_SET_BOOL
- * @brief Set a boolean configuration value
- */
-#define BML_CONFIG_SET_BOOL(mod, category, name, value) \
-    bml_config_set_bool_inline((mod), (category), (name), (value))
-
-/**
- * @def BML_CONFIG_SET_STRING
- * @brief Set a string configuration value
- */
-#define BML_CONFIG_SET_STRING(mod, category, name, value) \
-    bml_config_set_string_inline((mod), (category), (name), (value))
-
-/* Inline helper functions for the macros above.
- * These require the global function pointers (bmlConfigGet, bmlConfigSet) to be available.
- * They are typically only usable in mod code that has loaded the BML API.
- */
-#if !defined(BML_NO_INLINE_HELPERS) && !defined(BML_TEST)
-static inline BML_Result bml_config_get_int_inline(BML_Mod mod, const char *category, const char *name, int32_t *out_value) {
-    if (!bmlConfigGet || !out_value) return BML_RESULT_INVALID_ARGUMENT;
-    BML_ConfigKey key = {sizeof(BML_ConfigKey), category, name};
-    BML_ConfigValue val = {sizeof(BML_ConfigValue), BML_CONFIG_INT, {0}};
-    BML_Result r = bmlConfigGet(mod, &key, &val);
-    if (r == BML_RESULT_OK) {
-        if (val.type != BML_CONFIG_INT) return BML_RESULT_CONFIG_TYPE_MISMATCH;
-        *out_value = val.data.int_value;
-    }
-    return r;
-}
-
-static inline BML_Result bml_config_get_float_inline(BML_Mod mod, const char *category, const char *name, float *out_value) {
-    if (!bmlConfigGet || !out_value) return BML_RESULT_INVALID_ARGUMENT;
-    BML_ConfigKey key = {sizeof(BML_ConfigKey), category, name};
-    BML_ConfigValue val = {sizeof(BML_ConfigValue), BML_CONFIG_FLOAT, {0}};
-    BML_Result r = bmlConfigGet(mod, &key, &val);
-    if (r == BML_RESULT_OK) {
-        if (val.type != BML_CONFIG_FLOAT) return BML_RESULT_CONFIG_TYPE_MISMATCH;
-        *out_value = val.data.float_value;
-    }
-    return r;
-}
-
-static inline BML_Result bml_config_get_bool_inline(BML_Mod mod, const char *category, const char *name, BML_Bool *out_value) {
-    if (!bmlConfigGet || !out_value) return BML_RESULT_INVALID_ARGUMENT;
-    BML_ConfigKey key = {sizeof(BML_ConfigKey), category, name};
-    BML_ConfigValue val = {sizeof(BML_ConfigValue), BML_CONFIG_BOOL, {0}};
-    BML_Result r = bmlConfigGet(mod, &key, &val);
-    if (r == BML_RESULT_OK) {
-        if (val.type != BML_CONFIG_BOOL) return BML_RESULT_CONFIG_TYPE_MISMATCH;
-        *out_value = val.data.bool_value;
-    }
-    return r;
-}
-
-static inline BML_Result bml_config_get_string_inline(BML_Mod mod, const char *category, const char *name, const char **out_value) {
-    if (!bmlConfigGet || !out_value) return BML_RESULT_INVALID_ARGUMENT;
-    BML_ConfigKey key = {sizeof(BML_ConfigKey), category, name};
-    BML_ConfigValue val = {sizeof(BML_ConfigValue), BML_CONFIG_STRING, {0}};
-    BML_Result r = bmlConfigGet(mod, &key, &val);
-    if (r == BML_RESULT_OK) {
-        if (val.type != BML_CONFIG_STRING) return BML_RESULT_CONFIG_TYPE_MISMATCH;
-        *out_value = val.data.string_value;
-    }
-    return r;
-}
-
-static inline BML_Result bml_config_set_int_inline(BML_Mod mod, const char *category, const char *name, int32_t value) {
-    if (!bmlConfigSet) return BML_RESULT_NOT_SUPPORTED;
-    BML_ConfigKey key = {sizeof(BML_ConfigKey), category, name};
-    BML_ConfigValue val = {sizeof(BML_ConfigValue), BML_CONFIG_INT, {0}};
-    val.data.int_value = value;
-    return bmlConfigSet(mod, &key, &val);
-}
-
-static inline BML_Result bml_config_set_float_inline(BML_Mod mod, const char *category, const char *name, float value) {
-    if (!bmlConfigSet) return BML_RESULT_NOT_SUPPORTED;
-    BML_ConfigKey key = {sizeof(BML_ConfigKey), category, name};
-    BML_ConfigValue val = {sizeof(BML_ConfigValue), BML_CONFIG_FLOAT, {0}};
-    val.data.float_value = value;
-    return bmlConfigSet(mod, &key, &val);
-}
-
-static inline BML_Result bml_config_set_bool_inline(BML_Mod mod, const char *category, const char *name, BML_Bool value) {
-    if (!bmlConfigSet) return BML_RESULT_NOT_SUPPORTED;
-    BML_ConfigKey key = {sizeof(BML_ConfigKey), category, name};
-    BML_ConfigValue val = {sizeof(BML_ConfigValue), BML_CONFIG_BOOL, {0}};
-    val.data.bool_value = value;
-    return bmlConfigSet(mod, &key, &val);
-}
-
-static inline BML_Result bml_config_set_string_inline(BML_Mod mod, const char *category, const char *name, const char *value) {
-    if (!bmlConfigSet) return BML_RESULT_NOT_SUPPORTED;
-    BML_ConfigKey key = {sizeof(BML_ConfigKey), category, name};
-    BML_ConfigValue val = {sizeof(BML_ConfigValue), BML_CONFIG_STRING, {0}};
-    val.data.string_value = value;
-    return bmlConfigSet(mod, &key, &val);
-}
-#endif /* !BML_NO_INLINE_HELPERS && !BML_TEST */
+typedef BML_Result (*PFN_BML_ConfigGetString)(BML_Mod mod, const char *category,
+                                               const char *name, const char *default_value,
+                                               const char **out_value);
 
 /* ========================================================================
  * Config Load Hooks (for observing config file loading)
@@ -490,8 +402,6 @@ typedef struct BML_ConfigLoadHooks {
  */
 typedef BML_Result (*PFN_BML_RegisterConfigLoadHooks)(const BML_ConfigLoadHooks *hooks);
 
-extern PFN_BML_RegisterConfigLoadHooks bmlRegisterConfigLoadHooks;
-
 BML_END_CDECLS
 
 /* ========================================================================
@@ -522,8 +432,6 @@ BML_CONFIG_STATIC_ASSERT(BML_CONFIG_OFFSETOF(BML_ConfigKey, struct_size) == 0,
                          "BML_ConfigKey.struct_size must be at offset 0");
 BML_CONFIG_STATIC_ASSERT(BML_CONFIG_OFFSETOF(BML_ConfigValue, struct_size) == 0,
                          "BML_ConfigValue.struct_size must be at offset 0");
-BML_CONFIG_STATIC_ASSERT(BML_CONFIG_OFFSETOF(BML_ConfigStoreCaps, struct_size) == 0,
-                         "BML_ConfigStoreCaps.struct_size must be at offset 0");
 
 /* Verify enum sizes are 32-bit */
 BML_CONFIG_STATIC_ASSERT(sizeof(BML_ConfigType) == sizeof(int32_t),

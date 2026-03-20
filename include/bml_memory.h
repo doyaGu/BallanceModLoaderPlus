@@ -187,44 +187,6 @@ typedef struct BML_MemoryStats {
  */
 typedef BML_Result (*PFN_BML_GetMemoryStats)(BML_MemoryStats *out_stats);
 
-/* ========== Capability Query ========== */
-
-typedef enum BML_MemoryCapabilityFlags {
-    BML_MEMORY_CAP_BASIC_ALLOC      = 1u << 0,  /**< Basic alloc/free */
-    BML_MEMORY_CAP_ALIGNED_ALLOC    = 1u << 1,  /**< Aligned allocation */
-    BML_MEMORY_CAP_MEMORY_POOLS     = 1u << 2,  /**< Memory pool support */
-    BML_MEMORY_CAP_STATISTICS       = 1u << 3,  /**< Memory stats tracking */
-    BML_MEMORY_CAP_DEBUG_INFO       = 1u << 4   /**< Debug allocation info */
-} BML_MemoryCapabilityFlags;
-
-typedef struct BML_MemoryCaps {
-    uint32_t struct_size;
-    BML_Version api_version;
-    uint32_t capability_flags;
-    size_t default_alignment;      /**< Default memory alignment in bytes */
-    size_t min_pool_block_size;    /**< Minimum pool block size */
-    size_t max_pool_block_size;    /**< Maximum pool block size */
-    BML_ThreadingModel threading_model;
-} BML_MemoryCaps;
-
-typedef BML_Result (*PFN_BML_MemoryGetCaps)(BML_MemoryCaps *out_caps);
-
-/* ========== Global Function Pointers ========== */
-
-extern PFN_BML_Alloc              bmlAlloc;
-extern PFN_BML_Calloc             bmlCalloc;
-extern PFN_BML_Realloc            bmlRealloc;
-extern PFN_BML_Free               bmlFree;
-extern PFN_BML_AllocAligned       bmlAllocAligned;
-extern PFN_BML_FreeAligned        bmlFreeAligned;
-
-extern PFN_BML_MemoryPoolCreate   bmlMemoryPoolCreate;
-extern PFN_BML_MemoryPoolAlloc    bmlMemoryPoolAlloc;
-extern PFN_BML_MemoryPoolFree     bmlMemoryPoolFree;
-extern PFN_BML_MemoryPoolDestroy  bmlMemoryPoolDestroy;
-
-extern PFN_BML_GetMemoryStats     bmlGetMemoryStats;
-extern PFN_BML_MemoryGetCaps      bmlMemoryGetCaps;
 
 BML_END_CDECLS
 

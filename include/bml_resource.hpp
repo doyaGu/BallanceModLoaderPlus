@@ -8,6 +8,7 @@
 #ifndef BML_RESOURCE_HPP
 #define BML_RESOURCE_HPP
 
+#include "bml_builtin_interfaces.h"
 #include "bml_resource.h"
 #include "bml_errors.h"
 
@@ -16,33 +17,6 @@
 #include <utility>
 
 namespace bml {
-    // ============================================================================
-    // Resource Capabilities Query
-    // ============================================================================
-
-    /**
-     * @brief Query resource subsystem capabilities
-     * @return Capabilities if successful
-     */
-    inline std::optional<BML_ResourceCaps> GetResourceCaps() {
-        if (!bmlResourceGetCaps) return std::nullopt;
-        BML_ResourceCaps caps = BML_RESOURCE_CAPS_INIT;
-        if (bmlResourceGetCaps(&caps) == BML_RESULT_OK) {
-            return caps;
-        }
-        return std::nullopt;
-    }
-
-    /**
-     * @brief Check if a resource capability is available
-     * @param flag Capability flag to check
-     * @return true if capability is available
-     */
-    inline bool HasResourceCap(BML_ResourceCapabilityFlags flag) {
-        auto caps = GetResourceCaps();
-        return caps && (caps->capability_flags & flag);
-    }
-
     // ============================================================================
     // Handle Wrapper
     // ============================================================================
@@ -71,13 +45,15 @@ namespace bml {
          * @return Handle instance
          * @throws bml::Exception if creation fails
          */
-        static Handle create(BML_HandleType type) {
-            if (!bmlHandleCreate) {
+        static Handle create(BML_HandleType type,
+                             const BML_CoreResourceInterface *resourceInterface = nullptr) {
+            if (!resourceInterface || !resourceInterface->HandleCreate) {
                 throw Exception(BML_RESULT_NOT_FOUND, "Handle API unavailable");
             }
 
             Handle h;
-            auto result = bmlHandleCreate(type, &h.m_desc);
+            h.m_ResourceInterface = resourceInterface;
+            auto result = resourceInterface->HandleCreate(type, &h.m_desc);
             if (result != BML_RESULT_OK) {
                 throw Exception(result, "Failed to create handle");
             }
@@ -90,11 +66,14 @@ namespace bml {
          * @param type Handle type identifier
          * @return Handle if successful
          */
-        static std::optional<Handle> tryCreate(BML_HandleType type) {
-            if (!bmlHandleCreate) return std::nullopt;
+        static std::optional<Handle> tryCreate(
+            BML_HandleType type,
+            const BML_CoreResourceInterface *resourceInterface = nullptr) {
+            if (!resourceInterface || !resourceInterface->HandleCreate) return std::nullopt;
 
             Handle h;
-            if (bmlHandleCreate(type, &h.m_desc) == BML_RESULT_OK) {
+            h.m_ResourceInterface = resourceInterface;
+            if (resourceInterface->HandleCreate(type, &h.m_desc) == BML_RESULT_OK) {
                 h.m_valid = true;
                 return h;
             }
@@ -106,12 +85,14 @@ namespace bml {
          * @param desc Handle descriptor
          * @param owns Whether to take ownership (release on destruction)
          */
-        explicit Handle(const BML_HandleDesc &desc, bool owns = false)
-            : m_desc(desc), m_valid(true), m_owns(owns) {}
+        explicit Handle(const BML_HandleDesc &desc,
+                        bool owns = false,
+                        const BML_CoreResourceInterface *resourceInterface = nullptr)
+            : m_desc(desc), m_valid(true), m_owns(owns), m_ResourceInterface(resourceInterface) {}
 
         ~Handle() {
-            if (m_valid && m_owns && bmlHandleRelease) {
-                bmlHandleRelease(&m_desc);
+            if (m_valid && m_owns && m_ResourceInterface && m_ResourceInterface->HandleRelease) {
+                m_ResourceInterface->HandleRelease(&m_desc);
             }
         }
 
@@ -121,21 +102,27 @@ namespace bml {
 
         // Movable
         Handle(Handle &&other) noexcept
-            : m_desc(other.m_desc), m_valid(other.m_valid), m_owns(other.m_owns) {
+            : m_desc(other.m_desc),
+              m_valid(other.m_valid),
+              m_owns(other.m_owns),
+              m_ResourceInterface(other.m_ResourceInterface) {
             other.m_valid = false;
             other.m_owns = false;
+            other.m_ResourceInterface = nullptr;
         }
 
         Handle &operator=(Handle &&other) noexcept {
             if (this != &other) {
-                if (m_valid && m_owns && bmlHandleRelease) {
-                    bmlHandleRelease(&m_desc);
+                if (m_valid && m_owns && m_ResourceInterface && m_ResourceInterface->HandleRelease) {
+                    m_ResourceInterface->HandleRelease(&m_desc);
                 }
                 m_desc = other.m_desc;
                 m_valid = other.m_valid;
                 m_owns = other.m_owns;
+                m_ResourceInterface = other.m_ResourceInterface;
                 other.m_valid = false;
                 other.m_owns = false;
+                other.m_ResourceInterface = nullptr;
             }
             return *this;
         }
@@ -145,8 +132,8 @@ namespace bml {
          * @return true if successful
          */
         bool retain() {
-            if (!m_valid || !bmlHandleRetain) return false;
-            return bmlHandleRetain(&m_desc) == BML_RESULT_OK;
+            if (!m_valid || !m_ResourceInterface || !m_ResourceInterface->HandleRetain) return false;
+            return m_ResourceInterface->HandleRetain(&m_desc) == BML_RESULT_OK;
         }
 
         /**
@@ -154,8 +141,8 @@ namespace bml {
          * @return true if successful
          */
         bool release() {
-            if (!m_valid || !bmlHandleRelease) return false;
-            auto result = bmlHandleRelease(&m_desc);
+            if (!m_valid || !m_ResourceInterface || !m_ResourceInterface->HandleRelease) return false;
+            auto result = m_ResourceInterface->HandleRelease(&m_desc);
             if (result == BML_RESULT_OK) {
                 m_valid = false;
             }
@@ -167,9 +154,9 @@ namespace bml {
          * @return true if handle is valid
          */
         bool validate() const {
-            if (!m_valid || !bmlHandleValidate) return false;
+            if (!m_valid || !m_ResourceInterface || !m_ResourceInterface->HandleValidate) return false;
             BML_Bool valid = BML_FALSE;
-            if (bmlHandleValidate(&m_desc, &valid) == BML_RESULT_OK) {
+            if (m_ResourceInterface->HandleValidate(&m_desc, &valid) == BML_RESULT_OK) {
                 return valid != BML_FALSE;
             }
             return false;
@@ -181,8 +168,8 @@ namespace bml {
          * @return true if successful
          */
         bool attachUserData(void *data) {
-            if (!m_valid || !bmlHandleAttachUserData) return false;
-            return bmlHandleAttachUserData(&m_desc, data) == BML_RESULT_OK;
+            if (!m_valid || !m_ResourceInterface || !m_ResourceInterface->HandleAttachUserData) return false;
+            return m_ResourceInterface->HandleAttachUserData(&m_desc, data) == BML_RESULT_OK;
         }
 
         /**
@@ -190,9 +177,9 @@ namespace bml {
          * @return User data pointer, or nullptr if not set or error
          */
         void *getUserData() const {
-            if (!m_valid || !bmlHandleGetUserData) return nullptr;
+            if (!m_valid || !m_ResourceInterface || !m_ResourceInterface->HandleGetUserData) return nullptr;
             void *data = nullptr;
-            if (bmlHandleGetUserData(&m_desc, &data) == BML_RESULT_OK) {
+            if (m_ResourceInterface->HandleGetUserData(&m_desc, &data) == BML_RESULT_OK) {
                 return data;
             }
             return nullptr;
@@ -237,6 +224,7 @@ namespace bml {
         BML_HandleDesc m_desc{};
         bool m_valid = false;
         bool m_owns = true;
+        const BML_CoreResourceInterface *m_ResourceInterface = nullptr;
     };
 
     // ============================================================================
@@ -264,13 +252,15 @@ namespace bml {
          * @return SharedHandle instance
          * @throws bml::Exception if creation fails
          */
-        static SharedHandle create(BML_HandleType type) {
-            if (!bmlHandleCreate) {
+        static SharedHandle create(BML_HandleType type,
+                                   const BML_CoreResourceInterface *resourceInterface = nullptr) {
+            if (!resourceInterface || !resourceInterface->HandleCreate) {
                 throw Exception(BML_RESULT_NOT_FOUND, "Handle API unavailable");
             }
 
             auto impl = std::make_shared<Impl>();
-            auto result = bmlHandleCreate(type, &impl->desc);
+            impl->resource_interface = resourceInterface;
+            auto result = resourceInterface->HandleCreate(type, &impl->desc);
             if (result != BML_RESULT_OK) {
                 throw Exception(result, "Failed to create handle");
             }
@@ -286,11 +276,14 @@ namespace bml {
          * @param type Handle type identifier
          * @return SharedHandle if successful
          */
-        static std::optional<SharedHandle> tryCreate(BML_HandleType type) {
-            if (!bmlHandleCreate) return std::nullopt;
+        static std::optional<SharedHandle> tryCreate(
+            BML_HandleType type,
+            const BML_CoreResourceInterface *resourceInterface = nullptr) {
+            if (!resourceInterface || !resourceInterface->HandleCreate) return std::nullopt;
 
             auto impl = std::make_shared<Impl>();
-            if (bmlHandleCreate(type, &impl->desc) == BML_RESULT_OK) {
+            impl->resource_interface = resourceInterface;
+            if (resourceInterface->HandleCreate(type, &impl->desc) == BML_RESULT_OK) {
                 impl->valid = true;
                 SharedHandle h;
                 h.m_impl = std::move(impl);
@@ -308,23 +301,32 @@ namespace bml {
         SharedHandle &operator=(SharedHandle &&) = default;
 
         bool validate() const {
-            if (!m_impl || !m_impl->valid || !bmlHandleValidate) return false;
+            if (!m_impl || !m_impl->valid || !m_impl->resource_interface
+                || !m_impl->resource_interface->HandleValidate) {
+                return false;
+            }
             BML_Bool valid = BML_FALSE;
-            if (bmlHandleValidate(&m_impl->desc, &valid) == BML_RESULT_OK) {
+            if (m_impl->resource_interface->HandleValidate(&m_impl->desc, &valid) == BML_RESULT_OK) {
                 return valid != BML_FALSE;
             }
             return false;
         }
 
         bool attachUserData(void *data) {
-            if (!m_impl || !m_impl->valid || !bmlHandleAttachUserData) return false;
-            return bmlHandleAttachUserData(&m_impl->desc, data) == BML_RESULT_OK;
+            if (!m_impl || !m_impl->valid || !m_impl->resource_interface
+                || !m_impl->resource_interface->HandleAttachUserData) {
+                return false;
+            }
+            return m_impl->resource_interface->HandleAttachUserData(&m_impl->desc, data) == BML_RESULT_OK;
         }
 
         void *getUserData() const {
-            if (!m_impl || !m_impl->valid || !bmlHandleGetUserData) return nullptr;
+            if (!m_impl || !m_impl->valid || !m_impl->resource_interface
+                || !m_impl->resource_interface->HandleGetUserData) {
+                return nullptr;
+            }
             void *data = nullptr;
-            if (bmlHandleGetUserData(&m_impl->desc, &data) == BML_RESULT_OK) {
+            if (m_impl->resource_interface->HandleGetUserData(&m_impl->desc, &data) == BML_RESULT_OK) {
                 return data;
             }
             return nullptr;
@@ -358,10 +360,11 @@ namespace bml {
         struct Impl {
             BML_HandleDesc desc = BML_HANDLE_DESC_INIT;
             bool valid = false;
+            const BML_CoreResourceInterface *resource_interface = nullptr;
 
             ~Impl() {
-                if (valid && bmlHandleRelease) {
-                    bmlHandleRelease(&desc);
+                if (valid && resource_interface && resource_interface->HandleRelease) {
+                    resource_interface->HandleRelease(&desc);
                 }
             }
         };

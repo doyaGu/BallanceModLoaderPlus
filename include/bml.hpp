@@ -5,32 +5,33 @@
  * Provides RAII-friendly, exception-safe, and idiomatic C++ interface
  * over the C API. Use this in C++ code for better ergonomics.
  * 
- * This header includes all BML C++ wrapper components:
- *   - bml_context.hpp   - Context wrapper and API loading
- *   - bml_config.hpp    - Configuration access
- *   - bml_imc.hpp       - Inter-Mod Communication
- *   - bml_extension.hpp - Extension management
- *   - bml_logger.hpp    - Logging utilities
- *   - bml_capability.hpp - Capability queries and API discovery
- *   - bml_result.hpp    - Result type for error handling
- *   - bml_core.hpp      - Core utilities (version, mod, shutdown hooks)
- *   - bml_sync.hpp      - Synchronization primitives (mutex, rwlock, etc.)
- *   - bml_memory.hpp    - Memory allocation utilities
- *   - bml_resource.hpp  - Resource handle management
- *   - bml_profiling.hpp - Profiling and tracing utilities
+ * This header includes the default BML C++ wrapper components:
+ *   - bml_context.hpp    - Context wrapper and API loading
+ *   - bml_core.hpp       - Core utilities (version, mod, shutdown hooks)
+ *   - bml_config.hpp     - Configuration access
+ *   - bml_logger.hpp     - Logging utilities
+ *   - bml_imc.hpp        - Inter-Mod Communication
+ *   - bml_interface.hpp  - Interface lease and traits
+ *   - bml_services.hpp   - BuiltinServices, RuntimeServiceHub, ModuleServices
+ *   - bml_result.hpp     - Result type for error handling
+ *   - bml_memory.hpp     - Memory allocation utilities
+ *   - bml_resource.hpp   - Resource handle management
+ *   - bml_locale.hpp     - Localization
+ *   - bml_timer.hpp      - Timer scheduling
+ *   - bml_hook.hpp       - Hook registry
  *   - bml_hot_reload.hpp - Hot reload lifecycle events
- * 
+ *
  * Usage:
  *   #include <bml.hpp>
  *   
- *   // Initialize (typically in BMLPlus or host)
+ *   // Initialize the bootstrap minimum (typically in BMLPlus or host)
  *   if (!bml::LoadAPI(get_proc_fn)) {
  *       // Handle error
  *   }
  *   
- *   // Use wrapper classes
- *   bml::Context ctx = bml::GetGlobalContext();
- *   bml::Config config(mod);
+ *   auto configApi = bml::AcquireInterface<BML_CoreConfigInterface>(
+ *       BML_CORE_CONFIG_INTERFACE_ID, 1);
+ *   bml::Config config(mod, configApi.Get());
  *   config.SetString("mymod", "key", "value");
  *   
  *   auto value = config.GetString("mymod", "key").value_or("default");
@@ -51,18 +52,13 @@
 
 // Communication
 #include "bml_imc.hpp"        // Imc, Imc::Subscription, ImcCallback
+#include "bml_interface.hpp"  // InterfaceLease, AcquireInterface
 
-// Extensions
-#include "bml_extension.hpp"  // Extension
-
-// Capabilities and Discovery
-#include "bml_capability.hpp" // QueryCapabilities, HasCapability, CheckCompatibility, ApiDescriptor
+// Services
+#include "bml_services.hpp"   // BuiltinServices, RuntimeServiceHub, ModuleServices
 
 // Error Handling
 #include "bml_result.hpp"     // Result<T>, Ok, Err, BML_TRY, BML_TRY_ASSIGN
-
-// Synchronization
-#include "bml_sync.hpp"       // Mutex, RwLock, Semaphore, CondVar, SpinLock, ThreadLocal
 
 // Memory
 #include "bml_memory.hpp"     // Alloc, Free, MemoryPool, UniquePtr
@@ -70,8 +66,14 @@
 // Resources
 #include "bml_resource.hpp"   // Handle, SharedHandle
 
-// Profiling
-#include "bml_profiling.hpp"  // ScopedTrace, Timer, trace functions
+// Localization
+#include "bml_locale.hpp"     // Locale
+
+// Timer
+#include "bml_timer.hpp"      // TimerService
+
+// Hook Registry
+#include "bml_hook.hpp"       // HookRegistration, HookRegistry, HookInfo
 
 // Hot Reload
 #include "bml_hot_reload.hpp" // ModLifecycleEvent, ModLifecycleEventBuilder

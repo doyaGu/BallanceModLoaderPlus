@@ -5,7 +5,6 @@
 #include "bml_errors.h"   /* Includes diagnostics */
 #include "bml_bootstrap.h"
 #include "bml_version.h"
-#include "bml_api_ids.h"
 
 BML_BEGIN_CDECLS
 
@@ -21,47 +20,33 @@ BML_BEGIN_CDECLS
 #   endif
 #endif
 
-/**
- * @brief 32-bit API identifier for fast lookup
- * 
- * CRITICAL: IDs are explicitly assigned and PERMANENT (like syscall numbers).
- * Once assigned, an ID never changes across BML versions, ensuring binary compatibility.
- * 
- * All API IDs are defined in bml_api_ids.h and must remain stable.
- * Using integer IDs instead of string lookups provides:
- * - ~3-5x faster lookup (direct integer map access)
- * - Better cache locality
- * - Zero allocation overhead
- * - Guaranteed stability across versions
- */
-typedef uint32_t BML_ApiId;
-
 typedef void *(*PFN_BML_GetProcAddress)(const char *proc_name);
-typedef void *(*PFN_BML_GetProcAddressById)(BML_ApiId api_id);
-typedef int (*PFN_BML_GetApiId)(const char *proc_name, BML_ApiId *out_id);
 
 typedef enum BML_ModEntrypointCommand {
 	BML_MOD_ENTRYPOINT_ATTACH = 1,
-	BML_MOD_ENTRYPOINT_DETACH = 2
+	BML_MOD_ENTRYPOINT_PREPARE_DETACH = 2,
+	BML_MOD_ENTRYPOINT_DETACH = 3
 } BML_ModEntrypointCommand;
 
-#define BML_MOD_ENTRYPOINT_API_VERSION 2u
+#define BML_MOD_ENTRYPOINT_API_VERSION 5u
 
+/*
+ * `get_proc` is the authoritative extensibility path for module bootstrap.
+ * `service_hub` is an optional typed snapshot for convenience wrappers and
+ * may be NULL even when `get_proc` is valid.
+ */
 typedef struct BML_ModAttachArgs {
 	uint32_t struct_size;
 	uint32_t api_version;
 	BML_Mod mod;
 	PFN_BML_GetProcAddress get_proc;
-	PFN_BML_GetProcAddressById get_proc_by_id;
-	PFN_BML_GetApiId get_api_id;
-	void *reserved;
+    const void *service_hub;   /* Optional service hub snapshot; may be NULL. */
 } BML_ModAttachArgs;
 
 typedef struct BML_ModDetachArgs {
 	uint32_t struct_size;
 	uint32_t api_version;
 	BML_Mod mod;
-	void *reserved;
 } BML_ModDetachArgs;
 
 typedef BML_Result (*PFN_BML_ModEntrypoint)(BML_ModEntrypointCommand command, void *command_args);
@@ -76,37 +61,10 @@ BML_API void bmlDetach(void);
 BML_API void bmlShutdown(void);
 BML_API BML_BootstrapState bmlGetBootstrapState(void);
 
-/* API lookup - String-based */
+/* API lookup */
 BML_API void *bmlGetProcAddress(const char *proc_name);
 
-/* API lookup - ID-based fast path */
-/**
- * @brief Get API pointer using pre-computed ID (fast path)
- * 
- * Performance: ~3-5x faster than bmlGetProcAddress()
- * 
- * @param api_id Pre-computed API ID (from compile-time macro or runtime query)
- * @return API function pointer, or NULL if not registered
- * 
- * @code
- * // C: Runtime query
- * BML_ApiId id;
- * if (bmlGetApiId("bmlImcPublish", &id)) {
- *     PFN_BML_ImcPublish publish = (PFN_BML_ImcPublish)bmlGetProcAddressById(id);
- * }
- * @endcode
- */
-BML_API void *bmlGetProcAddressById(BML_ApiId api_id);
-
-/**
- * @brief Get API ID for registered API name
- * 
- * @param proc_name API function name (e.g., "bmlImcPublish")
- * @param out_id Receives the 32-bit API ID
- * @return 1 if found, 0 if not registered
- */
-BML_API int bmlGetApiId(const char *proc_name, BML_ApiId *out_id);
-
+/* Thread-local diagnostics snapshot; valid until the next call on the same thread. */
 BML_API const BML_BootstrapDiagnostics *bmlGetBootstrapDiagnostics(void);
 
 /* 

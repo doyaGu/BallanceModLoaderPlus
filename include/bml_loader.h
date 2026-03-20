@@ -3,57 +3,110 @@
 
 #include "bml_types.h"
 #include "bml_export.h"
-#include "bml_errors.h"   /* Includes diagnostics */
+#include "bml_errors.h"
 #include "bml_config.h"
 #include "bml_core.h"
-#include "bml_extension.h"
 #include "bml_imc.h"
 #include "bml_logging.h"
 #include "bml_resource.h"
 #include "bml_memory.h"
+#include "bml_interface.h"
 #include "bml_sync.h"
 #include "bml_profiling.h"
-#include "bml_api_tracing.h"
-#include "bml_capabilities.h"
+#include "bml_builtin_interfaces.h"
 
 BML_BEGIN_CDECLS
 
 /*
- * Usage (header-only, GLAD-style):
+ * Header-only bootstrap loader (GLAD-style).
  *
  *   In ONE .cpp file (typically your main .cpp):
  *     #define BML_LOADER_IMPLEMENTATION
  *     #include <bml_loader.h>
- *   
- *   In other .cpp files that need to call BML APIs:
+ *
+ *   In other .cpp files that need the bootstrap globals:
  *     #include <bml_loader.h>  // Gets extern declarations
+ *
+ * bmlLoadAPI populates only the bootstrap minimum:
+ *   - bmlGetProcAddress (validated through the callback argument)
+ *   - bmlInterfaceAcquire
+ *   - bmlInterfaceRelease
+ *   - bmlSetCurrentModule
+ *
+ * All other runtime APIs should be resolved through acquired builtin
+ * interfaces or module-local get_proc calls.
  */
 
-/*
- * Call bmlLoadAPI at the very beginning of your mod entry point to populate
- * the global function pointers. Name-based lookup is mandatory because mods
- * may need to query dynamically appended APIs; ID-based lookup is an optional
- * fast path for the built-in stable API surface.
- */
-BML_Result bmlLoadAPI(PFN_BML_GetProcAddress get_proc,
-					  PFN_BML_GetProcAddressById get_proc_by_id);
+BML_Result bmlLoadAPI(PFN_BML_GetProcAddress get_proc);
+void       bmlUnloadAPI(void);
+BML_Bool   bmlIsApiLoaded(void);
+size_t     bmlGetApiCount(void);
+size_t     bmlGetRequiredApiCount(void);
 
-/*
- * Reset every global function pointer back to nullptr. Call this during mod
- * shutdown.
- */
-void bmlUnloadAPI(void);
+#define BML_BOOTSTRAP_LOAD(get_proc) bmlLoadAPI((get_proc))
 
-/* Query whether the API is currently loaded (defensive check). */
-BML_Bool bmlIsApiLoaded(void);
+/* ========================================================================
+ * Bootstrap Global Pointer Declarations (3 pointers, 4 symbols)
+ * ======================================================================== */
 
-/* Get total number of APIs in the loader. */
-size_t bmlGetApiCount(void);
+#ifdef BML_LOADER_IMPLEMENTATION
 
-/* Get number of required APIs that must be present for loading to succeed. */
-size_t bmlGetRequiredApiCount(void);
+/* Definitions */
+PFN_BML_SetCurrentModule bmlSetCurrentModule = NULL;
+PFN_BML_InterfaceAcquire bmlInterfaceAcquire = NULL;
+PFN_BML_InterfaceRelease bmlInterfaceRelease = NULL;
 
-#include "bml_loader_autogen.h"
+static void bmlResetApiPointers(void) {
+    bmlSetCurrentModule = NULL;
+    bmlInterfaceAcquire = NULL;
+    bmlInterfaceRelease = NULL;
+}
+
+BML_Result bmlLoadAPI(PFN_BML_GetProcAddress get_proc) {
+    if (!get_proc)
+        return BML_RESULT_INVALID_ARGUMENT;
+
+    bmlUnloadAPI();
+
+    if (!get_proc("bmlGetProcAddress"))
+        return BML_RESULT_NOT_FOUND;
+
+    bmlInterfaceAcquire = (PFN_BML_InterfaceAcquire) get_proc("bmlInterfaceAcquire");
+    bmlInterfaceRelease = (PFN_BML_InterfaceRelease) get_proc("bmlInterfaceRelease");
+    bmlSetCurrentModule = (PFN_BML_SetCurrentModule) get_proc("bmlSetCurrentModule");
+
+    if (!bmlInterfaceAcquire || !bmlInterfaceRelease || !bmlSetCurrentModule) {
+        bmlUnloadAPI();
+        return BML_RESULT_NOT_FOUND;
+    }
+
+    return BML_RESULT_OK;
+}
+
+void bmlUnloadAPI(void) {
+    bmlResetApiPointers();
+}
+
+BML_Bool bmlIsApiLoaded(void) {
+    return (bmlInterfaceAcquire != NULL) ? BML_TRUE : BML_FALSE;
+}
+
+size_t bmlGetApiCount(void) {
+    return 4;
+}
+
+size_t bmlGetRequiredApiCount(void) {
+    return 4;
+}
+
+#else /* !BML_LOADER_IMPLEMENTATION */
+
+/* Extern declarations for non-implementation translation units */
+extern PFN_BML_SetCurrentModule bmlSetCurrentModule;
+extern PFN_BML_InterfaceAcquire bmlInterfaceAcquire;
+extern PFN_BML_InterfaceRelease bmlInterfaceRelease;
+
+#endif /* BML_LOADER_IMPLEMENTATION */
 
 BML_END_CDECLS
 

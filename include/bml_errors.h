@@ -8,7 +8,7 @@
  * This file consolidates all error-related functionality:
  * - Error code definitions (BML_Result values)
  * - Error checking macros (BML_SUCCEEDED, BML_FAILED, BML_CHECK, etc.)
- * - Error retrieval APIs (bmlGetLastError, bmlGetErrorString)
+ * - Error retrieval APIs exposed as runtime-resolved function pointers
  * - Bootstrap diagnostics structures
  * - C++ exception support
  */
@@ -29,7 +29,9 @@ typedef int32_t BML_Result;
  * 
  * All BML APIs return BML_Result to indicate success or failure.
  * Use BML_SUCCEEDED() and BML_FAILED() macros for result checking.
- * Use bmlGetLastError() to retrieve detailed error information.
+ * Use PFN_BML_GetLastError to retrieve detailed error information after
+ * resolving it through `bmlGetProcAddress(...)` or acquiring
+ * `bml.core.diagnostic`.
  * 
  * Error code ranges:
  *   -   0       : Success
@@ -143,6 +145,8 @@ enum {
     BML_RESULT_NOT_INITIALIZED = -19,       /**< Subsystem not initialized */
     BML_RESULT_ALREADY_INITIALIZED = -20,   /**< Subsystem already initialized */
     BML_RESULT_INTERNAL_ERROR = -21,        /**< Unexpected internal failure */
+    BML_RESULT_BUSY = -22,                  /**< Resource or module is busy */
+    BML_RESULT_WRONG_THREAD = -23,          /**< API called from the wrong thread */
     
     /* ========== Config API Errors (-100 to -199) ========== */
     BML_RESULT_CONFIG_KEY_NOT_FOUND = -100,     /**< Config key does not exist */
@@ -239,18 +243,6 @@ enum {
     BML_STATIC_ASSERT(sizeof(type) == sizeof(int32_t), \
                       #type " must be 32-bit")
 
-/**
- * @def BML_API_ID_CHECK
- * @brief Compile-time check for valid API ID range
- * 
- * @code
- * BML_API_ID_CHECK(BML_API_ID_bmlImcPublish);
- * @endcode
- */
-#define BML_API_ID_CHECK(id) \
-    BML_STATIC_ASSERT((id) > 0 && (id) < 10000, \
-                      "Invalid API ID: must be in range [1, 9999]")
-
 /* ========================================================================
  * Bootstrap Diagnostics (for mod loading errors)
  * ======================================================================== */
@@ -306,6 +298,10 @@ typedef struct BML_BootstrapLoadError {
  *
  * Query this after bmlDiscoverModules() to inspect manifest and dependency
  * issues, and again after bmlLoadModules() to inspect module load failures.
+ *
+ * When retrieved through `bmlGetBootstrapDiagnostics()`, the returned pointer
+ * refers to a thread-local snapshot. Its nested pointers remain valid until
+ * the next `bmlGetBootstrapDiagnostics()` call on the same thread.
  */
 typedef struct BML_BootstrapDiagnostics {
     const BML_BootstrapManifestError *manifest_errors;  /**< Array of manifest errors */
@@ -341,7 +337,7 @@ typedef struct BML_BootstrapDiagnostics {
  * BML_Result result = bmlSomeApi(...);
  * if (BML_FAILED(result)) {
  *     BML_ErrorInfo info = BML_ERROR_INFO_INIT;
- *     if (bmlGetLastError(&info) == BML_RESULT_OK) {
+ *     if (getLastError(&info) == BML_RESULT_OK) {
  *         printf("Error: %s (code %d)\n", info.message, info.result_code);
  *     }
  * }
@@ -361,20 +357,16 @@ typedef void (*PFN_BML_ClearLastError)(void);
  * 
  * @param[in] result The result code to convert
  * @return Static string describing the error (never NULL)
- * 
+ *
  * @threadsafe Yes (returns static strings)
+ * @lifetime static - returned pointer valid for process lifetime
  * 
  * @code
  * BML_Result result = bmlSomeApi(...);
- * printf("Result: %s\n", bmlGetErrorString(result));
+ * printf("Result: %s\n", getErrorString(result));
  * @endcode
  */
 typedef const char* (*PFN_BML_GetErrorString)(BML_Result result);
-
-/* Global function pointers */
-extern PFN_BML_GetLastError     bmlGetLastError;
-extern PFN_BML_ClearLastError   bmlClearLastError;
-extern PFN_BML_GetErrorString   bmlGetErrorString;
 
 BML_END_CDECLS
 
@@ -406,11 +398,19 @@ namespace bml {
 class Exception : public std::runtime_error {
 public:
     explicit Exception(BML_Result code)
-        : std::runtime_error(FormatMessage(code, nullptr))
+        : std::runtime_error(FormatMessage(code, nullptr, nullptr))
         , m_code(code) {}
-    
+
     Exception(BML_Result code, const char* context)
-        : std::runtime_error(FormatMessage(code, context))
+        : std::runtime_error(FormatMessage(code, context, nullptr))
+        , m_code(code) {}
+
+    Exception(BML_Result code, PFN_BML_GetErrorString error_string_fn)
+        : std::runtime_error(FormatMessage(code, nullptr, error_string_fn))
+        , m_code(code) {}
+
+    Exception(BML_Result code, const char* context, PFN_BML_GetErrorString error_string_fn)
+        : std::runtime_error(FormatMessage(code, context, error_string_fn))
         , m_code(code) {}
     
     /** @brief Get the BML_Result code */
@@ -419,11 +419,13 @@ public:
 private:
     BML_Result m_code;
     
-    static std::string FormatMessage(BML_Result code, const char* context) {
+    static std::string FormatMessage(BML_Result code,
+                                     const char* context,
+                                     PFN_BML_GetErrorString error_string_fn) {
         std::string msg = "BML error " + std::to_string(code);
-        if (bmlGetErrorString) {
+        if (error_string_fn) {
             msg += " (";
-            msg += bmlGetErrorString(code);
+            msg += error_string_fn(code);
             msg += ")";
         }
         if (context) {
@@ -469,10 +471,10 @@ inline void checked(Fn&& fn, const char* context) {
  * 
  * @return std::optional<BML_ErrorInfo> containing error info, or nullopt if unavailable
  */
-inline std::optional<BML_ErrorInfo> GetLastErrorInfo() {
-    if (!bmlGetLastError) return std::nullopt;
+inline std::optional<BML_ErrorInfo> GetLastErrorInfo(PFN_BML_GetLastError get_last_error_fn = nullptr) {
+    if (!get_last_error_fn) return std::nullopt;
     BML_ErrorInfo info = BML_ERROR_INFO_INIT;
-    if (bmlGetLastError(&info) == BML_RESULT_OK) {
+    if (get_last_error_fn(&info) == BML_RESULT_OK) {
         return info;
     }
     return std::nullopt;

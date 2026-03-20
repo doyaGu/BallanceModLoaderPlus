@@ -89,18 +89,20 @@ typedef BML_Result (*PFN_BML_MutexCreate)(BML_Mutex *out_mutex);
  * @param[in] mutex Mutex handle
  * 
  * @threadsafe No (ensure no thread holds the mutex)
- * 
+ *
  * @warning Destroying a locked mutex is undefined behavior
+ * @note Passing NULL handle is a safe no-op.
  */
 typedef void (*PFN_BML_MutexDestroy)(BML_Mutex mutex);
 
 /**
  * @brief Lock a mutex (blocking)
- * 
+ *
  * @param[in] mutex Mutex handle
- * 
+ *
  * @threadsafe Yes
- * 
+ *
+ * @note Passing NULL handle is a safe no-op.
  * @note Blocks until mutex is acquired
  * @warning Locking the same mutex twice from same thread causes deadlock
  */
@@ -132,11 +134,12 @@ typedef BML_Result (*PFN_BML_MutexLockTimeout)(BML_Mutex mutex, uint32_t timeout
 
 /**
  * @brief Unlock a mutex
- * 
+ *
  * @param[in] mutex Mutex handle
- * 
+ *
  * @threadsafe Yes
- * 
+ *
+ * @note Passing NULL handle is a safe no-op.
  * @warning Must be called by the thread that locked the mutex
  */
 typedef void (*PFN_BML_MutexUnlock)(BML_Mutex mutex);
@@ -476,32 +479,6 @@ typedef void *(*PFN_BML_TlsGet)(BML_TlsKey key);
  */
 typedef BML_Result (*PFN_BML_TlsSet)(BML_TlsKey key, void *value);
 
-/* ========== Capability Query ========== */
-
-typedef enum BML_SyncCapabilityFlags {
-    BML_SYNC_CAP_MUTEX          = 1u << 0,
-    BML_SYNC_CAP_RWLOCK         = 1u << 1,
-    BML_SYNC_CAP_ATOMICS        = 1u << 2,
-    BML_SYNC_CAP_SEMAPHORE      = 1u << 3,
-    BML_SYNC_CAP_TLS            = 1u << 4,
-    BML_SYNC_CAP_CONDVAR        = 1u << 5,  /**< Condition variable support */
-    BML_SYNC_CAP_SPINLOCK       = 1u << 6,  /**< Spin lock support */
-    _BML_SYNC_CAP_FORCE_32BIT   = 0x7FFFFFFF  /**< Force 32-bit enum */
-} BML_SyncCapabilityFlags;
-
-typedef struct BML_SyncCaps {
-    size_t struct_size;        /**< sizeof(BML_SyncCaps), must be first field */
-    BML_Version api_version;   /**< API version */
-    uint32_t capability_flags; /**< Bitmask of BML_SyncCapabilityFlags */
-} BML_SyncCaps;
-
-/**
- * @def BML_SYNC_CAPS_INIT
- * @brief Static initializer for BML_SyncCaps
- */
-#define BML_SYNC_CAPS_INIT { sizeof(BML_SyncCaps), BML_VERSION_INIT(0,0,0), 0 }
-
-typedef BML_Result (*PFN_BML_SyncGetCaps)(BML_SyncCaps *out_caps);
 
 /* ========== Condition Variable API ========== */
 
@@ -628,100 +605,6 @@ typedef BML_Bool (*PFN_BML_SpinLockTryLock)(BML_SpinLock lock);
  */
 typedef void (*PFN_BML_SpinLockUnlock)(BML_SpinLock lock);
 
-/* ========== Global Function Pointers ========== */
-
-/* Mutex */
-extern PFN_BML_MutexCreate          bmlMutexCreate;
-extern PFN_BML_MutexDestroy         bmlMutexDestroy;
-extern PFN_BML_MutexLock            bmlMutexLock;
-extern PFN_BML_MutexTryLock         bmlMutexTryLock;
-extern PFN_BML_MutexLockTimeout     bmlMutexLockTimeout;
-extern PFN_BML_MutexUnlock          bmlMutexUnlock;
-
-/* Read-Write Lock */
-extern PFN_BML_RwLockCreate             bmlRwLockCreate;
-extern PFN_BML_RwLockDestroy            bmlRwLockDestroy;
-extern PFN_BML_RwLockReadLock           bmlRwLockReadLock;
-extern PFN_BML_RwLockTryReadLock        bmlRwLockTryReadLock;
-extern PFN_BML_RwLockReadLockTimeout    bmlRwLockReadLockTimeout;
-extern PFN_BML_RwLockWriteLock          bmlRwLockWriteLock;
-extern PFN_BML_RwLockTryWriteLock       bmlRwLockTryWriteLock;
-extern PFN_BML_RwLockWriteLockTimeout   bmlRwLockWriteLockTimeout;
-extern PFN_BML_RwLockUnlock             bmlRwLockUnlock;
-extern PFN_BML_RwLockReadUnlock         bmlRwLockReadUnlock;
-extern PFN_BML_RwLockWriteUnlock        bmlRwLockWriteUnlock;
-
-/* Atomics */
-extern PFN_BML_AtomicIncrement32        bmlAtomicIncrement32;
-extern PFN_BML_AtomicDecrement32        bmlAtomicDecrement32;
-extern PFN_BML_AtomicAdd32              bmlAtomicAdd32;
-extern PFN_BML_AtomicCompareExchange32  bmlAtomicCompareExchange32;
-extern PFN_BML_AtomicExchange32         bmlAtomicExchange32;
-extern PFN_BML_AtomicLoadPtr            bmlAtomicLoadPtr;
-extern PFN_BML_AtomicStorePtr           bmlAtomicStorePtr;
-extern PFN_BML_AtomicCompareExchangePtr bmlAtomicCompareExchangePtr;
-
-/* Semaphore */
-extern PFN_BML_SemaphoreCreate      bmlSemaphoreCreate;
-extern PFN_BML_SemaphoreDestroy     bmlSemaphoreDestroy;
-extern PFN_BML_SemaphoreWait        bmlSemaphoreWait;
-extern PFN_BML_SemaphoreSignal      bmlSemaphoreSignal;
-
-/* TLS */
-extern PFN_BML_TlsCreate            bmlTlsCreate;
-extern PFN_BML_TlsDestroy           bmlTlsDestroy;
-extern PFN_BML_TlsGet               bmlTlsGet;
-extern PFN_BML_TlsSet               bmlTlsSet;
-
-/* Condition Variable */
-extern PFN_BML_CondVarCreate        bmlCondVarCreate;
-extern PFN_BML_CondVarDestroy       bmlCondVarDestroy;
-extern PFN_BML_CondVarWait          bmlCondVarWait;
-extern PFN_BML_CondVarWaitTimeout   bmlCondVarWaitTimeout;
-extern PFN_BML_CondVarSignal        bmlCondVarSignal;
-extern PFN_BML_CondVarBroadcast     bmlCondVarBroadcast;
-
-/* Spin Lock */
-extern PFN_BML_SpinLockCreate       bmlSpinLockCreate;
-extern PFN_BML_SpinLockDestroy      bmlSpinLockDestroy;
-extern PFN_BML_SpinLockLock         bmlSpinLockLock;
-extern PFN_BML_SpinLockTryLock      bmlSpinLockTryLock;
-extern PFN_BML_SpinLockUnlock       bmlSpinLockUnlock;
-
-/* Capability Query */
-extern PFN_BML_SyncGetCaps          bmlSyncGetCaps;
-
 BML_END_CDECLS
-
-/* ========================================================================
- * Compile-Time Assertions for ABI Stability
- * ======================================================================== */
-
-#ifdef __cplusplus
-#include <cstddef>
-#define BML_SYNC_OFFSETOF(type, member) offsetof(type, member)
-#else
-#include <stddef.h>
-#define BML_SYNC_OFFSETOF(type, member) offsetof(type, member)
-#endif
-
-#if defined(__cplusplus) && __cplusplus >= 201103L
-    #define BML_SYNC_STATIC_ASSERT(cond, msg) static_assert(cond, msg)
-#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-    #define BML_SYNC_STATIC_ASSERT(cond, msg) _Static_assert(cond, msg)
-#else
-    #define BML_SYNC_STATIC_ASSERT_CONCAT_(a, b) a##b
-    #define BML_SYNC_STATIC_ASSERT_CONCAT(a, b) BML_SYNC_STATIC_ASSERT_CONCAT_(a, b)
-    #define BML_SYNC_STATIC_ASSERT(cond, msg) \
-        typedef char BML_SYNC_STATIC_ASSERT_CONCAT(bml_sync_assert_, __LINE__)[(cond) ? 1 : -1]
-#endif
-
-/* Verify struct_size is at offset 0 */
-BML_SYNC_STATIC_ASSERT(BML_SYNC_OFFSETOF(BML_SyncCaps, struct_size) == 0,
-    "BML_SyncCaps.struct_size must be at offset 0");
-
-/* Verify enum sizes are 32-bit */
-BML_SYNC_STATIC_ASSERT(sizeof(BML_SyncCapabilityFlags) == sizeof(int32_t),
-    "BML_SyncCapabilityFlags must be 32-bit");
 
 #endif /* BML_SYNC_H */

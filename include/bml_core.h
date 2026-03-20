@@ -20,20 +20,33 @@
  * The global context is created during BML initialization and remains valid
  * until shutdown. Mods can retain/release references for safe access.
  * 
+ * After bootstrap, only `bmlSetCurrentModule` remains available as a global
+ * proc pointer. Resolve all other Core APIs explicitly through
+ * `bmlGetProcAddress(...)` or consume them through an acquired builtin
+ * interface such as `bml.core.context` or `bml.core.module`.
+ *
  * @section core_usage Usage Example
  * @code
- * // Get global context
- * BML_Context ctx = bmlGetGlobalContext();
+ * PFN_BML_GetGlobalContext getGlobalContext =
+ *     (PFN_BML_GetGlobalContext)bmlGetProcAddress("bmlGetGlobalContext");
+ * PFN_BML_ContextRetain contextRetain =
+ *     (PFN_BML_ContextRetain)bmlGetProcAddress("bmlContextRetain");
+ * PFN_BML_ContextRelease contextRelease =
+ *     (PFN_BML_ContextRelease)bmlGetProcAddress("bmlContextRelease");
+ * PFN_BML_GetRuntimeVersion getRuntimeVersion =
+ *     (PFN_BML_GetRuntimeVersion)bmlGetProcAddress("bmlGetRuntimeVersion");
+ *
+ * BML_Context ctx = getGlobalContext ? getGlobalContext() : NULL;
  * if (ctx) {
  *     // Retain reference for long-term use
- *     bmlContextRetain(ctx);
+ *     contextRetain(ctx);
  *     
  *     // Get runtime version
- *     const BML_Version* ver = bmlGetRuntimeVersion();
+ *     const BML_Version* ver = getRuntimeVersion ? getRuntimeVersion() : NULL;
  *     printf("BML v%u.%u.%u\n", ver->major, ver->minor, ver->patch);
  *     
  *     // Release when done
- *     bmlContextRelease(ctx);
+ *     contextRelease(ctx);
  * }
  * @endcode
  * 
@@ -108,10 +121,12 @@ typedef BML_Result (*PFN_BML_ContextRelease)(BML_Context ctx);
  * @threadsafe Yes - returns immutable singleton reference
  * 
  * @note The returned context does not need to be released unless you
- *       explicitly called bmlContextRetain() on it
+ *       explicitly retained it through PFN_BML_ContextRetain
  * 
  * @code
- * BML_Context ctx = bmlGetGlobalContext();
+ * PFN_BML_GetGlobalContext getGlobalContext =
+ *     (PFN_BML_GetGlobalContext)bmlGetProcAddress("bmlGetGlobalContext");
+ * BML_Context ctx = getGlobalContext ? getGlobalContext() : NULL;
  * if (ctx) {
  *     // Use context for API calls
  * }
@@ -143,10 +158,10 @@ typedef BML_Context (*PFN_BML_GetGlobalContext)(void);
  * 
  * @code
  * // Store CKContext pointer (registered by ModLoader)
- * bmlContextSetUserData(ctx, "virtools.ckcontext", ckContext, NULL);
+ * contextSetUserData(ctx, "virtools.ckcontext", ckContext, NULL);
  * 
  * // Store custom data with destructor
- * bmlContextSetUserData(ctx, "mymod.state", state, MyStateDestructor);
+ * contextSetUserData(ctx, "mymod.state", state, MyStateDestructor);
  * @endcode
  * 
  * @see PFN_BML_ContextGetUserData for retrieving data
@@ -171,7 +186,7 @@ typedef BML_Result (*PFN_BML_ContextSetUserData)(BML_Context ctx, const char *ke
  * @code
  * // Retrieve CKContext (set by ModLoader)
  * void* ckContext = NULL;
- * if (bmlContextGetUserData(ctx, "virtools.ckcontext", &ckContext) == BML_RESULT_OK && ckContext) {
+ * if (contextGetUserData(ctx, "virtools.ckcontext", &ckContext) == BML_RESULT_OK && ckContext) {
  *     CKContext* ck = (CKContext*)ckContext;
  *     // Use ckContext...
  * }
@@ -202,7 +217,9 @@ typedef BML_Result (*PFN_BML_ContextGetUserData)(BML_Context ctx, const char *ke
  * @threadsafe Yes - each calling thread receives its own stable snapshot
  * 
  * @code
- * const BML_Version* ver = bmlGetRuntimeVersion();
+ * PFN_BML_GetRuntimeVersion getRuntimeVersion =
+ *     (PFN_BML_GetRuntimeVersion)bmlGetProcAddress("bmlGetRuntimeVersion");
+ * const BML_Version* ver = getRuntimeVersion ? getRuntimeVersion() : NULL;
  * if (ver) {
  *     printf("Runtime: v%u.%u.%u\n", ver->major, ver->minor, ver->patch);
  * }
@@ -240,7 +257,7 @@ typedef const BML_Version *(*PFN_BML_GetRuntimeVersion)(void);
  * @threadsafe Yes
  * 
  * @code
- * BML_Result result = bmlRequestCapability(my_mod, "bml.profiling");
+ * BML_Result result = requestCapability(my_mod, "bml.profiling");
  * if (BML_SUCCEEDED(result)) {
  *     // Profiling features are now available
  * }
@@ -265,7 +282,7 @@ typedef BML_Result (*PFN_BML_RequestCapability)(BML_Mod mod, const char *capabil
  * 
  * @code
  * BML_Bool supported = BML_FALSE;
- * if (bmlCheckCapability(my_mod, "bml.imc", &supported) == BML_RESULT_OK) {
+ * if (checkCapability(my_mod, "bml.imc", &supported) == BML_RESULT_OK) {
  *     if (supported) {
  *         // IMC features available
  *     }
@@ -298,9 +315,8 @@ typedef BML_Result (*PFN_BML_CheckCapability)(BML_Mod mod, const char *capabilit
  * @return BML_RESULT_INVALID_ARGUMENT if out_id is NULL
  * 
  * @threadsafe Yes - returns pointer to immutable data
- * 
- * @note The returned string is owned by the mod and remains valid for its lifetime
- * 
+ * @lifetime mod - returned pointer valid for mod's lifetime
+ *
  * @code
  * const char* id = NULL;
  * if (bmlGetModId(my_mod, &id) == BML_RESULT_OK) {
@@ -333,7 +349,109 @@ typedef BML_Result (*PFN_BML_GetModId)(BML_Mod mod, const char **out_id);
  */
 typedef BML_Result (*PFN_BML_GetModVersion)(BML_Mod mod, BML_Version *out_version);
 
+/**
+ * @brief Function pointer type for getting mod installation directory
+ *
+ * Retrieves the UTF-8 encoded directory path where the mod is installed.
+ *
+ * @param[in] mod Mod handle to query
+ * @param[out] out_dir Receives pointer to null-terminated UTF-8 path (do not free)
+ * @return BML_RESULT_OK on success
+ * @return BML_RESULT_INVALID_ARGUMENT if mod is NULL/invalid or out_dir is NULL
+ *
+ * @threadsafe Yes - returns pointer to immutable cached data
+ * @lifetime mod - returned pointer valid for mod's lifetime
+ */
+typedef BML_Result (*PFN_BML_GetModDirectory)(BML_Mod mod, const char **out_dir);
+
+/**
+ * @brief Function pointer type for getting mod display name
+ *
+ * Retrieves the human-readable name of a mod as declared in its manifest.
+ *
+ * @param[in] mod Mod handle to query
+ * @param[out] out_name Receives pointer to null-terminated name string (do not free)
+ * @return BML_RESULT_OK on success
+ * @return BML_RESULT_INVALID_ARGUMENT if mod is NULL/invalid or out_name is NULL
+ *
+ * @threadsafe Yes - returns pointer to immutable data
+ * @lifetime mod - returned pointer valid for mod's lifetime
+ */
+typedef BML_Result (*PFN_BML_GetModName)(BML_Mod mod, const char **out_name);
+
+/**
+ * @brief Function pointer type for getting mod description
+ *
+ * Retrieves the description of a mod as declared in its manifest.
+ *
+ * @param[in] mod Mod handle to query
+ * @param[out] out_desc Receives pointer to null-terminated description string (do not free)
+ * @return BML_RESULT_OK on success
+ * @return BML_RESULT_INVALID_ARGUMENT if mod is NULL/invalid or out_desc is NULL
+ *
+ * @threadsafe Yes - returns pointer to immutable data
+ * @lifetime mod - returned pointer valid for mod's lifetime
+ */
+typedef BML_Result (*PFN_BML_GetModDescription)(BML_Mod mod, const char **out_desc);
+
+/**
+ * @brief Function pointer type for getting mod author count
+ *
+ * @param[in] mod Mod handle to query
+ * @param[out] out_count Receives the number of authors
+ * @return BML_RESULT_OK on success
+ * @return BML_RESULT_INVALID_ARGUMENT if mod is NULL/invalid or out_count is NULL
+ *
+ * @threadsafe Yes
+ */
+typedef BML_Result (*PFN_BML_GetModAuthorCount)(BML_Mod mod, uint32_t *out_count);
+
+/**
+ * @brief Function pointer type for getting mod author at index
+ *
+ * @param[in] mod Mod handle to query
+ * @param[in] index Zero-based author index
+ * @param[out] out_author Receives pointer to null-terminated author string (do not free)
+ * @return BML_RESULT_OK on success
+ * @return BML_RESULT_INVALID_ARGUMENT if mod is NULL/invalid, out_author is NULL, or index out of range
+ *
+ * @threadsafe Yes - returns pointer to immutable data
+ * @lifetime mod - returned pointer valid for mod's lifetime
+ */
+typedef BML_Result (*PFN_BML_GetModAuthorAt)(BML_Mod mod, uint32_t index, const char **out_author);
+
 /** @} */ /* end CoreModInfo group */
+
+/* ========================================================================
+ * Manifest Custom Field Access
+ * ======================================================================== */
+
+/**
+ * @defgroup CoreManifest Manifest Custom Fields
+ * @brief Read custom fields from a mod's mod.toml manifest
+ *
+ * Modules can define custom top-level sections in mod.toml. These are
+ * accessible at runtime via dot-separated paths:
+ *
+ * @code
+ * # mod.toml
+ * [mymod]
+ * greeting = "Hello"
+ * max_speed = 42
+ * debug = true
+ * scale = 1.5
+ * @endcode
+ *
+ * Access: `bmlGetManifestString(mod, "mymod.greeting", &value)`
+ * @{
+ */
+
+typedef BML_Result (*PFN_BML_GetManifestString)(BML_Mod mod, const char *path, const char **out_value);
+typedef BML_Result (*PFN_BML_GetManifestInt)(BML_Mod mod, const char *path, int64_t *out_value);
+typedef BML_Result (*PFN_BML_GetManifestFloat)(BML_Mod mod, const char *path, double *out_value);
+typedef BML_Result (*PFN_BML_GetManifestBool)(BML_Mod mod, const char *path, BML_Bool *out_value);
+
+/** @} */ /* end CoreManifest group */
 
 /* ========================================================================
  * Thread-Local Module Binding Function Types
@@ -364,8 +482,8 @@ typedef BML_Result (*PFN_BML_GetModVersion)(BML_Mod mod, BML_Version *out_versio
  * // Bind module to current thread
  * bmlSetCurrentModule(my_mod);
  * 
- * // APIs can now resolve module from TLS
- * bmlLog(NULL, "Message"); // Uses TLS-bound module
+ * // APIs that support implicit TLS lookup can now resolve the module context
+ * // without taking an explicit BML_Mod parameter.
  * 
  * // Clear binding
  * bmlSetCurrentModule(NULL);
@@ -387,10 +505,12 @@ typedef BML_Result (*PFN_BML_SetCurrentModule)(BML_Mod mod);
  * @threadsafe Yes - uses per-thread storage
  * 
  * @code
- * BML_Mod current = bmlGetCurrentModule();
+ * PFN_BML_GetCurrentModule getCurrentModule =
+ *     (PFN_BML_GetCurrentModule)bmlGetProcAddress("bmlGetCurrentModule");
+ * BML_Mod current = getCurrentModule ? getCurrentModule() : NULL;
  * if (current) {
  *     const char* id = NULL;
- *     bmlGetModId(current, &id);
+ *     getModId(current, &id);
  *     printf("Current module: %s\n", id);
  * }
  * @endcode
@@ -407,18 +527,32 @@ typedef BML_Mod (*PFN_BML_GetCurrentModule)(void);
  * @return Number of currently loaded modules.
  *
  * @threadsafe Yes
+ * @note Count and At are not atomic as a pair. If modules can be loaded or
+ *       unloaded concurrently (e.g. hot-reload), the count may change between
+ *       calls. GetLoadedModuleAt gracefully returns NULL for out-of-range
+ *       indices so a stale count is safe -- just check for NULL.
  */
 typedef uint32_t (*PFN_BML_GetLoadedModuleCount)(void);
 
 /**
  * @brief Function pointer type for getting a loaded module handle by index.
  *
- * @param[in] index Zero-based module index in the current loaded-module snapshot.
+ * @param[in] index Zero-based module index.
  * @return Module handle for the given index, or NULL if the index is out of range.
  *
  * @threadsafe Yes
  */
 typedef BML_Mod (*PFN_BML_GetLoadedModuleAt)(uint32_t index);
+
+/**
+ * @brief Function pointer type for finding a loaded module by its manifest ID.
+ *
+ * @param[in] id Null-terminated module ID string (e.g. "com.example.mymod")
+ * @return Module handle if found, or NULL if no loaded module matches.
+ *
+ * @threadsafe Yes
+ */
+typedef BML_Mod (*PFN_BML_FindModuleById)(const char *id);
 
 /** @} */ /* end CoreTLS group */
 
@@ -481,7 +615,7 @@ typedef void (*BML_ShutdownCallback)(BML_Context ctx, void *user_data);
  * }
  * 
  * // During mod initialization
- * bmlRegisterShutdownHook(my_mod, OnShutdown, &g_state);
+ * registerShutdownHook(my_mod, OnShutdown, &g_state);
  * @endcode
  * 
  * @see bml::ShutdownHook for C++ RAII wrapper
@@ -494,192 +628,25 @@ typedef BML_Result (*PFN_BML_RegisterShutdownHook)(BML_Mod mod, BML_ShutdownCall
  * Core Capability Flags
  * ======================================================================== */
 
-/**
- * @defgroup CoreCaps Core Capabilities
- * @brief Query available Core API features
- * @{
- */
-
-/**
- * @brief Bitmask flags indicating available Core API capabilities
- * 
- * Use with BML_CoreCaps::capability_flags to check feature availability.
- * 
- * @code
- * BML_CoreCaps caps = BML_CORE_CAPS_INIT;
- * if (bmlGetCoreCaps(&caps) == BML_RESULT_OK) {
- *     if (caps.capability_flags & BML_CORE_CAP_SHUTDOWN_HOOKS) {
- *         // Shutdown hooks are supported
- *     }
- * }
- * @endcode
- */
-typedef enum BML_CoreCapabilityFlags {
-    /** @brief Context retain/release APIs available */
-    BML_CORE_CAP_CONTEXT_RETAIN     = 1u << 0,
-    
-    /** @brief Runtime version query API available */
-    BML_CORE_CAP_RUNTIME_QUERY      = 1u << 1,
-    
-    /** @brief Mod metadata APIs (GetModId, GetModVersion) available */
-    BML_CORE_CAP_MOD_METADATA       = 1u << 2,
-    
-    /** @brief Shutdown hook registration available */
-    BML_CORE_CAP_SHUTDOWN_HOOKS     = 1u << 3,
-    
-    /** @brief Capability request/check APIs available */
-    BML_CORE_CAP_CAPABILITY_CHECKS  = 1u << 4,
-    
-    /** @brief Thread-local module binding APIs available */
-    BML_CORE_CAP_CURRENT_MODULE_TLS = 1u << 5,
-    
-    /** @internal Force enum to 32-bit for ABI stability */
-    _BML_CORE_CAP_FORCE_32BIT       = 0x7FFFFFFF
-} BML_CoreCapabilityFlags;
-
-/**
- * @brief Core subsystem capabilities structure
- * 
- * Provides comprehensive information about the Core API capabilities
- * of the current runtime. Use bmlGetCoreCaps() to populate.
- * 
- * @note Always initialize with BML_CORE_CAPS_INIT before calling bmlGetCoreCaps()
- * 
- * @code
- * BML_CoreCaps caps = BML_CORE_CAPS_INIT;
- * if (bmlGetCoreCaps(&caps) == BML_RESULT_OK) {
- *     printf("Runtime: v%u.%u.%u\n", 
- *            caps.runtime_version.major,
- *            caps.runtime_version.minor,
- *            caps.runtime_version.patch);
- *     printf("Threading: %s\n", 
- *            caps.threading_model == BML_THREADING_FREE ? "Free" : "Other");
- * }
- * @endcode
- */
-typedef struct BML_CoreCaps {
-    /** @brief Size of this structure, must be first field for ABI extension */
-    size_t struct_size;
-    
-    /** @brief Runtime version (may differ from API version) */
-    BML_Version runtime_version;
-    
-    /** @brief Bitmask of available capabilities (BML_CoreCapabilityFlags) */
-    uint32_t capability_flags;
-    
-    /** @brief API version this runtime implements */
-    BML_Version api_version;
-    
-    /** @brief Threading model of Core APIs */
-    BML_ThreadingModel threading_model;
-} BML_CoreCaps;
-
-/**
- * @def BML_CORE_CAPS_INIT
- * @brief Static initializer for BML_CoreCaps
- * 
- * Always use this initializer before calling bmlGetCoreCaps() to ensure
- * struct_size is correctly set for ABI compatibility.
- * 
- * @code
- * BML_CoreCaps caps = BML_CORE_CAPS_INIT;
- * bmlGetCoreCaps(&caps);
- * @endcode
- */
-#define BML_CORE_CAPS_INIT { sizeof(BML_CoreCaps), BML_VERSION_INIT(0,0,0), 0, BML_VERSION_INIT(0,0,0), BML_THREADING_SINGLE }
-
-/**
- * @brief Function pointer type for querying Core capabilities
- * 
- * Fills the provided structure with information about available Core
- * API capabilities and version information.
- * 
- * @param[out] out_caps Pointer to receive capabilities (must have struct_size set)
- * @return BML_RESULT_OK on success
- * @return BML_RESULT_INVALID_ARGUMENT if out_caps is NULL
- * @return BML_RESULT_INVALID_SIZE if out_caps->struct_size is incorrect
- * 
- * @threadsafe Yes
- * 
- * @code
- * BML_CoreCaps caps = BML_CORE_CAPS_INIT;
- * if (bmlCoreGetCaps(&caps) == BML_RESULT_OK) {
- *     if (caps.capability_flags & BML_CORE_CAP_SHUTDOWN_HOOKS) {
- *         // Can use shutdown hooks
- *     }
- * }
- * @endcode
- */
-typedef BML_Result (*PFN_BML_CoreGetCaps)(BML_CoreCaps *out_caps);
-
-/** @} */ /* end CoreCaps group */
-
 /* ========================================================================
  * Global Function Pointers
  * ======================================================================== */
 
 /**
- * @defgroup CoreGlobals Global Function Pointers
- * @brief Pre-loaded function pointers for Core API access
- * 
- * These global function pointers are populated by the BML loader during
- * initialization. They provide direct access to Core API functions without
- * requiring manual lookup.
- * 
- * @note Always check for NULL before calling, as optional APIs may not be loaded
- * @note For thread-safety, treat these as read-only after initialization
+ * @defgroup CoreBootstrapGlobals Bootstrap Global Function Pointers
+ * @brief Bootstrap-loaded Core proc pointers
+ *
+ * The bootstrap-only loader contract exposes only the thread-local module
+ * binding helper as a global proc pointer. All other Core APIs must be
+ * resolved explicitly through `bmlGetProcAddress(...)` or consumed through an
+ * acquired builtin interface.
  * @{
  */
 
-/** @brief Increment context reference count @see PFN_BML_ContextRetain */
-extern PFN_BML_ContextRetain           bmlContextRetain;
-
-/** @brief Decrement context reference count @see PFN_BML_ContextRelease */
-extern PFN_BML_ContextRelease          bmlContextRelease;
-
-/** @brief Get global BML context @see PFN_BML_GetGlobalContext */
-extern PFN_BML_GetGlobalContext        bmlGetGlobalContext;
-
-/** @brief Get runtime version @see PFN_BML_GetRuntimeVersion */
-extern PFN_BML_GetRuntimeVersion       bmlGetRuntimeVersion;
-
-/** @brief Set user data on context @see PFN_BML_ContextSetUserData */
-extern PFN_BML_ContextSetUserData      bmlContextSetUserData;
-
-/** @brief Get user data from context @see PFN_BML_ContextGetUserData */
-extern PFN_BML_ContextGetUserData      bmlContextGetUserData;
-
-/** @brief Request a capability for mod @see PFN_BML_RequestCapability */
-extern PFN_BML_RequestCapability       bmlRequestCapability;
-
-/** @brief Check if capability is supported @see PFN_BML_CheckCapability */
-extern PFN_BML_CheckCapability         bmlCheckCapability;
-
-/** @brief Get mod ID string @see PFN_BML_GetModId */
-extern PFN_BML_GetModId                bmlGetModId;
-
-/** @brief Get mod version @see PFN_BML_GetModVersion */
-extern PFN_BML_GetModVersion           bmlGetModVersion;
-
-/** @brief Register shutdown callback @see PFN_BML_RegisterShutdownHook */
-extern PFN_BML_RegisterShutdownHook    bmlRegisterShutdownHook;
-
 /** @brief Set thread-local module @see PFN_BML_SetCurrentModule */
-extern PFN_BML_SetCurrentModule        bmlSetCurrentModule;
+extern PFN_BML_SetCurrentModule bmlSetCurrentModule;
 
-/** @brief Get thread-local module @see PFN_BML_GetCurrentModule */
-extern PFN_BML_GetCurrentModule        bmlGetCurrentModule;
-
-/** @brief Get loaded module count @see PFN_BML_GetLoadedModuleCount */
-extern PFN_BML_GetLoadedModuleCount    bmlGetLoadedModuleCount;
-
-/** @brief Get loaded module by index @see PFN_BML_GetLoadedModuleAt */
-extern PFN_BML_GetLoadedModuleAt       bmlGetLoadedModuleAt;
-
-/** @brief Query Core capabilities @see PFN_BML_CoreGetCaps */
-extern PFN_BML_CoreGetCaps             bmlCoreGetCaps;
-
-/** @} */ /* end CoreGlobals group */
+/** @} */ /* end CoreBootstrapGlobals group */
 
 BML_END_CDECLS
 
@@ -709,9 +676,5 @@ BML_END_CDECLS
     #define BML_CORE_STATIC_ASSERT(cond, msg) \
         typedef char BML_CORE_STATIC_ASSERT_CONCAT(bml_core_assert_, __LINE__)[(cond) ? 1 : -1]
 #endif
-
-/** @brief Verify BML_CoreCaps.struct_size is at offset 0 for ABI extension support */
-BML_CORE_STATIC_ASSERT(BML_CORE_OFFSETOF(BML_CoreCaps, struct_size) == 0,
-    "BML_CoreCaps.struct_size must be at offset 0");
 
 #endif /* BML_CORE_H */

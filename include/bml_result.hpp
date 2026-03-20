@@ -74,28 +74,31 @@ namespace bml {
 
         /**
          * @brief Get the value (lvalue reference)
-         * @throws bml::Exception if result is an error
+         * @throws bml::Exception if result is an error or value is absent
          */
         T &Value() & {
             if (!Ok()) throw Exception(m_Error);
+            if (!m_Value.has_value()) throw Exception(BML_RESULT_FAIL);
             return *m_Value;
         }
 
         /**
          * @brief Get the value (const lvalue reference)
-         * @throws bml::Exception if result is an error
+         * @throws bml::Exception if result is an error or value is absent
          */
         const T &Value() const & {
             if (!Ok()) throw Exception(m_Error);
+            if (!m_Value.has_value()) throw Exception(BML_RESULT_FAIL);
             return *m_Value;
         }
 
         /**
          * @brief Get the value (rvalue reference)
-         * @throws bml::Exception if result is an error
+         * @throws bml::Exception if result is an error or value is absent
          */
         T &&Value() && {
             if (!Ok()) throw Exception(m_Error);
+            if (!m_Value.has_value()) throw Exception(BML_RESULT_FAIL);
             return std::move(*m_Value);
         }
 
@@ -129,8 +132,8 @@ namespace bml {
         /**
          * @brief Get the error message
          */
-        const char *ErrorMessage() const noexcept {
-            return bmlGetErrorString ? bmlGetErrorString(m_Error) : "Unknown error";
+        const char *ErrorMessage(PFN_BML_GetErrorString errorStringFn = nullptr) const noexcept {
+            return errorStringFn ? errorStringFn(m_Error) : "Unknown error";
         }
 
         // ========================================================================
@@ -231,8 +234,8 @@ namespace bml {
 
         BML_Result Error() const noexcept { return m_Error; }
 
-        const char *ErrorMessage() const noexcept {
-            return bmlGetErrorString ? bmlGetErrorString(m_Error) : "Unknown error";
+        const char *ErrorMessage(PFN_BML_GetErrorString errorStringFn = nullptr) const noexcept {
+            return errorStringFn ? errorStringFn(m_Error) : "Unknown error";
         }
 
         void Value() const {

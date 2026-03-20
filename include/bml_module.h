@@ -20,35 +20,26 @@
 /**
  * @brief Declare module entry points with correct linkage
  * 
- * Usage in your module .cpp file:
- * ```cpp
+ * For C++ modules, prefer bml_module.hpp with BML_DEFINE_MODULE(). For raw
+ * C modules:
+ * ```c
  * #include "bml_module.h"
  * #define BML_LOADER_IMPLEMENTATION
  * #include "bml_loader.h"
  *
- * namespace {
- * BML_Result OnAttach(const BML_ModAttachArgs *args) {
- *     BML_Result res = bmlLoadAPI(args->get_proc, args->get_proc_by_id);
- *     if (res != BML_RESULT_OK) {
- *         return res;
- *     }
- *     // ... initialization logic ...
+ * static BML_Result OnAttach(const BML_ModAttachArgs *args) {
+ *     if (args->struct_size < sizeof(BML_ModAttachArgs)) return BML_RESULT_INVALID_ARGUMENT;
+ *     if (args->api_version < BML_MOD_ENTRYPOINT_API_VERSION) return BML_RESULT_VERSION_MISMATCH;
+ *     BML_Result res = BML_BOOTSTRAP_LOAD(args->get_proc);
+ *     if (res != BML_RESULT_OK) return res;
+ *     // args->service_hub is available for C++ cast to RuntimeServiceHub*
  *     return BML_RESULT_OK;
- * }
- *
- * BML_Result OnDetach(const BML_ModDetachArgs *args) {
- *     // ... cleanup logic ...
- *     bmlUnloadAPI();
- *     return BML_RESULT_OK;
- * }
  * }
  *
  * BML_MODULE_ENTRY BML_Result BML_ModEntrypoint(BML_ModEntrypointCommand cmd, void *data) {
  *     switch (cmd) {
  *     case BML_MOD_ENTRYPOINT_ATTACH:
- *         return OnAttach(static_cast<const BML_ModAttachArgs *>(data));
- *     case BML_MOD_ENTRYPOINT_DETACH:
- *         return OnDetach(static_cast<const BML_ModDetachArgs *>(data));
+ *         return OnAttach((const BML_ModAttachArgs *)data);
  *     default:
  *         return BML_RESULT_INVALID_ARGUMENT;
  *     }

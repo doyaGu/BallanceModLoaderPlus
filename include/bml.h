@@ -2,9 +2,11 @@
  * @file bml.h
  * @brief BML v2 Unified C Header
  * 
- * This is the single-include header for the complete BML v2 C API.
- * It provides access to all BML functionality through a pure C interface
- * that can be used by any language with C FFI support.
+ * This is the single-include header for the default v0.4 BML C surface.
+ * It provides the core microkernel APIs and first-party interface surfaces
+ * that most consumers should use directly.
+ *
+ * Retired legacy APIs are intentionally no longer pulled in by default.
  * 
  * The API is organized into the following subsystems:
  * 
@@ -14,22 +16,22 @@
  * - **Config** (bml_config.h) - Configuration read/write
  * - **Logging** (bml_logging.h) - Structured logging with severity levels
  * - **IMC** (bml_imc.h) - Inter-Mod Communication (pub/sub, RPC, futures)
- * - **Extension** (bml_extension.h) - Dynamic extension registration and loading
+ * - **Interface** (bml_interface.h) - Runtime typed interface registration and acquisition
  * - **Sync** (bml_sync.h) - Synchronization primitives (mutex, rwlock, etc.)
  * - **Memory** (bml_memory.h) - Cross-DLL safe memory allocation
  * - **Resource** (bml_resource.h) - Generic handle/resource management
  * - **Profiling** (bml_profiling.h) - Performance tracing and statistics
- * - **Capabilities** (bml_capabilities.h) - Runtime feature detection
  * - **Hot Reload** (bml_hot_reload.h) - Mod lifecycle events for hot reload
  * 
  * @section c_usage Usage (C)
  * 
- * Include this header to access all BML C APIs:
+ * Include this header to access the default BML C APIs:
  * @code
  * #include <bml.h>
  * 
- * // All BML C functions and types are now available
- * BML_Context ctx = bmlGetGlobalContext();
+ * // Resolve or acquire the runtime surface you need explicitly
+ * PFN_BML_InterfaceAcquire acquire =
+ *     (PFN_BML_InterfaceAcquire)bmlGetProcAddress("bmlInterfaceAcquire");
  * @endcode
  * 
  * For dynamic loading (header-only, GLAD-style), use bml_loader.h:
@@ -41,19 +43,25 @@
  * // In other files:
  * #include <bml_loader.h>
  * 
- * // Initialize:
- * bmlLoadAPI(get_proc_fn, get_proc_by_id_fn);
+ * // Initialize the bootstrap minimum:
+ * BML_BOOTSTRAP_LOAD(get_proc_fn);
+ *
+ * // Acquire builtin interfaces for all non-bootstrap runtime access.
  * @endcode
  * 
  * @section cpp_usage Usage (C++)
  * 
- * For C++, prefer the unified C++ header for RAII wrappers:
+ * For C++, prefer the unified C++ header for the default RAII wrappers:
  * @code
  * #include <bml.hpp>
  * 
- * // Use C++ wrappers
- * bml::Context ctx = bml::GetGlobalContext();
- * bml::Config config(mod);
+ * auto ctxApi = bml::AcquireInterface<BML_CoreContextInterface>(
+ *     BML_CORE_CONTEXT_INTERFACE_ID, 1);
+ * auto configApi = bml::AcquireInterface<BML_CoreConfigInterface>(
+ *     BML_CORE_CONFIG_INTERFACE_ID, 1);
+ *
+ * bml::Context ctx(ctxApi->GetGlobalContext(), ctxApi.Get());
+ * bml::Config config(mod, configApi.Get());
  * auto value = config.GetString("category", "key").value_or("default");
  * @endcode
  * 
@@ -68,13 +76,6 @@
  * All enums include a _FORCE_32BIT sentinel to ensure consistent size
  * across different compilers and platforms.
  * 
- * @section api_ids API IDs
- * 
- * BML uses stable 32-bit API IDs for binary compatibility (like syscalls):
- * - IDs are defined in bml_api_ids.h
- * - Once assigned, IDs never change
- * - Use bmlGetProcAddressById() for 3-5x faster lookup
- * 
  * @section threading Threading Model
  * 
  * Thread safety annotations:
@@ -84,7 +85,7 @@
  * 
  * Most APIs are thread-safe. Check individual function documentation.
  * 
- * @see bml.hpp for C++ wrappers
+ * @see bml.hpp for default C++ wrappers
  * @see bml_loader.h for dynamic loading
  */
 
@@ -107,9 +108,6 @@
 /* Export/import macros and mod entrypoint */
 #include "bml_export.h"
 
-/* Stable API identifiers */
-#include "bml_api_ids.h"
-
 /* ========================================================================
  * Core Subsystem Headers
  * ======================================================================== */
@@ -124,14 +122,14 @@
 #include "bml_logging.h"
 
 /* ========================================================================
- * Communication and Extension Headers
+ * Communication Headers
  * ======================================================================== */
 
-/* Inter-Mod Communication (pub/sub, RPC) */
+/* Inter-Mod Communication (pub/sub, RPC, retained state) */
 #include "bml_imc.h"
 
-/* Extension registration and loading */
-#include "bml_extension.h"
+/* Runtime interfaces */
+#include "bml_interface.h"
 
 /* ========================================================================
  * Resource and Memory Management
@@ -150,14 +148,8 @@
  * Diagnostics and Profiling
  * ======================================================================== */
 
-/* Runtime capability detection */
-#include "bml_capabilities.h"
-
 /* Profiling and tracing */
 #include "bml_profiling.h"
-
-/* API call tracing */
-#include "bml_api_tracing.h"
 
 /* ========================================================================
  * Lifecycle and Hot Reload
@@ -165,6 +157,19 @@
 
 /* Hot reload lifecycle events */
 #include "bml_hot_reload.h"
+
+/* ========================================================================
+ * Timer and Hook Registry
+ * ======================================================================== */
+
+/* Timer / deferred execution */
+#include "bml_timer.h"
+
+/* Per-mod localization / string tables */
+#include "bml_locale.h"
+
+/* Hook registry (advisory visibility for MinHook usage) */
+#include "bml_hook.h"
 
 /* ========================================================================
  * Feature Test Macros
@@ -175,12 +180,6 @@
  * @brief Compile-time check for IMC support
  */
 #define BML_HAS_FEATURE_IMC 1
-
-/**
- * @def BML_HAS_FEATURE_EXTENSION
- * @brief Compile-time check for extension system support
- */
-#define BML_HAS_FEATURE_EXTENSION 1
 
 /**
  * @def BML_HAS_FEATURE_SYNC
@@ -205,11 +204,5 @@
  * @brief Compile-time check for resource handle support
  */
 #define BML_HAS_FEATURE_RESOURCE 1
-
-/**
- * @def BML_HAS_FEATURE_CAPABILITIES
- * @brief Compile-time check for capability query support
- */
-#define BML_HAS_FEATURE_CAPABILITIES 1
 
 #endif /* BML_H */

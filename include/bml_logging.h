@@ -111,14 +111,6 @@ typedef void (*PFN_BML_LogVa)(BML_Context ctx, BML_LogSeverity level, const char
  */
 typedef void (*PFN_BML_SetLogFilter)(BML_LogSeverity minimum_level);
 
-typedef enum BML_LogCapabilityFlags {
-    BML_LOG_CAP_STRUCTURED_TAGS = 1u << 0,
-    BML_LOG_CAP_VARIADIC        = 1u << 1,
-    BML_LOG_CAP_FILTER_OVERRIDE = 1u << 2,
-    BML_LOG_CAP_CONTEXT_ROUTING = 1u << 3,
-    _BML_LOG_CAP_FORCE_32BIT    = 0x7FFFFFFF /**< Force 32-bit enum */
-} BML_LogCapabilityFlags;
-
 typedef enum BML_LogCreateFlags {
     BML_LOG_CREATE_ALLOW_TAGS   = 1u << 0,
     BML_LOG_CREATE_ALLOW_FILTER = 1u << 1,
@@ -143,32 +135,6 @@ typedef struct BML_LogCreateDesc {
  */
 #define BML_LOG_CREATE_DESC_INIT { sizeof(BML_LogCreateDesc), BML_VERSION_INIT(0,0,0), BML_LOG_INFO, 0 }
 
-/**
- * @brief Logging subsystem capabilities
- */
-typedef struct BML_LogCaps {
-    size_t struct_size;                 /**< sizeof(BML_LogCaps), must be first field */
-    BML_Version api_version;            /**< API version */
-    uint32_t capability_flags;          /**< Bitmask of BML_LogCapabilityFlags */
-    uint32_t supported_severities_mask; /**< Bitmask of supported BML_LogSeverity values */
-    BML_LogCreateDesc default_sink;     /**< Default sink configuration */
-    BML_ThreadingModel threading_model; /**< Threading model of Logging APIs */
-} BML_LogCaps;
-
-/**
- * @def BML_LOG_CAPS_INIT
- * @brief Static initializer for BML_LogCaps
- */
-#define BML_LOG_CAPS_INIT { sizeof(BML_LogCaps), BML_VERSION_INIT(0,0,0), 0, 0, BML_LOG_CREATE_DESC_INIT, BML_THREADING_SINGLE }
-
-typedef BML_Result (*PFN_BML_LoggingGetCaps)(BML_LogCaps *out_caps);
-
-extern PFN_BML_Log bmlLog;
-extern PFN_BML_LogVa bmlLogVa;
-extern PFN_BML_SetLogFilter bmlSetLogFilter;
-extern PFN_BML_LoggingGetCaps bmlLoggingGetCaps;
-extern PFN_BML_RegisterLogSinkOverride bmlRegisterLogSinkOverride;
-extern PFN_BML_ClearLogSinkOverride bmlClearLogSinkOverride;
 
 BML_END_CDECLS
 
@@ -194,10 +160,6 @@ BML_END_CDECLS
 #define BML_LOG_STATIC_ASSERT(cond, msg) \
         typedef char BML_LOG_STATIC_ASSERT_CONCAT(bml_log_assert_, __LINE__)[(cond) ? 1 : -1]
 #endif
-
-/* Verify struct_size is at offset 0 */
-BML_LOG_STATIC_ASSERT(BML_LOG_OFFSETOF(BML_LogCaps, struct_size) == 0,
-                      "BML_LogCaps.struct_size must be at offset 0");
 
 /* Verify enum sizes are 32-bit */
 BML_LOG_STATIC_ASSERT(sizeof(BML_LogSeverity) == sizeof(int32_t),

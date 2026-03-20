@@ -9,6 +9,7 @@
 #ifndef BML_CORE_HPP
 #define BML_CORE_HPP
 
+#include "bml_builtin_interfaces.h"
 #include "bml_core.h"
 #include "bml_export.h"
 #include "bml_errors.h"
@@ -20,6 +21,50 @@
 #include <vector>
 
 namespace bml {
+    namespace detail {
+        inline const BML_CoreModuleInterface *ResolveModuleInterface(
+            const BML_CoreModuleInterface *moduleInterface) noexcept {
+            if (moduleInterface) {
+                return moduleInterface;
+            }
+            if (!bmlInterfaceAcquire) {
+                return nullptr;
+            }
+
+            const void *implementation = nullptr;
+            BML_InterfaceLease lease = nullptr;
+            const BML_Version required = bmlMakeVersion(1, 0, 0);
+            if (bmlInterfaceAcquire(BML_CORE_MODULE_INTERFACE_ID,
+                                    &required,
+                                    &implementation,
+                                    &lease) != BML_RESULT_OK) {
+                return nullptr;
+            }
+
+            if (lease && bmlInterfaceRelease) {
+                bmlInterfaceRelease(lease);
+            }
+            return static_cast<const BML_CoreModuleInterface *>(implementation);
+        }
+
+        inline PFN_BML_SetCurrentModule ResolveSetCurrentModuleProc(
+            const BML_CoreModuleInterface *moduleInterface) noexcept {
+            if (moduleInterface && moduleInterface->SetCurrentModule) {
+                return moduleInterface->SetCurrentModule;
+            }
+            return bmlSetCurrentModule;
+        }
+
+        inline PFN_BML_GetCurrentModule ResolveGetCurrentModuleProc(
+            const BML_CoreModuleInterface *moduleInterface) noexcept {
+            const auto *resolvedInterface = ResolveModuleInterface(moduleInterface);
+            if (resolvedInterface && resolvedInterface->GetCurrentModule) {
+                return resolvedInterface->GetCurrentModule;
+            }
+            return nullptr;
+        }
+    } // namespace detail
+
     // ============================================================================
     // Version Utilities
     // ============================================================================
@@ -28,9 +73,10 @@ namespace bml {
      * @brief Get the runtime version
      * @return Version if available, std::nullopt otherwise
      */
-    inline std::optional<BML_Version> GetRuntimeVersion() {
-        if (!bmlGetRuntimeVersion) return std::nullopt;
-        const auto *version = bmlGetRuntimeVersion();
+    inline std::optional<BML_Version> GetRuntimeVersion(
+        const BML_CoreContextInterface *contextInterface = nullptr) {
+        if (!contextInterface || !contextInterface->GetRuntimeVersion) return std::nullopt;
+        const auto *version = contextInterface->GetRuntimeVersion();
         return version ? std::optional<BML_Version>(*version) : std::nullopt;
     }
 
@@ -67,33 +113,6 @@ namespace bml {
     }
 
     // ============================================================================
-    // Core Capabilities Query
-    // ============================================================================
-
-    /**
-     * @brief Query core subsystem capabilities
-     * @return Capabilities if successful
-     */
-    inline std::optional<BML_CoreCaps> GetCoreCaps() {
-        if (!bmlCoreGetCaps) return std::nullopt;
-        BML_CoreCaps caps = BML_CORE_CAPS_INIT;
-        if (bmlCoreGetCaps(&caps) == BML_RESULT_OK) {
-            return caps;
-        }
-        return std::nullopt;
-    }
-
-    /**
-     * @brief Check if a core capability is available
-     * @param flag Capability flag to check
-     * @return true if capability is available
-     */
-    inline bool HasCoreCap(BML_CoreCapabilityFlags flag) {
-        auto caps = GetCoreCaps();
-        return caps && (caps->capability_flags & flag);
-    }
-
-    // ============================================================================
     // Mod Handle Wrapper
     // ============================================================================
 
@@ -106,12 +125,18 @@ namespace bml {
     public:
         Mod() : m_Mod(nullptr) {}
 
-        explicit Mod(BML_Mod mod) : m_Mod(mod) {}
+        explicit Mod(BML_Mod mod, const BML_CoreModuleInterface *moduleInterface = nullptr)
+            : m_Mod(mod), m_ModuleInterface(moduleInterface) {}
 
         /**
          * @brief Get the underlying handle
          */
         BML_Mod Handle() const noexcept { return m_Mod; }
+
+        /**
+         * @brief Get the module interface used by this wrapper.
+         */
+        const BML_CoreModuleInterface *ModuleInterface() const noexcept { return m_ModuleInterface; }
 
         /**
          * @brief Check if handle is valid
@@ -123,9 +148,9 @@ namespace bml {
          * @return Mod ID if available
          */
         std::optional<const char *> GetId() const {
-            if (!bmlGetModId || !m_Mod) return std::nullopt;
+            if (!m_ModuleInterface || !m_ModuleInterface->GetModId || !m_Mod) return std::nullopt;
             const char *id = nullptr;
-            if (bmlGetModId(m_Mod, &id) == BML_RESULT_OK && id) {
+            if (m_ModuleInterface->GetModId(m_Mod, &id) == BML_RESULT_OK && id) {
                 return id;
             }
             return std::nullopt;
@@ -136,9 +161,9 @@ namespace bml {
          * @return Version if available
          */
         std::optional<BML_Version> GetVersion() const {
-            if (!bmlGetModVersion || !m_Mod) return std::nullopt;
+            if (!m_ModuleInterface || !m_ModuleInterface->GetModVersion || !m_Mod) return std::nullopt;
             BML_Version version = BML_VERSION_INIT(0, 0, 0);
-            if (bmlGetModVersion(m_Mod, &version) == BML_RESULT_OK) {
+            if (m_ModuleInterface->GetModVersion(m_Mod, &version) == BML_RESULT_OK) {
                 return version;
             }
             return std::nullopt;
@@ -150,8 +175,10 @@ namespace bml {
          * @return true if request succeeded
          */
         bool RequestCapability(const char *capabilityId) const {
-            if (!bmlRequestCapability || !m_Mod || !capabilityId) return false;
-            return bmlRequestCapability(m_Mod, capabilityId) == BML_RESULT_OK;
+            if (!m_ModuleInterface || !m_ModuleInterface->RequestCapability || !m_Mod || !capabilityId) {
+                return false;
+            }
+            return m_ModuleInterface->RequestCapability(m_Mod, capabilityId) == BML_RESULT_OK;
         }
 
         /**
@@ -160,9 +187,11 @@ namespace bml {
          * @return true if capability is supported
          */
         bool CheckCapability(const char *capabilityId) const {
-            if (!bmlCheckCapability || !m_Mod || !capabilityId) return false;
+            if (!m_ModuleInterface || !m_ModuleInterface->CheckCapability || !m_Mod || !capabilityId) {
+                return false;
+            }
             BML_Bool supported = BML_FALSE;
-            if (bmlCheckCapability(m_Mod, capabilityId, &supported) == BML_RESULT_OK) {
+            if (m_ModuleInterface->CheckCapability(m_Mod, capabilityId, &supported) == BML_RESULT_OK) {
                 return supported != BML_FALSE;
             }
             return false;
@@ -170,6 +199,7 @@ namespace bml {
 
     private:
         BML_Mod m_Mod;
+        const BML_CoreModuleInterface *m_ModuleInterface = nullptr;
     };
 
     // ============================================================================
@@ -181,33 +211,41 @@ namespace bml {
      * @param mod Module handle to bind. Pass nullptr to clear.
      * @return true if the runtime supports the API and the assignment succeeded.
      */
-    inline bool SetCurrentModule(BML_Mod mod) {
-        if (!bmlSetCurrentModule) return false;
-        return bmlSetCurrentModule(mod) == BML_RESULT_OK;
+    inline bool SetCurrentModule(BML_Mod mod, const BML_CoreModuleInterface *moduleInterface = nullptr) {
+        const auto setCurrentModule = detail::ResolveSetCurrentModuleProc(moduleInterface);
+        if (!setCurrentModule) return false;
+        return setCurrentModule(mod) == BML_RESULT_OK;
     }
 
     /**
      * @brief Get the module currently bound to the calling thread.
      * @return Optional mod wrapper (empty if API unavailable or no module bound).
      */
-    inline std::optional<Mod> GetCurrentModule() {
-        if (!bmlGetCurrentModule) return std::nullopt;
-        return Mod(bmlGetCurrentModule());
+    inline std::optional<Mod> GetCurrentModule(const BML_CoreModuleInterface *moduleInterface = nullptr) {
+        const auto *resolvedInterface = detail::ResolveModuleInterface(moduleInterface);
+        const auto getCurrentModule = detail::ResolveGetCurrentModuleProc(moduleInterface);
+        if (!getCurrentModule) return std::nullopt;
+        return Mod(getCurrentModule(), resolvedInterface);
     }
 
     /**
      * @brief Enumerate loaded modules as lightweight Mod wrappers.
      * @return Snapshot vector of loaded modules. Empty if APIs are unavailable.
      */
-    inline std::vector<Mod> GetLoadedModules() {
+    inline std::vector<Mod> GetLoadedModules(const BML_CoreModuleInterface *moduleInterface = nullptr) {
         std::vector<Mod> modules;
-        if (!bmlGetLoadedModuleCount || !bmlGetLoadedModuleAt) return modules;
-        const uint32_t count = bmlGetLoadedModuleCount();
+        const auto *resolvedInterface = detail::ResolveModuleInterface(moduleInterface);
+        if (!resolvedInterface ||
+            !resolvedInterface->GetLoadedModuleCount ||
+            !resolvedInterface->GetLoadedModuleAt) {
+            return modules;
+        }
+        const uint32_t count = resolvedInterface->GetLoadedModuleCount();
         modules.reserve(count);
         for (uint32_t index = 0; index < count; ++index) {
-            BML_Mod mod = bmlGetLoadedModuleAt(index);
+            BML_Mod mod = resolvedInterface->GetLoadedModuleAt(index);
             if (mod) {
-                modules.emplace_back(mod);
+                modules.emplace_back(mod, resolvedInterface);
             }
         }
         return modules;
@@ -218,20 +256,25 @@ namespace bml {
      */
     class CurrentModuleScope {
     public:
-        explicit CurrentModuleScope(BML_Mod mod) {
-            if (bmlGetCurrentModule) {
-                m_Previous = bmlGetCurrentModule();
+        explicit CurrentModuleScope(BML_Mod mod,
+                                    const BML_CoreModuleInterface *moduleInterface = nullptr)
+            : m_ModuleInterface(moduleInterface) {
+            const auto getCurrentModule = detail::ResolveGetCurrentModuleProc(m_ModuleInterface);
+            if (getCurrentModule) {
+                m_Previous = getCurrentModule();
                 m_HasPrevious = true;
             }
-            if (bmlSetCurrentModule) {
-                bmlSetCurrentModule(mod);
+            const auto setCurrentModule = detail::ResolveSetCurrentModuleProc(m_ModuleInterface);
+            if (setCurrentModule) {
+                setCurrentModule(mod);
                 m_Active = true;
             }
         }
 
         ~CurrentModuleScope() {
-            if (m_Active && bmlSetCurrentModule) {
-                bmlSetCurrentModule(m_HasPrevious ? m_Previous : nullptr);
+            const auto setCurrentModule = detail::ResolveSetCurrentModuleProc(m_ModuleInterface);
+            if (m_Active && setCurrentModule) {
+                setCurrentModule(m_HasPrevious ? m_Previous : nullptr);
             }
         }
 
@@ -239,23 +282,30 @@ namespace bml {
         CurrentModuleScope &operator=(const CurrentModuleScope &) = delete;
 
         CurrentModuleScope(CurrentModuleScope &&other) noexcept
-            : m_Previous(other.m_Previous), m_HasPrevious(other.m_HasPrevious), m_Active(other.m_Active) {
+            : m_Previous(other.m_Previous),
+              m_HasPrevious(other.m_HasPrevious),
+              m_Active(other.m_Active),
+              m_ModuleInterface(other.m_ModuleInterface) {
             other.m_Active = false;
             other.m_HasPrevious = false;
             other.m_Previous = nullptr;
+            other.m_ModuleInterface = nullptr;
         }
 
         CurrentModuleScope &operator=(CurrentModuleScope &&other) noexcept {
             if (this != &other) {
-                if (m_Active && bmlSetCurrentModule) {
-                    bmlSetCurrentModule(m_HasPrevious ? m_Previous : nullptr);
+                const auto setCurrentModule = detail::ResolveSetCurrentModuleProc(m_ModuleInterface);
+                if (m_Active && setCurrentModule) {
+                    setCurrentModule(m_HasPrevious ? m_Previous : nullptr);
                 }
                 m_Previous = other.m_Previous;
                 m_HasPrevious = other.m_HasPrevious;
                 m_Active = other.m_Active;
+                m_ModuleInterface = other.m_ModuleInterface;
                 other.m_Active = false;
                 other.m_HasPrevious = false;
                 other.m_Previous = nullptr;
+                other.m_ModuleInterface = nullptr;
             }
             return *this;
         }
@@ -264,6 +314,7 @@ namespace bml {
         BML_Mod m_Previous{nullptr};
         bool m_HasPrevious{false};
         bool m_Active{false};
+        const BML_CoreModuleInterface *m_ModuleInterface{nullptr};
     };
 
     // ============================================================================
@@ -277,12 +328,18 @@ namespace bml {
          */
         struct ShutdownHookStorage {
             std::function<void()> callback;
+            bool self_owned = false; // If true, Invoke deletes this
 
             static void Invoke(BML_Context ctx, void *user_data) {
                 (void) ctx;
                 auto *storage = static_cast<ShutdownHookStorage *>(user_data);
-                if (storage && storage->callback) {
-                    storage->callback();
+                if (storage) {
+                    if (storage->callback) {
+                        storage->callback();
+                    }
+                    if (storage->self_owned) {
+                        delete storage;
+                    }
                 }
             }
         };
@@ -305,28 +362,47 @@ namespace bml {
          * @param mod The mod handle
          * @param callback Callback to invoke on shutdown
          */
-        ShutdownHook(BML_Mod mod, std::function<void()> callback)
-            : m_Storage(std::make_unique<detail::ShutdownHookStorage>()) {
-            if (!bmlRegisterShutdownHook || !mod) {
+        ShutdownHook(BML_Mod mod,
+                     std::function<void()> callback,
+                     const BML_CoreModuleInterface *moduleInterface = nullptr)
+            : m_Storage(new detail::ShutdownHookStorage()) {
+            if (!moduleInterface || !moduleInterface->RegisterShutdownHook || !mod) {
                 throw Exception(BML_RESULT_NOT_FOUND, "Shutdown hook API unavailable");
             }
 
             m_Storage->callback = std::move(callback);
+            m_Storage->self_owned = true;
 
-            auto result = bmlRegisterShutdownHook(mod, detail::ShutdownHookStorage::Invoke, m_Storage.get());
+            auto result = moduleInterface->RegisterShutdownHook(
+                mod,
+                detail::ShutdownHookStorage::Invoke,
+                m_Storage);
             if (result != BML_RESULT_OK) {
-                m_Storage.reset();
+                delete m_Storage;
+                m_Storage = nullptr;
                 throw Exception(result, "Failed to register shutdown hook");
             }
         }
+
+        ShutdownHook(Mod mod, std::function<void()> callback)
+            : ShutdownHook(mod.Handle(), std::move(callback), mod.ModuleInterface()) {}
 
         // Non-copyable
         ShutdownHook(const ShutdownHook &) = delete;
         ShutdownHook &operator=(const ShutdownHook &) = delete;
 
         // Movable
-        ShutdownHook(ShutdownHook &&other) noexcept = default;
-        ShutdownHook &operator=(ShutdownHook &&other) noexcept = default;
+        ShutdownHook(ShutdownHook &&other) noexcept : m_Storage(other.m_Storage) {
+            other.m_Storage = nullptr;
+        }
+
+        ShutdownHook &operator=(ShutdownHook &&other) noexcept {
+            if (this != &other) {
+                m_Storage = other.m_Storage;
+                other.m_Storage = nullptr;
+            }
+            return *this;
+        }
 
         /**
          * @brief Check if hook is registered
@@ -334,7 +410,7 @@ namespace bml {
         explicit operator bool() const noexcept { return m_Storage != nullptr; }
 
     private:
-        std::unique_ptr<detail::ShutdownHookStorage> m_Storage;
+        detail::ShutdownHookStorage *m_Storage{nullptr};
     };
 
     /**
@@ -343,14 +419,20 @@ namespace bml {
      * @param callback Callback to invoke on shutdown
      * @return true if registration succeeded
      */
-    inline bool RegisterShutdownHook(Mod mod, std::function<void()> callback) {
-        if (!bmlRegisterShutdownHook || !mod) return false;
+    inline bool RegisterShutdownHook(Mod mod,
+                                     std::function<void()> callback,
+                                     const BML_CoreModuleInterface *moduleInterface = nullptr) {
+        const auto *resolvedInterface = moduleInterface ? moduleInterface : mod.ModuleInterface();
+        if (!resolvedInterface || !resolvedInterface->RegisterShutdownHook || !mod) return false;
 
-        // Leak the storage intentionally - it will be cleaned up by the callback
         auto *storage = new detail::ShutdownHookStorage();
         storage->callback = std::move(callback);
+        storage->self_owned = true; // Invoke will delete this
 
-        return bmlRegisterShutdownHook(mod.Handle(), detail::ShutdownHookStorage::Invoke, storage) == BML_RESULT_OK;
+        return resolvedInterface->RegisterShutdownHook(
+            mod.Handle(),
+            detail::ShutdownHookStorage::Invoke,
+            storage) == BML_RESULT_OK;
     }
 } // namespace bml
 

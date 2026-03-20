@@ -8,6 +8,7 @@
 #ifndef BML_LOGGER_HPP
 #define BML_LOGGER_HPP
 
+#include "bml_builtin_interfaces.h"
 #include "bml_logging.h"
 #include "bml_context.hpp"
 
@@ -17,33 +18,6 @@
 #include <optional>
 
 namespace bml {
-    // ============================================================================
-    // Logging Capabilities Query
-    // ============================================================================
-
-    /**
-     * @brief Query logging subsystem capabilities
-     * @return Capabilities if successful
-     */
-    inline std::optional<BML_LogCaps> GetLoggingCaps() {
-        if (!bmlLoggingGetCaps) return std::nullopt;
-        BML_LogCaps caps = BML_LOG_CAPS_INIT;
-        if (bmlLoggingGetCaps(&caps) == BML_RESULT_OK) {
-            return caps;
-        }
-        return std::nullopt;
-    }
-
-    /**
-     * @brief Check if a logging capability is available
-     * @param flag Capability flag to check
-     * @return true if capability is available
-     */
-    inline bool HasLoggingCap(BML_LogCapabilityFlags flag) {
-        auto caps = GetLoggingCaps();
-        return caps && (caps->capability_flags & flag);
-    }
-
     // ============================================================================
     // Log Level Enum
     // ============================================================================
@@ -64,8 +38,10 @@ namespace bml {
      * @brief Set the minimum log severity filter
      * @param level Minimum severity level to log
      */
-    inline void SetLogFilter(LogLevel level) {
-        if (bmlSetLogFilter) bmlSetLogFilter(static_cast<BML_LogSeverity>(level));
+    inline void SetLogFilter(LogLevel level, const BML_CoreLoggingInterface *loggingInterface = nullptr) {
+        if (loggingInterface && loggingInterface->SetLogFilter) {
+            loggingInterface->SetLogFilter(static_cast<BML_LogSeverity>(level));
+        }
     }
 
     // ============================================================================
@@ -90,12 +66,22 @@ namespace bml {
         explicit Logger(Context ctx, std::string_view tag = "")
             : m_ctx(ctx.Handle()), m_tag(tag) {}
 
+        Logger(Context ctx,
+               std::string_view tag,
+               const BML_CoreLoggingInterface *loggingInterface)
+            : m_ctx(ctx.Handle()), m_tag(tag), m_LoggingInterface(loggingInterface) {}
+
         /**
          * @brief Construct a logger with raw context handle
          * @param ctx The BML context handle
          * @param tag Optional tag for log messages
          */
         explicit Logger(BML_Context ctx, std::string_view tag = "") : m_ctx(ctx), m_tag(tag) {}
+
+        Logger(BML_Context ctx,
+               std::string_view tag,
+               const BML_CoreLoggingInterface *loggingInterface)
+            : m_ctx(ctx), m_tag(tag), m_LoggingInterface(loggingInterface) {}
 
         // ========================================================================
         // Generic Log
@@ -108,10 +94,15 @@ namespace bml {
          * @param ... Format arguments
          */
         void Log(LogLevel level, const char *fmt, ...) const {
-            if (!bmlLogVa) return;
+            if (!m_LoggingInterface || !m_LoggingInterface->LogVa) return;
             va_list args;
             va_start(args, fmt);
-            bmlLogVa(m_ctx, static_cast<BML_LogSeverity>(level), m_tag.empty() ? nullptr : m_tag.c_str(), fmt, args);
+            m_LoggingInterface->LogVa(
+                m_ctx,
+                static_cast<BML_LogSeverity>(level),
+                m_tag.empty() ? nullptr : m_tag.c_str(),
+                fmt,
+                args);
             va_end(args);
         }
 
@@ -125,10 +116,10 @@ namespace bml {
          * @param ... Format arguments
          */
         void Trace(const char *fmt, ...) const {
-            if (!bmlLogVa) return;
+            if (!m_LoggingInterface || !m_LoggingInterface->LogVa) return;
             va_list args;
             va_start(args, fmt);
-            bmlLogVa(m_ctx, BML_LOG_TRACE, m_tag.empty() ? nullptr : m_tag.c_str(), fmt, args);
+            m_LoggingInterface->LogVa(m_ctx, BML_LOG_TRACE, m_tag.empty() ? nullptr : m_tag.c_str(), fmt, args);
             va_end(args);
         }
 
@@ -138,10 +129,10 @@ namespace bml {
          * @param ... Format arguments
          */
         void Debug(const char *fmt, ...) const {
-            if (!bmlLogVa) return;
+            if (!m_LoggingInterface || !m_LoggingInterface->LogVa) return;
             va_list args;
             va_start(args, fmt);
-            bmlLogVa(m_ctx, BML_LOG_DEBUG, m_tag.empty() ? nullptr : m_tag.c_str(), fmt, args);
+            m_LoggingInterface->LogVa(m_ctx, BML_LOG_DEBUG, m_tag.empty() ? nullptr : m_tag.c_str(), fmt, args);
             va_end(args);
         }
 
@@ -151,10 +142,10 @@ namespace bml {
          * @param ... Format arguments
          */
         void Info(const char *fmt, ...) const {
-            if (!bmlLogVa) return;
+            if (!m_LoggingInterface || !m_LoggingInterface->LogVa) return;
             va_list args;
             va_start(args, fmt);
-            bmlLogVa(m_ctx, BML_LOG_INFO, m_tag.empty() ? nullptr : m_tag.c_str(), fmt, args);
+            m_LoggingInterface->LogVa(m_ctx, BML_LOG_INFO, m_tag.empty() ? nullptr : m_tag.c_str(), fmt, args);
             va_end(args);
         }
 
@@ -164,10 +155,10 @@ namespace bml {
          * @param ... Format arguments
          */
         void Warn(const char *fmt, ...) const {
-            if (!bmlLogVa) return;
+            if (!m_LoggingInterface || !m_LoggingInterface->LogVa) return;
             va_list args;
             va_start(args, fmt);
-            bmlLogVa(m_ctx, BML_LOG_WARN, m_tag.empty() ? nullptr : m_tag.c_str(), fmt, args);
+            m_LoggingInterface->LogVa(m_ctx, BML_LOG_WARN, m_tag.empty() ? nullptr : m_tag.c_str(), fmt, args);
             va_end(args);
         }
 
@@ -177,10 +168,10 @@ namespace bml {
          * @param ... Format arguments
          */
         void Error(const char *fmt, ...) const {
-            if (!bmlLogVa) return;
+            if (!m_LoggingInterface || !m_LoggingInterface->LogVa) return;
             va_list args;
             va_start(args, fmt);
-            bmlLogVa(m_ctx, BML_LOG_ERROR, m_tag.empty() ? nullptr : m_tag.c_str(), fmt, args);
+            m_LoggingInterface->LogVa(m_ctx, BML_LOG_ERROR, m_tag.empty() ? nullptr : m_tag.c_str(), fmt, args);
             va_end(args);
         }
 
@@ -190,10 +181,10 @@ namespace bml {
          * @param ... Format arguments
          */
         void Fatal(const char *fmt, ...) const {
-            if (!bmlLogVa) return;
+            if (!m_LoggingInterface || !m_LoggingInterface->LogVa) return;
             va_list args;
             va_start(args, fmt);
-            bmlLogVa(m_ctx, BML_LOG_FATAL, m_tag.empty() ? nullptr : m_tag.c_str(), fmt, args);
+            m_LoggingInterface->LogVa(m_ctx, BML_LOG_FATAL, m_tag.empty() ? nullptr : m_tag.c_str(), fmt, args);
             va_end(args);
         }
 
@@ -214,6 +205,7 @@ namespace bml {
     private:
         BML_Context m_ctx;
         std::string m_tag;
+        const BML_CoreLoggingInterface *m_LoggingInterface = nullptr;
     };
 } // namespace bml
 

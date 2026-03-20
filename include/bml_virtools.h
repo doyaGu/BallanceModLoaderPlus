@@ -16,15 +16,15 @@
  * @code
  * #include <bml_virtools.h>
  * 
- * // Get CKContext from BML context
- * CKContext* ck = bmlVirtoolsGetCKContext(bmlGetGlobalContext());
+ * // Get CKContext from BML context via the builtin context interface
+ * CKContext* ck = (CKContext*)bmlVirtoolsGetCKContext(ctx, context_api);
  * if (ck) {
  *     // Use CKContext...
  * }
  * 
- * // Or use the helper macros with context user data directly
+ * // Or access user data directly through the interface
  * void* ptr = NULL;
- * if (bmlContextGetUserData(ctx, BML_VIRTOOLS_KEY_CKCONTEXT, &ptr) == BML_RESULT_OK && ptr) {
+ * if (context_api->GetUserData(ctx, BML_VIRTOOLS_KEY_CKCONTEXT, &ptr) == BML_RESULT_OK && ptr) {
  *     CKContext* ck = (CKContext*)ptr;
  * }
  * @endcode
@@ -37,14 +37,15 @@
 #define BML_VIRTOOLS_H
 
 #include "bml_types.h"
-#include "bml_core.h"
+#include "bml_builtin_interfaces.h"
 
 BML_BEGIN_CDECLS
 
 /* ========================================================================
  * Well-known User Data Keys
  * 
- * These keys are used with bmlSetUserData/bmlContextGetUserData
+ * These keys are used with `BML_CoreContextInterface::SetUserData` and
+ * `BML_CoreContextInterface::GetUserData`
  * to store/retrieve Virtools objects. ModLoader registers these during
  * engine initialization.
  * ======================================================================== */
@@ -82,7 +83,8 @@ BML_BEGIN_CDECLS
 /* ========================================================================
  * Convenience Functions (inline)
  * 
- * These are thin wrappers around bmlContextGetUserData for convenience.
+ * These are thin wrappers around `BML_CoreContextInterface::GetUserData`
+ * for convenience.
  * They handle the NULL checks and casting.
  * ======================================================================== */
 
@@ -92,10 +94,11 @@ BML_BEGIN_CDECLS
  * @param[in] ctx BML context handle
  * @return CKContext pointer, or NULL if not available
  */
-static inline void *bmlVirtoolsGetCKContext(BML_Context ctx) {
+static inline void *bmlVirtoolsGetCKContext(BML_Context ctx,
+                                            const BML_CoreContextInterface *context_interface) {
     void *result = NULL;
-    if (ctx && bmlContextGetUserData) {
-        bmlContextGetUserData(ctx, BML_VIRTOOLS_KEY_CKCONTEXT, &result);
+    if (ctx && context_interface && context_interface->GetUserData) {
+        context_interface->GetUserData(ctx, BML_VIRTOOLS_KEY_CKCONTEXT, &result);
     }
     return result;
 }
@@ -103,10 +106,11 @@ static inline void *bmlVirtoolsGetCKContext(BML_Context ctx) {
 /**
  * @brief Get CKRenderContext from BML context
  */
-static inline void *bmlVirtoolsGetRenderContext(BML_Context ctx) {
+static inline void *bmlVirtoolsGetRenderContext(BML_Context ctx,
+                                                const BML_CoreContextInterface *context_interface) {
     void *result = NULL;
-    if (ctx && bmlContextGetUserData) {
-        bmlContextGetUserData(ctx, BML_VIRTOOLS_KEY_RENDERCONTEXT, &result);
+    if (ctx && context_interface && context_interface->GetUserData) {
+        context_interface->GetUserData(ctx, BML_VIRTOOLS_KEY_RENDERCONTEXT, &result);
     }
     return result;
 }
@@ -114,10 +118,11 @@ static inline void *bmlVirtoolsGetRenderContext(BML_Context ctx) {
 /**
  * @brief Get CKInputManager from BML context
  */
-static inline void *bmlVirtoolsGetInputManager(BML_Context ctx) {
+static inline void *bmlVirtoolsGetInputManager(BML_Context ctx,
+                                               const BML_CoreContextInterface *context_interface) {
     void *result = NULL;
-    if (ctx && bmlContextGetUserData) {
-        bmlContextGetUserData(ctx, BML_VIRTOOLS_KEY_INPUTMANAGER, &result);
+    if (ctx && context_interface && context_interface->GetUserData) {
+        context_interface->GetUserData(ctx, BML_VIRTOOLS_KEY_INPUTMANAGER, &result);
     }
     return result;
 }
@@ -125,10 +130,11 @@ static inline void *bmlVirtoolsGetInputManager(BML_Context ctx) {
 /**
  * @brief Get CKTimeManager from BML context
  */
-static inline void *bmlVirtoolsGetTimeManager(BML_Context ctx) {
+static inline void *bmlVirtoolsGetTimeManager(BML_Context ctx,
+                                              const BML_CoreContextInterface *context_interface) {
     void *result = NULL;
-    if (ctx && bmlContextGetUserData) {
-        bmlContextGetUserData(ctx, BML_VIRTOOLS_KEY_TIMEMANAGER, &result);
+    if (ctx && context_interface && context_interface->GetUserData) {
+        context_interface->GetUserData(ctx, BML_VIRTOOLS_KEY_TIMEMANAGER, &result);
     }
     return result;
 }
@@ -136,10 +142,11 @@ static inline void *bmlVirtoolsGetTimeManager(BML_Context ctx) {
 /**
  * @brief Get main window HWND from BML context
  */
-static inline void *bmlVirtoolsGetMainHWND(BML_Context ctx) {
+static inline void *bmlVirtoolsGetMainHWND(BML_Context ctx,
+                                           const BML_CoreContextInterface *context_interface) {
     void *result = NULL;
-    if (ctx && bmlContextGetUserData) {
-        bmlContextGetUserData(ctx, BML_VIRTOOLS_KEY_MAINHWND, &result);
+    if (ctx && context_interface && context_interface->GetUserData) {
+        context_interface->GetUserData(ctx, BML_VIRTOOLS_KEY_MAINHWND, &result);
     }
     return result;
 }
@@ -147,10 +154,11 @@ static inline void *bmlVirtoolsGetMainHWND(BML_Context ctx) {
 /**
  * @brief Get render window HWND from BML context
  */
-static inline void *bmlVirtoolsGetRenderHWND(BML_Context ctx) {
+static inline void *bmlVirtoolsGetRenderHWND(BML_Context ctx,
+                                             const BML_CoreContextInterface *context_interface) {
     void *result = NULL;
-    if (ctx && bmlContextGetUserData) {
-        bmlContextGetUserData(ctx, BML_VIRTOOLS_KEY_RENDERHWND, &result);
+    if (ctx && context_interface && context_interface->GetUserData) {
+        context_interface->GetUserData(ctx, BML_VIRTOOLS_KEY_RENDERHWND, &result);
     }
     return result;
 }

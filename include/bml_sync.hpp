@@ -1,782 +1,511 @@
 /**
  * @file bml_sync.hpp
- * @brief BML C++ Synchronization Primitives Wrapper
- * 
- * Provides RAII-friendly wrappers for BML synchronization primitives
- * including mutexes, read-write locks, semaphores, condition variables,
- * and thread-local storage.
+ * @brief C++ RAII wrappers for BML synchronization primitives
  */
 
 #ifndef BML_SYNC_HPP
 #define BML_SYNC_HPP
 
-#include "bml_sync.h"
-#include "bml_errors.h"
-
-#include <optional>
-#include <utility>
+#include "bml_builtin_interfaces.h"
 
 namespace bml {
-    // ============================================================================
-    // Sync Capabilities Query
-    // ============================================================================
 
-    /**
-     * @brief Query sync subsystem capabilities
-     * @return Capabilities if successful
-     */
-    inline std::optional<BML_SyncCaps> GetSyncCaps() {
-        if (!bmlSyncGetCaps) return std::nullopt;
-        BML_SyncCaps caps = BML_SYNC_CAPS_INIT;
-        if (bmlSyncGetCaps(&caps) == BML_RESULT_OK) {
-            return caps;
-        }
-        return std::nullopt;
-    }
+    // ========================================================================
+    // Mutex
+    // ========================================================================
 
-    /**
-     * @brief Check if a sync capability is available
-     * @param flag Capability flag to check
-     * @return true if capability is available
-     */
-    inline bool HasSyncCap(BML_SyncCapabilityFlags flag) {
-        auto caps = GetSyncCaps();
-        return caps && (caps->capability_flags & flag);
-    }
-
-    // ============================================================================
-    // Mutex Wrapper
-    // ============================================================================
-
-    /**
-     * @brief RAII wrapper for BML_Mutex
-     *
-     * Example:
-     *   bml::Mutex mutex;
-     *   {
-     *       bml::LockGuard lock(mutex);
-     *       // Critical section
-     *   }
-     */
     class Mutex {
     public:
-        /**
-         * @brief Create a mutex
-         * @throws bml::Exception if creation fails
-         */
-        Mutex() : m_handle(nullptr) {
-            if (!bmlMutexCreate) {
-                throw Exception(BML_RESULT_NOT_FOUND, "Mutex API unavailable");
-            }
-            auto result = bmlMutexCreate(&m_handle);
-            if (result != BML_RESULT_OK) {
-                throw Exception(result, "Failed to create mutex");
+        explicit Mutex(const BML_CoreSyncInterface *iface)
+            : m_Interface(iface) {
+            if (m_Interface && m_Interface->MutexCreate) {
+                m_Interface->MutexCreate(&m_Handle);
             }
         }
 
-        /**
-         * @brief Destructor - destroys the mutex
-         */
         ~Mutex() {
-            if (m_handle && bmlMutexDestroy) {
-                bmlMutexDestroy(m_handle);
+            if (m_Interface && m_Interface->MutexDestroy) {
+                m_Interface->MutexDestroy(m_Handle);
             }
         }
 
-        // Non-copyable
+        void Lock() {
+            if (m_Interface && m_Interface->MutexLock) {
+                m_Interface->MutexLock(m_Handle);
+            }
+        }
+
+        bool TryLock() {
+            if (m_Interface && m_Interface->MutexTryLock) {
+                return m_Interface->MutexTryLock(m_Handle) == BML_TRUE;
+            }
+            return false;
+        }
+
+        BML_Result LockTimeout(uint32_t timeout_ms) {
+            if (m_Interface && m_Interface->MutexLockTimeout) {
+                return m_Interface->MutexLockTimeout(m_Handle, timeout_ms);
+            }
+            return BML_RESULT_NOT_INITIALIZED;
+        }
+
+        void Unlock() {
+            if (m_Interface && m_Interface->MutexUnlock) {
+                m_Interface->MutexUnlock(m_Handle);
+            }
+        }
+
+        BML_Mutex Handle() const noexcept { return m_Handle; }
+        explicit operator bool() const noexcept { return m_Handle != nullptr; }
+
         Mutex(const Mutex &) = delete;
         Mutex &operator=(const Mutex &) = delete;
 
-        // Movable
-        Mutex(Mutex &&other) noexcept : m_handle(other.m_handle) {
-            other.m_handle = nullptr;
+        Mutex(Mutex &&other) noexcept
+            : m_Interface(other.m_Interface), m_Handle(other.m_Handle) {
+            other.m_Handle = nullptr;
         }
 
         Mutex &operator=(Mutex &&other) noexcept {
             if (this != &other) {
-                if (m_handle && bmlMutexDestroy) {
-                    bmlMutexDestroy(m_handle);
+                if (m_Interface && m_Interface->MutexDestroy) {
+                    m_Interface->MutexDestroy(m_Handle);
                 }
-                m_handle = other.m_handle;
-                other.m_handle = nullptr;
+                m_Interface = other.m_Interface;
+                m_Handle = other.m_Handle;
+                other.m_Handle = nullptr;
             }
             return *this;
         }
 
-        /**
-         * @brief Lock the mutex (blocking)
-         */
-        void lock() {
-            if (bmlMutexLock) {
-                bmlMutexLock(m_handle);
-            }
-        }
-
-        /**
-         * @brief Try to lock the mutex (non-blocking)
-         * @return true if lock acquired
-         */
-        bool try_lock() {
-            return bmlMutexTryLock && bmlMutexTryLock(m_handle) != BML_FALSE;
-        }
-
-        /**
-         * @brief Lock the mutex with timeout
-         * @param timeout_ms Timeout in milliseconds (BML_TIMEOUT_NONE for non-blocking,
-         *                   BML_TIMEOUT_INFINITE for blocking)
-         * @return BML_RESULT_OK if lock acquired, BML_RESULT_TIMEOUT on timeout
-         */
-        BML_Result lock_timeout(uint32_t timeout_ms) {
-            if (!bmlMutexLockTimeout) return BML_RESULT_NOT_FOUND;
-            return bmlMutexLockTimeout(m_handle, timeout_ms);
-        }
-
-        /**
-         * @brief Unlock the mutex
-         */
-        void unlock() {
-            if (bmlMutexUnlock) {
-                bmlMutexUnlock(m_handle);
-            }
-        }
-
-        /**
-         * @brief Get the underlying handle
-         */
-        BML_Mutex handle() const noexcept { return m_handle; }
-
     private:
-        BML_Mutex m_handle;
+        const BML_CoreSyncInterface *m_Interface = nullptr;
+        BML_Mutex m_Handle = nullptr;
     };
 
-    // ============================================================================
-    // Read-Write Lock Wrapper
-    // ============================================================================
+    class MutexGuard {
+    public:
+        explicit MutexGuard(Mutex &m)
+            : m_Mutex(&m) {
+            m_Mutex->Lock();
+        }
 
-    /**
-     * @brief RAII wrapper for BML_RwLock
-     *
-     * Example:
-     *   bml::RwLock lock;
-     *   {
-     *       bml::ReadLockGuard read_lock(lock);
-     *       // Read operations
-     *   }
-     *   {
-     *       bml::WriteLockGuard write_lock(lock);
-     *       // Write operations
-     *   }
-     */
+        ~MutexGuard() {
+            if (m_Mutex) {
+                m_Mutex->Unlock();
+            }
+        }
+
+        MutexGuard(const MutexGuard &) = delete;
+        MutexGuard &operator=(const MutexGuard &) = delete;
+
+    private:
+        Mutex *m_Mutex = nullptr;
+    };
+
+    // ========================================================================
+    // RwLock
+    // ========================================================================
+
     class RwLock {
     public:
-        /**
-         * @brief Create a read-write lock
-         * @throws bml::Exception if creation fails
-         */
-        RwLock() : m_handle(nullptr) {
-            if (!bmlRwLockCreate) {
-                throw Exception(BML_RESULT_NOT_FOUND, "RwLock API unavailable");
-            }
-            auto result = bmlRwLockCreate(&m_handle);
-            if (result != BML_RESULT_OK) {
-                throw Exception(result, "Failed to create RwLock");
+        explicit RwLock(const BML_CoreSyncInterface *iface)
+            : m_Interface(iface) {
+            if (m_Interface && m_Interface->RwLockCreate) {
+                m_Interface->RwLockCreate(&m_Handle);
             }
         }
 
         ~RwLock() {
-            if (m_handle && bmlRwLockDestroy) {
-                bmlRwLockDestroy(m_handle);
+            if (m_Interface && m_Interface->RwLockDestroy) {
+                m_Interface->RwLockDestroy(m_Handle);
             }
         }
 
-        // Non-copyable
+        void ReadLock() {
+            if (m_Interface && m_Interface->RwLockReadLock) {
+                m_Interface->RwLockReadLock(m_Handle);
+            }
+        }
+
+        bool TryReadLock() {
+            if (m_Interface && m_Interface->RwLockTryReadLock) {
+                return m_Interface->RwLockTryReadLock(m_Handle) == BML_TRUE;
+            }
+            return false;
+        }
+
+        BML_Result ReadLockTimeout(uint32_t timeout_ms) {
+            if (m_Interface && m_Interface->RwLockReadLockTimeout) {
+                return m_Interface->RwLockReadLockTimeout(m_Handle, timeout_ms);
+            }
+            return BML_RESULT_NOT_INITIALIZED;
+        }
+
+        void WriteLock() {
+            if (m_Interface && m_Interface->RwLockWriteLock) {
+                m_Interface->RwLockWriteLock(m_Handle);
+            }
+        }
+
+        bool TryWriteLock() {
+            if (m_Interface && m_Interface->RwLockTryWriteLock) {
+                return m_Interface->RwLockTryWriteLock(m_Handle) == BML_TRUE;
+            }
+            return false;
+        }
+
+        BML_Result WriteLockTimeout(uint32_t timeout_ms) {
+            if (m_Interface && m_Interface->RwLockWriteLockTimeout) {
+                return m_Interface->RwLockWriteLockTimeout(m_Handle, timeout_ms);
+            }
+            return BML_RESULT_NOT_INITIALIZED;
+        }
+
+        void ReadUnlock() {
+            if (m_Interface && m_Interface->RwLockReadUnlock) {
+                m_Interface->RwLockReadUnlock(m_Handle);
+            }
+        }
+
+        void WriteUnlock() {
+            if (m_Interface && m_Interface->RwLockWriteUnlock) {
+                m_Interface->RwLockWriteUnlock(m_Handle);
+            }
+        }
+
+        void Unlock() {
+            if (m_Interface && m_Interface->RwLockUnlock) {
+                m_Interface->RwLockUnlock(m_Handle);
+            }
+        }
+
+        BML_RwLock Handle() const noexcept { return m_Handle; }
+        explicit operator bool() const noexcept { return m_Handle != nullptr; }
+
         RwLock(const RwLock &) = delete;
         RwLock &operator=(const RwLock &) = delete;
 
-        // Movable
-        RwLock(RwLock &&other) noexcept : m_handle(other.m_handle) {
-            other.m_handle = nullptr;
+        RwLock(RwLock &&other) noexcept
+            : m_Interface(other.m_Interface), m_Handle(other.m_Handle) {
+            other.m_Handle = nullptr;
         }
 
         RwLock &operator=(RwLock &&other) noexcept {
             if (this != &other) {
-                if (m_handle && bmlRwLockDestroy) {
-                    bmlRwLockDestroy(m_handle);
+                if (m_Interface && m_Interface->RwLockDestroy) {
+                    m_Interface->RwLockDestroy(m_Handle);
                 }
-                m_handle = other.m_handle;
-                other.m_handle = nullptr;
+                m_Interface = other.m_Interface;
+                m_Handle = other.m_Handle;
+                other.m_Handle = nullptr;
             }
             return *this;
         }
 
-        void lock_shared() {
-            if (bmlRwLockReadLock) bmlRwLockReadLock(m_handle);
-        }
-
-        bool try_lock_shared() {
-            return bmlRwLockTryReadLock && bmlRwLockTryReadLock(m_handle) != BML_FALSE;
-        }
-
-        /**
-         * @brief Acquire read lock with timeout
-         * @param timeout_ms Timeout in milliseconds
-         * @return BML_RESULT_OK if lock acquired, BML_RESULT_TIMEOUT on timeout
-         */
-        BML_Result lock_shared_timeout(uint32_t timeout_ms) {
-            if (!bmlRwLockReadLockTimeout) return BML_RESULT_NOT_FOUND;
-            return bmlRwLockReadLockTimeout(m_handle, timeout_ms);
-        }
-
-        void unlock_shared() {
-            if (bmlRwLockReadUnlock) bmlRwLockReadUnlock(m_handle);
-        }
-
-        void lock() {
-            if (bmlRwLockWriteLock) bmlRwLockWriteLock(m_handle);
-        }
-
-        bool try_lock() {
-            return bmlRwLockTryWriteLock && bmlRwLockTryWriteLock(m_handle) != BML_FALSE;
-        }
-
-        /**
-         * @brief Acquire write lock with timeout
-         * @param timeout_ms Timeout in milliseconds
-         * @return BML_RESULT_OK if lock acquired, BML_RESULT_TIMEOUT on timeout
-         */
-        BML_Result lock_timeout(uint32_t timeout_ms) {
-            if (!bmlRwLockWriteLockTimeout) return BML_RESULT_NOT_FOUND;
-            return bmlRwLockWriteLockTimeout(m_handle, timeout_ms);
-        }
-
-        void unlock() {
-            if (bmlRwLockWriteUnlock) bmlRwLockWriteUnlock(m_handle);
-        }
-
-        BML_RwLock handle() const noexcept { return m_handle; }
-
     private:
-        BML_RwLock m_handle;
+        const BML_CoreSyncInterface *m_Interface = nullptr;
+        BML_RwLock m_Handle = nullptr;
     };
 
-    // ============================================================================
-    // Lock Guards
-    // ============================================================================
-
-    /**
-     * @brief RAII lock guard for Mutex (like std::lock_guard)
-     */
-    class LockGuard {
+    class ReadGuard {
     public:
-        explicit LockGuard(Mutex &mutex) : m_mutex(mutex) {
-            m_mutex.lock();
+        explicit ReadGuard(RwLock &lock)
+            : m_Lock(&lock) {
+            m_Lock->ReadLock();
         }
 
-        ~LockGuard() {
-            m_mutex.unlock();
+        ~ReadGuard() {
+            if (m_Lock) {
+                m_Lock->ReadUnlock();
+            }
         }
 
-        LockGuard(const LockGuard &) = delete;
-        LockGuard &operator=(const LockGuard &) = delete;
+        ReadGuard(const ReadGuard &) = delete;
+        ReadGuard &operator=(const ReadGuard &) = delete;
 
     private:
-        Mutex &m_mutex;
+        RwLock *m_Lock = nullptr;
     };
 
-    /**
-     * @brief RAII read lock guard for RwLock
-     */
-    class ReadLockGuard {
+    class WriteGuard {
     public:
-        explicit ReadLockGuard(RwLock &lock) : m_lock(lock) {
-            m_lock.lock_shared();
+        explicit WriteGuard(RwLock &lock)
+            : m_Lock(&lock) {
+            m_Lock->WriteLock();
         }
 
-        ~ReadLockGuard() {
-            m_lock.unlock_shared();
+        ~WriteGuard() {
+            if (m_Lock) {
+                m_Lock->WriteUnlock();
+            }
         }
 
-        ReadLockGuard(const ReadLockGuard &) = delete;
-        ReadLockGuard &operator=(const ReadLockGuard &) = delete;
+        WriteGuard(const WriteGuard &) = delete;
+        WriteGuard &operator=(const WriteGuard &) = delete;
 
     private:
-        RwLock &m_lock;
+        RwLock *m_Lock = nullptr;
     };
 
-    /**
-     * @brief RAII write lock guard for RwLock
-     */
-    class WriteLockGuard {
-    public:
-        explicit WriteLockGuard(RwLock &lock) : m_lock(lock) {
-            m_lock.lock();
-        }
+    // ========================================================================
+    // Semaphore
+    // ========================================================================
 
-        ~WriteLockGuard() {
-            m_lock.unlock();
-        }
-
-        WriteLockGuard(const WriteLockGuard &) = delete;
-        WriteLockGuard &operator=(const WriteLockGuard &) = delete;
-
-    private:
-        RwLock &m_lock;
-    };
-
-    // ============================================================================
-    // Semaphore Wrapper
-    // ============================================================================
-
-    /**
-     * @brief RAII wrapper for BML_Semaphore
-     */
     class Semaphore {
     public:
-        /**
-         * @brief Create a semaphore
-         * @param initial_count Initial count value
-         * @param max_count Maximum count value
-         * @throws bml::Exception if creation fails
-         */
-        explicit Semaphore(uint32_t initial_count = 0, uint32_t max_count = 0xFFFFFFFF)
-            : m_handle(nullptr) {
-            if (!bmlSemaphoreCreate) {
-                throw Exception(BML_RESULT_NOT_FOUND, "Semaphore API unavailable");
-            }
-            auto result = bmlSemaphoreCreate(initial_count, max_count, &m_handle);
-            if (result != BML_RESULT_OK) {
-                throw Exception(result, "Failed to create semaphore");
+        Semaphore(uint32_t initial, uint32_t max, const BML_CoreSyncInterface *iface)
+            : m_Interface(iface) {
+            if (m_Interface && m_Interface->SemaphoreCreate) {
+                m_Interface->SemaphoreCreate(initial, max, &m_Handle);
             }
         }
 
         ~Semaphore() {
-            if (m_handle && bmlSemaphoreDestroy) {
-                bmlSemaphoreDestroy(m_handle);
+            if (m_Interface && m_Interface->SemaphoreDestroy) {
+                m_Interface->SemaphoreDestroy(m_Handle);
             }
         }
 
-        // Non-copyable
+        BML_Result Wait(uint32_t timeout_ms = BML_TIMEOUT_INFINITE) {
+            if (m_Interface && m_Interface->SemaphoreWait) {
+                return m_Interface->SemaphoreWait(m_Handle, timeout_ms);
+            }
+            return BML_RESULT_NOT_INITIALIZED;
+        }
+
+        BML_Result Signal(uint32_t count = 1) {
+            if (m_Interface && m_Interface->SemaphoreSignal) {
+                return m_Interface->SemaphoreSignal(m_Handle, count);
+            }
+            return BML_RESULT_NOT_INITIALIZED;
+        }
+
+        BML_Semaphore Handle() const noexcept { return m_Handle; }
+        explicit operator bool() const noexcept { return m_Handle != nullptr; }
+
         Semaphore(const Semaphore &) = delete;
         Semaphore &operator=(const Semaphore &) = delete;
 
-        // Movable
-        Semaphore(Semaphore &&other) noexcept : m_handle(other.m_handle) {
-            other.m_handle = nullptr;
+        Semaphore(Semaphore &&other) noexcept
+            : m_Interface(other.m_Interface), m_Handle(other.m_Handle) {
+            other.m_Handle = nullptr;
         }
 
         Semaphore &operator=(Semaphore &&other) noexcept {
             if (this != &other) {
-                if (m_handle && bmlSemaphoreDestroy) {
-                    bmlSemaphoreDestroy(m_handle);
+                if (m_Interface && m_Interface->SemaphoreDestroy) {
+                    m_Interface->SemaphoreDestroy(m_Handle);
                 }
-                m_handle = other.m_handle;
-                other.m_handle = nullptr;
+                m_Interface = other.m_Interface;
+                m_Handle = other.m_Handle;
+                other.m_Handle = nullptr;
             }
             return *this;
         }
 
-        /**
-         * @brief Wait on semaphore (decrement count)
-         * @param timeout_ms Timeout in milliseconds (0xFFFFFFFF = infinite)
-         * @return true if acquired, false on timeout
-         */
-        bool wait(uint32_t timeout_ms = 0xFFFFFFFF) {
-            if (!bmlSemaphoreWait) return false;
-            return bmlSemaphoreWait(m_handle, timeout_ms) == BML_RESULT_OK;
-        }
-
-        /**
-         * @brief Signal semaphore (increment count)
-         * @param count Number to increment by
-         * @return true if successful
-         */
-        bool signal(uint32_t count = 1) {
-            if (!bmlSemaphoreSignal) return false;
-            return bmlSemaphoreSignal(m_handle, count) == BML_RESULT_OK;
-        }
-
-        BML_Semaphore handle() const noexcept { return m_handle; }
-
     private:
-        BML_Semaphore m_handle;
+        const BML_CoreSyncInterface *m_Interface = nullptr;
+        BML_Semaphore m_Handle = nullptr;
     };
 
-    // ============================================================================
-    // Condition Variable Wrapper
-    // ============================================================================
+    // ========================================================================
+    // CondVar
+    // ========================================================================
 
-    /**
-     * @brief RAII wrapper for BML_CondVar
-     */
     class CondVar {
     public:
-        CondVar() : m_handle(nullptr) {
-            if (!bmlCondVarCreate) {
-                throw Exception(BML_RESULT_NOT_FOUND, "CondVar API unavailable");
-            }
-            auto result = bmlCondVarCreate(&m_handle);
-            if (result != BML_RESULT_OK) {
-                throw Exception(result, "Failed to create condition variable");
+        explicit CondVar(const BML_CoreSyncInterface *iface)
+            : m_Interface(iface) {
+            if (m_Interface && m_Interface->CondVarCreate) {
+                m_Interface->CondVarCreate(&m_Handle);
             }
         }
 
         ~CondVar() {
-            if (m_handle && bmlCondVarDestroy) {
-                bmlCondVarDestroy(m_handle);
+            if (m_Interface && m_Interface->CondVarDestroy) {
+                m_Interface->CondVarDestroy(m_Handle);
             }
         }
 
-        // Non-copyable
+        BML_Result Wait(Mutex &mutex) {
+            if (m_Interface && m_Interface->CondVarWait) {
+                return m_Interface->CondVarWait(m_Handle, mutex.Handle());
+            }
+            return BML_RESULT_NOT_INITIALIZED;
+        }
+
+        BML_Result WaitTimeout(Mutex &mutex, uint32_t timeout_ms) {
+            if (m_Interface && m_Interface->CondVarWaitTimeout) {
+                return m_Interface->CondVarWaitTimeout(m_Handle, mutex.Handle(), timeout_ms);
+            }
+            return BML_RESULT_NOT_INITIALIZED;
+        }
+
+        BML_Result Signal() {
+            if (m_Interface && m_Interface->CondVarSignal) {
+                return m_Interface->CondVarSignal(m_Handle);
+            }
+            return BML_RESULT_NOT_INITIALIZED;
+        }
+
+        BML_Result Broadcast() {
+            if (m_Interface && m_Interface->CondVarBroadcast) {
+                return m_Interface->CondVarBroadcast(m_Handle);
+            }
+            return BML_RESULT_NOT_INITIALIZED;
+        }
+
+        BML_CondVar Handle() const noexcept { return m_Handle; }
+        explicit operator bool() const noexcept { return m_Handle != nullptr; }
+
         CondVar(const CondVar &) = delete;
         CondVar &operator=(const CondVar &) = delete;
 
-        // Movable
-        CondVar(CondVar &&other) noexcept : m_handle(other.m_handle) {
-            other.m_handle = nullptr;
+        CondVar(CondVar &&other) noexcept
+            : m_Interface(other.m_Interface), m_Handle(other.m_Handle) {
+            other.m_Handle = nullptr;
         }
 
         CondVar &operator=(CondVar &&other) noexcept {
             if (this != &other) {
-                if (m_handle && bmlCondVarDestroy) {
-                    bmlCondVarDestroy(m_handle);
+                if (m_Interface && m_Interface->CondVarDestroy) {
+                    m_Interface->CondVarDestroy(m_Handle);
                 }
-                m_handle = other.m_handle;
-                other.m_handle = nullptr;
+                m_Interface = other.m_Interface;
+                m_Handle = other.m_Handle;
+                other.m_Handle = nullptr;
             }
             return *this;
         }
 
-        /**
-         * @brief Wait on condition variable
-         * @param mutex Mutex to release while waiting
-         */
-        void wait(Mutex &mutex) {
-            if (bmlCondVarWait) {
-                bmlCondVarWait(m_handle, mutex.handle());
-            }
-        }
-
-        /**
-         * @brief Wait on condition variable with timeout
-         * @param mutex Mutex to release while waiting
-         * @param timeout_ms Timeout in milliseconds
-         * @return true if signaled, false on timeout
-         */
-        bool wait_for(Mutex &mutex, uint32_t timeout_ms) {
-            if (!bmlCondVarWaitTimeout) return false;
-            return bmlCondVarWaitTimeout(m_handle, mutex.handle(), timeout_ms) == BML_RESULT_OK;
-        }
-
-        /**
-         * @brief Wait with predicate
-         * @tparam Pred Predicate type
-         * @param mutex Mutex to release while waiting
-         * @param pred Predicate to check
-         */
-        template <typename Pred>
-        void wait(Mutex &mutex, Pred pred) {
-            while (!pred()) {
-                wait(mutex);
-            }
-        }
-
-        /**
-         * @brief Signal one waiting thread
-         */
-        void notify_one() {
-            if (bmlCondVarSignal) {
-                bmlCondVarSignal(m_handle);
-            }
-        }
-
-        /**
-         * @brief Signal all waiting threads
-         */
-        void notify_all() {
-            if (bmlCondVarBroadcast) {
-                bmlCondVarBroadcast(m_handle);
-            }
-        }
-
-        BML_CondVar handle() const noexcept { return m_handle; }
-
     private:
-        BML_CondVar m_handle;
+        const BML_CoreSyncInterface *m_Interface = nullptr;
+        BML_CondVar m_Handle = nullptr;
     };
 
-    // ============================================================================
-    // Spin Lock Wrapper
-    // ============================================================================
+    // ========================================================================
+    // SpinLock
+    // ========================================================================
 
-    /**
-     * @brief RAII wrapper for BML_SpinLock
-     */
     class SpinLock {
     public:
-        SpinLock() : m_handle(nullptr) {
-            if (!bmlSpinLockCreate) {
-                throw Exception(BML_RESULT_NOT_FOUND, "SpinLock API unavailable");
-            }
-            auto result = bmlSpinLockCreate(&m_handle);
-            if (result != BML_RESULT_OK) {
-                throw Exception(result, "Failed to create spin lock");
+        explicit SpinLock(const BML_CoreSyncInterface *iface)
+            : m_Interface(iface) {
+            if (m_Interface && m_Interface->SpinLockCreate) {
+                m_Interface->SpinLockCreate(&m_Handle);
             }
         }
 
         ~SpinLock() {
-            if (m_handle && bmlSpinLockDestroy) {
-                bmlSpinLockDestroy(m_handle);
+            if (m_Interface && m_Interface->SpinLockDestroy) {
+                m_Interface->SpinLockDestroy(m_Handle);
             }
         }
 
-        // Non-copyable
+        void Lock() {
+            if (m_Interface && m_Interface->SpinLockLock) {
+                m_Interface->SpinLockLock(m_Handle);
+            }
+        }
+
+        bool TryLock() {
+            if (m_Interface && m_Interface->SpinLockTryLock) {
+                return m_Interface->SpinLockTryLock(m_Handle) == BML_TRUE;
+            }
+            return false;
+        }
+
+        void Unlock() {
+            if (m_Interface && m_Interface->SpinLockUnlock) {
+                m_Interface->SpinLockUnlock(m_Handle);
+            }
+        }
+
+        BML_SpinLock Handle() const noexcept { return m_Handle; }
+        explicit operator bool() const noexcept { return m_Handle != nullptr; }
+
         SpinLock(const SpinLock &) = delete;
         SpinLock &operator=(const SpinLock &) = delete;
 
-        // Movable
-        SpinLock(SpinLock &&other) noexcept : m_handle(other.m_handle) {
-            other.m_handle = nullptr;
+        SpinLock(SpinLock &&other) noexcept
+            : m_Interface(other.m_Interface), m_Handle(other.m_Handle) {
+            other.m_Handle = nullptr;
         }
 
         SpinLock &operator=(SpinLock &&other) noexcept {
             if (this != &other) {
-                if (m_handle && bmlSpinLockDestroy) {
-                    bmlSpinLockDestroy(m_handle);
+                if (m_Interface && m_Interface->SpinLockDestroy) {
+                    m_Interface->SpinLockDestroy(m_Handle);
                 }
-                m_handle = other.m_handle;
-                other.m_handle = nullptr;
+                m_Interface = other.m_Interface;
+                m_Handle = other.m_Handle;
+                other.m_Handle = nullptr;
             }
             return *this;
         }
 
-        void lock() {
-            if (bmlSpinLockLock) bmlSpinLockLock(m_handle);
-        }
-
-        bool try_lock() {
-            return bmlSpinLockTryLock && bmlSpinLockTryLock(m_handle) != BML_FALSE;
-        }
-
-        void unlock() {
-            if (bmlSpinLockUnlock) bmlSpinLockUnlock(m_handle);
-        }
-
-        BML_SpinLock handle() const noexcept { return m_handle; }
-
     private:
-        BML_SpinLock m_handle;
+        const BML_CoreSyncInterface *m_Interface = nullptr;
+        BML_SpinLock m_Handle = nullptr;
     };
 
-    /**
-     * @brief RAII lock guard for SpinLock
-     */
-    class SpinLockGuard {
+    class SpinGuard {
     public:
-        explicit SpinLockGuard(SpinLock &lock) : m_lock(lock) {
-            m_lock.lock();
+        explicit SpinGuard(SpinLock &lock)
+            : m_Lock(&lock) {
+            m_Lock->Lock();
         }
 
-        ~SpinLockGuard() {
-            m_lock.unlock();
+        ~SpinGuard() {
+            if (m_Lock) {
+                m_Lock->Unlock();
+            }
         }
 
-        SpinLockGuard(const SpinLockGuard &) = delete;
-        SpinLockGuard &operator=(const SpinLockGuard &) = delete;
+        SpinGuard(const SpinGuard &) = delete;
+        SpinGuard &operator=(const SpinGuard &) = delete;
 
     private:
-        SpinLock &m_lock;
+        SpinLock *m_Lock = nullptr;
     };
 
-    // ============================================================================
-    // Thread-Local Storage Wrapper
-    // ============================================================================
+    // ========================================================================
+    // SyncService -- convenience entry point
+    // ========================================================================
 
-    /**
-     * @brief RAII wrapper for thread-local storage
-     *
-     * Example:
-     *   bml::ThreadLocal<MyData> tls([](void* ptr) { delete static_cast<MyData*>(ptr); });
-     *   tls.set(new MyData());
-     *   MyData* data = tls.get<MyData>();
-     */
-    class ThreadLocal {
+    class SyncService {
     public:
-        /**
-         * @brief Create TLS key
-         * @param destructor Optional destructor for values
-         * @throws bml::Exception if creation fails
-         */
-        explicit ThreadLocal(BML_TlsDestructor destructor = nullptr)
-            : m_key(nullptr) {
-            if (!bmlTlsCreate) {
-                throw Exception(BML_RESULT_NOT_FOUND, "TLS API unavailable");
-            }
-            auto result = bmlTlsCreate(destructor, &m_key);
-            if (result != BML_RESULT_OK) {
-                throw Exception(result, "Failed to create TLS key");
-            }
+        SyncService() = default;
+        explicit SyncService(const BML_CoreSyncInterface *iface) noexcept
+            : m_Interface(iface) {}
+
+        Mutex CreateMutex() const {
+            return Mutex(m_Interface);
         }
 
-        ~ThreadLocal() {
-            if (m_key && bmlTlsDestroy) {
-                bmlTlsDestroy(m_key);
-            }
+        RwLock CreateRwLock() const {
+            return RwLock(m_Interface);
         }
 
-        // Non-copyable
-        ThreadLocal(const ThreadLocal &) = delete;
-        ThreadLocal &operator=(const ThreadLocal &) = delete;
-
-        // Movable
-        ThreadLocal(ThreadLocal &&other) noexcept : m_key(other.m_key) {
-            other.m_key = nullptr;
+        Semaphore CreateSemaphore(uint32_t initial, uint32_t max) const {
+            return Semaphore(initial, max, m_Interface);
         }
 
-        ThreadLocal &operator=(ThreadLocal &&other) noexcept {
-            if (this != &other) {
-                if (m_key && bmlTlsDestroy) {
-                    bmlTlsDestroy(m_key);
-                }
-                m_key = other.m_key;
-                other.m_key = nullptr;
-            }
-            return *this;
+        CondVar CreateCondVar() const {
+            return CondVar(m_Interface);
         }
 
-        /**
-         * @brief Get thread-local value
-         * @return Value pointer (nullptr if not set)
-         */
-        void *get() const {
-            return bmlTlsGet ? bmlTlsGet(m_key) : nullptr;
+        SpinLock CreateSpinLock() const {
+            return SpinLock(m_Interface);
         }
 
-        /**
-         * @brief Get thread-local value (typed)
-         * @tparam T Value type
-         * @return Typed pointer
-         */
-        template <typename T>
-        T *get() const {
-            return static_cast<T *>(get());
-        }
-
-        /**
-         * @brief Set thread-local value
-         * @param value Value to set
-         * @return true if successful
-         */
-        bool set(void *value) {
-            if (!bmlTlsSet) return false;
-            return bmlTlsSet(m_key, value) == BML_RESULT_OK;
-        }
-
-        BML_TlsKey key() const noexcept { return m_key; }
+        explicit operator bool() const noexcept { return m_Interface != nullptr; }
 
     private:
-        BML_TlsKey m_key;
+        const BML_CoreSyncInterface *m_Interface = nullptr;
     };
 
-    // ============================================================================
-    // Atomic Helpers
-    // ============================================================================
-
-    namespace atomic {
-        /**
-         * @brief Atomically increment a 32-bit integer
-         * @param value Pointer to integer
-         * @return New value after increment
-         */
-        inline int32_t Increment32(volatile int32_t *value) {
-            return bmlAtomicIncrement32 ? bmlAtomicIncrement32(value) : ++(*value);
-        }
-
-        /**
-         * @brief Atomically decrement a 32-bit integer
-         * @param value Pointer to integer
-         * @return New value after decrement
-         */
-        inline int32_t Decrement32(volatile int32_t *value) {
-            return bmlAtomicDecrement32 ? bmlAtomicDecrement32(value) : --(*value);
-        }
-
-        /**
-         * @brief Atomically add to a 32-bit integer
-         * @param value Pointer to integer
-         * @param addend Value to add
-         * @return Previous value before addition
-         */
-        inline int32_t Add32(volatile int32_t *value, int32_t addend) {
-            if (bmlAtomicAdd32) return bmlAtomicAdd32(value, addend);
-            int32_t old = *value;
-            *value += addend;
-            return old;
-        }
-
-        /**
-         * @brief Atomically compare and exchange
-         * @param dest Pointer to destination
-         * @param exchange Value to set if comparison succeeds
-         * @param comparand Value to compare against
-         * @return Previous value of *dest
-         */
-        inline int32_t CompareExchange32(volatile int32_t *dest, int32_t exchange, int32_t comparand) {
-            if (bmlAtomicCompareExchange32) {
-                return bmlAtomicCompareExchange32(dest, exchange, comparand);
-            }
-            int32_t old = *dest;
-            if (old == comparand) *dest = exchange;
-            return old;
-        }
-
-        /**
-         * @brief Atomically exchange values
-         * @param dest Pointer to destination
-         * @param new_value New value to set
-         * @return Previous value of *dest
-         */
-        inline int32_t Exchange32(volatile int32_t *dest, int32_t new_value) {
-            if (bmlAtomicExchange32) return bmlAtomicExchange32(dest, new_value);
-            int32_t old = *dest;
-            *dest = new_value;
-            return old;
-        }
-
-        /**
-         * @brief Atomically load a pointer
-         * @param ptr Pointer to pointer
-         * @return Current pointer value
-         */
-        inline void *LoadPtr(void *volatile*ptr) {
-            return bmlAtomicLoadPtr ? bmlAtomicLoadPtr(ptr) : *ptr;
-        }
-
-        /**
-         * @brief Atomically store a pointer
-         * @param ptr Pointer to pointer
-         * @param value New pointer value
-         */
-        inline void StorePtr(void *volatile*ptr, void *value) {
-            if (bmlAtomicStorePtr) bmlAtomicStorePtr(ptr, value);
-            else *ptr = value;
-        }
-
-        /**
-         * @brief Atomically compare and exchange pointers
-         * @param dest Pointer to destination pointer
-         * @param exchange Pointer to set if comparison succeeds
-         * @param comparand Pointer to compare against
-         * @return Previous pointer value
-         */
-        inline void *CompareExchangePtr(void *volatile*dest, void *exchange, void *comparand) {
-            if (bmlAtomicCompareExchangePtr) {
-                return bmlAtomicCompareExchangePtr(dest, exchange, comparand);
-            }
-            void *old = *dest;
-            if (old == comparand) *dest = exchange;
-            return old;
-        }
-    } // namespace atomic
-}     // namespace bml
+} // namespace bml
 
 #endif /* BML_SYNC_HPP */

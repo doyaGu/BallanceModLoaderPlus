@@ -11,6 +11,9 @@
  * 
  * Provides high-performance pub/sub messaging and RPC between modules.
  * All APIs use integer IDs for maximum performance (~3-5x faster than strings).
+ * Resolve the raw C proc pointers through `bmlGetProcAddress(...)` or acquire
+ * the builtin `bml.imc.bus` interface. The bootstrap loader does not publish
+ * IMC globals.
  * 
  * @section imc_design Design Principles
  * - **ID-based only**: All publish/subscribe/RPC use integer IDs
@@ -31,24 +34,24 @@
  * @code
  * // 1. Get topic ID (one-time at init)
  * BML_TopicId topic;
- * bmlImcGetTopicId("MyMod/Events/Update", &topic);
+ * getTopicId("MyMod/Events/Update", &topic);
  * 
  * // 2. Subscribe with options
  * BML_SubscribeOptions opts = BML_SUBSCRIBE_OPTIONS_INIT;
  * opts.queue_capacity = 512;
  * BML_Subscription sub;
- * bmlImcSubscribeEx(topic, my_handler, user_data, &opts, &sub);
+ * subscribeEx(topic, my_handler, user_data, &opts, &sub);
  * 
  * // 3a. Simple publish (most common)
- * bmlImcPublish(topic, &my_data, sizeof(my_data));
+ * publish(topic, &my_data, sizeof(my_data));
  * 
  * // 3b. Publish with options (priority, flags, etc.)
  * BML_ImcMessage msg = BML_IMC_MSG(&my_data, sizeof(my_data));
  * msg.priority = BML_IMC_PRIORITY_HIGH;
- * bmlImcPublishEx(topic, &msg);
+ * publishEx(topic, &msg);
  * 
  * // 4. Cleanup
- * bmlImcUnsubscribe(sub);
+ * unsubscribe(sub);
  * @endcode
  */
 
@@ -92,15 +95,29 @@ typedef enum BML_ImcPriority {
 } BML_ImcPriority;
 
 /* ========================================================================
+ * Event Interception
+ * ======================================================================== */
+
+/**
+ * @brief Result returned by intercept handlers.
+ */
+typedef enum BML_EventResult {
+    BML_EVENT_CONTINUE = 0,   /**< Pass to next subscriber */
+    BML_EVENT_HANDLED  = 1,   /**< Stop propagation, event considered handled */
+    BML_EVENT_CANCEL   = 2,   /**< Stop propagation, event considered cancelled */
+    _BML_EVENT_RESULT_FORCE_32BIT = 0x7FFFFFFF
+} BML_EventResult;
+
+/* ========================================================================
  * Message Flags
  * ======================================================================== */
 
 #define BML_IMC_FLAG_NONE         0x00000000  /**< No flags */
 #define BML_IMC_FLAG_NO_COPY      0x00000001  /**< Data is zero-copy (do not free) */
-#define BML_IMC_FLAG_BROADCAST    0x00000002  /**< Broadcast to all subscribers */
-#define BML_IMC_FLAG_RELIABLE     0x00000004  /**< Reliable delivery (retry on failure) */
-#define BML_IMC_FLAG_ORDERED      0x00000008  /**< Preserve ordering per-sender */
-#define BML_IMC_FLAG_COMPRESSED   0x00000010  /**< Payload is compressed */
+#define BML_IMC_FLAG_BROADCAST    0x00000002  /**< Reserved -- not yet implemented */
+#define BML_IMC_FLAG_RELIABLE     0x00000004  /**< Reserved -- not yet implemented */
+#define BML_IMC_FLAG_ORDERED      0x00000008  /**< Reserved -- not yet implemented */
+#define BML_IMC_FLAG_COMPRESSED   0x00000010  /**< Reserved -- not yet implemented */
 
 /* ========================================================================
  * Backpressure Policy
@@ -129,7 +146,7 @@ typedef struct BML_ImcMessage {
     uint32_t flags;           /**< Message flags (BML_IMC_FLAG_*) */
     uint32_t priority;        /**< Message priority (BML_ImcPriority) */
     uint64_t timestamp;       /**< Message timestamp (0 = auto-assign) */
-    BML_TopicId reply_topic;  /**< Reply topic for request/response patterns */
+    BML_TopicId reply_topic;  /**< Reserved for future request/response patterns (pass-through only) */
 } BML_ImcMessage;
 
 /** @brief Static initializer for BML_ImcMessage */
@@ -178,9 +195,11 @@ typedef struct BML_SubscribeOptions {
     BML_ImcFilter filter;              /**< Optional message filter */
     void *filter_user_data;            /**< User data for filter */
     uint32_t min_priority;             /**< Minimum priority to accept */
+    uint32_t flags;                    /**< Subscription flags (BML_IMC_SUBSCRIBE_FLAG_*) */
+    int32_t execution_order;           /**< Subscriber execution order (lower = first, default 0) */
 } BML_SubscribeOptions;
 
-#define BML_SUBSCRIBE_OPTIONS_INIT { sizeof(BML_SubscribeOptions), 0, BML_BACKPRESSURE_DROP_OLDEST, NULL, NULL, 0 }
+#define BML_SUBSCRIBE_OPTIONS_INIT { sizeof(BML_SubscribeOptions), 0, BML_BACKPRESSURE_DROP_OLDEST, NULL, NULL, 0, 0, 0 }
 
 /* ========================================================================
  * Statistics Structures
@@ -255,6 +274,27 @@ typedef void (*BML_ImcHandler)(BML_Context ctx,
                                void *user_data);
 
 /**
+ * @brief Interceptable event handler.
+ *
+ * Unlike BML_ImcHandler, this returns BML_EventResult and receives a
+ * non-const message pointer so the handler can modify message metadata
+ * (flags, priority, size) and redirect the data pointer. The data
+ * pointer itself is `const void *`; to substitute different payload
+ * content, point `message->data` at a handler-owned buffer.
+ *
+ * @param[in]     ctx       BML context
+ * @param[in]     topic     Topic ID
+ * @param[in,out] message   Mutable message struct
+ * @param[in]     user_data User-provided context
+ * @return BML_EVENT_CONTINUE to pass to next, HANDLED/CANCEL to stop
+ */
+typedef BML_EventResult (*BML_ImcInterceptHandler)(
+    BML_Context ctx,
+    BML_TopicId topic,
+    BML_ImcMessage *message,
+    void *user_data);
+
+/**
  * @brief RPC handler callback.
  * 
  * @param[in]  ctx       BML context
@@ -262,7 +302,7 @@ typedef void (*BML_ImcHandler)(BML_Context ctx,
  * @param[in]  request   Request message
  * @param[out] response  Response buffer to fill
  * @param[in]  user_data User-provided context
- * @return BML_OK on success, error code on failure
+ * @return BML_RESULT_OK on success, error code on failure
  * 
  * @threadsafe May be called from any thread
  */
@@ -317,7 +357,7 @@ typedef enum BML_FutureState {
  * 
  * @code
  * BML_TopicId topic;
- * bmlImcGetTopicId("Physics/Tick", &topic);
+ * getTopicId("Physics/Tick", &topic);
  * // Cache 'topic' and use for all publish/subscribe calls
  * @endcode
  */
@@ -328,7 +368,7 @@ typedef BML_Result (*PFN_BML_ImcGetTopicId)(const char *name, BML_TopicId *out_i
  * 
  * @param[in]  name   RPC name (e.g., "MyMod/GetHealth")
  * @param[out] out_id Receives the RPC ID
- * @return BML_OK on success
+ * @return BML_RESULT_OK on success
  * 
  * @threadsafe Yes
  */
@@ -354,7 +394,7 @@ typedef BML_Result (*PFN_BML_ImcGetRpcId)(const char *name, BML_RpcId *out_id);
  * 
  * @code
  * float delta_time = 0.016f;
- * bmlImcPublish(physics_tick_topic, &delta_time, sizeof(delta_time));
+ * publish(physics_tick_topic, &delta_time, sizeof(delta_time));
  * @endcode
  */
 typedef BML_Result (*PFN_BML_ImcPublish)(BML_TopicId topic,
@@ -378,7 +418,7 @@ typedef BML_Result (*PFN_BML_ImcPublish)(BML_TopicId topic,
  * @code
  * BML_ImcMessage msg = BML_IMC_MSG(&my_data, sizeof(my_data));
  * msg.priority = BML_IMC_PRIORITY_HIGH;
- * bmlImcPublishEx(physics_tick_topic, &msg);
+ * publishEx(physics_tick_topic, &msg);
  * @endcode
  */
 typedef BML_Result (*PFN_BML_ImcPublishEx)(BML_TopicId topic,
@@ -418,7 +458,7 @@ typedef BML_Result (*PFN_BML_ImcPublishBuffer)(BML_TopicId topic,
  * }
  * 
  * BML_Subscription sub;
- * bmlImcSubscribe(physics_topic, on_physics_tick, NULL, &sub);
+ * subscribe(physics_topic, on_physics_tick, NULL, &sub);
  * @endcode
  */
 typedef BML_Result (*PFN_BML_ImcSubscribe)(BML_TopicId topic,
@@ -483,7 +523,7 @@ typedef BML_Result (*PFN_BML_ImcGetSubscriptionStats)(BML_Subscription sub,
                                                        BML_SubscriptionStats *stats);
 
 /**
- * @brief Publish to multiple topics atomically.
+ * @brief Publish the same payload to multiple topics.
  * 
  * @param[in]  topics  Array of topic IDs
  * @param[in]  count   Number of topics
@@ -491,7 +531,9 @@ typedef BML_Result (*PFN_BML_ImcGetSubscriptionStats)(BML_Subscription sub,
  * @param[in]  size    Payload size
  * @param[in]  msg     Optional message metadata
  * @param[out] out_delivered Optional count of successful deliveries
- * @return BML_RESULT_OK on success
+ * Best-effort only: delivery is attempted per topic and is not transactional.
+ *
+ * @return BML_RESULT_OK if at least one topic accepted the publish
  * 
  * @threadsafe Yes
  */
@@ -501,6 +543,69 @@ typedef BML_Result (*PFN_BML_ImcPublishMulti)(const BML_TopicId *topics,
                                                size_t size,
                                                const BML_ImcMessage *msg,
                                                size_t *out_delivered);
+
+/* ========================================================================
+ * Core APIs - Event Interception
+ * ======================================================================== */
+
+/**
+ * @brief Subscribe an intercept handler to a topic.
+ *
+ * Intercept handlers receive a non-const message and return BML_EventResult.
+ * They are dispatched in execution_order (lower first) during
+ * PublishInterceptable calls. Regular Publish calls skip intercept handlers.
+ *
+ * @param[in]  topic    Topic ID
+ * @param[in]  handler  Intercept callback
+ * @param[in]  user_data Opaque pointer passed to handler
+ * @param[out] out_sub  Receives subscription handle
+ * @return BML_RESULT_OK on success
+ *
+ * @threadsafe Yes
+ */
+typedef BML_Result (*PFN_BML_ImcSubscribeIntercept)(
+    BML_TopicId topic,
+    BML_ImcInterceptHandler handler,
+    void *user_data,
+    BML_Subscription *out_sub);
+
+/**
+ * @brief Subscribe an intercept handler with extended options.
+ *
+ * @param[in]  topic    Topic ID
+ * @param[in]  handler  Intercept callback
+ * @param[in]  user_data Opaque pointer passed to handler
+ * @param[in]  options  Extended subscription options (execution_order used)
+ * @param[out] out_sub  Receives subscription handle
+ * @return BML_RESULT_OK on success
+ *
+ * @threadsafe Yes
+ */
+typedef BML_Result (*PFN_BML_ImcSubscribeInterceptEx)(
+    BML_TopicId topic,
+    BML_ImcInterceptHandler handler,
+    void *user_data,
+    const BML_SubscribeOptions *options,
+    BML_Subscription *out_sub);
+
+/**
+ * @brief Publish an interceptable event.
+ *
+ * Dispatches to intercept subscribers in execution_order. Stops on
+ * HANDLED or CANCEL result. Then delivers to regular subscribers
+ * unless the result is CANCEL.
+ *
+ * @param[in]  topic      Topic ID
+ * @param[in]  msg        Message (non-const: intercept handlers may modify)
+ * @param[out] out_result Final event disposition (may be NULL)
+ * @return BML_RESULT_OK on success
+ *
+ * @threadsafe Yes
+ */
+typedef BML_Result (*PFN_BML_ImcPublishInterceptable)(
+    BML_TopicId topic,
+    BML_ImcMessage *msg,
+    BML_EventResult *out_result);
 
 /* ========================================================================
  * Core APIs - RPC
@@ -545,20 +650,236 @@ typedef BML_Result (*PFN_BML_ImcUnregisterRpc)(BML_RpcId rpc_id);
  * @code
  * BML_ImcMessage req = BML_IMC_MSG(&query, sizeof(query));
  * BML_Future future;
- * bmlImcCallRpc(get_health_rpc, &req, &future);
+ * callRpc(get_health_rpc, &req, &future);
  * 
- * bmlImcFutureAwait(future, 1000);
+ * futureAwait(future, 1000);
  * 
  * BML_ImcMessage response;
- * bmlImcFutureGetResult(future, &response);
+ * futureGetResult(future, &response);
  * int health = *(int*)response.data;
  * 
- * bmlImcFutureRelease(future);
+ * futureRelease(future);
  * @endcode
  */
 typedef BML_Result (*PFN_BML_ImcCallRpc)(BML_RpcId rpc_id,
                                          const BML_ImcMessage *request,
                                          BML_Future *out_future);
+
+/* ========================================================================
+ * RPC Info (introspection)
+ * ======================================================================== */
+
+typedef struct BML_RpcInfo {
+    size_t struct_size;
+    BML_RpcId rpc_id;
+    char name[256];
+    BML_Bool has_handler;
+    uint64_t call_count;
+    uint64_t completion_count;
+    uint64_t failure_count;
+    uint64_t total_latency_ns;    /**< Cumulative handler latency in nanoseconds */
+} BML_RpcInfo;
+
+#define BML_RPC_INFO_INIT { sizeof(BML_RpcInfo), 0, {0}, BML_FALSE, 0, 0, 0, 0 }
+
+/* ========================================================================
+ * RPC Call Options
+ * ======================================================================== */
+
+typedef struct BML_RpcCallOptions {
+    size_t struct_size;
+    uint32_t timeout_ms;          /**< 0 = no timeout */
+    uint32_t flags;               /**< Reserved, must be 0 */
+} BML_RpcCallOptions;
+
+#define BML_RPC_CALL_OPTIONS_INIT { sizeof(BML_RpcCallOptions), 0, 0 }
+
+/* ========================================================================
+ * RPC Stream Handle (for streaming RPC)
+ * ======================================================================== */
+
+BML_DECLARE_HANDLE(BML_RpcStream);
+
+/* ========================================================================
+ * Extended RPC Callback Types
+ * ======================================================================== */
+
+/**
+ * @brief Extended RPC handler that can return a structured error message.
+ *
+ * @param[in]  ctx              BML context
+ * @param[in]  rpc_id           RPC ID
+ * @param[in]  request          Request message
+ * @param[out] response         Response buffer to fill
+ * @param[out] out_error_msg    Buffer for error message (filled on failure)
+ * @param[in]  error_msg_capacity Size of error message buffer
+ * @param[in]  user_data        User-provided context
+ * @return BML_RESULT_OK on success, error code on failure
+ */
+typedef BML_Result (*BML_RpcHandlerEx)(
+    BML_Context ctx, BML_RpcId rpc_id,
+    const BML_ImcMessage *request, BML_ImcBuffer *response,
+    char *out_error_msg, size_t error_msg_capacity,
+    void *user_data);
+
+/**
+ * @brief RPC middleware callback, runs before and/or after the handler.
+ *
+ * @param[in] ctx            BML context
+ * @param[in] rpc_id         RPC ID
+ * @param[in] is_pre         BML_TRUE if pre-handler, BML_FALSE if post-handler
+ * @param[in] request        Request message
+ * @param[in] response       Response buffer (NULL in pre, filled in post)
+ * @param[in] handler_result Result from handler (BML_RESULT_OK in pre)
+ * @param[in] user_data      User-provided context
+ * @return BML_RESULT_OK to continue, error code to abort (pre only)
+ */
+typedef BML_Result (*BML_RpcMiddleware)(
+    BML_Context ctx, BML_RpcId rpc_id, BML_Bool is_pre,
+    const BML_ImcMessage *request, const BML_ImcBuffer *response,
+    BML_Result handler_result, void *user_data);
+
+/**
+ * @brief Streaming RPC handler.
+ *
+ * @param[in] ctx       BML context
+ * @param[in] rpc_id    RPC ID
+ * @param[in] request   Request message
+ * @param[in] stream    Stream handle to push chunks through
+ * @param[in] user_data User-provided context
+ * @return BML_RESULT_OK on success
+ */
+typedef BML_Result (*BML_StreamingRpcHandler)(
+    BML_Context ctx, BML_RpcId rpc_id,
+    const BML_ImcMessage *request, BML_RpcStream stream,
+    void *user_data);
+
+/* ========================================================================
+ * Core APIs - Extended RPC
+ * ======================================================================== */
+
+/**
+ * @brief Register an extended RPC handler with error detail support.
+ */
+typedef BML_Result (*PFN_BML_ImcRegisterRpcEx)(BML_RpcId rpc_id,
+                                                BML_RpcHandlerEx handler,
+                                                void *user_data);
+
+/**
+ * @brief Call an RPC with extended options (timeout, flags).
+ */
+typedef BML_Result (*PFN_BML_ImcCallRpcEx)(BML_RpcId rpc_id,
+                                            const BML_ImcMessage *request,
+                                            const BML_RpcCallOptions *options,
+                                            BML_Future *out_future);
+
+/**
+ * @brief Get error details from a completed future.
+ *
+ * @param[in]  future     Future handle
+ * @param[out] out_code   Receives error code
+ * @param[out] msg        Buffer for error message
+ * @param[in]  cap        Size of message buffer
+ * @param[out] out_len    Receives actual message length (may be NULL)
+ * @return BML_RESULT_OK on success
+ */
+typedef BML_Result (*PFN_BML_ImcFutureGetError)(BML_Future future,
+                                                 BML_Result *out_code,
+                                                 char *msg, size_t cap,
+                                                 size_t *out_len);
+
+/* ========================================================================
+ * Core APIs - RPC Introspection
+ * ======================================================================== */
+
+/**
+ * @brief Get info about a registered RPC endpoint.
+ */
+typedef BML_Result (*PFN_BML_ImcGetRpcInfo)(BML_RpcId rpc_id, BML_RpcInfo *out_info);
+
+/**
+ * @brief Get the name of an RPC endpoint by ID.
+ */
+typedef BML_Result (*PFN_BML_ImcGetRpcName)(BML_RpcId rpc_id,
+                                             char *buf, size_t cap,
+                                             size_t *out_len);
+
+/**
+ * @brief Enumerate all registered RPC endpoints.
+ *
+ * @param[in] cb        Callback invoked for each RPC (id, name, has_handler, user_data)
+ * @param[in] user_data Opaque pointer passed to callback
+ */
+typedef void (*PFN_BML_ImcEnumerateRpc)(
+    void (*cb)(BML_RpcId, const char *, BML_Bool, void *),
+    void *user_data);
+
+/* ========================================================================
+ * Core APIs - RPC Middleware
+ * ======================================================================== */
+
+/**
+ * @brief Add a global RPC middleware.
+ *
+ * @param[in] middleware  Middleware callback
+ * @param[in] priority    Execution priority (lower = first)
+ * @param[in] user_data   Opaque pointer passed to middleware
+ * @return BML_RESULT_OK on success
+ */
+typedef BML_Result (*PFN_BML_ImcAddRpcMiddleware)(BML_RpcMiddleware middleware,
+                                                   int32_t priority,
+                                                   void *user_data);
+
+/**
+ * @brief Remove a previously added RPC middleware.
+ */
+typedef BML_Result (*PFN_BML_ImcRemoveRpcMiddleware)(BML_RpcMiddleware middleware);
+
+/* ========================================================================
+ * Core APIs - Streaming RPC
+ * ======================================================================== */
+
+/**
+ * @brief Register a streaming RPC handler.
+ */
+typedef BML_Result (*PFN_BML_ImcRegisterStreamingRpc)(BML_RpcId rpc_id,
+                                                       BML_StreamingRpcHandler handler,
+                                                       void *user_data);
+
+/**
+ * @brief Push a data chunk to a stream.
+ */
+typedef BML_Result (*PFN_BML_ImcStreamPush)(BML_RpcStream stream,
+                                             const void *data, size_t size);
+
+/**
+ * @brief Complete a stream successfully.
+ */
+typedef BML_Result (*PFN_BML_ImcStreamComplete)(BML_RpcStream stream);
+
+/**
+ * @brief Complete a stream with an error.
+ */
+typedef BML_Result (*PFN_BML_ImcStreamError)(BML_RpcStream stream,
+                                              BML_Result error,
+                                              const char *msg);
+
+/**
+ * @brief Call a streaming RPC.
+ *
+ * @param[in]  rpc_id     RPC ID
+ * @param[in]  request    Request message
+ * @param[in]  on_chunk   Handler called for each streamed chunk
+ * @param[in]  on_done    Called when stream completes
+ * @param[in]  user_data  Opaque pointer for callbacks
+ * @param[out] out_future Future handle for overall completion
+ */
+typedef BML_Result (*PFN_BML_ImcCallStreamingRpc)(BML_RpcId rpc_id,
+                                                   const BML_ImcMessage *request,
+                                                   BML_ImcHandler on_chunk,
+                                                   BML_FutureCallback on_done,
+                                                   void *user_data,
+                                                   BML_Future *out_future);
 
 /* ========================================================================
  * Core APIs - Future Management
@@ -580,7 +901,8 @@ typedef BML_Result (*PFN_BML_ImcFutureAwait)(BML_Future future, uint32_t timeout
  * @brief Get the result of a completed future.
  * 
  * @param[in]  future      Future handle
- * @param[out] out_message Receives result message
+ * @param[out] out_message Receives a borrowed view of the future-owned result.
+ * The view remains valid until the future is released.
  * @return BML_RESULT_OK if result available
  * @return BML_RESULT_NOT_FOUND if future not yet complete
  * 
@@ -643,12 +965,13 @@ typedef BML_Result (*PFN_BML_ImcFutureRelease)(BML_Future future);
 
 /**
  * @brief Process pending messages.
- * 
+ *
  * Call periodically (e.g., once per frame) to dispatch queued messages.
- * 
+ *
  * @param[in] max_per_sub Maximum messages to process per subscription (0 = all)
- * 
- * @threadsafe Yes
+ *
+ * @threadsafe No
+ * @warning Never call from within a subscriber callback -- it will deadlock.
  */
 typedef void (*PFN_BML_ImcPump)(size_t max_per_sub);
 
@@ -705,80 +1028,51 @@ typedef BML_Result (*PFN_BML_ImcGetTopicName)(BML_TopicId topic_id,
                                                size_t buffer_size,
                                                size_t *out_length);
 
-/* ========================================================================
- * Capabilities Query
- * ======================================================================== */
-
-typedef enum BML_ImcCapFlags {
-    BML_IMC_CAP_PUBSUB       = 1u << 0,  /**< Pub/sub supported */
-    BML_IMC_CAP_RPC          = 1u << 1,  /**< RPC supported */
-    BML_IMC_CAP_FUTURES      = 1u << 2,  /**< Async futures supported */
-    BML_IMC_CAP_ZERO_COPY    = 1u << 3,  /**< Zero-copy buffers supported */
-    BML_IMC_CAP_PRIORITY     = 1u << 4,  /**< Priority queues supported */
-    BML_IMC_CAP_FILTERING    = 1u << 5,  /**< Message filtering supported */
-    BML_IMC_CAP_STATISTICS   = 1u << 6,  /**< Statistics collection supported */
-    BML_IMC_CAP_BATCH        = 1u << 7,  /**< Batch operations supported */
-    _BML_IMC_CAP_FORCE_32BIT = 0x7FFFFFFF
-} BML_ImcCapFlags;
-
-typedef struct BML_ImcCaps {
-    size_t struct_size;           /**< sizeof(BML_ImcCaps), must be first */
-    BML_Version api_version;      /**< API version */
-    uint32_t capability_flags;    /**< Bitmask of BML_ImcCapFlags */
-    uint32_t max_topic_count;     /**< Maximum topics (0 = unlimited) */
-    uint32_t max_queue_depth;     /**< Default queue depth per subscription */
-    uint32_t inline_payload_max;  /**< Max bytes for inline (no-alloc) payloads */
-} BML_ImcCaps;
-
-#define BML_IMC_CAPS_INIT { sizeof(BML_ImcCaps), BML_VERSION_INIT(0,0,0), 0, 0, 0, 0 }
-
-typedef BML_Result (*PFN_BML_ImcGetCaps)(BML_ImcCaps *out_caps);
 
 /* ========================================================================
- * Global Function Pointers
+ * Subscription Flags
  * ======================================================================== */
 
-/* ID Resolution */
-extern PFN_BML_ImcGetTopicId         bmlImcGetTopicId;
-extern PFN_BML_ImcGetRpcId           bmlImcGetRpcId;
+#define BML_IMC_SUBSCRIBE_FLAG_NONE 0u
+#define BML_IMC_SUBSCRIBE_FLAG_DELIVER_RETAINED_ON_SUBSCRIBE (1u << 0)
 
-/* Pub/Sub */
-extern PFN_BML_ImcPublish            bmlImcPublish;
-extern PFN_BML_ImcPublishEx          bmlImcPublishEx;
-extern PFN_BML_ImcPublishBuffer      bmlImcPublishBuffer;
-extern PFN_BML_ImcSubscribe          bmlImcSubscribe;
-extern PFN_BML_ImcUnsubscribe        bmlImcUnsubscribe;
-extern PFN_BML_ImcSubscriptionIsActive bmlImcSubscriptionIsActive;
+/* ========================================================================
+ * Retained State
+ * ======================================================================== */
 
-/* RPC */
-extern PFN_BML_ImcRegisterRpc        bmlImcRegisterRpc;
-extern PFN_BML_ImcUnregisterRpc      bmlImcUnregisterRpc;
-extern PFN_BML_ImcCallRpc            bmlImcCallRpc;
+/**
+ * @brief Metadata for retained topic state.
+ */
+typedef struct BML_ImcStateMeta {
+    size_t struct_size;
+    uint64_t timestamp;
+    uint32_t flags;
+    size_t size;
+} BML_ImcStateMeta;
 
-/* Futures */
-extern PFN_BML_ImcFutureAwait        bmlImcFutureAwait;
-extern PFN_BML_ImcFutureGetResult    bmlImcFutureGetResult;
-extern PFN_BML_ImcFutureGetState     bmlImcFutureGetState;
-extern PFN_BML_ImcFutureCancel       bmlImcFutureCancel;
-extern PFN_BML_ImcFutureOnComplete   bmlImcFutureOnComplete;
-extern PFN_BML_ImcFutureRelease      bmlImcFutureRelease;
+#define BML_IMC_STATE_META_INIT { sizeof(BML_ImcStateMeta), 0, 0, 0 }
 
-/* Pump & Caps */
-extern PFN_BML_ImcPump               bmlImcPump;
-extern PFN_BML_ImcGetCaps            bmlImcGetCaps;
+/**
+ * @brief Publish a message and retain its state on the topic.
+ *
+ * New subscribers with BML_IMC_SUBSCRIBE_FLAG_DELIVER_RETAINED_ON_SUBSCRIBE
+ * will receive the retained state immediately.
+ */
+typedef BML_Result (*PFN_BML_ImcPublishState)(BML_TopicId topic, const BML_ImcMessage *msg);
 
-/* Extended Subscribe */
-extern PFN_BML_ImcSubscribeEx        bmlImcSubscribeEx;
-extern PFN_BML_ImcGetSubscriptionStats bmlImcGetSubscriptionStats;
+/**
+ * @brief Copy the retained state for a topic into a caller-owned buffer.
+ */
+typedef BML_Result (*PFN_BML_ImcCopyState)(BML_TopicId topic,
+                                           void *dst,
+                                           size_t dst_size,
+                                           size_t *out_size,
+                                           BML_ImcStateMeta *out_meta);
 
-/* Batch Operations */
-extern PFN_BML_ImcPublishMulti       bmlImcPublishMulti;
-
-/* Diagnostics */
-extern PFN_BML_ImcGetStats           bmlImcGetStats;
-extern PFN_BML_ImcResetStats         bmlImcResetStats;
-extern PFN_BML_ImcGetTopicInfo       bmlImcGetTopicInfo;
-extern PFN_BML_ImcGetTopicName       bmlImcGetTopicName;
+/**
+ * @brief Clear the retained state for a topic.
+ */
+typedef BML_Result (*PFN_BML_ImcClearState)(BML_TopicId topic);
 
 BML_END_CDECLS
 
@@ -786,35 +1080,20 @@ BML_END_CDECLS
  * Compile-Time Assertions for ABI Stability
  * ======================================================================== */
 
-#ifdef __cplusplus
-#include <cstddef>
-#define BML_IMC_OFFSETOF(type, member) offsetof(type, member)
-#else
-#include <stddef.h>
-#define BML_IMC_OFFSETOF(type, member) offsetof(type, member)
-#endif
-
-#if defined(__cplusplus) && __cplusplus >= 201103L
-    #define BML_IMC_STATIC_ASSERT(cond, msg) static_assert(cond, msg)
-#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-    #define BML_IMC_STATIC_ASSERT(cond, msg) _Static_assert(cond, msg)
-#else
-    #define BML_IMC_STATIC_ASSERT_CONCAT_(a, b) a##b
-    #define BML_IMC_STATIC_ASSERT_CONCAT(a, b) BML_IMC_STATIC_ASSERT_CONCAT_(a, b)
-    #define BML_IMC_STATIC_ASSERT(cond, msg) \
-        typedef char BML_IMC_STATIC_ASSERT_CONCAT(bml_imc_assert_, __LINE__)[(cond) ? 1 : -1]
-#endif
-
-/* Verify struct_size is at offset 0 */
-BML_IMC_STATIC_ASSERT(BML_IMC_OFFSETOF(BML_ImcMessage, struct_size) == 0,
+/* Verify struct_size is at offset 0 for all versioned structs */
+static_assert(offsetof(BML_ImcMessage, struct_size) == 0,
     "BML_ImcMessage.struct_size must be at offset 0");
-BML_IMC_STATIC_ASSERT(BML_IMC_OFFSETOF(BML_ImcBuffer, struct_size) == 0,
+static_assert(offsetof(BML_ImcBuffer, struct_size) == 0,
     "BML_ImcBuffer.struct_size must be at offset 0");
-BML_IMC_STATIC_ASSERT(BML_IMC_OFFSETOF(BML_ImcCaps, struct_size) == 0,
-    "BML_ImcCaps.struct_size must be at offset 0");
+static_assert(offsetof(BML_RpcInfo, struct_size) == 0,
+    "BML_RpcInfo.struct_size must be at offset 0");
+static_assert(offsetof(BML_RpcCallOptions, struct_size) == 0,
+    "BML_RpcCallOptions.struct_size must be at offset 0");
 
 /* Verify enum sizes are 32-bit */
-BML_IMC_STATIC_ASSERT(sizeof(BML_FutureState) == sizeof(int32_t),
+static_assert(sizeof(BML_FutureState) == sizeof(int32_t),
     "BML_FutureState must be 32-bit");
+static_assert(sizeof(BML_EventResult) == sizeof(int32_t),
+    "BML_EventResult must be 32-bit");
 
 #endif /* BML_IMC_H */

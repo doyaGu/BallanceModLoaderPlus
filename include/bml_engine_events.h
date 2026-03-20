@@ -10,8 +10,17 @@
 
 BML_BEGIN_CDECLS
 
+/* Forward-declare CKContext / CKRenderContext.
+   The Virtools SDK defines these with the 'class' key, and MSVC includes the
+   class-key in decorated names.  Using 'class' in C++ avoids LNK2019 when a
+   TU sees this header before any Virtools header. */
+#ifdef __cplusplus
+class CKContext;
+class CKRenderContext;
+#else
 struct CKContext;
 struct CKRenderContext;
+#endif
 
 /**
  * @brief Payload published on the "BML/Engine/Init" topic.

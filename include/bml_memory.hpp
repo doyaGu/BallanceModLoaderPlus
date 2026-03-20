@@ -9,6 +9,7 @@
 #ifndef BML_MEMORY_HPP
 #define BML_MEMORY_HPP
 
+#include "bml_builtin_interfaces.h"
 #include "bml_memory.h"
 #include "bml_errors.h"
 
@@ -19,47 +20,6 @@
 
 namespace bml {
     // ============================================================================
-    // Memory Capabilities Query
-    // ============================================================================
-
-    /**
-     * @brief Query memory subsystem capabilities
-     * @return Capabilities if successful
-     */
-    inline std::optional<BML_MemoryCaps> GetMemoryCaps() {
-        if (!bmlMemoryGetCaps) return std::nullopt;
-        BML_MemoryCaps caps{};
-        caps.struct_size = sizeof(BML_MemoryCaps);
-        if (bmlMemoryGetCaps(&caps) == BML_RESULT_OK) {
-            return caps;
-        }
-        return std::nullopt;
-    }
-
-    /**
-     * @brief Check if a memory capability is available
-     * @param flag Capability flag to check
-     * @return true if capability is available
-     */
-    inline bool HasMemoryCap(BML_MemoryCapabilityFlags flag) {
-        auto caps = GetMemoryCaps();
-        return caps && (caps->capability_flags & flag);
-    }
-
-    /**
-     * @brief Get memory allocation statistics
-     * @return Statistics if available
-     */
-    inline std::optional<BML_MemoryStats> GetMemoryStats() {
-        if (!bmlGetMemoryStats) return std::nullopt;
-        BML_MemoryStats stats{};
-        if (bmlGetMemoryStats(&stats) == BML_RESULT_OK) {
-            return stats;
-        }
-        return std::nullopt;
-    }
-
-    // ============================================================================
     // Basic Allocation Functions
     // ============================================================================
 
@@ -68,8 +28,8 @@ namespace bml {
      * @param size Number of bytes to allocate
      * @return Pointer to allocated memory, or nullptr on failure
      */
-    inline void *Alloc(size_t size) {
-        return bmlAlloc ? bmlAlloc(size) : nullptr;
+    inline void *Alloc(size_t size, const BML_CoreMemoryInterface *memoryInterface = nullptr) {
+        return (memoryInterface && memoryInterface->Alloc) ? memoryInterface->Alloc(size) : nullptr;
     }
 
     /**
@@ -78,8 +38,8 @@ namespace bml {
      * @param size Size of each element
      * @return Pointer to allocated memory, or nullptr on failure
      */
-    inline void *Calloc(size_t count, size_t size) {
-        return bmlCalloc ? bmlCalloc(count, size) : nullptr;
+    inline void *Calloc(size_t count, size_t size, const BML_CoreMemoryInterface *memoryInterface = nullptr) {
+        return (memoryInterface && memoryInterface->Calloc) ? memoryInterface->Calloc(count, size) : nullptr;
     }
 
     /**
@@ -89,16 +49,23 @@ namespace bml {
      * @param new_size New size in bytes
      * @return Pointer to resized memory, or nullptr on failure
      */
-    inline void *Realloc(void *ptr, size_t old_size, size_t new_size) {
-        return bmlRealloc ? bmlRealloc(ptr, old_size, new_size) : nullptr;
+    inline void *Realloc(void *ptr,
+                         size_t old_size,
+                         size_t new_size,
+                         const BML_CoreMemoryInterface *memoryInterface = nullptr) {
+        return (memoryInterface && memoryInterface->Realloc)
+            ? memoryInterface->Realloc(ptr, old_size, new_size)
+            : nullptr;
     }
 
     /**
      * @brief Free memory allocated by BML
      * @param ptr Pointer to memory
      */
-    inline void Free(void *ptr) {
-        if (bmlFree) bmlFree(ptr);
+    inline void Free(void *ptr, const BML_CoreMemoryInterface *memoryInterface = nullptr) {
+        if (memoryInterface && memoryInterface->Free) {
+            memoryInterface->Free(ptr);
+        }
     }
 
     /**
@@ -107,16 +74,36 @@ namespace bml {
      * @param alignment Alignment in bytes (must be power of 2)
      * @return Pointer to aligned memory, or nullptr on failure
      */
-    inline void *AllocAligned(size_t size, size_t alignment) {
-        return bmlAllocAligned ? bmlAllocAligned(size, alignment) : nullptr;
+    inline void *AllocAligned(size_t size,
+                              size_t alignment,
+                              const BML_CoreMemoryInterface *memoryInterface = nullptr) {
+        return (memoryInterface && memoryInterface->AllocAligned)
+            ? memoryInterface->AllocAligned(size, alignment)
+            : nullptr;
     }
 
     /**
      * @brief Free aligned memory
      * @param ptr Pointer allocated by AllocAligned
      */
-    inline void FreeAligned(void *ptr) {
-        if (bmlFreeAligned) bmlFreeAligned(ptr);
+    inline void FreeAligned(void *ptr, const BML_CoreMemoryInterface *memoryInterface = nullptr) {
+        if (memoryInterface && memoryInterface->FreeAligned) {
+            memoryInterface->FreeAligned(ptr);
+        }
+    }
+
+    // ============================================================================
+    // Memory Statistics
+    // ============================================================================
+
+    inline std::optional<BML_MemoryStats> GetMemoryStats(
+        const BML_CoreMemoryInterface *memoryInterface = nullptr) {
+        if (!memoryInterface || !memoryInterface->GetMemoryStats) return std::nullopt;
+        BML_MemoryStats stats{};
+        if (memoryInterface->GetMemoryStats(&stats) == BML_RESULT_OK) {
+            return stats;
+        }
+        return std::nullopt;
     }
 
     // ============================================================================
@@ -127,8 +114,12 @@ namespace bml {
      * @brief Deleter for use with std::unique_ptr for BML-allocated memory
      */
     struct BmlDeleter {
+        const BML_CoreMemoryInterface *m_MemoryInterface = nullptr;
+
         void operator()(void *ptr) const noexcept {
-            if (bmlFree) bmlFree(ptr);
+            if (m_MemoryInterface && m_MemoryInterface->Free) {
+                m_MemoryInterface->Free(ptr);
+            }
         }
     };
 
@@ -136,8 +127,12 @@ namespace bml {
      * @brief Deleter for aligned BML-allocated memory
      */
     struct BmlAlignedDeleter {
+        const BML_CoreMemoryInterface *m_MemoryInterface = nullptr;
+
         void operator()(void *ptr) const noexcept {
-            if (bmlFreeAligned) bmlFreeAligned(ptr);
+            if (m_MemoryInterface && m_MemoryInterface->FreeAligned) {
+                m_MemoryInterface->FreeAligned(ptr);
+            }
         }
     };
 
@@ -146,10 +141,14 @@ namespace bml {
      */
     template <typename T>
     struct BmlTypedDeleter {
+        const BML_CoreMemoryInterface *m_MemoryInterface = nullptr;
+
         void operator()(T *ptr) const noexcept {
             if (ptr) {
                 ptr->~T();
-                if (bmlFree) bmlFree(ptr);
+                if (m_MemoryInterface && m_MemoryInterface->Free) {
+                    m_MemoryInterface->Free(ptr);
+                }
             }
         }
     };
@@ -173,22 +172,53 @@ namespace bml {
      */
     template <typename T, typename... Args>
     UniquePtr<T> MakeUnique(Args &&... args) {
-        void *mem = bmlAlloc ? bmlAlloc(sizeof(T)) : nullptr;
+        void *mem = Alloc(sizeof(T));
         if (!mem) return nullptr;
 
         T *obj = new(mem) T(std::forward<Args>(args)...);
-        return UniquePtr<T>(obj);
+        return UniquePtr<T>(obj, BmlTypedDeleter<T>{nullptr});
     }
+
+    template <typename T, typename... Args>
+    UniquePtr<T> MakeUniqueWithInterface(
+        const BML_CoreMemoryInterface *memoryInterface,
+        Args &&... args) {
+        void *mem = Alloc(sizeof(T), memoryInterface);
+        if (!mem) return nullptr;
+
+        T *obj = new(mem) T(std::forward<Args>(args)...);
+        return UniquePtr<T>(obj, BmlTypedDeleter<T>{memoryInterface});
+    }
+
+    /**
+     * @brief Deleter for BML-allocated arrays that calls element destructors
+     */
+    template <typename T>
+    struct BmlArrayDeleter {
+        size_t count;
+        const BML_CoreMemoryInterface *m_MemoryInterface = nullptr;
+
+        void operator()(T *ptr) const noexcept {
+            if (ptr) {
+                for (size_t i = 0; i < count; ++i) {
+                    ptr[i].~T();
+                }
+                if (m_MemoryInterface && m_MemoryInterface->Free) {
+                    m_MemoryInterface->Free(ptr);
+                }
+            }
+        }
+    };
 
     /**
      * @brief Create a unique pointer for array with BML allocation
      * @tparam T Element type
      * @param count Number of elements
-     * @return UniquePtr<T[]> or nullptr on allocation failure
+     * @return unique_ptr or nullptr on allocation failure
      */
     template <typename T>
-    std::unique_ptr<T[], BmlDeleter> MakeUniqueArray(size_t count) {
-        void *mem = bmlCalloc ? bmlCalloc(count, sizeof(T)) : nullptr;
+    std::unique_ptr<T[], BmlArrayDeleter<T>> MakeUniqueArray(size_t count) {
+        void *mem = Calloc(count, sizeof(T));
         if (!mem) return nullptr;
 
         // Default-construct elements
@@ -197,7 +227,26 @@ namespace bml {
             new(&arr[i]) T();
         }
 
-        return std::unique_ptr<T[], BmlDeleter>(arr);
+        return std::unique_ptr<T[], BmlArrayDeleter<T>>(
+            arr,
+            BmlArrayDeleter<T>{count, nullptr});
+    }
+
+    template <typename T>
+    std::unique_ptr<T[], BmlArrayDeleter<T>> MakeUniqueArrayWithInterface(
+        size_t count,
+        const BML_CoreMemoryInterface *memoryInterface) {
+        void *mem = Calloc(count, sizeof(T), memoryInterface);
+        if (!mem) return nullptr;
+
+        T *arr = static_cast<T *>(mem);
+        for (size_t i = 0; i < count; ++i) {
+            new(&arr[i]) T();
+        }
+
+        return std::unique_ptr<T[], BmlArrayDeleter<T>>(
+            arr,
+            BmlArrayDeleter<T>{count, memoryInterface});
     }
 
     // ============================================================================
@@ -220,20 +269,22 @@ namespace bml {
          * @param initial_blocks Number of blocks to pre-allocate
          * @throws bml::Exception if creation fails
          */
-        MemoryPool(size_t block_size, uint32_t initial_blocks = 32)
-            : m_Handle(nullptr), m_BlockSize(block_size) {
-            if (!bmlMemoryPoolCreate) {
+        MemoryPool(size_t block_size,
+                   uint32_t initial_blocks = 32,
+                   const BML_CoreMemoryInterface *memoryInterface = nullptr)
+            : m_Handle(nullptr), m_BlockSize(block_size), m_MemoryInterface(memoryInterface) {
+            if (!m_MemoryInterface || !m_MemoryInterface->MemoryPoolCreate) {
                 throw Exception(BML_RESULT_NOT_FOUND, "MemoryPool API unavailable");
             }
-            auto result = bmlMemoryPoolCreate(block_size, initial_blocks, &m_Handle);
+            auto result = m_MemoryInterface->MemoryPoolCreate(block_size, initial_blocks, &m_Handle);
             if (result != BML_RESULT_OK) {
                 throw Exception(result, "Failed to create memory pool");
             }
         }
 
         ~MemoryPool() {
-            if (m_Handle && bmlMemoryPoolDestroy) {
-                bmlMemoryPoolDestroy(m_Handle);
+            if (m_Handle && m_MemoryInterface && m_MemoryInterface->MemoryPoolDestroy) {
+                m_MemoryInterface->MemoryPoolDestroy(m_Handle);
             }
         }
 
@@ -243,18 +294,23 @@ namespace bml {
 
         // Movable
         MemoryPool(MemoryPool &&other) noexcept
-            : m_Handle(other.m_Handle), m_BlockSize(other.m_BlockSize) {
+            : m_Handle(other.m_Handle),
+              m_BlockSize(other.m_BlockSize),
+              m_MemoryInterface(other.m_MemoryInterface) {
             other.m_Handle = nullptr;
+            other.m_MemoryInterface = nullptr;
         }
 
         MemoryPool &operator=(MemoryPool &&other) noexcept {
             if (this != &other) {
-                if (m_Handle && bmlMemoryPoolDestroy) {
-                    bmlMemoryPoolDestroy(m_Handle);
+                if (m_Handle && m_MemoryInterface && m_MemoryInterface->MemoryPoolDestroy) {
+                    m_MemoryInterface->MemoryPoolDestroy(m_Handle);
                 }
                 m_Handle = other.m_Handle;
                 m_BlockSize = other.m_BlockSize;
+                m_MemoryInterface = other.m_MemoryInterface;
                 other.m_Handle = nullptr;
+                other.m_MemoryInterface = nullptr;
             }
             return *this;
         }
@@ -264,7 +320,9 @@ namespace bml {
          * @return Pointer to block, or nullptr on failure
          */
         void *alloc() {
-            return bmlMemoryPoolAlloc ? bmlMemoryPoolAlloc(m_Handle) : nullptr;
+            return (m_MemoryInterface && m_MemoryInterface->MemoryPoolAlloc)
+                ? m_MemoryInterface->MemoryPoolAlloc(m_Handle)
+                : nullptr;
         }
 
         /**
@@ -287,7 +345,9 @@ namespace bml {
          * @param ptr Pointer allocated from this pool
          */
         void free(void *ptr) {
-            if (bmlMemoryPoolFree) bmlMemoryPoolFree(m_Handle, ptr);
+            if (m_MemoryInterface && m_MemoryInterface->MemoryPoolFree) {
+                m_MemoryInterface->MemoryPoolFree(m_Handle, ptr);
+            }
         }
 
         /**
@@ -316,6 +376,7 @@ namespace bml {
     private:
         BML_MemoryPool m_Handle;
         size_t m_BlockSize;
+        const BML_CoreMemoryInterface *m_MemoryInterface;
     };
 
     // ============================================================================

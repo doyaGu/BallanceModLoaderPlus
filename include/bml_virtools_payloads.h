@@ -8,8 +8,13 @@ class CKBehavior;
 class CKMesh;
 class CKObject;
 
-typedef struct BML_LegacyObjectLoadPayload {
-    size_t struct_size;
+/**
+ * @brief Payload for BML/ObjectLoad/LoadObject events.
+ *
+ * All pointer members borrow from the CK engine and are valid only
+ * during the frame in which the event is published.
+ */
+typedef struct BML_ObjectLoadEvent {
     const char *filename;
     const char *master_name;
     CK_CLASSID class_id;
@@ -19,19 +24,26 @@ typedef struct BML_LegacyObjectLoadPayload {
     CKBOOL dynamic;
     CKObject *master_object;
     CKBOOL is_map;
-    CK_ID *object_ids;
+    const CK_ID *object_ids;   /**< Borrowed; valid for this frame only */
     uint32_t object_count;
-} BML_LegacyObjectLoadPayload;
+} BML_ObjectLoadEvent;
 
-typedef struct BML_LegacyScriptLoadPayload {
-    size_t struct_size;
+/**
+ * @brief Payload for BML/ObjectLoad/LoadScript events.
+ */
+typedef struct BML_ScriptLoadEvent {
     const char *filename;
     CKBehavior *script;
     CKBOOL is_map;
-} BML_LegacyScriptLoadPayload;
+} BML_ScriptLoadEvent;
 
-typedef struct BML_LegacyPhysicalizePayload {
-    size_t struct_size;
+/**
+ * @brief Payload for Physics/Physicalize events.
+ *
+ * All pointer members borrow from the CK engine and are valid only
+ * during the frame in which the event is published.
+ */
+typedef struct BML_PhysicalizeEvent {
     CK3dEntity *target;
     CKBOOL fixed;
     float friction;
@@ -46,12 +58,51 @@ typedef struct BML_LegacyPhysicalizePayload {
     const char *collision_surface;
     VxVector mass_center;
     int convex_count;
-    CKMesh **convex_meshes;
+    CKMesh **convex_meshes;     /**< Borrowed; valid for this frame only */
     int ball_count;
-    VxVector *ball_centers;
-    float *ball_radii;
+    VxVector *ball_centers;     /**< Borrowed; valid for this frame only */
+    float *ball_radii;          /**< Borrowed; valid for this frame only */
     int concave_count;
-    CKMesh **concave_meshes;
-} BML_LegacyPhysicalizePayload;
+    CKMesh **concave_meshes;    /**< Borrowed; valid for this frame only */
+} BML_PhysicalizeEvent;
+
+/* ========================================================================
+ * Game Command Payloads
+ * ======================================================================== */
+
+class CKBeObject;
+
+/**
+ * @brief Payload for BML/Command/SetIC.
+ * Sets Initial Conditions on a CKBeObject.
+ */
+typedef struct BML_SetICCommand {
+    CKBeObject *target;     /**< Object to set IC on. */
+    CKBOOL hierarchy;       /**< Apply recursively to children. */
+} BML_SetICCommand;
+
+/**
+ * @brief Payload for BML/Command/RestoreIC.
+ * Restores Initial Conditions on a CKBeObject.
+ */
+typedef struct BML_RestoreICCommand {
+    CKBeObject *target;     /**< Object to restore IC on. */
+    CKBOOL hierarchy;       /**< Apply recursively to children. */
+} BML_RestoreICCommand;
+
+/**
+ * @brief Payload for BML/Command/Show.
+ * Shows or hides a CKBeObject.
+ *
+ * show_option values (CK_OBJECT_SHOWOPTION):
+ *   CKSHOW  (1) = show,
+ *   CKHIDE  (0) = hide,
+ *   CKHIERARCHICALHIDE (-1) = hide with hierarchy flag
+ */
+typedef struct BML_ShowCommand {
+    CKBeObject *target;     /**< Object to show/hide. */
+    int show_option;        /**< CK_OBJECT_SHOWOPTION value. */
+    CKBOOL hierarchy;       /**< Apply recursively to children. */
+} BML_ShowCommand;
 
 #endif // BML_VIRTOOLS_PAYLOADS_H

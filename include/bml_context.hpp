@@ -9,6 +9,7 @@
 #ifndef BML_CONTEXT_HPP
 #define BML_CONTEXT_HPP
 
+#include "bml_builtin_interfaces.h"
 #include "bml_core.h"
 #include "bml_export.h"
 #include "bml_loader.h"
@@ -19,14 +20,12 @@ namespace bml {
     // ============================================================================
 
     /**
-     * @brief Load all BML API function pointers
-     * @param get_proc Function to retrieve API pointers by name
-     * @param get_proc_by_id Optional function to retrieve API pointers by stable ID
+     * @brief Load the bootstrap minimum for later interface-driven runtime use
+     * @param get_proc Function to retrieve bootstrap exports by name
      * @return true if successful
      */
-    inline bool LoadAPI(PFN_BML_GetProcAddress get_proc,
-                        PFN_BML_GetProcAddressById get_proc_by_id = nullptr) {
-        return bmlLoadAPI(get_proc, get_proc_by_id) == BML_RESULT_OK;
+    inline bool LoadAPI(PFN_BML_GetProcAddress get_proc) {
+        return bmlLoadAPI(get_proc) == BML_RESULT_OK;
     }
 
     /**
@@ -58,9 +57,10 @@ namespace bml {
      */
     class Context {
     public:
-        Context() : m_Ctx(nullptr) {}
+        Context() : m_Ctx(nullptr), m_ContextInterface(nullptr) {}
 
-        explicit Context(BML_Context ctx) : m_Ctx(ctx) {}
+        explicit Context(BML_Context ctx, const BML_CoreContextInterface *contextInterface = nullptr)
+            : m_Ctx(ctx), m_ContextInterface(contextInterface) {}
 
         /**
          * @brief Get the underlying handle
@@ -77,8 +77,8 @@ namespace bml {
          * @return true if successful
          */
         bool Retain() const {
-            if (!m_Ctx || !bmlContextRetain) return false;
-            return bmlContextRetain(m_Ctx) == BML_RESULT_OK;
+            if (!m_Ctx || !m_ContextInterface || !m_ContextInterface->Retain) return false;
+            return m_ContextInterface->Retain(m_Ctx) == BML_RESULT_OK;
         }
 
         /**
@@ -86,12 +86,13 @@ namespace bml {
          * @return true if successful
          */
         bool Release() const {
-            if (!m_Ctx || !bmlContextRelease) return false;
-            return bmlContextRelease(m_Ctx) == BML_RESULT_OK;
+            if (!m_Ctx || !m_ContextInterface || !m_ContextInterface->Release) return false;
+            return m_ContextInterface->Release(m_Ctx) == BML_RESULT_OK;
         }
 
     private:
         BML_Context m_Ctx;
+        const BML_CoreContextInterface *m_ContextInterface;
     };
 
     // ============================================================================
@@ -105,27 +106,29 @@ namespace bml {
      *
      * Example:
      *   {
-     *       bml::ScopedContext ctx(bmlGetGlobalContext());
+     *       bml::ScopedContext ctx(contextApi->GetGlobalContext(), contextApi);
      *       // Use ctx...
      *   } // Automatically releases reference
      */
     class ScopedContext {
     public:
-        ScopedContext() : m_Ctx(nullptr) {}
+        ScopedContext() : m_Ctx(nullptr), m_ContextInterface(nullptr) {}
 
         /**
          * @brief Construct and retain context
          * @param ctx Context to wrap (will be retained)
          */
-        explicit ScopedContext(BML_Context ctx) : m_Ctx(ctx) {
-            if (m_Ctx && bmlContextRetain) {
-                bmlContextRetain(m_Ctx);
+        explicit ScopedContext(BML_Context ctx,
+                               const BML_CoreContextInterface *contextInterface = nullptr)
+            : m_Ctx(ctx), m_ContextInterface(contextInterface) {
+            if (m_Ctx && m_ContextInterface && m_ContextInterface->Retain) {
+                m_ContextInterface->Retain(m_Ctx);
             }
         }
 
         ~ScopedContext() {
-            if (m_Ctx && bmlContextRelease) {
-                bmlContextRelease(m_Ctx);
+            if (m_Ctx && m_ContextInterface && m_ContextInterface->Release) {
+                m_ContextInterface->Release(m_Ctx);
             }
         }
 
@@ -134,27 +137,32 @@ namespace bml {
         ScopedContext &operator=(const ScopedContext &) = delete;
 
         // Movable
-        ScopedContext(ScopedContext &&other) noexcept : m_Ctx(other.m_Ctx) {
+        ScopedContext(ScopedContext &&other) noexcept
+            : m_Ctx(other.m_Ctx), m_ContextInterface(other.m_ContextInterface) {
             other.m_Ctx = nullptr;
+            other.m_ContextInterface = nullptr;
         }
 
         ScopedContext &operator=(ScopedContext &&other) noexcept {
             if (this != &other) {
-                if (m_Ctx && bmlContextRelease) {
-                    bmlContextRelease(m_Ctx);
+                if (m_Ctx && m_ContextInterface && m_ContextInterface->Release) {
+                    m_ContextInterface->Release(m_Ctx);
                 }
                 m_Ctx = other.m_Ctx;
+                m_ContextInterface = other.m_ContextInterface;
                 other.m_Ctx = nullptr;
+                other.m_ContextInterface = nullptr;
             }
             return *this;
         }
 
         BML_Context Handle() const noexcept { return m_Ctx; }
-        Context GetContext() const noexcept { return Context(m_Ctx); }
+        Context GetContext() const noexcept { return Context(m_Ctx, m_ContextInterface); }
         explicit operator bool() const noexcept { return m_Ctx != nullptr; }
 
     private:
         BML_Context m_Ctx;
+        const BML_CoreContextInterface *m_ContextInterface;
     };
 
     // ============================================================================
@@ -162,10 +170,13 @@ namespace bml {
     // ============================================================================
 
     /**
-     * @brief Get the global BML context
+     * @brief Get the global BML context through the acquired builtin interface
      */
-    inline Context GetGlobalContext() {
-        return Context(bmlGetGlobalContext ? bmlGetGlobalContext() : nullptr);
+    inline Context GetGlobalContext(const BML_CoreContextInterface *contextInterface = nullptr) {
+        if (!contextInterface || !contextInterface->GetGlobalContext) {
+            return Context();
+        }
+        return Context(contextInterface->GetGlobalContext(), contextInterface);
     }
 } // namespace bml
 
