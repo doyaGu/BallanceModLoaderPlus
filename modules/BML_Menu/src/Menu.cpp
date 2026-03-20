@@ -912,7 +912,7 @@ namespace Menu {
         const ImGuiViewport *vp = ImGui::GetMainViewport();
         const ImVec2 pos(std::floor(vp->Pos.x + (vp->Size.x - titleSize.x) * 0.5f), std::floor(vp->Pos.y + vp->Size.y * y));
 
-        ImGui::GetForegroundDrawList()->AddText(font, size, pos, color, text);
+        ImGui::GetForegroundDrawList(ImGui::GetMainViewport())->AddText(font, size, pos, color, text);
     }
 
     bool SearchBar(char *buffer, size_t bufferSize, float x, float y, float width) {

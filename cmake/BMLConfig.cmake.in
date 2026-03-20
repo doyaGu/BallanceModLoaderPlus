@@ -1,6 +1,43 @@
+# =============================================================================
+# BMLConfig.cmake - CMake package configuration for BML SDK
+# =============================================================================
+#
+# This file is installed by the BML SDK and allows find_package(BML) to work
+# for standalone mod projects.
+#
+# Defines:
+#   BML_FOUND          - TRUE if BML was found
+#   BML_INCLUDE_DIRS   - BML public header directory
+#   BML_VERSION        - BML version string (e.g. "0.4.0")
+#   BML_VERSION_MAJOR  - Major version
+#   BML_VERSION_MINOR  - Minor version
+#   BML_VERSION_PATCH  - Patch version
+#
+# Provides:
+#   include(BMLMod) to access bml_add_module() and friends
+#
+# =============================================================================
+
 @PACKAGE_INIT@
 
-include(CMakeFindDependencyMacro)
-find_dependency(VirtoolsSDK)
+set(BML_VERSION "@PROJECT_VERSION@")
+set(BML_VERSION_MAJOR @PROJECT_VERSION_MAJOR@)
+set(BML_VERSION_MINOR @PROJECT_VERSION_MINOR@)
+set(BML_VERSION_PATCH @PROJECT_VERSION_PATCH@)
 
-include("${CMAKE_CURRENT_LIST_DIR}/BMLTargets.cmake")
+set_and_check(BML_INCLUDE_DIRS "@PACKAGE_BML_INSTALL_INCLUDE_DIR@")
+set(BML_INCLUDE_DIR "${BML_INCLUDE_DIRS}")
+
+# Make BMLMod.cmake available via include(BMLMod)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
+
+# Import BML targets if available (optional -- mod projects don't link BML.dll)
+set(_bml_targets_file "${CMAKE_CURRENT_LIST_DIR}/BMLTargets.cmake")
+if(EXISTS "${_bml_targets_file}")
+    include(CMakeFindDependencyMacro)
+    find_dependency(VirtoolsSDK)
+    include("${_bml_targets_file}")
+endif()
+unset(_bml_targets_file)
+
+check_required_components(BML)

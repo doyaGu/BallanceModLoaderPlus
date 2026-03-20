@@ -1,0 +1,110 @@
+# =============================================================================
+# CMakeLists.txt - BML Module Project Template
+# =============================================================================
+#
+# Template for creating BML v0.4+ modules outside the main repository.
+#
+# Prerequisites:
+#   - CMake 3.14+
+#   - Visual Studio 2019+ (Windows)
+#   - BML installed or CMAKE_PREFIX_PATH set to BML install directory
+#
+# Build:
+#   cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="<BML-install>"
+#   cmake --build build --config Release
+#
+# =============================================================================
+
+cmake_minimum_required(VERSION 3.14)
+
+# ============================================
+# Project Configuration - CUSTOMIZE THESE
+# ============================================
+project(MyModule
+    VERSION 1.0.0
+    DESCRIPTION "My BML module"
+    LANGUAGES CXX
+)
+
+# Module metadata
+set(MOD_ID "com.example.mymodule")            # Unique ID (reverse-DNS recommended)
+set(MOD_DISPLAY_NAME "My Module")             # Human-readable name
+set(MOD_VERSION "${PROJECT_VERSION}")         # Version
+set(MOD_AUTHORS "Your Name")                  # Author(s), semicolon-separated
+set(MOD_DESCRIPTION "${PROJECT_DESCRIPTION}") # Description
+
+# Source files
+set(MOD_SOURCES
+    src/main.cpp
+    # Add more sources here
+)
+
+# Dependencies (format: "mod_id>=version")
+set(MOD_DEPENDENCIES
+    # "bml.core>=0.4.0"
+)
+
+# Capabilities this module provides
+set(MOD_CAPABILITIES
+    # "com.example.mymodule.feature"
+)
+
+# ============================================
+# Build Configuration
+# ============================================
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+find_package(BML REQUIRED)
+include(BMLMod OPTIONAL)
+
+# ============================================
+# Create Module
+# ============================================
+
+if(COMMAND bml_add_module)
+    bml_add_module(${PROJECT_NAME}
+        SOURCES ${MOD_SOURCES}
+        ID "${MOD_ID}"
+        VERSION "${MOD_VERSION}"
+        DISPLAY_NAME "${MOD_DISPLAY_NAME}"
+        AUTHORS ${MOD_AUTHORS}
+        DESCRIPTION "${MOD_DESCRIPTION}"
+        DEPENDENCIES ${MOD_DEPENDENCIES}
+        CAPABILITIES ${MOD_CAPABILITIES}
+        GENERATE_MANIFEST
+    )
+else()
+    # Fallback without BMLMod.cmake
+    add_library(${PROJECT_NAME} SHARED ${MOD_SOURCES})
+    target_include_directories(${PROJECT_NAME} PRIVATE ${BML_INCLUDE_DIRS})
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+        UNICODE _UNICODE
+        BML_MOD_ID="${MOD_ID}"
+        BML_MOD_VERSION="${MOD_VERSION}"
+    )
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        OUTPUT_NAME "${PROJECT_NAME}"
+        SUFFIX ".dll"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Mods/${PROJECT_NAME}"
+    )
+endif()
+
+# ============================================
+# Installation (Optional)
+# ============================================
+
+# set(GAME_PATH "C:/Games/Ballance")
+# if(COMMAND bml_install_module)
+#     bml_install_module(${PROJECT_NAME}
+#         DESTINATION "${GAME_PATH}/Mods/${PROJECT_NAME}"
+#     )
+# endif()
+
+message(STATUS "")
+message(STATUS "=== ${MOD_DISPLAY_NAME} ===")
+message(STATUS "  ID:      ${MOD_ID}")
+message(STATUS "  Version: ${MOD_VERSION}")
+message(STATUS "")

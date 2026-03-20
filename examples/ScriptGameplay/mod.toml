@@ -1,0 +1,10 @@
+[package]
+id = "com.example.scriptgameplay"
+name = "Script Gameplay Tweaks"
+version = "1.0.0"
+authors = ["BML Team"]
+description = "Demonstrates gameplay modifications via AngelScript"
+entry = "main.as"
+
+[dependencies]
+"com.bml.scripting" = ">=0.4.0"

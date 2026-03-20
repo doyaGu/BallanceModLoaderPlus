@@ -1,0 +1,14 @@
+[package]
+id = "com.example.eventlogger"
+name = "Event Logger Example"
+version = "1.0.0"
+authors = ["BML Team"]
+description = "Example v0.4 module demonstrating IMC event subscription and logging"
+
+[dependencies]
+# This module has no dependencies
+
+[metadata]
+# Optional metadata
+tags = ["example", "logging", "events"]
+homepage = "https://github.com/doyaGu/BallanceModLoaderPlus"

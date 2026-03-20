@@ -50,6 +50,12 @@ def parse_args() -> argparse.Namespace:
         help="Preprocessor/compiler frontend for cimgui generation (e.g. cl, clang, gcc). "
              "Defaults to auto-detection.",
     )
+    parser.add_argument(
+        "--luajit",
+        type=Path,
+        default=None,
+        help="Path to LuaJIT executable. Defaults to deps/cimgui/luajit.exe.",
+    )
     return parser.parse_args()
 
 
@@ -127,19 +133,15 @@ def sync_imgui_config(repo_root: Path) -> None:
             f"{src_config} is missing the CIMGUI_GENERATOR branch required for generated bindings."
         )
 
-    copy_if_changed(src_config, repo_root / "deps" / "imgui" / "imconfig.h")
-
-    cimgui_imgui_dir = repo_root / "deps" / "cimgui" / "imgui"
-    if cimgui_imgui_dir.exists():
-        copy_if_changed(src_config, cimgui_imgui_dir / "imconfig.h")
+    copy_if_changed(src_config, repo_root / "deps" / "cimgui" / "imgui" / "imconfig.h")
 
 
-def run_cimgui_generator(repo_root: Path, compiler: str) -> None:
+def run_cimgui_generator(repo_root: Path, compiler: str, luajit_path: Path | None = None) -> None:
     cimgui_root = repo_root / "deps" / "cimgui"
-    luajit = cimgui_root / "luajit.exe"
+    luajit = luajit_path if luajit_path else cimgui_root / "luajit.exe"
     generator_dir = cimgui_root / "generator"
     generator = generator_dir / "generator.lua"
-    imgui_root = repo_root / "deps" / "imgui"
+    imgui_root = repo_root / "deps" / "cimgui" / "imgui"
 
     if not luajit.exists():
         raise RuntimeError(f"LuaJIT executable not found: {luajit}")
@@ -916,7 +918,7 @@ def main() -> int:
     definitions_path = repo_root / "deps" / "cimgui" / "generator" / "output" / "definitions.json"
 
     sync_imgui_config(repo_root)
-    run_cimgui_generator(repo_root, compiler)
+    run_cimgui_generator(repo_root, compiler, luajit_path=args.luajit)
     categorized = collect_api_entries(cimgui_source)
 
     header = (

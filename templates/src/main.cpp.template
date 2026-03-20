@@ -1,0 +1,239 @@
+/**
+ * @file main.cpp
+ * @brief BML Module Template
+ * 
+ * This template demonstrates how to create a BML module using dynamic API
+ * loading and IMC (Inter-Module Communication).
+ * 
+ * Features:
+ * - Uses BML_ModEntrypoint entry point
+ * - Dynamically loads API functions via bml_loader.h
+ * - No link-time dependency on BML library
+ * - Uses IMC for event subscription
+ * - Requires mod.toml manifest file
+ */
+
+#include "bml_module.h"
+#define BML_LOADER_IMPLEMENTATION
+#include "bml_loader.h"
+
+#include "bml_core.h"
+#include "bml_logging.h"
+#include "bml_imc.h"
+
+#include <cstddef>
+
+// =============================================================================
+// Module Configuration
+// =============================================================================
+#ifndef BML_MOD_ID
+#define BML_MOD_ID "com.example.mymodule"
+#endif
+
+#ifndef BML_MOD_VERSION
+#define BML_MOD_VERSION "1.0.0"
+#endif
+
+static const char *kTag = BML_MOD_ID;  // Logging tag
+
+// =============================================================================
+// Module State
+// =============================================================================
+static BML_Mod g_ModHandle = nullptr;
+
+// IMC Subscriptions
+static BML_Subscription g_InitSub = nullptr;
+static BML_Subscription g_ProcessSub = nullptr;
+static BML_Subscription g_RenderSub = nullptr;
+
+// Cached topic IDs (for performance)
+static BML_TopicId g_TopicInit = 0;
+static BML_TopicId g_TopicProcess = 0;
+static BML_TopicId g_TopicRender = 0;
+
+// =============================================================================
+// Event Handlers
+// =============================================================================
+
+/**
+ * @brief Called once when the engine initializes
+ */
+void OnEngineInit(BML_Context ctx, BML_TopicId topic, const BML_ImcMessage *msg, void *user_data) {
+    bmlLog(ctx, BML_LOG_INFO, kTag, "Engine initialized!");
+    
+    // Your initialization code here
+}
+
+/**
+ * @brief Called every frame
+ */
+void OnPostProcess(BML_Context ctx, BML_TopicId topic, const BML_ImcMessage *msg, void *user_data) {
+    // Your per-frame logic here
+    // Note: This is called frequently, keep it lightweight!
+}
+
+/**
+ * @brief Called during rendering
+ */
+void OnPreRender(BML_Context ctx, BML_TopicId topic, const BML_ImcMessage *msg, void *user_data) {
+    // Your rendering code here
+}
+
+// =============================================================================
+// Lifecycle Management
+// =============================================================================
+namespace {
+
+void ReleaseSubscriptions() {
+    if (g_InitSub) {
+        bmlImcUnsubscribe(g_InitSub);
+        g_InitSub = nullptr;
+    }
+    if (g_ProcessSub) {
+        bmlImcUnsubscribe(g_ProcessSub);
+        g_ProcessSub = nullptr;
+    }
+    if (g_RenderSub) {
+        bmlImcUnsubscribe(g_RenderSub);
+        g_RenderSub = nullptr;
+    }
+}
+
+BML_Result ValidateAttachArgs(const BML_ModAttachArgs *args) {
+    if (!args || args->struct_size < sizeof(BML_ModAttachArgs)) {
+        return BML_RESULT_INVALID_ARGUMENT;
+    }
+    if (args->api_version < BML_MOD_ENTRYPOINT_API_VERSION) {
+        return BML_RESULT_VERSION_MISMATCH;
+    }
+    if (!args->mod || !args->get_proc) {
+        return BML_RESULT_INVALID_ARGUMENT;
+    }
+    return BML_RESULT_OK;
+}
+
+BML_Result ValidateDetachArgs(const BML_ModDetachArgs *args) {
+    if (!args || args->struct_size < sizeof(BML_ModDetachArgs)) {
+        return BML_RESULT_INVALID_ARGUMENT;
+    }
+    if (args->api_version < BML_MOD_ENTRYPOINT_API_VERSION) {
+        return BML_RESULT_VERSION_MISMATCH;
+    }
+    return BML_RESULT_OK;
+}
+
+/**
+ * @brief Called when the module is attached (loaded)
+ */
+BML_Result HandleAttach(const BML_ModAttachArgs *args) {
+    BML_Result result = ValidateAttachArgs(args);
+    if (result != BML_RESULT_OK) {
+        return result;
+    }
+
+    g_ModHandle = args->mod;
+
+    // Load all API function pointers dynamically
+    result = BML_BOOTSTRAP_LOAD(args->get_proc);
+    if (result != BML_RESULT_OK) {
+        return result;
+    }
+
+    BML_Context ctx = bmlGetGlobalContext();
+    
+    // Log startup
+    const BML_Version *runtime_version = bmlGetRuntimeVersion ? bmlGetRuntimeVersion() : nullptr;
+    bmlLog(ctx, BML_LOG_INFO, kTag, 
+           "=== %s v%s Starting ===", BML_MOD_ID, BML_MOD_VERSION);
+    bmlLog(ctx, BML_LOG_INFO, kTag,
+           "BML Runtime version: %u.%u.%u",
+           runtime_version ? runtime_version->major : 0,
+           runtime_version ? runtime_version->minor : 0,
+           runtime_version ? runtime_version->patch : 0);
+
+    // Get topic IDs
+    if (bmlImcGetTopicId("BML/Engine/Init", &g_TopicInit) != BML_RESULT_OK ||
+        bmlImcGetTopicId("BML/Engine/PostProcess", &g_TopicProcess) != BML_RESULT_OK) {
+        bmlLog(ctx, BML_LOG_ERROR, kTag, "Failed to get required topic IDs");
+        bmlUnloadAPI();
+        return BML_RESULT_NOT_FOUND;
+    }
+
+    // Optional topics
+    bmlImcGetTopicId("BML/Engine/PreRender", &g_TopicRender);
+
+    // Subscribe to events
+    result = bmlImcSubscribe(g_TopicInit, OnEngineInit, nullptr, &g_InitSub);
+    if (result != BML_RESULT_OK) {
+        bmlLog(ctx, BML_LOG_ERROR, kTag, "Failed to subscribe to Engine/Init");
+        bmlUnloadAPI();
+        return result;
+    }
+
+    result = bmlImcSubscribe(g_TopicProcess, OnPostProcess, nullptr, &g_ProcessSub);
+    if (result != BML_RESULT_OK) {
+        bmlLog(ctx, BML_LOG_ERROR, kTag, "Failed to subscribe to Engine/PostProcess");
+        ReleaseSubscriptions();
+        bmlUnloadAPI();
+        return result;
+    }
+
+    if (g_TopicRender != 0) {
+        result = bmlImcSubscribe(g_TopicRender, OnPreRender, nullptr, &g_RenderSub);
+        if (result != BML_RESULT_OK) {
+            bmlLog(ctx, BML_LOG_WARN, kTag, "Failed to subscribe to PreRender (non-fatal)");
+            // Continue anyway - rendering is optional
+        }
+    }
+
+    bmlLog(ctx, BML_LOG_INFO, kTag, "Module initialized successfully");
+    return BML_RESULT_OK;
+}
+
+/**
+ * @brief Called when the module is detached (unloaded)
+ */
+BML_Result HandleDetach(const BML_ModDetachArgs *args) {
+    BML_Result result = ValidateDetachArgs(args);
+    if (result != BML_RESULT_OK) {
+        return result;
+    }
+
+    BML_Context ctx = bmlGetGlobalContext();
+    bmlLog(ctx, BML_LOG_INFO, kTag, "Module shutting down...");
+
+    // Clean up subscriptions
+    ReleaseSubscriptions();
+
+    // Unload API
+    bmlUnloadAPI();
+    g_ModHandle = nullptr;
+
+    return BML_RESULT_OK;
+}
+
+} // anonymous namespace
+
+// =============================================================================
+// Module Entry Point (Required)
+// =============================================================================
+
+/**
+ * @brief Main entry point for the module
+ * 
+ * This function is called by BML to attach/detach the module.
+ * 
+ * @param cmd Command (ATTACH or DETACH)
+ * @param data Command-specific data structure
+ * @return BML_RESULT_OK on success, error code otherwise
+ */
+BML_MODULE_ENTRY BML_Result BML_ModEntrypoint(BML_ModEntrypointCommand cmd, void *data) {
+    switch (cmd) {
+    case BML_MOD_ENTRYPOINT_ATTACH:
+        return HandleAttach(static_cast<const BML_ModAttachArgs *>(data));
+    case BML_MOD_ENTRYPOINT_DETACH:
+        return HandleDetach(static_cast<const BML_ModDetachArgs *>(data));
+    default:
+        return BML_RESULT_INVALID_ARGUMENT;
+    }
+}

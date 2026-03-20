@@ -1,0 +1,8 @@
+[package]
+id = "com.example.scriptminimal"
+name = "Minimal Script Mod"
+version = "1.0.0"
+entry = "main.as"
+
+[dependencies]
+"com.bml.scripting" = ">=0.4.0"

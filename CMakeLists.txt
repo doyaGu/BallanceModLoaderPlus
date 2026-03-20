@@ -79,6 +79,48 @@ if (BML_BUILD_ENGINE_BRIDGE OR BML_BUILD_MODULES OR BML_BUILD_EXAMPLES)
     find_package(VirtoolsSDK REQUIRED)
 endif ()
 
+if (BML_BUILD_MODULES)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+    file(GLOB BML_IMGUI_GENERATOR_INPUTS CONFIGURE_DEPENDS
+        "${PROJECT_SOURCE_DIR}/deps/cimgui/imgui/*.h"
+        "${PROJECT_SOURCE_DIR}/deps/cimgui/imgui/*.hpp"
+    )
+
+    list(APPEND BML_IMGUI_GENERATOR_INPUTS
+        "${PROJECT_SOURCE_DIR}/deps/cimgui/generator/generator.lua"
+        "${PROJECT_SOURCE_DIR}/deps/cimgui/generator/cpp2ffi.lua"
+        "${PROJECT_SOURCE_DIR}/deps/cimgui/generator/config_generator.lua"
+        "${LUAJIT_EXECUTABLE}"
+        "${PROJECT_SOURCE_DIR}/src/Utils/imconfig.h"
+        "${PROJECT_SOURCE_DIR}/tools/generate_bml_imgui_api.py"
+    )
+
+    set(BML_IMGUI_API_GENERATED_FILES
+        "${PROJECT_SOURCE_DIR}/deps/cimgui/cimgui.cpp"
+        "${PROJECT_SOURCE_DIR}/deps/cimgui/cimgui.h"
+        "${PROJECT_SOURCE_DIR}/modules/BML_UI/include/cimgui.h"
+        "${PROJECT_SOURCE_DIR}/modules/BML_UI/include/bml_imgui_api_fields.inc"
+        "${PROJECT_SOURCE_DIR}/modules/BML_UI/include/bml_imgui_cpp_defs.inl"
+        "${PROJECT_SOURCE_DIR}/modules/BML_UI/src/bml_imgui_api_init.inc"
+    )
+
+    add_custom_command(
+        OUTPUT ${BML_IMGUI_API_GENERATED_FILES}
+        COMMAND ${Python3_EXECUTABLE}
+                "${PROJECT_SOURCE_DIR}/tools/generate_bml_imgui_api.py"
+                --repo-root "${PROJECT_SOURCE_DIR}"
+                --luajit "${LUAJIT_EXECUTABLE}"
+        DEPENDS ${BML_IMGUI_GENERATOR_INPUTS}
+        VERBATIM
+    )
+
+    add_custom_target(generate_bml_imgui_api ALL DEPENDS ${BML_IMGUI_API_GENERATED_FILES})
+    if (TARGET ${LUAJIT_TARGET})
+        add_dependencies(generate_bml_imgui_api ${LUAJIT_TARGET})
+    endif ()
+endif ()
+
 add_subdirectory(deps)
 add_subdirectory(src)
 if (BML_BUILD_MODULES)
@@ -95,3 +137,63 @@ endif ()
 if (BML_BUILD_BENCHMARKS)
     add_subdirectory(benchmarks)
 endif ()
+
+# =============================================================================
+# SDK Install Rules
+# =============================================================================
+
+# Public headers
+install(DIRECTORY include/
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+    COMPONENT sdk
+    FILES_MATCHING
+        PATTERN "*.h"
+        PATTERN "*.hpp"
+        PATTERN "*.inc"
+        PATTERN "*.inl"
+)
+
+# CMake modules for mod authors
+install(FILES cmake/BMLMod.cmake
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML"
+    COMPONENT sdk
+)
+
+# Package config for find_package(BML)
+set(BML_INSTALL_INCLUDE_DIR "${CMAKE_INSTALL_INCLUDEDIR}")
+include(CMakePackageConfigHelpers)
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/BMLConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/BMLConfig.cmake"
+    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML"
+    PATH_VARS BML_INSTALL_INCLUDE_DIR
+)
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/BMLConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/BMLConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/BMLConfigVersion.cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML"
+    COMPONENT sdk
+)
+
+# Templates and examples for mod authors
+install(DIRECTORY templates/
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/templates"
+    COMPONENT sdk
+)
+install(DIRECTORY examples/
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/examples"
+    COMPONENT sdk
+    PATTERN "CMakeFiles" EXCLUDE
+    PATTERN "*.dir" EXCLUDE
+)
+
+# Mod manifest schema doc
+install(FILES docs/mod-manifest-schema.md
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/docs"
+    COMPONENT sdk
+)

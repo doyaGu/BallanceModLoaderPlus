@@ -18,7 +18,8 @@
 #include <thread>
 #include <vector>
 
-using BML::Core::ImcBus;
+using namespace BML::Core;
+
 using Clock = std::chrono::steady_clock;
 
 namespace {
@@ -140,24 +141,24 @@ void PubSubHandler(BML_Context ctx,
 }
 
 void PumpUntil(size_t target, std::atomic<size_t> &counter, size_t pump_budget) {
-    auto &bus = ImcBus::Instance();
+    
     while (counter.load(std::memory_order_acquire) < target) {
-        bus.Pump(pump_budget);
+        ImcPump(pump_budget);
         std::this_thread::yield();
     }
 }
 
 PubSubMetrics RunPubSubBenchmark(const BenchConfig &config) {
-    auto &bus = ImcBus::Instance();
+    
     
     PubSubContext ctx(config.messages);
     
     // Get topic ID
     BML_TopicId topic_id = 0;
-    EnsureOk(bus.GetTopicId("bench.pubsub", &topic_id), "GetTopicId");
+    EnsureOk(ImcGetTopicId("bench.pubsub", &topic_id), "GetTopicId");
     
     BML_Subscription subscription = nullptr;
-    EnsureOk(bus.Subscribe(topic_id, &PubSubHandler, &ctx, &subscription), "Subscribe");
+    EnsureOk(ImcSubscribe(topic_id, &PubSubHandler, &ctx, &subscription), "Subscribe");
 
     const size_t payload_size = config.payload_bytes;
     std::vector<uint8_t> payload(payload_size, 0);
@@ -166,16 +167,16 @@ PubSubMetrics RunPubSubBenchmark(const BenchConfig &config) {
     for (size_t i = 0; i < config.messages; ++i) {
         const auto sent_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch()).count();
         std::memcpy(payload.data(), &sent_ns, sizeof(int64_t));
-        EnsureOk(bus.Publish(topic_id, payload.data(), payload_size), "Publish");
+        EnsureOk(ImcPublish(topic_id, payload.data(), payload_size), "Publish");
         if (config.pump_budget != 0 && ((i + 1) % config.pump_budget == 0)) {
-            bus.Pump(config.pump_budget);
+            ImcPump(config.pump_budget);
         }
     }
 
     PumpUntil(config.messages, ctx.received, config.pump_budget);
     const auto end = Clock::now();
 
-    EnsureOk(bus.Unsubscribe(subscription), "Unsubscribe");
+    EnsureOk(ImcUnsubscribe(subscription), "Unsubscribe");
 
     const double duration_s = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
     const double throughput = static_cast<double>(config.messages) /
@@ -226,13 +227,13 @@ BML_Result BenchRpcHandler(BML_Context ctx,
 }
 
 RpcMetrics RunRpcBenchmark(const BenchConfig &config) {
-    auto &bus = ImcBus::Instance();
+    
     RpcHandlerContext ctx{config.payload_bytes};
 
     // Get RPC ID and register handler
     BML_RpcId rpc_id = 0;
-    EnsureOk(bus.GetRpcId("bench.rpc", &rpc_id), "GetRpcId");
-    EnsureOk(bus.RegisterRpc(rpc_id, &BenchRpcHandler, &ctx), "RegisterRpc");
+    EnsureOk(ImcGetRpcId("bench.rpc", &rpc_id), "GetRpcId");
+    EnsureOk(ImcRegisterRpc(rpc_id, &BenchRpcHandler, &ctx), "RegisterRpc");
 
     std::vector<double> latencies;
     latencies.reserve(config.rpc_calls);
@@ -251,16 +252,16 @@ RpcMetrics RunRpcBenchmark(const BenchConfig &config) {
         request.data = payload.data();
         request.size = payload_size;
         
-        EnsureOk(bus.CallRpc(rpc_id, &request, &future), "CallRpc");
+        EnsureOk(ImcCallRpc(rpc_id, &request, &future), "CallRpc");
 
         bool completed = false;
         while (!completed) {
-            bus.Pump(config.pump_budget);
+            ImcPump(config.pump_budget);
             BML_FutureState state{};
-            EnsureOk(bus.FutureGetState(future, &state), "FutureGetState");
+            EnsureOk(ImcFutureGetState(future, &state), "FutureGetState");
             if (state == BML_FUTURE_READY) {
                 BML_ImcMessage response = {};
-                EnsureOk(bus.FutureGetResult(future, &response), "FutureGetResult");
+                EnsureOk(ImcFutureGetResult(future, &response), "FutureGetResult");
                 completed = true;
             } else if (state == BML_FUTURE_FAILED) {
                 throw std::runtime_error("RPC future failed");
@@ -269,11 +270,11 @@ RpcMetrics RunRpcBenchmark(const BenchConfig &config) {
 
         const auto call_end = Clock::now();
         latencies.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(call_end - call_start).count() / 1000.0);
-        EnsureOk(bus.FutureRelease(future), "FutureRelease");
+        EnsureOk(ImcFutureRelease(future), "FutureRelease");
     }
 
     const auto end = Clock::now();
-    EnsureOk(bus.UnregisterRpc(rpc_id), "UnregisterRpc");
+    EnsureOk(ImcUnregisterRpc(rpc_id), "UnregisterRpc");
 
     const double duration_s = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
     const double throughput = static_cast<double>(config.rpc_calls) /

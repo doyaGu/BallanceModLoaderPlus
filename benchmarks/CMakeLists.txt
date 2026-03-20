@@ -2,7 +2,8 @@ add_executable(ImcBenchmark
         ImcBenchmark.cpp
         ${CMAKE_SOURCE_DIR}/tests/ModuleLoaderStub.cpp
         ${BML_SOURCE_DIR}/Core/ImcBus.cpp
-        ${BML_SOURCE_DIR}/Core/ImcApi.cpp
+        ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
+        ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
         ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
@@ -25,7 +26,7 @@ target_include_directories(ImcBenchmark
 
 target_link_libraries(ImcBenchmark
         PRIVATE
-        BMLUtils
+        BML_Utils
         tomlplusplus::tomlplusplus
 )
 

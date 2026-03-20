@@ -22,6 +22,20 @@ if(NOT DEFINED BML_MODS_OUTPUT_DIR)
     set(BML_MODS_OUTPUT_DIR "${CMAKE_BINARY_DIR}/Mods")
 endif()
 
+# Global list of module API interface targets (populated by each module's CMakeLists.txt)
+# bml_add_module() links to all of these so that consumers can include module headers.
+define_property(GLOBAL PROPERTY BML_MODULE_API_TARGETS
+    BRIEF_DOCS "List of INTERFACE targets exposing module public include dirs"
+    FULL_DOCS "Populated by builtin modules via set_property(GLOBAL APPEND ...)")
+
+# Helper: register a module API target so bml_add_module consumers get the include path.
+# NOTE: Registration order matters — API targets must be registered (via add_subdirectory)
+# before any bml_add_module() call that needs them. In the main build tree, modules/CMakeLists.txt
+# lists API-providing modules before consumer modules to ensure correct ordering.
+function(bml_register_module_api TARGET_NAME)
+    set_property(GLOBAL APPEND PROPERTY BML_MODULE_API_TARGETS ${TARGET_NAME})
+endfunction()
+
 # =============================================================================
 # Helper: Validate module ID format
 # =============================================================================
@@ -184,6 +198,14 @@ function(bml_add_module NAME)
     if(MOD_LINK_LIBRARIES)
         target_link_libraries(${NAME} PRIVATE ${MOD_LINK_LIBRARIES})
     endif()
+
+    # Link to all registered module API targets (provides module include paths)
+    get_property(_bml_api_targets GLOBAL PROPERTY BML_MODULE_API_TARGETS)
+    foreach(_api_target ${_bml_api_targets})
+        if(TARGET ${_api_target})
+            target_link_libraries(${NAME} PRIVATE ${_api_target})
+        endif()
+    endforeach()
     
     # Compile definitions
     target_compile_definitions(${NAME} PRIVATE

@@ -1,0 +1,13 @@
+[package]
+id = "com.example.scripthello"
+name = "Script Hello World"
+version = "1.0.0"
+authors = ["BML Team"]
+description = "Demonstrates AngelScript mod capabilities"
+entry = "main.as"
+
+[dependencies]
+"com.bml.scripting" = ">=0.4.0"
+
+[scripting]
+timeout_ms = 200

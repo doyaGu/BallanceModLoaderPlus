@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  BML Debug Visualizers for Visual Studio / VS Code
+  Place this file in your project root or add to .vscode/debugVisualizers
+-->
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+  
+  <!-- BML_Result enum visualization -->
+  <Type Name="int" Condition="this &gt;= 0 &amp;&amp; this &lt; 1000" HideValueColumn="true">
+    <AlternativeType Name="unsigned int"/>
+    <DisplayString Condition="this == 0">BML_OK (Success)</DisplayString>
+    <DisplayString Condition="this == 1">BML_ERROR (-1)</DisplayString>
+    <DisplayString Condition="this == 2">BML_ERROR_NOT_FOUND</DisplayString>
+    <DisplayString Condition="this == 3">BML_ERROR_ALREADY_EXISTS</DisplayString>
+    <DisplayString Condition="this == 4">BML_ERROR_INVALID_ARGS</DisplayString>
+    <DisplayString Condition="this == 5">BML_ERROR_BUFFER_TOO_SMALL</DisplayString>
+    <DisplayString Condition="this == 6">BML_ERROR_NOT_INITIALIZED</DisplayString>
+    <DisplayString Condition="this == 7">BML_ERROR_TIMEOUT</DisplayString>
+    <DisplayString Condition="this == 8">BML_ERROR_NOT_SUPPORTED</DisplayString>
+    <DisplayString Condition="this == 9">BML_ERROR_BUSY</DisplayString>
+    <DisplayString Condition="this == 10">BML_ERROR_OUT_OF_MEMORY</DisplayString>
+    <DisplayString Condition="this == 11">BML_ERROR_IO</DisplayString>
+  </Type>
+
+  <!-- BML_Version visualization -->
+  <Type Name="BML_Version">
+    <DisplayString>v{major}.{minor}.{patch}</DisplayString>
+    <Expand>
+      <Item Name="Major">major</Item>
+      <Item Name="Minor">minor</Item>
+      <Item Name="Patch">patch</Item>
+      <Item Name="PreRelease" Condition="pre_release != nullptr">pre_release</Item>
+    </Expand>
+  </Type>
+
+  <!-- BML_ErrorInfo visualization -->
+  <Type Name="BML_ErrorInfo">
+    <DisplayString Condition="code == 0">OK</DisplayString>
+    <DisplayString Condition="code != 0">Error {code}: {message,na}</DisplayString>
+    <Expand>
+      <Item Name="Code">code</Item>
+      <Item Name="Message" Condition="message != nullptr">message</Item>
+      <Item Name="API" Condition="api_name != nullptr">api_name</Item>
+      <Item Name="File" Condition="source_file != nullptr">source_file</Item>
+      <Item Name="Line" Condition="source_line != 0">source_line</Item>
+      <Item Name="Timestamp">timestamp</Item>
+    </Expand>
+  </Type>
+
+  <!-- BML_ApiStats visualization -->
+  <Type Name="BML_ApiStats">
+    <DisplayString>{api_name,na}: {call_count} calls</DisplayString>
+    <Expand>
+      <Item Name="API ID">api_id</Item>
+      <Item Name="API Name">api_name</Item>
+      <Item Name="Call Count">call_count</Item>
+      <Item Name="Total Time (μs)">total_time_ns / 1000</Item>
+      <Item Name="Avg Time (μs)">call_count > 0 ? total_time_ns / call_count / 1000 : 0</Item>
+      <Item Name="Min Time (μs)">min_time_ns / 1000</Item>
+      <Item Name="Max Time (μs)">max_time_ns / 1000</Item>
+      <Item Name="Errors">error_count</Item>
+    </Expand>
+  </Type>
+
+  <!-- BML_ApiDescriptor visualization -->
+  <Type Name="BML_ApiDescriptor">
+    <DisplayString>{name,na} (ID: {id})</DisplayString>
+    <Expand>
+      <Item Name="ID">id</Item>
+      <Item Name="Name">name</Item>
+      <Item Name="Type">type</Item>
+      <Item Name="Version">(int)version_major &lt;&lt; 16 | version_minor &lt;&lt; 8 | version_patch</Item>
+      <Item Name="Capabilities">capabilities</Item>
+      <Item Name="Threading">threading</Item>
+      <Item Name="Provider" Condition="provider_mod != nullptr">provider_mod</Item>
+      <Item Name="Call Count">call_count</Item>
+    </Expand>
+  </Type>
+
+  <!-- BML_Context_T (opaque handle visualization) -->
+  <Type Name="BML_Context_T">
+    <DisplayString>BML_Context</DisplayString>
+  </Type>
+
+  <!-- BML::Core::ApiRegistry (internal) -->
+  <Type Name="BML::Core::ApiRegistry">
+    <DisplayString>ApiRegistry ({m_NameMap._Mypair._Myval2._Mypair._Myval2._Mysize} APIs)</DisplayString>
+    <Expand>
+      <Synthetic Name="[APIs by Name]">
+        <Expand>
+          <Item Name="[Count]">m_NameMap._Mypair._Myval2._Mypair._Myval2._Mysize</Item>
+        </Expand>
+      </Synthetic>
+      <Item Name="Direct Table">m_DirectTable</Item>
+      <Item Name="Next ID">m_NextId</Item>
+    </Expand>
+  </Type>
+
+  <!-- BML::Core::ApiEntry -->
+  <Type Name="BML::Core::ApiEntry">
+    <DisplayString Condition="pointer != nullptr">{name,na} @ {pointer,x}</DisplayString>
+    <DisplayString Condition="pointer == nullptr">{name,na} (unbound)</DisplayString>
+    <Expand>
+      <Item Name="ID">id</Item>
+      <Item Name="Name">name</Item>
+      <Item Name="Pointer">pointer</Item>
+      <Item Name="Call Count">call_count</Item>
+      <Item Name="Capabilities">capabilities</Item>
+    </Expand>
+  </Type>
+
+  <!-- BML::Core::Context -->
+  <Type Name="BML::Core::Context">
+    <DisplayString>Context (mods: {m_LoadedModules._Mypair._Myval2._Mylast - m_LoadedModules._Mypair._Myval2._Myfirst})</DisplayString>
+    <Expand>
+      <Item Name="Initialized">m_Initialized</Item>
+      <Item Name="Modules">m_LoadedModules</Item>
+    </Expand>
+  </Type>
+
+  <!-- IMC Topic ID -->
+  <Type Name="BML_TopicId">
+    <DisplayString>Topic #{*this}</DisplayString>
+  </Type>
+
+  <!-- IMC Subscription -->
+  <Type Name="BML_Subscription">
+    <DisplayString>Subscription #{*this}</DisplayString>
+  </Type>
+
+  <!-- Memory allocation info -->
+  <Type Name="BML_AllocInfo">
+    <DisplayString>{size} bytes @ {ptr,x}</DisplayString>
+    <Expand>
+      <Item Name="Pointer">ptr</Item>
+      <Item Name="Size">size</Item>
+      <Item Name="Alignment">alignment</Item>
+      <Item Name="Source" Condition="source_file != nullptr">source_file</Item>
+      <Item Name="Line" Condition="source_line != 0">source_line</Item>
+    </Expand>
+  </Type>
+
+  <!-- Semantic Version -->
+  <Type Name="BML::Core::SemanticVersion">
+    <DisplayString>{m_Major}.{m_Minor}.{m_Patch}</DisplayString>
+    <Expand>
+      <Item Name="Major">m_Major</Item>
+      <Item Name="Minor">m_Minor</Item>
+      <Item Name="Patch">m_Patch</Item>
+      <Item Name="Pre-release" Condition="m_PreRelease.size() > 0">m_PreRelease</Item>
+      <Item Name="Build" Condition="m_Build.size() > 0">m_Build</Item>
+    </Expand>
+  </Type>
+
+  <!-- bml namespace wrappers -->
+  <Type Name="bml::Config">
+    <DisplayString>bml::Config({m_ctx != nullptr ? "valid" : "invalid"})</DisplayString>
+    <Expand>
+      <Item Name="Context">m_ctx</Item>
+      <Item Name="Prefix">m_prefix</Item>
+    </Expand>
+  </Type>
+
+  <Type Name="bml::Imc">
+    <DisplayString>bml::Imc({m_ctx != nullptr ? "valid" : "invalid"})</DisplayString>
+    <Expand>
+      <Item Name="Context">m_ctx</Item>
+    </Expand>
+  </Type>
+
+  <Type Name="bml::Logger">
+    <DisplayString>bml::Logger({m_tag.size() > 0 ? m_tag.c_str() : "default"})</DisplayString>
+    <Expand>
+      <Item Name="Context">m_ctx</Item>
+      <Item Name="Tag">m_tag</Item>
+    </Expand>
+  </Type>
+
+  <Type Name="bml::Exception">
+    <DisplayString>bml::Exception({m_code}): {_Mywhat._Buf}</DisplayString>
+    <Expand>
+      <Item Name="Code">m_code</Item>
+      <Item Name="Message">_Mywhat</Item>
+    </Expand>
+  </Type>
+
+</AutoVisualizer>

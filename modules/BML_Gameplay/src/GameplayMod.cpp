@@ -313,7 +313,7 @@ class GameplayMod : public bml::Module {
             return;
         }
 
-        ImDrawList *drawList = ImGui::GetForegroundDrawList();
+        ImDrawList *drawList = ImGui::GetForegroundDrawList(ImGui::GetMainViewport());
         ImFont *font = ImGui::GetFont();
         const float size = ImGui::GetFontSize() * 1.2f;
         const ImVec2 textSize = font->CalcTextSizeA(size, FLT_MAX, 0.0f, m_Settings.titleText.c_str());
@@ -329,7 +329,7 @@ class GameplayMod : public bml::Module {
         }
 
         AddOutlinedText(
-            ImGui::GetForegroundDrawList(),
+            ImGui::GetForegroundDrawList(ImGui::GetMainViewport()),
             ImGui::GetFont(),
             ImGui::GetFontSize(),
             ImVec2(viewportPos.x + 12.0f, viewportPos.y + 12.0f),
@@ -342,7 +342,7 @@ class GameplayMod : public bml::Module {
             return;
         }
 
-        ImDrawList *drawList = ImGui::GetForegroundDrawList();
+        ImDrawList *drawList = ImGui::GetForegroundDrawList(ImGui::GetMainViewport());
         ImFont *font = ImGui::GetFont();
         const float alpha = std::clamp(m_SrAlpha, 0.0f, 1.0f);
         const ImU32 color = ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 1.0f, alpha));
@@ -365,7 +365,7 @@ class GameplayMod : public bml::Module {
         }
 
         const char *cheatText = Services().Locale()["hud.cheat_enabled"];
-        ImDrawList *drawList = ImGui::GetForegroundDrawList();
+        ImDrawList *drawList = ImGui::GetForegroundDrawList(ImGui::GetMainViewport());
         ImFont *font = ImGui::GetFont();
         const float size = ImGui::GetFontSize();
         const ImVec2 textSize = font->CalcTextSizeA(size, FLT_MAX, 0.0f, cheatText);
