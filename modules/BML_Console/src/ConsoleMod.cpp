@@ -23,6 +23,7 @@
 #include "bml_module.hpp"
 #include "bml_builtin_interfaces.h"
 #include "bml_config.hpp"
+#include "bml_config_bind.hpp"
 #include "bml_console.h"
 #include "bml_imgui.hpp"
 #include "bml_input_control.h"
@@ -201,30 +202,24 @@ class ConsoleMod : public bml::Module {
 
     // -- Config ----------------------------------------------------------
 
-    void EnsureDefaultConfig() {
-        auto config = Services().Config();
-        if (!config.GetFloat("CommandBar", "MessageDuration").has_value())
-            config.SetFloat("CommandBar", "MessageDuration", m_Settings.messageDuration);
-        if (!config.GetInt("CommandBar", "TabColumns").has_value())
-            config.SetInt("CommandBar", "TabColumns", m_Settings.tabColumns);
-        if (!config.GetFloat("CommandBar", "LineSpacing").has_value())
-            config.SetFloat("CommandBar", "LineSpacing", m_Settings.lineSpacing);
-        if (!config.GetFloat("CommandBar", "MessageBackgroundAlpha").has_value())
-            config.SetFloat("CommandBar", "MessageBackgroundAlpha", m_Settings.messageBackgroundAlpha);
-        if (!config.GetFloat("CommandBar", "WindowBackgroundAlpha").has_value())
-            config.SetFloat("CommandBar", "WindowBackgroundAlpha", m_Settings.windowBackgroundAlpha);
-        if (!config.GetFloat("CommandBar", "FadeMaxAlpha").has_value())
-            config.SetFloat("CommandBar", "FadeMaxAlpha", m_Settings.fadeMaxAlpha);
+    bml::ConfigBindings m_Cfg;
+
+    void InitConfigBindings() {
+        m_Cfg.Bind("CommandBar", "MessageDuration",        m_Settings.messageDuration,        kDefaultMessageLifetime);
+        m_Cfg.Bind("CommandBar", "TabColumns",             m_Settings.tabColumns,             4);
+        m_Cfg.Bind("CommandBar", "LineSpacing",            m_Settings.lineSpacing,            -1.0f);
+        m_Cfg.Bind("CommandBar", "MessageBackgroundAlpha", m_Settings.messageBackgroundAlpha, 0.80f);
+        m_Cfg.Bind("CommandBar", "WindowBackgroundAlpha",  m_Settings.windowBackgroundAlpha,  1.0f);
+        m_Cfg.Bind("CommandBar", "FadeMaxAlpha",           m_Settings.fadeMaxAlpha,           1.0f);
     }
 
     void RefreshConfig() {
-        auto config = Services().Config();
-        m_Settings.messageDuration = (std::max)(0.5f, config.GetFloat("CommandBar", "MessageDuration").value_or(kDefaultMessageLifetime));
-        m_Settings.tabColumns = (std::max)(1, config.GetInt("CommandBar", "TabColumns").value_or(4));
-        m_Settings.lineSpacing = config.GetFloat("CommandBar", "LineSpacing").value_or(-1.0f);
-        m_Settings.messageBackgroundAlpha = ClampUnit(config.GetFloat("CommandBar", "MessageBackgroundAlpha").value_or(0.80f));
-        m_Settings.windowBackgroundAlpha = ClampUnit(config.GetFloat("CommandBar", "WindowBackgroundAlpha").value_or(1.0f));
-        m_Settings.fadeMaxAlpha = ClampUnit(config.GetFloat("CommandBar", "FadeMaxAlpha").value_or(1.0f));
+        m_Cfg.Refresh(Services().Config());
+        m_Settings.messageDuration = (std::max)(0.5f, m_Settings.messageDuration);
+        m_Settings.tabColumns = (std::max)(1, m_Settings.tabColumns);
+        m_Settings.messageBackgroundAlpha = ClampUnit(m_Settings.messageBackgroundAlpha);
+        m_Settings.windowBackgroundAlpha = ClampUnit(m_Settings.windowBackgroundAlpha);
+        m_Settings.fadeMaxAlpha = ClampUnit(m_Settings.fadeMaxAlpha);
     }
 
     // -- History path ----------------------------------------------------
@@ -1075,8 +1070,8 @@ public:
             Services().Log().Warn("Failed to acquire input capture service; console input capture will be limited");
         }
 
-        EnsureDefaultConfig();
-        RefreshConfig();
+        InitConfigBindings();
+        m_Cfg.Sync(Services().Config());
 
         if (Services().Builtins().ImcBus->GetTopicId(BML_TOPIC_CONSOLE_COMMAND, &m_TopicCommand) != BML_RESULT_OK) {
             m_DrawReg.Reset();

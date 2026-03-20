@@ -253,22 +253,19 @@ class MapMenuMod : public bml::Module {
         imcBus->PublishBuffer(m_TopicConsoleOutput, &buffer);
     }
 
-    void EnsureDefaultConfig() {
-        auto config = Services().Config();
-        if (!config.GetBool("General", "Enabled").has_value()) config.SetBool("General", "Enabled", m_Settings.enabled);
-        if (!config.GetBool("General", "ShowTooltip").has_value()) config.SetBool("General", "ShowTooltip", m_Settings.showTooltip);
-        if (!config.GetInt("General", "MaxDepth").has_value()) config.SetInt("General", "MaxDepth", m_Settings.maxDepth);
-        if (!config.GetInt("General", "LevelNumber").has_value()) config.SetInt("General", "LevelNumber", m_Settings.levelNumber);
-        if (!config.GetInt("General", "OpenKey").has_value()) config.SetInt("General", "OpenKey", m_Settings.openKey);
+    bml::ConfigBindings m_Cfg;
+
+    void InitConfigBindings() {
+        m_Cfg.Bind("General", "Enabled",     m_Settings.enabled,     true);
+        m_Cfg.Bind("General", "ShowTooltip", m_Settings.showTooltip, false);
+        m_Cfg.Bind("General", "MaxDepth",    m_Settings.maxDepth,    kDefaultMaxDepth);
+        m_Cfg.Bind("General", "LevelNumber", m_Settings.levelNumber, 0);
+        m_Cfg.Bind("General", "OpenKey",     m_Settings.openKey,     kDefaultOpenKey);
     }
 
     void RefreshConfig() {
-        auto config = Services().Config();
-        m_Settings.enabled = config.GetBool("General", "Enabled").value_or(true);
-        m_Settings.showTooltip = config.GetBool("General", "ShowTooltip").value_or(false);
-        m_Settings.maxDepth = std::clamp(config.GetInt("General", "MaxDepth").value_or(kDefaultMaxDepth), 1, 64);
-        m_Settings.levelNumber = config.GetInt("General", "LevelNumber").value_or(0);
-        m_Settings.openKey = config.GetInt("General", "OpenKey").value_or(kDefaultOpenKey);
+        m_Cfg.Refresh(Services().Config());
+        m_Settings.maxDepth = std::clamp(m_Settings.maxDepth, 1, 64);
     }
 
     void RefreshMapTree() {
@@ -583,8 +580,8 @@ public:
         m_DrawReg = bml::ui::RegisterDraw("bml.mapmenu.window", 0, DrawCallback, this);
         if (!m_DrawReg) return BML_RESULT_NOT_FOUND;
 
-        EnsureDefaultConfig();
-        RefreshConfig();
+        InitConfigBindings();
+        m_Cfg.Sync(Services().Config());
 
         m_InputCaptureService = Services().Acquire<BML_InputCaptureInterface>();
         if (m_InputCaptureService) {
