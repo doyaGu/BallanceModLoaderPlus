@@ -19,3 +19,6 @@
 [submodule "deps/efsw"]
 	path = deps/efsw
 	url = https://github.com/SpartanJ/efsw.git
+[submodule "deps/cimgui"]
+	path = deps/cimgui
+	url = https://github.com/cimgui/cimgui.git
