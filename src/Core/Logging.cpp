@@ -203,15 +203,21 @@ namespace BML::Core {
                 desc.dispatch(Context::Instance().GetHandle(), &info, desc.user_data);
             } catch (const std::exception &ex) {
                 // Log to debug output since we can't use the logger recursively
+#ifndef NDEBUG
                 std::string msg = "[BML Logging] Override dispatch exception: ";
                 msg += ex.what();
                 msg += "\n";
                 OutputDebugStringA(msg.c_str());
+#else
+                (void)ex;
+#endif
                 // Fall through to default logging
                 finish_dispatch();
                 return false;
             } catch (...) {
+#ifndef NDEBUG
                 OutputDebugStringA("[BML Logging] Override dispatch threw unknown exception\n");
+#endif
                 finish_dispatch();
                 return false;
             }
@@ -373,12 +379,17 @@ namespace BML::Core {
             try {
                 shutdown(user_data);
             } catch (const std::exception &ex) {
+#ifndef NDEBUG
                 std::string msg = "[BML Logging] Shutdown callback exception: ";
                 msg += ex.what();
                 msg += "\n";
                 OutputDebugStringA(msg.c_str());
+#endif
+                (void)ex;
             } catch (...) {
+#ifndef NDEBUG
                 OutputDebugStringA("[BML Logging] Shutdown callback threw unknown exception\n");
+#endif
             }
         }
         return BML_RESULT_OK;

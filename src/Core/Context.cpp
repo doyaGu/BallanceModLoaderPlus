@@ -481,6 +481,11 @@ namespace BML::Core {
         m_HostModHandle.reset();
     }
 
+    void Context::RemoveCreatedModHandle(BML_Mod mod) {
+        std::lock_guard<std::mutex> lock(m_StateMutex);
+        m_CreatedModHandles.erase(mod);
+    }
+
     BML_Mod_T *Context::FindModHandleLocked(BML_Mod mod) {
         return const_cast<BML_Mod_T *>(static_cast<const Context *>(this)->FindModHandleLocked(mod));
     }
@@ -500,9 +505,9 @@ namespace BML::Core {
     }
 
     BML_Result Context::RetainHandle() {
+        std::lock_guard<std::mutex> lock(m_StateMutex);
         if (m_ShutdownState.load(std::memory_order_acquire) != ShutdownState::Running)
             return BML_RESULT_INVALID_STATE;
-        std::lock_guard<std::mutex> lock(m_StateMutex);
         if (!m_Initialized.load(std::memory_order_acquire))
             return BML_RESULT_NOT_INITIALIZED;
         if (m_CleanupRequested)

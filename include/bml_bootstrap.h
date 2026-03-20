@@ -30,4 +30,8 @@ typedef struct BML_BootstrapConfig {
 
 BML_END_CDECLS
 
+/* Verify struct_size is at offset 0 for forward-compatibility */
+BML_TYPES_STATIC_ASSERT(BML_TYPES_OFFSETOF(BML_BootstrapConfig, struct_size) == 0,
+                        "BML_BootstrapConfig.struct_size must be at offset 0");
+
 #endif /* BML_BOOTSTRAP_H */

@@ -89,6 +89,8 @@ namespace BML::Core {
         static void SetCurrentModule(BML_Mod mod);
         static BML_Mod GetCurrentModule();
 
+        void RemoveCreatedModHandle(BML_Mod mod);
+
         void SetRuntimeVersion(const BML_Version &version);
         BML_Version GetRuntimeVersionCopy() const;
         ShutdownState GetShutdownState() const;

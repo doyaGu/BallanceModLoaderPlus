@@ -163,7 +163,11 @@ private:
             static_cast<const char *>(msg.Data()) + sizeof(size_t));
         if (!cmd_ptr) return;
 
-        std::string_view command(cmd_ptr);
+        constexpr size_t kMaxCommandLen = 4096;
+        size_t len = strnlen(cmd_ptr, kMaxCommandLen);
+        if (len == kMaxCommandLen) return;
+
+        std::string_view command(cmd_ptr, len);
         if (!command.starts_with("script")) return;
 
         auto args = command.substr(6);

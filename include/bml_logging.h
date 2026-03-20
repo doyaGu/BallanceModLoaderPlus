@@ -165,4 +165,12 @@ BML_END_CDECLS
 BML_LOG_STATIC_ASSERT(sizeof(BML_LogSeverity) == sizeof(int32_t),
                       "BML_LogSeverity must be 32-bit");
 
+/* Verify struct_size is at offset 0 for forward-compatibility */
+BML_LOG_STATIC_ASSERT(BML_LOG_OFFSETOF(BML_LogMessageInfo, struct_size) == 0,
+                      "BML_LogMessageInfo.struct_size must be at offset 0");
+BML_LOG_STATIC_ASSERT(BML_LOG_OFFSETOF(BML_LogSinkOverrideDesc, struct_size) == 0,
+                      "BML_LogSinkOverrideDesc.struct_size must be at offset 0");
+BML_LOG_STATIC_ASSERT(BML_LOG_OFFSETOF(BML_LogCreateDesc, struct_size) == 0,
+                      "BML_LogCreateDesc.struct_size must be at offset 0");
+
 #endif /* BML_LOGGING_H */

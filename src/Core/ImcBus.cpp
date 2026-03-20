@@ -607,17 +607,30 @@ thread_local std::vector<BML_Subscription_T *> g_DispatchSubscriptionStack;
 class DispatchSubscriptionScope {
 public:
     explicit DispatchSubscriptionScope(BML_Subscription_T *sub) {
+        constexpr size_t kMaxDispatchDepth = 64;
+        if (g_DispatchSubscriptionStack.size() >= kMaxDispatchDepth) {
+            CoreLog(BML_LOG_ERROR, kImcLogCategory,
+                    "IMC dispatch stack overflow (depth %zu)",
+                    g_DispatchSubscriptionStack.size());
+            m_Overflow = true;
+            return;
+        }
         g_DispatchSubscriptionStack.push_back(sub);
+        m_Overflow = false;
     }
 
     ~DispatchSubscriptionScope() {
-        g_DispatchSubscriptionStack.pop_back();
+        if (!m_Overflow)
+            g_DispatchSubscriptionStack.pop_back();
     }
+
+    bool Overflowed() const { return m_Overflow; }
 
     DispatchSubscriptionScope(const DispatchSubscriptionScope &) = delete;
     DispatchSubscriptionScope &operator=(const DispatchSubscriptionScope &) = delete;
 
 private:
+    bool m_Overflow = false;
 };
 
 // ========================================================================
@@ -1241,6 +1254,8 @@ namespace BML::Core {
 
             try {
                 DispatchSubscriptionScope dispatch_scope(sub);
+                if (dispatch_scope.Overflowed())
+                    return;
 #if defined(_MSC_VER) && !defined(__MINGW32__)
                 BML_ImcMessage mutable_message = message;
                 unsigned long seh_code = InvokeHandlerSEH(
@@ -1758,6 +1773,8 @@ namespace BML::Core {
                         BML_EventResult result = BML_EVENT_CONTINUE;
                         try {
                             DispatchSubscriptionScope dispatch_scope(sub);
+                            if (dispatch_scope.Overflowed())
+                                continue;
 #if defined(_MSC_VER) && !defined(__MINGW32__)
                             unsigned long seh_code = InvokeInterceptHandlerSEH(
                                 sub->intercept_handler, ctx, topic, msg, sub->user_data, &result);
@@ -1886,8 +1903,21 @@ namespace BML::Core {
                 }
 
                 // Wait for any in-flight dispatch or pump work to finish before draining
-                while (raw->ref_count.load(std::memory_order_acquire) != 0) {
-                    std::this_thread::yield();
+                constexpr int kMaxSpinIterations = 100000;
+                for (int i = 0; i < kMaxSpinIterations; ++i) {
+                    if (raw->ref_count.load(std::memory_order_acquire) == 0)
+                        break;
+                    if (i < 1000)
+                        std::this_thread::yield();
+                    else
+                        std::this_thread::sleep_for(std::chrono::microseconds(10));
+                }
+                if (raw->ref_count.load(std::memory_order_acquire) != 0) {
+                    CoreLog(BML_LOG_WARN, kImcLogCategory,
+                            "Subscription ref_count non-zero after timeout, deferring cleanup");
+                    std::lock_guard lock(m_WriteMutex);
+                    m_RetiredSubscriptions.push_back(std::move(owned));
+                    return BML_RESULT_OK;
                 }
                 DropPendingMessages(raw);
             }

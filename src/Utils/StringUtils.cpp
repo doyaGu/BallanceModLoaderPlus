@@ -214,7 +214,7 @@ namespace utils {
                 case '4': case '5': case '6': case '7': {
                     unsigned int value = 0;
                     int digits = 0;
-                    while (digits < 3 && *p >= '0' && *p <= '7') {
+                    while (digits < 3 && *p >= '0' && *p <= '7' && value <= 0377) {
                         value = (value * 8) + static_cast<unsigned int>(*p - '0');
                         ++p; ++digits;
                     }

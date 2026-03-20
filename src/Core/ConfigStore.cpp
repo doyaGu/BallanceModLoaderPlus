@@ -82,7 +82,11 @@ namespace BML::Core {
             return out;
         }
 
-        std::vector<BML_ConfigLoadHooks> g_ConfigHooks;
+        struct ConfigLoadHookEntry {
+            BML_ConfigLoadHooks hooks;
+            BML_Mod owner;
+        };
+        std::vector<ConfigLoadHookEntry> g_ConfigHooks;
         std::shared_mutex g_ConfigHooksMutex;
 
         // Use CoreLog for consistent logging
@@ -227,7 +231,7 @@ namespace BML::Core {
     } // namespace
 
     static void DispatchConfigHooks(const ConfigDocument &doc, ConfigHookPhase phase) {
-        std::vector<BML_ConfigLoadHooks> snapshot;
+        std::vector<ConfigLoadHookEntry> snapshot;
         {
             std::shared_lock lock(g_ConfigHooksMutex);
             snapshot = g_ConfigHooks;
@@ -253,11 +257,15 @@ namespace BML::Core {
         BML_Context bmlCtx = Context::Instance().GetHandle();
 
         for (const auto &entry : snapshot) {
-            auto callback = (phase == ConfigHookPhase::Pre) ? entry.on_pre_load : entry.on_post_load;
+            // Skip hooks from unloaded modules
+            if (entry.owner && !Context::Instance().ResolveModHandle(entry.owner))
+                continue;
+
+            auto callback = (phase == ConfigHookPhase::Pre) ? entry.hooks.on_pre_load : entry.hooks.on_post_load;
             if (callback) {
                 // Exception isolation: one failing hook should not abort others
                 try {
-                    callback(bmlCtx, &loadCtx, entry.user_data);
+                    callback(bmlCtx, &loadCtx, entry.hooks.user_data);
                 } catch (const std::exception &ex) {
                     DebugLog(std::string("ConfigStore: hook exception: ") + ex.what());
                 } catch (...) {
@@ -918,15 +926,26 @@ namespace BML::Core {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
-        BML_ConfigLoadHooks copy = *hooks;
-        copy.struct_size = sizeof(BML_ConfigLoadHooks);
+        ConfigLoadHookEntry entry{};
+        entry.hooks = *hooks;
+        entry.hooks.struct_size = sizeof(BML_ConfigLoadHooks);
+        entry.owner = Context::GetCurrentModule();
 
         {
             std::unique_lock lock(g_ConfigHooksMutex);
-            g_ConfigHooks.push_back(copy);
+            g_ConfigHooks.push_back(entry);
         }
 
         return BML_RESULT_OK;
+    }
+
+    void CleanupConfigHooksForModule(BML_Mod mod) {
+        if (!mod) return;
+        std::unique_lock lock(g_ConfigHooksMutex);
+        g_ConfigHooks.erase(
+            std::remove_if(g_ConfigHooks.begin(), g_ConfigHooks.end(),
+                           [mod](const ConfigLoadHookEntry &e) { return e.owner == mod; }),
+            g_ConfigHooks.end());
     }
 
     // ========================================================================

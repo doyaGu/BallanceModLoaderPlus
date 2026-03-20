@@ -506,6 +506,9 @@ namespace BML::Core {
         // Shutdown runtime (unloads modules)
         state.runtime.Shutdown();
 
+        // Drain any IMC messages published during module detach callbacks
+        ImcPump();
+
         // Shutdown crash dump writer and fault tracker
         CrashDumpWriter::Instance().Shutdown();
         FaultTracker::Instance().Shutdown();

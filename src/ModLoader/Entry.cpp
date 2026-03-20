@@ -18,6 +18,8 @@
 #endif
 #include <Windows.h>
 
+#include <filesystem>
+
 #include <MinHook.h>
 
 #include "CKContext.h"
@@ -53,7 +55,17 @@ static PFN_bmlUpdate s_bmlUpdate = nullptr;
 static PFN_bmlGetProcAddress s_bmlGetProcAddress = nullptr;
 
 static bool LoadBMLAPI() {
-    s_hBML = ::LoadLibraryA("BML.dll");
+    // Resolve BML.dll path relative to this DLL's directory to prevent DLL hijacking.
+    // ModLoader.dll lives in BuildingBlocks/, BML.dll lives in Bin/.
+    HMODULE hSelf = nullptr;
+    ::GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                         GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                         reinterpret_cast<LPCWSTR>(&LoadBMLAPI), &hSelf);
+    wchar_t selfPath[MAX_PATH]{};
+    ::GetModuleFileNameW(hSelf, selfPath, MAX_PATH);
+    std::filesystem::path bmlPath = std::filesystem::path(selfPath).parent_path() / L".." / L"Bin" / L"BML.dll";
+    bmlPath = bmlPath.lexically_normal();
+    s_hBML = ::LoadLibraryW(bmlPath.c_str());
     if (!s_hBML) {
         OutputDebugStringA("ModLoader: Fatal - Unable to load BML.dll.\n");
         return false;

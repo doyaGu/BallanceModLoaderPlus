@@ -34,6 +34,7 @@ void SetHookTarget(HWND hwnd, ImGuiContext *ctx) {
 }
 
 static LRESULT OnWndProcA(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (!g_ImGuiContext) return 0;
     ImGuiContext *prev = ImGui::GetCurrentContext();
     ImGui::SetCurrentContext(g_ImGuiContext);
 
@@ -69,6 +70,7 @@ static LRESULT OnWndProcA(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 }
 
 static LRESULT OnWndProcW(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (!g_ImGuiContext) return 0;
     ImGuiContext *prev = ImGui::GetCurrentContext();
     ImGui::SetCurrentContext(g_ImGuiContext);
     LRESULT result = ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);

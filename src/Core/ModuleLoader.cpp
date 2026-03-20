@@ -52,7 +52,18 @@ namespace BML::Core {
                 std::filesystem::path base(manifest.directory);
                 entryPath = base / entryPath;
             }
-            return entryPath.lexically_normal().wstring();
+            auto resolved = entryPath.lexically_normal();
+
+            // Validate that resolved path stays within the module directory
+            auto baseNorm = std::filesystem::path(manifest.directory).lexically_normal();
+            auto rel = resolved.lexically_relative(baseNorm);
+            if (rel.empty() || rel.native().starts_with(L"..")) {
+                CoreLog(BML_LOG_ERROR, kModuleLoaderLogCategory,
+                        "Module entry path escapes module directory: %s",
+                        manifest.package.id.c_str());
+                return {};
+            }
+            return resolved.wstring();
         }
 
         std::string FormatSystemMessage(long code) {
@@ -100,6 +111,7 @@ namespace BML::Core {
             ApiRegistry::Instance().UnregisterByProvider(module_id);
             UnregisterResourceTypesForProvider(module_id);
             CleanupModuleKernelState(module_id, mod);
+            Context::Instance().RemoveCreatedModHandle(mod);
         }
 
 #if defined(_MSC_VER) && !defined(__MINGW32__)

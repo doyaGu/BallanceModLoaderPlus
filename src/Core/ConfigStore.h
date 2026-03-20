@@ -138,6 +138,7 @@ namespace BML::Core {
 
     void RegisterConfigApis();
     BML_Result RegisterConfigLoadHooks(const BML_ConfigLoadHooks *hooks);
+    void CleanupConfigHooksForModule(BML_Mod mod);
 } // namespace BML::Core
 
 #endif // BML_CORE_CONFIG_STORE_H

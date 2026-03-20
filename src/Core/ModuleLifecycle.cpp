@@ -3,6 +3,7 @@
 #include <exception>
 #include <string>
 
+#include "ConfigStore.h"
 #include "Context.h"
 #include "HookRegistry.h"
 #include "ImcBus.h"
@@ -120,5 +121,6 @@ namespace BML::Core {
         InterfaceRegistry::Instance().UnregisterByProvider(module_id);
         LeaseManager::Instance().CleanupConsumer(module_id);
         LeaseManager::Instance().CleanupProvider(module_id);
+        CleanupConfigHooksForModule(mod);
     }
 } // namespace BML::Core

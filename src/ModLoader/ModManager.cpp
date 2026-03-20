@@ -199,6 +199,7 @@ static void OnCmdSendMessage(BML_Context, BML_TopicId, const BML_ImcMessage *mes
 static void OnCmdSetIC(BML_Context, BML_TopicId, const BML_ImcMessage *message, void *) {
     if (!message || !message->data || message->size < sizeof(BML_SetICCommand) || !s_CKContext) return;
     const auto *cmd = static_cast<const BML_SetICCommand *>(message->data);
+    if (!cmd->target) return;
     CKScene *scene = s_CKContext->GetCurrentScene();
     if (!scene) return;
     SetICRecursive(scene, cmd->target, cmd->hierarchy);
@@ -207,6 +208,7 @@ static void OnCmdSetIC(BML_Context, BML_TopicId, const BML_ImcMessage *message, 
 static void OnCmdRestoreIC(BML_Context, BML_TopicId, const BML_ImcMessage *message, void *) {
     if (!message || !message->data || message->size < sizeof(BML_RestoreICCommand) || !s_CKContext) return;
     const auto *cmd = static_cast<const BML_RestoreICCommand *>(message->data);
+    if (!cmd->target) return;
     CKScene *scene = s_CKContext->GetCurrentScene();
     if (!scene) return;
     RestoreICRecursive(scene, cmd->target, cmd->hierarchy);
@@ -215,6 +217,7 @@ static void OnCmdRestoreIC(BML_Context, BML_TopicId, const BML_ImcMessage *messa
 static void OnCmdShow(BML_Context, BML_TopicId, const BML_ImcMessage *message, void *) {
     if (!message || !message->data || message->size < sizeof(BML_ShowCommand)) return;
     const auto *cmd = static_cast<const BML_ShowCommand *>(message->data);
+    if (!cmd->target) return;
     ShowRecursive(cmd->target, static_cast<CK_OBJECT_SHOWOPTION>(cmd->show_option), cmd->hierarchy);
 }
 

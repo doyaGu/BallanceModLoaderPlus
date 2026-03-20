@@ -127,7 +127,8 @@ namespace BML::Core {
         if (api_id == BML_API_INVALID_ID)
             return nullptr;
 
-        while (true) {
+        constexpr int kMaxRetries = 8;
+        for (int retry = 0; retry < kMaxRetries; ++retry) {
             uint64_t current_version = g_CacheVersion.load(std::memory_order_acquire);
             if (g_TlsCacheVersion != current_version) {
                 for (size_t i = 0; i < TLS_CACHE_SIZE; ++i) {
@@ -181,6 +182,10 @@ namespace BML::Core {
             g_TlsCacheNextSlot = (g_TlsCacheNextSlot + 1) % TLS_CACHE_SIZE;
             return ptr;
         }
+
+        // Fallback: direct lookup under lock if retries exhausted (cache churn)
+        std::shared_lock lock(g_Mutex);
+        return ResolvePointerLocked(api_id, true);
     }
 
     // ========================================================================

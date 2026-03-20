@@ -18,10 +18,15 @@ namespace BML::Core {
         error.file = utils::Utf16ToUtf8(path);
     }
 
+    static constexpr size_t kMaxStringLength = 4096;
+    static constexpr size_t kMaxArraySize = 256;
+
     static bool ReadString(const toml::node *node, std::string &out) {
         if (!node)
             return false;
         if (auto val = node->value<std::string_view>()) {
+            if (val->size() > kMaxStringLength)
+                return false;
             out.assign(val->begin(), val->end());
             return true;
         }
@@ -68,6 +73,7 @@ namespace BML::Core {
         if (auto authorsNode = pkg.get("authors")) {
             if (auto arr = authorsNode->as_array()) {
                 for (const auto &node : *arr) {
+                    if (out_pkg.authors.size() >= kMaxArraySize) break;
                     std::string author;
                     if (ReadString(&node, author) && !author.empty()) {
                         out_pkg.authors.emplace_back(std::move(author));
@@ -186,6 +192,10 @@ namespace BML::Core {
             return false;
         }
         for (const auto &entry : *arr) {
+            if (out_caps.size() >= kMaxArraySize) {
+                SetParseError(error, path, "capabilities array exceeds maximum size");
+                return false;
+            }
             std::string cap;
             if (!ReadString(&entry, cap) || cap.empty()) {
                 SetParseError(error, path, "capabilities entries must be non-empty strings");
