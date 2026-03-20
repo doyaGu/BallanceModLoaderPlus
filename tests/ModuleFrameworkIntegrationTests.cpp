@@ -308,7 +308,7 @@ TEST_F(ModuleFrameworkIntegrationTest, Attach_NullGetProc) {
 
 TEST_F(ModuleFrameworkIntegrationTest, Attach_VersionMismatch) {
     auto args = MakeAttachArgs();
-    args.api_version = 1;  // Below BML_MOD_ENTRYPOINT_API_VERSION (4)
+    args.api_version = 0;  // Below BML_MOD_ENTRYPOINT_API_VERSION (1)
     EXPECT_EQ(BML_RESULT_VERSION_MISMATCH,
               TrackerHelper::Entrypoint(BML_MOD_ENTRYPOINT_ATTACH, &args));
 }
