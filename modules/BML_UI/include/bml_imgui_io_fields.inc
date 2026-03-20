@@ -6,6 +6,7 @@
     void (*AddMouseButtonEvent)(ImGuiIO* self,int button,bool down);
     void (*AddMouseWheelEvent)(ImGuiIO* self,float wheel_x,float wheel_y);
     void (*AddMouseSourceEvent)(ImGuiIO* self,ImGuiMouseSource source);
+    void (*AddMouseViewportEvent)(ImGuiIO* self,ImGuiID id);
     void (*AddFocusEvent)(ImGuiIO* self,bool focused);
     void (*AddInputCharacter)(ImGuiIO* self,unsigned int c);
     void (*AddInputCharacterUTF16)(ImGuiIO* self,ImWchar16 c);

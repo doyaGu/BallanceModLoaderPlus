@@ -6,6 +6,7 @@
     ImGuiIO_AddMouseButtonEvent,
     ImGuiIO_AddMouseWheelEvent,
     ImGuiIO_AddMouseSourceEvent,
+    ImGuiIO_AddMouseViewportEvent,
     ImGuiIO_AddFocusEvent,
     ImGuiIO_AddInputCharacter,
     ImGuiIO_AddInputCharacterUTF16,

@@ -116,6 +116,11 @@ static const BML_PlatformIoApi g_PlatformIoApi = {
 #include "bml_imgui_platform_io_init.inc"
 };
 
+static const BML_PlatformMonitorApi g_PlatformMonitorApi = {
+    sizeof(BML_PlatformMonitorApi),
+#include "bml_imgui_platform_monitor_init.inc"
+};
+
 static const BML_SelectionBasicStorageApi g_SelectionBasicStorageApi = {
     sizeof(BML_SelectionBasicStorageApi),
 #include "bml_imgui_selection_basic_storage_init.inc"
@@ -231,6 +236,11 @@ static const BML_WindowApi g_WindowApi = {
 #include "bml_imgui_window_init.inc"
 };
 
+static const BML_WindowClassApi g_WindowClassApi = {
+    sizeof(BML_WindowClassApi),
+#include "bml_imgui_window_class_init.inc"
+};
+
 const BML_ImGuiApi g_ImGuiApi = {
     BML_IFACE_HEADER(BML_ImGuiApi, "bml.ui.imgui", 1, 0),
     ImGui::GetVersion(),
@@ -260,6 +270,7 @@ const BML_ImGuiApi g_ImGuiApi = {
     &g_PayloadApi,
     &g_PlatformImeDataApi,
     &g_PlatformIoApi,
+    &g_PlatformMonitorApi,
     &g_SelectionBasicStorageApi,
     &g_SelectionExternalStorageApi,
     &g_StorageApi,
@@ -283,4 +294,5 @@ const BML_ImGuiApi g_ImGuiApi = {
     &g_WidgetTextApi,
     &g_WidgetTreeApi,
     &g_WindowApi,
+    &g_WindowClassApi,
 };

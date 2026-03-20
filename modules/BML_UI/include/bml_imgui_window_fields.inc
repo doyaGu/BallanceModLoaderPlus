@@ -10,10 +10,12 @@
     bool (*IsWindowFocused)(ImGuiFocusedFlags flags);
     bool (*IsWindowHovered)(ImGuiHoveredFlags flags);
     ImDrawList* (*GetWindowDrawList)(void);
+    float (*GetWindowDpiScale)(void);
     ImVec2_c (*GetWindowPos)(void);
     ImVec2_c (*GetWindowSize)(void);
     float (*GetWindowWidth)(void);
     float (*GetWindowHeight)(void);
+    ImGuiViewport* (*GetWindowViewport)(void);
     void (*SetNextWindowPos)(const ImVec2_c pos,ImGuiCond cond,const ImVec2_c pivot);
     void (*SetNextWindowSize)(const ImVec2_c size,ImGuiCond cond);
     void (*SetNextWindowSizeConstraints)(const ImVec2_c size_min,const ImVec2_c size_max,ImGuiSizeCallback custom_callback,void* custom_callback_data);
@@ -22,6 +24,7 @@
     void (*SetNextWindowFocus)(void);
     void (*SetNextWindowScroll)(const ImVec2_c scroll);
     void (*SetNextWindowBgAlpha)(float alpha);
+    void (*SetNextWindowViewport)(ImGuiID viewport_id);
     void (*SetWindowPos_Vec2)(const ImVec2_c pos,ImGuiCond cond);
     void (*SetWindowSize_Vec2)(const ImVec2_c size,ImGuiCond cond);
     void (*SetWindowCollapsed_Bool)(bool collapsed,ImGuiCond cond);
@@ -52,3 +55,7 @@
     bool (*BeginPopupContextWindow)(const char* str_id,ImGuiPopupFlags popup_flags);
     bool (*BeginPopupContextVoid)(const char* str_id,ImGuiPopupFlags popup_flags);
     bool (*IsPopupOpen)(const char* str_id,ImGuiPopupFlags flags);
+    void (*SetNextWindowDockID)(ImGuiID dock_id,ImGuiCond cond);
+    void (*SetNextWindowClass)(const ImGuiWindowClass* window_class);
+    ImGuiID (*GetWindowDockID)(void);
+    bool (*IsWindowDocked)(void);

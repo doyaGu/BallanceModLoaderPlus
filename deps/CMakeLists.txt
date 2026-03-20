@@ -61,7 +61,7 @@ FetchContent_MakeAvailable(luajit)
 if (WIN32 AND NOT TARGET luajit_exe)
     add_custom_command(
         OUTPUT "${luajit_SOURCE_DIR}/src/luajit.exe"
-        COMMAND cmd /c "cd /d \"${luajit_SOURCE_DIR}/src\" && msvcbuild.bat static"
+        COMMAND cmd /c "cd /d ${luajit_SOURCE_DIR}/src && msvcbuild.bat static"
         COMMENT "Building LuaJIT..."
         VERBATIM
     )

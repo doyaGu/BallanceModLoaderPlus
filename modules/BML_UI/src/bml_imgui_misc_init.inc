@@ -2,6 +2,8 @@
 // Do not edit manually.
     igTextLink,
     igTextLinkOpenURL,
+    igDockSpace,
+    igDockSpaceOverViewport,
     igLogToTTY,
     igLogToFile,
     igLogToClipboard,

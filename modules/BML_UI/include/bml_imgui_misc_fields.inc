@@ -2,6 +2,8 @@
 // Do not edit manually.
     bool (*TextLink)(const char* label);
     bool (*TextLinkOpenURL)(const char* label,const char* url);
+    ImGuiID (*DockSpace)(ImGuiID dockspace_id,const ImVec2_c size,ImGuiDockNodeFlags flags,const ImGuiWindowClass* window_class);
+    ImGuiID (*DockSpaceOverViewport)(ImGuiID dockspace_id,const ImGuiViewport* viewport,ImGuiDockNodeFlags flags,const ImGuiWindowClass* window_class);
     void (*LogToTTY)(int auto_open_depth);
     void (*LogToFile)(int auto_open_depth,const char* filename);
     void (*LogToClipboard)(int auto_open_depth);

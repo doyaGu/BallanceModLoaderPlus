@@ -41,7 +41,7 @@ public:
     explicit ApiScope(const BML_ImGuiApi *api) noexcept
         : m_Previous(g_CurrentApi) {
         if (api) {
-            IM_ASSERT(api->struct_size >= sizeof(BML_ImGuiApi) &&
+            IM_ASSERT(api->header.struct_size >= sizeof(BML_ImGuiApi) &&
                       "BML_ImGuiApi struct_size mismatch");
             if (api->ValidateCurrentFrameAccess) {
                 IM_ASSERT(api->ValidateCurrentFrameAccess() == BML_RESULT_OK &&

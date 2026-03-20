@@ -32,3 +32,8 @@
     igGetAllocatorFunctions,
     igMemAlloc,
     igMemFree,
+    igUpdatePlatformWindows,
+    igRenderPlatformWindowsDefault,
+    igDestroyPlatformWindows,
+    igFindViewportByID,
+    igFindViewportByPlatformHandle,

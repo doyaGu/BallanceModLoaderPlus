@@ -22,8 +22,8 @@
     void (*ShowUserGuide)(void);
     const char* (*GetVersion)(void);
     ImGuiViewport* (*GetMainViewport)(void);
-    ImDrawList* (*GetBackgroundDrawList)(void);
-    ImDrawList* (*GetForegroundDrawList)(void);
+    ImDrawList* (*GetBackgroundDrawList)(ImGuiViewport* viewport);
+    ImDrawList* (*GetForegroundDrawList)(ImGuiViewport* viewport);
     double (*GetTime)(void);
     int (*GetFrameCount)(void);
     ImDrawListSharedData* (*GetDrawListSharedData)(void);
@@ -32,3 +32,8 @@
     void (*GetAllocatorFunctions)(ImGuiMemAllocFunc* p_alloc_func,ImGuiMemFreeFunc* p_free_func,void** p_user_data);
     void* (*MemAlloc)(size_t size);
     void (*MemFree)(void* ptr);
+    void (*UpdatePlatformWindows)(void);
+    void (*RenderPlatformWindowsDefault)(void* platform_render_arg,void* renderer_render_arg);
+    void (*DestroyPlatformWindows)(void);
+    ImGuiViewport* (*FindViewportByID)(ImGuiID viewport_id);
+    ImGuiViewport* (*FindViewportByPlatformHandle)(void* platform_handle);

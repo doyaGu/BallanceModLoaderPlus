@@ -286,6 +286,18 @@ inline void DestroyContext(ImGuiContext* ctx) {
     ::bml::imgui::detail::RequireCurrentApi()->context->DestroyContext(ctx);
 }
 
+inline void DestroyPlatformWindows() {
+    ::bml::imgui::detail::RequireCurrentApi()->context->DestroyPlatformWindows();
+}
+
+inline ImGuiID DockSpace(ImGuiID dockspace_id,const ImVec2& size,ImGuiDockNodeFlags flags,const ImGuiWindowClass* window_class) {
+    return ::bml::imgui::detail::RequireCurrentApi()->misc->DockSpace(dockspace_id, ::bml::imgui::detail::ToCValue<ImVec2, ImVec2_c>(size), flags, window_class);
+}
+
+inline ImGuiID DockSpaceOverViewport(ImGuiID dockspace_id,const ImGuiViewport* viewport,ImGuiDockNodeFlags flags,const ImGuiWindowClass* window_class) {
+    return ::bml::imgui::detail::RequireCurrentApi()->misc->DockSpaceOverViewport(dockspace_id, viewport, flags, window_class);
+}
+
 inline bool DragFloat(const char* label,float* v,float v_speed,float v_min,float v_max,const char* format,ImGuiSliderFlags flags) {
     return ::bml::imgui::detail::RequireCurrentApi()->widget_slider->DragFloat(label, v, v_speed, v_min, v_max, format, flags);
 }
@@ -410,12 +422,20 @@ inline void EndTooltip() {
     ::bml::imgui::detail::RequireCurrentApi()->widget_popup->EndTooltip();
 }
 
+inline ImGuiViewport* FindViewportByID(ImGuiID viewport_id) {
+    return ::bml::imgui::detail::RequireCurrentApi()->context->FindViewportByID(viewport_id);
+}
+
+inline ImGuiViewport* FindViewportByPlatformHandle(void* platform_handle) {
+    return ::bml::imgui::detail::RequireCurrentApi()->context->FindViewportByPlatformHandle(platform_handle);
+}
+
 inline void GetAllocatorFunctions(ImGuiMemAllocFunc* p_alloc_func,ImGuiMemFreeFunc* p_free_func,void** p_user_data) {
     ::bml::imgui::detail::RequireCurrentApi()->context->GetAllocatorFunctions(p_alloc_func, p_free_func, p_user_data);
 }
 
-inline ImDrawList* GetBackgroundDrawList() {
-    return ::bml::imgui::detail::RequireCurrentApi()->context->GetBackgroundDrawList();
+inline ImDrawList* GetBackgroundDrawList(ImGuiViewport* viewport) {
+    return ::bml::imgui::detail::RequireCurrentApi()->context->GetBackgroundDrawList(viewport);
 }
 
 inline const char* GetClipboardText() {
@@ -506,8 +526,8 @@ inline ImVec2 GetFontTexUvWhitePixel() {
     return ::bml::imgui::detail::FromCValue<ImVec2, ImVec2_c>(::bml::imgui::detail::RequireCurrentApi()->layout->GetFontTexUvWhitePixel());
 }
 
-inline ImDrawList* GetForegroundDrawList() {
-    return ::bml::imgui::detail::RequireCurrentApi()->context->GetForegroundDrawList();
+inline ImDrawList* GetForegroundDrawList(ImGuiViewport* viewport) {
+    return ::bml::imgui::detail::RequireCurrentApi()->context->GetForegroundDrawList(viewport);
 }
 
 inline int GetFrameCount() {
@@ -650,6 +670,14 @@ inline const char* GetVersion() {
     return ::bml::imgui::detail::RequireCurrentApi()->context->GetVersion();
 }
 
+inline ImGuiID GetWindowDockID() {
+    return ::bml::imgui::detail::RequireCurrentApi()->window->GetWindowDockID();
+}
+
+inline float GetWindowDpiScale() {
+    return ::bml::imgui::detail::RequireCurrentApi()->window->GetWindowDpiScale();
+}
+
 inline ImDrawList* GetWindowDrawList() {
     return ::bml::imgui::detail::RequireCurrentApi()->window->GetWindowDrawList();
 }
@@ -664,6 +692,10 @@ inline ImVec2 GetWindowPos() {
 
 inline ImVec2 GetWindowSize() {
     return ::bml::imgui::detail::FromCValue<ImVec2, ImVec2_c>(::bml::imgui::detail::RequireCurrentApi()->window->GetWindowSize());
+}
+
+inline ImGuiViewport* GetWindowViewport() {
+    return ::bml::imgui::detail::RequireCurrentApi()->window->GetWindowViewport();
 }
 
 inline float GetWindowWidth() {
@@ -872,6 +904,10 @@ inline bool IsWindowAppearing() {
 
 inline bool IsWindowCollapsed() {
     return ::bml::imgui::detail::RequireCurrentApi()->window->IsWindowCollapsed();
+}
+
+inline bool IsWindowDocked() {
+    return ::bml::imgui::detail::RequireCurrentApi()->window->IsWindowDocked();
 }
 
 inline bool IsWindowFocused(ImGuiFocusedFlags flags) {
@@ -1104,6 +1140,10 @@ inline void Render() {
     ::bml::imgui::detail::RequireCurrentApi()->context->Render();
 }
 
+inline void RenderPlatformWindowsDefault(void* platform_render_arg,void* renderer_render_arg) {
+    ::bml::imgui::detail::RequireCurrentApi()->context->RenderPlatformWindowsDefault(platform_render_arg, renderer_render_arg);
+}
+
 inline void ResetMouseDragDelta(ImGuiMouseButton button) {
     ::bml::imgui::detail::RequireCurrentApi()->input->ResetMouseDragDelta(button);
 }
@@ -1247,12 +1287,20 @@ inline void SetNextWindowBgAlpha(float alpha) {
     ::bml::imgui::detail::RequireCurrentApi()->window->SetNextWindowBgAlpha(alpha);
 }
 
+inline void SetNextWindowClass(const ImGuiWindowClass* window_class) {
+    ::bml::imgui::detail::RequireCurrentApi()->window->SetNextWindowClass(window_class);
+}
+
 inline void SetNextWindowCollapsed(bool collapsed,ImGuiCond cond) {
     ::bml::imgui::detail::RequireCurrentApi()->window->SetNextWindowCollapsed(collapsed, cond);
 }
 
 inline void SetNextWindowContentSize(const ImVec2& size) {
     ::bml::imgui::detail::RequireCurrentApi()->window->SetNextWindowContentSize(::bml::imgui::detail::ToCValue<ImVec2, ImVec2_c>(size));
+}
+
+inline void SetNextWindowDockID(ImGuiID dock_id,ImGuiCond cond) {
+    ::bml::imgui::detail::RequireCurrentApi()->window->SetNextWindowDockID(dock_id, cond);
 }
 
 inline void SetNextWindowFocus() {
@@ -1273,6 +1321,10 @@ inline void SetNextWindowSize(const ImVec2& size,ImGuiCond cond) {
 
 inline void SetNextWindowSizeConstraints(const ImVec2& size_min,const ImVec2& size_max,ImGuiSizeCallback custom_callback,void* custom_callback_data) {
     ::bml::imgui::detail::RequireCurrentApi()->window->SetNextWindowSizeConstraints(::bml::imgui::detail::ToCValue<ImVec2, ImVec2_c>(size_min), ::bml::imgui::detail::ToCValue<ImVec2, ImVec2_c>(size_max), custom_callback, custom_callback_data);
+}
+
+inline void SetNextWindowViewport(ImGuiID viewport_id) {
+    ::bml::imgui::detail::RequireCurrentApi()->window->SetNextWindowViewport(viewport_id);
 }
 
 inline void SetScrollFromPosX(float local_x,float center_x_ratio) {
@@ -1652,6 +1704,10 @@ inline void TreePush(const void* ptr_id) {
 
 inline void Unindent(float indent_w) {
     ::bml::imgui::detail::RequireCurrentApi()->layout->Unindent(indent_w);
+}
+
+inline void UpdatePlatformWindows() {
+    ::bml::imgui::detail::RequireCurrentApi()->context->UpdatePlatformWindows();
 }
 
 inline bool VSliderFloat(const char* label,const ImVec2& size,float* v,float v_min,float v_max,const char* format,ImGuiSliderFlags flags) {
@@ -2097,6 +2153,10 @@ inline void ImGuiIO::AddMousePosEvent(float x,float y) {
 
 inline void ImGuiIO::AddMouseSourceEvent(ImGuiMouseSource source) {
     ::bml::imgui::detail::RequireCurrentApi()->io->AddMouseSourceEvent(this, source);
+}
+
+inline void ImGuiIO::AddMouseViewportEvent(ImGuiID id) {
+    ::bml::imgui::detail::RequireCurrentApi()->io->AddMouseViewportEvent(this, id);
 }
 
 inline void ImGuiIO::AddMouseWheelEvent(float wheel_x,float wheel_y) {

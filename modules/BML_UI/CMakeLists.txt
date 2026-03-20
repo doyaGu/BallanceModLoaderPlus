@@ -55,6 +55,10 @@ bml_add_module(BML_UI
         IMGUI_EXPORT
 )
 
+if (TARGET generate_bml_imgui_api)
+    add_dependencies(BML_UI generate_bml_imgui_api)
+endif ()
+
 target_compile_options(BML_UI PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/FS>
 )

@@ -79,6 +79,8 @@ if (BML_BUILD_ENGINE_BRIDGE OR BML_BUILD_MODULES OR BML_BUILD_EXAMPLES)
     find_package(VirtoolsSDK REQUIRED)
 endif ()
 
+add_subdirectory(deps)
+
 if (BML_BUILD_MODULES)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
@@ -96,32 +98,27 @@ if (BML_BUILD_MODULES)
         "${PROJECT_SOURCE_DIR}/tools/generate_bml_imgui_api.py"
     )
 
-    set(BML_IMGUI_API_GENERATED_FILES
-        "${PROJECT_SOURCE_DIR}/deps/cimgui/cimgui.cpp"
-        "${PROJECT_SOURCE_DIR}/deps/cimgui/cimgui.h"
-        "${PROJECT_SOURCE_DIR}/modules/BML_UI/include/cimgui.h"
-        "${PROJECT_SOURCE_DIR}/modules/BML_UI/include/bml_imgui_api_fields.inc"
-        "${PROJECT_SOURCE_DIR}/modules/BML_UI/include/bml_imgui_cpp_defs.inl"
-        "${PROJECT_SOURCE_DIR}/modules/BML_UI/src/bml_imgui_api_init.inc"
+    set(BML_IMGUI_API_STAMP
+        "${CMAKE_CURRENT_BINARY_DIR}/generate_bml_imgui_api.stamp"
     )
 
     add_custom_command(
-        OUTPUT ${BML_IMGUI_API_GENERATED_FILES}
+        OUTPUT "${BML_IMGUI_API_STAMP}"
         COMMAND ${Python3_EXECUTABLE}
                 "${PROJECT_SOURCE_DIR}/tools/generate_bml_imgui_api.py"
                 --repo-root "${PROJECT_SOURCE_DIR}"
                 --luajit "${LUAJIT_EXECUTABLE}"
+        COMMAND ${CMAKE_COMMAND} -E touch "${BML_IMGUI_API_STAMP}"
         DEPENDS ${BML_IMGUI_GENERATOR_INPUTS}
         VERBATIM
     )
 
-    add_custom_target(generate_bml_imgui_api ALL DEPENDS ${BML_IMGUI_API_GENERATED_FILES})
+    add_custom_target(generate_bml_imgui_api ALL DEPENDS "${BML_IMGUI_API_STAMP}")
     if (TARGET ${LUAJIT_TARGET})
         add_dependencies(generate_bml_imgui_api ${LUAJIT_TARGET})
     endif ()
 endif ()
 
-add_subdirectory(deps)
 add_subdirectory(src)
 if (BML_BUILD_MODULES)
     add_subdirectory(modules)
