@@ -81,7 +81,7 @@ protected:
 
 TEST_F(ScriptingTest, EngineCreation) {
     EXPECT_NE(m_Engine, nullptr);
-    EXPECT_STREQ(asGetLibraryVersion(), "2.37.0");
+    EXPECT_STREQ(asGetLibraryVersion(), "2.38.0");
 }
 
 TEST_F(ScriptingTest, CompileSimpleScript) {
