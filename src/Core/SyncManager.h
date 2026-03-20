@@ -23,10 +23,9 @@
 #endif
 
 #include "bml_sync.h"
+#include "DeadlockDetector.h"
 
 namespace BML::Core {
-
-    class DeadlockDetector;
     struct MutexImpl {
         std::timed_mutex mutex;
         std::atomic<DWORD> owner_thread{0};
@@ -346,7 +345,7 @@ namespace BML::Core {
         void UnlockSpinLock(BML_SpinLock lock);
 
         SyncManager();
-        ~SyncManager();
+        ~SyncManager() = default;
 
     private:
         bool IsValidMutex(BML_Mutex mutex) const;

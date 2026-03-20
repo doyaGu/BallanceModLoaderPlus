@@ -13,6 +13,7 @@ class CrashDumpWriter;
 class DiagnosticManager;
 class FaultTracker;
 class HookRegistry;
+class ImcBus;
 class InterfaceRegistry;
 class LeaseManager;
 class LocaleManager;
@@ -45,9 +46,10 @@ struct KernelServices {
     std::unique_ptr<LeaseManager>       leases;
     std::unique_ptr<ConfigStore>        config;
 
-    // -- L2: registries (owned) ---------------------------
+    // -- L2: registries + message bus (owned) ---------------
     std::unique_ptr<ApiRegistry>        api_registry;
     std::unique_ptr<InterfaceRegistry>  interface_registry;
+    std::unique_ptr<ImcBus>             imc_bus;
 
     // -- L3: top-level context (owned) --------------------
     std::unique_ptr<Context>            context;

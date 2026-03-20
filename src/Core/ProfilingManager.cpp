@@ -40,7 +40,7 @@ namespace BML::Core {
         m_StartupTimeNs = GetTimestampNs();
     }
 
-    ProfilingManager::~ProfilingManager() = default;
+
 
     uint64_t ProfilingManager::GetTimestampNs() {
         const auto now = std::chrono::steady_clock::now().time_since_epoch();

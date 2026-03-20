@@ -15,6 +15,9 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <Windows.h>
 #endif
 
@@ -92,7 +95,6 @@ namespace BML::Core {
     }
 
     MemoryManager::MemoryManager() = default;
-    MemoryManager::~MemoryManager() = default;
 
     void *MemoryManager::Alloc(size_t size) {
         if (size == 0) {

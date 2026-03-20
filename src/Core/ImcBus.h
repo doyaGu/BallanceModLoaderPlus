@@ -4,6 +4,33 @@
 #include "bml_imc.h"
 
 namespace BML::Core {
+
+    /// Opaque owner for the internal IMC bus implementation.
+    /// Constructed by KernelServices; free functions below access the
+    /// impl through the KernelServices-installed instance.
+    ///
+    /// The destructor is inline (type-erased via function pointer) so that
+    /// test targets need not link ImcBus.cpp just to destroy a null
+    /// unique_ptr<ImcBus> inside ~KernelServices().
+    class ImcBus {
+    public:
+        ImcBus();
+
+        ~ImcBus() {
+            if (m_Deleter)
+                m_Deleter(m_Impl);
+        }
+
+        ImcBus(const ImcBus &) = delete;
+        ImcBus &operator=(const ImcBus &) = delete;
+
+        void Shutdown();
+
+    private:
+        void *m_Impl = nullptr;
+        void (*m_Deleter)(void *) = nullptr;
+    };
+
     // Complete set of free functions wrapping the internal ImcBusImpl.
     // Used by Microkernel, ModuleLifecycle, ModuleRuntime, tests, benchmarks.
 

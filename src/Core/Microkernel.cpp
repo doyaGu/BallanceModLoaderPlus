@@ -378,6 +378,7 @@ namespace BML::Core {
         // L2
         k.api_registry       = std::make_unique<ApiRegistry>();
         k.interface_registry = std::make_unique<InterfaceRegistry>();
+        k.imc_bus            = std::make_unique<ImcBus>();
         // L3
         k.context            = std::make_unique<Context>();
         InstallKernel(&k);

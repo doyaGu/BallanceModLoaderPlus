@@ -47,7 +47,7 @@ namespace BML::Core {
         BML_Result GetProfilingStats(BML_ProfilingStats *out_stats);
 
         ProfilingManager();
-        ~ProfilingManager();
+        ~ProfilingManager() = default;
 
     private:
 

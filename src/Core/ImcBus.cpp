@@ -1059,9 +1059,15 @@ namespace BML::Core {
             m_Snapshot.store(new TopicSnapshot(), std::memory_order_release);
         }
 
+        // Set by ImcBus constructor, cleared by destructor.
+        ImcBusImpl *g_BusPtr = nullptr;
+
         ImcBusImpl &GetBus() {
-            static ImcBusImpl bus;
-            return bus;
+            if (g_BusPtr)
+                return *g_BusPtr;
+            // Fallback for pre-KernelServices usage (shouldn't happen in practice).
+            static ImcBusImpl fallback;
+            return fallback;
         }
 
         BML_Mod ImcBusImpl::ResolveRegistrationOwner() const {
@@ -3004,6 +3010,30 @@ namespace BML::Core {
             }
         }
     } // namespace (anonymous)
+
+    // ========================================================================
+    // ImcBus — KernelServices-owned wrapper around ImcBusImpl
+    // ========================================================================
+
+    namespace {
+        void DeleteBusImpl(void *p) {
+            delete static_cast<ImcBusImpl *>(p);
+            g_BusPtr = nullptr;
+        }
+    }
+
+    ImcBus::ImcBus()
+        : m_Impl(new ImcBusImpl()),
+          m_Deleter(&DeleteBusImpl) {
+        g_BusPtr = static_cast<ImcBusImpl *>(m_Impl);
+    }
+
+    // ~ImcBus() is inline in ImcBus.h (calls m_Deleter).
+
+    void ImcBus::Shutdown() {
+        if (g_BusPtr)
+            g_BusPtr->Shutdown();
+    }
 
     // ========================================================================
     // Free functions wrapping ImcBusImpl

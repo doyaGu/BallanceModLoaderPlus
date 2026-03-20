@@ -51,8 +51,8 @@ if (NOT WIN32)
             ${BML_SOURCE_DIR}/Core/Context.cpp
             ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
             ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
-        ${BML_SOURCE_DIR}/Core/KernelServices.cpp
             ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
             ${BML_SOURCE_DIR}/Core/ImcBus.cpp
             ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
             ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
@@ -81,8 +81,8 @@ if (NOT WIN32)
             ${BML_SOURCE_DIR}/Core/Context.cpp
             ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
             ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
-        ${BML_SOURCE_DIR}/Core/KernelServices.cpp
             ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
             ${BML_SOURCE_DIR}/Core/Logging.cpp
             ${BML_SYNC_MANAGER_SOURCE}
             ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
@@ -101,8 +101,8 @@ if (NOT WIN32)
             ${BML_SOURCE_DIR}/Core/Context.cpp
             ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
             ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
-        ${BML_SOURCE_DIR}/Core/KernelServices.cpp
             ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
             ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
             ${BML_SOURCE_DIR}/Core/Logging.cpp
             DEPENDENCIES
@@ -116,8 +116,8 @@ if (NOT WIN32)
             ModuleLoaderStub.cpp
             ${BML_SOURCE_DIR}/Core/ProfilingManager.cpp
             ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
-        ${BML_SOURCE_DIR}/Core/KernelServices.cpp
             ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
             ${BML_SOURCE_DIR}/Core/MemoryManager.cpp
             ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
             ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
@@ -141,8 +141,8 @@ if (NOT WIN32)
             ${BML_SOURCE_DIR}/Core/Context.cpp
             ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
             ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
-        ${BML_SOURCE_DIR}/Core/KernelServices.cpp
             ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
             ${BML_SOURCE_DIR}/Core/ImcBus.cpp
             ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
             ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
@@ -172,8 +172,8 @@ if (NOT WIN32)
             ${BML_SOURCE_DIR}/Core/Context.cpp
             ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
             ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
-        ${BML_SOURCE_DIR}/Core/KernelServices.cpp
             ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
             ${BML_SOURCE_DIR}/Core/FileSystemWatcher.cpp
             ${BML_SOURCE_DIR}/Core/HotReloadCoordinator.cpp
             ${BML_SOURCE_DIR}/Core/ImcBus.cpp
@@ -206,8 +206,8 @@ if (NOT WIN32)
             ${BML_SOURCE_DIR}/Core/Context.cpp
             ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
             ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
-        ${BML_SOURCE_DIR}/Core/KernelServices.cpp
             ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
             ${BML_SOURCE_DIR}/Core/Logging.cpp
             ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
             DEPENDENCIES
@@ -281,6 +281,7 @@ add_bml_test(ImcBusTest
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
@@ -301,6 +302,7 @@ add_bml_test(RpcExpansionTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
@@ -345,6 +347,7 @@ add_bml_test(CoreApisTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/ImcBus.cpp
         ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
         ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
@@ -374,6 +377,7 @@ add_bml_test(ApiRegistryTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
@@ -391,6 +395,7 @@ add_bml_test(ContextLifecycleTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
@@ -409,6 +414,7 @@ add_bml_test(ConfigStoreConcurrencyTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
@@ -427,6 +433,7 @@ add_bml_test(ConfigBatchApiTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
@@ -445,6 +452,7 @@ add_bml_test(ConfigBlobTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
@@ -463,6 +471,7 @@ add_bml_test(ConfigMigrationTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
@@ -479,6 +488,7 @@ add_bml_test(ResourceHandleLifecycleTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
@@ -494,9 +504,11 @@ add_bml_test(MemoryManagerTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/MemoryManager.cpp
         DEPENDENCIES
         BML_Utils
+        tomlplusplus::tomlplusplus
 )
 
 add_bml_test(LoggingSinkOverrideTests
@@ -509,6 +521,7 @@ add_bml_test(LoggingSinkOverrideTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/LoggingApi.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
@@ -527,6 +540,7 @@ add_bml_test(CoreErrorsGuardTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/LoggingApi.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
@@ -558,6 +572,7 @@ add_bml_test(ReloadableModuleSlotTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/ImcBus.cpp
         ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
         ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
@@ -589,6 +604,7 @@ add_bml_test(HotReloadCoordinatorTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/FileSystemWatcher.cpp
         ${BML_SOURCE_DIR}/Core/HotReloadCoordinator.cpp
         ${BML_SOURCE_DIR}/Core/ImcBus.cpp
@@ -665,6 +681,7 @@ add_bml_test(ApiImprovementsTest
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
@@ -683,6 +700,7 @@ add_bml_test(SyncPrimitivesTest
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/SyncManager.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
@@ -712,6 +730,7 @@ add_bml_test(SyncManagerTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         DEPENDENCIES
@@ -728,6 +747,7 @@ add_bml_test(ModuleLoaderTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/DependencyResolver.cpp
         ${BML_SOURCE_DIR}/Core/SemanticVersion.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
@@ -753,8 +773,10 @@ add_bml_test(DiagnosticManagerTests
         DiagnosticManagerTests.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         DEPENDENCIES
         BML_Utils
+        tomlplusplus::tomlplusplus
 )
 
 # TimerManager unit tests
@@ -771,6 +793,7 @@ add_bml_test(TimerManagerTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
@@ -790,6 +813,7 @@ add_bml_test(LocaleManagerTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
@@ -809,6 +833,7 @@ add_bml_test(EventInterceptionTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
@@ -830,6 +855,7 @@ add_bml_test(FaultTrackerTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
@@ -849,6 +875,7 @@ add_bml_test(HookRegistryTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
@@ -867,6 +894,7 @@ add_bml_test(RuntimeProviderTests
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
@@ -875,16 +903,16 @@ add_bml_test(RuntimeProviderTests
 )
 
 # AngelScript engine unit tests
-if(TARGET angelscript)
+if (TARGET angelscript)
     add_executable(ScriptingTests ScriptingTests.cpp)
     target_include_directories(ScriptingTests PRIVATE
-        "${BML_INCLUDE_DIR}"
-        "${BML_SOURCE_DIR}"
+            "${BML_INCLUDE_DIR}"
+            "${BML_SOURCE_DIR}"
     )
     target_link_libraries(ScriptingTests PRIVATE
-        gtest_main
-        angelscript
-        angelscript_addon
+            gtest_main
+            angelscript
+            angelscript_addon
     )
     target_compile_definitions(ScriptingTests PRIVATE "BML_EXPORTS" "BML_TEST")
     set_target_properties(ScriptingTests PROPERTIES FOLDER "Tests")
@@ -905,8 +933,8 @@ if(TARGET angelscript)
             ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
             ${BML_SOURCE_DIR}/Core/DiagnosticApi.cpp
             ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
-        ${BML_SOURCE_DIR}/Core/KernelServices.cpp
             ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
             ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
             ${BML_SOURCE_DIR}/Core/HookApi.cpp
             ${BML_SOURCE_DIR}/Core/HookRegistry.cpp
@@ -944,7 +972,7 @@ if(TARGET angelscript)
     target_include_directories(ScriptingRuntimeTests PRIVATE
             ${CMAKE_SOURCE_DIR}/modules/BML_Scripting/src
     )
-endif()
+endif ()
 
 # Integration tests linking against the real BML.dll
 add_executable(BMLIntegrationTests BMLIntegrationTests.cpp)
@@ -1058,6 +1086,7 @@ add_bml_test(ProfilingManagerTests
         ${BML_SOURCE_DIR}/Core/ProfilingManager.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/MemoryManager.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp

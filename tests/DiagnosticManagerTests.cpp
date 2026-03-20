@@ -11,20 +11,21 @@
 #include <vector>
 
 #include "Core/DiagnosticManager.h"
+#include "TestKernel.h"
 
 using BML::Core::DiagnosticManager;
+using BML::Core::Testing::TestKernel;
 
 namespace {
 
 class DiagnosticManagerTests : public ::testing::Test {
 protected:
-    void SetUp() override {
-        DiagnosticManager::Instance().ClearLastError();
-    }
+    TestKernel kernel_;
 
-    void TearDown() override {
-        DiagnosticManager::Instance().ClearLastError();
+    void SetUp() override {
+        kernel_->diagnostics = std::make_unique<DiagnosticManager>();
     }
+    // No TearDown needed -- TestKernel destructor handles cleanup.
 };
 
 // ============================================================================

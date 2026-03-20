@@ -8,10 +8,9 @@
 #include <vector>
 
 #include "bml_memory.h"
+#include "FixedBlockPool.h"
 
 namespace BML::Core {
-    // Forward declarations
-    class FixedBlockPool;
 
     /**
      * @brief Memory pool implementation wrapper
@@ -68,7 +67,7 @@ namespace BML::Core {
 #endif
 
         MemoryManager();
-        ~MemoryManager();
+        ~MemoryManager() = default;
 
     private:
         // Allocation tracking
