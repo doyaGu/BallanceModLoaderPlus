@@ -1,6 +1,6 @@
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_hook_module.hpp"
-#include "bml_config.hpp"
+#include "bml_config_bind.hpp"
 #include "bml_game_topics.h"
 #include "bml_virtools.h"
 #include "bml_virtools.hpp"
@@ -12,34 +12,13 @@ class RenderMod : public bml::HookModule {
     bool m_WidescreenFix = false;
     bool m_UnlockFrameRate = false;
     int32_t m_MaxFrameRate = 0;
-
-    void EnsureDefaultConfig() {
-        auto config = Services().Config();
-        if (!config.GetBool("Graphics", "WidescreenFix").has_value()) {
-            config.SetBool("Graphics", "WidescreenFix", false);
-        }
-        if (!config.GetBool("Graphics", "UnlockFrameRate").has_value()) {
-            config.SetBool("Graphics", "UnlockFrameRate", false);
-        }
-        if (!config.GetInt("Graphics", "SetMaxFrameRate").has_value()) {
-            config.SetInt("Graphics", "SetMaxFrameRate", 0);
-        }
-    }
-
-    void RefreshConfig() {
-        auto config = Services().Config();
-        m_WidescreenFix = config.GetBool("Graphics", "WidescreenFix").value_or(false);
-        m_UnlockFrameRate = config.GetBool("Graphics", "UnlockFrameRate").value_or(false);
-        m_MaxFrameRate = config.GetInt("Graphics", "SetMaxFrameRate").value_or(0);
-    }
+    bml::ConfigBindings m_Cfg;
 
     void ApplyConfig() {
         BML_Render::EnableWidescreenFix(m_WidescreenFix);
 
         auto *timeManager = bml::virtools::GetTimeManager(Services());
-        if (!timeManager) {
-            return;
-        }
+        if (!timeManager) return;
 
         if (m_UnlockFrameRate) {
             timeManager->ChangeLimitOptions(CK_FRAMERATE_FREE);
@@ -59,7 +38,7 @@ class RenderMod : public bml::HookModule {
 
     bool InitHook(CKContext *, const BML_HookContext *hctx) override {
         if (!BML_Render::InitRenderHook(hctx)) return false;
-        RefreshConfig();
+        m_Cfg.Refresh(Services().Config());
         ApplyConfig();
         return true;
     }
@@ -69,8 +48,10 @@ class RenderMod : public bml::HookModule {
     }
 
     BML_Result OnModuleAttach(bml::ModuleServices &) override {
-        EnsureDefaultConfig();
-        RefreshConfig();
+        m_Cfg.Bind("Graphics", "WidescreenFix",   m_WidescreenFix,  false);
+        m_Cfg.Bind("Graphics", "UnlockFrameRate",  m_UnlockFrameRate, false);
+        m_Cfg.Bind("Graphics", "SetMaxFrameRate",  m_MaxFrameRate,    0);
+        m_Cfg.Sync(Services().Config());
         ApplyConfig();
 
         m_Subs.Add(BML_TOPIC_ENGINE_END, [this](const bml::imc::Message &) {
@@ -79,11 +60,11 @@ class RenderMod : public bml::HookModule {
         });
 
         m_Subs.Add(BML_TOPIC_GAME_MENU_POST_START, [this](const bml::imc::Message &) {
-            RefreshConfig();
+            m_Cfg.Refresh(Services().Config());
             ApplyConfig();
         });
         m_Subs.Add(BML_TOPIC_GAME_LEVEL_START, [this](const bml::imc::Message &) {
-            RefreshConfig();
+            m_Cfg.Refresh(Services().Config());
             ApplyConfig();
         });
 
