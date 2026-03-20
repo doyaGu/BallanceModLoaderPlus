@@ -11,12 +11,18 @@
 
 #include "Core/FaultTracker.h"
 #include "Core/Context.h"
+#include "TestKernel.h"
 
 using namespace BML::Core;
+using BML::Core::Testing::TestKernel;
 
 class FaultTrackerTest : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
+        kernel_->context       = std::make_unique<Context>();
+        kernel_->fault_tracker = std::make_unique<FaultTracker>();
         Context::Instance().Initialize(bmlMakeVersion(0, 4, 0));
         FaultTracker::Instance().Shutdown();
 
@@ -27,9 +33,6 @@ protected:
     }
 
     void TearDown() override {
-        FaultTracker::Instance().Shutdown();
-        Context::Instance().Cleanup();
-
         std::error_code ec;
         std::filesystem::remove_all(m_TempDir, ec);
     }

@@ -13,19 +13,23 @@
 
 #include "Core/TimerManager.h"
 #include "Core/Context.h"
+#include "TestKernel.h"
 
 using namespace BML::Core;
+using BML::Core::Testing::TestKernel;
 
 class TimerManagerTest : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
+        kernel_->context = std::make_unique<Context>();
+        kernel_->timers  = std::make_unique<TimerManager>();
         Context::Instance().Initialize(bmlMakeVersion(0, 4, 0));
         TimerManager::Instance().Shutdown();
     }
 
     void TearDown() override {
-        TimerManager::Instance().Shutdown();
-        Context::Instance().Cleanup();
     }
 };
 

@@ -14,11 +14,13 @@
 #include "Core/Logging.h"
 #include "Core/ModHandle.h"
 #include "Core/ModManifest.h"
+#include "TestKernel.h"
 
 #include "bml_logging.h"
 
 using BML::Core::ApiRegistry;
 using BML::Core::Context;
+using BML::Core::Testing::TestKernel;
 
 namespace {
 
@@ -32,7 +34,11 @@ struct CapturedLog {
 
 class LoggingSinkOverrideTests : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
+        kernel_->api_registry = std::make_unique<ApiRegistry>();
+        kernel_->context      = std::make_unique<Context>();
         ApiRegistry::Instance().Clear();
         Context::SetCurrentModule(nullptr);
         BML::Core::RegisterLoggingApis();

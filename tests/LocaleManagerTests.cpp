@@ -14,12 +14,18 @@
 
 #include "Core/LocaleManager.h"
 #include "Core/Context.h"
+#include "TestKernel.h"
 
 using namespace BML::Core;
+using BML::Core::Testing::TestKernel;
 
 class LocaleManagerTest : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
+        kernel_->context = std::make_unique<Context>();
+        kernel_->locale  = std::make_unique<LocaleManager>();
         Context::Instance().Initialize(bmlMakeVersion(0, 4, 0));
         LocaleManager::Instance().Shutdown();
 
@@ -31,9 +37,6 @@ protected:
     }
 
     void TearDown() override {
-        LocaleManager::Instance().Shutdown();
-        Context::Instance().Cleanup();
-
         std::error_code ec;
         std::filesystem::remove_all(m_TempDir, ec);
     }

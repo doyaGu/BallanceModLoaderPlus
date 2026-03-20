@@ -18,6 +18,7 @@
 #include "Core/Context.h"
 #include "Core/ModHandle.h"
 #include "Core/ModManifest.h"
+#include "TestKernel.h"
 
 #include "bml_config.h"
 #include "bml_errors.h"
@@ -25,6 +26,7 @@
 using BML::Core::ApiRegistry;
 using BML::Core::ConfigStore;
 using BML::Core::Context;
+using BML::Core::Testing::TestKernel;
 
 namespace {
 
@@ -37,7 +39,12 @@ using PFN_ConfigBatchCommit = BML_Result (*)(BML_ConfigBatch);
 
 class ConfigBlobTests : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
+        kernel_->api_registry = std::make_unique<ApiRegistry>();
+        kernel_->config       = std::make_unique<ConfigStore>();
+        kernel_->context      = std::make_unique<Context>();
         ApiRegistry::Instance().Clear();
         Context::SetCurrentModule(nullptr);
         temp_root_ = std::filesystem::temp_directory_path() /

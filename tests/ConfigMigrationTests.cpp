@@ -23,8 +23,10 @@
 #include "Core/ConfigStore.h"
 #include "Core/Context.h"
 #include "Core/ModHandle.h"
+#include "TestKernel.h"
 
 using namespace BML::Core;
+using BML::Core::Testing::TestKernel;
 
 namespace {
     // Test directory for config files
@@ -105,7 +107,10 @@ namespace {
 
 class ConfigMigrationTests : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
+        kernel_->config = std::make_unique<ConfigStore>();
         CleanupTestDir();
         // Clear any previously registered migrations
         ConfigStore::Instance().ClearMigrations();
@@ -174,7 +179,10 @@ TEST_F(ConfigMigrationTests, ClearMigrations) {
 
 class MigrationExecutionTests : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
+        kernel_->config = std::make_unique<ConfigStore>();
         ConfigStore::Instance().ClearMigrations();
     }
 
@@ -251,11 +259,13 @@ TEST_F(ConfigMigrationTests, UserDataPassedToMigration) {
 
 class ConfigMigrationIntegrationTests : public ::testing::Test {
 protected:
+    TestKernel kernel_;
     std::unique_ptr<BML_Mod_T> testMod;
     std::unique_ptr<ModManifest> testManifest;
     std::filesystem::path configDir;
 
     void SetUp() override {
+        kernel_->config = std::make_unique<ConfigStore>();
         CleanupTestDir();
         ConfigStore::Instance().ClearMigrations();
 
@@ -344,7 +354,10 @@ TEST_F(ConfigMigrationIntegrationTests, LoadConfigWithoutSchemaVersion) {
 
 class TomlMigrationTests : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
+        kernel_->config = std::make_unique<ConfigStore>();
         ConfigStore::Instance().ClearMigrations();
     }
 

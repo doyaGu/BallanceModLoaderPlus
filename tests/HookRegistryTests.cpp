@@ -12,19 +12,23 @@
 
 #include "Core/HookRegistry.h"
 #include "Core/Context.h"
+#include "TestKernel.h"
 
 using namespace BML::Core;
+using BML::Core::Testing::TestKernel;
 
 class HookRegistryTest : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
+        kernel_->context = std::make_unique<Context>();
+        kernel_->hooks   = std::make_unique<HookRegistry>();
         Context::Instance().Initialize(bmlMakeVersion(0, 4, 0));
         HookRegistry::Instance().Shutdown();
     }
 
     void TearDown() override {
-        HookRegistry::Instance().Shutdown();
-        Context::Instance().Cleanup();
     }
 };
 

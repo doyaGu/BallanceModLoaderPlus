@@ -17,15 +17,21 @@
 #include "Core/ApiRegistration.h"
 #include "Core/ApiRegistry.h"
 #include "Core/ProfilingManager.h"
+#include "TestKernel.h"
 
 using BML::Core::ApiRegistry;
 using BML::Core::ProfilingManager;
+using BML::Core::Testing::TestKernel;
 
 namespace {
 
 class ProfilingManagerTests : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
+        kernel_->profiling    = std::make_unique<ProfilingManager>();
+        kernel_->api_registry = std::make_unique<ApiRegistry>();
         // Enable profiling for tests
         ProfilingManager::Instance().SetProfilingEnabled(BML_TRUE);
     }
