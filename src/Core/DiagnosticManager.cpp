@@ -1,12 +1,19 @@
 #include "DiagnosticManager.h"
 
+#include "KernelServices.h"
+
 namespace BML::Core {
     // Thread-local error context
     static thread_local ErrorContext g_ThreadErrorContext;
 
+    DiagnosticManager::DiagnosticManager() = default;
+
     DiagnosticManager &DiagnosticManager::Instance() {
-        static DiagnosticManager instance;
-        return instance;
+        auto *k = GetKernelOrNull();
+        if (k && k->diagnostics)
+            return *k->diagnostics;
+        static DiagnosticManager fallback;
+        return fallback;
     }
 
     ErrorContext &DiagnosticManager::GetThreadContext() {

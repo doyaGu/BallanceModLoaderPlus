@@ -1,5 +1,7 @@
 #include "LocaleManager.h"
 
+#include "KernelServices.h"
+
 #include <algorithm>
 #include <filesystem>
 
@@ -12,8 +14,11 @@ namespace BML::Core {
     }
 
     LocaleManager &LocaleManager::Instance() {
-        static LocaleManager instance;
-        return instance;
+        auto *k = GetKernelOrNull();
+        if (k && k->locale)
+            return *k->locale;
+        static LocaleManager fallback;
+        return fallback;
     }
 
     BML_Result LocaleManager::Load(const std::string &module_id,

@@ -1,5 +1,7 @@
 #include "FaultTracker.h"
 
+#include "KernelServices.h"
+
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -206,8 +208,11 @@ namespace BML::Core {
     FaultTracker::FaultTracker() = default;
 
     FaultTracker &FaultTracker::Instance() {
-        static FaultTracker instance;
-        return instance;
+        auto *k = GetKernelOrNull();
+        if (k && k->fault_tracker)
+            return *k->fault_tracker;
+        static FaultTracker fallback;
+        return fallback;
     }
 
     void FaultTracker::Load(const std::wstring &base_dir) {

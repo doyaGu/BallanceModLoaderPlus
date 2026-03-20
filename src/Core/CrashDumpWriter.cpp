@@ -1,5 +1,7 @@
 #include "CrashDumpWriter.h"
 
+#include "KernelServices.h"
+
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -35,8 +37,11 @@ namespace BML::Core {
     CrashDumpWriter::CrashDumpWriter() = default;
 
     CrashDumpWriter &CrashDumpWriter::Instance() {
-        static CrashDumpWriter instance;
-        return instance;
+        auto *k = GetKernelOrNull();
+        if (k && k->crash_dump)
+            return *k->crash_dump;
+        static CrashDumpWriter fallback;
+        return fallback;
     }
 
     void CrashDumpWriter::SetBaseDir(const std::wstring &base_dir) {

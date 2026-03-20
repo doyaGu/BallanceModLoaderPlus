@@ -88,10 +88,10 @@ namespace BML::Core {
                       const char *source_file = nullptr,
                       int source_line = 0);
 
-    private:
-        DiagnosticManager() = default;
+        DiagnosticManager();
         ~DiagnosticManager() = default;
 
+    private:
         // Get thread-local error context
         ErrorContext &GetThreadContext();
     };

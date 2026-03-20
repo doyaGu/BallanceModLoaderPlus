@@ -67,10 +67,10 @@ namespace BML::Core {
         void ResetStatsForTesting();
 #endif
 
-    private:
         MemoryManager();
-        ~MemoryManager() = default;
+        ~MemoryManager();
 
+    private:
         // Allocation tracking
         void TrackAllocation(size_t size);
         void TrackDeallocation(size_t size);

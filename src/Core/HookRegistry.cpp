@@ -1,5 +1,7 @@
 #include "HookRegistry.h"
 
+#include "KernelServices.h"
+
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -34,8 +36,11 @@ namespace BML::Core {
     HookRegistry::HookRegistry() = default;
 
     HookRegistry &HookRegistry::Instance() {
-        static HookRegistry instance;
-        return instance;
+        auto *k = GetKernelOrNull();
+        if (k && k->hooks)
+            return *k->hooks;
+        static HookRegistry fallback;
+        return fallback;
     }
 
     BML_Result HookRegistry::Register(const std::string &owner_module_id,

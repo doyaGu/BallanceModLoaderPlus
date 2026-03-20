@@ -19,7 +19,6 @@ namespace BML::Core {
         void CleanupOwner(const std::string &owner_module_id);
         void Shutdown();
 
-    private:
         HookRegistry();
     };
 

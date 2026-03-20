@@ -1,4 +1,7 @@
 #include "ConfigStore.h"
+
+#include "KernelServices.h"
+
 #include "ApiRegistrationMacros.h"
 
 #include <algorithm>
@@ -276,8 +279,11 @@ namespace BML::Core {
     }
 
     ConfigStore &ConfigStore::Instance() {
-        static ConfigStore store;
-        return store;
+        auto *k = GetKernelOrNull();
+        if (k && k->config)
+            return *k->config;
+        static ConfigStore fallback;
+        return fallback;
     }
 
     BML_Result ConfigStore::GetValue(BML_Mod mod,

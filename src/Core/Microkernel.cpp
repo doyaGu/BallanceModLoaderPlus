@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <memory>
 #include <mutex>
 #include <sstream>
 #include <string>
@@ -10,23 +11,34 @@
 #include "ApiRegistration.h"
 #include "ApiRegistry.h"
 #include "BuiltinInterfaces.h"
+#include "ConfigStore.h"
 #include "Context.h"
 #include "CrashDumpWriter.h"
+#include "DiagnosticManager.h"
 #include "FaultTracker.h"
 #include "HookRegistry.h"
 #include "ImcBus.h"
 #include "InterfaceRegistry.h"
+#include "KernelServices.h"
 #include "LeaseManager.h"
 #include "LocaleManager.h"
 #include "Logging.h"
+#include "MemoryManager.h"
+#include "ProfilingManager.h"
 #include "StringUtils.h"
+#include "SyncManager.h"
 #include "TimerManager.h"
 
 namespace BML::Core {
+    // Defined here (not KernelServices.cpp) so that test targets linking
+    // KernelServices.cpp don't pull in L0 subsystem destructors.
+    KernelServices::~KernelServices() = default;
+
     namespace {
         struct MicrokernelState {
             ModuleRuntime runtime;
             ModuleBootstrapDiagnostics diagnostics;
+            std::unique_ptr<KernelServices> kernel;
             bool core_initialized{false};
             bool modules_discovered{false};
             bool modules_loaded{false};
@@ -351,6 +363,28 @@ namespace BML::Core {
         auto &ctx = Context::Instance();
         ctx.Initialize(bmlMakeVersion(0, 4, 0));
 
+        // Build the service graph.  L0+L1 are owned; L2+ are non-owning.
+        state.kernel = std::make_unique<KernelServices>();
+        auto &k = *state.kernel;
+        // L0: owned
+        k.diagnostics        = std::make_unique<DiagnosticManager>();
+        k.memory             = std::make_unique<MemoryManager>();
+        k.sync               = std::make_unique<SyncManager>();
+        k.profiling          = std::make_unique<ProfilingManager>();
+        // L1: owned
+        k.fault_tracker      = std::make_unique<FaultTracker>();
+        k.crash_dump         = std::make_unique<CrashDumpWriter>();
+        k.hooks              = std::make_unique<HookRegistry>();
+        k.locale             = std::make_unique<LocaleManager>();
+        k.timers             = std::make_unique<TimerManager>();
+        k.leases             = std::make_unique<LeaseManager>();
+        k.config             = std::make_unique<ConfigStore>();
+        // L2+: non-owning
+        k.api_registry       = &ApiRegistry::Instance();
+        k.interface_registry = &InterfaceRegistry::Instance();
+        k.context            = &ctx;
+        InstallKernel(&k);
+
         RegisterBootstrapExports();
 
         // Register core APIs
@@ -531,6 +565,10 @@ namespace BML::Core {
         LeaseManager::Instance().Reset();
         InterfaceRegistry::Instance().Clear();
         ApiRegistry::Instance().Clear();
+
+        // Tear down the service graph
+        InstallKernel(nullptr);
+        state.kernel.reset();
 
         // Clear diagnostics
         state.diagnostics = {};

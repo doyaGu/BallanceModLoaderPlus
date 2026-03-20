@@ -1,5 +1,7 @@
 #include "LeaseManager.h"
 
+#include "KernelServices.h"
+
 #include <memory>
 #include <new>
 #include <sstream>
@@ -16,8 +18,11 @@ struct BML_InterfaceRegistration_T {
 
 namespace BML::Core {
     LeaseManager &LeaseManager::Instance() {
-        static LeaseManager instance;
-        return instance;
+        auto *k = GetKernelOrNull();
+        if (k && k->leases)
+            return *k->leases;
+        static LeaseManager fallback;
+        return fallback;
     }
 
     BML_Result LeaseManager::CreateInterfaceLease(const std::string &interface_id,

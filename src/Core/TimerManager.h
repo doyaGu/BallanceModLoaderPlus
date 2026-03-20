@@ -72,9 +72,9 @@ namespace BML::Core {
         /** @brief Cancel all timers and reset state (called during shutdown) */
         void Shutdown();
 
-    private:
         TimerManager() = default;
 
+    private:
         using Clock = std::chrono::steady_clock;
         using TimePoint = Clock::time_point;
 

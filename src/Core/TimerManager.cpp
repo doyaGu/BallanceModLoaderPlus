@@ -1,5 +1,7 @@
 #include "TimerManager.h"
 
+#include "KernelServices.h"
+
 #include <exception>
 
 #include "Context.h"
@@ -49,8 +51,11 @@ namespace BML::Core {
     } // namespace
 
     TimerManager &TimerManager::Instance() {
-        static TimerManager instance;
-        return instance;
+        auto *k = GetKernelOrNull();
+        if (k && k->timers)
+            return *k->timers;
+        static TimerManager fallback;
+        return fallback;
     }
 
     TimerManager::TimerEntry *TimerManager::FindEntry(BML_Timer timer) {

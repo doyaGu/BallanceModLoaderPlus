@@ -40,9 +40,9 @@ namespace BML::Core {
         void CleanupConsumer(const std::string &consumer_id);
         void Reset();
 
-    private:
         LeaseManager() = default;
 
+    private:
         struct InterfaceLeaseRecord {
             uint64_t id{0};
             std::string interface_id;

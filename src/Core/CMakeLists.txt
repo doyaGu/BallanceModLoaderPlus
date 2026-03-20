@@ -28,6 +28,7 @@ set(BML_CORE_SOURCES
         ModuleLifecycle.cpp
         Microkernel.cpp
         ImcBus.cpp
+        KernelServices.cpp
         LoggingApi.cpp
         Logging.cpp
         SemanticVersion.cpp
@@ -96,6 +97,7 @@ set(BML_CORE_HEADERS
         SemanticVersion.h
         LeaseManager.h
         InterfaceRegistry.h
+        KernelServices.h
         TimerManager.h
         LocaleManager.h
 )

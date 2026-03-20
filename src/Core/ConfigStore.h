@@ -107,9 +107,9 @@ namespace BML::Core {
         // For testing: get current schema version
         static constexpr int32_t GetCurrentSchemaVersion() { return kConfigSchemaVersion; }
 
-    private:
         ConfigStore() = default;
 
+    private:
         ConfigDocument *GetOrCreateDocument(BML_Mod mod);
         ConfigDocument *LookupDocument(BML_Mod mod);
         bool EnsureLoaded(ConfigDocument &doc);

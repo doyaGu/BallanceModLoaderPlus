@@ -39,7 +39,6 @@ namespace BML::Core {
 
         void Shutdown();
 
-    private:
         FaultTracker();
     };
 } // namespace BML::Core

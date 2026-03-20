@@ -27,7 +27,6 @@ namespace BML::Core {
 
         void Shutdown();
 
-    private:
         CrashDumpWriter();
     };
 } // namespace BML::Core

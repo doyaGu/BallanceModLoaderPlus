@@ -345,10 +345,10 @@ namespace BML::Core {
         BML_Bool TryLockSpinLock(BML_SpinLock lock);
         void UnlockSpinLock(BML_SpinLock lock);
 
-    private:
         SyncManager();
-        ~SyncManager() = default;
+        ~SyncManager();
 
+    private:
         bool IsValidMutex(BML_Mutex mutex) const;
         bool IsValidRwLock(BML_RwLock lock) const;
         bool IsValidSemaphore(BML_Semaphore semaphore) const;

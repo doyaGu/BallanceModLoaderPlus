@@ -1,4 +1,7 @@
 #include "ProfilingManager.h"
+
+#include "KernelServices.h"
+
 #include "ApiRegistry.h"
 #include "CoreErrors.h"
 #include "DiagnosticManager.h"
@@ -16,8 +19,11 @@ namespace BML::Core {
     } // namespace
 
     ProfilingManager &ProfilingManager::Instance() {
-        static ProfilingManager instance;
-        return instance;
+        auto *k = GetKernelOrNull();
+        if (k && k->profiling)
+            return *k->profiling;
+        static ProfilingManager fallback;
+        return fallback;
     }
 
     ProfilingManager::ProfilingManager()

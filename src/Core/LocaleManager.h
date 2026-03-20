@@ -99,9 +99,9 @@ namespace BML::Core {
          */
         void Shutdown();
 
-    private:
         LocaleManager() = default;
 
+    private:
         // Heterogeneous-lookup hash/equal for string_view key access without allocation
         struct StringHash {
             using is_transparent = void;

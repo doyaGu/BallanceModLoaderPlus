@@ -46,9 +46,10 @@ namespace BML::Core {
         /* Statistics */
         BML_Result GetProfilingStats(BML_ProfilingStats *out_stats);
 
-    private:
         ProfilingManager();
         ~ProfilingManager();
+
+    private:
 
         struct TraceEvent {
             enum Type { BEGIN, END, INSTANT, COUNTER, FRAME };

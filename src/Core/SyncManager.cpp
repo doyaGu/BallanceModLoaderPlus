@@ -1,5 +1,7 @@
 #include "SyncManager.h"
 
+#include "KernelServices.h"
+
 #include <algorithm>
 #include <functional>
 #include <new>
@@ -203,6 +205,8 @@ namespace BML::Core {
     SyncManager::SyncManager() : m_DeadlockDetector(std::make_unique<DeadlockDetector>()) {
     }
 
+    SyncManager::~SyncManager() = default;
+
     namespace {
         inline BML_Result ReportInvalidSyncCall(const char *api_name, const char *message) {
             return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "sync", api_name, message, 0);
@@ -210,8 +214,11 @@ namespace BML::Core {
     } // namespace
 
     SyncManager &SyncManager::Instance() {
-        static SyncManager instance;
-        return instance;
+        auto *k = GetKernelOrNull();
+        if (k && k->sync)
+            return *k->sync;
+        static SyncManager fallback;
+        return fallback;
     }
 
     // ============================================================================

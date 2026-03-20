@@ -1,5 +1,7 @@
 ﻿#include "MemoryManager.h"
 
+#include "KernelServices.h"
+
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -82,11 +84,15 @@ namespace BML::Core {
     } // anonymous namespace
 
     MemoryManager &MemoryManager::Instance() {
-        static MemoryManager instance;
-        return instance;
+        auto *k = GetKernelOrNull();
+        if (k && k->memory)
+            return *k->memory;
+        static MemoryManager fallback;
+        return fallback;
     }
 
     MemoryManager::MemoryManager() = default;
+    MemoryManager::~MemoryManager() = default;
 
     void *MemoryManager::Alloc(size_t size) {
         if (size == 0) {
