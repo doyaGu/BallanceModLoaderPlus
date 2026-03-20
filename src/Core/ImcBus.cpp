@@ -41,7 +41,12 @@
 #include "MpscRingBuffer.h"
 #include "CoreErrors.h"
 
+namespace BML::Core {
+    void CoreLog(BML_LogSeverity level, const char *tag, const char *fmt, ...);
+}
+
 namespace {
+    constexpr char kImcLogCategory[] = "imc.bus";
     constexpr size_t kDefaultQueueCapacity = 256;
     constexpr size_t kMaxQueueCapacity = 16384;
     constexpr size_t kInlinePayloadBytes = 256;
@@ -609,9 +614,9 @@ public:
     explicit DispatchSubscriptionScope(BML_Subscription_T *sub) {
         constexpr size_t kMaxDispatchDepth = 64;
         if (g_DispatchSubscriptionStack.size() >= kMaxDispatchDepth) {
-            CoreLog(BML_LOG_ERROR, kImcLogCategory,
-                    "IMC dispatch stack overflow (depth %zu)",
-                    g_DispatchSubscriptionStack.size());
+            BML::Core::CoreLog(BML_LOG_ERROR, kImcLogCategory,
+                               "IMC dispatch stack overflow (depth %zu)",
+                               g_DispatchSubscriptionStack.size());
             m_Overflow = true;
             return;
         }
@@ -819,7 +824,6 @@ namespace BML::Core {
     // Other types from anonymous namespace are accessible via unqualified lookup in same TU
 
     namespace {
-        constexpr char kImcLogCategory[] = "imc.bus";
 
 #if defined(_MSC_VER) && !defined(__MINGW32__)
         static unsigned long InvokeHandlerSEH(BML_ImcHandler handler,

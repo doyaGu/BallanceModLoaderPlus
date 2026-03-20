@@ -76,6 +76,12 @@ protected:
     virtual void OnModuleDetach() {}
 
     /**
+     * @brief Release outbound dependencies before detach.
+     * Return an error to abort unload/reload. Default: OK.
+     */
+    virtual BML_Result OnModulePrepareDetach() { return BML_RESULT_OK; }
+
+    /**
      * @brief Attempt hook initialization with a CKContext.
      *
      * Safe to call multiple times -returns immediately if already initialized.
@@ -111,6 +117,10 @@ public:
         }
 
         return BML_RESULT_OK;
+    }
+
+    BML_Result OnPrepareDetach() override {
+        return OnModulePrepareDetach();
     }
 
     void OnDetach() override {
