@@ -1,0 +1,10 @@
+[window]
+title = "自定义地图"
+search_hint = "搜索地图"
+refresh = "刷新"
+close = "关闭"
+load = "加载所选地图"
+no_maps_dir = "地图目录不可用。"
+no_maps_found = "未找到地图。"
+no_matching = "没有匹配的地图。"
+select_prompt = "请选择要加载的地图。"

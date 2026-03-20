@@ -1,0 +1,6 @@
+[hud]
+sr_timer = "竞速计时器"
+cheat_enabled = "作弊模式已启用"
+
+[hud.default]
+title_prefix = "BML Plus"

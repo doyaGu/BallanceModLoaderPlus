@@ -1,0 +1,16 @@
+capabilities = ["menu.framework"]
+
+[package]
+id = "com.bml.menu"
+name = "BML_Menu"
+version = "0.4.0"
+authors = ["BML Team"]
+description = "Shared Ballance menu framework and Menu provider"
+entry = "BML_Menu.dll"
+
+[provides]
+"bml.menu.runtime" = "1.0.0"
+
+[dependencies]
+"com.bml.ui" = ">=0.4.0"
+

@@ -1,0 +1,12 @@
+[package]
+id = "com.bml.gameplay"
+name = "BML Gameplay Module"
+version = "0.4.0"
+authors = ["BML Team"]
+description = "Gameplay tweak module for BML v0.4 - lantern alpha, extra life fix, and overclock"
+entry = "BML_Gameplay.dll"
+
+[dependencies]
+"com.bml.ui" = ">=0.4.0"
+"com.bml.objectload" = ">=0.4.0"
+"com.bml.event" = ">=0.4.0"

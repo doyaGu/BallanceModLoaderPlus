@@ -1,0 +1,10 @@
+[window]
+title = "Custom Maps"
+search_hint = "Search maps"
+refresh = "Refresh"
+close = "Close"
+load = "Load Selected"
+no_maps_dir = "Maps directory is not available."
+no_maps_found = "No maps found."
+no_matching = "No matching maps."
+select_prompt = "Select a map to load."

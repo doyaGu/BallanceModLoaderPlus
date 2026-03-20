@@ -1,0 +1,6 @@
+[hud]
+sr_timer = "SR Timer"
+cheat_enabled = "Cheat Mode Enabled"
+
+[hud.default]
+title_prefix = "BML Plus"

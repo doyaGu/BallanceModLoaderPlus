@@ -1,0 +1,34 @@
+[window]
+title = "BML Developer Tools"
+
+[menu]
+imc = "IMC"
+interfaces = "Interfaces"
+hooks = "Hooks"
+modules = "Modules"
+refresh = "Refresh"
+
+[panel]
+imc_bus = "IMC Bus"
+interfaces = "Interfaces"
+hooks = "Hooks"
+loaded_modules = "Loaded Modules"
+
+[column]
+id = "ID"
+name = "Name"
+subs = "Subs"
+messages = "Messages"
+interface_id = "Interface ID"
+version = "Version"
+provider = "Provider"
+flags = "Flags"
+leases = "Leases"
+owner = "Owner"
+target = "Target"
+address = "Address"
+priority = "Priority"
+module_id = "Module ID"
+
+[status]
+conflict = "CONFLICT"

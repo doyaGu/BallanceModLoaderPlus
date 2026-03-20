@@ -1,0 +1,12 @@
+[package]
+id = "com.bml.scripting"
+name = "BML Scripting Runtime"
+version = "0.4.0"
+authors = ["BML Team"]
+description = "AngelScript runtime for script-based mods"
+entry = "BML_Scripting.dll"
+
+[dependencies]
+"com.bml.console" = ">=0.4.0"
+"com.bml.input" = ">=0.4.0"
+"com.bml.event" = ">=0.4.0"

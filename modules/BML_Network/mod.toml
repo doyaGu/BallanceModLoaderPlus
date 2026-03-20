@@ -1,0 +1,7 @@
+[package]
+id = "com.bml.network"
+name = "BML Network"
+version = "0.4.0"
+authors = ["BML Team"]
+description = "Async HTTP client (WinHTTP) and TCP/UDP socket support for mod networking"
+entry = "BML_Network.dll"

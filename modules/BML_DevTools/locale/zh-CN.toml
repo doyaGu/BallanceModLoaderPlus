@@ -1,0 +1,34 @@
+[window]
+title = "BML 开发者工具"
+
+[menu]
+imc = "IMC"
+interfaces = "接口"
+hooks = "钩子"
+modules = "模块"
+refresh = "刷新"
+
+[panel]
+imc_bus = "IMC 消息总线"
+interfaces = "接口"
+hooks = "钩子"
+loaded_modules = "已加载模块"
+
+[column]
+id = "ID"
+name = "名称"
+subs = "订阅数"
+messages = "消息数"
+interface_id = "接口 ID"
+version = "版本"
+provider = "提供者"
+flags = "标志"
+leases = "租用数"
+owner = "所有者"
+target = "目标"
+address = "地址"
+priority = "优先级"
+module_id = "模块 ID"
+
+[status]
+conflict = "冲突"

@@ -1,0 +1,13 @@
+[package]
+id = "com.bml.newballtype"
+name = "BML New Ball Type Module"
+version = "0.4.0"
+authors = ["BML Team"]
+description = "Custom ball, floor, and module registration support for BML v0.4"
+entry = "BML_NewBallType.dll"
+
+[provides]
+"bml.newballtype" = "1.0.0"
+
+[dependencies]
+"com.bml.objectload" = ">=0.4.0"
