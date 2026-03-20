@@ -45,9 +45,9 @@ struct KernelServices {
     std::unique_ptr<LeaseManager>       leases;
     std::unique_ptr<ConfigStore>        config;
 
-    // -- L2: registries + message bus (non-owning) --------
-    ApiRegistry        *api_registry      = nullptr;
-    InterfaceRegistry  *interface_registry = nullptr;
+    // -- L2: registries (owned) ---------------------------
+    std::unique_ptr<ApiRegistry>        api_registry;
+    std::unique_ptr<InterfaceRegistry>  interface_registry;
 
     // -- L3: top-level context (non-owning) ---------------
     Context            *context           = nullptr;

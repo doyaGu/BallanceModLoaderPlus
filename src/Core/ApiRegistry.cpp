@@ -1,5 +1,7 @@
 #include "ApiRegistry.h"
 
+#include "KernelServices.h"
+
 #include <mutex>
 #include <shared_mutex>
 #include <stdexcept>
@@ -28,8 +30,11 @@ namespace BML::Core {
     }
 
     ApiRegistry &ApiRegistry::Instance() {
-        static ApiRegistry registry;
-        return registry;
+        auto *k = GetKernelOrNull();
+        if (k && k->api_registry)
+            return *k->api_registry;
+        static ApiRegistry fallback;
+        return fallback;
     }
 
     // ========================================================================

@@ -379,9 +379,10 @@ namespace BML::Core {
         k.timers             = std::make_unique<TimerManager>();
         k.leases             = std::make_unique<LeaseManager>();
         k.config             = std::make_unique<ConfigStore>();
-        // L2+: non-owning
-        k.api_registry       = &ApiRegistry::Instance();
-        k.interface_registry = &InterfaceRegistry::Instance();
+        // L2: owned
+        k.api_registry       = std::make_unique<ApiRegistry>();
+        k.interface_registry = std::make_unique<InterfaceRegistry>();
+        // L3: non-owning
         k.context            = &ctx;
         InstallKernel(&k);
 

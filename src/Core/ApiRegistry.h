@@ -145,9 +145,10 @@ namespace BML::Core {
 
         size_t GetApiCount() const;
 
-    private:
         ApiRegistry();
         ~ApiRegistry() = default;
+
+    private:
 
         // Dual indexing: ID table (fast path) + name->ID mapping
         std::unordered_map<BML_ApiId, ApiEntry> m_IdTable;

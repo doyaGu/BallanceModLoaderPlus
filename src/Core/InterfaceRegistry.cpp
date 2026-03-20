@@ -1,5 +1,7 @@
 #include "InterfaceRegistry.h"
 
+#include "KernelServices.h"
+
 #include <algorithm>
 #include <vector>
 
@@ -50,8 +52,11 @@ namespace BML::Core {
     }
 
     InterfaceRegistry &InterfaceRegistry::Instance() {
-        static InterfaceRegistry instance;
-        return instance;
+        auto *k = GetKernelOrNull();
+        if (k && k->interface_registry)
+            return *k->interface_registry;
+        static InterfaceRegistry fallback;
+        return fallback;
     }
 
     BML_Result InterfaceRegistry::Register(const BML_InterfaceDesc *desc, const std::string &provider_id) {
