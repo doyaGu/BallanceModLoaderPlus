@@ -1,0 +1,195 @@
+#ifndef BML_INTERFACE_H
+#define BML_INTERFACE_H
+
+#include "bml_errors.h"
+#include "bml_types.h"
+#include "bml_version.h"
+
+BML_BEGIN_CDECLS
+
+BML_DECLARE_HANDLE(BML_InterfaceLease);
+BML_DECLARE_HANDLE(BML_InterfaceRegistration);
+
+/* ========================================================================
+ * Interface Vtable Header
+ * ======================================================================== */
+
+/**
+ * @brief Standard header embedded at the start of every interface vtable.
+ *
+ * Makes every vtable self-describing: version, identity, and forward-
+ * compatible sizing.  Cast any vtable pointer to @c BML_InterfaceHeader*
+ * to introspect it without knowing the concrete type.
+ *
+ * @code
+ * typedef struct BML_FooInterface {
+ *     BML_InterfaceHeader header;
+ *     BML_Result (*DoSomething)(int x);
+ * } BML_FooInterface;
+ *
+ * const BML_FooInterface vtable = {
+ *     BML_IFACE_HEADER(BML_FooInterface, "bml.foo", 1, 0),
+ *     FooDoSomething,
+ * };
+ * @endcode
+ */
+typedef struct BML_InterfaceHeader {
+    size_t struct_size;         /**< sizeof the containing vtable struct */
+    uint16_t major;             /**< ABI major version (breaking changes) */
+    uint16_t minor;             /**< ABI minor version (backward-compatible additions) */
+    const char *interface_id;   /**< Dot-separated identity string, e.g. "bml.core.context" */
+} BML_InterfaceHeader;
+
+/**
+ * @brief Designated initializer for BML_InterfaceHeader.
+ *
+ * @param type  The containing vtable struct type
+ * @param id    Interface ID string literal
+ * @param maj   Major version
+ * @param min   Minor version
+ */
+#define BML_IFACE_HEADER(type, id, maj, min) \
+    { sizeof(type), (maj), (min), (id) }
+
+/* ========================================================================
+ * Key-Value Metadata
+ * ======================================================================== */
+
+/**
+ * @brief Single key-value metadata entry.
+ *
+ * Providers attach an array of these to @c BML_InterfaceDesc to publish
+ * arbitrary metadata that tooling and other modules can query.  Keys are
+ * conventionally dot-separated (e.g. @c "vendor.url").
+ */
+typedef struct BML_InterfaceMetadata {
+    const char *key;
+    const char *value;
+} BML_InterfaceMetadata;
+
+/* ========================================================================
+ * Interface Descriptors
+ * ======================================================================== */
+
+/**
+ * @brief Provider-side interface descriptor.
+ *
+ * Passed to @c bmlInterfaceRegister.  All pointer fields must remain
+ * valid for the lifetime of the registration (the core copies strings
+ * but references the implementation pointer directly).
+ *
+ * Forward-compatible: consumers check @c struct_size before accessing
+ * fields added after the initial layout.
+ */
+typedef struct BML_InterfaceDesc {
+    size_t struct_size;
+    const char *interface_id;
+    BML_Version abi_version;
+    const void *implementation;
+    size_t implementation_size;
+    uint64_t flags;
+    uint64_t capabilities;
+    const char *description;            /**< Human-readable summary (optional, NULL ok) */
+    const char *category;               /**< Grouping tag, e.g. "core", "input" (optional) */
+    const char *superseded_by;          /**< Interface ID that replaces this one (NULL = not deprecated) */
+    const BML_InterfaceMetadata *metadata;  /**< Extensible key-value array (optional) */
+    uint32_t metadata_count;            /**< Number of entries in @c metadata */
+} BML_InterfaceDesc;
+
+#define BML_INTERFACE_DESC_INIT \
+    { sizeof(BML_InterfaceDesc), NULL, BML_VERSION_INIT(0, 0, 0), NULL, 0, \
+      0, 0, NULL, NULL, NULL, NULL, 0 }
+
+/**
+ * @brief Runtime view of a registered interface.
+ *
+ * Returned by reflection queries.  All strings point into core-owned
+ * storage and are valid until the interface is unregistered.
+ */
+typedef struct BML_InterfaceRuntimeDesc {
+    size_t struct_size;
+    const char *interface_id;
+    const char *provider_id;
+    BML_Version abi_version;
+    size_t implementation_size;
+    uint64_t flags;
+    uint64_t capabilities;
+    const char *description;
+    const char *category;
+    const char *superseded_by;
+    const BML_InterfaceMetadata *metadata;
+    uint32_t metadata_count;
+    uint32_t lease_count;               /**< Current number of active leases */
+} BML_InterfaceRuntimeDesc;
+
+#define BML_INTERFACE_RUNTIME_DESC_INIT \
+    { sizeof(BML_InterfaceRuntimeDesc), NULL, NULL, BML_VERSION_INIT(0, 0, 0), \
+      0u, 0u, 0u, NULL, NULL, NULL, NULL, 0u, 0u }
+
+/* ========================================================================
+ * Interface Flags
+ * ======================================================================== */
+
+#define BML_INTERFACE_FLAG_NONE             0ULL
+#define BML_INTERFACE_FLAG_MAIN_THREAD_ONLY (1ULL << 0)
+#define BML_INTERFACE_FLAG_INTERNAL         (1ULL << 1)
+#define BML_INTERFACE_FLAG_HOST_OWNED       (1ULL << 2)
+#define BML_INTERFACE_FLAG_TOKENIZED        (1ULL << 3)
+#define BML_INTERFACE_FLAG_IMMUTABLE        (1ULL << 4)
+
+/* ========================================================================
+ * Function Pointer Types
+ * ======================================================================== */
+
+typedef void (*PFN_BML_InterfaceRuntimeEnumerator)(const BML_InterfaceRuntimeDesc *desc,
+                                                   void *user_data);
+
+/* Diagnostic reflection function pointer types */
+typedef BML_Bool (*PFN_BML_DiagGetInterfaceDescriptor)(const char *interface_id,
+                                                        BML_InterfaceRuntimeDesc *out_desc);
+typedef void (*PFN_BML_DiagEnumerateInterfaces)(PFN_BML_InterfaceRuntimeEnumerator callback,
+                                                 void *user_data,
+                                                 uint64_t required_flags_mask);
+typedef BML_Bool (*PFN_BML_DiagInterfaceExists)(const char *interface_id);
+typedef BML_Bool (*PFN_BML_DiagIsInterfaceCompatible)(const char *interface_id,
+                                                       const BML_Version *required_abi);
+typedef void (*PFN_BML_DiagEnumerateByProvider)(const char *provider_id,
+                                                 PFN_BML_InterfaceRuntimeEnumerator callback,
+                                                 void *user_data);
+typedef void (*PFN_BML_DiagEnumerateByCapability)(uint64_t required_caps,
+                                                   PFN_BML_InterfaceRuntimeEnumerator callback,
+                                                   void *user_data);
+typedef uint32_t (*PFN_BML_DiagGetInterfaceCount)(void);
+typedef uint32_t (*PFN_BML_DiagGetLeaseCount)(const char *interface_id);
+
+/* Host runtime contribution function pointer types */
+typedef BML_Result (*PFN_BML_HostRegisterContribution)(BML_Mod provider_mod,
+                                                        const char *host_interface_id,
+                                                        BML_InterfaceRegistration *out_registration);
+typedef BML_Result (*PFN_BML_HostUnregisterContribution)(BML_InterfaceRegistration registration);
+
+/*
+ * Interface runtime contract:
+ *
+ * - Consumers use acquire/release to obtain typed synchronous capabilities.
+ * - Providers use register/unregister for ordinary interface publication.
+ * - HOST_OWNED contribution lifetimes are not published through register/unregister;
+ *   they must be mediated by the internal host runtime interface.
+ *
+ * These entry points are part of the runtime interface surface after bootstrap
+ * has been established. They are distinct from the bootstrap minimum itself.
+ */
+typedef BML_Result (*PFN_BML_InterfaceRegister)(const BML_InterfaceDesc *desc);
+typedef BML_Result (*PFN_BML_InterfaceAcquire)(const char *interface_id,
+                                               const BML_Version *required_abi,
+                                               const void **out_implementation,
+                                               BML_InterfaceLease *out_lease);
+typedef BML_Result (*PFN_BML_InterfaceRelease)(BML_InterfaceLease lease);
+typedef BML_Result (*PFN_BML_InterfaceUnregister)(const char *interface_id);
+
+extern PFN_BML_InterfaceAcquire bmlInterfaceAcquire;
+extern PFN_BML_InterfaceRelease bmlInterfaceRelease;
+
+BML_END_CDECLS
+
+#endif /* BML_INTERFACE_H */
