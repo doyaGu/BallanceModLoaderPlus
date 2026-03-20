@@ -49,8 +49,8 @@ struct KernelServices {
     std::unique_ptr<ApiRegistry>        api_registry;
     std::unique_ptr<InterfaceRegistry>  interface_registry;
 
-    // -- L3: top-level context (non-owning) ---------------
-    Context            *context           = nullptr;
+    // -- L3: top-level context (owned) --------------------
+    std::unique_ptr<Context>            context;
 
     KernelServices() = default;
     ~KernelServices();

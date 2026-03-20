@@ -359,19 +359,15 @@ namespace BML::Core {
 
         DebugLog("Phase 0: Initializing core...");
 
-        // Initialize context with runtime version
-        auto &ctx = Context::Instance();
-        ctx.Initialize(bmlMakeVersion(0, 4, 0));
-
-        // Build the service graph.  L0+L1 are owned; L2+ are non-owning.
+        // Build the service graph.  All subsystems owned by KernelServices.
         state.kernel = std::make_unique<KernelServices>();
         auto &k = *state.kernel;
-        // L0: owned
+        // L0
         k.diagnostics        = std::make_unique<DiagnosticManager>();
         k.memory             = std::make_unique<MemoryManager>();
         k.sync               = std::make_unique<SyncManager>();
         k.profiling          = std::make_unique<ProfilingManager>();
-        // L1: owned
+        // L1
         k.fault_tracker      = std::make_unique<FaultTracker>();
         k.crash_dump         = std::make_unique<CrashDumpWriter>();
         k.hooks              = std::make_unique<HookRegistry>();
@@ -379,19 +375,22 @@ namespace BML::Core {
         k.timers             = std::make_unique<TimerManager>();
         k.leases             = std::make_unique<LeaseManager>();
         k.config             = std::make_unique<ConfigStore>();
-        // L2: owned
+        // L2
         k.api_registry       = std::make_unique<ApiRegistry>();
         k.interface_registry = std::make_unique<InterfaceRegistry>();
-        // L3: non-owning
-        k.context            = &ctx;
+        // L3
+        k.context            = std::make_unique<Context>();
         InstallKernel(&k);
+
+        // Initialize context with runtime version
+        k.context->Initialize(bmlMakeVersion(0, 4, 0));
 
         RegisterBootstrapExports();
 
         // Register core APIs
         RegisterCoreApis();
         RegisterBuiltinInterfaces();
-        PopulateBuiltinServices(ctx.GetServiceHubMutable()->m_Builtins);
+        PopulateBuiltinServices(k.context->GetServiceHubMutable()->m_Builtins);
 
         state.core_initialized = true;
         state.bootstrap_state = BML_BOOTSTRAP_STATE_CORE_INITIALIZED;

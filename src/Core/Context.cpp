@@ -1,5 +1,7 @@
 #include "Context.h"
 
+#include "KernelServices.h"
+
 #include <cstdio>
 #include <chrono>
 #include <filesystem>
@@ -132,8 +134,11 @@ namespace BML::Core {
     }
 
     Context &Context::Instance() {
-        static Context instance;
-        return instance;
+        auto *k = GetKernelOrNull();
+        if (k && k->context)
+            return *k->context;
+        static Context fallback;
+        return fallback;
     }
 
     Context::Context() {

@@ -115,9 +115,10 @@ namespace BML::Core {
 
         static std::wstring SanitizeIdentifierForFilename(const std::string &value);
 
-    private:
         Context();
         ~Context() = default;
+
+    private:
         Context(const Context &) = delete;
         Context &operator=(const Context &) = delete;
 
