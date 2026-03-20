@@ -102,6 +102,10 @@ private:
     void PublishLifecycleEvent(const char *topic);
     void PublishProcessEvent(float deltaTime);
 
+    // Asset path registration with CKPathManager
+    void RegisterModAssetPaths();
+    void UnregisterModAssetPaths();
+
     CKRenderContext *m_RenderContext = nullptr;
     float m_LastTime = 0.0f;
     bool m_EngineReady = false;

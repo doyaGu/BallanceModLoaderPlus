@@ -27,6 +27,9 @@
 #include "bml_types.h"
 #include "bml_errors.h"
 
+#define BML_LOADER_IMPLEMENTATION
+#include "bml_loader.h"
+
 #include "ModManager.h"
 
 //-----------------------------------------------------------------------------
@@ -83,11 +86,6 @@ static void UnloadBMLAPI() {
         ::FreeLibrary(s_hBML);
         s_hBML = nullptr;
     }
-}
-
-// Accessor for ModManager to get bmlGetProcAddress
-void* ModLoaderGetProcAddress(const char* name) {
-    return s_bmlGetProcAddress ? s_bmlGetProcAddress(name) : nullptr;
 }
 
 void ModLoaderUpdateCore() {
@@ -231,6 +229,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
             UnloadBMLAPI();
             return FALSE;
         }
+        if (!s_bmlGetProcAddress || BML_BOOTSTRAP_LOAD(s_bmlGetProcAddress) != BML_RESULT_OK) {
+            OutputDebugStringA("ModLoader: Fatal - Unable to load bootstrap interface surface.\n");
+            if (s_bmlShutdown) s_bmlShutdown();
+            UnloadBMLAPI();
+            return FALSE;
+        }
 
         if (MH_Initialize() != MH_OK) {
             OutputDebugStringA("ModLoader: Fatal - Unable to initialize MinHook.\n");
@@ -260,6 +264,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
         }
 
         if (s_bmlShutdown) s_bmlShutdown();
+        bmlUnloadAPI();
 
         UnloadBMLAPI();
 
