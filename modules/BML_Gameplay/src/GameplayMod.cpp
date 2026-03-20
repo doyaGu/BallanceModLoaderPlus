@@ -10,7 +10,7 @@
 #include <unordered_set>
 
 #include "bml_builtin_interfaces.h"
-#include "bml_config.hpp"
+#include "bml_config_bind.hpp"
 #include "bml_core.hpp"
 #include "bml_game_topics.h"
 #include "bml_imgui.hpp"
@@ -38,7 +38,7 @@ struct GameplaySettings {
     bool showTitle = true;
     bool showFps = true;
     bool showSr = true;
-    uint32_t fpsUpdateFrequency = kDefaultFpsUpdateFrequency;
+    int32_t fpsUpdateFrequency = static_cast<int32_t>(kDefaultFpsUpdateFrequency);
     std::string titleText;
 };
 
@@ -69,6 +69,7 @@ void AddOutlinedText(ImDrawList *drawList, ImFont *font, float size, ImVec2 pos,
 class GameplayMod : public bml::Module {
     bml::imc::SubscriptionManager m_Subs;
     GameplaySettings m_Settings;
+    bml::ConfigBindings m_Cfg;
     std::unordered_set<CK_ID> m_PatchedScripts;
     CKBehaviorLink *m_OverclockLinks[3] = {};
     CKBehaviorIO *m_OverclockLinkIO[3][2] = {};
@@ -79,52 +80,34 @@ class GameplayMod : public bml::Module {
     bool m_SrVisible = false;
     float m_SrAlpha = 1.0f;
 
-    void EnsureDefaultConfig() {
-        auto config = Services().Config();
-        if (!config.GetBool("Tweak", "LanternAlphaTest").has_value()) {
-            config.SetBool("Tweak", "LanternAlphaTest", true);
-        }
-        if (!config.GetBool("Tweak", "FixLifeBallFreeze").has_value()) {
-            config.SetBool("Tweak", "FixLifeBallFreeze", true);
-        }
-        if (!config.GetBool("Tweak", "Overclock").has_value()) {
-            config.SetBool("Tweak", "Overclock", false);
-        }
-        if (!config.GetBool("General", "Enabled").has_value()) {
-            config.SetBool("General", "Enabled", true);
-        }
-        if (!config.GetString("General", "TitleText").has_value()) {
-            const std::string defaultTitle = BuildDefaultTitle(Services().Builtins().Context);
-            config.SetString("General", "TitleText", defaultTitle.c_str());
-        }
-        if (!config.GetBool("HUD", "ShowTitle").has_value()) {
-            config.SetBool("HUD", "ShowTitle", true);
-        }
-        if (!config.GetBool("HUD", "ShowFPS").has_value()) {
-            config.SetBool("HUD", "ShowFPS", true);
-        }
-        if (!config.GetBool("HUD", "ShowSRTimer").has_value()) {
-            config.SetBool("HUD", "ShowSRTimer", true);
-        }
-        if (!config.GetInt("HUD", "FPSUpdateFrequency").has_value()) {
-            config.SetInt("HUD", "FPSUpdateFrequency", static_cast<int32_t>(kDefaultFpsUpdateFrequency));
-        }
+    void InitConfigBindings() {
+        m_Cfg.Clear();
+        const std::string defaultTitle = BuildDefaultTitle(Services().Builtins().Context);
+        m_Cfg.Bind("Tweak", "LanternAlphaTest", m_Settings.lanternAlphaTest, true);
+        m_Cfg.Bind("Tweak", "FixLifeBallFreeze", m_Settings.fixLifeBallFreeze, true);
+        m_Cfg.Bind("Tweak", "Overclock", m_Settings.overclock, false);
+        m_Cfg.Bind("General", "Enabled", m_Settings.hudEnabled, true);
+        m_Cfg.Bind("General", "TitleText", m_Settings.titleText, defaultTitle);
+        m_Cfg.Bind("HUD", "ShowTitle", m_Settings.showTitle, true);
+        m_Cfg.Bind("HUD", "ShowFPS", m_Settings.showFps, true);
+        m_Cfg.Bind("HUD", "ShowSRTimer", m_Settings.showSr, true);
+        m_Cfg.Bind("HUD", "FPSUpdateFrequency", m_Settings.fpsUpdateFrequency,
+            static_cast<int32_t>(kDefaultFpsUpdateFrequency));
+    }
+
+    void NormalizeConfig() {
+        m_Settings.fpsUpdateFrequency = std::max(1, m_Settings.fpsUpdateFrequency);
+        m_FpsCounter.SetUpdateFrequency(static_cast<uint32_t>(m_Settings.fpsUpdateFrequency));
+    }
+
+    void SyncConfig() {
+        m_Cfg.Sync(Services().Config());
+        NormalizeConfig();
     }
 
     void RefreshConfig() {
-        auto config = Services().Config();
-        m_Settings.lanternAlphaTest = config.GetBool("Tweak", "LanternAlphaTest").value_or(true);
-        m_Settings.fixLifeBallFreeze = config.GetBool("Tweak", "FixLifeBallFreeze").value_or(true);
-        m_Settings.overclock = config.GetBool("Tweak", "Overclock").value_or(false);
-        m_Settings.hudEnabled = config.GetBool("General", "Enabled").value_or(true);
-        m_Settings.titleText = config.GetString("General", "TitleText").value_or(BuildDefaultTitle(Services().Builtins().Context));
-        m_Settings.showTitle = config.GetBool("HUD", "ShowTitle").value_or(true);
-        m_Settings.showFps = config.GetBool("HUD", "ShowFPS").value_or(true);
-        m_Settings.showSr = config.GetBool("HUD", "ShowSRTimer").value_or(true);
-        m_Settings.fpsUpdateFrequency = static_cast<uint32_t>(std::max(
-            1,
-            config.GetInt("HUD", "FPSUpdateFrequency").value_or(static_cast<int32_t>(kDefaultFpsUpdateFrequency))));
-        m_FpsCounter.SetUpdateFrequency(m_Settings.fpsUpdateFrequency);
+        m_Cfg.Refresh(Services().Config());
+        NormalizeConfig();
     }
 
     CKContext *GetContext() const {
@@ -407,8 +390,8 @@ public:
 
         Services().Locale().Load(nullptr);
 
-        EnsureDefaultConfig();
-        RefreshConfig();
+        InitConfigBindings();
+        SyncConfig();
         ApplyLanternMaterial();
 
         m_DrawReg = bml::ui::RegisterDraw("bml.gameplay.overlay", 25, DrawOverlay, this);
@@ -470,6 +453,7 @@ public:
 
     void OnDetach() override {
         m_PatchedScripts.clear();
+        m_Cfg.Clear();
         for (int index = 0; index < 3; ++index) {
             m_OverclockLinks[index] = nullptr;
             m_OverclockLinkIO[index][0] = nullptr;

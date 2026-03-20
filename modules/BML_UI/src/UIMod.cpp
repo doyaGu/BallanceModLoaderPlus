@@ -13,10 +13,10 @@
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_module.hpp"
 #include "bml_builtin_interfaces.h"
+#include "bml_config_bind.hpp"
 #include "bml_imgui_api.h"
 #include "bml_interface.h"
 #include "bml_ui.h"
-#include "bml_config.hpp"
 #include "bml_engine_events.h"
 #include "bml_engine_events.hpp"
 #include "bml_topics.h"
@@ -154,6 +154,7 @@ class UIMod : public bml::Module {
     float m_SecondaryFontSize = 32.0f;
     std::string m_SecondaryFontRanges = "ChineseFull";
     bool m_EnableIniSettings = true;
+    bml::ConfigBindings m_Cfg;
     std::string m_ProviderId;
     std::mutex m_DrawMutex;
     std::vector<UIDrawContribution> m_Contributions;
@@ -303,45 +304,20 @@ class UIMod : public bml::Module {
     // Config and resource management
     // =========================================================================
 
-    void EnsureDefaultConfig() {
-        auto config = Services().Config();
-
-        if (!config.GetString("GUI", "FontFilename").has_value()) {
-            config.SetString("GUI", "FontFilename", "unifont.otf");
-        }
-        if (!config.GetFloat("GUI", "FontSize").has_value()) {
-            config.SetFloat("GUI", "FontSize", 32.0f);
-        }
-        if (!config.GetString("GUI", "FontRanges").has_value()) {
-            config.SetString("GUI", "FontRanges", "ChineseFull");
-        }
-        if (!config.GetBool("GUI", "EnableSecondaryFont").has_value()) {
-            config.SetBool("GUI", "EnableSecondaryFont", false);
-        }
-        if (!config.GetString("GUI", "SecondaryFontFilename").has_value()) {
-            config.SetString("GUI", "SecondaryFontFilename", "unifont.otf");
-        }
-        if (!config.GetFloat("GUI", "SecondaryFontSize").has_value()) {
-            config.SetFloat("GUI", "SecondaryFontSize", 32.0f);
-        }
-        if (!config.GetString("GUI", "SecondaryFontRanges").has_value()) {
-            config.SetString("GUI", "SecondaryFontRanges", "ChineseFull");
-        }
-        if (!config.GetBool("GUI", "EnableIniSettings").has_value()) {
-            config.SetBool("GUI", "EnableIniSettings", true);
-        }
+    void InitConfigBindings() {
+        m_Cfg.Clear();
+        m_Cfg.Bind("GUI", "FontFilename", m_FontFilename, "unifont.otf");
+        m_Cfg.Bind("GUI", "FontSize", m_FontSize, 32.0f);
+        m_Cfg.Bind("GUI", "FontRanges", m_FontRanges, "ChineseFull");
+        m_Cfg.Bind("GUI", "EnableSecondaryFont", m_EnableSecondaryFont, false);
+        m_Cfg.Bind("GUI", "SecondaryFontFilename", m_SecondaryFontFilename, "unifont.otf");
+        m_Cfg.Bind("GUI", "SecondaryFontSize", m_SecondaryFontSize, 32.0f);
+        m_Cfg.Bind("GUI", "SecondaryFontRanges", m_SecondaryFontRanges, "ChineseFull");
+        m_Cfg.Bind("GUI", "EnableIniSettings", m_EnableIniSettings, true);
     }
 
     void RefreshGuiConfig() {
-        auto config = Services().Config();
-        m_FontFilename = config.GetString("GUI", "FontFilename").value_or("unifont.otf");
-        m_FontSize = config.GetFloat("GUI", "FontSize").value_or(32.0f);
-        m_FontRanges = config.GetString("GUI", "FontRanges").value_or("ChineseFull");
-        m_EnableSecondaryFont = config.GetBool("GUI", "EnableSecondaryFont").value_or(false);
-        m_SecondaryFontFilename = config.GetString("GUI", "SecondaryFontFilename").value_or("unifont.otf");
-        m_SecondaryFontSize = config.GetFloat("GUI", "SecondaryFontSize").value_or(32.0f);
-        m_SecondaryFontRanges = config.GetString("GUI", "SecondaryFontRanges").value_or("ChineseFull");
-        m_EnableIniSettings = config.GetBool("GUI", "EnableIniSettings").value_or(true);
+        m_Cfg.Refresh(Services().Config());
     }
 
     void InitializeLoaderPaths() {
@@ -751,7 +727,8 @@ public:
         if (Services().Builtins().Module->GetModId(m_Handle, &mod_id) == BML_RESULT_OK && mod_id) {
             m_ProviderId = mod_id;
         }
-        EnsureDefaultConfig();
+        InitConfigBindings();
+        m_Cfg.Sync(Services().Config());
         InitializeLoaderPaths();
 
         if (MH_Initialize() != MH_OK) {
@@ -899,6 +876,7 @@ public:
         m_RenderDataReady = false;
         m_WindowRect = VxRect();
         m_OldWindowRect = VxRect();
+        m_Cfg.Clear();
         m_HostRuntime.Reset();
 
         Services().Log().Info("BML UI Module shut down");
