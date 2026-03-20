@@ -164,6 +164,14 @@ namespace BML::Core {
         m_RuntimeVersion = runtime_version;
         m_CleanupRequested = false;
         m_ShutdownState.store(ShutdownState::Running, std::memory_order_release);
+        m_CreatedModHandles.clear();
+        m_HostModHandle = std::make_unique<BML_Mod_T>();
+        if (m_HostModHandle) {
+            m_HostModHandle->id = "ModLoader";
+            m_HostModHandle->version = runtime_version;
+            m_HostModHandle->capabilities.push_back("bml.internal.runtime");
+            m_CreatedModHandles.insert(m_HostModHandle.get());
+        }
         {
             std::lock_guard<std::mutex> retain_trace_lock(m_RetainTraceMutex);
             m_RetainTrace.clear();
@@ -206,6 +214,7 @@ namespace BML::Core {
 
         m_ShutdownState.store(ShutdownState::ShuttingDownModules, std::memory_order_release);
         ShutdownModulesLocked();
+        m_CreatedModHandles.clear();
 
         // Clear all manifests
         m_Manifests.clear();
@@ -219,6 +228,12 @@ namespace BML::Core {
                 }
             }
             m_UserData.clear();
+        }
+
+        // Clear runtime providers (modules that registered them are already unloaded)
+        {
+            std::lock_guard<std::mutex> provider_lock(m_RuntimeProviderMutex);
+            m_RuntimeProviders.clear();
         }
 
         // Note: Extension registrations are cleaned up per-provider during module shutdown
@@ -269,6 +284,7 @@ namespace BML::Core {
             return;
         if (module.mod_handle) {
             BML_Mod raw = module.mod_handle.get();
+            m_CreatedModHandles.insert(raw);
             m_ModHandlesById[module.id] = raw;
             if (module.handle) {
                 m_ModHandlesByModule[module.handle] = raw;
@@ -296,12 +312,23 @@ namespace BML::Core {
         return snapshot;
     }
 
+    uint32_t Context::GetLoadedModuleCount() const {
+        std::lock_guard<std::mutex> lock(m_StateMutex);
+        return static_cast<uint32_t>(m_LoadedModules.size());
+    }
+
+    BML_Mod Context::GetLoadedModuleAt(uint32_t index) const {
+        std::lock_guard<std::mutex> lock(m_StateMutex);
+        if (index >= m_LoadedModules.size()) return nullptr;
+        return m_LoadedModules[index].mod_handle.get();
+    }
+
     void Context::ShutdownModules() {
         std::lock_guard<std::mutex> lock(m_StateMutex);
         ShutdownModulesLocked();
     }
 
-    std::unique_ptr<BML_Mod_T> Context::CreateModHandle(const ModManifest &manifest) const {
+    std::unique_ptr<BML_Mod_T> Context::CreateModHandle(const ModManifest &manifest) {
         auto handle = std::make_unique<BML_Mod_T>();
         handle->id = manifest.package.id;
         handle->manifest = &manifest;
@@ -311,6 +338,13 @@ namespace BML::Core {
         handle->capabilities = manifest.capabilities;
         handle->log_path = BuildLogPath(manifest);
         handle->log_file.reset(OpenLogFile(handle->log_path));
+        if (!manifest.directory.empty()) {
+            handle->directory_utf8 = utils::Utf16ToUtf8(manifest.directory);
+        }
+        {
+            std::lock_guard<std::mutex> lock(m_StateMutex);
+            m_CreatedModHandles.insert(handle.get());
+        }
         return handle;
     }
 
@@ -324,8 +358,23 @@ namespace BML::Core {
         return FindModHandleLocked(mod);
     }
 
+    BML_Mod_T *Context::ResolveCurrentConsumer() {
+        return const_cast<BML_Mod_T *>(static_cast<const Context *>(this)->ResolveCurrentConsumer());
+    }
+
+    const BML_Mod_T *Context::ResolveCurrentConsumer() const {
+        std::lock_guard<std::mutex> lock(m_StateMutex);
+        if (!g_CurrentModule) {
+            return m_HostModHandle.get();
+        }
+        return FindModHandleLocked(g_CurrentModule);
+    }
+
     BML_Mod Context::GetModHandleById(const std::string &id) const {
         std::lock_guard<std::mutex> lock(m_StateMutex);
+        if (m_HostModHandle && m_HostModHandle->id == id) {
+            return m_HostModHandle.get();
+        }
         auto it = m_ModHandlesById.find(id);
         return it != m_ModHandlesById.end() ? it->second : nullptr;
     }
@@ -336,6 +385,11 @@ namespace BML::Core {
         std::lock_guard<std::mutex> lock(m_StateMutex);
         auto it = m_ModHandlesByModule.find(module);
         return it != m_ModHandlesByModule.end() ? it->second : nullptr;
+    }
+
+    BML_Mod Context::GetSyntheticHostModule() const {
+        std::lock_guard<std::mutex> lock(m_StateMutex);
+        return m_HostModHandle ? m_HostModHandle.get() : nullptr;
     }
 
     void Context::AppendShutdownHook(BML_Mod mod, BML_ShutdownCallback callback, void *user_data) {
@@ -423,6 +477,8 @@ namespace BML::Core {
         UnloadModules(m_LoadedModules, ctx);
         m_ModHandlesById.clear();
         m_ModHandlesByModule.clear();
+        m_CreatedModHandles.clear();
+        m_HostModHandle.reset();
     }
 
     BML_Mod_T *Context::FindModHandleLocked(BML_Mod mod) {
@@ -432,10 +488,14 @@ namespace BML::Core {
     const BML_Mod_T *Context::FindModHandleLocked(BML_Mod mod) const {
         if (!mod)
             return nullptr;
+        if (m_HostModHandle && m_HostModHandle.get() == mod)
+            return m_HostModHandle.get();
         for (const auto &module : m_LoadedModules) {
             if (module.mod_handle && module.mod_handle.get() == mod)
                 return module.mod_handle.get();
         }
+        if (m_CreatedModHandles.find(mod) != m_CreatedModHandles.end())
+            return mod;
         return nullptr;
     }
 
@@ -561,5 +621,76 @@ namespace BML::Core {
 
         *out_data = nullptr;
         return BML_RESULT_OK;
+    }
+    // ========================================================================
+    // Runtime Provider Registry
+    // ========================================================================
+
+    BML_Result Context::RegisterRuntimeProvider(
+            const BML_ModuleRuntimeProvider *provider,
+            const std::string &owner_id) {
+        if (!provider || provider->struct_size < sizeof(BML_ModuleRuntimeProvider))
+            return BML_RESULT_INVALID_ARGUMENT;
+        if (!provider->CanHandle || !provider->AttachModule ||
+            !provider->DetachModule)
+            return BML_RESULT_INVALID_ARGUMENT;
+        if (owner_id.empty())
+            return BML_RESULT_INVALID_ARGUMENT;
+
+        std::lock_guard<std::mutex> lock(m_RuntimeProviderMutex);
+        for (const auto &entry : m_RuntimeProviders) {
+            if (entry.provider == provider)
+                return BML_RESULT_ALREADY_EXISTS;
+        }
+        m_RuntimeProviders.push_back({provider, owner_id});
+        CoreLog(BML_LOG_INFO, kContextLogCategory,
+                "Runtime provider registered by '%s'", owner_id.c_str());
+        return BML_RESULT_OK;
+    }
+
+    BML_Result Context::UnregisterRuntimeProvider(
+            const BML_ModuleRuntimeProvider *provider) {
+        if (!provider)
+            return BML_RESULT_INVALID_ARGUMENT;
+
+        std::lock_guard<std::mutex> lock(m_RuntimeProviderMutex);
+        for (auto it = m_RuntimeProviders.begin(); it != m_RuntimeProviders.end(); ++it) {
+            if (it->provider == provider) {
+                CoreLog(BML_LOG_INFO, kContextLogCategory,
+                        "Runtime provider unregistered (owner '%s')",
+                        it->owner_id.c_str());
+                m_RuntimeProviders.erase(it);
+                return BML_RESULT_OK;
+            }
+        }
+        return BML_RESULT_NOT_FOUND;
+    }
+
+    void Context::InvalidateRuntimeProvider(const std::string &owner_id) {
+        if (owner_id.empty())
+            return;
+
+        std::lock_guard<std::mutex> lock(m_RuntimeProviderMutex);
+        size_t before = m_RuntimeProviders.size();
+        std::erase_if(m_RuntimeProviders,
+                      [&](const RuntimeProviderEntry &e) { return e.owner_id == owner_id; });
+        if (m_RuntimeProviders.size() < before) {
+            CoreLog(BML_LOG_WARN, kContextLogCategory,
+                    "Runtime provider invalidated for owner '%s'",
+                    owner_id.c_str());
+        }
+    }
+
+    const BML_ModuleRuntimeProvider *Context::FindRuntimeProvider(
+            const std::string &entry_path_utf8) const {
+        if (entry_path_utf8.empty())
+            return nullptr;
+
+        std::lock_guard<std::mutex> lock(m_RuntimeProviderMutex);
+        for (const auto &entry : m_RuntimeProviders) {
+            if (entry.provider->CanHandle(entry_path_utf8.c_str()))
+                return entry.provider;
+        }
+        return nullptr;
     }
 } // namespace BML::Core

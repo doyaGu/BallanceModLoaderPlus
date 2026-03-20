@@ -1,5 +1,6 @@
 #include "ModuleRuntime.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cctype>
 #include <cstdlib>
@@ -13,6 +14,7 @@
 #include <vector>
 
 #include "bml_export.h"
+#include "FaultTracker.h"
 #include "bml_hot_reload.h"
 #include "bml_imc.h"
 #include "bml_topics.h"
@@ -109,6 +111,16 @@ namespace BML::Core {
             }
             return buffer;
         }
+
+        void InvalidateRuntimeProvidersForSnapshot(const std::vector<LoadedModuleSnapshot> &modules) {
+            auto &context = Context::Instance();
+            for (const auto &module : modules) {
+                if (module.id.empty()) {
+                    continue;
+                }
+                context.InvalidateRuntimeProvider(module.id);
+            }
+        }
     } // namespace
 
     bool ModuleRuntime::DiscoverAndValidate(const std::wstring &mods_dir, ModuleBootstrapDiagnostics &out_diag) {
@@ -143,7 +155,15 @@ namespace BML::Core {
             out_diag.dependency_warnings.push_back(warning);
         }
 
+        FilterDisabledModules(loadOrder);
+
         RecordLoadOrder(loadOrder, out_diag);
+
+        // LIFETIME: ResolvedNode::manifest pointers reference objects owned by
+        // unique_ptrs in manifestResult.manifests. The std::move below transfers
+        // ownership to Context without relocating the objects, so the pointers
+        // in m_DiscoveredOrder remain valid. Do NOT copy or reallocate manifests
+        // between here and LoadDiscovered().
         m_DiscoveredOrder = loadOrder;
 
         auto &ctx = Context::Instance();
@@ -159,8 +179,8 @@ namespace BML::Core {
     bool ModuleRuntime::LoadDiscovered(ModuleBootstrapDiagnostics &out_diag) {
         out_diag = {};
 
-        if (m_DiscoveredOrder.empty()) {
-            // Nothing discovered yet
+        if (m_DiscoveredModsDir.empty()) {
+            // DiscoverAndValidate() has not run yet.
             ApplyDiagnostics(out_diag);
             return false;
         }
@@ -172,8 +192,6 @@ namespace BML::Core {
         if (!LoadModules(m_DiscoveredOrder,
                          ctx,
                          &bmlGetProcAddress,
-                         &bmlGetProcAddressById,
-                         &bmlGetApiId,
                          loadedModules,
                          loadError)) {
             out_diag.load_error = loadError;
@@ -207,7 +225,22 @@ namespace BML::Core {
     void ModuleRuntime::Shutdown() {
         m_DiagCallback = nullptr;
         StopHotReloadCoordinator();
+        const auto loadedModules = Context::Instance().GetLoadedModuleSnapshot();
         Context::Instance().ShutdownModules();
+        InvalidateRuntimeProvidersForSnapshot(loadedModules);
+    }
+
+    void ModuleRuntime::FilterDisabledModules(std::vector<ResolvedNode> &order) const {
+        auto removed = std::remove_if(order.begin(), order.end(),
+            [](const ResolvedNode &node) {
+                return FaultTracker::Instance().IsDisabled(node.id);
+            });
+        for (auto it = removed; it != order.end(); ++it) {
+            CoreLog(BML_LOG_WARN, kModuleRuntimeLogCategory,
+                    "Skipping module '%s': disabled by fault tracker",
+                    it->id.c_str());
+        }
+        order.erase(removed, order.end());
     }
 
     void ModuleRuntime::RecordLoadOrder(const std::vector<ResolvedNode> &order,
@@ -258,7 +291,9 @@ namespace BML::Core {
 
         auto &ctx = Context::Instance();
         BroadcastLifecycleEvent(BML_TOPIC_SYSTEM_MOD_UNLOAD, ctx.GetLoadedModuleSnapshot());
+        const auto priorLoadedModules = ctx.GetLoadedModuleSnapshot();
         ctx.ShutdownModules();
+        InvalidateRuntimeProvidersForSnapshot(priorLoadedModules);
         ctx.ClearManifests();
         // Note: Extensions are cleaned up per-provider in ShutdownModules()
 
@@ -285,6 +320,7 @@ namespace BML::Core {
             out_diag.dependency_warnings.push_back(warning);
         }
 
+        FilterDisabledModules(loadOrder);
         RecordLoadOrder(loadOrder, out_diag);
         m_DiscoveredOrder = loadOrder;
 
@@ -297,8 +333,6 @@ namespace BML::Core {
         if (!LoadModules(loadOrder,
                          ctx,
                          &bmlGetProcAddress,
-                         &bmlGetProcAddressById,
-                         &bmlGetApiId,
                          loadedModules,
                          loadError)) {
             out_diag.load_error = loadError;
@@ -322,14 +356,14 @@ namespace BML::Core {
             return;
 
         BML_TopicId topic_id;
-        if (ImcBus::Instance().GetTopicId(topic, &topic_id) != BML_RESULT_OK)
+        if (ImcGetTopicId(topic, &topic_id) != BML_RESULT_OK)
             return;
 
         for (const auto &module : modules) {
             if (!module.manifest)
                 continue;
             auto payload = BuildLifecyclePayload(*module.manifest);
-            ImcBus::Instance().Publish(topic_id, payload.data(), payload.size());
+            ImcPublish(topic_id, payload.data(), payload.size());
         }
     }
 

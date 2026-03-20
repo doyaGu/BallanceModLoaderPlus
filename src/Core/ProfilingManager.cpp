@@ -261,7 +261,7 @@ namespace BML::Core {
         std::string escapedName = EscapeJsonString(evt.name);
         std::string escapedCategory = EscapeJsonString(evt.category);
 
-        // Convert ns to microseconds (Chrome Tracing uses μs)
+        // Convert ns to microseconds (Chrome Tracing uses uss)
         double ts_us = static_cast<double>(evt.timestamp_ns) / 1000.0;
 
         fprintf(fp, "    {\"name\":\"%s\",\"ph\":\"%s\",\"ts\":%.3f,\"pid\":1,\"tid\":%llu",
@@ -355,6 +355,12 @@ namespace BML::Core {
             SetLastError(BML_RESULT_INVALID_ARGUMENT, "out_stats is NULL", "bmlGetProfilingStats");
             return BML_RESULT_INVALID_ARGUMENT;
         }
+        if (out_stats->struct_size < sizeof(BML_ProfilingStats)) {
+            SetLastError(BML_RESULT_INVALID_SIZE,
+                         "out_stats->struct_size is too small",
+                         "bmlGetProfilingStats");
+            return BML_RESULT_INVALID_SIZE;
+        }
 
         out_stats->total_events = m_TotalEvents.load(std::memory_order_relaxed);
         out_stats->total_scopes = m_TotalScopes.load(std::memory_order_relaxed);
@@ -372,22 +378,4 @@ namespace BML::Core {
         return BML_RESULT_OK;
     }
 
-    BML_Result ProfilingManager::GetProfilingCaps(BML_ProfilingCaps *out_caps) {
-        if (!out_caps) {
-            SetLastError(BML_RESULT_INVALID_ARGUMENT, "out_caps is NULL", "bmlProfilingGetCaps");
-            return BML_RESULT_INVALID_ARGUMENT;
-        }
-
-        out_caps->struct_size = sizeof(BML_ProfilingCaps);
-        out_caps->api_version = bmlGetApiVersion();
-        out_caps->capability_flags =
-            BML_PROFILING_CAP_TRACE_EVENTS |
-            BML_PROFILING_CAP_COUNTERS |
-            BML_PROFILING_CAP_MEMORY_TRACKING;
-        out_caps->active_backend = m_Backend;
-        out_caps->max_scope_depth = MAX_SCOPE_DEPTH;
-        out_caps->event_buffer_size = MAX_EVENTS;
-
-        return BML_RESULT_OK;
-    }
 } // namespace BML::Core

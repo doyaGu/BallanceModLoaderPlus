@@ -5,8 +5,6 @@
 #include "DiagnosticManager.h"
 
 #include "bml_errors.h"
-#include "bml_api_ids.h"
-#include "bml_capabilities.h"
 
 namespace BML::Core {
     BML_Result BML_API_GetLastError(BML_ErrorInfo* out_error) {
@@ -20,8 +18,8 @@ namespace BML::Core {
     void RegisterDiagnosticApis() {
         BML_BEGIN_API_REGISTRATION();
 
-        BML_REGISTER_API_WITH_CAPS(bmlGetLastError, BML_API_GetLastError, BML_CAP_DIAGNOSTICS);
-        BML_REGISTER_API_WITH_CAPS(bmlClearLastError, BML_API_ClearLastError, BML_CAP_DIAGNOSTICS);
-        BML_REGISTER_API_WITH_CAPS(bmlGetErrorString, GetErrorString, BML_CAP_DIAGNOSTICS);
+        BML_REGISTER_API(bmlGetLastError, BML_API_GetLastError);
+        BML_REGISTER_API(bmlClearLastError, BML_API_ClearLastError);
+        BML_REGISTER_API(bmlGetErrorString, GetErrorString);
     }
 } // namespace BML::Core

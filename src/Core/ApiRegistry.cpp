@@ -5,21 +5,9 @@
 #include <stdexcept>
 #include <vector>
 
-#include "Context.h"
 #include "Logging.h"
 
 namespace BML::Core {
-    namespace {
-        // Use CoreLog for consistent logging across the codebase
-        inline void DebugWarning(const char *message) {
-            CoreLog(BML_LOG_WARN, "api.registry", "%s", message);
-        }
-
-        inline void DebugInfo(const char *message) {
-            CoreLog(BML_LOG_DEBUG, "api.registry", "%s", message);
-        }
-    }
-
     namespace {
         std::shared_mutex g_Mutex;
 
@@ -30,11 +18,10 @@ namespace BML::Core {
         // Thread-local cache for hot API lookups
         thread_local ApiRegistry::CacheEntry g_TlsCache[TLS_CACHE_SIZE];
         thread_local size_t g_TlsCacheNextSlot = 0;
-        thread_local uint64_t g_TlsCacheVersion = 0; // Local copy of g_CacheVersion
+        thread_local uint64_t g_TlsCacheVersion = 0;
     }
 
     ApiRegistry::ApiRegistry() {
-        // Initialize direct table to nullptr (atomically for thread-safety)
         for (auto &slot : m_DirectTable) {
             slot.store(nullptr, std::memory_order_relaxed);
         }
@@ -44,6 +31,10 @@ namespace BML::Core {
         static ApiRegistry registry;
         return registry;
     }
+
+    // ========================================================================
+    // Name-Based Lookup
+    // ========================================================================
 
     void *ApiRegistry::Get(const std::string &name) const {
         std::shared_lock lock(g_Mutex);
@@ -67,33 +58,17 @@ namespace BML::Core {
         if (name_it == m_NameToId.end())
             return 0;
         auto entry_it = m_IdTable.find(name_it->second);
-        return entry_it != m_IdTable.end() ? entry_it->second.call_count.load(std::memory_order_relaxed) : 0;
-    }
-
-    void ApiRegistry::Clear() {
-        std::unique_lock lock(g_Mutex);
-        m_IdTable.clear();
-        m_NameToId.clear();
-        m_Metadata.clear();
-        m_StringStorage.clear();
-        for (auto &slot : m_DirectTable) {
-            slot.store(nullptr, std::memory_order_relaxed);
-        }
-        m_NextExtensionId.store(BML_EXTENSION_ID_START);
-        m_TotalCapabilities.store(0);
-
-        // Invalidate all TLS caches
-        g_CacheVersion.fetch_add(1, std::memory_order_release);
+        return entry_it != m_IdTable.end()
+            ? entry_it->second.call_count.load(std::memory_order_relaxed) : 0;
     }
 
     // ========================================================================
-    // ID-Based Fast Path Implementation
+    // ID-Based Fast Path
     // ========================================================================
 
     void *ApiRegistry::GetById(BML_ApiId api_id) const {
         if (api_id == BML_API_INVALID_ID)
             return nullptr;
-
         std::shared_lock lock(g_Mutex);
         return ResolvePointerLocked(api_id, true);
     }
@@ -101,7 +76,6 @@ namespace BML::Core {
     void *ApiRegistry::GetByIdWithoutCount(BML_ApiId api_id) const {
         if (api_id == BML_API_INVALID_ID)
             return nullptr;
-
         std::shared_lock lock(g_Mutex);
         return ResolvePointerLocked(api_id, false);
     }
@@ -109,16 +83,15 @@ namespace BML::Core {
     uint64_t ApiRegistry::GetCallCountById(BML_ApiId api_id) const {
         if (api_id == BML_API_INVALID_ID)
             return 0;
-
         std::shared_lock lock(g_Mutex);
         auto it = m_IdTable.find(api_id);
-        return it != m_IdTable.end() ? it->second.call_count.load(std::memory_order_relaxed) : 0;
+        return it != m_IdTable.end()
+            ? it->second.call_count.load(std::memory_order_relaxed) : 0;
     }
 
     bool ApiRegistry::GetApiId(const std::string &name, BML_ApiId *out_id) const {
         if (!out_id)
             return false;
-
         std::shared_lock lock(g_Mutex);
         auto it = m_NameToId.find(name);
         if (it != m_NameToId.end()) {
@@ -128,243 +101,15 @@ namespace BML::Core {
         return false;
     }
 
-    void ApiRegistry::RegisterCoreApiSet(const CoreApiDescriptor *descriptors, size_t count) {
-        if (!descriptors || count == 0)
-            return;
-
-        uint32_t satisfied = 0u;
-        std::vector<bool> completed(count, false);
-        size_t remaining = count;
-
-        while (remaining > 0) {
-            bool progressed = false;
-
-            for (size_t i = 0; i < count; ++i) {
-                if (completed[i])
-                    continue;
-
-                const auto &descriptor = descriptors[i];
-                if ((descriptor.depends_mask & satisfied) != descriptor.depends_mask)
-                    continue;
-
-                descriptor.register_fn();
-                satisfied |= descriptor.provides_mask;
-                completed[i] = true;
-                --remaining;
-                progressed = true;
-            }
-
-            if (!progressed) {
-                throw std::runtime_error("Core API descriptor dependency cycle detected");
-            }
-        }
-    }
-
     // ========================================================================
-    // API Registration
-    // ========================================================================
-
-    void ApiRegistry::RegisterApi(const ApiMetadata &metadata) {
-        std::unique_lock lock(g_Mutex);
-        RegisterApiLocked(metadata);
-    }
-
-    BML_ApiId ApiRegistry::RegisterExtension(
-        const std::string &name,
-        uint32_t version_major,
-        uint32_t version_minor,
-        const void *api_table,
-        size_t api_size,
-        const std::string &provider_id,
-        uint64_t capabilities,
-        const char *description
-    ) {
-        std::unique_lock lock(g_Mutex);
-
-        if (!api_table || api_size == 0) {
-            DebugWarning("Extension registration requires non-null API table and size");
-            return BML_API_INVALID_ID;
-        }
-
-        if (!CanRegisterLocked(name, BML_API_INVALID_ID)) {
-            return BML_API_INVALID_ID;
-        }
-
-        BML_ApiId new_id = m_NextExtensionId.load(std::memory_order_relaxed);
-        while (true) {
-            if (new_id >= BML_MAX_API_ID) {
-                DebugWarning("Extension ID space exhausted");
-                return BML_API_INVALID_ID;
-            }
-            if (m_NextExtensionId.compare_exchange_weak(
-                    new_id,
-                    new_id + 1,
-                    std::memory_order_relaxed,
-                    std::memory_order_relaxed)) {
-                break;
-            }
-        }
-
-        const char *name_cstr = StoreString(name.c_str());
-        const char *provider_cstr = StoreString(provider_id.c_str());
-
-        ApiMetadata meta;
-        meta.name = name_cstr;
-        meta.id = new_id;
-        meta.pointer = const_cast<void *>(api_table);
-        meta.version_major = static_cast<uint16_t>(version_major);
-        meta.version_minor = static_cast<uint16_t>(version_minor);
-        meta.version_patch = 0;
-        meta.capabilities = capabilities;
-        meta.type = BML_API_TYPE_EXTENSION;
-        meta.threading = BML_THREADING_FREE;
-        meta.provider_mod = provider_cstr;
-        meta.description = description;
-        meta.api_size = api_size;
-
-        RegisterApiLocked(meta);
-        return new_id;
-    }
-
-    // ========================================================================
-    // API Querying and Discovery
-    // ========================================================================
-
-    const ApiRegistry::ApiMetadata *ApiRegistry::QueryApi(BML_ApiId api_id) const {
-        std::shared_lock lock(g_Mutex);
-        auto it = m_Metadata.find(api_id);
-        return (it != m_Metadata.end()) ? &it->second : nullptr;
-    }
-
-    const ApiRegistry::ApiMetadata *ApiRegistry::QueryApi(const std::string &name) const {
-        std::shared_lock lock(g_Mutex);
-        auto id_it = m_NameToId.find(name);
-        if (id_it == m_NameToId.end()) {
-            return nullptr;
-        }
-        auto meta_it = m_Metadata.find(id_it->second);
-        return (meta_it != m_Metadata.end()) ? &meta_it->second : nullptr;
-    }
-
-    bool ApiRegistry::TryGetMetadata(BML_ApiId api_id, ApiMetadata &out_meta) const {
-        std::shared_lock lock(g_Mutex);
-        auto it = m_Metadata.find(api_id);
-        if (it == m_Metadata.end()) {
-            return false;
-        }
-        out_meta = it->second;
-        return true;
-    }
-
-    bool ApiRegistry::TryGetMetadata(const std::string &name, ApiMetadata &out_meta) const {
-        std::shared_lock lock(g_Mutex);
-        auto id_it = m_NameToId.find(name);
-        if (id_it == m_NameToId.end()) {
-            return false;
-        }
-        auto meta_it = m_Metadata.find(id_it->second);
-        if (meta_it == m_Metadata.end()) {
-            return false;
-        }
-        out_meta = meta_it->second;
-        return true;
-    }
-
-    bool ApiRegistry::GetDescriptor(BML_ApiId api_id, BML_ApiDescriptor *out_desc) const {
-        if (!out_desc) return false;
-
-        std::shared_lock lock(g_Mutex);
-        auto it = m_Metadata.find(api_id);
-        if (it == m_Metadata.end()) {
-            return false;
-        }
-
-        const ApiMetadata &meta = it->second;
-        out_desc->id = meta.id;
-        out_desc->name = meta.name;
-        out_desc->type = meta.type;
-        out_desc->version_major = meta.version_major;
-        out_desc->version_minor = meta.version_minor;
-        out_desc->version_patch = meta.version_patch;
-        out_desc->reserved = 0;
-        out_desc->capabilities = meta.capabilities;
-        out_desc->threading = meta.threading;
-        out_desc->provider_mod = meta.provider_mod;
-        out_desc->description = meta.description;
-        out_desc->call_count = meta.call_count.load(std::memory_order_relaxed);
-
-        return true;
-    }
-
-    void ApiRegistry::Enumerate(
-        BML_Bool (*callback)(BML_Context ctx, const BML_ApiDescriptor *desc, void *user_data),
-        void *user_data,
-        int type_filter
-    ) const {
-        if (!callback) return;
-
-        std::shared_lock lock(g_Mutex);
-
-        BML_Context ctx = Context::Instance().GetHandle();
-
-        for (const auto &[id, meta] : m_Metadata) {
-            // Apply type filter if specified
-            if (type_filter >= 0 && static_cast<int>(meta.type) != type_filter) {
-                continue;
-            }
-
-            BML_ApiDescriptor desc;
-            desc.id = meta.id;
-            desc.name = meta.name;
-            desc.type = meta.type;
-            desc.version_major = meta.version_major;
-            desc.version_minor = meta.version_minor;
-            desc.version_patch = meta.version_patch;
-            desc.reserved = 0;
-            desc.capabilities = meta.capabilities;
-            desc.threading = meta.threading;
-            desc.provider_mod = meta.provider_mod;
-            desc.description = meta.description;
-            desc.call_count = meta.call_count.load(std::memory_order_relaxed);
-
-            if (!callback(ctx, &desc, user_data)) {
-                break; // Callback requested stop
-            }
-        }
-    }
-
-    uint64_t ApiRegistry::GetTotalCapabilities() const {
-        return m_TotalCapabilities.load(std::memory_order_relaxed);
-    }
-
-    size_t ApiRegistry::GetApiCount(int type_filter) const {
-        std::shared_lock lock(g_Mutex);
-
-        if (type_filter < 0) {
-            return m_Metadata.size();
-        }
-
-        size_t count = 0;
-        for (const auto &[id, meta] : m_Metadata) {
-            if (static_cast<int>(meta.type) == type_filter) {
-                ++count;
-            }
-        }
-        return count;
-    }
-
-    // ========================================================================
-    // Performance: Direct Index Table and Caching
+    // Direct Index Table and TLS Cache
     // ========================================================================
 
     void *ApiRegistry::GetByIdDirect(BML_ApiId api_id) const {
-        if (api_id == BML_API_INVALID_ID || api_id >= MAX_DIRECT_API_ID) {
+        if (api_id == BML_API_INVALID_ID || api_id >= MAX_DIRECT_API_ID)
             return nullptr;
-        }
 
-        // Direct array access guarded by shared lock for metadata consistency
         std::shared_lock lock(g_Mutex);
-
         void *ptr = m_DirectTable[api_id].load(std::memory_order_acquire);
         if (!ptr) {
             ptr = ResolvePointerLocked(api_id, false);
@@ -372,24 +117,19 @@ namespace BML::Core {
                 m_DirectTable[api_id].store(ptr, std::memory_order_release);
             }
         }
-
         if (!ptr)
             return nullptr;
-
         ResolvePointerLocked(api_id, true);
         return ptr;
     }
 
     void *ApiRegistry::GetByIdCached(BML_ApiId api_id) const {
-        if (api_id == BML_API_INVALID_ID) {
+        if (api_id == BML_API_INVALID_ID)
             return nullptr;
-        }
 
         while (true) {
-            // Check if cache needs invalidation
             uint64_t current_version = g_CacheVersion.load(std::memory_order_acquire);
             if (g_TlsCacheVersion != current_version) {
-                // Invalidate local cache
                 for (size_t i = 0; i < TLS_CACHE_SIZE; ++i) {
                     g_TlsCache[i].id = BML_API_INVALID_ID;
                     g_TlsCache[i].ptr = nullptr;
@@ -403,14 +143,12 @@ namespace BML::Core {
                     continue;
 
                 std::shared_lock lock(g_Mutex);
-                if (g_CacheVersion.load(std::memory_order_acquire) != current_version) {
-                    break; // version changed, restart outer loop
-                }
+                if (g_CacheVersion.load(std::memory_order_acquire) != current_version)
+                    break;
 
                 void *ptr = ResolvePointerLocked(api_id, true);
-                if (ptr && ptr == g_TlsCache[i].ptr) {
+                if (ptr && ptr == g_TlsCache[i].ptr)
                     return ptr;
-                }
 
                 g_TlsCache[i].id = BML_API_INVALID_ID;
                 g_TlsCache[i].ptr = nullptr;
@@ -418,9 +156,8 @@ namespace BML::Core {
             }
 
             std::shared_lock lock(g_Mutex);
-            if (g_CacheVersion.load(std::memory_order_acquire) != current_version) {
+            if (g_CacheVersion.load(std::memory_order_acquire) != current_version)
                 continue;
-            }
 
             void *ptr = nullptr;
             bool counted = false;
@@ -434,89 +171,101 @@ namespace BML::Core {
                     m_DirectTable[api_id].store(ptr, std::memory_order_release);
                 }
             }
-
-            if (!ptr) {
+            if (!ptr)
                 return nullptr;
-            }
-
-            if (!counted) {
+            if (!counted)
                 ResolvePointerLocked(api_id, true);
-            }
 
             g_TlsCache[g_TlsCacheNextSlot].id = api_id;
             g_TlsCache[g_TlsCacheNextSlot].ptr = ptr;
             g_TlsCacheNextSlot = (g_TlsCacheNextSlot + 1) % TLS_CACHE_SIZE;
-
             return ptr;
         }
     }
 
     // ========================================================================
-    // Extension Management
+    // Registration
     // ========================================================================
 
-    bool ApiRegistry::LoadVersioned(
-        const std::string &name,
-        uint32_t required_major,
-        uint32_t required_minor,
-        const void **out_api_table,
-        uint32_t *out_actual_major,
-        uint32_t *out_actual_minor
-    ) const {
-        if (!out_api_table) {
-            return false;
+    void ApiRegistry::Clear() {
+        std::unique_lock lock(g_Mutex);
+        m_IdTable.clear();
+        m_NameToId.clear();
+        m_Metadata.clear();
+        m_StringStorage.clear();
+        for (auto &slot : m_DirectTable) {
+            slot.store(nullptr, std::memory_order_relaxed);
         }
-
-        std::shared_lock lock(g_Mutex);
-
-        // Find by name
-        auto id_it = m_NameToId.find(name);
-        if (id_it == m_NameToId.end()) {
-            return false;
-        }
-
-        auto meta_it = m_Metadata.find(id_it->second);
-        if (meta_it == m_Metadata.end()) {
-            return false;
-        }
-
-        const ApiMetadata &meta = meta_it->second;
-
-        // Major version must match exactly (breaking changes)
-        if (meta.version_major != required_major) {
-            return false;
-        }
-
-        // Minor version must be >= required (backward-compatible additions)
-        if (meta.version_minor < required_minor) {
-            return false;
-        }
-
-        *out_api_table = meta.pointer;
-
-        if (out_actual_major) {
-            *out_actual_major = meta.version_major;
-        }
-        if (out_actual_minor) {
-            *out_actual_minor = meta.version_minor;
-        }
-
-        return true;
+        m_NextAutoId.store(1);
+        g_CacheVersion.fetch_add(1, std::memory_order_release);
     }
+
+    void ApiRegistry::RegisterCoreApiSet(const CoreApiDescriptor *descriptors, size_t count) {
+        if (!descriptors || count == 0)
+            return;
+
+        uint32_t satisfied = 0u;
+        std::vector<bool> completed(count, false);
+        size_t remaining = count;
+
+        while (remaining > 0) {
+            bool progressed = false;
+            for (size_t i = 0; i < count; ++i) {
+                if (completed[i])
+                    continue;
+                const auto &descriptor = descriptors[i];
+                if ((descriptor.depends_mask & satisfied) != descriptor.depends_mask)
+                    continue;
+                descriptor.register_fn();
+                satisfied |= descriptor.provides_mask;
+                completed[i] = true;
+                --remaining;
+                progressed = true;
+            }
+            if (!progressed) {
+                throw std::runtime_error("Core API descriptor dependency cycle detected");
+            }
+        }
+    }
+
+    void ApiRegistry::RegisterApi(const char *name, void *pointer, const char *provider_mod) {
+        if (!name) {
+            CoreLog(BML_LOG_WARN, "api.registry", "Attempted to register API with null name");
+            return;
+        }
+        if (!pointer) {
+            CoreLog(BML_LOG_WARN, "api.registry", "Attempted to register API '%s' with null pointer", name);
+            return;
+        }
+
+        std::unique_lock lock(g_Mutex);
+
+        // Auto-assign an ID
+        BML_ApiId new_id = m_NextAutoId.fetch_add(1, std::memory_order_relaxed);
+
+        ApiMetadata meta;
+        meta.name = StoreString(name);
+        meta.id = new_id;
+        meta.pointer = pointer;
+        meta.provider_mod = provider_mod ? StoreString(provider_mod) : nullptr;
+
+        RegisterApiLocked(meta);
+    }
+
+    // ========================================================================
+    // Unregistration
+    // ========================================================================
 
     size_t ApiRegistry::UnregisterByProvider(const std::string &provider_id) {
         std::unique_lock lock(g_Mutex);
 
         std::vector<BML_ApiId> ids_to_remove;
-
-        // Find all APIs from this provider
         for (const auto &[id, meta] : m_Metadata) {
             if (meta.provider_mod && provider_id == meta.provider_mod) {
                 ids_to_remove.push_back(id);
             }
         }
 
-        // Remove them
         for (BML_ApiId id : ids_to_remove) {
             auto meta_it = m_Metadata.find(id);
             if (meta_it != m_Metadata.end()) {
@@ -532,13 +281,9 @@ namespace BML::Core {
             }
         }
 
-        char buf[128];
-        snprintf(buf, sizeof(buf), "Unregistered %zu APIs from provider: %s",
-                 ids_to_remove.size(), provider_id.c_str());
-        DebugInfo(buf);
-
         if (!ids_to_remove.empty()) {
-            RecalculateTotalCapabilitiesLocked();
+            CoreLog(BML_LOG_DEBUG, "api.registry", "Unregistered %zu APIs from provider: %s",
+                    ids_to_remove.size(), provider_id.c_str());
             g_CacheVersion.fetch_add(1, std::memory_order_release);
         }
 
@@ -548,161 +293,58 @@ namespace BML::Core {
     bool ApiRegistry::Unregister(const std::string &name) {
         std::unique_lock lock(g_Mutex);
 
-        // Find by name
         auto id_it = m_NameToId.find(name);
-        if (id_it == m_NameToId.end()) {
+        if (id_it == m_NameToId.end())
             return false;
-        }
 
         BML_ApiId id = id_it->second;
-
-        // Clear from direct table
         if (id < MAX_DIRECT_API_ID) {
             m_DirectTable[id].store(nullptr, std::memory_order_release);
         }
 
-        // Remove from all maps
         m_Metadata.erase(id);
         m_IdTable.erase(id);
         m_NameToId.erase(name);
-        RecalculateTotalCapabilitiesLocked();
 
-        char buf[128];
-        snprintf(buf, sizeof(buf), "Unregistered API: %s (ID=%u)", name.c_str(), id);
-        DebugInfo(buf);
-
-        // Invalidate TLS caches
+        CoreLog(BML_LOG_DEBUG, "api.registry", "Unregistered API: %s (ID=%u)", name.c_str(), id);
         g_CacheVersion.fetch_add(1, std::memory_order_release);
-
         return true;
     }
 
-    bool ApiRegistry::UpdateApiTable(const std::string &name, const void *api_table, size_t api_size) {
-        if (!api_table || api_size == 0) {
-            return false;
-        }
-
-        std::unique_lock lock(g_Mutex);
-
-        auto id_it = m_NameToId.find(name);
-        if (id_it == m_NameToId.end()) {
-            return false;
-        }
-
-        BML_ApiId id = id_it->second;
-        auto meta_it = m_Metadata.find(id);
-        if (meta_it == m_Metadata.end()) {
-            return false;
-        }
-
-        // Only extensions can have their API table updated
-        if (meta_it->second.type != BML_API_TYPE_EXTENSION) {
-            return false;
-        }
-
-        // Update the API table pointer and size
-        meta_it->second.pointer = const_cast<void *>(api_table);
-        meta_it->second.api_size = api_size;
-
-        // Update the direct table if applicable
-        if (id < MAX_DIRECT_API_ID) {
-            m_DirectTable[id].store(const_cast<void *>(api_table), std::memory_order_release);
-        }
-
-        // Update the ID table
-        auto entry_it = m_IdTable.find(id);
-        if (entry_it != m_IdTable.end()) {
-            entry_it->second.pointer = const_cast<void *>(api_table);
-        }
-
-        // Invalidate TLS caches
-        g_CacheVersion.fetch_add(1, std::memory_order_release);
-
-        char buf[128];
-        snprintf(buf, sizeof(buf), "Updated API table: %s (size=%zu)", name.c_str(), api_size);
-        DebugInfo(buf);
-
-        return true;
+    size_t ApiRegistry::GetApiCount() const {
+        std::shared_lock lock(g_Mutex);
+        return m_Metadata.size();
     }
 
-    bool ApiRegistry::MarkDeprecated(const std::string &name, const char *replacement, const char *message) {
-        std::unique_lock lock(g_Mutex);
-
-        auto id_it = m_NameToId.find(name);
-        if (id_it == m_NameToId.end()) {
-            return false;
-        }
-
-        BML_ApiId id = id_it->second;
-        auto meta_it = m_Metadata.find(id);
-        if (meta_it == m_Metadata.end()) {
-            return false;
-        }
-
-        // Store deprecation info in description (simple approach)
-        // Note: A full implementation would add dedicated deprecation fields
-        std::string deprecation_info = "[DEPRECATED]";
-        if (replacement) {
-            deprecation_info += " Use: ";
-            deprecation_info += replacement;
-        }
-        if (message) {
-            deprecation_info += " - ";
-            deprecation_info += message;
-        }
-
-        // Store the deprecation string
-        auto stored = std::make_unique<std::string>(std::move(deprecation_info));
-        const char *desc = stored->c_str();
-        m_StringStorage.push_back(std::move(stored));
-        meta_it->second.description = desc;
-
-        char buf[256];
-        snprintf(buf, sizeof(buf), "Marked API as deprecated: %s", name.c_str());
-        DebugInfo(buf);
-
-        return true;
-    }
-
-    size_t ApiRegistry::GetExtensionCount() const {
-        return GetApiCount(static_cast<int>(BML_API_TYPE_EXTENSION));
-    }
+    // ========================================================================
+    // Internal Helpers
+    // ========================================================================
 
     void ApiRegistry::RegisterApiLocked(const ApiMetadata &metadata) {
         if (metadata.id == BML_API_INVALID_ID) {
-            DebugWarning("Attempted to register API with invalid ID (0)");
+            CoreLog(BML_LOG_WARN, "api.registry", "Attempted to register API with invalid ID (0)");
             return;
         }
         if (!metadata.name) {
-            DebugWarning("Attempted to register API with null name");
+            CoreLog(BML_LOG_WARN, "api.registry", "Attempted to register API with null name");
+            return;
+        }
+        if (!metadata.pointer) {
+            CoreLog(BML_LOG_WARN,
+                    "api.registry",
+                    "Attempted to register API '%s' with null pointer",
+                    metadata.name);
             return;
         }
 
         std::string name_str(metadata.name);
-        if (!CanRegisterLocked(name_str, metadata.id)) {
+        if (!CanRegisterLocked(name_str, metadata.id))
             return;
-        }
 
-        ApiMetadata stored_metadata = metadata;
-        stored_metadata.name = StoreString(metadata.name);
-        stored_metadata.provider_mod = StoreString(metadata.provider_mod);
-        if (metadata.description) {
-            stored_metadata.description = StoreString(metadata.description);
-        }
+        m_Metadata[metadata.id] = metadata;
+        RegisterEntryLocked(name_str, metadata.pointer, metadata.id);
 
-        m_Metadata[stored_metadata.id] = stored_metadata;
-        RegisterEntryLocked(name_str, stored_metadata.pointer, stored_metadata.id);
-        m_TotalCapabilities.fetch_or(stored_metadata.capabilities, std::memory_order_relaxed);
-
-        char buf[256];
-        snprintf(buf,
-                 sizeof(buf),
-                 "Registered API: %s (ID=%u, type=%d, caps=0x%llx)",
-                 stored_metadata.name,
-                 stored_metadata.id,
-                 stored_metadata.type,
-                 static_cast<unsigned long long>(stored_metadata.capabilities));
-        DebugInfo(buf);
+        CoreLog(BML_LOG_DEBUG, "api.registry", "Registered API: %s (ID=%u)", metadata.name, metadata.id);
     }
 
     void ApiRegistry::RegisterEntryLocked(const std::string &name, void *pointer, BML_ApiId api_id) {
@@ -721,15 +363,12 @@ namespace BML::Core {
     bool ApiRegistry::CanRegisterLocked(const std::string &name, BML_ApiId api_id) const {
         auto name_it = m_NameToId.find(name);
         if (name_it != m_NameToId.end()) {
-            std::string warning = "Duplicate API registration for '" + name + "'";
-            DebugWarning(warning.c_str());
+            CoreLog(BML_LOG_WARN, "api.registry", "Duplicate API registration for '%s'", name.c_str());
             return false;
         }
         if (api_id != BML_API_INVALID_ID) {
             if (m_IdTable.find(api_id) != m_IdTable.end() || m_Metadata.find(api_id) != m_Metadata.end()) {
-                char buf[128];
-                snprintf(buf, sizeof(buf), "CRITICAL: API ID %u already registered", api_id);
-                DebugWarning(buf);
+                CoreLog(BML_LOG_WARN, "api.registry", "CRITICAL: API ID %u already registered", api_id);
                 return false;
             }
         }
@@ -740,19 +379,9 @@ namespace BML::Core {
         g_CacheVersion.fetch_add(1, std::memory_order_release);
     }
 
-    void ApiRegistry::RecalculateTotalCapabilitiesLocked() {
-        uint64_t total = 0;
-        for (const auto &pair : m_Metadata) {
-            total |= pair.second.capabilities;
-        }
-        m_TotalCapabilities.store(total, std::memory_order_relaxed);
-    }
-
     const char *ApiRegistry::StoreString(const char *value) {
-        if (!value) {
+        if (!value)
             return nullptr;
-        }
-
         auto stored = std::make_unique<std::string>(value);
         const char *ptr = stored->c_str();
         m_StringStorage.push_back(std::move(stored));

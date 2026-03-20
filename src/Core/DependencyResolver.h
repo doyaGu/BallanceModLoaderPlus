@@ -38,8 +38,6 @@ namespace BML::Core {
         struct Node {
             const ModManifest *manifest{nullptr};
             std::vector<const ModManifest *> duplicates;
-            std::vector<std::string> dependents; // reverse edges for Kahn's algorithm
-            uint32_t incoming_edges{0};
         };
 
         std::unordered_map<std::string, Node> m_Nodes;

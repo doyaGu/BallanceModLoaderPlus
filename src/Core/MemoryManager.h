@@ -58,7 +58,6 @@ namespace BML::Core {
 
         // Statistics
         BML_Result GetStats(BML_MemoryStats *out_stats);
-        BML_Result GetCaps(BML_MemoryCaps *out_caps);
 
         // Configuration
         void SetTrackingEnabled(bool enabled) { m_tracking_enabled.store(enabled, std::memory_order_relaxed); }

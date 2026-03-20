@@ -346,32 +346,6 @@ namespace BML::Core {
         return BML_RESULT_OK;
     }
 
-    BML_Result MemoryManager::GetCaps(BML_MemoryCaps *out_caps) {
-        if (!out_caps) {
-            return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "memory", "bmlMemoryGetCaps",
-                                         "out_caps is NULL", 0);
-        }
-
-        out_caps->struct_size = sizeof(BML_MemoryCaps);
-        out_caps->api_version = bmlGetApiVersion();
-
-        out_caps->capability_flags =
-            BML_MEMORY_CAP_BASIC_ALLOC |
-            BML_MEMORY_CAP_ALIGNED_ALLOC |
-            BML_MEMORY_CAP_MEMORY_POOLS;
-
-        if (m_tracking_enabled.load(std::memory_order_relaxed)) {
-            out_caps->capability_flags |= BML_MEMORY_CAP_STATISTICS;
-        }
-
-        out_caps->default_alignment = kDefaultAlignment;
-        out_caps->min_pool_block_size = kMinPoolBlockSize;
-        out_caps->max_pool_block_size = kMaxPoolBlockSize;
-        out_caps->threading_model = BML_THREADING_FREE;
-
-        return BML_RESULT_OK;
-    }
-
     void *MemoryManager::ReallocInternal(void *ptr, size_t new_size) {
         auto *metadata = GetMetadata(ptr);
         if (!metadata) {
@@ -457,9 +431,25 @@ namespace BML::Core {
 
     void MemoryManager::TrackReallocation(size_t old_size, size_t new_size) {
         if (new_size > old_size) {
-            TrackAllocation(new_size - old_size);
+            const uint64_t delta = static_cast<uint64_t>(new_size - old_size);
+            uint64_t new_total = m_TotalAllocated.fetch_add(delta, std::memory_order_relaxed) + delta;
+            uint64_t current_peak = m_PeakAllocated.load(std::memory_order_relaxed);
+            while (new_total > current_peak) {
+                if (m_PeakAllocated.compare_exchange_weak(current_peak, new_total,
+                                                          std::memory_order_relaxed)) {
+                    break;
+                }
+            }
         } else if (old_size > new_size) {
-            TrackDeallocation(old_size - new_size);
+            const uint64_t delta = static_cast<uint64_t>(old_size - new_size);
+            uint64_t total = m_TotalAllocated.load(std::memory_order_relaxed);
+            while (total >= delta) {
+                if (m_TotalAllocated.compare_exchange_weak(total, total - delta,
+                                                          std::memory_order_relaxed,
+                                                          std::memory_order_relaxed)) {
+                    break;
+                }
+            }
         }
     }
 

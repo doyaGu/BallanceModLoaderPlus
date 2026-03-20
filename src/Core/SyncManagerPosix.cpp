@@ -1578,29 +1578,6 @@ namespace BML::Core {
                                      "Potential deadlock detected", 0);
     }
 
-    // ============================================================================
-    // Capabilities
-    // ============================================================================
-
-    BML_Result SyncManager::GetCaps(BML_SyncCaps *out_caps) {
-        if (!out_caps) {
-            return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "sync", "bmlSyncGetCaps",
-                                         "out_caps is NULL", 0);
-        }
-
-        out_caps->struct_size = sizeof(BML_SyncCaps);
-        out_caps->api_version = bmlGetApiVersion();
-        out_caps->capability_flags =
-            BML_SYNC_CAP_MUTEX |
-            BML_SYNC_CAP_RWLOCK |
-            BML_SYNC_CAP_ATOMICS |
-            BML_SYNC_CAP_SEMAPHORE |
-            BML_SYNC_CAP_TLS |
-            BML_SYNC_CAP_CONDVAR |
-            BML_SYNC_CAP_SPINLOCK;
-
-        return BML_RESULT_OK;
-    }
 } // namespace BML::Core
 
 #endif // !defined(_WIN32)

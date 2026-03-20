@@ -163,6 +163,27 @@ namespace BML::Core {
     }
 
     template <typename Fn>
+    BML_Result GuardRegisteredApiResult(std::string_view subsystem,
+                                        const char *api_name,
+                                        Fn &&fn) noexcept {
+        try {
+            ClearLastErrorInfo();
+            const auto result = static_cast<BML_Result>(std::forward<Fn>(fn)());
+            ClearLastErrorInfo();
+            return result;
+        } catch (...) {
+            auto result = TranslateException(subsystem);
+            detail::SetLastErrorNoThrow(result.code, result.message.c_str(), api_name);
+            return result.code;
+        }
+    }
+
+    template <typename Fn>
+    BML_Result GuardRegisteredApiResult(std::string_view subsystem, Fn &&fn) noexcept {
+        return GuardRegisteredApiResult(subsystem, nullptr, std::forward<Fn>(fn));
+    }
+
+    template <typename Fn>
     void GuardVoid(std::string_view subsystem,
                    const char *api_name,
                    Fn &&fn) noexcept {

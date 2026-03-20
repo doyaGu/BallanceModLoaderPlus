@@ -4,8 +4,6 @@
 #include <string>
 
 #include "bml_resource.h"
-#include "bml_extension.h"
-
 namespace BML::Core {
     void RegisterResourceApis();
     BML_Result RegisterResourceType(const BML_ResourceTypeDesc *desc, BML_HandleType *out_type);

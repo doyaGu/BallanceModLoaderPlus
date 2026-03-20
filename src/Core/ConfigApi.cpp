@@ -1,7 +1,5 @@
 #include "ConfigStore.h"
 #include "ApiRegistrationMacros.h"
-#include "bml_api_ids.h"
-#include "bml_capabilities.h"
 
 namespace BML::Core {
     BML_Result BML_API_ConfigGet(BML_Mod mod, const BML_ConfigKey *key, BML_ConfigValue *out_value) {
@@ -18,30 +16,6 @@ namespace BML::Core {
 
     BML_Result BML_API_ConfigEnumerate(BML_Mod mod, BML_ConfigEnumCallback callback, void *user_data) {
         return ConfigStore::Instance().EnumerateValues(mod, callback, user_data);
-    }
-
-    BML_Result BML_API_ConfigGetCaps(BML_ConfigStoreCaps *out_caps) {
-        if (!out_caps)
-            return BML_RESULT_INVALID_ARGUMENT;
-        BML_ConfigStoreCaps caps{};
-        caps.struct_size = sizeof(BML_ConfigStoreCaps);
-        caps.api_version = bmlGetApiVersion();
-        caps.feature_flags = BML_CONFIG_CAP_GET |
-            BML_CONFIG_CAP_SET |
-            BML_CONFIG_CAP_RESET |
-            BML_CONFIG_CAP_ENUMERATE |
-            BML_CONFIG_CAP_PERSISTENCE |
-            BML_CONFIG_CAP_BATCH;
-        caps.supported_type_mask = BML_CONFIG_TYPE_MASK(BML_CONFIG_BOOL) |
-            BML_CONFIG_TYPE_MASK(BML_CONFIG_INT) |
-            BML_CONFIG_TYPE_MASK(BML_CONFIG_FLOAT) |
-            BML_CONFIG_TYPE_MASK(BML_CONFIG_STRING);
-        caps.max_category_length = (std::numeric_limits<uint32_t>::max)();
-        caps.max_name_length = (std::numeric_limits<uint32_t>::max)();
-        caps.max_string_bytes = (std::numeric_limits<uint32_t>::max)();
-        caps.threading_model = BML_THREADING_FREE;
-        *out_caps = caps;
-        return BML_RESULT_OK;
     }
 
     BML_Result BML_API_RegisterConfigLoadHooks(const BML_ConfigLoadHooks *hooks) {
@@ -65,23 +39,102 @@ namespace BML::Core {
         return ConfigStore::Instance().BatchDiscard(batch);
     }
 
+    // -- Config Typed Shortcuts --
+
+    BML_Result BML_API_ConfigGetInt(BML_Mod mod, const char *category,
+                                     const char *name, int32_t default_value,
+                                     int32_t *out_value) {
+        if (!category || !name || !out_value) return BML_RESULT_INVALID_ARGUMENT;
+        BML_ConfigKey key = BML_CONFIG_KEY_INIT(category, name);
+        BML_ConfigValue value{};
+        value.struct_size = sizeof(BML_ConfigValue);
+        BML_Result r = ConfigStore::Instance().GetValue(mod, &key, &value);
+        if (r == BML_RESULT_NOT_FOUND) {
+            *out_value = default_value;
+            return BML_RESULT_OK;
+        }
+        if (r != BML_RESULT_OK) return r;
+        if (value.type != BML_CONFIG_INT) return BML_RESULT_CONFIG_TYPE_MISMATCH;
+        *out_value = value.data.int_value;
+        return BML_RESULT_OK;
+    }
+
+    BML_Result BML_API_ConfigGetFloat(BML_Mod mod, const char *category,
+                                       const char *name, float default_value,
+                                       float *out_value) {
+        if (!category || !name || !out_value) return BML_RESULT_INVALID_ARGUMENT;
+        BML_ConfigKey key = BML_CONFIG_KEY_INIT(category, name);
+        BML_ConfigValue value{};
+        value.struct_size = sizeof(BML_ConfigValue);
+        BML_Result r = ConfigStore::Instance().GetValue(mod, &key, &value);
+        if (r == BML_RESULT_NOT_FOUND) {
+            *out_value = default_value;
+            return BML_RESULT_OK;
+        }
+        if (r != BML_RESULT_OK) return r;
+        if (value.type != BML_CONFIG_FLOAT) return BML_RESULT_CONFIG_TYPE_MISMATCH;
+        *out_value = value.data.float_value;
+        return BML_RESULT_OK;
+    }
+
+    BML_Result BML_API_ConfigGetBool(BML_Mod mod, const char *category,
+                                      const char *name, BML_Bool default_value,
+                                      BML_Bool *out_value) {
+        if (!category || !name || !out_value) return BML_RESULT_INVALID_ARGUMENT;
+        BML_ConfigKey key = BML_CONFIG_KEY_INIT(category, name);
+        BML_ConfigValue value{};
+        value.struct_size = sizeof(BML_ConfigValue);
+        BML_Result r = ConfigStore::Instance().GetValue(mod, &key, &value);
+        if (r == BML_RESULT_NOT_FOUND) {
+            *out_value = default_value;
+            return BML_RESULT_OK;
+        }
+        if (r != BML_RESULT_OK) return r;
+        if (value.type != BML_CONFIG_BOOL) return BML_RESULT_CONFIG_TYPE_MISMATCH;
+        *out_value = value.data.bool_value;
+        return BML_RESULT_OK;
+    }
+
+    BML_Result BML_API_ConfigGetString(BML_Mod mod, const char *category,
+                                        const char *name, const char *default_value,
+                                        const char **out_value) {
+        if (!category || !name || !out_value) return BML_RESULT_INVALID_ARGUMENT;
+        BML_ConfigKey key = BML_CONFIG_KEY_INIT(category, name);
+        BML_ConfigValue value{};
+        value.struct_size = sizeof(BML_ConfigValue);
+        BML_Result r = ConfigStore::Instance().GetValue(mod, &key, &value);
+        if (r == BML_RESULT_NOT_FOUND) {
+            *out_value = default_value;
+            return BML_RESULT_OK;
+        }
+        if (r != BML_RESULT_OK) return r;
+        if (value.type != BML_CONFIG_STRING) return BML_RESULT_CONFIG_TYPE_MISMATCH;
+        *out_value = value.data.string_value;
+        return BML_RESULT_OK;
+    }
+
     void RegisterConfigApis() {
         BML_BEGIN_API_REGISTRATION();
 
         // Core config APIs
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigGet, "config", BML_API_ConfigGet, BML_CAP_CONFIG_BASIC);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigSet, "config", BML_API_ConfigSet, BML_CAP_CONFIG_BASIC);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigReset, "config", BML_API_ConfigReset, BML_CAP_CONFIG_BASIC);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigEnumerate, "config", BML_API_ConfigEnumerate, BML_CAP_CONFIG_BASIC);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigGetCaps, "config", BML_API_ConfigGetCaps, BML_CAP_CONFIG_BASIC);
+        BML_REGISTER_API_GUARDED(bmlConfigGet, "config", BML_API_ConfigGet);
+        BML_REGISTER_API_GUARDED(bmlConfigSet, "config", BML_API_ConfigSet);
+        BML_REGISTER_API_GUARDED(bmlConfigReset, "config", BML_API_ConfigReset);
+        BML_REGISTER_API_GUARDED(bmlConfigEnumerate, "config", BML_API_ConfigEnumerate);
 
         // Batch operations
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigBatchBegin, "config", BML_API_ConfigBatchBegin, BML_CAP_CONFIG_BASIC);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigBatchSet, "config", BML_API_ConfigBatchSet, BML_CAP_CONFIG_BASIC);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigBatchCommit, "config", BML_API_ConfigBatchCommit, BML_CAP_CONFIG_BASIC);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlConfigBatchDiscard, "config", BML_API_ConfigBatchDiscard, BML_CAP_CONFIG_BASIC);
+        BML_REGISTER_API_GUARDED(bmlConfigBatchBegin, "config", BML_API_ConfigBatchBegin);
+        BML_REGISTER_API_GUARDED(bmlConfigBatchSet, "config", BML_API_ConfigBatchSet);
+        BML_REGISTER_API_GUARDED(bmlConfigBatchCommit, "config", BML_API_ConfigBatchCommit);
+        BML_REGISTER_API_GUARDED(bmlConfigBatchDiscard, "config", BML_API_ConfigBatchDiscard);
 
         // Config hooks registration
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlRegisterConfigLoadHooks, "config", BML_API_RegisterConfigLoadHooks, BML_CAP_CONFIG_BASIC);
+        BML_REGISTER_API_GUARDED(bmlRegisterConfigLoadHooks, "config", BML_API_RegisterConfigLoadHooks);
+
+        // Typed shortcuts
+        BML_REGISTER_API_GUARDED(bmlConfigGetInt, "config", BML_API_ConfigGetInt);
+        BML_REGISTER_API_GUARDED(bmlConfigGetFloat, "config", BML_API_ConfigGetFloat);
+        BML_REGISTER_API_GUARDED(bmlConfigGetBool, "config", BML_API_ConfigGetBool);
+        BML_REGISTER_API_GUARDED(bmlConfigGetString, "config", BML_API_ConfigGetString);
     }
 } // namespace BML::Core

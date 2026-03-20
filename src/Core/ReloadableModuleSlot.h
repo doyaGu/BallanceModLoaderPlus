@@ -34,6 +34,7 @@ namespace BML::Core {
         LoadFailed,         ///< DLL load failed
         EntrypointMissing,  ///< BML_ModEntrypoint export not found
         InitFailed,         ///< Entrypoint returned error
+        UnloadBlocked,      ///< PREPARE_DETACH or gate rejected unload/reload
         Crashed,            ///< SEH caught exception during reload
         RolledBack          ///< Rolled back to previous version after failure
     };
@@ -49,6 +50,7 @@ namespace BML::Core {
         BadImage,           ///< DLL not ready or invalid
         StateInvalidated,   ///< State size mismatch (future use)
         UserError,          ///< Mod entrypoint returned negative value
+        DetachBlocked,      ///< PREPARE_DETACH or dependency gate blocked reload
         InitialFailure,     ///< Version 1 crashed, cannot rollback
         SystemError,        ///< Windows API error
         Other               ///< Unknown error
@@ -63,9 +65,7 @@ namespace BML::Core {
         std::string mod_id;             ///< Module identifier
         std::optional<ModManifest> manifest;   ///< Mod manifest snapshot
         Context* context{nullptr};      ///< BML context
-        PFN_BML_GetProcAddress get_proc{nullptr};              ///< Name-based API lookup function
-        PFN_BML_GetProcAddressById get_proc_by_id{nullptr};  ///< API lookup function
-        PFN_BML_GetApiId get_api_id{nullptr};                 ///< Name-to-ID lookup function
+        PFN_BML_GetProcAddress get_proc{nullptr};  ///< Name-based API lookup function
     };
 
     /**
@@ -87,8 +87,6 @@ namespace BML::Core {
      * config.temp_directory = L"C:/Temp/BML_HotReload";
      * config.context = &context;
     * config.get_proc = &bmlGetProcAddress;
-    * config.get_proc_by_id = &bmlGetProcAddressById;
-    * config.get_api_id = &bmlGetApiId;
      *
      * if (slot.Initialize(config)) {
      *     // In game loop:

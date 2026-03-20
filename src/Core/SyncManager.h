@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <condition_variable>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -16,7 +17,6 @@
 #endif
 #include <Windows.h>
 #else
-#include <condition_variable>
 #include <pthread.h>
 #include <semaphore>
 #include <shared_mutex>
@@ -27,32 +27,15 @@
 namespace BML::Core {
 
     class DeadlockDetector;
-    /**
-     * @brief Mutex implementation using Windows CRITICAL_SECTION
-     */
     struct MutexImpl {
-#if defined(_WIN32)
-        CRITICAL_SECTION cs;
-
-        MutexImpl() : cs() {
-            InitializeCriticalSection(&cs);
-        }
-
-        ~MutexImpl() {
-            DeleteCriticalSection(&cs);
-        }
-
-        MutexImpl(const MutexImpl &) = delete;
-        MutexImpl &operator=(const MutexImpl &) = delete;
-#else
-        std::recursive_timed_mutex mutex;
+        std::timed_mutex mutex;
+        std::atomic<DWORD> owner_thread{0};
 
         MutexImpl() = default;
         ~MutexImpl() = default;
 
         MutexImpl(const MutexImpl &) = delete;
         MutexImpl &operator=(const MutexImpl &) = delete;
-#endif
     };
 
     /**
@@ -186,23 +169,7 @@ namespace BML::Core {
 #endif
     };
 
-    /**
-     * @brief Condition variable implementation using Windows CONDITION_VARIABLE
-     */
     struct CondVarImpl {
-#if defined(_WIN32)
-        CONDITION_VARIABLE cv;
-
-        CondVarImpl() {
-            InitializeConditionVariable(&cv);
-        }
-
-        // No destructor needed - CONDITION_VARIABLE is statically allocated
-        ~CondVarImpl() = default;
-
-        CondVarImpl(const CondVarImpl &) = delete;
-        CondVarImpl &operator=(const CondVarImpl &) = delete;
-#else
         std::condition_variable_any cv;
 
         CondVarImpl() = default;
@@ -210,7 +177,6 @@ namespace BML::Core {
 
         CondVarImpl(const CondVarImpl &) = delete;
         CondVarImpl &operator=(const CondVarImpl &) = delete;
-#endif
     };
 
     /**
@@ -378,9 +344,6 @@ namespace BML::Core {
         void LockSpinLock(BML_SpinLock lock);
         BML_Bool TryLockSpinLock(BML_SpinLock lock);
         void UnlockSpinLock(BML_SpinLock lock);
-
-        // Capabilities
-        BML_Result GetCaps(BML_SyncCaps *out_caps);
 
     private:
         SyncManager();

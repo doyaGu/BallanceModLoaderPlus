@@ -4,14 +4,14 @@
 
 #include <algorithm>
 #include <iterator>
+#include <variant>
 
 #include "bml_core.h"
-#include "bml_api_ids.h"
 #include "bml_version.h"
-#include "bml_capabilities.h"
 
 #include "Context.h"
 #include "ModHandle.h"
+#include "ModuleLifecycle.h"
 #include "CoreErrors.h"
 
 namespace BML::Core {
@@ -41,13 +41,15 @@ namespace BML::Core {
             CORE_API_CONFIG     = 1u << 1,
             CORE_API_IMC        = 1u << 2,
             CORE_API_RESOURCE   = 1u << 3,
-            CORE_API_EXTENSION  = 1u << 4,
-            CORE_API_MEMORY     = 1u << 5,
-            CORE_API_DIAGNOSTIC = 1u << 6,
-            CORE_API_SYNC       = 1u << 7,
-            CORE_API_PROFILING  = 1u << 8,
-            CORE_API_CAPABILITY = 1u << 9,
-            CORE_API_TRACING    = 1u << 10,
+            CORE_API_MEMORY     = 1u << 4,
+            CORE_API_DIAGNOSTIC = 1u << 5,
+            CORE_API_SYNC       = 1u << 6,
+            CORE_API_PROFILING  = 1u << 7,
+            CORE_API_TRACING    = 1u << 8,
+            CORE_API_INTERFACE  = 1u << 9,
+            CORE_API_TIMER      = 1u << 10,
+            CORE_API_HOOK       = 1u << 11,
+            CORE_API_LOCALE     = 1u << 12,
         };
 
         constexpr ApiRegistry::CoreApiDescriptor kCoreApiDescriptors[] = {
@@ -55,13 +57,15 @@ namespace BML::Core {
             {"ConfigStore", RegisterConfigApis, CORE_API_CONFIG, CORE_API_LOGGING},
             {"ImcBus", RegisterImcApis, CORE_API_IMC, CORE_API_LOGGING},
             {"Resource", RegisterResourceApis, CORE_API_RESOURCE, CORE_API_LOGGING},
-            {"Extension", RegisterExtensionApis, CORE_API_EXTENSION, CORE_API_CONFIG | CORE_API_RESOURCE},
+            {"Interface", RegisterInterfaceApis, CORE_API_INTERFACE, CORE_API_RESOURCE},
             {"Memory", RegisterMemoryApis, CORE_API_MEMORY, 0u},
             {"Diagnostic", RegisterDiagnosticApis, CORE_API_DIAGNOSTIC, 0u},
             {"Sync", RegisterSyncApis, CORE_API_SYNC, 0u},
             {"Profiling", RegisterProfilingApis, CORE_API_PROFILING, 0u},
-            {"Capability", RegisterCapabilityApis, CORE_API_CAPABILITY, 0u},
             {"Tracing", RegisterTracingApis, CORE_API_TRACING, CORE_API_LOGGING},
+            {"Timer", RegisterTimerApis, CORE_API_TIMER, 0u},
+            {"Locale", RegisterLocaleApis, CORE_API_LOCALE, 0u},
+            {"Hook", RegisterHookApis, CORE_API_HOOK, 0u},
         };
     } // namespace
 
@@ -118,17 +122,15 @@ namespace BML::Core {
     }
 
     BML_Result BML_API_CheckCapability(BML_Mod mod, const char *capability_id, BML_Bool *out_supported) {
-        if (out_supported)
-            *out_supported = BML_FALSE;
-        if (!capability_id)
+        if (!capability_id || !out_supported)
             return BML_RESULT_INVALID_ARGUMENT;
+        *out_supported = BML_FALSE;
         auto *handle = ResolveMod(mod);
         if (!handle)
             return BML_RESULT_INVALID_ARGUMENT;
         bool supported = std::find(handle->capabilities.begin(), handle->capabilities.end(), capability_id) !=
             handle->capabilities.end();
-        if (out_supported)
-            *out_supported = supported ? BML_TRUE : BML_FALSE;
+        *out_supported = supported ? BML_TRUE : BML_FALSE;
         return BML_RESULT_OK;
     }
 
@@ -163,14 +165,7 @@ namespace BML::Core {
     }
 
     BML_Result BML_API_SetCurrentModule(BML_Mod mod) {
-        if (!mod) {
-            Context::SetCurrentModule(nullptr);
-            return BML_RESULT_OK;
-        }
-        auto *handle = Context::Instance().ResolveModHandle(mod);
-        if (!handle)
-            return BML_RESULT_INVALID_ARGUMENT;
-        Context::SetCurrentModule(handle);
+        Context::SetCurrentModule(mod);
         return BML_RESULT_OK;
     }
 
@@ -179,64 +174,200 @@ namespace BML::Core {
     }
 
     uint32_t BML_API_GetLoadedModuleCount() {
-        const auto snapshot = Context::Instance().GetLoadedModuleSnapshot();
-        return static_cast<uint32_t>(snapshot.size());
+        return Context::Instance().GetLoadedModuleCount();
     }
 
     BML_Mod BML_API_GetLoadedModuleAt(uint32_t index) {
-        const auto snapshot = Context::Instance().GetLoadedModuleSnapshot();
-        if (index >= snapshot.size()) {
-            return nullptr;
-        }
-        return snapshot[index].mod_handle;
+        return Context::Instance().GetLoadedModuleAt(index);
     }
 
-    BML_Result BML_API_CoreGetCaps(BML_CoreCaps *out_caps) {
-        if (!out_caps)
-            return BML_RESULT_INVALID_ARGUMENT;
-        BML_CoreCaps caps{};
-        caps.struct_size = sizeof(BML_CoreCaps);
-        caps.runtime_version = Context::Instance().GetRuntimeVersionCopy();
-        caps.api_version = bmlGetApiVersion();
-        caps.capability_flags = BML_CORE_CAP_CONTEXT_RETAIN |
-            BML_CORE_CAP_RUNTIME_QUERY |
-            BML_CORE_CAP_MOD_METADATA |
-            BML_CORE_CAP_SHUTDOWN_HOOKS |
-            BML_CORE_CAP_CAPABILITY_CHECKS |
-            BML_CORE_CAP_CURRENT_MODULE_TLS;
-        caps.threading_model = BML_THREADING_FREE; // Core APIs are fully thread-safe
-        *out_caps = caps;
+    BML_Mod BML_API_FindModuleById(const char *id) {
+        if (!id) return nullptr;
+        return Context::Instance().GetModHandleById(id);
+    }
+
+    // -- Manifest custom field access --
+
+    template <typename T>
+    BML_Result ResolveManifestField(BML_Mod mod, const char *path, const T **out) {
+        if (!path) return BML_RESULT_INVALID_ARGUMENT;
+        auto *handle = ResolveMod(mod);
+        if (!handle || !handle->manifest) return BML_RESULT_INVALID_HANDLE;
+        auto it = handle->manifest->custom_fields.find(path);
+        if (it == handle->manifest->custom_fields.end()) return BML_RESULT_NOT_FOUND;
+        auto *val = std::get_if<T>(&it->second);
+        if (!val) return BML_RESULT_CONFIG_TYPE_MISMATCH;
+        *out = val;
         return BML_RESULT_OK;
+    }
+
+    BML_Result BML_API_GetManifestString(BML_Mod mod, const char *path, const char **out_value) {
+        if (!out_value) return BML_RESULT_INVALID_ARGUMENT;
+        const std::string *str = nullptr;
+        BML_Result r = ResolveManifestField(mod, path, &str);
+        if (r == BML_RESULT_OK) *out_value = str->c_str();
+        return r;
+    }
+
+    BML_Result BML_API_GetManifestInt(BML_Mod mod, const char *path, int64_t *out_value) {
+        if (!out_value) return BML_RESULT_INVALID_ARGUMENT;
+        const int64_t *val = nullptr;
+        BML_Result r = ResolveManifestField(mod, path, &val);
+        if (r == BML_RESULT_OK) *out_value = *val;
+        return r;
+    }
+
+    BML_Result BML_API_GetManifestFloat(BML_Mod mod, const char *path, double *out_value) {
+        if (!out_value) return BML_RESULT_INVALID_ARGUMENT;
+        const double *val = nullptr;
+        BML_Result r = ResolveManifestField(mod, path, &val);
+        if (r == BML_RESULT_OK) *out_value = *val;
+        return r;
+    }
+
+    BML_Result BML_API_GetManifestBool(BML_Mod mod, const char *path, BML_Bool *out_value) {
+        if (!out_value) return BML_RESULT_INVALID_ARGUMENT;
+        const bool *val = nullptr;
+        BML_Result r = ResolveManifestField(mod, path, &val);
+        if (r == BML_RESULT_OK) *out_value = *val ? BML_TRUE : BML_FALSE;
+        return r;
+    }
+
+    // -- Extended module metadata APIs --
+
+    BML_Result BML_API_GetModDirectory(BML_Mod mod, const char **out_dir) {
+        if (!out_dir) return BML_RESULT_INVALID_ARGUMENT;
+        auto *handle = ResolveMod(mod);
+        if (!handle || !handle->manifest) return BML_RESULT_INVALID_ARGUMENT;
+        *out_dir = handle->directory_utf8.c_str();
+        return BML_RESULT_OK;
+    }
+
+    BML_Result BML_API_GetModName(BML_Mod mod, const char **out_name) {
+        if (!out_name) return BML_RESULT_INVALID_ARGUMENT;
+        auto *handle = ResolveMod(mod);
+        if (!handle || !handle->manifest) return BML_RESULT_INVALID_ARGUMENT;
+        *out_name = handle->manifest->package.name.c_str();
+        return BML_RESULT_OK;
+    }
+
+    BML_Result BML_API_GetModDescription(BML_Mod mod, const char **out_desc) {
+        if (!out_desc) return BML_RESULT_INVALID_ARGUMENT;
+        auto *handle = ResolveMod(mod);
+        if (!handle || !handle->manifest) return BML_RESULT_INVALID_ARGUMENT;
+        *out_desc = handle->manifest->package.description.c_str();
+        return BML_RESULT_OK;
+    }
+
+    BML_Result BML_API_GetModAuthorCount(BML_Mod mod, uint32_t *out_count) {
+        if (!out_count) return BML_RESULT_INVALID_ARGUMENT;
+        auto *handle = ResolveMod(mod);
+        if (!handle || !handle->manifest) return BML_RESULT_INVALID_ARGUMENT;
+        *out_count = static_cast<uint32_t>(handle->manifest->package.authors.size());
+        return BML_RESULT_OK;
+    }
+
+    BML_Result BML_API_GetModAuthorAt(BML_Mod mod, uint32_t index, const char **out_author) {
+        if (!out_author) return BML_RESULT_INVALID_ARGUMENT;
+        auto *handle = ResolveMod(mod);
+        if (!handle || !handle->manifest) return BML_RESULT_INVALID_ARGUMENT;
+        if (index >= handle->manifest->package.authors.size()) return BML_RESULT_INVALID_ARGUMENT;
+        *out_author = handle->manifest->package.authors[index].c_str();
+        return BML_RESULT_OK;
+    }
+
+    void BML_API_EnumerateModuleDirectories(
+            void (*callback)(const char *mod_id,
+                             const wchar_t *directory,
+                             const char *asset_mount,
+                             void *user_data),
+            void *user_data) {
+        if (!callback) return;
+        const auto snapshot = Context::Instance().GetLoadedModuleSnapshot();
+        for (const auto &entry : snapshot) {
+            if (!entry.manifest) continue;
+            const char *mount = entry.manifest->assets.mount.empty()
+                ? nullptr
+                : entry.manifest->assets.mount.c_str();
+            callback(entry.id.c_str(),
+                     entry.manifest->directory.c_str(),
+                     mount,
+                     user_data);
+        }
     }
 
     void RegisterCoreApis() {
         BML_BEGIN_API_REGISTRATION();
 
         // Context management APIs
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlContextRetain, "core.context", BML_API_ContextRetain, BML_CAP_CONTEXT);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlContextRelease, "core.context", BML_API_ContextRelease, BML_CAP_CONTEXT);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlContextSetUserData, "core.context", BML_API_ContextSetUserData, BML_CAP_CONTEXT);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlContextGetUserData, "core.context", BML_API_ContextGetUserData, BML_CAP_CONTEXT);
-        BML_REGISTER_API_WITH_CAPS(bmlGetGlobalContext, BML_API_GetGlobalContext, BML_CAP_CONTEXT);
-        BML_REGISTER_API_WITH_CAPS(bmlGetRuntimeVersion, BML_API_GetRuntimeVersion, BML_CAP_RUNTIME);
+        BML_REGISTER_API_GUARDED(bmlContextRetain, "core.context", BML_API_ContextRetain);
+        BML_REGISTER_API_GUARDED(bmlContextRelease, "core.context", BML_API_ContextRelease);
+        BML_REGISTER_API_GUARDED(bmlContextSetUserData, "core.context", BML_API_ContextSetUserData);
+        BML_REGISTER_API_GUARDED(bmlContextGetUserData, "core.context", BML_API_ContextGetUserData);
+        BML_REGISTER_API(bmlGetGlobalContext, BML_API_GetGlobalContext);
+        BML_REGISTER_API(bmlGetRuntimeVersion, BML_API_GetRuntimeVersion);
 
         // Capability APIs
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlRequestCapability, "core.capabilities", BML_API_RequestCapability, BML_CAP_CAPABILITY_QUERY);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlCheckCapability, "core.capabilities", BML_API_CheckCapability, BML_CAP_CAPABILITY_QUERY);
+        BML_REGISTER_API_GUARDED(bmlRequestCapability, "core.capabilities", BML_API_RequestCapability);
+        BML_REGISTER_API_GUARDED(bmlCheckCapability, "core.capabilities", BML_API_CheckCapability);
 
         // Module metadata APIs
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlGetModId, "core.metadata", BML_API_GetModId, BML_CAP_MOD_INFO);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlGetModVersion, "core.metadata", BML_API_GetModVersion, BML_CAP_MOD_INFO);
+        BML_REGISTER_API_GUARDED(bmlGetModId, "core.metadata", BML_API_GetModId);
+        BML_REGISTER_API_GUARDED(bmlGetModVersion, "core.metadata", BML_API_GetModVersion);
+        BML_REGISTER_API_GUARDED(bmlGetModDirectory, "core.metadata", BML_API_GetModDirectory);
+        BML_REGISTER_API_GUARDED(bmlGetModName, "core.metadata", BML_API_GetModName);
+        BML_REGISTER_API_GUARDED(bmlGetModDescription, "core.metadata", BML_API_GetModDescription);
+        BML_REGISTER_API_GUARDED(bmlGetModAuthorCount, "core.metadata", BML_API_GetModAuthorCount);
+        BML_REGISTER_API_GUARDED(bmlGetModAuthorAt, "core.metadata", BML_API_GetModAuthorAt);
+
+        // Manifest custom field access APIs
+        BML_REGISTER_API_GUARDED(bmlGetManifestString, "core.manifest", BML_API_GetManifestString);
+        BML_REGISTER_API_GUARDED(bmlGetManifestInt, "core.manifest", BML_API_GetManifestInt);
+        BML_REGISTER_API_GUARDED(bmlGetManifestFloat, "core.manifest", BML_API_GetManifestFloat);
+        BML_REGISTER_API_GUARDED(bmlGetManifestBool, "core.manifest", BML_API_GetManifestBool);
 
         // Lifecycle APIs
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlRegisterShutdownHook, "core.lifecycle", BML_API_RegisterShutdownHook, BML_CAP_LIFECYCLE);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlSetCurrentModule, "core.lifecycle", BML_API_SetCurrentModule, BML_CAP_MOD_INFO);
-        BML_REGISTER_API_WITH_CAPS(bmlGetCurrentModule, BML_API_GetCurrentModule, BML_CAP_MOD_INFO);
-        BML_REGISTER_API_WITH_CAPS(bmlGetLoadedModuleCount, BML_API_GetLoadedModuleCount, BML_CAP_MOD_INFO);
-        BML_REGISTER_API_WITH_CAPS(bmlGetLoadedModuleAt, BML_API_GetLoadedModuleAt, BML_CAP_MOD_INFO);
+        BML_REGISTER_API_GUARDED(bmlRegisterShutdownHook, "core.lifecycle", BML_API_RegisterShutdownHook);
+        BML_REGISTER_API_GUARDED(bmlSetCurrentModule, "core.lifecycle", BML_API_SetCurrentModule);
+        BML_REGISTER_API(bmlGetCurrentModule, BML_API_GetCurrentModule);
+        BML_REGISTER_API(bmlGetLoadedModuleCount, BML_API_GetLoadedModuleCount);
+        BML_REGISTER_API(bmlGetLoadedModuleAt, BML_API_GetLoadedModuleAt);
+        BML_REGISTER_API(bmlFindModuleById, BML_API_FindModuleById);
+        BML_REGISTER_API(bmlEnumerateModuleDirectories, BML_API_EnumerateModuleDirectories);
 
-        // Runtime capabilities API
-        BML_REGISTER_CAPS_API_WITH_CAPS(bmlCoreGetCaps, "core.runtime", BML_API_CoreGetCaps, BML_CAP_RUNTIME);
+        // Runtime provider APIs
+        {
+            static const auto regFn = +[](const BML_ModuleRuntimeProvider *provider,
+                                           const char *owner_id) -> BML_Result {
+                if (!owner_id) return BML_RESULT_INVALID_ARGUMENT;
+                return Context::Instance().RegisterRuntimeProvider(provider, owner_id);
+            };
+            detail::RegisterApi(registry, "bmlRegisterRuntimeProvider",
+                                reinterpret_cast<void *>(regFn));
+
+            static const auto unregFn = +[](const BML_ModuleRuntimeProvider *provider) -> BML_Result {
+                return Context::Instance().UnregisterRuntimeProvider(provider);
+            };
+            detail::RegisterApi(registry, "bmlUnregisterRuntimeProvider",
+                                reinterpret_cast<void *>(unregFn));
+
+            static const auto cleanupFn = +[](BML_Mod mod) -> BML_Result {
+                auto *handle = Context::Instance().ResolveModHandle(mod);
+                if (!handle) return BML_RESULT_INVALID_HANDLE;
+                CleanupModuleKernelState(handle->id, mod);
+                return BML_RESULT_OK;
+            };
+            detail::RegisterApi(registry, "bmlCleanupModuleState",
+                                reinterpret_cast<void *>(cleanupFn));
+        }
+
+        // Service hub API (runtime-wide service access)
+        {
+            static const auto fn = +[]() -> const void * {
+                return Context::Instance().GetServiceHub();
+            };
+            detail::RegisterApi(registry, "bmlGetServiceHub", reinterpret_cast<void *>(fn));
+        }
 
         // Register all subsystem APIs in dependency order
         registry.RegisterCoreApiSet(kCoreApiDescriptors, std::size(kCoreApiDescriptors));

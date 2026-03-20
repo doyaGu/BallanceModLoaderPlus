@@ -43,6 +43,7 @@ namespace BML::Core {
         void SetDiagnosticsCallback(std::function<void(const ModuleBootstrapDiagnostics &)> callback);
 
     private:
+        void FilterDisabledModules(std::vector<ResolvedNode> &order) const;
         void RecordLoadOrder(const std::vector<ResolvedNode> &order, ModuleBootstrapDiagnostics &diag) const;
         bool ReloadModulesInternal(ModuleBootstrapDiagnostics &out_diag);
         void BroadcastLifecycleEvent(const char *topic, const std::vector<LoadedModuleSnapshot> &modules) const;

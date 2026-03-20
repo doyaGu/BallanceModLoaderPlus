@@ -196,6 +196,135 @@ namespace BML::Core {
         return true;
     }
 
+    static bool PopulateRequires(const toml::table &requiresTable,
+                                 std::vector<ModInterfaceRequirement> &out_requires,
+                                 ManifestParseError &error,
+                                 const std::wstring &path) {
+        for (const auto &[key, value] : requiresTable) {
+            ModInterfaceRequirement req;
+            req.interface_id = key.str();
+            if (req.interface_id.empty()) {
+                SetParseError(error, path, "[requires] interface id must not be empty");
+                return false;
+            }
+
+            std::string versionExpr;
+            if (value.is_string()) {
+                if (!ReadString(&value, versionExpr) || versionExpr.empty()) {
+                    SetParseError(error, path,
+                                  "[requires] interface '" + req.interface_id +
+                                  "' version must be a non-empty string");
+                    return false;
+                }
+            } else if (auto tbl = value.as_table()) {
+                if (!ReadString(tbl->get("version"), versionExpr) || versionExpr.empty()) {
+                    SetParseError(error, path,
+                                  "[requires] interface '" + req.interface_id + "' table must contain a non-empty 'version' field");
+                    return false;
+                }
+                bool optional = false;
+                if (ReadBool(tbl->get("optional"), optional)) {
+                    req.optional = optional;
+                }
+            } else {
+                SetParseError(error, path,
+                              "[requires] interface '" + req.interface_id + "' must be a string or table");
+                return false;
+            }
+
+            req.requirement.raw_expression = versionExpr;
+            std::string rangeError;
+            if (!ParseSemanticVersionRange(versionExpr, req.requirement, rangeError)) {
+                SetParseError(error, path, "[requires] version constraint invalid: " + rangeError);
+                return false;
+            }
+            out_requires.emplace_back(std::move(req));
+        }
+        return true;
+    }
+
+    static bool PopulateProvides(const toml::table &providesTable,
+                                 std::vector<ModProvidedInterface> &out_provides,
+                                 ManifestParseError &error,
+                                 const std::wstring &path) {
+        for (const auto &[key, value] : providesTable) {
+            ModProvidedInterface iface;
+            iface.interface_id = key.str();
+            if (iface.interface_id.empty()) {
+                SetParseError(error, path, "[provides] interface id must not be empty");
+                return false;
+            }
+            for (char c : iface.interface_id) {
+                if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                    SetParseError(error, path,
+                                  "[provides] interface id '" + iface.interface_id + "' must not contain whitespace");
+                    return false;
+                }
+            }
+
+            if (value.is_string()) {
+                if (!ReadString(&value, iface.version) || iface.version.empty()) {
+                    SetParseError(error, path,
+                                  "[provides] interface '" + iface.interface_id + "' version must be a non-empty string");
+                    return false;
+                }
+            } else if (auto tbl = value.as_table()) {
+                if (!ReadString(tbl->get("version"), iface.version) || iface.version.empty()) {
+                    SetParseError(error, path,
+                                  "[provides] interface '" + iface.interface_id + "' table must contain a non-empty 'version' field");
+                    return false;
+                }
+                ReadString(tbl->get("description"), iface.description);
+            } else {
+                SetParseError(error, path,
+                              "[provides] interface '" + iface.interface_id + "' must be a string or table");
+                return false;
+            }
+
+            if (!ParseSemanticVersion(iface.version, iface.parsed_version)) {
+                SetParseError(error, path,
+                              "[provides] invalid version for interface '" + iface.interface_id + "': " + iface.version);
+                return false;
+            }
+
+            out_provides.emplace_back(std::move(iface));
+        }
+        return true;
+    }
+
+    static bool IsKnownSection(std::string_view key) {
+        static constexpr std::string_view kKnownSections[] = {
+            "package", "dependencies", "conflicts", "capabilities",
+            "requires", "provides", "assets",
+        };
+        for (auto known : kKnownSections) {
+            if (key == known) return true;
+        }
+        return false;
+    }
+
+    static void FlattenTomlNode(const toml::node &node, const std::string &prefix,
+                                std::unordered_map<std::string, ManifestValue> &out) {
+        if (auto tbl = node.as_table()) {
+            for (const auto &[key, value] : *tbl) {
+                std::string childKey = prefix.empty()
+                    ? std::string(key.str())
+                    : prefix + "." + std::string(key.str());
+                FlattenTomlNode(value, childKey, out);
+            }
+        } else if (auto arr = node.as_array()) {
+            // Skip arrays -- custom fields support scalars and tables only
+        } else if (node.is_boolean()) {
+            out[prefix] = *node.value<bool>();
+        } else if (node.is_integer()) {
+            out[prefix] = *node.value<int64_t>();
+        } else if (node.is_floating_point()) {
+            out[prefix] = *node.value<double>();
+        } else if (node.is_string()) {
+            out[prefix] = std::string(*node.value<std::string_view>());
+        }
+    }
+
     bool ManifestParser::ParseFile(const std::wstring &path,
                                    ModManifest &out_manifest,
                                    ManifestParseError &out_error) const {
@@ -248,6 +377,46 @@ namespace BML::Core {
         out_manifest.capabilities.clear();
         if (!PopulateCapabilities(table["capabilities"].node(), out_manifest.capabilities, out_error, path)) {
             return false;
+        }
+
+        out_manifest.requires_.clear();
+        if (auto requiresNode = table["requires"]) {
+            auto requiresTable = requiresNode.as_table();
+            if (!requiresTable) {
+                SetParseError(out_error, path, "[requires] must be a table");
+                return false;
+            }
+            if (!PopulateRequires(*requiresTable, out_manifest.requires_, out_error, path)) {
+                return false;
+            }
+        }
+
+        out_manifest.provides.clear();
+        if (auto providesNode = table["provides"]) {
+            auto providesTable = providesNode.as_table();
+            if (!providesTable) {
+                SetParseError(out_error, path, "[provides] must be a table");
+                return false;
+            }
+            if (!PopulateProvides(*providesTable, out_manifest.provides, out_error, path)) {
+                return false;
+            }
+        }
+
+        out_manifest.assets = {};
+        if (auto assetsNode = table["assets"]) {
+            auto assetsTable = assetsNode.as_table();
+            if (assetsTable) {
+                ReadString(assetsTable->get("mount"), out_manifest.assets.mount);
+            }
+        }
+
+        // Collect custom (unrecognized) sections into custom_fields map
+        out_manifest.custom_fields.clear();
+        for (const auto &[key, value] : table) {
+            if (!IsKnownSection(key.str()) && value.is_table()) {
+                FlattenTomlNode(value, std::string(key.str()), out_manifest.custom_fields);
+            }
         }
 
         out_manifest.manifest_path = path;

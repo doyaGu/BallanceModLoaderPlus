@@ -38,6 +38,7 @@ struct BML_Mod_T {
     std::wstring log_path;
     std::unique_ptr<FILE, BML::Core::LogFileCloser> log_file;
     std::atomic<int> minimum_severity{BML_LOG_INFO};
+    std::string directory_utf8;  // UTF-8 directory path, populated in CreateModHandle()
 };
 
 #endif // BML_CORE_MOD_HANDLE_H

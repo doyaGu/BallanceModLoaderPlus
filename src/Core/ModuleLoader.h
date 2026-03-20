@@ -7,6 +7,8 @@
 
 #include "bml_export.h"
 
+#include "bml_module_runtime.h"
+
 #include "PlatformCompat.h"
 #include "DependencyResolver.h"
 #include "ModHandle.h"
@@ -18,10 +20,18 @@ namespace BML::Core {
     struct LoadedModule {
         std::string id;
         const ModManifest *manifest{nullptr};
-        HMODULE handle{nullptr};
-        PFN_BML_ModEntrypoint entrypoint{nullptr};
+        HMODULE handle{nullptr};                    // null for non-native modules
+        PFN_BML_ModEntrypoint entrypoint{nullptr};  // null for non-native modules
         std::wstring path;
         std::unique_ptr<BML_Mod_T> mod_handle;
+
+        /// Non-null when this module was loaded by an external runtime
+        /// provider. The pointer borrows the provider's vtable (owned by
+        /// the provider module). Dependency ordering guarantees that
+        /// provider modules unload AFTER their consumers (reverse order).
+        /// If the provider is abnormally disabled, UnloadModules validates
+        /// via FindRuntimeProvider before calling through the vtable.
+        const BML_ModuleRuntimeProvider *runtime{nullptr};
     };
 
     struct ModuleLoadError {
@@ -34,8 +44,6 @@ namespace BML::Core {
     bool LoadModules(const std::vector<ResolvedNode> &order,
                      Context &context,
                      PFN_BML_GetProcAddress get_proc,
-                     PFN_BML_GetProcAddressById get_proc_by_id,
-                     PFN_BML_GetApiId get_api_id,
                      std::vector<LoadedModule> &out_modules,
                      ModuleLoadError &out_error);
 

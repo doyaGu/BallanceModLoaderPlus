@@ -12,8 +12,6 @@
 
 #include "bml_config.h"
 #include "bml_errors.h"
-#include "bml_extension.h"
-
 #include "ModHandle.h"
 
 namespace BML::Core {
@@ -41,6 +39,8 @@ namespace BML::Core {
         int32_t int_value{0};
         float float_value{0.0f};
         std::string string_value;
+        std::vector<uint8_t> blob_data;
+        uint32_t flags{0};
     };
 
     struct ConfigCategory {

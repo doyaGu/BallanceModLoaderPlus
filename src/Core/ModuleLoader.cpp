@@ -3,13 +3,22 @@
 #include "bml_export.h"
 
 #include <filesystem>
+#include <unordered_set>
 #if !defined(_WIN32)
 #include <dlfcn.h>
 #endif
 
 #include "Context.h"
-#include "StringUtils.h"
+#include "ApiRegistry.h"
+#include "ConfigStore.h"
+#include "CrashDumpWriter.h"
+#include "ExtensionStateHooks.h"
+#include "FaultTracker.h"
+#include "InterfaceRegistry.h"
+#include "ModuleLifecycle.h"
 #include "Logging.h"
+#include "ResourceApi.h"
+#include "StringUtils.h"
 
 namespace BML::Core {
     namespace {
@@ -80,13 +89,49 @@ namespace BML::Core {
         void Rollback(std::vector<LoadedModule> &loaded, Context &context) {
             UnloadModules(loaded, context.GetHandle());
         }
+
+        void CleanupFailedAttach(const std::string &module_id, BML_Mod mod) {
+            if (module_id.empty() || !mod) {
+                return;
+            }
+
+            ConfigStore::Instance().FlushAndRelease(mod);
+            RunExtensionProviderCleanupHook(module_id);
+            ApiRegistry::Instance().UnregisterByProvider(module_id);
+            UnregisterResourceTypesForProvider(module_id);
+            CleanupModuleKernelState(module_id, mod);
+        }
+
+#if defined(_MSC_VER) && !defined(__MINGW32__)
+        // SEH-safe entrypoint invocation (no C++ destructors on stack)
+        static BML_Result InvokeEntrypointSEH(PFN_BML_ModEntrypoint entrypoint,
+                                               BML_ModEntrypointCommand action,
+                                               void *args,
+                                               unsigned long *out_seh_code) {
+            *out_seh_code = 0;
+            BML_Result result = BML_RESULT_INTERNAL_ERROR;
+            __try {
+                result = entrypoint(action, args);
+            } __except (
+                (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ||
+                 GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION ||
+                 GetExceptionCode() == EXCEPTION_STACK_OVERFLOW ||
+                 GetExceptionCode() == EXCEPTION_INT_DIVIDE_BY_ZERO ||
+                 GetExceptionCode() == EXCEPTION_FLT_DIVIDE_BY_ZERO ||
+                 GetExceptionCode() == EXCEPTION_ARRAY_BOUNDS_EXCEEDED)
+                    ? EXCEPTION_EXECUTE_HANDLER
+                    : EXCEPTION_CONTINUE_SEARCH) {
+                *out_seh_code = GetExceptionCode();
+                return BML_RESULT_INTERNAL_ERROR;
+            }
+            return result;
+        }
+#endif
     } // namespace
 
     bool LoadModules(const std::vector<ResolvedNode> &order,
                      Context &context,
                      PFN_BML_GetProcAddress get_proc,
-                     PFN_BML_GetProcAddressById get_proc_by_id,
-                     PFN_BML_GetApiId get_api_id,
                      std::vector<LoadedModule> &out_modules,
                      ModuleLoadError &out_error) {
         out_modules.clear();
@@ -107,6 +152,20 @@ namespace BML::Core {
             return false;
         }
 
+        // Track failed module IDs for cascade-skip. When module A fails
+        // (script compile error, SEH crash, etc.), any module B that has a
+        // non-optional dependency on A is automatically skipped.
+        std::unordered_set<std::string> failed_ids;
+
+        auto hasDependencyFailed = [&](const ModManifest &manifest) -> bool {
+            if (failed_ids.empty()) return false;
+            for (const auto &dep : manifest.dependencies) {
+                if (!dep.optional && failed_ids.count(dep.id))
+                    return true;
+            }
+            return false;
+        };
+
         for (const auto &node : order) {
             if (!node.manifest) {
                 out_error.id = node.id;
@@ -115,23 +174,91 @@ namespace BML::Core {
                 return false;
             }
 
-            auto dllPath = ResolveEntryPath(*node.manifest);
-            if (dllPath.empty()) {
+            // Cascade-skip: if a required dependency failed, skip this module.
+            if (hasDependencyFailed(*node.manifest)) {
+                CoreLog(BML_LOG_WARN, kModuleLoaderLogCategory,
+                        "Skipping '%s': required dependency failed to load",
+                        node.id.c_str());
+                failed_ids.insert(node.id);
+                continue;
+            }
+
+            auto entryPath = ResolveEntryPath(*node.manifest);
+            if (entryPath.empty()) {
                 out_error.id = node.id;
                 out_error.message = "Unable to resolve entry path";
                 Rollback(out_modules, context);
                 return false;
             }
-            out_error.path = dllPath;
+            out_error.path = entryPath;
 
+            // Check if a runtime provider can handle this entry file.
+            std::string entryPathUtf8 = utils::Utf16ToUtf8(entryPath);
+            const auto *provider = context.FindRuntimeProvider(entryPathUtf8);
+
+            if (provider) {
+                // ---- Non-native module: delegate to runtime provider ----
+                auto modHandle = context.CreateModHandle(*node.manifest);
+                if (!modHandle) {
+                    out_error.id = node.id;
+                    out_error.message = "Failed to create module handle";
+                    failed_ids.insert(node.id);
+                    continue;
+                }
+
+                struct ModuleScope {
+                    explicit ModuleScope(BML_Mod_T *mod) : previous(Context::GetCurrentModule()) {
+                        Context::SetCurrentModule(mod);
+                    }
+                    ~ModuleScope() { Context::SetCurrentModule(previous); }
+                    BML_Mod previous;
+                } scope(modHandle.get());
+
+                BML_Result initResult = provider->AttachModule(
+                    modHandle.get(), get_proc,
+                    entryPathUtf8.c_str(),
+                    modHandle->directory_utf8.c_str());
+
+                if (initResult != BML_RESULT_OK) {
+                    CoreLog(BML_LOG_ERROR, kModuleLoaderLogCategory,
+                            "Runtime provider failed to attach '%s': %d",
+                            node.id.c_str(), static_cast<int>(initResult));
+                    CleanupFailedAttach(node.id, modHandle.get());
+                    failed_ids.insert(node.id);
+                    continue;
+                }
+
+                // Validate [provides] for provider-loaded modules too.
+                for (const auto &iface : node.manifest->provides) {
+                    if (!InterfaceRegistry::Instance().Exists(iface.interface_id.c_str())) {
+                        CoreLog(BML_LOG_WARN, kModuleLoaderLogCategory,
+                                "Module '%s' declared [provides] interface '%s' "
+                                "but did not register it during attach",
+                                node.manifest->package.id.c_str(),
+                                iface.interface_id.c_str());
+                    }
+                }
+
+                LoadedModule loaded;
+                loaded.id = node.id;
+                loaded.manifest = node.manifest;
+                loaded.handle = nullptr;
+                loaded.entrypoint = nullptr;
+                loaded.path = entryPath;
+                loaded.mod_handle = std::move(modHandle);
+                loaded.runtime = provider;
+                out_modules.emplace_back(std::move(loaded));
+                continue;
+            }
+
+            // ---- Native DLL module: existing path ----
             HMODULE handle = nullptr;
 #if defined(_WIN32)
-            handle = LoadLibraryW(dllPath.c_str());
+            handle = LoadLibraryW(entryPath.c_str());
 #else
-            std::string dllPathUtf8 = utils::Utf16ToUtf8(dllPath);
-            if (!dllPathUtf8.empty()) {
+            if (!entryPathUtf8.empty()) {
                 dlerror(); // Clear any stale error before dlopen/dlsym.
-                handle = dlopen(dllPathUtf8.c_str(), RTLD_NOW);
+                handle = dlopen(entryPathUtf8.c_str(), RTLD_NOW);
             }
 #endif
             if (!handle) {
@@ -155,16 +282,16 @@ namespace BML::Core {
 #endif
             };
 
-            auto getProc = [](HMODULE module_handle, const char *symbol) -> void * {
+            auto getSymbol = [](HMODULE module_handle, const char *symbol) -> void * {
 #if defined(_WIN32)
-                return reinterpret_cast<void *>(GetProcAddress(module_handle, symbol));
+                return reinterpret_cast<void *>(::GetProcAddress(module_handle, symbol));
 #else
                 dlerror();
                 return dlsym(module_handle, symbol);
 #endif
             };
 
-            auto entrypoint = reinterpret_cast<PFN_BML_ModEntrypoint>(getProc(handle, "BML_ModEntrypoint"));
+            auto entrypoint = reinterpret_cast<PFN_BML_ModEntrypoint>(getSymbol(handle, "BML_ModEntrypoint"));
             if (!entrypoint) {
                 out_error.id = node.id;
                 out_error.message = "BML_ModEntrypoint export not found";
@@ -204,17 +331,49 @@ namespace BML::Core {
             attach.api_version = BML_MOD_ENTRYPOINT_API_VERSION;
             attach.mod = modHandle.get();
             attach.get_proc = get_proc;
-            attach.get_proc_by_id = get_proc_by_id;
-            attach.get_api_id = get_api_id;
-            attach.reserved = nullptr;
+
+#if defined(_MSC_VER) && !defined(__MINGW32__)
+            unsigned long seh_code = 0;
+            initResult = InvokeEntrypointSEH(entrypoint, BML_MOD_ENTRYPOINT_ATTACH, &attach, &seh_code);
+            if (seh_code != 0) {
+                out_error.id = node.id;
+                char seh_msg[128];
+                std::snprintf(seh_msg, sizeof(seh_msg),
+                              "Module crashed during attach (SEH code 0x%08lX)", seh_code);
+                out_error.message = seh_msg;
+                out_error.system_code = static_cast<long>(seh_code);
+                CoreLog(BML_LOG_ERROR, kModuleLoaderLogCategory,
+                        "%s: %s", node.id.c_str(), seh_msg);
+                CrashDumpWriter::Instance().WriteDumpOnce(node.id, seh_code);
+                FaultTracker::Instance().RecordFault(node.id, seh_code);
+                CleanupFailedAttach(node.id, modHandle.get());
+                closeModule(handle);
+                failed_ids.insert(node.id);
+                continue;
+            }
+#else
             initResult = entrypoint(BML_MOD_ENTRYPOINT_ATTACH, &attach);
+#endif
             if (initResult != BML_RESULT_OK) {
                 out_error.id = node.id;
                 out_error.message = "BML_ModEntrypoint attach returned " + std::to_string(initResult);
                 out_error.system_code = 0;
+                CleanupFailedAttach(node.id, modHandle.get());
                 closeModule(handle);
                 Rollback(out_modules, context);
                 return false;
+            }
+
+            // Validate [provides] immediately after this module attaches,
+            // before subsequent modules try to Acquire<>() the interface.
+            for (const auto &iface : node.manifest->provides) {
+                if (!InterfaceRegistry::Instance().Exists(iface.interface_id.c_str())) {
+                    CoreLog(BML_LOG_WARN, kModuleLoaderLogCategory,
+                            "Module '%s' declared [provides] interface '%s' "
+                            "but did not register it during attach",
+                            node.manifest->package.id.c_str(),
+                            iface.interface_id.c_str());
+                }
             }
 
             LoadedModule loaded;
@@ -222,7 +381,7 @@ namespace BML::Core {
             loaded.manifest = node.manifest;
             loaded.handle = handle;
             loaded.entrypoint = entrypoint;
-            loaded.path = dllPath;
+            loaded.path = entryPath;
             loaded.mod_handle = std::move(modHandle);
             out_modules.emplace_back(std::move(loaded));
         }
@@ -232,6 +391,8 @@ namespace BML::Core {
     }
 
     void UnloadModules(std::vector<LoadedModule> &modules, BML_Context ctx) {
+        (void)ctx; // Used by native path indirectly through lifecycle helpers.
+
         for (auto it = modules.rbegin(); it != modules.rend(); ++it) {
             struct ModuleScope {
                 explicit ModuleScope(BML_Mod_T *mod) : previous(Context::GetCurrentModule()) {
@@ -245,12 +406,57 @@ namespace BML::Core {
                 BML_Mod previous;
             } scope(it->mod_handle ? it->mod_handle.get() : nullptr);
 
-            if (it->entrypoint && it->mod_handle) {
+            if (it->runtime && it->mod_handle) {
+                // Non-native module: delegate to runtime provider.
+                // Verify the provider is still registered (it may have been
+                // invalidated if the provider module crashed/was disabled).
+                std::string entryUtf8 = utils::Utf16ToUtf8(it->path);
+                bool provider_alive =
+                    (Context::Instance().FindRuntimeProvider(entryUtf8) == it->runtime);
+
+                if (provider_alive) {
+                    try {
+                        if (it->runtime->PrepareDetach)
+                            it->runtime->PrepareDetach(it->mod_handle.get());
+                        it->runtime->DetachModule(it->mod_handle.get());
+                    } catch (const std::exception &ex) {
+                        CoreLog(BML_LOG_ERROR, kModuleLoaderLogCategory,
+                                "Exception during provider detach of '%s': %s",
+                                it->id.c_str(), ex.what());
+                    } catch (...) {
+                        CoreLog(BML_LOG_ERROR, kModuleLoaderLogCategory,
+                                "Unknown exception during provider detach of '%s'",
+                                it->id.c_str());
+                    }
+                } else {
+                    CoreLog(BML_LOG_WARN, kModuleLoaderLogCategory,
+                            "Provider for '%s' is no longer registered; "
+                            "skipping script detach, kernel cleanup only",
+                            it->id.c_str());
+                }
+
+                // Core cleanup runs unconditionally (IMC, timers, hooks, leases).
+                CleanupModuleKernelState(it->id, it->mod_handle.get());
+
+            } else if (it->entrypoint && it->mod_handle) {
+                // Native DLL module: existing path.
+                std::string diagnostic;
+                BML_Result prepare_result = PrepareModuleForDetach(it->id,
+                                                                  it->mod_handle.get(),
+                                                                  it->entrypoint,
+                                                                  &diagnostic);
+                if (prepare_result != BML_RESULT_OK) {
+                    CoreLog(BML_LOG_WARN, kModuleLoaderLogCategory,
+                            "Detach gate for '%s' failed during shutdown: %s (result %d); forcing final detach",
+                            it->id.c_str(),
+                            diagnostic.empty() ? "no diagnostic" : diagnostic.c_str(),
+                            static_cast<int>(prepare_result));
+                }
+
                 BML_ModDetachArgs detach{};
                 detach.struct_size = sizeof(detach);
                 detach.api_version = BML_MOD_ENTRYPOINT_API_VERSION;
                 detach.mod = it->mod_handle.get();
-                detach.reserved = nullptr;
                 try {
                     it->entrypoint(BML_MOD_ENTRYPOINT_DETACH, &detach);
                 } catch (const std::exception &ex) {
@@ -262,7 +468,10 @@ namespace BML::Core {
                             "Unknown exception during detach of '%s'",
                             it->id.c_str());
                 }
+
+                CleanupModuleKernelState(it->id, it->mod_handle.get());
             }
+
             if (it->handle) {
 #if defined(_WIN32)
                 FreeLibrary(it->handle);

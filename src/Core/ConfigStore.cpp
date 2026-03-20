@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -28,6 +29,58 @@ namespace BML::Core {
         constexpr char kTypeInt[] = "int";
         constexpr char kTypeFloat[] = "float";
         constexpr char kTypeString[] = "string";
+        constexpr char kTypeBlob[] = "blob";
+
+        // Minimal base64 encode/decode for blob serialization in TOML
+        static const char kBase64Table[] =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+        std::string Base64Encode(const uint8_t *data, size_t size) {
+            std::string out;
+            out.reserve(((size + 2) / 3) * 4);
+            for (size_t i = 0; i < size; i += 3) {
+                uint32_t b = static_cast<uint32_t>(data[i]) << 16;
+                if (i + 1 < size) b |= static_cast<uint32_t>(data[i + 1]) << 8;
+                if (i + 2 < size) b |= static_cast<uint32_t>(data[i + 2]);
+                out.push_back(kBase64Table[(b >> 18) & 0x3F]);
+                out.push_back(kBase64Table[(b >> 12) & 0x3F]);
+                out.push_back((i + 1 < size) ? kBase64Table[(b >> 6) & 0x3F] : '=');
+                out.push_back((i + 2 < size) ? kBase64Table[b & 0x3F] : '=');
+            }
+            return out;
+        }
+
+        const int8_t *GetBase64DecodeTable() {
+            static const auto *table = []() {
+                static int8_t t[256];
+                std::memset(t, -1, sizeof(t));
+                for (int i = 0; i < 64; ++i)
+                    t[static_cast<uint8_t>(kBase64Table[i])] = static_cast<int8_t>(i);
+                return t;
+            }();
+            return table;
+        }
+
+        std::vector<uint8_t> Base64Decode(const std::string &encoded) {
+            const int8_t *decode_table = GetBase64DecodeTable();
+
+            std::vector<uint8_t> out;
+            out.reserve((encoded.size() / 4) * 3);
+            uint32_t buf = 0;
+            int bits = 0;
+            for (char ch : encoded) {
+                if (ch == '=' || ch == '\n' || ch == '\r') continue;
+                int8_t val = decode_table[static_cast<uint8_t>(ch)];
+                if (val < 0) continue;
+                buf = (buf << 6) | static_cast<uint32_t>(val);
+                bits += 6;
+                if (bits >= 8) {
+                    bits -= 8;
+                    out.push_back(static_cast<uint8_t>((buf >> bits) & 0xFF));
+                }
+            }
+            return out;
+        }
 
         std::vector<BML_ConfigLoadHooks> g_ConfigHooks;
         std::shared_mutex g_ConfigHooksMutex;
@@ -54,9 +107,10 @@ namespace BML::Core {
             case BML_CONFIG_BOOL:
             case BML_CONFIG_INT:
             case BML_CONFIG_FLOAT:
-                return true;
             case BML_CONFIG_STRING:
                 return true;
+            case BML_CONFIG_BLOB:
+                return value->blob_size == 0 || value->data.blob_value != nullptr;
             default:
                 return false;
             }
@@ -64,6 +118,8 @@ namespace BML::Core {
 
         void FillValueStruct(const ConfigEntry &entry, BML_ConfigValue &out) {
             out.type = entry.type;
+            out.flags = entry.flags;
+            out.blob_size = 0;
             switch (entry.type) {
             case BML_CONFIG_BOOL:
                 out.data.bool_value = entry.bool_value ? BML_TRUE : BML_FALSE;
@@ -76,6 +132,10 @@ namespace BML::Core {
                 break;
             case BML_CONFIG_STRING:
                 out.data.string_value = entry.string_value.c_str();
+                break;
+            case BML_CONFIG_BLOB:
+                out.data.blob_value = entry.blob_data.empty() ? nullptr : entry.blob_data.data();
+                out.blob_size = entry.blob_data.size();
                 break;
             default:
                 out.data.string_value = "";
@@ -93,6 +153,8 @@ namespace BML::Core {
                 return kTypeFloat;
             case BML_CONFIG_STRING:
                 return kTypeString;
+            case BML_CONFIG_BLOB:
+                return kTypeBlob;
             default:
                 return "unknown";
             }
@@ -107,6 +169,8 @@ namespace BML::Core {
                 return BML_CONFIG_FLOAT;
             if (value == kTypeString)
                 return BML_CONFIG_STRING;
+            if (value == kTypeBlob)
+                return BML_CONFIG_BLOB;
             return std::nullopt;
         }
 
@@ -260,9 +324,18 @@ namespace BML::Core {
             case BML_CONFIG_STRING:
                 entry.string_value = value->data.string_value ? value->data.string_value : "";
                 break;
+            case BML_CONFIG_BLOB: {
+                auto *src = static_cast<const uint8_t *>(value->data.blob_value);
+                entry.blob_data.assign(src, src + value->blob_size);
+                break;
+            }
             default:
                 break;
             }
+
+            // Carry flags if the caller provides the extended struct
+            if (value->struct_size >= offsetof(BML_ConfigValue, flags) + sizeof(value->flags))
+                entry.flags = value->flags;
 
             if (!SaveDocument(*doc))
                 return BML_RESULT_IO_ERROR;
@@ -520,8 +593,24 @@ namespace BML::Core {
                             continue;
                         break;
                     }
+                    case BML_CONFIG_BLOB: {
+                        const auto *valNode = entryTable->get("value");
+                        if (!valNode)
+                            continue;
+                        if (auto val = valNode->value<std::string_view>())
+                            entry.blob_data = Base64Decode(std::string(val->begin(), val->end()));
+                        else
+                            continue;
+                        break;
+                    }
                     default:
                         continue;
+                    }
+
+                    // Load flags (optional, defaults to 0)
+                    if (auto flagsNode = entryTable->get("flags")) {
+                        if (auto val = flagsNode->value<int64_t>())
+                            entry.flags = static_cast<uint32_t>(*val);
                     }
 
                     doc.categories[*category].entries[*name] = std::move(entry);
@@ -577,10 +666,17 @@ namespace BML::Core {
                 case BML_CONFIG_STRING:
                     record.insert_or_assign("value", entryPair.second.string_value);
                     break;
+                case BML_CONFIG_BLOB:
+                    record.insert_or_assign("value",
+                        Base64Encode(entryPair.second.blob_data.data(),
+                                     entryPair.second.blob_data.size()));
+                    break;
                 default:
                     record.insert_or_assign("value", "");
                     break;
                 }
+                if (entryPair.second.flags != 0)
+                    record.insert_or_assign("flags", static_cast<int64_t>(entryPair.second.flags));
                 entries.emplace_back(std::move(record));
             }
         }
@@ -662,8 +758,13 @@ namespace BML::Core {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
+        BML_Mod resolved_mod = ResolveTargetMod(mod);
+        if (!resolved_mod) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+
         auto batch_ctx = std::make_unique<ConfigBatchContext>();
-        batch_ctx->mod = mod;
+        batch_ctx->mod = resolved_mod;
 
         // Generate unique batch ID
         uintptr_t batch_id = m_NextBatchId.fetch_add(1, std::memory_order_relaxed);
@@ -717,9 +818,17 @@ namespace BML::Core {
         case BML_CONFIG_STRING:
             entry.value.string_value = value->data.string_value ? value->data.string_value : "";
             break;
+        case BML_CONFIG_BLOB: {
+            auto *src = static_cast<const uint8_t *>(value->data.blob_value);
+            entry.value.blob_data.assign(src, src + value->blob_size);
+            break;
+        }
         default:
             return BML_RESULT_INVALID_ARGUMENT;
         }
+
+        if (value->struct_size >= offsetof(BML_ConfigValue, flags) + sizeof(value->flags))
+            entry.value.flags = value->flags;
 
         ctx->entries.push_back(std::move(entry));
         return BML_RESULT_OK;
@@ -750,7 +859,7 @@ namespace BML::Core {
         }
 
         // Apply all changes atomically to the document
-        ConfigDocument *doc = GetOrCreateDocument(batch_ctx->mod);
+        ConfigDocument *doc = GetOrCreateDocument(ResolveTargetMod(batch_ctx->mod));
         if (!doc) {
             return BML_RESULT_INVALID_ARGUMENT;
         }

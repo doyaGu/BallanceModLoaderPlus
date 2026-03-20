@@ -45,7 +45,6 @@ namespace BML::Core {
 
         /* Statistics */
         BML_Result GetProfilingStats(BML_ProfilingStats *out_stats);
-        BML_Result GetProfilingCaps(BML_ProfilingCaps *out_caps);
 
     private:
         ProfilingManager();

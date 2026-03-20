@@ -3,8 +3,7 @@
  * @brief Implementation of API tracing and statistics collection
  */
 
-#include "bml_api_tracing.h"
-#include "bml_capabilities.h"
+#include "bml_types.h"
 #include "ApiRegistrationMacros.h"
 #include "ApiRegistry.h"
 #include "Context.h"
@@ -14,7 +13,27 @@
 #include <chrono>
 #include <fstream>
 #include <mutex>
+#include <string>
 #include <unordered_map>
+
+// Types formerly in bml_api_tracing.h -- now internal to the tracing subsystem.
+
+typedef void (*PFN_BML_TraceCallback)(
+    BML_Context ctx, const char *api_name, const char *args_summary,
+    int result_code, uint64_t duration_ns, void *user_data);
+
+typedef struct BML_ApiStats {
+    size_t struct_size;
+    const char *api_name;
+    uint64_t call_count;
+    uint64_t total_time_ns;
+    uint64_t min_time_ns;
+    uint64_t max_time_ns;
+    uint64_t error_count;
+} BML_ApiStats;
+
+typedef BML_Bool (*PFN_BML_StatsEnumerator)(
+    BML_Context ctx, const BML_ApiStats *stats, void *user_data);
 
 namespace {
     constexpr char kTracingLogCategory[] = "api.tracing";
@@ -34,8 +53,46 @@ namespace {
         std::atomic<uint64_t> error_count{0};
     };
 
-    std::unordered_map<uint32_t, InternalApiStats> g_Stats;
+    std::unordered_map<std::string, InternalApiStats> g_Stats;
     std::mutex g_StatsMutex;
+
+    void TraceOutput(const char *api_name, const char *args, int result, uint64_t duration_ns);
+    void UpdateStats(const char *name, uint64_t duration_ns, bool is_error) noexcept;
+
+    class ApiTraceScope {
+    public:
+        explicit ApiTraceScope(const char *api_name)
+            : m_ApiName(api_name),
+              m_Start(std::chrono::steady_clock::now()) {
+        }
+
+        void Complete(int result_code = 0) {
+            if (!m_ApiName || m_Completed) {
+                return;
+            }
+
+            m_Completed = true;
+            auto end = std::chrono::steady_clock::now();
+            uint64_t duration_ns = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(end - m_Start).count());
+            if (duration_ns == 0) {
+                duration_ns = 1;
+            }
+            if (g_TracingEnabled.load(std::memory_order_acquire)) {
+                TraceOutput(m_ApiName, "", result_code, duration_ns);
+            }
+            UpdateStats(m_ApiName, duration_ns, result_code < 0);
+        }
+
+        ~ApiTraceScope() {
+            Complete();
+        }
+
+    private:
+        const char *m_ApiName{nullptr};
+        std::chrono::steady_clock::time_point m_Start;
+        bool m_Completed{false};
+    };
 
     void TraceOutput(const char *api_name, const char *args, int result, uint64_t duration_ns) {
         if (g_TraceCallback) {
@@ -49,14 +106,16 @@ namespace {
         }
     }
 
-    void UpdateStats(uint32_t api_id, uint64_t duration_ns, bool is_error) noexcept {
+    void UpdateStats(const char *name, uint64_t duration_ns, bool is_error) noexcept {
+        if (!name) return;
+
         // Lock-free path: try to find existing entry first
         InternalApiStats *stats_ptr = nullptr;
         {
             std::lock_guard<std::mutex> lock(g_StatsMutex);
             // operator[] may throw on allocation, but stats are non-critical
             try {
-                stats_ptr = &g_Stats[api_id];
+                stats_ptr = &g_Stats[name];
             } catch (...) {
                 return; // Silently ignore allocation failure for stats
             }
@@ -91,72 +150,69 @@ namespace BML::Core {
     // ============================================================================
 
     void BML_EnableApiTracing(BML_Bool enable) {
+        ApiTraceScope trace("bmlEnableApiTracing");
         g_TracingEnabled.store(enable != BML_FALSE, std::memory_order_release);
+        trace.Complete();
     }
 
     BML_Bool BML_IsApiTracingEnabled() {
-        return g_TracingEnabled.load(std::memory_order_acquire) ? BML_TRUE : BML_FALSE;
+        ApiTraceScope trace("bmlIsApiTracingEnabled");
+        BML_Bool enabled = g_TracingEnabled.load(std::memory_order_acquire) ? BML_TRUE : BML_FALSE;
+        trace.Complete();
+        return enabled;
     }
 
     void BML_SetTraceCallback(PFN_BML_TraceCallback callback, void *user_data) {
+        ApiTraceScope trace("bmlSetTraceCallback");
         std::lock_guard<std::mutex> lock(g_TraceMutex);
         g_TraceCallback = callback;
         g_TraceUserData = user_data;
+        trace.Complete();
     }
 
     // ============================================================================
     // API Statistics
     // ============================================================================
 
-    BML_Bool BML_GetApiStats(uint32_t api_id, BML_ApiStats *out_stats) {
-        if (!out_stats) return BML_FALSE;
+    BML_Bool BML_GetApiStats(const char *api_name, BML_ApiStats *out_stats) {
+        ApiTraceScope trace("bmlGetApiStats");
+        if (!api_name || !out_stats) return BML_FALSE;
 
         std::lock_guard<std::mutex> lock(g_StatsMutex);
 
-        auto it = g_Stats.find(api_id);
+        auto it = g_Stats.find(api_name);
         if (it == g_Stats.end()) {
             return BML_FALSE;
         }
 
         const auto &stats = it->second;
-        out_stats->api_id = api_id;
-        out_stats->api_name = nullptr; // Would need ApiRegistry lookup
+        out_stats->struct_size = sizeof(BML_ApiStats);
+        out_stats->api_name = it->first.c_str();
         out_stats->call_count = stats.call_count.load(std::memory_order_relaxed);
         out_stats->total_time_ns = stats.total_time_ns.load(std::memory_order_relaxed);
         out_stats->min_time_ns = stats.min_time_ns.load(std::memory_order_relaxed);
         out_stats->max_time_ns = stats.max_time_ns.load(std::memory_order_relaxed);
         out_stats->error_count = stats.error_count.load(std::memory_order_relaxed);
 
-        // Get name from registry
-        BML_ApiDescriptor desc;
-        if (BML::Core::ApiRegistry::Instance().GetDescriptor(api_id, &desc)) {
-            out_stats->api_name = desc.name;
-        }
-
         return BML_TRUE;
     }
 
     void BML_EnumerateApiStats(PFN_BML_StatsEnumerator callback, void *user_data) {
+        ApiTraceScope trace("bmlEnumerateApiStats");
         if (!callback) return;
 
         std::lock_guard<std::mutex> lock(g_StatsMutex);
         BML_Context ctx = BML::Core::Context::Instance().GetHandle();
 
-        for (const auto &[api_id, internal_stats] : g_Stats) {
-            BML_ApiStats stats;
-            stats.api_id = api_id;
-            stats.api_name = nullptr;
+        for (const auto &[name, internal_stats] : g_Stats) {
+            BML_ApiStats stats{};
+            stats.struct_size = sizeof(BML_ApiStats);
+            stats.api_name = name.c_str();
             stats.call_count = internal_stats.call_count.load(std::memory_order_relaxed);
             stats.total_time_ns = internal_stats.total_time_ns.load(std::memory_order_relaxed);
             stats.min_time_ns = internal_stats.min_time_ns.load(std::memory_order_relaxed);
             stats.max_time_ns = internal_stats.max_time_ns.load(std::memory_order_relaxed);
             stats.error_count = internal_stats.error_count.load(std::memory_order_relaxed);
-
-            // Get name from registry
-            BML_ApiDescriptor desc;
-            if (BML::Core::ApiRegistry::Instance().GetDescriptor(api_id, &desc)) {
-                stats.api_name = desc.name;
-            }
 
             if (!callback(ctx, &stats, user_data)) {
                 break;
@@ -165,6 +221,7 @@ namespace BML::Core {
     }
 
     BML_Bool BML_DumpApiStats(const char *output_file) {
+        ApiTraceScope trace("bmlDumpApiStats");
         if (!output_file) return BML_FALSE;
 
         std::ofstream out(output_file);
@@ -175,16 +232,9 @@ namespace BML::Core {
         std::lock_guard<std::mutex> lock(g_StatsMutex);
 
         bool first = true;
-        for (const auto &[api_id, internal_stats] : g_Stats) {
+        for (const auto &[name, internal_stats] : g_Stats) {
             if (!first) out << ",\n";
             first = false;
-
-            // Get API name
-            const char *name = "unknown";
-            BML_ApiDescriptor desc;
-            if (BML::Core::ApiRegistry::Instance().GetDescriptor(api_id, &desc) && desc.name) {
-                name = desc.name;
-            }
 
             uint64_t calls = internal_stats.call_count.load(std::memory_order_relaxed);
             uint64_t total_ns = internal_stats.total_time_ns.load(std::memory_order_relaxed);
@@ -214,42 +264,21 @@ namespace BML::Core {
     }
 
     // ============================================================================
-    // Debug Helpers
+    // Registration
     // ============================================================================
-
-    BML_Bool BML_ValidateApiId(uint32_t api_id, const char *context) {
-        if (api_id == 0) {
-            CoreLog(BML_LOG_WARN, kTracingLogCategory,
-                    "Invalid API ID (0) in context: %s",
-                    context ? context : "unknown");
-            return BML_FALSE;
-        }
-
-        // Check if ID is registered
-        BML::Core::ApiRegistry::ApiMetadata meta;
-        if (!BML::Core::ApiRegistry::Instance().TryGetMetadata(api_id, meta)) {
-                CoreLog(BML_LOG_WARN, kTracingLogCategory,
-                    "Unregistered API ID (%u) in context: %s",
-                    api_id, context ? context : "unknown");
-                return BML_FALSE;
-        }
-
-        return BML_TRUE;
-    }
 
     void RegisterTracingApis() {
         BML_BEGIN_API_REGISTRATION();
 
         /* Tracing control */
-        BML_REGISTER_API_WITH_CAPS(bmlEnableApiTracing, BML_EnableApiTracing, BML_CAP_API_TRACING);
-        BML_REGISTER_API_WITH_CAPS(bmlIsApiTracingEnabled, BML_IsApiTracingEnabled, BML_CAP_API_TRACING);
-        BML_REGISTER_API_WITH_CAPS(bmlSetTraceCallback, BML_SetTraceCallback, BML_CAP_API_TRACING);
+        BML_REGISTER_API(bmlEnableApiTracing, BML_EnableApiTracing);
+        BML_REGISTER_API(bmlIsApiTracingEnabled, BML_IsApiTracingEnabled);
+        BML_REGISTER_API(bmlSetTraceCallback, BML_SetTraceCallback);
 
         /* Statistics */
-        BML_REGISTER_API_WITH_CAPS(bmlGetApiStats, BML_GetApiStats, BML_CAP_API_TRACING);
-        BML_REGISTER_API_WITH_CAPS(bmlEnumerateApiStats, BML_EnumerateApiStats, BML_CAP_API_TRACING);
-        BML_REGISTER_API_WITH_CAPS(bmlDumpApiStats, BML_DumpApiStats, BML_CAP_API_TRACING);
-        BML_REGISTER_API_WITH_CAPS(bmlResetApiStats, BML_ResetApiStats, BML_CAP_API_TRACING);
-        BML_REGISTER_API_WITH_CAPS(bmlValidateApiId, BML_ValidateApiId, BML_CAP_API_TRACING);
+        BML_REGISTER_API(bmlGetApiStats, BML_GetApiStats);
+        BML_REGISTER_API(bmlEnumerateApiStats, BML_EnumerateApiStats);
+        BML_REGISTER_API(bmlDumpApiStats, BML_DumpApiStats);
+        BML_REGISTER_API(bmlResetApiStats, BML_ResetApiStats);
     }
 } // namespace BML::Core

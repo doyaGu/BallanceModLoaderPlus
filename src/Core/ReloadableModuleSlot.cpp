@@ -8,8 +8,11 @@
 #endif
 
 #include "Context.h"
+#include "CrashDumpWriter.h"
+#include "FaultTracker.h"
 #include "Logging.h"
 #include "ModManifest.h"
+#include "ModuleLifecycle.h"
 #include "StringUtils.h"
 
 namespace BML::Core {
@@ -36,6 +39,7 @@ namespace BML::Core {
                 case ReloadResult::LoadFailed: return "LoadFailed";
                 case ReloadResult::EntrypointMissing: return "EntrypointMissing";
                 case ReloadResult::InitFailed: return "InitFailed";
+                case ReloadResult::UnloadBlocked: return "UnloadBlocked";
                 case ReloadResult::Crashed: return "Crashed";
                 case ReloadResult::RolledBack: return "RolledBack";
                 default: return "Unknown";
@@ -51,6 +55,7 @@ namespace BML::Core {
                 case ReloadFailure::BadImage: return "BadImage";
                 case ReloadFailure::StateInvalidated: return "StateInvalidated";
                 case ReloadFailure::UserError: return "UserError";
+                case ReloadFailure::DetachBlocked: return "DetachBlocked";
                 case ReloadFailure::InitialFailure: return "InitialFailure";
                 case ReloadFailure::SystemError: return "SystemError";
                 case ReloadFailure::Other: return "Other";
@@ -167,6 +172,9 @@ namespace BML::Core {
                 // Unload crashed or failed, try rollback
                 CoreLog(BML_LOG_WARN, kLogCategory,
                         "Unload failed, attempting rollback");
+                if (m_LastFailure == ReloadFailure::DetachBlocked) {
+                    return ReloadResult::UnloadBlocked;
+                }
                 if (TryRollback()) {
                     return ReloadResult::RolledBack;
                 }
@@ -389,6 +397,21 @@ namespace BML::Core {
 
         int result = 0;
         if (!is_rollback) {
+            std::string diagnostic;
+            BML_Result prepare_result = PrepareModuleForDetach(GetModId(),
+                                                              m_ModHandle.get(),
+                                                              m_Entrypoint,
+                                                              &diagnostic);
+            if (prepare_result != BML_RESULT_OK) {
+                CoreLog(BML_LOG_WARN, kLogCategory,
+                        "Detach gate rejected module '%s': %s (result %d)",
+                        GetModId().c_str(),
+                        diagnostic.empty() ? "no diagnostic" : diagnostic.c_str(),
+                        static_cast<int>(prepare_result));
+                m_LastFailure = ReloadFailure::DetachBlocked;
+                return false;
+            }
+
             // Call entrypoint with DETACH operation
             result = InvokeEntrypoint(is_close ? ReloadOp::Close : ReloadOp::Unload);
 
@@ -396,7 +419,9 @@ namespace BML::Core {
                 // Save state only if unload succeeded
                 SaveState();
                 BackupState();
+                CleanupModuleKernelState(GetModId(), m_ModHandle.get());
             } else {
+                CancelModuleDetachPreparation(GetModId());
                 CoreLog(BML_LOG_WARN, kLogCategory,
                         "Entrypoint detach returned %d", result);
             }
@@ -495,6 +520,7 @@ namespace BML::Core {
         if (!m_Entrypoint || !m_ModHandle) return -1;
 
         ReloadFailure caught_failure = ReloadFailure::None;
+        unsigned long caught_code = 0;
         int result = -1;
 
         auto invoke = [&]() -> int {
@@ -504,9 +530,6 @@ namespace BML::Core {
                 attach.api_version = BML_MOD_ENTRYPOINT_API_VERSION;
                 attach.mod = m_ModHandle.get();
                 attach.get_proc = m_Config.get_proc;
-                attach.get_proc_by_id = m_Config.get_proc_by_id;
-                attach.get_api_id = m_Config.get_api_id;
-                attach.reserved = nullptr;
                 return m_Entrypoint(BML_MOD_ENTRYPOINT_ATTACH, &attach);
             }
 
@@ -514,7 +537,6 @@ namespace BML::Core {
             detach.struct_size = sizeof(detach);
             detach.api_version = BML_MOD_ENTRYPOINT_API_VERSION;
             detach.mod = m_ModHandle.get();
-            detach.reserved = nullptr;
             return m_Entrypoint(BML_MOD_ENTRYPOINT_DETACH, &detach);
         };
 
@@ -526,10 +548,17 @@ namespace BML::Core {
         // Use SEH to catch crashes
         __try {
             result = invoke();
-        } __except (FilterException(GetExceptionCode(), caught_failure)) {
+        } __except ((caught_code = GetExceptionCode()), FilterException(caught_code, caught_failure)) {
+            const std::string &mod_id = GetModId();
             CoreLog(BML_LOG_ERROR, kLogCategory,
-                    "Exception caught in entrypoint: %s",
-                    ReloadFailureToString(caught_failure));
+                    "Exception caught in entrypoint for '%s': %s (code 0x%08lX)",
+                    mod_id.empty() ? "unknown" : mod_id.c_str(),
+                    ReloadFailureToString(caught_failure),
+                    caught_code);
+            CrashDumpWriter::Instance().WriteDumpOnce(mod_id, caught_code);
+            if (!mod_id.empty()) {
+                FaultTracker::Instance().RecordFault(mod_id, caught_code);
+            }
             m_LastFailure = caught_failure;
             result = -1;
         }

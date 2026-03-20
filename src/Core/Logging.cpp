@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdarg>
 #include <cstdio>
 #include <ctime>
@@ -44,6 +45,9 @@ namespace BML::Core {
         std::shared_mutex g_LogSinkMutex;
         BML_LogSinkOverrideDesc g_LogSinkOverride{};
         bool g_LogSinkOverrideActive{false};
+        std::atomic<uint32_t> g_LogSinkDispatches{0};
+        std::mutex g_LogSinkDrainMutex;
+        std::condition_variable g_LogSinkDrainCv;
 
         const char *SeverityToString(BML_LogSeverity level) {
             switch (level) {
@@ -163,11 +167,16 @@ namespace BML::Core {
                                  const std::string &body,
                                  const std::string &formatted) {
             BML_LogSinkOverrideDesc desc{};
+            bool dispatch_registered = false;
             {
                 std::shared_lock lock(g_LogSinkMutex);
                 if (!g_LogSinkOverrideActive)
                     return false;
                 desc = g_LogSinkOverride;
+                if (!desc.dispatch)
+                    return false;
+                g_LogSinkDispatches.fetch_add(1, std::memory_order_acq_rel);
+                dispatch_registered = true;
             }
 
             BML_LogMessageInfo info{};
@@ -180,6 +189,15 @@ namespace BML::Core {
             info.message = body.c_str();
             info.formatted_line = formatted.c_str();
 
+            auto finish_dispatch = [&]() {
+                if (!dispatch_registered)
+                    return;
+                if (g_LogSinkDispatches.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+                    std::lock_guard<std::mutex> lock(g_LogSinkDrainMutex);
+                    g_LogSinkDrainCv.notify_all();
+                }
+            };
+
             // Exception isolation: failing override should not crash the logger
             try {
                 desc.dispatch(Context::Instance().GetHandle(), &info, desc.user_data);
@@ -190,12 +208,18 @@ namespace BML::Core {
                 msg += "\n";
                 OutputDebugStringA(msg.c_str());
                 // Fall through to default logging
+                finish_dispatch();
                 return false;
             } catch (...) {
                 OutputDebugStringA("[BML Logging] Override dispatch threw unknown exception\n");
+                finish_dispatch();
                 return false;
             }
-            return (desc.flags & BML_LOG_SINK_OVERRIDE_SUPPRESS_DEFAULT) != 0;
+
+            bool suppress_default =
+                (desc.flags & BML_LOG_SINK_OVERRIDE_SUPPRESS_DEFAULT) != 0;
+            finish_dispatch();
+            return suppress_default;
         }
 
         BML_Mod_T *ResolveModFromCaller(void *caller) {
@@ -308,27 +332,6 @@ namespace BML::Core {
 
 #undef BML_CALLER_ADDRESS
 
-    BML_Result GetLoggingCaps(BML_LogCaps *out_caps) {
-        if (!out_caps)
-            return BML_RESULT_INVALID_ARGUMENT;
-        BML_LogCaps caps{};
-        caps.struct_size = sizeof(BML_LogCaps);
-        caps.api_version = bmlGetApiVersion();
-        caps.capability_flags = BML_LOG_CAP_STRUCTURED_TAGS |
-            BML_LOG_CAP_VARIADIC |
-            BML_LOG_CAP_FILTER_OVERRIDE |
-            BML_LOG_CAP_CONTEXT_ROUTING;
-        caps.supported_severities_mask = kAllSeverityMask;
-        caps.default_sink.struct_size = sizeof(BML_LogCreateDesc);
-        caps.default_sink.api_version = caps.api_version;
-        caps.default_sink.default_min_severity = static_cast<BML_LogSeverity>(
-            g_GlobalMinimumSeverity.load(std::memory_order_relaxed));
-        caps.default_sink.flags = BML_LOG_CREATE_ALLOW_TAGS |
-            BML_LOG_CREATE_ALLOW_FILTER;
-        caps.threading_model = BML_THREADING_FREE; // Logging APIs are fully thread-safe
-        *out_caps = caps;
-        return BML_RESULT_OK;
-    }
 
     BML_Result RegisterLogSinkOverride(const BML_LogSinkOverrideDesc *desc) {
         if (!desc || desc->struct_size < sizeof(BML_LogSinkOverrideDesc) || !desc->dispatch) {
@@ -357,6 +360,13 @@ namespace BML::Core {
         g_LogSinkOverride = {}; // Clear the descriptor
         g_LogSinkOverrideActive = false;
         lock.unlock();
+
+        {
+            std::unique_lock<std::mutex> drain_lock(g_LogSinkDrainMutex);
+            g_LogSinkDrainCv.wait(drain_lock, [] {
+                return g_LogSinkDispatches.load(std::memory_order_acquire) == 0;
+            });
+        }
 
         // Call shutdown callback outside the lock with exception safety
         if (shutdown) {

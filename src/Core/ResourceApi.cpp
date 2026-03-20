@@ -4,8 +4,6 @@
 #include "Context.h"
 #include "ModHandle.h"
 #include "CoreErrors.h"
-#include "bml_api_ids.h"
-#include "bml_capabilities.h"
 
 #include <algorithm>
 #include <atomic>
@@ -101,15 +99,15 @@ namespace {
     }
 
     constexpr size_t kHandleDescMinSize = sizeof(BML_HandleDesc);
-    constexpr size_t kResourceCapsMinSize = sizeof(BML_ResourceCaps);
 
     bool HasValidHandleDescriptor(const BML_HandleDesc *desc) {
         return desc && desc->struct_size >= kHandleDescMinSize;
     }
 
-    bool HasValidCapsStruct(const BML_ResourceCaps *caps) {
-        return caps && caps->struct_size >= kResourceCapsMinSize;
+    bool HasValidHandleCreateOutput(const BML_HandleDesc *desc) {
+        return desc && (desc->struct_size == 0 || desc->struct_size >= kHandleDescMinSize);
     }
+
 } // namespace
 
 /* ============================================================================
@@ -117,7 +115,7 @@ namespace {
  * ============================================================================ */
 
 static BML_Result BML_HandleCreateImpl(BML_HandleType type, BML_HandleDesc *out_desc) {
-    if (!HasValidHandleDescriptor(out_desc)) {
+    if (!HasValidHandleCreateOutput(out_desc)) {
         return BML_RESULT_INVALID_ARGUMENT;
     }
 
@@ -197,10 +195,12 @@ static BML_Result BML_HandleReleaseImpl(const BML_HandleDesc *desc) {
         return BML_RESULT_INVALID_ARGUMENT;
     }
 
-    // First, get a shared lock to validate and attempt the atomic decrement
-    ControlBlock *control = nullptr;
+    BML_ResourceHandleFinalize finalize = nullptr;
+    void *finalize_user_data = nullptr;
+    BML_HandleDesc finalized_desc = *desc;
+
     {
-        std::shared_lock shared_lock(table->mutex);
+        std::unique_lock unique_lock(table->mutex);
 
         if (desc->slot >= table->slots.size()) {
             return BML_RESULT_INVALID_ARGUMENT;
@@ -211,53 +211,17 @@ static BML_Result BML_HandleReleaseImpl(const BML_HandleDesc *desc) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
-        control = slot.control;
-
-        // Use compare-exchange loop for safe decrement with underflow protection
+        ControlBlock *control = slot.control;
         uint32_t current = control->ref_count.load(std::memory_order_acquire);
-        while (true) {
-            if (current == 0) {
-                // Already at zero - invalid state, don't decrement
-                return BML_RESULT_INVALID_STATE;
-            }
-            // Try to decrement atomically
-            if (control->ref_count.compare_exchange_weak(current, current - 1, std::memory_order_acq_rel, std::memory_order_acquire)) {
-                // Successfully decremented from 'current' to 'current - 1'
-                break;
-            }
-            // CAS failed, 'current' now contains the updated value, retry
+        if (current == 0) {
+            return BML_RESULT_INVALID_STATE;
         }
+        control->ref_count.store(current - 1, std::memory_order_release);
 
-        // If we didn't decrement to zero, we're done
         if (current != 1) {
             return BML_RESULT_OK;
         }
-    }
-    // Shared lock released here
 
-    // We decremented from 1 to 0 - we need to finalize and free the slot
-    // Upgrade to unique lock for slot cleanup
-    BML_ResourceHandleFinalize finalize = nullptr;
-    void *finalize_user_data = nullptr;
-
-    {
-        std::unique_lock unique_lock(table->mutex);
-
-        // Re-check slot state in case another thread raced us
-        if (desc->slot >= table->slots.size()) {
-            // Slot no longer exists (shouldn't happen)
-            return BML_RESULT_OK;
-        }
-
-        auto &slot = table->slots[desc->slot];
-
-        // Verify the slot still has our control block (prevents double-free race)
-        if (!slot.in_use || slot.generation != desc->generation || slot.control != control) {
-            // Another thread already cleaned up, or slot was reused
-            return BML_RESULT_OK;
-        }
-
-        // Get finalizer before cleanup
         {
             std::shared_lock metaLock(g_ResourceMetadataMutex);
             auto it = g_ResourceMetadata.find(desc->type);
@@ -267,7 +231,6 @@ static BML_Result BML_HandleReleaseImpl(const BML_HandleDesc *desc) {
             }
         }
 
-        // Cleanup the slot
         delete control;
         slot.control = nullptr;
         slot.in_use = false;
@@ -281,16 +244,11 @@ static BML_Result BML_HandleReleaseImpl(const BML_HandleDesc *desc) {
             table->free_list.push_back(desc->slot);
         }
     }
-    // Unique lock released here
 
-    // Call finalizer outside the lock with exception protection
     if (finalize) {
-        BML_HandleDesc copy = *desc;
         try {
-            finalize(Context::Instance().GetHandle(), &copy, finalize_user_data);
+            finalize(Context::Instance().GetHandle(), &finalized_desc, finalize_user_data);
         } catch (...) {
-            // Finalizer threw exception - log and swallow
-            // Handle is already freed, nothing more we can do
         }
     }
 
@@ -374,28 +332,6 @@ static BML_Result BML_HandleGetUserDataImpl(const BML_HandleDesc *desc, void **o
     return BML_RESULT_OK;
 }
 
-static BML_Result BML_GetResourceCapsImpl(BML_ResourceCaps *out_caps) {
-    if (!HasValidCapsStruct(out_caps))
-        return BML_RESULT_INVALID_ARGUMENT;
-    size_t type_count = 0;
-    {
-        std::shared_lock lock(g_TablesMutex);
-        type_count = g_HandleTables.size();
-    }
-    BML_ResourceCaps caps{};
-    caps.struct_size = sizeof(BML_ResourceCaps);
-    caps.api_version = bmlGetApiVersion();
-    caps.capability_flags = BML_RESOURCE_CAP_STRONG_REFERENCES |
-        BML_RESOURCE_CAP_USER_DATA |
-        BML_RESOURCE_CAP_THREAD_SAFE |
-        BML_RESOURCE_CAP_TYPE_ISOLATION;
-    const auto clamped = std::min<size_t>(type_count, static_cast<size_t>((std::numeric_limits<uint32_t>::max)()));
-    caps.active_handle_types = static_cast<uint32_t>(clamped);
-    caps.user_data_alignment = static_cast<uint32_t>(alignof(void *));
-    *out_caps = caps;
-    return BML_RESULT_OK;
-}
-
 /* ============================================================================
  * Registration Entry Point
  * ============================================================================ */
@@ -429,10 +365,6 @@ namespace BML::Core {
         return BML_HandleGetUserDataImpl(desc, out_user_data);
     }
 
-    BML_Result BML_API_ResourceGetCaps(BML_ResourceCaps *out_caps) {
-        return BML_GetResourceCapsImpl(out_caps);
-    }
-
     BML_Result BML_API_RegisterResourceType(const BML_ResourceTypeDesc *desc, BML_HandleType *out_type) {
         return RegisterResourceType(desc, out_type);
     }
@@ -441,16 +373,15 @@ namespace BML::Core {
         BML_BEGIN_API_REGISTRATION();
 
         // Handle management APIs
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlHandleCreate, "resource", BML_API_HandleCreate, BML_CAP_HANDLE_SYSTEM);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlHandleRetain, "resource", BML_API_HandleRetain, BML_CAP_HANDLE_SYSTEM);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlHandleRelease, "resource", BML_API_HandleRelease, BML_CAP_HANDLE_SYSTEM);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlHandleValidate, "resource", BML_API_HandleValidate, BML_CAP_HANDLE_SYSTEM);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlHandleAttachUserData, "resource", BML_API_HandleAttachUserData, BML_CAP_HANDLE_SYSTEM);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlHandleGetUserData, "resource", BML_API_HandleGetUserData, BML_CAP_HANDLE_SYSTEM);
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlResourceGetCaps, "resource", BML_API_ResourceGetCaps, BML_CAP_HANDLE_SYSTEM);
+        BML_REGISTER_API_GUARDED(bmlHandleCreate, "resource", BML_API_HandleCreate);
+        BML_REGISTER_API_GUARDED(bmlHandleRetain, "resource", BML_API_HandleRetain);
+        BML_REGISTER_API_GUARDED(bmlHandleRelease, "resource", BML_API_HandleRelease);
+        BML_REGISTER_API_GUARDED(bmlHandleValidate, "resource", BML_API_HandleValidate);
+        BML_REGISTER_API_GUARDED(bmlHandleAttachUserData, "resource", BML_API_HandleAttachUserData);
+        BML_REGISTER_API_GUARDED(bmlHandleGetUserData, "resource", BML_API_HandleGetUserData);
 
         // Resource type registration
-        BML_REGISTER_API_GUARDED_WITH_CAPS(bmlRegisterResourceType, "resource", BML_API_RegisterResourceType, BML_CAP_HANDLE_SYSTEM);
+        BML_REGISTER_API_GUARDED(bmlRegisterResourceType, "resource", BML_API_RegisterResourceType);
     }
 
     BML_Result RegisterResourceType(const BML_ResourceTypeDesc *desc, BML_HandleType *out_type) {

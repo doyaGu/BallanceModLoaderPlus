@@ -2,15 +2,25 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <vector>
 
 #include "ApiRegistration.h"
+#include "ApiRegistry.h"
+#include "BuiltinInterfaces.h"
 #include "Context.h"
+#include "CrashDumpWriter.h"
+#include "FaultTracker.h"
+#include "HookRegistry.h"
 #include "ImcBus.h"
+#include "InterfaceRegistry.h"
+#include "LeaseManager.h"
+#include "LocaleManager.h"
 #include "Logging.h"
 #include "StringUtils.h"
+#include "TimerManager.h"
 
 namespace BML::Core {
     namespace {
@@ -21,14 +31,6 @@ namespace BML::Core {
             bool modules_discovered{false};
             bool modules_loaded{false};
             BML_BootstrapState bootstrap_state{BML_BOOTSTRAP_STATE_NOT_STARTED};
-            std::vector<BML_BootstrapManifestError> public_manifest_errors;
-            std::vector<const char *> public_dependency_chain;
-            std::vector<BML_BootstrapDependencyWarning> public_dependency_warnings;
-            std::vector<const char *> public_load_order;
-            std::string load_error_path_utf8;
-            BML_BootstrapDependencyError public_dependency_error{};
-            BML_BootstrapLoadError public_load_error{};
-            BML_BootstrapDiagnostics public_diagnostics{};
         };
 
         MicrokernelState &State() {
@@ -36,9 +38,169 @@ namespace BML::Core {
             return state;
         }
 
+        std::recursive_mutex &StateMutex() {
+            static std::recursive_mutex mutex;
+            return mutex;
+        }
+
+        struct ManifestErrorSnapshot {
+            std::string message;
+            std::string file;
+            bool has_file{false};
+            int32_t line{0};
+            bool has_line{false};
+            int32_t column{0};
+            bool has_column{false};
+        };
+
+        struct DependencyWarningSnapshot {
+            std::string module_id;
+            std::string dependency_id;
+            std::string message;
+        };
+
+        struct DiagnosticsSnapshotStorage {
+            std::vector<ManifestErrorSnapshot> manifest_storage;
+            std::vector<BML_BootstrapManifestError> manifest_errors;
+            std::string dependency_error_message;
+            std::vector<std::string> dependency_chain_storage;
+            std::vector<const char *> dependency_chain;
+            std::vector<DependencyWarningSnapshot> dependency_warning_storage;
+            std::vector<BML_BootstrapDependencyWarning> dependency_warnings;
+            std::string load_error_module_id;
+            std::string load_error_path_utf8;
+            std::string load_error_message;
+            std::vector<std::string> load_order_storage;
+            std::vector<const char *> load_order;
+            BML_BootstrapDiagnostics diagnostics{};
+
+            void Reset() {
+                manifest_storage.clear();
+                manifest_errors.clear();
+                dependency_error_message.clear();
+                dependency_chain_storage.clear();
+                dependency_chain.clear();
+                dependency_warning_storage.clear();
+                dependency_warnings.clear();
+                load_error_module_id.clear();
+                load_error_path_utf8.clear();
+                load_error_message.clear();
+                load_order_storage.clear();
+                load_order.clear();
+                diagnostics = {};
+            }
+        };
+
+        DiagnosticsSnapshotStorage &ThreadLocalDiagnosticsSnapshot() {
+            thread_local DiagnosticsSnapshotStorage snapshot;
+            return snapshot;
+        }
+
+        void PopulatePublicDiagnosticsSnapshot(const ModuleBootstrapDiagnostics &diag,
+                                              DiagnosticsSnapshotStorage &snapshot) {
+            snapshot.Reset();
+
+            snapshot.manifest_storage.reserve(diag.manifest_errors.size());
+            for (const auto &error : diag.manifest_errors) {
+                ManifestErrorSnapshot entry;
+                entry.message = error.message;
+                if (error.file && !error.file->empty()) {
+                    entry.file = *error.file;
+                    entry.has_file = true;
+                }
+                if (error.line) {
+                    entry.line = *error.line;
+                    entry.has_line = true;
+                }
+                if (error.column) {
+                    entry.column = *error.column;
+                    entry.has_column = true;
+                }
+                snapshot.manifest_storage.push_back(std::move(entry));
+            }
+
+            snapshot.manifest_errors.reserve(snapshot.manifest_storage.size());
+            for (const auto &entry : snapshot.manifest_storage) {
+                BML_BootstrapManifestError public_entry{};
+                public_entry.message = entry.message.c_str();
+                public_entry.file = entry.has_file ? entry.file.c_str() : nullptr;
+                public_entry.line = entry.line;
+                public_entry.column = entry.column;
+                public_entry.has_file = entry.has_file ? 1 : 0;
+                public_entry.has_line = entry.has_line ? 1 : 0;
+                public_entry.has_column = entry.has_column ? 1 : 0;
+                snapshot.manifest_errors.push_back(public_entry);
+            }
+
+            snapshot.dependency_error_message = diag.dependency_error.message;
+            snapshot.dependency_chain_storage = diag.dependency_error.chain;
+            snapshot.dependency_chain.reserve(snapshot.dependency_chain_storage.size());
+            for (const auto &entry : snapshot.dependency_chain_storage) {
+                snapshot.dependency_chain.push_back(entry.c_str());
+            }
+
+            snapshot.dependency_warning_storage.reserve(diag.dependency_warnings.size());
+            for (const auto &warning : diag.dependency_warnings) {
+                DependencyWarningSnapshot entry;
+                entry.module_id = warning.mod_id;
+                entry.dependency_id = warning.dependency_id;
+                entry.message = warning.message;
+                snapshot.dependency_warning_storage.push_back(std::move(entry));
+            }
+
+            snapshot.dependency_warnings.reserve(snapshot.dependency_warning_storage.size());
+            for (const auto &entry : snapshot.dependency_warning_storage) {
+                BML_BootstrapDependencyWarning public_entry{};
+                public_entry.module_id = entry.module_id.empty() ? nullptr : entry.module_id.c_str();
+                public_entry.dependency_id =
+                    entry.dependency_id.empty() ? nullptr : entry.dependency_id.c_str();
+                public_entry.message = entry.message.empty() ? nullptr : entry.message.c_str();
+                snapshot.dependency_warnings.push_back(public_entry);
+            }
+
+            snapshot.load_error_module_id = diag.load_error.id;
+            snapshot.load_error_path_utf8 = utils::Utf16ToUtf8(diag.load_error.path);
+            snapshot.load_error_message = diag.load_error.message;
+            snapshot.load_order_storage = diag.load_order;
+            snapshot.load_order.reserve(snapshot.load_order_storage.size());
+            for (const auto &entry : snapshot.load_order_storage) {
+                snapshot.load_order.push_back(entry.c_str());
+            }
+
+            snapshot.diagnostics.manifest_errors =
+                snapshot.manifest_errors.empty() ? nullptr : snapshot.manifest_errors.data();
+            snapshot.diagnostics.manifest_error_count =
+                static_cast<uint32_t>(snapshot.manifest_errors.size());
+            snapshot.diagnostics.dependency_error.message =
+                snapshot.dependency_error_message.empty()
+                    ? nullptr
+                    : snapshot.dependency_error_message.c_str();
+            snapshot.diagnostics.dependency_error.chain =
+                snapshot.dependency_chain.empty() ? nullptr : snapshot.dependency_chain.data();
+            snapshot.diagnostics.dependency_error.chain_count =
+                static_cast<uint32_t>(snapshot.dependency_chain.size());
+            snapshot.diagnostics.dependency_warnings =
+                snapshot.dependency_warnings.empty() ? nullptr : snapshot.dependency_warnings.data();
+            snapshot.diagnostics.dependency_warning_count =
+                static_cast<uint32_t>(snapshot.dependency_warnings.size());
+            snapshot.diagnostics.load_error.module_id =
+                snapshot.load_error_module_id.empty() ? nullptr : snapshot.load_error_module_id.c_str();
+            snapshot.diagnostics.load_error.path_utf8 =
+                snapshot.load_error_path_utf8.empty() ? nullptr : snapshot.load_error_path_utf8.c_str();
+            snapshot.diagnostics.load_error.message =
+                snapshot.load_error_message.empty() ? nullptr : snapshot.load_error_message.c_str();
+            snapshot.diagnostics.load_error.system_code =
+                static_cast<int32_t>(diag.load_error.system_code);
+            snapshot.diagnostics.load_error.has_error = diag.load_error.message.empty() ? 0 : 1;
+            snapshot.diagnostics.load_order =
+                snapshot.load_order.empty() ? nullptr : snapshot.load_order.data();
+            snapshot.diagnostics.load_order_count =
+                static_cast<uint32_t>(snapshot.load_order.size());
+        }
+
         // Use CoreLog for consistent logging
         inline void DebugLog(const std::string &message) {
-            CoreLog(BML_LOG_DEBUG, "microkernel", "%s", message.c_str());
+            CoreLog(BML_LOG_INFO, "microkernel", "%s", message.c_str());
         }
 
         std::wstring GetEnvironmentOverride() {
@@ -175,80 +337,10 @@ namespace BML::Core {
             }
         }
 
-        void UpdatePublicDiagnostics(MicrokernelState &state) {
-            auto &diag = state.diagnostics;
-
-            state.public_manifest_errors.clear();
-            state.public_manifest_errors.reserve(diag.manifest_errors.size());
-            for (const auto &err : diag.manifest_errors) {
-                BML_BootstrapManifestError entry{};
-                entry.message = err.message.c_str();
-                if (err.file && !err.file->empty()) {
-                    entry.has_file = 1;
-                    entry.file = err.file->c_str();
-                }
-                if (err.line) {
-                    entry.has_line = 1;
-                    entry.line = *err.line;
-                }
-                if (err.column) {
-                    entry.has_column = 1;
-                    entry.column = *err.column;
-                }
-                state.public_manifest_errors.push_back(entry);
-            }
-
-            state.public_dependency_chain.clear();
-            for (const auto &id : diag.dependency_error.chain) {
-                state.public_dependency_chain.push_back(id.c_str());
-            }
-            if (diag.dependency_error.message.empty()) {
-                state.public_dependency_error = {};
-            } else {
-                state.public_dependency_error.message = diag.dependency_error.message.c_str();
-                state.public_dependency_error.chain = state.public_dependency_chain.empty() ? nullptr : state.public_dependency_chain.data();
-                state.public_dependency_error.chain_count = static_cast<uint32_t>(state.public_dependency_chain.size());
-            }
-
-            state.public_dependency_warnings.clear();
-            state.public_dependency_warnings.reserve(diag.dependency_warnings.size());
-            for (const auto &warning : diag.dependency_warnings) {
-                BML_BootstrapDependencyWarning entry{};
-                entry.module_id = warning.mod_id.empty() ? nullptr : warning.mod_id.c_str();
-                entry.dependency_id = warning.dependency_id.empty() ? nullptr : warning.dependency_id.c_str();
-                entry.message = warning.message.empty() ? nullptr : warning.message.c_str();
-                state.public_dependency_warnings.push_back(entry);
-            }
-
-            if (!diag.load_error.message.empty()) {
-                state.public_load_error.has_error = 1;
-                state.public_load_error.module_id = diag.load_error.id.empty() ? nullptr : diag.load_error.id.c_str();
-                state.public_load_error.message = diag.load_error.message.c_str();
-                state.load_error_path_utf8 = utils::Utf16ToUtf8(diag.load_error.path);
-                state.public_load_error.path_utf8 = state.load_error_path_utf8.empty() ? nullptr : state.load_error_path_utf8.c_str();
-                state.public_load_error.system_code = static_cast<int32_t>(diag.load_error.system_code);
-            } else {
-                state.public_load_error = {};
-                state.load_error_path_utf8.clear();
-            }
-
-            state.public_load_order.clear();
-            for (const auto &id : diag.load_order) {
-                state.public_load_order.push_back(id.c_str());
-            }
-
-            state.public_diagnostics.manifest_errors = state.public_manifest_errors.empty() ? nullptr : state.public_manifest_errors.data();
-            state.public_diagnostics.manifest_error_count = static_cast<uint32_t>(state.public_manifest_errors.size());
-            state.public_diagnostics.dependency_error = state.public_dependency_error;
-            state.public_diagnostics.dependency_warnings = state.public_dependency_warnings.empty() ? nullptr : state.public_dependency_warnings.data();
-            state.public_diagnostics.dependency_warning_count = static_cast<uint32_t>(state.public_dependency_warnings.size());
-            state.public_diagnostics.load_error = state.public_load_error;
-            state.public_diagnostics.load_order = state.public_load_order.empty() ? nullptr : state.public_load_order.data();
-            state.public_diagnostics.load_order_count = static_cast<uint32_t>(state.public_load_order.size());
-        }
     } // namespace
 
     bool InitializeCore() {
+        std::lock_guard<std::recursive_mutex> lock(StateMutex());
         auto &state = State();
         if (state.core_initialized)
             return true;
@@ -257,10 +349,14 @@ namespace BML::Core {
 
         // Initialize context with runtime version
         auto &ctx = Context::Instance();
-        ctx.Initialize({0, 4, 0});
+        ctx.Initialize(bmlMakeVersion(0, 4, 0));
+
+        RegisterBootstrapExports();
 
         // Register core APIs
         RegisterCoreApis();
+        RegisterBuiltinInterfaces();
+        PopulateBuiltinServices(ctx.GetServiceHubMutable()->m_Builtins);
 
         state.core_initialized = true;
         state.bootstrap_state = BML_BOOTSTRAP_STATE_CORE_INITIALIZED;
@@ -273,6 +369,7 @@ namespace BML::Core {
     }
 
     bool DiscoverModulesInDirectory(const std::wstring &mods_dir) {
+        std::lock_guard<std::recursive_mutex> lock(StateMutex());
         auto &state = State();
 
         // Core must be initialized first
@@ -286,12 +383,20 @@ namespace BML::Core {
 
         DebugLog("Phase 1: Discovering modules...");
 
+        // Initialize crash isolation subsystems with game base directory
+        // (base dir = parent of Mods directory)
+        {
+            std::filesystem::path base = std::filesystem::path(mods_dir).parent_path();
+            auto base_str = base.wstring();
+            FaultTracker::Instance().Load(base_str);
+            CrashDumpWriter::Instance().SetBaseDir(base_str);
+        }
+
         ModuleBootstrapDiagnostics diag;
 
         // Only discover and validate, don't load DLLs yet
         if (!state.runtime.DiscoverAndValidate(mods_dir, diag)) {
             state.diagnostics = diag;
-            UpdatePublicDiagnostics(state);
             EmitDiagnostics(diag);
             DebugLog("Module discovery failed");
             // Keep context alive for later retry
@@ -299,7 +404,6 @@ namespace BML::Core {
         }
 
         state.diagnostics = diag;
-        UpdatePublicDiagnostics(state);
         EmitDiagnostics(diag);
         state.modules_discovered = true;
         state.bootstrap_state = BML_BOOTSTRAP_STATE_MODULES_DISCOVERED;
@@ -308,6 +412,7 @@ namespace BML::Core {
     }
 
     bool LoadDiscoveredModules() {
+        std::lock_guard<std::recursive_mutex> lock(StateMutex());
         auto &state = State();
 
         // Modules must be discovered first
@@ -326,18 +431,16 @@ namespace BML::Core {
         // Load the previously discovered modules
         if (!state.runtime.LoadDiscovered(diag)) {
             state.diagnostics = diag;
-            UpdatePublicDiagnostics(state);
             EmitDiagnostics(diag);
             DebugLog("Module loading failed");
             return false;
         }
 
         state.diagnostics = diag;
-        UpdatePublicDiagnostics(state);
         state.runtime.SetDiagnosticsCallback([](const ModuleBootstrapDiagnostics &new_diag) {
+            std::lock_guard<std::recursive_mutex> callback_lock(StateMutex());
             auto &sharedState = State();
             sharedState.diagnostics = new_diag;
-            UpdatePublicDiagnostics(sharedState);
             EmitDiagnostics(new_diag);
         });
         state.modules_loaded = true;
@@ -348,6 +451,7 @@ namespace BML::Core {
     }
 
     BML_Result Bootstrap(const BML_BootstrapConfig *config) {
+        std::lock_guard<std::recursive_mutex> lock(StateMutex());
         if (config && config->struct_size < sizeof(BML_BootstrapConfig)) {
             return BML_RESULT_INVALID_SIZE;
         }
@@ -377,18 +481,22 @@ namespace BML::Core {
     }
 
     BML_BootstrapState GetBootstrapState() {
+        std::lock_guard<std::recursive_mutex> lock(StateMutex());
         return State().bootstrap_state;
     }
 
     void UpdateMicrokernel() {
+        std::lock_guard<std::recursive_mutex> lock(StateMutex());
         auto &state = State();
         if (!state.core_initialized || !state.modules_loaded) {
             return;
         }
+        TimerManager::Instance().Tick();
         state.runtime.Update();
     }
 
     void ShutdownMicrokernel() {
+        std::lock_guard<std::recursive_mutex> lock(StateMutex());
         auto &state = State();
         if (!state.core_initialized)
             return;
@@ -398,20 +506,31 @@ namespace BML::Core {
         // Shutdown runtime (unloads modules)
         state.runtime.Shutdown();
 
+        // Shutdown crash dump writer and fault tracker
+        CrashDumpWriter::Instance().Shutdown();
+        FaultTracker::Instance().Shutdown();
+
+        // Shutdown hook registry
+        HookRegistry::Instance().Shutdown();
+
+        // Shutdown locale manager
+        LocaleManager::Instance().Shutdown();
+
+        // Shutdown timers
+        TimerManager::Instance().Shutdown();
+
         // Shutdown IMC bus
-        ImcBus::Instance().Shutdown();
+        ImcShutdown();
 
         // Cleanup context (clears all remaining resources)
         Context::Instance().Cleanup();
 
+        LeaseManager::Instance().Reset();
+        InterfaceRegistry::Instance().Clear();
+        ApiRegistry::Instance().Clear();
+
         // Clear diagnostics
-        state.public_manifest_errors.clear();
-        state.public_dependency_chain.clear();
-        state.public_load_order.clear();
-        state.load_error_path_utf8.clear();
-        state.public_dependency_error = {};
-        state.public_load_error = {};
-        state.public_diagnostics = {};
+        state.diagnostics = {};
 
         state.core_initialized = false;
         state.modules_discovered = false;
@@ -421,10 +540,16 @@ namespace BML::Core {
     }
 
     const ModuleBootstrapDiagnostics &GetBootstrapDiagnostics() {
-        return State().diagnostics;
+        thread_local ModuleBootstrapDiagnostics snapshot;
+        std::lock_guard<std::recursive_mutex> lock(StateMutex());
+        snapshot = State().diagnostics;
+        return snapshot;
     }
 
     const BML_BootstrapDiagnostics &GetPublicDiagnostics() {
-        return State().public_diagnostics;
+        auto &snapshot = ThreadLocalDiagnosticsSnapshot();
+        std::lock_guard<std::recursive_mutex> lock(StateMutex());
+        PopulatePublicDiagnosticsSnapshot(State().diagnostics, snapshot);
+        return snapshot.diagnostics;
     }
 } // namespace BML::Core

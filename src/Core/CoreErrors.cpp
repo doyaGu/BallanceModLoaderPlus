@@ -84,6 +84,8 @@ namespace BML::Core {
         case BML_RESULT_INVALID_HANDLE: return "Invalid handle";
         case BML_RESULT_NOT_INITIALIZED: return "Not initialized";
         case BML_RESULT_ALREADY_INITIALIZED: return "Already initialized";
+        case BML_RESULT_BUSY: return "Busy";
+        case BML_RESULT_WRONG_THREAD: return "Wrong thread";
 
         // Config errors
         case BML_RESULT_CONFIG_KEY_NOT_FOUND: return "Config key not found";

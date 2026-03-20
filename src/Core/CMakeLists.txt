@@ -1,9 +1,9 @@
 # Core sources
 set(BML_CORE_SOURCES
         ApiRegistry.cpp
+        BuiltinInterfaces.cpp
         CoreApi.cpp
         TracingApi.cpp
-        CapabilityApi.cpp
         Context.cpp
         CoreErrors.cpp
         ConfigApi.cpp
@@ -11,18 +11,28 @@ set(BML_CORE_SOURCES
         DependencyResolver.cpp
         DiagnosticManager.cpp
         DiagnosticApi.cpp
+        CrashDumpWriter.cpp
         Export.cpp
-        ExtensionApi.cpp
+        FaultTracker.cpp
+        HookRegistry.cpp
+        HookApi.cpp
+        InterfaceApi.cpp
         ResourceApi.cpp
+        TimerManager.cpp
+        TimerApi.cpp
+        LocaleManager.cpp
+        LocaleApi.cpp
         MemoryManager.cpp
         MemoryApi.cpp
         ModManifest.cpp
+        ModuleLifecycle.cpp
         Microkernel.cpp
         ImcBus.cpp
-        ImcApi.cpp
         LoggingApi.cpp
         Logging.cpp
         SemanticVersion.cpp
+        LeaseManager.cpp
+        InterfaceRegistry.cpp
 )
 
 if (WIN32)
@@ -58,13 +68,17 @@ endif ()
 set(BML_CORE_HEADERS
         ApiRegistry.h
         ApiRegistration.h
+        BuiltinInterfaces.h
         Context.h
+        CrashDumpWriter.h
         CoreErrors.h
         ConfigStore.h
         DependencyResolver.h
         DiagnosticManager.h
+        FaultTracker.h
         ResourceApi.h
         FixedBlockPool.h
+        HookRegistry.h
         ImcBus.h
         Logging.h
         MemoryManager.h
@@ -74,11 +88,16 @@ set(BML_CORE_HEADERS
         ModHandle.h
         ModManifest.h
         ModuleDiscovery.h
+        ModuleLifecycle.h
         ModuleLoader.h
         ModuleRuntime.h
         MpscRingBuffer.h
         SpscRingBuffer.h
         SemanticVersion.h
+        LeaseManager.h
+        InterfaceRegistry.h
+        TimerManager.h
+        LocaleManager.h
 )
 
 # Main BML Core DLL
@@ -96,7 +115,7 @@ target_include_directories(BML
 
 target_link_libraries(BML
         PRIVATE
-        BMLUtils
+        BML_Utils
         tomlplusplus::tomlplusplus
         efsw
 )

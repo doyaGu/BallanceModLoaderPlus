@@ -268,7 +268,13 @@ namespace BML::Core {
         auto *impl = reinterpret_cast<MutexImpl *>(mutex);
         DWORD thread_id = ::GetCurrentThreadId();
 
-        if (TryEnterCriticalSection(&impl->cs)) {
+        if (impl->owner_thread.load(std::memory_order_acquire) == thread_id) {
+            ReportDeadlock("bmlMutexLock");
+            return;
+        }
+
+        if (impl->mutex.try_lock()) {
+            impl->owner_thread.store(thread_id, std::memory_order_release);
             m_DeadlockDetector->OnLockAcquired(impl, thread_id);
             return;
         }
@@ -278,7 +284,8 @@ namespace BML::Core {
             return;
         }
 
-        EnterCriticalSection(&impl->cs);
+        impl->mutex.lock();
+        impl->owner_thread.store(thread_id, std::memory_order_release);
         m_DeadlockDetector->OnLockAcquired(impl, thread_id);
     }
 
@@ -289,7 +296,12 @@ namespace BML::Core {
 
         auto *impl = reinterpret_cast<MutexImpl *>(mutex);
         DWORD thread_id = ::GetCurrentThreadId();
-        if (TryEnterCriticalSection(&impl->cs)) {
+        if (impl->owner_thread.load(std::memory_order_acquire) == thread_id) {
+            ReportDeadlock("bmlMutexTryLock");
+            return BML_FALSE;
+        }
+        if (impl->mutex.try_lock()) {
+            impl->owner_thread.store(thread_id, std::memory_order_release);
             m_DeadlockDetector->OnLockAcquired(impl, thread_id);
             return BML_TRUE;
         }
@@ -303,8 +315,13 @@ namespace BML::Core {
 
         auto *impl = reinterpret_cast<MutexImpl *>(mutex);
         DWORD thread_id = ::GetCurrentThreadId();
+        if (impl->owner_thread.load(std::memory_order_acquire) != thread_id) {
+            ReportLockMisuse("bmlMutexUnlock", "current thread does not own mutex");
+            return;
+        }
         m_DeadlockDetector->OnLockReleased(impl, thread_id);
-        LeaveCriticalSection(&impl->cs);
+        impl->owner_thread.store(0, std::memory_order_release);
+        impl->mutex.unlock();
     }
 
     BML_Result SyncManager::LockMutexTimeout(BML_Mutex mutex, uint32_t timeout_ms) {
@@ -315,17 +332,38 @@ namespace BML::Core {
         auto *impl = reinterpret_cast<MutexImpl *>(mutex);
         DWORD thread_id = ::GetCurrentThreadId();
 
+        if (impl->owner_thread.load(std::memory_order_acquire) == thread_id) {
+            return ReportDeadlock("bmlMutexLockTimeout");
+        }
+
         WaitRegistration wait_reg(
             m_DeadlockDetector.get(),
             impl,
             thread_id,
             [this]() { return ReportDeadlock("bmlMutexLockTimeout"); });
 
+        auto complete_acquire = [&](bool was_waiting) -> BML_Result {
+            if (m_DeadlockDetector->ConsumeDeadlock(thread_id)) {
+                if (was_waiting) {
+                    wait_reg.Cancel();
+                }
+                impl->owner_thread.store(0, std::memory_order_release);
+                impl->mutex.unlock();
+                return ReportDeadlock("bmlMutexLockTimeout");
+            }
+
+            if (was_waiting) {
+                wait_reg.MarkAcquired();
+            }
+            impl->owner_thread.store(thread_id, std::memory_order_release);
+            m_DeadlockDetector->OnLockAcquired(impl, thread_id);
+            return BML_RESULT_OK;
+        };
+
         // Handle special timeout values
         if (timeout_ms == BML_TIMEOUT_INFINITE) {
-            if (TryEnterCriticalSection(&impl->cs)) {
-                m_DeadlockDetector->OnLockAcquired(impl, thread_id);
-                return BML_RESULT_OK;
+            if (impl->mutex.try_lock()) {
+                return complete_acquire(false);
             }
 
             auto status = wait_reg.Ensure();
@@ -333,17 +371,14 @@ namespace BML::Core {
                 return status;
             }
 
-            EnterCriticalSection(&impl->cs);
-            wait_reg.MarkAcquired();
-            m_DeadlockDetector->OnLockAcquired(impl, thread_id);
-            return BML_RESULT_OK;
+            impl->mutex.lock();
+            return complete_acquire(true);
         }
 
         if (timeout_ms == BML_TIMEOUT_NONE) {
             // Non-blocking try
-            if (TryEnterCriticalSection(&impl->cs)) {
-                m_DeadlockDetector->OnLockAcquired(impl, thread_id);
-                return BML_RESULT_OK;
+            if (impl->mutex.try_lock()) {
+                return complete_acquire(false);
             }
             return BML_RESULT_TIMEOUT;
         }
@@ -356,10 +391,8 @@ namespace BML::Core {
         double timeout_sec = timeout_ms / 1000.0;
 
         while (true) {
-            if (TryEnterCriticalSection(&impl->cs)) {
-                wait_reg.MarkAcquired();
-                m_DeadlockDetector->OnLockAcquired(impl, thread_id);
-                return BML_RESULT_OK;
+            if (impl->mutex.try_lock()) {
+                return complete_acquire(true);
             }
 
             auto status = wait_reg.Ensure();
@@ -972,15 +1005,25 @@ namespace BML::Core {
             thread_id,
             [this]() { return ReportDeadlock("bmlSemaphoreWait"); });
 
-        auto handle_acquired = [&]() {
-            wait_reg.MarkAcquired();
+        auto handle_acquired = [&](bool was_waiting) -> BML_Result {
+            if (m_DeadlockDetector->ConsumeDeadlock(thread_id)) {
+                ReleaseSemaphore(impl->handle, 1, nullptr);
+                if (was_waiting) {
+                    wait_reg.Cancel();
+                }
+                return ReportDeadlock("bmlSemaphoreWait");
+            }
+
+            if (was_waiting) {
+                wait_reg.MarkAcquired();
+            }
             m_DeadlockDetector->OnLockAcquired(impl, thread_id);
+            return BML_RESULT_OK;
         };
 
         auto immediate_result = WaitForSingleObject(impl->handle, 0);
         if (immediate_result == WAIT_OBJECT_0) {
-            handle_acquired();
-            return BML_RESULT_OK;
+            return handle_acquired(false);
         }
         if (immediate_result == WAIT_FAILED) {
             return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlSemaphoreWait",
@@ -1000,8 +1043,7 @@ namespace BML::Core {
 
         switch (result) {
         case WAIT_OBJECT_0:
-            handle_acquired();
-            return BML_RESULT_OK;
+            return handle_acquired(true);
         case WAIT_TIMEOUT:
             wait_reg.Cancel();
             return BML_RESULT_TIMEOUT;
@@ -1243,20 +1285,24 @@ namespace BML::Core {
         auto *mutex_impl = reinterpret_cast<MutexImpl *>(mutex);
         DWORD thread_id = ::GetCurrentThreadId();
 
+        if (mutex_impl->owner_thread.load(std::memory_order_acquire) != thread_id) {
+            return SetLastErrorAndReturn(BML_RESULT_SYNC_NOT_OWNER, "sync", "bmlCondVarWait",
+                                         "current thread does not own mutex", 0);
+        }
+
         m_DeadlockDetector->OnLockReleased(mutex_impl, thread_id);
         if (m_DeadlockDetector->OnLockWait(mutex_impl, thread_id)) {
+            m_DeadlockDetector->OnLockAcquired(mutex_impl, thread_id);
             return ReportDeadlock("bmlCondVarWait");
         }
 
-        BOOL result = SleepConditionVariableCS(&cv_impl->cv, &mutex_impl->cs, INFINITE);
+        mutex_impl->owner_thread.store(0, std::memory_order_release);
+        std::unique_lock<std::timed_mutex> lock(mutex_impl->mutex, std::adopt_lock);
+        cv_impl->cv.wait(lock);
+        lock.release();
 
+        mutex_impl->owner_thread.store(thread_id, std::memory_order_release);
         m_DeadlockDetector->OnLockAcquired(mutex_impl, thread_id);
-        if (!result) {
-            DWORD error = ::GetLastError();
-            return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlCondVarWait",
-                                         "SleepConditionVariableCS failed", error);
-        }
-
         return BML_RESULT_OK;
     }
 
@@ -1270,22 +1316,31 @@ namespace BML::Core {
         auto *mutex_impl = reinterpret_cast<MutexImpl *>(mutex);
         DWORD thread_id = ::GetCurrentThreadId();
 
+        if (mutex_impl->owner_thread.load(std::memory_order_acquire) != thread_id) {
+            return SetLastErrorAndReturn(BML_RESULT_SYNC_NOT_OWNER,
+                                         "sync",
+                                         "bmlCondVarWaitTimeout",
+                                         "current thread does not own mutex",
+                                         0);
+        }
+
         m_DeadlockDetector->OnLockReleased(mutex_impl, thread_id);
         if (m_DeadlockDetector->OnLockWait(mutex_impl, thread_id)) {
+            m_DeadlockDetector->OnLockAcquired(mutex_impl, thread_id);
             return ReportDeadlock("bmlCondVarWaitTimeout");
         }
 
-        BOOL result = SleepConditionVariableCS(&cv_impl->cv, &mutex_impl->cs, timeout_ms);
+        mutex_impl->owner_thread.store(0, std::memory_order_release);
+        std::unique_lock<std::timed_mutex> lock(mutex_impl->mutex, std::adopt_lock);
+        bool signaled = cv_impl->cv.wait_for(lock, std::chrono::milliseconds(timeout_ms)) !=
+            std::cv_status::timeout;
+        lock.release();
 
+        mutex_impl->owner_thread.store(thread_id, std::memory_order_release);
         m_DeadlockDetector->OnLockAcquired(mutex_impl, thread_id);
-        if (!result) {
-            DWORD error = ::GetLastError();
-            if (error == ERROR_TIMEOUT) {
-                return SetLastErrorAndReturn(BML_RESULT_TIMEOUT, "sync", "bmlCondVarWaitTimeout",
-                                             "Wait timed out", error);
-            }
-            return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "sync", "bmlCondVarWaitTimeout",
-                                         "SleepConditionVariableCS failed", error);
+        if (!signaled) {
+            return SetLastErrorAndReturn(BML_RESULT_TIMEOUT, "sync", "bmlCondVarWaitTimeout",
+                                         "Wait timed out", 0);
         }
 
         return BML_RESULT_OK;
@@ -1297,7 +1352,7 @@ namespace BML::Core {
         }
 
         auto *impl = reinterpret_cast<CondVarImpl *>(condvar);
-        WakeConditionVariable(&impl->cv);
+        impl->cv.notify_one();
         return BML_RESULT_OK;
     }
 
@@ -1307,7 +1362,7 @@ namespace BML::Core {
         }
 
         auto *impl = reinterpret_cast<CondVarImpl *>(condvar);
-        WakeAllConditionVariable(&impl->cv);
+        impl->cv.notify_all();
         return BML_RESULT_OK;
     }
 
@@ -1537,27 +1592,4 @@ namespace BML::Core {
     }
 
     // ============================================================================
-    // Capabilities
-    // ============================================================================
-
-    BML_Result SyncManager::GetCaps(BML_SyncCaps *out_caps) {
-        if (!out_caps) {
-            return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "sync", "bmlSyncGetCaps",
-                                         "out_caps is NULL", 0);
-        }
-
-        out_caps->struct_size = sizeof(BML_SyncCaps);
-        out_caps->api_version = bmlGetApiVersion();
-        out_caps->capability_flags =
-            BML_SYNC_CAP_MUTEX |
-            BML_SYNC_CAP_RWLOCK |
-            BML_SYNC_CAP_ATOMICS |
-            BML_SYNC_CAP_SEMAPHORE |
-            BML_SYNC_CAP_TLS |
-            BML_SYNC_CAP_CONDVAR |
-            BML_SYNC_CAP_SPINLOCK;
-
-        return BML_RESULT_OK;
-    }
 } // namespace BML::Core
-

@@ -173,6 +173,10 @@ namespace BML::Core {
             auto manifest = std::make_unique<ModManifest>();
             ManifestParseError error;
             if (!parser.ParseFile(manifest_path.wstring(), *manifest, error)) {
+                CoreLog(BML_LOG_WARN, kDiscoveryLogCategory,
+                        "Manifest parse error in %s: %s",
+                        utils::Utf16ToUtf8(manifest_path.wstring()).c_str(),
+                        error.message.c_str());
                 out_result.errors.emplace_back(std::move(error));
                 return;
             }

@@ -32,7 +32,10 @@
 #include <vector>
 
 #include "ApiRegistry.h"
+#include "ApiRegistrationMacros.h"
 #include "Context.h"
+#include "CrashDumpWriter.h"
+#include "FaultTracker.h"
 #include "FixedBlockPool.h"
 #include "Logging.h"
 #include "MpscRingBuffer.h"
@@ -44,6 +47,47 @@ namespace {
     constexpr size_t kInlinePayloadBytes = 256;
     constexpr size_t kDefaultRpcQueueCapacity = 256;
     constexpr size_t kPriorityLevels = 4; // LOW, NORMAL, HIGH, URGENT
+
+    // Stack-allocated small vector. Avoids heap allocation for the common case
+    // where subscriber count per topic is <= N. Falls back to heap for overflow.
+    template <typename T, size_t N>
+    class StackVec {
+    public:
+        StackVec() = default;
+        StackVec(const StackVec &) = delete;
+        StackVec &operator=(const StackVec &) = delete;
+
+        void push_back(T value) {
+            if (m_Size < N) {
+                m_Inline[m_Size++] = value;
+            } else {
+                if (m_Size == N) {
+                    m_Overflow.reserve(N * 2);
+                    m_Overflow.assign(m_Inline, m_Inline + N);
+                }
+                m_Overflow.push_back(value);
+                ++m_Size;
+            }
+        }
+
+        void reserve(size_t) {} // no-op; inline buffer is fixed
+
+        [[nodiscard]] size_t size() const noexcept { return m_Size; }
+        [[nodiscard]] bool empty() const noexcept { return m_Size == 0; }
+
+        T *begin() noexcept { return m_Size <= N ? m_Inline : m_Overflow.data(); }
+        T *end() noexcept { return begin() + m_Size; }
+        const T *begin() const noexcept { return m_Size <= N ? m_Inline : m_Overflow.data(); }
+        const T *end() const noexcept { return begin() + m_Size; }
+
+        T &operator[](size_t i) noexcept { return begin()[i]; }
+        const T &operator[](size_t i) const noexcept { return begin()[i]; }
+
+    private:
+        T m_Inline[N]{};
+        std::vector<T> m_Overflow;
+        size_t m_Size = 0;
+    };
 
     // ========================================================================
     // High-quality hash function (xxHash-inspired, but simpler)
@@ -116,6 +160,28 @@ namespace {
             other.m_ExternalData = nullptr;
             other.m_ExternalCleanup = nullptr;
             other.m_ExternalUserData = nullptr;
+        }
+
+        BufferStorage &operator=(BufferStorage &&other) noexcept {
+            if (this == &other) {
+                return *this;
+            }
+
+            Reset();
+            m_Kind = other.m_Kind;
+            m_Size = other.m_Size;
+            m_Inline = other.m_Inline;
+            m_Heap = std::move(other.m_Heap);
+            m_ExternalData = other.m_ExternalData;
+            m_ExternalCleanup = other.m_ExternalCleanup;
+            m_ExternalUserData = other.m_ExternalUserData;
+
+            other.m_Kind = Kind::None;
+            other.m_Size = 0;
+            other.m_ExternalData = nullptr;
+            other.m_ExternalCleanup = nullptr;
+            other.m_ExternalUserData = nullptr;
+            return *this;
         }
 
         bool CopyFrom(const void *data, size_t size) {
@@ -279,6 +345,13 @@ namespace {
             if (stats) {
                 stats->message_count.fetch_add(1, std::memory_order_relaxed);
             }
+        }
+
+        /** @brief Get raw counter pointer for lock-free caching. Stable for topic lifetime. */
+        std::atomic<uint64_t> *GetMessageCountPtr(BML_TopicId id) {
+            std::shared_lock lock(m_Mutex);
+            auto it = m_Stats.find(id);
+            return it != m_Stats.end() ? &it->second->message_count : nullptr;
         }
 
         uint64_t GetMessageCount(BML_TopicId id) const {
@@ -471,6 +544,7 @@ struct BML_Subscription_T {
     // Core fields
     BML_TopicId topic_id{0};
     BML_ImcHandler handler{nullptr};
+    BML_ImcInterceptHandler intercept_handler{nullptr};
     void *user_data{nullptr};
     BML_Mod owner{nullptr};
     std::atomic<uint32_t> ref_count{0};
@@ -480,6 +554,11 @@ struct BML_Subscription_T {
     size_t queue_capacity{kDefaultQueueCapacity};
     uint32_t min_priority{BML_IMC_PRIORITY_LOW};
     uint32_t backpressure_policy{BML_BACKPRESSURE_FAIL}; // Default to FAIL for explicit error handling
+    int32_t execution_order{0};
+    BML_ImcFilter filter{nullptr};
+    void *filter_user_data{nullptr};
+
+    bool IsIntercept() const { return intercept_handler != nullptr; }
 
     // Priority queue
     std::unique_ptr<PriorityMessageQueue<QueuedMessage *>> queue;
@@ -523,6 +602,24 @@ struct BML_Subscription_T {
     }
 };
 
+thread_local std::vector<BML_Subscription_T *> g_DispatchSubscriptionStack;
+
+class DispatchSubscriptionScope {
+public:
+    explicit DispatchSubscriptionScope(BML_Subscription_T *sub) {
+        g_DispatchSubscriptionStack.push_back(sub);
+    }
+
+    ~DispatchSubscriptionScope() {
+        g_DispatchSubscriptionStack.pop_back();
+    }
+
+    DispatchSubscriptionScope(const DispatchSubscriptionScope &) = delete;
+    DispatchSubscriptionScope &operator=(const DispatchSubscriptionScope &) = delete;
+
+private:
+};
+
 // ========================================================================
 // Future Internal Type
 // ========================================================================
@@ -543,6 +640,7 @@ struct BML_Future_T {
     uint32_t flags{0};
     uint64_t creation_time{0};
     uint64_t completion_time{0};
+    std::string error_message;  // populated on failure if handler provides one
     std::vector<FutureCallbackEntry> callbacks;
 
     BML_Future_T() : creation_time(GetTimestampNs()) {}
@@ -565,6 +663,25 @@ struct BML_Future_T {
                     state = BML_FUTURE_FAILED;
                 }
             }
+            pending_callbacks = callbacks;
+            callbacks.clear();
+        }
+        NotifyCallbacks(std::move(pending_callbacks));
+    }
+
+    void CompleteWithError(BML_FutureState new_state,
+                           BML_Result new_status,
+                           const char *err_msg) {
+        std::vector<FutureCallbackEntry> pending_callbacks;
+        {
+            std::unique_lock lock(mutex);
+            if (state != BML_FUTURE_PENDING)
+                return;
+            state = new_state;
+            status = new_status;
+            completion_time = GetTimestampNs();
+            if (err_msg && *err_msg)
+                error_message = err_msg;
             pending_callbacks = callbacks;
             callbacks.clear();
         }
@@ -602,6 +719,20 @@ struct BML_Future_T {
     }
 };
 
+// ========================================================================
+// RPC Stream Internal Type
+// ========================================================================
+
+struct BML_RpcStream_T {
+    BML_Future future{nullptr};
+    BML_TopicId chunk_topic{BML_TOPIC_ID_INVALID};
+    BML_ImcHandler on_chunk{nullptr};
+    BML_FutureCallback on_done{nullptr};
+    void *user_data{nullptr};
+    BML_Mod owner{nullptr};
+    std::atomic<bool> completed{false};
+};
+
 static BML_Future CreateFuture() {
     return new(std::nothrow) BML_Future_T();
 }
@@ -624,10 +755,19 @@ namespace {
     // RPC Types (internal)
     // ========================================================================
 
+    struct RpcHandlerStats {
+        std::atomic<uint64_t> call_count{0};
+        std::atomic<uint64_t> completion_count{0};
+        std::atomic<uint64_t> failure_count{0};
+        std::atomic<uint64_t> total_latency_ns{0};
+    };
+
     struct RpcHandlerEntry {
         BML_RpcHandler handler{nullptr};
+        BML_RpcHandlerEx handler_ex{nullptr};
         void *user_data{nullptr};
         BML_Mod owner{nullptr};
+        std::shared_ptr<RpcHandlerStats> stats = std::make_shared<RpcHandlerStats>();
     };
 
     struct RpcRequest {
@@ -636,6 +776,28 @@ namespace {
         uint64_t msg_id{0};
         BML_Mod caller{nullptr};
         BML_Future future{nullptr};
+        uint64_t deadline_ns{0};   // 0 = no timeout
+    };
+
+    struct RpcMiddlewareEntry {
+        BML_RpcMiddleware middleware{nullptr};
+        int32_t priority{0};
+        void *user_data{nullptr};
+        BML_Mod owner{nullptr};
+    };
+
+    struct StreamingRpcHandlerEntry {
+        BML_StreamingRpcHandler handler{nullptr};
+        void *user_data{nullptr};
+        BML_Mod owner{nullptr};
+    };
+
+    struct RetainedStateEntry {
+        BML_Mod owner{nullptr};
+        uint64_t timestamp{0};
+        uint32_t flags{0};
+        uint32_t priority{BML_IMC_PRIORITY_NORMAL};
+        BufferStorage payload;
     };
 } // namespace (anonymous)
 
@@ -646,12 +808,31 @@ namespace BML::Core {
     namespace {
         constexpr char kImcLogCategory[] = "imc.bus";
 
+#if defined(_MSC_VER) && !defined(__MINGW32__)
+        static unsigned long InvokeHandlerSEH(BML_ImcHandler handler,
+                                              BML_Context ctx,
+                                              BML_TopicId topic_id,
+                                              BML_ImcMessage *imc_msg,
+                                              void *user_data);
+        static unsigned long InvokeInterceptHandlerSEH(BML_ImcInterceptHandler handler,
+                                                       BML_Context ctx,
+                                                       BML_TopicId topic_id,
+                                                       BML_ImcMessage *imc_msg,
+                                                       void *user_data,
+                                                       BML_EventResult *out_result);
+#endif
+
         // ========================================================================
         // TopicSnapshot - Immutable snapshot for RCU-style lock-free reads
         // ========================================================================
 
+        struct TopicEntry {
+            std::vector<BML_Subscription_T *> subs;
+            std::atomic<uint64_t> *message_counter = nullptr; // Cached; stable for topic lifetime
+        };
+
         struct TopicSnapshot {
-            std::unordered_map<BML_TopicId, std::vector<BML_Subscription_T *>> topic_subs;
+            std::unordered_map<BML_TopicId, TopicEntry> topic_subs;
             std::vector<BML_Subscription_T *> all_subs;
             std::atomic<uint32_t> ref_count{0};
 
@@ -707,6 +888,13 @@ namespace BML::Core {
             // Pub/Sub (Extended)
             BML_Result SubscribeEx(BML_TopicId topic, BML_ImcHandler handler, void *user_data,
                                    const BML_SubscribeOptions *options, BML_Subscription *out_sub);
+            BML_Result SubscribeIntercept(BML_TopicId topic, BML_ImcInterceptHandler handler,
+                                          void *user_data, BML_Subscription *out_sub);
+            BML_Result SubscribeInterceptEx(BML_TopicId topic, BML_ImcInterceptHandler handler,
+                                            void *user_data, const BML_SubscribeOptions *options,
+                                            BML_Subscription *out_sub);
+            BML_Result PublishInterceptable(BML_TopicId topic, BML_ImcMessage *msg,
+                                            BML_EventResult *out_result);
             BML_Result GetSubscriptionStats(BML_Subscription sub, BML_SubscriptionStats *out_stats);
             BML_Result PublishMulti(const BML_TopicId *topics, size_t topic_count,
                                     const void *data, size_t size, const BML_ImcMessage *msg,
@@ -716,6 +904,23 @@ namespace BML::Core {
             BML_Result RegisterRpc(BML_RpcId rpc_id, BML_RpcHandler handler, void *user_data);
             BML_Result UnregisterRpc(BML_RpcId rpc_id);
             BML_Result CallRpc(BML_RpcId rpc_id, const BML_ImcMessage *request, BML_Future *out_future);
+
+            // RPC v1.1
+            BML_Result RegisterRpcEx(BML_RpcId rpc_id, BML_RpcHandlerEx handler, void *user_data);
+            BML_Result CallRpcEx(BML_RpcId rpc_id, const BML_ImcMessage *request, const BML_RpcCallOptions *options, BML_Future *out_future);
+            BML_Result FutureGetError(BML_Future future, BML_Result *out_code, char *msg, size_t cap, size_t *out_len);
+            BML_Result GetRpcInfo(BML_RpcId rpc_id, BML_RpcInfo *out_info);
+            BML_Result GetRpcName(BML_RpcId rpc_id, char *buf, size_t cap, size_t *out_len);
+            void EnumerateRpc(void(*cb)(BML_RpcId, const char *, BML_Bool, void *), void *user_data);
+            BML_Result AddRpcMiddleware(BML_RpcMiddleware middleware, int32_t priority, void *user_data);
+            BML_Result RemoveRpcMiddleware(BML_RpcMiddleware middleware);
+            BML_Result RegisterStreamingRpc(BML_RpcId rpc_id, BML_StreamingRpcHandler handler, void *user_data);
+            BML_Result StreamPush(BML_RpcStream stream, const void *data, size_t size);
+            BML_Result StreamComplete(BML_RpcStream stream);
+            BML_Result StreamError(BML_RpcStream stream, BML_Result error, const char *msg);
+            BML_Result CallStreamingRpc(BML_RpcId rpc_id, const BML_ImcMessage *request,
+                                        BML_ImcHandler on_chunk, BML_FutureCallback on_done,
+                                        void *user_data, BML_Future *out_future);
 
             // Futures
             BML_Result FutureAwait(BML_Future future, uint32_t timeout_ms);
@@ -730,10 +935,18 @@ namespace BML::Core {
             BML_Result ResetStats();
             BML_Result GetTopicInfo(BML_TopicId topic, BML_TopicInfo *out_info);
             BML_Result GetTopicName(BML_TopicId topic, char *buffer, size_t buffer_size, size_t *out_length);
+            BML_Result PublishState(BML_TopicId topic, const BML_ImcMessage *msg);
+            BML_Result CopyState(BML_TopicId topic,
+                                 void *dst,
+                                 size_t dst_size,
+                                 size_t *out_size,
+                                 BML_ImcStateMeta *out_meta);
+            BML_Result ClearState(BML_TopicId topic);
 
             // Pump
             void Pump(size_t max_per_sub);
             void Shutdown();
+            void CleanupOwner(BML_Mod owner);
 
         private:
             using SubscriptionPtr = BML_Subscription;
@@ -741,20 +954,25 @@ namespace BML::Core {
             QueuedMessage *CreateMessage(BML_TopicId topic, const void *data, size_t size,
                                          const BML_ImcMessage *msg, const BML_ImcBuffer *buffer);
             BML_Result DispatchMessage(BML_TopicId topic, QueuedMessage *message);
-            BML_Result DispatchToSubscription(BML_Subscription_T *sub, QueuedMessage *message);
+            BML_Result DispatchToSubscription(BML_Subscription_T *sub, QueuedMessage *message, bool *out_enqueued);
+            bool MatchesSubscription(BML_Subscription_T *sub, const BML_ImcMessage &message) const;
+            void InvokeRegularHandler(BML_Subscription_T *sub, BML_TopicId topic, const BML_ImcMessage &message);
             void ReleaseMessage(QueuedMessage *message);
             void DropPendingMessages(BML_Subscription_T *sub);
             size_t DrainSubscription(BML_Subscription_T *sub, size_t budget);
             void RemoveFromMutableTopicMap(BML_TopicId topic, SubscriptionPtr handle);
+            void CleanupRetiredSubscriptions();
             void ProcessRpcRequest(RpcRequest *request);
             void DrainRpcQueue(size_t budget);
             void ApplyBackpressure(BML_Subscription_T *sub, QueuedMessage *message);
+            BML_Mod ResolveRegistrationOwner() const;
+            BML_Result ResolveRegistrationOwner(BML_Mod *out_owner) const;
 
             // RCU snapshot management (called under m_WriteMutex)
             void PublishNewSnapshot();
             void RetireOldSnapshots();
 
-            // Write-side mutex (Subscribe/Unsubscribe only — infrequent)
+            // Write-side mutex (Subscribe/Unsubscribe only, infrequent)
             std::mutex m_WriteMutex;
             // Lock-free read snapshot (Publish/Pump read atomically)
             std::atomic<TopicSnapshot *> m_Snapshot{nullptr};
@@ -767,9 +985,16 @@ namespace BML::Core {
             std::unordered_map<BML_TopicId, std::vector<SubscriptionPtr>> m_MutableTopicMap;
             // Subscription ownership (only mutated under m_WriteMutex)
             std::unordered_map<SubscriptionPtr, std::unique_ptr<BML_Subscription_T>> m_Subscriptions;
+            std::vector<std::unique_ptr<BML_Subscription_T>> m_RetiredSubscriptions;
 
             // RPC handlers (ID-based only)
             std::unordered_map<BML_RpcId, RpcHandlerEntry> m_RpcHandlers;
+            std::vector<RpcMiddlewareEntry> m_RpcMiddleware;
+            std::unordered_map<BML_RpcId, StreamingRpcHandlerEntry> m_StreamingRpcHandlers;
+            std::unordered_map<BML_RpcStream, std::unique_ptr<BML_RpcStream_T>> m_Streams;
+            std::mutex m_StreamMutex;
+            std::mutex m_StateMutex;
+            std::unordered_map<BML_TopicId, RetainedStateEntry> m_RetainedStates;
 
             FixedBlockPool m_MessagePool;
             FixedBlockPool m_RpcRequestPool;
@@ -822,6 +1047,23 @@ namespace BML::Core {
             return bus;
         }
 
+        BML_Mod ImcBusImpl::ResolveRegistrationOwner() const {
+            auto current = Context::GetCurrentModule();
+            if (!current) {
+                return nullptr;
+            }
+            return Context::Instance().ResolveModHandle(current);
+        }
+
+        BML_Result ImcBusImpl::ResolveRegistrationOwner(BML_Mod *out_owner) const {
+            if (!out_owner) {
+                return BML_RESULT_INVALID_ARGUMENT;
+            }
+
+            *out_owner = ResolveRegistrationOwner();
+            return *out_owner ? BML_RESULT_OK : BML_RESULT_INVALID_CONTEXT;
+        }
+
         // ========================================================================
         // ID Resolution
         // ========================================================================
@@ -855,7 +1097,7 @@ namespace BML::Core {
             message->msg_id = msg && msg->msg_id ? msg->msg_id : m_NextMessageId.fetch_add(1, std::memory_order_relaxed);
             message->flags = msg ? msg->flags : 0;
             message->priority = msg ? msg->priority : BML_IMC_PRIORITY_NORMAL;
-            message->timestamp = GetTimestampNs();
+            message->timestamp = (msg && msg->timestamp) ? msg->timestamp : GetTimestampNs();
             message->reply_topic = msg ? msg->reply_topic : 0;
 
             bool ok = buffer ? message->SetExternalBuffer(*buffer) : message->SetPayload(data, size);
@@ -900,90 +1142,170 @@ namespace BML::Core {
             }
         }
 
-        BML_Result ImcBusImpl::DispatchToSubscription(BML_Subscription_T *sub, QueuedMessage *message) {
+        // Returns OK for accepted, filtered, or dropped messages.
+        // Returns WOULD_BLOCK only for explicit FAIL backpressure.
+        BML_Result ImcBusImpl::DispatchToSubscription(BML_Subscription_T *sub, QueuedMessage *message,
+                                                      bool *out_enqueued) {
+            if (out_enqueued) {
+                *out_enqueued = false;
+            }
             if (!sub || !message)
                 return BML_RESULT_INVALID_ARGUMENT;
 
-            // Check priority filter
-            if (message->priority < sub->min_priority) {
-                return BML_RESULT_OK; // Silently skip, not an error
-            }
+            BML_ImcMessage filter_msg = {};
+            filter_msg.struct_size = sizeof(BML_ImcMessage);
+            filter_msg.data = message->Data();
+            filter_msg.size = message->Size();
+            filter_msg.msg_id = message->msg_id;
+            filter_msg.flags = message->flags;
+            filter_msg.priority = message->priority;
+            filter_msg.timestamp = message->timestamp;
+            filter_msg.reply_topic = message->reply_topic;
 
-            // Try to enqueue
-            // Note: ref_count is pre-allocated by DispatchMessage, no increment needed here
+            if (!MatchesSubscription(sub, filter_msg))
+                return BML_RESULT_OK;
+ 
             if (sub->queue && sub->queue->Enqueue(message, message->priority)) {
                 sub->RecordReceived(message->Size());
                 m_Stats.total_messages_delivered.fetch_add(1, std::memory_order_relaxed);
+                if (out_enqueued) {
+                    *out_enqueued = true;
+                }
                 return BML_RESULT_OK;
             }
 
-            // Queue full - apply backpressure policy based on configuration
+            // Queue full - apply backpressure policy
             switch (sub->backpressure_policy) {
             case BML_BACKPRESSURE_DROP_OLDEST:
                 ApplyBackpressure(sub, message);
-                // Retry after dropping oldest
                 if (sub->queue && sub->queue->Enqueue(message, message->priority)) {
                     sub->RecordReceived(message->Size());
                     m_Stats.total_messages_delivered.fetch_add(1, std::memory_order_relaxed);
+                    if (out_enqueued) {
+                        *out_enqueued = true;
+                    }
                     return BML_RESULT_OK;
                 }
                 break;
 
             case BML_BACKPRESSURE_DROP_NEWEST:
-                // Explicitly drop the new message - caller will release the ref
                 sub->RecordDropped();
                 m_Stats.total_messages_dropped.fetch_add(1, std::memory_order_relaxed);
-                return BML_RESULT_OK; // Return OK since drop is intentional policy
+                return BML_RESULT_OK;
 
             case BML_BACKPRESSURE_BLOCK:
-                // Block policy: spin briefly then fail
-                // In practice, a more sophisticated approach would use condition variables
                 for (int spin = 0; spin < 100; ++spin) {
                     std::this_thread::yield();
                     if (sub->queue && sub->queue->Enqueue(message, message->priority)) {
                         sub->RecordReceived(message->Size());
                         m_Stats.total_messages_delivered.fetch_add(1, std::memory_order_relaxed);
+                        if (out_enqueued) {
+                            *out_enqueued = true;
+                        }
                         return BML_RESULT_OK;
                     }
                 }
                 break;
 
             case BML_BACKPRESSURE_FAIL:
+                return BML_RESULT_WOULD_BLOCK;
             default:
-                // Fall through to failure path
                 break;
             }
 
-            // Failed to deliver
             sub->RecordDropped();
             m_Stats.total_messages_dropped.fetch_add(1, std::memory_order_relaxed);
-            return BML_RESULT_WOULD_BLOCK;
+            return BML_RESULT_OK;
+        }
+
+        bool ImcBusImpl::MatchesSubscription(BML_Subscription_T *sub, const BML_ImcMessage &message) const {
+            if (!sub)
+                return false;
+
+            if (message.priority < sub->min_priority)
+                return false;
+
+            if (sub->filter && sub->filter(&message, sub->filter_user_data) != BML_TRUE)
+                return false;
+
+            return true;
+        }
+
+        void ImcBusImpl::InvokeRegularHandler(BML_Subscription_T *sub,
+                                             BML_TopicId topic,
+                                             const BML_ImcMessage &message) {
+            if (!sub || sub->closed.load(std::memory_order_acquire) || !sub->handler)
+                return;
+
+            BML_Context ctx = Context::Instance().GetHandle();
+
+            try {
+                DispatchSubscriptionScope dispatch_scope(sub);
+#if defined(_MSC_VER) && !defined(__MINGW32__)
+                BML_ImcMessage mutable_message = message;
+                unsigned long seh_code = InvokeHandlerSEH(
+                    sub->handler, ctx, topic, &mutable_message, sub->user_data);
+                if (seh_code != 0) {
+                    std::string owner_id;
+                    if (sub->owner) {
+                        auto *mod = Context::Instance().ResolveModHandle(sub->owner);
+                        if (mod) owner_id = mod->id;
+                    }
+                    CoreLog(BML_LOG_ERROR, kImcLogCategory,
+                            "Subscriber crashed (code 0x%08lX) on topic %u, "
+                            "owned by module '%s' -- unsubscribing",
+                            seh_code, static_cast<unsigned>(topic),
+                            owner_id.empty() ? "unknown" : owner_id.c_str());
+
+                    CrashDumpWriter::Instance().WriteDumpOnce(owner_id, seh_code);
+                    if (!owner_id.empty()) {
+                        FaultTracker::Instance().RecordFault(owner_id, seh_code);
+                    }
+                    sub->closed.store(true, std::memory_order_release);
+                } else {
+                    sub->RecordProcessed();
+                }
+#else
+                sub->handler(ctx, topic, &message, sub->user_data);
+                sub->RecordProcessed();
+#endif
+            } catch (...) {
+                // C++ exception -- log and continue
+            }
         }
 
         BML_Result ImcBusImpl::DispatchMessage(BML_TopicId topic, QueuedMessage *message) {
             if (!message)
                 return BML_RESULT_OUT_OF_MEMORY;
 
-            // Register topic in registry for name lookup
-            GetTopicRegistry().IncrementMessageCount(topic);
-
             // Lock-free snapshot read (RCU pattern)
             SnapshotGuard guard(m_Snapshot.load(std::memory_order_acquire));
             if (!guard) {
+                GetTopicRegistry().IncrementMessageCount(topic);
                 ReleaseMessage(message);
                 return BML_RESULT_OK;
             }
 
+            // Single lookup: find the TopicEntry (subs + cached stats counter)
             auto it = guard.get()->topic_subs.find(topic);
-            if (it == guard.get()->topic_subs.end() || it->second.empty()) {
+            if (it == guard.get()->topic_subs.end() || it->second.subs.empty()) {
+                GetTopicRegistry().IncrementMessageCount(topic);
                 ReleaseMessage(message);
                 return BML_RESULT_OK;
             }
 
-            // First pass: count valid targets
-            std::vector<BML_Subscription_T *> targets;
-            targets.reserve(it->second.size());
-            for (auto *sub : it->second) {
+            const auto &entry = it->second;
+
+            // Lock-free stats increment via cached pointer
+            if (entry.message_counter) {
+                entry.message_counter->fetch_add(1, std::memory_order_relaxed);
+            } else {
+                GetTopicRegistry().IncrementMessageCount(topic);
+            }
+
+            // First pass: collect valid targets (inline for <= 8 subscribers)
+            StackVec<BML_Subscription_T *, 8> targets;
+            for (auto *sub : entry.subs) {
                 if (sub->closed.load(std::memory_order_acquire) || !sub->handler || !sub->queue)
                     continue;
                 targets.push_back(sub);
@@ -1004,17 +1326,26 @@ namespace BML::Core {
             }
 
             uint32_t delivered = 0;
+            BML_Result first_error = BML_RESULT_OK;
             for (auto *sub : targets) {
-                if (DispatchToSubscription(sub, message) == BML_RESULT_OK) {
+                bool enqueued = false;
+                const BML_Result dispatch_result = DispatchToSubscription(sub, message, &enqueued);
+                if (dispatch_result == BML_RESULT_OK && enqueued) {
                     ++delivered;
                 } else {
                     ReleaseMessage(message);
+                    if (dispatch_result != BML_RESULT_OK && first_error == BML_RESULT_OK) {
+                        first_error = dispatch_result;
+                    }
                 }
                 sub->ref_count.fetch_sub(1, std::memory_order_acq_rel);
             }
 
             ReleaseMessage(message); // Release our own reference
-            return delivered > 0 ? BML_RESULT_OK : BML_RESULT_WOULD_BLOCK;
+            if (delivered == 0 && first_error != BML_RESULT_OK) {
+                return first_error;
+            }
+            return BML_RESULT_OK;
         }
 
         void ImcBusImpl::ReleaseMessage(QueuedMessage *message) {
@@ -1034,13 +1365,60 @@ namespace BML::Core {
             }
         }
 
+        // SEH-safe handler invocation helpers. These functions have no C++
+        // destructors on the stack, which is required for __try/__except on MSVC.
+#if defined(_MSC_VER) && !defined(__MINGW32__)
+        static int FilterModuleException(unsigned long code) {
+            switch (code) {
+                case EXCEPTION_ACCESS_VIOLATION:
+                case EXCEPTION_ILLEGAL_INSTRUCTION:
+                case EXCEPTION_STACK_OVERFLOW:
+                case EXCEPTION_INT_DIVIDE_BY_ZERO:
+                case EXCEPTION_FLT_DIVIDE_BY_ZERO:
+                case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
+                    return EXCEPTION_EXECUTE_HANDLER;
+                default:
+                    return EXCEPTION_CONTINUE_SEARCH;
+            }
+        }
+
+        // Returns 0 on success, the exception code on SEH fault.
+        static unsigned long InvokeHandlerSEH(BML_ImcHandler handler,
+                                               BML_Context ctx,
+                                               BML_TopicId topic_id,
+                                               BML_ImcMessage *imc_msg,
+                                               void *user_data) {
+            __try {
+                handler(ctx, topic_id, imc_msg, user_data);
+            } __except (FilterModuleException(GetExceptionCode())) {
+                return GetExceptionCode();
+            }
+            return 0;
+        }
+
+        // Returns 0 on success, the exception code on SEH fault.
+        // out_result receives the handler's return value on success.
+        static unsigned long InvokeInterceptHandlerSEH(BML_ImcInterceptHandler handler,
+                                                        BML_Context ctx,
+                                                        BML_TopicId topic_id,
+                                                        BML_ImcMessage *imc_msg,
+                                                        void *user_data,
+                                                        BML_EventResult *out_result) {
+            __try {
+                *out_result = handler(ctx, topic_id, imc_msg, user_data);
+            } __except (FilterModuleException(GetExceptionCode())) {
+                return GetExceptionCode();
+            }
+            return 0;
+        }
+#endif
+
         size_t ImcBusImpl::DrainSubscription(BML_Subscription_T *sub, size_t budget) {
             if (!sub || !sub->queue)
                 return 0;
 
             size_t processed = 0;
             QueuedMessage *msg = nullptr;
-            BML_Context ctx = Context::Instance().GetHandle();
 
             while ((budget == 0 || processed < budget) && sub->queue->Dequeue(msg)) {
                 if (!sub->closed.load(std::memory_order_acquire) && sub->handler) {
@@ -1053,20 +1431,32 @@ namespace BML::Core {
                     imc_msg.priority = msg->priority;
                     imc_msg.timestamp = msg->timestamp;
                     imc_msg.reply_topic = msg->reply_topic;
-
-                    // Wrap handler in try-catch to ensure message is always released
-                    try {
-                        sub->handler(ctx, msg->topic_id, &imc_msg, sub->user_data);
-                        sub->RecordProcessed();
-                    } catch (...) {
-                        // Handler threw exception - log and continue
-                        // Message will still be released below
-                    }
+                    InvokeRegularHandler(sub, msg->topic_id, imc_msg);
                 }
                 ReleaseMessage(msg);
                 ++processed;
             }
             return processed;
+        }
+
+        void ImcBusImpl::CleanupRetiredSubscriptions() {
+            std::vector<std::unique_ptr<BML_Subscription_T>> ready;
+            {
+                std::lock_guard lock(m_WriteMutex);
+                auto it = m_RetiredSubscriptions.begin();
+                while (it != m_RetiredSubscriptions.end()) {
+                    if ((*it)->ref_count.load(std::memory_order_acquire) == 0) {
+                        ready.push_back(std::move(*it));
+                        it = m_RetiredSubscriptions.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
+            }
+
+            for (auto &sub : ready) {
+                DropPendingMessages(sub.get());
+            }
         }
 
         void ImcBusImpl::RemoveFromMutableTopicMap(BML_TopicId topic, SubscriptionPtr handle) {
@@ -1082,18 +1472,20 @@ namespace BML::Core {
         void ImcBusImpl::PublishNewSnapshot() {
             // Build new immutable snapshot from current mutable state
             auto *snap = new TopicSnapshot();
+            auto &registry = GetTopicRegistry();
             for (auto &[topic, handles] : m_MutableTopicMap) {
-                auto &subs = snap->topic_subs[topic];
-                subs.reserve(handles.size());
+                auto &entry = snap->topic_subs[topic];
+                entry.subs.reserve(handles.size());
                 for (auto handle : handles) {
                     auto subIt = m_Subscriptions.find(handle);
                     if (subIt != m_Subscriptions.end()) {
                         auto *sub = subIt->second.get();
                         if (!sub->closed.load(std::memory_order_acquire)) {
-                            subs.push_back(sub);
+                            entry.subs.push_back(sub);
                         }
                     }
                 }
+                entry.message_counter = registry.GetMessageCountPtr(topic);
             }
             // Build flat list for Pump
             snap->all_subs.reserve(m_Subscriptions.size());
@@ -1162,14 +1554,7 @@ namespace BML::Core {
 
         BML_Result ImcBusImpl::Subscribe(BML_TopicId topic, BML_ImcHandler handler,
                                          void *user_data, BML_Subscription *out_sub) {
-            // Default options - use FAIL policy for explicit error handling
-            BML_SubscribeOptions opts = {};
-            opts.struct_size = sizeof(BML_SubscribeOptions);
-            opts.queue_capacity = kDefaultQueueCapacity;
-            opts.min_priority = BML_IMC_PRIORITY_LOW;
-            opts.backpressure = BML_BACKPRESSURE_FAIL;
-            opts.filter = nullptr;
-            opts.filter_user_data = nullptr;
+            BML_SubscribeOptions opts = BML_SUBSCRIBE_OPTIONS_INIT;
             return SubscribeEx(topic, handler, user_data, &opts, out_sub);
         }
 
@@ -1179,27 +1564,57 @@ namespace BML::Core {
             if (topic == BML_TOPIC_ID_INVALID || !handler || !out_sub)
                 return BML_RESULT_INVALID_ARGUMENT;
 
-            // Parse options
+            BML_Mod owner = nullptr;
+            BML_CHECK(ResolveRegistrationOwner(&owner));
+
             size_t capacity = kDefaultQueueCapacity;
             uint32_t min_priority = BML_IMC_PRIORITY_LOW;
             uint32_t backpressure = BML_BACKPRESSURE_DROP_OLDEST;
+            uint32_t subscribe_flags = BML_IMC_SUBSCRIBE_FLAG_NONE;
+            BML_ImcFilter filter = nullptr;
+            void *filter_user_data = nullptr;
 
-            if (options && options->struct_size >= sizeof(BML_SubscribeOptions)) {
-                capacity = options->queue_capacity > 0 ? options->queue_capacity : kDefaultQueueCapacity;
-                capacity = std::min(capacity, kMaxQueueCapacity);
-                min_priority = options->min_priority;
-                backpressure = options->backpressure;
+            if (options) {
+                const size_t struct_size = options->struct_size;
+
+                if (struct_size >= offsetof(BML_SubscribeOptions, queue_capacity) +
+                        sizeof(BML_SubscribeOptions::queue_capacity)) {
+                    capacity = options->queue_capacity > 0 ? options->queue_capacity : kDefaultQueueCapacity;
+                    capacity = std::min(capacity, kMaxQueueCapacity);
+                }
+                if (struct_size >= offsetof(BML_SubscribeOptions, backpressure) +
+                        sizeof(BML_SubscribeOptions::backpressure)) {
+                    backpressure = options->backpressure;
+                }
+                if (struct_size >= offsetof(BML_SubscribeOptions, filter) +
+                        sizeof(BML_SubscribeOptions::filter)) {
+                    filter = options->filter;
+                }
+                if (struct_size >= offsetof(BML_SubscribeOptions, filter_user_data) +
+                        sizeof(BML_SubscribeOptions::filter_user_data)) {
+                    filter_user_data = options->filter_user_data;
+                }
+                if (struct_size >= offsetof(BML_SubscribeOptions, min_priority) +
+                        sizeof(BML_SubscribeOptions::min_priority)) {
+                    min_priority = options->min_priority;
+                }
+                if (struct_size >= offsetof(BML_SubscribeOptions, flags) +
+                        sizeof(BML_SubscribeOptions::flags)) {
+                    subscribe_flags = options->flags;
+                }
             }
 
             auto subscription = std::make_unique<BML_Subscription_T>();
             subscription->topic_id = topic;
             subscription->handler = handler;
             subscription->user_data = user_data;
-            subscription->owner = Context::GetCurrentModule();
+            subscription->owner = owner;
             // ref_count starts at 0 (default), tracks in-flight operations, not ownership
             subscription->queue_capacity = capacity;
             subscription->min_priority = min_priority;
             subscription->backpressure_policy = backpressure;
+            subscription->filter = filter;
+            subscription->filter_user_data = filter_user_data;
             subscription->InitStats();
 
             // Create priority queue
@@ -1216,6 +1631,182 @@ namespace BML::Core {
             }
 
             *out_sub = handle;
+
+            if ((subscribe_flags & BML_IMC_SUBSCRIBE_FLAG_DELIVER_RETAINED_ON_SUBSCRIBE) != 0) {
+                RetainedStateEntry retained;
+                bool has_retained = false;
+                {
+                    std::lock_guard<std::mutex> state_lock(m_StateMutex);
+                    auto state_it = m_RetainedStates.find(topic);
+                    if (state_it != m_RetainedStates.end()) {
+                        retained.owner = state_it->second.owner;
+                        retained.timestamp = state_it->second.timestamp;
+                        retained.flags = state_it->second.flags;
+                        retained.priority = state_it->second.priority;
+                        has_retained = retained.payload.CopyFrom(state_it->second.payload.Data(),
+                                                                state_it->second.payload.Size());
+                    }
+                }
+
+                if (has_retained) {
+                    BML_ImcMessage retained_msg = {};
+                    retained_msg.struct_size = sizeof(BML_ImcMessage);
+                    retained_msg.data = retained.payload.Data();
+                    retained_msg.size = retained.payload.Size();
+                    retained_msg.flags = retained.flags;
+                    retained_msg.priority = retained.priority;
+                    retained_msg.timestamp = retained.timestamp;
+                    if (MatchesSubscription(handle, retained_msg)) {
+                        handle->RecordReceived(retained_msg.size);
+                        m_Stats.total_messages_delivered.fetch_add(1, std::memory_order_relaxed);
+                        handle->ref_count.fetch_add(1, std::memory_order_relaxed);
+                        InvokeRegularHandler(handle, topic, retained_msg);
+                        handle->ref_count.fetch_sub(1, std::memory_order_acq_rel);
+                    }
+                }
+            }
+
+            return BML_RESULT_OK;
+        }
+
+        BML_Result ImcBusImpl::SubscribeIntercept(BML_TopicId topic, BML_ImcInterceptHandler handler,
+                                                  void *user_data, BML_Subscription *out_sub) {
+            return SubscribeInterceptEx(topic, handler, user_data, nullptr, out_sub);
+        }
+
+        BML_Result ImcBusImpl::SubscribeInterceptEx(BML_TopicId topic, BML_ImcInterceptHandler handler,
+                                                    void *user_data, const BML_SubscribeOptions *options,
+                                                    BML_Subscription *out_sub) {
+            if (topic == BML_TOPIC_ID_INVALID || !handler || !out_sub)
+                return BML_RESULT_INVALID_ARGUMENT;
+
+            BML_Mod owner = nullptr;
+            BML_CHECK(ResolveRegistrationOwner(&owner));
+
+            int32_t exec_order = 0;
+
+            if (options && options->struct_size >=
+                    offsetof(BML_SubscribeOptions, execution_order) + sizeof(int32_t)) {
+                exec_order = options->execution_order;
+            }
+
+            auto subscription = std::make_unique<BML_Subscription_T>();
+            subscription->topic_id = topic;
+            subscription->intercept_handler = handler;
+            subscription->user_data = user_data;
+            subscription->owner = owner;
+            subscription->queue_capacity = 0; // No queue for intercept subscriptions
+            subscription->execution_order = exec_order;
+            subscription->InitStats();
+            // Intercept subscriptions are dispatched synchronously in
+            // PublishInterceptable, not through the queue/drain path.
+            // No queue needed.
+
+            BML_Subscription handle = subscription.get();
+            {
+                std::lock_guard lock(m_WriteMutex);
+                m_MutableTopicMap[topic].push_back(handle);
+                m_Subscriptions.emplace(handle, std::move(subscription));
+                PublishNewSnapshot();
+            }
+
+            *out_sub = handle;
+            return BML_RESULT_OK;
+        }
+
+        BML_Result ImcBusImpl::PublishInterceptable(BML_TopicId topic, BML_ImcMessage *msg,
+                                                    BML_EventResult *out_result) {
+            if (topic == BML_TOPIC_ID_INVALID)
+                return BML_RESULT_INVALID_ARGUMENT;
+            if (!msg)
+                return BML_RESULT_INVALID_ARGUMENT;
+
+            BML_EventResult final_result = BML_EVENT_CONTINUE;
+            BML_Context ctx = Context::Instance().GetHandle();
+
+            // Phase 1: Run intercept handlers in execution_order
+            // Collect interceptors under SnapshotGuard, then release guard before dispatch
+            StackVec<BML_Subscription_T *, 8> interceptors;
+            {
+                SnapshotGuard guard(m_Snapshot.load(std::memory_order_acquire));
+                if (guard) {
+                    auto it = guard.get()->topic_subs.find(topic);
+                    if (it != guard.get()->topic_subs.end()) {
+                        const auto &subs = it->second.subs;
+                        for (size_t i = 0; i < subs.size(); ++i) {
+                            BML_Subscription_T *sub = subs[i];
+                            if (sub && !sub->closed.load(std::memory_order_acquire) && sub->IsIntercept()) {
+                                sub->ref_count.fetch_add(1, std::memory_order_relaxed);
+                                interceptors.push_back(sub);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!interceptors.empty()) {
+                // stable_sort preserves subscription order among equal execution_order
+                std::stable_sort(interceptors.begin(), interceptors.end(),
+                                 [](const BML_Subscription_T *a, const BML_Subscription_T *b) {
+                                     return a->execution_order < b->execution_order;
+                                 });
+
+                bool stopped = false;
+                for (size_t idx = 0; idx < interceptors.size(); ++idx) {
+                    BML_Subscription_T *sub = interceptors[idx];
+                    if (!stopped && !sub->closed.load(std::memory_order_acquire) && sub->intercept_handler) {
+                        BML_EventResult result = BML_EVENT_CONTINUE;
+                        try {
+                            DispatchSubscriptionScope dispatch_scope(sub);
+#if defined(_MSC_VER) && !defined(__MINGW32__)
+                            unsigned long seh_code = InvokeInterceptHandlerSEH(
+                                sub->intercept_handler, ctx, topic, msg, sub->user_data, &result);
+                            if (seh_code != 0) {
+                                std::string owner_id;
+                                if (sub->owner) {
+                                    auto *mod = Context::Instance().ResolveModHandle(sub->owner);
+                                    if (mod) owner_id = mod->id;
+                                }
+                                CoreLog(BML_LOG_ERROR, kImcLogCategory,
+                                        "Intercept handler crashed (code 0x%08lX) on topic %u, "
+                                        "owned by module '%s' -- unsubscribing",
+                                        seh_code, static_cast<unsigned>(topic),
+                                        owner_id.empty() ? "unknown" : owner_id.c_str());
+                                CrashDumpWriter::Instance().WriteDumpOnce(owner_id, seh_code);
+                                if (!owner_id.empty()) {
+                                    FaultTracker::Instance().RecordFault(owner_id, seh_code);
+                                }
+                                sub->closed.store(true, std::memory_order_release);
+                                result = BML_EVENT_CONTINUE; // Treat crash as CONTINUE
+                            } else {
+                                sub->RecordProcessed();
+                            }
+#else
+                            result = sub->intercept_handler(ctx, topic, msg, sub->user_data);
+                            sub->RecordProcessed();
+#endif
+                        } catch (...) {
+                            // Intercept handler threw -- treat as CONTINUE
+                        }
+                        if (result == BML_EVENT_HANDLED || result == BML_EVENT_CANCEL) {
+                            final_result = result;
+                            stopped = true;
+                        }
+                    }
+                    sub->ref_count.fetch_sub(1, std::memory_order_acq_rel);
+                }
+            }
+
+            // Phase 2: If not cancelled, deliver to regular (non-intercept) subscribers
+            if (final_result != BML_EVENT_CANCEL) {
+                BML_Result pub_result = PublishEx(topic, msg);
+                if (pub_result != BML_RESULT_OK && pub_result != BML_RESULT_NOT_FOUND) {
+                    if (out_result) *out_result = final_result;
+                    return pub_result;
+                }
+            }
+
+            if (out_result) *out_result = final_result;
             return BML_RESULT_OK;
         }
 
@@ -1286,12 +1877,21 @@ namespace BML::Core {
             }
 
             if (raw) {
+                if (std::find(g_DispatchSubscriptionStack.begin(),
+                              g_DispatchSubscriptionStack.end(),
+                              raw) != g_DispatchSubscriptionStack.end()) {
+                    std::lock_guard lock(m_WriteMutex);
+                    m_RetiredSubscriptions.push_back(std::move(owned));
+                    return BML_RESULT_OK;
+                }
+
                 // Wait for any in-flight dispatch or pump work to finish before draining
                 while (raw->ref_count.load(std::memory_order_acquire) != 0) {
                     std::this_thread::yield();
                 }
                 DropPendingMessages(raw);
             }
+            CleanupRetiredSubscriptions();
             return BML_RESULT_OK;
         }
 
@@ -1320,6 +1920,9 @@ namespace BML::Core {
             if (rpc_id == BML_RPC_ID_INVALID || !handler)
                 return BML_RESULT_INVALID_ARGUMENT;
 
+            BML_Mod owner = nullptr;
+            BML_CHECK(ResolveRegistrationOwner(&owner));
+
             std::unique_lock lock(m_RpcMutex);
             auto [it, inserted] = m_RpcHandlers.emplace(rpc_id, RpcHandlerEntry{});
             if (!inserted) {
@@ -1330,7 +1933,7 @@ namespace BML::Core {
 
             it->second.handler = handler;
             it->second.user_data = user_data;
-            it->second.owner = Context::GetCurrentModule();
+            it->second.owner = owner;
             CoreLog(BML_LOG_DEBUG, kImcLogCategory,
                     "Registered RPC handler for ID 0x%08X", rpc_id);
             return BML_RESULT_OK;
@@ -1340,15 +1943,32 @@ namespace BML::Core {
             if (rpc_id == BML_RPC_ID_INVALID)
                 return BML_RESULT_INVALID_ARGUMENT;
 
-            std::unique_lock lock(m_RpcMutex);
-            auto it = m_RpcHandlers.find(rpc_id);
-            if (it == m_RpcHandlers.end())
-                return BML_RESULT_NOT_FOUND;
+            BML_Mod owner = nullptr;
+            BML_CHECK(ResolveRegistrationOwner(&owner));
 
-            m_RpcHandlers.erase(it);
-            CoreLog(BML_LOG_DEBUG, kImcLogCategory,
-                    "Unregistered RPC handler for ID 0x%08X", rpc_id);
-            return BML_RESULT_OK;
+            std::unique_lock lock(m_RpcMutex);
+            // Check regular RPC handlers first, then streaming handlers
+            auto it = m_RpcHandlers.find(rpc_id);
+            if (it != m_RpcHandlers.end()) {
+                if (it->second.owner != owner) {
+                    return BML_RESULT_PERMISSION_DENIED;
+                }
+                m_RpcHandlers.erase(it);
+                CoreLog(BML_LOG_DEBUG, kImcLogCategory,
+                        "Unregistered RPC handler for ID 0x%08X", rpc_id);
+                return BML_RESULT_OK;
+            }
+            auto sit = m_StreamingRpcHandlers.find(rpc_id);
+            if (sit != m_StreamingRpcHandlers.end()) {
+                if (sit->second.owner != owner) {
+                    return BML_RESULT_PERMISSION_DENIED;
+                }
+                m_StreamingRpcHandlers.erase(sit);
+                CoreLog(BML_LOG_DEBUG, kImcLogCategory,
+                        "Unregistered streaming RPC handler for ID 0x%08X", rpc_id);
+                return BML_RESULT_OK;
+            }
+            return BML_RESULT_NOT_FOUND;
         }
 
         BML_Result ImcBusImpl::CallRpc(BML_RpcId rpc_id, const BML_ImcMessage *request, BML_Future *out_future) {
@@ -1395,7 +2015,19 @@ namespace BML::Core {
             if (!request)
                 return;
 
+            // Check deadline
+            if (request->deadline_ns != 0 && GetTimestampNs() > request->deadline_ns) {
+                if (request->future) {
+                    request->future->CompleteWithError(BML_FUTURE_TIMEOUT, BML_RESULT_TIMEOUT, "RPC call timed out");
+                    FutureReleaseInternal(request->future);
+                }
+                m_Stats.total_rpc_failures.fetch_add(1, std::memory_order_relaxed);
+                m_RpcRequestPool.Destroy(request);
+                return;
+            }
+
             RpcHandlerEntry entry;
+            std::shared_ptr<RpcHandlerStats> handler_stats;
             {
                 std::shared_lock lock(m_RpcMutex);
                 auto it = m_RpcHandlers.find(request->rpc_id);
@@ -1409,6 +2041,7 @@ namespace BML::Core {
                     return;
                 }
                 entry = it->second;
+                handler_stats = entry.stats;
             }
 
             BML_ImcBuffer response = BML_IMC_BUFFER_INIT;
@@ -1420,14 +2053,69 @@ namespace BML::Core {
             req_msg.flags = 0;
 
             BML_Context ctx = Context::Instance().GetHandle();
-            BML_Result result = BML_RESULT_INTERNAL_ERROR;
 
-            // Wrap handler call in try-catch for exception safety
+            // Snapshot middleware under lock
+            std::vector<RpcMiddlewareEntry> middleware_snapshot;
+            {
+                std::shared_lock lock(m_RpcMutex);
+                middleware_snapshot = m_RpcMiddleware;
+            }
+
+            // Run pre-middleware
+            for (const auto &mw : middleware_snapshot) {
+                BML_Result mw_result = BML_RESULT_OK;
+                try {
+                    mw_result = mw.middleware(ctx, request->rpc_id, BML_TRUE,
+                                              &req_msg, nullptr, BML_RESULT_OK, mw.user_data);
+                } catch (...) {
+                    mw_result = BML_RESULT_INTERNAL_ERROR;
+                }
+                if (mw_result != BML_RESULT_OK) {
+                    if (request->future) {
+                        request->future->CompleteWithError(BML_FUTURE_FAILED, mw_result, "Pre-middleware rejected RPC");
+                        FutureReleaseInternal(request->future);
+                    }
+                    m_Stats.total_rpc_failures.fetch_add(1, std::memory_order_relaxed);
+                    m_RpcRequestPool.Destroy(request);
+                    return;
+                }
+            }
+
+            // Invoke handler
+            auto start_time = GetTimestampNs();
+            BML_Result result = BML_RESULT_INTERNAL_ERROR;
+            char error_buf[512] = {};
+
             try {
-                result = entry.handler(ctx, request->rpc_id, &req_msg, &response, entry.user_data);
+                if (entry.handler_ex) {
+                    result = entry.handler_ex(ctx, request->rpc_id, &req_msg, &response,
+                                              error_buf, sizeof(error_buf), entry.user_data);
+                } else if (entry.handler) {
+                    result = entry.handler(ctx, request->rpc_id, &req_msg, &response, entry.user_data);
+                }
             } catch (...) {
-                // Handler threw exception - treat as failure
                 result = BML_RESULT_INTERNAL_ERROR;
+            }
+
+            auto elapsed_ns = GetTimestampNs() - start_time;
+
+            // Update per-handler stats (via shared_ptr, survives unregister)
+            handler_stats->call_count.fetch_add(1, std::memory_order_relaxed);
+            handler_stats->total_latency_ns.fetch_add(elapsed_ns, std::memory_order_relaxed);
+            if (result == BML_RESULT_OK) {
+                handler_stats->completion_count.fetch_add(1, std::memory_order_relaxed);
+            } else {
+                handler_stats->failure_count.fetch_add(1, std::memory_order_relaxed);
+            }
+
+            // Run post-middleware (informational, no short-circuit)
+            for (const auto &mw : middleware_snapshot) {
+                try {
+                    mw.middleware(ctx, request->rpc_id, BML_FALSE,
+                                 &req_msg, &response, result, mw.user_data);
+                } catch (...) {
+                    // Post-middleware errors are logged but don't affect result
+                }
             }
 
             if (request->future) {
@@ -1435,7 +2123,8 @@ namespace BML::Core {
                     request->future->Complete(BML_FUTURE_READY, BML_RESULT_OK, response.data, response.size);
                     m_Stats.total_rpc_completions.fetch_add(1, std::memory_order_relaxed);
                 } else {
-                    request->future->Complete(BML_FUTURE_FAILED, result, nullptr, 0);
+                    request->future->CompleteWithError(BML_FUTURE_FAILED, result,
+                                                       error_buf[0] ? error_buf : nullptr);
                     m_Stats.total_rpc_failures.fetch_add(1, std::memory_order_relaxed);
                 }
                 FutureReleaseInternal(request->future);
@@ -1456,6 +2145,384 @@ namespace BML::Core {
                 ProcessRpcRequest(req);
                 ++processed;
             }
+        }
+
+        // ========================================================================
+        // RPC v1.1 -- Extended Registration, Call, Introspection, Middleware, Streaming
+        // ========================================================================
+
+        BML_Result ImcBusImpl::RegisterRpcEx(BML_RpcId rpc_id, BML_RpcHandlerEx handler, void *user_data) {
+            if (rpc_id == BML_RPC_ID_INVALID || !handler)
+                return BML_RESULT_INVALID_ARGUMENT;
+
+            BML_Mod owner = nullptr;
+            BML_CHECK(ResolveRegistrationOwner(&owner));
+
+            std::unique_lock lock(m_RpcMutex);
+            auto [it, inserted] = m_RpcHandlers.emplace(rpc_id, RpcHandlerEntry{});
+            if (!inserted) {
+                return BML_RESULT_ALREADY_EXISTS;
+            }
+            it->second.handler_ex = handler;
+            it->second.user_data = user_data;
+            it->second.owner = owner;
+            return BML_RESULT_OK;
+        }
+
+        BML_Result ImcBusImpl::CallRpcEx(BML_RpcId rpc_id, const BML_ImcMessage *request,
+                                          const BML_RpcCallOptions *options, BML_Future *out_future) {
+            if (rpc_id == BML_RPC_ID_INVALID || !out_future)
+                return BML_RESULT_INVALID_ARGUMENT;
+
+            BML_Future future = CreateFuture();
+            if (!future)
+                return BML_RESULT_OUT_OF_MEMORY;
+
+            auto *req = m_RpcRequestPool.Construct<RpcRequest>();
+            if (!req) {
+                FutureReleaseInternal(future);
+                return BML_RESULT_OUT_OF_MEMORY;
+            }
+
+            req->rpc_id = rpc_id;
+            req->msg_id = request && request->msg_id ? request->msg_id : m_NextMessageId.fetch_add(1, std::memory_order_relaxed);
+            req->caller = Context::GetCurrentModule();
+            req->future = future;
+
+            if (options && options->timeout_ms > 0) {
+                req->deadline_ns = GetTimestampNs() +
+                    static_cast<uint64_t>(options->timeout_ms) * 1000000ULL;
+            }
+
+            if (request && request->data && request->size > 0) {
+                if (!req->payload.CopyFrom(request->data, request->size)) {
+                    m_RpcRequestPool.Destroy(req);
+                    FutureReleaseInternal(future);
+                    return BML_RESULT_OUT_OF_MEMORY;
+                }
+            }
+
+            FutureAddRefInternal(future);
+            if (!m_RpcQueue->Enqueue(req)) {
+                m_RpcRequestPool.Destroy(req);
+                FutureReleaseInternal(future);
+                FutureReleaseInternal(future);
+                return BML_RESULT_WOULD_BLOCK;
+            }
+
+            m_Stats.total_rpc_calls.fetch_add(1, std::memory_order_relaxed);
+            *out_future = future;
+            return BML_RESULT_OK;
+        }
+
+        BML_Result ImcBusImpl::FutureGetError(BML_Future future, BML_Result *out_code,
+                                               char *msg, size_t cap, size_t *out_len) {
+            if (!future)
+                return BML_RESULT_INVALID_HANDLE;
+
+            std::lock_guard lock(future->mutex);
+            if (out_code) *out_code = future->status;
+            if (msg && cap > 0) {
+                size_t len = future->error_message.size();
+                size_t copy_len = (len < cap - 1) ? len : cap - 1;
+                if (copy_len > 0)
+                    std::memcpy(msg, future->error_message.c_str(), copy_len);
+                msg[copy_len] = '\0';
+                if (out_len) *out_len = len;
+            } else if (out_len) {
+                *out_len = future->error_message.size();
+            }
+            return BML_RESULT_OK;
+        }
+
+        BML_Result ImcBusImpl::GetRpcInfo(BML_RpcId rpc_id, BML_RpcInfo *out_info) {
+            if (!out_info)
+                return BML_RESULT_INVALID_ARGUMENT;
+
+            std::memset(out_info, 0, sizeof(BML_RpcInfo));
+            out_info->struct_size = sizeof(BML_RpcInfo);
+            out_info->rpc_id = rpc_id;
+
+            const std::string *name = GetRpcRegistry().GetName(rpc_id);
+            if (name) {
+                size_t copy_len = name->size() < 255 ? name->size() : 255;
+                std::memcpy(out_info->name, name->c_str(), copy_len);
+                out_info->name[copy_len] = '\0';
+            }
+
+            std::shared_lock lock(m_RpcMutex);
+            auto it = m_RpcHandlers.find(rpc_id);
+            if (it != m_RpcHandlers.end()) {
+                out_info->has_handler = (it->second.handler || it->second.handler_ex) ? BML_TRUE : BML_FALSE;
+                out_info->call_count = it->second.stats->call_count.load(std::memory_order_relaxed);
+                out_info->completion_count = it->second.stats->completion_count.load(std::memory_order_relaxed);
+                out_info->failure_count = it->second.stats->failure_count.load(std::memory_order_relaxed);
+                out_info->total_latency_ns = it->second.stats->total_latency_ns.load(std::memory_order_relaxed);
+            } else {
+                out_info->has_handler = BML_FALSE;
+            }
+            return BML_RESULT_OK;
+        }
+
+        BML_Result ImcBusImpl::GetRpcName(BML_RpcId rpc_id, char *buf, size_t cap, size_t *out_len) {
+            if (!buf || cap == 0)
+                return BML_RESULT_INVALID_ARGUMENT;
+
+            const std::string *name = GetRpcRegistry().GetName(rpc_id);
+            if (!name) {
+                buf[0] = '\0';
+                if (out_len) *out_len = 0;
+                return BML_RESULT_NOT_FOUND;
+            }
+
+            size_t len = name->size();
+            if (len >= cap) {
+                std::memcpy(buf, name->c_str(), cap - 1);
+                buf[cap - 1] = '\0';
+                if (out_len) *out_len = len;
+                return BML_RESULT_BUFFER_TOO_SMALL;
+            }
+
+            std::memcpy(buf, name->c_str(), len);
+            buf[len] = '\0';
+            if (out_len) *out_len = len;
+            return BML_RESULT_OK;
+        }
+
+        void ImcBusImpl::EnumerateRpc(void(*cb)(BML_RpcId, const char *, BML_Bool, void *), void *user_data) {
+            if (!cb) return;
+
+            // Snapshot handler IDs and handler presence under lock, then
+            // invoke callback outside the lock to avoid deadlock if the
+            // callback re-enters RPC registration.
+            struct SnapshotEntry { BML_RpcId id; BML_Bool has_handler; };
+            std::vector<SnapshotEntry> snapshot;
+            {
+                std::shared_lock lock(m_RpcMutex);
+                snapshot.reserve(m_RpcHandlers.size() + m_StreamingRpcHandlers.size());
+                for (const auto &[id, entry] : m_RpcHandlers) {
+                    BML_Bool has = (entry.handler || entry.handler_ex) ? BML_TRUE : BML_FALSE;
+                    snapshot.push_back({id, has});
+                }
+                for (const auto &[id, entry] : m_StreamingRpcHandlers) {
+                    snapshot.push_back({id, entry.handler ? BML_TRUE : BML_FALSE});
+                }
+            }
+
+            auto &registry = GetRpcRegistry();
+            for (const auto &e : snapshot) {
+                const std::string *name = registry.GetName(e.id);
+                cb(e.id, name ? name->c_str() : "", e.has_handler, user_data);
+            }
+        }
+
+        BML_Result ImcBusImpl::AddRpcMiddleware(BML_RpcMiddleware middleware, int32_t priority, void *user_data) {
+            if (!middleware)
+                return BML_RESULT_INVALID_ARGUMENT;
+
+            BML_Mod owner = nullptr;
+            BML_CHECK(ResolveRegistrationOwner(&owner));
+
+            std::unique_lock lock(m_RpcMutex);
+            RpcMiddlewareEntry mw;
+            mw.middleware = middleware;
+            mw.priority = priority;
+            mw.user_data = user_data;
+            mw.owner = owner;
+            m_RpcMiddleware.push_back(mw);
+
+            // Sort by priority (lower = first)
+            std::sort(m_RpcMiddleware.begin(), m_RpcMiddleware.end(),
+                      [](const RpcMiddlewareEntry &a, const RpcMiddlewareEntry &b) {
+                          return a.priority < b.priority;
+                      });
+            return BML_RESULT_OK;
+        }
+
+        BML_Result ImcBusImpl::RemoveRpcMiddleware(BML_RpcMiddleware middleware) {
+            if (!middleware)
+                return BML_RESULT_INVALID_ARGUMENT;
+
+            BML_Mod owner = nullptr;
+            BML_CHECK(ResolveRegistrationOwner(&owner));
+
+            std::unique_lock lock(m_RpcMutex);
+            auto any_it = std::find_if(m_RpcMiddleware.begin(), m_RpcMiddleware.end(),
+                                       [middleware](const RpcMiddlewareEntry &e) {
+                                           return e.middleware == middleware;
+                                       });
+            if (any_it == m_RpcMiddleware.end()) {
+                return BML_RESULT_NOT_FOUND;
+            }
+            if (any_it->owner != owner) {
+                return BML_RESULT_PERMISSION_DENIED;
+            }
+
+            m_RpcMiddleware.erase(any_it);
+            return BML_RESULT_OK;
+        }
+
+        BML_Result ImcBusImpl::RegisterStreamingRpc(BML_RpcId rpc_id, BML_StreamingRpcHandler handler, void *user_data) {
+            if (rpc_id == BML_RPC_ID_INVALID || !handler)
+                return BML_RESULT_INVALID_ARGUMENT;
+
+            BML_Mod owner = nullptr;
+            BML_CHECK(ResolveRegistrationOwner(&owner));
+
+            std::unique_lock lock(m_RpcMutex);
+            auto [it, inserted] = m_StreamingRpcHandlers.emplace(rpc_id, StreamingRpcHandlerEntry{});
+            if (!inserted) {
+                return BML_RESULT_ALREADY_EXISTS;
+            }
+            it->second.handler = handler;
+            it->second.user_data = user_data;
+            it->second.owner = owner;
+            return BML_RESULT_OK;
+        }
+
+        BML_Result ImcBusImpl::StreamPush(BML_RpcStream stream, const void *data, size_t size) {
+            if (!stream)
+                return BML_RESULT_INVALID_HANDLE;
+
+            auto *s = static_cast<BML_RpcStream_T *>(stream);
+            if (s->completed.load(std::memory_order_acquire))
+                return BML_RESULT_INVALID_STATE;
+
+            if (s->on_chunk && s->chunk_topic != BML_TOPIC_ID_INVALID) {
+                BML_ImcMessage msg = BML_IMC_MSG(data, size);
+                BML_Context ctx = Context::Instance().GetHandle();
+                s->on_chunk(ctx, s->chunk_topic, &msg, s->user_data);
+            }
+            return BML_RESULT_OK;
+        }
+
+        BML_Result ImcBusImpl::StreamComplete(BML_RpcStream stream) {
+            if (!stream)
+                return BML_RESULT_INVALID_HANDLE;
+
+            auto *s = static_cast<BML_RpcStream_T *>(stream);
+            bool expected = false;
+            if (!s->completed.compare_exchange_strong(expected, true))
+                return BML_RESULT_INVALID_STATE;
+
+            if (s->future) {
+                s->future->Complete(BML_FUTURE_READY, BML_RESULT_OK, nullptr, 0);
+                FutureReleaseInternal(s->future);
+                s->future = nullptr;
+            }
+
+            // Cleanup
+            std::lock_guard lock(m_StreamMutex);
+            m_Streams.erase(stream);
+            return BML_RESULT_OK;
+        }
+
+        BML_Result ImcBusImpl::StreamError(BML_RpcStream stream, BML_Result error, const char *msg) {
+            if (!stream)
+                return BML_RESULT_INVALID_HANDLE;
+
+            auto *s = static_cast<BML_RpcStream_T *>(stream);
+            bool expected = false;
+            if (!s->completed.compare_exchange_strong(expected, true))
+                return BML_RESULT_INVALID_STATE;
+
+            if (s->future) {
+                s->future->CompleteWithError(BML_FUTURE_FAILED, error, msg);
+                FutureReleaseInternal(s->future);
+                s->future = nullptr;
+            }
+
+            std::lock_guard lock(m_StreamMutex);
+            m_Streams.erase(stream);
+            return BML_RESULT_OK;
+        }
+
+        BML_Result ImcBusImpl::CallStreamingRpc(BML_RpcId rpc_id, const BML_ImcMessage *request,
+                                                 BML_ImcHandler on_chunk, BML_FutureCallback on_done,
+                                                 void *user_data, BML_Future *out_future) {
+            if (rpc_id == BML_RPC_ID_INVALID || !out_future)
+                return BML_RESULT_INVALID_ARGUMENT;
+
+            BML_Mod owner = nullptr;
+            BML_CHECK(ResolveRegistrationOwner(&owner));
+
+            StreamingRpcHandlerEntry handler_entry;
+            {
+                std::shared_lock lock(m_RpcMutex);
+                auto it = m_StreamingRpcHandlers.find(rpc_id);
+                if (it == m_StreamingRpcHandlers.end())
+                    return BML_RESULT_NOT_FOUND;
+                handler_entry = it->second;
+            }
+
+            BML_Future future = CreateFuture();
+            if (!future)
+                return BML_RESULT_OUT_OF_MEMORY;
+
+            if (on_done) {
+                future->callbacks.push_back({on_done, user_data});
+            }
+
+            // Create a dynamic topic for streaming chunks
+            char topic_name[128];
+            std::snprintf(topic_name, sizeof(topic_name), "BML/RpcStream/%u/%llu",
+                          rpc_id, static_cast<unsigned long long>(m_NextMessageId.fetch_add(1, std::memory_order_relaxed)));
+            BML_TopicId chunk_topic = BML_TOPIC_ID_INVALID;
+            GetTopicId(topic_name, &chunk_topic);
+
+            auto stream_state = std::make_unique<BML_RpcStream_T>();
+            FutureAddRefInternal(future);
+            stream_state->future = future;
+            stream_state->chunk_topic = chunk_topic;
+            stream_state->on_chunk = on_chunk;
+            stream_state->on_done = on_done;
+            stream_state->user_data = user_data;
+            stream_state->owner = owner;
+
+            BML_RpcStream stream = stream_state.get();
+            {
+                std::lock_guard lock(m_StreamMutex);
+                m_Streams[stream] = std::move(stream_state);
+            }
+
+            // Invoke handler with the stream
+            BML_ImcMessage req_msg = {};
+            req_msg.struct_size = sizeof(BML_ImcMessage);
+            if (request) {
+                req_msg.data = request->data;
+                req_msg.size = request->size;
+                req_msg.msg_id = request->msg_id;
+            }
+
+            BML_Context ctx = Context::Instance().GetHandle();
+            BML_Result result = BML_RESULT_INTERNAL_ERROR;
+            try {
+                result = handler_entry.handler(ctx, rpc_id, &req_msg, stream, handler_entry.user_data);
+            } catch (...) {
+                result = BML_RESULT_INTERNAL_ERROR;
+            }
+
+            if (result != BML_RESULT_OK) {
+                // Handler failed to start streaming -- check if stream was
+                // already completed/errored by the handler itself.
+                std::lock_guard slock(m_StreamMutex);
+                if (m_Streams.count(stream)) {
+                    // Stream still alive -- error it out
+                    auto *s = static_cast<BML_RpcStream_T *>(stream);
+                    bool expected = false;
+                    if (s->completed.compare_exchange_strong(expected, true)) {
+                        future->CompleteWithError(BML_FUTURE_FAILED, result, "Streaming handler failed");
+                    }
+                    if (s->future) {
+                        FutureReleaseInternal(s->future);
+                        s->future = nullptr;
+                    }
+                    m_Streams.erase(stream);
+                }
+            }
+
+            *out_future = future;
+            return BML_RESULT_OK;
         }
 
         // ========================================================================
@@ -1572,22 +2639,33 @@ namespace BML::Core {
                 DrainSubscription(sub, max_per_sub);
                 sub->ref_count.fetch_sub(1, std::memory_order_acq_rel);
             }
+
+            CleanupRetiredSubscriptions();
         }
 
         void ImcBusImpl::Shutdown() {
-            std::lock_guard lock(m_WriteMutex);
-            for (auto &[handle, sub] : m_Subscriptions) {
+            {
+                std::lock_guard lock(m_WriteMutex);
+                for (auto &[handle, sub] : m_Subscriptions) {
+                    sub->closed.store(true, std::memory_order_release);
+                }
+                m_MutableTopicMap.clear();
+                PublishNewSnapshot();
+
+                for (auto &entry : m_Subscriptions) {
+                    m_RetiredSubscriptions.push_back(std::move(entry.second));
+                }
+                m_Subscriptions.clear();
+            }
+
+            for (auto &sub : m_RetiredSubscriptions) {
                 sub->closed.store(true, std::memory_order_release);
+                while (sub->ref_count.load(std::memory_order_acquire) != 0) {
+                    std::this_thread::yield();
+                }
                 DropPendingMessages(sub.get());
             }
-            m_Subscriptions.clear();
-            m_MutableTopicMap.clear();
-
-            // Replace snapshot with empty one
-            TopicSnapshot *old = m_Snapshot.exchange(new TopicSnapshot(), std::memory_order_acq_rel);
-            if (old) {
-                m_RetiredSnapshots.push_back(old);
-            }
+            m_RetiredSubscriptions.clear();
 
             // Clean up all retired snapshots (spin until all readers are done)
             for (auto *snap : m_RetiredSnapshots) {
@@ -1597,6 +2675,43 @@ namespace BML::Core {
                 delete snap;
             }
             m_RetiredSnapshots.clear();
+
+            {
+                std::lock_guard<std::mutex> state_lock(m_StateMutex);
+                m_RetainedStates.clear();
+            }
+
+            // Clear in-flight streams
+            {
+                std::lock_guard stream_lock(m_StreamMutex);
+                for (auto &[handle, state] : m_Streams) {
+                    if (state && state->future) {
+                        state->future->CompleteWithError(BML_FUTURE_CANCELLED, BML_RESULT_FAIL, "IMC shutdown");
+                        FutureReleaseInternal(state->future);
+                        state->future = nullptr;
+                    }
+                }
+                m_Streams.clear();
+            }
+
+            RpcRequest *request = nullptr;
+            while (m_RpcQueue && m_RpcQueue->Dequeue(request)) {
+                if (!request) {
+                    continue;
+                }
+                if (request->future) {
+                    request->future->CompleteWithError(BML_FUTURE_CANCELLED, BML_RESULT_FAIL, "IMC shutdown");
+                    FutureReleaseInternal(request->future);
+                }
+                m_RpcRequestPool.Destroy(request);
+            }
+
+            {
+                std::unique_lock lock(m_RpcMutex);
+                m_RpcHandlers.clear();
+                m_StreamingRpcHandlers.clear();
+                m_RpcMiddleware.clear();
+            }
         }
 
         // ========================================================================
@@ -1623,10 +2738,10 @@ namespace BML::Core {
             }
             out_stats->active_topics = GetTopicRegistry().GetTopicCount();
 
-            // Count active RPC handlers
+            // Count active RPC handlers (regular + streaming)
             {
                 std::shared_lock lock(m_RpcMutex);
-                out_stats->active_rpc_handlers = m_RpcHandlers.size();
+                out_stats->active_rpc_handlers = m_RpcHandlers.size() + m_StreamingRpcHandlers.size();
             }
 
             out_stats->uptime_ns = GetTimestampNs() - m_Stats.start_time.load(std::memory_order_relaxed);
@@ -1652,7 +2767,7 @@ namespace BML::Core {
                 if (guard) {
                     auto it = guard.get()->topic_subs.find(topic);
                     if (it != guard.get()->topic_subs.end()) {
-                        out_info->subscriber_count = it->second.size();
+                        out_info->subscriber_count = it->second.subs.size();
                     } else {
                         out_info->subscriber_count = 0;
                     }
@@ -1694,123 +2809,330 @@ namespace BML::Core {
 
             return (name->size() < buffer_size) ? BML_RESULT_OK : BML_RESULT_BUFFER_TOO_SMALL;
         }
+
+        BML_Result ImcBusImpl::PublishState(BML_TopicId topic, const BML_ImcMessage *msg) {
+            if (topic == BML_TOPIC_ID_INVALID || !msg) {
+                return BML_RESULT_INVALID_ARGUMENT;
+            }
+            if (msg->size > 0 && !msg->data) {
+                return BML_RESULT_INVALID_ARGUMENT;
+            }
+
+            BML_Mod owner = nullptr;
+            BML_CHECK(ResolveRegistrationOwner(&owner));
+
+            RetainedStateEntry entry;
+            entry.owner = owner;
+            entry.timestamp = msg->timestamp ? msg->timestamp : GetTimestampNs();
+            entry.flags = msg->flags;
+            entry.priority = msg->priority;
+            if (!entry.payload.CopyFrom(msg->data, msg->size)) {
+                return BML_RESULT_OUT_OF_MEMORY;
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(m_StateMutex);
+                m_RetainedStates[topic] = std::move(entry);
+            }
+
+            BML_ImcMessage publish_msg = *msg;
+            publish_msg.timestamp = entry.timestamp;
+            return PublishEx(topic, &publish_msg);
+        }
+
+        BML_Result ImcBusImpl::CopyState(BML_TopicId topic,
+                                         void *dst,
+                                         size_t dst_size,
+                                         size_t *out_size,
+                                         BML_ImcStateMeta *out_meta) {
+            if (topic == BML_TOPIC_ID_INVALID) {
+                return BML_RESULT_INVALID_ARGUMENT;
+            }
+
+            std::lock_guard<std::mutex> lock(m_StateMutex);
+            auto it = m_RetainedStates.find(topic);
+            if (it == m_RetainedStates.end()) {
+                return BML_RESULT_NOT_FOUND;
+            }
+
+            const size_t payload_size = it->second.payload.Size();
+            if (out_size) {
+                *out_size = payload_size;
+            }
+            if (out_meta) {
+                out_meta->struct_size = sizeof(BML_ImcStateMeta);
+                out_meta->timestamp = it->second.timestamp;
+                out_meta->flags = it->second.flags;
+                out_meta->size = payload_size;
+            }
+
+            if (payload_size == 0) {
+                return BML_RESULT_OK;
+            }
+            if (!dst && dst_size != 0) {
+                return BML_RESULT_INVALID_ARGUMENT;
+            }
+            if (!dst || dst_size < payload_size) {
+                return BML_RESULT_BUFFER_TOO_SMALL;
+            }
+
+            std::memcpy(dst, it->second.payload.Data(), payload_size);
+            return BML_RESULT_OK;
+        }
+
+        BML_Result ImcBusImpl::ClearState(BML_TopicId topic) {
+            if (topic == BML_TOPIC_ID_INVALID) {
+                return BML_RESULT_INVALID_ARGUMENT;
+            }
+
+            std::lock_guard<std::mutex> lock(m_StateMutex);
+            auto it = m_RetainedStates.find(topic);
+            if (it == m_RetainedStates.end()) {
+                return BML_RESULT_NOT_FOUND;
+            }
+            m_RetainedStates.erase(it);
+            return BML_RESULT_OK;
+        }
+
+        void ImcBusImpl::CleanupOwner(BML_Mod owner) {
+            if (!owner) {
+                return;
+            }
+
+            std::vector<BML_Subscription> subscriptions;
+            {
+                std::lock_guard lock(m_WriteMutex);
+                subscriptions.reserve(m_Subscriptions.size());
+                for (const auto &[handle, sub] : m_Subscriptions) {
+                    if (sub && sub->owner == owner) {
+                        subscriptions.push_back(handle);
+                    }
+                }
+            }
+
+            for (auto sub : subscriptions) {
+                Unsubscribe(sub);
+            }
+
+            {
+                std::unique_lock lock(m_RpcMutex);
+                for (auto it = m_RpcHandlers.begin(); it != m_RpcHandlers.end();) {
+                    if (it->second.owner == owner) {
+                        it = m_RpcHandlers.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
+                for (auto it = m_StreamingRpcHandlers.begin(); it != m_StreamingRpcHandlers.end();) {
+                    if (it->second.owner == owner) {
+                        it = m_StreamingRpcHandlers.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
+                for (auto it = m_RpcMiddleware.begin(); it != m_RpcMiddleware.end();) {
+                    if (it->owner == owner) {
+                        it = m_RpcMiddleware.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(m_StateMutex);
+                for (auto it = m_RetainedStates.begin(); it != m_RetainedStates.end();) {
+                    if (it->second.owner == owner) {
+                        it = m_RetainedStates.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
+            }
+
+            {
+                std::lock_guard lock(m_StreamMutex);
+                for (auto it = m_Streams.begin(); it != m_Streams.end();) {
+                    auto *state = it->second.get();
+                    if (state && state->owner == owner) {
+                        if (state->future) {
+                            state->future->CompleteWithError(BML_FUTURE_CANCELLED,
+                                                             BML_RESULT_FAIL,
+                                                             "IMC owner cleanup");
+                            FutureReleaseInternal(state->future);
+                            state->future = nullptr;
+                        }
+                        it = m_Streams.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
+            }
+        }
     } // namespace (anonymous)
 
     // ========================================================================
-    // ImcBus Public Interface
+    // Free functions wrapping ImcBusImpl
     // ========================================================================
 
-    ImcBus &ImcBus::Instance() {
-        static ImcBus instance;
-        return instance;
-    }
+    void ImcPump(size_t max_per_sub) { GetBus().Pump(max_per_sub); }
+    void ImcShutdown() { GetBus().Shutdown(); }
+    void ImcCleanupOwner(BML_Mod owner) { GetBus().CleanupOwner(owner); }
 
-    ImcBus::ImcBus() = default;
+    BML_Result ImcGetTopicId(const char *n, BML_TopicId *o) { return GetBus().GetTopicId(n, o); }
+    BML_Result ImcGetRpcId(const char *n, BML_RpcId *o) { return GetBus().GetRpcId(n, o); }
+    BML_Result ImcPublish(BML_TopicId t, const void *d, size_t s) { return GetBus().Publish(t, d, s); }
+    BML_Result ImcPublishEx(BML_TopicId t, const BML_ImcMessage *m) { return GetBus().PublishEx(t, m); }
+    BML_Result ImcPublishBuffer(BML_TopicId t, const BML_ImcBuffer *b) { return GetBus().PublishBuffer(t, b); }
+    BML_Result ImcSubscribe(BML_TopicId t, BML_ImcHandler h, void *u, BML_Subscription *o) { return GetBus().Subscribe(t, h, u, o); }
+    BML_Result ImcSubscribeEx(BML_TopicId t, BML_ImcHandler h, void *u,
+                              const BML_SubscribeOptions *opts, BML_Subscription *o) { return GetBus().SubscribeEx(t, h, u, opts, o); }
+    BML_Result ImcUnsubscribe(BML_Subscription s) { return GetBus().Unsubscribe(s); }
+    BML_Result ImcSubscriptionIsActive(BML_Subscription s, BML_Bool *o) { return GetBus().SubscriptionIsActive(s, o); }
+    BML_Result ImcGetSubscriptionStats(BML_Subscription s, BML_SubscriptionStats *o) { return GetBus().GetSubscriptionStats(s, o); }
+    BML_Result ImcSubscribeIntercept(BML_TopicId t, BML_ImcInterceptHandler h,
+                                     void *u, BML_Subscription *o) { return GetBus().SubscribeIntercept(t, h, u, o); }
+    BML_Result ImcSubscribeInterceptEx(BML_TopicId t, BML_ImcInterceptHandler h,
+                                       void *u, const BML_SubscribeOptions *opts,
+                                       BML_Subscription *o) { return GetBus().SubscribeInterceptEx(t, h, u, opts, o); }
+    BML_Result ImcPublishInterceptable(BML_TopicId t, BML_ImcMessage *m, BML_EventResult *o) { return GetBus().PublishInterceptable(t, m, o); }
+    BML_Result ImcRegisterRpc(BML_RpcId r, BML_RpcHandler h, void *u) { return GetBus().RegisterRpc(r, h, u); }
+    BML_Result ImcUnregisterRpc(BML_RpcId r) { return GetBus().UnregisterRpc(r); }
+    BML_Result ImcCallRpc(BML_RpcId r, const BML_ImcMessage *req, BML_Future *o) { return GetBus().CallRpc(r, req, o); }
+    BML_Result ImcFutureAwait(BML_Future f, uint32_t t) { return GetBus().FutureAwait(f, t); }
+    BML_Result ImcFutureGetResult(BML_Future f, BML_ImcMessage *o) { return GetBus().FutureGetResult(f, o); }
+    BML_Result ImcFutureGetState(BML_Future f, BML_FutureState *o) { return GetBus().FutureGetState(f, o); }
+    BML_Result ImcFutureCancel(BML_Future f) { return GetBus().FutureCancel(f); }
+    BML_Result ImcFutureOnComplete(BML_Future f, BML_FutureCallback cb, void *u) { return GetBus().FutureOnComplete(f, cb, u); }
+    BML_Result ImcFutureRelease(BML_Future f) { return GetBus().FutureRelease(f); }
+    BML_Result ImcGetStats(BML_ImcStats *o) { return GetBus().GetStats(o); }
+    BML_Result ImcResetStats() { return GetBus().ResetStats(); }
+    BML_Result ImcGetTopicInfo(BML_TopicId t, BML_TopicInfo *o) { return GetBus().GetTopicInfo(t, o); }
+    BML_Result ImcGetTopicName(BML_TopicId t, char *b, size_t s, size_t *o) { return GetBus().GetTopicName(t, b, s, o); }
+    BML_Result ImcPublishState(BML_TopicId t, const BML_ImcMessage *m) { return GetBus().PublishState(t, m); }
+    BML_Result ImcCopyState(BML_TopicId t, void *d, size_t ds, size_t *os, BML_ImcStateMeta *om) { return GetBus().CopyState(t, d, ds, os, om); }
+    BML_Result ImcClearState(BML_TopicId t) { return GetBus().ClearState(t); }
 
-    BML_Result ImcBus::GetTopicId(const char *name, BML_TopicId *out_id) {
-        return GetBus().GetTopicId(name, out_id);
-    }
+    // RPC v1.1 free functions
+    BML_Result ImcRegisterRpcEx(BML_RpcId r, BML_RpcHandlerEx h, void *u) { return GetBus().RegisterRpcEx(r, h, u); }
+    BML_Result ImcCallRpcEx(BML_RpcId r, const BML_ImcMessage *req, const BML_RpcCallOptions *opts, BML_Future *o) { return GetBus().CallRpcEx(r, req, opts, o); }
+    BML_Result ImcFutureGetError(BML_Future f, BML_Result *c, char *m, size_t cap, size_t *ol) { return GetBus().FutureGetError(f, c, m, cap, ol); }
+    BML_Result ImcGetRpcInfo(BML_RpcId r, BML_RpcInfo *o) { return GetBus().GetRpcInfo(r, o); }
+    BML_Result ImcGetRpcName(BML_RpcId r, char *b, size_t c, size_t *o) { return GetBus().GetRpcName(r, b, c, o); }
+    void ImcEnumerateRpc(void(*cb)(BML_RpcId, const char *, BML_Bool, void *), void *u) { GetBus().EnumerateRpc(cb, u); }
+    BML_Result ImcAddRpcMiddleware(BML_RpcMiddleware mw, int32_t p, void *u) { return GetBus().AddRpcMiddleware(mw, p, u); }
+    BML_Result ImcRemoveRpcMiddleware(BML_RpcMiddleware mw) { return GetBus().RemoveRpcMiddleware(mw); }
+    BML_Result ImcRegisterStreamingRpc(BML_RpcId r, BML_StreamingRpcHandler h, void *u) { return GetBus().RegisterStreamingRpc(r, h, u); }
+    BML_Result ImcStreamPush(BML_RpcStream s, const void *d, size_t sz) { return GetBus().StreamPush(s, d, sz); }
+    BML_Result ImcStreamComplete(BML_RpcStream s) { return GetBus().StreamComplete(s); }
+    BML_Result ImcStreamError(BML_RpcStream s, BML_Result e, const char *m) { return GetBus().StreamError(s, e, m); }
+    BML_Result ImcCallStreamingRpc(BML_RpcId r, const BML_ImcMessage *req, BML_ImcHandler oc, BML_FutureCallback od, void *u, BML_Future *o) { return GetBus().CallStreamingRpc(r, req, oc, od, u, o); }
 
-    BML_Result ImcBus::GetRpcId(const char *name, BML_RpcId *out_id) {
-        return GetBus().GetRpcId(name, out_id);
-    }
+    // ========================================================================
+    // C API wrappers (registered with ApiRegistry)
+    // ========================================================================
 
-    BML_Result ImcBus::Publish(BML_TopicId topic, const void *data, size_t size) {
-        return GetBus().Publish(topic, data, size);
-    }
+    namespace {
+        BML_Result BML_API_ImcGetTopicId(const char *n, BML_TopicId *o) { return GetBus().GetTopicId(n, o); }
+        BML_Result BML_API_ImcGetRpcId(const char *n, BML_RpcId *o) { return GetBus().GetRpcId(n, o); }
+        BML_Result BML_API_ImcPublish(BML_TopicId t, const void *d, size_t s) { return GetBus().Publish(t, d, s); }
+        BML_Result BML_API_ImcPublishEx(BML_TopicId t, const BML_ImcMessage *m) { return GetBus().PublishEx(t, m); }
+        BML_Result BML_API_ImcPublishBuffer(BML_TopicId t, const BML_ImcBuffer *b) { return GetBus().PublishBuffer(t, b); }
+        BML_Result BML_API_ImcPublishMulti(const BML_TopicId *ts, size_t n, const void *d, size_t s,
+                                           const BML_ImcMessage *m, size_t *o) { return GetBus().PublishMulti(ts, n, d, s, m, o); }
+        BML_Result BML_API_ImcSubscribe(BML_TopicId t, BML_ImcHandler h, void *u, BML_Subscription *o) { return GetBus().Subscribe(t, h, u, o); }
+        BML_Result BML_API_ImcSubscribeEx(BML_TopicId t, BML_ImcHandler h, void *u,
+                                          const BML_SubscribeOptions *opts, BML_Subscription *o) { return GetBus().SubscribeEx(t, h, u, opts, o); }
+        BML_Result BML_API_ImcUnsubscribe(BML_Subscription s) { return GetBus().Unsubscribe(s); }
+        BML_Result BML_API_ImcSubscriptionIsActive(BML_Subscription s, BML_Bool *o) { return GetBus().SubscriptionIsActive(s, o); }
+        BML_Result BML_API_ImcSubscribeIntercept(BML_TopicId t, BML_ImcInterceptHandler h,
+                                                  void *u, BML_Subscription *o) { return GetBus().SubscribeIntercept(t, h, u, o); }
+        BML_Result BML_API_ImcSubscribeInterceptEx(BML_TopicId t, BML_ImcInterceptHandler h,
+                                                    void *u, const BML_SubscribeOptions *opts,
+                                                    BML_Subscription *o) { return GetBus().SubscribeInterceptEx(t, h, u, opts, o); }
+        BML_Result BML_API_ImcPublishInterceptable(BML_TopicId t, BML_ImcMessage *m,
+                                                    BML_EventResult *o) { return GetBus().PublishInterceptable(t, m, o); }
+        BML_Result BML_API_ImcRegisterRpc(BML_RpcId r, BML_RpcHandler h, void *u) { return GetBus().RegisterRpc(r, h, u); }
+        BML_Result BML_API_ImcUnregisterRpc(BML_RpcId r) { return GetBus().UnregisterRpc(r); }
+        BML_Result BML_API_ImcCallRpc(BML_RpcId r, const BML_ImcMessage *req, BML_Future *o) { return GetBus().CallRpc(r, req, o); }
+        BML_Result BML_API_ImcFutureAwait(BML_Future f, uint32_t t) { return GetBus().FutureAwait(f, t); }
+        BML_Result BML_API_ImcFutureGetResult(BML_Future f, BML_ImcMessage *o) { return GetBus().FutureGetResult(f, o); }
+        BML_Result BML_API_ImcFutureGetState(BML_Future f, BML_FutureState *o) { return GetBus().FutureGetState(f, o); }
+        BML_Result BML_API_ImcFutureCancel(BML_Future f) { return GetBus().FutureCancel(f); }
+        BML_Result BML_API_ImcFutureOnComplete(BML_Future f, BML_FutureCallback cb, void *u) { return GetBus().FutureOnComplete(f, cb, u); }
+        BML_Result BML_API_ImcFutureRelease(BML_Future f) { return GetBus().FutureRelease(f); }
+        void BML_API_ImcPump(size_t m) { GetBus().Pump(m); }
+        BML_Result BML_API_ImcGetSubscriptionStats(BML_Subscription s, BML_SubscriptionStats *o) { return GetBus().GetSubscriptionStats(s, o); }
+        BML_Result BML_API_ImcGetStats(BML_ImcStats *o) { return GetBus().GetStats(o); }
+        BML_Result BML_API_ImcResetStats() { return GetBus().ResetStats(); }
+        BML_Result BML_API_ImcGetTopicInfo(BML_TopicId t, BML_TopicInfo *o) { return GetBus().GetTopicInfo(t, o); }
+        BML_Result BML_API_ImcGetTopicName(BML_TopicId t, char *b, size_t s, size_t *o) { return GetBus().GetTopicName(t, b, s, o); }
+        BML_Result BML_API_ImcPublishState(BML_TopicId t, const BML_ImcMessage *m) { return GetBus().PublishState(t, m); }
+        BML_Result BML_API_ImcCopyState(BML_TopicId t, void *d, size_t ds, size_t *os, BML_ImcStateMeta *om) { return GetBus().CopyState(t, d, ds, os, om); }
+        BML_Result BML_API_ImcClearState(BML_TopicId t) { return GetBus().ClearState(t); }
+        // RPC v1.1 C API wrappers
+        BML_Result BML_API_ImcRegisterRpcEx(BML_RpcId r, BML_RpcHandlerEx h, void *u) { return GetBus().RegisterRpcEx(r, h, u); }
+        BML_Result BML_API_ImcCallRpcEx(BML_RpcId r, const BML_ImcMessage *req, const BML_RpcCallOptions *opts, BML_Future *o) { return GetBus().CallRpcEx(r, req, opts, o); }
+        BML_Result BML_API_ImcFutureGetError(BML_Future f, BML_Result *c, char *m, size_t cap, size_t *ol) { return GetBus().FutureGetError(f, c, m, cap, ol); }
+        BML_Result BML_API_ImcGetRpcInfo(BML_RpcId r, BML_RpcInfo *o) { return GetBus().GetRpcInfo(r, o); }
+        BML_Result BML_API_ImcGetRpcName(BML_RpcId r, char *b, size_t c, size_t *o) { return GetBus().GetRpcName(r, b, c, o); }
+        void BML_API_ImcEnumerateRpc(void(*cb)(BML_RpcId, const char *, BML_Bool, void *), void *u) { GetBus().EnumerateRpc(cb, u); }
+        BML_Result BML_API_ImcAddRpcMiddleware(BML_RpcMiddleware mw, int32_t p, void *u) { return GetBus().AddRpcMiddleware(mw, p, u); }
+        BML_Result BML_API_ImcRemoveRpcMiddleware(BML_RpcMiddleware mw) { return GetBus().RemoveRpcMiddleware(mw); }
+        BML_Result BML_API_ImcRegisterStreamingRpc(BML_RpcId r, BML_StreamingRpcHandler h, void *u) { return GetBus().RegisterStreamingRpc(r, h, u); }
+        BML_Result BML_API_ImcStreamPush(BML_RpcStream s, const void *d, size_t sz) { return GetBus().StreamPush(s, d, sz); }
+        BML_Result BML_API_ImcStreamComplete(BML_RpcStream s) { return GetBus().StreamComplete(s); }
+        BML_Result BML_API_ImcStreamError(BML_RpcStream s, BML_Result e, const char *m) { return GetBus().StreamError(s, e, m); }
+        BML_Result BML_API_ImcCallStreamingRpc(BML_RpcId r, const BML_ImcMessage *req, BML_ImcHandler oc, BML_FutureCallback od, void *u, BML_Future *o) { return GetBus().CallStreamingRpc(r, req, oc, od, u, o); }
+    } // namespace
 
-    BML_Result ImcBus::PublishEx(BML_TopicId topic, const BML_ImcMessage *msg) {
-        return GetBus().PublishEx(topic, msg);
-    }
+    void RegisterImcApis() {
+        BML_BEGIN_API_REGISTRATION();
 
-    BML_Result ImcBus::PublishBuffer(BML_TopicId topic, const BML_ImcBuffer *buffer) {
-        return GetBus().PublishBuffer(topic, buffer);
-    }
-
-    BML_Result ImcBus::Subscribe(BML_TopicId topic, BML_ImcHandler handler, void *user_data, BML_Subscription *out_sub) {
-        return GetBus().Subscribe(topic, handler, user_data, out_sub);
-    }
-
-    BML_Result ImcBus::SubscribeEx(BML_TopicId topic, BML_ImcHandler handler, void *user_data,
-                                   const BML_SubscribeOptions *options, BML_Subscription *out_sub) {
-        return GetBus().SubscribeEx(topic, handler, user_data, options, out_sub);
-    }
-
-    BML_Result ImcBus::Unsubscribe(BML_Subscription sub) {
-        return GetBus().Unsubscribe(sub);
-    }
-
-    BML_Result ImcBus::SubscriptionIsActive(BML_Subscription sub, BML_Bool *out_active) {
-        return GetBus().SubscriptionIsActive(sub, out_active);
-    }
-
-    BML_Result ImcBus::GetSubscriptionStats(BML_Subscription sub, BML_SubscriptionStats *out_stats) {
-        return GetBus().GetSubscriptionStats(sub, out_stats);
-    }
-
-    BML_Result ImcBus::PublishMulti(const BML_TopicId *topics, size_t topic_count,
-                                    const void *data, size_t size, const BML_ImcMessage *msg,
-                                    size_t *out_delivered) {
-        return GetBus().PublishMulti(topics, topic_count, data, size, msg, out_delivered);
-    }
-
-    BML_Result ImcBus::RegisterRpc(BML_RpcId rpc_id, BML_RpcHandler handler, void *user_data) {
-        return GetBus().RegisterRpc(rpc_id, handler, user_data);
-    }
-
-    BML_Result ImcBus::UnregisterRpc(BML_RpcId rpc_id) {
-        return GetBus().UnregisterRpc(rpc_id);
-    }
-
-    BML_Result ImcBus::CallRpc(BML_RpcId rpc_id, const BML_ImcMessage *request, BML_Future *out_future) {
-        return GetBus().CallRpc(rpc_id, request, out_future);
-    }
-
-    BML_Result ImcBus::FutureAwait(BML_Future future, uint32_t timeout_ms) {
-        return GetBus().FutureAwait(future, timeout_ms);
-    }
-
-    BML_Result ImcBus::FutureGetResult(BML_Future future, BML_ImcMessage *out_msg) {
-        return GetBus().FutureGetResult(future, out_msg);
-    }
-
-    BML_Result ImcBus::FutureGetState(BML_Future future, BML_FutureState *out_state) {
-        return GetBus().FutureGetState(future, out_state);
-    }
-
-    BML_Result ImcBus::FutureCancel(BML_Future future) {
-        return GetBus().FutureCancel(future);
-    }
-
-    BML_Result ImcBus::FutureOnComplete(BML_Future future, BML_FutureCallback callback, void *user_data) {
-        return GetBus().FutureOnComplete(future, callback, user_data);
-    }
-
-    BML_Result ImcBus::FutureRelease(BML_Future future) {
-        return GetBus().FutureRelease(future);
-    }
-
-    BML_Result ImcBus::GetStats(BML_ImcStats *out_stats) {
-        return GetBus().GetStats(out_stats);
-    }
-
-    BML_Result ImcBus::ResetStats() {
-        return GetBus().ResetStats();
-    }
-
-    BML_Result ImcBus::GetTopicInfo(BML_TopicId topic, BML_TopicInfo *out_info) {
-        return GetBus().GetTopicInfo(topic, out_info);
-    }
-
-    BML_Result ImcBus::GetTopicName(BML_TopicId topic, char *buffer, size_t buffer_size, size_t *out_length) {
-        return GetBus().GetTopicName(topic, buffer, buffer_size, out_length);
-    }
-
-    void ImcBus::Pump(size_t max_per_sub) {
-        GetBus().Pump(max_per_sub);
-    }
-
-    void ImcBus::Shutdown() {
-        GetBus().Shutdown();
+        BML_REGISTER_API_GUARDED(bmlImcGetTopicId, "imc", BML_API_ImcGetTopicId);
+        BML_REGISTER_API_GUARDED(bmlImcGetRpcId, "imc", BML_API_ImcGetRpcId);
+        BML_REGISTER_API_GUARDED(bmlImcPublish, "imc", BML_API_ImcPublish);
+        BML_REGISTER_API_GUARDED(bmlImcPublishEx, "imc", BML_API_ImcPublishEx);
+        BML_REGISTER_API_GUARDED(bmlImcPublishBuffer, "imc", BML_API_ImcPublishBuffer);
+        BML_REGISTER_API_GUARDED(bmlImcPublishMulti, "imc", BML_API_ImcPublishMulti);
+        BML_REGISTER_API_GUARDED(bmlImcSubscribe, "imc", BML_API_ImcSubscribe);
+        BML_REGISTER_API_GUARDED(bmlImcSubscribeEx, "imc", BML_API_ImcSubscribeEx);
+        BML_REGISTER_API_GUARDED(bmlImcUnsubscribe, "imc", BML_API_ImcUnsubscribe);
+        BML_REGISTER_API_GUARDED(bmlImcSubscriptionIsActive, "imc", BML_API_ImcSubscriptionIsActive);
+        BML_REGISTER_API_GUARDED(bmlImcSubscribeIntercept, "imc", BML_API_ImcSubscribeIntercept);
+        BML_REGISTER_API_GUARDED(bmlImcSubscribeInterceptEx, "imc", BML_API_ImcSubscribeInterceptEx);
+        BML_REGISTER_API_GUARDED(bmlImcPublishInterceptable, "imc", BML_API_ImcPublishInterceptable);
+        BML_REGISTER_API_GUARDED(bmlImcRegisterRpc, "imc", BML_API_ImcRegisterRpc);
+        BML_REGISTER_API_GUARDED(bmlImcUnregisterRpc, "imc", BML_API_ImcUnregisterRpc);
+        BML_REGISTER_API_GUARDED(bmlImcCallRpc, "imc", BML_API_ImcCallRpc);
+        BML_REGISTER_API_GUARDED(bmlImcFutureAwait, "imc", BML_API_ImcFutureAwait);
+        BML_REGISTER_API_GUARDED(bmlImcFutureGetResult, "imc", BML_API_ImcFutureGetResult);
+        BML_REGISTER_API_GUARDED(bmlImcFutureGetState, "imc", BML_API_ImcFutureGetState);
+        BML_REGISTER_API_GUARDED(bmlImcFutureCancel, "imc", BML_API_ImcFutureCancel);
+        BML_REGISTER_API_GUARDED(bmlImcFutureOnComplete, "imc", BML_API_ImcFutureOnComplete);
+        BML_REGISTER_API_GUARDED(bmlImcFutureRelease, "imc", BML_API_ImcFutureRelease);
+        BML_REGISTER_API_VOID_GUARDED(bmlImcPump, "imc", BML_API_ImcPump);
+        BML_REGISTER_API_GUARDED(bmlImcGetSubscriptionStats, "imc", BML_API_ImcGetSubscriptionStats);
+        BML_REGISTER_API_GUARDED(bmlImcGetStats, "imc", BML_API_ImcGetStats);
+        BML_REGISTER_API_GUARDED(bmlImcResetStats, "imc", BML_API_ImcResetStats);
+        BML_REGISTER_API_GUARDED(bmlImcGetTopicInfo, "imc", BML_API_ImcGetTopicInfo);
+        BML_REGISTER_API_GUARDED(bmlImcGetTopicName, "imc", BML_API_ImcGetTopicName);
+        BML_REGISTER_API_GUARDED(bmlImcPublishState, "imc", BML_API_ImcPublishState);
+        BML_REGISTER_API_GUARDED(bmlImcCopyState, "imc", BML_API_ImcCopyState);
+        BML_REGISTER_API_GUARDED(bmlImcClearState, "imc", BML_API_ImcClearState);
+        // RPC v1.1
+        BML_REGISTER_API_GUARDED(bmlImcRegisterRpcEx, "imc", BML_API_ImcRegisterRpcEx);
+        BML_REGISTER_API_GUARDED(bmlImcCallRpcEx, "imc", BML_API_ImcCallRpcEx);
+        BML_REGISTER_API_GUARDED(bmlImcFutureGetError, "imc", BML_API_ImcFutureGetError);
+        BML_REGISTER_API_GUARDED(bmlImcGetRpcInfo, "imc", BML_API_ImcGetRpcInfo);
+        BML_REGISTER_API_GUARDED(bmlImcGetRpcName, "imc", BML_API_ImcGetRpcName);
+        BML_REGISTER_API_VOID_GUARDED(bmlImcEnumerateRpc, "imc", BML_API_ImcEnumerateRpc);
+        BML_REGISTER_API_GUARDED(bmlImcAddRpcMiddleware, "imc", BML_API_ImcAddRpcMiddleware);
+        BML_REGISTER_API_GUARDED(bmlImcRemoveRpcMiddleware, "imc", BML_API_ImcRemoveRpcMiddleware);
+        BML_REGISTER_API_GUARDED(bmlImcRegisterStreamingRpc, "imc", BML_API_ImcRegisterStreamingRpc);
+        BML_REGISTER_API_GUARDED(bmlImcStreamPush, "imc", BML_API_ImcStreamPush);
+        BML_REGISTER_API_GUARDED(bmlImcStreamComplete, "imc", BML_API_ImcStreamComplete);
+        BML_REGISTER_API_GUARDED(bmlImcStreamError, "imc", BML_API_ImcStreamError);
+        BML_REGISTER_API_GUARDED(bmlImcCallStreamingRpc, "imc", BML_API_ImcCallStreamingRpc);
     }
 } // namespace BML::Core

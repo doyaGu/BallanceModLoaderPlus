@@ -19,22 +19,25 @@ if (WIN32)
     )
 endif ()
 
-add_library(BMLUtils STATIC
+add_library(BML_Utils STATIC
     ${BML_UTILS_SOURCES}
     ${BML_UTILS_HEADERS}
 )
 
-target_include_directories(BMLUtils
+add_library(BMLUtils ALIAS BML_Utils)
+
+target_include_directories(BML_Utils
         PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_link_libraries(BMLUtils
+target_link_libraries(BML_Utils
         PUBLIC
         utf8 zip
 )
 
-set_target_properties(BMLUtils PROPERTIES
+set_target_properties(BML_Utils PROPERTIES
         POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "BML_Utils"
         FOLDER "Core"
 )

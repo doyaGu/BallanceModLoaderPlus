@@ -115,8 +115,6 @@ namespace BML::Core {
         config.manifest = entry.manifest;
         config.context = &m_Context;
         config.get_proc = &bmlGetProcAddress;
-        config.get_proc_by_id = &bmlGetProcAddressById;
-        config.get_api_id = &bmlGetApiId;
 
         if (!slot_entry.slot->Initialize(config)) {
             CoreLog(BML_LOG_ERROR, kLogCategory,
@@ -379,7 +377,25 @@ namespace BML::Core {
                         "Processing scheduled reload for module '%s'", scheduled.mod_id.c_str());
 
                 if (scheduled.requires_runtime_reload) {
-                    result = ReloadResult::Success;
+                    // Check if a runtime provider owns this module
+                    auto snapshot = m_Context.GetLoadedModuleSnapshot();
+                    const BML_ModuleRuntimeProvider *provider = nullptr;
+                    BML_Mod mod_handle = nullptr;
+                    for (const auto &m : snapshot) {
+                        if (m.id == scheduled.mod_id && m.mod_handle) {
+                            std::string entry_utf8 = utils::Utf16ToUtf8(m.path);
+                            provider = m_Context.FindRuntimeProvider(entry_utf8);
+                            mod_handle = m.mod_handle;
+                            break;
+                        }
+                    }
+                    if (provider && provider->ReloadModule && mod_handle) {
+                        BML_Result reload_result = provider->ReloadModule(mod_handle);
+                        result = (reload_result == BML_RESULT_OK)
+                            ? ReloadResult::Success : ReloadResult::LoadFailed;
+                    } else {
+                        result = ReloadResult::Success;
+                    }
                     version = it->second.slot->GetVersion();
                     failure = ReloadFailure::None;
                 } else {
@@ -426,6 +442,26 @@ namespace BML::Core {
             if (!entry.info.manifest || entry.info.manifest->manifest_path.empty()) continue;
 
             if (event_path == NormalizePath(std::filesystem::path(entry.info.manifest->manifest_path))) {
+                return id;
+            }
+        }
+
+        // For runtime-managed script modules, changes to auxiliary script files
+        // inside the module directory should also trigger a reload.
+        for (const auto& [id, entry] : m_Slots) {
+            if (!entry.info.manifest || entry.info.watch_path.empty() || entry.info.dll_path.empty()) continue;
+
+            const auto entry_path = NormalizePath(std::filesystem::path(entry.info.dll_path));
+            if (IsModuleBinaryFile(entry_path.string())) continue;
+
+            const auto watch_root = NormalizePath(std::filesystem::path(entry.info.watch_path));
+            const auto relative_path = event_path.lexically_relative(watch_root);
+            if (relative_path.empty() || relative_path.native().empty() ||
+                relative_path == std::filesystem::path(".") || relative_path.string().starts_with("..")) {
+                continue;
+            }
+
+            if (event_path.extension() == entry_path.extension()) {
                 return id;
             }
         }

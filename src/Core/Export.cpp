@@ -1,6 +1,7 @@
 #include "bml_export.h"
 
 #include "ApiRegistry.h"
+#include "ApiRegistrationMacros.h"
 #include "Microkernel.h"
 
 BML_BEGIN_CDECLS
@@ -51,18 +52,16 @@ BML_API void *bmlGetProcAddress(const char *proc_name) {
     return BML::Core::ApiRegistry::Instance().Get(proc_name);
 }
 
-BML_API void *bmlGetProcAddressById(BML_ApiId api_id) {
-    return BML::Core::ApiRegistry::Instance().GetById(api_id);
-}
-
-BML_API int bmlGetApiId(const char *proc_name, BML_ApiId *out_id) {
-    if (!proc_name || !out_id)
-        return 0;
-    return BML::Core::ApiRegistry::Instance().GetApiId(proc_name, out_id) ? 1 : 0;
-}
-
 BML_API const BML_BootstrapDiagnostics *bmlGetBootstrapDiagnostics(void) {
     return &BML::Core::GetPublicDiagnostics();
 }
 
 BML_END_CDECLS
+
+namespace BML::Core {
+    void RegisterBootstrapExports() {
+        BML_BEGIN_API_REGISTRATION();
+
+        BML_REGISTER_API(bmlGetProcAddress, ::bmlGetProcAddress);
+    }
+} // namespace BML::Core
