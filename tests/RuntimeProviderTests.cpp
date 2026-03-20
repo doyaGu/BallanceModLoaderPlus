@@ -1,0 +1,188 @@
+#include <gtest/gtest.h>
+
+#include <string_view>
+
+#include "Core/Context.h"
+#include "bml_module_runtime.h"
+
+namespace {
+
+// Stub provider that handles ".as" files
+static BML_Bool StubCanHandle(const char *entry_path) {
+    if (!entry_path) return BML_FALSE;
+    std::string_view path(entry_path);
+    return path.ends_with(".as") ? BML_TRUE : BML_FALSE;
+}
+
+static BML_Result StubAttach(BML_Mod, PFN_BML_GetProcAddress,
+                              const char *, const char *) {
+    return BML_RESULT_OK;
+}
+
+static BML_Result StubPrepareDetach(BML_Mod) { return BML_RESULT_OK; }
+static BML_Result StubDetach(BML_Mod) { return BML_RESULT_OK; }
+static BML_Result StubReload(BML_Mod) { return BML_RESULT_OK; }
+
+static const BML_ModuleRuntimeProvider kStubProvider = {
+    BML_MODULE_RUNTIME_PROVIDER_INIT,
+    StubCanHandle, StubAttach, StubPrepareDetach, StubDetach, StubReload
+};
+
+// Second stub that handles ".lua" files
+static BML_Bool LuaCanHandle(const char *entry_path) {
+    if (!entry_path) return BML_FALSE;
+    std::string_view path(entry_path);
+    return path.ends_with(".lua") ? BML_TRUE : BML_FALSE;
+}
+
+static const BML_ModuleRuntimeProvider kLuaProvider = {
+    BML_MODULE_RUNTIME_PROVIDER_INIT,
+    LuaCanHandle, StubAttach, StubPrepareDetach, StubDetach, StubReload
+};
+
+class RuntimeProviderTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        auto &ctx = BML::Core::Context::Instance();
+        ctx.Cleanup();
+        ctx.Initialize({0, 4, 0});
+    }
+
+    void TearDown() override {
+        auto &ctx = BML::Core::Context::Instance();
+        // Ensure all providers are cleaned up
+        ctx.UnregisterRuntimeProvider(&kStubProvider);
+        ctx.UnregisterRuntimeProvider(&kLuaProvider);
+        ctx.Cleanup();
+    }
+};
+
+TEST_F(RuntimeProviderTest, RegisterAndFind) {
+    auto &ctx = BML::Core::Context::Instance();
+
+    EXPECT_EQ(BML_RESULT_OK,
+              ctx.RegisterRuntimeProvider(&kStubProvider, "com.bml.scripting"));
+
+    auto *found = ctx.FindRuntimeProvider("C:/Mods/Test/main.as");
+    EXPECT_EQ(found, &kStubProvider);
+}
+
+TEST_F(RuntimeProviderTest, FindReturnsNullForUnhandledExtension) {
+    auto &ctx = BML::Core::Context::Instance();
+
+    EXPECT_EQ(BML_RESULT_OK,
+              ctx.RegisterRuntimeProvider(&kStubProvider, "com.bml.scripting"));
+
+    auto *found = ctx.FindRuntimeProvider("C:/Mods/Test/Test.dll");
+    EXPECT_EQ(found, nullptr);
+}
+
+TEST_F(RuntimeProviderTest, FindReturnsNullWhenEmpty) {
+    auto &ctx = BML::Core::Context::Instance();
+
+    auto *found = ctx.FindRuntimeProvider("C:/Mods/Test/main.as");
+    EXPECT_EQ(found, nullptr);
+}
+
+TEST_F(RuntimeProviderTest, DuplicateRegistrationRejected) {
+    auto &ctx = BML::Core::Context::Instance();
+
+    EXPECT_EQ(BML_RESULT_OK,
+              ctx.RegisterRuntimeProvider(&kStubProvider, "com.bml.scripting"));
+    EXPECT_EQ(BML_RESULT_ALREADY_EXISTS,
+              ctx.RegisterRuntimeProvider(&kStubProvider, "com.bml.scripting"));
+}
+
+TEST_F(RuntimeProviderTest, MultipleProvidersCoexist) {
+    auto &ctx = BML::Core::Context::Instance();
+
+    EXPECT_EQ(BML_RESULT_OK,
+              ctx.RegisterRuntimeProvider(&kStubProvider, "com.bml.scripting"));
+    EXPECT_EQ(BML_RESULT_OK,
+              ctx.RegisterRuntimeProvider(&kLuaProvider, "com.bml.lua"));
+
+    EXPECT_EQ(ctx.FindRuntimeProvider("main.as"), &kStubProvider);
+    EXPECT_EQ(ctx.FindRuntimeProvider("main.lua"), &kLuaProvider);
+    EXPECT_EQ(ctx.FindRuntimeProvider("mod.dll"), nullptr);
+}
+
+TEST_F(RuntimeProviderTest, Unregister) {
+    auto &ctx = BML::Core::Context::Instance();
+
+    EXPECT_EQ(BML_RESULT_OK,
+              ctx.RegisterRuntimeProvider(&kStubProvider, "com.bml.scripting"));
+    EXPECT_NE(ctx.FindRuntimeProvider("main.as"), nullptr);
+
+    EXPECT_EQ(BML_RESULT_OK,
+              ctx.UnregisterRuntimeProvider(&kStubProvider));
+    EXPECT_EQ(ctx.FindRuntimeProvider("main.as"), nullptr);
+}
+
+TEST_F(RuntimeProviderTest, UnregisterNotFoundReturnsError) {
+    auto &ctx = BML::Core::Context::Instance();
+
+    EXPECT_EQ(BML_RESULT_NOT_FOUND,
+              ctx.UnregisterRuntimeProvider(&kStubProvider));
+}
+
+TEST_F(RuntimeProviderTest, InvalidateByOwner) {
+    auto &ctx = BML::Core::Context::Instance();
+
+    EXPECT_EQ(BML_RESULT_OK,
+              ctx.RegisterRuntimeProvider(&kStubProvider, "com.bml.scripting"));
+    EXPECT_EQ(BML_RESULT_OK,
+              ctx.RegisterRuntimeProvider(&kLuaProvider, "com.bml.lua"));
+
+    ctx.InvalidateRuntimeProvider("com.bml.scripting");
+
+    EXPECT_EQ(ctx.FindRuntimeProvider("main.as"), nullptr);
+    EXPECT_EQ(ctx.FindRuntimeProvider("main.lua"), &kLuaProvider);
+}
+
+TEST_F(RuntimeProviderTest, InvalidateNonExistentOwnerIsNoOp) {
+    auto &ctx = BML::Core::Context::Instance();
+
+    ctx.InvalidateRuntimeProvider("nonexistent");
+    // Should not crash or affect anything
+}
+
+TEST_F(RuntimeProviderTest, NullProviderRejected) {
+    auto &ctx = BML::Core::Context::Instance();
+
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT,
+              ctx.RegisterRuntimeProvider(nullptr, "owner"));
+}
+
+TEST_F(RuntimeProviderTest, EmptyOwnerRejected) {
+    auto &ctx = BML::Core::Context::Instance();
+
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT,
+              ctx.RegisterRuntimeProvider(&kStubProvider, ""));
+}
+
+TEST_F(RuntimeProviderTest, ProviderMissingRequiredFieldsRejected) {
+    auto &ctx = BML::Core::Context::Instance();
+
+    BML_ModuleRuntimeProvider incomplete = {
+        BML_MODULE_RUNTIME_PROVIDER_INIT,
+        StubCanHandle,
+        nullptr,       // AttachModule missing
+        nullptr,
+        nullptr,       // DetachModule missing
+        nullptr
+    };
+
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT,
+              ctx.RegisterRuntimeProvider(&incomplete, "owner"));
+}
+
+TEST_F(RuntimeProviderTest, FindWithEmptyPathReturnsNull) {
+    auto &ctx = BML::Core::Context::Instance();
+
+    EXPECT_EQ(BML_RESULT_OK,
+              ctx.RegisterRuntimeProvider(&kStubProvider, "com.bml.scripting"));
+
+    EXPECT_EQ(ctx.FindRuntimeProvider(""), nullptr);
+}
+
+} // namespace
