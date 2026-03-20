@@ -28,7 +28,7 @@ typedef enum BML_ModEntrypointCommand {
 	BML_MOD_ENTRYPOINT_DETACH = 3
 } BML_ModEntrypointCommand;
 
-#define BML_MOD_ENTRYPOINT_API_VERSION 6u
+#define BML_MOD_ENTRYPOINT_API_VERSION 1u
 
 typedef struct BML_ModAttachArgs {
 	uint32_t struct_size;
