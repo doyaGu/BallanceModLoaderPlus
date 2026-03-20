@@ -8,10 +8,13 @@
 #include <string>
 
 #include "Core/ApiRegistry.h"
+#include "TestKernel.h"
 
 using namespace BML::Core;
 
 namespace {
+using BML::Core::Testing::TestKernel;
+
 void DummyFuncA() {}
 void DummyFuncB() {}
 void DummyFuncC() {}
@@ -19,12 +22,13 @@ void DummyFuncC() {}
 
 class ApiImprovementsTest : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
-        ApiRegistry::Instance().Clear();
+        kernel_->api_registry = std::make_unique<ApiRegistry>();
     }
 
     void TearDown() override {
-        ApiRegistry::Instance().Clear();
     }
 };
 

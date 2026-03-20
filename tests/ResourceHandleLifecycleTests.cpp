@@ -7,7 +7,10 @@
 #include <vector>
 
 #include "Core/ApiRegistry.h"
+#include "Core/ConfigStore.h"
+#include "Core/Context.h"
 #include "Core/ResourceApi.h"
+#include "TestKernel.h"
 
 #include "bml_errors.h"
 #include "bml_resource.h"
@@ -15,6 +18,7 @@
 using BML::Core::ApiRegistry;
 
 namespace {
+using BML::Core::Testing::TestKernel;
 
 using PFN_HandleCreate = BML_Result (*)(BML_HandleType, BML_HandleDesc *);
 using PFN_HandleRetain = BML_Result (*)(const BML_HandleDesc *);
@@ -25,8 +29,12 @@ using PFN_HandleGetUserData = BML_Result (*)(const BML_HandleDesc *, void **);
 
 class ResourceHandleLifecycleTests : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
-        ApiRegistry::Instance().Clear();
+        kernel_->api_registry = std::make_unique<ApiRegistry>();
+        kernel_->context = std::make_unique<BML::Core::Context>();
+        kernel_->config = std::make_unique<BML::Core::ConfigStore>();
         BML::Core::RegisterResourceApis();
     }
 
@@ -206,11 +214,11 @@ TEST_F(ResourceHandleLifecycleTests, DoubleReleaseReturnsInvalidState) {
 
     BML_HandleDesc desc{};
     ASSERT_EQ(BML_RESULT_OK, create(type, &desc));
-    
+
     // First release should succeed
     ASSERT_EQ(BML_RESULT_OK, release(&desc));
     EXPECT_EQ(finalize_counter.load(), 1);
-    
+
     // Second release with same descriptor should fail (slot reused or invalid)
     BML_Result result = release(&desc);
     // Could be INVALID_ARGUMENT (wrong generation) or INVALID_STATE (underflow)
@@ -220,7 +228,7 @@ TEST_F(ResourceHandleLifecycleTests, DoubleReleaseReturnsInvalidState) {
 TEST_F(ResourceHandleLifecycleTests, ReleaseOnNullDescriptorReturnsInvalidArgument) {
     auto release = Lookup<PFN_HandleRelease>("bmlHandleRelease");
     ASSERT_NE(release, nullptr);
-    
+
     EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, release(nullptr));
 }
 
@@ -238,7 +246,7 @@ TEST_F(ResourceHandleLifecycleTests, RetainOnReleasedHandleReturnsError) {
     BML_HandleDesc desc{};
     ASSERT_EQ(BML_RESULT_OK, create(type, &desc));
     ASSERT_EQ(BML_RESULT_OK, release(&desc));
-    
+
     // Retain on released handle should fail
     EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, retain(&desc));
 }
@@ -352,7 +360,7 @@ TEST_F(ResourceHandleLifecycleTests, ValidateOnReleasedHandleReturnsFalse) {
     BML_HandleDesc desc{};
     ASSERT_EQ(BML_RESULT_OK, create(type, &desc));
     ASSERT_EQ(BML_RESULT_OK, release(&desc));
-    
+
     BML_Bool valid = BML_TRUE;
     ASSERT_EQ(BML_RESULT_OK, validate(&desc, &valid));
     EXPECT_EQ(valid, BML_FALSE);
@@ -369,7 +377,7 @@ TEST_F(ResourceHandleLifecycleTests, HandleTypesAreIsolated) {
     std::atomic<int> finalize_counter1{0};
     std::atomic<int> finalize_counter2{0};
     BML_HandleType type1 = RegisterCountingType(finalize_counter1);
-    
+
     // Register a different type
     BML_ResourceTypeDesc desc2{};
     desc2.struct_size = sizeof(BML_ResourceTypeDesc);
@@ -409,7 +417,7 @@ TEST_F(ResourceHandleLifecycleTests, HandleTypesAreIsolated) {
 TEST_F(ResourceHandleLifecycleTests, GetUserDataOnNullDescriptorReturnsInvalidArgument) {
     auto get_data = Lookup<PFN_HandleGetUserData>("bmlHandleGetUserData");
     ASSERT_NE(get_data, nullptr);
-    
+
     void* user_data = nullptr;
     EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, get_data(nullptr, &user_data));
 }
@@ -427,9 +435,9 @@ TEST_F(ResourceHandleLifecycleTests, GetUserDataOnNullOutputReturnsInvalidArgume
 
     BML_HandleDesc desc{};
     ASSERT_EQ(BML_RESULT_OK, create(type, &desc));
-    
+
     EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, get_data(&desc, nullptr));
-    
+
     ASSERT_EQ(BML_RESULT_OK, release(&desc));
 }
 
@@ -447,7 +455,7 @@ TEST_F(ResourceHandleLifecycleTests, AttachUserDataOnReleasedHandleReturnsError)
     BML_HandleDesc desc{};
     ASSERT_EQ(BML_RESULT_OK, create(type, &desc));
     ASSERT_EQ(BML_RESULT_OK, release(&desc));
-    
+
     int payload = 42;
     EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, attach(&desc, &payload));
 }

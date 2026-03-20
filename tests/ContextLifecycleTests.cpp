@@ -8,13 +8,18 @@
 #include <thread>
 #include <vector>
 
+#include "Core/ApiRegistry.h"
+#include "Core/ConfigStore.h"
 #include "Core/Context.h"
 #include "Core/ModuleLoader.h"
+#include "TestKernel.h"
 
 using namespace std::chrono_literals;
 
 namespace BML::Core {
 namespace {
+using BML::Core::Testing::TestKernel;
+
 std::mutex g_RecordMutex;
 std::vector<std::string> g_ShutdownOrder;
 
@@ -38,9 +43,14 @@ LoadedModule BuildLoadedModule(const std::string &id, std::initializer_list<cons
 
 class ContextLifecycleTests : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
+        kernel_->context = std::make_unique<Context>();
+        kernel_->config = std::make_unique<ConfigStore>();
+        kernel_->api_registry = std::make_unique<ApiRegistry>();
+
         auto &ctx = Context::Instance();
-        ctx.Cleanup();
         ctx.Initialize({0, 4, 0});
         std::lock_guard<std::mutex> lock(g_RecordMutex);
         g_ShutdownOrder.clear();

@@ -1,6 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "Core/MemoryManager.h"
+#include "TestKernel.h"
 
 #include "bml_memory.h"
 
@@ -9,9 +10,15 @@
 #include <vector>
 
 namespace {
+using BML::Core::Testing::TestKernel;
+
 class MemoryManagerTest : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
+        kernel_->memory = std::make_unique<BML::Core::MemoryManager>();
+
         auto &manager = BML::Core::MemoryManager::Instance();
         manager.SetTrackingEnabled(true);
     #if defined(BML_TEST)

@@ -11,8 +11,10 @@
 #include "Core/ApiRegistry.h"
 #include "Core/Context.h"
 #include "Core/CoreErrors.h"
+#include "Core/DiagnosticManager.h"
 #include "Core/Logging.h"
 #include "Core/ModHandle.h"
+#include "TestKernel.h"
 
 #include "bml_logging.h"
 #include "bml_errors.h"
@@ -25,6 +27,7 @@ using BML::Core::ApiRegistry;
 using BML::Core::Context;
 
 namespace {
+using BML::Core::Testing::TestKernel;
 
 struct CapturedLog {
     BML_LogSeverity severity{BML_LOG_INFO};
@@ -34,8 +37,11 @@ struct CapturedLog {
 
 class CoreErrorsGuardTests : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
-        ApiRegistry::Instance().Clear();
+        kernel_->api_registry = std::make_unique<ApiRegistry>();
+        kernel_->diagnostics = std::make_unique<BML::Core::DiagnosticManager>();
         Context::SetCurrentModule(nullptr);
         BML::Core::RegisterLoggingApis();
     }
@@ -251,14 +257,14 @@ TEST_F(CoreErrorsGuardTests, LargeErrorMessagesSurviveMultipleWrites) {
         BML_ErrorInfo info = BML_ERROR_INFO_INIT;
         ASSERT_EQ(BML_RESULT_OK, BML::Core::GetLastErrorInfo(&info));
         ASSERT_NE(info.message, nullptr);
-        
+
         std::string retrieved(info.message);
-        EXPECT_EQ(retrieved.length(), message.length()) 
+        EXPECT_EQ(retrieved.length(), message.length())
             << "Message length mismatch at iteration " << i;
         EXPECT_EQ(retrieved, message)
-            << "Message content mismatch at iteration " << i 
+            << "Message content mismatch at iteration " << i
             << " (first 50 chars shown)";
-        
+
         ASSERT_NE(info.api_name, nullptr);
         EXPECT_STREQ(info.api_name, "large.test");
     }

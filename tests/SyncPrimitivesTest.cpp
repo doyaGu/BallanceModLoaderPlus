@@ -18,10 +18,12 @@
 #include "bml_errors.h"
 #include "Core/CoreErrors.h"
 #include "Core/SyncManager.h"
+#include "TestKernel.h"
 
 using namespace BML::Core;
 
 namespace {
+using BML::Core::Testing::TestKernel;
 
 struct DeadlockInfo {
     BML_Result code{BML_RESULT_OK};
@@ -133,12 +135,13 @@ std::pair<BML_Result, std::string> RunDeadlockDetectionScenario(
 
 class SyncPrimitivesTest : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
-        // SyncManager is a singleton, no setup needed
+        kernel_->sync = std::make_unique<SyncManager>();
     }
 
     void TearDown() override {
-        // Cleanup handled by test cases
     }
 };
 
@@ -151,7 +154,7 @@ TEST_F(SyncPrimitivesTest, CondVarCreateDestroy) {
     BML_Result result = SyncManager::Instance().CreateCondVar(&condvar);
     ASSERT_EQ(result, BML_RESULT_OK);
     ASSERT_NE(condvar, nullptr);
-    
+
     SyncManager::Instance().DestroyCondVar(condvar);
 }
 
@@ -163,13 +166,13 @@ TEST_F(SyncPrimitivesTest, CondVarCreateNullOutput) {
 TEST_F(SyncPrimitivesTest, CondVarSignalWait) {
     BML_Mutex mutex = nullptr;
     BML_CondVar condvar = nullptr;
-    
+
     ASSERT_EQ(SyncManager::Instance().CreateMutex(&mutex), BML_RESULT_OK);
     ASSERT_EQ(SyncManager::Instance().CreateCondVar(&condvar), BML_RESULT_OK);
-    
+
     std::atomic<bool> ready{false};
     std::atomic<bool> done{false};
-    
+
     // Consumer thread
     std::thread consumer([&]() {
         SyncManager::Instance().LockMutex(mutex);
@@ -184,18 +187,18 @@ TEST_F(SyncPrimitivesTest, CondVarSignalWait) {
         done.store(true);
         SyncManager::Instance().UnlockMutex(mutex);
     });
-    
+
     // Producer: signal after short delay
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     SyncManager::Instance().LockMutex(mutex);
     ready.store(true);
     SyncManager::Instance().SignalCondVar(condvar);
     SyncManager::Instance().UnlockMutex(mutex);
-    
+
     consumer.join();
-    
+
     EXPECT_TRUE(done.load());
-    
+
     SyncManager::Instance().DestroyCondVar(condvar);
     SyncManager::Instance().DestroyMutex(mutex);
 }
@@ -203,24 +206,24 @@ TEST_F(SyncPrimitivesTest, CondVarSignalWait) {
 TEST_F(SyncPrimitivesTest, CondVarWaitTimeout) {
     BML_Mutex mutex = nullptr;
     BML_CondVar condvar = nullptr;
-    
+
     ASSERT_EQ(SyncManager::Instance().CreateMutex(&mutex), BML_RESULT_OK);
     ASSERT_EQ(SyncManager::Instance().CreateCondVar(&condvar), BML_RESULT_OK);
-    
+
     SyncManager::Instance().LockMutex(mutex);
-    
+
     auto start = std::chrono::steady_clock::now();
     BML_Result result = SyncManager::Instance().WaitCondVarTimeout(condvar, mutex, 100);
     auto end = std::chrono::steady_clock::now();
-    
+
     SyncManager::Instance().UnlockMutex(mutex);
-    
+
     EXPECT_EQ(result, BML_RESULT_TIMEOUT);
-    
+
     auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
     EXPECT_GE(elapsed_ms, 80);  // Allow some tolerance
     EXPECT_LE(elapsed_ms, 200); // But not too long
-    
+
     SyncManager::Instance().DestroyCondVar(condvar);
     SyncManager::Instance().DestroyMutex(mutex);
 }
@@ -228,14 +231,14 @@ TEST_F(SyncPrimitivesTest, CondVarWaitTimeout) {
 TEST_F(SyncPrimitivesTest, CondVarBroadcast) {
     BML_Mutex mutex = nullptr;
     BML_CondVar condvar = nullptr;
-    
+
     ASSERT_EQ(SyncManager::Instance().CreateMutex(&mutex), BML_RESULT_OK);
     ASSERT_EQ(SyncManager::Instance().CreateCondVar(&condvar), BML_RESULT_OK);
-    
+
     std::atomic<bool> ready{false};
     std::atomic<int> woken_count{0};
     constexpr int NUM_THREADS = 3;
-    
+
     std::vector<std::thread> threads;
     for (int i = 0; i < NUM_THREADS; ++i) {
         threads.emplace_back([&]() {
@@ -250,22 +253,22 @@ TEST_F(SyncPrimitivesTest, CondVarBroadcast) {
             SyncManager::Instance().UnlockMutex(mutex);
         });
     }
-    
+
     // Let all threads start waiting
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    
+
     // Broadcast to wake all threads
     SyncManager::Instance().LockMutex(mutex);
     ready.store(true);
     SyncManager::Instance().BroadcastCondVar(condvar);
     SyncManager::Instance().UnlockMutex(mutex);
-    
+
     for (auto& t : threads) {
         t.join();
     }
-    
+
     EXPECT_EQ(woken_count.load(), NUM_THREADS);
-    
+
     SyncManager::Instance().DestroyCondVar(condvar);
     SyncManager::Instance().DestroyMutex(mutex);
 }
@@ -279,7 +282,7 @@ TEST_F(SyncPrimitivesTest, SpinLockCreateDestroy) {
     BML_Result result = SyncManager::Instance().CreateSpinLock(&lock);
     ASSERT_EQ(result, BML_RESULT_OK);
     ASSERT_NE(lock, nullptr);
-    
+
     SyncManager::Instance().DestroySpinLock(lock);
 }
 
@@ -291,48 +294,48 @@ TEST_F(SyncPrimitivesTest, SpinLockCreateNullOutput) {
 TEST_F(SyncPrimitivesTest, SpinLockBasicLocking) {
     BML_SpinLock lock = nullptr;
     ASSERT_EQ(SyncManager::Instance().CreateSpinLock(&lock), BML_RESULT_OK);
-    
+
     SyncManager::Instance().LockSpinLock(lock);
     // Lock acquired
     SyncManager::Instance().UnlockSpinLock(lock);
     // Lock released
-    
+
     SyncManager::Instance().DestroySpinLock(lock);
 }
 
 TEST_F(SyncPrimitivesTest, SpinLockTryLock) {
     BML_SpinLock lock = nullptr;
     ASSERT_EQ(SyncManager::Instance().CreateSpinLock(&lock), BML_RESULT_OK);
-    
+
     // Should succeed on unlocked lock
     EXPECT_EQ(SyncManager::Instance().TryLockSpinLock(lock), BML_TRUE);
-    
+
     // Try from another thread - should fail
     std::atomic<BML_Bool> try_result{BML_TRUE};
     std::thread t([&]() {
         try_result.store(SyncManager::Instance().TryLockSpinLock(lock));
     });
     t.join();
-    
+
     EXPECT_EQ(try_result.load(), BML_FALSE);
-    
+
     SyncManager::Instance().UnlockSpinLock(lock);
-    
+
     // Now should succeed again
     EXPECT_EQ(SyncManager::Instance().TryLockSpinLock(lock), BML_TRUE);
     SyncManager::Instance().UnlockSpinLock(lock);
-    
+
     SyncManager::Instance().DestroySpinLock(lock);
 }
 
 TEST_F(SyncPrimitivesTest, SpinLockConcurrentAccess) {
     BML_SpinLock lock = nullptr;
     ASSERT_EQ(SyncManager::Instance().CreateSpinLock(&lock), BML_RESULT_OK);
-    
+
     std::atomic<int> counter{0};
     constexpr int INCREMENTS_PER_THREAD = 1000;
     constexpr int NUM_THREADS = 4;
-    
+
     auto increment_func = [&]() {
         for (int i = 0; i < INCREMENTS_PER_THREAD; ++i) {
             SyncManager::Instance().LockSpinLock(lock);
@@ -340,18 +343,18 @@ TEST_F(SyncPrimitivesTest, SpinLockConcurrentAccess) {
             SyncManager::Instance().UnlockSpinLock(lock);
         }
     };
-    
+
     std::vector<std::thread> threads;
     for (int i = 0; i < NUM_THREADS; ++i) {
         threads.emplace_back(increment_func);
     }
-    
+
     for (auto& t : threads) {
         t.join();
     }
-    
+
     EXPECT_EQ(counter.load(), INCREMENTS_PER_THREAD * NUM_THREADS);
-    
+
     SyncManager::Instance().DestroySpinLock(lock);
 }
 
@@ -738,4 +741,3 @@ TEST_F(SyncPrimitivesTest, SemaphoreWaitDeadlockDetectionSetsLastError) {
     SyncManager::Instance().DestroySemaphore(second);
     SyncManager::Instance().DestroySemaphore(first);
 }
-

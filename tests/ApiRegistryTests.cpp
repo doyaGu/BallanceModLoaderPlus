@@ -10,10 +10,14 @@
 #include "Core/ApiRegistrationMacros.h"
 #include "Core/ApiRegistry.h"
 #include "Core/CoreErrors.h"
+#include "Core/DiagnosticManager.h"
+#include "TestKernel.h"
 
 using namespace BML::Core;
 
 namespace {
+using BML::Core::Testing::TestKernel;
+
 void DummyFuncA() {}
 void DummyFuncB() {}
 
@@ -46,12 +50,14 @@ void CoreNodeC() { g_CoreRegistrationOrder.push_back(3); }
 
 class ApiRegistryTest : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
-        ApiRegistry::Instance().Clear();
+        kernel_->api_registry = std::make_unique<ApiRegistry>();
+        kernel_->diagnostics = std::make_unique<DiagnosticManager>();
     }
 
     void TearDown() override {
-        ApiRegistry::Instance().Clear();
     }
 };
 
