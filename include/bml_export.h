@@ -28,19 +28,13 @@ typedef enum BML_ModEntrypointCommand {
 	BML_MOD_ENTRYPOINT_DETACH = 3
 } BML_ModEntrypointCommand;
 
-#define BML_MOD_ENTRYPOINT_API_VERSION 5u
+#define BML_MOD_ENTRYPOINT_API_VERSION 6u
 
-/*
- * `get_proc` is the authoritative extensibility path for module bootstrap.
- * `service_hub` is an optional typed snapshot for convenience wrappers and
- * may be NULL even when `get_proc` is valid.
- */
 typedef struct BML_ModAttachArgs {
 	uint32_t struct_size;
 	uint32_t api_version;
 	BML_Mod mod;
 	PFN_BML_GetProcAddress get_proc;
-    const void *service_hub;   /* Optional service hub snapshot; may be NULL. */
 } BML_ModAttachArgs;
 
 typedef struct BML_ModDetachArgs {

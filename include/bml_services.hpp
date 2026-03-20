@@ -96,7 +96,7 @@ struct BuiltinServices {
     const BML_CoreResourceInterface *Resource = nullptr;
     const BML_CoreDiagnosticInterface *Diagnostic = nullptr;
     const BML_ImcBusInterface *ImcBus = nullptr;
-    const BML_RpcInterface *Rpc = nullptr;
+    const BML_ImcRpcInterface *ImcRpc = nullptr;
     const BML_CoreTimerInterface *Timer = nullptr;
     const BML_CoreLocaleInterface *Locale = nullptr;
     const BML_CoreHookRegistryInterface *HookRegistry = nullptr;
@@ -234,11 +234,11 @@ public:
     }
 
     bml::imc::RpcServiceManager CreateRpcServices() const {
-        return bml::imc::RpcServiceManager(m_Hub ? m_Hub->Builtins().Rpc : nullptr);
+        return bml::imc::RpcServiceManager(m_Hub ? m_Hub->Builtins().ImcRpc : nullptr);
     }
 
     bml::imc::RpcClient CreateRpcClient(std::string_view name) const {
-        return bml::imc::RpcClient(name, m_Hub ? m_Hub->Builtins().Rpc : nullptr);
+        return bml::imc::RpcClient(name, m_Hub ? m_Hub->Builtins().ImcRpc : nullptr);
     }
 
     /**

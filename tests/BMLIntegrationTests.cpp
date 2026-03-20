@@ -368,10 +368,10 @@ TEST_F(BMLIntegrationTest, BuiltinInterfacesAvailableAfterBootstrap) {
         BML_InterfaceLease lease = nullptr;
         BML_Version rpcReq = bmlMakeVersion(1, 0, 0);
 
-        ASSERT_EQ(BML_RESULT_OK, serviceAcquire(BML_RPC_INTERFACE_ID, &rpcReq, &implementation, &lease));
-        auto *rpc = static_cast<const BML_RpcInterface *>(implementation);
+        ASSERT_EQ(BML_RESULT_OK, serviceAcquire(BML_IMC_RPC_INTERFACE_ID, &rpcReq, &implementation, &lease));
+        auto *rpc = static_cast<const BML_ImcRpcInterface *>(implementation);
         ASSERT_NE(nullptr, rpc);
-        EXPECT_GE(rpc->header.struct_size, sizeof(BML_RpcInterface));
+        EXPECT_GE(rpc->header.struct_size, sizeof(BML_ImcRpcInterface));
         EXPECT_NE(nullptr, rpc->RegisterRpc);
         EXPECT_NE(nullptr, rpc->CallRpc);
         EXPECT_NE(nullptr, rpc->RegisterRpcEx);
@@ -413,14 +413,14 @@ TEST_F(BMLIntegrationTest, BuiltinInterfacesAvailableAfterBootstrap) {
     {
         const void *implementation = nullptr;
         BML_InterfaceLease lease = nullptr;
-        BML_Version imcReq = bmlMakeVersion(1, 1, 0);
+        BML_Version imcReq = bmlMakeVersion(1, 0, 0);
 
         ASSERT_EQ(BML_RESULT_OK,
                   serviceAcquire(BML_IMC_BUS_INTERFACE_ID, &imcReq, &implementation, &lease));
         auto *imcBus = static_cast<const BML_ImcBusInterface *>(implementation);
         ASSERT_NE(nullptr, imcBus);
         EXPECT_EQ(1u, imcBus->header.major);
-        EXPECT_EQ(2u, imcBus->header.minor);
+        EXPECT_EQ(0u, imcBus->header.minor);
         EXPECT_NE(nullptr, imcBus->GetTopicName);
         EXPECT_EQ(BML_RESULT_OK, serviceRelease(lease));
     }

@@ -134,14 +134,14 @@ namespace imc {
 
     /** @brief Call an RPC by name */
     inline RpcFuture callRpc(std::string_view name, const void *data = nullptr, size_t size = 0,
-                             const BML_RpcInterface *rpc = nullptr) {
+                             const BML_ImcRpcInterface *rpc = nullptr) {
         return RpcClient(name, rpc).Call(data, size);
     }
 
     /** @brief Call a typed RPC by name */
     template <typename T>
     inline RpcFuture callRpc(std::string_view name, const T &req,
-                             const BML_RpcInterface *rpc = nullptr) {
+                             const BML_ImcRpcInterface *rpc = nullptr) {
         static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
         return RpcClient(name, rpc).Call(req);
     }
@@ -150,21 +150,21 @@ namespace imc {
     template <typename Resp, typename Req>
     inline std::optional<Resp> callRpcSync(std::string_view name, const Req &req,
                                             uint32_t timeoutMs = 5000,
-                                            const BML_RpcInterface *rpc = nullptr) {
+                                            const BML_ImcRpcInterface *rpc = nullptr) {
         return RpcClient(name, rpc).template CallSync<Resp, Req>(req, timeoutMs);
     }
 
     /** @brief Get info about a registered RPC endpoint */
-    inline std::optional<BML_RpcInfo> getRpcInfo(RpcId id, const BML_RpcInterface *rpc = nullptr) {
-        if (!BML_RPC_HAS_MEMBER(rpc, GetRpcInfo)) return std::nullopt;
+    inline std::optional<BML_RpcInfo> getRpcInfo(RpcId id, const BML_ImcRpcInterface *rpc = nullptr) {
+        if (!BML_IMC_RPC_HAS_MEMBER(rpc, GetRpcInfo)) return std::nullopt;
         BML_RpcInfo info = BML_RPC_INFO_INIT;
         if (rpc->GetRpcInfo(id, &info) == BML_RESULT_OK) return info;
         return std::nullopt;
     }
 
     /** @brief Get RPC name by ID */
-    inline std::optional<std::string> getRpcName(RpcId id, const BML_RpcInterface *rpc = nullptr) {
-        if (!BML_RPC_HAS_MEMBER(rpc, GetRpcName)) return std::nullopt;
+    inline std::optional<std::string> getRpcName(RpcId id, const BML_ImcRpcInterface *rpc = nullptr) {
+        if (!BML_IMC_RPC_HAS_MEMBER(rpc, GetRpcName)) return std::nullopt;
         char buffer[256] = {};
         size_t length = 0;
         const BML_Result result = rpc->GetRpcName(id, buffer, sizeof(buffer), &length);

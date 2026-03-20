@@ -41,12 +41,12 @@ namespace imc {
     public:
         Rpc() : m_Id(InvalidRpcId) {}
 
-        explicit Rpc(std::string_view name, const BML_RpcInterface *rpc = nullptr)
+        explicit Rpc(std::string_view name, const BML_ImcRpcInterface *rpc = nullptr)
             : m_Name(name), m_Id(InvalidRpcId), m_RpcIface(rpc) {
             Resolve();
         }
 
-        explicit Rpc(RpcId id, std::string name = "", const BML_RpcInterface *rpc = nullptr)
+        explicit Rpc(RpcId id, std::string name = "", const BML_ImcRpcInterface *rpc = nullptr)
             : m_Name(std::move(name)), m_Id(id), m_RpcIface(rpc) {}
 
         // ====================================================================
@@ -55,7 +55,7 @@ namespace imc {
 
         RpcId Id() const noexcept { return m_Id; }
         const std::string &Name() const noexcept { return m_Name; }
-        const BML_RpcInterface *RpcIface() const noexcept { return m_RpcIface; }
+        const BML_ImcRpcInterface *Iface() const noexcept { return m_RpcIface; }
         bool Valid() const noexcept { return m_Id != InvalidRpcId; }
         explicit operator bool() const noexcept { return Valid(); }
         operator RpcId() const noexcept { return m_Id; }
@@ -70,7 +70,7 @@ namespace imc {
             return m_RpcIface->GetRpcId(m_Name.c_str(), &m_Id) == BML_RESULT_OK;
         }
 
-        static std::optional<Rpc> Create(std::string_view name, const BML_RpcInterface *iface = nullptr) {
+        static std::optional<Rpc> Create(std::string_view name, const BML_ImcRpcInterface *iface = nullptr) {
             Rpc endpoint(name, iface);
             if (endpoint.Valid()) return endpoint;
             return std::nullopt;
@@ -79,7 +79,7 @@ namespace imc {
     private:
         std::string m_Name;
         RpcId m_Id;
-        const BML_RpcInterface *m_RpcIface = nullptr;
+        const BML_ImcRpcInterface *m_RpcIface = nullptr;
     };
 
     // ========================================================================
@@ -143,7 +143,7 @@ namespace imc {
     public:
         RpcFuture() : m_Handle(nullptr) {}
 
-        explicit RpcFuture(BML_Future handle, const BML_RpcInterface *rpc = nullptr)
+        explicit RpcFuture(BML_Future handle, const BML_ImcRpcInterface *rpc = nullptr)
             : m_Handle(handle), m_RpcIface(rpc) {}
 
         RpcFuture(RpcFuture &&other) noexcept : m_Handle(other.m_Handle), m_RpcIface(other.m_RpcIface) {
@@ -259,7 +259,7 @@ namespace imc {
          * @return pair of (error_code, error_message), or std::nullopt on success
          */
         std::optional<std::pair<BML_Result, std::string>> Error() const {
-            if (!m_Handle || !BML_RPC_HAS_MEMBER(m_RpcIface, FutureGetError)) return std::nullopt;
+            if (!m_Handle || !BML_IMC_RPC_HAS_MEMBER(m_RpcIface, FutureGetError)) return std::nullopt;
             BML_Result code = BML_RESULT_OK;
             char buf[512] = {};
             size_t len = 0;
@@ -325,7 +325,7 @@ namespace imc {
 
     private:
         BML_Future m_Handle;
-        const BML_RpcInterface *m_RpcIface = nullptr;
+        const BML_ImcRpcInterface *m_RpcIface = nullptr;
         std::optional<BML_ImcMessage> m_ResultCache;
         std::vector<uint8_t> m_ResultStorage;
     };
@@ -450,7 +450,7 @@ namespace imc {
         /**
          * @brief Register an RPC handler
          */
-        RpcServer(std::string_view name, RpcHandler handler, const BML_RpcInterface *rpc = nullptr)
+        RpcServer(std::string_view name, RpcHandler handler, const BML_ImcRpcInterface *rpc = nullptr)
             : m_RpcId(InvalidRpcId), m_RpcIface(rpc) {
             if (!m_RpcIface || !m_RpcIface->GetRpcId || !m_RpcIface->RegisterRpc) return;
 
@@ -476,9 +476,9 @@ namespace imc {
          * RpcServer server("MyRpc", with_error, [](const Message&) -> std::variant<...> { ... });
          * @endcode
          */
-        RpcServer(std::string_view name, WithErrorTag, RpcHandlerWithError handler, const BML_RpcInterface *rpc = nullptr)
+        RpcServer(std::string_view name, WithErrorTag, RpcHandlerWithError handler, const BML_ImcRpcInterface *rpc = nullptr)
             : m_RpcId(InvalidRpcId), m_RpcIface(rpc) {
-            if (!m_RpcIface || !m_RpcIface->GetRpcId || !BML_RPC_HAS_MEMBER(m_RpcIface, RegisterRpcEx)) return;
+            if (!m_RpcIface || !m_RpcIface->GetRpcId || !BML_IMC_RPC_HAS_MEMBER(m_RpcIface, RegisterRpcEx)) return;
 
             std::string resolvedName(name);
             if (m_RpcIface->GetRpcId(resolvedName.c_str(), &m_RpcId) != BML_RESULT_OK) {
@@ -503,7 +503,7 @@ namespace imc {
         RpcServer(
             std::string_view name,
             TypedRpcHandler<Req, Resp> handler,
-            const BML_RpcInterface *rpc = nullptr)
+            const BML_ImcRpcInterface *rpc = nullptr)
             : RpcServer(name, [h = std::move(handler)](const Message &req) -> std::vector<uint8_t> {
                   static_assert(std::is_trivially_copyable_v<Req>, "Req must be trivially copyable");
                   static_assert(std::is_trivially_copyable_v<Resp>, "Resp must be trivially copyable");
@@ -562,7 +562,7 @@ namespace imc {
         RpcId GetRpcId() const noexcept { return m_RpcId; }
 
         std::optional<BML_RpcInfo> Info() const {
-            if (m_RpcId == InvalidRpcId || !BML_RPC_HAS_MEMBER(m_RpcIface, GetRpcInfo)) return std::nullopt;
+            if (m_RpcId == InvalidRpcId || !BML_IMC_RPC_HAS_MEMBER(m_RpcIface, GetRpcInfo)) return std::nullopt;
             BML_RpcInfo info = BML_RPC_INFO_INIT;
             if (m_RpcIface->GetRpcInfo(m_RpcId, &info) == BML_RESULT_OK) return info;
             return std::nullopt;
@@ -572,7 +572,7 @@ namespace imc {
         RpcId m_RpcId;
         std::unique_ptr<detail::RpcHandlerContext> m_Context;
         std::unique_ptr<detail::RpcHandlerExContext> m_ExContext;
-        const BML_RpcInterface *m_RpcIface = nullptr;
+        const BML_ImcRpcInterface *m_RpcIface = nullptr;
     };
 
     // ========================================================================
@@ -604,12 +604,12 @@ namespace imc {
     public:
         RpcClient() : m_Endpoint() {}
 
-        explicit RpcClient(std::string_view name, const BML_RpcInterface *rpc = nullptr)
+        explicit RpcClient(std::string_view name, const BML_ImcRpcInterface *rpc = nullptr)
             : m_Endpoint(name, rpc), m_RpcIface(rpc) {}
 
-        explicit RpcClient(const Rpc &endpoint, const BML_RpcInterface *rpc = nullptr)
-            : m_Endpoint(endpoint.Valid() ? Rpc(endpoint.Id(), endpoint.Name(), rpc ? rpc : endpoint.RpcIface()) : Rpc()),
-              m_RpcIface(rpc ? rpc : endpoint.RpcIface()) {}
+        explicit RpcClient(const Rpc &endpoint, const BML_ImcRpcInterface *rpc = nullptr)
+            : m_Endpoint(endpoint.Valid() ? Rpc(endpoint.Id(), endpoint.Name(), rpc ? rpc : endpoint.Iface()) : Rpc()),
+              m_RpcIface(rpc ? rpc : endpoint.Iface()) {}
 
         // ====================================================================
         // Properties
@@ -672,7 +672,7 @@ namespace imc {
          * @brief Call with raw data and options
          */
         RpcFuture Call(const void *data, size_t size, const RpcCallOptions &opts) {
-            if (!Valid() || !BML_RPC_HAS_MEMBER(m_RpcIface, CallRpcEx)) return RpcFuture();
+            if (!Valid() || !BML_IMC_RPC_HAS_MEMBER(m_RpcIface, CallRpcEx)) return RpcFuture();
             BML_ImcMessage msg = BML_IMC_MSG(data, size);
             BML_Future handle;
             if (m_RpcIface->CallRpcEx(m_Endpoint.Id(), &msg, &opts.Native(), &handle) == BML_RESULT_OK) {
@@ -731,7 +731,7 @@ namespace imc {
 
     private:
         Rpc m_Endpoint;
-        const BML_RpcInterface *m_RpcIface = nullptr;
+        const BML_ImcRpcInterface *m_RpcIface = nullptr;
     };
 
     // ========================================================================
@@ -743,9 +743,9 @@ namespace imc {
         RpcMiddlewareRegistration() = default;
 
         RpcMiddlewareRegistration(BML_RpcMiddleware mw, int32_t priority, void *ud,
-                                  const BML_RpcInterface *rpc)
+                                  const BML_ImcRpcInterface *rpc)
             : m_Middleware(mw), m_RpcIface(rpc) {
-            if (BML_RPC_HAS_MEMBER(m_RpcIface, AddRpcMiddleware)) {
+            if (BML_IMC_RPC_HAS_MEMBER(m_RpcIface, AddRpcMiddleware)) {
                 if (m_RpcIface->AddRpcMiddleware(mw, priority, ud) != BML_RESULT_OK) {
                     m_Middleware = nullptr;
                 }
@@ -755,7 +755,7 @@ namespace imc {
         }
 
         ~RpcMiddlewareRegistration() {
-            if (m_Middleware && BML_RPC_HAS_MEMBER(m_RpcIface, RemoveRpcMiddleware)) {
+            if (m_Middleware && BML_IMC_RPC_HAS_MEMBER(m_RpcIface, RemoveRpcMiddleware)) {
                 m_RpcIface->RemoveRpcMiddleware(m_Middleware);
             }
         }
@@ -768,7 +768,7 @@ namespace imc {
 
         RpcMiddlewareRegistration &operator=(RpcMiddlewareRegistration &&other) noexcept {
             if (this != &other) {
-                if (m_Middleware && BML_RPC_HAS_MEMBER(m_RpcIface, RemoveRpcMiddleware)) {
+                if (m_Middleware && BML_IMC_RPC_HAS_MEMBER(m_RpcIface, RemoveRpcMiddleware)) {
                     m_RpcIface->RemoveRpcMiddleware(m_Middleware);
                 }
                 m_Middleware = other.m_Middleware;
@@ -787,7 +787,7 @@ namespace imc {
 
     private:
         BML_RpcMiddleware m_Middleware = nullptr;
-        const BML_RpcInterface *m_RpcIface = nullptr;
+        const BML_ImcRpcInterface *m_RpcIface = nullptr;
     };
 
     // ========================================================================
@@ -796,11 +796,11 @@ namespace imc {
 
     class RpcStream {
     public:
-        explicit RpcStream(BML_RpcStream handle, const BML_RpcInterface *rpc = nullptr)
+        explicit RpcStream(BML_RpcStream handle, const BML_ImcRpcInterface *rpc = nullptr)
             : m_Handle(handle), m_RpcIface(rpc) {}
 
         bool Push(const void *data, size_t size) {
-            if (!m_Handle || !BML_RPC_HAS_MEMBER(m_RpcIface, StreamPush)) return false;
+            if (!m_Handle || !BML_IMC_RPC_HAS_MEMBER(m_RpcIface, StreamPush)) return false;
             return m_RpcIface->StreamPush(m_Handle, data, size) == BML_RESULT_OK;
         }
 
@@ -811,18 +811,18 @@ namespace imc {
         }
 
         bool Complete() {
-            if (!m_Handle || !BML_RPC_HAS_MEMBER(m_RpcIface, StreamComplete)) return false;
+            if (!m_Handle || !BML_IMC_RPC_HAS_MEMBER(m_RpcIface, StreamComplete)) return false;
             return m_RpcIface->StreamComplete(m_Handle) == BML_RESULT_OK;
         }
 
         bool Error(BML_Result code, const char *msg) {
-            if (!m_Handle || !BML_RPC_HAS_MEMBER(m_RpcIface, StreamError)) return false;
+            if (!m_Handle || !BML_IMC_RPC_HAS_MEMBER(m_RpcIface, StreamError)) return false;
             return m_RpcIface->StreamError(m_Handle, code, msg) == BML_RESULT_OK;
         }
 
     private:
         BML_RpcStream m_Handle;
-        const BML_RpcInterface *m_RpcIface = nullptr;
+        const BML_ImcRpcInterface *m_RpcIface = nullptr;
     };
 
     // ========================================================================
@@ -834,9 +834,9 @@ namespace imc {
         StreamingRpcServer() : m_RpcId(InvalidRpcId) {}
 
         StreamingRpcServer(std::string_view name, BML_StreamingRpcHandler handler,
-                           void *user_data, const BML_RpcInterface *rpc = nullptr)
+                           void *user_data, const BML_ImcRpcInterface *rpc = nullptr)
             : m_RpcId(InvalidRpcId), m_RpcIface(rpc) {
-            if (!m_RpcIface || !m_RpcIface->GetRpcId || !BML_RPC_HAS_MEMBER(m_RpcIface, RegisterStreamingRpc)) return;
+            if (!m_RpcIface || !m_RpcIface->GetRpcId || !BML_IMC_RPC_HAS_MEMBER(m_RpcIface, RegisterStreamingRpc)) return;
 
             std::string resolvedName(name);
             if (m_RpcIface->GetRpcId(resolvedName.c_str(), &m_RpcId) != BML_RESULT_OK) {
@@ -883,7 +883,7 @@ namespace imc {
 
     private:
         RpcId m_RpcId;
-        const BML_RpcInterface *m_RpcIface = nullptr;
+        const BML_ImcRpcInterface *m_RpcIface = nullptr;
     };
 
     // ========================================================================
@@ -892,7 +892,7 @@ namespace imc {
 
     class RpcServiceManager {
     public:
-        explicit RpcServiceManager(const BML_RpcInterface *rpc = nullptr) : m_RpcIface(rpc) {}
+        explicit RpcServiceManager(const BML_ImcRpcInterface *rpc = nullptr) : m_RpcIface(rpc) {}
         ~RpcServiceManager() = default;
 
         RpcServiceManager(RpcServiceManager &&) = default;
@@ -940,7 +940,7 @@ namespace imc {
             return true;
         }
 
-        void Bind(const BML_RpcInterface *rpc) { m_RpcIface = rpc; }
+        void Bind(const BML_ImcRpcInterface *rpc) { m_RpcIface = rpc; }
         void Clear() { m_Servers.clear(); m_StreamingServers.clear(); m_Middleware.clear(); }
         size_t Count() const noexcept { return m_Servers.size() + m_StreamingServers.size(); }
         bool Empty() const noexcept { return m_Servers.empty() && m_StreamingServers.empty(); }
@@ -951,7 +951,7 @@ namespace imc {
         auto end() const { return m_Servers.end(); }
 
     private:
-        const BML_RpcInterface *m_RpcIface = nullptr;
+        const BML_ImcRpcInterface *m_RpcIface = nullptr;
         std::vector<RpcServer> m_Servers;
         std::vector<StreamingRpcServer> m_StreamingServers;
         std::vector<RpcMiddlewareRegistration> m_Middleware;

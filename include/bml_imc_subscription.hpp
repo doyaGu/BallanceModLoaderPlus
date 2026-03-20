@@ -134,7 +134,7 @@ namespace imc {
         ) {
             if (!topic.Valid()) return std::nullopt;
             return createWithId(topic.Id(), topic.Name(), std::move(callback), options,
-                                bus ? bus : topic.Bus());
+                                bus ? bus : topic.Iface());
         }
 
         // Factory: Simple callback
@@ -181,7 +181,7 @@ namespace imc {
         ) {
             if (!topic.Valid()) return std::nullopt;
             return createInterceptWithId(topic.Id(), topic.Name(), std::move(callback), options,
-                                         bus ? bus : topic.Bus());
+                                         bus ? bus : topic.Iface());
         }
 
         // Factory: Typed intercept

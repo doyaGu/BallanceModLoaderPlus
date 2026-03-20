@@ -101,14 +101,14 @@ namespace imc {
 
 namespace bml { namespace imc { namespace detail {
     template <typename MemberT>
-    constexpr bool HasRpcMember(const BML_RpcInterface *rpc, size_t offset) noexcept {
+    constexpr bool HasRpcMember(const BML_ImcRpcInterface *rpc, size_t offset) noexcept {
         return rpc != nullptr &&
                rpc->header.struct_size >= offset + sizeof(MemberT);
     }
 } } }
 
-#define BML_RPC_HAS_MEMBER(rpc, member) \
-    (::bml::imc::detail::HasRpcMember<decltype(((BML_RpcInterface *) 0)->member)>( \
-        (rpc), offsetof(BML_RpcInterface, member)) && (rpc)->member != nullptr)
+#define BML_IMC_RPC_HAS_MEMBER(rpc, member) \
+    (::bml::imc::detail::HasRpcMember<decltype(((BML_ImcRpcInterface *) 0)->member)>( \
+        (rpc), offsetof(BML_ImcRpcInterface, member)) && (rpc)->member != nullptr)
 
 #endif /* BML_IMC_FWD_HPP */

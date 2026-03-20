@@ -29,7 +29,7 @@ BML_BEGIN_CDECLS
 #define BML_CORE_RESOURCE_INTERFACE_ID      "bml.core.resource"
 #define BML_CORE_DIAGNOSTIC_INTERFACE_ID    "bml.core.diagnostic"
 #define BML_IMC_BUS_INTERFACE_ID            "bml.imc.bus"
-#define BML_RPC_INTERFACE_ID               "bml.imc.rpc"
+#define BML_IMC_RPC_INTERFACE_ID               "bml.imc.rpc"
 #define BML_CORE_TIMER_INTERFACE_ID         "bml.core.timer"
 #define BML_CORE_HOOK_REGISTRY_INTERFACE_ID "bml.core.hook_registry"
 #define BML_CORE_LOCALE_INTERFACE_ID        "bml.core.locale"
@@ -185,7 +185,7 @@ typedef struct BML_CoreDiagnosticInterface {
 } BML_CoreDiagnosticInterface;
 
 /* ========================================================================
- * IMC Bus -- topics, pub/sub, intercept, RPC, futures, state, stats
+ * IMC Bus -- topics, pub/sub, intercept, state, pump, stats
  * ======================================================================== */
 
 typedef struct BML_ImcBusInterface {
@@ -223,7 +223,7 @@ typedef struct BML_ImcBusInterface {
  * RPC -- request/response, futures, middleware, streaming
  * ======================================================================== */
 
-typedef struct BML_RpcInterface {
+typedef struct BML_ImcRpcInterface {
     BML_InterfaceHeader header;
     /* RPC ID resolution */
     PFN_BML_ImcGetRpcId GetRpcId;
@@ -252,7 +252,7 @@ typedef struct BML_RpcInterface {
     PFN_BML_ImcStreamComplete StreamComplete;
     PFN_BML_ImcStreamError StreamError;
     PFN_BML_ImcCallStreamingRpc CallStreamingRpc;
-} BML_RpcInterface;
+} BML_ImcRpcInterface;
 
 /* ========================================================================
  * Timer -- one-shot, repeating, frame-based scheduling

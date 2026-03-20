@@ -16,7 +16,7 @@ namespace BML::Core {
         constexpr uint16_t kCoreMemoryInterfaceMinor = 0;
         constexpr uint16_t kCoreResourceInterfaceMinor = 0;
         constexpr uint16_t kCoreDiagnosticInterfaceMinor = 0;
-        constexpr uint16_t kImcBusInterfaceMinor = 2;
+        constexpr uint16_t kImcBusInterfaceMinor = 0;
         constexpr uint16_t kRpcInterfaceMinor = 0;
         constexpr uint16_t kCoreTimerInterfaceMinor = 0;
         constexpr uint16_t kCoreHookRegistryInterfaceMinor = 0;
@@ -111,7 +111,7 @@ namespace BML::Core {
         BML_CoreResourceInterface g_CoreResourceInterface{};
         BML_CoreDiagnosticInterface g_CoreDiagnosticInterface{};
         BML_ImcBusInterface g_ImcBusInterface{};
-        BML_RpcInterface g_RpcInterface{};
+        BML_ImcRpcInterface g_RpcInterface{};
         BML_CoreTimerInterface g_CoreTimerInterface{};
         BML_CoreLocaleInterface g_CoreLocaleInterface{};
         BML_CoreHookRegistryInterface g_CoreHookRegistryInterface{};
@@ -286,8 +286,8 @@ namespace BML::Core {
         };
         // RPC (request/response, futures, middleware, streaming)
         g_RpcInterface = {
-            BML_IFACE_HEADER(BML_RpcInterface,
-                             BML_RPC_INTERFACE_ID,
+            BML_IFACE_HEADER(BML_ImcRpcInterface,
+                             BML_IMC_RPC_INTERFACE_ID,
                              1,
                              kRpcInterfaceMinor),
             ResolveApi<PFN_BML_ImcGetRpcId>("bmlImcGetRpcId"),
@@ -485,7 +485,7 @@ namespace BML::Core {
                                  sizeof(g_ImcBusInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE,
                                  bmlMakeVersion(1, kImcBusInterfaceMinor, 0));
-        RegisterBuiltinInterface(BML_RPC_INTERFACE_ID,
+        RegisterBuiltinInterface(BML_IMC_RPC_INTERFACE_ID,
                                  &g_RpcInterface,
                                  sizeof(g_RpcInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE,
@@ -530,7 +530,7 @@ namespace BML::Core {
         out.Resource = &g_CoreResourceInterface;
         out.Diagnostic = &g_CoreDiagnosticInterface;
         out.ImcBus = &g_ImcBusInterface;
-        out.Rpc = &g_RpcInterface;
+        out.ImcRpc = &g_RpcInterface;
         out.Timer = &g_CoreTimerInterface;
         out.Locale = &g_CoreLocaleInterface;
         out.HookRegistry = &g_CoreHookRegistryInterface;

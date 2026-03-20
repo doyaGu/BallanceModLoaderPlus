@@ -34,7 +34,7 @@ namespace imc {
 
         TopicId Id() const noexcept { return m_Id; }
         const std::string &Name() const noexcept { return m_Name; }
-        const BML_ImcBusInterface *Bus() const noexcept { return m_Bus; }
+        const BML_ImcBusInterface *Iface() const noexcept { return m_Bus; }
         bool Valid() const noexcept { return m_Id != InvalidTopicId; }
         explicit operator bool() const noexcept { return Valid(); }
         operator TopicId() const noexcept { return m_Id; }

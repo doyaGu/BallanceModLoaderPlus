@@ -31,7 +31,7 @@ namespace imc {
             : m_Topic(topicName, bus) {}
 
         explicit Publisher(const Topic &topic, const BML_ImcBusInterface *bus = nullptr)
-            : m_Topic(topic.Valid() ? Topic(topic.Id(), topic.Name(), bus ? bus : topic.Bus()) : Topic()) {}
+            : m_Topic(topic.Valid() ? Topic(topic.Id(), topic.Name(), bus ? bus : topic.Iface()) : Topic()) {}
 
         bool Valid() const noexcept { return m_Topic.Valid(); }
         explicit operator bool() const noexcept { return Valid(); }

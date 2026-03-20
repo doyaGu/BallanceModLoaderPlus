@@ -1225,16 +1225,6 @@ TEST(BMLWrapperTest, API_ConstCorrectness) {
     auto b = config.GetBool("cat", "key");
 }
 
-TEST(BMLWrapperTest, ModAttachArgs_ExposeOptionalServiceHubField) {
-    BML_ModAttachArgs args{};
-    args.struct_size = sizeof(args);
-    args.api_version = BML_MOD_ENTRYPOINT_API_VERSION;
-
-    EXPECT_EQ(nullptr, args.service_hub);
-    args.service_hub = reinterpret_cast<const void *>(uintptr_t(0x1234));
-    EXPECT_EQ(reinterpret_cast<const void *>(uintptr_t(0x1234)), args.service_hub);
-}
-
 TEST(BMLWrapperTest, CoreWrappers_UseExplicitModuleInterface) {
     ResetModuleMockState();
 
