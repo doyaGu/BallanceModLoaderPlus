@@ -1,0 +1,215 @@
+{
+  "_comment": "Placeholder catalog -- replace with actual extraction from BuildingBlockExporter --json",
+  "dlls": [
+    {
+      "name": "physics_RT.dll",
+      "behaviors": [
+        {
+          "name": "Physicalize",
+          "guid": [1267950337, 1401012478],
+          "description": "Makes an object physical",
+          "category": "Physics",
+          "version": 65536,
+          "compatible_class_id": "CKCID_3DENTITY",
+          "prototype_flags": ["CK_BEHAVIORPROTOTYPE_NORMAL"],
+          "behavior_flags": ["CKBEHAVIOR_TARGETABLE"],
+          "inputs": ["Physicalize", "Unphysicalize"],
+          "outputs": ["Out 1", "Out 2"],
+          "input_params": [
+            { "name": "Fixed", "type_guid": [0, 0], "type_name": "CKPGUID_BOOL", "default_value": "FALSE" },
+            { "name": "Friction", "type_guid": [0, 0], "type_name": "CKPGUID_FLOAT", "default_value": "0.7" },
+            { "name": "Elasticity", "type_guid": [0, 0], "type_name": "CKPGUID_FLOAT", "default_value": "0.4" },
+            { "name": "Mass", "type_guid": [0, 0], "type_name": "CKPGUID_FLOAT", "default_value": "1.0" },
+            { "name": "Collision Group", "type_guid": [0, 0], "type_name": "CKPGUID_STRING", "default_value": "" },
+            { "name": "Start Frozen", "type_guid": [0, 0], "type_name": "CKPGUID_BOOL", "default_value": "FALSE" },
+            { "name": "Enable Collision", "type_guid": [0, 0], "type_name": "CKPGUID_BOOL", "default_value": "TRUE" },
+            { "name": "Calc Mass Center", "type_guid": [0, 0], "type_name": "CKPGUID_BOOL", "default_value": "FALSE" },
+            { "name": "Linear Damping", "type_guid": [0, 0], "type_name": "CKPGUID_FLOAT", "default_value": "0.1" },
+            { "name": "Rotation Damping", "type_guid": [0, 0], "type_name": "CKPGUID_FLOAT", "default_value": "0.1" },
+            { "name": "Collision Surface", "type_guid": [0, 0], "type_name": "CKPGUID_STRING", "default_value": "" },
+            { "name": "Mesh", "type_guid": [0, 0], "type_name": "CKPGUID_MESH", "default_value": "" }
+          ],
+          "output_params": [],
+          "local_params": [
+            { "name": "Convex", "type_guid": [0, 0], "type_name": "CKPGUID_BOOL", "default_value": "TRUE" },
+            { "name": "Ball", "type_guid": [0, 0], "type_name": "CKPGUID_BOOL", "default_value": "FALSE" },
+            { "name": "Concave", "type_guid": [0, 0], "type_name": "CKPGUID_BOOL", "default_value": "FALSE" },
+            { "name": "Mass Center", "type_guid": [0, 0], "type_name": "CKPGUID_VECTOR", "default_value": "" }
+          ],
+          "settings": [
+            { "name": "Ball", "type_guid": [0, 0], "type_name": "CKPGUID_BOOL", "default_value": "FALSE" }
+          ]
+        },
+        {
+          "name": "Physics Force",
+          "guid": [1400456193, 1401012478],
+          "description": "Applies a constant force to an object",
+          "category": "Physics/Forces",
+          "version": 65536,
+          "compatible_class_id": "CKCID_3DENTITY",
+          "prototype_flags": ["CK_BEHAVIORPROTOTYPE_NORMAL"],
+          "behavior_flags": ["CKBEHAVIOR_TARGETABLE"],
+          "inputs": ["Set Force", "Unset Force"],
+          "outputs": ["Out 1", "Out 2"],
+          "input_params": [
+            { "name": "Position", "type_guid": [0, 0], "type_name": "CKPGUID_VECTOR", "default_value": "" },
+            { "name": "Position Referential", "type_guid": [0, 0], "type_name": "CKPGUID_3DENTITY", "default_value": "" },
+            { "name": "Direction", "type_guid": [0, 0], "type_name": "CKPGUID_VECTOR", "default_value": "" },
+            { "name": "Direction Referential", "type_guid": [0, 0], "type_name": "CKPGUID_3DENTITY", "default_value": "" },
+            { "name": "Force", "type_guid": [0, 0], "type_name": "CKPGUID_FLOAT", "default_value": "0" }
+          ],
+          "output_params": [],
+          "local_params": [],
+          "settings": []
+        },
+        {
+          "name": "Physics Impulse",
+          "guid": [1400521729, 1401012478],
+          "description": "Applies an instantaneous impulse to an object",
+          "category": "Physics/Forces",
+          "version": 65536,
+          "compatible_class_id": "CKCID_3DENTITY",
+          "prototype_flags": ["CK_BEHAVIORPROTOTYPE_NORMAL"],
+          "behavior_flags": ["CKBEHAVIOR_TARGETABLE"],
+          "inputs": ["In"],
+          "outputs": ["Out"],
+          "input_params": [
+            { "name": "Position", "type_guid": [0, 0], "type_name": "CKPGUID_VECTOR", "default_value": "" },
+            { "name": "Position Referential", "type_guid": [0, 0], "type_name": "CKPGUID_3DENTITY", "default_value": "" },
+            { "name": "Direction", "type_guid": [0, 0], "type_name": "CKPGUID_VECTOR", "default_value": "" },
+            { "name": "Direction Referential", "type_guid": [0, 0], "type_name": "CKPGUID_3DENTITY", "default_value": "" },
+            { "name": "Impulse", "type_guid": [0, 0], "type_name": "CKPGUID_FLOAT", "default_value": "0" }
+          ],
+          "output_params": [],
+          "local_params": [],
+          "settings": []
+        },
+        {
+          "name": "Physics WakeUp",
+          "guid": [1266902657, 1401012478],
+          "description": "Wakes up a sleeping physical object",
+          "category": "Physics",
+          "version": 65536,
+          "compatible_class_id": "CKCID_3DENTITY",
+          "prototype_flags": ["CK_BEHAVIORPROTOTYPE_NORMAL"],
+          "behavior_flags": ["CKBEHAVIOR_TARGETABLE"],
+          "inputs": ["In"],
+          "outputs": ["Out"],
+          "input_params": [],
+          "output_params": [],
+          "local_params": [],
+          "settings": []
+        }
+      ]
+    },
+    {
+      "name": "Narratives.dll",
+      "behaviors": [
+        {
+          "name": "Object Load",
+          "guid": [819857408, 1401012478],
+          "description": "Loads objects from a NMO file",
+          "category": "Narratives/System",
+          "version": 65536,
+          "compatible_class_id": "CKCID_BEOBJECT",
+          "prototype_flags": ["CK_BEHAVIORPROTOTYPE_NORMAL"],
+          "behavior_flags": [],
+          "inputs": ["In"],
+          "outputs": ["Out"],
+          "input_params": [
+            { "name": "File", "type_guid": [0, 0], "type_name": "CKPGUID_STRING", "default_value": "" },
+            { "name": "Master Object Name", "type_guid": [0, 0], "type_name": "CKPGUID_STRING", "default_value": "" },
+            { "name": "Class ID", "type_guid": [0, 0], "type_name": "CKPGUID_CLASSID", "default_value": "" },
+            { "name": "Add To Scene", "type_guid": [0, 0], "type_name": "CKPGUID_BOOL", "default_value": "TRUE" },
+            { "name": "Reuse Mesh", "type_guid": [0, 0], "type_name": "CKPGUID_BOOL", "default_value": "TRUE" },
+            { "name": "Reuse Material", "type_guid": [0, 0], "type_name": "CKPGUID_BOOL", "default_value": "TRUE" }
+          ],
+          "output_params": [
+            { "name": "Objects", "type_guid": [0, 0], "type_name": "CKPGUID_OBJECTARRAY", "default_value": "" },
+            { "name": "Master Object", "type_guid": [0, 0], "type_name": "CKPGUID_OBJECT", "default_value": "" }
+          ],
+          "local_params": [
+            { "name": "Dynamic", "type_guid": [0, 0], "type_name": "CKPGUID_BOOL", "default_value": "TRUE" }
+          ],
+          "settings": []
+        },
+        {
+          "name": "Send Message",
+          "guid": [1936028929, 1401012478],
+          "description": "Sends a message to a specific object",
+          "category": "Narratives/Messages",
+          "version": 65536,
+          "compatible_class_id": "CKCID_BEOBJECT",
+          "prototype_flags": ["CK_BEHAVIORPROTOTYPE_NORMAL"],
+          "behavior_flags": ["CKBEHAVIOR_MESSAGESENDER"],
+          "inputs": ["In"],
+          "outputs": ["Out"],
+          "input_params": [
+            { "name": "Message", "type_guid": [0, 0], "type_name": "CKPGUID_MESSAGE", "default_value": "" },
+            { "name": "Destination", "type_guid": [0, 0], "type_name": "CKPGUID_BEOBJECT", "default_value": "" }
+          ],
+          "output_params": [],
+          "local_params": [],
+          "settings": []
+        }
+      ]
+    },
+    {
+      "name": "Interface.dll",
+      "behaviors": [
+        {
+          "name": "2D Text",
+          "guid": [1266769153, 1401012478],
+          "description": "Displays text on a 2D entity",
+          "category": "Interface/Text",
+          "version": 65536,
+          "compatible_class_id": "CKCID_2DENTITY",
+          "prototype_flags": ["CK_BEHAVIORPROTOTYPE_NORMAL"],
+          "behavior_flags": ["CKBEHAVIOR_TARGETABLE"],
+          "inputs": ["In"],
+          "outputs": ["Out"],
+          "input_params": [
+            { "name": "Font", "type_guid": [0, 0], "type_name": "CKPGUID_INT", "default_value": "0" },
+            { "name": "Text", "type_guid": [0, 0], "type_name": "CKPGUID_STRING", "default_value": "" },
+            { "name": "Alignment", "type_guid": [0, 0], "type_name": "CKPGUID_INT", "default_value": "0" },
+            { "name": "Margins", "type_guid": [0, 0], "type_name": "CKPGUID_RECT", "default_value": "" },
+            { "name": "Offset", "type_guid": [0, 0], "type_name": "CKPGUID_2DVECTOR", "default_value": "" },
+            { "name": "Paragraph Indentation", "type_guid": [0, 0], "type_name": "CKPGUID_2DVECTOR", "default_value": "" },
+            { "name": "Background Material", "type_guid": [0, 0], "type_name": "CKPGUID_MATERIAL", "default_value": "" },
+            { "name": "Caret Size", "type_guid": [0, 0], "type_name": "CKPGUID_PERCENTAGE", "default_value": "0.1" },
+            { "name": "Caret Material", "type_guid": [0, 0], "type_name": "CKPGUID_MATERIAL", "default_value": "" }
+          ],
+          "output_params": [],
+          "local_params": [
+            { "name": "Flags", "type_guid": [0, 0], "type_name": "CKPGUID_INT", "default_value": "1" }
+          ],
+          "settings": []
+        }
+      ]
+    },
+    {
+      "name": "Logics.dll",
+      "behaviors": [
+        {
+          "name": "Send Message",
+          "guid": [1936028930, 1401012478],
+          "description": "Sends a message to objects",
+          "category": "Logics/Messages",
+          "version": 65536,
+          "compatible_class_id": "CKCID_BEOBJECT",
+          "prototype_flags": ["CK_BEHAVIORPROTOTYPE_NORMAL"],
+          "behavior_flags": ["CKBEHAVIOR_MESSAGESENDER"],
+          "inputs": ["In"],
+          "outputs": ["Out"],
+          "input_params": [
+            { "name": "Message", "type_guid": [0, 0], "type_name": "CKPGUID_STRING", "default_value": "" },
+            { "name": "Destination", "type_guid": [0, 0], "type_name": "CKPGUID_BEOBJECT", "default_value": "" }
+          ],
+          "output_params": [],
+          "local_params": [],
+          "settings": []
+        }
+      ]
+    }
+  ]
+}
