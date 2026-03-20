@@ -1,8 +1,12 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "Core/ApiRegistry.h"
@@ -11,7 +15,6 @@
 #include "Core/ModHandle.h"
 #include "Core/ModManifest.h"
 
-#include "bml_extension.h"
 #include "bml_logging.h"
 
 using BML::Core::ApiRegistry;
@@ -225,27 +228,66 @@ TEST_F(LoggingSinkOverrideTests, ShutdownExceptionDoesNotCrash) {
     EXPECT_NO_THROW(BML::Core::ClearLogSinkOverride());
 }
 
-TEST_F(LoggingSinkOverrideTests, GetLoggingCapsReturnsValidCaps) {
-    auto get_caps = Lookup<PFN_BML_LoggingGetCaps>("bmlLoggingGetCaps");
-    ASSERT_NE(get_caps, nullptr);
+TEST_F(LoggingSinkOverrideTests, ClearWaitsForInFlightDispatches) {
+    auto log_fn = Lookup<PFN_BML_Log>("bmlLog");
+    ASSERT_NE(log_fn, nullptr);
 
-    BML_LogCaps caps = BML_LOG_CAPS_INIT;
-    ASSERT_EQ(BML_RESULT_OK, get_caps(&caps));
+    struct State {
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool entered{false};
+        bool allow_return{false};
+        bool shutdown_called{false};
+    } state;
 
-    EXPECT_EQ(caps.struct_size, sizeof(BML_LogCaps));
-    EXPECT_TRUE(caps.capability_flags & BML_LOG_CAP_STRUCTURED_TAGS);
-    EXPECT_TRUE(caps.capability_flags & BML_LOG_CAP_VARIADIC);
-    EXPECT_TRUE(caps.capability_flags & BML_LOG_CAP_FILTER_OVERRIDE);
-    EXPECT_TRUE(caps.supported_severities_mask & BML_LOG_SEVERITY_MASK(BML_LOG_TRACE));
-    EXPECT_TRUE(caps.supported_severities_mask & BML_LOG_SEVERITY_MASK(BML_LOG_FATAL));
-    EXPECT_EQ(caps.threading_model, BML_THREADING_FREE);
-}
+    BML_LogSinkOverrideDesc desc{};
+    desc.struct_size = sizeof(BML_LogSinkOverrideDesc);
+    desc.flags = BML_LOG_SINK_OVERRIDE_SUPPRESS_DEFAULT;
+    desc.user_data = &state;
+    desc.dispatch = [](BML_Context, const BML_LogMessageInfo *, void *user_data) {
+        auto *capture = static_cast<State *>(user_data);
+        std::unique_lock<std::mutex> lock(capture->mutex);
+        capture->entered = true;
+        capture->cv.notify_all();
+        capture->cv.wait(lock, [&] { return capture->allow_return; });
+    };
+    desc.on_shutdown = [](void *user_data) {
+        auto *capture = static_cast<State *>(user_data);
+        std::lock_guard<std::mutex> lock(capture->mutex);
+        capture->shutdown_called = true;
+    };
 
-TEST_F(LoggingSinkOverrideTests, GetLoggingCapsRejectsNullPointer) {
-    auto get_caps = Lookup<PFN_BML_LoggingGetCaps>("bmlLoggingGetCaps");
-    ASSERT_NE(get_caps, nullptr);
+    ASSERT_EQ(BML_RESULT_OK, BML::Core::RegisterLogSinkOverride(&desc));
 
-    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, get_caps(nullptr));
+    std::thread logger([&] {
+        log_fn(nullptr, BML_LOG_INFO, "race", "message");
+    });
+
+    {
+        std::unique_lock<std::mutex> lock(state.mutex);
+        state.cv.wait(lock, [&] { return state.entered; });
+    }
+
+    std::atomic<bool> clear_finished{false};
+    std::thread clearer([&] {
+        EXPECT_EQ(BML_RESULT_OK, BML::Core::ClearLogSinkOverride());
+        clear_finished.store(true, std::memory_order_release);
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    EXPECT_FALSE(clear_finished.load(std::memory_order_acquire));
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        EXPECT_FALSE(state.shutdown_called);
+        state.allow_return = true;
+    }
+    state.cv.notify_all();
+
+    clearer.join();
+    logger.join();
+
+    std::lock_guard<std::mutex> lock(state.mutex);
+    EXPECT_TRUE(state.shutdown_called);
 }
 
 TEST_F(LoggingSinkOverrideTests, RegisterOverrideRejectsInvalidDesc) {

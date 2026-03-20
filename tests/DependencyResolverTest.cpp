@@ -10,9 +10,38 @@
 
 namespace {
 
+BML::Core::ModProvidedInterface MakeProvidedInterface(const std::string &id,
+                                                      const std::string &version,
+                                                      const std::string &description = {}) {
+    BML::Core::ModProvidedInterface iface;
+    iface.interface_id = id;
+    iface.version = version;
+    iface.description = description;
+    if (!BML::Core::ParseSemanticVersion(version, iface.parsed_version)) {
+        ADD_FAILURE() << "Failed to parse interface version '" << version << "'";
+    }
+    return iface;
+}
+
+BML::Core::ModInterfaceRequirement MakeInterfaceRequirement(const std::string &id,
+                                                             const std::string &expr,
+                                                             bool optional = false) {
+    BML::Core::ModInterfaceRequirement req;
+    req.interface_id = id;
+    req.optional = optional;
+    req.requirement.raw_expression = expr;
+    std::string error;
+    if (!BML::Core::ParseSemanticVersionRange(expr, req.requirement, error)) {
+        ADD_FAILURE() << "Failed to parse version range '" << expr << "': " << error;
+    }
+    return req;
+}
+
 BML::Core::ModManifest CreateManifest(const std::string &id,
                                       const std::string &version,
-                                      std::vector<BML::Core::ModDependency> deps = {}) {
+                                      std::vector<BML::Core::ModDependency> deps = {},
+                                      std::vector<BML::Core::ModProvidedInterface> provides = {},
+                                      std::vector<BML::Core::ModInterfaceRequirement> requires_ = {}) {
     BML::Core::ModManifest manifest;
     manifest.package.id = id;
     manifest.package.name = id;
@@ -21,6 +50,8 @@ BML::Core::ModManifest CreateManifest(const std::string &id,
         ADD_FAILURE() << "Failed to parse semantic version '" << version << "'";
     }
     manifest.dependencies = std::move(deps);
+    manifest.provides = std::move(provides);
+    manifest.requires_ = std::move(requires_);
     manifest.manifest_path = std::wstring(L"tests/") + std::wstring(id.begin(), id.end()) + L".toml";
     return manifest;
 }
@@ -285,6 +316,150 @@ TEST(DependencyResolverTest, DuplicateOptionalWarningsAreDeduplicated) {
     EXPECT_EQ(warnings[0].dependency_id, "optional.mod");
 }
 
+TEST(DependencyResolverTest, InterfaceRequirementResolvesToProvider) {
+    auto provider = std::make_unique<BML::Core::ModManifest>(CreateManifest(
+        "provider", "1.0.0", {},
+        std::vector{MakeProvidedInterface("x.y", "1.0.0")}
+    ));
+    auto consumer = std::make_unique<BML::Core::ModManifest>(CreateManifest(
+        "consumer", "1.0.0", {}, {},
+        std::vector{MakeInterfaceRequirement("x.y", ">=1.0")}
+    ));
+
+    BML::Core::DependencyResolver resolver;
+    resolver.RegisterManifest(*provider);
+    resolver.RegisterManifest(*consumer);
+
+    std::vector<BML::Core::ResolvedNode> order;
+    std::vector<BML::Core::DependencyWarning> warnings;
+    BML::Core::DependencyResolutionError error;
+    ASSERT_TRUE(resolver.Resolve(order, warnings, error)) << error.message;
+    ASSERT_EQ(order.size(), 2u);
+
+    auto index_of = [&](const std::string &id) {
+        for (size_t i = 0; i < order.size(); ++i) {
+            if (order[i].id == id) return i;
+        }
+        return order.size();
+    };
+    EXPECT_LT(index_of("provider"), index_of("consumer"));
+}
+
+TEST(DependencyResolverTest, InterfaceVersionMismatchFails) {
+    auto provider = std::make_unique<BML::Core::ModManifest>(CreateManifest(
+        "provider", "1.0.0", {},
+        std::vector{MakeProvidedInterface("x.y", "1.0.0")}
+    ));
+    auto consumer = std::make_unique<BML::Core::ModManifest>(CreateManifest(
+        "consumer", "1.0.0", {}, {},
+        std::vector{MakeInterfaceRequirement("x.y", ">=2.0.0")}
+    ));
+
+    BML::Core::DependencyResolver resolver;
+    resolver.RegisterManifest(*provider);
+    resolver.RegisterManifest(*consumer);
+
+    std::vector<BML::Core::ResolvedNode> order;
+    std::vector<BML::Core::DependencyWarning> warnings;
+    BML::Core::DependencyResolutionError error;
+    EXPECT_FALSE(resolver.Resolve(order, warnings, error));
+    EXPECT_NE(error.message.find("requires interface"), std::string::npos);
+    EXPECT_NE(error.message.find("x.y"), std::string::npos);
+}
+
+TEST(DependencyResolverTest, DuplicateInterfaceProvidersFails) {
+    auto providerA = std::make_unique<BML::Core::ModManifest>(CreateManifest(
+        "provider.a", "1.0.0", {},
+        std::vector{MakeProvidedInterface("x.y", "1.0.0")}
+    ));
+    auto providerB = std::make_unique<BML::Core::ModManifest>(CreateManifest(
+        "provider.b", "1.0.0", {},
+        std::vector{MakeProvidedInterface("x.y", "2.0.0")}
+    ));
+
+    BML::Core::DependencyResolver resolver;
+    resolver.RegisterManifest(*providerA);
+    resolver.RegisterManifest(*providerB);
+
+    std::vector<BML::Core::ResolvedNode> order;
+    std::vector<BML::Core::DependencyWarning> warnings;
+    BML::Core::DependencyResolutionError error;
+    EXPECT_FALSE(resolver.Resolve(order, warnings, error));
+    EXPECT_NE(error.message.find("Interface 'x.y'"), std::string::npos);
+    EXPECT_NE(error.message.find("declared by both"), std::string::npos);
+}
+
+TEST(DependencyResolverTest, OptionalInterfaceRequirementCanBeMissing) {
+    auto consumer = std::make_unique<BML::Core::ModManifest>(CreateManifest(
+        "consumer", "1.0.0", {}, {},
+        std::vector{MakeInterfaceRequirement("x.y", ">=1.0", true)}
+    ));
+
+    BML::Core::DependencyResolver resolver;
+    resolver.RegisterManifest(*consumer);
+
+    std::vector<BML::Core::ResolvedNode> order;
+    std::vector<BML::Core::DependencyWarning> warnings;
+    BML::Core::DependencyResolutionError error;
+    EXPECT_TRUE(resolver.Resolve(order, warnings, error));
+    ASSERT_EQ(order.size(), 1u);
+    EXPECT_EQ(order[0].id, "consumer");
+    ASSERT_EQ(warnings.size(), 1u);
+    EXPECT_NE(warnings[0].message.find("x.y"), std::string::npos);
+}
+
+TEST(DependencyResolverTest, MissingRequiredInterfaceFails) {
+    auto consumer = std::make_unique<BML::Core::ModManifest>(CreateManifest(
+        "consumer", "1.0.0", {}, {},
+        std::vector{MakeInterfaceRequirement("x.y", ">=1.0")}
+    ));
+
+    BML::Core::DependencyResolver resolver;
+    resolver.RegisterManifest(*consumer);
+
+    std::vector<BML::Core::ResolvedNode> order;
+    std::vector<BML::Core::DependencyWarning> warnings;
+    BML::Core::DependencyResolutionError error;
+    EXPECT_FALSE(resolver.Resolve(order, warnings, error));
+    EXPECT_NE(error.message.find("requires interface"), std::string::npos);
+    EXPECT_NE(error.message.find("x.y"), std::string::npos);
+    EXPECT_NE(error.message.find("no module provides it"), std::string::npos);
+}
+
+TEST(DependencyResolverTest, InterfaceRequirementDoesNotShadowModuleDep) {
+    // [dependencies] and [requires] are separate namespaces.
+    // A module dep on "x.y" resolves against modules, not interfaces.
+    auto moduleXY = std::make_unique<BML::Core::ModManifest>(CreateManifest(
+        "x.y", "2.0.0"
+    ));
+    auto providerOther = std::make_unique<BML::Core::ModManifest>(CreateManifest(
+        "other.provider", "1.0.0", {},
+        std::vector{MakeProvidedInterface("x.y", "1.0.0")}
+    ));
+    auto consumer = std::make_unique<BML::Core::ModManifest>(CreateManifest(
+        "consumer", "1.0.0", std::vector{MakeDependency("x.y", ">=2.0")}
+    ));
+
+    BML::Core::DependencyResolver resolver;
+    resolver.RegisterManifest(*moduleXY);
+    resolver.RegisterManifest(*providerOther);
+    resolver.RegisterManifest(*consumer);
+
+    std::vector<BML::Core::ResolvedNode> order;
+    std::vector<BML::Core::DependencyWarning> warnings;
+    BML::Core::DependencyResolutionError error;
+    // Module dep "x.y" resolves to the module, not the interface
+    ASSERT_TRUE(resolver.Resolve(order, warnings, error)) << error.message;
+
+    auto index_of = [&](const std::string &id) {
+        for (size_t i = 0; i < order.size(); ++i) {
+            if (order[i].id == id) return i;
+        }
+        return order.size();
+    };
+    EXPECT_LT(index_of("x.y"), index_of("consumer"));
+}
+
 TEST(DependencyResolverTest, RegistrationOrderIsStableWithoutDependencies) {
     auto a = CreateManifest("a", "1.0.0");
     auto b = CreateManifest("b", "1.0.0");
@@ -303,6 +478,118 @@ TEST(DependencyResolverTest, RegistrationOrderIsStableWithoutDependencies) {
     EXPECT_EQ(order[0].id, "b");
     EXPECT_EQ(order[1].id, "c");
     EXPECT_EQ(order[2].id, "a");
+}
+
+TEST(DependencyResolverTest, SelfRequirementDoesNotCycle) {
+    // Module provides and requires its own interface -- should resolve without cycle
+    auto mod = std::make_unique<BML::Core::ModManifest>(CreateManifest(
+        "selfmod", "1.0.0", {},
+        std::vector{MakeProvidedInterface("x", "1.0.0")},
+        std::vector{MakeInterfaceRequirement("x", ">=1.0")}
+    ));
+
+    BML::Core::DependencyResolver resolver;
+    resolver.RegisterManifest(*mod);
+
+    std::vector<BML::Core::ResolvedNode> order;
+    std::vector<BML::Core::DependencyWarning> warnings;
+    BML::Core::DependencyResolutionError error;
+    ASSERT_TRUE(resolver.Resolve(order, warnings, error)) << error.message;
+    ASSERT_EQ(order.size(), 1u);
+    EXPECT_EQ(order[0].id, "selfmod");
+}
+
+TEST(DependencyResolverTest, DuplicateEdgeFromDepsAndRequiresIsDeduplicated) {
+    // Both [dependencies] and [requires] target the same provider module.
+    // Should resolve with only one edge (no double incoming count).
+    auto provider = std::make_unique<BML::Core::ModManifest>(CreateManifest(
+        "provider", "1.0.0", {},
+        std::vector{MakeProvidedInterface("x.y", "1.0.0")}
+    ));
+    auto consumer = std::make_unique<BML::Core::ModManifest>(CreateManifest(
+        "consumer", "1.0.0",
+        std::vector{MakeDependency("provider", ">=1.0")},
+        {},
+        std::vector{MakeInterfaceRequirement("x.y", ">=1.0")}
+    ));
+
+    BML::Core::DependencyResolver resolver;
+    resolver.RegisterManifest(*provider);
+    resolver.RegisterManifest(*consumer);
+
+    std::vector<BML::Core::ResolvedNode> order;
+    std::vector<BML::Core::DependencyWarning> warnings;
+    BML::Core::DependencyResolutionError error;
+    ASSERT_TRUE(resolver.Resolve(order, warnings, error)) << error.message;
+    ASSERT_EQ(order.size(), 2u);
+
+    auto index_of = [&](const std::string &id) {
+        for (size_t i = 0; i < order.size(); ++i) {
+            if (order[i].id == id) return i;
+        }
+        return order.size();
+    };
+    EXPECT_LT(index_of("provider"), index_of("consumer"));
+}
+
+TEST(DependencyResolverTest, InterfaceIdCollidingWithModuleIdWarns) {
+    // When an interface ID matches an existing module ID, a warning should be emitted.
+    // The resolver should still succeed -- it's a warning, not an error.
+    auto moduleXY = std::make_unique<BML::Core::ModManifest>(CreateManifest("x.y", "1.0.0"));
+    auto provider = std::make_unique<BML::Core::ModManifest>(CreateManifest(
+        "provider", "1.0.0", {},
+        std::vector{MakeProvidedInterface("x.y", "1.0.0")}
+    ));
+
+    BML::Core::DependencyResolver resolver;
+    resolver.RegisterManifest(*moduleXY);
+    resolver.RegisterManifest(*provider);
+
+    std::vector<BML::Core::ResolvedNode> order;
+    std::vector<BML::Core::DependencyWarning> warnings;
+    BML::Core::DependencyResolutionError error;
+    // Should succeed (warning only, not an error)
+    ASSERT_TRUE(resolver.Resolve(order, warnings, error)) << error.message;
+    ASSERT_EQ(order.size(), 2u);
+    // Should have exactly one collision warning
+    ASSERT_EQ(warnings.size(), 1u);
+    EXPECT_NE(warnings[0].message.find("collides with a module id"), std::string::npos);
+    EXPECT_EQ(warnings[0].dependency_id, "x.y");
+}
+
+TEST(DependencyResolverTest, RequiresOutdatedVersionGeneratesWarning) {
+    // When a [requires] interface version is at exact minimum, an outdated-version
+    // warning should be generated (symmetric with [dependencies] outdated warnings).
+    auto provider = std::make_unique<BML::Core::ModManifest>(CreateManifest(
+        "provider", "1.0.0", {},
+        std::vector{MakeProvidedInterface("x.y", "1.0.0")}
+    ));
+    auto consumer = std::make_unique<BML::Core::ModManifest>(CreateManifest(
+        "consumer", "1.0.0", {}, {},
+        std::vector{MakeInterfaceRequirement("x.y", ">=1.0.0")}
+    ));
+
+    BML::Core::DependencyResolver resolver;
+    resolver.RegisterManifest(*provider);
+    resolver.RegisterManifest(*consumer);
+
+    std::vector<BML::Core::ResolvedNode> order;
+    std::vector<BML::Core::DependencyWarning> warnings;
+    BML::Core::DependencyResolutionError error;
+    ASSERT_TRUE(resolver.Resolve(order, warnings, error)) << error.message;
+    ASSERT_EQ(order.size(), 2u);
+
+    // Should generate an outdated-version warning for the interface requirement
+    ASSERT_GE(warnings.size(), 1u);
+    bool foundOutdated = false;
+    for (const auto &w : warnings) {
+        if (w.mod_id == "consumer" && w.dependency_id == "x.y" &&
+            w.message.find("minimum version") != std::string::npos) {
+            foundOutdated = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(foundOutdated) << "Expected outdated-version warning for [requires] interface";
 }
 
 } // namespace

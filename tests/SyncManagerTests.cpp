@@ -77,6 +77,28 @@ TEST_F(SyncManagerTests, MutexTryLock) {
     SyncManager::Instance().DestroyMutex(mutex);
 }
 
+TEST_F(SyncManagerTests, MutexTryLockFailsForSameThreadReentry) {
+    BML_Mutex mutex = nullptr;
+    ASSERT_EQ(BML_RESULT_OK, SyncManager::Instance().CreateMutex(&mutex));
+
+    SyncManager::Instance().LockMutex(mutex);
+    EXPECT_FALSE(SyncManager::Instance().TryLockMutex(mutex));
+    SyncManager::Instance().UnlockMutex(mutex);
+
+    SyncManager::Instance().DestroyMutex(mutex);
+}
+
+TEST_F(SyncManagerTests, MutexLockTimeoutRejectsSameThreadReentry) {
+    BML_Mutex mutex = nullptr;
+    ASSERT_EQ(BML_RESULT_OK, SyncManager::Instance().CreateMutex(&mutex));
+
+    SyncManager::Instance().LockMutex(mutex);
+    EXPECT_EQ(BML_RESULT_SYNC_DEADLOCK, SyncManager::Instance().LockMutexTimeout(mutex, 1));
+    SyncManager::Instance().UnlockMutex(mutex);
+
+    SyncManager::Instance().DestroyMutex(mutex);
+}
+
 TEST_F(SyncManagerTests, MutexTryLockFails_WhenAlreadyLocked) {
     BML_Mutex mutex = nullptr;
     ASSERT_EQ(BML_RESULT_OK, SyncManager::Instance().CreateMutex(&mutex));

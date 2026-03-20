@@ -7,8 +7,6 @@
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_loader.h"
 
-#include "bml_logging.h"
-
 namespace {
 
 std::filesystem::path GetLogPath() {
@@ -70,14 +68,11 @@ BML_Result HandleAttach(const BML_ModAttachArgs *args) {
     g_State.mod = args->mod;
     g_State.log_path = GetLogPath();
 
-    BML_Result res = bmlLoadAPI(args->get_proc, args->get_proc_by_id);
+    BML_Result res = BML_BOOTSTRAP_LOAD(args->get_proc);
     if (res != BML_RESULT_OK)
         return res;
 
     LogLifecycleEvent(g_State.log_path, "init:");
-    if (bmlLog) {
-        bmlLog(nullptr, BML_LOG_INFO, "HotReloadSample", "Sample mod initialized");
-    }
     return BML_RESULT_OK;
 }
 

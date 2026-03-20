@@ -14,8 +14,11 @@
 #include <thread>
 #include <vector>
 
+#include "Core/ApiRegistration.h"
+#include "Core/ApiRegistry.h"
 #include "Core/ProfilingManager.h"
 
+using BML::Core::ApiRegistry;
 using BML::Core::ProfilingManager;
 
 namespace {
@@ -227,7 +230,7 @@ TEST_F(ProfilingManagerTests, FlushOutputContainsEvents) {
 // ============================================================================
 
 TEST_F(ProfilingManagerTests, GetProfilingStats) {
-    BML_ProfilingStats stats{};
+    BML_ProfilingStats stats = BML_PROFILING_STATS_INIT;
 
     BML_Result result = ProfilingManager::Instance().GetProfilingStats(&stats);
 
@@ -241,22 +244,63 @@ TEST_F(ProfilingManagerTests, GetProfilingStatsNullPointer) {
     EXPECT_EQ(result, BML_RESULT_INVALID_ARGUMENT);
 }
 
-TEST_F(ProfilingManagerTests, GetProfilingCaps) {
-    BML_ProfilingCaps caps{};
+TEST_F(ProfilingManagerTests, GetProfilingStatsRejectsSmallStruct) {
+    struct SmallStats {
+        size_t struct_size;
+    } stats{sizeof(SmallStats)};
 
-    BML_Result result = ProfilingManager::Instance().GetProfilingCaps(&caps);
+    BML_Result result = ProfilingManager::Instance().GetProfilingStats(
+        reinterpret_cast<BML_ProfilingStats *>(&stats));
 
-    EXPECT_EQ(result, BML_RESULT_OK);
-    EXPECT_EQ(caps.struct_size, sizeof(BML_ProfilingCaps));
-    EXPECT_EQ(caps.active_backend, BML_PROFILER_CHROME_TRACING);
-    EXPECT_GT(caps.max_scope_depth, 0u);
-    EXPECT_GT(caps.event_buffer_size, 0u);
+    EXPECT_EQ(result, BML_RESULT_INVALID_SIZE);
 }
 
-TEST_F(ProfilingManagerTests, GetProfilingCapsNullPointer) {
-    BML_Result result = ProfilingManager::Instance().GetProfilingCaps(nullptr);
+TEST_F(ProfilingManagerTests, TracingApisRecordStatistics) {
+    ApiRegistry::Instance().Clear();
+    BML::Core::RegisterTracingApis();
 
-    EXPECT_EQ(result, BML_RESULT_INVALID_ARGUMENT);
+    auto enable = reinterpret_cast<void (*)(BML_Bool)>(
+        ApiRegistry::Instance().Get("bmlEnableApiTracing"));
+    auto is_enabled = reinterpret_cast<BML_Bool (*)()>(
+        ApiRegistry::Instance().Get("bmlIsApiTracingEnabled"));
+    auto get_stats = reinterpret_cast<BML_Bool (*)(const char *, void *)>(
+        ApiRegistry::Instance().Get("bmlGetApiStats"));
+    auto dump_stats = reinterpret_cast<BML_Bool (*)(const char *)>(
+        ApiRegistry::Instance().Get("bmlDumpApiStats"));
+
+    ASSERT_NE(enable, nullptr);
+    ASSERT_NE(is_enabled, nullptr);
+    ASSERT_NE(get_stats, nullptr);
+    ASSERT_NE(dump_stats, nullptr);
+
+    enable(BML_TRUE);
+    EXPECT_EQ(BML_TRUE, is_enabled());
+    enable(BML_FALSE);
+
+    struct TraceStats {
+        size_t struct_size;
+        const char *api_name;
+        uint64_t call_count;
+        uint64_t total_time_ns;
+        uint64_t min_time_ns;
+        uint64_t max_time_ns;
+        uint64_t error_count;
+    } stats{sizeof(TraceStats), nullptr, 0, 0, 0, 0, 0};
+
+    ASSERT_EQ(BML_TRUE, get_stats("bmlEnableApiTracing", &stats));
+    EXPECT_STREQ("bmlEnableApiTracing", stats.api_name);
+    EXPECT_EQ(2u, stats.call_count);
+    EXPECT_GT(stats.total_time_ns, 0u);
+
+    std::filesystem::path dump_path = std::filesystem::temp_directory_path() / "bml_api_stats.json";
+    ASSERT_EQ(BML_TRUE, dump_stats(dump_path.string().c_str()));
+    std::ifstream dump(dump_path);
+    ASSERT_TRUE(dump.is_open());
+    std::stringstream buffer;
+    buffer << dump.rdbuf();
+    EXPECT_NE(buffer.str().find("bmlEnableApiTracing"), std::string::npos);
+    std::error_code ec;
+    std::filesystem::remove(dump_path, ec);
 }
 
 // ============================================================================

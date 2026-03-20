@@ -43,53 +43,30 @@ if (NOT WIN32)
             CoreApisTests.cpp
             ModuleLoaderStub.cpp
             ${BML_SOURCE_DIR}/Core/CoreApi.cpp
+            ${BML_SOURCE_DIR}/Core/HookApi.cpp
+            ${BML_SOURCE_DIR}/Core/HookRegistry.cpp
             ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
             ${BML_SOURCE_DIR}/Core/ConfigApi.cpp
             ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
             ${BML_SOURCE_DIR}/Core/Context.cpp
             ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
             ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
-            ${BML_SOURCE_DIR}/Core/ImcApi.cpp
             ${BML_SOURCE_DIR}/Core/ImcBus.cpp
+            ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
+            ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
+            ${BML_SOURCE_DIR}/Core/InterfaceApi.cpp
+            ${BML_SOURCE_DIR}/Core/InterfaceRegistry.cpp
+            ${BML_SOURCE_DIR}/Core/LeaseManager.cpp
             ${BML_SOURCE_DIR}/Core/Logging.cpp
             ${BML_SOURCE_DIR}/Core/LoggingApi.cpp
             ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
+            ${BML_SOURCE_DIR}/Core/TimerApi.cpp
+            ${BML_SOURCE_DIR}/Core/TimerManager.cpp
+            ${BML_SOURCE_DIR}/Core/LocaleApi.cpp
+            ${BML_SOURCE_DIR}/Core/LocaleManager.cpp
+            ${BML_SOURCE_DIR}/Core/ModuleLifecycle.cpp
             DEPENDENCIES
-            BMLUtils
-            tomlplusplus::tomlplusplus
-    )
-
-    add_bml_test(ExtensionApiValidationTests
-            SOURCES
-            ExtensionApiValidationTests.cpp
-            ModuleLoaderStub.cpp
-            ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
-            ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
-            ${BML_SOURCE_DIR}/Core/Context.cpp
-            ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
-            ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
-            ${BML_SOURCE_DIR}/Core/ExtensionApi.cpp
-            ${BML_SOURCE_DIR}/Core/Logging.cpp
-            ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
-            DEPENDENCIES
-            BMLUtils
-            tomlplusplus::tomlplusplus
-    )
-
-    add_bml_test(ExtensionRefCountAndGlobTests
-            SOURCES
-            ExtensionRefCountAndGlobTests.cpp
-            ModuleLoaderStub.cpp
-            ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
-            ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
-            ${BML_SOURCE_DIR}/Core/Context.cpp
-            ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
-            ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
-            ${BML_SOURCE_DIR}/Core/ExtensionApi.cpp
-            ${BML_SOURCE_DIR}/Core/Logging.cpp
-            ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
-            DEPENDENCIES
-            BMLUtils
+            BML_Utils
             tomlplusplus::tomlplusplus
     )
 
@@ -106,7 +83,7 @@ if (NOT WIN32)
             ${BML_SYNC_MANAGER_SOURCE}
             ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
             DEPENDENCIES
-            BMLUtils
+            BML_Utils
             tomlplusplus::tomlplusplus
     )
 
@@ -123,7 +100,7 @@ if (NOT WIN32)
             ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
             ${BML_SOURCE_DIR}/Core/Logging.cpp
             DEPENDENCIES
-            BMLUtils
+            BML_Utils
             tomlplusplus::tomlplusplus
     )
 
@@ -140,8 +117,9 @@ if (NOT WIN32)
             ${BML_SOURCE_DIR}/Core/Context.cpp
             ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
             ${BML_SOURCE_DIR}/Core/Logging.cpp
+            ${BML_SOURCE_DIR}/Core/TracingApi.cpp
             DEPENDENCIES
-            BMLUtils
+            BML_Utils
             tomlplusplus::tomlplusplus
     )
 
@@ -155,13 +133,22 @@ if (NOT WIN32)
             ${BML_SOURCE_DIR}/Core/Context.cpp
             ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
             ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
+            ${BML_SOURCE_DIR}/Core/ImcBus.cpp
+            ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
+            ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
+            ${BML_SOURCE_DIR}/Core/InterfaceRegistry.cpp
+            ${BML_SOURCE_DIR}/Core/LeaseManager.cpp
             ${BML_SOURCE_DIR}/Core/Logging.cpp
             ${BML_SOURCE_DIR}/Core/ModManifest.cpp
+            ${BML_SOURCE_DIR}/Core/ModuleLifecycle.cpp
+            ${BML_SOURCE_DIR}/Core/LocaleManager.cpp
+            ${BML_SOURCE_DIR}/Core/HookRegistry.cpp
+            ${BML_SOURCE_DIR}/Core/TimerManager.cpp
             ${BML_SOURCE_DIR}/Core/ReloadableModuleSlot.cpp
             ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
             ${BML_SOURCE_DIR}/Core/SemanticVersion.cpp
             DEPENDENCIES
-            BMLUtils
+            BML_Utils
             tomlplusplus::tomlplusplus
     )
 
@@ -177,15 +164,41 @@ if (NOT WIN32)
             ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
             ${BML_SOURCE_DIR}/Core/FileSystemWatcher.cpp
             ${BML_SOURCE_DIR}/Core/HotReloadCoordinator.cpp
+            ${BML_SOURCE_DIR}/Core/ImcBus.cpp
+            ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
+            ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
+            ${BML_SOURCE_DIR}/Core/InterfaceRegistry.cpp
+            ${BML_SOURCE_DIR}/Core/LeaseManager.cpp
             ${BML_SOURCE_DIR}/Core/Logging.cpp
             ${BML_SOURCE_DIR}/Core/ModManifest.cpp
+            ${BML_SOURCE_DIR}/Core/ModuleLifecycle.cpp
+            ${BML_SOURCE_DIR}/Core/LocaleManager.cpp
+            ${BML_SOURCE_DIR}/Core/HookRegistry.cpp
+            ${BML_SOURCE_DIR}/Core/TimerManager.cpp
             ${BML_SOURCE_DIR}/Core/ReloadableModuleSlot.cpp
             ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
             ${BML_SOURCE_DIR}/Core/SemanticVersion.cpp
             DEPENDENCIES
-            BMLUtils
+            BML_Utils
             tomlplusplus::tomlplusplus
             efsw
+    )
+
+    add_bml_test(LocaleManagerTests
+            SOURCES
+            LocaleManagerTests.cpp
+            ModuleLoaderStub.cpp
+            ${BML_SOURCE_DIR}/Core/LocaleManager.cpp
+            ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
+            ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
+            ${BML_SOURCE_DIR}/Core/Context.cpp
+            ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+            ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
+            ${BML_SOURCE_DIR}/Core/Logging.cpp
+            ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
+            DEPENDENCIES
+            BML_Utils
+            tomlplusplus::tomlplusplus
     )
 
     return()
@@ -195,21 +208,21 @@ add_bml_test(StringUtilsTest
         SOURCES
         StringUtilsTest.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
 )
 
 add_bml_test(PathUtilsTest
         SOURCES
         PathUtilsTest.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
 )
 
 add_bml_test(IniFileTest
         SOURCES
         IniFileTest.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
 )
 
 add_bml_test(ManifestParserTest
@@ -218,7 +231,7 @@ add_bml_test(ManifestParserTest
         ${BML_SOURCE_DIR}/Core/ModManifest.cpp
         ${BML_SOURCE_DIR}/Core/SemanticVersion.cpp
         DEPENDENCIES
-        BMLUtils tomlplusplus::tomlplusplus
+        BML_Utils tomlplusplus::tomlplusplus
 )
 
 add_bml_test(ModuleDiscoveryTest
@@ -230,7 +243,7 @@ add_bml_test(ModuleDiscoveryTest
         ${BML_SOURCE_DIR}/Core/DependencyResolver.cpp
         ${BML_SOURCE_DIR}/Core/SemanticVersion.cpp
         DEPENDENCIES
-        BMLUtils tomlplusplus::tomlplusplus
+        BML_Utils tomlplusplus::tomlplusplus
 )
 
 add_bml_test(DependencyResolverTest
@@ -240,7 +253,7 @@ add_bml_test(DependencyResolverTest
         ${BML_SOURCE_DIR}/Core/DependencyResolver.cpp
         ${BML_SOURCE_DIR}/Core/SemanticVersion.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
 )
 
 add_bml_test(ImcBusTest
@@ -248,6 +261,8 @@ add_bml_test(ImcBusTest
         ImcBusTest.cpp
         ModuleLoaderStub.cpp
         ${BML_SOURCE_DIR}/Core/ImcBus.cpp
+        ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
+        ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
         ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
@@ -256,7 +271,26 @@ add_bml_test(ImcBusTest
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
+        tomlplusplus::tomlplusplus
+)
+
+add_bml_test(RpcExpansionTests
+        SOURCES
+        RpcExpansionTests.cpp
+        ModuleLoaderStub.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBus.cpp
+        ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
+        ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
+        ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
+        ${BML_SOURCE_DIR}/Core/Logging.cpp
+        ${BML_SOURCE_DIR}/Core/Context.cpp
+        ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
+        ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
+        DEPENDENCIES
+        BML_Utils
         tomlplusplus::tomlplusplus
 )
 
@@ -286,19 +320,30 @@ add_bml_test(CoreApisTests
         CoreApisTests.cpp
         ModuleLoaderStub.cpp
         ${BML_SOURCE_DIR}/Core/CoreApi.cpp
+        ${BML_SOURCE_DIR}/Core/HookApi.cpp
+        ${BML_SOURCE_DIR}/Core/HookRegistry.cpp
         ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
         ${BML_SOURCE_DIR}/Core/ConfigApi.cpp
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
-        ${BML_SOURCE_DIR}/Core/ImcApi.cpp
         ${BML_SOURCE_DIR}/Core/ImcBus.cpp
+        ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
+        ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
+        ${BML_SOURCE_DIR}/Core/InterfaceApi.cpp
+        ${BML_SOURCE_DIR}/Core/InterfaceRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/LeaseManager.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/LoggingApi.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
+        ${BML_SOURCE_DIR}/Core/TimerApi.cpp
+        ${BML_SOURCE_DIR}/Core/TimerManager.cpp
+        ${BML_SOURCE_DIR}/Core/LocaleApi.cpp
+        ${BML_SOURCE_DIR}/Core/LocaleManager.cpp
+        ${BML_SOURCE_DIR}/Core/ModuleLifecycle.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
         tomlplusplus::tomlplusplus
 )
 
@@ -314,7 +359,7 @@ add_bml_test(ApiRegistryTests
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
         tomlplusplus::tomlplusplus
 )
 
@@ -330,7 +375,7 @@ add_bml_test(ContextLifecycleTests
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
         tomlplusplus::tomlplusplus
 )
 
@@ -347,7 +392,7 @@ add_bml_test(ConfigStoreConcurrencyTests
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
         tomlplusplus::tomlplusplus
 )
 
@@ -364,7 +409,24 @@ add_bml_test(ConfigBatchApiTests
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
+        tomlplusplus::tomlplusplus
+)
+
+add_bml_test(ConfigBlobTests
+        SOURCES
+        ConfigBlobTests.cpp
+        ModuleLoaderStub.cpp
+        ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/ConfigApi.cpp
+        ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
+        ${BML_SOURCE_DIR}/Core/Context.cpp
+        ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
+        ${BML_SOURCE_DIR}/Core/Logging.cpp
+        ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
+        DEPENDENCIES
+        BML_Utils
         tomlplusplus::tomlplusplus
 )
 
@@ -381,7 +443,7 @@ add_bml_test(ConfigMigrationTests
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
         tomlplusplus::tomlplusplus
 )
 
@@ -397,7 +459,7 @@ add_bml_test(ResourceHandleLifecycleTests
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
         tomlplusplus::tomlplusplus
 )
 
@@ -409,41 +471,7 @@ add_bml_test(MemoryManagerTests
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/MemoryManager.cpp
         DEPENDENCIES
-        BMLUtils
-)
-
-add_bml_test(ExtensionApiValidationTests
-        SOURCES
-        ExtensionApiValidationTests.cpp
-        ModuleLoaderStub.cpp
-        ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
-        ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
-        ${BML_SOURCE_DIR}/Core/Context.cpp
-        ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
-        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
-        ${BML_SOURCE_DIR}/Core/ExtensionApi.cpp
-        ${BML_SOURCE_DIR}/Core/Logging.cpp
-        ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
-        DEPENDENCIES
-        BMLUtils
-        tomlplusplus::tomlplusplus
-)
-
-add_bml_test(ExtensionRefCountAndGlobTests
-        SOURCES
-        ExtensionRefCountAndGlobTests.cpp
-        ModuleLoaderStub.cpp
-        ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
-        ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
-        ${BML_SOURCE_DIR}/Core/Context.cpp
-        ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
-        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
-        ${BML_SOURCE_DIR}/Core/ExtensionApi.cpp
-        ${BML_SOURCE_DIR}/Core/Logging.cpp
-        ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
-        DEPENDENCIES
-        BMLUtils
-        tomlplusplus::tomlplusplus
+        BML_Utils
 )
 
 add_bml_test(LoggingSinkOverrideTests
@@ -459,7 +487,7 @@ add_bml_test(LoggingSinkOverrideTests
         ${BML_SOURCE_DIR}/Core/LoggingApi.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
         tomlplusplus::tomlplusplus
 )
 
@@ -476,7 +504,7 @@ add_bml_test(CoreErrorsGuardTests
         ${BML_SOURCE_DIR}/Core/LoggingApi.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
         tomlplusplus::tomlplusplus
 )
 
@@ -487,7 +515,7 @@ add_bml_test(FileSystemWatcherTests
         TestLoggingStub.cpp
         ${BML_SOURCE_DIR}/Core/FileSystemWatcher.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
         efsw
 )
 
@@ -502,13 +530,22 @@ add_bml_test(ReloadableModuleSlotTests
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBus.cpp
+        ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
+        ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
+        ${BML_SOURCE_DIR}/Core/InterfaceRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/LeaseManager.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ModManifest.cpp
+        ${BML_SOURCE_DIR}/Core/ModuleLifecycle.cpp
+        ${BML_SOURCE_DIR}/Core/LocaleManager.cpp
+        ${BML_SOURCE_DIR}/Core/HookRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/TimerManager.cpp
         ${BML_SOURCE_DIR}/Core/ReloadableModuleSlot.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         ${BML_SOURCE_DIR}/Core/SemanticVersion.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
         tomlplusplus::tomlplusplus
 )
 
@@ -525,13 +562,22 @@ add_bml_test(HotReloadCoordinatorTests
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/FileSystemWatcher.cpp
         ${BML_SOURCE_DIR}/Core/HotReloadCoordinator.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBus.cpp
+        ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
+        ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
+        ${BML_SOURCE_DIR}/Core/InterfaceRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/LeaseManager.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ModManifest.cpp
+        ${BML_SOURCE_DIR}/Core/ModuleLifecycle.cpp
+        ${BML_SOURCE_DIR}/Core/LocaleManager.cpp
+        ${BML_SOURCE_DIR}/Core/HookRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/TimerManager.cpp
         ${BML_SOURCE_DIR}/Core/ReloadableModuleSlot.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         ${BML_SOURCE_DIR}/Core/SemanticVersion.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
         tomlplusplus::tomlplusplus
         efsw
 )
@@ -561,13 +607,15 @@ add_bml_test(HotReloadIntegrationTests
         ${BML_SOURCE_DIR}/Core/ReloadableModuleSlot.cpp
         ${BML_SOURCE_DIR}/Core/HotReloadCoordinator.cpp
         ${BML_SOURCE_DIR}/Core/ImcBus.cpp
+        ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
+        ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ModuleDiscovery.cpp
         ${BML_SOURCE_DIR}/Core/ModuleRuntime.cpp
         ${BML_SOURCE_DIR}/Core/ModManifest.cpp
         ${BML_SOURCE_DIR}/Core/SemanticVersion.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
         tomlplusplus::tomlplusplus
         efsw
 )
@@ -590,7 +638,7 @@ add_bml_test(ApiImprovementsTest
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
         tomlplusplus::tomlplusplus
 )
 
@@ -608,7 +656,7 @@ add_bml_test(SyncPrimitivesTest
         ${BML_SOURCE_DIR}/Core/SyncManager.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
         tomlplusplus::tomlplusplus
 )
 
@@ -618,7 +666,7 @@ add_bml_test(SemanticVersionTests
         SemanticVersionTests.cpp
         ${BML_SOURCE_DIR}/Core/SemanticVersion.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
 )
 
 # SyncManager comprehensive tests
@@ -635,7 +683,7 @@ add_bml_test(SyncManagerTests
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
         tomlplusplus::tomlplusplus
 )
 
@@ -654,7 +702,7 @@ add_bml_test(ModuleLoaderTests
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
         tomlplusplus::tomlplusplus
 )
 
@@ -663,7 +711,7 @@ add_bml_test(MpscRingBufferTests
         SOURCES
         MpscRingBufferTests.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
 )
 
 # DiagnosticManager thread-local error handling tests
@@ -672,8 +720,189 @@ add_bml_test(DiagnosticManagerTests
         DiagnosticManagerTests.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
 )
+
+# TimerManager unit tests
+add_bml_test(TimerManagerTests
+        SOURCES
+        TimerManagerTests.cpp
+        ModuleLoaderStub.cpp
+        ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
+        ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
+        ${BML_SOURCE_DIR}/Core/TimerManager.cpp
+        ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
+        ${BML_SOURCE_DIR}/Core/Context.cpp
+        ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
+        ${BML_SOURCE_DIR}/Core/Logging.cpp
+        ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
+        DEPENDENCIES
+        BML_Utils
+        tomlplusplus::tomlplusplus
+)
+
+# LocaleManager unit tests
+add_bml_test(LocaleManagerTests
+        SOURCES
+        LocaleManagerTests.cpp
+        ModuleLoaderStub.cpp
+        ${BML_SOURCE_DIR}/Core/LocaleManager.cpp
+        ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
+        ${BML_SOURCE_DIR}/Core/Context.cpp
+        ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
+        ${BML_SOURCE_DIR}/Core/Logging.cpp
+        ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
+        DEPENDENCIES
+        BML_Utils
+        tomlplusplus::tomlplusplus
+)
+
+# EventInterception unit tests
+add_bml_test(EventInterceptionTests
+        SOURCES
+        EventInterceptionTests.cpp
+        ModuleLoaderStub.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBus.cpp
+        ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
+        ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
+        ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
+        ${BML_SOURCE_DIR}/Core/Logging.cpp
+        ${BML_SOURCE_DIR}/Core/Context.cpp
+        ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
+        ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
+        DEPENDENCIES
+        BML_Utils
+        tomlplusplus::tomlplusplus
+)
+
+# FaultTracker unit tests
+add_bml_test(FaultTrackerTests
+        SOURCES
+        FaultTrackerTests.cpp
+        ModuleLoaderStub.cpp
+        ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
+        ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
+        ${BML_SOURCE_DIR}/Core/Context.cpp
+        ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
+        ${BML_SOURCE_DIR}/Core/Logging.cpp
+        ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
+        DEPENDENCIES
+        BML_Utils
+        tomlplusplus::tomlplusplus
+)
+
+# HookRegistry unit tests
+add_bml_test(HookRegistryTests
+        SOURCES
+        HookRegistryTests.cpp
+        ModuleLoaderStub.cpp
+        ${BML_SOURCE_DIR}/Core/HookRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
+        ${BML_SOURCE_DIR}/Core/Context.cpp
+        ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
+        ${BML_SOURCE_DIR}/Core/Logging.cpp
+        ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
+        DEPENDENCIES
+        BML_Utils
+        tomlplusplus::tomlplusplus
+)
+
+# RuntimeProvider registry unit tests
+add_bml_test(RuntimeProviderTests
+        SOURCES
+        RuntimeProviderTests.cpp
+        ModuleLoaderStub.cpp
+        ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
+        ${BML_SOURCE_DIR}/Core/Context.cpp
+        ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
+        ${BML_SOURCE_DIR}/Core/Logging.cpp
+        ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
+        DEPENDENCIES
+        BML_Utils
+        tomlplusplus::tomlplusplus
+)
+
+# AngelScript engine unit tests
+if(TARGET angelscript)
+    add_executable(ScriptingTests ScriptingTests.cpp)
+    target_include_directories(ScriptingTests PRIVATE
+        "${BML_INCLUDE_DIR}"
+        "${BML_SOURCE_DIR}"
+    )
+    target_link_libraries(ScriptingTests PRIVATE
+        gtest_main
+        angelscript
+        angelscript_addon
+    )
+    target_compile_definitions(ScriptingTests PRIVATE "BML_EXPORTS" "BML_TEST")
+    set_target_properties(ScriptingTests PROPERTIES FOLDER "Tests")
+    add_test(NAME ScriptingTests COMMAND $<TARGET_FILE:ScriptingTests>)
+
+    add_bml_test(ScriptingRuntimeTests
+            SOURCES
+            ScriptingRuntimeTests.cpp
+            ModuleLoaderStub.cpp
+            ExportStub.cpp
+            ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
+            ${BML_SOURCE_DIR}/Core/BuiltinInterfaces.cpp
+            ${BML_SOURCE_DIR}/Core/ConfigApi.cpp
+            ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
+            ${BML_SOURCE_DIR}/Core/Context.cpp
+            ${BML_SOURCE_DIR}/Core/CoreApi.cpp
+            ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+            ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
+            ${BML_SOURCE_DIR}/Core/DiagnosticApi.cpp
+            ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
+            ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
+            ${BML_SOURCE_DIR}/Core/HookApi.cpp
+            ${BML_SOURCE_DIR}/Core/HookRegistry.cpp
+            ${BML_SOURCE_DIR}/Core/ImcBus.cpp
+            ${BML_SOURCE_DIR}/Core/InterfaceApi.cpp
+            ${BML_SOURCE_DIR}/Core/InterfaceRegistry.cpp
+            ${BML_SOURCE_DIR}/Core/LeaseManager.cpp
+            ${BML_SOURCE_DIR}/Core/LocaleApi.cpp
+            ${BML_SOURCE_DIR}/Core/LocaleManager.cpp
+            ${BML_SOURCE_DIR}/Core/Logging.cpp
+            ${BML_SOURCE_DIR}/Core/LoggingApi.cpp
+            ${BML_SOURCE_DIR}/Core/MemoryApi.cpp
+            ${BML_SOURCE_DIR}/Core/MemoryManager.cpp
+            ${BML_SOURCE_DIR}/Core/ModuleLifecycle.cpp
+            ${BML_SOURCE_DIR}/Core/ProfilingApi.cpp
+            ${BML_SOURCE_DIR}/Core/ProfilingManager.cpp
+            ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
+            ${BML_SOURCE_DIR}/Core/SyncApi.cpp
+            ${BML_SOURCE_DIR}/Core/SyncManager.cpp
+            ${BML_SOURCE_DIR}/Core/TimerApi.cpp
+            ${BML_SOURCE_DIR}/Core/TimerManager.cpp
+            ${BML_SOURCE_DIR}/Core/TracingApi.cpp
+            ${CMAKE_SOURCE_DIR}/modules/BML_Scripting/src/BytecodeCache.cpp
+            ${CMAKE_SOURCE_DIR}/modules/BML_Scripting/src/CoroutineManager.cpp
+            ${CMAKE_SOURCE_DIR}/modules/BML_Scripting/src/ScriptEngine.cpp
+            ${CMAKE_SOURCE_DIR}/modules/BML_Scripting/src/ScriptInstanceManager.cpp
+            ${CMAKE_SOURCE_DIR}/modules/BML_Scripting/src/bindings/BindImc.cpp
+            ${CMAKE_SOURCE_DIR}/modules/BML_Scripting/src/bindings/BindTimer.cpp
+            DEPENDENCIES
+            BML_Utils
+            tomlplusplus::tomlplusplus
+            angelscript
+            angelscript_addon
+    )
+    target_include_directories(ScriptingRuntimeTests PRIVATE
+            ${CMAKE_SOURCE_DIR}/modules/BML_Scripting/src
+    )
+endif()
 
 # Integration tests linking against the real BML.dll
 add_executable(BMLIntegrationTests BMLIntegrationTests.cpp)
@@ -689,6 +918,96 @@ set_target_properties(BMLIntegrationTests PROPERTIES
 add_test(NAME BMLIntegrationTests COMMAND $<TARGET_FILE:BMLIntegrationTests>)
 add_dependencies(BMLIntegrationTests BML)
 
+# Module framework + C++ wrapper integration tests (links real BML.dll)
+add_executable(ModuleFrameworkIntegrationTests ModuleFrameworkIntegrationTests.cpp)
+target_include_directories(ModuleFrameworkIntegrationTests PRIVATE
+        "${BML_INCLUDE_DIR}"
+        "${BML_SOURCE_DIR}"
+)
+target_link_libraries(ModuleFrameworkIntegrationTests PRIVATE gtest_main BML)
+set_target_properties(ModuleFrameworkIntegrationTests PROPERTIES
+        FOLDER "Tests"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)
+add_test(NAME ModuleFrameworkIntegrationTests COMMAND $<TARGET_FILE:ModuleFrameworkIntegrationTests>)
+add_dependencies(ModuleFrameworkIntegrationTests BML)
+
+# Test support infrastructure tests (links bml_test static library + real BML.dll)
+add_executable(TestSupportTests TestSupportTests.cpp)
+target_include_directories(TestSupportTests PRIVATE
+        "${BML_INCLUDE_DIR}"
+        "${BML_SOURCE_DIR}"
+)
+target_link_libraries(TestSupportTests PRIVATE gtest_main bml_test)
+set_target_properties(TestSupportTests PROPERTIES
+        FOLDER "Tests"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)
+add_test(NAME TestSupportTests COMMAND $<TARGET_FILE:TestSupportTests>)
+add_dependencies(TestSupportTests bml_test)
+
+# Built-in module API integration tests (real BML.dll + shared ANSI parser helpers)
+add_executable(BuiltinModuleApiTests
+        BuiltinModuleApiTests.cpp
+        ${CMAKE_SOURCE_DIR}/modules/BML_Console/src/AnsiSegments.cpp
+        ${CMAKE_SOURCE_DIR}/modules/BML_Console/src/AnsiPalette.cpp
+        ${CMAKE_SOURCE_DIR}/modules/BML_Console/src/AnsiText.cpp
+        ${IMGUI_SOURCE_DIR}/imgui.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_draw.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_widgets.cpp
+)
+target_include_directories(BuiltinModuleApiTests PRIVATE
+        "${BML_INCLUDE_DIR}"
+        "${BML_SOURCE_DIR}"
+        "${BML_SOURCE_DIR}/Utils"
+        "${CMAKE_SOURCE_DIR}/modules/BML_Console/src"
+        "${IMGUI_SOURCE_DIR}"
+)
+target_link_libraries(BuiltinModuleApiTests PRIVATE
+        gtest_main
+        BML_Utils
+        BML_UI_api
+)
+target_compile_definitions(BuiltinModuleApiTests PRIVATE
+        BML_EXPORTS
+        BML_TEST
+        IMGUI_EXPORT
+)
+set_target_properties(BuiltinModuleApiTests PROPERTIES
+        FOLDER "Tests"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)
+add_test(NAME BuiltinModuleApiTests COMMAND $<TARGET_FILE:BuiltinModuleApiTests>)
+
+add_bml_test(ConsoleCompletionStateTests
+        SOURCES
+        ConsoleCompletionStateTests.cpp
+)
+
+add_bml_test(MenuInputStateTests
+        SOURCES
+        MenuInputStateTests.cpp
+)
+
+add_test(
+        NAME MigrationRepoCheck
+        COMMAND ${CMAKE_COMMAND}
+        -DREPO_ROOT=${CMAKE_SOURCE_DIR}
+        -P ${CMAKE_SOURCE_DIR}/cmake/CheckMigration.cmake
+)
+
+# InputRecorder format and engine tests (standalone, no BML core deps)
+add_bml_test(InputRecorderTests
+        SOURCES
+        InputRecorderTests.cpp
+        ${CMAKE_SOURCE_DIR}/modules/BML_InputRecorder/src/RecordingFormat.cpp
+        ${CMAKE_SOURCE_DIR}/modules/BML_InputRecorder/src/RecorderEngine.cpp
+)
+target_include_directories(InputRecorderTests PRIVATE
+        ${CMAKE_SOURCE_DIR}/modules/BML_InputRecorder/src
+)
+
 # ProfilingManager trace events and Chrome Tracing tests
 add_bml_test(ProfilingManagerTests
         SOURCES
@@ -703,7 +1022,8 @@ add_bml_test(ProfilingManagerTests
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
+        ${BML_SOURCE_DIR}/Core/TracingApi.cpp
         DEPENDENCIES
-        BMLUtils
+        BML_Utils
         tomlplusplus::tomlplusplus
 )

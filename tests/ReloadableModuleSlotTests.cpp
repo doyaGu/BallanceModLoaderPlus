@@ -164,7 +164,7 @@ TEST_F(ReloadableModuleSlotTest, InitializeWithValidConfigSucceeds) {
     config.dll_path = dll_path.wstring();
     config.temp_directory = (m_TempDir / "temp").wstring();
     config.context = &context;
-    config.get_proc_by_id = &bmlGetProcAddressById;
+
 
     EXPECT_TRUE(slot.Initialize(config));
     EXPECT_EQ(slot.GetVersion(), 0u);
@@ -184,7 +184,7 @@ TEST_F(ReloadableModuleSlotTest, HasChangedReturnsFalseInitially) {
     ReloadableSlotConfig config;
     config.dll_path = dll_path.wstring();
     config.context = &context;
-    config.get_proc_by_id = &bmlGetProcAddressById;
+
 
     ASSERT_TRUE(slot.Initialize(config));
     EXPECT_FALSE(slot.HasChanged());
@@ -203,7 +203,7 @@ TEST_F(ReloadableModuleSlotTest, HasChangedDetectsFileModification) {
     ReloadableSlotConfig config;
     config.dll_path = dll_path.wstring();
     config.context = &context;
-    config.get_proc_by_id = &bmlGetProcAddressById;
+
 
     ASSERT_TRUE(slot.Initialize(config));
     EXPECT_FALSE(slot.HasChanged());
@@ -228,7 +228,7 @@ TEST_F(ReloadableModuleSlotTest, ReloadWithNoChangeReturnsNoChange) {
     ReloadableSlotConfig config;
     config.dll_path = dll_path.wstring();
     config.context = &context;
-    config.get_proc_by_id = &bmlGetProcAddressById;
+
 
     ASSERT_TRUE(slot.Initialize(config));
     EXPECT_EQ(slot.Reload(), ReloadResult::NoChange);
@@ -247,7 +247,7 @@ TEST_F(ReloadableModuleSlotTest, GetPathReturnsConfiguredPath) {
     ReloadableSlotConfig config;
     config.dll_path = dll_path.wstring();
     config.context = &context;
-    config.get_proc_by_id = &bmlGetProcAddressById;
+
 
     ASSERT_TRUE(slot.Initialize(config));
     EXPECT_EQ(slot.GetPath(), dll_path.wstring());
@@ -266,7 +266,7 @@ TEST_F(ReloadableModuleSlotTest, UserDataPersistence) {
     ReloadableSlotConfig config;
     config.dll_path = dll_path.wstring();
     config.context = &context;
-    config.get_proc_by_id = &bmlGetProcAddressById;
+
 
     ASSERT_TRUE(slot.Initialize(config));
 
@@ -289,7 +289,7 @@ TEST_F(ReloadableModuleSlotTest, ShutdownCleansUp) {
     config.dll_path = dll_path.wstring();
     config.temp_directory = (m_TempDir / "temp").wstring();
     config.context = &context;
-    config.get_proc_by_id = &bmlGetProcAddressById;
+
 
     ASSERT_TRUE(slot.Initialize(config));
     slot.Shutdown();
@@ -320,7 +320,7 @@ TEST_F(ReloadableModuleSlotTest, TempDirectoryCreatedOnInitialize) {
     config.dll_path = dll_path.wstring();
     config.temp_directory = temp_dir.wstring();
     config.context = &context;
-    config.get_proc_by_id = &bmlGetProcAddressById;
+
 
     ASSERT_TRUE(slot.Initialize(config));
     EXPECT_TRUE(std::filesystem::exists(temp_dir));

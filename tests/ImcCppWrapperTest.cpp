@@ -9,9 +9,316 @@
 #include "bml_loader.h"
 
 #include <gtest/gtest.h>
+
+#include <cstring>
+#include <string>
+
 #include "bml_imc.hpp"
 
 using namespace bml::imc;
+
+namespace {
+    #if defined(_MSC_VER)
+        #define BML_TEST_NOINLINE __declspec(noinline)
+    #else
+        #define BML_TEST_NOINLINE __attribute__((noinline))
+    #endif
+
+    struct ImcMockState {
+        BML_TopicId topic_id = 77u;
+        BML_RpcId rpc_id = 91u;
+        BML_Subscription subscription = reinterpret_cast<BML_Subscription>(0x3000);
+        BML_Future future = reinterpret_cast<BML_Future>(0x4000);
+        BML_TopicId last_topic = InvalidTopicId;
+        BML_RpcId last_rpc = InvalidRpcId;
+        std::string last_topic_name;
+        std::string last_rpc_name;
+        size_t last_publish_size = 0;
+        int publish_calls = 0;
+        int subscribe_calls = 0;
+        int unsubscribe_calls = 0;
+        int pump_calls = 0;
+        int register_rpc_calls = 0;
+        int unregister_rpc_calls = 0;
+        int call_rpc_calls = 0;
+        int future_release_calls = 0;
+        int future_cancel_calls = 0;
+        bool subscription_active = true;
+        int future_result_value = 314;
+        std::string topic_name = "test/topic";
+        std::string rpc_name = "test/rpc";
+    };
+
+    ImcMockState g_ImcMockState;
+
+    BML_Result MockGetTopicId(const char *name, BML_TopicId *outTopic) {
+        if (!outTopic) return BML_RESULT_INVALID_ARGUMENT;
+        g_ImcMockState.last_topic_name = name ? name : "";
+        *outTopic = g_ImcMockState.topic_id;
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockGetRpcId(const char *name, BML_RpcId *outRpc) {
+        if (!outRpc) return BML_RESULT_INVALID_ARGUMENT;
+        g_ImcMockState.last_rpc_name = name ? name : "";
+        *outRpc = g_ImcMockState.rpc_id;
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockPublish(BML_TopicId topic, const void *, size_t size) {
+        ++g_ImcMockState.publish_calls;
+        g_ImcMockState.last_topic = topic;
+        g_ImcMockState.last_publish_size = size;
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockPublishEx(BML_TopicId topic, const BML_ImcMessage *msg) {
+        ++g_ImcMockState.publish_calls;
+        g_ImcMockState.last_topic = topic;
+        g_ImcMockState.last_publish_size = msg ? msg->size : 0;
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockPublishBuffer(BML_TopicId topic, const BML_ImcBuffer *buffer) {
+        ++g_ImcMockState.publish_calls;
+        g_ImcMockState.last_topic = topic;
+        g_ImcMockState.last_publish_size = buffer ? buffer->size : 0;
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockSubscribe(BML_TopicId topic,
+                             BML_ImcHandler,
+                             void *,
+                             BML_Subscription *outSubscription) {
+        if (!outSubscription) return BML_RESULT_INVALID_ARGUMENT;
+        ++g_ImcMockState.subscribe_calls;
+        g_ImcMockState.last_topic = topic;
+        *outSubscription = g_ImcMockState.subscription;
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockSubscribeEx(BML_TopicId topic,
+                               BML_ImcHandler,
+                               void *,
+                               const BML_SubscribeOptions *,
+                               BML_Subscription *outSubscription) {
+        return MockSubscribe(topic, nullptr, nullptr, outSubscription);
+    }
+
+    BML_Result MockUnsubscribe(BML_Subscription subscription) {
+        if (subscription != g_ImcMockState.subscription) return BML_RESULT_INVALID_ARGUMENT;
+        ++g_ImcMockState.unsubscribe_calls;
+        g_ImcMockState.subscription_active = false;
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockSubscriptionIsActive(BML_Subscription subscription, BML_Bool *outActive) {
+        if (!outActive || subscription != g_ImcMockState.subscription) return BML_RESULT_INVALID_ARGUMENT;
+        *outActive = g_ImcMockState.subscription_active ? BML_TRUE : BML_FALSE;
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockRegisterRpc(BML_RpcId rpc, BML_RpcHandler, void *) {
+        ++g_ImcMockState.register_rpc_calls;
+        g_ImcMockState.last_rpc = rpc;
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockUnregisterRpc(BML_RpcId rpc) {
+        ++g_ImcMockState.unregister_rpc_calls;
+        g_ImcMockState.last_rpc = rpc;
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockCallRpc(BML_RpcId rpc, const BML_ImcMessage *, BML_Future *outFuture) {
+        if (!outFuture) return BML_RESULT_INVALID_ARGUMENT;
+        ++g_ImcMockState.call_rpc_calls;
+        g_ImcMockState.last_rpc = rpc;
+        *outFuture = g_ImcMockState.future;
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockFutureAwait(BML_Future future, uint32_t) {
+        return future == g_ImcMockState.future ? BML_RESULT_OK : BML_RESULT_INVALID_ARGUMENT;
+    }
+
+    BML_Result MockFutureGetResult(BML_Future future, BML_ImcMessage *outMessage) {
+        if (!outMessage || future != g_ImcMockState.future) return BML_RESULT_INVALID_ARGUMENT;
+        *outMessage = BML_IMC_MSG(&g_ImcMockState.future_result_value, sizeof(g_ImcMockState.future_result_value));
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockFutureGetState(BML_Future future, BML_FutureState *outState) {
+        if (!outState || future != g_ImcMockState.future) return BML_RESULT_INVALID_ARGUMENT;
+        *outState = BML_FUTURE_READY;
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockFutureCancel(BML_Future future) {
+        if (future != g_ImcMockState.future) return BML_RESULT_INVALID_ARGUMENT;
+        ++g_ImcMockState.future_cancel_calls;
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockFutureOnComplete(BML_Future future, BML_FutureCallback callback, void *userData) {
+        if (future != g_ImcMockState.future) return BML_RESULT_INVALID_ARGUMENT;
+        if (callback) {
+            callback(nullptr, future, userData);
+        }
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockFutureRelease(BML_Future future) {
+        if (future != g_ImcMockState.future) return BML_RESULT_INVALID_ARGUMENT;
+        ++g_ImcMockState.future_release_calls;
+        return BML_RESULT_OK;
+    }
+
+    void MockPump(size_t) {
+        ++g_ImcMockState.pump_calls;
+    }
+
+    BML_Result MockGetSubscriptionStats(BML_Subscription subscription, BML_SubscriptionStats *outStats) {
+        if (!outStats || subscription != g_ImcMockState.subscription) return BML_RESULT_INVALID_ARGUMENT;
+        *outStats = BML_SUBSCRIPTION_STATS_INIT;
+        outStats->messages_received = 5;
+        outStats->messages_dropped = 1;
+        outStats->queue_size = 2;
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockGetStats(BML_ImcStats *outStats) {
+        if (!outStats) return BML_RESULT_INVALID_ARGUMENT;
+        *outStats = BML_IMC_STATS_INIT;
+        outStats->total_messages_published = 10;
+        outStats->active_topics = 1;
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockResetStats() {
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockGetTopicInfo(BML_TopicId topic, BML_TopicInfo *outInfo) {
+        if (!outInfo) return BML_RESULT_INVALID_ARGUMENT;
+        *outInfo = BML_TOPIC_INFO_INIT;
+        outInfo->topic_id = topic;
+        std::strcpy(outInfo->name, "test/topic");
+        outInfo->subscriber_count = 3;
+        outInfo->message_count = 12;
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockGetTopicName(BML_TopicId topic, char *buffer, size_t bufferSize, size_t *outLength) {
+        const std::string &name = topic == g_ImcMockState.topic_id ? g_ImcMockState.topic_name : g_ImcMockState.topic_name;
+        const size_t length = name.size();
+        if (!buffer || bufferSize == 0) return BML_RESULT_INVALID_ARGUMENT;
+        if (outLength) *outLength = length;
+        if (bufferSize <= length) {
+            if (bufferSize > 0) {
+                std::memcpy(buffer, name.data(), bufferSize - 1);
+                buffer[bufferSize - 1] = '\0';
+            }
+            return BML_RESULT_BUFFER_TOO_SMALL;
+        }
+        std::memcpy(buffer, name.data(), length);
+        buffer[length] = '\0';
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockRegisterRpcEx(BML_RpcId, BML_RpcHandlerEx, void *) {
+        return BML_RESULT_OK;
+    }
+    BML_Result MockCallRpcEx(BML_RpcId rpc, const BML_ImcMessage *, const BML_RpcCallOptions *, BML_Future *o) {
+        ++g_ImcMockState.call_rpc_calls;
+        g_ImcMockState.last_rpc = rpc;
+        if (o) *o = g_ImcMockState.future;
+        return BML_RESULT_OK;
+    }
+    BML_Result MockFutureGetError(BML_Future, BML_Result *out_code, char *msg, size_t cap, size_t *out_len) {
+        if (out_code) *out_code = BML_RESULT_OK;
+        if (msg && cap > 0) msg[0] = '\0';
+        if (out_len) *out_len = 0;
+        return BML_RESULT_OK;
+    }
+    BML_Result MockGetRpcInfo(BML_RpcId id, BML_RpcInfo *o) {
+        if (!o) return BML_RESULT_INVALID_ARGUMENT;
+        *o = BML_RPC_INFO_INIT;
+        o->rpc_id = id;
+        o->has_handler = BML_TRUE;
+        return BML_RESULT_OK;
+    }
+    BML_Result MockAddRpcMiddleware(BML_RpcMiddleware, int32_t, void *) {
+        return BML_RESULT_OK;
+    }
+    BML_Result MockRemoveRpcMiddleware(BML_RpcMiddleware) {
+        return BML_RESULT_OK;
+    }
+
+    BML_Result MockGetRpcName(BML_RpcId, char *buf, size_t cap, size_t *out_len) {
+        size_t len = g_ImcMockState.rpc_name.size();
+        if (!buf || cap == 0) return BML_RESULT_INVALID_ARGUMENT;
+        if (out_len) *out_len = len;
+        if (cap <= len) {
+            std::memcpy(buf, g_ImcMockState.rpc_name.data(), cap - 1);
+            buf[cap - 1] = '\0';
+            return BML_RESULT_BUFFER_TOO_SMALL;
+        }
+        std::memcpy(buf, g_ImcMockState.rpc_name.data(), len);
+        buf[len] = '\0';
+        return BML_RESULT_OK;
+    }
+
+    BML_ImcBusInterface MakeMockBus() {
+        BML_ImcBusInterface bus{
+            BML_IFACE_HEADER(BML_ImcBusInterface, BML_IMC_BUS_INTERFACE_ID, 1, 0)
+        };
+        bus.GetTopicId = &MockGetTopicId;
+        bus.GetRpcId = &MockGetRpcId;
+        bus.Publish = &MockPublish;
+        bus.PublishEx = &MockPublishEx;
+        bus.PublishBuffer = &MockPublishBuffer;
+        bus.Subscribe = &MockSubscribe;
+        bus.SubscribeEx = &MockSubscribeEx;
+        bus.Unsubscribe = &MockUnsubscribe;
+        bus.SubscriptionIsActive = &MockSubscriptionIsActive;
+        bus.RegisterRpc = &MockRegisterRpc;
+        bus.UnregisterRpc = &MockUnregisterRpc;
+        bus.CallRpc = &MockCallRpc;
+        bus.FutureAwait = &MockFutureAwait;
+        bus.FutureGetResult = &MockFutureGetResult;
+        bus.FutureGetState = &MockFutureGetState;
+        bus.FutureCancel = &MockFutureCancel;
+        bus.FutureOnComplete = &MockFutureOnComplete;
+        bus.FutureRelease = &MockFutureRelease;
+        bus.Pump = &MockPump;
+        bus.GetSubscriptionStats = &MockGetSubscriptionStats;
+        bus.GetStats = &MockGetStats;
+        bus.ResetStats = &MockResetStats;
+        bus.GetTopicInfo = &MockGetTopicInfo;
+        bus.GetTopicName = &MockGetTopicName;
+        // RPC v1.1
+        bus.RegisterRpcEx = &MockRegisterRpcEx;
+        bus.CallRpcEx = &MockCallRpcEx;
+        bus.FutureGetError = &MockFutureGetError;
+        bus.GetRpcInfo = &MockGetRpcInfo;
+        bus.GetRpcName = &MockGetRpcName;
+        bus.AddRpcMiddleware = &MockAddRpcMiddleware;
+        bus.RemoveRpcMiddleware = &MockRemoveRpcMiddleware;
+        return bus;
+    }
+
+    void ResetImcMockState() {
+        g_ImcMockState = ImcMockState{};
+    }
+
+    BML_TEST_NOINLINE void ClobberStack() {
+        volatile uint8_t scratch[4096] = {};
+        for (size_t i = 0; i < sizeof(scratch); ++i) {
+            scratch[i] = static_cast<uint8_t>(i);
+        }
+    }
+}
 
 // ============================================================================
 // Message Tests
@@ -119,6 +426,26 @@ TEST(ImcCppWrapperTest, TopicComparison) {
     EXPECT_LT(a, b);
 }
 
+TEST(ImcCppWrapperTest, TopicUsesExplicitBus) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+
+    Topic topic("test/topic", &bus);
+    ASSERT_TRUE(topic.Valid());
+    EXPECT_EQ(g_ImcMockState.topic_id, topic.Id());
+    EXPECT_EQ("test/topic", g_ImcMockState.last_topic_name);
+
+    int payload = 42;
+    EXPECT_TRUE(topic.Publish(payload));
+    EXPECT_EQ(1, g_ImcMockState.publish_calls);
+    EXPECT_EQ(g_ImcMockState.topic_id, g_ImcMockState.last_topic);
+
+    auto info = topic.Info();
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ(3u, info->subscriber_count);
+    EXPECT_EQ(12u, info->message_count);
+}
+
 // ============================================================================
 // SubscribeOptions Tests
 // ============================================================================
@@ -127,12 +454,14 @@ TEST(ImcCppWrapperTest, SubscribeOptionsBuilder) {
     auto opts = SubscribeOptions()
         .QueueCapacity(512)
         .Backpressure(backpressure::DropNewest)
-        .MinPriority(priority::High);
+        .MinPriority(priority::High)
+        .Flags(BML_IMC_SUBSCRIBE_FLAG_DELIVER_RETAINED_ON_SUBSCRIBE);
     
     const auto& native = opts.Native();
     EXPECT_EQ(native.queue_capacity, 512u);
     EXPECT_EQ(native.backpressure, BML_BACKPRESSURE_DROP_NEWEST);
     EXPECT_EQ(native.min_priority, static_cast<uint32_t>(priority::High));
+    EXPECT_EQ(native.flags, BML_IMC_SUBSCRIBE_FLAG_DELIVER_RETAINED_ON_SUBSCRIBE);
 }
 
 // ============================================================================
@@ -187,9 +516,22 @@ TEST(ImcCppWrapperTest, NamespaceConstants) {
 // Bus Facade Tests (without actual IMC backend)
 // ============================================================================
 
-TEST(ImcCppWrapperTest, BusTopicRegistryAccess) {
-    auto& registry = Bus::GetTopicRegistry();
-    EXPECT_EQ(registry.Size(), registry.Size());  // Just verify it's accessible
+TEST(ImcCppWrapperTest, FreeFunctionsUseExplicitBus) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+
+    EXPECT_TRUE(bml::imc::publish("test/topic", uint32_t(99), &bus));
+
+    auto stats = bml::imc::getStats(&bus);
+    ASSERT_TRUE(stats.has_value());
+    EXPECT_EQ(10u, stats->total_messages_published);
+
+    bml::imc::pumpAll(&bus);
+    EXPECT_EQ(1, g_ImcMockState.pump_calls);
+
+    auto topicName = bml::imc::getTopicName(g_ImcMockState.topic_id, &bus);
+    ASSERT_TRUE(topicName.has_value());
+    EXPECT_EQ("test/topic", *topicName);
 }
 
 // ============================================================================
@@ -207,6 +549,103 @@ TEST(ImcCppWrapperTest, RpcFromId) {
     EXPECT_TRUE(rpc.Valid());
     EXPECT_EQ(rpc.Id(), 456u);
     EXPECT_EQ(rpc.Name(), "TestRpc");
+}
+
+TEST(ImcCppWrapperTest, RpcUsesExplicitBus) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+
+    Rpc rpc("test/rpc", &bus);
+    ASSERT_TRUE(rpc.Valid());
+    EXPECT_EQ(g_ImcMockState.rpc_id, rpc.Id());
+
+    RpcClient client(rpc, &bus);
+    auto future = client.Call(int(7));
+    ASSERT_TRUE(future.Valid());
+    EXPECT_TRUE(future.Wait(10));
+
+    auto result = future.Result<int>();
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(314, *result);
+
+    bool callbackInvoked = false;
+    EXPECT_TRUE(future.OnComplete([](BML_Context, BML_Future, void *userData) {
+        auto *flag = static_cast<bool *>(userData);
+        *flag = true;
+    }, &callbackInvoked));
+    EXPECT_TRUE(callbackInvoked);
+    EXPECT_TRUE(future.Cancel());
+    future.Release();
+    EXPECT_EQ(1, g_ImcMockState.future_cancel_calls);
+    EXPECT_EQ(1, g_ImcMockState.future_release_calls);
+
+    {
+        RpcServer server("test/rpc", [](const Message &) {
+            return std::vector<uint8_t>{};
+        }, &bus);
+        EXPECT_TRUE(server.Valid());
+    }
+
+    EXPECT_EQ(1, g_ImcMockState.register_rpc_calls);
+    EXPECT_EQ(1, g_ImcMockState.unregister_rpc_calls);
+}
+
+TEST(ImcCppWrapperTest, RpcClientFromRpcReusesSourceBus) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+
+    Rpc rpc("test/rpc", &bus);
+    ASSERT_TRUE(rpc.Valid());
+
+    RpcClient client(rpc);
+    auto future = client.Call(int(7));
+    ASSERT_TRUE(future.Valid());
+    EXPECT_EQ(1, g_ImcMockState.call_rpc_calls);
+}
+
+TEST(ImcCppWrapperTest, RpcFutureResultMessageSurvivesStackClobber) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+
+    RpcClient client("test/rpc", &bus);
+    auto future = client.Call(int(7));
+    ASSERT_TRUE(future.Valid());
+    ASSERT_TRUE(future.Wait(10));
+
+    auto result = future.ResultMessage();
+    ASSERT_TRUE(result.has_value());
+
+    ClobberStack();
+
+    int value = 0;
+    ASSERT_TRUE(result->CopyTo(value));
+    EXPECT_EQ(314, value);
+}
+
+TEST(ImcCppWrapperTest, RpcHandlerContextReturnsOwnedResponseBuffer) {
+    bml::imc::detail::RpcHandlerContext ctx;
+    ctx.handler = [](const Message &) {
+        constexpr int kResponse = 1234;
+        std::vector<uint8_t> bytes(sizeof(kResponse));
+        std::memcpy(bytes.data(), &kResponse, sizeof(kResponse));
+        return bytes;
+    };
+
+    int requestValue = 9;
+    BML_ImcMessage request = BML_IMC_MSG(&requestValue, sizeof(requestValue));
+    BML_ImcBuffer response = BML_IMC_BUFFER_INIT;
+
+    ASSERT_EQ(BML_RESULT_OK,
+              bml::imc::detail::RpcHandlerContext::Invoke(nullptr, 0, &request, &response, &ctx));
+    ASSERT_NE(nullptr, response.data);
+    ASSERT_EQ(sizeof(int), response.size);
+    ASSERT_NE(nullptr, response.cleanup);
+
+    int value = 0;
+    std::memcpy(&value, response.data, sizeof(value));
+    EXPECT_EQ(1234, value);
+
+    response.cleanup(response.data, response.size, response.cleanup_user_data);
 }
 
 TEST(ImcCppWrapperTest, RpcFutureDefaultConstruction) {
@@ -247,18 +686,256 @@ TEST(ImcCppWrapperTest, SubscriptionManagerOperations) {
     EXPECT_TRUE(manager.Empty());
 }
 
+TEST(ImcCppWrapperTest, SubscriptionUsesExplicitBus) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+
+    auto sub = Subscription::create("test/topic", [](const Message &) {}, nullptr, &bus);
+    ASSERT_TRUE(sub.has_value());
+    EXPECT_TRUE(sub->IsActive());
+
+    auto stats = sub->Stats();
+    ASSERT_TRUE(stats.has_value());
+    EXPECT_EQ(5u, stats->messages_received);
+    EXPECT_EQ(1u, stats->messages_dropped);
+
+    sub->Unsubscribe();
+    EXPECT_EQ(1, g_ImcMockState.subscribe_calls);
+    EXPECT_EQ(1, g_ImcMockState.unsubscribe_calls);
+}
+
+TEST(ImcCppWrapperTest, SubscriptionCanUseExtendedOnlyBus) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+    bus.Subscribe = nullptr;
+
+    auto sub = Subscription::create("test/topic", [](const Message &) {}, nullptr, &bus);
+    ASSERT_TRUE(sub.has_value());
+    EXPECT_EQ(1, g_ImcMockState.subscribe_calls);
+}
+
+TEST(ImcCppWrapperTest, WrapperGuardsV11MembersByInterfaceSize) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+    bus.header.struct_size = offsetof(BML_ImcBusInterface, RegisterRpcEx);
+
+    EXPECT_FALSE(bml::imc::getRpcInfo(g_ImcMockState.rpc_id, &bus).has_value());
+    EXPECT_FALSE(bml::imc::getRpcName(g_ImcMockState.rpc_id, &bus).has_value());
+
+    RpcClient client("test/rpc", &bus);
+    RpcCallOptions opts;
+    EXPECT_FALSE(client.Call(int(7), opts).Valid());
+
+    auto future = client.Call(int(7));
+    ASSERT_TRUE(future.Valid());
+    EXPECT_FALSE(future.Error().has_value());
+}
+
+TEST(ImcCppWrapperTest, WrapperRetriesLongNames) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+    g_ImcMockState.topic_name.assign(320, 't');
+    g_ImcMockState.rpc_name.assign(320, 'r');
+
+    auto topicName = bml::imc::getTopicName(g_ImcMockState.topic_id, &bus);
+    ASSERT_TRUE(topicName.has_value());
+    EXPECT_EQ(g_ImcMockState.topic_name, *topicName);
+
+    auto rpcName = bml::imc::getRpcName(g_ImcMockState.rpc_id, &bus);
+    ASSERT_TRUE(rpcName.has_value());
+    EXPECT_EQ(g_ImcMockState.rpc_name, *rpcName);
+}
+
+TEST(ImcCppWrapperTest, SubscriptionCreateCopiesStringViewBeforeLookup) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+
+    std::string storage = "test/topic suffix";
+    std::string_view topicView(storage.data(), std::strlen("test/topic"));
+
+    auto sub = Subscription::create(topicView, [](const Message &) {}, nullptr, &bus);
+    ASSERT_TRUE(sub.has_value());
+    EXPECT_EQ("test/topic", g_ImcMockState.last_topic_name);
+}
+
 // ============================================================================
 // Convenience Function Tests
 // ============================================================================
 
 TEST(ImcCppWrapperTest, ConvenienceFunctions) {
     // These should compile and not crash (may return nullopt without backend)
-    auto caps = bml::imc::Bus::GetCapabilities();
-    auto stats = bml::imc::Bus::GetStatistics();
-    
-    // hasCapability should be callable
-    bool hasPubSub = bml::imc::Bus::HasCapability(BML_IMC_CAP_PUBSUB);
-    (void)hasPubSub;  // May be false without backend
+    auto stats = bml::imc::getStats();
+    (void)stats;
 }
 
+TEST(ImcCppWrapperTest, RpcServerCopiesStringViewBeforeLookup) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
 
+    std::string storage = "test/rpc suffix";
+    std::string_view rpcView(storage.data(), std::strlen("test/rpc"));
+
+    RpcServer server(rpcView, [](const Message &) {
+        return std::vector<uint8_t>{};
+    }, &bus);
+    ASSERT_TRUE(server.Valid());
+    EXPECT_EQ("test/rpc", g_ImcMockState.last_rpc_name);
+}
+
+// ============================================================================
+// RPC v1.1 Wrapper Tests
+// ============================================================================
+
+TEST(ImcCppWrapperTest, RpcCallOptionsBuilder) {
+    RpcCallOptions opts;
+    opts.Timeout(500);
+    EXPECT_EQ(opts.GetTimeout(), 500u);
+    EXPECT_EQ(opts.Native().timeout_ms, 500u);
+    EXPECT_EQ(opts.Native().struct_size, sizeof(BML_RpcCallOptions));
+}
+
+TEST(ImcCppWrapperTest, RpcClientCallWithOptions) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+
+    RpcClient client("test/rpc", &bus);
+    ASSERT_TRUE(client.Valid());
+
+    RpcCallOptions opts;
+    opts.Timeout(1000);
+    int request = 42;
+    auto future = client.Call(request, opts);
+    EXPECT_EQ(g_ImcMockState.call_rpc_calls, 1);
+}
+
+TEST(ImcCppWrapperTest, RpcFutureError) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+
+    // MockFutureGetError returns OK/empty, so Error() should return nullopt
+    RpcFuture future(g_ImcMockState.future, &bus);
+    auto err = future.Error();
+    EXPECT_FALSE(err.has_value());
+
+    // Prevent double-release (future handle is a mock pointer)
+    (void)future.Native();
+}
+
+TEST(ImcCppWrapperTest, RpcServerInfo) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+
+    RpcServer server("test/rpc", [](const Message &) {
+        return std::vector<uint8_t>{};
+    }, &bus);
+    ASSERT_TRUE(server.Valid());
+
+    auto info = server.Info();
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ(info->has_handler, BML_TRUE);
+}
+
+TEST(ImcCppWrapperTest, RpcServiceManagerDefaultEmpty) {
+    RpcServiceManager mgr;
+    EXPECT_TRUE(mgr.Empty());
+    EXPECT_EQ(mgr.Count(), 0u);
+}
+
+TEST(ImcCppWrapperTest, RpcServiceManagerAddAndClear) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+
+    RpcServiceManager mgr(&bus);
+    EXPECT_TRUE(mgr.AddServer("test/rpc", [](const Message &) {
+        return std::vector<uint8_t>{};
+    }));
+    EXPECT_EQ(mgr.Count(), 1u);
+
+    mgr.Clear();
+    EXPECT_TRUE(mgr.Empty());
+}
+
+TEST(ImcCppWrapperTest, RpcGetInfoFreeFunction) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+
+    auto info = bml::imc::getRpcInfo(g_ImcMockState.rpc_id, &bus);
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ(info->rpc_id, g_ImcMockState.rpc_id);
+}
+
+TEST(ImcCppWrapperTest, RpcGetNameFreeFunction) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+
+    auto name = bml::imc::getRpcName(g_ImcMockState.rpc_id, &bus);
+    ASSERT_TRUE(name.has_value());
+    EXPECT_EQ(*name, "test/rpc");
+}
+
+TEST(ImcCppWrapperTest, RpcServiceManagerAddServerAndCall) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+
+    RpcServiceManager mgr(&bus);
+    EXPECT_TRUE(mgr.AddServer("test/rpc", [](const Message &) {
+        return std::vector<uint8_t>{1, 2, 3};
+    }));
+
+    auto client = mgr.CreateClient("test/rpc");
+    EXPECT_TRUE(client.Valid());
+    auto future = client.Call(int(42));
+    EXPECT_TRUE(future.Valid());
+    EXPECT_EQ(g_ImcMockState.call_rpc_calls, 1);
+}
+
+TEST(ImcCppWrapperTest, RpcMiddlewareRegistrationRAII) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+
+    // AddRpcMiddleware mock just returns OK
+    {
+        RpcMiddlewareRegistration reg(
+            [](BML_Context, BML_RpcId, BML_Bool, const BML_ImcMessage *,
+               const BML_ImcBuffer *, BML_Result, void *) -> BML_Result {
+                return BML_RESULT_OK;
+            },
+            0, nullptr, &bus);
+        EXPECT_TRUE(reg.Valid());
+    }
+    // Destructor calls RemoveRpcMiddleware -- no crash = success
+}
+
+TEST(ImcCppWrapperTest, RpcMiddlewareRegistrationMoveOnly) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+
+    auto mw = [](BML_Context, BML_RpcId, BML_Bool, const BML_ImcMessage *,
+                  const BML_ImcBuffer *, BML_Result, void *) -> BML_Result {
+        return BML_RESULT_OK;
+    };
+
+    RpcMiddlewareRegistration reg1(mw, 0, nullptr, &bus);
+    EXPECT_TRUE(reg1.Valid());
+
+    RpcMiddlewareRegistration reg2(std::move(reg1));
+    EXPECT_TRUE(reg2.Valid());
+    EXPECT_FALSE(reg1.Valid()); // NOLINT(bugprone-use-after-move)
+}
+
+TEST(ImcCppWrapperTest, RpcServiceManagerManagedMiddleware) {
+    ResetImcMockState();
+    BML_ImcBusInterface bus = MakeMockBus();
+
+    RpcServiceManager mgr(&bus);
+    EXPECT_TRUE(mgr.AddMiddleware(
+        [](BML_Context, BML_RpcId, BML_Bool, const BML_ImcMessage *,
+           const BML_ImcBuffer *, BML_Result, void *) -> BML_Result {
+            return BML_RESULT_OK;
+        },
+        0));
+    EXPECT_EQ(mgr.Count(), 0u); // Count only counts servers, not middleware
+
+    mgr.Clear(); // Should remove middleware without crash
+    EXPECT_TRUE(mgr.Empty());
+}

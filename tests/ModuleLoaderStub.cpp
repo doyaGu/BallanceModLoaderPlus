@@ -10,8 +10,6 @@ namespace BML::Core {
 bool LoadModules(const std::vector<ResolvedNode> & /*order*/,
                  Context & /*context*/,
                  PFN_BML_GetProcAddress /*get_proc*/,
-                 PFN_BML_GetProcAddressById /*get_proc_by_id*/,
-                 PFN_BML_GetApiId /*get_api_id*/,
                  std::vector<LoadedModule> &out_modules,
                  ModuleLoadError &out_error) {
     // Stub: no modules loaded in tests

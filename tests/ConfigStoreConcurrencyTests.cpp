@@ -24,8 +24,6 @@
 
 #include "bml_config.h"
 #include "bml_errors.h"
-#include "bml_extension.h"
-
 using BML::Core::ApiRegistry;
 using BML::Core::ConfigStore;
 using BML::Core::Context;

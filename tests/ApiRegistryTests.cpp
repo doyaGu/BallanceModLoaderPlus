@@ -17,26 +17,6 @@ namespace {
 void DummyFuncA() {}
 void DummyFuncB() {}
 
-constexpr BML_ApiId BML_API_ID_bmlTestGuarded = 90000u;
-constexpr BML_ApiId BML_API_ID_bmlTestVoid = 90001u;
-constexpr BML_ApiId BML_API_ID_bmlTestSimple = 90002u;
-
-// Helper to create a minimal ApiMetadata for tests
-ApiRegistry::ApiMetadata MakeTestMetadata(const char* name, BML_ApiId id, void* ptr) {
-    ApiRegistry::ApiMetadata meta{};
-    meta.name = name;
-    meta.id = id;
-    meta.pointer = ptr;
-    meta.version_major = 1;
-    meta.version_minor = 0;
-    meta.version_patch = 0;
-    meta.capabilities = 0;
-    meta.type = BML_API_TYPE_CORE;
-    meta.threading = BML_THREADING_FREE;
-    meta.provider_mod = "test";
-    return meta;
-}
-
 BML_Result TestGuardedImpl(int value) {
     if (value < 0) {
         throw std::runtime_error("guarded failure");
@@ -75,40 +55,40 @@ protected:
     }
 };
 
-TEST_F(ApiRegistryTest, RegistrationPopulatesDirectAndCachedLookups) {
+TEST_F(ApiRegistryTest, BasicRegistrationAndGetByName) {
     auto &registry = ApiRegistry::Instance();
-    constexpr BML_ApiId kId = 42;
-    registry.RegisterApi(MakeTestMetadata("test.log", kId, reinterpret_cast<void *>(+DummyFuncA)));
+    registry.RegisterApi("test.log", reinterpret_cast<void *>(+DummyFuncA), "test");
 
-    EXPECT_EQ(registry.GetByIdDirect(kId), reinterpret_cast<void *>(+DummyFuncA));
-    EXPECT_EQ(registry.GetByIdCached(kId), reinterpret_cast<void *>(+DummyFuncA));
+    EXPECT_EQ(registry.Get("test.log"), reinterpret_cast<void *>(+DummyFuncA));
 }
 
-TEST_F(ApiRegistryTest, CachedLookupFallsBackWhenDirectSlotMissing) {
+TEST_F(ApiRegistryTest, RegisterRejectsDuplicateNames) {
     auto &registry = ApiRegistry::Instance();
-    const BML_ApiId high_id = static_cast<BML_ApiId>(MAX_DIRECT_API_ID + 25);
-    registry.RegisterApi(MakeTestMetadata("test.high", high_id, reinterpret_cast<void *>(+DummyFuncB)));
+    registry.RegisterApi("api.one", reinterpret_cast<void *>(+DummyFuncA), "test");
+    registry.RegisterApi("api.one", reinterpret_cast<void *>(+DummyFuncB), "test");
 
-    EXPECT_EQ(registry.GetByIdCached(high_id), reinterpret_cast<void *>(+DummyFuncB));
+    // First registration wins
+    EXPECT_EQ(registry.Get("api.one"), reinterpret_cast<void *>(+DummyFuncA));
 }
 
-TEST_F(ApiRegistryTest, RegisterRejectsDuplicateIds) {
+TEST_F(ApiRegistryTest, RegisterRejectsNullPointer) {
     auto &registry = ApiRegistry::Instance();
-    registry.RegisterApi(MakeTestMetadata("api.one", 55, reinterpret_cast<void *>(+DummyFuncA)));
-    registry.RegisterApi(MakeTestMetadata("api.two", 55, reinterpret_cast<void *>(+DummyFuncB)));
+    registry.RegisterApi("api.null", nullptr, "test");
 
-    EXPECT_EQ(registry.Get("api.two"), nullptr);
-    EXPECT_EQ(registry.GetById(55), reinterpret_cast<void *>(+DummyFuncA));
+    EXPECT_EQ(registry.Get("api.null"), nullptr);
+    EXPECT_EQ(registry.GetApiCount(), 0u);
+
+    BML_ApiId api_id = BML_API_INVALID_ID;
+    EXPECT_FALSE(registry.GetApiId("api.null", &api_id));
 }
 
-TEST_F(ApiRegistryTest, TlsCacheInvalidatesAfterUnregister) {
+TEST_F(ApiRegistryTest, UnregisterRemovesApi) {
     auto &registry = ApiRegistry::Instance();
-    constexpr BML_ApiId kId = 77;
-    registry.RegisterApi(MakeTestMetadata("api.cache", kId, reinterpret_cast<void *>(+DummyFuncA)));
-    ASSERT_NE(registry.GetByIdCached(kId), nullptr);
+    registry.RegisterApi("api.cache", reinterpret_cast<void *>(+DummyFuncA), "test");
+    ASSERT_NE(registry.Get("api.cache"), nullptr);
 
     ASSERT_TRUE(registry.Unregister("api.cache"));
-    EXPECT_EQ(registry.GetByIdCached(kId), nullptr);
+    EXPECT_EQ(registry.Get("api.cache"), nullptr);
 }
 
 TEST_F(ApiRegistryTest, RegisterApiCopiesNameAndProviderStrings) {
@@ -116,98 +96,33 @@ TEST_F(ApiRegistryTest, RegisterApiCopiesNameAndProviderStrings) {
     std::string dynamicName = "dynamic.api";
     std::string dynamicProvider = "provider.dynamic";
 
-    ApiRegistry::ApiMetadata meta{};
-    meta.name = dynamicName.c_str();
-    meta.id = 515;
-    meta.pointer = reinterpret_cast<void *>(+DummyFuncA);
-    meta.version_major = 1;
-    meta.version_minor = 0;
-    meta.capabilities = 0;
-    meta.type = BML_API_TYPE_CORE;
-    meta.threading = BML_THREADING_FREE;
-    meta.provider_mod = dynamicProvider.c_str();
+    const char *name_ptr = dynamicName.c_str();
+    const char *provider_ptr = dynamicProvider.c_str();
 
-    const char *name_ptr = meta.name;
-    const char *provider_ptr = meta.provider_mod;
-
-    registry.RegisterApi(meta);
+    registry.RegisterApi(name_ptr, reinterpret_cast<void *>(+DummyFuncA), provider_ptr);
 
     const std::string expected_name = "dynamic.api";
     const std::string expected_provider = "provider.dynamic";
     dynamicName.assign("mutated-name");
     dynamicProvider.assign("mutated-provider");
 
-    const auto *stored = registry.QueryApi(meta.id);
-    ASSERT_NE(stored, nullptr);
-    EXPECT_STREQ(stored->name, expected_name.c_str());
-    EXPECT_STREQ(stored->provider_mod, expected_provider.c_str());
-    EXPECT_NE(stored->name, name_ptr);
-    EXPECT_NE(stored->provider_mod, provider_ptr);
+    // Verify API still accessible with original name
+    EXPECT_NE(registry.Get(expected_name.c_str()), nullptr);
+
+    // Verify unregister by provider still works with original provider name
+    EXPECT_EQ(registry.UnregisterByProvider(expected_provider), 1u);
 }
 
-TEST_F(ApiRegistryTest, CapabilitiesRecomputedAfterProviderUnregister) {
+TEST_F(ApiRegistryTest, UnregisterByProviderRemovesAllFromProvider) {
     auto &registry = ApiRegistry::Instance();
-    ApiRegistry::ApiMetadata meta{};
-    meta.name = "capsApi";
-    meta.id = 401;
-    meta.pointer = reinterpret_cast<void *>(+DummyFuncA);
-    meta.version_major = 1;
-    meta.version_minor = 0;
-    meta.capabilities = BML_CAP_EXTENSION_BASIC;
-    meta.type = BML_API_TYPE_EXTENSION;
-    meta.threading = BML_THREADING_FREE;
-    meta.provider_mod = "provider.test";
-    registry.RegisterApi(meta);
+    registry.RegisterApi("api1", reinterpret_cast<void *>(+DummyFuncA), "provider.test");
+    registry.RegisterApi("api2", reinterpret_cast<void *>(+DummyFuncB), "provider.test");
+    registry.RegisterApi("api3", reinterpret_cast<void *>(+DummyFuncA), "other.provider");
 
-    EXPECT_EQ(registry.GetTotalCapabilities(), BML_CAP_EXTENSION_BASIC);
-    EXPECT_EQ(registry.UnregisterByProvider("provider.test"), 1u);
-    EXPECT_EQ(registry.GetTotalCapabilities(), 0u);
-}
-
-TEST_F(ApiRegistryTest, RegisterExtensionValidatesApiTable) {
-    auto &registry = ApiRegistry::Instance();
-    EXPECT_EQ(registry.RegisterExtension(
-                  "ext.null",
-                  1,
-                  0,
-                  nullptr,
-                  sizeof(void *),
-                  "provider"),
-              BML_API_INVALID_ID);
-
-    EXPECT_EQ(registry.RegisterExtension(
-                  "ext.zero",
-                  1,
-                  0,
-                  reinterpret_cast<void *>(+DummyFuncA),
-                  0,
-                  "provider"),
-              BML_API_INVALID_ID);
-}
-
-TEST_F(ApiRegistryTest, RegisterExtensionRejectsConcurrentDuplicates) {
-    auto &registry = ApiRegistry::Instance();
-    std::atomic<int> successes{0};
-
-    auto worker = [&]() {
-        auto id = registry.RegisterExtension(
-            "dup.ext",
-            1,
-            0,
-            reinterpret_cast<void *>(+DummyFuncA),
-            sizeof(void *),
-            "provider.concurrent");
-        if (id != BML_API_INVALID_ID) {
-            successes.fetch_add(1, std::memory_order_relaxed);
-        }
-    };
-
-    std::thread t1(worker);
-    std::thread t2(worker);
-    t1.join();
-    t2.join();
-
-    EXPECT_EQ(successes.load(std::memory_order_relaxed), 1);
+    EXPECT_EQ(registry.UnregisterByProvider("provider.test"), 2u);
+    EXPECT_EQ(registry.Get("api1"), nullptr);
+    EXPECT_EQ(registry.Get("api2"), nullptr);
+    EXPECT_NE(registry.Get("api3"), nullptr);
 }
 
 TEST_F(ApiRegistryTest, ConcurrentRegisterAndLookupDoesNotCrash) {
@@ -216,16 +131,13 @@ TEST_F(ApiRegistryTest, ConcurrentRegisterAndLookupDoesNotCrash) {
 
     std::thread lookup([&]() {
         while (running.load(std::memory_order_relaxed)) {
-            registry.GetByIdCached(12345);
+            registry.Get("api.concurrent.test");
         }
     });
 
     for (int i = 0; i < 256; ++i) {
         std::string name = "api.concurrent." + std::to_string(i);
-        registry.RegisterApi(MakeTestMetadata(
-            name.c_str(),
-            static_cast<BML_ApiId>(1000 + i),
-            reinterpret_cast<void *>(+DummyFuncB)));
+        registry.RegisterApi(name.c_str(), reinterpret_cast<void *>(+DummyFuncB), "test");
     }
 
     running.store(false, std::memory_order_relaxed);
@@ -237,7 +149,7 @@ TEST_F(ApiRegistryTest, GuardedRegistrationWrapsAndTranslatesErrors) {
     BML_REGISTER_API_GUARDED(bmlTestGuarded, "tests.guard", TestGuardedImpl);
 
     auto fn = reinterpret_cast<BML_Result (*)(int)>(
-        registry.GetById(BML_API_ID_bmlTestGuarded));
+        registry.Get("bmlTestGuarded"));
     ASSERT_NE(fn, nullptr);
 
     BML_ErrorInfo info{};
@@ -262,7 +174,7 @@ TEST_F(ApiRegistryTest, VoidGuardedRegistrationSuppressesExceptions) {
     auto &registry = ApiRegistry::Instance();
     BML_REGISTER_API_VOID_GUARDED(bmlTestVoid, "tests.void", TestVoidImpl);
 
-    auto fn = reinterpret_cast<void (*)(int)>(registry.GetById(BML_API_ID_bmlTestVoid));
+    auto fn = reinterpret_cast<void (*)(int)>(registry.Get("bmlTestVoid"));
     ASSERT_NE(fn, nullptr);
 
     BML_ErrorInfo info{};
@@ -281,7 +193,7 @@ TEST_F(ApiRegistryTest, SimpleRegistrationKeepsExactPointer) {
     auto &registry = ApiRegistry::Instance();
     BML_REGISTER_API(bmlTestSimple, TestSimpleImpl);
 
-    auto fn = reinterpret_cast<int (*)()>(registry.GetById(BML_API_ID_bmlTestSimple));
+    auto fn = reinterpret_cast<int (*)()>(registry.Get("bmlTestSimple"));
     ASSERT_NE(fn, nullptr);
     EXPECT_EQ(fn(), 42);
 }

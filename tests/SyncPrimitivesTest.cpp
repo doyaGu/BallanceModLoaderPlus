@@ -739,17 +739,3 @@ TEST_F(SyncPrimitivesTest, SemaphoreWaitDeadlockDetectionSetsLastError) {
     SyncManager::Instance().DestroySemaphore(first);
 }
 
-// ============================================================================
-// Capabilities Test
-// ============================================================================
-
-TEST_F(SyncPrimitivesTest, CapsIncludeCondVarAndSpinLock) {
-    BML_SyncCaps caps = {};
-    caps.struct_size = sizeof(BML_SyncCaps);
-    
-    BML_Result result = SyncManager::Instance().GetCaps(&caps);
-    ASSERT_EQ(result, BML_RESULT_OK);
-    
-    EXPECT_TRUE(caps.capability_flags & BML_SYNC_CAP_CONDVAR);
-    EXPECT_TRUE(caps.capability_flags & BML_SYNC_CAP_SPINLOCK);
-}

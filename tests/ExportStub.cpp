@@ -13,14 +13,4 @@ void *bmlGetProcAddress(const char *proc_name) {
     return BML::Core::ApiRegistry::Instance().Get(proc_name);
 }
 
-void *bmlGetProcAddressById(BML_ApiId api_id) {
-    return BML::Core::ApiRegistry::Instance().GetById(api_id);
-}
-
-int bmlGetApiId(const char *proc_name, BML_ApiId *out_id) {
-    if (!proc_name || !out_id)
-        return 0;
-    return BML::Core::ApiRegistry::Instance().GetApiId(proc_name, out_id) ? 1 : 0;
-}
-
 } // extern "C"

@@ -10,7 +10,6 @@
 #include "Core/ResourceApi.h"
 
 #include "bml_errors.h"
-#include "bml_extension.h"
 #include "bml_resource.h"
 
 using BML::Core::ApiRegistry;
@@ -244,6 +243,57 @@ TEST_F(ResourceHandleLifecycleTests, RetainOnReleasedHandleReturnsError) {
     EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, retain(&desc));
 }
 
+TEST_F(ResourceHandleLifecycleTests, ConcurrentRetainDoesNotReviveFinalRelease) {
+    auto create = Lookup<PFN_HandleCreate>("bmlHandleCreate");
+    auto retain = Lookup<PFN_HandleRetain>("bmlHandleRetain");
+    auto release = Lookup<PFN_HandleRelease>("bmlHandleRelease");
+    auto validate = Lookup<PFN_HandleValidate>("bmlHandleValidate");
+    ASSERT_NE(create, nullptr);
+    ASSERT_NE(retain, nullptr);
+    ASSERT_NE(release, nullptr);
+    ASSERT_NE(validate, nullptr);
+
+    std::atomic<int> finalize_counter{0};
+    BML_HandleType type = RegisterCountingType(finalize_counter);
+
+    constexpr int kIterations = 128;
+    for (int i = 0; i < kIterations; ++i) {
+        BML_HandleDesc desc{};
+        ASSERT_EQ(BML_RESULT_OK, create(type, &desc));
+
+        std::barrier start(3);
+        std::atomic<BML_Result> retain_result{BML_RESULT_FAIL};
+        std::atomic<BML_Result> release_result{BML_RESULT_FAIL};
+
+        std::thread releaser([&] {
+            start.arrive_and_wait();
+            release_result.store(release(&desc), std::memory_order_release);
+        });
+        std::thread retainer([&] {
+            start.arrive_and_wait();
+            retain_result.store(retain(&desc), std::memory_order_release);
+        });
+
+        start.arrive_and_wait();
+        releaser.join();
+        retainer.join();
+
+        EXPECT_EQ(BML_RESULT_OK, release_result.load(std::memory_order_acquire));
+
+        BML_Bool valid = BML_FALSE;
+        ASSERT_EQ(BML_RESULT_OK, validate(&desc, &valid));
+
+        if (retain_result.load(std::memory_order_acquire) == BML_RESULT_OK) {
+            EXPECT_EQ(BML_TRUE, valid);
+            EXPECT_EQ(BML_RESULT_OK, release(&desc));
+        } else {
+            EXPECT_EQ(BML_FALSE, valid);
+        }
+    }
+
+    EXPECT_EQ(finalize_counter.load(std::memory_order_relaxed), kIterations);
+}
+
 TEST_F(ResourceHandleLifecycleTests, HandleOpsRejectShrunkStructs) {
     auto create = Lookup<PFN_HandleCreate>("bmlHandleCreate");
     auto retain = Lookup<PFN_HandleRetain>("bmlHandleRetain");
@@ -400,31 +450,6 @@ TEST_F(ResourceHandleLifecycleTests, AttachUserDataOnReleasedHandleReturnsError)
     
     int payload = 42;
     EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, attach(&desc, &payload));
-}
-
-TEST_F(ResourceHandleLifecycleTests, ResourceCapsReportsCorrectCapabilities) {
-    using PFN_ResourceGetCaps = BML_Result (*)(BML_ResourceCaps *);
-    auto getCaps = Lookup<PFN_ResourceGetCaps>("bmlResourceGetCaps");
-    ASSERT_NE(getCaps, nullptr);
-    
-    BML_ResourceCaps caps = BML_RESOURCE_CAPS_INIT;
-    ASSERT_EQ(BML_RESULT_OK, getCaps(&caps));
-    
-    EXPECT_EQ(caps.struct_size, sizeof(BML_ResourceCaps));
-    EXPECT_TRUE(caps.capability_flags & BML_RESOURCE_CAP_STRONG_REFERENCES);
-    EXPECT_TRUE(caps.capability_flags & BML_RESOURCE_CAP_USER_DATA);
-    EXPECT_TRUE(caps.capability_flags & BML_RESOURCE_CAP_THREAD_SAFE);
-    EXPECT_TRUE(caps.capability_flags & BML_RESOURCE_CAP_TYPE_ISOLATION);
-}
-
-TEST_F(ResourceHandleLifecycleTests, ResourceCapsRejectsMismatchedStructSize) {
-    using PFN_ResourceGetCaps = BML_Result (*)(BML_ResourceCaps *);
-    auto getCaps = Lookup<PFN_ResourceGetCaps>("bmlResourceGetCaps");
-    ASSERT_NE(getCaps, nullptr);
-
-    BML_ResourceCaps caps{};
-    caps.struct_size = sizeof(BML_ResourceCaps) - 1;
-    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, getCaps(&caps));
 }
 
 } // namespace

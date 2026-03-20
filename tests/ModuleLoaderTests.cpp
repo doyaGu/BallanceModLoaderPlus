@@ -75,7 +75,7 @@ TEST_F(ModuleLoaderTests, LoadModulesWithEmptyOrder) {
     ModuleLoadError error;
     
     // Empty order should succeed trivially
-    bool result = LoadModules(order, Context::Instance(), nullptr, nullptr, nullptr, modules, error);
+    bool result = LoadModules(order, Context::Instance(), nullptr, modules, error);
     EXPECT_TRUE(result);
     EXPECT_TRUE(modules.empty());
 }
@@ -95,8 +95,9 @@ TEST_F(ModuleLoaderTests, LoadModulesWithNonExistentDll) {
     // - May return false with error for non-existent DLL
     // - May skip and return true with empty modules
     // Either is acceptable as long as no crash
-    bool result = LoadModules(order, Context::Instance(), &bmlGetProcAddress, &bmlGetProcAddressById, &bmlGetApiId, modules, error);
-    
+    // Pass nullptrs: the stub ignores these function pointers
+    bool result = LoadModules(order, Context::Instance(), nullptr, modules, error);
+
     if (!result) {
         // If it failed, check error is set
         EXPECT_FALSE(error.message.empty());
@@ -106,17 +107,18 @@ TEST_F(ModuleLoaderTests, LoadModulesWithNonExistentDll) {
 
 TEST_F(ModuleLoaderTests, LoadModulesWithEmptyDllPath) {
     auto* manifest = CreateManifest("test.mod", L"");
-    
+
     ResolvedNode node;
     node.id = manifest->package.id;
     node.manifest = manifest;
-    
+
     std::vector<ResolvedNode> order = {node};
     std::vector<LoadedModule> modules;
     ModuleLoadError error;
-    
+
     // Empty DLL path should fail or be handled gracefully
-    bool result = LoadModules(order, Context::Instance(), &bmlGetProcAddress, &bmlGetProcAddressById, &bmlGetApiId, modules, error);
+    // Pass nullptrs: the stub ignores these function pointers
+    bool result = LoadModules(order, Context::Instance(), nullptr, modules, error);
     // The result depends on implementation - it may skip or fail
     // Just verify no crash occurs
     EXPECT_TRUE(result || !error.message.empty());

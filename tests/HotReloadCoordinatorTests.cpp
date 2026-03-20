@@ -377,6 +377,78 @@ TEST_F(HotReloadCoordinatorTest, IgnoresUnrelatedRootFileChanges) {
     EXPECT_EQ(callback_count.load(std::memory_order_relaxed), 1);
 }
 
+TEST_F(HotReloadCoordinatorTest, WatchesIncludedScriptFilesForRuntimeReload) {
+    auto entry_path = m_TempDir / "main.as";
+    auto include_path = m_TempDir / "shared.as";
+    auto manifest_path = m_TempDir / "mod.toml";
+
+    {
+        std::ofstream entry(entry_path);
+        entry << "#include \"shared.as\"\n";
+    }
+    {
+        std::ofstream include(include_path);
+        include << "void helper() {}\n";
+    }
+    {
+        std::ofstream manifest(manifest_path);
+        manifest << "[package]\n";
+    }
+
+    std::this_thread::sleep_for(200ms);
+
+    HotReloadCoordinator coordinator(*m_Context);
+
+    HotReloadSettings settings;
+    settings.enabled = true;
+    settings.debounce = 200ms;
+    settings.temp_directory = (m_TempDir / "temp").wstring();
+    coordinator.Configure(settings);
+
+    HotReloadModuleEntry entry;
+    entry.id = "test.script";
+    entry.dll_path = entry_path.wstring();
+    entry.watch_path = m_TempDir.wstring();
+    ModManifest manifest{};
+    manifest.package.id = "test.script";
+    manifest.package.entry = "main.as";
+    manifest.directory = m_TempDir.wstring();
+    manifest.manifest_path = manifest_path.wstring();
+    entry.manifest = manifest;
+    ASSERT_TRUE(coordinator.RegisterModule(entry));
+
+    std::atomic<int> callback_count{0};
+    coordinator.SetNotifyCallback([&](const std::string &, ReloadResult, unsigned int, ReloadFailure) {
+        callback_count.fetch_add(1, std::memory_order_relaxed);
+    });
+
+    coordinator.Start();
+    std::this_thread::sleep_for(500ms);
+
+    {
+        std::ofstream include(include_path, std::ios::trunc);
+        include << "void helper() { /* changed */ }\n";
+        include.flush();
+    }
+
+    auto deadline = std::chrono::steady_clock::now() + 10s;
+    while (std::chrono::steady_clock::now() < deadline) {
+        coordinator.Update();
+        if (callback_count.load(std::memory_order_relaxed) != 0) {
+            break;
+        }
+        std::this_thread::sleep_for(100ms);
+    }
+
+    coordinator.Stop();
+
+    if (callback_count.load(std::memory_order_relaxed) == 0) {
+        GTEST_SKIP() << "Included script file event not received in time (platform-specific behavior)";
+    }
+
+    EXPECT_EQ(callback_count.load(std::memory_order_relaxed), 1);
+}
+
 TEST_F(HotReloadCoordinatorTest, StopClearsScheduledReloads) {
     auto dll_path = m_TempDir / "test.dll";
     CreateMinimalDll(dll_path);

@@ -1,7 +1,7 @@
 /**
  * @file StructSizeTest.cpp
  * @brief Tests to verify struct_size field placement and initialization
- * 
+ *
  * Ensure all public structures have struct_size as the first field
  * and provide proper initialization macros.
  */
@@ -14,14 +14,12 @@
 #include "bml_imc.h"
 #include "bml_config.h"
 #include "bml_logging.h"
-#include "bml_sync.h"
-#include "bml_capabilities.h"
-#include "bml_api_tracing.h"
 #include "bml_profiling.h"
+#include "bml_interface.h"
 
 /**
  * @brief Test suite for struct_size field validation
- * 
+ *
  * Verifies that:
  * 1. All structures have struct_size as the first field (offset 0)
  * 2. Initialization macros produce correct struct_size values
@@ -56,24 +54,14 @@ TEST_F(StructSizeTest, BML_ImcBuffer_StructSizeOffset) {
         << "BML_ImcBuffer.struct_size must be the first field";
 }
 
-TEST_F(StructSizeTest, BML_SyncCaps_StructSizeOffset) {
-    EXPECT_EQ(offsetof(BML_SyncCaps, struct_size), 0u)
-        << "BML_SyncCaps.struct_size must be the first field";
+TEST_F(StructSizeTest, BML_InterfaceDesc_StructSizeOffset) {
+    EXPECT_EQ(offsetof(BML_InterfaceDesc, struct_size), 0u)
+        << "BML_InterfaceDesc.struct_size must be the first field";
 }
 
-TEST_F(StructSizeTest, BML_VersionRequirement_StructSizeOffset) {
-    EXPECT_EQ(offsetof(BML_VersionRequirement, struct_size), 0u)
-        << "BML_VersionRequirement.struct_size must be the first field";
-}
-
-TEST_F(StructSizeTest, BML_ApiDescriptor_StructSizeOffset) {
-    EXPECT_EQ(offsetof(BML_ApiDescriptor, struct_size), 0u)
-        << "BML_ApiDescriptor.struct_size must be the first field";
-}
-
-TEST_F(StructSizeTest, BML_ApiStats_StructSizeOffset) {
-    EXPECT_EQ(offsetof(BML_ApiStats, struct_size), 0u)
-        << "BML_ApiStats.struct_size must be the first field";
+TEST_F(StructSizeTest, BML_InterfaceRuntimeDesc_StructSizeOffset) {
+    EXPECT_EQ(offsetof(BML_InterfaceRuntimeDesc, struct_size), 0u)
+        << "BML_InterfaceRuntimeDesc.struct_size must be the first field";
 }
 
 /* ========================================================================
@@ -111,22 +99,18 @@ TEST_F(StructSizeTest, BML_IMC_BUFFER_INIT_StructSize) {
     EXPECT_EQ(buf.size, 0u);
 }
 
-TEST_F(StructSizeTest, BML_API_STATS_INIT_StructSize) {
-    BML_ApiStats stats = BML_API_STATS_INIT;
-    EXPECT_EQ(stats.struct_size, sizeof(BML_ApiStats))
-        << "BML_API_STATS_INIT must set correct struct_size";
+TEST_F(StructSizeTest, BML_INTERFACE_DESC_INIT_StructSize) {
+    BML_InterfaceDesc desc = BML_INTERFACE_DESC_INIT;
+    EXPECT_EQ(desc.struct_size, sizeof(BML_InterfaceDesc))
+        << "BML_INTERFACE_DESC_INIT must set correct struct_size";
+    EXPECT_EQ(desc.capabilities, 0u);
 }
 
-TEST_F(StructSizeTest, BML_API_DESCRIPTOR_INIT_StructSize) {
-    BML_ApiDescriptor desc = BML_API_DESCRIPTOR_INIT;
-    EXPECT_EQ(desc.struct_size, sizeof(BML_ApiDescriptor))
-        << "BML_API_DESCRIPTOR_INIT must set correct struct_size";
-}
-
-TEST_F(StructSizeTest, BML_VERSION_REQUIREMENT_INIT_StructSize) {
-    BML_VersionRequirement req = BML_VERSION_REQUIREMENT_INIT(1, 0, 0);
-    EXPECT_EQ(req.struct_size, sizeof(BML_VersionRequirement))
-        << "BML_VERSION_REQUIREMENT_INIT must set correct struct_size";
+TEST_F(StructSizeTest, BML_INTERFACE_RUNTIME_DESC_INIT_StructSize) {
+    BML_InterfaceRuntimeDesc desc = BML_INTERFACE_RUNTIME_DESC_INIT;
+    EXPECT_EQ(desc.struct_size, sizeof(BML_InterfaceRuntimeDesc))
+        << "BML_INTERFACE_RUNTIME_DESC_INIT must set correct struct_size";
+    EXPECT_EQ(desc.capabilities, 0u);
 }
 
 /* ========================================================================
@@ -134,17 +118,12 @@ TEST_F(StructSizeTest, BML_VERSION_REQUIREMENT_INIT_StructSize) {
  * ======================================================================== */
 
 TEST_F(StructSizeTest, EnumSizes_Are32Bit) {
-    // All enums with _FORCE_32BIT marker should be 4 bytes
-    EXPECT_EQ(sizeof(BML_ThreadingModel), sizeof(int32_t))
-        << "BML_ThreadingModel must be 32-bit";
     EXPECT_EQ(sizeof(BML_LogSeverity), sizeof(int32_t))
         << "BML_LogSeverity must be 32-bit";
     EXPECT_EQ(sizeof(BML_ConfigType), sizeof(int32_t))
         << "BML_ConfigType must be 32-bit";
     EXPECT_EQ(sizeof(BML_FutureState), sizeof(int32_t))
         << "BML_FutureState must be 32-bit";
-    EXPECT_EQ(sizeof(BML_SyncCapabilityFlags), sizeof(int32_t))
-        << "BML_SyncCapabilityFlags must be 32-bit";
 }
 
 /* ========================================================================
@@ -176,11 +155,11 @@ TEST_F(StructSizeTest, ResultMacros) {
     EXPECT_TRUE(BML_SUCCEEDED(BML_RESULT_OK));
     EXPECT_TRUE(BML_SUCCEEDED(0));
     EXPECT_TRUE(BML_SUCCEEDED(1));
-    
+
     EXPECT_TRUE(BML_FAILED(BML_RESULT_FAIL));
     EXPECT_TRUE(BML_FAILED(BML_RESULT_INVALID_ARGUMENT));
     EXPECT_TRUE(BML_FAILED(-1));
-    
+
     EXPECT_FALSE(BML_FAILED(BML_RESULT_OK));
     EXPECT_FALSE(BML_SUCCEEDED(BML_RESULT_FAIL));
 }

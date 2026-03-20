@@ -31,14 +31,12 @@
 using BML::Core::ApiRegistry;
 using BML::Core::ConfigStore;
 using BML::Core::Context;
-using BML::Core::ImcBus;
+using namespace BML::Core;
 
 namespace BML::Core {
-void RegisterExtensionApis() {}
 void RegisterMemoryApis() {}
 void RegisterDiagnosticApis() {}
 void RegisterSyncApis() {}
-void RegisterCapabilityApis() {}
 void RegisterTracingApis() {}
 void RegisterProfilingApis() {}
 }
@@ -86,14 +84,14 @@ protected:
         Context::Instance().Initialize(bmlGetApiVersion());
         ApiRegistry::Instance().Clear();
         Context::SetCurrentModule(nullptr);
-        ImcBus::Instance().Shutdown();
+        ImcShutdown();
         temp_root_ = std::filesystem::temp_directory_path() /
                      ("bml-coreapis-tests-" + std::to_string(test_counter_.fetch_add(1, std::memory_order_relaxed)));
         std::filesystem::create_directories(temp_root_);
     }
 
     void TearDown() override {
-        ImcBus::Instance().Shutdown();
+        ImcShutdown();
         Context::SetCurrentModule(nullptr);
         Context::Instance().Cleanup();
         manifests_.clear();
@@ -297,6 +295,10 @@ void OrderingHandler(BML_Context ctx,
 }
 
 TEST_F(CoreApisTests, ImcBroadcastPreservesPublishOrderPerSubscriber) {
+    auto owner = CreateTrackedMod("coreapis.imc.order");
+    ASSERT_NE(owner, nullptr);
+    Context::SetCurrentModule(owner);
+
     OrderingCapture first{};
     OrderingCapture second{};
 
@@ -304,17 +306,17 @@ TEST_F(CoreApisTests, ImcBroadcastPreservesPublishOrderPerSubscriber) {
     BML_Subscription sub2 = nullptr;
     
     BML_TopicId topic_id = 0;
-    ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().GetTopicId("order.topic", &topic_id));
-    ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Subscribe(topic_id, OrderingHandler, &first, &sub1));
-    ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Subscribe(topic_id, OrderingHandler, &second, &sub2));
+    ASSERT_EQ(BML_RESULT_OK, ImcGetTopicId("order.topic", &topic_id));
+    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic_id, OrderingHandler, &first, &sub1));
+    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic_id, OrderingHandler, &second, &sub2));
 
     constexpr size_t kMessages = 256;
     for (size_t i = 0; i < kMessages; ++i) {
         uint32_t payload = static_cast<uint32_t>(i);
-        ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Publish(topic_id, &payload, sizeof(payload)));
+        ASSERT_EQ(BML_RESULT_OK, ImcPublish(topic_id, &payload, sizeof(payload)));
     }
 
-    ImcBus::Instance().Pump(0);
+    ImcPump(0);
 
     auto validate = [kMessages](OrderingCapture &capture) {
         std::lock_guard<std::mutex> lock(capture.mutex);
@@ -327,8 +329,9 @@ TEST_F(CoreApisTests, ImcBroadcastPreservesPublishOrderPerSubscriber) {
     validate(first);
     validate(second);
 
-    ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Unsubscribe(sub1));
-    ASSERT_EQ(BML_RESULT_OK, ImcBus::Instance().Unsubscribe(sub2));
+    ASSERT_EQ(BML_RESULT_OK, ImcUnsubscribe(sub1));
+    ASSERT_EQ(BML_RESULT_OK, ImcUnsubscribe(sub2));
+    Context::SetCurrentModule(nullptr);
 }
 
 TEST_F(CoreApisTests, SetCurrentModuleApiIsThreadLocal) {
@@ -336,8 +339,11 @@ TEST_F(CoreApisTests, SetCurrentModuleApiIsThreadLocal) {
 
     auto set_fn = reinterpret_cast<BML_Result (*)(BML_Mod)>(ApiRegistry::Instance().Get("bmlSetCurrentModule"));
     auto get_fn = reinterpret_cast<BML_Mod (*)()>(ApiRegistry::Instance().Get("bmlGetCurrentModule"));
+    auto get_id_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
+        ApiRegistry::Instance().Get("bmlGetModId"));
     ASSERT_NE(set_fn, nullptr);
     ASSERT_NE(get_fn, nullptr);
+    ASSERT_NE(get_id_fn, nullptr);
 
     auto primary = CreateTrackedMod("coreapis.primary");
     auto worker = CreateTrackedMod("coreapis.worker");
@@ -345,9 +351,15 @@ TEST_F(CoreApisTests, SetCurrentModuleApiIsThreadLocal) {
     ASSERT_NE(primary, nullptr);
     ASSERT_NE(worker, nullptr);
 
+    // Untracked bindings remain thread-local state, but implicit Core resolution
+    // must not trust them as valid module handles.
     auto *untracked = new BML_Mod_T();
     untracked->id = "coreapis.untracked";
-    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, set_fn(untracked));
+    EXPECT_EQ(BML_RESULT_OK, set_fn(untracked));
+    EXPECT_EQ(get_fn(), untracked);
+    const char *id = nullptr;
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, get_id_fn(nullptr, &id));
+    set_fn(nullptr); // clear
     delete untracked;
 
     ASSERT_EQ(BML_RESULT_OK, set_fn(primary));
@@ -368,6 +380,345 @@ TEST_F(CoreApisTests, SetCurrentModuleApiIsThreadLocal) {
 
     ASSERT_EQ(BML_RESULT_OK, set_fn(nullptr));
     EXPECT_EQ(get_fn(), nullptr);
+}
+
+// ========================================================================
+// Phase 1a: GetModDirectory
+// ========================================================================
+
+TEST_F(CoreApisTests, GetModDirectory_ReturnsUtf8Path) {
+    BML::Core::RegisterCoreApis();
+
+    auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
+        ApiRegistry::Instance().Get("bmlGetModDirectory"));
+    ASSERT_NE(fn, nullptr);
+
+    auto mod = CreateTrackedMod("test.directory");
+    const char *dir = nullptr;
+    EXPECT_EQ(BML_RESULT_OK, fn(mod, &dir));
+    ASSERT_NE(dir, nullptr);
+    // Should contain the mod ID since temp directory includes it
+    EXPECT_NE(std::string(dir).find("test.directory"), std::string::npos);
+}
+
+TEST_F(CoreApisTests, GetModDirectory_NullOutput) {
+    BML::Core::RegisterCoreApis();
+
+    auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
+        ApiRegistry::Instance().Get("bmlGetModDirectory"));
+    ASSERT_NE(fn, nullptr);
+
+    auto mod = CreateTrackedMod("test.dir.null");
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, fn(mod, nullptr));
+}
+
+TEST_F(CoreApisTests, GetModDirectory_NullMod) {
+    BML::Core::RegisterCoreApis();
+
+    auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
+        ApiRegistry::Instance().Get("bmlGetModDirectory"));
+    ASSERT_NE(fn, nullptr);
+
+    // No current module set, so nullptr resolves to nothing
+    Context::SetCurrentModule(nullptr);
+    const char *dir = nullptr;
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, fn(nullptr, &dir));
+}
+
+TEST_F(CoreApisTests, GetModDirectory_HostModHasNoManifest) {
+    BML::Core::RegisterCoreApis();
+
+    auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
+        ApiRegistry::Instance().Get("bmlGetModDirectory"));
+    ASSERT_NE(fn, nullptr);
+
+    // The synthetic host module has no manifest
+    BML_Mod host = Context::Instance().GetSyntheticHostModule();
+    ASSERT_NE(host, nullptr);
+    const char *dir = nullptr;
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, fn(host, &dir));
+}
+
+// ========================================================================
+// Phase 1b: GetModName, GetModDescription, GetModAuthorCount/At
+// ========================================================================
+
+TEST_F(CoreApisTests, GetModName_ReturnsManifestName) {
+    BML::Core::RegisterCoreApis();
+
+    auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
+        ApiRegistry::Instance().Get("bmlGetModName"));
+    ASSERT_NE(fn, nullptr);
+
+    auto mod = CreateTrackedMod("test.name");
+    const char *name = nullptr;
+    EXPECT_EQ(BML_RESULT_OK, fn(mod, &name));
+    ASSERT_NE(name, nullptr);
+    // CreateTrackedMod sets package.name = id
+    EXPECT_STREQ("test.name", name);
+}
+
+TEST_F(CoreApisTests, GetModDescription_ReturnsManifestDescription) {
+    BML::Core::RegisterCoreApis();
+
+    auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
+        ApiRegistry::Instance().Get("bmlGetModDescription"));
+    ASSERT_NE(fn, nullptr);
+
+    // Create a mod with explicit description
+    auto manifest = std::make_unique<BML::Core::ModManifest>();
+    manifest->package.id = "test.desc";
+    manifest->package.name = "TestDesc";
+    manifest->package.version = "1.0.0";
+    manifest->package.parsed_version = {1, 0, 0};
+    manifest->package.description = "A test module";
+    manifest->directory = (temp_root_ / "test.desc").wstring();
+    std::filesystem::create_directories(manifest->directory);
+
+    auto handle = Context::Instance().CreateModHandle(*manifest);
+    BML::Core::LoadedModule module{};
+    module.id = "test.desc";
+    module.manifest = manifest.get();
+    module.mod_handle = std::move(handle);
+    Context::Instance().AddLoadedModule(std::move(module));
+
+    BML_Mod mod = Context::Instance().GetModHandleById("test.desc");
+    manifests_.push_back(std::move(manifest));
+
+    const char *desc = nullptr;
+    EXPECT_EQ(BML_RESULT_OK, fn(mod, &desc));
+    ASSERT_NE(desc, nullptr);
+    EXPECT_STREQ("A test module", desc);
+}
+
+TEST_F(CoreApisTests, GetModAuthorCount_ReturnsCorrectCount) {
+    BML::Core::RegisterCoreApis();
+
+    auto count_fn = reinterpret_cast<BML_Result (*)(BML_Mod, uint32_t *)>(
+        ApiRegistry::Instance().Get("bmlGetModAuthorCount"));
+    auto at_fn = reinterpret_cast<BML_Result (*)(BML_Mod, uint32_t, const char **)>(
+        ApiRegistry::Instance().Get("bmlGetModAuthorAt"));
+    ASSERT_NE(count_fn, nullptr);
+    ASSERT_NE(at_fn, nullptr);
+
+    // Create a mod with authors
+    auto manifest = std::make_unique<BML::Core::ModManifest>();
+    manifest->package.id = "test.authors";
+    manifest->package.name = "TestAuthors";
+    manifest->package.version = "1.0.0";
+    manifest->package.parsed_version = {1, 0, 0};
+    manifest->package.authors = {"Alice", "Bob"};
+    manifest->directory = (temp_root_ / "test.authors").wstring();
+    std::filesystem::create_directories(manifest->directory);
+
+    auto handle = Context::Instance().CreateModHandle(*manifest);
+    BML::Core::LoadedModule module{};
+    module.id = "test.authors";
+    module.manifest = manifest.get();
+    module.mod_handle = std::move(handle);
+    Context::Instance().AddLoadedModule(std::move(module));
+
+    BML_Mod mod = Context::Instance().GetModHandleById("test.authors");
+    manifests_.push_back(std::move(manifest));
+
+    uint32_t count = 0;
+    EXPECT_EQ(BML_RESULT_OK, count_fn(mod, &count));
+    EXPECT_EQ(2u, count);
+
+    const char *author = nullptr;
+    EXPECT_EQ(BML_RESULT_OK, at_fn(mod, 0, &author));
+    EXPECT_STREQ("Alice", author);
+
+    EXPECT_EQ(BML_RESULT_OK, at_fn(mod, 1, &author));
+    EXPECT_STREQ("Bob", author);
+
+    // Out of range
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, at_fn(mod, 2, &author));
+}
+
+TEST_F(CoreApisTests, GetModName_NullOutput) {
+    BML::Core::RegisterCoreApis();
+
+    auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
+        ApiRegistry::Instance().Get("bmlGetModName"));
+    ASSERT_NE(fn, nullptr);
+
+    auto mod = CreateTrackedMod("test.name.null");
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, fn(mod, nullptr));
+}
+
+// ========================================================================
+// Phase 1c: Config Typed Shortcuts
+// ========================================================================
+
+TEST_F(CoreApisTests, ConfigGetInt_KeyFound) {
+    InitConfigBackedMod("coreapis.config.int");
+    BML::Core::RegisterConfigApis();
+
+    auto set_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *)>(
+        ApiRegistry::Instance().Get("bmlConfigSet"));
+    auto get_int_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, int32_t, int32_t *)>(
+        ApiRegistry::Instance().Get("bmlConfigGetInt"));
+    ASSERT_NE(set_fn, nullptr);
+    ASSERT_NE(get_int_fn, nullptr);
+
+    BML_ConfigKey key = BML_CONFIG_KEY_INIT("test", "myint");
+    BML_ConfigValue value = BML_CONFIG_VALUE_INIT_INT(42);
+    ASSERT_EQ(BML_RESULT_OK, set_fn(Mod(), &key, &value));
+
+    int32_t result = 0;
+    EXPECT_EQ(BML_RESULT_OK, get_int_fn(Mod(), "test", "myint", -1, &result));
+    EXPECT_EQ(42, result);
+}
+
+TEST_F(CoreApisTests, ConfigGetInt_KeyNotFoundReturnsDefault) {
+    InitConfigBackedMod("coreapis.config.int.default");
+    BML::Core::RegisterConfigApis();
+
+    auto get_int_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, int32_t, int32_t *)>(
+        ApiRegistry::Instance().Get("bmlConfigGetInt"));
+    ASSERT_NE(get_int_fn, nullptr);
+
+    int32_t result = 0;
+    EXPECT_EQ(BML_RESULT_OK, get_int_fn(Mod(), "test", "nonexistent", 99, &result));
+    EXPECT_EQ(99, result);
+}
+
+TEST_F(CoreApisTests, ConfigGetFloat_KeyFound) {
+    InitConfigBackedMod("coreapis.config.float");
+    BML::Core::RegisterConfigApis();
+
+    auto set_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *)>(
+        ApiRegistry::Instance().Get("bmlConfigSet"));
+    auto get_float_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, float, float *)>(
+        ApiRegistry::Instance().Get("bmlConfigGetFloat"));
+    ASSERT_NE(set_fn, nullptr);
+    ASSERT_NE(get_float_fn, nullptr);
+
+    BML_ConfigKey key = BML_CONFIG_KEY_INIT("test", "myfloat");
+    BML_ConfigValue value = BML_CONFIG_VALUE_INIT_FLOAT(3.14f);
+    ASSERT_EQ(BML_RESULT_OK, set_fn(Mod(), &key, &value));
+
+    float result = 0.0f;
+    EXPECT_EQ(BML_RESULT_OK, get_float_fn(Mod(), "test", "myfloat", 0.0f, &result));
+    EXPECT_FLOAT_EQ(3.14f, result);
+}
+
+TEST_F(CoreApisTests, ConfigGetBool_KeyNotFoundReturnsDefault) {
+    InitConfigBackedMod("coreapis.config.bool.default");
+    BML::Core::RegisterConfigApis();
+
+    auto get_bool_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, BML_Bool, BML_Bool *)>(
+        ApiRegistry::Instance().Get("bmlConfigGetBool"));
+    ASSERT_NE(get_bool_fn, nullptr);
+
+    BML_Bool result = BML_FALSE;
+    EXPECT_EQ(BML_RESULT_OK, get_bool_fn(Mod(), "test", "nonexistent", BML_TRUE, &result));
+    EXPECT_EQ(BML_TRUE, result);
+}
+
+TEST_F(CoreApisTests, ConfigGetString_KeyFound) {
+    InitConfigBackedMod("coreapis.config.string");
+    BML::Core::RegisterConfigApis();
+
+    auto set_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *)>(
+        ApiRegistry::Instance().Get("bmlConfigSet"));
+    auto get_string_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, const char *, const char **)>(
+        ApiRegistry::Instance().Get("bmlConfigGetString"));
+    ASSERT_NE(set_fn, nullptr);
+    ASSERT_NE(get_string_fn, nullptr);
+
+    BML_ConfigKey key = BML_CONFIG_KEY_INIT("test", "mystr");
+    BML_ConfigValue value = BML_CONFIG_VALUE_INIT_STRING("hello");
+    ASSERT_EQ(BML_RESULT_OK, set_fn(Mod(), &key, &value));
+
+    const char *result = nullptr;
+    EXPECT_EQ(BML_RESULT_OK, get_string_fn(Mod(), "test", "mystr", "default", &result));
+    ASSERT_NE(result, nullptr);
+    EXPECT_STREQ("hello", result);
+}
+
+TEST_F(CoreApisTests, ConfigGetString_KeyNotFoundReturnsDefault) {
+    InitConfigBackedMod("coreapis.config.string.default");
+    BML::Core::RegisterConfigApis();
+
+    auto get_string_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, const char *, const char **)>(
+        ApiRegistry::Instance().Get("bmlConfigGetString"));
+    ASSERT_NE(get_string_fn, nullptr);
+
+    const char *result = nullptr;
+    EXPECT_EQ(BML_RESULT_OK, get_string_fn(Mod(), "test", "nonexistent", "fallback", &result));
+    EXPECT_STREQ("fallback", result);
+}
+
+TEST_F(CoreApisTests, ConfigGetString_NullDefaultReturnsNull) {
+    InitConfigBackedMod("coreapis.config.string.nulldefault");
+    BML::Core::RegisterConfigApis();
+
+    auto get_string_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, const char *, const char **)>(
+        ApiRegistry::Instance().Get("bmlConfigGetString"));
+    ASSERT_NE(get_string_fn, nullptr);
+
+    const char *result = reinterpret_cast<const char *>(0xDEAD); // sentinel
+    EXPECT_EQ(BML_RESULT_OK, get_string_fn(Mod(), "test", "nonexistent", nullptr, &result));
+    EXPECT_EQ(nullptr, result);
+}
+
+TEST_F(CoreApisTests, ConfigGetInt_NullOutput) {
+    InitConfigBackedMod("coreapis.config.int.null");
+    BML::Core::RegisterConfigApis();
+
+    auto get_int_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, int32_t, int32_t *)>(
+        ApiRegistry::Instance().Get("bmlConfigGetInt"));
+    ASSERT_NE(get_int_fn, nullptr);
+
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, get_int_fn(Mod(), "test", "key", 0, nullptr));
+}
+
+TEST_F(CoreApisTests, ConfigGetInt_TypeMismatch) {
+    InitConfigBackedMod("coreapis.config.int.mismatch");
+    BML::Core::RegisterConfigApis();
+
+    auto set_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *)>(
+        ApiRegistry::Instance().Get("bmlConfigSet"));
+    auto get_int_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, int32_t, int32_t *)>(
+        ApiRegistry::Instance().Get("bmlConfigGetInt"));
+    ASSERT_NE(set_fn, nullptr);
+    ASSERT_NE(get_int_fn, nullptr);
+
+    // Set a string value
+    BML_ConfigKey key = BML_CONFIG_KEY_INIT("test", "strkey");
+    BML_ConfigValue value = BML_CONFIG_VALUE_INIT_STRING("notanint");
+    ASSERT_EQ(BML_RESULT_OK, set_fn(Mod(), &key, &value));
+
+    // Try to read it as int
+    int32_t result = 0;
+    EXPECT_EQ(BML_RESULT_CONFIG_TYPE_MISMATCH, get_int_fn(Mod(), "test", "strkey", 0, &result));
+}
+
+// ========================================================================
+// Phase 1d: GetLoadedModuleCount optimization
+// ========================================================================
+
+TEST_F(CoreApisTests, GetLoadedModuleCount_MatchesModCount) {
+    BML::Core::RegisterCoreApis();
+
+    auto count_fn = reinterpret_cast<uint32_t (*)()>(
+        ApiRegistry::Instance().Get("bmlGetLoadedModuleCount"));
+    auto at_fn = reinterpret_cast<BML_Mod (*)(uint32_t)>(
+        ApiRegistry::Instance().Get("bmlGetLoadedModuleAt"));
+    ASSERT_NE(count_fn, nullptr);
+    ASSERT_NE(at_fn, nullptr);
+
+    EXPECT_EQ(0u, count_fn());
+
+    auto mod1 = CreateTrackedMod("test.count1");
+    auto mod2 = CreateTrackedMod("test.count2");
+    EXPECT_EQ(2u, count_fn());
+
+    EXPECT_EQ(mod1, at_fn(0));
+    EXPECT_EQ(mod2, at_fn(1));
+    EXPECT_EQ(nullptr, at_fn(2));
 }
 
 } // namespace
