@@ -10,8 +10,7 @@
 #define BML_PHYSICS_HOOK_H
 
 #include "CKBaseManager.h"
-#include "bml_builtin_interfaces.h"
-#include "bml_services.hpp"
+#include "bml_hook_context.h"
 
 namespace BML_Physics {
 
@@ -26,7 +25,7 @@ namespace BML_Physics {
  * @param services Module services for logging
  * @return true if hooks were installed successfully
  */
-bool InitializePhysicsHook(CKContext *context, const bml::ModuleServices &services);
+bool InitializePhysicsHook(CKContext *context, const BML_HookContext *ctx);
 
 /**
  * @brief Shutdown physics hooks

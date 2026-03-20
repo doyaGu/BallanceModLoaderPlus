@@ -10,8 +10,7 @@
 #define BML_OBJECTLOAD_HOOK_H
 
 #include "CKContext.h"
-#include "bml_builtin_interfaces.h"
-#include "bml_services.hpp"
+#include "bml_hook_context.h"
 
 namespace BML_ObjectLoad {
     /**
@@ -25,7 +24,7 @@ namespace BML_ObjectLoad {
      * @param services Module services for logging
      * @return true if hooks were installed successfully
      */
-    bool InitializeObjectLoadHook(CKContext *context, const bml::ModuleServices &services);
+    bool InitializeObjectLoadHook(CKContext *context, const BML_HookContext *ctx);
 
     /**
      * @brief Publish the initial base-game object/script snapshot.

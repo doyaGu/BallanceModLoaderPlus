@@ -15,7 +15,6 @@
 
 #include "BML/Guids/Hooks.h"
 #include "BML/ScriptGraph.h"
-#include "bml_services.hpp"
 #include "bml_topics.h"
 #include "EventTopics.h"
 
@@ -25,7 +24,7 @@ typedef int (*CKBehaviorCallback)(const CKBehaviorContext *behcontext, void *arg
 
 namespace {
 
-const bml::ModuleServices *s_ModServices = nullptr;
+BML_HookContext s_Hook = BML_HOOK_CONTEXT_INIT;
 
 enum TopicIndex {
     IDX_PRE_START_MENU = 0,
@@ -87,15 +86,15 @@ static void PublishRetainedState(const BML_ImcBusInterface *imc, BML_TopicId top
 }
 
 static void UpdateGamePhase(BML_GamePhase phase) {
-    if (!s_ModServices) return;
-    auto *imc = s_ModServices->Builtins().ImcBus;
+    if (!s_Hook.imc_bus) return;
+    auto *imc = s_Hook.imc_bus;
     uint32_t value = static_cast<uint32_t>(phase);
     PublishRetainedState(imc, s_TopicGamePhase, &value, sizeof(value));
 }
 
 static void UpdatePaused(BML_Bool paused) {
-    if (!s_ModServices) return;
-    auto *imc = s_ModServices->Builtins().ImcBus;
+    if (!s_Hook.imc_bus) return;
+    auto *imc = s_Hook.imc_bus;
     PublishRetainedState(imc, s_TopicPaused, &paused, sizeof(paused));
 }
 
@@ -105,7 +104,7 @@ static std::unordered_set<CK_ID> s_GameplayEnergyScripts;
 static std::unordered_set<CK_ID> s_GameplayEventsScripts;
 
 static void Log(BML_LogSeverity severity, const char *format, ...) {
-    if (!s_ModServices) {
+    if (!s_Hook.logging || !s_Hook.logging->Log) {
         return;
     }
 
@@ -115,13 +114,9 @@ static void Log(BML_LogSeverity severity, const char *format, ...) {
     std::vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
 
-    auto &logger = s_ModServices->Log();
-    switch (severity) {
-        case BML_LOG_INFO: logger.Info("%s", buffer); break;
-        case BML_LOG_WARN: logger.Warn("%s", buffer); break;
-        case BML_LOG_ERROR: logger.Error("%s", buffer); break;
-        default: logger.Info("%s", buffer); break;
-    }
+    s_Hook.logging->Log(s_Hook.global_context, severity,
+                        s_Hook.log_category ? s_Hook.log_category : "BML_Event",
+                        "%s", buffer);
 }
 
 static int PublishEventCallback(const CKBehaviorContext *behcontext, void *arg) {
@@ -133,8 +128,8 @@ static int PublishEventCallback(const CKBehaviorContext *behcontext, void *arg) 
     }
 
     const BML_TopicId topic = s_Topics[data->topicIndex];
-    if (topic != 0 && s_ModServices) {
-        auto *imc_bus = s_ModServices->Builtins().ImcBus;
+    if (topic != 0 && s_Hook.imc_bus) {
+        auto *imc_bus = s_Hook.imc_bus;
         if (imc_bus && imc_bus->Publish) {
             imc_bus->Publish(topic, nullptr, 0);
         }
@@ -229,11 +224,11 @@ static void LinkPublisher(bml::Graph &graph, CKBehavior *source, int topicIndex,
 }
 
 static void RegisterTopics() {
-    if (!s_ModServices) {
+    if (!s_Hook.imc_bus) {
         return;
     }
 
-    auto *imcBus = s_ModServices->Builtins().ImcBus;
+    auto *imcBus = s_Hook.imc_bus;
     if (!imcBus || !imcBus->GetTopicId) {
         return;
     }
@@ -291,7 +286,7 @@ static bool IsScriptBehavior(CKObject *object) {
 
 } // namespace
 
-bool InitEventHooks(CKContext *ctx, const bml::ModuleServices &services) {
+bool InitEventHooks(CKContext *ctx, const BML_HookContext *hook_ctx) {
     if (s_Initialized) {
         return true;
     }
@@ -301,7 +296,7 @@ bool InitEventHooks(CKContext *ctx, const bml::ModuleServices &services) {
         return false;
     }
 
-    s_ModServices = &services;
+    if (hook_ctx) s_Hook = *hook_ctx;
     s_Context = ctx;
     RegisterTopics();
     for (int index = 0; index < IDX_MAX; ++index) {
@@ -324,11 +319,11 @@ void ShutdownEventHooks() {
     s_GameplayIngameScripts.clear();
     s_GameplayEnergyScripts.clear();
     s_GameplayEventsScripts.clear();
-    s_ModServices = nullptr;
+    s_Hook = {};
 }
 
 int ScanLoadedScripts(CKContext *ctx) {
-    if (!ctx || !s_ModServices) {
+    if (!ctx || !s_Hook.imc_bus) {
         return 0;
     }
 

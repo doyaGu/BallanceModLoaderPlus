@@ -7,6 +7,7 @@
 #include "bml_virtools.h"
 #include "bml_virtools.hpp"
 #include "bml_virtools_payloads.h"
+#include "bml_hook_context.h"
 #include "EventTopics.h"
 #include "EventHook.h"
 
@@ -19,7 +20,8 @@ class EventMod : public bml::Module {
             return;
         }
 
-        if (!BML_Event::InitEventHooks(context, Services())) {
+        auto hookCtx = BML_MakeHookContext(Services(), "BML_Event");
+        if (!BML_Event::InitEventHooks(context, &hookCtx)) {
             Services().Log().Warn("Failed to initialize event hooks from %s", source ? source : "");
             return;
         }
@@ -47,7 +49,8 @@ public:
 
             CKContext *context = payload->script->GetCKContext();
             if (!context) return;
-            BML_Event::InitEventHooks(context, Services());
+            auto evtCtx = BML_MakeHookContext(Services(), "BML_Event");
+            BML_Event::InitEventHooks(context, &evtCtx);
             BML_Event::OnScriptLoaded(payload->filename, payload->script);
         });
 

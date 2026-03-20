@@ -21,6 +21,7 @@
 #include <thread>
 #include <unordered_map>
 
+#include "bml_hook_context.h"
 #include "InputHook.h"
 
 #include "CKContext.h"
@@ -281,7 +282,8 @@ public:
                 return;
             }
 
-            if (BML_Input::InitInputHook(inputManager, Services())) {
+            auto hookCtx = BML_MakeHookContext(Services(), "BML_Input");
+            if (BML_Input::InitInputHook(inputManager, &hookCtx)) {
                 m_HookReady = true;
                 Services().Log().Info("Input hooks initialized on Engine/Init event");
             } else {

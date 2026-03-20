@@ -10,8 +10,7 @@
 #define BML_EVENT_EVENTHOOK_H
 
 #include "CKAll.h"
-#include "bml_builtin_interfaces.h"
-#include "bml_services.hpp"
+#include "bml_hook_context.h"
 
 namespace BML_Event {
 
@@ -25,7 +24,7 @@ namespace BML_Event {
  * @param services Module services for logging
  * @return true on success
  */
-bool InitEventHooks(CKContext *ctx, const bml::ModuleServices &services);
+bool InitEventHooks(CKContext *ctx, const BML_HookContext *hook_ctx);
 
 /**
  * @brief Scan already-loaded scripts and register event hooks.

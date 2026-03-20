@@ -18,13 +18,12 @@
 #include "VTables.h"
 #include "HookUtils.h"
 
-#include "bml_services.hpp"
 #include "bml_virtools_payloads.h"
 
 namespace BML_Physics {
 
 namespace {
-const bml::ModuleServices *s_ModServices = nullptr;
+BML_HookContext s_Hook = BML_HOOK_CONTEXT_INIT;
 }
 
 //-----------------------------------------------------------------------------
@@ -122,8 +121,8 @@ int PhysicalizeHook(const CKBehaviorContext &behcontext) {
 
     if (physicalize) {
         // Publish OnPhysicalize event via IMC
-        auto *imcBus = s_ModServices ? s_ModServices->Builtins().ImcBus : nullptr;
-        if (imcBus && imcBus->Publish && PhysicsHookState::s_TopicPhysicalize) {
+        if (s_Hook.imc_bus && s_Hook.imc_bus->Publish && PhysicsHookState::s_TopicPhysicalize) {
+            auto *imcBus = s_Hook.imc_bus;
             BML_PhysicalizeEvent event{};
             event.target = target;
 
@@ -179,10 +178,9 @@ int PhysicalizeHook(const CKBehaviorContext &behcontext) {
         }
     } else {
         // Publish OnUnphysicalize event via IMC
-        if (s_ModServices && s_ModServices->Builtins().ImcBus &&
-            s_ModServices->Builtins().ImcBus->Publish &&
+        if (s_Hook.imc_bus && s_Hook.imc_bus->Publish &&
             PhysicsHookState::s_TopicUnphysicalize) {
-            s_ModServices->Builtins().ImcBus->Publish(
+            s_Hook.imc_bus->Publish(
                 PhysicsHookState::s_TopicUnphysicalize,
                 &target,
                 sizeof(target)
@@ -198,15 +196,15 @@ int PhysicalizeHook(const CKBehaviorContext &behcontext) {
 // Public API
 //-----------------------------------------------------------------------------
 
-bool InitializePhysicsHook(CKContext *context, const bml::ModuleServices &services) {
+bool InitializePhysicsHook(CKContext *context, const BML_HookContext *ctx) {
     if (!context)
         return false;
 
-    s_ModServices = &services;
+    if (ctx) s_Hook = *ctx;
     PhysicsHookState::s_Context = context;
 
-    // Register topics through module services
-    auto *imcBus = s_ModServices->Builtins().ImcBus;
+    // Register topics through hook context
+    auto *imcBus = s_Hook.imc_bus;
     if (imcBus && imcBus->GetTopicId) {
         imcBus->GetTopicId("Physics/Physicalize", &PhysicsHookState::s_TopicPhysicalize);
         imcBus->GetTopicId("Physics/Unphysicalize", &PhysicsHookState::s_TopicUnphysicalize);
@@ -239,7 +237,7 @@ void ShutdownPhysicsHook() {
         physicalizeProto->SetFunction(g_OriginalPhysicalize);
     }
 
-    s_ModServices = nullptr;
+    s_Hook = {};
 }
 
 void PhysicsPostProcess() {

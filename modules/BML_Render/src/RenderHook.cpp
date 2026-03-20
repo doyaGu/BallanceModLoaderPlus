@@ -18,31 +18,19 @@
 #include <MinHook.h>
 
 #include "HookUtils.h"
-#include "bml_services.hpp"
 
 namespace BML_Render {
 
 namespace {
-const bml::ModuleServices *s_ModServices = nullptr;
+BML_HookContext s_Hook = BML_HOOK_CONTEXT_INIT;
 
 void Log(BML_LogSeverity severity, const char *message) {
-    if (!s_ModServices || !message) {
+    if (!s_Hook.logging || !s_Hook.logging->Log || !message) {
         return;
     }
-
-    switch (severity) {
-        case BML_LOG_INFO:
-            s_ModServices->Log().Info(message);
-            break;
-        case BML_LOG_WARN:
-            s_ModServices->Log().Warn(message);
-            break;
-        case BML_LOG_ERROR:
-            s_ModServices->Log().Error(message);
-            break;
-        default:
-            break;
-    }
+    s_Hook.logging->Log(s_Hook.global_context, severity,
+                        s_Hook.log_category ? s_Hook.log_category : "BML_Render",
+                        "%s", message);
 }
 } // namespace
 
@@ -154,11 +142,11 @@ bool CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(void *base) {
 // Public API
 //-----------------------------------------------------------------------------
 
-bool InitRenderHook(const bml::ModuleServices &services) {
+bool InitRenderHook(const BML_HookContext *ctx) {
     if (s_Initialized)
         return true;
 
-    s_ModServices = &services;
+    if (ctx) s_Hook = *ctx;
 
     void *base = utils::GetModuleBaseAddress("CK2_3D.dll");
     if (!base) {
@@ -196,7 +184,7 @@ void ShutdownRenderHook() {
 
     s_Initialized = false;
     Log(BML_LOG_INFO, "Render engine hooks shutdown");
-    s_ModServices = nullptr;
+    s_Hook = {};
 }
 
 void DisableRender(bool disable) {

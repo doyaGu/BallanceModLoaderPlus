@@ -10,13 +10,13 @@
 #endif
 #include <Windows.h>
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
 #include "CKAll.h"
 #include "BML/Guids/Narratives.h"
 
-#include "bml_services.hpp"
 #include "bml_virtools_payloads.h"
 #include "bml_topics.h"
 
@@ -26,7 +26,7 @@ namespace BML_ObjectLoad {
     //-----------------------------------------------------------------------------
 
     namespace {
-    const bml::ModuleServices *s_ModServices = nullptr;
+    BML_HookContext s_Hook = BML_HOOK_CONTEXT_INIT;
     }
 
     static CKContext *s_Context = nullptr;
@@ -40,17 +40,12 @@ namespace BML_ObjectLoad {
     static constexpr const char *kInitialLoadFilename = "base.cmo";
 
     static void Log(BML_LogSeverity severity, const char *message) {
-        if (!s_ModServices || !message) {
+        if (!s_Hook.logging || !s_Hook.logging->Log || !message) {
             return;
         }
-
-        auto &logger = s_ModServices->Log();
-        switch (severity) {
-            case BML_LOG_INFO: logger.Info("%s", message); break;
-            case BML_LOG_WARN: logger.Warn("%s", message); break;
-            case BML_LOG_ERROR: logger.Error("%s", message); break;
-            default: logger.Info("%s", message); break;
-        }
+        s_Hook.logging->Log(s_Hook.global_context, severity,
+                            s_Hook.log_category ? s_Hook.log_category : "BML_ObjectLoad",
+                            "%s", message);
     }
 
     //-----------------------------------------------------------------------------
@@ -68,7 +63,7 @@ namespace BML_ObjectLoad {
                                        CKBOOL isMap,
                                        const CK_ID *objectIds,
                                        uint32_t objectCount) {
-        auto *imcBus = s_ModServices ? s_ModServices->Builtins().ImcBus : nullptr;
+        auto *imcBus = s_Hook.imc_bus;
         if (!imcBus || !imcBus->PublishBuffer || s_TopicLoadObject == 0)
             return false;
 
@@ -120,7 +115,7 @@ namespace BML_ObjectLoad {
     }
 
     static bool PublishScriptLoadEvent(const char *filename, CKBehavior *script, CKBOOL isMap) {
-        auto *imcBus = s_ModServices ? s_ModServices->Builtins().ImcBus : nullptr;
+        auto *imcBus = s_Hook.imc_bus;
         if (!imcBus || !imcBus->PublishBuffer || s_TopicLoadScript == 0 || !script)
             return false;
 
@@ -280,8 +275,8 @@ namespace BML_ObjectLoad {
             beh->SetOutputParameterObject(1, masterobject);
 
             CKBOOL isMap = strcmp(beh->GetOwnerScript()->GetName(), "Levelinit_build") == 0;
-            if (s_ModServices && isMap && s_TopicCustomMapName != 0) {
-                auto *imcBus = s_ModServices->Builtins().ImcBus;
+            if (s_Hook.imc_bus && isMap && s_TopicCustomMapName != 0) {
+                auto *imcBus = s_Hook.imc_bus;
                 if (imcBus && imcBus->CopyState) {
                     char custom_map_name[MAX_PATH] = {};
                     size_t state_size = 0;
@@ -317,8 +312,8 @@ namespace BML_ObjectLoad {
                 }
             }
 
-            if (s_ModServices && isMap && s_TopicCustomMapName != 0) {
-                auto *imcBus = s_ModServices->Builtins().ImcBus;
+            if (s_Hook.imc_bus && isMap && s_TopicCustomMapName != 0) {
+                auto *imcBus = s_Hook.imc_bus;
                 if (imcBus && imcBus->ClearState) {
                     imcBus->ClearState(s_TopicCustomMapName);
                 }
@@ -343,14 +338,14 @@ namespace BML_ObjectLoad {
     // Public API
     //-----------------------------------------------------------------------------
 
-    bool InitializeObjectLoadHook(CKContext *context, const bml::ModuleServices &services) {
+    bool InitializeObjectLoadHook(CKContext *context, const BML_HookContext *ctx) {
         if (!context)
             return false;
 
-        s_ModServices = &services;
+        if (ctx) s_Hook = *ctx;
         s_Context = context;
 
-        auto *imcBus = s_ModServices->Builtins().ImcBus;
+        auto *imcBus = s_Hook.imc_bus;
         if (imcBus && imcBus->GetTopicId) {
             imcBus->GetTopicId(BML_TOPIC_OBJECTLOAD_LOAD_OBJECT, &s_TopicLoadObject);
             imcBus->GetTopicId(BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT, &s_TopicLoadScript);
@@ -418,8 +413,10 @@ namespace BML_ObjectLoad {
         }
 
         s_InitialSnapshotPublished = true;
-        if (s_ModServices) {
-            s_ModServices->Log().Info("Published initial load snapshot for %d scripts", publishedScripts);
+        if (s_Hook.logging && s_Hook.logging->Log) {
+            char msg[128];
+            std::snprintf(msg, sizeof(msg), "Published initial load snapshot for %d scripts", publishedScripts);
+            Log(BML_LOG_INFO, msg);
         }
         return true;
     }
@@ -436,6 +433,6 @@ namespace BML_ObjectLoad {
         s_TopicLoadObject = 0;
         s_TopicLoadScript = 0;
         s_TopicCustomMapName = 0;
-        s_ModServices = nullptr;
+        s_Hook = {};
     }
 } // namespace BML_ObjectLoad

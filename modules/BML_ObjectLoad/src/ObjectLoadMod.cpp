@@ -11,6 +11,7 @@
 #include "bml_topics.h"
 #include "bml_virtools.h"
 #include "bml_virtools.hpp"
+#include "bml_hook_context.h"
 #include "ObjectLoadHook.h"
 
 #include "CKContext.h"
@@ -26,7 +27,8 @@ public:
         }
 
         if (!m_HookReady) {
-            if (!BML_ObjectLoad::InitializeObjectLoadHook(context, Services())) {
+            auto hookCtx = BML_MakeHookContext(Services(), "BML_ObjectLoad");
+            if (!BML_ObjectLoad::InitializeObjectLoadHook(context, &hookCtx)) {
                 Services().Log().Warn("ObjectLoad hook initialization failed from %s", source ? source : "");
                 return false;
             }

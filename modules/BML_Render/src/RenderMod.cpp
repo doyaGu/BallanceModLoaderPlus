@@ -9,6 +9,7 @@
 #include "bml_virtools.h"
 #include "bml_virtools.hpp"
 
+#include "bml_hook_context.h"
 #include "RenderHook.h"
 #include "CKTimeManager.h"
 
@@ -78,7 +79,8 @@ public:
                 return;
             }
 
-            if (!m_HookReady && BML_Render::InitRenderHook(Services())) {
+            auto hookCtx = BML_MakeHookContext(Services(), "BML_Render");
+            if (!m_HookReady && BML_Render::InitRenderHook(&hookCtx)) {
                 m_HookReady = true;
                 RefreshConfig();
                 ApplyConfig();

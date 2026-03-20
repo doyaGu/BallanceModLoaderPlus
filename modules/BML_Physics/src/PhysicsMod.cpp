@@ -9,6 +9,7 @@
 #include "bml_topics.h"
 #include "bml_engine_events.h"
 #include "bml_engine_events.hpp"
+#include "bml_hook_context.h"
 #include "PhysicsHook.h"
 
 class PhysicsMod : public bml::Module {
@@ -30,7 +31,8 @@ public:
                 return;
             }
 
-            if (BML_Physics::InitializePhysicsHook(payload->context, Services())) {
+            auto hookCtx = BML_MakeHookContext(Services(), "BML_Physics");
+            if (BML_Physics::InitializePhysicsHook(payload->context, &hookCtx)) {
                 m_HookReady = true;
                 Services().Log().Info("Physics hooks initialized on Engine/Init event");
             } else {
