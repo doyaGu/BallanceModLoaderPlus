@@ -150,6 +150,7 @@ private:
 
     // Mock module handle storage (kept alive until shutdown)
     std::vector<std::unique_ptr<BML_Mod_T>> m_MockMods;
+    BML_Mod m_DefaultMod{nullptr};
 
     // Cached service hub pointer (stable for runtime lifetime)
     mutable const bml::RuntimeServiceHub *m_CachedHub{nullptr};

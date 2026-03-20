@@ -18,14 +18,20 @@ using namespace BML::Core;
 class EventInterceptionTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        Context::Instance().Initialize(bmlMakeVersion(0, 4, 0));
+        auto &ctx = Context::Instance();
+        ctx.Initialize(bmlMakeVersion(0, 4, 0));
         ImcShutdown();
+        host_mod_ = ctx.GetSyntheticHostModule();
+        Context::SetCurrentModule(host_mod_);
     }
 
     void TearDown() override {
         ImcShutdown();
+        Context::SetCurrentModule(nullptr);
         Context::Instance().Cleanup();
     }
+
+    BML_Mod host_mod_ = nullptr;
 
     BML_TopicId GetTopic(const char *name) {
         BML_TopicId id = BML_TOPIC_ID_INVALID;

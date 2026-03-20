@@ -173,6 +173,10 @@ namespace BML::Core {
         return Context::GetCurrentModule();
     }
 
+    BML_Mod BML_API_GetHostModule() {
+        return Context::Instance().GetSyntheticHostModule();
+    }
+
     uint32_t BML_API_GetLoadedModuleCount() {
         return Context::Instance().GetLoadedModuleCount();
     }
@@ -330,6 +334,7 @@ namespace BML::Core {
         BML_REGISTER_API_GUARDED(bmlRegisterShutdownHook, "core.lifecycle", BML_API_RegisterShutdownHook);
         BML_REGISTER_API_GUARDED(bmlSetCurrentModule, "core.lifecycle", BML_API_SetCurrentModule);
         BML_REGISTER_API(bmlGetCurrentModule, BML_API_GetCurrentModule);
+        BML_REGISTER_API(bmlGetHostModule, BML_API_GetHostModule);
         BML_REGISTER_API(bmlGetLoadedModuleCount, BML_API_GetLoadedModuleCount);
         BML_REGISTER_API(bmlGetLoadedModuleAt, BML_API_GetLoadedModuleAt);
         BML_REGISTER_API(bmlFindModuleById, BML_API_FindModuleById);

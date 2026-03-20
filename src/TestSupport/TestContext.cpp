@@ -71,6 +71,16 @@ TestContext::TestContext() {
         bmlGetProcAddress("bmlGetGlobalContext"));
 
     m_Initialized = true;
+
+    // Set the synthetic host module as current so that IMC subscribe calls work in tests.
+    auto getHostModule = reinterpret_cast<BML_Mod (*)(void)>(
+        bmlGetProcAddress("bmlGetHostModule"));
+    if (getHostModule && m_SetCurrentModule) {
+        m_DefaultMod = getHostModule();
+        if (m_DefaultMod) {
+            m_SetCurrentModule(m_DefaultMod);
+        }
+    }
 }
 
 TestContext::~TestContext() {

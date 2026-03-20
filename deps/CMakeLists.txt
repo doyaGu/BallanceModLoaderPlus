@@ -36,7 +36,8 @@ add_library(cimgui STATIC
     ${IMGUI_DIR}/imgui_widgets.cpp
     ${IMGUI_DIR}/imgui_tables.cpp
 )
-target_include_directories(cimgui PUBLIC ${CIMGUI_DIR} ${IMGUI_DIR} ${CMAKE_SOURCE_DIR})
+target_include_directories(cimgui PUBLIC ${IMGUI_DIR} ${CMAKE_SOURCE_DIR})
+target_include_directories(cimgui PRIVATE ${CIMGUI_DIR})
 target_compile_definitions(cimgui PUBLIC
     IMGUI_USER_CONFIG="${CMAKE_SOURCE_DIR}/src/Utils/imconfig.h"
     IMGUI_DISABLE_OBSOLETE_FUNCTIONS=1
