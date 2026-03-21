@@ -9,7 +9,6 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "bml_core.h"
@@ -124,12 +123,23 @@ namespace BML::Core {
         Context(const Context &) = delete;
         Context &operator=(const Context &) = delete;
 
+        struct ShutdownModuleRecord {
+            std::string id;
+            BML_Mod mod{nullptr};
+            HMODULE handle{nullptr};
+        };
+
         class ApiRegistry &m_ApiRegistry;
         class ConfigStore &m_Config;
         class CrashDumpWriter &m_CrashDump;
         class FaultTracker &m_FaultTracker;
 
-        void ShutdownModulesLocked();
+        std::vector<LoadedModule> ExtractLoadedModulesForShutdownLocked();
+        std::vector<ShutdownModuleRecord> BuildShutdownModuleRecords(
+            const std::vector<LoadedModule> &modules) const;
+        void RunShutdownHooks(const std::vector<LoadedModule> &modules);
+        void PreUnloadCleanup(const std::vector<LoadedModule> &modules);
+        void FinalizeShutdownModuleRecords(const std::vector<ShutdownModuleRecord> &records);
         BML_Mod_T *FindModHandleLocked(BML_Mod mod);
         const BML_Mod_T *FindModHandleLocked(BML_Mod mod) const;
         void RecordRetainEvent(bool is_retain, uint32_t count_after);
@@ -147,7 +157,7 @@ namespace BML::Core {
         std::vector<LoadedModule> m_LoadedModules;
         std::unordered_map<std::string, BML_Mod> m_ModHandlesById;
         std::unordered_map<HMODULE, BML_Mod> m_ModHandlesByModule;
-        std::unordered_set<BML_Mod> m_CreatedModHandles;
+        std::unordered_map<BML_Mod, BML_Mod_T *> m_ModHandlesByPtr;
         std::unique_ptr<BML_Mod_T> m_HostModHandle;
         BML_Version m_RuntimeVersion{};
         mutable std::mutex m_StateMutex;

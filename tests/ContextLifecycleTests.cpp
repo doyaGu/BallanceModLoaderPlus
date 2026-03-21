@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <future>
 #include <initializer_list>
 #include <mutex>
 #include <string>
@@ -25,10 +26,24 @@ using BML::Core::Testing::TestKernel;
 std::mutex g_RecordMutex;
 std::vector<std::string> g_ShutdownOrder;
 
+struct ResolveDuringShutdownState {
+    Context *context{nullptr};
+    BML_Mod mod{nullptr};
+    std::atomic<bool> invoked{false};
+    std::atomic<bool> resolved{false};
+};
+
 void RecordingShutdownHook(BML_Context, void *user_data) {
     const char *label = static_cast<const char *>(user_data);
     std::lock_guard<std::mutex> lock(g_RecordMutex);
     g_ShutdownOrder.emplace_back(label ? label : "");
+}
+
+void ResolveDuringShutdownHook(BML_Context, void *user_data) {
+    auto *state = static_cast<ResolveDuringShutdownState *>(user_data);
+    state->invoked.store(true, std::memory_order_release);
+    auto *resolved = state->context ? state->context->ResolveModHandle(state->mod) : nullptr;
+    state->resolved.store(resolved == state->mod, std::memory_order_release);
 }
 
 LoadedModule BuildLoadedModule(const std::string &id, std::initializer_list<const char *> hooks) {
@@ -104,6 +119,26 @@ TEST_F(ContextLifecycleTests, ShutdownHooksExecuteInReverseRegistrationOrder) {
 
     std::lock_guard<std::mutex> lock(g_RecordMutex);
     EXPECT_EQ(g_ShutdownOrder, expected);
+}
+
+TEST_F(ContextLifecycleTests, CleanupRunsShutdownHooksWithoutHoldingStateMutex) {
+    auto &ctx = *kernel_->context;
+
+    auto module = BuildLoadedModule("reentrant.lookup", {});
+    ResolveDuringShutdownState state;
+    state.context = &ctx;
+    state.mod = module.mod_handle.get();
+
+    ctx.AddLoadedModule(std::move(module));
+    ctx.AppendShutdownHook(state.mod, ResolveDuringShutdownHook, &state);
+
+    auto cleanup = std::async(std::launch::async, [&ctx] {
+        ctx.Cleanup();
+    });
+
+    EXPECT_EQ(cleanup.wait_for(1s), std::future_status::ready);
+    EXPECT_TRUE(state.invoked.load(std::memory_order_acquire));
+    EXPECT_TRUE(state.resolved.load(std::memory_order_acquire));
 }
 
 TEST_F(ContextLifecycleTests, CurrentModuleIsThreadLocalPerThread) {

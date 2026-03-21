@@ -162,13 +162,15 @@ namespace BML::Core {
         m_RuntimeVersion = runtime_version;
         m_CleanupRequested = false;
         m_ShutdownState.store(ShutdownState::Running, std::memory_order_release);
-        m_CreatedModHandles.clear();
+        m_ModHandlesByPtr.clear();
+        m_ModHandlesById.clear();
+        m_ModHandlesByModule.clear();
         m_HostModHandle = std::make_unique<BML_Mod_T>();
         if (m_HostModHandle) {
             m_HostModHandle->id = "ModLoader";
             m_HostModHandle->version = runtime_version;
             m_HostModHandle->capabilities.push_back("bml.internal.runtime");
-            m_CreatedModHandles.insert(m_HostModHandle.get());
+            m_ModHandlesByPtr.emplace(m_HostModHandle.get(), m_HostModHandle.get());
         }
         {
             std::lock_guard<std::mutex> retain_trace_lock(m_RetainTraceMutex);
@@ -180,14 +182,18 @@ namespace BML::Core {
     }
 
     void Context::Cleanup() {
-        std::unique_lock<std::mutex> state_lock(m_StateMutex);
-        if (!m_Initialized.load(std::memory_order_acquire))
-            return;
-        if (m_CleanupRequested || m_ShutdownState.load(std::memory_order_acquire) != ShutdownState::Running)
-            return;
+        {
+            std::unique_lock<std::mutex> state_lock(m_StateMutex);
+            if (!m_Initialized.load(std::memory_order_acquire))
+                return;
+            if (m_CleanupRequested ||
+                m_ShutdownState.load(std::memory_order_acquire) != ShutdownState::Running) {
+                return;
+            }
 
-        m_CleanupRequested = true;
-        m_ShutdownState.store(ShutdownState::ShutdownRequested, std::memory_order_release);
+            m_CleanupRequested = true;
+            m_ShutdownState.store(ShutdownState::ShutdownRequested, std::memory_order_release);
+        }
 
         CoreLog(BML_LOG_INFO, kContextLogCategory, "Starting cleanup");
 
@@ -211,11 +217,16 @@ namespace BML::Core {
         }
 
         m_ShutdownState.store(ShutdownState::ShuttingDownModules, std::memory_order_release);
-        ShutdownModulesLocked();
-        m_CreatedModHandles.clear();
+        ShutdownModules();
 
-        // Clear all manifests
-        m_Manifests.clear();
+        {
+            std::lock_guard<std::mutex> lock(m_StateMutex);
+            m_Manifests.clear();
+            m_ModHandlesById.clear();
+            m_ModHandlesByModule.clear();
+            m_ModHandlesByPtr.clear();
+            m_HostModHandle.reset();
+        }
 
         // Clean up user data (call destructors)
         {
@@ -282,7 +293,7 @@ namespace BML::Core {
             return;
         if (module.mod_handle) {
             BML_Mod raw = module.mod_handle.get();
-            m_CreatedModHandles.insert(raw);
+            m_ModHandlesByPtr[raw] = raw;
             m_ModHandlesById[module.id] = raw;
             if (module.handle) {
                 m_ModHandlesByModule[module.handle] = raw;
@@ -322,8 +333,19 @@ namespace BML::Core {
     }
 
     void Context::ShutdownModules() {
-        std::lock_guard<std::mutex> lock(m_StateMutex);
-        ShutdownModulesLocked();
+        std::vector<LoadedModule> modules;
+        {
+            std::lock_guard<std::mutex> lock(m_StateMutex);
+            modules = ExtractLoadedModulesForShutdownLocked();
+        }
+        if (modules.empty())
+            return;
+
+        const auto records = BuildShutdownModuleRecords(modules);
+        RunShutdownHooks(modules);
+        PreUnloadCleanup(modules);
+        UnloadModules(modules, GetHandle());
+        FinalizeShutdownModuleRecords(records);
     }
 
     std::unique_ptr<BML_Mod_T> Context::CreateModHandle(const ModManifest &manifest) {
@@ -341,7 +363,7 @@ namespace BML::Core {
         }
         {
             std::lock_guard<std::mutex> lock(m_StateMutex);
-            m_CreatedModHandles.insert(handle.get());
+            m_ModHandlesByPtr[handle.get()] = handle.get();
         }
         return handle;
     }
@@ -423,13 +445,34 @@ namespace BML::Core {
         return m_ShutdownState.load(std::memory_order_acquire);
     }
 
-    void Context::ShutdownModulesLocked() {
+    std::vector<LoadedModule> Context::ExtractLoadedModulesForShutdownLocked() {
+        std::vector<LoadedModule> modules;
         if (m_LoadedModules.empty())
-            return;
+            return modules;
+        modules = std::move(m_LoadedModules);
+        m_LoadedModules.clear();
+        return modules;
+    }
 
-        BML_Context ctx = GetHandle();
+    std::vector<Context::ShutdownModuleRecord> Context::BuildShutdownModuleRecords(
+            const std::vector<LoadedModule> &modules) const {
+        std::vector<ShutdownModuleRecord> records;
+        records.reserve(modules.size());
+        for (const auto &module : modules) {
+            if (!module.mod_handle)
+                continue;
+            ShutdownModuleRecord record;
+            record.id = module.id;
+            record.mod = module.mod_handle.get();
+            record.handle = module.handle;
+            records.push_back(std::move(record));
+        }
+        return records;
+    }
 
-        for (auto module_it = m_LoadedModules.rbegin(); module_it != m_LoadedModules.rend(); ++module_it) {
+    void Context::RunShutdownHooks(const std::vector<LoadedModule> &modules) {
+        const BML_Context ctx = GetHandle();
+        for (auto module_it = modules.rbegin(); module_it != modules.rend(); ++module_it) {
             if (!module_it->mod_handle)
                 continue;
 
@@ -461,8 +504,10 @@ namespace BML::Core {
                 }
             }
         }
+    }
 
-        for (const auto &module : m_LoadedModules) {
+    void Context::PreUnloadCleanup(const std::vector<LoadedModule> &modules) {
+        for (const auto &module : modules) {
             if (!module.mod_handle)
                 continue;
             m_Config.FlushAndRelease(module.mod_handle.get());
@@ -470,17 +515,22 @@ namespace BML::Core {
             m_ApiRegistry.UnregisterByProvider(module.mod_handle->id);
             UnregisterResourceTypesForProvider(module.mod_handle->id);
         }
+    }
 
-        UnloadModules(m_LoadedModules, ctx);
-        m_ModHandlesById.clear();
-        m_ModHandlesByModule.clear();
-        m_CreatedModHandles.clear();
-        m_HostModHandle.reset();
+    void Context::FinalizeShutdownModuleRecords(const std::vector<ShutdownModuleRecord> &records) {
+        std::lock_guard<std::mutex> lock(m_StateMutex);
+        for (const auto &record : records) {
+            m_ModHandlesById.erase(record.id);
+            if (record.handle) {
+                m_ModHandlesByModule.erase(record.handle);
+            }
+            m_ModHandlesByPtr.erase(record.mod);
+        }
     }
 
     void Context::RemoveCreatedModHandle(BML_Mod mod) {
         std::lock_guard<std::mutex> lock(m_StateMutex);
-        m_CreatedModHandles.erase(mod);
+        m_ModHandlesByPtr.erase(mod);
     }
 
     BML_Mod_T *Context::FindModHandleLocked(BML_Mod mod) {
@@ -490,15 +540,8 @@ namespace BML::Core {
     const BML_Mod_T *Context::FindModHandleLocked(BML_Mod mod) const {
         if (!mod)
             return nullptr;
-        if (m_HostModHandle && m_HostModHandle.get() == mod)
-            return m_HostModHandle.get();
-        for (const auto &module : m_LoadedModules) {
-            if (module.mod_handle && module.mod_handle.get() == mod)
-                return module.mod_handle.get();
-        }
-        if (m_CreatedModHandles.find(mod) != m_CreatedModHandles.end())
-            return mod;
-        return nullptr;
+        auto it = m_ModHandlesByPtr.find(mod);
+        return it != m_ModHandlesByPtr.end() ? it->second : nullptr;
     }
 
     BML_Result Context::RetainHandle() {
