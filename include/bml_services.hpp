@@ -230,15 +230,15 @@ public:
     bml::ProfilingService Profiling() const;
 
     bml::imc::SubscriptionManager CreateSubscriptions() const {
-        return bml::imc::SubscriptionManager(m_Hub ? m_Hub->Builtins().ImcBus : nullptr);
+        return bml::imc::SubscriptionManager(m_Hub ? m_Hub->Builtins().ImcBus : nullptr, m_Handle);
     }
 
     bml::imc::RpcServiceManager CreateRpcServices() const {
-        return bml::imc::RpcServiceManager(m_Hub ? m_Hub->Builtins().ImcRpc : nullptr);
+        return bml::imc::RpcServiceManager(m_Hub ? m_Hub->Builtins().ImcRpc : nullptr, m_Handle);
     }
 
     bml::imc::RpcClient CreateRpcClient(std::string_view name) const {
-        return bml::imc::RpcClient(name, m_Hub ? m_Hub->Builtins().ImcRpc : nullptr);
+        return bml::imc::RpcClient(name, m_Hub ? m_Hub->Builtins().ImcRpc : nullptr, m_Handle);
     }
 
     /**

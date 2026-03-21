@@ -118,34 +118,37 @@ namespace imc {
         static std::optional<Subscription> create(
             std::string_view topicName, MessageCallback callback,
             const SubscribeOptions *options = nullptr,
-            const BML_ImcBusInterface *bus = nullptr
+            const BML_ImcBusInterface *bus = nullptr,
+            BML_Mod owner = nullptr
         ) {
             if (!bus || !bus->GetTopicId) return std::nullopt;
             std::string resolvedName(topicName);
             TopicId topicId;
             if (bus->GetTopicId(resolvedName.c_str(), &topicId) != BML_RESULT_OK) return std::nullopt;
-            return createWithId(topicId, std::move(resolvedName), std::move(callback), options, bus);
+            return createWithId(topicId, std::move(resolvedName), std::move(callback), options, bus, owner);
         }
 
         static std::optional<Subscription> create(
             const Topic &topic, MessageCallback callback,
             const SubscribeOptions *options = nullptr,
-            const BML_ImcBusInterface *bus = nullptr
+            const BML_ImcBusInterface *bus = nullptr,
+            BML_Mod owner = nullptr
         ) {
             if (!topic.Valid()) return std::nullopt;
             return createWithId(topic.Id(), topic.Name(), std::move(callback), options,
-                                bus ? bus : topic.Iface());
+                                bus ? bus : topic.Iface(), owner);
         }
 
         // Factory: Simple callback
         static std::optional<Subscription> createSimple(
             std::string_view topicName, SimpleCallback callback,
             const SubscribeOptions *options = nullptr,
-            const BML_ImcBusInterface *bus = nullptr
+            const BML_ImcBusInterface *bus = nullptr,
+            BML_Mod owner = nullptr
         ) {
             return create(topicName, [cb = std::move(callback)](const Message &msg) {
                 cb(msg.Data(), msg.Size());
-            }, options, bus);
+            }, options, bus, owner);
         }
 
         // Factory: Typed callback
@@ -153,35 +156,39 @@ namespace imc {
         static std::optional<Subscription> createTyped(
             std::string_view topicName, TypedCallback<T> callback,
             const SubscribeOptions *options = nullptr,
-            const BML_ImcBusInterface *bus = nullptr
+            const BML_ImcBusInterface *bus = nullptr,
+            BML_Mod owner = nullptr
         ) {
             static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
             return create(topicName, [cb = std::move(callback)](const Message &msg) {
                 if (auto *data = msg.As<T>()) cb(*data);
-            }, options, bus);
+            }, options, bus, owner);
         }
 
         // Factory: Intercept callback
         static std::optional<Subscription> createIntercept(
             std::string_view topicName, InterceptCallback callback,
             const SubscribeOptions *options = nullptr,
-            const BML_ImcBusInterface *bus = nullptr
+            const BML_ImcBusInterface *bus = nullptr,
+            BML_Mod owner = nullptr
         ) {
             if (!bus || !bus->GetTopicId) return std::nullopt;
             std::string resolvedName(topicName);
             TopicId topicId;
             if (bus->GetTopicId(resolvedName.c_str(), &topicId) != BML_RESULT_OK) return std::nullopt;
-            return createInterceptWithId(topicId, std::move(resolvedName), std::move(callback), options, bus);
+            return createInterceptWithId(
+                topicId, std::move(resolvedName), std::move(callback), options, bus, owner);
         }
 
         static std::optional<Subscription> createIntercept(
             const Topic &topic, InterceptCallback callback,
             const SubscribeOptions *options = nullptr,
-            const BML_ImcBusInterface *bus = nullptr
+            const BML_ImcBusInterface *bus = nullptr,
+            BML_Mod owner = nullptr
         ) {
             if (!topic.Valid()) return std::nullopt;
             return createInterceptWithId(topic.Id(), topic.Name(), std::move(callback), options,
-                                         bus ? bus : topic.Iface());
+                                         bus ? bus : topic.Iface(), owner);
         }
 
         // Factory: Typed intercept
@@ -189,13 +196,14 @@ namespace imc {
         static std::optional<Subscription> createTypedIntercept(
             std::string_view topicName, TypedInterceptCallback<T> callback,
             const SubscribeOptions *options = nullptr,
-            const BML_ImcBusInterface *bus = nullptr
+            const BML_ImcBusInterface *bus = nullptr,
+            BML_Mod owner = nullptr
         ) {
             static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
             return createIntercept(topicName, [cb = std::move(callback)](MutableMessage &msg) -> EventResult {
                 if (const auto *data = msg.As<T>()) return cb(*data);
                 return event_result::Continue;
-            }, options, bus);
+            }, options, bus, owner);
         }
 
         // Operations
@@ -242,7 +250,7 @@ namespace imc {
 
         static std::optional<Subscription> createWithId(
             TopicId topicId, std::string topicName, MessageCallback callback,
-            const SubscribeOptions *options, const BML_ImcBusInterface *bus
+            const SubscribeOptions *options, const BML_ImcBusInterface *bus, BML_Mod owner
         ) {
             if (!bus) return std::nullopt;
             Subscription sub;
@@ -253,7 +261,13 @@ namespace imc {
             sub.m_Bus = bus;
 
             BML_Result result;
-            if (options && bus->SubscribeEx) {
+            if (owner && options && BML_IMC_BUS_HAS_MEMBER(bus, SubscribeExOwned)) {
+                result = bus->SubscribeExOwned(owner, topicId, detail::SubscriptionContext::Invoke,
+                                               sub.m_Context.get(), options->NativePtr(), &sub.m_Handle);
+            } else if (owner && BML_IMC_BUS_HAS_MEMBER(bus, SubscribeOwned)) {
+                result = bus->SubscribeOwned(owner, topicId, detail::SubscriptionContext::Invoke,
+                                             sub.m_Context.get(), &sub.m_Handle);
+            } else if (options && bus->SubscribeEx) {
                 result = bus->SubscribeEx(topicId, detail::SubscriptionContext::Invoke,
                                           sub.m_Context.get(), options->NativePtr(), &sub.m_Handle);
             } else if (bus->Subscribe) {
@@ -271,7 +285,7 @@ namespace imc {
 
         static std::optional<Subscription> createInterceptWithId(
             TopicId topicId, std::string topicName, InterceptCallback callback,
-            const SubscribeOptions *options, const BML_ImcBusInterface *bus
+            const SubscribeOptions *options, const BML_ImcBusInterface *bus, BML_Mod owner
         ) {
             if (!bus) return std::nullopt;
             Subscription sub;
@@ -282,7 +296,17 @@ namespace imc {
             sub.m_Bus = bus;
 
             BML_Result result;
-            if (options && bus->SubscribeInterceptEx) {
+            if (owner && options && BML_IMC_BUS_HAS_MEMBER(bus, SubscribeInterceptExOwned)) {
+                result = bus->SubscribeInterceptExOwned(owner,
+                                                        topicId,
+                                                        detail::InterceptContext::Invoke,
+                                                        sub.m_InterceptContext.get(),
+                                                        options->NativePtr(),
+                                                        &sub.m_Handle);
+            } else if (owner && BML_IMC_BUS_HAS_MEMBER(bus, SubscribeInterceptOwned)) {
+                result = bus->SubscribeInterceptOwned(owner, topicId, detail::InterceptContext::Invoke,
+                                                      sub.m_InterceptContext.get(), &sub.m_Handle);
+            } else if (options && bus->SubscribeInterceptEx) {
                 result = bus->SubscribeInterceptEx(topicId, detail::InterceptContext::Invoke,
                                                    sub.m_InterceptContext.get(),
                                                    options->NativePtr(), &sub.m_Handle);
@@ -307,7 +331,8 @@ namespace imc {
 
     class SubscriptionManager {
     public:
-        explicit SubscriptionManager(const BML_ImcBusInterface *bus = nullptr) : m_Bus(bus) {}
+        explicit SubscriptionManager(const BML_ImcBusInterface *bus = nullptr, BML_Mod owner = nullptr)
+            : m_Bus(bus), m_Owner(owner) {}
         ~SubscriptionManager() = default;
         SubscriptionManager(SubscriptionManager &&) = default;
         SubscriptionManager &operator=(SubscriptionManager &&) = default;
@@ -315,7 +340,7 @@ namespace imc {
         SubscriptionManager &operator=(const SubscriptionManager &) = delete;
 
         bool Add(std::string_view topicName, MessageCallback callback) {
-            if (auto sub = Subscription::create(topicName, std::move(callback), nullptr, m_Bus)) {
+            if (auto sub = Subscription::create(topicName, std::move(callback), nullptr, m_Bus, m_Owner)) {
                 m_Subs.push_back(std::move(*sub));
                 return true;
             }
@@ -323,7 +348,7 @@ namespace imc {
         }
 
         bool Add(const Topic &topic, MessageCallback callback) {
-            if (auto sub = Subscription::create(topic, std::move(callback), nullptr, m_Bus)) {
+            if (auto sub = Subscription::create(topic, std::move(callback), nullptr, m_Bus, m_Owner)) {
                 m_Subs.push_back(std::move(*sub));
                 return true;
             }
@@ -332,7 +357,7 @@ namespace imc {
 
         template <typename T>
         bool Add(std::string_view topicName, TypedCallback<T> callback) {
-            if (auto sub = Subscription::createTyped<T>(topicName, std::move(callback), nullptr, m_Bus)) {
+            if (auto sub = Subscription::createTyped<T>(topicName, std::move(callback), nullptr, m_Bus, m_Owner)) {
                 m_Subs.push_back(std::move(*sub));
                 return true;
             }
@@ -340,7 +365,7 @@ namespace imc {
         }
 
         bool AddSimple(std::string_view topicName, SimpleCallback callback) {
-            if (auto sub = Subscription::createSimple(topicName, std::move(callback), nullptr, m_Bus)) {
+            if (auto sub = Subscription::createSimple(topicName, std::move(callback), nullptr, m_Bus, m_Owner)) {
                 m_Subs.push_back(std::move(*sub));
                 return true;
             }
@@ -349,7 +374,7 @@ namespace imc {
 
         bool AddIntercept(std::string_view topicName, InterceptCallback callback,
                           const SubscribeOptions *options = nullptr) {
-            if (auto sub = Subscription::createIntercept(topicName, std::move(callback), options, m_Bus)) {
+            if (auto sub = Subscription::createIntercept(topicName, std::move(callback), options, m_Bus, m_Owner)) {
                 m_Subs.push_back(std::move(*sub));
                 return true;
             }
@@ -359,7 +384,7 @@ namespace imc {
         template <typename T>
         bool AddIntercept(std::string_view topicName, TypedInterceptCallback<T> callback,
                           const SubscribeOptions *options = nullptr) {
-            if (auto sub = Subscription::createTypedIntercept<T>(topicName, std::move(callback), options, m_Bus)) {
+            if (auto sub = Subscription::createTypedIntercept<T>(topicName, std::move(callback), options, m_Bus, m_Owner)) {
                 m_Subs.push_back(std::move(*sub));
                 return true;
             }
@@ -381,6 +406,7 @@ namespace imc {
 
     private:
         const BML_ImcBusInterface *m_Bus = nullptr;
+        BML_Mod m_Owner = nullptr;
         std::vector<Subscription> m_Subs;
     };
 
