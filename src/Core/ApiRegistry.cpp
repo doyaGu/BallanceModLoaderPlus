@@ -180,7 +180,6 @@ namespace BML::Core {
             return ptr;
         }
 
-        // Fallback: direct lookup under lock if retries exhausted (cache churn)
         std::shared_lock lock(g_Mutex);
         return ResolvePointerLocked(api_id, true);
     }
