@@ -1,7 +1,5 @@
 #include "Context.h"
 
-#include "KernelServices.h"
-
 #include <cstdio>
 #include <chrono>
 #include <filesystem>
@@ -133,7 +131,8 @@ namespace BML::Core {
         }
     }
 
-    Context::Context() {
+    Context::Context(ApiRegistry &api_registry, ConfigStore &config)
+        : m_ApiRegistry(api_registry), m_Config(config) {
         // Constructor only sets defaults; actual initialization happens in Initialize()
         m_RuntimeVersion = {0, 4, 0};
         m_Initialized.store(false, std::memory_order_relaxed);
@@ -461,13 +460,12 @@ namespace BML::Core {
             }
         }
 
-        auto *apiRegistry = GetKernelOrNull()->api_registry.get();
         for (const auto &module : m_LoadedModules) {
             if (!module.mod_handle)
                 continue;
-            GetKernelOrNull()->config->FlushAndRelease(module.mod_handle.get());
+            m_Config.FlushAndRelease(module.mod_handle.get());
             RunExtensionProviderCleanupHook(module.mod_handle->id);
-            apiRegistry->UnregisterByProvider(module.mod_handle->id);
+            m_ApiRegistry.UnregisterByProvider(module.mod_handle->id);
             UnregisterResourceTypesForProvider(module.mod_handle->id);
         }
 

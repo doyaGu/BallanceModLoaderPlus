@@ -362,25 +362,25 @@ namespace BML::Core {
         // Build the service graph.  All subsystems owned by KernelServices.
         state.kernel = std::make_unique<KernelServices>();
         auto &k = *state.kernel;
-        // L0
+        // L0 - no dependencies
         k.diagnostics        = std::make_unique<DiagnosticManager>();
         k.memory             = std::make_unique<MemoryManager>();
         k.sync               = std::make_unique<SyncManager>();
-        k.profiling          = std::make_unique<ProfilingManager>();
-        // L1
+        // L1 - depend on L0 (no injection yet)
         k.fault_tracker      = std::make_unique<FaultTracker>();
         k.crash_dump         = std::make_unique<CrashDumpWriter>();
         k.hooks              = std::make_unique<HookRegistry>();
         k.locale             = std::make_unique<LocaleManager>();
-        k.timers             = std::make_unique<TimerManager>();
         k.leases             = std::make_unique<LeaseManager>();
         k.config             = std::make_unique<ConfigStore>();
-        // L2
+        // L2 - depend on L0/L1
         k.api_registry       = std::make_unique<ApiRegistry>();
-        k.interface_registry = std::make_unique<InterfaceRegistry>();
+        k.profiling          = std::make_unique<ProfilingManager>(*k.api_registry, *k.memory);
         k.imc_bus            = std::make_unique<ImcBus>();
-        // L3
-        k.context            = std::make_unique<Context>();
+        // L3 - depend on L0/L1/L2
+        k.context            = std::make_unique<Context>(*k.api_registry, *k.config);
+        k.interface_registry = std::make_unique<InterfaceRegistry>(*k.context, *k.leases);
+        k.timers             = std::make_unique<TimerManager>(*k.context, *k.crash_dump, *k.fault_tracker);
         InstallKernel(&k);
 
         // Initialize context with runtime version

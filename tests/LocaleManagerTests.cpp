@@ -12,8 +12,10 @@
 
 #include "bml_locale.h"
 
-#include "Core/LocaleManager.h"
+#include "Core/ApiRegistry.h"
+#include "Core/ConfigStore.h"
 #include "Core/Context.h"
+#include "Core/LocaleManager.h"
 #include "TestKernel.h"
 
 using namespace BML::Core;
@@ -24,7 +26,9 @@ protected:
     TestKernel kernel_;
 
     void SetUp() override {
-        kernel_->context = std::make_unique<Context>();
+        kernel_->api_registry = std::make_unique<ApiRegistry>();
+        kernel_->config  = std::make_unique<ConfigStore>();
+        kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config);
         kernel_->locale  = std::make_unique<LocaleManager>();
         kernel_->context->Initialize(bmlMakeVersion(0, 4, 0));
         kernel_->locale->Shutdown();

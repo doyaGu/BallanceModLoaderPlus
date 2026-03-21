@@ -1,7 +1,5 @@
 #include "InterfaceRegistry.h"
 
-#include "KernelServices.h"
-
 #include <algorithm>
 #include <vector>
 
@@ -9,6 +7,9 @@
 #include "LeaseManager.h"
 
 namespace BML::Core {
+    InterfaceRegistry::InterfaceRegistry(Context &context, LeaseManager &leases)
+        : m_Context(context), m_Leases(leases) {}
+
     namespace {
         bool AbiVersionIsCompatible(const BML_Version &actual, const BML_Version *required) {
             if (!required) {
@@ -59,7 +60,7 @@ namespace BML::Core {
 
         BML_Mod_T *consumer = nullptr;
         if ((desc->flags & BML_INTERFACE_FLAG_HOST_OWNED) != 0 && provider_id != "BML") {
-            consumer = GetKernelOrNull()->context->ResolveCurrentConsumer();
+            consumer = m_Context.ResolveCurrentConsumer();
             if (!consumer) {
                 return BML_RESULT_INVALID_CONTEXT;
             }
@@ -70,7 +71,7 @@ namespace BML::Core {
         if (m_Interfaces.find(key) != m_Interfaces.end()) {
             return BML_RESULT_ALREADY_EXISTS;
         }
-        if (consumer && !GetKernelOrNull()->leases->HasActiveInterfaceLease(
+        if (consumer && !m_Leases.HasActiveInterfaceLease(
                 consumer->id, BML_CORE_HOST_RUNTIME_INTERFACE_ID)) {
             return BML_RESULT_PERMISSION_DENIED;
         }
@@ -105,7 +106,7 @@ namespace BML::Core {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
-        auto *current = GetKernelOrNull()->context->ResolveCurrentConsumer();
+        auto *current = m_Context.ResolveCurrentConsumer();
         if (!current) {
             return BML_RESULT_INVALID_CONTEXT;
         }
@@ -121,7 +122,7 @@ namespace BML::Core {
         if (!AbiVersionIsCompatible(it->second.desc.abi_version, required_abi)) {
             return BML_RESULT_VERSION_MISMATCH;
         }
-        if (GetKernelOrNull()->leases->IsProviderBlocked(it->second.provider_id)) {
+        if (m_Leases.IsProviderBlocked(it->second.provider_id)) {
             return BML_RESULT_BUSY;
         }
         if ((it->second.desc.flags & BML_INTERFACE_FLAG_INTERNAL) != 0 && current->id != "BML" &&
@@ -129,14 +130,14 @@ namespace BML::Core {
             return BML_RESULT_PERMISSION_DENIED;
         }
 
-        BML_CHECK(GetKernelOrNull()->leases->CreateInterfaceLease(
+        BML_CHECK(m_Leases.CreateInterfaceLease(
             interface_id, it->second.provider_id, current->id, out_lease));
         *out_implementation = it->second.desc.implementation;
         return BML_RESULT_OK;
     }
 
     BML_Result InterfaceRegistry::Release(BML_InterfaceLease lease) {
-        return GetKernelOrNull()->leases->ReleaseInterfaceLease(lease);
+        return m_Leases.ReleaseInterfaceLease(lease);
     }
 
     BML_Result InterfaceRegistry::GetDescriptor(const char *interface_id,
@@ -154,7 +155,7 @@ namespace BML::Core {
             return BML_RESULT_NOT_FOUND;
         }
 
-        uint32_t leases = GetKernelOrNull()->leases->GetLeaseCountForInterface(interface_id);
+        uint32_t leases = m_Leases.GetLeaseCountForInterface(interface_id);
         *out_desc = BuildRuntimeDesc(it->second, leases);
         return BML_RESULT_OK;
     }
@@ -201,7 +202,7 @@ namespace BML::Core {
         }
 
         std::string message;
-        if (GetKernelOrNull()->leases->HasInboundDependencies(provider_id, &message)) {
+        if (m_Leases.HasInboundDependencies(provider_id, &message)) {
             return BML_RESULT_BUSY;
         }
         m_Interfaces.erase(it);
@@ -306,6 +307,6 @@ namespace BML::Core {
         if (!interface_id) {
             return 0;
         }
-        return GetKernelOrNull()->leases->GetLeaseCountForInterface(interface_id);
+        return m_Leases.GetLeaseCountForInterface(interface_id);
     }
 } // namespace BML::Core

@@ -44,10 +44,12 @@ namespace BML::Core {
         /* Statistics */
         BML_Result GetProfilingStats(BML_ProfilingStats *out_stats);
 
-        ProfilingManager();
+        explicit ProfilingManager(class ApiRegistry &api_registry, class MemoryManager &memory);
         ~ProfilingManager() = default;
 
     private:
+        class ApiRegistry &m_ApiRegistry;
+        class MemoryManager &m_Memory;
 
         struct TraceEvent {
             enum Type { BEGIN, END, INSTANT, COUNTER, FRAME };

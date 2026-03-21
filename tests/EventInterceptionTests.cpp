@@ -10,6 +10,8 @@
 #include <vector>
 
 #include "bml_imc.h"
+#include "Core/ApiRegistry.h"
+#include "Core/ConfigStore.h"
 #include "Core/Context.h"
 #include "Core/ImcBus.h"
 #include "TestKernel.h"
@@ -22,7 +24,9 @@ protected:
     TestKernel kernel_;
 
     void SetUp() override {
-        kernel_->context = std::make_unique<Context>();
+        kernel_->api_registry = std::make_unique<ApiRegistry>();
+        kernel_->config = std::make_unique<ConfigStore>();
+        kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config);
 
         auto &ctx = *kernel_->context;
         ctx.Initialize(bmlMakeVersion(0, 4, 0));

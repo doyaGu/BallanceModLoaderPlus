@@ -70,9 +70,12 @@ namespace BML::Core {
         /** @brief Cancel all timers and reset state (called during shutdown) */
         void Shutdown();
 
-        TimerManager() = default;
+        explicit TimerManager(class Context &context, class CrashDumpWriter &crash_dump, class FaultTracker &fault_tracker);
 
     private:
+        class Context &m_Context;
+        class CrashDumpWriter &m_CrashDump;
+        class FaultTracker &m_FaultTracker;
         using Clock = std::chrono::steady_clock;
         using TimePoint = Clock::time_point;
 

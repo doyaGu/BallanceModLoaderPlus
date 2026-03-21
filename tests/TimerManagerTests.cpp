@@ -11,8 +11,12 @@
 
 #include "bml_timer.h"
 
-#include "Core/TimerManager.h"
+#include "Core/ApiRegistry.h"
+#include "Core/ConfigStore.h"
 #include "Core/Context.h"
+#include "Core/CrashDumpWriter.h"
+#include "Core/FaultTracker.h"
+#include "Core/TimerManager.h"
 #include "TestKernel.h"
 
 using namespace BML::Core;
@@ -23,8 +27,12 @@ protected:
     TestKernel kernel_;
 
     void SetUp() override {
-        kernel_->context = std::make_unique<Context>();
-        kernel_->timers  = std::make_unique<TimerManager>();
+        kernel_->api_registry  = std::make_unique<ApiRegistry>();
+        kernel_->config        = std::make_unique<ConfigStore>();
+        kernel_->crash_dump    = std::make_unique<CrashDumpWriter>();
+        kernel_->fault_tracker = std::make_unique<FaultTracker>();
+        kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config);
+        kernel_->timers  = std::make_unique<TimerManager>(*kernel_->context, *kernel_->crash_dump, *kernel_->fault_tracker);
         kernel_->context->Initialize(bmlMakeVersion(0, 4, 0));
         kernel_->timers->Shutdown();
     }

@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "Core/ApiRegistry.h"
+#include "Core/ConfigStore.h"
 #include "Core/Context.h"
 #include "Core/Logging.h"
 #include "Core/ModHandle.h"
@@ -19,6 +20,7 @@
 #include "bml_logging.h"
 
 using BML::Core::ApiRegistry;
+using BML::Core::ConfigStore;
 using BML::Core::Context;
 using BML::Core::Testing::TestKernel;
 
@@ -38,7 +40,8 @@ protected:
 
     void SetUp() override {
         kernel_->api_registry = std::make_unique<ApiRegistry>();
-        kernel_->context      = std::make_unique<Context>();
+        kernel_->config       = std::make_unique<ConfigStore>();
+        kernel_->context      = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config);
         kernel_->api_registry->Clear();
         Context::SetCurrentModule(nullptr);
         BML::Core::RegisterLoggingApis();

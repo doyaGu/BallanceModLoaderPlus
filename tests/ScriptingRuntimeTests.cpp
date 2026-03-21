@@ -15,11 +15,14 @@
 #include "Core/BuiltinInterfaces.h"
 #include "Core/ConfigStore.h"
 #include "Core/Context.h"
+#include "Core/CrashDumpWriter.h"
+#include "Core/FaultTracker.h"
 #include "Core/HookRegistry.h"
 #include "Core/ImcBus.h"
 #include "Core/InterfaceRegistry.h"
 #include "Core/LeaseManager.h"
 #include "Core/LocaleManager.h"
+#include "Core/MemoryManager.h"
 #include "Core/ModManifest.h"
 #include "Core/ModuleLoader.h"
 #include "Core/TimerManager.h"
@@ -54,15 +57,18 @@ protected:
     static inline BML::Scripting::CoroutineManager *s_CoroutineManager = nullptr;
 
     void SetUp() override {
-        kernel_->context = std::make_unique<BML::Core::Context>();
         kernel_->api_registry = std::make_unique<BML::Core::ApiRegistry>();
-        kernel_->interface_registry = std::make_unique<BML::Core::InterfaceRegistry>();
-        kernel_->imc_bus = std::make_unique<BML::Core::ImcBus>();
+        kernel_->config = std::make_unique<BML::Core::ConfigStore>();
+        kernel_->memory = std::make_unique<BML::Core::MemoryManager>();
         kernel_->leases = std::make_unique<BML::Core::LeaseManager>();
+        kernel_->fault_tracker = std::make_unique<BML::Core::FaultTracker>();
+        kernel_->crash_dump = std::make_unique<BML::Core::CrashDumpWriter>();
+        kernel_->context = std::make_unique<BML::Core::Context>(*kernel_->api_registry, *kernel_->config);
+        kernel_->interface_registry = std::make_unique<BML::Core::InterfaceRegistry>(*kernel_->context, *kernel_->leases);
+        kernel_->imc_bus = std::make_unique<BML::Core::ImcBus>();
         kernel_->hooks = std::make_unique<BML::Core::HookRegistry>();
         kernel_->locale = std::make_unique<BML::Core::LocaleManager>();
-        kernel_->timers = std::make_unique<BML::Core::TimerManager>();
-        kernel_->config = std::make_unique<BML::Core::ConfigStore>();
+        kernel_->timers = std::make_unique<BML::Core::TimerManager>(*kernel_->context, *kernel_->crash_dump, *kernel_->fault_tracker);
 
         m_TempDir = CreateTempDir();
 

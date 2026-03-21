@@ -9,8 +9,10 @@
 #include <fstream>
 #include <string>
 
-#include "Core/FaultTracker.h"
+#include "Core/ApiRegistry.h"
+#include "Core/ConfigStore.h"
 #include "Core/Context.h"
+#include "Core/FaultTracker.h"
 #include "TestKernel.h"
 
 using namespace BML::Core;
@@ -21,7 +23,9 @@ protected:
     TestKernel kernel_;
 
     void SetUp() override {
-        kernel_->context       = std::make_unique<Context>();
+        kernel_->api_registry  = std::make_unique<ApiRegistry>();
+        kernel_->config        = std::make_unique<ConfigStore>();
+        kernel_->context       = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config);
         kernel_->fault_tracker = std::make_unique<FaultTracker>();
         kernel_->context->Initialize(bmlMakeVersion(0, 4, 0));
         kernel_->fault_tracker->Shutdown();

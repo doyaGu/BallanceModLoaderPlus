@@ -33,8 +33,8 @@ protected:
 
     void SetUp() override {
         kernel_->api_registry = std::make_unique<ApiRegistry>();
-        kernel_->context = std::make_unique<BML::Core::Context>();
         kernel_->config = std::make_unique<BML::Core::ConfigStore>();
+        kernel_->context = std::make_unique<BML::Core::Context>(*kernel_->api_registry, *kernel_->config);
         BML::Core::RegisterResourceApis();
     }
 

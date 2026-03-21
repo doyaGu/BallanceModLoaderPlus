@@ -42,7 +42,7 @@ protected:
     void SetUp() override {
         kernel_->api_registry = std::make_unique<ApiRegistry>();
         kernel_->config       = std::make_unique<ConfigStore>();
-        kernel_->context      = std::make_unique<Context>();
+        kernel_->context      = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config);
         kernel_->api_registry->Clear();
         Context::SetCurrentModule(nullptr);
         temp_root_ = std::filesystem::temp_directory_path() /

@@ -1,7 +1,5 @@
 #include "TimerManager.h"
 
-#include "KernelServices.h"
-
 #include <exception>
 
 #include "Context.h"
@@ -10,6 +8,9 @@
 #include "Logging.h"
 
 namespace BML::Core {
+    TimerManager::TimerManager(Context &context, CrashDumpWriter &crash_dump, FaultTracker &fault_tracker)
+        : m_Context(context), m_CrashDump(crash_dump), m_FaultTracker(fault_tracker) {}
+
     namespace {
         constexpr char kTimerLogCategory[] = "timer";
 
@@ -241,7 +242,7 @@ namespace BML::Core {
         }
 
         // Fire callbacks without holding the lock
-        BML_Context ctx = GetKernelOrNull()->context->GetHandle();
+        BML_Context ctx = m_Context.GetHandle();
         for (auto &pending : to_fire) {
             try {
 #if defined(_MSC_VER) && !defined(__MINGW32__)
@@ -252,9 +253,9 @@ namespace BML::Core {
                             "Timer callback crashed (code 0x%08lX) for module '%s'; cancelling timer",
                             seh_code,
                             pending.owner_id.empty() ? "unknown" : pending.owner_id.c_str());
-                    GetKernelOrNull()->crash_dump->WriteDumpOnce(pending.owner_id, seh_code);
+                    m_CrashDump.WriteDumpOnce(pending.owner_id, seh_code);
                     if (!pending.owner_id.empty()) {
-                        GetKernelOrNull()->fault_tracker->RecordFault(pending.owner_id, seh_code);
+                        m_FaultTracker.RecordFault(pending.owner_id, seh_code);
                     }
                     Cancel(pending.handle);
                 }

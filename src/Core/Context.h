@@ -113,12 +113,15 @@ namespace BML::Core {
 
         static std::wstring SanitizeIdentifierForFilename(const std::string &value);
 
-        Context();
+        explicit Context(class ApiRegistry &api_registry, class ConfigStore &config);
         ~Context() = default;
 
     private:
         Context(const Context &) = delete;
         Context &operator=(const Context &) = delete;
+
+        class ApiRegistry &m_ApiRegistry;
+        class ConfigStore &m_Config;
 
         void ShutdownModulesLocked();
         BML_Mod_T *FindModHandleLocked(BML_Mod mod);

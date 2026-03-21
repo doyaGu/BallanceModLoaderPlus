@@ -52,9 +52,9 @@ protected:
     TestKernel kernel_;
 
     void SetUp() override {
-        kernel_->context = std::make_unique<BML::Core::Context>();
         kernel_->api_registry = std::make_unique<ApiRegistry>();
         kernel_->config = std::make_unique<ConfigStore>();
+        kernel_->context = std::make_unique<BML::Core::Context>(*kernel_->api_registry, *kernel_->config);
 
         auto &ctx = *kernel_->context;
         ctx.Initialize({0, 4, 0});

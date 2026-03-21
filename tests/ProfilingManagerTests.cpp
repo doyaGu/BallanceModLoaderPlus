@@ -31,9 +31,9 @@ protected:
     TestKernel kernel_;
 
     void SetUp() override {
-        kernel_->profiling    = std::make_unique<ProfilingManager>();
         kernel_->api_registry = std::make_unique<ApiRegistry>();
         kernel_->memory       = std::make_unique<BML::Core::MemoryManager>();
+        kernel_->profiling    = std::make_unique<ProfilingManager>(*kernel_->api_registry, *kernel_->memory);
         // Enable profiling for tests
         kernel_->profiling->SetProfilingEnabled(BML_TRUE);
     }

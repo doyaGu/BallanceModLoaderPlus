@@ -18,6 +18,7 @@
 #include <thread>
 #include <vector>
 
+#include "Core/ApiRegistry.h"
 #include "Core/ConfigStore.h"
 #include "Core/Context.h"
 #include "Core/DiagnosticManager.h"
@@ -162,8 +163,9 @@ protected:
 
     void SetUp() override {
         kernel_->diagnostics = std::make_unique<DiagnosticManager>();
+        kernel_->api_registry = std::make_unique<ApiRegistry>();
         kernel_->config = std::make_unique<ConfigStore>();
-        kernel_->context = std::make_unique<Context>();
+        kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config);
 
         auto &ctx = *kernel_->context;
         ctx.Initialize({0, 4, 0});

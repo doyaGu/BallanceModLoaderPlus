@@ -38,9 +38,11 @@ namespace BML::Core {
         uint32_t GetCount() const;
         uint32_t GetLeaseCount(const char *interface_id) const;
 
-        InterfaceRegistry() = default;
+        explicit InterfaceRegistry(class Context &context, class LeaseManager &leases);
 
     private:
+        class Context &m_Context;
+        class LeaseManager &m_Leases;
         struct InterfaceEntry {
             BML_InterfaceDesc desc{};
             std::string provider_id;

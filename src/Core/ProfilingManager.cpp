@@ -1,7 +1,5 @@
 #include "ProfilingManager.h"
 
-#include "KernelServices.h"
-
 #include "ApiRegistry.h"
 #include "CoreErrors.h"
 #include "DiagnosticManager.h"
@@ -18,8 +16,10 @@ namespace BML::Core {
         }
     } // namespace
 
-    ProfilingManager::ProfilingManager()
-        : m_Backend(BML_PROFILER_CHROME_TRACING),
+    ProfilingManager::ProfilingManager(ApiRegistry &api_registry, MemoryManager &memory)
+        : m_ApiRegistry(api_registry),
+          m_Memory(memory),
+          m_Backend(BML_PROFILER_CHROME_TRACING),
           m_Enabled(false),
           m_TotalEvents(0),
           m_TotalScopes(0),
@@ -201,12 +201,12 @@ namespace BML::Core {
         if (!api_name) {
             return 0;
         }
-        return GetKernelOrNull()->api_registry->GetCallCount(api_name);
+        return m_ApiRegistry.GetCallCount(api_name);
     }
 
     uint64_t ProfilingManager::GetTotalAllocBytes() {
         BML_MemoryStats stats;
-        if (GetKernelOrNull()->memory->GetStats(&stats) == BML_RESULT_OK) {
+        if (m_Memory.GetStats(&stats) == BML_RESULT_OK) {
             return stats.total_allocated;
         }
         return 0;
