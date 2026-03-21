@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -29,12 +30,32 @@ namespace BML::Core {
             AllocateChunk();
         }
 
-        ~FixedBlockPool() = default;
+        ~FixedBlockPool() {
+            m_ShuttingDown.store(true, std::memory_order_release);
+            while (m_ActiveOps.load(std::memory_order_acquire) != 0) {
+                std::this_thread::yield();
+            }
+
+            auto &caches = ThreadCaches();
+            caches.erase(
+                std::remove_if(
+                    caches.begin(),
+                    caches.end(),
+                    [this](const CacheEntry &entry) {
+                        auto token = entry.token.lock();
+                        return entry.owner == this && token && token == m_CacheToken;
+                    }),
+                caches.end());
+        }
 
         FixedBlockPool(const FixedBlockPool &) = delete;
         FixedBlockPool &operator=(const FixedBlockPool &) = delete;
 
         void *Allocate() {
+            OperationGuard operation(*this);
+            if (!operation)
+                return nullptr;
+
             auto &cache = GetThreadCache();
             while (!cache.head) {
                 if (RefillCache(cache))
@@ -70,6 +91,11 @@ namespace BML::Core {
         void Deallocate(void *ptr) {
             if (!ptr)
                 return;
+
+            OperationGuard operation(*this);
+            if (!operation)
+                return;
+
             auto &cache = GetThreadCache();
             auto *node = static_cast<FreeNode *>(ptr);
             node->next = cache.head;
@@ -93,6 +119,46 @@ namespace BML::Core {
             size_t size{0};
         };
 
+        struct CacheToken {};
+
+        struct CacheEntry {
+            FixedBlockPool *owner{nullptr};
+            std::weak_ptr<CacheToken> token;
+            ThreadCache cache{};
+        };
+
+        class OperationGuard {
+        public:
+            explicit OperationGuard(FixedBlockPool &pool)
+                : m_Pool(&pool) {
+                for (;;) {
+                    if (m_Pool->m_ShuttingDown.load(std::memory_order_acquire))
+                        return;
+
+                    m_Pool->m_ActiveOps.fetch_add(1, std::memory_order_acq_rel);
+                    if (!m_Pool->m_ShuttingDown.load(std::memory_order_acquire)) {
+                        m_Active = true;
+                        return;
+                    }
+                    m_Pool->m_ActiveOps.fetch_sub(1, std::memory_order_acq_rel);
+                }
+            }
+
+            ~OperationGuard() {
+                if (m_Active)
+                    m_Pool->m_ActiveOps.fetch_sub(1, std::memory_order_acq_rel);
+            }
+
+            explicit operator bool() const noexcept { return m_Active; }
+
+            OperationGuard(const OperationGuard &) = delete;
+            OperationGuard &operator=(const OperationGuard &) = delete;
+
+        private:
+            FixedBlockPool *m_Pool{nullptr};
+            bool m_Active{false};
+        };
+
         struct ListSegment {
             FreeNode *head{nullptr};
             FreeNode *tail{nullptr};
@@ -104,17 +170,27 @@ namespace BML::Core {
             return (value + mask) & ~mask;
         }
 
-        ThreadCache &GetThreadCache() {
-            struct CacheEntry {
-                FixedBlockPool *owner{nullptr};
-                ThreadCache cache{};
-            };
+        static std::vector<CacheEntry> &ThreadCaches() {
             static thread_local std::vector<CacheEntry> caches;
+            return caches;
+        }
+
+        ThreadCache &GetThreadCache() {
+            auto &caches = ThreadCaches();
+            caches.erase(
+                std::remove_if(
+                    caches.begin(),
+                    caches.end(),
+                    [](const CacheEntry &entry) { return entry.token.expired(); }),
+                caches.end());
+
             for (auto &entry : caches) {
-                if (entry.owner == this)
+                auto token = entry.token.lock();
+                if (entry.owner == this && token && token == m_CacheToken) {
                     return entry.cache;
+                }
             }
-            caches.push_back(CacheEntry{this, {}});
+            caches.push_back(CacheEntry{this, m_CacheToken, {}});
             return caches.back().cache;
         }
 
@@ -213,6 +289,9 @@ namespace BML::Core {
         const size_t m_BlockStride;
         const size_t m_BlocksPerChunk;
         const size_t m_MaxCacheSize;
+        std::shared_ptr<CacheToken> m_CacheToken{std::make_shared<CacheToken>()};
+        std::atomic<bool> m_ShuttingDown{false};
+        std::atomic<size_t> m_ActiveOps{0};
 
         std::mutex m_ChunkMutex;
         std::vector<std::unique_ptr<std::byte[]>> m_Chunks;
