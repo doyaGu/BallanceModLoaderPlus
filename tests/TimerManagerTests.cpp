@@ -31,8 +31,9 @@ protected:
         kernel_->config        = std::make_unique<ConfigStore>();
         kernel_->crash_dump    = std::make_unique<CrashDumpWriter>();
         kernel_->fault_tracker = std::make_unique<FaultTracker>();
-        kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config);
-        kernel_->timers  = std::make_unique<TimerManager>(*kernel_->context, *kernel_->crash_dump, *kernel_->fault_tracker);
+        kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config, *kernel_->crash_dump, *kernel_->fault_tracker);
+        kernel_->config->BindContext(*kernel_->context);
+        kernel_->timers  = std::make_unique<TimerManager>(*kernel_->context);
         kernel_->context->Initialize(bmlMakeVersion(0, 4, 0));
         kernel_->timers->Shutdown();
     }

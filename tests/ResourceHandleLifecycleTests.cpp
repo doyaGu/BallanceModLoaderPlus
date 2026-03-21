@@ -9,6 +9,8 @@
 #include "Core/ApiRegistry.h"
 #include "Core/ConfigStore.h"
 #include "Core/Context.h"
+#include "Core/CrashDumpWriter.h"
+#include "Core/FaultTracker.h"
 #include "Core/ResourceApi.h"
 #include "TestKernel.h"
 
@@ -32,9 +34,12 @@ protected:
     TestKernel kernel_;
 
     void SetUp() override {
-        kernel_->api_registry = std::make_unique<ApiRegistry>();
-        kernel_->config = std::make_unique<BML::Core::ConfigStore>();
-        kernel_->context = std::make_unique<BML::Core::Context>(*kernel_->api_registry, *kernel_->config);
+        kernel_->api_registry  = std::make_unique<ApiRegistry>();
+        kernel_->config        = std::make_unique<BML::Core::ConfigStore>();
+        kernel_->crash_dump    = std::make_unique<BML::Core::CrashDumpWriter>();
+        kernel_->fault_tracker = std::make_unique<BML::Core::FaultTracker>();
+        kernel_->context = std::make_unique<BML::Core::Context>(*kernel_->api_registry, *kernel_->config, *kernel_->crash_dump, *kernel_->fault_tracker);
+        kernel_->config->BindContext(*kernel_->context);
         BML::Core::RegisterResourceApis();
     }
 

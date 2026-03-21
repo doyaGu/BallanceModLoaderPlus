@@ -37,7 +37,6 @@
 #include "CrashDumpWriter.h"
 #include "FaultTracker.h"
 #include "FixedBlockPool.h"
-#include "KernelServices.h"
 #include "Logging.h"
 #include "MpscRingBuffer.h"
 #include "CoreErrors.h"
@@ -47,6 +46,12 @@ namespace BML::Core {
 }
 
 namespace {
+    // Forward declarations of bound dependencies (set by BindDeps, cleared by ~ImcBus)
+    using BML::Core::Context;
+    using BML::Core::CrashDumpWriter;
+    using BML::Core::FaultTracker;
+    Context *g_BusContext = nullptr;
+
     constexpr char kImcLogCategory[] = "imc.bus";
     constexpr size_t kDefaultQueueCapacity = 256;
     constexpr size_t kMaxQueueCapacity = 16384;
@@ -392,18 +397,6 @@ namespace {
         std::unordered_map<BML_TopicId, std::unique_ptr<TopicStats>> m_Stats;
     };
 
-    // Global topic registry
-    TopicRegistry &GetTopicRegistry() {
-        static TopicRegistry registry;
-        return registry;
-    }
-
-    // Similar for RPC
-    TopicRegistry &GetRpcRegistry() {
-        static TopicRegistry registry;
-        return registry;
-    }
-
     // ========================================================================
     // Priority Queue for Messages
     // ========================================================================
@@ -725,7 +718,7 @@ struct BML_Future_T {
 
     void NotifyCallbacks(std::vector<FutureCallbackEntry> &&pending_callbacks) {
         cv.notify_all();
-        BML_Context ctx = BML::Core::GetKernelOrNull()->context->GetHandle();
+        BML_Context ctx = ::g_BusContext->GetHandle();
         for (const auto &entry : pending_callbacks) {
             if (entry.fn)
                 entry.fn(ctx, this, entry.user_data);
@@ -1019,6 +1012,10 @@ namespace BML::Core {
             std::unique_ptr<MpscRingBuffer<RpcRequest *>> m_RpcQueue;
             std::atomic<uint64_t> m_NextMessageId{1};
 
+            // Topic registries (owned by ImcBusImpl)
+            TopicRegistry m_TopicRegistry;
+            TopicRegistry m_RpcRegistry;
+
             // Global Statistics (atomic for lock-free access)
             struct GlobalStats {
                 std::atomic<uint64_t> total_messages_published{0};
@@ -1076,7 +1073,7 @@ namespace BML::Core {
             if (!current) {
                 return nullptr;
             }
-            return GetKernelOrNull()->context->ResolveModHandle(current);
+            return g_BusContext->ResolveModHandle(current);
         }
 
         BML_Result ImcBusImpl::ResolveRegistrationOwner(BML_Mod *out_owner) const {
@@ -1095,14 +1092,14 @@ namespace BML::Core {
         BML_Result ImcBusImpl::GetTopicId(const char *name, BML_TopicId *out_id) {
             if (!name || !*name || !out_id)
                 return BML_RESULT_INVALID_ARGUMENT;
-            *out_id = GetTopicRegistry().GetOrCreate(name);
+            *out_id = m_TopicRegistry.GetOrCreate(name);
             return (*out_id != BML_TOPIC_ID_INVALID) ? BML_RESULT_OK : BML_RESULT_FAIL;
         }
 
         BML_Result ImcBusImpl::GetRpcId(const char *name, BML_RpcId *out_id) {
             if (!name || !*name || !out_id)
                 return BML_RESULT_INVALID_ARGUMENT;
-            *out_id = GetRpcRegistry().GetOrCreate(name);
+            *out_id = m_RpcRegistry.GetOrCreate(name);
             return (*out_id != BML_RPC_ID_INVALID) ? BML_RESULT_OK : BML_RESULT_FAIL;
         }
 
@@ -1261,7 +1258,7 @@ namespace BML::Core {
             if (!sub || sub->closed.load(std::memory_order_acquire) || !sub->handler)
                 return;
 
-            BML_Context ctx = GetKernelOrNull()->context->GetHandle();
+            BML_Context ctx = g_BusContext->GetHandle();
 
             try {
                 DispatchSubscriptionScope dispatch_scope(sub);
@@ -1274,7 +1271,7 @@ namespace BML::Core {
                 if (seh_code != 0) {
                     std::string owner_id;
                     if (sub->owner) {
-                        auto *mod = GetKernelOrNull()->context->ResolveModHandle(sub->owner);
+                        auto *mod = g_BusContext->ResolveModHandle(sub->owner);
                         if (mod) owner_id = mod->id;
                     }
                     CoreLog(BML_LOG_ERROR, kImcLogCategory,
@@ -1283,9 +1280,9 @@ namespace BML::Core {
                             seh_code, static_cast<unsigned>(topic),
                             owner_id.empty() ? "unknown" : owner_id.c_str());
 
-                    GetKernelOrNull()->crash_dump->WriteDumpOnce(owner_id, seh_code);
+                    g_BusContext->GetCrashDump().WriteDumpOnce(owner_id, seh_code);
                     if (!owner_id.empty()) {
-                        GetKernelOrNull()->fault_tracker->RecordFault(owner_id, seh_code);
+                        g_BusContext->GetFaultTracker().RecordFault(owner_id, seh_code);
                     }
                     sub->closed.store(true, std::memory_order_release);
                 } else {
@@ -1307,7 +1304,7 @@ namespace BML::Core {
             // Lock-free snapshot read (RCU pattern)
             SnapshotGuard guard(m_Snapshot.load(std::memory_order_acquire));
             if (!guard) {
-                GetTopicRegistry().IncrementMessageCount(topic);
+                m_TopicRegistry.IncrementMessageCount(topic);
                 ReleaseMessage(message);
                 return BML_RESULT_OK;
             }
@@ -1315,7 +1312,7 @@ namespace BML::Core {
             // Single lookup: find the TopicEntry (subs + cached stats counter)
             auto it = guard.get()->topic_subs.find(topic);
             if (it == guard.get()->topic_subs.end() || it->second.subs.empty()) {
-                GetTopicRegistry().IncrementMessageCount(topic);
+                m_TopicRegistry.IncrementMessageCount(topic);
                 ReleaseMessage(message);
                 return BML_RESULT_OK;
             }
@@ -1326,7 +1323,7 @@ namespace BML::Core {
             if (entry.message_counter) {
                 entry.message_counter->fetch_add(1, std::memory_order_relaxed);
             } else {
-                GetTopicRegistry().IncrementMessageCount(topic);
+                m_TopicRegistry.IncrementMessageCount(topic);
             }
 
             // First pass: collect valid targets (inline for <= 8 subscribers)
@@ -1498,7 +1495,7 @@ namespace BML::Core {
         void ImcBusImpl::PublishNewSnapshot() {
             // Build new immutable snapshot from current mutable state
             auto *snap = new TopicSnapshot();
-            auto &registry = GetTopicRegistry();
+            auto &registry = m_TopicRegistry;
             for (auto &[topic, handles] : m_MutableTopicMap) {
                 auto &entry = snap->topic_subs[topic];
                 entry.subs.reserve(handles.size());
@@ -1748,7 +1745,7 @@ namespace BML::Core {
                 return BML_RESULT_INVALID_ARGUMENT;
 
             BML_EventResult final_result = BML_EVENT_CONTINUE;
-            BML_Context ctx = GetKernelOrNull()->context->GetHandle();
+            BML_Context ctx = g_BusContext->GetHandle();
 
             // Phase 1: Run intercept handlers in execution_order
             // Collect interceptors under SnapshotGuard, then release guard before dispatch
@@ -1792,7 +1789,7 @@ namespace BML::Core {
                             if (seh_code != 0) {
                                 std::string owner_id;
                                 if (sub->owner) {
-                                    auto *mod = GetKernelOrNull()->context->ResolveModHandle(sub->owner);
+                                    auto *mod = g_BusContext->ResolveModHandle(sub->owner);
                                     if (mod) owner_id = mod->id;
                                 }
                                 CoreLog(BML_LOG_ERROR, kImcLogCategory,
@@ -1800,9 +1797,9 @@ namespace BML::Core {
                                         "owned by module '%s' -- unsubscribing",
                                         seh_code, static_cast<unsigned>(topic),
                                         owner_id.empty() ? "unknown" : owner_id.c_str());
-                                GetKernelOrNull()->crash_dump->WriteDumpOnce(owner_id, seh_code);
+                                g_BusContext->GetCrashDump().WriteDumpOnce(owner_id, seh_code);
                                 if (!owner_id.empty()) {
-                                    GetKernelOrNull()->fault_tracker->RecordFault(owner_id, seh_code);
+                                    g_BusContext->GetFaultTracker().RecordFault(owner_id, seh_code);
                                 }
                                 sub->closed.store(true, std::memory_order_release);
                                 result = BML_EVENT_CONTINUE; // Treat crash as CONTINUE
@@ -2093,7 +2090,7 @@ namespace BML::Core {
             req_msg.msg_id = request->msg_id;
             req_msg.flags = 0;
 
-            BML_Context ctx = GetKernelOrNull()->context->GetHandle();
+            BML_Context ctx = g_BusContext->GetHandle();
 
             // Snapshot middleware under lock
             std::vector<RpcMiddlewareEntry> middleware_snapshot;
@@ -2284,7 +2281,7 @@ namespace BML::Core {
             out_info->struct_size = sizeof(BML_RpcInfo);
             out_info->rpc_id = rpc_id;
 
-            const std::string *name = GetRpcRegistry().GetName(rpc_id);
+            const std::string *name = m_RpcRegistry.GetName(rpc_id);
             if (name) {
                 size_t copy_len = name->size() < 255 ? name->size() : 255;
                 std::memcpy(out_info->name, name->c_str(), copy_len);
@@ -2309,7 +2306,7 @@ namespace BML::Core {
             if (!buf || cap == 0)
                 return BML_RESULT_INVALID_ARGUMENT;
 
-            const std::string *name = GetRpcRegistry().GetName(rpc_id);
+            const std::string *name = m_RpcRegistry.GetName(rpc_id);
             if (!name) {
                 buf[0] = '\0';
                 if (out_len) *out_len = 0;
@@ -2350,7 +2347,7 @@ namespace BML::Core {
                 }
             }
 
-            auto &registry = GetRpcRegistry();
+            auto &registry = m_RpcRegistry;
             for (const auto &e : snapshot) {
                 const std::string *name = registry.GetName(e.id);
                 cb(e.id, name ? name->c_str() : "", e.has_handler, user_data);
@@ -2431,7 +2428,7 @@ namespace BML::Core {
 
             if (s->on_chunk && s->chunk_topic != BML_TOPIC_ID_INVALID) {
                 BML_ImcMessage msg = BML_IMC_MSG(data, size);
-                BML_Context ctx = GetKernelOrNull()->context->GetHandle();
+                BML_Context ctx = g_BusContext->GetHandle();
                 s->on_chunk(ctx, s->chunk_topic, &msg, s->user_data);
             }
             return BML_RESULT_OK;
@@ -2535,7 +2532,7 @@ namespace BML::Core {
                 req_msg.msg_id = request->msg_id;
             }
 
-            BML_Context ctx = GetKernelOrNull()->context->GetHandle();
+            BML_Context ctx = g_BusContext->GetHandle();
             BML_Result result = BML_RESULT_INTERNAL_ERROR;
             try {
                 result = handler_entry.handler(ctx, rpc_id, &req_msg, stream, handler_entry.user_data);
@@ -2643,7 +2640,7 @@ namespace BML::Core {
             }
 
             if (invoke_now) {
-                BML_Context ctx = GetKernelOrNull()->context->GetHandle();
+                BML_Context ctx = g_BusContext->GetHandle();
                 callback(ctx, future, user_data);
             }
             return BML_RESULT_OK;
@@ -2777,7 +2774,7 @@ namespace BML::Core {
                 std::lock_guard lock(m_WriteMutex);
                 out_stats->active_subscriptions = m_Subscriptions.size();
             }
-            out_stats->active_topics = GetTopicRegistry().GetTopicCount();
+            out_stats->active_topics = m_TopicRegistry.GetTopicCount();
 
             // Count active RPC handlers (regular + streaming)
             {
@@ -2800,7 +2797,7 @@ namespace BML::Core {
 
             out_info->struct_size = sizeof(BML_TopicInfo);
             out_info->topic_id = topic;
-            out_info->message_count = GetTopicRegistry().GetMessageCount(topic);
+            out_info->message_count = m_TopicRegistry.GetMessageCount(topic);
 
             // Get subscription info from snapshot (lock-free read)
             {
@@ -2818,7 +2815,7 @@ namespace BML::Core {
             }
 
             // Get name if available
-            const std::string *name = GetTopicRegistry().GetName(topic);
+            const std::string *name = m_TopicRegistry.GetName(topic);
             if (name && !name->empty()) {
                 size_t copy_len = std::min(name->size(), sizeof(out_info->name) - 1);
                 std::memcpy(out_info->name, name->c_str(), copy_len);
@@ -2834,7 +2831,7 @@ namespace BML::Core {
             if (topic == BML_TOPIC_ID_INVALID || !buffer || buffer_size == 0)
                 return BML_RESULT_INVALID_ARGUMENT;
 
-            const std::string *name = GetTopicRegistry().GetName(topic);
+            const std::string *name = m_TopicRegistry.GetName(topic);
             if (!name) {
                 buffer[0] = '\0';
                 if (out_length) *out_length = 0;
@@ -3020,6 +3017,7 @@ namespace BML::Core {
         void DeleteBusImpl(void *p) {
             delete static_cast<ImcBusImpl *>(p);
             g_BusPtr = nullptr;
+            g_BusContext = nullptr;
         }
     }
 
@@ -3030,6 +3028,10 @@ namespace BML::Core {
     }
 
     // ~ImcBus() is inline in ImcBus.h (calls m_Deleter).
+
+    void ImcBus::BindDeps(Context &ctx) {
+        g_BusContext = &ctx;
+    }
 
     void ImcBus::Shutdown() {
         if (g_BusPtr)
@@ -3043,6 +3045,9 @@ namespace BML::Core {
     void ImcPump(size_t max_per_sub) { GetBus().Pump(max_per_sub); }
     void ImcShutdown() { GetBus().Shutdown(); }
     void ImcCleanupOwner(BML_Mod owner) { GetBus().CleanupOwner(owner); }
+    void ImcBindDeps(Context &ctx) {
+        g_BusContext = &ctx;
+    }
 
     BML_Result ImcGetTopicId(const char *n, BML_TopicId *o) { return GetBus().GetTopicId(n, o); }
     BML_Result ImcGetRpcId(const char *n, BML_RpcId *o) { return GetBus().GetRpcId(n, o); }

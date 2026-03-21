@@ -2,7 +2,7 @@
 #include "ModManifest.h"
 
 namespace BML::Core {
-    ReloadableModuleSlot::ReloadableModuleSlot() = default;
+    ReloadableModuleSlot::ReloadableModuleSlot(Context *ctx) : m_Context(ctx) {}
 
     ReloadableModuleSlot::~ReloadableModuleSlot() = default;
 

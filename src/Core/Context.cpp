@@ -131,8 +131,10 @@ namespace BML::Core {
         }
     }
 
-    Context::Context(ApiRegistry &api_registry, ConfigStore &config)
-        : m_ApiRegistry(api_registry), m_Config(config) {
+    Context::Context(ApiRegistry &api_registry, ConfigStore &config,
+                     CrashDumpWriter &crash_dump, FaultTracker &fault_tracker)
+        : m_ApiRegistry(api_registry), m_Config(config),
+          m_CrashDump(crash_dump), m_FaultTracker(fault_tracker) {
         // Constructor only sets defaults; actual initialization happens in Initialize()
         m_RuntimeVersion = {0, 4, 0};
         m_Initialized.store(false, std::memory_order_relaxed);

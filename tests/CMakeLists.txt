@@ -83,7 +83,6 @@ add_bml_test_support_library(bml_test_runtime_support
         ${BML_SOURCE_DIR}/Core/ImcBus.cpp
         ${BML_SOURCE_DIR}/Core/InterfaceApi.cpp
         ${BML_SOURCE_DIR}/Core/InterfaceRegistry.cpp
-        ${BML_SOURCE_DIR}/Core/KernelServices.cpp
         ${BML_SOURCE_DIR}/Core/LeaseManager.cpp
         ${BML_SOURCE_DIR}/Core/LocaleApi.cpp
         ${BML_SOURCE_DIR}/Core/LocaleManager.cpp
@@ -119,7 +118,6 @@ add_bml_test_support_library(bml_test_core_support
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
-        ${BML_SOURCE_DIR}/Core/KernelServices.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES

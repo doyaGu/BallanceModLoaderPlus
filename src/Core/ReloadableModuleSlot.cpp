@@ -85,7 +85,8 @@ namespace BML::Core {
         }
     }
 
-    ReloadableModuleSlot::ReloadableModuleSlot() = default;
+    ReloadableModuleSlot::ReloadableModuleSlot(Context *ctx)
+        : m_Context(ctx) {}
 
     ReloadableModuleSlot::~ReloadableModuleSlot() {
         Shutdown();
@@ -556,9 +557,9 @@ namespace BML::Core {
                     mod_id.empty() ? "unknown" : mod_id.c_str(),
                     ReloadFailureToString(caught_failure),
                     caught_code);
-            GetKernelOrNull()->crash_dump->WriteDumpOnce(mod_id, caught_code);
-            if (!mod_id.empty()) {
-                GetKernelOrNull()->fault_tracker->RecordFault(mod_id, caught_code);
+            if (m_Context) m_Context->GetCrashDump().WriteDumpOnce(mod_id, caught_code);
+            if (!mod_id.empty() && m_Context) {
+                m_Context->GetFaultTracker().RecordFault(mod_id, caught_code);
             }
             m_LastFailure = caught_failure;
             result = -1;

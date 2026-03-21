@@ -105,7 +105,7 @@ namespace BML::Core {
         // Create slot entry
         SlotEntry slot_entry;
         slot_entry.info = entry;
-        slot_entry.slot = std::make_unique<ReloadableModuleSlot>();
+        slot_entry.slot = std::make_unique<ReloadableModuleSlot>(&m_Context);
 
         // Configure the slot
         ReloadableSlotConfig config;

@@ -74,6 +74,8 @@ namespace BML::Core {
 
     class ConfigStore {
     public:
+        void BindContext(class Context &ctx);
+
         BML_Result GetValue(BML_Mod mod,
                             const BML_ConfigKey *key,
                             BML_ConfigValue *out_value);
@@ -132,6 +134,9 @@ namespace BML::Core {
         // Migration registry
         mutable std::mutex m_MigrationMutex;
         std::vector<ConfigMigrationEntry> m_Migrations;
+
+        // Bound context pointer
+        Context *m_BoundContext = nullptr;
     };
 
     void RegisterConfigApis();

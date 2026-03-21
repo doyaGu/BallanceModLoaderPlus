@@ -378,13 +378,17 @@ namespace BML::Core {
         k.profiling          = std::make_unique<ProfilingManager>(*k.api_registry, *k.memory);
         k.imc_bus            = std::make_unique<ImcBus>();
         // L3 - depend on L0/L1/L2
-        k.context            = std::make_unique<Context>(*k.api_registry, *k.config);
+        k.context            = std::make_unique<Context>(*k.api_registry, *k.config, *k.crash_dump, *k.fault_tracker);
         k.interface_registry = std::make_unique<InterfaceRegistry>(*k.context, *k.leases);
-        k.timers             = std::make_unique<TimerManager>(*k.context, *k.crash_dump, *k.fault_tracker);
+        k.timers             = std::make_unique<TimerManager>(*k.context);
         InstallKernel(&k);
 
         // Initialize context with runtime version
         k.context->Initialize(bmlMakeVersion(0, 4, 0));
+
+        // Bind runtime deps (two-phase: constructed before Context)
+        k.config->BindContext(*k.context);
+        k.imc_bus->BindDeps(*k.context);
 
         RegisterBootstrapExports();
 
@@ -544,28 +548,8 @@ namespace BML::Core {
         // Drain any IMC messages published during module detach callbacks
         ImcPump();
 
-        // Shutdown crash dump writer and fault tracker
-        GetKernelOrNull()->crash_dump->Shutdown();
-        GetKernelOrNull()->fault_tracker->Shutdown();
-
-        // Shutdown hook registry
-        GetKernelOrNull()->hooks->Shutdown();
-
-        // Shutdown locale manager
-        GetKernelOrNull()->locale->Shutdown();
-
-        // Shutdown timers
-        GetKernelOrNull()->timers->Shutdown();
-
-        // Shutdown IMC bus
-        ImcShutdown();
-
-        // Cleanup context (clears all remaining resources)
-        GetKernelOrNull()->context->Cleanup();
-
-        GetKernelOrNull()->leases->Reset();
-        GetKernelOrNull()->interface_registry->Clear();
-        GetKernelOrNull()->api_registry->Clear();
+        // Gracefully shutdown all subsystems
+        state.kernel->Shutdown();
 
         // Tear down the service graph
         InstallKernel(nullptr);

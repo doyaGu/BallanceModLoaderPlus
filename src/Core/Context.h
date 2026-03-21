@@ -113,8 +113,12 @@ namespace BML::Core {
 
         static std::wstring SanitizeIdentifierForFilename(const std::string &value);
 
-        explicit Context(class ApiRegistry &api_registry, class ConfigStore &config);
+        explicit Context(class ApiRegistry &api_registry, class ConfigStore &config,
+                         class CrashDumpWriter &crash_dump, class FaultTracker &fault_tracker);
         ~Context() = default;
+
+        class CrashDumpWriter &GetCrashDump() { return m_CrashDump; }
+        class FaultTracker &GetFaultTracker() { return m_FaultTracker; }
 
     private:
         Context(const Context &) = delete;
@@ -122,6 +126,8 @@ namespace BML::Core {
 
         class ApiRegistry &m_ApiRegistry;
         class ConfigStore &m_Config;
+        class CrashDumpWriter &m_CrashDump;
+        class FaultTracker &m_FaultTracker;
 
         void ShutdownModulesLocked();
         BML_Mod_T *FindModHandleLocked(BML_Mod mod);

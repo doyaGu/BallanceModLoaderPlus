@@ -21,7 +21,9 @@
 #include "Core/ApiRegistry.h"
 #include "Core/ConfigStore.h"
 #include "Core/Context.h"
+#include "Core/CrashDumpWriter.h"
 #include "Core/DependencyResolver.h"
+#include "Core/FaultTracker.h"
 #include "Core/ModHandle.h"
 #include "Core/ModManifest.h"
 #include "Core/ModuleLoader.h"
@@ -32,6 +34,8 @@
 using BML::Core::ApiRegistry;
 using BML::Core::ConfigStore;
 using BML::Core::Context;
+using BML::Core::CrashDumpWriter;
+using BML::Core::FaultTracker;
 using BML::Core::LoadedModule;
 using BML::Core::LoadModules;
 using BML::Core::ModManifest;
@@ -47,9 +51,12 @@ protected:
     TestKernel kernel_;
 
     void SetUp() override {
-        kernel_->api_registry = std::make_unique<ApiRegistry>();
-        kernel_->config = std::make_unique<ConfigStore>();
-        kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config);
+        kernel_->api_registry  = std::make_unique<ApiRegistry>();
+        kernel_->config        = std::make_unique<ConfigStore>();
+        kernel_->crash_dump    = std::make_unique<CrashDumpWriter>();
+        kernel_->fault_tracker = std::make_unique<FaultTracker>();
+        kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config, *kernel_->crash_dump, *kernel_->fault_tracker);
+        kernel_->config->BindContext(*kernel_->context);
 
         Context::SetCurrentModule(nullptr);
     }

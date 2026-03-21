@@ -8,8 +8,8 @@
 #include "Logging.h"
 
 namespace BML::Core {
-    TimerManager::TimerManager(Context &context, CrashDumpWriter &crash_dump, FaultTracker &fault_tracker)
-        : m_Context(context), m_CrashDump(crash_dump), m_FaultTracker(fault_tracker) {}
+    TimerManager::TimerManager(Context &context)
+        : m_Context(context) {}
 
     namespace {
         constexpr char kTimerLogCategory[] = "timer";
@@ -253,9 +253,9 @@ namespace BML::Core {
                             "Timer callback crashed (code 0x%08lX) for module '%s'; cancelling timer",
                             seh_code,
                             pending.owner_id.empty() ? "unknown" : pending.owner_id.c_str());
-                    m_CrashDump.WriteDumpOnce(pending.owner_id, seh_code);
+                    m_Context.GetCrashDump().WriteDumpOnce(pending.owner_id, seh_code);
                     if (!pending.owner_id.empty()) {
-                        m_FaultTracker.RecordFault(pending.owner_id, seh_code);
+                        m_Context.GetFaultTracker().RecordFault(pending.owner_id, seh_code);
                     }
                     Cancel(pending.handle);
                 }

@@ -96,7 +96,7 @@ namespace BML::Core {
      */
     class ReloadableModuleSlot {
     public:
-        ReloadableModuleSlot();
+        explicit ReloadableModuleSlot(class Context *ctx = nullptr);
         ~ReloadableModuleSlot();
 
         ReloadableModuleSlot(const ReloadableModuleSlot&) = delete;
@@ -178,6 +178,8 @@ namespace BML::Core {
         void SetUserData(void* data) { m_UserData = data; }
 
     private:
+        class Context *m_Context;
+
         // Core operations
         bool LoadVersion(unsigned int version, bool is_rollback);
         bool UnloadCurrent(bool is_rollback, bool is_close);

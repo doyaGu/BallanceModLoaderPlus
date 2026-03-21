@@ -8,6 +8,8 @@
 #include "Core/ApiRegistry.h"
 #include "Core/ConfigStore.h"
 #include "Core/Context.h"
+#include "Core/CrashDumpWriter.h"
+#include "Core/FaultTracker.h"
 #include "Core/ReloadableModuleSlot.h"
 #include "TestKernel.h"
 
@@ -117,9 +119,12 @@ protected:
     TestKernel kernel_;
 
     void SetUp() override {
-        kernel_->api_registry = std::make_unique<ApiRegistry>();
-        kernel_->config = std::make_unique<ConfigStore>();
-        kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config);
+        kernel_->api_registry  = std::make_unique<ApiRegistry>();
+        kernel_->config        = std::make_unique<ConfigStore>();
+        kernel_->crash_dump    = std::make_unique<CrashDumpWriter>();
+        kernel_->fault_tracker = std::make_unique<FaultTracker>();
+        kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config, *kernel_->crash_dump, *kernel_->fault_tracker);
+        kernel_->config->BindContext(*kernel_->context);
 
         m_TempDir = CreateTempDir();
     }
@@ -133,19 +138,19 @@ protected:
 };
 
 TEST_F(ReloadableModuleSlotTest, ConstructsAndDestructs) {
-    ReloadableModuleSlot slot;
+    ReloadableModuleSlot slot(kernel_->context.get());
     // Should not throw
 }
 
 TEST_F(ReloadableModuleSlotTest, InitializeWithEmptyPathFails) {
-    ReloadableModuleSlot slot;
+    ReloadableModuleSlot slot(kernel_->context.get());
     ReloadableSlotConfig config;
     config.dll_path = L"";
     EXPECT_FALSE(slot.Initialize(config));
 }
 
 TEST_F(ReloadableModuleSlotTest, InitializeWithNonexistentPathFails) {
-    ReloadableModuleSlot slot;
+    ReloadableModuleSlot slot(kernel_->context.get());
     ReloadableSlotConfig config;
     config.dll_path = L"C:\\nonexistent\\path\\to\\module.dll";
     EXPECT_FALSE(slot.Initialize(config));
@@ -155,7 +160,7 @@ TEST_F(ReloadableModuleSlotTest, InitializeWithNullContextFails) {
     auto dll_path = m_TempDir / "test.dll";
     CreateMinimalDll(dll_path);
 
-    ReloadableModuleSlot slot;
+    ReloadableModuleSlot slot(kernel_->context.get());
     ReloadableSlotConfig config;
     config.dll_path = dll_path.wstring();
     config.context = nullptr;
@@ -169,7 +174,7 @@ TEST_F(ReloadableModuleSlotTest, InitializeWithValidConfigSucceeds) {
     auto& context = *kernel_->context;
     context.Initialize({0, 4, 0});
 
-    ReloadableModuleSlot slot;
+    ReloadableModuleSlot slot(kernel_->context.get());
     ReloadableSlotConfig config;
     config.dll_path = dll_path.wstring();
     config.temp_directory = (m_TempDir / "temp").wstring();
@@ -190,7 +195,7 @@ TEST_F(ReloadableModuleSlotTest, HasChangedReturnsFalseInitially) {
     auto& context = *kernel_->context;
     context.Initialize({0, 4, 0});
 
-    ReloadableModuleSlot slot;
+    ReloadableModuleSlot slot(kernel_->context.get());
     ReloadableSlotConfig config;
     config.dll_path = dll_path.wstring();
     config.context = &context;
@@ -209,7 +214,7 @@ TEST_F(ReloadableModuleSlotTest, HasChangedDetectsFileModification) {
     auto& context = *kernel_->context;
     context.Initialize({0, 4, 0});
 
-    ReloadableModuleSlot slot;
+    ReloadableModuleSlot slot(kernel_->context.get());
     ReloadableSlotConfig config;
     config.dll_path = dll_path.wstring();
     config.context = &context;
@@ -234,7 +239,7 @@ TEST_F(ReloadableModuleSlotTest, ReloadWithNoChangeReturnsNoChange) {
     auto& context = *kernel_->context;
     context.Initialize({0, 4, 0});
 
-    ReloadableModuleSlot slot;
+    ReloadableModuleSlot slot(kernel_->context.get());
     ReloadableSlotConfig config;
     config.dll_path = dll_path.wstring();
     config.context = &context;
@@ -253,7 +258,7 @@ TEST_F(ReloadableModuleSlotTest, GetPathReturnsConfiguredPath) {
     auto& context = *kernel_->context;
     context.Initialize({0, 4, 0});
 
-    ReloadableModuleSlot slot;
+    ReloadableModuleSlot slot(kernel_->context.get());
     ReloadableSlotConfig config;
     config.dll_path = dll_path.wstring();
     config.context = &context;
@@ -272,7 +277,7 @@ TEST_F(ReloadableModuleSlotTest, UserDataPersistence) {
     auto& context = *kernel_->context;
     context.Initialize({0, 4, 0});
 
-    ReloadableModuleSlot slot;
+    ReloadableModuleSlot slot(kernel_->context.get());
     ReloadableSlotConfig config;
     config.dll_path = dll_path.wstring();
     config.context = &context;
@@ -294,7 +299,7 @@ TEST_F(ReloadableModuleSlotTest, ShutdownCleansUp) {
     auto& context = *kernel_->context;
     context.Initialize({0, 4, 0});
 
-    ReloadableModuleSlot slot;
+    ReloadableModuleSlot slot(kernel_->context.get());
     ReloadableSlotConfig config;
     config.dll_path = dll_path.wstring();
     config.temp_directory = (m_TempDir / "temp").wstring();
@@ -311,7 +316,7 @@ TEST_F(ReloadableModuleSlotTest, ShutdownCleansUp) {
 }
 
 TEST_F(ReloadableModuleSlotTest, GetLastFailureInitiallyNone) {
-    ReloadableModuleSlot slot;
+    ReloadableModuleSlot slot(kernel_->context.get());
     EXPECT_EQ(slot.GetLastFailure(), ReloadFailure::None);
 }
 
@@ -325,7 +330,7 @@ TEST_F(ReloadableModuleSlotTest, TempDirectoryCreatedOnInitialize) {
 
     EXPECT_FALSE(std::filesystem::exists(temp_dir));
 
-    ReloadableModuleSlot slot;
+    ReloadableModuleSlot slot(kernel_->context.get());
     ReloadableSlotConfig config;
     config.dll_path = dll_path.wstring();
     config.temp_directory = temp_dir.wstring();

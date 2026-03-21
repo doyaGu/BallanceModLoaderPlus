@@ -1,13 +1,13 @@
 add_executable(ImcBenchmark
         ImcBenchmark.cpp
         ${CMAKE_SOURCE_DIR}/tests/ModuleLoaderStub.cpp
+        ${CMAKE_SOURCE_DIR}/tests/TestKernelSupport.cpp
         ${BML_SOURCE_DIR}/Core/ImcBus.cpp
         ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
         ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
         ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
-        ${BML_SOURCE_DIR}/Core/KernelServices.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp

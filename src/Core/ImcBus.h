@@ -24,6 +24,7 @@ namespace BML::Core {
         ImcBus(const ImcBus &) = delete;
         ImcBus &operator=(const ImcBus &) = delete;
 
+        void BindDeps(class Context &ctx);
         void Shutdown();
 
     private:
@@ -38,6 +39,7 @@ namespace BML::Core {
     void ImcPump(size_t max_per_sub = 0);
     void ImcShutdown();
     void ImcCleanupOwner(BML_Mod owner);
+    void ImcBindDeps(class Context &ctx);
 
     // ID Resolution
     BML_Result ImcGetTopicId(const char *name, BML_TopicId *out_id);

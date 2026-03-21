@@ -1,7 +1,5 @@
 #include "ConfigStore.h"
 
-#include "KernelServices.h"
-
 #include "ApiRegistrationMacros.h"
 
 #include <algorithm>
@@ -233,7 +231,11 @@ namespace BML::Core {
         }
     } // namespace
 
-    static void DispatchConfigHooks(const ConfigDocument &doc, ConfigHookPhase phase) {
+    void ConfigStore::BindContext(Context &ctx) {
+        m_BoundContext = &ctx;
+    }
+
+    static void DispatchConfigHooks(const ConfigDocument &doc, ConfigHookPhase phase, Context *bound_ctx) {
         std::vector<ConfigLoadHookEntry> snapshot;
         {
             std::shared_lock lock(g_ConfigHooksMutex);
@@ -257,11 +259,11 @@ namespace BML::Core {
         loadCtx.config_path = configPath;
 
         // Get BML_Context for callbacks
-        BML_Context bmlCtx = GetKernelOrNull()->context->GetHandle();
+        BML_Context bmlCtx = bound_ctx->GetHandle();
 
         for (const auto &entry : snapshot) {
             // Skip hooks from unloaded modules
-            if (entry.owner && !GetKernelOrNull()->context->ResolveModHandle(entry.owner))
+            if (entry.owner && !bound_ctx->ResolveModHandle(entry.owner))
                 continue;
 
             auto callback = (phase == ConfigHookPhase::Pre) ? entry.hooks.on_pre_load : entry.hooks.on_post_load;
@@ -406,7 +408,7 @@ namespace BML::Core {
             }
         }
 
-        BML_Context bmlCtx = GetKernelOrNull()->context->GetHandle();
+        BML_Context bmlCtx = m_BoundContext->GetHandle();
         for (auto &item : snapshot) {
             BML_ConfigKey key{};
             key.struct_size = sizeof(BML_ConfigKey);
@@ -458,7 +460,7 @@ namespace BML::Core {
             return existing->second.get();
 
         auto doc = std::make_unique<ConfigDocument>();
-        doc->owner = GetKernelOrNull()->context->ResolveModHandle(mod);
+        doc->owner = m_BoundContext->ResolveModHandle(mod);
         if (!doc->owner || !doc->owner->manifest) {
             DebugLog("ConfigStore: unable to resolve manifest for module");
             return nullptr;
@@ -491,13 +493,13 @@ namespace BML::Core {
         if (doc.loaded.load(std::memory_order_relaxed))
             return true;
 
-        DispatchConfigHooks(doc, ConfigHookPhase::Pre);
+        DispatchConfigHooks(doc, ConfigHookPhase::Pre, m_BoundContext);
         doc.categories.clear();
         if (!LoadDocument(doc)) {
             doc.loaded.store(false, std::memory_order_release);
             return false;
         }
-        DispatchConfigHooks(doc, ConfigHookPhase::Post);
+        DispatchConfigHooks(doc, ConfigHookPhase::Post, m_BoundContext);
 
         doc.loaded.store(true, std::memory_order_release);
         return true;

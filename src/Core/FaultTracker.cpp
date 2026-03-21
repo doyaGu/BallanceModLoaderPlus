@@ -205,8 +205,6 @@ namespace BML::Core {
         }
     } // namespace
 
-    FaultTracker::FaultTracker() = default;
-
     void FaultTracker::Load(const std::wstring &base_dir) {
         auto &impl = Impl();
         std::lock_guard lock(impl.mutex);

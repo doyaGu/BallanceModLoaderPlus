@@ -28,6 +28,20 @@
 
 namespace BML::Core {
 
+// Test-specific implementations of kernel access functions.
+// Production versions are in KernelServices.cpp.
+namespace {
+    KernelServices *g_TestKernel = nullptr;
+}
+
+KernelServices *GetKernelOrNull() noexcept {
+    return g_TestKernel;
+}
+
+void InstallKernel(KernelServices *kernel) noexcept {
+    g_TestKernel = kernel;
+}
+
 KernelServices::~KernelServices() = default;
 
 namespace Testing {

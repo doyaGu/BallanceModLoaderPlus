@@ -57,6 +57,8 @@ struct KernelServices {
     KernelServices() = default;
     ~KernelServices();
 
+    void Shutdown();
+
     KernelServices(const KernelServices &) = delete;
     KernelServices &operator=(const KernelServices &) = delete;
 };

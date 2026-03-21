@@ -63,12 +63,13 @@ protected:
         kernel_->leases = std::make_unique<BML::Core::LeaseManager>();
         kernel_->fault_tracker = std::make_unique<BML::Core::FaultTracker>();
         kernel_->crash_dump = std::make_unique<BML::Core::CrashDumpWriter>();
-        kernel_->context = std::make_unique<BML::Core::Context>(*kernel_->api_registry, *kernel_->config);
+        kernel_->context = std::make_unique<BML::Core::Context>(*kernel_->api_registry, *kernel_->config, *kernel_->crash_dump, *kernel_->fault_tracker);
+        kernel_->config->BindContext(*kernel_->context);
         kernel_->interface_registry = std::make_unique<BML::Core::InterfaceRegistry>(*kernel_->context, *kernel_->leases);
         kernel_->imc_bus = std::make_unique<BML::Core::ImcBus>();
         kernel_->hooks = std::make_unique<BML::Core::HookRegistry>();
         kernel_->locale = std::make_unique<BML::Core::LocaleManager>();
-        kernel_->timers = std::make_unique<BML::Core::TimerManager>(*kernel_->context, *kernel_->crash_dump, *kernel_->fault_tracker);
+        kernel_->timers = std::make_unique<BML::Core::TimerManager>(*kernel_->context);
 
         m_TempDir = CreateTempDir();
 
