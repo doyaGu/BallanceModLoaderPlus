@@ -3,7 +3,6 @@
 #include "KernelServices.h"
 
 #include <algorithm>
-#include <cassert>
 #include <vector>
 
 #include "Context.h"
@@ -50,12 +49,6 @@ namespace BML::Core {
         desc.metadata_count = static_cast<uint32_t>(entry.metadata_view.size());
         desc.lease_count = leaseCount;
         return desc;
-    }
-
-    InterfaceRegistry &InterfaceRegistry::Instance() {
-        auto *k = GetKernelOrNull();
-        assert(k && k->interface_registry);
-        return *k->interface_registry;
     }
 
     BML_Result InterfaceRegistry::Register(const BML_InterfaceDesc *desc, const std::string &provider_id) {

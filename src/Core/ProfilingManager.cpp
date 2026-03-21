@@ -2,8 +2,6 @@
 
 #include "KernelServices.h"
 
-#include <cassert>
-
 #include "ApiRegistry.h"
 #include "CoreErrors.h"
 #include "DiagnosticManager.h"
@@ -19,12 +17,6 @@ namespace BML::Core {
             return static_cast<uint64_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
         }
     } // namespace
-
-    ProfilingManager &ProfilingManager::Instance() {
-        auto *k = GetKernelOrNull();
-        assert(k && k->profiling);
-        return *k->profiling;
-    }
 
     ProfilingManager::ProfilingManager()
         : m_Backend(BML_PROFILER_CHROME_TRACING),

@@ -2,7 +2,6 @@
 
 #include "KernelServices.h"
 
-#include <cassert>
 #include <memory>
 #include <new>
 #include <sstream>
@@ -18,12 +17,6 @@ struct BML_InterfaceRegistration_T {
 };
 
 namespace BML::Core {
-    LeaseManager &LeaseManager::Instance() {
-        auto *k = GetKernelOrNull();
-        assert(k && k->leases);
-        return *k->leases;
-    }
-
     BML_Result LeaseManager::CreateInterfaceLease(const std::string &interface_id,
                                                   const std::string &provider_id,
                                                   const std::string &consumer_id,

@@ -2,7 +2,6 @@
 
 #include "KernelServices.h"
 
-#include <cassert>
 #include <exception>
 
 #include "Context.h"
@@ -50,12 +49,6 @@ namespace BML::Core {
         }
 #endif
     } // namespace
-
-    TimerManager &TimerManager::Instance() {
-        auto *k = GetKernelOrNull();
-        assert(k && k->timers);
-        return *k->timers;
-    }
 
     TimerManager::TimerEntry *TimerManager::FindEntry(BML_Timer timer) {
         uint32_t id = IdFromHandle(timer);

@@ -14,8 +14,6 @@ namespace BML::Core {
 
     class LocaleManager {
     public:
-        static LocaleManager &Instance();
-
         /**
          * @brief Load a locale file for a module.
          *

@@ -45,8 +45,6 @@ namespace BML::Core {
             Stopped,
         };
 
-        static Context &Instance();
-
         BML_Context GetHandle();
 
         /**

@@ -18,8 +18,6 @@ namespace BML::Core {
      */
     class ProfilingManager {
     public:
-        static ProfilingManager &Instance();
-
         ProfilingManager(const ProfilingManager &) = delete;
         ProfilingManager &operator=(const ProfilingManager &) = delete;
 

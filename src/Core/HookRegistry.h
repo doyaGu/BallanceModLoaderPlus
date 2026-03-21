@@ -8,8 +8,6 @@
 namespace BML::Core {
     class HookRegistry {
     public:
-        static HookRegistry &Instance();
-
         BML_Result Register(const std::string &owner_module_id,
                             const BML_HookDesc *desc);
         BML_Result Unregister(const std::string &owner_module_id,

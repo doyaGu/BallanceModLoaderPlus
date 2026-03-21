@@ -2,7 +2,6 @@
 
 #include "KernelServices.h"
 
-#include <cassert>
 #include <mutex>
 #include <shared_mutex>
 #include <stdexcept>
@@ -28,12 +27,6 @@ namespace BML::Core {
         for (auto &slot : m_DirectTable) {
             slot.store(nullptr, std::memory_order_relaxed);
         }
-    }
-
-    ApiRegistry &ApiRegistry::Instance() {
-        auto *k = GetKernelOrNull();
-        assert(k && k->api_registry);
-        return *k->api_registry;
     }
 
     // ========================================================================

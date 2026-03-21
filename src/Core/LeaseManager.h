@@ -12,8 +12,6 @@
 namespace BML::Core {
     class LeaseManager {
     public:
-        static LeaseManager &Instance();
-
         BML_Result CreateInterfaceLease(const std::string &interface_id,
                                         const std::string &provider_id,
                                         const std::string &consumer_id,

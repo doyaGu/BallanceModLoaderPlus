@@ -3,7 +3,6 @@
 #include "KernelServices.h"
 
 #include <algorithm>
-#include <cassert>
 #include <functional>
 #include <new>
 #include <unordered_map>
@@ -70,12 +69,6 @@ namespace BML::Core {
             return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "sync", api_name, message, 0);
         }
     } // namespace
-
-    SyncManager &SyncManager::Instance() {
-        auto *k = GetKernelOrNull();
-        assert(k && k->sync);
-        return *k->sync;
-    }
 
     // ============================================================================
     // Mutex Operations

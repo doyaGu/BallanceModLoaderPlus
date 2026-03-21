@@ -74,8 +74,6 @@ namespace BML::Core {
 
     class ConfigStore {
     public:
-        static ConfigStore &Instance();
-
         BML_Result GetValue(BML_Mod mod,
                             const BML_ConfigKey *key,
                             BML_ConfigValue *out_value);

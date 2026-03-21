@@ -106,8 +106,6 @@ namespace BML::Core {
             void *ptr{nullptr};
         };
 
-        static ApiRegistry &Instance();
-
         struct CoreApiDescriptor {
             const char *name;
             void (*register_fn)();

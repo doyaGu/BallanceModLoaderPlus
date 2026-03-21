@@ -11,8 +11,6 @@ namespace BML::Core {
      */
     class CrashDumpWriter {
     public:
-        static CrashDumpWriter &Instance();
-
         /** Set the base directory (typically the game directory). */
         void SetBaseDir(const std::wstring &base_dir);
 

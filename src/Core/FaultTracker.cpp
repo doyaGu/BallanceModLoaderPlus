@@ -2,7 +2,6 @@
 
 #include "KernelServices.h"
 
-#include <cassert>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -207,12 +206,6 @@ namespace BML::Core {
     } // namespace
 
     FaultTracker::FaultTracker() = default;
-
-    FaultTracker &FaultTracker::Instance() {
-        auto *k = GetKernelOrNull();
-        assert(k && k->fault_tracker);
-        return *k->fault_tracker;
-    }
 
     void FaultTracker::Load(const std::wstring &base_dir) {
         auto &impl = Impl();

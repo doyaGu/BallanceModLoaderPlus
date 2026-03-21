@@ -12,8 +12,6 @@ namespace BML::Core {
      */
     class FaultTracker {
     public:
-        static FaultTracker &Instance();
-
         struct FaultRecord {
             int fault_count = 0;
             std::string last_fault;      // ISO 8601 timestamp

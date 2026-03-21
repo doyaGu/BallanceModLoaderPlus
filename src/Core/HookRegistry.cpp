@@ -2,7 +2,6 @@
 
 #include "KernelServices.h"
 
-#include <cassert>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -35,12 +34,6 @@ namespace BML::Core {
     } // namespace
 
     HookRegistry::HookRegistry() = default;
-
-    HookRegistry &HookRegistry::Instance() {
-        auto *k = GetKernelOrNull();
-        assert(k && k->hooks);
-        return *k->hooks;
-    }
 
     BML_Result HookRegistry::Register(const std::string &owner_module_id,
                                       const BML_HookDesc *desc) {

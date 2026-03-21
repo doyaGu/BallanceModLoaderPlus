@@ -229,7 +229,7 @@ TEST_F(TimerManagerTest, CallbackCanScheduleNewTimer) {
         auto *c = static_cast<int *>(ud);
         ++(*c);
         BML_Timer next = nullptr;
-        TimerManager::Instance().ScheduleOnce("test.mod", 0, IncrementCallback, ud, &next);
+        BML::Core::GetKernelOrNull()->timers->ScheduleOnce("test.mod", 0, IncrementCallback, ud, &next);
     };
 
     BML_Timer timer = nullptr;

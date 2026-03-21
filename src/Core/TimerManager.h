@@ -12,8 +12,6 @@ namespace BML::Core {
 
     class TimerManager {
     public:
-        static TimerManager &Instance();
-
         /**
          * @brief Schedule a one-shot millisecond timer.
          * @param owner_id Module ID of the owning module

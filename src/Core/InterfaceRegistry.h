@@ -13,8 +13,6 @@
 namespace BML::Core {
     class InterfaceRegistry {
     public:
-        static InterfaceRegistry &Instance();
-
         BML_Result Register(const BML_InterfaceDesc *desc, const std::string &provider_id);
         BML_Result Acquire(const char *interface_id,
                            const BML_Version *required_abi,

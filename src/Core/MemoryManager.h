@@ -30,8 +30,6 @@ namespace BML::Core {
      */
     class MemoryManager {
     public:
-        static MemoryManager &Instance();
-
         MemoryManager(const MemoryManager &) = delete;
         MemoryManager &operator=(const MemoryManager &) = delete;
 

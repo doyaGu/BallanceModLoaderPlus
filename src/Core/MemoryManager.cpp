@@ -3,7 +3,6 @@
 #include "KernelServices.h"
 
 #include <algorithm>
-#include <cassert>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -86,12 +85,6 @@ namespace BML::Core {
             return metadata;
         }
     } // anonymous namespace
-
-    MemoryManager &MemoryManager::Instance() {
-        auto *k = GetKernelOrNull();
-        assert(k && k->memory);
-        return *k->memory;
-    }
 
     MemoryManager::MemoryManager() = default;
 

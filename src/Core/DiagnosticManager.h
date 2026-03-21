@@ -72,8 +72,6 @@ namespace BML::Core {
      */
     class DiagnosticManager {
     public:
-        static DiagnosticManager &Instance();
-
         DiagnosticManager(const DiagnosticManager &) = delete;
         DiagnosticManager &operator=(const DiagnosticManager &) = delete;
 

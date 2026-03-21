@@ -281,8 +281,6 @@ namespace BML::Core {
      */
     class SyncManager {
     public:
-        static SyncManager &Instance();
-
         SyncManager(const SyncManager &) = delete;
         SyncManager &operator=(const SyncManager &) = delete;
 

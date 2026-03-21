@@ -218,11 +218,6 @@ namespace BML::Core {
 
     SyncManager::SyncManager() : m_DeadlockDetector(std::make_unique<DeadlockDetector>()) {}
 
-    SyncManager &SyncManager::Instance() {
-        static SyncManager instance;
-        return instance;
-    }
-
     // ============================================================================
     // Mutex Operations
     // ============================================================================
