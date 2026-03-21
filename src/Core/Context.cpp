@@ -2,6 +2,7 @@
 
 #include "KernelServices.h"
 
+#include <cassert>
 #include <cstdio>
 #include <chrono>
 #include <filesystem>
@@ -135,10 +136,8 @@ namespace BML::Core {
 
     Context &Context::Instance() {
         auto *k = GetKernelOrNull();
-        if (k && k->context)
-            return *k->context;
-        static Context fallback;
-        return fallback;
+        assert(k && k->context);
+        return *k->context;
     }
 
     Context::Context() {

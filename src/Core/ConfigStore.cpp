@@ -5,6 +5,7 @@
 #include "ApiRegistrationMacros.h"
 
 #include <algorithm>
+#include <cassert>
 #include <array>
 #include <cstring>
 #include <filesystem>
@@ -280,10 +281,8 @@ namespace BML::Core {
 
     ConfigStore &ConfigStore::Instance() {
         auto *k = GetKernelOrNull();
-        if (k && k->config)
-            return *k->config;
-        static ConfigStore fallback;
-        return fallback;
+        assert(k && k->config);
+        return *k->config;
     }
 
     BML_Result ConfigStore::GetValue(BML_Mod mod,

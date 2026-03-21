@@ -16,6 +16,7 @@
 
 #include "Core/ApiRegistration.h"
 #include "Core/ApiRegistry.h"
+#include "Core/MemoryManager.h"
 #include "Core/ProfilingManager.h"
 #include "TestKernel.h"
 
@@ -32,6 +33,7 @@ protected:
     void SetUp() override {
         kernel_->profiling    = std::make_unique<ProfilingManager>();
         kernel_->api_registry = std::make_unique<ApiRegistry>();
+        kernel_->memory       = std::make_unique<BML::Core::MemoryManager>();
         // Enable profiling for tests
         ProfilingManager::Instance().SetProfilingEnabled(BML_TRUE);
     }

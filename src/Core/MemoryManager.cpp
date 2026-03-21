@@ -3,6 +3,7 @@
 #include "KernelServices.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -88,10 +89,8 @@ namespace BML::Core {
 
     MemoryManager &MemoryManager::Instance() {
         auto *k = GetKernelOrNull();
-        if (k && k->memory)
-            return *k->memory;
-        static MemoryManager fallback;
-        return fallback;
+        assert(k && k->memory);
+        return *k->memory;
     }
 
     MemoryManager::MemoryManager() = default;

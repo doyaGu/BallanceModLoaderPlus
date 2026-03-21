@@ -50,6 +50,7 @@ add_compile_definitions(
 # Disable char8_t for MSVC to maintain compatibility with C++20
 add_compile_options(
         $<$<CXX_COMPILER_ID:MSVC>:/Zc:char8_t->
+        $<$<CXX_COMPILER_ID:MSVC>:/MP>
 )
 
 option(BML_BUILD_TESTS "Build the BML test suite" ON)

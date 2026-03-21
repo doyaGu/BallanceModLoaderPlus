@@ -2,6 +2,8 @@
 
 #include "KernelServices.h"
 
+#include <cassert>
+
 namespace BML::Core {
     // Thread-local error context
     static thread_local ErrorContext g_ThreadErrorContext;
@@ -10,10 +12,8 @@ namespace BML::Core {
 
     DiagnosticManager &DiagnosticManager::Instance() {
         auto *k = GetKernelOrNull();
-        if (k && k->diagnostics)
-            return *k->diagnostics;
-        static DiagnosticManager fallback;
-        return fallback;
+        assert(k && k->diagnostics);
+        return *k->diagnostics;
     }
 
     ErrorContext &DiagnosticManager::GetThreadContext() {

@@ -29,6 +29,7 @@
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_module.hpp"
 #include "bml_builtin_interfaces.h"
+#include "bml_config_bind.hpp"
 #include "bml_console.h"
 #include "bml_engine_events.h"
 #include "bml_engine_events.hpp"

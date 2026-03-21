@@ -15,10 +15,14 @@
 #include "Core/BuiltinInterfaces.h"
 #include "Core/ConfigStore.h"
 #include "Core/Context.h"
+#include "Core/HookRegistry.h"
+#include "Core/ImcBus.h"
 #include "Core/InterfaceRegistry.h"
 #include "Core/LeaseManager.h"
+#include "Core/LocaleManager.h"
 #include "Core/ModManifest.h"
 #include "Core/ModuleLoader.h"
+#include "Core/TimerManager.h"
 #include "TestKernel.h"
 
 #include "bml_export.h"
@@ -53,7 +57,11 @@ protected:
         kernel_->context = std::make_unique<BML::Core::Context>();
         kernel_->api_registry = std::make_unique<BML::Core::ApiRegistry>();
         kernel_->interface_registry = std::make_unique<BML::Core::InterfaceRegistry>();
+        kernel_->imc_bus = std::make_unique<BML::Core::ImcBus>();
         kernel_->leases = std::make_unique<BML::Core::LeaseManager>();
+        kernel_->hooks = std::make_unique<BML::Core::HookRegistry>();
+        kernel_->locale = std::make_unique<BML::Core::LocaleManager>();
+        kernel_->timers = std::make_unique<BML::Core::TimerManager>();
         kernel_->config = std::make_unique<BML::Core::ConfigStore>();
 
         m_TempDir = CreateTempDir();

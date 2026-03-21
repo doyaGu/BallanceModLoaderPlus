@@ -3,6 +3,7 @@
 #include "KernelServices.h"
 
 #include <atomic>
+#include <cassert>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -38,10 +39,8 @@ namespace BML::Core {
 
     CrashDumpWriter &CrashDumpWriter::Instance() {
         auto *k = GetKernelOrNull();
-        if (k && k->crash_dump)
-            return *k->crash_dump;
-        static CrashDumpWriter fallback;
-        return fallback;
+        assert(k && k->crash_dump);
+        return *k->crash_dump;
     }
 
     void CrashDumpWriter::SetBaseDir(const std::wstring &base_dir) {

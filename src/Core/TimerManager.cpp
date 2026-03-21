@@ -2,6 +2,7 @@
 
 #include "KernelServices.h"
 
+#include <cassert>
 #include <exception>
 
 #include "Context.h"
@@ -52,10 +53,8 @@ namespace BML::Core {
 
     TimerManager &TimerManager::Instance() {
         auto *k = GetKernelOrNull();
-        if (k && k->timers)
-            return *k->timers;
-        static TimerManager fallback;
-        return fallback;
+        assert(k && k->timers);
+        return *k->timers;
     }
 
     TimerManager::TimerEntry *TimerManager::FindEntry(BML_Timer timer) {

@@ -205,6 +205,9 @@ TEST_F(ApiRegistryTest, SimpleRegistrationKeepsExactPointer) {
 }
 
 TEST(ApiRegistration, CoreApiSetFollowsDependencyOrder) {
+    TestKernel kernel;
+    kernel->api_registry = std::make_unique<ApiRegistry>();
+
     g_CoreRegistrationOrder.clear();
     ApiRegistry::CoreApiDescriptor descriptors[] = {
         {"NodeA", &CoreNodeA, 1u << 0, 0u},
@@ -220,6 +223,9 @@ TEST(ApiRegistration, CoreApiSetFollowsDependencyOrder) {
 }
 
 TEST(ApiRegistration, CoreApiSetDetectsCycles) {
+    TestKernel kernel;
+    kernel->api_registry = std::make_unique<ApiRegistry>();
+
     ApiRegistry::CoreApiDescriptor descriptors[] = {
         {"NodeA", &CoreNodeA, 1u << 0, 1u << 1},
         {"NodeB", &CoreNodeB, 1u << 1, 1u << 0},

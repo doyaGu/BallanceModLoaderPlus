@@ -2,6 +2,8 @@
 
 #include "KernelServices.h"
 
+#include <cassert>
+
 #include "ApiRegistry.h"
 #include "CoreErrors.h"
 #include "DiagnosticManager.h"
@@ -20,10 +22,8 @@ namespace BML::Core {
 
     ProfilingManager &ProfilingManager::Instance() {
         auto *k = GetKernelOrNull();
-        if (k && k->profiling)
-            return *k->profiling;
-        static ProfilingManager fallback;
-        return fallback;
+        assert(k && k->profiling);
+        return *k->profiling;
     }
 
     ProfilingManager::ProfilingManager()

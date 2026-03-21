@@ -3012,7 +3012,7 @@ namespace BML::Core {
     } // namespace (anonymous)
 
     // ========================================================================
-    // ImcBus — KernelServices-owned wrapper around ImcBusImpl
+    // ImcBus wrapper owned by KernelServices around ImcBusImpl
     // ========================================================================
 
     namespace {
@@ -3200,3 +3200,5 @@ namespace BML::Core {
         BML_REGISTER_API_GUARDED(bmlImcCallStreamingRpc, "imc", BML_API_ImcCallStreamingRpc);
     }
 } // namespace BML::Core
+
+

@@ -2,6 +2,7 @@
 
 #include "KernelServices.h"
 
+#include <cassert>
 #include <mutex>
 #include <shared_mutex>
 #include <stdexcept>
@@ -31,10 +32,8 @@ namespace BML::Core {
 
     ApiRegistry &ApiRegistry::Instance() {
         auto *k = GetKernelOrNull();
-        if (k && k->api_registry)
-            return *k->api_registry;
-        static ApiRegistry fallback;
-        return fallback;
+        assert(k && k->api_registry);
+        return *k->api_registry;
     }
 
     // ========================================================================

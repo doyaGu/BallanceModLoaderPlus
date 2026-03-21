@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <chrono>
 #include <set>
 #include <string>
 #include <zip.h>
@@ -16,7 +17,10 @@ protected:
     std::filesystem::path temp_dir;
 
     void SetUp() override {
-        temp_dir = std::filesystem::temp_directory_path() / std::filesystem::path("bml_module_discovery_test");
+        const auto unique = std::to_wstring(
+            std::chrono::steady_clock::now().time_since_epoch().count());
+        temp_dir = std::filesystem::temp_directory_path() /
+            std::filesystem::path(L"bml_module_discovery_test_" + unique);
         std::filesystem::create_directories(temp_dir);
     }
 

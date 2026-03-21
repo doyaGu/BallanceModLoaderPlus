@@ -3,6 +3,7 @@
 #include "KernelServices.h"
 
 #include <algorithm>
+#include <cassert>
 #include <filesystem>
 
 #include "Logging.h"
@@ -15,10 +16,8 @@ namespace BML::Core {
 
     LocaleManager &LocaleManager::Instance() {
         auto *k = GetKernelOrNull();
-        if (k && k->locale)
-            return *k->locale;
-        static LocaleManager fallback;
-        return fallback;
+        assert(k && k->locale);
+        return *k->locale;
     }
 
     BML_Result LocaleManager::Load(const std::string &module_id,

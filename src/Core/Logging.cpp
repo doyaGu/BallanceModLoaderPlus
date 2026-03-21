@@ -20,6 +20,7 @@
 #include "ApiRegistry.h"
 #include "ApiRegistrationMacros.h"
 #include "Context.h"
+#include "KernelServices.h"
 #include "ModHandle.h"
 
 #include "bml_logging.h"
@@ -200,7 +201,11 @@ namespace BML::Core {
 
             // Exception isolation: failing override should not crash the logger
             try {
-                desc.dispatch(Context::Instance().GetHandle(), &info, desc.user_data);
+                BML_Context bmlCtx = nullptr;
+                if (auto *kernel = GetKernelOrNull(); kernel && kernel->context) {
+                    bmlCtx = kernel->context->GetHandle();
+                }
+                desc.dispatch(bmlCtx, &info, desc.user_data);
             } catch (const std::exception &ex) {
                 // Log to debug output since we can't use the logger recursively
 #ifndef NDEBUG
@@ -229,9 +234,13 @@ namespace BML::Core {
         }
 
         BML_Mod_T *ResolveModFromCaller(void *caller) {
-            auto &ctx = Context::Instance();
+            auto *kernel = GetKernelOrNull();
+            Context *ctx = (kernel && kernel->context) ? kernel->context.get() : nullptr;
+            if (!ctx)
+                return nullptr;
+
             if (auto current = Context::GetCurrentModule()) {
-                if (auto *handle = ctx.ResolveModHandle(current)) {
+                if (auto *handle = ctx->ResolveModHandle(current)) {
                     return handle;
                 }
             }
@@ -244,8 +253,8 @@ namespace BML::Core {
                                    GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                                    reinterpret_cast<LPCSTR>(caller),
                                    &module)) {
-                if (auto handle = ctx.GetModHandleByModule(module)) {
-                    return ctx.ResolveModHandle(handle);
+                if (auto handle = ctx->GetModHandleByModule(module)) {
+                    return ctx->ResolveModHandle(handle);
                 }
             }
 #else

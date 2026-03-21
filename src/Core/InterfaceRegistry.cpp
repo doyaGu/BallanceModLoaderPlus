@@ -3,6 +3,7 @@
 #include "KernelServices.h"
 
 #include <algorithm>
+#include <cassert>
 #include <vector>
 
 #include "Context.h"
@@ -53,10 +54,8 @@ namespace BML::Core {
 
     InterfaceRegistry &InterfaceRegistry::Instance() {
         auto *k = GetKernelOrNull();
-        if (k && k->interface_registry)
-            return *k->interface_registry;
-        static InterfaceRegistry fallback;
-        return fallback;
+        assert(k && k->interface_registry);
+        return *k->interface_registry;
     }
 
     BML_Result InterfaceRegistry::Register(const BML_InterfaceDesc *desc, const std::string &provider_id) {

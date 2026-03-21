@@ -3,6 +3,7 @@
 #include "KernelServices.h"
 
 #include <algorithm>
+#include <cassert>
 #include <functional>
 #include <new>
 #include <unordered_map>
@@ -72,10 +73,8 @@ namespace BML::Core {
 
     SyncManager &SyncManager::Instance() {
         auto *k = GetKernelOrNull();
-        if (k && k->sync)
-            return *k->sync;
-        static SyncManager fallback;
-        return fallback;
+        assert(k && k->sync);
+        return *k->sync;
     }
 
     // ============================================================================

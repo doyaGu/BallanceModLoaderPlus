@@ -26,6 +26,7 @@
 #include "Core/ModManifest.h"
 #include "Core/ModuleLoader.h"
 #include "Core/SemanticVersion.h"
+#include "Utils/StringUtils.h"
 #include "TestKernel.h"
 
 using BML::Core::ApiRegistry;
@@ -58,18 +59,18 @@ protected:
         manifests_.clear();
     }
 
-    ModManifest* CreateManifest(const std::string& id, 
-                                 const std::wstring& entry = L"") {
+    ModManifest *CreateManifest(const std::string &id,
+                                const std::wstring &entry = L"") {
         auto manifest = std::make_unique<ModManifest>();
         manifest->package.id = id;
         manifest->package.name = id;
         manifest->package.version = "1.0.0";
         manifest->package.parsed_version = {1, 0, 0};
-        manifest->package.entry = std::string(entry.begin(), entry.end());
+        manifest->package.entry = utils::Utf16ToUtf8(entry);
         manifest->directory = L"test";
         manifest->manifest_path = L"test/mod.toml";
-        
-        ModManifest* ptr = manifest.get();
+
+        ModManifest *ptr = manifest.get();
         manifests_.push_back(std::move(manifest));
         return ptr;
     }
