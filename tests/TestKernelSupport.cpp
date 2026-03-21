@@ -42,7 +42,25 @@ void InstallKernel(KernelServices *kernel) noexcept {
     g_TestKernel = kernel;
 }
 
-KernelServices::~KernelServices() = default;
+KernelServices::~KernelServices() {
+    // Mirror the production teardown order so IMC shutdown callbacks still see
+    // a live Context when the test kernel is destroyed without an explicit shutdown.
+    imc_bus.reset();
+    context.reset();
+    interface_registry.reset();
+    api_registry.reset();
+    config.reset();
+    leases.reset();
+    timers.reset();
+    locale.reset();
+    hooks.reset();
+    crash_dump.reset();
+    fault_tracker.reset();
+    profiling.reset();
+    sync.reset();
+    memory.reset();
+    diagnostics.reset();
+}
 
 namespace Testing {
 
@@ -52,8 +70,11 @@ TestKernel::TestKernel()
 }
 
 TestKernel::~TestKernel() {
-    InstallKernel(nullptr);
-    // m_Kernel destructor runs ~KernelServices() with all types complete.
+    auto *installed = m_Kernel.get();
+    m_Kernel.reset();
+    if (GetKernelOrNull() == installed) {
+        InstallKernel(nullptr);
+    }
 }
 
 } // namespace Testing

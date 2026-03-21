@@ -32,6 +32,7 @@ using BML::Core::Testing::TestKernel;
 
 class RpcExpansionTest : public ::testing::Test {
 protected:
+    std::vector<std::unique_ptr<BML::Core::ModManifest>> manifests_;
     TestKernel kernel_;
 
     void SetUp() override {
@@ -40,22 +41,20 @@ protected:
         kernel_->config = std::make_unique<ConfigStore>();
         kernel_->crash_dump = std::make_unique<CrashDumpWriter>();
         kernel_->fault_tracker = std::make_unique<FaultTracker>();
+        kernel_->imc_bus = std::make_unique<ImcBus>();
         kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config, *kernel_->crash_dump, *kernel_->fault_tracker);
         kernel_->config->BindContext(*kernel_->context);
 
         auto &ctx = *kernel_->context;
         ctx.Initialize({0, 4, 0});
-        ImcBindDeps(*kernel_->context);
-        ImcShutdown();
+        kernel_->imc_bus->BindDeps(*kernel_->context);
         host_mod_ = ctx.GetSyntheticHostModule();
         ASSERT_NE(host_mod_, nullptr);
         Context::SetCurrentModule(host_mod_);
     }
 
     void TearDown() override {
-        ImcShutdown();
         Context::SetCurrentModule(nullptr);
-        manifests_.clear();
     }
 
     BML_Mod CreateTrackedMod(const std::string &id) {
@@ -79,7 +78,6 @@ protected:
     }
 
     BML_Mod host_mod_{nullptr};
-    std::vector<std::unique_ptr<BML::Core::ModManifest>> manifests_;
 };
 
 // ========================================================================

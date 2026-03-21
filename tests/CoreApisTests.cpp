@@ -82,6 +82,7 @@ ConfigHookCapture &GetConfigHookCapture() {
 
 class CoreApisTests : public ::testing::Test {
 protected:
+    std::vector<std::unique_ptr<BML::Core::ModManifest>> manifests_;
     TestKernel kernel_;
 
     void SetUp() override {
@@ -89,13 +90,13 @@ protected:
         kernel_->config = std::make_unique<ConfigStore>();
         kernel_->crash_dump = std::make_unique<CrashDumpWriter>();
         kernel_->fault_tracker = std::make_unique<FaultTracker>();
+        kernel_->imc_bus = std::make_unique<ImcBus>();
         kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config, *kernel_->crash_dump, *kernel_->fault_tracker);
         kernel_->config->BindContext(*kernel_->context);
 
         Context::SetCurrentModule(nullptr);
         kernel_->context->Initialize(bmlGetApiVersion());
-        ImcBindDeps(*kernel_->context);
-        ImcShutdown();
+        kernel_->imc_bus->BindDeps(*kernel_->context);
         Context::SetCurrentModule(nullptr);
         temp_root_ = std::filesystem::temp_directory_path() /
                      ("bml-coreapis-tests-" + std::to_string(test_counter_.fetch_add(1, std::memory_order_relaxed)));
@@ -103,9 +104,7 @@ protected:
     }
 
     void TearDown() override {
-        ImcShutdown();
         Context::SetCurrentModule(nullptr);
-        manifests_.clear();
         std::error_code ec;
         std::filesystem::remove_all(temp_root_, ec);
     }
@@ -141,7 +140,6 @@ protected:
 
     static std::atomic<uint64_t> test_counter_;
     std::filesystem::path temp_root_;
-    std::vector<std::unique_ptr<BML::Core::ModManifest>> manifests_;
     BML_Mod mod_handle_{nullptr};
 };
 

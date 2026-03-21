@@ -88,6 +88,14 @@ struct RpcState {
     std::vector<uint8_t> last_payload;
 };
 
+struct ShutdownFutureCallbackState {
+    std::atomic<bool> called{false};
+    std::atomic<uintptr_t> context_value{0};
+    std::atomic<bool> kernel_visible{false};
+    std::atomic<int> future_state{BML_FUTURE_PENDING};
+    std::atomic<int> get_state_result{BML_RESULT_FAIL};
+};
+
 struct BlockingHandlerState {
     std::atomic<bool> entered{false};
     std::atomic<bool> release{false};
@@ -159,8 +167,26 @@ BML_Result EchoRpc(BML_Context ctx,
     return BML_RESULT_OK;
 }
 
+void ShutdownFutureCallback(BML_Context ctx, BML_Future future, void *user_data) {
+    auto *state = static_cast<ShutdownFutureCallbackState *>(user_data);
+    if (!state)
+        return;
+
+    auto *kernel = GetKernelOrNull();
+    BML_FutureState future_state = BML_FUTURE_PENDING;
+    BML_Result result = ImcFutureGetState(future, &future_state);
+    state->get_state_result.store(result, std::memory_order_relaxed);
+    state->future_state.store(static_cast<int>(future_state), std::memory_order_relaxed);
+    state->context_value.store(reinterpret_cast<uintptr_t>(ctx), std::memory_order_relaxed);
+    state->kernel_visible.store(
+        kernel && kernel->context && kernel->context->GetHandle() == ctx,
+        std::memory_order_relaxed);
+    state->called.store(true, std::memory_order_release);
+}
+
 class ImcBusTest : public ::testing::Test {
 protected:
+    std::vector<std::unique_ptr<BML::Core::ModManifest>> manifests_;
     TestKernel kernel_;
 
     void SetUp() override {
@@ -169,22 +195,20 @@ protected:
         kernel_->config = std::make_unique<ConfigStore>();
         kernel_->crash_dump = std::make_unique<CrashDumpWriter>();
         kernel_->fault_tracker = std::make_unique<FaultTracker>();
+        kernel_->imc_bus = std::make_unique<ImcBus>();
         kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config, *kernel_->crash_dump, *kernel_->fault_tracker);
         kernel_->config->BindContext(*kernel_->context);
 
         auto &ctx = *kernel_->context;
         ctx.Initialize({0, 4, 0});
-        ImcBindDeps(*kernel_->context);
-        ImcShutdown();
+        kernel_->imc_bus->BindDeps(*kernel_->context);
         host_mod_ = ctx.GetSyntheticHostModule();
         ASSERT_NE(host_mod_, nullptr);
         Context::SetCurrentModule(host_mod_);
     }
 
     void TearDown() override {
-        ImcShutdown();
         Context::SetCurrentModule(nullptr);
-        manifests_.clear();
     }
 
     BML_Mod CreateTrackedMod(const std::string &id) {
@@ -208,7 +232,6 @@ protected:
     }
 
     BML_Mod host_mod_{nullptr};
-    std::vector<std::unique_ptr<BML::Core::ModManifest>> manifests_;
 };
 
 // ========================================================================
@@ -690,6 +713,55 @@ TEST_F(ImcBusTest, FutureOnCompleteCallbackWorks) {
 
     EXPECT_EQ(BML_RESULT_OK, ImcFutureRelease(future));
     EXPECT_EQ(BML_RESULT_OK, ImcUnregisterRpc(rpc_id));
+}
+
+TEST(ImcBusLifetimeTest, KernelDestructionCompletesPendingFutureBeforeContextDestruction) {
+    ShutdownFutureCallbackState callback_state;
+
+    {
+        TestKernel kernel;
+        kernel->diagnostics = std::make_unique<DiagnosticManager>();
+        kernel->api_registry = std::make_unique<ApiRegistry>();
+        kernel->config = std::make_unique<ConfigStore>();
+        kernel->crash_dump = std::make_unique<CrashDumpWriter>();
+        kernel->fault_tracker = std::make_unique<FaultTracker>();
+        kernel->imc_bus = std::make_unique<ImcBus>();
+        kernel->context = std::make_unique<Context>(*kernel->api_registry, *kernel->config,
+                                                    *kernel->crash_dump,
+                                                    *kernel->fault_tracker);
+        kernel->config->BindContext(*kernel->context);
+
+        auto &ctx = *kernel->context;
+        ctx.Initialize({0, 4, 0});
+        kernel->imc_bus->BindDeps(ctx);
+
+        BML_Mod host_mod = ctx.GetSyntheticHostModule();
+        ASSERT_NE(host_mod, nullptr);
+        Context::SetCurrentModule(host_mod);
+
+        BML_RpcId rpc_id = BML_RPC_ID_INVALID;
+        ASSERT_EQ(BML_RESULT_OK, ImcGetRpcId("shutdown_test", &rpc_id));
+        ASSERT_EQ(BML_RESULT_OK, ImcRegisterRpc(rpc_id, EchoRpc, nullptr));
+
+        BML_Future future = nullptr;
+        ASSERT_EQ(BML_RESULT_OK, ImcCallRpc(rpc_id, nullptr, &future));
+        ASSERT_NE(future, nullptr);
+        ASSERT_EQ(BML_RESULT_OK,
+                  ImcFutureOnComplete(future, ShutdownFutureCallback, &callback_state));
+
+        // Leave the queued request owning the last reference so shutdown can
+        // complete and release the future while the callback still runs.
+        ASSERT_EQ(BML_RESULT_OK, ImcFutureRelease(future));
+        Context::SetCurrentModule(nullptr);
+    }
+
+    EXPECT_TRUE(callback_state.called.load(std::memory_order_acquire));
+    EXPECT_EQ(callback_state.get_state_result.load(std::memory_order_relaxed), BML_RESULT_OK);
+    EXPECT_EQ(callback_state.future_state.load(std::memory_order_relaxed),
+              static_cast<int>(BML_FUTURE_CANCELLED));
+    EXPECT_TRUE(callback_state.kernel_visible.load(std::memory_order_relaxed));
+    EXPECT_NE(callback_state.context_value.load(std::memory_order_relaxed),
+              static_cast<uintptr_t>(0));
 }
 
 // ========================================================================

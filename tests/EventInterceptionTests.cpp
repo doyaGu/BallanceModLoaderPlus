@@ -30,19 +30,18 @@ protected:
         kernel_->config = std::make_unique<ConfigStore>();
         kernel_->crash_dump = std::make_unique<CrashDumpWriter>();
         kernel_->fault_tracker = std::make_unique<FaultTracker>();
+        kernel_->imc_bus = std::make_unique<ImcBus>();
         kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config, *kernel_->crash_dump, *kernel_->fault_tracker);
         kernel_->config->BindContext(*kernel_->context);
 
         auto &ctx = *kernel_->context;
         ctx.Initialize(bmlMakeVersion(0, 4, 0));
-        ImcBindDeps(*kernel_->context);
-        ImcShutdown();
+        kernel_->imc_bus->BindDeps(*kernel_->context);
         host_mod_ = ctx.GetSyntheticHostModule();
         Context::SetCurrentModule(host_mod_);
     }
 
     void TearDown() override {
-        ImcShutdown();
         Context::SetCurrentModule(nullptr);
     }
 
