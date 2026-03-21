@@ -13,8 +13,14 @@
 #include <thread>
 #include <vector>
 
+#include "Core/ApiRegistry.h"
+#include "Core/ConfigStore.h"
 #include "Core/Context.h"
+#include "Core/CrashDumpWriter.h"
+#include "Core/FaultTracker.h"
+#include "Core/ImcBus.h"
 #include "Core/ModuleRuntime.h"
+#include "TestKernel.h"
 
 using namespace std::chrono_literals;
 
@@ -85,12 +91,7 @@ struct RuntimeGuard {
     }
 };
 
-struct ContextGuard {
-    BML::Core::Context &context;
-    ~ContextGuard() {
-        context.Cleanup();
-    }
-};
+using BML::Core::Testing::TestKernel;
 
 std::filesystem::path CreateModsDirectory() {
     const auto base = std::filesystem::temp_directory_path();
@@ -180,9 +181,18 @@ TEST(HotReloadIntegrationTests, ReloadsSampleModWhenManifestChanges) {
     ScopedEnvVar hot_reload_env(L"BML_HOT_RELOAD", L"1");
     ScopedEnvVar log_env(L"BML_TEST_HOT_RELOAD_LOG", log_path.wstring());
 
-    auto &context = BML::Core::Context::Instance();
-    context.Initialize({0, 4, 0});
-    ContextGuard context_guard{context};
+    TestKernel kernel;
+    kernel->api_registry  = std::make_unique<BML::Core::ApiRegistry>();
+    kernel->config        = std::make_unique<BML::Core::ConfigStore>();
+    kernel->crash_dump    = std::make_unique<BML::Core::CrashDumpWriter>();
+    kernel->fault_tracker = std::make_unique<BML::Core::FaultTracker>();
+    kernel->imc_bus       = std::make_unique<BML::Core::ImcBus>();
+    kernel->context       = std::make_unique<BML::Core::Context>(
+        *kernel->api_registry, *kernel->config,
+        *kernel->crash_dump, *kernel->fault_tracker);
+    kernel->config->BindContext(*kernel->context);
+    kernel->imc_bus->BindDeps(*kernel->context);
+    kernel->context->Initialize({0, 4, 0});
 
     BML::Core::ModuleRuntime runtime;
     RuntimeGuard runtime_guard{runtime};

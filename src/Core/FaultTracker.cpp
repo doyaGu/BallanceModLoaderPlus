@@ -19,18 +19,6 @@ namespace BML::Core {
         constexpr char kLogCategory[] = "fault.tracker";
         constexpr int kFaultDisableThreshold = 3;
 
-        struct FaultTrackerImpl {
-            std::mutex mutex;
-            std::unordered_map<std::string, FaultTracker::FaultRecord> records;
-            std::wstring base_dir;
-            bool loaded = false;
-        };
-
-        FaultTrackerImpl &Impl() {
-            static FaultTrackerImpl impl;
-            return impl;
-        }
-
         std::wstring GetFaultLogPath(const std::wstring &base_dir) {
             std::filesystem::path dir(base_dir);
             return (dir / L"ModLoader" / L"fault_log.json").wstring();
@@ -205,8 +193,18 @@ namespace BML::Core {
         }
     } // namespace
 
+    struct FaultTracker::Impl {
+        std::mutex mutex;
+        std::unordered_map<std::string, FaultTracker::FaultRecord> records;
+        std::wstring base_dir;
+        bool loaded = false;
+    };
+
+    FaultTracker::FaultTracker() : m_Impl(std::make_unique<Impl>()) {}
+    FaultTracker::~FaultTracker() = default;
+
     void FaultTracker::Load(const std::wstring &base_dir) {
-        auto &impl = Impl();
+        auto &impl = *m_Impl;
         std::lock_guard lock(impl.mutex);
 
         impl.base_dir = base_dir;
@@ -238,7 +236,7 @@ namespace BML::Core {
 
     void FaultTracker::RecordFault(const std::string &module_id,
                                    unsigned long exception_code) {
-        auto &impl = Impl();
+        auto &impl = *m_Impl;
         std::lock_guard lock(impl.mutex);
 
         auto &rec = impl.records[module_id];
@@ -260,7 +258,7 @@ namespace BML::Core {
     }
 
     bool FaultTracker::IsDisabled(const std::string &module_id) const {
-        auto &impl = Impl();
+        auto &impl = *m_Impl;
         std::lock_guard lock(impl.mutex);
 
         auto it = impl.records.find(module_id);
@@ -268,7 +266,7 @@ namespace BML::Core {
     }
 
     void FaultTracker::Enable(const std::string &module_id) {
-        auto &impl = Impl();
+        auto &impl = *m_Impl;
         std::lock_guard lock(impl.mutex);
 
         auto it = impl.records.find(module_id);
@@ -285,7 +283,7 @@ namespace BML::Core {
     }
 
     int FaultTracker::GetFaultCount(const std::string &module_id) const {
-        auto &impl = Impl();
+        auto &impl = *m_Impl;
         std::lock_guard lock(impl.mutex);
 
         auto it = impl.records.find(module_id);
@@ -293,7 +291,7 @@ namespace BML::Core {
     }
 
     void FaultTracker::Shutdown() {
-        auto &impl = Impl();
+        auto &impl = *m_Impl;
         std::lock_guard lock(impl.mutex);
         impl.records.clear();
         impl.base_dir.clear();

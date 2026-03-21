@@ -20,20 +20,16 @@ namespace BML::Core {
             int32_t priority = 0;
             uint32_t flags = 0;
         };
-
-        struct HookRegistryImpl {
-            std::mutex mutex;
-            // address -> list of entries (multiple modules can hook same address)
-            std::unordered_map<uintptr_t, std::vector<HookEntry>> entries;
-        };
-
-        HookRegistryImpl &Impl() {
-            static HookRegistryImpl impl;
-            return impl;
-        }
     } // namespace
 
-    HookRegistry::HookRegistry() = default;
+    struct HookRegistry::Impl {
+        std::mutex mutex;
+        // address -> list of entries (multiple modules can hook same address)
+        std::unordered_map<uintptr_t, std::vector<HookEntry>> entries;
+    };
+
+    HookRegistry::HookRegistry() : m_Impl(std::make_unique<Impl>()) {}
+    HookRegistry::~HookRegistry() = default;
 
     BML_Result HookRegistry::Register(const std::string &owner_module_id,
                                       const BML_HookDesc *desc) {
@@ -42,7 +38,7 @@ namespace BML::Core {
         if (!desc->target_address)
             return BML_RESULT_INVALID_ARGUMENT;
 
-        auto &impl = Impl();
+        auto &impl = *m_Impl;
         std::lock_guard lock(impl.mutex);
 
         auto key = reinterpret_cast<uintptr_t>(desc->target_address);
@@ -97,7 +93,7 @@ namespace BML::Core {
         if (!target_address)
             return BML_RESULT_INVALID_ARGUMENT;
 
-        auto &impl = Impl();
+        auto &impl = *m_Impl;
         std::lock_guard lock(impl.mutex);
 
         auto key = reinterpret_cast<uintptr_t>(target_address);
@@ -136,7 +132,7 @@ namespace BML::Core {
         if (!callback)
             return BML_RESULT_INVALID_ARGUMENT;
 
-        auto &impl = Impl();
+        auto &impl = *m_Impl;
         std::lock_guard lock(impl.mutex);
 
         for (const auto &[addr, vec] : impl.entries) {
@@ -158,7 +154,7 @@ namespace BML::Core {
         if (owner_module_id.empty())
             return;
 
-        auto &impl = Impl();
+        auto &impl = *m_Impl;
         std::lock_guard lock(impl.mutex);
 
         for (auto it = impl.entries.begin(); it != impl.entries.end(); ) {
@@ -182,7 +178,7 @@ namespace BML::Core {
     }
 
     void HookRegistry::Shutdown() {
-        auto &impl = Impl();
+        auto &impl = *m_Impl;
         std::lock_guard lock(impl.mutex);
         impl.entries.clear();
     }

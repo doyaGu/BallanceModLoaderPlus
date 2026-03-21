@@ -1,6 +1,7 @@
 #ifndef BML_CORE_FAULT_TRACKER_H
 #define BML_CORE_FAULT_TRACKER_H
 
+#include <memory>
 #include <string>
 
 namespace BML::Core {
@@ -18,6 +19,12 @@ namespace BML::Core {
             std::string last_code;       // hex exception code
             bool disabled = false;
         };
+
+        FaultTracker();
+        ~FaultTracker();
+
+        FaultTracker(const FaultTracker &) = delete;
+        FaultTracker &operator=(const FaultTracker &) = delete;
 
         /** Load fault_log.json from the given directory. */
         void Load(const std::wstring &base_dir);
@@ -37,7 +44,9 @@ namespace BML::Core {
 
         void Shutdown();
 
-        FaultTracker() = default;
+    private:
+        struct Impl;
+        std::unique_ptr<Impl> m_Impl;
     };
 } // namespace BML::Core
 

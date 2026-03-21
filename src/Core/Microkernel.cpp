@@ -53,6 +53,11 @@ namespace BML::Core {
     }
 
     namespace {
+        // File-scope mutex — replaces former Meyer's singleton StateMutex().
+        // std::recursive_mutex has a constexpr-capable constructor on major
+        // implementations, so file-scope construction is safe and deterministic.
+        std::recursive_mutex s_StateMutex;
+
         struct MicrokernelState {
             ModuleRuntime runtime;
             ModuleBootstrapDiagnostics diagnostics;
@@ -63,15 +68,10 @@ namespace BML::Core {
             BML_BootstrapState bootstrap_state{BML_BOOTSTRAP_STATE_NOT_STARTED};
         };
 
-        MicrokernelState &State() {
-            static MicrokernelState state;
-            return state;
-        }
-
-        std::recursive_mutex &StateMutex() {
-            static std::recursive_mutex mutex;
-            return mutex;
-        }
+        // Explicitly-managed lifetime — created in InitializeCore(), destroyed
+        // in ShutdownMicrokernel().  Replaces the former Meyer's singleton
+        // State() to eliminate static-destruction-order risks.
+        std::unique_ptr<MicrokernelState> s_State;
 
         struct ManifestErrorSnapshot {
             std::string message;
@@ -370,12 +370,14 @@ namespace BML::Core {
     } // namespace
 
     bool InitializeCore() {
-        std::lock_guard<std::recursive_mutex> lock(StateMutex());
-        auto &state = State();
-        if (state.core_initialized)
+        std::lock_guard<std::recursive_mutex> lock(s_StateMutex);
+        if (s_State && s_State->core_initialized)
             return true;
 
         DebugLog("Phase 0: Initializing core...");
+
+        s_State = std::make_unique<MicrokernelState>();
+        auto &state = *s_State;
 
         // Build the service graph.  All subsystems owned by KernelServices.
         state.kernel = std::make_unique<KernelServices>();
@@ -415,8 +417,8 @@ namespace BML::Core {
         RegisterBuiltinInterfaces();
         PopulateBuiltinServices(k.context->GetServiceHubMutable()->m_Builtins);
 
-        state.core_initialized = true;
-        state.bootstrap_state = BML_BOOTSTRAP_STATE_CORE_INITIALIZED;
+        s_State->core_initialized = true;
+        s_State->bootstrap_state = BML_BOOTSTRAP_STATE_CORE_INITIALIZED;
         DebugLog("Core initialized successfully");
         return true;
     }
@@ -426,16 +428,13 @@ namespace BML::Core {
     }
 
     bool DiscoverModulesInDirectory(const std::wstring &mods_dir) {
-        std::lock_guard<std::recursive_mutex> lock(StateMutex());
-        auto &state = State();
-
-        // Core must be initialized first
-        if (!state.core_initialized) {
+        std::lock_guard<std::recursive_mutex> lock(s_StateMutex);
+        if (!s_State || !s_State->core_initialized) {
             DebugLog("DiscoverModulesInDirectory: Core not initialized");
             return false;
         }
 
-        if (state.modules_discovered)
+        if (s_State->modules_discovered)
             return true;
 
         DebugLog("Phase 1: Discovering modules...");
@@ -452,33 +451,30 @@ namespace BML::Core {
         ModuleBootstrapDiagnostics diag;
 
         // Only discover and validate, don't load DLLs yet
-        if (!state.runtime.DiscoverAndValidate(mods_dir, diag)) {
-            state.diagnostics = diag;
+        if (!s_State->runtime.DiscoverAndValidate(mods_dir, diag)) {
+            s_State->diagnostics = diag;
             EmitDiagnostics(diag);
             DebugLog("Module discovery failed");
             // Keep context alive for later retry
             return false;
         }
 
-        state.diagnostics = diag;
+        s_State->diagnostics = diag;
         EmitDiagnostics(diag);
-        state.modules_discovered = true;
-        state.bootstrap_state = BML_BOOTSTRAP_STATE_MODULES_DISCOVERED;
+        s_State->modules_discovered = true;
+        s_State->bootstrap_state = BML_BOOTSTRAP_STATE_MODULES_DISCOVERED;
         DebugLog("Module discovery completed successfully");
         return true;
     }
 
     bool LoadDiscoveredModules() {
-        std::lock_guard<std::recursive_mutex> lock(StateMutex());
-        auto &state = State();
-
-        // Modules must be discovered first
-        if (!state.modules_discovered) {
+        std::lock_guard<std::recursive_mutex> lock(s_StateMutex);
+        if (!s_State || !s_State->modules_discovered) {
             DebugLog("LoadDiscoveredModules: Modules not discovered");
             return false;
         }
 
-        if (state.modules_loaded)
+        if (s_State->modules_loaded)
             return true;
 
         DebugLog("Phase 2: Loading discovered modules...");
@@ -486,29 +482,30 @@ namespace BML::Core {
         ModuleBootstrapDiagnostics diag;
 
         // Load the previously discovered modules
-        if (!state.runtime.LoadDiscovered(diag)) {
-            state.diagnostics = diag;
+        if (!s_State->runtime.LoadDiscovered(diag)) {
+            s_State->diagnostics = diag;
             EmitDiagnostics(diag);
             DebugLog("Module loading failed");
             return false;
         }
 
-        state.diagnostics = diag;
-        state.runtime.SetDiagnosticsCallback([](const ModuleBootstrapDiagnostics &new_diag) {
-            std::lock_guard<std::recursive_mutex> callback_lock(StateMutex());
-            auto &sharedState = State();
-            sharedState.diagnostics = new_diag;
-            EmitDiagnostics(new_diag);
+        s_State->diagnostics = diag;
+        s_State->runtime.SetDiagnosticsCallback([](const ModuleBootstrapDiagnostics &new_diag) {
+            std::lock_guard<std::recursive_mutex> callback_lock(s_StateMutex);
+            if (s_State) {
+                s_State->diagnostics = new_diag;
+                EmitDiagnostics(new_diag);
+            }
         });
-        state.modules_loaded = true;
-        state.bootstrap_state = BML_BOOTSTRAP_STATE_READY;
+        s_State->modules_loaded = true;
+        s_State->bootstrap_state = BML_BOOTSTRAP_STATE_READY;
         EmitDiagnostics(diag);
         DebugLog("Modules loaded successfully");
         return true;
     }
 
     BML_Result Bootstrap(const BML_BootstrapConfig *config) {
-        std::lock_guard<std::recursive_mutex> lock(StateMutex());
+        std::lock_guard<std::recursive_mutex> lock(s_StateMutex);
         if (config && config->struct_size < sizeof(BML_BootstrapConfig)) {
             return BML_RESULT_INVALID_SIZE;
         }
@@ -538,62 +535,56 @@ namespace BML::Core {
     }
 
     BML_BootstrapState GetBootstrapState() {
-        std::lock_guard<std::recursive_mutex> lock(StateMutex());
-        return State().bootstrap_state;
+        std::lock_guard<std::recursive_mutex> lock(s_StateMutex);
+        return s_State ? s_State->bootstrap_state : BML_BOOTSTRAP_STATE_NOT_STARTED;
     }
 
     void UpdateMicrokernel() {
-        std::lock_guard<std::recursive_mutex> lock(StateMutex());
-        auto &state = State();
-        if (!state.core_initialized || !state.modules_loaded) {
+        std::lock_guard<std::recursive_mutex> lock(s_StateMutex);
+        if (!s_State || !s_State->core_initialized || !s_State->modules_loaded)
             return;
-        }
         GetKernelOrNull()->timers->Tick();
-        state.runtime.Update();
+        s_State->runtime.Update();
     }
 
     void ShutdownMicrokernel() {
-        std::lock_guard<std::recursive_mutex> lock(StateMutex());
-        auto &state = State();
-        if (!state.core_initialized)
+        std::lock_guard<std::recursive_mutex> lock(s_StateMutex);
+        if (!s_State || !s_State->core_initialized)
             return;
 
         DebugLog("Shutting down microkernel...");
 
         // Shutdown runtime (unloads modules)
-        state.runtime.Shutdown();
+        s_State->runtime.Shutdown();
 
         // Drain any IMC messages published during module detach callbacks
         ImcPump();
 
         // Gracefully shutdown all subsystems
-        state.kernel->Shutdown();
+        s_State->kernel->Shutdown();
 
-        // Tear down the service graph
-        InstallKernel(nullptr);
-        state.kernel.reset();
-
-        // Clear diagnostics
-        state.diagnostics = {};
-
-        state.core_initialized = false;
-        state.modules_discovered = false;
-        state.modules_loaded = false;
-        state.bootstrap_state = BML_BOOTSTRAP_STATE_SHUTDOWN;
         DebugLog("Microkernel shut down");
+
+        // Tear down the service graph and destroy all state in one shot.
+        // KernelServices destructor guarantees reverse-declaration-order cleanup.
+        InstallKernel(nullptr);
+        s_State.reset();
     }
 
     const ModuleBootstrapDiagnostics &GetBootstrapDiagnostics() {
         thread_local ModuleBootstrapDiagnostics snapshot;
-        std::lock_guard<std::recursive_mutex> lock(StateMutex());
-        snapshot = State().diagnostics;
+        std::lock_guard<std::recursive_mutex> lock(s_StateMutex);
+        snapshot = s_State ? s_State->diagnostics : ModuleBootstrapDiagnostics{};
         return snapshot;
     }
 
     const BML_BootstrapDiagnostics &GetPublicDiagnostics() {
         auto &snapshot = ThreadLocalDiagnosticsSnapshot();
-        std::lock_guard<std::recursive_mutex> lock(StateMutex());
-        PopulatePublicDiagnosticsSnapshot(State().diagnostics, snapshot);
+        std::lock_guard<std::recursive_mutex> lock(s_StateMutex);
+        if (s_State)
+            PopulatePublicDiagnosticsSnapshot(s_State->diagnostics, snapshot);
+        else
+            snapshot.Reset();
         return snapshot.diagnostics;
     }
 } // namespace BML::Core

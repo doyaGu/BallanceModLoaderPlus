@@ -1,6 +1,7 @@
 #ifndef BML_CORE_CRASH_DUMP_WRITER_H
 #define BML_CORE_CRASH_DUMP_WRITER_H
 
+#include <memory>
 #include <string>
 
 namespace BML::Core {
@@ -11,6 +12,12 @@ namespace BML::Core {
      */
     class CrashDumpWriter {
     public:
+        CrashDumpWriter();
+        ~CrashDumpWriter();
+
+        CrashDumpWriter(const CrashDumpWriter &) = delete;
+        CrashDumpWriter &operator=(const CrashDumpWriter &) = delete;
+
         /** Set the base directory (typically the game directory). */
         void SetBaseDir(const std::wstring &base_dir);
 
@@ -25,7 +32,9 @@ namespace BML::Core {
 
         void Shutdown();
 
-        CrashDumpWriter() = default;
+    private:
+        struct Impl;
+        std::unique_ptr<Impl> m_Impl;
     };
 } // namespace BML::Core
 

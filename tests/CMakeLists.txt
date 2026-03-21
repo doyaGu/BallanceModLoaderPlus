@@ -117,7 +117,10 @@ add_bml_test_support_library(bml_test_core_support
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
+        ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
+        ${BML_SOURCE_DIR}/Core/HookRegistry.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
         DEPENDENCIES
@@ -141,8 +144,6 @@ add_bml_test_support_library(bml_test_logging_api_support
 
 add_bml_test_support_library(bml_test_imc_support
         SOURCES
-        ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
-        ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
         ${BML_SOURCE_DIR}/Core/ImcBus.cpp
         DEPENDENCIES
         bml_test_core_support
@@ -161,7 +162,10 @@ add_bml_test_support_library(bml_test_stub_logging_support
         SOURCES
         TestLoggingStub.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
+        ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
+        ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
+        ${BML_SOURCE_DIR}/Core/HookRegistry.cpp
         ${BML_SOURCE_DIR}/Core/KernelServices.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         DEPENDENCIES

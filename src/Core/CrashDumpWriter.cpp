@@ -21,28 +21,26 @@
 namespace BML::Core {
     namespace {
         constexpr char kLogCategory[] = "crash.dump";
-
-        struct CrashDumpWriterImpl {
-            std::mutex mutex;
-            std::wstring base_dir;
-            std::atomic<bool> dump_written{false};
-        };
-
-        CrashDumpWriterImpl &Impl() {
-            static CrashDumpWriterImpl impl;
-            return impl;
-        }
     } // namespace
 
+    struct CrashDumpWriter::Impl {
+        std::mutex mutex;
+        std::wstring base_dir;
+        std::atomic<bool> dump_written{false};
+    };
+
+    CrashDumpWriter::CrashDumpWriter() : m_Impl(std::make_unique<Impl>()) {}
+    CrashDumpWriter::~CrashDumpWriter() = default;
+
     void CrashDumpWriter::SetBaseDir(const std::wstring &base_dir) {
-        auto &impl = Impl();
+        auto &impl = *m_Impl;
         std::lock_guard lock(impl.mutex);
         impl.base_dir = base_dir;
     }
 
     void CrashDumpWriter::WriteDumpOnce(const std::string &faulting_module_id,
                                          unsigned long exception_code) {
-        auto &impl = Impl();
+        auto &impl = *m_Impl;
 
         // Only write one dump per session.
         // NOTE: This runs after a SEH catch, so process state may be partially
@@ -136,7 +134,7 @@ namespace BML::Core {
     }
 
     void CrashDumpWriter::Shutdown() {
-        auto &impl = Impl();
+        auto &impl = *m_Impl;
         std::lock_guard lock(impl.mutex);
         impl.base_dir.clear();
         impl.dump_written.store(false);

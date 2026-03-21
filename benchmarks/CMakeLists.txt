@@ -5,6 +5,7 @@ add_executable(ImcBenchmark
         ${BML_SOURCE_DIR}/Core/ImcBus.cpp
         ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
         ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
+        ${BML_SOURCE_DIR}/Core/HookRegistry.cpp
         ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
