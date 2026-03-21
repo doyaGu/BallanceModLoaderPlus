@@ -39,7 +39,7 @@ protected:
     void SetUp() override {
         kernel_->api_registry = std::make_unique<ApiRegistry>();
         kernel_->context      = std::make_unique<Context>();
-        ApiRegistry::Instance().Clear();
+        kernel_->api_registry->Clear();
         Context::SetCurrentModule(nullptr);
         BML::Core::RegisterLoggingApis();
     }
@@ -53,7 +53,7 @@ protected:
 
     template <typename Fn>
     Fn Lookup(const char *name) {
-        auto fn = reinterpret_cast<Fn>(ApiRegistry::Instance().Get(name));
+        auto fn = reinterpret_cast<Fn>(kernel_->api_registry->Get(name));
         if (!fn) {
             ADD_FAILURE() << "Missing API: " << name;
         }
@@ -69,7 +69,7 @@ protected:
         manifest->directory = L"";
         manifest->manifest_path = L"";
 
-        auto handle = Context::Instance().CreateModHandle(*manifest);
+        auto handle = kernel_->context->CreateModHandle(*manifest);
         BML_Mod mod = handle.get();
         manifests_.push_back(std::move(manifest));
         mods_.push_back(std::move(handle));
@@ -118,7 +118,7 @@ TEST_F(LoggingSinkOverrideTests, OverrideDispatchesAndShutdownFires) {
 
     auto mod = MakeMod("log.mod");
     Context::SetCurrentModule(mod);
-    log_fn(Context::Instance().GetHandle(), BML_LOG_WARN, "sink.override", "value=%d", 123);
+    log_fn(kernel_->context->GetHandle(), BML_LOG_WARN, "sink.override", "value=%d", 123);
 
     ASSERT_EQ(state.dispatch_count.load(), 1);
     ASSERT_EQ(state.logs.size(), 1u);

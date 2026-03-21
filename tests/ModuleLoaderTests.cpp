@@ -88,7 +88,7 @@ TEST_F(ModuleLoaderTests, LoadModulesWithEmptyOrder) {
     ModuleLoadError error;
     
     // Empty order should succeed trivially
-    bool result = LoadModules(order, Context::Instance(), nullptr, modules, error);
+    bool result = LoadModules(order, *kernel_->context, nullptr, modules, error);
     EXPECT_TRUE(result);
     EXPECT_TRUE(modules.empty());
 }
@@ -109,7 +109,7 @@ TEST_F(ModuleLoaderTests, LoadModulesWithNonExistentDll) {
     // - May skip and return true with empty modules
     // Either is acceptable as long as no crash
     // Pass nullptrs: the stub ignores these function pointers
-    bool result = LoadModules(order, Context::Instance(), nullptr, modules, error);
+    bool result = LoadModules(order, *kernel_->context, nullptr, modules, error);
 
     if (!result) {
         // If it failed, check error is set
@@ -131,7 +131,7 @@ TEST_F(ModuleLoaderTests, LoadModulesWithEmptyDllPath) {
 
     // Empty DLL path should fail or be handled gracefully
     // Pass nullptrs: the stub ignores these function pointers
-    bool result = LoadModules(order, Context::Instance(), nullptr, modules, error);
+    bool result = LoadModules(order, *kernel_->context, nullptr, modules, error);
     // The result depends on implementation - it may skip or fail
     // Just verify no crash occurs
     EXPECT_TRUE(result || !error.message.empty());
@@ -249,7 +249,7 @@ TEST_F(ModuleLoaderTests, ContextModuleLifecycle) {
     manifest.package.version = "1.0.0";
     manifest.package.parsed_version = {1, 0, 0};
     
-    auto handle = Context::Instance().CreateModHandle(manifest);
+    auto handle = kernel_->context->CreateModHandle(manifest);
     EXPECT_NE(handle, nullptr);
     EXPECT_EQ(handle->id, "test.mod");
     EXPECT_EQ(handle->version.major, 1);

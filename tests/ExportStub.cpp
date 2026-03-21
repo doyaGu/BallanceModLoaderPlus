@@ -2,6 +2,7 @@
 // This file should be included INSTEAD of Export.cpp in tests
 
 #include "Core/ApiRegistry.h"
+#include "Core/KernelServices.h"
 #include "bml_export.h"
 
 // Provide implementations without using BML_API to avoid dllimport issues
@@ -10,7 +11,10 @@ extern "C" {
 BML_API void *bmlGetProcAddress(const char *proc_name) {
     if (!proc_name)
         return nullptr;
-    return BML::Core::ApiRegistry::Instance().Get(proc_name);
+    auto *kernel = BML::Core::GetKernelOrNull();
+    if (!kernel || !kernel->api_registry)
+        return nullptr;
+    return kernel->api_registry->Get(proc_name);
 }
 
 } // extern "C"

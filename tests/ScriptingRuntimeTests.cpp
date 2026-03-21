@@ -66,7 +66,7 @@ protected:
 
         m_TempDir = CreateTempDir();
 
-        auto &ctx = BML::Core::Context::Instance();
+        auto &ctx = *kernel_->context;
         ctx.Initialize({0, 4, 0});
 
         BML::Core::RegisterCoreApis();
@@ -123,7 +123,7 @@ protected:
         manifest->manifest_path = (entryPath.parent_path() / "mod.toml").wstring();
 
         auto *manifestRaw = manifest.get();
-        auto &ctx = BML::Core::Context::Instance();
+        auto &ctx = *kernel_->context;
         ctx.RegisterManifest(std::move(manifest));
 
         auto modHandle = ctx.CreateModHandle(*manifestRaw);

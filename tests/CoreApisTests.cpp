@@ -88,7 +88,7 @@ protected:
         kernel_->context = std::make_unique<Context>();
 
         Context::SetCurrentModule(nullptr);
-        Context::Instance().Initialize(bmlGetApiVersion());
+        kernel_->context->Initialize(bmlGetApiVersion());
         ImcShutdown();
         Context::SetCurrentModule(nullptr);
         temp_root_ = std::filesystem::temp_directory_path() /
@@ -114,14 +114,14 @@ protected:
         std::filesystem::create_directories(manifest->directory);
         manifest->manifest_path = manifest->directory + L"/manifest.toml";
 
-        auto handle = Context::Instance().CreateModHandle(*manifest);
+        auto handle = kernel_->context->CreateModHandle(*manifest);
         BML::Core::LoadedModule module{};
         module.id = id;
         module.manifest = manifest.get();
         module.mod_handle = std::move(handle);
-        Context::Instance().AddLoadedModule(std::move(module));
+        kernel_->context->AddLoadedModule(std::move(module));
 
-        BML_Mod mod = Context::Instance().GetModHandleById(id);
+        BML_Mod mod = kernel_->context->GetModHandleById(id);
         manifests_.push_back(std::move(manifest));
         return mod;
     }
@@ -148,9 +148,9 @@ TEST_F(CoreApisTests, MultiThreadedHandleCreationAndRelease) {
     using PFN_Release = BML_Result (*)(const BML_HandleDesc *);
     using PFN_Validate = BML_Result (*)(const BML_HandleDesc *, BML_Bool *);
 
-    auto create_fn = reinterpret_cast<PFN_Create>(ApiRegistry::Instance().Get("bmlHandleCreate"));
-    auto release_fn = reinterpret_cast<PFN_Release>(ApiRegistry::Instance().Get("bmlHandleRelease"));
-    auto validate_fn = reinterpret_cast<PFN_Validate>(ApiRegistry::Instance().Get("bmlHandleValidate"));
+    auto create_fn = reinterpret_cast<PFN_Create>(kernel_->api_registry->Get("bmlHandleCreate"));
+    auto release_fn = reinterpret_cast<PFN_Release>(kernel_->api_registry->Get("bmlHandleRelease"));
+    auto validate_fn = reinterpret_cast<PFN_Validate>(kernel_->api_registry->Get("bmlHandleValidate"));
 
     ASSERT_NE(create_fn, nullptr);
     ASSERT_NE(release_fn, nullptr);
@@ -219,8 +219,8 @@ TEST_F(CoreApisTests, ConfigReloadStressTriggersHooksOncePerLoad) {
     using PFN_ConfigSet = BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *);
     using PFN_ConfigGet = BML_Result (*)(BML_Mod, const BML_ConfigKey *, BML_ConfigValue *);
 
-    auto config_set = reinterpret_cast<PFN_ConfigSet>(ApiRegistry::Instance().Get("bmlConfigSet"));
-    auto config_get = reinterpret_cast<PFN_ConfigGet>(ApiRegistry::Instance().Get("bmlConfigGet"));
+    auto config_set = reinterpret_cast<PFN_ConfigSet>(kernel_->api_registry->Get("bmlConfigSet"));
+    auto config_get = reinterpret_cast<PFN_ConfigGet>(kernel_->api_registry->Get("bmlConfigGet"));
 
     ASSERT_NE(config_set, nullptr);
     ASSERT_NE(config_get, nullptr);
@@ -243,7 +243,7 @@ TEST_F(CoreApisTests, ConfigReloadStressTriggersHooksOncePerLoad) {
         value.data.int_value = static_cast<int32_t>(iter);
         ASSERT_EQ(BML_RESULT_OK, config_set(Mod(), &key, &value));
 
-        ConfigStore::Instance().FlushAndRelease(Mod());
+        kernel_->config->FlushAndRelease(Mod());
 
         std::vector<std::thread> readers;
         std::atomic<size_t> success_count{0};
@@ -342,10 +342,10 @@ TEST_F(CoreApisTests, ImcBroadcastPreservesPublishOrderPerSubscriber) {
 TEST_F(CoreApisTests, SetCurrentModuleApiIsThreadLocal) {
     BML::Core::RegisterCoreApis();
 
-    auto set_fn = reinterpret_cast<BML_Result (*)(BML_Mod)>(ApiRegistry::Instance().Get("bmlSetCurrentModule"));
-    auto get_fn = reinterpret_cast<BML_Mod (*)()>(ApiRegistry::Instance().Get("bmlGetCurrentModule"));
+    auto set_fn = reinterpret_cast<BML_Result (*)(BML_Mod)>(kernel_->api_registry->Get("bmlSetCurrentModule"));
+    auto get_fn = reinterpret_cast<BML_Mod (*)()>(kernel_->api_registry->Get("bmlGetCurrentModule"));
     auto get_id_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
-        ApiRegistry::Instance().Get("bmlGetModId"));
+        kernel_->api_registry->Get("bmlGetModId"));
     ASSERT_NE(set_fn, nullptr);
     ASSERT_NE(get_fn, nullptr);
     ASSERT_NE(get_id_fn, nullptr);
@@ -395,7 +395,7 @@ TEST_F(CoreApisTests, GetModDirectory_ReturnsUtf8Path) {
     BML::Core::RegisterCoreApis();
 
     auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
-        ApiRegistry::Instance().Get("bmlGetModDirectory"));
+        kernel_->api_registry->Get("bmlGetModDirectory"));
     ASSERT_NE(fn, nullptr);
 
     auto mod = CreateTrackedMod("test.directory");
@@ -410,7 +410,7 @@ TEST_F(CoreApisTests, GetModDirectory_NullOutput) {
     BML::Core::RegisterCoreApis();
 
     auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
-        ApiRegistry::Instance().Get("bmlGetModDirectory"));
+        kernel_->api_registry->Get("bmlGetModDirectory"));
     ASSERT_NE(fn, nullptr);
 
     auto mod = CreateTrackedMod("test.dir.null");
@@ -421,7 +421,7 @@ TEST_F(CoreApisTests, GetModDirectory_NullMod) {
     BML::Core::RegisterCoreApis();
 
     auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
-        ApiRegistry::Instance().Get("bmlGetModDirectory"));
+        kernel_->api_registry->Get("bmlGetModDirectory"));
     ASSERT_NE(fn, nullptr);
 
     // No current module set, so nullptr resolves to nothing
@@ -434,11 +434,11 @@ TEST_F(CoreApisTests, GetModDirectory_HostModHasNoManifest) {
     BML::Core::RegisterCoreApis();
 
     auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
-        ApiRegistry::Instance().Get("bmlGetModDirectory"));
+        kernel_->api_registry->Get("bmlGetModDirectory"));
     ASSERT_NE(fn, nullptr);
 
     // The synthetic host module has no manifest
-    BML_Mod host = Context::Instance().GetSyntheticHostModule();
+    BML_Mod host = kernel_->context->GetSyntheticHostModule();
     ASSERT_NE(host, nullptr);
     const char *dir = nullptr;
     EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, fn(host, &dir));
@@ -452,7 +452,7 @@ TEST_F(CoreApisTests, GetModName_ReturnsManifestName) {
     BML::Core::RegisterCoreApis();
 
     auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
-        ApiRegistry::Instance().Get("bmlGetModName"));
+        kernel_->api_registry->Get("bmlGetModName"));
     ASSERT_NE(fn, nullptr);
 
     auto mod = CreateTrackedMod("test.name");
@@ -467,7 +467,7 @@ TEST_F(CoreApisTests, GetModDescription_ReturnsManifestDescription) {
     BML::Core::RegisterCoreApis();
 
     auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
-        ApiRegistry::Instance().Get("bmlGetModDescription"));
+        kernel_->api_registry->Get("bmlGetModDescription"));
     ASSERT_NE(fn, nullptr);
 
     // Create a mod with explicit description
@@ -480,14 +480,14 @@ TEST_F(CoreApisTests, GetModDescription_ReturnsManifestDescription) {
     manifest->directory = (temp_root_ / "test.desc").wstring();
     std::filesystem::create_directories(manifest->directory);
 
-    auto handle = Context::Instance().CreateModHandle(*manifest);
+    auto handle = kernel_->context->CreateModHandle(*manifest);
     BML::Core::LoadedModule module{};
     module.id = "test.desc";
     module.manifest = manifest.get();
     module.mod_handle = std::move(handle);
-    Context::Instance().AddLoadedModule(std::move(module));
+    kernel_->context->AddLoadedModule(std::move(module));
 
-    BML_Mod mod = Context::Instance().GetModHandleById("test.desc");
+    BML_Mod mod = kernel_->context->GetModHandleById("test.desc");
     manifests_.push_back(std::move(manifest));
 
     const char *desc = nullptr;
@@ -500,9 +500,9 @@ TEST_F(CoreApisTests, GetModAuthorCount_ReturnsCorrectCount) {
     BML::Core::RegisterCoreApis();
 
     auto count_fn = reinterpret_cast<BML_Result (*)(BML_Mod, uint32_t *)>(
-        ApiRegistry::Instance().Get("bmlGetModAuthorCount"));
+        kernel_->api_registry->Get("bmlGetModAuthorCount"));
     auto at_fn = reinterpret_cast<BML_Result (*)(BML_Mod, uint32_t, const char **)>(
-        ApiRegistry::Instance().Get("bmlGetModAuthorAt"));
+        kernel_->api_registry->Get("bmlGetModAuthorAt"));
     ASSERT_NE(count_fn, nullptr);
     ASSERT_NE(at_fn, nullptr);
 
@@ -516,14 +516,14 @@ TEST_F(CoreApisTests, GetModAuthorCount_ReturnsCorrectCount) {
     manifest->directory = (temp_root_ / "test.authors").wstring();
     std::filesystem::create_directories(manifest->directory);
 
-    auto handle = Context::Instance().CreateModHandle(*manifest);
+    auto handle = kernel_->context->CreateModHandle(*manifest);
     BML::Core::LoadedModule module{};
     module.id = "test.authors";
     module.manifest = manifest.get();
     module.mod_handle = std::move(handle);
-    Context::Instance().AddLoadedModule(std::move(module));
+    kernel_->context->AddLoadedModule(std::move(module));
 
-    BML_Mod mod = Context::Instance().GetModHandleById("test.authors");
+    BML_Mod mod = kernel_->context->GetModHandleById("test.authors");
     manifests_.push_back(std::move(manifest));
 
     uint32_t count = 0;
@@ -545,7 +545,7 @@ TEST_F(CoreApisTests, GetModName_NullOutput) {
     BML::Core::RegisterCoreApis();
 
     auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
-        ApiRegistry::Instance().Get("bmlGetModName"));
+        kernel_->api_registry->Get("bmlGetModName"));
     ASSERT_NE(fn, nullptr);
 
     auto mod = CreateTrackedMod("test.name.null");
@@ -561,9 +561,9 @@ TEST_F(CoreApisTests, ConfigGetInt_KeyFound) {
     BML::Core::RegisterConfigApis();
 
     auto set_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *)>(
-        ApiRegistry::Instance().Get("bmlConfigSet"));
+        kernel_->api_registry->Get("bmlConfigSet"));
     auto get_int_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, int32_t, int32_t *)>(
-        ApiRegistry::Instance().Get("bmlConfigGetInt"));
+        kernel_->api_registry->Get("bmlConfigGetInt"));
     ASSERT_NE(set_fn, nullptr);
     ASSERT_NE(get_int_fn, nullptr);
 
@@ -581,7 +581,7 @@ TEST_F(CoreApisTests, ConfigGetInt_KeyNotFoundReturnsDefault) {
     BML::Core::RegisterConfigApis();
 
     auto get_int_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, int32_t, int32_t *)>(
-        ApiRegistry::Instance().Get("bmlConfigGetInt"));
+        kernel_->api_registry->Get("bmlConfigGetInt"));
     ASSERT_NE(get_int_fn, nullptr);
 
     int32_t result = 0;
@@ -594,9 +594,9 @@ TEST_F(CoreApisTests, ConfigGetFloat_KeyFound) {
     BML::Core::RegisterConfigApis();
 
     auto set_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *)>(
-        ApiRegistry::Instance().Get("bmlConfigSet"));
+        kernel_->api_registry->Get("bmlConfigSet"));
     auto get_float_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, float, float *)>(
-        ApiRegistry::Instance().Get("bmlConfigGetFloat"));
+        kernel_->api_registry->Get("bmlConfigGetFloat"));
     ASSERT_NE(set_fn, nullptr);
     ASSERT_NE(get_float_fn, nullptr);
 
@@ -614,7 +614,7 @@ TEST_F(CoreApisTests, ConfigGetBool_KeyNotFoundReturnsDefault) {
     BML::Core::RegisterConfigApis();
 
     auto get_bool_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, BML_Bool, BML_Bool *)>(
-        ApiRegistry::Instance().Get("bmlConfigGetBool"));
+        kernel_->api_registry->Get("bmlConfigGetBool"));
     ASSERT_NE(get_bool_fn, nullptr);
 
     BML_Bool result = BML_FALSE;
@@ -627,9 +627,9 @@ TEST_F(CoreApisTests, ConfigGetString_KeyFound) {
     BML::Core::RegisterConfigApis();
 
     auto set_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *)>(
-        ApiRegistry::Instance().Get("bmlConfigSet"));
+        kernel_->api_registry->Get("bmlConfigSet"));
     auto get_string_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, const char *, const char **)>(
-        ApiRegistry::Instance().Get("bmlConfigGetString"));
+        kernel_->api_registry->Get("bmlConfigGetString"));
     ASSERT_NE(set_fn, nullptr);
     ASSERT_NE(get_string_fn, nullptr);
 
@@ -648,7 +648,7 @@ TEST_F(CoreApisTests, ConfigGetString_KeyNotFoundReturnsDefault) {
     BML::Core::RegisterConfigApis();
 
     auto get_string_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, const char *, const char **)>(
-        ApiRegistry::Instance().Get("bmlConfigGetString"));
+        kernel_->api_registry->Get("bmlConfigGetString"));
     ASSERT_NE(get_string_fn, nullptr);
 
     const char *result = nullptr;
@@ -661,7 +661,7 @@ TEST_F(CoreApisTests, ConfigGetString_NullDefaultReturnsNull) {
     BML::Core::RegisterConfigApis();
 
     auto get_string_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, const char *, const char **)>(
-        ApiRegistry::Instance().Get("bmlConfigGetString"));
+        kernel_->api_registry->Get("bmlConfigGetString"));
     ASSERT_NE(get_string_fn, nullptr);
 
     const char *result = reinterpret_cast<const char *>(0xDEAD); // sentinel
@@ -674,7 +674,7 @@ TEST_F(CoreApisTests, ConfigGetInt_NullOutput) {
     BML::Core::RegisterConfigApis();
 
     auto get_int_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, int32_t, int32_t *)>(
-        ApiRegistry::Instance().Get("bmlConfigGetInt"));
+        kernel_->api_registry->Get("bmlConfigGetInt"));
     ASSERT_NE(get_int_fn, nullptr);
 
     EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, get_int_fn(Mod(), "test", "key", 0, nullptr));
@@ -685,9 +685,9 @@ TEST_F(CoreApisTests, ConfigGetInt_TypeMismatch) {
     BML::Core::RegisterConfigApis();
 
     auto set_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *)>(
-        ApiRegistry::Instance().Get("bmlConfigSet"));
+        kernel_->api_registry->Get("bmlConfigSet"));
     auto get_int_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, int32_t, int32_t *)>(
-        ApiRegistry::Instance().Get("bmlConfigGetInt"));
+        kernel_->api_registry->Get("bmlConfigGetInt"));
     ASSERT_NE(set_fn, nullptr);
     ASSERT_NE(get_int_fn, nullptr);
 
@@ -709,9 +709,9 @@ TEST_F(CoreApisTests, GetLoadedModuleCount_MatchesModCount) {
     BML::Core::RegisterCoreApis();
 
     auto count_fn = reinterpret_cast<uint32_t (*)()>(
-        ApiRegistry::Instance().Get("bmlGetLoadedModuleCount"));
+        kernel_->api_registry->Get("bmlGetLoadedModuleCount"));
     auto at_fn = reinterpret_cast<BML_Mod (*)(uint32_t)>(
-        ApiRegistry::Instance().Get("bmlGetLoadedModuleAt"));
+        kernel_->api_registry->Get("bmlGetLoadedModuleAt"));
     ASSERT_NE(count_fn, nullptr);
     ASSERT_NE(at_fn, nullptr);
 

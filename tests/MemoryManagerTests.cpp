@@ -19,7 +19,7 @@ protected:
     void SetUp() override {
         kernel_->memory = std::make_unique<BML::Core::MemoryManager>();
 
-        auto &manager = BML::Core::MemoryManager::Instance();
+        auto &manager = *kernel_->memory;
         manager.SetTrackingEnabled(true);
     #if defined(BML_TEST)
         manager.ResetStatsForTesting();
@@ -29,7 +29,7 @@ protected:
 }
 
 TEST_F(MemoryManagerTest, TracksAllocAndFreeBytes) {
-    auto &manager = BML::Core::MemoryManager::Instance();
+    auto &manager = *kernel_->memory;
 
     void *block = manager.Alloc(256);
     ASSERT_NE(block, nullptr);
@@ -47,7 +47,7 @@ TEST_F(MemoryManagerTest, TracksAllocAndFreeBytes) {
 }
 
 TEST_F(MemoryManagerTest, AllocatorSmokeTest) {
-    auto &manager = BML::Core::MemoryManager::Instance();
+    auto &manager = *kernel_->memory;
 
     void *alloc_block = manager.Alloc(128);
     ASSERT_NE(alloc_block, nullptr);
@@ -74,7 +74,7 @@ TEST_F(MemoryManagerTest, AllocatorSmokeTest) {
 }
 
 TEST_F(MemoryManagerTest, ReallocPreservesDataAndStats) {
-    auto &manager = BML::Core::MemoryManager::Instance();
+    auto &manager = *kernel_->memory;
 
     auto *bytes = static_cast<uint8_t *>(manager.Alloc(32));
     ASSERT_NE(bytes, nullptr);
@@ -106,7 +106,7 @@ TEST_F(MemoryManagerTest, ReallocPreservesDataAndStats) {
 }
 
 TEST_F(MemoryManagerTest, AllocAlignedRespectsAlignment) {
-    auto &manager = BML::Core::MemoryManager::Instance();
+    auto &manager = *kernel_->memory;
 
     std::array<size_t, 4> alignments{8u, 32u, 256u, 1024u};
     std::vector<void *> blocks;
@@ -130,13 +130,13 @@ TEST_F(MemoryManagerTest, AllocAlignedRespectsAlignment) {
 }
 
 TEST_F(MemoryManagerTest, AllocAlignedRejectsNonPowerOfTwoAlignment) {
-    auto &manager = BML::Core::MemoryManager::Instance();
+    auto &manager = *kernel_->memory;
     EXPECT_EQ(manager.AllocAligned(32, 12), nullptr);
     EXPECT_EQ(manager.AllocAligned(32, 0), nullptr);
 }
 
 TEST_F(MemoryManagerTest, MemoryPoolAllocatesAndDestroys) {
-    auto &manager = BML::Core::MemoryManager::Instance();
+    auto &manager = *kernel_->memory;
 
     BML_MemoryPool pool = nullptr;
     ASSERT_EQ(manager.CreatePool(64, 8, &pool), BML_RESULT_OK);
@@ -159,7 +159,7 @@ TEST_F(MemoryManagerTest, MemoryPoolAllocatesAndDestroys) {
 }
 
 TEST_F(MemoryManagerTest, CreatePoolRejectsInvalidParameters) {
-    auto &manager = BML::Core::MemoryManager::Instance();
+    auto &manager = *kernel_->memory;
     BML_MemoryPool pool = nullptr;
 
     EXPECT_EQ(manager.CreatePool(4, 16, &pool), BML_RESULT_INVALID_ARGUMENT);

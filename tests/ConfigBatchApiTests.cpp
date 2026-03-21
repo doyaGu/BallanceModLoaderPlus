@@ -43,7 +43,7 @@ protected:
         kernel_->api_registry = std::make_unique<ApiRegistry>();
         kernel_->config       = std::make_unique<ConfigStore>();
         kernel_->context      = std::make_unique<Context>();
-        ApiRegistry::Instance().Clear();
+        kernel_->api_registry->Clear();
         Context::SetCurrentModule(nullptr);
         temp_root_ = std::filesystem::temp_directory_path() /
                      ("bml-batch-tests-" +
@@ -54,7 +54,7 @@ protected:
 
     void TearDown() override {
         if (mod_) {
-            ConfigStore::Instance().FlushAndRelease(mod_.get());
+            kernel_->config->FlushAndRelease(mod_.get());
         }
         Context::SetCurrentModule(nullptr);
         std::error_code ec;
@@ -73,7 +73,7 @@ protected:
         manifest_->directory = base.wstring();
         manifest_->manifest_path = (base / "manifest.toml").wstring();
 
-        mod_ = Context::Instance().CreateModHandle(*manifest_);
+        mod_ = kernel_->context->CreateModHandle(*manifest_);
         Context::SetCurrentModule(mod_.get());
     }
 
@@ -81,7 +81,7 @@ protected:
 
     template <typename Fn>
     Fn Lookup(const char *name) {
-        auto pointer = reinterpret_cast<Fn>(ApiRegistry::Instance().Get(name));
+        auto pointer = reinterpret_cast<Fn>(kernel_->api_registry->Get(name));
         if (!pointer) {
             ADD_FAILURE() << "Missing API registration for " << name;
         }

@@ -40,7 +40,7 @@ protected:
 
     template <typename Fn>
     Fn Lookup(const char *name) {
-        auto fn = reinterpret_cast<Fn>(ApiRegistry::Instance().Get(name));
+        auto fn = reinterpret_cast<Fn>(kernel_->api_registry->Get(name));
         if (!fn) {
             ADD_FAILURE() << "Missing API: " << name;
         }

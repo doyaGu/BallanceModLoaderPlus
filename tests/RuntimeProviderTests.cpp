@@ -56,12 +56,12 @@ protected:
         kernel_->api_registry = std::make_unique<ApiRegistry>();
         kernel_->config = std::make_unique<ConfigStore>();
 
-        auto &ctx = BML::Core::Context::Instance();
+        auto &ctx = *kernel_->context;
         ctx.Initialize({0, 4, 0});
     }
 
     void TearDown() override {
-        auto &ctx = BML::Core::Context::Instance();
+        auto &ctx = *kernel_->context;
         // Ensure all providers are cleaned up
         ctx.UnregisterRuntimeProvider(&kStubProvider);
         ctx.UnregisterRuntimeProvider(&kLuaProvider);
@@ -69,7 +69,7 @@ protected:
 };
 
 TEST_F(RuntimeProviderTest, RegisterAndFind) {
-    auto &ctx = BML::Core::Context::Instance();
+    auto &ctx = *kernel_->context;
 
     EXPECT_EQ(BML_RESULT_OK,
               ctx.RegisterRuntimeProvider(&kStubProvider, "com.bml.scripting"));
@@ -79,7 +79,7 @@ TEST_F(RuntimeProviderTest, RegisterAndFind) {
 }
 
 TEST_F(RuntimeProviderTest, FindReturnsNullForUnhandledExtension) {
-    auto &ctx = BML::Core::Context::Instance();
+    auto &ctx = *kernel_->context;
 
     EXPECT_EQ(BML_RESULT_OK,
               ctx.RegisterRuntimeProvider(&kStubProvider, "com.bml.scripting"));
@@ -89,14 +89,14 @@ TEST_F(RuntimeProviderTest, FindReturnsNullForUnhandledExtension) {
 }
 
 TEST_F(RuntimeProviderTest, FindReturnsNullWhenEmpty) {
-    auto &ctx = BML::Core::Context::Instance();
+    auto &ctx = *kernel_->context;
 
     auto *found = ctx.FindRuntimeProvider("C:/Mods/Test/main.as");
     EXPECT_EQ(found, nullptr);
 }
 
 TEST_F(RuntimeProviderTest, DuplicateRegistrationRejected) {
-    auto &ctx = BML::Core::Context::Instance();
+    auto &ctx = *kernel_->context;
 
     EXPECT_EQ(BML_RESULT_OK,
               ctx.RegisterRuntimeProvider(&kStubProvider, "com.bml.scripting"));
@@ -105,7 +105,7 @@ TEST_F(RuntimeProviderTest, DuplicateRegistrationRejected) {
 }
 
 TEST_F(RuntimeProviderTest, MultipleProvidersCoexist) {
-    auto &ctx = BML::Core::Context::Instance();
+    auto &ctx = *kernel_->context;
 
     EXPECT_EQ(BML_RESULT_OK,
               ctx.RegisterRuntimeProvider(&kStubProvider, "com.bml.scripting"));
@@ -118,7 +118,7 @@ TEST_F(RuntimeProviderTest, MultipleProvidersCoexist) {
 }
 
 TEST_F(RuntimeProviderTest, Unregister) {
-    auto &ctx = BML::Core::Context::Instance();
+    auto &ctx = *kernel_->context;
 
     EXPECT_EQ(BML_RESULT_OK,
               ctx.RegisterRuntimeProvider(&kStubProvider, "com.bml.scripting"));
@@ -130,14 +130,14 @@ TEST_F(RuntimeProviderTest, Unregister) {
 }
 
 TEST_F(RuntimeProviderTest, UnregisterNotFoundReturnsError) {
-    auto &ctx = BML::Core::Context::Instance();
+    auto &ctx = *kernel_->context;
 
     EXPECT_EQ(BML_RESULT_NOT_FOUND,
               ctx.UnregisterRuntimeProvider(&kStubProvider));
 }
 
 TEST_F(RuntimeProviderTest, InvalidateByOwner) {
-    auto &ctx = BML::Core::Context::Instance();
+    auto &ctx = *kernel_->context;
 
     EXPECT_EQ(BML_RESULT_OK,
               ctx.RegisterRuntimeProvider(&kStubProvider, "com.bml.scripting"));
@@ -151,28 +151,28 @@ TEST_F(RuntimeProviderTest, InvalidateByOwner) {
 }
 
 TEST_F(RuntimeProviderTest, InvalidateNonExistentOwnerIsNoOp) {
-    auto &ctx = BML::Core::Context::Instance();
+    auto &ctx = *kernel_->context;
 
     ctx.InvalidateRuntimeProvider("nonexistent");
     // Should not crash or affect anything
 }
 
 TEST_F(RuntimeProviderTest, NullProviderRejected) {
-    auto &ctx = BML::Core::Context::Instance();
+    auto &ctx = *kernel_->context;
 
     EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT,
               ctx.RegisterRuntimeProvider(nullptr, "owner"));
 }
 
 TEST_F(RuntimeProviderTest, EmptyOwnerRejected) {
-    auto &ctx = BML::Core::Context::Instance();
+    auto &ctx = *kernel_->context;
 
     EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT,
               ctx.RegisterRuntimeProvider(&kStubProvider, ""));
 }
 
 TEST_F(RuntimeProviderTest, ProviderMissingRequiredFieldsRejected) {
-    auto &ctx = BML::Core::Context::Instance();
+    auto &ctx = *kernel_->context;
 
     BML_ModuleRuntimeProvider incomplete = {
         BML_MODULE_RUNTIME_PROVIDER_INIT,
@@ -188,7 +188,7 @@ TEST_F(RuntimeProviderTest, ProviderMissingRequiredFieldsRejected) {
 }
 
 TEST_F(RuntimeProviderTest, FindWithEmptyPathReturnsNull) {
-    auto &ctx = BML::Core::Context::Instance();
+    auto &ctx = *kernel_->context;
 
     EXPECT_EQ(BML_RESULT_OK,
               ctx.RegisterRuntimeProvider(&kStubProvider, "com.bml.scripting"));

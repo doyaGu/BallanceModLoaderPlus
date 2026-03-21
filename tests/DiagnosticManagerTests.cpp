@@ -36,14 +36,14 @@ TEST_F(DiagnosticManagerTests, InitiallyNoError) {
     BML_ErrorInfo info{};
     info.struct_size = sizeof(BML_ErrorInfo);
 
-    BML_Result result = DiagnosticManager::Instance().GetLastError(&info);
+    BML_Result result = kernel_->diagnostics->GetLastError(&info);
 
     // When no error has been set, GetLastError returns NOT_FOUND
     EXPECT_EQ(result, BML_RESULT_NOT_FOUND);
 }
 
 TEST_F(DiagnosticManagerTests, SetAndGetError) {
-    DiagnosticManager::Instance().SetError(
+    kernel_->diagnostics->SetError(
         BML_RESULT_INVALID_ARGUMENT,
         "Test error message",
         "TestApiFunction");
@@ -51,7 +51,7 @@ TEST_F(DiagnosticManagerTests, SetAndGetError) {
     BML_ErrorInfo info{};
     info.struct_size = sizeof(BML_ErrorInfo);
 
-    BML_Result result = DiagnosticManager::Instance().GetLastError(&info);
+    BML_Result result = kernel_->diagnostics->GetLastError(&info);
 
     EXPECT_EQ(result, BML_RESULT_OK);
     EXPECT_EQ(info.result_code, BML_RESULT_INVALID_ARGUMENT);
@@ -60,24 +60,24 @@ TEST_F(DiagnosticManagerTests, SetAndGetError) {
 }
 
 TEST_F(DiagnosticManagerTests, ClearLastError) {
-    DiagnosticManager::Instance().SetError(
+    kernel_->diagnostics->SetError(
         BML_RESULT_NOT_FOUND,
         "Error to clear",
         "SomeApi");
 
-    DiagnosticManager::Instance().ClearLastError();
+    kernel_->diagnostics->ClearLastError();
 
     BML_ErrorInfo info{};
     info.struct_size = sizeof(BML_ErrorInfo);
 
-    DiagnosticManager::Instance().GetLastError(&info);
+    kernel_->diagnostics->GetLastError(&info);
 
     // After clear, result_code should be OK
     EXPECT_EQ(info.result_code, BML_RESULT_OK);
 }
 
 TEST_F(DiagnosticManagerTests, SetErrorWithSourceInfo) {
-    DiagnosticManager::Instance().SetError(
+    kernel_->diagnostics->SetError(
         BML_RESULT_IO_ERROR,
         "IO failure",
         "ReadFile",
@@ -87,7 +87,7 @@ TEST_F(DiagnosticManagerTests, SetErrorWithSourceInfo) {
     BML_ErrorInfo info{};
     info.struct_size = sizeof(BML_ErrorInfo);
 
-    DiagnosticManager::Instance().GetLastError(&info);
+    kernel_->diagnostics->GetLastError(&info);
 
     EXPECT_EQ(info.result_code, BML_RESULT_IO_ERROR);
     EXPECT_STREQ(info.message, "IO failure");
@@ -97,12 +97,12 @@ TEST_F(DiagnosticManagerTests, SetErrorWithSourceInfo) {
 }
 
 TEST_F(DiagnosticManagerTests, LastErrorOverwritesPrevious) {
-    DiagnosticManager::Instance().SetError(
+    kernel_->diagnostics->SetError(
         BML_RESULT_NOT_FOUND,
         "First error",
         "Api1");
 
-    DiagnosticManager::Instance().SetError(
+    kernel_->diagnostics->SetError(
         BML_RESULT_INVALID_ARGUMENT,
         "Second error",
         "Api2");
@@ -110,7 +110,7 @@ TEST_F(DiagnosticManagerTests, LastErrorOverwritesPrevious) {
     BML_ErrorInfo info{};
     info.struct_size = sizeof(BML_ErrorInfo);
 
-    DiagnosticManager::Instance().GetLastError(&info);
+    kernel_->diagnostics->GetLastError(&info);
 
     // Should contain the second error
     EXPECT_EQ(info.result_code, BML_RESULT_INVALID_ARGUMENT);
@@ -131,7 +131,7 @@ TEST_F(DiagnosticManagerTests, ErrorIsolatedPerThread) {
     BML_Result thread2_code = BML_RESULT_OK;
 
     std::thread t1([&]() {
-        DiagnosticManager::Instance().SetError(
+        kernel_->diagnostics->SetError(
             BML_RESULT_NOT_FOUND,
             "Thread 1 error",
             "Api1");
@@ -145,7 +145,7 @@ TEST_F(DiagnosticManagerTests, ErrorIsolatedPerThread) {
         // Thread 1 should still see its own error
         BML_ErrorInfo info{};
         info.struct_size = sizeof(BML_ErrorInfo);
-        DiagnosticManager::Instance().GetLastError(&info);
+        kernel_->diagnostics->GetLastError(&info);
         thread1_code = info.result_code;
     });
 
@@ -155,7 +155,7 @@ TEST_F(DiagnosticManagerTests, ErrorIsolatedPerThread) {
             std::this_thread::yield();
         }
 
-        DiagnosticManager::Instance().SetError(
+        kernel_->diagnostics->SetError(
             BML_RESULT_INVALID_ARGUMENT,
             "Thread 2 error",
             "Api2");
@@ -166,7 +166,7 @@ TEST_F(DiagnosticManagerTests, ErrorIsolatedPerThread) {
         // Thread 2 should see its own error
         BML_ErrorInfo info{};
         info.struct_size = sizeof(BML_ErrorInfo);
-        DiagnosticManager::Instance().GetLastError(&info);
+        kernel_->diagnostics->GetLastError(&info);
         thread2_code = info.result_code;
     });
 
@@ -186,7 +186,7 @@ TEST_F(DiagnosticManagerTests, ClearOnlyAffectsCurrentThread) {
     BML_Result thread2_code_after = BML_RESULT_OK;
 
     std::thread t1([&]() {
-        DiagnosticManager::Instance().SetError(
+        kernel_->diagnostics->SetError(
             BML_RESULT_NOT_FOUND,
             "Thread 1 error",
             "Api1");
@@ -196,19 +196,19 @@ TEST_F(DiagnosticManagerTests, ClearOnlyAffectsCurrentThread) {
             std::this_thread::yield();
         }
 
-        DiagnosticManager::Instance().ClearLastError();
+        kernel_->diagnostics->ClearLastError();
         thread1_cleared = true;
     });
 
     std::thread t2([&]() {
-        DiagnosticManager::Instance().SetError(
+        kernel_->diagnostics->SetError(
             BML_RESULT_INVALID_ARGUMENT,
             "Thread 2 error",
             "Api2");
 
         BML_ErrorInfo info{};
         info.struct_size = sizeof(BML_ErrorInfo);
-        DiagnosticManager::Instance().GetLastError(&info);
+        kernel_->diagnostics->GetLastError(&info);
         thread2_code_before = info.result_code;
         thread2_checked = true;
 
@@ -218,7 +218,7 @@ TEST_F(DiagnosticManagerTests, ClearOnlyAffectsCurrentThread) {
         }
 
         // Thread 2's error should still be intact
-        DiagnosticManager::Instance().GetLastError(&info);
+        kernel_->diagnostics->GetLastError(&info);
         thread2_code_after = info.result_code;
     });
 
@@ -234,7 +234,7 @@ TEST_F(DiagnosticManagerTests, ClearOnlyAffectsCurrentThread) {
 // ============================================================================
 
 TEST_F(DiagnosticManagerTests, NullMessageHandled) {
-    DiagnosticManager::Instance().SetError(
+    kernel_->diagnostics->SetError(
         BML_RESULT_NOT_FOUND,
         nullptr,
         "Api");
@@ -242,14 +242,14 @@ TEST_F(DiagnosticManagerTests, NullMessageHandled) {
     BML_ErrorInfo info{};
     info.struct_size = sizeof(BML_ErrorInfo);
 
-    DiagnosticManager::Instance().GetLastError(&info);
+    kernel_->diagnostics->GetLastError(&info);
 
     EXPECT_EQ(info.result_code, BML_RESULT_NOT_FOUND);
     EXPECT_EQ(info.message, nullptr);
 }
 
 TEST_F(DiagnosticManagerTests, NullApiNameHandled) {
-    DiagnosticManager::Instance().SetError(
+    kernel_->diagnostics->SetError(
         BML_RESULT_NOT_FOUND,
         "Error message",
         nullptr);
@@ -257,7 +257,7 @@ TEST_F(DiagnosticManagerTests, NullApiNameHandled) {
     BML_ErrorInfo info{};
     info.struct_size = sizeof(BML_ErrorInfo);
 
-    DiagnosticManager::Instance().GetLastError(&info);
+    kernel_->diagnostics->GetLastError(&info);
 
     EXPECT_EQ(info.result_code, BML_RESULT_NOT_FOUND);
     EXPECT_STREQ(info.message, "Error message");
@@ -265,7 +265,7 @@ TEST_F(DiagnosticManagerTests, NullApiNameHandled) {
 }
 
 TEST_F(DiagnosticManagerTests, GetLastErrorNullPointerReturnsError) {
-    BML_Result result = DiagnosticManager::Instance().GetLastError(nullptr);
+    BML_Result result = kernel_->diagnostics->GetLastError(nullptr);
 
     EXPECT_NE(result, BML_RESULT_OK);
 }
@@ -274,7 +274,7 @@ TEST_F(DiagnosticManagerTests, LongMessageTruncated) {
     // Create a very long message (> 256 chars)
     std::string long_message(300, 'x');
 
-    DiagnosticManager::Instance().SetError(
+    kernel_->diagnostics->SetError(
         BML_RESULT_NOT_FOUND,
         long_message.c_str(),
         "Api");
@@ -282,7 +282,7 @@ TEST_F(DiagnosticManagerTests, LongMessageTruncated) {
     BML_ErrorInfo info{};
     info.struct_size = sizeof(BML_ErrorInfo);
 
-    DiagnosticManager::Instance().GetLastError(&info);
+    kernel_->diagnostics->GetLastError(&info);
 
     EXPECT_EQ(info.result_code, BML_RESULT_NOT_FOUND);
     // Message should be truncated but not crash

@@ -24,7 +24,7 @@ protected:
     void SetUp() override {
         kernel_->context = std::make_unique<Context>();
 
-        auto &ctx = Context::Instance();
+        auto &ctx = *kernel_->context;
         ctx.Initialize(bmlMakeVersion(0, 4, 0));
         ImcShutdown();
         host_mod_ = ctx.GetSyntheticHostModule();

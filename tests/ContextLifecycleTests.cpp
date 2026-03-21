@@ -50,21 +50,21 @@ protected:
         kernel_->config = std::make_unique<ConfigStore>();
         kernel_->api_registry = std::make_unique<ApiRegistry>();
 
-        auto &ctx = Context::Instance();
+        auto &ctx = *kernel_->context;
         ctx.Initialize({0, 4, 0});
         std::lock_guard<std::mutex> lock(g_RecordMutex);
         g_ShutdownOrder.clear();
     }
 
     void TearDown() override {
-        Context::Instance().Cleanup();
+        kernel_->context->Cleanup();
         std::lock_guard<std::mutex> lock(g_RecordMutex);
         g_ShutdownOrder.clear();
     }
 };
 
 TEST_F(ContextLifecycleTests, CleanupWaitsForOutstandingRetain) {
-    auto &ctx = Context::Instance();
+    auto &ctx = *kernel_->context;
     ASSERT_EQ(ctx.RetainHandle(), BML_RESULT_OK);
 
     std::atomic<bool> cleanup_finished{false};
@@ -83,7 +83,7 @@ TEST_F(ContextLifecycleTests, CleanupWaitsForOutstandingRetain) {
 }
 
 TEST_F(ContextLifecycleTests, ShutdownHooksExecuteInReverseRegistrationOrder) {
-    auto &ctx = Context::Instance();
+    auto &ctx = *kernel_->context;
 
     ctx.AddLoadedModule(BuildLoadedModule("alpha", {"alpha-first", "alpha-second"}));
     ctx.AddLoadedModule(BuildLoadedModule("beta", {"beta-first", "beta-second"}));

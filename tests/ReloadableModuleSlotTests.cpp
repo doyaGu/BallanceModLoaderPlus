@@ -162,7 +162,7 @@ TEST_F(ReloadableModuleSlotTest, InitializeWithValidConfigSucceeds) {
     auto dll_path = m_TempDir / "test.dll";
     CreateMinimalDll(dll_path);
 
-    auto& context = Context::Instance();
+    auto& context = *kernel_->context;
     context.Initialize({0, 4, 0});
 
     ReloadableModuleSlot slot;
@@ -183,7 +183,7 @@ TEST_F(ReloadableModuleSlotTest, HasChangedReturnsFalseInitially) {
     auto dll_path = m_TempDir / "test.dll";
     CreateMinimalDll(dll_path);
 
-    auto& context = Context::Instance();
+    auto& context = *kernel_->context;
     context.Initialize({0, 4, 0});
 
     ReloadableModuleSlot slot;
@@ -202,7 +202,7 @@ TEST_F(ReloadableModuleSlotTest, HasChangedDetectsFileModification) {
     auto dll_path = m_TempDir / "test.dll";
     CreateMinimalDll(dll_path);
 
-    auto& context = Context::Instance();
+    auto& context = *kernel_->context;
     context.Initialize({0, 4, 0});
 
     ReloadableModuleSlot slot;
@@ -227,7 +227,7 @@ TEST_F(ReloadableModuleSlotTest, ReloadWithNoChangeReturnsNoChange) {
     auto dll_path = m_TempDir / "test.dll";
     CreateMinimalDll(dll_path);
 
-    auto& context = Context::Instance();
+    auto& context = *kernel_->context;
     context.Initialize({0, 4, 0});
 
     ReloadableModuleSlot slot;
@@ -246,7 +246,7 @@ TEST_F(ReloadableModuleSlotTest, GetPathReturnsConfiguredPath) {
     auto dll_path = m_TempDir / "mymodule.dll";
     CreateMinimalDll(dll_path);
 
-    auto& context = Context::Instance();
+    auto& context = *kernel_->context;
     context.Initialize({0, 4, 0});
 
     ReloadableModuleSlot slot;
@@ -265,7 +265,7 @@ TEST_F(ReloadableModuleSlotTest, UserDataPersistence) {
     auto dll_path = m_TempDir / "test.dll";
     CreateMinimalDll(dll_path);
 
-    auto& context = Context::Instance();
+    auto& context = *kernel_->context;
     context.Initialize({0, 4, 0});
 
     ReloadableModuleSlot slot;
@@ -287,7 +287,7 @@ TEST_F(ReloadableModuleSlotTest, ShutdownCleansUp) {
     auto dll_path = m_TempDir / "test.dll";
     CreateMinimalDll(dll_path);
 
-    auto& context = Context::Instance();
+    auto& context = *kernel_->context;
     context.Initialize({0, 4, 0});
 
     ReloadableModuleSlot slot;
@@ -316,7 +316,7 @@ TEST_F(ReloadableModuleSlotTest, TempDirectoryCreatedOnInitialize) {
     auto temp_dir = m_TempDir / "reload_temp";
     CreateMinimalDll(dll_path);
 
-    auto& context = Context::Instance();
+    auto& context = *kernel_->context;
     context.Initialize({0, 4, 0});
 
     EXPECT_FALSE(std::filesystem::exists(temp_dir));

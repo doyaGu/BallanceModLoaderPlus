@@ -62,14 +62,14 @@ protected:
 };
 
 TEST_F(ApiRegistryTest, BasicRegistrationAndGetByName) {
-    auto &registry = ApiRegistry::Instance();
+    auto &registry = *kernel_->api_registry;
     registry.RegisterApi("test.log", reinterpret_cast<void *>(+DummyFuncA), "test");
 
     EXPECT_EQ(registry.Get("test.log"), reinterpret_cast<void *>(+DummyFuncA));
 }
 
 TEST_F(ApiRegistryTest, RegisterRejectsDuplicateNames) {
-    auto &registry = ApiRegistry::Instance();
+    auto &registry = *kernel_->api_registry;
     registry.RegisterApi("api.one", reinterpret_cast<void *>(+DummyFuncA), "test");
     registry.RegisterApi("api.one", reinterpret_cast<void *>(+DummyFuncB), "test");
 
@@ -78,7 +78,7 @@ TEST_F(ApiRegistryTest, RegisterRejectsDuplicateNames) {
 }
 
 TEST_F(ApiRegistryTest, RegisterRejectsNullPointer) {
-    auto &registry = ApiRegistry::Instance();
+    auto &registry = *kernel_->api_registry;
     registry.RegisterApi("api.null", nullptr, "test");
 
     EXPECT_EQ(registry.Get("api.null"), nullptr);
@@ -89,7 +89,7 @@ TEST_F(ApiRegistryTest, RegisterRejectsNullPointer) {
 }
 
 TEST_F(ApiRegistryTest, UnregisterRemovesApi) {
-    auto &registry = ApiRegistry::Instance();
+    auto &registry = *kernel_->api_registry;
     registry.RegisterApi("api.cache", reinterpret_cast<void *>(+DummyFuncA), "test");
     ASSERT_NE(registry.Get("api.cache"), nullptr);
 
@@ -98,7 +98,7 @@ TEST_F(ApiRegistryTest, UnregisterRemovesApi) {
 }
 
 TEST_F(ApiRegistryTest, RegisterApiCopiesNameAndProviderStrings) {
-    auto &registry = ApiRegistry::Instance();
+    auto &registry = *kernel_->api_registry;
     std::string dynamicName = "dynamic.api";
     std::string dynamicProvider = "provider.dynamic";
 
@@ -120,7 +120,7 @@ TEST_F(ApiRegistryTest, RegisterApiCopiesNameAndProviderStrings) {
 }
 
 TEST_F(ApiRegistryTest, UnregisterByProviderRemovesAllFromProvider) {
-    auto &registry = ApiRegistry::Instance();
+    auto &registry = *kernel_->api_registry;
     registry.RegisterApi("api1", reinterpret_cast<void *>(+DummyFuncA), "provider.test");
     registry.RegisterApi("api2", reinterpret_cast<void *>(+DummyFuncB), "provider.test");
     registry.RegisterApi("api3", reinterpret_cast<void *>(+DummyFuncA), "other.provider");
@@ -132,7 +132,7 @@ TEST_F(ApiRegistryTest, UnregisterByProviderRemovesAllFromProvider) {
 }
 
 TEST_F(ApiRegistryTest, ConcurrentRegisterAndLookupDoesNotCrash) {
-    auto &registry = ApiRegistry::Instance();
+    auto &registry = *kernel_->api_registry;
     std::atomic<bool> running{true};
 
     std::thread lookup([&]() {
@@ -151,7 +151,7 @@ TEST_F(ApiRegistryTest, ConcurrentRegisterAndLookupDoesNotCrash) {
 }
 
 TEST_F(ApiRegistryTest, GuardedRegistrationWrapsAndTranslatesErrors) {
-    auto &registry = ApiRegistry::Instance();
+    auto &registry = *kernel_->api_registry;
     BML_REGISTER_API_GUARDED(bmlTestGuarded, "tests.guard", TestGuardedImpl);
 
     auto fn = reinterpret_cast<BML_Result (*)(int)>(
@@ -177,7 +177,7 @@ TEST_F(ApiRegistryTest, GuardedRegistrationWrapsAndTranslatesErrors) {
 }
 
 TEST_F(ApiRegistryTest, VoidGuardedRegistrationSuppressesExceptions) {
-    auto &registry = ApiRegistry::Instance();
+    auto &registry = *kernel_->api_registry;
     BML_REGISTER_API_VOID_GUARDED(bmlTestVoid, "tests.void", TestVoidImpl);
 
     auto fn = reinterpret_cast<void (*)(int)>(registry.Get("bmlTestVoid"));
@@ -196,7 +196,7 @@ TEST_F(ApiRegistryTest, VoidGuardedRegistrationSuppressesExceptions) {
 }
 
 TEST_F(ApiRegistryTest, SimpleRegistrationKeepsExactPointer) {
-    auto &registry = ApiRegistry::Instance();
+    auto &registry = *kernel_->api_registry;
     BML_REGISTER_API(bmlTestSimple, TestSimpleImpl);
 
     auto fn = reinterpret_cast<int (*)()>(registry.Get("bmlTestSimple"));
@@ -215,7 +215,7 @@ TEST(ApiRegistration, CoreApiSetFollowsDependencyOrder) {
         {"NodeC", &CoreNodeC, 1u << 2, (1u << 0) | (1u << 1)},
     };
 
-    ApiRegistry::Instance().RegisterCoreApiSet(descriptors, std::size(descriptors));
+    kernel->api_registry->RegisterCoreApiSet(descriptors, std::size(descriptors));
     ASSERT_EQ(g_CoreRegistrationOrder.size(), 3u);
     EXPECT_EQ(g_CoreRegistrationOrder[0], 1);
     EXPECT_EQ(g_CoreRegistrationOrder[1], 2);
@@ -231,6 +231,6 @@ TEST(ApiRegistration, CoreApiSetDetectsCycles) {
         {"NodeB", &CoreNodeB, 1u << 1, 1u << 0},
     };
 
-    EXPECT_THROW(ApiRegistry::Instance().RegisterCoreApiSet(descriptors, 2),
+    EXPECT_THROW(kernel->api_registry->RegisterCoreApiSet(descriptors, 2),
                  std::runtime_error);
 }

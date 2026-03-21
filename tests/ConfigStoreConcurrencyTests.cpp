@@ -95,7 +95,7 @@ protected:
         kernel_->api_registry = std::make_unique<ApiRegistry>();
         kernel_->config       = std::make_unique<ConfigStore>();
         kernel_->context      = std::make_unique<Context>();
-        ApiRegistry::Instance().Clear();
+        kernel_->api_registry->Clear();
         Context::SetCurrentModule(nullptr);
         temp_root_ = std::filesystem::temp_directory_path() /
                      ("bml-configstore-tests-" +
@@ -106,7 +106,7 @@ protected:
 
     void TearDown() override {
         if (mod_) {
-            ConfigStore::Instance().FlushAndRelease(mod_.get());
+            kernel_->config->FlushAndRelease(mod_.get());
         }
         Context::SetCurrentModule(nullptr);
         std::error_code ec;
@@ -125,7 +125,7 @@ protected:
         manifest_->directory = base.wstring();
         manifest_->manifest_path = (base / "manifest.toml").wstring();
 
-        mod_ = Context::Instance().CreateModHandle(*manifest_);
+        mod_ = kernel_->context->CreateModHandle(*manifest_);
         Context::SetCurrentModule(mod_.get());
     }
 
@@ -133,7 +133,7 @@ protected:
 
     template <typename Fn>
     Fn Lookup(const char *name) {
-        auto pointer = reinterpret_cast<Fn>(ApiRegistry::Instance().Get(name));
+        auto pointer = reinterpret_cast<Fn>(kernel_->api_registry->Get(name));
         if (!pointer) {
             ADD_FAILURE() << "Missing API registration for " << name;
         }
@@ -307,7 +307,7 @@ TEST_F(ConfigStoreConcurrencyTests, FlushAndReleaseReloadsDocumentAndFiresHooks)
     EXPECT_EQ(first_snapshot[0], HookPhase::Pre);
     EXPECT_EQ(first_snapshot[1], HookPhase::Post);
 
-    ConfigStore::Instance().FlushAndRelease(Mod());
+    kernel_->config->FlushAndRelease(Mod());
 
     BML_ConfigValue read{};
     read.struct_size = sizeof(BML_ConfigValue);
@@ -393,16 +393,16 @@ TEST_F(ConfigStoreConcurrencyTests, BatchCommitFailsWhenDocumentCannotLoad) {
     }
 
     BML_ConfigBatch batch{};
-    ASSERT_EQ(BML_RESULT_OK, ConfigStore::Instance().BatchBegin(Mod(), &batch));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->config->BatchBegin(Mod(), &batch));
 
     const BML_ConfigKey key{sizeof(BML_ConfigKey), "broken", "value"};
     BML_ConfigValue value{};
     value.struct_size = sizeof(BML_ConfigValue);
     value.type = BML_CONFIG_INT;
     value.data.int_value = 5;
-    ASSERT_EQ(BML_RESULT_OK, ConfigStore::Instance().BatchSet(batch, &key, &value));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->config->BatchSet(batch, &key, &value));
 
-    EXPECT_EQ(BML_RESULT_IO_ERROR, ConfigStore::Instance().BatchCommit(batch));
+    EXPECT_EQ(BML_RESULT_IO_ERROR, kernel_->config->BatchCommit(batch));
 }
 
 // ========================================================================
@@ -560,7 +560,7 @@ TEST_F(ConfigStoreConcurrencyTests, AtomicWritePreservesConfigOnPartialFailure) 
     ASSERT_EQ(BML_RESULT_OK, config_set(Mod(), &key, &set_value));
     
     // Flush and reload
-    ConfigStore::Instance().FlushAndRelease(Mod());
+    kernel_->config->FlushAndRelease(Mod());
     
     // Verify it was persisted
     BML_ConfigValue get_value{sizeof(BML_ConfigValue), BML_CONFIG_INT, {}};
@@ -572,7 +572,7 @@ TEST_F(ConfigStoreConcurrencyTests, AtomicWritePreservesConfigOnPartialFailure) 
     ASSERT_EQ(BML_RESULT_OK, config_set(Mod(), &key, &set_value));
     
     // Flush again
-    ConfigStore::Instance().FlushAndRelease(Mod());
+    kernel_->config->FlushAndRelease(Mod());
     
     // Verify updated value persisted
     ASSERT_EQ(BML_RESULT_OK, config_get(Mod(), &key, &get_value));

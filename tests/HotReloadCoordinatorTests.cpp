@@ -57,7 +57,7 @@ protected:
         kernel_->context = std::make_unique<Context>();
 
         m_TempDir = CreateTempDir();
-        m_Context = &Context::Instance();
+        m_Context = kernel_->context.get();
         m_Context->Initialize({0, 4, 0});
     }
 

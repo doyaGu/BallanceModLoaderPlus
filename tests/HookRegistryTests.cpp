@@ -24,8 +24,8 @@ protected:
     void SetUp() override {
         kernel_->context = std::make_unique<Context>();
         kernel_->hooks   = std::make_unique<HookRegistry>();
-        Context::Instance().Initialize(bmlMakeVersion(0, 4, 0));
-        HookRegistry::Instance().Shutdown();
+        kernel_->context->Initialize(bmlMakeVersion(0, 4, 0));
+        kernel_->hooks->Shutdown();
     }
 
     void TearDown() override {
@@ -64,10 +64,10 @@ TEST_F(HookRegistryTest, RegisterAndEnumerate) {
     desc.target_address = &g_FakeTarget1;
     desc.priority = 0;
 
-    ASSERT_EQ(HookRegistry::Instance().Register("bml.render", &desc), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Register("bml.render", &desc), BML_RESULT_OK);
 
     std::vector<EnumResult> results;
-    ASSERT_EQ(HookRegistry::Instance().Enumerate(CollectHooks, &results), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Enumerate(CollectHooks, &results), BML_RESULT_OK);
     ASSERT_EQ(results.size(), 1u);
     EXPECT_EQ(results[0].owner, "bml.render");
     EXPECT_EQ(results[0].name, "CKRenderContext::Render");
@@ -87,11 +87,11 @@ TEST_F(HookRegistryTest, ConflictDetection) {
     desc2.target_address = &g_FakeTarget1;  // Same address
     desc2.priority = 10;
 
-    ASSERT_EQ(HookRegistry::Instance().Register("bml.render", &desc1), BML_RESULT_OK);
-    ASSERT_EQ(HookRegistry::Instance().Register("com.example.mymod", &desc2), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Register("bml.render", &desc1), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Register("com.example.mymod", &desc2), BML_RESULT_OK);
 
     std::vector<EnumResult> results;
-    ASSERT_EQ(HookRegistry::Instance().Enumerate(CollectHooks, &results), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Enumerate(CollectHooks, &results), BML_RESULT_OK);
     ASSERT_EQ(results.size(), 2u);
 
     // Both entries should have conflict flag
@@ -106,16 +106,16 @@ TEST_F(HookRegistryTest, UnregisterRemovesEntry) {
     desc.target_name = "CKInputManager::IsKeyDown";
     desc.target_address = &g_FakeTarget2;
 
-    ASSERT_EQ(HookRegistry::Instance().Register("bml.input", &desc), BML_RESULT_OK);
-    ASSERT_EQ(HookRegistry::Instance().Unregister("bml.input", &g_FakeTarget2), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Register("bml.input", &desc), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Unregister("bml.input", &g_FakeTarget2), BML_RESULT_OK);
 
     std::vector<EnumResult> results;
-    ASSERT_EQ(HookRegistry::Instance().Enumerate(CollectHooks, &results), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Enumerate(CollectHooks, &results), BML_RESULT_OK);
     EXPECT_EQ(results.size(), 0u);
 }
 
 TEST_F(HookRegistryTest, UnregisterNotFound) {
-    EXPECT_EQ(HookRegistry::Instance().Unregister("bml.input", &g_FakeTarget2),
+    EXPECT_EQ(kernel_->hooks->Unregister("bml.input", &g_FakeTarget2),
               BML_RESULT_NOT_FOUND);
 }
 
@@ -124,8 +124,8 @@ TEST_F(HookRegistryTest, UnregisterWrongModule) {
     desc.target_name = "SomeFunction";
     desc.target_address = &g_FakeTarget1;
 
-    ASSERT_EQ(HookRegistry::Instance().Register("bml.render", &desc), BML_RESULT_OK);
-    EXPECT_EQ(HookRegistry::Instance().Unregister("bml.input", &g_FakeTarget1),
+    ASSERT_EQ(kernel_->hooks->Register("bml.render", &desc), BML_RESULT_OK);
+    EXPECT_EQ(kernel_->hooks->Unregister("bml.input", &g_FakeTarget1),
               BML_RESULT_NOT_FOUND);
 }
 
@@ -134,14 +134,14 @@ TEST_F(HookRegistryTest, ConflictClearedAfterUnregister) {
     desc.target_name = "CKRenderContext::Render";
     desc.target_address = &g_FakeTarget1;
 
-    ASSERT_EQ(HookRegistry::Instance().Register("bml.render", &desc), BML_RESULT_OK);
-    ASSERT_EQ(HookRegistry::Instance().Register("com.example.mymod", &desc), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Register("bml.render", &desc), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Register("com.example.mymod", &desc), BML_RESULT_OK);
 
     // Unregister one, conflict flag should be cleared on the remaining one
-    ASSERT_EQ(HookRegistry::Instance().Unregister("com.example.mymod", &g_FakeTarget1), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Unregister("com.example.mymod", &g_FakeTarget1), BML_RESULT_OK);
 
     std::vector<EnumResult> results;
-    ASSERT_EQ(HookRegistry::Instance().Enumerate(CollectHooks, &results), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Enumerate(CollectHooks, &results), BML_RESULT_OK);
     ASSERT_EQ(results.size(), 1u);
     EXPECT_EQ(results[0].flags & BML_HOOK_FLAG_CONFLICT, 0u);
 }
@@ -159,14 +159,14 @@ TEST_F(HookRegistryTest, CleanupOwnerRemovesAll) {
     desc3.target_name = "Hook3";
     desc3.target_address = &g_FakeTarget3;
 
-    ASSERT_EQ(HookRegistry::Instance().Register("bml.input", &desc1), BML_RESULT_OK);
-    ASSERT_EQ(HookRegistry::Instance().Register("bml.input", &desc2), BML_RESULT_OK);
-    ASSERT_EQ(HookRegistry::Instance().Register("bml.render", &desc3), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Register("bml.input", &desc1), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Register("bml.input", &desc2), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Register("bml.render", &desc3), BML_RESULT_OK);
 
-    HookRegistry::Instance().CleanupOwner("bml.input");
+    kernel_->hooks->CleanupOwner("bml.input");
 
     std::vector<EnumResult> results;
-    ASSERT_EQ(HookRegistry::Instance().Enumerate(CollectHooks, &results), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Enumerate(CollectHooks, &results), BML_RESULT_OK);
     ASSERT_EQ(results.size(), 1u);
     EXPECT_EQ(results[0].owner, "bml.render");
 }
@@ -180,11 +180,11 @@ TEST_F(HookRegistryTest, MultipleAddressesSameModule) {
     desc2.target_name = "FuncB";
     desc2.target_address = &g_FakeTarget2;
 
-    ASSERT_EQ(HookRegistry::Instance().Register("bml.physics", &desc1), BML_RESULT_OK);
-    ASSERT_EQ(HookRegistry::Instance().Register("bml.physics", &desc2), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Register("bml.physics", &desc1), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Register("bml.physics", &desc2), BML_RESULT_OK);
 
     std::vector<EnumResult> results;
-    ASSERT_EQ(HookRegistry::Instance().Enumerate(CollectHooks, &results), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Enumerate(CollectHooks, &results), BML_RESULT_OK);
     EXPECT_EQ(results.size(), 2u);
 }
 
@@ -194,27 +194,27 @@ TEST_F(HookRegistryTest, ReRegisterSameModuleSameAddress) {
     desc.target_address = &g_FakeTarget1;
     desc.priority = 0;
 
-    ASSERT_EQ(HookRegistry::Instance().Register("bml.render", &desc), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Register("bml.render", &desc), BML_RESULT_OK);
 
     // Re-register with updated name and priority
     desc.target_name = "NewName";
     desc.priority = 5;
-    ASSERT_EQ(HookRegistry::Instance().Register("bml.render", &desc), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Register("bml.render", &desc), BML_RESULT_OK);
 
     std::vector<EnumResult> results;
-    ASSERT_EQ(HookRegistry::Instance().Enumerate(CollectHooks, &results), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->hooks->Enumerate(CollectHooks, &results), BML_RESULT_OK);
     ASSERT_EQ(results.size(), 1u);
     EXPECT_EQ(results[0].name, "NewName");
     EXPECT_EQ(results[0].priority, 5);
 }
 
 TEST_F(HookRegistryTest, InvalidArguments) {
-    EXPECT_EQ(HookRegistry::Instance().Register("mod", nullptr), BML_RESULT_INVALID_ARGUMENT);
+    EXPECT_EQ(kernel_->hooks->Register("mod", nullptr), BML_RESULT_INVALID_ARGUMENT);
 
     BML_HookDesc desc = BML_HOOK_DESC_INIT;
     desc.target_address = nullptr;
-    EXPECT_EQ(HookRegistry::Instance().Register("mod", &desc), BML_RESULT_INVALID_ARGUMENT);
+    EXPECT_EQ(kernel_->hooks->Register("mod", &desc), BML_RESULT_INVALID_ARGUMENT);
 
-    EXPECT_EQ(HookRegistry::Instance().Unregister("mod", nullptr), BML_RESULT_INVALID_ARGUMENT);
-    EXPECT_EQ(HookRegistry::Instance().Enumerate(nullptr, nullptr), BML_RESULT_INVALID_ARGUMENT);
+    EXPECT_EQ(kernel_->hooks->Unregister("mod", nullptr), BML_RESULT_INVALID_ARGUMENT);
+    EXPECT_EQ(kernel_->hooks->Enumerate(nullptr, nullptr), BML_RESULT_INVALID_ARGUMENT);
 }

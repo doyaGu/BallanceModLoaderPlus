@@ -36,7 +36,7 @@ protected:
         kernel_->config = std::make_unique<ConfigStore>();
         kernel_->context = std::make_unique<Context>();
 
-        auto &ctx = Context::Instance();
+        auto &ctx = *kernel_->context;
         ctx.Initialize({0, 4, 0});
         ImcShutdown();
         host_mod_ = ctx.GetSyntheticHostModule();
@@ -58,14 +58,14 @@ protected:
         manifest->package.parsed_version = {1, 0, 0};
         manifest->directory = L".";
 
-        auto handle = Context::Instance().CreateModHandle(*manifest);
+        auto handle = kernel_->context->CreateModHandle(*manifest);
         LoadedModule module{};
         module.id = id;
         module.manifest = manifest.get();
         module.mod_handle = std::move(handle);
-        Context::Instance().AddLoadedModule(std::move(module));
+        kernel_->context->AddLoadedModule(std::move(module));
 
-        BML_Mod mod = Context::Instance().GetModHandleById(id);
+        BML_Mod mod = kernel_->context->GetModHandleById(id);
         manifests_.push_back(std::move(manifest));
         return mod;
     }
