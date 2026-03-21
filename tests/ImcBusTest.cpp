@@ -109,6 +109,11 @@ struct SelfUnsubscribeState {
     std::atomic<BML_Result> unsubscribe_result{BML_RESULT_FAIL};
 };
 
+struct CurrentModuleCaptureState {
+    std::atomic<uintptr_t> current_module{0};
+    std::atomic<uint32_t> call_count{0};
+};
+
 void BlockingHandler(BML_Context,
                      BML_TopicId,
                      const BML_ImcMessage *,
@@ -133,6 +138,18 @@ void SelfUnsubscribeHandler(BML_Context,
 
     state->call_count.fetch_add(1, std::memory_order_relaxed);
     state->unsubscribe_result.store(ImcUnsubscribe(state->sub), std::memory_order_relaxed);
+}
+
+void CaptureCurrentModuleHandler(BML_Context,
+                                 BML_TopicId,
+                                 const BML_ImcMessage *,
+                                 void *user_data) {
+    auto *state = static_cast<CurrentModuleCaptureState *>(user_data);
+    if (!state)
+        return;
+    state->current_module.store(
+        reinterpret_cast<uintptr_t>(Context::GetCurrentModule()), std::memory_order_release);
+    state->call_count.fetch_add(1, std::memory_order_relaxed);
 }
 
 BML_Result EchoRpc(BML_Context ctx,
@@ -165,6 +182,31 @@ BML_Result EchoRpc(BML_Context ctx,
         };
     }
     return BML_RESULT_OK;
+}
+
+BML_Result CaptureCurrentModuleRpc(BML_Context,
+                                   BML_RpcId,
+                                   const BML_ImcMessage *,
+                                   BML_ImcBuffer *,
+                                   void *user_data) {
+    auto *state = static_cast<CurrentModuleCaptureState *>(user_data);
+    if (!state)
+        return BML_RESULT_INVALID_ARGUMENT;
+    state->current_module.store(
+        reinterpret_cast<uintptr_t>(Context::GetCurrentModule()), std::memory_order_release);
+    state->call_count.fetch_add(1, std::memory_order_relaxed);
+    return BML_RESULT_OK;
+}
+
+void CaptureCurrentModuleFutureCallback(BML_Context,
+                                        BML_Future,
+                                        void *user_data) {
+    auto *state = static_cast<CurrentModuleCaptureState *>(user_data);
+    if (!state)
+        return;
+    state->current_module.store(
+        reinterpret_cast<uintptr_t>(Context::GetCurrentModule()), std::memory_order_release);
+    state->call_count.fetch_add(1, std::memory_order_relaxed);
 }
 
 void ShutdownFutureCallback(BML_Context ctx, BML_Future future, void *user_data) {
@@ -713,6 +755,158 @@ TEST_F(ImcBusTest, FutureOnCompleteCallbackWorks) {
 
     EXPECT_EQ(BML_RESULT_OK, ImcFutureRelease(future));
     EXPECT_EQ(BML_RESULT_OK, ImcUnregisterRpc(rpc_id));
+}
+
+TEST_F(ImcBusTest, SubscriptionCallbackRestoresOwnerModuleContext) {
+    BML_TopicId topic = BML_TOPIC_ID_INVALID;
+    ASSERT_EQ(BML_RESULT_OK, ImcGetTopicId("callback.owner.topic", &topic));
+
+    auto owner = CreateTrackedMod("imc.callback.owner");
+    CurrentModuleCaptureState state;
+    BML_Subscription subscription = nullptr;
+
+    Context::SetCurrentModule(owner);
+    ASSERT_EQ(BML_RESULT_OK,
+              ImcSubscribe(topic, CaptureCurrentModuleHandler, &state, &subscription));
+    Context::SetCurrentModule(host_mod_);
+
+    uint32_t payload = 7;
+    ASSERT_EQ(BML_RESULT_OK, ImcPublish(topic, &payload, sizeof(payload)));
+    ImcPump(0);
+
+    EXPECT_EQ(state.call_count.load(std::memory_order_acquire), 1u);
+    EXPECT_EQ(state.current_module.load(std::memory_order_acquire),
+              reinterpret_cast<uintptr_t>(owner));
+
+    ASSERT_EQ(BML_RESULT_OK, ImcUnsubscribe(subscription));
+}
+
+TEST_F(ImcBusTest, RpcHandlerRunsWithRegisteredOwnerModuleContext) {
+    BML_RpcId rpc_id = BML_RPC_ID_INVALID;
+    ASSERT_EQ(BML_RESULT_OK, ImcGetRpcId("rpc.owner.context", &rpc_id));
+
+    auto owner = CreateTrackedMod("imc.rpc.handler.owner");
+    CurrentModuleCaptureState state;
+
+    Context::SetCurrentModule(owner);
+    ASSERT_EQ(BML_RESULT_OK, ImcRegisterRpc(rpc_id, CaptureCurrentModuleRpc, &state));
+    Context::SetCurrentModule(host_mod_);
+
+    BML_Future future = nullptr;
+    ASSERT_EQ(BML_RESULT_OK, ImcCallRpc(rpc_id, nullptr, &future));
+    ImcPump(0);
+
+    EXPECT_EQ(state.call_count.load(std::memory_order_acquire), 1u);
+    EXPECT_EQ(state.current_module.load(std::memory_order_acquire),
+              reinterpret_cast<uintptr_t>(owner));
+
+    ASSERT_EQ(BML_RESULT_OK, ImcFutureRelease(future));
+    Context::SetCurrentModule(owner);
+    ASSERT_EQ(BML_RESULT_OK, ImcUnregisterRpc(rpc_id));
+    Context::SetCurrentModule(host_mod_);
+}
+
+TEST_F(ImcBusTest, FutureCompletionCallbackRestoresRegisteringModuleContext) {
+    BML_RpcId rpc_id = BML_RPC_ID_INVALID;
+    ASSERT_EQ(BML_RESULT_OK, ImcGetRpcId("future.owner.context", &rpc_id));
+
+    RpcState rpc_state;
+    ASSERT_EQ(BML_RESULT_OK, ImcRegisterRpc(rpc_id, EchoRpc, &rpc_state));
+
+    auto owner = CreateTrackedMod("imc.future.callback.owner");
+    CurrentModuleCaptureState state;
+    BML_Future future = nullptr;
+    ASSERT_EQ(BML_RESULT_OK, ImcCallRpc(rpc_id, nullptr, &future));
+
+    Context::SetCurrentModule(owner);
+    ASSERT_EQ(BML_RESULT_OK,
+              ImcFutureOnComplete(future, CaptureCurrentModuleFutureCallback, &state));
+    Context::SetCurrentModule(host_mod_);
+
+    ImcPump(0);
+
+    EXPECT_EQ(state.call_count.load(std::memory_order_acquire), 1u);
+    EXPECT_EQ(state.current_module.load(std::memory_order_acquire),
+              reinterpret_cast<uintptr_t>(owner));
+
+    ASSERT_EQ(BML_RESULT_OK, ImcFutureRelease(future));
+    ASSERT_EQ(BML_RESULT_OK, ImcUnregisterRpc(rpc_id));
+}
+
+TEST_F(ImcBusTest, OwnedSubscribeDoesNotRequireTlsBinding) {
+    BML_TopicId topic = BML_TOPIC_ID_INVALID;
+    ASSERT_EQ(BML_RESULT_OK, ImcGetTopicId("owned.subscribe.topic", &topic));
+
+    auto owner = CreateTrackedMod("imc.owned.subscribe.owner");
+    CurrentModuleCaptureState state;
+    BML_Subscription subscription = nullptr;
+
+    Context::SetCurrentModule(nullptr);
+    ASSERT_EQ(BML_RESULT_OK,
+              ImcSubscribeOwned(owner, topic, CaptureCurrentModuleHandler, &state, &subscription));
+
+    Context::SetCurrentModule(host_mod_);
+    uint32_t payload = 11;
+    ASSERT_EQ(BML_RESULT_OK, ImcPublish(topic, &payload, sizeof(payload)));
+    ImcPump(0);
+
+    EXPECT_EQ(state.call_count.load(std::memory_order_acquire), 1u);
+    EXPECT_EQ(state.current_module.load(std::memory_order_acquire),
+              reinterpret_cast<uintptr_t>(owner));
+
+    Context::SetCurrentModule(nullptr);
+    ASSERT_EQ(BML_RESULT_OK, ImcUnsubscribe(subscription));
+}
+
+TEST_F(ImcBusTest, OwnedRpcRegistrationDoesNotRequireTlsBinding) {
+    BML_RpcId rpc_id = BML_RPC_ID_INVALID;
+    ASSERT_EQ(BML_RESULT_OK, ImcGetRpcId("owned.rpc.context", &rpc_id));
+
+    auto owner = CreateTrackedMod("imc.owned.rpc.owner");
+    CurrentModuleCaptureState state;
+
+    Context::SetCurrentModule(nullptr);
+    ASSERT_EQ(BML_RESULT_OK, ImcRegisterRpcOwned(owner, rpc_id, CaptureCurrentModuleRpc, &state));
+
+    Context::SetCurrentModule(host_mod_);
+    BML_Future future = nullptr;
+    ASSERT_EQ(BML_RESULT_OK, ImcCallRpc(rpc_id, nullptr, &future));
+    ImcPump(0);
+
+    EXPECT_EQ(state.call_count.load(std::memory_order_acquire), 1u);
+    EXPECT_EQ(state.current_module.load(std::memory_order_acquire),
+              reinterpret_cast<uintptr_t>(owner));
+
+    ASSERT_EQ(BML_RESULT_OK, ImcFutureRelease(future));
+    Context::SetCurrentModule(nullptr);
+    ASSERT_EQ(BML_RESULT_OK, ImcUnregisterRpcOwned(owner, rpc_id));
+}
+
+TEST_F(ImcBusTest, OwnedFutureCallbackDoesNotRequireTlsBinding) {
+    BML_RpcId rpc_id = BML_RPC_ID_INVALID;
+    ASSERT_EQ(BML_RESULT_OK, ImcGetRpcId("owned.future.context", &rpc_id));
+
+    RpcState rpc_state;
+    ASSERT_EQ(BML_RESULT_OK, ImcRegisterRpc(rpc_id, EchoRpc, &rpc_state));
+
+    auto owner = CreateTrackedMod("imc.owned.future.owner");
+    CurrentModuleCaptureState state;
+    BML_Future future = nullptr;
+    ASSERT_EQ(BML_RESULT_OK, ImcCallRpc(rpc_id, nullptr, &future));
+
+    Context::SetCurrentModule(nullptr);
+    ASSERT_EQ(BML_RESULT_OK,
+              ImcFutureOnCompleteOwned(owner, future, CaptureCurrentModuleFutureCallback, &state));
+
+    Context::SetCurrentModule(host_mod_);
+    ImcPump(0);
+
+    EXPECT_EQ(state.call_count.load(std::memory_order_acquire), 1u);
+    EXPECT_EQ(state.current_module.load(std::memory_order_acquire),
+              reinterpret_cast<uintptr_t>(owner));
+
+    ASSERT_EQ(BML_RESULT_OK, ImcFutureRelease(future));
+    ASSERT_EQ(BML_RESULT_OK, ImcUnregisterRpc(rpc_id));
 }
 
 TEST(ImcBusLifetimeTest, KernelDestructionCompletesPendingFutureBeforeContextDestruction) {
