@@ -50,8 +50,13 @@ namespace BML::Core {
     BML_Result ImcPublishEx(BML_TopicId topic, const BML_ImcMessage *msg);
     BML_Result ImcPublishBuffer(BML_TopicId topic, const BML_ImcBuffer *buffer);
     BML_Result ImcSubscribe(BML_TopicId topic, BML_ImcHandler handler, void *user_data, BML_Subscription *out_sub);
+    BML_Result ImcSubscribeOwned(BML_Mod owner, BML_TopicId topic, BML_ImcHandler handler,
+                                 void *user_data, BML_Subscription *out_sub);
     BML_Result ImcSubscribeEx(BML_TopicId topic, BML_ImcHandler handler, void *user_data,
                               const BML_SubscribeOptions *options, BML_Subscription *out_sub);
+    BML_Result ImcSubscribeExOwned(BML_Mod owner, BML_TopicId topic, BML_ImcHandler handler,
+                                   void *user_data, const BML_SubscribeOptions *options,
+                                   BML_Subscription *out_sub);
     BML_Result ImcUnsubscribe(BML_Subscription sub);
     BML_Result ImcSubscriptionIsActive(BML_Subscription sub, BML_Bool *out_active);
     BML_Result ImcGetSubscriptionStats(BML_Subscription sub, BML_SubscriptionStats *out_stats);
@@ -59,26 +64,43 @@ namespace BML::Core {
     // Intercept
     BML_Result ImcSubscribeIntercept(BML_TopicId topic, BML_ImcInterceptHandler handler,
                                      void *user_data, BML_Subscription *out_sub);
+    BML_Result ImcSubscribeInterceptOwned(BML_Mod owner, BML_TopicId topic,
+                                          BML_ImcInterceptHandler handler, void *user_data,
+                                          BML_Subscription *out_sub);
     BML_Result ImcSubscribeInterceptEx(BML_TopicId topic, BML_ImcInterceptHandler handler,
                                        void *user_data, const BML_SubscribeOptions *options,
                                        BML_Subscription *out_sub);
+    BML_Result ImcSubscribeInterceptExOwned(BML_Mod owner, BML_TopicId topic,
+                                            BML_ImcInterceptHandler handler, void *user_data,
+                                            const BML_SubscribeOptions *options,
+                                            BML_Subscription *out_sub);
     BML_Result ImcPublishInterceptable(BML_TopicId topic, BML_ImcMessage *msg, BML_EventResult *out_result);
 
     // RPC
     BML_Result ImcRegisterRpc(BML_RpcId rpc_id, BML_RpcHandler handler, void *user_data);
+    BML_Result ImcRegisterRpcOwned(BML_Mod owner, BML_RpcId rpc_id, BML_RpcHandler handler,
+                                   void *user_data);
     BML_Result ImcUnregisterRpc(BML_RpcId rpc_id);
+    BML_Result ImcUnregisterRpcOwned(BML_Mod owner, BML_RpcId rpc_id);
     BML_Result ImcCallRpc(BML_RpcId rpc_id, const BML_ImcMessage *request, BML_Future *out_future);
 
     // RPC v1.1
     BML_Result ImcRegisterRpcEx(BML_RpcId rpc_id, BML_RpcHandlerEx handler, void *user_data);
+    BML_Result ImcRegisterRpcExOwned(BML_Mod owner, BML_RpcId rpc_id, BML_RpcHandlerEx handler,
+                                     void *user_data);
     BML_Result ImcCallRpcEx(BML_RpcId rpc_id, const BML_ImcMessage *request, const BML_RpcCallOptions *options, BML_Future *out_future);
     BML_Result ImcFutureGetError(BML_Future future, BML_Result *out_code, char *msg, size_t cap, size_t *out_len);
     BML_Result ImcGetRpcInfo(BML_RpcId rpc_id, BML_RpcInfo *out_info);
     BML_Result ImcGetRpcName(BML_RpcId rpc_id, char *buf, size_t cap, size_t *out_len);
     void ImcEnumerateRpc(void(*cb)(BML_RpcId, const char *, BML_Bool, void *), void *user_data);
     BML_Result ImcAddRpcMiddleware(BML_RpcMiddleware middleware, int32_t priority, void *user_data);
+    BML_Result ImcAddRpcMiddlewareOwned(BML_Mod owner, BML_RpcMiddleware middleware,
+                                        int32_t priority, void *user_data);
     BML_Result ImcRemoveRpcMiddleware(BML_RpcMiddleware middleware);
+    BML_Result ImcRemoveRpcMiddlewareOwned(BML_Mod owner, BML_RpcMiddleware middleware);
     BML_Result ImcRegisterStreamingRpc(BML_RpcId rpc_id, BML_StreamingRpcHandler handler, void *user_data);
+    BML_Result ImcRegisterStreamingRpcOwned(BML_Mod owner, BML_RpcId rpc_id,
+                                            BML_StreamingRpcHandler handler, void *user_data);
     BML_Result ImcStreamPush(BML_RpcStream stream, const void *data, size_t size);
     BML_Result ImcStreamComplete(BML_RpcStream stream);
     BML_Result ImcStreamError(BML_RpcStream stream, BML_Result error, const char *msg);
@@ -92,6 +114,8 @@ namespace BML::Core {
     BML_Result ImcFutureGetState(BML_Future future, BML_FutureState *out_state);
     BML_Result ImcFutureCancel(BML_Future future);
     BML_Result ImcFutureOnComplete(BML_Future future, BML_FutureCallback callback, void *user_data);
+    BML_Result ImcFutureOnCompleteOwned(BML_Mod owner, BML_Future future,
+                                        BML_FutureCallback callback, void *user_data);
     BML_Result ImcFutureRelease(BML_Future future);
 
     // Diagnostics

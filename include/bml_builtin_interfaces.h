@@ -217,6 +217,11 @@ typedef struct BML_ImcBusInterface {
     PFN_BML_ImcResetStats ResetStats;
     PFN_BML_ImcGetTopicInfo GetTopicInfo;
     PFN_BML_ImcGetTopicName GetTopicName;
+    /* Owner-explicit registration helpers (v1.1) */
+    PFN_BML_ImcSubscribeOwned SubscribeOwned;
+    PFN_BML_ImcSubscribeExOwned SubscribeExOwned;
+    PFN_BML_ImcSubscribeInterceptOwned SubscribeInterceptOwned;
+    PFN_BML_ImcSubscribeInterceptExOwned SubscribeInterceptExOwned;
 } BML_ImcBusInterface;
 
 /* ========================================================================
@@ -252,6 +257,14 @@ typedef struct BML_ImcRpcInterface {
     PFN_BML_ImcStreamComplete StreamComplete;
     PFN_BML_ImcStreamError StreamError;
     PFN_BML_ImcCallStreamingRpc CallStreamingRpc;
+    /* Owner-explicit registration helpers (v1.1) */
+    PFN_BML_ImcRegisterRpcOwned RegisterRpcOwned;
+    PFN_BML_ImcUnregisterRpcOwned UnregisterRpcOwned;
+    PFN_BML_ImcFutureOnCompleteOwned FutureOnCompleteOwned;
+    PFN_BML_ImcRegisterRpcExOwned RegisterRpcExOwned;
+    PFN_BML_ImcAddRpcMiddlewareOwned AddRpcMiddlewareOwned;
+    PFN_BML_ImcRemoveRpcMiddlewareOwned RemoveRpcMiddlewareOwned;
+    PFN_BML_ImcRegisterStreamingRpcOwned RegisterStreamingRpcOwned;
 } BML_ImcRpcInterface;
 
 /* ========================================================================

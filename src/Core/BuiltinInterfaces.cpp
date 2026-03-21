@@ -17,8 +17,8 @@ namespace BML::Core {
         constexpr uint16_t kCoreMemoryInterfaceMinor = 0;
         constexpr uint16_t kCoreResourceInterfaceMinor = 0;
         constexpr uint16_t kCoreDiagnosticInterfaceMinor = 0;
-        constexpr uint16_t kImcBusInterfaceMinor = 0;
-        constexpr uint16_t kRpcInterfaceMinor = 0;
+        constexpr uint16_t kImcBusInterfaceMinor = 1;
+        constexpr uint16_t kRpcInterfaceMinor = 1;
         constexpr uint16_t kCoreTimerInterfaceMinor = 0;
         constexpr uint16_t kCoreHookRegistryInterfaceMinor = 0;
         constexpr uint16_t kCoreLocaleInterfaceMinor = 0;
@@ -284,6 +284,10 @@ namespace BML::Core {
             ResolveApi<PFN_BML_ImcResetStats>("bmlImcResetStats"),
             ResolveApi<PFN_BML_ImcGetTopicInfo>("bmlImcGetTopicInfo"),
             ResolveApi<PFN_BML_ImcGetTopicName>("bmlImcGetTopicName"),
+            ResolveApi<PFN_BML_ImcSubscribeOwned>("bmlImcSubscribeOwned"),
+            ResolveApi<PFN_BML_ImcSubscribeExOwned>("bmlImcSubscribeExOwned"),
+            ResolveApi<PFN_BML_ImcSubscribeInterceptOwned>("bmlImcSubscribeInterceptOwned"),
+            ResolveApi<PFN_BML_ImcSubscribeInterceptExOwned>("bmlImcSubscribeInterceptExOwned"),
         };
         // RPC (request/response, futures, middleware, streaming)
         g_RpcInterface = {
@@ -314,6 +318,13 @@ namespace BML::Core {
             ResolveApi<PFN_BML_ImcStreamComplete>("bmlImcStreamComplete"),
             ResolveApi<PFN_BML_ImcStreamError>("bmlImcStreamError"),
             ResolveApi<PFN_BML_ImcCallStreamingRpc>("bmlImcCallStreamingRpc"),
+            ResolveApi<PFN_BML_ImcRegisterRpcOwned>("bmlImcRegisterRpcOwned"),
+            ResolveApi<PFN_BML_ImcUnregisterRpcOwned>("bmlImcUnregisterRpcOwned"),
+            ResolveApi<PFN_BML_ImcFutureOnCompleteOwned>("bmlImcFutureOnCompleteOwned"),
+            ResolveApi<PFN_BML_ImcRegisterRpcExOwned>("bmlImcRegisterRpcExOwned"),
+            ResolveApi<PFN_BML_ImcAddRpcMiddlewareOwned>("bmlImcAddRpcMiddlewareOwned"),
+            ResolveApi<PFN_BML_ImcRemoveRpcMiddlewareOwned>("bmlImcRemoveRpcMiddlewareOwned"),
+            ResolveApi<PFN_BML_ImcRegisterStreamingRpcOwned>("bmlImcRegisterStreamingRpcOwned"),
         };
         // Timer
         g_CoreTimerInterface = {
