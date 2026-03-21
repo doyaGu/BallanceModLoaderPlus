@@ -10,14 +10,20 @@
 #include <vector>
 
 #include "bml_imc.h"
-#include "Core/ImcBus.h"
 #include "Core/Context.h"
+#include "Core/ImcBus.h"
+#include "TestKernel.h"
 
 using namespace BML::Core;
+using BML::Core::Testing::TestKernel;
 
 class EventInterceptionTest : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
+        kernel_->context = std::make_unique<Context>();
+
         auto &ctx = Context::Instance();
         ctx.Initialize(bmlMakeVersion(0, 4, 0));
         ImcShutdown();
@@ -28,7 +34,6 @@ protected:
     void TearDown() override {
         ImcShutdown();
         Context::SetCurrentModule(nullptr);
-        Context::Instance().Cleanup();
     }
 
     BML_Mod host_mod_ = nullptr;

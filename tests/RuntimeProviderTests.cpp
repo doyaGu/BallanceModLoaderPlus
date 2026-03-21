@@ -2,8 +2,15 @@
 
 #include <string_view>
 
+#include "Core/ApiRegistry.h"
+#include "Core/ConfigStore.h"
 #include "Core/Context.h"
+#include "TestKernel.h"
 #include "bml_module_runtime.h"
+
+using BML::Core::ApiRegistry;
+using BML::Core::ConfigStore;
+using BML::Core::Testing::TestKernel;
 
 namespace {
 
@@ -42,9 +49,14 @@ static const BML_ModuleRuntimeProvider kLuaProvider = {
 
 class RuntimeProviderTest : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
+        kernel_->context = std::make_unique<BML::Core::Context>();
+        kernel_->api_registry = std::make_unique<ApiRegistry>();
+        kernel_->config = std::make_unique<ConfigStore>();
+
         auto &ctx = BML::Core::Context::Instance();
-        ctx.Cleanup();
         ctx.Initialize({0, 4, 0});
     }
 
@@ -53,7 +65,6 @@ protected:
         // Ensure all providers are cleaned up
         ctx.UnregisterRuntimeProvider(&kStubProvider);
         ctx.UnregisterRuntimeProvider(&kLuaProvider);
-        ctx.Cleanup();
     }
 };
 

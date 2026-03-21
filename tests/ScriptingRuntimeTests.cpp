@@ -13,11 +13,13 @@
 #include "Core/ApiRegistration.h"
 #include "Core/ApiRegistry.h"
 #include "Core/BuiltinInterfaces.h"
+#include "Core/ConfigStore.h"
 #include "Core/Context.h"
 #include "Core/InterfaceRegistry.h"
 #include "Core/LeaseManager.h"
 #include "Core/ModManifest.h"
 #include "Core/ModuleLoader.h"
+#include "TestKernel.h"
 
 #include "bml_export.h"
 
@@ -25,6 +27,8 @@
 #include "../modules/BML_Scripting/src/ModuleScope.h"
 #include "../modules/BML_Scripting/src/ScriptEngine.h"
 #include "../modules/BML_Scripting/src/ScriptInstanceManager.h"
+
+using BML::Core::Testing::TestKernel;
 
 namespace {
 
@@ -41,15 +45,18 @@ fs::path CreateTempDir() {
 
 class ScriptingRuntimeTest : public ::testing::Test {
 protected:
+    TestKernel kernel_;
     static inline ScriptingRuntimeTest *s_Current = nullptr;
     static inline BML::Scripting::CoroutineManager *s_CoroutineManager = nullptr;
 
     void SetUp() override {
-        m_TempDir = CreateTempDir();
+        kernel_->context = std::make_unique<BML::Core::Context>();
+        kernel_->api_registry = std::make_unique<BML::Core::ApiRegistry>();
+        kernel_->interface_registry = std::make_unique<BML::Core::InterfaceRegistry>();
+        kernel_->leases = std::make_unique<BML::Core::LeaseManager>();
+        kernel_->config = std::make_unique<BML::Core::ConfigStore>();
 
-        BML::Core::ApiRegistry::Instance().Clear();
-        BML::Core::InterfaceRegistry::Instance().Clear();
-        BML::Core::LeaseManager::Instance().Reset();
+        m_TempDir = CreateTempDir();
 
         auto &ctx = BML::Core::Context::Instance();
         ctx.Initialize({0, 4, 0});
@@ -92,13 +99,6 @@ protected:
         m_Engine.Shutdown();
 
         BML::Scripting::g_Builtins = nullptr;
-
-        auto &ctx = BML::Core::Context::Instance();
-        ctx.Cleanup();
-
-        BML::Core::InterfaceRegistry::Instance().Clear();
-        BML::Core::LeaseManager::Instance().Reset();
-        BML::Core::ApiRegistry::Instance().Clear();
 
         std::error_code ec;
         fs::remove_all(m_TempDir, ec);

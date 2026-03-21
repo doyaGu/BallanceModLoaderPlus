@@ -18,26 +18,38 @@
 #include <string>
 #include <vector>
 
+#include "Core/ApiRegistry.h"
+#include "Core/ConfigStore.h"
 #include "Core/Context.h"
 #include "Core/DependencyResolver.h"
 #include "Core/ModHandle.h"
 #include "Core/ModManifest.h"
 #include "Core/ModuleLoader.h"
 #include "Core/SemanticVersion.h"
+#include "TestKernel.h"
 
+using BML::Core::ApiRegistry;
+using BML::Core::ConfigStore;
 using BML::Core::Context;
 using BML::Core::LoadedModule;
 using BML::Core::LoadModules;
 using BML::Core::ModManifest;
 using BML::Core::ModuleLoadError;
 using BML::Core::ResolvedNode;
+using BML::Core::Testing::TestKernel;
 using BML::Core::UnloadModules;
 
 namespace {
 
 class ModuleLoaderTests : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
+        kernel_->context = std::make_unique<Context>();
+        kernel_->api_registry = std::make_unique<ApiRegistry>();
+        kernel_->config = std::make_unique<ConfigStore>();
+
         Context::SetCurrentModule(nullptr);
     }
 

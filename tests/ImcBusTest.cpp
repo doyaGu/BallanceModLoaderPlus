@@ -18,15 +18,19 @@
 #include <thread>
 #include <vector>
 
+#include "Core/ConfigStore.h"
 #include "Core/Context.h"
+#include "Core/DiagnosticManager.h"
 #include "Core/ImcBus.h"
 #include "Core/ModHandle.h"
 #include "Core/ModManifest.h"
+#include "TestKernel.h"
 
 namespace {
 
 using namespace BML::Core;
 using BML::Core::Context;
+using BML::Core::Testing::TestKernel;
 
 struct PubSubState {
     std::vector<BML_TopicId> topics;
@@ -154,9 +158,14 @@ BML_Result EchoRpc(BML_Context ctx,
 
 class ImcBusTest : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
+        kernel_->diagnostics = std::make_unique<DiagnosticManager>();
+        kernel_->config = std::make_unique<ConfigStore>();
+        kernel_->context = std::make_unique<Context>();
+
         auto &ctx = Context::Instance();
-        ctx.Cleanup();
         ctx.Initialize({0, 4, 0});
         ImcShutdown();
         host_mod_ = ctx.GetSyntheticHostModule();
@@ -168,7 +177,6 @@ protected:
         ImcShutdown();
         Context::SetCurrentModule(nullptr);
         manifests_.clear();
-        Context::Instance().Cleanup();
     }
 
     BML_Mod CreateTrackedMod(const std::string &id) {

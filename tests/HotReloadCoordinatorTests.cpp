@@ -9,12 +9,14 @@
 #include <thread>
 #include <vector>
 
-#include "Core/HotReloadCoordinator.h"
 #include "Core/Context.h"
+#include "Core/HotReloadCoordinator.h"
 #include "Core/ModManifest.h"
+#include "TestKernel.h"
 
 using namespace std::chrono_literals;
 using namespace BML::Core;
+using BML::Core::Testing::TestKernel;
 
 namespace {
 
@@ -49,14 +51,17 @@ void CreateMinimalDll(const std::filesystem::path& path) {
 
 class HotReloadCoordinatorTest : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
+        kernel_->context = std::make_unique<Context>();
+
         m_TempDir = CreateTempDir();
         m_Context = &Context::Instance();
         m_Context->Initialize({0, 4, 0});
     }
 
     void TearDown() override {
-        m_Context->Cleanup();
         std::error_code ec;
         std::filesystem::remove_all(m_TempDir, ec);
     }

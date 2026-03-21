@@ -5,11 +5,13 @@
 #include <fstream>
 #include <string>
 
-#include "Core/ReloadableModuleSlot.h"
 #include "Core/Context.h"
+#include "Core/ReloadableModuleSlot.h"
+#include "TestKernel.h"
 
 using namespace std::chrono_literals;
 using namespace BML::Core;
+using BML::Core::Testing::TestKernel;
 
 namespace {
 
@@ -110,7 +112,11 @@ void CreateMinimalDll(const std::filesystem::path& path) {
 
 class ReloadableModuleSlotTest : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
+        kernel_->context = std::make_unique<Context>();
+
         m_TempDir = CreateTempDir();
     }
 

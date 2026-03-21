@@ -20,6 +20,7 @@
 #include "Core/ModHandle.h"
 #include "Core/ModManifest.h"
 #include "Core/ResourceApi.h"
+#include "TestKernel.h"
 
 #include "bml_config.h"
 #include "bml_errors.h"
@@ -31,6 +32,7 @@
 using BML::Core::ApiRegistry;
 using BML::Core::ConfigStore;
 using BML::Core::Context;
+using BML::Core::Testing::TestKernel;
 using namespace BML::Core;
 
 namespace BML::Core {
@@ -78,13 +80,17 @@ ConfigHookCapture &GetConfigHookCapture() {
 
 class CoreApisTests : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
+        kernel_->api_registry = std::make_unique<ApiRegistry>();
+        kernel_->config = std::make_unique<ConfigStore>();
+        kernel_->context = std::make_unique<Context>();
+
         Context::SetCurrentModule(nullptr);
-        Context::Instance().Cleanup();
         Context::Instance().Initialize(bmlGetApiVersion());
-        ApiRegistry::Instance().Clear();
-        Context::SetCurrentModule(nullptr);
         ImcShutdown();
+        Context::SetCurrentModule(nullptr);
         temp_root_ = std::filesystem::temp_directory_path() /
                      ("bml-coreapis-tests-" + std::to_string(test_counter_.fetch_add(1, std::memory_order_relaxed)));
         std::filesystem::create_directories(temp_root_);
@@ -93,7 +99,6 @@ protected:
     void TearDown() override {
         ImcShutdown();
         Context::SetCurrentModule(nullptr);
-        Context::Instance().Cleanup();
         manifests_.clear();
         std::error_code ec;
         std::filesystem::remove_all(temp_root_, ec);
