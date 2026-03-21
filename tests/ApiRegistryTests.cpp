@@ -97,6 +97,43 @@ TEST_F(ApiRegistryTest, UnregisterRemovesApi) {
     EXPECT_EQ(registry.Get("api.cache"), nullptr);
 }
 
+TEST_F(ApiRegistryTest, CachedLookupReturnsRegisteredPointer) {
+    auto &registry = *kernel_->api_registry;
+    registry.RegisterApi("api.cached", reinterpret_cast<void *>(+DummyFuncA), "test");
+
+    BML_ApiId api_id = BML_API_INVALID_ID;
+    ASSERT_TRUE(registry.GetApiId("api.cached", &api_id));
+
+    EXPECT_EQ(registry.GetByIdCached(api_id), reinterpret_cast<void *>(+DummyFuncA));
+    EXPECT_EQ(registry.GetByIdCached(api_id), reinterpret_cast<void *>(+DummyFuncA));
+}
+
+TEST_F(ApiRegistryTest, CachedLookupIncrementsCallCountOnHotPath) {
+    auto &registry = *kernel_->api_registry;
+    registry.RegisterApi("api.counted", reinterpret_cast<void *>(+DummyFuncA), "test");
+
+    BML_ApiId api_id = BML_API_INVALID_ID;
+    ASSERT_TRUE(registry.GetApiId("api.counted", &api_id));
+
+    ASSERT_EQ(registry.GetByIdCached(api_id), reinterpret_cast<void *>(+DummyFuncA));
+    ASSERT_EQ(registry.GetByIdCached(api_id), reinterpret_cast<void *>(+DummyFuncA));
+
+    EXPECT_EQ(registry.GetCallCount("api.counted"), 2u);
+    EXPECT_EQ(registry.GetCallCountById(api_id), 2u);
+}
+
+TEST_F(ApiRegistryTest, CachedLookupInvalidatesAfterUnregister) {
+    auto &registry = *kernel_->api_registry;
+    registry.RegisterApi("api.unregister.cached", reinterpret_cast<void *>(+DummyFuncA), "test");
+
+    BML_ApiId api_id = BML_API_INVALID_ID;
+    ASSERT_TRUE(registry.GetApiId("api.unregister.cached", &api_id));
+    ASSERT_EQ(registry.GetByIdCached(api_id), reinterpret_cast<void *>(+DummyFuncA));
+
+    ASSERT_TRUE(registry.Unregister("api.unregister.cached"));
+    EXPECT_EQ(registry.GetByIdCached(api_id), nullptr);
+}
+
 TEST_F(ApiRegistryTest, RegisterApiCopiesNameAndProviderStrings) {
     auto &registry = *kernel_->api_registry;
     std::string dynamicName = "dynamic.api";
