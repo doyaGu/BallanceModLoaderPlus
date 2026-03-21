@@ -5,51 +5,51 @@
 
 namespace BML::Core {
     void *BML_API_Alloc(size_t size) {
-        return MemoryManager::Instance().Alloc(size);
+        return GetKernelOrNull()->memory->Alloc(size);
     }
 
     void *BML_API_Calloc(size_t count, size_t size) {
-        return MemoryManager::Instance().Calloc(count, size);
+        return GetKernelOrNull()->memory->Calloc(count, size);
     }
 
     void *BML_API_Realloc(void *ptr, size_t old_size, size_t new_size) {
-        return MemoryManager::Instance().Realloc(ptr, old_size, new_size);
+        return GetKernelOrNull()->memory->Realloc(ptr, old_size, new_size);
     }
 
     void BML_API_Free(void *ptr) {
-        MemoryManager::Instance().Free(ptr);
+        GetKernelOrNull()->memory->Free(ptr);
     }
 
     void BML_API_FreeWithSize(void *ptr, size_t size) {
-        MemoryManager::Instance().FreeWithSize(ptr, size);
+        GetKernelOrNull()->memory->FreeWithSize(ptr, size);
     }
 
     void *BML_API_AllocAligned(size_t size, size_t alignment) {
-        return MemoryManager::Instance().AllocAligned(size, alignment);
+        return GetKernelOrNull()->memory->AllocAligned(size, alignment);
     }
 
     void BML_API_FreeAligned(void *ptr) {
-        MemoryManager::Instance().FreeAligned(ptr);
+        GetKernelOrNull()->memory->FreeAligned(ptr);
     }
 
     BML_Result BML_API_MemoryPoolCreate(size_t block_size, uint32_t initial_blocks, BML_MemoryPool *out_pool) {
-        return MemoryManager::Instance().CreatePool(block_size, initial_blocks, out_pool);
+        return GetKernelOrNull()->memory->CreatePool(block_size, initial_blocks, out_pool);
     }
 
     void *BML_API_MemoryPoolAlloc(BML_MemoryPool pool) {
-        return MemoryManager::Instance().PoolAlloc(pool);
+        return GetKernelOrNull()->memory->PoolAlloc(pool);
     }
 
     void BML_API_MemoryPoolFree(BML_MemoryPool pool, void *ptr) {
-        MemoryManager::Instance().PoolFree(pool, ptr);
+        GetKernelOrNull()->memory->PoolFree(pool, ptr);
     }
 
     void BML_API_MemoryPoolDestroy(BML_MemoryPool pool) {
-        MemoryManager::Instance().DestroyPool(pool);
+        GetKernelOrNull()->memory->DestroyPool(pool);
     }
 
     BML_Result BML_API_GetMemoryStats(BML_MemoryStats *out_stats) {
-        return MemoryManager::Instance().GetStats(out_stats);
+        return GetKernelOrNull()->memory->GetStats(out_stats);
     }
 
     void RegisterMemoryApis() {

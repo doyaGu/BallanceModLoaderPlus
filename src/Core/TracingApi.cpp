@@ -96,7 +96,7 @@ namespace {
 
     void TraceOutput(const char *api_name, const char *args, int result, uint64_t duration_ns) {
         if (g_TraceCallback) {
-            BML_Context ctx = BML::Core::Context::Instance().GetHandle();
+            BML_Context ctx = BML::Core::GetKernelOrNull()->context->GetHandle();
             g_TraceCallback(ctx, api_name, args, result, duration_ns, g_TraceUserData);
         } else {
             BML::Core::CoreLog(BML_LOG_DEBUG, kTracingLogCategory,
@@ -202,7 +202,7 @@ namespace BML::Core {
         if (!callback) return;
 
         std::lock_guard<std::mutex> lock(g_StatsMutex);
-        BML_Context ctx = BML::Core::Context::Instance().GetHandle();
+        BML_Context ctx = BML::Core::GetKernelOrNull()->context->GetHandle();
 
         for (const auto &[name, internal_stats] : g_Stats) {
             BML_ApiStats stats{};

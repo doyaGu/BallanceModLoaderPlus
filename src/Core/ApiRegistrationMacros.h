@@ -5,6 +5,7 @@
 
 #include "ApiRegistry.h"
 #include "CoreErrors.h"
+#include "KernelServices.h"
 
 namespace BML::Core {
     namespace detail {
@@ -116,7 +117,7 @@ namespace BML::Core {
         BML_DETAIL_UNIQUE_NAME(_BmlVoidWrapper))
 
 #define BML_BEGIN_API_REGISTRATION() \
-    auto &registry = ApiRegistry::Instance()
+    auto &registry = *GetKernelOrNull()->api_registry
 
 } // namespace BML::Core
 

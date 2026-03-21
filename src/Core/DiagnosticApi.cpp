@@ -8,11 +8,11 @@
 
 namespace BML::Core {
     BML_Result BML_API_GetLastError(BML_ErrorInfo* out_error) {
-        return DiagnosticManager::Instance().GetLastError(out_error);
+        return GetKernelOrNull()->diagnostics->GetLastError(out_error);
     }
 
     void BML_API_ClearLastError() {
-        DiagnosticManager::Instance().ClearLastError();
+        GetKernelOrNull()->diagnostics->ClearLastError();
     }
 
     void RegisterDiagnosticApis() {

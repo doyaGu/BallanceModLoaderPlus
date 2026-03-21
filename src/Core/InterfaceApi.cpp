@@ -7,7 +7,7 @@
 namespace BML::Core {
     namespace {
         const char *CurrentModuleId() {
-            auto *current = Context::Instance().ResolveModHandle(Context::GetCurrentModule());
+            auto *current = GetKernelOrNull()->context->ResolveModHandle(Context::GetCurrentModule());
             return current ? current->id.c_str() : nullptr;
         }
     } // namespace
@@ -17,18 +17,18 @@ namespace BML::Core {
         if (!provider_id) {
             return BML_RESULT_INVALID_CONTEXT;
         }
-        return InterfaceRegistry::Instance().Register(desc, provider_id);
+        return GetKernelOrNull()->interface_registry->Register(desc, provider_id);
     }
 
     BML_Result BML_API_InterfaceAcquire(const char *interface_id,
                                         const BML_Version *required_abi,
                                         const void **out_implementation,
                                         BML_InterfaceLease *out_lease) {
-        return InterfaceRegistry::Instance().Acquire(interface_id, required_abi, out_implementation, out_lease);
+        return GetKernelOrNull()->interface_registry->Acquire(interface_id, required_abi, out_implementation, out_lease);
     }
 
     BML_Result BML_API_InterfaceRelease(BML_InterfaceLease lease) {
-        return InterfaceRegistry::Instance().Release(lease);
+        return GetKernelOrNull()->interface_registry->Release(lease);
     }
 
     BML_Result BML_API_InterfaceUnregister(const char *interface_id) {
@@ -36,7 +36,7 @@ namespace BML::Core {
         if (!provider_id) {
             return BML_RESULT_INVALID_CONTEXT;
         }
-        return InterfaceRegistry::Instance().Unregister(interface_id, provider_id);
+        return GetKernelOrNull()->interface_registry->Unregister(interface_id, provider_id);
     }
 
     void RegisterInterfaceApis() {

@@ -3,19 +3,19 @@
 
 namespace BML::Core {
     BML_Result BML_API_ConfigGet(BML_Mod mod, const BML_ConfigKey *key, BML_ConfigValue *out_value) {
-        return ConfigStore::Instance().GetValue(mod, key, out_value);
+        return GetKernelOrNull()->config->GetValue(mod, key, out_value);
     }
 
     BML_Result BML_API_ConfigSet(BML_Mod mod, const BML_ConfigKey *key, const BML_ConfigValue *value) {
-        return ConfigStore::Instance().SetValue(mod, key, value);
+        return GetKernelOrNull()->config->SetValue(mod, key, value);
     }
 
     BML_Result BML_API_ConfigReset(BML_Mod mod, const BML_ConfigKey *key) {
-        return ConfigStore::Instance().ResetValue(mod, key);
+        return GetKernelOrNull()->config->ResetValue(mod, key);
     }
 
     BML_Result BML_API_ConfigEnumerate(BML_Mod mod, BML_ConfigEnumCallback callback, void *user_data) {
-        return ConfigStore::Instance().EnumerateValues(mod, callback, user_data);
+        return GetKernelOrNull()->config->EnumerateValues(mod, callback, user_data);
     }
 
     BML_Result BML_API_RegisterConfigLoadHooks(const BML_ConfigLoadHooks *hooks) {
@@ -24,19 +24,19 @@ namespace BML::Core {
 
     // Batch operations
     BML_Result BML_API_ConfigBatchBegin(BML_Mod mod, BML_ConfigBatch *out_batch) {
-        return ConfigStore::Instance().BatchBegin(mod, out_batch);
+        return GetKernelOrNull()->config->BatchBegin(mod, out_batch);
     }
 
     BML_Result BML_API_ConfigBatchSet(BML_ConfigBatch batch, const BML_ConfigKey *key, const BML_ConfigValue *value) {
-        return ConfigStore::Instance().BatchSet(batch, key, value);
+        return GetKernelOrNull()->config->BatchSet(batch, key, value);
     }
 
     BML_Result BML_API_ConfigBatchCommit(BML_ConfigBatch batch) {
-        return ConfigStore::Instance().BatchCommit(batch);
+        return GetKernelOrNull()->config->BatchCommit(batch);
     }
 
     BML_Result BML_API_ConfigBatchDiscard(BML_ConfigBatch batch) {
-        return ConfigStore::Instance().BatchDiscard(batch);
+        return GetKernelOrNull()->config->BatchDiscard(batch);
     }
 
     // -- Config Typed Shortcuts --
@@ -48,7 +48,7 @@ namespace BML::Core {
         BML_ConfigKey key = BML_CONFIG_KEY_INIT(category, name);
         BML_ConfigValue value{};
         value.struct_size = sizeof(BML_ConfigValue);
-        BML_Result r = ConfigStore::Instance().GetValue(mod, &key, &value);
+        BML_Result r = GetKernelOrNull()->config->GetValue(mod, &key, &value);
         if (r == BML_RESULT_NOT_FOUND) {
             *out_value = default_value;
             return BML_RESULT_OK;
@@ -66,7 +66,7 @@ namespace BML::Core {
         BML_ConfigKey key = BML_CONFIG_KEY_INIT(category, name);
         BML_ConfigValue value{};
         value.struct_size = sizeof(BML_ConfigValue);
-        BML_Result r = ConfigStore::Instance().GetValue(mod, &key, &value);
+        BML_Result r = GetKernelOrNull()->config->GetValue(mod, &key, &value);
         if (r == BML_RESULT_NOT_FOUND) {
             *out_value = default_value;
             return BML_RESULT_OK;
@@ -84,7 +84,7 @@ namespace BML::Core {
         BML_ConfigKey key = BML_CONFIG_KEY_INIT(category, name);
         BML_ConfigValue value{};
         value.struct_size = sizeof(BML_ConfigValue);
-        BML_Result r = ConfigStore::Instance().GetValue(mod, &key, &value);
+        BML_Result r = GetKernelOrNull()->config->GetValue(mod, &key, &value);
         if (r == BML_RESULT_NOT_FOUND) {
             *out_value = default_value;
             return BML_RESULT_OK;
@@ -102,7 +102,7 @@ namespace BML::Core {
         BML_ConfigKey key = BML_CONFIG_KEY_INIT(category, name);
         BML_ConfigValue value{};
         value.struct_size = sizeof(BML_ConfigValue);
-        BML_Result r = ConfigStore::Instance().GetValue(mod, &key, &value);
+        BML_Result r = GetKernelOrNull()->config->GetValue(mod, &key, &value);
         if (r == BML_RESULT_NOT_FOUND) {
             *out_value = default_value;
             return BML_RESULT_OK;

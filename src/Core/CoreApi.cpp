@@ -27,9 +27,9 @@ namespace BML::Core {
         }
 
         BML_Mod_T *ResolveMod(BML_Mod mod) {
-            auto &ctx = Context::Instance();
+            auto *ctx = GetKernelOrNull()->context.get();
             auto target = mod ? mod : Context::GetCurrentModule();
-            return ctx.ResolveModHandle(target);
+            return ctx->ResolveModHandle(target);
         }
 
         // ============================================================================
@@ -102,12 +102,12 @@ namespace BML::Core {
     }
 
     BML_Context BML_API_GetGlobalContext() {
-        return Context::Instance().GetHandle();
+        return GetKernelOrNull()->context->GetHandle();
     }
 
     const BML_Version *BML_API_GetRuntimeVersion() {
         thread_local BML_Version version_snapshot{};
-        version_snapshot = Context::Instance().GetRuntimeVersionCopy();
+        version_snapshot = GetKernelOrNull()->context->GetRuntimeVersionCopy();
         return &version_snapshot;
     }
 
@@ -160,7 +160,7 @@ namespace BML::Core {
         auto *handle = ResolveMod(mod);
         if (!handle)
             return BML_RESULT_INVALID_ARGUMENT;
-        Context::Instance().AppendShutdownHook(handle, callback, user_data);
+        GetKernelOrNull()->context->AppendShutdownHook(handle, callback, user_data);
         return BML_RESULT_OK;
     }
 
@@ -174,20 +174,20 @@ namespace BML::Core {
     }
 
     BML_Mod BML_API_GetHostModule() {
-        return Context::Instance().GetSyntheticHostModule();
+        return GetKernelOrNull()->context->GetSyntheticHostModule();
     }
 
     uint32_t BML_API_GetLoadedModuleCount() {
-        return Context::Instance().GetLoadedModuleCount();
+        return GetKernelOrNull()->context->GetLoadedModuleCount();
     }
 
     BML_Mod BML_API_GetLoadedModuleAt(uint32_t index) {
-        return Context::Instance().GetLoadedModuleAt(index);
+        return GetKernelOrNull()->context->GetLoadedModuleAt(index);
     }
 
     BML_Mod BML_API_FindModuleById(const char *id) {
         if (!id) return nullptr;
-        return Context::Instance().GetModHandleById(id);
+        return GetKernelOrNull()->context->GetModHandleById(id);
     }
 
     // -- Manifest custom field access --
@@ -287,7 +287,7 @@ namespace BML::Core {
                              void *user_data),
             void *user_data) {
         if (!callback) return;
-        const auto snapshot = Context::Instance().GetLoadedModuleSnapshot();
+        const auto snapshot = GetKernelOrNull()->context->GetLoadedModuleSnapshot();
         for (const auto &entry : snapshot) {
             if (!entry.manifest) continue;
             const char *mount = entry.manifest->assets.mount.empty()
@@ -345,19 +345,19 @@ namespace BML::Core {
             static const auto regFn = +[](const BML_ModuleRuntimeProvider *provider,
                                            const char *owner_id) -> BML_Result {
                 if (!owner_id) return BML_RESULT_INVALID_ARGUMENT;
-                return Context::Instance().RegisterRuntimeProvider(provider, owner_id);
+                return GetKernelOrNull()->context->RegisterRuntimeProvider(provider, owner_id);
             };
             detail::RegisterApi(registry, "bmlRegisterRuntimeProvider",
                                 reinterpret_cast<void *>(regFn));
 
             static const auto unregFn = +[](const BML_ModuleRuntimeProvider *provider) -> BML_Result {
-                return Context::Instance().UnregisterRuntimeProvider(provider);
+                return GetKernelOrNull()->context->UnregisterRuntimeProvider(provider);
             };
             detail::RegisterApi(registry, "bmlUnregisterRuntimeProvider",
                                 reinterpret_cast<void *>(unregFn));
 
             static const auto cleanupFn = +[](BML_Mod mod) -> BML_Result {
-                auto *handle = Context::Instance().ResolveModHandle(mod);
+                auto *handle = GetKernelOrNull()->context->ResolveModHandle(mod);
                 if (!handle) return BML_RESULT_INVALID_HANDLE;
                 CleanupModuleKernelState(handle->id, mod);
                 return BML_RESULT_OK;
@@ -369,7 +369,7 @@ namespace BML::Core {
         // Service hub API (runtime-wide service access)
         {
             static const auto fn = +[]() -> const void * {
-                return Context::Instance().GetServiceHub();
+                return GetKernelOrNull()->context->GetServiceHub();
             };
             detail::RegisterApi(registry, "bmlGetServiceHub", reinterpret_cast<void *>(fn));
         }

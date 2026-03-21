@@ -12,7 +12,7 @@ namespace BML::Core {
             if (!current) {
                 return nullptr;
             }
-            return Context::Instance().ResolveModHandle(current);
+            return GetKernelOrNull()->context->ResolveModHandle(current);
         }
     } // namespace
 
@@ -21,7 +21,7 @@ namespace BML::Core {
         if (!owner) {
             return BML_RESULT_INVALID_CONTEXT;
         }
-        return HookRegistry::Instance().Register(owner->id, desc);
+        return GetKernelOrNull()->hooks->Register(owner->id, desc);
     }
 
     BML_Result BML_API_HookUnregister(void *target_address) {
@@ -29,11 +29,11 @@ namespace BML::Core {
         if (!owner) {
             return BML_RESULT_INVALID_CONTEXT;
         }
-        return HookRegistry::Instance().Unregister(owner->id, target_address);
+        return GetKernelOrNull()->hooks->Unregister(owner->id, target_address);
     }
 
     BML_Result BML_API_HookEnumerate(BML_HookEnumCallback callback, void *user_data) {
-        return HookRegistry::Instance().Enumerate(callback, user_data);
+        return GetKernelOrNull()->hooks->Enumerate(callback, user_data);
     }
 
     void RegisterHookApis() {

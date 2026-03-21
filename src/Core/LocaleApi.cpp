@@ -15,7 +15,7 @@ namespace BML::Core {
 
         CallerInfo ResolveCallerInfo() {
             CallerInfo info;
-            auto *consumer = Context::Instance().ResolveCurrentConsumer();
+            auto *consumer = GetKernelOrNull()->context->ResolveCurrentConsumer();
             if (!consumer)
                 return info;
 
@@ -28,7 +28,7 @@ namespace BML::Core {
         }
 
         std::string GetCallerModuleId() {
-            auto *consumer = Context::Instance().ResolveCurrentConsumer();
+            auto *consumer = GetKernelOrNull()->context->ResolveCurrentConsumer();
             return consumer ? consumer->id : std::string{};
         }
     } // namespace
@@ -44,11 +44,11 @@ namespace BML::Core {
             code = locale_code;
         } else {
             const char *current = nullptr;
-            LocaleManager::Instance().GetLanguage(&current);
+            GetKernelOrNull()->locale->GetLanguage(&current);
             code = current ? current : "en";
         }
 
-        return LocaleManager::Instance().Load(caller.id, caller.directory, code);
+        return GetKernelOrNull()->locale->Load(caller.id, caller.directory, code);
     }
 
     const char *BML_API_LocaleGet(const char *key) {
@@ -59,20 +59,20 @@ namespace BML::Core {
         if (module_id.empty())
             return key;
 
-        return LocaleManager::Instance().Get(module_id, key);
+        return GetKernelOrNull()->locale->Get(module_id, key);
     }
 
     BML_Result BML_API_LocaleSetLanguage(const char *language_code) {
-        BML_Result result = LocaleManager::Instance().SetLanguage(language_code);
+        BML_Result result = GetKernelOrNull()->locale->SetLanguage(language_code);
         if (result == BML_RESULT_OK) {
             // Reload all modules with the new language
-            LocaleManager::Instance().ReloadAll();
+            GetKernelOrNull()->locale->ReloadAll();
         }
         return result;
     }
 
     BML_Result BML_API_LocaleGetLanguage(const char **out_code) {
-        return LocaleManager::Instance().GetLanguage(out_code);
+        return GetKernelOrNull()->locale->GetLanguage(out_code);
     }
 
     BML_Result BML_API_LocaleBindTable(BML_LocaleTable *out_table) {
@@ -85,12 +85,12 @@ namespace BML::Core {
             return BML_RESULT_INVALID_CONTEXT;
         }
 
-        *out_table = LocaleManager::Instance().BindTable(module_id);
+        *out_table = GetKernelOrNull()->locale->BindTable(module_id);
         return BML_RESULT_OK;
     }
 
     const char *BML_API_LocaleLookup(BML_LocaleTable table, const char *key) {
-        return LocaleManager::Instance().Lookup(table, key);
+        return GetKernelOrNull()->locale->Lookup(table, key);
     }
 
     void RegisterLocaleApis() {

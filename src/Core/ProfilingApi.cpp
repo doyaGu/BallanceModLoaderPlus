@@ -4,66 +4,66 @@
 namespace BML::Core {
     /* Trace Events */
     void BML_API_TraceBegin(const char *name, const char *category) {
-        ProfilingManager::Instance().TraceBegin(name, category);
+        GetKernelOrNull()->profiling->TraceBegin(name, category);
     }
 
     void BML_API_TraceEnd() {
-        ProfilingManager::Instance().TraceEnd();
+        GetKernelOrNull()->profiling->TraceEnd();
     }
 
     void BML_API_TraceInstant(const char *name, const char *category) {
-        ProfilingManager::Instance().TraceInstant(name, category);
+        GetKernelOrNull()->profiling->TraceInstant(name, category);
     }
 
     void BML_API_TraceSetThreadName(const char *name) {
-        ProfilingManager::Instance().TraceSetThreadName(name);
+        GetKernelOrNull()->profiling->TraceSetThreadName(name);
     }
 
     void BML_API_TraceCounter(const char *name, int64_t value) {
-        ProfilingManager::Instance().TraceCounter(name, value);
+        GetKernelOrNull()->profiling->TraceCounter(name, value);
     }
 
     void BML_API_TraceFrameMark() {
-        ProfilingManager::Instance().TraceFrameMark();
+        GetKernelOrNull()->profiling->TraceFrameMark();
     }
 
     /* Performance Counters */
     uint64_t BML_API_GetApiCallCount(const char *api_name) {
-        return ProfilingManager::Instance().GetApiCallCount(api_name);
+        return GetKernelOrNull()->profiling->GetApiCallCount(api_name);
     }
 
     uint64_t BML_API_GetTotalAllocBytes() {
-        return ProfilingManager::Instance().GetTotalAllocBytes();
+        return GetKernelOrNull()->profiling->GetTotalAllocBytes();
     }
 
     uint64_t BML_API_GetTimestampNs() {
-        return ProfilingManager::Instance().GetTimestampNs();
+        return GetKernelOrNull()->profiling->GetTimestampNs();
     }
 
     uint64_t BML_API_GetCpuFrequency() {
-        return ProfilingManager::Instance().GetCpuFrequency();
+        return GetKernelOrNull()->profiling->GetCpuFrequency();
     }
 
     /* Backend Control */
     BML_ProfilerBackend BML_API_GetProfilerBackend() {
-        return ProfilingManager::Instance().GetProfilerBackend();
+        return GetKernelOrNull()->profiling->GetProfilerBackend();
     }
 
     BML_Result BML_API_SetProfilingEnabled(BML_Bool enable) {
-        return ProfilingManager::Instance().SetProfilingEnabled(enable);
+        return GetKernelOrNull()->profiling->SetProfilingEnabled(enable);
     }
 
     BML_Bool BML_API_IsProfilingEnabled() {
-        return ProfilingManager::Instance().IsProfilingEnabled();
+        return GetKernelOrNull()->profiling->IsProfilingEnabled();
     }
 
     BML_Result BML_API_FlushProfilingData(const char *filename) {
-        return ProfilingManager::Instance().FlushProfilingData(filename);
+        return GetKernelOrNull()->profiling->FlushProfilingData(filename);
     }
 
     /* Statistics */
     BML_Result BML_API_GetProfilingStats(BML_ProfilingStats *out_stats) {
-        return ProfilingManager::Instance().GetProfilingStats(out_stats);
+        return GetKernelOrNull()->profiling->GetProfilingStats(out_stats);
     }
 
     void RegisterProfilingApis() {

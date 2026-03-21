@@ -17,6 +17,7 @@
 #include <vector>
 
 using BML::Core::Context;
+using BML::Core::GetKernelOrNull;
 
 /* ============================================================================
  * Resource Handle Management Implementation
@@ -91,8 +92,8 @@ namespace {
     }
 
     std::string GetCurrentProviderId() {
-        auto &ctx = Context::Instance();
-        if (auto *mod = ctx.ResolveModHandle(Context::GetCurrentModule())) {
+        auto *ctx = GetKernelOrNull()->context.get();
+        if (auto *mod = ctx->ResolveModHandle(Context::GetCurrentModule())) {
             return mod->id;
         }
         return "BML";
@@ -247,7 +248,7 @@ static BML_Result BML_HandleReleaseImpl(const BML_HandleDesc *desc) {
 
     if (finalize) {
         try {
-            finalize(Context::Instance().GetHandle(), &finalized_desc, finalize_user_data);
+            finalize(GetKernelOrNull()->context->GetHandle(), &finalized_desc, finalize_user_data);
         } catch (...) {
         }
     }

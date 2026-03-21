@@ -8,7 +8,7 @@
 namespace BML::Core {
     namespace {
         std::string GetCallerModuleId() {
-            auto *consumer = Context::Instance().ResolveCurrentConsumer();
+            auto *consumer = GetKernelOrNull()->context->ResolveCurrentConsumer();
             return consumer ? consumer->id : std::string{};
         }
     } // namespace
@@ -17,7 +17,7 @@ namespace BML::Core {
                                          BML_TimerCallback callback,
                                          void *user_data,
                                          BML_Timer *out_timer) {
-        return TimerManager::Instance().ScheduleOnce(
+        return GetKernelOrNull()->timers->ScheduleOnce(
             GetCallerModuleId(), delay_ms, callback, user_data, out_timer);
     }
 
@@ -25,7 +25,7 @@ namespace BML::Core {
                                            BML_TimerCallback callback,
                                            void *user_data,
                                            BML_Timer *out_timer) {
-        return TimerManager::Instance().ScheduleRepeat(
+        return GetKernelOrNull()->timers->ScheduleRepeat(
             GetCallerModuleId(), interval_ms, callback, user_data, out_timer);
     }
 
@@ -33,20 +33,20 @@ namespace BML::Core {
                                            BML_TimerCallback callback,
                                            void *user_data,
                                            BML_Timer *out_timer) {
-        return TimerManager::Instance().ScheduleFrames(
+        return GetKernelOrNull()->timers->ScheduleFrames(
             GetCallerModuleId(), frame_count, callback, user_data, out_timer);
     }
 
     BML_Result BML_API_TimerCancel(BML_Timer timer) {
-        return TimerManager::Instance().Cancel(timer);
+        return GetKernelOrNull()->timers->Cancel(timer);
     }
 
     BML_Result BML_API_TimerIsActive(BML_Timer timer, BML_Bool *out_active) {
-        return TimerManager::Instance().IsActive(timer, out_active);
+        return GetKernelOrNull()->timers->IsActive(timer, out_active);
     }
 
     BML_Result BML_API_TimerCancelAll(void) {
-        return TimerManager::Instance().CancelAllForModule(GetCallerModuleId());
+        return GetKernelOrNull()->timers->CancelAllForModule(GetCallerModuleId());
     }
 
     void RegisterTimerApis() {
