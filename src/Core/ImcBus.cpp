@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cassert>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
@@ -1061,11 +1062,8 @@ namespace BML::Core {
         ImcBusImpl *g_BusPtr = nullptr;
 
         ImcBusImpl &GetBus() {
-            if (g_BusPtr)
-                return *g_BusPtr;
-            // Fallback for pre-KernelServices usage (shouldn't happen in practice).
-            static ImcBusImpl fallback;
-            return fallback;
+            assert(g_BusPtr && "ImcBus not constructed");
+            return *g_BusPtr;
         }
 
         BML_Mod ImcBusImpl::ResolveRegistrationOwner() const {
@@ -3015,7 +3013,9 @@ namespace BML::Core {
 
     namespace {
         void DeleteBusImpl(void *p) {
-            delete static_cast<ImcBusImpl *>(p);
+            auto *impl = static_cast<ImcBusImpl *>(p);
+            if (impl) impl->Shutdown();
+            delete impl;
             g_BusPtr = nullptr;
             g_BusContext = nullptr;
         }
