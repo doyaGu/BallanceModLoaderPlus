@@ -32,7 +32,25 @@
 namespace BML::Core {
     // Defined here (not KernelServices.cpp) so that test targets linking
     // KernelServices.cpp don't pull in L0 subsystem destructors.
-    KernelServices::~KernelServices() = default;
+    KernelServices::~KernelServices() {
+        // Keep Context alive until the IMC bus has finished draining queued work and
+        // notifying shutdown callbacks that still expect a valid BML_Context.
+        imc_bus.reset();
+        context.reset();
+        interface_registry.reset();
+        api_registry.reset();
+        config.reset();
+        leases.reset();
+        timers.reset();
+        locale.reset();
+        hooks.reset();
+        crash_dump.reset();
+        fault_tracker.reset();
+        profiling.reset();
+        sync.reset();
+        memory.reset();
+        diagnostics.reset();
+    }
 
     namespace {
         struct MicrokernelState {
