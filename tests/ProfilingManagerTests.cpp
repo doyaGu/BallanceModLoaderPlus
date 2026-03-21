@@ -35,12 +35,12 @@ protected:
         kernel_->api_registry = std::make_unique<ApiRegistry>();
         kernel_->memory       = std::make_unique<BML::Core::MemoryManager>();
         // Enable profiling for tests
-        ProfilingManager::Instance().SetProfilingEnabled(BML_TRUE);
+        kernel_->profiling->SetProfilingEnabled(BML_TRUE);
     }
 
     void TearDown() override {
         // Disable profiling
-        ProfilingManager::Instance().SetProfilingEnabled(BML_FALSE);
+        kernel_->profiling->SetProfilingEnabled(BML_FALSE);
 
         // Clean up any test trace files
         std::error_code ec;
@@ -61,35 +61,35 @@ protected:
 // ============================================================================
 
 TEST_F(ProfilingManagerTests, SingletonInstance) {
-    auto& instance1 = ProfilingManager::Instance();
-    auto& instance2 = ProfilingManager::Instance();
+    auto& instance1 = *kernel_->profiling;
+    auto& instance2 = *kernel_->profiling;
 
     EXPECT_EQ(&instance1, &instance2);
 }
 
 TEST_F(ProfilingManagerTests, EnableDisableProfiling) {
-    ProfilingManager::Instance().SetProfilingEnabled(BML_FALSE);
-    EXPECT_EQ(ProfilingManager::Instance().IsProfilingEnabled(), BML_FALSE);
+    kernel_->profiling->SetProfilingEnabled(BML_FALSE);
+    EXPECT_EQ(kernel_->profiling->IsProfilingEnabled(), BML_FALSE);
 
-    ProfilingManager::Instance().SetProfilingEnabled(BML_TRUE);
-    EXPECT_EQ(ProfilingManager::Instance().IsProfilingEnabled(), BML_TRUE);
+    kernel_->profiling->SetProfilingEnabled(BML_TRUE);
+    EXPECT_EQ(kernel_->profiling->IsProfilingEnabled(), BML_TRUE);
 }
 
 TEST_F(ProfilingManagerTests, GetProfilerBackend) {
-    BML_ProfilerBackend backend = ProfilingManager::Instance().GetProfilerBackend();
+    BML_ProfilerBackend backend = kernel_->profiling->GetProfilerBackend();
 
     // Default backend should be Chrome Tracing
     EXPECT_EQ(backend, BML_PROFILER_CHROME_TRACING);
 }
 
 TEST_F(ProfilingManagerTests, GetTimestampNsReturnsNonZero) {
-    uint64_t ts = ProfilingManager::Instance().GetTimestampNs();
+    uint64_t ts = kernel_->profiling->GetTimestampNs();
 
     EXPECT_GT(ts, 0ULL);
 }
 
 TEST_F(ProfilingManagerTests, GetCpuFrequencyReturnsNonZero) {
-    uint64_t freq = ProfilingManager::Instance().GetCpuFrequency();
+    uint64_t freq = kernel_->profiling->GetCpuFrequency();
 
     EXPECT_GT(freq, 0ULL);
 }
@@ -99,67 +99,67 @@ TEST_F(ProfilingManagerTests, GetCpuFrequencyReturnsNonZero) {
 // ============================================================================
 
 TEST_F(ProfilingManagerTests, TraceBeginEndPair) {
-    ProfilingManager::Instance().TraceBegin("TestScope", "category");
-    ProfilingManager::Instance().TraceEnd();
+    kernel_->profiling->TraceBegin("TestScope", "category");
+    kernel_->profiling->TraceEnd();
 
     // Should complete without crashing
     SUCCEED();
 }
 
 TEST_F(ProfilingManagerTests, TraceInstant) {
-    ProfilingManager::Instance().TraceInstant("instant_event", "category");
+    kernel_->profiling->TraceInstant("instant_event", "category");
 
     SUCCEED();
 }
 
 TEST_F(ProfilingManagerTests, TraceCounter) {
-    ProfilingManager::Instance().TraceCounter("test_counter", 42);
+    kernel_->profiling->TraceCounter("test_counter", 42);
 
     SUCCEED();
 }
 
 TEST_F(ProfilingManagerTests, TraceFrameMark) {
-    ProfilingManager::Instance().TraceFrameMark();
+    kernel_->profiling->TraceFrameMark();
 
     SUCCEED();
 }
 
 TEST_F(ProfilingManagerTests, TraceSetThreadName) {
-    ProfilingManager::Instance().TraceSetThreadName("MainThread");
+    kernel_->profiling->TraceSetThreadName("MainThread");
 
     SUCCEED();
 }
 
 TEST_F(ProfilingManagerTests, NestedScopes) {
-    ProfilingManager::Instance().TraceBegin("Outer", "cat");
-    ProfilingManager::Instance().TraceBegin("Middle", "cat");
-    ProfilingManager::Instance().TraceBegin("Inner", "cat");
-    ProfilingManager::Instance().TraceEnd();
-    ProfilingManager::Instance().TraceEnd();
-    ProfilingManager::Instance().TraceEnd();
+    kernel_->profiling->TraceBegin("Outer", "cat");
+    kernel_->profiling->TraceBegin("Middle", "cat");
+    kernel_->profiling->TraceBegin("Inner", "cat");
+    kernel_->profiling->TraceEnd();
+    kernel_->profiling->TraceEnd();
+    kernel_->profiling->TraceEnd();
 
     SUCCEED();
 }
 
 TEST_F(ProfilingManagerTests, TraceEndWithoutBeginDoesNotCrash) {
     // Unmatched TraceEnd should be handled gracefully
-    ProfilingManager::Instance().TraceEnd();
-    ProfilingManager::Instance().TraceEnd();
+    kernel_->profiling->TraceEnd();
+    kernel_->profiling->TraceEnd();
 
     SUCCEED();
 }
 
 TEST_F(ProfilingManagerTests, TraceWithNullName) {
-    ProfilingManager::Instance().TraceBegin(nullptr, "category");
-    ProfilingManager::Instance().TraceInstant(nullptr, "category");
-    ProfilingManager::Instance().TraceCounter(nullptr, 100);
+    kernel_->profiling->TraceBegin(nullptr, "category");
+    kernel_->profiling->TraceInstant(nullptr, "category");
+    kernel_->profiling->TraceCounter(nullptr, 100);
 
     SUCCEED();
 }
 
 TEST_F(ProfilingManagerTests, TraceWithNullCategory) {
-    ProfilingManager::Instance().TraceBegin("scope", nullptr);
-    ProfilingManager::Instance().TraceEnd();
+    kernel_->profiling->TraceBegin("scope", nullptr);
+    kernel_->profiling->TraceEnd();
 
     SUCCEED();
 }
@@ -169,14 +169,14 @@ TEST_F(ProfilingManagerTests, TraceWithNullCategory) {
 // ============================================================================
 
 TEST_F(ProfilingManagerTests, NoEventsWhenDisabled) {
-    ProfilingManager::Instance().SetProfilingEnabled(BML_FALSE);
+    kernel_->profiling->SetProfilingEnabled(BML_FALSE);
 
     // These should be no-ops when disabled
-    ProfilingManager::Instance().TraceBegin("test", "cat");
-    ProfilingManager::Instance().TraceEnd();
-    ProfilingManager::Instance().TraceInstant("test", "cat");
-    ProfilingManager::Instance().TraceCounter("counter", 123);
-    ProfilingManager::Instance().TraceFrameMark();
+    kernel_->profiling->TraceBegin("test", "cat");
+    kernel_->profiling->TraceEnd();
+    kernel_->profiling->TraceInstant("test", "cat");
+    kernel_->profiling->TraceCounter("counter", 123);
+    kernel_->profiling->TraceFrameMark();
 
     SUCCEED();
 }
@@ -186,32 +186,32 @@ TEST_F(ProfilingManagerTests, NoEventsWhenDisabled) {
 // ============================================================================
 
 TEST_F(ProfilingManagerTests, FlushWithDefaultFilename) {
-    ProfilingManager::Instance().TraceBegin("test_scope", "category");
-    ProfilingManager::Instance().TraceEnd();
+    kernel_->profiling->TraceBegin("test_scope", "category");
+    kernel_->profiling->TraceEnd();
 
-    BML_Result result = ProfilingManager::Instance().FlushProfilingData(nullptr);
+    BML_Result result = kernel_->profiling->FlushProfilingData(nullptr);
 
     EXPECT_EQ(result, BML_RESULT_OK);
     EXPECT_TRUE(std::filesystem::exists("bml_trace.json"));
 }
 
 TEST_F(ProfilingManagerTests, FlushWithCustomFilename) {
-    ProfilingManager::Instance().TraceBegin("test_scope", "category");
-    ProfilingManager::Instance().TraceEnd();
+    kernel_->profiling->TraceBegin("test_scope", "category");
+    kernel_->profiling->TraceEnd();
 
-    BML_Result result = ProfilingManager::Instance().FlushProfilingData("test_trace.json");
+    BML_Result result = kernel_->profiling->FlushProfilingData("test_trace.json");
 
     EXPECT_EQ(result, BML_RESULT_OK);
     EXPECT_TRUE(std::filesystem::exists("test_trace.json"));
 }
 
 TEST_F(ProfilingManagerTests, FlushOutputIsValidJson) {
-    ProfilingManager::Instance().TraceBegin("scope1", "cat1");
-    ProfilingManager::Instance().TraceEnd();
-    ProfilingManager::Instance().TraceInstant("instant", "cat2");
-    ProfilingManager::Instance().TraceCounter("counter", 999);
+    kernel_->profiling->TraceBegin("scope1", "cat1");
+    kernel_->profiling->TraceEnd();
+    kernel_->profiling->TraceInstant("instant", "cat2");
+    kernel_->profiling->TraceCounter("counter", 999);
 
-    ProfilingManager::Instance().FlushProfilingData("test_trace.json");
+    kernel_->profiling->FlushProfilingData("test_trace.json");
 
     std::string content = ReadFile("test_trace.json");
 
@@ -222,10 +222,10 @@ TEST_F(ProfilingManagerTests, FlushOutputIsValidJson) {
 }
 
 TEST_F(ProfilingManagerTests, FlushOutputContainsEvents) {
-    ProfilingManager::Instance().TraceBegin("my_test_scope", "test_category");
-    ProfilingManager::Instance().TraceEnd();
+    kernel_->profiling->TraceBegin("my_test_scope", "test_category");
+    kernel_->profiling->TraceEnd();
 
-    ProfilingManager::Instance().FlushProfilingData("test_trace.json");
+    kernel_->profiling->FlushProfilingData("test_trace.json");
 
     std::string content = ReadFile("test_trace.json");
 
@@ -240,14 +240,14 @@ TEST_F(ProfilingManagerTests, FlushOutputContainsEvents) {
 TEST_F(ProfilingManagerTests, GetProfilingStats) {
     BML_ProfilingStats stats = BML_PROFILING_STATS_INIT;
 
-    BML_Result result = ProfilingManager::Instance().GetProfilingStats(&stats);
+    BML_Result result = kernel_->profiling->GetProfilingStats(&stats);
 
     EXPECT_EQ(result, BML_RESULT_OK);
     // Stats should have valid values (specifics depend on prior events)
 }
 
 TEST_F(ProfilingManagerTests, GetProfilingStatsNullPointer) {
-    BML_Result result = ProfilingManager::Instance().GetProfilingStats(nullptr);
+    BML_Result result = kernel_->profiling->GetProfilingStats(nullptr);
 
     EXPECT_EQ(result, BML_RESULT_INVALID_ARGUMENT);
 }
@@ -257,24 +257,24 @@ TEST_F(ProfilingManagerTests, GetProfilingStatsRejectsSmallStruct) {
         size_t struct_size;
     } stats{sizeof(SmallStats)};
 
-    BML_Result result = ProfilingManager::Instance().GetProfilingStats(
+    BML_Result result = kernel_->profiling->GetProfilingStats(
         reinterpret_cast<BML_ProfilingStats *>(&stats));
 
     EXPECT_EQ(result, BML_RESULT_INVALID_SIZE);
 }
 
 TEST_F(ProfilingManagerTests, TracingApisRecordStatistics) {
-    ApiRegistry::Instance().Clear();
+    kernel_->api_registry->Clear();
     BML::Core::RegisterTracingApis();
 
     auto enable = reinterpret_cast<void (*)(BML_Bool)>(
-        ApiRegistry::Instance().Get("bmlEnableApiTracing"));
+        kernel_->api_registry->Get("bmlEnableApiTracing"));
     auto is_enabled = reinterpret_cast<BML_Bool (*)()>(
-        ApiRegistry::Instance().Get("bmlIsApiTracingEnabled"));
+        kernel_->api_registry->Get("bmlIsApiTracingEnabled"));
     auto get_stats = reinterpret_cast<BML_Bool (*)(const char *, void *)>(
-        ApiRegistry::Instance().Get("bmlGetApiStats"));
+        kernel_->api_registry->Get("bmlGetApiStats"));
     auto dump_stats = reinterpret_cast<BML_Bool (*)(const char *)>(
-        ApiRegistry::Instance().Get("bmlDumpApiStats"));
+        kernel_->api_registry->Get("bmlDumpApiStats"));
 
     ASSERT_NE(enable, nullptr);
     ASSERT_NE(is_enabled, nullptr);
@@ -321,12 +321,12 @@ TEST_F(ProfilingManagerTests, ConcurrentTraceEvents) {
 
     std::vector<std::thread> threads;
     for (int i = 0; i < num_threads; ++i) {
-        threads.emplace_back([i, events_per_thread]() {
+        threads.emplace_back([this, i, events_per_thread]() {
             for (int j = 0; j < events_per_thread; ++j) {
                 std::string name = "Thread" + std::to_string(i) + "_Scope" + std::to_string(j);
-                ProfilingManager::Instance().TraceBegin(name.c_str(), "concurrent");
-                ProfilingManager::Instance().TraceEnd();
-                ProfilingManager::Instance().TraceCounter("counter", j);
+                kernel_->profiling->TraceBegin(name.c_str(), "concurrent");
+                kernel_->profiling->TraceEnd();
+                kernel_->profiling->TraceCounter("counter", j);
             }
         });
     }
@@ -336,7 +336,7 @@ TEST_F(ProfilingManagerTests, ConcurrentTraceEvents) {
     }
 
     // Flush should succeed after concurrent writes
-    BML_Result result = ProfilingManager::Instance().FlushProfilingData("test_trace.json");
+    BML_Result result = kernel_->profiling->FlushProfilingData("test_trace.json");
     EXPECT_EQ(result, BML_RESULT_OK);
 }
 
@@ -344,11 +344,11 @@ TEST_F(ProfilingManagerTests, ConcurrentFlushWithTrace) {
     std::atomic<bool> running{true};
 
     // Background thread generating events
-    std::thread producer([&running]() {
+    std::thread producer([this, &running]() {
         int i = 0;
         while (running) {
-            ProfilingManager::Instance().TraceBegin("bg_scope", "bg");
-            ProfilingManager::Instance().TraceEnd();
+            kernel_->profiling->TraceBegin("bg_scope", "bg");
+            kernel_->profiling->TraceEnd();
             ++i;
             if (i > 1000) break;
         }
@@ -357,7 +357,7 @@ TEST_F(ProfilingManagerTests, ConcurrentFlushWithTrace) {
     // Multiple flush operations
     for (int i = 0; i < 5; ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        ProfilingManager::Instance().FlushProfilingData("test_trace.json");
+        kernel_->profiling->FlushProfilingData("test_trace.json");
     }
 
     running = false;
@@ -372,7 +372,7 @@ TEST_F(ProfilingManagerTests, ConcurrentFlushWithTrace) {
 
 TEST_F(ProfilingManagerTests, GetApiCallCount) {
     // This depends on ApiRegistry integration
-    uint64_t count = ProfilingManager::Instance().GetApiCallCount("nonexistent_api");
+    uint64_t count = kernel_->profiling->GetApiCallCount("nonexistent_api");
 
     // Should return 0 for unknown API
     EXPECT_EQ(count, 0ULL);
@@ -380,7 +380,7 @@ TEST_F(ProfilingManagerTests, GetApiCallCount) {
 
 TEST_F(ProfilingManagerTests, GetTotalAllocBytes) {
     // This depends on MemoryManager integration
-    uint64_t bytes = ProfilingManager::Instance().GetTotalAllocBytes();
+    uint64_t bytes = kernel_->profiling->GetTotalAllocBytes();
 
     // Should return a valid value (may be 0 if no allocations tracked)
     // Just verify it doesn't crash

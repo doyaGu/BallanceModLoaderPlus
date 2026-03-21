@@ -113,11 +113,11 @@ protected:
         kernel_->config = std::make_unique<ConfigStore>();
         CleanupTestDir();
         // Clear any previously registered migrations
-        ConfigStore::Instance().ClearMigrations();
+        kernel_->config->ClearMigrations();
     }
 
     void TearDown() override {
-        ConfigStore::Instance().ClearMigrations();
+        kernel_->config->ClearMigrations();
         CleanupTestDir();
     }
 };
@@ -127,50 +127,50 @@ protected:
 // ============================================================================
 
 TEST_F(ConfigMigrationTests, RegisterMigrationSuccess) {
-    auto result = ConfigStore::Instance().RegisterMigration(1, 2, SimpleMigration, nullptr);
+    auto result = kernel_->config->RegisterMigration(1, 2, SimpleMigration, nullptr);
     EXPECT_EQ(result, BML_RESULT_OK);
-    EXPECT_EQ(ConfigStore::Instance().GetMigrationCount(), 1);
+    EXPECT_EQ(kernel_->config->GetMigrationCount(), 1);
 }
 
 TEST_F(ConfigMigrationTests, RegisterMultipleMigrations) {
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(1, 2, SimpleMigration, nullptr), BML_RESULT_OK);
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(2, 3, SimpleMigration, nullptr), BML_RESULT_OK);
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(1, 3, SimpleMigration, nullptr), BML_RESULT_OK);
-    EXPECT_EQ(ConfigStore::Instance().GetMigrationCount(), 3);
+    EXPECT_EQ(kernel_->config->RegisterMigration(1, 2, SimpleMigration, nullptr), BML_RESULT_OK);
+    EXPECT_EQ(kernel_->config->RegisterMigration(2, 3, SimpleMigration, nullptr), BML_RESULT_OK);
+    EXPECT_EQ(kernel_->config->RegisterMigration(1, 3, SimpleMigration, nullptr), BML_RESULT_OK);
+    EXPECT_EQ(kernel_->config->GetMigrationCount(), 3);
 }
 
 TEST_F(ConfigMigrationTests, RegisterDuplicateFails) {
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(1, 2, SimpleMigration, nullptr), BML_RESULT_OK);
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(1, 2, SimpleMigration, nullptr), BML_RESULT_ALREADY_EXISTS);
-    EXPECT_EQ(ConfigStore::Instance().GetMigrationCount(), 1);
+    EXPECT_EQ(kernel_->config->RegisterMigration(1, 2, SimpleMigration, nullptr), BML_RESULT_OK);
+    EXPECT_EQ(kernel_->config->RegisterMigration(1, 2, SimpleMigration, nullptr), BML_RESULT_ALREADY_EXISTS);
+    EXPECT_EQ(kernel_->config->GetMigrationCount(), 1);
 }
 
 TEST_F(ConfigMigrationTests, RegisterNullFunctionFails) {
-    auto result = ConfigStore::Instance().RegisterMigration(1, 2, nullptr, nullptr);
+    auto result = kernel_->config->RegisterMigration(1, 2, nullptr, nullptr);
     EXPECT_EQ(result, BML_RESULT_INVALID_ARGUMENT);
-    EXPECT_EQ(ConfigStore::Instance().GetMigrationCount(), 0);
+    EXPECT_EQ(kernel_->config->GetMigrationCount(), 0);
 }
 
 TEST_F(ConfigMigrationTests, RegisterInvalidVersionRangeFails) {
     // from >= to is invalid
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(2, 1, SimpleMigration, nullptr), BML_RESULT_INVALID_ARGUMENT);
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(2, 2, SimpleMigration, nullptr), BML_RESULT_INVALID_ARGUMENT);
-    EXPECT_EQ(ConfigStore::Instance().GetMigrationCount(), 0);
+    EXPECT_EQ(kernel_->config->RegisterMigration(2, 1, SimpleMigration, nullptr), BML_RESULT_INVALID_ARGUMENT);
+    EXPECT_EQ(kernel_->config->RegisterMigration(2, 2, SimpleMigration, nullptr), BML_RESULT_INVALID_ARGUMENT);
+    EXPECT_EQ(kernel_->config->GetMigrationCount(), 0);
 }
 
 TEST_F(ConfigMigrationTests, RegisterNegativeVersionFails) {
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(-1, 2, SimpleMigration, nullptr), BML_RESULT_INVALID_ARGUMENT);
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(1, -2, SimpleMigration, nullptr), BML_RESULT_INVALID_ARGUMENT);
-    EXPECT_EQ(ConfigStore::Instance().GetMigrationCount(), 0);
+    EXPECT_EQ(kernel_->config->RegisterMigration(-1, 2, SimpleMigration, nullptr), BML_RESULT_INVALID_ARGUMENT);
+    EXPECT_EQ(kernel_->config->RegisterMigration(1, -2, SimpleMigration, nullptr), BML_RESULT_INVALID_ARGUMENT);
+    EXPECT_EQ(kernel_->config->GetMigrationCount(), 0);
 }
 
 TEST_F(ConfigMigrationTests, ClearMigrations) {
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(1, 2, SimpleMigration, nullptr), BML_RESULT_OK);
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(2, 3, SimpleMigration, nullptr), BML_RESULT_OK);
-    EXPECT_EQ(ConfigStore::Instance().GetMigrationCount(), 2);
+    EXPECT_EQ(kernel_->config->RegisterMigration(1, 2, SimpleMigration, nullptr), BML_RESULT_OK);
+    EXPECT_EQ(kernel_->config->RegisterMigration(2, 3, SimpleMigration, nullptr), BML_RESULT_OK);
+    EXPECT_EQ(kernel_->config->GetMigrationCount(), 2);
 
-    ConfigStore::Instance().ClearMigrations();
-    EXPECT_EQ(ConfigStore::Instance().GetMigrationCount(), 0);
+    kernel_->config->ClearMigrations();
+    EXPECT_EQ(kernel_->config->GetMigrationCount(), 0);
 }
 
 // ============================================================================
@@ -183,11 +183,11 @@ protected:
 
     void SetUp() override {
         kernel_->config = std::make_unique<ConfigStore>();
-        ConfigStore::Instance().ClearMigrations();
+        kernel_->config->ClearMigrations();
     }
 
     void TearDown() override {
-        ConfigStore::Instance().ClearMigrations();
+        kernel_->config->ClearMigrations();
     }
 
     // Helper to test migration on a TOML table
@@ -203,31 +203,31 @@ TEST_F(MigrationExecutionTests, SingleStepMigrationCalled) {
     MigrationTestContext ctx;
     ctx.should_succeed = true;
 
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(1, 2, SimpleMigration, &ctx), BML_RESULT_OK);
+    EXPECT_EQ(kernel_->config->RegisterMigration(1, 2, SimpleMigration, &ctx), BML_RESULT_OK);
 
     // Since MigrateConfig is private, we verify registration worked
-    EXPECT_EQ(ConfigStore::Instance().GetMigrationCount(), 1);
+    EXPECT_EQ(kernel_->config->GetMigrationCount(), 1);
 }
 
 TEST_F(MigrationExecutionTests, MultiStepMigrationRegistration) {
     MigrationTestContext ctx1, ctx2;
 
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(1, 2, SimpleMigration, &ctx1), BML_RESULT_OK);
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(2, 3, SimpleMigration, &ctx2), BML_RESULT_OK);
+    EXPECT_EQ(kernel_->config->RegisterMigration(1, 2, SimpleMigration, &ctx1), BML_RESULT_OK);
+    EXPECT_EQ(kernel_->config->RegisterMigration(2, 3, SimpleMigration, &ctx2), BML_RESULT_OK);
 
-    EXPECT_EQ(ConfigStore::Instance().GetMigrationCount(), 2);
+    EXPECT_EQ(kernel_->config->GetMigrationCount(), 2);
 }
 
 TEST_F(MigrationExecutionTests, DirectJumpPreferedOverMultiStep) {
     MigrationTestContext ctx_step1, ctx_step2, ctx_direct;
 
     // Register step-by-step migrations
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(1, 2, SimpleMigration, &ctx_step1), BML_RESULT_OK);
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(2, 3, SimpleMigration, &ctx_step2), BML_RESULT_OK);
+    EXPECT_EQ(kernel_->config->RegisterMigration(1, 2, SimpleMigration, &ctx_step1), BML_RESULT_OK);
+    EXPECT_EQ(kernel_->config->RegisterMigration(2, 3, SimpleMigration, &ctx_step2), BML_RESULT_OK);
     // Register direct jump
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(1, 3, SimpleMigration, &ctx_direct), BML_RESULT_OK);
+    EXPECT_EQ(kernel_->config->RegisterMigration(1, 3, SimpleMigration, &ctx_direct), BML_RESULT_OK);
 
-    EXPECT_EQ(ConfigStore::Instance().GetMigrationCount(), 3);
+    EXPECT_EQ(kernel_->config->GetMigrationCount(), 3);
 }
 
 // ============================================================================
@@ -249,8 +249,8 @@ TEST_F(ConfigMigrationTests, UserDataPassedToMigration) {
     ctx.added_entry_category = "test_category";
     ctx.added_entry_name = "test_name";
 
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(0, 1, AddEntryMigration, &ctx), BML_RESULT_OK);
-    EXPECT_EQ(ConfigStore::Instance().GetMigrationCount(), 1);
+    EXPECT_EQ(kernel_->config->RegisterMigration(0, 1, AddEntryMigration, &ctx), BML_RESULT_OK);
+    EXPECT_EQ(kernel_->config->GetMigrationCount(), 1);
 }
 
 // ============================================================================
@@ -267,7 +267,7 @@ protected:
     void SetUp() override {
         kernel_->config = std::make_unique<ConfigStore>();
         CleanupTestDir();
-        ConfigStore::Instance().ClearMigrations();
+        kernel_->config->ClearMigrations();
 
         configDir = GetTestDir() / "config";
         std::filesystem::create_directories(configDir);
@@ -285,7 +285,7 @@ protected:
     void TearDown() override {
         testMod.reset();
         testManifest.reset();
-        ConfigStore::Instance().ClearMigrations();
+        kernel_->config->ClearMigrations();
         CleanupTestDir();
     }
 
@@ -328,7 +328,7 @@ TEST_F(ConfigMigrationIntegrationTests, LoadConfigWithOldVersion) {
     ctx.added_entry_name = "new_field";
 
     // Register migration from v0 to current
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(0, ConfigStore::GetCurrentSchemaVersion(), 
+    EXPECT_EQ(kernel_->config->RegisterMigration(0, ConfigStore::GetCurrentSchemaVersion(), 
                                                         AddEntryMigration, &ctx), BML_RESULT_OK);
 
     EXPECT_TRUE(std::filesystem::exists(path));
@@ -358,11 +358,11 @@ protected:
 
     void SetUp() override {
         kernel_->config = std::make_unique<ConfigStore>();
-        ConfigStore::Instance().ClearMigrations();
+        kernel_->config->ClearMigrations();
     }
 
     void TearDown() override {
-        ConfigStore::Instance().ClearMigrations();
+        kernel_->config->ClearMigrations();
     }
 };
 
@@ -419,22 +419,22 @@ TEST_F(TomlMigrationTests, ThrowingMigrationHandled) {
 // ============================================================================
 
 TEST_F(ConfigMigrationTests, EmptyMigrationList) {
-    EXPECT_EQ(ConfigStore::Instance().GetMigrationCount(), 0);
+    EXPECT_EQ(kernel_->config->GetMigrationCount(), 0);
 }
 
 TEST_F(ConfigMigrationTests, LargeVersionJump) {
     MigrationTestContext ctx;
 
     // Register a large version jump
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(1, 100, SimpleMigration, &ctx), BML_RESULT_OK);
-    EXPECT_EQ(ConfigStore::Instance().GetMigrationCount(), 1);
+    EXPECT_EQ(kernel_->config->RegisterMigration(1, 100, SimpleMigration, &ctx), BML_RESULT_OK);
+    EXPECT_EQ(kernel_->config->GetMigrationCount(), 1);
 }
 
 TEST_F(ConfigMigrationTests, ZeroToOneVersion) {
     MigrationTestContext ctx;
 
-    EXPECT_EQ(ConfigStore::Instance().RegisterMigration(0, 1, SimpleMigration, &ctx), BML_RESULT_OK);
-    EXPECT_EQ(ConfigStore::Instance().GetMigrationCount(), 1);
+    EXPECT_EQ(kernel_->config->RegisterMigration(0, 1, SimpleMigration, &ctx), BML_RESULT_OK);
+    EXPECT_EQ(kernel_->config->GetMigrationCount(), 1);
 }
 
 // ============================================================================
@@ -449,7 +449,7 @@ TEST_F(ConfigMigrationTests, ConcurrentRegistration) {
     // Try to register the same migration from multiple threads
     for (int i = 0; i < 10; ++i) {
         threads.emplace_back([&]() {
-            auto result = ConfigStore::Instance().RegisterMigration(1, 2, SimpleMigration, nullptr);
+            auto result = kernel_->config->RegisterMigration(1, 2, SimpleMigration, nullptr);
             if (result == BML_RESULT_OK) {
                 success_count++;
             } else if (result == BML_RESULT_ALREADY_EXISTS) {
@@ -465,7 +465,7 @@ TEST_F(ConfigMigrationTests, ConcurrentRegistration) {
     // Exactly one should succeed, rest should get ALREADY_EXISTS
     EXPECT_EQ(success_count.load(), 1);
     EXPECT_EQ(already_exists_count.load(), 9);
-    EXPECT_EQ(ConfigStore::Instance().GetMigrationCount(), 1);
+    EXPECT_EQ(kernel_->config->GetMigrationCount(), 1);
 }
 
 TEST_F(ConfigMigrationTests, ConcurrentDifferentMigrations) {
@@ -475,7 +475,7 @@ TEST_F(ConfigMigrationTests, ConcurrentDifferentMigrations) {
     // Register different migrations from multiple threads
     for (int i = 0; i < 10; ++i) {
         threads.emplace_back([&, i]() {
-            auto result = ConfigStore::Instance().RegisterMigration(i, i + 1, SimpleMigration, nullptr);
+            auto result = kernel_->config->RegisterMigration(i, i + 1, SimpleMigration, nullptr);
             if (result == BML_RESULT_OK) {
                 success_count++;
             }
@@ -487,5 +487,5 @@ TEST_F(ConfigMigrationTests, ConcurrentDifferentMigrations) {
     }
 
     EXPECT_EQ(success_count.load(), 10);
-    EXPECT_EQ(ConfigStore::Instance().GetMigrationCount(), 10);
+    EXPECT_EQ(kernel_->config->GetMigrationCount(), 10);
 }

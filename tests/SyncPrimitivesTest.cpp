@@ -151,15 +151,15 @@ protected:
 
 TEST_F(SyncPrimitivesTest, CondVarCreateDestroy) {
     BML_CondVar condvar = nullptr;
-    BML_Result result = SyncManager::Instance().CreateCondVar(&condvar);
+    BML_Result result = kernel_->sync->CreateCondVar(&condvar);
     ASSERT_EQ(result, BML_RESULT_OK);
     ASSERT_NE(condvar, nullptr);
 
-    SyncManager::Instance().DestroyCondVar(condvar);
+    kernel_->sync->DestroyCondVar(condvar);
 }
 
 TEST_F(SyncPrimitivesTest, CondVarCreateNullOutput) {
-    BML_Result result = SyncManager::Instance().CreateCondVar(nullptr);
+    BML_Result result = kernel_->sync->CreateCondVar(nullptr);
     EXPECT_EQ(result, BML_RESULT_INVALID_ARGUMENT);
 }
 
@@ -167,56 +167,56 @@ TEST_F(SyncPrimitivesTest, CondVarSignalWait) {
     BML_Mutex mutex = nullptr;
     BML_CondVar condvar = nullptr;
 
-    ASSERT_EQ(SyncManager::Instance().CreateMutex(&mutex), BML_RESULT_OK);
-    ASSERT_EQ(SyncManager::Instance().CreateCondVar(&condvar), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateMutex(&mutex), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateCondVar(&condvar), BML_RESULT_OK);
 
     std::atomic<bool> ready{false};
     std::atomic<bool> done{false};
 
     // Consumer thread
     std::thread consumer([&]() {
-        SyncManager::Instance().LockMutex(mutex);
+        kernel_->sync->LockMutex(mutex);
         while (!ready.load()) {
             // Wait for signal (with timeout to prevent deadlock in test)
-            BML_Result result = SyncManager::Instance().WaitCondVarTimeout(condvar, mutex, 1000);
+            BML_Result result = kernel_->sync->WaitCondVarTimeout(condvar, mutex, 1000);
             if (result == BML_RESULT_TIMEOUT && !ready.load()) {
                 // Continue waiting
                 continue;
             }
         }
         done.store(true);
-        SyncManager::Instance().UnlockMutex(mutex);
+        kernel_->sync->UnlockMutex(mutex);
     });
 
     // Producer: signal after short delay
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    SyncManager::Instance().LockMutex(mutex);
+    kernel_->sync->LockMutex(mutex);
     ready.store(true);
-    SyncManager::Instance().SignalCondVar(condvar);
-    SyncManager::Instance().UnlockMutex(mutex);
+    kernel_->sync->SignalCondVar(condvar);
+    kernel_->sync->UnlockMutex(mutex);
 
     consumer.join();
 
     EXPECT_TRUE(done.load());
 
-    SyncManager::Instance().DestroyCondVar(condvar);
-    SyncManager::Instance().DestroyMutex(mutex);
+    kernel_->sync->DestroyCondVar(condvar);
+    kernel_->sync->DestroyMutex(mutex);
 }
 
 TEST_F(SyncPrimitivesTest, CondVarWaitTimeout) {
     BML_Mutex mutex = nullptr;
     BML_CondVar condvar = nullptr;
 
-    ASSERT_EQ(SyncManager::Instance().CreateMutex(&mutex), BML_RESULT_OK);
-    ASSERT_EQ(SyncManager::Instance().CreateCondVar(&condvar), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateMutex(&mutex), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateCondVar(&condvar), BML_RESULT_OK);
 
-    SyncManager::Instance().LockMutex(mutex);
+    kernel_->sync->LockMutex(mutex);
 
     auto start = std::chrono::steady_clock::now();
-    BML_Result result = SyncManager::Instance().WaitCondVarTimeout(condvar, mutex, 100);
+    BML_Result result = kernel_->sync->WaitCondVarTimeout(condvar, mutex, 100);
     auto end = std::chrono::steady_clock::now();
 
-    SyncManager::Instance().UnlockMutex(mutex);
+    kernel_->sync->UnlockMutex(mutex);
 
     EXPECT_EQ(result, BML_RESULT_TIMEOUT);
 
@@ -224,16 +224,16 @@ TEST_F(SyncPrimitivesTest, CondVarWaitTimeout) {
     EXPECT_GE(elapsed_ms, 80);  // Allow some tolerance
     EXPECT_LE(elapsed_ms, 200); // But not too long
 
-    SyncManager::Instance().DestroyCondVar(condvar);
-    SyncManager::Instance().DestroyMutex(mutex);
+    kernel_->sync->DestroyCondVar(condvar);
+    kernel_->sync->DestroyMutex(mutex);
 }
 
 TEST_F(SyncPrimitivesTest, CondVarBroadcast) {
     BML_Mutex mutex = nullptr;
     BML_CondVar condvar = nullptr;
 
-    ASSERT_EQ(SyncManager::Instance().CreateMutex(&mutex), BML_RESULT_OK);
-    ASSERT_EQ(SyncManager::Instance().CreateCondVar(&condvar), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateMutex(&mutex), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateCondVar(&condvar), BML_RESULT_OK);
 
     std::atomic<bool> ready{false};
     std::atomic<int> woken_count{0};
@@ -242,15 +242,15 @@ TEST_F(SyncPrimitivesTest, CondVarBroadcast) {
     std::vector<std::thread> threads;
     for (int i = 0; i < NUM_THREADS; ++i) {
         threads.emplace_back([&]() {
-            SyncManager::Instance().LockMutex(mutex);
+            kernel_->sync->LockMutex(mutex);
             while (!ready.load()) {
-                BML_Result result = SyncManager::Instance().WaitCondVarTimeout(condvar, mutex, 1000);
+                BML_Result result = kernel_->sync->WaitCondVarTimeout(condvar, mutex, 1000);
                 if (result == BML_RESULT_TIMEOUT && !ready.load()) {
                     continue;
                 }
             }
             woken_count.fetch_add(1);
-            SyncManager::Instance().UnlockMutex(mutex);
+            kernel_->sync->UnlockMutex(mutex);
         });
     }
 
@@ -258,10 +258,10 @@ TEST_F(SyncPrimitivesTest, CondVarBroadcast) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     // Broadcast to wake all threads
-    SyncManager::Instance().LockMutex(mutex);
+    kernel_->sync->LockMutex(mutex);
     ready.store(true);
-    SyncManager::Instance().BroadcastCondVar(condvar);
-    SyncManager::Instance().UnlockMutex(mutex);
+    kernel_->sync->BroadcastCondVar(condvar);
+    kernel_->sync->UnlockMutex(mutex);
 
     for (auto& t : threads) {
         t.join();
@@ -269,8 +269,8 @@ TEST_F(SyncPrimitivesTest, CondVarBroadcast) {
 
     EXPECT_EQ(woken_count.load(), NUM_THREADS);
 
-    SyncManager::Instance().DestroyCondVar(condvar);
-    SyncManager::Instance().DestroyMutex(mutex);
+    kernel_->sync->DestroyCondVar(condvar);
+    kernel_->sync->DestroyMutex(mutex);
 }
 
 // ============================================================================
@@ -279,58 +279,58 @@ TEST_F(SyncPrimitivesTest, CondVarBroadcast) {
 
 TEST_F(SyncPrimitivesTest, SpinLockCreateDestroy) {
     BML_SpinLock lock = nullptr;
-    BML_Result result = SyncManager::Instance().CreateSpinLock(&lock);
+    BML_Result result = kernel_->sync->CreateSpinLock(&lock);
     ASSERT_EQ(result, BML_RESULT_OK);
     ASSERT_NE(lock, nullptr);
 
-    SyncManager::Instance().DestroySpinLock(lock);
+    kernel_->sync->DestroySpinLock(lock);
 }
 
 TEST_F(SyncPrimitivesTest, SpinLockCreateNullOutput) {
-    BML_Result result = SyncManager::Instance().CreateSpinLock(nullptr);
+    BML_Result result = kernel_->sync->CreateSpinLock(nullptr);
     EXPECT_EQ(result, BML_RESULT_INVALID_ARGUMENT);
 }
 
 TEST_F(SyncPrimitivesTest, SpinLockBasicLocking) {
     BML_SpinLock lock = nullptr;
-    ASSERT_EQ(SyncManager::Instance().CreateSpinLock(&lock), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateSpinLock(&lock), BML_RESULT_OK);
 
-    SyncManager::Instance().LockSpinLock(lock);
+    kernel_->sync->LockSpinLock(lock);
     // Lock acquired
-    SyncManager::Instance().UnlockSpinLock(lock);
+    kernel_->sync->UnlockSpinLock(lock);
     // Lock released
 
-    SyncManager::Instance().DestroySpinLock(lock);
+    kernel_->sync->DestroySpinLock(lock);
 }
 
 TEST_F(SyncPrimitivesTest, SpinLockTryLock) {
     BML_SpinLock lock = nullptr;
-    ASSERT_EQ(SyncManager::Instance().CreateSpinLock(&lock), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateSpinLock(&lock), BML_RESULT_OK);
 
     // Should succeed on unlocked lock
-    EXPECT_EQ(SyncManager::Instance().TryLockSpinLock(lock), BML_TRUE);
+    EXPECT_EQ(kernel_->sync->TryLockSpinLock(lock), BML_TRUE);
 
     // Try from another thread - should fail
     std::atomic<BML_Bool> try_result{BML_TRUE};
     std::thread t([&]() {
-        try_result.store(SyncManager::Instance().TryLockSpinLock(lock));
+        try_result.store(kernel_->sync->TryLockSpinLock(lock));
     });
     t.join();
 
     EXPECT_EQ(try_result.load(), BML_FALSE);
 
-    SyncManager::Instance().UnlockSpinLock(lock);
+    kernel_->sync->UnlockSpinLock(lock);
 
     // Now should succeed again
-    EXPECT_EQ(SyncManager::Instance().TryLockSpinLock(lock), BML_TRUE);
-    SyncManager::Instance().UnlockSpinLock(lock);
+    EXPECT_EQ(kernel_->sync->TryLockSpinLock(lock), BML_TRUE);
+    kernel_->sync->UnlockSpinLock(lock);
 
-    SyncManager::Instance().DestroySpinLock(lock);
+    kernel_->sync->DestroySpinLock(lock);
 }
 
 TEST_F(SyncPrimitivesTest, SpinLockConcurrentAccess) {
     BML_SpinLock lock = nullptr;
-    ASSERT_EQ(SyncManager::Instance().CreateSpinLock(&lock), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateSpinLock(&lock), BML_RESULT_OK);
 
     std::atomic<int> counter{0};
     constexpr int INCREMENTS_PER_THREAD = 1000;
@@ -338,9 +338,9 @@ TEST_F(SyncPrimitivesTest, SpinLockConcurrentAccess) {
 
     auto increment_func = [&]() {
         for (int i = 0; i < INCREMENTS_PER_THREAD; ++i) {
-            SyncManager::Instance().LockSpinLock(lock);
+            kernel_->sync->LockSpinLock(lock);
             ++counter;
-            SyncManager::Instance().UnlockSpinLock(lock);
+            kernel_->sync->UnlockSpinLock(lock);
         }
     };
 
@@ -355,7 +355,7 @@ TEST_F(SyncPrimitivesTest, SpinLockConcurrentAccess) {
 
     EXPECT_EQ(counter.load(), INCREMENTS_PER_THREAD * NUM_THREADS);
 
-    SyncManager::Instance().DestroySpinLock(lock);
+    kernel_->sync->DestroySpinLock(lock);
 }
 
 // ============================================================================
@@ -365,67 +365,67 @@ TEST_F(SyncPrimitivesTest, SpinLockConcurrentAccess) {
 TEST_F(SyncPrimitivesTest, MutexDeadlockDetectionSetsLastError) {
     BML_Mutex first = nullptr;
     BML_Mutex second = nullptr;
-    ASSERT_EQ(SyncManager::Instance().CreateMutex(&first), BML_RESULT_OK);
-    ASSERT_EQ(SyncManager::Instance().CreateMutex(&second), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateMutex(&first), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateMutex(&second), BML_RESULT_OK);
 
     auto [code, api_name] = RunDeadlockDetectionScenario(
         first,
         second,
-        [](BML_Mutex mutex) { SyncManager::Instance().LockMutex(mutex); },
-        [](BML_Mutex mutex) { SyncManager::Instance().UnlockMutex(mutex); });
+        [this](BML_Mutex mutex) { kernel_->sync->LockMutex(mutex); },
+        [this](BML_Mutex mutex) { kernel_->sync->UnlockMutex(mutex); });
 
     EXPECT_EQ(code, BML_RESULT_SYNC_DEADLOCK);
     EXPECT_EQ(api_name, "bmlMutexLock");
 
-    SyncManager::Instance().DestroyMutex(first);
-    SyncManager::Instance().DestroyMutex(second);
+    kernel_->sync->DestroyMutex(first);
+    kernel_->sync->DestroyMutex(second);
 }
 
 TEST_F(SyncPrimitivesTest, RwLockDeadlockDetectionSetsLastError) {
     BML_RwLock first = nullptr;
     BML_RwLock second = nullptr;
-    ASSERT_EQ(SyncManager::Instance().CreateRwLock(&first), BML_RESULT_OK);
-    ASSERT_EQ(SyncManager::Instance().CreateRwLock(&second), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateRwLock(&first), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateRwLock(&second), BML_RESULT_OK);
 
     auto [code, api_name] = RunDeadlockDetectionScenario(
         first,
         second,
-        [](BML_RwLock lock) { SyncManager::Instance().WriteLockRwLock(lock); },
-        [](BML_RwLock lock) { SyncManager::Instance().WriteUnlockRwLock(lock); });
+        [this](BML_RwLock lock) { kernel_->sync->WriteLockRwLock(lock); },
+        [this](BML_RwLock lock) { kernel_->sync->WriteUnlockRwLock(lock); });
 
     EXPECT_EQ(code, BML_RESULT_SYNC_DEADLOCK);
     EXPECT_EQ(api_name, "bmlRwLockWriteLock");
 
-    SyncManager::Instance().DestroyRwLock(first);
-    SyncManager::Instance().DestroyRwLock(second);
+    kernel_->sync->DestroyRwLock(first);
+    kernel_->sync->DestroyRwLock(second);
 }
 
 TEST_F(SyncPrimitivesTest, SpinLockDeadlockDetectionSetsLastError) {
     BML_SpinLock first = nullptr;
     BML_SpinLock second = nullptr;
-    ASSERT_EQ(SyncManager::Instance().CreateSpinLock(&first), BML_RESULT_OK);
-    ASSERT_EQ(SyncManager::Instance().CreateSpinLock(&second), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateSpinLock(&first), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateSpinLock(&second), BML_RESULT_OK);
 
     auto [code, api_name] = RunDeadlockDetectionScenario(
         first,
         second,
-        [](BML_SpinLock lock) { SyncManager::Instance().LockSpinLock(lock); },
-        [](BML_SpinLock lock) { SyncManager::Instance().UnlockSpinLock(lock); });
+        [this](BML_SpinLock lock) { kernel_->sync->LockSpinLock(lock); },
+        [this](BML_SpinLock lock) { kernel_->sync->UnlockSpinLock(lock); });
 
     EXPECT_EQ(code, BML_RESULT_SYNC_DEADLOCK);
     EXPECT_EQ(api_name, "bmlSpinLockLock");
 
-    SyncManager::Instance().DestroySpinLock(first);
-    SyncManager::Instance().DestroySpinLock(second);
+    kernel_->sync->DestroySpinLock(first);
+    kernel_->sync->DestroySpinLock(second);
 }
 
 TEST_F(SyncPrimitivesTest, CondVarWaitDeadlockDetectionWithExtraMutex) {
     BML_Mutex signal_mutex = nullptr;
     BML_Mutex payload_mutex = nullptr;
     BML_CondVar condvar = nullptr;
-    ASSERT_EQ(SyncManager::Instance().CreateMutex(&signal_mutex), BML_RESULT_OK);
-    ASSERT_EQ(SyncManager::Instance().CreateMutex(&payload_mutex), BML_RESULT_OK);
-    ASSERT_EQ(SyncManager::Instance().CreateCondVar(&condvar), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateMutex(&signal_mutex), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateMutex(&payload_mutex), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateCondVar(&condvar), BML_RESULT_OK);
 
     std::atomic<bool> wait_entered{false};
     std::promise<BML_Result> wait_result_promise;
@@ -435,15 +435,15 @@ TEST_F(SyncPrimitivesTest, CondVarWaitDeadlockDetectionWithExtraMutex) {
 
     std::thread waiter([&]() {
         BML::Core::ClearLastErrorInfo();
-        SyncManager::Instance().LockMutex(signal_mutex);
-        SyncManager::Instance().LockMutex(payload_mutex);
+        kernel_->sync->LockMutex(signal_mutex);
+        kernel_->sync->LockMutex(payload_mutex);
         wait_entered.store(true, std::memory_order_release);
 
-        BML_Result wait_result = SyncManager::Instance().WaitCondVarTimeout(condvar, signal_mutex, 200);
+        BML_Result wait_result = kernel_->sync->WaitCondVarTimeout(condvar, signal_mutex, 200);
         wait_result_promise.set_value(wait_result);
 
-        SyncManager::Instance().UnlockMutex(payload_mutex);
-        SyncManager::Instance().UnlockMutex(signal_mutex);
+        kernel_->sync->UnlockMutex(payload_mutex);
+        kernel_->sync->UnlockMutex(signal_mutex);
     });
 
     std::thread contender([&]() {
@@ -452,9 +452,9 @@ TEST_F(SyncPrimitivesTest, CondVarWaitDeadlockDetectionWithExtraMutex) {
             std::this_thread::yield();
         }
 
-        SyncManager::Instance().LockMutex(signal_mutex);
+        kernel_->sync->LockMutex(signal_mutex);
         BML::Core::ClearLastErrorInfo();
-        SyncManager::Instance().LockMutex(payload_mutex);
+        kernel_->sync->LockMutex(payload_mutex);
 
         BML_ErrorInfo info = BML_ERROR_INFO_INIT;
         DeadlockInfo result{};
@@ -466,10 +466,10 @@ TEST_F(SyncPrimitivesTest, CondVarWaitDeadlockDetectionWithExtraMutex) {
         }
 
         if (result.code != BML_RESULT_SYNC_DEADLOCK) {
-            SyncManager::Instance().UnlockMutex(payload_mutex);
+            kernel_->sync->UnlockMutex(payload_mutex);
         }
 
-        SyncManager::Instance().UnlockMutex(signal_mutex);
+        kernel_->sync->UnlockMutex(signal_mutex);
         contender_result_promise.set_value(std::move(result));
     });
 
@@ -483,16 +483,16 @@ TEST_F(SyncPrimitivesTest, CondVarWaitDeadlockDetectionWithExtraMutex) {
     EXPECT_EQ(contender_result.api, "bmlMutexLock");
     EXPECT_EQ(wait_result, BML_RESULT_TIMEOUT);
 
-    SyncManager::Instance().DestroyCondVar(condvar);
-    SyncManager::Instance().DestroyMutex(payload_mutex);
-    SyncManager::Instance().DestroyMutex(signal_mutex);
+    kernel_->sync->DestroyCondVar(condvar);
+    kernel_->sync->DestroyMutex(payload_mutex);
+    kernel_->sync->DestroyMutex(signal_mutex);
 }
 
 TEST_F(SyncPrimitivesTest, MutexTimeoutDeadlockDetectionSetsLastError) {
     BML_Mutex first = nullptr;
     BML_Mutex second = nullptr;
-    ASSERT_EQ(SyncManager::Instance().CreateMutex(&first), BML_RESULT_OK);
-    ASSERT_EQ(SyncManager::Instance().CreateMutex(&second), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateMutex(&first), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateMutex(&second), BML_RESULT_OK);
 
     std::mutex state_mutex;
     std::condition_variable state_cv;
@@ -504,7 +504,7 @@ TEST_F(SyncPrimitivesTest, MutexTimeoutDeadlockDetectionSetsLastError) {
     auto result_future = result_promise.get_future();
 
     std::thread thread_a([&]() {
-        SyncManager::Instance().LockMutex(first);
+        kernel_->sync->LockMutex(first);
         {
             std::lock_guard<std::mutex> guard(state_mutex);
             a_has_first = true;
@@ -518,11 +518,11 @@ TEST_F(SyncPrimitivesTest, MutexTimeoutDeadlockDetectionSetsLastError) {
         }
         state_cv.notify_all();
 
-        auto result = SyncManager::Instance().LockMutexTimeout(second, 1000);
+        auto result = kernel_->sync->LockMutexTimeout(second, 1000);
         if (result == BML_RESULT_OK) {
-            SyncManager::Instance().UnlockMutex(second);
+            kernel_->sync->UnlockMutex(second);
         }
-        SyncManager::Instance().UnlockMutex(first);
+        kernel_->sync->UnlockMutex(first);
     });
 
     std::thread thread_b([&]() {
@@ -532,7 +532,7 @@ TEST_F(SyncPrimitivesTest, MutexTimeoutDeadlockDetectionSetsLastError) {
             state_cv.wait(lk, [&] { return a_has_first; });
         }
 
-        SyncManager::Instance().LockMutex(second);
+        kernel_->sync->LockMutex(second);
         {
             std::lock_guard<std::mutex> guard(state_mutex);
             b_has_second = true;
@@ -544,7 +544,7 @@ TEST_F(SyncPrimitivesTest, MutexTimeoutDeadlockDetectionSetsLastError) {
             state_cv.wait(lk, [&] { return a_attempting_second; });
         }
 
-        auto lock_result = SyncManager::Instance().LockMutexTimeout(first, 1000);
+        auto lock_result = kernel_->sync->LockMutexTimeout(first, 1000);
         DeadlockInfo info{};
         info.code = lock_result;
         if (lock_result == BML_RESULT_SYNC_DEADLOCK) {
@@ -555,9 +555,9 @@ TEST_F(SyncPrimitivesTest, MutexTimeoutDeadlockDetectionSetsLastError) {
         }
 
         if (lock_result == BML_RESULT_OK) {
-            SyncManager::Instance().UnlockMutex(first);
+            kernel_->sync->UnlockMutex(first);
         }
-        SyncManager::Instance().UnlockMutex(second);
+        kernel_->sync->UnlockMutex(second);
         result_promise.set_value(info);
     });
 
@@ -568,15 +568,15 @@ TEST_F(SyncPrimitivesTest, MutexTimeoutDeadlockDetectionSetsLastError) {
     EXPECT_EQ(info.code, BML_RESULT_SYNC_DEADLOCK);
     EXPECT_EQ(info.api, "bmlMutexLockTimeout");
 
-    SyncManager::Instance().DestroyMutex(second);
-    SyncManager::Instance().DestroyMutex(first);
+    kernel_->sync->DestroyMutex(second);
+    kernel_->sync->DestroyMutex(first);
 }
 
 TEST_F(SyncPrimitivesTest, RwLockWriteTimeoutDeadlockDetectionSetsLastError) {
     BML_RwLock first = nullptr;
     BML_RwLock second = nullptr;
-    ASSERT_EQ(SyncManager::Instance().CreateRwLock(&first), BML_RESULT_OK);
-    ASSERT_EQ(SyncManager::Instance().CreateRwLock(&second), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateRwLock(&first), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateRwLock(&second), BML_RESULT_OK);
 
     std::mutex state_mutex;
     std::condition_variable state_cv;
@@ -588,7 +588,7 @@ TEST_F(SyncPrimitivesTest, RwLockWriteTimeoutDeadlockDetectionSetsLastError) {
     auto result_future = result_promise.get_future();
 
     std::thread thread_a([&]() {
-        SyncManager::Instance().WriteLockRwLock(first);
+        kernel_->sync->WriteLockRwLock(first);
         {
             std::lock_guard<std::mutex> guard(state_mutex);
             a_has_first = true;
@@ -602,11 +602,11 @@ TEST_F(SyncPrimitivesTest, RwLockWriteTimeoutDeadlockDetectionSetsLastError) {
         }
         state_cv.notify_all();
 
-        auto result = SyncManager::Instance().WriteLockRwLockTimeout(second, 1000);
+        auto result = kernel_->sync->WriteLockRwLockTimeout(second, 1000);
         if (result == BML_RESULT_OK) {
-            SyncManager::Instance().WriteUnlockRwLock(second);
+            kernel_->sync->WriteUnlockRwLock(second);
         }
-        SyncManager::Instance().WriteUnlockRwLock(first);
+        kernel_->sync->WriteUnlockRwLock(first);
     });
 
     std::thread thread_b([&]() {
@@ -616,7 +616,7 @@ TEST_F(SyncPrimitivesTest, RwLockWriteTimeoutDeadlockDetectionSetsLastError) {
             state_cv.wait(lk, [&] { return a_has_first; });
         }
 
-        SyncManager::Instance().WriteLockRwLock(second);
+        kernel_->sync->WriteLockRwLock(second);
         {
             std::lock_guard<std::mutex> guard(state_mutex);
             b_has_second = true;
@@ -628,7 +628,7 @@ TEST_F(SyncPrimitivesTest, RwLockWriteTimeoutDeadlockDetectionSetsLastError) {
             state_cv.wait(lk, [&] { return a_attempting_second; });
         }
 
-        auto lock_result = SyncManager::Instance().WriteLockRwLockTimeout(first, 1000);
+        auto lock_result = kernel_->sync->WriteLockRwLockTimeout(first, 1000);
         DeadlockInfo info{};
         info.code = lock_result;
         if (lock_result == BML_RESULT_SYNC_DEADLOCK) {
@@ -639,9 +639,9 @@ TEST_F(SyncPrimitivesTest, RwLockWriteTimeoutDeadlockDetectionSetsLastError) {
         }
 
         if (lock_result == BML_RESULT_OK) {
-            SyncManager::Instance().WriteUnlockRwLock(first);
+            kernel_->sync->WriteUnlockRwLock(first);
         }
-        SyncManager::Instance().WriteUnlockRwLock(second);
+        kernel_->sync->WriteUnlockRwLock(second);
         result_promise.set_value(info);
     });
 
@@ -652,15 +652,15 @@ TEST_F(SyncPrimitivesTest, RwLockWriteTimeoutDeadlockDetectionSetsLastError) {
     EXPECT_EQ(info.code, BML_RESULT_SYNC_DEADLOCK);
     EXPECT_EQ(info.api, "bmlRwLockWriteLockTimeout");
 
-    SyncManager::Instance().DestroyRwLock(second);
-    SyncManager::Instance().DestroyRwLock(first);
+    kernel_->sync->DestroyRwLock(second);
+    kernel_->sync->DestroyRwLock(first);
 }
 
 TEST_F(SyncPrimitivesTest, SemaphoreWaitDeadlockDetectionSetsLastError) {
     BML_Semaphore first = nullptr;
     BML_Semaphore second = nullptr;
-    ASSERT_EQ(SyncManager::Instance().CreateSemaphore(1, 1, &first), BML_RESULT_OK);
-    ASSERT_EQ(SyncManager::Instance().CreateSemaphore(1, 1, &second), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateSemaphore(1, 1, &first), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateSemaphore(1, 1, &second), BML_RESULT_OK);
 
     std::mutex state_mutex;
     std::condition_variable state_cv;
@@ -672,7 +672,7 @@ TEST_F(SyncPrimitivesTest, SemaphoreWaitDeadlockDetectionSetsLastError) {
     auto result_future = result_promise.get_future();
 
     std::thread thread_a([&]() {
-        ASSERT_EQ(SyncManager::Instance().WaitSemaphore(first, BML_TIMEOUT_INFINITE), BML_RESULT_OK);
+        ASSERT_EQ(kernel_->sync->WaitSemaphore(first, BML_TIMEOUT_INFINITE), BML_RESULT_OK);
         {
             std::lock_guard<std::mutex> guard(state_mutex);
             a_has_first = true;
@@ -686,11 +686,11 @@ TEST_F(SyncPrimitivesTest, SemaphoreWaitDeadlockDetectionSetsLastError) {
         }
         state_cv.notify_all();
 
-        auto result = SyncManager::Instance().WaitSemaphore(second, 1000);
+        auto result = kernel_->sync->WaitSemaphore(second, 1000);
         if (result == BML_RESULT_OK) {
-            SyncManager::Instance().SignalSemaphore(second, 1);
+            kernel_->sync->SignalSemaphore(second, 1);
         }
-        SyncManager::Instance().SignalSemaphore(first, 1);
+        kernel_->sync->SignalSemaphore(first, 1);
     });
 
     std::thread thread_b([&]() {
@@ -700,7 +700,7 @@ TEST_F(SyncPrimitivesTest, SemaphoreWaitDeadlockDetectionSetsLastError) {
             state_cv.wait(lk, [&] { return a_has_first; });
         }
 
-        ASSERT_EQ(SyncManager::Instance().WaitSemaphore(second, BML_TIMEOUT_INFINITE), BML_RESULT_OK);
+        ASSERT_EQ(kernel_->sync->WaitSemaphore(second, BML_TIMEOUT_INFINITE), BML_RESULT_OK);
         {
             std::lock_guard<std::mutex> guard(state_mutex);
             b_has_second = true;
@@ -713,7 +713,7 @@ TEST_F(SyncPrimitivesTest, SemaphoreWaitDeadlockDetectionSetsLastError) {
         }
 
         BML::Core::ClearLastErrorInfo();
-        auto lock_result = SyncManager::Instance().WaitSemaphore(first, 1000);
+        auto lock_result = kernel_->sync->WaitSemaphore(first, 1000);
 
         DeadlockInfo info{};
         info.code = lock_result;
@@ -725,9 +725,9 @@ TEST_F(SyncPrimitivesTest, SemaphoreWaitDeadlockDetectionSetsLastError) {
         }
 
         if (lock_result == BML_RESULT_OK) {
-            SyncManager::Instance().SignalSemaphore(first, 1);
+            kernel_->sync->SignalSemaphore(first, 1);
         }
-        SyncManager::Instance().SignalSemaphore(second, 1);
+        kernel_->sync->SignalSemaphore(second, 1);
         result_promise.set_value(info);
     });
 
@@ -738,6 +738,6 @@ TEST_F(SyncPrimitivesTest, SemaphoreWaitDeadlockDetectionSetsLastError) {
     EXPECT_EQ(info.code, BML_RESULT_SYNC_DEADLOCK);
     EXPECT_EQ(info.api, "bmlSemaphoreWait");
 
-    SyncManager::Instance().DestroySemaphore(second);
-    SyncManager::Instance().DestroySemaphore(first);
+    kernel_->sync->DestroySemaphore(second);
+    kernel_->sync->DestroySemaphore(first);
 }
