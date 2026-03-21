@@ -366,6 +366,13 @@ add_bml_test(ContextLifecycleTests
         bml_test_core_support
 )
 
+add_bml_test(LeaseManagerTests
+        SOURCES
+        LeaseManagerTests.cpp
+        DEPENDENCIES
+        bml_test_runtime_support
+)
+
 add_bml_test(ConfigStoreConcurrencyTests
         SOURCES
         ConfigStoreConcurrencyTests.cpp

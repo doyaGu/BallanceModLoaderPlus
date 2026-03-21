@@ -38,6 +38,9 @@ namespace BML::Core {
         void CleanupConsumer(const std::string &consumer_id);
         void Reset();
 
+        size_t GetOutstandingLeaseHandlesForTest() const;
+        size_t GetOutstandingRegistrationHandlesForTest() const;
+
         LeaseManager() = default;
 
     private:
@@ -60,6 +63,8 @@ namespace BML::Core {
         std::unordered_map<BML_InterfaceLease, InterfaceLeaseRecord> m_InterfaceLeases;
         std::unordered_map<BML_InterfaceRegistration, InterfaceRegistrationRecord> m_InterfaceRegistrations;
         std::unordered_set<std::string> m_BlockedProviders;
+        size_t m_OutstandingLeaseHandles{0};
+        size_t m_OutstandingRegistrationHandles{0};
     };
 } // namespace BML::Core
 

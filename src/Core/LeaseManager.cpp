@@ -17,6 +17,36 @@ struct BML_InterfaceRegistration_T {
 };
 
 namespace BML::Core {
+    namespace {
+        template <typename HandleT, typename MapT, typename PredicateT>
+        void DestroyMatchingHandles(MapT &records,
+                                    size_t &outstanding_count,
+                                    PredicateT &&predicate) {
+            for (auto it = records.begin(); it != records.end();) {
+                if (!predicate(it->second)) {
+                    ++it;
+                    continue;
+                }
+                auto *handle = static_cast<HandleT *>(it->first);
+                it = records.erase(it);
+                delete handle;
+                if (outstanding_count > 0) {
+                    --outstanding_count;
+                }
+            }
+        }
+
+        template <typename HandleT, typename MapT>
+        void DestroyAllHandles(MapT &records, size_t &outstanding_count) {
+            for (auto &[handle, record] : records) {
+                (void) record;
+                delete static_cast<HandleT *>(handle);
+            }
+            records.clear();
+            outstanding_count = 0;
+        }
+    } // namespace
+
     BML_Result LeaseManager::CreateInterfaceLease(const std::string &interface_id,
                                                   const std::string &provider_id,
                                                   const std::string &consumer_id,
@@ -36,6 +66,7 @@ namespace BML::Core {
             m_InterfaceLeases.emplace(lease, InterfaceLeaseRecord{
                 lease->id, interface_id, provider_id, consumer_id
             });
+            ++m_OutstandingLeaseHandles;
         }
 
         *out_lease = lease;
@@ -54,6 +85,9 @@ namespace BML::Core {
                 return BML_RESULT_INVALID_HANDLE;
             }
             m_InterfaceLeases.erase(it);
+            if (m_OutstandingLeaseHandles > 0) {
+                --m_OutstandingLeaseHandles;
+            }
         }
 
         delete lease;
@@ -79,6 +113,7 @@ namespace BML::Core {
             m_InterfaceRegistrations.emplace(registration, InterfaceRegistrationRecord{
                 registration->id, interface_id, provider_id, consumer_id
             });
+            ++m_OutstandingRegistrationHandles;
         }
 
         *out_registration = registration;
@@ -97,6 +132,9 @@ namespace BML::Core {
                 return BML_RESULT_INVALID_HANDLE;
             }
             m_InterfaceRegistrations.erase(it);
+            if (m_OutstandingRegistrationHandles > 0) {
+                --m_OutstandingRegistrationHandles;
+            }
         }
 
         delete registration;
@@ -197,42 +235,28 @@ namespace BML::Core {
 
     void LeaseManager::CleanupProvider(const std::string &provider_id) {
         std::lock_guard<std::mutex> lock(m_Mutex);
-        for (auto it = m_InterfaceLeases.begin(); it != m_InterfaceLeases.end();) {
-            if (it->second.provider_id == provider_id) {
-                it = m_InterfaceLeases.erase(it);
-            } else {
-                ++it;
-            }
-        }
-
-        for (auto it = m_InterfaceRegistrations.begin(); it != m_InterfaceRegistrations.end();) {
-            if (it->second.provider_id == provider_id) {
-                it = m_InterfaceRegistrations.erase(it);
-            } else {
-                ++it;
-            }
-        }
+        DestroyMatchingHandles<BML_InterfaceLease_T>(
+            m_InterfaceLeases,
+            m_OutstandingLeaseHandles,
+            [&](const InterfaceLeaseRecord &record) { return record.provider_id == provider_id; });
+        DestroyMatchingHandles<BML_InterfaceRegistration_T>(
+            m_InterfaceRegistrations,
+            m_OutstandingRegistrationHandles,
+            [&](const InterfaceRegistrationRecord &record) { return record.provider_id == provider_id; });
 
         m_BlockedProviders.erase(provider_id);
     }
 
     void LeaseManager::CleanupConsumer(const std::string &consumer_id) {
         std::lock_guard<std::mutex> lock(m_Mutex);
-        for (auto it = m_InterfaceLeases.begin(); it != m_InterfaceLeases.end();) {
-            if (it->second.consumer_id == consumer_id) {
-                it = m_InterfaceLeases.erase(it);
-            } else {
-                ++it;
-            }
-        }
-
-        for (auto it = m_InterfaceRegistrations.begin(); it != m_InterfaceRegistrations.end();) {
-            if (it->second.consumer_id == consumer_id) {
-                it = m_InterfaceRegistrations.erase(it);
-            } else {
-                ++it;
-            }
-        }
+        DestroyMatchingHandles<BML_InterfaceLease_T>(
+            m_InterfaceLeases,
+            m_OutstandingLeaseHandles,
+            [&](const InterfaceLeaseRecord &record) { return record.consumer_id == consumer_id; });
+        DestroyMatchingHandles<BML_InterfaceRegistration_T>(
+            m_InterfaceRegistrations,
+            m_OutstandingRegistrationHandles,
+            [&](const InterfaceRegistrationRecord &record) { return record.consumer_id == consumer_id; });
     }
 
     uint32_t LeaseManager::GetLeaseCountForInterface(const std::string &interface_id) const {
@@ -249,9 +273,20 @@ namespace BML::Core {
 
     void LeaseManager::Reset() {
         std::lock_guard<std::mutex> lock(m_Mutex);
-        m_InterfaceLeases.clear();
-        m_InterfaceRegistrations.clear();
+        DestroyAllHandles<BML_InterfaceLease_T>(m_InterfaceLeases, m_OutstandingLeaseHandles);
+        DestroyAllHandles<BML_InterfaceRegistration_T>(
+            m_InterfaceRegistrations, m_OutstandingRegistrationHandles);
         m_BlockedProviders.clear();
         m_NextId = 1;
+    }
+
+    size_t LeaseManager::GetOutstandingLeaseHandlesForTest() const {
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        return m_OutstandingLeaseHandles;
+    }
+
+    size_t LeaseManager::GetOutstandingRegistrationHandlesForTest() const {
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        return m_OutstandingRegistrationHandles;
     }
 } // namespace BML::Core
