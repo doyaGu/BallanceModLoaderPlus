@@ -468,13 +468,13 @@ namespace BML::Core {
             }
         }
 
-        auto &apiRegistry = ApiRegistry::Instance();
+        auto *apiRegistry = GetKernelOrNull()->api_registry.get();
         for (const auto &module : m_LoadedModules) {
             if (!module.mod_handle)
                 continue;
-            ConfigStore::Instance().FlushAndRelease(module.mod_handle.get());
+            GetKernelOrNull()->config->FlushAndRelease(module.mod_handle.get());
             RunExtensionProviderCleanupHook(module.mod_handle->id);
-            apiRegistry.UnregisterByProvider(module.mod_handle->id);
+            apiRegistry->UnregisterByProvider(module.mod_handle->id);
             UnregisterResourceTypesForProvider(module.mod_handle->id);
         }
 

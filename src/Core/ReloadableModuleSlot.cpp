@@ -10,6 +10,7 @@
 #include "Context.h"
 #include "CrashDumpWriter.h"
 #include "FaultTracker.h"
+#include "KernelServices.h"
 #include "Logging.h"
 #include "ModManifest.h"
 #include "ModuleLifecycle.h"
@@ -555,9 +556,9 @@ namespace BML::Core {
                     mod_id.empty() ? "unknown" : mod_id.c_str(),
                     ReloadFailureToString(caught_failure),
                     caught_code);
-            CrashDumpWriter::Instance().WriteDumpOnce(mod_id, caught_code);
+            GetKernelOrNull()->crash_dump->WriteDumpOnce(mod_id, caught_code);
             if (!mod_id.empty()) {
-                FaultTracker::Instance().RecordFault(mod_id, caught_code);
+                GetKernelOrNull()->fault_tracker->RecordFault(mod_id, caught_code);
             }
             m_LastFailure = caught_failure;
             result = -1;

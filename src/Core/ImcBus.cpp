@@ -37,6 +37,7 @@
 #include "CrashDumpWriter.h"
 #include "FaultTracker.h"
 #include "FixedBlockPool.h"
+#include "KernelServices.h"
 #include "Logging.h"
 #include "MpscRingBuffer.h"
 #include "CoreErrors.h"
@@ -724,7 +725,7 @@ struct BML_Future_T {
 
     void NotifyCallbacks(std::vector<FutureCallbackEntry> &&pending_callbacks) {
         cv.notify_all();
-        BML_Context ctx = BML::Core::Context::Instance().GetHandle();
+        BML_Context ctx = BML::Core::GetKernelOrNull()->context->GetHandle();
         for (const auto &entry : pending_callbacks) {
             if (entry.fn)
                 entry.fn(ctx, this, entry.user_data);
@@ -1075,7 +1076,7 @@ namespace BML::Core {
             if (!current) {
                 return nullptr;
             }
-            return Context::Instance().ResolveModHandle(current);
+            return GetKernelOrNull()->context->ResolveModHandle(current);
         }
 
         BML_Result ImcBusImpl::ResolveRegistrationOwner(BML_Mod *out_owner) const {
@@ -1260,7 +1261,7 @@ namespace BML::Core {
             if (!sub || sub->closed.load(std::memory_order_acquire) || !sub->handler)
                 return;
 
-            BML_Context ctx = Context::Instance().GetHandle();
+            BML_Context ctx = GetKernelOrNull()->context->GetHandle();
 
             try {
                 DispatchSubscriptionScope dispatch_scope(sub);
@@ -1273,7 +1274,7 @@ namespace BML::Core {
                 if (seh_code != 0) {
                     std::string owner_id;
                     if (sub->owner) {
-                        auto *mod = Context::Instance().ResolveModHandle(sub->owner);
+                        auto *mod = GetKernelOrNull()->context->ResolveModHandle(sub->owner);
                         if (mod) owner_id = mod->id;
                     }
                     CoreLog(BML_LOG_ERROR, kImcLogCategory,
@@ -1282,9 +1283,9 @@ namespace BML::Core {
                             seh_code, static_cast<unsigned>(topic),
                             owner_id.empty() ? "unknown" : owner_id.c_str());
 
-                    CrashDumpWriter::Instance().WriteDumpOnce(owner_id, seh_code);
+                    GetKernelOrNull()->crash_dump->WriteDumpOnce(owner_id, seh_code);
                     if (!owner_id.empty()) {
-                        FaultTracker::Instance().RecordFault(owner_id, seh_code);
+                        GetKernelOrNull()->fault_tracker->RecordFault(owner_id, seh_code);
                     }
                     sub->closed.store(true, std::memory_order_release);
                 } else {
@@ -1747,7 +1748,7 @@ namespace BML::Core {
                 return BML_RESULT_INVALID_ARGUMENT;
 
             BML_EventResult final_result = BML_EVENT_CONTINUE;
-            BML_Context ctx = Context::Instance().GetHandle();
+            BML_Context ctx = GetKernelOrNull()->context->GetHandle();
 
             // Phase 1: Run intercept handlers in execution_order
             // Collect interceptors under SnapshotGuard, then release guard before dispatch
@@ -1791,7 +1792,7 @@ namespace BML::Core {
                             if (seh_code != 0) {
                                 std::string owner_id;
                                 if (sub->owner) {
-                                    auto *mod = Context::Instance().ResolveModHandle(sub->owner);
+                                    auto *mod = GetKernelOrNull()->context->ResolveModHandle(sub->owner);
                                     if (mod) owner_id = mod->id;
                                 }
                                 CoreLog(BML_LOG_ERROR, kImcLogCategory,
@@ -1799,9 +1800,9 @@ namespace BML::Core {
                                         "owned by module '%s' -- unsubscribing",
                                         seh_code, static_cast<unsigned>(topic),
                                         owner_id.empty() ? "unknown" : owner_id.c_str());
-                                CrashDumpWriter::Instance().WriteDumpOnce(owner_id, seh_code);
+                                GetKernelOrNull()->crash_dump->WriteDumpOnce(owner_id, seh_code);
                                 if (!owner_id.empty()) {
-                                    FaultTracker::Instance().RecordFault(owner_id, seh_code);
+                                    GetKernelOrNull()->fault_tracker->RecordFault(owner_id, seh_code);
                                 }
                                 sub->closed.store(true, std::memory_order_release);
                                 result = BML_EVENT_CONTINUE; // Treat crash as CONTINUE
@@ -2092,7 +2093,7 @@ namespace BML::Core {
             req_msg.msg_id = request->msg_id;
             req_msg.flags = 0;
 
-            BML_Context ctx = Context::Instance().GetHandle();
+            BML_Context ctx = GetKernelOrNull()->context->GetHandle();
 
             // Snapshot middleware under lock
             std::vector<RpcMiddlewareEntry> middleware_snapshot;
@@ -2430,7 +2431,7 @@ namespace BML::Core {
 
             if (s->on_chunk && s->chunk_topic != BML_TOPIC_ID_INVALID) {
                 BML_ImcMessage msg = BML_IMC_MSG(data, size);
-                BML_Context ctx = Context::Instance().GetHandle();
+                BML_Context ctx = GetKernelOrNull()->context->GetHandle();
                 s->on_chunk(ctx, s->chunk_topic, &msg, s->user_data);
             }
             return BML_RESULT_OK;
@@ -2534,7 +2535,7 @@ namespace BML::Core {
                 req_msg.msg_id = request->msg_id;
             }
 
-            BML_Context ctx = Context::Instance().GetHandle();
+            BML_Context ctx = GetKernelOrNull()->context->GetHandle();
             BML_Result result = BML_RESULT_INTERNAL_ERROR;
             try {
                 result = handler_entry.handler(ctx, rpc_id, &req_msg, stream, handler_entry.user_data);
@@ -2642,7 +2643,7 @@ namespace BML::Core {
             }
 
             if (invoke_now) {
-                BML_Context ctx = Context::Instance().GetHandle();
+                BML_Context ctx = GetKernelOrNull()->context->GetHandle();
                 callback(ctx, future, user_data);
             }
             return BML_RESULT_OK;

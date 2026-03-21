@@ -8,8 +8,9 @@
 
 #include "bml_errors.h"
 #include "bml_types.h"
-#include "Logging.h"
 #include "DiagnosticManager.h"
+#include "KernelServices.h"
+#include "Logging.h"
 
 namespace BML::Core {
     namespace detail {
@@ -97,7 +98,7 @@ namespace BML::Core {
         if (code == BML_RESULT_OK)
             return BML_RESULT_OK;
 
-        if (!DiagnosticManager::Instance().HasLastError()) {
+        if (!GetKernelOrNull()->diagnostics->HasLastError()) {
             SetLastError(code, GetErrorString(code), api_name, source_file, source_line);
         }
         return code;

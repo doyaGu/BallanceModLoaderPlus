@@ -20,6 +20,7 @@
 #include "bml_topics.h"
 
 #include "Context.h"
+#include "KernelServices.h"
 #include "HotReloadCoordinator.h"
 #include "ImcBus.h"
 #include "Logging.h"
@@ -113,12 +114,12 @@ namespace BML::Core {
         }
 
         void InvalidateRuntimeProvidersForSnapshot(const std::vector<LoadedModuleSnapshot> &modules) {
-            auto &context = Context::Instance();
+            auto *context = GetKernelOrNull()->context.get();
             for (const auto &module : modules) {
                 if (module.id.empty()) {
                     continue;
                 }
-                context.InvalidateRuntimeProvider(module.id);
+                context->InvalidateRuntimeProvider(module.id);
             }
         }
     } // namespace
@@ -132,7 +133,7 @@ namespace BML::Core {
         ManifestLoadResult manifestResult;
         if (!LoadManifestsFromDirectory(mods_dir, manifestResult)) {
             out_diag.manifest_errors = manifestResult.errors;
-            Context::Instance().ClearManifests();
+            GetKernelOrNull()->context->ClearManifests();
             m_DiscoveredOrder.clear();
             ApplyDiagnostics(out_diag);
             return false;
@@ -144,7 +145,7 @@ namespace BML::Core {
         if (!BuildLoadOrder(manifestResult, loadOrder, warnings, depError)) {
             out_diag.manifest_errors = manifestResult.errors;
             out_diag.dependency_error = depError;
-            Context::Instance().ClearManifests();
+            GetKernelOrNull()->context->ClearManifests();
             m_DiscoveredOrder.clear();
             ApplyDiagnostics(out_diag);
             return false;
@@ -166,10 +167,10 @@ namespace BML::Core {
         // between here and LoadDiscovered().
         m_DiscoveredOrder = loadOrder;
 
-        auto &ctx = Context::Instance();
-        ctx.ClearManifests();
+        auto *ctx = GetKernelOrNull()->context.get();
+        ctx->ClearManifests();
         for (auto &manifest : manifestResult.manifests) {
-            ctx.RegisterManifest(std::move(manifest));
+            ctx->RegisterManifest(std::move(manifest));
         }
 
         ApplyDiagnostics(out_diag);
@@ -185,23 +186,23 @@ namespace BML::Core {
             return false;
         }
 
-        auto &ctx = Context::Instance();
+        auto *ctx = GetKernelOrNull()->context.get();
         std::vector<LoadedModule> loadedModules;
         ModuleLoadError loadError;
 
         if (!LoadModules(m_DiscoveredOrder,
-                         ctx,
+                         *ctx,
                          &bmlGetProcAddress,
                          loadedModules,
                          loadError)) {
             out_diag.load_error = loadError;
-            ctx.ShutdownModules();
+            ctx->ShutdownModules();
             ApplyDiagnostics(out_diag);
             return false;
         }
 
         for (auto &module : loadedModules) {
-            ctx.AddLoadedModule(std::move(module));
+            ctx->AddLoadedModule(std::move(module));
         }
 
         RecordLoadOrder(m_DiscoveredOrder, out_diag);
@@ -225,15 +226,15 @@ namespace BML::Core {
     void ModuleRuntime::Shutdown() {
         m_DiagCallback = nullptr;
         StopHotReloadCoordinator();
-        const auto loadedModules = Context::Instance().GetLoadedModuleSnapshot();
-        Context::Instance().ShutdownModules();
+        const auto loadedModules = GetKernelOrNull()->context->GetLoadedModuleSnapshot();
+        GetKernelOrNull()->context->ShutdownModules();
         InvalidateRuntimeProvidersForSnapshot(loadedModules);
     }
 
     void ModuleRuntime::FilterDisabledModules(std::vector<ResolvedNode> &order) const {
         auto removed = std::remove_if(order.begin(), order.end(),
             [](const ResolvedNode &node) {
-                return FaultTracker::Instance().IsDisabled(node.id);
+                return GetKernelOrNull()->fault_tracker->IsDisabled(node.id);
             });
         for (auto it = removed; it != order.end(); ++it) {
             CoreLog(BML_LOG_WARN, kModuleRuntimeLogCategory,
@@ -289,12 +290,12 @@ namespace BML::Core {
             return false;
         }
 
-        auto &ctx = Context::Instance();
-        BroadcastLifecycleEvent(BML_TOPIC_SYSTEM_MOD_UNLOAD, ctx.GetLoadedModuleSnapshot());
-        const auto priorLoadedModules = ctx.GetLoadedModuleSnapshot();
-        ctx.ShutdownModules();
+        auto *ctx = GetKernelOrNull()->context.get();
+        BroadcastLifecycleEvent(BML_TOPIC_SYSTEM_MOD_UNLOAD, ctx->GetLoadedModuleSnapshot());
+        const auto priorLoadedModules = ctx->GetLoadedModuleSnapshot();
+        ctx->ShutdownModules();
         InvalidateRuntimeProvidersForSnapshot(priorLoadedModules);
-        ctx.ClearManifests();
+        ctx->ClearManifests();
         // Note: Extensions are cleaned up per-provider in ShutdownModules()
 
         ManifestLoadResult manifestResult;
@@ -325,28 +326,28 @@ namespace BML::Core {
         m_DiscoveredOrder = loadOrder;
 
         for (auto &manifest : manifestResult.manifests) {
-            ctx.RegisterManifest(std::move(manifest));
+            ctx->RegisterManifest(std::move(manifest));
         }
 
         std::vector<LoadedModule> loadedModules;
         ModuleLoadError loadError;
         if (!LoadModules(loadOrder,
-                         ctx,
+                         *ctx,
                          &bmlGetProcAddress,
                          loadedModules,
                          loadError)) {
             out_diag.load_error = loadError;
-            ctx.ShutdownModules();
+            ctx->ShutdownModules();
             // Note: Extensions cleaned up in ShutdownModules()
             ApplyDiagnostics(out_diag);
             return false;
         }
 
         for (auto &module : loadedModules) {
-            ctx.AddLoadedModule(std::move(module));
+            ctx->AddLoadedModule(std::move(module));
         }
 
-        BroadcastLifecycleEvent(BML_TOPIC_SYSTEM_MOD_RELOAD, ctx.GetLoadedModuleSnapshot());
+        BroadcastLifecycleEvent(BML_TOPIC_SYSTEM_MOD_RELOAD, ctx->GetLoadedModuleSnapshot());
         ApplyDiagnostics(out_diag);
         return true;
     }
@@ -378,7 +379,7 @@ namespace BML::Core {
         }
 
         // Register loaded modules for hot reload
-        auto manifests = Context::Instance().GetManifestSnapshot();
+        auto manifests = GetKernelOrNull()->context->GetManifestSnapshot();
         for (const auto &manifest : manifests) {
 
             // Build DLL path from manifest
@@ -416,7 +417,7 @@ namespace BML::Core {
         if (!m_HotReloadEnabled)
             return;
         if (!m_HotReloadCoordinator) {
-            m_HotReloadCoordinator = std::make_unique<HotReloadCoordinator>(Context::Instance());
+            m_HotReloadCoordinator = std::make_unique<HotReloadCoordinator>(*GetKernelOrNull()->context);
 
             HotReloadSettings settings;
             settings.enabled = true;

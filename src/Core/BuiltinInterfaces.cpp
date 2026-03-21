@@ -3,6 +3,7 @@
 #include "ApiRegistry.h"
 #include "Context.h"
 #include "InterfaceRegistry.h"
+#include "KernelServices.h"
 #include "LeaseManager.h"
 
 #include "bml_builtin_interfaces.h"
@@ -27,12 +28,12 @@ namespace BML::Core {
 
         template <typename T>
         T ResolveApi(const char *name) {
-            return reinterpret_cast<T>(ApiRegistry::Instance().Get(name));
+            return reinterpret_cast<T>(GetKernelOrNull()->api_registry->Get(name));
         }
 
         BML_Bool BML_API_GetInterfaceDescriptorRuntime(const char *interface_id,
                                                        BML_InterfaceRuntimeDesc *out_desc) {
-            return InterfaceRegistry::Instance().GetDescriptor(interface_id, out_desc) == BML_RESULT_OK
+            return GetKernelOrNull()->interface_registry->GetDescriptor(interface_id, out_desc) == BML_RESULT_OK
                 ? BML_TRUE
                 : BML_FALSE;
         }
@@ -40,37 +41,37 @@ namespace BML::Core {
         void BML_API_EnumerateInterfacesRuntime(PFN_BML_InterfaceRuntimeEnumerator callback,
                                                 void *user_data,
                                                 uint64_t required_flags_mask) {
-            InterfaceRegistry::Instance().Enumerate(callback, user_data, required_flags_mask);
+            GetKernelOrNull()->interface_registry->Enumerate(callback, user_data, required_flags_mask);
         }
 
         BML_Bool BML_API_InterfaceExists(const char *interface_id) {
-            return InterfaceRegistry::Instance().Exists(interface_id) ? BML_TRUE : BML_FALSE;
+            return GetKernelOrNull()->interface_registry->Exists(interface_id) ? BML_TRUE : BML_FALSE;
         }
 
         BML_Bool BML_API_IsInterfaceCompatible(const char *interface_id,
                                                 const BML_Version *required_abi) {
-            return InterfaceRegistry::Instance().IsCompatible(interface_id, required_abi)
+            return GetKernelOrNull()->interface_registry->IsCompatible(interface_id, required_abi)
                 ? BML_TRUE : BML_FALSE;
         }
 
         void BML_API_EnumerateByProvider(const char *provider_id,
                                           PFN_BML_InterfaceRuntimeEnumerator callback,
                                           void *user_data) {
-            InterfaceRegistry::Instance().EnumerateByProvider(provider_id, callback, user_data);
+            GetKernelOrNull()->interface_registry->EnumerateByProvider(provider_id, callback, user_data);
         }
 
         void BML_API_EnumerateByCapability(uint64_t required_caps,
                                             PFN_BML_InterfaceRuntimeEnumerator callback,
                                             void *user_data) {
-            InterfaceRegistry::Instance().EnumerateByCapability(required_caps, callback, user_data);
+            GetKernelOrNull()->interface_registry->EnumerateByCapability(required_caps, callback, user_data);
         }
 
         uint32_t BML_API_GetInterfaceCount() {
-            return InterfaceRegistry::Instance().GetCount();
+            return GetKernelOrNull()->interface_registry->GetCount();
         }
 
         uint32_t BML_API_GetLeaseCount(const char *interface_id) {
-            return InterfaceRegistry::Instance().GetLeaseCount(interface_id);
+            return GetKernelOrNull()->interface_registry->GetLeaseCount(interface_id);
         }
 
         BML_Result BML_API_RegisterHostContribution(BML_Mod provider_mod,
@@ -80,27 +81,27 @@ namespace BML::Core {
                 return BML_RESULT_INVALID_ARGUMENT;
             }
 
-            auto *consumer = Context::Instance().ResolveCurrentConsumer();
-            auto *provider = Context::Instance().ResolveModHandle(provider_mod);
+            auto *consumer = GetKernelOrNull()->context->ResolveCurrentConsumer();
+            auto *provider = GetKernelOrNull()->context->ResolveModHandle(provider_mod);
             if (!consumer || !provider) {
                 return BML_RESULT_INVALID_CONTEXT;
             }
 
             BML_InterfaceRuntimeDesc desc = BML_INTERFACE_RUNTIME_DESC_INIT;
-            BML_CHECK(InterfaceRegistry::Instance().GetDescriptor(host_interface_id, &desc));
+            BML_CHECK(GetKernelOrNull()->interface_registry->GetDescriptor(host_interface_id, &desc));
             if ((desc.flags & BML_INTERFACE_FLAG_HOST_OWNED) == 0) {
                 return BML_RESULT_PERMISSION_DENIED;
             }
-            if (LeaseManager::Instance().IsProviderBlocked(provider->id)) {
+            if (GetKernelOrNull()->leases->IsProviderBlocked(provider->id)) {
                 return BML_RESULT_BUSY;
             }
 
-            return LeaseManager::Instance().CreateInterfaceRegistration(
+            return GetKernelOrNull()->leases->CreateInterfaceRegistration(
                 host_interface_id, provider->id, consumer->id, out_registration);
         }
 
         BML_Result BML_API_UnregisterHostContribution(BML_InterfaceRegistration registration) {
-            return LeaseManager::Instance().ReleaseInterfaceRegistration(registration);
+            return GetKernelOrNull()->leases->ReleaseInterfaceRegistration(registration);
         }
 
         BML_CoreContextInterface g_CoreContextInterface{};
@@ -130,7 +131,7 @@ namespace BML::Core {
             desc.implementation = implementation;
             desc.implementation_size = implementation_size;
             desc.flags = flags;
-            return InterfaceRegistry::Instance().Register(&desc, "BML");
+            return GetKernelOrNull()->interface_registry->Register(&desc, "BML");
         }
     } // namespace
 

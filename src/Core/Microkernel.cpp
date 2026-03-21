@@ -423,8 +423,8 @@ namespace BML::Core {
         {
             std::filesystem::path base = std::filesystem::path(mods_dir).parent_path();
             auto base_str = base.wstring();
-            FaultTracker::Instance().Load(base_str);
-            CrashDumpWriter::Instance().SetBaseDir(base_str);
+            GetKernelOrNull()->fault_tracker->Load(base_str);
+            GetKernelOrNull()->crash_dump->SetBaseDir(base_str);
         }
 
         ModuleBootstrapDiagnostics diag;
@@ -526,7 +526,7 @@ namespace BML::Core {
         if (!state.core_initialized || !state.modules_loaded) {
             return;
         }
-        TimerManager::Instance().Tick();
+        GetKernelOrNull()->timers->Tick();
         state.runtime.Update();
     }
 
@@ -545,27 +545,27 @@ namespace BML::Core {
         ImcPump();
 
         // Shutdown crash dump writer and fault tracker
-        CrashDumpWriter::Instance().Shutdown();
-        FaultTracker::Instance().Shutdown();
+        GetKernelOrNull()->crash_dump->Shutdown();
+        GetKernelOrNull()->fault_tracker->Shutdown();
 
         // Shutdown hook registry
-        HookRegistry::Instance().Shutdown();
+        GetKernelOrNull()->hooks->Shutdown();
 
         // Shutdown locale manager
-        LocaleManager::Instance().Shutdown();
+        GetKernelOrNull()->locale->Shutdown();
 
         // Shutdown timers
-        TimerManager::Instance().Shutdown();
+        GetKernelOrNull()->timers->Shutdown();
 
         // Shutdown IMC bus
         ImcShutdown();
 
         // Cleanup context (clears all remaining resources)
-        Context::Instance().Cleanup();
+        GetKernelOrNull()->context->Cleanup();
 
-        LeaseManager::Instance().Reset();
-        InterfaceRegistry::Instance().Clear();
-        ApiRegistry::Instance().Clear();
+        GetKernelOrNull()->leases->Reset();
+        GetKernelOrNull()->interface_registry->Clear();
+        GetKernelOrNull()->api_registry->Clear();
 
         // Tear down the service graph
         InstallKernel(nullptr);

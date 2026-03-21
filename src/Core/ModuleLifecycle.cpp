@@ -8,6 +8,7 @@
 #include "HookRegistry.h"
 #include "ImcBus.h"
 #include "InterfaceRegistry.h"
+#include "KernelServices.h"
 #include "LeaseManager.h"
 #include "LocaleManager.h"
 #include "Logging.h"
@@ -79,23 +80,23 @@ namespace BML::Core {
             return result;
         }
 
-        auto &leases = LeaseManager::Instance();
-        leases.SetProviderBlocked(module_id, true);
+        auto *leases = GetKernelOrNull()->leases.get();
+        leases->SetProviderBlocked(module_id, true);
 
         std::string detail;
-        if (leases.HasOutboundDependencies(module_id, &detail)) {
+        if (leases->HasOutboundDependencies(module_id, &detail)) {
             if (out_diagnostic) {
                 *out_diagnostic = detail;
             }
-            leases.SetProviderBlocked(module_id, false);
+            leases->SetProviderBlocked(module_id, false);
             return BML_RESULT_BUSY;
         }
 
-        if (leases.HasInboundDependencies(module_id, &detail)) {
+        if (leases->HasInboundDependencies(module_id, &detail)) {
             if (out_diagnostic) {
                 *out_diagnostic = detail;
             }
-            leases.SetProviderBlocked(module_id, false);
+            leases->SetProviderBlocked(module_id, false);
             return BML_RESULT_BUSY;
         }
 
@@ -106,7 +107,7 @@ namespace BML::Core {
         if (module_id.empty()) {
             return;
         }
-        LeaseManager::Instance().SetProviderBlocked(module_id, false);
+        GetKernelOrNull()->leases->SetProviderBlocked(module_id, false);
     }
 
     void CleanupModuleKernelState(const std::string &module_id, BML_Mod mod) {
@@ -114,13 +115,13 @@ namespace BML::Core {
             return;
         }
 
-        HookRegistry::Instance().CleanupOwner(module_id);
-        LocaleManager::Instance().CleanupModule(module_id);
-        TimerManager::Instance().CancelAllForModule(module_id);
+        GetKernelOrNull()->hooks->CleanupOwner(module_id);
+        GetKernelOrNull()->locale->CleanupModule(module_id);
+        GetKernelOrNull()->timers->CancelAllForModule(module_id);
         ImcCleanupOwner(mod);
-        InterfaceRegistry::Instance().UnregisterByProvider(module_id);
-        LeaseManager::Instance().CleanupConsumer(module_id);
-        LeaseManager::Instance().CleanupProvider(module_id);
+        GetKernelOrNull()->interface_registry->UnregisterByProvider(module_id);
+        GetKernelOrNull()->leases->CleanupConsumer(module_id);
+        GetKernelOrNull()->leases->CleanupProvider(module_id);
         CleanupConfigHooksForModule(mod);
     }
 } // namespace BML::Core

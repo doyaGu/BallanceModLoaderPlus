@@ -6,6 +6,7 @@
 
 #include "bml_types.h"
 #include "bml_errors.h"
+#include "KernelServices.h"
 
 namespace BML::Core {
     /**
@@ -100,7 +101,7 @@ namespace BML::Core {
     inline BML_Result SetLastErrorDiag(BML_Result code,
                                        const char *message,
                                        const char *api_name = nullptr) {
-        DiagnosticManager::Instance().SetError(code, message, api_name, nullptr, 0);
+        GetKernelOrNull()->diagnostics->SetError(code, message, api_name, nullptr, 0);
         return code;
     }
 } // namespace BML::Core

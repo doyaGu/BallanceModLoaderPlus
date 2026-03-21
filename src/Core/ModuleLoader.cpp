@@ -15,6 +15,7 @@
 #include "ExtensionStateHooks.h"
 #include "FaultTracker.h"
 #include "InterfaceRegistry.h"
+#include "KernelServices.h"
 #include "ModuleLifecycle.h"
 #include "Logging.h"
 #include "ResourceApi.h"
@@ -106,12 +107,12 @@ namespace BML::Core {
                 return;
             }
 
-            ConfigStore::Instance().FlushAndRelease(mod);
+            GetKernelOrNull()->config->FlushAndRelease(mod);
             RunExtensionProviderCleanupHook(module_id);
-            ApiRegistry::Instance().UnregisterByProvider(module_id);
+            GetKernelOrNull()->api_registry->UnregisterByProvider(module_id);
             UnregisterResourceTypesForProvider(module_id);
             CleanupModuleKernelState(module_id, mod);
-            Context::Instance().RemoveCreatedModHandle(mod);
+            GetKernelOrNull()->context->RemoveCreatedModHandle(mod);
         }
 
 #if defined(_MSC_VER) && !defined(__MINGW32__)
@@ -242,7 +243,7 @@ namespace BML::Core {
 
                 // Validate [provides] for provider-loaded modules too.
                 for (const auto &iface : node.manifest->provides) {
-                    if (!InterfaceRegistry::Instance().Exists(iface.interface_id.c_str())) {
+                    if (!GetKernelOrNull()->interface_registry->Exists(iface.interface_id.c_str())) {
                         CoreLog(BML_LOG_WARN, kModuleLoaderLogCategory,
                                 "Module '%s' declared [provides] interface '%s' "
                                 "but did not register it during attach",
@@ -356,8 +357,8 @@ namespace BML::Core {
                 out_error.system_code = static_cast<long>(seh_code);
                 CoreLog(BML_LOG_ERROR, kModuleLoaderLogCategory,
                         "%s: %s", node.id.c_str(), seh_msg);
-                CrashDumpWriter::Instance().WriteDumpOnce(node.id, seh_code);
-                FaultTracker::Instance().RecordFault(node.id, seh_code);
+                GetKernelOrNull()->crash_dump->WriteDumpOnce(node.id, seh_code);
+                GetKernelOrNull()->fault_tracker->RecordFault(node.id, seh_code);
                 CleanupFailedAttach(node.id, modHandle.get());
                 closeModule(handle);
                 failed_ids.insert(node.id);
@@ -379,7 +380,7 @@ namespace BML::Core {
             // Validate [provides] immediately after this module attaches,
             // before subsequent modules try to Acquire<>() the interface.
             for (const auto &iface : node.manifest->provides) {
-                if (!InterfaceRegistry::Instance().Exists(iface.interface_id.c_str())) {
+                if (!GetKernelOrNull()->interface_registry->Exists(iface.interface_id.c_str())) {
                     CoreLog(BML_LOG_WARN, kModuleLoaderLogCategory,
                             "Module '%s' declared [provides] interface '%s' "
                             "but did not register it during attach",
@@ -424,7 +425,7 @@ namespace BML::Core {
                 // invalidated if the provider module crashed/was disabled).
                 std::string entryUtf8 = utils::Utf16ToUtf8(it->path);
                 bool provider_alive =
-                    (Context::Instance().FindRuntimeProvider(entryUtf8) == it->runtime);
+                    (GetKernelOrNull()->context->FindRuntimeProvider(entryUtf8) == it->runtime);
 
                 if (provider_alive) {
                     try {

@@ -248,7 +248,7 @@ namespace BML::Core {
         }
 
         // Fire callbacks without holding the lock
-        BML_Context ctx = Context::Instance().GetHandle();
+        BML_Context ctx = GetKernelOrNull()->context->GetHandle();
         for (auto &pending : to_fire) {
             try {
 #if defined(_MSC_VER) && !defined(__MINGW32__)
@@ -259,9 +259,9 @@ namespace BML::Core {
                             "Timer callback crashed (code 0x%08lX) for module '%s'; cancelling timer",
                             seh_code,
                             pending.owner_id.empty() ? "unknown" : pending.owner_id.c_str());
-                    CrashDumpWriter::Instance().WriteDumpOnce(pending.owner_id, seh_code);
+                    GetKernelOrNull()->crash_dump->WriteDumpOnce(pending.owner_id, seh_code);
                     if (!pending.owner_id.empty()) {
-                        FaultTracker::Instance().RecordFault(pending.owner_id, seh_code);
+                        GetKernelOrNull()->fault_tracker->RecordFault(pending.owner_id, seh_code);
                     }
                     Cancel(pending.handle);
                 }

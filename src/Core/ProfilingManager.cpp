@@ -209,12 +209,12 @@ namespace BML::Core {
         if (!api_name) {
             return 0;
         }
-        return ApiRegistry::Instance().GetCallCount(api_name);
+        return GetKernelOrNull()->api_registry->GetCallCount(api_name);
     }
 
     uint64_t ProfilingManager::GetTotalAllocBytes() {
         BML_MemoryStats stats;
-        if (MemoryManager::Instance().GetStats(&stats) == BML_RESULT_OK) {
+        if (GetKernelOrNull()->memory->GetStats(&stats) == BML_RESULT_OK) {
             return stats.total_allocated;
         }
         return 0;

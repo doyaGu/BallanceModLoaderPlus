@@ -258,11 +258,11 @@ namespace BML::Core {
         loadCtx.config_path = configPath;
 
         // Get BML_Context for callbacks
-        BML_Context bmlCtx = Context::Instance().GetHandle();
+        BML_Context bmlCtx = GetKernelOrNull()->context->GetHandle();
 
         for (const auto &entry : snapshot) {
             // Skip hooks from unloaded modules
-            if (entry.owner && !Context::Instance().ResolveModHandle(entry.owner))
+            if (entry.owner && !GetKernelOrNull()->context->ResolveModHandle(entry.owner))
                 continue;
 
             auto callback = (phase == ConfigHookPhase::Pre) ? entry.hooks.on_pre_load : entry.hooks.on_post_load;
@@ -413,7 +413,7 @@ namespace BML::Core {
             }
         }
 
-        BML_Context bmlCtx = Context::Instance().GetHandle();
+        BML_Context bmlCtx = GetKernelOrNull()->context->GetHandle();
         for (auto &item : snapshot) {
             BML_ConfigKey key{};
             key.struct_size = sizeof(BML_ConfigKey);
@@ -465,7 +465,7 @@ namespace BML::Core {
             return existing->second.get();
 
         auto doc = std::make_unique<ConfigDocument>();
-        doc->owner = Context::Instance().ResolveModHandle(mod);
+        doc->owner = GetKernelOrNull()->context->ResolveModHandle(mod);
         if (!doc->owner || !doc->owner->manifest) {
             DebugLog("ConfigStore: unable to resolve manifest for module");
             return nullptr;
