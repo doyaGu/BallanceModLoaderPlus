@@ -10,7 +10,6 @@
  *   RuntimeServiceHub  - type public, single instance owned by Context
  *   BuiltinServices    - raw pointers to immutable static vtables
  *   ModuleServices     - per-module, owns Logger/Config/SubscriptionManager
- *   ScopedModuleContext - compatibility guard for legacy TLS-only paths
  */
 
 #ifndef BML_SERVICES_HPP
@@ -35,44 +34,6 @@ namespace bml {
 }
 
 namespace bml {
-
-// ============================================================================
-// ScopedModuleContext
-// ============================================================================
-
-/**
- * @brief Compatibility guard that sets g_CurrentModule for the current scope.
- *
- * Uses the BML_CoreModuleInterface vtable to set/restore the current
- * module context. New core paths should prefer explicit owner-aware APIs;
- * this guard exists only for legacy paths that still require TLS rebinding.
- */
-class ScopedModuleContext {
-public:
-    explicit ScopedModuleContext(BML_Mod mod,
-                                const BML_CoreModuleInterface *iface) noexcept
-        : m_Interface(iface) {
-        if (iface && iface->GetCurrentModule) {
-            m_Previous = iface->GetCurrentModule();
-        }
-        if (iface && iface->SetCurrentModule) {
-            iface->SetCurrentModule(mod);
-        }
-    }
-
-    ~ScopedModuleContext() {
-        if (m_Interface && m_Interface->SetCurrentModule) {
-            m_Interface->SetCurrentModule(m_Previous);
-        }
-    }
-
-    ScopedModuleContext(const ScopedModuleContext &) = delete;
-    ScopedModuleContext &operator=(const ScopedModuleContext &) = delete;
-
-private:
-    const BML_CoreModuleInterface *m_Interface = nullptr;
-    BML_Mod m_Previous = nullptr;
-};
 
 // ============================================================================
 // BuiltinServices
@@ -121,11 +82,12 @@ public:
     const BuiltinServices &Builtins() const noexcept { return m_Builtins; }
 
     template <typename T>
-    InterfaceLease<T> Acquire(const char *id,
+    InterfaceLease<T> Acquire(BML_Mod owner,
+                              const char *id,
                               uint16_t major,
                               uint16_t minor = 0,
                               uint16_t patch = 0) const {
-        return bml::AcquireInterface<T>(id, major, minor, patch);
+        return bml::AcquireInterface<T>(owner, id, major, minor, patch);
     }
 
     BuiltinServices m_Builtins{};
@@ -140,11 +102,10 @@ public:
  *
  * Holds module identity plus a reference to the RuntimeServiceHub.
  * Provides bound convenience wrappers for Log, Config, and
- * SubscriptionManager. Owner-aware interfaces are preferred first;
- * TLS rebinding is only used as a legacy fallback when the runtime
- * does not expose an explicit owner path yet.
+ * SubscriptionManager. All caller-sensitive operations use explicit
+ * module-bound runtime entry points.
  *
- * Move-only. Owned by the module instance (bml::Module::m_Services).
+ * Move-only. Held by the module instance (bml::Module::m_Services).
  */
 class ModuleServices {
 public:
@@ -223,7 +184,7 @@ public:
     }
 
     bml::HookService Hooks() const {
-        return bml::HookService(m_Hub ? m_Hub->Builtins().HookRegistry : nullptr);
+        return bml::HookService(m_Hub ? m_Hub->Builtins().HookRegistry : nullptr, m_Handle);
     }
 
     // Opt-in wrappers - require explicit #include of bml_sync.hpp / bml_profiling.hpp
@@ -350,14 +311,7 @@ public:
     template <typename T>
     InterfaceLease<T> Acquire() const {
         using Trait = bml::InterfaceTrait<T>;
-        auto lease = bml::AcquireInterfaceOwned<T>(
-            m_Handle, Trait::Id, Trait::AbiMajor, Trait::AbiMinor);
-        if (lease) {
-            return lease;
-        }
-
-        ScopedModuleContext guard(m_Handle, m_Hub ? m_Hub->Builtins().Module : nullptr);
-        return bml::Acquire<T>();
+        return bml::AcquireInterface<T>(m_Handle, Trait::Id, Trait::AbiMajor, Trait::AbiMinor);
     }
 
     template <typename T>
@@ -365,13 +319,7 @@ public:
                               uint16_t major,
                               uint16_t minor = 0,
                               uint16_t patch = 0) const {
-        auto lease = bml::AcquireInterfaceOwned<T>(m_Handle, id, major, minor, patch);
-        if (lease) {
-            return lease;
-        }
-
-        ScopedModuleContext guard(m_Handle, m_Hub ? m_Hub->Builtins().Module : nullptr);
-        return bml::AcquireInterface<T>(id, major, minor, patch);
+        return bml::AcquireInterface<T>(m_Handle, id, major, minor, patch);
     }
 
 private:

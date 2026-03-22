@@ -62,7 +62,8 @@ public:
 private:
     bool CompileScript(ScriptInstance &inst);
     void ResolveCallbacks(ScriptInstance &inst);
-    BML_Result InvokeCallback(ScriptInstance &inst, asIScriptFunction *fn);
+    BML_Result InvokeCallback(
+        ScriptInstance &inst, asIScriptFunction *fn, bool markErrorOnFailure = true);
     BML_Result InvokeLifecycle(ScriptInstance &inst, asIScriptFunction *fn);
     BML_Result RunInitCallback(ScriptInstance &inst, bool fail_if_ready);
     void LogInitFailure(const ScriptInstance &inst, BML_Result result) const;

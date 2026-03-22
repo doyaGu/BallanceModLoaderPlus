@@ -174,13 +174,17 @@ int PhysicalizeHook(const CKBehaviorContext &behcontext) {
 
             beh->GetLocalParameterValue(3, &event.mass_center);
 
-            imcBus->Publish(PhysicsHookState::s_TopicPhysicalize, &event, sizeof(event));
+            imcBus->Publish(s_Hook.owner,
+                            PhysicsHookState::s_TopicPhysicalize,
+                            &event,
+                            sizeof(event));
         }
     } else {
         // Publish OnUnphysicalize event via IMC
-        if (s_Hook.imc_bus && s_Hook.imc_bus->Publish &&
+        if (s_Hook.imc_bus && s_Hook.imc_bus->Publish && s_Hook.owner &&
             PhysicsHookState::s_TopicUnphysicalize) {
             s_Hook.imc_bus->Publish(
+                s_Hook.owner,
                 PhysicsHookState::s_TopicUnphysicalize,
                 &target,
                 sizeof(target)

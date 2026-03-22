@@ -7,7 +7,6 @@
  * - Runtime and API version querying
  * - Mod metadata access (ID, version)
  * - Capability request and checking
- * - Thread-local module binding
  * - Shutdown hook registration
  * 
  * @section core_threading Threading Model
@@ -20,10 +19,9 @@
  * The global context is created during BML initialization and remains valid
  * until shutdown. Mods can retain/release references for safe access.
  * 
- * After bootstrap, only `bmlSetCurrentModule` remains available as a global
- * proc pointer. Resolve all other Core APIs explicitly through
- * `bmlGetProcAddress(...)` or consume them through an acquired builtin
- * interface such as `bml.core.context` or `bml.core.module`.
+ * Resolve Core APIs explicitly through `bmlGetProcAddress(...)` or consume
+ * them through an acquired builtin interface such as `bml.core.context`
+ * or `bml.core.module`.
  *
  * @section core_usage Usage Example
  * @code
@@ -133,6 +131,8 @@ typedef BML_Result (*PFN_BML_ContextRelease)(BML_Context ctx);
  * @endcode
  */
 typedef BML_Context (*PFN_BML_GetGlobalContext)(void);
+typedef BML_Mod (*PFN_BML_GetHostModule)(void);
+extern PFN_BML_GetHostModule bmlGetHostModule;
 
 /**
  * @brief Function pointer type for setting user data on context
@@ -458,66 +458,6 @@ typedef BML_Result (*PFN_BML_GetManifestBool)(BML_Mod mod, const char *path, BML
  * ======================================================================== */
 
 /**
- * @defgroup CoreTLS Thread-Local Module Binding
- * @brief Bind modules to threads for implicit context resolution
- * @{
- */
-
-/**
- * @brief Function pointer type for setting thread-local module binding
- * 
- * Binds a module to the calling thread. This allows APIs that require
- * a module context to implicitly resolve it from TLS instead of requiring
- * explicit parameters.
- * 
- * @param[in] mod Module handle to bind, or NULL to clear the binding
- * @return BML_RESULT_OK on success
- * @return BML_RESULT_NOT_SUPPORTED if TLS is not available
- * 
- * @threadsafe Yes - uses per-thread storage
- * 
- * @note Previous binding is overwritten; use CurrentModuleScope for RAII
- * 
- * @code
- * // Bind module to current thread
- * bmlSetCurrentModule(my_mod);
- * 
- * // APIs that support implicit TLS lookup can now resolve the module context
- * // without taking an explicit BML_Mod parameter.
- * 
- * // Clear binding
- * bmlSetCurrentModule(NULL);
- * @endcode
- * 
- * @see PFN_BML_GetCurrentModule for querying current binding
- * @see bml::CurrentModuleScope for C++ RAII wrapper
- */
-typedef BML_Result (*PFN_BML_SetCurrentModule)(BML_Mod mod);
-
-/**
- * @brief Function pointer type for getting thread-local module binding
- * 
- * Returns the module currently bound to the calling thread via
- * bmlSetCurrentModule().
- * 
- * @return Module handle bound to current thread, or NULL if none
- * 
- * @threadsafe Yes - uses per-thread storage
- * 
- * @code
- * PFN_BML_GetCurrentModule getCurrentModule =
- *     (PFN_BML_GetCurrentModule)bmlGetProcAddress("bmlGetCurrentModule");
- * BML_Mod current = getCurrentModule ? getCurrentModule() : NULL;
- * if (current) {
- *     const char* id = NULL;
- *     getModId(current, &id);
- *     printf("Current module: %s\n", id);
- * }
- * @endcode
- */
-typedef BML_Mod (*PFN_BML_GetCurrentModule)(void);
-
-/**
  * @brief Function pointer type for getting the number of loaded modules.
  *
  * Returns the number of module handles currently loaded into the runtime.
@@ -553,8 +493,6 @@ typedef BML_Mod (*PFN_BML_GetLoadedModuleAt)(uint32_t index);
  * @threadsafe Yes
  */
 typedef BML_Mod (*PFN_BML_FindModuleById)(const char *id);
-
-/** @} */ /* end CoreTLS group */
 
 /* ========================================================================
  * Shutdown Hook Types
@@ -620,10 +558,9 @@ typedef void (*BML_ShutdownCallback)(BML_Context ctx, void *user_data);
  * 
  * @see bml::ShutdownHook for C++ RAII wrapper
  */
-typedef BML_Result (*PFN_BML_RegisterShutdownHook)(BML_Mod mod, BML_ShutdownCallback callback, void *user_data);
-typedef BML_Result (*PFN_BML_RegisterShutdownHookOwned)(BML_Mod owner,
-                                                        BML_ShutdownCallback callback,
-                                                        void *user_data);
+typedef BML_Result (*PFN_BML_RegisterShutdownHook)(BML_Mod owner,
+                                                   BML_ShutdownCallback callback,
+                                                   void *user_data);
 
 /** @} */ /* end CoreShutdown group */
 
@@ -639,16 +576,11 @@ typedef BML_Result (*PFN_BML_RegisterShutdownHookOwned)(BML_Mod owner,
  * @defgroup CoreBootstrapGlobals Bootstrap Global Function Pointers
  * @brief Bootstrap-loaded Core proc pointers
  *
- * The bootstrap-only loader contract exposes only the thread-local module
- * binding helper as a global proc pointer. All other Core APIs must be
- * resolved explicitly through `bmlGetProcAddress(...)` or consumed through an
- * acquired builtin interface.
+ * The bootstrap-only loader contract exposes no Core lifecycle globals.
+ * Resolve Core APIs explicitly through `bmlGetProcAddress(...)` or consume
+ * them through an acquired builtin interface.
  * @{
  */
-
-/** @brief Set thread-local module @see PFN_BML_SetCurrentModule */
-extern PFN_BML_SetCurrentModule bmlSetCurrentModule;
-
 /** @} */ /* end CoreBootstrapGlobals group */
 
 BML_END_CDECLS

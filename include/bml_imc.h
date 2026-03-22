@@ -397,14 +397,10 @@ typedef BML_Result (*PFN_BML_ImcGetRpcId)(const char *name, BML_RpcId *out_id);
  * publish(physics_tick_topic, &delta_time, sizeof(delta_time));
  * @endcode
  */
-typedef BML_Result (*PFN_BML_ImcPublish)(BML_TopicId topic,
+typedef BML_Result (*PFN_BML_ImcPublish)(BML_Mod owner,
+                                         BML_TopicId topic,
                                          const void *data,
                                          size_t size);
-
-typedef BML_Result (*PFN_BML_ImcPublishOwned)(BML_Mod owner,
-                                              BML_TopicId topic,
-                                              const void *data,
-                                              size_t size);
 
 /**
  * @brief Publish a message to a topic with extended options.
@@ -426,12 +422,9 @@ typedef BML_Result (*PFN_BML_ImcPublishOwned)(BML_Mod owner,
  * publishEx(physics_tick_topic, &msg);
  * @endcode
  */
-typedef BML_Result (*PFN_BML_ImcPublishEx)(BML_TopicId topic,
+typedef BML_Result (*PFN_BML_ImcPublishEx)(BML_Mod owner,
+                                           BML_TopicId topic,
                                            const BML_ImcMessage *msg);
-
-typedef BML_Result (*PFN_BML_ImcPublishExOwned)(BML_Mod owner,
-                                                BML_TopicId topic,
-                                                const BML_ImcMessage *msg);
 
 /**
  * @brief Publish a zero-copy buffer to a topic.
@@ -445,12 +438,9 @@ typedef BML_Result (*PFN_BML_ImcPublishExOwned)(BML_Mod owner,
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_ImcPublishBuffer)(BML_TopicId topic,
+typedef BML_Result (*PFN_BML_ImcPublishBuffer)(BML_Mod owner,
+                                               BML_TopicId topic,
                                                const BML_ImcBuffer *buffer);
-
-typedef BML_Result (*PFN_BML_ImcPublishBufferOwned)(BML_Mod owner,
-                                                    BML_TopicId topic,
-                                                    const BML_ImcBuffer *buffer);
 
 /**
  * @brief Subscribe to a topic.
@@ -474,16 +464,11 @@ typedef BML_Result (*PFN_BML_ImcPublishBufferOwned)(BML_Mod owner,
  * subscribe(physics_topic, on_physics_tick, NULL, &sub);
  * @endcode
  */
-typedef BML_Result (*PFN_BML_ImcSubscribe)(BML_TopicId topic,
+typedef BML_Result (*PFN_BML_ImcSubscribe)(BML_Mod owner,
+                                           BML_TopicId topic,
                                            BML_ImcHandler handler,
                                            void *user_data,
                                            BML_Subscription *out_sub);
-
-typedef BML_Result (*PFN_BML_ImcSubscribeOwned)(BML_Mod owner,
-                                                BML_TopicId topic,
-                                                BML_ImcHandler handler,
-                                                void *user_data,
-                                                BML_Subscription *out_sub);
 
 /**
  * @brief Unsubscribe and release a subscription.
@@ -523,18 +508,12 @@ typedef BML_Result (*PFN_BML_ImcSubscriptionIsActive)(BML_Subscription sub,
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_ImcSubscribeEx)(BML_TopicId topic,
+typedef BML_Result (*PFN_BML_ImcSubscribeEx)(BML_Mod owner,
+                                             BML_TopicId topic,
                                              BML_ImcHandler handler,
                                              void *user_data,
                                              const BML_SubscribeOptions *options,
                                              BML_Subscription *out_sub);
-
-typedef BML_Result (*PFN_BML_ImcSubscribeExOwned)(BML_Mod owner,
-                                                  BML_TopicId topic,
-                                                  BML_ImcHandler handler,
-                                                  void *user_data,
-                                                  const BML_SubscribeOptions *options,
-                                                  BML_Subscription *out_sub);
 
 /**
  * @brief Get statistics for a subscription.
@@ -563,20 +542,13 @@ typedef BML_Result (*PFN_BML_ImcGetSubscriptionStats)(BML_Subscription sub,
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_ImcPublishMulti)(const BML_TopicId *topics,
-                                               size_t count,
-                                               const void *data,
-                                               size_t size,
-                                               const BML_ImcMessage *msg,
-                                               size_t *out_delivered);
-
-typedef BML_Result (*PFN_BML_ImcPublishMultiOwned)(BML_Mod owner,
-                                                    const BML_TopicId *topics,
-                                                    size_t count,
-                                                    const void *data,
-                                                    size_t size,
-                                                    const BML_ImcMessage *msg,
-                                                    size_t *out_delivered);
+typedef BML_Result (*PFN_BML_ImcPublishMulti)(BML_Mod owner,
+                                              const BML_TopicId *topics,
+                                              size_t count,
+                                              const void *data,
+                                              size_t size,
+                                              const BML_ImcMessage *msg,
+                                              size_t *out_delivered);
 
 /* ========================================================================
  * Core APIs - Event Interception
@@ -598,12 +570,6 @@ typedef BML_Result (*PFN_BML_ImcPublishMultiOwned)(BML_Mod owner,
  * @threadsafe Yes
  */
 typedef BML_Result (*PFN_BML_ImcSubscribeIntercept)(
-    BML_TopicId topic,
-    BML_ImcInterceptHandler handler,
-    void *user_data,
-    BML_Subscription *out_sub);
-
-typedef BML_Result (*PFN_BML_ImcSubscribeInterceptOwned)(
     BML_Mod owner,
     BML_TopicId topic,
     BML_ImcInterceptHandler handler,
@@ -623,13 +589,6 @@ typedef BML_Result (*PFN_BML_ImcSubscribeInterceptOwned)(
  * @threadsafe Yes
  */
 typedef BML_Result (*PFN_BML_ImcSubscribeInterceptEx)(
-    BML_TopicId topic,
-    BML_ImcInterceptHandler handler,
-    void *user_data,
-    const BML_SubscribeOptions *options,
-    BML_Subscription *out_sub);
-
-typedef BML_Result (*PFN_BML_ImcSubscribeInterceptExOwned)(
     BML_Mod owner,
     BML_TopicId topic,
     BML_ImcInterceptHandler handler,
@@ -652,11 +611,6 @@ typedef BML_Result (*PFN_BML_ImcSubscribeInterceptExOwned)(
  * @threadsafe Yes
  */
 typedef BML_Result (*PFN_BML_ImcPublishInterceptable)(
-    BML_TopicId topic,
-    BML_ImcMessage *msg,
-    BML_EventResult *out_result);
-
-typedef BML_Result (*PFN_BML_ImcPublishInterceptableOwned)(
     BML_Mod owner,
     BML_TopicId topic,
     BML_ImcMessage *msg,
@@ -677,14 +631,10 @@ typedef BML_Result (*PFN_BML_ImcPublishInterceptableOwned)(
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_ImcRegisterRpc)(BML_RpcId rpc_id,
+typedef BML_Result (*PFN_BML_ImcRegisterRpc)(BML_Mod owner,
+                                             BML_RpcId rpc_id,
                                              BML_RpcHandler handler,
                                              void *user_data);
-
-typedef BML_Result (*PFN_BML_ImcRegisterRpcOwned)(BML_Mod owner,
-                                                  BML_RpcId rpc_id,
-                                                  BML_RpcHandler handler,
-                                                  void *user_data);
 
 /**
  * @brief Unregister an RPC handler.
@@ -694,9 +644,7 @@ typedef BML_Result (*PFN_BML_ImcRegisterRpcOwned)(BML_Mod owner,
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_ImcUnregisterRpc)(BML_RpcId rpc_id);
-
-typedef BML_Result (*PFN_BML_ImcUnregisterRpcOwned)(BML_Mod owner, BML_RpcId rpc_id);
+typedef BML_Result (*PFN_BML_ImcUnregisterRpc)(BML_Mod owner, BML_RpcId rpc_id);
 
 /**
  * @brief Call an RPC asynchronously.
@@ -723,14 +671,10 @@ typedef BML_Result (*PFN_BML_ImcUnregisterRpcOwned)(BML_Mod owner, BML_RpcId rpc
  * futureRelease(future);
  * @endcode
  */
-typedef BML_Result (*PFN_BML_ImcCallRpc)(BML_RpcId rpc_id,
+typedef BML_Result (*PFN_BML_ImcCallRpc)(BML_Mod owner,
+                                         BML_RpcId rpc_id,
                                          const BML_ImcMessage *request,
                                          BML_Future *out_future);
-
-typedef BML_Result (*PFN_BML_ImcCallRpcOwned)(BML_Mod owner,
-                                              BML_RpcId rpc_id,
-                                              const BML_ImcMessage *request,
-                                              BML_Future *out_future);
 
 /* ========================================================================
  * RPC Info (introspection)
@@ -828,28 +772,19 @@ typedef BML_Result (*BML_StreamingRpcHandler)(
 /**
  * @brief Register an extended RPC handler with error detail support.
  */
-typedef BML_Result (*PFN_BML_ImcRegisterRpcEx)(BML_RpcId rpc_id,
-                                                BML_RpcHandlerEx handler,
-                                                void *user_data);
-
-typedef BML_Result (*PFN_BML_ImcRegisterRpcExOwned)(BML_Mod owner,
-                                                    BML_RpcId rpc_id,
-                                                    BML_RpcHandlerEx handler,
-                                                    void *user_data);
+typedef BML_Result (*PFN_BML_ImcRegisterRpcEx)(BML_Mod owner,
+                                               BML_RpcId rpc_id,
+                                               BML_RpcHandlerEx handler,
+                                               void *user_data);
 
 /**
  * @brief Call an RPC with extended options (timeout, flags).
  */
-typedef BML_Result (*PFN_BML_ImcCallRpcEx)(BML_RpcId rpc_id,
-                                            const BML_ImcMessage *request,
-                                            const BML_RpcCallOptions *options,
-                                            BML_Future *out_future);
-
-typedef BML_Result (*PFN_BML_ImcCallRpcExOwned)(BML_Mod owner,
-                                                BML_RpcId rpc_id,
-                                                const BML_ImcMessage *request,
-                                                const BML_RpcCallOptions *options,
-                                                BML_Future *out_future);
+typedef BML_Result (*PFN_BML_ImcCallRpcEx)(BML_Mod owner,
+                                           BML_RpcId rpc_id,
+                                           const BML_ImcMessage *request,
+                                           const BML_RpcCallOptions *options,
+                                           BML_Future *out_future);
 
 /**
  * @brief Get error details from a completed future.
@@ -904,22 +839,16 @@ typedef void (*PFN_BML_ImcEnumerateRpc)(
  * @param[in] user_data   Opaque pointer passed to middleware
  * @return BML_RESULT_OK on success
  */
-typedef BML_Result (*PFN_BML_ImcAddRpcMiddleware)(BML_RpcMiddleware middleware,
-                                                   int32_t priority,
-                                                   void *user_data);
-
-typedef BML_Result (*PFN_BML_ImcAddRpcMiddlewareOwned)(BML_Mod owner,
-                                                       BML_RpcMiddleware middleware,
-                                                       int32_t priority,
-                                                       void *user_data);
+typedef BML_Result (*PFN_BML_ImcAddRpcMiddleware)(BML_Mod owner,
+                                                  BML_RpcMiddleware middleware,
+                                                  int32_t priority,
+                                                  void *user_data);
 
 /**
  * @brief Remove a previously added RPC middleware.
  */
-typedef BML_Result (*PFN_BML_ImcRemoveRpcMiddleware)(BML_RpcMiddleware middleware);
-
-typedef BML_Result (*PFN_BML_ImcRemoveRpcMiddlewareOwned)(BML_Mod owner,
-                                                          BML_RpcMiddleware middleware);
+typedef BML_Result (*PFN_BML_ImcRemoveRpcMiddleware)(BML_Mod owner,
+                                                     BML_RpcMiddleware middleware);
 
 /* ========================================================================
  * Core APIs - Streaming RPC
@@ -928,14 +857,10 @@ typedef BML_Result (*PFN_BML_ImcRemoveRpcMiddlewareOwned)(BML_Mod owner,
 /**
  * @brief Register a streaming RPC handler.
  */
-typedef BML_Result (*PFN_BML_ImcRegisterStreamingRpc)(BML_RpcId rpc_id,
-                                                       BML_StreamingRpcHandler handler,
-                                                       void *user_data);
-
-typedef BML_Result (*PFN_BML_ImcRegisterStreamingRpcOwned)(BML_Mod owner,
-                                                           BML_RpcId rpc_id,
-                                                           BML_StreamingRpcHandler handler,
-                                                           void *user_data);
+typedef BML_Result (*PFN_BML_ImcRegisterStreamingRpc)(BML_Mod owner,
+                                                      BML_RpcId rpc_id,
+                                                      BML_StreamingRpcHandler handler,
+                                                      void *user_data);
 
 /**
  * @brief Push a data chunk to a stream.
@@ -965,20 +890,13 @@ typedef BML_Result (*PFN_BML_ImcStreamError)(BML_RpcStream stream,
  * @param[in]  user_data  Opaque pointer for callbacks
  * @param[out] out_future Future handle for overall completion
  */
-typedef BML_Result (*PFN_BML_ImcCallStreamingRpc)(BML_RpcId rpc_id,
-                                                   const BML_ImcMessage *request,
-                                                   BML_ImcHandler on_chunk,
-                                                   BML_FutureCallback on_done,
-                                                   void *user_data,
-                                                   BML_Future *out_future);
-
-typedef BML_Result (*PFN_BML_ImcCallStreamingRpcOwned)(BML_Mod owner,
-                                                        BML_RpcId rpc_id,
-                                                        const BML_ImcMessage *request,
-                                                        BML_ImcHandler on_chunk,
-                                                        BML_FutureCallback on_done,
-                                                        void *user_data,
-                                                        BML_Future *out_future);
+typedef BML_Result (*PFN_BML_ImcCallStreamingRpc)(BML_Mod owner,
+                                                  BML_RpcId rpc_id,
+                                                  const BML_ImcMessage *request,
+                                                  BML_ImcHandler on_chunk,
+                                                  BML_FutureCallback on_done,
+                                                  void *user_data,
+                                                  BML_Future *out_future);
 
 /* ========================================================================
  * Core APIs - Future Management
@@ -1042,14 +960,10 @@ typedef BML_Result (*PFN_BML_ImcFutureCancel)(BML_Future future);
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_ImcFutureOnComplete)(BML_Future future,
-                                                   BML_FutureCallback callback,
-                                                   void *user_data);
-
-typedef BML_Result (*PFN_BML_ImcFutureOnCompleteOwned)(BML_Mod owner,
-                                                       BML_Future future,
-                                                       BML_FutureCallback callback,
-                                                       void *user_data);
+typedef BML_Result (*PFN_BML_ImcFutureOnComplete)(BML_Mod owner,
+                                                  BML_Future future,
+                                                  BML_FutureCallback callback,
+                                                  void *user_data);
 
 /**
  * @brief Release a future handle.
@@ -1162,11 +1076,9 @@ typedef struct BML_ImcStateMeta {
  * New subscribers with BML_IMC_SUBSCRIBE_FLAG_DELIVER_RETAINED_ON_SUBSCRIBE
  * will receive the retained state immediately.
  */
-typedef BML_Result (*PFN_BML_ImcPublishState)(BML_TopicId topic, const BML_ImcMessage *msg);
-
-typedef BML_Result (*PFN_BML_ImcPublishStateOwned)(BML_Mod owner,
-                                                   BML_TopicId topic,
-                                                   const BML_ImcMessage *msg);
+typedef BML_Result (*PFN_BML_ImcPublishState)(BML_Mod owner,
+                                              BML_TopicId topic,
+                                              const BML_ImcMessage *msg);
 
 /**
  * @brief Copy the retained state for a topic into a caller-owned buffer.

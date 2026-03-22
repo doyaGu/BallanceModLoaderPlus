@@ -379,18 +379,6 @@ namespace BML::Core {
         return FindModHandleLocked(mod);
     }
 
-    BML_Mod_T *Context::ResolveCurrentConsumer() {
-        return const_cast<BML_Mod_T *>(static_cast<const Context *>(this)->ResolveCurrentConsumer());
-    }
-
-    const BML_Mod_T *Context::ResolveCurrentConsumer() const {
-        std::lock_guard<std::mutex> lock(m_StateMutex);
-        if (!g_CurrentModule) {
-            return m_HostModHandle.get();
-        }
-        return FindModHandleLocked(g_CurrentModule);
-    }
-
     BML_Mod Context::GetModHandleById(const std::string &id) const {
         std::lock_guard<std::mutex> lock(m_StateMutex);
         if (m_HostModHandle && m_HostModHandle->id == id) {
@@ -477,17 +465,7 @@ namespace BML::Core {
             if (!module_it->mod_handle)
                 continue;
 
-            struct ModuleScope {
-                explicit ModuleScope(BML_Mod_T *mod) : previous(Context::GetCurrentModule()) {
-                    Context::SetCurrentModule(mod);
-                }
-
-                ~ModuleScope() {
-                    Context::SetCurrentModule(previous);
-                }
-
-                BML_Mod previous;
-            } scope(module_it->mod_handle.get());
+            CurrentModuleScope scope(module_it->mod_handle.get());
 
             for (auto hook_it = module_it->mod_handle->shutdown_hooks.rbegin();
                  hook_it != module_it->mod_handle->shutdown_hooks.rend();

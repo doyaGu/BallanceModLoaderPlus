@@ -1,4 +1,4 @@
-#include "BytecodeCache.h"
+﻿#include "BytecodeCache.h"
 
 #include <cstdio>
 #include <cstring>
@@ -68,7 +68,7 @@ std::filesystem::path GetCachePath(const std::filesystem::path &script_path) {
 //   [0..7]    magic "BMLASCV2"
 //   [8..11]   section_count (uint32_t)
 //   per section: uint16_t path_len + char path[path_len]
-//   [...]     combined_hash (uint64_t) — FNV-1a of all section contents + AS version
+//   [...]     combined_hash (uint64_t) - FNV-1a of all section contents + AS version
 //   [...]     bytecode blob
 
 static constexpr char kMagicV1[8] = {'B','M','L','A','S','C','V','1'};

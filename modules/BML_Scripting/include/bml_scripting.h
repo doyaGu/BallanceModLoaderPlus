@@ -59,8 +59,9 @@ typedef struct BML_ScriptEngineInterface {
     // ----------------------------------------------------------------
     // Safe dispatch into script functions
     //
-    // These set g_CurrentModule, t_CurrentScript, and timeout
-    // protection. Safe to call from any native module's callback.
+    // These maintain thread-local script state and timeout protection while
+    // runtime attribution continues to flow through the explicit BML_Mod
+    // parameter. Safe to call from any native module's callback.
     // ----------------------------------------------------------------
 
     /** Invoke a zero-arg function by name. */

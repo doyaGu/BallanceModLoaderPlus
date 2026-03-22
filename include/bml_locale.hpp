@@ -3,9 +3,8 @@
  * @brief C++ RAII wrapper for the BML localization API
  *
  * Provides `bml::Locale` with a fast-path `operator[]` that caches the
- * module's string table handle. When constructed with an explicit module
- * handle, locale calls prefer owner-aware runtime entry points and only
- * fall back to TLS rebinding for legacy runtimes.
+ * module's string table handle. Locale calls always use the bound module
+ * handle explicitly.
  */
 
 #ifndef BML_LOCALE_HPP
@@ -58,15 +57,10 @@ namespace bml {
             if (!m_Interface)
                 return false;
 
-            bool ok = false;
-            if (m_Module && BML_CORE_LOCALE_HAS_MEMBER(m_Interface, LoadOwned)) {
-                ok = m_Interface->LoadOwned(m_Module.Handle(), locale_code) == BML_RESULT_OK;
-            } else if (m_Interface->Load) {
-                CurrentModuleScope scope(m_Module.Handle(), m_Module.ModuleInterface());
-                ok = m_Interface->Load(locale_code) == BML_RESULT_OK;
-            } else {
+            if (!m_Module || !m_Interface->Load) {
                 return false;
             }
+            const bool ok = m_Interface->Load(m_Module.Handle(), locale_code) == BML_RESULT_OK;
             Invalidate();
             if (ok)
                 Bind();
@@ -83,23 +77,17 @@ namespace bml {
             if (!key)
                 return nullptr;
 
-            if (!m_CachedTable && m_Interface &&
-                (m_Interface->BindTable || BML_CORE_LOCALE_HAS_MEMBER(m_Interface, BindTableOwned)))
+            if (!m_CachedTable && m_Interface && BML_CORE_LOCALE_HAS_MEMBER(m_Interface, BindTable))
                 Bind();
 
             if (m_CachedTable && m_Interface && m_Interface->Lookup)
                 return m_Interface->Lookup(m_CachedTable, key);
 
-            if (m_Interface && (m_Interface->Get || BML_CORE_LOCALE_HAS_MEMBER(m_Interface, GetOwned))) {
-                if (m_Module && BML_CORE_LOCALE_HAS_MEMBER(m_Interface, GetOwned)) {
-                    return m_Interface->GetOwned(m_Module.Handle(), key);
-                }
-
-                CurrentModuleScope scope(m_Module.Handle(), m_Module.ModuleInterface());
-                return m_Interface->Get(key);
+            if (m_Interface && m_Module && m_Interface->Get) {
+                return m_Interface->Get(m_Module.Handle(), key);
             }
 
-            return key;
+            return nullptr;
         }
 
         /** @brief Shorthand for Get(). */
@@ -146,14 +134,8 @@ namespace bml {
         }
 
         void Bind() const {
-            if (m_Interface && (m_Interface->BindTable ||
-                BML_CORE_LOCALE_HAS_MEMBER(m_Interface, BindTableOwned))) {
-                if (m_Module && BML_CORE_LOCALE_HAS_MEMBER(m_Interface, BindTableOwned)) {
-                    m_Interface->BindTableOwned(m_Module.Handle(), &m_CachedTable);
-                } else if (m_Interface->BindTable) {
-                    CurrentModuleScope scope(m_Module.Handle(), m_Module.ModuleInterface());
-                    m_Interface->BindTable(&m_CachedTable);
-                }
+            if (m_Interface && m_Module && BML_CORE_LOCALE_HAS_MEMBER(m_Interface, BindTable)) {
+                m_Interface->BindTable(m_Module.Handle(), &m_CachedTable);
             }
         }
     };

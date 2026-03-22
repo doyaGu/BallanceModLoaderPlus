@@ -10,9 +10,12 @@ namespace BML::Scripting {
 namespace {
 
 static void ScriptLog(BML_LogSeverity severity, const std::string &message) {
-    if (!g_Builtins || !g_Builtins->Logging) return;
-    // g_CurrentModule is set by ScriptScope, so logging is attributed correctly.
-    g_Builtins->Logging->Log(nullptr, severity, "script", "%s", message.c_str());
+    const BML_Mod owner = CurrentScriptOwner();
+    if (!g_Builtins || !g_Builtins->Logging || !g_Builtins->Logging->Log || !owner) {
+        return;
+    }
+
+    g_Builtins->Logging->Log(owner, nullptr, severity, "script", "%s", message.c_str());
 }
 
 static void Script_Log(const std::string &message) { ScriptLog(BML_LOG_INFO, message); }

@@ -1,5 +1,6 @@
-#include "Microkernel.h"
+﻿#include "Microkernel.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
@@ -29,6 +30,10 @@
 #include "SyncManager.h"
 #include "TimerManager.h"
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 namespace BML::Core {
     // Defined here (not KernelServices.cpp) so that test targets linking
     // KernelServices.cpp don't pull in L0 subsystem destructors.
@@ -53,7 +58,7 @@ namespace BML::Core {
     }
 
     namespace {
-        // File-scope mutex — replaces former Meyer's singleton StateMutex().
+        // File-scope mutex that replaces the former Meyer's singleton StateMutex().
         // std::recursive_mutex has a constexpr-capable constructor on major
         // implementations, so file-scope construction is safe and deterministic.
         std::recursive_mutex s_StateMutex;
@@ -68,8 +73,8 @@ namespace BML::Core {
             BML_BootstrapState bootstrap_state{BML_BOOTSTRAP_STATE_NOT_STARTED};
         };
 
-        // Explicitly-managed lifetime — created in InitializeCore(), destroyed
-        // in ShutdownMicrokernel().  Replaces the former Meyer's singleton
+        // Explicitly-managed lifetime, created in InitializeCore() and destroyed
+        // in ShutdownMicrokernel(). Replaces the former Meyer's singleton
         // State() to eliminate static-destruction-order risks.
         std::unique_ptr<MicrokernelState> s_State;
 
@@ -228,9 +233,20 @@ namespace BML::Core {
                 static_cast<uint32_t>(snapshot.load_order.size());
         }
 
-        // Use CoreLog for consistent logging
         inline void DebugLog(const std::string &message) {
-            CoreLog(BML_LOG_INFO, "microkernel", "%s", message.c_str());
+            if (message.empty()) {
+                return;
+            }
+
+#if defined(_MSC_VER)
+            std::string line = "[microkernel] ";
+            line += message;
+            line.push_back('\n');
+            OutputDebugStringA(line.c_str());
+#endif
+
+            std::fprintf(stdout, "[microkernel] %s\n", message.c_str());
+            std::fflush(stdout);
         }
 
         std::wstring GetEnvironmentOverride() {
@@ -567,8 +583,8 @@ namespace BML::Core {
 
         // Tear down the service graph and destroy all state in one shot.
         // KernelServices destructor guarantees reverse-declaration-order cleanup.
-        InstallKernel(nullptr);
         s_State.reset();
+        InstallKernel(nullptr);
     }
 
     const ModuleBootstrapDiagnostics &GetBootstrapDiagnostics() {

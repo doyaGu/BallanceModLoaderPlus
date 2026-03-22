@@ -17,7 +17,7 @@ class ScriptInstanceManager;
 
 // A suspended coroutine waiting to resume.
 struct SuspendedCoroutine {
-    asIScriptContext *context = nullptr; // Owned, must Release
+    asIScriptContext *context = nullptr; // Managed here; must Release
     ScriptInstance *instance = nullptr;
     uint32_t resume_frame = 0;          // 0 = resume next frame
     std::chrono::steady_clock::time_point resume_time{}; // zero = use frame count

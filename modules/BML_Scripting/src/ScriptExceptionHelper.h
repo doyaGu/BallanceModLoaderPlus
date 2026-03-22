@@ -15,7 +15,7 @@ namespace BML::Scripting {
 // Log an AngelScript exception with full context (function, file, line).
 // Must be called before ReleaseContext because the context holds exception info.
 inline void LogScriptException(asIScriptContext *ctx, const ScriptInstance &inst) {
-    if (!ctx || !g_Builtins || !g_Builtins->Logging) return;
+    if (!ctx || !g_Builtins || !g_Builtins->Logging || !g_Builtins->Logging->Log) return;
 
     const char *exception_str = ctx->GetExceptionString();
     if (!exception_str) exception_str = "(unknown exception)";
@@ -33,12 +33,13 @@ inline void LogScriptException(asIScriptContext *ctx, const ScriptInstance &inst
     BML_Context bml_ctx = g_Builtins->Context
         ? g_Builtins->Context->GetGlobalContext() : nullptr;
 
-    g_Builtins->Logging->Log(bml_ctx, BML_LOG_ERROR, "script",
-                             "[%s] Exception in %s (%s:%d,%d): %s",
-                             inst.mod_id.c_str(), func_decl, section, line, col, exception_str);
+    g_Builtins->Logging->Log(inst.mod_handle, bml_ctx, BML_LOG_ERROR, "script",
+                                  "[%s] Exception in %s (%s:%d,%d): %s",
+                                  inst.mod_id.c_str(), func_decl, section, line, col,
+                                  exception_str);
 
     // Also forward to console output
-    if (g_Builtins->ImcBus) {
+    if (g_Builtins->ImcBus && g_Builtins->ImcBus->Publish) {
         char buf[512];
         int n = std::snprintf(buf, sizeof(buf),
                               "\x1b[31m[%s] %s (%s:%d): %s\x1b[0m",
@@ -51,7 +52,7 @@ inline void LogScriptException(asIScriptContext *ctx, const ScriptInstance &inst
                     const char *msg;
                     uint32_t flags;
                 } event{sizeof(event), buf, 0};
-                g_Builtins->ImcBus->Publish(topic_id, &event, sizeof(event));
+                g_Builtins->ImcBus->Publish(inst.mod_handle, topic_id, &event, sizeof(event));
             }
         }
     }

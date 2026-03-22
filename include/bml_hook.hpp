@@ -68,9 +68,10 @@ namespace bml {
         HookRegistration(const char *targetName,
                          void *targetAddress,
                          int32_t priority = 0,
-                         const BML_CoreHookRegistryInterface *iface = nullptr)
-            : m_Address(targetAddress), m_Interface(iface) {
-            if (!iface || !iface->Register || !targetAddress) {
+                         const BML_CoreHookRegistryInterface *iface = nullptr,
+                         BML_Mod owner = nullptr)
+            : m_Address(targetAddress), m_Interface(iface), m_Owner(owner) {
+            if (!iface || !targetAddress) {
                 m_Address = nullptr;
                 return;
             }
@@ -78,7 +79,11 @@ namespace bml {
             desc.target_name = targetName;
             desc.target_address = targetAddress;
             desc.priority = priority;
-            if (iface->Register(&desc) != BML_RESULT_OK) {
+            BML_Result result = BML_RESULT_NOT_SUPPORTED;
+            if (owner && iface->Register) {
+                result = iface->Register(owner, &desc);
+            }
+            if (result != BML_RESULT_OK) {
                 m_Address = nullptr;
             }
         }
@@ -86,9 +91,10 @@ namespace bml {
         ~HookRegistration() { Unregister(); }
 
         HookRegistration(HookRegistration &&other) noexcept
-            : m_Address(other.m_Address), m_Interface(other.m_Interface) {
+            : m_Address(other.m_Address), m_Interface(other.m_Interface), m_Owner(other.m_Owner) {
             other.m_Address = nullptr;
             other.m_Interface = nullptr;
+            other.m_Owner = nullptr;
         }
 
         HookRegistration &operator=(HookRegistration &&other) noexcept {
@@ -96,8 +102,10 @@ namespace bml {
                 Unregister();
                 m_Address = other.m_Address;
                 m_Interface = other.m_Interface;
+                m_Owner = other.m_Owner;
                 other.m_Address = nullptr;
                 other.m_Interface = nullptr;
+                other.m_Owner = nullptr;
             }
             return *this;
         }
@@ -106,10 +114,13 @@ namespace bml {
         HookRegistration &operator=(const HookRegistration &) = delete;
 
         void Unregister() {
-            if (m_Address && m_Interface && m_Interface->Unregister) {
-                m_Interface->Unregister(m_Address);
-                m_Address = nullptr;
+            if (!m_Address || !m_Interface) {
+                return;
             }
+            if (m_Owner && m_Interface->Unregister) {
+                m_Interface->Unregister(m_Owner, m_Address);
+            }
+            m_Address = nullptr;
         }
 
         bool Valid() const noexcept { return m_Address != nullptr; }
@@ -119,6 +130,7 @@ namespace bml {
     private:
         void *m_Address = nullptr;
         const BML_CoreHookRegistryInterface *m_Interface = nullptr;
+        BML_Mod m_Owner = nullptr;
     };
 
     // ========================================================================
@@ -171,11 +183,12 @@ namespace bml {
     class HookService {
     public:
         HookService() = default;
-        explicit HookService(const BML_CoreHookRegistryInterface *iface) noexcept
-            : m_Interface(iface) {}
+        explicit HookService(const BML_CoreHookRegistryInterface *iface,
+                             BML_Mod owner = nullptr) noexcept
+            : m_Interface(iface), m_Owner(owner) {}
 
         HookRegistration Register(const char *name, void *address, int32_t priority = 0) const {
-            return HookRegistration(name, address, priority, m_Interface);
+            return HookRegistration(name, address, priority, m_Interface, m_Owner);
         }
 
         void Enumerate(std::function<void(const HookInfo &)> callback) const {
@@ -190,6 +203,7 @@ namespace bml {
 
     private:
         const BML_CoreHookRegistryInterface *m_Interface = nullptr;
+        BML_Mod m_Owner = nullptr;
     };
 
 } // namespace bml

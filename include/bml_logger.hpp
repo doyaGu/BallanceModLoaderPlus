@@ -46,27 +46,13 @@ namespace bml {
         Fatal = BML_LOG_FATAL
     };
 
-    /**
-     * @brief Set the minimum log severity filter
-     * @param level Minimum severity level to log
-     */
-    inline void SetLogFilter(LogLevel level, const BML_CoreLoggingInterface *loggingInterface = nullptr) {
-        if (loggingInterface && loggingInterface->SetLogFilter) {
-            loggingInterface->SetLogFilter(static_cast<BML_LogSeverity>(level));
-        }
-    }
-
     inline void SetLogFilter(BML_Mod owner,
                              LogLevel level,
                              const BML_CoreLoggingInterface *loggingInterface = nullptr) {
-        if (!loggingInterface) {
+        if (!loggingInterface || !owner || !loggingInterface->SetLogFilter) {
             return;
         }
-        if (owner && BML_CORE_LOGGING_HAS_MEMBER(loggingInterface, SetLogFilterOwned)) {
-            loggingInterface->SetLogFilterOwned(owner, static_cast<BML_LogSeverity>(level));
-        } else if (loggingInterface->SetLogFilter) {
-            loggingInterface->SetLogFilter(static_cast<BML_LogSeverity>(level));
-        }
+        loggingInterface->SetLogFilter(owner, static_cast<BML_LogSeverity>(level));
     }
 
     // ============================================================================
@@ -245,22 +231,16 @@ namespace bml {
             if (!m_LoggingInterface) {
                 return;
             }
-            if (m_Owner && BML_CORE_LOGGING_HAS_MEMBER(m_LoggingInterface, LogVaOwned)) {
-                m_LoggingInterface->LogVaOwned(
-                    m_Owner,
-                    m_ctx,
-                    level,
-                    m_tag.empty() ? nullptr : m_tag.c_str(),
-                    fmt,
-                    args);
-            } else if (m_LoggingInterface->LogVa) {
-                m_LoggingInterface->LogVa(
-                    m_ctx,
-                    level,
-                    m_tag.empty() ? nullptr : m_tag.c_str(),
-                    fmt,
-                    args);
+            if (!m_Owner || !m_LoggingInterface->LogVa) {
+                return;
             }
+            m_LoggingInterface->LogVa(
+                m_Owner,
+                m_ctx,
+                level,
+                m_tag.empty() ? nullptr : m_tag.c_str(),
+                fmt,
+                args);
         }
     };
 

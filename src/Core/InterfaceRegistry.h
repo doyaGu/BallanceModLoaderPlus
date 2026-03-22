@@ -53,7 +53,7 @@ namespace BML::Core {
             std::vector<std::pair<std::string, std::string>> metadata;
             std::vector<BML_InterfaceMetadata> metadata_view;
 
-            void RefreshOwnedViews() {
+            void RefreshStoredViews() {
                 metadata_view.clear();
                 metadata_view.reserve(metadata.size());
                 for (const auto &[key, value] : metadata) {

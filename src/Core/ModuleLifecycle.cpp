@@ -17,24 +17,6 @@
 namespace BML::Core {
     namespace {
         constexpr char kLogCategory[] = "module.lifecycle";
-
-        class ModuleScope {
-        public:
-            explicit ModuleScope(BML_Mod mod)
-                : m_Previous(Context::GetCurrentModule()) {
-                Context::SetCurrentModule(mod);
-            }
-
-            ~ModuleScope() {
-                Context::SetCurrentModule(m_Previous);
-            }
-
-            ModuleScope(const ModuleScope &) = delete;
-            ModuleScope &operator=(const ModuleScope &) = delete;
-
-        private:
-            BML_Mod m_Previous;
-        };
     } // namespace
 
     BML_Result PrepareModuleForDetach(KernelServices &kernel,
@@ -46,7 +28,7 @@ namespace BML::Core {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
-        ModuleScope scope(mod);
+        Context::CurrentModuleScope scope(mod);
 
         BML_ModDetachArgs detach{};
         detach.struct_size = sizeof(detach);

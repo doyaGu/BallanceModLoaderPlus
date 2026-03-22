@@ -18,13 +18,9 @@ namespace BML::Core {
         return Kernel().config->EnumerateValues(mod, callback, user_data);
     }
 
-    BML_Result BML_API_RegisterConfigLoadHooks(const BML_ConfigLoadHooks *hooks) {
-        return RegisterConfigLoadHooks(hooks);
-    }
-
-    BML_Result BML_API_RegisterConfigLoadHooksOwned(BML_Mod owner,
-                                                    const BML_ConfigLoadHooks *hooks) {
-        return RegisterConfigLoadHooksOwned(owner, hooks);
+    BML_Result BML_API_RegisterConfigLoadHooks(BML_Mod owner,
+                                               const BML_ConfigLoadHooks *hooks) {
+        return RegisterConfigLoadHooks(owner, hooks);
     }
 
     // Batch operations
@@ -134,9 +130,8 @@ namespace BML::Core {
         BML_REGISTER_API_GUARDED(bmlConfigBatchDiscard, "config", BML_API_ConfigBatchDiscard);
 
         // Config hooks registration
-        BML_REGISTER_API_GUARDED(bmlRegisterConfigLoadHooks, "config", BML_API_RegisterConfigLoadHooks);
-        BML_REGISTER_API_GUARDED(bmlRegisterConfigLoadHooksOwned, "config",
-                                 BML_API_RegisterConfigLoadHooksOwned);
+        BML_REGISTER_API_GUARDED(
+            bmlRegisterConfigLoadHooks, "config", BML_API_RegisterConfigLoadHooks);
 
         // Typed shortcuts
         BML_REGISTER_API_GUARDED(bmlConfigGetInt, "config", BML_API_ConfigGetInt);

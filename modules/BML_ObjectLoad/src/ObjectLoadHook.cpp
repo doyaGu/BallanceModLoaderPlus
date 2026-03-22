@@ -43,7 +43,7 @@ namespace BML_ObjectLoad {
         if (!s_Hook.logging || !s_Hook.logging->Log || !message) {
             return;
         }
-        s_Hook.logging->Log(s_Hook.global_context, severity,
+        s_Hook.logging->Log(s_Hook.owner, s_Hook.global_context, severity,
                             s_Hook.log_category ? s_Hook.log_category : "BML_ObjectLoad",
                             "%s", message);
     }
@@ -64,7 +64,7 @@ namespace BML_ObjectLoad {
                                        const CK_ID *objectIds,
                                        uint32_t objectCount) {
         auto *imcBus = s_Hook.imc_bus;
-        if (!imcBus || !imcBus->PublishBuffer || s_TopicLoadObject == 0)
+        if (!imcBus || !imcBus->PublishBuffer || !s_Hook.owner || s_TopicLoadObject == 0)
             return false;
 
         const size_t filenameSize = filename ? std::strlen(filename) + 1 : 0;
@@ -111,12 +111,12 @@ namespace BML_ObjectLoad {
             std::free(user_data);
         };
         buffer.cleanup_user_data = storage;
-        return imcBus->PublishBuffer(s_TopicLoadObject, &buffer) == BML_RESULT_OK;
+        return imcBus->PublishBuffer(s_Hook.owner, s_TopicLoadObject, &buffer) == BML_RESULT_OK;
     }
 
     static bool PublishScriptLoadEvent(const char *filename, CKBehavior *script, CKBOOL isMap) {
         auto *imcBus = s_Hook.imc_bus;
-        if (!imcBus || !imcBus->PublishBuffer || s_TopicLoadScript == 0 || !script)
+        if (!imcBus || !imcBus->PublishBuffer || !s_Hook.owner || s_TopicLoadScript == 0 || !script)
             return false;
 
         const size_t filenameSize = filename ? std::strlen(filename) + 1 : 0;
@@ -142,7 +142,7 @@ namespace BML_ObjectLoad {
             std::free(user_data);
         };
         buffer.cleanup_user_data = storage;
-        return imcBus->PublishBuffer(s_TopicLoadScript, &buffer) == BML_RESULT_OK;
+        return imcBus->PublishBuffer(s_Hook.owner, s_TopicLoadScript, &buffer) == BML_RESULT_OK;
     }
 
     static bool IsScriptBehavior(CKObject *object) {

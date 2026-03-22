@@ -44,11 +44,12 @@ typedef struct BML_HookContext {
     const BML_ImcBusInterface *imc_bus;
     const BML_CoreLoggingInterface *logging;
     BML_Context global_context;
+    BML_Mod owner;
     const char *log_category;
 } BML_HookContext;
 
 /** @brief Zero-initialized HookContext literal. */
-#define BML_HOOK_CONTEXT_INIT { NULL, NULL, NULL, NULL }
+#define BML_HOOK_CONTEXT_INIT { NULL, NULL, NULL, NULL, NULL }
 
 BML_END_CDECLS
 
@@ -66,6 +67,7 @@ inline BML_HookContext BML_MakeHookContext(const bml::ModuleServices &services,
     ctx.imc_bus = services.Builtins().ImcBus;
     ctx.logging = services.Builtins().Logging;
     ctx.global_context = services.GlobalContext();
+    ctx.owner = services.Handle();
     ctx.log_category = log_category;
     return ctx;
 }

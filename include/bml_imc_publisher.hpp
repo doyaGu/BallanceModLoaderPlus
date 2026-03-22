@@ -27,11 +27,17 @@ namespace imc {
     public:
         Publisher() = default;
 
-        explicit Publisher(std::string_view topicName, const BML_ImcBusInterface *bus = nullptr)
-            : m_Topic(topicName, bus) {}
+        explicit Publisher(std::string_view topicName,
+                           const BML_ImcBusInterface *bus = nullptr,
+                           BML_Mod owner = nullptr)
+            : m_Topic(topicName, bus, owner) {}
 
-        explicit Publisher(const Topic &topic, const BML_ImcBusInterface *bus = nullptr)
-            : m_Topic(topic.Valid() ? Topic(topic.Id(), topic.Name(), bus ? bus : topic.Iface()) : Topic()) {}
+        explicit Publisher(const Topic &topic,
+                           const BML_ImcBusInterface *bus = nullptr,
+                           BML_Mod owner = nullptr)
+            : m_Topic(topic.Valid()
+                          ? Topic(topic.Id(), topic.Name(), bus ? bus : topic.Iface(), owner)
+                          : Topic()) {}
 
         bool Valid() const noexcept { return m_Topic.Valid(); }
         explicit operator bool() const noexcept { return Valid(); }
@@ -96,13 +102,14 @@ namespace imc {
         MultiPublisher() = default;
 
         explicit MultiPublisher(std::initializer_list<std::string_view> topicNames,
-                                const BML_ImcBusInterface *bus = nullptr)
-            : m_Bus(bus) {
+                                const BML_ImcBusInterface *bus = nullptr,
+                                BML_Mod owner = nullptr)
+            : m_Bus(bus), m_Owner(owner) {
             for (auto name : topicNames) Add(name);
         }
 
         bool Add(std::string_view name) {
-            Topic topic(name, m_Bus);
+            Topic topic(name, m_Bus, m_Owner);
             if (topic.Valid()) { m_Topics.push_back(topic); return true; }
             return false;
         }
@@ -127,7 +134,7 @@ namespace imc {
 
         size_t PublishMulti(const void *data, size_t size, const BML_ImcMessage *msg = nullptr) {
             auto publishMulti = m_Bus ? m_Bus->PublishMulti : nullptr;
-            if (m_Topics.empty() || !publishMulti)
+            if (m_Topics.empty() || !publishMulti || !m_Owner)
                 return Publish(data, size);
 
             std::vector<TopicId> ids;
@@ -136,7 +143,8 @@ namespace imc {
                 ids.push_back(topic.Id());
 
             size_t delivered = 0;
-            if (publishMulti(ids.data(), ids.size(), data, size, msg, &delivered) == BML_RESULT_OK)
+            if (publishMulti(m_Owner, ids.data(), ids.size(), data, size, msg, &delivered) ==
+                BML_RESULT_OK)
                 return delivered;
             return 0;
         }
@@ -149,6 +157,7 @@ namespace imc {
 
     private:
         const BML_ImcBusInterface *m_Bus = nullptr;
+        BML_Mod m_Owner = nullptr;
         std::vector<Topic> m_Topics;
     };
 
@@ -161,8 +170,10 @@ namespace imc {
         static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
     public:
         EventEmitter() = default;
-        explicit EventEmitter(std::string_view topicName, const BML_ImcBusInterface *bus = nullptr)
-            : m_Publisher(topicName, bus) {}
+        explicit EventEmitter(std::string_view topicName,
+                              const BML_ImcBusInterface *bus = nullptr,
+                              BML_Mod owner = nullptr)
+            : m_Publisher(topicName, bus, owner) {}
 
         bool Valid() const noexcept { return m_Publisher.Valid(); }
         explicit operator bool() const noexcept { return Valid(); }

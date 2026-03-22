@@ -66,27 +66,19 @@ namespace BML::Core {
     }
 
     /**
-     * @brief Set error and return the error code (convenience for legacy code)
-     *
-     * This overload maintains backward compatibility with older calling patterns
-     * that passed (code, domain, api_name, message, detail_code).
-     *
-     * Note: Named SetLastErrorAndReturn to avoid conflict with Windows API SetLastErrorEx.
+     * @brief Persist an error and return the same result code
      *
      * @param code Result code
-     * @param domain Subsystem domain (for context, not stored separately)
      * @param api_name Name of the API that failed
      * @param message Error message (copied internally)
-     * @param detail_code Additional error code (e.g., from GetLastError())
+     * @param detail_code Reserved for platform-specific detail propagation
      * @return The passed-in result code for chaining
      */
-    inline BML_Result SetLastErrorAndReturn(BML_Result code,
-                                            const char *domain,
-                                            const char *api_name,
-                                            const char *message,
-                                            int detail_code = 0) {
-        (void) domain;      // Domain is informational, included in message if needed
-        (void) detail_code; // Could be appended to message in future
+    inline BML_Result SetErrorResult(BML_Result code,
+                                     const char *api_name,
+                                     const char *message,
+                                     int detail_code = 0) {
+        (void) detail_code;
         SetLastError(code, message, api_name, nullptr, 0);
         return code;
     }
@@ -134,10 +126,10 @@ namespace BML::Core {
     BML::Core::SetLastError((code), (message), (api_name), __FILE__, __LINE__)
 
 #define BML_RETURN_ERROR(code, message) \
-    return BML::Core::SetLastErrorAndReturn((code), nullptr, nullptr, (message), 0)
+    return BML::Core::SetErrorResult((code), nullptr, (message), 0)
 
 #define BML_RETURN_ERROR_API(code, api_name, message) \
-    return BML::Core::SetLastErrorAndReturn((code), nullptr, (api_name), (message), 0)
+    return BML::Core::SetErrorResult((code), (api_name), (message), 0)
 
     template <typename Fn>
     BML_Result GuardResult(std::string_view subsystem,

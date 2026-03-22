@@ -12,15 +12,6 @@
 namespace BML::Core {
     namespace {
         std::shared_mutex g_Mutex;
-
-        // Version counter for cache invalidation
-        // Incremented whenever APIs are unregistered or cleared
-        std::atomic<uint64_t> g_CacheVersion{0};
-
-        // Thread-local cache for hot API lookups
-        thread_local ApiRegistry::CacheEntry g_TlsCache[TLS_CACHE_SIZE];
-        thread_local size_t g_TlsCacheNextSlot = 0;
-        thread_local uint64_t g_TlsCacheVersion = 0;
     }
 
     ApiRegistry::ApiRegistry() {
@@ -99,89 +90,26 @@ namespace BML::Core {
     }
 
     // ========================================================================
-    // Direct Index Table and TLS Cache
+    // Direct Index Table
     // ========================================================================
 
     void *ApiRegistry::GetByIdDirect(BML_ApiId api_id) const {
-        if (api_id == BML_API_INVALID_ID || api_id >= MAX_DIRECT_API_ID)
-            return nullptr;
-
-        std::shared_lock lock(g_Mutex);
-        void *ptr = m_DirectTable[api_id].load(std::memory_order_acquire);
-        if (!ptr) {
-            ptr = ResolvePointerLocked(api_id, false);
-            if (ptr) {
-                m_DirectTable[api_id].store(ptr, std::memory_order_release);
-            }
-        }
-        if (!ptr)
-            return nullptr;
-        ResolvePointerLocked(api_id, true);
-        return ptr;
-    }
-
-    void *ApiRegistry::GetByIdCached(BML_ApiId api_id) const {
         if (api_id == BML_API_INVALID_ID)
             return nullptr;
 
-        constexpr int kMaxRetries = 8;
-        for (int retry = 0; retry < kMaxRetries; ++retry) {
-            uint64_t current_version = g_CacheVersion.load(std::memory_order_acquire);
-            if (g_TlsCacheVersion != current_version) {
-                for (size_t i = 0; i < TLS_CACHE_SIZE; ++i) {
-                    g_TlsCache[i].id = BML_API_INVALID_ID;
-                    g_TlsCache[i].ptr = nullptr;
-                }
-                g_TlsCacheNextSlot = 0;
-                g_TlsCacheVersion = current_version;
-            }
-
-            for (size_t i = 0; i < TLS_CACHE_SIZE; ++i) {
-                if (g_TlsCache[i].id != api_id || !g_TlsCache[i].ptr)
-                    continue;
-
-                std::shared_lock lock(g_Mutex);
-                if (g_CacheVersion.load(std::memory_order_acquire) != current_version)
-                    break;
-
-                void *ptr = ResolvePointerLocked(api_id, true);
-                if (ptr && ptr == g_TlsCache[i].ptr)
-                    return ptr;
-
-                g_TlsCache[i].id = BML_API_INVALID_ID;
-                g_TlsCache[i].ptr = nullptr;
-                break;
-            }
-
-            std::shared_lock lock(g_Mutex);
-            if (g_CacheVersion.load(std::memory_order_acquire) != current_version)
-                continue;
-
-            void *ptr = nullptr;
-            bool counted = false;
-            if (api_id < MAX_DIRECT_API_ID) {
-                ptr = m_DirectTable[api_id].load(std::memory_order_acquire);
-            }
-            if (!ptr) {
-                ptr = ResolvePointerLocked(api_id, true);
-                counted = ptr != nullptr;
-                if (ptr && api_id < MAX_DIRECT_API_ID) {
-                    m_DirectTable[api_id].store(ptr, std::memory_order_release);
-                }
-            }
+        std::shared_lock lock(g_Mutex);
+        if (api_id < MAX_DIRECT_API_ID) {
+            void *ptr = m_DirectTable[api_id].load(std::memory_order_acquire);
             if (!ptr)
                 return nullptr;
-            if (!counted)
-                ResolvePointerLocked(api_id, true);
-
-            g_TlsCache[g_TlsCacheNextSlot].id = api_id;
-            g_TlsCache[g_TlsCacheNextSlot].ptr = ptr;
-            g_TlsCacheNextSlot = (g_TlsCacheNextSlot + 1) % TLS_CACHE_SIZE;
+            IncrementCallCountLocked(api_id);
             return ptr;
         }
-
-        std::shared_lock lock(g_Mutex);
         return ResolvePointerLocked(api_id, true);
+    }
+
+    void *ApiRegistry::GetByIdCached(BML_ApiId api_id) const {
+        return GetByIdDirect(api_id);
     }
 
     // ========================================================================
@@ -198,7 +126,6 @@ namespace BML::Core {
             slot.store(nullptr, std::memory_order_relaxed);
         }
         m_NextAutoId.store(1);
-        g_CacheVersion.fetch_add(1, std::memory_order_release);
     }
 
     void ApiRegistry::RegisterCoreApiSet(const CoreApiDescriptor *descriptors, size_t count) {
@@ -285,7 +212,6 @@ namespace BML::Core {
         if (!ids_to_remove.empty()) {
             CoreLog(BML_LOG_DEBUG, "api.registry", "Unregistered %zu APIs from provider: %s",
                     ids_to_remove.size(), provider_id.c_str());
-            g_CacheVersion.fetch_add(1, std::memory_order_release);
         }
 
         return ids_to_remove.size();
@@ -308,7 +234,6 @@ namespace BML::Core {
         m_NameToId.erase(name);
 
         CoreLog(BML_LOG_DEBUG, "api.registry", "Unregistered API: %s (ID=%u)", name.c_str(), id);
-        g_CacheVersion.fetch_add(1, std::memory_order_release);
         return true;
     }
 
@@ -357,8 +282,6 @@ namespace BML::Core {
         if (api_id < MAX_DIRECT_API_ID) {
             m_DirectTable[api_id].store(pointer, std::memory_order_release);
         }
-
-        InvalidateTlsCachesLocked();
     }
 
     bool ApiRegistry::CanRegisterLocked(const std::string &name, BML_ApiId api_id) const {
@@ -376,8 +299,15 @@ namespace BML::Core {
         return true;
     }
 
-    void ApiRegistry::InvalidateTlsCachesLocked() {
-        g_CacheVersion.fetch_add(1, std::memory_order_release);
+    void ApiRegistry::IncrementCallCountLocked(BML_ApiId api_id) const {
+        auto entry_it = m_IdTable.find(api_id);
+        if (entry_it != m_IdTable.end()) {
+            entry_it->second.call_count.fetch_add(1, std::memory_order_relaxed);
+        }
+        auto meta_it = m_Metadata.find(api_id);
+        if (meta_it != m_Metadata.end()) {
+            meta_it->second.call_count.fetch_add(1, std::memory_order_relaxed);
+        }
     }
 
     const char *ApiRegistry::StoreString(const char *value) {

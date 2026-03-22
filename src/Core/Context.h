@@ -37,6 +37,32 @@ namespace BML::Core {
 
     class Context {
     public:
+        /**
+         * @brief Scoped ambient module binding for lifecycle transitions.
+         *
+         * This wrapper exists only for internal runtime lifecycle code
+         * that must temporarily establish a current module while running
+         * attach/detach/shutdown paths. New business logic must not rely
+         * on ambient module state for correctness.
+         */
+        class CurrentModuleScope {
+        public:
+            explicit CurrentModuleScope(BML_Mod mod) noexcept
+                : m_Previous(GetCurrentModule()) {
+                SetCurrentModule(mod);
+            }
+
+            ~CurrentModuleScope() {
+                SetCurrentModule(m_Previous);
+            }
+
+            CurrentModuleScope(const CurrentModuleScope &) = delete;
+            CurrentModuleScope &operator=(const CurrentModuleScope &) = delete;
+
+        private:
+            BML_Mod m_Previous{nullptr};
+        };
+
         enum class ShutdownState {
             Running,
             ShutdownRequested,
@@ -77,14 +103,25 @@ namespace BML::Core {
         std::unique_ptr<BML_Mod_T> CreateModHandle(const ModManifest &manifest);
         BML_Mod_T *ResolveModHandle(BML_Mod mod);
         const BML_Mod_T *ResolveModHandle(BML_Mod mod) const;
-        BML_Mod_T *ResolveCurrentConsumer();
-        const BML_Mod_T *ResolveCurrentConsumer() const;
         BML_Mod GetModHandleById(const std::string &id) const;
         BML_Mod GetModHandleByModule(HMODULE module) const;
         BML_Mod GetSyntheticHostModule() const;
         void AppendShutdownHook(BML_Mod mod, BML_ShutdownCallback callback, void *user_data);
-
+        /**
+         * @brief Set the ambient current module for the calling thread.
+         *
+         * This is a lifecycle/testing primitive only. Production code must
+         * prefer explicit owner arguments. Direct use is restricted to:
+         * lifecycle scope transitions, SEH-sensitive entrypoint glue, and tests.
+         */
         static void SetCurrentModule(BML_Mod mod);
+
+        /**
+         * @brief Read the ambient current module for the calling thread.
+         *
+         * This is a lifecycle/testing primitive only. Production code must
+         * not depend on ambient module state for caller resolution.
+         */
         static BML_Mod GetCurrentModule();
 
         void RemoveCreatedModHandle(BML_Mod mod);

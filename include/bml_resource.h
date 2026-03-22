@@ -61,10 +61,9 @@ typedef struct BML_ResourceTypeDesc {
  * @param out_type Receives the allocated type ID
  * @return BML_RESULT_OK on success
  */
-typedef BML_Result (*PFN_BML_RegisterResourceType)(const BML_ResourceTypeDesc* desc, BML_HandleType* out_type);
-typedef BML_Result (*PFN_BML_RegisterResourceTypeOwned)(BML_Mod owner,
-                                                        const BML_ResourceTypeDesc *desc,
-                                                        BML_HandleType *out_type);
+typedef BML_Result (*PFN_BML_RegisterResourceType)(BML_Mod owner,
+                                                   const BML_ResourceTypeDesc *desc,
+                                                   BML_HandleType *out_type);
 
 /**
  * @brief Creates a new resource handle of the specified type.
@@ -91,10 +90,9 @@ typedef BML_Result (*PFN_BML_RegisterResourceTypeOwned)(BML_Mod owner,
  * }
  * @endcode
  */
-typedef BML_Result (*PFN_BML_HandleCreate)(BML_HandleType type, BML_HandleDesc *out_desc);
-typedef BML_Result (*PFN_BML_HandleCreateOwned)(BML_Mod owner,
-                                                BML_HandleType type,
-                                                BML_HandleDesc *out_desc);
+typedef BML_Result (*PFN_BML_HandleCreate)(BML_Mod owner,
+                                           BML_HandleType type,
+                                           BML_HandleDesc *out_desc);
 
 /**
  * @brief Increments the reference count of a handle.

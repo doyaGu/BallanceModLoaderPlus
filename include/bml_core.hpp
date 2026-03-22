@@ -21,50 +21,6 @@
 #include <vector>
 
 namespace bml {
-    namespace detail {
-        inline const BML_CoreModuleInterface *ResolveModuleInterface(
-            const BML_CoreModuleInterface *moduleInterface) noexcept {
-            if (moduleInterface) {
-                return moduleInterface;
-            }
-            if (!bmlInterfaceAcquire) {
-                return nullptr;
-            }
-
-            const void *implementation = nullptr;
-            BML_InterfaceLease lease = nullptr;
-            const BML_Version required = bmlMakeVersion(1, 0, 0);
-            if (bmlInterfaceAcquire(BML_CORE_MODULE_INTERFACE_ID,
-                                    &required,
-                                    &implementation,
-                                    &lease) != BML_RESULT_OK) {
-                return nullptr;
-            }
-
-            if (lease && bmlInterfaceRelease) {
-                bmlInterfaceRelease(lease);
-            }
-            return static_cast<const BML_CoreModuleInterface *>(implementation);
-        }
-
-        inline PFN_BML_SetCurrentModule ResolveSetCurrentModuleProc(
-            const BML_CoreModuleInterface *moduleInterface) noexcept {
-            if (moduleInterface && moduleInterface->SetCurrentModule) {
-                return moduleInterface->SetCurrentModule;
-            }
-            return bmlSetCurrentModule;
-        }
-
-        inline PFN_BML_GetCurrentModule ResolveGetCurrentModuleProc(
-            const BML_CoreModuleInterface *moduleInterface) noexcept {
-            const auto *resolvedInterface = ResolveModuleInterface(moduleInterface);
-            if (resolvedInterface && resolvedInterface->GetCurrentModule) {
-                return resolvedInterface->GetCurrentModule;
-            }
-            return nullptr;
-        }
-    } // namespace detail
-
     // ============================================================================
     // Version Utilities
     // ============================================================================
@@ -202,120 +158,27 @@ namespace bml {
         const BML_CoreModuleInterface *m_ModuleInterface = nullptr;
     };
 
-    // ============================================================================
-    // Thread-Local Module Helpers
-    // ============================================================================
-
-    /**
-     * @brief Bind the current thread to a module handle so implicit APIs resolve correctly.
-     * @param mod Module handle to bind. Pass nullptr to clear.
-     * @return true if the runtime supports the API and the assignment succeeded.
-     */
-    inline bool SetCurrentModule(BML_Mod mod, const BML_CoreModuleInterface *moduleInterface = nullptr) {
-        const auto setCurrentModule = detail::ResolveSetCurrentModuleProc(moduleInterface);
-        if (!setCurrentModule) return false;
-        return setCurrentModule(mod) == BML_RESULT_OK;
-    }
-
-    /**
-     * @brief Get the module currently bound to the calling thread.
-     * @return Optional mod wrapper (empty if API unavailable or no module bound).
-     */
-    inline std::optional<Mod> GetCurrentModule(const BML_CoreModuleInterface *moduleInterface = nullptr) {
-        const auto *resolvedInterface = detail::ResolveModuleInterface(moduleInterface);
-        const auto getCurrentModule = detail::ResolveGetCurrentModuleProc(moduleInterface);
-        if (!getCurrentModule) return std::nullopt;
-        return Mod(getCurrentModule(), resolvedInterface);
-    }
-
     /**
      * @brief Enumerate loaded modules as lightweight Mod wrappers.
      * @return Snapshot vector of loaded modules. Empty if APIs are unavailable.
      */
-    inline std::vector<Mod> GetLoadedModules(const BML_CoreModuleInterface *moduleInterface = nullptr) {
+    inline std::vector<Mod> GetLoadedModules(const BML_CoreModuleInterface *moduleInterface) {
         std::vector<Mod> modules;
-        const auto *resolvedInterface = detail::ResolveModuleInterface(moduleInterface);
-        if (!resolvedInterface ||
-            !resolvedInterface->GetLoadedModuleCount ||
-            !resolvedInterface->GetLoadedModuleAt) {
+        if (!moduleInterface ||
+            !moduleInterface->GetLoadedModuleCount ||
+            !moduleInterface->GetLoadedModuleAt) {
             return modules;
         }
-        const uint32_t count = resolvedInterface->GetLoadedModuleCount();
+        const uint32_t count = moduleInterface->GetLoadedModuleCount();
         modules.reserve(count);
         for (uint32_t index = 0; index < count; ++index) {
-            BML_Mod mod = resolvedInterface->GetLoadedModuleAt(index);
+            BML_Mod mod = moduleInterface->GetLoadedModuleAt(index);
             if (mod) {
-                modules.emplace_back(mod, resolvedInterface);
+                modules.emplace_back(mod, moduleInterface);
             }
         }
         return modules;
     }
-
-    /**
-     * @brief RAII helper that temporarily overrides the current module binding.
-     */
-    class CurrentModuleScope {
-    public:
-        explicit CurrentModuleScope(BML_Mod mod,
-                                    const BML_CoreModuleInterface *moduleInterface = nullptr)
-            : m_ModuleInterface(moduleInterface) {
-            const auto getCurrentModule = detail::ResolveGetCurrentModuleProc(m_ModuleInterface);
-            if (getCurrentModule) {
-                m_Previous = getCurrentModule();
-                m_HasPrevious = true;
-            }
-            const auto setCurrentModule = detail::ResolveSetCurrentModuleProc(m_ModuleInterface);
-            if (setCurrentModule) {
-                setCurrentModule(mod);
-                m_Active = true;
-            }
-        }
-
-        ~CurrentModuleScope() {
-            const auto setCurrentModule = detail::ResolveSetCurrentModuleProc(m_ModuleInterface);
-            if (m_Active && setCurrentModule) {
-                setCurrentModule(m_HasPrevious ? m_Previous : nullptr);
-            }
-        }
-
-        CurrentModuleScope(const CurrentModuleScope &) = delete;
-        CurrentModuleScope &operator=(const CurrentModuleScope &) = delete;
-
-        CurrentModuleScope(CurrentModuleScope &&other) noexcept
-            : m_Previous(other.m_Previous),
-              m_HasPrevious(other.m_HasPrevious),
-              m_Active(other.m_Active),
-              m_ModuleInterface(other.m_ModuleInterface) {
-            other.m_Active = false;
-            other.m_HasPrevious = false;
-            other.m_Previous = nullptr;
-            other.m_ModuleInterface = nullptr;
-        }
-
-        CurrentModuleScope &operator=(CurrentModuleScope &&other) noexcept {
-            if (this != &other) {
-                const auto setCurrentModule = detail::ResolveSetCurrentModuleProc(m_ModuleInterface);
-                if (m_Active && setCurrentModule) {
-                    setCurrentModule(m_HasPrevious ? m_Previous : nullptr);
-                }
-                m_Previous = other.m_Previous;
-                m_HasPrevious = other.m_HasPrevious;
-                m_Active = other.m_Active;
-                m_ModuleInterface = other.m_ModuleInterface;
-                other.m_Active = false;
-                other.m_HasPrevious = false;
-                other.m_Previous = nullptr;
-                other.m_ModuleInterface = nullptr;
-            }
-            return *this;
-        }
-
-    private:
-        BML_Mod m_Previous{nullptr};
-        bool m_HasPrevious{false};
-        bool m_Active{false};
-        const BML_CoreModuleInterface *m_ModuleInterface{nullptr};
-    };
 
     // ============================================================================
     // Shutdown Hook Management
@@ -366,17 +229,21 @@ namespace bml {
                      std::function<void()> callback,
                      const BML_CoreModuleInterface *moduleInterface = nullptr)
             : m_Storage(new detail::ShutdownHookStorage()) {
-            if (!moduleInterface || !moduleInterface->RegisterShutdownHook || !mod) {
+            if (!moduleInterface || !mod) {
                 throw Exception(BML_RESULT_NOT_FOUND, "Shutdown hook API unavailable");
             }
 
             m_Storage->callback = std::move(callback);
             m_Storage->self_owned = true;
 
-            auto result = moduleInterface->RegisterShutdownHook(
-                mod,
-                detail::ShutdownHookStorage::Invoke,
-                m_Storage);
+            BML_Result result = BML_RESULT_NOT_SUPPORTED;
+            if (moduleInterface->RegisterShutdownHook) {
+                result = moduleInterface->RegisterShutdownHook(
+                    mod, detail::ShutdownHookStorage::Invoke, m_Storage);
+            } else if (moduleInterface->RegisterShutdownHook) {
+                result = moduleInterface->RegisterShutdownHook(
+                    mod, detail::ShutdownHookStorage::Invoke, m_Storage);
+            }
             if (result != BML_RESULT_OK) {
                 delete m_Storage;
                 m_Storage = nullptr;
@@ -423,16 +290,25 @@ namespace bml {
                                      std::function<void()> callback,
                                      const BML_CoreModuleInterface *moduleInterface = nullptr) {
         const auto *resolvedInterface = moduleInterface ? moduleInterface : mod.ModuleInterface();
-        if (!resolvedInterface || !resolvedInterface->RegisterShutdownHook || !mod) return false;
+        if (!resolvedInterface || !mod) return false;
 
         auto *storage = new detail::ShutdownHookStorage();
         storage->callback = std::move(callback);
         storage->self_owned = true; // Invoke will delete this
 
-        return resolvedInterface->RegisterShutdownHook(
-            mod.Handle(),
-            detail::ShutdownHookStorage::Invoke,
-            storage) == BML_RESULT_OK;
+        BML_Result result = BML_RESULT_NOT_SUPPORTED;
+        if (resolvedInterface->RegisterShutdownHook) {
+            result = resolvedInterface->RegisterShutdownHook(
+                mod.Handle(), detail::ShutdownHookStorage::Invoke, storage);
+        } else if (resolvedInterface->RegisterShutdownHook) {
+            result = resolvedInterface->RegisterShutdownHook(
+                mod.Handle(), detail::ShutdownHookStorage::Invoke, storage);
+        }
+        if (result != BML_RESULT_OK) {
+            delete storage;
+            return false;
+        }
+        return true;
     }
 } // namespace bml
 

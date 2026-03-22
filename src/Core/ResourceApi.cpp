@@ -92,13 +92,6 @@ namespace {
         return block;
     }
 
-    BML_Mod ResolveLegacyOwner(Context &context) {
-        if (auto current = Context::GetCurrentModule()) {
-            return current;
-        }
-        return context.GetSyntheticHostModule();
-    }
-
     std::string ResolveProviderId(Context &context, BML_Mod owner) {
         if (auto *mod = context.ResolveModHandle(owner)) {
             return mod->id;
@@ -355,13 +348,7 @@ namespace BML::Core {
     // Resource API Implementation Functions
     // ============================================================================
 
-    BML_Result BML_API_HandleCreate(BML_HandleType type, BML_HandleDesc *out_desc) {
-        auto &context = *Kernel().context;
-        return BML_HandleCreateImpl(
-            ResolveProviderId(context, ResolveLegacyOwner(context)), type, out_desc);
-    }
-
-    BML_Result BML_API_HandleCreateOwned(BML_Mod owner, BML_HandleType type, BML_HandleDesc *out_desc) {
+    BML_Result BML_API_HandleCreate(BML_Mod owner, BML_HandleType type, BML_HandleDesc *out_desc) {
         auto &context = *Kernel().context;
         return BML_HandleCreateImpl(ResolveProviderId(context, owner), type, out_desc);
     }
@@ -386,15 +373,10 @@ namespace BML::Core {
         return BML_HandleGetUserDataImpl(desc, out_user_data);
     }
 
-    BML_Result BML_API_RegisterResourceType(const BML_ResourceTypeDesc *desc, BML_HandleType *out_type) {
-        auto &context = *Kernel().context;
-        return RegisterResourceTypeOwned(ResolveLegacyOwner(context), desc, out_type);
-    }
-
-    BML_Result BML_API_RegisterResourceTypeOwned(BML_Mod owner,
-                                                 const BML_ResourceTypeDesc *desc,
-                                                 BML_HandleType *out_type) {
-        return RegisterResourceTypeOwned(owner, desc, out_type);
+    BML_Result BML_API_RegisterResourceType(BML_Mod owner,
+                                            const BML_ResourceTypeDesc *desc,
+                                            BML_HandleType *out_type) {
+        return RegisterResourceType(owner, desc, out_type);
     }
 
     void RegisterResourceApis() {
@@ -402,7 +384,6 @@ namespace BML::Core {
 
         // Handle management APIs
         BML_REGISTER_API_GUARDED(bmlHandleCreate, "resource", BML_API_HandleCreate);
-        BML_REGISTER_API_GUARDED(bmlHandleCreateOwned, "resource", BML_API_HandleCreateOwned);
         BML_REGISTER_API_GUARDED(bmlHandleRetain, "resource", BML_API_HandleRetain);
         BML_REGISTER_API_GUARDED(bmlHandleRelease, "resource", BML_API_HandleRelease);
         BML_REGISTER_API_GUARDED(bmlHandleValidate, "resource", BML_API_HandleValidate);
@@ -410,19 +391,13 @@ namespace BML::Core {
         BML_REGISTER_API_GUARDED(bmlHandleGetUserData, "resource", BML_API_HandleGetUserData);
 
         // Resource type registration
-        BML_REGISTER_API_GUARDED(bmlRegisterResourceType, "resource", BML_API_RegisterResourceType);
         BML_REGISTER_API_GUARDED(
-            bmlRegisterResourceTypeOwned, "resource", BML_API_RegisterResourceTypeOwned);
+            bmlRegisterResourceType, "resource", BML_API_RegisterResourceType);
     }
 
-    BML_Result RegisterResourceType(const BML_ResourceTypeDesc *desc, BML_HandleType *out_type) {
-        auto &context = *Kernel().context;
-        return RegisterResourceTypeOwned(ResolveLegacyOwner(context), desc, out_type);
-    }
-
-    BML_Result RegisterResourceTypeOwned(BML_Mod owner,
-                                         const BML_ResourceTypeDesc *desc,
-                                         BML_HandleType *out_type) {
+    BML_Result RegisterResourceType(BML_Mod owner,
+                                    const BML_ResourceTypeDesc *desc,
+                                    BML_HandleType *out_type) {
         if (!desc || desc->struct_size < sizeof(BML_ResourceTypeDesc) || !out_type || !desc->name || desc->name[0] == '\0') {
             return BML_RESULT_INVALID_ARGUMENT;
         }

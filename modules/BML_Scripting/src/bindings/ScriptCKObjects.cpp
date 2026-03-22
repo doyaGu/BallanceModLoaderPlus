@@ -1,4 +1,4 @@
-#include "ScriptCKObjects.h"
+﻿#include "ScriptCKObjects.h"
 
 #include <type_traits>
 
@@ -2124,12 +2124,12 @@ static void RegisterCKMeshMembers(asIScriptEngine *engine, const char *name) {
     // r = engine->RegisterObjectMethod(name, "void SetDefaultRenderCallBack()", asMETHODPR(T, SetDefaultRenderCallBack, (), void), asCALL_THISCALL); assert(r >= 0);
     r = engine->RegisterObjectMethod(name, "void SetRenderCallBack(CK_MESHRENDERCALLBACK@ callback)", asFUNCTIONPR([](T *self, asIScriptFunction *scriptFunc) {
         scriptFunc->AddRef();
-        // ScriptManager::SetCKObjectData removed — not available in this build
+        // ScriptManager::SetCKObjectData removed - not available in this build
         self->SetRenderCallBack(CKMesh_MeshRenderCallback, scriptFunc);
     }, (T *, asIScriptFunction *), void), asCALL_CDECL_OBJFIRST); assert(r >= 0);
     r = engine->RegisterObjectMethod(name, "void SetDefaultRenderCallBack()", asFUNCTIONPR([](T *self) {
         self->SetDefaultRenderCallBack();
-        // ScriptManager cleanup removed — not available in this build
+        // ScriptManager cleanup removed - not available in this build
     }, (T *), void), asCALL_CDECL_OBJFIRST); assert(r >= 0);
 
     r = engine->RegisterObjectMethod(name, "void RemoveAllCallbacks()", asMETHODPR(T, RemoveAllCallbacks, (), void), asCALL_THISCALL); assert(r >= 0);
@@ -2675,12 +2675,12 @@ static void RegisterCKRenderObjectMembers(asIScriptEngine *engine, const char *n
     // r = engine->RegisterObjectMethod(name, "bool RemoveRenderCallBack()", asMETHODPR(T, RemoveRenderCallBack, (), CKBOOL), asCALL_THISCALL); assert(r >= 0);
     r = engine->RegisterObjectMethod(name, "void SetRenderCallBack(CK_RENDEROBJECT_CALLBACK@ callback)", asFUNCTIONPR([](T *self, asIScriptFunction *scriptFunc) -> bool {
         scriptFunc->AddRef();
-        // ScriptManager::SetCKObjectData removed — not available in this build
+        // ScriptManager::SetCKObjectData removed - not available in this build
         return self->SetRenderCallBack(CKRenderObject_Callback, scriptFunc);
     }, (T *, asIScriptFunction *), bool), asCALL_CDECL_OBJFIRST); assert(r >= 0);
     r = engine->RegisterObjectMethod(name, "void RemoveRenderCallBack()", asFUNCTIONPR([](T *self) -> bool {
         bool result = self->RemoveRenderCallBack();
-        // ScriptManager cleanup removed — not available in this build
+        // ScriptManager cleanup removed - not available in this build
         return result;
     }, (T *), bool), asCALL_CDECL_OBJFIRST); assert(r >= 0);
 

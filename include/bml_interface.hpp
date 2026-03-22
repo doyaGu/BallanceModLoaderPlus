@@ -12,16 +12,8 @@
 
 namespace bml {
     inline BML_Result RegisterInterface(PFN_BML_InterfaceRegister reg,
+                                        BML_Mod owner,
                                         const BML_InterfaceDesc *desc) {
-        if (!desc || !reg) {
-            return BML_RESULT_NOT_SUPPORTED;
-        }
-        return reg(desc);
-    }
-
-    inline BML_Result RegisterInterfaceOwned(PFN_BML_InterfaceRegisterOwned reg,
-                                             BML_Mod owner,
-                                             const BML_InterfaceDesc *desc) {
         if (!desc || !reg || !owner) {
             return BML_RESULT_NOT_SUPPORTED;
         }
@@ -29,16 +21,8 @@ namespace bml {
     }
 
     inline BML_Result UnregisterInterface(PFN_BML_InterfaceUnregister unreg,
+                                          BML_Mod owner,
                                           const char *interfaceId) {
-        if (!interfaceId || !unreg) {
-            return BML_RESULT_NOT_SUPPORTED;
-        }
-        return unreg(interfaceId);
-    }
-
-    inline BML_Result UnregisterInterfaceOwned(PFN_BML_InterfaceUnregisterOwned unreg,
-                                               BML_Mod owner,
-                                               const char *interfaceId) {
         if (!interfaceId || !unreg || !owner) {
             return BML_RESULT_NOT_SUPPORTED;
         }
@@ -161,22 +145,6 @@ namespace bml {
 
         PublishedInterface(PFN_BML_InterfaceRegister reg,
                            PFN_BML_InterfaceUnregister unreg,
-                           const BML_InterfaceDesc &desc) {
-            if (!reg || !unreg || !desc.interface_id) {
-                return;
-            }
-
-            if (reg(&desc) != BML_RESULT_OK) {
-                return;
-            }
-
-            m_InterfaceId = desc.interface_id;
-            m_Unregister = unreg;
-            m_Valid = true;
-        }
-
-        PublishedInterface(PFN_BML_InterfaceRegisterOwned reg,
-                           PFN_BML_InterfaceUnregisterOwned unreg,
                            BML_Mod owner,
                            const BML_InterfaceDesc &desc) {
             if (!reg || !unreg || !owner || !desc.interface_id) {
@@ -202,11 +170,9 @@ namespace bml {
 
         PublishedInterface(PublishedInterface &&other) noexcept
             : m_InterfaceId(std::move(other.m_InterfaceId)),
-              m_Unregister(other.m_Unregister),
               m_OwnerUnregister(other.m_OwnerUnregister),
               m_Owner(other.m_Owner),
               m_Valid(other.m_Valid) {
-            other.m_Unregister = nullptr;
             other.m_OwnerUnregister = nullptr;
             other.m_Owner = nullptr;
             other.m_Valid = false;
@@ -216,11 +182,9 @@ namespace bml {
             if (this != &other) {
                 (void) Reset();
                 m_InterfaceId = std::move(other.m_InterfaceId);
-                m_Unregister = other.m_Unregister;
                 m_OwnerUnregister = other.m_OwnerUnregister;
                 m_Owner = other.m_Owner;
                 m_Valid = other.m_Valid;
-                other.m_Unregister = nullptr;
                 other.m_OwnerUnregister = nullptr;
                 other.m_Owner = nullptr;
                 other.m_Valid = false;
@@ -241,14 +205,11 @@ namespace bml {
             BML_Result result = BML_RESULT_NOT_SUPPORTED;
             if (m_OwnerUnregister && m_Owner) {
                 result = m_OwnerUnregister(m_Owner, m_InterfaceId.c_str());
-            } else if (m_Unregister) {
-                result = m_Unregister(m_InterfaceId.c_str());
             } else {
                 return BML_RESULT_NOT_SUPPORTED;
             }
             if (result == BML_RESULT_OK) {
                 m_InterfaceId.clear();
-                m_Unregister = nullptr;
                 m_OwnerUnregister = nullptr;
                 m_Owner = nullptr;
                 m_Valid = false;
@@ -258,8 +219,7 @@ namespace bml {
 
     private:
         std::string m_InterfaceId;
-        PFN_BML_InterfaceUnregister m_Unregister = nullptr;
-        PFN_BML_InterfaceUnregisterOwned m_OwnerUnregister = nullptr;
+        PFN_BML_InterfaceUnregister m_OwnerUnregister = nullptr;
         BML_Mod m_Owner = nullptr;
         bool m_Valid = false;
     };
@@ -510,39 +470,19 @@ namespace bml {
 
     template <typename T>
     InterfaceLease<T> AcquireInterface(
-        const char *interfaceId,
-        uint16_t reqMajor,
-        uint16_t reqMinor = 0,
-        uint16_t reqPatch = 0) {
-        if (!interfaceId || !bmlInterfaceAcquire) {
-            return {};
-        }
-
-        const void *implementation = nullptr;
-        BML_InterfaceLease lease = nullptr;
-        BML_Version required = bmlMakeVersion(reqMajor, reqMinor, reqPatch);
-        if (bmlInterfaceAcquire(interfaceId, &required, &implementation, &lease) != BML_RESULT_OK) {
-            return {};
-        }
-
-        return InterfaceLease<T>(static_cast<const T *>(implementation), lease);
-    }
-
-    template <typename T>
-    InterfaceLease<T> AcquireInterfaceOwned(
         BML_Mod owner,
         const char *interfaceId,
         uint16_t reqMajor,
         uint16_t reqMinor = 0,
         uint16_t reqPatch = 0) {
-        if (!owner || !interfaceId || !bmlInterfaceAcquireOwned) {
+        if (!owner || !interfaceId || !bmlInterfaceAcquire) {
             return {};
         }
 
         const void *implementation = nullptr;
         BML_InterfaceLease lease = nullptr;
         BML_Version required = bmlMakeVersion(reqMajor, reqMinor, reqPatch);
-        if (bmlInterfaceAcquireOwned(owner, interfaceId, &required, &implementation, &lease) !=
+        if (bmlInterfaceAcquire(owner, interfaceId, &required, &implementation, &lease) !=
             BML_RESULT_OK) {
             return {};
         }
@@ -560,20 +500,21 @@ namespace bml {
      */
     template <typename T>
     struct InterfaceTrait {
-        // Unspecialized: static_assert fires on Acquire<T>() with unknown type
+        // Unspecialized: static_assert fires on Acquire<T>(owner) with unknown type
     };
 
     /**
-     * @brief Acquire an interface using compile-time traits.
+     * @brief Acquire an interface using compile-time traits and an explicit owner.
      *
-     *   auto logging = bml::Acquire<BML_CoreLoggingInterface>();
+     *   auto logging = bml::Acquire<BML_CoreLoggingInterface>(owner);
      *   if (logging) logging->LogVa(ctx, BML_LOG_INFO, "tag", "msg", args);
      */
     template <typename T>
-    InterfaceLease<T> Acquire() {
+    InterfaceLease<T> Acquire(BML_Mod owner) {
         using Trait = InterfaceTrait<T>;
-        return AcquireInterface<T>(Trait::Id, Trait::AbiMajor, Trait::AbiMinor);
+        return AcquireInterface<T>(owner, Trait::Id, Trait::AbiMajor, Trait::AbiMinor);
     }
+
 } // namespace bml
 
 // ============================================================================
@@ -584,7 +525,7 @@ namespace bml {
 //   BML_DEFINE_INTERFACE_TRAIT(MyInterface, MY_INTERFACE_ID, 1, 0)
 //
 //   // Then consumers can do:
-//   auto lease = Services().Acquire<MyInterface>();
+//   auto lease = bml::Acquire<MyInterface>(owner);
 // ============================================================================
 
 #define BML_DEFINE_INTERFACE_TRAIT(Type, IdMacro, Major, Minor)              \
@@ -596,7 +537,7 @@ namespace bml {
 
 // Core interface traits
 BML_DEFINE_INTERFACE_TRAIT(BML_CoreContextInterface,      BML_CORE_CONTEXT_INTERFACE_ID,       1, 0)
-BML_DEFINE_INTERFACE_TRAIT(BML_CoreModuleInterface,       BML_CORE_MODULE_INTERFACE_ID,        1, 0)
+BML_DEFINE_INTERFACE_TRAIT(BML_CoreModuleInterface,       BML_CORE_MODULE_INTERFACE_ID,        2, 0)
 BML_DEFINE_INTERFACE_TRAIT(BML_CoreLoggingInterface,      BML_CORE_LOGGING_INTERFACE_ID,       1, 0)
 BML_DEFINE_INTERFACE_TRAIT(BML_CoreConfigInterface,       BML_CORE_CONFIG_INTERFACE_ID,        1, 0)
 BML_DEFINE_INTERFACE_TRAIT(BML_CoreMemoryInterface,       BML_CORE_MEMORY_INTERFACE_ID,        1, 0)

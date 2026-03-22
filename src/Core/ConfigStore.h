@@ -140,8 +140,7 @@ namespace BML::Core {
     };
 
     void RegisterConfigApis();
-    BML_Result RegisterConfigLoadHooksOwned(BML_Mod owner, const BML_ConfigLoadHooks *hooks);
-    BML_Result RegisterConfigLoadHooks(const BML_ConfigLoadHooks *hooks);
+    BML_Result RegisterConfigLoadHooks(BML_Mod owner, const BML_ConfigLoadHooks *hooks);
     void CleanupConfigHooksForModule(BML_Mod mod);
 } // namespace BML::Core
 

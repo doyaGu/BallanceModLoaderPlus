@@ -161,11 +161,11 @@ private:
     PFN_BML_ImcPump m_Pump{nullptr};
 
     // Core API function pointers
-    PFN_BML_SetCurrentModule m_SetCurrentModule{nullptr};
     PFN_BML_SetLogFilter m_SetLogFilter{nullptr};
     PFN_BML_RegisterLogSinkOverride m_RegisterLogSinkOverride{nullptr};
     PFN_BML_ClearLogSinkOverride m_ClearLogSinkOverride{nullptr};
     PFN_BML_GetGlobalContext m_GetGlobalContext{nullptr};
+    PFN_BML_GetHostModule m_GetHostModule{nullptr};
 
     static void LogCaptureDispatch(BML_Context ctx,
                                    const BML_LogMessageInfo *info,

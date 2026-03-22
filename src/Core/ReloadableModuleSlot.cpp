@@ -547,7 +547,9 @@ namespace BML::Core {
             return m_Entrypoint(BML_MOD_ENTRYPOINT_DETACH, &detach);
         };
 
-        // Set current module context
+        // Keep the manual save/restore form here: this function uses SEH
+        // on MSVC, so a scoped RAII binder would trigger C2712 object unwinding
+        // restrictions inside the __try block.
         BML_Mod previous_mod = Context::GetCurrentModule();
         Context::SetCurrentModule(m_ModHandle.get());
 

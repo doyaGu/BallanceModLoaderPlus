@@ -71,8 +71,7 @@ typedef void (*BML_HookEnumCallback)(const BML_HookDesc *desc,
  * @return BML_RESULT_OK on success
  * @return BML_RESULT_INVALID_ARGUMENT if desc or target_address is NULL
  */
-typedef BML_Result (*PFN_BML_HookRegister)(const BML_HookDesc *desc);
-typedef BML_Result (*PFN_BML_HookRegisterOwned)(BML_Mod owner, const BML_HookDesc *desc);
+typedef BML_Result (*PFN_BML_HookRegister)(BML_Mod owner, const BML_HookDesc *desc);
 
 /**
  * @brief Unregister a hook for the calling module at target_address.
@@ -81,8 +80,7 @@ typedef BML_Result (*PFN_BML_HookRegisterOwned)(BML_Mod owner, const BML_HookDes
  * @return BML_RESULT_OK on success
  * @return BML_RESULT_NOT_FOUND if no hook registered by this module at that address
  */
-typedef BML_Result (*PFN_BML_HookUnregister)(void *target_address);
-typedef BML_Result (*PFN_BML_HookUnregisterOwned)(BML_Mod owner, void *target_address);
+typedef BML_Result (*PFN_BML_HookUnregister)(BML_Mod owner, void *target_address);
 
 /**
  * @brief Enumerate all registered hooks.

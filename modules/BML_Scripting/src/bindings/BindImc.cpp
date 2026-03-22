@@ -98,7 +98,10 @@ static void ImcTrampoline(BML_Context, BML_TopicId,
 
 static void Script_Subscribe(const std::string &topic, const std::string &callbackName) {
     auto *inst = t_CurrentScript;
-    if (!inst || !g_Builtins || !g_Builtins->ImcBus || !g_ImcManager) return;
+    if (!inst || !g_Builtins || !g_Builtins->ImcBus || !g_Builtins->ImcBus->SubscribeEx ||
+        !g_ImcManager) {
+        return;
+    }
 
     asIScriptFunction *fn = inst->as_module
         ? inst->as_module->GetFunctionByName(callbackName.c_str()) : nullptr;
@@ -129,7 +132,8 @@ static void Script_Subscribe(const std::string &topic, const std::string &callba
 
     BML_SubscribeOptions opts = BML_SUBSCRIBE_OPTIONS_INIT;
     BML_Subscription sub = nullptr;
-    if (g_Builtins->ImcBus->SubscribeEx(topic_id, ImcTrampoline, raw_ctx, &opts, &sub) !=
+    if (g_Builtins->ImcBus->SubscribeEx(inst->mod_handle, topic_id, ImcTrampoline, raw_ctx,
+                                             &opts, &sub) !=
         BML_RESULT_OK) {
         delete raw_ctx;
         return;
@@ -170,28 +174,44 @@ static void Script_Unsubscribe(const std::string &topic, const std::string &call
 }
 
 static void Script_Publish(const std::string &topic) {
-    if (!g_Builtins || !g_Builtins->ImcBus) return;
+    const BML_Mod owner = CurrentScriptOwner();
+    if (!g_Builtins || !g_Builtins->ImcBus || !g_Builtins->ImcBus->Publish || !owner) {
+        return;
+    }
+
     BML_TopicId id = BML_TOPIC_ID_INVALID;
     if (g_Builtins->ImcBus->GetTopicId(topic.c_str(), &id) != BML_RESULT_OK) return;
-    g_Builtins->ImcBus->Publish(id, nullptr, 0);
+    g_Builtins->ImcBus->Publish(owner, id, nullptr, 0);
 }
 
 static void Script_PublishString(const std::string &topic, const std::string &data) {
-    if (!g_Builtins || !g_Builtins->ImcBus) return;
+    const BML_Mod owner = CurrentScriptOwner();
+    if (!g_Builtins || !g_Builtins->ImcBus || !g_Builtins->ImcBus->Publish || !owner) {
+        return;
+    }
+
     BML_TopicId id = BML_TOPIC_ID_INVALID;
     if (g_Builtins->ImcBus->GetTopicId(topic.c_str(), &id) != BML_RESULT_OK) return;
-    g_Builtins->ImcBus->Publish(id, data.c_str(), data.size());
+    g_Builtins->ImcBus->Publish(owner, id, data.c_str(), data.size());
 }
 
 static void Script_PublishInt(const std::string &topic, int value) {
-    if (!g_Builtins || !g_Builtins->ImcBus) return;
+    const BML_Mod owner = CurrentScriptOwner();
+    if (!g_Builtins || !g_Builtins->ImcBus || !g_Builtins->ImcBus->Publish || !owner) {
+        return;
+    }
+
     BML_TopicId id = BML_TOPIC_ID_INVALID;
     if (g_Builtins->ImcBus->GetTopicId(topic.c_str(), &id) != BML_RESULT_OK) return;
-    g_Builtins->ImcBus->Publish(id, &value, sizeof(value));
+    g_Builtins->ImcBus->Publish(owner, id, &value, sizeof(value));
 }
 
 static void Script_Print(const std::string &message) {
-    if (!g_Builtins || !g_Builtins->ImcBus) return;
+    const BML_Mod owner = CurrentScriptOwner();
+    if (!g_Builtins || !g_Builtins->ImcBus || !g_Builtins->ImcBus->Publish || !owner) {
+        return;
+    }
+
     BML_TopicId id = BML_TOPIC_ID_INVALID;
     if (g_Builtins->ImcBus->GetTopicId(BML_TOPIC_CONSOLE_OUTPUT, &id) != BML_RESULT_OK) return;
 
@@ -203,7 +223,7 @@ static void Script_Print(const std::string &message) {
     event.struct_size = sizeof(event);
     event.message_utf8 = message.c_str();
     event.flags = 0;
-    g_Builtins->ImcBus->Publish(id, &event, sizeof(event));
+    g_Builtins->ImcBus->Publish(owner, id, &event, sizeof(event));
 }
 
 void RegisterImcBindings(asIScriptEngine *engine, ScriptInstanceManager *manager) {

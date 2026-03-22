@@ -102,7 +102,7 @@ private:
     char *m_Buffer;
     size_t m_Size;
     size_t m_CursorPos;
-    bool m_Owned;
+    bool m_OwnsBuffer;
     mutable RefCount m_RefCount;
     asILockableSharedBool *m_WeakRefFlag = nullptr;
 };

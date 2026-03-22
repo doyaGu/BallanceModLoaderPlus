@@ -11,7 +11,7 @@
  *   - bml_config.hpp     - Configuration access
  *   - bml_logger.hpp     - Logging utilities
  *   - bml_imc.hpp        - Inter-Mod Communication
- *   - bml_interface.hpp  - Interface lease and traits
+ *   - bml_interface.hpp  - Interface lease and owned acquisition traits
  *   - bml_services.hpp   - BuiltinServices, RuntimeServiceHub, ModuleServices
  *   - bml_result.hpp     - Result type for error handling
  *   - bml_memory.hpp     - Memory allocation utilities
@@ -30,7 +30,7 @@
  *   }
  *   
  *   auto configApi = bml::AcquireInterface<BML_CoreConfigInterface>(
- *       BML_CORE_CONFIG_INTERFACE_ID, 1);
+ *       owner, BML_CORE_CONFIG_INTERFACE_ID, 1);
  *   bml::Config config(mod, configApi.Get());
  *   config.SetString("mymod", "key", "value");
  *   
@@ -52,7 +52,7 @@
 
 // Communication
 #include "bml_imc.hpp"        // Imc, Imc::Subscription, ImcCallback
-#include "bml_interface.hpp"  // InterfaceLease, AcquireInterface
+#include "bml_interface.hpp"  // InterfaceLease, AcquireInterface, Acquire
 
 // Services
 #include "bml_services.hpp"   // BuiltinServices, RuntimeServiceHub, ModuleServices

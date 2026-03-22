@@ -261,22 +261,30 @@ namespace imc {
             sub.m_Bus = bus;
 
             BML_Result result;
-            if (owner && options && BML_IMC_BUS_HAS_MEMBER(bus, SubscribeExOwned)) {
-                result = bus->SubscribeExOwned(owner, topicId, detail::SubscriptionContext::Invoke,
-                                               sub.m_Context.get(), options->NativePtr(), &sub.m_Handle);
-            } else if (owner && BML_IMC_BUS_HAS_MEMBER(bus, SubscribeOwned)) {
-                result = bus->SubscribeOwned(owner, topicId, detail::SubscriptionContext::Invoke,
-                                             sub.m_Context.get(), &sub.m_Handle);
-            } else if (options && bus->SubscribeEx) {
-                result = bus->SubscribeEx(topicId, detail::SubscriptionContext::Invoke,
-                                          sub.m_Context.get(), options->NativePtr(), &sub.m_Handle);
+            if (!owner) {
+                return std::nullopt;
+            }
+            if (options && bus->SubscribeEx) {
+                result = bus->SubscribeEx(owner,
+                                          topicId,
+                                          detail::SubscriptionContext::Invoke,
+                                          sub.m_Context.get(),
+                                          options->NativePtr(),
+                                          &sub.m_Handle);
             } else if (bus->Subscribe) {
-                result = bus->Subscribe(topicId, detail::SubscriptionContext::Invoke,
-                                        sub.m_Context.get(), &sub.m_Handle);
+                result = bus->Subscribe(owner,
+                                        topicId,
+                                        detail::SubscriptionContext::Invoke,
+                                        sub.m_Context.get(),
+                                        &sub.m_Handle);
             } else if (bus->SubscribeEx) {
                 SubscribeOptions defaultOptions;
-                result = bus->SubscribeEx(topicId, detail::SubscriptionContext::Invoke,
-                                          sub.m_Context.get(), defaultOptions.NativePtr(), &sub.m_Handle);
+                result = bus->SubscribeEx(owner,
+                                          topicId,
+                                          detail::SubscriptionContext::Invoke,
+                                          sub.m_Context.get(),
+                                          defaultOptions.NativePtr(),
+                                          &sub.m_Handle);
             } else {
                 return std::nullopt;
             }
@@ -296,28 +304,30 @@ namespace imc {
             sub.m_Bus = bus;
 
             BML_Result result;
-            if (owner && options && BML_IMC_BUS_HAS_MEMBER(bus, SubscribeInterceptExOwned)) {
-                result = bus->SubscribeInterceptExOwned(owner,
-                                                        topicId,
-                                                        detail::InterceptContext::Invoke,
-                                                        sub.m_InterceptContext.get(),
-                                                        options->NativePtr(),
-                                                        &sub.m_Handle);
-            } else if (owner && BML_IMC_BUS_HAS_MEMBER(bus, SubscribeInterceptOwned)) {
-                result = bus->SubscribeInterceptOwned(owner, topicId, detail::InterceptContext::Invoke,
-                                                      sub.m_InterceptContext.get(), &sub.m_Handle);
-            } else if (options && bus->SubscribeInterceptEx) {
-                result = bus->SubscribeInterceptEx(topicId, detail::InterceptContext::Invoke,
+            if (!owner) {
+                return std::nullopt;
+            }
+            if (options && bus->SubscribeInterceptEx) {
+                result = bus->SubscribeInterceptEx(owner,
+                                                   topicId,
+                                                   detail::InterceptContext::Invoke,
                                                    sub.m_InterceptContext.get(),
-                                                   options->NativePtr(), &sub.m_Handle);
+                                                   options->NativePtr(),
+                                                   &sub.m_Handle);
             } else if (bus->SubscribeIntercept) {
-                result = bus->SubscribeIntercept(topicId, detail::InterceptContext::Invoke,
-                                                 sub.m_InterceptContext.get(), &sub.m_Handle);
+                result = bus->SubscribeIntercept(owner,
+                                                 topicId,
+                                                 detail::InterceptContext::Invoke,
+                                                 sub.m_InterceptContext.get(),
+                                                 &sub.m_Handle);
             } else if (bus->SubscribeInterceptEx) {
                 SubscribeOptions defaultOptions;
-                result = bus->SubscribeInterceptEx(topicId, detail::InterceptContext::Invoke,
+                result = bus->SubscribeInterceptEx(owner,
+                                                   topicId,
+                                                   detail::InterceptContext::Invoke,
                                                    sub.m_InterceptContext.get(),
-                                                   defaultOptions.NativePtr(), &sub.m_Handle);
+                                                   defaultOptions.NativePtr(),
+                                                   &sub.m_Handle);
             } else {
                 return std::nullopt;
             }

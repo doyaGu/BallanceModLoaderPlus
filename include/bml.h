@@ -6,7 +6,7 @@
  * It provides the core microkernel APIs and first-party interface surfaces
  * that most consumers should use directly.
  *
- * Retired legacy APIs are intentionally no longer pulled in by default.
+ * This header intentionally exposes only the default v0.4 runtime surface.
  * 
  * The API is organized into the following subsystems:
  * 
@@ -56,9 +56,9 @@
  * #include <bml.hpp>
  * 
  * auto ctxApi = bml::AcquireInterface<BML_CoreContextInterface>(
- *     BML_CORE_CONTEXT_INTERFACE_ID, 1);
+ *     owner, BML_CORE_CONTEXT_INTERFACE_ID, 1);
  * auto configApi = bml::AcquireInterface<BML_CoreConfigInterface>(
- *     BML_CORE_CONFIG_INTERFACE_ID, 1);
+ *     owner, BML_CORE_CONFIG_INTERFACE_ID, 1);
  *
  * bml::Context ctx(ctxApi->GetGlobalContext(), ctxApi.Get());
  * bml::Config config(mod, configApi.Get());

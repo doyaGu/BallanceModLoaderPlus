@@ -105,27 +105,17 @@ protected:
                               uint16_t major,
                               uint16_t minor = 0,
                               uint16_t patch = 0) const {
-        auto owned = bml::AcquireInterfaceOwned<T>(m_Handle, id, major, minor, patch);
-        if (owned) {
-            return owned;
-        }
-
-        CurrentModuleScope scope(m_Handle, m_Services ? m_Services.Builtins().Module : nullptr);
-        return bml::AcquireInterface<T>(id, major, minor, patch);
+        return bml::AcquireInterface<T>(m_Handle, id, major, minor, patch);
     }
 
     PublishedInterface Publish(const BML_InterfaceDesc &desc) const {
-        const auto ownedReg = ResolveProc<PFN_BML_InterfaceRegisterOwned>("bmlInterfaceRegisterOwned");
-        const auto ownedUnreg =
-            ResolveProc<PFN_BML_InterfaceUnregisterOwned>("bmlInterfaceUnregisterOwned");
-        if (ownedReg && ownedUnreg) {
-            return PublishedInterface(ownedReg, ownedUnreg, m_Handle, desc);
-        }
-
         const auto reg = ResolveProc<PFN_BML_InterfaceRegister>("bmlInterfaceRegister");
-        const auto unreg = ResolveProc<PFN_BML_InterfaceUnregister>("bmlInterfaceUnregister");
-        CurrentModuleScope scope(m_Handle, m_Services ? m_Services.Builtins().Module : nullptr);
-        return PublishedInterface(reg, unreg, desc);
+        const auto unreg =
+            ResolveProc<PFN_BML_InterfaceUnregister>("bmlInterfaceUnregister");
+        if (reg && unreg) {
+            return PublishedInterface(reg, unreg, m_Handle, desc);
+        }
+        return PublishedInterface();
     }
 
     template <typename T>
@@ -216,14 +206,11 @@ private:
             return BML_RESULT_NOT_FOUND;
         }
 
-        {
-            CurrentModuleScope scope(args->mod, instance->m_Services.Builtins().Module);
-            result = instance->OnAttach(instance->m_Services);
-            if (result != BML_RESULT_OK) {
-                delete instance;
-                bmlUnloadAPI();
-                return result;
-            }
+        result = instance->OnAttach(instance->m_Services);
+        if (result != BML_RESULT_OK) {
+            delete instance;
+            bmlUnloadAPI();
+            return result;
         }
 
         s_Instance = instance;
@@ -243,7 +230,6 @@ private:
             return BML_RESULT_OK;
         }
 
-        CurrentModuleScope scope(args->mod, s_Instance->m_Services.Builtins().Module);
         return s_Instance->OnPrepareDetach();
     }
 
@@ -257,7 +243,6 @@ private:
         }
 
         if (s_Instance) {
-            CurrentModuleScope scope(args->mod, s_Instance->m_Services.Builtins().Module);
             s_Instance->OnDetach();
             delete s_Instance;
             s_Instance = nullptr;

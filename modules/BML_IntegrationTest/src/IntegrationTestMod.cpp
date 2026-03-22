@@ -397,7 +397,8 @@ private:
 
         // ---- Test: service_query_peer (input capture service from BML_Input module) ----
         {
-            auto inputCapture = bml::AcquireInterface<BML_InputCaptureInterface>(BML_INPUT_CAPTURE_INTERFACE_ID, 1, 0, 0);
+            auto inputCapture = bml::AcquireInterface<BML_InputCaptureInterface>(
+                Handle(), BML_INPUT_CAPTURE_INTERFACE_ID, 1, 0, 0);
             RecordTest("service_query_peer", static_cast<bool>(inputCapture),
                        inputCapture ? "input capture service found" : "input capture service not found");
         }
@@ -440,7 +441,10 @@ private:
                 });
 
             if (sub_ok) {
-                bml::imc::publish("test/inttest/selfpub", uint32_t(0xCAFE), Services().Builtins().ImcBus);
+                bml::imc::publish(Handle(),
+                                  "test/inttest/selfpub",
+                                  uint32_t(0xCAFE),
+                                  Services().Builtins().ImcBus);
             }
             RecordTest("imc_self_pubsub_setup", sub_ok, "subscribe+publish queued");
         }

@@ -186,9 +186,9 @@ class ConsoleMod : public bml::Module {
             BML_ImcMessage msg = BML_IMC_MSG(&value, sizeof(value));
             auto *imcBus = Services().Builtins().ImcBus;
             if (imcBus->PublishState) {
-                imcBus->PublishState(m_TopicCheatState, &msg);
+                imcBus->PublishState(Handle(), m_TopicCheatState, &msg);
             } else {
-                imcBus->Publish(m_TopicCheatState, &value, sizeof(value));
+                imcBus->Publish(Handle(), m_TopicCheatState, &value, sizeof(value));
             }
         }
         return result;
@@ -275,7 +275,7 @@ class ConsoleMod : public bml::Module {
             std::free(user_data);
         };
         buffer.cleanup_user_data = storage;
-        return imcBus->PublishBuffer(m_TopicCommand, &buffer);
+        return imcBus->PublishBuffer(Handle(), m_TopicCommand, &buffer);
     }
 
     void ClearPaletteProviders() const {
@@ -1057,7 +1057,7 @@ public:
         AnsiPalette::SetLoaderDirProvider(ConsolePaletteLoaderDirProvider);
         AnsiPalette::SetLoggerProvider(ConsolePaletteLogger);
 
-        m_DrawReg = bml::ui::RegisterDraw("bml.console.window", 50, DrawCallback, this);
+        m_DrawReg = bml::ui::RegisterDraw(Handle(), "bml.console.window", 50, DrawCallback, this);
         if (!m_DrawReg) {
             ClearPaletteProviders();
             return BML_RESULT_NOT_FOUND;

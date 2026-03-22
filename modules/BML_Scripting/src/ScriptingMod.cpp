@@ -210,12 +210,20 @@ private:
     }
 
     void PrintToConsole(const std::string &message) {
-        if (!BML::Scripting::g_Builtins || !BML::Scripting::g_Builtins->ImcBus) return;
+        if (!BML::Scripting::g_Builtins || !BML::Scripting::g_Builtins->ImcBus ||
+            !BML::Scripting::g_Builtins->ImcBus->Publish) {
+            return;
+        }
+
         BML_TopicId id = BML_TOPIC_ID_INVALID;
         if (BML::Scripting::g_Builtins->ImcBus->GetTopicId(
                 BML_TOPIC_CONSOLE_OUTPUT, &id) != BML_RESULT_OK) return;
-        struct { size_t struct_size; const char *msg; uint32_t flags; } event{sizeof(event), message.c_str(), 0};
-        BML::Scripting::g_Builtins->ImcBus->Publish(id, &event, sizeof(event));
+        struct {
+            size_t struct_size;
+            const char *msg;
+            uint32_t flags;
+        } event{sizeof(event), message.c_str(), 0};
+        BML::Scripting::g_Builtins->ImcBus->Publish(m_Handle, id, &event, sizeof(event));
     }
 };
 

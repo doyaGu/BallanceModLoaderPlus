@@ -58,10 +58,10 @@ struct InputState {
 InputState g_State;
 
 bool PublishInputMessage(BML_TopicId topic, const void *data, size_t size) {
-    if (!s_Hook.imc_bus || !s_Hook.imc_bus->Publish || topic == 0) {
+    if (!s_Hook.imc_bus || !s_Hook.imc_bus->Publish || !s_Hook.owner || topic == 0) {
         return false;
     }
-    return s_Hook.imc_bus->Publish(topic, data, size) == BML_RESULT_OK;
+    return s_Hook.imc_bus->Publish(s_Hook.owner, topic, data, size) == BML_RESULT_OK;
 }
 
 struct InputManagerHook {
@@ -326,7 +326,7 @@ void PublishMouseEvents() {
 
 static void HookLog(BML_LogSeverity severity, const char *message) {
     if (!s_Hook.logging || !s_Hook.logging->Log || !message) return;
-    s_Hook.logging->Log(s_Hook.global_context, severity,
+    s_Hook.logging->Log(s_Hook.owner, s_Hook.global_context, severity,
                         s_Hook.log_category ? s_Hook.log_category : "BML_Input",
                         "%s", message);
 }

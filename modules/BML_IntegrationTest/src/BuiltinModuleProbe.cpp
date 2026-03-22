@@ -190,14 +190,20 @@ static void EnumerateConfigCallback(BML_Context,
 class BuiltinModuleProbe::Impl {
 public:
     explicit Impl(BML_Mod handle)
-        : m_Handle(handle) {}
+        : m_Handle(handle),
+          m_Subs(nullptr, handle) {}
 
     BML_Result OnAttach() {
-        m_Context = bml::AcquireInterface<BML_CoreContextInterface>(BML_CORE_CONTEXT_INTERFACE_ID, 1, 0, 0);
-        m_Log = bml::AcquireInterface<BML_CoreLoggingInterface>(BML_CORE_LOGGING_INTERFACE_ID, 1, 0, 0);
-        m_Config = bml::AcquireInterface<BML_CoreConfigInterface>(BML_CORE_CONFIG_INTERFACE_ID, 1, 0, 0);
-        m_Module = bml::AcquireInterface<BML_CoreModuleInterface>(BML_CORE_MODULE_INTERFACE_ID, 1, 0, 0);
-        m_ImcBus = bml::AcquireInterface<BML_ImcBusInterface>(BML_IMC_BUS_INTERFACE_ID, 1, 0, 0);
+        m_Context = bml::AcquireInterface<BML_CoreContextInterface>(
+            m_Handle, BML_CORE_CONTEXT_INTERFACE_ID, 1, 0, 0);
+        m_Log = bml::AcquireInterface<BML_CoreLoggingInterface>(
+            m_Handle, BML_CORE_LOGGING_INTERFACE_ID, 1, 0, 0);
+        m_Config = bml::AcquireInterface<BML_CoreConfigInterface>(
+            m_Handle, BML_CORE_CONFIG_INTERFACE_ID, 1, 0, 0);
+        m_Module = bml::AcquireInterface<BML_CoreModuleInterface>(
+            m_Handle, BML_CORE_MODULE_INTERFACE_ID, 2, 0, 0);
+        m_ImcBus = bml::AcquireInterface<BML_ImcBusInterface>(
+            m_Handle, BML_IMC_BUS_INTERFACE_ID, 1, 0, 0);
         if (!m_Context || !m_Log || !m_Config || !m_Module || !m_ImcBus) {
             return BML_RESULT_NOT_FOUND;
         }
@@ -325,7 +331,7 @@ private:
             return;
         }
 
-        m_Log->Log(GetContextHandle(), severity, "BuiltinProbe", format, args...);
+        m_Log->Log(m_Handle, GetContextHandle(), severity, "BuiltinProbe", format, args...);
     }
 
     void RefreshLoadedModules() {
@@ -373,21 +379,20 @@ private:
     }
 
     void LoadServices() {
-        bml::CurrentModuleScope scope(m_Handle, m_Module.Get());
-
-        m_DrawReg = bml::ui::RegisterDraw("bml.inttest.builtin_probe", 1000, DrawProbeCallback, this);
+        m_DrawReg = bml::ui::RegisterDraw(
+            m_Handle, "bml.inttest.builtin_probe", 1000, DrawProbeCallback, this);
         m_UiLoaded = static_cast<bool>(m_DrawReg);
 
-        m_InputCaptureService = bml::AcquireInterface<BML_InputCaptureInterface>(BML_INPUT_CAPTURE_INTERFACE_ID, 1, 0, 0);
+        m_InputCaptureService = bml::AcquireInterface<BML_InputCaptureInterface>(
+            m_Handle, BML_INPUT_CAPTURE_INTERFACE_ID, 1, 0, 0);
         m_InputLoaded = static_cast<bool>(m_InputCaptureService);
 
         m_ConsoleRegistry = bml::AcquireInterface<BML_ConsoleCommandRegistry>(
-            BML_CONSOLE_COMMAND_REGISTRY_INTERFACE_ID, 1, 0, 0);
+            m_Handle, BML_CONSOLE_COMMAND_REGISTRY_INTERFACE_ID, 1, 0, 0);
         m_ConsoleLoaded = static_cast<bool>(m_ConsoleRegistry);
     }
 
     void UnloadServices() {
-        bml::CurrentModuleScope scope(m_Handle, m_Module.Get());
         m_ConsoleRegistry.Reset();
         m_ConsoleLoaded = false;
         m_DrawReg.Reset();
@@ -397,8 +402,16 @@ private:
     }
 
     void PublishSyntheticKey(uint32_t key_code) {
+        if (!m_ImcBus || !m_ImcBus->GetTopicId || !m_ImcBus->Publish) {
+            return;
+        }
+
         const BML_KeyDownEvent event{key_code, key_code, 0u, false};
-        bml::imc::publish(BML_TOPIC_INPUT_KEY_DOWN, event, m_ImcBus.Get());
+        BML_TopicId topicId = BML_TOPIC_ID_INVALID;
+        if (m_ImcBus->GetTopicId(BML_TOPIC_INPUT_KEY_DOWN, &topicId) != BML_RESULT_OK) {
+            return;
+        }
+        m_ImcBus->Publish(m_Handle, topicId, &event, sizeof(event));
     }
 
     void RunCommandProbes() {

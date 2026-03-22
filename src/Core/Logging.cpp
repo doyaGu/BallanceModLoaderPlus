@@ -244,12 +244,6 @@ namespace BML::Core {
 
             if (!ctx)
                 return nullptr;
-
-            if (auto current = Context::GetCurrentModule()) {
-                if (auto *handle = ctx->ResolveModHandle(current)) {
-                    return handle;
-                }
-            }
             if (!caller)
                 return nullptr;
 
@@ -332,37 +326,12 @@ namespace BML::Core {
 #define BML_CALLER_ADDRESS() __builtin_return_address(0)
 #endif
 
-    void LogMessage(BML_Context ctx, BML_LogSeverity level, const char *tag, const char *fmt, ...) {
-        if (!fmt)
-            return;
-        va_list args;
-        va_start(args, fmt);
-        Context *context = Kernel().context.get();
-        LogMessageInternal(context, nullptr, BML_CALLER_ADDRESS(), ctx, level, tag, fmt, args);
-        va_end(args);
-    }
-
-    void LogMessageVa(BML_Context ctx, BML_LogSeverity level, const char *tag, const char *fmt, va_list args) {
-        if (!fmt)
-            return;
-        va_list argsCopy;
-        va_copy(argsCopy, args);
-        Context *context = Kernel().context.get();
-        LogMessageInternal(context, nullptr, BML_CALLER_ADDRESS(), ctx, level, tag, fmt, argsCopy);
-        va_end(argsCopy);
-    }
-
-    void SetLogFilter(BML_LogSeverity minimum_level) {
-        Context *context = Kernel().context.get();
-        SetMinimumSeverity(context, nullptr, BML_CALLER_ADDRESS(), minimum_level);
-    }
-
-    void LogMessageOwned(BML_Mod owner,
-                         BML_Context ctx,
-                         BML_LogSeverity level,
-                         const char *tag,
-                         const char *fmt,
-                         ...) {
+    void LogMessage(BML_Mod owner,
+                    BML_Context ctx,
+                    BML_LogSeverity level,
+                    const char *tag,
+                    const char *fmt,
+                    ...) {
         if (!fmt)
             return;
         va_list args;
@@ -372,12 +341,12 @@ namespace BML::Core {
         va_end(args);
     }
 
-    void LogMessageVaOwned(BML_Mod owner,
-                           BML_Context ctx,
-                           BML_LogSeverity level,
-                           const char *tag,
-                           const char *fmt,
-                           va_list args) {
+    void LogMessageVa(BML_Mod owner,
+                      BML_Context ctx,
+                      BML_LogSeverity level,
+                      const char *tag,
+                      const char *fmt,
+                      va_list args) {
         if (!fmt)
             return;
         va_list argsCopy;
@@ -387,7 +356,7 @@ namespace BML::Core {
         va_end(argsCopy);
     }
 
-    void SetLogFilterOwned(BML_Mod owner, BML_LogSeverity minimum_level) {
+    void SetLogFilter(BML_Mod owner, BML_LogSeverity minimum_level) {
         Context *context = Kernel().context.get();
         SetMinimumSeverity(context, owner, nullptr, minimum_level);
     }

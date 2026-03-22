@@ -1,4 +1,4 @@
-#include "BindInput.h"
+﻿#include "BindInput.h"
 
 #include <cassert>
 
@@ -19,11 +19,12 @@ CKInputManager *GetIM() {
     if (!g_InputReady) {
         if (!g_InputWarnedOnce) {
             g_InputWarnedOnce = true;
-            if (g_Builtins && g_Builtins->Logging) {
+            const BML_Mod owner = CurrentScriptOwner();
+            if (g_Builtins && g_Builtins->Logging && g_Builtins->Logging->Log && owner) {
                 BML_Context bml_ctx = g_Builtins->Context
                     ? g_Builtins->Context->GetGlobalContext() : nullptr;
-                g_Builtins->Logging->Log(bml_ctx, BML_LOG_WARN, "script",
-                    "Input bindings called before engine init — returning nullptr");
+                g_Builtins->Logging->Log(owner, bml_ctx, BML_LOG_WARN, "script",
+                    "Input bindings called before engine init - returning nullptr");
             }
         }
         return nullptr;
@@ -74,7 +75,7 @@ void RegisterInputBindings(asIScriptEngine *engine) {
     r = engine->RegisterGlobalFunction("void bmlGetMousePosition(int &out x, int &out y)",
         asFUNCTION(Script_GetMousePosition), asCALL_CDECL); assert(r >= 0);
 
-    // Key constants — complete DirectInput scan code enum
+    // Key constants - complete DirectInput scan code enum
     r = engine->RegisterEnum("CKKEY"); assert(r >= 0);
 
     // Row 1: Escape + number row

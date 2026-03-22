@@ -11,7 +11,7 @@
 namespace BML::Core {
     namespace {
         constexpr uint16_t kCoreContextInterfaceMinor = 0;
-        constexpr uint16_t kCoreModuleInterfaceMinor = 3;
+        constexpr uint16_t kCoreModuleInterfaceMinor = 0;
         constexpr uint16_t kCoreLoggingInterfaceMinor = 1;
         constexpr uint16_t kCoreConfigInterfaceMinor = 2;
         constexpr uint16_t kCoreMemoryInterfaceMinor = 0;
@@ -169,14 +169,12 @@ namespace BML::Core {
         g_CoreModuleInterface = {
             BML_IFACE_HEADER(BML_CoreModuleInterface,
                              BML_CORE_MODULE_INTERFACE_ID,
-                             1,
+                             2,
                              kCoreModuleInterfaceMinor),
             ResolveApi<PFN_BML_GetModId>("bmlGetModId"),
             ResolveApi<PFN_BML_GetModVersion>("bmlGetModVersion"),
             ResolveApi<PFN_BML_RequestCapability>("bmlRequestCapability"),
             ResolveApi<PFN_BML_CheckCapability>("bmlCheckCapability"),
-            ResolveApi<PFN_BML_SetCurrentModule>("bmlSetCurrentModule"),
-            ResolveApi<PFN_BML_GetCurrentModule>("bmlGetCurrentModule"),
             ResolveApi<PFN_BML_RegisterShutdownHook>("bmlRegisterShutdownHook"),
             ResolveApi<PFN_BML_GetLoadedModuleCount>("bmlGetLoadedModuleCount"),
             ResolveApi<PFN_BML_GetLoadedModuleAt>("bmlGetLoadedModuleAt"),
@@ -190,7 +188,6 @@ namespace BML::Core {
             ResolveApi<PFN_BML_GetModAuthorCount>("bmlGetModAuthorCount"),
             ResolveApi<PFN_BML_GetModAuthorAt>("bmlGetModAuthorAt"),
             ResolveApi<PFN_BML_FindModuleById>("bmlFindModuleById"),
-            ResolveApi<PFN_BML_RegisterShutdownHookOwned>("bmlRegisterShutdownHookOwned"),
         };
         // Logging
         g_CoreLoggingInterface = {
@@ -203,9 +200,6 @@ namespace BML::Core {
             ResolveApi<PFN_BML_SetLogFilter>("bmlSetLogFilter"),
             ResolveApi<PFN_BML_RegisterLogSinkOverride>("bmlRegisterLogSinkOverride"),
             ResolveApi<PFN_BML_ClearLogSinkOverride>("bmlClearLogSinkOverride"),
-            ResolveApi<PFN_BML_LogOwned>("bmlLogOwned"),
-            ResolveApi<PFN_BML_LogVaOwned>("bmlLogVaOwned"),
-            ResolveApi<PFN_BML_SetLogFilterOwned>("bmlSetLogFilterOwned"),
         };
         // Config
         g_CoreConfigInterface = {
@@ -226,7 +220,6 @@ namespace BML::Core {
             ResolveApi<PFN_BML_ConfigGetFloat>("bmlConfigGetFloat"),
             ResolveApi<PFN_BML_ConfigGetBool>("bmlConfigGetBool"),
             ResolveApi<PFN_BML_ConfigGetString>("bmlConfigGetString"),
-            ResolveApi<PFN_BML_RegisterConfigLoadHooksOwned>("bmlRegisterConfigLoadHooksOwned"),
         };
         // Memory
         g_CoreMemoryInterface = {
@@ -259,8 +252,6 @@ namespace BML::Core {
             ResolveApi<PFN_BML_HandleValidate>("bmlHandleValidate"),
             ResolveApi<PFN_BML_HandleAttachUserData>("bmlHandleAttachUserData"),
             ResolveApi<PFN_BML_HandleGetUserData>("bmlHandleGetUserData"),
-            ResolveApi<PFN_BML_RegisterResourceTypeOwned>("bmlRegisterResourceTypeOwned"),
-            ResolveApi<PFN_BML_HandleCreateOwned>("bmlHandleCreateOwned"),
         };
         // Diagnostic
         g_CoreDiagnosticInterface = {
@@ -307,16 +298,6 @@ namespace BML::Core {
             ResolveApi<PFN_BML_ImcResetStats>("bmlImcResetStats"),
             ResolveApi<PFN_BML_ImcGetTopicInfo>("bmlImcGetTopicInfo"),
             ResolveApi<PFN_BML_ImcGetTopicName>("bmlImcGetTopicName"),
-            ResolveApi<PFN_BML_ImcSubscribeOwned>("bmlImcSubscribeOwned"),
-            ResolveApi<PFN_BML_ImcSubscribeExOwned>("bmlImcSubscribeExOwned"),
-            ResolveApi<PFN_BML_ImcSubscribeInterceptOwned>("bmlImcSubscribeInterceptOwned"),
-            ResolveApi<PFN_BML_ImcSubscribeInterceptExOwned>("bmlImcSubscribeInterceptExOwned"),
-            ResolveApi<PFN_BML_ImcPublishOwned>("bmlImcPublishOwned"),
-            ResolveApi<PFN_BML_ImcPublishExOwned>("bmlImcPublishExOwned"),
-            ResolveApi<PFN_BML_ImcPublishBufferOwned>("bmlImcPublishBufferOwned"),
-            ResolveApi<PFN_BML_ImcPublishMultiOwned>("bmlImcPublishMultiOwned"),
-            ResolveApi<PFN_BML_ImcPublishInterceptableOwned>("bmlImcPublishInterceptableOwned"),
-            ResolveApi<PFN_BML_ImcPublishStateOwned>("bmlImcPublishStateOwned"),
         };
         // RPC (request/response, futures, middleware, streaming)
         g_RpcInterface = {
@@ -347,16 +328,6 @@ namespace BML::Core {
             ResolveApi<PFN_BML_ImcStreamComplete>("bmlImcStreamComplete"),
             ResolveApi<PFN_BML_ImcStreamError>("bmlImcStreamError"),
             ResolveApi<PFN_BML_ImcCallStreamingRpc>("bmlImcCallStreamingRpc"),
-            ResolveApi<PFN_BML_ImcRegisterRpcOwned>("bmlImcRegisterRpcOwned"),
-            ResolveApi<PFN_BML_ImcUnregisterRpcOwned>("bmlImcUnregisterRpcOwned"),
-            ResolveApi<PFN_BML_ImcFutureOnCompleteOwned>("bmlImcFutureOnCompleteOwned"),
-            ResolveApi<PFN_BML_ImcRegisterRpcExOwned>("bmlImcRegisterRpcExOwned"),
-            ResolveApi<PFN_BML_ImcAddRpcMiddlewareOwned>("bmlImcAddRpcMiddlewareOwned"),
-            ResolveApi<PFN_BML_ImcRemoveRpcMiddlewareOwned>("bmlImcRemoveRpcMiddlewareOwned"),
-            ResolveApi<PFN_BML_ImcRegisterStreamingRpcOwned>("bmlImcRegisterStreamingRpcOwned"),
-            ResolveApi<PFN_BML_ImcCallRpcOwned>("bmlImcCallRpcOwned"),
-            ResolveApi<PFN_BML_ImcCallRpcExOwned>("bmlImcCallRpcExOwned"),
-            ResolveApi<PFN_BML_ImcCallStreamingRpcOwned>("bmlImcCallStreamingRpcOwned"),
         };
         // Timer
         g_CoreTimerInterface = {
@@ -370,12 +341,6 @@ namespace BML::Core {
             ResolveApi<PFN_BML_TimerCancel>("bmlTimerCancel"),
             ResolveApi<PFN_BML_TimerIsActive>("bmlTimerIsActive"),
             ResolveApi<PFN_BML_TimerCancelAll>("bmlTimerCancelAll"),
-            ResolveApi<PFN_BML_TimerScheduleOnceOwned>("bmlTimerScheduleOnceOwned"),
-            ResolveApi<PFN_BML_TimerScheduleRepeatOwned>("bmlTimerScheduleRepeatOwned"),
-            ResolveApi<PFN_BML_TimerScheduleFramesOwned>("bmlTimerScheduleFramesOwned"),
-            ResolveApi<PFN_BML_TimerCancelOwned>("bmlTimerCancelOwned"),
-            ResolveApi<PFN_BML_TimerIsActiveOwned>("bmlTimerIsActiveOwned"),
-            ResolveApi<PFN_BML_TimerCancelAllOwned>("bmlTimerCancelAllOwned"),
         };
         // Hook Registry
         g_CoreHookRegistryInterface = {
@@ -386,8 +351,6 @@ namespace BML::Core {
             ResolveApi<PFN_BML_HookRegister>("bmlHookRegister"),
             ResolveApi<PFN_BML_HookUnregister>("bmlHookUnregister"),
             ResolveApi<PFN_BML_HookEnumerate>("bmlHookEnumerate"),
-            ResolveApi<PFN_BML_HookRegisterOwned>("bmlHookRegisterOwned"),
-            ResolveApi<PFN_BML_HookUnregisterOwned>("bmlHookUnregisterOwned"),
         };
         // Locale
         g_CoreLocaleInterface = {
@@ -401,9 +364,6 @@ namespace BML::Core {
             ResolveApi<PFN_BML_LocaleGet>("bmlLocaleGet"),
             ResolveApi<PFN_BML_LocaleBindTable>("bmlLocaleBindTable"),
             ResolveApi<PFN_BML_LocaleLookup>("bmlLocaleLookup"),
-            ResolveApi<PFN_BML_LocaleLoadOwned>("bmlLocaleLoadOwned"),
-            ResolveApi<PFN_BML_LocaleGetOwned>("bmlLocaleGetOwned"),
-            ResolveApi<PFN_BML_LocaleBindTableOwned>("bmlLocaleBindTableOwned"),
         };
         // Sync
         g_CoreSyncInterface = {
@@ -509,7 +469,7 @@ namespace BML::Core {
                                  &g_CoreModuleInterface,
                                  sizeof(g_CoreModuleInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE,
-                                 bmlMakeVersion(1, kCoreModuleInterfaceMinor, 0));
+                                 bmlMakeVersion(2, kCoreModuleInterfaceMinor, 0));
         RegisterBuiltinInterface(BML_CORE_LOGGING_INTERFACE_ID,
                                  &g_CoreLoggingInterface,
                                  sizeof(g_CoreLoggingInterface),

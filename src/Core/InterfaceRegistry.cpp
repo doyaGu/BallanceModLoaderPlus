@@ -89,7 +89,7 @@ namespace BML::Core {
                 entry.metadata.emplace_back(desc->metadata[i].key, desc->metadata[i].value);
             }
         }
-        entry.RefreshOwnedViews();
+        entry.RefreshStoredViews();
         m_Interfaces.emplace(key, std::move(entry));
         return BML_RESULT_OK;
     }
@@ -172,7 +172,7 @@ namespace BML::Core {
                     continue;
                 }
                 snapshot.push_back(entry);
-                snapshot.back().RefreshOwnedViews();
+                snapshot.back().RefreshStoredViews();
             }
         }
 
@@ -257,7 +257,7 @@ namespace BML::Core {
                 (void) id;
                 if (entry.provider_id == provider_id) {
                     snapshot.push_back(entry);
-                    snapshot.back().RefreshOwnedViews();
+                    snapshot.back().RefreshStoredViews();
                 }
             }
         }
@@ -283,7 +283,7 @@ namespace BML::Core {
                 (void) id;
                 if ((entry.desc.capabilities & required_caps) == required_caps) {
                     snapshot.push_back(entry);
-                    snapshot.back().RefreshOwnedViews();
+                    snapshot.back().RefreshStoredViews();
                 }
             }
         }

@@ -78,11 +78,11 @@ static BML_TopicId s_TopicPaused = 0;
 
 static void PublishRetainedState(const BML_ImcBusInterface *imc, BML_TopicId topic,
                                   const void *data, size_t size) {
-    if (!imc || !imc->PublishState || topic == 0) return;
+    if (!imc || !imc->PublishState || !s_Hook.owner || topic == 0) return;
     BML_ImcMessage msg = BML_IMC_MESSAGE_INIT;
     msg.data = data;
     msg.size = size;
-    imc->PublishState(topic, &msg);
+    imc->PublishState(s_Hook.owner, topic, &msg);
 }
 
 static void UpdateGamePhase(BML_GamePhase phase) {
@@ -114,7 +114,7 @@ static void Log(BML_LogSeverity severity, const char *format, ...) {
     std::vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
 
-    s_Hook.logging->Log(s_Hook.global_context, severity,
+    s_Hook.logging->Log(s_Hook.owner, s_Hook.global_context, severity,
                         s_Hook.log_category ? s_Hook.log_category : "BML_Event",
                         "%s", buffer);
 }
@@ -130,8 +130,8 @@ static int PublishEventCallback(const CKBehaviorContext *behcontext, void *arg) 
     const BML_TopicId topic = s_Topics[data->topicIndex];
     if (topic != 0 && s_Hook.imc_bus) {
         auto *imc_bus = s_Hook.imc_bus;
-        if (imc_bus && imc_bus->Publish) {
-            imc_bus->Publish(topic, nullptr, 0);
+        if (imc_bus && imc_bus->Publish && s_Hook.owner) {
+            imc_bus->Publish(s_Hook.owner, topic, nullptr, 0);
         }
 
         // Update retained game state based on event type

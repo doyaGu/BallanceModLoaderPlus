@@ -27,11 +27,11 @@ BML_BEGIN_CDECLS
 typedef const void *BML_LocaleTable;
 
 /**
- * @brief Load the locale string table for the calling module.
+ * @brief Load the locale string table for a specific module.
  *
  * Looks for `<mod_dir>/locale/<locale_code>.toml` and parses it as a flat
  * key=value TOML table. Replaces any previously loaded locale data for
- * the calling module.
+ * the specified module.
  *
  * If the requested locale file does not exist, falls back to "en".
  * If neither exists, returns BML_RESULT_NOT_FOUND (not a fatal error).
@@ -40,13 +40,12 @@ typedef const void *BML_LocaleTable;
  *                     the current global language is used.
  * @return BML_RESULT_OK on success
  * @return BML_RESULT_NOT_FOUND if no locale file found
- * @return BML_RESULT_INVALID_CONTEXT if caller module cannot be resolved
+ * @return BML_RESULT_INVALID_CONTEXT if owner is NULL or invalid
  */
-typedef BML_Result (*PFN_BML_LocaleLoad)(const char *locale_code);
-typedef BML_Result (*PFN_BML_LocaleLoadOwned)(BML_Mod owner, const char *locale_code);
+typedef BML_Result (*PFN_BML_LocaleLoad)(BML_Mod owner, const char *locale_code);
 
 /**
- * @brief Get a localized string by key for the calling module.
+ * @brief Get a localized string by key for a specific module.
  *
  * @param key  String table key (e.g. "greeting", "config.speed")
  * @return The localized string, or the key itself if not found.
@@ -54,8 +53,7 @@ typedef BML_Result (*PFN_BML_LocaleLoadOwned)(BML_Mod owner, const char *locale_
  *         is reloaded or the module is detached.
  * @return NULL if key is NULL
  */
-typedef const char *(*PFN_BML_LocaleGet)(const char *key);
-typedef const char *(*PFN_BML_LocaleGetOwned)(BML_Mod owner, const char *key);
+typedef const char *(*PFN_BML_LocaleGet)(BML_Mod owner, const char *key);
 
 /**
  * @brief Set the active language globally.
@@ -84,7 +82,7 @@ typedef BML_Result (*PFN_BML_LocaleGetLanguage)(const char **out_code);
  * ======================================================================== */
 
 /**
- * @brief Bind the calling module's current string table for fast lookup.
+ * @brief Bind a module's current string table for fast lookup.
  *
  * Returns an opaque handle that can be passed to LocaleLookup for
  * direct table access without per-call module ID resolution.
@@ -94,8 +92,7 @@ typedef BML_Result (*PFN_BML_LocaleGetLanguage)(const char **out_code);
  * @param[out] out_table  Receives the table handle (NULL if no locale loaded)
  * @return BML_RESULT_OK on success
  */
-typedef BML_Result (*PFN_BML_LocaleBindTable)(BML_LocaleTable *out_table);
-typedef BML_Result (*PFN_BML_LocaleBindTableOwned)(BML_Mod owner, BML_LocaleTable *out_table);
+typedef BML_Result (*PFN_BML_LocaleBindTable)(BML_Mod owner, BML_LocaleTable *out_table);
 
 /**
  * @brief Look up a string directly from a bound table (fast path).

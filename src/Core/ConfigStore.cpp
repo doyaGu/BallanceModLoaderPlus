@@ -95,12 +95,6 @@ namespace BML::Core {
             CoreLog(BML_LOG_DEBUG, "config.store", "%s", message.c_str());
         }
 
-        BML_Mod ResolveTargetMod(BML_Mod handle) {
-            if (handle)
-                return handle;
-            return Context::GetCurrentModule();
-        }
-
         bool ValidateKey(const BML_ConfigKey *key) {
             return key && key->category && key->name && key->category[0] != '\0' && key->name[0] != '\0';
         }
@@ -285,8 +279,10 @@ namespace BML::Core {
                                      BML_ConfigValue *out_value) {
         if (!ValidateKey(key) || !out_value)
             return BML_RESULT_INVALID_ARGUMENT;
+        if (!mod)
+            return BML_RESULT_INVALID_ARGUMENT;
 
-        auto *doc = GetOrCreateDocument(ResolveTargetMod(mod));
+        auto *doc = GetOrCreateDocument(mod);
         if (!doc)
             return BML_RESULT_INVALID_STATE;
         if (!EnsureLoaded(*doc))
@@ -307,8 +303,10 @@ namespace BML::Core {
                                      const BML_ConfigValue *value) {
         if (!ValidateKey(key) || !ValidateValue(value))
             return BML_RESULT_INVALID_ARGUMENT;
+        if (!mod)
+            return BML_RESULT_INVALID_ARGUMENT;
 
-        auto *doc = GetOrCreateDocument(ResolveTargetMod(mod));
+        auto *doc = GetOrCreateDocument(mod);
         if (!doc)
             return BML_RESULT_INVALID_STATE;
         if (!EnsureLoaded(*doc))
@@ -355,8 +353,10 @@ namespace BML::Core {
     BML_Result ConfigStore::ResetValue(BML_Mod mod, const BML_ConfigKey *key) {
         if (!ValidateKey(key))
             return BML_RESULT_INVALID_ARGUMENT;
+        if (!mod)
+            return BML_RESULT_INVALID_ARGUMENT;
 
-        auto *doc = GetOrCreateDocument(ResolveTargetMod(mod));
+        auto *doc = GetOrCreateDocument(mod);
         if (!doc)
             return BML_RESULT_INVALID_STATE;
         if (!EnsureLoaded(*doc))
@@ -390,9 +390,11 @@ namespace BML::Core {
                                             void *user_data) {
         if (!callback)
             return BML_RESULT_INVALID_ARGUMENT;
+        if (!mod)
+            return BML_RESULT_INVALID_ARGUMENT;
 
         std::vector<std::tuple<std::string, std::string, ConfigEntry>> snapshot;
-        auto *doc = GetOrCreateDocument(ResolveTargetMod(mod));
+        auto *doc = GetOrCreateDocument(mod);
         if (!doc)
             return BML_RESULT_INVALID_STATE;
         if (!EnsureLoaded(*doc))
@@ -468,8 +470,7 @@ namespace BML::Core {
 
         doc->path = BuildConfigPath(*doc->owner);
         if (doc->path.empty()) {
-            DebugLog("ConfigStore: manifest directory not set");
-            return nullptr;
+            DebugLog("ConfigStore: config path unavailable");
         }
 
         auto *raw = doc.get();
@@ -516,7 +517,19 @@ namespace BML::Core {
         auto narrowPath = utils::Utf16ToUtf8(doc.path.c_str());
 
         try {
+#if TOML_EXCEPTIONS
             toml::table root = toml::parse_file(narrowPath.c_str());
+#else
+            auto parseResult = toml::parse_file(narrowPath.c_str());
+            if (!parseResult) {
+                const auto &err = parseResult.error();
+                DebugLog(std::string("ConfigStore: parse failed for ") + narrowPath + ": " +
+                         std::string(err.description()));
+                return false;
+            }
+
+            toml::table root = std::move(parseResult).table();
+#endif
 
             // Check schema version and perform migration if needed
             int32_t fileSchemaVersion = 1; // Default for files without version field
@@ -625,8 +638,8 @@ namespace BML::Core {
                 }
             }
         } catch (const toml::parse_error &err) {
-            DebugLog(
-                std::string("ConfigStore: parse failed for ") + narrowPath + ": " + std::string(err.description()));
+            DebugLog(std::string("ConfigStore: parse failed for ") + narrowPath + ": " +
+                     std::string(err.description()));
             return false;
         } catch (const std::exception &ex) {
             DebugLog(std::string("ConfigStore: error reading ") + narrowPath + ": " + ex.what());
@@ -736,6 +749,14 @@ namespace BML::Core {
         std::filesystem::path dir = base / L"config";
         std::error_code ec;
         std::filesystem::create_directories(dir, ec);
+        if (ec) {
+            DebugLog(std::string("ConfigStore: failed to prepare config directory: ") + ec.message());
+            return {};
+        }
+        if (!std::filesystem::is_directory(dir, ec) || ec) {
+            DebugLog("ConfigStore: config path is not a directory");
+            return {};
+        }
         auto safeName = mod.id.empty() ? std::wstring(L"mod") : utils::ToWString(mod.id);
         safeName = SanitizeFileName(std::move(safeName));
         std::filesystem::path full = dir / (safeName + L".toml");
@@ -765,14 +786,12 @@ namespace BML::Core {
         if (!out_batch) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
-
-        BML_Mod resolved_mod = ResolveTargetMod(mod);
-        if (!resolved_mod) {
+        if (!mod) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
         auto batch_ctx = std::make_unique<ConfigBatchContext>();
-        batch_ctx->mod = resolved_mod;
+        batch_ctx->mod = mod;
 
         // Generate unique batch ID
         uintptr_t batch_id = m_NextBatchId.fetch_add(1, std::memory_order_relaxed);
@@ -867,7 +886,7 @@ namespace BML::Core {
         }
 
         // Apply all changes atomically to the document
-        ConfigDocument *doc = GetOrCreateDocument(ResolveTargetMod(batch_ctx->mod));
+        ConfigDocument *doc = GetOrCreateDocument(batch_ctx->mod);
         if (!doc) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
@@ -918,7 +937,7 @@ namespace BML::Core {
         return BML_RESULT_OK;
     }
 
-    BML_Result RegisterConfigLoadHooksOwned(BML_Mod owner, const BML_ConfigLoadHooks *hooks) {
+    BML_Result RegisterConfigLoadHooks(BML_Mod owner, const BML_ConfigLoadHooks *hooks) {
         if (!hooks || hooks->struct_size < sizeof(BML_ConfigLoadHooks)) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
@@ -940,10 +959,6 @@ namespace BML::Core {
         }
 
         return BML_RESULT_OK;
-    }
-
-    BML_Result RegisterConfigLoadHooks(const BML_ConfigLoadHooks *hooks) {
-        return RegisterConfigLoadHooksOwned(Context::GetCurrentModule(), hooks);
     }
 
     void CleanupConfigHooksForModule(BML_Mod mod) {

@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "bml_imgui.hpp"
+#include "bml_core.h"
 #include "bml_interface.hpp"
 #include "bml_menu.h"
 
@@ -39,8 +40,13 @@ namespace Menu {
     };
 
     namespace detail {
+        inline BML_Mod ResolveHostMenuOwner() {
+            return bmlGetHostModule ? bmlGetHostModule() : nullptr;
+        }
+
         inline bml::InterfaceLease<BML_MenuApi> AcquireMenu() {
-            return bml::AcquireInterface<BML_MenuApi>(BML_MENU_INTERFACE_ID, 1, 0, 0);
+            return bml::AcquireInterface<BML_MenuApi>(
+                ResolveHostMenuOwner(), BML_MENU_INTERFACE_ID, 1, 0, 0);
         }
 
         inline const BML_ImGuiApi *GetCurrentImGuiApi() {
@@ -864,4 +870,3 @@ namespace Menu {
 } // namespace Menu
 
 #endif // BML_MENU_HPP
-

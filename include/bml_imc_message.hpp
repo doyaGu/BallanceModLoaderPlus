@@ -154,7 +154,7 @@ namespace imc {
         MessageBuilder &Data(const void *ptr, size_t len) {
             m_Msg.data = ptr;
             m_Msg.size = len;
-            m_OwnedData.clear();
+            m_StorageData.clear();
             return *this;
         }
 
@@ -165,20 +165,20 @@ namespace imc {
         }
 
         MessageBuilder &Copy(const void *ptr, size_t len) {
-            m_OwnedData.assign(
+            m_StorageData.assign(
                 static_cast<const uint8_t *>(ptr),
                 static_cast<const uint8_t *>(ptr) + len);
-            m_Msg.data = m_OwnedData.data();
-            m_Msg.size = m_OwnedData.size();
+            m_Msg.data = m_StorageData.data();
+            m_Msg.size = m_StorageData.size();
             return *this;
         }
 
         MessageBuilder &String(std::string_view str) { return Copy(str.data(), str.size()); }
 
         MessageBuilder &Bytes(std::vector<uint8_t> data) {
-            m_OwnedData = std::move(data);
-            m_Msg.data = m_OwnedData.data();
-            m_Msg.size = m_OwnedData.size();
+            m_StorageData = std::move(data);
+            m_Msg.data = m_StorageData.data();
+            m_Msg.size = m_StorageData.size();
             return *this;
         }
 
@@ -200,12 +200,12 @@ namespace imc {
         std::vector<uint8_t> ExtractData() && {
             m_Msg.data = nullptr;
             m_Msg.size = 0;
-            return std::move(m_OwnedData);
+            return std::move(m_StorageData);
         }
 
     private:
         BML_ImcMessage m_Msg;
-        std::vector<uint8_t> m_OwnedData;
+        std::vector<uint8_t> m_StorageData;
     };
 
     // ========================================================================
@@ -229,17 +229,17 @@ namespace imc {
         }
 
         static ZeroCopyBuffer FromVector(std::vector<uint8_t> &&data) {
-            auto *owned = new std::vector<uint8_t>(std::move(data));
-            return Create(owned->data(), owned->size(),
+            auto *storage = new std::vector<uint8_t>(std::move(data));
+            return Create(storage->data(), storage->size(),
                 [](const void *, size_t, void *ud) { delete static_cast<std::vector<uint8_t> *>(ud); },
-                owned);
+                storage);
         }
 
         static ZeroCopyBuffer FromString(std::string &&data) {
-            auto *owned = new std::string(std::move(data));
-            return Create(owned->data(), owned->size(),
+            auto *storage = new std::string(std::move(data));
+            return Create(storage->data(), storage->size(),
                 [](const void *, size_t, void *ud) { delete static_cast<std::string *>(ud); },
-                owned);
+                storage);
         }
 
         const void *Data() const noexcept { return m_Buffer.data; }

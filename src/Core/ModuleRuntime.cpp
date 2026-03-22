@@ -119,7 +119,7 @@ namespace BML::Core {
                 if (module.id.empty()) {
                     continue;
                 }
-                context->InvalidateRuntimeProvider(module.id);
+                context.InvalidateRuntimeProvider(module.id);
             }
         }
     } // namespace

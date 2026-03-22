@@ -129,7 +129,7 @@ BML_DECLARE_HANDLE(BML_ConfigBatch);
  * Creates a new batch for collecting config changes. Multiple Set operations
  * can be queued before atomically committing or discarding all changes.
  *
- * @param[in] mod Mod handle. Can be NULL to use current module context.
+ * @param[in] mod Mod handle. Must not be NULL.
  * @param[out] out_batch Receives the batch handle. Must not be NULL.
  *
  * @return BML_RESULT_OK on success
@@ -210,7 +210,7 @@ typedef BML_Result (*PFN_BML_ConfigBatchDiscard)(BML_ConfigBatch batch);
 /**
  * @brief Get a configuration value
  *
- * @param[in] mod Mod handle. Can be NULL to use the current module context.
+ * @param[in] mod Mod handle. Must not be NULL.
  * @param[in] key Configuration key. Must not be NULL. struct_size must be initialized.
  * @param[out] out_value Receives the configuration value. Must not be NULL.
  *                       struct_size should be pre-initialized.
@@ -226,7 +226,7 @@ typedef BML_Result (*PFN_BML_ConfigGet)(BML_Mod mod, const BML_ConfigKey *key, B
 /**
  * @brief Set a configuration value
  *
- * @param[in] mod Mod handle. Can be NULL to use the current module context.
+ * @param[in] mod Mod handle. Must not be NULL.
  * @param[in] key Configuration key. Must not be NULL. struct_size must be initialized.
  * @param[in] value Configuration value to set. Must not be NULL.
  *                  struct_size must be initialized.
@@ -242,7 +242,7 @@ typedef BML_Result (*PFN_BML_ConfigSet)(BML_Mod mod, const BML_ConfigKey *key, c
 /**
  * @brief Reset a configuration key to its default value
  *
- * @param[in] mod Mod handle. Can be NULL to use the current module context.
+ * @param[in] mod Mod handle. Must not be NULL.
  * @param[in] key Configuration key. Must not be NULL. struct_size must be initialized.
  *
  * @return BML_RESULT_OK on success
@@ -276,9 +276,9 @@ typedef BML_Result (*PFN_BML_ConfigEnumerate)(BML_Mod mod,
  * ======================================================================== */
 
 /**
- * @brief Get an integer config value with default fallback
+ * @brief Get an integer config value with a default value
  *
- * @param[in] mod Mod handle. Can be NULL to use current module context.
+ * @param[in] mod Mod handle. Must not be NULL.
  * @param[in] category Config category. Must not be NULL.
  * @param[in] name Config key name. Must not be NULL.
  * @param[in] default_value Value returned if key not found
@@ -295,9 +295,9 @@ typedef BML_Result (*PFN_BML_ConfigGetInt)(BML_Mod mod, const char *category,
                                            int32_t *out_value);
 
 /**
- * @brief Get a float config value with default fallback
+ * @brief Get a float config value with a default value
  *
- * @param[in] mod Mod handle. Can be NULL to use current module context.
+ * @param[in] mod Mod handle. Must not be NULL.
  * @param[in] category Config category. Must not be NULL.
  * @param[in] name Config key name. Must not be NULL.
  * @param[in] default_value Value returned if key not found
@@ -314,9 +314,9 @@ typedef BML_Result (*PFN_BML_ConfigGetFloat)(BML_Mod mod, const char *category,
                                               float *out_value);
 
 /**
- * @brief Get a boolean config value with default fallback
+ * @brief Get a boolean config value with a default value
  *
- * @param[in] mod Mod handle. Can be NULL to use current module context.
+ * @param[in] mod Mod handle. Must not be NULL.
  * @param[in] category Config category. Must not be NULL.
  * @param[in] name Config key name. Must not be NULL.
  * @param[in] default_value Value returned if key not found
@@ -333,9 +333,9 @@ typedef BML_Result (*PFN_BML_ConfigGetBool)(BML_Mod mod, const char *category,
                                              BML_Bool *out_value);
 
 /**
- * @brief Get a string config value with default fallback
+ * @brief Get a string config value with a default value
  *
- * @param[in] mod Mod handle. Can be NULL to use current module context.
+ * @param[in] mod Mod handle. Must not be NULL.
  * @param[in] category Config category. Must not be NULL.
  * @param[in] name Config key name. Must not be NULL.
  * @param[in] default_value Value returned if key not found (may be NULL)
@@ -400,9 +400,8 @@ typedef struct BML_ConfigLoadHooks {
  * @return BML_RESULT_OK on success
  * @return BML_RESULT_INVALID_ARGUMENT if hooks is invalid
  */
-typedef BML_Result (*PFN_BML_RegisterConfigLoadHooks)(const BML_ConfigLoadHooks *hooks);
-typedef BML_Result (*PFN_BML_RegisterConfigLoadHooksOwned)(BML_Mod owner,
-                                                           const BML_ConfigLoadHooks *hooks);
+typedef BML_Result (*PFN_BML_RegisterConfigLoadHooks)(BML_Mod owner,
+                                                      const BML_ConfigLoadHooks *hooks);
 
 BML_END_CDECLS
 

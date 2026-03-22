@@ -133,25 +133,32 @@ namespace imc {
     // ========================================================================
 
     /** @brief Call an RPC by name */
-    inline RpcFuture callRpc(std::string_view name, const void *data = nullptr, size_t size = 0,
+    inline RpcFuture callRpc(BML_Mod owner,
+                             std::string_view name,
+                             const void *data = nullptr,
+                             size_t size = 0,
                              const BML_ImcRpcInterface *rpc = nullptr) {
-        return RpcClient(name, rpc).Call(data, size);
+        return RpcClient(name, rpc, owner).Call(data, size);
     }
 
     /** @brief Call a typed RPC by name */
     template <typename T>
-    inline RpcFuture callRpc(std::string_view name, const T &req,
+    inline RpcFuture callRpc(BML_Mod owner,
+                             std::string_view name,
+                             const T &req,
                              const BML_ImcRpcInterface *rpc = nullptr) {
         static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
-        return RpcClient(name, rpc).Call(req);
+        return RpcClient(name, rpc, owner).Call(req);
     }
 
     /** @brief Synchronous typed RPC call */
     template <typename Resp, typename Req>
-    inline std::optional<Resp> callRpcSync(std::string_view name, const Req &req,
-                                            uint32_t timeoutMs = 5000,
-                                            const BML_ImcRpcInterface *rpc = nullptr) {
-        return RpcClient(name, rpc).template CallSync<Resp, Req>(req, timeoutMs);
+    inline std::optional<Resp> callRpcSync(BML_Mod owner,
+                                           std::string_view name,
+                                           const Req &req,
+                                           uint32_t timeoutMs = 5000,
+                                           const BML_ImcRpcInterface *rpc = nullptr) {
+        return RpcClient(name, rpc, owner).template CallSync<Resp, Req>(req, timeoutMs);
     }
 
     /** @brief Get info about a registered RPC endpoint */
@@ -183,16 +190,22 @@ namespace imc {
     // ========================================================================
 
     /** @brief Quick publish to a topic by name */
-    inline bool publish(std::string_view topicName, const void *data = nullptr, size_t size = 0,
+    inline bool publish(BML_Mod owner,
+                        std::string_view topicName,
+                        const void *data = nullptr,
+                        size_t size = 0,
                         const BML_ImcBusInterface *bus = nullptr) {
-        return Topic(topicName, bus).Publish(data, size);
+        return Topic(topicName, bus, owner).Publish(data, size);
     }
 
     /** @brief Quick publish typed data to a topic by name */
     template <typename T>
-    inline bool publish(std::string_view topicName, const T &data, const BML_ImcBusInterface *bus = nullptr) {
+    inline bool publish(BML_Mod owner,
+                        std::string_view topicName,
+                        const T &data,
+                        const BML_ImcBusInterface *bus = nullptr) {
         static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
-        return Topic(topicName, bus).Publish(data);
+        return Topic(topicName, bus, owner).Publish(data);
     }
 
 } // namespace imc

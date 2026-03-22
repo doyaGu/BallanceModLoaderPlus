@@ -24,13 +24,18 @@ namespace imc {
     public:
         Topic() : m_Id(InvalidTopicId) {}
 
-        explicit Topic(std::string_view name, const BML_ImcBusInterface *bus = nullptr)
-            : m_Name(name), m_Id(InvalidTopicId), m_Bus(bus) {
+        explicit Topic(std::string_view name,
+                       const BML_ImcBusInterface *bus = nullptr,
+                       BML_Mod owner = nullptr)
+            : m_Name(name), m_Id(InvalidTopicId), m_Bus(bus), m_Owner(owner) {
             Resolve();
         }
 
-        explicit Topic(TopicId id, std::string name = "", const BML_ImcBusInterface *bus = nullptr)
-            : m_Name(std::move(name)), m_Id(id), m_Bus(bus) {}
+        explicit Topic(TopicId id,
+                       std::string name = "",
+                       const BML_ImcBusInterface *bus = nullptr,
+                       BML_Mod owner = nullptr)
+            : m_Name(std::move(name)), m_Id(id), m_Bus(bus), m_Owner(owner) {}
 
         TopicId Id() const noexcept { return m_Id; }
         const std::string &Name() const noexcept { return m_Name; }
@@ -53,8 +58,8 @@ namespace imc {
 
         // Publishing
         bool Publish(const void *data = nullptr, size_t size = 0) const {
-            if (!Valid() || !m_Bus || !m_Bus->Publish) return false;
-            return m_Bus->Publish(m_Id, data, size) == BML_RESULT_OK;
+            if (!Valid() || !m_Bus || !m_Owner || !m_Bus->Publish) return false;
+            return m_Bus->Publish(m_Owner, m_Id, data, size) == BML_RESULT_OK;
         }
 
         template <typename T>
@@ -68,8 +73,8 @@ namespace imc {
         }
 
         bool PublishEx(const BML_ImcMessage &msg) const {
-            if (!Valid() || !m_Bus || !m_Bus->PublishEx) return false;
-            return m_Bus->PublishEx(m_Id, &msg) == BML_RESULT_OK;
+            if (!Valid() || !m_Bus || !m_Owner || !m_Bus->PublishEx) return false;
+            return m_Bus->PublishEx(m_Owner, m_Id, &msg) == BML_RESULT_OK;
         }
 
         bool PublishEx(const MessageBuilder &builder) const {
@@ -77,14 +82,14 @@ namespace imc {
         }
 
         bool PublishBuffer(const ZeroCopyBuffer &buffer) const {
-            if (!Valid() || !m_Bus || !m_Bus->PublishBuffer) return false;
-            return m_Bus->PublishBuffer(m_Id, buffer.Native()) == BML_RESULT_OK;
+            if (!Valid() || !m_Bus || !m_Owner || !m_Bus->PublishBuffer) return false;
+            return m_Bus->PublishBuffer(m_Owner, m_Id, buffer.Native()) == BML_RESULT_OK;
         }
 
         // Interceptable Publishing
         bool PublishInterceptable(BML_ImcMessage &msg, EventResult *outResult = nullptr) const {
-            if (!Valid() || !m_Bus || !m_Bus->PublishInterceptable) return false;
-            return m_Bus->PublishInterceptable(m_Id, &msg, outResult) == BML_RESULT_OK;
+            if (!Valid() || !m_Bus || !m_Owner || !m_Bus->PublishInterceptable) return false;
+            return m_Bus->PublishInterceptable(m_Owner, m_Id, &msg, outResult) == BML_RESULT_OK;
         }
 
         template <typename T>
@@ -113,6 +118,7 @@ namespace imc {
         std::string m_Name;
         TopicId m_Id;
         const BML_ImcBusInterface *m_Bus = nullptr;
+        BML_Mod m_Owner = nullptr;
     };
 
 } // namespace imc

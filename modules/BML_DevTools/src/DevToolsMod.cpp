@@ -274,7 +274,7 @@ public:
         services.Log().Info("devtools", "DevTools module attached");
 
         m_DrawReg = bml::ui::RegisterDraw(
-            "bml.devtools.overlay", 900, OnDraw, this);
+            Handle(), "bml.devtools.overlay", 900, OnDraw, this);
 
         m_Subs = services.CreateSubscriptions();
         m_Subs.Add(BML_TOPIC_INPUT_KEY_DOWN, [this](const bml::imc::Message &msg) {

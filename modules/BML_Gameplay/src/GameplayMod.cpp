@@ -394,7 +394,7 @@ public:
         SyncConfig();
         ApplyLanternMaterial();
 
-        m_DrawReg = bml::ui::RegisterDraw("bml.gameplay.overlay", 25, DrawOverlay, this);
+        m_DrawReg = bml::ui::RegisterDraw(Handle(), "bml.gameplay.overlay", 25, DrawOverlay, this);
         if (!m_DrawReg) {
             return BML_RESULT_NOT_FOUND;
         }

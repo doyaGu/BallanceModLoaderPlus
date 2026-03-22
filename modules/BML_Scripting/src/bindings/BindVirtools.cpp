@@ -1,4 +1,4 @@
-#include "BindVirtools.h"
+﻿#include "BindVirtools.h"
 
 #include <cassert>
 #include <string>
@@ -23,11 +23,12 @@ CKContext *GetCK() {
     if (!g_VirtoolsReady) {
         if (!g_VirtoolsWarnedOnce) {
             g_VirtoolsWarnedOnce = true;
-            if (g_Builtins && g_Builtins->Logging) {
+            const BML_Mod owner = CurrentScriptOwner();
+            if (g_Builtins && g_Builtins->Logging && g_Builtins->Logging->Log && owner) {
                 BML_Context bml_ctx = g_Builtins->Context
                     ? g_Builtins->Context->GetGlobalContext() : nullptr;
-                g_Builtins->Logging->Log(bml_ctx, BML_LOG_WARN, "script",
-                    "Virtools bindings called before engine init — returning nullptr");
+                g_Builtins->Logging->Log(owner, bml_ctx, BML_LOG_WARN, "script",
+                    "Virtools bindings called before engine init - returning nullptr");
             }
         }
         return nullptr;

@@ -25,9 +25,6 @@ namespace BML::Core {
     /** @brief Maximum API ID for direct indexing (performance optimization) */
     static constexpr size_t MAX_DIRECT_API_ID = 10000;
 
-    /** @brief Thread-local cache size for hot API lookups */
-    static constexpr size_t TLS_CACHE_SIZE = 16;
-
     class ApiRegistry {
     public:
         /**
@@ -98,14 +95,6 @@ namespace BML::Core {
             }
         };
 
-        /**
-         * @brief Thread-local cache entry for hot API lookups
-         */
-        struct CacheEntry {
-            BML_ApiId id{BML_API_INVALID_ID};
-            void *ptr{nullptr};
-        };
-
         struct CoreApiDescriptor {
             const char *name;
             void (*register_fn)();
@@ -167,7 +156,7 @@ namespace BML::Core {
         void RegisterApiLocked(const ApiMetadata &metadata);
         void RegisterEntryLocked(const std::string &name, void *pointer, BML_ApiId api_id);
         bool CanRegisterLocked(const std::string &name, BML_ApiId api_id) const;
-        void InvalidateTlsCachesLocked();
+        void IncrementCallCountLocked(BML_ApiId api_id) const;
         const char *StoreString(const char *value);
         void *ResolvePointerLocked(BML_ApiId api_id, bool increment_counts) const;
     };

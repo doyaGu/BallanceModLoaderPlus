@@ -220,13 +220,7 @@ namespace BML::Core {
                     continue;
                 }
 
-                struct ModuleScope {
-                    explicit ModuleScope(BML_Mod_T *mod) : previous(Context::GetCurrentModule()) {
-                        Context::SetCurrentModule(mod);
-                    }
-                    ~ModuleScope() { Context::SetCurrentModule(previous); }
-                    BML_Mod previous;
-                } scope(modHandle.get());
+                Context::CurrentModuleScope scope(modHandle.get());
 
                 BML_Result initResult = provider->AttachModule(
                     modHandle.get(), get_proc,
@@ -327,17 +321,7 @@ namespace BML::Core {
                 return false;
             }
 
-            struct ModuleScope {
-                explicit ModuleScope(BML_Mod_T *mod) : previous(Context::GetCurrentModule()) {
-                    Context::SetCurrentModule(mod);
-                }
-
-                ~ModuleScope() {
-                    Context::SetCurrentModule(previous);
-                }
-
-                BML_Mod previous;
-            } scope(modHandle.get());
+            Context::CurrentModuleScope scope(modHandle.get());
 
             // Call BML_ModEntrypoint attach with BML_Mod handle
             BML_ModAttachArgs attach{};
@@ -407,17 +391,7 @@ namespace BML::Core {
     void UnloadModules(std::vector<LoadedModule> &modules, Context &context, KernelServices &kernel) {
         (void)context;
         for (auto it = modules.rbegin(); it != modules.rend(); ++it) {
-            struct ModuleScope {
-                explicit ModuleScope(BML_Mod_T *mod) : previous(Context::GetCurrentModule()) {
-                    Context::SetCurrentModule(mod);
-                }
-
-                ~ModuleScope() {
-                    Context::SetCurrentModule(previous);
-                }
-
-                BML_Mod previous;
-            } scope(it->mod_handle ? it->mod_handle.get() : nullptr);
+            Context::CurrentModuleScope scope(it->mod_handle ? it->mod_handle.get() : nullptr);
 
             if (it->runtime && it->mod_handle) {
                 // Non-native module: delegate to runtime provider.

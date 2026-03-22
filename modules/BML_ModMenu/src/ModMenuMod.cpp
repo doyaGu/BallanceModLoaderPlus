@@ -99,7 +99,7 @@ public:
     BML_Result OnAttach(bml::ModuleServices &services) override {
         m_Subs = services.CreateSubscriptions();
 
-        m_DrawReg = bml::ui::RegisterDraw("bml.modmenu.window", 10, DrawCallback, this);
+        m_DrawReg = bml::ui::RegisterDraw(Handle(), "bml.modmenu.window", 10, DrawCallback, this);
         if (!m_DrawReg) {
             return BML_RESULT_NOT_FOUND;
         }
@@ -454,4 +454,3 @@ private:
 };
 
 BML_DEFINE_MODULE(ModMenuMod)
-

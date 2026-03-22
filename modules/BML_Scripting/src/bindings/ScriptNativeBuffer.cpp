@@ -8,13 +8,17 @@ NativeBuffer::NativeBuffer(size_t size) {
     m_Buffer = static_cast<char *>(asAllocMem(size));
     m_Size = size;
     m_CursorPos = 0;
-    m_Owned = true;
+    m_OwnsBuffer = true;
 }
 
-NativeBuffer::NativeBuffer(void *buffer, size_t size): m_Buffer(static_cast<char *>(buffer)), m_Size(size), m_CursorPos(0), m_Owned(false) {}
+NativeBuffer::NativeBuffer(void *buffer, size_t size)
+    : m_Buffer(static_cast<char *>(buffer)),
+      m_Size(size),
+      m_CursorPos(0),
+      m_OwnsBuffer(false) {}
 
 NativeBuffer::~NativeBuffer() {
-    if (m_Owned && m_Buffer) {
+    if (m_OwnsBuffer && m_Buffer) {
         asFreeMem(m_Buffer);
         m_Buffer = nullptr;
     }

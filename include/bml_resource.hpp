@@ -60,16 +60,13 @@ namespace bml {
         static Handle create(BML_HandleType type,
                              const BML_CoreResourceInterface *resourceInterface = nullptr,
                              BML_Mod owner = nullptr) {
-            if (!resourceInterface || (!resourceInterface->HandleCreate &&
-                !(owner && BML_CORE_RESOURCE_HAS_MEMBER(resourceInterface, HandleCreateOwned)))) {
+            if (!resourceInterface || !owner || !resourceInterface->HandleCreate) {
                 throw Exception(BML_RESULT_NOT_FOUND, "Handle API unavailable");
             }
 
             Handle h;
             h.m_ResourceInterface = resourceInterface;
-            auto result = (owner && BML_CORE_RESOURCE_HAS_MEMBER(resourceInterface, HandleCreateOwned))
-                ? resourceInterface->HandleCreateOwned(owner, type, &h.m_desc)
-                : resourceInterface->HandleCreate(type, &h.m_desc);
+            const auto result = resourceInterface->HandleCreate(owner, type, &h.m_desc);
             if (result != BML_RESULT_OK) {
                 throw Exception(result, "Failed to create handle");
             }
@@ -86,16 +83,13 @@ namespace bml {
             BML_HandleType type,
             const BML_CoreResourceInterface *resourceInterface = nullptr,
             BML_Mod owner = nullptr) {
-            if (!resourceInterface || (!resourceInterface->HandleCreate &&
-                !(owner && BML_CORE_RESOURCE_HAS_MEMBER(resourceInterface, HandleCreateOwned)))) {
+            if (!resourceInterface || !owner || !resourceInterface->HandleCreate) {
                 return std::nullopt;
             }
 
             Handle h;
             h.m_ResourceInterface = resourceInterface;
-            const auto result = (owner && BML_CORE_RESOURCE_HAS_MEMBER(resourceInterface, HandleCreateOwned))
-                ? resourceInterface->HandleCreateOwned(owner, type, &h.m_desc)
-                : resourceInterface->HandleCreate(type, &h.m_desc);
+            const auto result = resourceInterface->HandleCreate(owner, type, &h.m_desc);
             if (result == BML_RESULT_OK) {
                 h.m_valid = true;
                 return h;
@@ -278,16 +272,13 @@ namespace bml {
         static SharedHandle create(BML_HandleType type,
                                    const BML_CoreResourceInterface *resourceInterface = nullptr,
                                    BML_Mod owner = nullptr) {
-            if (!resourceInterface || (!resourceInterface->HandleCreate &&
-                !(owner && BML_CORE_RESOURCE_HAS_MEMBER(resourceInterface, HandleCreateOwned)))) {
+            if (!resourceInterface || !owner || !resourceInterface->HandleCreate) {
                 throw Exception(BML_RESULT_NOT_FOUND, "Handle API unavailable");
             }
 
             auto impl = std::make_shared<Impl>();
             impl->resource_interface = resourceInterface;
-            auto result = (owner && BML_CORE_RESOURCE_HAS_MEMBER(resourceInterface, HandleCreateOwned))
-                ? resourceInterface->HandleCreateOwned(owner, type, &impl->desc)
-                : resourceInterface->HandleCreate(type, &impl->desc);
+            const auto result = resourceInterface->HandleCreate(owner, type, &impl->desc);
             if (result != BML_RESULT_OK) {
                 throw Exception(result, "Failed to create handle");
             }
@@ -307,16 +298,13 @@ namespace bml {
             BML_HandleType type,
             const BML_CoreResourceInterface *resourceInterface = nullptr,
             BML_Mod owner = nullptr) {
-            if (!resourceInterface || (!resourceInterface->HandleCreate &&
-                !(owner && BML_CORE_RESOURCE_HAS_MEMBER(resourceInterface, HandleCreateOwned)))) {
+            if (!resourceInterface || !owner || !resourceInterface->HandleCreate) {
                 return std::nullopt;
             }
 
             auto impl = std::make_shared<Impl>();
             impl->resource_interface = resourceInterface;
-            const auto result = (owner && BML_CORE_RESOURCE_HAS_MEMBER(resourceInterface, HandleCreateOwned))
-                ? resourceInterface->HandleCreateOwned(owner, type, &impl->desc)
-                : resourceInterface->HandleCreate(type, &impl->desc);
+            const auto result = resourceInterface->HandleCreate(owner, type, &impl->desc);
             if (result == BML_RESULT_OK) {
                 impl->valid = true;
                 SharedHandle h;

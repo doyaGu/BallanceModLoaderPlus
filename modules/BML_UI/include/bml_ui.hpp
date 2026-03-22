@@ -69,24 +69,16 @@ namespace ui {
         BML_InterfaceRegistration m_Token = nullptr;
 
         friend DrawRegistration RegisterDraw(
-            const char *, int32_t, PFN_BML_UIDrawCallback, void *);
+            BML_Mod, const char *, int32_t, PFN_BML_UIDrawCallback, void *);
     };
 
-    /**
-     * @brief Register a UI draw callback.
-     *
-     * @param id        Unique registration ID (e.g. "bml.console.window")
-     * @param priority  Draw priority (lower = drawn earlier)
-     * @param callback  Draw callback function
-     * @param userData  User data passed to callback
-     * @return DrawRegistration RAII handle (falsy on failure)
-     */
     inline DrawRegistration RegisterDraw(
-        const char *id, int32_t priority,
+        BML_Mod owner, const char *id, int32_t priority,
         PFN_BML_UIDrawCallback callback, void *userData) {
 
         DrawRegistration reg;
-        reg.m_Registry = bml::Acquire<BML_UIDrawRegistry>();
+        reg.m_Registry = bml::AcquireInterface<BML_UIDrawRegistry>(
+            owner, BML_UI_DRAW_REGISTRY_INTERFACE_ID, 1, 0, 0);
         if (!reg.m_Registry) return {};
 
         BML_UIDrawDesc desc = BML_UI_DRAW_DESC_INIT;

@@ -49,11 +49,6 @@ typedef void (*BML_TimerCallback)(BML_Context ctx,
  * @return BML_RESULT_OK on success
  */
 typedef BML_Result (*PFN_BML_TimerScheduleOnce)(
-    uint32_t delay_ms,
-    BML_TimerCallback callback,
-    void *user_data,
-    BML_Timer *out_timer);
-typedef BML_Result (*PFN_BML_TimerScheduleOnceOwned)(
     BML_Mod owner,
     uint32_t delay_ms,
     BML_TimerCallback callback,
@@ -73,11 +68,6 @@ typedef BML_Result (*PFN_BML_TimerScheduleOnceOwned)(
  * @return BML_RESULT_OK on success
  */
 typedef BML_Result (*PFN_BML_TimerScheduleRepeat)(
-    uint32_t interval_ms,
-    BML_TimerCallback callback,
-    void *user_data,
-    BML_Timer *out_timer);
-typedef BML_Result (*PFN_BML_TimerScheduleRepeatOwned)(
     BML_Mod owner,
     uint32_t interval_ms,
     BML_TimerCallback callback,
@@ -97,11 +87,6 @@ typedef BML_Result (*PFN_BML_TimerScheduleRepeatOwned)(
  * @return BML_RESULT_OK on success
  */
 typedef BML_Result (*PFN_BML_TimerScheduleFrames)(
-    uint32_t frame_count,
-    BML_TimerCallback callback,
-    void *user_data,
-    BML_Timer *out_timer);
-typedef BML_Result (*PFN_BML_TimerScheduleFramesOwned)(
     BML_Mod owner,
     uint32_t frame_count,
     BML_TimerCallback callback,
@@ -117,8 +102,7 @@ typedef BML_Result (*PFN_BML_TimerScheduleFramesOwned)(
  * @param timer Timer handle to cancel
  * @return BML_RESULT_OK on success, BML_RESULT_INVALID_ARGUMENT if NULL
  */
-typedef BML_Result (*PFN_BML_TimerCancel)(BML_Timer timer);
-typedef BML_Result (*PFN_BML_TimerCancelOwned)(BML_Mod owner, BML_Timer timer);
+typedef BML_Result (*PFN_BML_TimerCancel)(BML_Mod owner, BML_Timer timer);
 
 /**
  * @brief Query whether a timer is still active.
@@ -127,11 +111,9 @@ typedef BML_Result (*PFN_BML_TimerCancelOwned)(BML_Mod owner, BML_Timer timer);
  * @param out_active Receives BML_TRUE if the timer is pending, BML_FALSE otherwise
  * @return BML_RESULT_OK on success
  */
-typedef BML_Result (*PFN_BML_TimerIsActive)(BML_Timer timer,
+typedef BML_Result (*PFN_BML_TimerIsActive)(BML_Mod owner,
+                                            BML_Timer timer,
                                             BML_Bool *out_active);
-typedef BML_Result (*PFN_BML_TimerIsActiveOwned)(BML_Mod owner,
-                                                 BML_Timer timer,
-                                                 BML_Bool *out_active);
 
 /**
  * @brief Cancel all timers owned by the calling module.
@@ -141,8 +123,7 @@ typedef BML_Result (*PFN_BML_TimerIsActiveOwned)(BML_Mod owner,
  *
  * @return BML_RESULT_OK on success
  */
-typedef BML_Result (*PFN_BML_TimerCancelAll)(void);
-typedef BML_Result (*PFN_BML_TimerCancelAllOwned)(BML_Mod owner);
+typedef BML_Result (*PFN_BML_TimerCancelAll)(BML_Mod owner);
 
 BML_END_CDECLS
 

@@ -1,4 +1,4 @@
-﻿#include "MemoryManager.h"
+#include "MemoryManager.h"
 
 #include "KernelServices.h"
 
@@ -232,12 +232,12 @@ namespace BML::Core {
 
     BML_Result MemoryManager::CreatePool(size_t block_size, uint32_t initial_blocks, BML_MemoryPool *out_pool) {
         if (!out_pool) {
-            return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "memory", "bmlMemoryPoolCreate",
+            return SetErrorResult(BML_RESULT_INVALID_ARGUMENT, "bmlMemoryPoolCreate",
                                          "out_pool is NULL", 0);
         }
 
         if (block_size < kMinPoolBlockSize || block_size > kMaxPoolBlockSize) {
-            return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "memory", "bmlMemoryPoolCreate",
+            return SetErrorResult(BML_RESULT_INVALID_ARGUMENT, "bmlMemoryPoolCreate",
                                          "block_size out of valid range", 0);
         }
 
@@ -256,10 +256,10 @@ namespace BML::Core {
 
             return BML_RESULT_OK;
         } catch (const std::bad_alloc &) {
-            return SetLastErrorAndReturn(BML_RESULT_OUT_OF_MEMORY, "memory", "bmlMemoryPoolCreate",
+            return SetErrorResult(BML_RESULT_OUT_OF_MEMORY, "bmlMemoryPoolCreate",
                                          "Failed to allocate pool", 0);
         } catch (...) {
-            return SetLastErrorAndReturn(BML_RESULT_UNKNOWN_ERROR, "memory", "bmlMemoryPoolCreate",
+            return SetErrorResult(BML_RESULT_UNKNOWN_ERROR, "bmlMemoryPoolCreate",
                                          "Unknown error creating pool", 0);
         }
     }
@@ -328,12 +328,12 @@ namespace BML::Core {
 
     BML_Result MemoryManager::GetStats(BML_MemoryStats *out_stats) {
         if (!out_stats) {
-            return SetLastErrorAndReturn(BML_RESULT_INVALID_ARGUMENT, "memory", "bmlGetMemoryStats",
+            return SetErrorResult(BML_RESULT_INVALID_ARGUMENT, "bmlGetMemoryStats",
                                          "out_stats is NULL", 0);
         }
 
         if (!m_tracking_enabled.load(std::memory_order_relaxed)) {
-            return SetLastErrorAndReturn(BML_RESULT_UNSUPPORTED, "memory", "bmlGetMemoryStats",
+            return SetErrorResult(BML_RESULT_UNSUPPORTED, "bmlGetMemoryStats",
                                          "Memory tracking is disabled", 0);
         }
 

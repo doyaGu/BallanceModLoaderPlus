@@ -31,28 +31,22 @@ namespace bml {
 
         BML_Timer ScheduleOnce(uint32_t delay_ms, BML_TimerCallback cb, void *ud = nullptr) const {
             BML_Timer t = nullptr;
-            if (m_Interface && m_Owner && BML_CORE_TIMER_HAS_MEMBER(m_Interface, ScheduleOnceOwned))
-                m_Interface->ScheduleOnceOwned(m_Owner, delay_ms, cb, ud, &t);
-            else if (m_Interface && m_Interface->ScheduleOnce)
-                m_Interface->ScheduleOnce(delay_ms, cb, ud, &t);
+            if (m_Interface && m_Owner && m_Interface->ScheduleOnce)
+                m_Interface->ScheduleOnce(m_Owner, delay_ms, cb, ud, &t);
             return t;
         }
 
         BML_Timer ScheduleRepeat(uint32_t interval_ms, BML_TimerCallback cb, void *ud = nullptr) const {
             BML_Timer t = nullptr;
-            if (m_Interface && m_Owner && BML_CORE_TIMER_HAS_MEMBER(m_Interface, ScheduleRepeatOwned))
-                m_Interface->ScheduleRepeatOwned(m_Owner, interval_ms, cb, ud, &t);
-            else if (m_Interface && m_Interface->ScheduleRepeat)
-                m_Interface->ScheduleRepeat(interval_ms, cb, ud, &t);
+            if (m_Interface && m_Owner && m_Interface->ScheduleRepeat)
+                m_Interface->ScheduleRepeat(m_Owner, interval_ms, cb, ud, &t);
             return t;
         }
 
         BML_Timer ScheduleFrames(uint32_t frame_count, BML_TimerCallback cb, void *ud = nullptr) const {
             BML_Timer t = nullptr;
-            if (m_Interface && m_Owner && BML_CORE_TIMER_HAS_MEMBER(m_Interface, ScheduleFramesOwned))
-                m_Interface->ScheduleFramesOwned(m_Owner, frame_count, cb, ud, &t);
-            else if (m_Interface && m_Interface->ScheduleFrames)
-                m_Interface->ScheduleFrames(frame_count, cb, ud, &t);
+            if (m_Interface && m_Owner && m_Interface->ScheduleFrames)
+                m_Interface->ScheduleFrames(m_Owner, frame_count, cb, ud, &t);
             return t;
         }
 
@@ -60,18 +54,16 @@ namespace bml {
             if (!m_Interface) {
                 return BML_RESULT_NOT_INITIALIZED;
             }
-            if (m_Owner && BML_CORE_TIMER_HAS_MEMBER(m_Interface, CancelOwned)) {
-                return m_Interface->CancelOwned(m_Owner, timer);
+            if (m_Owner && m_Interface->Cancel) {
+                return m_Interface->Cancel(m_Owner, timer);
             }
-            return m_Interface->Cancel ? m_Interface->Cancel(timer) : BML_RESULT_NOT_INITIALIZED;
+            return BML_RESULT_NOT_INITIALIZED;
         }
 
         bool IsActive(BML_Timer timer) const {
             BML_Bool active = BML_FALSE;
-            if (m_Interface && m_Owner && BML_CORE_TIMER_HAS_MEMBER(m_Interface, IsActiveOwned))
-                m_Interface->IsActiveOwned(m_Owner, timer, &active);
-            else if (m_Interface && m_Interface->IsActive)
-                m_Interface->IsActive(timer, &active);
+            if (m_Interface && m_Owner && m_Interface->IsActive)
+                m_Interface->IsActive(m_Owner, timer, &active);
             return active == BML_TRUE;
         }
 
@@ -79,10 +71,10 @@ namespace bml {
             if (!m_Interface) {
                 return BML_RESULT_NOT_INITIALIZED;
             }
-            if (m_Owner && BML_CORE_TIMER_HAS_MEMBER(m_Interface, CancelAllOwned)) {
-                return m_Interface->CancelAllOwned(m_Owner);
+            if (m_Owner && m_Interface->CancelAll) {
+                return m_Interface->CancelAll(m_Owner);
             }
-            return m_Interface->CancelAll ? m_Interface->CancelAll() : BML_RESULT_NOT_INITIALIZED;
+            return BML_RESULT_NOT_INITIALIZED;
         }
 
         explicit operator bool() const noexcept { return m_Interface != nullptr; }

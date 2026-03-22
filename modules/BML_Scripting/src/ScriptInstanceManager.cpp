@@ -49,6 +49,9 @@ void ScriptInstanceManager::ReleaseContext(asIScriptContext *ctx) {
         ctx->Release();
         return;
     }
+
+    ctx->ClearLineCallback();
+    ctx->Unprepare();
     m_ContextPool.push_back(ctx);
 }
 
@@ -194,7 +197,8 @@ BML_Result ScriptInstanceManager::Reload(BML_Mod mod) {
 
     // D5: Notify script before tearing down old state
     if (inst->fn_OnPrepareReload) {
-        BML_Result prepare_result = InvokeLifecycle(*inst, inst->fn_OnPrepareReload);
+        ScriptScope scope(inst);
+        BML_Result prepare_result = InvokeCallback(*inst, inst->fn_OnPrepareReload, false);
         if (prepare_result != BML_RESULT_OK) {
             return prepare_result;
         }
@@ -318,7 +322,7 @@ void ScriptInstanceManager::ResolveCallbacks(ScriptInstance &inst) {
 }
 
 BML_Result ScriptInstanceManager::InvokeCallback(
-        ScriptInstance &inst, asIScriptFunction *fn) {
+        ScriptInstance &inst, asIScriptFunction *fn, bool markErrorOnFailure) {
     if (!fn)
         return BML_RESULT_OK;
 
@@ -336,22 +340,30 @@ BML_Result ScriptInstanceManager::InvokeCallback(
         r = ctx->Execute();
     } catch (...) {
         ReleaseContext(ctx);
-        inst.state = ScriptInstance::State::Error;
+        if (markErrorOnFailure) {
+            inst.state = ScriptInstance::State::Error;
+        }
         return BML_RESULT_INTERNAL_ERROR;
     }
 
     if (r == asEXECUTION_EXCEPTION) {
-        // D4: Log exception before releasing context
-        LogScriptException(ctx, inst);
+        if (markErrorOnFailure) {
+            // D4: Log exception before releasing context
+            LogScriptException(ctx, inst);
+        }
         ReleaseContext(ctx);
-        inst.state = ScriptInstance::State::Error;
+        if (markErrorOnFailure) {
+            inst.state = ScriptInstance::State::Error;
+        }
         return BML_RESULT_INTERNAL_ERROR;
     }
 
     ReleaseContext(ctx);
 
     if (r == asEXECUTION_ABORTED) {
-        inst.state = ScriptInstance::State::Error;
+        if (markErrorOnFailure) {
+            inst.state = ScriptInstance::State::Error;
+        }
         return BML_RESULT_TIMEOUT;
     }
 
@@ -386,15 +398,15 @@ BML_Result ScriptInstanceManager::RunInitCallback(
 
 void ScriptInstanceManager::LogInitFailure(
         const ScriptInstance &inst, BML_Result result) const {
-    if (!g_Builtins || !g_Builtins->Logging) {
+    if (!g_Builtins || !g_Builtins->Logging || !g_Builtins->Logging->Log) {
         return;
     }
 
     BML_Context bml_ctx = g_Builtins->Context
         ? g_Builtins->Context->GetGlobalContext() : nullptr;
-    g_Builtins->Logging->Log(bml_ctx, BML_LOG_WARN, "script",
-        "[%s] OnInit failed with result %d",
-        inst.mod_id.c_str(), static_cast<int>(result));
+    g_Builtins->Logging->Log(inst.mod_handle, bml_ctx, BML_LOG_WARN, "script",
+                                  "[%s] OnInit failed with result %d",
+                                  inst.mod_id.c_str(), static_cast<int>(result));
 }
 
 BML_Result ScriptInstanceManager::InvokeByName(BML_Mod mod, const char *func_name) {

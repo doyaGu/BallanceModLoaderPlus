@@ -251,7 +251,7 @@ class MapMenuMod : public bml::Module {
             std::free(user_data);
         };
         buffer.cleanup_user_data = storage;
-        imcBus->PublishBuffer(m_TopicConsoleOutput, &buffer);
+        imcBus->PublishBuffer(Handle(), m_TopicConsoleOutput, &buffer);
     }
 
     bml::ConfigBindings m_Cfg;
@@ -385,7 +385,7 @@ class MapMenuMod : public bml::Module {
             BML_ImcMessage state_message = BML_IMC_MESSAGE_INIT;
             state_message.data = originalMapPath.c_str();
             state_message.size = originalMapPath.size() + 1;
-            imcBus->PublishState(m_TopicCustomMapName, &state_message);
+            imcBus->PublishState(Handle(), m_TopicCustomMapName, &state_message);
         }
         messageManager->SendMessageSingle(loadLevelMessage, m_Context->GetCurrentLevel());
         messageManager->SendMessageSingle(loadMenuMessage, allSound);
@@ -578,7 +578,7 @@ public:
 
         Services().Locale().Load(nullptr);
 
-        m_DrawReg = bml::ui::RegisterDraw("bml.mapmenu.window", 0, DrawCallback, this);
+        m_DrawReg = bml::ui::RegisterDraw(Handle(), "bml.mapmenu.window", 0, DrawCallback, this);
         if (!m_DrawReg) return BML_RESULT_NOT_FOUND;
 
         InitConfigBindings();

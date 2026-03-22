@@ -78,6 +78,7 @@ static CKContext *s_CKContext = nullptr;
 
 static bml::InterfaceLease<BML_ImcBusInterface> s_ImcBus;
 static bml::InterfaceLease<BML_CoreContextInterface> s_CoreContext;
+static PFN_BML_GetHostModule s_GetHostModule = nullptr;
 
 // Asset path registration tracking
 struct RegisteredAssetPath {
@@ -92,14 +93,31 @@ typedef void (*PFN_bmlEnumerateModuleDirectories)(
                      const char *asset_mount, void *user_data),
     void *user_data);
 
+static BML_Mod GetRuntimeOwner();
+
 static bool EnsureRuntimeInterfaces() {
+    BML_Mod owner = GetRuntimeOwner();
+    if (!owner) {
+        return false;
+    }
+
     if (!s_ImcBus) {
-        s_ImcBus = bml::AcquireInterface<BML_ImcBusInterface>(BML_IMC_BUS_INTERFACE_ID, 1, 0, 0);
+        s_ImcBus = bml::AcquireInterface<BML_ImcBusInterface>(owner, BML_IMC_BUS_INTERFACE_ID, 1, 0, 0);
     }
     if (!s_CoreContext) {
-        s_CoreContext = bml::AcquireInterface<BML_CoreContextInterface>(BML_CORE_CONTEXT_INTERFACE_ID, 1, 0, 0);
+        s_CoreContext = bml::AcquireInterface<BML_CoreContextInterface>(owner, BML_CORE_CONTEXT_INTERFACE_ID, 1, 0, 0);
     }
     return static_cast<bool>(s_ImcBus) && static_cast<bool>(s_CoreContext);
+}
+
+static BML_Mod GetRuntimeOwner() {
+    if (!s_GetHostModule) {
+        if (HMODULE bml = ::GetModuleHandleA("BML.dll")) {
+            s_GetHostModule = reinterpret_cast<PFN_BML_GetHostModule>(
+                ::GetProcAddress(bml, "bmlGetHostModule"));
+        }
+    }
+    return s_GetHostModule ? s_GetHostModule() : nullptr;
 }
 
 static void PumpImcNow() {
@@ -192,7 +210,9 @@ static void OnCmdSendMessage(BML_Context, BML_TopicId, const BML_ImcMessage *mes
     BML_TopicId consoleTopic = 0;
     s_ImcBus->GetTopicId(BML_TOPIC_CONSOLE_OUTPUT, &consoleTopic);
     if (consoleTopic) {
-        s_ImcBus->Publish(consoleTopic, raw, message->size);
+        if (BML_Mod owner = GetRuntimeOwner()) {
+            s_ImcBus->Publish(owner, consoleTopic, raw, message->size);
+        }
     }
 }
 
@@ -229,7 +249,10 @@ static void SubscribeCommandTopics() {
                         BML_ImcHandler handler) {
         s_ImcBus->GetTopicId(topic, &id);
         if (id && !sub) {
-            s_ImcBus->Subscribe(id, handler, nullptr, &sub);
+            BML_Mod owner = GetRuntimeOwner();
+            if (owner) {
+                s_ImcBus->Subscribe(owner, id, handler, nullptr, &sub);
+            }
         }
     };
 
@@ -350,13 +373,17 @@ void ModManager::PublishLifecycleEvent(const char *topic) {
     }
 
     if (topicId) {
-        s_ImcBus->Publish(topicId, nullptr, 0);
+        if (BML_Mod owner = GetRuntimeOwner()) {
+            s_ImcBus->Publish(owner, topicId, nullptr, 0);
+        }
     }
 }
 
 void ModManager::PublishProcessEvent(float deltaTime) {
     if (!EnsureRuntimeInterfaces() || !s_ImcBus->Publish || !s_TopicPostProcess) return;
-    s_ImcBus->Publish(s_TopicPostProcess, &deltaTime, sizeof(float));
+    if (BML_Mod owner = GetRuntimeOwner()) {
+        s_ImcBus->Publish(owner, s_TopicPostProcess, &deltaTime, sizeof(float));
+    }
 }
 
 static void TryAddAssetPath(CKPathManager *pm, int pathIndex, const std::string &path) {
@@ -482,7 +509,9 @@ CKERROR ModManager::OnCKInit() {
         payload.struct_size = sizeof(payload);
         payload.context = m_Context;
         payload.main_window = m_Context ? m_Context->GetMainWindow() : nullptr;
-        s_ImcBus->Publish(s_TopicEngineInit, &payload, sizeof(payload));
+        if (BML_Mod owner = GetRuntimeOwner()) {
+            s_ImcBus->Publish(owner, s_TopicEngineInit, &payload, sizeof(payload));
+        }
         PumpImcNow();
     }
 
@@ -501,7 +530,9 @@ CKERROR ModManager::OnCKEnd() {
 
     // Publish engine end event
     if (EnsureRuntimeInterfaces() && s_ImcBus->Publish && s_TopicEngineEnd) {
-        s_ImcBus->Publish(s_TopicEngineEnd, nullptr, 0);
+        if (BML_Mod owner = GetRuntimeOwner()) {
+            s_ImcBus->Publish(owner, s_TopicEngineEnd, nullptr, 0);
+        }
         PumpImcNow();
     }
 
@@ -516,7 +547,9 @@ CKERROR ModManager::OnCKPause() {
 
     // Publish engine pause event
     if (EnsureRuntimeInterfaces() && s_ImcBus->Publish && s_TopicEnginePause) {
-        s_ImcBus->Publish(s_TopicEnginePause, nullptr, 0);
+        if (BML_Mod owner = GetRuntimeOwner()) {
+            s_ImcBus->Publish(owner, s_TopicEnginePause, nullptr, 0);
+        }
         PumpImcNow();
     }
 
@@ -551,7 +584,9 @@ CKERROR ModManager::OnCKPlay() {
             payload.render_context = m_RenderContext;
             payload.render_window = m_RenderContext ? m_RenderContext->GetWindowHandle() : nullptr;
             payload.is_resume = BML_FALSE;
-            s_ImcBus->Publish(s_TopicEnginePlay, &payload, sizeof(payload));
+            if (BML_Mod owner = GetRuntimeOwner()) {
+                s_ImcBus->Publish(owner, s_TopicEnginePlay, &payload, sizeof(payload));
+            }
             PumpImcNow();
         }
     }
@@ -565,7 +600,9 @@ CKERROR ModManager::OnCKReset() {
 
         // Publish engine reset event
         if (EnsureRuntimeInterfaces() && s_ImcBus->Publish && s_TopicEngineReset) {
-            s_ImcBus->Publish(s_TopicEngineReset, nullptr, 0);
+            if (BML_Mod owner = GetRuntimeOwner()) {
+                s_ImcBus->Publish(owner, s_TopicEngineReset, nullptr, 0);
+            }
             PumpImcNow();
         }
 
@@ -581,7 +618,9 @@ CKERROR ModManager::OnCKPostReset() {
 
     // Publish engine post-reset event
     if (EnsureRuntimeInterfaces() && s_ImcBus->Publish && s_TopicEnginePostReset) {
-        s_ImcBus->Publish(s_TopicEnginePostReset, nullptr, 0);
+        if (BML_Mod owner = GetRuntimeOwner()) {
+            s_ImcBus->Publish(owner, s_TopicEnginePostReset, nullptr, 0);
+        }
         PumpImcNow();
     }
 
@@ -596,7 +635,9 @@ CKERROR ModManager::PreProcess() {
 
     // Publish pre-process event
     if (EnsureRuntimeInterfaces() && s_ImcBus->Publish && s_TopicPreProcess) {
-        s_ImcBus->Publish(s_TopicPreProcess, nullptr, 0);
+        if (BML_Mod owner = GetRuntimeOwner()) {
+            s_ImcBus->Publish(owner, s_TopicPreProcess, nullptr, 0);
+        }
         PumpImcNow();
     }
 
@@ -613,7 +654,9 @@ CKERROR ModManager::PostProcess() {
 
     // Publish post-process event with delta time
     if (EnsureRuntimeInterfaces() && s_ImcBus->Publish && s_TopicPostProcess) {
-        s_ImcBus->Publish(s_TopicPostProcess, &deltaTime, sizeof(float));
+        if (BML_Mod owner = GetRuntimeOwner()) {
+            s_ImcBus->Publish(owner, s_TopicPostProcess, &deltaTime, sizeof(float));
+        }
         PumpImcNow();
     }
 
@@ -623,7 +666,9 @@ CKERROR ModManager::PostProcess() {
 CKERROR ModManager::OnPreRender(CKRenderContext *dev) {
     // Publish pre-render event
     if (EnsureRuntimeInterfaces() && s_ImcBus->Publish && s_TopicPreRender) {
-        s_ImcBus->Publish(s_TopicPreRender, &dev, sizeof(dev));
+        if (BML_Mod owner = GetRuntimeOwner()) {
+            s_ImcBus->Publish(owner, s_TopicPreRender, &dev, sizeof(dev));
+        }
         PumpImcNow();
     }
 
@@ -633,7 +678,9 @@ CKERROR ModManager::OnPreRender(CKRenderContext *dev) {
 CKERROR ModManager::OnPostRender(CKRenderContext *dev) {
     // Publish post-render event
     if (EnsureRuntimeInterfaces() && s_ImcBus->Publish && s_TopicPostRender) {
-        s_ImcBus->Publish(s_TopicPostRender, &dev, sizeof(dev));
+        if (BML_Mod owner = GetRuntimeOwner()) {
+            s_ImcBus->Publish(owner, s_TopicPostRender, &dev, sizeof(dev));
+        }
         PumpImcNow();
     }
 
@@ -643,7 +690,9 @@ CKERROR ModManager::OnPostRender(CKRenderContext *dev) {
 CKERROR ModManager::OnPostSpriteRender(CKRenderContext *dev) {
     // Publish post-sprite-render event (for overlay rendering)
     if (EnsureRuntimeInterfaces() && s_ImcBus->Publish && s_TopicPostSpriteRender) {
-        s_ImcBus->Publish(s_TopicPostSpriteRender, &dev, sizeof(dev));
+        if (BML_Mod owner = GetRuntimeOwner()) {
+            s_ImcBus->Publish(owner, s_TopicPostSpriteRender, &dev, sizeof(dev));
+        }
         PumpImcNow();
     }
 

@@ -100,7 +100,7 @@ class InputRecorderMod : public bml::Module {
                 e.scan_code = event.key_down.scan_code;
                 e.timestamp = event.key_down.timestamp;
                 e.repeat = event.key_down.repeat != 0;
-                bml::imc::publish(BML_TOPIC_INPUT_KEY_DOWN, e);
+                bml::imc::publish(Handle(), BML_TOPIC_INPUT_KEY_DOWN, e);
                 break;
             }
             case EVENT_KEY_UP: {
@@ -108,7 +108,7 @@ class InputRecorderMod : public bml::Module {
                 e.key_code = event.key_up.key_code;
                 e.scan_code = event.key_up.scan_code;
                 e.timestamp = event.key_up.timestamp;
-                bml::imc::publish(BML_TOPIC_INPUT_KEY_UP, e);
+                bml::imc::publish(Handle(), BML_TOPIC_INPUT_KEY_UP, e);
                 break;
             }
             case EVENT_MOUSE_BTN: {
@@ -116,7 +116,7 @@ class InputRecorderMod : public bml::Module {
                 e.button = event.mouse_btn.button;
                 e.down = event.mouse_btn.down != 0;
                 e.timestamp = event.mouse_btn.timestamp;
-                bml::imc::publish(BML_TOPIC_INPUT_MOUSE_BUTTON, e);
+                bml::imc::publish(Handle(), BML_TOPIC_INPUT_MOUSE_BUTTON, e);
                 break;
             }
             case EVENT_MOUSE_MOVE: {
@@ -126,7 +126,7 @@ class InputRecorderMod : public bml::Module {
                 e.rel_x = event.mouse_move.rel_x;
                 e.rel_y = event.mouse_move.rel_y;
                 e.absolute = event.mouse_move.absolute != 0;
-                bml::imc::publish(BML_TOPIC_INPUT_MOUSE_MOVE, e);
+                bml::imc::publish(Handle(), BML_TOPIC_INPUT_MOUSE_MOVE, e);
                 break;
             }
             }

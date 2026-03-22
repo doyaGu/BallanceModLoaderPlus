@@ -52,8 +52,8 @@ typedef struct BML_ModuleRuntimeProvider {
     /**
      * @brief Attach (compile + initialize) a non-native module.
      *
-     * Called by ModuleLoader after CreateModHandle() and setting
-     * g_CurrentModule. The provider must compile/prepare the module
+     * Called by ModuleLoader after CreateModHandle() and entering the
+     * module's lifecycle scope. The provider must compile/prepare the module
      * and invoke any initialization callbacks.
      *
      * @param mod        Module handle (already created by Core)

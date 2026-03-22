@@ -72,7 +72,7 @@ static int Script_SetTimer(int delayMs, const std::string &callbackName) {
     auto *tc = new TimerContext{g_TimerManager, inst->mod_handle, callbackName};
     BML_Timer timer = nullptr;
     BML_Result r = g_Builtins->Timer->ScheduleOnce(
-        static_cast<uint32_t>(delayMs), TimerTrampoline, tc, &timer);
+        inst->mod_handle, static_cast<uint32_t>(delayMs), TimerTrampoline, tc, &timer);
     if (r != BML_RESULT_OK) { delete tc; return -1; }
     inst->timer_contexts.emplace_back(tc);
     return static_cast<int>(reinterpret_cast<uintptr_t>(timer));
@@ -84,15 +84,18 @@ static int Script_SetInterval(int intervalMs, const std::string &callbackName) {
     auto *tc = new TimerContext{g_TimerManager, inst->mod_handle, callbackName};
     BML_Timer timer = nullptr;
     BML_Result r = g_Builtins->Timer->ScheduleRepeat(
-        static_cast<uint32_t>(intervalMs), TimerTrampoline, tc, &timer);
+        inst->mod_handle, static_cast<uint32_t>(intervalMs), TimerTrampoline, tc, &timer);
     if (r != BML_RESULT_OK) { delete tc; return -1; }
     inst->timer_contexts.emplace_back(tc);
     return static_cast<int>(reinterpret_cast<uintptr_t>(timer));
 }
 
 static void Script_CancelTimer(int timerId) {
-    if (!g_Builtins || !g_Builtins->Timer || timerId < 0) return;
-    g_Builtins->Timer->Cancel(reinterpret_cast<BML_Timer>(static_cast<uintptr_t>(timerId)));
+    auto *inst = t_CurrentScript;
+    if (!inst || !g_Builtins || !g_Builtins->Timer || timerId < 0) return;
+    g_Builtins->Timer->Cancel(
+        inst->mod_handle,
+        reinterpret_cast<BML_Timer>(static_cast<uintptr_t>(timerId)));
 }
 
 } // namespace

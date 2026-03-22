@@ -16,6 +16,11 @@ set(BML_CORE_SOURCES
         FaultTracker.cpp
         HookRegistry.cpp
         HookApi.cpp
+        ImcBusApi.cpp
+        ImcBusFacade.cpp
+        ImcBusPublish.cpp
+        ImcBusRpc.cpp
+        ImcBusState.cpp
         InterfaceApi.cpp
         ResourceApi.cpp
         TimerManager.cpp
@@ -81,6 +86,7 @@ set(BML_CORE_HEADERS
         FixedBlockPool.h
         HookRegistry.h
         ImcBus.h
+        ImcBusInternal.h
         Logging.h
         MemoryManager.h
         SyncManager.h
