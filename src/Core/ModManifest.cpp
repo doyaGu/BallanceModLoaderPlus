@@ -339,6 +339,7 @@ namespace BML::Core {
                                    ModManifest &out_manifest,
                                    ManifestParseError &out_error) const {
         std::string narrowPath = utils::Utf16ToUtf8(path);
+#if TOML_EXCEPTIONS
         toml::table table;
         try {
             table = toml::parse_file(narrowPath);
@@ -350,6 +351,19 @@ namespace BML::Core {
             out_error.column = static_cast<int>(source.begin.column);
             return false;
         }
+#else
+        auto parseResult = toml::parse_file(narrowPath);
+        if (!parseResult) {
+            const auto &err = parseResult.error();
+            out_error.message = std::string(err.description());
+            out_error.file = narrowPath;
+            const auto &source = err.source();
+            out_error.line = static_cast<int>(source.begin.line);
+            out_error.column = static_cast<int>(source.begin.column);
+            return false;
+        }
+        toml::table table = std::move(parseResult).table();
+#endif
 
         auto pkgTable = table["package"].as_table();
         if (!pkgTable) {

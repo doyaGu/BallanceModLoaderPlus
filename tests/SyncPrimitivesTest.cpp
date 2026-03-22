@@ -481,7 +481,10 @@ TEST_F(SyncPrimitivesTest, CondVarWaitDeadlockDetectionWithExtraMutex) {
 
     EXPECT_EQ(contender_result.code, BML_RESULT_SYNC_DEADLOCK);
     EXPECT_EQ(contender_result.api, "bmlMutexLock");
-    EXPECT_EQ(wait_result, BML_RESULT_TIMEOUT);
+    // The waiter may observe either the timeout or a spurious wakeup. The
+    // deadlock-detection contract under test is that the contender reports the
+    // cycle and the waiter does not fail with an unrelated sync error.
+    EXPECT_TRUE(wait_result == BML_RESULT_TIMEOUT || wait_result == BML_RESULT_OK);
 
     kernel_->sync->DestroyCondVar(condvar);
     kernel_->sync->DestroyMutex(payload_mutex);

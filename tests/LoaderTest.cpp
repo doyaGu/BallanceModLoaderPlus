@@ -15,7 +15,6 @@ namespace {
         uint32_t id;
     };
 
-    BML_Mod g_CurrentModule = nullptr;
     bool g_BlockCoreConfig = false;
 
     BML_Result DummyContextRetain(BML_Context) { return BML_RESULT_OK; }
@@ -53,17 +52,12 @@ namespace {
         return BML_RESULT_OK;
     }
     BML_Result DummyRegisterShutdownHook(BML_Mod, BML_ShutdownCallback, void *) { return BML_RESULT_OK; }
-    BML_Result DummySetCurrentModule(BML_Mod mod) {
-        g_CurrentModule = mod;
-        return BML_RESULT_OK;
-    }
-    BML_Mod DummyGetCurrentModule() { return g_CurrentModule; }
     uint32_t DummyGetLoadedModuleCount() { return 0; }
     BML_Mod DummyGetLoadedModuleAt(uint32_t) { return nullptr; }
 
-    void DummyLog(BML_Context, BML_LogSeverity, const char *, const char *, ...) {}
-    void DummyLogVa(BML_Context, BML_LogSeverity, const char *, const char *, va_list) {}
-    void DummySetLogFilter(BML_LogSeverity) {}
+    void DummyLog(BML_Mod, BML_Context, BML_LogSeverity, const char *, const char *, ...) {}
+    void DummyLogVa(BML_Mod, BML_Context, BML_LogSeverity, const char *, const char *, va_list) {}
+    void DummySetLogFilter(BML_Mod, BML_LogSeverity) {}
     BML_Result DummyRegisterLogSinkOverride(const BML_LogSinkOverrideDesc *) { return BML_RESULT_OK; }
     BML_Result DummyClearLogSinkOverride() { return BML_RESULT_OK; }
 
@@ -77,7 +71,9 @@ namespace {
     }
     BML_Result DummyConfigBatchCommit(BML_ConfigBatch) { return BML_RESULT_OK; }
     BML_Result DummyConfigBatchDiscard(BML_ConfigBatch) { return BML_RESULT_OK; }
-    BML_Result DummyRegisterConfigLoadHooks(const BML_ConfigLoadHooks *) { return BML_RESULT_OK; }
+    BML_Result DummyRegisterConfigLoadHooks(BML_Mod, const BML_ConfigLoadHooks *) {
+        return BML_RESULT_OK;
+    }
 
     BML_Result DummyGetTopicId(const char *, BML_TopicId *out_id) {
         if (!out_id) {
@@ -93,21 +89,26 @@ namespace {
         *out_id = 7;
         return BML_RESULT_OK;
     }
-    BML_Result DummyPublish(BML_TopicId, const void *, size_t) { return BML_RESULT_OK; }
-    BML_Result DummyPublishEx(BML_TopicId, const BML_ImcMessage *) { return BML_RESULT_OK; }
-    BML_Result DummyPublishBuffer(BML_TopicId, const BML_ImcBuffer *) { return BML_RESULT_OK; }
-    BML_Result DummyPublishMulti(const BML_TopicId *, size_t, const void *, size_t, const BML_ImcMessage *, size_t *) {
+    BML_Result DummyPublish(BML_Mod, BML_TopicId, const void *, size_t) { return BML_RESULT_OK; }
+    BML_Result DummyPublishEx(BML_Mod, BML_TopicId, const BML_ImcMessage *) { return BML_RESULT_OK; }
+    BML_Result DummyPublishBuffer(BML_Mod, BML_TopicId, const BML_ImcBuffer *) { return BML_RESULT_OK; }
+    BML_Result DummyPublishMulti(BML_Mod, const BML_TopicId *, size_t, const void *, size_t, const BML_ImcMessage *, size_t *) {
         return BML_RESULT_OK;
     }
-    BML_Result DummySubscribe(BML_TopicId, BML_ImcHandler, void *, BML_Subscription *out_sub) {
+    BML_Result DummySubscribe(BML_Mod, BML_TopicId, BML_ImcHandler, void *, BML_Subscription *out_sub) {
         if (!out_sub) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
         *out_sub = reinterpret_cast<BML_Subscription>(0x2);
         return BML_RESULT_OK;
     }
-    BML_Result DummySubscribeEx(BML_TopicId, BML_ImcHandler, void *, const BML_SubscribeOptions *, BML_Subscription *out_sub) {
-        return DummySubscribe(0, nullptr, nullptr, out_sub);
+    BML_Result DummySubscribeEx(BML_Mod owner,
+                                BML_TopicId topic,
+                                BML_ImcHandler handler,
+                                void *userData,
+                                const BML_SubscribeOptions *,
+                                BML_Subscription *out_sub) {
+        return DummySubscribe(owner, topic, handler, userData, out_sub);
     }
     BML_Result DummyUnsubscribe(BML_Subscription) { return BML_RESULT_OK; }
     BML_Result DummySubscriptionIsActive(BML_Subscription, BML_Bool *out_active) {
@@ -136,7 +137,9 @@ namespace {
     BML_Result DummyResetStats() { return BML_RESULT_OK; }
     BML_Result DummyGetTopicInfo(BML_TopicId, BML_TopicInfo *) { return BML_RESULT_OK; }
     BML_Result DummyGetTopicName(BML_TopicId, char *, size_t, size_t *) { return BML_RESULT_OK; }
-    BML_Result DummyPublishState(BML_TopicId, const BML_ImcMessage *) { return BML_RESULT_OK; }
+    BML_Result DummyPublishState(BML_Mod, BML_TopicId, const BML_ImcMessage *) {
+        return BML_RESULT_OK;
+    }
     BML_Result DummyCopyState(BML_TopicId, void *, size_t, size_t *, BML_ImcStateMeta *) { return BML_RESULT_OK; }
     BML_Result DummyClearState(BML_TopicId) { return BML_RESULT_OK; }
 
@@ -152,7 +155,7 @@ namespace {
     void DummyMemoryPoolDestroy(BML_MemoryPool) {}
     BML_Result DummyGetMemoryStats(BML_MemoryStats *) { return BML_RESULT_OK; }
 
-    BML_Result DummyHandleCreate(BML_HandleType, BML_HandleDesc *out_desc) {
+    BML_Result DummyHandleCreate(BML_Mod, BML_HandleType, BML_HandleDesc *out_desc) {
         if (!out_desc) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
@@ -169,7 +172,7 @@ namespace {
     }
     BML_Result DummyHandleAttachUserData(const BML_HandleDesc *, void *) { return BML_RESULT_OK; }
     BML_Result DummyHandleGetUserData(const BML_HandleDesc *, void **) { return BML_RESULT_OK; }
-    BML_Result DummyRegisterResourceType(const BML_ResourceTypeDesc *, BML_HandleType *out_type) {
+    BML_Result DummyRegisterResourceType(BML_Mod, const BML_ResourceTypeDesc *, BML_HandleType *out_type) {
         if (out_type) {
             *out_type = 1;
         }
@@ -198,13 +201,11 @@ namespace {
         DummyContextGetUserData,
     };
     BML_CoreModuleInterface g_CoreModuleInterface{
-        BML_IFACE_HEADER(BML_CoreModuleInterface, BML_CORE_MODULE_INTERFACE_ID, 1, 0),
+        BML_IFACE_HEADER(BML_CoreModuleInterface, BML_CORE_MODULE_INTERFACE_ID, 2, 0),
         DummyGetModId,
         DummyGetModVersion,
         DummyRequestCapability,
         DummyCheckCapability,
-        DummySetCurrentModule,
-        DummyGetCurrentModule,
         DummyRegisterShutdownHook,
         DummyGetLoadedModuleCount,
         DummyGetLoadedModuleAt,
@@ -294,7 +295,8 @@ namespace {
 
     void *MockGetProcAddress(const char *proc_name);
 
-    BML_Result MockInterfaceAcquire(const char *interface_id,
+    BML_Result MockInterfaceAcquire(BML_Mod,
+                                    const char *interface_id,
                                     const BML_Version *,
                                     const void **out_implementation,
                                     BML_InterfaceLease *out_lease) {
@@ -350,9 +352,6 @@ namespace {
         if (std::strcmp(proc_name, "bmlInterfaceRelease") == 0) {
             return reinterpret_cast<void *>(&MockInterfaceRelease);
         }
-        if (std::strcmp(proc_name, "bmlSetCurrentModule") == 0) {
-            return reinterpret_cast<void *>(&DummySetCurrentModule);
-        }
         return nullptr;
     }
 } // namespace
@@ -364,7 +363,6 @@ class LoaderTest : public ::testing::Test {
 protected:
     void SetUp() override {
         g_BlockCoreConfig = false;
-        g_CurrentModule = nullptr;
         bmlUnloadAPI();
     }
 
@@ -378,7 +376,7 @@ TEST_F(LoaderTest, LoadAPI_BootstrapAndBuiltins_Success) {
     EXPECT_TRUE(bmlIsApiLoaded());
     EXPECT_NE(nullptr, bmlInterfaceAcquire);
     EXPECT_NE(nullptr, bmlInterfaceRelease);
-    EXPECT_NE(nullptr, bmlSetCurrentModule);
+    EXPECT_EQ(nullptr, bmlGetHostModule);
 }
 
 TEST_F(LoaderTest, LoadAPI_NullGetProcAddress_ReturnsInvalidArgument) {
@@ -414,10 +412,10 @@ TEST_F(LoaderTest, UnloadAPI_ClearsCompatibilitySurface) {
     EXPECT_FALSE(bmlIsApiLoaded());
     EXPECT_EQ(nullptr, bmlInterfaceAcquire);
     EXPECT_EQ(nullptr, bmlInterfaceRelease);
-    EXPECT_EQ(nullptr, bmlSetCurrentModule);
+    EXPECT_EQ(nullptr, bmlInterfaceAcquire);
 }
 
 TEST_F(LoaderTest, ApiCountsReflectBootstrapMinimum) {
     EXPECT_EQ(4u, bmlGetApiCount());
-    EXPECT_EQ(4u, bmlGetRequiredApiCount());
+    EXPECT_EQ(2u, bmlGetRequiredApiCount());
 }

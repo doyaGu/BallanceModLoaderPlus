@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.14)
 
+if (POLICY CMP0091)
+    cmake_policy(SET CMP0091 NEW)
+endif ()
+
 project(BallanceModLoaderPlus
         VERSION 0.4.0
         LANGUAGES CXX
@@ -9,6 +13,12 @@ project(BallanceModLoaderPlus
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
+
+if (MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY
+        "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL"
+        CACHE STRING "MSVC runtime library" FORCE)
+endif ()
 
 # Add path for custom modules
 list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -47,9 +57,14 @@ add_compile_definitions(
         $<$<CXX_COMPILER_ID:MSVC>:_CRT_NONSTDC_NO_WARNINGS>
 )
 
+if (WIN32)
+    add_compile_definitions(WIN32 _WINDOWS)
+endif ()
+
 # Disable char8_t for MSVC to maintain compatibility with C++20
 add_compile_options(
         $<$<CXX_COMPILER_ID:MSVC>:/Zc:char8_t->
+        $<$<CXX_COMPILER_ID:MSVC>:/EHsc>
         $<$<CXX_COMPILER_ID:MSVC>:/MP>
 )
 

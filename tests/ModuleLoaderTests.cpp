@@ -277,6 +277,8 @@ using BML::Core::ModDependency;
 
 class DependencyResolverTests : public ::testing::Test {
 protected:
+    TestKernel kernel_;
+
     void SetUp() override {
         resolver_.Clear();
     }

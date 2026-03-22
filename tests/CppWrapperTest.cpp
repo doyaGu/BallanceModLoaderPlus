@@ -28,19 +28,22 @@ namespace {
         BML_Result unregister_result = BML_RESULT_OK;
         int register_calls = 0;
         int unregister_calls = 0;
+        BML_Mod last_owner = nullptr;
         std::string last_interface_id;
     };
 
     InterfaceMockState g_InterfaceMockState;
 
-    BML_Result MockInterfaceRegister(const BML_InterfaceDesc *desc) {
+    BML_Result MockInterfaceRegister(BML_Mod owner, const BML_InterfaceDesc *desc) {
         ++g_InterfaceMockState.register_calls;
+        g_InterfaceMockState.last_owner = owner;
         g_InterfaceMockState.last_interface_id = (desc && desc->interface_id) ? desc->interface_id : "";
         return g_InterfaceMockState.register_result;
     }
 
-    BML_Result MockInterfaceUnregister(const char *interface_id) {
+    BML_Result MockInterfaceUnregister(BML_Mod owner, const char *interface_id) {
         ++g_InterfaceMockState.unregister_calls;
+        g_InterfaceMockState.last_owner = owner;
         g_InterfaceMockState.last_interface_id = interface_id ? interface_id : "";
         return g_InterfaceMockState.unregister_result;
     }
@@ -217,12 +220,14 @@ namespace {
 
     LoggingMockState g_LoggingMockState;
 
-    void MockLogVa(BML_Context ctx,
+    void MockLogVa(BML_Mod owner,
+                   BML_Context ctx,
                    BML_LogSeverity level,
                    const char *tag,
                    const char *fmt,
                    va_list args) {
         ++g_LoggingMockState.log_calls;
+        g_LoggingMockState.last_owner = owner;
         g_LoggingMockState.last_context = ctx;
         g_LoggingMockState.last_severity = level;
         g_LoggingMockState.last_tag = tag ? tag : "";
@@ -231,24 +236,10 @@ namespace {
         g_LoggingMockState.last_message = buffer;
     }
 
-    void MockLogVaOwned(BML_Mod owner,
-                        BML_Context ctx,
-                        BML_LogSeverity level,
-                        const char *tag,
-                        const char *fmt,
-                        va_list args) {
+    void MockSetLogFilter(BML_Mod owner, BML_LogSeverity level) {
         g_LoggingMockState.last_owner = owner;
-        MockLogVa(ctx, level, tag, fmt, args);
-    }
-
-    void MockSetLogFilter(BML_LogSeverity level) {
         ++g_LoggingMockState.set_filter_calls;
         g_LoggingMockState.last_filter = level;
-    }
-
-    void MockSetLogFilterOwned(BML_Mod owner, BML_LogSeverity level) {
-        g_LoggingMockState.last_owner = owner;
-        MockSetLogFilter(level);
     }
 
 
@@ -261,7 +252,6 @@ namespace {
             reinterpret_cast<BML_Mod>(0xA001),
             reinterpret_cast<BML_Mod>(0xA002),
         };
-        BML_Mod current_module = nullptr;
         BML_Mod last_shutdown_hook_mod = nullptr;
         BML_ShutdownCallback last_shutdown_callback = nullptr;
         void *last_shutdown_user_data = nullptr;
@@ -320,16 +310,6 @@ namespace {
         return BML_RESULT_OK;
     }
 
-    BML_Result MockSetCurrentModule(BML_Mod mod) {
-        ++g_ModuleMockState.set_current_calls;
-        g_ModuleMockState.current_module = mod;
-        return BML_RESULT_OK;
-    }
-
-    BML_Mod MockGetCurrentModuleInterface() {
-        return g_ModuleMockState.current_module;
-    }
-
     uint32_t MockGetLoadedModuleCount() {
         return static_cast<uint32_t>(g_ModuleMockState.loaded_modules.size());
     }
@@ -344,7 +324,8 @@ namespace {
         g_ModuleMockState = ModuleMockState{};
     }
 
-    BML_Result MockAcquireModuleInterface(const char *interfaceId,
+    BML_Result MockAcquireModuleInterface(BML_Mod owner,
+                                          const char *interfaceId,
                                           const BML_Version *,
                                           const void **outImplementation,
                                           BML_InterfaceLease *outLease) {
@@ -361,24 +342,14 @@ namespace {
         moduleApi.GetModId = &MockGetModId;
         moduleApi.GetModVersion = &MockGetModVersion;
         moduleApi.RegisterShutdownHook = &MockRegisterShutdownHook;
-        moduleApi.SetCurrentModule = &MockSetCurrentModule;
-        moduleApi.GetCurrentModule = &MockGetCurrentModuleInterface;
         moduleApi.GetLoadedModuleCount = &MockGetLoadedModuleCount;
         moduleApi.GetLoadedModuleAt = &MockGetLoadedModuleAt;
 
         *outImplementation = &moduleApi;
         *outLease = reinterpret_cast<BML_InterfaceLease>(0xBEEF);
-        return BML_RESULT_OK;
-    }
-
-    BML_Result MockAcquireModuleInterfaceOwned(BML_Mod owner,
-                                               const char *interfaceId,
-                                               const BML_Version *version,
-                                               const void **outImplementation,
-                                               BML_InterfaceLease *outLease) {
         ++g_ModuleMockState.acquire_owned_calls;
         g_ModuleMockState.last_acquire_owner = owner;
-        return MockAcquireModuleInterface(interfaceId, version, outImplementation, outLease);
+        return BML_RESULT_OK;
     }
 
     BML_Result MockReleaseModuleInterface(BML_InterfaceLease) {
@@ -402,30 +373,14 @@ namespace {
 
     LocaleMockState g_LocaleMockState;
 
-    BML_Result MockLocaleLoad(const char *) {
-        ++g_LocaleMockState.load_calls;
-        g_LocaleMockState.last_load_module = g_ModuleMockState.current_module;
-        return BML_RESULT_OK;
-    }
-
-    BML_Result MockLocaleLoadOwned(BML_Mod owner, const char *localeCode) {
+    BML_Result MockLocaleLoad(BML_Mod owner, const char *localeCode) {
         ++g_LocaleMockState.load_calls;
         g_LocaleMockState.last_load_module = owner;
         (void) localeCode;
         return BML_RESULT_OK;
     }
 
-    const char *MockLocaleGet(const char *key) {
-        ++g_LocaleMockState.get_calls;
-        g_LocaleMockState.last_get_module = g_ModuleMockState.current_module;
-        if (!key) return nullptr;
-        if (std::strcmp(key, "greeting") == 0) {
-            return g_LocaleMockState.greeting.c_str();
-        }
-        return key;
-    }
-
-    const char *MockLocaleGetOwned(BML_Mod owner, const char *key) {
+    const char *MockLocaleGet(BML_Mod owner, const char *key) {
         g_LocaleMockState.last_get_module = owner;
         ++g_LocaleMockState.get_calls;
         if (!key) return nullptr;
@@ -448,15 +403,7 @@ namespace {
         return BML_RESULT_OK;
     }
 
-    BML_Result MockLocaleBindTable(BML_LocaleTable *outTable) {
-        ++g_LocaleMockState.bind_calls;
-        g_LocaleMockState.last_bind_module = g_ModuleMockState.current_module;
-        if (!outTable) return BML_RESULT_INVALID_ARGUMENT;
-        *outTable = g_LocaleMockState.bind_returns_table ? g_LocaleMockState.table : nullptr;
-        return BML_RESULT_OK;
-    }
-
-    BML_Result MockLocaleBindTableOwned(BML_Mod owner, BML_LocaleTable *outTable) {
+    BML_Result MockLocaleBindTable(BML_Mod owner, BML_LocaleTable *outTable) {
         g_LocaleMockState.last_bind_module = owner;
         ++g_LocaleMockState.bind_calls;
         if (!outTable) return BML_RESULT_INVALID_ARGUMENT;
@@ -488,7 +435,7 @@ namespace {
 
     TimerMockState g_TimerMockState;
 
-    BML_Result MockTimerScheduleOnceOwned(BML_Mod owner,
+    BML_Result MockTimerScheduleOnce(BML_Mod owner,
                                           uint32_t,
                                           BML_TimerCallback,
                                           void *,
@@ -500,14 +447,14 @@ namespace {
         return BML_RESULT_OK;
     }
 
-    BML_Result MockTimerCancelOwned(BML_Mod owner, BML_Timer timer) {
+    BML_Result MockTimerCancel(BML_Mod owner, BML_Timer timer) {
         ++g_TimerMockState.cancel_calls;
         g_TimerMockState.last_owner = owner;
         g_TimerMockState.last_timer = timer;
         return BML_RESULT_OK;
     }
 
-    BML_Result MockTimerIsActiveOwned(BML_Mod owner, BML_Timer timer, BML_Bool *outActive) {
+    BML_Result MockTimerIsActive(BML_Mod owner, BML_Timer timer, BML_Bool *outActive) {
         ++g_TimerMockState.is_active_calls;
         g_TimerMockState.last_owner = owner;
         g_TimerMockState.last_timer = timer;
@@ -516,7 +463,7 @@ namespace {
         return BML_RESULT_OK;
     }
 
-    BML_Result MockTimerCancelAllOwned(BML_Mod owner) {
+    BML_Result MockTimerCancelAll(BML_Mod owner) {
         ++g_TimerMockState.cancel_all_calls;
         g_TimerMockState.last_owner = owner;
         return BML_RESULT_OK;
@@ -632,7 +579,8 @@ namespace {
 
     ResourceMockState g_ResourceMockState;
 
-    BML_Result MockHandleCreate(BML_HandleType type, BML_HandleDesc *outDesc) {
+    BML_Result MockHandleCreate(BML_Mod owner, BML_HandleType type, BML_HandleDesc *outDesc) {
+        g_ResourceMockState.last_owner = owner;
         if (!outDesc) return BML_RESULT_INVALID_ARGUMENT;
         outDesc->struct_size = sizeof(BML_HandleDesc);
         outDesc->type = type;
@@ -640,11 +588,6 @@ namespace {
         outDesc->slot = g_ResourceMockState.next_slot++;
         g_ResourceMockState.valid_slots.insert(outDesc->slot);
         return BML_RESULT_OK;
-    }
-
-    BML_Result MockHandleCreateOwned(BML_Mod owner, BML_HandleType type, BML_HandleDesc *outDesc) {
-        g_ResourceMockState.last_owner = owner;
-        return MockHandleCreate(type, outDesc);
     }
 
     BML_Result MockHandleRetain(const BML_HandleDesc *desc) {
@@ -927,7 +870,7 @@ TEST(BMLWrapperTest, ResourceWrappers_UseExplicitInterface) {
     BML_CoreResourceInterface resourceApi{};
     resourceApi.header.struct_size = sizeof(BML_CoreResourceInterface);
     resourceApi.HandleCreate = &MockHandleCreate;
-    resourceApi.HandleCreateOwned = &MockHandleCreateOwned;
+    resourceApi.HandleCreate = &MockHandleCreate;
     resourceApi.HandleRetain = &MockHandleRetain;
     resourceApi.HandleRelease = &MockHandleRelease;
     resourceApi.HandleValidate = &MockHandleValidate;
@@ -969,7 +912,7 @@ TEST(BMLWrapperTest, Imc_PublishSignature) {
     // Verify API signature compiles
     float data = 1.0f;
     // Will fail without real API but should compile
-    bool result = bml::imc::publish("test_event", &data, sizeof(data));
+    bool result = bml::imc::publish(reinterpret_cast<BML_Mod>(0x1), "test_event", &data, sizeof(data));
     EXPECT_FALSE(result); // No API loaded
 }
 
@@ -980,7 +923,7 @@ TEST(BMLWrapperTest, Imc_PublishTemplateSignature) {
     };
     
     TestData data = { 42, 3.14f };
-    bool result = bml::imc::publish("test_event", data);
+    bool result = bml::imc::publish(reinterpret_cast<BML_Mod>(0x1), "test_event", data);
     EXPECT_FALSE(result); // No API loaded
 }
 
@@ -1032,9 +975,7 @@ TEST(BMLWrapperTest, Logger_UsesExplicitInterface) {
     BML_CoreLoggingInterface loggingApi{};
     loggingApi.header.struct_size = sizeof(BML_CoreLoggingInterface);
     loggingApi.LogVa = &MockLogVa;
-    loggingApi.LogVaOwned = &MockLogVaOwned;
     loggingApi.SetLogFilter = &MockSetLogFilter;
-    loggingApi.SetLogFilterOwned = &MockSetLogFilterOwned;
 
     const auto owner = reinterpret_cast<BML_Mod>(0xABCD);
     bml::Logger logger(reinterpret_cast<BML_Context>(0x4444), "TestTag", &loggingApi, owner);
@@ -1145,7 +1086,8 @@ TEST(BMLWrapperTest, ContributionLease_IsMoveOnly) {
 }
 
 TEST(BMLWrapperTest, AcquireInterface_NoApi) {
-    auto lease = bml::AcquireInterface<int>("test.service", 1, 0, 0);
+    auto lease = bml::AcquireInterface<int>(
+        reinterpret_cast<BML_Mod>(0x1), "test.service", 1, 0, 0);
     EXPECT_FALSE(static_cast<bool>(lease));
 }
 
@@ -1172,8 +1114,9 @@ TEST(BMLWrapperTest, MakeInterfaceDesc_BuildsExpectedMetadata) {
 TEST(BMLWrapperTest, RegisterInterface_NoApi) {
     static int service = 7;
     BML_InterfaceDesc desc = bml::MakeInterfaceDesc("test.service", &service, 1, 0, 0);
-    EXPECT_EQ(BML_RESULT_NOT_SUPPORTED, bml::RegisterInterface(nullptr, &desc));
-    EXPECT_EQ(BML_RESULT_NOT_SUPPORTED, bml::UnregisterInterface(nullptr, "test.service"));
+    const auto owner = reinterpret_cast<BML_Mod>(0x1234);
+    EXPECT_EQ(BML_RESULT_NOT_SUPPORTED, bml::RegisterInterface(nullptr, owner, &desc));
+    EXPECT_EQ(BML_RESULT_NOT_SUPPORTED, bml::UnregisterInterface(nullptr, owner, "test.service"));
 }
 
 TEST(BMLWrapperTest, PublishedInterface_RegisterAndDestructor_Success) {
@@ -1181,11 +1124,13 @@ TEST(BMLWrapperTest, PublishedInterface_RegisterAndDestructor_Success) {
 
     static int service = 11;
     BML_InterfaceDesc desc = bml::MakeInterfaceDesc("test.published", &service, 1, 0, 0);
+    const auto owner = reinterpret_cast<BML_Mod>(0x1234);
     {
-        bml::PublishedInterface published(&MockInterfaceRegister, &MockInterfaceUnregister, desc);
+        bml::PublishedInterface published(&MockInterfaceRegister, &MockInterfaceUnregister, owner, desc);
         EXPECT_TRUE(static_cast<bool>(published));
         EXPECT_EQ(1, g_InterfaceMockState.register_calls);
         EXPECT_EQ(0, g_InterfaceMockState.unregister_calls);
+        EXPECT_EQ(owner, g_InterfaceMockState.last_owner);
         EXPECT_EQ("test.published", g_InterfaceMockState.last_interface_id);
     }
 
@@ -1198,8 +1143,9 @@ TEST(BMLWrapperTest, PublishedInterface_MoveTransfersOwnership) {
 
     static int service = 12;
     BML_InterfaceDesc desc = bml::MakeInterfaceDesc("test.move", &service, 1, 0, 0);
+    const auto owner = reinterpret_cast<BML_Mod>(0x1234);
     {
-        bml::PublishedInterface first(&MockInterfaceRegister, &MockInterfaceUnregister, desc);
+        bml::PublishedInterface first(&MockInterfaceRegister, &MockInterfaceUnregister, owner, desc);
         bml::PublishedInterface second(std::move(first));
         EXPECT_FALSE(static_cast<bool>(first));
         EXPECT_TRUE(static_cast<bool>(second));
@@ -1215,7 +1161,11 @@ TEST(BMLWrapperTest, PublishedInterface_ResetReturnsUnregisterFailureAndKeepsOwn
 
     static int service = 13;
     BML_InterfaceDesc desc = bml::MakeInterfaceDesc("test.busy", &service, 1, 0, 0);
-    bml::PublishedInterface published(&MockInterfaceRegister, &MockInterfaceUnregister, desc);
+    bml::PublishedInterface published(
+        &MockInterfaceRegister,
+        &MockInterfaceUnregister,
+        reinterpret_cast<BML_Mod>(0x1234),
+        desc);
     ASSERT_TRUE(static_cast<bool>(published));
 
     EXPECT_EQ(BML_RESULT_BUSY, published.Reset());
@@ -1229,7 +1179,11 @@ TEST(BMLWrapperTest, PublishedInterface_RegisterFailureLeavesEmpty) {
 
     static int service = 14;
     BML_InterfaceDesc desc = bml::MakeInterfaceDesc("test.fail", &service, 1, 0, 0);
-    bml::PublishedInterface published(&MockInterfaceRegister, &MockInterfaceUnregister, desc);
+    bml::PublishedInterface published(
+        &MockInterfaceRegister,
+        &MockInterfaceUnregister,
+        reinterpret_cast<BML_Mod>(0x1234),
+        desc);
     EXPECT_FALSE(static_cast<bool>(published));
     EXPECT_EQ(1, g_InterfaceMockState.register_calls);
     EXPECT_EQ(0, g_InterfaceMockState.unregister_calls);
@@ -1240,7 +1194,11 @@ TEST(BMLWrapperTest, PublishedInterface_ResetSuccessClearsOwnership) {
 
     static int service = 15;
     BML_InterfaceDesc desc = bml::MakeInterfaceDesc("test.reset", &service, 1, 0, 0);
-    bml::PublishedInterface published(&MockInterfaceRegister, &MockInterfaceUnregister, desc);
+    bml::PublishedInterface published(
+        &MockInterfaceRegister,
+        &MockInterfaceUnregister,
+        reinterpret_cast<BML_Mod>(0x1234),
+        desc);
     ASSERT_TRUE(static_cast<bool>(published));
 
     EXPECT_EQ(BML_RESULT_OK, published.Reset());
@@ -1321,7 +1279,8 @@ TEST(BMLWrapperTest, FullWorkflow_CompilationCheck) {
     // });
     
     // 6. Acquire an interface if needed
-    auto uiService = bml::AcquireInterface<int>("bml.ui.imgui", 1, 0, 0);
+    auto uiService = bml::AcquireInterface<int>(
+        reinterpret_cast<BML_Mod>(0x1), "bml.ui.imgui", 1, 0, 0);
     EXPECT_FALSE(static_cast<bool>(uiService));
 
     // 7. Cleanup
@@ -1353,8 +1312,6 @@ TEST(BMLWrapperTest, CoreWrappers_UseExplicitModuleInterface) {
     moduleApi.GetModId = &MockGetModId;
     moduleApi.GetModVersion = &MockGetModVersion;
     moduleApi.RegisterShutdownHook = &MockRegisterShutdownHook;
-    moduleApi.SetCurrentModule = &MockSetCurrentModule;
-    moduleApi.GetCurrentModule = &MockGetCurrentModuleInterface;
     moduleApi.GetLoadedModuleCount = &MockGetLoadedModuleCount;
     moduleApi.GetLoadedModuleAt = &MockGetLoadedModuleAt;
 
@@ -1373,20 +1330,10 @@ TEST(BMLWrapperTest, CoreWrappers_UseExplicitModuleInterface) {
     EXPECT_TRUE(mod.CheckCapability("caps.ok"));
     EXPECT_FALSE(mod.CheckCapability("caps.no"));
 
-    EXPECT_TRUE(bml::SetCurrentModule(g_ModuleMockState.loaded_modules[0], &moduleApi));
-    auto current = bml::GetCurrentModule(&moduleApi);
-    ASSERT_TRUE(current.has_value());
-    EXPECT_EQ(g_ModuleMockState.loaded_modules[0], current->Handle());
-
     auto loaded = bml::GetLoadedModules(&moduleApi);
     ASSERT_EQ(2u, loaded.size());
     EXPECT_EQ(g_ModuleMockState.loaded_modules[0], loaded[0].Handle());
     EXPECT_EQ(g_ModuleMockState.loaded_modules[1], loaded[1].Handle());
-
-    {
-        bml::CurrentModuleScope scope(g_ModuleMockState.loaded_modules[1], &moduleApi);
-        EXPECT_EQ(g_ModuleMockState.loaded_modules[1], g_ModuleMockState.current_module);
-    }
 
     EXPECT_TRUE(bml::RegisterShutdownHook(mod, []() {}));
     EXPECT_EQ(1, g_ModuleMockState.register_shutdown_calls);
@@ -1398,45 +1345,7 @@ TEST(BMLWrapperTest, CoreWrappers_UseExplicitModuleInterface) {
     }
 
     EXPECT_EQ(2, g_ModuleMockState.register_shutdown_calls);
-    EXPECT_EQ(g_ModuleMockState.loaded_modules[0], g_ModuleMockState.current_module);
-    EXPECT_EQ(3, g_ModuleMockState.set_current_calls);
-}
-
-TEST(BMLWrapperTest, CoreWrappers_NoArgHelpersResolveBuiltinModuleInterface) {
-    ResetModuleMockState();
-
-    struct InterfaceGlobalsScope {
-        PFN_BML_InterfaceAcquire prevAcquire;
-        PFN_BML_InterfaceRelease prevRelease;
-
-        InterfaceGlobalsScope()
-            : prevAcquire(bmlInterfaceAcquire),
-              prevRelease(bmlInterfaceRelease) {
-            bmlInterfaceAcquire = &MockAcquireModuleInterface;
-            bmlInterfaceRelease = &MockReleaseModuleInterface;
-        }
-
-        ~InterfaceGlobalsScope() {
-            bmlInterfaceAcquire = prevAcquire;
-            bmlInterfaceRelease = prevRelease;
-        }
-    } globalsScope;
-    (void)globalsScope;
-
-    g_ModuleMockState.current_module = g_ModuleMockState.loaded_modules[0];
-
-    auto current = bml::GetCurrentModule();
-    ASSERT_TRUE(current.has_value());
-    EXPECT_EQ(g_ModuleMockState.loaded_modules[0], current->Handle());
-    ASSERT_TRUE(current->GetId().has_value());
-    EXPECT_STREQ("mod.alpha", *current->GetId());
-
-    auto loaded = bml::GetLoadedModules();
-    ASSERT_EQ(2u, loaded.size());
-    ASSERT_TRUE(loaded[0].GetId().has_value());
-    EXPECT_STREQ("mod.alpha", *loaded[0].GetId());
-    ASSERT_TRUE(loaded[1].GetId().has_value());
-    EXPECT_STREQ("mod.beta", *loaded[1].GetId());
+    EXPECT_EQ(0, g_ModuleMockState.set_current_calls);
 }
 
 TEST(BMLWrapperTest, ShutdownHookStorageSurvivesWrapperLifetime) {
@@ -1464,32 +1373,26 @@ TEST(BMLWrapperTest, LocaleWrapper_UsesExplicitModuleContext) {
     ResetLocaleMockState();
 
     BML_CoreModuleInterface moduleApi{};
-    moduleApi.SetCurrentModule = &MockSetCurrentModule;
-    moduleApi.GetCurrentModule = &MockGetCurrentModuleInterface;
 
     BML_CoreLocaleInterface localeApi{};
     localeApi.header.struct_size = sizeof(BML_CoreLocaleInterface);
     localeApi.Get = &MockLocaleGet;
-    localeApi.GetOwned = &MockLocaleGetOwned;
-
-    g_ModuleMockState.current_module = g_ModuleMockState.loaded_modules[1];
 
     bml::Locale locale(g_ModuleMockState.loaded_modules[0], &localeApi, &moduleApi);
     EXPECT_STREQ("Hello", locale["greeting"]);
     EXPECT_EQ(g_ModuleMockState.loaded_modules[0], g_LocaleMockState.last_get_module);
-    EXPECT_EQ(g_ModuleMockState.loaded_modules[1], g_ModuleMockState.current_module);
     EXPECT_EQ(0, g_ModuleMockState.set_current_calls);
 }
 
-TEST(BMLWrapperTest, TimerService_UsesOwnedOperationsWhenAvailable) {
+TEST(BMLWrapperTest, TimerService_UsesExplicitOwnerOperations) {
     ResetTimerMockState();
 
     BML_CoreTimerInterface timerApi{};
     timerApi.header.struct_size = sizeof(BML_CoreTimerInterface);
-    timerApi.ScheduleOnceOwned = &MockTimerScheduleOnceOwned;
-    timerApi.CancelOwned = &MockTimerCancelOwned;
-    timerApi.IsActiveOwned = &MockTimerIsActiveOwned;
-    timerApi.CancelAllOwned = &MockTimerCancelAllOwned;
+    timerApi.ScheduleOnce = &MockTimerScheduleOnce;
+    timerApi.Cancel = &MockTimerCancel;
+    timerApi.IsActive = &MockTimerIsActive;
+    timerApi.CancelAll = &MockTimerCancelAll;
 
     const auto owner = reinterpret_cast<BML_Mod>(0x5151);
     bml::TimerService timers(&timerApi, owner);
@@ -1517,22 +1420,15 @@ TEST(BMLWrapperTest, LocaleWrapper_RebindsAfterLanguageChange) {
     ResetLocaleMockState();
 
     BML_CoreModuleInterface moduleApi{};
-    moduleApi.SetCurrentModule = &MockSetCurrentModule;
-    moduleApi.GetCurrentModule = &MockGetCurrentModuleInterface;
 
     BML_CoreLocaleInterface localeApi{};
     localeApi.header.struct_size = sizeof(BML_CoreLocaleInterface);
     localeApi.Load = &MockLocaleLoad;
-    localeApi.LoadOwned = &MockLocaleLoadOwned;
     localeApi.Get = &MockLocaleGet;
-    localeApi.GetOwned = &MockLocaleGetOwned;
     localeApi.SetLanguage = &MockLocaleSetLanguage;
     localeApi.GetLanguage = &MockLocaleGetLanguage;
     localeApi.BindTable = &MockLocaleBindTable;
-    localeApi.BindTableOwned = &MockLocaleBindTableOwned;
     localeApi.Lookup = &MockLocaleLookup;
-
-    g_ModuleMockState.current_module = g_ModuleMockState.loaded_modules[1];
 
     bml::Locale locale(g_ModuleMockState.loaded_modules[0], &localeApi, &moduleApi);
     ASSERT_TRUE(locale.Load(nullptr));
@@ -1547,7 +1443,6 @@ TEST(BMLWrapperTest, LocaleWrapper_RebindsAfterLanguageChange) {
     EXPECT_EQ(std::string("zh-CN"), g_LocaleMockState.language);
     EXPECT_EQ(2, g_LocaleMockState.bind_calls);
     EXPECT_EQ(g_ModuleMockState.loaded_modules[0], g_LocaleMockState.last_bind_module);
-    EXPECT_EQ(g_ModuleMockState.loaded_modules[1], g_ModuleMockState.current_module);
     EXPECT_EQ(0, g_ModuleMockState.set_current_calls);
 }
 
@@ -1557,17 +1452,12 @@ TEST(BMLWrapperTest, ModuleServices_ReusesLocaleWrapperAcrossCalls) {
 
     BML_CoreModuleInterface moduleApi{};
     moduleApi.GetModId = &MockGetModId;
-    moduleApi.SetCurrentModule = &MockSetCurrentModule;
-    moduleApi.GetCurrentModule = &MockGetCurrentModuleInterface;
 
     BML_CoreLocaleInterface localeApi{};
     localeApi.header.struct_size = sizeof(BML_CoreLocaleInterface);
     localeApi.Load = &MockLocaleLoad;
-    localeApi.LoadOwned = &MockLocaleLoadOwned;
     localeApi.Get = &MockLocaleGet;
-    localeApi.GetOwned = &MockLocaleGetOwned;
     localeApi.BindTable = &MockLocaleBindTable;
-    localeApi.BindTableOwned = &MockLocaleBindTableOwned;
     localeApi.Lookup = &MockLocaleLookup;
 
     bml::RuntimeServiceHub hub;
@@ -1584,26 +1474,22 @@ TEST(BMLWrapperTest, ModuleServices_ReusesLocaleWrapperAcrossCalls) {
     EXPECT_EQ(0, g_ModuleMockState.set_current_calls);
 }
 
-TEST(BMLWrapperTest, ModuleServicesAcquire_PrefersOwnedAcquirePath) {
+TEST(BMLWrapperTest, ModuleServicesAcquire_UsesExplicitAcquirePath) {
     ResetModuleMockState();
 
     struct InterfaceGlobalsScope {
         PFN_BML_InterfaceAcquire prevAcquire;
-        PFN_BML_InterfaceAcquireOwned prevAcquireOwned;
         PFN_BML_InterfaceRelease prevRelease;
 
         InterfaceGlobalsScope()
             : prevAcquire(bmlInterfaceAcquire),
-              prevAcquireOwned(bmlInterfaceAcquireOwned),
               prevRelease(bmlInterfaceRelease) {
             bmlInterfaceAcquire = &MockAcquireModuleInterface;
-            bmlInterfaceAcquireOwned = &MockAcquireModuleInterfaceOwned;
             bmlInterfaceRelease = &MockReleaseModuleInterface;
         }
 
         ~InterfaceGlobalsScope() {
             bmlInterfaceAcquire = prevAcquire;
-            bmlInterfaceAcquireOwned = prevAcquireOwned;
             bmlInterfaceRelease = prevRelease;
         }
     } globalsScope;
@@ -1681,13 +1567,13 @@ namespace {
 
     HookMockState g_HookMockState;
 
-    BML_Result MockHookRegister(const BML_HookDesc *desc) {
+    BML_Result MockHookRegister(BML_Mod, const BML_HookDesc *desc) {
         ++g_HookMockState.register_calls;
         g_HookMockState.last_target = desc ? desc->target_address : nullptr;
         return g_HookMockState.register_result;
     }
 
-    BML_Result MockHookUnregister(void *addr) {
+    BML_Result MockHookUnregister(BML_Mod, void *addr) {
         ++g_HookMockState.unregister_calls;
         g_HookMockState.last_target = addr;
         return g_HookMockState.unregister_result;
@@ -1715,8 +1601,9 @@ TEST(BMLWrapperTest, HookRegistration_RAII) {
     iface.Enumerate = MockHookEnumerate;
 
     static int target = 0;
+    const auto owner = reinterpret_cast<BML_Mod>(0x2468);
     {
-        bml::HookRegistration reg("MyFunc", &target, 0, &iface);
+        bml::HookRegistration reg("MyFunc", &target, 0, &iface, owner);
         EXPECT_TRUE(reg.Valid());
         EXPECT_EQ(1, g_HookMockState.register_calls);
         EXPECT_EQ(&target, g_HookMockState.last_target);
@@ -1734,7 +1621,7 @@ TEST(BMLWrapperTest, HookRegistration_MoveSemantics) {
     iface.Unregister = MockHookUnregister;
 
     static int target = 0;
-    bml::HookRegistration reg1("MyFunc", &target, 0, &iface);
+    bml::HookRegistration reg1("MyFunc", &target, 0, &iface, reinterpret_cast<BML_Mod>(0x2468));
     EXPECT_TRUE(reg1.Valid());
 
     bml::HookRegistration reg2(std::move(reg1));

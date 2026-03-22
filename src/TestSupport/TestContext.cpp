@@ -59,8 +59,6 @@ TestContext::TestContext() {
         bmlGetProcAddress("bmlImcPublish"));
     m_Pump = reinterpret_cast<PFN_BML_ImcPump>(
         bmlGetProcAddress("bmlImcPump"));
-    m_SetCurrentModule = reinterpret_cast<PFN_BML_SetCurrentModule>(
-        bmlGetProcAddress("bmlSetCurrentModule"));
     m_SetLogFilter = reinterpret_cast<PFN_BML_SetLogFilter>(
         bmlGetProcAddress("bmlSetLogFilter"));
     m_RegisterLogSinkOverride = reinterpret_cast<PFN_BML_RegisterLogSinkOverride>(
@@ -69,17 +67,13 @@ TestContext::TestContext() {
         bmlGetProcAddress("bmlClearLogSinkOverride"));
     m_GetGlobalContext = reinterpret_cast<PFN_BML_GetGlobalContext>(
         bmlGetProcAddress("bmlGetGlobalContext"));
+    m_GetHostModule = reinterpret_cast<PFN_BML_GetHostModule>(
+        bmlGetProcAddress("bmlGetHostModule"));
 
     m_Initialized = true;
 
-    // Set the synthetic host module as current so that IMC subscribe calls work in tests.
-    auto getHostModule = reinterpret_cast<BML_Mod (*)(void)>(
-        bmlGetProcAddress("bmlGetHostModule"));
-    if (getHostModule && m_SetCurrentModule) {
-        m_DefaultMod = getHostModule();
-        if (m_DefaultMod) {
-            m_SetCurrentModule(m_DefaultMod);
-        }
+    if (m_GetHostModule) {
+        m_DefaultMod = m_GetHostModule();
     }
 }
 
@@ -92,11 +86,6 @@ TestContext::~TestContext() {
     if (m_LogCaptureEnabled && m_ClearLogSinkOverride) {
         m_ClearLogSinkOverride();
         m_LogCaptureEnabled = false;
-    }
-
-    // Clear TLS module binding
-    if (m_SetCurrentModule) {
-        m_SetCurrentModule(nullptr);
     }
 
     // Destroy mock module handles before shutdown
@@ -158,7 +147,7 @@ void TestContext::Tick() {
 // ============================================================================
 
 bool TestContext::Publish(const char *topic, const void *data, size_t size) {
-    if (!m_Initialized || !topic || !m_GetTopicId || !m_Publish) {
+    if (!m_Initialized || !topic || !m_GetTopicId) {
         return false;
     }
 
@@ -168,7 +157,10 @@ bool TestContext::Publish(const char *topic, const void *data, size_t size) {
         return false;
     }
 
-    res = m_Publish(topic_id, data, size);
+    if (!m_DefaultMod || !m_Publish) {
+        return false;
+    }
+    res = m_Publish(m_DefaultMod, topic_id, data, size);
     return BML_SUCCEEDED(res);
 }
 
@@ -185,8 +177,8 @@ void TestContext::EnableLogCapture(BML_LogSeverity min_level) {
     m_LogCapture.logs.clear();
 
     // Set the global log filter to pass everything through
-    if (m_SetLogFilter) {
-        m_SetLogFilter(min_level);
+    if (m_DefaultMod && m_SetLogFilter) {
+        m_SetLogFilter(m_DefaultMod, min_level);
     }
 
     BML_LogSinkOverrideDesc desc{};

@@ -96,7 +96,7 @@ protected:
             asFUNCTION(Record), asCALL_CDECL), 0);
         ASSERT_GE(m_Engine.Get()->RegisterGlobalFunction(
             "void verifyModuleContext(const string &in)",
-            asFUNCTION(VerifyModuleContext), asCALL_CDECL), 0);
+            asFUNCTION(VerifyScriptScope), asCALL_CDECL), 0);
         ASSERT_GE(m_Engine.Get()->RegisterGlobalFunction(
             "void failReload()",
             asFUNCTION(FailReload), asCALL_CDECL), 0);
@@ -161,12 +161,13 @@ protected:
         }
     }
 
-    static void VerifyModuleContext(const std::string &phase) {
+    static void VerifyScriptScope(const std::string &phase) {
         if (!s_Current) {
             return;
         }
 
-        const bool ok = (BML::Core::Context::GetCurrentModule() == s_Current->m_Mod);
+        const auto *script = BML::Scripting::t_CurrentScript;
+        const bool ok = (script != nullptr && script->mod_handle == s_Current->m_Mod);
         s_Current->m_ContextPhases.push_back(ok ? phase : ("bad:" + phase));
     }
 
@@ -232,7 +233,7 @@ TEST_F(ScriptingRuntimeTest, ReloadRunsOnInitWhenVirtoolsIsAlreadyReady) {
     EXPECT_EQ(inst->state, BML::Scripting::ScriptInstance::State::InitDone);
 }
 
-TEST_F(ScriptingRuntimeTest, ReloadLifecycleCallbacksRestoreCurrentModuleContext) {
+TEST_F(ScriptingRuntimeTest, ReloadLifecycleCallbacksRestoreScriptScope) {
     const fs::path entryPath = m_TempDir / "main.as";
     WriteScript(entryPath, R"(
         void OnAttach() { verifyModuleContext("attach-v1"); }

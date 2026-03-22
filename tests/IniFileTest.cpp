@@ -66,8 +66,8 @@ TEST_F(IniFileTest, UTF8ValidationWorks) {
     
     // Valid UTF-8
     EXPECT_TRUE(ini.IsValidUtf8("Hello World"));
-    EXPECT_TRUE(ini.IsValidUtf8("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"));  // "日本語" in UTF-8
-    EXPECT_TRUE(ini.IsValidUtf8("\xf0\x9f\x8c\x9f"));  // "🌟" in UTF-8
+    EXPECT_TRUE(ini.IsValidUtf8("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"));  // Japanese text in UTF-8
+    EXPECT_TRUE(ini.IsValidUtf8("\xf0\x9f\x8c\x9f"));  // Emoji in UTF-8
     EXPECT_TRUE(ini.IsValidUtf8(""));
     
     // Invalid UTF-8 (malformed sequences)
@@ -80,8 +80,8 @@ TEST_F(IniFileTest, UTF8LengthCalculation) {
     
     EXPECT_EQ(0, ini.GetUtf8Length(""));
     EXPECT_EQ(5, ini.GetUtf8Length("Hello"));
-    EXPECT_EQ(3, ini.GetUtf8Length("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"));  // "日本語" in UTF-8
-    EXPECT_EQ(1, ini.GetUtf8Length("\xf0\x9f\x8c\x9f"));  // "🌟" in UTF-8
+    EXPECT_EQ(3, ini.GetUtf8Length("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"));  // Japanese text in UTF-8
+    EXPECT_EQ(1, ini.GetUtf8Length("\xf0\x9f\x8c\x9f"));  // Emoji in UTF-8
     
     // Invalid UTF-8 should return 0
     EXPECT_EQ(0, ini.GetUtf8Length("\xFF\xFE"));
@@ -180,16 +180,16 @@ TEST_F(IniFileTest, ParseGlobalSection) {
 TEST_F(IniFileTest, ParseUTF8Content) {
     IniFile ini;
     std::string content = 
-"[\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x82\xbb\xe3\x82\xaf\xe3\x82\xb7\xe3\x83\xa7\xe3\x83\xb3]\n"  // "日本語セクション" in UTF-8
-"\xe5\x90\x8d\xe5\x89\x8d=\xe5\x80\xa4\n"  // "名前=値" in UTF-8
-"emoji=\xf0\x9f\x8c\x9f\xe2\xad\x90\xf0\x9f\x8e\x89\n"  // "🌟⭐🎉" in UTF-8
-"chinese=\xe4\xb8\xad\xe6\x96\x87\xe6\xb5\x8b\xe8\xaf\x95\n";  // "中文测试" in UTF-8
+"[\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x82\xbb\xe3\x82\xaf\xe3\x82\xb7\xe3\x83\xa7\xe3\x83\xb3]\n"  // Japanese section name in UTF-8
+"\xe5\x90\x8d\xe5\x89\x8d=\xe5\x80\xa4\n"  // Japanese key/value pair in UTF-8
+"emoji=\xf0\x9f\x8c\x9f\xe2\xad\x90\xf0\x9f\x8e\x89\n"  // Emoji sequence in UTF-8
+"chinese=\xe4\xb8\xad\xe6\x96\x87\xe6\xb5\x8b\xe8\xaf\x95\n";  // Chinese text in UTF-8
     
     EXPECT_TRUE(ini.ParseFromString(content));
-    EXPECT_TRUE(ini.HasSection("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x82\xbb\xe3\x82\xaf\xe3\x82\xb7\xe3\x83\xa7\xe3\x83\xb3"));  // "日本語セクション"
-    EXPECT_EQ("\xe5\x80\xa4", ini.GetValue("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x82\xbb\xe3\x82\xaf\xe3\x82\xb7\xe3\x83\xa7\xe3\x83\xb3", "\xe5\x90\x8d\xe5\x89\x8d"));  // "値" and "名前"
-    EXPECT_EQ("\xf0\x9f\x8c\x9f\xe2\xad\x90\xf0\x9f\x8e\x89", ini.GetValue("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x82\xbb\xe3\x82\xaf\xe3\x82\xb7\xe3\x83\xa7\xe3\x83\xb3", "emoji"));  // "🌟⭐🎉"
-    EXPECT_EQ("\xe4\xb8\xad\xe6\x96\x87\xe6\xb5\x8b\xe8\xaf\x95", ini.GetValue("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x82\xbb\xe3\x82\xaf\xe3\x82\xb7\xe3\x83\xa7\xe3\x83\xb3", "chinese"));  // "中文测试"
+    EXPECT_TRUE(ini.HasSection("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x82\xbb\xe3\x82\xaf\xe3\x82\xb7\xe3\x83\xa7\xe3\x83\xb3"));  // Japanese section name
+    EXPECT_EQ("\xe5\x80\xa4", ini.GetValue("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x82\xbb\xe3\x82\xaf\xe3\x82\xb7\xe3\x83\xa7\xe3\x83\xb3", "\xe5\x90\x8d\xe5\x89\x8d"));  // Japanese value and key
+    EXPECT_EQ("\xf0\x9f\x8c\x9f\xe2\xad\x90\xf0\x9f\x8e\x89", ini.GetValue("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x82\xbb\xe3\x82\xaf\xe3\x82\xb7\xe3\x83\xa7\xe3\x83\xb3", "emoji"));  // Emoji sequence
+    EXPECT_EQ("\xe4\xb8\xad\xe6\x96\x87\xe6\xb5\x8b\xe8\xaf\x95", ini.GetValue("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x82\xbb\xe3\x82\xaf\xe3\x82\xb7\xe3\x83\xa7\xe3\x83\xb3", "chinese"));  // Chinese text
 }
 
 TEST_F(IniFileTest, ParseInvalidUTF8WithStrictMode) {
@@ -1459,13 +1459,13 @@ TEST_F(IniFileTest, Utf8EdgeCasesValidComplexSequences) {
 
     // Valid complex UTF-8 sequences
     std::vector<std::pair<std::string, size_t>> validSequences = {
-        {"\xC2\xA9", 1},           // © (copyright symbol)
-        {"\xE2\x82\xAC", 1},       // € (euro symbol)
-        {"\xF0\x9F\x98\x80", 1},   // 😀 (grinning face emoji)
-        {"\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x92\xBB", 3}, // 👨‍💻 (man technologist - ZWJ sequence)
-        {"\xC3\xA9\xC3\xA8\xC3\xAA", 3}, // éèê (accented letters)
-        {"\xE4\xB8\xAD\xE6\x96\x87", 2},  // 中文 (Chinese characters)
-        {"\xD0\xA0\xD1\x83\xD1\x81\xD1\x81\xD0\xBA\xD0\xB8\xD0\xB9", 7} // Русский (Russian)
+        {"\xC2\xA9", 1},           // Copyright symbol
+        {"\xE2\x82\xAC", 1},       // Euro symbol
+        {"\xF0\x9F\x98\x80", 1},   // Grinning face emoji
+        {"\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x92\xBB", 3}, // ZWJ emoji sequence
+        {"\xC3\xA9\xC3\xA8\xC3\xAA", 3}, // Accented Latin letters
+        {"\xE4\xB8\xAD\xE6\x96\x87", 2},  // Chinese characters
+        {"\xD0\xA0\xD1\x83\xD1\x81\xD1\x81\xD0\xBA\xD0\xB8\xD0\xB9", 7} // Russian text
     };
 
     for (const auto &[seq, expectedLen] : validSequences) {
@@ -1477,9 +1477,9 @@ TEST_F(IniFileTest, Utf8EdgeCasesValidComplexSequences) {
 TEST_F(IniFileTest, Utf8CombiningCharactersAndNormalization) {
     IniFile ini;
 
-    // Test combining characters (é can be e + ´ or single character)
-    std::string composed = "\xC3\xA9";      // é (single codepoint)
-    std::string decomposed = "e\xCC\x81";   // e + ´ (combining acute accent)
+    // Test combining characters using composed and decomposed forms.
+    std::string composed = "\xC3\xA9";      // Single-codepoint accented letter
+    std::string decomposed = "e\xCC\x81";   // ASCII base letter plus combining accent
 
     EXPECT_TRUE(ini.IsValidUtf8(composed));
     EXPECT_TRUE(ini.IsValidUtf8(decomposed));
@@ -1495,9 +1495,9 @@ TEST_F(IniFileTest, Utf8BidirectionalText) {
     IniFile ini;
 
     // Hebrew text (right-to-left)
-    std::string hebrew = "\xD7\xA9\xD7\x9C\xD7\x95\xD7\x9D"; // שלום (hello)
+    std::string hebrew = "\xD7\xA9\xD7\x9C\xD7\x95\xD7\x9D"; // Hebrew greeting
     // Arabic text (right-to-left)
-    std::string arabic = "\xD8\xA7\xD9\x84\xD8\xB3\xD9\x84\xD8\xA7\xD9\x85"; // السلام
+    std::string arabic = "\xD8\xA7\xD9\x84\xD8\xB3\xD9\x84\xD8\xA7\xD9\x85"; // Arabic greeting
 
     std::string content = "[" + hebrew + "]\n" + arabic + "=value";
     EXPECT_TRUE(ini.ParseFromString(content));
@@ -1641,7 +1641,7 @@ TEST_F(IniFileTest, EdgeCaseLengthsWithUnicodeCharacters) {
     IniFile ini;
 
     // Unicode characters take multiple bytes but count as single codepoints
-    std::string unicodeChar = "\xF0\x9F\x98\x80"; // 😀 (4 bytes, 1 codepoint)
+    std::string unicodeChar = "\xF0\x9F\x98\x80"; // Emoji: 4 bytes, 1 codepoint
 
     // Create section name near limit using Unicode
     std::string unicodeSectionName;

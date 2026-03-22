@@ -273,6 +273,53 @@ protected:
         return mod;
     }
 
+    BML_Result Subscribe(BML_TopicId topic,
+                         BML_ImcHandler handler,
+                         void *user_data,
+                         BML_Subscription *out_sub) {
+        return ImcSubscribe(host_mod_, topic, handler, user_data, out_sub);
+    }
+
+    BML_Result SubscribeEx(BML_TopicId topic,
+                           BML_ImcHandler handler,
+                           void *user_data,
+                           const BML_SubscribeOptions *options,
+                           BML_Subscription *out_sub) {
+        return ImcSubscribeEx(host_mod_, topic, handler, user_data, options, out_sub);
+    }
+
+    BML_Result Publish(BML_TopicId topic, const void *data, size_t size) {
+        return ImcPublish(host_mod_, topic, data, size);
+    }
+
+    BML_Result PublishEx(BML_TopicId topic, const BML_ImcMessage *msg) {
+        return ImcPublishEx(host_mod_, topic, msg);
+    }
+
+    BML_Result PublishBuffer(BML_TopicId topic, const BML_ImcBuffer *buffer) {
+        return ImcPublishBuffer(host_mod_, topic, buffer);
+    }
+
+    BML_Result PublishState(BML_TopicId topic, const BML_ImcMessage *msg) {
+        return ImcPublishState(host_mod_, topic, msg);
+    }
+
+    BML_Result RegisterRpc(BML_RpcId rpc_id, BML_RpcHandler handler, void *user_data) {
+        return ImcRegisterRpc(host_mod_, rpc_id, handler, user_data);
+    }
+
+    BML_Result UnregisterRpc(BML_RpcId rpc_id) {
+        return ImcUnregisterRpc(host_mod_, rpc_id);
+    }
+
+    BML_Result CallRpc(BML_RpcId rpc_id, const BML_ImcMessage *request, BML_Future *out_future) {
+        return ImcCallRpc(host_mod_, rpc_id, request, out_future);
+    }
+
+    BML_Result FutureOnComplete(BML_Future future, BML_FutureCallback callback, void *user_data) {
+        return ImcFutureOnComplete(host_mod_, future, callback, user_data);
+    }
+
     BML_Mod host_mod_{nullptr};
 };
 
@@ -320,11 +367,11 @@ TEST_F(ImcBusTest, PublishesToSubscribedHandler) {
 
     PubSubState state;
     BML_Subscription sub = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic, CollectingHandler, &state, &sub));
+    ASSERT_EQ(BML_RESULT_OK, Subscribe(topic, CollectingHandler, &state, &sub));
     ASSERT_NE(sub, nullptr);
 
     const std::string payload = "hello";
-    EXPECT_EQ(BML_RESULT_OK, ImcPublish(topic, payload.data(), payload.size()));
+    EXPECT_EQ(BML_RESULT_OK, Publish(topic, payload.data(), payload.size()));
 
     ImcPump(0);
 
@@ -345,7 +392,7 @@ TEST_F(ImcBusTest, PublishBufferInvokesCleanup) {
     PubSubState state;
     BufferCleanupState cleanup_state;
     BML_Subscription sub = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic, CollectingHandler, &state, &sub));
+    ASSERT_EQ(BML_RESULT_OK, Subscribe(topic, CollectingHandler, &state, &sub));
 
     std::array<uint8_t, 4> buffer{1, 2, 3, 4};
     BML_ImcBuffer message = BML_IMC_BUFFER_INIT;
@@ -354,7 +401,7 @@ TEST_F(ImcBusTest, PublishBufferInvokesCleanup) {
     message.cleanup = BufferCleanup;
     message.cleanup_user_data = &cleanup_state;
 
-    EXPECT_EQ(BML_RESULT_OK, ImcPublishBuffer(topic, &message));
+    EXPECT_EQ(BML_RESULT_OK, PublishBuffer(topic, &message));
     ImcPump(0);
 
     EXPECT_EQ(cleanup_state.called.load(), 1u);
@@ -371,14 +418,14 @@ TEST_F(ImcBusTest, PublishExPreservesExplicitTimestamp) {
 
     PubSubState state;
     BML_Subscription sub = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic, CollectingHandler, &state, &sub));
+    ASSERT_EQ(BML_RESULT_OK, Subscribe(topic, CollectingHandler, &state, &sub));
 
     constexpr uint64_t kTimestamp = 123456789ull;
     const int payload = 7;
     BML_ImcMessage msg = BML_IMC_MSG(&payload, sizeof(payload));
     msg.timestamp = kTimestamp;
 
-    ASSERT_EQ(BML_RESULT_OK, ImcPublishEx(topic, &msg));
+    ASSERT_EQ(BML_RESULT_OK, PublishEx(topic, &msg));
     ImcPump(0);
 
     ASSERT_EQ(state.timestamps.size(), 1u);
@@ -394,7 +441,7 @@ TEST_F(ImcBusTest, RetainedStateDeliveryHonorsSubscriptionOptions) {
     const int payload = 99;
     BML_ImcMessage stateMessage = BML_IMC_MSG(&payload, sizeof(payload));
     stateMessage.priority = BML_IMC_PRIORITY_LOW;
-    ASSERT_EQ(BML_RESULT_OK, ImcPublishState(topic, &stateMessage));
+    ASSERT_EQ(BML_RESULT_OK, PublishState(topic, &stateMessage));
 
     BML_SubscribeOptions priorityOpts = BML_SUBSCRIBE_OPTIONS_INIT;
     priorityOpts.flags = BML_IMC_SUBSCRIBE_FLAG_DELIVER_RETAINED_ON_SUBSCRIBE;
@@ -403,7 +450,7 @@ TEST_F(ImcBusTest, RetainedStateDeliveryHonorsSubscriptionOptions) {
     PubSubState priorityState;
     BML_Subscription prioritySub = nullptr;
     ASSERT_EQ(BML_RESULT_OK,
-              ImcSubscribeEx(topic, CollectingHandler, &priorityState, &priorityOpts, &prioritySub));
+              SubscribeEx(topic, CollectingHandler, &priorityState, &priorityOpts, &prioritySub));
     EXPECT_EQ(priorityState.call_count.load(std::memory_order_relaxed), 0u);
 
     BML_SubscribeOptions filterOpts = BML_SUBSCRIBE_OPTIONS_INIT;
@@ -413,7 +460,7 @@ TEST_F(ImcBusTest, RetainedStateDeliveryHonorsSubscriptionOptions) {
     PubSubState filteredState;
     BML_Subscription filteredSub = nullptr;
     ASSERT_EQ(BML_RESULT_OK,
-              ImcSubscribeEx(topic, CollectingHandler, &filteredState, &filterOpts, &filteredSub));
+              SubscribeEx(topic, CollectingHandler, &filteredState, &filterOpts, &filteredSub));
     EXPECT_EQ(filteredState.call_count.load(std::memory_order_relaxed), 0u);
 
     BML_SubscribeOptions acceptOpts = BML_SUBSCRIBE_OPTIONS_INIT;
@@ -422,7 +469,7 @@ TEST_F(ImcBusTest, RetainedStateDeliveryHonorsSubscriptionOptions) {
     PubSubState acceptedState;
     BML_Subscription acceptedSub = nullptr;
     ASSERT_EQ(BML_RESULT_OK,
-              ImcSubscribeEx(topic, CollectingHandler, &acceptedState, &acceptOpts, &acceptedSub));
+              SubscribeEx(topic, CollectingHandler, &acceptedState, &acceptOpts, &acceptedSub));
     EXPECT_EQ(acceptedState.call_count.load(std::memory_order_relaxed), 1u);
     ASSERT_EQ(acceptedState.payloads.size(), 1u);
     ASSERT_EQ(acceptedState.payloads.front().size(), sizeof(payload));
@@ -442,7 +489,7 @@ TEST_F(ImcBusTest, RetainedStateCanBeCopiedAndCleared) {
 
     const char payload[] = "custom-map.cmo";
     BML_ImcMessage stateMessage = BML_IMC_MSG(payload, sizeof(payload));
-    ASSERT_EQ(BML_RESULT_OK, ImcPublishState(topic, &stateMessage));
+    ASSERT_EQ(BML_RESULT_OK, PublishState(topic, &stateMessage));
 
     char buffer[64] = {};
     size_t copiedSize = 0;
@@ -462,12 +509,12 @@ TEST_F(ImcBusTest, UnsubscribeStopsDelivery) {
 
     PubSubState state;
     BML_Subscription sub = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic, CollectingHandler, &state, &sub));
+    ASSERT_EQ(BML_RESULT_OK, Subscribe(topic, CollectingHandler, &state, &sub));
 
     EXPECT_EQ(BML_RESULT_OK, ImcUnsubscribe(sub));
 
     const uint8_t value = 42;
-    EXPECT_EQ(BML_RESULT_OK, ImcPublish(topic, &value, sizeof(value)));
+    EXPECT_EQ(BML_RESULT_OK, Publish(topic, &value, sizeof(value)));
     ImcPump(0);
 
     EXPECT_EQ(state.call_count.load(), 0u);
@@ -481,7 +528,7 @@ TEST_F(ImcBusTest, SubscriptionIsActiveReturnsCorrectState) {
     BML_Subscription sub = nullptr;
     BML_Bool is_active = BML_FALSE;
     
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic, CollectingHandler, &state, &sub));
+    ASSERT_EQ(BML_RESULT_OK, Subscribe(topic, CollectingHandler, &state, &sub));
     ASSERT_NE(sub, nullptr);
     
     EXPECT_EQ(BML_RESULT_OK, ImcSubscriptionIsActive(sub, &is_active));
@@ -500,11 +547,11 @@ TEST_F(ImcBusTest, MultipleSubscribersReceiveMessages) {
     PubSubState state1, state2;
     BML_Subscription sub1 = nullptr, sub2 = nullptr;
 
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic, CollectingHandler, &state1, &sub1));
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic, CollectingHandler, &state2, &sub2));
+    ASSERT_EQ(BML_RESULT_OK, Subscribe(topic, CollectingHandler, &state1, &sub1));
+    ASSERT_EQ(BML_RESULT_OK, Subscribe(topic, CollectingHandler, &state2, &sub2));
 
     const uint8_t data = 123;
-    EXPECT_EQ(BML_RESULT_OK, ImcPublish(topic, &data, sizeof(data)));
+    EXPECT_EQ(BML_RESULT_OK, Publish(topic, &data, sizeof(data)));
     ImcPump(0);
 
     EXPECT_EQ(state1.call_count.load(), 1u);
@@ -526,7 +573,7 @@ TEST_F(ImcBusTest, TopicDiagnosticsReflectRegistry) {
     EXPECT_EQ(std::strlen(kTopicName), name_length);
 
     const uint8_t payload = 0x5Au;
-    EXPECT_EQ(BML_RESULT_OK, ImcPublish(topic, &payload, sizeof(payload)));
+    EXPECT_EQ(BML_RESULT_OK, Publish(topic, &payload, sizeof(payload)));
 
     BML_TopicInfo info = BML_TOPIC_INFO_INIT;
     ASSERT_EQ(BML_RESULT_OK, ImcGetTopicInfo(topic, &info));
@@ -542,10 +589,10 @@ TEST_F(ImcBusTest, UnsubscribeWaitsForInFlightHandlers) {
 
     BlockingHandlerState handler_state;
     BML_Subscription sub = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic, BlockingHandler, &handler_state, &sub));
+    ASSERT_EQ(BML_RESULT_OK, Subscribe(topic, BlockingHandler, &handler_state, &sub));
 
     const uint8_t payload = 0x11u;
-    EXPECT_EQ(BML_RESULT_OK, ImcPublish(topic, &payload, sizeof(payload)));
+    EXPECT_EQ(BML_RESULT_OK, Publish(topic, &payload, sizeof(payload)));
 
     std::thread pump_thread([] {
         ImcPump(0);
@@ -583,11 +630,11 @@ TEST_F(ImcBusTest, HandlerCanUnsubscribeItself) {
     ASSERT_EQ(BML_RESULT_OK, ImcGetTopicId("self.unsubscribe.topic", &topic));
 
     SelfUnsubscribeState state;
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic, SelfUnsubscribeHandler, &state, &state.sub));
+    ASSERT_EQ(BML_RESULT_OK, Subscribe(topic, SelfUnsubscribeHandler, &state, &state.sub));
     ASSERT_NE(state.sub, nullptr);
 
     const uint8_t payload = 0x22u;
-    EXPECT_EQ(BML_RESULT_OK, ImcPublish(topic, &payload, sizeof(payload)));
+    EXPECT_EQ(BML_RESULT_OK, Publish(topic, &payload, sizeof(payload)));
 
     ImcPump(0);
 
@@ -597,7 +644,7 @@ TEST_F(ImcBusTest, HandlerCanUnsubscribeItself) {
     BML_Bool active = BML_TRUE;
     EXPECT_EQ(BML_RESULT_INVALID_HANDLE, ImcSubscriptionIsActive(state.sub, &active));
 
-    EXPECT_EQ(BML_RESULT_OK, ImcPublish(topic, &payload, sizeof(payload)));
+    EXPECT_EQ(BML_RESULT_OK, Publish(topic, &payload, sizeof(payload)));
     ImcPump(0);
 
     EXPECT_EQ(1u, state.call_count.load(std::memory_order_relaxed));
@@ -635,13 +682,13 @@ TEST_F(ImcBusTest, RpcEchoWorks) {
     ASSERT_EQ(BML_RESULT_OK, ImcGetRpcId("echo", &rpc_id));
 
     RpcState state;
-    ASSERT_EQ(BML_RESULT_OK, ImcRegisterRpc(rpc_id, EchoRpc, &state));
+    ASSERT_EQ(BML_RESULT_OK, RegisterRpc(rpc_id, EchoRpc, &state));
 
     const std::string request_data = "test request";
     BML_ImcMessage request = BML_IMC_MSG(request_data.data(), request_data.size());
     BML_Future future = nullptr;
     
-    ASSERT_EQ(BML_RESULT_OK, ImcCallRpc(rpc_id, &request, &future));
+    ASSERT_EQ(BML_RESULT_OK, CallRpc(rpc_id, &request, &future));
     ASSERT_NE(future, nullptr);
 
     ImcPump(0);  // Process RPC
@@ -660,7 +707,7 @@ TEST_F(ImcBusTest, RpcEchoWorks) {
     EXPECT_EQ(state.last_rpc_id, rpc_id);
 
     EXPECT_EQ(BML_RESULT_OK, ImcFutureRelease(future));
-    EXPECT_EQ(BML_RESULT_OK, ImcUnregisterRpc(rpc_id));
+    EXPECT_EQ(BML_RESULT_OK, UnregisterRpc(rpc_id));
 }
 
 TEST_F(ImcBusTest, RpcToUnregisteredHandlerFails) {
@@ -670,7 +717,7 @@ TEST_F(ImcBusTest, RpcToUnregisteredHandlerFails) {
     BML_ImcMessage request = BML_IMC_MESSAGE_INIT;
     BML_Future future = nullptr;
     
-    ASSERT_EQ(BML_RESULT_OK, ImcCallRpc(rpc_id, &request, &future));
+    ASSERT_EQ(BML_RESULT_OK, CallRpc(rpc_id, &request, &future));
     ImcPump(0);
 
     BML_FutureState fstate;
@@ -685,10 +732,10 @@ TEST_F(ImcBusTest, DuplicateRpcRegistrationFails) {
     ASSERT_EQ(BML_RESULT_OK, ImcGetRpcId("duplicate", &rpc_id));
 
     RpcState state;
-    ASSERT_EQ(BML_RESULT_OK, ImcRegisterRpc(rpc_id, EchoRpc, &state));
-    EXPECT_EQ(BML_RESULT_ALREADY_EXISTS, ImcRegisterRpc(rpc_id, EchoRpc, &state));
+    ASSERT_EQ(BML_RESULT_OK, RegisterRpc(rpc_id, EchoRpc, &state));
+    EXPECT_EQ(BML_RESULT_ALREADY_EXISTS, RegisterRpc(rpc_id, EchoRpc, &state));
 
-    EXPECT_EQ(BML_RESULT_OK, ImcUnregisterRpc(rpc_id));
+    EXPECT_EQ(BML_RESULT_OK, UnregisterRpc(rpc_id));
 }
 
 TEST_F(ImcBusTest, RpcUnregisterRejectsNonOwner) {
@@ -699,14 +746,9 @@ TEST_F(ImcBusTest, RpcUnregisterRejectsNonOwner) {
     auto owner_b = CreateTrackedMod("imc.rpc.owner.b");
 
     RpcState state;
-    Context::SetCurrentModule(owner_a);
-    ASSERT_EQ(BML_RESULT_OK, ImcRegisterRpc(rpc_id, EchoRpc, &state));
-
-    Context::SetCurrentModule(owner_b);
-    EXPECT_EQ(BML_RESULT_PERMISSION_DENIED, ImcUnregisterRpc(rpc_id));
-
-    Context::SetCurrentModule(owner_a);
-    EXPECT_EQ(BML_RESULT_OK, ImcUnregisterRpc(rpc_id));
+    ASSERT_EQ(BML_RESULT_OK, ImcRegisterRpc(owner_a, rpc_id, EchoRpc, &state));
+    EXPECT_EQ(BML_RESULT_PERMISSION_DENIED, ImcUnregisterRpc(owner_b, rpc_id));
+    EXPECT_EQ(BML_RESULT_OK, ImcUnregisterRpc(owner_a, rpc_id));
 }
 
 // ========================================================================
@@ -720,7 +762,7 @@ TEST_F(ImcBusTest, FutureCancelWorks) {
     BML_ImcMessage request = BML_IMC_MESSAGE_INIT;
     BML_Future future = nullptr;
     
-    ASSERT_EQ(BML_RESULT_OK, ImcCallRpc(rpc_id, &request, &future));
+    ASSERT_EQ(BML_RESULT_OK, CallRpc(rpc_id, &request, &future));
     
     // Cancel before processing
     EXPECT_EQ(BML_RESULT_OK, ImcFutureCancel(future));
@@ -737,14 +779,14 @@ TEST_F(ImcBusTest, FutureOnCompleteCallbackWorks) {
     ASSERT_EQ(BML_RESULT_OK, ImcGetRpcId("callback_test", &rpc_id));
 
     RpcState state;
-    ASSERT_EQ(BML_RESULT_OK, ImcRegisterRpc(rpc_id, EchoRpc, &state));
+    ASSERT_EQ(BML_RESULT_OK, RegisterRpc(rpc_id, EchoRpc, &state));
 
     BML_ImcMessage request = BML_IMC_MSG("x", 1);
     BML_Future future = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, ImcCallRpc(rpc_id, &request, &future));
+    ASSERT_EQ(BML_RESULT_OK, CallRpc(rpc_id, &request, &future));
 
     std::atomic<bool> callback_called{false};
-    EXPECT_EQ(BML_RESULT_OK, ImcFutureOnComplete(future, 
+    EXPECT_EQ(BML_RESULT_OK, FutureOnComplete(future,
         [](BML_Context, BML_Future, void *ud) {
             *static_cast<std::atomic<bool>*>(ud) = true;
         }, &callback_called));
@@ -754,10 +796,10 @@ TEST_F(ImcBusTest, FutureOnCompleteCallbackWorks) {
     EXPECT_TRUE(callback_called.load());
 
     EXPECT_EQ(BML_RESULT_OK, ImcFutureRelease(future));
-    EXPECT_EQ(BML_RESULT_OK, ImcUnregisterRpc(rpc_id));
+    EXPECT_EQ(BML_RESULT_OK, UnregisterRpc(rpc_id));
 }
 
-TEST_F(ImcBusTest, SubscriptionCallbackRestoresOwnerModuleContext) {
+TEST_F(ImcBusTest, SubscriptionCallbackKeepsAmbientModuleContext) {
     BML_TopicId topic = BML_TOPIC_ID_INVALID;
     ASSERT_EQ(BML_RESULT_OK, ImcGetTopicId("callback.owner.topic", &topic));
 
@@ -765,75 +807,66 @@ TEST_F(ImcBusTest, SubscriptionCallbackRestoresOwnerModuleContext) {
     CurrentModuleCaptureState state;
     BML_Subscription subscription = nullptr;
 
-    Context::SetCurrentModule(owner);
     ASSERT_EQ(BML_RESULT_OK,
-              ImcSubscribe(topic, CaptureCurrentModuleHandler, &state, &subscription));
-    Context::SetCurrentModule(host_mod_);
+              ImcSubscribe(owner, topic, CaptureCurrentModuleHandler, &state, &subscription));
 
     uint32_t payload = 7;
-    ASSERT_EQ(BML_RESULT_OK, ImcPublish(topic, &payload, sizeof(payload)));
+    ASSERT_EQ(BML_RESULT_OK, Publish(topic, &payload, sizeof(payload)));
     ImcPump(0);
 
     EXPECT_EQ(state.call_count.load(std::memory_order_acquire), 1u);
     EXPECT_EQ(state.current_module.load(std::memory_order_acquire),
-              reinterpret_cast<uintptr_t>(owner));
+              reinterpret_cast<uintptr_t>(host_mod_));
 
     ASSERT_EQ(BML_RESULT_OK, ImcUnsubscribe(subscription));
 }
 
-TEST_F(ImcBusTest, RpcHandlerRunsWithRegisteredOwnerModuleContext) {
+TEST_F(ImcBusTest, RpcHandlerKeepsAmbientModuleContext) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
     ASSERT_EQ(BML_RESULT_OK, ImcGetRpcId("rpc.owner.context", &rpc_id));
 
     auto owner = CreateTrackedMod("imc.rpc.handler.owner");
     CurrentModuleCaptureState state;
 
-    Context::SetCurrentModule(owner);
-    ASSERT_EQ(BML_RESULT_OK, ImcRegisterRpc(rpc_id, CaptureCurrentModuleRpc, &state));
-    Context::SetCurrentModule(host_mod_);
+    ASSERT_EQ(BML_RESULT_OK, ImcRegisterRpc(owner, rpc_id, CaptureCurrentModuleRpc, &state));
 
     BML_Future future = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, ImcCallRpc(rpc_id, nullptr, &future));
+    ASSERT_EQ(BML_RESULT_OK, CallRpc(rpc_id, nullptr, &future));
     ImcPump(0);
 
     EXPECT_EQ(state.call_count.load(std::memory_order_acquire), 1u);
     EXPECT_EQ(state.current_module.load(std::memory_order_acquire),
-              reinterpret_cast<uintptr_t>(owner));
+              reinterpret_cast<uintptr_t>(host_mod_));
 
     ASSERT_EQ(BML_RESULT_OK, ImcFutureRelease(future));
-    Context::SetCurrentModule(owner);
-    ASSERT_EQ(BML_RESULT_OK, ImcUnregisterRpc(rpc_id));
-    Context::SetCurrentModule(host_mod_);
+    ASSERT_EQ(BML_RESULT_OK, ImcUnregisterRpc(owner, rpc_id));
 }
 
-TEST_F(ImcBusTest, FutureCompletionCallbackRestoresRegisteringModuleContext) {
+TEST_F(ImcBusTest, FutureCompletionCallbackKeepsAmbientModuleContext) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
     ASSERT_EQ(BML_RESULT_OK, ImcGetRpcId("future.owner.context", &rpc_id));
 
     RpcState rpc_state;
-    ASSERT_EQ(BML_RESULT_OK, ImcRegisterRpc(rpc_id, EchoRpc, &rpc_state));
+    ASSERT_EQ(BML_RESULT_OK, RegisterRpc(rpc_id, EchoRpc, &rpc_state));
 
     auto owner = CreateTrackedMod("imc.future.callback.owner");
     CurrentModuleCaptureState state;
     BML_Future future = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, ImcCallRpc(rpc_id, nullptr, &future));
-
-    Context::SetCurrentModule(owner);
+    ASSERT_EQ(BML_RESULT_OK, CallRpc(rpc_id, nullptr, &future));
     ASSERT_EQ(BML_RESULT_OK,
-              ImcFutureOnComplete(future, CaptureCurrentModuleFutureCallback, &state));
-    Context::SetCurrentModule(host_mod_);
+              ImcFutureOnComplete(owner, future, CaptureCurrentModuleFutureCallback, &state));
 
     ImcPump(0);
 
     EXPECT_EQ(state.call_count.load(std::memory_order_acquire), 1u);
     EXPECT_EQ(state.current_module.load(std::memory_order_acquire),
-              reinterpret_cast<uintptr_t>(owner));
+              reinterpret_cast<uintptr_t>(host_mod_));
 
     ASSERT_EQ(BML_RESULT_OK, ImcFutureRelease(future));
-    ASSERT_EQ(BML_RESULT_OK, ImcUnregisterRpc(rpc_id));
+    ASSERT_EQ(BML_RESULT_OK, UnregisterRpc(rpc_id));
 }
 
-TEST_F(ImcBusTest, OwnedSubscribeDoesNotRequireTlsBinding) {
+TEST_F(ImcBusTest, SubscribeDoesNotRequireTlsBinding) {
     BML_TopicId topic = BML_TOPIC_ID_INVALID;
     ASSERT_EQ(BML_RESULT_OK, ImcGetTopicId("owned.subscribe.topic", &topic));
 
@@ -843,22 +876,22 @@ TEST_F(ImcBusTest, OwnedSubscribeDoesNotRequireTlsBinding) {
 
     Context::SetCurrentModule(nullptr);
     ASSERT_EQ(BML_RESULT_OK,
-              ImcSubscribeOwned(owner, topic, CaptureCurrentModuleHandler, &state, &subscription));
+              ImcSubscribe(owner, topic, CaptureCurrentModuleHandler, &state, &subscription));
 
     Context::SetCurrentModule(host_mod_);
     uint32_t payload = 11;
-    ASSERT_EQ(BML_RESULT_OK, ImcPublish(topic, &payload, sizeof(payload)));
+    ASSERT_EQ(BML_RESULT_OK, Publish(topic, &payload, sizeof(payload)));
     ImcPump(0);
 
     EXPECT_EQ(state.call_count.load(std::memory_order_acquire), 1u);
     EXPECT_EQ(state.current_module.load(std::memory_order_acquire),
-              reinterpret_cast<uintptr_t>(owner));
+              reinterpret_cast<uintptr_t>(host_mod_));
 
     Context::SetCurrentModule(nullptr);
     ASSERT_EQ(BML_RESULT_OK, ImcUnsubscribe(subscription));
 }
 
-TEST_F(ImcBusTest, OwnedRpcRegistrationDoesNotRequireTlsBinding) {
+TEST_F(ImcBusTest, RpcRegistrationDoesNotRequireTlsBinding) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
     ASSERT_EQ(BML_RESULT_OK, ImcGetRpcId("owned.rpc.context", &rpc_id));
 
@@ -866,47 +899,109 @@ TEST_F(ImcBusTest, OwnedRpcRegistrationDoesNotRequireTlsBinding) {
     CurrentModuleCaptureState state;
 
     Context::SetCurrentModule(nullptr);
-    ASSERT_EQ(BML_RESULT_OK, ImcRegisterRpcOwned(owner, rpc_id, CaptureCurrentModuleRpc, &state));
+    ASSERT_EQ(BML_RESULT_OK, ImcRegisterRpc(owner, rpc_id, CaptureCurrentModuleRpc, &state));
 
     Context::SetCurrentModule(host_mod_);
     BML_Future future = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, ImcCallRpc(rpc_id, nullptr, &future));
+    ASSERT_EQ(BML_RESULT_OK, CallRpc(rpc_id, nullptr, &future));
     ImcPump(0);
 
     EXPECT_EQ(state.call_count.load(std::memory_order_acquire), 1u);
     EXPECT_EQ(state.current_module.load(std::memory_order_acquire),
-              reinterpret_cast<uintptr_t>(owner));
+              reinterpret_cast<uintptr_t>(host_mod_));
 
     ASSERT_EQ(BML_RESULT_OK, ImcFutureRelease(future));
     Context::SetCurrentModule(nullptr);
-    ASSERT_EQ(BML_RESULT_OK, ImcUnregisterRpcOwned(owner, rpc_id));
+    ASSERT_EQ(BML_RESULT_OK, ImcUnregisterRpc(owner, rpc_id));
 }
 
-TEST_F(ImcBusTest, OwnedFutureCallbackDoesNotRequireTlsBinding) {
+TEST_F(ImcBusTest, FutureCallbackDoesNotRequireTlsBinding) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
     ASSERT_EQ(BML_RESULT_OK, ImcGetRpcId("owned.future.context", &rpc_id));
 
     RpcState rpc_state;
-    ASSERT_EQ(BML_RESULT_OK, ImcRegisterRpc(rpc_id, EchoRpc, &rpc_state));
+    ASSERT_EQ(BML_RESULT_OK, RegisterRpc(rpc_id, EchoRpc, &rpc_state));
 
     auto owner = CreateTrackedMod("imc.owned.future.owner");
     CurrentModuleCaptureState state;
     BML_Future future = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, ImcCallRpc(rpc_id, nullptr, &future));
+    ASSERT_EQ(BML_RESULT_OK, CallRpc(rpc_id, nullptr, &future));
 
     Context::SetCurrentModule(nullptr);
     ASSERT_EQ(BML_RESULT_OK,
-              ImcFutureOnCompleteOwned(owner, future, CaptureCurrentModuleFutureCallback, &state));
+              ImcFutureOnComplete(owner, future, CaptureCurrentModuleFutureCallback, &state));
 
     Context::SetCurrentModule(host_mod_);
     ImcPump(0);
 
     EXPECT_EQ(state.call_count.load(std::memory_order_acquire), 1u);
     EXPECT_EQ(state.current_module.load(std::memory_order_acquire),
-              reinterpret_cast<uintptr_t>(owner));
+              reinterpret_cast<uintptr_t>(host_mod_));
 
     ASSERT_EQ(BML_RESULT_OK, ImcFutureRelease(future));
-    ASSERT_EQ(BML_RESULT_OK, ImcUnregisterRpc(rpc_id));
+    ASSERT_EQ(BML_RESULT_OK, UnregisterRpc(rpc_id));
+}
+
+TEST_F(ImcBusTest, RegistrationApisDoNotFallbackToTlsWhenOwnerIsNull) {
+    auto owner = CreateTrackedMod("imc.owned.null.owner");
+    Context::SetCurrentModule(owner);
+
+    BML_TopicId topic = BML_TOPIC_ID_INVALID;
+    ASSERT_EQ(BML_RESULT_OK, ImcGetTopicId("owned.null.owner.topic", &topic));
+
+    CurrentModuleCaptureState state;
+    BML_Subscription subscription = nullptr;
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT,
+              ImcSubscribe(nullptr, topic, CaptureCurrentModuleHandler, &state, &subscription));
+
+    BML_RpcId rpc_id = BML_RPC_ID_INVALID;
+    ASSERT_EQ(BML_RESULT_OK, ImcGetRpcId("owned.null.owner.rpc", &rpc_id));
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT, ImcRegisterRpc(nullptr, rpc_id, CaptureCurrentModuleRpc, &state));
+
+    RpcState rpc_state;
+    ASSERT_EQ(BML_RESULT_OK, RegisterRpc(rpc_id, EchoRpc, &rpc_state));
+
+    BML_Future future = nullptr;
+    ASSERT_EQ(BML_RESULT_OK, CallRpc(rpc_id, nullptr, &future));
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT,
+              ImcFutureOnComplete(nullptr, future, CaptureCurrentModuleFutureCallback, &state));
+
+    ASSERT_EQ(BML_RESULT_OK, ImcFutureRelease(future));
+    ASSERT_EQ(BML_RESULT_OK, UnregisterRpc(rpc_id));
+    Context::SetCurrentModule(host_mod_);
+}
+
+TEST_F(ImcBusTest, ImcApisRejectNullOwnerWithoutAmbientFallback) {
+    auto owner = CreateTrackedMod("imc.explicit.strict.owner");
+    Context::SetCurrentModule(owner);
+
+    BML_TopicId topic = BML_TOPIC_ID_INVALID;
+    ASSERT_EQ(BML_RESULT_OK, ImcGetTopicId("imc.explicit.strict.topic", &topic));
+
+    const uint32_t payload = 9;
+    BML_ImcMessage message = BML_IMC_MSG(&payload, sizeof(payload));
+    BML_ImcBuffer buffer = BML_IMC_BUFFER_INIT;
+    buffer.data = &payload;
+    buffer.size = sizeof(payload);
+    BML_EventResult event_result = BML_EVENT_CONTINUE;
+    size_t delivered = 0;
+
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT, ImcPublish(topic, &payload, sizeof(payload)));
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT, ImcPublishEx(topic, &message));
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT, ImcPublishBuffer(topic, &buffer));
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT, ImcPublishInterceptable(topic, &message, &event_result));
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT,
+              ImcPublishMulti(&topic, 1, &payload, sizeof(payload), nullptr, &delivered));
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT, ImcPublishState(topic, &message));
+
+    BML_RpcId rpc_id = BML_RPC_ID_INVALID;
+    ASSERT_EQ(BML_RESULT_OK, ImcGetRpcId("imc.explicit.strict.rpc", &rpc_id));
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT, ImcRegisterRpc(rpc_id, EchoRpc, nullptr));
+
+    BML_Future future = nullptr;
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT, ImcCallRpc(rpc_id, nullptr, &future));
+
+    Context::SetCurrentModule(host_mod_);
 }
 
 TEST(ImcBusLifetimeTest, KernelDestructionCompletesPendingFutureBeforeContextDestruction) {
@@ -935,13 +1030,13 @@ TEST(ImcBusLifetimeTest, KernelDestructionCompletesPendingFutureBeforeContextDes
 
         BML_RpcId rpc_id = BML_RPC_ID_INVALID;
         ASSERT_EQ(BML_RESULT_OK, ImcGetRpcId("shutdown_test", &rpc_id));
-        ASSERT_EQ(BML_RESULT_OK, ImcRegisterRpc(rpc_id, EchoRpc, nullptr));
+        ASSERT_EQ(BML_RESULT_OK, ImcRegisterRpc(host_mod, rpc_id, EchoRpc, nullptr));
 
         BML_Future future = nullptr;
-        ASSERT_EQ(BML_RESULT_OK, ImcCallRpc(rpc_id, nullptr, &future));
+        ASSERT_EQ(BML_RESULT_OK, ImcCallRpc(host_mod, rpc_id, nullptr, &future));
         ASSERT_NE(future, nullptr);
         ASSERT_EQ(BML_RESULT_OK,
-                  ImcFutureOnComplete(future, ShutdownFutureCallback, &callback_state));
+                  ImcFutureOnComplete(host_mod, future, ShutdownFutureCallback, &callback_state));
 
         // Leave the queued request owning the last reference so shutdown can
         // complete and release the future while the callback still runs.
@@ -989,7 +1084,7 @@ TEST_F(ImcBusTest, PublishToEmptyTopicSucceeds) {
     ASSERT_EQ(BML_RESULT_OK, ImcGetTopicId("empty.topic", &topic));
     
     const uint8_t data = 1;
-    EXPECT_EQ(BML_RESULT_OK, ImcPublish(topic, &data, sizeof(data)));
+    EXPECT_EQ(BML_RESULT_OK, Publish(topic, &data, sizeof(data)));
 }
 
 // ========================================================================
@@ -1025,12 +1120,12 @@ TEST_F(ImcBusTest, PumpBudgetDistributesLoadAcrossSubscribers) {
 
     IntCapture cap1, cap2;
     BML_Subscription sub1, sub2;
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic, IntCollectHandler, &cap1, &sub1));
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic, IntCollectHandler, &cap2, &sub2));
+    ASSERT_EQ(BML_RESULT_OK, Subscribe(topic, IntCollectHandler, &cap1, &sub1));
+    ASSERT_EQ(BML_RESULT_OK, Subscribe(topic, IntCollectHandler, &cap2, &sub2));
 
     // Publish 4 messages
     for (int i = 1; i <= 4; ++i) {
-        ASSERT_EQ(BML_RESULT_OK, ImcPublish(topic, &i, sizeof(i)));
+        ASSERT_EQ(BML_RESULT_OK, Publish(topic, &i, sizeof(i)));
     }
 
     // Each subscriber should have 4 messages to process
@@ -1055,12 +1150,12 @@ TEST_F(ImcBusTest, PublishingResumesAfterPumpClearsQueue) {
 
     IntCapture cap;
     BML_Subscription sub;
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic, IntCollectHandler, &cap, &sub));
+    ASSERT_EQ(BML_RESULT_OK, Subscribe(topic, IntCollectHandler, &cap, &sub));
 
     // Publish a bunch of messages - they queue up
     constexpr int COUNT = 50;
     for (int i = 0; i < COUNT; ++i) {
-        ASSERT_EQ(BML_RESULT_OK, ImcPublish(topic, &i, sizeof(i)));
+        ASSERT_EQ(BML_RESULT_OK, Publish(topic, &i, sizeof(i)));
     }
 
     // Pump clears the queue
@@ -1069,7 +1164,7 @@ TEST_F(ImcBusTest, PublishingResumesAfterPumpClearsQueue) {
 
     // More publishes should work
     int v = 999;
-    ASSERT_EQ(BML_RESULT_OK, ImcPublish(topic, &v, sizeof(v)));
+    ASSERT_EQ(BML_RESULT_OK, Publish(topic, &v, sizeof(v)));
     ImcPump(0);
     EXPECT_EQ(cap.count.load(), COUNT + 1);
     EXPECT_EQ(cap.values.back(), 999);
@@ -1084,12 +1179,12 @@ TEST_F(ImcBusTest, FutureAwaitTimesOutUntilPumpProcessesRpc) {
     ASSERT_EQ(BML_RESULT_OK, ImcGetRpcId("timeout.echo", &rpc));
     
     RpcState state;
-    ASSERT_EQ(BML_RESULT_OK, ImcRegisterRpc(rpc, EchoRpc, &state));
+    ASSERT_EQ(BML_RESULT_OK, RegisterRpc(rpc, EchoRpc, &state));
 
     uint8_t payload = 42;
     BML_ImcMessage request = BML_IMC_MSG(&payload, sizeof(payload));
     BML_Future future = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, ImcCallRpc(rpc, &request, &future));
+    ASSERT_EQ(BML_RESULT_OK, CallRpc(rpc, &request, &future));
 
     // Await with short timeout - should timeout because no Pump yet
     BML_Result res = ImcFutureAwait(future, 10);
@@ -1105,7 +1200,7 @@ TEST_F(ImcBusTest, FutureAwaitTimesOutUntilPumpProcessesRpc) {
     EXPECT_EQ(fstate, BML_FUTURE_READY);
 
     EXPECT_EQ(BML_RESULT_OK, ImcFutureRelease(future));
-    EXPECT_EQ(BML_RESULT_OK, ImcUnregisterRpc(rpc));
+    EXPECT_EQ(BML_RESULT_OK, UnregisterRpc(rpc));
 }
 
 // ========================================================================
@@ -1160,24 +1255,24 @@ TEST_F(ImcBusTest, HighPriorityMessagesProcessedFirst) {
 
     PriorityCapture cap;
     BML_Subscription sub;
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic, PriorityCollectHandler, &cap, &sub));
+    ASSERT_EQ(BML_RESULT_OK, Subscribe(topic, PriorityCollectHandler, &cap, &sub));
 
     // Publish messages with different priorities (LOW first, URGENT last)
     BML_ImcMessage msg_low = BML_IMC_MESSAGE_INIT;
     msg_low.priority = BML_IMC_PRIORITY_LOW;
-    ASSERT_EQ(BML_RESULT_OK, ImcPublishEx(topic, &msg_low));
+    ASSERT_EQ(BML_RESULT_OK, PublishEx(topic, &msg_low));
 
     BML_ImcMessage msg_normal = BML_IMC_MESSAGE_INIT;
     msg_normal.priority = BML_IMC_PRIORITY_NORMAL;
-    ASSERT_EQ(BML_RESULT_OK, ImcPublishEx(topic, &msg_normal));
+    ASSERT_EQ(BML_RESULT_OK, PublishEx(topic, &msg_normal));
 
     BML_ImcMessage msg_high = BML_IMC_MESSAGE_INIT;
     msg_high.priority = BML_IMC_PRIORITY_HIGH;
-    ASSERT_EQ(BML_RESULT_OK, ImcPublishEx(topic, &msg_high));
+    ASSERT_EQ(BML_RESULT_OK, PublishEx(topic, &msg_high));
 
     BML_ImcMessage msg_urgent = BML_IMC_MESSAGE_INIT;
     msg_urgent.priority = BML_IMC_PRIORITY_URGENT;
-    ASSERT_EQ(BML_RESULT_OK, ImcPublishEx(topic, &msg_urgent));
+    ASSERT_EQ(BML_RESULT_OK, PublishEx(topic, &msg_urgent));
 
     // Pump all messages
     ImcPump(0);
@@ -1198,13 +1293,13 @@ TEST_F(ImcBusTest, PriorityFilterRespectsMinPriority) {
     opts.min_priority = BML_IMC_PRIORITY_HIGH;  // Only HIGH and URGENT
     
     BML_Subscription sub;
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribeEx(topic, PriorityCollectHandler, &cap, &opts, &sub));
+    ASSERT_EQ(BML_RESULT_OK, SubscribeEx(topic, PriorityCollectHandler, &cap, &opts, &sub));
 
     // Publish all priority levels
     for (uint32_t p = BML_IMC_PRIORITY_LOW; p <= BML_IMC_PRIORITY_URGENT; ++p) {
         BML_ImcMessage msg = BML_IMC_MESSAGE_INIT;
         msg.priority = p;
-        ASSERT_EQ(BML_RESULT_OK, ImcPublishEx(topic, &msg));
+        ASSERT_EQ(BML_RESULT_OK, PublishEx(topic, &msg));
     }
 
     ImcPump(0);
@@ -1224,10 +1319,10 @@ TEST_F(ImcBusTest, MessageFilterSkipsRejectedMessages) {
     opts.filter = EvenValueFilter;
 
     BML_Subscription sub;
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribeEx(topic, IntCollectHandler, &cap, &opts, &sub));
+    ASSERT_EQ(BML_RESULT_OK, SubscribeEx(topic, IntCollectHandler, &cap, &opts, &sub));
 
     for (int value = 1; value <= 4; ++value) {
-        ASSERT_EQ(BML_RESULT_OK, ImcPublish(topic, &value, sizeof(value)));
+        ASSERT_EQ(BML_RESULT_OK, Publish(topic, &value, sizeof(value)));
     }
 
     ImcPump(0);
@@ -1255,7 +1350,7 @@ TEST_F(ImcBusTest, LegacySubscribeOptionsRemainCompatible) {
 
     BML_Subscription sub;
     ASSERT_EQ(BML_RESULT_OK,
-              ImcSubscribeEx(
+              SubscribeEx(
                   topic,
                   PriorityCollectHandler,
                   &cap,
@@ -1265,7 +1360,7 @@ TEST_F(ImcBusTest, LegacySubscribeOptionsRemainCompatible) {
     for (uint32_t priority = BML_IMC_PRIORITY_LOW; priority <= BML_IMC_PRIORITY_URGENT; ++priority) {
         BML_ImcMessage msg = BML_IMC_MESSAGE_INIT;
         msg.priority = priority;
-        ASSERT_EQ(BML_RESULT_OK, ImcPublishEx(topic, &msg));
+        ASSERT_EQ(BML_RESULT_OK, PublishEx(topic, &msg));
     }
 
     ImcPump(0);
@@ -1292,11 +1387,11 @@ TEST_F(ImcBusTest, BackpressureDropNewestPolicy) {
     opts.backpressure = BML_BACKPRESSURE_DROP_NEWEST;
     
     BML_Subscription sub;
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribeEx(topic, IntCollectHandler, &cap, &opts, &sub));
+    ASSERT_EQ(BML_RESULT_OK, SubscribeEx(topic, IntCollectHandler, &cap, &opts, &sub));
 
     // Fill queue beyond capacity - new messages should be dropped
     for (int i = 0; i < 20; ++i) {
-        EXPECT_EQ(BML_RESULT_OK, ImcPublish(topic, &i, sizeof(i)));
+        EXPECT_EQ(BML_RESULT_OK, Publish(topic, &i, sizeof(i)));
     }
 
     ImcPump(0);
@@ -1325,11 +1420,11 @@ TEST_F(ImcBusTest, BackpressureDropOldestPolicy) {
     opts.backpressure = BML_BACKPRESSURE_DROP_OLDEST;
     
     BML_Subscription sub;
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribeEx(topic, IntCollectHandler, &cap, &opts, &sub));
+    ASSERT_EQ(BML_RESULT_OK, SubscribeEx(topic, IntCollectHandler, &cap, &opts, &sub));
 
     // Fill queue and overflow - old messages should be dropped
     for (int i = 0; i < 20; ++i) {
-        EXPECT_EQ(BML_RESULT_OK, ImcPublish(topic, &i, sizeof(i)));
+        EXPECT_EQ(BML_RESULT_OK, Publish(topic, &i, sizeof(i)));
     }
 
     ImcPump(0);
@@ -1358,12 +1453,12 @@ TEST_F(ImcBusTest, BackpressureFailPolicy) {
     opts.backpressure = BML_BACKPRESSURE_FAIL;
     
     BML_Subscription sub;
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribeEx(topic, IntCollectHandler, &cap, &opts, &sub));
+    ASSERT_EQ(BML_RESULT_OK, SubscribeEx(topic, IntCollectHandler, &cap, &opts, &sub));
 
     // Overflow the queue - should start returning WOULD_BLOCK
     bool got_would_block = false;
     for (int i = 0; i < 100; ++i) {
-        BML_Result res = ImcPublish(topic, &i, sizeof(i));
+        BML_Result res = Publish(topic, &i, sizeof(i));
         if (res == BML_RESULT_WOULD_BLOCK) {
             got_would_block = true;
             break;
@@ -1393,9 +1488,9 @@ TEST_F(ImcBusTest, ZeroCopyBufferCleanupAfterAllSubscribersProcess) {
     // Subscribe multiple handlers
     PubSubState state1, state2, state3;
     BML_Subscription sub1, sub2, sub3;
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic, CollectingHandler, &state1, &sub1));
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic, CollectingHandler, &state2, &sub2));
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic, CollectingHandler, &state3, &sub3));
+    ASSERT_EQ(BML_RESULT_OK, Subscribe(topic, CollectingHandler, &state1, &sub1));
+    ASSERT_EQ(BML_RESULT_OK, Subscribe(topic, CollectingHandler, &state2, &sub2));
+    ASSERT_EQ(BML_RESULT_OK, Subscribe(topic, CollectingHandler, &state3, &sub3));
 
     BufferCleanupState cleanup_state;
     std::array<uint8_t, 64> data;
@@ -1407,7 +1502,7 @@ TEST_F(ImcBusTest, ZeroCopyBufferCleanupAfterAllSubscribersProcess) {
     buffer.cleanup = BufferCleanup;
     buffer.cleanup_user_data = &cleanup_state;
 
-    ASSERT_EQ(BML_RESULT_OK, ImcPublishBuffer(topic, &buffer));
+    ASSERT_EQ(BML_RESULT_OK, PublishBuffer(topic, &buffer));
     
     // Pump to process all
     ImcPump(0);
@@ -1441,7 +1536,7 @@ TEST_F(ImcBusTest, ConcurrentPublishersDoNotCrash) {
     opts.backpressure = BML_BACKPRESSURE_FAIL;  // Fail instead of drop
     
     BML_Subscription sub;
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribeEx(topic, 
+    ASSERT_EQ(BML_RESULT_OK, SubscribeEx(topic,
         [](BML_Context, BML_TopicId, const BML_ImcMessage*, void* ud) {
             static_cast<std::atomic<uint32_t>*>(ud)->fetch_add(1, std::memory_order_relaxed);
         }, &received, &opts, &sub));
@@ -1456,7 +1551,7 @@ TEST_F(ImcBusTest, ConcurrentPublishersDoNotCrash) {
         threads.emplace_back([&, t]() {
             for (int i = 0; i < kMessagesPerThread; ++i) {
                 int value = t * 1000 + i;
-                BML_Result res = ImcPublish(topic, &value, sizeof(value));
+                BML_Result res = Publish(topic, &value, sizeof(value));
                 if (res != BML_RESULT_OK) {
                     publish_failed.fetch_add(1, std::memory_order_relaxed);
                 }
@@ -1502,7 +1597,7 @@ TEST_F(ImcBusTest, ConcurrentPublishWithSubscribeUnsubscribeRace) {
 
     // Start with one subscription
     BML_Subscription initial_sub = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic, counting_handler, &total_received, &initial_sub));
+    ASSERT_EQ(BML_RESULT_OK, Subscribe(topic, counting_handler, &total_received, &initial_sub));
 
     constexpr int kPublishThreads = 3;
     constexpr int kMessagesPerThread = 200;
@@ -1513,7 +1608,7 @@ TEST_F(ImcBusTest, ConcurrentPublishWithSubscribeUnsubscribeRace) {
         threads.emplace_back([&, t]() {
             for (int i = 0; i < kMessagesPerThread; ++i) {
                 int value = t * 1000 + i;
-                ImcPublish(topic, &value, sizeof(value));
+                Publish(topic, &value, sizeof(value));
             }
         });
     }
@@ -1522,7 +1617,7 @@ TEST_F(ImcBusTest, ConcurrentPublishWithSubscribeUnsubscribeRace) {
     threads.emplace_back([&]() {
         for (int cycle = 0; cycle < 20 && !stop.load(std::memory_order_relaxed); ++cycle) {
             BML_Subscription sub = nullptr;
-            BML_Result res = ImcSubscribe(topic, counting_handler, &total_received, &sub);
+            BML_Result res = Subscribe(topic, counting_handler, &total_received, &sub);
             if (res == BML_RESULT_OK && sub) {
                 std::this_thread::yield();
                 ImcUnsubscribe(sub);

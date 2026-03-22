@@ -190,7 +190,7 @@ TEST_F(TimerManagerTest, IsActiveReflectsState) {
     EXPECT_EQ(active, BML_FALSE);
 }
 
-TEST_F(TimerManagerTest, CancelAllForModuleCancelsOwned) {
+TEST_F(TimerManagerTest, CancelAllForModuleCancelsModuleTimers) {
     int counter_a = 0, counter_b = 0;
     BML_Timer timer_a = nullptr, timer_b = nullptr;
 

@@ -80,6 +80,11 @@ add_bml_test_support_library(bml_test_runtime_support
         ${BML_SOURCE_DIR}/Core/HookApi.cpp
         ${BML_SOURCE_DIR}/Core/HookRegistry.cpp
         ${BML_SOURCE_DIR}/Core/HotReloadCoordinator.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBusApi.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBusFacade.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBusPublish.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBusRpc.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBusState.cpp
         ${BML_SOURCE_DIR}/Core/ImcBus.cpp
         ${BML_SOURCE_DIR}/Core/InterfaceApi.cpp
         ${BML_SOURCE_DIR}/Core/InterfaceRegistry.cpp
@@ -144,6 +149,11 @@ add_bml_test_support_library(bml_test_logging_api_support
 
 add_bml_test_support_library(bml_test_imc_support
         SOURCES
+        ${BML_SOURCE_DIR}/Core/ImcBusApi.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBusFacade.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBusPublish.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBusRpc.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBusState.cpp
         ${BML_SOURCE_DIR}/Core/ImcBus.cpp
         DEPENDENCIES
         bml_test_core_support
@@ -166,7 +176,6 @@ add_bml_test_support_library(bml_test_stub_logging_support
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
         ${BML_SOURCE_DIR}/Core/HookRegistry.cpp
-        ${BML_SOURCE_DIR}/Core/KernelServices.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/TestKernelSupport.cpp
         DEPENDENCIES
         BML_Utils
@@ -683,10 +692,6 @@ add_executable(BuiltinModuleApiTests
         ${CMAKE_SOURCE_DIR}/modules/BML_Console/src/AnsiSegments.cpp
         ${CMAKE_SOURCE_DIR}/modules/BML_Console/src/AnsiPalette.cpp
         ${CMAKE_SOURCE_DIR}/modules/BML_Console/src/AnsiText.cpp
-        ${IMGUI_SOURCE_DIR}/imgui.cpp
-        ${IMGUI_SOURCE_DIR}/imgui_draw.cpp
-        ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
-        ${IMGUI_SOURCE_DIR}/imgui_widgets.cpp
 )
 target_include_directories(BuiltinModuleApiTests PRIVATE
         "${BML_INCLUDE_DIR}"

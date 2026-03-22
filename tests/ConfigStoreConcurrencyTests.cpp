@@ -61,29 +61,6 @@ struct HookRecorder {
     std::vector<HookPhase> phases;
 };
 
-HookRecorder &GetHookRecorder() {
-    static HookRecorder *recorder = [] {
-        auto *instance = new HookRecorder();
-        BML_ConfigLoadHooks hooks{};
-        hooks.struct_size = sizeof(BML_ConfigLoadHooks);
-        hooks.on_pre_load = [](BML_Context, const BML_ConfigLoadContext *, void *user_data) {
-            auto *rec = static_cast<HookRecorder *>(user_data);
-            rec->Record(HookPhase::Pre);
-        };
-        hooks.on_post_load = [](BML_Context, const BML_ConfigLoadContext *, void *user_data) {
-            auto *rec = static_cast<HookRecorder *>(user_data);
-            rec->Record(HookPhase::Post);
-        };
-        hooks.user_data = instance;
-        BML_Result result = BML::Core::RegisterConfigLoadHooks(&hooks);
-        if (result != BML_RESULT_OK) {
-            throw std::runtime_error("Failed to register config load hooks for tests");
-        }
-        return instance;
-    }();
-    return *recorder;
-}
-
 using PFN_ConfigGet = BML_Result (*)(BML_Mod, const BML_ConfigKey *, BML_ConfigValue *);
 using PFN_ConfigSet = BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *);
 using PFN_ConfigReset = BML_Result (*)(BML_Mod, const BML_ConfigKey *);
@@ -113,6 +90,7 @@ protected:
 
     void TearDown() override {
         if (mod_) {
+            BML::Core::CleanupConfigHooksForModule(mod_.get());
             kernel_->config->FlushAndRelease(mod_.get());
         }
         Context::SetCurrentModule(nullptr);
@@ -299,8 +277,20 @@ TEST_F(ConfigStoreConcurrencyTests, FlushAndReleaseReloadsDocumentAndFiresHooks)
     ASSERT_NE(config_set, nullptr);
     ASSERT_NE(config_get, nullptr);
 
-    auto &recorder = GetHookRecorder();
+    HookRecorder recorder;
     recorder.Reset();
+    BML_ConfigLoadHooks hooks{};
+    hooks.struct_size = sizeof(BML_ConfigLoadHooks);
+    hooks.on_pre_load = [](BML_Context, const BML_ConfigLoadContext *, void *user_data) {
+        auto *rec = static_cast<HookRecorder *>(user_data);
+        rec->Record(HookPhase::Pre);
+    };
+    hooks.on_post_load = [](BML_Context, const BML_ConfigLoadContext *, void *user_data) {
+        auto *rec = static_cast<HookRecorder *>(user_data);
+        rec->Record(HookPhase::Post);
+    };
+    hooks.user_data = &recorder;
+    ASSERT_EQ(BML_RESULT_OK, BML::Core::RegisterConfigLoadHooks(Mod(), &hooks));
 
     const BML_ConfigKey key{sizeof(BML_ConfigKey), "reload", "value"};
     BML_ConfigValue value{};

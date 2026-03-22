@@ -11,6 +11,7 @@
 #include "Core/Context.h"
 #include "Core/CrashDumpWriter.h"
 #include "Core/FaultTracker.h"
+#include "Core/ModManifest.h"
 #include "Core/ResourceApi.h"
 #include "TestKernel.h"
 
@@ -32,6 +33,9 @@ using PFN_HandleGetUserData = BML_Result (*)(const BML_HandleDesc *, void **);
 class ResourceHandleLifecycleTests : public ::testing::Test {
 protected:
     TestKernel kernel_;
+    std::vector<std::unique_ptr<BML::Core::ModManifest>> manifests_;
+    std::vector<std::unique_ptr<BML_Mod_T>> mods_;
+    BML_Mod owner_{nullptr};
 
     void SetUp() override {
         kernel_->api_registry  = std::make_unique<ApiRegistry>();
@@ -41,6 +45,8 @@ protected:
         kernel_->context = std::make_unique<BML::Core::Context>(*kernel_->api_registry, *kernel_->config, *kernel_->crash_dump, *kernel_->fault_tracker);
         kernel_->config->BindContext(*kernel_->context);
         BML::Core::RegisterResourceApis();
+        owner_ = MakeMod("resource.handle.owner");
+        ASSERT_NE(owner_, nullptr);
     }
 
     template <typename Fn>
@@ -50,6 +56,27 @@ protected:
             ADD_FAILURE() << "Missing API: " << name;
         }
         return fn;
+    }
+
+    BML_Mod MakeMod(const std::string &id) {
+        auto manifest = std::make_unique<BML::Core::ModManifest>();
+        manifest->package.id = id;
+        manifest->package.name = id;
+        manifest->package.version = "1.0.0";
+        manifest->package.parsed_version = {1, 0, 0};
+        manifest->directory = L"";
+        manifest->manifest_path = L"";
+
+        auto handle = kernel_->context->CreateModHandle(*manifest);
+        BML_Mod mod = handle.get();
+        manifests_.push_back(std::move(manifest));
+        mods_.push_back(std::move(handle));
+        return mod;
+    }
+
+    BML_Result CreateHandle(BML_HandleType type, BML_HandleDesc *out_desc) {
+        auto create = Lookup<PFN_BML_HandleCreate>("bmlHandleCreate");
+        return create ? create(owner_, type, out_desc) : BML_RESULT_FAIL;
     }
 
     BML_HandleType RegisterCountingType(std::atomic<int> &finalize_counter) {
@@ -62,16 +89,14 @@ protected:
             counter->fetch_add(1, std::memory_order_relaxed);
         };
         BML_HandleType type = 0;
-        EXPECT_EQ(BML_RESULT_OK, BML::Core::RegisterResourceType(&desc, &type));
+        EXPECT_EQ(BML_RESULT_OK, BML::Core::RegisterResourceType(owner_, &desc, &type));
         return type;
     }
 };
 
 TEST_F(ResourceHandleLifecycleTests, FinalizeRunsExactlyOncePerHandleUnderConcurrentRelease) {
-    auto create = Lookup<PFN_HandleCreate>("bmlHandleCreate");
     auto retain = Lookup<PFN_HandleRetain>("bmlHandleRetain");
     auto release = Lookup<PFN_HandleRelease>("bmlHandleRelease");
-    ASSERT_NE(create, nullptr);
     ASSERT_NE(retain, nullptr);
     ASSERT_NE(release, nullptr);
 
@@ -84,7 +109,7 @@ TEST_F(ResourceHandleLifecycleTests, FinalizeRunsExactlyOncePerHandleUnderConcur
 
     std::vector<BML_HandleDesc> handles(kHandles);
     for (auto &desc : handles) {
-        ASSERT_EQ(BML_RESULT_OK, create(type, &desc));
+        ASSERT_EQ(BML_RESULT_OK, CreateHandle(type, &desc));
         for (int i = 0; i < kExtraRetains; ++i) {
             ASSERT_EQ(BML_RESULT_OK, retain(&desc));
         }
@@ -113,23 +138,18 @@ TEST_F(ResourceHandleLifecycleTests, FinalizeRunsExactlyOncePerHandleUnderConcur
 }
 
 TEST_F(ResourceHandleLifecycleTests, CreateRejectsDescriptorWithMismatchedStructSize) {
-    auto create = Lookup<PFN_HandleCreate>("bmlHandleCreate");
-    ASSERT_NE(create, nullptr);
-
     std::atomic<int> finalize_counter{0};
     BML_HandleType type = RegisterCountingType(finalize_counter);
 
     BML_HandleDesc desc{};
     desc.struct_size = sizeof(BML_HandleDesc) - 4; // Intentionally too small
-    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, create(type, &desc));
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, CreateHandle(type, &desc));
     EXPECT_EQ(finalize_counter.load(), 0);
 }
 
 TEST_F(ResourceHandleLifecycleTests, SlotReuseIncrementsGenerationAndInvalidatesOldDescriptors) {
-    auto create = Lookup<PFN_HandleCreate>("bmlHandleCreate");
     auto release = Lookup<PFN_HandleRelease>("bmlHandleRelease");
     auto validate = Lookup<PFN_HandleValidate>("bmlHandleValidate");
-    ASSERT_NE(create, nullptr);
     ASSERT_NE(release, nullptr);
     ASSERT_NE(validate, nullptr);
 
@@ -137,11 +157,11 @@ TEST_F(ResourceHandleLifecycleTests, SlotReuseIncrementsGenerationAndInvalidates
     BML_HandleType type = RegisterCountingType(finalize_counter);
 
     BML_HandleDesc first{};
-    ASSERT_EQ(BML_RESULT_OK, create(type, &first));
+    ASSERT_EQ(BML_RESULT_OK, CreateHandle(type, &first));
     ASSERT_EQ(BML_RESULT_OK, release(&first));
 
     BML_HandleDesc second{};
-    ASSERT_EQ(BML_RESULT_OK, create(type, &second));
+    ASSERT_EQ(BML_RESULT_OK, CreateHandle(type, &second));
 
     BML_Bool valid = BML_FALSE;
     ASSERT_EQ(BML_RESULT_OK, validate(&first, &valid));
@@ -159,11 +179,9 @@ TEST_F(ResourceHandleLifecycleTests, SlotReuseIncrementsGenerationAndInvalidates
 }
 
 TEST_F(ResourceHandleLifecycleTests, UserDataAttachesAndReadsFromMultipleThreads) {
-    auto create = Lookup<PFN_HandleCreate>("bmlHandleCreate");
     auto attach = Lookup<PFN_HandleAttachUserData>("bmlHandleAttachUserData");
     auto get_data = Lookup<PFN_HandleGetUserData>("bmlHandleGetUserData");
     auto release = Lookup<PFN_HandleRelease>("bmlHandleRelease");
-    ASSERT_NE(create, nullptr);
     ASSERT_NE(attach, nullptr);
     ASSERT_NE(get_data, nullptr);
     ASSERT_NE(release, nullptr);
@@ -172,7 +190,7 @@ TEST_F(ResourceHandleLifecycleTests, UserDataAttachesAndReadsFromMultipleThreads
     BML_HandleType type = RegisterCountingType(finalize_counter);
 
     BML_HandleDesc desc{};
-    ASSERT_EQ(BML_RESULT_OK, create(type, &desc));
+    ASSERT_EQ(BML_RESULT_OK, CreateHandle(type, &desc));
 
     int payload = 12345;
     ASSERT_EQ(BML_RESULT_OK, attach(&desc, &payload));
@@ -209,16 +227,14 @@ TEST_F(ResourceHandleLifecycleTests, UserDataAttachesAndReadsFromMultipleThreads
 // ========================================================================
 
 TEST_F(ResourceHandleLifecycleTests, DoubleReleaseReturnsInvalidState) {
-    auto create = Lookup<PFN_HandleCreate>("bmlHandleCreate");
     auto release = Lookup<PFN_HandleRelease>("bmlHandleRelease");
-    ASSERT_NE(create, nullptr);
     ASSERT_NE(release, nullptr);
 
     std::atomic<int> finalize_counter{0};
     BML_HandleType type = RegisterCountingType(finalize_counter);
 
     BML_HandleDesc desc{};
-    ASSERT_EQ(BML_RESULT_OK, create(type, &desc));
+    ASSERT_EQ(BML_RESULT_OK, CreateHandle(type, &desc));
 
     // First release should succeed
     ASSERT_EQ(BML_RESULT_OK, release(&desc));
@@ -238,10 +254,8 @@ TEST_F(ResourceHandleLifecycleTests, ReleaseOnNullDescriptorReturnsInvalidArgume
 }
 
 TEST_F(ResourceHandleLifecycleTests, RetainOnReleasedHandleReturnsError) {
-    auto create = Lookup<PFN_HandleCreate>("bmlHandleCreate");
     auto retain = Lookup<PFN_HandleRetain>("bmlHandleRetain");
     auto release = Lookup<PFN_HandleRelease>("bmlHandleRelease");
-    ASSERT_NE(create, nullptr);
     ASSERT_NE(retain, nullptr);
     ASSERT_NE(release, nullptr);
 
@@ -249,7 +263,7 @@ TEST_F(ResourceHandleLifecycleTests, RetainOnReleasedHandleReturnsError) {
     BML_HandleType type = RegisterCountingType(finalize_counter);
 
     BML_HandleDesc desc{};
-    ASSERT_EQ(BML_RESULT_OK, create(type, &desc));
+    ASSERT_EQ(BML_RESULT_OK, CreateHandle(type, &desc));
     ASSERT_EQ(BML_RESULT_OK, release(&desc));
 
     // Retain on released handle should fail
@@ -257,11 +271,9 @@ TEST_F(ResourceHandleLifecycleTests, RetainOnReleasedHandleReturnsError) {
 }
 
 TEST_F(ResourceHandleLifecycleTests, ConcurrentRetainDoesNotReviveFinalRelease) {
-    auto create = Lookup<PFN_HandleCreate>("bmlHandleCreate");
     auto retain = Lookup<PFN_HandleRetain>("bmlHandleRetain");
     auto release = Lookup<PFN_HandleRelease>("bmlHandleRelease");
     auto validate = Lookup<PFN_HandleValidate>("bmlHandleValidate");
-    ASSERT_NE(create, nullptr);
     ASSERT_NE(retain, nullptr);
     ASSERT_NE(release, nullptr);
     ASSERT_NE(validate, nullptr);
@@ -272,7 +284,7 @@ TEST_F(ResourceHandleLifecycleTests, ConcurrentRetainDoesNotReviveFinalRelease) 
     constexpr int kIterations = 128;
     for (int i = 0; i < kIterations; ++i) {
         BML_HandleDesc desc{};
-        ASSERT_EQ(BML_RESULT_OK, create(type, &desc));
+        ASSERT_EQ(BML_RESULT_OK, CreateHandle(type, &desc));
 
         std::barrier start(3);
         std::atomic<BML_Result> retain_result{BML_RESULT_FAIL};
@@ -308,13 +320,11 @@ TEST_F(ResourceHandleLifecycleTests, ConcurrentRetainDoesNotReviveFinalRelease) 
 }
 
 TEST_F(ResourceHandleLifecycleTests, HandleOpsRejectShrunkStructs) {
-    auto create = Lookup<PFN_HandleCreate>("bmlHandleCreate");
     auto retain = Lookup<PFN_HandleRetain>("bmlHandleRetain");
     auto release = Lookup<PFN_HandleRelease>("bmlHandleRelease");
     auto attach = Lookup<PFN_HandleAttachUserData>("bmlHandleAttachUserData");
     auto get_user_data = Lookup<PFN_HandleGetUserData>("bmlHandleGetUserData");
     auto validate = Lookup<PFN_HandleValidate>("bmlHandleValidate");
-    ASSERT_NE(create, nullptr);
     ASSERT_NE(retain, nullptr);
     ASSERT_NE(release, nullptr);
     ASSERT_NE(attach, nullptr);
@@ -325,7 +335,7 @@ TEST_F(ResourceHandleLifecycleTests, HandleOpsRejectShrunkStructs) {
     BML_HandleType type = RegisterCountingType(finalize_counter);
 
     BML_HandleDesc desc = BML_HANDLE_DESC_INIT;
-    ASSERT_EQ(BML_RESULT_OK, create(type, &desc));
+    ASSERT_EQ(BML_RESULT_OK, CreateHandle(type, &desc));
 
     auto shrink = [&](auto fn) {
         desc.struct_size = sizeof(BML_HandleDesc) - 1;
@@ -352,10 +362,8 @@ TEST_F(ResourceHandleLifecycleTests, HandleOpsRejectShrunkStructs) {
 }
 
 TEST_F(ResourceHandleLifecycleTests, ValidateOnReleasedHandleReturnsFalse) {
-    auto create = Lookup<PFN_HandleCreate>("bmlHandleCreate");
     auto release = Lookup<PFN_HandleRelease>("bmlHandleRelease");
     auto validate = Lookup<PFN_HandleValidate>("bmlHandleValidate");
-    ASSERT_NE(create, nullptr);
     ASSERT_NE(release, nullptr);
     ASSERT_NE(validate, nullptr);
 
@@ -363,7 +371,7 @@ TEST_F(ResourceHandleLifecycleTests, ValidateOnReleasedHandleReturnsFalse) {
     BML_HandleType type = RegisterCountingType(finalize_counter);
 
     BML_HandleDesc desc{};
-    ASSERT_EQ(BML_RESULT_OK, create(type, &desc));
+    ASSERT_EQ(BML_RESULT_OK, CreateHandle(type, &desc));
     ASSERT_EQ(BML_RESULT_OK, release(&desc));
 
     BML_Bool valid = BML_TRUE;
@@ -372,10 +380,8 @@ TEST_F(ResourceHandleLifecycleTests, ValidateOnReleasedHandleReturnsFalse) {
 }
 
 TEST_F(ResourceHandleLifecycleTests, HandleTypesAreIsolated) {
-    auto create = Lookup<PFN_HandleCreate>("bmlHandleCreate");
     auto release = Lookup<PFN_HandleRelease>("bmlHandleRelease");
     auto validate = Lookup<PFN_HandleValidate>("bmlHandleValidate");
-    ASSERT_NE(create, nullptr);
     ASSERT_NE(release, nullptr);
     ASSERT_NE(validate, nullptr);
 
@@ -393,13 +399,13 @@ TEST_F(ResourceHandleLifecycleTests, HandleTypesAreIsolated) {
         counter->fetch_add(1, std::memory_order_relaxed);
     };
     BML_HandleType type2 = 0;
-    ASSERT_EQ(BML_RESULT_OK, BML::Core::RegisterResourceType(&desc2, &type2));
+    ASSERT_EQ(BML_RESULT_OK, BML::Core::RegisterResourceType(owner_, &desc2, &type2));
     ASSERT_NE(type1, type2);
 
     // Create handles of both types
     BML_HandleDesc handle1{}, handle2{};
-    ASSERT_EQ(BML_RESULT_OK, create(type1, &handle1));
-    ASSERT_EQ(BML_RESULT_OK, create(type2, &handle2));
+    ASSERT_EQ(BML_RESULT_OK, CreateHandle(type1, &handle1));
+    ASSERT_EQ(BML_RESULT_OK, CreateHandle(type2, &handle2));
 
     // Validate both
     BML_Bool valid = BML_FALSE;
@@ -428,10 +434,8 @@ TEST_F(ResourceHandleLifecycleTests, GetUserDataOnNullDescriptorReturnsInvalidAr
 }
 
 TEST_F(ResourceHandleLifecycleTests, GetUserDataOnNullOutputReturnsInvalidArgument) {
-    auto create = Lookup<PFN_HandleCreate>("bmlHandleCreate");
     auto get_data = Lookup<PFN_HandleGetUserData>("bmlHandleGetUserData");
     auto release = Lookup<PFN_HandleRelease>("bmlHandleRelease");
-    ASSERT_NE(create, nullptr);
     ASSERT_NE(get_data, nullptr);
     ASSERT_NE(release, nullptr);
 
@@ -439,7 +443,7 @@ TEST_F(ResourceHandleLifecycleTests, GetUserDataOnNullOutputReturnsInvalidArgume
     BML_HandleType type = RegisterCountingType(finalize_counter);
 
     BML_HandleDesc desc{};
-    ASSERT_EQ(BML_RESULT_OK, create(type, &desc));
+    ASSERT_EQ(BML_RESULT_OK, CreateHandle(type, &desc));
 
     EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, get_data(&desc, nullptr));
 
@@ -447,10 +451,8 @@ TEST_F(ResourceHandleLifecycleTests, GetUserDataOnNullOutputReturnsInvalidArgume
 }
 
 TEST_F(ResourceHandleLifecycleTests, AttachUserDataOnReleasedHandleReturnsError) {
-    auto create = Lookup<PFN_HandleCreate>("bmlHandleCreate");
     auto attach = Lookup<PFN_HandleAttachUserData>("bmlHandleAttachUserData");
     auto release = Lookup<PFN_HandleRelease>("bmlHandleRelease");
-    ASSERT_NE(create, nullptr);
     ASSERT_NE(attach, nullptr);
     ASSERT_NE(release, nullptr);
 
@@ -458,7 +460,7 @@ TEST_F(ResourceHandleLifecycleTests, AttachUserDataOnReleasedHandleReturnsError)
     BML_HandleType type = RegisterCountingType(finalize_counter);
 
     BML_HandleDesc desc{};
-    ASSERT_EQ(BML_RESULT_OK, create(type, &desc));
+    ASSERT_EQ(BML_RESULT_OK, CreateHandle(type, &desc));
     ASSERT_EQ(BML_RESULT_OK, release(&desc));
 
     int payload = 42;

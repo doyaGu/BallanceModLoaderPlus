@@ -197,16 +197,29 @@ namespace BML::Core {
 
         try {
             std::string path_utf8 = utils::Utf16ToUtf8(path);
-            auto tbl = toml::parse_file(path_utf8);
-
             out_table.clear();
-            FlattenTable(tbl, "", out_table);
+#if TOML_EXCEPTIONS
+            auto table = toml::parse_file(path_utf8);
+            FlattenTable(table, "", out_table);
+#else
+            auto result = toml::parse_file(path_utf8);
+            if (!result) {
+                const auto &error = result.error();
+                CoreLog(BML_LOG_WARN, kLogCategory,
+                        "Failed to parse locale file %s: %.*s",
+                        path_utf8.c_str(),
+                        static_cast<int>(error.description().size()),
+                        error.description().data());
+                return BML_RESULT_FAIL;
+            }
+            FlattenTable(result.table(), "", out_table);
+#endif
 
             return BML_RESULT_OK;
         } catch (const toml::parse_error &e) {
             CoreLog(BML_LOG_WARN, kLogCategory,
                     "Failed to parse locale file %s: %s",
-                    utils::Utf16ToUtf8(path).c_str(), e.what());
+                    utils::Utf16ToUtf8(path).c_str(), e.description().data());
             return BML_RESULT_FAIL;
         } catch (...) {
             return BML_RESULT_INTERNAL_ERROR;

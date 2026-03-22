@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+﻿#include <gtest/gtest.h>
 
 #include <vector>
 #include <string>
@@ -379,8 +379,8 @@ TEST_F(StringUtilsTest, StringHash) {
     }
 }
 
-// Test legacy compatibility functions
-TEST_F(StringUtilsTest, LegacyCompatibility) {
+// Test compatibility helpers for C-style string overloads
+TEST_F(StringUtilsTest, CStringCompatibilityHelpers) {
     // Test StringStartsWith/EndsWith
     {
         std::string test = "Hello World";
@@ -560,7 +560,7 @@ TEST_F(StringUtilsTest, UnescapeString) {
         EXPECT_EQ(gclef_utf8, utils::UnescapeString("\\uD834\\uDD1E"));
 
         // Non-BMP via \U
-        EXPECT_EQ("\xF0\x9F\x98\x80", // 😀 as UTF-8
+        EXPECT_EQ("\xF0\x9F\x98\x80", // Grinning face emoji as UTF-8
                   utils::UnescapeString("\\U0001F600"));
 
         // Invalid code point: > U+10FFFF should be emitted literally

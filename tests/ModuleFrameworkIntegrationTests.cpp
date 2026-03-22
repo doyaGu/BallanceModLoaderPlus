@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file ModuleFrameworkIntegrationTests.cpp
  * @brief Integration tests for the Module framework and C++ wrappers against real BML.dll
  *
@@ -64,20 +64,23 @@ protected:
         }
     }
 
-    static bml::InterfaceLease<BML_CoreContextInterface> AcquireCoreContext() {
-        return bml::AcquireInterface<BML_CoreContextInterface>(BML_CORE_CONTEXT_INTERFACE_ID, 1);
+    static bml::InterfaceLease<BML_CoreContextInterface> AcquireCoreContext(BML_Mod owner) {
+        return bml::AcquireInterface<BML_CoreContextInterface>(
+            owner, BML_CORE_CONTEXT_INTERFACE_ID, 1);
     }
 
-    static bml::InterfaceLease<BML_CoreLoggingInterface> AcquireCoreLogging() {
-        return bml::AcquireInterface<BML_CoreLoggingInterface>(BML_CORE_LOGGING_INTERFACE_ID, 1);
+    static bml::InterfaceLease<BML_CoreLoggingInterface> AcquireCoreLogging(BML_Mod owner) {
+        return bml::AcquireInterface<BML_CoreLoggingInterface>(
+            owner, BML_CORE_LOGGING_INTERFACE_ID, 1);
     }
 
-    static bml::InterfaceLease<BML_CoreConfigInterface> AcquireCoreConfig() {
-        return bml::AcquireInterface<BML_CoreConfigInterface>(BML_CORE_CONFIG_INTERFACE_ID, 1);
+    static bml::InterfaceLease<BML_CoreConfigInterface> AcquireCoreConfig(BML_Mod owner) {
+        return bml::AcquireInterface<BML_CoreConfigInterface>(
+            owner, BML_CORE_CONFIG_INTERFACE_ID, 1);
     }
 
-    static bml::InterfaceLease<BML_ImcBusInterface> AcquireImcBus() {
-        return bml::AcquireInterface<BML_ImcBusInterface>(BML_IMC_BUS_INTERFACE_ID, 1);
+    static bml::InterfaceLease<BML_ImcBusInterface> AcquireImcBus(BML_Mod owner) {
+        return bml::AcquireInterface<BML_ImcBusInterface>(owner, BML_IMC_BUS_INTERFACE_ID, 1);
     }
 
     static BML_Mod LookupHostMod() {
@@ -165,7 +168,7 @@ public:
         if (!m_ImcBus) {
             return BML_RESULT_NOT_FOUND;
         }
-        m_Subs.Bind(m_ImcBus.Get());
+        m_Subs = bml::imc::SubscriptionManager(m_ImcBus.Get(), Handle());
         bool ok = m_Subs.Add("test/framework/event", [](const bml::imc::Message &) {
             message_count.fetch_add(1, std::memory_order_relaxed);
         });
@@ -360,10 +363,8 @@ TEST_F(ModuleFrameworkIntegrationTest, OnAttachFailure_RollbackCleansPublishedIn
     EXPECT_EQ(nullptr, FailingPublishingHelper::GetInstance());
 
     EnsureApiLoaded();
-    auto moduleApi = bml::Acquire<BML_CoreModuleInterface>();
-    ASSERT_TRUE(static_cast<bool>(moduleApi));
-    bml::CurrentModuleScope scope(hostMod, moduleApi.Get());
-    auto lease = bml::AcquireInterface<TestPublishedService>("test.framework.rollback_published", 1);
+    auto lease = bml::AcquireInterface<TestPublishedService>(
+        hostMod, "test.framework.rollback_published", 1);
     EXPECT_FALSE(static_cast<bool>(lease));
 }
 
@@ -374,10 +375,10 @@ TEST_F(ModuleFrameworkIntegrationTest, OnAttachFailure_RollbackCleansPublishedIn
 TEST_F(ModuleFrameworkIntegrationTest, SubscriptionManager_CleanupOnDetach) {
     SubscriberMod::Reset();
     EnsureApiLoaded();
-    auto imcBus = AcquireImcBus();
-    ASSERT_TRUE(static_cast<bool>(imcBus));
     BML_Mod hostMod = LookupHostMod();
     ASSERT_NE(nullptr, hostMod);
+    auto imcBus = AcquireImcBus(hostMod);
+    ASSERT_TRUE(static_cast<bool>(imcBus));
 
     auto attach_args = MakeAttachArgs(hostMod);
     ASSERT_EQ(BML_RESULT_OK,
@@ -387,7 +388,7 @@ TEST_F(ModuleFrameworkIntegrationTest, SubscriptionManager_CleanupOnDetach) {
     ASSERT_EQ(BML_RESULT_OK, imcBus->GetTopicId("test/framework/event", &topic_id));
 
     uint32_t payload = 42;
-    ASSERT_EQ(BML_RESULT_OK, imcBus->Publish(topic_id, &payload, sizeof(payload)));
+    ASSERT_EQ(BML_RESULT_OK, imcBus->Publish(hostMod, topic_id, &payload, sizeof(payload)));
     imcBus->Pump(100);
 
     EXPECT_EQ(1, SubscriberMod::message_count.load());
@@ -398,10 +399,10 @@ TEST_F(ModuleFrameworkIntegrationTest, SubscriptionManager_CleanupOnDetach) {
               SubscriberHelper::Entrypoint(BML_MOD_ENTRYPOINT_DETACH, &detach_args));
 
     EnsureApiLoaded();
-    imcBus = AcquireImcBus();
+    imcBus = AcquireImcBus(hostMod);
     ASSERT_TRUE(static_cast<bool>(imcBus));
 
-    ASSERT_EQ(BML_RESULT_OK, imcBus->Publish(topic_id, &payload, sizeof(payload)));
+    ASSERT_EQ(BML_RESULT_OK, imcBus->Publish(hostMod, topic_id, &payload, sizeof(payload)));
     imcBus->Pump(100);
 
     EXPECT_EQ(1, SubscriberMod::message_count.load()) << "Message received after detach";
@@ -413,34 +414,30 @@ TEST_F(ModuleFrameworkIntegrationTest, SubscriptionManager_CleanupOnDetach) {
 
 TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_SubscriptionManager_PubSub) {
     EnsureApiLoaded();
-    auto imcBus = AcquireImcBus();
-    auto moduleApi = bml::Acquire<BML_CoreModuleInterface>();
-    ASSERT_TRUE(static_cast<bool>(imcBus));
-    ASSERT_TRUE(static_cast<bool>(moduleApi));
-
     BML_Mod hostMod = LookupHostMod();
     ASSERT_NE(nullptr, hostMod);
+    auto imcBus = AcquireImcBus(hostMod);
+    ASSERT_TRUE(static_cast<bool>(imcBus));
 
     std::atomic<int> received{0};
     uint32_t last_value = 0;
 
-    bml::imc::SubscriptionManager subs(imcBus.Get());
-    {
-        bml::CurrentModuleScope scope(hostMod, moduleApi.Get());
-        bool ok = subs.Add("test/cpp/wrapper/event",
-                           [&](const bml::imc::Message &msg) {
-                               if (auto *v = msg.As<uint32_t>()) {
-                                   last_value = *v;
-                               }
-                               received.fetch_add(1, std::memory_order_relaxed);
-                           });
-        ASSERT_TRUE(ok);
-        EXPECT_EQ(1u, subs.Count());
+    bml::imc::SubscriptionManager subs(imcBus.Get(), hostMod);
+    bool ok = subs.Add("test/cpp/wrapper/event",
+                       [&](const bml::imc::Message &msg) {
+                           if (auto *v = msg.As<uint32_t>()) {
+                               last_value = *v;
+                           }
+                           received.fetch_add(1, std::memory_order_relaxed);
+                       });
+    ASSERT_TRUE(ok);
+    EXPECT_EQ(1u, subs.Count());
 
-        // Publish via C++ wrapper
-        ASSERT_TRUE(bml::imc::publish("test/cpp/wrapper/event", uint32_t(99), imcBus.Get()));
-        bml::imc::pumpAll(imcBus.Get());
-    }
+    BML_TopicId topic_id = BML_TOPIC_ID_INVALID;
+    ASSERT_EQ(BML_RESULT_OK, imcBus->GetTopicId("test/cpp/wrapper/event", &topic_id));
+    ASSERT_EQ(BML_RESULT_OK, imcBus->Publish(hostMod, topic_id, &static_cast<const uint32_t &>(uint32_t{99}),
+                                                  sizeof(uint32_t)));
+    bml::imc::pumpAll(imcBus.Get());
 
     EXPECT_EQ(1, received.load());
     EXPECT_EQ(99u, last_value);
@@ -449,23 +446,18 @@ TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_SubscriptionManager_PubSub) {
     subs.Clear();
     EXPECT_EQ(0u, subs.Count());
 
-    {
-        bml::CurrentModuleScope scope(hostMod, moduleApi.Get());
-        bml::imc::publish("test/cpp/wrapper/event", uint32_t(100), imcBus.Get());
-        bml::imc::pumpAll(imcBus.Get());
-    }
+    const uint32_t second_payload = 100;
+    ASSERT_EQ(BML_RESULT_OK, imcBus->Publish(hostMod, topic_id, &second_payload, sizeof(second_payload)));
+    bml::imc::pumpAll(imcBus.Get());
     EXPECT_EQ(1, received.load()) << "Received after Clear()";
 }
 
 TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_TypedSubscription) {
     EnsureApiLoaded();
-    auto imcBus = AcquireImcBus();
-    auto moduleApi = bml::Acquire<BML_CoreModuleInterface>();
-    ASSERT_TRUE(static_cast<bool>(imcBus));
-    ASSERT_TRUE(static_cast<bool>(moduleApi));
-
     BML_Mod hostMod = LookupHostMod();
     ASSERT_NE(nullptr, hostMod);
+    auto imcBus = AcquireImcBus(hostMod);
+    ASSERT_TRUE(static_cast<bool>(imcBus));
 
     struct TestEvent {
         int32_t x;
@@ -475,20 +467,19 @@ TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_TypedSubscription) {
     TestEvent received_event{};
     std::atomic<int> count{0};
 
-    bml::imc::SubscriptionManager subs(imcBus.Get());
-    {
-        bml::CurrentModuleScope scope(hostMod, moduleApi.Get());
-        bool ok = subs.Add<TestEvent>("test/cpp/typed",
-                                      [&](const TestEvent &e) {
-                                          received_event = e;
-                                          count.fetch_add(1, std::memory_order_relaxed);
-                                      });
-        ASSERT_TRUE(ok);
+    bml::imc::SubscriptionManager subs(imcBus.Get(), hostMod);
+    bool ok = subs.Add<TestEvent>("test/cpp/typed",
+                                  [&](const TestEvent &e) {
+                                      received_event = e;
+                                      count.fetch_add(1, std::memory_order_relaxed);
+                                  });
+    ASSERT_TRUE(ok);
 
-        TestEvent sent = {10, 20};
-        bml::imc::publish("test/cpp/typed", sent, imcBus.Get());
-        bml::imc::pumpAll(imcBus.Get());
-    }
+    BML_TopicId topic_id = BML_TOPIC_ID_INVALID;
+    ASSERT_EQ(BML_RESULT_OK, imcBus->GetTopicId("test/cpp/typed", &topic_id));
+    TestEvent sent = {10, 20};
+    ASSERT_EQ(BML_RESULT_OK, imcBus->Publish(hostMod, topic_id, &sent, sizeof(sent)));
+    bml::imc::pumpAll(imcBus.Get());
 
     EXPECT_EQ(1, count.load());
     EXPECT_EQ(10, received_event.x);
@@ -508,8 +499,10 @@ TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_Service_ApiResolved) {
 
 TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_Service_AcquireNotFound) {
     EnsureApiLoaded();
+    BML_Mod hostMod = LookupHostMod();
+    ASSERT_NE(nullptr, hostMod);
 
-    auto lease = bml::AcquireInterface<int>("test.framework.missing", 1, 0, 0);
+    auto lease = bml::AcquireInterface<int>(hostMod, "test.framework.missing", 1, 0, 0);
     EXPECT_FALSE(static_cast<bool>(lease));
 }
 
@@ -518,9 +511,7 @@ TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_Service_AcquireImcBusViaTrait)
     BML_Mod hostMod = LookupHostMod();
     ASSERT_NE(nullptr, hostMod);
 
-    bml::CurrentModuleScope scope(hostMod);
-
-    auto lease = bml::Acquire<BML_ImcBusInterface>();
+    auto lease = bml::AcquireInterface<BML_ImcBusInterface>(hostMod, BML_IMC_BUS_INTERFACE_ID, 1);
     ASSERT_TRUE(static_cast<bool>(lease));
     EXPECT_NE(nullptr, lease->PublishInterceptable);
 }
@@ -533,7 +524,6 @@ TEST_F(ModuleFrameworkIntegrationTest, ModuleAcquire_ReturnsBuiltinInterfaceLeas
     HelperAccessMod helper;
     helper.Initialize(hostMod, bmlGetProcAddress);
 
-    bml::CurrentModuleScope scope(hostMod);
     auto lease = helper.Acquire<BML_CoreLoggingInterface>(BML_CORE_LOGGING_INTERFACE_ID, 1);
     ASSERT_TRUE(static_cast<bool>(lease));
     ASSERT_NE(nullptr, lease->Log);
@@ -548,7 +538,6 @@ TEST_F(ModuleFrameworkIntegrationTest, ModuleAcquire_ReturnsEmptyForMissingInter
     HelperAccessMod helper;
     helper.Initialize(&mod, bmlGetProcAddress);
 
-    bml::CurrentModuleScope scope(&mod);
     auto lease = helper.Acquire<int>("test.framework.nope", 1);
     EXPECT_FALSE(static_cast<bool>(lease));
 }
@@ -562,7 +551,6 @@ TEST_F(ModuleFrameworkIntegrationTest, ModuleAcquire_ReturnsEmptyForVersionMisma
     HelperAccessMod helper;
     helper.Initialize(&mod, bmlGetProcAddress);
 
-    bml::CurrentModuleScope scope(&mod);
     auto lease = helper.Acquire<BML_CoreLoggingInterface>(BML_CORE_LOGGING_INTERFACE_ID, 2);
     EXPECT_FALSE(static_cast<bool>(lease));
 }
@@ -570,41 +558,31 @@ TEST_F(ModuleFrameworkIntegrationTest, ModuleAcquire_ReturnsEmptyForVersionMisma
 TEST_F(ModuleFrameworkIntegrationTest, ModulePublish_UsesGetProcWithoutBootstrapRegisterGlobals) {
     PublishingMod *instance = nullptr;
 
-    auto setCurrentModule = reinterpret_cast<PFN_BML_SetCurrentModule>(
-        bmlGetProcAddress("bmlSetCurrentModule"));
-    ASSERT_NE(nullptr, setCurrentModule);
-
     BML_Mod trackedMod = LookupHostMod();
     ASSERT_NE(nullptr, trackedMod);
     auto attach_args = MakeAttachArgs(trackedMod);
 
-    ASSERT_EQ(BML_RESULT_OK, setCurrentModule(trackedMod));
     ASSERT_EQ(BML_RESULT_OK, PublishingHelper::Entrypoint(BML_MOD_ENTRYPOINT_ATTACH, &attach_args));
-    ASSERT_EQ(BML_RESULT_OK, setCurrentModule(nullptr));
     instance = PublishingHelper::GetInstance();
     ASSERT_NE(nullptr, instance);
 
     ASSERT_TRUE(static_cast<bool>(instance->m_Published));
 
-    ASSERT_EQ(BML_RESULT_OK, setCurrentModule(trackedMod));
-    auto lease = bml::AcquireInterface<TestPublishedService>("test.framework.published", 1);
+    auto lease = bml::AcquireInterface<TestPublishedService>(
+        trackedMod, "test.framework.published", 1);
     ASSERT_TRUE(static_cast<bool>(lease));
     EXPECT_EQ(77, lease->GetValue());
     lease.Reset();
-    ASSERT_EQ(BML_RESULT_OK, setCurrentModule(nullptr));
 
     auto detach_args = MakeDetachArgs(trackedMod);
-    ASSERT_EQ(BML_RESULT_OK, setCurrentModule(trackedMod));
     ASSERT_EQ(BML_RESULT_OK, PublishingHelper::Entrypoint(BML_MOD_ENTRYPOINT_DETACH, &detach_args));
-    ASSERT_EQ(BML_RESULT_OK, setCurrentModule(nullptr));
     EXPECT_EQ(nullptr, PublishingHelper::GetInstance());
 
     EnsureApiLoaded();
 
-    ASSERT_EQ(BML_RESULT_OK, setCurrentModule(trackedMod));
-    auto detached_lease = bml::AcquireInterface<TestPublishedService>("test.framework.published", 1);
+    auto detached_lease = bml::AcquireInterface<TestPublishedService>(
+        trackedMod, "test.framework.published", 1);
     EXPECT_FALSE(static_cast<bool>(detached_lease));
-    ASSERT_EQ(BML_RESULT_OK, setCurrentModule(nullptr));
 }
 
 // ============================================================================
@@ -613,7 +591,9 @@ TEST_F(ModuleFrameworkIntegrationTest, ModulePublish_UsesGetProcWithoutBootstrap
 
 TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_Config_ApiResolved) {
     EnsureApiLoaded();
-    auto configApi = AcquireCoreConfig();
+    BML_Mod hostMod = LookupHostMod();
+    ASSERT_NE(nullptr, hostMod);
+    auto configApi = AcquireCoreConfig(hostMod);
     ASSERT_TRUE(static_cast<bool>(configApi));
     EXPECT_NE(nullptr, configApi->Get);
     EXPECT_NE(nullptr, configApi->Set);
@@ -622,10 +602,12 @@ TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_Config_ApiResolved) {
 
 TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_Config_NullModGracefulFailure) {
     EnsureApiLoaded();
-    auto configApi = AcquireCoreConfig();
+    BML_Mod hostMod = LookupHostMod();
+    ASSERT_NE(nullptr, hostMod);
+    auto configApi = AcquireCoreConfig(hostMod);
     ASSERT_TRUE(static_cast<bool>(configApi));
 
-    // Config with null mod and no current module context should fail gracefully
+    // Config with a null module handle should fail cleanly.
     bml::Config config(nullptr, configApi.Get());
     EXPECT_FALSE(config.SetString("test", "key", "val"));
     EXPECT_FALSE(config.GetString("test", "key").has_value());
@@ -645,13 +627,15 @@ TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_Config_NullModGracefulFailure)
 
 TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_Logger_AllLevels) {
     EnsureApiLoaded();
-    auto contextApi = AcquireCoreContext();
-    auto loggingApi = AcquireCoreLogging();
+    BML_Mod hostMod = LookupHostMod();
+    ASSERT_NE(nullptr, hostMod);
+    auto contextApi = AcquireCoreContext(hostMod);
+    auto loggingApi = AcquireCoreLogging(hostMod);
     ASSERT_TRUE(static_cast<bool>(contextApi));
     ASSERT_TRUE(static_cast<bool>(loggingApi));
 
     auto ctx = bml::GetGlobalContext(contextApi.Get());
-    bml::Logger logger(ctx, "TestMod", loggingApi.Get());
+    bml::Logger logger(ctx, "TestMod", loggingApi.Get(), hostMod);
 
     // These should not crash
     logger.Trace("trace message %d", 1);
@@ -667,7 +651,9 @@ TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_Logger_AllLevels) {
 
 TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_ImcStatistics) {
     EnsureApiLoaded();
-    auto imcBus = AcquireImcBus();
+    BML_Mod hostMod = LookupHostMod();
+    ASSERT_NE(nullptr, hostMod);
+    auto imcBus = AcquireImcBus(hostMod);
     ASSERT_TRUE(static_cast<bool>(imcBus));
 
     auto stats = bml::imc::getStats(imcBus.Get());
@@ -689,7 +675,9 @@ TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_ImcStatistics) {
 
 TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_GetGlobalContext) {
     EnsureApiLoaded();
-    auto contextApi = AcquireCoreContext();
+    BML_Mod hostMod = LookupHostMod();
+    ASSERT_NE(nullptr, hostMod);
+    auto contextApi = AcquireCoreContext(hostMod);
     ASSERT_TRUE(static_cast<bool>(contextApi));
 
     auto ctx = bml::GetGlobalContext(contextApi.Get());
@@ -699,7 +687,9 @@ TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_GetGlobalContext) {
 
 TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_RuntimeVersion) {
     EnsureApiLoaded();
-    auto contextApi = AcquireCoreContext();
+    BML_Mod hostMod = LookupHostMod();
+    ASSERT_NE(nullptr, hostMod);
+    auto contextApi = AcquireCoreContext(hostMod);
     ASSERT_TRUE(static_cast<bool>(contextApi));
 
     auto ver = bml::GetRuntimeVersion(contextApi.Get());

@@ -31,6 +31,7 @@
 
 #include "bml_config.h"
 #include "bml_errors.h"
+#include "bml_hook.h"
 #include "bml_imc.h"
 #include "bml_interface.h"
 #include "bml_locale.h"
@@ -62,31 +63,6 @@ struct ConfigHookCapture {
     std::mutex mutex;
     std::vector<char> phases;
 };
-
-ConfigHookCapture &GetConfigHookCapture() {
-    static ConfigHookCapture *capture = [] {
-        auto *state = new ConfigHookCapture();
-        BML_ConfigLoadHooks hooks{};
-        hooks.struct_size = sizeof(BML_ConfigLoadHooks);
-        hooks.on_pre_load = [](BML_Context, const BML_ConfigLoadContext *, void *user_data) {
-            auto *capture = static_cast<ConfigHookCapture *>(user_data);
-            std::lock_guard<std::mutex> lock(capture->mutex);
-            capture->phases.push_back(ConfigHookCapture::kPre);
-        };
-        hooks.on_post_load = [](BML_Context, const BML_ConfigLoadContext *, void *user_data) {
-            auto *capture = static_cast<ConfigHookCapture *>(user_data);
-            std::lock_guard<std::mutex> lock(capture->mutex);
-            capture->phases.push_back(ConfigHookCapture::kPost);
-        };
-        hooks.user_data = state;
-        BML_Result result = BML::Core::RegisterConfigLoadHooks(&hooks);
-        if (result != BML_RESULT_OK) {
-            throw std::runtime_error("Failed to register config hooks for tests");
-        }
-        return state;
-    }();
-    return *capture;
-}
 
 class CoreApisTests : public ::testing::Test {
 protected:
@@ -160,7 +136,7 @@ std::atomic<uint64_t> CoreApisTests::test_counter_{1};
 TEST_F(CoreApisTests, MultiThreadedHandleCreationAndRelease) {
     BML::Core::RegisterResourceApis();
 
-    using PFN_Create = BML_Result (*)(BML_HandleType, BML_HandleDesc *);
+    using PFN_Create = BML_Result (*)(BML_Mod, BML_HandleType, BML_HandleDesc *);
     using PFN_Release = BML_Result (*)(const BML_HandleDesc *);
     using PFN_Validate = BML_Result (*)(const BML_HandleDesc *, BML_Bool *);
 
@@ -182,8 +158,11 @@ TEST_F(CoreApisTests, MultiThreadedHandleCreationAndRelease) {
     };
     type_desc.user_data = &finalize_count;
 
+    auto owner = CreateTrackedMod("coreapis.test.handle.owner");
+    ASSERT_NE(owner, nullptr);
+
     BML_HandleType handle_type = 0;
-    ASSERT_EQ(BML_RESULT_OK, BML::Core::RegisterResourceType(&type_desc, &handle_type));
+    ASSERT_EQ(BML_RESULT_OK, BML::Core::RegisterResourceType(owner, &type_desc, &handle_type));
 
     constexpr size_t kThreads = 8;
     constexpr size_t kPerThread = 256;
@@ -198,7 +177,7 @@ TEST_F(CoreApisTests, MultiThreadedHandleCreationAndRelease) {
             for (size_t i = 0; i < kPerThread; ++i) {
                 BML_HandleDesc desc{};
                 desc.struct_size = sizeof(BML_HandleDesc);
-                ASSERT_EQ(BML_RESULT_OK, create_fn(handle_type, &desc));
+                ASSERT_EQ(BML_RESULT_OK, create_fn(owner, handle_type, &desc));
                 BML_Bool valid = BML_FALSE;
                 ASSERT_EQ(BML_RESULT_OK, validate_fn(&desc, &valid));
                 ASSERT_EQ(BML_TRUE, valid);
@@ -241,7 +220,22 @@ TEST_F(CoreApisTests, ConfigReloadStressTriggersHooksOncePerLoad) {
     ASSERT_NE(config_set, nullptr);
     ASSERT_NE(config_get, nullptr);
 
-    auto &hook_capture = GetConfigHookCapture();
+    ConfigHookCapture hook_capture;
+    BML_ConfigLoadHooks hooks{};
+    hooks.struct_size = sizeof(BML_ConfigLoadHooks);
+    hooks.on_pre_load = [](BML_Context, const BML_ConfigLoadContext *, void *user_data) {
+        auto *capture = static_cast<ConfigHookCapture *>(user_data);
+        std::lock_guard<std::mutex> lock(capture->mutex);
+        capture->phases.push_back(ConfigHookCapture::kPre);
+    };
+    hooks.on_post_load = [](BML_Context, const BML_ConfigLoadContext *, void *user_data) {
+        auto *capture = static_cast<ConfigHookCapture *>(user_data);
+        std::lock_guard<std::mutex> lock(capture->mutex);
+        capture->phases.push_back(ConfigHookCapture::kPost);
+    };
+    hooks.user_data = &hook_capture;
+    ASSERT_EQ(BML_RESULT_OK, BML::Core::RegisterConfigLoadHooks(Mod(), &hooks));
+
     size_t baseline = 0;
     {
         std::lock_guard<std::mutex> lock(hook_capture.mutex);
@@ -295,6 +289,65 @@ TEST_F(CoreApisTests, ConfigReloadStressTriggersHooksOncePerLoad) {
     }
 }
 
+TEST_F(CoreApisTests, ConfigStoreRequiresExplicitModuleOutsideApiShim) {
+    InitConfigBackedMod("coreapis.config.explicit");
+
+    const BML_ConfigKey key{sizeof(BML_ConfigKey), "config", "value"};
+    BML_ConfigValue value{};
+    value.struct_size = sizeof(BML_ConfigValue);
+    value.type = BML_CONFIG_INT;
+    value.data.int_value = 17;
+
+    BML_ConfigValue out{};
+    out.struct_size = sizeof(BML_ConfigValue);
+
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, kernel_->config->SetValue(nullptr, &key, &value));
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, kernel_->config->GetValue(nullptr, &key, &out));
+
+    BML_ConfigBatch batch = nullptr;
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, kernel_->config->BatchBegin(nullptr, &batch));
+}
+
+TEST_F(CoreApisTests, ConfigAndCoreApisRequireExplicitModuleHandles) {
+    InitConfigBackedMod("coreapis.strict.boundary");
+    BML::Core::RegisterConfigApis();
+    BML::Core::RegisterCoreApis();
+
+    using PFN_ConfigSet = BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *);
+    using PFN_ConfigGet = BML_Result (*)(BML_Mod, const BML_ConfigKey *, BML_ConfigValue *);
+    using PFN_GetModId = BML_Result (*)(BML_Mod, const char **);
+
+    auto config_set = reinterpret_cast<PFN_ConfigSet>(kernel_->api_registry->Get("bmlConfigSet"));
+    auto config_get = reinterpret_cast<PFN_ConfigGet>(kernel_->api_registry->Get("bmlConfigGet"));
+    auto register_hooks = reinterpret_cast<PFN_BML_RegisterConfigLoadHooks>(
+        kernel_->api_registry->Get("bmlRegisterConfigLoadHooks"));
+    auto get_mod_id = reinterpret_cast<PFN_GetModId>(kernel_->api_registry->Get("bmlGetModId"));
+
+    ASSERT_NE(config_set, nullptr);
+    ASSERT_NE(config_get, nullptr);
+    ASSERT_NE(register_hooks, nullptr);
+    ASSERT_NE(get_mod_id, nullptr);
+
+    const BML_ConfigKey key{sizeof(BML_ConfigKey), "legacy", "value"};
+    BML_ConfigValue value{};
+    value.struct_size = sizeof(BML_ConfigValue);
+    value.type = BML_CONFIG_INT;
+    value.data.int_value = 29;
+
+    BML_ConfigValue out{};
+    out.struct_size = sizeof(BML_ConfigValue);
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, config_set(nullptr, &key, &value));
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, config_get(nullptr, &key, &out));
+
+    BML_ConfigLoadHooks hooks{};
+    hooks.struct_size = sizeof(BML_ConfigLoadHooks);
+    hooks.on_pre_load = [](BML_Context, const BML_ConfigLoadContext *, void *) {};
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT, register_hooks(nullptr, &hooks));
+
+    const char *mod_id = nullptr;
+    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, get_mod_id(nullptr, &mod_id));
+}
+
 struct OrderingCapture {
     std::mutex mutex;
     std::vector<uint32_t> values;
@@ -328,13 +381,13 @@ TEST_F(CoreApisTests, ImcBroadcastPreservesPublishOrderPerSubscriber) {
     
     BML_TopicId topic_id = 0;
     ASSERT_EQ(BML_RESULT_OK, ImcGetTopicId("order.topic", &topic_id));
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic_id, OrderingHandler, &first, &sub1));
-    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(topic_id, OrderingHandler, &second, &sub2));
+    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(owner, topic_id, OrderingHandler, &first, &sub1));
+    ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(owner, topic_id, OrderingHandler, &second, &sub2));
 
     constexpr size_t kMessages = 256;
     for (size_t i = 0; i < kMessages; ++i) {
         uint32_t payload = static_cast<uint32_t>(i);
-        ASSERT_EQ(BML_RESULT_OK, ImcPublish(topic_id, &payload, sizeof(payload)));
+        ASSERT_EQ(BML_RESULT_OK, ImcPublish(owner, topic_id, &payload, sizeof(payload)));
     }
 
     ImcPump(0);
@@ -355,65 +408,24 @@ TEST_F(CoreApisTests, ImcBroadcastPreservesPublishOrderPerSubscriber) {
     Context::SetCurrentModule(nullptr);
 }
 
-TEST_F(CoreApisTests, SetCurrentModuleApiIsThreadLocal) {
+TEST_F(CoreApisTests, CurrentModuleApisAreAbsentFromTheRegistry) {
     BML::Core::RegisterCoreApis();
 
-    auto set_fn = reinterpret_cast<BML_Result (*)(BML_Mod)>(kernel_->api_registry->Get("bmlSetCurrentModule"));
-    auto get_fn = reinterpret_cast<BML_Mod (*)()>(kernel_->api_registry->Get("bmlGetCurrentModule"));
-    auto get_id_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
-        kernel_->api_registry->Get("bmlGetModId"));
-    ASSERT_NE(set_fn, nullptr);
-    ASSERT_NE(get_fn, nullptr);
-    ASSERT_NE(get_id_fn, nullptr);
-
-    auto primary = CreateTrackedMod("coreapis.primary");
-    auto worker = CreateTrackedMod("coreapis.worker");
-
-    ASSERT_NE(primary, nullptr);
-    ASSERT_NE(worker, nullptr);
-
-    // Untracked bindings remain thread-local state, but implicit Core resolution
-    // must not trust them as valid module handles.
-    auto *untracked = new BML_Mod_T();
-    untracked->id = "coreapis.untracked";
-    EXPECT_EQ(BML_RESULT_OK, set_fn(untracked));
-    EXPECT_EQ(get_fn(), untracked);
-    const char *id = nullptr;
-    EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, get_id_fn(nullptr, &id));
-    set_fn(nullptr); // clear
-    delete untracked;
-
-    ASSERT_EQ(BML_RESULT_OK, set_fn(primary));
-    EXPECT_EQ(get_fn(), primary);
-
-    std::atomic<BML_Mod> worker_seen{nullptr};
-
-    std::thread background([&] {
-        EXPECT_EQ(get_fn(), nullptr);
-        ASSERT_EQ(BML_RESULT_OK, set_fn(worker));
-        worker_seen.store(get_fn(), std::memory_order_release);
-        ASSERT_EQ(BML_RESULT_OK, set_fn(nullptr));
-    });
-    background.join();
-
-    EXPECT_EQ(worker_seen.load(std::memory_order_acquire), worker);
-    EXPECT_EQ(get_fn(), primary);
-
-    ASSERT_EQ(BML_RESULT_OK, set_fn(nullptr));
-    EXPECT_EQ(get_fn(), nullptr);
+    EXPECT_EQ(nullptr, kernel_->api_registry->Get("bmlSetCurrentModule"));
+    EXPECT_EQ(nullptr, kernel_->api_registry->Get("bmlGetCurrentModule"));
 }
 
-TEST_F(CoreApisTests, InterfaceOwnedApisAcquireWithoutTls) {
+TEST_F(CoreApisTests, InterfaceApisAcquireWithoutTls) {
     BML::Core::RegisterInterfaceApis();
 
-    auto register_fn = reinterpret_cast<PFN_BML_InterfaceRegisterOwned>(
-        kernel_->api_registry->Get("bmlInterfaceRegisterOwned"));
-    auto acquire_fn = reinterpret_cast<PFN_BML_InterfaceAcquireOwned>(
-        kernel_->api_registry->Get("bmlInterfaceAcquireOwned"));
+    auto register_fn = reinterpret_cast<PFN_BML_InterfaceRegister>(
+        kernel_->api_registry->Get("bmlInterfaceRegister"));
+    auto acquire_fn = reinterpret_cast<PFN_BML_InterfaceAcquire>(
+        kernel_->api_registry->Get("bmlInterfaceAcquire"));
     auto release_fn = reinterpret_cast<PFN_BML_InterfaceRelease>(
         kernel_->api_registry->Get("bmlInterfaceRelease"));
-    auto unregister_fn = reinterpret_cast<PFN_BML_InterfaceUnregisterOwned>(
-        kernel_->api_registry->Get("bmlInterfaceUnregisterOwned"));
+    auto unregister_fn = reinterpret_cast<PFN_BML_InterfaceUnregister>(
+        kernel_->api_registry->Get("bmlInterfaceUnregister"));
     ASSERT_NE(register_fn, nullptr);
     ASSERT_NE(acquire_fn, nullptr);
     ASSERT_NE(release_fn, nullptr);
@@ -443,15 +455,15 @@ TEST_F(CoreApisTests, InterfaceOwnedApisAcquireWithoutTls) {
     EXPECT_EQ(BML_RESULT_OK, unregister_fn(owner, desc.interface_id));
 }
 
-TEST_F(CoreApisTests, TimerOwnedApisScheduleWithoutTls) {
+TEST_F(CoreApisTests, TimerApisScheduleWithoutTls) {
     BML::Core::RegisterTimerApis();
 
-    auto schedule_once = reinterpret_cast<PFN_BML_TimerScheduleOnceOwned>(
-        kernel_->api_registry->Get("bmlTimerScheduleOnceOwned"));
-    auto is_active = reinterpret_cast<PFN_BML_TimerIsActiveOwned>(
-        kernel_->api_registry->Get("bmlTimerIsActiveOwned"));
-    auto cancel_all = reinterpret_cast<PFN_BML_TimerCancelAllOwned>(
-        kernel_->api_registry->Get("bmlTimerCancelAllOwned"));
+    auto schedule_once = reinterpret_cast<PFN_BML_TimerScheduleOnce>(
+        kernel_->api_registry->Get("bmlTimerScheduleOnce"));
+    auto is_active = reinterpret_cast<PFN_BML_TimerIsActive>(
+        kernel_->api_registry->Get("bmlTimerIsActive"));
+    auto cancel_all = reinterpret_cast<PFN_BML_TimerCancelAll>(
+        kernel_->api_registry->Get("bmlTimerCancelAll"));
     ASSERT_NE(schedule_once, nullptr);
     ASSERT_NE(is_active, nullptr);
     ASSERT_NE(cancel_all, nullptr);
@@ -484,15 +496,106 @@ TEST_F(CoreApisTests, TimerOwnedApisScheduleWithoutTls) {
     EXPECT_EQ(0, fired);
 }
 
-TEST_F(CoreApisTests, LocaleOwnedApisLoadWithoutTls) {
+TEST_F(CoreApisTests, ExplicitOwnerApisRejectNullOwner) {
+    BML::Core::RegisterHookApis();
+    BML::Core::RegisterInterfaceApis();
+    BML::Core::RegisterLocaleApis();
+    BML::Core::RegisterResourceApis();
+    BML::Core::RegisterTimerApis();
+
+    auto hook_register = reinterpret_cast<PFN_BML_HookRegister>(
+        kernel_->api_registry->Get("bmlHookRegister"));
+    auto interface_register = reinterpret_cast<PFN_BML_InterfaceRegister>(
+        kernel_->api_registry->Get("bmlInterfaceRegister"));
+    auto interface_acquire = reinterpret_cast<PFN_BML_InterfaceAcquire>(
+        kernel_->api_registry->Get("bmlInterfaceAcquire"));
+    auto locale_load = reinterpret_cast<PFN_BML_LocaleLoad>(
+        kernel_->api_registry->Get("bmlLocaleLoad"));
+    auto locale_get = reinterpret_cast<PFN_BML_LocaleGet>(
+        kernel_->api_registry->Get("bmlLocaleGet"));
+    auto locale_bind = reinterpret_cast<PFN_BML_LocaleBindTable>(
+        kernel_->api_registry->Get("bmlLocaleBindTable"));
+    auto register_resource_type = reinterpret_cast<PFN_BML_RegisterResourceType>(
+        kernel_->api_registry->Get("bmlRegisterResourceType"));
+    auto handle_create = reinterpret_cast<PFN_BML_HandleCreate>(
+        kernel_->api_registry->Get("bmlHandleCreate"));
+    auto timer_schedule_once = reinterpret_cast<PFN_BML_TimerScheduleOnce>(
+        kernel_->api_registry->Get("bmlTimerScheduleOnce"));
+    ASSERT_NE(hook_register, nullptr);
+    ASSERT_NE(interface_register, nullptr);
+    ASSERT_NE(interface_acquire, nullptr);
+    ASSERT_NE(locale_load, nullptr);
+    ASSERT_NE(locale_get, nullptr);
+    ASSERT_NE(locale_bind, nullptr);
+    ASSERT_NE(register_resource_type, nullptr);
+    ASSERT_NE(handle_create, nullptr);
+    ASSERT_NE(timer_schedule_once, nullptr);
+
+    auto owner = CreateTrackedMod("coreapis.explicit.strict");
+    ASSERT_NE(owner, nullptr);
+    Context::SetCurrentModule(owner);
+
+    BML_HookDesc hook_desc = BML_HOOK_DESC_INIT;
+    hook_desc.target_name = "strict-hook";
+    hook_desc.target_address = reinterpret_cast<void *>(0x1234);
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT, hook_register(nullptr, &hook_desc));
+
+    static int implementation = 7;
+    BML_InterfaceDesc interface_desc = BML_INTERFACE_DESC_INIT;
+    interface_desc.interface_id = "coreapis.explicit.strict.interface";
+    interface_desc.abi_version = bmlMakeVersion(1, 0, 0);
+    interface_desc.implementation = &implementation;
+    interface_desc.implementation_size = sizeof(implementation);
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT, interface_register(nullptr, &interface_desc));
+
+    const void *loaded = nullptr;
+    BML_InterfaceLease lease = nullptr;
+    const auto required_abi = bmlMakeVersion(1, 0, 0);
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT,
+              interface_acquire(
+                  nullptr,
+                  interface_desc.interface_id, &required_abi, &loaded, &lease));
+    EXPECT_EQ(nullptr, loaded);
+    EXPECT_EQ(nullptr, lease);
+
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT, locale_load(nullptr, "en"));
+    EXPECT_EQ(nullptr, locale_get(nullptr, "missing"));
+
+    BML_LocaleTable table = nullptr;
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT, locale_bind(nullptr, &table));
+    EXPECT_EQ(nullptr, table);
+
+    BML_ResourceTypeDesc type_desc{};
+    type_desc.struct_size = sizeof(BML_ResourceTypeDesc);
+    type_desc.name = "coreapis.explicit.strict.resource";
+    BML_HandleType handle_type = 0;
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT, register_resource_type(nullptr, &type_desc, &handle_type));
+
+    BML_HandleDesc handle_desc = BML_HANDLE_DESC_INIT;
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT, handle_create(nullptr, 1, &handle_desc));
+
+    BML_Timer timer = nullptr;
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT,
+              timer_schedule_once(
+                  nullptr,
+                  100,
+                  [](BML_Context, BML_Timer, void *) {},
+                  nullptr,
+                  &timer));
+    EXPECT_EQ(nullptr, timer);
+
+    Context::SetCurrentModule(nullptr);
+}
+
+TEST_F(CoreApisTests, LocaleApisLoadWithoutTls) {
     BML::Core::RegisterLocaleApis();
 
-    auto load_fn = reinterpret_cast<PFN_BML_LocaleLoadOwned>(
-        kernel_->api_registry->Get("bmlLocaleLoadOwned"));
-    auto get_fn = reinterpret_cast<PFN_BML_LocaleGetOwned>(
-        kernel_->api_registry->Get("bmlLocaleGetOwned"));
-    auto bind_fn = reinterpret_cast<PFN_BML_LocaleBindTableOwned>(
-        kernel_->api_registry->Get("bmlLocaleBindTableOwned"));
+    auto load_fn = reinterpret_cast<PFN_BML_LocaleLoad>(
+        kernel_->api_registry->Get("bmlLocaleLoad"));
+    auto get_fn = reinterpret_cast<PFN_BML_LocaleGet>(
+        kernel_->api_registry->Get("bmlLocaleGet"));
+    auto bind_fn = reinterpret_cast<PFN_BML_LocaleBindTable>(
+        kernel_->api_registry->Get("bmlLocaleBindTable"));
     auto lookup_fn = reinterpret_cast<PFN_BML_LocaleLookup>(
         kernel_->api_registry->Get("bmlLocaleLookup"));
     ASSERT_NE(load_fn, nullptr);
@@ -520,13 +623,13 @@ TEST_F(CoreApisTests, LocaleOwnedApisLoadWithoutTls) {
     EXPECT_STREQ("Hello from owned locale", lookup_fn(table, "greeting"));
 }
 
-TEST_F(CoreApisTests, ResourceOwnedApisCreateWithoutTls) {
+TEST_F(CoreApisTests, ResourceApisCreateWithoutTls) {
     BML::Core::RegisterResourceApis();
 
-    auto register_type = reinterpret_cast<PFN_BML_RegisterResourceTypeOwned>(
-        kernel_->api_registry->Get("bmlRegisterResourceTypeOwned"));
-    auto handle_create = reinterpret_cast<PFN_BML_HandleCreateOwned>(
-        kernel_->api_registry->Get("bmlHandleCreateOwned"));
+    auto register_type = reinterpret_cast<PFN_BML_RegisterResourceType>(
+        kernel_->api_registry->Get("bmlRegisterResourceType"));
+    auto handle_create = reinterpret_cast<PFN_BML_HandleCreate>(
+        kernel_->api_registry->Get("bmlHandleCreate"));
     auto validate = reinterpret_cast<PFN_BML_HandleValidate>(
         kernel_->api_registry->Get("bmlHandleValidate"));
     auto release = reinterpret_cast<PFN_BML_HandleRelease>(
@@ -593,7 +696,7 @@ TEST_F(CoreApisTests, GetModDirectory_NullMod) {
         kernel_->api_registry->Get("bmlGetModDirectory"));
     ASSERT_NE(fn, nullptr);
 
-    // No current module set, so nullptr resolves to nothing
+    // Null module handles remain invalid when no explicit owner is provided.
     Context::SetCurrentModule(nullptr);
     const char *dir = nullptr;
     EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, fn(nullptr, &dir));

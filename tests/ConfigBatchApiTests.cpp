@@ -144,7 +144,7 @@ TEST_F(ConfigBatchApiTests, BatchBeginRejectsNullOutput) {
     EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, batch_begin(Mod(), nullptr));
 }
 
-TEST_F(ConfigBatchApiTests, BatchBeginUsesCurrentModuleWhenHandleIsNull) {
+TEST_F(ConfigBatchApiTests, BatchBeginRejectsNullHandle) {
     InitMod("batch.nullmod.test");
 
     auto batch_begin = Lookup<PFN_ConfigBatchBegin>("bmlConfigBatchBegin");
@@ -157,22 +157,8 @@ TEST_F(ConfigBatchApiTests, BatchBeginUsesCurrentModuleWhenHandleIsNull) {
     ASSERT_NE(config_get, nullptr);
 
     BML_ConfigBatch batch = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, batch_begin(nullptr, &batch));
-
-    BML_ConfigKey key = BML_CONFIG_KEY_INIT("batch", "value");
-    BML_ConfigValue value{};
-    value.struct_size = sizeof(BML_ConfigValue);
-    value.type = BML_CONFIG_INT;
-    value.data.int_value = 77;
-
-    ASSERT_EQ(BML_RESULT_OK, batch_set(batch, &key, &value));
-    ASSERT_EQ(BML_RESULT_OK, batch_commit(batch));
-
-    BML_ConfigValue result{};
-    result.struct_size = sizeof(BML_ConfigValue);
-    ASSERT_EQ(BML_RESULT_OK, config_get(Mod(), &key, &result));
-    EXPECT_EQ(BML_CONFIG_INT, result.type);
-    EXPECT_EQ(77, result.data.int_value);
+    ASSERT_EQ(BML_RESULT_INVALID_ARGUMENT, batch_begin(nullptr, &batch));
+    ASSERT_EQ(nullptr, batch);
 }
 
 TEST_F(ConfigBatchApiTests, BatchSetRejectsInvalidBatch) {

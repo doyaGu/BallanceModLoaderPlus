@@ -145,14 +145,12 @@ TEST_F(BMLIntegrationTest, FullIMCPublishSubscribeCycle) {
     auto subscribe = (PFN_BML_ImcSubscribe)bmlGetProcAddress("bmlImcSubscribe");
     auto unsubscribe = (PFN_BML_ImcUnsubscribe)bmlGetProcAddress("bmlImcUnsubscribe");
     auto pump = (PFN_BML_ImcPump)bmlGetProcAddress("bmlImcPump");
-    auto setCurrentModule = (PFN_BML_SetCurrentModule)bmlGetProcAddress("bmlSetCurrentModule");
 
     ASSERT_NE(nullptr, getTopicId);
     ASSERT_NE(nullptr, publish);
     ASSERT_NE(nullptr, subscribe);
     ASSERT_NE(nullptr, unsubscribe);
     ASSERT_NE(nullptr, pump);
-    ASSERT_NE(nullptr, setCurrentModule);
 
     BML_Mod hostMod = LookupHostMod();
     ASSERT_NE(nullptr, hostMod);
@@ -165,13 +163,12 @@ TEST_F(BMLIntegrationTest, FullIMCPublishSubscribeCycle) {
     // Subscribe
     TestHandlerState state;
     BML_Subscription sub = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, setCurrentModule(hostMod));
-    ASSERT_EQ(BML_RESULT_OK, subscribe(topic, TestImcHandler, &state, &sub));
+    ASSERT_EQ(BML_RESULT_OK, subscribe(hostMod, topic, TestImcHandler, &state, &sub));
     ASSERT_NE(nullptr, sub);
 
     // Publish
     uint32_t payload = 42;
-    ASSERT_EQ(BML_RESULT_OK, publish(topic, &payload, sizeof(payload)));
+    ASSERT_EQ(BML_RESULT_OK, publish(hostMod, topic, &payload, sizeof(payload)));
 
     // Pump to deliver
     pump(100);
@@ -181,7 +178,6 @@ TEST_F(BMLIntegrationTest, FullIMCPublishSubscribeCycle) {
 
     // Cleanup
     ASSERT_EQ(BML_RESULT_OK, unsubscribe(sub));
-    ASSERT_EQ(BML_RESULT_OK, setCurrentModule(nullptr));
 }
 
 // ========================================================================
@@ -242,17 +238,14 @@ TEST_F(BMLIntegrationTest, InterfaceRegisterAcquireCycle) {
     auto serviceAcquire = (PFN_BML_InterfaceAcquire)bmlGetProcAddress("bmlInterfaceAcquire");
     auto serviceRelease = (PFN_BML_InterfaceRelease)bmlGetProcAddress("bmlInterfaceRelease");
     auto serviceUnregister = (PFN_BML_InterfaceUnregister)bmlGetProcAddress("bmlInterfaceUnregister");
-    auto setCurrentModule = (PFN_BML_SetCurrentModule)bmlGetProcAddress("bmlSetCurrentModule");
 
     ASSERT_NE(nullptr, serviceRegister);
     ASSERT_NE(nullptr, serviceAcquire);
     ASSERT_NE(nullptr, serviceRelease);
     ASSERT_NE(nullptr, serviceUnregister);
-    ASSERT_NE(nullptr, setCurrentModule);
 
     BML_Mod hostMod = LookupHostMod();
     ASSERT_NE(nullptr, hostMod);
-    ASSERT_EQ(BML_RESULT_OK, setCurrentModule(hostMod));
 
     static TestServiceApi s_api = {testAdd, testMultiply};
 
@@ -262,14 +255,13 @@ TEST_F(BMLIntegrationTest, InterfaceRegisterAcquireCycle) {
     desc.implementation = &s_api;
     desc.implementation_size = sizeof(TestServiceApi);
 
-    ASSERT_EQ(BML_RESULT_OK, serviceRegister(&desc));
-
-    ASSERT_EQ(BML_RESULT_OK, setCurrentModule(nullptr));
+    ASSERT_EQ(BML_RESULT_OK, serviceRegister(hostMod, &desc));
 
     const void *loadedRaw = nullptr;
     BML_InterfaceLease lease = nullptr;
     BML_Version req = bmlMakeVersion(1, 0, 0);
-    ASSERT_EQ(BML_RESULT_OK, serviceAcquire("test.integration.service", &req, &loadedRaw, &lease));
+    ASSERT_EQ(BML_RESULT_OK,
+              serviceAcquire(hostMod, "test.integration.service", &req, &loadedRaw, &lease));
     auto *loaded = static_cast<const TestServiceApi *>(loadedRaw);
     ASSERT_NE(nullptr, loaded);
     ASSERT_NE(nullptr, lease);
@@ -277,26 +269,20 @@ TEST_F(BMLIntegrationTest, InterfaceRegisterAcquireCycle) {
     EXPECT_EQ(5, loaded->add(2, 3));
     EXPECT_EQ(12, loaded->multiply(3, 4));
 
-    ASSERT_EQ(BML_RESULT_OK, setCurrentModule(hostMod));
-    EXPECT_EQ(BML_RESULT_BUSY, serviceUnregister("test.integration.service"));
+    EXPECT_EQ(BML_RESULT_BUSY, serviceUnregister(hostMod, "test.integration.service"));
 
     ASSERT_EQ(BML_RESULT_OK, serviceRelease(lease));
 
-    ASSERT_EQ(BML_RESULT_OK, serviceUnregister("test.integration.service"));
-    setCurrentModule(nullptr);
+    ASSERT_EQ(BML_RESULT_OK, serviceUnregister(hostMod, "test.integration.service"));
 }
 
-TEST_F(BMLIntegrationTest, InterfaceRegisterRejectsUntrackedCurrentModule) {
+TEST_F(BMLIntegrationTest, InterfaceRegisterRejectsUntrackedOwner) {
     auto serviceRegister = reinterpret_cast<PFN_BML_InterfaceRegister>(
         bmlGetProcAddress("bmlInterfaceRegister"));
-    auto setCurrentModule = reinterpret_cast<PFN_BML_SetCurrentModule>(
-        bmlGetProcAddress("bmlSetCurrentModule"));
     ASSERT_NE(nullptr, serviceRegister);
-    ASSERT_NE(nullptr, setCurrentModule);
 
     BML_Mod_T fakeMod;
     fakeMod.id = "com.test.fake";
-    ASSERT_EQ(BML_RESULT_OK, setCurrentModule(&fakeMod));
 
     static int service = 5;
     BML_InterfaceDesc desc = BML_INTERFACE_DESC_INIT;
@@ -305,8 +291,7 @@ TEST_F(BMLIntegrationTest, InterfaceRegisterRejectsUntrackedCurrentModule) {
     desc.implementation = &service;
     desc.implementation_size = sizeof(service);
 
-    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT, serviceRegister(&desc));
-    setCurrentModule(nullptr);
+    EXPECT_EQ(BML_RESULT_INVALID_CONTEXT, serviceRegister(&fakeMod, &desc));
 }
 
 TEST_F(BMLIntegrationTest, InterfaceReleaseRejectsForgedOpaqueHandle) {
@@ -324,9 +309,11 @@ TEST_F(BMLIntegrationTest, BuiltinInterfacesAvailableAfterBootstrap) {
     ASSERT_NE(nullptr, serviceAcquire);
     ASSERT_NE(nullptr, serviceRelease);
 
+    BML_Mod hostMod = LookupHostMod();
+    ASSERT_NE(nullptr, hostMod);
+
     static const char *kBuiltinInterfaceIds[] = {
         BML_CORE_CONTEXT_INTERFACE_ID,
-        BML_CORE_MODULE_INTERFACE_ID,
         BML_CORE_LOGGING_INTERFACE_ID,
         BML_CORE_CONFIG_INTERFACE_ID,
         BML_CORE_MEMORY_INTERFACE_ID,
@@ -340,7 +327,7 @@ TEST_F(BMLIntegrationTest, BuiltinInterfacesAvailableAfterBootstrap) {
         const void *implementation = nullptr;
         BML_InterfaceLease lease = nullptr;
 
-        ASSERT_EQ(BML_RESULT_OK, serviceAcquire(interfaceId, &req, &implementation, &lease))
+        ASSERT_EQ(BML_RESULT_OK, serviceAcquire(hostMod, interfaceId, &req, &implementation, &lease))
             << interfaceId;
         ASSERT_NE(nullptr, implementation) << interfaceId;
         ASSERT_NE(nullptr, lease) << interfaceId;
@@ -352,7 +339,8 @@ TEST_F(BMLIntegrationTest, BuiltinInterfacesAvailableAfterBootstrap) {
         BML_InterfaceLease lease = nullptr;
         BML_Version imcReq = bmlMakeVersion(1, 0, 0);
 
-        ASSERT_EQ(BML_RESULT_OK, serviceAcquire(BML_IMC_BUS_INTERFACE_ID, &imcReq, &implementation, &lease));
+        ASSERT_EQ(BML_RESULT_OK,
+                  serviceAcquire(hostMod, BML_IMC_BUS_INTERFACE_ID, &imcReq, &implementation, &lease));
         auto *imcBus = static_cast<const BML_ImcBusInterface *>(implementation);
         ASSERT_NE(nullptr, imcBus);
         EXPECT_GE(imcBus->header.struct_size, sizeof(BML_ImcBusInterface));
@@ -368,7 +356,8 @@ TEST_F(BMLIntegrationTest, BuiltinInterfacesAvailableAfterBootstrap) {
         BML_InterfaceLease lease = nullptr;
         BML_Version rpcReq = bmlMakeVersion(1, 0, 0);
 
-        ASSERT_EQ(BML_RESULT_OK, serviceAcquire(BML_IMC_RPC_INTERFACE_ID, &rpcReq, &implementation, &lease));
+        ASSERT_EQ(BML_RESULT_OK,
+                  serviceAcquire(hostMod, BML_IMC_RPC_INTERFACE_ID, &rpcReq, &implementation, &lease));
         auto *rpc = static_cast<const BML_ImcRpcInterface *>(implementation);
         ASSERT_NE(nullptr, rpc);
         EXPECT_GE(rpc->header.struct_size, sizeof(BML_ImcRpcInterface));
@@ -383,14 +372,18 @@ TEST_F(BMLIntegrationTest, BuiltinInterfacesAvailableAfterBootstrap) {
     {
         const void *implementation = nullptr;
         BML_InterfaceLease lease = nullptr;
-        BML_Version moduleReq = bmlMakeVersion(1, 2, 0);
+        BML_Version moduleReq = bmlMakeVersion(2, 0, 0);
 
         ASSERT_EQ(BML_RESULT_OK,
-                  serviceAcquire(BML_CORE_MODULE_INTERFACE_ID, &moduleReq, &implementation, &lease));
+                  serviceAcquire(hostMod,
+                                 BML_CORE_MODULE_INTERFACE_ID,
+                                 &moduleReq,
+                                 &implementation,
+                                 &lease));
         auto *moduleApi = static_cast<const BML_CoreModuleInterface *>(implementation);
         ASSERT_NE(nullptr, moduleApi);
-        EXPECT_EQ(1u, moduleApi->header.major);
-        EXPECT_EQ(2u, moduleApi->header.minor);
+        EXPECT_EQ(2u, moduleApi->header.major);
+        EXPECT_EQ(0u, moduleApi->header.minor);
         EXPECT_NE(nullptr, moduleApi->FindModuleById);
         EXPECT_EQ(BML_RESULT_OK, serviceRelease(lease));
     }
@@ -401,11 +394,15 @@ TEST_F(BMLIntegrationTest, BuiltinInterfacesAvailableAfterBootstrap) {
         BML_Version configReq = bmlMakeVersion(1, 1, 0);
 
         ASSERT_EQ(BML_RESULT_OK,
-                  serviceAcquire(BML_CORE_CONFIG_INTERFACE_ID, &configReq, &implementation, &lease));
+                  serviceAcquire(hostMod,
+                                 BML_CORE_CONFIG_INTERFACE_ID,
+                                 &configReq,
+                                 &implementation,
+                                 &lease));
         auto *configApi = static_cast<const BML_CoreConfigInterface *>(implementation);
         ASSERT_NE(nullptr, configApi);
         EXPECT_EQ(1u, configApi->header.major);
-        EXPECT_EQ(1u, configApi->header.minor);
+        EXPECT_EQ(2u, configApi->header.minor);
         EXPECT_NE(nullptr, configApi->GetString);
         EXPECT_EQ(BML_RESULT_OK, serviceRelease(lease));
     }
@@ -416,28 +413,26 @@ TEST_F(BMLIntegrationTest, BuiltinInterfacesAvailableAfterBootstrap) {
         BML_Version imcReq = bmlMakeVersion(1, 0, 0);
 
         ASSERT_EQ(BML_RESULT_OK,
-                  serviceAcquire(BML_IMC_BUS_INTERFACE_ID, &imcReq, &implementation, &lease));
+                  serviceAcquire(hostMod, BML_IMC_BUS_INTERFACE_ID, &imcReq, &implementation, &lease));
         auto *imcBus = static_cast<const BML_ImcBusInterface *>(implementation);
         ASSERT_NE(nullptr, imcBus);
         EXPECT_EQ(1u, imcBus->header.major);
-        EXPECT_EQ(1u, imcBus->header.minor);
+        EXPECT_EQ(2u, imcBus->header.minor);
         EXPECT_NE(nullptr, imcBus->GetTopicName);
         EXPECT_EQ(BML_RESULT_OK, serviceRelease(lease));
     }
 }
 
-TEST_F(BMLIntegrationTest, InternalAndHostOwnedPermissionsAreEnforced) {
+TEST_F(BMLIntegrationTest, InternalAndHostPermissionsAreEnforced) {
     auto serviceRegister = (PFN_BML_InterfaceRegister) bmlGetProcAddress("bmlInterfaceRegister");
     auto serviceAcquire = (PFN_BML_InterfaceAcquire) bmlGetProcAddress("bmlInterfaceAcquire");
     auto serviceRelease = (PFN_BML_InterfaceRelease) bmlGetProcAddress("bmlInterfaceRelease");
     auto serviceUnregister = (PFN_BML_InterfaceUnregister) bmlGetProcAddress("bmlInterfaceUnregister");
-    auto setCurrentModule = (PFN_BML_SetCurrentModule) bmlGetProcAddress("bmlSetCurrentModule");
 
     ASSERT_NE(nullptr, serviceRegister);
     ASSERT_NE(nullptr, serviceAcquire);
     ASSERT_NE(nullptr, serviceRelease);
     ASSERT_NE(nullptr, serviceUnregister);
-    ASSERT_NE(nullptr, setCurrentModule);
 
     BML_Mod hostMod = LookupHostMod();
     ASSERT_NE(nullptr, hostMod);
@@ -446,27 +441,28 @@ TEST_F(BMLIntegrationTest, InternalAndHostOwnedPermissionsAreEnforced) {
     const void *implementation = nullptr;
     BML_InterfaceLease hostLease = nullptr;
 
-    static int s_hostOwnedMarker = 7;
+    static int s_hostMarker = 7;
     BML_InterfaceDesc desc = BML_INTERFACE_DESC_INIT;
     desc.interface_id = "test.integration.host_owned";
     desc.abi_version = req;
-    desc.implementation = &s_hostOwnedMarker;
-    desc.implementation_size = sizeof(s_hostOwnedMarker);
+    desc.implementation = &s_hostMarker;
+    desc.implementation_size = sizeof(s_hostMarker);
     desc.flags = BML_INTERFACE_FLAG_HOST_OWNED | BML_INTERFACE_FLAG_IMMUTABLE;
 
-    ASSERT_EQ(BML_RESULT_OK, setCurrentModule(hostMod));
-    EXPECT_EQ(BML_RESULT_PERMISSION_DENIED, serviceRegister(&desc));
+    EXPECT_EQ(BML_RESULT_PERMISSION_DENIED, serviceRegister(hostMod, &desc));
 
-    ASSERT_EQ(BML_RESULT_OK, setCurrentModule(nullptr));
     ASSERT_EQ(BML_RESULT_OK,
-              serviceAcquire(BML_CORE_HOST_RUNTIME_INTERFACE_ID, &req, &implementation, &hostLease));
+              serviceAcquire(hostMod,
+                             BML_CORE_HOST_RUNTIME_INTERFACE_ID,
+                             &req,
+                             &implementation,
+                             &hostLease));
+    ASSERT_NE(nullptr, implementation);
     ASSERT_NE(nullptr, hostLease);
 
-    ASSERT_EQ(BML_RESULT_OK, setCurrentModule(hostMod));
-    ASSERT_EQ(BML_RESULT_OK, serviceRegister(&desc));
-    ASSERT_EQ(BML_RESULT_OK, serviceUnregister(desc.interface_id));
+    ASSERT_EQ(BML_RESULT_OK, serviceRegister(hostMod, &desc));
     ASSERT_EQ(BML_RESULT_OK, serviceRelease(hostLease));
-    setCurrentModule(nullptr);
+    ASSERT_EQ(BML_RESULT_OK, serviceUnregister(hostMod, desc.interface_id));
 }
 
 TEST_F(BMLIntegrationTest, BootstrapLoaderLoadsOnlyBootstrapMinimum) {
@@ -474,7 +470,6 @@ TEST_F(BMLIntegrationTest, BootstrapLoaderLoadsOnlyBootstrapMinimum) {
     ASSERT_TRUE(bmlIsApiLoaded());
     EXPECT_NE(nullptr, bmlInterfaceAcquire);
     EXPECT_NE(nullptr, bmlInterfaceRelease);
-    EXPECT_NE(nullptr, bmlSetCurrentModule);
     bmlUnloadAPI();
 }
 

@@ -81,13 +81,19 @@ TEST(TestSupportTests, TestContext_PublishSubscribeRoundTrip) {
     // Resolve topic
     auto getTopicId = reinterpret_cast<PFN_BML_ImcGetTopicId>(
         bmlGetProcAddress("bmlImcGetTopicId"));
+    auto getHostModule = reinterpret_cast<PFN_BML_GetHostModule>(
+        bmlGetProcAddress("bmlGetHostModule"));
     auto subscribe = reinterpret_cast<PFN_BML_ImcSubscribe>(
         bmlGetProcAddress("bmlImcSubscribe"));
     auto unsubscribe = reinterpret_cast<PFN_BML_ImcUnsubscribe>(
         bmlGetProcAddress("bmlImcUnsubscribe"));
     ASSERT_NE(nullptr, getTopicId);
+    ASSERT_NE(nullptr, getHostModule);
     ASSERT_NE(nullptr, subscribe);
     ASSERT_NE(nullptr, unsubscribe);
+
+    BML_Mod mod = getHostModule();
+    ASSERT_NE(nullptr, mod);
 
     BML_TopicId topic = BML_TOPIC_ID_INVALID;
     ASSERT_EQ(BML_RESULT_OK, getTopicId("test/support/pubsub", &topic));
@@ -96,7 +102,7 @@ TEST(TestSupportTests, TestContext_PublishSubscribeRoundTrip) {
     // Subscribe
     PubSubState state;
     BML_Subscription sub = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, subscribe(topic, TestPubSubHandler, &state, &sub));
+    ASSERT_EQ(BML_RESULT_OK, subscribe(mod, topic, TestPubSubHandler, &state, &sub));
     ASSERT_NE(nullptr, sub);
 
     // Publish via TestContext convenience
@@ -119,6 +125,8 @@ TEST(TestSupportTests, TestContext_PublishSubscribeRoundTrip) {
 
 TEST(TestSupportTests, TestContext_LogCapture) {
     bml::test::TestContext ctx;
+    BML_Mod mod = ctx.CreateMockMod("com.test.logging");
+    ASSERT_NE(nullptr, mod);
     ctx.EnableLogCapture(BML_LOG_TRACE);
 
     // Log a message via the API
@@ -126,7 +134,7 @@ TEST(TestSupportTests, TestContext_LogCapture) {
         bmlGetProcAddress("bmlLog"));
     ASSERT_NE(nullptr, logFn);
 
-    logFn(ctx.Handle(), BML_LOG_INFO, "test.capture", "hello from test %d", 42);
+    logFn(mod, ctx.Handle(), BML_LOG_INFO, "test.capture", "hello from test %d", 42);
 
     EXPECT_FALSE(ctx.CapturedLogs().empty());
     EXPECT_TRUE(ctx.HasLog("hello from test 42"));
