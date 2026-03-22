@@ -9,6 +9,7 @@ namespace BML::Core {
 
 bool LoadModules(const std::vector<ResolvedNode> & /*order*/,
                  Context & /*context*/,
+                 KernelServices & /*kernel*/,
                  PFN_BML_GetProcAddress /*get_proc*/,
                  std::vector<LoadedModule> &out_modules,
                  ModuleLoadError &out_error) {
@@ -18,7 +19,9 @@ bool LoadModules(const std::vector<ResolvedNode> & /*order*/,
     return true;
 }
 
-void UnloadModules(std::vector<LoadedModule> &modules, BML_Context /*ctx*/) {
+void UnloadModules(std::vector<LoadedModule> &modules,
+                   Context & /*context*/,
+                   KernelServices & /*kernel*/) {
     for (auto &mod : modules) {
         if (mod.handle) {
             // Don't actually call entrypoint or FreeLibrary in stub

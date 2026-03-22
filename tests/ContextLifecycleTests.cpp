@@ -77,7 +77,7 @@ protected:
     }
 
     void TearDown() override {
-        kernel_->context->Cleanup();
+        kernel_->context->Cleanup(*kernel_);
         std::lock_guard<std::mutex> lock(g_RecordMutex);
         g_ShutdownOrder.clear();
     }
@@ -89,7 +89,7 @@ TEST_F(ContextLifecycleTests, CleanupWaitsForOutstandingRetain) {
 
     std::atomic<bool> cleanup_finished{false};
     std::thread cleaner([&]() {
-        ctx.Cleanup();
+        ctx.Cleanup(*kernel_);
         cleanup_finished.store(true, std::memory_order_release);
     });
 
@@ -108,7 +108,7 @@ TEST_F(ContextLifecycleTests, ShutdownHooksExecuteInReverseRegistrationOrder) {
     ctx.AddLoadedModule(BuildLoadedModule("alpha", {"alpha-first", "alpha-second"}));
     ctx.AddLoadedModule(BuildLoadedModule("beta", {"beta-first", "beta-second"}));
 
-    ctx.ShutdownModules();
+    ctx.ShutdownModules(*kernel_);
 
     std::vector<std::string> expected = {
         "beta-second",
@@ -132,8 +132,8 @@ TEST_F(ContextLifecycleTests, CleanupRunsShutdownHooksWithoutHoldingStateMutex) 
     ctx.AddLoadedModule(std::move(module));
     ctx.AppendShutdownHook(state.mod, ResolveDuringShutdownHook, &state);
 
-    auto cleanup = std::async(std::launch::async, [&ctx] {
-        ctx.Cleanup();
+    auto cleanup = std::async(std::launch::async, [&ctx, this] {
+        ctx.Cleanup(*kernel_);
     });
 
     EXPECT_EQ(cleanup.wait_for(1s), std::future_status::ready);

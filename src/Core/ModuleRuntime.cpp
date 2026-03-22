@@ -113,8 +113,8 @@ namespace BML::Core {
             return buffer;
         }
 
-        void InvalidateRuntimeProvidersForSnapshot(const std::vector<LoadedModuleSnapshot> &modules) {
-            auto *context = GetKernelOrNull()->context.get();
+        void InvalidateRuntimeProvidersForSnapshot(Context &context,
+                                                   const std::vector<LoadedModuleSnapshot> &modules) {
             for (const auto &module : modules) {
                 if (module.id.empty()) {
                     continue;
@@ -126,6 +126,8 @@ namespace BML::Core {
 
     bool ModuleRuntime::DiscoverAndValidate(const std::wstring &mods_dir, ModuleBootstrapDiagnostics &out_diag) {
         out_diag = {};
+        auto &kernel = Kernel();
+        auto &context = *kernel.context;
         m_HotReloadEnabled = ShouldEnableHotReload();
         m_DiscoveredModsDir = mods_dir;
         m_DiscoveredOrder.clear();
@@ -133,7 +135,7 @@ namespace BML::Core {
         ManifestLoadResult manifestResult;
         if (!LoadManifestsFromDirectory(mods_dir, manifestResult)) {
             out_diag.manifest_errors = manifestResult.errors;
-            GetKernelOrNull()->context->ClearManifests();
+            context.ClearManifests();
             m_DiscoveredOrder.clear();
             ApplyDiagnostics(out_diag);
             return false;
@@ -145,7 +147,7 @@ namespace BML::Core {
         if (!BuildLoadOrder(manifestResult, loadOrder, warnings, depError)) {
             out_diag.manifest_errors = manifestResult.errors;
             out_diag.dependency_error = depError;
-            GetKernelOrNull()->context->ClearManifests();
+            context.ClearManifests();
             m_DiscoveredOrder.clear();
             ApplyDiagnostics(out_diag);
             return false;
@@ -167,10 +169,9 @@ namespace BML::Core {
         // between here and LoadDiscovered().
         m_DiscoveredOrder = loadOrder;
 
-        auto *ctx = GetKernelOrNull()->context.get();
-        ctx->ClearManifests();
+        context.ClearManifests();
         for (auto &manifest : manifestResult.manifests) {
-            ctx->RegisterManifest(std::move(manifest));
+            context.RegisterManifest(std::move(manifest));
         }
 
         ApplyDiagnostics(out_diag);
@@ -179,6 +180,8 @@ namespace BML::Core {
 
     bool ModuleRuntime::LoadDiscovered(ModuleBootstrapDiagnostics &out_diag) {
         out_diag = {};
+        auto &kernel = Kernel();
+        auto &context = *kernel.context;
 
         if (m_DiscoveredModsDir.empty()) {
             // DiscoverAndValidate() has not run yet.
@@ -186,23 +189,23 @@ namespace BML::Core {
             return false;
         }
 
-        auto *ctx = GetKernelOrNull()->context.get();
         std::vector<LoadedModule> loadedModules;
         ModuleLoadError loadError;
 
         if (!LoadModules(m_DiscoveredOrder,
-                         *ctx,
+                         context,
+                         kernel,
                          &bmlGetProcAddress,
                          loadedModules,
                          loadError)) {
             out_diag.load_error = loadError;
-            ctx->ShutdownModules();
+            context.ShutdownModules(kernel);
             ApplyDiagnostics(out_diag);
             return false;
         }
 
         for (auto &module : loadedModules) {
-            ctx->AddLoadedModule(std::move(module));
+            context.AddLoadedModule(std::move(module));
         }
 
         RecordLoadOrder(m_DiscoveredOrder, out_diag);
@@ -224,17 +227,20 @@ namespace BML::Core {
     }
 
     void ModuleRuntime::Shutdown() {
+        auto &kernel = Kernel();
+        auto &context = *kernel.context;
         m_DiagCallback = nullptr;
         StopHotReloadCoordinator();
-        const auto loadedModules = GetKernelOrNull()->context->GetLoadedModuleSnapshot();
-        GetKernelOrNull()->context->ShutdownModules();
-        InvalidateRuntimeProvidersForSnapshot(loadedModules);
+        const auto loadedModules = context.GetLoadedModuleSnapshot();
+        context.ShutdownModules(kernel);
+        InvalidateRuntimeProvidersForSnapshot(context, loadedModules);
     }
 
     void ModuleRuntime::FilterDisabledModules(std::vector<ResolvedNode> &order) const {
+        auto &faultTracker = *Kernel().fault_tracker;
         auto removed = std::remove_if(order.begin(), order.end(),
-            [](const ResolvedNode &node) {
-                return GetKernelOrNull()->fault_tracker->IsDisabled(node.id);
+            [&faultTracker](const ResolvedNode &node) {
+                return faultTracker.IsDisabled(node.id);
             });
         for (auto it = removed; it != order.end(); ++it) {
             CoreLog(BML_LOG_WARN, kModuleRuntimeLogCategory,
@@ -290,12 +296,13 @@ namespace BML::Core {
             return false;
         }
 
-        auto *ctx = GetKernelOrNull()->context.get();
-        BroadcastLifecycleEvent(BML_TOPIC_SYSTEM_MOD_UNLOAD, ctx->GetLoadedModuleSnapshot());
-        const auto priorLoadedModules = ctx->GetLoadedModuleSnapshot();
-        ctx->ShutdownModules();
-        InvalidateRuntimeProvidersForSnapshot(priorLoadedModules);
-        ctx->ClearManifests();
+        auto &kernel = Kernel();
+        auto &context = *kernel.context;
+        BroadcastLifecycleEvent(BML_TOPIC_SYSTEM_MOD_UNLOAD, context.GetLoadedModuleSnapshot());
+        const auto priorLoadedModules = context.GetLoadedModuleSnapshot();
+        context.ShutdownModules(kernel);
+        InvalidateRuntimeProvidersForSnapshot(context, priorLoadedModules);
+        context.ClearManifests();
         // Note: Extensions are cleaned up per-provider in ShutdownModules()
 
         ManifestLoadResult manifestResult;
@@ -326,28 +333,29 @@ namespace BML::Core {
         m_DiscoveredOrder = loadOrder;
 
         for (auto &manifest : manifestResult.manifests) {
-            ctx->RegisterManifest(std::move(manifest));
+            context.RegisterManifest(std::move(manifest));
         }
 
         std::vector<LoadedModule> loadedModules;
         ModuleLoadError loadError;
         if (!LoadModules(loadOrder,
-                         *ctx,
+                         context,
+                         kernel,
                          &bmlGetProcAddress,
                          loadedModules,
                          loadError)) {
             out_diag.load_error = loadError;
-            ctx->ShutdownModules();
+            context.ShutdownModules(kernel);
             // Note: Extensions cleaned up in ShutdownModules()
             ApplyDiagnostics(out_diag);
             return false;
         }
 
         for (auto &module : loadedModules) {
-            ctx->AddLoadedModule(std::move(module));
+            context.AddLoadedModule(std::move(module));
         }
 
-        BroadcastLifecycleEvent(BML_TOPIC_SYSTEM_MOD_RELOAD, ctx->GetLoadedModuleSnapshot());
+        BroadcastLifecycleEvent(BML_TOPIC_SYSTEM_MOD_RELOAD, context.GetLoadedModuleSnapshot());
         ApplyDiagnostics(out_diag);
         return true;
     }
@@ -371,6 +379,7 @@ namespace BML::Core {
     void ModuleRuntime::UpdateHotReloadRegistration() {
         if (!m_HotReloadEnabled || !m_HotReloadCoordinator)
             return;
+        auto &context = *Kernel().context;
 
         // Unregister all existing modules first
         auto registered = m_HotReloadCoordinator->GetRegisteredModules();
@@ -379,7 +388,7 @@ namespace BML::Core {
         }
 
         // Register loaded modules for hot reload
-        auto manifests = GetKernelOrNull()->context->GetManifestSnapshot();
+        auto manifests = context.GetManifestSnapshot();
         for (const auto &manifest : manifests) {
 
             // Build DLL path from manifest
@@ -417,7 +426,8 @@ namespace BML::Core {
         if (!m_HotReloadEnabled)
             return;
         if (!m_HotReloadCoordinator) {
-            m_HotReloadCoordinator = std::make_unique<HotReloadCoordinator>(*GetKernelOrNull()->context);
+            auto &context = *Kernel().context;
+            m_HotReloadCoordinator = std::make_unique<HotReloadCoordinator>(context);
 
             HotReloadSettings settings;
             settings.enabled = true;

@@ -15,6 +15,7 @@
 
 namespace BML::Core {
     class Context;
+    struct KernelServices;
 
     /**
      * @brief Reload operation type
@@ -65,6 +66,7 @@ namespace BML::Core {
         std::string mod_id;             ///< Module identifier
         std::optional<ModManifest> manifest;   ///< Mod manifest snapshot
         Context* context{nullptr};      ///< BML context
+        KernelServices *kernel{nullptr}; ///< Runtime kernel services
         PFN_BML_GetProcAddress get_proc{nullptr};  ///< Name-based API lookup function
     };
 
@@ -86,7 +88,8 @@ namespace BML::Core {
      * config.dll_path = L"C:/Mods/MyMod/MyMod.dll";
      * config.temp_directory = L"C:/Temp/BML_HotReload";
      * config.context = &context;
-    * config.get_proc = &bmlGetProcAddress;
+     * config.kernel = &kernel;
+     * config.get_proc = &bmlGetProcAddress;
      *
      * if (slot.Initialize(config)) {
      *     // In game loop:

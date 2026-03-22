@@ -16,6 +16,7 @@
 
 namespace BML::Core {
     class Context;
+    struct KernelServices;
 
     struct LoadedModule {
         std::string id;
@@ -43,11 +44,14 @@ namespace BML::Core {
 
     bool LoadModules(const std::vector<ResolvedNode> &order,
                      Context &context,
+                     KernelServices &kernel,
                      PFN_BML_GetProcAddress get_proc,
                      std::vector<LoadedModule> &out_modules,
                      ModuleLoadError &out_error);
 
-    void UnloadModules(std::vector<LoadedModule> &modules, BML_Context ctx);
+    void UnloadModules(std::vector<LoadedModule> &modules,
+                       Context &context,
+                       KernelServices &kernel);
 } // namespace BML::Core
 
 #endif // BML_CORE_MODULE_LOADER_H

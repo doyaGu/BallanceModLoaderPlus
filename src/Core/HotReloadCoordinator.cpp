@@ -4,6 +4,7 @@
 #include <filesystem>
 
 #include "Context.h"
+#include "KernelServices.h"
 #include "Logging.h"
 #include "StringUtils.h"
 
@@ -114,6 +115,7 @@ namespace BML::Core {
         config.mod_id = entry.id;
         config.manifest = entry.manifest;
         config.context = &m_Context;
+        config.kernel = &Kernel();
         config.get_proc = &bmlGetProcAddress;
 
         if (!slot_entry.slot->Initialize(config)) {

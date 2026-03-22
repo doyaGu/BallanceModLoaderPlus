@@ -98,7 +98,7 @@ namespace BML::Core {
         if (code == BML_RESULT_OK)
             return BML_RESULT_OK;
 
-        if (!GetKernelOrNull()->diagnostics->HasLastError()) {
+        if (!Kernel().diagnostics->HasLastError()) {
             SetLastError(code, GetErrorString(code), api_name, source_file, source_line);
         }
         return code;

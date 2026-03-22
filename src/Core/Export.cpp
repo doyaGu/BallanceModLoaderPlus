@@ -49,7 +49,7 @@ BML_API BML_BootstrapState bmlGetBootstrapState(void) {
 BML_API void *bmlGetProcAddress(const char *proc_name) {
     if (!proc_name)
         return nullptr;
-    return BML::Core::GetKernelOrNull()->api_registry->Get(proc_name);
+    return BML::Core::Kernel().api_registry->Get(proc_name);
 }
 
 BML_API const BML_BootstrapDiagnostics *bmlGetBootstrapDiagnostics(void) {

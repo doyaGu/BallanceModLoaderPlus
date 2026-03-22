@@ -117,7 +117,7 @@ namespace BML::Core {
         BML_DETAIL_UNIQUE_NAME(_BmlVoidWrapper))
 
 #define BML_BEGIN_API_REGISTRATION() \
-    auto &registry = *GetKernelOrNull()->api_registry
+    auto &registry = *Kernel().api_registry
 
 } // namespace BML::Core
 

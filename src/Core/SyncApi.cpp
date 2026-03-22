@@ -6,72 +6,72 @@
 namespace BML::Core {
     // Mutex
     BML_Result BML_API_MutexCreate(BML_Mutex *out_mutex) {
-        return GetKernelOrNull()->sync->CreateMutex(out_mutex);
+        return Kernel().sync->CreateMutex(out_mutex);
     }
 
     void BML_API_MutexDestroy(BML_Mutex mutex) {
-        GetKernelOrNull()->sync->DestroyMutex(mutex);
+        Kernel().sync->DestroyMutex(mutex);
     }
 
     void BML_API_MutexLock(BML_Mutex mutex) {
-        GetKernelOrNull()->sync->LockMutex(mutex);
+        Kernel().sync->LockMutex(mutex);
     }
 
     BML_Bool BML_API_MutexTryLock(BML_Mutex mutex) {
-        return GetKernelOrNull()->sync->TryLockMutex(mutex);
+        return Kernel().sync->TryLockMutex(mutex);
     }
 
     void BML_API_MutexUnlock(BML_Mutex mutex) {
-        GetKernelOrNull()->sync->UnlockMutex(mutex);
+        Kernel().sync->UnlockMutex(mutex);
     }
 
     BML_Result BML_API_MutexLockTimeout(BML_Mutex mutex, uint32_t timeout_ms) {
-        return GetKernelOrNull()->sync->LockMutexTimeout(mutex, timeout_ms);
+        return Kernel().sync->LockMutexTimeout(mutex, timeout_ms);
     }
 
     // RwLock
     BML_Result BML_API_RwLockCreate(BML_RwLock *out_lock) {
-        return GetKernelOrNull()->sync->CreateRwLock(out_lock);
+        return Kernel().sync->CreateRwLock(out_lock);
     }
 
     void BML_API_RwLockDestroy(BML_RwLock lock) {
-        GetKernelOrNull()->sync->DestroyRwLock(lock);
+        Kernel().sync->DestroyRwLock(lock);
     }
 
     void BML_API_RwLockReadLock(BML_RwLock lock) {
-        GetKernelOrNull()->sync->ReadLockRwLock(lock);
+        Kernel().sync->ReadLockRwLock(lock);
     }
 
     BML_Bool BML_API_RwLockTryReadLock(BML_RwLock lock) {
-        return GetKernelOrNull()->sync->TryReadLockRwLock(lock);
+        return Kernel().sync->TryReadLockRwLock(lock);
     }
 
     BML_Result BML_API_RwLockReadLockTimeout(BML_RwLock lock, uint32_t timeout_ms) {
-        return GetKernelOrNull()->sync->ReadLockRwLockTimeout(lock, timeout_ms);
+        return Kernel().sync->ReadLockRwLockTimeout(lock, timeout_ms);
     }
 
     void BML_API_RwLockWriteLock(BML_RwLock lock) {
-        GetKernelOrNull()->sync->WriteLockRwLock(lock);
+        Kernel().sync->WriteLockRwLock(lock);
     }
 
     BML_Bool BML_API_RwLockTryWriteLock(BML_RwLock lock) {
-        return GetKernelOrNull()->sync->TryWriteLockRwLock(lock);
+        return Kernel().sync->TryWriteLockRwLock(lock);
     }
 
     BML_Result BML_API_RwLockWriteLockTimeout(BML_RwLock lock, uint32_t timeout_ms) {
-        return GetKernelOrNull()->sync->WriteLockRwLockTimeout(lock, timeout_ms);
+        return Kernel().sync->WriteLockRwLockTimeout(lock, timeout_ms);
     }
 
     void BML_API_RwLockUnlock(BML_RwLock lock) {
-        GetKernelOrNull()->sync->UnlockRwLock(lock);
+        Kernel().sync->UnlockRwLock(lock);
     }
 
     void BML_API_RwLockReadUnlock(BML_RwLock lock) {
-        GetKernelOrNull()->sync->ReadUnlockRwLock(lock);
+        Kernel().sync->ReadUnlockRwLock(lock);
     }
 
     void BML_API_RwLockWriteUnlock(BML_RwLock lock) {
-        GetKernelOrNull()->sync->WriteUnlockRwLock(lock);
+        Kernel().sync->WriteUnlockRwLock(lock);
     }
 
     // Atomics
@@ -109,82 +109,82 @@ namespace BML::Core {
 
     // Semaphore
     BML_Result BML_API_SemaphoreCreate(uint32_t initial_count, uint32_t max_count, BML_Semaphore *out_semaphore) {
-        return GetKernelOrNull()->sync->CreateSemaphore(initial_count, max_count, out_semaphore);
+        return Kernel().sync->CreateSemaphore(initial_count, max_count, out_semaphore);
     }
 
     void BML_API_SemaphoreDestroy(BML_Semaphore semaphore) {
-        GetKernelOrNull()->sync->DestroySemaphore(semaphore);
+        Kernel().sync->DestroySemaphore(semaphore);
     }
 
     BML_Result BML_API_SemaphoreWait(BML_Semaphore semaphore, uint32_t timeout_ms) {
-        return GetKernelOrNull()->sync->WaitSemaphore(semaphore, timeout_ms);
+        return Kernel().sync->WaitSemaphore(semaphore, timeout_ms);
     }
 
     BML_Result BML_API_SemaphoreSignal(BML_Semaphore semaphore, uint32_t count) {
-        return GetKernelOrNull()->sync->SignalSemaphore(semaphore, count);
+        return Kernel().sync->SignalSemaphore(semaphore, count);
     }
 
     // TLS
     BML_Result BML_API_TlsCreate(BML_TlsDestructor destructor, BML_TlsKey *out_key) {
-        return GetKernelOrNull()->sync->CreateTls(destructor, out_key);
+        return Kernel().sync->CreateTls(destructor, out_key);
     }
 
     void BML_API_TlsDestroy(BML_TlsKey key) {
-        GetKernelOrNull()->sync->DestroyTls(key);
+        Kernel().sync->DestroyTls(key);
     }
 
     void *BML_API_TlsGet(BML_TlsKey key) {
-        return GetKernelOrNull()->sync->GetTls(key);
+        return Kernel().sync->GetTls(key);
     }
 
     BML_Result BML_API_TlsSet(BML_TlsKey key, void *value) {
-        return GetKernelOrNull()->sync->SetTls(key, value);
+        return Kernel().sync->SetTls(key, value);
     }
 
     // CondVar
     BML_Result BML_API_CondVarCreate(BML_CondVar *out_condvar) {
-        return GetKernelOrNull()->sync->CreateCondVar(out_condvar);
+        return Kernel().sync->CreateCondVar(out_condvar);
     }
 
     void BML_API_CondVarDestroy(BML_CondVar condvar) {
-        GetKernelOrNull()->sync->DestroyCondVar(condvar);
+        Kernel().sync->DestroyCondVar(condvar);
     }
 
     BML_Result BML_API_CondVarWait(BML_CondVar condvar, BML_Mutex mutex) {
-        return GetKernelOrNull()->sync->WaitCondVar(condvar, mutex);
+        return Kernel().sync->WaitCondVar(condvar, mutex);
     }
 
     BML_Result BML_API_CondVarWaitTimeout(BML_CondVar condvar, BML_Mutex mutex, uint32_t timeout_ms) {
-        return GetKernelOrNull()->sync->WaitCondVarTimeout(condvar, mutex, timeout_ms);
+        return Kernel().sync->WaitCondVarTimeout(condvar, mutex, timeout_ms);
     }
 
     BML_Result BML_API_CondVarSignal(BML_CondVar condvar) {
-        return GetKernelOrNull()->sync->SignalCondVar(condvar);
+        return Kernel().sync->SignalCondVar(condvar);
     }
 
     BML_Result BML_API_CondVarBroadcast(BML_CondVar condvar) {
-        return GetKernelOrNull()->sync->BroadcastCondVar(condvar);
+        return Kernel().sync->BroadcastCondVar(condvar);
     }
 
     // SpinLock
     BML_Result BML_API_SpinLockCreate(BML_SpinLock *out_lock) {
-        return GetKernelOrNull()->sync->CreateSpinLock(out_lock);
+        return Kernel().sync->CreateSpinLock(out_lock);
     }
 
     void BML_API_SpinLockDestroy(BML_SpinLock lock) {
-        GetKernelOrNull()->sync->DestroySpinLock(lock);
+        Kernel().sync->DestroySpinLock(lock);
     }
 
     void BML_API_SpinLockLock(BML_SpinLock lock) {
-        GetKernelOrNull()->sync->LockSpinLock(lock);
+        Kernel().sync->LockSpinLock(lock);
     }
 
     BML_Bool BML_API_SpinLockTryLock(BML_SpinLock lock) {
-        return GetKernelOrNull()->sync->TryLockSpinLock(lock);
+        return Kernel().sync->TryLockSpinLock(lock);
     }
 
     void BML_API_SpinLockUnlock(BML_SpinLock lock) {
-        GetKernelOrNull()->sync->UnlockSpinLock(lock);
+        Kernel().sync->UnlockSpinLock(lock);
     }
 
     void RegisterSyncApis() {

@@ -99,7 +99,7 @@ namespace BML::Core {
     inline BML_Result SetLastErrorDiag(BML_Result code,
                                        const char *message,
                                        const char *api_name = nullptr) {
-        GetKernelOrNull()->diagnostics->SetError(code, message, api_name, nullptr, 0);
+        Kernel().diagnostics->SetError(code, message, api_name, nullptr, 0);
         return code;
     }
 } // namespace BML::Core

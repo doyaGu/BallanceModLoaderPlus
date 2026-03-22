@@ -108,6 +108,10 @@ namespace BML::Core {
             CoreLog(BML_LOG_ERROR, kLogCategory, "Context is null");
             return false;
         }
+        if (!config.kernel) {
+            CoreLog(BML_LOG_ERROR, kLogCategory, "Kernel services are null");
+            return false;
+        }
 
         m_Config = config;
         m_Version = 0;
@@ -400,10 +404,11 @@ namespace BML::Core {
         int result = 0;
         if (!is_rollback) {
             std::string diagnostic;
-            BML_Result prepare_result = PrepareModuleForDetach(GetModId(),
-                                                              m_ModHandle.get(),
-                                                              m_Entrypoint,
-                                                              &diagnostic);
+            BML_Result prepare_result = PrepareModuleForDetach(*m_Config.kernel,
+                                                               GetModId(),
+                                                               m_ModHandle.get(),
+                                                               m_Entrypoint,
+                                                               &diagnostic);
             if (prepare_result != BML_RESULT_OK) {
                 CoreLog(BML_LOG_WARN, kLogCategory,
                         "Detach gate rejected module '%s': %s (result %d)",
@@ -421,9 +426,9 @@ namespace BML::Core {
                 // Save state only if unload succeeded
                 SaveState();
                 BackupState();
-                CleanupModuleKernelState(GetModId(), m_ModHandle.get());
+                CleanupModuleKernelState(*m_Config.kernel, GetModId(), m_ModHandle.get());
             } else {
-                CancelModuleDetachPreparation(GetModId());
+                CancelModuleDetachPreparation(*m_Config.kernel, GetModId());
                 CoreLog(BML_LOG_WARN, kLogCategory,
                         "Entrypoint detach returned %d", result);
             }

@@ -63,8 +63,10 @@ struct KernelServices {
     KernelServices &operator=(const KernelServices &) = delete;
 };
 
-/// Return the currently installed KernelServices, or nullptr.
-KernelServices *GetKernelOrNull() noexcept;
+/// Return the currently installed KernelServices.
+///
+/// The kernel must be installed before any core API is used.
+KernelServices &Kernel() noexcept;
 
 /// Install (or uninstall) the global KernelServices instance.
 void InstallKernel(KernelServices *kernel) noexcept;

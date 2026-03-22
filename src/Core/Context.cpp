@@ -11,6 +11,7 @@
 #include "ConfigStore.h"
 #include "ApiRegistry.h"
 #include "ExtensionStateHooks.h"
+#include "KernelServices.h"
 #include "ResourceApi.h"
 #include "Logging.h"
 #include "StringUtils.h"
@@ -181,7 +182,7 @@ namespace BML::Core {
         CoreLog(BML_LOG_INFO, kContextLogCategory, "Context initialized");
     }
 
-    void Context::Cleanup() {
+    void Context::Cleanup(KernelServices &kernel) {
         {
             std::unique_lock<std::mutex> state_lock(m_StateMutex);
             if (!m_Initialized.load(std::memory_order_acquire))
@@ -217,7 +218,7 @@ namespace BML::Core {
         }
 
         m_ShutdownState.store(ShutdownState::ShuttingDownModules, std::memory_order_release);
-        ShutdownModules();
+        ShutdownModules(kernel);
 
         {
             std::lock_guard<std::mutex> lock(m_StateMutex);
@@ -332,7 +333,7 @@ namespace BML::Core {
         return m_LoadedModules[index].mod_handle.get();
     }
 
-    void Context::ShutdownModules() {
+    void Context::ShutdownModules(KernelServices &kernel) {
         std::vector<LoadedModule> modules;
         {
             std::lock_guard<std::mutex> lock(m_StateMutex);
@@ -344,7 +345,7 @@ namespace BML::Core {
         const auto records = BuildShutdownModuleRecords(modules);
         RunShutdownHooks(modules);
         PreUnloadCleanup(modules);
-        UnloadModules(modules, GetHandle());
+        UnloadModules(modules, *this, kernel);
         FinalizeShutdownModuleRecords(records);
     }
 

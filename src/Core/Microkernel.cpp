@@ -444,8 +444,8 @@ namespace BML::Core {
         {
             std::filesystem::path base = std::filesystem::path(mods_dir).parent_path();
             auto base_str = base.wstring();
-            GetKernelOrNull()->fault_tracker->Load(base_str);
-            GetKernelOrNull()->crash_dump->SetBaseDir(base_str);
+            Kernel().fault_tracker->Load(base_str);
+            Kernel().crash_dump->SetBaseDir(base_str);
         }
 
         ModuleBootstrapDiagnostics diag;
@@ -543,7 +543,7 @@ namespace BML::Core {
         std::lock_guard<std::recursive_mutex> lock(s_StateMutex);
         if (!s_State || !s_State->core_initialized || !s_State->modules_loaded)
             return;
-        GetKernelOrNull()->timers->Tick();
+        Kernel().timers->Tick();
         s_State->runtime.Update();
     }
 

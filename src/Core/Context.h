@@ -25,6 +25,7 @@
 #include "ModuleLoader.h"
 
 namespace BML::Core {
+    struct KernelServices;
     struct LoadedModuleSnapshot {
         std::string id;
         std::optional<ModManifest> manifest;
@@ -56,7 +57,7 @@ namespace BML::Core {
          * Cleanup all resources and reset to initial state.
          * Should be called during microkernel shutdown.
          */
-        void Cleanup();
+        void Cleanup(KernelServices &kernel);
 
         /**
          * Check if context is initialized.
@@ -71,7 +72,7 @@ namespace BML::Core {
         std::vector<LoadedModuleSnapshot> GetLoadedModuleSnapshot() const;
         uint32_t GetLoadedModuleCount() const;
         BML_Mod GetLoadedModuleAt(uint32_t index) const;
-        void ShutdownModules();
+        void ShutdownModules(KernelServices &kernel);
 
         std::unique_ptr<BML_Mod_T> CreateModHandle(const ModManifest &manifest);
         BML_Mod_T *ResolveModHandle(BML_Mod mod);

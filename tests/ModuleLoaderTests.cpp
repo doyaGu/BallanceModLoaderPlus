@@ -95,7 +95,7 @@ TEST_F(ModuleLoaderTests, LoadModulesWithEmptyOrder) {
     ModuleLoadError error;
     
     // Empty order should succeed trivially
-    bool result = LoadModules(order, *kernel_->context, nullptr, modules, error);
+    bool result = LoadModules(order, *kernel_->context, *kernel_, nullptr, modules, error);
     EXPECT_TRUE(result);
     EXPECT_TRUE(modules.empty());
 }
@@ -116,7 +116,7 @@ TEST_F(ModuleLoaderTests, LoadModulesWithNonExistentDll) {
     // - May skip and return true with empty modules
     // Either is acceptable as long as no crash
     // Pass nullptrs: the stub ignores these function pointers
-    bool result = LoadModules(order, *kernel_->context, nullptr, modules, error);
+    bool result = LoadModules(order, *kernel_->context, *kernel_, nullptr, modules, error);
 
     if (!result) {
         // If it failed, check error is set
@@ -138,7 +138,7 @@ TEST_F(ModuleLoaderTests, LoadModulesWithEmptyDllPath) {
 
     // Empty DLL path should fail or be handled gracefully
     // Pass nullptrs: the stub ignores these function pointers
-    bool result = LoadModules(order, *kernel_->context, nullptr, modules, error);
+    bool result = LoadModules(order, *kernel_->context, *kernel_, nullptr, modules, error);
     // The result depends on implementation - it may skip or fail
     // Just verify no crash occurs
     EXPECT_TRUE(result || !error.message.empty());
@@ -152,7 +152,7 @@ TEST_F(ModuleLoaderTests, UnloadEmptyModules) {
     std::vector<LoadedModule> modules;
     
     // Should not crash on empty list
-    EXPECT_NO_THROW(UnloadModules(modules, nullptr));
+    EXPECT_NO_THROW(UnloadModules(modules, *kernel_->context, *kernel_));
 }
 
 TEST_F(ModuleLoaderTests, UnloadModulesWithNullHandles) {
@@ -165,7 +165,7 @@ TEST_F(ModuleLoaderTests, UnloadModulesWithNullHandles) {
     modules.push_back(std::move(module));
     
     // Should handle null handles gracefully
-    EXPECT_NO_THROW(UnloadModules(modules, nullptr));
+    EXPECT_NO_THROW(UnloadModules(modules, *kernel_->context, *kernel_));
     EXPECT_TRUE(modules.empty());
 }
 

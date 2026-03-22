@@ -37,7 +37,8 @@ namespace BML::Core {
         };
     } // namespace
 
-    BML_Result PrepareModuleForDetach(const std::string &module_id,
+    BML_Result PrepareModuleForDetach(KernelServices &kernel,
+                                      const std::string &module_id,
                                       BML_Mod mod,
                                       ModuleEntrypoint entrypoint,
                                       std::string *out_diagnostic) {
@@ -80,7 +81,7 @@ namespace BML::Core {
             return result;
         }
 
-        auto *leases = GetKernelOrNull()->leases.get();
+        auto *leases = kernel.leases.get();
         leases->SetProviderBlocked(module_id, true);
 
         std::string detail;
@@ -103,25 +104,27 @@ namespace BML::Core {
         return BML_RESULT_OK;
     }
 
-    void CancelModuleDetachPreparation(const std::string &module_id) {
+    void CancelModuleDetachPreparation(KernelServices &kernel, const std::string &module_id) {
         if (module_id.empty()) {
             return;
         }
-        GetKernelOrNull()->leases->SetProviderBlocked(module_id, false);
+        kernel.leases->SetProviderBlocked(module_id, false);
     }
 
-    void CleanupModuleKernelState(const std::string &module_id, BML_Mod mod) {
+    void CleanupModuleKernelState(KernelServices &kernel,
+                                  const std::string &module_id,
+                                  BML_Mod mod) {
         if (module_id.empty()) {
             return;
         }
 
-        GetKernelOrNull()->hooks->CleanupOwner(module_id);
-        GetKernelOrNull()->locale->CleanupModule(module_id);
-        GetKernelOrNull()->timers->CancelAllForModule(module_id);
+        kernel.hooks->CleanupOwner(module_id);
+        kernel.locale->CleanupModule(module_id);
+        kernel.timers->CancelAllForModule(module_id);
         ImcCleanupOwner(mod);
-        GetKernelOrNull()->interface_registry->UnregisterByProvider(module_id);
-        GetKernelOrNull()->leases->CleanupConsumer(module_id);
-        GetKernelOrNull()->leases->CleanupProvider(module_id);
+        kernel.interface_registry->UnregisterByProvider(module_id);
+        kernel.leases->CleanupConsumer(module_id);
+        kernel.leases->CleanupProvider(module_id);
         CleanupConfigHooksForModule(mod);
     }
 } // namespace BML::Core

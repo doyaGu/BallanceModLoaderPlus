@@ -98,21 +98,21 @@ namespace BML::Core {
 #endif
         }
 
-        void Rollback(std::vector<LoadedModule> &loaded, Context &context) {
-            UnloadModules(loaded, context.GetHandle());
+        void Rollback(std::vector<LoadedModule> &loaded, Context &context, KernelServices &kernel) {
+            UnloadModules(loaded, context, kernel);
         }
 
-        void CleanupFailedAttach(const std::string &module_id, BML_Mod mod) {
+        void CleanupFailedAttach(KernelServices &kernel, const std::string &module_id, BML_Mod mod) {
             if (module_id.empty() || !mod) {
                 return;
             }
 
-            GetKernelOrNull()->config->FlushAndRelease(mod);
+            kernel.config->FlushAndRelease(mod);
             RunExtensionProviderCleanupHook(module_id);
-            GetKernelOrNull()->api_registry->UnregisterByProvider(module_id);
+            kernel.api_registry->UnregisterByProvider(module_id);
             UnregisterResourceTypesForProvider(module_id);
-            CleanupModuleKernelState(module_id, mod);
-            GetKernelOrNull()->context->RemoveCreatedModHandle(mod);
+            CleanupModuleKernelState(kernel, module_id, mod);
+            kernel.context->RemoveCreatedModHandle(mod);
         }
 
 #if defined(_MSC_VER) && !defined(__MINGW32__)
@@ -144,6 +144,7 @@ namespace BML::Core {
 
     bool LoadModules(const std::vector<ResolvedNode> &order,
                      Context &context,
+                     KernelServices &kernel,
                      PFN_BML_GetProcAddress get_proc,
                      std::vector<LoadedModule> &out_modules,
                      ModuleLoadError &out_error) {
@@ -183,7 +184,7 @@ namespace BML::Core {
             if (!node.manifest) {
                 out_error.id = node.id;
                 out_error.message = "Resolved node missing manifest";
-                Rollback(out_modules, context);
+                Rollback(out_modules, context, kernel);
                 return false;
             }
 
@@ -200,7 +201,7 @@ namespace BML::Core {
             if (entryPath.empty()) {
                 out_error.id = node.id;
                 out_error.message = "Unable to resolve entry path";
-                Rollback(out_modules, context);
+                Rollback(out_modules, context, kernel);
                 return false;
             }
             out_error.path = entryPath;
@@ -236,14 +237,14 @@ namespace BML::Core {
                     CoreLog(BML_LOG_ERROR, kModuleLoaderLogCategory,
                             "Runtime provider failed to attach '%s': %d",
                             node.id.c_str(), static_cast<int>(initResult));
-                    CleanupFailedAttach(node.id, modHandle.get());
+                    CleanupFailedAttach(kernel, node.id, modHandle.get());
                     failed_ids.insert(node.id);
                     continue;
                 }
 
                 // Validate [provides] for provider-loaded modules too.
                 for (const auto &iface : node.manifest->provides) {
-                    if (!GetKernelOrNull()->interface_registry->Exists(iface.interface_id.c_str())) {
+                    if (!kernel.interface_registry->Exists(iface.interface_id.c_str())) {
                         CoreLog(BML_LOG_WARN, kModuleLoaderLogCategory,
                                 "Module '%s' declared [provides] interface '%s' "
                                 "but did not register it during attach",
@@ -283,7 +284,7 @@ namespace BML::Core {
                     0;
 #endif
                 out_error.message = "LoadLibrary failed: " + FormatSystemMessage(out_error.system_code);
-                Rollback(out_modules, context);
+                Rollback(out_modules, context, kernel);
                 return false;
             }
 
@@ -310,7 +311,7 @@ namespace BML::Core {
                 out_error.message = "BML_ModEntrypoint export not found";
                 out_error.system_code = 0;
                 closeModule(handle);
-                Rollback(out_modules, context);
+                Rollback(out_modules, context, kernel);
                 return false;
             }
 
@@ -322,7 +323,7 @@ namespace BML::Core {
                 out_error.message = "Failed to create module handle";
                 out_error.system_code = 0;
                 closeModule(handle);
-                Rollback(out_modules, context);
+                Rollback(out_modules, context, kernel);
                 return false;
             }
 
@@ -357,9 +358,9 @@ namespace BML::Core {
                 out_error.system_code = static_cast<long>(seh_code);
                 CoreLog(BML_LOG_ERROR, kModuleLoaderLogCategory,
                         "%s: %s", node.id.c_str(), seh_msg);
-                GetKernelOrNull()->crash_dump->WriteDumpOnce(node.id, seh_code);
-                GetKernelOrNull()->fault_tracker->RecordFault(node.id, seh_code);
-                CleanupFailedAttach(node.id, modHandle.get());
+                kernel.crash_dump->WriteDumpOnce(node.id, seh_code);
+                kernel.fault_tracker->RecordFault(node.id, seh_code);
+                CleanupFailedAttach(kernel, node.id, modHandle.get());
                 closeModule(handle);
                 failed_ids.insert(node.id);
                 continue;
@@ -371,16 +372,16 @@ namespace BML::Core {
                 out_error.id = node.id;
                 out_error.message = "BML_ModEntrypoint attach returned " + std::to_string(initResult);
                 out_error.system_code = 0;
-                CleanupFailedAttach(node.id, modHandle.get());
+                CleanupFailedAttach(kernel, node.id, modHandle.get());
                 closeModule(handle);
-                Rollback(out_modules, context);
+                Rollback(out_modules, context, kernel);
                 return false;
             }
 
             // Validate [provides] immediately after this module attaches,
             // before subsequent modules try to Acquire<>() the interface.
             for (const auto &iface : node.manifest->provides) {
-                if (!GetKernelOrNull()->interface_registry->Exists(iface.interface_id.c_str())) {
+                if (!kernel.interface_registry->Exists(iface.interface_id.c_str())) {
                     CoreLog(BML_LOG_WARN, kModuleLoaderLogCategory,
                             "Module '%s' declared [provides] interface '%s' "
                             "but did not register it during attach",
@@ -403,9 +404,8 @@ namespace BML::Core {
         return true;
     }
 
-    void UnloadModules(std::vector<LoadedModule> &modules, BML_Context ctx) {
-        (void)ctx; // Used by native path indirectly through lifecycle helpers.
-
+    void UnloadModules(std::vector<LoadedModule> &modules, Context &context, KernelServices &kernel) {
+        (void)context;
         for (auto it = modules.rbegin(); it != modules.rend(); ++it) {
             struct ModuleScope {
                 explicit ModuleScope(BML_Mod_T *mod) : previous(Context::GetCurrentModule()) {
@@ -425,7 +425,7 @@ namespace BML::Core {
                 // invalidated if the provider module crashed/was disabled).
                 std::string entryUtf8 = utils::Utf16ToUtf8(it->path);
                 bool provider_alive =
-                    (GetKernelOrNull()->context->FindRuntimeProvider(entryUtf8) == it->runtime);
+                    (kernel.context->FindRuntimeProvider(entryUtf8) == it->runtime);
 
                 if (provider_alive) {
                     try {
@@ -449,12 +449,13 @@ namespace BML::Core {
                 }
 
                 // Core cleanup runs unconditionally (IMC, timers, hooks, leases).
-                CleanupModuleKernelState(it->id, it->mod_handle.get());
+                CleanupModuleKernelState(kernel, it->id, it->mod_handle.get());
 
             } else if (it->entrypoint && it->mod_handle) {
                 // Native DLL module: existing path.
                 std::string diagnostic;
-                BML_Result prepare_result = PrepareModuleForDetach(it->id,
+                BML_Result prepare_result = PrepareModuleForDetach(kernel,
+                                                                  it->id,
                                                                   it->mod_handle.get(),
                                                                   it->entrypoint,
                                                                   &diagnostic);
@@ -482,7 +483,7 @@ namespace BML::Core {
                             it->id.c_str());
                 }
 
-                CleanupModuleKernelState(it->id, it->mod_handle.get());
+                CleanupModuleKernelState(kernel, it->id, it->mod_handle.get());
             }
 
             if (it->handle) {

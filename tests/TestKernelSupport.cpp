@@ -26,6 +26,8 @@
 #include "Core/SyncManager.h"
 #include "Core/TimerManager.h"
 
+#include <cassert>
+
 namespace BML::Core {
 
 // Test-specific implementations of kernel access functions.
@@ -34,8 +36,9 @@ namespace {
     KernelServices *g_TestKernel = nullptr;
 }
 
-KernelServices *GetKernelOrNull() noexcept {
-    return g_TestKernel;
+KernelServices &Kernel() noexcept {
+    assert(g_TestKernel && "Test kernel must be installed before use");
+    return *g_TestKernel;
 }
 
 void InstallKernel(KernelServices *kernel) noexcept {
@@ -72,7 +75,7 @@ TestKernel::TestKernel()
 TestKernel::~TestKernel() {
     auto *installed = m_Kernel.get();
     m_Kernel.reset();
-    if (GetKernelOrNull() == installed) {
+    if (g_TestKernel == installed) {
         InstallKernel(nullptr);
     }
 }

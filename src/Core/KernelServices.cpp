@@ -16,14 +16,17 @@
 #include "SyncManager.h"
 #include "TimerManager.h"
 
+#include <cassert>
+
 namespace BML::Core {
 
 namespace {
     KernelServices *g_Kernel = nullptr;
 }
 
-KernelServices *GetKernelOrNull() noexcept {
-    return g_Kernel;
+KernelServices &Kernel() noexcept {
+    assert(g_Kernel && "KernelServices must be installed before use");
+    return *g_Kernel;
 }
 
 void InstallKernel(KernelServices *kernel) noexcept {
@@ -41,7 +44,7 @@ void KernelServices::Shutdown() {
     if (hooks)               hooks->Shutdown();
     if (crash_dump)          crash_dump->Shutdown();
     if (fault_tracker)       fault_tracker->Shutdown();
-    if (context)             context->Cleanup();
+    if (context)             context->Cleanup(*this);
     if (leases)              leases->Reset();
     if (interface_registry)  interface_registry->Clear();
     if (api_registry)        api_registry->Clear();
