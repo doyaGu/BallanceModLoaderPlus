@@ -84,6 +84,8 @@ typedef struct BML_CoreModuleInterface {
     PFN_BML_GetModAuthorAt GetModAuthorAt;
     /* Lookup (v1.2) */
     PFN_BML_FindModuleById FindModuleById;
+    /* Owner-explicit lifecycle helpers (v1.3) */
+    PFN_BML_RegisterShutdownHookOwned RegisterShutdownHookOwned;
 } BML_CoreModuleInterface;
 
 /* ========================================================================
@@ -97,6 +99,9 @@ typedef struct BML_CoreLoggingInterface {
     PFN_BML_SetLogFilter SetLogFilter;
     PFN_BML_RegisterLogSinkOverride RegisterSinkOverride;
     PFN_BML_ClearLogSinkOverride ClearSinkOverride;
+    PFN_BML_LogOwned LogOwned;
+    PFN_BML_LogVaOwned LogVaOwned;
+    PFN_BML_SetLogFilterOwned SetLogFilterOwned;
 } BML_CoreLoggingInterface;
 
 /* ========================================================================
@@ -122,6 +127,8 @@ typedef struct BML_CoreConfigInterface {
     PFN_BML_ConfigGetFloat GetFloat;
     PFN_BML_ConfigGetBool GetBool;
     PFN_BML_ConfigGetString GetString;
+    /* Owner-explicit config hooks (v1.2) */
+    PFN_BML_RegisterConfigLoadHooksOwned RegisterLoadHooksOwned;
 } BML_CoreConfigInterface;
 
 /* ========================================================================
@@ -160,6 +167,8 @@ typedef struct BML_CoreResourceInterface {
     PFN_BML_HandleValidate HandleValidate;
     PFN_BML_HandleAttachUserData HandleAttachUserData;
     PFN_BML_HandleGetUserData HandleGetUserData;
+    PFN_BML_RegisterResourceTypeOwned RegisterResourceTypeOwned;
+    PFN_BML_HandleCreateOwned HandleCreateOwned;
 } BML_CoreResourceInterface;
 
 /* ========================================================================
@@ -222,6 +231,13 @@ typedef struct BML_ImcBusInterface {
     PFN_BML_ImcSubscribeExOwned SubscribeExOwned;
     PFN_BML_ImcSubscribeInterceptOwned SubscribeInterceptOwned;
     PFN_BML_ImcSubscribeInterceptExOwned SubscribeInterceptExOwned;
+    /* Owner-explicit publish helpers (v1.2) */
+    PFN_BML_ImcPublishOwned PublishOwned;
+    PFN_BML_ImcPublishExOwned PublishExOwned;
+    PFN_BML_ImcPublishBufferOwned PublishBufferOwned;
+    PFN_BML_ImcPublishMultiOwned PublishMultiOwned;
+    PFN_BML_ImcPublishInterceptableOwned PublishInterceptableOwned;
+    PFN_BML_ImcPublishStateOwned PublishStateOwned;
 } BML_ImcBusInterface;
 
 /* ========================================================================
@@ -265,6 +281,10 @@ typedef struct BML_ImcRpcInterface {
     PFN_BML_ImcAddRpcMiddlewareOwned AddRpcMiddlewareOwned;
     PFN_BML_ImcRemoveRpcMiddlewareOwned RemoveRpcMiddlewareOwned;
     PFN_BML_ImcRegisterStreamingRpcOwned RegisterStreamingRpcOwned;
+    /* Owner-explicit call helpers (v1.2) */
+    PFN_BML_ImcCallRpcOwned CallRpcOwned;
+    PFN_BML_ImcCallRpcExOwned CallRpcExOwned;
+    PFN_BML_ImcCallStreamingRpcOwned CallStreamingRpcOwned;
 } BML_ImcRpcInterface;
 
 /* ========================================================================
@@ -279,6 +299,12 @@ typedef struct BML_CoreTimerInterface {
     PFN_BML_TimerCancel Cancel;
     PFN_BML_TimerIsActive IsActive;
     PFN_BML_TimerCancelAll CancelAll;
+    PFN_BML_TimerScheduleOnceOwned ScheduleOnceOwned;
+    PFN_BML_TimerScheduleRepeatOwned ScheduleRepeatOwned;
+    PFN_BML_TimerScheduleFramesOwned ScheduleFramesOwned;
+    PFN_BML_TimerCancelOwned CancelOwned;
+    PFN_BML_TimerIsActiveOwned IsActiveOwned;
+    PFN_BML_TimerCancelAllOwned CancelAllOwned;
 } BML_CoreTimerInterface;
 
 /* ========================================================================
@@ -290,6 +316,8 @@ typedef struct BML_CoreHookRegistryInterface {
     PFN_BML_HookRegister Register;
     PFN_BML_HookUnregister Unregister;
     PFN_BML_HookEnumerate Enumerate;
+    PFN_BML_HookRegisterOwned RegisterOwned;
+    PFN_BML_HookUnregisterOwned UnregisterOwned;
 } BML_CoreHookRegistryInterface;
 
 /* ========================================================================
@@ -304,6 +332,9 @@ typedef struct BML_CoreLocaleInterface {
     PFN_BML_LocaleGet Get;
     PFN_BML_LocaleBindTable BindTable;
     PFN_BML_LocaleLookup Lookup;
+    PFN_BML_LocaleLoadOwned LoadOwned;
+    PFN_BML_LocaleGetOwned GetOwned;
+    PFN_BML_LocaleBindTableOwned BindTableOwned;
 } BML_CoreLocaleInterface;
 
 /* ========================================================================

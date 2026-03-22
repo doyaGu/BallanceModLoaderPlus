@@ -11,29 +11,31 @@
 namespace BML::Core {
     namespace {
         constexpr uint16_t kCoreContextInterfaceMinor = 0;
-        constexpr uint16_t kCoreModuleInterfaceMinor = 2;
-        constexpr uint16_t kCoreLoggingInterfaceMinor = 0;
-        constexpr uint16_t kCoreConfigInterfaceMinor = 1;
+        constexpr uint16_t kCoreModuleInterfaceMinor = 3;
+        constexpr uint16_t kCoreLoggingInterfaceMinor = 1;
+        constexpr uint16_t kCoreConfigInterfaceMinor = 2;
         constexpr uint16_t kCoreMemoryInterfaceMinor = 0;
-        constexpr uint16_t kCoreResourceInterfaceMinor = 0;
+        constexpr uint16_t kCoreResourceInterfaceMinor = 1;
         constexpr uint16_t kCoreDiagnosticInterfaceMinor = 0;
-        constexpr uint16_t kImcBusInterfaceMinor = 1;
-        constexpr uint16_t kRpcInterfaceMinor = 1;
-        constexpr uint16_t kCoreTimerInterfaceMinor = 0;
-        constexpr uint16_t kCoreHookRegistryInterfaceMinor = 0;
-        constexpr uint16_t kCoreLocaleInterfaceMinor = 0;
+        constexpr uint16_t kImcBusInterfaceMinor = 2;
+        constexpr uint16_t kRpcInterfaceMinor = 2;
+        constexpr uint16_t kCoreTimerInterfaceMinor = 1;
+        constexpr uint16_t kCoreHookRegistryInterfaceMinor = 1;
+        constexpr uint16_t kCoreLocaleInterfaceMinor = 1;
         constexpr uint16_t kCoreSyncInterfaceMinor = 0;
         constexpr uint16_t kCoreProfilingInterfaceMinor = 0;
         constexpr uint16_t kHostRuntimeInterfaceMinor = 0;
 
         template <typename T>
         T ResolveApi(const char *name) {
-            return reinterpret_cast<T>(GetKernelOrNull()->api_registry->Get(name));
+            auto &apiRegistry = *Kernel().api_registry;
+            return reinterpret_cast<T>(apiRegistry.Get(name));
         }
 
         BML_Bool BML_API_GetInterfaceDescriptorRuntime(const char *interface_id,
                                                        BML_InterfaceRuntimeDesc *out_desc) {
-            return GetKernelOrNull()->interface_registry->GetDescriptor(interface_id, out_desc) == BML_RESULT_OK
+            auto &interfaceRegistry = *Kernel().interface_registry;
+            return interfaceRegistry.GetDescriptor(interface_id, out_desc) == BML_RESULT_OK
                 ? BML_TRUE
                 : BML_FALSE;
         }
@@ -41,37 +43,44 @@ namespace BML::Core {
         void BML_API_EnumerateInterfacesRuntime(PFN_BML_InterfaceRuntimeEnumerator callback,
                                                 void *user_data,
                                                 uint64_t required_flags_mask) {
-            GetKernelOrNull()->interface_registry->Enumerate(callback, user_data, required_flags_mask);
+            auto &interfaceRegistry = *Kernel().interface_registry;
+            interfaceRegistry.Enumerate(callback, user_data, required_flags_mask);
         }
 
         BML_Bool BML_API_InterfaceExists(const char *interface_id) {
-            return GetKernelOrNull()->interface_registry->Exists(interface_id) ? BML_TRUE : BML_FALSE;
+            auto &interfaceRegistry = *Kernel().interface_registry;
+            return interfaceRegistry.Exists(interface_id) ? BML_TRUE : BML_FALSE;
         }
 
         BML_Bool BML_API_IsInterfaceCompatible(const char *interface_id,
                                                 const BML_Version *required_abi) {
-            return GetKernelOrNull()->interface_registry->IsCompatible(interface_id, required_abi)
+            auto &interfaceRegistry = *Kernel().interface_registry;
+            return interfaceRegistry.IsCompatible(interface_id, required_abi)
                 ? BML_TRUE : BML_FALSE;
         }
 
         void BML_API_EnumerateByProvider(const char *provider_id,
                                           PFN_BML_InterfaceRuntimeEnumerator callback,
                                           void *user_data) {
-            GetKernelOrNull()->interface_registry->EnumerateByProvider(provider_id, callback, user_data);
+            auto &interfaceRegistry = *Kernel().interface_registry;
+            interfaceRegistry.EnumerateByProvider(provider_id, callback, user_data);
         }
 
         void BML_API_EnumerateByCapability(uint64_t required_caps,
                                             PFN_BML_InterfaceRuntimeEnumerator callback,
                                             void *user_data) {
-            GetKernelOrNull()->interface_registry->EnumerateByCapability(required_caps, callback, user_data);
+            auto &interfaceRegistry = *Kernel().interface_registry;
+            interfaceRegistry.EnumerateByCapability(required_caps, callback, user_data);
         }
 
         uint32_t BML_API_GetInterfaceCount() {
-            return GetKernelOrNull()->interface_registry->GetCount();
+            auto &interfaceRegistry = *Kernel().interface_registry;
+            return interfaceRegistry.GetCount();
         }
 
         uint32_t BML_API_GetLeaseCount(const char *interface_id) {
-            return GetKernelOrNull()->interface_registry->GetLeaseCount(interface_id);
+            auto &interfaceRegistry = *Kernel().interface_registry;
+            return interfaceRegistry.GetLeaseCount(interface_id);
         }
 
         BML_Result BML_API_RegisterHostContribution(BML_Mod provider_mod,
@@ -81,27 +90,32 @@ namespace BML::Core {
                 return BML_RESULT_INVALID_ARGUMENT;
             }
 
-            auto *consumer = GetKernelOrNull()->context->ResolveCurrentConsumer();
-            auto *provider = GetKernelOrNull()->context->ResolveModHandle(provider_mod);
-            if (!consumer || !provider) {
+            auto &kernel = Kernel();
+            auto &context = *kernel.context;
+            auto &interfaceRegistry = *kernel.interface_registry;
+            auto &leases = *kernel.leases;
+
+            auto *provider = context.ResolveModHandle(provider_mod);
+            if (!provider) {
                 return BML_RESULT_INVALID_CONTEXT;
             }
 
             BML_InterfaceRuntimeDesc desc = BML_INTERFACE_RUNTIME_DESC_INIT;
-            BML_CHECK(GetKernelOrNull()->interface_registry->GetDescriptor(host_interface_id, &desc));
+            BML_CHECK(interfaceRegistry.GetDescriptor(host_interface_id, &desc));
             if ((desc.flags & BML_INTERFACE_FLAG_HOST_OWNED) == 0) {
                 return BML_RESULT_PERMISSION_DENIED;
             }
-            if (GetKernelOrNull()->leases->IsProviderBlocked(provider->id)) {
+            if (leases.IsProviderBlocked(provider->id)) {
                 return BML_RESULT_BUSY;
             }
 
-            return GetKernelOrNull()->leases->CreateInterfaceRegistration(
-                host_interface_id, provider->id, consumer->id, out_registration);
+            return leases.CreateInterfaceRegistration(
+                host_interface_id, provider->id, provider->id, out_registration);
         }
 
         BML_Result BML_API_UnregisterHostContribution(BML_InterfaceRegistration registration) {
-            return GetKernelOrNull()->leases->ReleaseInterfaceRegistration(registration);
+            auto &leases = *Kernel().leases;
+            return leases.ReleaseInterfaceRegistration(registration);
         }
 
         BML_CoreContextInterface g_CoreContextInterface{};
@@ -131,7 +145,9 @@ namespace BML::Core {
             desc.implementation = implementation;
             desc.implementation_size = implementation_size;
             desc.flags = flags;
-            return GetKernelOrNull()->interface_registry->Register(&desc, "BML");
+            auto &kernel = Kernel();
+            auto host = kernel.context ? kernel.context->GetSyntheticHostModule() : nullptr;
+            return kernel.interface_registry->Register(&desc, kernel.context->ResolveModHandle(host));
         }
     } // namespace
 
@@ -174,6 +190,7 @@ namespace BML::Core {
             ResolveApi<PFN_BML_GetModAuthorCount>("bmlGetModAuthorCount"),
             ResolveApi<PFN_BML_GetModAuthorAt>("bmlGetModAuthorAt"),
             ResolveApi<PFN_BML_FindModuleById>("bmlFindModuleById"),
+            ResolveApi<PFN_BML_RegisterShutdownHookOwned>("bmlRegisterShutdownHookOwned"),
         };
         // Logging
         g_CoreLoggingInterface = {
@@ -186,6 +203,9 @@ namespace BML::Core {
             ResolveApi<PFN_BML_SetLogFilter>("bmlSetLogFilter"),
             ResolveApi<PFN_BML_RegisterLogSinkOverride>("bmlRegisterLogSinkOverride"),
             ResolveApi<PFN_BML_ClearLogSinkOverride>("bmlClearLogSinkOverride"),
+            ResolveApi<PFN_BML_LogOwned>("bmlLogOwned"),
+            ResolveApi<PFN_BML_LogVaOwned>("bmlLogVaOwned"),
+            ResolveApi<PFN_BML_SetLogFilterOwned>("bmlSetLogFilterOwned"),
         };
         // Config
         g_CoreConfigInterface = {
@@ -206,6 +226,7 @@ namespace BML::Core {
             ResolveApi<PFN_BML_ConfigGetFloat>("bmlConfigGetFloat"),
             ResolveApi<PFN_BML_ConfigGetBool>("bmlConfigGetBool"),
             ResolveApi<PFN_BML_ConfigGetString>("bmlConfigGetString"),
+            ResolveApi<PFN_BML_RegisterConfigLoadHooksOwned>("bmlRegisterConfigLoadHooksOwned"),
         };
         // Memory
         g_CoreMemoryInterface = {
@@ -238,6 +259,8 @@ namespace BML::Core {
             ResolveApi<PFN_BML_HandleValidate>("bmlHandleValidate"),
             ResolveApi<PFN_BML_HandleAttachUserData>("bmlHandleAttachUserData"),
             ResolveApi<PFN_BML_HandleGetUserData>("bmlHandleGetUserData"),
+            ResolveApi<PFN_BML_RegisterResourceTypeOwned>("bmlRegisterResourceTypeOwned"),
+            ResolveApi<PFN_BML_HandleCreateOwned>("bmlHandleCreateOwned"),
         };
         // Diagnostic
         g_CoreDiagnosticInterface = {
@@ -288,6 +311,12 @@ namespace BML::Core {
             ResolveApi<PFN_BML_ImcSubscribeExOwned>("bmlImcSubscribeExOwned"),
             ResolveApi<PFN_BML_ImcSubscribeInterceptOwned>("bmlImcSubscribeInterceptOwned"),
             ResolveApi<PFN_BML_ImcSubscribeInterceptExOwned>("bmlImcSubscribeInterceptExOwned"),
+            ResolveApi<PFN_BML_ImcPublishOwned>("bmlImcPublishOwned"),
+            ResolveApi<PFN_BML_ImcPublishExOwned>("bmlImcPublishExOwned"),
+            ResolveApi<PFN_BML_ImcPublishBufferOwned>("bmlImcPublishBufferOwned"),
+            ResolveApi<PFN_BML_ImcPublishMultiOwned>("bmlImcPublishMultiOwned"),
+            ResolveApi<PFN_BML_ImcPublishInterceptableOwned>("bmlImcPublishInterceptableOwned"),
+            ResolveApi<PFN_BML_ImcPublishStateOwned>("bmlImcPublishStateOwned"),
         };
         // RPC (request/response, futures, middleware, streaming)
         g_RpcInterface = {
@@ -325,6 +354,9 @@ namespace BML::Core {
             ResolveApi<PFN_BML_ImcAddRpcMiddlewareOwned>("bmlImcAddRpcMiddlewareOwned"),
             ResolveApi<PFN_BML_ImcRemoveRpcMiddlewareOwned>("bmlImcRemoveRpcMiddlewareOwned"),
             ResolveApi<PFN_BML_ImcRegisterStreamingRpcOwned>("bmlImcRegisterStreamingRpcOwned"),
+            ResolveApi<PFN_BML_ImcCallRpcOwned>("bmlImcCallRpcOwned"),
+            ResolveApi<PFN_BML_ImcCallRpcExOwned>("bmlImcCallRpcExOwned"),
+            ResolveApi<PFN_BML_ImcCallStreamingRpcOwned>("bmlImcCallStreamingRpcOwned"),
         };
         // Timer
         g_CoreTimerInterface = {
@@ -338,6 +370,12 @@ namespace BML::Core {
             ResolveApi<PFN_BML_TimerCancel>("bmlTimerCancel"),
             ResolveApi<PFN_BML_TimerIsActive>("bmlTimerIsActive"),
             ResolveApi<PFN_BML_TimerCancelAll>("bmlTimerCancelAll"),
+            ResolveApi<PFN_BML_TimerScheduleOnceOwned>("bmlTimerScheduleOnceOwned"),
+            ResolveApi<PFN_BML_TimerScheduleRepeatOwned>("bmlTimerScheduleRepeatOwned"),
+            ResolveApi<PFN_BML_TimerScheduleFramesOwned>("bmlTimerScheduleFramesOwned"),
+            ResolveApi<PFN_BML_TimerCancelOwned>("bmlTimerCancelOwned"),
+            ResolveApi<PFN_BML_TimerIsActiveOwned>("bmlTimerIsActiveOwned"),
+            ResolveApi<PFN_BML_TimerCancelAllOwned>("bmlTimerCancelAllOwned"),
         };
         // Hook Registry
         g_CoreHookRegistryInterface = {
@@ -348,6 +386,8 @@ namespace BML::Core {
             ResolveApi<PFN_BML_HookRegister>("bmlHookRegister"),
             ResolveApi<PFN_BML_HookUnregister>("bmlHookUnregister"),
             ResolveApi<PFN_BML_HookEnumerate>("bmlHookEnumerate"),
+            ResolveApi<PFN_BML_HookRegisterOwned>("bmlHookRegisterOwned"),
+            ResolveApi<PFN_BML_HookUnregisterOwned>("bmlHookUnregisterOwned"),
         };
         // Locale
         g_CoreLocaleInterface = {
@@ -361,6 +401,9 @@ namespace BML::Core {
             ResolveApi<PFN_BML_LocaleGet>("bmlLocaleGet"),
             ResolveApi<PFN_BML_LocaleBindTable>("bmlLocaleBindTable"),
             ResolveApi<PFN_BML_LocaleLookup>("bmlLocaleLookup"),
+            ResolveApi<PFN_BML_LocaleLoadOwned>("bmlLocaleLoadOwned"),
+            ResolveApi<PFN_BML_LocaleGetOwned>("bmlLocaleGetOwned"),
+            ResolveApi<PFN_BML_LocaleBindTableOwned>("bmlLocaleBindTableOwned"),
         };
         // Sync
         g_CoreSyncInterface = {

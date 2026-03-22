@@ -912,8 +912,14 @@ namespace BML::Core {
 
             // Pub/Sub (Core)
             BML_Result Publish(BML_TopicId topic, const void *data, size_t size);
+            BML_Result PublishOwned(BML_Mod owner, BML_TopicId topic,
+                                    const void *data, size_t size);
             BML_Result PublishEx(BML_TopicId topic, const BML_ImcMessage *msg);
+            BML_Result PublishExOwned(BML_Mod owner, BML_TopicId topic,
+                                      const BML_ImcMessage *msg);
             BML_Result PublishBuffer(BML_TopicId topic, const BML_ImcBuffer *buffer);
+            BML_Result PublishBufferOwned(BML_Mod owner, BML_TopicId topic,
+                                          const BML_ImcBuffer *buffer);
             BML_Result Subscribe(BML_TopicId topic, BML_ImcHandler handler, void *user_data, BML_Subscription *out_sub);
             BML_Result SubscribeOwned(BML_Mod owner, BML_TopicId topic, BML_ImcHandler handler,
                                       void *user_data, BML_Subscription *out_sub);
@@ -940,10 +946,16 @@ namespace BML::Core {
                                                  BML_Subscription *out_sub);
             BML_Result PublishInterceptable(BML_TopicId topic, BML_ImcMessage *msg,
                                             BML_EventResult *out_result);
+            BML_Result PublishInterceptableOwned(BML_Mod owner, BML_TopicId topic,
+                                                 BML_ImcMessage *msg,
+                                                 BML_EventResult *out_result);
             BML_Result GetSubscriptionStats(BML_Subscription sub, BML_SubscriptionStats *out_stats);
             BML_Result PublishMulti(const BML_TopicId *topics, size_t topic_count,
                                     const void *data, size_t size, const BML_ImcMessage *msg,
                                     size_t *out_delivered);
+            BML_Result PublishMultiOwned(BML_Mod owner, const BML_TopicId *topics,
+                                         size_t topic_count, const void *data, size_t size,
+                                         const BML_ImcMessage *msg, size_t *out_delivered);
 
             // RPC
             BML_Result RegisterRpc(BML_RpcId rpc_id, BML_RpcHandler handler, void *user_data);
@@ -952,12 +964,17 @@ namespace BML::Core {
             BML_Result UnregisterRpc(BML_RpcId rpc_id);
             BML_Result UnregisterRpcOwned(BML_Mod owner, BML_RpcId rpc_id);
             BML_Result CallRpc(BML_RpcId rpc_id, const BML_ImcMessage *request, BML_Future *out_future);
+            BML_Result CallRpcOwned(BML_Mod owner, BML_RpcId rpc_id,
+                                    const BML_ImcMessage *request, BML_Future *out_future);
 
             // RPC v1.1
             BML_Result RegisterRpcEx(BML_RpcId rpc_id, BML_RpcHandlerEx handler, void *user_data);
             BML_Result RegisterRpcExOwned(BML_Mod owner, BML_RpcId rpc_id,
                                           BML_RpcHandlerEx handler, void *user_data);
             BML_Result CallRpcEx(BML_RpcId rpc_id, const BML_ImcMessage *request, const BML_RpcCallOptions *options, BML_Future *out_future);
+            BML_Result CallRpcExOwned(BML_Mod owner, BML_RpcId rpc_id,
+                                      const BML_ImcMessage *request,
+                                      const BML_RpcCallOptions *options, BML_Future *out_future);
             BML_Result FutureGetError(BML_Future future, BML_Result *out_code, char *msg, size_t cap, size_t *out_len);
             BML_Result GetRpcInfo(BML_RpcId rpc_id, BML_RpcInfo *out_info);
             BML_Result GetRpcName(BML_RpcId rpc_id, char *buf, size_t cap, size_t *out_len);
@@ -976,6 +993,10 @@ namespace BML::Core {
             BML_Result CallStreamingRpc(BML_RpcId rpc_id, const BML_ImcMessage *request,
                                         BML_ImcHandler on_chunk, BML_FutureCallback on_done,
                                         void *user_data, BML_Future *out_future);
+            BML_Result CallStreamingRpcOwned(BML_Mod owner, BML_RpcId rpc_id,
+                                             const BML_ImcMessage *request,
+                                             BML_ImcHandler on_chunk, BML_FutureCallback on_done,
+                                             void *user_data, BML_Future *out_future);
 
             // Futures
             BML_Result FutureAwait(BML_Future future, uint32_t timeout_ms);
@@ -993,6 +1014,8 @@ namespace BML::Core {
             BML_Result GetTopicInfo(BML_TopicId topic, BML_TopicInfo *out_info);
             BML_Result GetTopicName(BML_TopicId topic, char *buffer, size_t buffer_size, size_t *out_length);
             BML_Result PublishState(BML_TopicId topic, const BML_ImcMessage *msg);
+            BML_Result PublishStateOwned(BML_Mod owner, BML_TopicId topic,
+                                         const BML_ImcMessage *msg);
             BML_Result CopyState(BML_TopicId topic,
                                  void *dst,
                                  size_t dst_size,
@@ -1008,8 +1031,9 @@ namespace BML::Core {
         private:
             using SubscriptionPtr = BML_Subscription;
 
-            QueuedMessage *CreateMessage(BML_TopicId topic, const void *data, size_t size,
-                                         const BML_ImcMessage *msg, const BML_ImcBuffer *buffer);
+            QueuedMessage *CreateMessage(BML_Mod owner, BML_TopicId topic, const void *data,
+                                         size_t size, const BML_ImcMessage *msg,
+                                         const BML_ImcBuffer *buffer);
             BML_Result DispatchMessage(BML_TopicId topic, QueuedMessage *message);
             BML_Result DispatchToSubscription(BML_Subscription_T *sub, QueuedMessage *message, bool *out_enqueued);
             bool MatchesSubscription(BML_Subscription_T *sub, const BML_ImcMessage &message) const;
@@ -1154,14 +1178,15 @@ namespace BML::Core {
         // Message Handling
         // ========================================================================
 
-        QueuedMessage *ImcBusImpl::CreateMessage(BML_TopicId topic, const void *data, size_t size,
-                                                 const BML_ImcMessage *msg, const BML_ImcBuffer *buffer) {
+        QueuedMessage *ImcBusImpl::CreateMessage(BML_Mod owner, BML_TopicId topic, const void *data,
+                                                 size_t size, const BML_ImcMessage *msg,
+                                                 const BML_ImcBuffer *buffer) {
             auto *message = m_MessagePool.Construct<QueuedMessage>();
             if (!message)
                 return nullptr;
 
             message->topic_id = topic;
-            message->sender = Context::GetCurrentModule();
+            message->sender = owner;
             message->msg_id = msg && msg->msg_id ? msg->msg_id : m_NextMessageId.fetch_add(1, std::memory_order_relaxed);
             message->flags = msg ? msg->flags : 0;
             message->priority = msg ? msg->priority : BML_IMC_PRIORITY_NORMAL;
@@ -1592,16 +1617,26 @@ namespace BML::Core {
         // ========================================================================
 
         BML_Result ImcBusImpl::Publish(BML_TopicId topic, const void *data, size_t size) {
+            return PublishOwned(Context::GetCurrentModule(), topic, data, size);
+        }
+
+        BML_Result ImcBusImpl::PublishOwned(BML_Mod owner, BML_TopicId topic,
+                                            const void *data, size_t size) {
             if (topic == BML_TOPIC_ID_INVALID)
                 return BML_RESULT_INVALID_ARGUMENT;
             if (size > 0 && !data)
                 return BML_RESULT_INVALID_ARGUMENT;
 
-            auto *message = CreateMessage(topic, data, size, nullptr, nullptr);
+            auto *message = CreateMessage(owner, topic, data, size, nullptr, nullptr);
             return DispatchMessage(topic, message);
         }
 
         BML_Result ImcBusImpl::PublishEx(BML_TopicId topic, const BML_ImcMessage *msg) {
+            return PublishExOwned(Context::GetCurrentModule(), topic, msg);
+        }
+
+        BML_Result ImcBusImpl::PublishExOwned(BML_Mod owner, BML_TopicId topic,
+                                              const BML_ImcMessage *msg) {
             if (topic == BML_TOPIC_ID_INVALID)
                 return BML_RESULT_INVALID_ARGUMENT;
             if (!msg)
@@ -1609,17 +1644,22 @@ namespace BML::Core {
             if (msg->size > 0 && !msg->data)
                 return BML_RESULT_INVALID_ARGUMENT;
 
-            auto *message = CreateMessage(topic, msg->data, msg->size, msg, nullptr);
+            auto *message = CreateMessage(owner, topic, msg->data, msg->size, msg, nullptr);
             return DispatchMessage(topic, message);
         }
 
         BML_Result ImcBusImpl::PublishBuffer(BML_TopicId topic, const BML_ImcBuffer *buffer) {
+            return PublishBufferOwned(Context::GetCurrentModule(), topic, buffer);
+        }
+
+        BML_Result ImcBusImpl::PublishBufferOwned(BML_Mod owner, BML_TopicId topic,
+                                                  const BML_ImcBuffer *buffer) {
             if (topic == BML_TOPIC_ID_INVALID || !buffer)
                 return BML_RESULT_INVALID_ARGUMENT;
             if (buffer->size > 0 && !buffer->data)
                 return BML_RESULT_INVALID_ARGUMENT;
 
-            auto *message = CreateMessage(topic, nullptr, 0, nullptr, buffer);
+            auto *message = CreateMessage(owner, topic, nullptr, 0, nullptr, buffer);
             return DispatchMessage(topic, message);
         }
 
@@ -1813,6 +1853,12 @@ namespace BML::Core {
 
         BML_Result ImcBusImpl::PublishInterceptable(BML_TopicId topic, BML_ImcMessage *msg,
                                                     BML_EventResult *out_result) {
+            return PublishInterceptableOwned(Context::GetCurrentModule(), topic, msg, out_result);
+        }
+
+        BML_Result ImcBusImpl::PublishInterceptableOwned(BML_Mod owner, BML_TopicId topic,
+                                                         BML_ImcMessage *msg,
+                                                         BML_EventResult *out_result) {
             if (topic == BML_TOPIC_ID_INVALID)
                 return BML_RESULT_INVALID_ARGUMENT;
             if (!msg)
@@ -1899,7 +1945,7 @@ namespace BML::Core {
 
             // Phase 2: If not cancelled, deliver to regular (non-intercept) subscribers
             if (final_result != BML_EVENT_CANCEL) {
-                BML_Result pub_result = PublishEx(topic, msg);
+                BML_Result pub_result = PublishExOwned(owner, topic, msg);
                 if (pub_result != BML_RESULT_OK && pub_result != BML_RESULT_NOT_FOUND) {
                     if (out_result) *out_result = final_result;
                     return pub_result;
@@ -1928,6 +1974,14 @@ namespace BML::Core {
         BML_Result ImcBusImpl::PublishMulti(const BML_TopicId *topics, size_t topic_count,
                                             const void *data, size_t size, const BML_ImcMessage *msg,
                                             size_t *out_delivered) {
+            return PublishMultiOwned(Context::GetCurrentModule(), topics, topic_count, data, size,
+                                     msg, out_delivered);
+        }
+
+        BML_Result ImcBusImpl::PublishMultiOwned(BML_Mod owner, const BML_TopicId *topics,
+                                                 size_t topic_count, const void *data,
+                                                 size_t size, const BML_ImcMessage *msg,
+                                                 size_t *out_delivered) {
             if (!topics || topic_count == 0)
                 return BML_RESULT_INVALID_ARGUMENT;
             if (size > 0 && !data)
@@ -1940,7 +1994,7 @@ namespace BML::Core {
                 if (topics[i] == BML_TOPIC_ID_INVALID)
                     continue;
 
-                auto *message = CreateMessage(topics[i], data, size, msg, nullptr);
+                auto *message = CreateMessage(owner, topics[i], data, size, msg, nullptr);
                 BML_Result res = DispatchMessage(topics[i], message);
                 if (res == BML_RESULT_OK) {
                     ++delivered;
@@ -2094,8 +2148,17 @@ namespace BML::Core {
         }
 
         BML_Result ImcBusImpl::CallRpc(BML_RpcId rpc_id, const BML_ImcMessage *request, BML_Future *out_future) {
+            return CallRpcOwned(Context::GetCurrentModule(), rpc_id, request, out_future);
+        }
+
+        BML_Result ImcBusImpl::CallRpcOwned(BML_Mod owner, BML_RpcId rpc_id,
+                                            const BML_ImcMessage *request,
+                                            BML_Future *out_future) {
             if (rpc_id == BML_RPC_ID_INVALID || !out_future)
                 return BML_RESULT_INVALID_ARGUMENT;
+
+            BML_Mod resolved_owner = nullptr;
+            BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));
 
             BML_Future future = CreateFuture();
             if (!future)
@@ -2109,7 +2172,7 @@ namespace BML::Core {
 
             req->rpc_id = rpc_id;
             req->msg_id = request && request->msg_id ? request->msg_id : m_NextMessageId.fetch_add(1, std::memory_order_relaxed);
-            req->caller = Context::GetCurrentModule();
+            req->caller = resolved_owner;
             req->future = future;
 
             if (request && request->data && request->size > 0) {
@@ -2301,8 +2364,19 @@ namespace BML::Core {
 
         BML_Result ImcBusImpl::CallRpcEx(BML_RpcId rpc_id, const BML_ImcMessage *request,
                                           const BML_RpcCallOptions *options, BML_Future *out_future) {
+            return CallRpcExOwned(Context::GetCurrentModule(), rpc_id, request, options,
+                                  out_future);
+        }
+
+        BML_Result ImcBusImpl::CallRpcExOwned(BML_Mod owner, BML_RpcId rpc_id,
+                                              const BML_ImcMessage *request,
+                                              const BML_RpcCallOptions *options,
+                                              BML_Future *out_future) {
             if (rpc_id == BML_RPC_ID_INVALID || !out_future)
                 return BML_RESULT_INVALID_ARGUMENT;
+
+            BML_Mod resolved_owner = nullptr;
+            BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));
 
             BML_Future future = CreateFuture();
             if (!future)
@@ -2316,7 +2390,7 @@ namespace BML::Core {
 
             req->rpc_id = rpc_id;
             req->msg_id = request && request->msg_id ? request->msg_id : m_NextMessageId.fetch_add(1, std::memory_order_relaxed);
-            req->caller = Context::GetCurrentModule();
+            req->caller = resolved_owner;
             req->future = future;
 
             if (options && options->timeout_ms > 0) {
@@ -2586,11 +2660,21 @@ namespace BML::Core {
         BML_Result ImcBusImpl::CallStreamingRpc(BML_RpcId rpc_id, const BML_ImcMessage *request,
                                                  BML_ImcHandler on_chunk, BML_FutureCallback on_done,
                                                  void *user_data, BML_Future *out_future) {
+            return CallStreamingRpcOwned(Context::GetCurrentModule(), rpc_id, request, on_chunk,
+                                         on_done, user_data, out_future);
+        }
+
+        BML_Result ImcBusImpl::CallStreamingRpcOwned(BML_Mod owner, BML_RpcId rpc_id,
+                                                     const BML_ImcMessage *request,
+                                                     BML_ImcHandler on_chunk,
+                                                     BML_FutureCallback on_done,
+                                                     void *user_data,
+                                                     BML_Future *out_future) {
             if (rpc_id == BML_RPC_ID_INVALID || !out_future)
                 return BML_RESULT_INVALID_ARGUMENT;
 
-            BML_Mod owner = nullptr;
-            BML_CHECK(ResolveRegistrationOwner(nullptr, &owner));
+            BML_Mod resolved_owner = nullptr;
+            BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));
 
             StreamingRpcHandlerEntry handler_entry;
             {
@@ -2606,7 +2690,7 @@ namespace BML::Core {
                 return BML_RESULT_OUT_OF_MEMORY;
 
             if (on_done) {
-                future->callbacks.push_back({on_done, user_data, owner});
+                future->callbacks.push_back({on_done, user_data, resolved_owner});
             }
 
             // Create a dynamic topic for streaming chunks
@@ -2623,7 +2707,7 @@ namespace BML::Core {
             stream_state->on_chunk = on_chunk;
             stream_state->on_done = on_done;
             stream_state->user_data = user_data;
-            stream_state->owner = owner;
+            stream_state->owner = resolved_owner;
 
             BML_RpcStream stream = stream_state.get();
             {
@@ -2972,6 +3056,11 @@ namespace BML::Core {
         }
 
         BML_Result ImcBusImpl::PublishState(BML_TopicId topic, const BML_ImcMessage *msg) {
+            return PublishStateOwned(Context::GetCurrentModule(), topic, msg);
+        }
+
+        BML_Result ImcBusImpl::PublishStateOwned(BML_Mod owner, BML_TopicId topic,
+                                                 const BML_ImcMessage *msg) {
             if (topic == BML_TOPIC_ID_INVALID || !msg) {
                 return BML_RESULT_INVALID_ARGUMENT;
             }
@@ -2979,11 +3068,11 @@ namespace BML::Core {
                 return BML_RESULT_INVALID_ARGUMENT;
             }
 
-            BML_Mod owner = nullptr;
-            BML_CHECK(ResolveRegistrationOwner(nullptr, &owner));
+            BML_Mod resolved_owner = nullptr;
+            BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));
 
             RetainedStateEntry entry;
-            entry.owner = owner;
+            entry.owner = resolved_owner;
             entry.timestamp = msg->timestamp ? msg->timestamp : GetTimestampNs();
             entry.flags = msg->flags;
             entry.priority = msg->priority;
@@ -2998,7 +3087,7 @@ namespace BML::Core {
 
             BML_ImcMessage publish_msg = *msg;
             publish_msg.timestamp = entry.timestamp;
-            return PublishEx(topic, &publish_msg);
+            return PublishExOwned(resolved_owner, topic, &publish_msg);
         }
 
         BML_Result ImcBusImpl::CopyState(BML_TopicId topic,
@@ -3177,8 +3266,14 @@ namespace BML::Core {
     BML_Result ImcGetTopicId(const char *n, BML_TopicId *o) { return GetBus().GetTopicId(n, o); }
     BML_Result ImcGetRpcId(const char *n, BML_RpcId *o) { return GetBus().GetRpcId(n, o); }
     BML_Result ImcPublish(BML_TopicId t, const void *d, size_t s) { return GetBus().Publish(t, d, s); }
+    BML_Result ImcPublishOwned(BML_Mod owner, BML_TopicId t, const void *d,
+                               size_t s) { return GetBus().PublishOwned(owner, t, d, s); }
     BML_Result ImcPublishEx(BML_TopicId t, const BML_ImcMessage *m) { return GetBus().PublishEx(t, m); }
+    BML_Result ImcPublishExOwned(BML_Mod owner, BML_TopicId t,
+                                 const BML_ImcMessage *m) { return GetBus().PublishExOwned(owner, t, m); }
     BML_Result ImcPublishBuffer(BML_TopicId t, const BML_ImcBuffer *b) { return GetBus().PublishBuffer(t, b); }
+    BML_Result ImcPublishBufferOwned(BML_Mod owner, BML_TopicId t,
+                                     const BML_ImcBuffer *b) { return GetBus().PublishBufferOwned(owner, t, b); }
     BML_Result ImcSubscribe(BML_TopicId t, BML_ImcHandler h, void *u, BML_Subscription *o) { return GetBus().Subscribe(t, h, u, o); }
     BML_Result ImcSubscribeOwned(BML_Mod owner, BML_TopicId t, BML_ImcHandler h,
                                  void *u, BML_Subscription *o) { return GetBus().SubscribeOwned(owner, t, h, u, o); }
@@ -3203,12 +3298,21 @@ namespace BML::Core {
                                             const BML_SubscribeOptions *opts,
                                             BML_Subscription *o) { return GetBus().SubscribeInterceptExOwned(owner, t, h, u, opts, o); }
     BML_Result ImcPublishInterceptable(BML_TopicId t, BML_ImcMessage *m, BML_EventResult *o) { return GetBus().PublishInterceptable(t, m, o); }
+    BML_Result ImcPublishInterceptableOwned(BML_Mod owner, BML_TopicId t, BML_ImcMessage *m,
+                                            BML_EventResult *o) { return GetBus().PublishInterceptableOwned(owner, t, m, o); }
+    BML_Result ImcPublishMulti(const BML_TopicId *ts, size_t n, const void *d, size_t s,
+                               const BML_ImcMessage *m, size_t *o) { return GetBus().PublishMulti(ts, n, d, s, m, o); }
+    BML_Result ImcPublishMultiOwned(BML_Mod owner, const BML_TopicId *ts, size_t n,
+                                    const void *d, size_t s, const BML_ImcMessage *m,
+                                    size_t *o) { return GetBus().PublishMultiOwned(owner, ts, n, d, s, m, o); }
     BML_Result ImcRegisterRpc(BML_RpcId r, BML_RpcHandler h, void *u) { return GetBus().RegisterRpc(r, h, u); }
     BML_Result ImcRegisterRpcOwned(BML_Mod owner, BML_RpcId r, BML_RpcHandler h,
                                    void *u) { return GetBus().RegisterRpcOwned(owner, r, h, u); }
     BML_Result ImcUnregisterRpc(BML_RpcId r) { return GetBus().UnregisterRpc(r); }
     BML_Result ImcUnregisterRpcOwned(BML_Mod owner, BML_RpcId r) { return GetBus().UnregisterRpcOwned(owner, r); }
     BML_Result ImcCallRpc(BML_RpcId r, const BML_ImcMessage *req, BML_Future *o) { return GetBus().CallRpc(r, req, o); }
+    BML_Result ImcCallRpcOwned(BML_Mod owner, BML_RpcId r, const BML_ImcMessage *req,
+                               BML_Future *o) { return GetBus().CallRpcOwned(owner, r, req, o); }
     BML_Result ImcFutureAwait(BML_Future f, uint32_t t) { return GetBus().FutureAwait(f, t); }
     BML_Result ImcFutureGetResult(BML_Future f, BML_ImcMessage *o) { return GetBus().FutureGetResult(f, o); }
     BML_Result ImcFutureGetState(BML_Future f, BML_FutureState *o) { return GetBus().FutureGetState(f, o); }
@@ -3222,6 +3326,8 @@ namespace BML::Core {
     BML_Result ImcGetTopicInfo(BML_TopicId t, BML_TopicInfo *o) { return GetBus().GetTopicInfo(t, o); }
     BML_Result ImcGetTopicName(BML_TopicId t, char *b, size_t s, size_t *o) { return GetBus().GetTopicName(t, b, s, o); }
     BML_Result ImcPublishState(BML_TopicId t, const BML_ImcMessage *m) { return GetBus().PublishState(t, m); }
+    BML_Result ImcPublishStateOwned(BML_Mod owner, BML_TopicId t,
+                                    const BML_ImcMessage *m) { return GetBus().PublishStateOwned(owner, t, m); }
     BML_Result ImcCopyState(BML_TopicId t, void *d, size_t ds, size_t *os, BML_ImcStateMeta *om) { return GetBus().CopyState(t, d, ds, os, om); }
     BML_Result ImcClearState(BML_TopicId t) { return GetBus().ClearState(t); }
 
@@ -3230,6 +3336,9 @@ namespace BML::Core {
     BML_Result ImcRegisterRpcExOwned(BML_Mod owner, BML_RpcId r, BML_RpcHandlerEx h,
                                      void *u) { return GetBus().RegisterRpcExOwned(owner, r, h, u); }
     BML_Result ImcCallRpcEx(BML_RpcId r, const BML_ImcMessage *req, const BML_RpcCallOptions *opts, BML_Future *o) { return GetBus().CallRpcEx(r, req, opts, o); }
+    BML_Result ImcCallRpcExOwned(BML_Mod owner, BML_RpcId r, const BML_ImcMessage *req,
+                                 const BML_RpcCallOptions *opts,
+                                 BML_Future *o) { return GetBus().CallRpcExOwned(owner, r, req, opts, o); }
     BML_Result ImcFutureGetError(BML_Future f, BML_Result *c, char *m, size_t cap, size_t *ol) { return GetBus().FutureGetError(f, c, m, cap, ol); }
     BML_Result ImcGetRpcInfo(BML_RpcId r, BML_RpcInfo *o) { return GetBus().GetRpcInfo(r, o); }
     BML_Result ImcGetRpcName(BML_RpcId r, char *b, size_t c, size_t *o) { return GetBus().GetRpcName(r, b, c, o); }
@@ -3246,6 +3355,10 @@ namespace BML::Core {
     BML_Result ImcStreamComplete(BML_RpcStream s) { return GetBus().StreamComplete(s); }
     BML_Result ImcStreamError(BML_RpcStream s, BML_Result e, const char *m) { return GetBus().StreamError(s, e, m); }
     BML_Result ImcCallStreamingRpc(BML_RpcId r, const BML_ImcMessage *req, BML_ImcHandler oc, BML_FutureCallback od, void *u, BML_Future *o) { return GetBus().CallStreamingRpc(r, req, oc, od, u, o); }
+    BML_Result ImcCallStreamingRpcOwned(BML_Mod owner, BML_RpcId r,
+                                        const BML_ImcMessage *req, BML_ImcHandler oc,
+                                        BML_FutureCallback od, void *u,
+                                        BML_Future *o) { return GetBus().CallStreamingRpcOwned(owner, r, req, oc, od, u, o); }
 
     // ========================================================================
     // C API wrappers (registered with ApiRegistry)
@@ -3255,10 +3368,20 @@ namespace BML::Core {
         BML_Result BML_API_ImcGetTopicId(const char *n, BML_TopicId *o) { return GetBus().GetTopicId(n, o); }
         BML_Result BML_API_ImcGetRpcId(const char *n, BML_RpcId *o) { return GetBus().GetRpcId(n, o); }
         BML_Result BML_API_ImcPublish(BML_TopicId t, const void *d, size_t s) { return GetBus().Publish(t, d, s); }
+        BML_Result BML_API_ImcPublishOwned(BML_Mod owner, BML_TopicId t,
+                                           const void *d, size_t s) { return GetBus().PublishOwned(owner, t, d, s); }
         BML_Result BML_API_ImcPublishEx(BML_TopicId t, const BML_ImcMessage *m) { return GetBus().PublishEx(t, m); }
+        BML_Result BML_API_ImcPublishExOwned(BML_Mod owner, BML_TopicId t,
+                                             const BML_ImcMessage *m) { return GetBus().PublishExOwned(owner, t, m); }
         BML_Result BML_API_ImcPublishBuffer(BML_TopicId t, const BML_ImcBuffer *b) { return GetBus().PublishBuffer(t, b); }
+        BML_Result BML_API_ImcPublishBufferOwned(BML_Mod owner, BML_TopicId t,
+                                                 const BML_ImcBuffer *b) { return GetBus().PublishBufferOwned(owner, t, b); }
         BML_Result BML_API_ImcPublishMulti(const BML_TopicId *ts, size_t n, const void *d, size_t s,
                                            const BML_ImcMessage *m, size_t *o) { return GetBus().PublishMulti(ts, n, d, s, m, o); }
+        BML_Result BML_API_ImcPublishMultiOwned(BML_Mod owner, const BML_TopicId *ts,
+                                                size_t n, const void *d, size_t s,
+                                                const BML_ImcMessage *m,
+                                                size_t *o) { return GetBus().PublishMultiOwned(owner, ts, n, d, s, m, o); }
         BML_Result BML_API_ImcSubscribe(BML_TopicId t, BML_ImcHandler h, void *u, BML_Subscription *o) { return GetBus().Subscribe(t, h, u, o); }
         BML_Result BML_API_ImcSubscribeOwned(BML_Mod owner, BML_TopicId t, BML_ImcHandler h,
                                              void *u, BML_Subscription *o) { return GetBus().SubscribeOwned(owner, t, h, u, o); }
@@ -3283,12 +3406,18 @@ namespace BML::Core {
                                                         BML_Subscription *o) { return GetBus().SubscribeInterceptExOwned(owner, t, h, u, opts, o); }
         BML_Result BML_API_ImcPublishInterceptable(BML_TopicId t, BML_ImcMessage *m,
                                                     BML_EventResult *o) { return GetBus().PublishInterceptable(t, m, o); }
+        BML_Result BML_API_ImcPublishInterceptableOwned(BML_Mod owner, BML_TopicId t,
+                                                        BML_ImcMessage *m,
+                                                        BML_EventResult *o) { return GetBus().PublishInterceptableOwned(owner, t, m, o); }
         BML_Result BML_API_ImcRegisterRpc(BML_RpcId r, BML_RpcHandler h, void *u) { return GetBus().RegisterRpc(r, h, u); }
         BML_Result BML_API_ImcRegisterRpcOwned(BML_Mod owner, BML_RpcId r, BML_RpcHandler h,
                                                void *u) { return GetBus().RegisterRpcOwned(owner, r, h, u); }
         BML_Result BML_API_ImcUnregisterRpc(BML_RpcId r) { return GetBus().UnregisterRpc(r); }
         BML_Result BML_API_ImcUnregisterRpcOwned(BML_Mod owner, BML_RpcId r) { return GetBus().UnregisterRpcOwned(owner, r); }
         BML_Result BML_API_ImcCallRpc(BML_RpcId r, const BML_ImcMessage *req, BML_Future *o) { return GetBus().CallRpc(r, req, o); }
+        BML_Result BML_API_ImcCallRpcOwned(BML_Mod owner, BML_RpcId r,
+                                           const BML_ImcMessage *req,
+                                           BML_Future *o) { return GetBus().CallRpcOwned(owner, r, req, o); }
         BML_Result BML_API_ImcFutureAwait(BML_Future f, uint32_t t) { return GetBus().FutureAwait(f, t); }
         BML_Result BML_API_ImcFutureGetResult(BML_Future f, BML_ImcMessage *o) { return GetBus().FutureGetResult(f, o); }
         BML_Result BML_API_ImcFutureGetState(BML_Future f, BML_FutureState *o) { return GetBus().FutureGetState(f, o); }
@@ -3304,6 +3433,8 @@ namespace BML::Core {
         BML_Result BML_API_ImcGetTopicInfo(BML_TopicId t, BML_TopicInfo *o) { return GetBus().GetTopicInfo(t, o); }
         BML_Result BML_API_ImcGetTopicName(BML_TopicId t, char *b, size_t s, size_t *o) { return GetBus().GetTopicName(t, b, s, o); }
         BML_Result BML_API_ImcPublishState(BML_TopicId t, const BML_ImcMessage *m) { return GetBus().PublishState(t, m); }
+        BML_Result BML_API_ImcPublishStateOwned(BML_Mod owner, BML_TopicId t,
+                                                const BML_ImcMessage *m) { return GetBus().PublishStateOwned(owner, t, m); }
         BML_Result BML_API_ImcCopyState(BML_TopicId t, void *d, size_t ds, size_t *os, BML_ImcStateMeta *om) { return GetBus().CopyState(t, d, ds, os, om); }
         BML_Result BML_API_ImcClearState(BML_TopicId t) { return GetBus().ClearState(t); }
         // RPC v1.1 C API wrappers
@@ -3311,6 +3442,10 @@ namespace BML::Core {
         BML_Result BML_API_ImcRegisterRpcExOwned(BML_Mod owner, BML_RpcId r,
                                                  BML_RpcHandlerEx h, void *u) { return GetBus().RegisterRpcExOwned(owner, r, h, u); }
         BML_Result BML_API_ImcCallRpcEx(BML_RpcId r, const BML_ImcMessage *req, const BML_RpcCallOptions *opts, BML_Future *o) { return GetBus().CallRpcEx(r, req, opts, o); }
+        BML_Result BML_API_ImcCallRpcExOwned(BML_Mod owner, BML_RpcId r,
+                                             const BML_ImcMessage *req,
+                                             const BML_RpcCallOptions *opts,
+                                             BML_Future *o) { return GetBus().CallRpcExOwned(owner, r, req, opts, o); }
         BML_Result BML_API_ImcFutureGetError(BML_Future f, BML_Result *c, char *m, size_t cap, size_t *ol) { return GetBus().FutureGetError(f, c, m, cap, ol); }
         BML_Result BML_API_ImcGetRpcInfo(BML_RpcId r, BML_RpcInfo *o) { return GetBus().GetRpcInfo(r, o); }
         BML_Result BML_API_ImcGetRpcName(BML_RpcId r, char *b, size_t c, size_t *o) { return GetBus().GetRpcName(r, b, c, o); }
@@ -3329,6 +3464,11 @@ namespace BML::Core {
         BML_Result BML_API_ImcStreamComplete(BML_RpcStream s) { return GetBus().StreamComplete(s); }
         BML_Result BML_API_ImcStreamError(BML_RpcStream s, BML_Result e, const char *m) { return GetBus().StreamError(s, e, m); }
         BML_Result BML_API_ImcCallStreamingRpc(BML_RpcId r, const BML_ImcMessage *req, BML_ImcHandler oc, BML_FutureCallback od, void *u, BML_Future *o) { return GetBus().CallStreamingRpc(r, req, oc, od, u, o); }
+        BML_Result BML_API_ImcCallStreamingRpcOwned(BML_Mod owner, BML_RpcId r,
+                                                    const BML_ImcMessage *req,
+                                                    BML_ImcHandler oc,
+                                                    BML_FutureCallback od, void *u,
+                                                    BML_Future *o) { return GetBus().CallStreamingRpcOwned(owner, r, req, oc, od, u, o); }
     } // namespace
 
     void RegisterImcApis() {
@@ -3337,9 +3477,15 @@ namespace BML::Core {
         BML_REGISTER_API_GUARDED(bmlImcGetTopicId, "imc", BML_API_ImcGetTopicId);
         BML_REGISTER_API_GUARDED(bmlImcGetRpcId, "imc", BML_API_ImcGetRpcId);
         BML_REGISTER_API_GUARDED(bmlImcPublish, "imc", BML_API_ImcPublish);
+        BML_REGISTER_API_GUARDED(bmlImcPublishOwned, "imc", BML_API_ImcPublishOwned);
         BML_REGISTER_API_GUARDED(bmlImcPublishEx, "imc", BML_API_ImcPublishEx);
+        BML_REGISTER_API_GUARDED(bmlImcPublishExOwned, "imc", BML_API_ImcPublishExOwned);
         BML_REGISTER_API_GUARDED(bmlImcPublishBuffer, "imc", BML_API_ImcPublishBuffer);
+        BML_REGISTER_API_GUARDED(bmlImcPublishBufferOwned, "imc",
+                                 BML_API_ImcPublishBufferOwned);
         BML_REGISTER_API_GUARDED(bmlImcPublishMulti, "imc", BML_API_ImcPublishMulti);
+        BML_REGISTER_API_GUARDED(bmlImcPublishMultiOwned, "imc",
+                                 BML_API_ImcPublishMultiOwned);
         BML_REGISTER_API_GUARDED(bmlImcSubscribe, "imc", BML_API_ImcSubscribe);
         BML_REGISTER_API_GUARDED(bmlImcSubscribeOwned, "imc", BML_API_ImcSubscribeOwned);
         BML_REGISTER_API_GUARDED(bmlImcSubscribeEx, "imc", BML_API_ImcSubscribeEx);
@@ -3351,11 +3497,14 @@ namespace BML::Core {
         BML_REGISTER_API_GUARDED(bmlImcSubscribeInterceptEx, "imc", BML_API_ImcSubscribeInterceptEx);
         BML_REGISTER_API_GUARDED(bmlImcSubscribeInterceptExOwned, "imc", BML_API_ImcSubscribeInterceptExOwned);
         BML_REGISTER_API_GUARDED(bmlImcPublishInterceptable, "imc", BML_API_ImcPublishInterceptable);
+        BML_REGISTER_API_GUARDED(bmlImcPublishInterceptableOwned, "imc",
+                                 BML_API_ImcPublishInterceptableOwned);
         BML_REGISTER_API_GUARDED(bmlImcRegisterRpc, "imc", BML_API_ImcRegisterRpc);
         BML_REGISTER_API_GUARDED(bmlImcRegisterRpcOwned, "imc", BML_API_ImcRegisterRpcOwned);
         BML_REGISTER_API_GUARDED(bmlImcUnregisterRpc, "imc", BML_API_ImcUnregisterRpc);
         BML_REGISTER_API_GUARDED(bmlImcUnregisterRpcOwned, "imc", BML_API_ImcUnregisterRpcOwned);
         BML_REGISTER_API_GUARDED(bmlImcCallRpc, "imc", BML_API_ImcCallRpc);
+        BML_REGISTER_API_GUARDED(bmlImcCallRpcOwned, "imc", BML_API_ImcCallRpcOwned);
         BML_REGISTER_API_GUARDED(bmlImcFutureAwait, "imc", BML_API_ImcFutureAwait);
         BML_REGISTER_API_GUARDED(bmlImcFutureGetResult, "imc", BML_API_ImcFutureGetResult);
         BML_REGISTER_API_GUARDED(bmlImcFutureGetState, "imc", BML_API_ImcFutureGetState);
@@ -3370,12 +3519,14 @@ namespace BML::Core {
         BML_REGISTER_API_GUARDED(bmlImcGetTopicInfo, "imc", BML_API_ImcGetTopicInfo);
         BML_REGISTER_API_GUARDED(bmlImcGetTopicName, "imc", BML_API_ImcGetTopicName);
         BML_REGISTER_API_GUARDED(bmlImcPublishState, "imc", BML_API_ImcPublishState);
+        BML_REGISTER_API_GUARDED(bmlImcPublishStateOwned, "imc", BML_API_ImcPublishStateOwned);
         BML_REGISTER_API_GUARDED(bmlImcCopyState, "imc", BML_API_ImcCopyState);
         BML_REGISTER_API_GUARDED(bmlImcClearState, "imc", BML_API_ImcClearState);
         // RPC v1.1
         BML_REGISTER_API_GUARDED(bmlImcRegisterRpcEx, "imc", BML_API_ImcRegisterRpcEx);
         BML_REGISTER_API_GUARDED(bmlImcRegisterRpcExOwned, "imc", BML_API_ImcRegisterRpcExOwned);
         BML_REGISTER_API_GUARDED(bmlImcCallRpcEx, "imc", BML_API_ImcCallRpcEx);
+        BML_REGISTER_API_GUARDED(bmlImcCallRpcExOwned, "imc", BML_API_ImcCallRpcExOwned);
         BML_REGISTER_API_GUARDED(bmlImcFutureGetError, "imc", BML_API_ImcFutureGetError);
         BML_REGISTER_API_GUARDED(bmlImcGetRpcInfo, "imc", BML_API_ImcGetRpcInfo);
         BML_REGISTER_API_GUARDED(bmlImcGetRpcName, "imc", BML_API_ImcGetRpcName);
@@ -3390,6 +3541,8 @@ namespace BML::Core {
         BML_REGISTER_API_GUARDED(bmlImcStreamComplete, "imc", BML_API_ImcStreamComplete);
         BML_REGISTER_API_GUARDED(bmlImcStreamError, "imc", BML_API_ImcStreamError);
         BML_REGISTER_API_GUARDED(bmlImcCallStreamingRpc, "imc", BML_API_ImcCallStreamingRpc);
+        BML_REGISTER_API_GUARDED(bmlImcCallStreamingRpcOwned, "imc",
+                                 BML_API_ImcCallStreamingRpcOwned);
     }
 } // namespace BML::Core
 

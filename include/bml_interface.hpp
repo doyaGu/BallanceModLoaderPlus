@@ -19,12 +19,30 @@ namespace bml {
         return reg(desc);
     }
 
+    inline BML_Result RegisterInterfaceOwned(PFN_BML_InterfaceRegisterOwned reg,
+                                             BML_Mod owner,
+                                             const BML_InterfaceDesc *desc) {
+        if (!desc || !reg || !owner) {
+            return BML_RESULT_NOT_SUPPORTED;
+        }
+        return reg(owner, desc);
+    }
+
     inline BML_Result UnregisterInterface(PFN_BML_InterfaceUnregister unreg,
                                           const char *interfaceId) {
         if (!interfaceId || !unreg) {
             return BML_RESULT_NOT_SUPPORTED;
         }
         return unreg(interfaceId);
+    }
+
+    inline BML_Result UnregisterInterfaceOwned(PFN_BML_InterfaceUnregisterOwned unreg,
+                                               BML_Mod owner,
+                                               const char *interfaceId) {
+        if (!interfaceId || !unreg || !owner) {
+            return BML_RESULT_NOT_SUPPORTED;
+        }
+        return unreg(owner, interfaceId);
     }
 
     template <typename T>
@@ -157,6 +175,24 @@ namespace bml {
             m_Valid = true;
         }
 
+        PublishedInterface(PFN_BML_InterfaceRegisterOwned reg,
+                           PFN_BML_InterfaceUnregisterOwned unreg,
+                           BML_Mod owner,
+                           const BML_InterfaceDesc &desc) {
+            if (!reg || !unreg || !owner || !desc.interface_id) {
+                return;
+            }
+
+            if (reg(owner, &desc) != BML_RESULT_OK) {
+                return;
+            }
+
+            m_InterfaceId = desc.interface_id;
+            m_OwnerUnregister = unreg;
+            m_Owner = owner;
+            m_Valid = true;
+        }
+
         ~PublishedInterface() {
             (void) Reset();
         }
@@ -167,8 +203,12 @@ namespace bml {
         PublishedInterface(PublishedInterface &&other) noexcept
             : m_InterfaceId(std::move(other.m_InterfaceId)),
               m_Unregister(other.m_Unregister),
+              m_OwnerUnregister(other.m_OwnerUnregister),
+              m_Owner(other.m_Owner),
               m_Valid(other.m_Valid) {
             other.m_Unregister = nullptr;
+            other.m_OwnerUnregister = nullptr;
+            other.m_Owner = nullptr;
             other.m_Valid = false;
         }
 
@@ -177,8 +217,12 @@ namespace bml {
                 (void) Reset();
                 m_InterfaceId = std::move(other.m_InterfaceId);
                 m_Unregister = other.m_Unregister;
+                m_OwnerUnregister = other.m_OwnerUnregister;
+                m_Owner = other.m_Owner;
                 m_Valid = other.m_Valid;
                 other.m_Unregister = nullptr;
+                other.m_OwnerUnregister = nullptr;
+                other.m_Owner = nullptr;
                 other.m_Valid = false;
             }
             return *this;
@@ -190,14 +234,23 @@ namespace bml {
             if (!m_Valid) {
                 return BML_RESULT_OK;
             }
-            if (!m_Unregister || m_InterfaceId.empty()) {
+            if (m_InterfaceId.empty()) {
                 return BML_RESULT_NOT_SUPPORTED;
             }
 
-            const BML_Result result = m_Unregister(m_InterfaceId.c_str());
+            BML_Result result = BML_RESULT_NOT_SUPPORTED;
+            if (m_OwnerUnregister && m_Owner) {
+                result = m_OwnerUnregister(m_Owner, m_InterfaceId.c_str());
+            } else if (m_Unregister) {
+                result = m_Unregister(m_InterfaceId.c_str());
+            } else {
+                return BML_RESULT_NOT_SUPPORTED;
+            }
             if (result == BML_RESULT_OK) {
                 m_InterfaceId.clear();
                 m_Unregister = nullptr;
+                m_OwnerUnregister = nullptr;
+                m_Owner = nullptr;
                 m_Valid = false;
             }
             return result;
@@ -206,6 +259,8 @@ namespace bml {
     private:
         std::string m_InterfaceId;
         PFN_BML_InterfaceUnregister m_Unregister = nullptr;
+        PFN_BML_InterfaceUnregisterOwned m_OwnerUnregister = nullptr;
+        BML_Mod m_Owner = nullptr;
         bool m_Valid = false;
     };
 
@@ -467,6 +522,28 @@ namespace bml {
         BML_InterfaceLease lease = nullptr;
         BML_Version required = bmlMakeVersion(reqMajor, reqMinor, reqPatch);
         if (bmlInterfaceAcquire(interfaceId, &required, &implementation, &lease) != BML_RESULT_OK) {
+            return {};
+        }
+
+        return InterfaceLease<T>(static_cast<const T *>(implementation), lease);
+    }
+
+    template <typename T>
+    InterfaceLease<T> AcquireInterfaceOwned(
+        BML_Mod owner,
+        const char *interfaceId,
+        uint16_t reqMajor,
+        uint16_t reqMinor = 0,
+        uint16_t reqPatch = 0) {
+        if (!owner || !interfaceId || !bmlInterfaceAcquireOwned) {
+            return {};
+        }
+
+        const void *implementation = nullptr;
+        BML_InterfaceLease lease = nullptr;
+        BML_Version required = bmlMakeVersion(reqMajor, reqMinor, reqPatch);
+        if (bmlInterfaceAcquireOwned(owner, interfaceId, &required, &implementation, &lease) !=
+            BML_RESULT_OK) {
             return {};
         }
 

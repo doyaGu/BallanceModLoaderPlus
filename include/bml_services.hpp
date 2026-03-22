@@ -10,7 +10,7 @@
  *   RuntimeServiceHub  - type public, single instance owned by Context
  *   BuiltinServices    - raw pointers to immutable static vtables
  *   ModuleServices     - per-module, owns Logger/Config/SubscriptionManager
- *   ScopedModuleContext - RAII guard for g_CurrentModule TLS
+ *   ScopedModuleContext - compatibility guard for legacy TLS-only paths
  */
 
 #ifndef BML_SERVICES_HPP
@@ -41,11 +41,11 @@ namespace bml {
 // ============================================================================
 
 /**
- * @brief RAII guard that sets g_CurrentModule for the current scope.
+ * @brief Compatibility guard that sets g_CurrentModule for the current scope.
  *
  * Uses the BML_CoreModuleInterface vtable to set/restore the current
- * module context. This ensures correct lease attribution when acquiring
- * interfaces from callbacks where g_CurrentModule is not set.
+ * module context. New core paths should prefer explicit owner-aware APIs;
+ * this guard exists only for legacy paths that still require TLS rebinding.
  */
 class ScopedModuleContext {
 public:
@@ -140,8 +140,9 @@ public:
  *
  * Holds module identity plus a reference to the RuntimeServiceHub.
  * Provides bound convenience wrappers for Log, Config, and
- * SubscriptionManager. Automatically scopes g_CurrentModule for
- * interface acquisition to prevent silent lease misattribution.
+ * SubscriptionManager. Owner-aware interfaces are preferred first;
+ * TLS rebinding is only used as a legacy fallback when the runtime
+ * does not expose an explicit owner path yet.
  *
  * Move-only. Owned by the module instance (bml::Module::m_Services).
  */
@@ -163,7 +164,7 @@ public:
             b.Module->GetModId(mod, &mod_id);
         }
 
-        m_Logger.emplace(m_GlobalContext, mod_id ? mod_id : "", b.Logging);
+        m_Logger.emplace(m_GlobalContext, mod_id ? mod_id : "", b.Logging, m_Handle);
         m_Locale = bml::Locale(m_Handle, b.Locale, b.Module);
     }
 
@@ -218,7 +219,7 @@ public:
     }
 
     bml::TimerService Timer() const {
-        return bml::TimerService(m_Hub ? m_Hub->Builtins().Timer : nullptr);
+        return bml::TimerService(m_Hub ? m_Hub->Builtins().Timer : nullptr, m_Handle);
     }
 
     bml::HookService Hooks() const {
@@ -348,6 +349,13 @@ public:
 
     template <typename T>
     InterfaceLease<T> Acquire() const {
+        using Trait = bml::InterfaceTrait<T>;
+        auto lease = bml::AcquireInterfaceOwned<T>(
+            m_Handle, Trait::Id, Trait::AbiMajor, Trait::AbiMinor);
+        if (lease) {
+            return lease;
+        }
+
         ScopedModuleContext guard(m_Handle, m_Hub ? m_Hub->Builtins().Module : nullptr);
         return bml::Acquire<T>();
     }
@@ -357,6 +365,11 @@ public:
                               uint16_t major,
                               uint16_t minor = 0,
                               uint16_t patch = 0) const {
+        auto lease = bml::AcquireInterfaceOwned<T>(m_Handle, id, major, minor, patch);
+        if (lease) {
+            return lease;
+        }
+
         ScopedModuleContext guard(m_Handle, m_Hub ? m_Hub->Builtins().Module : nullptr);
         return bml::AcquireInterface<T>(id, major, minor, patch);
     }

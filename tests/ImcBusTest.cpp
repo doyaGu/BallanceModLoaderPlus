@@ -214,14 +214,14 @@ void ShutdownFutureCallback(BML_Context ctx, BML_Future future, void *user_data)
     if (!state)
         return;
 
-    auto *kernel = GetKernelOrNull();
+    auto &kernel = Kernel();
     BML_FutureState future_state = BML_FUTURE_PENDING;
     BML_Result result = ImcFutureGetState(future, &future_state);
     state->get_state_result.store(result, std::memory_order_relaxed);
     state->future_state.store(static_cast<int>(future_state), std::memory_order_relaxed);
     state->context_value.store(reinterpret_cast<uintptr_t>(ctx), std::memory_order_relaxed);
     state->kernel_visible.store(
-        kernel && kernel->context && kernel->context->GetHandle() == ctx,
+        kernel.context && kernel.context->GetHandle() == ctx,
         std::memory_order_relaxed);
     state->called.store(true, std::memory_order_release);
 }

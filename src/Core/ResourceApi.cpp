@@ -17,7 +17,7 @@
 #include <vector>
 
 using BML::Core::Context;
-using BML::Core::GetKernelOrNull;
+using BML::Core::Kernel;
 
 /* ============================================================================
  * Resource Handle Management Implementation
@@ -27,6 +27,7 @@ namespace {
     struct ControlBlock {
         std::atomic<uint32_t> ref_count{1};
         std::atomic<void *> user_data{nullptr};
+        std::string owner_id;
     };
 
     struct HandleSlot {
@@ -91,12 +92,18 @@ namespace {
         return block;
     }
 
-    std::string GetCurrentProviderId() {
-        auto *ctx = GetKernelOrNull()->context.get();
-        if (auto *mod = ctx->ResolveModHandle(Context::GetCurrentModule())) {
+    BML_Mod ResolveLegacyOwner(Context &context) {
+        if (auto current = Context::GetCurrentModule()) {
+            return current;
+        }
+        return context.GetSyntheticHostModule();
+    }
+
+    std::string ResolveProviderId(Context &context, BML_Mod owner) {
+        if (auto *mod = context.ResolveModHandle(owner)) {
             return mod->id;
         }
-        return "BML";
+        return {};
     }
 
     constexpr size_t kHandleDescMinSize = sizeof(BML_HandleDesc);
@@ -115,9 +122,14 @@ namespace {
  * C API Implementation
  * ============================================================================ */
 
-static BML_Result BML_HandleCreateImpl(BML_HandleType type, BML_HandleDesc *out_desc) {
+static BML_Result BML_HandleCreateImpl(const std::string &owner_id,
+                                       BML_HandleType type,
+                                       BML_HandleDesc *out_desc) {
     if (!HasValidHandleCreateOutput(out_desc)) {
         return BML_RESULT_INVALID_ARGUMENT;
+    }
+    if (owner_id.empty()) {
+        return BML_RESULT_INVALID_CONTEXT;
     }
 
     {
@@ -152,6 +164,7 @@ static BML_Result BML_HandleCreateImpl(BML_HandleType type, BML_HandleDesc *out_
     auto &slot = table->slots[slot_index];
     slot.control = control;
     slot.in_use = true;
+    slot.control->owner_id = owner_id;
 
     out_desc->struct_size = sizeof(BML_HandleDesc);
     out_desc->type = type;
@@ -186,7 +199,7 @@ static BML_Result BML_HandleRetainImpl(const BML_HandleDesc *desc) {
     return BML_RESULT_OK;
 }
 
-static BML_Result BML_HandleReleaseImpl(const BML_HandleDesc *desc) {
+static BML_Result BML_HandleReleaseImpl(BML_Context finalize_ctx, const BML_HandleDesc *desc) {
     if (!HasValidHandleDescriptor(desc)) {
         return BML_RESULT_INVALID_ARGUMENT;
     }
@@ -248,7 +261,7 @@ static BML_Result BML_HandleReleaseImpl(const BML_HandleDesc *desc) {
 
     if (finalize) {
         try {
-            finalize(GetKernelOrNull()->context->GetHandle(), &finalized_desc, finalize_user_data);
+            finalize(finalize_ctx, &finalized_desc, finalize_user_data);
         } catch (...) {
         }
     }
@@ -343,7 +356,14 @@ namespace BML::Core {
     // ============================================================================
 
     BML_Result BML_API_HandleCreate(BML_HandleType type, BML_HandleDesc *out_desc) {
-        return BML_HandleCreateImpl(type, out_desc);
+        auto &context = *Kernel().context;
+        return BML_HandleCreateImpl(
+            ResolveProviderId(context, ResolveLegacyOwner(context)), type, out_desc);
+    }
+
+    BML_Result BML_API_HandleCreateOwned(BML_Mod owner, BML_HandleType type, BML_HandleDesc *out_desc) {
+        auto &context = *Kernel().context;
+        return BML_HandleCreateImpl(ResolveProviderId(context, owner), type, out_desc);
     }
 
     BML_Result BML_API_HandleRetain(const BML_HandleDesc *desc) {
@@ -351,7 +371,7 @@ namespace BML::Core {
     }
 
     BML_Result BML_API_HandleRelease(const BML_HandleDesc *desc) {
-        return BML_HandleReleaseImpl(desc);
+        return BML_HandleReleaseImpl(Kernel().context->GetHandle(), desc);
     }
 
     BML_Result BML_API_HandleValidate(const BML_HandleDesc *desc, BML_Bool *out_valid) {
@@ -367,7 +387,14 @@ namespace BML::Core {
     }
 
     BML_Result BML_API_RegisterResourceType(const BML_ResourceTypeDesc *desc, BML_HandleType *out_type) {
-        return RegisterResourceType(desc, out_type);
+        auto &context = *Kernel().context;
+        return RegisterResourceTypeOwned(ResolveLegacyOwner(context), desc, out_type);
+    }
+
+    BML_Result BML_API_RegisterResourceTypeOwned(BML_Mod owner,
+                                                 const BML_ResourceTypeDesc *desc,
+                                                 BML_HandleType *out_type) {
+        return RegisterResourceTypeOwned(owner, desc, out_type);
     }
 
     void RegisterResourceApis() {
@@ -375,6 +402,7 @@ namespace BML::Core {
 
         // Handle management APIs
         BML_REGISTER_API_GUARDED(bmlHandleCreate, "resource", BML_API_HandleCreate);
+        BML_REGISTER_API_GUARDED(bmlHandleCreateOwned, "resource", BML_API_HandleCreateOwned);
         BML_REGISTER_API_GUARDED(bmlHandleRetain, "resource", BML_API_HandleRetain);
         BML_REGISTER_API_GUARDED(bmlHandleRelease, "resource", BML_API_HandleRelease);
         BML_REGISTER_API_GUARDED(bmlHandleValidate, "resource", BML_API_HandleValidate);
@@ -383,11 +411,26 @@ namespace BML::Core {
 
         // Resource type registration
         BML_REGISTER_API_GUARDED(bmlRegisterResourceType, "resource", BML_API_RegisterResourceType);
+        BML_REGISTER_API_GUARDED(
+            bmlRegisterResourceTypeOwned, "resource", BML_API_RegisterResourceTypeOwned);
     }
 
     BML_Result RegisterResourceType(const BML_ResourceTypeDesc *desc, BML_HandleType *out_type) {
+        auto &context = *Kernel().context;
+        return RegisterResourceTypeOwned(ResolveLegacyOwner(context), desc, out_type);
+    }
+
+    BML_Result RegisterResourceTypeOwned(BML_Mod owner,
+                                         const BML_ResourceTypeDesc *desc,
+                                         BML_HandleType *out_type) {
         if (!desc || desc->struct_size < sizeof(BML_ResourceTypeDesc) || !out_type || !desc->name || desc->name[0] == '\0') {
             return BML_RESULT_INVALID_ARGUMENT;
+        }
+
+        auto &context = *Kernel().context;
+        const std::string provider_id = ResolveProviderId(context, owner);
+        if (provider_id.empty()) {
+            return BML_RESULT_INVALID_CONTEXT;
         }
 
         auto type = g_NextResourceType.fetch_add(1, std::memory_order_relaxed);
@@ -399,7 +442,7 @@ namespace BML::Core {
         metadata.name = desc->name;
         metadata.finalize = desc->on_finalize;
         metadata.user_data = desc->user_data;
-        metadata.provider_id = GetCurrentProviderId();
+        metadata.provider_id = provider_id;
 
         {
             std::unique_lock lock(g_ResourceMetadataMutex);

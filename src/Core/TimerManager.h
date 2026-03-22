@@ -54,8 +54,8 @@ namespace BML::Core {
                                   void *user_data,
                                   BML_Timer *out_timer);
 
-        BML_Result Cancel(BML_Timer timer);
-        BML_Result IsActive(BML_Timer timer, BML_Bool *out_active);
+        BML_Result Cancel(const std::string &owner_id, BML_Timer timer);
+        BML_Result IsActive(const std::string &owner_id, BML_Timer timer, BML_Bool *out_active);
 
         /** @brief Cancel all timers owned by a specific module */
         BML_Result CancelAllForModule(const std::string &owner_id);
@@ -101,6 +101,7 @@ namespace BML::Core {
         };
 
         TimerEntry *FindEntry(BML_Timer timer);
+        BML_Result CancelInternal(BML_Timer timer, const std::string *owner_id);
 
         std::mutex m_Mutex;
         std::vector<TimerEntry> m_Timers;

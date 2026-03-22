@@ -13,10 +13,22 @@
 #include "bml_errors.h"
 
 #include <optional>
+#include <cstddef>
 #include <memory>
 #include <utility>
 
 namespace bml {
+    namespace detail {
+        template <typename MemberT>
+        constexpr bool HasResourceMember(const BML_CoreResourceInterface *iface, size_t offset) noexcept {
+            return iface != nullptr && iface->header.struct_size >= offset + sizeof(MemberT);
+        }
+    } // namespace detail
+
+#define BML_CORE_RESOURCE_HAS_MEMBER(iface, member) \
+    (::bml::detail::HasResourceMember<decltype(((BML_CoreResourceInterface *) 0)->member)>( \
+        (iface), offsetof(BML_CoreResourceInterface, member)) && (iface)->member != nullptr)
+
     // ============================================================================
     // Handle Wrapper
     // ============================================================================
@@ -46,14 +58,18 @@ namespace bml {
          * @throws bml::Exception if creation fails
          */
         static Handle create(BML_HandleType type,
-                             const BML_CoreResourceInterface *resourceInterface = nullptr) {
-            if (!resourceInterface || !resourceInterface->HandleCreate) {
+                             const BML_CoreResourceInterface *resourceInterface = nullptr,
+                             BML_Mod owner = nullptr) {
+            if (!resourceInterface || (!resourceInterface->HandleCreate &&
+                !(owner && BML_CORE_RESOURCE_HAS_MEMBER(resourceInterface, HandleCreateOwned)))) {
                 throw Exception(BML_RESULT_NOT_FOUND, "Handle API unavailable");
             }
 
             Handle h;
             h.m_ResourceInterface = resourceInterface;
-            auto result = resourceInterface->HandleCreate(type, &h.m_desc);
+            auto result = (owner && BML_CORE_RESOURCE_HAS_MEMBER(resourceInterface, HandleCreateOwned))
+                ? resourceInterface->HandleCreateOwned(owner, type, &h.m_desc)
+                : resourceInterface->HandleCreate(type, &h.m_desc);
             if (result != BML_RESULT_OK) {
                 throw Exception(result, "Failed to create handle");
             }
@@ -68,12 +84,19 @@ namespace bml {
          */
         static std::optional<Handle> tryCreate(
             BML_HandleType type,
-            const BML_CoreResourceInterface *resourceInterface = nullptr) {
-            if (!resourceInterface || !resourceInterface->HandleCreate) return std::nullopt;
+            const BML_CoreResourceInterface *resourceInterface = nullptr,
+            BML_Mod owner = nullptr) {
+            if (!resourceInterface || (!resourceInterface->HandleCreate &&
+                !(owner && BML_CORE_RESOURCE_HAS_MEMBER(resourceInterface, HandleCreateOwned)))) {
+                return std::nullopt;
+            }
 
             Handle h;
             h.m_ResourceInterface = resourceInterface;
-            if (resourceInterface->HandleCreate(type, &h.m_desc) == BML_RESULT_OK) {
+            const auto result = (owner && BML_CORE_RESOURCE_HAS_MEMBER(resourceInterface, HandleCreateOwned))
+                ? resourceInterface->HandleCreateOwned(owner, type, &h.m_desc)
+                : resourceInterface->HandleCreate(type, &h.m_desc);
+            if (result == BML_RESULT_OK) {
                 h.m_valid = true;
                 return h;
             }
@@ -253,14 +276,18 @@ namespace bml {
          * @throws bml::Exception if creation fails
          */
         static SharedHandle create(BML_HandleType type,
-                                   const BML_CoreResourceInterface *resourceInterface = nullptr) {
-            if (!resourceInterface || !resourceInterface->HandleCreate) {
+                                   const BML_CoreResourceInterface *resourceInterface = nullptr,
+                                   BML_Mod owner = nullptr) {
+            if (!resourceInterface || (!resourceInterface->HandleCreate &&
+                !(owner && BML_CORE_RESOURCE_HAS_MEMBER(resourceInterface, HandleCreateOwned)))) {
                 throw Exception(BML_RESULT_NOT_FOUND, "Handle API unavailable");
             }
 
             auto impl = std::make_shared<Impl>();
             impl->resource_interface = resourceInterface;
-            auto result = resourceInterface->HandleCreate(type, &impl->desc);
+            auto result = (owner && BML_CORE_RESOURCE_HAS_MEMBER(resourceInterface, HandleCreateOwned))
+                ? resourceInterface->HandleCreateOwned(owner, type, &impl->desc)
+                : resourceInterface->HandleCreate(type, &impl->desc);
             if (result != BML_RESULT_OK) {
                 throw Exception(result, "Failed to create handle");
             }
@@ -278,12 +305,19 @@ namespace bml {
          */
         static std::optional<SharedHandle> tryCreate(
             BML_HandleType type,
-            const BML_CoreResourceInterface *resourceInterface = nullptr) {
-            if (!resourceInterface || !resourceInterface->HandleCreate) return std::nullopt;
+            const BML_CoreResourceInterface *resourceInterface = nullptr,
+            BML_Mod owner = nullptr) {
+            if (!resourceInterface || (!resourceInterface->HandleCreate &&
+                !(owner && BML_CORE_RESOURCE_HAS_MEMBER(resourceInterface, HandleCreateOwned)))) {
+                return std::nullopt;
+            }
 
             auto impl = std::make_shared<Impl>();
             impl->resource_interface = resourceInterface;
-            if (resourceInterface->HandleCreate(type, &impl->desc) == BML_RESULT_OK) {
+            const auto result = (owner && BML_CORE_RESOURCE_HAS_MEMBER(resourceInterface, HandleCreateOwned))
+                ? resourceInterface->HandleCreateOwned(owner, type, &impl->desc)
+                : resourceInterface->HandleCreate(type, &impl->desc);
+            if (result == BML_RESULT_OK) {
                 impl->valid = true;
                 SharedHandle h;
                 h.m_impl = std::move(impl);
@@ -371,6 +405,8 @@ namespace bml {
 
         std::shared_ptr<Impl> m_impl;
     };
+
+#undef BML_CORE_RESOURCE_HAS_MEMBER
 } // namespace bml
 
 #endif /* BML_RESOURCE_HPP */

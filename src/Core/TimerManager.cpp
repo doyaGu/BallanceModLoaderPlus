@@ -135,7 +135,7 @@ namespace BML::Core {
         return BML_RESULT_OK;
     }
 
-    BML_Result TimerManager::Cancel(BML_Timer timer) {
+    BML_Result TimerManager::CancelInternal(BML_Timer timer, const std::string *owner_id) {
         if (!timer)
             return BML_RESULT_INVALID_ARGUMENT;
 
@@ -143,16 +143,33 @@ namespace BML::Core {
         auto *entry = FindEntry(timer);
         if (!entry)
             return BML_RESULT_OK;  // already gone
+        if (owner_id && entry->owner_id != *owner_id) {
+            return BML_RESULT_PERMISSION_DENIED;
+        }
         entry->active = false;
         return BML_RESULT_OK;
     }
 
-    BML_Result TimerManager::IsActive(BML_Timer timer, BML_Bool *out_active) {
+    BML_Result TimerManager::Cancel(const std::string &owner_id, BML_Timer timer) {
+        if (owner_id.empty()) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+        return CancelInternal(timer, &owner_id);
+    }
+
+    BML_Result TimerManager::IsActive(const std::string &owner_id,
+                                      BML_Timer timer,
+                                      BML_Bool *out_active) {
         if (!timer || !out_active)
+            return BML_RESULT_INVALID_ARGUMENT;
+        if (owner_id.empty())
             return BML_RESULT_INVALID_ARGUMENT;
 
         std::lock_guard lock(m_Mutex);
         auto *entry = FindEntry(timer);
+        if (entry && entry->owner_id != owner_id) {
+            return BML_RESULT_PERMISSION_DENIED;
+        }
         *out_active = (entry && entry->active) ? BML_TRUE : BML_FALSE;
         return BML_RESULT_OK;
     }
@@ -257,7 +274,7 @@ namespace BML::Core {
                     if (!pending.owner_id.empty()) {
                         m_Context.GetFaultTracker().RecordFault(pending.owner_id, seh_code);
                     }
-                    Cancel(pending.handle);
+                    CancelInternal(pending.handle, nullptr);
                 }
 #else
                 pending.callback(ctx, pending.handle, pending.user_data);
@@ -267,12 +284,12 @@ namespace BML::Core {
                         "Timer callback threw C++ exception for module '%s': %s; cancelling timer",
                         pending.owner_id.empty() ? "unknown" : pending.owner_id.c_str(),
                         ex.what());
-                Cancel(pending.handle);
+                CancelInternal(pending.handle, nullptr);
             } catch (...) {
                 CoreLog(BML_LOG_ERROR, kTimerLogCategory,
                         "Timer callback threw unknown exception for module '%s'; cancelling timer",
                         pending.owner_id.empty() ? "unknown" : pending.owner_id.c_str());
-                Cancel(pending.handle);
+                CancelInternal(pending.handle, nullptr);
             }
         }
     }

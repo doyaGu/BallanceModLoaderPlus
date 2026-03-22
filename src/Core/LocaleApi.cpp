@@ -13,9 +13,9 @@ namespace BML::Core {
             bool valid{false};
         };
 
-        CallerInfo ResolveCallerInfo() {
+        CallerInfo ResolveCallerInfo(Context &context, BML_Mod owner) {
             CallerInfo info;
-            auto *consumer = GetKernelOrNull()->context->ResolveCurrentConsumer();
+            auto *consumer = context.ResolveModHandle(owner);
             if (!consumer)
                 return info;
 
@@ -26,15 +26,12 @@ namespace BML::Core {
             info.valid = true;
             return info;
         }
-
-        std::string GetCallerModuleId() {
-            auto *consumer = GetKernelOrNull()->context->ResolveCurrentConsumer();
-            return consumer ? consumer->id : std::string{};
-        }
     } // namespace
 
-    BML_Result BML_API_LocaleLoad(const char *locale_code) {
-        auto caller = ResolveCallerInfo();
+    BML_Result BML_API_LocaleLoadOwned(BML_Mod owner, const char *locale_code) {
+        auto &kernel = Kernel();
+        auto &context = *kernel.context;
+        auto caller = ResolveCallerInfo(context, owner);
         if (!caller.valid)
             return BML_RESULT_INVALID_CONTEXT;
 
@@ -44,63 +41,85 @@ namespace BML::Core {
             code = locale_code;
         } else {
             const char *current = nullptr;
-            GetKernelOrNull()->locale->GetLanguage(&current);
+            kernel.locale->GetLanguage(&current);
             code = current ? current : "en";
         }
 
-        return GetKernelOrNull()->locale->Load(caller.id, caller.directory, code);
+        return kernel.locale->Load(caller.id, caller.directory, code);
     }
 
-    const char *BML_API_LocaleGet(const char *key) {
+    BML_Result BML_API_LocaleLoad(const char *locale_code) {
+        return BML_API_LocaleLoadOwned(Context::GetCurrentModule(), locale_code);
+    }
+
+    const char *BML_API_LocaleGetOwned(BML_Mod owner, const char *key) {
         if (!key)
             return nullptr;
 
-        std::string module_id = GetCallerModuleId();
-        if (module_id.empty())
+        auto &kernel = Kernel();
+        auto &context = *kernel.context;
+        auto caller = ResolveCallerInfo(context, owner);
+        if (!caller.valid)
             return key;
 
-        return GetKernelOrNull()->locale->Get(module_id, key);
+        return kernel.locale->Get(caller.id, key);
+    }
+
+    const char *BML_API_LocaleGet(const char *key) {
+        return BML_API_LocaleGetOwned(Context::GetCurrentModule(), key);
     }
 
     BML_Result BML_API_LocaleSetLanguage(const char *language_code) {
-        BML_Result result = GetKernelOrNull()->locale->SetLanguage(language_code);
+        auto &locale = *Kernel().locale;
+        BML_Result result = locale.SetLanguage(language_code);
         if (result == BML_RESULT_OK) {
             // Reload all modules with the new language
-            GetKernelOrNull()->locale->ReloadAll();
+            locale.ReloadAll();
         }
         return result;
     }
 
     BML_Result BML_API_LocaleGetLanguage(const char **out_code) {
-        return GetKernelOrNull()->locale->GetLanguage(out_code);
+        auto &locale = *Kernel().locale;
+        return locale.GetLanguage(out_code);
     }
 
-    BML_Result BML_API_LocaleBindTable(BML_LocaleTable *out_table) {
+    BML_Result BML_API_LocaleBindTableOwned(BML_Mod owner, BML_LocaleTable *out_table) {
         if (!out_table)
             return BML_RESULT_INVALID_ARGUMENT;
 
-        std::string module_id = GetCallerModuleId();
-        if (module_id.empty()) {
+        auto &kernel = Kernel();
+        auto &context = *kernel.context;
+        auto caller = ResolveCallerInfo(context, owner);
+        if (!caller.valid) {
             *out_table = nullptr;
             return BML_RESULT_INVALID_CONTEXT;
         }
 
-        *out_table = GetKernelOrNull()->locale->BindTable(module_id);
+        *out_table = kernel.locale->BindTable(caller.id);
         return BML_RESULT_OK;
     }
 
+    BML_Result BML_API_LocaleBindTable(BML_LocaleTable *out_table) {
+        return BML_API_LocaleBindTableOwned(Context::GetCurrentModule(), out_table);
+    }
+
     const char *BML_API_LocaleLookup(BML_LocaleTable table, const char *key) {
-        return GetKernelOrNull()->locale->Lookup(table, key);
+        auto &locale = *Kernel().locale;
+        return locale.Lookup(table, key);
     }
 
     void RegisterLocaleApis() {
         BML_BEGIN_API_REGISTRATION();
 
         BML_REGISTER_API_GUARDED(bmlLocaleLoad, "locale", BML_API_LocaleLoad);
+        BML_REGISTER_API_GUARDED(bmlLocaleLoadOwned, "locale", BML_API_LocaleLoadOwned);
         BML_REGISTER_API(bmlLocaleGet, BML_API_LocaleGet);
+        BML_REGISTER_API(bmlLocaleGetOwned, BML_API_LocaleGetOwned);
         BML_REGISTER_API_GUARDED(bmlLocaleSetLanguage, "locale", BML_API_LocaleSetLanguage);
         BML_REGISTER_API_GUARDED(bmlLocaleGetLanguage, "locale", BML_API_LocaleGetLanguage);
         BML_REGISTER_API_GUARDED(bmlLocaleBindTable, "locale", BML_API_LocaleBindTable);
+        BML_REGISTER_API_GUARDED(bmlLocaleBindTableOwned, "locale", BML_API_LocaleBindTableOwned);
         BML_REGISTER_API(bmlLocaleLookup, BML_API_LocaleLookup);
     }
 } // namespace BML::Core

@@ -142,6 +142,39 @@ TEST_F(LoggingSinkOverrideTests, OverrideDispatchesAndShutdownFires) {
     EXPECT_TRUE(state.shutdown_called);
 }
 
+TEST_F(LoggingSinkOverrideTests, OwnedLogApiUsesExplicitModuleWithoutTls) {
+    auto log_fn = Lookup<PFN_BML_LogOwned>("bmlLogOwned");
+    ASSERT_NE(log_fn, nullptr);
+
+    CapturedLog captured{};
+    BML_LogSinkOverrideDesc desc{};
+    desc.struct_size = sizeof(BML_LogSinkOverrideDesc);
+    desc.flags = BML_LOG_SINK_OVERRIDE_SUPPRESS_DEFAULT;
+    desc.user_data = &captured;
+    desc.dispatch = [](BML_Context, const BML_LogMessageInfo *info, void *user_data) {
+        auto *cap = static_cast<CapturedLog *>(user_data);
+        if (!info) {
+            return;
+        }
+        cap->severity = info->severity;
+        cap->tag = info->tag ? info->tag : "";
+        cap->message = info->message ? info->message : "";
+        cap->formatted = info->formatted_line ? info->formatted_line : "";
+        cap->mod_id = info->mod_id ? info->mod_id : "";
+    };
+
+    ASSERT_EQ(BML_RESULT_OK, BML::Core::RegisterLogSinkOverride(&desc));
+
+    auto mod = MakeMod("log.owned.mod");
+    Context::SetCurrentModule(nullptr);
+    log_fn(mod, kernel_->context->GetHandle(), BML_LOG_INFO, "owned.log", "value=%d", 7);
+
+    EXPECT_EQ(BML_LOG_INFO, captured.severity);
+    EXPECT_EQ("owned.log", captured.tag);
+    EXPECT_EQ("value=7", captured.message);
+    EXPECT_EQ("log.owned.mod", captured.mod_id);
+}
+
 TEST_F(LoggingSinkOverrideTests, DuplicateOverrideRegistrationFailsUntilCleared) {
     BML_LogSinkOverrideDesc desc{};
     desc.struct_size = sizeof(BML_LogSinkOverrideDesc);

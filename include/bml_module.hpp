@@ -105,11 +105,23 @@ protected:
                               uint16_t major,
                               uint16_t minor = 0,
                               uint16_t patch = 0) const {
+        auto owned = bml::AcquireInterfaceOwned<T>(m_Handle, id, major, minor, patch);
+        if (owned) {
+            return owned;
+        }
+
         CurrentModuleScope scope(m_Handle, m_Services ? m_Services.Builtins().Module : nullptr);
         return bml::AcquireInterface<T>(id, major, minor, patch);
     }
 
     PublishedInterface Publish(const BML_InterfaceDesc &desc) const {
+        const auto ownedReg = ResolveProc<PFN_BML_InterfaceRegisterOwned>("bmlInterfaceRegisterOwned");
+        const auto ownedUnreg =
+            ResolveProc<PFN_BML_InterfaceUnregisterOwned>("bmlInterfaceUnregisterOwned");
+        if (ownedReg && ownedUnreg) {
+            return PublishedInterface(ownedReg, ownedUnreg, m_Handle, desc);
+        }
+
         const auto reg = ResolveProc<PFN_BML_InterfaceRegister>("bmlInterfaceRegister");
         const auto unreg = ResolveProc<PFN_BML_InterfaceUnregister>("bmlInterfaceUnregister");
         CurrentModuleScope scope(m_Handle, m_Services ? m_Services.Builtins().Module : nullptr);

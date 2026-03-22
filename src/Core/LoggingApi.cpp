@@ -29,6 +29,9 @@ namespace BML::Core {
         detail::RegisterApi(registry, "bmlLog", reinterpret_cast<void *>(LogMessage));
         detail::RegisterApi(registry, "bmlLogVa", reinterpret_cast<void *>(LogMessageVa));
         detail::RegisterApi(registry, "bmlSetLogFilter", reinterpret_cast<void *>(SetLogFilter));
+        detail::RegisterApi(registry, "bmlLogOwned", reinterpret_cast<void *>(LogMessageOwned));
+        detail::RegisterApi(registry, "bmlLogVaOwned", reinterpret_cast<void *>(LogMessageVaOwned));
+        detail::RegisterApi(registry, "bmlSetLogFilterOwned", reinterpret_cast<void *>(SetLogFilterOwned));
 
         // Guarded APIs
         BML_REGISTER_API_GUARDED(bmlRegisterLogSinkOverride, "logging", BML_API_RegisterLogSinkOverride);

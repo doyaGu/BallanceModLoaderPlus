@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <random>
 #include <stdexcept>
@@ -19,16 +20,23 @@
 #include "Core/CrashDumpWriter.h"
 #include "Core/FaultTracker.h"
 #include "Core/ImcBus.h"
+#include "Core/InterfaceRegistry.h"
+#include "Core/LeaseManager.h"
+#include "Core/LocaleManager.h"
 #include "Core/ModHandle.h"
 #include "Core/ModManifest.h"
 #include "Core/ResourceApi.h"
+#include "Core/TimerManager.h"
 #include "TestKernel.h"
 
 #include "bml_config.h"
 #include "bml_errors.h"
 #include "bml_imc.h"
+#include "bml_interface.h"
+#include "bml_locale.h"
 #include "bml_logging.h"
 #include "bml_resource.h"
+#include "bml_timer.h"
 #include "bml_version.h"
 
 using BML::Core::ApiRegistry;
@@ -92,6 +100,10 @@ protected:
         kernel_->fault_tracker = std::make_unique<FaultTracker>();
         kernel_->imc_bus = std::make_unique<ImcBus>();
         kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config, *kernel_->crash_dump, *kernel_->fault_tracker);
+        kernel_->leases = std::make_unique<LeaseManager>();
+        kernel_->interface_registry = std::make_unique<InterfaceRegistry>(*kernel_->context, *kernel_->leases);
+        kernel_->locale = std::make_unique<LocaleManager>();
+        kernel_->timers = std::make_unique<TimerManager>(*kernel_->context);
         kernel_->config->BindContext(*kernel_->context);
 
         Context::SetCurrentModule(nullptr);
@@ -389,6 +401,159 @@ TEST_F(CoreApisTests, SetCurrentModuleApiIsThreadLocal) {
 
     ASSERT_EQ(BML_RESULT_OK, set_fn(nullptr));
     EXPECT_EQ(get_fn(), nullptr);
+}
+
+TEST_F(CoreApisTests, InterfaceOwnedApisAcquireWithoutTls) {
+    BML::Core::RegisterInterfaceApis();
+
+    auto register_fn = reinterpret_cast<PFN_BML_InterfaceRegisterOwned>(
+        kernel_->api_registry->Get("bmlInterfaceRegisterOwned"));
+    auto acquire_fn = reinterpret_cast<PFN_BML_InterfaceAcquireOwned>(
+        kernel_->api_registry->Get("bmlInterfaceAcquireOwned"));
+    auto release_fn = reinterpret_cast<PFN_BML_InterfaceRelease>(
+        kernel_->api_registry->Get("bmlInterfaceRelease"));
+    auto unregister_fn = reinterpret_cast<PFN_BML_InterfaceUnregisterOwned>(
+        kernel_->api_registry->Get("bmlInterfaceUnregisterOwned"));
+    ASSERT_NE(register_fn, nullptr);
+    ASSERT_NE(acquire_fn, nullptr);
+    ASSERT_NE(release_fn, nullptr);
+    ASSERT_NE(unregister_fn, nullptr);
+
+    auto owner = CreateTrackedMod("coreapis.interface.owner");
+    ASSERT_NE(owner, nullptr);
+    Context::SetCurrentModule(nullptr);
+
+    static int implementation = 42;
+    BML_InterfaceDesc desc = BML_INTERFACE_DESC_INIT;
+    desc.interface_id = "coreapis.owned.interface";
+    desc.abi_version = bmlMakeVersion(1, 0, 0);
+    desc.implementation = &implementation;
+    desc.implementation_size = sizeof(implementation);
+
+    ASSERT_EQ(BML_RESULT_OK, register_fn(owner, &desc));
+
+    const void *loaded = nullptr;
+    BML_InterfaceLease lease = nullptr;
+    const BML_Version req = bmlMakeVersion(1, 0, 0);
+    ASSERT_EQ(BML_RESULT_OK, acquire_fn(owner, desc.interface_id, &req, &loaded, &lease));
+    ASSERT_NE(nullptr, lease);
+    ASSERT_EQ(&implementation, loaded);
+
+    EXPECT_EQ(BML_RESULT_OK, release_fn(lease));
+    EXPECT_EQ(BML_RESULT_OK, unregister_fn(owner, desc.interface_id));
+}
+
+TEST_F(CoreApisTests, TimerOwnedApisScheduleWithoutTls) {
+    BML::Core::RegisterTimerApis();
+
+    auto schedule_once = reinterpret_cast<PFN_BML_TimerScheduleOnceOwned>(
+        kernel_->api_registry->Get("bmlTimerScheduleOnceOwned"));
+    auto is_active = reinterpret_cast<PFN_BML_TimerIsActiveOwned>(
+        kernel_->api_registry->Get("bmlTimerIsActiveOwned"));
+    auto cancel_all = reinterpret_cast<PFN_BML_TimerCancelAllOwned>(
+        kernel_->api_registry->Get("bmlTimerCancelAllOwned"));
+    ASSERT_NE(schedule_once, nullptr);
+    ASSERT_NE(is_active, nullptr);
+    ASSERT_NE(cancel_all, nullptr);
+
+    auto owner = CreateTrackedMod("coreapis.timer.owner");
+    ASSERT_NE(owner, nullptr);
+    Context::SetCurrentModule(nullptr);
+
+    int fired = 0;
+    BML_Timer timer = nullptr;
+    ASSERT_EQ(BML_RESULT_OK,
+              schedule_once(
+                  owner,
+                  100,
+                  [](BML_Context, BML_Timer, void *user_data) {
+                      auto *value = static_cast<int *>(user_data);
+                      ++(*value);
+                  },
+                  &fired,
+                  &timer));
+    ASSERT_NE(nullptr, timer);
+
+    BML_Bool active = BML_FALSE;
+    ASSERT_EQ(BML_RESULT_OK, is_active(owner, timer, &active));
+    EXPECT_EQ(BML_TRUE, active);
+
+    ASSERT_EQ(BML_RESULT_OK, cancel_all(owner));
+    ASSERT_EQ(BML_RESULT_OK, is_active(owner, timer, &active));
+    EXPECT_EQ(BML_FALSE, active);
+    EXPECT_EQ(0, fired);
+}
+
+TEST_F(CoreApisTests, LocaleOwnedApisLoadWithoutTls) {
+    BML::Core::RegisterLocaleApis();
+
+    auto load_fn = reinterpret_cast<PFN_BML_LocaleLoadOwned>(
+        kernel_->api_registry->Get("bmlLocaleLoadOwned"));
+    auto get_fn = reinterpret_cast<PFN_BML_LocaleGetOwned>(
+        kernel_->api_registry->Get("bmlLocaleGetOwned"));
+    auto bind_fn = reinterpret_cast<PFN_BML_LocaleBindTableOwned>(
+        kernel_->api_registry->Get("bmlLocaleBindTableOwned"));
+    auto lookup_fn = reinterpret_cast<PFN_BML_LocaleLookup>(
+        kernel_->api_registry->Get("bmlLocaleLookup"));
+    ASSERT_NE(load_fn, nullptr);
+    ASSERT_NE(get_fn, nullptr);
+    ASSERT_NE(bind_fn, nullptr);
+    ASSERT_NE(lookup_fn, nullptr);
+
+    auto owner = CreateTrackedMod("coreapis.locale.owner");
+    ASSERT_NE(owner, nullptr);
+    const auto locale_dir = temp_root_ / "coreapis.locale.owner" / "locale";
+    std::filesystem::create_directories(locale_dir);
+    {
+        std::ofstream locale_file(locale_dir / "en.toml", std::ios::binary);
+        ASSERT_TRUE(locale_file.is_open());
+        locale_file << "greeting = \"Hello from owned locale\"\n";
+    }
+
+    Context::SetCurrentModule(nullptr);
+    ASSERT_EQ(BML_RESULT_OK, load_fn(owner, "en"));
+    EXPECT_STREQ("Hello from owned locale", get_fn(owner, "greeting"));
+
+    BML_LocaleTable table = nullptr;
+    ASSERT_EQ(BML_RESULT_OK, bind_fn(owner, &table));
+    ASSERT_NE(nullptr, table);
+    EXPECT_STREQ("Hello from owned locale", lookup_fn(table, "greeting"));
+}
+
+TEST_F(CoreApisTests, ResourceOwnedApisCreateWithoutTls) {
+    BML::Core::RegisterResourceApis();
+
+    auto register_type = reinterpret_cast<PFN_BML_RegisterResourceTypeOwned>(
+        kernel_->api_registry->Get("bmlRegisterResourceTypeOwned"));
+    auto handle_create = reinterpret_cast<PFN_BML_HandleCreateOwned>(
+        kernel_->api_registry->Get("bmlHandleCreateOwned"));
+    auto validate = reinterpret_cast<PFN_BML_HandleValidate>(
+        kernel_->api_registry->Get("bmlHandleValidate"));
+    auto release = reinterpret_cast<PFN_BML_HandleRelease>(
+        kernel_->api_registry->Get("bmlHandleRelease"));
+    ASSERT_NE(register_type, nullptr);
+    ASSERT_NE(handle_create, nullptr);
+    ASSERT_NE(validate, nullptr);
+    ASSERT_NE(release, nullptr);
+
+    auto owner = CreateTrackedMod("coreapis.resource.owner");
+    ASSERT_NE(owner, nullptr);
+    Context::SetCurrentModule(nullptr);
+
+    BML_ResourceTypeDesc type_desc{};
+    type_desc.struct_size = sizeof(BML_ResourceTypeDesc);
+    type_desc.name = "coreapis.resource.owned";
+
+    BML_HandleType handle_type = 0;
+    ASSERT_EQ(BML_RESULT_OK, register_type(owner, &type_desc, &handle_type));
+
+    BML_HandleDesc handle = BML_HANDLE_DESC_INIT;
+    ASSERT_EQ(BML_RESULT_OK, handle_create(owner, handle_type, &handle));
+
+    BML_Bool valid = BML_FALSE;
+    ASSERT_EQ(BML_RESULT_OK, validate(&handle, &valid));
+    EXPECT_EQ(BML_TRUE, valid);
+    EXPECT_EQ(BML_RESULT_OK, release(&handle));
 }
 
 // ========================================================================

@@ -47,8 +47,12 @@ namespace BML::Core {
 
     // Pub/Sub
     BML_Result ImcPublish(BML_TopicId topic, const void *data, size_t size);
+    BML_Result ImcPublishOwned(BML_Mod owner, BML_TopicId topic, const void *data, size_t size);
     BML_Result ImcPublishEx(BML_TopicId topic, const BML_ImcMessage *msg);
+    BML_Result ImcPublishExOwned(BML_Mod owner, BML_TopicId topic, const BML_ImcMessage *msg);
     BML_Result ImcPublishBuffer(BML_TopicId topic, const BML_ImcBuffer *buffer);
+    BML_Result ImcPublishBufferOwned(BML_Mod owner, BML_TopicId topic,
+                                     const BML_ImcBuffer *buffer);
     BML_Result ImcSubscribe(BML_TopicId topic, BML_ImcHandler handler, void *user_data, BML_Subscription *out_sub);
     BML_Result ImcSubscribeOwned(BML_Mod owner, BML_TopicId topic, BML_ImcHandler handler,
                                  void *user_data, BML_Subscription *out_sub);
@@ -75,6 +79,14 @@ namespace BML::Core {
                                             const BML_SubscribeOptions *options,
                                             BML_Subscription *out_sub);
     BML_Result ImcPublishInterceptable(BML_TopicId topic, BML_ImcMessage *msg, BML_EventResult *out_result);
+    BML_Result ImcPublishInterceptableOwned(BML_Mod owner, BML_TopicId topic,
+                                            BML_ImcMessage *msg, BML_EventResult *out_result);
+    BML_Result ImcPublishMulti(const BML_TopicId *topics, size_t topic_count,
+                               const void *data, size_t size, const BML_ImcMessage *msg,
+                               size_t *out_delivered);
+    BML_Result ImcPublishMultiOwned(BML_Mod owner, const BML_TopicId *topics, size_t topic_count,
+                                    const void *data, size_t size, const BML_ImcMessage *msg,
+                                    size_t *out_delivered);
 
     // RPC
     BML_Result ImcRegisterRpc(BML_RpcId rpc_id, BML_RpcHandler handler, void *user_data);
@@ -83,12 +95,17 @@ namespace BML::Core {
     BML_Result ImcUnregisterRpc(BML_RpcId rpc_id);
     BML_Result ImcUnregisterRpcOwned(BML_Mod owner, BML_RpcId rpc_id);
     BML_Result ImcCallRpc(BML_RpcId rpc_id, const BML_ImcMessage *request, BML_Future *out_future);
+    BML_Result ImcCallRpcOwned(BML_Mod owner, BML_RpcId rpc_id,
+                               const BML_ImcMessage *request, BML_Future *out_future);
 
     // RPC v1.1
     BML_Result ImcRegisterRpcEx(BML_RpcId rpc_id, BML_RpcHandlerEx handler, void *user_data);
     BML_Result ImcRegisterRpcExOwned(BML_Mod owner, BML_RpcId rpc_id, BML_RpcHandlerEx handler,
                                      void *user_data);
     BML_Result ImcCallRpcEx(BML_RpcId rpc_id, const BML_ImcMessage *request, const BML_RpcCallOptions *options, BML_Future *out_future);
+    BML_Result ImcCallRpcExOwned(BML_Mod owner, BML_RpcId rpc_id,
+                                 const BML_ImcMessage *request, const BML_RpcCallOptions *options,
+                                 BML_Future *out_future);
     BML_Result ImcFutureGetError(BML_Future future, BML_Result *out_code, char *msg, size_t cap, size_t *out_len);
     BML_Result ImcGetRpcInfo(BML_RpcId rpc_id, BML_RpcInfo *out_info);
     BML_Result ImcGetRpcName(BML_RpcId rpc_id, char *buf, size_t cap, size_t *out_len);
@@ -107,6 +124,10 @@ namespace BML::Core {
     BML_Result ImcCallStreamingRpc(BML_RpcId rpc_id, const BML_ImcMessage *request,
                                     BML_ImcHandler on_chunk, BML_FutureCallback on_done,
                                     void *user_data, BML_Future *out_future);
+    BML_Result ImcCallStreamingRpcOwned(BML_Mod owner, BML_RpcId rpc_id,
+                                        const BML_ImcMessage *request, BML_ImcHandler on_chunk,
+                                        BML_FutureCallback on_done, void *user_data,
+                                        BML_Future *out_future);
 
     // Futures
     BML_Result ImcFutureAwait(BML_Future future, uint32_t timeout_ms);
@@ -126,6 +147,7 @@ namespace BML::Core {
 
     // State
     BML_Result ImcPublishState(BML_TopicId topic, const BML_ImcMessage *msg);
+    BML_Result ImcPublishStateOwned(BML_Mod owner, BML_TopicId topic, const BML_ImcMessage *msg);
     BML_Result ImcCopyState(BML_TopicId topic, void *dst, size_t dst_size, size_t *out_size, BML_ImcStateMeta *out_meta);
     BML_Result ImcClearState(BML_TopicId topic);
 

@@ -918,18 +918,21 @@ namespace BML::Core {
         return BML_RESULT_OK;
     }
 
-    BML_Result RegisterConfigLoadHooks(const BML_ConfigLoadHooks *hooks) {
+    BML_Result RegisterConfigLoadHooksOwned(BML_Mod owner, const BML_ConfigLoadHooks *hooks) {
         if (!hooks || hooks->struct_size < sizeof(BML_ConfigLoadHooks)) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
         if (!hooks->on_pre_load && !hooks->on_post_load) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
+        if (!owner) {
+            return BML_RESULT_INVALID_CONTEXT;
+        }
 
         ConfigLoadHookEntry entry{};
         entry.hooks = *hooks;
         entry.hooks.struct_size = sizeof(BML_ConfigLoadHooks);
-        entry.owner = Context::GetCurrentModule();
+        entry.owner = owner;
 
         {
             std::unique_lock lock(g_ConfigHooksMutex);
@@ -937,6 +940,10 @@ namespace BML::Core {
         }
 
         return BML_RESULT_OK;
+    }
+
+    BML_Result RegisterConfigLoadHooks(const BML_ConfigLoadHooks *hooks) {
+        return RegisterConfigLoadHooksOwned(Context::GetCurrentModule(), hooks);
     }
 
     void CleanupConfigHooksForModule(BML_Mod mod) {

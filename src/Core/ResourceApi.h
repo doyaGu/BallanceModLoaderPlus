@@ -7,6 +7,9 @@
 namespace BML::Core {
     void RegisterResourceApis();
     BML_Result RegisterResourceType(const BML_ResourceTypeDesc *desc, BML_HandleType *out_type);
+    BML_Result RegisterResourceTypeOwned(BML_Mod owner,
+                                         const BML_ResourceTypeDesc *desc,
+                                         BML_HandleType *out_type);
     void UnregisterResourceTypesForProvider(const std::string &provider_id);
 } // namespace BML::Core
 

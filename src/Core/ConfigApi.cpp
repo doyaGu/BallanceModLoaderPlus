@@ -3,40 +3,45 @@
 
 namespace BML::Core {
     BML_Result BML_API_ConfigGet(BML_Mod mod, const BML_ConfigKey *key, BML_ConfigValue *out_value) {
-        return GetKernelOrNull()->config->GetValue(mod, key, out_value);
+        return Kernel().config->GetValue(mod, key, out_value);
     }
 
     BML_Result BML_API_ConfigSet(BML_Mod mod, const BML_ConfigKey *key, const BML_ConfigValue *value) {
-        return GetKernelOrNull()->config->SetValue(mod, key, value);
+        return Kernel().config->SetValue(mod, key, value);
     }
 
     BML_Result BML_API_ConfigReset(BML_Mod mod, const BML_ConfigKey *key) {
-        return GetKernelOrNull()->config->ResetValue(mod, key);
+        return Kernel().config->ResetValue(mod, key);
     }
 
     BML_Result BML_API_ConfigEnumerate(BML_Mod mod, BML_ConfigEnumCallback callback, void *user_data) {
-        return GetKernelOrNull()->config->EnumerateValues(mod, callback, user_data);
+        return Kernel().config->EnumerateValues(mod, callback, user_data);
     }
 
     BML_Result BML_API_RegisterConfigLoadHooks(const BML_ConfigLoadHooks *hooks) {
         return RegisterConfigLoadHooks(hooks);
     }
 
+    BML_Result BML_API_RegisterConfigLoadHooksOwned(BML_Mod owner,
+                                                    const BML_ConfigLoadHooks *hooks) {
+        return RegisterConfigLoadHooksOwned(owner, hooks);
+    }
+
     // Batch operations
     BML_Result BML_API_ConfigBatchBegin(BML_Mod mod, BML_ConfigBatch *out_batch) {
-        return GetKernelOrNull()->config->BatchBegin(mod, out_batch);
+        return Kernel().config->BatchBegin(mod, out_batch);
     }
 
     BML_Result BML_API_ConfigBatchSet(BML_ConfigBatch batch, const BML_ConfigKey *key, const BML_ConfigValue *value) {
-        return GetKernelOrNull()->config->BatchSet(batch, key, value);
+        return Kernel().config->BatchSet(batch, key, value);
     }
 
     BML_Result BML_API_ConfigBatchCommit(BML_ConfigBatch batch) {
-        return GetKernelOrNull()->config->BatchCommit(batch);
+        return Kernel().config->BatchCommit(batch);
     }
 
     BML_Result BML_API_ConfigBatchDiscard(BML_ConfigBatch batch) {
-        return GetKernelOrNull()->config->BatchDiscard(batch);
+        return Kernel().config->BatchDiscard(batch);
     }
 
     // -- Config Typed Shortcuts --
@@ -48,7 +53,7 @@ namespace BML::Core {
         BML_ConfigKey key = BML_CONFIG_KEY_INIT(category, name);
         BML_ConfigValue value{};
         value.struct_size = sizeof(BML_ConfigValue);
-        BML_Result r = GetKernelOrNull()->config->GetValue(mod, &key, &value);
+        BML_Result r = Kernel().config->GetValue(mod, &key, &value);
         if (r == BML_RESULT_NOT_FOUND) {
             *out_value = default_value;
             return BML_RESULT_OK;
@@ -66,7 +71,7 @@ namespace BML::Core {
         BML_ConfigKey key = BML_CONFIG_KEY_INIT(category, name);
         BML_ConfigValue value{};
         value.struct_size = sizeof(BML_ConfigValue);
-        BML_Result r = GetKernelOrNull()->config->GetValue(mod, &key, &value);
+        BML_Result r = Kernel().config->GetValue(mod, &key, &value);
         if (r == BML_RESULT_NOT_FOUND) {
             *out_value = default_value;
             return BML_RESULT_OK;
@@ -84,7 +89,7 @@ namespace BML::Core {
         BML_ConfigKey key = BML_CONFIG_KEY_INIT(category, name);
         BML_ConfigValue value{};
         value.struct_size = sizeof(BML_ConfigValue);
-        BML_Result r = GetKernelOrNull()->config->GetValue(mod, &key, &value);
+        BML_Result r = Kernel().config->GetValue(mod, &key, &value);
         if (r == BML_RESULT_NOT_FOUND) {
             *out_value = default_value;
             return BML_RESULT_OK;
@@ -102,7 +107,7 @@ namespace BML::Core {
         BML_ConfigKey key = BML_CONFIG_KEY_INIT(category, name);
         BML_ConfigValue value{};
         value.struct_size = sizeof(BML_ConfigValue);
-        BML_Result r = GetKernelOrNull()->config->GetValue(mod, &key, &value);
+        BML_Result r = Kernel().config->GetValue(mod, &key, &value);
         if (r == BML_RESULT_NOT_FOUND) {
             *out_value = default_value;
             return BML_RESULT_OK;
@@ -130,6 +135,8 @@ namespace BML::Core {
 
         // Config hooks registration
         BML_REGISTER_API_GUARDED(bmlRegisterConfigLoadHooks, "config", BML_API_RegisterConfigLoadHooks);
+        BML_REGISTER_API_GUARDED(bmlRegisterConfigLoadHooksOwned, "config",
+                                 BML_API_RegisterConfigLoadHooksOwned);
 
         // Typed shortcuts
         BML_REGISTER_API_GUARDED(bmlConfigGetInt, "config", BML_API_ConfigGetInt);

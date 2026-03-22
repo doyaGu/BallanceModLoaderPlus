@@ -52,17 +52,17 @@ namespace BML::Core {
         return desc;
     }
 
-    BML_Result InterfaceRegistry::Register(const BML_InterfaceDesc *desc, const std::string &provider_id) {
+    BML_Result InterfaceRegistry::Register(const BML_InterfaceDesc *desc, const BML_Mod_T *provider) {
+        const std::string provider_id = provider ? provider->id : std::string{};
         if (!desc || desc->struct_size < sizeof(BML_InterfaceDesc) || !desc->interface_id ||
             !desc->implementation || desc->implementation_size == 0 || provider_id.empty()) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
-        BML_Mod_T *consumer = nullptr;
         if ((desc->flags & BML_INTERFACE_FLAG_HOST_OWNED) != 0 && provider_id != "BML") {
-            consumer = m_Context.ResolveCurrentConsumer();
-            if (!consumer) {
-                return BML_RESULT_INVALID_CONTEXT;
+            if (!provider || !m_Leases.HasActiveInterfaceLease(
+                    provider->id, BML_CORE_HOST_RUNTIME_INTERFACE_ID)) {
+                return BML_RESULT_PERMISSION_DENIED;
             }
         }
 
@@ -70,10 +70,6 @@ namespace BML::Core {
         const std::string key(desc->interface_id);
         if (m_Interfaces.find(key) != m_Interfaces.end()) {
             return BML_RESULT_ALREADY_EXISTS;
-        }
-        if (consumer && !m_Leases.HasActiveInterfaceLease(
-                consumer->id, BML_CORE_HOST_RUNTIME_INTERFACE_ID)) {
-            return BML_RESULT_PERMISSION_DENIED;
         }
 
         InterfaceEntry entry;
@@ -100,15 +96,14 @@ namespace BML::Core {
 
     BML_Result InterfaceRegistry::Acquire(const char *interface_id,
                                           const BML_Version *required_abi,
+                                          const BML_Mod_T *consumer,
                                           const void **out_implementation,
                                           BML_InterfaceLease *out_lease) {
         if (!interface_id || !out_implementation || !out_lease) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
-
-        auto *current = m_Context.ResolveCurrentConsumer();
-        if (!current) {
-            return BML_RESULT_INVALID_CONTEXT;
+        if (!consumer) {
+            return BML_RESULT_INVALID_ARGUMENT;
         }
 
         *out_implementation = nullptr;
@@ -125,13 +120,13 @@ namespace BML::Core {
         if (m_Leases.IsProviderBlocked(it->second.provider_id)) {
             return BML_RESULT_BUSY;
         }
-        if ((it->second.desc.flags & BML_INTERFACE_FLAG_INTERNAL) != 0 && current->id != "BML" &&
-            !HasCapability(current, "bml.internal.runtime")) {
+        if ((it->second.desc.flags & BML_INTERFACE_FLAG_INTERNAL) != 0 && consumer->id != "BML" &&
+            !HasCapability(consumer, "bml.internal.runtime")) {
             return BML_RESULT_PERMISSION_DENIED;
         }
 
         BML_CHECK(m_Leases.CreateInterfaceLease(
-            interface_id, it->second.provider_id, current->id, out_lease));
+            interface_id, it->second.provider_id, consumer->id, out_lease));
         *out_implementation = it->second.desc.implementation;
         return BML_RESULT_OK;
     }
@@ -187,7 +182,8 @@ namespace BML::Core {
         }
     }
 
-    BML_Result InterfaceRegistry::Unregister(const char *interface_id, const std::string &provider_id) {
+    BML_Result InterfaceRegistry::Unregister(const char *interface_id, const BML_Mod_T *provider) {
+        const std::string provider_id = provider ? provider->id : std::string{};
         if (!interface_id || provider_id.empty()) {
             return BML_RESULT_INVALID_ARGUMENT;
         }

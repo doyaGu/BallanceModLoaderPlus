@@ -43,6 +43,7 @@ typedef const void *BML_LocaleTable;
  * @return BML_RESULT_INVALID_CONTEXT if caller module cannot be resolved
  */
 typedef BML_Result (*PFN_BML_LocaleLoad)(const char *locale_code);
+typedef BML_Result (*PFN_BML_LocaleLoadOwned)(BML_Mod owner, const char *locale_code);
 
 /**
  * @brief Get a localized string by key for the calling module.
@@ -54,6 +55,7 @@ typedef BML_Result (*PFN_BML_LocaleLoad)(const char *locale_code);
  * @return NULL if key is NULL
  */
 typedef const char *(*PFN_BML_LocaleGet)(const char *key);
+typedef const char *(*PFN_BML_LocaleGetOwned)(BML_Mod owner, const char *key);
 
 /**
  * @brief Set the active language globally.
@@ -93,6 +95,7 @@ typedef BML_Result (*PFN_BML_LocaleGetLanguage)(const char **out_code);
  * @return BML_RESULT_OK on success
  */
 typedef BML_Result (*PFN_BML_LocaleBindTable)(BML_LocaleTable *out_table);
+typedef BML_Result (*PFN_BML_LocaleBindTableOwned)(BML_Mod owner, BML_LocaleTable *out_table);
 
 /**
  * @brief Look up a string directly from a bound table (fast path).

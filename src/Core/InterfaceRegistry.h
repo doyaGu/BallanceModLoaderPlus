@@ -13,9 +13,10 @@
 namespace BML::Core {
     class InterfaceRegistry {
     public:
-        BML_Result Register(const BML_InterfaceDesc *desc, const std::string &provider_id);
+        BML_Result Register(const BML_InterfaceDesc *desc, const BML_Mod_T *provider);
         BML_Result Acquire(const char *interface_id,
                            const BML_Version *required_abi,
+                           const BML_Mod_T *consumer,
                            const void **out_implementation,
                            BML_InterfaceLease *out_lease);
         BML_Result Release(BML_InterfaceLease lease);
@@ -23,7 +24,7 @@ namespace BML::Core {
         void Enumerate(PFN_BML_InterfaceRuntimeEnumerator callback,
                        void *user_data,
                        uint64_t required_flags_mask) const;
-        BML_Result Unregister(const char *interface_id, const std::string &provider_id);
+        BML_Result Unregister(const char *interface_id, const BML_Mod_T *provider);
         void UnregisterByProvider(const std::string &provider_id);
         void Clear();
 

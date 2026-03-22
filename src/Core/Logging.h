@@ -10,7 +10,20 @@ namespace BML::Core {
 
     void LogMessage(BML_Context ctx, BML_LogSeverity level, const char *tag, const char *fmt, ...);
     void LogMessageVa(BML_Context ctx, BML_LogSeverity level, const char *tag, const char *fmt, va_list args);
+    void LogMessageOwned(BML_Mod owner,
+                         BML_Context ctx,
+                         BML_LogSeverity level,
+                         const char *tag,
+                         const char *fmt,
+                         ...);
+    void LogMessageVaOwned(BML_Mod owner,
+                           BML_Context ctx,
+                           BML_LogSeverity level,
+                           const char *tag,
+                           const char *fmt,
+                           va_list args);
     void SetLogFilter(BML_LogSeverity minimum_level);
+    void SetLogFilterOwned(BML_Mod owner, BML_LogSeverity minimum_level);
 
     BML_Result RegisterLogSinkOverride(const BML_LogSinkOverrideDesc *desc);
     BML_Result ClearLogSinkOverride();

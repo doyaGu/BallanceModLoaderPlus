@@ -98,18 +98,31 @@ typedef BML_Result (*PFN_BML_ClearLogSinkOverride)(void);
  * @threadsafe Yes
  */
 typedef void (*PFN_BML_Log)(BML_Context ctx, BML_LogSeverity level, const char *tag, const char *fmt, ...);
+typedef void (*PFN_BML_LogOwned)(BML_Mod owner,
+                                 BML_Context ctx,
+                                 BML_LogSeverity level,
+                                 const char *tag,
+                                 const char *fmt,
+                                 ...);
 
 /**
  * @brief Log a formatted message with va_list
  * @threadsafe Yes
  */
 typedef void (*PFN_BML_LogVa)(BML_Context ctx, BML_LogSeverity level, const char *tag, const char *fmt, va_list args);
+typedef void (*PFN_BML_LogVaOwned)(BML_Mod owner,
+                                   BML_Context ctx,
+                                   BML_LogSeverity level,
+                                   const char *tag,
+                                   const char *fmt,
+                                   va_list args);
 
 /**
  * @brief Set minimum log severity filter
  * @threadsafe No (call from main thread only)
  */
 typedef void (*PFN_BML_SetLogFilter)(BML_LogSeverity minimum_level);
+typedef void (*PFN_BML_SetLogFilterOwned)(BML_Mod owner, BML_LogSeverity minimum_level);
 
 typedef enum BML_LogCreateFlags {
     BML_LOG_CREATE_ALLOW_TAGS   = 1u << 0,

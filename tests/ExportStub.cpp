@@ -11,10 +11,10 @@ extern "C" {
 BML_API void *bmlGetProcAddress(const char *proc_name) {
     if (!proc_name)
         return nullptr;
-    auto *kernel = BML::Core::GetKernelOrNull();
-    if (!kernel || !kernel->api_registry)
+    auto &kernel = BML::Core::Kernel();
+    if (!kernel.api_registry)
         return nullptr;
-    return kernel->api_registry->Get(proc_name);
+    return kernel.api_registry->Get(proc_name);
 }
 
 } // extern "C"

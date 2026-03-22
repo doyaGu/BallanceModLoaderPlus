@@ -621,6 +621,9 @@ typedef void (*BML_ShutdownCallback)(BML_Context ctx, void *user_data);
  * @see bml::ShutdownHook for C++ RAII wrapper
  */
 typedef BML_Result (*PFN_BML_RegisterShutdownHook)(BML_Mod mod, BML_ShutdownCallback callback, void *user_data);
+typedef BML_Result (*PFN_BML_RegisterShutdownHookOwned)(BML_Mod owner,
+                                                        BML_ShutdownCallback callback,
+                                                        void *user_data);
 
 /** @} */ /* end CoreShutdown group */
 

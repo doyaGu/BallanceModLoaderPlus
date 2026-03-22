@@ -33,6 +33,10 @@ BML_BEGIN_CDECLS
  *   - bmlInterfaceRelease
  *   - bmlSetCurrentModule
  *
+ * Optional bootstrap-adjacent helpers may also be loaded when present,
+ * but they are not required for successful bootstrap:
+ *   - bmlInterfaceAcquireOwned
+ *
  * All other runtime APIs should be resolved through acquired builtin
  * interfaces or module-local get_proc calls.
  */
@@ -55,11 +59,13 @@ size_t     bmlGetRequiredApiCount(void);
 PFN_BML_SetCurrentModule bmlSetCurrentModule = NULL;
 PFN_BML_InterfaceAcquire bmlInterfaceAcquire = NULL;
 PFN_BML_InterfaceRelease bmlInterfaceRelease = NULL;
+PFN_BML_InterfaceAcquireOwned bmlInterfaceAcquireOwned = NULL;
 
 static void bmlResetApiPointers(void) {
     bmlSetCurrentModule = NULL;
     bmlInterfaceAcquire = NULL;
     bmlInterfaceRelease = NULL;
+    bmlInterfaceAcquireOwned = NULL;
 }
 
 BML_Result bmlLoadAPI(PFN_BML_GetProcAddress get_proc) {
@@ -74,6 +80,8 @@ BML_Result bmlLoadAPI(PFN_BML_GetProcAddress get_proc) {
     bmlInterfaceAcquire = (PFN_BML_InterfaceAcquire) get_proc("bmlInterfaceAcquire");
     bmlInterfaceRelease = (PFN_BML_InterfaceRelease) get_proc("bmlInterfaceRelease");
     bmlSetCurrentModule = (PFN_BML_SetCurrentModule) get_proc("bmlSetCurrentModule");
+    bmlInterfaceAcquireOwned =
+        (PFN_BML_InterfaceAcquireOwned) get_proc("bmlInterfaceAcquireOwned");
 
     if (!bmlInterfaceAcquire || !bmlInterfaceRelease || !bmlSetCurrentModule) {
         bmlUnloadAPI();
@@ -105,6 +113,7 @@ size_t bmlGetRequiredApiCount(void) {
 extern PFN_BML_SetCurrentModule bmlSetCurrentModule;
 extern PFN_BML_InterfaceAcquire bmlInterfaceAcquire;
 extern PFN_BML_InterfaceRelease bmlInterfaceRelease;
+extern PFN_BML_InterfaceAcquireOwned bmlInterfaceAcquireOwned;
 
 #endif /* BML_LOADER_IMPLEMENTATION */
 

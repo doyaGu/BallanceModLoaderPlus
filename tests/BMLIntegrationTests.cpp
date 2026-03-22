@@ -420,7 +420,7 @@ TEST_F(BMLIntegrationTest, BuiltinInterfacesAvailableAfterBootstrap) {
         auto *imcBus = static_cast<const BML_ImcBusInterface *>(implementation);
         ASSERT_NE(nullptr, imcBus);
         EXPECT_EQ(1u, imcBus->header.major);
-        EXPECT_EQ(0u, imcBus->header.minor);
+        EXPECT_EQ(1u, imcBus->header.minor);
         EXPECT_NE(nullptr, imcBus->GetTopicName);
         EXPECT_EQ(BML_RESULT_OK, serviceRelease(lease));
     }

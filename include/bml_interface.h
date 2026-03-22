@@ -180,15 +180,25 @@ typedef BML_Result (*PFN_BML_HostUnregisterContribution)(BML_InterfaceRegistrati
  * has been established. They are distinct from the bootstrap minimum itself.
  */
 typedef BML_Result (*PFN_BML_InterfaceRegister)(const BML_InterfaceDesc *desc);
+typedef BML_Result (*PFN_BML_InterfaceRegisterOwned)(BML_Mod owner,
+                                                     const BML_InterfaceDesc *desc);
 typedef BML_Result (*PFN_BML_InterfaceAcquire)(const char *interface_id,
                                                const BML_Version *required_abi,
                                                const void **out_implementation,
                                                BML_InterfaceLease *out_lease);
+typedef BML_Result (*PFN_BML_InterfaceAcquireOwned)(BML_Mod owner,
+                                                    const char *interface_id,
+                                                    const BML_Version *required_abi,
+                                                    const void **out_implementation,
+                                                    BML_InterfaceLease *out_lease);
 typedef BML_Result (*PFN_BML_InterfaceRelease)(BML_InterfaceLease lease);
 typedef BML_Result (*PFN_BML_InterfaceUnregister)(const char *interface_id);
+typedef BML_Result (*PFN_BML_InterfaceUnregisterOwned)(BML_Mod owner,
+                                                       const char *interface_id);
 
 extern PFN_BML_InterfaceAcquire bmlInterfaceAcquire;
 extern PFN_BML_InterfaceRelease bmlInterfaceRelease;
+extern PFN_BML_InterfaceAcquireOwned bmlInterfaceAcquireOwned;
 
 BML_END_CDECLS
 

@@ -161,7 +161,7 @@ TEST_F(TimerManagerTest, CancelPreventsCallback) {
     kernel_->timers->ScheduleOnce(
         "test.mod", 0, IncrementCallback, &counter, &timer);
 
-    auto result = kernel_->timers->Cancel(timer);
+    auto result = kernel_->timers->Cancel("test.mod", timer);
     EXPECT_EQ(result, BML_RESULT_OK);
 
     kernel_->timers->Tick();
@@ -169,7 +169,7 @@ TEST_F(TimerManagerTest, CancelPreventsCallback) {
 }
 
 TEST_F(TimerManagerTest, CancelNullReturnsError) {
-    auto result = kernel_->timers->Cancel(nullptr);
+    auto result = kernel_->timers->Cancel("test.mod", nullptr);
     EXPECT_EQ(result, BML_RESULT_INVALID_ARGUMENT);
 }
 
@@ -181,12 +181,12 @@ TEST_F(TimerManagerTest, IsActiveReflectsState) {
     kernel_->timers->ScheduleOnce(
         "test.mod", 0, IncrementCallback, &counter, &timer);
 
-    kernel_->timers->IsActive(timer, &active);
+    kernel_->timers->IsActive("test.mod", timer, &active);
     EXPECT_EQ(active, BML_TRUE);
 
     kernel_->timers->Tick();
 
-    kernel_->timers->IsActive(timer, &active);
+    kernel_->timers->IsActive("test.mod", timer, &active);
     EXPECT_EQ(active, BML_FALSE);
 }
 
@@ -238,7 +238,7 @@ TEST_F(TimerManagerTest, CallbackCanScheduleNewTimer) {
         auto *c = static_cast<int *>(ud);
         ++(*c);
         BML_Timer next = nullptr;
-        BML::Core::GetKernelOrNull()->timers->ScheduleOnce("test.mod", 0, IncrementCallback, ud, &next);
+        BML::Core::Kernel().timers->ScheduleOnce("test.mod", 0, IncrementCallback, ud, &next);
     };
 
     BML_Timer timer = nullptr;
@@ -278,7 +278,7 @@ TEST_F(TimerManagerTest, ThrowingCallbackIsContainedAndCancelsRepeatTimer) {
     EXPECT_EQ(failing_counter, 1);
     EXPECT_EQ(healthy_counter, 1);
 
-    ASSERT_EQ(kernel_->timers->IsActive(failing_timer, &active), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->timers->IsActive("test.mod", failing_timer, &active), BML_RESULT_OK);
     EXPECT_EQ(active, BML_FALSE);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(5));

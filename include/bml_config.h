@@ -401,6 +401,8 @@ typedef struct BML_ConfigLoadHooks {
  * @return BML_RESULT_INVALID_ARGUMENT if hooks is invalid
  */
 typedef BML_Result (*PFN_BML_RegisterConfigLoadHooks)(const BML_ConfigLoadHooks *hooks);
+typedef BML_Result (*PFN_BML_RegisterConfigLoadHooksOwned)(BML_Mod owner,
+                                                           const BML_ConfigLoadHooks *hooks);
 
 BML_END_CDECLS
 
