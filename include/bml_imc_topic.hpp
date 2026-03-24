@@ -46,8 +46,8 @@ namespace imc {
 
         bool Resolve() {
             if (m_Id != InvalidTopicId) return true;
-            if (m_Name.empty() || !m_Bus || !m_Bus->GetTopicId) return false;
-            return m_Bus->GetTopicId(m_Name.c_str(), &m_Id) == BML_RESULT_OK;
+            if (m_Name.empty() || !m_Bus || !m_Bus->Context || !m_Bus->GetTopicId) return false;
+            return m_Bus->GetTopicId(m_Bus->Context, m_Name.c_str(), &m_Id) == BML_RESULT_OK;
         }
 
         static std::optional<Topic> Create(std::string_view name, const BML_ImcBusInterface *bus = nullptr) {
@@ -101,9 +101,9 @@ namespace imc {
 
         // Diagnostics
         std::optional<BML_TopicInfo> Info() const {
-            if (!Valid() || !m_Bus || !m_Bus->GetTopicInfo) return std::nullopt;
+            if (!Valid() || !m_Bus || !m_Bus->Context || !m_Bus->GetTopicInfo) return std::nullopt;
             BML_TopicInfo info = BML_TOPIC_INFO_INIT;
-            if (m_Bus->GetTopicInfo(m_Id, &info) == BML_RESULT_OK) return info;
+            if (m_Bus->GetTopicInfo(m_Bus->Context, m_Id, &info) == BML_RESULT_OK) return info;
             return std::nullopt;
         }
 

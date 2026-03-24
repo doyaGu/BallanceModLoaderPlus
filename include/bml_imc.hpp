@@ -23,9 +23,10 @@
  * auto sub = Subscription::create("OtherMod/Events",
  *     [](const Message& msg) { ... }, nullptr, bus);
  *
- * // Typed subscription
- * auto typed = Subscription::createTyped<MyEvent>("MyMod/Events/Custom",
- *     [](const MyEvent& event) { ... }, nullptr, bus);
+ * // Typed subscription (use msg.As<T>() inside callback)
+ * auto typed = Subscription::create("MyMod/Events/Custom",
+ *     [](const Message& msg) { if (auto *e = msg.As<MyEvent>()) { ... } },
+ *     nullptr, bus);
  *
  * // Intercept
  * auto intercept = Subscription::createIntercept("Game/Event",
@@ -62,7 +63,7 @@ namespace imc {
 
     /** @brief Process pending messages (call once per frame) */
     inline void pump(size_t maxPerSub = 0, const BML_ImcBusInterface *bus = nullptr) {
-        if (bus && bus->Pump) bus->Pump(maxPerSub);
+        if (bus && bus->Context && bus->Pump) bus->Pump(bus->Context, maxPerSub);
     }
 
     /** @brief Process all pending messages */
@@ -72,37 +73,42 @@ namespace imc {
 
     /** @brief Get global IMC statistics */
     inline std::optional<BML_ImcStats> getStats(const BML_ImcBusInterface *bus = nullptr) {
-        if (!bus || !bus->GetStats) return std::nullopt;
+        if (!bus || !bus->Context || !bus->GetStats) return std::nullopt;
         BML_ImcStats stats = BML_IMC_STATS_INIT;
-        if (bus->GetStats(&stats) == BML_RESULT_OK) return stats;
+        if (bus->GetStats(bus->Context, &stats) == BML_RESULT_OK) return stats;
         return std::nullopt;
     }
 
     /** @brief Reset global statistics counters */
     inline bool resetStats(const BML_ImcBusInterface *bus = nullptr) {
-        if (!bus || !bus->ResetStats) return false;
-        return bus->ResetStats() == BML_RESULT_OK;
+        if (!bus || !bus->Context || !bus->ResetStats) return false;
+        return bus->ResetStats(bus->Context) == BML_RESULT_OK;
     }
 
     /** @brief Get topic info by ID */
     inline std::optional<BML_TopicInfo> getTopicInfo(TopicId id, const BML_ImcBusInterface *bus = nullptr) {
-        if (!bus || !bus->GetTopicInfo) return std::nullopt;
+        if (!bus || !bus->Context || !bus->GetTopicInfo) return std::nullopt;
         BML_TopicInfo info = BML_TOPIC_INFO_INIT;
-        if (bus->GetTopicInfo(id, &info) == BML_RESULT_OK) return info;
+        if (bus->GetTopicInfo(bus->Context, id, &info) == BML_RESULT_OK) return info;
         return std::nullopt;
     }
 
     /** @brief Get topic name by ID */
     inline std::optional<std::string> getTopicName(TopicId id, const BML_ImcBusInterface *bus = nullptr) {
-        if (!BML_IMC_BUS_HAS_MEMBER(bus, GetTopicName)) return std::nullopt;
+        if (!BML_IMC_BUS_HAS_MEMBER(bus, GetTopicName) || !bus->Context) return std::nullopt;
         char buffer[256] = {};
         size_t length = 0;
-        const BML_Result result = bus->GetTopicName(id, buffer, sizeof(buffer), &length);
+        const BML_Result result =
+            bus->GetTopicName(bus->Context, id, buffer, sizeof(buffer), &length);
         if (result == BML_RESULT_OK) return std::string(buffer, length);
         if (result != BML_RESULT_BUFFER_TOO_SMALL || length == 0) return std::nullopt;
 
         std::vector<char> dynamicBuffer(length + 1, '\0');
-        if (bus->GetTopicName(id, dynamicBuffer.data(), dynamicBuffer.size(), &length) != BML_RESULT_OK) {
+        if (bus->GetTopicName(bus->Context,
+                              id,
+                              dynamicBuffer.data(),
+                              dynamicBuffer.size(),
+                              &length) != BML_RESULT_OK) {
             return std::nullopt;
         }
         return std::string(dynamicBuffer.data(), length);
@@ -163,23 +169,28 @@ namespace imc {
 
     /** @brief Get info about a registered RPC endpoint */
     inline std::optional<BML_RpcInfo> getRpcInfo(RpcId id, const BML_ImcRpcInterface *rpc = nullptr) {
-        if (!BML_IMC_RPC_HAS_MEMBER(rpc, GetRpcInfo)) return std::nullopt;
+        if (!BML_IMC_RPC_HAS_MEMBER(rpc, GetRpcInfo) || !rpc->Context) return std::nullopt;
         BML_RpcInfo info = BML_RPC_INFO_INIT;
-        if (rpc->GetRpcInfo(id, &info) == BML_RESULT_OK) return info;
+        if (rpc->GetRpcInfo(rpc->Context, id, &info) == BML_RESULT_OK) return info;
         return std::nullopt;
     }
 
     /** @brief Get RPC name by ID */
     inline std::optional<std::string> getRpcName(RpcId id, const BML_ImcRpcInterface *rpc = nullptr) {
-        if (!BML_IMC_RPC_HAS_MEMBER(rpc, GetRpcName)) return std::nullopt;
+        if (!BML_IMC_RPC_HAS_MEMBER(rpc, GetRpcName) || !rpc->Context) return std::nullopt;
         char buffer[256] = {};
         size_t length = 0;
-        const BML_Result result = rpc->GetRpcName(id, buffer, sizeof(buffer), &length);
+        const BML_Result result =
+            rpc->GetRpcName(rpc->Context, id, buffer, sizeof(buffer), &length);
         if (result == BML_RESULT_OK) return std::string(buffer, length);
         if (result != BML_RESULT_BUFFER_TOO_SMALL || length == 0) return std::nullopt;
 
         std::vector<char> dynamicBuffer(length + 1, '\0');
-        if (rpc->GetRpcName(id, dynamicBuffer.data(), dynamicBuffer.size(), &length) != BML_RESULT_OK) {
+        if (rpc->GetRpcName(rpc->Context,
+                            id,
+                            dynamicBuffer.data(),
+                            dynamicBuffer.size(),
+                            &length) != BML_RESULT_OK) {
             return std::nullopt;
         }
         return std::string(dynamicBuffer.data(), length);

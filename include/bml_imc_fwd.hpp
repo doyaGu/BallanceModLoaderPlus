@@ -6,7 +6,6 @@
 #ifndef BML_IMC_FWD_HPP
 #define BML_IMC_FWD_HPP
 
-#include "bml_builtin_interfaces.h"
 #include "bml_imc.h"
 
 #include <cstdint>
@@ -95,20 +94,8 @@ namespace imc {
 } // namespace imc
 } // namespace bml
 
-#define BML_IMC_BUS_HAS_MEMBER(bus, member) \
-    (::bml::imc::detail::HasBusMember<decltype(((BML_ImcBusInterface *) 0)->member)>( \
-        (bus), offsetof(BML_ImcBusInterface, member)) && (bus)->member != nullptr)
-
-namespace bml { namespace imc { namespace detail {
-    template <typename MemberT>
-    constexpr bool HasRpcMember(const BML_ImcRpcInterface *rpc, size_t offset) noexcept {
-        return rpc != nullptr &&
-               rpc->header.struct_size >= offset + sizeof(MemberT);
-    }
-} } }
-
-#define BML_IMC_RPC_HAS_MEMBER(rpc, member) \
-    (::bml::imc::detail::HasRpcMember<decltype(((BML_ImcRpcInterface *) 0)->member)>( \
-        (rpc), offsetof(BML_ImcRpcInterface, member)) && (rpc)->member != nullptr)
+// Legacy aliases — prefer BML_IFACE_HAS(iface, Type, member) from bml_interface.h
+#define BML_IMC_BUS_HAS_MEMBER(bus, member) BML_IFACE_HAS(bus, BML_ImcBusInterface, member)
+#define BML_IMC_RPC_HAS_MEMBER(rpc, member) BML_IFACE_HAS(rpc, BML_ImcRpcInterface, member)
 
 #endif /* BML_IMC_FWD_HPP */
