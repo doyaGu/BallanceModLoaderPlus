@@ -63,9 +63,11 @@ add_bml_test_support_library(bml_test_runtime_support
         SOURCES
         ModuleLoaderStub.cpp
         TestKernelSupport.cpp
+        TestKernelBuilder.cpp
+        TestModHelper.cpp
         ExportStub.cpp
         ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
-        ${BML_SOURCE_DIR}/Core/BuiltinInterfaces.cpp
+        ${BML_SOURCE_DIR}/Core/RuntimeInterfaces.cpp
         ${BML_SOURCE_DIR}/Core/ConfigApi.cpp
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
@@ -118,7 +120,10 @@ add_bml_test_support_library(bml_test_core_support
         SOURCES
         ModuleLoaderStub.cpp
         TestKernelSupport.cpp
+        TestKernelBuilder.cpp
+        TestModHelper.cpp
         ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/ConfigApi.cpp
         ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
         ${BML_SOURCE_DIR}/Core/Context.cpp
         ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
@@ -126,19 +131,31 @@ add_bml_test_support_library(bml_test_core_support
         ${BML_SOURCE_DIR}/Core/DiagnosticManager.cpp
         ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
         ${BML_SOURCE_DIR}/Core/HookRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBus.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBusFacade.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBusPublish.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBusRpc.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBusState.cpp
+        ${BML_SOURCE_DIR}/Core/InterfaceRegistry.cpp
+        ${BML_SOURCE_DIR}/Core/LeaseManager.cpp
+        ${BML_SOURCE_DIR}/Core/LocaleManager.cpp
         ${BML_SOURCE_DIR}/Core/Logging.cpp
+        ${BML_SOURCE_DIR}/Core/MemoryManager.cpp
+        ${BML_SOURCE_DIR}/Core/ModuleLifecycle.cpp
+        ${BML_SOURCE_DIR}/Core/ProfilingManager.cpp
         ${BML_SOURCE_DIR}/Core/ResourceApi.cpp
+        ${BML_SOURCE_DIR}/Core/RuntimeInterfaces.cpp
+        ${BML_SYNC_MANAGER_SOURCE}
+        ${BML_SOURCE_DIR}/Core/TimerManager.cpp
         DEPENDENCIES
         BML_Utils
         tomlplusplus::tomlplusplus
 )
 
-add_bml_test_support_library(bml_test_config_api_support
-        SOURCES
-        ${BML_SOURCE_DIR}/Core/ConfigApi.cpp
-        DEPENDENCIES
-        bml_test_core_support
-)
+# ConfigApi.cpp is now part of bml_test_core_support (required by TestKernelBuilder).
+# Keep this as an interface library so existing test targets still resolve.
+add_library(bml_test_config_api_support INTERFACE)
+target_link_libraries(bml_test_config_api_support INTERFACE bml_test_core_support)
 
 add_bml_test_support_library(bml_test_logging_api_support
         SOURCES
@@ -462,10 +479,6 @@ add_bml_test(HotReloadCoordinatorTests
         bml_test_runtime_support
 )
 
-# HotReloadIntegrationTests requires full BML runtime with exported functions.
-# TODO: Link to BML.dll for proper integration testing or mock bmlGetProcAddress.
-# Disabled for now as it's an integration test.
-#[[
 add_library(HotReloadSampleMod SHARED
         HotReloadSampleMod.cpp
 )
@@ -477,33 +490,15 @@ target_include_directories(HotReloadSampleMod PRIVATE
 add_bml_test(HotReloadIntegrationTests
         SOURCES
         HotReloadIntegrationTests.cpp
-        ModuleLoaderStub.cpp
-        ${BML_SOURCE_DIR}/Core/ApiRegistry.cpp
-        ${BML_SOURCE_DIR}/Core/ConfigStore.cpp
-        ${BML_SOURCE_DIR}/Core/Context.cpp
-        ${BML_SOURCE_DIR}/Core/CoreErrors.cpp
-        ${BML_SOURCE_DIR}/Core/DependencyResolver.cpp
-        ${BML_SOURCE_DIR}/Core/FileSystemWatcher.cpp
-        ${BML_SOURCE_DIR}/Core/ReloadableModuleSlot.cpp
-        ${BML_SOURCE_DIR}/Core/HotReloadCoordinator.cpp
-        ${BML_SOURCE_DIR}/Core/ImcBus.cpp
-        ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
-        ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
-        ${BML_SOURCE_DIR}/Core/Logging.cpp
-        ${BML_SOURCE_DIR}/Core/ModuleDiscovery.cpp
+        ${BML_SOURCE_DIR}/Core/ModuleLoader.cpp
         ${BML_SOURCE_DIR}/Core/ModuleRuntime.cpp
-        ${BML_SOURCE_DIR}/Core/ModManifest.cpp
-        ${BML_SOURCE_DIR}/Core/SemanticVersion.cpp
         DEPENDENCIES
-        BML_Utils
-        tomlplusplus::tomlplusplus
-        efsw
+        bml_test_runtime_support
 )
 
 add_dependencies(HotReloadIntegrationTests HotReloadSampleMod)
 target_compile_definitions(HotReloadIntegrationTests PRIVATE
         BML_TEST_SAMPLE_MOD_DLL="$<TARGET_FILE:HotReloadSampleMod>")
-]]
 
 # API Improvements Test (v0.5.0 capability system, discovery, performance)
 add_bml_test(ApiImprovementsTest

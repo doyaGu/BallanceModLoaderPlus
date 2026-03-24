@@ -26,23 +26,12 @@
 #include "Core/SyncManager.h"
 #include "Core/TimerManager.h"
 
+#include <atomic>
 #include <cassert>
 
 namespace BML::Core {
-
-// Test-specific implementations of kernel access functions.
-// Production versions are in KernelServices.cpp.
 namespace {
-    KernelServices *g_TestKernel = nullptr;
-}
-
-KernelServices &Kernel() noexcept {
-    assert(g_TestKernel && "Test kernel must be installed before use");
-    return *g_TestKernel;
-}
-
-void InstallKernel(KernelServices *kernel) noexcept {
-    g_TestKernel = kernel;
+    std::atomic<KernelServices *> g_TestKernel{nullptr};
 }
 
 KernelServices::~KernelServices() {
@@ -66,17 +55,20 @@ KernelServices::~KernelServices() {
 }
 
 namespace Testing {
+KernelServices *GetInstalledTestBootstrapKernel() noexcept {
+    return g_TestKernel.load(std::memory_order_acquire);
+}
 
 TestKernel::TestKernel()
     : m_Kernel(std::make_unique<KernelServices>()) {
-    InstallKernel(m_Kernel.get());
+    g_TestKernel.store(m_Kernel.get(), std::memory_order_release);
 }
 
 TestKernel::~TestKernel() {
     auto *installed = m_Kernel.get();
     m_Kernel.reset();
-    if (g_TestKernel == installed) {
-        InstallKernel(nullptr);
+    if (g_TestKernel.load(std::memory_order_acquire) == installed) {
+        g_TestKernel.store(nullptr, std::memory_order_release);
     }
 }
 

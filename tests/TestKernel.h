@@ -6,7 +6,6 @@
 #include "Core/KernelServices.h"
 
 namespace BML::Core::Testing {
-
 /// RAII guard that creates a fresh KernelServices for each test.
 ///
 /// Usage in a Google Test fixture:
@@ -24,10 +23,9 @@ namespace BML::Core::Testing {
 ///       // No TearDown needed -- TestKernel destructor handles cleanup.
 ///   };
 ///
-/// The constructor installs an empty KernelServices so that Instance()
-/// methods resolve through it (instead of fallback static locals).
-/// The destructor uninstalls and destroys the kernel, cleaning up all
-/// subsystems that were populated.
+/// The constructor installs an empty KernelServices for tests that still need
+/// a process-wide bootstrap stub. The destructor uninstalls and destroys the
+/// kernel, cleaning up all subsystems that were populated.
 ///
 /// NOTE: TestKernelSupport.cpp provides the KernelServices destructor
 /// for test link targets.  It must be compiled into every test target
@@ -39,6 +37,11 @@ public:
 
     TestKernel(const TestKernel &) = delete;
     TestKernel &operator=(const TestKernel &) = delete;
+    TestKernel(TestKernel &&other) noexcept : m_Kernel(std::move(other.m_Kernel)) {}
+    TestKernel &operator=(TestKernel &&other) noexcept {
+        if (this != &other) m_Kernel = std::move(other.m_Kernel);
+        return *this;
+    }
 
     KernelServices &operator*()  noexcept { return *m_Kernel; }
     KernelServices *operator->() noexcept { return m_Kernel.get(); }
