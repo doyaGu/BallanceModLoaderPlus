@@ -16,35 +16,35 @@ namespace BML::Core {
     } // namespace
 
     BML_Result BML_API_HookRegister(BML_Mod owner, const BML_HookDesc *desc) {
-        auto &kernel = Kernel();
-        auto &context = *kernel.context;
-        auto *resolvedOwner = ResolveBoundModule(context, owner);
+        auto *kernel = Context::KernelFromMod(owner);
+        auto *context = Context::ContextFromMod(owner);
+        if (!kernel || !context) {
+            return BML_RESULT_INVALID_CONTEXT;
+        }
+        auto *resolvedOwner = ResolveBoundModule(*context, owner);
         if (!resolvedOwner) {
             return BML_RESULT_INVALID_CONTEXT;
         }
-        return kernel.hooks->Register(resolvedOwner->id, desc);
+        return kernel->hooks->Register(resolvedOwner->id, desc);
     }
 
     BML_Result BML_API_HookUnregister(BML_Mod owner, void *target_address) {
-        auto &kernel = Kernel();
-        auto &context = *kernel.context;
-        auto *resolvedOwner = ResolveBoundModule(context, owner);
+        auto *kernel = Context::KernelFromMod(owner);
+        auto *context = Context::ContextFromMod(owner);
+        if (!kernel || !context) {
+            return BML_RESULT_INVALID_CONTEXT;
+        }
+        auto *resolvedOwner = ResolveBoundModule(*context, owner);
         if (!resolvedOwner) {
             return BML_RESULT_INVALID_CONTEXT;
         }
-        return kernel.hooks->Unregister(resolvedOwner->id, target_address);
+        return kernel->hooks->Unregister(resolvedOwner->id, target_address);
     }
 
-    BML_Result BML_API_HookEnumerate(BML_HookEnumCallback callback, void *user_data) {
-        auto &hooks = *Kernel().hooks;
-        return hooks.Enumerate(callback, user_data);
-    }
-
-    void RegisterHookApis() {
-        BML_BEGIN_API_REGISTRATION();
+    void RegisterHookApis(ApiRegistry &apiRegistry) {
+        BML_BEGIN_API_REGISTRATION(apiRegistry);
 
         BML_REGISTER_API_GUARDED(bmlHookRegister, "hook", BML_API_HookRegister);
         BML_REGISTER_API_GUARDED(bmlHookUnregister, "hook", BML_API_HookUnregister);
-        BML_REGISTER_API_GUARDED(bmlHookEnumerate, "hook", BML_API_HookEnumerate);
     }
 } // namespace BML::Core

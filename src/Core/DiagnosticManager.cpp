@@ -5,8 +5,13 @@
 namespace BML::Core {
     // Thread-local error context
     static thread_local ErrorContext g_ThreadErrorContext;
+    static DiagnosticManager g_ThreadDiagnosticManager;
 
     DiagnosticManager::DiagnosticManager() = default;
+
+    DiagnosticManager &GetThreadDiagnosticManager() noexcept {
+        return g_ThreadDiagnosticManager;
+    }
 
     ErrorContext &DiagnosticManager::GetThreadContext() {
         return g_ThreadErrorContext;

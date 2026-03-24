@@ -21,9 +21,11 @@ namespace BML::Core {
         // ============================================================================
 
         Context *FromHandle(BML_Context ctx) {
-            if (!ctx)
-                return nullptr;
-            return reinterpret_cast<Context *>(ctx);
+            return Context::FromHandle(ctx);
+        }
+
+        Context *FromModHandle(BML_Mod mod) {
+            return Context::ContextFromMod(mod);
         }
 
         BML_Mod_T *ResolveExplicitMod(Context &context, BML_Mod mod) {
@@ -102,23 +104,13 @@ namespace BML::Core {
         return context->GetUserData(key, out_data);
     }
 
-    BML_Context BML_API_GetGlobalContext() {
-        auto &context = *Kernel().context;
-        return context.GetHandle();
-    }
-
-    const BML_Version *BML_API_GetRuntimeVersion() {
-        thread_local BML_Version version_snapshot{};
-        auto &context = *Kernel().context;
-        version_snapshot = context.GetRuntimeVersionCopy();
-        return &version_snapshot;
-    }
-
-    BML_Result BML_API_RequestCapability(BML_Mod mod, const char *capability_id) {
+        BML_Result BML_API_RequestCapability(BML_Mod mod, const char *capability_id) {
         if (!capability_id)
             return BML_RESULT_INVALID_ARGUMENT;
-        auto &context = *Kernel().context;
-        auto *handle = ResolveExplicitMod(context, mod);
+        auto *context = FromModHandle(mod);
+        if (!context)
+            return BML_RESULT_INVALID_ARGUMENT;
+        auto *handle = ResolveExplicitMod(*context, mod);
         if (!handle)
             return BML_RESULT_INVALID_ARGUMENT;
         auto it = std::find(handle->capabilities.begin(), handle->capabilities.end(), capability_id);
@@ -129,8 +121,10 @@ namespace BML::Core {
         if (!capability_id || !out_supported)
             return BML_RESULT_INVALID_ARGUMENT;
         *out_supported = BML_FALSE;
-        auto &context = *Kernel().context;
-        auto *handle = ResolveExplicitMod(context, mod);
+        auto *context = FromModHandle(mod);
+        if (!context)
+            return BML_RESULT_INVALID_ARGUMENT;
+        auto *handle = ResolveExplicitMod(*context, mod);
         if (!handle)
             return BML_RESULT_INVALID_ARGUMENT;
         bool supported = std::find(handle->capabilities.begin(), handle->capabilities.end(), capability_id) !=
@@ -142,8 +136,10 @@ namespace BML::Core {
     BML_Result BML_API_GetModId(BML_Mod mod, const char **out_id) {
         if (!out_id)
             return BML_RESULT_INVALID_ARGUMENT;
-        auto &context = *Kernel().context;
-        auto *handle = ResolveExplicitMod(context, mod);
+        auto *context = FromModHandle(mod);
+        if (!context)
+            return BML_RESULT_INVALID_ARGUMENT;
+        auto *handle = ResolveExplicitMod(*context, mod);
         if (!handle)
             return BML_RESULT_INVALID_ARGUMENT;
         *out_id = handle->id.c_str();
@@ -153,8 +149,10 @@ namespace BML::Core {
     BML_Result BML_API_GetModVersion(BML_Mod mod, BML_Version *out_version) {
         if (!out_version)
             return BML_RESULT_INVALID_ARGUMENT;
-        auto &context = *Kernel().context;
-        auto *handle = ResolveExplicitMod(context, mod);
+        auto *context = FromModHandle(mod);
+        if (!context)
+            return BML_RESULT_INVALID_ARGUMENT;
+        auto *handle = ResolveExplicitMod(*context, mod);
         if (!handle)
             return BML_RESULT_INVALID_ARGUMENT;
         *out_version = handle->version;
@@ -166,33 +164,30 @@ namespace BML::Core {
                                             void *user_data) {
         if (!callback)
             return BML_RESULT_INVALID_ARGUMENT;
-        auto &context = *Kernel().context;
-        auto *handle = ResolveExplicitMod(context, owner);
+        auto *context = FromModHandle(owner);
+        if (!context)
+            return BML_RESULT_INVALID_ARGUMENT;
+        auto *handle = ResolveExplicitMod(*context, owner);
         if (!handle)
             return BML_RESULT_INVALID_ARGUMENT;
-        context.AppendShutdownHook(handle, callback, user_data);
+        context->AppendShutdownHook(handle, callback, user_data);
         return BML_RESULT_OK;
     }
 
-    BML_Mod BML_API_GetHostModule() {
-        auto &context = *Kernel().context;
-        return context.GetSyntheticHostModule();
-    }
+    BML_Result BML_API_CleanupModuleState(BML_Mod mod) {
+        auto *kernel = Context::KernelFromMod(mod);
+        auto *context = Context::ContextFromMod(mod);
+        if (!kernel || !context) {
+            return BML_RESULT_INVALID_CONTEXT;
+        }
 
-    uint32_t BML_API_GetLoadedModuleCount() {
-        auto &context = *Kernel().context;
-        return context.GetLoadedModuleCount();
-    }
+        auto *handle = context->ResolveModHandle(mod);
+        if (!handle) {
+            return BML_RESULT_INVALID_HANDLE;
+        }
 
-    BML_Mod BML_API_GetLoadedModuleAt(uint32_t index) {
-        auto &context = *Kernel().context;
-        return context.GetLoadedModuleAt(index);
-    }
-
-    BML_Mod BML_API_FindModuleById(const char *id) {
-        if (!id) return nullptr;
-        auto &context = *Kernel().context;
-        return context.GetModHandleById(id);
+        CleanupModuleKernelState(*kernel, handle->id, mod);
+        return BML_RESULT_OK;
     }
 
     // -- Manifest custom field access --
@@ -211,36 +206,40 @@ namespace BML::Core {
 
     BML_Result BML_API_GetManifestString(BML_Mod mod, const char *path, const char **out_value) {
         if (!out_value) return BML_RESULT_INVALID_ARGUMENT;
-        auto &context = *Kernel().context;
+        auto *context = FromModHandle(mod);
+        if (!context) return BML_RESULT_INVALID_ARGUMENT;
         const std::string *str = nullptr;
-        BML_Result r = ResolveManifestField(ResolveExplicitMod(context, mod), path, &str);
+        BML_Result r = ResolveManifestField(ResolveExplicitMod(*context, mod), path, &str);
         if (r == BML_RESULT_OK) *out_value = str->c_str();
         return r;
     }
 
     BML_Result BML_API_GetManifestInt(BML_Mod mod, const char *path, int64_t *out_value) {
         if (!out_value) return BML_RESULT_INVALID_ARGUMENT;
-        auto &context = *Kernel().context;
+        auto *context = FromModHandle(mod);
+        if (!context) return BML_RESULT_INVALID_ARGUMENT;
         const int64_t *val = nullptr;
-        BML_Result r = ResolveManifestField(ResolveExplicitMod(context, mod), path, &val);
+        BML_Result r = ResolveManifestField(ResolveExplicitMod(*context, mod), path, &val);
         if (r == BML_RESULT_OK) *out_value = *val;
         return r;
     }
 
     BML_Result BML_API_GetManifestFloat(BML_Mod mod, const char *path, double *out_value) {
         if (!out_value) return BML_RESULT_INVALID_ARGUMENT;
-        auto &context = *Kernel().context;
+        auto *context = FromModHandle(mod);
+        if (!context) return BML_RESULT_INVALID_ARGUMENT;
         const double *val = nullptr;
-        BML_Result r = ResolveManifestField(ResolveExplicitMod(context, mod), path, &val);
+        BML_Result r = ResolveManifestField(ResolveExplicitMod(*context, mod), path, &val);
         if (r == BML_RESULT_OK) *out_value = *val;
         return r;
     }
 
     BML_Result BML_API_GetManifestBool(BML_Mod mod, const char *path, BML_Bool *out_value) {
         if (!out_value) return BML_RESULT_INVALID_ARGUMENT;
-        auto &context = *Kernel().context;
+        auto *context = FromModHandle(mod);
+        if (!context) return BML_RESULT_INVALID_ARGUMENT;
         const bool *val = nullptr;
-        BML_Result r = ResolveManifestField(ResolveExplicitMod(context, mod), path, &val);
+        BML_Result r = ResolveManifestField(ResolveExplicitMod(*context, mod), path, &val);
         if (r == BML_RESULT_OK) *out_value = *val ? BML_TRUE : BML_FALSE;
         return r;
     }
@@ -249,17 +248,31 @@ namespace BML::Core {
 
     BML_Result BML_API_GetModDirectory(BML_Mod mod, const char **out_dir) {
         if (!out_dir) return BML_RESULT_INVALID_ARGUMENT;
-        auto &context = *Kernel().context;
-        auto *handle = ResolveExplicitMod(context, mod);
+        auto *context = FromModHandle(mod);
+        if (!context) return BML_RESULT_INVALID_ARGUMENT;
+        auto *handle = ResolveExplicitMod(*context, mod);
         if (!handle || !handle->manifest) return BML_RESULT_INVALID_ARGUMENT;
         *out_dir = handle->directory_utf8.c_str();
         return BML_RESULT_OK;
     }
 
+    BML_Result BML_API_GetModAssetMount(BML_Mod mod, const char **out_mount) {
+        if (!out_mount) return BML_RESULT_INVALID_ARGUMENT;
+        auto *context = FromModHandle(mod);
+        if (!context) return BML_RESULT_INVALID_ARGUMENT;
+        auto *handle = ResolveExplicitMod(*context, mod);
+        if (!handle || !handle->manifest) return BML_RESULT_INVALID_ARGUMENT;
+        *out_mount = handle->manifest->assets.mount.empty()
+            ? nullptr
+            : handle->manifest->assets.mount.c_str();
+        return BML_RESULT_OK;
+    }
+
     BML_Result BML_API_GetModName(BML_Mod mod, const char **out_name) {
         if (!out_name) return BML_RESULT_INVALID_ARGUMENT;
-        auto &context = *Kernel().context;
-        auto *handle = ResolveExplicitMod(context, mod);
+        auto *context = FromModHandle(mod);
+        if (!context) return BML_RESULT_INVALID_ARGUMENT;
+        auto *handle = ResolveExplicitMod(*context, mod);
         if (!handle || !handle->manifest) return BML_RESULT_INVALID_ARGUMENT;
         *out_name = handle->manifest->package.name.c_str();
         return BML_RESULT_OK;
@@ -267,8 +280,9 @@ namespace BML::Core {
 
     BML_Result BML_API_GetModDescription(BML_Mod mod, const char **out_desc) {
         if (!out_desc) return BML_RESULT_INVALID_ARGUMENT;
-        auto &context = *Kernel().context;
-        auto *handle = ResolveExplicitMod(context, mod);
+        auto *context = FromModHandle(mod);
+        if (!context) return BML_RESULT_INVALID_ARGUMENT;
+        auto *handle = ResolveExplicitMod(*context, mod);
         if (!handle || !handle->manifest) return BML_RESULT_INVALID_ARGUMENT;
         *out_desc = handle->manifest->package.description.c_str();
         return BML_RESULT_OK;
@@ -276,8 +290,9 @@ namespace BML::Core {
 
     BML_Result BML_API_GetModAuthorCount(BML_Mod mod, uint32_t *out_count) {
         if (!out_count) return BML_RESULT_INVALID_ARGUMENT;
-        auto &context = *Kernel().context;
-        auto *handle = ResolveExplicitMod(context, mod);
+        auto *context = FromModHandle(mod);
+        if (!context) return BML_RESULT_INVALID_ARGUMENT;
+        auto *handle = ResolveExplicitMod(*context, mod);
         if (!handle || !handle->manifest) return BML_RESULT_INVALID_ARGUMENT;
         *out_count = static_cast<uint32_t>(handle->manifest->package.authors.size());
         return BML_RESULT_OK;
@@ -285,46 +300,23 @@ namespace BML::Core {
 
     BML_Result BML_API_GetModAuthorAt(BML_Mod mod, uint32_t index, const char **out_author) {
         if (!out_author) return BML_RESULT_INVALID_ARGUMENT;
-        auto &context = *Kernel().context;
-        auto *handle = ResolveExplicitMod(context, mod);
+        auto *context = FromModHandle(mod);
+        if (!context) return BML_RESULT_INVALID_ARGUMENT;
+        auto *handle = ResolveExplicitMod(*context, mod);
         if (!handle || !handle->manifest) return BML_RESULT_INVALID_ARGUMENT;
         if (index >= handle->manifest->package.authors.size()) return BML_RESULT_INVALID_ARGUMENT;
         *out_author = handle->manifest->package.authors[index].c_str();
         return BML_RESULT_OK;
     }
 
-    void BML_API_EnumerateModuleDirectories(
-            void (*callback)(const char *mod_id,
-                             const wchar_t *directory,
-                             const char *asset_mount,
-                             void *user_data),
-            void *user_data) {
-        if (!callback) return;
-        auto &context = *Kernel().context;
-        const auto snapshot = context.GetLoadedModuleSnapshot();
-        for (const auto &entry : snapshot) {
-            if (!entry.manifest) continue;
-            const char *mount = entry.manifest->assets.mount.empty()
-                ? nullptr
-                : entry.manifest->assets.mount.c_str();
-            callback(entry.id.c_str(),
-                     entry.manifest->directory.c_str(),
-                     mount,
-                     user_data);
-        }
-    }
-
-    void RegisterCoreApis() {
-        BML_BEGIN_API_REGISTRATION();
+    void RegisterCoreApis(ApiRegistry &apiRegistry) {
+        BML_BEGIN_API_REGISTRATION(apiRegistry);
 
         // Context management APIs
         BML_REGISTER_API_GUARDED(bmlContextRetain, "core.context", BML_API_ContextRetain);
         BML_REGISTER_API_GUARDED(bmlContextRelease, "core.context", BML_API_ContextRelease);
         BML_REGISTER_API_GUARDED(bmlContextSetUserData, "core.context", BML_API_ContextSetUserData);
         BML_REGISTER_API_GUARDED(bmlContextGetUserData, "core.context", BML_API_ContextGetUserData);
-        BML_REGISTER_API(bmlGetGlobalContext, BML_API_GetGlobalContext);
-        BML_REGISTER_API(bmlGetRuntimeVersion, BML_API_GetRuntimeVersion);
-
         // Capability APIs
         BML_REGISTER_API_GUARDED(bmlRequestCapability, "core.capabilities", BML_API_RequestCapability);
         BML_REGISTER_API_GUARDED(bmlCheckCapability, "core.capabilities", BML_API_CheckCapability);
@@ -333,6 +325,7 @@ namespace BML::Core {
         BML_REGISTER_API_GUARDED(bmlGetModId, "core.metadata", BML_API_GetModId);
         BML_REGISTER_API_GUARDED(bmlGetModVersion, "core.metadata", BML_API_GetModVersion);
         BML_REGISTER_API_GUARDED(bmlGetModDirectory, "core.metadata", BML_API_GetModDirectory);
+        BML_REGISTER_API_GUARDED(bmlGetModAssetMount, "core.metadata", BML_API_GetModAssetMount);
         BML_REGISTER_API_GUARDED(bmlGetModName, "core.metadata", BML_API_GetModName);
         BML_REGISTER_API_GUARDED(bmlGetModDescription, "core.metadata", BML_API_GetModDescription);
         BML_REGISTER_API_GUARDED(bmlGetModAuthorCount, "core.metadata", BML_API_GetModAuthorCount);
@@ -347,49 +340,6 @@ namespace BML::Core {
         // Lifecycle APIs
         BML_REGISTER_API_GUARDED(
             bmlRegisterShutdownHook, "core.lifecycle", BML_API_RegisterShutdownHook);
-        BML_REGISTER_API(bmlGetHostModule, BML_API_GetHostModule);
-        BML_REGISTER_API(bmlGetLoadedModuleCount, BML_API_GetLoadedModuleCount);
-        BML_REGISTER_API(bmlGetLoadedModuleAt, BML_API_GetLoadedModuleAt);
-        BML_REGISTER_API(bmlFindModuleById, BML_API_FindModuleById);
-        BML_REGISTER_API(bmlEnumerateModuleDirectories, BML_API_EnumerateModuleDirectories);
-
-        // Runtime provider APIs
-        {
-            static const auto regFn = +[](const BML_ModuleRuntimeProvider *provider,
-                                           const char *owner_id) -> BML_Result {
-                if (!owner_id) return BML_RESULT_INVALID_ARGUMENT;
-                auto &context = *Kernel().context;
-                return context.RegisterRuntimeProvider(provider, owner_id);
-            };
-            detail::RegisterApi(registry, "bmlRegisterRuntimeProvider",
-                                reinterpret_cast<void *>(regFn));
-
-            static const auto unregFn = +[](const BML_ModuleRuntimeProvider *provider) -> BML_Result {
-                auto &context = *Kernel().context;
-                return context.UnregisterRuntimeProvider(provider);
-            };
-            detail::RegisterApi(registry, "bmlUnregisterRuntimeProvider",
-                                reinterpret_cast<void *>(unregFn));
-
-            static const auto cleanupFn = +[](BML_Mod mod) -> BML_Result {
-                auto &kernel = Kernel();
-                auto *handle = kernel.context->ResolveModHandle(mod);
-                if (!handle) return BML_RESULT_INVALID_HANDLE;
-                CleanupModuleKernelState(kernel, handle->id, mod);
-                return BML_RESULT_OK;
-            };
-            detail::RegisterApi(registry, "bmlCleanupModuleState",
-                                reinterpret_cast<void *>(cleanupFn));
-        }
-
-        // Service hub API (runtime-wide service access)
-        {
-            static const auto fn = +[]() -> const void * {
-                auto &context = *Kernel().context;
-                return context.GetServiceHub();
-            };
-            detail::RegisterApi(registry, "bmlGetServiceHub", reinterpret_cast<void *>(fn));
-        }
 
         // Register all subsystem APIs in dependency order
         registry.RegisterCoreApiSet(kCoreApiDescriptors, std::size(kCoreApiDescriptors));

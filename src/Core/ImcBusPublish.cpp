@@ -167,7 +167,7 @@ namespace BML::Core {
     BML_Result ImcBusImpl::GetTopicId(const char *name, BML_TopicId *out_id) {
         if (!name || !*name || !out_id)
             return BML_RESULT_INVALID_ARGUMENT;
-        *out_id = m_TopicRegistry.GetOrCreate(name);
+        *out_id = m_PublishState.topic_registry.GetOrCreate(name);
         return (*out_id != BML_TOPIC_ID_INVALID) ? BML_RESULT_OK : BML_RESULT_FAIL;
     }
 
@@ -195,7 +195,8 @@ namespace BML::Core {
 
         if (sub->queue && sub->queue->Enqueue(message, message->priority)) {
             sub->RecordReceived(message->Size());
-            m_Stats.total_messages_delivered.fetch_add(1, std::memory_order_relaxed);
+            m_GlobalStats.total_messages_delivered.fetch_add(1,
+                                                             std::memory_order_relaxed);
             if (out_enqueued) {
                 *out_enqueued = true;
             }
@@ -207,7 +208,8 @@ namespace BML::Core {
             ApplyBackpressure(sub, message);
             if (sub->queue && sub->queue->Enqueue(message, message->priority)) {
                 sub->RecordReceived(message->Size());
-                m_Stats.total_messages_delivered.fetch_add(1, std::memory_order_relaxed);
+                m_GlobalStats.total_messages_delivered.fetch_add(
+                    1, std::memory_order_relaxed);
                 if (out_enqueued) {
                     *out_enqueued = true;
                 }
@@ -216,14 +218,16 @@ namespace BML::Core {
             break;
         case BML_BACKPRESSURE_DROP_NEWEST:
             sub->RecordDropped();
-            m_Stats.total_messages_dropped.fetch_add(1, std::memory_order_relaxed);
+            m_GlobalStats.total_messages_dropped.fetch_add(1,
+                                                           std::memory_order_relaxed);
             return BML_RESULT_OK;
         case BML_BACKPRESSURE_BLOCK:
             for (int spin = 0; spin < 100; ++spin) {
                 std::this_thread::yield();
                 if (sub->queue && sub->queue->Enqueue(message, message->priority)) {
                     sub->RecordReceived(message->Size());
-                    m_Stats.total_messages_delivered.fetch_add(1, std::memory_order_relaxed);
+                    m_GlobalStats.total_messages_delivered.fetch_add(
+                        1, std::memory_order_relaxed);
                     if (out_enqueued) {
                         *out_enqueued = true;
                     }
@@ -238,7 +242,7 @@ namespace BML::Core {
         }
 
         sub->RecordDropped();
-        m_Stats.total_messages_dropped.fetch_add(1, std::memory_order_relaxed);
+        m_GlobalStats.total_messages_dropped.fetch_add(1, std::memory_order_relaxed);
         return BML_RESULT_OK;
     }
 
@@ -259,7 +263,8 @@ namespace BML::Core {
         if (!sub || sub->closed.load(std::memory_order_acquire) || !sub->handler)
             return;
 
-        BML_Context ctx = g_BusContext->GetHandle();
+        auto *busContext = m_Context;
+        BML_Context ctx = busContext ? busContext->GetHandle() : nullptr;
 
         try {
             DispatchSubscriptionScope dispatch_scope(sub);
@@ -273,7 +278,7 @@ namespace BML::Core {
             if (seh_code != 0) {
                 std::string owner_id;
                 if (sub->owner) {
-                    auto *mod = g_BusContext->ResolveModHandle(sub->owner);
+                    auto *mod = busContext ? busContext->ResolveModHandle(sub->owner) : nullptr;
                     if (mod) {
                         owner_id = mod->id;
                     }
@@ -284,9 +289,13 @@ namespace BML::Core {
                         seh_code, static_cast<unsigned>(topic),
                         owner_id.empty() ? "unknown" : owner_id.c_str());
 
-                g_BusContext->GetCrashDump().WriteDumpOnce(owner_id, seh_code);
+                if (busContext) {
+                    busContext->GetCrashDump().WriteDumpOnce(owner_id, seh_code);
+                }
                 if (!owner_id.empty()) {
-                    g_BusContext->GetFaultTracker().RecordFault(owner_id, seh_code);
+                    if (busContext) {
+                        busContext->GetFaultTracker().RecordFault(owner_id, seh_code);
+                    }
                 }
                 sub->closed.store(true, std::memory_order_release);
             } else {
@@ -304,16 +313,16 @@ namespace BML::Core {
         if (!message)
             return BML_RESULT_OUT_OF_MEMORY;
 
-        SnapshotGuard guard(m_Snapshot.load(std::memory_order_acquire));
+        SnapshotGuard guard(m_PublishState.snapshot.load(std::memory_order_acquire));
         if (!guard) {
-            m_TopicRegistry.IncrementMessageCount(topic);
+            m_PublishState.topic_registry.IncrementMessageCount(topic);
             ReleaseMessage(message);
             return BML_RESULT_OK;
         }
 
         auto it = guard.get()->topic_subs.find(topic);
         if (it == guard.get()->topic_subs.end() || it->second.subs.empty()) {
-            m_TopicRegistry.IncrementMessageCount(topic);
+            m_PublishState.topic_registry.IncrementMessageCount(topic);
             ReleaseMessage(message);
             return BML_RESULT_OK;
         }
@@ -322,7 +331,7 @@ namespace BML::Core {
         if (entry.message_counter) {
             entry.message_counter->fetch_add(1, std::memory_order_relaxed);
         } else {
-            m_TopicRegistry.IncrementMessageCount(topic);
+            m_PublishState.topic_registry.IncrementMessageCount(topic);
         }
 
         StackVec<BML_Subscription_T *, 8> targets;
@@ -526,6 +535,7 @@ namespace BML::Core {
         subscription->topic_id = topic;
         subscription->handler = handler;
         subscription->user_data = user_data;
+        subscription->kernel = m_Context ? Context::KernelFromHandle(m_Context->GetHandle()) : nullptr;
         subscription->owner = resolved_owner;
         subscription->queue_capacity = capacity;
         subscription->min_priority = min_priority;
@@ -540,9 +550,9 @@ namespace BML::Core {
 
         BML_Subscription handle = subscription.get();
         {
-            std::lock_guard lock(m_WriteMutex);
-            m_MutableTopicMap[topic].push_back(handle);
-            m_Subscriptions.emplace(handle, std::move(subscription));
+            std::lock_guard lock(m_PublishState.write_mutex);
+            m_PublishState.mutable_topic_map[topic].push_back(handle);
+            m_PublishState.subscriptions.emplace(handle, std::move(subscription));
             PublishNewSnapshot();
         }
 
@@ -552,9 +562,9 @@ namespace BML::Core {
             RetainedStateEntry retained;
             bool has_retained = false;
             {
-                std::lock_guard<std::mutex> state_lock(m_StateMutex);
-                auto state_it = m_RetainedStates.find(topic);
-                if (state_it != m_RetainedStates.end()) {
+                std::lock_guard<std::mutex> state_lock(m_RetainedStateStore.state_mutex);
+                auto state_it = m_RetainedStateStore.retained_states.find(topic);
+                if (state_it != m_RetainedStateStore.retained_states.end()) {
                     retained.owner = state_it->second.owner;
                     retained.timestamp = state_it->second.timestamp;
                     retained.flags = state_it->second.flags;
@@ -574,7 +584,8 @@ namespace BML::Core {
                 retained_msg.timestamp = retained.timestamp;
                 if (MatchesSubscription(handle, retained_msg)) {
                     handle->RecordReceived(retained_msg.size);
-                    m_Stats.total_messages_delivered.fetch_add(1, std::memory_order_relaxed);
+                    m_GlobalStats.total_messages_delivered.fetch_add(
+                        1, std::memory_order_relaxed);
                     handle->ref_count.fetch_add(1, std::memory_order_relaxed);
                     InvokeRegularHandler(handle, topic, retained_msg);
                     handle->ref_count.fetch_sub(1, std::memory_order_acq_rel);
@@ -630,6 +641,7 @@ namespace BML::Core {
         subscription->topic_id = topic;
         subscription->intercept_handler = handler;
         subscription->user_data = user_data;
+        subscription->kernel = m_Context ? Context::KernelFromHandle(m_Context->GetHandle()) : nullptr;
         subscription->owner = resolved_owner;
         subscription->queue_capacity = 0;
         subscription->execution_order = exec_order;
@@ -637,9 +649,9 @@ namespace BML::Core {
 
         BML_Subscription handle = subscription.get();
         {
-            std::lock_guard lock(m_WriteMutex);
-            m_MutableTopicMap[topic].push_back(handle);
-            m_Subscriptions.emplace(handle, std::move(subscription));
+            std::lock_guard lock(m_PublishState.write_mutex);
+            m_PublishState.mutable_topic_map[topic].push_back(handle);
+            m_PublishState.subscriptions.emplace(handle, std::move(subscription));
             PublishNewSnapshot();
         }
 
@@ -664,11 +676,12 @@ namespace BML::Core {
         BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));
 
         BML_EventResult final_result = BML_EVENT_CONTINUE;
-        BML_Context ctx = g_BusContext->GetHandle();
+        auto *busContext = m_Context;
+        BML_Context ctx = busContext ? busContext->GetHandle() : nullptr;
 
         StackVec<BML_Subscription_T *, 8> interceptors;
         {
-            SnapshotGuard guard(m_Snapshot.load(std::memory_order_acquire));
+            SnapshotGuard guard(m_PublishState.snapshot.load(std::memory_order_acquire));
             if (guard) {
                 auto it = guard.get()->topic_subs.find(topic);
                 if (it != guard.get()->topic_subs.end()) {
@@ -709,7 +722,7 @@ namespace BML::Core {
                         if (seh_code != 0) {
                             std::string owner_id;
                             if (sub->owner) {
-                                auto *mod = g_BusContext->ResolveModHandle(sub->owner);
+                                auto *mod = busContext ? busContext->ResolveModHandle(sub->owner) : nullptr;
                                 if (mod) {
                                     owner_id = mod->id;
                                 }
@@ -719,9 +732,13 @@ namespace BML::Core {
                                     "owned by module '%s' -- unsubscribing",
                                     seh_code, static_cast<unsigned>(topic),
                                     owner_id.empty() ? "unknown" : owner_id.c_str());
-                            g_BusContext->GetCrashDump().WriteDumpOnce(owner_id, seh_code);
+                            if (busContext) {
+                                busContext->GetCrashDump().WriteDumpOnce(owner_id, seh_code);
+                            }
                             if (!owner_id.empty()) {
-                                g_BusContext->GetFaultTracker().RecordFault(owner_id, seh_code);
+                                if (busContext) {
+                                    busContext->GetFaultTracker().RecordFault(owner_id, seh_code);
+                                }
                             }
                             sub->closed.store(true, std::memory_order_release);
                             result = BML_EVENT_CONTINUE;
@@ -766,9 +783,9 @@ namespace BML::Core {
         if (!out_stats)
             return BML_RESULT_INVALID_ARGUMENT;
 
-        std::lock_guard lock(m_WriteMutex);
-        auto it = m_Subscriptions.find(sub);
-        if (it == m_Subscriptions.end())
+        std::lock_guard lock(m_PublishState.write_mutex);
+        auto it = m_PublishState.subscriptions.find(sub);
+        if (it == m_PublishState.subscriptions.end())
             return BML_RESULT_INVALID_HANDLE;
 
         it->second->FillStats(out_stats);
@@ -827,9 +844,9 @@ namespace BML::Core {
         std::unique_ptr<BML_Subscription_T> owned;
         BML_Subscription_T *raw = nullptr;
         {
-            std::lock_guard lock(m_WriteMutex);
-            auto it = m_Subscriptions.find(sub);
-            if (it == m_Subscriptions.end())
+            std::lock_guard lock(m_PublishState.write_mutex);
+            auto it = m_PublishState.subscriptions.find(sub);
+            if (it == m_PublishState.subscriptions.end())
                 return BML_RESULT_INVALID_HANDLE;
 
             auto *s = it->second.get();
@@ -837,7 +854,7 @@ namespace BML::Core {
             RemoveFromMutableTopicMap(s->topic_id, sub);
             owned = std::move(it->second);
             raw = owned.get();
-            m_Subscriptions.erase(it);
+            m_PublishState.subscriptions.erase(it);
             PublishNewSnapshot();
         }
 
@@ -845,8 +862,8 @@ namespace BML::Core {
             if (std::find(g_DispatchSubscriptionStack.begin(),
                           g_DispatchSubscriptionStack.end(),
                           raw) != g_DispatchSubscriptionStack.end()) {
-                std::lock_guard lock(m_WriteMutex);
-                m_RetiredSubscriptions.push_back(std::move(owned));
+                std::lock_guard lock(m_PublishState.write_mutex);
+                m_PublishState.retired_subscriptions.push_back(std::move(owned));
                 return BML_RESULT_OK;
             }
 
@@ -862,8 +879,8 @@ namespace BML::Core {
             if (raw->ref_count.load(std::memory_order_acquire) != 0) {
                 CoreLog(BML_LOG_WARN, kImcLogCategory,
                         "Subscription ref_count non-zero after timeout, deferring cleanup");
-                std::lock_guard lock(m_WriteMutex);
-                m_RetiredSubscriptions.push_back(std::move(owned));
+                std::lock_guard lock(m_PublishState.write_mutex);
+                m_PublishState.retired_subscriptions.push_back(std::move(owned));
                 return BML_RESULT_OK;
             }
             DropPendingMessages(raw);
@@ -879,9 +896,9 @@ namespace BML::Core {
         if (!out_active)
             return BML_RESULT_INVALID_ARGUMENT;
 
-        std::lock_guard lock(m_WriteMutex);
-        auto it = m_Subscriptions.find(sub);
-        if (it == m_Subscriptions.end()) {
+        std::lock_guard lock(m_PublishState.write_mutex);
+        auto it = m_PublishState.subscriptions.find(sub);
+        if (it == m_PublishState.subscriptions.end()) {
             *out_active = BML_FALSE;
             return BML_RESULT_INVALID_HANDLE;
         }
@@ -892,13 +909,13 @@ namespace BML::Core {
     }
 
     void ImcBusImpl::Pump(size_t max_per_sub) {
-        m_Stats.pump_cycles.fetch_add(1, std::memory_order_relaxed);
-        m_Stats.last_pump_time.store(GetTimestampNs(), std::memory_order_relaxed);
+        m_GlobalStats.pump_cycles.fetch_add(1, std::memory_order_relaxed);
+        m_GlobalStats.last_pump_time.store(GetTimestampNs(), std::memory_order_relaxed);
 
         DrainRpcQueue(max_per_sub);
 
         {
-            SnapshotGuard guard(m_Snapshot.load(std::memory_order_acquire));
+            SnapshotGuard guard(m_PublishState.snapshot.load(std::memory_order_acquire));
             if (!guard)
                 return;
 
@@ -913,7 +930,7 @@ namespace BML::Core {
 
         CleanupRetiredSubscriptions();
         {
-            std::lock_guard lock(m_WriteMutex);
+            std::lock_guard lock(m_PublishState.write_mutex);
             RetireOldSnapshots();
         }
     }

@@ -97,7 +97,7 @@ namespace BML::Core {
 
         struct CoreApiDescriptor {
             const char *name;
-            void (*register_fn)();
+            void (*register_fn)(ApiRegistry &registry);
             uint32_t provides_mask;
             uint32_t depends_mask;
         };
@@ -149,6 +149,7 @@ namespace BML::Core {
 
         // Direct index table for ultra-fast lookup (IDs < MAX_DIRECT_API_ID)
         mutable std::atomic<void *> m_DirectTable[MAX_DIRECT_API_ID] = {};
+        mutable std::atomic<uint64_t> m_DirectCallCount[MAX_DIRECT_API_ID] = {};
 
         // Auto-assigned ID counter
         std::atomic<BML_ApiId> m_NextAutoId{1};
@@ -157,6 +158,8 @@ namespace BML::Core {
         void RegisterEntryLocked(const std::string &name, void *pointer, BML_ApiId api_id);
         bool CanRegisterLocked(const std::string &name, BML_ApiId api_id) const;
         void IncrementCallCountLocked(BML_ApiId api_id) const;
+        void IncrementDirectCallCount(BML_ApiId api_id) const;
+        uint64_t LoadCallCountLocked(BML_ApiId api_id) const;
         const char *StoreString(const char *value);
         void *ResolvePointerLocked(BML_ApiId api_id, bool increment_counts) const;
     };

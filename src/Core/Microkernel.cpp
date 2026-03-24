@@ -1,4 +1,4 @@
-﻿#include "Microkernel.h"
+#include "Microkernel.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -11,7 +11,7 @@
 
 #include "ApiRegistration.h"
 #include "ApiRegistry.h"
-#include "BuiltinInterfaces.h"
+#include "RuntimeInterfaces.h"
 #include "ConfigStore.h"
 #include "Context.h"
 #include "CrashDumpWriter.h"
@@ -57,26 +57,15 @@ namespace BML::Core {
         diagnostics.reset();
     }
 
-    namespace {
-        // File-scope mutex that replaces the former Meyer's singleton StateMutex().
-        // std::recursive_mutex has a constexpr-capable constructor on major
-        // implementations, so file-scope construction is safe and deterministic.
-        std::recursive_mutex s_StateMutex;
-
-        struct MicrokernelState {
-            ModuleRuntime runtime;
-            ModuleBootstrapDiagnostics diagnostics;
-            std::unique_ptr<KernelServices> kernel;
-            bool core_initialized{false};
-            bool modules_discovered{false};
-            bool modules_loaded{false};
-            BML_BootstrapState bootstrap_state{BML_BOOTSTRAP_STATE_NOT_STARTED};
-        };
-
-        // Explicitly-managed lifetime, created in InitializeCore() and destroyed
-        // in ShutdownMicrokernel(). Replaces the former Meyer's singleton
-        // State() to eliminate static-destruction-order risks.
-        std::unique_ptr<MicrokernelState> s_State;
+    struct RuntimeState {
+        std::recursive_mutex state_mutex;
+        ModuleRuntime runtime;
+        ModuleBootstrapDiagnostics diagnostics;
+        std::unique_ptr<KernelServices> kernel;
+        bool core_initialized{false};
+        bool modules_discovered{false};
+        bool modules_loaded{false};
+        BML_BootstrapState bootstrap_state{BML_BOOTSTRAP_STATE_NOT_STARTED};
 
         struct ManifestErrorSnapshot {
             std::string message;
@@ -124,20 +113,32 @@ namespace BML::Core {
                 load_order.clear();
                 diagnostics = {};
             }
-        };
+        } public_diagnostics_snapshot;
 
-        DiagnosticsSnapshotStorage &ThreadLocalDiagnosticsSnapshot() {
-            thread_local DiagnosticsSnapshotStorage snapshot;
-            return snapshot;
-        }
+        ModuleBootstrapDiagnostics internal_diagnostics_snapshot;
+        bool clear_diagnostics_snapshot_on_next_query{false};
+    };
 
+    RuntimeState *CreateRuntimeState() {
+        return new RuntimeState();
+    }
+
+    void DestroyRuntimeState(RuntimeState *state) {
+        delete state;
+    }
+
+    KernelServices *GetRuntimeKernel(RuntimeState &state) noexcept {
+        return state.kernel.get();
+    }
+
+    namespace {
         void PopulatePublicDiagnosticsSnapshot(const ModuleBootstrapDiagnostics &diag,
-                                              DiagnosticsSnapshotStorage &snapshot) {
+                                              RuntimeState::DiagnosticsSnapshotStorage &snapshot) {
             snapshot.Reset();
 
             snapshot.manifest_storage.reserve(diag.manifest_errors.size());
             for (const auto &error : diag.manifest_errors) {
-                ManifestErrorSnapshot entry;
+                RuntimeState::ManifestErrorSnapshot entry;
                 entry.message = error.message;
                 if (error.file && !error.file->empty()) {
                     entry.file = *error.file;
@@ -176,7 +177,7 @@ namespace BML::Core {
 
             snapshot.dependency_warning_storage.reserve(diag.dependency_warnings.size());
             for (const auto &warning : diag.dependency_warnings) {
-                DependencyWarningSnapshot entry;
+                RuntimeState::DependencyWarningSnapshot entry;
                 entry.module_id = warning.mod_id;
                 entry.dependency_id = warning.dependency_id;
                 entry.message = warning.message;
@@ -231,6 +232,18 @@ namespace BML::Core {
                 snapshot.load_order.empty() ? nullptr : snapshot.load_order.data();
             snapshot.diagnostics.load_order_count =
                 static_cast<uint32_t>(snapshot.load_order.size());
+        }
+
+        void PublishDiagnosticsSnapshots(RuntimeState &state, const ModuleBootstrapDiagnostics &diag) {
+            state.internal_diagnostics_snapshot = diag;
+            PopulatePublicDiagnosticsSnapshot(diag, state.public_diagnostics_snapshot);
+            state.clear_diagnostics_snapshot_on_next_query = false;
+        }
+
+        void ClearPublishedDiagnosticsSnapshots(RuntimeState &state) {
+            state.internal_diagnostics_snapshot = {};
+            state.public_diagnostics_snapshot.Reset();
+            state.clear_diagnostics_snapshot_on_next_query = false;
         }
 
         inline void DebugLog(const std::string &message) {
@@ -385,15 +398,14 @@ namespace BML::Core {
 
     } // namespace
 
-    bool InitializeCore() {
-        std::lock_guard<std::recursive_mutex> lock(s_StateMutex);
-        if (s_State && s_State->core_initialized)
+    bool InitializeCore(RuntimeState &state) {
+        std::lock_guard<std::recursive_mutex> lock(state.state_mutex);
+        if (state.core_initialized)
             return true;
 
         DebugLog("Phase 0: Initializing core...");
 
-        s_State = std::make_unique<MicrokernelState>();
-        auto &state = *s_State;
+        ClearPublishedDiagnosticsSnapshots(state);
 
         // Build the service graph.  All subsystems owned by KernelServices.
         state.kernel = std::make_unique<KernelServices>();
@@ -415,9 +427,10 @@ namespace BML::Core {
         k.imc_bus            = std::make_unique<ImcBus>();
         // L3 - depend on L0/L1/L2
         k.context            = std::make_unique<Context>(*k.api_registry, *k.config, *k.crash_dump, *k.fault_tracker);
+        k.context->BindKernel(k);
         k.interface_registry = std::make_unique<InterfaceRegistry>(*k.context, *k.leases);
         k.timers             = std::make_unique<TimerManager>(*k.context);
-        InstallKernel(&k);
+        state.runtime.BindKernel(k);
 
         // Initialize context with runtime version
         k.context->Initialize(bmlMakeVersion(0, 4, 0));
@@ -426,31 +439,33 @@ namespace BML::Core {
         k.config->BindContext(*k.context);
         k.imc_bus->BindDeps(*k.context);
 
-        RegisterBootstrapExports();
+        RegisterBootstrapExports(*k.api_registry);
 
         // Register core APIs
-        RegisterCoreApis();
-        RegisterBuiltinInterfaces();
-        PopulateBuiltinServices(k.context->GetServiceHubMutable()->m_Builtins);
+        RegisterCoreApis(*k.api_registry);
+        RegisterRuntimeInterfaces(k);
+        PublishDiagnosticsSnapshots(state, state.diagnostics);
 
-        s_State->core_initialized = true;
-        s_State->bootstrap_state = BML_BOOTSTRAP_STATE_CORE_INITIALIZED;
+        state.core_initialized = true;
+        state.modules_discovered = false;
+        state.modules_loaded = false;
+        state.bootstrap_state = BML_BOOTSTRAP_STATE_CORE_INITIALIZED;
         DebugLog("Core initialized successfully");
         return true;
     }
 
-    bool DiscoverModules() {
-        return DiscoverModulesInDirectory(DetectModsDirectory());
+    bool DiscoverModules(RuntimeState &state) {
+        return DiscoverModulesInDirectory(state, DetectModsDirectory());
     }
 
-    bool DiscoverModulesInDirectory(const std::wstring &mods_dir) {
-        std::lock_guard<std::recursive_mutex> lock(s_StateMutex);
-        if (!s_State || !s_State->core_initialized) {
+    bool DiscoverModulesInDirectory(RuntimeState &state, const std::wstring &mods_dir) {
+        std::lock_guard<std::recursive_mutex> lock(state.state_mutex);
+        if (!state.core_initialized || !state.kernel) {
             DebugLog("DiscoverModulesInDirectory: Core not initialized");
             return false;
         }
 
-        if (s_State->modules_discovered)
+        if (state.modules_discovered)
             return true;
 
         DebugLog("Phase 1: Discovering modules...");
@@ -460,37 +475,40 @@ namespace BML::Core {
         {
             std::filesystem::path base = std::filesystem::path(mods_dir).parent_path();
             auto base_str = base.wstring();
-            Kernel().fault_tracker->Load(base_str);
-            Kernel().crash_dump->SetBaseDir(base_str);
+            state.kernel->fault_tracker->Load(base_str);
+            state.kernel->crash_dump->SetBaseDir(base_str);
         }
 
         ModuleBootstrapDiagnostics diag;
 
         // Only discover and validate, don't load DLLs yet
-        if (!s_State->runtime.DiscoverAndValidate(mods_dir, diag)) {
-            s_State->diagnostics = diag;
+        if (!state.runtime.DiscoverAndValidate(mods_dir, diag)) {
+            state.diagnostics = diag;
+            PublishDiagnosticsSnapshots(state, diag);
             EmitDiagnostics(diag);
             DebugLog("Module discovery failed");
             // Keep context alive for later retry
             return false;
         }
 
-        s_State->diagnostics = diag;
+        state.diagnostics = diag;
+        PublishDiagnosticsSnapshots(state, diag);
         EmitDiagnostics(diag);
-        s_State->modules_discovered = true;
-        s_State->bootstrap_state = BML_BOOTSTRAP_STATE_MODULES_DISCOVERED;
+        state.modules_discovered = true;
+        state.bootstrap_state = BML_BOOTSTRAP_STATE_MODULES_DISCOVERED;
         DebugLog("Module discovery completed successfully");
         return true;
     }
 
-    bool LoadDiscoveredModules() {
-        std::lock_guard<std::recursive_mutex> lock(s_StateMutex);
-        if (!s_State || !s_State->modules_discovered) {
+    bool LoadDiscoveredModules(RuntimeState &state,
+                               const BML_Services *services) {
+        std::lock_guard<std::recursive_mutex> lock(state.state_mutex);
+        if (!state.modules_discovered || !state.kernel) {
             DebugLog("LoadDiscoveredModules: Modules not discovered");
             return false;
         }
 
-        if (s_State->modules_loaded)
+        if (state.modules_loaded)
             return true;
 
         DebugLog("Phase 2: Loading discovered modules...");
@@ -498,109 +516,83 @@ namespace BML::Core {
         ModuleBootstrapDiagnostics diag;
 
         // Load the previously discovered modules
-        if (!s_State->runtime.LoadDiscovered(diag)) {
-            s_State->diagnostics = diag;
+        if (!state.runtime.LoadDiscovered(diag, services)) {
+            state.diagnostics = diag;
+            PublishDiagnosticsSnapshots(state, diag);
             EmitDiagnostics(diag);
             DebugLog("Module loading failed");
             return false;
         }
 
-        s_State->diagnostics = diag;
-        s_State->runtime.SetDiagnosticsCallback([](const ModuleBootstrapDiagnostics &new_diag) {
-            std::lock_guard<std::recursive_mutex> callback_lock(s_StateMutex);
-            if (s_State) {
-                s_State->diagnostics = new_diag;
+        state.diagnostics = diag;
+        PublishDiagnosticsSnapshots(state, diag);
+        state.runtime.SetDiagnosticsCallback([&state](const ModuleBootstrapDiagnostics &new_diag) {
+            std::lock_guard<std::recursive_mutex> callback_lock(state.state_mutex);
+            if (state.kernel) {
+                state.diagnostics = new_diag;
+                PublishDiagnosticsSnapshots(state, new_diag);
                 EmitDiagnostics(new_diag);
             }
         });
-        s_State->modules_loaded = true;
-        s_State->bootstrap_state = BML_BOOTSTRAP_STATE_READY;
+        state.modules_loaded = true;
+        state.bootstrap_state = BML_BOOTSTRAP_STATE_READY;
         EmitDiagnostics(diag);
         DebugLog("Modules loaded successfully");
         return true;
     }
 
-    BML_Result Bootstrap(const BML_BootstrapConfig *config) {
-        std::lock_guard<std::recursive_mutex> lock(s_StateMutex);
-        if (config && config->struct_size < sizeof(BML_BootstrapConfig)) {
-            return BML_RESULT_INVALID_SIZE;
-        }
-
-        const uint32_t flags = config ? config->flags : BML_BOOTSTRAP_FLAG_NONE;
-        if ((flags & BML_BOOTSTRAP_FLAG_SKIP_DISCOVERY) != 0 && (flags & BML_BOOTSTRAP_FLAG_SKIP_LOAD) == 0) {
-            return BML_RESULT_INVALID_ARGUMENT;
-        }
-
-        if (!InitializeCore()) {
-            return BML_RESULT_FAIL;
-        }
-
-        if ((flags & BML_BOOTSTRAP_FLAG_SKIP_DISCOVERY) != 0) {
-            return BML_RESULT_OK;
-        }
-
-        if (!DiscoverModulesInDirectory(ResolveBootstrapModsDirectory(config))) {
-            return BML_RESULT_FAIL;
-        }
-
-        if ((flags & BML_BOOTSTRAP_FLAG_SKIP_LOAD) != 0) {
-            return BML_RESULT_OK;
-        }
-
-        return LoadDiscoveredModules() ? BML_RESULT_OK : BML_RESULT_FAIL;
-    }
-
-    BML_BootstrapState GetBootstrapState() {
-        std::lock_guard<std::recursive_mutex> lock(s_StateMutex);
-        return s_State ? s_State->bootstrap_state : BML_BOOTSTRAP_STATE_NOT_STARTED;
-    }
-
-    void UpdateMicrokernel() {
-        std::lock_guard<std::recursive_mutex> lock(s_StateMutex);
-        if (!s_State || !s_State->core_initialized || !s_State->modules_loaded)
+    void UpdateMicrokernel(RuntimeState &state) {
+        std::lock_guard<std::recursive_mutex> lock(state.state_mutex);
+        if (!state.core_initialized || !state.modules_loaded || !state.kernel)
             return;
-        Kernel().timers->Tick();
-        s_State->runtime.Update();
+        state.kernel->timers->Tick();
+        state.runtime.Update();
     }
 
-    void ShutdownMicrokernel() {
-        std::lock_guard<std::recursive_mutex> lock(s_StateMutex);
-        if (!s_State || !s_State->core_initialized)
+    void ShutdownMicrokernel(RuntimeState &state) {
+        std::lock_guard<std::recursive_mutex> lock(state.state_mutex);
+        if (!state.core_initialized || !state.kernel)
             return;
 
         DebugLog("Shutting down microkernel...");
-
         // Shutdown runtime (unloads modules)
-        s_State->runtime.Shutdown();
+        state.runtime.Shutdown();
 
         // Drain any IMC messages published during module detach callbacks
-        ImcPump();
+        ImcPump(*state.kernel, 0);
 
         // Gracefully shutdown all subsystems
-        s_State->kernel->Shutdown();
+        state.kernel->Shutdown();
+        ResetTracingStateForKernel(state.kernel.get());
 
         DebugLog("Microkernel shut down");
 
         // Tear down the service graph and destroy all state in one shot.
         // KernelServices destructor guarantees reverse-declaration-order cleanup.
-        s_State.reset();
-        InstallKernel(nullptr);
+        state.clear_diagnostics_snapshot_on_next_query = true;
+        state.runtime.SetDiagnosticsCallback({});
+        state.kernel.reset();
+        state.diagnostics = {};
+        state.internal_diagnostics_snapshot = {};
+        state.core_initialized = false;
+        state.modules_discovered = false;
+        state.modules_loaded = false;
+        state.bootstrap_state = BML_BOOTSTRAP_STATE_SHUTDOWN;
     }
 
-    const ModuleBootstrapDiagnostics &GetBootstrapDiagnostics() {
-        thread_local ModuleBootstrapDiagnostics snapshot;
-        std::lock_guard<std::recursive_mutex> lock(s_StateMutex);
-        snapshot = s_State ? s_State->diagnostics : ModuleBootstrapDiagnostics{};
-        return snapshot;
+    const ModuleBootstrapDiagnostics &GetBootstrapDiagnostics(RuntimeState &state) {
+        std::lock_guard<std::recursive_mutex> lock(state.state_mutex);
+        if (!state.core_initialized && state.clear_diagnostics_snapshot_on_next_query) {
+            ClearPublishedDiagnosticsSnapshots(state);
+        }
+        return state.core_initialized ? state.diagnostics : state.internal_diagnostics_snapshot;
     }
 
-    const BML_BootstrapDiagnostics &GetPublicDiagnostics() {
-        auto &snapshot = ThreadLocalDiagnosticsSnapshot();
-        std::lock_guard<std::recursive_mutex> lock(s_StateMutex);
-        if (s_State)
-            PopulatePublicDiagnosticsSnapshot(s_State->diagnostics, snapshot);
-        else
-            snapshot.Reset();
-        return snapshot.diagnostics;
+    const BML_BootstrapDiagnostics &GetPublicDiagnostics(RuntimeState &state) {
+        std::lock_guard<std::recursive_mutex> lock(state.state_mutex);
+        if (!state.core_initialized && state.clear_diagnostics_snapshot_on_next_query) {
+            ClearPublishedDiagnosticsSnapshots(state);
+        }
+        return state.public_diagnostics_snapshot.diagnostics;
     }
 } // namespace BML::Core

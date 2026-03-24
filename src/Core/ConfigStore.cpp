@@ -85,10 +85,12 @@ namespace BML::Core {
 
         struct ConfigLoadHookEntry {
             BML_ConfigLoadHooks hooks;
-            BML_Mod owner;
+            std::string owner_id;
         };
         std::vector<ConfigLoadHookEntry> g_ConfigHooks;
         std::shared_mutex g_ConfigHooksMutex;
+        std::mutex g_ConfigBatchStoreRegistryMutex;
+        std::unordered_map<BML_ConfigBatch, ConfigStore *> g_ConfigBatchStoreRegistry;
 
         // Use CoreLog for consistent logging
         inline void DebugLog(const std::string &message) {
@@ -229,6 +231,15 @@ namespace BML::Core {
         m_BoundContext = &ctx;
     }
 
+    ConfigStore *ConfigStore::StoreFromBatch(BML_ConfigBatch batch) noexcept {
+        if (!batch) {
+            return nullptr;
+        }
+        std::lock_guard<std::mutex> lock(g_ConfigBatchStoreRegistryMutex);
+        auto it = g_ConfigBatchStoreRegistry.find(batch);
+        return it != g_ConfigBatchStoreRegistry.end() ? it->second : nullptr;
+    }
+
     static void DispatchConfigHooks(const ConfigDocument &doc, ConfigHookPhase phase, Context *bound_ctx) {
         std::vector<ConfigLoadHookEntry> snapshot;
         {
@@ -257,7 +268,7 @@ namespace BML::Core {
 
         for (const auto &entry : snapshot) {
             // Skip hooks from unloaded modules
-            if (entry.owner && !bound_ctx->ResolveModHandle(entry.owner))
+            if (!entry.owner_id.empty() && !bound_ctx->GetModHandleById(entry.owner_id))
                 continue;
 
             auto callback = (phase == ConfigHookPhase::Pre) ? entry.hooks.on_pre_load : entry.hooks.on_post_load;
@@ -801,6 +812,10 @@ namespace BML::Core {
             std::lock_guard<std::mutex> lock(m_BatchMutex);
             m_Batches[batch_ptr] = std::move(batch_ctx);
         }
+        {
+            std::lock_guard<std::mutex> lock(g_ConfigBatchStoreRegistryMutex);
+            g_ConfigBatchStoreRegistry[batch_ptr] = this;
+        }
 
         *out_batch = batch_ptr;
         return BML_RESULT_OK;
@@ -884,6 +899,10 @@ namespace BML::Core {
             batch_ctx = std::move(it->second);
             m_Batches.erase(it);
         }
+        {
+            std::lock_guard<std::mutex> lock(g_ConfigBatchStoreRegistryMutex);
+            g_ConfigBatchStoreRegistry.erase(batch);
+        }
 
         // Apply all changes atomically to the document
         ConfigDocument *doc = GetOrCreateDocument(batch_ctx->mod);
@@ -934,6 +953,10 @@ namespace BML::Core {
 
         ctx->discarded = true;
         m_Batches.erase(it);
+        {
+            std::lock_guard<std::mutex> registry_lock(g_ConfigBatchStoreRegistryMutex);
+            g_ConfigBatchStoreRegistry.erase(batch);
+        }
         return BML_RESULT_OK;
     }
 
@@ -951,7 +974,12 @@ namespace BML::Core {
         ConfigLoadHookEntry entry{};
         entry.hooks = *hooks;
         entry.hooks.struct_size = sizeof(BML_ConfigLoadHooks);
-        entry.owner = owner;
+        auto *context = Context::ContextFromMod(owner);
+        auto *resolvedOwner = context ? context->ResolveModHandle(owner) : nullptr;
+        if (!resolvedOwner) {
+            return BML_RESULT_INVALID_CONTEXT;
+        }
+        entry.owner_id = resolvedOwner->id;
 
         {
             std::unique_lock lock(g_ConfigHooksMutex);
@@ -963,10 +991,17 @@ namespace BML::Core {
 
     void CleanupConfigHooksForModule(BML_Mod mod) {
         if (!mod) return;
+        auto *context = Context::ContextFromMod(mod);
+        auto *resolvedOwner = context ? context->ResolveModHandle(mod) : nullptr;
+        if (!resolvedOwner) {
+            return;
+        }
         std::unique_lock lock(g_ConfigHooksMutex);
         g_ConfigHooks.erase(
             std::remove_if(g_ConfigHooks.begin(), g_ConfigHooks.end(),
-                           [mod](const ConfigLoadHookEntry &e) { return e.owner == mod; }),
+                           [&resolvedOwner](const ConfigLoadHookEntry &e) {
+                               return e.owner_id == resolvedOwner->id;
+                           }),
             g_ConfigHooks.end());
     }
 

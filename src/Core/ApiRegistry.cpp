@@ -18,6 +18,9 @@ namespace BML::Core {
         for (auto &slot : m_DirectTable) {
             slot.store(nullptr, std::memory_order_relaxed);
         }
+        for (auto &slot : m_DirectCallCount) {
+            slot.store(0, std::memory_order_relaxed);
+        }
     }
 
     // ========================================================================
@@ -45,9 +48,7 @@ namespace BML::Core {
         auto name_it = m_NameToId.find(name);
         if (name_it == m_NameToId.end())
             return 0;
-        auto entry_it = m_IdTable.find(name_it->second);
-        return entry_it != m_IdTable.end()
-            ? entry_it->second.call_count.load(std::memory_order_relaxed) : 0;
+        return LoadCallCountLocked(name_it->second);
     }
 
     // ========================================================================
@@ -72,9 +73,7 @@ namespace BML::Core {
         if (api_id == BML_API_INVALID_ID)
             return 0;
         std::shared_lock lock(g_Mutex);
-        auto it = m_IdTable.find(api_id);
-        return it != m_IdTable.end()
-            ? it->second.call_count.load(std::memory_order_relaxed) : 0;
+        return LoadCallCountLocked(api_id);
     }
 
     bool ApiRegistry::GetApiId(const std::string &name, BML_ApiId *out_id) const {
@@ -97,14 +96,15 @@ namespace BML::Core {
         if (api_id == BML_API_INVALID_ID)
             return nullptr;
 
-        std::shared_lock lock(g_Mutex);
         if (api_id < MAX_DIRECT_API_ID) {
             void *ptr = m_DirectTable[api_id].load(std::memory_order_acquire);
             if (!ptr)
                 return nullptr;
-            IncrementCallCountLocked(api_id);
+            IncrementDirectCallCount(api_id);
             return ptr;
         }
+
+        std::shared_lock lock(g_Mutex);
         return ResolvePointerLocked(api_id, true);
     }
 
@@ -125,6 +125,9 @@ namespace BML::Core {
         for (auto &slot : m_DirectTable) {
             slot.store(nullptr, std::memory_order_relaxed);
         }
+        for (auto &slot : m_DirectCallCount) {
+            slot.store(0, std::memory_order_relaxed);
+        }
         m_NextAutoId.store(1);
     }
 
@@ -144,7 +147,7 @@ namespace BML::Core {
                 const auto &descriptor = descriptors[i];
                 if ((descriptor.depends_mask & satisfied) != descriptor.depends_mask)
                     continue;
-                descriptor.register_fn();
+                descriptor.register_fn(*this);
                 satisfied |= descriptor.provides_mask;
                 completed[i] = true;
                 --remaining;
@@ -200,6 +203,7 @@ namespace BML::Core {
                 std::string name_str(meta_it->second.name ? meta_it->second.name : "");
                 if (id < MAX_DIRECT_API_ID) {
                     m_DirectTable[id].store(nullptr, std::memory_order_release);
+                    m_DirectCallCount[id].store(0, std::memory_order_relaxed);
                 }
                 m_Metadata.erase(id);
                 m_IdTable.erase(id);
@@ -227,6 +231,7 @@ namespace BML::Core {
         BML_ApiId id = id_it->second;
         if (id < MAX_DIRECT_API_ID) {
             m_DirectTable[id].store(nullptr, std::memory_order_release);
+            m_DirectCallCount[id].store(0, std::memory_order_relaxed);
         }
 
         m_Metadata.erase(id);
@@ -281,6 +286,7 @@ namespace BML::Core {
 
         if (api_id < MAX_DIRECT_API_ID) {
             m_DirectTable[api_id].store(pointer, std::memory_order_release);
+            m_DirectCallCount[api_id].store(0, std::memory_order_relaxed);
         }
     }
 
@@ -300,6 +306,11 @@ namespace BML::Core {
     }
 
     void ApiRegistry::IncrementCallCountLocked(BML_ApiId api_id) const {
+        if (api_id < MAX_DIRECT_API_ID) {
+            IncrementDirectCallCount(api_id);
+            return;
+        }
+
         auto entry_it = m_IdTable.find(api_id);
         if (entry_it != m_IdTable.end()) {
             entry_it->second.call_count.fetch_add(1, std::memory_order_relaxed);
@@ -308,6 +319,20 @@ namespace BML::Core {
         if (meta_it != m_Metadata.end()) {
             meta_it->second.call_count.fetch_add(1, std::memory_order_relaxed);
         }
+    }
+
+    void ApiRegistry::IncrementDirectCallCount(BML_ApiId api_id) const {
+        m_DirectCallCount[api_id].fetch_add(1, std::memory_order_relaxed);
+    }
+
+    uint64_t ApiRegistry::LoadCallCountLocked(BML_ApiId api_id) const {
+        if (api_id < MAX_DIRECT_API_ID) {
+            return m_DirectCallCount[api_id].load(std::memory_order_relaxed);
+        }
+
+        auto entry_it = m_IdTable.find(api_id);
+        return entry_it != m_IdTable.end()
+            ? entry_it->second.call_count.load(std::memory_order_relaxed) : 0;
     }
 
     const char *ApiRegistry::StoreString(const char *value) {
@@ -325,11 +350,7 @@ namespace BML::Core {
             return nullptr;
         void *ptr = it->second.pointer;
         if (ptr && increment_counts) {
-            it->second.call_count.fetch_add(1, std::memory_order_relaxed);
-            auto meta_it = m_Metadata.find(api_id);
-            if (meta_it != m_Metadata.end()) {
-                meta_it->second.call_count.fetch_add(1, std::memory_order_relaxed);
-            }
+            IncrementCallCountLocked(api_id);
         }
         return ptr;
     }

@@ -12,7 +12,8 @@ namespace BML::Core {
         return true;
     }
 
-    bool ModuleRuntime::LoadDiscovered(ModuleBootstrapDiagnostics &out_diag) {
+    bool ModuleRuntime::LoadDiscovered(ModuleBootstrapDiagnostics &out_diag,
+                                       const BML_Services * /*services*/) {
         out_diag = {};
         return true;
     }

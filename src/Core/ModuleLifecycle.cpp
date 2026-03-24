@@ -28,8 +28,6 @@ namespace BML::Core {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
-        Context::CurrentModuleScope scope(mod);
-
         BML_ModDetachArgs detach{};
         detach.struct_size = sizeof(detach);
         detach.api_version = BML_MOD_ENTRYPOINT_API_VERSION;

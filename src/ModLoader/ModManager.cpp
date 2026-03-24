@@ -26,7 +26,7 @@
 #include "CKGlobals.h"
 
 // BML Core types only (no linking)
-#include "bml_builtin_interfaces.h"
+#include "bml_services.hpp"
 #include "bml_interface.hpp"
 #include "bml_types.h"
 #include "bml_imc.h"
@@ -78,7 +78,8 @@ static CKContext *s_CKContext = nullptr;
 
 static bml::InterfaceLease<BML_ImcBusInterface> s_ImcBus;
 static bml::InterfaceLease<BML_CoreContextInterface> s_CoreContext;
-static PFN_BML_GetHostModule s_GetHostModule = nullptr;
+
+extern const BML_Services *GetModLoaderServices();
 
 // Asset path registration tracking
 struct RegisteredAssetPath {
@@ -86,12 +87,6 @@ struct RegisteredAssetPath {
     std::string path;
 };
 static std::vector<RegisteredAssetPath> s_RegisteredAssetPaths;
-
-// Callback type matching CoreApi's bmlEnumerateModuleDirectories
-typedef void (*PFN_bmlEnumerateModuleDirectories)(
-    void (*callback)(const char *mod_id, const wchar_t *directory,
-                     const char *asset_mount, void *user_data),
-    void *user_data);
 
 static BML_Mod GetRuntimeOwner();
 
@@ -111,18 +106,17 @@ static bool EnsureRuntimeInterfaces() {
 }
 
 static BML_Mod GetRuntimeOwner() {
-    if (!s_GetHostModule) {
-        if (HMODULE bml = ::GetModuleHandleA("BML.dll")) {
-            s_GetHostModule = reinterpret_cast<PFN_BML_GetHostModule>(
-                ::GetProcAddress(bml, "bmlGetHostModule"));
-        }
+    const BML_Services *services = GetModLoaderServices();
+    const auto *moduleApi = services ? services->Module : nullptr;
+    if (!moduleApi || !moduleApi->FindModuleById) {
+        return nullptr;
     }
-    return s_GetHostModule ? s_GetHostModule() : nullptr;
+    return moduleApi->FindModuleById(moduleApi->Context, "ModLoader");
 }
 
 static void PumpImcNow() {
-    if (EnsureRuntimeInterfaces() && s_ImcBus->Pump) {
-        s_ImcBus->Pump(0);
+    if (EnsureRuntimeInterfaces() && s_ImcBus->Context && s_ImcBus->Pump) {
+        s_ImcBus->Pump(s_ImcBus->Context, 0);
     }
 }
 
@@ -208,7 +202,7 @@ static void OnCmdSendMessage(BML_Context, BML_TopicId, const BML_ImcMessage *mes
     if (!s_ImcBus || !s_ImcBus->Publish) return;
 
     BML_TopicId consoleTopic = 0;
-    s_ImcBus->GetTopicId(BML_TOPIC_CONSOLE_OUTPUT, &consoleTopic);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, BML_TOPIC_CONSOLE_OUTPUT, &consoleTopic);
     if (consoleTopic) {
         if (BML_Mod owner = GetRuntimeOwner()) {
             s_ImcBus->Publish(owner, consoleTopic, raw, message->size);
@@ -247,7 +241,7 @@ static void SubscribeCommandTopics() {
 
     auto subscribe = [](const char *topic, BML_TopicId &id, BML_Subscription &sub,
                         BML_ImcHandler handler) {
-        s_ImcBus->GetTopicId(topic, &id);
+        s_ImcBus->GetTopicId(s_ImcBus->Context, topic, &id);
         if (id && !sub) {
             BML_Mod owner = GetRuntimeOwner();
             if (owner) {
@@ -291,36 +285,42 @@ ModManager::~ModManager() {
 }
 
 void ModManager::InitializeIMCTopics() {
-    if (!EnsureRuntimeInterfaces() || !s_ImcBus->GetTopicId || !s_ImcBus->Publish || !s_ImcBus->Pump) {
+    if (!EnsureRuntimeInterfaces() || !s_ImcBus->Context || !s_ImcBus->GetTopicId ||
+        !s_ImcBus->Publish || !s_ImcBus->Pump) {
         OutputDebugStringA("ModManager: Warning - Failed to load IMC API.\n");
         return;
     }
 
     // Register topic IDs - Engine lifecycle
-    s_ImcBus->GetTopicId(BML_TOPIC_ENGINE_INIT, &s_TopicEngineInit);
-    s_ImcBus->GetTopicId(BML_TOPIC_ENGINE_END, &s_TopicEngineEnd);
-    s_ImcBus->GetTopicId(BML_TOPIC_ENGINE_PLAY, &s_TopicEnginePlay);
-    s_ImcBus->GetTopicId(BML_TOPIC_ENGINE_PAUSE, &s_TopicEnginePause);
-    s_ImcBus->GetTopicId(BML_TOPIC_ENGINE_RESET, &s_TopicEngineReset);
-    s_ImcBus->GetTopicId(BML_TOPIC_ENGINE_POST_RESET, &s_TopicEnginePostReset);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, BML_TOPIC_ENGINE_INIT, &s_TopicEngineInit);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, BML_TOPIC_ENGINE_END, &s_TopicEngineEnd);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, BML_TOPIC_ENGINE_PLAY, &s_TopicEnginePlay);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, BML_TOPIC_ENGINE_PAUSE, &s_TopicEnginePause);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, BML_TOPIC_ENGINE_RESET, &s_TopicEngineReset);
+    s_ImcBus->GetTopicId(
+        s_ImcBus->Context, BML_TOPIC_ENGINE_POST_RESET, &s_TopicEnginePostReset);
     // Frame processing
-    s_ImcBus->GetTopicId(BML_TOPIC_ENGINE_PRE_PROCESS, &s_TopicPreProcess);
-    s_ImcBus->GetTopicId(BML_TOPIC_ENGINE_POST_PROCESS, &s_TopicPostProcess);
+    s_ImcBus->GetTopicId(
+        s_ImcBus->Context, BML_TOPIC_ENGINE_PRE_PROCESS, &s_TopicPreProcess);
+    s_ImcBus->GetTopicId(
+        s_ImcBus->Context, BML_TOPIC_ENGINE_POST_PROCESS, &s_TopicPostProcess);
     // Rendering
-    s_ImcBus->GetTopicId(BML_TOPIC_ENGINE_PRE_RENDER, &s_TopicPreRender);
-    s_ImcBus->GetTopicId(BML_TOPIC_ENGINE_POST_RENDER, &s_TopicPostRender);
-    s_ImcBus->GetTopicId(BML_TOPIC_ENGINE_POST_SPRITE_RENDER, &s_TopicPostSpriteRender);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, BML_TOPIC_ENGINE_PRE_RENDER, &s_TopicPreRender);
+    s_ImcBus->GetTopicId(
+        s_ImcBus->Context, BML_TOPIC_ENGINE_POST_RENDER, &s_TopicPostRender);
+    s_ImcBus->GetTopicId(
+        s_ImcBus->Context, BML_TOPIC_ENGINE_POST_SPRITE_RENDER, &s_TopicPostSpriteRender);
 
     OutputDebugStringA("ModManager: IMC topics initialized.\n");
 }
 
 void ModManager::RegisterVirtoolsObjects() {
-    if (!EnsureRuntimeInterfaces() || !s_CoreContext->SetUserData || !s_CoreContext->GetGlobalContext) {
+    if (!EnsureRuntimeInterfaces() || !s_CoreContext->SetUserData || !s_CoreContext->Context) {
         OutputDebugStringA("ModManager: Warning - Failed to load Context API.\n");
         return;
     }
 
-    BML_Context ctx = s_CoreContext->GetGlobalContext();
+    BML_Context ctx = s_CoreContext->Context;
     if (!ctx) {
         OutputDebugStringA("ModManager: Warning - No global context available.\n");
         return;
@@ -369,7 +369,7 @@ void ModManager::PublishLifecycleEvent(const char *topic) {
 
     BML_TopicId topicId = 0;
     if (s_ImcBus->GetTopicId) {
-        s_ImcBus->GetTopicId(topic, &topicId);
+        s_ImcBus->GetTopicId(s_ImcBus->Context, topic, &topicId);
     }
 
     if (topicId) {
@@ -438,27 +438,52 @@ void ModManager::RegisterModAssetPaths() {
         return;
     }
 
-    // Resolve the enumerate function via BML's GetProcAddress export
-    HMODULE hBML = ::GetModuleHandleA("BML.dll");
-    if (!hBML) {
-        OutputDebugStringA("ModManager: Warning - BML.dll not loaded for asset registration.\n");
-        return;
-    }
-    auto bmlGetProc = reinterpret_cast<void *(*)(const char *)>(
-        ::GetProcAddress(hBML, "bmlGetProcAddress"));
-    if (!bmlGetProc) {
-        OutputDebugStringA("ModManager: Warning - bmlGetProcAddress not found.\n");
-        return;
-    }
-    auto enumFn = reinterpret_cast<PFN_bmlEnumerateModuleDirectories>(
-        bmlGetProc("bmlEnumerateModuleDirectories"));
-    if (!enumFn) {
-        OutputDebugStringA("ModManager: Warning - bmlEnumerateModuleDirectories not available.\n");
+    const BML_Services *services = GetModLoaderServices();
+    const auto *moduleApi = services ? services->Module : nullptr;
+    if (!moduleApi || !moduleApi->Context ||
+        !moduleApi->GetLoadedModuleCount ||
+        !moduleApi->GetLoadedModuleAt ||
+        !moduleApi->GetModDirectory ||
+        !moduleApi->GetModAssetMount) {
+        OutputDebugStringA("ModManager: Warning - module services unavailable for asset registration.\n");
         return;
     }
 
     s_RegisteredAssetPaths.clear();
-    enumFn(RegisterModAssetPathsCallback, pathMgr);
+    const uint32_t count = moduleApi->GetLoadedModuleCount(moduleApi->Context);
+    for (uint32_t index = 0; index < count; ++index) {
+        BML_Mod mod = moduleApi->GetLoadedModuleAt(moduleApi->Context, index);
+        if (!mod) {
+            continue;
+        }
+        const char *modId = nullptr;
+        const char *directory = nullptr;
+        const char *assetMount = nullptr;
+        if (moduleApi->GetModId) {
+            (void)moduleApi->GetModId(mod, &modId);
+        }
+        if (moduleApi->GetModDirectory(mod, &directory) != BML_RESULT_OK || !directory) {
+            continue;
+        }
+        if (moduleApi->GetModAssetMount(mod, &assetMount) != BML_RESULT_OK || !assetMount) {
+            continue;
+        }
+
+        std::wstring directoryWide;
+        int required = MultiByteToWideChar(CP_UTF8, 0, directory, -1, nullptr, 0);
+        if (required <= 0) {
+            continue;
+        }
+        directoryWide.resize(static_cast<size_t>(required));
+        if (MultiByteToWideChar(
+                CP_UTF8, 0, directory, -1, directoryWide.data(), required) <= 0) {
+            continue;
+        }
+        if (!directoryWide.empty() && directoryWide.back() == L'\0') {
+            directoryWide.pop_back();
+        }
+        RegisterModAssetPathsCallback(modId, directoryWide.c_str(), assetMount, pathMgr);
+    }
 
     if (!s_RegisteredAssetPaths.empty()) {
         char msg[128];
@@ -565,8 +590,8 @@ CKERROR ModManager::OnCKPlay() {
         OutputDebugStringA("ModManager: OnCKPlay - Engine ready.\n");
 
         // Register render context and render HWND to BML context
-        if (EnsureRuntimeInterfaces() && s_CoreContext->SetUserData && s_CoreContext->GetGlobalContext) {
-            BML_Context ctx = s_CoreContext->GetGlobalContext();
+        if (EnsureRuntimeInterfaces() && s_CoreContext->SetUserData && s_CoreContext->Context) {
+            BML_Context ctx = s_CoreContext->Context;
             if (ctx && m_RenderContext) {
                 s_CoreContext->SetUserData(ctx, BML_VIRTOOLS_KEY_RENDERCONTEXT, m_RenderContext, nullptr);
                 HWND renderHwnd = (HWND) m_RenderContext->GetWindowHandle();
@@ -629,8 +654,8 @@ CKERROR ModManager::OnCKPostReset() {
 
 CKERROR ModManager::PreProcess() {
     // Pump IMC bus first to handle any pending messages
-    if (EnsureRuntimeInterfaces() && s_ImcBus->Pump) {
-        s_ImcBus->Pump(100);
+    if (EnsureRuntimeInterfaces() && s_ImcBus->Context && s_ImcBus->Pump) {
+        s_ImcBus->Pump(s_ImcBus->Context, 100);
     }
 
     // Publish pre-process event

@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-#include "bml_builtin_interfaces.h"
+#include "bml_services.hpp"
 #include "bml_interface.h"
 
 namespace BML::Core {

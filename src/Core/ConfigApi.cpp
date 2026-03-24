@@ -1,21 +1,50 @@
 #include "ConfigStore.h"
 #include "ApiRegistrationMacros.h"
 
+#include "Context.h"
+
 namespace BML::Core {
+    namespace {
+        ConfigStore *ConfigStoreFromMod(BML_Mod mod) {
+            if (!mod) {
+                return nullptr;
+            }
+            auto *kernel = Context::KernelFromMod(mod);
+            return kernel ? kernel->config.get() : nullptr;
+        }
+    } // namespace
+
     BML_Result BML_API_ConfigGet(BML_Mod mod, const BML_ConfigKey *key, BML_ConfigValue *out_value) {
-        return Kernel().config->GetValue(mod, key, out_value);
+        if (!mod) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+        auto *config = ConfigStoreFromMod(mod);
+        return config ? config->GetValue(mod, key, out_value) : BML_RESULT_INVALID_CONTEXT;
     }
 
     BML_Result BML_API_ConfigSet(BML_Mod mod, const BML_ConfigKey *key, const BML_ConfigValue *value) {
-        return Kernel().config->SetValue(mod, key, value);
+        if (!mod) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+        auto *config = ConfigStoreFromMod(mod);
+        return config ? config->SetValue(mod, key, value) : BML_RESULT_INVALID_CONTEXT;
     }
 
     BML_Result BML_API_ConfigReset(BML_Mod mod, const BML_ConfigKey *key) {
-        return Kernel().config->ResetValue(mod, key);
+        if (!mod) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+        auto *config = ConfigStoreFromMod(mod);
+        return config ? config->ResetValue(mod, key) : BML_RESULT_INVALID_CONTEXT;
     }
 
     BML_Result BML_API_ConfigEnumerate(BML_Mod mod, BML_ConfigEnumCallback callback, void *user_data) {
-        return Kernel().config->EnumerateValues(mod, callback, user_data);
+        if (!mod) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+        auto *config = ConfigStoreFromMod(mod);
+        return config ? config->EnumerateValues(mod, callback, user_data)
+                      : BML_RESULT_INVALID_CONTEXT;
     }
 
     BML_Result BML_API_RegisterConfigLoadHooks(BML_Mod owner,
@@ -25,19 +54,26 @@ namespace BML::Core {
 
     // Batch operations
     BML_Result BML_API_ConfigBatchBegin(BML_Mod mod, BML_ConfigBatch *out_batch) {
-        return Kernel().config->BatchBegin(mod, out_batch);
+        if (!mod) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+        auto *config = ConfigStoreFromMod(mod);
+        return config ? config->BatchBegin(mod, out_batch) : BML_RESULT_INVALID_CONTEXT;
     }
 
     BML_Result BML_API_ConfigBatchSet(BML_ConfigBatch batch, const BML_ConfigKey *key, const BML_ConfigValue *value) {
-        return Kernel().config->BatchSet(batch, key, value);
+        auto *config = ConfigStore::StoreFromBatch(batch);
+        return config ? config->BatchSet(batch, key, value) : BML_RESULT_INVALID_HANDLE;
     }
 
     BML_Result BML_API_ConfigBatchCommit(BML_ConfigBatch batch) {
-        return Kernel().config->BatchCommit(batch);
+        auto *config = ConfigStore::StoreFromBatch(batch);
+        return config ? config->BatchCommit(batch) : BML_RESULT_INVALID_HANDLE;
     }
 
     BML_Result BML_API_ConfigBatchDiscard(BML_ConfigBatch batch) {
-        return Kernel().config->BatchDiscard(batch);
+        auto *config = ConfigStore::StoreFromBatch(batch);
+        return config ? config->BatchDiscard(batch) : BML_RESULT_INVALID_HANDLE;
     }
 
     // -- Config Typed Shortcuts --
@@ -46,10 +82,13 @@ namespace BML::Core {
                                      const char *name, int32_t default_value,
                                      int32_t *out_value) {
         if (!category || !name || !out_value) return BML_RESULT_INVALID_ARGUMENT;
+        if (!mod) return BML_RESULT_INVALID_ARGUMENT;
         BML_ConfigKey key = BML_CONFIG_KEY_INIT(category, name);
         BML_ConfigValue value{};
         value.struct_size = sizeof(BML_ConfigValue);
-        BML_Result r = Kernel().config->GetValue(mod, &key, &value);
+        auto *config = ConfigStoreFromMod(mod);
+        if (!config) return BML_RESULT_INVALID_CONTEXT;
+        BML_Result r = config->GetValue(mod, &key, &value);
         if (r == BML_RESULT_NOT_FOUND) {
             *out_value = default_value;
             return BML_RESULT_OK;
@@ -64,10 +103,13 @@ namespace BML::Core {
                                        const char *name, float default_value,
                                        float *out_value) {
         if (!category || !name || !out_value) return BML_RESULT_INVALID_ARGUMENT;
+        if (!mod) return BML_RESULT_INVALID_ARGUMENT;
         BML_ConfigKey key = BML_CONFIG_KEY_INIT(category, name);
         BML_ConfigValue value{};
         value.struct_size = sizeof(BML_ConfigValue);
-        BML_Result r = Kernel().config->GetValue(mod, &key, &value);
+        auto *config = ConfigStoreFromMod(mod);
+        if (!config) return BML_RESULT_INVALID_CONTEXT;
+        BML_Result r = config->GetValue(mod, &key, &value);
         if (r == BML_RESULT_NOT_FOUND) {
             *out_value = default_value;
             return BML_RESULT_OK;
@@ -82,10 +124,13 @@ namespace BML::Core {
                                       const char *name, BML_Bool default_value,
                                       BML_Bool *out_value) {
         if (!category || !name || !out_value) return BML_RESULT_INVALID_ARGUMENT;
+        if (!mod) return BML_RESULT_INVALID_ARGUMENT;
         BML_ConfigKey key = BML_CONFIG_KEY_INIT(category, name);
         BML_ConfigValue value{};
         value.struct_size = sizeof(BML_ConfigValue);
-        BML_Result r = Kernel().config->GetValue(mod, &key, &value);
+        auto *config = ConfigStoreFromMod(mod);
+        if (!config) return BML_RESULT_INVALID_CONTEXT;
+        BML_Result r = config->GetValue(mod, &key, &value);
         if (r == BML_RESULT_NOT_FOUND) {
             *out_value = default_value;
             return BML_RESULT_OK;
@@ -100,10 +145,13 @@ namespace BML::Core {
                                         const char *name, const char *default_value,
                                         const char **out_value) {
         if (!category || !name || !out_value) return BML_RESULT_INVALID_ARGUMENT;
+        if (!mod) return BML_RESULT_INVALID_ARGUMENT;
         BML_ConfigKey key = BML_CONFIG_KEY_INIT(category, name);
         BML_ConfigValue value{};
         value.struct_size = sizeof(BML_ConfigValue);
-        BML_Result r = Kernel().config->GetValue(mod, &key, &value);
+        auto *config = ConfigStoreFromMod(mod);
+        if (!config) return BML_RESULT_INVALID_CONTEXT;
+        BML_Result r = config->GetValue(mod, &key, &value);
         if (r == BML_RESULT_NOT_FOUND) {
             *out_value = default_value;
             return BML_RESULT_OK;
@@ -114,8 +162,8 @@ namespace BML::Core {
         return BML_RESULT_OK;
     }
 
-    void RegisterConfigApis() {
-        BML_BEGIN_API_REGISTRATION();
+    void RegisterConfigApis(ApiRegistry &apiRegistry) {
+        BML_BEGIN_API_REGISTRATION(apiRegistry);
 
         // Core config APIs
         BML_REGISTER_API_GUARDED(bmlConfigGet, "config", BML_API_ConfigGet);

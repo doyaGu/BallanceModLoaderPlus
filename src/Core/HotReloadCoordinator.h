@@ -10,11 +10,13 @@
 #include <unordered_map>
 #include <vector>
 
+#include "bml_export.h"
 #include "FileSystemWatcher.h"
 #include "ReloadableModuleSlot.h"
 
 namespace BML::Core {
     class Context;
+    struct KernelServices;
     struct ModManifest;
 
     /**
@@ -82,7 +84,7 @@ namespace BML::Core {
      */
     class HotReloadCoordinator {
     public:
-        explicit HotReloadCoordinator(Context &context);
+        HotReloadCoordinator(Context &context, KernelServices &kernel);
         ~HotReloadCoordinator();
 
         HotReloadCoordinator(const HotReloadCoordinator &) = delete;
@@ -105,6 +107,7 @@ namespace BML::Core {
          * @return true if registration succeeded
          */
         bool RegisterModule(const HotReloadModuleEntry &entry);
+        void SetServices(const BML_Services *services) noexcept;
 
         /**
          * @brief Unregister a module from hot reloading
@@ -181,6 +184,7 @@ namespace BML::Core {
 
         // Reference to BML context
         Context &m_Context;
+        KernelServices &m_Kernel;
 
         // Configuration
         HotReloadSettings m_Settings;
@@ -212,6 +216,7 @@ namespace BML::Core {
 
         // Running state
         bool m_Running{false};
+        const BML_Services *m_Services{nullptr};
     };
 } // namespace BML::Core
 

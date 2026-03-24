@@ -3,19 +3,19 @@
 
 #include "bml_logging.h"
 namespace BML::Core {
-    void RegisterLoggingApis();
+    class ApiRegistry;
+
+    void RegisterLoggingApis(ApiRegistry &registry);
 
     void CoreLog(BML_LogSeverity level, const char *tag, const char *fmt, ...);
     void CoreLogVa(BML_LogSeverity level, const char *tag, const char *fmt, va_list args);
 
     void LogMessage(BML_Mod owner,
-                    BML_Context ctx,
                     BML_LogSeverity level,
                     const char *tag,
                     const char *fmt,
                     ...);
     void LogMessageVa(BML_Mod owner,
-                      BML_Context ctx,
                       BML_LogSeverity level,
                       const char *tag,
                       const char *fmt,

@@ -4,6 +4,9 @@
 #include "bml_imc.h"
 
 namespace BML::Core {
+    class ApiRegistry;
+    struct KernelServices;
+    class ImcBusImpl;
 
     /// Opaque owner for the internal IMC bus implementation.
     /// Constructed by KernelServices; free functions below access the
@@ -26,6 +29,7 @@ namespace BML::Core {
 
         void BindDeps(class Context &ctx);
         void Shutdown();
+        ImcBusImpl &GetImpl();
 
     private:
         void *m_Impl = nullptr;
@@ -37,16 +41,20 @@ namespace BML::Core {
 
     // Lifecycle
     void ImcPump(size_t max_per_sub = 0);
+    void ImcPump(KernelServices &kernel, size_t max_per_sub);
     void ImcShutdown();
     void ImcCleanupOwner(BML_Mod owner);
     void ImcBindDeps(class Context &ctx);
 
     // ID Resolution
     BML_Result ImcGetTopicId(const char *name, BML_TopicId *out_id);
+    BML_Result ImcGetTopicId(KernelServices &kernel, const char *name, BML_TopicId *out_id);
     BML_Result ImcGetRpcId(const char *name, BML_RpcId *out_id);
+    BML_Result ImcGetRpcId(KernelServices &kernel, const char *name, BML_RpcId *out_id);
 
     // Pub/Sub
     BML_Result ImcPublish(BML_TopicId topic, const void *data, size_t size);
+    BML_Result ImcPublish(KernelServices &kernel, BML_TopicId topic, const void *data, size_t size);
     BML_Result ImcPublish(BML_Mod owner, BML_TopicId topic, const void *data, size_t size);
     BML_Result ImcPublishEx(BML_TopicId topic, const BML_ImcMessage *msg);
     BML_Result ImcPublishEx(BML_Mod owner, BML_TopicId topic, const BML_ImcMessage *msg);
@@ -108,8 +116,13 @@ namespace BML::Core {
                                  BML_Future *out_future);
     BML_Result ImcFutureGetError(BML_Future future, BML_Result *out_code, char *msg, size_t cap, size_t *out_len);
     BML_Result ImcGetRpcInfo(BML_RpcId rpc_id, BML_RpcInfo *out_info);
+    BML_Result ImcGetRpcInfo(KernelServices &kernel, BML_RpcId rpc_id, BML_RpcInfo *out_info);
     BML_Result ImcGetRpcName(BML_RpcId rpc_id, char *buf, size_t cap, size_t *out_len);
+    BML_Result ImcGetRpcName(KernelServices &kernel, BML_RpcId rpc_id, char *buf, size_t cap, size_t *out_len);
     void ImcEnumerateRpc(void(*cb)(BML_RpcId, const char *, BML_Bool, void *), void *user_data);
+    void ImcEnumerateRpc(KernelServices &kernel,
+                         void(*cb)(BML_RpcId, const char *, BML_Bool, void *),
+                         void *user_data);
     BML_Result ImcAddRpcMiddleware(BML_RpcMiddleware middleware, int32_t priority, void *user_data);
     BML_Result ImcAddRpcMiddleware(BML_Mod owner, BML_RpcMiddleware middleware,
                                         int32_t priority, void *user_data);
@@ -141,17 +154,32 @@ namespace BML::Core {
 
     // Diagnostics
     BML_Result ImcGetStats(BML_ImcStats *out_stats);
+    BML_Result ImcGetStats(KernelServices &kernel, BML_ImcStats *out_stats);
     BML_Result ImcResetStats();
+    BML_Result ImcResetStats(KernelServices &kernel);
     BML_Result ImcGetTopicInfo(BML_TopicId topic, BML_TopicInfo *out_info);
+    BML_Result ImcGetTopicInfo(KernelServices &kernel, BML_TopicId topic, BML_TopicInfo *out_info);
     BML_Result ImcGetTopicName(BML_TopicId topic, char *buffer, size_t buffer_size, size_t *out_length);
+    BML_Result ImcGetTopicName(KernelServices &kernel,
+                               BML_TopicId topic,
+                               char *buffer,
+                               size_t buffer_size,
+                               size_t *out_length);
 
     // State
     BML_Result ImcPublishState(BML_TopicId topic, const BML_ImcMessage *msg);
     BML_Result ImcPublishState(BML_Mod owner, BML_TopicId topic, const BML_ImcMessage *msg);
     BML_Result ImcCopyState(BML_TopicId topic, void *dst, size_t dst_size, size_t *out_size, BML_ImcStateMeta *out_meta);
+    BML_Result ImcCopyState(KernelServices &kernel,
+                            BML_TopicId topic,
+                            void *dst,
+                            size_t dst_size,
+                            size_t *out_size,
+                            BML_ImcStateMeta *out_meta);
     BML_Result ImcClearState(BML_TopicId topic);
+    BML_Result ImcClearState(KernelServices &kernel, BML_TopicId topic);
 
-    void RegisterImcApis();
+    void RegisterImcApis(ApiRegistry &registry);
 } // namespace BML::Core
 
 #endif // BML_CORE_IMC_BUS_H

@@ -5,7 +5,6 @@
 
 #include "ApiRegistry.h"
 #include "CoreErrors.h"
-#include "KernelServices.h"
 
 namespace BML::Core {
     namespace detail {
@@ -24,7 +23,10 @@ namespace BML::Core {
         template <typename... Args, BML_Result (*Func)(Args...), typename DomainTag, typename ApiNameTag>
         struct GuardedWrapper<Func, DomainTag, ApiNameTag> {
             static BML_Result Invoke(Args... args) {
-                return GuardRegisteredApiResult(DomainTag::Value(), ApiNameTag::Value(), [&]() -> BML_Result {
+                return GuardRegisteredApiResult(
+                    DomainTag::Value(),
+                    ApiNameTag::Value(),
+                    [args...]() -> BML_Result {
                     return Func(args...);
                 });
             }
@@ -43,7 +45,7 @@ namespace BML::Core {
         template <typename... Args, void (*Func)(Args...), typename DomainTag, typename ApiNameTag>
         struct VoidGuardedWrapper<Func, DomainTag, ApiNameTag> {
             static void Invoke(Args... args) {
-                GuardVoid(DomainTag::Value(), ApiNameTag::Value(), [&]() {
+                GuardVoid(DomainTag::Value(), ApiNameTag::Value(), [args...]() {
                     Func(args...);
                 });
             }
@@ -116,8 +118,9 @@ namespace BML::Core {
         BML_DETAIL_UNIQUE_NAME(_BmlApiNameTag),                                        \
         BML_DETAIL_UNIQUE_NAME(_BmlVoidWrapper))
 
-#define BML_BEGIN_API_REGISTRATION() \
-    auto &registry = *Kernel().api_registry
+#define BML_BEGIN_API_REGISTRATION(registry_expr) \
+    auto &_bml_registry = (registry_expr); \
+    auto &registry = _bml_registry
 
 } // namespace BML::Core
 

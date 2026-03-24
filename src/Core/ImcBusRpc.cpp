@@ -4,7 +4,7 @@ namespace BML::Core {
     BML_Result ImcBusImpl::GetRpcId(const char *name, BML_RpcId *out_id) {
         if (!name || !*name || !out_id)
             return BML_RESULT_INVALID_ARGUMENT;
-        *out_id = m_RpcRegistry.GetOrCreate(name);
+        *out_id = m_RpcState.rpc_registry.GetOrCreate(name);
         return (*out_id != BML_RPC_ID_INVALID) ? BML_RESULT_OK : BML_RESULT_FAIL;
     }
 
@@ -24,8 +24,8 @@ namespace BML::Core {
         BML_Mod resolved_owner = nullptr;
         BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));
 
-        std::unique_lock lock(m_RpcMutex);
-        auto [it, inserted] = m_RpcHandlers.emplace(rpc_id, RpcHandlerEntry{});
+        std::unique_lock lock(m_RpcState.rpc_mutex);
+        auto [it, inserted] = m_RpcState.rpc_handlers.emplace(rpc_id, RpcHandlerEntry{});
         if (!inserted) {
             CoreLog(BML_LOG_WARN, kImcLogCategory,
                     "RPC handler already registered for ID 0x%08X", rpc_id);
@@ -51,24 +51,24 @@ namespace BML::Core {
         BML_Mod resolved_owner = nullptr;
         BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));
 
-        std::unique_lock lock(m_RpcMutex);
-        auto it = m_RpcHandlers.find(rpc_id);
-        if (it != m_RpcHandlers.end()) {
+        std::unique_lock lock(m_RpcState.rpc_mutex);
+        auto it = m_RpcState.rpc_handlers.find(rpc_id);
+        if (it != m_RpcState.rpc_handlers.end()) {
             if (it->second.owner != resolved_owner) {
                 return BML_RESULT_PERMISSION_DENIED;
             }
-            m_RpcHandlers.erase(it);
+            m_RpcState.rpc_handlers.erase(it);
             CoreLog(BML_LOG_DEBUG, kImcLogCategory,
                     "Unregistered RPC handler for ID 0x%08X", rpc_id);
             return BML_RESULT_OK;
         }
 
-        auto sit = m_StreamingRpcHandlers.find(rpc_id);
-        if (sit != m_StreamingRpcHandlers.end()) {
+        auto sit = m_RpcState.streaming_rpc_handlers.find(rpc_id);
+        if (sit != m_RpcState.streaming_rpc_handlers.end()) {
             if (sit->second.owner != resolved_owner) {
                 return BML_RESULT_PERMISSION_DENIED;
             }
-            m_StreamingRpcHandlers.erase(sit);
+            m_RpcState.streaming_rpc_handlers.erase(sit);
             CoreLog(BML_LOG_DEBUG, kImcLogCategory,
                     "Unregistered streaming RPC handler for ID 0x%08X", rpc_id);
             return BML_RESULT_OK;
@@ -92,11 +92,12 @@ namespace BML::Core {
         BML_Mod resolved_owner = nullptr;
         BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));
 
-        BML_Future future = CreateFuture();
+        auto *kernel = m_Context ? Context::KernelFromHandle(m_Context->GetHandle()) : nullptr;
+        BML_Future future = CreateFuture(kernel);
         if (!future)
             return BML_RESULT_OUT_OF_MEMORY;
 
-        auto *req = m_RpcRequestPool.Construct<RpcRequest>();
+        auto *req = m_RpcState.rpc_request_pool.Construct<RpcRequest>();
         if (!req) {
             FutureReleaseInternal(future);
             return BML_RESULT_OUT_OF_MEMORY;
@@ -111,21 +112,21 @@ namespace BML::Core {
 
         if (request && request->data && request->size > 0) {
             if (!req->payload.CopyFrom(request->data, request->size)) {
-                m_RpcRequestPool.Destroy(req);
+                m_RpcState.rpc_request_pool.Destroy(req);
                 FutureReleaseInternal(future);
                 return BML_RESULT_OUT_OF_MEMORY;
             }
         }
 
         FutureAddRefInternal(future);
-        if (!m_RpcQueue->Enqueue(req)) {
-            m_RpcRequestPool.Destroy(req);
+        if (!m_RpcState.rpc_queue->Enqueue(req)) {
+            m_RpcState.rpc_request_pool.Destroy(req);
             FutureReleaseInternal(future);
             FutureReleaseInternal(future);
             return BML_RESULT_WOULD_BLOCK;
         }
 
-        m_Stats.total_rpc_calls.fetch_add(1, std::memory_order_relaxed);
+        m_GlobalStats.total_rpc_calls.fetch_add(1, std::memory_order_relaxed);
         *out_future = future;
         return BML_RESULT_OK;
     }
@@ -140,24 +141,25 @@ namespace BML::Core {
                     BML_FUTURE_TIMEOUT, BML_RESULT_TIMEOUT, "RPC call timed out");
                 FutureReleaseInternal(request->future);
             }
-            m_Stats.total_rpc_failures.fetch_add(1, std::memory_order_relaxed);
-            m_RpcRequestPool.Destroy(request);
+            m_GlobalStats.total_rpc_failures.fetch_add(1, std::memory_order_relaxed);
+            m_RpcState.rpc_request_pool.Destroy(request);
             return;
         }
 
         RpcHandlerEntry entry;
         std::shared_ptr<RpcHandlerStats> handler_stats;
         {
-            std::shared_lock lock(m_RpcMutex);
-            auto it = m_RpcHandlers.find(request->rpc_id);
-            if (it == m_RpcHandlers.end()) {
+            std::shared_lock lock(m_RpcState.rpc_mutex);
+            auto it = m_RpcState.rpc_handlers.find(request->rpc_id);
+            if (it == m_RpcState.rpc_handlers.end()) {
                 if (request->future) {
                     request->future->Complete(
                         BML_FUTURE_FAILED, BML_RESULT_NOT_FOUND, nullptr, 0);
                     FutureReleaseInternal(request->future);
                 }
-                m_Stats.total_rpc_failures.fetch_add(1, std::memory_order_relaxed);
-                m_RpcRequestPool.Destroy(request);
+                m_GlobalStats.total_rpc_failures.fetch_add(1,
+                                                           std::memory_order_relaxed);
+                m_RpcState.rpc_request_pool.Destroy(request);
                 return;
             }
             entry = it->second;
@@ -172,12 +174,13 @@ namespace BML::Core {
         req_msg.msg_id = request->msg_id;
         req_msg.flags = 0;
 
-        BML_Context ctx = g_BusContext->GetHandle();
+        auto *busContext = m_Context;
+        BML_Context ctx = busContext ? busContext->GetHandle() : nullptr;
 
         std::vector<RpcMiddlewareEntry> middleware_snapshot;
         {
-            std::shared_lock lock(m_RpcMutex);
-            middleware_snapshot = m_RpcMiddleware;
+            std::shared_lock lock(m_RpcState.rpc_mutex);
+            middleware_snapshot = m_RpcState.rpc_middleware;
         }
 
         for (const auto &mw : middleware_snapshot) {
@@ -195,8 +198,9 @@ namespace BML::Core {
                         BML_FUTURE_FAILED, mw_result, "Pre-middleware rejected RPC");
                     FutureReleaseInternal(request->future);
                 }
-                m_Stats.total_rpc_failures.fetch_add(1, std::memory_order_relaxed);
-                m_RpcRequestPool.Destroy(request);
+                m_GlobalStats.total_rpc_failures.fetch_add(1,
+                                                           std::memory_order_relaxed);
+                m_RpcState.rpc_request_pool.Destroy(request);
                 return;
             }
         }
@@ -240,11 +244,13 @@ namespace BML::Core {
             if (result == BML_RESULT_OK) {
                 request->future->Complete(
                     BML_FUTURE_READY, BML_RESULT_OK, response.data, response.size);
-                m_Stats.total_rpc_completions.fetch_add(1, std::memory_order_relaxed);
+                m_GlobalStats.total_rpc_completions.fetch_add(
+                    1, std::memory_order_relaxed);
             } else {
                 request->future->CompleteWithError(
                     BML_FUTURE_FAILED, result, error_buf[0] ? error_buf : nullptr);
-                m_Stats.total_rpc_failures.fetch_add(1, std::memory_order_relaxed);
+                m_GlobalStats.total_rpc_failures.fetch_add(1,
+                                                           std::memory_order_relaxed);
             }
             FutureReleaseInternal(request->future);
         }
@@ -253,13 +259,14 @@ namespace BML::Core {
             response.cleanup(response.data, response.size, response.cleanup_user_data);
         }
 
-        m_RpcRequestPool.Destroy(request);
+        m_RpcState.rpc_request_pool.Destroy(request);
     }
 
     void ImcBusImpl::DrainRpcQueue(size_t budget) {
         size_t processed = 0;
         RpcRequest *req = nullptr;
-        while ((budget == 0 || processed < budget) && m_RpcQueue->Dequeue(req)) {
+        while ((budget == 0 || processed < budget) &&
+               m_RpcState.rpc_queue->Dequeue(req)) {
             ProcessRpcRequest(req);
             ++processed;
         }
@@ -281,8 +288,8 @@ namespace BML::Core {
         BML_Mod resolved_owner = nullptr;
         BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));
 
-        std::unique_lock lock(m_RpcMutex);
-        auto [it, inserted] = m_RpcHandlers.emplace(rpc_id, RpcHandlerEntry{});
+        std::unique_lock lock(m_RpcState.rpc_mutex);
+        auto [it, inserted] = m_RpcState.rpc_handlers.emplace(rpc_id, RpcHandlerEntry{});
         if (!inserted) {
             return BML_RESULT_ALREADY_EXISTS;
         }
@@ -310,11 +317,12 @@ namespace BML::Core {
         BML_Mod resolved_owner = nullptr;
         BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));
 
-        BML_Future future = CreateFuture();
+        auto *kernel = m_Context ? Context::KernelFromHandle(m_Context->GetHandle()) : nullptr;
+        BML_Future future = CreateFuture(kernel);
         if (!future)
             return BML_RESULT_OUT_OF_MEMORY;
 
-        auto *req = m_RpcRequestPool.Construct<RpcRequest>();
+        auto *req = m_RpcState.rpc_request_pool.Construct<RpcRequest>();
         if (!req) {
             FutureReleaseInternal(future);
             return BML_RESULT_OUT_OF_MEMORY;
@@ -334,21 +342,21 @@ namespace BML::Core {
 
         if (request && request->data && request->size > 0) {
             if (!req->payload.CopyFrom(request->data, request->size)) {
-                m_RpcRequestPool.Destroy(req);
+                m_RpcState.rpc_request_pool.Destroy(req);
                 FutureReleaseInternal(future);
                 return BML_RESULT_OUT_OF_MEMORY;
             }
         }
 
         FutureAddRefInternal(future);
-        if (!m_RpcQueue->Enqueue(req)) {
-            m_RpcRequestPool.Destroy(req);
+        if (!m_RpcState.rpc_queue->Enqueue(req)) {
+            m_RpcState.rpc_request_pool.Destroy(req);
             FutureReleaseInternal(future);
             FutureReleaseInternal(future);
             return BML_RESULT_WOULD_BLOCK;
         }
 
-        m_Stats.total_rpc_calls.fetch_add(1, std::memory_order_relaxed);
+        m_GlobalStats.total_rpc_calls.fetch_add(1, std::memory_order_relaxed);
         *out_future = future;
         return BML_RESULT_OK;
     }
@@ -386,16 +394,16 @@ namespace BML::Core {
         out_info->struct_size = sizeof(BML_RpcInfo);
         out_info->rpc_id = rpc_id;
 
-        const std::string *name = m_RpcRegistry.GetName(rpc_id);
+        const std::string *name = m_RpcState.rpc_registry.GetName(rpc_id);
         if (name) {
             size_t copy_len = name->size() < 255 ? name->size() : 255;
             std::memcpy(out_info->name, name->c_str(), copy_len);
             out_info->name[copy_len] = '\0';
         }
 
-        std::shared_lock lock(m_RpcMutex);
-        auto it = m_RpcHandlers.find(rpc_id);
-        if (it != m_RpcHandlers.end()) {
+        std::shared_lock lock(m_RpcState.rpc_mutex);
+        auto it = m_RpcState.rpc_handlers.find(rpc_id);
+        if (it != m_RpcState.rpc_handlers.end()) {
             out_info->has_handler =
                 (it->second.handler || it->second.handler_ex) ? BML_TRUE : BML_FALSE;
             out_info->call_count =
@@ -419,7 +427,7 @@ namespace BML::Core {
         if (!buf || cap == 0)
             return BML_RESULT_INVALID_ARGUMENT;
 
-        const std::string *name = m_RpcRegistry.GetName(rpc_id);
+        const std::string *name = m_RpcState.rpc_registry.GetName(rpc_id);
         if (!name) {
             buf[0] = '\0';
             if (out_len)
@@ -455,19 +463,20 @@ namespace BML::Core {
 
         std::vector<SnapshotEntry> snapshot;
         {
-            std::shared_lock lock(m_RpcMutex);
-            snapshot.reserve(m_RpcHandlers.size() + m_StreamingRpcHandlers.size());
-            for (const auto &[id, entry] : m_RpcHandlers) {
+            std::shared_lock lock(m_RpcState.rpc_mutex);
+            snapshot.reserve(m_RpcState.rpc_handlers.size() +
+                             m_RpcState.streaming_rpc_handlers.size());
+            for (const auto &[id, entry] : m_RpcState.rpc_handlers) {
                 BML_Bool has =
                     (entry.handler || entry.handler_ex) ? BML_TRUE : BML_FALSE;
                 snapshot.push_back({id, has});
             }
-            for (const auto &[id, entry] : m_StreamingRpcHandlers) {
+            for (const auto &[id, entry] : m_RpcState.streaming_rpc_handlers) {
                 snapshot.push_back({id, entry.handler ? BML_TRUE : BML_FALSE});
             }
         }
 
-        auto &registry = m_RpcRegistry;
+        auto &registry = m_RpcState.rpc_registry;
         for (const auto &e : snapshot) {
             const std::string *name = registry.GetName(e.id);
             cb(e.id, name ? name->c_str() : "", e.has_handler, user_data);
@@ -490,15 +499,15 @@ namespace BML::Core {
         BML_Mod resolved_owner = nullptr;
         BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));
 
-        std::unique_lock lock(m_RpcMutex);
+        std::unique_lock lock(m_RpcState.rpc_mutex);
         RpcMiddlewareEntry mw;
         mw.middleware = middleware;
         mw.priority = priority;
         mw.user_data = user_data;
         mw.owner = resolved_owner;
-        m_RpcMiddleware.push_back(mw);
+        m_RpcState.rpc_middleware.push_back(mw);
 
-        std::sort(m_RpcMiddleware.begin(), m_RpcMiddleware.end(),
+        std::sort(m_RpcState.rpc_middleware.begin(), m_RpcState.rpc_middleware.end(),
                   [](const RpcMiddlewareEntry &a, const RpcMiddlewareEntry &b) {
                       return a.priority < b.priority;
                   });
@@ -517,19 +526,20 @@ namespace BML::Core {
         BML_Mod resolved_owner = nullptr;
         BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));
 
-        std::unique_lock lock(m_RpcMutex);
-        auto any_it = std::find_if(m_RpcMiddleware.begin(), m_RpcMiddleware.end(),
+        std::unique_lock lock(m_RpcState.rpc_mutex);
+        auto any_it = std::find_if(m_RpcState.rpc_middleware.begin(),
+                                   m_RpcState.rpc_middleware.end(),
                                    [middleware](const RpcMiddlewareEntry &e) {
                                        return e.middleware == middleware;
                                    });
-        if (any_it == m_RpcMiddleware.end()) {
+        if (any_it == m_RpcState.rpc_middleware.end()) {
             return BML_RESULT_NOT_FOUND;
         }
         if (any_it->owner != resolved_owner) {
             return BML_RESULT_PERMISSION_DENIED;
         }
 
-        m_RpcMiddleware.erase(any_it);
+        m_RpcState.rpc_middleware.erase(any_it);
         return BML_RESULT_OK;
     }
 
@@ -549,9 +559,9 @@ namespace BML::Core {
         BML_Mod resolved_owner = nullptr;
         BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));
 
-        std::unique_lock lock(m_RpcMutex);
+        std::unique_lock lock(m_RpcState.rpc_mutex);
         auto [it, inserted] =
-            m_StreamingRpcHandlers.emplace(rpc_id, StreamingRpcHandlerEntry{});
+            m_RpcState.streaming_rpc_handlers.emplace(rpc_id, StreamingRpcHandlerEntry{});
         if (!inserted) {
             return BML_RESULT_ALREADY_EXISTS;
         }
@@ -571,7 +581,8 @@ namespace BML::Core {
 
         if (s->on_chunk && s->chunk_topic != BML_TOPIC_ID_INVALID) {
             BML_ImcMessage msg = BML_IMC_MSG(data, size);
-            BML_Context ctx = g_BusContext->GetHandle();
+            auto *busContext = m_Context;
+            BML_Context ctx = busContext ? busContext->GetHandle() : nullptr;
             ModuleContextScope scope(s->owner);
             s->on_chunk(ctx, s->chunk_topic, &msg, s->user_data);
         }
@@ -593,8 +604,8 @@ namespace BML::Core {
             s->future = nullptr;
         }
 
-        std::lock_guard lock(m_StreamMutex);
-        m_Streams.erase(stream);
+        std::lock_guard lock(m_RpcState.stream_mutex);
+        m_RpcState.streams.erase(stream);
         return BML_RESULT_OK;
     }
 
@@ -615,8 +626,8 @@ namespace BML::Core {
             s->future = nullptr;
         }
 
-        std::lock_guard lock(m_StreamMutex);
-        m_Streams.erase(stream);
+        std::lock_guard lock(m_RpcState.stream_mutex);
+        m_RpcState.streams.erase(stream);
         return BML_RESULT_OK;
     }
 
@@ -645,14 +656,15 @@ namespace BML::Core {
 
         StreamingRpcHandlerEntry handler_entry;
         {
-            std::shared_lock lock(m_RpcMutex);
-            auto it = m_StreamingRpcHandlers.find(rpc_id);
-            if (it == m_StreamingRpcHandlers.end())
+            std::shared_lock lock(m_RpcState.rpc_mutex);
+            auto it = m_RpcState.streaming_rpc_handlers.find(rpc_id);
+            if (it == m_RpcState.streaming_rpc_handlers.end())
                 return BML_RESULT_NOT_FOUND;
             handler_entry = it->second;
         }
 
-        BML_Future future = CreateFuture();
+        auto *kernel = m_Context ? Context::KernelFromHandle(m_Context->GetHandle()) : nullptr;
+        BML_Future future = CreateFuture(kernel);
         if (!future)
             return BML_RESULT_OUT_OF_MEMORY;
 
@@ -669,6 +681,7 @@ namespace BML::Core {
         GetTopicId(topic_name, &chunk_topic);
 
         auto stream_state = std::make_unique<BML_RpcStream_T>();
+        stream_state->kernel = kernel;
         FutureAddRefInternal(future);
         stream_state->future = future;
         stream_state->chunk_topic = chunk_topic;
@@ -679,8 +692,8 @@ namespace BML::Core {
 
         BML_RpcStream stream = stream_state.get();
         {
-            std::lock_guard lock(m_StreamMutex);
-            m_Streams[stream] = std::move(stream_state);
+            std::lock_guard lock(m_RpcState.stream_mutex);
+            m_RpcState.streams[stream] = std::move(stream_state);
         }
 
         BML_ImcMessage req_msg = {};
@@ -691,7 +704,8 @@ namespace BML::Core {
             req_msg.msg_id = request->msg_id;
         }
 
-        BML_Context ctx = g_BusContext->GetHandle();
+        auto *busContext = m_Context;
+        BML_Context ctx = busContext ? busContext->GetHandle() : nullptr;
         BML_Result result = BML_RESULT_INTERNAL_ERROR;
         try {
             ModuleContextScope scope(handler_entry.owner);
@@ -701,8 +715,8 @@ namespace BML::Core {
         }
 
         if (result != BML_RESULT_OK) {
-            std::lock_guard slock(m_StreamMutex);
-            if (m_Streams.count(stream)) {
+            std::lock_guard slock(m_RpcState.stream_mutex);
+            if (m_RpcState.streams.count(stream)) {
                 auto *s = static_cast<BML_RpcStream_T *>(stream);
                 bool expected = false;
                 if (s->completed.compare_exchange_strong(expected, true)) {
@@ -713,7 +727,7 @@ namespace BML::Core {
                     FutureReleaseInternal(s->future);
                     s->future = nullptr;
                 }
-                m_Streams.erase(stream);
+                m_RpcState.streams.erase(stream);
             }
         }
 
@@ -807,7 +821,8 @@ namespace BML::Core {
         }
 
         if (invoke_now) {
-            BML_Context ctx = g_BusContext->GetHandle();
+            auto *busContext = m_Context;
+            BML_Context ctx = busContext ? busContext->GetHandle() : nullptr;
             ModuleContextScope scope(resolved_owner);
             callback(ctx, future, user_data);
         }

@@ -47,18 +47,15 @@ namespace BML::Core {
                       const char *api_name,
                       const char *source_file,
                       int source_line) {
-        // Delegate to DiagnosticManager to maintain single source of truth
-        Kernel().diagnostics->SetError(code, message, api_name, source_file, source_line);
+        GetThreadDiagnosticManager().SetError(code, message, api_name, source_file, source_line);
     }
 
     BML_Result GetLastErrorInfo(BML_ErrorInfo *out_info) {
-        // Delegate to DiagnosticManager to maintain single source of truth
-        return Kernel().diagnostics->GetLastError(out_info);
+        return GetThreadDiagnosticManager().GetLastError(out_info);
     }
 
     void ClearLastErrorInfo() {
-        // Delegate to DiagnosticManager to maintain single source of truth
-        Kernel().diagnostics->ClearLastError();
+        GetThreadDiagnosticManager().ClearLastError();
     }
 
     const char *GetErrorString(BML_Result result) {

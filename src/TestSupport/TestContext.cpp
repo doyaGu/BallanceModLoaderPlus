@@ -23,7 +23,7 @@
 
 // BML public headers
 #include "bml_bootstrap.h"
-#include "bml_builtin_interfaces.h"
+#include "bml_services.hpp"
 #include "bml_imc.h"
 #include "bml_logging.h"
 
@@ -31,49 +31,41 @@
 #include "Core/ModHandle.h"
 
 namespace bml::test {
-
 // ============================================================================
 // TestContext - Construction / Destruction
 // ============================================================================
 
 TestContext::TestContext() {
-    BML_BootstrapConfig config = BML_BOOTSTRAP_CONFIG_INIT;
-    config.flags = BML_BOOTSTRAP_FLAG_SKIP_DISCOVERY | BML_BOOTSTRAP_FLAG_SKIP_LOAD;
+    BML_RuntimeConfig config = BML_RUNTIME_CONFIG_INIT;
 
-    BML_Result res = bmlBootstrap(&config);
+    BML_Result res = bmlRuntimeCreate(&config, &m_Runtime);
     if (BML_FAILED(res)) {
         return;
     }
 
-    // Load the bootstrap loader globals (bmlInterfaceAcquire, bmlInterfaceRelease, etc.)
-    res = BML_BOOTSTRAP_LOAD(bmlGetProcAddress);
-    if (BML_FAILED(res)) {
-        bmlShutdown();
+    m_CachedHub = bmlRuntimeGetServices(m_Runtime);
+    if (!m_CachedHub) {
+        bmlRuntimeDestroy(m_Runtime);
+        m_Runtime = nullptr;
         return;
     }
+    bmlBindServices(m_CachedHub);
 
-    // Cache frequently-used API function pointers via public proc lookup
-    m_GetTopicId = reinterpret_cast<PFN_BML_ImcGetTopicId>(
-        bmlGetProcAddress("bmlImcGetTopicId"));
-    m_Publish = reinterpret_cast<PFN_BML_ImcPublish>(
-        bmlGetProcAddress("bmlImcPublish"));
-    m_Pump = reinterpret_cast<PFN_BML_ImcPump>(
-        bmlGetProcAddress("bmlImcPump"));
-    m_SetLogFilter = reinterpret_cast<PFN_BML_SetLogFilter>(
-        bmlGetProcAddress("bmlSetLogFilter"));
-    m_RegisterLogSinkOverride = reinterpret_cast<PFN_BML_RegisterLogSinkOverride>(
-        bmlGetProcAddress("bmlRegisterLogSinkOverride"));
-    m_ClearLogSinkOverride = reinterpret_cast<PFN_BML_ClearLogSinkOverride>(
-        bmlGetProcAddress("bmlClearLogSinkOverride"));
-    m_GetGlobalContext = reinterpret_cast<PFN_BML_GetGlobalContext>(
-        bmlGetProcAddress("bmlGetGlobalContext"));
-    m_GetHostModule = reinterpret_cast<PFN_BML_GetHostModule>(
-        bmlGetProcAddress("bmlGetHostModule"));
+    m_GetTopicId = m_CachedHub->ImcBus ? m_CachedHub->ImcBus->GetTopicId : nullptr;
+    m_Publish = m_CachedHub->ImcBus ? m_CachedHub->ImcBus->Publish : nullptr;
+    m_Pump = m_CachedHub->ImcBus ? m_CachedHub->ImcBus->Pump : nullptr;
+    m_SetLogFilter = m_CachedHub->Logging ? m_CachedHub->Logging->SetLogFilter : nullptr;
+    m_RegisterLogSinkOverride = m_CachedHub->Logging
+        ? m_CachedHub->Logging->RegisterSinkOverride : nullptr;
+    m_ClearLogSinkOverride = m_CachedHub->Logging
+        ? m_CachedHub->Logging->ClearSinkOverride : nullptr;
+    m_Context = m_CachedHub->Context ? m_CachedHub->Context->Context : nullptr;
+    m_FindModuleById = m_CachedHub->Module ? m_CachedHub->Module->FindModuleById : nullptr;
 
     m_Initialized = true;
 
-    if (m_GetHostModule) {
-        m_DefaultMod = m_GetHostModule();
+    if (m_FindModuleById && m_Context) {
+        m_DefaultMod = m_FindModuleById(m_Context, "ModLoader");
     }
 }
 
@@ -83,8 +75,8 @@ TestContext::~TestContext() {
     }
 
     // Clear log capture before shutdown
-    if (m_LogCaptureEnabled && m_ClearLogSinkOverride) {
-        m_ClearLogSinkOverride();
+    if (m_LogCaptureEnabled && m_ClearLogSinkOverride && m_DefaultMod) {
+        m_ClearLogSinkOverride(m_DefaultMod);
         m_LogCaptureEnabled = false;
     }
 
@@ -94,7 +86,10 @@ TestContext::~TestContext() {
     // Unload API pointers before shutting down the runtime
     bmlUnloadAPI();
 
-    bmlShutdown();
+    if (m_Runtime) {
+        bmlRuntimeDestroy(m_Runtime);
+        m_Runtime = nullptr;
+    }
     m_Initialized = false;
 }
 
@@ -103,10 +98,10 @@ TestContext::~TestContext() {
 // ============================================================================
 
 BML_Context TestContext::Handle() const {
-    if (!m_Initialized || !m_GetGlobalContext) {
+    if (!m_Initialized) {
         return nullptr;
     }
-    return m_GetGlobalContext();
+    return m_Context;
 }
 
 // ============================================================================
@@ -137,8 +132,8 @@ void TestContext::Tick() {
     }
 
     // Pump IMC messages (process all pending) via public API
-    if (m_Pump) {
-        m_Pump(0);
+    if (m_Pump && m_Context) {
+        m_Pump(m_Context, 0);
     }
 }
 
@@ -152,7 +147,7 @@ bool TestContext::Publish(const char *topic, const void *data, size_t size) {
     }
 
     BML_TopicId topic_id = BML_TOPIC_ID_INVALID;
-    BML_Result res = m_GetTopicId(topic, &topic_id);
+    BML_Result res = m_GetTopicId(m_Context, topic, &topic_id);
     if (BML_FAILED(res) || topic_id == BML_TOPIC_ID_INVALID) {
         return false;
     }
@@ -188,7 +183,7 @@ void TestContext::EnableLogCapture(BML_LogSeverity min_level) {
     desc.user_data = &m_LogCapture;
     desc.flags = 0; // Don't suppress default output in tests
 
-    BML_Result res = m_RegisterLogSinkOverride(&desc);
+    BML_Result res = m_RegisterLogSinkOverride(m_DefaultMod, &desc);
     if (BML_SUCCEEDED(res)) {
         m_LogCaptureEnabled = true;
     }
@@ -236,21 +231,9 @@ void TestContext::LogCaptureDispatch(BML_Context /*ctx*/,
 // TestContext - Service Access
 // ============================================================================
 
-const bml::RuntimeServiceHub *TestContext::Hub() const {
+const BML_Services *TestContext::Hub() const {
     if (!m_Initialized) {
         return nullptr;
-    }
-
-    // The service hub is exposed via bmlGetServiceHub (registered in CoreApi.cpp).
-    // Its signature is: const void* (*)(void)
-    // The returned pointer is stable for the runtime lifetime.
-    if (!m_CachedHub) {
-        using PFN_GetServiceHub = const void *(*)(void);
-        auto getServiceHub = reinterpret_cast<PFN_GetServiceHub>(
-            bmlGetProcAddress("bmlGetServiceHub"));
-        if (getServiceHub) {
-            m_CachedHub = static_cast<const bml::RuntimeServiceHub *>(getServiceHub());
-        }
     }
     return m_CachedHub;
 }

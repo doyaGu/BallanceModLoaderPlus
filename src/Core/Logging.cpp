@@ -237,6 +237,18 @@ namespace BML::Core {
             return ctx->ResolveModHandle(owner);
         }
 
+        Context *ResolveExplicitContext(BML_Mod owner, BML_Context bml_ctx) {
+            if (bml_ctx) {
+                if (auto *context = Context::FromHandle(bml_ctx)) {
+                    return context;
+                }
+            }
+            if (owner) {
+                return Context::ContextFromMod(owner);
+            }
+            return nullptr;
+        }
+
         BML_Mod_T *ResolveModFromCaller(Context *ctx, BML_Mod owner, void *caller) {
             if (auto *resolved = ResolveExplicitOwner(ctx, owner)) {
                 return resolved;
@@ -315,8 +327,7 @@ namespace BML::Core {
             return;
         va_list argsCopy;
         va_copy(argsCopy, args);
-        Context *context = Kernel().context.get();
-        LogMessageInternal(context, nullptr, nullptr, nullptr, level, tag, fmt, argsCopy);
+        LogMessageInternal(nullptr, nullptr, nullptr, nullptr, level, tag, fmt, argsCopy);
         va_end(argsCopy);
     }
 
@@ -327,7 +338,6 @@ namespace BML::Core {
 #endif
 
     void LogMessage(BML_Mod owner,
-                    BML_Context ctx,
                     BML_LogSeverity level,
                     const char *tag,
                     const char *fmt,
@@ -336,13 +346,13 @@ namespace BML::Core {
             return;
         va_list args;
         va_start(args, fmt);
-        Context *context = Kernel().context.get();
-        LogMessageInternal(context, owner, nullptr, ctx, level, tag, fmt, args);
+        Context *context = ResolveExplicitContext(owner, nullptr);
+        BML_Context bml_ctx = context ? context->GetHandle() : nullptr;
+        LogMessageInternal(context, owner, nullptr, bml_ctx, level, tag, fmt, args);
         va_end(args);
     }
 
     void LogMessageVa(BML_Mod owner,
-                      BML_Context ctx,
                       BML_LogSeverity level,
                       const char *tag,
                       const char *fmt,
@@ -351,13 +361,14 @@ namespace BML::Core {
             return;
         va_list argsCopy;
         va_copy(argsCopy, args);
-        Context *context = Kernel().context.get();
-        LogMessageInternal(context, owner, nullptr, ctx, level, tag, fmt, argsCopy);
+        Context *context = ResolveExplicitContext(owner, nullptr);
+        BML_Context bml_ctx = context ? context->GetHandle() : nullptr;
+        LogMessageInternal(context, owner, nullptr, bml_ctx, level, tag, fmt, argsCopy);
         va_end(argsCopy);
     }
 
     void SetLogFilter(BML_Mod owner, BML_LogSeverity minimum_level) {
-        Context *context = Kernel().context.get();
+        Context *context = ResolveExplicitContext(owner, nullptr);
         SetMinimumSeverity(context, owner, nullptr, minimum_level);
     }
 

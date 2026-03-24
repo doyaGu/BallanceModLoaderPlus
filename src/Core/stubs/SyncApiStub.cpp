@@ -1,6 +1,6 @@
 #include "ApiRegistration.h"
 
 namespace BML::Core {
-    void RegisterSyncApis() {
+    void RegisterSyncApis(ApiRegistry &) {
     }
 } // namespace BML::Core

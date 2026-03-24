@@ -1,7 +1,10 @@
 #ifndef BML_CORE_KERNEL_SERVICES_H
 #define BML_CORE_KERNEL_SERVICES_H
 
+#include <atomic>
 #include <memory>
+
+#include "bml_types.h"
 
 namespace BML::Core {
 
@@ -53,6 +56,7 @@ struct KernelServices {
 
     // -- L3: top-level context (owned) --------------------
     std::unique_ptr<Context>            context;
+    BML_Runtime                         runtime{nullptr};
 
     KernelServices() = default;
     ~KernelServices();
@@ -63,13 +67,8 @@ struct KernelServices {
     KernelServices &operator=(const KernelServices &) = delete;
 };
 
-/// Return the currently installed KernelServices.
-///
-/// The kernel must be installed before any core API is used.
-KernelServices &Kernel() noexcept;
-
-/// Install (or uninstall) the global KernelServices instance.
-void InstallKernel(KernelServices *kernel) noexcept;
+/// Clear runtime-owned tracing state for a kernel that is shutting down.
+void ResetTracingStateForKernel(KernelServices *kernel);
 
 } // namespace BML::Core
 

@@ -7,6 +7,8 @@
 #include <string>
 
 namespace BML::Core {
+    class ApiRegistry;
+
     class HookRegistry {
     public:
         HookRegistry();
@@ -29,7 +31,7 @@ namespace BML::Core {
         std::unique_ptr<Impl> m_Impl;
     };
 
-    void RegisterHookApis();
+    void RegisterHookApis(ApiRegistry &registry);
 } // namespace BML::Core
 
 #endif /* BML_CORE_HOOK_REGISTRY_H */

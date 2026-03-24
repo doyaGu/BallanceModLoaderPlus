@@ -126,7 +126,7 @@ namespace BML::Core {
         }
 
         BML_CHECK(m_Leases.CreateInterfaceLease(
-            interface_id, it->second.provider_id, consumer->id, out_lease));
+            m_Context.GetKernelServices(), interface_id, it->second.provider_id, consumer->id, out_lease));
         *out_implementation = it->second.desc.implementation;
         return BML_RESULT_OK;
     }

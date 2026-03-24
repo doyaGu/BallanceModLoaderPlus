@@ -14,16 +14,17 @@
 #include "Context.h"
 
 namespace BML::Core {
-    BML_Result BML_API_RegisterLogSinkOverride(const BML_LogSinkOverrideDesc *desc) {
+    BML_Result BML_API_RegisterLogSinkOverride(BML_Mod /*owner*/,
+                                               const BML_LogSinkOverrideDesc *desc) {
         return RegisterLogSinkOverride(desc);
     }
 
-    BML_Result BML_API_ClearLogSinkOverride() {
+    BML_Result BML_API_ClearLogSinkOverride(BML_Mod /*owner*/) {
         return ClearLogSinkOverride();
     }
 
-    void RegisterLoggingApis() {
-        BML_BEGIN_API_REGISTRATION();
+    void RegisterLoggingApis(ApiRegistry &apiRegistry) {
+        BML_BEGIN_API_REGISTRATION(apiRegistry);
 
         // Core logging APIs - variadic functions need manual registration
         detail::RegisterApi(registry, "bmlLog", reinterpret_cast<void *>(LogMessage));

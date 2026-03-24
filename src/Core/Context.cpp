@@ -4,9 +4,11 @@
 #include <chrono>
 #include <filesystem>
 #include <limits>
+#include <memory>
 #include <sstream>
 #include <system_error>
 #include <thread>
+#include <unordered_map>
 
 #include "ConfigStore.h"
 #include "ApiRegistry.h"
@@ -18,7 +20,13 @@
 
 namespace BML::Core {
     namespace {
+#if defined(BML_TEST)
         thread_local BML_Mod g_CurrentModule = nullptr;
+#endif
+        std::mutex g_ContextHandleRegistryMutex;
+        std::vector<std::unique_ptr<BML_Context_T>> g_ContextHandles;
+        std::mutex g_ModContextRegistryMutex;
+        std::unordered_map<BML_Mod, BML_Context> g_ModContextHandles;
         std::atomic<ExtensionProviderCleanupHook> g_ExtensionCleanupHook{nullptr};
         constexpr const char kContextLogCategory[] = "context";
 
@@ -78,6 +86,39 @@ namespace BML::Core {
         uint64_t GetThreadToken() {
             return static_cast<uint64_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
         }
+
+        BML_Context CreatePersistentContextHandle() {
+            auto handle = std::make_unique<BML_Context_T>();
+            BML_Context raw = handle.get();
+            std::lock_guard<std::mutex> lock(g_ContextHandleRegistryMutex);
+            g_ContextHandles.push_back(std::move(handle));
+            return raw;
+        }
+
+        void RegisterModContextHandle(BML_Mod mod, BML_Context ctx) {
+            if (!mod || !ctx) {
+                return;
+            }
+            std::lock_guard<std::mutex> lock(g_ModContextRegistryMutex);
+            g_ModContextHandles[mod] = ctx;
+        }
+
+        void UnregisterModContextHandle(BML_Mod mod) {
+            if (!mod) {
+                return;
+            }
+            std::lock_guard<std::mutex> lock(g_ModContextRegistryMutex);
+            g_ModContextHandles.erase(mod);
+        }
+
+        BML_Context LookupContextHandleForMod(BML_Mod mod) {
+            if (!mod) {
+                return nullptr;
+            }
+            std::lock_guard<std::mutex> lock(g_ModContextRegistryMutex);
+            auto it = g_ModContextHandles.find(mod);
+            return it != g_ModContextHandles.end() ? it->second : nullptr;
+        }
     } // namespace
 
     std::wstring Context::SanitizeIdentifierForFilename(const std::string &value) {
@@ -135,11 +176,49 @@ namespace BML::Core {
     Context::Context(ApiRegistry &api_registry, ConfigStore &config,
                      CrashDumpWriter &crash_dump, FaultTracker &fault_tracker)
         : m_ApiRegistry(api_registry), m_Config(config),
-          m_CrashDump(crash_dump), m_FaultTracker(fault_tracker) {
+          m_CrashDump(crash_dump), m_FaultTracker(fault_tracker),
+          m_Handle(CreatePersistentContextHandle()) {
         // Constructor only sets defaults; actual initialization happens in Initialize()
         m_RuntimeVersion = {0, 4, 0};
         m_Initialized.store(false, std::memory_order_relaxed);
         m_ShutdownState.store(ShutdownState::Stopped, std::memory_order_relaxed);
+    }
+
+    Context *Context::FromHandle(BML_Context handle) noexcept {
+        if (!handle || !handle->live.load(std::memory_order_acquire)) {
+            return nullptr;
+        }
+        return handle->context.load(std::memory_order_acquire);
+    }
+
+    KernelServices *Context::KernelFromHandle(BML_Context handle) noexcept {
+        if (!handle || !handle->live.load(std::memory_order_acquire)) {
+            return nullptr;
+        }
+        return handle->kernel.load(std::memory_order_acquire);
+    }
+
+    Context *Context::ContextFromMod(BML_Mod mod) noexcept {
+        if (!mod) {
+            return nullptr;
+        }
+        if (auto ctx = FromHandle(LookupContextHandleForMod(mod))) {
+            return ctx;
+        }
+        return mod->context;
+    }
+
+    KernelServices *Context::KernelFromMod(BML_Mod mod) noexcept {
+        auto *context = ContextFromMod(mod);
+        return context ? context->GetKernelServices() : nullptr;
+    }
+
+    void Context::BindKernel(KernelServices &kernel) noexcept {
+        m_Kernel = &kernel;
+        if (!m_Handle) {
+            return;
+        }
+        m_Handle->kernel.store(&kernel, std::memory_order_release);
     }
 
     void SetExtensionProviderCleanupHook(ExtensionProviderCleanupHook hook) {
@@ -171,12 +250,19 @@ namespace BML::Core {
             m_HostModHandle->id = "ModLoader";
             m_HostModHandle->version = runtime_version;
             m_HostModHandle->capabilities.push_back("bml.internal.runtime");
+            m_HostModHandle->context = this;
             m_ModHandlesByPtr.emplace(m_HostModHandle.get(), m_HostModHandle.get());
+            RegisterModContextHandle(m_HostModHandle.get(), m_Handle);
         }
         {
             std::lock_guard<std::mutex> retain_trace_lock(m_RetainTraceMutex);
             m_RetainTrace.clear();
             m_RetainTraceSequence = 0;
+        }
+        if (m_Handle) {
+            m_Handle->context.store(this, std::memory_order_release);
+            m_Handle->kernel.store(m_Kernel, std::memory_order_release);
+            m_Handle->live.store(true, std::memory_order_release);
         }
         m_Initialized.store(true, std::memory_order_release);
         CoreLog(BML_LOG_INFO, kContextLogCategory, "Context initialized");
@@ -222,6 +308,10 @@ namespace BML::Core {
 
         {
             std::lock_guard<std::mutex> lock(m_StateMutex);
+            for (const auto &[mod, handle] : m_ModHandlesByPtr) {
+                (void) handle;
+                UnregisterModContextHandle(mod);
+            }
             m_Manifests.clear();
             m_ModHandlesById.clear();
             m_ModHandlesByModule.clear();
@@ -251,6 +341,11 @@ namespace BML::Core {
 
         // Reset to default version
         m_RuntimeVersion = bmlGetApiVersion();
+        if (m_Handle) {
+            m_Handle->live.store(false, std::memory_order_release);
+            m_Handle->context.store(nullptr, std::memory_order_release);
+            m_Handle->kernel.store(nullptr, std::memory_order_release);
+        }
         m_Initialized.store(false, std::memory_order_release);
         m_CleanupRequested = false;
         m_ShutdownState.store(ShutdownState::Stopped, std::memory_order_release);
@@ -259,7 +354,7 @@ namespace BML::Core {
     }
 
     BML_Context Context::GetHandle() {
-        return reinterpret_cast<BML_Context>(this);
+        return m_Handle;
     }
 
     void Context::RegisterManifest(std::unique_ptr<ModManifest> manifest) {
@@ -366,6 +461,8 @@ namespace BML::Core {
             std::lock_guard<std::mutex> lock(m_StateMutex);
             m_ModHandlesByPtr[handle.get()] = handle.get();
         }
+        handle->context = this;
+        RegisterModContextHandle(handle.get(), m_Handle);
         return handle;
     }
 
@@ -412,13 +509,15 @@ namespace BML::Core {
         }
     }
 
-    void Context::SetCurrentModule(BML_Mod mod) {
+#if defined(BML_TEST)
+    void Context::SetLifecycleModule(BML_Mod mod) {
         g_CurrentModule = mod;
     }
 
-    BML_Mod Context::GetCurrentModule() {
+    BML_Mod Context::GetLifecycleModule() {
         return g_CurrentModule;
     }
+#endif
 
     void Context::SetRuntimeVersion(const BML_Version &version) {
         std::lock_guard<std::mutex> lock(m_StateMutex);
@@ -465,8 +564,6 @@ namespace BML::Core {
             if (!module_it->mod_handle)
                 continue;
 
-            CurrentModuleScope scope(module_it->mod_handle.get());
-
             for (auto hook_it = module_it->mod_handle->shutdown_hooks.rbegin();
                  hook_it != module_it->mod_handle->shutdown_hooks.rend();
                  ++hook_it) {
@@ -504,12 +601,14 @@ namespace BML::Core {
                 m_ModHandlesByModule.erase(record.handle);
             }
             m_ModHandlesByPtr.erase(record.mod);
+            UnregisterModContextHandle(record.mod);
         }
     }
 
     void Context::RemoveCreatedModHandle(BML_Mod mod) {
         std::lock_guard<std::mutex> lock(m_StateMutex);
         m_ModHandlesByPtr.erase(mod);
+        UnregisterModContextHandle(mod);
     }
 
     BML_Mod_T *Context::FindModHandleLocked(BML_Mod mod) {

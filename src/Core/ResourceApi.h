@@ -5,7 +5,10 @@
 
 #include "bml_resource.h"
 namespace BML::Core {
-    void RegisterResourceApis();
+    class ApiRegistry;
+
+    void RegisterResourceApis(ApiRegistry &registry);
+
     BML_Result RegisterResourceType(const BML_ResourceTypeDesc *desc, BML_HandleType *out_type);
     BML_Result RegisterResourceType(BML_Mod owner,
                                          const BML_ResourceTypeDesc *desc,

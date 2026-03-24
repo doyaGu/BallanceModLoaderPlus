@@ -25,7 +25,17 @@
 #include "ModuleLoader.h"
 
 namespace BML::Core {
+    class Context;
     struct KernelServices;
+}
+
+struct BML_Context_T {
+    std::atomic<BML::Core::Context *> context{nullptr};
+    std::atomic<BML::Core::KernelServices *> kernel{nullptr};
+    std::atomic<bool> live{false};
+};
+
+namespace BML::Core {
     struct LoadedModuleSnapshot {
         std::string id;
         std::optional<ModManifest> manifest;
@@ -37,6 +47,7 @@ namespace BML::Core {
 
     class Context {
     public:
+#if defined(BML_TEST)
         /**
          * @brief Scoped ambient module binding for lifecycle transitions.
          *
@@ -45,23 +56,32 @@ namespace BML::Core {
          * attach/detach/shutdown paths. New business logic must not rely
          * on ambient module state for correctness.
          */
-        class CurrentModuleScope {
+        class LifecycleModuleScope {
         public:
-            explicit CurrentModuleScope(BML_Mod mod) noexcept
-                : m_Previous(GetCurrentModule()) {
-                SetCurrentModule(mod);
+            explicit LifecycleModuleScope(BML_Mod mod) noexcept
+#if defined(BML_TEST)
+                : m_Previous(GetLifecycleModule())
+#endif
+            {
+                SetLifecycleModule(mod);
             }
 
-            ~CurrentModuleScope() {
-                SetCurrentModule(m_Previous);
+            ~LifecycleModuleScope() {
+                SetLifecycleModule(m_Previous);
             }
 
-            CurrentModuleScope(const CurrentModuleScope &) = delete;
-            CurrentModuleScope &operator=(const CurrentModuleScope &) = delete;
+            LifecycleModuleScope(const LifecycleModuleScope &) = delete;
+            LifecycleModuleScope &operator=(const LifecycleModuleScope &) = delete;
 
         private:
             BML_Mod m_Previous{nullptr};
         };
+#endif
+
+        static Context *FromHandle(BML_Context handle) noexcept;
+        static KernelServices *KernelFromHandle(BML_Context handle) noexcept;
+        static Context *ContextFromMod(BML_Mod mod) noexcept;
+        static KernelServices *KernelFromMod(BML_Mod mod) noexcept;
 
         enum class ShutdownState {
             Running,
@@ -72,6 +92,8 @@ namespace BML::Core {
         };
 
         BML_Context GetHandle();
+        void BindKernel(KernelServices &kernel) noexcept;
+        KernelServices *GetKernelServices() const noexcept { return m_Kernel; }
 
         /**
          * Initialize the context with runtime version.
@@ -107,22 +129,10 @@ namespace BML::Core {
         BML_Mod GetModHandleByModule(HMODULE module) const;
         BML_Mod GetSyntheticHostModule() const;
         void AppendShutdownHook(BML_Mod mod, BML_ShutdownCallback callback, void *user_data);
-        /**
-         * @brief Set the ambient current module for the calling thread.
-         *
-         * This is a lifecycle/testing primitive only. Production code must
-         * prefer explicit owner arguments. Direct use is restricted to:
-         * lifecycle scope transitions, SEH-sensitive entrypoint glue, and tests.
-         */
-        static void SetCurrentModule(BML_Mod mod);
-
-        /**
-         * @brief Read the ambient current module for the calling thread.
-         *
-         * This is a lifecycle/testing primitive only. Production code must
-         * not depend on ambient module state for caller resolution.
-         */
-        static BML_Mod GetCurrentModule();
+#if defined(BML_TEST)
+        static void SetLifecycleModule(BML_Mod mod);
+        static BML_Mod GetLifecycleModule();
+#endif
 
         void RemoveCreatedModHandle(BML_Mod mod);
 
@@ -198,6 +208,8 @@ namespace BML::Core {
         std::unordered_map<BML_Mod, BML_Mod_T *> m_ModHandlesByPtr;
         std::unique_ptr<BML_Mod_T> m_HostModHandle;
         BML_Version m_RuntimeVersion{};
+        BML_Context m_Handle{nullptr};
+        KernelServices *m_Kernel{nullptr};
         mutable std::mutex m_StateMutex;
         mutable std::mutex m_RetainMutex;
         mutable std::mutex m_RetainTraceMutex;

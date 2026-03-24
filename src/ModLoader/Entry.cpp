@@ -41,18 +41,26 @@
 static HMODULE s_hBML = nullptr;
 
 // Function pointer types
-typedef BML_Result (*PFN_bmlBootstrap)(const BML_BootstrapConfig *config);
-typedef void (*PFN_bmlShutdown)(void);
-typedef BML_BootstrapState (*PFN_bmlGetBootstrapState)(void);
-typedef void (*PFN_bmlUpdate)(void);
-typedef void* (*PFN_bmlGetProcAddress)(const char*);
+typedef BML_Result (*PFN_bmlRuntimeCreate)(const BML_RuntimeConfig *config, BML_Runtime *out_runtime);
+typedef BML_Result (*PFN_bmlRuntimeDiscoverModules)(BML_Runtime runtime);
+typedef BML_Result (*PFN_bmlRuntimeLoadModules)(BML_Runtime runtime);
+typedef void (*PFN_bmlRuntimeDestroy)(BML_Runtime runtime);
+typedef void (*PFN_bmlRuntimeUpdate)(BML_Runtime runtime);
+typedef const BML_Services *(*PFN_bmlRuntimeGetServices)(BML_Runtime runtime);
 
 // Function pointers
-static PFN_bmlBootstrap s_bmlBootstrap = nullptr;
-static PFN_bmlShutdown s_bmlShutdown = nullptr;
-static PFN_bmlGetBootstrapState s_bmlGetBootstrapState = nullptr;
-static PFN_bmlUpdate s_bmlUpdate = nullptr;
-static PFN_bmlGetProcAddress s_bmlGetProcAddress = nullptr;
+static PFN_bmlRuntimeCreate s_bmlRuntimeCreate = nullptr;
+static PFN_bmlRuntimeDiscoverModules s_bmlRuntimeDiscoverModules = nullptr;
+static PFN_bmlRuntimeLoadModules s_bmlRuntimeLoadModules = nullptr;
+static PFN_bmlRuntimeDestroy s_bmlRuntimeDestroy = nullptr;
+static PFN_bmlRuntimeUpdate s_bmlRuntimeUpdate = nullptr;
+static PFN_bmlRuntimeGetServices s_bmlRuntimeGetServices = nullptr;
+static BML_Runtime s_Runtime = nullptr;
+static const BML_Services *s_Services = nullptr;
+
+const BML_Services *GetModLoaderServices() {
+    return s_Services;
+}
 
 static bool LoadBMLAPI() {
     // Resolve BML.dll path relative to this DLL's directory to prevent DLL hijacking.
@@ -71,13 +79,18 @@ static bool LoadBMLAPI() {
         return false;
     }
 
-    s_bmlBootstrap = (PFN_bmlBootstrap)::GetProcAddress(s_hBML, "bmlBootstrap");
-    s_bmlShutdown = (PFN_bmlShutdown)::GetProcAddress(s_hBML, "bmlShutdown");
-    s_bmlGetBootstrapState = (PFN_bmlGetBootstrapState)::GetProcAddress(s_hBML, "bmlGetBootstrapState");
-    s_bmlUpdate = (PFN_bmlUpdate)::GetProcAddress(s_hBML, "bmlUpdate");
-    s_bmlGetProcAddress = (PFN_bmlGetProcAddress)::GetProcAddress(s_hBML, "bmlGetProcAddress");
+    s_bmlRuntimeCreate = (PFN_bmlRuntimeCreate)::GetProcAddress(s_hBML, "bmlRuntimeCreate");
+    s_bmlRuntimeDiscoverModules =
+        (PFN_bmlRuntimeDiscoverModules)::GetProcAddress(s_hBML, "bmlRuntimeDiscoverModules");
+    s_bmlRuntimeLoadModules =
+        (PFN_bmlRuntimeLoadModules)::GetProcAddress(s_hBML, "bmlRuntimeLoadModules");
+    s_bmlRuntimeDestroy = (PFN_bmlRuntimeDestroy)::GetProcAddress(s_hBML, "bmlRuntimeDestroy");
+    s_bmlRuntimeUpdate = (PFN_bmlRuntimeUpdate)::GetProcAddress(s_hBML, "bmlRuntimeUpdate");
+    s_bmlRuntimeGetServices =
+        (PFN_bmlRuntimeGetServices)::GetProcAddress(s_hBML, "bmlRuntimeGetServices");
 
-    if (!s_bmlBootstrap || !s_bmlShutdown || !s_bmlGetBootstrapState || !s_bmlGetProcAddress) {
+    if (!s_bmlRuntimeCreate || !s_bmlRuntimeDiscoverModules || !s_bmlRuntimeLoadModules ||
+        !s_bmlRuntimeDestroy || !s_bmlRuntimeGetServices) {
         OutputDebugStringA("ModLoader: Fatal - BML.dll missing required exports.\n");
         ::FreeLibrary(s_hBML);
         s_hBML = nullptr;
@@ -88,11 +101,14 @@ static bool LoadBMLAPI() {
 }
 
 static void UnloadBMLAPI() {
-    s_bmlBootstrap = nullptr;
-    s_bmlShutdown = nullptr;
-    s_bmlGetBootstrapState = nullptr;
-    s_bmlUpdate = nullptr;
-    s_bmlGetProcAddress = nullptr;
+    s_bmlRuntimeCreate = nullptr;
+    s_bmlRuntimeDiscoverModules = nullptr;
+    s_bmlRuntimeLoadModules = nullptr;
+    s_bmlRuntimeDestroy = nullptr;
+    s_bmlRuntimeUpdate = nullptr;
+    s_bmlRuntimeGetServices = nullptr;
+    s_Runtime = nullptr;
+    s_Services = nullptr;
 
     if (s_hBML) {
         ::FreeLibrary(s_hBML);
@@ -101,8 +117,8 @@ static void UnloadBMLAPI() {
 }
 
 void ModLoaderUpdateCore() {
-    if (s_bmlUpdate) {
-        s_bmlUpdate();
+    if (s_bmlRuntimeUpdate && s_Runtime) {
+        s_bmlRuntimeUpdate(s_Runtime);
     }
 }
 
@@ -159,15 +175,21 @@ PLUGIN_EXPORT CKPluginInfo *CKGetPluginInfo(int Index) {
 PLUGIN_EXPORT void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg);
 
 void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg) {
-    BML_BootstrapConfig config = BML_BOOTSTRAP_CONFIG_INIT;
-    if (!s_bmlBootstrap || s_bmlBootstrap(&config) != BML_RESULT_OK) {
+    if (!s_Runtime || !s_bmlRuntimeDiscoverModules || s_bmlRuntimeDiscoverModules(s_Runtime) != BML_RESULT_OK) {
         OutputDebugStringA("ModLoader: Fatal - Unable to bootstrap modules.\n");
-        if (s_bmlShutdown) s_bmlShutdown();
+        if (s_bmlRuntimeDestroy && s_Runtime) {
+            s_bmlRuntimeDestroy(s_Runtime);
+            s_Runtime = nullptr;
+        }
         return;
     }
-
-    if (s_bmlGetBootstrapState && s_bmlGetBootstrapState() != BML_BOOTSTRAP_STATE_READY) {
-        OutputDebugStringA("ModLoader: Warning - Bootstrap completed without reaching ready state.\n");
+    if (!s_bmlRuntimeLoadModules || s_bmlRuntimeLoadModules(s_Runtime) != BML_RESULT_OK) {
+        OutputDebugStringA("ModLoader: Fatal - Unable to load modules.\n");
+        if (s_bmlRuntimeDestroy && s_Runtime) {
+            s_bmlRuntimeDestroy(s_Runtime);
+            s_Runtime = nullptr;
+        }
+        return;
     }
 
     RegisterBehavior(reg, FillBehaviorHookBlockDecl);
@@ -234,23 +256,32 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
             return FALSE;
         }
 
-        BML_BootstrapConfig config = BML_BOOTSTRAP_CONFIG_INIT;
-        config.flags = BML_BOOTSTRAP_FLAG_SKIP_DISCOVERY | BML_BOOTSTRAP_FLAG_SKIP_LOAD;
-        if (!s_bmlBootstrap || s_bmlBootstrap(&config) != BML_RESULT_OK) {
-            OutputDebugStringA("ModLoader: Fatal - Unable to initialize BML Core bootstrap.\n");
+        BML_RuntimeConfig config = BML_RUNTIME_CONFIG_INIT;
+        if (!s_bmlRuntimeCreate || s_bmlRuntimeCreate(&config, &s_Runtime) != BML_RESULT_OK) {
+            OutputDebugStringA("ModLoader: Fatal - Unable to create BML runtime.\n");
             UnloadBMLAPI();
             return FALSE;
         }
-        if (!s_bmlGetProcAddress || BML_BOOTSTRAP_LOAD(s_bmlGetProcAddress) != BML_RESULT_OK) {
-            OutputDebugStringA("ModLoader: Fatal - Unable to load bootstrap interface surface.\n");
-            if (s_bmlShutdown) s_bmlShutdown();
+        const BML_Services *services =
+            s_bmlRuntimeGetServices ? s_bmlRuntimeGetServices(s_Runtime) : nullptr;
+        if (!services) {
+            OutputDebugStringA("ModLoader: Fatal - Unable to acquire runtime services.\n");
+            if (s_bmlRuntimeDestroy && s_Runtime) {
+                s_bmlRuntimeDestroy(s_Runtime);
+                s_Runtime = nullptr;
+            }
             UnloadBMLAPI();
             return FALSE;
         }
+        s_Services = services;
+        bmlBindServices(services);
 
         if (MH_Initialize() != MH_OK) {
             OutputDebugStringA("ModLoader: Fatal - Unable to initialize MinHook.\n");
-            if (s_bmlShutdown) s_bmlShutdown();
+            if (s_bmlRuntimeDestroy && s_Runtime) {
+                s_bmlRuntimeDestroy(s_Runtime);
+                s_Runtime = nullptr;
+            }
             UnloadBMLAPI();
             return FALSE;
         }
@@ -258,7 +289,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
         if (!HookCreateCKBehaviorPrototypeRuntime()) {
             OutputDebugStringA("ModLoader: Fatal - Unable to hook CKBehaviorPrototypeRuntime.\n");
             MH_Uninitialize();
-            if (s_bmlShutdown) s_bmlShutdown();
+            if (s_bmlRuntimeDestroy && s_Runtime) {
+                s_bmlRuntimeDestroy(s_Runtime);
+                s_Runtime = nullptr;
+            }
             UnloadBMLAPI();
             return FALSE;
         }
@@ -268,6 +302,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
     }
 
     case DLL_PROCESS_DETACH:
+        s_Services = nullptr;
         // Cleanup in reverse order
         UnhookCreateCKBehaviorPrototypeRuntime();
 
@@ -275,7 +310,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
             OutputDebugStringA("ModLoader: Warning - Unable to uninitialize MinHook.\n");
         }
 
-        if (s_bmlShutdown) s_bmlShutdown();
+        if (s_bmlRuntimeDestroy && s_Runtime) {
+            s_bmlRuntimeDestroy(s_Runtime);
+            s_Runtime = nullptr;
+        }
         bmlUnloadAPI();
 
         UnloadBMLAPI();

@@ -3,25 +3,33 @@
 #include "ApiRegistrationMacros.h"
 #include "Context.h"
 #include "InterfaceRegistry.h"
+#include "LeaseManager.h"
 
 namespace BML::Core {
     namespace {
-        BML_Mod_T *ResolveCaller(Context &context, BML_Mod owner) {
-            if (!owner) {
+        BML_Mod_T *ResolveCaller(BML_Mod owner, Context **out_context = nullptr) {
+            auto *context = Context::ContextFromMod(owner);
+            if (out_context) {
+                *out_context = context;
+            }
+            if (!context || !owner) {
                 return nullptr;
             }
-            return context.ResolveModHandle(owner);
+            return context->ResolveModHandle(owner);
         }
     } // namespace
 
     BML_Result BML_API_InterfaceRegister(BML_Mod owner, const BML_InterfaceDesc *desc) {
-        auto &kernel = Kernel();
-        auto &context = *kernel.context;
-        auto *provider = ResolveCaller(context, owner);
+        auto *kernel = Context::KernelFromMod(owner);
+        Context *context = nullptr;
+        auto *provider = ResolveCaller(owner, &context);
+        if (!kernel || !context) {
+            return BML_RESULT_INVALID_CONTEXT;
+        }
         if (!provider) {
             return BML_RESULT_INVALID_CONTEXT;
         }
-        return kernel.interface_registry->Register(desc, provider);
+        return kernel->interface_registry->Register(desc, provider);
     }
 
     BML_Result BML_API_InterfaceAcquire(BML_Mod owner,
@@ -29,33 +37,42 @@ namespace BML::Core {
                                         const BML_Version *required_abi,
                                         const void **out_implementation,
                                         BML_InterfaceLease *out_lease) {
-        auto &kernel = Kernel();
-        auto &context = *kernel.context;
-        auto *consumer = ResolveCaller(context, owner);
+        auto *kernel = Context::KernelFromMod(owner);
+        Context *context = nullptr;
+        auto *consumer = ResolveCaller(owner, &context);
+        if (!kernel || !context) {
+            return BML_RESULT_INVALID_CONTEXT;
+        }
         if (!consumer) {
             return BML_RESULT_INVALID_CONTEXT;
         }
-        return kernel.interface_registry->Acquire(
+        return kernel->interface_registry->Acquire(
             interface_id, required_abi, consumer, out_implementation, out_lease);
     }
 
     BML_Result BML_API_InterfaceRelease(BML_InterfaceLease lease) {
-        auto &interfaceRegistry = *Kernel().interface_registry;
-        return interfaceRegistry.Release(lease);
+        auto *kernel = LeaseManager::KernelFromLease(lease);
+        if (!kernel || !kernel->interface_registry) {
+            return BML_RESULT_INVALID_HANDLE;
+        }
+        return kernel->interface_registry->Release(lease);
     }
 
     BML_Result BML_API_InterfaceUnregister(BML_Mod owner, const char *interface_id) {
-        auto &kernel = Kernel();
-        auto &context = *kernel.context;
-        auto *provider = ResolveCaller(context, owner);
+        auto *kernel = Context::KernelFromMod(owner);
+        Context *context = nullptr;
+        auto *provider = ResolveCaller(owner, &context);
+        if (!kernel || !context) {
+            return BML_RESULT_INVALID_CONTEXT;
+        }
         if (!provider) {
             return BML_RESULT_INVALID_CONTEXT;
         }
-        return kernel.interface_registry->Unregister(interface_id, provider);
+        return kernel->interface_registry->Unregister(interface_id, provider);
     }
 
-    void RegisterInterfaceApis() {
-        BML_BEGIN_API_REGISTRATION();
+    void RegisterInterfaceApis(ApiRegistry &apiRegistry) {
+        BML_BEGIN_API_REGISTRATION(apiRegistry);
         BML_REGISTER_API_GUARDED(
             bmlInterfaceRegister, "interface", BML_API_InterfaceRegister);
         BML_REGISTER_API_GUARDED(

@@ -1,7 +1,7 @@
 # Core sources
 set(BML_CORE_SOURCES
         ApiRegistry.cpp
-        BuiltinInterfaces.cpp
+        RuntimeInterfaces.cpp
         CoreApi.cpp
         TracingApi.cpp
         Context.cpp
@@ -74,7 +74,7 @@ endif ()
 set(BML_CORE_HEADERS
         ApiRegistry.h
         ApiRegistration.h
-        BuiltinInterfaces.h
+        RuntimeInterfaces.h
         Context.h
         CrashDumpWriter.h
         CoreErrors.h

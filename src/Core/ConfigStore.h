@@ -15,6 +15,8 @@
 #include "ModHandle.h"
 
 namespace BML::Core {
+    class ApiRegistry;
+
     // Current schema version for config files
     constexpr int32_t kConfigSchemaVersion = 1;
 
@@ -97,6 +99,7 @@ namespace BML::Core {
         BML_Result BatchSet(BML_ConfigBatch batch, const BML_ConfigKey *key, const BML_ConfigValue *value);
         BML_Result BatchCommit(BML_ConfigBatch batch);
         BML_Result BatchDiscard(BML_ConfigBatch batch);
+        static ConfigStore *StoreFromBatch(BML_ConfigBatch batch) noexcept;
 
         // Migration support
         BML_Result RegisterMigration(int32_t from_version, int32_t to_version,
@@ -139,7 +142,8 @@ namespace BML::Core {
         Context *m_BoundContext = nullptr;
     };
 
-    void RegisterConfigApis();
+    void RegisterConfigApis(ApiRegistry &registry);
+
     BML_Result RegisterConfigLoadHooks(BML_Mod owner, const BML_ConfigLoadHooks *hooks);
     void CleanupConfigHooksForModule(BML_Mod mod);
 } // namespace BML::Core

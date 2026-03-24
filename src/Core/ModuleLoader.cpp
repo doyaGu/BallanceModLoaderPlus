@@ -1,4 +1,4 @@
-﻿#include "ModuleLoader.h"
+#include "ModuleLoader.h"
 
 #include "bml_export.h"
 
@@ -102,6 +102,21 @@ namespace BML::Core {
             UnloadModules(loaded, context, kernel);
         }
 
+        void RecordModuleFailure(ModuleLoadError &out_error,
+                                 const ResolvedNode &node,
+                                 const std::wstring &path,
+                                 const std::string &message,
+                                 long system_code) {
+            if (!out_error.message.empty()) {
+                return;
+            }
+
+            out_error.id = node.id;
+            out_error.path = path;
+            out_error.message = message;
+            out_error.system_code = system_code;
+        }
+
         void CleanupFailedAttach(KernelServices &kernel, const std::string &module_id, BML_Mod mod) {
             if (module_id.empty() || !mod) {
                 return;
@@ -145,7 +160,7 @@ namespace BML::Core {
     bool LoadModules(const std::vector<ResolvedNode> &order,
                      Context &context,
                      KernelServices &kernel,
-                     PFN_BML_GetProcAddress get_proc,
+                     const BML_Services *services,
                      std::vector<LoadedModule> &out_modules,
                      ModuleLoadError &out_error) {
         out_modules.clear();
@@ -161,8 +176,8 @@ namespace BML::Core {
             out_error.message = "Context handle is null";
             return false;
         }
-        if (!get_proc) {
-            out_error.message = "get_proc callback is null";
+        if (!services) {
+            out_error.message = "runtime service bundle is null";
             return false;
         }
 
@@ -199,12 +214,10 @@ namespace BML::Core {
 
             auto entryPath = ResolveEntryPath(*node.manifest);
             if (entryPath.empty()) {
-                out_error.id = node.id;
-                out_error.message = "Unable to resolve entry path";
-                Rollback(out_modules, context, kernel);
-                return false;
+                RecordModuleFailure(out_error, node, {}, "Unable to resolve entry path", 0);
+                failed_ids.insert(node.id);
+                continue;
             }
-            out_error.path = entryPath;
 
             // Check if a runtime provider can handle this entry file.
             std::string entryPathUtf8 = utils::Utf16ToUtf8(entryPath);
@@ -214,16 +227,13 @@ namespace BML::Core {
                 // ---- Non-native module: delegate to runtime provider ----
                 auto modHandle = context.CreateModHandle(*node.manifest);
                 if (!modHandle) {
-                    out_error.id = node.id;
-                    out_error.message = "Failed to create module handle";
+                    RecordModuleFailure(out_error, node, entryPath, "Failed to create module handle", 0);
                     failed_ids.insert(node.id);
                     continue;
                 }
 
-                Context::CurrentModuleScope scope(modHandle.get());
-
                 BML_Result initResult = provider->AttachModule(
-                    modHandle.get(), get_proc,
+                    modHandle.get(), services,
                     entryPathUtf8.c_str(),
                     modHandle->directory_utf8.c_str());
 
@@ -231,6 +241,11 @@ namespace BML::Core {
                     CoreLog(BML_LOG_ERROR, kModuleLoaderLogCategory,
                             "Runtime provider failed to attach '%s': %d",
                             node.id.c_str(), static_cast<int>(initResult));
+                    RecordModuleFailure(out_error,
+                                        node,
+                                        entryPath,
+                                        "Runtime provider attach returned " + std::to_string(initResult),
+                                        0);
                     CleanupFailedAttach(kernel, node.id, modHandle.get());
                     failed_ids.insert(node.id);
                     continue;
@@ -270,16 +285,19 @@ namespace BML::Core {
             }
 #endif
             if (!handle) {
-                out_error.id = node.id;
-                out_error.system_code =
+                long system_code =
 #if defined(_WIN32)
                     static_cast<long>(GetLastError());
 #else
                     0;
 #endif
-                out_error.message = "LoadLibrary failed: " + FormatSystemMessage(out_error.system_code);
-                Rollback(out_modules, context, kernel);
-                return false;
+                RecordModuleFailure(out_error,
+                                    node,
+                                    entryPath,
+                                    "LoadLibrary failed: " + FormatSystemMessage(system_code),
+                                    system_code);
+                failed_ids.insert(node.id);
+                continue;
             }
 
             auto closeModule = [](HMODULE module_handle) {
@@ -301,45 +319,38 @@ namespace BML::Core {
 
             auto entrypoint = reinterpret_cast<PFN_BML_ModEntrypoint>(getSymbol(handle, "BML_ModEntrypoint"));
             if (!entrypoint) {
-                out_error.id = node.id;
-                out_error.message = "BML_ModEntrypoint export not found";
-                out_error.system_code = 0;
+                RecordModuleFailure(out_error, node, entryPath, "BML_ModEntrypoint export not found", 0);
                 closeModule(handle);
-                Rollback(out_modules, context, kernel);
-                return false;
+                failed_ids.insert(node.id);
+                continue;
             }
 
             BML_Result initResult = BML_RESULT_OK;
 
             auto modHandle = context.CreateModHandle(*node.manifest);
             if (!modHandle) {
-                out_error.id = node.id;
-                out_error.message = "Failed to create module handle";
-                out_error.system_code = 0;
+                RecordModuleFailure(out_error, node, entryPath, "Failed to create module handle", 0);
                 closeModule(handle);
-                Rollback(out_modules, context, kernel);
-                return false;
+                failed_ids.insert(node.id);
+                continue;
             }
-
-            Context::CurrentModuleScope scope(modHandle.get());
 
             // Call BML_ModEntrypoint attach with BML_Mod handle
             BML_ModAttachArgs attach{};
             attach.struct_size = sizeof(attach);
             attach.api_version = BML_MOD_ENTRYPOINT_API_VERSION;
+            attach.context = ctx;
             attach.mod = modHandle.get();
-            attach.get_proc = get_proc;
+            attach.services = services;
 
 #if defined(_MSC_VER) && !defined(__MINGW32__)
             unsigned long seh_code = 0;
             initResult = InvokeEntrypointSEH(entrypoint, BML_MOD_ENTRYPOINT_ATTACH, &attach, &seh_code);
             if (seh_code != 0) {
-                out_error.id = node.id;
                 char seh_msg[128];
                 std::snprintf(seh_msg, sizeof(seh_msg),
                               "Module crashed during attach (SEH code 0x%08lX)", seh_code);
-                out_error.message = seh_msg;
-                out_error.system_code = static_cast<long>(seh_code);
+                RecordModuleFailure(out_error, node, entryPath, seh_msg, static_cast<long>(seh_code));
                 CoreLog(BML_LOG_ERROR, kModuleLoaderLogCategory,
                         "%s: %s", node.id.c_str(), seh_msg);
                 kernel.crash_dump->WriteDumpOnce(node.id, seh_code);
@@ -353,13 +364,15 @@ namespace BML::Core {
             initResult = entrypoint(BML_MOD_ENTRYPOINT_ATTACH, &attach);
 #endif
             if (initResult != BML_RESULT_OK) {
-                out_error.id = node.id;
-                out_error.message = "BML_ModEntrypoint attach returned " + std::to_string(initResult);
-                out_error.system_code = 0;
+                RecordModuleFailure(out_error,
+                                    node,
+                                    entryPath,
+                                    "BML_ModEntrypoint attach returned " + std::to_string(initResult),
+                                    0);
                 CleanupFailedAttach(kernel, node.id, modHandle.get());
                 closeModule(handle);
-                Rollback(out_modules, context, kernel);
-                return false;
+                failed_ids.insert(node.id);
+                continue;
             }
 
             // Validate [provides] immediately after this module attaches,
@@ -384,15 +397,12 @@ namespace BML::Core {
             out_modules.emplace_back(std::move(loaded));
         }
 
-        out_error = {};
         return true;
     }
 
     void UnloadModules(std::vector<LoadedModule> &modules, Context &context, KernelServices &kernel) {
         (void)context;
         for (auto it = modules.rbegin(); it != modules.rend(); ++it) {
-            Context::CurrentModuleScope scope(it->mod_handle ? it->mod_handle.get() : nullptr);
-
             if (it->runtime && it->mod_handle) {
                 // Non-native module: delegate to runtime provider.
                 // Verify the provider is still registered (it may have been

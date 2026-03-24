@@ -17,7 +17,7 @@
 #include <vector>
 
 using BML::Core::Context;
-using BML::Core::Kernel;
+using BML::Core::KernelServices;
 
 /* ============================================================================
  * Resource Handle Management Implementation
@@ -28,6 +28,8 @@ namespace {
         std::atomic<uint32_t> ref_count{1};
         std::atomic<void *> user_data{nullptr};
         std::string owner_id;
+        KernelServices *kernel{nullptr};
+        BML_Context finalize_ctx{nullptr};
     };
 
     struct HandleSlot {
@@ -115,7 +117,9 @@ namespace {
  * C API Implementation
  * ============================================================================ */
 
-static BML_Result BML_HandleCreateImpl(const std::string &owner_id,
+static BML_Result BML_HandleCreateImpl(KernelServices *kernel,
+                                       BML_Context finalize_ctx,
+                                       const std::string &owner_id,
                                        BML_HandleType type,
                                        BML_HandleDesc *out_desc) {
     if (!HasValidHandleCreateOutput(out_desc)) {
@@ -142,6 +146,8 @@ static BML_Result BML_HandleCreateImpl(const std::string &owner_id,
     if (!control) {
         return BML_RESULT_OUT_OF_MEMORY;
     }
+    control->kernel = kernel;
+    control->finalize_ctx = finalize_ctx;
 
     std::unique_lock lock(table->mutex);
 
@@ -192,7 +198,7 @@ static BML_Result BML_HandleRetainImpl(const BML_HandleDesc *desc) {
     return BML_RESULT_OK;
 }
 
-static BML_Result BML_HandleReleaseImpl(BML_Context finalize_ctx, const BML_HandleDesc *desc) {
+static BML_Result BML_HandleReleaseImpl(const BML_HandleDesc *desc) {
     if (!HasValidHandleDescriptor(desc)) {
         return BML_RESULT_INVALID_ARGUMENT;
     }
@@ -205,6 +211,7 @@ static BML_Result BML_HandleReleaseImpl(BML_Context finalize_ctx, const BML_Hand
     BML_ResourceHandleFinalize finalize = nullptr;
     void *finalize_user_data = nullptr;
     BML_HandleDesc finalized_desc = *desc;
+    BML_Context finalize_ctx = nullptr;
 
     {
         std::unique_lock unique_lock(table->mutex);
@@ -237,6 +244,8 @@ static BML_Result BML_HandleReleaseImpl(BML_Context finalize_ctx, const BML_Hand
                 finalize_user_data = it->second.user_data;
             }
         }
+
+        finalize_ctx = control->finalize_ctx;
 
         delete control;
         slot.control = nullptr;
@@ -349,8 +358,13 @@ namespace BML::Core {
     // ============================================================================
 
     BML_Result BML_API_HandleCreate(BML_Mod owner, BML_HandleType type, BML_HandleDesc *out_desc) {
-        auto &context = *Kernel().context;
-        return BML_HandleCreateImpl(ResolveProviderId(context, owner), type, out_desc);
+        auto *kernel = Context::KernelFromMod(owner);
+        auto *context = Context::ContextFromMod(owner);
+        if (!kernel || !context) {
+            return BML_RESULT_INVALID_CONTEXT;
+        }
+        return BML_HandleCreateImpl(
+            kernel, context->GetHandle(), ResolveProviderId(*context, owner), type, out_desc);
     }
 
     BML_Result BML_API_HandleRetain(const BML_HandleDesc *desc) {
@@ -358,7 +372,7 @@ namespace BML::Core {
     }
 
     BML_Result BML_API_HandleRelease(const BML_HandleDesc *desc) {
-        return BML_HandleReleaseImpl(Kernel().context->GetHandle(), desc);
+        return BML_HandleReleaseImpl(desc);
     }
 
     BML_Result BML_API_HandleValidate(const BML_HandleDesc *desc, BML_Bool *out_valid) {
@@ -379,8 +393,8 @@ namespace BML::Core {
         return RegisterResourceType(owner, desc, out_type);
     }
 
-    void RegisterResourceApis() {
-        BML_BEGIN_API_REGISTRATION();
+    void RegisterResourceApis(ApiRegistry &apiRegistry) {
+        BML_BEGIN_API_REGISTRATION(apiRegistry);
 
         // Handle management APIs
         BML_REGISTER_API_GUARDED(bmlHandleCreate, "resource", BML_API_HandleCreate);
@@ -402,8 +416,8 @@ namespace BML::Core {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
-        auto &context = *Kernel().context;
-        const std::string provider_id = ResolveProviderId(context, owner);
+        auto *context = Context::ContextFromMod(owner);
+        const std::string provider_id = context ? ResolveProviderId(*context, owner) : std::string{};
         if (provider_id.empty()) {
             return BML_RESULT_INVALID_CONTEXT;
         }

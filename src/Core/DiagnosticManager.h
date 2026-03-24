@@ -6,7 +6,6 @@
 
 #include "bml_types.h"
 #include "bml_errors.h"
-#include "KernelServices.h"
 
 namespace BML::Core {
     /**
@@ -95,11 +94,13 @@ namespace BML::Core {
         ErrorContext &GetThreadContext();
     };
 
+    DiagnosticManager &GetThreadDiagnosticManager() noexcept;
+
     // Helper function for setting errors (simplified signature)
     inline BML_Result SetLastErrorDiag(BML_Result code,
                                        const char *message,
                                        const char *api_name = nullptr) {
-        Kernel().diagnostics->SetError(code, message, api_name, nullptr, 0);
+        GetThreadDiagnosticManager().SetError(code, message, api_name, nullptr, 0);
         return code;
     }
 } // namespace BML::Core

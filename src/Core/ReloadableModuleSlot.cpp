@@ -535,8 +535,9 @@ namespace BML::Core {
                 BML_ModAttachArgs attach{};
                 attach.struct_size = sizeof(attach);
                 attach.api_version = BML_MOD_ENTRYPOINT_API_VERSION;
+                attach.context = m_Config.context ? m_Config.context->GetHandle() : nullptr;
                 attach.mod = m_ModHandle.get();
-                attach.get_proc = m_Config.get_proc;
+                attach.services = m_Config.services;
                 return m_Entrypoint(BML_MOD_ENTRYPOINT_ATTACH, &attach);
             }
 
@@ -546,12 +547,6 @@ namespace BML::Core {
             detach.mod = m_ModHandle.get();
             return m_Entrypoint(BML_MOD_ENTRYPOINT_DETACH, &detach);
         };
-
-        // Keep the manual save/restore form here: this function uses SEH
-        // on MSVC, so a scoped RAII binder would trigger C2712 object unwinding
-        // restrictions inside the __try block.
-        BML_Mod previous_mod = Context::GetCurrentModule();
-        Context::SetCurrentModule(m_ModHandle.get());
 
 #if defined(_MSC_VER) && !defined(__MINGW32__)
         // Use SEH to catch crashes
@@ -586,8 +581,6 @@ namespace BML::Core {
             result = -1;
         }
 #endif
-
-        Context::SetCurrentModule(previous_mod);
         return result;
     }
 

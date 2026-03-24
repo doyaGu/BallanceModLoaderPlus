@@ -57,8 +57,9 @@ namespace BML::Core {
         }
     }
 
-    HotReloadCoordinator::HotReloadCoordinator(Context& context)
+    HotReloadCoordinator::HotReloadCoordinator(Context& context, KernelServices &kernel)
         : m_Context(context)
+        , m_Kernel(kernel)
         , m_Watcher(std::make_unique<FileSystemWatcher>()) {
 
         // Set up file change callback
@@ -89,6 +90,11 @@ namespace BML::Core {
                 static_cast<long long>(settings.debounce.count()));
     }
 
+    void HotReloadCoordinator::SetServices(const BML_Services *services) noexcept {
+        std::lock_guard lock(m_Mutex);
+        m_Services = services;
+    }
+
     bool HotReloadCoordinator::RegisterModule(const HotReloadModuleEntry& entry) {
         std::lock_guard lock(m_Mutex);
 
@@ -115,8 +121,15 @@ namespace BML::Core {
         config.mod_id = entry.id;
         config.manifest = entry.manifest;
         config.context = &m_Context;
-        config.kernel = &Kernel();
-        config.get_proc = &bmlGetProcAddress;
+        config.kernel = &m_Kernel;
+        config.services = m_Services;
+
+        if (!config.services) {
+            CoreLog(BML_LOG_ERROR, kLogCategory,
+                    "Cannot register module '%s' for hot reload without runtime services",
+                    entry.id.c_str());
+            return false;
+        }
 
         if (!slot_entry.slot->Initialize(config)) {
             CoreLog(BML_LOG_ERROR, kLogCategory,

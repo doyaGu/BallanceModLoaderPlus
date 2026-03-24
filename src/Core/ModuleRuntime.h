@@ -13,6 +13,8 @@
 #include "ModuleLoader.h"
 
 namespace BML::Core {
+    struct KernelServices;
+
     struct ModuleBootstrapDiagnostics {
         std::vector<ManifestParseError> manifest_errors;
         DependencyResolutionError dependency_error;
@@ -28,11 +30,14 @@ namespace BML::Core {
         ModuleRuntime(const ModuleRuntime &) = delete;
         ModuleRuntime &operator=(const ModuleRuntime &) = delete;
 
+        void BindKernel(KernelServices &kernel) noexcept;
+
         // Phase 1: Discover and validate modules without loading DLLs
         bool DiscoverAndValidate(const std::wstring &mods_dir, ModuleBootstrapDiagnostics &out_diag);
 
         // Phase 2: Load previously discovered modules
-        bool LoadDiscovered(ModuleBootstrapDiagnostics &out_diag);
+        bool LoadDiscovered(ModuleBootstrapDiagnostics &out_diag,
+                            const BML_Services *services);
 
         bool ReloadModules(ModuleBootstrapDiagnostics &out_diag);
 
@@ -65,6 +70,8 @@ namespace BML::Core {
         std::function<void(const ModuleBootstrapDiagnostics &)> m_DiagCallback;
         mutable std::mutex m_ReloadMutex;
         bool m_ReloadInProgress{false};
+        const BML_Services *m_Services{nullptr};
+        KernelServices *m_Kernel{nullptr};
     };
 } // namespace BML::Core
 

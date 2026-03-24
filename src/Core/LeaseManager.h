@@ -10,19 +10,26 @@
 #include "bml_interface.h"
 
 namespace BML::Core {
+    struct KernelServices;
+
     class LeaseManager {
     public:
-        BML_Result CreateInterfaceLease(const std::string &interface_id,
+        BML_Result CreateInterfaceLease(KernelServices *kernel,
+                                        const std::string &interface_id,
                                         const std::string &provider_id,
                                         const std::string &consumer_id,
                                         BML_InterfaceLease *out_lease);
         BML_Result ReleaseInterfaceLease(BML_InterfaceLease lease);
 
-        BML_Result CreateInterfaceRegistration(const std::string &interface_id,
+        BML_Result CreateInterfaceRegistration(KernelServices *kernel,
+                                               const std::string &interface_id,
                                                const std::string &provider_id,
                                                const std::string &consumer_id,
                                                BML_InterfaceRegistration *out_registration);
         BML_Result ReleaseInterfaceRegistration(BML_InterfaceRegistration registration);
+
+        static KernelServices *KernelFromLease(BML_InterfaceLease lease) noexcept;
+        static KernelServices *KernelFromRegistration(BML_InterfaceRegistration registration) noexcept;
 
         void SetProviderBlocked(const std::string &provider_id, bool blocked);
         bool IsProviderBlocked(const std::string &provider_id) const;

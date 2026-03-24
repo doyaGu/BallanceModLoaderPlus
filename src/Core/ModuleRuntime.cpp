@@ -126,7 +126,11 @@ namespace BML::Core {
 
     bool ModuleRuntime::DiscoverAndValidate(const std::wstring &mods_dir, ModuleBootstrapDiagnostics &out_diag) {
         out_diag = {};
-        auto &kernel = Kernel();
+        if (!m_Kernel) {
+            ApplyDiagnostics(out_diag);
+            return false;
+        }
+        auto &kernel = *m_Kernel;
         auto &context = *kernel.context;
         m_HotReloadEnabled = ShouldEnableHotReload();
         m_DiscoveredModsDir = mods_dir;
@@ -178,9 +182,14 @@ namespace BML::Core {
         return true;
     }
 
-    bool ModuleRuntime::LoadDiscovered(ModuleBootstrapDiagnostics &out_diag) {
+    bool ModuleRuntime::LoadDiscovered(ModuleBootstrapDiagnostics &out_diag,
+                                       const BML_Services *services) {
         out_diag = {};
-        auto &kernel = Kernel();
+        if (!m_Kernel) {
+            ApplyDiagnostics(out_diag);
+            return false;
+        }
+        auto &kernel = *m_Kernel;
         auto &context = *kernel.context;
 
         if (m_DiscoveredModsDir.empty()) {
@@ -188,6 +197,13 @@ namespace BML::Core {
             ApplyDiagnostics(out_diag);
             return false;
         }
+        if (!services) {
+            out_diag.load_error.message = "Runtime service bundle is null";
+            ApplyDiagnostics(out_diag);
+            return false;
+        }
+
+        m_Services = services;
 
         std::vector<LoadedModule> loadedModules;
         ModuleLoadError loadError;
@@ -195,7 +211,7 @@ namespace BML::Core {
         if (!LoadModules(m_DiscoveredOrder,
                          context,
                          kernel,
-                         &bmlGetProcAddress,
+                         m_Services,
                          loadedModules,
                          loadError)) {
             out_diag.load_error = loadError;
@@ -203,6 +219,8 @@ namespace BML::Core {
             ApplyDiagnostics(out_diag);
             return false;
         }
+
+        out_diag.load_error = loadError;
 
         for (auto &module : loadedModules) {
             context.AddLoadedModule(std::move(module));
@@ -227,7 +245,10 @@ namespace BML::Core {
     }
 
     void ModuleRuntime::Shutdown() {
-        auto &kernel = Kernel();
+        if (!m_Kernel) {
+            return;
+        }
+        auto &kernel = *m_Kernel;
         auto &context = *kernel.context;
         m_DiagCallback = nullptr;
         StopHotReloadCoordinator();
@@ -237,7 +258,11 @@ namespace BML::Core {
     }
 
     void ModuleRuntime::FilterDisabledModules(std::vector<ResolvedNode> &order) const {
-        auto &faultTracker = *Kernel().fault_tracker;
+        if (!m_Kernel) {
+            order.clear();
+            return;
+        }
+        auto &faultTracker = *m_Kernel->fault_tracker;
         auto removed = std::remove_if(order.begin(), order.end(),
             [&faultTracker](const ResolvedNode &node) {
                 return faultTracker.IsDisabled(node.id);
@@ -296,8 +321,17 @@ namespace BML::Core {
             return false;
         }
 
-        auto &kernel = Kernel();
+        if (!m_Kernel) {
+            ApplyDiagnostics(out_diag);
+            return false;
+        }
+        auto &kernel = *m_Kernel;
         auto &context = *kernel.context;
+        if (!m_Services) {
+            out_diag.load_error.message = "Runtime service bundle is null";
+            ApplyDiagnostics(out_diag);
+            return false;
+        }
         BroadcastLifecycleEvent(BML_TOPIC_SYSTEM_MOD_UNLOAD, context.GetLoadedModuleSnapshot());
         const auto priorLoadedModules = context.GetLoadedModuleSnapshot();
         context.ShutdownModules(kernel);
@@ -341,7 +375,7 @@ namespace BML::Core {
         if (!LoadModules(loadOrder,
                          context,
                          kernel,
-                         &bmlGetProcAddress,
+                         m_Services,
                          loadedModules,
                          loadError)) {
             out_diag.load_error = loadError;
@@ -350,6 +384,8 @@ namespace BML::Core {
             ApplyDiagnostics(out_diag);
             return false;
         }
+
+        out_diag.load_error = loadError;
 
         for (auto &module : loadedModules) {
             context.AddLoadedModule(std::move(module));
@@ -363,23 +399,29 @@ namespace BML::Core {
     void ModuleRuntime::BroadcastLifecycleEvent(const char *topic, const std::vector<LoadedModuleSnapshot> &modules) const {
         if (!topic)
             return;
+        if (!m_Kernel) {
+            return;
+        }
 
         BML_TopicId topic_id;
-        if (ImcGetTopicId(topic, &topic_id) != BML_RESULT_OK)
+        if (ImcGetTopicId(*m_Kernel, topic, &topic_id) != BML_RESULT_OK)
             return;
 
         for (const auto &module : modules) {
             if (!module.manifest)
                 continue;
             auto payload = BuildLifecyclePayload(*module.manifest);
-            ImcPublish(topic_id, payload.data(), payload.size());
+            ImcPublish(*m_Kernel, topic_id, payload.data(), payload.size());
         }
     }
 
     void ModuleRuntime::UpdateHotReloadRegistration() {
         if (!m_HotReloadEnabled || !m_HotReloadCoordinator)
             return;
-        auto &context = *Kernel().context;
+        if (!m_Kernel) {
+            return;
+        }
+        auto &context = *m_Kernel->context;
 
         // Unregister all existing modules first
         auto registered = m_HotReloadCoordinator->GetRegisteredModules();
@@ -426,8 +468,9 @@ namespace BML::Core {
         if (!m_HotReloadEnabled)
             return;
         if (!m_HotReloadCoordinator) {
-            auto &context = *Kernel().context;
-            m_HotReloadCoordinator = std::make_unique<HotReloadCoordinator>(context);
+            auto &context = *m_Kernel->context;
+            m_HotReloadCoordinator = std::make_unique<HotReloadCoordinator>(context, *m_Kernel);
+            m_HotReloadCoordinator->SetServices(m_Services);
 
             HotReloadSettings settings;
             settings.enabled = true;
@@ -493,6 +536,10 @@ namespace BML::Core {
     void ModuleRuntime::ApplyDiagnostics(const ModuleBootstrapDiagnostics &diag) const {
         if (m_DiagCallback)
             m_DiagCallback(diag);
+    }
+
+    void ModuleRuntime::BindKernel(KernelServices &kernel) noexcept {
+        m_Kernel = &kernel;
     }
 } // namespace BML::Core
 

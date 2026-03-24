@@ -222,12 +222,6 @@ int wmain(int argc, wchar_t **argv) {
     modsDir = NormalizePath(modsDir);
 
     std::wstring modsDirWide = modsDir.wstring();
-    if (!modsDirWide.empty()) {
-        if (!SetEnvironmentVariableW(L"BML_MODS_DIR", modsDirWide.c_str())) {
-            std::wcerr << L"Failed to set BML_MODS_DIR" << std::endl;
-        }
-    }
-
     std::wcout << L"[driver] Mods directory: " << modsDirWide << std::endl;
     if (!std::filesystem::exists(modsDir)) {
         std::wcout << L"[driver] WARNING: directory does not exist." << std::endl;
@@ -235,17 +229,19 @@ int wmain(int argc, wchar_t **argv) {
 
     std::string modsDirUtf8 = WideToUtf8(modsDirWide);
 
-    BML_BootstrapConfig config = BML_BOOTSTRAP_CONFIG_INIT;
-    config.flags = BML_BOOTSTRAP_FLAG_SKIP_LOAD;
+    BML_RuntimeConfig config = BML_RUNTIME_CONFIG_INIT;
     config.mods_dir_utf8 = modsDirUtf8.empty() ? nullptr : modsDirUtf8.c_str();
 
-    BML_Result bootstrap = bmlBootstrap(&config);
-    if (bootstrap != BML_RESULT_OK) {
-        std::wcout << L"[driver] bmlBootstrap failed: " << bootstrap << std::endl;
+    BML_Runtime runtime = nullptr;
+    BML_Result createResult = bmlRuntimeCreate(&config, &runtime);
+    if (createResult != BML_RESULT_OK || !runtime) {
+        std::wcout << L"[driver] bmlRuntimeCreate failed: " << createResult << std::endl;
         return 3;
     }
 
-    const BML_BootstrapDiagnostics *diag = bmlGetBootstrapDiagnostics();
+    BML_Result discoverResult = bmlRuntimeDiscoverModules(runtime);
+
+    const BML_BootstrapDiagnostics *diag = bmlRuntimeGetBootstrapDiagnostics(runtime);
     PrintManifestErrors(diag);
     PrintDependencyError(diag);
     PrintDependencyWarnings(diag);
@@ -254,13 +250,9 @@ int wmain(int argc, wchar_t **argv) {
         PrintLoadOrder(diag);
     }
 
-    bmlShutdown();
+    bmlRuntimeDestroy(runtime);
 
-    if (!modsDirWide.empty()) {
-        SetEnvironmentVariableW(L"BML_MODS_DIR", nullptr);
-    }
-
-    if (!DiagnosticsAreClean(diag) || bootstrap != BML_RESULT_OK) {
+    if (!DiagnosticsAreClean(diag) || discoverResult != BML_RESULT_OK) {
         std::wcout << L"[driver] Bootstrap completed with issues." << std::endl;
         return 4;
     }

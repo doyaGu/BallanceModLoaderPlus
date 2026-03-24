@@ -1,4 +1,4 @@
-﻿#ifndef BML_CORE_MODULE_LOADER_H
+#ifndef BML_CORE_MODULE_LOADER_H
 #define BML_CORE_MODULE_LOADER_H
 
 #include <memory>
@@ -45,7 +45,7 @@ namespace BML::Core {
     bool LoadModules(const std::vector<ResolvedNode> &order,
                      Context &context,
                      KernelServices &kernel,
-                     PFN_BML_GetProcAddress get_proc,
+                     const BML_Services *services,
                      std::vector<LoadedModule> &out_modules,
                      ModuleLoadError &out_error);
 
