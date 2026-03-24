@@ -151,9 +151,6 @@ BML_DEFINE_MODULE({target})
  */
 
 #include "bml_module.h"
-#define BML_LOADER_IMPLEMENTATION
-#include "bml_loader.h"
-
 #include "bml_core.h"
 #include "bml_logging.h"
 #include "bml_imc.h"
@@ -162,10 +159,16 @@ BML_DEFINE_MODULE({target})
 static const char *kTag = "{mod_id}";
 static BML_Mod g_Mod = nullptr;
 static BML_Subscription g_InitSub = nullptr;
+static const BML_Services *g_Services = nullptr;
 
 static void OnEngineInit(BML_Context ctx, BML_TopicId topic,
                          const BML_ImcMessage *msg, void *ud) {{
-    bmlLog(ctx, BML_LOG_INFO, kTag, "Engine initialized!");
+    (void)topic;
+    (void)msg;
+    (void)ud;
+    if (g_Services && g_Services->Logging && g_Services->Logging->Log) {{
+        g_Services->Logging->Log(g_Mod, ctx, BML_LOG_INFO, kTag, "Engine initialized!");
+    }}
 }}
 
 static BML_Result HandleAttach(const BML_ModAttachArgs *args) {{
@@ -173,23 +176,30 @@ static BML_Result HandleAttach(const BML_ModAttachArgs *args) {{
         return BML_RESULT_INVALID_ARGUMENT;
     if (args->api_version < BML_MOD_ENTRYPOINT_API_VERSION)
         return BML_RESULT_VERSION_MISMATCH;
+    if (!args->services || !args->services->Logging || !args->services->ImcBus)
+        return BML_RESULT_INVALID_ARGUMENT;
 
     g_Mod = args->mod;
-    BML_Result res = BML_BOOTSTRAP_LOAD(args->get_proc);
-    if (res != BML_RESULT_OK) return res;
+    g_Services = args->services;
 
     BML_TopicId topic = 0;
-    bmlImcGetTopicId(BML_TOPIC_ENGINE_INIT, &topic);
-    bmlImcSubscribe(topic, OnEngineInit, nullptr, &g_InitSub);
+    BML_Result res = g_Services->ImcBus->GetTopicId(args->context, BML_TOPIC_ENGINE_INIT, &topic);
+    if (res != BML_RESULT_OK) return res;
+    res = g_Services->ImcBus->Subscribe(g_Mod, topic, OnEngineInit, nullptr, &g_InitSub);
+    if (res != BML_RESULT_OK) return res;
 
-    BML_Context ctx = bmlGetGlobalContext();
-    bmlLog(ctx, BML_LOG_INFO, kTag, "{mod_name} loaded");
+    BML_Context ctx = args->context;
+    g_Services->Logging->Log(g_Mod, ctx, BML_LOG_INFO, kTag, "{mod_name} loaded");
     return BML_RESULT_OK;
 }}
 
 static BML_Result HandleDetach(const BML_ModDetachArgs *args) {{
-    if (g_InitSub) {{ bmlImcUnsubscribe(g_InitSub); g_InitSub = nullptr; }}
-    bmlUnloadAPI();
+    (void)args;
+    if (g_InitSub && g_Services && g_Services->ImcBus) {{
+        g_Services->ImcBus->Unsubscribe(g_InitSub);
+        g_InitSub = nullptr;
+    }}
+    g_Services = nullptr;
     g_Mod = nullptr;
     return BML_RESULT_OK;
 }}

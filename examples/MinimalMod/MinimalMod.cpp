@@ -9,6 +9,7 @@
 
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_module.hpp"
+#include "bml_core.hpp"
 #include "bml_topics.h"
 
 class MinimalMod : public bml::Module {
@@ -18,9 +19,7 @@ public:
     BML_Result OnAttach(bml::ModuleServices &services) override {
         m_Subs = services.CreateSubscriptions();
 
-        const BML_Version *ver = Services().Builtins().Context->GetRuntimeVersion
-            ? Services().Builtins().Context->GetRuntimeVersion()
-            : nullptr;
+        auto ver = bml::GetRuntimeVersion(Services().Interfaces().Context);
         Services().Log().Info("API loaded. Runtime version: %u.%u.%u",
                               ver ? ver->major : 0,
                               ver ? ver->minor : 0,

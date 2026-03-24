@@ -171,7 +171,6 @@
   <Type Name="bml::Logger">
     <DisplayString>bml::Logger({m_tag.size() > 0 ? m_tag.c_str() : "default"})</DisplayString>
     <Expand>
-      <Item Name="Context">m_ctx</Item>
       <Item Name="Tag">m_tag</Item>
     </Expand>
   </Type>
