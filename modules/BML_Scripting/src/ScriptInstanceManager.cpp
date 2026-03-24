@@ -15,8 +15,8 @@ namespace BML::Scripting {
 // Helper: unsubscribe and clear all IMC topic subscriptions for an instance.
 static void CleanupTopicSubs(ScriptInstance &inst) {
     for (auto &[topic, ts] : inst.topic_subs) {
-        if (g_Builtins && g_Builtins->ImcBus && ts.handle)
-            g_Builtins->ImcBus->Unsubscribe(ts.handle);
+        if (g_Services && g_Services->ImcBus && ts.handle)
+            g_Services->ImcBus->Unsubscribe(ts.handle);
     }
     inst.topic_subs.clear();
     inst.event_handlers.clear();
@@ -56,32 +56,32 @@ void ScriptInstanceManager::ReleaseContext(asIScriptContext *ctx) {
 }
 
 BML_Result ScriptInstanceManager::CompileAndAttach(
-        BML_Mod mod, PFN_BML_GetProcAddress get_proc,
+        BML_Mod mod, const BML_Services *services,
         const char *entry_path, const char *module_dir) {
-    if (!mod || !get_proc || !entry_path || !module_dir)
+    if (!mod || !services || !entry_path || !module_dir)
         return BML_RESULT_INVALID_ARGUMENT;
     if (!m_Engine)
         return BML_RESULT_NOT_INITIALIZED;
 
     auto inst = std::make_unique<ScriptInstance>();
     inst->mod_handle = mod;
-    inst->get_proc = get_proc;
+    inst->services = services;
     inst->entry_file = std::filesystem::path(entry_path);
     inst->module_dir = std::filesystem::path(module_dir);
 
-    // Get mod id through builtin interface (BML_Mod is opaque to modules)
+    // Get mod id through the runtime interface (BML_Mod is opaque to modules)
     const char *id_str = nullptr;
-    if (g_Builtins && g_Builtins->Module &&
-        g_Builtins->Module->GetModId(mod, &id_str) == BML_RESULT_OK && id_str) {
+    if (g_Services && g_Services->Module &&
+        g_Services->Module->GetModId(mod, &id_str) == BML_RESULT_OK && id_str) {
         inst->mod_id = id_str;
     } else {
         inst->mod_id = inst->entry_file.stem().string();
     }
 
     // Parse [scripting] config from manifest custom fields
-    if (g_Builtins && g_Builtins->Module) {
+    if (g_Services && g_Services->Module) {
         int64_t timeout_val = 0;
-        if (g_Builtins->Module->GetManifestInt(mod, "scripting.timeout_ms", &timeout_val) == BML_RESULT_OK
+        if (g_Services->Module->GetManifestInt(mod, "scripting.timeout_ms", &timeout_val) == BML_RESULT_OK
             && timeout_val > 0) {
             inst->timeout_ms = static_cast<uint32_t>(timeout_val);
         }
@@ -219,10 +219,11 @@ BML_Result ScriptInstanceManager::Reload(BML_Mod mod) {
     // script version starts with a clean slate. This must happen
     // before freeing timer/sub contexts so that the timer entries
     // referencing those user_data pointers are cancelled first.
-    auto cleanupFn = reinterpret_cast<PFN_BML_CleanupModuleState>(
-        inst->get_proc("bmlCleanupModuleState"));
-    if (cleanupFn) {
-        cleanupFn(inst->mod_handle);
+    if (inst->services && inst->services->HostRuntime &&
+        inst->services->HostRuntime->CleanupModuleState) {
+        inst->services->HostRuntime->CleanupModuleState(
+            inst->services->HostRuntime->Context,
+            inst->mod_handle);
     }
 
     // Unsubscribe all IMC topics for this instance
@@ -398,13 +399,11 @@ BML_Result ScriptInstanceManager::RunInitCallback(
 
 void ScriptInstanceManager::LogInitFailure(
         const ScriptInstance &inst, BML_Result result) const {
-    if (!g_Builtins || !g_Builtins->Logging || !g_Builtins->Logging->Log) {
+    if (!g_Services || !g_Services->Logging || !g_Services->Logging->Log) {
         return;
     }
 
-    BML_Context bml_ctx = g_Builtins->Context
-        ? g_Builtins->Context->GetGlobalContext() : nullptr;
-    g_Builtins->Logging->Log(inst.mod_handle, bml_ctx, BML_LOG_WARN, "script",
+    g_Services->Logging->Log(inst.mod_handle, BML_LOG_WARN, "script",
                                   "[%s] OnInit failed with result %d",
                                   inst.mod_id.c_str(), static_cast<int>(result));
 }

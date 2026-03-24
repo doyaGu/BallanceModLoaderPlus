@@ -3,6 +3,7 @@
 
 #include <angelscript.h>
 
+#include "bml_services.hpp"
 #include "bml_export.h"
 
 namespace BML::Scripting {
@@ -12,9 +13,9 @@ public:
     bool Initialize();
     void Shutdown();
 
-    /// Set the API resolver for compile error forwarding to Console.
+    /// Bind runtime services for compile error forwarding to Console.
     /// Call after Initialize(), before any script compilation.
-    void SetGetProc(PFN_BML_GetProcAddress get_proc);
+    void SetServices(BML_Mod owner, const BML_Services *services);
 
     asIScriptEngine *Get() const { return m_Engine; }
     explicit operator bool() const { return m_Engine != nullptr; }

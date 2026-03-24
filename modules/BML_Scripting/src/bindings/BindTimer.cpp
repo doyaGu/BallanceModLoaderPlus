@@ -68,10 +68,10 @@ static void TimerTrampoline(BML_Context, BML_Timer, void *user_data) {
 
 static int Script_SetTimer(int delayMs, const std::string &callbackName) {
     auto *inst = t_CurrentScript;
-    if (!inst || !g_Builtins || !g_Builtins->Timer) return -1;
+    if (!inst || !g_Services || !g_Services->Timer) return -1;
     auto *tc = new TimerContext{g_TimerManager, inst->mod_handle, callbackName};
     BML_Timer timer = nullptr;
-    BML_Result r = g_Builtins->Timer->ScheduleOnce(
+    BML_Result r = g_Services->Timer->ScheduleOnce(
         inst->mod_handle, static_cast<uint32_t>(delayMs), TimerTrampoline, tc, &timer);
     if (r != BML_RESULT_OK) { delete tc; return -1; }
     inst->timer_contexts.emplace_back(tc);
@@ -80,10 +80,10 @@ static int Script_SetTimer(int delayMs, const std::string &callbackName) {
 
 static int Script_SetInterval(int intervalMs, const std::string &callbackName) {
     auto *inst = t_CurrentScript;
-    if (!inst || !g_Builtins || !g_Builtins->Timer) return -1;
+    if (!inst || !g_Services || !g_Services->Timer) return -1;
     auto *tc = new TimerContext{g_TimerManager, inst->mod_handle, callbackName};
     BML_Timer timer = nullptr;
-    BML_Result r = g_Builtins->Timer->ScheduleRepeat(
+    BML_Result r = g_Services->Timer->ScheduleRepeat(
         inst->mod_handle, static_cast<uint32_t>(intervalMs), TimerTrampoline, tc, &timer);
     if (r != BML_RESULT_OK) { delete tc; return -1; }
     inst->timer_contexts.emplace_back(tc);
@@ -92,8 +92,8 @@ static int Script_SetInterval(int intervalMs, const std::string &callbackName) {
 
 static void Script_CancelTimer(int timerId) {
     auto *inst = t_CurrentScript;
-    if (!inst || !g_Builtins || !g_Builtins->Timer || timerId < 0) return;
-    g_Builtins->Timer->Cancel(
+    if (!inst || !g_Services || !g_Services->Timer || timerId < 0) return;
+    g_Services->Timer->Cancel(
         inst->mod_handle,
         reinterpret_cast<BML_Timer>(static_cast<uintptr_t>(timerId)));
 }

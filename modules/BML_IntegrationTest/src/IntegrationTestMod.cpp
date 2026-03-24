@@ -16,7 +16,7 @@
 
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_module.hpp"
-#include "bml_builtin_interfaces.h"
+#include "bml_services.hpp"
 #include "bml_input_control.h"
 #include "bml_topics.h"
 #include "BuiltinModuleProbe.h"
@@ -268,7 +268,7 @@ class IntegrationTestMod : public bml::Module {
             return false;
         }
 
-        return Services().Builtins().Module->GetModId(Handle(), outId) == BML_RESULT_OK;
+        return Services().Interfaces().Module->GetModId(Handle(), outId) == BML_RESULT_OK;
     }
 
 public:
@@ -290,11 +290,11 @@ public:
         RecordTest("module_context", ctx_ok);
 
         // ---- Test: global_context ----
-        auto gctx = bml::GetGlobalContext(Services().Builtins().Context);
+        auto gctx = bml::GetContext(Services().Interfaces().Context);
         RecordTest("global_context", static_cast<bool>(gctx));
 
         // ---- Test: runtime_version ----
-        auto ver = bml::GetRuntimeVersion(Services().Builtins().Context);
+        auto ver = bml::GetRuntimeVersion(Services().Interfaces().Context);
         {
             char buf[64] = {};
             if (ver) {
@@ -444,7 +444,7 @@ private:
                 bml::imc::publish(Handle(),
                                   "test/inttest/selfpub",
                                   uint32_t(0xCAFE),
-                                  Services().Builtins().ImcBus);
+                                  Services().Interfaces().ImcBus);
             }
             RecordTest("imc_self_pubsub_setup", sub_ok, "subscribe+publish queued");
         }

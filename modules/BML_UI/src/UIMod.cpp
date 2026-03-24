@@ -12,7 +12,7 @@
 
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_module.hpp"
-#include "bml_builtin_interfaces.h"
+#include "bml_services.hpp"
 #include "bml_config_bind.hpp"
 #include "bml_imgui_api.h"
 #include "bml_interface.h"
@@ -724,7 +724,7 @@ public:
         Services().Log().Info("BML UI Module initialized");
         m_UiThreadId = GetCurrentThreadId();
         const char *mod_id = nullptr;
-        if (Services().Builtins().Module->GetModId(m_Handle, &mod_id) == BML_RESULT_OK && mod_id) {
+        if (Services().Interfaces().Module->GetModId(m_Handle, &mod_id) == BML_RESULT_OK && mod_id) {
             m_ProviderId = mod_id;
         }
         InitConfigBindings();

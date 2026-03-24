@@ -210,8 +210,10 @@ bool InitializePhysicsHook(CKContext *context, const BML_HookContext *ctx) {
     // Register topics through hook context
     auto *imcBus = s_Hook.imc_bus;
     if (imcBus && imcBus->GetTopicId) {
-        imcBus->GetTopicId("Physics/Physicalize", &PhysicsHookState::s_TopicPhysicalize);
-        imcBus->GetTopicId("Physics/Unphysicalize", &PhysicsHookState::s_TopicUnphysicalize);
+        imcBus->GetTopicId(
+            imcBus->Context, "Physics/Physicalize", &PhysicsHookState::s_TopicPhysicalize);
+        imcBus->GetTopicId(
+            imcBus->Context, "Physics/Unphysicalize", &PhysicsHookState::s_TopicUnphysicalize);
     }
 
     // Hook IpionManager

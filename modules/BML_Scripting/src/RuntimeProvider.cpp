@@ -2,6 +2,8 @@
 
 #include <string_view>
 
+#include "bml_services.hpp"
+
 #include "ScriptInstanceManager.h"
 
 namespace BML::Scripting {
@@ -14,10 +16,10 @@ static BML_Bool ProviderCanHandle(const char *entry_path) {
     return path.ends_with(".as") ? BML_TRUE : BML_FALSE;
 }
 
-static BML_Result ProviderAttach(BML_Mod mod, PFN_BML_GetProcAddress get_proc,
-                                  const char *entry_path, const char *module_dir) {
+static BML_Result ProviderAttach(BML_Mod mod, const BML_Services *services,
+                                 const char *entry_path, const char *module_dir) {
     if (!g_Manager) return BML_RESULT_NOT_INITIALIZED;
-    return g_Manager->CompileAndAttach(mod, get_proc, entry_path, module_dir);
+    return g_Manager->CompileAndAttach(mod, services, entry_path, module_dir);
 }
 
 static BML_Result ProviderPrepareDetach(BML_Mod mod) {
@@ -52,24 +54,22 @@ void SetInstanceManager(ScriptInstanceManager *manager) {
     g_Manager = manager;
 }
 
-BML_Result RegisterProvider(PFN_BML_GetProcAddress get_proc, const char *owner_id) {
-    if (!get_proc || !owner_id)
+BML_Result RegisterProvider(const BML_Services *services, const char *owner_id) {
+    if (!services || !services->HostRuntime || !owner_id)
         return BML_RESULT_INVALID_ARGUMENT;
 
-    auto reg = reinterpret_cast<PFN_BML_RegisterRuntimeProvider>(
-        get_proc("bmlRegisterRuntimeProvider"));
+    auto reg = services->HostRuntime->RegisterRuntimeProvider;
     if (!reg)
         return BML_RESULT_NOT_FOUND;
 
-    return reg(&s_Provider, owner_id);
+    return reg(services->HostRuntime->Context, &s_Provider, owner_id);
 }
 
-void UnregisterProvider(PFN_BML_GetProcAddress get_proc) {
-    if (!get_proc) return;
+void UnregisterProvider(const BML_Services *services) {
+    if (!services || !services->HostRuntime) return;
 
-    auto unreg = reinterpret_cast<PFN_BML_UnregisterRuntimeProvider>(
-        get_proc("bmlUnregisterRuntimeProvider"));
-    if (unreg) unreg(&s_Provider);
+    auto unreg = services->HostRuntime->UnregisterRuntimeProvider;
+    if (unreg) unreg(services->HostRuntime->Context, &s_Provider);
 }
 
 } // namespace BML::Scripting

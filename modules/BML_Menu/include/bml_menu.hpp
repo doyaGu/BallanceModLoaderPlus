@@ -13,6 +13,7 @@
 #include "bml_imgui.hpp"
 #include "bml_core.h"
 #include "bml_interface.hpp"
+#include "bml_module.hpp"
 #include "bml_menu.h"
 
 #include "CKContext.h"
@@ -41,7 +42,7 @@ namespace Menu {
 
     namespace detail {
         inline BML_Mod ResolveHostMenuOwner() {
-            return bmlGetHostModule ? bmlGetHostModule() : nullptr;
+            return ::bml::detail::GetBoundModuleHandle();
         }
 
         inline bml::InterfaceLease<BML_MenuApi> AcquireMenu() {

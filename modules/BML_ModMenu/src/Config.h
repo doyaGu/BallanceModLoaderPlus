@@ -8,7 +8,7 @@
 
 #include "CKEnums.h"
 
-#include "bml_builtin_interfaces.h"
+#include "bml_services.hpp"
 #include "bml_types.h"
 
 class Property {

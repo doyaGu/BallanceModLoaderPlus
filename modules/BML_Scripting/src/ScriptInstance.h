@@ -18,7 +18,7 @@ namespace BML::Scripting {
 struct ScriptInstance {
     // Core association (managed by Core)
     BML_Mod mod_handle = nullptr;
-    PFN_BML_GetProcAddress get_proc = nullptr;
+    const BML_Services *services = nullptr;
     std::filesystem::path entry_file;
     std::filesystem::path module_dir;
     std::string mod_id;

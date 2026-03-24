@@ -17,8 +17,8 @@ namespace BML::Scripting {
 // Resolved once at init, used by MessageCallback to forward errors to Console
 static PFN_BML_ImcGetTopicId s_GetTopicId = nullptr;
 static PFN_BML_ImcPublish s_Publish = nullptr;
-static PFN_BML_GetHostModule s_GetHostModule = nullptr;
 static BML_Mod s_Owner = nullptr;
+static BML_Context s_ImcContext = nullptr;
 
 bool ScriptEngine::Initialize() {
     if (m_Engine)
@@ -48,12 +48,12 @@ bool ScriptEngine::Initialize() {
     return true;
 }
 
-void ScriptEngine::SetGetProc(PFN_BML_GetProcAddress get_proc) {
-    if (!get_proc) return;
-    s_GetTopicId = reinterpret_cast<PFN_BML_ImcGetTopicId>(get_proc("bmlImcGetTopicId"));
-    s_Publish = reinterpret_cast<PFN_BML_ImcPublish>(get_proc("bmlImcPublish"));
-    s_GetHostModule = reinterpret_cast<PFN_BML_GetHostModule>(get_proc("bmlGetHostModule"));
-    s_Owner = s_GetHostModule ? s_GetHostModule() : nullptr;
+void ScriptEngine::SetServices(BML_Mod owner, const BML_Services *services) {
+    if (!owner || !services || !services->ImcBus || !services->ImcBus->Context) return;
+    s_GetTopicId = services->ImcBus->GetTopicId;
+    s_Publish = services->ImcBus->Publish;
+    s_Owner = owner;
+    s_ImcContext = services->ImcBus->Context;
 }
 
 void ScriptEngine::Shutdown() {
@@ -63,8 +63,8 @@ void ScriptEngine::Shutdown() {
     }
     s_GetTopicId = nullptr;
     s_Publish = nullptr;
-    s_GetHostModule = nullptr;
     s_Owner = nullptr;
+    s_ImcContext = nullptr;
 }
 
 void ScriptEngine::MessageCallback(const asSMessageInfo *msg, void * /*param*/) {
@@ -83,9 +83,10 @@ void ScriptEngine::MessageCallback(const asSMessageInfo *msg, void * /*param*/) 
                   msg->message ? msg->message : "");
 
     // Forward to Console output if IMC is available
-    if (s_GetTopicId && s_Publish && s_Owner) {
+    if (s_GetTopicId && s_Publish && s_Owner && s_ImcContext) {
         BML_TopicId topic_id = BML_TOPIC_ID_INVALID;
-        if (s_GetTopicId(BML_TOPIC_CONSOLE_OUTPUT, &topic_id) == BML_RESULT_OK) {
+        if (s_GetTopicId(s_ImcContext, BML_TOPIC_CONSOLE_OUTPUT, &topic_id) ==
+            BML_RESULT_OK) {
             struct {
                 size_t struct_size;
                 const char *message_utf8;

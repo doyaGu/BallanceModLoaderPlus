@@ -9,7 +9,7 @@
 #include <string>
 #include <unordered_set>
 
-#include "bml_builtin_interfaces.h"
+#include "bml_services.hpp"
 #include "bml_config_bind.hpp"
 #include "bml_core.hpp"
 #include "bml_game_topics.h"
@@ -82,7 +82,7 @@ class GameplayMod : public bml::Module {
 
     void InitConfigBindings() {
         m_Cfg.Clear();
-        const std::string defaultTitle = BuildDefaultTitle(Services().Builtins().Context);
+        const std::string defaultTitle = BuildDefaultTitle(Services().Interfaces().Context);
         m_Cfg.Bind("Tweak", "LanternAlphaTest", m_Settings.lanternAlphaTest, true);
         m_Cfg.Bind("Tweak", "FixLifeBallFreeze", m_Settings.fixLifeBallFreeze, true);
         m_Cfg.Bind("Tweak", "Overclock", m_Settings.overclock, false);

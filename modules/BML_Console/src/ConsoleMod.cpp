@@ -21,7 +21,7 @@
 
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_module.hpp"
-#include "bml_builtin_interfaces.h"
+#include "bml_services.hpp"
 #include "bml_config.hpp"
 #include "bml_config_bind.hpp"
 #include "bml_console.h"
@@ -135,13 +135,21 @@ class ConsoleMod : public bml::Module {
     // -- Context accessors -----------------------------------------------
 
     BML_Mod FindLoadedModuleById(std::string_view id) const {
+        const auto *moduleApi = Services().Interfaces().Module;
+        if (!moduleApi || !moduleApi->Context) {
+            return nullptr;
+        }
         const std::string loweredId = ToLowerAscii(id);
-        const uint32_t count = Services().Builtins().Module->GetLoadedModuleCount();
+        const uint32_t count = moduleApi->GetLoadedModuleCount(moduleApi->Context);
         for (uint32_t index = 0; index < count; ++index) {
-            BML_Mod mod = Services().Builtins().Module->GetLoadedModuleAt(index);
+            BML_Mod mod = moduleApi->GetLoadedModuleAt(moduleApi->Context, index);
             const char *loadedId = nullptr;
-            if (!mod || Services().Builtins().Module->GetModId(mod, &loadedId) != BML_RESULT_OK || !loadedId) continue;
-            if (ToLowerAscii(loadedId) == loweredId) return mod;
+            if (!mod || moduleApi->GetModId(mod, &loadedId) != BML_RESULT_OK || !loadedId) {
+                continue;
+            }
+            if (ToLowerAscii(loadedId) == loweredId) {
+                return mod;
+            }
         }
         return nullptr;
     }
@@ -150,21 +158,21 @@ class ConsoleMod : public bml::Module {
         if (!mod || !category || !name) return false;
         const BML_ConfigKey key = BML_CONFIG_KEY_INIT(category, name);
         const BML_ConfigValue configValue = BML_CONFIG_VALUE_INIT_BOOL(value ? BML_TRUE : BML_FALSE);
-        return Services().Builtins().Config->Set(mod, &key, &configValue) == BML_RESULT_OK;
+        return Services().Interfaces().Config->Set(mod, &key, &configValue) == BML_RESULT_OK;
     }
 
     bool SetStringConfigOnMod(BML_Mod mod, const char *category, const char *name, const std::string &value) const {
         if (!mod || !category || !name) return false;
         const BML_ConfigKey key = BML_CONFIG_KEY_INIT(category, name);
         const BML_ConfigValue configValue = BML_CONFIG_VALUE_INIT_STRING(value.c_str());
-        return Services().Builtins().Config->Set(mod, &key, &configValue) == BML_RESULT_OK;
+        return Services().Interfaces().Config->Set(mod, &key, &configValue) == BML_RESULT_OK;
     }
 
     static void DestroyBoolState(void *data) { delete static_cast<bool *>(data); }
 
     bool GetCheatState() const {
         void *raw = nullptr;
-        if (Services().Builtins().Context->GetUserData(Services().GlobalContext(), kInternalCheatStateKey, &raw) != BML_RESULT_OK || !raw) {
+        if (Services().Interfaces().Context->GetUserData(Services().GlobalContext(), kInternalCheatStateKey, &raw) != BML_RESULT_OK || !raw) {
             return false;
         }
         return *static_cast<bool *>(raw);
@@ -173,18 +181,18 @@ class ConsoleMod : public bml::Module {
     BML_Result SetCheatState(bool enabled) {
         void *raw = nullptr;
         BML_Result result;
-        if (Services().Builtins().Context->GetUserData(Services().GlobalContext(), kInternalCheatStateKey, &raw) == BML_RESULT_OK && raw) {
+        if (Services().Interfaces().Context->GetUserData(Services().GlobalContext(), kInternalCheatStateKey, &raw) == BML_RESULT_OK && raw) {
             *static_cast<bool *>(raw) = enabled;
             result = BML_RESULT_OK;
         } else {
             auto *state = new bool(enabled);
-            result = Services().Builtins().Context->SetUserData(Services().GlobalContext(), kInternalCheatStateKey, state, DestroyBoolState);
+            result = Services().Interfaces().Context->SetUserData(Services().GlobalContext(), kInternalCheatStateKey, state, DestroyBoolState);
             if (result != BML_RESULT_OK) delete state;
         }
         if (result == BML_RESULT_OK && m_TopicCheatState != 0) {
             BML_Bool value = enabled ? BML_TRUE : BML_FALSE;
             BML_ImcMessage msg = BML_IMC_MSG(&value, sizeof(value));
-            auto *imcBus = Services().Builtins().ImcBus;
+            auto *imcBus = Services().Interfaces().ImcBus;
             if (imcBus->PublishState) {
                 imcBus->PublishState(Handle(), m_TopicCheatState, &msg);
             } else {
@@ -243,14 +251,15 @@ class ConsoleMod : public bml::Module {
     }
 
     BML_Result PublishCommand(const std::string &command) {
-        auto *imcBus = Services().Builtins().ImcBus;
+        auto *imcBus = Services().Interfaces().ImcBus;
         if (!imcBus || !imcBus->PublishBuffer || m_TopicCommand == 0 || command.empty()) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
         if (imcBus->GetTopicInfo) {
             BML_TopicInfo topicInfo = BML_TOPIC_INFO_INIT;
-            if (imcBus->GetTopicInfo(m_TopicCommand, &topicInfo) == BML_RESULT_OK &&
+            if (imcBus->GetTopicInfo(imcBus->Context, m_TopicCommand, &topicInfo) ==
+                    BML_RESULT_OK &&
                 topicInfo.subscriber_count == 0) {
                 return BML_RESULT_IMC_NO_SUBSCRIBERS;
             }
@@ -956,30 +965,39 @@ class ConsoleMod : public bml::Module {
             auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
             if (!self || !key) return nullptr;
             void *value = nullptr;
-            if (self->Services().Builtins().Context->GetUserData(self->Services().GlobalContext(), key, &value) != BML_RESULT_OK) {
+            if (self->Services().Interfaces().Context->GetUserData(self->Services().GlobalContext(), key, &value) != BML_RESULT_OK) {
                 return nullptr;
             }
             return value;
         };
         m_BuiltinCtx.getRuntimeVersion = []() -> const BML_Version * {
             auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
-            return self ? self->Services().Builtins().Context->GetRuntimeVersion() : nullptr;
+            const auto *contextApi = self ? self->Services().Interfaces().Context : nullptr;
+            return (contextApi && contextApi->Context)
+                ? contextApi->GetRuntimeVersion(contextApi->Context)
+                : nullptr;
         };
         m_BuiltinCtx.getLoadedModuleCount = []() -> uint32_t {
             auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
-            return self ? self->Services().Builtins().Module->GetLoadedModuleCount() : 0;
+            const auto *moduleApi = self ? self->Services().Interfaces().Module : nullptr;
+            return (moduleApi && moduleApi->Context)
+                ? moduleApi->GetLoadedModuleCount(moduleApi->Context)
+                : 0;
         };
         m_BuiltinCtx.getLoadedModuleAt = [](uint32_t index) -> BML_Mod {
             auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
-            return self ? self->Services().Builtins().Module->GetLoadedModuleAt(index) : nullptr;
+            const auto *moduleApi = self ? self->Services().Interfaces().Module : nullptr;
+            return (moduleApi && moduleApi->Context)
+                ? moduleApi->GetLoadedModuleAt(moduleApi->Context, index)
+                : nullptr;
         };
         m_BuiltinCtx.getModId = [](BML_Mod mod, const char **outId) -> bool {
             auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
-            return self && self->Services().Builtins().Module->GetModId(mod, outId) == BML_RESULT_OK;
+            return self && self->Services().Interfaces().Module->GetModId(mod, outId) == BML_RESULT_OK;
         };
         m_BuiltinCtx.getModVersion = [](BML_Mod mod, BML_Version *outVersion) -> bool {
             auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
-            return self && self->Services().Builtins().Module->GetModVersion(mod, outVersion) == BML_RESULT_OK;
+            return self && self->Services().Interfaces().Module->GetModVersion(mod, outVersion) == BML_RESULT_OK;
         };
         m_BuiltinCtx.executeCommand = [](std::string cmd) {
             auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
@@ -1073,13 +1091,19 @@ public:
         InitConfigBindings();
         m_Cfg.Sync(Services().Config());
 
-        if (Services().Builtins().ImcBus->GetTopicId(BML_TOPIC_CONSOLE_COMMAND, &m_TopicCommand) != BML_RESULT_OK) {
+        if (Services().Interfaces().ImcBus->GetTopicId(
+                Services().Interfaces().ImcBus->Context,
+                BML_TOPIC_CONSOLE_COMMAND,
+                &m_TopicCommand) != BML_RESULT_OK) {
             m_DrawReg.Reset();
             m_InputCaptureService.Reset();
             ClearPaletteProviders();
             return BML_RESULT_FAIL;
         }
-        Services().Builtins().ImcBus->GetTopicId(BML_TOPIC_STATE_CHEAT_ENABLED, &m_TopicCheatState);
+        Services().Interfaces().ImcBus->GetTopicId(
+            Services().Interfaces().ImcBus->Context,
+            BML_TOPIC_STATE_CHEAT_ENABLED,
+            &m_TopicCheatState);
         m_History.Load(GetHistoryPath());
         SetCheatState(false);
 
@@ -1133,7 +1157,7 @@ public:
         m_History.Save(GetHistoryPath());
         SetConsoleVisible(false);
         ReleaseInputCapture();
-        (void) Services().Builtins().Context->SetUserData(Services().GlobalContext(), kInternalCheatStateKey, nullptr, nullptr);
+        (void) Services().Interfaces().Context->SetUserData(Services().GlobalContext(), kInternalCheatStateKey, nullptr, nullptr);
         (void) m_PublishedService.Reset();
         m_DrawReg.Reset();
         m_InputCaptureService.Reset();

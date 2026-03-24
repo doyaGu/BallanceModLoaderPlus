@@ -11,11 +11,11 @@ namespace {
 
 static void ScriptLog(BML_LogSeverity severity, const std::string &message) {
     const BML_Mod owner = CurrentScriptOwner();
-    if (!g_Builtins || !g_Builtins->Logging || !g_Builtins->Logging->Log || !owner) {
+    if (!g_Services || !g_Services->Logging || !g_Services->Logging->Log || !owner) {
         return;
     }
 
-    g_Builtins->Logging->Log(owner, nullptr, severity, "script", "%s", message.c_str());
+    g_Services->Logging->Log(owner, severity, "script", "%s", message.c_str());
 }
 
 static void Script_Log(const std::string &message) { ScriptLog(BML_LOG_INFO, message); }

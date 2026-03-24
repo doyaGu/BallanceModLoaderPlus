@@ -11,7 +11,7 @@ namespace BML::Scripting {
 
 namespace {
 
-#define CFG (g_Builtins ? g_Builtins->Config : nullptr)
+#define CFG (g_Services ? g_Services->Config : nullptr)
 
 // --- Getters ---
 

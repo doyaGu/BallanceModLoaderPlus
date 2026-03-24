@@ -27,7 +27,7 @@ public:
     void ReleaseContext(asIScriptContext *ctx);
 
     // RuntimeProvider callbacks
-    BML_Result CompileAndAttach(BML_Mod mod, PFN_BML_GetProcAddress get_proc,
+    BML_Result CompileAndAttach(BML_Mod mod, const BML_Services *services,
                                 const char *entry_path, const char *module_dir);
     BML_Result PrepareDetach(BML_Mod mod);
     BML_Result Detach(BML_Mod mod);

@@ -1,6 +1,6 @@
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_module.hpp"
-#include "bml_builtin_interfaces.h"
+#include "bml_services.hpp"
 #include "bml_newballtype.h"
 #include "bml_topics.h"
 #include "bml_virtools.h"

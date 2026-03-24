@@ -12,8 +12,8 @@ const BML_ModuleRuntimeProvider *GetRuntimeProvider();
 
 void SetInstanceManager(ScriptInstanceManager *manager);
 
-BML_Result RegisterProvider(PFN_BML_GetProcAddress get_proc, const char *owner_id);
-void UnregisterProvider(PFN_BML_GetProcAddress get_proc);
+BML_Result RegisterProvider(const BML_Services *services, const char *owner_id);
+void UnregisterProvider(const BML_Services *services);
 
 } // namespace BML::Scripting
 

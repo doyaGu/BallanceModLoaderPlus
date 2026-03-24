@@ -36,13 +36,13 @@ public:
     BML_Result OnAttach(bml::ModuleServices &services) override {
         services.Log().Info("script", "Initializing AngelScript runtime");
 
-        BML::Scripting::g_Builtins = &Services().Builtins();
+        BML::Scripting::g_Services = &Services().Interfaces();
 
         if (!m_Engine.Initialize()) {
             services.Log().Error("script", "Failed to create AngelScript engine");
             return BML_RESULT_FAIL;
         }
-        m_Engine.SetGetProc(m_GetProc);
+        m_Engine.SetServices(m_Handle, &services.Interfaces());
         g_ScriptEnginePtr = m_Engine.Get();
 
         m_Manager = std::make_unique<BML::Scripting::ScriptInstanceManager>(m_Engine.Get());
@@ -105,7 +105,7 @@ public:
         }
 
         // Register runtime provider (triggers script loading later)
-        BML_Result r = BML::Scripting::RegisterProvider(m_GetProc, "com.bml.scripting");
+        BML_Result r = BML::Scripting::RegisterProvider(&services.Interfaces(), "com.bml.scripting");
         if (r != BML_RESULT_OK) {
             services.Log().Error("script", "Failed to register runtime provider: %d",
                                  static_cast<int>(r));
@@ -144,7 +144,7 @@ public:
 
     void OnDetach() override {
         m_Subs = bml::imc::SubscriptionManager();
-        BML::Scripting::UnregisterProvider(m_GetProc);
+        BML::Scripting::UnregisterProvider(BML::Scripting::g_Services);
         m_EngineService.Reset();
         m_Manager->SetCoroutineManager(nullptr);
         m_Coroutines.reset();
@@ -153,7 +153,7 @@ public:
         m_Manager.reset();
         g_ScriptEnginePtr = nullptr;
         m_Engine.Shutdown();
-        BML::Scripting::g_Builtins = nullptr;
+        BML::Scripting::g_Services = nullptr;
     }
 
 private:
@@ -210,20 +210,22 @@ private:
     }
 
     void PrintToConsole(const std::string &message) {
-        if (!BML::Scripting::g_Builtins || !BML::Scripting::g_Builtins->ImcBus ||
-            !BML::Scripting::g_Builtins->ImcBus->Publish) {
+        if (!BML::Scripting::g_Services || !BML::Scripting::g_Services->ImcBus ||
+            !BML::Scripting::g_Services->ImcBus->Publish) {
             return;
         }
 
         BML_TopicId id = BML_TOPIC_ID_INVALID;
-        if (BML::Scripting::g_Builtins->ImcBus->GetTopicId(
-                BML_TOPIC_CONSOLE_OUTPUT, &id) != BML_RESULT_OK) return;
+        if (BML::Scripting::g_Services->ImcBus->GetTopicId(
+                BML::Scripting::g_Services->ImcBus->Context,
+                BML_TOPIC_CONSOLE_OUTPUT,
+                &id) != BML_RESULT_OK) return;
         struct {
             size_t struct_size;
             const char *msg;
             uint32_t flags;
         } event{sizeof(event), message.c_str(), 0};
-        BML::Scripting::g_Builtins->ImcBus->Publish(m_Handle, id, &event, sizeof(event));
+        BML::Scripting::g_Services->ImcBus->Publish(m_Handle, id, &event, sizeof(event));
     }
 };
 

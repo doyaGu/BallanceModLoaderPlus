@@ -24,20 +24,18 @@ CKContext *GetCK() {
         if (!g_VirtoolsWarnedOnce) {
             g_VirtoolsWarnedOnce = true;
             const BML_Mod owner = CurrentScriptOwner();
-            if (g_Builtins && g_Builtins->Logging && g_Builtins->Logging->Log && owner) {
-                BML_Context bml_ctx = g_Builtins->Context
-                    ? g_Builtins->Context->GetGlobalContext() : nullptr;
-                g_Builtins->Logging->Log(owner, bml_ctx, BML_LOG_WARN, "script",
+            if (g_Services && g_Services->Logging && g_Services->Logging->Log && owner) {
+                g_Services->Logging->Log(owner, BML_LOG_WARN, "script",
                     "Virtools bindings called before engine init - returning nullptr");
             }
         }
         return nullptr;
     }
-    if (!g_Builtins || !g_Builtins->Context) return nullptr;
-    BML_Context ctx = g_Builtins->Context->GetGlobalContext();
+    if (!g_Services || !g_Services->Context) return nullptr;
+    BML_Context ctx = g_Services->Context->Context;
     if (!ctx) return nullptr;
     void *ptr = nullptr;
-    if (g_Builtins->Context->GetUserData(ctx, BML_VIRTOOLS_KEY_CKCONTEXT, &ptr) != BML_RESULT_OK)
+    if (g_Services->Context->GetUserData(ctx, BML_VIRTOOLS_KEY_CKCONTEXT, &ptr) != BML_RESULT_OK)
         return nullptr;
     return static_cast<CKContext *>(ptr);
 }

@@ -2,7 +2,7 @@
 #define BML_CONSOLE_BUILTIN_COMMANDS_H
 
 #include "bml_console.h"
-#include "bml_result.hpp"
+#include "bml_errors.h"
 
 #include "CommandRegistry.h"
 #include "CommandHistory.h"

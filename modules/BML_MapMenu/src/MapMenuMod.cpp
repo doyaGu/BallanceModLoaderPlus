@@ -28,7 +28,7 @@
 
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_module.hpp"
-#include "bml_builtin_interfaces.h"
+#include "bml_services.hpp"
 #include "bml_config_bind.hpp"
 #include "bml_console.h"
 #include "bml_engine_events.h"
@@ -230,7 +230,7 @@ class MapMenuMod : public bml::Module {
     }
 
     void PublishConsoleMessage(const std::string &message, uint32_t flags = BML_CONSOLE_OUTPUT_FLAG_SYSTEM) {
-        auto *imcBus = Services().Builtins().ImcBus;
+        auto *imcBus = Services().Interfaces().ImcBus;
         if (!imcBus || !imcBus->PublishBuffer || m_TopicConsoleOutput == 0 || message.empty()) return;
 
         const size_t textSize = message.size() + 1;
@@ -380,7 +380,7 @@ class MapMenuMod : public bml::Module {
         CKMessageType loadLevelMessage = messageManager->AddMessageType((CKSTRING)"Load Level");
         CKMessageType loadMenuMessage = messageManager->AddMessageType((CKSTRING)"Menu_Load");
         const std::string originalMapPath = utils::ToString(path);
-        const auto *imcBus = Services().Builtins().ImcBus;
+        const auto *imcBus = Services().Interfaces().ImcBus;
         if (m_TopicCustomMapName != 0 && imcBus && imcBus->PublishState && !originalMapPath.empty()) {
             BML_ImcMessage state_message = BML_IMC_MESSAGE_INIT;
             state_message.data = originalMapPath.c_str();
@@ -591,8 +591,14 @@ public:
             Services().Log().Warn("Failed to acquire input capture service; map menu will not capture input");
         }
 
-        Services().Builtins().ImcBus->GetTopicId(BML_TOPIC_CONSOLE_OUTPUT, &m_TopicConsoleOutput);
-        Services().Builtins().ImcBus->GetTopicId(BML_TOPIC_STATE_CUSTOM_MAP_NAME, &m_TopicCustomMapName);
+        Services().Interfaces().ImcBus->GetTopicId(
+            Services().Interfaces().ImcBus->Context,
+            BML_TOPIC_CONSOLE_OUTPUT,
+            &m_TopicConsoleOutput);
+        Services().Interfaces().ImcBus->GetTopicId(
+            Services().Interfaces().ImcBus->Context,
+            BML_TOPIC_STATE_CUSTOM_MAP_NAME,
+            &m_TopicCustomMapName);
 
         m_Subs.Add(BML_TOPIC_INPUT_KEY_DOWN, [this](const bml::imc::Message &msg) {
             auto *event = msg.As<BML_KeyDownEvent>();

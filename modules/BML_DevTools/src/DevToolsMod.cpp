@@ -13,7 +13,7 @@
 
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_module.hpp"
-#include "bml_builtin_interfaces.h"
+#include "bml_services.hpp"
 #include "bml_hook.h"
 #include "bml_interface.hpp"
 #include "bml_topics.h"
@@ -75,11 +75,11 @@ class DevToolsMod : public bml::Module {
 
     void RefreshTopics() {
         m_Topics.clear();
-        const auto *bus = Services().Builtins().ImcBus;
+        const auto *bus = Services().Interfaces().ImcBus;
         if (!bus || !bus->GetTopicInfo) return;
         for (uint32_t id = 1; id < 1000; ++id) {
             BML_TopicInfo info = BML_TOPIC_INFO_INIT;
-            if (bus->GetTopicInfo(id, &info) == BML_RESULT_OK) {
+            if (bus->GetTopicInfo(bus->Context, id, &info) == BML_RESULT_OK) {
                 ImcTopicEntry entry{};
                 entry.id = info.topic_id;
                 std::memcpy(entry.name, info.name, sizeof(entry.name));
@@ -92,9 +92,9 @@ class DevToolsMod : public bml::Module {
 
     void RefreshInterfaces() {
         m_Interfaces.clear();
-        const auto *diag = Services().Builtins().Diagnostic;
-        if (!diag || !diag->EnumerateInterfaces) return;
-        diag->EnumerateInterfaces([](const BML_InterfaceRuntimeDesc *desc, void *ud) {
+        const auto *diag = Services().Interfaces().Diagnostic;
+        if (!diag || !diag->Context || !diag->EnumerateInterfaces) return;
+        diag->EnumerateInterfaces(diag->Context, [](const BML_InterfaceRuntimeDesc *desc, void *ud) {
             auto *self = static_cast<DevToolsMod *>(ud);
             InterfaceEntry entry;
             entry.id = desc->interface_id ? desc->interface_id : "";
@@ -103,8 +103,10 @@ class DevToolsMod : public bml::Module {
             entry.provider = desc->provider_id ? desc->provider_id : "";
             entry.flags = desc->flags;
             entry.lease_count = 0;
-            if (self->Services().Builtins().Diagnostic->GetLeaseCount)
-                entry.lease_count = self->Services().Builtins().Diagnostic->GetLeaseCount(desc->interface_id);
+            const auto *diagApi = self->Services().Interfaces().Diagnostic;
+            if (diagApi && diagApi->Context && diagApi->GetLeaseCount) {
+                entry.lease_count = diagApi->GetLeaseCount(diagApi->Context, desc->interface_id);
+            }
             self->m_Interfaces.push_back(std::move(entry));
         }, this, 0);
     }
@@ -115,11 +117,13 @@ class DevToolsMod : public bml::Module {
 
     void RefreshModules() {
         m_Modules.clear();
-        const auto *mod = Services().Builtins().Module;
-        if (!mod || !mod->GetLoadedModuleCount || !mod->GetLoadedModuleAt) return;
-        uint32_t count = mod->GetLoadedModuleCount();
+        const auto *mod = Services().Interfaces().Module;
+        if (!mod || !mod->Context || !mod->GetLoadedModuleCount || !mod->GetLoadedModuleAt) {
+            return;
+        }
+        uint32_t count = mod->GetLoadedModuleCount(mod->Context);
         for (uint32_t i = 0; i < count; ++i) {
-            BML_Mod handle = mod->GetLoadedModuleAt(i);
+            BML_Mod handle = mod->GetLoadedModuleAt(mod->Context, i);
             if (!handle) continue;
             const char *id = nullptr;
             mod->GetModId(handle, &id);
@@ -133,10 +137,10 @@ class DevToolsMod : public bml::Module {
     }
 
     void RefreshImcStats() {
-        const auto *bus = Services().Builtins().ImcBus;
+        const auto *bus = Services().Interfaces().ImcBus;
         if (bus && bus->GetStats) {
             m_ImcStats = BML_IMC_STATS_INIT;
-            bus->GetStats(&m_ImcStats);
+            bus->GetStats(bus->Context, &m_ImcStats);
         }
     }
 

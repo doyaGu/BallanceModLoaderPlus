@@ -16,7 +16,7 @@
 
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_module.hpp"
-#include "bml_builtin_interfaces.h"
+#include "bml_services.hpp"
 #include "bml_engine_events.h"
 #include "bml_engine_events.hpp"
 #include "bml_imgui.hpp"
@@ -201,7 +201,7 @@ private:
         }
 
         m_Context = context;
-        MenuRegistry::Instance().Initialize(m_Context, Services().Builtins().Module, Services().Builtins().Config);
+        MenuRegistry::Instance().Initialize(m_Context, Services().Interfaces().Module, Services().Interfaces().Config);
         MenuRuntime::Initialize(m_Context, m_InputCaptureService.Get());
     }
 

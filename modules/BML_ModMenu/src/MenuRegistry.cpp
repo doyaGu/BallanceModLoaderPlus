@@ -76,14 +76,17 @@ void MenuRegistry::Reset() {
 
 void MenuRegistry::Refresh() {
     m_Records.clear();
-    if (!m_ModuleInterface || !m_ModuleInterface->GetLoadedModuleCount || !m_ModuleInterface->GetLoadedModuleAt) {
+    if (!m_ModuleInterface ||
+        !m_ModuleInterface->Context ||
+        !m_ModuleInterface->GetLoadedModuleCount ||
+        !m_ModuleInterface->GetLoadedModuleAt) {
         return;
     }
 
-    const uint32_t count = m_ModuleInterface->GetLoadedModuleCount();
+    const uint32_t count = m_ModuleInterface->GetLoadedModuleCount(m_ModuleInterface->Context);
     m_Records.reserve(count);
     for (uint32_t index = 0; index < count; ++index) {
-        BML_Mod handle = m_ModuleInterface->GetLoadedModuleAt(index);
+        BML_Mod handle = m_ModuleInterface->GetLoadedModuleAt(m_ModuleInterface->Context, index);
         if (!handle) {
             continue;
         }

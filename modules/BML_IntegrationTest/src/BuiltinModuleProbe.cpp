@@ -30,7 +30,7 @@
 #include <vector>
 
 #include "bml.hpp"
-#include "bml_builtin_interfaces.h"
+#include "bml_services.hpp"
 #include "bml_console.h"
 #include "bml_engine_events.h"
 #include "bml_game_topics.h"
@@ -318,11 +318,10 @@ private:
     bool m_MapMenuButtonObserved = false;
 
     BML_Context GetContextHandle() const {
-        if (!m_Context || !m_Context->GetGlobalContext) {
+        if (!m_Context || !m_Context->Context) {
             return nullptr;
         }
-
-        return m_Context->GetGlobalContext();
+        return m_Context->Context;
     }
 
     template <typename... Args>
@@ -331,7 +330,7 @@ private:
             return;
         }
 
-        m_Log->Log(m_Handle, GetContextHandle(), severity, "BuiltinProbe", format, args...);
+        m_Log->Log(m_Handle, severity, "BuiltinProbe", format, args...);
     }
 
     void RefreshLoadedModules() {
@@ -408,7 +407,8 @@ private:
 
         const BML_KeyDownEvent event{key_code, key_code, 0u, false};
         BML_TopicId topicId = BML_TOPIC_ID_INVALID;
-        if (m_ImcBus->GetTopicId(BML_TOPIC_INPUT_KEY_DOWN, &topicId) != BML_RESULT_OK) {
+        if (m_ImcBus->GetTopicId(m_ImcBus->Context, BML_TOPIC_INPUT_KEY_DOWN, &topicId) !=
+            BML_RESULT_OK) {
             return;
         }
         m_ImcBus->Publish(m_Handle, topicId, &event, sizeof(event));

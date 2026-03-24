@@ -114,7 +114,7 @@ static void Log(BML_LogSeverity severity, const char *format, ...) {
     std::vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
 
-    s_Hook.logging->Log(s_Hook.owner, s_Hook.global_context, severity,
+    s_Hook.logging->Log(s_Hook.owner, severity,
                         s_Hook.log_category ? s_Hook.log_category : "BML_Event",
                         "%s", buffer);
 }
@@ -232,43 +232,43 @@ static void RegisterTopics() {
     if (!imcBus || !imcBus->GetTopicId) {
         return;
     }
-    imcBus->GetTopicId(TOPIC_PRE_START_MENU, &s_Topics[IDX_PRE_START_MENU]);
-    imcBus->GetTopicId(TOPIC_POST_START_MENU, &s_Topics[IDX_POST_START_MENU]);
-    imcBus->GetTopicId(TOPIC_EXIT_GAME, &s_Topics[IDX_EXIT_GAME]);
-    imcBus->GetTopicId(TOPIC_PRE_LOAD_LEVEL, &s_Topics[IDX_PRE_LOAD_LEVEL]);
-    imcBus->GetTopicId(TOPIC_POST_LOAD_LEVEL, &s_Topics[IDX_POST_LOAD_LEVEL]);
-    imcBus->GetTopicId(TOPIC_START_LEVEL, &s_Topics[IDX_START_LEVEL]);
-    imcBus->GetTopicId(TOPIC_PRE_RESET_LEVEL, &s_Topics[IDX_PRE_RESET_LEVEL]);
-    imcBus->GetTopicId(TOPIC_POST_RESET_LEVEL, &s_Topics[IDX_POST_RESET_LEVEL]);
-    imcBus->GetTopicId(TOPIC_PAUSE_LEVEL, &s_Topics[IDX_PAUSE_LEVEL]);
-    imcBus->GetTopicId(TOPIC_UNPAUSE_LEVEL, &s_Topics[IDX_UNPAUSE_LEVEL]);
-    imcBus->GetTopicId(TOPIC_PRE_EXIT_LEVEL, &s_Topics[IDX_PRE_EXIT_LEVEL]);
-    imcBus->GetTopicId(TOPIC_POST_EXIT_LEVEL, &s_Topics[IDX_POST_EXIT_LEVEL]);
-    imcBus->GetTopicId(TOPIC_PRE_NEXT_LEVEL, &s_Topics[IDX_PRE_NEXT_LEVEL]);
-    imcBus->GetTopicId(TOPIC_POST_NEXT_LEVEL, &s_Topics[IDX_POST_NEXT_LEVEL]);
-    imcBus->GetTopicId(TOPIC_PRE_END_LEVEL, &s_Topics[IDX_PRE_END_LEVEL]);
-    imcBus->GetTopicId(TOPIC_POST_END_LEVEL, &s_Topics[IDX_POST_END_LEVEL]);
-    imcBus->GetTopicId(TOPIC_DEAD, &s_Topics[IDX_DEAD]);
-    imcBus->GetTopicId(TOPIC_BALL_OFF, &s_Topics[IDX_BALL_OFF]);
-    imcBus->GetTopicId(TOPIC_COUNTER_ACTIVE, &s_Topics[IDX_COUNTER_ACTIVE]);
-    imcBus->GetTopicId(TOPIC_COUNTER_INACTIVE, &s_Topics[IDX_COUNTER_INACTIVE]);
-    imcBus->GetTopicId(TOPIC_PRE_CHECKPOINT, &s_Topics[IDX_PRE_CHECKPOINT]);
-    imcBus->GetTopicId(TOPIC_POST_CHECKPOINT, &s_Topics[IDX_POST_CHECKPOINT]);
-    imcBus->GetTopicId(TOPIC_LEVEL_FINISH, &s_Topics[IDX_LEVEL_FINISH]);
-    imcBus->GetTopicId(TOPIC_GAME_OVER, &s_Topics[IDX_GAME_OVER]);
-    imcBus->GetTopicId(TOPIC_EXTRA_POINT, &s_Topics[IDX_EXTRA_POINT]);
-    imcBus->GetTopicId(TOPIC_PRE_LIFE_UP, &s_Topics[IDX_PRE_LIFE_UP]);
-    imcBus->GetTopicId(TOPIC_POST_LIFE_UP, &s_Topics[IDX_POST_LIFE_UP]);
-    imcBus->GetTopicId(TOPIC_PRE_SUB_LIFE, &s_Topics[IDX_PRE_SUB_LIFE]);
-    imcBus->GetTopicId(TOPIC_POST_SUB_LIFE, &s_Topics[IDX_POST_SUB_LIFE]);
-    imcBus->GetTopicId(TOPIC_BALL_NAV_ACTIVE, &s_Topics[IDX_BALL_NAV_ACTIVE]);
-    imcBus->GetTopicId(TOPIC_BALL_NAV_INACTIVE, &s_Topics[IDX_BALL_NAV_INACTIVE]);
-    imcBus->GetTopicId(TOPIC_CAM_NAV_ACTIVE, &s_Topics[IDX_CAM_NAV_ACTIVE]);
-    imcBus->GetTopicId(TOPIC_CAM_NAV_INACTIVE, &s_Topics[IDX_CAM_NAV_INACTIVE]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_PRE_START_MENU, &s_Topics[IDX_PRE_START_MENU]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_POST_START_MENU, &s_Topics[IDX_POST_START_MENU]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_EXIT_GAME, &s_Topics[IDX_EXIT_GAME]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_PRE_LOAD_LEVEL, &s_Topics[IDX_PRE_LOAD_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_POST_LOAD_LEVEL, &s_Topics[IDX_POST_LOAD_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_START_LEVEL, &s_Topics[IDX_START_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_PRE_RESET_LEVEL, &s_Topics[IDX_PRE_RESET_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_POST_RESET_LEVEL, &s_Topics[IDX_POST_RESET_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_PAUSE_LEVEL, &s_Topics[IDX_PAUSE_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_UNPAUSE_LEVEL, &s_Topics[IDX_UNPAUSE_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_PRE_EXIT_LEVEL, &s_Topics[IDX_PRE_EXIT_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_POST_EXIT_LEVEL, &s_Topics[IDX_POST_EXIT_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_PRE_NEXT_LEVEL, &s_Topics[IDX_PRE_NEXT_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_POST_NEXT_LEVEL, &s_Topics[IDX_POST_NEXT_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_PRE_END_LEVEL, &s_Topics[IDX_PRE_END_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_POST_END_LEVEL, &s_Topics[IDX_POST_END_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_DEAD, &s_Topics[IDX_DEAD]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_BALL_OFF, &s_Topics[IDX_BALL_OFF]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_COUNTER_ACTIVE, &s_Topics[IDX_COUNTER_ACTIVE]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_COUNTER_INACTIVE, &s_Topics[IDX_COUNTER_INACTIVE]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_PRE_CHECKPOINT, &s_Topics[IDX_PRE_CHECKPOINT]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_POST_CHECKPOINT, &s_Topics[IDX_POST_CHECKPOINT]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_LEVEL_FINISH, &s_Topics[IDX_LEVEL_FINISH]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_GAME_OVER, &s_Topics[IDX_GAME_OVER]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_EXTRA_POINT, &s_Topics[IDX_EXTRA_POINT]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_PRE_LIFE_UP, &s_Topics[IDX_PRE_LIFE_UP]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_POST_LIFE_UP, &s_Topics[IDX_POST_LIFE_UP]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_PRE_SUB_LIFE, &s_Topics[IDX_PRE_SUB_LIFE]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_POST_SUB_LIFE, &s_Topics[IDX_POST_SUB_LIFE]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_BALL_NAV_ACTIVE, &s_Topics[IDX_BALL_NAV_ACTIVE]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_BALL_NAV_INACTIVE, &s_Topics[IDX_BALL_NAV_INACTIVE]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_CAM_NAV_ACTIVE, &s_Topics[IDX_CAM_NAV_ACTIVE]);
+    imcBus->GetTopicId(imcBus->Context, TOPIC_CAM_NAV_INACTIVE, &s_Topics[IDX_CAM_NAV_INACTIVE]);
 
     // Retained state topics
-    imcBus->GetTopicId(BML_TOPIC_STATE_GAME_PHASE, &s_TopicGamePhase);
-    imcBus->GetTopicId(BML_TOPIC_STATE_PAUSED, &s_TopicPaused);
+    imcBus->GetTopicId(imcBus->Context, BML_TOPIC_STATE_GAME_PHASE, &s_TopicGamePhase);
+    imcBus->GetTopicId(imcBus->Context, BML_TOPIC_STATE_PAUSED, &s_TopicPaused);
 
     // Publish initial state
     UpdateGamePhase(BML_GAME_PHASE_IDLE);

@@ -326,7 +326,7 @@ void PublishMouseEvents() {
 
 static void HookLog(BML_LogSeverity severity, const char *message) {
     if (!s_Hook.logging || !s_Hook.logging->Log || !message) return;
-    s_Hook.logging->Log(s_Hook.owner, s_Hook.global_context, severity,
+    s_Hook.logging->Log(s_Hook.owner, severity,
                         s_Hook.log_category ? s_Hook.log_category : "BML_Input",
                         "%s", message);
 }
@@ -347,10 +347,12 @@ bool InitInputHook(CKInputManager *inputManager, const BML_HookContext *ctx) {
 
     if (s_Hook.imc_bus && s_Hook.imc_bus->GetTopicId) {
         auto *imc_bus = s_Hook.imc_bus;
-        imc_bus->GetTopicId(BML_TOPIC_INPUT_KEY_DOWN, &g_State.topic_key_down);
-        imc_bus->GetTopicId(BML_TOPIC_INPUT_KEY_UP, &g_State.topic_key_up);
-        imc_bus->GetTopicId(BML_TOPIC_INPUT_MOUSE_BUTTON, &g_State.topic_mouse_button);
-        imc_bus->GetTopicId(BML_TOPIC_INPUT_MOUSE_MOVE, &g_State.topic_mouse_move);
+        imc_bus->GetTopicId(imc_bus->Context, BML_TOPIC_INPUT_KEY_DOWN, &g_State.topic_key_down);
+        imc_bus->GetTopicId(imc_bus->Context, BML_TOPIC_INPUT_KEY_UP, &g_State.topic_key_up);
+        imc_bus->GetTopicId(
+            imc_bus->Context, BML_TOPIC_INPUT_MOUSE_BUTTON, &g_State.topic_mouse_button);
+        imc_bus->GetTopicId(
+            imc_bus->Context, BML_TOPIC_INPUT_MOUSE_MOVE, &g_State.topic_mouse_move);
     }
 
     InstallVTableHooks();

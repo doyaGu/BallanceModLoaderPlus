@@ -1,15 +1,14 @@
 #ifndef BML_SCRIPTING_MODULE_SCOPE_H
 #define BML_SCRIPTING_MODULE_SCOPE_H
 
-#include "bml_builtin_interfaces.h"
 #include "bml_services.hpp"
 #include "ScriptInstance.h"
 
 namespace BML::Scripting {
 
-// Pointer to the runtime's builtin services. Set once during OnAttach,
+// Pointer to the runtime's service bundle. Set once during OnAttach,
 // used by all binding functions and dispatch code to access Core APIs.
-inline const bml::BuiltinServices *g_Builtins = nullptr;
+inline const BML_Services *g_Services = nullptr;
 
 inline BML_Mod CurrentScriptOwner() {
     return t_CurrentScript ? t_CurrentScript->mod_handle : nullptr;

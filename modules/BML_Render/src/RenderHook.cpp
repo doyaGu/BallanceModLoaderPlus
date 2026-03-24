@@ -28,7 +28,7 @@ void Log(BML_LogSeverity severity, const char *message) {
     if (!s_Hook.logging || !s_Hook.logging->Log || !message) {
         return;
     }
-    s_Hook.logging->Log(s_Hook.owner, s_Hook.global_context, severity,
+    s_Hook.logging->Log(s_Hook.owner, severity,
                         s_Hook.log_category ? s_Hook.log_category : "BML_Render",
                         "%s", message);
 }

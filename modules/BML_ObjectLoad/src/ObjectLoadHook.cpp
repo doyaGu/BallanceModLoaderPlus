@@ -43,7 +43,7 @@ namespace BML_ObjectLoad {
         if (!s_Hook.logging || !s_Hook.logging->Log || !message) {
             return;
         }
-        s_Hook.logging->Log(s_Hook.owner, s_Hook.global_context, severity,
+        s_Hook.logging->Log(s_Hook.owner, severity,
                             s_Hook.log_category ? s_Hook.log_category : "BML_ObjectLoad",
                             "%s", message);
     }
@@ -280,7 +280,8 @@ namespace BML_ObjectLoad {
                 if (imcBus && imcBus->CopyState) {
                     char custom_map_name[MAX_PATH] = {};
                     size_t state_size = 0;
-                    if (imcBus->CopyState(s_TopicCustomMapName,
+                    if (imcBus->CopyState(imcBus->Context,
+                                            s_TopicCustomMapName,
                                             custom_map_name,
                                             sizeof(custom_map_name),
                                             &state_size,
@@ -315,7 +316,7 @@ namespace BML_ObjectLoad {
             if (s_Hook.imc_bus && isMap && s_TopicCustomMapName != 0) {
                 auto *imcBus = s_Hook.imc_bus;
                 if (imcBus && imcBus->ClearState) {
-                    imcBus->ClearState(s_TopicCustomMapName);
+                    imcBus->ClearState(imcBus->Context, s_TopicCustomMapName);
                 }
             }
         }
@@ -347,9 +348,12 @@ namespace BML_ObjectLoad {
 
         auto *imcBus = s_Hook.imc_bus;
         if (imcBus && imcBus->GetTopicId) {
-            imcBus->GetTopicId(BML_TOPIC_OBJECTLOAD_LOAD_OBJECT, &s_TopicLoadObject);
-            imcBus->GetTopicId(BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT, &s_TopicLoadScript);
-            imcBus->GetTopicId(BML_TOPIC_STATE_CUSTOM_MAP_NAME, &s_TopicCustomMapName);
+            imcBus->GetTopicId(
+                imcBus->Context, BML_TOPIC_OBJECTLOAD_LOAD_OBJECT, &s_TopicLoadObject);
+            imcBus->GetTopicId(
+                imcBus->Context, BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT, &s_TopicLoadScript);
+            imcBus->GetTopicId(
+                imcBus->Context, BML_TOPIC_STATE_CUSTOM_MAP_NAME, &s_TopicCustomMapName);
         }
 
         // Hook ObjectLoad BB
