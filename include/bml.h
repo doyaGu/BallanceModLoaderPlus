@@ -29,25 +29,30 @@
  * @code
  * #include <bml.h>
  * 
- * // Resolve or acquire the runtime surface you need explicitly
+ * // Host bootstrap only: resolve the bootstrap exports you need explicitly
  * PFN_BML_InterfaceAcquire acquire =
  *     (PFN_BML_InterfaceAcquire)bmlGetProcAddress("bmlInterfaceAcquire");
  * @endcode
  * 
- * For dynamic loading (header-only, GLAD-style), use bml_loader.h:
+ * For host-side dynamic loading (header-only, GLAD-style), use bml_loader.h:
  * @code
- * // In ONE .c file:
+ * // In ONE host .c file:
  * #define BML_LOADER_IMPLEMENTATION
  * #include <bml_loader.h>
  * 
- * // In other files:
+ * // In other host files:
  * #include <bml_loader.h>
  * 
  * // Initialize the bootstrap minimum:
  * BML_BOOTSTRAP_LOAD(get_proc_fn);
  *
- * // Acquire builtin interfaces for all non-bootstrap runtime access.
+ * // After runtime creation, bind the runtime-owned service bundle:
+ * const BML_Services *services = bmlRuntimeGetServices(runtime);
+ * bmlBindServices(services);
  * @endcode
+ *
+ * Modules do not use bootstrap proc lookup. They receive `args->services`
+ * during attach and bind those runtime services directly.
  * 
  * @section cpp_usage Usage (C++)
  * 
@@ -60,7 +65,7 @@
  * auto configApi = bml::AcquireInterface<BML_CoreConfigInterface>(
  *     owner, BML_CORE_CONFIG_INTERFACE_ID, 1);
  *
- * bml::Context ctx(ctxApi->GetGlobalContext(), ctxApi.Get());
+ * bml::Context ctx(ctxApi->Context, ctxApi.Get());
  * bml::Config config(mod, configApi.Get());
  * auto value = config.GetString("category", "key").value_or("default");
  * @endcode

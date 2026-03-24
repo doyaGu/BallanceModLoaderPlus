@@ -9,8 +9,8 @@
  * module entry files (e.g. ".as" scripts). Core's ModuleLoader consults
  * registered providers before attempting LoadLibrary.
  *
- * Providers are registered via bmlRegisterRuntimeProvider() (resolved
- * through bmlGetProcAddress). They are NOT registered through
+ * Providers are registered via the runtime host interface. They are NOT
+ * registered through
  * InterfaceRegistry --that system enforces unique IDs per interface_id
  * and cannot support multiple simultaneous providers.
  *
@@ -25,14 +25,18 @@
 #include "bml_types.h"
 #include "bml_errors.h"
 #include "bml_export.h"
+#include "bml_interface.h"
 
 BML_BEGIN_CDECLS
+
+#define BML_CORE_HOST_RUNTIME_INTERFACE_ID "bml.core.host_runtime"
 
 /**
  * @brief Vtable for a module runtime provider.
  *
  * A native module (e.g. BML_Scripting) populates a static instance of
- * this struct and registers it with bmlRegisterRuntimeProvider().
+ * this struct and registers it through the injected host runtime
+ * interface.
  *
  * The struct uses BML_InterfaceHeader-compatible layout (struct_size as
  * first field) for forward compatibility. New methods may be appended;
@@ -57,13 +61,13 @@ typedef struct BML_ModuleRuntimeProvider {
      * and invoke any initialization callbacks.
      *
      * @param mod        Module handle (already created by Core)
-     * @param get_proc   BML API resolver (same as native modules get)
+     * @param services   Runtime-owned service aggregate for the target runtime
      * @param entry_path Resolved absolute path to entry file (UTF-8)
      * @param module_dir Module directory (UTF-8, from manifest)
      * @return BML_RESULT_OK on success
      */
     BML_Result (*AttachModule)(BML_Mod mod,
-                               PFN_BML_GetProcAddress get_proc,
+                               const BML_Services *services,
                                const char *entry_path,
                                const char *module_dir);
 
@@ -114,32 +118,22 @@ typedef struct BML_ModuleRuntimeProvider {
  */
 #define BML_MODULE_RUNTIME_PROVIDER_INIT sizeof(BML_ModuleRuntimeProvider)
 
-/** @brief Function type for bmlRegisterRuntimeProvider */
-typedef BML_Result (*PFN_BML_RegisterRuntimeProvider)(
-    const BML_ModuleRuntimeProvider *provider,
-    const char *owner_id);
+typedef BML_Result (*PFN_BML_RegisterRuntimeProvider)(BML_Context ctx,
+                                                      const BML_ModuleRuntimeProvider *provider,
+                                                      const char *owner_id);
+typedef BML_Result (*PFN_BML_UnregisterRuntimeProvider)(BML_Context ctx,
+                                                        const BML_ModuleRuntimeProvider *provider);
+typedef BML_Result (*PFN_BML_CleanupModuleState)(BML_Context ctx, BML_Mod mod);
 
-/** @brief Function type for bmlUnregisterRuntimeProvider */
-typedef BML_Result (*PFN_BML_UnregisterRuntimeProvider)(
-    const BML_ModuleRuntimeProvider *provider);
-
-/**
- * @brief Reset all kernel-managed state for a module handle.
- *
- * Cleans up IMC subscriptions, timers, hooks, locale data, interface
- * registrations, and lease tracking attributed to the given module.
- * Intended for use by runtime providers during hot-reload: call after
- * DetachModule and before re-AttachModule so the new script version
- * starts with a clean slate.
- *
- * This is the public equivalent of Core's internal
- * CleanupModuleKernelState(). Safe to call multiple times.
- *
- * @param mod Module handle whose kernel state should be reset
- * @return BML_RESULT_OK on success
- * @return BML_RESULT_INVALID_HANDLE if mod is NULL or unrecognized
- */
-typedef BML_Result (*PFN_BML_CleanupModuleState)(BML_Mod mod);
+typedef struct BML_HostRuntimeInterface {
+    BML_InterfaceHeader header;
+    BML_Context Context;
+    PFN_BML_HostRegisterContribution RegisterContribution;
+    PFN_BML_HostUnregisterContribution UnregisterContribution;
+    PFN_BML_RegisterRuntimeProvider RegisterRuntimeProvider;
+    PFN_BML_UnregisterRuntimeProvider UnregisterRuntimeProvider;
+    PFN_BML_CleanupModuleState CleanupModuleState;
+} BML_HostRuntimeInterface;
 
 BML_END_CDECLS
 

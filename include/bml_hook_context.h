@@ -30,7 +30,9 @@
  * @endcode
  */
 
-#include "bml_builtin_interfaces.h"
+#include "bml_export.h"
+#include "bml_logging.h"
+#include "bml_imc.h"
 
 BML_BEGIN_CDECLS
 
@@ -64,8 +66,8 @@ BML_END_CDECLS
 inline BML_HookContext BML_MakeHookContext(const bml::ModuleServices &services,
                                            const char *log_category = nullptr) {
     BML_HookContext ctx = BML_HOOK_CONTEXT_INIT;
-    ctx.imc_bus = services.Builtins().ImcBus;
-    ctx.logging = services.Builtins().Logging;
+    ctx.imc_bus = services.Interfaces().ImcBus;
+    ctx.logging = services.Interfaces().Logging;
     ctx.global_context = services.GlobalContext();
     ctx.owner = services.Handle();
     ctx.log_category = log_category;

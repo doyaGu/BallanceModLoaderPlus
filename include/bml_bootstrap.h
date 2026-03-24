@@ -28,10 +28,16 @@ typedef struct BML_BootstrapConfig {
 
 #define BML_BOOTSTRAP_CONFIG_INIT { sizeof(BML_BootstrapConfig), BML_BOOTSTRAP_FLAG_NONE, NULL, NULL }
 
+typedef BML_BootstrapConfig BML_RuntimeConfig;
+#define BML_RUNTIME_CONFIG_INIT BML_BOOTSTRAP_CONFIG_INIT
+
 BML_END_CDECLS
 
-/* Verify struct_size is at offset 0 for forward-compatibility */
-BML_TYPES_STATIC_ASSERT(BML_TYPES_OFFSETOF(BML_BootstrapConfig, struct_size) == 0,
-                        "BML_BootstrapConfig.struct_size must be at offset 0");
+/* Compile-time assertions */
+#ifdef __cplusplus
+#include <cstddef>
+static_assert(offsetof(BML_BootstrapConfig, struct_size) == 0, "BML_BootstrapConfig.struct_size must be at offset 0");
+static_assert(sizeof(BML_RuntimeConfig) == sizeof(BML_BootstrapConfig), "BML_RuntimeConfig must remain ABI-compatible with BML_BootstrapConfig");
+#endif
 
 #endif /* BML_BOOTSTRAP_H */

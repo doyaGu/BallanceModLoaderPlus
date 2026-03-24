@@ -8,12 +8,27 @@
  * Provides an advisory registry so modules can declare which addresses they
  * hook and the system can detect conflicts. The registry does NOT control
  * MinHook -- it provides visibility, not enforcement.
+ *
+ * Usage:
+ * @code
+ *   BML_HookDesc desc = BML_HOOK_DESC_INIT;
+ *   desc.target_name    = "CKRenderContext::Render";
+ *   desc.target_address = (void *)original_render_addr;
+ *   desc.priority       = 0;
+ *   services->HookRegistry->Register(mod, &desc);
+ *
+ *   // Check for conflicts
+ *   if (desc.flags & BML_HOOK_FLAG_CONFLICT) { handle_conflict(); }
+ * @endcode
  */
 
 #include "bml_types.h"
 #include "bml_errors.h"
+#include "bml_interface.h"
 
 BML_BEGIN_CDECLS
+
+#define BML_CORE_HOOK_REGISTRY_INTERFACE_ID "bml.core.hook_registry"
 
 /* ========================================================================
  * Hook Flags
@@ -70,6 +85,7 @@ typedef void (*BML_HookEnumCallback)(const BML_HookDesc *desc,
  * @param[in] desc Hook descriptor (target_name and target_address required)
  * @return BML_RESULT_OK on success
  * @return BML_RESULT_INVALID_ARGUMENT if desc or target_address is NULL
+ * @threadsafe Yes
  */
 typedef BML_Result (*PFN_BML_HookRegister)(BML_Mod owner, const BML_HookDesc *desc);
 
@@ -79,20 +95,37 @@ typedef BML_Result (*PFN_BML_HookRegister)(BML_Mod owner, const BML_HookDesc *de
  * @param[in] target_address The hooked address to unregister
  * @return BML_RESULT_OK on success
  * @return BML_RESULT_NOT_FOUND if no hook registered by this module at that address
+ * @threadsafe Yes
  */
 typedef BML_Result (*PFN_BML_HookUnregister)(BML_Mod owner, void *target_address);
 
 /**
  * @brief Enumerate all registered hooks.
  *
- * @param[in] callback Called once per registered hook entry
- * @param[in] user_data Opaque pointer passed to callback
+ * @param[in] ctx       Runtime context
+ * @param[in] callback  Called once per registered hook
+ * @param[in] user_data Forwarded to callback
  * @return BML_RESULT_OK on success
- * @return BML_RESULT_INVALID_ARGUMENT if callback is NULL
+ * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_HookEnumerate)(BML_HookEnumCallback callback,
-                                             void *user_data);
+typedef BML_Result (*PFN_BML_HookEnumerate)(BML_Context ctx,
+                                            BML_HookEnumCallback callback,
+                                            void *user_data);
+
+typedef struct BML_CoreHookRegistryInterface {
+    BML_InterfaceHeader header;
+    BML_Context Context;
+    PFN_BML_HookRegister Register;
+    PFN_BML_HookUnregister Unregister;
+    PFN_BML_HookEnumerate Enumerate;
+} BML_CoreHookRegistryInterface;
 
 BML_END_CDECLS
+
+/* Compile-time assertions */
+#ifdef __cplusplus
+#include <cstddef>
+static_assert(offsetof(BML_HookDesc, struct_size) == 0, "BML_HookDesc.struct_size must be at offset 0");
+#endif
 
 #endif /* BML_HOOK_H */

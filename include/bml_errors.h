@@ -29,9 +29,8 @@ typedef int32_t BML_Result;
  * 
  * All BML APIs return BML_Result to indicate success or failure.
  * Use BML_SUCCEEDED() and BML_FAILED() macros for result checking.
- * Use PFN_BML_GetLastError to retrieve detailed error information after
- * resolving it through `bmlGetProcAddress(...)` or acquiring
- * `bml.core.diagnostic`.
+ * Use the runtime-owned diagnostic interface to retrieve detailed error
+ * information after a failed API call.
  * 
  * Error code ranges:
  *   -   0       : Success
@@ -296,12 +295,14 @@ typedef struct BML_BootstrapLoadError {
  *
  * Snapshot of diagnostics produced by the staged bootstrap flow.
  *
- * Query this after bmlDiscoverModules() to inspect manifest and dependency
- * issues, and again after bmlLoadModules() to inspect module load failures.
+ * Query this after `bmlRuntimeDiscoverModules(runtime)` to inspect manifest
+ * and dependency issues, and again after `bmlRuntimeLoadModules(runtime)` to
+ * inspect module load failures.
  *
- * When retrieved through `bmlGetBootstrapDiagnostics()`, the returned pointer
- * refers to a thread-local snapshot. Its nested pointers remain valid until
- * the next `bmlGetBootstrapDiagnostics()` call on the same thread.
+ * When retrieved through `bmlRuntimeGetBootstrapDiagnostics(runtime)`, the returned pointer
+ * refers to a stable runtime-owned snapshot. Its nested pointers remain valid
+ * until diagnostics are refreshed by a later bootstrap/discover/load cycle or
+ * cleared by a subsequent post-shutdown query.
  */
 typedef struct BML_BootstrapDiagnostics {
     const BML_BootstrapManifestError *manifest_errors;  /**< Array of manifest errors */
@@ -343,15 +344,6 @@ typedef struct BML_BootstrapDiagnostics {
  * }
  * @endcode
  */
-typedef BML_Result (*PFN_BML_GetLastError)(BML_ErrorInfo* out_info);
-
-/**
- * @brief Clear the last error information for the current thread
- * 
- * @threadsafe Yes (uses thread-local storage)
- */
-typedef void (*PFN_BML_ClearLastError)(void);
-
 /**
  * @brief Convert a BML_Result code to a human-readable string
  * 
@@ -471,7 +463,7 @@ inline void checked(Fn&& fn, const char* context) {
  * 
  * @return std::optional<BML_ErrorInfo> containing error info, or nullopt if unavailable
  */
-inline std::optional<BML_ErrorInfo> GetLastErrorInfo(PFN_BML_GetLastError get_last_error_fn = nullptr) {
+inline std::optional<BML_ErrorInfo> GetLastErrorInfo(BML_Result (*get_last_error_fn)(BML_ErrorInfo*) = nullptr) {
     if (!get_last_error_fn) return std::nullopt;
     BML_ErrorInfo info = BML_ERROR_INFO_INIT;
     if (get_last_error_fn(&info) == BML_RESULT_OK) {

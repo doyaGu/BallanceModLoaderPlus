@@ -131,6 +131,12 @@ BML_BEGIN_CDECLS
 BML_DECLARE_HANDLE(BML_Context);
 
 /**
+ * @brief Host-owned runtime handle
+ * @threadsafe Host-facing operations are externally serialized by the runtime
+ */
+BML_DECLARE_HANDLE(BML_Runtime);
+
+/**
  * @brief Mod instance handle
  * @threadsafe Read operations are thread-safe
  */
@@ -245,7 +251,8 @@ static inline uint32_t bmlVersionToUint(const BML_Version *version) {
  * @brief Extended error information
  * 
  * Provides detailed error context beyond the basic BML_Result code.
- * Retrieved via PFN_BML_GetLastError after an API call returns an error.
+ * Retrieved via the runtime-owned diagnostic interface after an API call
+ * returns an error.
  */
 typedef struct BML_ErrorInfo {
     size_t struct_size;        /**< sizeof(BML_ErrorInfo), must be first field */
@@ -264,43 +271,11 @@ typedef struct BML_ErrorInfo {
 
 BML_END_CDECLS
 
-/* ========================================================================
- * Compile-Time Assertions for ABI Stability
- * ======================================================================== */
-
-/*
- * These assertions verify critical ABI invariants:
- * 1. struct_size field is always at offset 0 (enables version extension)
- * 2. Enums are always 32-bit (prevents ABI issues across compilers)
- * 
- * Any violation will cause a compile-time error.
- */
-
+/* Compile-time assertions */
 #ifdef __cplusplus
 #include <cstddef>
-#define BML_TYPES_OFFSETOF(type, member) offsetof(type, member)
-#else
-#include <stddef.h>
-#define BML_TYPES_OFFSETOF(type, member) offsetof(type, member)
+static_assert(offsetof(BML_Version, struct_size) == 0, "BML_Version.struct_size must be at offset 0");
+static_assert(offsetof(BML_ErrorInfo, struct_size) == 0, "BML_ErrorInfo.struct_size must be at offset 0");
 #endif
-
-/* C11 / C++11 static_assert */
-#if defined(__cplusplus) && __cplusplus >= 201103L
-    #define BML_TYPES_STATIC_ASSERT(cond, msg) static_assert(cond, msg)
-#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-    #define BML_TYPES_STATIC_ASSERT(cond, msg) _Static_assert(cond, msg)
-#else
-    /* Fallback: typedef trick */
-    #define BML_TYPES_STATIC_ASSERT_CONCAT_(a, b) a##b
-    #define BML_TYPES_STATIC_ASSERT_CONCAT(a, b) BML_TYPES_STATIC_ASSERT_CONCAT_(a, b)
-    #define BML_TYPES_STATIC_ASSERT(cond, msg) \
-        typedef char BML_TYPES_STATIC_ASSERT_CONCAT(bml_types_assert_, __LINE__)[(cond) ? 1 : -1]
-#endif
-
-/* Verify struct_size is at offset 0 for all extensible structures */
-BML_TYPES_STATIC_ASSERT(BML_TYPES_OFFSETOF(BML_Version, struct_size) == 0,
-    "BML_Version.struct_size must be at offset 0");
-BML_TYPES_STATIC_ASSERT(BML_TYPES_OFFSETOF(BML_ErrorInfo, struct_size) == 0,
-    "BML_ErrorInfo.struct_size must be at offset 0");
 
 #endif /* BML_TYPES_H */

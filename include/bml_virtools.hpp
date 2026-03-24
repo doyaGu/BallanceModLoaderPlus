@@ -34,7 +34,7 @@ namespace virtools {
 
     template <typename T>
     inline T *GetUserData(const ModuleServices &svc, const char *key) {
-        const auto *ctx = svc.Builtins().Context;
+        const auto *ctx = svc.Interfaces().Context;
         if (!ctx || !ctx->GetUserData) return nullptr;
         void *value = nullptr;
         if (ctx->GetUserData(svc.GlobalContext(), key, &value) != BML_RESULT_OK) {

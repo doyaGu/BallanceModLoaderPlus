@@ -14,14 +14,17 @@
  *
  * Dots in key names are literal (no nested table interpretation).
  *
- * Resolve these function pointers through `bmlGetProcAddress(...)` or
- * acquire `bml.core.locale` in module code.
+ * Module code should use the injected `bml.core.locale` runtime interface.
+ * Host code may resolve the raw exports explicitly if it owns the runtime.
  */
 
 #include "bml_types.h"
 #include "bml_errors.h"
+#include "bml_interface.h"
 
 BML_BEGIN_CDECLS
+
+#define BML_CORE_LOCALE_INTERFACE_ID "bml.core.locale"
 
 /** @brief Opaque handle to a module's bound string table (fast-path lookup). */
 typedef const void *BML_LocaleTable;
@@ -41,6 +44,7 @@ typedef const void *BML_LocaleTable;
  * @return BML_RESULT_OK on success
  * @return BML_RESULT_NOT_FOUND if no locale file found
  * @return BML_RESULT_INVALID_CONTEXT if owner is NULL or invalid
+ * @threadsafe No (setup-phase only)
  */
 typedef BML_Result (*PFN_BML_LocaleLoad)(BML_Mod owner, const char *locale_code);
 
@@ -52,6 +56,7 @@ typedef BML_Result (*PFN_BML_LocaleLoad)(BML_Mod owner, const char *locale_code)
  *         The returned pointer is valid until the module's locale data
  *         is reloaded or the module is detached.
  * @return NULL if key is NULL
+ * @threadsafe Yes (read-only after init)
  */
 typedef const char *(*PFN_BML_LocaleGet)(BML_Mod owner, const char *key);
 
@@ -64,8 +69,9 @@ typedef const char *(*PFN_BML_LocaleGet)(BML_Mod owner, const char *key);
  * @param language_code  Language code (e.g. "en", "zh-CN"). Must not be NULL.
  * @return BML_RESULT_OK on success
  * @return BML_RESULT_INVALID_ARGUMENT if language_code is NULL
+ * @threadsafe No (call from main thread)
  */
-typedef BML_Result (*PFN_BML_LocaleSetLanguage)(const char *language_code);
+typedef BML_Result (*PFN_BML_LocaleSetLanguage)(BML_Context ctx, const char *language_code);
 
 /**
  * @brief Get the active language code.
@@ -74,8 +80,9 @@ typedef BML_Result (*PFN_BML_LocaleSetLanguage)(const char *language_code);
  *                  is valid until the next SetLanguage call.
  * @return BML_RESULT_OK on success
  * @return BML_RESULT_INVALID_ARGUMENT if out_code is NULL
+ * @threadsafe Yes (read-only after init)
  */
-typedef BML_Result (*PFN_BML_LocaleGetLanguage)(const char **out_code);
+typedef BML_Result (*PFN_BML_LocaleGetLanguage)(BML_Context ctx, const char **out_code);
 
 /* ========================================================================
  * Fast-Path Lookup (zero allocation, no mutex, no module resolution)
@@ -91,6 +98,7 @@ typedef BML_Result (*PFN_BML_LocaleGetLanguage)(const char **out_code);
  *
  * @param[out] out_table  Receives the table handle (NULL if no locale loaded)
  * @return BML_RESULT_OK on success
+ * @threadsafe No (setup-phase only)
  */
 typedef BML_Result (*PFN_BML_LocaleBindTable)(BML_Mod owner, BML_LocaleTable *out_table);
 
@@ -104,8 +112,22 @@ typedef BML_Result (*PFN_BML_LocaleBindTable)(BML_Mod owner, BML_LocaleTable *ou
  * @param table  Table handle from LocaleBindTable
  * @param key    String key
  * @return Localized string, or the key itself if not found. NULL if key is NULL.
+ * @threadsafe Yes (read-only after init)
  */
-typedef const char *(*PFN_BML_LocaleLookup)(BML_LocaleTable table, const char *key);
+typedef const char *(*PFN_BML_LocaleLookup)(BML_Context ctx,
+                                            BML_LocaleTable table,
+                                            const char *key);
+
+typedef struct BML_CoreLocaleInterface {
+    BML_InterfaceHeader header;
+    BML_Context Context;
+    PFN_BML_LocaleLoad Load;
+    PFN_BML_LocaleSetLanguage SetLanguage;
+    PFN_BML_LocaleGetLanguage GetLanguage;
+    PFN_BML_LocaleGet Get;
+    PFN_BML_LocaleBindTable BindTable;
+    PFN_BML_LocaleLookup Lookup;
+} BML_CoreLocaleInterface;
 
 BML_END_CDECLS
 

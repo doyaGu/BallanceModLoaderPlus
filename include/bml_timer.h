@@ -5,10 +5,11 @@
  * @file bml_timer.h
  * @brief Timer and deferred execution API
  *
- * Timer APIs are runtime services. Resolve these function pointers through
- * `bmlGetProcAddress(...)` or acquire `bml.core.timer` in module code.
+ * Timer APIs are runtime services. Module code should use the injected
+ * `bml.core.timer` runtime interface. Host code may resolve the raw exports
+ * explicitly if it owns the runtime.
  *
- * All timers fire on the main thread during `bmlUpdate()`, so callbacks
+ * All timers fire on the main thread during `bmlRuntimeUpdate(runtime)`, so callbacks
  * can safely access CK2 APIs without synchronization.
  *
  * Timers owned by a module are automatically cancelled when the module
@@ -17,8 +18,11 @@
 
 #include "bml_types.h"
 #include "bml_errors.h"
+#include "bml_interface.h"
 
 BML_BEGIN_CDECLS
+
+#define BML_CORE_TIMER_INTERFACE_ID "bml.core.timer"
 
 /** @brief Opaque timer handle */
 typedef struct BML_Timer_T *BML_Timer;
@@ -30,7 +34,7 @@ typedef struct BML_Timer_T *BML_Timer;
  * @param timer     Timer handle that fired
  * @param user_data User-provided context from schedule call
  *
- * @note Called on the main thread during bmlUpdate().
+ * @note Called on the main thread during the host runtime update pump.
  */
 typedef void (*BML_TimerCallback)(BML_Context ctx,
                                   BML_Timer timer,
@@ -77,7 +81,7 @@ typedef BML_Result (*PFN_BML_TimerScheduleRepeat)(
 /**
  * @brief Schedule a frame-counted timer.
  *
- * The callback fires once after `frame_count` calls to bmlUpdate(),
+ * The callback fires once after `frame_count` update ticks,
  * then the timer is automatically cancelled.
  *
  * @param frame_count Number of update frames to wait (0 = fire on next update)
@@ -125,6 +129,37 @@ typedef BML_Result (*PFN_BML_TimerIsActive)(BML_Mod owner,
  */
 typedef BML_Result (*PFN_BML_TimerCancelAll)(BML_Mod owner);
 
+/**
+ * @brief Reserved options struct for future timer scheduling extensions.
+ *
+ * Not yet consumed by any API. Defined here so that future ScheduleOnceEx()
+ * or ScheduleRepeatEx() functions can accept it without breaking ABI.
+ */
+typedef struct BML_TimerOptions {
+    size_t struct_size;     /**< sizeof(BML_TimerOptions), must be first */
+    uint32_t priority;      /**< Reserved (0 = default) */
+    uint32_t flags;         /**< Reserved (0) */
+} BML_TimerOptions;
+
+#define BML_TIMER_OPTIONS_INIT { sizeof(BML_TimerOptions), 0, 0 }
+
+typedef struct BML_CoreTimerInterface {
+    BML_InterfaceHeader header;
+    BML_Context Context;
+    PFN_BML_TimerScheduleOnce ScheduleOnce;
+    PFN_BML_TimerScheduleRepeat ScheduleRepeat;
+    PFN_BML_TimerScheduleFrames ScheduleFrames;
+    PFN_BML_TimerCancel Cancel;
+    PFN_BML_TimerIsActive IsActive;
+    PFN_BML_TimerCancelAll CancelAll;
+} BML_CoreTimerInterface;
+
 BML_END_CDECLS
+
+/* Compile-time assertions */
+#ifdef __cplusplus
+#include <cstddef>
+static_assert(offsetof(BML_TimerOptions, struct_size) == 0, "BML_TimerOptions.struct_size must be at offset 0");
+#endif
 
 #endif /* BML_TIMER_H */

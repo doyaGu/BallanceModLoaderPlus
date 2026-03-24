@@ -16,7 +16,7 @@
  * @code
  * #include <bml_virtools.h>
  * 
- * // Get CKContext from BML context via the builtin context interface
+ * // Get CKContext from BML context via the runtime context interface
  * CKContext* ck = (CKContext*)bmlVirtoolsGetCKContext(ctx, context_api);
  * if (ck) {
  *     // Use CKContext...
@@ -37,7 +37,7 @@
 #define BML_VIRTOOLS_H
 
 #include "bml_types.h"
-#include "bml_builtin_interfaces.h"
+#include "bml_core.h"
 
 BML_BEGIN_CDECLS
 

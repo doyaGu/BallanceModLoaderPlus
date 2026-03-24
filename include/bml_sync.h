@@ -17,9 +17,12 @@
 
 #include "bml_types.h"
 #include "bml_errors.h"
+#include "bml_interface.h"
 #include "bml_version.h"
 
 BML_BEGIN_CDECLS
+
+#define BML_CORE_SYNC_INTERFACE_ID "bml.core.sync"
 
 /* ========== Timeout Constants ========== */
 
@@ -81,7 +84,7 @@ BML_DECLARE_HANDLE(BML_TlsKey);
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_MutexCreate)(BML_Mutex *out_mutex);
+typedef BML_Result (*PFN_BML_MutexCreate)(BML_Context ctx, BML_Mod owner, BML_Mutex *out_mutex);
 
 /**
  * @brief Destroy a mutex
@@ -93,7 +96,7 @@ typedef BML_Result (*PFN_BML_MutexCreate)(BML_Mutex *out_mutex);
  * @warning Destroying a locked mutex is undefined behavior
  * @note Passing NULL handle is a safe no-op.
  */
-typedef void (*PFN_BML_MutexDestroy)(BML_Mutex mutex);
+typedef void (*PFN_BML_MutexDestroy)(BML_Context ctx, BML_Mutex mutex);
 
 /**
  * @brief Lock a mutex (blocking)
@@ -106,7 +109,7 @@ typedef void (*PFN_BML_MutexDestroy)(BML_Mutex mutex);
  * @note Blocks until mutex is acquired
  * @warning Locking the same mutex twice from same thread causes deadlock
  */
-typedef void (*PFN_BML_MutexLock)(BML_Mutex mutex);
+typedef void (*PFN_BML_MutexLock)(BML_Context ctx, BML_Mutex mutex);
 
 /**
  * @brief Try to lock a mutex (non-blocking)
@@ -116,7 +119,7 @@ typedef void (*PFN_BML_MutexLock)(BML_Mutex mutex);
  * 
  * @threadsafe Yes
  */
-typedef BML_Bool (*PFN_BML_MutexTryLock)(BML_Mutex mutex);
+typedef BML_Bool (*PFN_BML_MutexTryLock)(BML_Context ctx, BML_Mutex mutex);
 
 /**
  * @brief Lock a mutex with timeout
@@ -130,7 +133,9 @@ typedef BML_Bool (*PFN_BML_MutexTryLock)(BML_Mutex mutex);
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_MutexLockTimeout)(BML_Mutex mutex, uint32_t timeout_ms);
+typedef BML_Result (*PFN_BML_MutexLockTimeout)(BML_Context ctx,
+                                               BML_Mutex mutex,
+                                               uint32_t timeout_ms);
 
 /**
  * @brief Unlock a mutex
@@ -142,7 +147,7 @@ typedef BML_Result (*PFN_BML_MutexLockTimeout)(BML_Mutex mutex, uint32_t timeout
  * @note Passing NULL handle is a safe no-op.
  * @warning Must be called by the thread that locked the mutex
  */
-typedef void (*PFN_BML_MutexUnlock)(BML_Mutex mutex);
+typedef void (*PFN_BML_MutexUnlock)(BML_Context ctx, BML_Mutex mutex);
 
 /* ========== Read-Write Lock API ========== */
 
@@ -154,7 +159,7 @@ typedef void (*PFN_BML_MutexUnlock)(BML_Mutex mutex);
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_RwLockCreate)(BML_RwLock *out_lock);
+typedef BML_Result (*PFN_BML_RwLockCreate)(BML_Context ctx, BML_Mod owner, BML_RwLock *out_lock);
 
 /**
  * @brief Destroy a read-write lock
@@ -163,7 +168,7 @@ typedef BML_Result (*PFN_BML_RwLockCreate)(BML_RwLock *out_lock);
  * 
  * @threadsafe No
  */
-typedef void (*PFN_BML_RwLockDestroy)(BML_RwLock lock);
+typedef void (*PFN_BML_RwLockDestroy)(BML_Context ctx, BML_RwLock lock);
 
 /**
  * @brief Acquire read lock (shared access)
@@ -175,7 +180,7 @@ typedef void (*PFN_BML_RwLockDestroy)(BML_RwLock lock);
  * @note Multiple readers can hold the lock simultaneously
  * @note Blocks if a writer holds the lock
  */
-typedef void (*PFN_BML_RwLockReadLock)(BML_RwLock lock);
+typedef void (*PFN_BML_RwLockReadLock)(BML_Context ctx, BML_RwLock lock);
 
 /**
  * @brief Try to acquire read lock (non-blocking)
@@ -185,7 +190,7 @@ typedef void (*PFN_BML_RwLockReadLock)(BML_RwLock lock);
  * 
  * @threadsafe Yes
  */
-typedef BML_Bool (*PFN_BML_RwLockTryReadLock)(BML_RwLock lock);
+typedef BML_Bool (*PFN_BML_RwLockTryReadLock)(BML_Context ctx, BML_RwLock lock);
 
 /**
  * @brief Acquire read lock with timeout
@@ -199,7 +204,9 @@ typedef BML_Bool (*PFN_BML_RwLockTryReadLock)(BML_RwLock lock);
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_RwLockReadLockTimeout)(BML_RwLock lock, uint32_t timeout_ms);
+typedef BML_Result (*PFN_BML_RwLockReadLockTimeout)(BML_Context ctx,
+                                                    BML_RwLock lock,
+                                                    uint32_t timeout_ms);
 
 /**
  * @brief Acquire write lock (exclusive access)
@@ -210,7 +217,7 @@ typedef BML_Result (*PFN_BML_RwLockReadLockTimeout)(BML_RwLock lock, uint32_t ti
  * 
  * @note Blocks until all readers and writers release the lock
  */
-typedef void (*PFN_BML_RwLockWriteLock)(BML_RwLock lock);
+typedef void (*PFN_BML_RwLockWriteLock)(BML_Context ctx, BML_RwLock lock);
 
 /**
  * @brief Try to acquire write lock (non-blocking)
@@ -220,7 +227,7 @@ typedef void (*PFN_BML_RwLockWriteLock)(BML_RwLock lock);
  * 
  * @threadsafe Yes
  */
-typedef BML_Bool (*PFN_BML_RwLockTryWriteLock)(BML_RwLock lock);
+typedef BML_Bool (*PFN_BML_RwLockTryWriteLock)(BML_Context ctx, BML_RwLock lock);
 
 /**
  * @brief Acquire write lock with timeout
@@ -234,7 +241,9 @@ typedef BML_Bool (*PFN_BML_RwLockTryWriteLock)(BML_RwLock lock);
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_RwLockWriteLockTimeout)(BML_RwLock lock, uint32_t timeout_ms);
+typedef BML_Result (*PFN_BML_RwLockWriteLockTimeout)(BML_Context ctx,
+                                                     BML_RwLock lock,
+                                                     uint32_t timeout_ms);
 
 /**
  * @brief Release read or write lock (auto-detects lock type)
@@ -246,7 +255,7 @@ typedef BML_Result (*PFN_BML_RwLockWriteLockTimeout)(BML_RwLock lock, uint32_t t
  * @note Uses internal tracking to determine lock type. For explicit control,
  *       prefer bmlRwLockReadUnlock or bmlRwLockWriteUnlock.
  */
-typedef void (*PFN_BML_RwLockUnlock)(BML_RwLock lock);
+typedef void (*PFN_BML_RwLockUnlock)(BML_Context ctx, BML_RwLock lock);
 
 /**
  * @brief Explicitly release a read lock
@@ -257,7 +266,7 @@ typedef void (*PFN_BML_RwLockUnlock)(BML_RwLock lock);
  *
  * @warning Only call this after acquiring via ReadLock/TryReadLock
  */
-typedef void (*PFN_BML_RwLockReadUnlock)(BML_RwLock lock);
+typedef void (*PFN_BML_RwLockReadUnlock)(BML_Context ctx, BML_RwLock lock);
 
 /**
  * @brief Explicitly release a write lock
@@ -268,7 +277,7 @@ typedef void (*PFN_BML_RwLockReadUnlock)(BML_RwLock lock);
  *
  * @warning Only call this after acquiring via WriteLock/TryWriteLock
  */
-typedef void (*PFN_BML_RwLockWriteUnlock)(BML_RwLock lock);
+typedef void (*PFN_BML_RwLockWriteUnlock)(BML_Context ctx, BML_RwLock lock);
 
 /* ========== Atomic Operations ========== */
 
@@ -394,6 +403,8 @@ typedef void *(*PFN_BML_AtomicCompareExchangePtr)(
  * @threadsafe Yes
  */
 typedef BML_Result (*PFN_BML_SemaphoreCreate)(
+    BML_Context ctx,
+    BML_Mod owner,
     uint32_t initial_count,
     uint32_t max_count,
     BML_Semaphore *out_semaphore
@@ -406,7 +417,7 @@ typedef BML_Result (*PFN_BML_SemaphoreCreate)(
  * 
  * @threadsafe No
  */
-typedef void (*PFN_BML_SemaphoreDestroy)(BML_Semaphore semaphore);
+typedef void (*PFN_BML_SemaphoreDestroy)(BML_Context ctx, BML_Semaphore semaphore);
 
 /**
  * @brief Wait on semaphore (decrement count)
@@ -418,7 +429,9 @@ typedef void (*PFN_BML_SemaphoreDestroy)(BML_Semaphore semaphore);
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_SemaphoreWait)(BML_Semaphore semaphore, uint32_t timeout_ms);
+typedef BML_Result (*PFN_BML_SemaphoreWait)(BML_Context ctx,
+                                            BML_Semaphore semaphore,
+                                            uint32_t timeout_ms);
 
 /**
  * @brief Signal semaphore (increment count)
@@ -429,7 +442,9 @@ typedef BML_Result (*PFN_BML_SemaphoreWait)(BML_Semaphore semaphore, uint32_t ti
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_SemaphoreSignal)(BML_Semaphore semaphore, uint32_t count);
+typedef BML_Result (*PFN_BML_SemaphoreSignal)(BML_Context ctx,
+                                              BML_Semaphore semaphore,
+                                              uint32_t count);
 
 /* ========== Thread Local Storage API ========== */
 
@@ -447,7 +462,9 @@ typedef void (*BML_TlsDestructor)(void *value);
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_TlsCreate)(BML_TlsDestructor destructor, BML_TlsKey *out_key);
+typedef BML_Result (*PFN_BML_TlsCreate)(BML_Context ctx,
+                                        BML_TlsDestructor destructor,
+                                        BML_TlsKey *out_key);
 
 /**
  * @brief Destroy a TLS key
@@ -456,7 +473,7 @@ typedef BML_Result (*PFN_BML_TlsCreate)(BML_TlsDestructor destructor, BML_TlsKey
  * 
  * @threadsafe No
  */
-typedef void (*PFN_BML_TlsDestroy)(BML_TlsKey key);
+typedef void (*PFN_BML_TlsDestroy)(BML_Context ctx, BML_TlsKey key);
 
 /**
  * @brief Get thread-local value
@@ -466,7 +483,7 @@ typedef void (*PFN_BML_TlsDestroy)(BML_TlsKey key);
  * 
  * @threadsafe Yes
  */
-typedef void *(*PFN_BML_TlsGet)(BML_TlsKey key);
+typedef void *(*PFN_BML_TlsGet)(BML_Context ctx, BML_TlsKey key);
 
 /**
  * @brief Set thread-local value
@@ -477,7 +494,7 @@ typedef void *(*PFN_BML_TlsGet)(BML_TlsKey key);
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_TlsSet)(BML_TlsKey key, void *value);
+typedef BML_Result (*PFN_BML_TlsSet)(BML_Context ctx, BML_TlsKey key, void *value);
 
 
 /* ========== Condition Variable API ========== */
@@ -491,7 +508,7 @@ typedef BML_Result (*PFN_BML_TlsSet)(BML_TlsKey key, void *value);
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_CondVarCreate)(BML_CondVar *out_condvar);
+typedef BML_Result (*PFN_BML_CondVarCreate)(BML_Context ctx, BML_Mod owner, BML_CondVar *out_condvar);
 
 /**
  * @brief Destroy a condition variable
@@ -500,7 +517,7 @@ typedef BML_Result (*PFN_BML_CondVarCreate)(BML_CondVar *out_condvar);
  * 
  * @threadsafe No (ensure no thread is waiting)
  */
-typedef void (*PFN_BML_CondVarDestroy)(BML_CondVar condvar);
+typedef void (*PFN_BML_CondVarDestroy)(BML_Context ctx, BML_CondVar condvar);
 
 /**
  * @brief Wait on a condition variable
@@ -516,7 +533,7 @@ typedef void (*PFN_BML_CondVarDestroy)(BML_CondVar condvar);
  * 
  * @warning Spurious wakeups may occur; always check the condition in a loop
  */
-typedef BML_Result (*PFN_BML_CondVarWait)(BML_CondVar condvar, BML_Mutex mutex);
+typedef BML_Result (*PFN_BML_CondVarWait)(BML_Context ctx, BML_CondVar condvar, BML_Mutex mutex);
 
 /**
  * @brief Wait on a condition variable with timeout
@@ -529,7 +546,10 @@ typedef BML_Result (*PFN_BML_CondVarWait)(BML_CondVar condvar, BML_Mutex mutex);
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_CondVarWaitTimeout)(BML_CondVar condvar, BML_Mutex mutex, uint32_t timeout_ms);
+typedef BML_Result (*PFN_BML_CondVarWaitTimeout)(BML_Context ctx,
+                                                 BML_CondVar condvar,
+                                                 BML_Mutex mutex,
+                                                 uint32_t timeout_ms);
 
 /**
  * @brief Signal one waiting thread
@@ -539,7 +559,7 @@ typedef BML_Result (*PFN_BML_CondVarWaitTimeout)(BML_CondVar condvar, BML_Mutex 
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_CondVarSignal)(BML_CondVar condvar);
+typedef BML_Result (*PFN_BML_CondVarSignal)(BML_Context ctx, BML_CondVar condvar);
 
 /**
  * @brief Signal all waiting threads
@@ -549,7 +569,7 @@ typedef BML_Result (*PFN_BML_CondVarSignal)(BML_CondVar condvar);
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_CondVarBroadcast)(BML_CondVar condvar);
+typedef BML_Result (*PFN_BML_CondVarBroadcast)(BML_Context ctx, BML_CondVar condvar);
 
 /* ========== Spin Lock API ========== */
 
@@ -566,7 +586,7 @@ typedef BML_Result (*PFN_BML_CondVarBroadcast)(BML_CondVar condvar);
  * 
  * @warning Do not use for operations that may block or take significant time
  */
-typedef BML_Result (*PFN_BML_SpinLockCreate)(BML_SpinLock *out_lock);
+typedef BML_Result (*PFN_BML_SpinLockCreate)(BML_Context ctx, BML_Mod owner, BML_SpinLock *out_lock);
 
 /**
  * @brief Destroy a spin lock
@@ -575,7 +595,7 @@ typedef BML_Result (*PFN_BML_SpinLockCreate)(BML_SpinLock *out_lock);
  * 
  * @threadsafe No
  */
-typedef void (*PFN_BML_SpinLockDestroy)(BML_SpinLock lock);
+typedef void (*PFN_BML_SpinLockDestroy)(BML_Context ctx, BML_SpinLock lock);
 
 /**
  * @brief Acquire a spin lock (busy-wait)
@@ -584,7 +604,7 @@ typedef void (*PFN_BML_SpinLockDestroy)(BML_SpinLock lock);
  * 
  * @threadsafe Yes
  */
-typedef void (*PFN_BML_SpinLockLock)(BML_SpinLock lock);
+typedef void (*PFN_BML_SpinLockLock)(BML_Context ctx, BML_SpinLock lock);
 
 /**
  * @brief Try to acquire a spin lock (non-blocking)
@@ -594,7 +614,7 @@ typedef void (*PFN_BML_SpinLockLock)(BML_SpinLock lock);
  * 
  * @threadsafe Yes
  */
-typedef BML_Bool (*PFN_BML_SpinLockTryLock)(BML_SpinLock lock);
+typedef BML_Bool (*PFN_BML_SpinLockTryLock)(BML_Context ctx, BML_SpinLock lock);
 
 /**
  * @brief Release a spin lock
@@ -603,7 +623,56 @@ typedef BML_Bool (*PFN_BML_SpinLockTryLock)(BML_SpinLock lock);
  * 
  * @threadsafe Yes
  */
-typedef void (*PFN_BML_SpinLockUnlock)(BML_SpinLock lock);
+typedef void (*PFN_BML_SpinLockUnlock)(BML_Context ctx, BML_SpinLock lock);
+
+typedef struct BML_CoreSyncInterface {
+    BML_InterfaceHeader header;
+    BML_Context Context;
+    PFN_BML_MutexCreate MutexCreate;
+    PFN_BML_MutexDestroy MutexDestroy;
+    PFN_BML_MutexLock MutexLock;
+    PFN_BML_MutexTryLock MutexTryLock;
+    PFN_BML_MutexLockTimeout MutexLockTimeout;
+    PFN_BML_MutexUnlock MutexUnlock;
+    PFN_BML_RwLockCreate RwLockCreate;
+    PFN_BML_RwLockDestroy RwLockDestroy;
+    PFN_BML_RwLockReadLock RwLockReadLock;
+    PFN_BML_RwLockTryReadLock RwLockTryReadLock;
+    PFN_BML_RwLockReadLockTimeout RwLockReadLockTimeout;
+    PFN_BML_RwLockWriteLock RwLockWriteLock;
+    PFN_BML_RwLockTryWriteLock RwLockTryWriteLock;
+    PFN_BML_RwLockWriteLockTimeout RwLockWriteLockTimeout;
+    PFN_BML_RwLockUnlock RwLockUnlock;
+    PFN_BML_RwLockReadUnlock RwLockReadUnlock;
+    PFN_BML_RwLockWriteUnlock RwLockWriteUnlock;
+    PFN_BML_AtomicIncrement32 AtomicIncrement32;
+    PFN_BML_AtomicDecrement32 AtomicDecrement32;
+    PFN_BML_AtomicAdd32 AtomicAdd32;
+    PFN_BML_AtomicCompareExchange32 AtomicCompareExchange32;
+    PFN_BML_AtomicExchange32 AtomicExchange32;
+    PFN_BML_AtomicLoadPtr AtomicLoadPtr;
+    PFN_BML_AtomicStorePtr AtomicStorePtr;
+    PFN_BML_AtomicCompareExchangePtr AtomicCompareExchangePtr;
+    PFN_BML_SemaphoreCreate SemaphoreCreate;
+    PFN_BML_SemaphoreDestroy SemaphoreDestroy;
+    PFN_BML_SemaphoreWait SemaphoreWait;
+    PFN_BML_SemaphoreSignal SemaphoreSignal;
+    PFN_BML_TlsCreate TlsCreate;
+    PFN_BML_TlsDestroy TlsDestroy;
+    PFN_BML_TlsGet TlsGet;
+    PFN_BML_TlsSet TlsSet;
+    PFN_BML_CondVarCreate CondVarCreate;
+    PFN_BML_CondVarDestroy CondVarDestroy;
+    PFN_BML_CondVarWait CondVarWait;
+    PFN_BML_CondVarWaitTimeout CondVarWaitTimeout;
+    PFN_BML_CondVarSignal CondVarSignal;
+    PFN_BML_CondVarBroadcast CondVarBroadcast;
+    PFN_BML_SpinLockCreate SpinLockCreate;
+    PFN_BML_SpinLockDestroy SpinLockDestroy;
+    PFN_BML_SpinLockLock SpinLockLock;
+    PFN_BML_SpinLockTryLock SpinLockTryLock;
+    PFN_BML_SpinLockUnlock SpinLockUnlock;
+} BML_CoreSyncInterface;
 
 BML_END_CDECLS
 

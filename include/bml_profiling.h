@@ -8,16 +8,19 @@
  * Provides tools for performance analysis compatible with external profilers
  * like Tracy, Chrome Tracing, and RenderDoc.
  *
- * Profiling proc pointers are runtime services. Resolve them through
- * `bmlGetProcAddress(...)`; the bootstrap loader does not publish profiling
- * globals.
+ * Profiling APIs are runtime services. Module code should use the injected
+ * `bml.core.profiling` runtime interface. Host bootstrap does not publish
+ * profiling globals.
  */
 
 #include "bml_types.h"
 #include "bml_errors.h"
+#include "bml_interface.h"
 #include "bml_version.h"
 
 BML_BEGIN_CDECLS
+
+#define BML_CORE_PROFILING_INTERFACE_ID "bml.core.profiling"
 
 /* ========== Trace Events ========== */
 
@@ -40,7 +43,7 @@ BML_BEGIN_CDECLS
  * }
  * @endcode
  */
-typedef void (*PFN_BML_TraceBegin)(const char *name, const char *category);
+typedef void (*PFN_BML_TraceBegin)(BML_Context ctx, const char *name, const char *category);
 
 /**
  * @brief Mark the end of a timed scope
@@ -49,7 +52,7 @@ typedef void (*PFN_BML_TraceBegin)(const char *name, const char *category);
  * 
  * @note Must be paired with bmlTraceBegin()
  */
-typedef void (*PFN_BML_TraceEnd)(void);
+typedef void (*PFN_BML_TraceEnd)(BML_Context ctx);
 
 /**
  * @brief Mark an instantaneous event
@@ -61,7 +64,7 @@ typedef void (*PFN_BML_TraceEnd)(void);
  * 
  * @note Used for events with no duration (e.g., "player spawned")
  */
-typedef void (*PFN_BML_TraceInstant)(const char *name, const char *category);
+typedef void (*PFN_BML_TraceInstant)(BML_Context ctx, const char *name, const char *category);
 
 /**
  * @brief Set the name of the current thread
@@ -72,7 +75,7 @@ typedef void (*PFN_BML_TraceInstant)(const char *name, const char *category);
  * 
  * @note Helps identify threads in profiler UI
  */
-typedef void (*PFN_BML_TraceSetThreadName)(const char *name);
+typedef void (*PFN_BML_TraceSetThreadName)(BML_Context ctx, const char *name);
 
 /**
  * @brief Emit a counter value
@@ -89,7 +92,7 @@ typedef void (*PFN_BML_TraceSetThreadName)(const char *name);
  * traceCounter("MemoryMB", allocated_bytes / (1024*1024));
  * @endcode
  */
-typedef void (*PFN_BML_TraceCounter)(const char *name, int64_t value);
+typedef void (*PFN_BML_TraceCounter)(BML_Context ctx, const char *name, int64_t value);
 
 /**
  * @brief Mark a frame boundary
@@ -98,7 +101,7 @@ typedef void (*PFN_BML_TraceCounter)(const char *name, int64_t value);
  * 
  * @note Call once per frame for frame-based profiling
  */
-typedef void (*PFN_BML_TraceFrameMark)(void);
+typedef void (*PFN_BML_TraceFrameMark)(BML_Context ctx);
 
 /* ========== Performance Counters ========== */
 
@@ -110,7 +113,7 @@ typedef void (*PFN_BML_TraceFrameMark)(void);
  * 
  * @threadsafe Yes
  */
-typedef uint64_t (*PFN_BML_GetApiCallCount)(const char *api_name);
+typedef uint64_t (*PFN_BML_GetApiCallCount)(BML_Context ctx, const char *api_name);
 
 /**
  * @brief Get total bytes allocated
@@ -119,7 +122,7 @@ typedef uint64_t (*PFN_BML_GetApiCallCount)(const char *api_name);
  * 
  * @threadsafe Yes
  */
-typedef uint64_t (*PFN_BML_GetTotalAllocBytes)(void);
+typedef uint64_t (*PFN_BML_GetTotalAllocBytes)(BML_Context ctx);
 
 /**
  * @brief Get high-resolution timestamp
@@ -137,7 +140,7 @@ typedef uint64_t (*PFN_BML_GetTotalAllocBytes)(void);
  * printf("Elapsed: %llu ns\n", end - start);
  * @endcode
  */
-typedef uint64_t (*PFN_BML_GetTimestampNs)(void);
+typedef uint64_t (*PFN_BML_GetTimestampNs)(BML_Context ctx);
 
 /**
  * @brief Get CPU frequency estimate
@@ -146,7 +149,7 @@ typedef uint64_t (*PFN_BML_GetTimestampNs)(void);
  * 
  * @threadsafe Yes
  */
-typedef uint64_t (*PFN_BML_GetCpuFrequency)(void);
+typedef uint64_t (*PFN_BML_GetCpuFrequency)(BML_Context ctx);
 
 /* ========== External Profiler Integration ========== */
 
@@ -169,7 +172,7 @@ typedef enum BML_ProfilerBackend {
  * 
  * @threadsafe Yes
  */
-typedef BML_ProfilerBackend (*PFN_BML_GetProfilerBackend)(void);
+typedef BML_ProfilerBackend (*PFN_BML_GetProfilerBackend)(BML_Context ctx);
 
 /**
  * @brief Enable/disable profiling
@@ -181,7 +184,7 @@ typedef BML_ProfilerBackend (*PFN_BML_GetProfilerBackend)(void);
  * 
  * @note When disabled, trace calls become no-ops
  */
-typedef BML_Result (*PFN_BML_SetProfilingEnabled)(BML_Bool enable);
+typedef BML_Result (*PFN_BML_SetProfilingEnabled)(BML_Context ctx, BML_Bool enable);
 
 /**
  * @brief Check if profiling is enabled
@@ -190,7 +193,7 @@ typedef BML_Result (*PFN_BML_SetProfilingEnabled)(BML_Bool enable);
  * 
  * @threadsafe Yes
  */
-typedef BML_Bool (*PFN_BML_IsProfilingEnabled)(void);
+typedef BML_Bool (*PFN_BML_IsProfilingEnabled)(BML_Context ctx);
 
 /**
  * @brief Flush profiling data to disk
@@ -202,7 +205,7 @@ typedef BML_Bool (*PFN_BML_IsProfilingEnabled)(void);
  * 
  * @note For Chrome Tracing backend, writes JSON file
  */
-typedef BML_Result (*PFN_BML_FlushProfilingData)(const char *filename);
+typedef BML_Result (*PFN_BML_FlushProfilingData)(BML_Context ctx, const char *filename);
 
 /* ========== Profiling Statistics ========== */
 
@@ -232,9 +235,35 @@ typedef struct BML_ProfilingStats {
  * 
  * @threadsafe Yes
  */
-typedef BML_Result (*PFN_BML_GetProfilingStats)(BML_ProfilingStats *out_stats);
+typedef BML_Result (*PFN_BML_GetProfilingStats)(BML_Context ctx, BML_ProfilingStats *out_stats);
+
+typedef struct BML_CoreProfilingInterface {
+    BML_InterfaceHeader header;
+    BML_Context Context;
+    PFN_BML_TraceBegin TraceBegin;
+    PFN_BML_TraceEnd TraceEnd;
+    PFN_BML_TraceInstant TraceInstant;
+    PFN_BML_TraceSetThreadName TraceSetThreadName;
+    PFN_BML_TraceCounter TraceCounter;
+    PFN_BML_TraceFrameMark TraceFrameMark;
+    PFN_BML_GetApiCallCount GetApiCallCount;
+    PFN_BML_GetTotalAllocBytes GetTotalAllocBytes;
+    PFN_BML_GetTimestampNs GetTimestampNs;
+    PFN_BML_GetCpuFrequency GetCpuFrequency;
+    PFN_BML_GetProfilerBackend GetProfilerBackend;
+    PFN_BML_SetProfilingEnabled SetProfilingEnabled;
+    PFN_BML_IsProfilingEnabled IsProfilingEnabled;
+    PFN_BML_FlushProfilingData FlushProfilingData;
+    PFN_BML_GetProfilingStats GetProfilingStats;
+} BML_CoreProfilingInterface;
 
 
 BML_END_CDECLS
+
+/* Compile-time assertions */
+#ifdef __cplusplus
+#include <cstddef>
+static_assert(offsetof(BML_ProfilingStats, struct_size) == 0, "BML_ProfilingStats.struct_size must be at offset 0");
+#endif
 
 #endif /* BML_PROFILING_H */

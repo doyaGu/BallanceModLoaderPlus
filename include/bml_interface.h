@@ -10,6 +10,9 @@ BML_BEGIN_CDECLS
 BML_DECLARE_HANDLE(BML_InterfaceLease);
 BML_DECLARE_HANDLE(BML_InterfaceRegistration);
 
+#define BML_CORE_DIAGNOSTIC_INTERFACE_ID       "bml.core.diagnostic"
+#define BML_CORE_INTERFACE_CONTROL_INTERFACE_ID "bml.core.interface_control"
+
 /* ========================================================================
  * Interface Vtable Header
  * ======================================================================== */
@@ -50,6 +53,64 @@ typedef struct BML_InterfaceHeader {
  */
 #define BML_IFACE_HEADER(type, id, maj, min) \
     { sizeof(type), (maj), (min), (id) }
+
+/**
+ * @brief Check if a vtable has a specific member (forward-compatible field check).
+ *
+ * Returns true if the vtable is non-null, large enough to contain the member,
+ * and the member's function pointer is non-null.
+ *
+ * @code
+ * if (BML_IFACE_HAS(rpcIface, BML_ImcRpcInterface, CallRpcEx)) {
+ *     rpcIface->CallRpcEx(...);
+ * }
+ * @endcode
+ */
+#ifdef __cplusplus
+#define BML_IFACE_HAS(iface, type, member) \
+    ((iface) != nullptr && \
+     (iface)->header.struct_size >= offsetof(type, member) + sizeof(((type *)0)->member) && \
+     (iface)->member != nullptr)
+#endif
+
+/* ========================================================================
+ * Vtable Design Convention
+ * ========================================================================
+ *
+ * Every interface vtable struct follows a uniform layout:
+ *
+ *   typedef struct BML_Core*Interface {
+ *       BML_InterfaceHeader header;      // [Mandatory] first field
+ *       BML_Context Context;             // [Mandatory] second field
+ *       PFN_... FunctionPointers;        // subsystem-specific
+ *   } BML_Core*Interface;
+ *
+ * STRUCTURAL INVARIANT:
+ *   All vtables include `BML_Context Context` as the second field for
+ *   consistency, future-proofing, and lifetime validation. The caller
+ *   passes `interface->Context` to functions that require it.
+ *
+ * FIRST PARAMETER CONVENTION for PFN function pointers:
+ *   Per-mod operation  -> BML_Mod owner    (Config.Get, Timer.Schedule)
+ *   Global operation   -> BML_Context ctx  (MutexLock, TraceBegin)
+ *   Handle operation   -> the handle       (Unsubscribe, FutureCancel)
+ *   Stateless          -> no identity      (AtomicIncrement32)
+ *
+ *   A function MUST NOT take both BML_Mod and BML_Context.
+ *   Global resource creation with ownership tracking uses:
+ *       (BML_Context ctx, BML_Mod owner, ...)
+ *
+ * CALLBACK CONVENTION:
+ *   Framework-delivered callbacks receive BML_Context ctx as first param
+ *   and void *user_data as last param. Sync enumerators and destructors
+ *   may omit ctx.
+ *
+ * EXTENSION RULES:
+ *   - Append new PFN fields at the end only; never insert or delete.
+ *   - Consumers detect new fields via header.struct_size.
+ *   - New PFN fields may be NULL; callers must check before calling.
+ *
+ * ======================================================================== */
 
 /* ========================================================================
  * Key-Value Metadata
@@ -145,22 +206,29 @@ typedef void (*PFN_BML_InterfaceRuntimeEnumerator)(const BML_InterfaceRuntimeDes
                                                    void *user_data);
 
 /* Diagnostic reflection function pointer types */
-typedef BML_Bool (*PFN_BML_DiagGetInterfaceDescriptor)(const char *interface_id,
-                                                        BML_InterfaceRuntimeDesc *out_desc);
-typedef void (*PFN_BML_DiagEnumerateInterfaces)(PFN_BML_InterfaceRuntimeEnumerator callback,
-                                                 void *user_data,
-                                                 uint64_t required_flags_mask);
-typedef BML_Bool (*PFN_BML_DiagInterfaceExists)(const char *interface_id);
-typedef BML_Bool (*PFN_BML_DiagIsInterfaceCompatible)(const char *interface_id,
-                                                       const BML_Version *required_abi);
-typedef void (*PFN_BML_DiagEnumerateByProvider)(const char *provider_id,
-                                                 PFN_BML_InterfaceRuntimeEnumerator callback,
-                                                 void *user_data);
-typedef void (*PFN_BML_DiagEnumerateByCapability)(uint64_t required_caps,
-                                                   PFN_BML_InterfaceRuntimeEnumerator callback,
-                                                   void *user_data);
-typedef uint32_t (*PFN_BML_DiagGetInterfaceCount)(void);
-typedef uint32_t (*PFN_BML_DiagGetLeaseCount)(const char *interface_id);
+typedef BML_Result (*PFN_BML_GetLastError)(BML_Context ctx, BML_ErrorInfo *out_error);
+typedef void (*PFN_BML_ClearLastError)(BML_Context ctx);
+typedef BML_Bool (*PFN_BML_DiagGetInterfaceDescriptor)(BML_Context ctx,
+                                                       const char *interface_id,
+                                                       BML_InterfaceRuntimeDesc *out_desc);
+typedef void (*PFN_BML_DiagEnumerateInterfaces)(BML_Context ctx,
+                                                PFN_BML_InterfaceRuntimeEnumerator callback,
+                                                void *user_data,
+                                                uint64_t required_flags_mask);
+typedef BML_Bool (*PFN_BML_DiagInterfaceExists)(BML_Context ctx, const char *interface_id);
+typedef BML_Bool (*PFN_BML_DiagIsInterfaceCompatible)(BML_Context ctx,
+                                                      const char *interface_id,
+                                                      const BML_Version *required_abi);
+typedef void (*PFN_BML_DiagEnumerateByProvider)(BML_Context ctx,
+                                                const char *provider_id,
+                                                PFN_BML_InterfaceRuntimeEnumerator callback,
+                                                void *user_data);
+typedef void (*PFN_BML_DiagEnumerateByCapability)(BML_Context ctx,
+                                                  uint64_t required_caps,
+                                                  PFN_BML_InterfaceRuntimeEnumerator callback,
+                                                  void *user_data);
+typedef uint32_t (*PFN_BML_DiagGetInterfaceCount)(BML_Context ctx);
+typedef uint32_t (*PFN_BML_DiagGetLeaseCount)(BML_Context ctx, const char *interface_id);
 
 /* Host runtime contribution function pointer types */
 typedef BML_Result (*PFN_BML_HostRegisterContribution)(BML_Mod provider_mod,
@@ -190,9 +258,44 @@ typedef BML_Result (*PFN_BML_InterfaceRelease)(BML_InterfaceLease lease);
 typedef BML_Result (*PFN_BML_InterfaceUnregister)(BML_Mod owner,
                                                   const char *interface_id);
 
+typedef struct BML_CoreDiagnosticInterface {
+    BML_InterfaceHeader header;
+    BML_Context Context;
+    PFN_BML_GetLastError GetLastError;
+    PFN_BML_ClearLastError ClearLastError;
+    PFN_BML_GetErrorString GetErrorString;
+    PFN_BML_DiagInterfaceExists InterfaceExists;
+    PFN_BML_DiagGetInterfaceDescriptor GetInterfaceDescriptor;
+    PFN_BML_DiagIsInterfaceCompatible IsInterfaceCompatible;
+    PFN_BML_DiagGetInterfaceCount GetInterfaceCount;
+    PFN_BML_DiagGetLeaseCount GetLeaseCount;
+    PFN_BML_DiagEnumerateInterfaces EnumerateInterfaces;
+    PFN_BML_DiagEnumerateByProvider EnumerateByProvider;
+    PFN_BML_DiagEnumerateByCapability EnumerateByCapability;
+} BML_CoreDiagnosticInterface;
+
+typedef struct BML_CoreInterfaceControlInterface {
+    BML_InterfaceHeader header;
+    BML_Context Context;
+    PFN_BML_InterfaceRegister Register;
+    PFN_BML_InterfaceAcquire Acquire;
+    PFN_BML_InterfaceRelease Release;
+    PFN_BML_InterfaceUnregister Unregister;
+} BML_CoreInterfaceControlInterface;
+
+extern PFN_BML_InterfaceRegister bmlInterfaceRegister;
 extern PFN_BML_InterfaceAcquire bmlInterfaceAcquire;
 extern PFN_BML_InterfaceRelease bmlInterfaceRelease;
+extern PFN_BML_InterfaceUnregister bmlInterfaceUnregister;
 
 BML_END_CDECLS
+
+/* Compile-time assertions */
+#ifdef __cplusplus
+#include <cstddef>
+static_assert(offsetof(BML_InterfaceHeader, struct_size) == 0, "BML_InterfaceHeader.struct_size must be at offset 0");
+static_assert(offsetof(BML_InterfaceDesc, struct_size) == 0, "BML_InterfaceDesc.struct_size must be at offset 0");
+static_assert(offsetof(BML_InterfaceRuntimeDesc, struct_size) == 0, "BML_InterfaceRuntimeDesc.struct_size must be at offset 0");
+#endif
 
 #endif /* BML_INTERFACE_H */

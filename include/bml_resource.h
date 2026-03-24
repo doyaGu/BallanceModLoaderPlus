@@ -3,14 +3,17 @@
 
 #include "bml_types.h"
 #include "bml_errors.h"
+#include "bml_interface.h"
 #include "bml_version.h"
 
 BML_BEGIN_CDECLS
 
+#define BML_CORE_RESOURCE_INTERFACE_ID "bml.core.resource"
+
 /*
- * Resource APIs are runtime services. Resolve the function pointers through
- * `bmlGetProcAddress(...)` or acquire `bml.core.resource` in module code.
- * The bootstrap loader does not expose resource globals.
+ * Resource APIs are runtime services. Module code should use the injected
+ * `bml.core.resource` runtime interface. Host bootstrap does not expose
+ * resource globals.
  */
 
 typedef uint32_t BML_HandleType;
@@ -195,7 +198,26 @@ typedef BML_Result (*PFN_BML_HandleAttachUserData)(const BML_HandleDesc *desc, v
  */
 typedef BML_Result (*PFN_BML_HandleGetUserData)(const BML_HandleDesc *desc, void **out_user_data);
 
+typedef struct BML_CoreResourceInterface {
+    BML_InterfaceHeader header;
+    BML_Context Context;
+    PFN_BML_RegisterResourceType RegisterResourceType;
+    PFN_BML_HandleCreate HandleCreate;
+    PFN_BML_HandleRetain HandleRetain;
+    PFN_BML_HandleRelease HandleRelease;
+    PFN_BML_HandleValidate HandleValidate;
+    PFN_BML_HandleAttachUserData HandleAttachUserData;
+    PFN_BML_HandleGetUserData HandleGetUserData;
+} BML_CoreResourceInterface;
+
 
 BML_END_CDECLS
+
+/* Compile-time assertions */
+#ifdef __cplusplus
+#include <cstddef>
+static_assert(offsetof(BML_HandleDesc, struct_size) == 0, "BML_HandleDesc.struct_size must be at offset 0");
+static_assert(offsetof(BML_ResourceTypeDesc, struct_size) == 0, "BML_ResourceTypeDesc.struct_size must be at offset 0");
+#endif
 
 #endif /* BML_RESOURCE_H */

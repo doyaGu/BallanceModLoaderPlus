@@ -2,9 +2,9 @@
  * @file bml_config.h
  * @brief Configuration storage API
  *
- * Config APIs are runtime services. Resolve these function pointers through
- * `bmlGetProcAddress(...)` in C code or acquire `bml.core.config` in module
- * code. The bootstrap loader does not publish config globals.
+ * Config APIs are runtime services. Module code should use the injected
+ * `bml.core.config` runtime interface. Host bootstrap does not publish
+ * config globals.
  */
 
 #ifndef BML_CONFIG_H
@@ -12,9 +12,12 @@
 
 #include "bml_types.h"
 #include "bml_errors.h"
+#include "bml_interface.h"
 #include "bml_version.h"
 
 BML_BEGIN_CDECLS
+
+#define BML_CORE_CONFIG_INTERFACE_ID "bml.core.config"
 
 /**
  * @brief Configuration key identifier
@@ -403,39 +406,32 @@ typedef struct BML_ConfigLoadHooks {
 typedef BML_Result (*PFN_BML_RegisterConfigLoadHooks)(BML_Mod owner,
                                                       const BML_ConfigLoadHooks *hooks);
 
+typedef struct BML_CoreConfigInterface {
+    BML_InterfaceHeader header;
+    BML_Context Context;
+    PFN_BML_ConfigGet Get;
+    PFN_BML_ConfigSet Set;
+    PFN_BML_ConfigReset Reset;
+    PFN_BML_ConfigEnumerate Enumerate;
+    PFN_BML_ConfigBatchBegin BatchBegin;
+    PFN_BML_ConfigBatchSet BatchSet;
+    PFN_BML_ConfigBatchCommit BatchCommit;
+    PFN_BML_ConfigBatchDiscard BatchDiscard;
+    PFN_BML_RegisterConfigLoadHooks RegisterLoadHooks;
+    PFN_BML_ConfigGetInt GetInt;
+    PFN_BML_ConfigGetFloat GetFloat;
+    PFN_BML_ConfigGetBool GetBool;
+    PFN_BML_ConfigGetString GetString;
+} BML_CoreConfigInterface;
+
 BML_END_CDECLS
 
-/* ========================================================================
- * Compile-Time Assertions for ABI Stability
- * ======================================================================== */
-
+/* Compile-time assertions */
 #ifdef __cplusplus
 #include <cstddef>
-#define BML_CONFIG_OFFSETOF(type, member) offsetof(type, member)
-#else
-#include <stddef.h>
-#define BML_CONFIG_OFFSETOF(type, member) offsetof(type, member)
+static_assert(offsetof(BML_ConfigKey, struct_size) == 0, "BML_ConfigKey.struct_size must be at offset 0");
+static_assert(offsetof(BML_ConfigValue, struct_size) == 0, "BML_ConfigValue.struct_size must be at offset 0");
+static_assert(sizeof(BML_ConfigType) == sizeof(int32_t), "BML_ConfigType must be 32-bit");
 #endif
-
-#if defined(__cplusplus) && __cplusplus >= 201103L
-#define BML_CONFIG_STATIC_ASSERT(cond, msg) static_assert(cond, msg)
-#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-#define BML_CONFIG_STATIC_ASSERT(cond, msg) _Static_assert(cond, msg)
-#else
-#define BML_CONFIG_STATIC_ASSERT_CONCAT_(a, b) a##b
-#define BML_CONFIG_STATIC_ASSERT_CONCAT(a, b) BML_CONFIG_STATIC_ASSERT_CONCAT_(a, b)
-#define BML_CONFIG_STATIC_ASSERT(cond, msg) \
-        typedef char BML_CONFIG_STATIC_ASSERT_CONCAT(bml_config_assert_, __LINE__)[(cond) ? 1 : -1]
-#endif
-
-/* Verify struct_size is at offset 0 */
-BML_CONFIG_STATIC_ASSERT(BML_CONFIG_OFFSETOF(BML_ConfigKey, struct_size) == 0,
-                         "BML_ConfigKey.struct_size must be at offset 0");
-BML_CONFIG_STATIC_ASSERT(BML_CONFIG_OFFSETOF(BML_ConfigValue, struct_size) == 0,
-                         "BML_ConfigValue.struct_size must be at offset 0");
-
-/* Verify enum sizes are 32-bit */
-BML_CONFIG_STATIC_ASSERT(sizeof(BML_ConfigType) == sizeof(int32_t),
-                         "BML_ConfigType must be 32-bit");
 
 #endif /* BML_CONFIG_H */

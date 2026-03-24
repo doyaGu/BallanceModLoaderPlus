@@ -3,9 +3,12 @@
 
 #include "bml_types.h"
 #include "bml_errors.h"
+#include "bml_interface.h"
 #include "bml_version.h"
 
 BML_BEGIN_CDECLS
+
+#define BML_CORE_LOGGING_INTERFACE_ID "bml.core.logging"
 
 typedef enum BML_LogSeverity {
     BML_LOG_TRACE                 = 0,
@@ -80,14 +83,15 @@ typedef struct BML_LogSinkOverrideDesc {
  * @return BML_RESULT_ALREADY_EXISTS if a sink is already registered
  * @return BML_RESULT_INVALID_ARGUMENT if desc is invalid
  */
-typedef BML_Result (*PFN_BML_RegisterLogSinkOverride)(const BML_LogSinkOverrideDesc *desc);
+typedef BML_Result (*PFN_BML_RegisterLogSinkOverride)(BML_Mod owner,
+                                                      const BML_LogSinkOverrideDesc *desc);
 
 /**
  * @brief Clear the current log sink override
  * @return BML_RESULT_OK on success
  * @return BML_RESULT_NOT_FOUND if no sink is registered
  */
-typedef BML_Result (*PFN_BML_ClearLogSinkOverride)(void);
+typedef BML_Result (*PFN_BML_ClearLogSinkOverride)(BML_Mod owner);
 
 /* ========================================================================
  * Core Logging APIs
@@ -98,7 +102,6 @@ typedef BML_Result (*PFN_BML_ClearLogSinkOverride)(void);
  * @threadsafe Yes
  */
 typedef void (*PFN_BML_Log)(BML_Mod owner,
-                            BML_Context ctx,
                             BML_LogSeverity level,
                             const char *tag,
                             const char *fmt,
@@ -109,7 +112,6 @@ typedef void (*PFN_BML_Log)(BML_Mod owner,
  * @threadsafe Yes
  */
 typedef void (*PFN_BML_LogVa)(BML_Mod owner,
-                              BML_Context ctx,
                               BML_LogSeverity level,
                               const char *tag,
                               const char *fmt,
@@ -145,42 +147,26 @@ typedef struct BML_LogCreateDesc {
  */
 #define BML_LOG_CREATE_DESC_INIT { sizeof(BML_LogCreateDesc), BML_VERSION_INIT(0,0,0), BML_LOG_INFO, 0 }
 
+typedef struct BML_CoreLoggingInterface {
+    BML_InterfaceHeader header;
+    BML_Context Context;
+    PFN_BML_Log Log;
+    PFN_BML_LogVa LogVa;
+    PFN_BML_SetLogFilter SetLogFilter;
+    PFN_BML_RegisterLogSinkOverride RegisterSinkOverride;
+    PFN_BML_ClearLogSinkOverride ClearSinkOverride;
+} BML_CoreLoggingInterface;
+
 
 BML_END_CDECLS
 
-/* ========================================================================
- * Compile-Time Assertions for ABI Stability
- * ======================================================================== */
-
+/* Compile-time assertions */
 #ifdef __cplusplus
 #include <cstddef>
-#define BML_LOG_OFFSETOF(type, member) offsetof(type, member)
-#else
-#include <stddef.h>
-#define BML_LOG_OFFSETOF(type, member) offsetof(type, member)
+static_assert(sizeof(BML_LogSeverity) == sizeof(int32_t), "BML_LogSeverity must be 32-bit");
+static_assert(offsetof(BML_LogMessageInfo, struct_size) == 0, "BML_LogMessageInfo.struct_size must be at offset 0");
+static_assert(offsetof(BML_LogSinkOverrideDesc, struct_size) == 0, "BML_LogSinkOverrideDesc.struct_size must be at offset 0");
+static_assert(offsetof(BML_LogCreateDesc, struct_size) == 0, "BML_LogCreateDesc.struct_size must be at offset 0");
 #endif
-
-#if defined(__cplusplus) && __cplusplus >= 201103L
-#define BML_LOG_STATIC_ASSERT(cond, msg) static_assert(cond, msg)
-#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-#define BML_LOG_STATIC_ASSERT(cond, msg) _Static_assert(cond, msg)
-#else
-#define BML_LOG_STATIC_ASSERT_CONCAT_(a, b) a##b
-#define BML_LOG_STATIC_ASSERT_CONCAT(a, b) BML_LOG_STATIC_ASSERT_CONCAT_(a, b)
-#define BML_LOG_STATIC_ASSERT(cond, msg) \
-        typedef char BML_LOG_STATIC_ASSERT_CONCAT(bml_log_assert_, __LINE__)[(cond) ? 1 : -1]
-#endif
-
-/* Verify enum sizes are 32-bit */
-BML_LOG_STATIC_ASSERT(sizeof(BML_LogSeverity) == sizeof(int32_t),
-                      "BML_LogSeverity must be 32-bit");
-
-/* Verify struct_size is at offset 0 for forward-compatibility */
-BML_LOG_STATIC_ASSERT(BML_LOG_OFFSETOF(BML_LogMessageInfo, struct_size) == 0,
-                      "BML_LogMessageInfo.struct_size must be at offset 0");
-BML_LOG_STATIC_ASSERT(BML_LOG_OFFSETOF(BML_LogSinkOverrideDesc, struct_size) == 0,
-                      "BML_LogSinkOverrideDesc.struct_size must be at offset 0");
-BML_LOG_STATIC_ASSERT(BML_LOG_OFFSETOF(BML_LogCreateDesc, struct_size) == 0,
-                      "BML_LogCreateDesc.struct_size must be at offset 0");
 
 #endif /* BML_LOGGING_H */

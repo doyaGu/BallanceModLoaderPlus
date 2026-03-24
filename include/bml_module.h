@@ -1,12 +1,13 @@
-#ifndef BML_MODULE_H
-#define BML_MODULE_H
-
 /**
  * @file bml_module.h
- * @brief Helper macros for BML module development
- * 
- * Include this header in your module source file to define entry points correctly.
+ * @brief C module entry point helper macro
+ *
+ * Provides BML_MODULE_ENTRY macro that generates the standard
+ * module entrypoint function with correct export attributes.
  */
+
+#ifndef BML_MODULE_H
+#define BML_MODULE_H
 
 #include "bml_export.h"
 
@@ -24,15 +25,13 @@
  * C modules:
  * ```c
  * #include "bml_module.h"
- * #define BML_LOADER_IMPLEMENTATION
- * #include "bml_loader.h"
+ * #include "bml_core.h"
  *
  * static BML_Result OnAttach(const BML_ModAttachArgs *args) {
  *     if (args->struct_size < sizeof(BML_ModAttachArgs)) return BML_RESULT_INVALID_ARGUMENT;
  *     if (args->api_version < BML_MOD_ENTRYPOINT_API_VERSION) return BML_RESULT_VERSION_MISMATCH;
- *     BML_Result res = BML_BOOTSTRAP_LOAD(args->get_proc);
- *     if (res != BML_RESULT_OK) return res;
- *     // args->service_hub is available for C++ cast to RuntimeServiceHub*
+ *     if (!args->services) return BML_RESULT_INVALID_ARGUMENT;
+ *     // args->context is the runtime-owned context handle for this attach
  *     return BML_RESULT_OK;
  * }
  *

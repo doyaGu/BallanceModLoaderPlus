@@ -15,9 +15,12 @@
 
 #include "bml_types.h"
 #include "bml_errors.h"
+#include "bml_interface.h"
 #include "bml_version.h"
 
 BML_BEGIN_CDECLS
+
+#define BML_CORE_MEMORY_INTERFACE_ID "bml.core.memory"
 
 /* ========== Basic Memory Allocation ========== */
 
@@ -33,7 +36,7 @@ BML_BEGIN_CDECLS
  * @note Returns NULL if size is 0
  * @note Allocated memory is uninitialized
  */
-typedef void *(*PFN_BML_Alloc)(size_t size);
+typedef void *(*PFN_BML_Alloc)(BML_Context ctx, size_t size);
 
 /**
  * @brief Allocate zero-initialized memory
@@ -47,7 +50,7 @@ typedef void *(*PFN_BML_Alloc)(size_t size);
  * @note Memory is zero-initialized
  * @note Returns NULL if count * size overflows or is 0
  */
-typedef void *(*PFN_BML_Calloc)(size_t count, size_t size);
+typedef void *(*PFN_BML_Calloc)(BML_Context ctx, size_t count, size_t size);
 
 /**
  * @brief Resize previously allocated memory
@@ -64,7 +67,7 @@ typedef void *(*PFN_BML_Calloc)(size_t count, size_t size);
  * @note Original content is preserved up to min(old_size, new_size)
  * @note If reallocation fails, original pointer remains valid
  */
-typedef void *(*PFN_BML_Realloc)(void *ptr, size_t old_size, size_t new_size);
+typedef void *(*PFN_BML_Realloc)(BML_Context ctx, void *ptr, size_t old_size, size_t new_size);
 
 /**
  * @brief Free memory allocated by BML
@@ -76,7 +79,7 @@ typedef void *(*PFN_BML_Realloc)(void *ptr, size_t old_size, size_t new_size);
  * @note Safe to call with NULL pointer (no-op)
  * @note Pointer becomes invalid after this call
  */
-typedef void (*PFN_BML_Free)(void *ptr);
+typedef void (*PFN_BML_Free)(BML_Context ctx, void *ptr);
 
 /**
  * @brief Allocate aligned memory
@@ -90,7 +93,7 @@ typedef void (*PFN_BML_Free)(void *ptr);
  * @note Memory must be freed with bmlFreeAligned()
  * @note Returns NULL if alignment is not power of 2
  */
-typedef void *(*PFN_BML_AllocAligned)(size_t size, size_t alignment);
+typedef void *(*PFN_BML_AllocAligned)(BML_Context ctx, size_t size, size_t alignment);
 
 /**
  * @brief Free aligned memory
@@ -99,7 +102,7 @@ typedef void *(*PFN_BML_AllocAligned)(size_t size, size_t alignment);
  * 
  * @threadsafe Yes
  */
-typedef void (*PFN_BML_FreeAligned)(void *ptr);
+typedef void (*PFN_BML_FreeAligned)(BML_Context ctx, void *ptr);
 
 /* ========== Memory Pool ========== */
 
@@ -125,6 +128,7 @@ typedef struct BML_MemoryPool_T *BML_MemoryPool;
  * @note Destroy pool with bmlMemoryPoolDestroy()
  */
 typedef BML_Result (*PFN_BML_MemoryPoolCreate)(
+    BML_Context ctx,
     size_t block_size,
     uint32_t initial_blocks,
     BML_MemoryPool *out_pool
@@ -138,7 +142,7 @@ typedef BML_Result (*PFN_BML_MemoryPoolCreate)(
  * 
  * @threadsafe Yes (lock-free for single producer/consumer)
  */
-typedef void *(*PFN_BML_MemoryPoolAlloc)(BML_MemoryPool pool);
+typedef void *(*PFN_BML_MemoryPoolAlloc)(BML_Context ctx, BML_MemoryPool pool);
 
 /**
  * @brief Return a block to the pool
@@ -148,7 +152,7 @@ typedef void *(*PFN_BML_MemoryPoolAlloc)(BML_MemoryPool pool);
  * 
  * @threadsafe Yes
  */
-typedef void (*PFN_BML_MemoryPoolFree)(BML_MemoryPool pool, void *ptr);
+typedef void (*PFN_BML_MemoryPoolFree)(BML_Context ctx, BML_MemoryPool pool, void *ptr);
 
 /**
  * @brief Destroy a memory pool
@@ -160,7 +164,7 @@ typedef void (*PFN_BML_MemoryPoolFree)(BML_MemoryPool pool, void *ptr);
  * @note All blocks are freed automatically
  * @note Outstanding pointers become invalid
  */
-typedef void (*PFN_BML_MemoryPoolDestroy)(BML_MemoryPool pool);
+typedef void (*PFN_BML_MemoryPoolDestroy)(BML_Context ctx, BML_MemoryPool pool);
 
 /* ========== Memory Statistics ========== */
 
@@ -185,7 +189,23 @@ typedef struct BML_MemoryStats {
  * 
  * @note Only available if BML built with memory tracking
  */
-typedef BML_Result (*PFN_BML_GetMemoryStats)(BML_MemoryStats *out_stats);
+typedef BML_Result (*PFN_BML_GetMemoryStats)(BML_Context ctx, BML_MemoryStats *out_stats);
+
+typedef struct BML_CoreMemoryInterface {
+    BML_InterfaceHeader header;
+    BML_Context Context;
+    PFN_BML_Alloc Alloc;
+    PFN_BML_Calloc Calloc;
+    PFN_BML_Realloc Realloc;
+    PFN_BML_Free Free;
+    PFN_BML_AllocAligned AllocAligned;
+    PFN_BML_FreeAligned FreeAligned;
+    PFN_BML_MemoryPoolCreate MemoryPoolCreate;
+    PFN_BML_MemoryPoolAlloc MemoryPoolAlloc;
+    PFN_BML_MemoryPoolFree MemoryPoolFree;
+    PFN_BML_MemoryPoolDestroy MemoryPoolDestroy;
+    PFN_BML_GetMemoryStats GetMemoryStats;
+} BML_CoreMemoryInterface;
 
 
 BML_END_CDECLS
