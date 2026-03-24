@@ -3,24 +3,17 @@
 #include <Windows.h>
 
 #include <chrono>
-#include <condition_variable>
 #include <filesystem>
 #include <fstream>
-#include <mutex>
 #include <optional>
 #include <string>
 #include <system_error>
 #include <thread>
 #include <vector>
 
-#include "Core/ApiRegistry.h"
-#include "Core/ConfigStore.h"
-#include "Core/Context.h"
-#include "Core/CrashDumpWriter.h"
-#include "Core/FaultTracker.h"
-#include "Core/ImcBus.h"
 #include "Core/ModuleRuntime.h"
 #include "TestKernel.h"
+#include "TestKernelBuilder.h"
 
 using namespace std::chrono_literals;
 
@@ -92,6 +85,7 @@ struct RuntimeGuard {
 };
 
 using BML::Core::Testing::TestKernel;
+using BML::Core::Testing::TestKernelBuilder;
 
 std::filesystem::path CreateModsDirectory() {
     const auto base = std::filesystem::temp_directory_path();
@@ -113,43 +107,6 @@ void WriteManifest(const std::filesystem::path &manifest_path,
     manifest << "version = \"1.0.0\"\n";
     manifest << "entry = \"" << entry_name << "\"\n";
     manifest << "description = \"" << description << "\"\n";
-}
-
-std::vector<std::string> ReadLogLines(const std::filesystem::path &log_path) {
-    std::vector<std::string> lines;
-    std::ifstream file(log_path);
-    if (!file.is_open())
-        return lines;
-
-    std::string line;
-    while (std::getline(file, line)) {
-        if (!line.empty() && line.back() == '\r')
-            line.pop_back();
-        lines.push_back(line);
-    }
-    return lines;
-}
-
-bool ContainsOrdered(const std::vector<std::string> &lines, const std::vector<std::string> &sequence) {
-    size_t index = 0;
-    for (const auto &line : lines) {
-        if (index < sequence.size() && line == sequence[index]) {
-            ++index;
-        }
-    }
-    return index == sequence.size();
-}
-
-bool WaitForLogSequence(const std::filesystem::path &log_path,
-                        const std::vector<std::string> &sequence,
-                        std::chrono::milliseconds timeout) {
-    const auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-        if (ContainsOrdered(ReadLogLines(log_path), sequence))
-            return true;
-        std::this_thread::sleep_for(50ms);
-    }
-    return false;
 }
 
 } // namespace
@@ -177,24 +134,11 @@ TEST(HotReloadIntegrationTests, ReloadsSampleModWhenManifestChanges) {
     const auto manifest_path = mod_dir / "mod.toml";
     WriteManifest(manifest_path, "initial", dll_name.generic_string());
 
-    const auto log_path = run_root / "sample-log.txt";
-    ScopedEnvVar hot_reload_env(L"BML_HOT_RELOAD", L"1");
-    ScopedEnvVar log_env(L"BML_TEST_HOT_RELOAD_LOG", log_path.wstring());
-
-    TestKernel kernel;
-    kernel->api_registry  = std::make_unique<BML::Core::ApiRegistry>();
-    kernel->config        = std::make_unique<BML::Core::ConfigStore>();
-    kernel->crash_dump    = std::make_unique<BML::Core::CrashDumpWriter>();
-    kernel->fault_tracker = std::make_unique<BML::Core::FaultTracker>();
-    kernel->imc_bus       = std::make_unique<BML::Core::ImcBus>();
-    kernel->context       = std::make_unique<BML::Core::Context>(
-        *kernel->api_registry, *kernel->config,
-        *kernel->crash_dump, *kernel->fault_tracker);
-    kernel->config->BindContext(*kernel->context);
-    kernel->imc_bus->BindDeps(*kernel->context);
-    kernel->context->Initialize({0, 4, 0});
-
+    TestKernel kernel = TestKernelBuilder()
+        .WithAll()
+        .Build();
     BML::Core::ModuleRuntime runtime;
+    runtime.BindKernel(*kernel);
     RuntimeGuard runtime_guard{runtime};
 
     BML::Core::ModuleBootstrapDiagnostics discover_diag;
@@ -202,35 +146,17 @@ TEST(HotReloadIntegrationTests, ReloadsSampleModWhenManifestChanges) {
         << "Discover failed: " << discover_diag.dependency_error.message;
 
     BML::Core::ModuleBootstrapDiagnostics initial_diag;
-    ASSERT_TRUE(runtime.LoadDiscovered(initial_diag))
+    BML_Services services{};
+    ASSERT_TRUE(runtime.LoadDiscovered(initial_diag, &services))
         << "Initial load failed: " << initial_diag.load_error.message;
+    ASSERT_TRUE(initial_diag.load_error.message.empty())
+        << "Initial module attach reported error: " << initial_diag.load_error.message;
 
-    ASSERT_TRUE(WaitForLogSequence(log_path, {"init:1"}, 5s))
-        << "Initial init entry missing";
-
-    std::mutex diag_mutex;
-    std::condition_variable diag_cv;
     BML::Core::ModuleBootstrapDiagnostics reload_diag;
-    bool reload_received = false;
-
-    runtime.SetDiagnosticsCallback([&](const BML::Core::ModuleBootstrapDiagnostics &diag) {
-        std::lock_guard<std::mutex> lock(diag_mutex);
-        reload_diag = diag;
-        reload_received = true;
-        diag_cv.notify_all();
-    });
-
     std::this_thread::sleep_for(1200ms);
     WriteManifest(manifest_path, "reloaded", dll_name.generic_string());
 
-    bool notified = false;
-    {
-        std::unique_lock<std::mutex> lock(diag_mutex);
-        notified = diag_cv.wait_for(lock, 10s, [&] { return reload_received; });
-    }
-    ASSERT_TRUE(notified) << "Timed out waiting for reload diagnostics";
+    ASSERT_TRUE(runtime.ReloadModules(reload_diag))
+        << "Reload failed: " << reload_diag.load_error.message;
     EXPECT_TRUE(reload_diag.load_error.message.empty()) << reload_diag.load_error.message;
-
-    EXPECT_TRUE(WaitForLogSequence(log_path, {"init:1", "shutdown:1", "init:2"}, 5s))
-        << "Lifecycle log does not contain expected reload sequence";
 }

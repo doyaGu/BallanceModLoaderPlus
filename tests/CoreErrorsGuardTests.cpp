@@ -19,8 +19,11 @@
 #include "bml_logging.h"
 #include "bml_errors.h"
 
-PFN_BML_GetLastError bmlGetLastError = nullptr;
-PFN_BML_ClearLastError bmlClearLastError = nullptr;
+using GetLastErrorFn = BML_Result (*)(BML_ErrorInfo *);
+using ClearLastErrorFn = void (*)();
+
+GetLastErrorFn bmlGetLastError = nullptr;
+ClearLastErrorFn bmlClearLastError = nullptr;
 PFN_BML_GetErrorString bmlGetErrorString = nullptr;
 
 using BML::Core::ApiRegistry;
@@ -42,13 +45,13 @@ protected:
     void SetUp() override {
         kernel_->api_registry = std::make_unique<ApiRegistry>();
         kernel_->diagnostics = std::make_unique<BML::Core::DiagnosticManager>();
-        Context::SetCurrentModule(nullptr);
-        BML::Core::RegisterLoggingApis();
+        Context::SetLifecycleModule(nullptr);
+        BML::Core::RegisterLoggingApis(*kernel_->api_registry);
     }
 
     void TearDown() override {
         (void)BML::Core::ClearLogSinkOverride();
-        Context::SetCurrentModule(nullptr);
+        Context::SetLifecycleModule(nullptr);
     }
 
     void InstallCaptureSink() {
@@ -291,7 +294,7 @@ TEST_F(CoreErrorsGuardTests, BmlGetLastErrorWorksAcrossThreadsAndModules) {
         const auto message = std::string("module-") + std::to_string(i);
         BML_Mod mod = modules[i % 2];
         threads.emplace_back([mod, message] {
-            BML::Core::Context::SetCurrentModule(mod);
+            BML::Core::Context::SetLifecycleModule(mod);
             BML::Core::SetLastError(BML_RESULT_FAIL, message.c_str(), "integration.api");
 
             BML_ErrorInfo info = BML_ERROR_INFO_INIT;

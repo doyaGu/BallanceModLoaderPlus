@@ -9,18 +9,16 @@
 #include <thread>
 #include <vector>
 
-#include "Core/ApiRegistry.h"
-#include "Core/ConfigStore.h"
 #include "Core/Context.h"
-#include "Core/CrashDumpWriter.h"
-#include "Core/FaultTracker.h"
 #include "Core/HotReloadCoordinator.h"
 #include "Core/ModManifest.h"
 #include "TestKernel.h"
+#include "TestKernelBuilder.h"
 
 using namespace std::chrono_literals;
 using namespace BML::Core;
 using BML::Core::Testing::TestKernel;
+using BML::Core::Testing::TestKernelBuilder;
 
 namespace {
 
@@ -58,16 +56,13 @@ protected:
     TestKernel kernel_;
 
     void SetUp() override {
-        kernel_->api_registry  = std::make_unique<ApiRegistry>();
-        kernel_->config        = std::make_unique<ConfigStore>();
-        kernel_->crash_dump    = std::make_unique<CrashDumpWriter>();
-        kernel_->fault_tracker = std::make_unique<FaultTracker>();
-        kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config, *kernel_->crash_dump, *kernel_->fault_tracker);
-        kernel_->config->BindContext(*kernel_->context);
+        kernel_ = TestKernelBuilder()
+            .WithConfig()
+            .Build();
 
         m_TempDir = CreateTempDir();
         m_Context = kernel_->context.get();
-        m_Context->Initialize({0, 4, 0});
+        m_DummyServices = {};
     }
 
     void TearDown() override {
@@ -77,15 +72,18 @@ protected:
 
     std::filesystem::path m_TempDir;
     Context* m_Context{nullptr};
+    BML_Services m_DummyServices{};
 };
 
 TEST_F(HotReloadCoordinatorTest, ConstructsAndDestructs) {
-    HotReloadCoordinator coordinator(*m_Context);
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
     // Should not throw
 }
 
 TEST_F(HotReloadCoordinatorTest, ConfigureSettings) {
-    HotReloadCoordinator coordinator(*m_Context);
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
 
     HotReloadSettings settings;
     settings.enabled = true;
@@ -100,7 +98,8 @@ TEST_F(HotReloadCoordinatorTest, ConfigureSettings) {
 }
 
 TEST_F(HotReloadCoordinatorTest, RegisterModuleWithEmptyIdFails) {
-    HotReloadCoordinator coordinator(*m_Context);
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
 
     HotReloadModuleEntry entry;
     entry.id = "";
@@ -113,7 +112,8 @@ TEST_F(HotReloadCoordinatorTest, RegisterModuleWithValidConfig) {
     auto dll_path = m_TempDir / "test.dll";
     CreateMinimalDll(dll_path);
 
-    HotReloadCoordinator coordinator(*m_Context);
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
 
     HotReloadSettings settings;
     settings.enabled = true;
@@ -136,7 +136,8 @@ TEST_F(HotReloadCoordinatorTest, RegisterDuplicateModuleFails) {
     auto dll_path = m_TempDir / "test.dll";
     CreateMinimalDll(dll_path);
 
-    HotReloadCoordinator coordinator(*m_Context);
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
 
     HotReloadSettings settings;
     settings.enabled = true;
@@ -155,7 +156,8 @@ TEST_F(HotReloadCoordinatorTest, UnregisterModule) {
     auto dll_path = m_TempDir / "test.dll";
     CreateMinimalDll(dll_path);
 
-    HotReloadCoordinator coordinator(*m_Context);
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
 
     HotReloadSettings settings;
     settings.enabled = true;
@@ -174,13 +176,15 @@ TEST_F(HotReloadCoordinatorTest, UnregisterModule) {
 }
 
 TEST_F(HotReloadCoordinatorTest, UnregisterNonexistentModuleIsNoOp) {
-    HotReloadCoordinator coordinator(*m_Context);
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
     // Should not throw or crash
     coordinator.UnregisterModule("nonexistent");
 }
 
 TEST_F(HotReloadCoordinatorTest, StartStop) {
-    HotReloadCoordinator coordinator(*m_Context);
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
 
     HotReloadSettings settings;
     settings.enabled = true;
@@ -196,7 +200,8 @@ TEST_F(HotReloadCoordinatorTest, StartStop) {
 }
 
 TEST_F(HotReloadCoordinatorTest, StartWithDisabledDoesNotRun) {
-    HotReloadCoordinator coordinator(*m_Context);
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
 
     HotReloadSettings settings;
     settings.enabled = false;
@@ -207,17 +212,20 @@ TEST_F(HotReloadCoordinatorTest, StartWithDisabledDoesNotRun) {
 }
 
 TEST_F(HotReloadCoordinatorTest, IsModuleLoadedReturnsFalseForUnknown) {
-    HotReloadCoordinator coordinator(*m_Context);
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
     EXPECT_FALSE(coordinator.IsModuleLoaded("unknown.mod"));
 }
 
 TEST_F(HotReloadCoordinatorTest, GetModuleVersionReturnsZeroForUnknown) {
-    HotReloadCoordinator coordinator(*m_Context);
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
     EXPECT_EQ(coordinator.GetModuleVersion("unknown.mod"), 0u);
 }
 
 TEST_F(HotReloadCoordinatorTest, ForceReloadUnknownModuleFails) {
-    HotReloadCoordinator coordinator(*m_Context);
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
     EXPECT_EQ(coordinator.ForceReload("unknown.mod"), ReloadResult::LoadFailed);
 }
 
@@ -225,7 +233,8 @@ TEST_F(HotReloadCoordinatorTest, NotifyCallback) {
     auto dll_path = m_TempDir / "test.dll";
     CreateMinimalDll(dll_path);
 
-    HotReloadCoordinator coordinator(*m_Context);
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
 
     HotReloadSettings settings;
     settings.enabled = true;
@@ -264,7 +273,8 @@ TEST_F(HotReloadCoordinatorTest, NotifyCallback) {
 }
 
 TEST_F(HotReloadCoordinatorTest, UpdateWithDisabledIsNoOp) {
-    HotReloadCoordinator coordinator(*m_Context);
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
 
     HotReloadSettings settings;
     settings.enabled = false;
@@ -275,7 +285,8 @@ TEST_F(HotReloadCoordinatorTest, UpdateWithDisabledIsNoOp) {
 }
 
 TEST_F(HotReloadCoordinatorTest, MultipleModulesRegistration) {
-    HotReloadCoordinator coordinator(*m_Context);
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
 
     HotReloadSettings settings;
     settings.enabled = true;
@@ -298,7 +309,8 @@ TEST_F(HotReloadCoordinatorTest, MultipleModulesRegistration) {
 }
 
 TEST_F(HotReloadCoordinatorTest, DebounceSettingIsRespected) {
-    HotReloadCoordinator coordinator(*m_Context);
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
 
     HotReloadSettings settings;
     settings.enabled = true;
@@ -324,7 +336,8 @@ TEST_F(HotReloadCoordinatorTest, IgnoresUnrelatedRootFileChanges) {
 
     std::this_thread::sleep_for(200ms);
 
-    HotReloadCoordinator coordinator(*m_Context);
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
 
     HotReloadSettings settings;
     settings.enabled = true;
@@ -411,7 +424,8 @@ TEST_F(HotReloadCoordinatorTest, WatchesIncludedScriptFilesForRuntimeReload) {
 
     std::this_thread::sleep_for(200ms);
 
-    HotReloadCoordinator coordinator(*m_Context);
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
 
     HotReloadSettings settings;
     settings.enabled = true;
@@ -467,7 +481,8 @@ TEST_F(HotReloadCoordinatorTest, StopClearsScheduledReloads) {
     auto dll_path = m_TempDir / "test.dll";
     CreateMinimalDll(dll_path);
 
-    HotReloadCoordinator coordinator(*m_Context);
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
 
     HotReloadSettings settings;
     settings.enabled = true;

@@ -10,47 +10,46 @@
 #include <vector>
 
 #include "bml_imc.h"
-#include "Core/ApiRegistry.h"
-#include "Core/ConfigStore.h"
 #include "Core/Context.h"
-#include "Core/CrashDumpWriter.h"
-#include "Core/FaultTracker.h"
 #include "Core/ImcBus.h"
 #include "TestKernel.h"
+#include "TestKernelBuilder.h"
+#include "TestModHelper.h"
 
 using namespace BML::Core;
 using BML::Core::Testing::TestKernel;
+using BML::Core::Testing::TestKernelBuilder;
+using BML::Core::Testing::TestModHelper;
 
 class EventInterceptionTest : public ::testing::Test {
 protected:
     TestKernel kernel_;
+    std::unique_ptr<TestModHelper> mods_;
 
     void SetUp() override {
-        kernel_->api_registry = std::make_unique<ApiRegistry>();
-        kernel_->config = std::make_unique<ConfigStore>();
-        kernel_->crash_dump = std::make_unique<CrashDumpWriter>();
-        kernel_->fault_tracker = std::make_unique<FaultTracker>();
-        kernel_->imc_bus = std::make_unique<ImcBus>();
-        kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config, *kernel_->crash_dump, *kernel_->fault_tracker);
-        kernel_->config->BindContext(*kernel_->context);
-
-        auto &ctx = *kernel_->context;
-        ctx.Initialize(bmlMakeVersion(0, 4, 0));
-        kernel_->imc_bus->BindDeps(*kernel_->context);
-        host_mod_ = ctx.GetSyntheticHostModule();
-        Context::SetCurrentModule(host_mod_);
+        kernel_ = TestKernelBuilder()
+            .WithConfig()
+            .WithImcBus()
+            .Build();
+        mods_ = std::make_unique<TestModHelper>(*kernel_);
+        host_mod_ = mods_->HostMod();
+        Context::SetLifecycleModule(host_mod_);
     }
 
     void TearDown() override {
-        Context::SetCurrentModule(nullptr);
+        Context::SetLifecycleModule(nullptr);
     }
 
     BML_Mod host_mod_ = nullptr;
 
     BML_TopicId GetTopic(const char *name) {
         BML_TopicId id = BML_TOPIC_ID_INVALID;
-        ImcGetTopicId(name, &id);
+        ImcGetTopicId(*kernel_, name, &id);
         return id;
+    }
+
+    void Pump(size_t maxPerSub = 0) {
+        ImcPump(*kernel_, maxPerSub);
     }
 
     BML_Result SubscribeIntercept(BML_TopicId topic,
@@ -133,7 +132,7 @@ TEST_F(EventInterceptionTest, ContinuePassesToRegular) {
     EXPECT_EQ(result, BML_EVENT_CONTINUE);
 
     // Pump to deliver to regular subscribers
-    ImcPump(0);
+    Pump(0);
     EXPECT_EQ(g_RegularCallCount.load(), 1);
 }
 
@@ -158,7 +157,7 @@ TEST_F(EventInterceptionTest, CancelPreventsRegularDelivery) {
     EXPECT_EQ(cancel_count, 1);
 
     // Pump -- regular handler should NOT have received the message
-    ImcPump(0);
+    Pump(0);
     EXPECT_EQ(g_RegularCallCount.load(), 0);
 }
 
@@ -183,7 +182,7 @@ TEST_F(EventInterceptionTest, HandledStopsPropagationButDelivers) {
     EXPECT_EQ(handled_count, 1);
 
     // HANDLED still delivers to regular subscribers
-    ImcPump(0);
+    Pump(0);
     EXPECT_EQ(g_RegularCallCount.load(), 1);
 }
 
@@ -292,7 +291,7 @@ TEST_F(EventInterceptionTest, RegularPublishIgnoresInterceptors) {
     // Regular Publish should NOT invoke intercept handlers
     int data = 42;
     ASSERT_EQ(BML_RESULT_OK, PublishRegular(topic, &data, sizeof(data)));
-    ImcPump(0);
+    Pump(0);
 
     // Regular handler should have been called, intercept should not
     EXPECT_EQ(g_RegularCallCount.load(), 1);

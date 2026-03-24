@@ -263,52 +263,13 @@ TEST_F(ProfilingManagerTests, GetProfilingStatsRejectsSmallStruct) {
     EXPECT_EQ(result, BML_RESULT_INVALID_SIZE);
 }
 
-TEST_F(ProfilingManagerTests, TracingApisRecordStatistics) {
+TEST_F(ProfilingManagerTests, TracingApisAreNoLongerRegistered) {
     kernel_->api_registry->Clear();
-    BML::Core::RegisterTracingApis();
+    BML::Core::RegisterTracingApis(*kernel_->api_registry);
 
-    auto enable = reinterpret_cast<void (*)(BML_Bool)>(
-        kernel_->api_registry->Get("bmlEnableApiTracing"));
-    auto is_enabled = reinterpret_cast<BML_Bool (*)()>(
-        kernel_->api_registry->Get("bmlIsApiTracingEnabled"));
-    auto get_stats = reinterpret_cast<BML_Bool (*)(const char *, void *)>(
-        kernel_->api_registry->Get("bmlGetApiStats"));
-    auto dump_stats = reinterpret_cast<BML_Bool (*)(const char *)>(
-        kernel_->api_registry->Get("bmlDumpApiStats"));
-
-    ASSERT_NE(enable, nullptr);
-    ASSERT_NE(is_enabled, nullptr);
-    ASSERT_NE(get_stats, nullptr);
-    ASSERT_NE(dump_stats, nullptr);
-
-    enable(BML_TRUE);
-    EXPECT_EQ(BML_TRUE, is_enabled());
-    enable(BML_FALSE);
-
-    struct TraceStats {
-        size_t struct_size;
-        const char *api_name;
-        uint64_t call_count;
-        uint64_t total_time_ns;
-        uint64_t min_time_ns;
-        uint64_t max_time_ns;
-        uint64_t error_count;
-    } stats{sizeof(TraceStats), nullptr, 0, 0, 0, 0, 0};
-
-    ASSERT_EQ(BML_TRUE, get_stats("bmlEnableApiTracing", &stats));
-    EXPECT_STREQ("bmlEnableApiTracing", stats.api_name);
-    EXPECT_EQ(2u, stats.call_count);
-    EXPECT_GT(stats.total_time_ns, 0u);
-
-    std::filesystem::path dump_path = std::filesystem::temp_directory_path() / "bml_api_stats.json";
-    ASSERT_EQ(BML_TRUE, dump_stats(dump_path.string().c_str()));
-    std::ifstream dump(dump_path);
-    ASSERT_TRUE(dump.is_open());
-    std::stringstream buffer;
-    buffer << dump.rdbuf();
-    EXPECT_NE(buffer.str().find("bmlEnableApiTracing"), std::string::npos);
-    std::error_code ec;
-    std::filesystem::remove(dump_path, ec);
+    EXPECT_EQ(nullptr, kernel_->api_registry->Get("bmlEnableApiTracing"));
+    EXPECT_EQ(nullptr, kernel_->api_registry->Get("bmlGetApiStats"));
+    EXPECT_EQ(nullptr, kernel_->api_registry->Get("bmlDumpApiStats"));
 }
 
 // ============================================================================

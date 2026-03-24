@@ -77,26 +77,25 @@ namespace {
 
 TEST(TestSupportTests, TestContext_PublishSubscribeRoundTrip) {
     bml::test::TestContext ctx;
+    ASSERT_NE(nullptr, ctx.Hub());
 
-    // Resolve topic
-    auto getTopicId = reinterpret_cast<PFN_BML_ImcGetTopicId>(
-        bmlGetProcAddress("bmlImcGetTopicId"));
-    auto getHostModule = reinterpret_cast<PFN_BML_GetHostModule>(
-        bmlGetProcAddress("bmlGetHostModule"));
-    auto subscribe = reinterpret_cast<PFN_BML_ImcSubscribe>(
-        bmlGetProcAddress("bmlImcSubscribe"));
-    auto unsubscribe = reinterpret_cast<PFN_BML_ImcUnsubscribe>(
-        bmlGetProcAddress("bmlImcUnsubscribe"));
+    auto *imc = ctx.Hub()->ImcBus;
+    auto *moduleApi = ctx.Hub()->Module;
+    auto getTopicId = imc ? imc->GetTopicId : nullptr;
+    auto findModuleById = (moduleApi && moduleApi->Context) ? moduleApi->FindModuleById : nullptr;
+    auto subscribe = imc ? imc->Subscribe : nullptr;
+    auto unsubscribe = imc ? imc->Unsubscribe : nullptr;
     ASSERT_NE(nullptr, getTopicId);
-    ASSERT_NE(nullptr, getHostModule);
+    ASSERT_NE(nullptr, findModuleById);
     ASSERT_NE(nullptr, subscribe);
     ASSERT_NE(nullptr, unsubscribe);
 
-    BML_Mod mod = getHostModule();
+    BML_Mod mod = findModuleById(moduleApi->Context, "ModLoader");
     ASSERT_NE(nullptr, mod);
+    ASSERT_NE(nullptr, imc->Context);
 
     BML_TopicId topic = BML_TOPIC_ID_INVALID;
-    ASSERT_EQ(BML_RESULT_OK, getTopicId("test/support/pubsub", &topic));
+    ASSERT_EQ(BML_RESULT_OK, getTopicId(imc->Context, "test/support/pubsub", &topic));
     ASSERT_NE(BML_TOPIC_ID_INVALID, topic);
 
     // Subscribe
@@ -129,12 +128,10 @@ TEST(TestSupportTests, TestContext_LogCapture) {
     ASSERT_NE(nullptr, mod);
     ctx.EnableLogCapture(BML_LOG_TRACE);
 
-    // Log a message via the API
-    auto logFn = reinterpret_cast<PFN_BML_Log>(
-        bmlGetProcAddress("bmlLog"));
+    auto logFn = ctx.Hub() && ctx.Hub()->Logging ? ctx.Hub()->Logging->Log : nullptr;
     ASSERT_NE(nullptr, logFn);
 
-    logFn(mod, ctx.Handle(), BML_LOG_INFO, "test.capture", "hello from test %d", 42);
+    logFn(mod, BML_LOG_INFO, "test.capture", "hello from test %d", 42);
 
     EXPECT_FALSE(ctx.CapturedLogs().empty());
     EXPECT_TRUE(ctx.HasLog("hello from test 42"));
@@ -176,10 +173,9 @@ TEST(TestSupportTests, TestContext_HubAndServicesAccess) {
     bml::test::TestContext ctx;
     ASSERT_NE(nullptr, ctx.Hub());
 
-    const auto &builtins = ctx.Hub()->Builtins();
-    EXPECT_NE(nullptr, builtins.Context);
-    EXPECT_NE(nullptr, builtins.Logging);
-    EXPECT_NE(nullptr, builtins.ImcBus);
+    EXPECT_NE(nullptr, ctx.Hub()->Context);
+    EXPECT_NE(nullptr, ctx.Hub()->Logging);
+    EXPECT_NE(nullptr, ctx.Hub()->ImcBus);
 
     BML_Mod mod = ctx.CreateMockMod("com.test.services");
     ASSERT_NE(nullptr, mod);

@@ -147,23 +147,23 @@ TEST_F(ContextLifecycleTests, CurrentModuleIsThreadLocalPerThread) {
     auto worker = std::make_unique<BML_Mod_T>();
     worker->id = "context.worker";
 
-    Context::SetCurrentModule(primary.get());
-    EXPECT_EQ(Context::GetCurrentModule(), primary.get());
+    Context::SetLifecycleModule(primary.get());
+    EXPECT_EQ(Context::GetLifecycleModule(), primary.get());
 
     std::atomic<BML_Mod> worker_seen{nullptr};
     std::thread bg([&] {
-        EXPECT_EQ(Context::GetCurrentModule(), nullptr);
-        Context::SetCurrentModule(worker.get());
-        worker_seen.store(Context::GetCurrentModule(), std::memory_order_release);
-        Context::SetCurrentModule(nullptr);
+        EXPECT_EQ(Context::GetLifecycleModule(), nullptr);
+        Context::SetLifecycleModule(worker.get());
+        worker_seen.store(Context::GetLifecycleModule(), std::memory_order_release);
+        Context::SetLifecycleModule(nullptr);
     });
     bg.join();
 
     EXPECT_EQ(worker_seen.load(std::memory_order_acquire), worker.get());
-    EXPECT_EQ(Context::GetCurrentModule(), primary.get());
+    EXPECT_EQ(Context::GetLifecycleModule(), primary.get());
 
-    Context::SetCurrentModule(nullptr);
-    EXPECT_EQ(Context::GetCurrentModule(), nullptr);
+    Context::SetLifecycleModule(nullptr);
+    EXPECT_EQ(Context::GetLifecycleModule(), nullptr);
 }
 
 TEST(ContextSanitizerTests, PreservesSupplementaryCharacters) {

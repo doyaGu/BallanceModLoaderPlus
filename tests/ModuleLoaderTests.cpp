@@ -58,11 +58,11 @@ protected:
         kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config, *kernel_->crash_dump, *kernel_->fault_tracker);
         kernel_->config->BindContext(*kernel_->context);
 
-        Context::SetCurrentModule(nullptr);
+        Context::SetLifecycleModule(nullptr);
     }
 
     void TearDown() override {
-        Context::SetCurrentModule(nullptr);
+        Context::SetLifecycleModule(nullptr);
         manifests_.clear();
     }
 

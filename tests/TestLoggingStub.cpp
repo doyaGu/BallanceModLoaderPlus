@@ -4,7 +4,7 @@
 
 namespace BML::Core {
 
-void RegisterLoggingApis() {}
+void RegisterLoggingApis(ApiRegistry &) {}
 
 void CoreLog(BML_LogSeverity, const char *, const char *, ...) {}
 

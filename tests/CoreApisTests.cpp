@@ -17,17 +17,12 @@
 #include "Core/ApiRegistration.h"
 #include "Core/ConfigStore.h"
 #include "Core/Context.h"
-#include "Core/CrashDumpWriter.h"
-#include "Core/FaultTracker.h"
 #include "Core/ImcBus.h"
-#include "Core/InterfaceRegistry.h"
-#include "Core/LeaseManager.h"
-#include "Core/LocaleManager.h"
-#include "Core/ModHandle.h"
-#include "Core/ModManifest.h"
 #include "Core/ResourceApi.h"
-#include "Core/TimerManager.h"
+#include "Core/RuntimeInterfaces.h"
 #include "TestKernel.h"
+#include "TestKernelBuilder.h"
+#include "TestModHelper.h"
 
 #include "bml_config.h"
 #include "bml_errors.h"
@@ -44,14 +39,16 @@ using BML::Core::ApiRegistry;
 using BML::Core::ConfigStore;
 using BML::Core::Context;
 using BML::Core::Testing::TestKernel;
+using BML::Core::Testing::TestKernelBuilder;
+using BML::Core::Testing::TestModHelper;
 using namespace BML::Core;
 
 namespace BML::Core {
-void RegisterMemoryApis() {}
-void RegisterDiagnosticApis() {}
-void RegisterSyncApis() {}
-void RegisterTracingApis() {}
-void RegisterProfilingApis() {}
+void RegisterMemoryApis(ApiRegistry &) {}
+void RegisterDiagnosticApis(ApiRegistry &) {}
+void RegisterSyncApis(ApiRegistry &) {}
+void RegisterTracingApis(ApiRegistry &) {}
+void RegisterProfilingApis(ApiRegistry &) {}
 }
 
 namespace {
@@ -66,62 +63,39 @@ struct ConfigHookCapture {
 
 class CoreApisTests : public ::testing::Test {
 protected:
-    std::vector<std::unique_ptr<BML::Core::ModManifest>> manifests_;
     TestKernel kernel_;
+    std::unique_ptr<TestModHelper> mods_;
+    std::vector<std::unique_ptr<BML::Core::ModManifest>> manifests_;
 
     void SetUp() override {
-        kernel_->api_registry = std::make_unique<ApiRegistry>();
-        kernel_->config = std::make_unique<ConfigStore>();
-        kernel_->crash_dump = std::make_unique<CrashDumpWriter>();
-        kernel_->fault_tracker = std::make_unique<FaultTracker>();
-        kernel_->imc_bus = std::make_unique<ImcBus>();
-        kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config, *kernel_->crash_dump, *kernel_->fault_tracker);
-        kernel_->leases = std::make_unique<LeaseManager>();
-        kernel_->interface_registry = std::make_unique<InterfaceRegistry>(*kernel_->context, *kernel_->leases);
-        kernel_->locale = std::make_unique<LocaleManager>();
-        kernel_->timers = std::make_unique<TimerManager>(*kernel_->context);
-        kernel_->config->BindContext(*kernel_->context);
-
-        Context::SetCurrentModule(nullptr);
-        kernel_->context->Initialize(bmlGetApiVersion());
-        kernel_->imc_bus->BindDeps(*kernel_->context);
-        Context::SetCurrentModule(nullptr);
+        kernel_ = TestKernelBuilder()
+            .WithConfig()
+            .WithImcBus()
+            .WithInterfaces()
+            .WithLocale()
+            .WithTimers()
+            .RegisterAllRuntimeInterfaces()
+            .Build();
         temp_root_ = std::filesystem::temp_directory_path() /
                      ("bml-coreapis-tests-" + std::to_string(test_counter_.fetch_add(1, std::memory_order_relaxed)));
         std::filesystem::create_directories(temp_root_);
+        mods_ = std::make_unique<TestModHelper>(*kernel_, temp_root_);
+        Context::SetLifecycleModule(nullptr);
     }
 
     void TearDown() override {
-        Context::SetCurrentModule(nullptr);
+        Context::SetLifecycleModule(nullptr);
         std::error_code ec;
         std::filesystem::remove_all(temp_root_, ec);
     }
 
     BML_Mod CreateTrackedMod(const std::string &id) {
-        auto manifest = std::make_unique<BML::Core::ModManifest>();
-        manifest->package.id = id;
-        manifest->package.name = id;
-        manifest->package.version = "1.0.0";
-        manifest->package.parsed_version = {1, 0, 0};
-        manifest->directory = (temp_root_ / id).wstring();
-        std::filesystem::create_directories(manifest->directory);
-        manifest->manifest_path = manifest->directory + L"/manifest.toml";
-
-        auto handle = kernel_->context->CreateModHandle(*manifest);
-        BML::Core::LoadedModule module{};
-        module.id = id;
-        module.manifest = manifest.get();
-        module.mod_handle = std::move(handle);
-        kernel_->context->AddLoadedModule(std::move(module));
-
-        BML_Mod mod = kernel_->context->GetModHandleById(id);
-        manifests_.push_back(std::move(manifest));
-        return mod;
+        return mods_->CreateMod(id);
     }
 
     void InitConfigBackedMod(const std::string &id) {
         mod_handle_ = CreateTrackedMod(id);
-        Context::SetCurrentModule(mod_handle_);
+        Context::SetLifecycleModule(mod_handle_);
     }
 
     BML_Mod Mod() const { return mod_handle_; }
@@ -134,7 +108,7 @@ protected:
 std::atomic<uint64_t> CoreApisTests::test_counter_{1};
 
 TEST_F(CoreApisTests, MultiThreadedHandleCreationAndRelease) {
-    BML::Core::RegisterResourceApis();
+    BML::Core::RegisterResourceApis(*kernel_->api_registry);
 
     using PFN_Create = BML_Result (*)(BML_Mod, BML_HandleType, BML_HandleDesc *);
     using PFN_Release = BML_Result (*)(const BML_HandleDesc *);
@@ -209,7 +183,7 @@ TEST_F(CoreApisTests, MultiThreadedHandleCreationAndRelease) {
 
 TEST_F(CoreApisTests, ConfigReloadStressTriggersHooksOncePerLoad) {
     InitConfigBackedMod("coreapis.config");
-    BML::Core::RegisterConfigApis();
+    BML::Core::RegisterConfigApis(*kernel_->api_registry);
 
     using PFN_ConfigSet = BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *);
     using PFN_ConfigGet = BML_Result (*)(BML_Mod, const BML_ConfigKey *, BML_ConfigValue *);
@@ -310,8 +284,8 @@ TEST_F(CoreApisTests, ConfigStoreRequiresExplicitModuleOutsideApiShim) {
 
 TEST_F(CoreApisTests, ConfigAndCoreApisRequireExplicitModuleHandles) {
     InitConfigBackedMod("coreapis.strict.boundary");
-    BML::Core::RegisterConfigApis();
-    BML::Core::RegisterCoreApis();
+    BML::Core::RegisterConfigApis(*kernel_->api_registry);
+    BML::Core::RegisterCoreApis(*kernel_->api_registry);
 
     using PFN_ConfigSet = BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *);
     using PFN_ConfigGet = BML_Result (*)(BML_Mod, const BML_ConfigKey *, BML_ConfigValue *);
@@ -371,7 +345,7 @@ void OrderingHandler(BML_Context ctx,
 TEST_F(CoreApisTests, ImcBroadcastPreservesPublishOrderPerSubscriber) {
     auto owner = CreateTrackedMod("coreapis.imc.order");
     ASSERT_NE(owner, nullptr);
-    Context::SetCurrentModule(owner);
+    Context::SetLifecycleModule(owner);
 
     OrderingCapture first{};
     OrderingCapture second{};
@@ -380,7 +354,7 @@ TEST_F(CoreApisTests, ImcBroadcastPreservesPublishOrderPerSubscriber) {
     BML_Subscription sub2 = nullptr;
     
     BML_TopicId topic_id = 0;
-    ASSERT_EQ(BML_RESULT_OK, ImcGetTopicId("order.topic", &topic_id));
+    ASSERT_EQ(BML_RESULT_OK, ImcGetTopicId(*kernel_, "order.topic", &topic_id));
     ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(owner, topic_id, OrderingHandler, &first, &sub1));
     ASSERT_EQ(BML_RESULT_OK, ImcSubscribe(owner, topic_id, OrderingHandler, &second, &sub2));
 
@@ -390,7 +364,7 @@ TEST_F(CoreApisTests, ImcBroadcastPreservesPublishOrderPerSubscriber) {
         ASSERT_EQ(BML_RESULT_OK, ImcPublish(owner, topic_id, &payload, sizeof(payload)));
     }
 
-    ImcPump(0);
+    ImcPump(*kernel_, 0);
 
     auto validate = [kMessages](OrderingCapture &capture) {
         std::lock_guard<std::mutex> lock(capture.mutex);
@@ -405,18 +379,28 @@ TEST_F(CoreApisTests, ImcBroadcastPreservesPublishOrderPerSubscriber) {
 
     ASSERT_EQ(BML_RESULT_OK, ImcUnsubscribe(sub1));
     ASSERT_EQ(BML_RESULT_OK, ImcUnsubscribe(sub2));
-    Context::SetCurrentModule(nullptr);
+    Context::SetLifecycleModule(nullptr);
 }
 
 TEST_F(CoreApisTests, CurrentModuleApisAreAbsentFromTheRegistry) {
-    BML::Core::RegisterCoreApis();
+    BML::Core::RegisterCoreApis(*kernel_->api_registry);
 
     EXPECT_EQ(nullptr, kernel_->api_registry->Get("bmlSetCurrentModule"));
     EXPECT_EQ(nullptr, kernel_->api_registry->Get("bmlGetCurrentModule"));
 }
 
+TEST_F(CoreApisTests, ZeroHandleRuntimeApisAreAbsentFromTheRegistry) {
+    BML::Core::RegisterCoreApis(*kernel_->api_registry);
+    BML::Core::RegisterHookApis(*kernel_->api_registry);
+
+    EXPECT_EQ(nullptr, kernel_->api_registry->Get("bmlHookEnumerate"));
+    EXPECT_EQ(nullptr, kernel_->api_registry->Get("bmlRegisterRuntimeProvider"));
+    EXPECT_EQ(nullptr, kernel_->api_registry->Get("bmlUnregisterRuntimeProvider"));
+    EXPECT_EQ(nullptr, kernel_->api_registry->Get("bmlCleanupModuleState"));
+}
+
 TEST_F(CoreApisTests, InterfaceApisAcquireWithoutTls) {
-    BML::Core::RegisterInterfaceApis();
+    BML::Core::RegisterInterfaceApis(*kernel_->api_registry);
 
     auto register_fn = reinterpret_cast<PFN_BML_InterfaceRegister>(
         kernel_->api_registry->Get("bmlInterfaceRegister"));
@@ -433,7 +417,7 @@ TEST_F(CoreApisTests, InterfaceApisAcquireWithoutTls) {
 
     auto owner = CreateTrackedMod("coreapis.interface.owner");
     ASSERT_NE(owner, nullptr);
-    Context::SetCurrentModule(nullptr);
+    Context::SetLifecycleModule(nullptr);
 
     static int implementation = 42;
     BML_InterfaceDesc desc = BML_INTERFACE_DESC_INIT;
@@ -456,7 +440,7 @@ TEST_F(CoreApisTests, InterfaceApisAcquireWithoutTls) {
 }
 
 TEST_F(CoreApisTests, TimerApisScheduleWithoutTls) {
-    BML::Core::RegisterTimerApis();
+    BML::Core::RegisterTimerApis(*kernel_->api_registry);
 
     auto schedule_once = reinterpret_cast<PFN_BML_TimerScheduleOnce>(
         kernel_->api_registry->Get("bmlTimerScheduleOnce"));
@@ -470,7 +454,7 @@ TEST_F(CoreApisTests, TimerApisScheduleWithoutTls) {
 
     auto owner = CreateTrackedMod("coreapis.timer.owner");
     ASSERT_NE(owner, nullptr);
-    Context::SetCurrentModule(nullptr);
+    Context::SetLifecycleModule(nullptr);
 
     int fired = 0;
     BML_Timer timer = nullptr;
@@ -497,11 +481,11 @@ TEST_F(CoreApisTests, TimerApisScheduleWithoutTls) {
 }
 
 TEST_F(CoreApisTests, ExplicitOwnerApisRejectNullOwner) {
-    BML::Core::RegisterHookApis();
-    BML::Core::RegisterInterfaceApis();
-    BML::Core::RegisterLocaleApis();
-    BML::Core::RegisterResourceApis();
-    BML::Core::RegisterTimerApis();
+    BML::Core::RegisterHookApis(*kernel_->api_registry);
+    BML::Core::RegisterInterfaceApis(*kernel_->api_registry);
+    BML::Core::RegisterLocaleApis(*kernel_->api_registry);
+    BML::Core::RegisterResourceApis(*kernel_->api_registry);
+    BML::Core::RegisterTimerApis(*kernel_->api_registry);
 
     auto hook_register = reinterpret_cast<PFN_BML_HookRegister>(
         kernel_->api_registry->Get("bmlHookRegister"));
@@ -533,7 +517,7 @@ TEST_F(CoreApisTests, ExplicitOwnerApisRejectNullOwner) {
 
     auto owner = CreateTrackedMod("coreapis.explicit.strict");
     ASSERT_NE(owner, nullptr);
-    Context::SetCurrentModule(owner);
+    Context::SetLifecycleModule(owner);
 
     BML_HookDesc hook_desc = BML_HOOK_DESC_INIT;
     hook_desc.target_name = "strict-hook";
@@ -584,11 +568,12 @@ TEST_F(CoreApisTests, ExplicitOwnerApisRejectNullOwner) {
                   &timer));
     EXPECT_EQ(nullptr, timer);
 
-    Context::SetCurrentModule(nullptr);
+    Context::SetLifecycleModule(nullptr);
 }
 
 TEST_F(CoreApisTests, LocaleApisLoadWithoutTls) {
-    BML::Core::RegisterLocaleApis();
+    BML::Core::RegisterLocaleApis(*kernel_->api_registry);
+    BML::Core::RefreshRuntimeInterfaces(*kernel_);
 
     auto load_fn = reinterpret_cast<PFN_BML_LocaleLoad>(
         kernel_->api_registry->Get("bmlLocaleLoad"));
@@ -596,12 +581,14 @@ TEST_F(CoreApisTests, LocaleApisLoadWithoutTls) {
         kernel_->api_registry->Get("bmlLocaleGet"));
     auto bind_fn = reinterpret_cast<PFN_BML_LocaleBindTable>(
         kernel_->api_registry->Get("bmlLocaleBindTable"));
-    auto lookup_fn = reinterpret_cast<PFN_BML_LocaleLookup>(
-        kernel_->api_registry->Get("bmlLocaleLookup"));
     ASSERT_NE(load_fn, nullptr);
     ASSERT_NE(get_fn, nullptr);
     ASSERT_NE(bind_fn, nullptr);
-    ASSERT_NE(lookup_fn, nullptr);
+    auto *locale_api = kernel_->context->GetServiceHub()
+        ? kernel_->context->GetServiceHub()->Interfaces().Locale
+        : nullptr;
+    ASSERT_NE(locale_api, nullptr);
+    ASSERT_NE(locale_api->Lookup, nullptr);
 
     auto owner = CreateTrackedMod("coreapis.locale.owner");
     ASSERT_NE(owner, nullptr);
@@ -613,18 +600,18 @@ TEST_F(CoreApisTests, LocaleApisLoadWithoutTls) {
         locale_file << "greeting = \"Hello from owned locale\"\n";
     }
 
-    Context::SetCurrentModule(nullptr);
+    Context::SetLifecycleModule(nullptr);
     ASSERT_EQ(BML_RESULT_OK, load_fn(owner, "en"));
     EXPECT_STREQ("Hello from owned locale", get_fn(owner, "greeting"));
 
     BML_LocaleTable table = nullptr;
     ASSERT_EQ(BML_RESULT_OK, bind_fn(owner, &table));
     ASSERT_NE(nullptr, table);
-    EXPECT_STREQ("Hello from owned locale", lookup_fn(table, "greeting"));
+    EXPECT_STREQ("Hello from owned locale", locale_api->Lookup(locale_api->Context, table, "greeting"));
 }
 
 TEST_F(CoreApisTests, ResourceApisCreateWithoutTls) {
-    BML::Core::RegisterResourceApis();
+    BML::Core::RegisterResourceApis(*kernel_->api_registry);
 
     auto register_type = reinterpret_cast<PFN_BML_RegisterResourceType>(
         kernel_->api_registry->Get("bmlRegisterResourceType"));
@@ -641,7 +628,7 @@ TEST_F(CoreApisTests, ResourceApisCreateWithoutTls) {
 
     auto owner = CreateTrackedMod("coreapis.resource.owner");
     ASSERT_NE(owner, nullptr);
-    Context::SetCurrentModule(nullptr);
+    Context::SetLifecycleModule(nullptr);
 
     BML_ResourceTypeDesc type_desc{};
     type_desc.struct_size = sizeof(BML_ResourceTypeDesc);
@@ -664,7 +651,7 @@ TEST_F(CoreApisTests, ResourceApisCreateWithoutTls) {
 // ========================================================================
 
 TEST_F(CoreApisTests, GetModDirectory_ReturnsUtf8Path) {
-    BML::Core::RegisterCoreApis();
+    BML::Core::RegisterCoreApis(*kernel_->api_registry);
 
     auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
         kernel_->api_registry->Get("bmlGetModDirectory"));
@@ -679,7 +666,7 @@ TEST_F(CoreApisTests, GetModDirectory_ReturnsUtf8Path) {
 }
 
 TEST_F(CoreApisTests, GetModDirectory_NullOutput) {
-    BML::Core::RegisterCoreApis();
+    BML::Core::RegisterCoreApis(*kernel_->api_registry);
 
     auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
         kernel_->api_registry->Get("bmlGetModDirectory"));
@@ -690,20 +677,20 @@ TEST_F(CoreApisTests, GetModDirectory_NullOutput) {
 }
 
 TEST_F(CoreApisTests, GetModDirectory_NullMod) {
-    BML::Core::RegisterCoreApis();
+    BML::Core::RegisterCoreApis(*kernel_->api_registry);
 
     auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
         kernel_->api_registry->Get("bmlGetModDirectory"));
     ASSERT_NE(fn, nullptr);
 
     // Null module handles remain invalid when no explicit owner is provided.
-    Context::SetCurrentModule(nullptr);
+    Context::SetLifecycleModule(nullptr);
     const char *dir = nullptr;
     EXPECT_EQ(BML_RESULT_INVALID_ARGUMENT, fn(nullptr, &dir));
 }
 
 TEST_F(CoreApisTests, GetModDirectory_HostModHasNoManifest) {
-    BML::Core::RegisterCoreApis();
+    BML::Core::RegisterCoreApis(*kernel_->api_registry);
 
     auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
         kernel_->api_registry->Get("bmlGetModDirectory"));
@@ -721,7 +708,7 @@ TEST_F(CoreApisTests, GetModDirectory_HostModHasNoManifest) {
 // ========================================================================
 
 TEST_F(CoreApisTests, GetModName_ReturnsManifestName) {
-    BML::Core::RegisterCoreApis();
+    BML::Core::RegisterCoreApis(*kernel_->api_registry);
 
     auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
         kernel_->api_registry->Get("bmlGetModName"));
@@ -736,7 +723,7 @@ TEST_F(CoreApisTests, GetModName_ReturnsManifestName) {
 }
 
 TEST_F(CoreApisTests, GetModDescription_ReturnsManifestDescription) {
-    BML::Core::RegisterCoreApis();
+    BML::Core::RegisterCoreApis(*kernel_->api_registry);
 
     auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
         kernel_->api_registry->Get("bmlGetModDescription"));
@@ -769,7 +756,7 @@ TEST_F(CoreApisTests, GetModDescription_ReturnsManifestDescription) {
 }
 
 TEST_F(CoreApisTests, GetModAuthorCount_ReturnsCorrectCount) {
-    BML::Core::RegisterCoreApis();
+    BML::Core::RegisterCoreApis(*kernel_->api_registry);
 
     auto count_fn = reinterpret_cast<BML_Result (*)(BML_Mod, uint32_t *)>(
         kernel_->api_registry->Get("bmlGetModAuthorCount"));
@@ -814,7 +801,7 @@ TEST_F(CoreApisTests, GetModAuthorCount_ReturnsCorrectCount) {
 }
 
 TEST_F(CoreApisTests, GetModName_NullOutput) {
-    BML::Core::RegisterCoreApis();
+    BML::Core::RegisterCoreApis(*kernel_->api_registry);
 
     auto fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char **)>(
         kernel_->api_registry->Get("bmlGetModName"));
@@ -830,7 +817,7 @@ TEST_F(CoreApisTests, GetModName_NullOutput) {
 
 TEST_F(CoreApisTests, ConfigGetInt_KeyFound) {
     InitConfigBackedMod("coreapis.config.int");
-    BML::Core::RegisterConfigApis();
+    BML::Core::RegisterConfigApis(*kernel_->api_registry);
 
     auto set_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *)>(
         kernel_->api_registry->Get("bmlConfigSet"));
@@ -850,7 +837,7 @@ TEST_F(CoreApisTests, ConfigGetInt_KeyFound) {
 
 TEST_F(CoreApisTests, ConfigGetInt_KeyNotFoundReturnsDefault) {
     InitConfigBackedMod("coreapis.config.int.default");
-    BML::Core::RegisterConfigApis();
+    BML::Core::RegisterConfigApis(*kernel_->api_registry);
 
     auto get_int_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, int32_t, int32_t *)>(
         kernel_->api_registry->Get("bmlConfigGetInt"));
@@ -863,7 +850,7 @@ TEST_F(CoreApisTests, ConfigGetInt_KeyNotFoundReturnsDefault) {
 
 TEST_F(CoreApisTests, ConfigGetFloat_KeyFound) {
     InitConfigBackedMod("coreapis.config.float");
-    BML::Core::RegisterConfigApis();
+    BML::Core::RegisterConfigApis(*kernel_->api_registry);
 
     auto set_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *)>(
         kernel_->api_registry->Get("bmlConfigSet"));
@@ -883,7 +870,7 @@ TEST_F(CoreApisTests, ConfigGetFloat_KeyFound) {
 
 TEST_F(CoreApisTests, ConfigGetBool_KeyNotFoundReturnsDefault) {
     InitConfigBackedMod("coreapis.config.bool.default");
-    BML::Core::RegisterConfigApis();
+    BML::Core::RegisterConfigApis(*kernel_->api_registry);
 
     auto get_bool_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, BML_Bool, BML_Bool *)>(
         kernel_->api_registry->Get("bmlConfigGetBool"));
@@ -896,7 +883,7 @@ TEST_F(CoreApisTests, ConfigGetBool_KeyNotFoundReturnsDefault) {
 
 TEST_F(CoreApisTests, ConfigGetString_KeyFound) {
     InitConfigBackedMod("coreapis.config.string");
-    BML::Core::RegisterConfigApis();
+    BML::Core::RegisterConfigApis(*kernel_->api_registry);
 
     auto set_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *)>(
         kernel_->api_registry->Get("bmlConfigSet"));
@@ -917,7 +904,7 @@ TEST_F(CoreApisTests, ConfigGetString_KeyFound) {
 
 TEST_F(CoreApisTests, ConfigGetString_KeyNotFoundReturnsDefault) {
     InitConfigBackedMod("coreapis.config.string.default");
-    BML::Core::RegisterConfigApis();
+    BML::Core::RegisterConfigApis(*kernel_->api_registry);
 
     auto get_string_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, const char *, const char **)>(
         kernel_->api_registry->Get("bmlConfigGetString"));
@@ -930,7 +917,7 @@ TEST_F(CoreApisTests, ConfigGetString_KeyNotFoundReturnsDefault) {
 
 TEST_F(CoreApisTests, ConfigGetString_NullDefaultReturnsNull) {
     InitConfigBackedMod("coreapis.config.string.nulldefault");
-    BML::Core::RegisterConfigApis();
+    BML::Core::RegisterConfigApis(*kernel_->api_registry);
 
     auto get_string_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, const char *, const char **)>(
         kernel_->api_registry->Get("bmlConfigGetString"));
@@ -943,7 +930,7 @@ TEST_F(CoreApisTests, ConfigGetString_NullDefaultReturnsNull) {
 
 TEST_F(CoreApisTests, ConfigGetInt_NullOutput) {
     InitConfigBackedMod("coreapis.config.int.null");
-    BML::Core::RegisterConfigApis();
+    BML::Core::RegisterConfigApis(*kernel_->api_registry);
 
     auto get_int_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const char *, const char *, int32_t, int32_t *)>(
         kernel_->api_registry->Get("bmlConfigGetInt"));
@@ -954,7 +941,7 @@ TEST_F(CoreApisTests, ConfigGetInt_NullOutput) {
 
 TEST_F(CoreApisTests, ConfigGetInt_TypeMismatch) {
     InitConfigBackedMod("coreapis.config.int.mismatch");
-    BML::Core::RegisterConfigApis();
+    BML::Core::RegisterConfigApis(*kernel_->api_registry);
 
     auto set_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *)>(
         kernel_->api_registry->Get("bmlConfigSet"));
@@ -978,24 +965,25 @@ TEST_F(CoreApisTests, ConfigGetInt_TypeMismatch) {
 // ========================================================================
 
 TEST_F(CoreApisTests, GetLoadedModuleCount_MatchesModCount) {
-    BML::Core::RegisterCoreApis();
+    BML::Core::RegisterCoreApis(*kernel_->api_registry);
+    BML::Core::RefreshRuntimeInterfaces(*kernel_);
 
-    auto count_fn = reinterpret_cast<uint32_t (*)()>(
-        kernel_->api_registry->Get("bmlGetLoadedModuleCount"));
-    auto at_fn = reinterpret_cast<BML_Mod (*)(uint32_t)>(
-        kernel_->api_registry->Get("bmlGetLoadedModuleAt"));
-    ASSERT_NE(count_fn, nullptr);
-    ASSERT_NE(at_fn, nullptr);
+    auto *module_api = kernel_->context->GetServiceHub()
+        ? kernel_->context->GetServiceHub()->Interfaces().Module
+        : nullptr;
+    ASSERT_NE(module_api, nullptr);
+    ASSERT_NE(module_api->GetLoadedModuleCount, nullptr);
+    ASSERT_NE(module_api->GetLoadedModuleAt, nullptr);
 
-    EXPECT_EQ(0u, count_fn());
+    EXPECT_EQ(0u, module_api->GetLoadedModuleCount(module_api->Context));
 
     auto mod1 = CreateTrackedMod("test.count1");
     auto mod2 = CreateTrackedMod("test.count2");
-    EXPECT_EQ(2u, count_fn());
+    EXPECT_EQ(2u, module_api->GetLoadedModuleCount(module_api->Context));
 
-    EXPECT_EQ(mod1, at_fn(0));
-    EXPECT_EQ(mod2, at_fn(1));
-    EXPECT_EQ(nullptr, at_fn(2));
+    EXPECT_EQ(mod1, module_api->GetLoadedModuleAt(module_api->Context, 0));
+    EXPECT_EQ(mod2, module_api->GetLoadedModuleAt(module_api->Context, 1));
+    EXPECT_EQ(nullptr, module_api->GetLoadedModuleAt(module_api->Context, 2));
 }
 
 } // namespace

@@ -1,19 +1,23 @@
 #include "gtest/gtest.h"
 
 #include "Core/LeaseManager.h"
+#include "TestKernel.h"
 
 namespace {
 
 using BML::Core::LeaseManager;
+using BML::Core::Testing::TestKernel;
 
 TEST(LeaseManagerTests, CleanupConsumerDestroysOutstandingHandles) {
     LeaseManager manager;
+    TestKernel kernel;
     BML_InterfaceLease lease = nullptr;
     BML_InterfaceRegistration registration = nullptr;
 
-    ASSERT_EQ(manager.CreateInterfaceLease("iface.test", "provider.a", "consumer.a", &lease),
+    ASSERT_EQ(manager.CreateInterfaceLease(kernel.get(), "iface.test", "provider.a", "consumer.a", &lease),
               BML_RESULT_OK);
-    ASSERT_EQ(manager.CreateInterfaceRegistration("iface.test",
+    ASSERT_EQ(manager.CreateInterfaceRegistration(kernel.get(),
+                                                  "iface.test",
                                                   "provider.a",
                                                   "consumer.a",
                                                   &registration),
@@ -31,12 +35,14 @@ TEST(LeaseManagerTests, CleanupConsumerDestroysOutstandingHandles) {
 
 TEST(LeaseManagerTests, CleanupProviderDestroysOutstandingHandles) {
     LeaseManager manager;
+    TestKernel kernel;
     BML_InterfaceLease lease = nullptr;
     BML_InterfaceRegistration registration = nullptr;
 
-    ASSERT_EQ(manager.CreateInterfaceLease("iface.test", "provider.a", "consumer.a", &lease),
+    ASSERT_EQ(manager.CreateInterfaceLease(kernel.get(), "iface.test", "provider.a", "consumer.a", &lease),
               BML_RESULT_OK);
-    ASSERT_EQ(manager.CreateInterfaceRegistration("iface.test",
+    ASSERT_EQ(manager.CreateInterfaceRegistration(kernel.get(),
+                                                  "iface.test",
                                                   "provider.a",
                                                   "consumer.a",
                                                   &registration),
@@ -52,12 +58,14 @@ TEST(LeaseManagerTests, CleanupProviderDestroysOutstandingHandles) {
 
 TEST(LeaseManagerTests, ResetDestroysOutstandingHandles) {
     LeaseManager manager;
+    TestKernel kernel;
     BML_InterfaceLease lease = nullptr;
     BML_InterfaceRegistration registration = nullptr;
 
-    ASSERT_EQ(manager.CreateInterfaceLease("iface.reset", "provider.b", "consumer.b", &lease),
+    ASSERT_EQ(manager.CreateInterfaceLease(kernel.get(), "iface.reset", "provider.b", "consumer.b", &lease),
               BML_RESULT_OK);
-    ASSERT_EQ(manager.CreateInterfaceRegistration("iface.reset",
+    ASSERT_EQ(manager.CreateInterfaceRegistration(kernel.get(),
+                                                  "iface.reset",
                                                   "provider.b",
                                                   "consumer.b",
                                                   &registration),

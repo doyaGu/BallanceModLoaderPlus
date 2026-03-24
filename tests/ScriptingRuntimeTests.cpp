@@ -12,7 +12,7 @@
 
 #include "Core/ApiRegistration.h"
 #include "Core/ApiRegistry.h"
-#include "Core/BuiltinInterfaces.h"
+#include "Core/RuntimeInterfaces.h"
 #include "Core/ConfigStore.h"
 #include "Core/Context.h"
 #include "Core/CrashDumpWriter.h"
@@ -76,12 +76,13 @@ protected:
         auto &ctx = *kernel_->context;
         ctx.Initialize({0, 4, 0});
 
-        BML::Core::RegisterCoreApis();
-        BML::Core::RegisterBuiltinInterfaces();
-        BML::Core::PopulateBuiltinServices(m_Builtins);
-        BML::Scripting::g_Builtins = &m_Builtins;
+        BML::Core::RegisterCoreApis(*kernel_->api_registry);
+        BML::Core::RegisterRuntimeInterfaces(*kernel_);
+        m_Services = kernel_->context->GetServiceHub()->Interfaces();
+        BML::Scripting::g_Services = &m_Services;
 
         ASSERT_TRUE(m_Engine.Initialize());
+        m_Engine.SetServices(reinterpret_cast<BML_Mod>(0x1), &m_Services);
 
         m_Manager = std::make_unique<BML::Scripting::ScriptInstanceManager>(m_Engine.Get());
         m_Coroutines = std::make_unique<BML::Scripting::CoroutineManager>(
@@ -113,7 +114,7 @@ protected:
         m_Manager.reset();
         m_Engine.Shutdown();
 
-        BML::Scripting::g_Builtins = nullptr;
+        BML::Scripting::g_Services = nullptr;
 
         std::error_code ec;
         fs::remove_all(m_TempDir, ec);
@@ -184,7 +185,7 @@ protected:
     }
 
     fs::path m_TempDir;
-    bml::BuiltinServices m_Builtins;
+    BML_Services m_Services;
     BML::Scripting::ScriptEngine m_Engine;
     std::unique_ptr<BML::Scripting::ScriptInstanceManager> m_Manager;
     std::unique_ptr<BML::Scripting::CoroutineManager> m_Coroutines;
@@ -203,7 +204,7 @@ TEST_F(ScriptingRuntimeTest, ReloadRunsOnInitWhenVirtoolsIsAlreadyReady) {
     m_Mod = CreateLoadedScriptModule("test.script.reload_init", entryPath);
 
     ASSERT_EQ(m_Manager->CompileAndAttach(
-        m_Mod, bmlGetProcAddress,
+        m_Mod, &m_Services,
         entryPath.string().c_str(),
         m_TempDir.string().c_str()), BML_RESULT_OK);
 
@@ -243,12 +244,12 @@ TEST_F(ScriptingRuntimeTest, ReloadLifecycleCallbacksRestoreScriptScope) {
 
     m_Mod = CreateLoadedScriptModule("test.script.reload_context", entryPath);
 
-    BML::Core::Context::SetCurrentModule(m_Mod);
+    BML::Core::Context::SetLifecycleModule(m_Mod);
     ASSERT_EQ(m_Manager->CompileAndAttach(
-        m_Mod, bmlGetProcAddress,
+        m_Mod, &m_Services,
         entryPath.string().c_str(),
         m_TempDir.string().c_str()), BML_RESULT_OK);
-    BML::Core::Context::SetCurrentModule(nullptr);
+    BML::Core::Context::SetLifecycleModule(nullptr);
 
     m_ContextPhases.clear();
     WriteScript(entryPath, R"(
@@ -275,7 +276,7 @@ TEST_F(ScriptingRuntimeTest, FailedPrepareReloadKeepsCurrentModuleLoaded) {
     m_Mod = CreateLoadedScriptModule("test.script.prepare_reload", entryPath);
 
     ASSERT_EQ(m_Manager->CompileAndAttach(
-        m_Mod, bmlGetProcAddress,
+        m_Mod, &m_Services,
         entryPath.string().c_str(),
         m_TempDir.string().c_str()), BML_RESULT_OK);
 
@@ -304,7 +305,7 @@ TEST_F(ScriptingRuntimeTest, ResumedCoroutineTimeoutMarksInstanceAsError) {
     m_Mod = CreateLoadedScriptModule("test.script.coroutine_timeout", entryPath);
 
     ASSERT_EQ(m_Manager->CompileAndAttach(
-        m_Mod, bmlGetProcAddress,
+        m_Mod, &m_Services,
         entryPath.string().c_str(),
         m_TempDir.string().c_str()), BML_RESULT_OK);
 

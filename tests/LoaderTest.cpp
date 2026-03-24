@@ -7,8 +7,10 @@
 
 #include <cstring>
 
+#define BML_LOADER_IMPLEMENTATION
+#include "bml_loader.h"
 #include "bml.h"
-#include "bml_builtin_interfaces.h"
+#include "bml_services.hpp"
 
 namespace {
     struct FakeLease {
@@ -19,8 +21,7 @@ namespace {
 
     BML_Result DummyContextRetain(BML_Context) { return BML_RESULT_OK; }
     BML_Result DummyContextRelease(BML_Context) { return BML_RESULT_OK; }
-    BML_Context DummyGetGlobalContext() { return reinterpret_cast<BML_Context>(0x1); }
-    const BML_Version *DummyGetRuntimeVersion() {
+    const BML_Version *DummyGetRuntimeVersion(BML_Context) {
         static BML_Version version = BML_VERSION_INIT(1, 0, 0);
         return &version;
     }
@@ -52,14 +53,17 @@ namespace {
         return BML_RESULT_OK;
     }
     BML_Result DummyRegisterShutdownHook(BML_Mod, BML_ShutdownCallback, void *) { return BML_RESULT_OK; }
-    uint32_t DummyGetLoadedModuleCount() { return 0; }
-    BML_Mod DummyGetLoadedModuleAt(uint32_t) { return nullptr; }
+    uint32_t DummyGetLoadedModuleCount(BML_Context) { return 0; }
+    BML_Mod DummyGetLoadedModuleAt(BML_Context, uint32_t) { return nullptr; }
+    BML_Mod DummyFindModuleById(BML_Context, const char *) { return nullptr; }
 
-    void DummyLog(BML_Mod, BML_Context, BML_LogSeverity, const char *, const char *, ...) {}
-    void DummyLogVa(BML_Mod, BML_Context, BML_LogSeverity, const char *, const char *, va_list) {}
+    void DummyLog(BML_Mod, BML_LogSeverity, const char *, const char *, ...) {}
+    void DummyLogVa(BML_Mod, BML_LogSeverity, const char *, const char *, va_list) {}
     void DummySetLogFilter(BML_Mod, BML_LogSeverity) {}
-    BML_Result DummyRegisterLogSinkOverride(const BML_LogSinkOverrideDesc *) { return BML_RESULT_OK; }
-    BML_Result DummyClearLogSinkOverride() { return BML_RESULT_OK; }
+    BML_Result DummyRegisterLogSinkOverride(BML_Mod, const BML_LogSinkOverrideDesc *) {
+        return BML_RESULT_OK;
+    }
+    BML_Result DummyClearLogSinkOverride(BML_Mod) { return BML_RESULT_OK; }
 
     BML_Result DummyConfigGet(BML_Mod, const BML_ConfigKey *, BML_ConfigValue *) { return BML_RESULT_OK; }
     BML_Result DummyConfigSet(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *) { return BML_RESULT_OK; }
@@ -81,6 +85,9 @@ namespace {
         }
         *out_id = 42;
         return BML_RESULT_OK;
+    }
+    BML_Result DummyServiceGetTopicId(BML_Context, const char *name, BML_TopicId *out_id) {
+        return DummyGetTopicId(name, out_id);
     }
     BML_Result DummyGetRpcId(const char *, BML_RpcId *out_id) {
         if (!out_id) {
@@ -132,28 +139,55 @@ namespace {
     BML_Result DummyFutureOnComplete(BML_Future, BML_FutureCallback, void *) { return BML_RESULT_OK; }
     BML_Result DummyFutureRelease(BML_Future) { return BML_RESULT_OK; }
     void DummyPump(size_t) {}
+    void DummyServicePump(BML_Context, size_t maxPerSub) { DummyPump(maxPerSub); }
     BML_Result DummyGetSubscriptionStats(BML_Subscription, BML_SubscriptionStats *) { return BML_RESULT_OK; }
     BML_Result DummyGetStats(BML_ImcStats *) { return BML_RESULT_OK; }
+    BML_Result DummyServiceGetStats(BML_Context, BML_ImcStats *out_stats) {
+        return DummyGetStats(out_stats);
+    }
     BML_Result DummyResetStats() { return BML_RESULT_OK; }
+    BML_Result DummyServiceResetStats(BML_Context) { return DummyResetStats(); }
     BML_Result DummyGetTopicInfo(BML_TopicId, BML_TopicInfo *) { return BML_RESULT_OK; }
+    BML_Result DummyServiceGetTopicInfo(BML_Context, BML_TopicId topic, BML_TopicInfo *out_info) {
+        return DummyGetTopicInfo(topic, out_info);
+    }
     BML_Result DummyGetTopicName(BML_TopicId, char *, size_t, size_t *) { return BML_RESULT_OK; }
+    BML_Result DummyServiceGetTopicName(BML_Context,
+                                        BML_TopicId topic,
+                                        char *buffer,
+                                        size_t bufferSize,
+                                        size_t *outLength) {
+        return DummyGetTopicName(topic, buffer, bufferSize, outLength);
+    }
     BML_Result DummyPublishState(BML_Mod, BML_TopicId, const BML_ImcMessage *) {
         return BML_RESULT_OK;
     }
-    BML_Result DummyCopyState(BML_TopicId, void *, size_t, size_t *, BML_ImcStateMeta *) { return BML_RESULT_OK; }
-    BML_Result DummyClearState(BML_TopicId) { return BML_RESULT_OK; }
+    BML_Result DummyCopyState(BML_Context, BML_TopicId, void *, size_t, size_t *, BML_ImcStateMeta *) {
+        return BML_RESULT_OK;
+    }
+    BML_Result DummyClearState(BML_Context, BML_TopicId) { return BML_RESULT_OK; }
 
-    void *DummyAlloc(size_t size) { return size == 0 ? nullptr : reinterpret_cast<void *>(0x1000); }
-    void *DummyCalloc(size_t, size_t size) { return size == 0 ? nullptr : reinterpret_cast<void *>(0x1000); }
-    void *DummyRealloc(void *, size_t, size_t size) { return size == 0 ? nullptr : reinterpret_cast<void *>(0x1000); }
-    void DummyFree(void *) {}
-    void *DummyAllocAligned(size_t size, size_t) { return size == 0 ? nullptr : reinterpret_cast<void *>(0x1000); }
-    void DummyFreeAligned(void *) {}
-    BML_Result DummyMemoryPoolCreate(size_t, uint32_t, BML_MemoryPool *) { return BML_RESULT_OK; }
-    void *DummyMemoryPoolAlloc(BML_MemoryPool) { return reinterpret_cast<void *>(0x1000); }
-    void DummyMemoryPoolFree(BML_MemoryPool, void *) {}
-    void DummyMemoryPoolDestroy(BML_MemoryPool) {}
-    BML_Result DummyGetMemoryStats(BML_MemoryStats *) { return BML_RESULT_OK; }
+    void *DummyAlloc(BML_Context, size_t size) {
+        return size == 0 ? nullptr : reinterpret_cast<void *>(0x1000);
+    }
+    void *DummyCalloc(BML_Context, size_t, size_t size) {
+        return size == 0 ? nullptr : reinterpret_cast<void *>(0x1000);
+    }
+    void *DummyRealloc(BML_Context, void *, size_t, size_t size) {
+        return size == 0 ? nullptr : reinterpret_cast<void *>(0x1000);
+    }
+    void DummyFree(BML_Context, void *) {}
+    void *DummyAllocAligned(BML_Context, size_t size, size_t) {
+        return size == 0 ? nullptr : reinterpret_cast<void *>(0x1000);
+    }
+    void DummyFreeAligned(BML_Context, void *) {}
+    BML_Result DummyMemoryPoolCreate(BML_Context, size_t, uint32_t, BML_MemoryPool *) {
+        return BML_RESULT_OK;
+    }
+    void *DummyMemoryPoolAlloc(BML_Context, BML_MemoryPool) { return reinterpret_cast<void *>(0x1000); }
+    void DummyMemoryPoolFree(BML_Context, BML_MemoryPool, void *) {}
+    void DummyMemoryPoolDestroy(BML_Context, BML_MemoryPool) {}
+    BML_Result DummyGetMemoryStats(BML_Context, BML_MemoryStats *) { return BML_RESULT_OK; }
 
     BML_Result DummyHandleCreate(BML_Mod, BML_HandleType, BML_HandleDesc *out_desc) {
         if (!out_desc) {
@@ -179,98 +213,131 @@ namespace {
         return BML_RESULT_OK;
     }
 
-    BML_Result DummyGetLastError(BML_ErrorInfo *) { return BML_RESULT_OK; }
-    void DummyClearLastError() {}
+    BML_Result DummyGetLastError(BML_Context, BML_ErrorInfo *) { return BML_RESULT_OK; }
+    void DummyClearLastError(BML_Context) {}
     const char *DummyGetErrorString(BML_Result) { return "ok"; }
-    BML_Bool DummyGetInterfaceDescriptor(const char *, BML_InterfaceRuntimeDesc *) { return BML_FALSE; }
-    void DummyEnumerateInterfaces(PFN_BML_InterfaceRuntimeEnumerator, void *, uint64_t) {}
-    BML_Bool DummyInterfaceExists(const char *) { return BML_FALSE; }
-    BML_Bool DummyIsInterfaceCompatible(const char *, const BML_Version *) { return BML_FALSE; }
-    void DummyEnumerateByProvider(const char *, PFN_BML_InterfaceRuntimeEnumerator, void *) {}
-    void DummyEnumerateByCapability(uint64_t, PFN_BML_InterfaceRuntimeEnumerator, void *) {}
-    uint32_t DummyGetInterfaceCount(void) { return 0; }
-    uint32_t DummyGetLeaseCount(const char *) { return 0; }
+    BML_Bool DummyGetInterfaceDescriptor(BML_Context, const char *, BML_InterfaceRuntimeDesc *) {
+        return BML_FALSE;
+    }
+    void DummyEnumerateInterfaces(BML_Context,
+                                  PFN_BML_InterfaceRuntimeEnumerator,
+                                  void *,
+                                  uint64_t) {}
+    BML_Bool DummyInterfaceExists(BML_Context, const char *) { return BML_FALSE; }
+    BML_Bool DummyIsInterfaceCompatible(BML_Context, const char *, const BML_Version *) {
+        return BML_FALSE;
+    }
+    void DummyEnumerateByProvider(BML_Context,
+                                  const char *,
+                                  PFN_BML_InterfaceRuntimeEnumerator,
+                                  void *) {}
+    void DummyEnumerateByCapability(BML_Context,
+                                    uint64_t,
+                                    PFN_BML_InterfaceRuntimeEnumerator,
+                                    void *) {}
+    uint32_t DummyGetInterfaceCount(BML_Context) { return 0; }
+    uint32_t DummyGetLeaseCount(BML_Context, const char *) { return 0; }
 
-    BML_CoreContextInterface g_CoreContextInterface{
-        BML_IFACE_HEADER(BML_CoreContextInterface, BML_CORE_CONTEXT_INTERFACE_ID, 1, 0),
-        DummyGetGlobalContext,
-        DummyGetRuntimeVersion,
-        DummyContextRetain,
-        DummyContextRelease,
-        DummyContextSetUserData,
-        DummyContextGetUserData,
-    };
-    BML_CoreModuleInterface g_CoreModuleInterface{
-        BML_IFACE_HEADER(BML_CoreModuleInterface, BML_CORE_MODULE_INTERFACE_ID, 2, 0),
-        DummyGetModId,
-        DummyGetModVersion,
-        DummyRequestCapability,
-        DummyCheckCapability,
-        DummyRegisterShutdownHook,
-        DummyGetLoadedModuleCount,
-        DummyGetLoadedModuleAt,
-    };
-    BML_CoreLoggingInterface g_CoreLoggingInterface{
-        BML_IFACE_HEADER(BML_CoreLoggingInterface, BML_CORE_LOGGING_INTERFACE_ID, 1, 0),
-        DummyLog,
-        DummyLogVa,
-        DummySetLogFilter,
-        DummyRegisterLogSinkOverride,
-        DummyClearLogSinkOverride,
-    };
-    BML_CoreConfigInterface g_CoreConfigInterface{
-        BML_IFACE_HEADER(BML_CoreConfigInterface, BML_CORE_CONFIG_INTERFACE_ID, 1, 0),
-        DummyConfigGet,
-        DummyConfigSet,
-        DummyConfigReset,
-        DummyConfigEnumerate,
-        DummyConfigBatchBegin,
-        DummyConfigBatchSet,
-        DummyConfigBatchCommit,
-        DummyConfigBatchDiscard,
-        DummyRegisterConfigLoadHooks,
-    };
-    BML_CoreMemoryInterface g_CoreMemoryInterface{
-        BML_IFACE_HEADER(BML_CoreMemoryInterface, BML_CORE_MEMORY_INTERFACE_ID, 1, 0),
-        DummyAlloc,
-        DummyCalloc,
-        DummyRealloc,
-        DummyFree,
-        DummyAllocAligned,
-        DummyFreeAligned,
-        DummyMemoryPoolCreate,
-        DummyMemoryPoolAlloc,
-        DummyMemoryPoolFree,
-        DummyMemoryPoolDestroy,
-        DummyGetMemoryStats,
-    };
-    BML_CoreResourceInterface g_CoreResourceInterface{
-        BML_IFACE_HEADER(BML_CoreResourceInterface, BML_CORE_RESOURCE_INTERFACE_ID, 1, 0),
-        DummyRegisterResourceType,
-        DummyHandleCreate,
-        DummyHandleRetain,
-        DummyHandleRelease,
-        DummyHandleValidate,
-        DummyHandleAttachUserData,
-        DummyHandleGetUserData,
-    };
-    BML_CoreDiagnosticInterface g_CoreDiagnosticInterface{
-        BML_IFACE_HEADER(BML_CoreDiagnosticInterface, BML_CORE_DIAGNOSTIC_INTERFACE_ID, 1, 0),
-        DummyGetLastError,
-        DummyClearLastError,
-        DummyGetErrorString,
-        DummyInterfaceExists,
-        DummyGetInterfaceDescriptor,
-        DummyIsInterfaceCompatible,
-        DummyGetInterfaceCount,
-        DummyGetLeaseCount,
-        DummyEnumerateInterfaces,
-        DummyEnumerateByProvider,
-        DummyEnumerateByCapability,
-    };
+    const BML_Context kServiceContext = reinterpret_cast<BML_Context>(0x1);
+
+    BML_CoreContextInterface g_CoreContextInterface{};
+    BML_CoreModuleInterface g_CoreModuleInterface{};
+    BML_CoreLoggingInterface g_CoreLoggingInterface{};
+    BML_CoreConfigInterface g_CoreConfigInterface{};
+    BML_CoreMemoryInterface g_CoreMemoryInterface{};
+    BML_CoreResourceInterface g_CoreResourceInterface{};
+    BML_CoreDiagnosticInterface g_CoreDiagnosticInterface{};
+
+    struct InterfaceInitializer {
+        InterfaceInitializer() {
+            g_CoreContextInterface.header = BML_IFACE_HEADER(
+                BML_CoreContextInterface, BML_CORE_CONTEXT_INTERFACE_ID, 1, 0);
+            g_CoreContextInterface.Context = kServiceContext;
+            g_CoreContextInterface.GetRuntimeVersion = DummyGetRuntimeVersion;
+            g_CoreContextInterface.Retain = DummyContextRetain;
+            g_CoreContextInterface.Release = DummyContextRelease;
+            g_CoreContextInterface.SetUserData = DummyContextSetUserData;
+            g_CoreContextInterface.GetUserData = DummyContextGetUserData;
+
+            g_CoreModuleInterface.header = BML_IFACE_HEADER(
+                BML_CoreModuleInterface, BML_CORE_MODULE_INTERFACE_ID, 2, 0);
+            g_CoreModuleInterface.Context = kServiceContext;
+            g_CoreModuleInterface.GetModId = DummyGetModId;
+            g_CoreModuleInterface.GetModVersion = DummyGetModVersion;
+            g_CoreModuleInterface.RequestCapability = DummyRequestCapability;
+            g_CoreModuleInterface.CheckCapability = DummyCheckCapability;
+            g_CoreModuleInterface.RegisterShutdownHook = DummyRegisterShutdownHook;
+            g_CoreModuleInterface.GetLoadedModuleCount = DummyGetLoadedModuleCount;
+            g_CoreModuleInterface.GetLoadedModuleAt = DummyGetLoadedModuleAt;
+            g_CoreModuleInterface.FindModuleById = DummyFindModuleById;
+
+            g_CoreLoggingInterface.header = BML_IFACE_HEADER(
+                BML_CoreLoggingInterface, BML_CORE_LOGGING_INTERFACE_ID, 1, 0);
+            g_CoreLoggingInterface.Context = kServiceContext;
+            g_CoreLoggingInterface.Log = DummyLog;
+            g_CoreLoggingInterface.LogVa = DummyLogVa;
+            g_CoreLoggingInterface.SetLogFilter = DummySetLogFilter;
+            g_CoreLoggingInterface.RegisterSinkOverride = DummyRegisterLogSinkOverride;
+            g_CoreLoggingInterface.ClearSinkOverride = DummyClearLogSinkOverride;
+
+            g_CoreConfigInterface.header = BML_IFACE_HEADER(
+                BML_CoreConfigInterface, BML_CORE_CONFIG_INTERFACE_ID, 1, 0);
+            g_CoreConfigInterface.Get = DummyConfigGet;
+            g_CoreConfigInterface.Set = DummyConfigSet;
+            g_CoreConfigInterface.Reset = DummyConfigReset;
+            g_CoreConfigInterface.Enumerate = DummyConfigEnumerate;
+            g_CoreConfigInterface.BatchBegin = DummyConfigBatchBegin;
+            g_CoreConfigInterface.BatchSet = DummyConfigBatchSet;
+            g_CoreConfigInterface.BatchCommit = DummyConfigBatchCommit;
+            g_CoreConfigInterface.BatchDiscard = DummyConfigBatchDiscard;
+            g_CoreConfigInterface.RegisterLoadHooks = DummyRegisterConfigLoadHooks;
+
+            g_CoreMemoryInterface.header = BML_IFACE_HEADER(
+                BML_CoreMemoryInterface, BML_CORE_MEMORY_INTERFACE_ID, 1, 0);
+            g_CoreMemoryInterface.Context = kServiceContext;
+            g_CoreMemoryInterface.Alloc = DummyAlloc;
+            g_CoreMemoryInterface.Calloc = DummyCalloc;
+            g_CoreMemoryInterface.Realloc = DummyRealloc;
+            g_CoreMemoryInterface.Free = DummyFree;
+            g_CoreMemoryInterface.AllocAligned = DummyAllocAligned;
+            g_CoreMemoryInterface.FreeAligned = DummyFreeAligned;
+            g_CoreMemoryInterface.MemoryPoolCreate = DummyMemoryPoolCreate;
+            g_CoreMemoryInterface.MemoryPoolAlloc = DummyMemoryPoolAlloc;
+            g_CoreMemoryInterface.MemoryPoolFree = DummyMemoryPoolFree;
+            g_CoreMemoryInterface.MemoryPoolDestroy = DummyMemoryPoolDestroy;
+            g_CoreMemoryInterface.GetMemoryStats = DummyGetMemoryStats;
+
+            g_CoreResourceInterface.header = BML_IFACE_HEADER(
+                BML_CoreResourceInterface, BML_CORE_RESOURCE_INTERFACE_ID, 1, 0);
+            g_CoreResourceInterface.Context = kServiceContext;
+            g_CoreResourceInterface.RegisterResourceType = DummyRegisterResourceType;
+            g_CoreResourceInterface.HandleCreate = DummyHandleCreate;
+            g_CoreResourceInterface.HandleRetain = DummyHandleRetain;
+            g_CoreResourceInterface.HandleRelease = DummyHandleRelease;
+            g_CoreResourceInterface.HandleValidate = DummyHandleValidate;
+            g_CoreResourceInterface.HandleAttachUserData = DummyHandleAttachUserData;
+            g_CoreResourceInterface.HandleGetUserData = DummyHandleGetUserData;
+
+            g_CoreDiagnosticInterface.header = BML_IFACE_HEADER(
+                BML_CoreDiagnosticInterface, BML_CORE_DIAGNOSTIC_INTERFACE_ID, 1, 0);
+            g_CoreDiagnosticInterface.Context = kServiceContext;
+            g_CoreDiagnosticInterface.GetLastError = DummyGetLastError;
+            g_CoreDiagnosticInterface.ClearLastError = DummyClearLastError;
+            g_CoreDiagnosticInterface.GetErrorString = DummyGetErrorString;
+            g_CoreDiagnosticInterface.InterfaceExists = DummyInterfaceExists;
+            g_CoreDiagnosticInterface.GetInterfaceDescriptor = DummyGetInterfaceDescriptor;
+            g_CoreDiagnosticInterface.IsInterfaceCompatible = DummyIsInterfaceCompatible;
+            g_CoreDiagnosticInterface.GetInterfaceCount = DummyGetInterfaceCount;
+            g_CoreDiagnosticInterface.GetLeaseCount = DummyGetLeaseCount;
+            g_CoreDiagnosticInterface.EnumerateInterfaces = DummyEnumerateInterfaces;
+            g_CoreDiagnosticInterface.EnumerateByProvider = DummyEnumerateByProvider;
+            g_CoreDiagnosticInterface.EnumerateByCapability = DummyEnumerateByCapability;
+        }
+    } g_InterfaceInitializer;
     BML_ImcBusInterface g_ImcBusInterface{
         BML_IFACE_HEADER(BML_ImcBusInterface, BML_IMC_BUS_INTERFACE_ID, 1, 0),
-        DummyGetTopicId,
+        kServiceContext,
+        DummyServiceGetTopicId,
         DummyPublish,
         DummyPublishEx,
         DummyPublishBuffer,
@@ -285,12 +352,12 @@ namespace {
         DummyPublishState,
         DummyCopyState,
         DummyClearState,
-        DummyPump,
+        DummyServicePump,
         DummyGetSubscriptionStats,
-        DummyGetStats,
-        DummyResetStats,
-        DummyGetTopicInfo,
-        DummyGetTopicName,
+        DummyServiceGetStats,
+        DummyServiceResetStats,
+        DummyServiceGetTopicInfo,
+        DummyServiceGetTopicName,
     };
 
     void *MockGetProcAddress(const char *proc_name);
@@ -338,6 +405,39 @@ namespace {
     }
 
     BML_Result MockInterfaceRelease(BML_InterfaceLease) { return BML_RESULT_OK; }
+    BML_Result MockInterfaceRegister(BML_Mod, const BML_InterfaceDesc *) { return BML_RESULT_OK; }
+    BML_Result MockInterfaceUnregister(BML_Mod, const char *) { return BML_RESULT_OK; }
+
+    BML_CoreInterfaceControlInterface g_InterfaceControl{
+        BML_IFACE_HEADER(BML_CoreInterfaceControlInterface,
+                         BML_CORE_INTERFACE_CONTROL_INTERFACE_ID,
+                         1,
+                         0),
+        kServiceContext,
+        MockInterfaceRegister,
+        MockInterfaceAcquire,
+        MockInterfaceRelease,
+        MockInterfaceUnregister,
+    };
+
+    BML_Services g_Services{
+        &g_CoreContextInterface,
+        &g_CoreLoggingInterface,
+        &g_CoreModuleInterface,
+        &g_CoreConfigInterface,
+        &g_CoreMemoryInterface,
+        &g_CoreResourceInterface,
+        &g_CoreDiagnosticInterface,
+        &g_InterfaceControl,
+        &g_ImcBusInterface,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+    };
 
     void *MockGetProcAddress(const char *proc_name) {
         if (!proc_name) {
@@ -346,18 +446,22 @@ namespace {
         if (std::strcmp(proc_name, "bmlGetProcAddress") == 0) {
             return reinterpret_cast<void *>(&MockGetProcAddress);
         }
+        if (std::strcmp(proc_name, "bmlInterfaceRegister") == 0) {
+            return reinterpret_cast<void *>(&MockInterfaceRegister);
+        }
         if (std::strcmp(proc_name, "bmlInterfaceAcquire") == 0) {
             return reinterpret_cast<void *>(&MockInterfaceAcquire);
         }
         if (std::strcmp(proc_name, "bmlInterfaceRelease") == 0) {
             return reinterpret_cast<void *>(&MockInterfaceRelease);
         }
+        if (std::strcmp(proc_name, "bmlInterfaceUnregister") == 0) {
+            return reinterpret_cast<void *>(&MockInterfaceUnregister);
+        }
         return nullptr;
     }
-} // namespace
 
-#define BML_LOADER_IMPLEMENTATION
-#include "bml_loader.h"
+} // namespace
 
 class LoaderTest : public ::testing::Test {
 protected:
@@ -371,12 +475,13 @@ protected:
     }
 };
 
-TEST_F(LoaderTest, LoadAPI_BootstrapAndBuiltins_Success) {
+TEST_F(LoaderTest, LoadAPI_BootstrapAndServices_Success) {
     ASSERT_EQ(BML_RESULT_OK, BML_BOOTSTRAP_LOAD(MockGetProcAddress));
     EXPECT_TRUE(bmlIsApiLoaded());
+    EXPECT_NE(nullptr, bmlInterfaceRegister);
     EXPECT_NE(nullptr, bmlInterfaceAcquire);
     EXPECT_NE(nullptr, bmlInterfaceRelease);
-    EXPECT_EQ(nullptr, bmlGetHostModule);
+    EXPECT_NE(nullptr, bmlInterfaceUnregister);
 }
 
 TEST_F(LoaderTest, LoadAPI_NullGetProcAddress_ReturnsInvalidArgument) {
@@ -403,6 +508,20 @@ TEST_F(LoaderTest, LoadAPI_MissingNonBootstrapInterface_DoesNotFail) {
     EXPECT_TRUE(bmlIsApiLoaded());
 }
 
+TEST_F(LoaderTest, BindServices_Success) {
+    bmlBindServices(&g_Services);
+    EXPECT_TRUE(bmlIsApiLoaded());
+    EXPECT_NE(nullptr, bmlInterfaceRegister);
+    EXPECT_NE(nullptr, bmlInterfaceAcquire);
+    EXPECT_NE(nullptr, bmlInterfaceRelease);
+    EXPECT_NE(nullptr, bmlInterfaceUnregister);
+}
+
+TEST_F(LoaderTest, BindServices_NullBundleLeavesLoaderUnloaded) {
+    bmlBindServices(nullptr);
+    EXPECT_FALSE(bmlIsApiLoaded());
+}
+
 TEST_F(LoaderTest, UnloadAPI_ClearsCompatibilitySurface) {
     ASSERT_EQ(BML_RESULT_OK, BML_BOOTSTRAP_LOAD(MockGetProcAddress));
     ASSERT_TRUE(bmlIsApiLoaded());
@@ -416,6 +535,6 @@ TEST_F(LoaderTest, UnloadAPI_ClearsCompatibilitySurface) {
 }
 
 TEST_F(LoaderTest, ApiCountsReflectBootstrapMinimum) {
-    EXPECT_EQ(4u, bmlGetApiCount());
-    EXPECT_EQ(2u, bmlGetRequiredApiCount());
+    EXPECT_EQ(5u, bmlGetApiCount());
+    EXPECT_EQ(4u, bmlGetRequiredApiCount());
 }

@@ -50,13 +50,13 @@ protected:
         kernel_->context       = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config, *kernel_->crash_dump, *kernel_->fault_tracker);
         kernel_->config->BindContext(*kernel_->context);
         kernel_->api_registry->Clear();
-        Context::SetCurrentModule(nullptr);
-        BML::Core::RegisterLoggingApis();
+        Context::SetLifecycleModule(nullptr);
+        BML::Core::RegisterLoggingApis(*kernel_->api_registry);
     }
 
     void TearDown() override {
         (void)BML::Core::ClearLogSinkOverride();
-        Context::SetCurrentModule(nullptr);
+        Context::SetLifecycleModule(nullptr);
         manifests_.clear();
         mods_.clear();
     }
@@ -127,8 +127,8 @@ TEST_F(LoggingSinkOverrideTests, OverrideDispatchesAndShutdownFires) {
     ASSERT_EQ(BML_RESULT_OK, BML::Core::RegisterLogSinkOverride(&desc));
 
     auto mod = MakeMod("log.mod");
-    Context::SetCurrentModule(nullptr);
-    log_fn(mod, kernel_->context->GetHandle(), BML_LOG_WARN, "sink.override", "value=%d", 123);
+    Context::SetLifecycleModule(nullptr);
+    log_fn(mod,BML_LOG_WARN, "sink.override", "value=%d", 123);
 
     ASSERT_EQ(state.dispatch_count.load(), 1);
     ASSERT_EQ(state.logs.size(), 1u);
@@ -166,8 +166,8 @@ TEST_F(LoggingSinkOverrideTests, LogApiUsesExplicitModuleWithoutTls) {
     ASSERT_EQ(BML_RESULT_OK, BML::Core::RegisterLogSinkOverride(&desc));
 
     auto mod = MakeMod("log.owned.mod");
-    Context::SetCurrentModule(nullptr);
-    log_fn(mod, kernel_->context->GetHandle(), BML_LOG_INFO, "owned.log", "value=%d", 7);
+    Context::SetLifecycleModule(nullptr);
+    log_fn(mod,BML_LOG_INFO, "owned.log", "value=%d", 7);
 
     EXPECT_EQ(BML_LOG_INFO, captured.severity);
     EXPECT_EQ("owned.log", captured.tag);
@@ -199,8 +199,8 @@ TEST_F(LoggingSinkOverrideTests, LegacyLogApiDoesNotFallbackToCurrentModule) {
     ASSERT_EQ(BML_RESULT_OK, BML::Core::RegisterLogSinkOverride(&desc));
 
     auto mod = MakeMod("log.explicit.mod");
-    Context::SetCurrentModule(mod);
-    log_fn(nullptr, kernel_->context->GetHandle(), BML_LOG_INFO, "explicit.log", "value=%d", 9);
+    Context::SetLifecycleModule(mod);
+    log_fn(nullptr,BML_LOG_INFO, "explicit.log", "value=%d", 9);
 
     EXPECT_EQ(BML_LOG_INFO, captured.severity);
     EXPECT_EQ("explicit.log", captured.tag);
@@ -248,10 +248,10 @@ TEST_F(LoggingSinkOverrideTests, LogFilterPreventsLowerSeverityMessages) {
     // Set filter to WARN - should block DEBUG and INFO
     set_filter(nullptr, BML_LOG_WARN);
     
-    log_fn(nullptr, kernel_->context->GetHandle(), BML_LOG_DEBUG, "test", "debug message");
-    log_fn(nullptr, kernel_->context->GetHandle(), BML_LOG_INFO, "test", "info message");
-    log_fn(nullptr, kernel_->context->GetHandle(), BML_LOG_WARN, "test", "warn message");
-    log_fn(nullptr, kernel_->context->GetHandle(), BML_LOG_ERROR, "test", "error message");
+    log_fn(nullptr,BML_LOG_DEBUG, "test", "debug message");
+    log_fn(nullptr,BML_LOG_INFO, "test", "info message");
+    log_fn(nullptr,BML_LOG_WARN, "test", "warn message");
+    log_fn(nullptr,BML_LOG_ERROR, "test", "error message");
     
     // Only WARN and ERROR should have been dispatched
     EXPECT_EQ(state.dispatch_count.load(), 2);
@@ -265,7 +265,7 @@ TEST_F(LoggingSinkOverrideTests, NullFormatStringDoesNotCrash) {
     ASSERT_NE(log_fn, nullptr);
 
     // Should not crash with null format string
-    EXPECT_NO_THROW(log_fn(nullptr, kernel_->context->GetHandle(), BML_LOG_INFO, "test", nullptr));
+    EXPECT_NO_THROW(log_fn(nullptr,BML_LOG_INFO, "test", nullptr));
 }
 
 TEST_F(LoggingSinkOverrideTests, OverrideExceptionDoesNotCrash) {
@@ -292,7 +292,7 @@ TEST_F(LoggingSinkOverrideTests, OverrideExceptionDoesNotCrash) {
     ASSERT_EQ(BML_RESULT_OK, BML::Core::RegisterLogSinkOverride(&desc));
 
     // Should not crash despite exception in dispatch
-    EXPECT_NO_THROW(log_fn(nullptr, kernel_->context->GetHandle(), BML_LOG_INFO, "test", "message"));
+    EXPECT_NO_THROW(log_fn(nullptr,BML_LOG_INFO, "test", "message"));
     EXPECT_EQ(state.dispatch_count.load(), 1);
 }
 
@@ -342,7 +342,7 @@ TEST_F(LoggingSinkOverrideTests, ClearWaitsForInFlightDispatches) {
     ASSERT_EQ(BML_RESULT_OK, BML::Core::RegisterLogSinkOverride(&desc));
 
     std::thread logger([&] {
-        log_fn(nullptr, kernel_->context->GetHandle(), BML_LOG_INFO, "race", "message");
+        log_fn(nullptr,BML_LOG_INFO, "race", "message");
     });
 
     {
@@ -410,7 +410,7 @@ TEST_F(LoggingSinkOverrideTests, LogMessageFormattingIncludesAllParts) {
 
     ASSERT_EQ(BML_RESULT_OK, BML::Core::RegisterLogSinkOverride(&desc));
 
-    log_fn(nullptr, kernel_->context->GetHandle(), BML_LOG_ERROR, "mytag", "value=%d, str=%s", 42, "hello");
+    log_fn(nullptr,BML_LOG_ERROR, "mytag", "value=%d, str=%s", 42, "hello");
 
     EXPECT_EQ(captured.severity, BML_LOG_ERROR);
     EXPECT_EQ(captured.tag, "mytag");

@@ -14,67 +14,42 @@
 #include <thread>
 #include <vector>
 
-#include "Core/ApiRegistry.h"
-#include "Core/ConfigStore.h"
 #include "Core/Context.h"
-#include "Core/CrashDumpWriter.h"
-#include "Core/DiagnosticManager.h"
-#include "Core/FaultTracker.h"
 #include "Core/ImcBus.h"
-#include "Core/ModHandle.h"
-#include "Core/ModManifest.h"
 #include "TestKernel.h"
+#include "TestKernelBuilder.h"
+#include "TestModHelper.h"
 
 namespace {
 
 using namespace BML::Core;
 using BML::Core::Testing::TestKernel;
+using BML::Core::Testing::TestKernelBuilder;
+using BML::Core::Testing::TestModHelper;
 
 class RpcExpansionTest : public ::testing::Test {
 protected:
-    std::vector<std::unique_ptr<BML::Core::ModManifest>> manifests_;
     TestKernel kernel_;
+    std::unique_ptr<TestModHelper> mods_;
 
     void SetUp() override {
-        kernel_->diagnostics = std::make_unique<DiagnosticManager>();
-        kernel_->api_registry = std::make_unique<ApiRegistry>();
-        kernel_->config = std::make_unique<ConfigStore>();
-        kernel_->crash_dump = std::make_unique<CrashDumpWriter>();
-        kernel_->fault_tracker = std::make_unique<FaultTracker>();
-        kernel_->imc_bus = std::make_unique<ImcBus>();
-        kernel_->context = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config, *kernel_->crash_dump, *kernel_->fault_tracker);
-        kernel_->config->BindContext(*kernel_->context);
-
-        auto &ctx = *kernel_->context;
-        ctx.Initialize({0, 4, 0});
-        kernel_->imc_bus->BindDeps(*kernel_->context);
-        host_mod_ = ctx.GetSyntheticHostModule();
+        kernel_ = TestKernelBuilder()
+            .WithConfig()
+            .WithImcBus()
+            .WithDiagnostics()
+            .Build();
+        mods_ = std::make_unique<TestModHelper>(*kernel_);
+        host_mod_ = mods_->HostMod();
         ASSERT_NE(host_mod_, nullptr);
-        Context::SetCurrentModule(host_mod_);
+        Context::SetLifecycleModule(host_mod_);
     }
 
     void TearDown() override {
-        Context::SetCurrentModule(nullptr);
+        Context::SetLifecycleModule(nullptr);
     }
 
     BML_Mod CreateTrackedMod(const std::string &id) {
-        auto manifest = std::make_unique<BML::Core::ModManifest>();
-        manifest->package.id = id;
-        manifest->package.name = id;
-        manifest->package.version = "1.0.0";
-        manifest->package.parsed_version = {1, 0, 0};
-        manifest->directory = L".";
-
-        auto handle = kernel_->context->CreateModHandle(*manifest);
-        LoadedModule module{};
-        module.id = id;
-        module.manifest = manifest.get();
-        module.mod_handle = std::move(handle);
-        kernel_->context->AddLoadedModule(std::move(module));
-
-        BML_Mod mod = kernel_->context->GetModHandleById(id);
-        manifests_.push_back(std::move(manifest));
-        return mod;
+        return mods_->CreateMod(id);
     }
 
     BML_Mod ResolveOwner(BML_Mod owner = nullptr) const {
@@ -119,6 +94,26 @@ protected:
         return ImcRemoveRpcMiddleware(ResolveOwner(owner), middleware);
     }
 
+    BML_Result GetRpcId(const char *name, BML_RpcId *outId) {
+        return ImcGetRpcId(*kernel_, name, outId);
+    }
+
+    BML_Result GetRpcInfo(BML_RpcId rpcId, BML_RpcInfo *outInfo) {
+        return ImcGetRpcInfo(*kernel_, rpcId, outInfo);
+    }
+
+    BML_Result GetRpcName(BML_RpcId rpcId, char *buffer, size_t capacity, size_t *outLength) {
+        return ImcGetRpcName(*kernel_, rpcId, buffer, capacity, outLength);
+    }
+
+    void EnumerateRpc(void(*callback)(BML_RpcId, const char *, BML_Bool, void *), void *userData) {
+        ImcEnumerateRpc(*kernel_, callback, userData);
+    }
+
+    void Pump(size_t maxPerSub = 0) {
+        ImcPump(*kernel_, maxPerSub);
+    }
+
     BML_Result RegisterStreamingRpc(BML_RpcId rpcId,
                                     BML_StreamingRpcHandler handler,
                                     void *userData,
@@ -145,7 +140,7 @@ protected:
 
 TEST_F(RpcExpansionTest, GetRpcInfoRegisteredHandler) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/Introspect", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/Introspect", &rpc_id), BML_RESULT_OK);
     ASSERT_NE(rpc_id, BML_RPC_ID_INVALID);
 
     auto handler = [](BML_Context, BML_RpcId, const BML_ImcMessage *, BML_ImcBuffer *, void *) -> BML_Result {
@@ -154,7 +149,7 @@ TEST_F(RpcExpansionTest, GetRpcInfoRegisteredHandler) {
     ASSERT_EQ(RegisterRpc(rpc_id, handler, nullptr), BML_RESULT_OK);
 
     BML_RpcInfo info = BML_RPC_INFO_INIT;
-    ASSERT_EQ(ImcGetRpcInfo(rpc_id, &info), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcInfo(rpc_id, &info), BML_RESULT_OK);
     EXPECT_EQ(info.rpc_id, rpc_id);
     EXPECT_EQ(info.has_handler, BML_TRUE);
     EXPECT_STREQ(info.name, "Test/Introspect");
@@ -165,20 +160,20 @@ TEST_F(RpcExpansionTest, GetRpcInfoRegisteredHandler) {
 
 TEST_F(RpcExpansionTest, GetRpcInfoUnregistered) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/NoHandler", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/NoHandler", &rpc_id), BML_RESULT_OK);
 
     BML_RpcInfo info = BML_RPC_INFO_INIT;
-    ASSERT_EQ(ImcGetRpcInfo(rpc_id, &info), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcInfo(rpc_id, &info), BML_RESULT_OK);
     EXPECT_EQ(info.has_handler, BML_FALSE);
 }
 
 TEST_F(RpcExpansionTest, GetRpcName) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/Named", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/Named", &rpc_id), BML_RESULT_OK);
 
     char buf[256] = {};
     size_t len = 0;
-    ASSERT_EQ(ImcGetRpcName(rpc_id, buf, sizeof(buf), &len), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcName(rpc_id, buf, sizeof(buf), &len), BML_RESULT_OK);
     EXPECT_EQ(std::string(buf, len), "Test/Named");
 }
 
@@ -186,7 +181,7 @@ TEST_F(RpcExpansionTest, EnumerateRpc) {
     BML_RpcId ids[3];
     const char *names[] = {"Test/Enum1", "Test/Enum2", "Test/Enum3"};
     for (int i = 0; i < 3; ++i) {
-        ASSERT_EQ(ImcGetRpcId(names[i], &ids[i]), BML_RESULT_OK);
+        ASSERT_EQ(GetRpcId(names[i], &ids[i]), BML_RESULT_OK);
     }
 
     auto handler = [](BML_Context, BML_RpcId, const BML_ImcMessage *, BML_ImcBuffer *, void *) -> BML_Result {
@@ -197,7 +192,7 @@ TEST_F(RpcExpansionTest, EnumerateRpc) {
     }
 
     int count = 0;
-    ImcEnumerateRpc([](BML_RpcId, const char *, BML_Bool, void *ud) {
+    EnumerateRpc([](BML_RpcId, const char *, BML_Bool, void *ud) {
         ++*static_cast<int *>(ud);
     }, &count);
 
@@ -208,7 +203,7 @@ TEST_F(RpcExpansionTest, EnumerateRpc) {
 
 TEST_F(RpcExpansionTest, HandlerMetrics) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/Metrics", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/Metrics", &rpc_id), BML_RESULT_OK);
 
     auto handler = [](BML_Context, BML_RpcId, const BML_ImcMessage *, BML_ImcBuffer *, void *) -> BML_Result {
         return BML_RESULT_OK;
@@ -219,12 +214,12 @@ TEST_F(RpcExpansionTest, HandlerMetrics) {
     for (int i = 0; i < 3; ++i) {
         BML_Future future;
         ASSERT_EQ(CallRpc(rpc_id, nullptr, &future), BML_RESULT_OK);
-        ImcPump();
+        Pump();
         ImcFutureRelease(future);
     }
 
     BML_RpcInfo info = BML_RPC_INFO_INIT;
-    ASSERT_EQ(ImcGetRpcInfo(rpc_id, &info), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcInfo(rpc_id, &info), BML_RESULT_OK);
     EXPECT_EQ(info.call_count, 3u);
     EXPECT_EQ(info.completion_count, 3u);
     EXPECT_EQ(info.failure_count, 0u);
@@ -240,7 +235,7 @@ TEST_F(RpcExpansionTest, HandlerMetrics) {
 
 TEST_F(RpcExpansionTest, FutureGetErrorOnSuccess) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/SuccessError", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/SuccessError", &rpc_id), BML_RESULT_OK);
 
     auto handler = [](BML_Context, BML_RpcId, const BML_ImcMessage *, BML_ImcBuffer *, void *) -> BML_Result {
         return BML_RESULT_OK;
@@ -249,7 +244,7 @@ TEST_F(RpcExpansionTest, FutureGetErrorOnSuccess) {
 
     BML_Future future;
     ASSERT_EQ(CallRpc(rpc_id, nullptr, &future), BML_RESULT_OK);
-    ImcPump();
+    Pump();
 
     BML_Result code = BML_RESULT_FAIL;
     char msg[256] = {};
@@ -264,7 +259,7 @@ TEST_F(RpcExpansionTest, FutureGetErrorOnSuccess) {
 
 TEST_F(RpcExpansionTest, RpcHandlerExErrorMessage) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/ExError", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/ExError", &rpc_id), BML_RESULT_OK);
 
     auto handler_ex = [](BML_Context, BML_RpcId, const BML_ImcMessage *,
                           BML_ImcBuffer *, char *out_err, size_t err_cap, void *) -> BML_Result {
@@ -279,7 +274,7 @@ TEST_F(RpcExpansionTest, RpcHandlerExErrorMessage) {
 
     BML_Future future;
     ASSERT_EQ(CallRpc(rpc_id, nullptr, &future), BML_RESULT_OK);
-    ImcPump();
+    Pump();
 
     BML_Result code = BML_RESULT_OK;
     char msg[256] = {};
@@ -294,7 +289,7 @@ TEST_F(RpcExpansionTest, RpcHandlerExErrorMessage) {
 
 TEST_F(RpcExpansionTest, FutureGetErrorOnHandlerFailure) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/FailError", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/FailError", &rpc_id), BML_RESULT_OK);
 
     auto handler = [](BML_Context, BML_RpcId, const BML_ImcMessage *, BML_ImcBuffer *, void *) -> BML_Result {
         return BML_RESULT_FAIL;
@@ -303,7 +298,7 @@ TEST_F(RpcExpansionTest, FutureGetErrorOnHandlerFailure) {
 
     BML_Future future;
     ASSERT_EQ(CallRpc(rpc_id, nullptr, &future), BML_RESULT_OK);
-    ImcPump();
+    Pump();
 
     BML_Result code = BML_RESULT_OK;
     ASSERT_EQ(ImcFutureGetError(future, &code, nullptr, 0, nullptr), BML_RESULT_OK);
@@ -328,13 +323,13 @@ static BML_Result CallExHandler(BML_Context, BML_RpcId, const BML_ImcMessage *,
 
 TEST_F(RpcExpansionTest, CallRpcExBasic) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/CallEx", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/CallEx", &rpc_id), BML_RESULT_OK);
     ASSERT_EQ(RegisterRpc(rpc_id, CallExHandler, nullptr), BML_RESULT_OK);
 
     BML_RpcCallOptions opts = BML_RPC_CALL_OPTIONS_INIT;
     BML_Future future;
     ASSERT_EQ(CallRpcEx(rpc_id, nullptr, &opts, &future), BML_RESULT_OK);
-    ImcPump();
+    Pump();
 
     BML_FutureState state;
     ASSERT_EQ(ImcFutureGetState(future, &state), BML_RESULT_OK);
@@ -346,7 +341,7 @@ TEST_F(RpcExpansionTest, CallRpcExBasic) {
 
 TEST_F(RpcExpansionTest, CallRpcExTimeout) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/Timeout", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/Timeout", &rpc_id), BML_RESULT_OK);
 
     auto handler = [](BML_Context, BML_RpcId, const BML_ImcMessage *,
                        BML_ImcBuffer *, void *) -> BML_Result {
@@ -361,7 +356,7 @@ TEST_F(RpcExpansionTest, CallRpcExTimeout) {
     ASSERT_EQ(CallRpcEx(rpc_id, nullptr, &opts, &future), BML_RESULT_OK);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    ImcPump();
+    Pump();
 
     BML_FutureState state;
     ASSERT_EQ(ImcFutureGetState(future, &state), BML_RESULT_OK);
@@ -377,7 +372,7 @@ TEST_F(RpcExpansionTest, CallRpcExTimeout) {
 
 TEST_F(RpcExpansionTest, PreMiddlewareRuns) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/PreMW", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/PreMW", &rpc_id), BML_RESULT_OK);
 
     auto handler = [](BML_Context, BML_RpcId, const BML_ImcMessage *, BML_ImcBuffer *, void *) -> BML_Result {
         return BML_RESULT_OK;
@@ -395,7 +390,7 @@ TEST_F(RpcExpansionTest, PreMiddlewareRuns) {
 
     BML_Future future;
     ASSERT_EQ(CallRpc(rpc_id, nullptr, &future), BML_RESULT_OK);
-    ImcPump();
+    Pump();
     EXPECT_EQ(pre_count, 1);
 
     ImcFutureRelease(future);
@@ -410,7 +405,7 @@ static BML_Result PreRejectHandler(BML_Context, BML_RpcId, const BML_ImcMessage 
 
 TEST_F(RpcExpansionTest, PreMiddlewareRejects) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/PreReject", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/PreReject", &rpc_id), BML_RESULT_OK);
 
     bool handler_called = false;
     ASSERT_EQ(RegisterRpc(rpc_id, PreRejectHandler, &handler_called), BML_RESULT_OK);
@@ -424,7 +419,7 @@ TEST_F(RpcExpansionTest, PreMiddlewareRejects) {
 
     BML_Future future;
     ASSERT_EQ(CallRpc(rpc_id, nullptr, &future), BML_RESULT_OK);
-    ImcPump();
+    Pump();
 
     EXPECT_FALSE(handler_called);
 
@@ -439,7 +434,7 @@ TEST_F(RpcExpansionTest, PreMiddlewareRejects) {
 
 TEST_F(RpcExpansionTest, PostMiddlewareRuns) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/PostMW", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/PostMW", &rpc_id), BML_RESULT_OK);
 
     auto handler = [](BML_Context, BML_RpcId, const BML_ImcMessage *, BML_ImcBuffer *, void *) -> BML_Result {
         return BML_RESULT_OK;
@@ -460,7 +455,7 @@ TEST_F(RpcExpansionTest, PostMiddlewareRuns) {
 
     BML_Future future;
     ASSERT_EQ(CallRpc(rpc_id, nullptr, &future), BML_RESULT_OK);
-    ImcPump();
+    Pump();
     EXPECT_EQ(post_count, 1);
 
     ImcFutureRelease(future);
@@ -470,7 +465,7 @@ TEST_F(RpcExpansionTest, PostMiddlewareRuns) {
 
 TEST_F(RpcExpansionTest, MiddlewarePriority) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/MWPriority", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/MWPriority", &rpc_id), BML_RESULT_OK);
 
     auto handler = [](BML_Context, BML_RpcId, const BML_ImcMessage *, BML_ImcBuffer *, void *) -> BML_Result {
         return BML_RESULT_OK;
@@ -497,7 +492,7 @@ TEST_F(RpcExpansionTest, MiddlewarePriority) {
 
     BML_Future future;
     ASSERT_EQ(CallRpc(rpc_id, nullptr, &future), BML_RESULT_OK);
-    ImcPump();
+    Pump();
 
     ASSERT_EQ(order.size(), 2u);
     EXPECT_EQ(order[0], 2); // mw2 ran first (priority -10)
@@ -511,10 +506,10 @@ TEST_F(RpcExpansionTest, MiddlewarePriority) {
 
 TEST_F(RpcExpansionTest, MiddlewareRemovedDuringOwnerCleanup) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/MiddlewareCleanup", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/MiddlewareCleanup", &rpc_id), BML_RESULT_OK);
 
     auto owner = CreateTrackedMod("rpc.middleware.owner");
-    Context::SetCurrentModule(owner);
+    Context::SetLifecycleModule(owner);
 
     auto handler = [](BML_Context, BML_RpcId, const BML_ImcMessage *, BML_ImcBuffer *, void *) -> BML_Result {
         return BML_RESULT_OK;
@@ -536,7 +531,7 @@ TEST_F(RpcExpansionTest, MiddlewareRemovedDuringOwnerCleanup) {
 
     BML_Future future = nullptr;
     ASSERT_EQ(CallRpc(rpc_id, nullptr, &future), BML_RESULT_OK);
-    ImcPump();
+    Pump();
 
     BML_FutureState state = BML_FUTURE_PENDING;
     ASSERT_EQ(ImcFutureGetState(future, &state), BML_RESULT_OK);
@@ -548,7 +543,7 @@ TEST_F(RpcExpansionTest, MiddlewareRemovedDuringOwnerCleanup) {
 
 TEST_F(RpcExpansionTest, MiddlewareRemovalRejectsNonOwner) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/MiddlewareOwner", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/MiddlewareOwner", &rpc_id), BML_RESULT_OK);
 
     auto owner_a = CreateTrackedMod("rpc.middleware.owner.a");
     auto owner_b = CreateTrackedMod("rpc.middleware.owner.b");
@@ -562,14 +557,14 @@ TEST_F(RpcExpansionTest, MiddlewareRemovalRejectsNonOwner) {
         return BML_RESULT_OK;
     };
 
-    Context::SetCurrentModule(owner_a);
+    Context::SetLifecycleModule(owner_a);
     ASSERT_EQ(RegisterRpc(rpc_id, handler, nullptr, owner_a), BML_RESULT_OK);
     ASSERT_EQ(AddRpcMiddleware(middleware, 0, nullptr, owner_a), BML_RESULT_OK);
 
-    Context::SetCurrentModule(owner_b);
+    Context::SetLifecycleModule(owner_b);
     EXPECT_EQ(BML_RESULT_PERMISSION_DENIED, RemoveRpcMiddleware(middleware, owner_b));
 
-    Context::SetCurrentModule(owner_a);
+    Context::SetLifecycleModule(owner_a);
     EXPECT_EQ(BML_RESULT_OK, RemoveRpcMiddleware(middleware, owner_a));
     EXPECT_EQ(BML_RESULT_OK, UnregisterRpc(rpc_id, owner_a));
 }
@@ -590,7 +585,7 @@ static BML_Result StreamingBasicHandler(BML_Context, BML_RpcId, const BML_ImcMes
 
 TEST_F(RpcExpansionTest, StreamingRpcBasic) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/Stream", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/Stream", &rpc_id), BML_RESULT_OK);
     ASSERT_EQ(RegisterStreamingRpc(rpc_id, StreamingBasicHandler, nullptr), BML_RESULT_OK);
 
     std::vector<int> received;
@@ -624,7 +619,7 @@ static BML_Result StreamingErrorHandler(BML_Context, BML_RpcId, const BML_ImcMes
 
 TEST_F(RpcExpansionTest, StreamingRpcError) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/StreamErr", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/StreamErr", &rpc_id), BML_RESULT_OK);
     ASSERT_EQ(RegisterStreamingRpc(rpc_id, StreamingErrorHandler, nullptr), BML_RESULT_OK);
 
     BML_Future future;
@@ -649,7 +644,7 @@ TEST_F(RpcExpansionTest, StreamingRpcError) {
 
 TEST_F(RpcExpansionTest, MiddlewareRAII) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/MWRAII", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/MWRAII", &rpc_id), BML_RESULT_OK);
 
     auto handler = [](BML_Context, BML_RpcId, const BML_ImcMessage *, BML_ImcBuffer *, void *) -> BML_Result {
         return BML_RESULT_OK;
@@ -669,7 +664,7 @@ TEST_F(RpcExpansionTest, MiddlewareRAII) {
 
     BML_Future f1;
     ASSERT_EQ(CallRpc(rpc_id, nullptr, &f1), BML_RESULT_OK);
-    ImcPump();
+    Pump();
     EXPECT_EQ(call_count, 1);
     ImcFutureRelease(f1);
 
@@ -677,7 +672,7 @@ TEST_F(RpcExpansionTest, MiddlewareRAII) {
 
     BML_Future f2;
     ASSERT_EQ(CallRpc(rpc_id, nullptr, &f2), BML_RESULT_OK);
-    ImcPump();
+    Pump();
     EXPECT_EQ(call_count, 1); // unchanged after removal
     ImcFutureRelease(f2);
 
@@ -701,7 +696,7 @@ static BML_Result DoubleCompleteHandler(BML_Context, BML_RpcId, const BML_ImcMes
 
 TEST_F(RpcExpansionTest, StreamingRpcDoubleCompleteRejected) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/StreamCleanup", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/StreamCleanup", &rpc_id), BML_RESULT_OK);
 
     g_SecondCompleteResult = BML_RESULT_OK;
     ASSERT_EQ(RegisterStreamingRpc(rpc_id, DoubleCompleteHandler, nullptr), BML_RESULT_OK);
@@ -724,7 +719,7 @@ TEST_F(RpcExpansionTest, StreamingRpcDoubleCompleteRejected) {
 
 TEST_F(RpcExpansionTest, RegisterRpcExDuplicateRejected) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/ExDup", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/ExDup", &rpc_id), BML_RESULT_OK);
 
     auto handler_ex = [](BML_Context, BML_RpcId, const BML_ImcMessage *,
                           BML_ImcBuffer *, char *, size_t, void *) -> BML_Result {
@@ -742,12 +737,12 @@ TEST_F(RpcExpansionTest, RegisterRpcExDuplicateRejected) {
 
 TEST_F(RpcExpansionTest, CallRpcExNullOptions) {
     BML_RpcId rpc_id = BML_RPC_ID_INVALID;
-    ASSERT_EQ(ImcGetRpcId("Test/ExNull", &rpc_id), BML_RESULT_OK);
+    ASSERT_EQ(GetRpcId("Test/ExNull", &rpc_id), BML_RESULT_OK);
     ASSERT_EQ(RegisterRpc(rpc_id, CallExHandler, nullptr), BML_RESULT_OK);
 
     BML_Future future;
     ASSERT_EQ(CallRpcEx(rpc_id, nullptr, nullptr, &future), BML_RESULT_OK);
-    ImcPump();
+    Pump();
 
     BML_FutureState state;
     ASSERT_EQ(ImcFutureGetState(future, &state), BML_RESULT_OK);

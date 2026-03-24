@@ -53,6 +53,21 @@ static void ThrowingCallback(BML_Context, BML_Timer, void *user_data) {
     throw std::runtime_error("timer callback failure");
 }
 
+struct ChainCallbackState {
+    TimerManager *timers{nullptr};
+    int *counter{nullptr};
+};
+
+static void ChainCallback(BML_Context, BML_Timer, void *user_data) {
+    auto *state = static_cast<ChainCallbackState *>(user_data);
+    ASSERT_NE(state, nullptr);
+    ASSERT_NE(state->timers, nullptr);
+    ASSERT_NE(state->counter, nullptr);
+    ++(*state->counter);
+    BML_Timer next = nullptr;
+    state->timers->ScheduleOnce("test.mod", 0, IncrementCallback, state->counter, &next);
+}
+
 TEST_F(TimerManagerTest, ScheduleOnceFiresOnTick) {
     int counter = 0;
     BML_Timer timer = nullptr;
@@ -233,17 +248,12 @@ TEST_F(TimerManagerTest, ShutdownCancelsAll) {
 
 TEST_F(TimerManagerTest, CallbackCanScheduleNewTimer) {
     int counter = 0;
-
-    auto chain_callback = [](BML_Context, BML_Timer, void *ud) {
-        auto *c = static_cast<int *>(ud);
-        ++(*c);
-        BML_Timer next = nullptr;
-        BML::Core::Kernel().timers->ScheduleOnce("test.mod", 0, IncrementCallback, ud, &next);
-    };
+    ChainCallbackState state{kernel_->timers.get(), &counter};
+    ASSERT_NE(state.timers, nullptr);
 
     BML_Timer timer = nullptr;
     kernel_->timers->ScheduleOnce(
-        "test.mod", 0, chain_callback, &counter, &timer);
+        "test.mod", 0, ChainCallback, &state, &timer);
 
     // First tick: chain fires (counter=1), schedules IncrementCallback
     kernel_->timers->Tick();

@@ -9,22 +9,47 @@
 
 namespace {
 
+std::filesystem::path GetModuleDirectory() {
+    HMODULE module = nullptr;
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            reinterpret_cast<LPCWSTR>(&GetModuleDirectory),
+                            &module) ||
+        !module) {
+        return {};
+    }
+
+    std::wstring buffer(MAX_PATH, L'\0');
+    DWORD copied = GetModuleFileNameW(module, buffer.data(), static_cast<DWORD>(buffer.size()));
+    if (copied == 0) {
+        return {};
+    }
+    buffer.resize(copied);
+    return std::filesystem::path(buffer).parent_path();
+}
+
 std::filesystem::path GetLogPath() {
     DWORD required = GetEnvironmentVariableW(L"BML_TEST_HOT_RELOAD_LOG", nullptr, 0);
-    if (required == 0)
-        return {};
+    if (required == 0) {
+        auto module_dir = GetModuleDirectory();
+        return module_dir.empty() ? std::filesystem::path() : (module_dir / "sample-log.txt");
+    }
 
     std::wstring buffer;
     buffer.resize(required);
     DWORD copied = GetEnvironmentVariableW(L"BML_TEST_HOT_RELOAD_LOG", buffer.data(), required);
-    if (copied == 0)
-        return {};
+    if (copied == 0) {
+        auto module_dir = GetModuleDirectory();
+        return module_dir.empty() ? std::filesystem::path() : (module_dir / "sample-log.txt");
+    }
     if (copied < buffer.size())
         buffer.resize(copied);
     if (!buffer.empty() && buffer.back() == L'\0')
         buffer.pop_back();
-    if (buffer.empty())
-        return {};
+    if (buffer.empty()) {
+        auto module_dir = GetModuleDirectory();
+        return module_dir.empty() ? std::filesystem::path() : (module_dir / "sample-log.txt");
+    }
     return std::filesystem::path(buffer);
 }
 
@@ -68,9 +93,10 @@ BML_Result HandleAttach(const BML_ModAttachArgs *args) {
     g_State.mod = args->mod;
     g_State.log_path = GetLogPath();
 
-    BML_Result res = BML_BOOTSTRAP_LOAD(args->get_proc);
-    if (res != BML_RESULT_OK)
-        return res;
+    if (!args->services) {
+        return BML_RESULT_INVALID_ARGUMENT;
+    }
+    bmlBindServices(args->services);
 
     LogLifecycleEvent(g_State.log_path, "init:");
     return BML_RESULT_OK;

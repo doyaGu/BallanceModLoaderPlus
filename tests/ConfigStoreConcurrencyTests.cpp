@@ -16,23 +16,21 @@
 #include <utility>
 #include <vector>
 
-#include "Core/ApiRegistry.h"
 #include "Core/ConfigStore.h"
 #include "Core/Context.h"
-#include "Core/CrashDumpWriter.h"
-#include "Core/FaultTracker.h"
 #include "Core/ModHandle.h"
 #include "Core/ModManifest.h"
+#include "Core/ModuleLoader.h"
 #include "TestKernel.h"
+#include "TestKernelBuilder.h"
+#include "TestModHelper.h"
 
 #include "bml_config.h"
 #include "bml_errors.h"
-using BML::Core::ApiRegistry;
-using BML::Core::ConfigStore;
 using BML::Core::Context;
-using BML::Core::CrashDumpWriter;
-using BML::Core::FaultTracker;
 using BML::Core::Testing::TestKernel;
+using BML::Core::Testing::TestKernelBuilder;
+using BML::Core::Testing::TestModHelper;
 
 namespace {
 
@@ -71,54 +69,66 @@ using PFN_ConfigEnumerate = BML_Result (*)(BML_Mod,
 class ConfigStoreConcurrencyTests : public ::testing::Test {
 protected:
     TestKernel kernel_;
+    std::unique_ptr<TestModHelper> mods_;
+    std::filesystem::path temp_root_;
+    BML_Mod active_mod_ = nullptr;
 
     void SetUp() override {
-        kernel_->api_registry  = std::make_unique<ApiRegistry>();
-        kernel_->config        = std::make_unique<ConfigStore>();
-        kernel_->crash_dump    = std::make_unique<CrashDumpWriter>();
-        kernel_->fault_tracker = std::make_unique<FaultTracker>();
-        kernel_->context       = std::make_unique<Context>(*kernel_->api_registry, *kernel_->config, *kernel_->crash_dump, *kernel_->fault_tracker);
-        kernel_->config->BindContext(*kernel_->context);
-        kernel_->api_registry->Clear();
-        Context::SetCurrentModule(nullptr);
+        kernel_ = TestKernelBuilder()
+            .WithConfig()
+            .RegisterConfigApis()
+            .Build();
         temp_root_ = std::filesystem::temp_directory_path() /
                      ("bml-configstore-tests-" +
                       std::to_string(counter_.fetch_add(1, std::memory_order_relaxed)));
         std::filesystem::create_directories(temp_root_);
-        BML::Core::RegisterConfigApis();
+        mods_ = std::make_unique<TestModHelper>(*kernel_, temp_root_);
     }
 
     void TearDown() override {
-        if (mod_) {
-            BML::Core::CleanupConfigHooksForModule(mod_.get());
-            kernel_->config->FlushAndRelease(mod_.get());
+        if (active_mod_) {
+            BML::Core::CleanupConfigHooksForModule(active_mod_);
+            kernel_->config->FlushAndRelease(active_mod_);
         }
-        Context::SetCurrentModule(nullptr);
+        if (mods_) {
+            mods_->Deactivate();
+            mods_.reset();
+        }
+        Context::SetLifecycleModule(nullptr);
         std::error_code ec;
         std::filesystem::remove_all(temp_root_, ec);
     }
 
     void InitMod(const std::string &id, const std::filesystem::path &custom_dir = {}) {
-        manifest_ = std::make_unique<BML::Core::ModManifest>();
-        manifest_->package.id = id;
-        manifest_->package.name = id;
-        manifest_->package.version = "1.0.0";
-        manifest_->package.parsed_version = {1, 0, 0};
-
-        std::filesystem::path base = custom_dir.empty() ? (temp_root_ / id) : custom_dir;
-        std::filesystem::create_directories(base);
-        manifest_->directory = base.wstring();
-        manifest_->manifest_path = (base / "manifest.toml").wstring();
-
-        mod_ = kernel_->context->CreateModHandle(*manifest_);
-        Context::SetCurrentModule(mod_.get());
+        if (custom_dir.empty()) {
+            active_mod_ = mods_->CreateAndActivate(id);
+        } else {
+            // For custom directory tests, create a manifest with the specified dir
+            auto manifest = std::make_unique<BML::Core::ModManifest>();
+            manifest->package.id = id;
+            manifest->package.name = id;
+            manifest->package.version = "1.0.0";
+            manifest->package.parsed_version = {1, 0, 0};
+            std::filesystem::create_directories(custom_dir);
+            manifest->directory = custom_dir.wstring();
+            manifest->manifest_path = (custom_dir / "manifest.toml").wstring();
+            auto handle = kernel_->context->CreateModHandle(*manifest);
+            BML::Core::LoadedModule lm{};
+            lm.id = id;
+            lm.manifest = manifest.get();
+            lm.mod_handle = std::move(handle);
+            kernel_->context->AddLoadedModule(std::move(lm));
+            active_mod_ = kernel_->context->GetModHandleById(id);
+            Context::SetLifecycleModule(active_mod_);
+            custom_manifests_.push_back(std::move(manifest));
+        }
     }
 
-    BML_Mod Mod() const { return mod_ ? mod_.get() : nullptr; }
+    BML_Mod Mod() const { return active_mod_; }
 
     template <typename Fn>
     Fn Lookup(const char *name) {
-        auto pointer = reinterpret_cast<Fn>(kernel_->api_registry->Get(name));
+        auto pointer = mods_->Lookup<Fn>(name);
         if (!pointer) {
             ADD_FAILURE() << "Missing API registration for " << name;
         }
@@ -126,9 +136,7 @@ protected:
     }
 
     static std::atomic<uint64_t> counter_;
-    std::filesystem::path temp_root_;
-    std::unique_ptr<BML::Core::ModManifest> manifest_;
-    std::unique_ptr<BML_Mod_T> mod_;
+    std::vector<std::unique_ptr<BML::Core::ModManifest>> custom_manifests_;
 };
 
 std::atomic<uint64_t> ConfigStoreConcurrencyTests::counter_{1};
@@ -299,13 +307,15 @@ TEST_F(ConfigStoreConcurrencyTests, FlushAndReleaseReloadsDocumentAndFiresHooks)
     value.data.int_value = 42;
     ASSERT_EQ(BML_RESULT_OK, config_set(Mod(), &key, &value));
 
-    auto first_snapshot = recorder.Snapshot();
-    ASSERT_EQ(first_snapshot.size(), 2u);
-    EXPECT_EQ(first_snapshot[0], HookPhase::Pre);
-    EXPECT_EQ(first_snapshot[1], HookPhase::Post);
+    // First config_set triggers EnsureLoaded which fires pre+post hooks
+    auto after_first_set = recorder.Snapshot();
+    ASSERT_EQ(after_first_set.size(), 2u);
+    EXPECT_EQ(after_first_set[0], HookPhase::Pre);
+    EXPECT_EQ(after_first_set[1], HookPhase::Post);
 
     kernel_->config->FlushAndRelease(Mod());
 
+    // After flush+reload, next access triggers EnsureLoaded again (pre + post)
     BML_ConfigValue read{};
     read.struct_size = sizeof(BML_ConfigValue);
     ASSERT_EQ(BML_RESULT_OK, config_get(Mod(), &key, &read));
@@ -380,7 +390,7 @@ TEST_F(ConfigStoreConcurrencyTests, BatchCommitFailsWhenDocumentCannotLoad) {
     InitMod("config.batch.invalid");
 
     // Create invalid config file to force parse failure during EnsureLoaded
-    const std::filesystem::path config_dir = std::filesystem::path(manifest_->directory) / "config";
+    const std::filesystem::path config_dir = std::filesystem::path(Mod()->manifest->directory) / "config";
     std::filesystem::create_directories(config_dir);
     const std::filesystem::path config_file = config_dir / "config.batch.invalid.toml";
     {

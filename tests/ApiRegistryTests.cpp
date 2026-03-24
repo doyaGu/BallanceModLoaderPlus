@@ -43,9 +43,9 @@ int TestSimpleImpl() {
 
 std::vector<int> g_CoreRegistrationOrder;
 
-void CoreNodeA() { g_CoreRegistrationOrder.push_back(1); }
-void CoreNodeB() { g_CoreRegistrationOrder.push_back(2); }
-void CoreNodeC() { g_CoreRegistrationOrder.push_back(3); }
+void CoreNodeA(ApiRegistry &) { g_CoreRegistrationOrder.push_back(1); }
+void CoreNodeB(ApiRegistry &) { g_CoreRegistrationOrder.push_back(2); }
+void CoreNodeC(ApiRegistry &) { g_CoreRegistrationOrder.push_back(3); }
 }
 
 class ApiRegistryTest : public ::testing::Test {

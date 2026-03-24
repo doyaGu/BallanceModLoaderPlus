@@ -7,13 +7,11 @@
 #include <vector>
 
 #include "Core/ApiRegistry.h"
-#include "Core/ConfigStore.h"
 #include "Core/Context.h"
-#include "Core/CrashDumpWriter.h"
-#include "Core/FaultTracker.h"
-#include "Core/ModManifest.h"
 #include "Core/ResourceApi.h"
 #include "TestKernel.h"
+#include "TestKernelBuilder.h"
+#include "TestModHelper.h"
 
 #include "bml_errors.h"
 #include "bml_resource.h"
@@ -22,6 +20,8 @@ using BML::Core::ApiRegistry;
 
 namespace {
 using BML::Core::Testing::TestKernel;
+using BML::Core::Testing::TestKernelBuilder;
+using BML::Core::Testing::TestModHelper;
 
 using PFN_HandleCreate = BML_Result (*)(BML_HandleType, BML_HandleDesc *);
 using PFN_HandleRetain = BML_Result (*)(const BML_HandleDesc *);
@@ -33,45 +33,22 @@ using PFN_HandleGetUserData = BML_Result (*)(const BML_HandleDesc *, void **);
 class ResourceHandleLifecycleTests : public ::testing::Test {
 protected:
     TestKernel kernel_;
-    std::vector<std::unique_ptr<BML::Core::ModManifest>> manifests_;
-    std::vector<std::unique_ptr<BML_Mod_T>> mods_;
+    std::unique_ptr<TestModHelper> mods_;
     BML_Mod owner_{nullptr};
 
     void SetUp() override {
-        kernel_->api_registry  = std::make_unique<ApiRegistry>();
-        kernel_->config        = std::make_unique<BML::Core::ConfigStore>();
-        kernel_->crash_dump    = std::make_unique<BML::Core::CrashDumpWriter>();
-        kernel_->fault_tracker = std::make_unique<BML::Core::FaultTracker>();
-        kernel_->context = std::make_unique<BML::Core::Context>(*kernel_->api_registry, *kernel_->config, *kernel_->crash_dump, *kernel_->fault_tracker);
-        kernel_->config->BindContext(*kernel_->context);
-        BML::Core::RegisterResourceApis();
-        owner_ = MakeMod("resource.handle.owner");
+        kernel_ = TestKernelBuilder()
+            .WithConfig()
+            .RegisterResourceApis()
+            .Build();
+        mods_ = std::make_unique<TestModHelper>(*kernel_);
+        owner_ = mods_->CreateMod("resource.handle.owner");
         ASSERT_NE(owner_, nullptr);
     }
 
     template <typename Fn>
     Fn Lookup(const char *name) {
-        auto fn = reinterpret_cast<Fn>(kernel_->api_registry->Get(name));
-        if (!fn) {
-            ADD_FAILURE() << "Missing API: " << name;
-        }
-        return fn;
-    }
-
-    BML_Mod MakeMod(const std::string &id) {
-        auto manifest = std::make_unique<BML::Core::ModManifest>();
-        manifest->package.id = id;
-        manifest->package.name = id;
-        manifest->package.version = "1.0.0";
-        manifest->package.parsed_version = {1, 0, 0};
-        manifest->directory = L"";
-        manifest->manifest_path = L"";
-
-        auto handle = kernel_->context->CreateModHandle(*manifest);
-        BML_Mod mod = handle.get();
-        manifests_.push_back(std::move(manifest));
-        mods_.push_back(std::move(handle));
-        return mod;
+        return mods_->Lookup<Fn>(name);
     }
 
     BML_Result CreateHandle(BML_HandleType type, BML_HandleDesc *out_desc) {

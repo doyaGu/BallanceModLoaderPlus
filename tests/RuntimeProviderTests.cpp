@@ -23,7 +23,7 @@ static BML_Bool StubCanHandle(const char *entry_path) {
     return path.ends_with(".as") ? BML_TRUE : BML_FALSE;
 }
 
-static BML_Result StubAttach(BML_Mod, PFN_BML_GetProcAddress,
+static BML_Result StubAttach(BML_Mod, const BML_Services *,
                               const char *, const char *) {
     return BML_RESULT_OK;
 }

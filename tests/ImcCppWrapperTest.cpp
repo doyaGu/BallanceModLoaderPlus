@@ -19,6 +19,7 @@ using namespace bml::imc;
 
 namespace {
     const BML_Mod kOwner = reinterpret_cast<BML_Mod>(0x1);
+    const BML_Context kServiceContext = reinterpret_cast<BML_Context>(0x2);
 
     #if defined(_MSC_VER)
         #define BML_TEST_NOINLINE __declspec(noinline)
@@ -59,12 +60,18 @@ namespace {
         *outTopic = g_ImcMockState.topic_id;
         return BML_RESULT_OK;
     }
+    BML_Result MockServiceGetTopicId(BML_Context, const char *name, BML_TopicId *outTopic) {
+        return MockGetTopicId(name, outTopic);
+    }
 
     BML_Result MockGetRpcId(const char *name, BML_RpcId *outRpc) {
         if (!outRpc) return BML_RESULT_INVALID_ARGUMENT;
         g_ImcMockState.last_rpc_name = name ? name : "";
         *outRpc = g_ImcMockState.rpc_id;
         return BML_RESULT_OK;
+    }
+    BML_Result MockServiceGetRpcId(BML_Context, const char *name, BML_RpcId *outRpc) {
+        return MockGetRpcId(name, outRpc);
     }
 
     BML_Result MockPublish(BML_Mod, BML_TopicId topic, const void *, size_t size) {
@@ -181,6 +188,9 @@ namespace {
     void MockPump(size_t) {
         ++g_ImcMockState.pump_calls;
     }
+    void MockServicePump(BML_Context, size_t maxPerSub) {
+        MockPump(maxPerSub);
+    }
 
     BML_Result MockGetSubscriptionStats(BML_Subscription subscription, BML_SubscriptionStats *outStats) {
         if (!outStats || subscription != g_ImcMockState.subscription) return BML_RESULT_INVALID_ARGUMENT;
@@ -198,9 +208,15 @@ namespace {
         outStats->active_topics = 1;
         return BML_RESULT_OK;
     }
+    BML_Result MockServiceGetStats(BML_Context, BML_ImcStats *outStats) {
+        return MockGetStats(outStats);
+    }
 
     BML_Result MockResetStats() {
         return BML_RESULT_OK;
+    }
+    BML_Result MockServiceResetStats(BML_Context) {
+        return MockResetStats();
     }
 
     BML_Result MockGetTopicInfo(BML_TopicId topic, BML_TopicInfo *outInfo) {
@@ -211,6 +227,9 @@ namespace {
         outInfo->subscriber_count = 3;
         outInfo->message_count = 12;
         return BML_RESULT_OK;
+    }
+    BML_Result MockServiceGetTopicInfo(BML_Context, BML_TopicId topic, BML_TopicInfo *outInfo) {
+        return MockGetTopicInfo(topic, outInfo);
     }
 
     BML_Result MockGetTopicName(BML_TopicId topic, char *buffer, size_t bufferSize, size_t *outLength) {
@@ -228,6 +247,13 @@ namespace {
         std::memcpy(buffer, name.data(), length);
         buffer[length] = '\0';
         return BML_RESULT_OK;
+    }
+    BML_Result MockServiceGetTopicName(BML_Context,
+                                       BML_TopicId topic,
+                                       char *buffer,
+                                       size_t bufferSize,
+                                       size_t *outLength) {
+        return MockGetTopicName(topic, buffer, bufferSize, outLength);
     }
 
     BML_Result MockRegisterRpcEx(BML_Mod, BML_RpcId, BML_RpcHandlerEx, void *) {
@@ -252,6 +278,9 @@ namespace {
         o->has_handler = BML_TRUE;
         return BML_RESULT_OK;
     }
+    BML_Result MockServiceGetRpcInfo(BML_Context, BML_RpcId id, BML_RpcInfo *o) {
+        return MockGetRpcInfo(id, o);
+    }
     BML_Result MockAddRpcMiddleware(BML_Mod, BML_RpcMiddleware, int32_t, void *) {
         return BML_RESULT_OK;
     }
@@ -272,12 +301,20 @@ namespace {
         buf[len] = '\0';
         return BML_RESULT_OK;
     }
+    BML_Result MockServiceGetRpcName(BML_Context,
+                                     BML_RpcId rpcId,
+                                     char *buf,
+                                     size_t cap,
+                                     size_t *out_len) {
+        return MockGetRpcName(rpcId, buf, cap, out_len);
+    }
 
     BML_ImcBusInterface MakeMockBus() {
         BML_ImcBusInterface bus{
             BML_IFACE_HEADER(BML_ImcBusInterface, BML_IMC_BUS_INTERFACE_ID, 1, 0)
         };
-        bus.GetTopicId = &MockGetTopicId;
+        bus.Context = kServiceContext;
+        bus.GetTopicId = &MockServiceGetTopicId;
         bus.Publish = &MockPublish;
         bus.PublishEx = &MockPublishEx;
         bus.PublishBuffer = &MockPublishBuffer;
@@ -285,12 +322,12 @@ namespace {
         bus.SubscribeEx = &MockSubscribeEx;
         bus.Unsubscribe = &MockUnsubscribe;
         bus.SubscriptionIsActive = &MockSubscriptionIsActive;
-        bus.Pump = &MockPump;
+        bus.Pump = &MockServicePump;
         bus.GetSubscriptionStats = &MockGetSubscriptionStats;
-        bus.GetStats = &MockGetStats;
-        bus.ResetStats = &MockResetStats;
-        bus.GetTopicInfo = &MockGetTopicInfo;
-        bus.GetTopicName = &MockGetTopicName;
+        bus.GetStats = &MockServiceGetStats;
+        bus.ResetStats = &MockServiceResetStats;
+        bus.GetTopicInfo = &MockServiceGetTopicInfo;
+        bus.GetTopicName = &MockServiceGetTopicName;
         return bus;
     }
 
@@ -298,7 +335,8 @@ namespace {
         BML_ImcRpcInterface rpc{
             BML_IFACE_HEADER(BML_ImcRpcInterface, BML_IMC_RPC_INTERFACE_ID, 1, 0)
         };
-        rpc.GetRpcId = &MockGetRpcId;
+        rpc.Context = kServiceContext;
+        rpc.GetRpcId = &MockServiceGetRpcId;
         rpc.RegisterRpc = &MockRegisterRpc;
         rpc.UnregisterRpc = &MockUnregisterRpc;
         rpc.CallRpc = &MockCallRpc;
@@ -311,8 +349,8 @@ namespace {
         rpc.RegisterRpcEx = &MockRegisterRpcEx;
         rpc.CallRpcEx = &MockCallRpcEx;
         rpc.FutureGetError = &MockFutureGetError;
-        rpc.GetRpcInfo = &MockGetRpcInfo;
-        rpc.GetRpcName = &MockGetRpcName;
+        rpc.GetRpcInfo = &MockServiceGetRpcInfo;
+        rpc.GetRpcName = &MockServiceGetRpcName;
         rpc.AddRpcMiddleware = &MockAddRpcMiddleware;
         rpc.RemoveRpcMiddleware = &MockRemoveRpcMiddleware;
         return rpc;
