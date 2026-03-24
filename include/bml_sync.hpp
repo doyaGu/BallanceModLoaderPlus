@@ -6,7 +6,8 @@
 #ifndef BML_SYNC_HPP
 #define BML_SYNC_HPP
 
-#include "bml_builtin_interfaces.h"
+#include "bml_sync.h"
+#include "bml_assert.hpp"
 
 namespace bml {
 
@@ -16,43 +17,30 @@ namespace bml {
 
     class Mutex {
     public:
-        explicit Mutex(const BML_CoreSyncInterface *iface)
-            : m_Interface(iface) {
-            if (m_Interface && m_Interface->MutexCreate) {
-                m_Interface->MutexCreate(&m_Handle);
-            }
+        explicit Mutex(const BML_CoreSyncInterface *iface, BML_Mod owner = nullptr)
+            : m_Interface(iface), m_Owner(owner) {
+            BML_ASSERT(iface);
+            m_Interface->MutexCreate(m_Interface->Context, m_Owner, &m_Handle);
         }
 
         ~Mutex() {
-            if (m_Interface && m_Interface->MutexDestroy) {
-                m_Interface->MutexDestroy(m_Handle);
-            }
+            if (m_Handle) m_Interface->MutexDestroy(m_Interface->Context, m_Handle);
         }
 
         void Lock() {
-            if (m_Interface && m_Interface->MutexLock) {
-                m_Interface->MutexLock(m_Handle);
-            }
+            m_Interface->MutexLock(m_Interface->Context, m_Handle);
         }
 
         bool TryLock() {
-            if (m_Interface && m_Interface->MutexTryLock) {
-                return m_Interface->MutexTryLock(m_Handle) == BML_TRUE;
-            }
-            return false;
+            return m_Interface->MutexTryLock(m_Interface->Context, m_Handle) == BML_TRUE;
         }
 
         BML_Result LockTimeout(uint32_t timeout_ms) {
-            if (m_Interface && m_Interface->MutexLockTimeout) {
-                return m_Interface->MutexLockTimeout(m_Handle, timeout_ms);
-            }
-            return BML_RESULT_NOT_INITIALIZED;
+            return m_Interface->MutexLockTimeout(m_Interface->Context, m_Handle, timeout_ms);
         }
 
         void Unlock() {
-            if (m_Interface && m_Interface->MutexUnlock) {
-                m_Interface->MutexUnlock(m_Handle);
-            }
+            m_Interface->MutexUnlock(m_Interface->Context, m_Handle);
         }
 
         BML_Mutex Handle() const noexcept { return m_Handle; }
@@ -62,16 +50,15 @@ namespace bml {
         Mutex &operator=(const Mutex &) = delete;
 
         Mutex(Mutex &&other) noexcept
-            : m_Interface(other.m_Interface), m_Handle(other.m_Handle) {
+            : m_Interface(other.m_Interface), m_Owner(other.m_Owner), m_Handle(other.m_Handle) {
             other.m_Handle = nullptr;
         }
 
         Mutex &operator=(Mutex &&other) noexcept {
             if (this != &other) {
-                if (m_Interface && m_Interface->MutexDestroy) {
-                    m_Interface->MutexDestroy(m_Handle);
-                }
+                if (m_Handle) m_Interface->MutexDestroy(m_Interface->Context, m_Handle);
                 m_Interface = other.m_Interface;
+                m_Owner = other.m_Owner;
                 m_Handle = other.m_Handle;
                 other.m_Handle = nullptr;
             }
@@ -80,6 +67,7 @@ namespace bml {
 
     private:
         const BML_CoreSyncInterface *m_Interface = nullptr;
+        BML_Mod m_Owner = nullptr;
         BML_Mutex m_Handle = nullptr;
     };
 
@@ -109,75 +97,50 @@ namespace bml {
 
     class RwLock {
     public:
-        explicit RwLock(const BML_CoreSyncInterface *iface)
-            : m_Interface(iface) {
-            if (m_Interface && m_Interface->RwLockCreate) {
-                m_Interface->RwLockCreate(&m_Handle);
-            }
+        explicit RwLock(const BML_CoreSyncInterface *iface, BML_Mod owner = nullptr)
+            : m_Interface(iface), m_Owner(owner) {
+            BML_ASSERT(iface);
+            m_Interface->RwLockCreate(m_Interface->Context, m_Owner, &m_Handle);
         }
 
         ~RwLock() {
-            if (m_Interface && m_Interface->RwLockDestroy) {
-                m_Interface->RwLockDestroy(m_Handle);
-            }
+            if (m_Handle) m_Interface->RwLockDestroy(m_Interface->Context, m_Handle);
         }
 
         void ReadLock() {
-            if (m_Interface && m_Interface->RwLockReadLock) {
-                m_Interface->RwLockReadLock(m_Handle);
-            }
+            m_Interface->RwLockReadLock(m_Interface->Context, m_Handle);
         }
 
         bool TryReadLock() {
-            if (m_Interface && m_Interface->RwLockTryReadLock) {
-                return m_Interface->RwLockTryReadLock(m_Handle) == BML_TRUE;
-            }
-            return false;
+            return m_Interface->RwLockTryReadLock(m_Interface->Context, m_Handle) == BML_TRUE;
         }
 
         BML_Result ReadLockTimeout(uint32_t timeout_ms) {
-            if (m_Interface && m_Interface->RwLockReadLockTimeout) {
-                return m_Interface->RwLockReadLockTimeout(m_Handle, timeout_ms);
-            }
-            return BML_RESULT_NOT_INITIALIZED;
+            return m_Interface->RwLockReadLockTimeout(m_Interface->Context, m_Handle, timeout_ms);
         }
 
         void WriteLock() {
-            if (m_Interface && m_Interface->RwLockWriteLock) {
-                m_Interface->RwLockWriteLock(m_Handle);
-            }
+            m_Interface->RwLockWriteLock(m_Interface->Context, m_Handle);
         }
 
         bool TryWriteLock() {
-            if (m_Interface && m_Interface->RwLockTryWriteLock) {
-                return m_Interface->RwLockTryWriteLock(m_Handle) == BML_TRUE;
-            }
-            return false;
+            return m_Interface->RwLockTryWriteLock(m_Interface->Context, m_Handle) == BML_TRUE;
         }
 
         BML_Result WriteLockTimeout(uint32_t timeout_ms) {
-            if (m_Interface && m_Interface->RwLockWriteLockTimeout) {
-                return m_Interface->RwLockWriteLockTimeout(m_Handle, timeout_ms);
-            }
-            return BML_RESULT_NOT_INITIALIZED;
+            return m_Interface->RwLockWriteLockTimeout(m_Interface->Context, m_Handle, timeout_ms);
         }
 
         void ReadUnlock() {
-            if (m_Interface && m_Interface->RwLockReadUnlock) {
-                m_Interface->RwLockReadUnlock(m_Handle);
-            }
+            m_Interface->RwLockReadUnlock(m_Interface->Context, m_Handle);
         }
 
         void WriteUnlock() {
-            if (m_Interface && m_Interface->RwLockWriteUnlock) {
-                m_Interface->RwLockWriteUnlock(m_Handle);
-            }
+            m_Interface->RwLockWriteUnlock(m_Interface->Context, m_Handle);
         }
 
         void Unlock() {
-            if (m_Interface && m_Interface->RwLockUnlock) {
-                m_Interface->RwLockUnlock(m_Handle);
-            }
+            m_Interface->RwLockUnlock(m_Interface->Context, m_Handle);
         }
 
         BML_RwLock Handle() const noexcept { return m_Handle; }
@@ -187,16 +150,15 @@ namespace bml {
         RwLock &operator=(const RwLock &) = delete;
 
         RwLock(RwLock &&other) noexcept
-            : m_Interface(other.m_Interface), m_Handle(other.m_Handle) {
+            : m_Interface(other.m_Interface), m_Owner(other.m_Owner), m_Handle(other.m_Handle) {
             other.m_Handle = nullptr;
         }
 
         RwLock &operator=(RwLock &&other) noexcept {
             if (this != &other) {
-                if (m_Interface && m_Interface->RwLockDestroy) {
-                    m_Interface->RwLockDestroy(m_Handle);
-                }
+                if (m_Handle) m_Interface->RwLockDestroy(m_Interface->Context, m_Handle);
                 m_Interface = other.m_Interface;
+                m_Owner = other.m_Owner;
                 m_Handle = other.m_Handle;
                 other.m_Handle = nullptr;
             }
@@ -205,6 +167,7 @@ namespace bml {
 
     private:
         const BML_CoreSyncInterface *m_Interface = nullptr;
+        BML_Mod m_Owner = nullptr;
         BML_RwLock m_Handle = nullptr;
     };
 
@@ -254,31 +217,22 @@ namespace bml {
 
     class Semaphore {
     public:
-        Semaphore(uint32_t initial, uint32_t max, const BML_CoreSyncInterface *iface)
-            : m_Interface(iface) {
-            if (m_Interface && m_Interface->SemaphoreCreate) {
-                m_Interface->SemaphoreCreate(initial, max, &m_Handle);
-            }
+        Semaphore(uint32_t initial, uint32_t max, const BML_CoreSyncInterface *iface, BML_Mod owner = nullptr)
+            : m_Interface(iface), m_Owner(owner) {
+            BML_ASSERT(iface);
+            m_Interface->SemaphoreCreate(m_Interface->Context, m_Owner, initial, max, &m_Handle);
         }
 
         ~Semaphore() {
-            if (m_Interface && m_Interface->SemaphoreDestroy) {
-                m_Interface->SemaphoreDestroy(m_Handle);
-            }
+            if (m_Handle) m_Interface->SemaphoreDestroy(m_Interface->Context, m_Handle);
         }
 
         BML_Result Wait(uint32_t timeout_ms = BML_TIMEOUT_INFINITE) {
-            if (m_Interface && m_Interface->SemaphoreWait) {
-                return m_Interface->SemaphoreWait(m_Handle, timeout_ms);
-            }
-            return BML_RESULT_NOT_INITIALIZED;
+            return m_Interface->SemaphoreWait(m_Interface->Context, m_Handle, timeout_ms);
         }
 
         BML_Result Signal(uint32_t count = 1) {
-            if (m_Interface && m_Interface->SemaphoreSignal) {
-                return m_Interface->SemaphoreSignal(m_Handle, count);
-            }
-            return BML_RESULT_NOT_INITIALIZED;
+            return m_Interface->SemaphoreSignal(m_Interface->Context, m_Handle, count);
         }
 
         BML_Semaphore Handle() const noexcept { return m_Handle; }
@@ -288,16 +242,15 @@ namespace bml {
         Semaphore &operator=(const Semaphore &) = delete;
 
         Semaphore(Semaphore &&other) noexcept
-            : m_Interface(other.m_Interface), m_Handle(other.m_Handle) {
+            : m_Interface(other.m_Interface), m_Owner(other.m_Owner), m_Handle(other.m_Handle) {
             other.m_Handle = nullptr;
         }
 
         Semaphore &operator=(Semaphore &&other) noexcept {
             if (this != &other) {
-                if (m_Interface && m_Interface->SemaphoreDestroy) {
-                    m_Interface->SemaphoreDestroy(m_Handle);
-                }
+                if (m_Handle) m_Interface->SemaphoreDestroy(m_Interface->Context, m_Handle);
                 m_Interface = other.m_Interface;
+                m_Owner = other.m_Owner;
                 m_Handle = other.m_Handle;
                 other.m_Handle = nullptr;
             }
@@ -306,6 +259,7 @@ namespace bml {
 
     private:
         const BML_CoreSyncInterface *m_Interface = nullptr;
+        BML_Mod m_Owner = nullptr;
         BML_Semaphore m_Handle = nullptr;
     };
 
@@ -315,45 +269,30 @@ namespace bml {
 
     class CondVar {
     public:
-        explicit CondVar(const BML_CoreSyncInterface *iface)
-            : m_Interface(iface) {
-            if (m_Interface && m_Interface->CondVarCreate) {
-                m_Interface->CondVarCreate(&m_Handle);
-            }
+        explicit CondVar(const BML_CoreSyncInterface *iface, BML_Mod owner = nullptr)
+            : m_Interface(iface), m_Owner(owner) {
+            BML_ASSERT(iface);
+            m_Interface->CondVarCreate(m_Interface->Context, m_Owner, &m_Handle);
         }
 
         ~CondVar() {
-            if (m_Interface && m_Interface->CondVarDestroy) {
-                m_Interface->CondVarDestroy(m_Handle);
-            }
+            if (m_Handle) m_Interface->CondVarDestroy(m_Interface->Context, m_Handle);
         }
 
         BML_Result Wait(Mutex &mutex) {
-            if (m_Interface && m_Interface->CondVarWait) {
-                return m_Interface->CondVarWait(m_Handle, mutex.Handle());
-            }
-            return BML_RESULT_NOT_INITIALIZED;
+            return m_Interface->CondVarWait(m_Interface->Context, m_Handle, mutex.Handle());
         }
 
         BML_Result WaitTimeout(Mutex &mutex, uint32_t timeout_ms) {
-            if (m_Interface && m_Interface->CondVarWaitTimeout) {
-                return m_Interface->CondVarWaitTimeout(m_Handle, mutex.Handle(), timeout_ms);
-            }
-            return BML_RESULT_NOT_INITIALIZED;
+            return m_Interface->CondVarWaitTimeout(m_Interface->Context, m_Handle, mutex.Handle(), timeout_ms);
         }
 
         BML_Result Signal() {
-            if (m_Interface && m_Interface->CondVarSignal) {
-                return m_Interface->CondVarSignal(m_Handle);
-            }
-            return BML_RESULT_NOT_INITIALIZED;
+            return m_Interface->CondVarSignal(m_Interface->Context, m_Handle);
         }
 
         BML_Result Broadcast() {
-            if (m_Interface && m_Interface->CondVarBroadcast) {
-                return m_Interface->CondVarBroadcast(m_Handle);
-            }
-            return BML_RESULT_NOT_INITIALIZED;
+            return m_Interface->CondVarBroadcast(m_Interface->Context, m_Handle);
         }
 
         BML_CondVar Handle() const noexcept { return m_Handle; }
@@ -363,16 +302,15 @@ namespace bml {
         CondVar &operator=(const CondVar &) = delete;
 
         CondVar(CondVar &&other) noexcept
-            : m_Interface(other.m_Interface), m_Handle(other.m_Handle) {
+            : m_Interface(other.m_Interface), m_Owner(other.m_Owner), m_Handle(other.m_Handle) {
             other.m_Handle = nullptr;
         }
 
         CondVar &operator=(CondVar &&other) noexcept {
             if (this != &other) {
-                if (m_Interface && m_Interface->CondVarDestroy) {
-                    m_Interface->CondVarDestroy(m_Handle);
-                }
+                if (m_Handle) m_Interface->CondVarDestroy(m_Interface->Context, m_Handle);
                 m_Interface = other.m_Interface;
+                m_Owner = other.m_Owner;
                 m_Handle = other.m_Handle;
                 other.m_Handle = nullptr;
             }
@@ -381,6 +319,7 @@ namespace bml {
 
     private:
         const BML_CoreSyncInterface *m_Interface = nullptr;
+        BML_Mod m_Owner = nullptr;
         BML_CondVar m_Handle = nullptr;
     };
 
@@ -390,36 +329,26 @@ namespace bml {
 
     class SpinLock {
     public:
-        explicit SpinLock(const BML_CoreSyncInterface *iface)
-            : m_Interface(iface) {
-            if (m_Interface && m_Interface->SpinLockCreate) {
-                m_Interface->SpinLockCreate(&m_Handle);
-            }
+        explicit SpinLock(const BML_CoreSyncInterface *iface, BML_Mod owner = nullptr)
+            : m_Interface(iface), m_Owner(owner) {
+            BML_ASSERT(iface);
+            m_Interface->SpinLockCreate(m_Interface->Context, m_Owner, &m_Handle);
         }
 
         ~SpinLock() {
-            if (m_Interface && m_Interface->SpinLockDestroy) {
-                m_Interface->SpinLockDestroy(m_Handle);
-            }
+            if (m_Handle) m_Interface->SpinLockDestroy(m_Interface->Context, m_Handle);
         }
 
         void Lock() {
-            if (m_Interface && m_Interface->SpinLockLock) {
-                m_Interface->SpinLockLock(m_Handle);
-            }
+            m_Interface->SpinLockLock(m_Interface->Context, m_Handle);
         }
 
         bool TryLock() {
-            if (m_Interface && m_Interface->SpinLockTryLock) {
-                return m_Interface->SpinLockTryLock(m_Handle) == BML_TRUE;
-            }
-            return false;
+            return m_Interface->SpinLockTryLock(m_Interface->Context, m_Handle) == BML_TRUE;
         }
 
         void Unlock() {
-            if (m_Interface && m_Interface->SpinLockUnlock) {
-                m_Interface->SpinLockUnlock(m_Handle);
-            }
+            m_Interface->SpinLockUnlock(m_Interface->Context, m_Handle);
         }
 
         BML_SpinLock Handle() const noexcept { return m_Handle; }
@@ -429,16 +358,15 @@ namespace bml {
         SpinLock &operator=(const SpinLock &) = delete;
 
         SpinLock(SpinLock &&other) noexcept
-            : m_Interface(other.m_Interface), m_Handle(other.m_Handle) {
+            : m_Interface(other.m_Interface), m_Owner(other.m_Owner), m_Handle(other.m_Handle) {
             other.m_Handle = nullptr;
         }
 
         SpinLock &operator=(SpinLock &&other) noexcept {
             if (this != &other) {
-                if (m_Interface && m_Interface->SpinLockDestroy) {
-                    m_Interface->SpinLockDestroy(m_Handle);
-                }
+                if (m_Handle) m_Interface->SpinLockDestroy(m_Interface->Context, m_Handle);
                 m_Interface = other.m_Interface;
+                m_Owner = other.m_Owner;
                 m_Handle = other.m_Handle;
                 other.m_Handle = nullptr;
             }
@@ -447,6 +375,7 @@ namespace bml {
 
     private:
         const BML_CoreSyncInterface *m_Interface = nullptr;
+        BML_Mod m_Owner = nullptr;
         BML_SpinLock m_Handle = nullptr;
     };
 
@@ -477,33 +406,60 @@ namespace bml {
     class SyncService {
     public:
         SyncService() = default;
-        explicit SyncService(const BML_CoreSyncInterface *iface) noexcept
-            : m_Interface(iface) {}
+        explicit SyncService(const BML_CoreSyncInterface *iface, BML_Mod owner = nullptr) noexcept
+            : m_Interface(iface), m_Owner(owner) {}
 
         Mutex CreateMutex() const {
-            return Mutex(m_Interface);
+            return Mutex(m_Interface, m_Owner);
         }
 
         RwLock CreateRwLock() const {
-            return RwLock(m_Interface);
+            return RwLock(m_Interface, m_Owner);
         }
 
         Semaphore CreateSemaphore(uint32_t initial, uint32_t max) const {
-            return Semaphore(initial, max, m_Interface);
+            return Semaphore(initial, max, m_Interface, m_Owner);
         }
 
         CondVar CreateCondVar() const {
-            return CondVar(m_Interface);
+            return CondVar(m_Interface, m_Owner);
         }
 
         SpinLock CreateSpinLock() const {
-            return SpinLock(m_Interface);
+            return SpinLock(m_Interface, m_Owner);
+        }
+
+        // Atomic operations
+        int32_t AtomicIncrement(volatile int32_t *val) const noexcept {
+            return m_Interface->AtomicIncrement32(val);
+        }
+        int32_t AtomicDecrement(volatile int32_t *val) const noexcept {
+            return m_Interface->AtomicDecrement32(val);
+        }
+        int32_t AtomicAdd(volatile int32_t *val, int32_t addend) const noexcept {
+            return m_Interface->AtomicAdd32(val, addend);
+        }
+        int32_t AtomicCompareExchange(volatile int32_t *dest, int32_t exchange, int32_t comparand) const noexcept {
+            return m_Interface->AtomicCompareExchange32(dest, exchange, comparand);
+        }
+        int32_t AtomicExchange(volatile int32_t *dest, int32_t new_value) const noexcept {
+            return m_Interface->AtomicExchange32(dest, new_value);
+        }
+        void *AtomicLoadPtr(void *volatile *ptr) const noexcept {
+            return m_Interface->AtomicLoadPtr(ptr);
+        }
+        void AtomicStorePtr(void *volatile *ptr, void *value) const noexcept {
+            m_Interface->AtomicStorePtr(ptr, value);
+        }
+        void *AtomicCompareExchangePtr(void *volatile *dest, void *exchange, void *comparand) const noexcept {
+            return m_Interface->AtomicCompareExchangePtr(dest, exchange, comparand);
         }
 
         explicit operator bool() const noexcept { return m_Interface != nullptr; }
 
     private:
         const BML_CoreSyncInterface *m_Interface = nullptr;
+        BML_Mod m_Owner = nullptr;
     };
 
 } // namespace bml

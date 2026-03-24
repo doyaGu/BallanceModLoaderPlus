@@ -12,8 +12,7 @@
  *   - bml_logger.hpp     - Logging utilities
  *   - bml_imc.hpp        - Inter-Mod Communication
  *   - bml_interface.hpp  - Interface lease and owned acquisition traits
- *   - bml_services.hpp   - BuiltinServices, RuntimeServiceHub, ModuleServices
- *   - bml_result.hpp     - Result type for error handling
+ *   - bml_services.hpp   - BML_Services, RuntimeServiceHub, ModuleServices
  *   - bml_memory.hpp     - Memory allocation utilities
  *   - bml_resource.hpp   - Resource handle management
  *   - bml_locale.hpp     - Localization
@@ -24,10 +23,13 @@
  * Usage:
  *   #include <bml.hpp>
  *   
- *   // Initialize the bootstrap minimum (typically in BMLPlus or host)
+ *   // Host bootstrap only: initialize the bootstrap minimum
  *   if (!bml::LoadAPI(get_proc_fn)) {
  *       // Handle error
  *   }
+ *
+ *   // After runtime creation, bind the runtime-owned service bundle
+ *   bmlBindServices(bmlRuntimeGetServices(runtime));
  *   
  *   auto configApi = bml::AcquireInterface<BML_CoreConfigInterface>(
  *       owner, BML_CORE_CONFIG_INTERFACE_ID, 1);
@@ -36,6 +38,25 @@
  *   
  *   auto value = config.GetString("mymod", "key").value_or("default");
  * 
+ * Modules should not use bootstrap proc lookup during attach; they should
+ * consume the service bundle injected through `BML_ModAttachArgs`.
+ *
+ * @section error_handling Error Handling Convention
+ *
+ * C++ wrappers follow a uniform error reporting strategy:
+ *   - **Query** (may have no value): returns `std::optional<T>`
+ *   - **Mutation** (succeeds or fails): returns `bool` or `BML_Result`
+ *   - **Fire-and-forget** (logging, profiling): returns `void`;
+ *     silently no-ops if the underlying interface is unavailable
+ *
+ * Constructor / factory patterns by resource type:
+ *   - **RAII primitives** (Mutex, MemoryPool, etc.): Constructor +
+ *     `operator bool()`. No-throw; check validity after construction.
+ *   - **Explicitly acquired resources** (Handle, InterfaceLease):
+ *     `create()` throws, `tryCreate()` returns `std::optional`.
+ *   - **Transient setup** (Subscription): `create()` returns
+ *     `std::optional`; failures are expected (bad topic name, etc.).
+ *
  * For selective inclusion, include individual headers instead:
  *   #include <bml_context.hpp>
  *   #include <bml_logger.hpp>
@@ -55,10 +76,7 @@
 #include "bml_interface.hpp"  // InterfaceLease, AcquireInterface, Acquire
 
 // Services
-#include "bml_services.hpp"   // BuiltinServices, RuntimeServiceHub, ModuleServices
-
-// Error Handling
-#include "bml_result.hpp"     // Result<T>, Ok, Err, BML_TRY, BML_TRY_ASSIGN
+#include "bml_services.hpp"   // BML_Services, RuntimeServiceHub, ModuleServices
 
 // Memory
 #include "bml_memory.hpp"     // Alloc, Free, MemoryPool, UniquePtr

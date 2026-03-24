@@ -1,7 +1,7 @@
 /**
  * @file bml_core.hpp
  * @brief BML C++ Core API Wrapper
- * 
+ *
  * Provides RAII-friendly and type-safe wrappers for BML core functionality
  * including context management, version querying, and shutdown hooks.
  */
@@ -9,11 +9,11 @@
 #ifndef BML_CORE_HPP
 #define BML_CORE_HPP
 
-#include "bml_builtin_interfaces.h"
 #include "bml_core.h"
 #include "bml_export.h"
 #include "bml_errors.h"
 #include "bml_context.hpp"
+#include "bml_assert.hpp"
 
 #include <optional>
 #include <functional>
@@ -32,7 +32,7 @@ namespace bml {
     inline std::optional<BML_Version> GetRuntimeVersion(
         const BML_CoreContextInterface *contextInterface = nullptr) {
         if (!contextInterface || !contextInterface->GetRuntimeVersion) return std::nullopt;
-        const auto *version = contextInterface->GetRuntimeVersion();
+        const auto *version = contextInterface->GetRuntimeVersion(contextInterface->Context);
         return version ? std::optional<BML_Version>(*version) : std::nullopt;
     }
 
@@ -104,7 +104,7 @@ namespace bml {
          * @return Mod ID if available
          */
         std::optional<const char *> GetId() const {
-            if (!m_ModuleInterface || !m_ModuleInterface->GetModId || !m_Mod) return std::nullopt;
+            if (!m_Mod) return std::nullopt;
             const char *id = nullptr;
             if (m_ModuleInterface->GetModId(m_Mod, &id) == BML_RESULT_OK && id) {
                 return id;
@@ -117,7 +117,7 @@ namespace bml {
          * @return Version if available
          */
         std::optional<BML_Version> GetVersion() const {
-            if (!m_ModuleInterface || !m_ModuleInterface->GetModVersion || !m_Mod) return std::nullopt;
+            if (!m_Mod) return std::nullopt;
             BML_Version version = BML_VERSION_INIT(0, 0, 0);
             if (m_ModuleInterface->GetModVersion(m_Mod, &version) == BML_RESULT_OK) {
                 return version;
@@ -131,7 +131,7 @@ namespace bml {
          * @return true if request succeeded
          */
         bool RequestCapability(const char *capabilityId) const {
-            if (!m_ModuleInterface || !m_ModuleInterface->RequestCapability || !m_Mod || !capabilityId) {
+            if (!m_Mod || !capabilityId) {
                 return false;
             }
             return m_ModuleInterface->RequestCapability(m_Mod, capabilityId) == BML_RESULT_OK;
@@ -143,7 +143,7 @@ namespace bml {
          * @return true if capability is supported
          */
         bool CheckCapability(const char *capabilityId) const {
-            if (!m_ModuleInterface || !m_ModuleInterface->CheckCapability || !m_Mod || !capabilityId) {
+            if (!m_Mod || !capabilityId) {
                 return false;
             }
             BML_Bool supported = BML_FALSE;
@@ -163,16 +163,12 @@ namespace bml {
      * @return Snapshot vector of loaded modules. Empty if APIs are unavailable.
      */
     inline std::vector<Mod> GetLoadedModules(const BML_CoreModuleInterface *moduleInterface) {
+        BML_ASSERT(moduleInterface);
         std::vector<Mod> modules;
-        if (!moduleInterface ||
-            !moduleInterface->GetLoadedModuleCount ||
-            !moduleInterface->GetLoadedModuleAt) {
-            return modules;
-        }
-        const uint32_t count = moduleInterface->GetLoadedModuleCount();
+        const uint32_t count = moduleInterface->GetLoadedModuleCount(moduleInterface->Context);
         modules.reserve(count);
         for (uint32_t index = 0; index < count; ++index) {
-            BML_Mod mod = moduleInterface->GetLoadedModuleAt(index);
+            BML_Mod mod = moduleInterface->GetLoadedModuleAt(moduleInterface->Context, index);
             if (mod) {
                 modules.emplace_back(mod, moduleInterface);
             }
@@ -229,18 +225,14 @@ namespace bml {
                      std::function<void()> callback,
                      const BML_CoreModuleInterface *moduleInterface = nullptr)
             : m_Storage(new detail::ShutdownHookStorage()) {
-            if (!moduleInterface || !mod) {
-                throw Exception(BML_RESULT_NOT_FOUND, "Shutdown hook API unavailable");
-            }
+            BML_ASSERT(moduleInterface);
+            BML_ASSERT(mod);
 
             m_Storage->callback = std::move(callback);
             m_Storage->self_owned = true;
 
             BML_Result result = BML_RESULT_NOT_SUPPORTED;
             if (moduleInterface->RegisterShutdownHook) {
-                result = moduleInterface->RegisterShutdownHook(
-                    mod, detail::ShutdownHookStorage::Invoke, m_Storage);
-            } else if (moduleInterface->RegisterShutdownHook) {
                 result = moduleInterface->RegisterShutdownHook(
                     mod, detail::ShutdownHookStorage::Invoke, m_Storage);
             }
@@ -298,9 +290,6 @@ namespace bml {
 
         BML_Result result = BML_RESULT_NOT_SUPPORTED;
         if (resolvedInterface->RegisterShutdownHook) {
-            result = resolvedInterface->RegisterShutdownHook(
-                mod.Handle(), detail::ShutdownHookStorage::Invoke, storage);
-        } else if (resolvedInterface->RegisterShutdownHook) {
             result = resolvedInterface->RegisterShutdownHook(
                 mod.Handle(), detail::ShutdownHookStorage::Invoke, storage);
         }

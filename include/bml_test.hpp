@@ -44,8 +44,8 @@ namespace bml::test {
 /**
  * @brief RAII test context that bootstraps BML Core for unit testing.
  *
- * Constructor calls bmlBootstrap with SKIP_DISCOVERY | SKIP_LOAD.
- * Destructor calls bmlShutdown. Multiple TestContexts may be created
+ * Constructor creates a runtime with no discovery/load.
+ * Destructor destroys that runtime. Multiple TestContexts may be created
  * sequentially (not concurrently).
  */
 class TestContext {
@@ -53,8 +53,8 @@ public:
     /**
      * @brief Bootstrap BML Core in test mode.
      *
-     * Initializes the microkernel with SKIP_DISCOVERY | SKIP_LOAD flags,
-     * loads the bootstrap API pointers, and optionally installs a log
+     * Initializes the microkernel runtime, loads the bootstrap API pointers
+     * through the runtime proc resolver, and optionally installs a log
      * capture sink.
      */
     TestContext();
@@ -63,7 +63,7 @@ public:
      * @brief Shut down BML Core and clean up.
      *
      * Clears any active log capture, destroys mock module handles,
-     * and calls bmlShutdown().
+     * and destroys the runtime.
      */
     ~TestContext();
 
@@ -127,8 +127,8 @@ public:
      */
     bool HasLog(const std::string &substr) const;
 
-    /** @brief Get the runtime service hub. */
-    const bml::RuntimeServiceHub *Hub() const;
+    /** @brief Get the runtime service bundle. */
+    const BML_Services *Hub() const;
 
     /**
      * @brief Create a ModuleServices instance for a mock module.
@@ -147,13 +147,14 @@ private:
     bool m_Initialized{false};
     bool m_LogCaptureEnabled{false};
     LogCaptureState m_LogCapture;
+    BML_Runtime m_Runtime{nullptr};
 
     // Mock module handle storage (kept alive until shutdown)
     std::vector<std::unique_ptr<BML_Mod_T>> m_MockMods;
     BML_Mod m_DefaultMod{nullptr};
 
-    // Cached service hub pointer (stable for runtime lifetime)
-    mutable const bml::RuntimeServiceHub *m_CachedHub{nullptr};
+    // Cached runtime service bundle (stable for runtime lifetime)
+    mutable const BML_Services *m_CachedHub{nullptr};
 
     // IMC API function pointers (cached for performance)
     PFN_BML_ImcGetTopicId m_GetTopicId{nullptr};
@@ -164,8 +165,8 @@ private:
     PFN_BML_SetLogFilter m_SetLogFilter{nullptr};
     PFN_BML_RegisterLogSinkOverride m_RegisterLogSinkOverride{nullptr};
     PFN_BML_ClearLogSinkOverride m_ClearLogSinkOverride{nullptr};
-    PFN_BML_GetGlobalContext m_GetGlobalContext{nullptr};
-    PFN_BML_GetHostModule m_GetHostModule{nullptr};
+    BML_Context m_Context{nullptr};
+    PFN_BML_FindModuleById m_FindModuleById{nullptr};
 
     static void LogCaptureDispatch(BML_Context ctx,
                                    const BML_LogMessageInfo *info,

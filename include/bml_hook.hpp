@@ -19,8 +19,8 @@
 #define BML_HOOK_HPP
 
 #include "bml_hook.h"
-#include "bml_builtin_interfaces.h"
 #include "bml_errors.h"
+#include "bml_assert.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -71,10 +71,8 @@ namespace bml {
                          const BML_CoreHookRegistryInterface *iface = nullptr,
                          BML_Mod owner = nullptr)
             : m_Address(targetAddress), m_Interface(iface), m_Owner(owner) {
-            if (!iface || !targetAddress) {
-                m_Address = nullptr;
-                return;
-            }
+            BML_ASSERT(iface);
+            BML_ASSERT(targetAddress);
             BML_HookDesc desc = BML_HOOK_DESC_INIT;
             desc.target_name = targetName;
             desc.target_address = targetAddress;
@@ -146,22 +144,25 @@ namespace bml {
          */
         static void Enumerate(std::function<void(const HookInfo &)> callback,
                               const BML_CoreHookRegistryInterface *iface) {
-            if (!iface || !iface->Enumerate || !callback) return;
+            if (!iface || !iface->Context || !iface->Enumerate || !callback) return;
 
             struct Ctx {
                 std::function<void(const HookInfo &)> *fn;
             } ctx{&callback};
 
-            iface->Enumerate([](const BML_HookDesc *desc, const char *owner, void *ud) {
-                auto *c = static_cast<Ctx *>(ud);
-                HookInfo info;
-                info.name = desc->target_name ? desc->target_name : "";
-                info.address = desc->target_address;
-                info.priority = desc->priority;
-                info.flags = desc->flags;
-                info.owner = owner ? owner : "";
-                (*c->fn)(info);
-            }, &ctx);
+            iface->Enumerate(
+                iface->Context,
+                [](const BML_HookDesc *desc, const char *owner, void *ud) {
+                    auto *c = static_cast<Ctx *>(ud);
+                    HookInfo info;
+                    info.name = desc->target_name ? desc->target_name : "";
+                    info.address = desc->target_address;
+                    info.priority = desc->priority;
+                    info.flags = desc->flags;
+                    info.owner = owner ? owner : "";
+                    (*c->fn)(info);
+                },
+                &ctx);
         }
 
         /**

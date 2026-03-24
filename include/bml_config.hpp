@@ -8,8 +8,8 @@
 #ifndef BML_CONFIG_HPP
 #define BML_CONFIG_HPP
 
-#include "bml_builtin_interfaces.h"
 #include "bml_config.h"
+#include "bml_assert.hpp"
 
 #include <string>
 #include <string_view>
@@ -50,7 +50,6 @@ namespace bml {
          * @return The value if found, std::nullopt otherwise
          */
         std::optional<std::string> GetString(const char *category, const char *key) const {
-            if (!m_ConfigInterface || !m_ConfigInterface->Get) return std::nullopt;
             BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
             BML_ConfigValue value = {sizeof(BML_ConfigValue), BML_CONFIG_STRING, {}, 0, 0};
             auto result = m_ConfigInterface->Get(m_Mod, &cfg_key, &value);
@@ -68,7 +67,6 @@ namespace bml {
          * @return true if successful
          */
         bool SetString(const char *category, const char *key, const char *value) {
-            if (!m_ConfigInterface || !m_ConfigInterface->Set) return false;
             BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
             BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_STRING, {}, 0, 0};
             cfg_value.data.string_value = value;
@@ -86,7 +84,6 @@ namespace bml {
          * @return The value if found, std::nullopt otherwise
          */
         std::optional<int32_t> GetInt(const char *category, const char *key) const {
-            if (!m_ConfigInterface || !m_ConfigInterface->Get) return std::nullopt;
             BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
             BML_ConfigValue value = {sizeof(BML_ConfigValue), BML_CONFIG_INT, {}, 0, 0};
             auto result = m_ConfigInterface->Get(m_Mod, &cfg_key, &value);
@@ -104,7 +101,6 @@ namespace bml {
          * @return true if successful
          */
         bool SetInt(const char *category, const char *key, int32_t value) {
-            if (!m_ConfigInterface || !m_ConfigInterface->Set) return false;
             BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
             BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_INT, {}, 0, 0};
             cfg_value.data.int_value = value;
@@ -122,7 +118,6 @@ namespace bml {
          * @return The value if found, std::nullopt otherwise
          */
         std::optional<float> GetFloat(const char *category, const char *key) const {
-            if (!m_ConfigInterface || !m_ConfigInterface->Get) return std::nullopt;
             BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
             BML_ConfigValue value = {sizeof(BML_ConfigValue), BML_CONFIG_FLOAT, {}, 0, 0};
             auto result = m_ConfigInterface->Get(m_Mod, &cfg_key, &value);
@@ -140,7 +135,6 @@ namespace bml {
          * @return true if successful
          */
         bool SetFloat(const char *category, const char *key, float value) {
-            if (!m_ConfigInterface || !m_ConfigInterface->Set) return false;
             BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
             BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_FLOAT, {}, 0, 0};
             cfg_value.data.float_value = value;
@@ -158,7 +152,6 @@ namespace bml {
          * @return The value if found, std::nullopt otherwise
          */
         std::optional<bool> GetBool(const char *category, const char *key) const {
-            if (!m_ConfigInterface || !m_ConfigInterface->Get) return std::nullopt;
             BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
             BML_ConfigValue value = {sizeof(BML_ConfigValue), BML_CONFIG_BOOL, {}, 0, 0};
             auto result = m_ConfigInterface->Get(m_Mod, &cfg_key, &value);
@@ -176,7 +169,6 @@ namespace bml {
          * @return true if successful
          */
         bool SetBool(const char *category, const char *key, bool value) {
-            if (!m_ConfigInterface || !m_ConfigInterface->Set) return false;
             BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
             BML_ConfigValue cfg_value = {sizeof(BML_ConfigValue), BML_CONFIG_BOOL, {}, 0, 0};
             cfg_value.data.bool_value = value ? 1 : 0;
@@ -191,36 +183,27 @@ namespace bml {
          * @brief Get an integer, returning default_value if not found
          */
         int32_t GetInt(const char *category, const char *key, int32_t default_value) const {
-            if (m_ConfigInterface && m_ConfigInterface->GetInt) {
-                int32_t out = default_value;
-                m_ConfigInterface->GetInt(m_Mod, category, key, default_value, &out);
-                return out;
-            }
-            return GetInt(category, key).value_or(default_value);
+            int32_t out = default_value;
+            m_ConfigInterface->GetInt(m_Mod, category, key, default_value, &out);
+            return out;
         }
 
         /**
          * @brief Get a float, returning default_value if not found
          */
         float GetFloat(const char *category, const char *key, float default_value) const {
-            if (m_ConfigInterface && m_ConfigInterface->GetFloat) {
-                float out = default_value;
-                m_ConfigInterface->GetFloat(m_Mod, category, key, default_value, &out);
-                return out;
-            }
-            return GetFloat(category, key).value_or(default_value);
+            float out = default_value;
+            m_ConfigInterface->GetFloat(m_Mod, category, key, default_value, &out);
+            return out;
         }
 
         /**
          * @brief Get a bool, returning default_value if not found
          */
         bool GetBool(const char *category, const char *key, bool default_value) const {
-            if (m_ConfigInterface && m_ConfigInterface->GetBool) {
-                BML_Bool out = default_value ? BML_TRUE : BML_FALSE;
-                m_ConfigInterface->GetBool(m_Mod, category, key, out, &out);
-                return out != 0;
-            }
-            return GetBool(category, key).value_or(default_value);
+            BML_Bool out = default_value ? BML_TRUE : BML_FALSE;
+            m_ConfigInterface->GetBool(m_Mod, category, key, out, &out);
+            return out != 0;
         }
 
         /**
@@ -228,12 +211,9 @@ namespace bml {
          * @warning The returned string is a copy, unlike the C API variant
          */
         std::string GetString(const char *category, const char *key, const char *default_value) const {
-            if (m_ConfigInterface && m_ConfigInterface->GetString) {
-                const char *out = default_value;
-                m_ConfigInterface->GetString(m_Mod, category, key, default_value, &out);
-                return out ? std::string(out) : std::string();
-            }
-            return GetString(category, key).value_or(default_value ? default_value : "");
+            const char *out = default_value;
+            m_ConfigInterface->GetString(m_Mod, category, key, default_value, &out);
+            return out ? std::string(out) : std::string();
         }
 
         // ========================================================================
@@ -247,7 +227,6 @@ namespace bml {
          * @return true if successful
          */
         bool Reset(const char *category, const char *key) {
-            if (!m_ConfigInterface || !m_ConfigInterface->Reset) return false;
             BML_ConfigKey cfg_key = {sizeof(BML_ConfigKey), category, key};
             return m_ConfigInterface->Reset(m_Mod, &cfg_key) == BML_RESULT_OK;
         }
@@ -288,15 +267,12 @@ namespace bml {
          */
         explicit ConfigBatch(BML_Mod mod, const BML_CoreConfigInterface *configInterface = nullptr)
             : m_Batch(nullptr), m_Committed(false), m_ConfigInterface(configInterface) {
-            if (m_ConfigInterface && m_ConfigInterface->BatchBegin) {
-                m_ConfigInterface->BatchBegin(mod, &m_Batch);
-            }
+            BML_ASSERT(configInterface);
+            m_ConfigInterface->BatchBegin(mod, &m_Batch);
         }
 
         ~ConfigBatch() {
-            if (m_Batch && !m_Committed && m_ConfigInterface && m_ConfigInterface->BatchDiscard) {
-                m_ConfigInterface->BatchDiscard(m_Batch);
-            }
+            if (m_Batch && !m_Committed) m_ConfigInterface->BatchDiscard(m_Batch);
         }
 
         // Non-copyable, movable
@@ -314,9 +290,7 @@ namespace bml {
 
         ConfigBatch &operator=(ConfigBatch &&other) noexcept {
             if (this != &other) {
-                if (m_Batch && !m_Committed && m_ConfigInterface && m_ConfigInterface->BatchDiscard) {
-                    m_ConfigInterface->BatchDiscard(m_Batch);
-                }
+                if (m_Batch && !m_Committed) m_ConfigInterface->BatchDiscard(m_Batch);
                 m_Batch = other.m_Batch;
                 m_Committed = other.m_Committed;
                 m_ConfigInterface = other.m_ConfigInterface;
@@ -346,7 +320,7 @@ namespace bml {
          * @return true if successfully queued
          */
         bool Set(const BML_ConfigKey *key, const BML_ConfigValue *value) {
-            if (!m_Batch || m_Committed || !m_ConfigInterface || !m_ConfigInterface->BatchSet) return false;
+            if (!m_Batch || m_Committed) return false;
             return m_ConfigInterface->BatchSet(m_Batch, key, value) == BML_RESULT_OK;
         }
 
@@ -395,7 +369,7 @@ namespace bml {
          * @return true if all changes were successfully applied
          */
         bool Commit() {
-            if (!m_Batch || m_Committed || !m_ConfigInterface || !m_ConfigInterface->BatchCommit) return false;
+            if (!m_Batch || m_Committed) return false;
             BML_Result result = m_ConfigInterface->BatchCommit(m_Batch);
             if (result == BML_RESULT_OK) {
                 m_Committed = true;
@@ -410,7 +384,7 @@ namespace bml {
          * @return true if successfully discarded
          */
         bool Discard() {
-            if (!m_Batch || m_Committed || !m_ConfigInterface || !m_ConfigInterface->BatchDiscard) return false;
+            if (!m_Batch || m_Committed) return false;
             BML_Result result = m_ConfigInterface->BatchDiscard(m_Batch);
             if (result == BML_RESULT_OK) {
                 m_Committed = true; // Mark as consumed

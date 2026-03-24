@@ -161,35 +161,6 @@ namespace imc {
         std::vector<Topic> m_Topics;
     };
 
-    // ========================================================================
-    // Event Emitter
-    // ========================================================================
-
-    template <typename T>
-    class EventEmitter {
-        static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
-    public:
-        EventEmitter() = default;
-        explicit EventEmitter(std::string_view topicName,
-                              const BML_ImcBusInterface *bus = nullptr,
-                              BML_Mod owner = nullptr)
-            : m_Publisher(topicName, bus, owner) {}
-
-        bool Valid() const noexcept { return m_Publisher.Valid(); }
-        explicit operator bool() const noexcept { return Valid(); }
-        const Topic &GetTopic() const noexcept { return m_Publisher.GetTopic(); }
-
-        bool Emit(const T &event) { return m_Publisher.Publish(event); }
-        bool Emit(const T &event, Priority prio) { return m_Publisher.Publish(event, prio); }
-        bool operator()(const T &event) { return Emit(event); }
-
-        Publisher<T> &GetPublisher() { return m_Publisher; }
-        const Publisher<T> &GetPublisher() const { return m_Publisher; }
-
-    private:
-        Publisher<T> m_Publisher;
-    };
-
 } // namespace imc
 } // namespace bml
 

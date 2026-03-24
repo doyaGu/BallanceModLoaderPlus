@@ -1,33 +1,22 @@
 /**
  * @file bml_resource.hpp
  * @brief BML C++ Resource Handle Wrapper
- * 
+ *
  * Provides RAII-friendly and type-safe wrappers for BML resource handles.
  */
 
 #ifndef BML_RESOURCE_HPP
 #define BML_RESOURCE_HPP
 
-#include "bml_builtin_interfaces.h"
 #include "bml_resource.h"
 #include "bml_errors.h"
+#include "bml_assert.hpp"
 
 #include <optional>
-#include <cstddef>
 #include <memory>
 #include <utility>
 
 namespace bml {
-    namespace detail {
-        template <typename MemberT>
-        constexpr bool HasResourceMember(const BML_CoreResourceInterface *iface, size_t offset) noexcept {
-            return iface != nullptr && iface->header.struct_size >= offset + sizeof(MemberT);
-        }
-    } // namespace detail
-
-#define BML_CORE_RESOURCE_HAS_MEMBER(iface, member) \
-    (::bml::detail::HasResourceMember<decltype(((BML_CoreResourceInterface *) 0)->member)>( \
-        (iface), offsetof(BML_CoreResourceInterface, member)) && (iface)->member != nullptr)
 
     // ============================================================================
     // Handle Wrapper
@@ -41,7 +30,7 @@ namespace bml {
      *   auto handle = bml::Handle::create(MY_RESOURCE_TYPE);
      *
      *   // Attach user data
-     *   handle.attachUserData(my_data);
+     *   handle.AttachUserData(my_data);
      *
      *   // Handle is automatically released when it goes out of scope
      */
@@ -60,9 +49,8 @@ namespace bml {
         static Handle create(BML_HandleType type,
                              const BML_CoreResourceInterface *resourceInterface = nullptr,
                              BML_Mod owner = nullptr) {
-            if (!resourceInterface || !owner || !resourceInterface->HandleCreate) {
-                throw Exception(BML_RESULT_NOT_FOUND, "Handle API unavailable");
-            }
+            BML_ASSERT(resourceInterface);
+            BML_ASSERT(owner);
 
             Handle h;
             h.m_ResourceInterface = resourceInterface;
@@ -83,9 +71,8 @@ namespace bml {
             BML_HandleType type,
             const BML_CoreResourceInterface *resourceInterface = nullptr,
             BML_Mod owner = nullptr) {
-            if (!resourceInterface || !owner || !resourceInterface->HandleCreate) {
-                return std::nullopt;
-            }
+            BML_ASSERT(resourceInterface);
+            BML_ASSERT(owner);
 
             Handle h;
             h.m_ResourceInterface = resourceInterface;
@@ -113,7 +100,7 @@ namespace bml {
             }
         }
 
-        // Non-copyable by default (use retain() for reference counting)
+        // Non-copyable by default (use Retain() for reference counting)
         Handle(const Handle &) = delete;
         Handle &operator=(const Handle &) = delete;
 
@@ -148,8 +135,8 @@ namespace bml {
          * @brief Increment reference count
          * @return true if successful
          */
-        bool retain() {
-            if (!m_valid || !m_ResourceInterface || !m_ResourceInterface->HandleRetain) return false;
+        bool Retain() {
+            if (!m_valid) return false;
             return m_ResourceInterface->HandleRetain(&m_desc) == BML_RESULT_OK;
         }
 
@@ -157,8 +144,8 @@ namespace bml {
          * @brief Decrement reference count
          * @return true if successful
          */
-        bool release() {
-            if (!m_valid || !m_ResourceInterface || !m_ResourceInterface->HandleRelease) return false;
+        bool Release() {
+            if (!m_valid) return false;
             auto result = m_ResourceInterface->HandleRelease(&m_desc);
             if (result == BML_RESULT_OK) {
                 m_valid = false;
@@ -170,8 +157,8 @@ namespace bml {
          * @brief Check if handle is still valid
          * @return true if handle is valid
          */
-        bool validate() const {
-            if (!m_valid || !m_ResourceInterface || !m_ResourceInterface->HandleValidate) return false;
+        bool Validate() const {
+            if (!m_valid) return false;
             BML_Bool valid = BML_FALSE;
             if (m_ResourceInterface->HandleValidate(&m_desc, &valid) == BML_RESULT_OK) {
                 return valid != BML_FALSE;
@@ -184,8 +171,8 @@ namespace bml {
          * @param data User data pointer
          * @return true if successful
          */
-        bool attachUserData(void *data) {
-            if (!m_valid || !m_ResourceInterface || !m_ResourceInterface->HandleAttachUserData) return false;
+        bool AttachUserData(void *data) {
+            if (!m_valid) return false;
             return m_ResourceInterface->HandleAttachUserData(&m_desc, data) == BML_RESULT_OK;
         }
 
@@ -193,8 +180,8 @@ namespace bml {
          * @brief Get attached user data
          * @return User data pointer, or nullptr if not set or error
          */
-        void *getUserData() const {
-            if (!m_valid || !m_ResourceInterface || !m_ResourceInterface->HandleGetUserData) return nullptr;
+        void *GetUserData() const {
+            if (!m_valid) return nullptr;
             void *data = nullptr;
             if (m_ResourceInterface->HandleGetUserData(&m_desc, &data) == BML_RESULT_OK) {
                 return data;
@@ -208,29 +195,29 @@ namespace bml {
          * @return Typed pointer
          */
         template <typename T>
-        T *getUserData() const {
-            return static_cast<T *>(getUserData());
+        T *GetUserData() const {
+            return static_cast<T *>(GetUserData());
         }
 
         /**
          * @brief Get handle type
          */
-        BML_HandleType type() const noexcept { return m_desc.type; }
+        BML_HandleType Type() const noexcept { return m_desc.type; }
 
         /**
          * @brief Get handle generation
          */
-        uint32_t generation() const noexcept { return m_desc.generation; }
+        uint32_t Generation() const noexcept { return m_desc.generation; }
 
         /**
          * @brief Get handle slot
          */
-        uint32_t slot() const noexcept { return m_desc.slot; }
+        uint32_t Slot() const noexcept { return m_desc.slot; }
 
         /**
          * @brief Get the raw descriptor
          */
-        const BML_HandleDesc &descriptor() const noexcept { return m_desc; }
+        const BML_HandleDesc &Descriptor() const noexcept { return m_desc; }
 
         /**
          * @brief Check if handle is valid
@@ -272,9 +259,8 @@ namespace bml {
         static SharedHandle create(BML_HandleType type,
                                    const BML_CoreResourceInterface *resourceInterface = nullptr,
                                    BML_Mod owner = nullptr) {
-            if (!resourceInterface || !owner || !resourceInterface->HandleCreate) {
-                throw Exception(BML_RESULT_NOT_FOUND, "Handle API unavailable");
-            }
+            BML_ASSERT(resourceInterface);
+            BML_ASSERT(owner);
 
             auto impl = std::make_shared<Impl>();
             impl->resource_interface = resourceInterface;
@@ -298,9 +284,8 @@ namespace bml {
             BML_HandleType type,
             const BML_CoreResourceInterface *resourceInterface = nullptr,
             BML_Mod owner = nullptr) {
-            if (!resourceInterface || !owner || !resourceInterface->HandleCreate) {
-                return std::nullopt;
-            }
+            BML_ASSERT(resourceInterface);
+            BML_ASSERT(owner);
 
             auto impl = std::make_shared<Impl>();
             impl->resource_interface = resourceInterface;
@@ -322,9 +307,8 @@ namespace bml {
         SharedHandle(SharedHandle &&) = default;
         SharedHandle &operator=(SharedHandle &&) = default;
 
-        bool validate() const {
-            if (!m_impl || !m_impl->valid || !m_impl->resource_interface
-                || !m_impl->resource_interface->HandleValidate) {
+        bool Validate() const {
+            if (!m_impl || !m_impl->valid) {
                 return false;
             }
             BML_Bool valid = BML_FALSE;
@@ -334,17 +318,15 @@ namespace bml {
             return false;
         }
 
-        bool attachUserData(void *data) {
-            if (!m_impl || !m_impl->valid || !m_impl->resource_interface
-                || !m_impl->resource_interface->HandleAttachUserData) {
+        bool AttachUserData(void *data) {
+            if (!m_impl || !m_impl->valid) {
                 return false;
             }
             return m_impl->resource_interface->HandleAttachUserData(&m_impl->desc, data) == BML_RESULT_OK;
         }
 
-        void *getUserData() const {
-            if (!m_impl || !m_impl->valid || !m_impl->resource_interface
-                || !m_impl->resource_interface->HandleGetUserData) {
+        void *GetUserData() const {
+            if (!m_impl || !m_impl->valid) {
                 return nullptr;
             }
             void *data = nullptr;
@@ -355,15 +337,15 @@ namespace bml {
         }
 
         template <typename T>
-        T *getUserData() const {
-            return static_cast<T *>(getUserData());
+        T *GetUserData() const {
+            return static_cast<T *>(GetUserData());
         }
 
-        BML_HandleType type() const noexcept {
+        BML_HandleType Type() const noexcept {
             return m_impl ? m_impl->desc.type : 0;
         }
 
-        const BML_HandleDesc *descriptor() const noexcept {
+        const BML_HandleDesc *Descriptor() const noexcept {
             return m_impl ? &m_impl->desc : nullptr;
         }
 
@@ -374,7 +356,7 @@ namespace bml {
         /**
          * @brief Get the current reference count
          */
-        long use_count() const noexcept {
+        long UseCount() const noexcept {
             return m_impl.use_count();
         }
 
@@ -394,7 +376,6 @@ namespace bml {
         std::shared_ptr<Impl> m_impl;
     };
 
-#undef BML_CORE_RESOURCE_HAS_MEMBER
 } // namespace bml
 
 #endif /* BML_RESOURCE_HPP */

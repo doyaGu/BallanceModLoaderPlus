@@ -9,7 +9,6 @@
 #ifndef BML_CONTEXT_HPP
 #define BML_CONTEXT_HPP
 
-#include "bml_builtin_interfaces.h"
 #include "bml_core.h"
 #include "bml_export.h"
 #include "bml_loader.h"
@@ -20,8 +19,8 @@ namespace bml {
     // ============================================================================
 
     /**
-     * @brief Load the bootstrap minimum for later interface-driven runtime use
-     * @param get_proc Function to retrieve bootstrap exports by name
+     * @brief Load the host bootstrap minimum used to bind runtime interfaces later
+     * @param get_proc Function to retrieve host bootstrap exports by name
      * @return true if successful
      */
     inline bool LoadAPI(PFN_BML_GetProcAddress get_proc) {
@@ -106,7 +105,7 @@ namespace bml {
      *
      * Example:
      *   {
-     *       bml::ScopedContext ctx(contextApi->GetGlobalContext(), contextApi);
+     *       bml::ScopedContext ctx(contextApi->Context, contextApi);
      *       // Use ctx...
      *   } // Automatically releases reference
      */
@@ -170,13 +169,13 @@ namespace bml {
     // ============================================================================
 
     /**
-     * @brief Get the global BML context through the acquired builtin interface
+     * @brief Get the runtime-bound BML context through the acquired runtime interface
      */
-    inline Context GetGlobalContext(const BML_CoreContextInterface *contextInterface = nullptr) {
-        if (!contextInterface || !contextInterface->GetGlobalContext) {
+    inline Context GetContext(const BML_CoreContextInterface *contextInterface = nullptr) {
+        if (!contextInterface || !contextInterface->Context) {
             return Context();
         }
-        return Context(contextInterface->GetGlobalContext(), contextInterface);
+        return Context(contextInterface->Context, contextInterface);
     }
 } // namespace bml
 

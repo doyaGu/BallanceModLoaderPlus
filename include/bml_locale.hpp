@@ -15,17 +15,10 @@
 #include <cstddef>
 #include <string_view>
 
-namespace bml {
-    namespace detail {
-        template <typename MemberT>
-        constexpr bool HasLocaleMember(const BML_CoreLocaleInterface *iface, size_t offset) noexcept {
-            return iface != nullptr && iface->header.struct_size >= offset + sizeof(MemberT);
-        }
-    } // namespace detail
-
 #define BML_CORE_LOCALE_HAS_MEMBER(iface, member) \
-    (::bml::detail::HasLocaleMember<decltype(((BML_CoreLocaleInterface *) 0)->member)>( \
-        (iface), offsetof(BML_CoreLocaleInterface, member)) && (iface)->member != nullptr)
+    BML_IFACE_HAS(iface, BML_CoreLocaleInterface, member)
+
+namespace bml {
 
     /**
      * @brief C++ wrapper for per-module locale string tables.
@@ -80,8 +73,9 @@ namespace bml {
             if (!m_CachedTable && m_Interface && BML_CORE_LOCALE_HAS_MEMBER(m_Interface, BindTable))
                 Bind();
 
-            if (m_CachedTable && m_Interface && m_Interface->Lookup)
-                return m_Interface->Lookup(m_CachedTable, key);
+            if (m_CachedTable && m_Interface && m_Interface->Context && m_Interface->Lookup) {
+                return m_Interface->Lookup(m_Interface->Context, m_CachedTable, key);
+            }
 
             if (m_Interface && m_Module && m_Interface->Get) {
                 return m_Interface->Get(m_Module.Handle(), key);
@@ -99,10 +93,11 @@ namespace bml {
          * @brief Change the global language and refresh the cached table.
          */
         bool SetLanguage(const char *language_code) const {
-            if (!m_Interface || !m_Interface->SetLanguage)
+            if (!m_Interface || !m_Interface->Context || !m_Interface->SetLanguage)
                 return false;
 
-            const bool ok = m_Interface->SetLanguage(language_code) == BML_RESULT_OK;
+            const bool ok =
+                m_Interface->SetLanguage(m_Interface->Context, language_code) == BML_RESULT_OK;
             if (ok) {
                 Invalidate();
                 Bind();
@@ -111,11 +106,11 @@ namespace bml {
         }
 
         std::string_view GetLanguage() const {
-            if (!m_Interface || !m_Interface->GetLanguage)
+            if (!m_Interface || !m_Interface->Context || !m_Interface->GetLanguage)
                 return {};
 
             const char *code = nullptr;
-            if (m_Interface->GetLanguage(&code) != BML_RESULT_OK || !code)
+            if (m_Interface->GetLanguage(m_Interface->Context, &code) != BML_RESULT_OK || !code)
                 return {};
             return code;
         }
@@ -140,7 +135,6 @@ namespace bml {
         }
     };
 
-#undef BML_CORE_LOCALE_HAS_MEMBER
 
 } // namespace bml
 

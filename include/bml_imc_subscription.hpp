@@ -9,6 +9,7 @@
 #include "bml_imc_fwd.hpp"
 #include "bml_imc_message.hpp"
 #include "bml_imc_topic.hpp"
+#include "bml_assert.hpp"
 
 #include <memory>
 #include <optional>
@@ -121,10 +122,12 @@ namespace imc {
             const BML_ImcBusInterface *bus = nullptr,
             BML_Mod owner = nullptr
         ) {
-            if (!bus || !bus->GetTopicId) return std::nullopt;
+            BML_ASSERT(bus);
             std::string resolvedName(topicName);
             TopicId topicId;
-            if (bus->GetTopicId(resolvedName.c_str(), &topicId) != BML_RESULT_OK) return std::nullopt;
+            if (bus->GetTopicId(bus->Context, resolvedName.c_str(), &topicId) != BML_RESULT_OK) {
+                return std::nullopt;
+            }
             return createWithId(topicId, std::move(resolvedName), std::move(callback), options, bus, owner);
         }
 
@@ -139,32 +142,6 @@ namespace imc {
                                 bus ? bus : topic.Iface(), owner);
         }
 
-        // Factory: Simple callback
-        static std::optional<Subscription> createSimple(
-            std::string_view topicName, SimpleCallback callback,
-            const SubscribeOptions *options = nullptr,
-            const BML_ImcBusInterface *bus = nullptr,
-            BML_Mod owner = nullptr
-        ) {
-            return create(topicName, [cb = std::move(callback)](const Message &msg) {
-                cb(msg.Data(), msg.Size());
-            }, options, bus, owner);
-        }
-
-        // Factory: Typed callback
-        template <typename T>
-        static std::optional<Subscription> createTyped(
-            std::string_view topicName, TypedCallback<T> callback,
-            const SubscribeOptions *options = nullptr,
-            const BML_ImcBusInterface *bus = nullptr,
-            BML_Mod owner = nullptr
-        ) {
-            static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
-            return create(topicName, [cb = std::move(callback)](const Message &msg) {
-                if (auto *data = msg.As<T>()) cb(*data);
-            }, options, bus, owner);
-        }
-
         // Factory: Intercept callback
         static std::optional<Subscription> createIntercept(
             std::string_view topicName, InterceptCallback callback,
@@ -172,10 +149,12 @@ namespace imc {
             const BML_ImcBusInterface *bus = nullptr,
             BML_Mod owner = nullptr
         ) {
-            if (!bus || !bus->GetTopicId) return std::nullopt;
+            BML_ASSERT(bus);
             std::string resolvedName(topicName);
             TopicId topicId;
-            if (bus->GetTopicId(resolvedName.c_str(), &topicId) != BML_RESULT_OK) return std::nullopt;
+            if (bus->GetTopicId(bus->Context, resolvedName.c_str(), &topicId) != BML_RESULT_OK) {
+                return std::nullopt;
+            }
             return createInterceptWithId(
                 topicId, std::move(resolvedName), std::move(callback), options, bus, owner);
         }
@@ -189,21 +168,6 @@ namespace imc {
             if (!topic.Valid()) return std::nullopt;
             return createInterceptWithId(topic.Id(), topic.Name(), std::move(callback), options,
                                          bus ? bus : topic.Iface(), owner);
-        }
-
-        // Factory: Typed intercept
-        template <typename T>
-        static std::optional<Subscription> createTypedIntercept(
-            std::string_view topicName, TypedInterceptCallback<T> callback,
-            const SubscribeOptions *options = nullptr,
-            const BML_ImcBusInterface *bus = nullptr,
-            BML_Mod owner = nullptr
-        ) {
-            static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
-            return createIntercept(topicName, [cb = std::move(callback)](MutableMessage &msg) -> EventResult {
-                if (const auto *data = msg.As<T>()) return cb(*data);
-                return event_result::Continue;
-            }, options, bus, owner);
         }
 
         // Operations
@@ -367,19 +331,16 @@ namespace imc {
 
         template <typename T>
         bool Add(std::string_view topicName, TypedCallback<T> callback) {
-            if (auto sub = Subscription::createTyped<T>(topicName, std::move(callback), nullptr, m_Bus, m_Owner)) {
-                m_Subs.push_back(std::move(*sub));
-                return true;
-            }
-            return false;
+            static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
+            return Add(topicName, [cb = std::move(callback)](const Message &msg) {
+                if (auto *data = msg.As<T>()) cb(*data);
+            });
         }
 
         bool AddSimple(std::string_view topicName, SimpleCallback callback) {
-            if (auto sub = Subscription::createSimple(topicName, std::move(callback), nullptr, m_Bus, m_Owner)) {
-                m_Subs.push_back(std::move(*sub));
-                return true;
-            }
-            return false;
+            return Add(topicName, [cb = std::move(callback)](const Message &msg) {
+                cb(msg.Data(), msg.Size());
+            });
         }
 
         bool AddIntercept(std::string_view topicName, InterceptCallback callback,
@@ -394,11 +355,11 @@ namespace imc {
         template <typename T>
         bool AddIntercept(std::string_view topicName, TypedInterceptCallback<T> callback,
                           const SubscribeOptions *options = nullptr) {
-            if (auto sub = Subscription::createTypedIntercept<T>(topicName, std::move(callback), options, m_Bus, m_Owner)) {
-                m_Subs.push_back(std::move(*sub));
-                return true;
-            }
-            return false;
+            static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
+            return AddIntercept(topicName, [cb = std::move(callback)](MutableMessage &msg) -> EventResult {
+                if (const auto *data = msg.As<T>()) return cb(*data);
+                return event_result::Continue;
+            }, options);
         }
 
         void Bind(const BML_ImcBusInterface *bus) { m_Bus = bus; }

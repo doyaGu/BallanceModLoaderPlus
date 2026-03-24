@@ -1,3 +1,17 @@
+/**
+ * @file bml_interface.hpp
+ * @brief Interface lease, acquisition traits, and runtime interface access
+ *
+ * @section acquisition Interface Acquisition Guide
+ *
+ * Three patterns exist, ordered by preference:
+ *   1. `services.Acquire<T>()` -- Trait-based. Recommended for standard
+ *      interfaces with a specialized InterfaceTrait<T>.
+ *   2. `services.Acquire<T>(id, major)` -- Manual ID. Use for dynamic or
+ *      optional interfaces discovered at runtime.
+ *   3. `bml::AcquireInterface<T>(owner, id, major)` -- Global free function.
+ *      Use only during bootstrap before ModuleServices is available.
+ */
 #ifndef BML_INTERFACE_HPP
 #define BML_INTERFACE_HPP
 
@@ -7,8 +21,18 @@
 #include <utility>
 #include <vector>
 
-#include "bml_builtin_interfaces.h"
 #include "bml_interface.h"
+#include "bml_core.h"
+#include "bml_logging.h"
+#include "bml_config.h"
+#include "bml_memory.h"
+#include "bml_resource.h"
+#include "bml_imc.h"
+#include "bml_timer.h"
+#include "bml_hook.h"
+#include "bml_locale.h"
+#include "bml_module_runtime.h"
+#include "bml_assert.hpp"
 
 namespace bml {
     inline BML_Result RegisterInterface(PFN_BML_InterfaceRegister reg,
@@ -288,8 +312,8 @@ namespace bml {
 
     inline bool InterfaceExists(const BML_CoreDiagnosticInterface *diag,
                                 const char *interfaceId) {
-        if (!diag || !diag->InterfaceExists || !interfaceId) return false;
-        return diag->InterfaceExists(interfaceId) != BML_FALSE;
+        if (!diag || !diag->Context || !diag->InterfaceExists || !interfaceId) return false;
+        return diag->InterfaceExists(diag->Context, interfaceId) != BML_FALSE;
     }
 
     inline bool IsInterfaceCompatible(const BML_CoreDiagnosticInterface *diag,
@@ -297,31 +321,33 @@ namespace bml {
                                       uint16_t reqMajor,
                                       uint16_t reqMinor = 0,
                                       uint16_t reqPatch = 0) {
-        if (!diag || !diag->IsInterfaceCompatible || !interfaceId) return false;
+        if (!diag || !diag->Context || !diag->IsInterfaceCompatible || !interfaceId) return false;
         BML_Version required = bmlMakeVersion(reqMajor, reqMinor, reqPatch);
-        return diag->IsInterfaceCompatible(interfaceId, &required) != BML_FALSE;
+        return diag->IsInterfaceCompatible(diag->Context, interfaceId, &required) != BML_FALSE;
     }
 
     inline std::optional<BML_InterfaceRuntimeDesc> GetInterfaceDescriptor(
         const BML_CoreDiagnosticInterface *diag,
         const char *interfaceId) {
-        if (!diag || !diag->GetInterfaceDescriptor || !interfaceId) return std::nullopt;
+        if (!diag || !diag->Context || !diag->GetInterfaceDescriptor || !interfaceId) {
+            return std::nullopt;
+        }
         BML_InterfaceRuntimeDesc desc = BML_INTERFACE_RUNTIME_DESC_INIT;
-        if (diag->GetInterfaceDescriptor(interfaceId, &desc) != BML_FALSE) {
+        if (diag->GetInterfaceDescriptor(diag->Context, interfaceId, &desc) != BML_FALSE) {
             return desc;
         }
         return std::nullopt;
     }
 
     inline uint32_t GetInterfaceCount(const BML_CoreDiagnosticInterface *diag) {
-        if (!diag || !diag->GetInterfaceCount) return 0;
-        return diag->GetInterfaceCount();
+        if (!diag || !diag->Context || !diag->GetInterfaceCount) return 0;
+        return diag->GetInterfaceCount(diag->Context);
     }
 
     inline uint32_t GetInterfaceLeaseCount(const BML_CoreDiagnosticInterface *diag,
                                             const char *interfaceId) {
-        if (!diag || !diag->GetLeaseCount || !interfaceId) return 0;
-        return diag->GetLeaseCount(interfaceId);
+        if (!diag || !diag->Context || !diag->GetLeaseCount || !interfaceId) return 0;
+        return diag->GetLeaseCount(diag->Context, interfaceId);
     }
 
     // -- Lambda-friendly enumeration ------------------------------------------
@@ -329,35 +355,38 @@ namespace bml {
     namespace detail {
         template <typename Fn>
         void EnumerateWithLambda(
-            void (*cEnumFn)(PFN_BML_InterfaceRuntimeEnumerator, void *, uint64_t),
+            BML_Context ctx,
+            void (*cEnumFn)(BML_Context, PFN_BML_InterfaceRuntimeEnumerator, void *, uint64_t),
             Fn &&fn, uint64_t flags) {
-            if (!cEnumFn) return;
+            if (!ctx || !cEnumFn) return;
             auto trampoline = [](const BML_InterfaceRuntimeDesc *desc, void *ctx) {
                 (*static_cast<std::remove_reference_t<Fn> *>(ctx))(*desc);
             };
-            cEnumFn(trampoline, &fn, flags);
+            cEnumFn(ctx, trampoline, &fn, flags);
         }
 
         template <typename Fn>
         void EnumerateProviderWithLambda(
-            void (*cEnumFn)(const char *, PFN_BML_InterfaceRuntimeEnumerator, void *),
+            BML_Context ctx,
+            void (*cEnumFn)(BML_Context, const char *, PFN_BML_InterfaceRuntimeEnumerator, void *),
             const char *id, Fn &&fn) {
-            if (!cEnumFn || !id) return;
+            if (!ctx || !cEnumFn || !id) return;
             auto trampoline = [](const BML_InterfaceRuntimeDesc *desc, void *ctx) {
                 (*static_cast<std::remove_reference_t<Fn> *>(ctx))(*desc);
             };
-            cEnumFn(id, trampoline, &fn);
+            cEnumFn(ctx, id, trampoline, &fn);
         }
 
         template <typename Fn>
         void EnumerateCapWithLambda(
-            void (*cEnumFn)(uint64_t, PFN_BML_InterfaceRuntimeEnumerator, void *),
+            BML_Context ctx,
+            void (*cEnumFn)(BML_Context, uint64_t, PFN_BML_InterfaceRuntimeEnumerator, void *),
             uint64_t caps, Fn &&fn) {
-            if (!cEnumFn) return;
+            if (!ctx || !cEnumFn) return;
             auto trampoline = [](const BML_InterfaceRuntimeDesc *desc, void *ctx) {
                 (*static_cast<std::remove_reference_t<Fn> *>(ctx))(*desc);
             };
-            cEnumFn(caps, trampoline, &fn);
+            cEnumFn(ctx, caps, trampoline, &fn);
         }
     } // namespace detail
 
@@ -371,24 +400,24 @@ namespace bml {
     template <typename Fn>
     void ForEachInterface(const BML_CoreDiagnosticInterface *diag, Fn &&fn,
                           uint64_t requiredFlags = 0) {
-        if (!diag || !diag->EnumerateInterfaces) return;
-        detail::EnumerateWithLambda(diag->EnumerateInterfaces,
+        if (!diag || !diag->Context || !diag->EnumerateInterfaces) return;
+        detail::EnumerateWithLambda(diag->Context, diag->EnumerateInterfaces,
                                     std::forward<Fn>(fn), requiredFlags);
     }
 
     template <typename Fn>
     void ForEachInterfaceByProvider(const BML_CoreDiagnosticInterface *diag,
                                     const char *providerId, Fn &&fn) {
-        if (!diag || !diag->EnumerateByProvider) return;
-        detail::EnumerateProviderWithLambda(diag->EnumerateByProvider,
+        if (!diag || !diag->Context || !diag->EnumerateByProvider) return;
+        detail::EnumerateProviderWithLambda(diag->Context, diag->EnumerateByProvider,
                                             providerId, std::forward<Fn>(fn));
     }
 
     template <typename Fn>
     void ForEachInterfaceByCapability(const BML_CoreDiagnosticInterface *diag,
                                       uint64_t requiredCaps, Fn &&fn) {
-        if (!diag || !diag->EnumerateByCapability) return;
-        detail::EnumerateCapWithLambda(diag->EnumerateByCapability,
+        if (!diag || !diag->Context || !diag->EnumerateByCapability) return;
+        detail::EnumerateCapWithLambda(diag->Context, diag->EnumerateByCapability,
                                        requiredCaps, std::forward<Fn>(fn));
     }
 
@@ -445,17 +474,17 @@ namespace bml {
     // -- Error handling (via diagnostic interface) ----------------------------
 
     inline std::optional<BML_ErrorInfo> GetLastError(const BML_CoreDiagnosticInterface *diag) {
-        if (!diag || !diag->GetLastError) return std::nullopt;
+        if (!diag || !diag->Context || !diag->GetLastError) return std::nullopt;
         BML_ErrorInfo info = BML_ERROR_INFO_INIT;
-        if (diag->GetLastError(&info) == BML_RESULT_OK) {
+        if (diag->GetLastError(diag->Context, &info) == BML_RESULT_OK) {
             return info;
         }
         return std::nullopt;
     }
 
     inline void ClearLastError(const BML_CoreDiagnosticInterface *diag) {
-        if (diag && diag->ClearLastError) {
-            diag->ClearLastError();
+        if (diag && diag->Context && diag->ClearLastError) {
+            diag->ClearLastError(diag->Context);
         }
     }
 
@@ -537,17 +566,17 @@ namespace bml {
 
 // Core interface traits
 BML_DEFINE_INTERFACE_TRAIT(BML_CoreContextInterface,      BML_CORE_CONTEXT_INTERFACE_ID,       1, 0)
-BML_DEFINE_INTERFACE_TRAIT(BML_CoreModuleInterface,       BML_CORE_MODULE_INTERFACE_ID,        2, 0)
+BML_DEFINE_INTERFACE_TRAIT(BML_CoreModuleInterface,       BML_CORE_MODULE_INTERFACE_ID,        2, 1)
 BML_DEFINE_INTERFACE_TRAIT(BML_CoreLoggingInterface,      BML_CORE_LOGGING_INTERFACE_ID,       1, 0)
 BML_DEFINE_INTERFACE_TRAIT(BML_CoreConfigInterface,       BML_CORE_CONFIG_INTERFACE_ID,        1, 0)
 BML_DEFINE_INTERFACE_TRAIT(BML_CoreMemoryInterface,       BML_CORE_MEMORY_INTERFACE_ID,        1, 0)
 BML_DEFINE_INTERFACE_TRAIT(BML_CoreResourceInterface,     BML_CORE_RESOURCE_INTERFACE_ID,      1, 0)
 BML_DEFINE_INTERFACE_TRAIT(BML_CoreDiagnosticInterface,   BML_CORE_DIAGNOSTIC_INTERFACE_ID,    1, 0)
-BML_DEFINE_INTERFACE_TRAIT(BML_ImcBusInterface,           BML_IMC_BUS_INTERFACE_ID,            1, 0)
+BML_DEFINE_INTERFACE_TRAIT(BML_ImcBusInterface,           BML_IMC_BUS_INTERFACE_ID,            1, 3)
 BML_DEFINE_INTERFACE_TRAIT(BML_CoreTimerInterface,        BML_CORE_TIMER_INTERFACE_ID,         1, 0)
-BML_DEFINE_INTERFACE_TRAIT(BML_CoreHookRegistryInterface, BML_CORE_HOOK_REGISTRY_INTERFACE_ID, 1, 0)
+BML_DEFINE_INTERFACE_TRAIT(BML_CoreHookRegistryInterface, BML_CORE_HOOK_REGISTRY_INTERFACE_ID, 2, 0)
 BML_DEFINE_INTERFACE_TRAIT(BML_CoreLocaleInterface,       BML_CORE_LOCALE_INTERFACE_ID,        1, 0)
-BML_DEFINE_INTERFACE_TRAIT(BML_HostRuntimeInterface,      BML_CORE_HOST_RUNTIME_INTERFACE_ID,  1, 0)
+BML_DEFINE_INTERFACE_TRAIT(BML_HostRuntimeInterface,      BML_CORE_HOST_RUNTIME_INTERFACE_ID,  2, 0)
 
 // Module interface traits (forward-declared; full definitions in module headers)
 struct BML_InputCaptureInterface;

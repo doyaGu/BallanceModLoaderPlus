@@ -1,7 +1,7 @@
-﻿/**
+/**
  * @file bml_memory.hpp
  * @brief BML C++ Memory Management Wrapper
- * 
+ *
  * Provides RAII-friendly and type-safe wrappers for BML memory management
  * including allocation, memory pools, and smart pointer utilities.
  */
@@ -9,9 +9,9 @@
 #ifndef BML_MEMORY_HPP
 #define BML_MEMORY_HPP
 
-#include "bml_builtin_interfaces.h"
 #include "bml_memory.h"
 #include "bml_errors.h"
+#include "bml_assert.hpp"
 
 #include <cstddef>
 #include <optional>
@@ -29,7 +29,7 @@ namespace bml {
      * @return Pointer to allocated memory, or nullptr on failure
      */
     inline void *Alloc(size_t size, const BML_CoreMemoryInterface *memoryInterface = nullptr) {
-        return (memoryInterface && memoryInterface->Alloc) ? memoryInterface->Alloc(size) : nullptr;
+        return memoryInterface ? memoryInterface->Alloc(memoryInterface->Context, size) : nullptr;
     }
 
     /**
@@ -39,7 +39,7 @@ namespace bml {
      * @return Pointer to allocated memory, or nullptr on failure
      */
     inline void *Calloc(size_t count, size_t size, const BML_CoreMemoryInterface *memoryInterface = nullptr) {
-        return (memoryInterface && memoryInterface->Calloc) ? memoryInterface->Calloc(count, size) : nullptr;
+        return memoryInterface ? memoryInterface->Calloc(memoryInterface->Context, count, size) : nullptr;
     }
 
     /**
@@ -53,9 +53,7 @@ namespace bml {
                          size_t old_size,
                          size_t new_size,
                          const BML_CoreMemoryInterface *memoryInterface = nullptr) {
-        return (memoryInterface && memoryInterface->Realloc)
-            ? memoryInterface->Realloc(ptr, old_size, new_size)
-            : nullptr;
+        return memoryInterface ? memoryInterface->Realloc(memoryInterface->Context, ptr, old_size, new_size) : nullptr;
     }
 
     /**
@@ -63,8 +61,8 @@ namespace bml {
      * @param ptr Pointer to memory
      */
     inline void Free(void *ptr, const BML_CoreMemoryInterface *memoryInterface = nullptr) {
-        if (memoryInterface && memoryInterface->Free) {
-            memoryInterface->Free(ptr);
+        if (memoryInterface) {
+            memoryInterface->Free(memoryInterface->Context, ptr);
         }
     }
 
@@ -77,9 +75,7 @@ namespace bml {
     inline void *AllocAligned(size_t size,
                               size_t alignment,
                               const BML_CoreMemoryInterface *memoryInterface = nullptr) {
-        return (memoryInterface && memoryInterface->AllocAligned)
-            ? memoryInterface->AllocAligned(size, alignment)
-            : nullptr;
+        return memoryInterface ? memoryInterface->AllocAligned(memoryInterface->Context, size, alignment) : nullptr;
     }
 
     /**
@@ -87,8 +83,8 @@ namespace bml {
      * @param ptr Pointer allocated by AllocAligned
      */
     inline void FreeAligned(void *ptr, const BML_CoreMemoryInterface *memoryInterface = nullptr) {
-        if (memoryInterface && memoryInterface->FreeAligned) {
-            memoryInterface->FreeAligned(ptr);
+        if (memoryInterface) {
+            memoryInterface->FreeAligned(memoryInterface->Context, ptr);
         }
     }
 
@@ -98,9 +94,9 @@ namespace bml {
 
     inline std::optional<BML_MemoryStats> GetMemoryStats(
         const BML_CoreMemoryInterface *memoryInterface = nullptr) {
-        if (!memoryInterface || !memoryInterface->GetMemoryStats) return std::nullopt;
+        if (!memoryInterface) return std::nullopt;
         BML_MemoryStats stats{};
-        if (memoryInterface->GetMemoryStats(&stats) == BML_RESULT_OK) {
+        if (memoryInterface->GetMemoryStats(memoryInterface->Context, &stats) == BML_RESULT_OK) {
             return stats;
         }
         return std::nullopt;
@@ -117,8 +113,8 @@ namespace bml {
         const BML_CoreMemoryInterface *m_MemoryInterface = nullptr;
 
         void operator()(void *ptr) const noexcept {
-            if (m_MemoryInterface && m_MemoryInterface->Free) {
-                m_MemoryInterface->Free(ptr);
+            if (m_MemoryInterface) {
+                m_MemoryInterface->Free(m_MemoryInterface->Context, ptr);
             }
         }
     };
@@ -130,8 +126,8 @@ namespace bml {
         const BML_CoreMemoryInterface *m_MemoryInterface = nullptr;
 
         void operator()(void *ptr) const noexcept {
-            if (m_MemoryInterface && m_MemoryInterface->FreeAligned) {
-                m_MemoryInterface->FreeAligned(ptr);
+            if (m_MemoryInterface) {
+                m_MemoryInterface->FreeAligned(m_MemoryInterface->Context, ptr);
             }
         }
     };
@@ -146,8 +142,8 @@ namespace bml {
         void operator()(T *ptr) const noexcept {
             if (ptr) {
                 ptr->~T();
-                if (m_MemoryInterface && m_MemoryInterface->Free) {
-                    m_MemoryInterface->Free(ptr);
+                if (m_MemoryInterface) {
+                    m_MemoryInterface->Free(m_MemoryInterface->Context, ptr);
                 }
             }
         }
@@ -203,8 +199,8 @@ namespace bml {
                 for (size_t i = 0; i < count; ++i) {
                     ptr[i].~T();
                 }
-                if (m_MemoryInterface && m_MemoryInterface->Free) {
-                    m_MemoryInterface->Free(ptr);
+                if (m_MemoryInterface) {
+                    m_MemoryInterface->Free(m_MemoryInterface->Context, ptr);
                 }
             }
         }
@@ -258,8 +254,8 @@ namespace bml {
      *
      * Example:
      *   bml::MemoryPool pool(sizeof(MyObject), 100);
-     *   MyObject* obj = pool.alloc<MyObject>();
-     *   pool.free(obj);
+     *   MyObject* obj = pool.Alloc<MyObject>();
+     *   pool.Free(obj);
      */
     class MemoryPool {
     public:
@@ -267,25 +263,21 @@ namespace bml {
          * @brief Create a memory pool
          * @param block_size Size of each block in bytes
          * @param initial_blocks Number of blocks to pre-allocate
-         * @throws bml::Exception if creation fails
+         * @note On failure, the pool is left empty (operator bool() returns false)
          */
-        MemoryPool(size_t block_size,
-                   uint32_t initial_blocks = 32,
-                   const BML_CoreMemoryInterface *memoryInterface = nullptr)
+        explicit MemoryPool(size_t block_size,
+                            uint32_t initial_blocks = 32,
+                            const BML_CoreMemoryInterface *memoryInterface = nullptr)
             : m_Handle(nullptr), m_BlockSize(block_size), m_MemoryInterface(memoryInterface) {
-            if (!m_MemoryInterface || !m_MemoryInterface->MemoryPoolCreate) {
-                throw Exception(BML_RESULT_NOT_FOUND, "MemoryPool API unavailable");
-            }
-            auto result = m_MemoryInterface->MemoryPoolCreate(block_size, initial_blocks, &m_Handle);
-            if (result != BML_RESULT_OK) {
-                throw Exception(result, "Failed to create memory pool");
-            }
+            BML_ASSERT(memoryInterface);
+            auto result = m_MemoryInterface->MemoryPoolCreate(
+                m_MemoryInterface->Context, block_size, initial_blocks, &m_Handle);
+            // If failed, m_Handle stays nullptr — caller checks operator bool()
+            (void)result;
         }
 
         ~MemoryPool() {
-            if (m_Handle && m_MemoryInterface && m_MemoryInterface->MemoryPoolDestroy) {
-                m_MemoryInterface->MemoryPoolDestroy(m_Handle);
-            }
+            if (m_Handle) m_MemoryInterface->MemoryPoolDestroy(m_MemoryInterface->Context, m_Handle);
         }
 
         // Non-copyable
@@ -303,9 +295,7 @@ namespace bml {
 
         MemoryPool &operator=(MemoryPool &&other) noexcept {
             if (this != &other) {
-                if (m_Handle && m_MemoryInterface && m_MemoryInterface->MemoryPoolDestroy) {
-                    m_MemoryInterface->MemoryPoolDestroy(m_Handle);
-                }
+                if (m_Handle) m_MemoryInterface->MemoryPoolDestroy(m_MemoryInterface->Context, m_Handle);
                 m_Handle = other.m_Handle;
                 m_BlockSize = other.m_BlockSize;
                 m_MemoryInterface = other.m_MemoryInterface;
@@ -319,10 +309,8 @@ namespace bml {
          * @brief Allocate a block from the pool
          * @return Pointer to block, or nullptr on failure
          */
-        void *alloc() {
-            return (m_MemoryInterface && m_MemoryInterface->MemoryPoolAlloc)
-                ? m_MemoryInterface->MemoryPoolAlloc(m_Handle)
-                : nullptr;
+        void *Alloc() {
+            return m_MemoryInterface->MemoryPoolAlloc(m_MemoryInterface->Context, m_Handle);
         }
 
         /**
@@ -333,9 +321,9 @@ namespace bml {
          * @return Pointer to constructed object, or nullptr on failure
          */
         template <typename T, typename... Args>
-        T *alloc(Args &&... args) {
+        T *Alloc(Args &&... args) {
             static_assert(sizeof(T) <= 0xFFFFFFFF, "Type too large");
-            void *mem = alloc();
+            void *mem = Alloc();
             if (!mem) return nullptr;
             return new(mem) T(std::forward<Args>(args)...);
         }
@@ -344,10 +332,8 @@ namespace bml {
          * @brief Return a block to the pool
          * @param ptr Pointer allocated from this pool
          */
-        void free(void *ptr) {
-            if (m_MemoryInterface && m_MemoryInterface->MemoryPoolFree) {
-                m_MemoryInterface->MemoryPoolFree(m_Handle, ptr);
-            }
+        void Free(void *ptr) {
+            m_MemoryInterface->MemoryPoolFree(m_MemoryInterface->Context, m_Handle, ptr);
         }
 
         /**
@@ -356,10 +342,10 @@ namespace bml {
          * @param ptr Pointer to object
          */
         template <typename T>
-        void free(T *ptr) {
+        void Free(T *ptr) {
             if (ptr) {
                 ptr->~T();
-                free(static_cast<void *>(ptr));
+                Free(static_cast<void *>(ptr));
             }
         }
 
@@ -367,6 +353,11 @@ namespace bml {
          * @brief Get block size
          */
         size_t BlockSize() const noexcept { return m_BlockSize; }
+
+        /**
+         * @brief Check if pool was created successfully
+         */
+        explicit operator bool() const noexcept { return m_Handle != nullptr; }
 
         /**
          * @brief Get the underlying handle
@@ -402,14 +393,14 @@ namespace bml {
          */
         template <typename... Args>
         static PoolObject create(MemoryPool &pool, Args &&... args) {
-            T *ptr = pool.alloc<T>(std::forward<Args>(args)...);
+            T *ptr = pool.Alloc<T>(std::forward<Args>(args)...);
             return PoolObject(&pool, ptr);
         }
 
         PoolObject() : m_Pool(nullptr), m_Ptr(nullptr) {}
 
         ~PoolObject() {
-            reset();
+            Reset();
         }
 
         // Non-copyable
@@ -425,7 +416,7 @@ namespace bml {
 
         PoolObject &operator=(PoolObject &&other) noexcept {
             if (this != &other) {
-                reset();
+                Reset();
                 m_Pool = other.m_Pool;
                 m_Ptr = other.m_Ptr;
                 other.m_Pool = nullptr;
@@ -437,15 +428,15 @@ namespace bml {
         /**
          * @brief Reset and free the object
          */
-        void reset() {
+        void Reset() {
             if (m_Ptr && m_Pool) {
-                m_Pool->free(m_Ptr);
+                m_Pool->Free(m_Ptr);
             }
             m_Ptr = nullptr;
             m_Pool = nullptr;
         }
 
-        T *get() const noexcept { return m_Ptr; }
+        T *Get() const noexcept { return m_Ptr; }
         T *operator->() const noexcept { return m_Ptr; }
         T &operator*() const noexcept { return *m_Ptr; }
 

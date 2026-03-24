@@ -8,7 +8,6 @@
  * BML_DEFINE_MODULE(ClassName) to generate the entry point.
  *
  * Usage:
- *   #define BML_LOADER_IMPLEMENTATION
  *   #include <bml_module.hpp>
  *
  *   class MyMod : public bml::Module {
@@ -28,7 +27,7 @@
  *   BML_DEFINE_MODULE(MyMod)
  *
  * Lifecycle:
- *   Attach: validate args -> bmlLoadAPI() -> new T() -> set m_Handle
+ *   Attach: validate args -> bind injected services -> new T() -> set m_Handle
  *           -> construct ModuleServices -> OnAttach(services) ->
  *           on failure: delete + bmlUnloadAPI()
  *   PrepareDetach: validate args -> OnPrepareDetach()
@@ -36,9 +35,8 @@
  *           function pointers still valid) -> bmlUnloadAPI()
  *
  * Bootstrap note:
- *   The loader still preloads only the 4-symbol bootstrap minimum. Helpers
- *   like Module::Publish() resolve non-bootstrap registration procs through
- *   the module's get_proc callback instead of changing bootstrap behavior.
+ *   Module attach no longer resolves runtime behavior through proc lookup.
+ *   The runtime injects a stable service bundle in attach args.
  */
 
 #ifndef BML_MODULE_HPP
@@ -54,6 +52,15 @@
 namespace bml {
 namespace detail {
     template <typename T> class ModuleEntryHelper;
+
+    inline BML_Mod &BoundModuleHandleSlot() noexcept {
+        static BML_Mod s_BoundModuleHandle = nullptr;
+        return s_BoundModuleHandle;
+    }
+
+    inline BML_Mod GetBoundModuleHandle() noexcept {
+        return BoundModuleHandleSlot();
+    }
 }
 
 /**
@@ -97,7 +104,6 @@ public:
 
 protected:
     BML_Mod m_Handle = nullptr;
-    PFN_BML_GetProcAddress m_GetProc = nullptr;
     ModuleServices m_Services;
 
     template <typename T>
@@ -109,11 +115,9 @@ protected:
     }
 
     PublishedInterface Publish(const BML_InterfaceDesc &desc) const {
-        const auto reg = ResolveProc<PFN_BML_InterfaceRegister>("bmlInterfaceRegister");
-        const auto unreg =
-            ResolveProc<PFN_BML_InterfaceUnregister>("bmlInterfaceUnregister");
-        if (reg && unreg) {
-            return PublishedInterface(reg, unreg, m_Handle, desc);
+        const auto *control = m_Services ? m_Services.Interfaces().InterfaceControl : nullptr;
+        if (control && control->Register && control->Unregister) {
+            return PublishedInterface(control->Register, control->Unregister, m_Handle, desc);
         }
         return PublishedInterface();
     }
@@ -126,15 +130,6 @@ protected:
                                uint16_t patch = 0,
                                uint64_t flags = 0) const {
         return Publish(bml::MakeInterfaceDesc(id, impl, major, minor, patch, flags));
-    }
-
-    void *ResolveProc(const char *name) const noexcept {
-        return (m_GetProc && name) ? m_GetProc(name) : nullptr;
-    }
-
-    template <typename T>
-    T ResolveProc(const char *name) const noexcept {
-        return reinterpret_cast<T>(ResolveProc(name));
     }
 };
 
@@ -173,17 +168,14 @@ public:
 private:
     static BML_Result Attach(const BML_ModAttachArgs *args) {
         if (!args || args->struct_size < sizeof(BML_ModAttachArgs) ||
-            !args->mod || !args->get_proc) {
+            !args->mod || !args->services) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
         if (args->api_version < BML_MOD_ENTRYPOINT_API_VERSION) {
             return BML_RESULT_VERSION_MISMATCH;
         }
 
-        BML_Result result = BML_BOOTSTRAP_LOAD(args->get_proc);
-        if (result != BML_RESULT_OK) {
-            return result;
-        }
+        bmlBindServices(args->services);
 
         auto *instance = new (std::nothrow) T();
         if (!instance) {
@@ -192,22 +184,17 @@ private:
         }
 
         instance->m_Handle = args->mod;
-        instance->m_GetProc = args->get_proc;
-
-        using GetServiceHubFn = const void *(*)();
-        auto getHub = reinterpret_cast<GetServiceHubFn>(args->get_proc("bmlGetServiceHub"));
-        const auto *hub = getHub
-            ? static_cast<const RuntimeServiceHub *>(getHub())
-            : nullptr;
-        instance->m_Services = ModuleServices(args->mod, hub);
+        instance->m_Services = ModuleServices(args->mod, args->services);
         if (!instance->m_Services) {
             delete instance;
             bmlUnloadAPI();
             return BML_RESULT_NOT_FOUND;
         }
 
-        result = instance->OnAttach(instance->m_Services);
+        BoundModuleHandleSlot() = args->mod;
+        BML_Result result = instance->OnAttach(instance->m_Services);
         if (result != BML_RESULT_OK) {
+            BoundModuleHandleSlot() = nullptr;
             delete instance;
             bmlUnloadAPI();
             return result;
@@ -244,6 +231,7 @@ private:
 
         if (s_Instance) {
             s_Instance->OnDetach();
+            BoundModuleHandleSlot() = nullptr;
             delete s_Instance;
             s_Instance = nullptr;
         }

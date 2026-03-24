@@ -11,6 +11,7 @@
 #include "bml_imc_fwd.hpp"
 #include "bml_imc_message.hpp"
 #include "bml_errors.h"
+#include "bml_assert.hpp"
 
 #include <optional>
 #include <variant>
@@ -66,8 +67,11 @@ namespace imc {
 
         bool Resolve() {
             if (m_Id != InvalidRpcId) return true;
-            if (m_Name.empty() || !m_RpcIface || !m_RpcIface->GetRpcId) return false;
-            return m_RpcIface->GetRpcId(m_Name.c_str(), &m_Id) == BML_RESULT_OK;
+            if (m_Name.empty() || !m_RpcIface || !m_RpcIface->Context || !m_RpcIface->GetRpcId) {
+                return false;
+            }
+            return m_RpcIface->GetRpcId(m_RpcIface->Context, m_Name.c_str(), &m_Id) ==
+                BML_RESULT_OK;
         }
 
         static std::optional<Rpc> Create(std::string_view name, const BML_ImcRpcInterface *iface = nullptr) {
@@ -144,7 +148,9 @@ namespace imc {
         RpcFuture() : m_Handle(nullptr) {}
 
         explicit RpcFuture(BML_Future handle, const BML_ImcRpcInterface *rpc = nullptr, BML_Mod owner = nullptr)
-            : m_Handle(handle), m_RpcIface(rpc), m_Owner(owner) {}
+            : m_Handle(handle), m_RpcIface(rpc), m_Owner(owner) {
+            BML_ASSERT(rpc);
+        }
 
         RpcFuture(RpcFuture &&other) noexcept
             : m_Handle(other.m_Handle), m_RpcIface(other.m_RpcIface), m_Owner(other.m_Owner) {
@@ -189,7 +195,7 @@ namespace imc {
          * @brief Get current state
          */
         FutureState State() const {
-            if (!m_Handle || !m_RpcIface || !m_RpcIface->FutureGetState) return BML_FUTURE_FAILED;
+            if (!m_Handle) return BML_FUTURE_FAILED;
             FutureState s;
             if (m_RpcIface->FutureGetState(m_Handle, &s) == BML_RESULT_OK) {
                 return s;
@@ -214,7 +220,7 @@ namespace imc {
          * @return true if completed (ready, failed, cancelled, etc.)
          */
         bool Wait(uint32_t timeoutMs = InfiniteTimeout) {
-            if (!m_Handle || !m_RpcIface || !m_RpcIface->FutureAwait) return false;
+            if (!m_Handle) return false;
             return m_RpcIface->FutureAwait(m_Handle, timeoutMs) == BML_RESULT_OK;
         }
 
@@ -228,7 +234,7 @@ namespace imc {
          * Release(), or RpcFuture destruction.
          */
         std::optional<Message> ResultMessage() {
-            if (!m_Handle || !m_RpcIface || !m_RpcIface->FutureGetResult) return std::nullopt;
+            if (!m_Handle) return std::nullopt;
             BML_ImcMessage msg = BML_IMC_MESSAGE_INIT;
             if (m_RpcIface->FutureGetResult(m_Handle, &msg) == BML_RESULT_OK) {
                 m_ResultStorage.clear();
@@ -297,8 +303,7 @@ namespace imc {
          * @note Callback context must outlive the future
          */
         bool OnComplete(BML_FutureCallback callback, void *userData = nullptr) {
-            if (!m_Handle || !m_RpcIface || !m_Owner || !m_RpcIface->FutureOnComplete)
-                return false;
+            if (!m_Handle) return false;
             return m_RpcIface->FutureOnComplete(m_Owner, m_Handle, callback, userData) ==
                 BML_RESULT_OK;
         }
@@ -311,7 +316,7 @@ namespace imc {
          * @brief Cancel the pending operation
          */
         bool Cancel() {
-            if (!m_Handle || !m_RpcIface || !m_RpcIface->FutureCancel) return false;
+            if (!m_Handle) return false;
             return m_RpcIface->FutureCancel(m_Handle) == BML_RESULT_OK;
         }
 
@@ -460,11 +465,12 @@ namespace imc {
         RpcServer(std::string_view name, RpcHandler handler, const BML_ImcRpcInterface *rpc = nullptr,
                   BML_Mod owner = nullptr)
             : m_RpcId(InvalidRpcId), m_RpcIface(rpc), m_Owner(owner) {
-            if (!m_RpcIface || !m_Owner || !m_RpcIface->GetRpcId || !m_RpcIface->RegisterRpc)
-                return;
+            BML_ASSERT(rpc);
+            BML_ASSERT(owner);
 
             std::string resolvedName(name);
-            if (m_RpcIface->GetRpcId(resolvedName.c_str(), &m_RpcId) != BML_RESULT_OK) {
+            if (m_RpcIface->GetRpcId(m_RpcIface->Context, resolvedName.c_str(), &m_RpcId) !=
+                BML_RESULT_OK) {
                 m_RpcId = InvalidRpcId;
                 return;
             }
@@ -489,11 +495,12 @@ namespace imc {
         RpcServer(std::string_view name, WithErrorTag, RpcHandlerWithError handler,
                   const BML_ImcRpcInterface *rpc = nullptr, BML_Mod owner = nullptr)
             : m_RpcId(InvalidRpcId), m_RpcIface(rpc), m_Owner(owner) {
-            if (!m_RpcIface || !m_Owner || !m_RpcIface->GetRpcId || !m_RpcIface->RegisterRpcEx)
-                return;
+            BML_ASSERT(rpc);
+            BML_ASSERT(owner);
 
             std::string resolvedName(name);
-            if (m_RpcIface->GetRpcId(resolvedName.c_str(), &m_RpcId) != BML_RESULT_OK) {
+            if (m_RpcIface->GetRpcId(m_RpcIface->Context, resolvedName.c_str(), &m_RpcId) !=
+                BML_RESULT_OK) {
                 m_RpcId = InvalidRpcId;
                 return;
             }
@@ -582,7 +589,9 @@ namespace imc {
         std::optional<BML_RpcInfo> Info() const {
             if (m_RpcId == InvalidRpcId || !BML_IMC_RPC_HAS_MEMBER(m_RpcIface, GetRpcInfo)) return std::nullopt;
             BML_RpcInfo info = BML_RPC_INFO_INIT;
-            if (m_RpcIface->GetRpcInfo(m_RpcId, &info) == BML_RESULT_OK) return info;
+            if (m_RpcIface->GetRpcInfo(m_RpcIface->Context, m_RpcId, &info) == BML_RESULT_OK) {
+                return info;
+            }
             return std::nullopt;
         }
 
@@ -651,7 +660,7 @@ namespace imc {
          * @brief Call with raw data
          */
         RpcFuture Call(const void *data = nullptr, size_t size = 0) {
-            if (!Valid() || !m_RpcIface || !m_Owner || !m_RpcIface->CallRpc) return RpcFuture();
+            if (!Valid()) return RpcFuture();
 
             BML_ImcMessage msg = BML_IMC_MSG(data, size);
             BML_Future handle;
@@ -674,7 +683,7 @@ namespace imc {
          * @brief Call with message
          */
         RpcFuture Call(const BML_ImcMessage &msg) {
-            if (!Valid() || !m_RpcIface || !m_Owner || !m_RpcIface->CallRpc) return RpcFuture();
+            if (!Valid()) return RpcFuture();
 
             BML_Future handle;
             if (m_RpcIface->CallRpc(m_Owner, m_Endpoint.Id(), &msg, &handle) == BML_RESULT_OK) {
@@ -694,8 +703,7 @@ namespace imc {
          * @brief Call with raw data and options
          */
         RpcFuture Call(const void *data, size_t size, const RpcCallOptions &opts) {
-            if (!Valid() || !m_RpcIface || !m_Owner ||
-                !BML_IMC_RPC_HAS_MEMBER(m_RpcIface, CallRpcEx))
+            if (!Valid() || !BML_IMC_RPC_HAS_MEMBER(m_RpcIface, CallRpcEx))
                 return RpcFuture();
             BML_ImcMessage msg = BML_IMC_MSG(data, size);
             BML_Future handle;
@@ -872,7 +880,8 @@ namespace imc {
                 return;
 
             std::string resolvedName(name);
-            if (m_RpcIface->GetRpcId(resolvedName.c_str(), &m_RpcId) != BML_RESULT_OK) {
+            if (m_RpcIface->GetRpcId(m_RpcIface->Context, resolvedName.c_str(), &m_RpcId) !=
+                BML_RESULT_OK) {
                 m_RpcId = InvalidRpcId;
                 return;
             }

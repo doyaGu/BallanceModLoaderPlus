@@ -1,34 +1,20 @@
 /**
  * @file bml_logger.hpp
  * @brief BML C++ Logging Wrapper
- * 
+ *
  * Provides convenient logging interface with severity levels.
  */
 
 #ifndef BML_LOGGER_HPP
 #define BML_LOGGER_HPP
 
-#include "bml_builtin_interfaces.h"
 #include "bml_logging.h"
-#include "bml_context.hpp"
 
-#include <cstddef>
 #include <string>
 #include <string_view>
 #include <cstdarg>
-#include <optional>
 
 namespace bml {
-    namespace detail {
-        template <typename MemberT>
-        constexpr bool HasLoggingMember(const BML_CoreLoggingInterface *iface, size_t offset) noexcept {
-            return iface != nullptr && iface->header.struct_size >= offset + sizeof(MemberT);
-        }
-    } // namespace detail
-
-#define BML_CORE_LOGGING_HAS_MEMBER(iface, member) \
-    (::bml::detail::HasLoggingMember<decltype(((BML_CoreLoggingInterface *) 0)->member)>( \
-        (iface), offsetof(BML_CoreLoggingInterface, member)) && (iface)->member != nullptr)
 
     // ============================================================================
     // Log Level Enum
@@ -63,49 +49,32 @@ namespace bml {
      * @brief Convenient logger with tag support
      *
      * Example:
-     *   bml::Logger log(ctx, "MyMod");
+     *   bml::Logger log("MyMod");
      *   log.Info("Loaded %d items", count);
      *   log.Error("Failed to load: %s", error_msg);
      */
     class Logger {
     public:
+        // ========================================================================
+        // Construction
+        // ========================================================================
+
         /**
          * @brief Construct a logger
-         * @param ctx The BML context
          * @param tag Optional tag for log messages
          */
-        explicit Logger(Context ctx, std::string_view tag = "")
-            : m_ctx(ctx.Handle()), m_tag(tag) {}
+        explicit Logger(std::string_view tag = "")
+            : m_tag(tag) {}
 
-        Logger(Context ctx,
-               std::string_view tag,
+        Logger(std::string_view tag,
                const BML_CoreLoggingInterface *loggingInterface)
-            : m_ctx(ctx.Handle()), m_tag(tag), m_LoggingInterface(loggingInterface) {}
-        Logger(Context ctx,
-               std::string_view tag,
+            : m_tag(tag), m_LoggingInterface(loggingInterface) {}
+        Logger(std::string_view tag,
                const BML_CoreLoggingInterface *loggingInterface,
                BML_Mod owner)
-            : m_ctx(ctx.Handle()),
-              m_tag(tag),
+            : m_tag(tag),
               m_LoggingInterface(loggingInterface),
               m_Owner(owner) {}
-
-        /**
-         * @brief Construct a logger with raw context handle
-         * @param ctx The BML context handle
-         * @param tag Optional tag for log messages
-         */
-        explicit Logger(BML_Context ctx, std::string_view tag = "") : m_ctx(ctx), m_tag(tag) {}
-
-        Logger(BML_Context ctx,
-               std::string_view tag,
-               const BML_CoreLoggingInterface *loggingInterface)
-            : m_ctx(ctx), m_tag(tag), m_LoggingInterface(loggingInterface) {}
-        Logger(BML_Context ctx,
-               std::string_view tag,
-               const BML_CoreLoggingInterface *loggingInterface,
-               BML_Mod owner)
-            : m_ctx(ctx), m_tag(tag), m_LoggingInterface(loggingInterface), m_Owner(owner) {}
 
         // ========================================================================
         // Generic Log
@@ -222,7 +191,6 @@ namespace bml {
         void SetTag(std::string_view tag) { m_tag = tag; }
 
     private:
-        BML_Context m_ctx;
         std::string m_tag;
         const BML_CoreLoggingInterface *m_LoggingInterface = nullptr;
         BML_Mod m_Owner = nullptr;
@@ -236,7 +204,6 @@ namespace bml {
             }
             m_LoggingInterface->LogVa(
                 m_Owner,
-                m_ctx,
                 level,
                 m_tag.empty() ? nullptr : m_tag.c_str(),
                 fmt,
@@ -244,7 +211,6 @@ namespace bml {
         }
     };
 
-#undef BML_CORE_LOGGING_HAS_MEMBER
 } // namespace bml
 
 #endif /* BML_LOGGER_HPP */

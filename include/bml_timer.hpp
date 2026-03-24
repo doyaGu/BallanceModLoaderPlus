@@ -6,20 +6,11 @@
 #ifndef BML_TIMER_HPP
 #define BML_TIMER_HPP
 
-#include "bml_builtin_interfaces.h"
+#include "bml_timer.h"
+#include "bml_assert.hpp"
 #include <cstddef>
 
 namespace bml {
-    namespace detail {
-        template <typename MemberT>
-        constexpr bool HasTimerMember(const BML_CoreTimerInterface *iface, size_t offset) noexcept {
-            return iface != nullptr && iface->header.struct_size >= offset + sizeof(MemberT);
-        }
-    } // namespace detail
-
-#define BML_CORE_TIMER_HAS_MEMBER(iface, member) \
-    (::bml::detail::HasTimerMember<decltype(((BML_CoreTimerInterface *) 0)->member)>( \
-        (iface), offsetof(BML_CoreTimerInterface, member)) && (iface)->member != nullptr)
 
     class TimerService {
     public:
@@ -31,50 +22,34 @@ namespace bml {
 
         BML_Timer ScheduleOnce(uint32_t delay_ms, BML_TimerCallback cb, void *ud = nullptr) const {
             BML_Timer t = nullptr;
-            if (m_Interface && m_Owner && m_Interface->ScheduleOnce)
-                m_Interface->ScheduleOnce(m_Owner, delay_ms, cb, ud, &t);
+            m_Interface->ScheduleOnce(m_Owner, delay_ms, cb, ud, &t);
             return t;
         }
 
         BML_Timer ScheduleRepeat(uint32_t interval_ms, BML_TimerCallback cb, void *ud = nullptr) const {
             BML_Timer t = nullptr;
-            if (m_Interface && m_Owner && m_Interface->ScheduleRepeat)
-                m_Interface->ScheduleRepeat(m_Owner, interval_ms, cb, ud, &t);
+            m_Interface->ScheduleRepeat(m_Owner, interval_ms, cb, ud, &t);
             return t;
         }
 
         BML_Timer ScheduleFrames(uint32_t frame_count, BML_TimerCallback cb, void *ud = nullptr) const {
             BML_Timer t = nullptr;
-            if (m_Interface && m_Owner && m_Interface->ScheduleFrames)
-                m_Interface->ScheduleFrames(m_Owner, frame_count, cb, ud, &t);
+            m_Interface->ScheduleFrames(m_Owner, frame_count, cb, ud, &t);
             return t;
         }
 
         BML_Result Cancel(BML_Timer timer) const {
-            if (!m_Interface) {
-                return BML_RESULT_NOT_INITIALIZED;
-            }
-            if (m_Owner && m_Interface->Cancel) {
-                return m_Interface->Cancel(m_Owner, timer);
-            }
-            return BML_RESULT_NOT_INITIALIZED;
+            return m_Interface->Cancel(m_Owner, timer);
         }
 
         bool IsActive(BML_Timer timer) const {
             BML_Bool active = BML_FALSE;
-            if (m_Interface && m_Owner && m_Interface->IsActive)
-                m_Interface->IsActive(m_Owner, timer, &active);
+            m_Interface->IsActive(m_Owner, timer, &active);
             return active == BML_TRUE;
         }
 
         BML_Result CancelAll() const {
-            if (!m_Interface) {
-                return BML_RESULT_NOT_INITIALIZED;
-            }
-            if (m_Owner && m_Interface->CancelAll) {
-                return m_Interface->CancelAll(m_Owner);
-            }
-            return BML_RESULT_NOT_INITIALIZED;
+            return m_Interface->CancelAll(m_Owner);
         }
 
         explicit operator bool() const noexcept { return m_Interface != nullptr; }
@@ -83,8 +58,6 @@ namespace bml {
         const BML_CoreTimerInterface *m_Interface = nullptr;
         BML_Mod m_Owner = nullptr;
     };
-
-#undef BML_CORE_TIMER_HAS_MEMBER
 
 } // namespace bml
 
