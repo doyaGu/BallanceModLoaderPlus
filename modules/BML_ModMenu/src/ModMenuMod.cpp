@@ -123,8 +123,6 @@ public:
             } else if (!m_Context) {
                 SetContext(bml::virtools::GetCKContext(Services()));
             }
-
-            EnsureAssetsReady();
         }) &&
 
             m_Subs.Add(BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT, [this](const bml::imc::Message &msg) {
@@ -201,6 +199,10 @@ private:
             return;
         }
 
+        if (m_Context != context) {
+            m_AssetsReady = false;
+        }
+
         m_Context = context;
         MenuRegistry::Instance().Initialize(m_Context, Services().Interfaces().Module, Services().Interfaces().Config);
         MenuRuntime::Initialize(m_Context, m_InputCaptureService.Get());
@@ -211,7 +213,8 @@ private:
             return;
         }
 
-        m_AssetsReady = Menu::InitTextures(m_Context) &&
+        m_AssetsReady =
+            Menu::InitTextures(m_Context) &&
             Menu::InitMaterials(m_Context) &&
             Menu::InitSounds(m_Context);
     }
@@ -221,8 +224,12 @@ private:
             SetContext(bml::virtools::GetCKContext(Services()));
         }
 
+        if (!m_Context) {
+            return;
+        }
+
         EnsureAssetsReady();
-        if (!m_Context || !m_AssetsReady) {
+        if (!m_AssetsReady) {
             return;
         }
 
