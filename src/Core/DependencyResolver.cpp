@@ -55,9 +55,13 @@ namespace BML::Core {
             return dependency.id + " " + dependency.requirement.raw_expression;
         }
 
-        const ModProvidedInterface *FindProvidedInterface(
+        std::string DescribeModuleDependencyRequirement(const ModDependency &dependency) {
+            return "module dependency '" + DescribeDependencyRequirement(dependency) + "'";
+        }
+
+        const ModInterfaceExport *FindInterfaceExport(
             const ModManifest &manifest, const std::string &interface_id) {
-            for (const auto &p : manifest.provides) {
+            for (const auto &p : manifest.interfaces) {
                 if (p.interface_id == interface_id) return &p;
             }
             return nullptr;
@@ -221,15 +225,15 @@ namespace BML::Core {
             }
         }
 
-        // Build interface->provider map for interface-level dependencies
-        // Iterate in registration order for deterministic duplicate-provider errors
+        // Build interface->exporting-module map for interface-level dependencies.
+        // Iterate in registration order for deterministic duplicate-export errors.
         std::unordered_map<std::string, const ModManifest *> interfaceProviders;
         std::unordered_set<std::string> warningDedup;
         for (const auto &regId : m_RegistrationOrder) {
             auto nodeIt = m_Nodes.find(regId);
             if (nodeIt == m_Nodes.end() || !nodeIt->second.manifest) continue;
             const auto *manifest = nodeIt->second.manifest;
-            for (const auto &iface : manifest->provides) {
+            for (const auto &iface : manifest->interfaces) {
                 auto [it, inserted] = interfaceProviders.emplace(iface.interface_id, manifest);
                 if (!inserted) {
                     out_error.message = "Interface '" + iface.interface_id +
@@ -239,21 +243,14 @@ namespace BML::Core {
                                         DescribeManifest(manifest) };
                     return false;
                 }
-                // Warn if interface ID collides with a module ID
+                // Interface and module IDs must stay in separate namespaces.
                 if (graph.find(iface.interface_id) != graph.end()) {
-                    DependencyWarning warning;
-                    warning.mod_id = manifest->package.id;
-                    warning.dependency_id = iface.interface_id;
-                    warning.message = "Interface id '" + iface.interface_id +
-                        "' (provided by '" + manifest->package.id +
-                        "') collides with a module id; "
-                        "use [requires] for interface deps, [dependencies] for module deps";
-                    std::string key = manifest->package.id + ":" + iface.interface_id + ":id_collision";
-                    if (warningDedup.insert(key).second) {
-                        CoreLog(BML_LOG_WARN, kDepResolverLogCategory,
-                                "%s", warning.message.c_str());
-                        out_warnings.push_back(std::move(warning));
-                    }
+                    out_error.message = "Interface id '" + iface.interface_id +
+                        "' declared by module '" + manifest->package.id +
+                        "' collides with an existing module id; "
+                        "use distinct interface ids and module ids";
+                    out_error.chain = {DescribeManifest(manifest), iface.interface_id};
+                    return false;
                 }
             }
         }
@@ -284,7 +281,7 @@ namespace BML::Core {
                         DependencyWarning warning;
                         warning.mod_id = manifest->package.id;
                         warning.dependency_id = dep.id;
-                        warning.message = "Optional dependency '" + DescribeDependencyRequirement(dep) +
+                        warning.message = "Optional " + DescribeModuleDependencyRequirement(dep) +
                             "' not found for module '" + manifest->package.id + "'";
                         std::string key = manifest->package.id + "->" + dep.id + ":missing";
                         if (warningDedup.insert(key).second) {
@@ -294,8 +291,8 @@ namespace BML::Core {
                         }
                         continue;
                     }
-                    out_error.message = "Module '" + manifest->package.id + "' requires missing dependency '"
-                        + DescribeDependencyRequirement(dep) + "'";
+                    out_error.message = "Module '" + manifest->package.id + "' requires missing "
+                        + DescribeModuleDependencyRequirement(dep);
                     out_error.chain = {DescribeManifest(manifest), dep.id};
                     return false;
                 }
@@ -303,7 +300,7 @@ namespace BML::Core {
                 const auto *depManifest = depIt->second.manifest;
                 if (depManifest && dep.requirement.parsed) {
                     if (!IsVersionSatisfied(dep.requirement, depManifest->package.parsed_version)) {
-                        out_error.message = "Module '" + manifest->package.id + "' requires '" + dep.id +
+                        out_error.message = "Module '" + manifest->package.id + "' requires module '" + dep.id +
                             "' with version constraint " + dep.requirement.raw_expression +
                             " but found " + depManifest->package.version;
                         out_error.chain = {DescribeManifest(manifest), DescribeManifest(depManifest)};
@@ -356,13 +353,13 @@ namespace BML::Core {
                     }
                     out_error.message = "Module '" + manifest->package.id +
                         "' requires interface '" + req.interface_id +
-                        "' but no module provides it";
+                        "' but no module exports it";
                     out_error.chain = {DescribeManifest(manifest)};
                     return false;
                 }
 
                 const auto *providerManifest = ifaceIt->second;
-                const auto *iface = FindProvidedInterface(*providerManifest, req.interface_id);
+                const auto *iface = FindInterfaceExport(*providerManifest, req.interface_id);
 
                 if (req.requirement.parsed && iface) {
                     if (!IsVersionSatisfied(req.requirement, iface->parsed_version)) {
@@ -398,7 +395,7 @@ namespace BML::Core {
                 // Add edge: provider must load before this module
                 const std::string &providerModId = providerManifest->package.id;
 
-                // Self-requirement: module provides and requires its own interface -- no edge needed
+                // Self-requirement: module exports and requires its own interface -- no edge needed
                 if (providerModId == manifest->package.id) {
                     continue;
                 }
