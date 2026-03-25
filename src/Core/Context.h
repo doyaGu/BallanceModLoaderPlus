@@ -45,6 +45,20 @@ namespace BML::Core {
         BML_Mod mod_handle{nullptr};
     };
 
+    /**
+     * @brief Core runtime context — manages module handles, lifecycle, and shutdown.
+     *
+     * Lock acquisition order (must be respected to prevent deadlock):
+     *   1. m_StateMutex           — module state, handle maps, shutdown gating
+     *   2. m_RetainMutex          — reference counting drain
+     *   3. m_UserDataMutex        — per-context user data storage
+     *   4. m_RuntimeProviderMutex — runtime provider registry
+     *
+     * m_RetainTraceMutex is independent (diagnostic only, never held with others).
+     *
+     * Cleanup() releases m_StateMutex before draining retains to avoid
+     * blocking RetainHandle() callers that also need m_StateMutex.
+     */
     class Context {
     public:
 #if defined(BML_TEST)
