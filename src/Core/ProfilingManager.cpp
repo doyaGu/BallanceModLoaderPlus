@@ -4,6 +4,7 @@
 #include "CoreErrors.h"
 #include "DiagnosticManager.h"
 #include "MemoryManager.h"
+#include "StringUtils.h"
 
 #include <chrono>
 #include <cstdio>
@@ -217,34 +218,6 @@ namespace BML::Core {
         return BML_RESULT_OK;
     }
 
-    // Helper function to escape JSON strings
-    static std::string EscapeJsonString(const std::string &input) {
-        std::string output;
-        output.reserve(input.size() + 8); // Reserve extra space for escapes
-        for (char c : input) {
-            switch (c) {
-            case '"': output += "\\\""; break;
-            case '\\': output += "\\\\"; break;
-            case '\b': output += "\\b"; break;
-            case '\f': output += "\\f"; break;
-            case '\n': output += "\\n"; break;
-            case '\r': output += "\\r"; break;
-            case '\t': output += "\\t"; break;
-            default:
-                if (static_cast<unsigned char>(c) < 0x20) {
-                    // Control characters: output as \uXXXX
-                    char buf[8];
-                    snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(c));
-                    output += buf;
-                } else {
-                    output += c;
-                }
-                break;
-            }
-        }
-        return output;
-    }
-
     void ProfilingManager::WriteJsonEvent(const TraceEvent &evt, FILE *fp) {
         const char *phase = "";
         switch (evt.type) {
@@ -256,8 +229,8 @@ namespace BML::Core {
         }
 
         // Escape name and category for JSON safety
-        std::string escapedName = EscapeJsonString(evt.name);
-        std::string escapedCategory = EscapeJsonString(evt.category);
+        std::string escapedName = utils::EscapeJsonString(evt.name);
+        std::string escapedCategory = utils::EscapeJsonString(evt.category);
 
         // Convert ns to microseconds (Chrome Tracing uses uss)
         double ts_us = static_cast<double>(evt.timestamp_ns) / 1000.0;
