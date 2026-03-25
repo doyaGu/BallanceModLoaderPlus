@@ -212,23 +212,10 @@ static void Script_PublishInt(const std::string &topic, int value) {
 
 static void Script_Print(const std::string &message) {
     const BML_Mod owner = CurrentScriptOwner();
-    if (!g_Services || !g_Services->ImcBus || !g_Services->ImcBus->Publish || !owner) {
+    if (!owner) {
         return;
     }
-
-    BML_TopicId id = BML_TOPIC_ID_INVALID;
-    if (g_Services->ImcBus->GetTopicId(
-            g_Services->ImcBus->Context, BML_TOPIC_CONSOLE_OUTPUT, &id) != BML_RESULT_OK) return;
-
-    struct {
-        size_t struct_size;
-        const char *message_utf8;
-        uint32_t flags;
-    } event;
-    event.struct_size = sizeof(event);
-    event.message_utf8 = message.c_str();
-    event.flags = 0;
-    g_Services->ImcBus->Publish(owner, id, &event, sizeof(event));
+    PublishConsoleOutputMessage(owner, message, 0);
 }
 
 void RegisterImcBindings(asIScriptEngine *engine, ScriptInstanceManager *manager) {
