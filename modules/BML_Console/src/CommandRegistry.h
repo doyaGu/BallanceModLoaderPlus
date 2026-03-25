@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "bml_console.h"
+#include "../include/bml_console.h"
 #include "bml_interface.h"
 #include "imgui.h"
 #include "StringUtils.h"
@@ -51,6 +51,12 @@ inline bool ValidateCommandName(std::string_view name) {
         if (!std::isalnum(static_cast<unsigned char>(name[i]))) return false;
     }
     return true;
+}
+
+inline bool ValidateCommandAlias(std::string_view alias) {
+    if (alias.empty()) return false;
+    if (alias == "?") return true;
+    return ValidateCommandName(alias);
 }
 
 inline std::vector<ParsedToken> ParseTokens(std::string_view text) {
@@ -156,7 +162,7 @@ public:
             return BML_RESULT_INVALID_ARGUMENT;
         const std::string name = desc->name_utf8;
         const std::string alias = desc->alias_utf8 ? desc->alias_utf8 : "";
-        if (!ValidateCommandName(name) || (!alias.empty() && !ValidateCommandName(alias)))
+        if (!ValidateCommandName(name) || (!alias.empty() && !ValidateCommandAlias(alias)))
             return BML_RESULT_INVALID_ARGUMENT;
         if (Find(name) != nullptr || (!alias.empty() && Find(alias) != nullptr))
             return BML_RESULT_ALREADY_EXISTS;
