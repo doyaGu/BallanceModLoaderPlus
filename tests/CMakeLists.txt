@@ -636,6 +636,7 @@ if (TARGET angelscript)
     )
     target_include_directories(ScriptingRuntimeTests PRIVATE
             ${CMAKE_SOURCE_DIR}/modules/BML_Scripting/src
+            ${CMAKE_SOURCE_DIR}/modules/BML_Console/include
     )
 endif ()
 
@@ -714,6 +715,18 @@ add_test(NAME BuiltinModuleApiTests COMMAND $<TARGET_FILE:BuiltinModuleApiTests>
 add_bml_test(ConsoleCompletionStateTests
         SOURCES
         ConsoleCompletionStateTests.cpp
+)
+
+add_bml_test(CommandRegistryTests
+        SOURCES
+        CommandRegistryTests.cpp
+        DEPENDENCIES
+        BML_Utils
+)
+target_include_directories(CommandRegistryTests PRIVATE
+        ${CMAKE_SOURCE_DIR}/modules/BML_Console/include
+        ${CMAKE_SOURCE_DIR}/modules/BML_Console/src
+        ${IMGUI_SOURCE_DIR}
 )
 
 add_bml_test(MenuInputStateTests

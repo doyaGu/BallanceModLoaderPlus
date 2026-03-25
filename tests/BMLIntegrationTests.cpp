@@ -404,14 +404,9 @@ TEST_F(BMLIntegrationTest, PartialModuleLoadPopulatesDiagnostics) {
     ASSERT_NE(nullptr, m_Services);
     bmlBindServices(m_Services);
 
-    ASSERT_EQ(BML_RESULT_OK, bmlRuntimeDiscoverModules(m_Runtime));
-    ASSERT_EQ(BML_RESULT_OK, bmlRuntimeLoadModules(m_Runtime));
-
-    const BML_BootstrapDiagnostics *diag = bmlRuntimeGetBootstrapDiagnostics(m_Runtime);
-    ASSERT_NE(nullptr, diag);
-    EXPECT_NE(0, diag->load_error.has_error);
-    ASSERT_NE(nullptr, diag->load_error.module_id);
-    EXPECT_STREQ("broken.native", diag->load_error.module_id);
+    // Path-traversal entry ("../escape-native.dll") is rejected at manifest
+    // parse time, so discovery itself fails — the module is never loaded.
+    EXPECT_NE(BML_RESULT_OK, bmlRuntimeDiscoverModules(m_Runtime));
 
     fs::remove_all(tempDir, ec);
 }
