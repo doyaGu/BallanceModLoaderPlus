@@ -1,14 +1,13 @@
-capabilities = ["console.ui", "console.command", "console.output", "bml.internal.runtime"]
-
 [package]
 id = "com.bml.console"
 name = "BML Console"
 version = "0.4.0"
 authors = ["BML Team"]
+capabilities = ["console.ui", "console.command-surface", "console.output", "bml.internal.runtime"]
 description = "Module-native command bar and message board"
 entry = "BML_Console.dll"
 
-[provides]
+[interfaces]
 "bml.console.command_registry" = "1.0.0"
 
 [dependencies]

@@ -1,10 +1,9 @@
-capabilities = ["event-topics", "game-lifecycle", "gameplay-events"]
-
 [package]
 id = "com.bml.event"
 name = "BML Event System"
 version = "0.4.0"
 authors = ["BML Team"]
+capabilities = ["event-topics", "game-lifecycle", "gameplay-events"]
 description = "BML game event topics and gameplay event hook wiring"
 entry = "BML_Event.dll"
 

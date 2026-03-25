@@ -1,9 +1,8 @@
-capabilities = ["menu.modules", "menu.config"]
-
 [package]
 id = "com.bml.modmenu"
 name = "BML_ModMenu"
 version = "0.4.0"
+capabilities = ["menu.modules", "menu.config"]
 description = "Module-native loaded-module and config browser"
 entry = "BML_ModMenu.dll"
 

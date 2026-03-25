@@ -1,13 +1,12 @@
-capabilities = ["ui.overlay", "ui.imgui", "bml.internal.runtime"]
-
 [package]
 id = "com.bml.ui"
 name = "BML UI System"
 version = "0.4.0"
 authors = ["Gamepiaynmo", "YingChe", "Kakuty"]
+capabilities = ["ui.overlay", "bml.internal.runtime"]
 description = "ImGui overlay lifecycle and base UI infrastructure for BML"
 entry = "BML_UI.dll"
 
-[provides]
+[interfaces]
 "bml.ui.draw_registry" = "1.0.0"
 "bml.ui.imgui" = "1.0.0"

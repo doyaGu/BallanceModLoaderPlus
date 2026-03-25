@@ -1,10 +1,9 @@
-capabilities = ["menu.custom-maps", "custom-map.load"]
-
 [package]
 id = "com.bml.mapmenu"
 name = "BML Map Menu"
 version = "0.4.0"
 authors = ["BML Team"]
+capabilities = ["menu.custom-maps", "custom-map.load"]
 description = "Module-native custom map browser and loader"
 entry = "BML_MapMenu.dll"
 

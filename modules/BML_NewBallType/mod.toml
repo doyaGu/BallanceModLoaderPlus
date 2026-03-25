@@ -6,7 +6,7 @@ authors = ["BML Team"]
 description = "Custom ball, floor, and module registration support for BML v0.4"
 entry = "BML_NewBallType.dll"
 
-[provides]
+[interfaces]
 "bml.newballtype" = "1.0.0"
 
 [dependencies]
