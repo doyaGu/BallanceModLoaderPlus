@@ -272,7 +272,7 @@ namespace bml {
             BML_ASSERT(memoryInterface);
             auto result = m_MemoryInterface->MemoryPoolCreate(
                 m_MemoryInterface->Context, block_size, initial_blocks, &m_Handle);
-            // If failed, m_Handle stays nullptr — caller checks operator bool()
+            // If failed, m_Handle stays nullptr - caller checks operator bool()
             (void)result;
         }
 

@@ -94,8 +94,4 @@ namespace imc {
 } // namespace imc
 } // namespace bml
 
-// Legacy aliases — prefer BML_IFACE_HAS(iface, Type, member) from bml_interface.h
-#define BML_IMC_BUS_HAS_MEMBER(bus, member) BML_IFACE_HAS(bus, BML_ImcBusInterface, member)
-#define BML_IMC_RPC_HAS_MEMBER(rpc, member) BML_IFACE_HAS(rpc, BML_ImcRpcInterface, member)
-
 #endif /* BML_IMC_FWD_HPP */

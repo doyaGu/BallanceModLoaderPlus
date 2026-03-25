@@ -95,7 +95,7 @@ namespace imc {
 
     /** @brief Get topic name by ID */
     inline std::optional<std::string> getTopicName(TopicId id, const BML_ImcBusInterface *bus = nullptr) {
-        if (!BML_IMC_BUS_HAS_MEMBER(bus, GetTopicName) || !bus->Context) return std::nullopt;
+        if (!BML_IFACE_HAS(bus, BML_ImcBusInterface, GetTopicName) || !bus->Context) return std::nullopt;
         char buffer[256] = {};
         size_t length = 0;
         const BML_Result result =
@@ -169,7 +169,7 @@ namespace imc {
 
     /** @brief Get info about a registered RPC endpoint */
     inline std::optional<BML_RpcInfo> getRpcInfo(RpcId id, const BML_ImcRpcInterface *rpc = nullptr) {
-        if (!BML_IMC_RPC_HAS_MEMBER(rpc, GetRpcInfo) || !rpc->Context) return std::nullopt;
+        if (!BML_IFACE_HAS(rpc, BML_ImcRpcInterface, GetRpcInfo) || !rpc->Context) return std::nullopt;
         BML_RpcInfo info = BML_RPC_INFO_INIT;
         if (rpc->GetRpcInfo(rpc->Context, id, &info) == BML_RESULT_OK) return info;
         return std::nullopt;
@@ -177,7 +177,7 @@ namespace imc {
 
     /** @brief Get RPC name by ID */
     inline std::optional<std::string> getRpcName(RpcId id, const BML_ImcRpcInterface *rpc = nullptr) {
-        if (!BML_IMC_RPC_HAS_MEMBER(rpc, GetRpcName) || !rpc->Context) return std::nullopt;
+        if (!BML_IFACE_HAS(rpc, BML_ImcRpcInterface, GetRpcName) || !rpc->Context) return std::nullopt;
         char buffer[256] = {};
         size_t length = 0;
         const BML_Result result =

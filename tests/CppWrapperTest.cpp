@@ -1821,7 +1821,7 @@ TEST(BMLWrapperTest, SyncService_AtomicOperations) {
     EXPECT_EQ(11, svc.AtomicCompareExchange(&val, 42, 11));
     EXPECT_EQ(42, val);
 
-    // CompareExchange (fail — comparand doesn't match)
+    // CompareExchange (fail - comparand doesn't match)
     EXPECT_EQ(42, svc.AtomicCompareExchange(&val, 99, 11));
     EXPECT_EQ(42, val); // unchanged
 

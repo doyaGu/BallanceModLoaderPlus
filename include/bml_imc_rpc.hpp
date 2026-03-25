@@ -269,7 +269,7 @@ namespace imc {
          * @return pair of (error_code, error_message), or std::nullopt on success
          */
         std::optional<std::pair<BML_Result, std::string>> Error() const {
-            if (!m_Handle || !BML_IMC_RPC_HAS_MEMBER(m_RpcIface, FutureGetError)) return std::nullopt;
+            if (!m_Handle || !BML_IFACE_HAS(m_RpcIface, BML_ImcRpcInterface, FutureGetError)) return std::nullopt;
             BML_Result code = BML_RESULT_OK;
             char buf[512] = {};
             size_t len = 0;
@@ -587,7 +587,7 @@ namespace imc {
         RpcId GetRpcId() const noexcept { return m_RpcId; }
 
         std::optional<BML_RpcInfo> Info() const {
-            if (m_RpcId == InvalidRpcId || !BML_IMC_RPC_HAS_MEMBER(m_RpcIface, GetRpcInfo)) return std::nullopt;
+            if (m_RpcId == InvalidRpcId || !BML_IFACE_HAS(m_RpcIface, BML_ImcRpcInterface, GetRpcInfo)) return std::nullopt;
             BML_RpcInfo info = BML_RPC_INFO_INIT;
             if (m_RpcIface->GetRpcInfo(m_RpcIface->Context, m_RpcId, &info) == BML_RESULT_OK) {
                 return info;
@@ -703,7 +703,7 @@ namespace imc {
          * @brief Call with raw data and options
          */
         RpcFuture Call(const void *data, size_t size, const RpcCallOptions &opts) {
-            if (!Valid() || !BML_IMC_RPC_HAS_MEMBER(m_RpcIface, CallRpcEx))
+            if (!Valid() || !BML_IFACE_HAS(m_RpcIface, BML_ImcRpcInterface, CallRpcEx))
                 return RpcFuture();
             BML_ImcMessage msg = BML_IMC_MSG(data, size);
             BML_Future handle;
@@ -779,7 +779,7 @@ namespace imc {
         RpcMiddlewareRegistration(BML_RpcMiddleware mw, int32_t priority, void *ud,
                                   const BML_ImcRpcInterface *rpc, BML_Mod owner = nullptr)
             : m_Middleware(mw), m_RpcIface(rpc), m_Owner(owner) {
-            if (m_Owner && BML_IMC_RPC_HAS_MEMBER(m_RpcIface, AddRpcMiddleware)) {
+            if (m_Owner && BML_IFACE_HAS(m_RpcIface, BML_ImcRpcInterface, AddRpcMiddleware)) {
                 const BML_Result result = m_RpcIface->AddRpcMiddleware(m_Owner, mw, priority, ud);
                 if (result != BML_RESULT_OK) {
                     m_Middleware = nullptr;
@@ -790,7 +790,7 @@ namespace imc {
         }
 
         ~RpcMiddlewareRegistration() {
-            if (m_Middleware && BML_IMC_RPC_HAS_MEMBER(m_RpcIface, RemoveRpcMiddleware)) {
+            if (m_Middleware && BML_IFACE_HAS(m_RpcIface, BML_ImcRpcInterface, RemoveRpcMiddleware)) {
                 m_RpcIface->RemoveRpcMiddleware(m_Owner, m_Middleware);
             }
         }
@@ -804,7 +804,7 @@ namespace imc {
 
         RpcMiddlewareRegistration &operator=(RpcMiddlewareRegistration &&other) noexcept {
             if (this != &other) {
-                if (m_Middleware && BML_IMC_RPC_HAS_MEMBER(m_RpcIface, RemoveRpcMiddleware)) {
+                if (m_Middleware && BML_IFACE_HAS(m_RpcIface, BML_ImcRpcInterface, RemoveRpcMiddleware)) {
                     m_RpcIface->RemoveRpcMiddleware(m_Owner, m_Middleware);
                 }
                 m_Middleware = other.m_Middleware;
@@ -839,7 +839,7 @@ namespace imc {
             : m_Handle(handle), m_RpcIface(rpc) {}
 
         bool Push(const void *data, size_t size) {
-            if (!m_Handle || !BML_IMC_RPC_HAS_MEMBER(m_RpcIface, StreamPush)) return false;
+            if (!m_Handle || !BML_IFACE_HAS(m_RpcIface, BML_ImcRpcInterface, StreamPush)) return false;
             return m_RpcIface->StreamPush(m_Handle, data, size) == BML_RESULT_OK;
         }
 
@@ -850,12 +850,12 @@ namespace imc {
         }
 
         bool Complete() {
-            if (!m_Handle || !BML_IMC_RPC_HAS_MEMBER(m_RpcIface, StreamComplete)) return false;
+            if (!m_Handle || !BML_IFACE_HAS(m_RpcIface, BML_ImcRpcInterface, StreamComplete)) return false;
             return m_RpcIface->StreamComplete(m_Handle) == BML_RESULT_OK;
         }
 
         bool Error(BML_Result code, const char *msg) {
-            if (!m_Handle || !BML_IMC_RPC_HAS_MEMBER(m_RpcIface, StreamError)) return false;
+            if (!m_Handle || !BML_IFACE_HAS(m_RpcIface, BML_ImcRpcInterface, StreamError)) return false;
             return m_RpcIface->StreamError(m_Handle, code, msg) == BML_RESULT_OK;
         }
 

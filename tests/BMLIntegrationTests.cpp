@@ -405,7 +405,7 @@ TEST_F(BMLIntegrationTest, PartialModuleLoadPopulatesDiagnostics) {
     bmlBindServices(m_Services);
 
     // Path-traversal entry ("../escape-native.dll") is rejected at manifest
-    // parse time, so discovery itself fails — the module is never loaded.
+    // parse time, so discovery itself fails - the module is never loaded.
     EXPECT_NE(BML_RESULT_OK, bmlRuntimeDiscoverModules(m_Runtime));
 
     fs::remove_all(tempDir, ec);
