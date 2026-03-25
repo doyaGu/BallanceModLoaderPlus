@@ -114,6 +114,8 @@ namespace BML::Core {
          * Should be called once during microkernel startup.
          */
         void Initialize(const BML_Version &runtime_version);
+        uint64_t GetMainThreadToken() const noexcept;
+        bool IsMainThread() const noexcept;
 
         /**
          * Cleanup all resources and reset to initial state.
@@ -230,6 +232,7 @@ namespace BML::Core {
         std::condition_variable m_RetainCv;
         std::atomic<uint32_t> m_RetainCount{0};
         std::atomic<ShutdownState> m_ShutdownState{ShutdownState::Stopped};
+        std::atomic<uint64_t> m_MainThreadToken{0};
         bool m_CleanupRequested{false};
         std::atomic<bool> m_Initialized{false};
         std::vector<RetainEvent> m_RetainTrace;

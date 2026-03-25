@@ -11,11 +11,15 @@
 #include "HotReloadCoordinator.h"
 #include "ModuleDiscovery.h"
 #include "ModuleLoader.h"
+#include "PackageInstaller.h"
 
 namespace BML::Core {
     struct KernelServices;
 
     struct ModuleBootstrapDiagnostics {
+        std::string package_sync_error;
+        std::vector<PackageRejectInfo> package_rejections;
+        std::vector<std::string> package_warnings;
         std::vector<ManifestParseError> manifest_errors;
         DependencyResolutionError dependency_error;
         std::vector<DependencyWarning> dependency_warnings;

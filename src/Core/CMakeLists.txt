@@ -30,6 +30,8 @@ set(BML_CORE_SOURCES
         MemoryManager.cpp
         MemoryApi.cpp
         ModManifest.cpp
+        PackageInstaller.cpp
+        PackageInstallState.cpp
         ModuleLifecycle.cpp
         Microkernel.cpp
         ImcBus.cpp
@@ -94,6 +96,9 @@ set(BML_CORE_HEADERS
         Microkernel.h
         ModHandle.h
         ModManifest.h
+        PackageInstaller.h
+        PackageInstallState.h
+        PackagePaths.h
         ModuleDiscovery.h
         ModuleLifecycle.h
         ModuleLoader.h

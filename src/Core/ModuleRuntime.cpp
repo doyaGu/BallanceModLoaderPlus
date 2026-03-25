@@ -24,6 +24,8 @@
 #include "HotReloadCoordinator.h"
 #include "ImcBus.h"
 #include "Logging.h"
+#include "PackageInstallState.h"
+#include "PackagePaths.h"
 #include "SemanticVersion.h"
 
 namespace BML::Core {
@@ -88,17 +90,6 @@ namespace BML::Core {
             return !is_disabled(value);
         }
 
-        bool IsCacheSubPath(const std::filesystem::path &path) {
-            for (const auto &part : path) {
-                std::wstring lowered = part.wstring();
-                for (auto &ch : lowered)
-                    ch = static_cast<wchar_t>(towlower(ch));
-                if (lowered == L".bp-cache")
-                    return true;
-            }
-            return false;
-        }
-
         std::vector<uint8_t> BuildLifecyclePayload(const ModManifest &manifest) {
             const auto &id = manifest.package.id;
             auto version = ToBmlVersion(manifest.package.parsed_version);
@@ -122,6 +113,52 @@ namespace BML::Core {
                 context.InvalidateRuntimeProvider(module.id);
             }
         }
+
+        bool SyncPendingPackages(const std::wstring &mods_dir,
+                                 ModuleBootstrapDiagnostics &out_diag,
+                                 std::string &out_error) {
+            const std::filesystem::path modsPath(mods_dir);
+            PackageInstaller installer;
+            PackageSyncDiagnostics packageDiag;
+            if (!installer.SyncPackages(modsPath.parent_path().wstring(), packageDiag, out_error)) {
+                out_diag.package_rejections = packageDiag.rejected;
+                out_diag.package_warnings = packageDiag.warnings;
+                out_diag.package_sync_error = out_error;
+                return false;
+            }
+
+            out_diag.package_rejections = std::move(packageDiag.rejected);
+            out_diag.package_warnings = std::move(packageDiag.warnings);
+            out_diag.package_sync_error.clear();
+            return true;
+        }
+
+        void ApplyPackageArchiveMetadata(const std::wstring &mods_dir,
+                                         std::vector<std::unique_ptr<ModManifest>> &manifests) {
+            const PackagePaths packagePaths = GetPackagePaths(
+                std::filesystem::path(mods_dir).parent_path().wstring());
+
+            PackageInstallState state;
+            std::string error;
+            if (!state.Load(packagePaths.state_path.wstring(), error)) {
+                return;
+            }
+
+            for (auto &manifest : manifests) {
+                if (!manifest) {
+                    continue;
+                }
+                const InstalledRecord *installed = state.FindInstalled(manifest->package.id);
+                if (!installed) {
+                    continue;
+                }
+                const PackageRecord *package = state.FindPackageByHash(installed->current_hash);
+                if (!package) {
+                    continue;
+                }
+                manifest->source_archive = package->archive_path;
+            }
+        }
     } // namespace
 
     bool ModuleRuntime::DiscoverAndValidate(const std::wstring &mods_dir, ModuleBootstrapDiagnostics &out_diag) {
@@ -136,6 +173,14 @@ namespace BML::Core {
         m_DiscoveredModsDir = mods_dir;
         m_DiscoveredOrder.clear();
 
+        std::string packageError;
+        if (!SyncPendingPackages(mods_dir, out_diag, packageError)) {
+            context.ClearManifests();
+            m_DiscoveredOrder.clear();
+            ApplyDiagnostics(out_diag);
+            return false;
+        }
+
         ManifestLoadResult manifestResult;
         if (!LoadManifestsFromDirectory(mods_dir, manifestResult)) {
             out_diag.manifest_errors = manifestResult.errors;
@@ -144,6 +189,7 @@ namespace BML::Core {
             ApplyDiagnostics(out_diag);
             return false;
         }
+        ApplyPackageArchiveMetadata(mods_dir, manifestResult.manifests);
 
         std::vector<ResolvedNode> loadOrder;
         std::vector<DependencyWarning> warnings;
@@ -339,6 +385,13 @@ namespace BML::Core {
         context.ClearManifests();
         // Note: Extensions are cleaned up per-provider in ShutdownModules()
 
+        std::string packageError;
+        if (!SyncPendingPackages(m_DiscoveredModsDir, out_diag, packageError)) {
+            m_DiscoveredOrder.clear();
+            ApplyDiagnostics(out_diag);
+            return false;
+        }
+
         ManifestLoadResult manifestResult;
         if (!LoadManifestsFromDirectory(m_DiscoveredModsDir, manifestResult)) {
             out_diag.manifest_errors = manifestResult.errors;
@@ -346,6 +399,7 @@ namespace BML::Core {
             ApplyDiagnostics(out_diag);
             return false;
         }
+        ApplyPackageArchiveMetadata(m_DiscoveredModsDir, manifestResult.manifests);
 
         std::vector<ResolvedNode> loadOrder;
         std::vector<DependencyWarning> warnings;
@@ -448,10 +502,6 @@ namespace BML::Core {
             }
 
             if (dll_path.empty())
-                continue;
-
-            // Skip if in cache directory
-            if (IsCacheSubPath(std::filesystem::path(dll_path)))
                 continue;
 
             HotReloadModuleEntry entry;

@@ -98,6 +98,8 @@ add_bml_test_support_library(bml_test_runtime_support
         ${BML_SOURCE_DIR}/Core/MemoryApi.cpp
         ${BML_SOURCE_DIR}/Core/MemoryManager.cpp
         ${BML_SOURCE_DIR}/Core/ModManifest.cpp
+        ${BML_SOURCE_DIR}/Core/PackageInstaller.cpp
+        ${BML_SOURCE_DIR}/Core/PackageInstallState.cpp
         ${BML_SOURCE_DIR}/Core/ModuleDiscovery.cpp
         ${BML_SOURCE_DIR}/Core/ModuleLifecycle.cpp
         ${BML_SOURCE_DIR}/Core/ProfilingApi.cpp
@@ -345,6 +347,13 @@ add_bml_test(ModuleDiscoveryTest
         ModuleDiscoveryTest.cpp
         DEPENDENCIES
         bml_test_module_discovery_support
+)
+
+add_bml_test(PackageInstallerTest
+        SOURCES
+        PackageInstallerTest.cpp
+        DEPENDENCIES
+        bml_test_package_install_support
 )
 
 add_bml_test(DependencyResolverTest

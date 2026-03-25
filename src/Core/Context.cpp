@@ -240,6 +240,7 @@ namespace BML::Core {
         }
 
         m_RuntimeVersion = runtime_version;
+        m_MainThreadToken.store(GetThreadToken(), std::memory_order_release);
         m_CleanupRequested = false;
         m_ShutdownState.store(ShutdownState::Running, std::memory_order_release);
         m_ModHandlesByPtr.clear();
@@ -266,6 +267,15 @@ namespace BML::Core {
         }
         m_Initialized.store(true, std::memory_order_release);
         CoreLog(BML_LOG_INFO, kContextLogCategory, "Context initialized");
+    }
+
+    uint64_t Context::GetMainThreadToken() const noexcept {
+        return m_MainThreadToken.load(std::memory_order_acquire);
+    }
+
+    bool Context::IsMainThread() const noexcept {
+        const uint64_t token = GetMainThreadToken();
+        return token != 0 && token == GetThreadToken();
     }
 
     void Context::Cleanup(KernelServices &kernel) {
