@@ -17,6 +17,7 @@
 
 #include "Logging.h"
 #include "StringUtils.h"
+#include "TimeUtils.h"
 
 namespace BML::Core {
     namespace {
@@ -72,18 +73,8 @@ namespace BML::Core {
             return;
         }
 
-        // Generate filename with timestamp
-        auto now = std::chrono::system_clock::now();
-        auto time_t_now = std::chrono::system_clock::to_time_t(now);
-        std::tm tm_buf{};
-        localtime_s(&tm_buf, &time_t_now);
-
-        wchar_t filename[128];
-        std::swprintf(filename, 128,
-                      L"crash_%04d%02d%02d_%02d%02d%02d.dmp",
-                      tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday,
-                      tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec);
-
+        const std::wstring filename = utils::Utf8ToUtf16(
+            "crash_" + utils::GetCurrentLocalCompactTimestamp() + ".dmp");
         std::filesystem::path dump_path = dump_dir / filename;
 
         HANDLE file = CreateFileW(dump_path.c_str(),
