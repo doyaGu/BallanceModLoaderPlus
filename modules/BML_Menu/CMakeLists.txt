@@ -24,7 +24,7 @@ bml_add_module(BML_Menu
 )
 
 add_custom_command(TARGET BML_Menu PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/src/Utils/imconfig.h" "${IMGUI_SOURCE_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/modules/BML_UI/src/imconfig.h" "${IMGUI_SOURCE_DIR}"
     VERBATIM
 )
 

@@ -6,6 +6,14 @@ endif ()
 # zip
 add_subdirectory(zip EXCLUDE_FROM_ALL)
 
+# yyjson
+set(YYJSON_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(YYJSON_BUILD_FUZZER OFF CACHE BOOL "" FORCE)
+set(YYJSON_BUILD_MISC OFF CACHE BOOL "" FORCE)
+set(YYJSON_BUILD_DOC OFF CACHE BOOL "" FORCE)
+set(YYJSON_INSTALL OFF CACHE BOOL "" FORCE)
+add_subdirectory(yyjson EXCLUDE_FROM_ALL)
+
 # tomlplusplus
 set(TOML_BUILD_TESTS OFF CACHE BOOL "")
 set(TOML_BUILD_EXAMPLES OFF CACHE BOOL "")
@@ -39,7 +47,7 @@ add_library(cimgui STATIC
 target_include_directories(cimgui PUBLIC ${IMGUI_DIR} ${CMAKE_SOURCE_DIR})
 target_include_directories(cimgui PRIVATE ${CIMGUI_DIR})
 target_compile_definitions(cimgui PUBLIC
-    IMGUI_USER_CONFIG="${CMAKE_SOURCE_DIR}/src/Utils/imconfig.h"
+    IMGUI_USER_CONFIG="${CMAKE_SOURCE_DIR}/modules/BML_UI/src/imconfig.h"
     IMGUI_DISABLE_OBSOLETE_FUNCTIONS=1
 )
 target_compile_definitions(cimgui PRIVATE IMGUI_EXPORT)

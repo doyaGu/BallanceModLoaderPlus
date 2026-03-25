@@ -41,7 +41,6 @@ bml_add_module(BML_UI
     INCLUDE_DIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_SOURCE_DIR}/src/Utils
         ${CIMGUI_SOURCE_DIR}
         ${VIRTOOLS_SDK_INCLUDE_DIR}
         ${IMGUI_SOURCE_DIR}
@@ -64,7 +63,7 @@ target_compile_options(BML_UI PRIVATE
 )
 
 add_custom_command(TARGET BML_UI PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/src/Utils/imconfig.h" "${IMGUI_SOURCE_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/src/imconfig.h" "${IMGUI_SOURCE_DIR}"
     VERBATIM
 )
 

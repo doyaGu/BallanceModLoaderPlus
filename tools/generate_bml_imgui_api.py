@@ -127,7 +127,7 @@ def detect_compiler(preferred: str | None) -> str:
 
 
 def sync_imgui_config(repo_root: Path) -> None:
-    src_config = repo_root / "src" / "Utils" / "imconfig.h"
+    src_config = repo_root / "modules" / "BML_UI" / "src" / "imconfig.h"
     if REPO_IMCONFIG_MARKER not in src_config.read_text(encoding="utf-8"):
         raise RuntimeError(
             f"{src_config} is missing the CIMGUI_GENERATOR branch required for generated bindings."

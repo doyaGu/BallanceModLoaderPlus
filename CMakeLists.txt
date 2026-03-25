@@ -110,7 +110,7 @@ if (BML_BUILD_MODULES)
         "${PROJECT_SOURCE_DIR}/deps/cimgui/generator/cpp2ffi.lua"
         "${PROJECT_SOURCE_DIR}/deps/cimgui/generator/config_generator.lua"
         "${LUAJIT_EXECUTABLE}"
-        "${PROJECT_SOURCE_DIR}/src/Utils/imconfig.h"
+        "${PROJECT_SOURCE_DIR}/modules/BML_UI/src/imconfig.h"
         "${PROJECT_SOURCE_DIR}/tools/generate_bml_imgui_api.py"
     )
 
