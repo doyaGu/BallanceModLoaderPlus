@@ -28,11 +28,12 @@ namespace BML::Core {
         std::string version;
         SemanticVersion parsed_version;
         std::vector<std::string> authors;
+        std::vector<std::string> capabilities;
         std::string description;
         std::string entry;
     };
 
-    struct ModProvidedInterface {
+    struct ModInterfaceExport {
         std::string interface_id;
         std::string version;
         SemanticVersion parsed_version;
@@ -56,8 +57,7 @@ namespace BML::Core {
         std::vector<ModDependency> dependencies;
         std::vector<ModInterfaceRequirement> requires_;
         std::vector<ModConflict> conflicts;
-        std::vector<std::string> capabilities;
-        std::vector<ModProvidedInterface> provides;
+        std::vector<ModInterfaceExport> interfaces;
         ModAssetConfig assets;
         std::unordered_map<std::string, ManifestValue> custom_fields;
         std::wstring manifest_path;

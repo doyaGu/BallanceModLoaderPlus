@@ -451,7 +451,7 @@ namespace BML::Core {
         handle->version.major = ClampVersionComponent(manifest.package.parsed_version.major);
         handle->version.minor = ClampVersionComponent(manifest.package.parsed_version.minor);
         handle->version.patch = ClampVersionComponent(manifest.package.parsed_version.patch);
-        handle->capabilities = manifest.capabilities;
+        handle->capabilities = manifest.package.capabilities;
         handle->log_path = BuildLogPath(manifest);
         handle->log_file.reset(OpenLogFile(handle->log_path));
         if (!manifest.directory.empty()) {

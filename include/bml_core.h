@@ -204,21 +204,21 @@ typedef const BML_Version *(*PFN_BML_GetRuntimeVersion)(BML_Context ctx);
 
 /**
  * @defgroup CoreCapability Capability Management
- * @brief Request and check mod capabilities
+ * @brief Query package-declared mod capabilities
  * @{
  */
 
 /**
  * @brief Function pointer type for requesting a capability
  * 
- * Requests that a specific capability be enabled for the mod. Capabilities
- * provide opt-in access to advanced features or permissions.
+ * Checks whether the module declared a specific capability string in its
+ * package manifest metadata. This does not grant permissions or dynamically
+ * enable new behavior; it is a query against package-declared capability tags.
  * 
- * @param[in] mod Mod handle requesting the capability
+ * @param[in] mod Mod handle to query
  * @param[in] capability_id Unique identifier for the capability (e.g., "bml.unsafe_memory")
- * @return BML_RESULT_OK if capability was granted
- * @return BML_RESULT_PERMISSION_DENIED if capability was denied
- * @return BML_RESULT_NOT_FOUND if capability_id is unknown
+ * @return BML_RESULT_OK if the capability is declared by the module
+ * @return BML_RESULT_NOT_FOUND if the capability is not declared
  * @return BML_RESULT_INVALID_ARGUMENT if mod or capability_id is NULL
  * 
  * @threadsafe Yes
@@ -226,7 +226,7 @@ typedef const BML_Version *(*PFN_BML_GetRuntimeVersion)(BML_Context ctx);
  * @code
  * BML_Result result = requestCapability(my_mod, "bml.profiling");
  * if (BML_SUCCEEDED(result)) {
- *     // Profiling features are now available
+ *     // The module declared this capability tag in mod.toml
  * }
  * @endcode
  * 
@@ -237,11 +237,11 @@ typedef BML_Result (*PFN_BML_RequestCapability)(BML_Mod mod, const char *capabil
 /**
  * @brief Function pointer type for checking capability support
  * 
- * Checks whether a specific capability is supported and enabled for the mod.
+ * Checks whether a specific capability tag is declared for the module.
  * 
  * @param[in] mod Mod handle to check
  * @param[in] capability_id Capability identifier to check
- * @param[out] out_supported Receives BML_TRUE if supported, BML_FALSE otherwise
+ * @param[out] out_supported Receives BML_TRUE if declared, BML_FALSE otherwise
  * @return BML_RESULT_OK on success
  * @return BML_RESULT_INVALID_ARGUMENT if any parameter is NULL
  * 
@@ -251,7 +251,7 @@ typedef BML_Result (*PFN_BML_RequestCapability)(BML_Mod mod, const char *capabil
  * BML_Bool supported = BML_FALSE;
  * if (checkCapability(my_mod, "bml.imc", &supported) == BML_RESULT_OK) {
  *     if (supported) {
- *         // IMC features available
+ *         // The module declared this capability tag
  *     }
  * }
  * @endcode

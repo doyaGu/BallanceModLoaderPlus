@@ -251,11 +251,11 @@ namespace BML::Core {
                     continue;
                 }
 
-                // Validate [provides] for provider-loaded modules too.
-                for (const auto &iface : node.manifest->provides) {
+                // Validate [interfaces] for provider-loaded modules too.
+                for (const auto &iface : node.manifest->interfaces) {
                     if (!kernel.interface_registry->Exists(iface.interface_id.c_str())) {
                         CoreLog(BML_LOG_WARN, kModuleLoaderLogCategory,
-                                "Module '%s' declared [provides] interface '%s' "
+                                "Module '%s' declared [interfaces] interface '%s' "
                                 "but did not register it during attach",
                                 node.manifest->package.id.c_str(),
                                 iface.interface_id.c_str());
@@ -375,12 +375,12 @@ namespace BML::Core {
                 continue;
             }
 
-            // Validate [provides] immediately after this module attaches,
+            // Validate [interfaces] immediately after this module attaches,
             // before subsequent modules try to Acquire<>() the interface.
-            for (const auto &iface : node.manifest->provides) {
+            for (const auto &iface : node.manifest->interfaces) {
                 if (!kernel.interface_registry->Exists(iface.interface_id.c_str())) {
                     CoreLog(BML_LOG_WARN, kModuleLoaderLogCategory,
-                            "Module '%s' declared [provides] interface '%s' "
+                            "Module '%s' declared [interfaces] interface '%s' "
                             "but did not register it during attach",
                             node.manifest->package.id.c_str(),
                             iface.interface_id.c_str());
