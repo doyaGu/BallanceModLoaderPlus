@@ -95,11 +95,10 @@ name = "{mod_name}"
 version = "{version}"
 authors = ["{author}"]
 description = "{description}"
+capabilities = []
 
 [dependencies]
 # "com.bml.input" = ">=0.4.0"
-
-capabilities = []
 
 [metadata]
 tags = []
@@ -226,6 +225,13 @@ BML_MODULE_ENTRY BML_Result BML_ModEntrypoint(BML_ModEntrypointCommand cmd, void
     print("Build:")
     print(f'  cmake -B build -S "{output_dir}" -DCMAKE_PREFIX_PATH="<BML-SDK-path>"')
     print("  cmake --build build --config Release")
+    print()
+    print("Deploy:")
+    print(f'  Directory: copy "<build-dir>/Mods/{target}/" to <GameDir>/ModLoader/Mods/')
+    print(
+        f'  Package:   zip "<build-dir>/Mods/{target}/", rename it to "{mod_id}.bp", '
+        'and copy it to <GameDir>/ModLoader/Packages/'
+    )
 
 
 def generate_script_project(
@@ -285,7 +291,11 @@ void OnKeyDown(int key) {{
     print(f"  Entry:  main.as")
     print()
     print("Deploy:")
-    print(f'  Copy "{output_dir}" to <GameDir>/ModLoader/Mods/')
+    print(f'  Directory: copy "{output_dir}" to <GameDir>/ModLoader/Mods/')
+    print(
+        f'  Package:   zip "{output_dir}", rename it to "{mod_id}.bp", '
+        'and copy it to <GameDir>/ModLoader/Packages/'
+    )
 
 
 def main() -> int:
