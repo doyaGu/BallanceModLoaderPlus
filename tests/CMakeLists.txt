@@ -301,6 +301,13 @@ add_bml_test(StringUtilsTest
         BML_Utils
 )
 
+add_bml_test(JsonUtilsTest
+        SOURCES
+        JsonUtilsTest.cpp
+        DEPENDENCIES
+        BML_Utils
+)
+
 add_bml_test(PathUtilsTest
         SOURCES
         PathUtilsTest.cpp

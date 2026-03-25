@@ -1,9 +1,15 @@
 set(BML_UTILS_HEADERS
         StringUtils.h
+        JsonUtils.h
+        TimeUtils.h
+        HashUtils.h
 )
 
 set(BML_UTILS_SOURCES
         StringUtils.cpp
+        JsonUtils.cpp
+        TimeUtils.cpp
+        HashUtils.cpp
 )
 
 if (WIN32)
@@ -29,11 +35,12 @@ add_library(BMLUtils ALIAS BML_Utils)
 target_include_directories(BML_Utils
         PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${PROJECT_SOURCE_DIR}/deps/yyjson/src
 )
 
 target_link_libraries(BML_Utils
         PUBLIC
-        utf8 zip
+        utf8 zip yyjson
 )
 
 set_target_properties(BML_Utils PROPERTIES

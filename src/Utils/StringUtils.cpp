@@ -412,6 +412,32 @@ namespace utils {
         return out;
     }
 
+    std::string EscapeJsonString(const std::string &input) {
+        std::string output;
+        output.reserve(input.size() + 8);
+        for (char c : input) {
+            switch (c) {
+                case '"': output += "\\\""; break;
+                case '\\': output += "\\\\"; break;
+                case '\b': output += "\\b"; break;
+                case '\f': output += "\\f"; break;
+                case '\n': output += "\\n"; break;
+                case '\r': output += "\\r"; break;
+                case '\t': output += "\\t"; break;
+                default:
+                    if (static_cast<unsigned char>(c) < 0x20) {
+                        char buf[8];
+                        std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(c));
+                        output += buf;
+                    } else {
+                        output += c;
+                    }
+                    break;
+            }
+        }
+        return output;
+    }
+
     std::string StripAnsiCodes(const char *str) {
         if (!str) return {};
         auto isFinal = [](unsigned char c){ return c >= 0x40 && c <= 0x7E; };  // ECMA-48 final

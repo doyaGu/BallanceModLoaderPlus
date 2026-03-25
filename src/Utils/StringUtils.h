@@ -195,6 +195,7 @@ namespace utils {
 
     std::string UnescapeString(const char *str);
     std::string EscapeString(const char *str);
+    std::string EscapeJsonString(const std::string &input);
 
     std::string StripAnsiCodes(const char *str);
 
