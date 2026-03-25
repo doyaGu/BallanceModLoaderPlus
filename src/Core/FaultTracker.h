@@ -1,6 +1,7 @@
 #ifndef BML_CORE_FAULT_TRACKER_H
 #define BML_CORE_FAULT_TRACKER_H
 
+#include <filesystem>
 #include <memory>
 #include <string>
 
@@ -8,7 +9,7 @@ namespace BML::Core {
     /**
      * @brief Persistent fault tracking for module crashes.
      *
-     * Writes ModLoader/fault_log.json after each crash event.
+     * Writes <ModLoaderDir>/fault_log.json after each crash event.
      * On startup, provides module skip list for ModuleDiscovery.
      */
     class FaultTracker {
@@ -26,8 +27,8 @@ namespace BML::Core {
         FaultTracker(const FaultTracker &) = delete;
         FaultTracker &operator=(const FaultTracker &) = delete;
 
-        /** Load fault_log.json from the given directory. */
-        void Load(const std::wstring &base_dir);
+        /** Load fault_log.json from the given ModLoader runtime directory. */
+        void LoadFromRuntimeDirectory(const std::filesystem::path &runtimeDirectory);
 
         /** Record a crash event for a module. Writes JSON immediately. */
         void RecordFault(const std::string &module_id,

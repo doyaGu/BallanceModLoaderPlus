@@ -10,6 +10,7 @@
 
 #include "JsonUtils.h"
 #include "Logging.h"
+#include "PathUtils.h"
 #include "StringUtils.h"
 #include "TimeUtils.h"
 
@@ -18,9 +19,8 @@ namespace BML::Core {
         constexpr char kLogCategory[] = "fault.tracker";
         constexpr int kFaultDisableThreshold = 3;
 
-        std::wstring GetFaultLogPath(const std::wstring &base_dir) {
-            std::filesystem::path dir(base_dir);
-            return (dir / L"ModLoader" / L"fault_log.json").wstring();
+        std::filesystem::path GetFaultLogPath(const std::filesystem::path &runtimeDirectory) {
+            return utils::ResolveRuntimeLayoutFromRuntimeDirectory(runtimeDirectory).fault_log_path;
         }
 
         std::string ExceptionCodeToHex(unsigned long code) {
@@ -80,22 +80,24 @@ namespace BML::Core {
     struct FaultTracker::Impl {
         std::mutex mutex;
         std::unordered_map<std::string, FaultTracker::FaultRecord> records;
-        std::wstring base_dir;
+        std::filesystem::path runtime_directory;
         bool loaded = false;
     };
 
     FaultTracker::FaultTracker() : m_Impl(std::make_unique<Impl>()) {}
     FaultTracker::~FaultTracker() = default;
 
-    void FaultTracker::Load(const std::wstring &base_dir) {
+    void FaultTracker::LoadFromRuntimeDirectory(const std::filesystem::path &runtimeDirectory) {
         auto &impl = *m_Impl;
         std::lock_guard lock(impl.mutex);
 
-        impl.base_dir = base_dir;
+        impl.runtime_directory = runtimeDirectory.empty()
+            ? std::filesystem::path()
+            : runtimeDirectory.lexically_normal();
         impl.loaded = true;
         std::unordered_map<std::string, FaultTracker::FaultRecord> loadedRecords;
 
-        auto path = GetFaultLogPath(base_dir);
+        const std::filesystem::path path = GetFaultLogPath(impl.runtime_directory);
         std::error_code ec;
         if (!std::filesystem::exists(path, ec)) {
             impl.records.clear();
@@ -168,8 +170,8 @@ namespace BML::Core {
                 module_id.c_str(), rec.last_code.c_str(), rec.fault_count,
                 rec.disabled ? " [DISABLED]" : "");
 
-        if (!impl.base_dir.empty()) {
-            WriteJson(GetFaultLogPath(impl.base_dir), impl.records);
+        if (!impl.runtime_directory.empty()) {
+            WriteJson(GetFaultLogPath(impl.runtime_directory).wstring(), impl.records);
         }
     }
 
@@ -192,8 +194,8 @@ namespace BML::Core {
             CoreLog(BML_LOG_INFO, kLogCategory,
                     "Module '%s' re-enabled", module_id.c_str());
 
-            if (!impl.base_dir.empty()) {
-                WriteJson(GetFaultLogPath(impl.base_dir), impl.records);
+            if (!impl.runtime_directory.empty()) {
+                WriteJson(GetFaultLogPath(impl.runtime_directory).wstring(), impl.records);
             }
         }
     }
@@ -210,7 +212,7 @@ namespace BML::Core {
         auto &impl = *m_Impl;
         std::lock_guard lock(impl.mutex);
         impl.records.clear();
-        impl.base_dir.clear();
+        impl.runtime_directory.clear();
         impl.loaded = false;
     }
 } // namespace BML::Core

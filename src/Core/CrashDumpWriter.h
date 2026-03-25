@@ -1,6 +1,7 @@
 #ifndef BML_CORE_CRASH_DUMP_WRITER_H
 #define BML_CORE_CRASH_DUMP_WRITER_H
 
+#include <filesystem>
 #include <memory>
 #include <string>
 
@@ -8,7 +9,7 @@ namespace BML::Core {
     /**
      * @brief Writes minidump files on first SEH catch per session.
      *
-     * Dumps go to <base_dir>/ModLoader/CrashDumps/<timestamp>.dmp
+     * Dumps go to <ModLoaderDir>/CrashDumps/<timestamp>.dmp
      */
     class CrashDumpWriter {
     public:
@@ -18,8 +19,8 @@ namespace BML::Core {
         CrashDumpWriter(const CrashDumpWriter &) = delete;
         CrashDumpWriter &operator=(const CrashDumpWriter &) = delete;
 
-        /** Set the base directory (typically the game directory). */
-        void SetBaseDir(const std::wstring &base_dir);
+        /** Set the ModLoader runtime directory. */
+        void SetRuntimeDirectory(const std::filesystem::path &runtimeDirectory);
 
         /**
          * @brief Write a minidump if this is the first crash in this session.

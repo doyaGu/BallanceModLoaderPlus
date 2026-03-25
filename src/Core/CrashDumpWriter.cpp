@@ -16,6 +16,7 @@
 #endif
 
 #include "Logging.h"
+#include "PathUtils.h"
 #include "StringUtils.h"
 #include "TimeUtils.h"
 
@@ -26,17 +27,19 @@ namespace BML::Core {
 
     struct CrashDumpWriter::Impl {
         std::mutex mutex;
-        std::wstring base_dir;
+        std::filesystem::path runtime_directory;
         std::atomic<bool> dump_written{false};
     };
 
     CrashDumpWriter::CrashDumpWriter() : m_Impl(std::make_unique<Impl>()) {}
     CrashDumpWriter::~CrashDumpWriter() = default;
 
-    void CrashDumpWriter::SetBaseDir(const std::wstring &base_dir) {
+    void CrashDumpWriter::SetRuntimeDirectory(const std::filesystem::path &runtimeDirectory) {
         auto &impl = *m_Impl;
         std::lock_guard lock(impl.mutex);
-        impl.base_dir = base_dir;
+        impl.runtime_directory = runtimeDirectory.empty()
+            ? std::filesystem::path()
+            : runtimeDirectory.lexically_normal();
     }
 
     void CrashDumpWriter::WriteDumpOnce(const std::string &faulting_module_id,
@@ -55,15 +58,14 @@ namespace BML::Core {
 #if defined(_WIN32)
         std::lock_guard lock(impl.mutex);
 
-        if (impl.base_dir.empty()) {
+        if (impl.runtime_directory.empty()) {
             CoreLog(BML_LOG_WARN, kLogCategory,
-                    "Cannot write crash dump: base directory not set");
+                    "Cannot write crash dump: runtime directory not set");
             return;
         }
 
-        std::filesystem::path dump_dir(impl.base_dir);
-        dump_dir /= L"ModLoader";
-        dump_dir /= L"CrashDumps";
+        const auto layout = utils::ResolveRuntimeLayoutFromRuntimeDirectory(impl.runtime_directory);
+        std::filesystem::path dump_dir = layout.crash_dumps_directory;
 
         std::error_code ec;
         std::filesystem::create_directories(dump_dir, ec);
@@ -127,7 +129,7 @@ namespace BML::Core {
     void CrashDumpWriter::Shutdown() {
         auto &impl = *m_Impl;
         std::lock_guard lock(impl.mutex);
-        impl.base_dir.clear();
+        impl.runtime_directory.clear();
         impl.dump_written.store(false);
     }
 } // namespace BML::Core
