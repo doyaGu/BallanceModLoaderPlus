@@ -15,6 +15,7 @@
 #include "bml_module.hpp"
 #include "bml_services.hpp"
 #include "bml_hook.h"
+#include "bml_input.h"
 #include "bml_interface.hpp"
 #include "bml_topics.h"
 #include "bml_ui.hpp"
@@ -282,13 +283,13 @@ public:
 
         m_Subs = services.CreateSubscriptions();
         m_Subs.Add(BML_TOPIC_INPUT_KEY_DOWN, [this](const bml::imc::Message &msg) {
-            // DIK_F12 = 0x58
-            if (msg.Size() >= sizeof(uint32_t)) {
-                uint32_t key = *static_cast<const uint32_t *>(msg.Data());
-                if (key == 0x58) {
-                    m_Visible = !m_Visible;
-                    if (m_Visible) RefreshData();
-                }
+            const auto *event = msg.As<BML_KeyDownEvent>();
+            if (!event || event->repeat) {
+                return;
+            }
+            if (event->key_code == 0x58) {
+                m_Visible = !m_Visible;
+                if (m_Visible) RefreshData();
             }
         });
 
