@@ -8,10 +8,11 @@ Place `mod.toml` at the root of the module directory (e.g. `ModLoader/Mods/MyCoo
 
 ### Distributing as `.bp` archives
 
-- v0.4 modules can be zipped and renamed to the `.bp` extension, then dropped directly into the `Mods/` directory.
-- During discovery the loader extracts each archive into `Mods/.bp-cache/<archive-name>/` before parsing `mod.toml`, so you do **not** need to unpack them manually.
-- Keep `mod.toml` in the root of the archive. The loader tolerates a single leading folder (when you zipped an entire directory) and will automatically descend into it.
-- Avoid shipping unrelated files at the top level of the archive; everything inside the extracted folder is treated as part of the module payload.
+- v0.4 modules can be zipped and renamed to the `.bp` extension, then dropped into `ModLoader/Packages/`.
+- At startup the package installer imports pending `.bp` files from `Packages/` into `Mods/<package-id>/`, archives successful inputs under `Packages/.bp-archive/`, and moves failed inputs to `Packages/.bp-rejected/`.
+- Runtime discovery only scans installed directory modules under `Mods/`. It no longer extracts or loads `.bp` files directly.
+- Keep `mod.toml` in the archive root, or inside exactly one leading wrapper directory. Deeper nesting and ambiguous root layouts are rejected.
+- Avoid shipping unrelated files at the archive root; the installer treats the accepted payload root as the complete module contents.
 
 ## Recognized Top-Level Fields
 
