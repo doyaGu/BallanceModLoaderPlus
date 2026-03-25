@@ -215,6 +215,17 @@ add_bml_test_support_library(bml_test_module_discovery_support
         bml_test_dependency_support
 )
 
+add_bml_test_support_library(bml_test_package_install_support
+        SOURCES
+        ${BML_SOURCE_DIR}/Core/PackageInstallState.cpp
+        ${BML_SOURCE_DIR}/Core/PackageInstaller.cpp
+        DEPENDENCIES
+        bml_test_manifest_support
+        bml_test_stub_logging_support
+        BML_Utils
+        tomlplusplus::tomlplusplus
+)
+
 add_bml_test_support_library(bml_test_filewatcher_support
         SOURCES
         ${BML_SOURCE_DIR}/Core/FileSystemWatcher.cpp
@@ -381,6 +392,15 @@ add_bml_test(StructSizeTest
 add_bml_test(CoreApisTests
         SOURCES
         CoreApisTests.cpp
+        DEPENDENCIES
+        bml_test_runtime_support
+)
+
+add_bml_test(ModuleRuntimePackageSyncTests
+        SOURCES
+        ModuleRuntimePackageSyncTests.cpp
+        ${BML_SOURCE_DIR}/Core/ModuleLoader.cpp
+        ${BML_SOURCE_DIR}/Core/ModuleRuntime.cpp
         DEPENDENCIES
         bml_test_runtime_support
 )
