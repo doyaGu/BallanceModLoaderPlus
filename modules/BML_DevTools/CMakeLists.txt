@@ -9,7 +9,6 @@ bml_add_module(BML_DevTools
         ${CMAKE_SOURCE_DIR}
         ${IMGUI_SOURCE_DIR}
     LINK_LIBRARIES
-        BML_Utils
         BML_UI
 )
 

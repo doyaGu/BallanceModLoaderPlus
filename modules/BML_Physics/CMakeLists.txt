@@ -16,7 +16,7 @@ bml_add_module(BML_Physics
     LINK_LIBRARIES
         VirtoolsSDK::CK2
         VirtoolsSDK::VxMath
-        BML_Utils
+        BML_HookUtils
 )
 
 install(TARGETS BML_Physics

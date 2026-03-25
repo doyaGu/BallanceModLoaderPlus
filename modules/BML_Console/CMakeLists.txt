@@ -23,7 +23,9 @@ bml_add_module(BML_Console
         ${VIRTOOLS_SDK_INCLUDE_DIR}
         ${IMGUI_SOURCE_DIR}
     LINK_LIBRARIES
-        BML_Utils
+        BML_IniFile
+        BML_PathUtils
+        BML_StringUtils
 )
 
 add_custom_command(TARGET BML_Console PRE_BUILD

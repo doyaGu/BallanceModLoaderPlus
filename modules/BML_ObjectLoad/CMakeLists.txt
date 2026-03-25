@@ -15,7 +15,6 @@ bml_add_module(BML_ObjectLoad
     LINK_LIBRARIES
         VirtoolsSDK::CK2
         VirtoolsSDK::VxMath
-        BML_Utils
 )
 
 install(TARGETS BML_ObjectLoad

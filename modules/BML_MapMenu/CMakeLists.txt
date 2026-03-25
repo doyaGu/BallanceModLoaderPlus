@@ -14,7 +14,8 @@ bml_add_module(BML_MapMenu
     LINK_LIBRARIES
         VirtoolsSDK::CK2
         VirtoolsSDK::VxMath
-        BML_Utils
+        BML_PathUtils
+        BML_StringUtils
 )
 
 add_custom_command(TARGET BML_MapMenu PRE_BUILD

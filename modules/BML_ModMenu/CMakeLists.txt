@@ -14,7 +14,6 @@ bml_add_module(BML_ModMenu
         ${VIRTOOLS_SDK_INCLUDE_DIR}
         ${IMGUI_SOURCE_DIR}
     LINK_LIBRARIES
-        BML_Utils
         VirtoolsSDK::CK2
         VirtoolsSDK::VxMath
 )

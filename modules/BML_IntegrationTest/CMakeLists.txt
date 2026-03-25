@@ -10,5 +10,5 @@ bml_add_module(BML_IntegrationTest
         ${CMAKE_SOURCE_DIR}/src/Utils
         ${IMGUI_SOURCE_DIR}
     LINK_LIBRARIES
-        BML_Utils
+        BML_PathUtils
 )

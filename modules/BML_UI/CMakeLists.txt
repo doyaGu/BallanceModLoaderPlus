@@ -48,7 +48,8 @@ bml_add_module(BML_UI
         VirtoolsSDK::CK2
         VirtoolsSDK::VxMath
         minhook
-        BML_Utils
+        BML_PathUtils
+        BML_StringUtils
     COMPILE_DEFINITIONS
         BML_EXPORTS
         IMGUI_EXPORT

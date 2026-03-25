@@ -128,7 +128,11 @@ target_include_directories(BML
 
 target_link_libraries(BML
         PRIVATE
-        BML_Utils
+        BML_StringUtils
+        BML_PathUtils
+        BML_JsonUtils
+        BML_TimeUtils
+        BML_HashUtils
         tomlplusplus::tomlplusplus
         efsw
 )
@@ -174,7 +178,7 @@ if (WIN32)
 
     target_link_libraries(BMLCoreDriver PRIVATE
         BML
-        BML_Utils
+        BML_PathUtils
     )
 
     set_target_properties(BMLCoreDriver PROPERTIES

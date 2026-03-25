@@ -10,7 +10,7 @@ bml_add_module(BML_InputRecorder
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_SOURCE_DIR}/src/Utils
     LINK_LIBRARIES
-        BML_Utils
+        BML_PathUtils
 )
 
 install(TARGETS BML_InputRecorder

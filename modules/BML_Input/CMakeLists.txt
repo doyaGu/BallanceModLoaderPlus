@@ -23,7 +23,7 @@ bml_add_module(BML_Input
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${VIRTOOLS_SDK_INCLUDE_DIR}
     LINK_LIBRARIES
-        BML_Utils
+        BML_HookUtils
         VirtoolsSDK::CK2
         VirtoolsSDK::VxMath
 )

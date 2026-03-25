@@ -12,7 +12,7 @@ bml_add_module(BML_Render
         ${CMAKE_SOURCE_DIR}/src/Utils
         ${VIRTOOLS_SDK_INCLUDE_DIR}
     LINK_LIBRARIES
-        BML_Utils
+        BML_HookUtils
         VirtoolsSDK::CK2
         VirtoolsSDK::VxMath
         minhook

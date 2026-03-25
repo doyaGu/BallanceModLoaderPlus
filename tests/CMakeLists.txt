@@ -311,28 +311,28 @@ add_bml_test(StringUtilsTest
         SOURCES
         StringUtilsTest.cpp
         DEPENDENCIES
-        BML_Utils
+        BML_StringUtils
 )
 
 add_bml_test(JsonUtilsTest
         SOURCES
         JsonUtilsTest.cpp
         DEPENDENCIES
-        BML_Utils
+        BML_JsonUtils
 )
 
 add_bml_test(PathUtilsTest
         SOURCES
         PathUtilsTest.cpp
         DEPENDENCIES
-        BML_Utils
+        BML_PathUtils
 )
 
 add_bml_test(IniFileTest
         SOURCES
         IniFileTest.cpp
         DEPENDENCIES
-        BML_Utils
+        BML_IniFile
 )
 
 add_bml_test(ManifestParserTest
