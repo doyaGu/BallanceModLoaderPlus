@@ -74,7 +74,7 @@ namespace BML::Core {
     // Mutex Operations
     // ============================================================================
 
-    BML_Result SyncManager::CreateMutex(BML_Mutex *out_mutex) {
+    BML_Result SyncManager::CreateMutex(BML_Mod owner, BML_Mutex *out_mutex) {
         if (!out_mutex) {
             return SetErrorResult(BML_RESULT_INVALID_ARGUMENT, "bmlMutexCreate",
                                          "out_mutex is NULL", 0);
@@ -82,6 +82,7 @@ namespace BML::Core {
 
         try {
             auto *impl = new MutexImpl();
+            impl->owner = owner;
 
             std::lock_guard<std::mutex> lock(m_MutexRegistryLock);
             m_Mutexes.push_back(impl);
@@ -282,7 +283,7 @@ namespace BML::Core {
     // RwLock Operations
     // ============================================================================
 
-    BML_Result SyncManager::CreateRwLock(BML_RwLock *out_lock) {
+    BML_Result SyncManager::CreateRwLock(BML_Mod owner, BML_RwLock *out_lock) {
         if (!out_lock) {
             return SetErrorResult(BML_RESULT_INVALID_ARGUMENT, "bmlRwLockCreate",
                                          "out_lock is NULL", 0);
@@ -290,6 +291,7 @@ namespace BML::Core {
 
         try {
             auto *impl = new RwLockImpl();
+            impl->owner = owner;
 
             std::lock_guard<std::mutex> lock(m_RWLockRegistryLock);
             m_RWLocks.push_back(impl);
@@ -794,7 +796,7 @@ namespace BML::Core {
     // Semaphore Operations
     // ============================================================================
 
-    BML_Result SyncManager::CreateSemaphore(uint32_t initial_count, uint32_t max_count, BML_Semaphore *out_semaphore) {
+    BML_Result SyncManager::CreateSemaphore(BML_Mod owner, uint32_t initial_count, uint32_t max_count, BML_Semaphore *out_semaphore) {
         if (!out_semaphore) {
             return SetErrorResult(BML_RESULT_INVALID_ARGUMENT, "bmlSemaphoreCreate",
                                          "out_semaphore is NULL", 0);
@@ -807,6 +809,7 @@ namespace BML::Core {
 
         try {
             auto *impl = new SemaphoreImpl(initial_count, max_count);
+            impl->owner = owner;
 
             if (!impl->handle) {
                 delete impl;
@@ -952,7 +955,7 @@ namespace BML::Core {
     // TLS Operations
     // ============================================================================
 
-    BML_Result SyncManager::CreateTls(BML_TlsDestructor destructor, BML_TlsKey *out_key) {
+    BML_Result SyncManager::CreateTls(BML_Mod owner, BML_TlsDestructor destructor, BML_TlsKey *out_key) {
         if (!out_key) {
             return SetErrorResult(BML_RESULT_INVALID_ARGUMENT, "bmlTlsCreate",
                                          "out_key is NULL", 0);
@@ -960,6 +963,7 @@ namespace BML::Core {
 
         try {
             auto *impl = new TlsKeyImpl(destructor);
+            impl->owner = owner;
 
             if (impl->fls_index == FLS_OUT_OF_INDEXES) {
                 delete impl;
@@ -1089,7 +1093,7 @@ namespace BML::Core {
     // CondVar Operations
     // ============================================================================
 
-    BML_Result SyncManager::CreateCondVar(BML_CondVar *out_condvar) {
+    BML_Result SyncManager::CreateCondVar(BML_Mod owner, BML_CondVar *out_condvar) {
         if (!out_condvar) {
             return SetErrorResult(BML_RESULT_INVALID_ARGUMENT, "bmlCondVarCreate",
                                          "out_condvar is NULL", 0);
@@ -1097,6 +1101,7 @@ namespace BML::Core {
 
         try {
             auto *impl = new CondVarImpl();
+            impl->owner = owner;
 
             std::lock_guard<std::mutex> lock(m_CondVarRegistryLock);
             m_CondVars.push_back(impl);
@@ -1235,7 +1240,7 @@ namespace BML::Core {
     // SpinLock Operations
     // ============================================================================
 
-    BML_Result SyncManager::CreateSpinLock(BML_SpinLock *out_lock) {
+    BML_Result SyncManager::CreateSpinLock(BML_Mod owner, BML_SpinLock *out_lock) {
         if (!out_lock) {
             return SetErrorResult(BML_RESULT_INVALID_ARGUMENT, "bmlSpinLockCreate",
                                          "out_lock is NULL", 0);
@@ -1243,6 +1248,7 @@ namespace BML::Core {
 
         try {
             auto *impl = new SpinLockImpl();
+            impl->owner = owner;
 
             std::lock_guard<std::mutex> lock(m_SpinlockRegistryLock);
             m_Spinlocks.push_back(impl);
@@ -1444,6 +1450,90 @@ namespace BML::Core {
     BML_Result SyncManager::ReportDeadlock(const char *api) const {
         return SetErrorResult(BML_RESULT_SYNC_DEADLOCK, api,
                                      "Potential deadlock detected", 0);
+    }
+
+    void SyncManager::CleanupOwner(BML_Mod owner) {
+        if (!owner) {
+            return;
+        }
+
+        // Mutexes
+        {
+            std::lock_guard<std::mutex> lock(m_MutexRegistryLock);
+            for (auto it = m_Mutexes.begin(); it != m_Mutexes.end();) {
+                if (*it && (*it)->owner == owner) {
+                    delete *it;
+                    it = m_Mutexes.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
+
+        // RwLocks
+        {
+            std::lock_guard<std::mutex> lock(m_RWLockRegistryLock);
+            for (auto it = m_RWLocks.begin(); it != m_RWLocks.end();) {
+                if (*it && (*it)->owner == owner) {
+                    delete *it;
+                    it = m_RWLocks.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
+
+        // Semaphores
+        {
+            std::lock_guard<std::mutex> lock(m_SemaphoreRegistryLock);
+            for (auto it = m_Semaphores.begin(); it != m_Semaphores.end();) {
+                if (*it && (*it)->owner == owner) {
+                    delete *it;
+                    it = m_Semaphores.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
+
+        // TLS keys
+        {
+            std::lock_guard<std::mutex> lock(m_TLSRegistryLock);
+            for (auto it = m_TLSKeys.begin(); it != m_TLSKeys.end();) {
+                if (*it && (*it)->owner == owner) {
+                    delete *it;
+                    it = m_TLSKeys.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
+
+        // CondVars
+        {
+            std::lock_guard<std::mutex> lock(m_CondVarRegistryLock);
+            for (auto it = m_CondVars.begin(); it != m_CondVars.end();) {
+                if (*it && (*it)->owner == owner) {
+                    delete *it;
+                    it = m_CondVars.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
+
+        // SpinLocks
+        {
+            std::lock_guard<std::mutex> lock(m_SpinlockRegistryLock);
+            for (auto it = m_Spinlocks.begin(); it != m_Spinlocks.end();) {
+                if (*it && (*it)->owner == owner) {
+                    delete *it;
+                    it = m_Spinlocks.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
     }
 
     // ============================================================================

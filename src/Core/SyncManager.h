@@ -29,6 +29,7 @@ namespace BML::Core {
     struct MutexImpl {
         std::timed_mutex mutex;
         std::atomic<DWORD> owner_thread{0};
+        BML_Mod owner = nullptr;
 
         MutexImpl() = default;
         ~MutexImpl() = default;
@@ -45,6 +46,8 @@ namespace BML::Core {
      * for proper release (ReleaseSRWLockShared vs ReleaseSRWLockExclusive).
      */
     struct RwLockImpl {
+        BML_Mod owner = nullptr;
+
 #if defined(_WIN32)
         SRWLOCK srw;
         DWORD tls_index;  // TLS slot to track per-thread state
@@ -133,6 +136,8 @@ namespace BML::Core {
      * @brief Semaphore implementation using Windows Semaphore
      */
     struct SemaphoreImpl {
+        BML_Mod owner = nullptr;
+
 #if defined(_WIN32)
         HANDLE handle;
         uint32_t max_count;
@@ -170,6 +175,7 @@ namespace BML::Core {
 
     struct CondVarImpl {
         std::condition_variable_any cv;
+        BML_Mod owner = nullptr;
 
         CondVarImpl() = default;
         ~CondVarImpl() = default;
@@ -187,6 +193,7 @@ namespace BML::Core {
     struct SpinLockImpl {
         std::atomic<uint32_t> next_ticket{0};
         std::atomic<uint32_t> now_serving{0};
+        BML_Mod owner = nullptr;
 
         SpinLockImpl() = default;
         ~SpinLockImpl() = default;
@@ -213,6 +220,8 @@ namespace BML::Core {
      * thread-local resources.
      */
     struct TlsKeyImpl {
+        BML_Mod owner = nullptr;
+
 #if defined(_WIN32)
         DWORD fls_index;
         BML_TlsDestructor destructor;
@@ -285,7 +294,7 @@ namespace BML::Core {
         SyncManager &operator=(const SyncManager &) = delete;
 
         // Mutex operations
-        BML_Result CreateMutex(BML_Mutex *out_mutex);
+        BML_Result CreateMutex(BML_Mod owner, BML_Mutex *out_mutex);
         void DestroyMutex(BML_Mutex mutex);
         void LockMutex(BML_Mutex mutex);
         BML_Bool TryLockMutex(BML_Mutex mutex);
@@ -293,7 +302,7 @@ namespace BML::Core {
         void UnlockMutex(BML_Mutex mutex);
 
         // RwLock operations
-        BML_Result CreateRwLock(BML_RwLock *out_lock);
+        BML_Result CreateRwLock(BML_Mod owner, BML_RwLock *out_lock);
         void DestroyRwLock(BML_RwLock lock);
         void ReadLockRwLock(BML_RwLock lock);
         BML_Bool TryReadLockRwLock(BML_RwLock lock);
@@ -316,19 +325,19 @@ namespace BML::Core {
         static void *AtomicCompareExchangePtr(void *volatile*dest, void *exchange, void *comparand);
 
         // Semaphore operations
-        BML_Result CreateSemaphore(uint32_t initial_count, uint32_t max_count, BML_Semaphore *out_semaphore);
+        BML_Result CreateSemaphore(BML_Mod owner, uint32_t initial_count, uint32_t max_count, BML_Semaphore *out_semaphore);
         void DestroySemaphore(BML_Semaphore semaphore);
         BML_Result WaitSemaphore(BML_Semaphore semaphore, uint32_t timeout_ms);
         BML_Result SignalSemaphore(BML_Semaphore semaphore, uint32_t count);
 
         // TLS operations
-        BML_Result CreateTls(BML_TlsDestructor destructor, BML_TlsKey *out_key);
+        BML_Result CreateTls(BML_Mod owner, BML_TlsDestructor destructor, BML_TlsKey *out_key);
         void DestroyTls(BML_TlsKey key);
         void *GetTls(BML_TlsKey key);
         BML_Result SetTls(BML_TlsKey key, void *value);
 
         // CondVar operations
-        BML_Result CreateCondVar(BML_CondVar *out_condvar);
+        BML_Result CreateCondVar(BML_Mod owner, BML_CondVar *out_condvar);
         void DestroyCondVar(BML_CondVar condvar);
         BML_Result WaitCondVar(BML_CondVar condvar, BML_Mutex mutex);
         BML_Result WaitCondVarTimeout(BML_CondVar condvar, BML_Mutex mutex, uint32_t timeout_ms);
@@ -336,7 +345,7 @@ namespace BML::Core {
         BML_Result BroadcastCondVar(BML_CondVar condvar);
 
         // SpinLock operations
-        BML_Result CreateSpinLock(BML_SpinLock *out_lock);
+        BML_Result CreateSpinLock(BML_Mod owner, BML_SpinLock *out_lock);
         void DestroySpinLock(BML_SpinLock lock);
         void LockSpinLock(BML_SpinLock lock);
         BML_Bool TryLockSpinLock(BML_SpinLock lock);
@@ -344,6 +353,9 @@ namespace BML::Core {
 
         SyncManager();
         ~SyncManager() = default;
+
+        // Cleanup all sync primitives owned by a module
+        void CleanupOwner(BML_Mod owner);
 
     private:
         bool IsValidMutex(BML_Mutex mutex) const;

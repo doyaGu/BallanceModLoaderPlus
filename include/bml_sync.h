@@ -455,14 +455,16 @@ typedef void (*BML_TlsDestructor)(void *value);
 
 /**
  * @brief Create a TLS key
- * 
+ *
+ * @param[in] owner Module that owns this TLS key (for cleanup tracking)
  * @param[in] destructor Destructor called on thread exit (may be NULL)
  * @param[out] out_key Receives TLS key
  * @return BML_RESULT_OK on success
- * 
+ *
  * @threadsafe Yes
  */
 typedef BML_Result (*PFN_BML_TlsCreate)(BML_Context ctx,
+                                        BML_Mod owner,
                                         BML_TlsDestructor destructor,
                                         BML_TlsKey *out_key);
 

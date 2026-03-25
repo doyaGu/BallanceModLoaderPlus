@@ -151,7 +151,7 @@ protected:
 
 TEST_F(SyncPrimitivesTest, CondVarCreateDestroy) {
     BML_CondVar condvar = nullptr;
-    BML_Result result = kernel_->sync->CreateCondVar(&condvar);
+    BML_Result result = kernel_->sync->CreateCondVar(nullptr, &condvar);
     ASSERT_EQ(result, BML_RESULT_OK);
     ASSERT_NE(condvar, nullptr);
 
@@ -159,7 +159,7 @@ TEST_F(SyncPrimitivesTest, CondVarCreateDestroy) {
 }
 
 TEST_F(SyncPrimitivesTest, CondVarCreateNullOutput) {
-    BML_Result result = kernel_->sync->CreateCondVar(nullptr);
+    BML_Result result = kernel_->sync->CreateCondVar(nullptr, nullptr);
     EXPECT_EQ(result, BML_RESULT_INVALID_ARGUMENT);
 }
 
@@ -167,8 +167,8 @@ TEST_F(SyncPrimitivesTest, CondVarSignalWait) {
     BML_Mutex mutex = nullptr;
     BML_CondVar condvar = nullptr;
 
-    ASSERT_EQ(kernel_->sync->CreateMutex(&mutex), BML_RESULT_OK);
-    ASSERT_EQ(kernel_->sync->CreateCondVar(&condvar), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateMutex(nullptr, &mutex), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateCondVar(nullptr, &condvar), BML_RESULT_OK);
 
     std::atomic<bool> ready{false};
     std::atomic<bool> done{false};
@@ -207,8 +207,8 @@ TEST_F(SyncPrimitivesTest, CondVarWaitTimeout) {
     BML_Mutex mutex = nullptr;
     BML_CondVar condvar = nullptr;
 
-    ASSERT_EQ(kernel_->sync->CreateMutex(&mutex), BML_RESULT_OK);
-    ASSERT_EQ(kernel_->sync->CreateCondVar(&condvar), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateMutex(nullptr, &mutex), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateCondVar(nullptr, &condvar), BML_RESULT_OK);
 
     kernel_->sync->LockMutex(mutex);
 
@@ -232,8 +232,8 @@ TEST_F(SyncPrimitivesTest, CondVarBroadcast) {
     BML_Mutex mutex = nullptr;
     BML_CondVar condvar = nullptr;
 
-    ASSERT_EQ(kernel_->sync->CreateMutex(&mutex), BML_RESULT_OK);
-    ASSERT_EQ(kernel_->sync->CreateCondVar(&condvar), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateMutex(nullptr, &mutex), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateCondVar(nullptr, &condvar), BML_RESULT_OK);
 
     std::atomic<bool> ready{false};
     std::atomic<int> woken_count{0};
@@ -279,7 +279,7 @@ TEST_F(SyncPrimitivesTest, CondVarBroadcast) {
 
 TEST_F(SyncPrimitivesTest, SpinLockCreateDestroy) {
     BML_SpinLock lock = nullptr;
-    BML_Result result = kernel_->sync->CreateSpinLock(&lock);
+    BML_Result result = kernel_->sync->CreateSpinLock(nullptr, &lock);
     ASSERT_EQ(result, BML_RESULT_OK);
     ASSERT_NE(lock, nullptr);
 
@@ -287,13 +287,13 @@ TEST_F(SyncPrimitivesTest, SpinLockCreateDestroy) {
 }
 
 TEST_F(SyncPrimitivesTest, SpinLockCreateNullOutput) {
-    BML_Result result = kernel_->sync->CreateSpinLock(nullptr);
+    BML_Result result = kernel_->sync->CreateSpinLock(nullptr, nullptr);
     EXPECT_EQ(result, BML_RESULT_INVALID_ARGUMENT);
 }
 
 TEST_F(SyncPrimitivesTest, SpinLockBasicLocking) {
     BML_SpinLock lock = nullptr;
-    ASSERT_EQ(kernel_->sync->CreateSpinLock(&lock), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateSpinLock(nullptr, &lock), BML_RESULT_OK);
 
     kernel_->sync->LockSpinLock(lock);
     // Lock acquired
@@ -305,7 +305,7 @@ TEST_F(SyncPrimitivesTest, SpinLockBasicLocking) {
 
 TEST_F(SyncPrimitivesTest, SpinLockTryLock) {
     BML_SpinLock lock = nullptr;
-    ASSERT_EQ(kernel_->sync->CreateSpinLock(&lock), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateSpinLock(nullptr, &lock), BML_RESULT_OK);
 
     // Should succeed on unlocked lock
     EXPECT_EQ(kernel_->sync->TryLockSpinLock(lock), BML_TRUE);
@@ -330,7 +330,7 @@ TEST_F(SyncPrimitivesTest, SpinLockTryLock) {
 
 TEST_F(SyncPrimitivesTest, SpinLockConcurrentAccess) {
     BML_SpinLock lock = nullptr;
-    ASSERT_EQ(kernel_->sync->CreateSpinLock(&lock), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateSpinLock(nullptr, &lock), BML_RESULT_OK);
 
     std::atomic<int> counter{0};
     constexpr int INCREMENTS_PER_THREAD = 1000;
@@ -365,8 +365,8 @@ TEST_F(SyncPrimitivesTest, SpinLockConcurrentAccess) {
 TEST_F(SyncPrimitivesTest, MutexDeadlockDetectionSetsLastError) {
     BML_Mutex first = nullptr;
     BML_Mutex second = nullptr;
-    ASSERT_EQ(kernel_->sync->CreateMutex(&first), BML_RESULT_OK);
-    ASSERT_EQ(kernel_->sync->CreateMutex(&second), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateMutex(nullptr, &first), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateMutex(nullptr, &second), BML_RESULT_OK);
 
     auto [code, api_name] = RunDeadlockDetectionScenario(
         first,
@@ -384,8 +384,8 @@ TEST_F(SyncPrimitivesTest, MutexDeadlockDetectionSetsLastError) {
 TEST_F(SyncPrimitivesTest, RwLockDeadlockDetectionSetsLastError) {
     BML_RwLock first = nullptr;
     BML_RwLock second = nullptr;
-    ASSERT_EQ(kernel_->sync->CreateRwLock(&first), BML_RESULT_OK);
-    ASSERT_EQ(kernel_->sync->CreateRwLock(&second), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateRwLock(nullptr, &first), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateRwLock(nullptr, &second), BML_RESULT_OK);
 
     auto [code, api_name] = RunDeadlockDetectionScenario(
         first,
@@ -403,8 +403,8 @@ TEST_F(SyncPrimitivesTest, RwLockDeadlockDetectionSetsLastError) {
 TEST_F(SyncPrimitivesTest, SpinLockDeadlockDetectionSetsLastError) {
     BML_SpinLock first = nullptr;
     BML_SpinLock second = nullptr;
-    ASSERT_EQ(kernel_->sync->CreateSpinLock(&first), BML_RESULT_OK);
-    ASSERT_EQ(kernel_->sync->CreateSpinLock(&second), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateSpinLock(nullptr, &first), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateSpinLock(nullptr, &second), BML_RESULT_OK);
 
     auto [code, api_name] = RunDeadlockDetectionScenario(
         first,
@@ -423,9 +423,9 @@ TEST_F(SyncPrimitivesTest, CondVarWaitDeadlockDetectionWithExtraMutex) {
     BML_Mutex signal_mutex = nullptr;
     BML_Mutex payload_mutex = nullptr;
     BML_CondVar condvar = nullptr;
-    ASSERT_EQ(kernel_->sync->CreateMutex(&signal_mutex), BML_RESULT_OK);
-    ASSERT_EQ(kernel_->sync->CreateMutex(&payload_mutex), BML_RESULT_OK);
-    ASSERT_EQ(kernel_->sync->CreateCondVar(&condvar), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateMutex(nullptr, &signal_mutex), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateMutex(nullptr, &payload_mutex), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateCondVar(nullptr, &condvar), BML_RESULT_OK);
 
     std::atomic<bool> wait_entered{false};
     std::promise<BML_Result> wait_result_promise;
@@ -494,8 +494,8 @@ TEST_F(SyncPrimitivesTest, CondVarWaitDeadlockDetectionWithExtraMutex) {
 TEST_F(SyncPrimitivesTest, MutexTimeoutDeadlockDetectionSetsLastError) {
     BML_Mutex first = nullptr;
     BML_Mutex second = nullptr;
-    ASSERT_EQ(kernel_->sync->CreateMutex(&first), BML_RESULT_OK);
-    ASSERT_EQ(kernel_->sync->CreateMutex(&second), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateMutex(nullptr, &first), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateMutex(nullptr, &second), BML_RESULT_OK);
 
     std::mutex state_mutex;
     std::condition_variable state_cv;
@@ -578,8 +578,8 @@ TEST_F(SyncPrimitivesTest, MutexTimeoutDeadlockDetectionSetsLastError) {
 TEST_F(SyncPrimitivesTest, RwLockWriteTimeoutDeadlockDetectionSetsLastError) {
     BML_RwLock first = nullptr;
     BML_RwLock second = nullptr;
-    ASSERT_EQ(kernel_->sync->CreateRwLock(&first), BML_RESULT_OK);
-    ASSERT_EQ(kernel_->sync->CreateRwLock(&second), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateRwLock(nullptr, &first), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateRwLock(nullptr, &second), BML_RESULT_OK);
 
     std::mutex state_mutex;
     std::condition_variable state_cv;
@@ -662,8 +662,8 @@ TEST_F(SyncPrimitivesTest, RwLockWriteTimeoutDeadlockDetectionSetsLastError) {
 TEST_F(SyncPrimitivesTest, SemaphoreWaitDeadlockDetectionSetsLastError) {
     BML_Semaphore first = nullptr;
     BML_Semaphore second = nullptr;
-    ASSERT_EQ(kernel_->sync->CreateSemaphore(1, 1, &first), BML_RESULT_OK);
-    ASSERT_EQ(kernel_->sync->CreateSemaphore(1, 1, &second), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateSemaphore(nullptr, 1, 1, &first), BML_RESULT_OK);
+    ASSERT_EQ(kernel_->sync->CreateSemaphore(nullptr, 1, 1, &second), BML_RESULT_OK);
 
     std::mutex state_mutex;
     std::condition_variable state_cv;

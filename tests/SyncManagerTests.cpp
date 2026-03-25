@@ -59,14 +59,14 @@ protected:
 
 TEST_F(SyncManagerTests, MutexCreateAndDestroy) {
     BML_Mutex mutex = nullptr;
-    EXPECT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(&mutex));
+    EXPECT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(nullptr, &mutex));
     EXPECT_NE(mutex, nullptr);
     kernel_->sync->DestroyMutex(mutex);
 }
 
 TEST_F(SyncManagerTests, MutexLockUnlock) {
     BML_Mutex mutex = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(&mutex));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(nullptr, &mutex));
 
     kernel_->sync->LockMutex(mutex);
     kernel_->sync->UnlockMutex(mutex);
@@ -76,7 +76,7 @@ TEST_F(SyncManagerTests, MutexLockUnlock) {
 
 TEST_F(SyncManagerTests, MutexTryLock) {
     BML_Mutex mutex = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(&mutex));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(nullptr, &mutex));
 
     // Should succeed when unlocked
     EXPECT_TRUE(kernel_->sync->TryLockMutex(mutex));
@@ -87,7 +87,7 @@ TEST_F(SyncManagerTests, MutexTryLock) {
 
 TEST_F(SyncManagerTests, MutexTryLockFailsForSameThreadReentry) {
     BML_Mutex mutex = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(&mutex));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(nullptr, &mutex));
 
     kernel_->sync->LockMutex(mutex);
     EXPECT_FALSE(kernel_->sync->TryLockMutex(mutex));
@@ -98,7 +98,7 @@ TEST_F(SyncManagerTests, MutexTryLockFailsForSameThreadReentry) {
 
 TEST_F(SyncManagerTests, MutexLockTimeoutRejectsSameThreadReentry) {
     BML_Mutex mutex = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(&mutex));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(nullptr, &mutex));
 
     kernel_->sync->LockMutex(mutex);
     EXPECT_EQ(BML_RESULT_SYNC_DEADLOCK, kernel_->sync->LockMutexTimeout(mutex, 1));
@@ -109,7 +109,7 @@ TEST_F(SyncManagerTests, MutexLockTimeoutRejectsSameThreadReentry) {
 
 TEST_F(SyncManagerTests, MutexTryLockFails_WhenAlreadyLocked) {
     BML_Mutex mutex = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(&mutex));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(nullptr, &mutex));
 
     std::atomic<bool> lock_held{false};
     std::atomic<bool> try_result{true};
@@ -141,7 +141,7 @@ TEST_F(SyncManagerTests, MutexTryLockFails_WhenAlreadyLocked) {
 
 TEST_F(SyncManagerTests, MutexConcurrentAccess) {
     BML_Mutex mutex = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(&mutex));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(nullptr, &mutex));
 
     constexpr int kThreads = 4;
     constexpr int kIterations = 1000;
@@ -176,14 +176,14 @@ TEST_F(SyncManagerTests, MutexConcurrentAccess) {
 
 TEST_F(SyncManagerTests, RwLockCreateAndDestroy) {
     BML_RwLock lock = nullptr;
-    EXPECT_EQ(BML_RESULT_OK, kernel_->sync->CreateRwLock(&lock));
+    EXPECT_EQ(BML_RESULT_OK, kernel_->sync->CreateRwLock(nullptr, &lock));
     EXPECT_NE(lock, nullptr);
     kernel_->sync->DestroyRwLock(lock);
 }
 
 TEST_F(SyncManagerTests, RwLockReadLockUnlock) {
     BML_RwLock lock = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateRwLock(&lock));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateRwLock(nullptr, &lock));
 
     kernel_->sync->ReadLockRwLock(lock);
     kernel_->sync->UnlockRwLock(lock);
@@ -193,7 +193,7 @@ TEST_F(SyncManagerTests, RwLockReadLockUnlock) {
 
 TEST_F(SyncManagerTests, RwLockWriteLockUnlock) {
     BML_RwLock lock = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateRwLock(&lock));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateRwLock(nullptr, &lock));
 
     kernel_->sync->WriteLockRwLock(lock);
     kernel_->sync->UnlockRwLock(lock);
@@ -203,7 +203,7 @@ TEST_F(SyncManagerTests, RwLockWriteLockUnlock) {
 
 TEST_F(SyncManagerTests, RwLockMultipleReaders) {
     BML_RwLock lock = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateRwLock(&lock));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateRwLock(nullptr, &lock));
 
     constexpr int kReaders = 4;
     std::atomic<int> readers_in{0};
@@ -240,7 +240,7 @@ TEST_F(SyncManagerTests, RwLockMultipleReaders) {
 
 TEST_F(SyncManagerTests, RwLockTryReadLock) {
     BML_RwLock lock = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateRwLock(&lock));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateRwLock(nullptr, &lock));
 
     EXPECT_TRUE(kernel_->sync->TryReadLockRwLock(lock));
     kernel_->sync->UnlockRwLock(lock);
@@ -250,7 +250,7 @@ TEST_F(SyncManagerTests, RwLockTryReadLock) {
 
 TEST_F(SyncManagerTests, RwLockTryWriteLock) {
     BML_RwLock lock = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateRwLock(&lock));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateRwLock(nullptr, &lock));
 
     EXPECT_TRUE(kernel_->sync->TryWriteLockRwLock(lock));
     kernel_->sync->UnlockRwLock(lock);
@@ -260,7 +260,7 @@ TEST_F(SyncManagerTests, RwLockTryWriteLock) {
 
 TEST_F(SyncManagerTests, RwLockWriteLockRejectsUpgradeFromRead) {
     BML_RwLock lock = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateRwLock(&lock));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateRwLock(nullptr, &lock));
 
     kernel_->sync->ReadLockRwLock(lock);
     ClearSyncLastError();
@@ -277,14 +277,14 @@ TEST_F(SyncManagerTests, RwLockWriteLockRejectsUpgradeFromRead) {
 
 TEST_F(SyncManagerTests, SemaphoreCreateAndDestroy) {
     BML_Semaphore sem = nullptr;
-    EXPECT_EQ(BML_RESULT_OK, kernel_->sync->CreateSemaphore(1, 10, &sem));
+    EXPECT_EQ(BML_RESULT_OK, kernel_->sync->CreateSemaphore(nullptr,1, 10, &sem));
     EXPECT_NE(sem, nullptr);
     kernel_->sync->DestroySemaphore(sem);
 }
 
 TEST_F(SyncManagerTests, SemaphoreWaitAndSignal) {
     BML_Semaphore sem = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateSemaphore(1, 10, &sem));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateSemaphore(nullptr,1, 10, &sem));
 
     // Wait (acquire) the initial count - should succeed immediately
     EXPECT_EQ(BML_RESULT_OK, kernel_->sync->WaitSemaphore(sem, 0));
@@ -297,7 +297,7 @@ TEST_F(SyncManagerTests, SemaphoreWaitAndSignal) {
 
 TEST_F(SyncManagerTests, SemaphoreWaitTimeout) {
     BML_Semaphore sem = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateSemaphore(0, 10, &sem));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateSemaphore(nullptr,0, 10, &sem));
 
     // Should timeout since count is 0
     auto start = std::chrono::steady_clock::now();
@@ -312,7 +312,7 @@ TEST_F(SyncManagerTests, SemaphoreWaitTimeout) {
 
 TEST_F(SyncManagerTests, SemaphoreSignalMultiple) {
     BML_Semaphore sem = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateSemaphore(0, 10, &sem));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateSemaphore(nullptr,0, 10, &sem));
 
     // Signal 3 at once
     EXPECT_EQ(BML_RESULT_OK, kernel_->sync->SignalSemaphore(sem, 3));
@@ -334,7 +334,7 @@ TEST_F(SyncManagerTests, SemaphoreSignalMultiple) {
 
 TEST_F(SyncManagerTests, CondVarCreateAndDestroy) {
     BML_CondVar cv = nullptr;
-    EXPECT_EQ(BML_RESULT_OK, kernel_->sync->CreateCondVar(&cv));
+    EXPECT_EQ(BML_RESULT_OK, kernel_->sync->CreateCondVar(nullptr, &cv));
     EXPECT_NE(cv, nullptr);
     kernel_->sync->DestroyCondVar(cv);
 }
@@ -342,8 +342,8 @@ TEST_F(SyncManagerTests, CondVarCreateAndDestroy) {
 TEST_F(SyncManagerTests, CondVarSignalOne) {
     BML_Mutex mutex = nullptr;
     BML_CondVar cv = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(&mutex));
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateCondVar(&cv));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(nullptr, &mutex));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateCondVar(nullptr, &cv));
 
     std::atomic<bool> ready{false};
     std::atomic<bool> signaled{false};
@@ -377,8 +377,8 @@ TEST_F(SyncManagerTests, CondVarSignalOne) {
 TEST_F(SyncManagerTests, CondVarBroadcast) {
     BML_Mutex mutex = nullptr;
     BML_CondVar cv = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(&mutex));
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateCondVar(&cv));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(nullptr, &mutex));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateCondVar(nullptr, &cv));
 
     constexpr int kWaiters = 3;
     std::atomic<int> ready_count{0};
@@ -421,8 +421,8 @@ TEST_F(SyncManagerTests, CondVarBroadcast) {
 TEST_F(SyncManagerTests, CondVarTimedWait) {
     BML_Mutex mutex = nullptr;
     BML_CondVar cv = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(&mutex));
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateCondVar(&cv));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(nullptr, &mutex));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateCondVar(nullptr, &cv));
 
     kernel_->sync->LockMutex(mutex);
 
@@ -453,8 +453,8 @@ TEST_F(SyncManagerTests, CondVarWaitRejectsInvalidHandles) {
 TEST_F(SyncManagerTests, CondVarTimeoutPrecisionWithinBounds) {
     BML_Mutex mutex = nullptr;
     BML_CondVar cv = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(&mutex));
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateCondVar(&cv));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateMutex(nullptr, &mutex));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateCondVar(nullptr, &cv));
 
     kernel_->sync->LockMutex(mutex);
     const uint32_t timeout_ms = 25;
@@ -478,14 +478,14 @@ TEST_F(SyncManagerTests, CondVarTimeoutPrecisionWithinBounds) {
 
 TEST_F(SyncManagerTests, SpinLockCreateAndDestroy) {
     BML_SpinLock lock = nullptr;
-    EXPECT_EQ(BML_RESULT_OK, kernel_->sync->CreateSpinLock(&lock));
+    EXPECT_EQ(BML_RESULT_OK, kernel_->sync->CreateSpinLock(nullptr, &lock));
     EXPECT_NE(lock, nullptr);
     kernel_->sync->DestroySpinLock(lock);
 }
 
 TEST_F(SyncManagerTests, SpinLockLockUnlock) {
     BML_SpinLock lock = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateSpinLock(&lock));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateSpinLock(nullptr, &lock));
 
     kernel_->sync->LockSpinLock(lock);
     kernel_->sync->UnlockSpinLock(lock);
@@ -495,7 +495,7 @@ TEST_F(SyncManagerTests, SpinLockLockUnlock) {
 
 TEST_F(SyncManagerTests, SpinLockTryLock) {
     BML_SpinLock lock = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateSpinLock(&lock));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateSpinLock(nullptr, &lock));
 
     EXPECT_TRUE(kernel_->sync->TryLockSpinLock(lock));
     kernel_->sync->UnlockSpinLock(lock);
@@ -505,7 +505,7 @@ TEST_F(SyncManagerTests, SpinLockTryLock) {
 
 TEST_F(SyncManagerTests, SpinLockConcurrentAccess) {
     BML_SpinLock lock = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateSpinLock(&lock));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateSpinLock(nullptr, &lock));
 
     constexpr int kThreads = 4;
     constexpr int kIterations = 10000;
@@ -533,7 +533,7 @@ TEST_F(SyncManagerTests, SpinLockConcurrentAccess) {
 
 TEST_F(SyncManagerTests, SpinLockFairnessPreventsStarvation) {
     BML_SpinLock lock = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateSpinLock(&lock));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateSpinLock(nullptr, &lock));
 
     std::atomic<bool> waiter_acquired{false};
 
@@ -568,14 +568,14 @@ TEST_F(SyncManagerTests, SpinLockFairnessPreventsStarvation) {
 
 TEST_F(SyncManagerTests, TlsCreateAndDestroy) {
     BML_TlsKey key = nullptr;
-    EXPECT_EQ(BML_RESULT_OK, kernel_->sync->CreateTls(nullptr, &key));
+    EXPECT_EQ(BML_RESULT_OK, kernel_->sync->CreateTls(nullptr, nullptr, &key));
     EXPECT_NE(key, nullptr);
     kernel_->sync->DestroyTls(key);
 }
 
 TEST_F(SyncManagerTests, TlsSetGet) {
     BML_TlsKey key = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateTls(nullptr, &key));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateTls(nullptr, nullptr, &key));
 
     int value = 42;
     EXPECT_EQ(BML_RESULT_OK, kernel_->sync->SetTls(key, &value));
@@ -589,7 +589,7 @@ TEST_F(SyncManagerTests, TlsSetGet) {
 
 TEST_F(SyncManagerTests, TlsThreadLocal) {
     BML_TlsKey key = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateTls(nullptr, &key));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateTls(nullptr, nullptr, &key));
 
     int main_value = 1;
     int thread_value = 2;
@@ -629,7 +629,7 @@ TEST_F(SyncManagerTests, TlsDestructorRunsOnThreadExit) {
     };
 
     BML_TlsKey key = nullptr;
-    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateTls(destructor, &key));
+    ASSERT_EQ(BML_RESULT_OK, kernel_->sync->CreateTls(nullptr, destructor, &key));
 
     {
         std::thread worker([&] {
@@ -648,27 +648,27 @@ TEST_F(SyncManagerTests, TlsDestructorRunsOnThreadExit) {
 // ============================================================================
 
 TEST_F(SyncManagerTests, MutexCreateRejectsNull) {
-    EXPECT_NE(BML_RESULT_OK, kernel_->sync->CreateMutex(nullptr));
+    EXPECT_NE(BML_RESULT_OK, kernel_->sync->CreateMutex(nullptr, nullptr));
 }
 
 TEST_F(SyncManagerTests, RwLockCreateRejectsNull) {
-    EXPECT_NE(BML_RESULT_OK, kernel_->sync->CreateRwLock(nullptr));
+    EXPECT_NE(BML_RESULT_OK, kernel_->sync->CreateRwLock(nullptr, nullptr));
 }
 
 TEST_F(SyncManagerTests, SemaphoreCreateRejectsNull) {
-    EXPECT_NE(BML_RESULT_OK, kernel_->sync->CreateSemaphore(1, 10, nullptr));
+    EXPECT_NE(BML_RESULT_OK, kernel_->sync->CreateSemaphore(nullptr, 1, 10, nullptr));
 }
 
 TEST_F(SyncManagerTests, CondVarCreateRejectsNull) {
-    EXPECT_NE(BML_RESULT_OK, kernel_->sync->CreateCondVar(nullptr));
+    EXPECT_NE(BML_RESULT_OK, kernel_->sync->CreateCondVar(nullptr, nullptr));
 }
 
 TEST_F(SyncManagerTests, SpinLockCreateRejectsNull) {
-    EXPECT_NE(BML_RESULT_OK, kernel_->sync->CreateSpinLock(nullptr));
+    EXPECT_NE(BML_RESULT_OK, kernel_->sync->CreateSpinLock(nullptr, nullptr));
 }
 
 TEST_F(SyncManagerTests, TlsCreateRejectsNull) {
-    EXPECT_NE(BML_RESULT_OK, kernel_->sync->CreateTls(nullptr, nullptr));
+    EXPECT_NE(BML_RESULT_OK, kernel_->sync->CreateTls(nullptr, nullptr, nullptr));
 }
 
 TEST_F(SyncManagerTests, MutexLockRejectsInvalidHandle) {
@@ -691,7 +691,7 @@ TEST_F(SyncManagerTests, SemaphoreWaitRejectsInvalidHandle) {
 TEST_F(SyncManagerTests, SemaphoreRejectsInvalidCounts) {
     BML_Semaphore sem = nullptr;
     // Initial count > max count should fail
-    EXPECT_NE(BML_RESULT_OK, kernel_->sync->CreateSemaphore(10, 5, &sem));
+    EXPECT_NE(BML_RESULT_OK, kernel_->sync->CreateSemaphore(nullptr,10, 5, &sem));
 }
 
 } // namespace

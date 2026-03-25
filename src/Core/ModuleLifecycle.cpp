@@ -12,6 +12,7 @@
 #include "LeaseManager.h"
 #include "LocaleManager.h"
 #include "Logging.h"
+#include "SyncManager.h"
 #include "TimerManager.h"
 
 namespace BML::Core {
@@ -102,6 +103,9 @@ namespace BML::Core {
         kernel.locale->CleanupModule(module_id);
         kernel.timers->CancelAllForModule(module_id);
         ImcCleanupOwner(mod);
+        if (kernel.sync) {
+            kernel.sync->CleanupOwner(mod);
+        }
         kernel.interface_registry->UnregisterByProvider(module_id);
         kernel.leases->CleanupConsumer(module_id);
         kernel.leases->CleanupProvider(module_id);

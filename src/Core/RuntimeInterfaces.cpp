@@ -406,9 +406,9 @@ namespace BML::Core {
                                               : BML_RESULT_INVALID_CONTEXT;
         }
 
-        BML_Result BML_API_MutexCreate(BML_Context ctx, BML_Mod /*owner*/, BML_Mutex *out_mutex) {
+        BML_Result BML_API_MutexCreate(BML_Context ctx, BML_Mod owner, BML_Mutex *out_mutex) {
             auto *kernel = KernelFromContextHandle(ctx);
-            return (kernel && kernel->sync) ? kernel->sync->CreateMutex(out_mutex)
+            return (kernel && kernel->sync) ? kernel->sync->CreateMutex(owner, out_mutex)
                                             : BML_RESULT_INVALID_CONTEXT;
         }
 
@@ -446,9 +446,9 @@ namespace BML::Core {
             }
         }
 
-        BML_Result BML_API_RwLockCreate(BML_Context ctx, BML_Mod /*owner*/, BML_RwLock *out_lock) {
+        BML_Result BML_API_RwLockCreate(BML_Context ctx, BML_Mod owner, BML_RwLock *out_lock) {
             auto *kernel = KernelFromContextHandle(ctx);
-            return (kernel && kernel->sync) ? kernel->sync->CreateRwLock(out_lock)
+            return (kernel && kernel->sync) ? kernel->sync->CreateRwLock(owner, out_lock)
                                             : BML_RESULT_INVALID_CONTEXT;
         }
 
@@ -521,13 +521,13 @@ namespace BML::Core {
         }
 
         BML_Result BML_API_SemaphoreCreate(BML_Context ctx,
-                                                  BML_Mod /*owner*/,
+                                                  BML_Mod owner,
                                                   uint32_t initial_count,
                                                   uint32_t max_count,
                                                   BML_Semaphore *out_semaphore) {
             auto *kernel = KernelFromContextHandle(ctx);
             return (kernel && kernel->sync)
-                ? kernel->sync->CreateSemaphore(initial_count, max_count, out_semaphore)
+                ? kernel->sync->CreateSemaphore(owner, initial_count, max_count, out_semaphore)
                 : BML_RESULT_INVALID_CONTEXT;
         }
 
@@ -555,10 +555,11 @@ namespace BML::Core {
         }
 
         BML_Result BML_API_TlsCreate(BML_Context ctx,
+                                            BML_Mod owner,
                                             BML_TlsDestructor destructor,
                                             BML_TlsKey *out_key) {
             auto *kernel = KernelFromContextHandle(ctx);
-            return (kernel && kernel->sync) ? kernel->sync->CreateTls(destructor, out_key)
+            return (kernel && kernel->sync) ? kernel->sync->CreateTls(owner, destructor, out_key)
                                             : BML_RESULT_INVALID_CONTEXT;
         }
 
@@ -580,9 +581,9 @@ namespace BML::Core {
                                             : BML_RESULT_INVALID_CONTEXT;
         }
 
-        BML_Result BML_API_CondVarCreate(BML_Context ctx, BML_Mod /*owner*/, BML_CondVar *out_condvar) {
+        BML_Result BML_API_CondVarCreate(BML_Context ctx, BML_Mod owner, BML_CondVar *out_condvar) {
             auto *kernel = KernelFromContextHandle(ctx);
-            return (kernel && kernel->sync) ? kernel->sync->CreateCondVar(out_condvar)
+            return (kernel && kernel->sync) ? kernel->sync->CreateCondVar(owner, out_condvar)
                                             : BML_RESULT_INVALID_CONTEXT;
         }
 
@@ -621,9 +622,9 @@ namespace BML::Core {
                                             : BML_RESULT_INVALID_CONTEXT;
         }
 
-        BML_Result BML_API_SpinLockCreate(BML_Context ctx, BML_Mod /*owner*/, BML_SpinLock *out_lock) {
+        BML_Result BML_API_SpinLockCreate(BML_Context ctx, BML_Mod owner, BML_SpinLock *out_lock) {
             auto *kernel = KernelFromContextHandle(ctx);
-            return (kernel && kernel->sync) ? kernel->sync->CreateSpinLock(out_lock)
+            return (kernel && kernel->sync) ? kernel->sync->CreateSpinLock(owner, out_lock)
                                             : BML_RESULT_INVALID_CONTEXT;
         }
 
