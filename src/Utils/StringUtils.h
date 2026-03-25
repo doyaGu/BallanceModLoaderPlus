@@ -9,6 +9,13 @@
 #include <cctype>
 
 namespace utils {
+    namespace detail {
+        inline const std::locale &DefaultLocale() {
+            static const std::locale loc;
+            return loc;
+        }
+    }
+
     // String splitting functions with multiple overloads
     template <typename StringT>
     std::vector<StringT> SplitString(const StringT &str, const StringT &delim) {
@@ -57,10 +64,11 @@ namespace utils {
     template <typename StringT>
     void TrimString(StringT &s) {
         using CharT = typename StringT::value_type;
+        const auto &loc = detail::DefaultLocale();
         s.erase(s.begin(), std::find_if(s.begin(), s.end(),
-                                        [](CharT c) { return !std::isspace(c, std::locale()); }));
+                                        [&loc](CharT c) { return !std::isspace(c, loc); }));
         s.erase(std::find_if(s.rbegin(), s.rend(),
-                             [](CharT c) { return !std::isspace(c, std::locale()); }).base(), s.end());
+                             [&loc](CharT c) { return !std::isspace(c, loc); }).base(), s.end());
     }
 
     template <typename StringT>
@@ -99,9 +107,10 @@ namespace utils {
     template <typename StringT>
     StringT ToLower(const StringT &s) {
         StringT result = s;
+        const auto &loc = detail::DefaultLocale();
         std::transform(result.begin(), result.end(), result.begin(),
-                       [](typename StringT::value_type c) {
-                           return std::tolower(c, std::locale());
+                       [&loc](typename StringT::value_type c) {
+                           return std::tolower(c, loc);
                        });
         return result;
     }
