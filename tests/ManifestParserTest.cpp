@@ -33,8 +33,6 @@ protected:
 
 TEST_F(ManifestParserFixture, ParsesValidManifest) {
     constexpr auto kManifest = R"TOML(
-capabilities = ["imc", "logging"]
-
 [package]
 id = "example.mod"
 name = "Example Mod"
@@ -42,6 +40,7 @@ version = "1.2.3"
 entry = "Example.dll"
 description = "Sample"
 authors = ["Alice", "Bob"]
+capabilities = ["imc", "logging"]
 
 [dependencies]
 core = "^1.0"
@@ -69,9 +68,9 @@ core = "^1.0"
     EXPECT_EQ(manifest.dependencies[1].id, "optional.mod");
     EXPECT_TRUE(manifest.dependencies[1].optional);
 
-    ASSERT_EQ(manifest.capabilities.size(), 2u);
-    EXPECT_EQ(manifest.capabilities[0], "imc");
-    EXPECT_EQ(manifest.capabilities[1], "logging");
+    ASSERT_EQ(manifest.package.capabilities.size(), 2u);
+    EXPECT_EQ(manifest.package.capabilities[0], "imc");
+    EXPECT_EQ(manifest.package.capabilities[1], "logging");
 
     EXPECT_EQ(std::filesystem::path(manifest.manifest_path).filename(), L"mod.toml");
     EXPECT_EQ(std::filesystem::path(manifest.directory), temp_dir);
@@ -88,14 +87,14 @@ TEST_F(ManifestParserFixture, FailsWithoutPackageTable) {
     ASSERT_TRUE(error.file.has_value());
 }
 
-TEST_F(ManifestParserFixture, ParsesProvidesStringShorthand) {
+TEST_F(ManifestParserFixture, ParsesInterfacesStringShorthand) {
     constexpr auto kManifest = R"TOML(
 [package]
 id = "provider.mod"
 name = "Provider"
 version = "1.0.0"
 
-[provides]
+[interfaces]
 "foo.bar" = "1.0.0"
 "baz.qux" = "2.3.4"
 )TOML";
@@ -106,11 +105,11 @@ version = "1.0.0"
     BML::Core::ManifestParseError error;
 
     ASSERT_TRUE(parser.ParseFile(path.wstring(), manifest, error)) << error.message;
-    ASSERT_EQ(manifest.provides.size(), 2u);
+    ASSERT_EQ(manifest.interfaces.size(), 2u);
 
     // TOML table iteration order is alphabetical, so find by interface_id
-    auto findIface = [&](const std::string &id) -> const BML::Core::ModProvidedInterface * {
-        for (const auto &p : manifest.provides) {
+    auto findIface = [&](const std::string &id) -> const BML::Core::ModInterfaceExport * {
+        for (const auto &p : manifest.interfaces) {
             if (p.interface_id == id) return &p;
         }
         return nullptr;
@@ -130,14 +129,14 @@ version = "1.0.0"
     EXPECT_EQ(bazQux->parsed_version.patch, 4);
 }
 
-TEST_F(ManifestParserFixture, ParsesProvidesTableForm) {
+TEST_F(ManifestParserFixture, ParsesInterfacesTableForm) {
     constexpr auto kManifest = R"TOML(
 [package]
 id = "provider.mod"
 name = "Provider"
 version = "1.0.0"
 
-[provides]
+[interfaces]
 "foo.bar" = { version = "1.0.0", description = "Foo Bar API" }
 )TOML";
 
@@ -147,20 +146,20 @@ version = "1.0.0"
     BML::Core::ManifestParseError error;
 
     ASSERT_TRUE(parser.ParseFile(path.wstring(), manifest, error)) << error.message;
-    ASSERT_EQ(manifest.provides.size(), 1u);
-    EXPECT_EQ(manifest.provides[0].interface_id, "foo.bar");
-    EXPECT_EQ(manifest.provides[0].version, "1.0.0");
-    EXPECT_EQ(manifest.provides[0].description, "Foo Bar API");
+    ASSERT_EQ(manifest.interfaces.size(), 1u);
+    EXPECT_EQ(manifest.interfaces[0].interface_id, "foo.bar");
+    EXPECT_EQ(manifest.interfaces[0].version, "1.0.0");
+    EXPECT_EQ(manifest.interfaces[0].description, "Foo Bar API");
 }
 
-TEST_F(ManifestParserFixture, RejectsProvidesTableMissingVersion) {
+TEST_F(ManifestParserFixture, RejectsInterfacesTableMissingVersion) {
     constexpr auto kManifest = R"TOML(
 [package]
 id = "bad.mod"
 name = "Bad"
 version = "1.0.0"
 
-[provides]
+[interfaces]
 "foo.bar" = { description = "Missing version" }
 )TOML";
 
@@ -173,14 +172,14 @@ version = "1.0.0"
     EXPECT_NE(error.message.find("version"), std::string::npos);
 }
 
-TEST_F(ManifestParserFixture, RejectsProvidesInvalidSemver) {
+TEST_F(ManifestParserFixture, RejectsInterfacesInvalidSemver) {
     constexpr auto kManifest = R"TOML(
 [package]
 id = "bad.mod"
 name = "Bad"
 version = "1.0.0"
 
-[provides]
+[interfaces]
 "foo.bar" = "not_a_version"
 )TOML";
 
@@ -193,14 +192,14 @@ version = "1.0.0"
     EXPECT_NE(error.message.find("invalid version"), std::string::npos);
 }
 
-TEST_F(ManifestParserFixture, RejectsProvidesDuplicateInterfaceId) {
+TEST_F(ManifestParserFixture, RejectsInterfacesDuplicateInterfaceId) {
     constexpr auto kManifest = R"TOML(
 [package]
 id = "bad.mod"
 name = "Bad"
 version = "1.0.0"
 
-[provides]
+[interfaces]
 "foo.bar" = "1.0.0"
 "foo.bar" = "2.0.0"
 )TOML";
@@ -310,7 +309,7 @@ version = "1.0.0"
     BML::Core::ManifestParseError error;
 
     ASSERT_TRUE(parser.ParseFile(path.wstring(), manifest, error)) << error.message;
-    EXPECT_TRUE(manifest.provides.empty());
+    EXPECT_TRUE(manifest.interfaces.empty());
 }
 
 TEST_F(ManifestParserFixture, RejectsInvalidDependencyShape) {
@@ -331,6 +330,262 @@ weird = 42
 
     EXPECT_FALSE(parser.ParseFile(path.wstring(), manifest, error));
     EXPECT_NE(error.message.find("Dependency 'weird'"), std::string::npos);
+}
+
+TEST_F(ManifestParserFixture, RejectsPackageIdContainingWhitespace) {
+    constexpr auto kManifest = R"TOML(
+[package]
+id = "bad mod"
+name = "Broken"
+version = "1.0.0"
+)TOML";
+
+    auto path = WriteManifest(kManifest);
+    BML::Core::ManifestParser parser;
+    BML::Core::ModManifest manifest;
+    BML::Core::ManifestParseError error;
+
+    EXPECT_FALSE(parser.ParseFile(path.wstring(), manifest, error));
+    EXPECT_NE(error.message.find("[package] id"), std::string::npos);
+    EXPECT_NE(error.message.find("whitespace"), std::string::npos);
+}
+
+TEST_F(ManifestParserFixture, RejectsDependencyIdContainingWhitespace) {
+    constexpr auto kManifest = R"TOML(
+[package]
+id = "bad.deps"
+name = "Broken"
+version = "1.0.0"
+
+[dependencies]
+"bad dep" = ">=1.0.0"
+)TOML";
+
+    auto path = WriteManifest(kManifest);
+    BML::Core::ManifestParser parser;
+    BML::Core::ModManifest manifest;
+    BML::Core::ManifestParseError error;
+
+    EXPECT_FALSE(parser.ParseFile(path.wstring(), manifest, error));
+    EXPECT_NE(error.message.find("Dependency id"), std::string::npos);
+    EXPECT_NE(error.message.find("whitespace"), std::string::npos);
+}
+
+TEST_F(ManifestParserFixture, RejectsConflictIdContainingWhitespace) {
+    constexpr auto kManifest = R"TOML(
+[package]
+id = "bad.conflicts"
+name = "Broken"
+version = "1.0.0"
+
+[conflicts]
+"bad conflict" = "*"
+)TOML";
+
+    auto path = WriteManifest(kManifest);
+    BML::Core::ManifestParser parser;
+    BML::Core::ModManifest manifest;
+    BML::Core::ManifestParseError error;
+
+    EXPECT_FALSE(parser.ParseFile(path.wstring(), manifest, error));
+    EXPECT_NE(error.message.find("Conflict id"), std::string::npos);
+    EXPECT_NE(error.message.find("whitespace"), std::string::npos);
+}
+
+TEST_F(ManifestParserFixture, RejectsRequiresInterfaceIdContainingWhitespace) {
+    constexpr auto kManifest = R"TOML(
+[package]
+id = "bad.requires"
+name = "Broken"
+version = "1.0.0"
+
+[requires]
+"bad interface" = ">=1.0.0"
+)TOML";
+
+    auto path = WriteManifest(kManifest);
+    BML::Core::ManifestParser parser;
+    BML::Core::ModManifest manifest;
+    BML::Core::ManifestParseError error;
+
+    EXPECT_FALSE(parser.ParseFile(path.wstring(), manifest, error));
+    EXPECT_NE(error.message.find("[requires] interface id"), std::string::npos);
+    EXPECT_NE(error.message.find("whitespace"), std::string::npos);
+}
+
+TEST_F(ManifestParserFixture, RejectsAuthorsArrayWithEmptyEntry) {
+    constexpr auto kManifest = R"TOML(
+[package]
+id = "bad.authors"
+name = "Broken Authors"
+version = "1.0.0"
+authors = ["Alice", ""]
+)TOML";
+
+    auto path = WriteManifest(kManifest);
+    BML::Core::ManifestParser parser;
+    BML::Core::ModManifest manifest;
+    BML::Core::ManifestParseError error;
+
+    EXPECT_FALSE(parser.ParseFile(path.wstring(), manifest, error));
+    EXPECT_NE(error.message.find("authors"), std::string::npos);
+}
+
+TEST_F(ManifestParserFixture, RejectsAuthorsArrayWithNonStringEntry) {
+    constexpr auto kManifest = R"TOML(
+[package]
+id = "bad.authors"
+name = "Broken Authors"
+version = "1.0.0"
+authors = ["Alice", 42]
+)TOML";
+
+    auto path = WriteManifest(kManifest);
+    BML::Core::ManifestParser parser;
+    BML::Core::ModManifest manifest;
+    BML::Core::ManifestParseError error;
+
+    EXPECT_FALSE(parser.ParseFile(path.wstring(), manifest, error));
+    EXPECT_NE(error.message.find("authors"), std::string::npos);
+}
+
+TEST_F(ManifestParserFixture, RejectsTopLevelCapabilities) {
+    constexpr auto kManifest = R"TOML(
+capabilities = ["imc", "logging"]
+
+[package]
+id = "bad.capabilities"
+name = "Broken Capabilities"
+version = "1.0.0"
+)TOML";
+
+    auto path = WriteManifest(kManifest);
+    BML::Core::ManifestParser parser;
+    BML::Core::ModManifest manifest;
+    BML::Core::ManifestParseError error;
+
+    EXPECT_FALSE(parser.ParseFile(path.wstring(), manifest, error));
+    EXPECT_NE(error.message.find("capabilities"), std::string::npos);
+    EXPECT_NE(error.message.find("top-level table"), std::string::npos);
+}
+
+TEST_F(ManifestParserFixture, RejectsAssetsWhenNotATable) {
+    constexpr auto kManifest = R"TOML(
+assets = "assets"
+
+[package]
+id = "bad.assets"
+name = "Broken Assets"
+version = "1.0.0"
+)TOML";
+
+    auto path = WriteManifest(kManifest);
+    BML::Core::ManifestParser parser;
+    BML::Core::ModManifest manifest;
+    BML::Core::ManifestParseError error;
+
+    EXPECT_FALSE(parser.ParseFile(path.wstring(), manifest, error));
+    EXPECT_NE(error.message.find("[assets]"), std::string::npos);
+}
+
+TEST_F(ManifestParserFixture, RejectsAssetsMountWhenNotANonEmptyString) {
+    constexpr auto kManifest = R"TOML(
+[package]
+id = "bad.assets"
+name = "Broken Assets"
+version = "1.0.0"
+
+[assets]
+mount = ""
+)TOML";
+
+    auto path = WriteManifest(kManifest);
+    BML::Core::ManifestParser parser;
+    BML::Core::ModManifest manifest;
+    BML::Core::ManifestParseError error;
+
+    EXPECT_FALSE(parser.ParseFile(path.wstring(), manifest, error));
+    EXPECT_NE(error.message.find("mount"), std::string::npos);
+}
+
+TEST_F(ManifestParserFixture, RejectsEntryPathEscapingModuleDirectory) {
+    constexpr auto kManifest = R"TOML(
+[package]
+id = "bad.entry"
+name = "Broken Entry"
+version = "1.0.0"
+entry = "../outside.dll"
+)TOML";
+
+    auto path = WriteManifest(kManifest);
+    BML::Core::ManifestParser parser;
+    BML::Core::ModManifest manifest;
+    BML::Core::ManifestParseError error;
+
+    EXPECT_FALSE(parser.ParseFile(path.wstring(), manifest, error));
+    EXPECT_NE(error.message.find("[package] entry"), std::string::npos);
+    EXPECT_NE(error.message.find("module directory"), std::string::npos);
+}
+
+TEST_F(ManifestParserFixture, RejectsEntryPathWhenAbsolute) {
+    constexpr auto kManifest = R"TOML(
+[package]
+id = "bad.entry"
+name = "Broken Entry"
+version = "1.0.0"
+entry = "C:/absolute/outside.dll"
+)TOML";
+
+    auto path = WriteManifest(kManifest);
+    BML::Core::ManifestParser parser;
+    BML::Core::ModManifest manifest;
+    BML::Core::ManifestParseError error;
+
+    EXPECT_FALSE(parser.ParseFile(path.wstring(), manifest, error));
+    EXPECT_NE(error.message.find("[package] entry"), std::string::npos);
+    EXPECT_NE(error.message.find("relative"), std::string::npos);
+}
+
+TEST_F(ManifestParserFixture, RejectsAssetsMountPathEscapingModuleDirectory) {
+    constexpr auto kManifest = R"TOML(
+[package]
+id = "bad.assets"
+name = "Broken Assets"
+version = "1.0.0"
+
+[assets]
+mount = "../assets"
+)TOML";
+
+    auto path = WriteManifest(kManifest);
+    BML::Core::ManifestParser parser;
+    BML::Core::ModManifest manifest;
+    BML::Core::ManifestParseError error;
+
+    EXPECT_FALSE(parser.ParseFile(path.wstring(), manifest, error));
+    EXPECT_NE(error.message.find("[assets] mount"), std::string::npos);
+    EXPECT_NE(error.message.find("module directory"), std::string::npos);
+}
+
+TEST_F(ManifestParserFixture, RejectsAssetsMountWhenAbsolute) {
+    constexpr auto kManifest = R"TOML(
+[package]
+id = "bad.assets"
+name = "Broken Assets"
+version = "1.0.0"
+
+[assets]
+mount = "C:/absolute/assets"
+)TOML";
+
+    auto path = WriteManifest(kManifest);
+    BML::Core::ManifestParser parser;
+    BML::Core::ModManifest manifest;
+    BML::Core::ManifestParseError error;
+
+    EXPECT_FALSE(parser.ParseFile(path.wstring(), manifest, error));
+    EXPECT_NE(error.message.find("[assets] mount"), std::string::npos);
+    EXPECT_NE(error.message.find("relative"), std::string::npos);
 }
 
 TEST_F(ManifestParserFixture, RequiresEmptyVersionShowsInterfaceContext) {
@@ -409,6 +664,88 @@ deep_value = "found it"
     ASSERT_NE(it, manifest.custom_fields.end());
     ASSERT_TRUE(std::holds_alternative<std::string>(it->second));
     EXPECT_EQ(std::get<std::string>(it->second), "found it");
+}
+
+TEST_F(ManifestParserFixture, RejectsUnknownTopLevelScalarCustomField) {
+    constexpr auto kManifest = R"TOML(
+custom_value = "hello"
+
+[package]
+id = "custom.mod"
+name = "Custom"
+version = "1.0.0"
+)TOML";
+
+    auto path = WriteManifest(kManifest);
+    BML::Core::ManifestParser parser;
+    BML::Core::ModManifest manifest;
+    BML::Core::ManifestParseError error;
+
+    EXPECT_FALSE(parser.ParseFile(path.wstring(), manifest, error));
+    EXPECT_NE(error.message.find("custom_value"), std::string::npos);
+    EXPECT_NE(error.message.find("top-level table"), std::string::npos);
+}
+
+TEST_F(ManifestParserFixture, RejectsUnknownTopLevelArrayCustomField) {
+    constexpr auto kManifest = R"TOML(
+custom_values = ["a", "b"]
+
+[package]
+id = "custom.mod"
+name = "Custom"
+version = "1.0.0"
+)TOML";
+
+    auto path = WriteManifest(kManifest);
+    BML::Core::ManifestParser parser;
+    BML::Core::ModManifest manifest;
+    BML::Core::ManifestParseError error;
+
+    EXPECT_FALSE(parser.ParseFile(path.wstring(), manifest, error));
+    EXPECT_NE(error.message.find("custom_values"), std::string::npos);
+    EXPECT_NE(error.message.find("top-level table"), std::string::npos);
+}
+
+TEST_F(ManifestParserFixture, RejectsCustomFieldArrayValues) {
+    constexpr auto kManifest = R"TOML(
+[package]
+id = "custom.mod"
+name = "Custom"
+version = "1.0.0"
+
+[mymod]
+values = ["a", "b"]
+)TOML";
+
+    auto path = WriteManifest(kManifest);
+    BML::Core::ManifestParser parser;
+    BML::Core::ModManifest manifest;
+    BML::Core::ManifestParseError error;
+
+    EXPECT_FALSE(parser.ParseFile(path.wstring(), manifest, error));
+    EXPECT_NE(error.message.find("mymod.values"), std::string::npos);
+    EXPECT_NE(error.message.find("arrays"), std::string::npos);
+}
+
+TEST_F(ManifestParserFixture, RejectsCustomFieldUnsupportedDateTimeValues) {
+    constexpr auto kManifest = R"TOML(
+[package]
+id = "custom.mod"
+name = "Custom"
+version = "1.0.0"
+
+[mymod]
+released_at = 2025-03-24T12:34:56Z
+)TOML";
+
+    auto path = WriteManifest(kManifest);
+    BML::Core::ManifestParser parser;
+    BML::Core::ModManifest manifest;
+    BML::Core::ManifestParseError error;
+
+    EXPECT_FALSE(parser.ParseFile(path.wstring(), manifest, error));
+    EXPECT_NE(error.message.find("mymod.released_at"), std::string::npos);
+    EXPECT_NE(error.message.find("unsupported"), std::string::npos);
 }
 
 TEST_F(ManifestParserFixture, CustomFieldsIgnoreKnownSections) {
