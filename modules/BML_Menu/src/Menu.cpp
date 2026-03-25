@@ -444,6 +444,65 @@ namespace Menu {
         }
     }
 
+    void RenderMarqueeText(
+        ImDrawList *drawList,
+        const ImVec2 &min,
+        const ImVec2 &max,
+        const char *text,
+        const ImVec2 &textSize,
+        bool active) {
+        if (!text || !text[0]) {
+            return;
+        }
+
+        const float width = max.x - min.x;
+        if (!active || textSize.x <= width) {
+            RenderClippedText(drawList, min, max, text, textSize, ImVec2(0.5f, 0.5f));
+            return;
+        }
+
+        const BML_ImGuiApi *api = GetImGuiApi();
+        if (!api || !api->draw_list->AddText_Vec2) {
+            return;
+        }
+
+        const float overflow = textSize.x - width;
+        const float gap = ImGui::GetFontSize() * 2.0f;
+        const float cycleWidth = overflow + gap;
+        const float scrollSpeed = 45.0f;
+        const float offset = std::fmod(static_cast<float>(ImGui::GetTime()) * scrollSpeed, cycleWidth);
+        const float posY = min.y + ((max.y - min.y) - textSize.y) * 0.5f;
+
+        if (api->draw_list->PushClipRect) {
+            api->draw_list->PushClipRect(
+                drawList,
+                bml::imgui::detail::ToCValue<ImVec2, ImVec2_c>(min),
+                bml::imgui::detail::ToCValue<ImVec2, ImVec2_c>(max),
+                true);
+        }
+
+        const ImU32 color = ImGui::GetColorU32(ImGuiCol_Text);
+        const ImVec2 firstPos(min.x - offset, posY);
+        api->draw_list->AddText_Vec2(
+            drawList,
+            bml::imgui::detail::ToCValue<ImVec2, ImVec2_c>(firstPos),
+            color,
+            text,
+            nullptr);
+
+        const ImVec2 secondPos(firstPos.x + textSize.x + gap, posY);
+        api->draw_list->AddText_Vec2(
+            drawList,
+            bml::imgui::detail::ToCValue<ImVec2, ImVec2_c>(secondPos),
+            color,
+            text,
+            nullptr);
+
+        if (api->draw_list->PopClipRect) {
+            api->draw_list->PopClipRect(drawList);
+        }
+    }
+
     void AddButtonImage(ImDrawList *drawList, const ImVec2 &bbMin, const ImVec2 &bbMax, ButtonType type, int state, const char *text, const ImVec2 &text_align) {
         AddButtonImage(drawList, bbMin, bbMax, type, state);
         if (text && text[0] != '\0') {
@@ -718,7 +777,78 @@ namespace Menu {
     }
 
     bool RadioButton(const char *label, int *current_item, const char *const items[], int items_count) {
-        return false;
+        if (!label || !current_item || !items || items_count <= 0) {
+            return false;
+        }
+
+        const ImVec2 textSize = ImGui::CalcTextSize(label, nullptr, true);
+
+        ImVec2 size = GetButtonSize(BUTTON_OPTION);
+        const ImVec2 pos = ImGui::GetCursorScreenPos();
+
+        int selectedItem = *current_item;
+        if (selectedItem < 0 || selectedItem >= items_count) {
+            selectedItem = 0;
+        }
+
+        ImGui::BeginGroup();
+
+        ImGui::InvisibleButton(label, size);
+        const bool hovered = ImGui::IsItemHovered();
+
+        const ImVec2 bbMin = pos;
+        const ImVec2 bbMax(pos.x + size.x, pos.y + size.y);
+        AddButtonImage(ImGui::GetWindowDrawList(), bbMin, bbMax, BUTTON_OPTION, hovered);
+
+        float indent = GetButtonIndent(BUTTON_OPTION);
+        const ImVec2 min(bbMin.x + indent, bbMin.y);
+        const ImVec2 max(bbMax.x - indent, bbMax.y);
+        RenderClippedText(ImGui::GetWindowDrawList(), min, max, label, textSize, ImVec2(0.5f, 0.21f));
+
+        ImVec2 backup = ImGui::GetCursorScreenPos();
+        bool changed = false;
+        const char *currentText = items[selectedItem] ? items[selectedItem] : "";
+
+        const ImVec2 leftPos(pos.x + size.x * 0.15f, pos.y + size.y * 0.43f);
+        const ImVec2 rightPos(pos.x + size.x * 0.75f, pos.y + size.y * 0.43f);
+        const ImVec2 textMin(pos.x + size.x * 0.25f, pos.y + size.y * 0.39f);
+        const ImVec2 textMax(pos.x + size.x * 0.73f, pos.y + size.y * 0.92f);
+        const ImVec2 currentTextSize = ImGui::CalcTextSize(currentText, nullptr, true);
+        bool marqueeActive = hovered;
+
+        ImGui::PushID(label);
+        ImGui::SetCursorScreenPos(leftPos);
+        if (MinusButton("##RadioPrev")) {
+            selectedItem = (selectedItem + items_count - 1) % items_count;
+            changed = true;
+        }
+        marqueeActive = marqueeActive || ImGui::IsItemHovered() || ImGui::IsItemActive() || ImGui::IsItemFocused();
+
+        ImGui::SetCursorScreenPos(rightPos);
+        if (PlusButton("##RadioNext")) {
+            selectedItem = (selectedItem + 1) % items_count;
+            changed = true;
+        }
+        marqueeActive = marqueeActive || ImGui::IsItemHovered() || ImGui::IsItemActive() || ImGui::IsItemFocused();
+
+        RenderMarqueeText(
+            ImGui::GetWindowDrawList(),
+            textMin,
+            textMax,
+            currentText,
+            currentTextSize,
+            marqueeActive);
+        ImGui::PopID();
+
+        ImGui::SetCursorScreenPos(backup);
+        ImGui::Dummy(ImVec2(0.0f, 0.0f));
+        ImGui::EndGroup();
+
+        if (changed) {
+            *current_item = selectedItem;
+        }
+
+        return changed;
     }
 
     bool InputTextButton(const char *label, char *buf, size_t buf_size, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void *user_data) {

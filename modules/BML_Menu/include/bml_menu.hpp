@@ -49,12 +49,6 @@ namespace Menu {
             return bml::AcquireInterface<BML_MenuApi>(
                 ResolveHostMenuOwner(), BML_MENU_INTERFACE_ID, 1, 0, 0);
         }
-
-        inline const BML_ImGuiApi *GetCurrentImGuiApi() {
-            const BML_ImGuiApi *api = bml::imgui::GetCurrentApi();
-            assert(api != nullptr && "Menu functions require BML_IMGUI_SCOPE_FROM_CONTEXT(ctx)");
-            return api;
-        }
     } // namespace detail
 
     template <typename Func>
@@ -198,98 +192,105 @@ namespace Menu {
 
     inline bool InitTextures(CKContext *context) {
         auto api = detail::AcquireMenu();
-        return api && api->InitTextures ? api->InitTextures(context) : false;
+        return api && api->resources && api->resources->InitTextures ? api->resources->InitTextures(context) : false;
     }
 
     inline bool InitMaterials(CKContext *context) {
         auto api = detail::AcquireMenu();
-        return api && api->InitMaterials ? api->InitMaterials(context) : false;
+        return api && api->resources && api->resources->InitMaterials ? api->resources->InitMaterials(context) : false;
     }
 
     inline bool InitSounds(CKContext *context) {
         auto api = detail::AcquireMenu();
-        return api && api->InitSounds ? api->InitSounds(context) : false;
+        return api && api->resources && api->resources->InitSounds ? api->resources->InitSounds(context) : false;
     }
 
     inline CKTexture *LoadTexture(CKContext *context, const char *id, const char *filename, int slot = 0) {
         auto api = detail::AcquireMenu();
-        return api && api->LoadTexture ? api->LoadTexture(context, id, filename, slot) : nullptr;
-    }
-
-    inline ImVec2 GetMenuPos() {
-        auto api = detail::AcquireMenu();
-        return api && api->GetMenuPos ? api->GetMenuPos(detail::GetCurrentImGuiApi()) : ImVec2();
-    }
-
-    inline ImVec2 GetMenuSize() {
-        auto api = detail::AcquireMenu();
-        return api && api->GetMenuSize ? api->GetMenuSize(detail::GetCurrentImGuiApi()) : ImVec2();
-    }
-
-    inline ImVec4 GetMenuColor() {
-        auto api = detail::AcquireMenu();
-        return api && api->GetMenuColor ? api->GetMenuColor() : ImVec4();
-    }
-
-    inline ImVec2 GetButtonSize(ButtonType type) {
-        auto api = detail::AcquireMenu();
-        return api && api->GetButtonSize ? api->GetButtonSize(type, detail::GetCurrentImGuiApi()) : ImVec2();
-    }
-
-    inline float GetButtonIndent(ButtonType type) {
-        auto api = detail::AcquireMenu();
-        return api && api->GetButtonIndent ? api->GetButtonIndent(type, detail::GetCurrentImGuiApi()) : 0.0f;
-    }
-
-    inline ImVec2 GetButtonSizeInCoord(ButtonType type) {
-        auto api = detail::AcquireMenu();
-        return api && api->GetButtonSizeInCoord ? api->GetButtonSizeInCoord(type) : ImVec2();
-    }
-
-    inline float GetButtonIndentInCoord(ButtonType type) {
-        auto api = detail::AcquireMenu();
-        return api && api->GetButtonIndentInCoord ? api->GetButtonIndentInCoord(type) : 0.0f;
-    }
-
-    inline ImGuiKey CKKeyToImGuiKey(CKKEYBOARD key) {
-        auto api = detail::AcquireMenu();
-        return api && api->CKKeyToImGuiKey ? api->CKKeyToImGuiKey(key) : ImGuiKey_None;
-    }
-
-    inline CKKEYBOARD ImGuiKeyToCKKey(ImGuiKey key) {
-        auto api = detail::AcquireMenu();
-        return api && api->ImGuiKeyToCKKey ? api->ImGuiKeyToCKKey(key) : static_cast<CKKEYBOARD>(0);
-    }
-
-    inline bool KeyChordToString(ImGuiKeyChord keyChord, char *buf, size_t size) {
-        auto api = detail::AcquireMenu();
-        return api && api->KeyChordToString ? api->KeyChordToString(keyChord, buf, size, detail::GetCurrentImGuiApi()) : false;
-    }
-
-    inline bool SetKeyChordFromIO(ImGuiKeyChord *keyChord) {
-        auto api = detail::AcquireMenu();
-        return api && api->SetKeyChordFromIO ? api->SetKeyChordFromIO(keyChord, detail::GetCurrentImGuiApi()) : false;
+        return api && api->resources && api->resources->LoadTexture
+            ? api->resources->LoadTexture(context, id, filename, slot)
+            : nullptr;
     }
 
     inline void PlayMenuClickSound() {
         auto api = detail::AcquireMenu();
-        if (api && api->PlayMenuClickSound) {
-            api->PlayMenuClickSound();
+        if (api && api->resources && api->resources->PlayMenuClickSound) {
+            api->resources->PlayMenuClickSound();
         }
+    }
+
+    inline ImVec2 GetMenuPos() {
+        auto api = detail::AcquireMenu();
+        return api && api->layout && api->layout->GetMenuPos ? api->layout->GetMenuPos() : ImVec2();
+    }
+
+    inline ImVec2 GetMenuSize() {
+        auto api = detail::AcquireMenu();
+        return api && api->layout && api->layout->GetMenuSize ? api->layout->GetMenuSize() : ImVec2();
+    }
+
+    inline ImVec4 GetMenuColor() {
+        auto api = detail::AcquireMenu();
+        return api && api->layout && api->layout->GetMenuColor ? api->layout->GetMenuColor() : ImVec4();
+    }
+
+    inline ImVec2 GetButtonSize(ButtonType type) {
+        auto api = detail::AcquireMenu();
+        return api && api->layout && api->layout->GetButtonSize ? api->layout->GetButtonSize(type) : ImVec2();
+    }
+
+    inline float GetButtonIndent(ButtonType type) {
+        auto api = detail::AcquireMenu();
+        return api && api->layout && api->layout->GetButtonIndent ? api->layout->GetButtonIndent(type) : 0.0f;
+    }
+
+    inline ImVec2 GetButtonSizeInCoord(ButtonType type) {
+        auto api = detail::AcquireMenu();
+        return api && api->layout && api->layout->GetButtonSizeInCoord
+            ? api->layout->GetButtonSizeInCoord(type)
+            : ImVec2();
+    }
+
+    inline float GetButtonIndentInCoord(ButtonType type) {
+        auto api = detail::AcquireMenu();
+        return api && api->layout && api->layout->GetButtonIndentInCoord
+            ? api->layout->GetButtonIndentInCoord(type)
+            : 0.0f;
+    }
+
+    inline ImGuiKey CKKeyToImGuiKey(CKKEYBOARD key) {
+        auto api = detail::AcquireMenu();
+        return api && api->input && api->input->CKKeyToImGuiKey ? api->input->CKKeyToImGuiKey(key) : ImGuiKey_None;
+    }
+
+    inline CKKEYBOARD ImGuiKeyToCKKey(ImGuiKey key) {
+        auto api = detail::AcquireMenu();
+        return api && api->input && api->input->ImGuiKeyToCKKey
+            ? api->input->ImGuiKeyToCKKey(key)
+            : static_cast<CKKEYBOARD>(0);
+    }
+
+    inline bool KeyChordToString(ImGuiKeyChord keyChord, char *buf, size_t size) {
+        auto api = detail::AcquireMenu();
+        return api && api->input && api->input->KeyChordToString
+            ? api->input->KeyChordToString(keyChord, buf, size)
+            : false;
+    }
+
+    inline bool SetKeyChordFromIO(ImGuiKeyChord *keyChord) {
+        auto api = detail::AcquireMenu();
+        return api && api->input && api->input->SetKeyChordFromIO ? api->input->SetKeyChordFromIO(keyChord) : false;
     }
 
     inline void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, int state) {
         auto api = detail::AcquireMenu();
-        if (api && api->AddButtonImageState) {
-            api->AddButtonImageState(drawList, pos, type, state, detail::GetCurrentImGuiApi());
+        if (api && api->draw && api->draw->AddButtonImage) {
+            api->draw->AddButtonImage(drawList, pos, type, state, nullptr, nullptr);
         }
     }
 
     inline void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, bool selected) {
-        auto api = detail::AcquireMenu();
-        if (api && api->AddButtonImageSelected) {
-            api->AddButtonImageSelected(drawList, pos, type, selected, detail::GetCurrentImGuiApi());
-        }
+        AddButtonImage(drawList, pos, type, selected ? 1 : 0);
     }
 
     inline void AddButtonImage(
@@ -299,8 +300,8 @@ namespace Menu {
         int state,
         const char *text) {
         auto api = detail::AcquireMenu();
-        if (api && api->AddButtonImageStateText) {
-            api->AddButtonImageStateText(drawList, pos, type, state, text, detail::GetCurrentImGuiApi());
+        if (api && api->draw && api->draw->AddButtonImage) {
+            api->draw->AddButtonImage(drawList, pos, type, state, text, nullptr);
         }
     }
 
@@ -310,10 +311,7 @@ namespace Menu {
         ButtonType type,
         bool selected,
         const char *text) {
-        auto api = detail::AcquireMenu();
-        if (api && api->AddButtonImageSelectedText) {
-            api->AddButtonImageSelectedText(drawList, pos, type, selected, text, detail::GetCurrentImGuiApi());
-        }
+        AddButtonImage(drawList, pos, type, selected ? 1 : 0, text);
     }
 
     inline void AddButtonImage(
@@ -324,8 +322,8 @@ namespace Menu {
         const char *text,
         const ImVec2 &textAlign) {
         auto api = detail::AcquireMenu();
-        if (api && api->AddButtonImageStateTextAlign) {
-            api->AddButtonImageStateTextAlign(drawList, pos, type, state, text, textAlign, detail::GetCurrentImGuiApi());
+        if (api && api->draw && api->draw->AddButtonImage) {
+            api->draw->AddButtonImage(drawList, pos, type, state, text, &textAlign);
         }
     }
 
@@ -336,76 +334,73 @@ namespace Menu {
         bool selected,
         const char *text,
         const ImVec2 &textAlign) {
-        auto api = detail::AcquireMenu();
-        if (api && api->AddButtonImageSelectedTextAlign) {
-            api->AddButtonImageSelectedTextAlign(drawList, pos, type, selected, text, textAlign, detail::GetCurrentImGuiApi());
-        }
+        AddButtonImage(drawList, pos, type, selected ? 1 : 0, text, textAlign);
     }
 
     inline bool MainButton(const char *label, ImGuiButtonFlags flags = 0) {
         auto api = detail::AcquireMenu();
-        return api && api->MainButton ? api->MainButton(label, flags, detail::GetCurrentImGuiApi()) : false;
+        return api && api->widgets && api->widgets->MainButton ? api->widgets->MainButton(label, flags) : false;
     }
 
     inline bool OkButton(const char *label, ImGuiButtonFlags flags = 0) {
         auto api = detail::AcquireMenu();
-        return api && api->OkButton ? api->OkButton(label, flags, detail::GetCurrentImGuiApi()) : false;
+        return api && api->widgets && api->widgets->OkButton ? api->widgets->OkButton(label, flags) : false;
     }
 
     inline bool BackButton(const char *label, ImGuiButtonFlags flags = 0) {
         auto api = detail::AcquireMenu();
-        return api && api->BackButton ? api->BackButton(label, flags, detail::GetCurrentImGuiApi()) : false;
+        return api && api->widgets && api->widgets->BackButton ? api->widgets->BackButton(label, flags) : false;
     }
 
     inline bool OptionButton(const char *label, ImGuiButtonFlags flags = 0) {
         auto api = detail::AcquireMenu();
-        return api && api->OptionButton ? api->OptionButton(label, flags, detail::GetCurrentImGuiApi()) : false;
+        return api && api->widgets && api->widgets->OptionButton ? api->widgets->OptionButton(label, flags) : false;
     }
 
     inline bool LevelButton(const char *label, bool *v = nullptr, ImGuiButtonFlags flags = 0) {
         auto api = detail::AcquireMenu();
-        return api && api->LevelButton ? api->LevelButton(label, v, flags, detail::GetCurrentImGuiApi()) : false;
+        return api && api->widgets && api->widgets->LevelButton ? api->widgets->LevelButton(label, v, flags) : false;
     }
 
     inline bool SmallButton(const char *label, bool *v = nullptr, ImGuiButtonFlags flags = 0) {
         auto api = detail::AcquireMenu();
-        return api && api->SmallButton ? api->SmallButton(label, v, flags, detail::GetCurrentImGuiApi()) : false;
+        return api && api->widgets && api->widgets->SmallButton ? api->widgets->SmallButton(label, v, flags) : false;
     }
 
     inline bool LeftButton(const char *label, ImGuiButtonFlags flags = 0) {
         auto api = detail::AcquireMenu();
-        return api && api->LeftButton ? api->LeftButton(label, flags, detail::GetCurrentImGuiApi()) : false;
+        return api && api->widgets && api->widgets->LeftButton ? api->widgets->LeftButton(label, flags) : false;
     }
 
     inline bool RightButton(const char *label, ImGuiButtonFlags flags = 0) {
         auto api = detail::AcquireMenu();
-        return api && api->RightButton ? api->RightButton(label, flags, detail::GetCurrentImGuiApi()) : false;
+        return api && api->widgets && api->widgets->RightButton ? api->widgets->RightButton(label, flags) : false;
     }
 
     inline bool PlusButton(const char *label, ImGuiButtonFlags flags = 0) {
         auto api = detail::AcquireMenu();
-        return api && api->PlusButton ? api->PlusButton(label, flags, detail::GetCurrentImGuiApi()) : false;
+        return api && api->widgets && api->widgets->PlusButton ? api->widgets->PlusButton(label, flags) : false;
     }
 
     inline bool MinusButton(const char *label, ImGuiButtonFlags flags = 0) {
         auto api = detail::AcquireMenu();
-        return api && api->MinusButton ? api->MinusButton(label, flags, detail::GetCurrentImGuiApi()) : false;
+        return api && api->widgets && api->widgets->MinusButton ? api->widgets->MinusButton(label, flags) : false;
     }
 
     inline bool KeyButton(const char *label, bool *toggled, ImGuiKeyChord *keyChord) {
         auto api = detail::AcquireMenu();
-        return api && api->KeyButton ? api->KeyButton(label, toggled, keyChord, detail::GetCurrentImGuiApi()) : false;
+        return api && api->widgets && api->widgets->KeyButton ? api->widgets->KeyButton(label, toggled, keyChord) : false;
     }
 
     inline bool YesNoButton(const char *label, bool *v) {
         auto api = detail::AcquireMenu();
-        return api && api->YesNoButton ? api->YesNoButton(label, v, detail::GetCurrentImGuiApi()) : false;
+        return api && api->widgets && api->widgets->YesNoButton ? api->widgets->YesNoButton(label, v) : false;
     }
 
     inline bool RadioButton(const char *label, int *currentItem, const char *const items[], int itemsCount) {
         auto api = detail::AcquireMenu();
-        return api && api->RadioButton
-            ? api->RadioButton(label, currentItem, items, itemsCount, detail::GetCurrentImGuiApi())
+        return api && api->widgets && api->widgets->RadioButton
+            ? api->widgets->RadioButton(label, currentItem, items, itemsCount)
             : false;
     }
 
@@ -416,8 +411,8 @@ namespace Menu {
         ImGuiInputTextCallback callback = nullptr,
         void *userData = nullptr) {
         auto api = detail::AcquireMenu();
-        return api && api->InputTextButton
-            ? api->InputTextButton(label, buf, bufSize, flags, callback, userData, detail::GetCurrentImGuiApi())
+        return api && api->widgets && api->widgets->InputTextButton
+            ? api->widgets->InputTextButton(label, buf, bufSize, flags, callback, userData)
             : false;
     }
 
@@ -428,8 +423,8 @@ namespace Menu {
         const char *format = "%.3f",
         ImGuiInputTextFlags flags = 0) {
         auto api = detail::AcquireMenu();
-        return api && api->InputFloatButton
-            ? api->InputFloatButton(label, v, step, stepFast, format, flags, detail::GetCurrentImGuiApi())
+        return api && api->widgets && api->widgets->InputFloatButton
+            ? api->widgets->InputFloatButton(label, v, step, stepFast, format, flags)
             : false;
     }
 
@@ -440,44 +435,44 @@ namespace Menu {
         int stepFast = 100,
         ImGuiInputTextFlags flags = 0) {
         auto api = detail::AcquireMenu();
-        return api && api->InputIntButton
-            ? api->InputIntButton(label, v, step, stepFast, flags, detail::GetCurrentImGuiApi())
+        return api && api->widgets && api->widgets->InputIntButton
+            ? api->widgets->InputIntButton(label, v, step, stepFast, flags)
             : false;
     }
 
     inline void WrappedText(const char *text, float width, float baseX = 0.0f, float scale = 1.0f) {
         auto api = detail::AcquireMenu();
-        if (api && api->WrappedText) {
-            api->WrappedText(text, width, baseX, scale, detail::GetCurrentImGuiApi());
+        if (api && api->text && api->text->WrappedText) {
+            api->text->WrappedText(text, width, baseX, scale);
         }
     }
 
     inline bool NavLeft(float x = 0.36f, float y = 0.124f) {
         auto api = detail::AcquireMenu();
-        return api && api->NavLeft ? api->NavLeft(x, y, detail::GetCurrentImGuiApi()) : false;
+        return api && api->nav && api->nav->NavLeft ? api->nav->NavLeft(x, y) : false;
     }
 
     inline bool NavRight(float x = 0.6038f, float y = 0.124f) {
         auto api = detail::AcquireMenu();
-        return api && api->NavRight ? api->NavRight(x, y, detail::GetCurrentImGuiApi()) : false;
+        return api && api->nav && api->nav->NavRight ? api->nav->NavRight(x, y) : false;
     }
 
     inline bool NavBack(float x = 0.4031f, float y = 0.85f) {
         auto api = detail::AcquireMenu();
-        return api && api->NavBack ? api->NavBack(x, y, detail::GetCurrentImGuiApi()) : false;
+        return api && api->nav && api->nav->NavBack ? api->nav->NavBack(x, y) : false;
     }
 
     inline void Title(const char *text, float y = 0.13f, float scale = 1.5f, ImU32 color = IM_COL32_WHITE) {
         auto api = detail::AcquireMenu();
-        if (api && api->Title) {
-            api->Title(text, y, scale, color, detail::GetCurrentImGuiApi());
+        if (api && api->text && api->text->Title) {
+            api->text->Title(text, y, scale, color);
         }
     }
 
     inline bool SearchBar(char *buffer, size_t bufferSize, float x = 0.4f, float y = 0.18f, float width = 0.2f) {
         auto api = detail::AcquireMenu();
-        return api && api->SearchBar
-            ? api->SearchBar(buffer, bufferSize, x, y, width, detail::GetCurrentImGuiApi())
+        return api && api->widgets && api->widgets->SearchBar
+            ? api->widgets->SearchBar(buffer, bufferSize, x, y, width)
             : false;
     }
 

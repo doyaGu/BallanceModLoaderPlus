@@ -2,11 +2,8 @@
 #define BML_MENU_PROVIDER_IMPLEMENTATION
 #include "bml_module.hpp"
 
-#include "bml_imgui.hpp"
-#include "bml_menu.h"
-#include "bml_interface.h"
-
 #include "bml_menu.hpp"
+#include "bml_interface.h"
 
 namespace {
 
@@ -26,15 +23,15 @@ CKTexture *ServiceLoadTexture(CKContext *context, const char *id, const char *fi
     return Menu::LoadTexture(context, id, filename, slot);
 }
 
-ImVec2 ServiceGetMenuPos(const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+void ServicePlayMenuClickSound() {
+    Menu::PlayMenuClickSound();
+}
+
+ImVec2 ServiceGetMenuPos() {
     return Menu::GetMenuPos();
 }
 
-ImVec2 ServiceGetMenuSize(const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+ImVec2 ServiceGetMenuSize() {
     return Menu::GetMenuSize();
 }
 
@@ -42,15 +39,11 @@ ImVec4 ServiceGetMenuColor() {
     return Menu::GetMenuColor();
 }
 
-ImVec2 ServiceGetButtonSize(Menu::ButtonType type, const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+ImVec2 ServiceGetButtonSize(Menu::ButtonType type) {
     return Menu::GetButtonSize(type);
 }
 
-float ServiceGetButtonIndent(Menu::ButtonType type, const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+float ServiceGetButtonIndent(Menu::ButtonType type) {
     return Menu::GetButtonIndent(type);
 }
 
@@ -70,167 +63,78 @@ CKKEYBOARD ServiceImGuiKeyToCKKey(ImGuiKey key) {
     return Menu::ImGuiKeyToCKKey(key);
 }
 
-bool ServiceKeyChordToString(ImGuiKeyChord keyChord, char *buf, size_t size, const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+bool ServiceKeyChordToString(ImGuiKeyChord keyChord, char *buf, size_t size) {
     return Menu::KeyChordToString(keyChord, buf, size);
 }
 
-bool ServiceSetKeyChordFromIO(ImGuiKeyChord *keyChord, const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+bool ServiceSetKeyChordFromIO(ImGuiKeyChord *keyChord) {
     return Menu::SetKeyChordFromIO(keyChord);
 }
 
-void ServicePlayMenuClickSound() {
-    Menu::PlayMenuClickSound();
-}
-
-void ServiceAddButtonImageState(
-    ImDrawList *drawList,
-    const ImVec2 &pos,
-    Menu::ButtonType type,
-    int state,
-    const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return;
-    bml::imgui::ApiScope _scope(imguiApi);
-    Menu::AddButtonImage(drawList, pos, type, state);
-}
-
-void ServiceAddButtonImageSelected(
-    ImDrawList *drawList,
-    const ImVec2 &pos,
-    Menu::ButtonType type,
-    bool selected,
-    const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return;
-    bml::imgui::ApiScope _scope(imguiApi);
-    Menu::AddButtonImage(drawList, pos, type, selected);
-}
-
-void ServiceAddButtonImageStateText(
+void ServiceAddButtonImage(
     ImDrawList *drawList,
     const ImVec2 &pos,
     Menu::ButtonType type,
     int state,
     const char *text,
-    const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return;
-    bml::imgui::ApiScope _scope(imguiApi);
-    Menu::AddButtonImage(drawList, pos, type, state, text);
+    const ImVec2 *textAlign) {
+    if (textAlign) {
+        Menu::AddButtonImage(drawList, pos, type, state, text, *textAlign);
+    } else if (text) {
+        Menu::AddButtonImage(drawList, pos, type, state, text);
+    } else {
+        Menu::AddButtonImage(drawList, pos, type, state);
+    }
 }
 
-void ServiceAddButtonImageSelectedText(
-    ImDrawList *drawList,
-    const ImVec2 &pos,
-    Menu::ButtonType type,
-    bool selected,
-    const char *text,
-    const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return;
-    bml::imgui::ApiScope _scope(imguiApi);
-    Menu::AddButtonImage(drawList, pos, type, selected, text);
-}
-
-void ServiceAddButtonImageStateTextAlign(
-    ImDrawList *drawList,
-    const ImVec2 &pos,
-    Menu::ButtonType type,
-    int state,
-    const char *text,
-    const ImVec2 &textAlign,
-    const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return;
-    bml::imgui::ApiScope _scope(imguiApi);
-    Menu::AddButtonImage(drawList, pos, type, state, text, textAlign);
-}
-
-void ServiceAddButtonImageSelectedTextAlign(
-    ImDrawList *drawList,
-    const ImVec2 &pos,
-    Menu::ButtonType type,
-    bool selected,
-    const char *text,
-    const ImVec2 &textAlign,
-    const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return;
-    bml::imgui::ApiScope _scope(imguiApi);
-    Menu::AddButtonImage(drawList, pos, type, selected, text, textAlign);
-}
-
-bool ServiceMainButton(const char *label, ImGuiButtonFlags flags, const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+bool ServiceMainButton(const char *label, ImGuiButtonFlags flags) {
     return Menu::MainButton(label, flags);
 }
 
-bool ServiceOkButton(const char *label, ImGuiButtonFlags flags, const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+bool ServiceOkButton(const char *label, ImGuiButtonFlags flags) {
     return Menu::OkButton(label, flags);
 }
 
-bool ServiceBackButton(const char *label, ImGuiButtonFlags flags, const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+bool ServiceBackButton(const char *label, ImGuiButtonFlags flags) {
     return Menu::BackButton(label, flags);
 }
 
-bool ServiceOptionButton(const char *label, ImGuiButtonFlags flags, const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+bool ServiceOptionButton(const char *label, ImGuiButtonFlags flags) {
     return Menu::OptionButton(label, flags);
 }
 
-bool ServiceLevelButton(const char *label, bool *v, ImGuiButtonFlags flags, const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+bool ServiceLevelButton(const char *label, bool *v, ImGuiButtonFlags flags) {
     return Menu::LevelButton(label, v, flags);
 }
 
-bool ServiceSmallButton(const char *label, bool *v, ImGuiButtonFlags flags, const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+bool ServiceSmallButton(const char *label, bool *v, ImGuiButtonFlags flags) {
     return Menu::SmallButton(label, v, flags);
 }
 
-bool ServiceLeftButton(const char *label, ImGuiButtonFlags flags, const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+bool ServiceLeftButton(const char *label, ImGuiButtonFlags flags) {
     return Menu::LeftButton(label, flags);
 }
 
-bool ServiceRightButton(const char *label, ImGuiButtonFlags flags, const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+bool ServiceRightButton(const char *label, ImGuiButtonFlags flags) {
     return Menu::RightButton(label, flags);
 }
 
-bool ServicePlusButton(const char *label, ImGuiButtonFlags flags, const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+bool ServicePlusButton(const char *label, ImGuiButtonFlags flags) {
     return Menu::PlusButton(label, flags);
 }
 
-bool ServiceMinusButton(const char *label, ImGuiButtonFlags flags, const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+bool ServiceMinusButton(const char *label, ImGuiButtonFlags flags) {
     return Menu::MinusButton(label, flags);
 }
 
 bool ServiceKeyButton(
     const char *label,
     bool *toggled,
-    ImGuiKeyChord *keyChord,
-    const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+    ImGuiKeyChord *keyChord) {
     return Menu::KeyButton(label, toggled, keyChord);
 }
 
-bool ServiceYesNoButton(const char *label, bool *v, const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+bool ServiceYesNoButton(const char *label, bool *v) {
     return Menu::YesNoButton(label, v);
 }
 
@@ -238,10 +142,7 @@ bool ServiceRadioButton(
     const char *label,
     int *currentItem,
     const char *const items[],
-    int itemsCount,
-    const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+    int itemsCount) {
     return Menu::RadioButton(label, currentItem, items, itemsCount);
 }
 
@@ -251,10 +152,7 @@ bool ServiceInputTextButton(
     size_t bufSize,
     ImGuiInputTextFlags flags,
     ImGuiInputTextCallback callback,
-    void *userData,
-    const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+    void *userData) {
     return Menu::InputTextButton(label, buf, bufSize, flags, callback, userData);
 }
 
@@ -264,10 +162,7 @@ bool ServiceInputFloatButton(
     float step,
     float stepFast,
     const char *format,
-    ImGuiInputTextFlags flags,
-    const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+    ImGuiInputTextFlags flags) {
     return Menu::InputFloatButton(label, v, step, stepFast, format, flags);
 }
 
@@ -276,10 +171,7 @@ bool ServiceInputIntButton(
     int *v,
     int step,
     int stepFast,
-    ImGuiInputTextFlags flags,
-    const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+    ImGuiInputTextFlags flags) {
     return Menu::InputIntButton(label, v, step, stepFast, flags);
 }
 
@@ -287,34 +179,23 @@ void ServiceWrappedText(
     const char *text,
     float width,
     float baseX,
-    float scale,
-    const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return;
-    bml::imgui::ApiScope _scope(imguiApi);
+    float scale) {
     Menu::WrappedText(text, width, baseX, scale);
 }
 
-bool ServiceNavLeft(float x, float y, const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+bool ServiceNavLeft(float x, float y) {
     return Menu::NavLeft(x, y);
 }
 
-bool ServiceNavRight(float x, float y, const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+bool ServiceNavRight(float x, float y) {
     return Menu::NavRight(x, y);
 }
 
-bool ServiceNavBack(float x, float y, const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+bool ServiceNavBack(float x, float y) {
     return Menu::NavBack(x, y);
 }
 
-void ServiceTitle(const char *text, float y, float scale, ImU32 color, const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return;
-    bml::imgui::ApiScope _scope(imguiApi);
+void ServiceTitle(const char *text, float y, float scale, ImU32 color) {
     Menu::Title(text, y, scale, color);
 }
 
@@ -323,19 +204,21 @@ bool ServiceSearchBar(
     size_t bufferSize,
     float x,
     float y,
-    float width,
-    const BML_ImGuiApi *imguiApi) {
-    if (!imguiApi) return {};
-    bml::imgui::ApiScope _scope(imguiApi);
+    float width) {
     return Menu::SearchBar(buffer, bufferSize, x, y, width);
 }
 
-const BML_MenuApi g_MenuApi = {
-    BML_IFACE_HEADER(BML_MenuApi, BML_MENU_INTERFACE_ID, 1, 0),
+const BML_MenuResourceApi g_MenuResourceApi = {
+    sizeof(BML_MenuResourceApi),
     ServiceInitTextures,
     ServiceInitMaterials,
     ServiceInitSounds,
     ServiceLoadTexture,
+    ServicePlayMenuClickSound,
+};
+
+const BML_MenuLayoutApi g_MenuLayoutApi = {
+    sizeof(BML_MenuLayoutApi),
     ServiceGetMenuPos,
     ServiceGetMenuSize,
     ServiceGetMenuColor,
@@ -343,17 +226,23 @@ const BML_MenuApi g_MenuApi = {
     ServiceGetButtonIndent,
     ServiceGetButtonSizeInCoord,
     ServiceGetButtonIndentInCoord,
+};
+
+const BML_MenuInputApi g_MenuInputApi = {
+    sizeof(BML_MenuInputApi),
     ServiceCKKeyToImGuiKey,
     ServiceImGuiKeyToCKKey,
     ServiceKeyChordToString,
     ServiceSetKeyChordFromIO,
-    ServicePlayMenuClickSound,
-    ServiceAddButtonImageState,
-    ServiceAddButtonImageSelected,
-    ServiceAddButtonImageStateText,
-    ServiceAddButtonImageSelectedText,
-    ServiceAddButtonImageStateTextAlign,
-    ServiceAddButtonImageSelectedTextAlign,
+};
+
+const BML_MenuDrawApi g_MenuDrawApi = {
+    sizeof(BML_MenuDrawApi),
+    ServiceAddButtonImage,
+};
+
+const BML_MenuWidgetApi g_MenuWidgetApi = {
+    sizeof(BML_MenuWidgetApi),
     ServiceMainButton,
     ServiceOkButton,
     ServiceBackButton,
@@ -370,12 +259,31 @@ const BML_MenuApi g_MenuApi = {
     ServiceInputTextButton,
     ServiceInputFloatButton,
     ServiceInputIntButton,
+    ServiceSearchBar,
+};
+
+const BML_MenuTextApi g_MenuTextApi = {
+    sizeof(BML_MenuTextApi),
     ServiceWrappedText,
+    ServiceTitle,
+};
+
+const BML_MenuNavApi g_MenuNavApi = {
+    sizeof(BML_MenuNavApi),
     ServiceNavLeft,
     ServiceNavRight,
     ServiceNavBack,
-    ServiceTitle,
-    ServiceSearchBar,
+};
+
+const BML_MenuApi g_MenuApi = {
+    BML_IFACE_HEADER(BML_MenuApi, BML_MENU_INTERFACE_ID, 1, 0),
+    &g_MenuResourceApi,
+    &g_MenuLayoutApi,
+    &g_MenuInputApi,
+    &g_MenuDrawApi,
+    &g_MenuWidgetApi,
+    &g_MenuTextApi,
+    &g_MenuNavApi,
 };
 } // namespace
 
@@ -401,4 +309,3 @@ private:
 };
 
 BML_DEFINE_MODULE(MenuMod)
-
