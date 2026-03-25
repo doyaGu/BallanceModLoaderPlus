@@ -7,6 +7,7 @@
 #include <zip.h>
 
 #include "Core/ModuleRuntime.h"
+#include "PathUtils.h"
 #include "TestKernel.h"
 #include "TestKernelBuilder.h"
 #include "StringUtils.h"
@@ -19,6 +20,8 @@ using BML::Core::Testing::TestKernelBuilder;
 
 class ModuleRuntimePackageSyncFixture : public ::testing::Test {
 protected:
+    utils::RuntimeLayoutNames runtime_names;
+    utils::RuntimeLayout runtime_layout;
     fs::path temp_dir;
     fs::path mods_dir;
     fs::path packages_dir;
@@ -28,8 +31,10 @@ protected:
             std::chrono::steady_clock::now().time_since_epoch().count());
         temp_dir = fs::temp_directory_path() /
             fs::path(L"bml_runtime_package_sync_test_" + unique);
-        mods_dir = temp_dir / L"Mods";
-        packages_dir = temp_dir / L"Packages";
+        runtime_layout = utils::ResolveRuntimeLayoutFromRuntimeDirectory(
+            temp_dir / runtime_names.runtime_directory, runtime_names);
+        mods_dir = runtime_layout.mods_directory;
+        packages_dir = runtime_layout.packages_directory;
         fs::create_directories(mods_dir);
         fs::create_directories(packages_dir);
     }

@@ -15,6 +15,7 @@
 #include "Core/CrashDumpWriter.h"
 #include "Core/FaultTracker.h"
 #include "JsonUtils.h"
+#include "PathUtils.h"
 #include "TestKernel.h"
 
 using namespace BML::Core;
@@ -23,6 +24,8 @@ using BML::Core::Testing::TestKernel;
 class FaultTrackerTest : public ::testing::Test {
 protected:
     TestKernel kernel_;
+    utils::RuntimeLayoutNames m_RuntimeNames;
+    utils::RuntimeLayout m_RuntimeLayout;
 
     void SetUp() override {
         kernel_->api_registry  = std::make_unique<ApiRegistry>();
@@ -38,6 +41,9 @@ protected:
         m_TempDir = std::filesystem::temp_directory_path() / L"bml_fault_test";
         std::filesystem::remove_all(m_TempDir);
         std::filesystem::create_directories(m_TempDir);
+        m_RuntimeLayout = utils::ResolveRuntimeLayoutFromRuntimeDirectory(
+            m_TempDir / m_RuntimeNames.runtime_directory, m_RuntimeNames);
+        std::filesystem::create_directories(m_RuntimeLayout.runtime_directory);
     }
 
     void TearDown() override {
@@ -49,13 +55,13 @@ protected:
 };
 
 TEST_F(FaultTrackerTest, InitiallyZeroFaults) {
-    kernel_->fault_tracker->Load(m_TempDir.wstring());
+    kernel_->fault_tracker->LoadFromRuntimeDirectory(m_RuntimeLayout.runtime_directory);
     EXPECT_EQ(kernel_->fault_tracker->GetFaultCount("com.example.test"), 0);
     EXPECT_FALSE(kernel_->fault_tracker->IsDisabled("com.example.test"));
 }
 
 TEST_F(FaultTrackerTest, RecordFaultIncrements) {
-    kernel_->fault_tracker->Load(m_TempDir.wstring());
+    kernel_->fault_tracker->LoadFromRuntimeDirectory(m_RuntimeLayout.runtime_directory);
 
     kernel_->fault_tracker->RecordFault("com.example.test", 0xC0000005);
     EXPECT_EQ(kernel_->fault_tracker->GetFaultCount("com.example.test"), 1);
@@ -67,7 +73,7 @@ TEST_F(FaultTrackerTest, RecordFaultIncrements) {
 }
 
 TEST_F(FaultTrackerTest, DisabledAfterThreshold) {
-    kernel_->fault_tracker->Load(m_TempDir.wstring());
+    kernel_->fault_tracker->LoadFromRuntimeDirectory(m_RuntimeLayout.runtime_directory);
 
     // Threshold is 3 faults
     kernel_->fault_tracker->RecordFault("com.example.badmod", 0xC0000005);
@@ -80,7 +86,7 @@ TEST_F(FaultTrackerTest, DisabledAfterThreshold) {
 }
 
 TEST_F(FaultTrackerTest, EnableReenables) {
-    kernel_->fault_tracker->Load(m_TempDir.wstring());
+    kernel_->fault_tracker->LoadFromRuntimeDirectory(m_RuntimeLayout.runtime_directory);
 
     kernel_->fault_tracker->RecordFault("com.example.badmod", 0xC0000005);
     kernel_->fault_tracker->RecordFault("com.example.badmod", 0xC0000005);
@@ -94,7 +100,7 @@ TEST_F(FaultTrackerTest, EnableReenables) {
 
 TEST_F(FaultTrackerTest, PersistenceRoundTrip) {
     // Record faults and write to JSON
-    kernel_->fault_tracker->Load(m_TempDir.wstring());
+    kernel_->fault_tracker->LoadFromRuntimeDirectory(m_RuntimeLayout.runtime_directory);
     kernel_->fault_tracker->RecordFault("com.example.mod1", 0xC0000005);
     kernel_->fault_tracker->RecordFault("com.example.mod1", 0xC0000005);
     kernel_->fault_tracker->RecordFault("com.example.mod1", 0xC0000005);
@@ -102,7 +108,7 @@ TEST_F(FaultTrackerTest, PersistenceRoundTrip) {
     kernel_->fault_tracker->Shutdown();
 
     // Verify the JSON file exists
-    auto jsonPath = m_TempDir / L"ModLoader" / L"fault_log.json";
+    auto jsonPath = m_RuntimeLayout.fault_log_path;
     ASSERT_TRUE(std::filesystem::exists(jsonPath));
 
     const std::string jsonContent = [&]() {
@@ -114,7 +120,7 @@ TEST_F(FaultTrackerTest, PersistenceRoundTrip) {
     ASSERT_TRUE(document.IsValid()) << parseError;
 
     // Reload and verify state is preserved
-    kernel_->fault_tracker->Load(m_TempDir.wstring());
+    kernel_->fault_tracker->LoadFromRuntimeDirectory(m_RuntimeLayout.runtime_directory);
     EXPECT_EQ(kernel_->fault_tracker->GetFaultCount("com.example.mod1"), 3);
     EXPECT_TRUE(kernel_->fault_tracker->IsDisabled("com.example.mod1"));
     EXPECT_EQ(kernel_->fault_tracker->GetFaultCount("com.example.mod2"), 1);
@@ -122,7 +128,7 @@ TEST_F(FaultTrackerTest, PersistenceRoundTrip) {
 }
 
 TEST_F(FaultTrackerTest, MultipleModulesIndependent) {
-    kernel_->fault_tracker->Load(m_TempDir.wstring());
+    kernel_->fault_tracker->LoadFromRuntimeDirectory(m_RuntimeLayout.runtime_directory);
 
     kernel_->fault_tracker->RecordFault("mod.a", 0xC0000005);
     kernel_->fault_tracker->RecordFault("mod.b", 0xC000001D);
@@ -135,28 +141,29 @@ TEST_F(FaultTrackerTest, MultipleModulesIndependent) {
 }
 
 TEST_F(FaultTrackerTest, LoadNonExistentFile) {
-    auto emptyDir = m_TempDir / L"nonexistent";
-    std::filesystem::create_directories(emptyDir);
+    const auto emptyLayout = utils::ResolveRuntimeLayoutFromRuntimeDirectory(
+        m_TempDir / L"nonexistent" / m_RuntimeNames.runtime_directory, m_RuntimeNames);
+    std::filesystem::create_directories(emptyLayout.runtime_directory);
 
     // Should not crash, just load empty
-    kernel_->fault_tracker->Load(emptyDir.wstring());
+    kernel_->fault_tracker->LoadFromRuntimeDirectory(emptyLayout.runtime_directory);
     EXPECT_EQ(kernel_->fault_tracker->GetFaultCount("any.mod"), 0);
 }
 
 TEST_F(FaultTrackerTest, InvalidJsonClearsPreviouslyLoadedFaultState) {
-    kernel_->fault_tracker->Load(m_TempDir.wstring());
+    kernel_->fault_tracker->LoadFromRuntimeDirectory(m_RuntimeLayout.runtime_directory);
     kernel_->fault_tracker->RecordFault("com.example.badmod", 0xC0000005);
     kernel_->fault_tracker->RecordFault("com.example.badmod", 0xC0000005);
     kernel_->fault_tracker->RecordFault("com.example.badmod", 0xC0000005);
     ASSERT_TRUE(kernel_->fault_tracker->IsDisabled("com.example.badmod"));
 
-    auto jsonPath = m_TempDir / L"ModLoader" / L"fault_log.json";
+    auto jsonPath = m_RuntimeLayout.fault_log_path;
     {
         std::ofstream ofs(jsonPath, std::ios::binary | std::ios::trunc);
         ofs << "{ invalid json";
     }
 
-    kernel_->fault_tracker->Load(m_TempDir.wstring());
+    kernel_->fault_tracker->LoadFromRuntimeDirectory(m_RuntimeLayout.runtime_directory);
     EXPECT_EQ(kernel_->fault_tracker->GetFaultCount("com.example.badmod"), 0);
     EXPECT_FALSE(kernel_->fault_tracker->IsDisabled("com.example.badmod"));
 }

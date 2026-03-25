@@ -1,12 +1,36 @@
 #include <gtest/gtest.h>
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+
+#include <filesystem>
 #include <fstream>
+#include <stdexcept>
 #include <vector>
 #include <cstdio>
 #include <algorithm>
 
 #include "PathUtils.h"
 #include "StringUtils.h"
+
+namespace fs = std::filesystem;
+
+namespace {
+    std::wstring ToExtendedLengthPath(const fs::path &path) {
+        const std::wstring value = path.wstring();
+        if (value.rfind(L"\\\\?\\", 0) == 0) {
+            return value;
+        }
+
+        if (value.rfind(L"\\\\", 0) == 0) {
+            return L"\\\\?\\UNC\\" + value.substr(2);
+        }
+
+        return L"\\\\?\\" + value;
+    }
+}
 
 // Test fixture for path operations
 class PathUtilsTest : public ::testing::Test {
@@ -15,11 +39,14 @@ protected:
     std::wstring testDirW;
     std::string tempPathA;
     std::wstring tempPathW;
+    std::wstring originalCurrentDirectoryW;
+    utils::RuntimeLayoutNames runtimeNames;
     
     void SetUp() override {
         // Get temp directory
         tempPathA = utils::GetTempPathA();
         tempPathW = utils::GetTempPathW();
+        originalCurrentDirectoryW = utils::GetCurrentDirectoryW();
         
         // Create unique test directories
         testDirA = tempPathA + "PathUtilsTestA_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed());
@@ -31,6 +58,10 @@ protected:
     }
     
     void TearDown() override {
+        if (!originalCurrentDirectoryW.empty()) {
+            utils::SetCurrentDirectoryW(originalCurrentDirectoryW);
+        }
+
         // Clean up test directories
         utils::DeleteDirectoryA(testDirA);
         utils::DeleteDirectoryW(testDirW);
@@ -51,6 +82,42 @@ protected:
         file << content;
         file.close();
         return filePath;
+    }
+
+    fs::path CreateSyntheticGameDir(const std::wstring &name) {
+        const fs::path gameDir = fs::path(testDirW) / name;
+        fs::create_directories(gameDir);
+        return gameDir;
+    }
+
+    fs::path CreateLongDirectoryTree(const std::wstring &prefix, size_t minimumLength) {
+        fs::path current = fs::path(testDirW) / prefix;
+        fs::create_directories(current);
+
+        size_t segmentIndex = 0;
+        while (current.native().size() <= minimumLength) {
+            current /= L"segment_" + std::to_wstring(segmentIndex++) + L"_abcdefghijklmnop";
+            if (!::CreateDirectoryW(ToExtendedLengthPath(current).c_str(), nullptr)) {
+                const DWORD error = ::GetLastError();
+                if (error != ERROR_ALREADY_EXISTS) {
+                    throw std::runtime_error("failed to create long path test directory");
+                }
+            }
+        }
+
+        return current;
+    }
+
+    void ExpectRuntimeLayout(const fs::path &gameDir, const utils::RuntimeLayout &layout,
+                             const utils::RuntimeLayoutNames &names) {
+        const fs::path runtimeDir = (gameDir / names.runtime_directory).lexically_normal();
+        EXPECT_EQ(gameDir.lexically_normal(), layout.game_directory);
+        EXPECT_EQ(runtimeDir, layout.runtime_directory);
+        EXPECT_EQ((runtimeDir / names.mods_directory).lexically_normal(), layout.mods_directory);
+        EXPECT_EQ((runtimeDir / names.packages_directory).lexically_normal(), layout.packages_directory);
+        EXPECT_EQ((runtimeDir / names.crash_dumps_directory).lexically_normal(),
+            layout.crash_dumps_directory);
+        EXPECT_EQ((runtimeDir / names.fault_log_file).lexically_normal(), layout.fault_log_path);
     }
 };
 
@@ -326,6 +393,57 @@ TEST_F(PathUtilsTest, PathManipulation) {
     EXPECT_EQ(L"D:\\Games\\Steam", utils::NormalizePathW(L"D:/Games/Steam"));
 }
 
+TEST_F(PathUtilsTest, ResolvesRuntimeLayoutFromExecutablePath) {
+    const fs::path gameDir = CreateSyntheticGameDir(L"Ballance");
+    const fs::path gameExe = gameDir / L"Player.exe";
+    const fs::path driverExe = gameDir / L"Bin" / L"BMLCoreDriver.exe";
+
+    ExpectRuntimeLayout(gameDir, utils::ResolveRuntimeLayoutFromExecutable(gameExe), runtimeNames);
+    ExpectRuntimeLayout(gameDir, utils::ResolveRuntimeLayoutFromExecutable(driverExe), runtimeNames);
+}
+
+TEST_F(PathUtilsTest, ResolvesRuntimeLayoutFromModsDirectory) {
+    const fs::path gameDir = CreateSyntheticGameDir(L"BallanceMods");
+    const utils::RuntimeLayout expected =
+        utils::ResolveRuntimeLayoutFromExecutable(gameDir / L"Player.exe", runtimeNames);
+
+    const utils::RuntimeLayout actual =
+        utils::ResolveRuntimeLayoutFromModsDirectory(expected.mods_directory, runtimeNames);
+
+    ExpectRuntimeLayout(gameDir, actual, runtimeNames);
+}
+
+TEST_F(PathUtilsTest, ResolvesRuntimeLayoutFromCustomModsDirectoryUsingExecutableRoot) {
+    const fs::path gameDir = CreateSyntheticGameDir(L"BallanceCustomMods");
+    const fs::path customModsDir = (gameDir / L"CustomMods").lexically_normal();
+    const utils::RuntimeLayout expected = utils::GetRuntimeLayout(runtimeNames);
+
+    const utils::RuntimeLayout actual =
+        utils::ResolveRuntimeLayoutFromModsDirectory(customModsDir, runtimeNames);
+
+    EXPECT_EQ(expected.game_directory, actual.game_directory);
+    EXPECT_EQ(expected.runtime_directory, actual.runtime_directory);
+    EXPECT_EQ(expected.packages_directory, actual.packages_directory);
+    EXPECT_EQ(expected.crash_dumps_directory, actual.crash_dumps_directory);
+    EXPECT_EQ(expected.fault_log_path, actual.fault_log_path);
+    EXPECT_EQ(customModsDir, actual.mods_directory);
+}
+
+TEST_F(PathUtilsTest, ResolvesRuntimeLayoutWithCustomDirectoryNames) {
+    utils::RuntimeLayoutNames customNames;
+    customNames.runtime_directory = L"LoaderData";
+    customNames.mods_directory = L"Extensions";
+    customNames.packages_directory = L"Archives";
+    customNames.crash_dumps_directory = L"Dumps";
+    customNames.fault_log_file = L"faults.json";
+
+    const fs::path gameDir = CreateSyntheticGameDir(L"CustomLayoutGame");
+    const utils::RuntimeLayout layout =
+        utils::ResolveRuntimeLayoutFromExecutable(gameDir / L"Player.exe", customNames);
+
+    ExpectRuntimeLayout(gameDir, layout, customNames);
+}
+
 // Test path validation functions
 TEST_F(PathUtilsTest, PathValidation) {
     // IsPathValid - note that Windows paths with drive letters contain colons,
@@ -477,4 +595,23 @@ TEST_F(PathUtilsTest, DirectoryListing) {
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+TEST_F(PathUtilsTest, GetCurrentDirectorySupportsLongPaths) {
+    const fs::path longDir = CreateLongDirectoryTree(L"CurrentDirectoryLongPath", 320);
+    const std::wstring extendedLongDir = ToExtendedLengthPath(longDir);
+    if (!utils::SetCurrentDirectoryW(extendedLongDir)) {
+        std::error_code cleanupError;
+        fs::remove_all(fs::path(ToExtendedLengthPath(fs::path(testDirW) / L"CurrentDirectoryLongPath")),
+                       cleanupError);
+        GTEST_SKIP() << "Long current directories are not supported in this environment";
+    }
+
+    EXPECT_EQ(extendedLongDir, utils::GetCurrentDirectoryW());
+    EXPECT_EQ(utils::Utf16ToUtf8(extendedLongDir), utils::GetCurrentDirectoryA());
+
+    utils::SetCurrentDirectoryW(originalCurrentDirectoryW);
+    std::error_code cleanupError;
+    fs::remove_all(fs::path(ToExtendedLengthPath(fs::path(testDirW) / L"CurrentDirectoryLongPath")),
+                   cleanupError);
 }
