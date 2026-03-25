@@ -9,6 +9,7 @@
 #include <string>
 
 #include "bml_export.h"
+#include "Utils/PathUtils.h"
 
 namespace {
 
@@ -50,22 +51,6 @@ Options ParseOptions(int argc, wchar_t **argv) {
         }
     }
     return opts;
-}
-
-std::filesystem::path GetExecutableDirectory() {
-    std::wstring buffer(260, L'\0');
-    while (true) {
-        DWORD copied = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-        if (copied == 0) {
-            return {};
-        }
-        if (copied < buffer.size() - 1) {
-            buffer.resize(copied);
-            break;
-        }
-        buffer.resize(buffer.size() * 2, L'\0');
-    }
-    return std::filesystem::path(buffer).parent_path();
 }
 
 std::filesystem::path NormalizePath(const std::filesystem::path &input) {
@@ -209,13 +194,13 @@ int wmain(int argc, wchar_t **argv) {
         return opts.parseError ? 1 : 0;
     }
 
-    auto exeDir = GetExecutableDirectory();
-    if (exeDir.empty()) {
+    const std::wstring defaultModsDir = utils::GetRuntimeLayout().mods_directory.wstring();
+    if (defaultModsDir.empty()) {
         std::wcerr << L"Unable to determine executable directory" << std::endl;
         return 2;
     }
 
-    std::filesystem::path modsDir = exeDir / L"Mods";
+    std::filesystem::path modsDir(defaultModsDir);
     if (!opts.modsOverride.empty()) {
         modsDir = opts.modsOverride;
     }

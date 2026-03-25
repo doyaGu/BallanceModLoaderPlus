@@ -26,6 +26,7 @@
 #include "Logging.h"
 #include "PackageInstallState.h"
 #include "PackagePaths.h"
+#include "PathUtils.h"
 #include "SemanticVersion.h"
 
 namespace BML::Core {
@@ -117,10 +118,10 @@ namespace BML::Core {
         bool SyncPendingPackages(const std::wstring &mods_dir,
                                  ModuleBootstrapDiagnostics &out_diag,
                                  std::string &out_error) {
-            const std::filesystem::path modsPath(mods_dir);
+            const auto layout = utils::ResolveRuntimeLayoutFromModsDirectory(mods_dir);
             PackageInstaller installer;
             PackageSyncDiagnostics packageDiag;
-            if (!installer.SyncPackages(modsPath.parent_path().wstring(), packageDiag, out_error)) {
+            if (!installer.SyncPackages(layout.runtime_directory.wstring(), packageDiag, out_error)) {
                 out_diag.package_rejections = packageDiag.rejected;
                 out_diag.package_warnings = packageDiag.warnings;
                 out_diag.package_sync_error = out_error;
@@ -135,8 +136,8 @@ namespace BML::Core {
 
         void ApplyPackageArchiveMetadata(const std::wstring &mods_dir,
                                          std::vector<std::unique_ptr<ModManifest>> &manifests) {
-            const PackagePaths packagePaths = GetPackagePaths(
-                std::filesystem::path(mods_dir).parent_path().wstring());
+            const auto layout = utils::ResolveRuntimeLayoutFromModsDirectory(mods_dir);
+            const PackagePaths packagePaths = GetPackagePaths(layout.runtime_directory.wstring());
 
             PackageInstallState state;
             std::string error;

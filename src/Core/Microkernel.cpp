@@ -27,6 +27,7 @@
 #include "MemoryManager.h"
 #include "ProfilingManager.h"
 #include "StringUtils.h"
+#include "PathUtils.h"
 #include "SyncManager.h"
 #include "TimerManager.h"
 
@@ -302,26 +303,7 @@ namespace BML::Core {
                 DebugLog("Using BML_MODS_DIR override: " + utils::Utf16ToUtf8(overridePath));
                 return overridePath;
             }
-
-#if defined(_WIN32)
-            std::wstring path(260, L'\0');
-            DWORD copied = 0;
-            while (true) {
-                copied = GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
-                if (copied == 0)
-                    return {};
-                if (copied < path.size() - 1)
-                    break;
-                path.resize(path.size() * 2, L'\0');
-            }
-            path.resize(copied);
-            std::filesystem::path exe(path);
-            // Default to ../Mods (parent of bin directory)
-            return (exe.parent_path().parent_path() / L"Mods").wstring();
-#else
-            std::filesystem::path cwd = std::filesystem::current_path();
-            return (cwd / "Mods").wstring();
-#endif
+            return utils::GetRuntimeLayout().mods_directory.wstring();
         }
 
         std::wstring ResolveBootstrapModsDirectory(const BML_BootstrapConfig *config) {
@@ -470,13 +452,11 @@ namespace BML::Core {
 
         DebugLog("Phase 1: Discovering modules...");
 
-        // Initialize crash isolation subsystems with game base directory
-        // (base dir = parent of Mods directory)
+        // Initialize crash isolation subsystems with ModLoader runtime directory.
         {
-            std::filesystem::path base = std::filesystem::path(mods_dir).parent_path();
-            auto base_str = base.wstring();
-            state.kernel->fault_tracker->Load(base_str);
-            state.kernel->crash_dump->SetBaseDir(base_str);
+            const auto layout = utils::ResolveRuntimeLayoutFromModsDirectory(mods_dir);
+            state.kernel->fault_tracker->LoadFromRuntimeDirectory(layout.runtime_directory);
+            state.kernel->crash_dump->SetRuntimeDirectory(layout.runtime_directory);
         }
 
         ModuleBootstrapDiagnostics diag;

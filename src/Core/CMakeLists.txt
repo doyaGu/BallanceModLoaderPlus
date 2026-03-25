@@ -169,10 +169,12 @@ if (WIN32)
 
     target_include_directories(BMLCoreDriver PRIVATE
         ${BML_INCLUDE_DIR}
+        ${BML_SOURCE_DIR}
     )
 
     target_link_libraries(BMLCoreDriver PRIVATE
         BML
+        BML_Utils
     )
 
     set_target_properties(BMLCoreDriver PROPERTIES
