@@ -1175,12 +1175,10 @@ TEST_F(ImcBusTest, PublishingResumesAfterPumpClearsQueue) {
     EXPECT_EQ(BML_RESULT_OK, ImcUnsubscribe(sub));
 }
 
-TEST_F(ImcBusTest, FutureAwaitTimesOutUntilPumpProcessesRpc) {
-    // Without Pump, RPC waits forever (timeout); after Pump, completes
-    // Reuse existing EchoRpc handler and RpcState from above
+TEST_F(ImcBusTest, FutureAwaitRejectsMainThreadButWorkerThreadCanWait) {
     BML_RpcId rpc;
     ASSERT_EQ(BML_RESULT_OK, GetRpcId("timeout.echo", &rpc));
-    
+
     RpcState state;
     ASSERT_EQ(BML_RESULT_OK, RegisterRpc(rpc, EchoRpc, &state));
 
@@ -1189,14 +1187,18 @@ TEST_F(ImcBusTest, FutureAwaitTimesOutUntilPumpProcessesRpc) {
     BML_Future future = nullptr;
     ASSERT_EQ(BML_RESULT_OK, CallRpc(rpc, &request, &future));
 
-    // Await with short timeout - should timeout because no Pump yet
-    BML_Result res = ImcFutureAwait(future, 10);
-    EXPECT_EQ(res, BML_RESULT_TIMEOUT);
+    EXPECT_EQ(ImcFutureAwait(future, 10), BML_RESULT_WRONG_THREAD);
 
-    // Now Pump and await again - should succeed
+    std::atomic<BML_Result> worker_result{BML_RESULT_FAIL};
+    std::thread waiter([&] {
+        worker_result.store(ImcFutureAwait(future, 1000), std::memory_order_release);
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
     Pump(0);
-    res = ImcFutureAwait(future, 100);
-    EXPECT_EQ(res, BML_RESULT_OK);
+    waiter.join();
+
+    EXPECT_EQ(worker_result.load(std::memory_order_acquire), BML_RESULT_OK);
 
     BML_FutureState fstate;
     EXPECT_EQ(BML_RESULT_OK, ImcFutureGetState(future, &fstate));

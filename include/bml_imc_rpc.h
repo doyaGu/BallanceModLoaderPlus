@@ -128,6 +128,8 @@ typedef BML_Result (*PFN_BML_ImcCallRpcEx)(BML_Mod owner,
  * @param[in] timeout_ms Timeout in milliseconds (0 = no timeout)
  * @return BML_RESULT_OK if future completed
  * @return BML_RESULT_TIMEOUT if timeout expired
+ * @return BML_RESULT_WRONG_THREAD if called on the runtime main thread while
+ *         the future is still pending
  *
  * @threadsafe Yes
  */

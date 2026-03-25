@@ -218,6 +218,7 @@ namespace imc {
          * @brief Wait for completion with timeout
          * @param timeoutMs Timeout in milliseconds (0 = no timeout)
          * @return true if completed (ready, failed, cancelled, etc.)
+         * @note Pending futures cannot be awaited from the runtime main thread.
          */
         bool Wait(uint32_t timeoutMs = InfiniteTimeout) {
             if (!m_Handle) return false;

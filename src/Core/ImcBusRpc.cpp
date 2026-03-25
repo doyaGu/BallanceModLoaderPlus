@@ -743,6 +743,10 @@ namespace BML::Core {
         if (future->state != BML_FUTURE_PENDING)
             return BML_RESULT_OK;
 
+        if (m_Context && m_Context->IsMainThread()) {
+            return BML_RESULT_WRONG_THREAD;
+        }
+
         if (timeout_ms == 0) {
             future->cv.wait(lock, [future] { return future->state != BML_FUTURE_PENDING; });
         } else {
