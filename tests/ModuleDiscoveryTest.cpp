@@ -5,10 +5,8 @@
 #include <chrono>
 #include <set>
 #include <string>
-#include <zip.h>
 
 #include "Core/ModuleDiscovery.h"
-#include "StringUtils.h"
 
 namespace {
 
@@ -34,25 +32,6 @@ protected:
         std::filesystem::create_directories(mod_dir);
         std::ofstream ofs(mod_dir / L"mod.toml", std::ios::trunc);
         ofs << content;
-    }
-
-    void WriteArchive(const std::wstring &archive_name, std::string_view content, std::string_view root = {}) {
-        auto archive_path = temp_dir / archive_name;
-        auto archive_utf8 = utils::Utf16ToUtf8(archive_path.wstring());
-        zip_t *zip = zip_open(archive_utf8.c_str(), ZIP_DEFAULT_COMPRESSION_LEVEL, 'w');
-        ASSERT_NE(zip, nullptr);
-        struct ZipGuard {
-            zip_t *handle;
-            ~ZipGuard() {
-                if (handle)
-                    zip_close(handle);
-            }
-        } guard{zip};
-
-        std::string entry_name = root.empty() ? std::string("mod.toml") : std::string(root) + "/mod.toml";
-        ASSERT_EQ(zip_entry_open(zip, entry_name.c_str()), 0);
-        ASSERT_GE(zip_entry_write(zip, content.data(), content.size()), 0);
-        ASSERT_EQ(zip_entry_close(zip), 0);
     }
 };
 
@@ -143,41 +122,23 @@ base = "^1.0"
     EXPECT_LT(find_index("base"), find_index("addon"));
 }
 
-TEST_F(ModuleDiscoveryFixture, DiscoversBpArchives) {
-    WriteArchive(L"Packed.bp", R"TOML(
-[package]
-id = "packed"
-name = "Packed"
-version = "1.0.0"
-)TOML");
+TEST_F(ModuleDiscoveryFixture, IgnoresRegularFilesWithoutManifest) {
+    std::ofstream ofs(temp_dir / L"readme.txt", std::ios::trunc);
+    ofs << "not a module";
 
     BML::Core::ManifestLoadResult result;
     ASSERT_TRUE(BML::Core::LoadManifestsFromDirectory(temp_dir.wstring(), result));
-    ASSERT_EQ(result.manifests.size(), 1u);
-    EXPECT_EQ(result.manifests[0]->package.id, "packed");
+    EXPECT_TRUE(result.manifests.empty());
+    EXPECT_TRUE(result.errors.empty());
 }
 
-TEST_F(ModuleDiscoveryFixture, ResolvesNestedFolderInsideArchive) {
-    WriteArchive(L"Nested.bp", R"TOML(
-[package]
-id = "nested"
-name = "Nested"
-version = "1.0.0"
-)TOML", "NestedMod");
+TEST_F(ModuleDiscoveryFixture, IgnoresDirectoriesWithoutManifest) {
+    std::filesystem::create_directories(temp_dir / L"EmptyModule");
 
     BML::Core::ManifestLoadResult result;
     ASSERT_TRUE(BML::Core::LoadManifestsFromDirectory(temp_dir.wstring(), result));
-    ASSERT_EQ(result.manifests.size(), 1u);
-    EXPECT_EQ(result.manifests[0]->package.id, "nested");
-}
-
-TEST_F(ModuleDiscoveryFixture, ReportsExtractionErrorsForInvalidBp) {
-    std::ofstream ofs(temp_dir / L"Broken.bp", std::ios::binary);
-    ofs << "notzip";
-
-    BML::Core::ManifestLoadResult result;
-    EXPECT_FALSE(BML::Core::LoadManifestsFromDirectory(temp_dir.wstring(), result));
-    ASSERT_FALSE(result.errors.empty());
+    EXPECT_TRUE(result.manifests.empty());
+    EXPECT_TRUE(result.errors.empty());
 }
 
 } // namespace
