@@ -109,13 +109,14 @@ public:
 
         m_Menu.Init();
 
-        m_Subs.Add(BML_TOPIC_ENGINE_INIT, [this](const bml::imc::Message &msg) {
+        const bool subscriptionsOk =
+            m_Subs.Add(BML_TOPIC_ENGINE_INIT, [this](const bml::imc::Message &msg) {
             auto *payload = bml::ValidateEnginePayload<BML_EngineInitEvent>(msg);
             if (!payload) return;
             SetContext(payload->context);
-        });
+        }) &&
 
-        m_Subs.Add(BML_TOPIC_ENGINE_PLAY, [this](const bml::imc::Message &msg) {
+            m_Subs.Add(BML_TOPIC_ENGINE_PLAY, [this](const bml::imc::Message &msg) {
             auto *payload = bml::ValidateEnginePayload<BML_EnginePlayEvent>(msg);
             if (payload) {
                 SetContext(payload->context);
@@ -124,9 +125,9 @@ public:
             }
 
             EnsureAssetsReady();
-        });
+        }) &&
 
-        m_Subs.Add(BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT, [this](const bml::imc::Message &msg) {
+            m_Subs.Add(BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT, [this](const bml::imc::Message &msg) {
             auto *payload = msg.As<BML_ScriptLoadEvent>();
             if (!payload || !payload->script) {
                 return;
@@ -142,17 +143,17 @@ public:
                 m_OptionsEntryInstalled = true;
                 Services().Log().Info("Inserted Mods button into Menu_Options");
             }
-        });
+        }) &&
 
-        m_Subs.Add(BML_TOPIC_INPUT_KEY_UP, [](const bml::imc::Message &msg) {
+            m_Subs.Add(BML_TOPIC_INPUT_KEY_UP, [](const bml::imc::Message &msg) {
             auto *event = msg.As<BML_KeyUpEvent>();
             if (!event) {
                 return;
             }
             MenuRuntime::OnKeyUp(event->key_code);
-        });
+        }) &&
 
-        m_Subs.Add(BML_TOPIC_INPUT_KEY_DOWN, [](const bml::imc::Message &msg) {
+            m_Subs.Add(BML_TOPIC_INPUT_KEY_DOWN, [](const bml::imc::Message &msg) {
             auto *event = msg.As<BML_KeyDownEvent>();
             if (!event) {
                 return;
@@ -160,7 +161,7 @@ public:
             MenuRuntime::OnKeyDown(event->key_code);
         });
 
-        return m_Subs.Count() >= 6 ? BML_RESULT_OK : BML_RESULT_FAIL;
+        return subscriptionsOk ? BML_RESULT_OK : BML_RESULT_FAIL;
     }
 
     BML_Result OnPrepareDetach() override {

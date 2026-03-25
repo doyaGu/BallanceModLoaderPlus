@@ -600,20 +600,21 @@ public:
             BML_TOPIC_STATE_CUSTOM_MAP_NAME,
             &m_TopicCustomMapName);
 
-        m_Subs.Add(BML_TOPIC_INPUT_KEY_DOWN, [this](const bml::imc::Message &msg) {
+        const bool subscriptionsOk =
+            m_Subs.Add(BML_TOPIC_INPUT_KEY_DOWN, [this](const bml::imc::Message &msg) {
             auto *event = msg.As<BML_KeyDownEvent>();
             if (!event || event->repeat || !m_Settings.enabled) return;
             if (static_cast<int>(event->key_code) == m_Settings.openKey) SetVisible(!m_Visible);
-        });
+        }) &&
 
-        m_Subs.Add(BML_TOPIC_ENGINE_INIT, [this](const bml::imc::Message &msg) {
+            m_Subs.Add(BML_TOPIC_ENGINE_INIT, [this](const bml::imc::Message &msg) {
             auto *event = bml::ValidateEnginePayload<BML_EngineInitEvent>(msg);
             if (!event) return;
             m_Context = event->context;
             GetCurrentLevelArray();
-        });
+        }) &&
 
-        m_Subs.Add(BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT, [this](const bml::imc::Message &msg) {
+            m_Subs.Add(BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT, [this](const bml::imc::Message &msg) {
             auto *payload = msg.As<BML_ScriptLoadEvent>();
             if (!payload || !payload->script) return;
             const char *scriptName = payload->script->GetName();
@@ -630,7 +631,7 @@ public:
             }
         });
 
-        if (m_Subs.Count() < 4) return BML_RESULT_FAIL;
+        if (!subscriptionsOk) return BML_RESULT_FAIL;
 
         m_ConsoleRegistry = Services().Acquire<BML_ConsoleCommandRegistry>();
         if (m_ConsoleRegistry) {
