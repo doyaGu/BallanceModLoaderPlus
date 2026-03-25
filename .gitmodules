@@ -19,3 +19,6 @@
 [submodule "deps/cimgui"]
 	path = deps/cimgui
 	url = https://github.com/cimgui/cimgui.git
+[submodule "deps/yyjson"]
+	path = deps/yyjson
+	url = https://github.com/ibireme/yyjson.git
