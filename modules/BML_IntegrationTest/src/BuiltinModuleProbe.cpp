@@ -39,6 +39,7 @@
 #include "bml_interface.hpp"
 #include "bml_topics.h"
 #include "bml_ui.hpp"
+#include "PathUtils.h"
 
 namespace {
 struct ConfigEntrySnapshot {
@@ -120,21 +121,15 @@ static std::string EscapeJson(std::string_view value) {
 }
 
 static std::filesystem::path ResolveProbeReportPath() {
-    std::wstring path(260, L'\0');
-    while (true) {
-        const DWORD copied = GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
-        if (copied == 0) {
-            break;
-        }
-        if (copied < path.size() - 1) {
-            path.resize(copied);
-            const std::filesystem::path exe(path);
-            return (exe.parent_path().parent_path() / L"ModLoader" / L"BuiltinModuleProbeReport.json").lexically_normal();
-        }
-        path.resize(path.size() * 2, L'\0');
+    const utils::RuntimeLayoutNames names;
+    const auto layout = utils::GetRuntimeLayout();
+    if (!layout.runtime_directory.empty()) {
+        return (layout.runtime_directory / L"BuiltinModuleProbeReport.json")
+            .lexically_normal();
     }
 
-    return (std::filesystem::current_path() / "ModLoader" / "BuiltinModuleProbeReport.json").lexically_normal();
+    return (std::filesystem::current_path() / names.runtime_directory / L"BuiltinModuleProbeReport.json")
+        .lexically_normal();
 }
 
 static std::string GetEnvironmentString(const char *name) {

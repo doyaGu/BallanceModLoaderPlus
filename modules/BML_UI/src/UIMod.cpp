@@ -325,10 +325,7 @@ class UIMod : public bml::Module {
             return;
         }
 
-        wchar_t modulePath[MAX_PATH] = {};
-        GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
-        std::filesystem::path loaderPath = std::filesystem::path(modulePath).parent_path().parent_path() / "ModLoader";
-        m_LoaderDirW = loaderPath.wstring();
+        m_LoaderDirW = utils::GetRuntimeLayout().runtime_directory.wstring();
         m_LoaderDirUtf8 = utils::Utf16ToUtf8(m_LoaderDirW);
     }
 

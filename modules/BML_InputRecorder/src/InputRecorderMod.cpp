@@ -20,15 +20,14 @@
 #include "bml_topics.h"
 
 #include "RecorderEngine.h"
+#include "PathUtils.h"
 
 namespace fs = std::filesystem;
 
 namespace {
 
 std::string GetRecordingsDir() {
-    wchar_t wpath[MAX_PATH] = {};
-    GetModuleFileNameW(nullptr, wpath, MAX_PATH);
-    fs::path dir = fs::path(wpath).parent_path() / L"ModLoader" / L"Recordings";
+    fs::path dir = utils::GetRuntimeLayout().runtime_directory / L"Recordings";
     return dir.string();
 }
 

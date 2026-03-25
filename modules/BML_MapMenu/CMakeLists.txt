@@ -8,6 +8,7 @@ bml_add_module(BML_MapMenu
     MANIFEST mod.toml
     INCLUDE_DIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/Utils
         ${VIRTOOLS_SDK_INCLUDE_DIR}
         ${IMGUI_SOURCE_DIR}
     LINK_LIBRARIES

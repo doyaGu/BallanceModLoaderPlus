@@ -10,7 +10,7 @@
  *   - Logger output at all levels
  *   - Frame loop (PreProcess/PostProcess/Render events)
  *
- * Writes a JSON report to ModLoader/IntegrationTestReport.json,
+ * Writes a JSON report to the runtime directory as IntegrationTestReport.json,
  * then requests game exit after collecting enough frames.
  */
 
@@ -20,6 +20,7 @@
 #include "bml_input_control.h"
 #include "bml_topics.h"
 #include "BuiltinModuleProbe.h"
+#include "PathUtils.h"
 
 #include <array>
 #include <atomic>
@@ -32,13 +33,6 @@
 #include <string_view>
 #include <unordered_set>
 #include <vector>
-
-#if defined(_WIN32)
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
-#endif
 
 // ---------------------------------------------------------------------------
 // Test result bookkeeping
@@ -83,24 +77,13 @@ static constexpr std::array<const char *, 21> kRequiredTestNames = {
 };
 
 static std::filesystem::path ResolveReportPath() {
-#if defined(_WIN32)
-    std::wstring path(260, L'\0');
-    DWORD copied = 0;
-    while (true) {
-        copied = GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
-        if (copied == 0) {
-            break;
-        }
-        if (copied < path.size() - 1) {
-            path.resize(copied);
-            std::filesystem::path exe(path);
-            return (exe.parent_path().parent_path() / L"ModLoader" / L"IntegrationTestReport.json").lexically_normal();
-        }
-        path.resize(path.size() * 2, L'\0');
+    const utils::RuntimeLayoutNames names;
+    const auto layout = utils::GetRuntimeLayout();
+    if (!layout.runtime_directory.empty()) {
+        return (layout.runtime_directory / L"IntegrationTestReport.json").lexically_normal();
     }
-#endif
-
-    return (std::filesystem::current_path() / "ModLoader" / "IntegrationTestReport.json").lexically_normal();
+    return (std::filesystem::current_path() / names.runtime_directory / L"IntegrationTestReport.json")
+        .lexically_normal();
 }
 
 static std::string EscapeJson(std::string_view value) {

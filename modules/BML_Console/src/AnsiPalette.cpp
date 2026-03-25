@@ -90,7 +90,7 @@ ImU32 AnsiPalette::HexToImU32(const char *hex) {
 
 std::wstring AnsiPalette::GetLoaderDirW() const {
     if (s_LoaderDirProvider) return s_LoaderDirProvider();
-    return utils::GetCurrentDirectoryW();
+    return utils::GetRuntimeLayout().runtime_directory.wstring();
 }
 
 std::wstring AnsiPalette::GetFilePathW() const {

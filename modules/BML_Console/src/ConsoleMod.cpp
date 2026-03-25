@@ -57,13 +57,13 @@ float ClampUnit(float value) {
 }
 
 std::filesystem::path ResolveLoaderFilePath(const wchar_t *filename) {
-    const std::wstring exePath = utils::GetExecutablePathW();
-    if (exePath.empty()) return std::filesystem::current_path() / filename;
-    return std::filesystem::path(exePath).parent_path().parent_path() / L"ModLoader" / filename;
+    const auto layout = utils::GetRuntimeLayout();
+    if (layout.runtime_directory.empty()) return std::filesystem::current_path() / filename;
+    return (layout.runtime_directory / filename).lexically_normal();
 }
 
 std::wstring GetLoaderDirectoryPath() {
-    return ResolveLoaderFilePath(L".").parent_path().wstring();
+    return utils::GetRuntimeLayout().runtime_directory.wstring();
 }
 
 std::wstring ConsolePaletteLoaderDirProvider() {

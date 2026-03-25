@@ -45,6 +45,7 @@
 #include "BML/Guids/Logics.h"
 
 #include "BML/ScriptGraph.h"
+#include "PathUtils.h"
 #include "StringUtils.h"
 
 namespace {
@@ -84,11 +85,12 @@ bool ContainsCaseInsensitive(std::string_view haystack, std::string_view needle)
 }
 
 std::wstring GetLoaderDir() {
-    wchar_t modulePath[MAX_PATH] = {};
-    DWORD length = ::GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
-    if (length == 0 || length >= MAX_PATH) return L"ModLoader";
-    fs::path exePath(modulePath);
-    return (exePath.parent_path() / L"ModLoader").wstring();
+    const auto layout = utils::GetRuntimeLayout();
+    if (!layout.runtime_directory.empty()) {
+        return layout.runtime_directory.wstring();
+    }
+
+    return utils::RuntimeLayoutNames{}.runtime_directory;
 }
 
 std::wstring GetMapsDir() {
