@@ -2,17 +2,16 @@
 
 #include "KernelServices.h"
 
-#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
-#include <iomanip>
 #include <mutex>
-#include <sstream>
 #include <unordered_map>
 
+#include "JsonUtils.h"
 #include "Logging.h"
 #include "StringUtils.h"
+#include "TimeUtils.h"
 
 namespace BML::Core {
     namespace {
@@ -24,172 +23,57 @@ namespace BML::Core {
             return (dir / L"ModLoader" / L"fault_log.json").wstring();
         }
 
-        std::string NowIso8601() {
-            auto now = std::chrono::system_clock::now();
-            auto time_t_now = std::chrono::system_clock::to_time_t(now);
-            std::tm tm_buf{};
-#if defined(_WIN32)
-            localtime_s(&tm_buf, &time_t_now);
-#else
-            localtime_r(&time_t_now, &tm_buf);
-#endif
-            char buf[64];
-            std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm_buf);
-            return buf;
-        }
-
         std::string ExceptionCodeToHex(unsigned long code) {
             char buf[16];
             std::snprintf(buf, sizeof(buf), "0x%08lX", code);
             return buf;
         }
 
-        // Minimal JSON parser/writer for fault_log.json
-        // Format:
-        // {
-        //   "module.id": {
-        //     "fault_count": N,
-        //     "last_fault": "...",
-        //     "last_code": "0x...",
-        //     "disabled": true|false
-        //   }
-        // }
-
-        std::string EscapeJsonString(const std::string &s) {
-            std::string result;
-            result.reserve(s.size() + 8);
-            for (char c : s) {
-                switch (c) {
-                    case '"': result += "\\\""; break;
-                    case '\\': result += "\\\\"; break;
-                    case '\n': result += "\\n"; break;
-                    case '\r': result += "\\r"; break;
-                    case '\t': result += "\\t"; break;
-                    default: result += c; break;
-                }
-            }
-            return result;
-        }
-
         void WriteJson(const std::wstring &path,
                        const std::unordered_map<std::string, FaultTracker::FaultRecord> &records) {
-            // Ensure directory exists
             std::filesystem::path p(path);
             std::error_code ec;
             std::filesystem::create_directories(p.parent_path(), ec);
 
-            std::ofstream ofs(path);
+            utils::MutableJsonDocument document;
+            yyjson_mut_val *root = document.CreateObject();
+            if (!root) {
+                return;
+            }
+            document.SetRoot(root);
+
+            for (const auto &[id, rec] : records) {
+                yyjson_mut_val *entry = document.CreateObject();
+                if (!entry
+                    || !document.AddInt(entry, "fault_count", rec.fault_count)
+                    || !document.AddString(entry, "last_fault", rec.last_fault)
+                    || !document.AddString(entry, "last_code", rec.last_code)
+                    || !document.AddBool(entry, "disabled", rec.disabled)
+                    || !document.AddValue(root, id, entry)) {
+                    CoreLog(BML_LOG_WARN, kLogCategory,
+                            "Failed to serialize fault log entry for '%s'",
+                            id.c_str());
+                    return;
+                }
+            }
+
+            std::string error;
+            const std::string payload = document.Write(true, error);
+            if (payload.empty()) {
+                CoreLog(BML_LOG_WARN, kLogCategory,
+                        "Failed to write fault log JSON: %s",
+                        error.c_str());
+                return;
+            }
+
+            std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
             if (!ofs.is_open()) {
                 CoreLog(BML_LOG_WARN, kLogCategory,
                         "Failed to write fault log: %s",
                         utils::Utf16ToUtf8(path).c_str());
                 return;
             }
-
-            ofs << "{\n";
-            size_t i = 0;
-            for (const auto &[id, rec] : records) {
-                ofs << "  \"" << EscapeJsonString(id) << "\": {\n"
-                    << "    \"fault_count\": " << rec.fault_count << ",\n"
-                    << "    \"last_fault\": \"" << EscapeJsonString(rec.last_fault) << "\",\n"
-                    << "    \"last_code\": \"" << EscapeJsonString(rec.last_code) << "\",\n"
-                    << "    \"disabled\": " << (rec.disabled ? "true" : "false") << "\n"
-                    << "  }";
-                if (++i < records.size())
-                    ofs << ",";
-                ofs << "\n";
-            }
-            ofs << "}\n";
-        }
-
-        // Simple JSON tokenizer for fault_log.json loading
-        void ParseFaultLog(const std::string &json,
-                           std::unordered_map<std::string, FaultTracker::FaultRecord> &out) {
-            out.clear();
-            // Very minimal: scan for patterns like "key": { ... }
-            // We rely on our own well-formatted output
-            size_t pos = 0;
-            auto skipWs = [&]() {
-                while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\n' ||
-                       json[pos] == '\r' || json[pos] == '\t'))
-                    ++pos;
-            };
-            auto readString = [&]() -> std::string {
-                skipWs();
-                if (pos >= json.size() || json[pos] != '"')
-                    return {};
-                ++pos;
-                std::string result;
-                while (pos < json.size() && json[pos] != '"') {
-                    if (json[pos] == '\\' && pos + 1 < json.size()) {
-                        ++pos;
-                    }
-                    result += json[pos++];
-                }
-                if (pos < json.size()) ++pos; // skip closing "
-                return result;
-            };
-            auto readInt = [&]() -> int {
-                skipWs();
-                int val = 0;
-                bool neg = false;
-                if (pos < json.size() && json[pos] == '-') { neg = true; ++pos; }
-                while (pos < json.size() && json[pos] >= '0' && json[pos] <= '9') {
-                    val = val * 10 + (json[pos] - '0');
-                    ++pos;
-                }
-                return neg ? -val : val;
-            };
-            auto readBool = [&]() -> bool {
-                skipWs();
-                if (pos + 4 <= json.size() && json.substr(pos, 4) == "true") {
-                    pos += 4;
-                    return true;
-                }
-                if (pos + 5 <= json.size() && json.substr(pos, 5) == "false") {
-                    pos += 5;
-                    return false;
-                }
-                return false;
-            };
-            auto skipChar = [&](char c) {
-                skipWs();
-                if (pos < json.size() && json[pos] == c) ++pos;
-            };
-
-            skipChar('{');
-            while (pos < json.size()) {
-                skipWs();
-                if (pos >= json.size() || json[pos] == '}') break;
-
-                std::string module_id = readString();
-                if (module_id.empty()) break;
-                skipChar(':');
-                skipChar('{');
-
-                FaultTracker::FaultRecord rec;
-                // Read fields
-                for (int field = 0; field < 4; ++field) {
-                    skipWs();
-                    if (pos >= json.size() || json[pos] == '}') break;
-                    std::string key = readString();
-                    skipChar(':');
-                    if (key == "fault_count") {
-                        rec.fault_count = readInt();
-                    } else if (key == "last_fault") {
-                        rec.last_fault = readString();
-                    } else if (key == "last_code") {
-                        rec.last_code = readString();
-                    } else if (key == "disabled") {
-                        rec.disabled = readBool();
-                    }
-                    skipChar(',');
-                }
-                skipChar('}');
-                skipChar(',');
-
-                out[module_id] = rec;
-            }
+            ofs << payload;
         }
     } // namespace
 
@@ -209,21 +93,53 @@ namespace BML::Core {
 
         impl.base_dir = base_dir;
         impl.loaded = true;
+        std::unordered_map<std::string, FaultTracker::FaultRecord> loadedRecords;
 
         auto path = GetFaultLogPath(base_dir);
         std::error_code ec;
-        if (!std::filesystem::exists(path, ec))
+        if (!std::filesystem::exists(path, ec)) {
+            impl.records.clear();
             return;
+        }
 
-        std::ifstream ifs(path);
-        if (!ifs.is_open())
+        std::string error;
+        auto document = utils::JsonDocument::ParseFile(path, error);
+        if (!document.IsValid()) {
+            impl.records.clear();
+            CoreLog(BML_LOG_WARN, kLogCategory,
+                    "Failed to parse fault log JSON: %s",
+                    error.c_str());
             return;
+        }
 
-        std::string content((std::istreambuf_iterator<char>(ifs)),
-                             std::istreambuf_iterator<char>());
-        ifs.close();
+        yyjson_val *root = document.Root();
+        if (!root || !yyjson_is_obj(root)) {
+            impl.records.clear();
+            return;
+        }
 
-        ParseFaultLog(content, impl.records);
+        yyjson_obj_iter iter = yyjson_obj_iter_with(root);
+        yyjson_val *key = nullptr;
+        while ((key = yyjson_obj_iter_next(&iter)) != nullptr) {
+            yyjson_val *value = yyjson_obj_iter_get_val(key);
+            if (!value || !yyjson_is_obj(value)) {
+                continue;
+            }
+
+            const char *moduleId = yyjson_get_str(key);
+            if (!moduleId) {
+                continue;
+            }
+
+            FaultTracker::FaultRecord record;
+            record.fault_count = static_cast<int>(utils::JsonGetInt(value, "fault_count", 0));
+            record.last_fault = utils::JsonGetString(value, "last_fault");
+            record.last_code = utils::JsonGetString(value, "last_code");
+            record.disabled = utils::JsonGetBool(value, "disabled", false);
+            loadedRecords[moduleId] = std::move(record);
+        }
+
+        impl.records = std::move(loadedRecords);
 
         for (const auto &[id, rec] : impl.records) {
             if (rec.disabled) {
@@ -241,7 +157,7 @@ namespace BML::Core {
 
         auto &rec = impl.records[module_id];
         rec.fault_count++;
-        rec.last_fault = NowIso8601();
+        rec.last_fault = utils::GetCurrentLocalIso8601();
         rec.last_code = ExceptionCodeToHex(exception_code);
         if (rec.fault_count >= kFaultDisableThreshold) {
             rec.disabled = true;

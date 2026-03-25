@@ -14,6 +14,7 @@
 #include "Core/Context.h"
 #include "Core/CrashDumpWriter.h"
 #include "Core/FaultTracker.h"
+#include "JsonUtils.h"
 #include "TestKernel.h"
 
 using namespace BML::Core;
@@ -104,6 +105,14 @@ TEST_F(FaultTrackerTest, PersistenceRoundTrip) {
     auto jsonPath = m_TempDir / L"ModLoader" / L"fault_log.json";
     ASSERT_TRUE(std::filesystem::exists(jsonPath));
 
+    const std::string jsonContent = [&]() {
+        std::ifstream ifs(jsonPath, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>());
+    }();
+    std::string parseError;
+    auto document = utils::JsonDocument::Parse(jsonContent, parseError);
+    ASSERT_TRUE(document.IsValid()) << parseError;
+
     // Reload and verify state is preserved
     kernel_->fault_tracker->Load(m_TempDir.wstring());
     EXPECT_EQ(kernel_->fault_tracker->GetFaultCount("com.example.mod1"), 3);
@@ -132,4 +141,22 @@ TEST_F(FaultTrackerTest, LoadNonExistentFile) {
     // Should not crash, just load empty
     kernel_->fault_tracker->Load(emptyDir.wstring());
     EXPECT_EQ(kernel_->fault_tracker->GetFaultCount("any.mod"), 0);
+}
+
+TEST_F(FaultTrackerTest, InvalidJsonClearsPreviouslyLoadedFaultState) {
+    kernel_->fault_tracker->Load(m_TempDir.wstring());
+    kernel_->fault_tracker->RecordFault("com.example.badmod", 0xC0000005);
+    kernel_->fault_tracker->RecordFault("com.example.badmod", 0xC0000005);
+    kernel_->fault_tracker->RecordFault("com.example.badmod", 0xC0000005);
+    ASSERT_TRUE(kernel_->fault_tracker->IsDisabled("com.example.badmod"));
+
+    auto jsonPath = m_TempDir / L"ModLoader" / L"fault_log.json";
+    {
+        std::ofstream ofs(jsonPath, std::ios::binary | std::ios::trunc);
+        ofs << "{ invalid json";
+    }
+
+    kernel_->fault_tracker->Load(m_TempDir.wstring());
+    EXPECT_EQ(kernel_->fault_tracker->GetFaultCount("com.example.badmod"), 0);
+    EXPECT_FALSE(kernel_->fault_tracker->IsDisabled("com.example.badmod"));
 }
