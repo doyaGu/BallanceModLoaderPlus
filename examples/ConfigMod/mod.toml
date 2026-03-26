@@ -1,0 +1,14 @@
+[package]
+id = "com.example.configmod"
+name = "Config Example"
+version = "1.0.0"
+entry = "ConfigMod.dll"
+description = "Demonstrates BML configuration API"
+authors = ["BML Team"]
+
+[dependencies]
+# This module has no dependencies
+
+[metadata]
+tags = ["example", "configuration"]
+homepage = "https://github.com/doyaGu/BallanceModLoaderPlus"

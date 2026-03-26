@@ -1,0 +1,14 @@
+[package]
+id = "com.example.timermod"
+name = "Timer Example"
+version = "1.0.0"
+entry = "TimerMod.dll"
+description = "Demonstrates BML timer and IMC publishing"
+authors = ["BML Team"]
+
+[dependencies]
+# This module has no dependencies
+
+[metadata]
+tags = ["example", "timer", "imc"]
+homepage = "https://github.com/doyaGu/BallanceModLoaderPlus"
