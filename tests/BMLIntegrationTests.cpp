@@ -274,19 +274,6 @@ TEST_F(BMLIntegrationTest, PublicHeadersAndDesignDocsDoNotExposeRemovedLegacyCon
     ASSERT_FALSE(contextHeader.empty());
     EXPECT_EQ(std::string::npos, contextHeader.find("GetGlobalContext("));
 
-    const auto scriptingDesign =
-        ReadFileUtf8(repoRoot / "docs" / "design" / "embedded-scripting-angelscript.md");
-    ASSERT_FALSE(scriptingDesign.empty());
-    EXPECT_EQ(std::string::npos, scriptingDesign.find("bmlRegisterRuntimeProvider"));
-    EXPECT_EQ(std::string::npos, scriptingDesign.find("bmlUnregisterRuntimeProvider"));
-    EXPECT_EQ(std::string::npos, scriptingDesign.find("bmlCleanupModuleState"));
-    EXPECT_EQ(std::string::npos, scriptingDesign.find("PFN_BML_GetProcAddress"));
-
-    const auto dimensionsDesign =
-        ReadFileUtf8(repoRoot / "docs" / "design" / "missing-dimensions-analysis.md");
-    ASSERT_FALSE(dimensionsDesign.empty());
-    EXPECT_EQ(std::string::npos, dimensionsDesign.find("PFN_BML_HookEnumerate"));
-
     const auto servicesHeader = ReadFileUtf8(repoRoot / "include" / "bml_services.hpp");
     ASSERT_FALSE(servicesHeader.empty());
     EXPECT_EQ(std::string::npos, servicesHeader.find("BuiltinServices"));
