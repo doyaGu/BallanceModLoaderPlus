@@ -133,7 +133,6 @@ target_link_libraries(BML
         BML_JsonUtils
         BML_TimeUtils
         BML_HashUtils
-        zip
         tomlplusplus::tomlplusplus
         efsw
 )

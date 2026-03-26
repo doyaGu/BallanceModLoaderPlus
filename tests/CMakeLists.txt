@@ -114,7 +114,6 @@ add_bml_test_support_library(bml_test_runtime_support
         ${BML_SOURCE_DIR}/Core/TracingApi.cpp
         DEPENDENCIES
         BML_Utils
-        zip
         tomlplusplus::tomlplusplus
         efsw
 )
@@ -227,7 +226,6 @@ add_bml_test_support_library(bml_test_package_install_support
         bml_test_stub_logging_support
         BML_Utils
         tomlplusplus::tomlplusplus
-        zip
 )
 
 add_bml_test_support_library(bml_test_filewatcher_support

@@ -64,9 +64,9 @@ target_include_directories(BML_JsonUtils PUBLIC
     ${PROJECT_SOURCE_DIR}/deps/yyjson/src
 )
 
-target_link_libraries(BML_JsonUtils
-    PUBLIC yyjson
-    PRIVATE BML_StringUtils
+target_link_libraries(BML_JsonUtils PUBLIC
+    BML_StringUtils
+    yyjson
 )
 
 set_target_properties(BML_JsonUtils PROPERTIES
@@ -90,7 +90,7 @@ if (WIN32)
         ${CMAKE_CURRENT_SOURCE_DIR}
     )
 
-    target_link_libraries(BML_HookUtils PRIVATE BML_StringUtils)
+    target_link_libraries(BML_HookUtils PUBLIC BML_StringUtils)
 
     set_target_properties(BML_HookUtils PROPERTIES
         POSITION_INDEPENDENT_CODE ON
@@ -110,9 +110,9 @@ if (WIN32)
         ${CMAKE_CURRENT_SOURCE_DIR}
     )
 
-    target_link_libraries(BML_PathUtils
-        PUBLIC BML_StringUtils
-        PRIVATE zip
+    target_link_libraries(BML_PathUtils PUBLIC
+        BML_StringUtils
+        zip
     )
 
     set_target_properties(BML_PathUtils PROPERTIES
@@ -132,9 +132,10 @@ if (WIN32)
         ${CMAKE_CURRENT_SOURCE_DIR}
     )
 
-    target_link_libraries(BML_IniFile
-        PUBLIC BML_PathUtils BML_StringUtils
-        PRIVATE utf8
+    target_link_libraries(BML_IniFile PUBLIC
+        BML_PathUtils
+        BML_StringUtils
+        utf8
     )
 
     set_target_properties(BML_IniFile PROPERTIES
