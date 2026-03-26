@@ -85,6 +85,25 @@ namespace imc {
         return bus->ResetStats(bus->Context) == BML_RESULT_OK;
     }
 
+    /** @brief Clear retained state for a topic */
+    inline bool clearState(TopicId id, const BML_ImcBusInterface *bus = nullptr) {
+        if (!bus || !bus->Context || !bus->ClearState) return false;
+        return bus->ClearState(bus->Context, id) == BML_RESULT_OK;
+    }
+
+    /** @brief Copy retained state for a topic into caller-owned buffer */
+    inline std::optional<std::vector<uint8_t>> copyState(TopicId id, const BML_ImcBusInterface *bus = nullptr) {
+        if (!bus || !bus->Context || !bus->CopyState) return std::nullopt;
+        size_t size = 0;
+        BML_Result result = bus->CopyState(bus->Context, id, nullptr, 0, &size, nullptr);
+        if (result != BML_RESULT_BUFFER_TOO_SMALL || size == 0) return std::nullopt;
+        std::vector<uint8_t> buffer(size);
+        result = bus->CopyState(bus->Context, id, buffer.data(), buffer.size(), &size, nullptr);
+        if (result != BML_RESULT_OK) return std::nullopt;
+        buffer.resize(size);
+        return buffer;
+    }
+
     /** @brief Get topic info by ID */
     inline std::optional<BML_TopicInfo> getTopicInfo(TopicId id, const BML_ImcBusInterface *bus = nullptr) {
         if (!bus || !bus->Context || !bus->GetTopicInfo) return std::nullopt;
