@@ -211,9 +211,12 @@ namespace bml {
          * @warning The returned string is a copy, unlike the C API variant
          */
         std::string GetString(const char *category, const char *key, const char *default_value) const {
-            const char *out = default_value;
-            m_ConfigInterface->GetString(m_Mod, category, key, default_value, &out);
-            return out ? std::string(out) : std::string();
+            const char *out = nullptr;
+            BML_Result result = m_ConfigInterface->GetString(m_Mod, category, key, default_value, &out);
+            if (result == BML_RESULT_OK && out) {
+                return std::string(out);
+            }
+            return default_value ? std::string(default_value) : std::string();
         }
 
         // ========================================================================
