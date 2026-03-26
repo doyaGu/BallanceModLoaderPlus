@@ -226,6 +226,7 @@ add_bml_test_support_library(bml_test_package_install_support
         bml_test_stub_logging_support
         BML_Utils
         tomlplusplus::tomlplusplus
+        zip
 )
 
 add_bml_test_support_library(bml_test_filewatcher_support

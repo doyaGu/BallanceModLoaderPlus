@@ -97,23 +97,38 @@ namespace BML::Core {
             CoreLog(BML_LOG_DEBUG, "config.store", "%s", message.c_str());
         }
 
-        bool ValidateKey(const BML_ConfigKey *key) {
-            return key && key->category && key->name && key->category[0] != '\0' && key->name[0] != '\0';
+        BML_Result ValidateKey(const BML_ConfigKey *key) {
+            if (!key) {
+                return BML_RESULT_INVALID_ARGUMENT;
+            }
+            if (key->struct_size < sizeof(BML_ConfigKey)) {
+                return BML_RESULT_INVALID_SIZE;
+            }
+            if (!key->category || !key->name || key->category[0] == '\0' || key->name[0] == '\0') {
+                return BML_RESULT_INVALID_ARGUMENT;
+            }
+            return BML_RESULT_OK;
         }
 
-        bool ValidateValue(const BML_ConfigValue *value) {
-            if (!value)
-                return false;
+        BML_Result ValidateValue(const BML_ConfigValue *value) {
+            if (!value) {
+                return BML_RESULT_INVALID_ARGUMENT;
+            }
+            if (value->struct_size < sizeof(BML_ConfigValue)) {
+                return BML_RESULT_INVALID_SIZE;
+            }
             switch (value->type) {
             case BML_CONFIG_BOOL:
             case BML_CONFIG_INT:
             case BML_CONFIG_FLOAT:
             case BML_CONFIG_STRING:
-                return true;
+                return BML_RESULT_OK;
             case BML_CONFIG_BLOB:
-                return value->blob_size == 0 || value->data.blob_value != nullptr;
+                return (value->blob_size == 0 || value->data.blob_value != nullptr)
+                    ? BML_RESULT_OK
+                    : BML_RESULT_INVALID_ARGUMENT;
             default:
-                return false;
+                return BML_RESULT_INVALID_ARGUMENT;
             }
         }
 
@@ -288,16 +303,27 @@ namespace BML::Core {
     BML_Result ConfigStore::GetValue(BML_Mod mod,
                                      const BML_ConfigKey *key,
                                      BML_ConfigValue *out_value) {
-        if (!ValidateKey(key) || !out_value)
+        BML_Result key_validation = ValidateKey(key);
+        if (key_validation != BML_RESULT_OK) {
+            return key_validation;
+        }
+        if (!out_value) {
             return BML_RESULT_INVALID_ARGUMENT;
-        if (!mod)
+        }
+        if (out_value->struct_size < sizeof(BML_ConfigValue)) {
+            return BML_RESULT_INVALID_SIZE;
+        }
+        if (!mod) {
             return BML_RESULT_INVALID_ARGUMENT;
+        }
 
         auto *doc = GetOrCreateDocument(mod);
-        if (!doc)
+        if (!doc) {
             return BML_RESULT_INVALID_STATE;
-        if (!EnsureLoaded(*doc))
+        }
+        if (!EnsureLoaded(*doc)) {
             return BML_RESULT_IO_ERROR;
+        }
 
         {
             std::shared_lock docLock(doc->mutex);
@@ -312,16 +338,25 @@ namespace BML::Core {
     BML_Result ConfigStore::SetValue(BML_Mod mod,
                                      const BML_ConfigKey *key,
                                      const BML_ConfigValue *value) {
-        if (!ValidateKey(key) || !ValidateValue(value))
+        BML_Result key_validation = ValidateKey(key);
+        if (key_validation != BML_RESULT_OK) {
+            return key_validation;
+        }
+        BML_Result value_validation = ValidateValue(value);
+        if (value_validation != BML_RESULT_OK) {
+            return value_validation;
+        }
+        if (!mod) {
             return BML_RESULT_INVALID_ARGUMENT;
-        if (!mod)
-            return BML_RESULT_INVALID_ARGUMENT;
+        }
 
         auto *doc = GetOrCreateDocument(mod);
-        if (!doc)
+        if (!doc) {
             return BML_RESULT_INVALID_STATE;
-        if (!EnsureLoaded(*doc))
+        }
+        if (!EnsureLoaded(*doc)) {
             return BML_RESULT_IO_ERROR;
+        }
 
         {
             std::unique_lock docLock(doc->mutex);
@@ -362,10 +397,13 @@ namespace BML::Core {
     }
 
     BML_Result ConfigStore::ResetValue(BML_Mod mod, const BML_ConfigKey *key) {
-        if (!ValidateKey(key))
+        BML_Result key_validation = ValidateKey(key);
+        if (key_validation != BML_RESULT_OK) {
+            return key_validation;
+        }
+        if (!mod) {
             return BML_RESULT_INVALID_ARGUMENT;
-        if (!mod)
-            return BML_RESULT_INVALID_ARGUMENT;
+        }
 
         auto *doc = GetOrCreateDocument(mod);
         if (!doc)
@@ -825,8 +863,13 @@ namespace BML::Core {
         if (!batch || !key || !value) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
-        if (!ValidateKey(key) || !ValidateValue(value)) {
-            return BML_RESULT_INVALID_ARGUMENT;
+        BML_Result key_validation = ValidateKey(key);
+        if (key_validation != BML_RESULT_OK) {
+            return key_validation;
+        }
+        BML_Result value_validation = ValidateValue(value);
+        if (value_validation != BML_RESULT_OK) {
+            return value_validation;
         }
 
         std::lock_guard<std::mutex> lock(m_BatchMutex);
@@ -939,20 +982,22 @@ namespace BML::Core {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
-        std::lock_guard<std::mutex> lock(m_BatchMutex);
+        {
+            std::lock_guard<std::mutex> lock(m_BatchMutex);
 
-        auto it = m_Batches.find(batch);
-        if (it == m_Batches.end()) {
-            return BML_RESULT_INVALID_ARGUMENT;
+            auto it = m_Batches.find(batch);
+            if (it == m_Batches.end()) {
+                return BML_RESULT_INVALID_ARGUMENT;
+            }
+
+            ConfigBatchContext *ctx = it->second.get();
+            if (ctx->committed || ctx->discarded) {
+                return BML_RESULT_INVALID_STATE;
+            }
+
+            ctx->discarded = true;
+            m_Batches.erase(it);
         }
-
-        ConfigBatchContext *ctx = it->second.get();
-        if (ctx->committed || ctx->discarded) {
-            return BML_RESULT_INVALID_STATE;
-        }
-
-        ctx->discarded = true;
-        m_Batches.erase(it);
         {
             std::lock_guard<std::mutex> registry_lock(g_ConfigBatchStoreRegistryMutex);
             g_ConfigBatchStoreRegistry.erase(batch);

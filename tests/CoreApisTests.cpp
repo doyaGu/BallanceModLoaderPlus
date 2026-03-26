@@ -960,6 +960,73 @@ TEST_F(CoreApisTests, ConfigGetInt_TypeMismatch) {
     EXPECT_EQ(BML_RESULT_CONFIG_TYPE_MISMATCH, get_int_fn(Mod(), "test", "strkey", 0, &result));
 }
 
+TEST_F(CoreApisTests, ConfigGetRejectsUndersizedStructs) {
+    InitConfigBackedMod("coreapis.config.get.invalidsize");
+    BML::Core::RegisterConfigApis(*kernel_->api_registry);
+
+    auto set_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *)>(
+        kernel_->api_registry->Get("bmlConfigSet"));
+    auto get_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const BML_ConfigKey *, BML_ConfigValue *)>(
+        kernel_->api_registry->Get("bmlConfigGet"));
+    ASSERT_NE(set_fn, nullptr);
+    ASSERT_NE(get_fn, nullptr);
+
+    BML_ConfigKey key = BML_CONFIG_KEY_INIT("test", "value");
+    BML_ConfigValue value = BML_CONFIG_VALUE_INIT_INT(42);
+    ASSERT_EQ(BML_RESULT_OK, set_fn(Mod(), &key, &value));
+
+    BML_ConfigKey short_key = key;
+    short_key.struct_size = sizeof(BML_ConfigKey) - 1;
+
+    BML_ConfigValue short_value{};
+    short_value.struct_size = sizeof(BML_ConfigValue) - 1;
+
+    EXPECT_EQ(BML_RESULT_INVALID_SIZE, get_fn(Mod(), &short_key, &value));
+    EXPECT_EQ(BML_RESULT_INVALID_SIZE, get_fn(Mod(), &key, &short_value));
+}
+
+TEST_F(CoreApisTests, ConfigSetRejectsUndersizedStructs) {
+    InitConfigBackedMod("coreapis.config.set.invalidsize");
+    BML::Core::RegisterConfigApis(*kernel_->api_registry);
+
+    auto set_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *)>(
+        kernel_->api_registry->Get("bmlConfigSet"));
+    ASSERT_NE(set_fn, nullptr);
+
+    BML_ConfigKey key = BML_CONFIG_KEY_INIT("test", "value");
+    BML_ConfigValue value = BML_CONFIG_VALUE_INIT_INT(42);
+
+    BML_ConfigKey short_key = key;
+    short_key.struct_size = sizeof(BML_ConfigKey) - 1;
+
+    BML_ConfigValue short_value = value;
+    short_value.struct_size = sizeof(BML_ConfigValue) - 1;
+
+    EXPECT_EQ(BML_RESULT_INVALID_SIZE, set_fn(Mod(), &short_key, &value));
+    EXPECT_EQ(BML_RESULT_INVALID_SIZE, set_fn(Mod(), &key, &short_value));
+}
+
+TEST_F(CoreApisTests, ConfigResetRejectsUndersizedKeyStruct) {
+    InitConfigBackedMod("coreapis.config.reset.invalidsize");
+    BML::Core::RegisterConfigApis(*kernel_->api_registry);
+
+    auto set_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const BML_ConfigKey *, const BML_ConfigValue *)>(
+        kernel_->api_registry->Get("bmlConfigSet"));
+    auto reset_fn = reinterpret_cast<BML_Result (*)(BML_Mod, const BML_ConfigKey *)>(
+        kernel_->api_registry->Get("bmlConfigReset"));
+    ASSERT_NE(set_fn, nullptr);
+    ASSERT_NE(reset_fn, nullptr);
+
+    BML_ConfigKey key = BML_CONFIG_KEY_INIT("test", "value");
+    BML_ConfigValue value = BML_CONFIG_VALUE_INIT_INT(42);
+    ASSERT_EQ(BML_RESULT_OK, set_fn(Mod(), &key, &value));
+
+    BML_ConfigKey short_key = key;
+    short_key.struct_size = sizeof(BML_ConfigKey) - 1;
+
+    EXPECT_EQ(BML_RESULT_INVALID_SIZE, reset_fn(Mod(), &short_key));
+}
+
 // ========================================================================
 // Phase 1d: GetLoadedModuleCount optimization
 // ========================================================================
