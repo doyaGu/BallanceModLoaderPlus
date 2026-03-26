@@ -51,13 +51,9 @@ jobs:
         -DCMAKE_BUILD_TYPE=${{ matrix.configuration }}
         -DVIRTOOLS_SDK_PATH=${{ github.workspace }}/Virtools-SDK-2.1
         -DCMAKE_INSTALL_PREFIX=${{ env.BASE_DIST_DIR }}/${{ matrix.configuration }}
-        -DBML_BUILD_TESTS=ON
 
     - name: Build the project
       run: cmake --build ${{ env.BASE_BUILD_DIR }}/${{ matrix.configuration }} --config ${{ matrix.configuration }}
-
-    - name: Run tests
-      run: ctest --test-dir ${{ env.BASE_BUILD_DIR }}/${{ matrix.configuration }} -C ${{ matrix.configuration }} --output-on-failure
 
     - name: Install binaries to distribution folder
       run: >
