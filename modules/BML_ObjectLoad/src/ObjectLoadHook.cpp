@@ -176,7 +176,8 @@ namespace BML_ObjectLoad {
             beh->GetInputParameterValue(3, &addtoscene);
 
             CKScene *scene = ctx->GetCurrentScene();
-            if (ctx->GetCurrentLevel()->GetLevelScene() == scene)
+            CKLevel *currentLevel = ctx->GetCurrentLevel();
+            if (currentLevel && currentLevel->GetLevelScene() == scene)
                 addtoscene = FALSE;
 
             auto fname = (const char *) beh->GetInputParameterReadDataPtr(0);
@@ -274,21 +275,26 @@ namespace BML_ObjectLoad {
             DeleteCKObjectArray(array);
             beh->SetOutputParameterObject(1, masterobject);
 
-            CKBOOL isMap = strcmp(beh->GetOwnerScript()->GetName(), "Levelinit_build") == 0;
-            if (s_Hook.imc_bus && isMap && s_TopicCustomMapName != 0) {
-                auto *imcBus = s_Hook.imc_bus;
-                if (imcBus && imcBus->CopyState) {
-                    char custom_map_name[MAX_PATH] = {};
-                    size_t state_size = 0;
-                    if (imcBus->CopyState(imcBus->Context,
-                                            s_TopicCustomMapName,
-                                            custom_map_name,
-                                            sizeof(custom_map_name),
-                                            &state_size,
-                                            nullptr) == BML_RESULT_OK &&
-                        custom_map_name[0] != '\0') {
-                        fname = custom_map_name;
-                    }
+            CKBOOL isMap = FALSE;
+            CKBehavior *ownerScript = beh->GetOwnerScript();
+            if (ownerScript) {
+                const char *scriptName = ownerScript->GetName();
+                if (scriptName && strcmp(scriptName, "Levelinit_build") == 0)
+                    isMap = TRUE;
+            }
+
+            char custom_map_name[MAX_PATH] = {};
+            auto *imcBus = s_Hook.imc_bus;
+            if (imcBus && isMap && s_TopicCustomMapName != 0 && imcBus->CopyState) {
+                size_t state_size = 0;
+                if (imcBus->CopyState(imcBus->Context,
+                                        s_TopicCustomMapName,
+                                        custom_map_name,
+                                        sizeof(custom_map_name),
+                                        &state_size,
+                                        nullptr) == BML_RESULT_OK &&
+                    custom_map_name[0] != '\0') {
+                    fname = custom_map_name;
                 }
             }
 
@@ -301,7 +307,7 @@ namespace BML_ObjectLoad {
                                    reuseMaterials,
                                    dynamic,
                                    masterobject,
-                                   isMap ? TRUE : FALSE,
+                                   isMap,
                                    oarray->Begin(),
                                    static_cast<uint32_t>(oarray->Size()));
 
@@ -309,15 +315,12 @@ namespace BML_ObjectLoad {
             for (CK_ID *id = oarray->Begin(); id != oarray->End(); id++) {
                 CKObject *obj = ctx->GetObject(*id);
                 if (IsScriptBehavior(obj)) {
-                    PublishScriptLoadEvent(fname, static_cast<CKBehavior *>(obj), isMap ? TRUE : FALSE);
+                    PublishScriptLoadEvent(fname, static_cast<CKBehavior *>(obj), isMap);
                 }
             }
 
-            if (s_Hook.imc_bus && isMap && s_TopicCustomMapName != 0) {
-                auto *imcBus = s_Hook.imc_bus;
-                if (imcBus && imcBus->ClearState) {
-                    imcBus->ClearState(imcBus->Context, s_TopicCustomMapName);
-                }
+            if (imcBus && isMap && s_TopicCustomMapName != 0 && imcBus->ClearState) {
+                imcBus->ClearState(imcBus->Context, s_TopicCustomMapName);
             }
         }
 
@@ -362,7 +365,6 @@ namespace BML_ObjectLoad {
             if (!g_OriginalObjectLoad)
                 g_OriginalObjectLoad = objectLoadProto->GetFunction();
             objectLoadProto->SetFunction(&ObjectLoadHook);
-            PublishInitialLoadSnapshot(context);
             return true;
         }
 
@@ -432,6 +434,7 @@ namespace BML_ObjectLoad {
             objectLoadProto->SetFunction(g_OriginalObjectLoad);
         }
 
+        g_OriginalObjectLoad = nullptr;
         s_Context = nullptr;
         s_InitialSnapshotPublished = false;
         s_TopicLoadObject = 0;

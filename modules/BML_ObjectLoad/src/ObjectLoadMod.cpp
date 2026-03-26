@@ -26,11 +26,10 @@ class ObjectLoadMod : public bml::HookModule {
         // Eager init: try immediately if CKContext is already available
         CKContext *ctx = bml::virtools::GetCKContext(Services());
         TryInitHook(ctx);
-        if (m_HookReady) {
-            BML_ObjectLoad::PublishInitialLoadSnapshot(ctx);
-        }
 
-        // Retry on Engine/Play as well
+        // Publish initial snapshot on Engine/Play - by this point all modules
+        // have attached and registered their subscriptions, so events won't
+        // be silently dropped due to missing subscribers.
         m_Subs.Add(BML_TOPIC_ENGINE_PLAY, [this](const bml::imc::Message &msg) {
             auto *payload = bml::ValidateEnginePayload<BML_EnginePlayEvent>(msg);
             if (!payload) return;
