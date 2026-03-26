@@ -719,22 +719,31 @@ namespace BML::Core {
         if (!key)
             return BML_RESULT_INVALID_ARGUMENT;
 
-        std::lock_guard<std::mutex> lock(m_UserDataMutex);
+        // Capture old data/destructor under lock, call destructor outside lock
+        // to avoid deadlock if the destructor re-enters the context.
+        void *old_data = nullptr;
+        BML_UserDataDestructor old_destructor = nullptr;
 
-        // If key already exists, call destructor on old data first
-        auto it = m_UserData.find(key);
-        if (it != m_UserData.end()) {
-            if (it->second.destructor && it->second.data) {
-                it->second.destructor(it->second.data);
+        {
+            std::lock_guard<std::mutex> lock(m_UserDataMutex);
+
+            auto it = m_UserData.find(key);
+            if (it != m_UserData.end()) {
+                old_data = it->second.data;
+                old_destructor = it->second.destructor;
+                if (data) {
+                    it->second.data = data;
+                    it->second.destructor = destructor;
+                } else {
+                    m_UserData.erase(it);
+                }
+            } else if (data) {
+                m_UserData[key] = {data, destructor};
             }
-            if (data) {
-                it->second.data = data;
-                it->second.destructor = destructor;
-            } else {
-                m_UserData.erase(it);
-            }
-        } else if (data) {
-            m_UserData[key] = {data, destructor};
+        }
+
+        if (old_destructor && old_data) {
+            old_destructor(old_data);
         }
 
         return BML_RESULT_OK;
