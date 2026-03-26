@@ -109,7 +109,7 @@ BML_Bool bmlIsApiLoaded(void) {
 }
 
 size_t bmlGetApiCount(void) {
-    return 5;
+    return 4;
 }
 
 size_t bmlGetRequiredApiCount(void) {
