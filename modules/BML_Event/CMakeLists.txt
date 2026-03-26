@@ -1,4 +1,3 @@
-cmake_minimum_required(VERSION 3.15)
 
 # Public API headers for consumers of this module
 add_library(BML_Event_api INTERFACE)

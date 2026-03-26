@@ -1,7 +1,3 @@
-cmake_minimum_required(VERSION 3.15)
-
-find_package(VirtoolsSDK REQUIRED)
-
 # AngelScript engine (static library, from upstream cmake)
 add_subdirectory(deps/angelscript/angelscript/projects/cmake EXCLUDE_FROM_ALL)
 target_include_directories(angelscript INTERFACE

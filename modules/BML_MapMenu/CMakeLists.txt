@@ -1,14 +1,9 @@
-cmake_minimum_required(VERSION 3.15)
-
-find_package(VirtoolsSDK REQUIRED)
-
 bml_add_module(BML_MapMenu
     SOURCES
         src/MapMenuMod.cpp
     MANIFEST mod.toml
     INCLUDE_DIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/src
-        ${CMAKE_SOURCE_DIR}/src/Utils
         ${VIRTOOLS_SDK_INCLUDE_DIR}
         ${IMGUI_SOURCE_DIR}
     LINK_LIBRARIES

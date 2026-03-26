@@ -1,4 +1,3 @@
-cmake_minimum_required(VERSION 3.15)
 
 set(IMGUI_SOURCES
     ${IMGUI_SOURCE_DIR}/imgui.cpp

@@ -1,7 +1,3 @@
-cmake_minimum_required(VERSION 3.15)
-
-find_package(VirtoolsSDK REQUIRED)
-
 bml_add_module(BML_Physics
     SOURCES
         src/PhysicsMod.cpp
@@ -10,7 +6,6 @@ bml_add_module(BML_Physics
     MANIFEST mod.toml
     INCLUDE_DIRS
         ${CMAKE_SOURCE_DIR}/include/BML
-        ${CMAKE_SOURCE_DIR}/src/Utils
         ${CMAKE_SOURCE_DIR}/deps
         ${VIRTOOLS_SDK_INCLUDE_DIR}
     LINK_LIBRARIES

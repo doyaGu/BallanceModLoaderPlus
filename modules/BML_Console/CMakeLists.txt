@@ -1,4 +1,3 @@
-cmake_minimum_required(VERSION 3.15)
 
 # Public API headers for consumers of this module
 add_library(BML_Console_api INTERFACE)
@@ -19,7 +18,6 @@ bml_add_module(BML_Console
     INCLUDE_DIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_SOURCE_DIR}/src/Utils
         ${VIRTOOLS_SDK_INCLUDE_DIR}
         ${IMGUI_SOURCE_DIR}
     LINK_LIBRARIES

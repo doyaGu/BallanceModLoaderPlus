@@ -1,4 +1,3 @@
-cmake_minimum_required(VERSION 3.15)
 
 # Standard BML Modules
 # These modules implement core functionality that was previously part of BML Core

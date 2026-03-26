@@ -1,7 +1,3 @@
-cmake_minimum_required(VERSION 3.15)
-
-find_package(VirtoolsSDK REQUIRED)
-
 # Public API headers for consumers of this module
 add_library(BML_Input_api INTERFACE)
 target_include_directories(BML_Input_api INTERFACE

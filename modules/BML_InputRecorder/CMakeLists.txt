@@ -1,4 +1,3 @@
-cmake_minimum_required(VERSION 3.15)
 
 bml_add_module(BML_InputRecorder
     SOURCES
@@ -8,7 +7,6 @@ bml_add_module(BML_InputRecorder
     MANIFEST mod.toml
     INCLUDE_DIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/src
-        ${CMAKE_SOURCE_DIR}/src/Utils
     LINK_LIBRARIES
         BML_PathUtils
 )

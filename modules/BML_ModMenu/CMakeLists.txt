@@ -1,4 +1,3 @@
-cmake_minimum_required(VERSION 3.15)
 
 bml_add_module(BML_ModMenu
     SOURCES

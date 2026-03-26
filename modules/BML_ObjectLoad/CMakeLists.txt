@@ -1,7 +1,3 @@
-cmake_minimum_required(VERSION 3.15)
-
-find_package(VirtoolsSDK REQUIRED)
-
 bml_add_module(BML_ObjectLoad
     SOURCES
         src/ObjectLoadMod.cpp

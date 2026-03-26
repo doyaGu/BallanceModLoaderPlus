@@ -1,4 +1,3 @@
-cmake_minimum_required(VERSION 3.15)
 
 bml_add_module(BML_Render
     SOURCES
@@ -9,7 +8,6 @@ bml_add_module(BML_Render
     MANIFEST mod.toml
     INCLUDE_DIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/src
-        ${CMAKE_SOURCE_DIR}/src/Utils
         ${VIRTOOLS_SDK_INCLUDE_DIR}
     LINK_LIBRARIES
         BML_HookUtils
