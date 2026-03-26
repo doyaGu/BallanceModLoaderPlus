@@ -22,7 +22,10 @@ namespace BML::Core {
             if (actual.minor < required->minor) {
                 return false;
             }
-            return actual.patch >= required->patch || actual.minor > required->minor;
+            if (actual.minor > required->minor) {
+                return true;
+            }
+            return actual.patch >= required->patch;
         }
 
         bool HasCapability(const BML_Mod_T *mod, const char *capability_id) {
