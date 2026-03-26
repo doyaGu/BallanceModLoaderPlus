@@ -32,6 +32,8 @@ static inline BML_Bool bmlParseModLifecycleEvent(const void *payload,
         return BML_FALSE;
 
     const BML_ModLifecycleWireHeader *header = (const BML_ModLifecycleWireHeader *)payload;
+    if (header->version.struct_size < sizeof(BML_Version))
+        return BML_FALSE;
     size_t required = sizeof(BML_ModLifecycleWireHeader) + (size_t)header->id_length;
     if (required > payload_len)
         return BML_FALSE;

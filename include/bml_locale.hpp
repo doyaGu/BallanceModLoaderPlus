@@ -91,6 +91,8 @@ namespace bml {
 
         /**
          * @brief Change the global language and refresh the cached table.
+         * @warning Must be called from the main thread only. Concurrent calls
+         * to Get() while SetLanguage() is executing are unsynchronized.
          */
         bool SetLanguage(const char *language_code) const {
             if (!m_Interface || !m_Interface->Context || !m_Interface->SetLanguage)

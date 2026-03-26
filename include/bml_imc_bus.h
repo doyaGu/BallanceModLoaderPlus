@@ -151,9 +151,14 @@ typedef BML_Result (*PFN_BML_ImcPublishMulti)(BML_Mod owner,
  *
  * @param[in]  owner      Module handle (owner of publish call)
  * @param[in]  topic      Topic ID
- * @param[in]  msg        Message (non-const: intercept handlers may modify)
+ * @param[in]  msg        Message (non-const: intercept handlers may modify
+ *                         metadata and redirect the data pointer)
  * @param[out] out_result Final event disposition (may be NULL)
  * @return BML_RESULT_OK on success
+ *
+ * @warning If an intercept handler replaces msg->data, the new pointer must
+ * remain valid until all regular subscribers have processed the message
+ * (i.e., until the publish call returns).
  *
  * @threadsafe Yes
  */

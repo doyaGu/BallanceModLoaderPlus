@@ -231,8 +231,9 @@ namespace imc {
 
         /**
          * @brief Get result as Message
-         * @note The returned view remains valid until the next ResultMessage(),
-         * Release(), or RpcFuture destruction.
+         * @warning Each call invalidates the Message returned by the previous
+         * call. Do not store the result and call ResultMessage() again -- the
+         * earlier Message's data pointer will dangle.
          */
         std::optional<Message> ResultMessage() {
             if (!m_Handle) return std::nullopt;

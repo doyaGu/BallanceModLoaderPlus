@@ -17,8 +17,9 @@
  *   desc.priority       = 0;
  *   services->HookRegistry->Register(mod, &desc);
  *
- *   // Check for conflicts
- *   if (desc.flags & BML_HOOK_FLAG_CONFLICT) { handle_conflict(); }
+ *   // Conflicts are logged as warnings and visible via Enumerate().
+ *   // The CONFLICT flag is set on the internal registry entry, not on
+ *   // the input descriptor (which is const).
  * @endcode
  */
 
