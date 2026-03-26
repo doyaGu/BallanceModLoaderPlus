@@ -101,6 +101,8 @@ namespace BML::Core {
         };
 
         TimerEntry *FindEntry(BML_Timer timer);
+        bool HasTimerIdLocked(uint32_t id) const;
+        BML_Result AllocateTimerIdLocked(uint32_t *out_id);
         BML_Result CancelInternal(BML_Timer timer, const std::string *owner_id);
 
         std::mutex m_Mutex;

@@ -1,6 +1,8 @@
 #include "TimerManager.h"
 
+#include <algorithm>
 #include <exception>
+#include <limits>
 
 #include "Context.h"
 #include "CrashDumpWriter.h"
@@ -60,6 +62,47 @@ namespace BML::Core {
         return nullptr;
     }
 
+    bool TimerManager::HasTimerIdLocked(uint32_t id) const {
+        return std::any_of(
+            m_Timers.begin(),
+            m_Timers.end(),
+            [id](const TimerEntry &entry) { return entry.id == id; });
+    }
+
+    BML_Result TimerManager::AllocateTimerIdLocked(uint32_t *out_id) {
+        if (!out_id) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+
+        constexpr uint32_t kInvalidTimerId = 0;
+        constexpr uint64_t kMaxUsableTimerIds = static_cast<uint64_t>(std::numeric_limits<uint32_t>::max());
+
+        if (m_Timers.size() >= kMaxUsableTimerIds - 1u) {
+            return BML_RESULT_INVALID_STATE;
+        }
+
+        uint32_t candidate = m_NextId;
+        if (candidate == kInvalidTimerId) {
+            candidate = 1;
+        }
+        const uint32_t start = candidate;
+
+        do {
+            if (!HasTimerIdLocked(candidate)) {
+                *out_id = candidate;
+                m_NextId = candidate + 1;
+                return BML_RESULT_OK;
+            }
+
+            candidate++;
+            if (candidate == kInvalidTimerId) {
+                candidate = 1;
+            }
+        } while (candidate != start);
+
+        return BML_RESULT_INVALID_STATE;
+    }
+
     BML_Result TimerManager::ScheduleOnce(const std::string &owner_id,
                                           uint32_t delay_ms,
                                           BML_TimerCallback callback,
@@ -71,7 +114,10 @@ namespace BML::Core {
         std::lock_guard lock(m_Mutex);
 
         TimerEntry entry;
-        entry.id = m_NextId++;
+        BML_Result result = AllocateTimerIdLocked(&entry.id);
+        if (result != BML_RESULT_OK) {
+            return result;
+        }
         entry.kind = TimerKind::OnceMs;
         entry.active = true;
         entry.fire_at = Clock::now() + std::chrono::milliseconds(delay_ms);
@@ -97,7 +143,10 @@ namespace BML::Core {
         std::lock_guard lock(m_Mutex);
 
         TimerEntry entry;
-        entry.id = m_NextId++;
+        BML_Result result = AllocateTimerIdLocked(&entry.id);
+        if (result != BML_RESULT_OK) {
+            return result;
+        }
         entry.kind = TimerKind::RepeatMs;
         entry.active = true;
         entry.fire_at = Clock::now() + std::chrono::milliseconds(interval_ms);
@@ -122,7 +171,10 @@ namespace BML::Core {
         std::lock_guard lock(m_Mutex);
 
         TimerEntry entry;
-        entry.id = m_NextId++;
+        BML_Result result = AllocateTimerIdLocked(&entry.id);
+        if (result != BML_RESULT_OK) {
+            return result;
+        }
         entry.kind = TimerKind::OnceFrames;
         entry.active = true;
         entry.frames_remaining = frame_count;

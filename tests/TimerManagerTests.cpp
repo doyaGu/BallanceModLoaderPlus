@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <limits>
 #include <stdexcept>
 #include <thread>
 
@@ -16,7 +17,9 @@
 #include "Core/Context.h"
 #include "Core/CrashDumpWriter.h"
 #include "Core/FaultTracker.h"
+#define private public
 #include "Core/TimerManager.h"
+#undef private
 #include "TestKernel.h"
 
 using namespace BML::Core;
@@ -294,4 +297,41 @@ TEST_F(TimerManagerTest, ThrowingCallbackIsContainedAndCancelsRepeatTimer) {
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
     EXPECT_NO_THROW(kernel_->timers->Tick());
     EXPECT_EQ(failing_counter, 1);
+}
+
+TEST_F(TimerManagerTest, ScheduleSkipsZeroAndLiveIdsWhenCounterWraps) {
+    auto timer_id = [](BML_Timer timer) {
+        return static_cast<uint32_t>(reinterpret_cast<uintptr_t>(timer));
+    };
+
+    BML_Timer existing = nullptr;
+    kernel_->timers->m_NextId = 1;
+    ASSERT_EQ(kernel_->timers->ScheduleOnce(
+                  "test.mod", 1000, IncrementCallback, nullptr, &existing),
+              BML_RESULT_OK);
+    ASSERT_NE(existing, nullptr);
+    EXPECT_EQ(timer_id(existing), 1u);
+
+    kernel_->timers->m_NextId = std::numeric_limits<uint32_t>::max() - 1;
+
+    BML_Timer wrap_a = nullptr;
+    BML_Timer wrap_b = nullptr;
+    BML_Timer wrap_c = nullptr;
+
+    ASSERT_EQ(kernel_->timers->ScheduleOnce(
+                  "test.mod", 1000, IncrementCallback, nullptr, &wrap_a),
+              BML_RESULT_OK);
+    ASSERT_EQ(kernel_->timers->ScheduleOnce(
+                  "test.mod", 1000, IncrementCallback, nullptr, &wrap_b),
+              BML_RESULT_OK);
+    ASSERT_EQ(kernel_->timers->ScheduleOnce(
+                  "test.mod", 1000, IncrementCallback, nullptr, &wrap_c),
+              BML_RESULT_OK);
+
+    EXPECT_NE(wrap_a, nullptr);
+    EXPECT_NE(wrap_b, nullptr);
+    EXPECT_NE(wrap_c, nullptr);
+    EXPECT_EQ(timer_id(wrap_a), std::numeric_limits<uint32_t>::max() - 1);
+    EXPECT_EQ(timer_id(wrap_b), std::numeric_limits<uint32_t>::max());
+    EXPECT_EQ(timer_id(wrap_c), 2u);
 }
