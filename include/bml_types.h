@@ -20,6 +20,13 @@
 #endif
 #endif // !BML_END_CDECLS
 
+/** @brief Printf format checking attribute (GCC/Clang only). */
+#if defined(__GNUC__) || defined(__clang__)
+#define BML_PRINTF_FORMAT(fmt_idx, arg_idx) __attribute__((format(printf, fmt_idx, arg_idx)))
+#else
+#define BML_PRINTF_FORMAT(fmt_idx, arg_idx)
+#endif
+
 BML_BEGIN_CDECLS
 
 /* ========================================================================

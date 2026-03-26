@@ -86,7 +86,7 @@ namespace bml {
          * @param fmt Printf-style format string
          * @param ... Format arguments
          */
-        void Log(LogLevel level, const char *fmt, ...) const {
+        void Log(LogLevel level, const char *fmt, ...) const BML_PRINTF_FORMAT(3, 4) {
             if (!m_LoggingInterface) return;
             va_list args;
             va_start(args, fmt);
@@ -103,7 +103,7 @@ namespace bml {
          * @param fmt Printf-style format string
          * @param ... Format arguments
          */
-        void Trace(const char *fmt, ...) const {
+        void Trace(const char *fmt, ...) const BML_PRINTF_FORMAT(2, 3) {
             if (!m_LoggingInterface) return;
             va_list args;
             va_start(args, fmt);
@@ -116,7 +116,7 @@ namespace bml {
          * @param fmt Printf-style format string
          * @param ... Format arguments
          */
-        void Debug(const char *fmt, ...) const {
+        void Debug(const char *fmt, ...) const BML_PRINTF_FORMAT(2, 3) {
             if (!m_LoggingInterface) return;
             va_list args;
             va_start(args, fmt);
@@ -129,7 +129,7 @@ namespace bml {
          * @param fmt Printf-style format string
          * @param ... Format arguments
          */
-        void Info(const char *fmt, ...) const {
+        void Info(const char *fmt, ...) const BML_PRINTF_FORMAT(2, 3) {
             if (!m_LoggingInterface) return;
             va_list args;
             va_start(args, fmt);
@@ -142,7 +142,7 @@ namespace bml {
          * @param fmt Printf-style format string
          * @param ... Format arguments
          */
-        void Warn(const char *fmt, ...) const {
+        void Warn(const char *fmt, ...) const BML_PRINTF_FORMAT(2, 3) {
             if (!m_LoggingInterface) return;
             va_list args;
             va_start(args, fmt);
@@ -155,7 +155,7 @@ namespace bml {
          * @param fmt Printf-style format string
          * @param ... Format arguments
          */
-        void Error(const char *fmt, ...) const {
+        void Error(const char *fmt, ...) const BML_PRINTF_FORMAT(2, 3) {
             if (!m_LoggingInterface) return;
             va_list args;
             va_start(args, fmt);
@@ -168,7 +168,7 @@ namespace bml {
          * @param fmt Printf-style format string
          * @param ... Format arguments
          */
-        void Fatal(const char *fmt, ...) const {
+        void Fatal(const char *fmt, ...) const BML_PRINTF_FORMAT(2, 3) {
             if (!m_LoggingInterface) return;
             va_list args;
             va_start(args, fmt);
