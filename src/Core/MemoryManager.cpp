@@ -420,11 +420,17 @@ namespace BML::Core {
         if (size > 0) {
             // Use compare-exchange to safely subtract without underflow
             uint64_t total = m_TotalAllocated.load(std::memory_order_relaxed);
+            bool subtracted = false;
             while (total >= size) {
                 if (m_TotalAllocated.compare_exchange_weak(total, total - size,
                                                             std::memory_order_relaxed, std::memory_order_relaxed)) {
+                    subtracted = true;
                     break;
                 }
+            }
+            if (!subtracted) {
+                OutputDebugStringA("[BML Memory] WARNING: deallocation tracking underflow — "
+                                   "size exceeds tracked total\n");
             }
         }
     }
