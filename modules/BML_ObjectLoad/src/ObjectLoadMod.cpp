@@ -32,7 +32,6 @@ class ObjectLoadMod : public bml::HookModule {
     bml::imc::Topic m_TopicLoadScript;
     bml::imc::Topic m_TopicCustomMapName;
 
-    static ObjectLoadMod *s_Instance;
     static constexpr const char *kBaseFilename = "base.cmo";
 
     // -------------------------------------------------------------------------
@@ -55,7 +54,6 @@ class ObjectLoadMod : public bml::HookModule {
 
         if (!m_OriginalFunc)
             m_OriginalFunc = proto->GetFunction();
-        s_Instance = this;
         proto->SetFunction(&ObjectLoadCallback);
         return true;
     }
@@ -65,7 +63,6 @@ class ObjectLoadMod : public bml::HookModule {
         if (proto && m_OriginalFunc)
             proto->SetFunction(m_OriginalFunc);
 
-        s_Instance = nullptr;
         m_OriginalFunc = nullptr;
         m_SnapshotPublished = false;
         m_TopicLoadObject = {};
@@ -95,8 +92,9 @@ class ObjectLoadMod : public bml::HookModule {
     // -------------------------------------------------------------------------
 
     static int ObjectLoadCallback(const CKBehaviorContext &behcontext) {
-        if (s_Instance)
-            return s_Instance->HandleObjectLoad(behcontext);
+        auto *self = bml::GetModuleInstance<ObjectLoadMod>();
+        if (self)
+            return self->HandleObjectLoad(behcontext);
         return CKBR_OK;
     }
 
@@ -373,7 +371,5 @@ class ObjectLoadMod : public bml::HookModule {
         return (static_cast<CKBehavior *>(object)->GetType() & CKBEHAVIORTYPE_SCRIPT) != 0;
     }
 };
-
-ObjectLoadMod *ObjectLoadMod::s_Instance = nullptr;
 
 BML_DEFINE_MODULE(ObjectLoadMod)

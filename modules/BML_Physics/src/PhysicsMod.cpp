@@ -52,8 +52,6 @@ class PhysicsMod : public bml::HookModule {
     bml::imc::Topic m_TopicPhysicalize;
     bml::imc::Topic m_TopicUnphysicalize;
 
-    static PhysicsMod *s_Instance;
-
     const char *HookLogCategory() const override { return "BML_Physics"; }
 
     bool InitHook(CKContext *ctx) override {
@@ -66,8 +64,6 @@ class PhysicsMod : public bml::HookModule {
         m_TopicPostProcess = bml::imc::Topic(BML_TOPIC_PHYSICS_POST_PROCESS, imcBus, owner);
         m_TopicPhysicalize = bml::imc::Topic(BML_TOPIC_PHYSICS_PHYSICALIZE, imcBus, owner);
         m_TopicUnphysicalize = bml::imc::Topic(BML_TOPIC_PHYSICS_UNPHYSICALIZE, imcBus, owner);
-
-        s_Instance = this;
 
         // Hook IpionManager VTable
         m_IpionManager = (CKIpionManager *)ctx->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
@@ -97,7 +93,6 @@ class PhysicsMod : public bml::HookModule {
         if (proto && m_OriginalPhysicalize)
             proto->SetFunction(m_OriginalPhysicalize);
 
-        s_Instance = nullptr;
         m_IpionManager = nullptr;
         m_OriginalPostProcess = nullptr;
         m_OriginalPhysicalize = nullptr;
@@ -112,9 +107,9 @@ class PhysicsMod : public bml::HookModule {
 
     struct PostProcessThunk {
         CKERROR Hook() {
-            // `this` is actually CKIpionManager* at runtime
-            if (s_Instance)
-                return s_Instance->OnPostProcess(reinterpret_cast<CKIpionManager *>(this));
+            auto *self = bml::GetModuleInstance<PhysicsMod>();
+            if (self)
+                return self->OnPostProcess(reinterpret_cast<CKIpionManager *>(this));
             return CK_OK;
         }
     };
@@ -137,8 +132,9 @@ class PhysicsMod : public bml::HookModule {
     // -------------------------------------------------------------------------
 
     static int PhysicalizeCallback(const CKBehaviorContext &behcontext) {
-        if (s_Instance)
-            return s_Instance->HandlePhysicalize(behcontext);
+        auto *self = bml::GetModuleInstance<PhysicsMod>();
+        if (self)
+            return self->HandlePhysicalize(behcontext);
         return CKBR_OK;
     }
 
@@ -209,7 +205,5 @@ class PhysicsMod : public bml::HookModule {
         return m_OriginalPhysicalize(behcontext);
     }
 };
-
-PhysicsMod *PhysicsMod::s_Instance = nullptr;
 
 BML_DEFINE_MODULE(PhysicsMod)

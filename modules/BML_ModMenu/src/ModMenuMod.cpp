@@ -82,8 +82,6 @@ CKBehavior *CreateHookBlock(bml::Graph &graph, CKBehaviorCallback callback, void
 } // namespace
 
 class ModMenuMod : public bml::Module {
-    static ModMenuMod *s_Instance;
-
 public:
     static void DrawCallback(const BML_UIDrawContext *ctx, void *user_data) {
         auto *self = static_cast<ModMenuMod *>(user_data);
@@ -99,7 +97,6 @@ public:
     }
 
     BML_Result OnAttach() override {
-        s_Instance = this;
         m_Subs = Services().CreateSubscriptions();
 
         m_DrawReg = bml::ui::RegisterDraw(Handle(), "bml.modmenu.window", 10, DrawCallback, this);
@@ -174,7 +171,6 @@ public:
     }
 
     void OnDetach() override {
-        s_Instance = nullptr;
         CloseMenu();
 
         MenuRegistry::Instance().Reset();
@@ -191,8 +187,9 @@ public:
 
 private:
     static int OpenMenuCallback(const CKBehaviorContext *, void *) {
-        if (s_Instance)
-            s_Instance->OpenMenu();
+        auto *self = bml::GetModuleInstance<ModMenuMod>();
+        if (self)
+            self->OpenMenu();
         return CKBR_OK;
     }
 
@@ -462,7 +459,5 @@ private:
     bool m_AssetsReady = false;
     bool m_OptionsEntryInstalled = false;
 };
-
-ModMenuMod *ModMenuMod::s_Instance = nullptr;
 
 BML_DEFINE_MODULE(ModMenuMod)

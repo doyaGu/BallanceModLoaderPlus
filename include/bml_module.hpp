@@ -256,6 +256,28 @@ private:
 };
 
 } // namespace detail
+
+/**
+ * @brief Access the live module instance (nullptr when detached).
+ *
+ * The framework sets the instance before OnAttach() and clears it after
+ * OnDetach() + delete, so this is valid from any code that runs between
+ * those two points (callbacks, hooks, IMC trampolines, etc.).
+ *
+ * Usage:
+ * @code
+ *   // From a static callback or trampoline:
+ *   auto *self = bml::GetModuleInstance<MyMod>();
+ *   if (self) self->DoSomething();
+ * @endcode
+ */
+template <typename T>
+T *GetModuleInstance() noexcept {
+    static_assert(std::is_base_of_v<Module, T>,
+                  "T must derive from bml::Module");
+    return detail::ModuleEntryHelper<T>::GetInstance();
+}
+
 } // namespace bml
 
 /**
@@ -271,6 +293,7 @@ private:
 /**
  * @brief Access the live module instance from extension API trampolines.
  * Returns nullptr when the module is not attached.
+ * @deprecated Prefer bml::GetModuleInstance<T>() instead.
  */
 #define BML_GET_INSTANCE(ClassName) \
     ::bml::detail::ModuleEntryHelper<ClassName>::GetInstance()
