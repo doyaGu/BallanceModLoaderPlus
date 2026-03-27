@@ -86,6 +86,33 @@ namespace imc {
             return m_Bus->PublishBuffer(m_Owner, m_Id, buffer.Native()) == BML_RESULT_OK;
         }
 
+        // Retained State
+        bool PublishState(const void *data, size_t size) const {
+            if (!Valid() || !m_Bus || !m_Owner || !m_Bus->PublishState) return false;
+            BML_ImcMessage msg = BML_IMC_MESSAGE_INIT;
+            msg.data = data;
+            msg.size = size;
+            return m_Bus->PublishState(m_Owner, m_Id, &msg) == BML_RESULT_OK;
+        }
+
+        template <typename T>
+        bool PublishState(const T &data) const {
+            static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
+            return PublishState(&data, sizeof(T));
+        }
+
+        BML_Result CopyState(void *dst, size_t dst_size, size_t *out_size = nullptr,
+                              BML_ImcStateMeta *out_meta = nullptr) const {
+            if (!Valid() || !m_Bus || !m_Bus->Context || !m_Bus->CopyState)
+                return BML_RESULT_NOT_SUPPORTED;
+            return m_Bus->CopyState(m_Bus->Context, m_Id, dst, dst_size, out_size, out_meta);
+        }
+
+        bool ClearState() const {
+            if (!Valid() || !m_Bus || !m_Bus->Context || !m_Bus->ClearState) return false;
+            return m_Bus->ClearState(m_Bus->Context, m_Id) == BML_RESULT_OK;
+        }
+
         // Interceptable Publishing
         bool PublishInterceptable(BML_ImcMessage &msg, EventResult *outResult = nullptr) const {
             if (!Valid() || !m_Bus || !m_Owner || !m_Bus->PublishInterceptable) return false;

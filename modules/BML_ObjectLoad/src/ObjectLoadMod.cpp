@@ -217,15 +217,11 @@ class ObjectLoadMod : public bml::HookModule {
             }
 
             char custom_map_name[MAX_PATH] = {};
-            auto *imcBus = Services().Interfaces().ImcBus;
-            if (imcBus && isMap && m_TopicCustomMapName && imcBus->CopyState) {
+            if (isMap && m_TopicCustomMapName) {
                 size_t state_size = 0;
-                if (imcBus->CopyState(imcBus->Context,
-                                        m_TopicCustomMapName.Id(),
-                                        custom_map_name,
-                                        sizeof(custom_map_name),
-                                        &state_size,
-                                        nullptr) == BML_RESULT_OK &&
+                if (m_TopicCustomMapName.CopyState(custom_map_name,
+                                                    sizeof(custom_map_name),
+                                                    &state_size) == BML_RESULT_OK &&
                     custom_map_name[0] != '\0') {
                     fname = custom_map_name;
                 }
@@ -243,8 +239,8 @@ class ObjectLoadMod : public bml::HookModule {
                     PublishScriptLoadEvent(fname, static_cast<CKBehavior *>(obj), isMap);
             }
 
-            if (imcBus && isMap && m_TopicCustomMapName && imcBus->ClearState)
-                imcBus->ClearState(imcBus->Context, m_TopicCustomMapName.Id());
+            if (isMap && m_TopicCustomMapName)
+                m_TopicCustomMapName.ClearState();
         }
 
         if (beh->IsInputActive(1)) {

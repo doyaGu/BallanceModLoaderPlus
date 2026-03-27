@@ -193,13 +193,8 @@ class ConsoleMod : public bml::Module {
         }
         if (result == BML_RESULT_OK && m_TopicCheatState) {
             BML_Bool value = enabled ? BML_TRUE : BML_FALSE;
-            BML_ImcMessage msg = BML_IMC_MSG(&value, sizeof(value));
-            auto *imcBus = m_TopicCheatState.Iface();
-            if (imcBus->PublishState) {
-                imcBus->PublishState(Handle(), m_TopicCheatState.Id(), &msg);
-            } else {
-                m_TopicCheatState.Publish(&value, sizeof(value));
-            }
+            if (!m_TopicCheatState.PublishState(value))
+                m_TopicCheatState.Publish(value);
         }
         return result;
     }

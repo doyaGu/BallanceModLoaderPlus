@@ -84,12 +84,7 @@ static bml::imc::Topic s_TopicPaused;
 
 static void PublishRetainedState(const bml::imc::Topic &topic,
                                   const void *data, size_t size) {
-    auto *imc = topic.Iface();
-    if (!imc || !imc->PublishState || !s_Services || !topic) return;
-    BML_ImcMessage msg = BML_IMC_MESSAGE_INIT;
-    msg.data = data;
-    msg.size = size;
-    imc->PublishState(s_Services->Handle(), topic.Id(), &msg);
+    topic.PublishState(data, size);
 }
 
 static void UpdateGamePhase(BML_GamePhase phase) {

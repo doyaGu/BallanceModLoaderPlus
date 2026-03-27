@@ -381,13 +381,8 @@ class MapMenuMod : public bml::Module {
         CKMessageType loadMenuMessage = messageManager->AddMessageType((CKSTRING)"Menu_Load");
         const std::string originalMapPath = utils::ToString(path);
         if (m_TopicCustomMapName && !originalMapPath.empty()) {
-            const auto *imcBus = Services().Interfaces().ImcBus;
-            if (imcBus && imcBus->PublishState) {
-                BML_ImcMessage state_message = BML_IMC_MESSAGE_INIT;
-                state_message.data = originalMapPath.c_str();
-                state_message.size = originalMapPath.size() + 1;
-                imcBus->PublishState(Handle(), m_TopicCustomMapName.Id(), &state_message);
-            }
+            m_TopicCustomMapName.PublishState(
+                originalMapPath.c_str(), originalMapPath.size() + 1);
         }
         messageManager->SendMessageSingle(loadLevelMessage, m_Context->GetCurrentLevel());
         messageManager->SendMessageSingle(loadMenuMessage, allSound);
