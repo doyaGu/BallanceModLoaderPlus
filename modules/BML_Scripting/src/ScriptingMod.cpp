@@ -5,6 +5,7 @@
 
 #include "ScriptEngine.h"
 #include "ScriptInstanceManager.h"
+#include "ScriptExceptionHelper.h"
 #include "RuntimeProvider.h"
 #include "ModuleScope.h"
 #include "CoroutineManager.h"
@@ -182,7 +183,7 @@ private:
     }
 
     void CmdList() {
-        PrintToConsole("Script mods: " + std::to_string(m_Manager->GetInstanceCount()));
+        ConsolePrint("Script mods: " + std::to_string(m_Manager->GetInstanceCount()));
         m_Manager->ForEachInstance([this](const BML::Scripting::ScriptInstance &inst) {
             const char *s = "unknown";
             switch (inst.state) {
@@ -192,40 +193,25 @@ private:
                 case BML::Scripting::ScriptInstance::State::InitDone: s = "running"; break;
                 case BML::Scripting::ScriptInstance::State::Error:    s = "ERROR"; break;
             }
-            PrintToConsole("  " + inst.mod_id + " [" + s + "]");
+            ConsolePrint("  " + inst.mod_id + " [" + s + "]");
         });
     }
 
     void CmdReload(std::string_view args) {
         if (args.empty() || args == "all") {
             m_Manager->ReloadAll();
-            PrintToConsole("All scripts reloaded");
+            ConsolePrint("All scripts reloaded");
         } else {
             std::string id(args);
             BML_Result r = m_Manager->ReloadById(id);
-            if (r == BML_RESULT_OK) PrintToConsole("Reloaded: " + id);
-            else if (r == BML_RESULT_NOT_FOUND) PrintToConsole("Script not found: " + id);
-            else PrintToConsole("Reload failed: " + id);
+            if (r == BML_RESULT_OK) ConsolePrint("Reloaded: " + id);
+            else if (r == BML_RESULT_NOT_FOUND) ConsolePrint("Script not found: " + id);
+            else ConsolePrint("Reload failed: " + id);
         }
     }
 
-    void PrintToConsole(const std::string &message) {
-        if (!BML::Scripting::g_Services || !BML::Scripting::g_Services->ImcBus ||
-            !BML::Scripting::g_Services->ImcBus->Publish) {
-            return;
-        }
-
-        BML_TopicId id = BML_TOPIC_ID_INVALID;
-        if (BML::Scripting::g_Services->ImcBus->GetTopicId(
-                BML::Scripting::g_Services->ImcBus->Context,
-                BML_TOPIC_CONSOLE_OUTPUT,
-                &id) != BML_RESULT_OK) return;
-        struct {
-            size_t struct_size;
-            const char *msg;
-            uint32_t flags;
-        } event{sizeof(event), message.c_str(), 0};
-        BML::Scripting::g_Services->ImcBus->Publish(m_Handle, id, &event, sizeof(event));
+    void ConsolePrint(const std::string &message) {
+        BML::Scripting::PublishConsoleOutputMessage(m_Handle, message, 0);
     }
 };
 

@@ -61,6 +61,7 @@ target_include_directories(BML_Scripting PRIVATE
 target_link_libraries(BML_Scripting PRIVATE
     angelscript
     angelscript_addon
+    BML_HashUtils
     VirtoolsSDK::CK2
     VirtoolsSDK::VxMath
 )

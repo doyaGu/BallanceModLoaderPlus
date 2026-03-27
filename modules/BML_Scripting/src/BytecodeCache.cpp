@@ -1,45 +1,26 @@
 ﻿#include "BytecodeCache.h"
+#include "HashUtils.h"
 
-#include <cstdio>
 #include <cstring>
 #include <fstream>
 
 namespace BML::Scripting {
 
-// FNV-1a 64-bit hash
-static uint64_t FnvHash(const void *data, size_t size) {
-    uint64_t hash = 0xcbf29ce484222325ULL;
-    auto *bytes = static_cast<const uint8_t *>(data);
-    for (size_t i = 0; i < size; ++i) {
-        hash ^= bytes[i];
-        hash *= 0x100000001b3ULL;
-    }
-    return hash;
-}
-
-// Chain an additional hash value into an existing FNV-1a state.
-static uint64_t FnvChain(uint64_t hash, const void *data, size_t size) {
-    auto *bytes = static_cast<const uint8_t *>(data);
-    for (size_t i = 0; i < size; ++i) {
-        hash ^= bytes[i];
-        hash *= 0x100000001b3ULL;
-    }
-    return hash;
-}
-
-// Hash all section files and the AS version into a single combined hash.
+// Hash all section file contents + AS version into a single FNV-1a 64-bit hash.
+// FNV-1a is sequential, so hashing the concatenation is identical to chaining.
 static uint64_t HashSectionFiles(const std::vector<std::string> &paths) {
-    uint64_t hash = 0xcbf29ce484222325ULL;
+    std::vector<uint8_t> combined;
     for (const auto &p : paths) {
         std::ifstream file(p, std::ios::binary);
         if (!file) return 0;
-        std::vector<char> content((std::istreambuf_iterator<char>(file)),
-                                   std::istreambuf_iterator<char>());
-        hash = FnvChain(hash, content.data(), content.size());
+        combined.insert(combined.end(),
+                        std::istreambuf_iterator<char>(file),
+                        std::istreambuf_iterator<char>());
     }
     int ver = ANGELSCRIPT_VERSION;
-    hash = FnvChain(hash, &ver, sizeof(ver));
-    return hash;
+    auto *vb = reinterpret_cast<const uint8_t *>(&ver);
+    combined.insert(combined.end(), vb, vb + sizeof(ver));
+    return utils::Fnv1a64(combined.data(), combined.size());
 }
 
 std::filesystem::path GetCachePath(const std::filesystem::path &script_path) {

@@ -1,4 +1,5 @@
 #include "ScriptEngine.h"
+#include "ScriptExceptionHelper.h"
 
 #include <cstdio>
 #include <string>
@@ -8,17 +9,9 @@
 #include "add_on/scriptmath/scriptmath.h"
 #include "add_on/scripthelper/scripthelper.h"
 
-#include "bml_core.h"
-#include "bml_imc.h"
-#include "bml_topics.h"
-
 namespace BML::Scripting {
 
-// Resolved once at init, used by MessageCallback to forward errors to Console
-static PFN_BML_ImcGetTopicId s_GetTopicId = nullptr;
-static PFN_BML_ImcPublish s_Publish = nullptr;
 static BML_Mod s_Owner = nullptr;
-static BML_Context s_ImcContext = nullptr;
 
 bool ScriptEngine::Initialize() {
     if (m_Engine)
@@ -48,12 +41,8 @@ bool ScriptEngine::Initialize() {
     return true;
 }
 
-void ScriptEngine::SetServices(BML_Mod owner, const BML_Services *services) {
-    if (!owner || !services || !services->ImcBus || !services->ImcBus->Context) return;
-    s_GetTopicId = services->ImcBus->GetTopicId;
-    s_Publish = services->ImcBus->Publish;
+void ScriptEngine::SetServices(BML_Mod owner, const BML_Services * /*services*/) {
     s_Owner = owner;
-    s_ImcContext = services->ImcBus->Context;
 }
 
 void ScriptEngine::Shutdown() {
@@ -61,20 +50,16 @@ void ScriptEngine::Shutdown() {
         m_Engine->ShutDownAndRelease();
         m_Engine = nullptr;
     }
-    s_GetTopicId = nullptr;
-    s_Publish = nullptr;
     s_Owner = nullptr;
-    s_ImcContext = nullptr;
 }
 
 void ScriptEngine::MessageCallback(const asSMessageInfo *msg, void * /*param*/) {
-    if (!msg) return;
+    if (!msg || !s_Owner) return;
 
     const char *severity = "INFO";
     if (msg->type == asMSGTYPE_WARNING) severity = "WARN";
     if (msg->type == asMSGTYPE_ERROR)   severity = "ERROR";
 
-    // Format: [SEVERITY] file (line, col): message
     char buf[1024];
     std::snprintf(buf, sizeof(buf), "[AS %s] %s (%d, %d): %s",
                   severity,
@@ -82,22 +67,7 @@ void ScriptEngine::MessageCallback(const asSMessageInfo *msg, void * /*param*/) 
                   msg->row, msg->col,
                   msg->message ? msg->message : "");
 
-    // Forward to Console output if IMC is available
-    if (s_GetTopicId && s_Publish && s_Owner && s_ImcContext) {
-        BML_TopicId topic_id = BML_TOPIC_ID_INVALID;
-        if (s_GetTopicId(s_ImcContext, BML_TOPIC_CONSOLE_OUTPUT, &topic_id) ==
-            BML_RESULT_OK) {
-            struct {
-                size_t struct_size;
-                const char *message_utf8;
-                uint32_t flags;
-            } event;
-            event.struct_size = sizeof(event);
-            event.message_utf8 = buf;
-            event.flags = 0;
-            s_Publish(s_Owner, topic_id, &event, sizeof(event));
-        }
-    }
+    PublishConsoleOutputMessage(s_Owner, buf, 0);
 }
 
 } // namespace BML::Scripting
