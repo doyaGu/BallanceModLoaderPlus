@@ -1,7 +1,6 @@
 #include "ScriptEngine.h"
 #include "ScriptExceptionHelper.h"
 
-#include <cstdio>
 #include <string>
 
 #include "add_on/scriptstdstring/scriptstdstring.h"
@@ -60,14 +59,12 @@ void ScriptEngine::MessageCallback(const asSMessageInfo *msg, void * /*param*/) 
     if (msg->type == asMSGTYPE_WARNING) severity = "WARN";
     if (msg->type == asMSGTYPE_ERROR)   severity = "ERROR";
 
-    char buf[1024];
-    std::snprintf(buf, sizeof(buf), "[AS %s] %s (%d, %d): %s",
-                  severity,
-                  msg->section ? msg->section : "<unknown>",
-                  msg->row, msg->col,
-                  msg->message ? msg->message : "");
+    std::string text = "[AS " + std::string(severity) + "] "
+        + (msg->section ? msg->section : "<unknown>")
+        + " (" + std::to_string(msg->row) + ", " + std::to_string(msg->col) + "): "
+        + (msg->message ? msg->message : "");
 
-    PublishConsoleOutputMessage(s_Owner, buf, 0);
+    PublishConsoleOutputMessage(s_Owner, text, 0);
 }
 
 } // namespace BML::Scripting

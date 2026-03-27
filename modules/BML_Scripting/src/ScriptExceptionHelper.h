@@ -51,7 +51,9 @@ inline void PublishConsoleOutputMessage(BML_Mod owner, std::string_view message,
         std::free(userData);
     };
     buffer.cleanup_user_data = storage;
-    (void) g_Services->ImcBus->PublishBuffer(owner, topicId, &buffer);
+    if (g_Services->ImcBus->PublishBuffer(owner, topicId, &buffer) != BML_RESULT_OK) {
+        std::free(storage); // cleanup callback was not invoked
+    }
 }
 
 // Log an AngelScript exception with full context (function, file, line).
@@ -79,13 +81,10 @@ inline void LogScriptException(asIScriptContext *ctx, const ScriptInstance &inst
 
     // Also forward to console output
     if (g_Services->ImcBus && g_Services->ImcBus->PublishBuffer) {
-        char buf[512];
-        int n = std::snprintf(buf, sizeof(buf),
-                              "\x1b[31m[%s] %s (%s:%d): %s\x1b[0m",
-                              inst.mod_id.c_str(), func_decl, section, line, exception_str);
-        if (n > 0 && static_cast<size_t>(n) < sizeof(buf)) {
-            PublishConsoleOutputMessage(inst.mod_handle, std::string_view(buf, static_cast<size_t>(n)), 0);
-        }
+        std::string text = "\x1b[31m[" + inst.mod_id + "] "
+            + func_decl + " (" + section + ":" + std::to_string(line) + "): "
+            + exception_str + "\x1b[0m";
+        PublishConsoleOutputMessage(inst.mod_handle, text, 0);
     }
 }
 

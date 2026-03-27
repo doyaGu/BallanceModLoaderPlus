@@ -26,9 +26,17 @@ ScriptInstanceManager::ScriptInstanceManager(asIScriptEngine *engine)
     : m_Engine(engine) {}
 
 ScriptInstanceManager::~ScriptInstanceManager() {
-    for (auto *ctx : m_ContextPool) {
+    // Detach any instances that weren't properly shut down via RuntimeProvider.
+    // This prevents dangling IMC subscriptions pointing to freed SubContexts.
+    std::vector<BML_Mod> remaining;
+    remaining.reserve(m_Instances.size());
+    for (auto &[mod, inst] : m_Instances)
+        remaining.push_back(mod);
+    for (auto *mod : remaining)
+        Detach(mod);
+
+    for (auto *ctx : m_ContextPool)
         ctx->Release();
-    }
     m_ContextPool.clear();
 }
 
