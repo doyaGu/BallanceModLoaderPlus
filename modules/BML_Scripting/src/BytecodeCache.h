@@ -10,9 +10,6 @@
 
 namespace BML::Scripting {
 
-// Compute a hash of the script source file for cache validation.
-uint64_t HashSourceFile(const std::filesystem::path &path);
-
 // Get the cache path for a given script file (same dir, .asc extension).
 std::filesystem::path GetCachePath(const std::filesystem::path &script_path);
 

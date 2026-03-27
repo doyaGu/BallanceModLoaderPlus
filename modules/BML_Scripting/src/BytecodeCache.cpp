@@ -27,22 +27,6 @@ static uint64_t FnvChain(uint64_t hash, const void *data, size_t size) {
     return hash;
 }
 
-uint64_t HashSourceFile(const std::filesystem::path &path) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) return 0;
-
-    std::vector<char> content((std::istreambuf_iterator<char>(file)),
-                               std::istreambuf_iterator<char>());
-    if (content.empty()) return 0;
-
-    // Include the AS engine version in the hash so cache is invalidated
-    // when the engine is updated.
-    uint64_t hash = FnvHash(content.data(), content.size());
-    int ver = ANGELSCRIPT_VERSION;
-    hash ^= FnvHash(&ver, sizeof(ver));
-    return hash;
-}
-
 // Hash all section files and the AS version into a single combined hash.
 static uint64_t HashSectionFiles(const std::vector<std::string> &paths) {
     uint64_t hash = 0xcbf29ce484222325ULL;
@@ -192,6 +176,7 @@ void SaveToCache(asIScriptModule *module,
     file.write(reinterpret_cast<const char *>(&section_count), sizeof(section_count));
 
     for (const auto &path : section_paths) {
+        if (path.size() > UINT16_MAX) return; // path too long for V2 format
         uint16_t path_len = static_cast<uint16_t>(path.size());
         file.write(reinterpret_cast<const char *>(&path_len), sizeof(path_len));
         file.write(path.data(), path_len);

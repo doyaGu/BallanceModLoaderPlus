@@ -253,6 +253,10 @@ BML_Result ScriptInstanceManager::Reload(BML_Mod mod) {
     }
 
     if (result != BML_RESULT_OK) {
+        if (m_Coroutines)
+            m_Coroutines->CleanupForInstance(inst);
+        CleanupTopicSubs(*inst);
+        inst->timer_contexts.clear();
         inst->state = ScriptInstance::State::Error;
         return result;
     }
@@ -408,95 +412,73 @@ void ScriptInstanceManager::LogInitFailure(
                                   inst.mod_id.c_str(), static_cast<int>(result));
 }
 
+// Common execute path for public dispatch functions.
+// `setupArgs` is called after Prepare() to set arguments on the context.
+BML_Result ScriptInstanceManager::InvokeExternal(
+        ScriptInstance &inst, asIScriptFunction *fn,
+        const std::function<void(asIScriptContext *)> &setupArgs) {
+    ScriptScope scope(&inst);
+    auto *ctx = AcquireContext();
+    if (!ctx) return BML_RESULT_OUT_OF_MEMORY;
+
+    ctx->Prepare(fn);
+    if (setupArgs)
+        setupArgs(ctx);
+
+    TimeoutGuard timeout(inst.timeout_ms);
+    ctx->SetLineCallback(asFUNCTION(TimeoutGuard::LineCallback),
+                         &timeout, asCALL_CDECL);
+
+    int r = asEXECUTION_ERROR;
+    try { r = ctx->Execute(); } catch (...) {
+        ReleaseContext(ctx);
+        inst.state = ScriptInstance::State::Error;
+        return BML_RESULT_INTERNAL_ERROR;
+    }
+    if (r == asEXECUTION_EXCEPTION) {
+        LogScriptException(ctx, inst);
+        ReleaseContext(ctx);
+        inst.state = ScriptInstance::State::Error;
+        return BML_RESULT_INTERNAL_ERROR;
+    }
+    ReleaseContext(ctx);
+    if (r == asEXECUTION_ABORTED) {
+        inst.state = ScriptInstance::State::Error;
+        return BML_RESULT_TIMEOUT;
+    }
+    return (r == asEXECUTION_FINISHED) ? BML_RESULT_OK : BML_RESULT_FAIL;
+}
+
 BML_Result ScriptInstanceManager::InvokeByName(BML_Mod mod, const char *func_name) {
     auto *inst = FindByMod(mod);
     if (!inst || !inst->as_module || !func_name) return BML_RESULT_INVALID_ARGUMENT;
     auto *fn = inst->as_module->GetFunctionByName(func_name);
     if (!fn) return BML_RESULT_NOT_FOUND;
-
-    ScriptScope scope(inst);
-    return InvokeCallback(*inst, fn);
+    return InvokeExternal(*inst, fn, nullptr);
 }
 
 BML_Result ScriptInstanceManager::InvokeByNameInt(BML_Mod mod, const char *func_name, int arg) {
     auto *inst = FindByMod(mod);
-    if (!inst || !inst->as_module || !func_name)
-        return BML_RESULT_INVALID_ARGUMENT;
+    if (!inst || !inst->as_module || !func_name) return BML_RESULT_INVALID_ARGUMENT;
     auto *fn = inst->as_module->GetFunctionByName(func_name);
     if (!fn) return BML_RESULT_NOT_FOUND;
-
-    ScriptScope scope(inst);
-    auto *ctx = AcquireContext();
-    if (!ctx) return BML_RESULT_OUT_OF_MEMORY;
-
-    ctx->Prepare(fn);
-    if (fn->GetParamCount() > 0) ctx->SetArgDWord(0, static_cast<asDWORD>(arg));
-
-    TimeoutGuard timeout(inst->timeout_ms);
-    ctx->SetLineCallback(asFUNCTION(TimeoutGuard::LineCallback),
-                         &timeout, asCALL_CDECL);
-
-    int r = asEXECUTION_ERROR;
-    try { r = ctx->Execute(); } catch (...) {
-        ReleaseContext(ctx);
-        inst->state = ScriptInstance::State::Error;
-        return BML_RESULT_INTERNAL_ERROR;
-    }
-    if (r == asEXECUTION_EXCEPTION) {
-        // D4: Log exception before releasing context
-        LogScriptException(ctx, *inst);
-        ReleaseContext(ctx);
-        inst->state = ScriptInstance::State::Error;
-        return BML_RESULT_INTERNAL_ERROR;
-    }
-    ReleaseContext(ctx);
-    if (r == asEXECUTION_ABORTED) {
-        inst->state = ScriptInstance::State::Error;
-        return BML_RESULT_TIMEOUT;
-    }
-    return (r == asEXECUTION_FINISHED) ? BML_RESULT_OK : BML_RESULT_FAIL;
+    return InvokeExternal(*inst, fn, [fn, arg](asIScriptContext *ctx) {
+        if (fn->GetParamCount() > 0)
+            ctx->SetArgDWord(0, static_cast<asDWORD>(arg));
+    });
 }
 
 BML_Result ScriptInstanceManager::InvokeByNameString(BML_Mod mod, const char *func_name, const char *arg) {
     auto *inst = FindByMod(mod);
-    if (!inst || !inst->as_module || !func_name)
-        return BML_RESULT_INVALID_ARGUMENT;
+    if (!inst || !inst->as_module || !func_name) return BML_RESULT_INVALID_ARGUMENT;
     auto *fn = inst->as_module->GetFunctionByName(func_name);
     if (!fn) return BML_RESULT_NOT_FOUND;
-
-    ScriptScope scope(inst);
-    auto *ctx = AcquireContext();
-    if (!ctx) return BML_RESULT_OUT_OF_MEMORY;
-
-    ctx->Prepare(fn);
-    if (fn->GetParamCount() > 0 && arg) {
-        std::string s(arg);
-        ctx->SetArgObject(0, &s);
-    }
-
-    TimeoutGuard timeout(inst->timeout_ms);
-    ctx->SetLineCallback(asFUNCTION(TimeoutGuard::LineCallback),
-                         &timeout, asCALL_CDECL);
-
-    int r = asEXECUTION_ERROR;
-    try { r = ctx->Execute(); } catch (...) {
-        ReleaseContext(ctx);
-        inst->state = ScriptInstance::State::Error;
-        return BML_RESULT_INTERNAL_ERROR;
-    }
-    if (r == asEXECUTION_EXCEPTION) {
-        // D4: Log exception before releasing context
-        LogScriptException(ctx, *inst);
-        ReleaseContext(ctx);
-        inst->state = ScriptInstance::State::Error;
-        return BML_RESULT_INTERNAL_ERROR;
-    }
-    ReleaseContext(ctx);
-    if (r == asEXECUTION_ABORTED) {
-        inst->state = ScriptInstance::State::Error;
-        return BML_RESULT_TIMEOUT;
-    }
-    return (r == asEXECUTION_FINISHED) ? BML_RESULT_OK : BML_RESULT_FAIL;
+    return InvokeExternal(*inst, fn, [fn, arg](asIScriptContext *ctx) {
+        if (fn->GetParamCount() > 0 && arg) {
+            std::string s(arg);
+            ctx->SetArgObject(0, &s);
+        }
+    });
 }
 
 void *ScriptInstanceManager::GetModulePtr(BML_Mod mod) {

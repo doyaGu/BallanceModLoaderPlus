@@ -1,6 +1,7 @@
 #ifndef BML_SCRIPTING_SCRIPT_INSTANCE_MANAGER_H
 #define BML_SCRIPTING_SCRIPT_INSTANCE_MANAGER_H
 
+#include <functional>
 #include <memory>
 #include <unordered_map>
 
@@ -64,6 +65,9 @@ private:
     void ResolveCallbacks(ScriptInstance &inst);
     BML_Result InvokeCallback(
         ScriptInstance &inst, asIScriptFunction *fn, bool markErrorOnFailure = true);
+    BML_Result InvokeExternal(
+        ScriptInstance &inst, asIScriptFunction *fn,
+        const std::function<void(asIScriptContext *)> &setupArgs);
     BML_Result InvokeLifecycle(ScriptInstance &inst, asIScriptFunction *fn);
     BML_Result RunInitCallback(ScriptInstance &inst, bool fail_if_ready);
     void LogInitFailure(const ScriptInstance &inst, BML_Result result) const;

@@ -1,5 +1,7 @@
 #include "CoroutineManager.h"
 
+#include <algorithm>
+
 #include "ScriptInstance.h"
 #include "ScriptInstanceManager.h"
 #include "ScriptExceptionHelper.h"
@@ -25,24 +27,17 @@ void CoroutineManager::Tick() {
 
     auto now = std::chrono::steady_clock::now();
 
-    // Partition into ready and still-waiting
-    std::vector<std::unique_ptr<SuspendedCoroutine>> ready;
-    std::vector<std::unique_ptr<SuspendedCoroutine>> remaining;
+    // Partition in-place: ready coroutines move to the back
+    auto pivot = std::partition(m_Suspended.begin(), m_Suspended.end(),
+        [&](const std::unique_ptr<SuspendedCoroutine> &co) {
+            if (co->use_time) return now < co->resume_time;
+            return m_Frame < co->resume_frame;
+        });
 
-    for (auto &co : m_Suspended) {
-        bool is_ready = false;
-        if (co->use_time) {
-            is_ready = (now >= co->resume_time);
-        } else {
-            is_ready = (m_Frame >= co->resume_frame);
-        }
-
-        if (is_ready)
-            ready.push_back(std::move(co));
-        else
-            remaining.push_back(std::move(co));
-    }
-    m_Suspended = std::move(remaining);
+    // Move ready range out, then erase from m_Suspended
+    std::vector<std::unique_ptr<SuspendedCoroutine>> ready(
+        std::make_move_iterator(pivot), std::make_move_iterator(m_Suspended.end()));
+    m_Suspended.erase(pivot, m_Suspended.end());
 
     // Resume ready coroutines
     for (auto &co : ready) {
