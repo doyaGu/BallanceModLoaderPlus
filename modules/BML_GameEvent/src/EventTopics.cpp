@@ -1,6 +1,6 @@
 #include "EventTopics.h"
 
-namespace BML_Event {
+namespace BML_GameEvent {
     // ============================================================================
     // Menu Events
     // ============================================================================
@@ -81,4 +81,4 @@ namespace BML_Event {
         // Topics persist for the lifetime of the application
         // No explicit unregistration needed
     }
-} // namespace BML_Event
+} // namespace BML_GameEvent

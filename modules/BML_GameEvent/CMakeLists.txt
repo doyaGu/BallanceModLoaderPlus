@@ -1,13 +1,13 @@
 
 # Public API headers for consumers of this module
-add_library(BML_Event_api INTERFACE)
-target_include_directories(BML_Event_api INTERFACE
+add_library(BML_GameEvent_api INTERFACE)
+target_include_directories(BML_GameEvent_api INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:modules/BML_Event/include>
+    $<INSTALL_INTERFACE:modules/BML_GameEvent/include>
 )
-bml_register_module_api(BML_Event_api)
+bml_register_module_api(BML_GameEvent_api)
 
-bml_add_module(BML_Event
+bml_add_module(BML_GameEvent
     SOURCES
         src/EventMod.cpp
         src/EventTopics.cpp
@@ -26,16 +26,16 @@ bml_add_module(BML_Event
         NOMINMAX
 )
 
-install(TARGETS BML_Event
-    RUNTIME DESTINATION Mods/BML_Event
-    LIBRARY DESTINATION Mods/BML_Event
+install(TARGETS BML_GameEvent
+    RUNTIME DESTINATION Mods/BML_GameEvent
+    LIBRARY DESTINATION Mods/BML_GameEvent
 )
 
 install(FILES mod.toml
-    DESTINATION Mods/BML_Event
+    DESTINATION Mods/BML_GameEvent
 )
 
 install(DIRECTORY include/
-    DESTINATION modules/BML_Event/include
+    DESTINATION modules/BML_GameEvent/include
     COMPONENT sdk
 )

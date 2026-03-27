@@ -13,7 +13,7 @@ bml_add_module(BML_Render
         VirtoolsSDK::CK2
         VirtoolsSDK::VxMath
         minhook
-        BML_Event_api
+        BML_GameEvent_api
 )
 
 install(TARGETS BML_Render

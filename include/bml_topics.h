@@ -6,7 +6,7 @@
  * first-party modules are defined here. Modules should include this header
  * and use the macros instead of hardcoding topic strings.
  *
- * Module-local topics (e.g. BML_Event's Game/* topics) are intentionally
+ * Module-local topics (e.g. BML_GameEvent's Game/* topics) are intentionally
  * excluded; they belong in their own module-local headers.
  */
 
@@ -67,7 +67,7 @@
 
 /**
  * Retained game phase (payload: BML_GamePhase enum value as uint32_t).
- * Published by BML_Event on lifecycle transitions.
+ * Published by BML_GameEvent on lifecycle transitions.
  */
 #define BML_TOPIC_STATE_GAME_PHASE         "BML/State/GamePhase"
 
@@ -80,7 +80,7 @@
 
 /**
  * Retained pause state (payload: BML_Bool, BML_TRUE = paused).
- * Published by BML_Event on pause/unpause.
+ * Published by BML_GameEvent on pause/unpause.
  */
 #define BML_TOPIC_STATE_PAUSED             "BML/State/Paused"
 

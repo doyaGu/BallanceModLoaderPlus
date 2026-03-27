@@ -14,8 +14,8 @@ add_subdirectory(BML_Physics)
 # BML_ObjectLoad: Object loading hooks (OnLoadObject, OnLoadScript)
 add_subdirectory(BML_ObjectLoad)
 
-# BML_Event: Game event topic registration (lifecycle, gameplay events)
-add_subdirectory(BML_Event)
+# BML_GameEvent: Game event topic registration (lifecycle, gameplay events)
+add_subdirectory(BML_GameEvent)
 
 # BML_UI: ImGui overlay and base UI infrastructure
 add_subdirectory(BML_UI)

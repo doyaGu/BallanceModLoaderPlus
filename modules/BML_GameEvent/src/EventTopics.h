@@ -19,7 +19,7 @@
  * - "Game/Camera/*"      - Camera-related events (active, inactive)
  */
 
-namespace BML_Event {
+namespace BML_GameEvent {
     // ============================================================================
     // Menu Events
     // ============================================================================
@@ -157,6 +157,6 @@ namespace BML_Event {
      * @brief Unregister all event topics
      */
     void UnregisterEventTopics();
-} // namespace BML_Event
+} // namespace BML_GameEvent
 
 #endif // BML_EVENT_TOPICS_H

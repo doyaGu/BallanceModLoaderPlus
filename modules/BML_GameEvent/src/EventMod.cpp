@@ -1,6 +1,6 @@
 /**
  * @file EventMod.cpp
- * @brief BML_Event Module -- Game Event Hook and Module Entry Point
+ * @brief BML_GameEvent Module -- Game Event Hook and Module Entry Point
  *
  * Restores the original BML script hook topology while publishing IMC topics
  * instead of dispatching legacy IMessageReceiver callbacks.
@@ -218,39 +218,39 @@ static void RegisterTopics() {
         return;
     }
 
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_PRE_START_MENU, &s_Topics[IDX_PRE_START_MENU]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_POST_START_MENU, &s_Topics[IDX_POST_START_MENU]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_EXIT_GAME, &s_Topics[IDX_EXIT_GAME]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_PRE_LOAD_LEVEL, &s_Topics[IDX_PRE_LOAD_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_POST_LOAD_LEVEL, &s_Topics[IDX_POST_LOAD_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_START_LEVEL, &s_Topics[IDX_START_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_PRE_RESET_LEVEL, &s_Topics[IDX_PRE_RESET_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_POST_RESET_LEVEL, &s_Topics[IDX_POST_RESET_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_PAUSE_LEVEL, &s_Topics[IDX_PAUSE_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_UNPAUSE_LEVEL, &s_Topics[IDX_UNPAUSE_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_PRE_EXIT_LEVEL, &s_Topics[IDX_PRE_EXIT_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_POST_EXIT_LEVEL, &s_Topics[IDX_POST_EXIT_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_PRE_NEXT_LEVEL, &s_Topics[IDX_PRE_NEXT_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_POST_NEXT_LEVEL, &s_Topics[IDX_POST_NEXT_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_PRE_END_LEVEL, &s_Topics[IDX_PRE_END_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_POST_END_LEVEL, &s_Topics[IDX_POST_END_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_DEAD, &s_Topics[IDX_DEAD]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_BALL_OFF, &s_Topics[IDX_BALL_OFF]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_COUNTER_ACTIVE, &s_Topics[IDX_COUNTER_ACTIVE]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_COUNTER_INACTIVE, &s_Topics[IDX_COUNTER_INACTIVE]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_PRE_CHECKPOINT, &s_Topics[IDX_PRE_CHECKPOINT]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_POST_CHECKPOINT, &s_Topics[IDX_POST_CHECKPOINT]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_LEVEL_FINISH, &s_Topics[IDX_LEVEL_FINISH]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_GAME_OVER, &s_Topics[IDX_GAME_OVER]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_EXTRA_POINT, &s_Topics[IDX_EXTRA_POINT]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_PRE_LIFE_UP, &s_Topics[IDX_PRE_LIFE_UP]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_POST_LIFE_UP, &s_Topics[IDX_POST_LIFE_UP]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_PRE_SUB_LIFE, &s_Topics[IDX_PRE_SUB_LIFE]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_POST_SUB_LIFE, &s_Topics[IDX_POST_SUB_LIFE]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_BALL_NAV_ACTIVE, &s_Topics[IDX_BALL_NAV_ACTIVE]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_BALL_NAV_INACTIVE, &s_Topics[IDX_BALL_NAV_INACTIVE]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_CAM_NAV_ACTIVE, &s_Topics[IDX_CAM_NAV_ACTIVE]);
-    imcBus->GetTopicId(imcBus->Context, BML_Event::TOPIC_CAM_NAV_INACTIVE, &s_Topics[IDX_CAM_NAV_INACTIVE]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_PRE_START_MENU, &s_Topics[IDX_PRE_START_MENU]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_POST_START_MENU, &s_Topics[IDX_POST_START_MENU]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_EXIT_GAME, &s_Topics[IDX_EXIT_GAME]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_PRE_LOAD_LEVEL, &s_Topics[IDX_PRE_LOAD_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_POST_LOAD_LEVEL, &s_Topics[IDX_POST_LOAD_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_START_LEVEL, &s_Topics[IDX_START_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_PRE_RESET_LEVEL, &s_Topics[IDX_PRE_RESET_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_POST_RESET_LEVEL, &s_Topics[IDX_POST_RESET_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_PAUSE_LEVEL, &s_Topics[IDX_PAUSE_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_UNPAUSE_LEVEL, &s_Topics[IDX_UNPAUSE_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_PRE_EXIT_LEVEL, &s_Topics[IDX_PRE_EXIT_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_POST_EXIT_LEVEL, &s_Topics[IDX_POST_EXIT_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_PRE_NEXT_LEVEL, &s_Topics[IDX_PRE_NEXT_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_POST_NEXT_LEVEL, &s_Topics[IDX_POST_NEXT_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_PRE_END_LEVEL, &s_Topics[IDX_PRE_END_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_POST_END_LEVEL, &s_Topics[IDX_POST_END_LEVEL]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_DEAD, &s_Topics[IDX_DEAD]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_BALL_OFF, &s_Topics[IDX_BALL_OFF]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_COUNTER_ACTIVE, &s_Topics[IDX_COUNTER_ACTIVE]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_COUNTER_INACTIVE, &s_Topics[IDX_COUNTER_INACTIVE]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_PRE_CHECKPOINT, &s_Topics[IDX_PRE_CHECKPOINT]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_POST_CHECKPOINT, &s_Topics[IDX_POST_CHECKPOINT]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_LEVEL_FINISH, &s_Topics[IDX_LEVEL_FINISH]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_GAME_OVER, &s_Topics[IDX_GAME_OVER]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_EXTRA_POINT, &s_Topics[IDX_EXTRA_POINT]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_PRE_LIFE_UP, &s_Topics[IDX_PRE_LIFE_UP]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_POST_LIFE_UP, &s_Topics[IDX_POST_LIFE_UP]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_PRE_SUB_LIFE, &s_Topics[IDX_PRE_SUB_LIFE]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_POST_SUB_LIFE, &s_Topics[IDX_POST_SUB_LIFE]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_BALL_NAV_ACTIVE, &s_Topics[IDX_BALL_NAV_ACTIVE]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_BALL_NAV_INACTIVE, &s_Topics[IDX_BALL_NAV_INACTIVE]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_CAM_NAV_ACTIVE, &s_Topics[IDX_CAM_NAV_ACTIVE]);
+    imcBus->GetTopicId(imcBus->Context, BML_GameEvent::TOPIC_CAM_NAV_INACTIVE, &s_Topics[IDX_CAM_NAV_INACTIVE]);
 
     // Retained state topics
     imcBus->GetTopicId(imcBus->Context, BML_TOPIC_STATE_GAME_PHASE, &s_TopicGamePhase);
@@ -276,7 +276,7 @@ static bool IsScriptBehavior(CKObject *object) {
 // BML_Event namespace -- script registration functions
 // ---------------------------------------------------------------------------
 
-namespace BML_Event {
+namespace BML_GameEvent {
 
 static int ScanLoadedScripts(CKContext *ctx) {
     if (!ctx || !s_Services) {
@@ -568,7 +568,7 @@ static void OnScriptLoaded(const char *filename, CKBehavior *script) {
     }
 }
 
-} // namespace BML_Event
+} // namespace BML_GameEvent
 
 // ---------------------------------------------------------------------------
 // EventMod -- module entry point
@@ -577,11 +577,11 @@ static void OnScriptLoaded(const char *filename, CKBehavior *script) {
 class EventMod : public bml::HookModule {
     bool m_ScanCompleted = false;
 
-    const char *HookLogCategory() const override { return "BML_Event"; }
+    const char *HookLogCategory() const override { return "BML_GameEvent"; }
 
     void EnsureScanned(CKContext *ctx) {
         if (m_ScanCompleted || !ctx) return;
-        if (BML_Event::ScanLoadedScripts(ctx) > 0) {
+        if (BML_GameEvent::ScanLoadedScripts(ctx) > 0) {
             m_ScanCompleted = true;
         }
     }
@@ -637,7 +637,7 @@ class EventMod : public bml::HookModule {
             CKContext *context = payload->script->GetCKContext();
             if (!context) return;
             TryInitHook(context);
-            BML_Event::OnScriptLoaded(payload->filename, payload->script);
+            BML_GameEvent::OnScriptLoaded(payload->filename, payload->script);
         });
 
         m_Subs.Add(BML_TOPIC_ENGINE_PLAY, [this](const bml::imc::Message &msg) {
