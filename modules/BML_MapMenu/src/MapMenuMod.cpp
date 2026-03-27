@@ -35,6 +35,8 @@
 #include "bml_engine_events.hpp"
 #include "bml_imgui.hpp"
 #include "bml_imc.h"
+#include "bml_imc_topic.hpp"
+#include "bml_imc_message.hpp"
 #include "bml_input.h"
 #include "bml_input_control.h"
 #include "bml_input_capture.hpp"
@@ -202,8 +204,8 @@ class MapMenuMod : public bml::Module {
     bml::InterfaceLease<BML_InputCaptureInterface> m_InputCaptureService;
     bml::InputCaptureGuard m_InputCapture;
     bml::InterfaceLease<BML_ConsoleCommandRegistry> m_ConsoleRegistry;
-    BML_TopicId m_TopicConsoleOutput = 0;
-    BML_TopicId m_TopicCustomMapName = 0;
+    bml::imc::Topic m_TopicConsoleOutput;
+    bml::imc::Topic m_TopicCustomMapName;
 
     CKContext *m_Context = nullptr;
     CKBehavior *m_ExitStart = nullptr;
@@ -232,8 +234,7 @@ class MapMenuMod : public bml::Module {
     }
 
     void PublishConsoleMessage(const std::string &message, uint32_t flags = BML_CONSOLE_OUTPUT_FLAG_SYSTEM) {
-        auto *imcBus = Services().Interfaces().ImcBus;
-        if (!imcBus || !imcBus->PublishBuffer || m_TopicConsoleOutput == 0 || message.empty()) return;
+        if (!m_TopicConsoleOutput || message.empty()) return;
 
         const size_t textSize = message.size() + 1;
         const size_t totalSize = sizeof(BML_ConsoleOutputEvent) + textSize;
@@ -246,14 +247,11 @@ class MapMenuMod : public bml::Module {
         event->flags = flags;
         std::memcpy(const_cast<char *>(event->message_utf8), message.c_str(), textSize);
 
-        BML_ImcBuffer buffer = BML_IMC_BUFFER_INIT;
-        buffer.data = event;
-        buffer.size = totalSize;
-        buffer.cleanup = [](const void *, size_t, void *user_data) {
-            std::free(user_data);
-        };
-        buffer.cleanup_user_data = storage;
-        imcBus->PublishBuffer(Handle(), m_TopicConsoleOutput, &buffer);
+        auto buffer = bml::imc::ZeroCopyBuffer::Create(
+            event, totalSize,
+            [](const void *, size_t, void *user_data) { std::free(user_data); },
+            storage);
+        m_TopicConsoleOutput.PublishBuffer(buffer);
     }
 
     bml::ConfigBindings m_Cfg;
@@ -382,12 +380,14 @@ class MapMenuMod : public bml::Module {
         CKMessageType loadLevelMessage = messageManager->AddMessageType((CKSTRING)"Load Level");
         CKMessageType loadMenuMessage = messageManager->AddMessageType((CKSTRING)"Menu_Load");
         const std::string originalMapPath = utils::ToString(path);
-        const auto *imcBus = Services().Interfaces().ImcBus;
-        if (m_TopicCustomMapName != 0 && imcBus && imcBus->PublishState && !originalMapPath.empty()) {
-            BML_ImcMessage state_message = BML_IMC_MESSAGE_INIT;
-            state_message.data = originalMapPath.c_str();
-            state_message.size = originalMapPath.size() + 1;
-            imcBus->PublishState(Handle(), m_TopicCustomMapName, &state_message);
+        if (m_TopicCustomMapName && !originalMapPath.empty()) {
+            const auto *imcBus = Services().Interfaces().ImcBus;
+            if (imcBus && imcBus->PublishState) {
+                BML_ImcMessage state_message = BML_IMC_MESSAGE_INIT;
+                state_message.data = originalMapPath.c_str();
+                state_message.size = originalMapPath.size() + 1;
+                imcBus->PublishState(Handle(), m_TopicCustomMapName.Id(), &state_message);
+            }
         }
         messageManager->SendMessageSingle(loadLevelMessage, m_Context->GetCurrentLevel());
         messageManager->SendMessageSingle(loadMenuMessage, allSound);
@@ -593,14 +593,10 @@ public:
             Services().Log().Warn("Failed to acquire input capture service; map menu will not capture input");
         }
 
-        Services().Interfaces().ImcBus->GetTopicId(
-            Services().Interfaces().ImcBus->Context,
-            BML_TOPIC_CONSOLE_OUTPUT,
-            &m_TopicConsoleOutput);
-        Services().Interfaces().ImcBus->GetTopicId(
-            Services().Interfaces().ImcBus->Context,
-            BML_TOPIC_STATE_CUSTOM_MAP_NAME,
-            &m_TopicCustomMapName);
+        m_TopicConsoleOutput = bml::imc::Topic(
+            BML_TOPIC_CONSOLE_OUTPUT, Services().Interfaces().ImcBus, Handle());
+        m_TopicCustomMapName = bml::imc::Topic(
+            BML_TOPIC_STATE_CUSTOM_MAP_NAME, Services().Interfaces().ImcBus, Handle());
 
         const bool subscriptionsOk =
             m_Subs.Add(BML_TOPIC_INPUT_KEY_DOWN, [this](const bml::imc::Message &msg) {
@@ -673,6 +669,8 @@ public:
         m_InputCapture.Release();
         m_InputCaptureService.Reset();
         m_DrawReg.Reset();
+        m_TopicConsoleOutput = {};
+        m_TopicCustomMapName = {};
         m_Context = nullptr;
         m_ExitStart = nullptr;
         m_StartButtonId = 0;

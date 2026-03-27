@@ -29,6 +29,8 @@
 #include "bml_input_control.h"
 #include "bml_input_capture.hpp"
 #include "bml_interface.hpp"
+#include "bml_imc_topic.hpp"
+#include "bml_imc_message.hpp"
 #include "bml_topics.h"
 #include "bml_ui.hpp"
 #include "bml_virtools.h"
@@ -98,8 +100,8 @@ class ConsoleMod : public bml::Module {
     bml::InputCaptureGuard m_InputCapture;
     bml::InterfaceLease<BML_HostRuntimeInterface> m_HostRuntime;
     bml::PublishedInterface m_PublishedService;
-    BML_TopicId m_TopicCommand = 0;
-    BML_TopicId m_TopicCheatState = 0;
+    bml::imc::Topic m_TopicCommand;
+    bml::imc::Topic m_TopicCheatState;
 
     CommandRegistry m_Registry;
     CommandHistory m_History;
@@ -189,14 +191,14 @@ class ConsoleMod : public bml::Module {
             result = Services().Interfaces().Context->SetUserData(Services().GlobalContext(), kInternalCheatStateKey, state, DestroyBoolState);
             if (result != BML_RESULT_OK) delete state;
         }
-        if (result == BML_RESULT_OK && m_TopicCheatState != 0) {
+        if (result == BML_RESULT_OK && m_TopicCheatState) {
             BML_Bool value = enabled ? BML_TRUE : BML_FALSE;
             BML_ImcMessage msg = BML_IMC_MSG(&value, sizeof(value));
-            auto *imcBus = Services().Interfaces().ImcBus;
+            auto *imcBus = m_TopicCheatState.Iface();
             if (imcBus->PublishState) {
-                imcBus->PublishState(Handle(), m_TopicCheatState, &msg);
+                imcBus->PublishState(Handle(), m_TopicCheatState.Id(), &msg);
             } else {
-                imcBus->Publish(Handle(), m_TopicCheatState, &value, sizeof(value));
+                m_TopicCheatState.Publish(&value, sizeof(value));
             }
         }
         return result;
@@ -251,18 +253,12 @@ class ConsoleMod : public bml::Module {
     }
 
     BML_Result PublishCommand(const std::string &command) {
-        auto *imcBus = Services().Interfaces().ImcBus;
-        if (!imcBus || !imcBus->PublishBuffer || m_TopicCommand == 0 || command.empty()) {
+        if (!m_TopicCommand || command.empty()) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
 
-        if (imcBus->GetTopicInfo) {
-            BML_TopicInfo topicInfo = BML_TOPIC_INFO_INIT;
-            if (imcBus->GetTopicInfo(imcBus->Context, m_TopicCommand, &topicInfo) ==
-                    BML_RESULT_OK &&
-                topicInfo.subscriber_count == 0) {
-                return BML_RESULT_IMC_NO_SUBSCRIBERS;
-            }
+        if (m_TopicCommand.SubscriberCount() == 0) {
+            return BML_RESULT_IMC_NO_SUBSCRIBERS;
         }
 
         const size_t textSize = command.size() + 1;
@@ -277,14 +273,11 @@ class ConsoleMod : public bml::Module {
         event->command_utf8 = storage + sizeof(BML_ConsoleCommandEvent);
         std::memcpy(const_cast<char *>(event->command_utf8), command.c_str(), textSize);
 
-        BML_ImcBuffer buffer = BML_IMC_BUFFER_INIT;
-        buffer.data = event;
-        buffer.size = totalSize;
-        buffer.cleanup = [](const void *, size_t, void *user_data) {
-            std::free(user_data);
-        };
-        buffer.cleanup_user_data = storage;
-        return imcBus->PublishBuffer(Handle(), m_TopicCommand, &buffer);
+        auto buffer = bml::imc::ZeroCopyBuffer::Create(
+            event, totalSize,
+            [](const void *, size_t, void *user_data) { std::free(user_data); },
+            storage);
+        return m_TopicCommand.PublishBuffer(buffer) ? BML_RESULT_OK : BML_RESULT_FAIL;
     }
 
     void ClearPaletteProviders() const {
@@ -1091,19 +1084,16 @@ public:
         InitConfigBindings();
         m_Cfg.Sync(Services().Config());
 
-        if (Services().Interfaces().ImcBus->GetTopicId(
-                Services().Interfaces().ImcBus->Context,
-                BML_TOPIC_CONSOLE_COMMAND,
-                &m_TopicCommand) != BML_RESULT_OK) {
+        m_TopicCommand = bml::imc::Topic(BML_TOPIC_CONSOLE_COMMAND,
+            Services().Interfaces().ImcBus, Handle());
+        if (!m_TopicCommand) {
             m_DrawReg.Reset();
             m_InputCaptureService.Reset();
             ClearPaletteProviders();
             return BML_RESULT_FAIL;
         }
-        Services().Interfaces().ImcBus->GetTopicId(
-            Services().Interfaces().ImcBus->Context,
-            BML_TOPIC_STATE_CHEAT_ENABLED,
-            &m_TopicCheatState);
+        m_TopicCheatState = bml::imc::Topic(BML_TOPIC_STATE_CHEAT_ENABLED,
+            Services().Interfaces().ImcBus, Handle());
         m_History.Load(GetHistoryPath());
         SetCheatState(false);
 
