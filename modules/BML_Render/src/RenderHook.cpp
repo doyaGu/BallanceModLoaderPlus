@@ -90,7 +90,7 @@ struct UpdateProjectionThunk : BML_Render::CKRenderContextInternal {
         float aspect = static_cast<float>(self->m_ViewportData.ViewWidth)
                      / static_cast<float>(self->m_ViewportData.ViewHeight);
         float origFov = self->m_Fov;
-        self->m_Fov = atan2f(tanf(origFov * 0.5f) * 0.75f * aspect, 1.0f) * 2.0f;
+        self->m_Fov = 2.0f * atanf(tanf(origFov * 0.5f) * 0.75f * aspect);
 
         CKBOOL result = (self->*g_UpdateProjectionOrigPtr)(force);
 
