@@ -2,7 +2,6 @@
 bml_add_module(BML_Render
     SOURCES
         src/RenderMod.cpp
-        src/RenderHook.cpp
         src/RenderHook.h
         src/Macros.h
     MANIFEST mod.toml
