@@ -19,10 +19,7 @@ class EventMod : public bml::HookModule {
     }
 
     bool InitHook(CKContext *ctx) override {
-        if (!BML_Event::InitEventHooks(ctx,
-                                        Services().Interfaces().ImcBus,
-                                        Services().Interfaces().Logging,
-                                        Services().Handle())) return false;
+        if (!BML_Event::InitEventHooks(ctx, Services())) return false;
         EnsureScanned(ctx);
         return true;
     }

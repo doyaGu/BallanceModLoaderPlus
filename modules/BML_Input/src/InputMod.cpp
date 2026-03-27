@@ -262,10 +262,7 @@ class InputMod : public bml::HookModule {
             Services().Log().Warn("CKInputManager not available yet - retrying next Engine/Init");
             return false;
         }
-        return BML_Input::InitInputHook(im,
-                                         Services().Interfaces().ImcBus,
-                                         Services().Interfaces().Logging,
-                                         Services().Handle());
+        return BML_Input::InitInputHook(im, Services());
     }
 
     void ShutdownHook() override {

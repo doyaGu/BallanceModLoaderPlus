@@ -37,7 +37,7 @@ class RenderMod : public bml::HookModule {
     const char *HookLogCategory() const override { return "BML_Render"; }
 
     bool InitHook(CKContext *) override {
-        if (!BML_Render::InitRenderHook(Services().Interfaces().Logging, Services().Handle())) return false;
+        if (!BML_Render::InitRenderHook(Services())) return false;
         m_Cfg.Refresh(Services().Config());
         ApplyConfig();
         return true;

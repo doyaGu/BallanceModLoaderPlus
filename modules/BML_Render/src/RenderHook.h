@@ -15,10 +15,9 @@
 #include "CK2dEntity.h"
 
 #include "Macros.h"
-#include "bml_logging.h"
-#include "bml_types.h"
 
 // Forward declarations
+namespace bml { class ModuleServices; }
 class CKRenderedScene;
 class CKSceneGraphNode;
 
@@ -191,11 +190,10 @@ public:
 
 /**
  * @brief Initialize render engine hooks
- * @param logging Logging interface for diagnostics
- * @param owner Module handle for log attribution
+ * @param services Module services for logging and other APIs
  * @return true on success, false on failure
  */
-bool InitRenderHook(const BML_CoreLoggingInterface *logging, BML_Mod owner);
+bool InitRenderHook(const bml::ModuleServices &services);
 
 /**
  * @brief Shutdown render engine hooks

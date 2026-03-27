@@ -10,8 +10,8 @@
 #define BML_EVENT_EVENTHOOK_H
 
 #include "CKAll.h"
-#include "bml_imc.h"
-#include "bml_logging.h"
+
+namespace bml { class ModuleServices; }
 
 namespace BML_Event {
 
@@ -21,15 +21,10 @@ namespace BML_Event {
  * Registers topic IDs and sets up for script hooking.
  *
  * @param ctx CKContext
- * @param imc IMC bus interface
- * @param logging Core logging interface
- * @param owner Module handle for IMC ownership
+ * @param services Module services for IMC, logging, and ownership
  * @return true on success
  */
-bool InitEventHooks(CKContext *ctx,
-                    const BML_ImcBusInterface *imc,
-                    const BML_CoreLoggingInterface *logging,
-                    BML_Mod owner);
+bool InitEventHooks(CKContext *ctx, const bml::ModuleServices &services);
 
 /**
  * @brief Scan already-loaded scripts and register event hooks.

@@ -2,8 +2,8 @@
 #define BML_INPUT_INPUTHOOK_H
 
 #include "CKInputManager.h"
-#include "bml_imc.h"
-#include "bml_logging.h"
+
+namespace bml { class ModuleServices; }
 
 namespace BML_Input {
 
@@ -14,10 +14,7 @@ enum InputDevice {
     INPUT_DEVICE_COUNT = 3
 };
 
-bool InitInputHook(CKInputManager *inputManager,
-                   const BML_ImcBusInterface *imc,
-                   const BML_CoreLoggingInterface *logging,
-                   BML_Mod owner);
+bool InitInputHook(CKInputManager *inputManager, const bml::ModuleServices &services);
 void ShutdownInputHook();
 
 void EnableKeyboardRepetition(CKBOOL enable = TRUE);

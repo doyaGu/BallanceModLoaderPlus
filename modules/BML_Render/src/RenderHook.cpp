@@ -18,19 +18,12 @@
 #include <MinHook.h>
 
 #include "HookUtils.h"
+#include "bml_services.hpp"
 
 namespace BML_Render {
 
 namespace {
-static const BML_CoreLoggingInterface *s_Logging = nullptr;
-static BML_Mod s_Owner = nullptr;
-
-void Log(BML_LogSeverity severity, const char *message) {
-    if (!s_Logging || !s_Logging->Log || !message) {
-        return;
-    }
-    s_Logging->Log(s_Owner, severity, "BML_Render", "%s", message);
-}
+static const bml::ModuleServices *s_Services = nullptr;
 } // namespace
 
 //-----------------------------------------------------------------------------
@@ -113,7 +106,7 @@ bool CP_HOOK_CLASS_NAME(CKRenderContext)::Hook(void *base) {
                       *reinterpret_cast<LPVOID*>(&CP_FUNC_PTR_NAME(UpdateProjection)),
                       reinterpret_cast<LPVOID*>(&CP_FUNC_ORIG_PTR_NAME(UpdateProjection))) != MH_OK ||
         MH_EnableHook(*reinterpret_cast<LPVOID*>(&CP_FUNC_TARGET_PTR_NAME(UpdateProjection))) != MH_OK) {
-        Log(BML_LOG_WARN, "Failed to hook UpdateProjection - widescreen fix may not work");
+        s_Services->Log().Warn("Failed to hook UpdateProjection - widescreen fix may not work");
         // Non-fatal, continue with Render hook only
     }
 
@@ -141,34 +134,33 @@ bool CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(void *base) {
 // Public API
 //-----------------------------------------------------------------------------
 
-bool InitRenderHook(const BML_CoreLoggingInterface *logging, BML_Mod owner) {
+bool InitRenderHook(const bml::ModuleServices &services) {
     if (s_Initialized)
         return true;
 
-    s_Logging = logging;
-    s_Owner = owner;
+    s_Services = &services;
 
     void *base = utils::GetModuleBaseAddress("CK2_3D.dll");
     if (!base) {
-        Log(BML_LOG_ERROR, "Failed to get CK2_3D.dll base address");
+        s_Services->Log().Error("Failed to get CK2_3D.dll base address");
         return false;
     }
 
     // Initialize MinHook
     MH_STATUS status = MH_Initialize();
     if (status != MH_OK && status != MH_ERROR_ALREADY_INITIALIZED) {
-        Log(BML_LOG_ERROR, "Failed to initialize MinHook");
+        s_Services->Log().Error("Failed to initialize MinHook");
         return false;
     }
 
     // Install hooks
     if (!CP_HOOK_CLASS_NAME(CKRenderContext)::Hook(base)) {
-        Log(BML_LOG_ERROR, "Failed to install render hooks");
+        s_Services->Log().Error("Failed to install render hooks");
         return false;
     }
 
     s_Initialized = true;
-    Log(BML_LOG_INFO, "Render engine hooks initialized (Render + UpdateProjection)");
+    s_Services->Log().Info("Render engine hooks initialized (Render + UpdateProjection)");
     return true;
 }
 
@@ -183,9 +175,8 @@ void ShutdownRenderHook() {
     }
 
     s_Initialized = false;
-    Log(BML_LOG_INFO, "Render engine hooks shutdown");
-    s_Logging = nullptr;
-    s_Owner = nullptr;
+    s_Services->Log().Info("Render engine hooks shutdown");
+    s_Services = nullptr;
 }
 
 void DisableRender(bool disable) {
