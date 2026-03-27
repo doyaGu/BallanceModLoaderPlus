@@ -10,6 +10,7 @@
 
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_hook_module.hpp"
+#include "bml_imc_topic.hpp"
 #include "bml_input_control.h"
 
 #include <cstring>
@@ -74,23 +75,16 @@ struct InputState {
     unsigned char last_keyboard_state[256] = {};
     Vx2DVector last_mouse_position = {0.0f, 0.0f};
     CKBYTE last_mouse_buttons[4] = {};
-    BML_TopicId topic_key_down = 0;
-    BML_TopicId topic_key_up = 0;
-    BML_TopicId topic_mouse_button = 0;
-    BML_TopicId topic_mouse_move = 0;
+    bml::imc::Topic topic_key_down;
+    bml::imc::Topic topic_key_up;
+    bml::imc::Topic topic_mouse_button;
+    bml::imc::Topic topic_mouse_move;
 };
 
 InputState g_State;
 
-bool PublishInputMessage(BML_TopicId topic, const void *data, size_t size) {
-    if (!s_Services || topic == 0) {
-        return false;
-    }
-    auto *imcBus = s_Services->Interfaces().ImcBus;
-    if (!imcBus || !imcBus->Publish) {
-        return false;
-    }
-    return imcBus->Publish(s_Services->Handle(), topic, data, size) == BML_RESULT_OK;
+bool PublishInputMessage(const bml::imc::Topic &topic, const void *data, size_t size) {
+    return topic.Publish(data, size);
 }
 
 // ---------- VTable hooks ----------
@@ -293,7 +287,7 @@ void GetMousePositionOriginal(Vx2DVector &outPosition, CKBOOL absolute) {
 // ---------- Event publishing ----------
 
 void PublishKeyboardEvents(unsigned char *currentState) {
-    if (!s_Services || !g_State.topic_key_down || !g_State.topic_key_up || !currentState)
+    if (!g_State.topic_key_down || !g_State.topic_key_up || !currentState)
         return;
 
     for (int index = 0; index < 256; ++index) {
@@ -316,7 +310,7 @@ void PublishKeyboardEvents(unsigned char *currentState) {
 }
 
 void PublishMouseEvents() {
-    if (!s_Services || !g_State.topic_mouse_button || !g_State.topic_mouse_move)
+    if (!g_State.topic_mouse_button || !g_State.topic_mouse_move)
         return;
 
     CKBYTE mouseStates[4] = {};
@@ -379,14 +373,11 @@ bool InitInputHook(CKInputManager *inputManager) {
 
     if (s_Services) {
         auto *imcBus = s_Services->Interfaces().ImcBus;
-        if (imcBus && imcBus->GetTopicId) {
-            imcBus->GetTopicId(imcBus->Context, BML_TOPIC_INPUT_KEY_DOWN, &g_State.topic_key_down);
-            imcBus->GetTopicId(imcBus->Context, BML_TOPIC_INPUT_KEY_UP, &g_State.topic_key_up);
-            imcBus->GetTopicId(
-                imcBus->Context, BML_TOPIC_INPUT_MOUSE_BUTTON, &g_State.topic_mouse_button);
-            imcBus->GetTopicId(
-                imcBus->Context, BML_TOPIC_INPUT_MOUSE_MOVE, &g_State.topic_mouse_move);
-        }
+        auto owner = s_Services->Handle();
+        g_State.topic_key_down = bml::imc::Topic(BML_TOPIC_INPUT_KEY_DOWN, imcBus, owner);
+        g_State.topic_key_up = bml::imc::Topic(BML_TOPIC_INPUT_KEY_UP, imcBus, owner);
+        g_State.topic_mouse_button = bml::imc::Topic(BML_TOPIC_INPUT_MOUSE_BUTTON, imcBus, owner);
+        g_State.topic_mouse_move = bml::imc::Topic(BML_TOPIC_INPUT_MOUSE_MOVE, imcBus, owner);
     }
 
     InstallVTableHooks();

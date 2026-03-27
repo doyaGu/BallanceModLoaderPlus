@@ -8,6 +8,7 @@
 
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_hook_module.hpp"
+#include "bml_imc_topic.hpp"
 #include "bml_virtools_payloads.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -62,8 +63,8 @@ class PhysicsMod : public bml::HookModule {
     CKIpionManager *m_IpionManager = nullptr;
     CP_CLASS_VTABLE_NAME(CKIpionManager) m_IpionVTable = {};
     CKBEHAVIORFCT m_OriginalPhysicalize = nullptr;
-    BML_TopicId m_TopicPhysicalize = 0;
-    BML_TopicId m_TopicUnphysicalize = 0;
+    bml::imc::Topic m_TopicPhysicalize;
+    bml::imc::Topic m_TopicUnphysicalize;
 
     static PhysicsMod *s_Instance;
 
@@ -73,10 +74,9 @@ class PhysicsMod : public bml::HookModule {
         if (!ctx) return false;
 
         auto *imcBus = Services().Interfaces().ImcBus;
-        if (imcBus && imcBus->GetTopicId) {
-            imcBus->GetTopicId(imcBus->Context, "Physics/Physicalize", &m_TopicPhysicalize);
-            imcBus->GetTopicId(imcBus->Context, "Physics/Unphysicalize", &m_TopicUnphysicalize);
-        }
+        auto owner = Services().Handle();
+        m_TopicPhysicalize = bml::imc::Topic("Physics/Physicalize", imcBus, owner);
+        m_TopicUnphysicalize = bml::imc::Topic("Physics/Unphysicalize", imcBus, owner);
 
         // Hook IpionManager VTable
         m_IpionManager = (CKIpionManager *)ctx->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
@@ -118,8 +118,8 @@ class PhysicsMod : public bml::HookModule {
         m_IpionManager = nullptr;
         m_IpionVTable = {};
         m_OriginalPhysicalize = nullptr;
-        m_TopicPhysicalize = 0;
-        m_TopicUnphysicalize = 0;
+        m_TopicPhysicalize = {};
+        m_TopicUnphysicalize = {};
     }
 
     // -------------------------------------------------------------------------
@@ -150,11 +150,8 @@ class PhysicsMod : public bml::HookModule {
         bool physicalize = beh->IsInputActive(0);
         auto *target = (CK3dEntity *)beh->GetTarget();
 
-        auto *imcBus = Services().Interfaces().ImcBus;
-        auto owner = Services().Handle();
-
         if (physicalize) {
-            if (imcBus && imcBus->Publish && owner && m_TopicPhysicalize) {
+            if (m_TopicPhysicalize) {
                 BML_PhysicalizeEvent event{};
                 event.target = target;
 
@@ -205,11 +202,11 @@ class PhysicsMod : public bml::HookModule {
 
                 beh->GetLocalParameterValue(3, &event.mass_center);
 
-                imcBus->Publish(owner, m_TopicPhysicalize, &event, sizeof(event));
+                m_TopicPhysicalize.Publish(event);
             }
         } else {
-            if (imcBus && imcBus->Publish && owner && m_TopicUnphysicalize)
-                imcBus->Publish(owner, m_TopicUnphysicalize, &target, sizeof(target));
+            if (m_TopicUnphysicalize)
+                m_TopicUnphysicalize.Publish(target);
         }
 
         return m_OriginalPhysicalize(behcontext);

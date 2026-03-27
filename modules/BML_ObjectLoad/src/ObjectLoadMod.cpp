@@ -8,6 +8,8 @@
 
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_hook_module.hpp"
+#include "bml_imc_topic.hpp"
+#include "bml_imc_message.hpp"
 #include "bml_virtools.h"
 #include "bml_virtools.hpp"
 #include "bml_virtools_payloads.h"
@@ -26,9 +28,9 @@
 class ObjectLoadMod : public bml::HookModule {
     CKBEHAVIORFCT m_OriginalFunc = nullptr;
     bool m_SnapshotPublished = false;
-    BML_TopicId m_TopicLoadObject = 0;
-    BML_TopicId m_TopicLoadScript = 0;
-    BML_TopicId m_TopicCustomMapName = 0;
+    bml::imc::Topic m_TopicLoadObject;
+    bml::imc::Topic m_TopicLoadScript;
+    bml::imc::Topic m_TopicCustomMapName;
 
     static ObjectLoadMod *s_Instance;
     static constexpr const char *kBaseFilename = "base.cmo";
@@ -43,11 +45,10 @@ class ObjectLoadMod : public bml::HookModule {
         if (!ctx) return false;
 
         auto *imcBus = Services().Interfaces().ImcBus;
-        if (imcBus && imcBus->GetTopicId) {
-            imcBus->GetTopicId(imcBus->Context, BML_TOPIC_OBJECTLOAD_LOAD_OBJECT, &m_TopicLoadObject);
-            imcBus->GetTopicId(imcBus->Context, BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT, &m_TopicLoadScript);
-            imcBus->GetTopicId(imcBus->Context, BML_TOPIC_STATE_CUSTOM_MAP_NAME, &m_TopicCustomMapName);
-        }
+        auto owner = Services().Handle();
+        m_TopicLoadObject = bml::imc::Topic(BML_TOPIC_OBJECTLOAD_LOAD_OBJECT, imcBus, owner);
+        m_TopicLoadScript = bml::imc::Topic(BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT, imcBus, owner);
+        m_TopicCustomMapName = bml::imc::Topic(BML_TOPIC_STATE_CUSTOM_MAP_NAME, imcBus, owner);
 
         CKBehaviorPrototype *proto = CKGetPrototypeFromGuid(VT_NARRATIVES_OBJECTLOAD);
         if (!proto) return false;
@@ -67,9 +68,9 @@ class ObjectLoadMod : public bml::HookModule {
         s_Instance = nullptr;
         m_OriginalFunc = nullptr;
         m_SnapshotPublished = false;
-        m_TopicLoadObject = 0;
-        m_TopicLoadScript = 0;
-        m_TopicCustomMapName = 0;
+        m_TopicLoadObject = {};
+        m_TopicLoadScript = {};
+        m_TopicCustomMapName = {};
     }
 
     BML_Result OnModuleAttach() override {
@@ -217,10 +218,10 @@ class ObjectLoadMod : public bml::HookModule {
 
             char custom_map_name[MAX_PATH] = {};
             auto *imcBus = Services().Interfaces().ImcBus;
-            if (imcBus && isMap && m_TopicCustomMapName != 0 && imcBus->CopyState) {
+            if (imcBus && isMap && m_TopicCustomMapName && imcBus->CopyState) {
                 size_t state_size = 0;
                 if (imcBus->CopyState(imcBus->Context,
-                                        m_TopicCustomMapName,
+                                        m_TopicCustomMapName.Id(),
                                         custom_map_name,
                                         sizeof(custom_map_name),
                                         &state_size,
@@ -242,8 +243,8 @@ class ObjectLoadMod : public bml::HookModule {
                     PublishScriptLoadEvent(fname, static_cast<CKBehavior *>(obj), isMap);
             }
 
-            if (imcBus && isMap && m_TopicCustomMapName != 0 && imcBus->ClearState)
-                imcBus->ClearState(imcBus->Context, m_TopicCustomMapName);
+            if (imcBus && isMap && m_TopicCustomMapName && imcBus->ClearState)
+                imcBus->ClearState(imcBus->Context, m_TopicCustomMapName.Id());
         }
 
         if (beh->IsInputActive(1)) {
@@ -269,9 +270,7 @@ class ObjectLoadMod : public bml::HookModule {
                                 CKBOOL dynamic, CKObject *masterobject,
                                 CKBOOL isMap, const CK_ID *objectIds,
                                 uint32_t objectCount) {
-        auto *imcBus = Services().Interfaces().ImcBus;
-        auto owner = Services().Handle();
-        if (!imcBus || !imcBus->PublishBuffer || !owner || m_TopicLoadObject == 0)
+        if (!m_TopicLoadObject)
             return false;
 
         const size_t filenameSize = filename ? std::strlen(filename) + 1 : 0;
@@ -309,18 +308,13 @@ class ObjectLoadMod : public bml::HookModule {
         event->is_map = isMap;
         event->object_count = objectCount;
 
-        BML_ImcBuffer buffer = BML_IMC_BUFFER_INIT;
-        buffer.data = event;
-        buffer.size = totalSize;
-        buffer.cleanup = [](const void *, size_t, void *user_data) { std::free(user_data); };
-        buffer.cleanup_user_data = storage;
-        return imcBus->PublishBuffer(owner, m_TopicLoadObject, &buffer) == BML_RESULT_OK;
+        auto zcBuf = bml::imc::ZeroCopyBuffer::Create(event, totalSize,
+            [](const void *, size_t, void *ud) { std::free(ud); }, storage);
+        return m_TopicLoadObject.PublishBuffer(zcBuf);
     }
 
     bool PublishScriptLoadEvent(const char *filename, CKBehavior *script, CKBOOL isMap) {
-        auto *imcBus = Services().Interfaces().ImcBus;
-        auto owner = Services().Handle();
-        if (!imcBus || !imcBus->PublishBuffer || !owner || m_TopicLoadScript == 0 || !script)
+        if (!m_TopicLoadScript || !script)
             return false;
 
         const size_t filenameSize = filename ? std::strlen(filename) + 1 : 0;
@@ -337,12 +331,9 @@ class ObjectLoadMod : public bml::HookModule {
         event->script = script;
         event->is_map = isMap;
 
-        BML_ImcBuffer buffer = BML_IMC_BUFFER_INIT;
-        buffer.data = event;
-        buffer.size = totalSize;
-        buffer.cleanup = [](const void *, size_t, void *user_data) { std::free(user_data); };
-        buffer.cleanup_user_data = storage;
-        return imcBus->PublishBuffer(owner, m_TopicLoadScript, &buffer) == BML_RESULT_OK;
+        auto zcBuf = bml::imc::ZeroCopyBuffer::Create(event, totalSize,
+            [](const void *, size_t, void *ud) { std::free(ud); }, storage);
+        return m_TopicLoadScript.PublishBuffer(zcBuf);
     }
 
     // -------------------------------------------------------------------------
@@ -356,7 +347,7 @@ class ObjectLoadMod : public bml::HookModule {
         CK_ID *ids = context->GetObjectsListByClassID(CKCID_BEHAVIOR);
         if (count <= 0 || !ids) return;
 
-        if (m_TopicLoadObject != 0) {
+        if (m_TopicLoadObject) {
             PublishObjectLoadEvent(kBaseFilename, "", CKCID_3DOBJECT,
                                    TRUE, TRUE, TRUE, FALSE,
                                    nullptr, FALSE, nullptr, 0);
@@ -371,7 +362,7 @@ class ObjectLoadMod : public bml::HookModule {
             }
         }
 
-        if (published == 0 && m_TopicLoadObject == 0) return;
+        if (published == 0 && !m_TopicLoadObject) return;
 
         m_SnapshotPublished = true;
         Services().Log().Info("Published initial load snapshot for %d scripts", published);
