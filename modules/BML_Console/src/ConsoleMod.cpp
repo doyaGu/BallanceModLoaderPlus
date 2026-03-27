@@ -938,31 +938,31 @@ class ConsoleMod : public bml::Module {
         m_BuiltinCtx.defaultDuration = m_Settings.messageDuration;
 
         m_BuiltinCtx.getCheatState = []() -> bool {
-            auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
+            auto *self = BML_GET_INSTANCE(ConsoleMod);
             return self ? self->GetCheatState() : false;
         };
         m_BuiltinCtx.setCheatState = [](bool enabled) -> BML_Result {
-            auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
+            auto *self = BML_GET_INSTANCE(ConsoleMod);
             return self ? self->SetCheatState(enabled) : BML_RESULT_FAIL;
         };
         m_BuiltinCtx.findModById = [](std::string_view id) -> BML_Mod {
-            auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
+            auto *self = BML_GET_INSTANCE(ConsoleMod);
             return self ? self->FindLoadedModuleById(id) : nullptr;
         };
         m_BuiltinCtx.setBoolConfig = [](BML_Mod mod, const char *cat, const char *name, bool val) -> bool {
-            auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
+            auto *self = BML_GET_INSTANCE(ConsoleMod);
             return self ? self->SetBoolConfigOnMod(mod, cat, name, val) : false;
         };
         m_BuiltinCtx.setStringConfig = [](BML_Mod mod, const char *cat, const char *name, const std::string &val) -> bool {
-            auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
+            auto *self = BML_GET_INSTANCE(ConsoleMod);
             return self ? self->SetStringConfigOnMod(mod, cat, name, val) : false;
         };
         m_BuiltinCtx.reloadPalette = []() -> bool {
-            auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
+            auto *self = BML_GET_INSTANCE(ConsoleMod);
             return self ? self->ReloadGlobalPalette() : false;
         };
         m_BuiltinCtx.getUserData = [](const char *key) -> void * {
-            auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
+            auto *self = BML_GET_INSTANCE(ConsoleMod);
             if (!self || !key) return nullptr;
             void *value = nullptr;
             if (self->Services().Interfaces().Context->GetUserData(self->Services().GlobalContext(), key, &value) != BML_RESULT_OK) {
@@ -971,40 +971,40 @@ class ConsoleMod : public bml::Module {
             return value;
         };
         m_BuiltinCtx.getRuntimeVersion = []() -> const BML_Version * {
-            auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
+            auto *self = BML_GET_INSTANCE(ConsoleMod);
             const auto *contextApi = self ? self->Services().Interfaces().Context : nullptr;
             return (contextApi && contextApi->Context)
                 ? contextApi->GetRuntimeVersion(contextApi->Context)
                 : nullptr;
         };
         m_BuiltinCtx.getLoadedModuleCount = []() -> uint32_t {
-            auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
+            auto *self = BML_GET_INSTANCE(ConsoleMod);
             const auto *moduleApi = self ? self->Services().Interfaces().Module : nullptr;
             return (moduleApi && moduleApi->Context)
                 ? moduleApi->GetLoadedModuleCount(moduleApi->Context)
                 : 0;
         };
         m_BuiltinCtx.getLoadedModuleAt = [](uint32_t index) -> BML_Mod {
-            auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
+            auto *self = BML_GET_INSTANCE(ConsoleMod);
             const auto *moduleApi = self ? self->Services().Interfaces().Module : nullptr;
             return (moduleApi && moduleApi->Context)
                 ? moduleApi->GetLoadedModuleAt(moduleApi->Context, index)
                 : nullptr;
         };
         m_BuiltinCtx.getModId = [](BML_Mod mod, const char **outId) -> bool {
-            auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
+            auto *self = BML_GET_INSTANCE(ConsoleMod);
             return self && self->Services().Interfaces().Module->GetModId(mod, outId) == BML_RESULT_OK;
         };
         m_BuiltinCtx.getModVersion = [](BML_Mod mod, BML_Version *outVersion) -> bool {
-            auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
+            auto *self = BML_GET_INSTANCE(ConsoleMod);
             return self && self->Services().Interfaces().Module->GetModVersion(mod, outVersion) == BML_RESULT_OK;
         };
         m_BuiltinCtx.executeCommand = [](std::string cmd) {
-            auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
+            auto *self = BML_GET_INSTANCE(ConsoleMod);
             if (self) self->ExecuteCommand(std::move(cmd));
         };
         m_BuiltinCtx.saveHistory = []() {
-            auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
+            auto *self = BML_GET_INSTANCE(ConsoleMod);
             if (self) self->m_History.Save(self->GetHistoryPath());
         };
     }
@@ -1044,23 +1044,23 @@ class ConsoleMod : public bml::Module {
 
 public:
     static BML_Result Service_RegisterCommand(const BML_ConsoleCommandDesc *desc) {
-        auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
+        auto *self = BML_GET_INSTANCE(ConsoleMod);
         return self ? self->RegisterCommand(desc) : BML_RESULT_FAIL;
     }
     static BML_Result Service_UnregisterCommand(const char *name) {
-        auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
+        auto *self = BML_GET_INSTANCE(ConsoleMod);
         return self ? self->UnregisterCommand(name) : BML_RESULT_FAIL;
     }
     static BML_Result Service_ExecuteCommand(const char *command) {
-        auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
+        auto *self = BML_GET_INSTANCE(ConsoleMod);
         return self ? self->ConsoleExecuteCommand(command) : BML_RESULT_FAIL;
     }
     static void Service_Print(const char *msg, uint32_t flags) {
-        auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
+        auto *self = BML_GET_INSTANCE(ConsoleMod);
         if (self) self->PrintToConsole(msg, flags);
     }
     static int ImGuiTextEditCallback(ImGuiInputTextCallbackData *data) {
-        auto *self = bml::detail::ModuleEntryHelper<ConsoleMod>::GetInstance();
+        auto *self = BML_GET_INSTANCE(ConsoleMod);
         return (self && data) ? self->HandleTextEdit(data) : 0;
     }
 

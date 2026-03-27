@@ -885,7 +885,7 @@ public:
 // =============================================================================
 
 static UIMod *GetUI() {
-    return bml::detail::ModuleEntryHelper<UIMod>::GetInstance();
+    return BML_GET_INSTANCE(UIMod);
 }
 
 static BML_Result API_RegisterContribution(const BML_UIDrawDesc *desc,

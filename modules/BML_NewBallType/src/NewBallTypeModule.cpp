@@ -16,7 +16,7 @@ class NewBallTypeModule : public bml::Module {
     NewBallTypeMod m_Runtime;
 
     static NewBallTypeModule *GetInstance() {
-        return bml::detail::ModuleEntryHelper<NewBallTypeModule>::GetInstance();
+        return BML_GET_INSTANCE(NewBallTypeModule);
     }
 
     static BML_Result ExtRegisterBallType(const BML_NewBallTypeBallDesc *desc) {
