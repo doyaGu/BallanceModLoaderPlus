@@ -5,6 +5,7 @@ version = "0.4.0"
 authors = ["BML Team"]
 description = "In-game integration test module - validates BML runtime in a live Ballance session"
 entry = "BML_IntegrationTest.dll"
+category = "test"
 
 [dependencies]
 "com.bml.input" = { version = ">=0.4.0", optional = true }

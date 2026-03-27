@@ -151,6 +151,9 @@ if (BML_BUILD_BENCHMARKS)
     add_subdirectory(benchmarks)
 endif ()
 
+# Game testing targets (requires Python 3.11+)
+include(BMLTestTargets OPTIONAL)
+
 # =============================================================================
 # SDK Install Rules
 # =============================================================================

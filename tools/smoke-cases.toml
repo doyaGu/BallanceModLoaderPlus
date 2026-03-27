@@ -1,0 +1,11 @@
+# Optional: predefined smoke test case definitions.
+# When absent or not passed via --cases-file, cases are auto-generated
+# (each builtin module + its deps, then all builtins together).
+#
+# Dependencies are resolved automatically. Specifying BML_Console
+# in a case implicitly includes BML_UI, BML_Menu, and BML_Input.
+
+[cases]
+minimal = ["BML_UI", "BML_Input"]
+core_five = ["BML_UI", "BML_Input", "BML_Console", "BML_ObjectLoad", "BML_GameEvent"]
+ui_stack = ["BML_UI", "BML_Input", "BML_Console", "BML_ModMenu", "BML_MapMenu"]
