@@ -9,6 +9,7 @@ bml_add_module(BML_Network
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     LINK_LIBRARIES
+        BML_StringUtils
         winhttp
         ws2_32
 )

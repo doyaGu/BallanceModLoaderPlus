@@ -76,6 +76,7 @@ struct HttpCompletedRequest {
     std::vector<std::string> response_headers; // alternating key, value
     std::string error;
     std::string final_url;            // populated on redirect
+    DWORD win_error = 0;              // WinHTTP error code (for retry logic)
     BML_HttpCallback callback = nullptr;
     void *user_data = nullptr;
 };

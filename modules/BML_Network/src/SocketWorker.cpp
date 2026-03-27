@@ -329,11 +329,28 @@ void SocketWorker::UdpWorkerLoop(uint32_t id) {
     }
 
     entry->handle = sock;
+
+    // Resolve default target (host:port from Open) once
+    sockaddr_storage defaultTarget{};
+    int defaultTargetLen = 0;
+    {
+        addrinfo hints{}, *res = nullptr;
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_DGRAM;
+        char portStr[8];
+        std::snprintf(portStr, sizeof(portStr), "%u", entry->port);
+        if (getaddrinfo(entry->host.c_str(), portStr, &hints, &res) == 0 && res) {
+            defaultTargetLen = static_cast<int>(res->ai_addrlen);
+            std::memcpy(&defaultTarget, res->ai_addr, res->ai_addrlen);
+            freeaddrinfo(res);
+        }
+    }
+
     PostEvent(*entry, BML_SOCKET_EVENT_CONNECTED);
 
     char recvBuf[kRecvBufferSize];
     while (entry->running.load()) {
-        // Flush send queue (connected send)
+        // Flush send queue
         {
             std::vector<std::vector<char>> toSend;
             std::vector<SocketEntry::UdpDatagram> toSendTo;
@@ -343,21 +360,15 @@ void SocketWorker::UdpWorkerLoop(uint32_t id) {
                 toSendTo.swap(entry->sendto_queue);
             }
 
-            // Plain sends (to the host:port from Open)
+            // Plain sends (to the cached default target)
             for (auto &buf : toSend) {
-                addrinfo hints{}, *res = nullptr;
-                hints.ai_family = AF_INET;
-                hints.ai_socktype = SOCK_DGRAM;
-                char portStr[8];
-                std::snprintf(portStr, sizeof(portStr), "%u", entry->port);
-                if (getaddrinfo(entry->host.c_str(), portStr, &hints, &res) == 0 && res) {
+                if (defaultTargetLen > 0) {
                     sendto(sock, buf.data(), static_cast<int>(buf.size()), 0,
-                           res->ai_addr, static_cast<int>(res->ai_addrlen));
-                    freeaddrinfo(res);
+                           reinterpret_cast<const sockaddr *>(&defaultTarget), defaultTargetLen);
                 }
             }
 
-            // SendTo datagrams
+            // SendTo datagrams (per-call DNS, different targets)
             for (auto &dgram : toSendTo) {
                 addrinfo hints{}, *res = nullptr;
                 hints.ai_family = AF_INET;

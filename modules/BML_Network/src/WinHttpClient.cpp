@@ -1,4 +1,5 @@
 #include "WinHttpClient.h"
+#include "StringUtils.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -10,27 +11,10 @@ static constexpr uint32_t kDefaultTimeoutMs = 30000;
 static constexpr uint32_t kRetryBaseDelayMs = 500;
 static constexpr wchar_t kUserAgent[] = L"BML/0.4.0";
 
-// ============================================================================
-// String Utilities
-// ============================================================================
-
-static std::wstring ToWide(const std::string &s) {
-    if (s.empty()) return {};
-    int len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), static_cast<int>(s.size()), nullptr, 0);
-    if (len <= 0) return {};
-    std::wstring result(static_cast<size_t>(len), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), static_cast<int>(s.size()), result.data(), len);
-    return result;
-}
-
-static std::string ToNarrow(const wchar_t *ws, int wsLen = -1) {
-    if (!ws) return {};
-    int len = WideCharToMultiByte(CP_UTF8, 0, ws, wsLen, nullptr, 0, nullptr, nullptr);
-    if (len <= 0) return {};
-    std::string result(static_cast<size_t>(len), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, ws, wsLen, result.data(), len, nullptr, nullptr);
-    if (!result.empty() && result.back() == '\0') result.pop_back();
-    return result;
+// Narrow a substring (wchar_t pointer + length) to UTF-8.
+static std::string NarrowSubstring(const wchar_t *ws, int len) {
+    if (!ws || len == 0) return {};
+    return utils::Utf16ToUtf8(std::wstring(ws, static_cast<size_t>(len)));
 }
 
 // ============================================================================
@@ -45,7 +29,7 @@ struct UrlParts {
 };
 
 static bool ParseUrl(const std::string &url, UrlParts &out) {
-    std::wstring wurl = ToWide(url);
+    std::wstring wurl = utils::Utf8ToUtf16(url);
     if (wurl.empty()) return false;
 
     URL_COMPONENTS uc{};
@@ -101,6 +85,10 @@ void WinHttpClient::Stop() {
         if (w.joinable()) w.join();
     }
     m_Workers.clear();
+
+    // Deliver any completions that arrived before workers stopped,
+    // so callers get their error/success callbacks instead of silence.
+    DrainCompletions();
 
     m_Session.Close();
 
@@ -287,7 +275,7 @@ HttpCompletedRequest WinHttpClient::Execute(const HttpPendingRequest &request) {
 
         result = ExecuteOnce(request);
 
-        bool shouldRetry = (result.status_code == 0 && IsRetryableError(GetLastError())) ||
+        bool shouldRetry = (result.status_code == 0 && IsRetryableError(result.win_error)) ||
                            (result.status_code > 0 && IsRetryableStatus(result.status_code));
         if (!shouldRetry || attempt + 1 >= maxAttempts) break;
     }
@@ -311,19 +299,21 @@ HttpCompletedRequest WinHttpClient::ExecuteOnce(const HttpPendingRequest &reques
     // 2. Connect
     WinHttpHandle hConnect(WinHttpConnect(m_Session.Get(), parts.host.c_str(), parts.port, 0));
     if (!hConnect) {
-        result.error = FormatWinHttpError("WinHttpConnect failed", GetLastError());
+        result.win_error = GetLastError();
+        result.error = FormatWinHttpError("WinHttpConnect failed", result.win_error);
         return result;
     }
 
     // 3. Open request
-    std::wstring wMethod = ToWide(request.method.empty() ? "GET" : request.method);
+    std::wstring wMethod = utils::Utf8ToUtf16(request.method.empty() ? "GET" : request.method);
     DWORD flags = parts.secure ? WINHTTP_FLAG_SECURE : 0;
 
     WinHttpHandle hRequest(WinHttpOpenRequest(hConnect.Get(), wMethod.c_str(), parts.path.c_str(),
                                                nullptr, WINHTTP_NO_REFERER,
                                                WINHTTP_DEFAULT_ACCEPT_TYPES, flags));
     if (!hRequest) {
-        result.error = FormatWinHttpError("WinHttpOpenRequest failed", GetLastError());
+        result.win_error = GetLastError();
+        result.error = FormatWinHttpError("WinHttpOpenRequest failed", result.win_error);
         return result;
     }
 
@@ -343,7 +333,7 @@ HttpCompletedRequest WinHttpClient::ExecuteOnce(const HttpPendingRequest &reques
 
     // 5. Headers
     for (size_t i = 0; i + 1 < request.headers.size(); i += 2) {
-        std::wstring header = ToWide(request.headers[i]) + L": " + ToWide(request.headers[i + 1]);
+        std::wstring header = utils::Utf8ToUtf16(request.headers[i]) + L": " + utils::Utf8ToUtf16(request.headers[i + 1]);
         WinHttpAddRequestHeaders(hRequest.Get(), header.c_str(), static_cast<DWORD>(header.size()),
                                   WINHTTP_ADDREQ_FLAG_ADD);
     }
@@ -354,13 +344,15 @@ HttpCompletedRequest WinHttpClient::ExecuteOnce(const HttpPendingRequest &reques
 
     if (!WinHttpSendRequest(hRequest.Get(), WINHTTP_NO_ADDITIONAL_HEADERS, 0,
                              const_cast<LPVOID>(bodyPtr), bodyLen, bodyLen, 0)) {
-        result.error = FormatWinHttpError("WinHttpSendRequest failed", GetLastError());
+        result.win_error = GetLastError();
+        result.error = FormatWinHttpError("WinHttpSendRequest failed", result.win_error);
         return result;
     }
 
     // 7. Receive response headers
     if (!WinHttpReceiveResponse(hRequest.Get(), nullptr)) {
-        result.error = FormatWinHttpError("WinHttpReceiveResponse failed", GetLastError());
+        result.win_error = GetLastError();
+        result.error = FormatWinHttpError("WinHttpReceiveResponse failed", result.win_error);
         return result;
     }
 
@@ -389,7 +381,7 @@ HttpCompletedRequest WinHttpClient::ExecuteOnce(const HttpPendingRequest &reques
         if (urlSize > 0) {
             std::wstring finalUrl(urlSize / sizeof(wchar_t), L'\0');
             if (WinHttpQueryOption(hRequest.Get(), WINHTTP_OPTION_URL, finalUrl.data(), &urlSize)) {
-                std::string narrow = ToNarrow(finalUrl.c_str());
+                std::string narrow = utils::Utf16ToUtf8(finalUrl.c_str());
                 if (narrow != request.url) {
                     result.final_url = std::move(narrow);
                 }
@@ -495,10 +487,10 @@ void WinHttpClient::ParseResponseHeaders(HINTERNET hRequest, HttpCompletedReques
 
         size_t colon = rawHeaders.find(L':', pos);
         if (colon != std::wstring::npos && colon < eol) {
-            std::string key = ToNarrow(rawHeaders.c_str() + pos, static_cast<int>(colon - pos));
+            std::string key = NarrowSubstring(rawHeaders.c_str() + pos, static_cast<int>(colon - pos));
             size_t valStart = colon + 1;
             while (valStart < eol && rawHeaders[valStart] == L' ') ++valStart;
-            std::string val = ToNarrow(rawHeaders.c_str() + valStart, static_cast<int>(eol - valStart));
+            std::string val = NarrowSubstring(rawHeaders.c_str() + valStart, static_cast<int>(eol - valStart));
 
             if (_stricmp(key.c_str(), "content-type") == 0) {
                 result.content_type = val;
