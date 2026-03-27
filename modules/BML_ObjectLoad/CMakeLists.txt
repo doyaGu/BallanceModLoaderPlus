@@ -1,8 +1,6 @@
 bml_add_module(BML_ObjectLoad
     SOURCES
         src/ObjectLoadMod.cpp
-        src/ObjectLoadHook.cpp
-        src/ObjectLoadHook.h
     MANIFEST mod.toml
     INCLUDE_DIRS
         ${CMAKE_SOURCE_DIR}/include/BML
