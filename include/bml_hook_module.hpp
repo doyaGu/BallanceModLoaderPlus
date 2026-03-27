@@ -2,31 +2,30 @@
  * @file bml_hook_module.hpp
  * @brief Base class for hook-based BML modules
  *
- * Eliminates the repeated Engine/Init subscription + HookContext + init/shutdown
- * boilerplate that every hook-using module duplicates. Subclasses override three
- * methods:
+ * Eliminates the repeated Engine/Init subscription + init/shutdown boilerplate
+ * that every hook-using module duplicates. Subclasses override three methods:
  *
- *   - HookLogCategory() -return a static string for log/hook tagging
- *   - InitHook()        -perform the actual hook installation
- *   - ShutdownHook()    -tear down hooks
+ *   - HookLogCategory() --return a static string for log tagging
+ *   - InitHook()        --perform the actual hook installation
+ *   - ShutdownHook()    --tear down hooks (must be safe after partial init)
  *
  * And optionally:
- *   - OnModuleAttach()  -add extra subscriptions, publish interfaces, etc.
- *   - OnModuleDetach()  -extra cleanup before ShutdownHook runs
+ *   - OnModuleAttach()      --add extra subscriptions, publish interfaces, etc.
+ *   - OnModuleDetach()      --extra cleanup before ShutdownHook runs
+ *   - OnModulePrepareDetach() --release dependencies or abort unload
  *
  * Usage:
  * @code
  *   #define BML_LOADER_IMPLEMENTATION
  *   #include <bml_hook_module.hpp>
- *   #include "MyHook.h"
  *
  *   class MyMod : public bml::HookModule {
+ *       static MyMod *s_Instance;
  *       const char *HookLogCategory() const override { return "MyMod"; }
- *       bool InitHook(CKContext *ctx, const BML_HookContext *hctx) override {
- *           return MyHook::Init(ctx, hctx);
- *       }
- *       void ShutdownHook() override { MyHook::Shutdown(); }
+ *       bool InitHook(CKContext *ctx) override { ... }
+ *       void ShutdownHook() override { ... }
  *   };
+ *   MyMod *MyMod::s_Instance = nullptr;
  *   BML_DEFINE_MODULE(MyMod)
  * @endcode
  */
@@ -35,7 +34,6 @@
 #define BML_HOOK_MODULE_HPP
 
 #include "bml_module.hpp"
-#include "bml_hook_context.h"
 #include "bml_engine_events.h"
 #include "bml_engine_events.hpp"
 #include "bml_topics.h"
@@ -52,13 +50,17 @@ protected:
 
     /**
      * @brief Install hooks. Called from Engine/Init or TryInitHook().
+     *
+     * If this returns false, ShutdownHook() is called automatically to roll
+     * back any partially installed hooks. Implementations must therefore be
+     * safe to call ShutdownHook() after partial initialization.
+     *
      * @param ctx  The CKContext from the engine event.
-     * @param hctx Pre-built HookContext with stable vtable pointers.
      * @return true if hooks were installed successfully.
      */
-    virtual bool InitHook(CKContext *ctx, const BML_HookContext *hctx) = 0;
+    virtual bool InitHook(CKContext *ctx) = 0;
 
-    /** @brief Tear down hooks. Called from OnDetach. */
+    /** @brief Tear down hooks. Must be safe after partial init. */
     virtual void ShutdownHook() = 0;
 
     /**
@@ -67,10 +69,7 @@ protected:
      * m_Subs is already initialized and available.
      * @return BML_RESULT_OK to continue, any other value aborts attach.
      */
-    virtual BML_Result OnModuleAttach(ModuleServices &services) {
-        (void)services;
-        return BML_RESULT_OK;
-    }
+    virtual BML_Result OnModuleAttach() { return BML_RESULT_OK; }
 
     /** @brief Extra cleanup before ShutdownHook runs. */
     virtual void OnModuleDetach() {}
@@ -84,22 +83,23 @@ protected:
     /**
      * @brief Attempt hook initialization with a CKContext.
      *
-     * Safe to call multiple times -returns immediately if already initialized.
-     * Useful for eager init in OnModuleAttach or retry from Engine/Play.
+     * Safe to call multiple times --returns immediately if already initialized.
+     * On failure, ShutdownHook() is called to roll back partial installation.
      */
     bool TryInitHook(CKContext *ctx) {
         if (m_HookReady || !ctx) return m_HookReady;
-        auto hctx = BML_MakeHookContext(Services(), HookLogCategory());
-        if (InitHook(ctx, &hctx)) {
+        if (InitHook(ctx)) {
             m_HookReady = true;
             Services().Log().Info("%s hooks initialized", HookLogCategory());
+        } else {
+            ShutdownHook();
         }
         return m_HookReady;
     }
 
 public:
-    BML_Result OnAttach(ModuleServices &services) override {
-        m_Subs = services.CreateSubscriptions();
+    BML_Result OnAttach() override {
+        m_Subs = Services().CreateSubscriptions();
 
         m_Subs.Add(BML_TOPIC_ENGINE_INIT, [this](const imc::Message &msg) {
             if (m_HookReady) return;
@@ -108,15 +108,7 @@ public:
             TryInitHook(payload->context);
         });
 
-        BML_Result result = OnModuleAttach(services);
-        if (result != BML_RESULT_OK) return result;
-
-        if (m_Subs.Empty()) {
-            services.Log().Error("No subscriptions registered for %s", HookLogCategory());
-            return BML_RESULT_FAIL;
-        }
-
-        return BML_RESULT_OK;
+        return OnModuleAttach();
     }
 
     BML_Result OnPrepareDetach() override {
