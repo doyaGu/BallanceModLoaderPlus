@@ -32,7 +32,7 @@ ScriptInstanceManager::~ScriptInstanceManager() {
     remaining.reserve(m_Instances.size());
     for (auto &[mod, inst] : m_Instances)
         remaining.push_back(mod);
-    for (auto *mod : remaining)
+    for (auto mod : remaining)
         Detach(mod);
 
     for (auto *ctx : m_ContextPool)
