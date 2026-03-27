@@ -1,8 +1,6 @@
 bml_add_module(BML_Physics
     SOURCES
         src/PhysicsMod.cpp
-        src/PhysicsHook.cpp
-        src/PhysicsHook.h
     MANIFEST mod.toml
     INCLUDE_DIRS
         ${CMAKE_SOURCE_DIR}/include/BML
