@@ -262,7 +262,7 @@ static bool IsScriptBehavior(CKObject *object) {
 } // anonymous namespace
 
 // ---------------------------------------------------------------------------
-// BML_Event namespace -- script registration functions
+// BML_GameEvent namespace -- script registration functions
 // ---------------------------------------------------------------------------
 
 namespace BML_GameEvent {

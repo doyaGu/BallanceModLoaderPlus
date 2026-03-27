@@ -12,7 +12,7 @@ set(required_modules
     BML_Render
     BML_Physics
     BML_ObjectLoad
-    BML_Event
+    BML_GameEvent
     BML_Gameplay
     BML_NewBallType
 )

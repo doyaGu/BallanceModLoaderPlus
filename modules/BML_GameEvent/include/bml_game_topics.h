@@ -2,7 +2,7 @@
 #define BML_GAME_TOPICS_H
 
 /*
- * Canonical first-party gameplay topic strings published by BML_Event.
+ * Canonical first-party gameplay topic strings published by BML_GameEvent.
  * Keep these in public headers so modules do not hardcode topic literals.
  */
 

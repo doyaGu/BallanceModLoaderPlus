@@ -81,9 +81,9 @@ $BuiltinModules = @(
     [ordered]@{ Name = "BML_Render";     Id = "com.bml.render";     Dependencies = @() },
     [ordered]@{ Name = "BML_Physics";    Id = "com.bml.physics";    Dependencies = @() },
     [ordered]@{ Name = "BML_ObjectLoad"; Id = "com.bml.objectload"; Dependencies = @() },
-    [ordered]@{ Name = "BML_Event";      Id = "com.bml.event";      Dependencies = @("BML_ObjectLoad") },
+    [ordered]@{ Name = "BML_GameEvent";  Id = "com.bml.gameevent";  Dependencies = @("BML_ObjectLoad") },
     [ordered]@{ Name = "BML_Console";    Id = "com.bml.console";    Dependencies = @("BML_UI", "BML_Input") },
-    [ordered]@{ Name = "BML_HUD";        Id = "com.bml.hud";        Dependencies = @("BML_UI", "BML_Input", "BML_Console", "BML_Event") },
+    [ordered]@{ Name = "BML_HUD";        Id = "com.bml.hud";        Dependencies = @("BML_UI", "BML_Input", "BML_Console", "BML_GameEvent") },
     [ordered]@{ Name = "BML_ModMenu";    Id = "com.bml.modmenu";    Dependencies = @("BML_UI", "BML_Input") },
     [ordered]@{ Name = "BML_MapMenu";    Id = "com.bml.mapmenu";    Dependencies = @("BML_UI", "BML_Input", "BML_Console", "BML_ObjectLoad") }
 )
@@ -504,7 +504,7 @@ function Get-ProbeAssessment {
         "com.bml.objectload" {
             if ($ProbeReport.counts.objectload_script -gt 0) { $Result.signals += "objectload_script_events" } else { $Result.missing += "objectload_script_events" }
         }
-        "com.bml.event" {
+        "com.bml.gameevent" {
             if ($ProbeReport.counts.menu_post_start -gt 0) { $Result.signals += "menu_post_start_event" } else { $Result.missing += "menu_post_start_event" }
         }
         "com.bml.console" {

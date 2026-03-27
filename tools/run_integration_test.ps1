@@ -69,7 +69,7 @@ $BuildModsDir     = Join-Path $BuildDir "Mods"
 
 # Module list (all modules including integration test)
 $Modules = @(
-    "BML_Console", "BML_Event", "BML_HUD", "BML_Input",
+    "BML_Console", "BML_GameEvent", "BML_HUD", "BML_Input",
     "BML_MapMenu", "BML_ModMenu", "BML_ObjectLoad",
     "BML_Physics", "BML_Render", "BML_UI",
     "BML_IntegrationTest"

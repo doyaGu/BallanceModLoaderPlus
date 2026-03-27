@@ -90,7 +90,7 @@ def package_sdk(
     # 2. Module public headers
     modules_with_api = [
         "BML_Input", "BML_UI", "BML_Console", "BML_Menu",
-        "BML_NewBallType", "BML_Event",
+        "BML_NewBallType", "BML_GameEvent",
     ]
     for mod_name in modules_with_api:
         mod_inc = repo_root / "modules" / mod_name / "include"

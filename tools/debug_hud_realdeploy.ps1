@@ -2,7 +2,7 @@ param(
     [string]$GameDir = "C:\Users\kakut\Games\Ballance",
     [string]$Config = "Release",
     [int]$RuntimeSeconds = 18,
-    [string[]]$Modules = @("BML_UI", "BML_Input", "BML_Console", "BML_ObjectLoad", "BML_Event", "BML_HUD"),
+    [string[]]$Modules = @("BML_UI", "BML_Input", "BML_Console", "BML_ObjectLoad", "BML_GameEvent", "BML_HUD"),
     [switch]$BuildFirst,
     [string[]]$BuildTargets = @(),
     [switch]$PreserveDeployment,

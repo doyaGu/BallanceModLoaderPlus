@@ -9,4 +9,4 @@ entry = "BML_InputRecorder.dll"
 [dependencies]
 "com.bml.input" = ">=0.4.0"
 "com.bml.console" = ">=0.4.0"
-"com.bml.event" = ">=0.4.0"
+"com.bml.gameevent" = ">=0.4.0"

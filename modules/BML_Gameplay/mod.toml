@@ -9,4 +9,4 @@ entry = "BML_Gameplay.dll"
 [dependencies]
 "com.bml.ui" = ">=0.4.0"
 "com.bml.objectload" = ">=0.4.0"
-"com.bml.event" = ">=0.4.0"
+"com.bml.gameevent" = ">=0.4.0"

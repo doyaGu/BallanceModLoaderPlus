@@ -15,7 +15,7 @@ $GameBml = Join-Path $GameDir "Bin\BML.dll"
 $BuiltBml = Join-Path $BuildRoot ("bin\" + $BuildConfig + "\BML.dll")
 $BuiltModsRoot = Join-Path $BuildRoot "Mods"
 
-$BaseModules = @("BML_UI", "BML_Input", "BML_Console", "BML_ObjectLoad", "BML_Event")
+$BaseModules = @("BML_UI", "BML_Input", "BML_Console", "BML_ObjectLoad", "BML_GameEvent")
 $CaseMap = @{
     "base5" = $BaseModules
     "base5_hud" = $BaseModules + @("BML_HUD")
@@ -28,7 +28,7 @@ $CaseMap = @{
         "BML_Input",
         "BML_Console",
         "BML_ObjectLoad",
-        "BML_Event",
+        "BML_GameEvent",
         "BML_HUD",
         "BML_ModMenu",
         "BML_MapMenu",
