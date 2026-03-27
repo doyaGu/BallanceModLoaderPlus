@@ -11,7 +11,6 @@ bml_add_module(BML_Input
         src/InputMod.cpp
         src/InputHook.h
         src/VTables.h
-        src/Macros.h
     MANIFEST mod.toml
     INCLUDE_DIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/src

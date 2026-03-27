@@ -15,12 +15,6 @@
 #include "bml_virtools.h"
 #include "bml_virtools.hpp"
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-
-#include <Windows.h>
-
 #include <MinHook.h>
 
 #include "RenderHook.h"
@@ -42,12 +36,15 @@ static const bml::ModuleServices *s_Services = nullptr;
 // Static State
 //-----------------------------------------------------------------------------
 
-bool CP_HOOK_CLASS_NAME(CKRenderContext)::s_DisableRender = false;
-bool CP_HOOK_CLASS_NAME(CKRenderContext)::s_EnableWidescreenFix = false;
-CKRenderContextVTable<CKRenderContext> CP_HOOK_CLASS_NAME(CKRenderContext)::s_VTable = {};
+bool CKRenderContextHook::s_DisableRender = false;
+bool CKRenderContextHook::s_EnableWidescreenFix = false;
+CKRenderContextVTable<CKRenderContext> CKRenderContextHook::s_VTable = {};
 
 // UpdateProjection method pointers for MinHook
-CP_DEFINE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CKRenderContext), UpdateProjection);
+CKRenderContextHook::UpdateProjectionFn CKRenderContextHook::s_UpdateProjectionHookPtr =
+    reinterpret_cast<CKRenderContextHook::UpdateProjectionFn>(&CKRenderContextHook::UpdateProjection);
+CKRenderContextHook::UpdateProjectionFn CKRenderContextHook::s_UpdateProjectionOrigPtr = nullptr;
+CKRenderContextHook::UpdateProjectionFn CKRenderContextHook::s_UpdateProjectionTargetPtr = nullptr;
 
 static bool s_Initialized = false;
 
@@ -55,16 +52,16 @@ static bool s_Initialized = false;
 // Hook Implementations
 //-----------------------------------------------------------------------------
 
-CKERROR CP_HOOK_CLASS_NAME(CKRenderContext)::RenderHook(CK_RENDER_FLAGS Flags) {
+CKERROR CKRenderContextHook::RenderHook(CK_RENDER_FLAGS Flags) {
     if (s_DisableRender)
         return CK_OK;
 
     // Call original Render method via saved VTable
     auto originalRender = s_VTable.Render;
-    return CP_CALL_METHOD_PTR(this, originalRender, Flags);
+    return (this->*originalRender)(Flags);
 }
 
-CKBOOL CP_HOOK_CLASS_NAME(CKRenderContext)::UpdateProjection(CKBOOL force) {
+CKBOOL CKRenderContextHook::UpdateProjection(CKBOOL force) {
     if (!force && m_ProjectionUpdated)
         return TRUE;
     if (!m_RasterizerContext)
@@ -97,7 +94,11 @@ CKBOOL CP_HOOK_CLASS_NAME(CKRenderContext)::UpdateProjection(CKBOOL force) {
 // Hook Install/Uninstall
 //-----------------------------------------------------------------------------
 
-bool CP_HOOK_CLASS_NAME(CKRenderContext)::Hook(void *base) {
+// CKRenderContext::Render VTable slot index within CKRenderContextVTable
+static constexpr size_t kRenderSlot =
+    offsetof(CKRenderContextVTable<CKRenderContext>, Render) / sizeof(void *);
+
+bool CKRenderContextHook::Hook(void *base) {
     if (!base)
         return false;
 
@@ -108,16 +109,15 @@ bool CP_HOOK_CLASS_NAME(CKRenderContext)::Hook(void *base) {
     utils::LoadVTable<CKRenderContextVTable<CKRenderContext>>(&table, s_VTable);
 
     // Hook Render method via VTable
-    constexpr size_t RenderVTableIndex = offsetof(CKRenderContextVTable<CKRenderContext>, Render) / sizeof(void*);
-    utils::HookVirtualMethod(&table, &CP_HOOK_CLASS_NAME(CKRenderContext)::RenderHook, RenderVTableIndex);
+    utils::HookVirtualMethod(&table, &CKRenderContextHook::RenderHook, kRenderSlot);
 
     // Hook UpdateProjection via MinHook (non-virtual member function at offset 0x6C68D)
-    CP_FUNC_TARGET_PTR_NAME(UpdateProjection) = utils::ForceReinterpretCast<CP_FUNC_TYPE_NAME(UpdateProjection)>(base, 0x6C68D);
+    s_UpdateProjectionTargetPtr = utils::ForceReinterpretCast<UpdateProjectionFn>(base, 0x6C68D);
 
-    if (MH_CreateHook(*reinterpret_cast<LPVOID*>(&CP_FUNC_TARGET_PTR_NAME(UpdateProjection)),
-                      *reinterpret_cast<LPVOID*>(&CP_FUNC_PTR_NAME(UpdateProjection)),
-                      reinterpret_cast<LPVOID*>(&CP_FUNC_ORIG_PTR_NAME(UpdateProjection))) != MH_OK ||
-        MH_EnableHook(*reinterpret_cast<LPVOID*>(&CP_FUNC_TARGET_PTR_NAME(UpdateProjection))) != MH_OK) {
+    if (MH_CreateHook(*reinterpret_cast<LPVOID*>(&s_UpdateProjectionTargetPtr),
+                      *reinterpret_cast<LPVOID*>(&s_UpdateProjectionHookPtr),
+                      reinterpret_cast<LPVOID*>(&s_UpdateProjectionOrigPtr)) != MH_OK ||
+        MH_EnableHook(*reinterpret_cast<LPVOID*>(&s_UpdateProjectionTargetPtr)) != MH_OK) {
         s_Services->Log().Warn("Failed to hook UpdateProjection - widescreen fix may not work");
         // Non-fatal, continue with Render hook only
     }
@@ -125,7 +125,7 @@ bool CP_HOOK_CLASS_NAME(CKRenderContext)::Hook(void *base) {
     return true;
 }
 
-bool CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(void *base) {
+bool CKRenderContextHook::Unhook(void *base) {
     if (!base)
         return false;
 
@@ -134,9 +134,9 @@ bool CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(void *base) {
     utils::SaveVTable<CKRenderContextVTable<CKRenderContext>>(&table, s_VTable);
 
     // Remove UpdateProjection hook
-    if (CP_FUNC_TARGET_PTR_NAME(UpdateProjection)) {
-        MH_DisableHook(*reinterpret_cast<void**>(&CP_FUNC_TARGET_PTR_NAME(UpdateProjection)));
-        MH_RemoveHook(*reinterpret_cast<void**>(&CP_FUNC_TARGET_PTR_NAME(UpdateProjection)));
+    if (s_UpdateProjectionTargetPtr) {
+        MH_DisableHook(*reinterpret_cast<void**>(&s_UpdateProjectionTargetPtr));
+        MH_RemoveHook(*reinterpret_cast<void**>(&s_UpdateProjectionTargetPtr));
     }
 
     return true;
@@ -166,7 +166,7 @@ bool InitRenderHook(const bml::ModuleServices &services) {
     }
 
     // Install hooks
-    if (!CP_HOOK_CLASS_NAME(CKRenderContext)::Hook(base)) {
+    if (!CKRenderContextHook::Hook(base)) {
         s_Services->Log().Error("Failed to install render hooks");
         return false;
     }
@@ -183,7 +183,7 @@ void ShutdownRenderHook() {
 
     void *base = utils::GetModuleBaseAddress("CK2_3D.dll");
     if (base) {
-        CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(base);
+        CKRenderContextHook::Unhook(base);
     }
 
     s_Initialized = false;
@@ -192,11 +192,11 @@ void ShutdownRenderHook() {
 }
 
 void DisableRender(bool disable) {
-    CP_HOOK_CLASS_NAME(CKRenderContext)::s_DisableRender = disable;
+    CKRenderContextHook::s_DisableRender = disable;
 }
 
 void EnableWidescreenFix(bool enable) {
-    CP_HOOK_CLASS_NAME(CKRenderContext)::s_EnableWidescreenFix = enable;
+    CKRenderContextHook::s_EnableWidescreenFix = enable;
 }
 
 bool IsRenderHookActive() {

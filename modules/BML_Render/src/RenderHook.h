@@ -1,7 +1,7 @@
 /**
  * @file RenderHook.h
  * @brief CK2 Render Engine Hook for BML_Render Module
- * 
+ *
  * Provides hooks for CK2_3D.dll render context to enable:
  * - Render skip functionality
  * - Widescreen FOV fix via UpdateProjection hook
@@ -13,8 +13,6 @@
 #include "CKRenderContext.h"
 #include "CKRasterizer.h"
 #include "CK2dEntity.h"
-
-#include "Macros.h"
 
 // Forward declarations
 namespace bml { class ModuleServices; }
@@ -91,14 +89,17 @@ struct CKRenderContextVTable {
 // Extended CKRenderContext with Hook Support
 //-----------------------------------------------------------------------------
 
-class CP_HOOK_CLASS_NAME(CKRenderContext) : public CKRenderContext {
+class CKRenderContextHook : public CKRenderContext {
 public:
-    // Hook method declarations
-    CP_DECLARE_METHOD_HOOK(CKERROR, Render, (CK_RENDER_FLAGS Flags));
-    
-    // UpdateProjection is a non-virtual member function hooked via MinHook
+    // VTable hook: replaces CKRenderContext::Render
+    CKERROR RenderHook(CK_RENDER_FLAGS Flags);
+
+    // MinHook: replaces non-virtual UpdateProjection
     CKBOOL UpdateProjection(CKBOOL force);
-    CP_DECLARE_METHOD_PTRS(CP_HOOK_CLASS_NAME(CKRenderContext), CKBOOL, UpdateProjection, (CKBOOL force));
+    using UpdateProjectionFn = CKBOOL (CKRenderContextHook::*)(CKBOOL force);
+    static UpdateProjectionFn s_UpdateProjectionHookPtr;
+    static UpdateProjectionFn s_UpdateProjectionOrigPtr;
+    static UpdateProjectionFn s_UpdateProjectionTargetPtr;
 
     static bool Hook(void *base);
     static bool Unhook(void *base);
