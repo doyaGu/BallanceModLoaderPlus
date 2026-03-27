@@ -44,6 +44,7 @@ struct BML_Subscription_T {
     BML_Mod owner{nullptr};
     std::atomic<uint32_t> ref_count{0};
     std::atomic<bool> closed{false};
+    std::atomic<bool> has_pending{false};  // Set on enqueue, cleared after drain
 
     size_t queue_capacity{BML::Core::kDefaultQueueCapacity};
     uint32_t min_priority{BML_IMC_PRIORITY_LOW};

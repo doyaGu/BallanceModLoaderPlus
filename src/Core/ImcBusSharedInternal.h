@@ -56,10 +56,19 @@ namespace BML::Core {
         return hash != 0 ? hash : 1u;
     }
 
-    inline uint64_t GetTimestampNs() noexcept {
+    inline uint64_t GetTimestampNsRaw() noexcept {
         using namespace std::chrono;
         return static_cast<uint64_t>(
             duration_cast<nanoseconds>(steady_clock::now().time_since_epoch()).count());
+    }
+
+    // Cached per-frame timestamp. Set once at Pump() start, used for all
+    // message timestamps and stats within the same frame. Eliminates
+    // repeated QPC syscalls (~20-50ns each, ~12+/frame).
+    inline uint64_t g_FrameTimestampNs = 0;
+
+    inline uint64_t GetTimestampNs() noexcept {
+        return g_FrameTimestampNs ? g_FrameTimestampNs : GetTimestampNsRaw();
     }
 
     template <typename T, size_t N>

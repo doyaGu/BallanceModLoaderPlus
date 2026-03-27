@@ -180,20 +180,25 @@ namespace BML::Core {
         if (!sub || !message)
             return BML_RESULT_INVALID_ARGUMENT;
 
-        BML_ImcMessage filter_msg = {};
-        filter_msg.struct_size = sizeof(BML_ImcMessage);
-        filter_msg.data = message->Data();
-        filter_msg.size = message->Size();
-        filter_msg.msg_id = message->msg_id;
-        filter_msg.flags = message->flags;
-        filter_msg.priority = message->priority;
-        filter_msg.timestamp = message->timestamp;
-        filter_msg.reply_topic = message->reply_topic;
+        // Fast path: skip filter_msg construction when no filter and priority matches.
+        // Covers >95% of dispatches (most subscriptions use default priority and no filter).
+        if (sub->filter || message->priority < sub->min_priority) {
+            BML_ImcMessage filter_msg = {};
+            filter_msg.struct_size = sizeof(BML_ImcMessage);
+            filter_msg.data = message->Data();
+            filter_msg.size = message->Size();
+            filter_msg.msg_id = message->msg_id;
+            filter_msg.flags = message->flags;
+            filter_msg.priority = message->priority;
+            filter_msg.timestamp = message->timestamp;
+            filter_msg.reply_topic = message->reply_topic;
 
-        if (!MatchesSubscription(sub, filter_msg))
-            return BML_RESULT_OK;
+            if (!MatchesSubscription(sub, filter_msg))
+                return BML_RESULT_OK;
+        }
 
         if (sub->queue && sub->queue->Enqueue(message, message->priority)) {
+            sub->has_pending.store(true, std::memory_order_release);
             sub->RecordReceived(message->Size());
             m_GlobalStats.total_messages_delivered.fetch_add(1,
                                                              std::memory_order_relaxed);
@@ -334,7 +339,7 @@ namespace BML::Core {
             m_PublishState.topic_registry.IncrementMessageCount(topic);
         }
 
-        StackVec<BML_Subscription_T *, 8> targets;
+        StackVec<BML_Subscription_T *, 16> targets;
         for (auto *sub : entry.subs) {
             if (sub->closed.load(std::memory_order_acquire) || !sub->handler || !sub->queue)
                 continue;
@@ -909,29 +914,44 @@ namespace BML::Core {
     }
 
     void ImcBusImpl::Pump(size_t max_per_sub) {
+        // Cache timestamp for the entire frame to avoid repeated QPC syscalls.
+        g_FrameTimestampNs = GetTimestampNsRaw();
+
         m_GlobalStats.pump_cycles.fetch_add(1, std::memory_order_relaxed);
-        m_GlobalStats.last_pump_time.store(GetTimestampNs(), std::memory_order_relaxed);
+        m_GlobalStats.last_pump_time.store(g_FrameTimestampNs, std::memory_order_relaxed);
 
         DrainRpcQueue(max_per_sub);
 
         {
             SnapshotGuard guard(m_PublishState.snapshot.load(std::memory_order_acquire));
-            if (!guard)
+            if (!guard) {
+                g_FrameTimestampNs = 0;
                 return;
+            }
 
             for (auto *sub : guard.get()->all_subs) {
                 if (sub->closed.load(std::memory_order_acquire))
                     continue;
+                // Fast skip: no pending messages means empty queue, avoid drain overhead.
+                if (!sub->has_pending.load(std::memory_order_acquire))
+                    continue;
+                sub->has_pending.store(false, std::memory_order_relaxed);
                 sub->ref_count.fetch_add(1, std::memory_order_relaxed);
                 DrainSubscription(sub, max_per_sub);
                 sub->ref_count.fetch_sub(1, std::memory_order_acq_rel);
             }
         }
 
-        CleanupRetiredSubscriptions();
-        {
-            std::lock_guard lock(m_PublishState.write_mutex);
-            RetireOldSnapshots();
+        // Run cleanup tasks every 64th pump cycle instead of every frame.
+        uint64_t cycles = m_GlobalStats.pump_cycles.load(std::memory_order_relaxed);
+        if ((cycles & 63) == 0) {
+            CleanupRetiredSubscriptions();
+            {
+                std::lock_guard lock(m_PublishState.write_mutex);
+                RetireOldSnapshots();
+            }
         }
+
+        g_FrameTimestampNs = 0;
     }
 } // namespace BML::Core
