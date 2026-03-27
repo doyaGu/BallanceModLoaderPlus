@@ -3,8 +3,6 @@
 
 #include "CKInputManager.h"
 
-namespace bml { class ModuleServices; }
-
 namespace BML_Input {
 
 enum InputDevice {
@@ -14,7 +12,7 @@ enum InputDevice {
     INPUT_DEVICE_COUNT = 3
 };
 
-bool InitInputHook(CKInputManager *inputManager, const bml::ModuleServices &services);
+bool InitInputHook(CKInputManager *inputManager);
 void ShutdownInputHook();
 
 void EnableKeyboardRepetition(CKBOOL enable = TRUE);

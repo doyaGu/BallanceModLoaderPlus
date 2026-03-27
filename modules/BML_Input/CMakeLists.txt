@@ -9,7 +9,6 @@ bml_register_module_api(BML_Input_api)
 bml_add_module(BML_Input
     SOURCES
         src/InputMod.cpp
-        src/InputHook.cpp
         src/InputHook.h
         src/VTables.h
         src/Macros.h
