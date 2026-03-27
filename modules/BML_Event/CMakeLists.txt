@@ -11,9 +11,7 @@ bml_add_module(BML_Event
     SOURCES
         src/EventMod.cpp
         src/EventTopics.cpp
-        src/EventHook.cpp
         src/EventTopics.h
-        src/EventHook.h
     MANIFEST mod.toml
     INCLUDE_DIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/src
