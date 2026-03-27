@@ -267,6 +267,8 @@ static bool IsScriptBehavior(CKObject *object) {
 
 namespace BML_GameEvent {
 
+static void OnScriptLoaded(const char *filename, CKBehavior *script);
+
 static int ScanLoadedScripts(CKContext *ctx) {
     if (!ctx || !s_Services) {
         return 0;
