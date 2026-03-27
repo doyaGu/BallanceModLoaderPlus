@@ -3,6 +3,11 @@ bml_add_module(BML_Render
     SOURCES
         src/RenderMod.cpp
         src/RenderHook.h
+        src/RenderHook.cpp
+        src/CKRenderContextInternal.h
+        src/CKRasterizer.h
+        src/CKRasterizerEnums.h
+        src/CKRasterizerTypes.h
     MANIFEST mod.toml
     INCLUDE_DIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/src
