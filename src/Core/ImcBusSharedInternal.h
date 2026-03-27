@@ -62,13 +62,20 @@ namespace BML::Core {
             duration_cast<nanoseconds>(steady_clock::now().time_since_epoch()).count());
     }
 
-    // Cached per-frame timestamp. Set once at Pump() start, used for all
-    // message timestamps and stats within the same frame. Eliminates
-    // repeated QPC syscalls (~20-50ns each, ~12+/frame).
-    inline uint64_t g_FrameTimestampNs = 0;
+    // Cached per-frame timestamp for the current thread. Set once at Pump() start,
+    // used for all same-thread publishes and stats within that pump frame.
+    inline uint64_t &GetFrameTimestampCache() noexcept {
+        static thread_local uint64_t frameTimestampNs = 0;
+        return frameTimestampNs;
+    }
+
+    inline void SetFrameTimestampCache(uint64_t timestamp) noexcept {
+        GetFrameTimestampCache() = timestamp;
+    }
 
     inline uint64_t GetTimestampNs() noexcept {
-        return g_FrameTimestampNs ? g_FrameTimestampNs : GetTimestampNsRaw();
+        const uint64_t frameTimestampNs = GetFrameTimestampCache();
+        return frameTimestampNs ? frameTimestampNs : GetTimestampNsRaw();
     }
 
     template <typename T, size_t N>

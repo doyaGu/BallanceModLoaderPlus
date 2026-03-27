@@ -20,6 +20,7 @@
 
 #include "Core/Context.h"
 #include "Core/ImcBus.h"
+#include "Core/ImcBusSharedInternal.h"
 #include "TestKernel.h"
 #include "TestKernelBuilder.h"
 #include "TestModHelper.h"
@@ -1137,6 +1138,13 @@ TEST_F(ImcBusTest, PumpBudgetDistributesLoadAcrossSubscribers) {
     EXPECT_EQ(cap1.count.load(), 1);
     EXPECT_EQ(cap2.count.load(), 1);
 
+    BML_SubscriptionStats stats1 = BML_SUBSCRIPTION_STATS_INIT;
+    BML_SubscriptionStats stats2 = BML_SUBSCRIPTION_STATS_INIT;
+    ASSERT_EQ(BML_RESULT_OK, ImcGetSubscriptionStats(sub1, &stats1));
+    ASSERT_EQ(BML_RESULT_OK, ImcGetSubscriptionStats(sub2, &stats2));
+    EXPECT_EQ(stats1.queue_size, 3u);
+    EXPECT_EQ(stats2.queue_size, 3u);
+
     // Drain remaining
     Pump(0);
     EXPECT_EQ(cap1.count.load(), 4);
@@ -1144,6 +1152,33 @@ TEST_F(ImcBusTest, PumpBudgetDistributesLoadAcrossSubscribers) {
 
     EXPECT_EQ(BML_RESULT_OK, ImcUnsubscribe(sub1));
     EXPECT_EQ(BML_RESULT_OK, ImcUnsubscribe(sub2));
+}
+
+TEST(ImcBusSharedInternalTest, FrameTimestampCacheDoesNotLeakAcrossThreads) {
+    constexpr uint64_t kCachedTimestamp = 0x123456789ABCDEF0ull;
+
+    std::atomic<bool> workerReady{false};
+    std::atomic<bool> workerRelease{false};
+
+    std::thread worker([&] {
+        BML::Core::SetFrameTimestampCache(kCachedTimestamp);
+        workerReady.store(true, std::memory_order_release);
+        while (!workerRelease.load(std::memory_order_acquire)) {
+            std::this_thread::yield();
+        }
+        BML::Core::SetFrameTimestampCache(0);
+    });
+
+    while (!workerReady.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+
+    const uint64_t observedTimestamp = BML::Core::GetTimestampNs();
+
+    workerRelease.store(true, std::memory_order_release);
+    worker.join();
+
+    EXPECT_NE(observedTimestamp, kCachedTimestamp);
 }
 
 TEST_F(ImcBusTest, PublishingResumesAfterPumpClearsQueue) {

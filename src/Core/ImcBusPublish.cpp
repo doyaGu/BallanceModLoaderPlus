@@ -212,6 +212,7 @@ namespace BML::Core {
         case BML_BACKPRESSURE_DROP_OLDEST:
             ApplyBackpressure(sub, message);
             if (sub->queue && sub->queue->Enqueue(message, message->priority)) {
+                sub->has_pending.store(true, std::memory_order_release);
                 sub->RecordReceived(message->Size());
                 m_GlobalStats.total_messages_delivered.fetch_add(
                     1, std::memory_order_relaxed);
@@ -230,6 +231,7 @@ namespace BML::Core {
             for (int spin = 0; spin < 100; ++spin) {
                 std::this_thread::yield();
                 if (sub->queue && sub->queue->Enqueue(message, message->priority)) {
+                    sub->has_pending.store(true, std::memory_order_release);
                     sub->RecordReceived(message->Size());
                     m_GlobalStats.total_messages_delivered.fetch_add(
                         1, std::memory_order_relaxed);
@@ -915,17 +917,18 @@ namespace BML::Core {
 
     void ImcBusImpl::Pump(size_t max_per_sub) {
         // Cache timestamp for the entire frame to avoid repeated QPC syscalls.
-        g_FrameTimestampNs = GetTimestampNsRaw();
+        SetFrameTimestampCache(GetTimestampNsRaw());
 
         m_GlobalStats.pump_cycles.fetch_add(1, std::memory_order_relaxed);
-        m_GlobalStats.last_pump_time.store(g_FrameTimestampNs, std::memory_order_relaxed);
+        m_GlobalStats.last_pump_time.store(GetFrameTimestampCache(),
+                                           std::memory_order_relaxed);
 
         DrainRpcQueue(max_per_sub);
 
         {
             SnapshotGuard guard(m_PublishState.snapshot.load(std::memory_order_acquire));
             if (!guard) {
-                g_FrameTimestampNs = 0;
+                SetFrameTimestampCache(0);
                 return;
             }
 
@@ -933,12 +936,14 @@ namespace BML::Core {
                 if (sub->closed.load(std::memory_order_acquire))
                     continue;
                 // Fast skip: no pending messages means empty queue, avoid drain overhead.
-                if (!sub->has_pending.load(std::memory_order_acquire))
+                if (!sub->has_pending.exchange(false, std::memory_order_acq_rel))
                     continue;
-                sub->has_pending.store(false, std::memory_order_relaxed);
                 sub->ref_count.fetch_add(1, std::memory_order_relaxed);
                 DrainSubscription(sub, max_per_sub);
                 sub->ref_count.fetch_sub(1, std::memory_order_acq_rel);
+                if (sub->queue && !sub->queue->IsEmpty()) {
+                    sub->has_pending.store(true, std::memory_order_release);
+                }
             }
         }
 
@@ -952,6 +957,6 @@ namespace BML::Core {
             }
         }
 
-        g_FrameTimestampNs = 0;
+        SetFrameTimestampCache(0);
     }
 } // namespace BML::Core
