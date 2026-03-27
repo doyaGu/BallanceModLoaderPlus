@@ -4,8 +4,8 @@
  *
  * Provides a base class and macro that eliminate all module entry point
  * boilerplate. Module authors derive from bml::Module, override
- * OnAttach(ModuleServices&) and OnDetach(), then use
- * BML_DEFINE_MODULE(ClassName) to generate the entry point.
+ * OnAttach() and OnDetach(), then use BML_DEFINE_MODULE(ClassName) to
+ * generate the entry point.
  *
  * Usage:
  *   #include <bml_module.hpp>
@@ -13,8 +13,8 @@
  *   class MyMod : public bml::Module {
  *       bml::imc::SubscriptionManager m_Subs;
  *   public:
- *       BML_Result OnAttach(bml::ModuleServices &services) override {
- *           m_Subs = services.CreateSubscriptions();
+ *       BML_Result OnAttach() override {
+ *           m_Subs = Services().CreateSubscriptions();
  *           m_Subs.Add("BML/Engine/Init", [this](const bml::imc::Message &msg) {
  *               // Handle event
  *           });
@@ -28,8 +28,8 @@
  *
  * Lifecycle:
  *   Attach: validate args -> bind injected services -> new T() -> set m_Handle
- *           -> construct ModuleServices -> OnAttach(services) ->
- *           on failure: delete + bmlUnloadAPI()
+ *           -> construct ModuleServices -> set s_Instance -> OnAttach() ->
+ *           on failure: rollback s_Instance + delete + bmlUnloadAPI()
  *   PrepareDetach: validate args -> OnPrepareDetach()
  *   Detach: validate args -> OnDetach() -> delete (RAII dtors run,
  *           function pointers still valid) -> bmlUnloadAPI()
@@ -66,9 +66,9 @@ namespace detail {
 /**
  * @brief Base class for BML modules
  *
- * Derive from this class and override OnAttach(ModuleServices&)/OnDetach()
- * to implement module lifecycle. Use BML_DEFINE_MODULE(YourClass) after the
- * class definition to generate the entry point.
+ * Derive from this class and override OnAttach()/OnDetach() to implement
+ * module lifecycle. Use BML_DEFINE_MODULE(YourClass) after the class
+ * definition to generate the entry point.
  */
 class Module {
     template <typename T> friend class detail::ModuleEntryHelper;
@@ -77,11 +77,14 @@ public:
     virtual ~Module() = default;
 
     /**
-     * @brief Called after API is loaded, m_Handle is set, and services are ready.
-     * @param services Per-module service access (Log, Config, subscriptions, etc.)
+     * @brief Called after API is loaded, m_Handle/m_Services are set.
+     *
+     * Services() is valid and can be used freely.
+     * GetInstance() also returns this module during OnAttach.
+     *
      * @return BML_RESULT_OK on success; any other value aborts attach.
      */
-    virtual BML_Result OnAttach(ModuleServices &services) { (void)services; return BML_RESULT_OK; }
+    virtual BML_Result OnAttach() { return BML_RESULT_OK; }
 
     /**
      * @brief Called before detach gating to release outbound dependencies.
@@ -99,7 +102,7 @@ public:
     /** @brief Get the mod handle assigned by the runtime. */
     BML_Mod Handle() const noexcept { return m_Handle; }
 
-    /** @brief Access the module's service view (valid after OnAttach). */
+    /** @brief Access the module's service view (valid after construction). */
     const ModuleServices &Services() const noexcept { return m_Services; }
 
 protected:
@@ -174,6 +177,9 @@ private:
         if (args->api_version < BML_MOD_ENTRYPOINT_API_VERSION) {
             return BML_RESULT_VERSION_MISMATCH;
         }
+        if (s_Instance) {
+            return BML_RESULT_ALREADY_INITIALIZED;
+        }
 
         bmlBindServices(args->services);
 
@@ -191,16 +197,23 @@ private:
             return BML_RESULT_NOT_FOUND;
         }
 
+        // Set s_Instance before OnAttach so GetInstance() is available
+        // during attach (e.g. for extension API trampoline registration).
+        // BoundModuleHandleSlot bridges the gap for code that needs the
+        // handle before m_Handle is accessible (e.g. during T's ctor).
+        s_Instance = instance;
         BoundModuleHandleSlot() = args->mod;
-        BML_Result result = instance->OnAttach(instance->m_Services);
+
+        BML_Result result = instance->OnAttach();
         if (result != BML_RESULT_OK) {
+            s_Instance = nullptr;
             BoundModuleHandleSlot() = nullptr;
             delete instance;
             bmlUnloadAPI();
             return result;
         }
 
-        s_Instance = instance;
+        BoundModuleHandleSlot() = nullptr;
         return BML_RESULT_OK;
     }
 
@@ -231,7 +244,6 @@ private:
 
         if (s_Instance) {
             s_Instance->OnDetach();
-            BoundModuleHandleSlot() = nullptr;
             delete s_Instance;
             s_Instance = nullptr;
         }
@@ -255,5 +267,12 @@ private:
         BML_ModEntrypointCommand cmd, void *data) { \
         return ::bml::detail::ModuleEntryHelper<ClassName>::Entrypoint(cmd, data); \
     }
+
+/**
+ * @brief Access the live module instance from extension API trampolines.
+ * Returns nullptr when the module is not attached.
+ */
+#define BML_GET_INSTANCE(ClassName) \
+    ::bml::detail::ModuleEntryHelper<ClassName>::GetInstance()
 
 #endif /* BML_MODULE_HPP */
