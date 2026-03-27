@@ -11,32 +11,17 @@
 #include "bml_imc_topic.hpp"
 #include "bml_virtools_payloads.h"
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
-
 #include <algorithm>
-#include <cstdlib>
-#include <cstring>
 
 #include "CKAll.h"
 #include "BML/Guids/physics_RT.h"
-#include "VTables.h"
+#include "physics_RT.h"
 #include "HookUtils.h"
 
-// -------------------------------------------------------------------------
-// CKIpionManager interface (physics manager)
-// -------------------------------------------------------------------------
-
-class CKIpionManager : public CKBaseManager {
-public:
-    virtual void Reset() = 0;
-};
-
-struct CP_CLASS_VTABLE_NAME(CKIpionManager) : public CP_CLASS_VTABLE_NAME(CKBaseManager)<CKIpionManager> {
-    CP_DECLARE_METHOD_PTR(CKIpionManager, void, Reset, ());
-};
+// CKBaseManager VTable slot indices (declaration order, 0-based):
+//   0=Destructor, 1=SaveData, 2=LoadData, 3=PreClearAll, 4=PostClearAll,
+//   5=PreProcess, 6=PostProcess, ...
+static constexpr size_t kPostProcessSlot = 6;
 
 // -------------------------------------------------------------------------
 // Physicalize BB input indices
@@ -61,8 +46,9 @@ struct CP_CLASS_VTABLE_NAME(CKIpionManager) : public CP_CLASS_VTABLE_NAME(CKBase
 
 class PhysicsMod : public bml::HookModule {
     CKIpionManager *m_IpionManager = nullptr;
-    CP_CLASS_VTABLE_NAME(CKIpionManager) m_IpionVTable = {};
+    void *m_OriginalPostProcess = nullptr;
     CKBEHAVIORFCT m_OriginalPhysicalize = nullptr;
+    bml::imc::Topic m_TopicPostProcess;
     bml::imc::Topic m_TopicPhysicalize;
     bml::imc::Topic m_TopicUnphysicalize;
 
@@ -73,23 +59,21 @@ class PhysicsMod : public bml::HookModule {
     bool InitHook(CKContext *ctx) override {
         if (!ctx) return false;
 
+        InitPhysicsAddresses();
+
         auto *imcBus = Services().Interfaces().ImcBus;
         auto owner = Services().Handle();
-        m_TopicPhysicalize = bml::imc::Topic("Physics/Physicalize", imcBus, owner);
-        m_TopicUnphysicalize = bml::imc::Topic("Physics/Unphysicalize", imcBus, owner);
+        m_TopicPostProcess = bml::imc::Topic(BML_TOPIC_PHYSICS_POST_PROCESS, imcBus, owner);
+        m_TopicPhysicalize = bml::imc::Topic(BML_TOPIC_PHYSICS_PHYSICALIZE, imcBus, owner);
+        m_TopicUnphysicalize = bml::imc::Topic(BML_TOPIC_PHYSICS_UNPHYSICALIZE, imcBus, owner);
+
+        s_Instance = this;
 
         // Hook IpionManager VTable
         m_IpionManager = (CKIpionManager *)ctx->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
         if (m_IpionManager) {
-            utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKIpionManager)>(m_IpionManager, m_IpionVTable);
-
-#define HOOK_PHYSICS_VIRTUAL_METHOD(Instance, Name) \
-    utils::HookVirtualMethod(Instance, &PhysicsVTableHook::CP_FUNC_HOOK_NAME(Name), \
-        (offsetof(CP_CLASS_VTABLE_NAME(CKIpionManager), Name) / sizeof(void*)))
-
-            HOOK_PHYSICS_VIRTUAL_METHOD(m_IpionManager, PostProcess);
-
-#undef HOOK_PHYSICS_VIRTUAL_METHOD
+            m_OriginalPostProcess = utils::HookVirtualMethod(
+                m_IpionManager, &PostProcessThunk::Hook, kPostProcessSlot);
         }
 
         // Hook Physicalize BB
@@ -97,7 +81,6 @@ class PhysicsMod : public bml::HookModule {
         if (proto) {
             if (!m_OriginalPhysicalize)
                 m_OriginalPhysicalize = proto->GetFunction();
-            s_Instance = this;
             proto->SetFunction(&PhysicalizeCallback);
         }
 
@@ -106,8 +89,8 @@ class PhysicsMod : public bml::HookModule {
 
     void ShutdownHook() override {
         // Restore IpionManager VTable
-        if (m_IpionManager)
-            utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKIpionManager)>(m_IpionManager, m_IpionVTable);
+        if (m_IpionManager && m_OriginalPostProcess)
+            utils::HookVirtualMethod(m_IpionManager, m_OriginalPostProcess, kPostProcessSlot);
 
         // Restore Physicalize BB
         CKBehaviorPrototype *proto = CKGetPrototypeFromGuid(PHYSICS_RT_PHYSICALIZE);
@@ -116,22 +99,37 @@ class PhysicsMod : public bml::HookModule {
 
         s_Instance = nullptr;
         m_IpionManager = nullptr;
-        m_IpionVTable = {};
+        m_OriginalPostProcess = nullptr;
         m_OriginalPhysicalize = nullptr;
+        m_TopicPostProcess = {};
         m_TopicPhysicalize = {};
         m_TopicUnphysicalize = {};
     }
 
     // -------------------------------------------------------------------------
-    // IpionManager VTable hook
+    // IpionManager PostProcess hook
     // -------------------------------------------------------------------------
 
-    struct PhysicsVTableHook {
-        CP_DECLARE_METHOD_HOOK(CKERROR, PostProcess, ()) { return CK_OK; }
+    struct PostProcessThunk {
+        CKERROR Hook() {
+            // `this` is actually CKIpionManager* at runtime
+            if (s_Instance)
+                return s_Instance->OnPostProcess(reinterpret_cast<CKIpionManager *>(this));
+            return CK_OK;
+        }
     };
 
-    CKERROR PostProcessOriginal() {
-        return CP_CALL_METHOD_PTR(m_IpionManager, m_IpionVTable.PostProcess);
+    CKERROR OnPostProcess(CKIpionManager *mgr) {
+        using Fn = CKERROR (__thiscall *)(CKIpionManager *);
+        CKERROR result = reinterpret_cast<Fn>(m_OriginalPostProcess)(mgr);
+
+        if (m_TopicPostProcess) {
+            BML_PhysicsStepEvent event{};
+            event.delta_time = mgr->GetDeltaTime();
+            m_TopicPostProcess.Publish(event);
+        }
+
+        return result;
     }
 
     // -------------------------------------------------------------------------
@@ -141,8 +139,7 @@ class PhysicsMod : public bml::HookModule {
     static int PhysicalizeCallback(const CKBehaviorContext &behcontext) {
         if (s_Instance)
             return s_Instance->HandlePhysicalize(behcontext);
-        return s_Instance->m_OriginalPhysicalize
-            ? s_Instance->m_OriginalPhysicalize(behcontext) : CKBR_OK;
+        return CKBR_OK;
     }
 
     int HandlePhysicalize(const CKBehaviorContext &behcontext) {

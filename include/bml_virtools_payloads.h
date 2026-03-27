@@ -66,6 +66,15 @@ typedef struct BML_PhysicalizeEvent {
     CKMesh **concave_meshes;    /**< Borrowed; valid for this frame only */
 } BML_PhysicalizeEvent;
 
+/**
+ * @brief Payload for Physics/PostProcess events.
+ *
+ * Published after each IpionManager physics simulation step.
+ */
+typedef struct BML_PhysicsStepEvent {
+    float delta_time;       /**< Physics simulation delta time */
+} BML_PhysicsStepEvent;
+
 /* ========================================================================
  * Game Command Payloads
  * ======================================================================== */

@@ -159,4 +159,15 @@
 #define BML_TOPIC_OBJECTLOAD_LOAD_OBJECT   "BML/ObjectLoad/LoadObject"
 #define BML_TOPIC_OBJECTLOAD_LOAD_SCRIPT   "BML/ObjectLoad/LoadScript"
 
+/* ========================================================================
+ * Physics
+ * ======================================================================== */
+
+/** Published after each IpionManager physics step.
+ *  Payload: BML_PhysicsStepEvent (see bml_virtools_payloads.h). */
+#define BML_TOPIC_PHYSICS_POST_PROCESS     "Physics/PostProcess"
+
+#define BML_TOPIC_PHYSICS_PHYSICALIZE      "Physics/Physicalize"
+#define BML_TOPIC_PHYSICS_UNPHYSICALIZE    "Physics/Unphysicalize"
+
 #endif /* BML_TOPICS_H */

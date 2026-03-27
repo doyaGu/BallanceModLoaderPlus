@@ -1,8 +1,11 @@
 bml_add_module(BML_Physics
     SOURCES
         src/PhysicsMod.cpp
+        src/physics_RT.cpp
+        src/physics_RT.h
     MANIFEST mod.toml
     INCLUDE_DIRS
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_SOURCE_DIR}/include/BML
         ${CMAKE_SOURCE_DIR}/deps
         ${VIRTOOLS_SDK_INCLUDE_DIR}
