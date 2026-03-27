@@ -36,8 +36,8 @@ class RenderMod : public bml::HookModule {
 
     const char *HookLogCategory() const override { return "BML_Render"; }
 
-    bool InitHook(CKContext *, const BML_HookContext *hctx) override {
-        if (!BML_Render::InitRenderHook(hctx)) return false;
+    bool InitHook(CKContext *) override {
+        if (!BML_Render::InitRenderHook(Services().Interfaces().Logging, Services().Handle())) return false;
         m_Cfg.Refresh(Services().Config());
         ApplyConfig();
         return true;
@@ -47,7 +47,7 @@ class RenderMod : public bml::HookModule {
         BML_Render::ShutdownRenderHook();
     }
 
-    BML_Result OnModuleAttach(bml::ModuleServices &) override {
+    BML_Result OnModuleAttach() override {
         m_Cfg.Bind("Graphics", "WidescreenFix",   m_WidescreenFix,  false);
         m_Cfg.Bind("Graphics", "UnlockFrameRate",  m_UnlockFrameRate, false);
         m_Cfg.Bind("Graphics", "SetMaxFrameRate",  m_MaxFrameRate,    0);

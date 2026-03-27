@@ -255,21 +255,24 @@ class InputMod : public bml::HookModule {
 
     const char *HookLogCategory() const override { return "BML_Input"; }
 
-    bool InitHook(CKContext *ctx, const BML_HookContext *hctx) override {
+    bool InitHook(CKContext *ctx) override {
         auto *im = static_cast<CKInputManager *>(
             ctx->GetManagerByGuid(INPUT_MANAGER_GUID));
         if (!im) {
             Services().Log().Warn("CKInputManager not available yet - retrying next Engine/Init");
             return false;
         }
-        return BML_Input::InitInputHook(im, hctx);
+        return BML_Input::InitInputHook(im,
+                                         Services().Interfaces().ImcBus,
+                                         Services().Interfaces().Logging,
+                                         Services().Handle());
     }
 
     void ShutdownHook() override {
         BML_Input::ShutdownInputHook();
     }
 
-    BML_Result OnModuleAttach(bml::ModuleServices &services) override {
+    BML_Result OnModuleAttach() override {
         m_Subs.Add(BML_TOPIC_ENGINE_POST_PROCESS, [](const bml::imc::Message &) {
             BML_Input::ProcessInput();
         });
@@ -283,7 +286,7 @@ class InputMod : public bml::HookModule {
                               0,
                               BML_INTERFACE_FLAG_TOKENIZED | BML_INTERFACE_FLAG_IMMUTABLE);
         if (!m_Published) {
-            services.Log().Error("Failed to register input capture service");
+            Services().Log().Error("Failed to register input capture service");
             return BML_RESULT_FAIL;
         }
 

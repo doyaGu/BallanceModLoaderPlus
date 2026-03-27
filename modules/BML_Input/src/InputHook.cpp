@@ -12,7 +12,9 @@
 namespace BML_Input {
 namespace {
 
-BML_HookContext s_Hook = BML_HOOK_CONTEXT_INIT;
+const BML_ImcBusInterface *s_ImcBus = nullptr;
+const BML_CoreLoggingInterface *s_Logging = nullptr;
+BML_Mod s_Owner = nullptr;
 
 struct KeyDownEvent {
     uint32_t key_code;
@@ -58,10 +60,10 @@ struct InputState {
 InputState g_State;
 
 bool PublishInputMessage(BML_TopicId topic, const void *data, size_t size) {
-    if (!s_Hook.imc_bus || !s_Hook.imc_bus->Publish || !s_Hook.owner || topic == 0) {
+    if (!s_ImcBus || !s_ImcBus->Publish || !s_Owner || topic == 0) {
         return false;
     }
-    return s_Hook.imc_bus->Publish(s_Hook.owner, topic, data, size) == BML_RESULT_OK;
+    return s_ImcBus->Publish(s_Owner, topic, data, size) == BML_RESULT_OK;
 }
 
 struct InputManagerHook {
@@ -258,7 +260,7 @@ void GetMousePositionOriginal(Vx2DVector &outPosition, CKBOOL absolute) {
 }
 
 void PublishKeyboardEvents(unsigned char *currentState) {
-    if (!s_Hook.imc_bus || !g_State.topic_key_down || !g_State.topic_key_up || !currentState)
+    if (!s_ImcBus || !g_State.topic_key_down || !g_State.topic_key_up || !currentState)
         return;
 
     for (int index = 0; index < 256; ++index) {
@@ -281,7 +283,7 @@ void PublishKeyboardEvents(unsigned char *currentState) {
 }
 
 void PublishMouseEvents() {
-    if (!s_Hook.imc_bus || !g_State.topic_mouse_button || !g_State.topic_mouse_move)
+    if (!s_ImcBus || !g_State.topic_mouse_button || !g_State.topic_mouse_move)
         return;
 
     CKBYTE mouseStates[4] = {};
@@ -325,17 +327,22 @@ void PublishMouseEvents() {
 } // namespace
 
 static void HookLog(BML_LogSeverity severity, const char *message) {
-    if (!s_Hook.logging || !s_Hook.logging->Log || !message) return;
-    s_Hook.logging->Log(s_Hook.owner, severity,
-                        s_Hook.log_category ? s_Hook.log_category : "BML_Input",
-                        "%s", message);
+    if (!s_Logging || !s_Logging->Log || !message) return;
+    s_Logging->Log(s_Owner, severity,
+                   "BML_Input",
+                   "%s", message);
 }
 
-bool InitInputHook(CKInputManager *inputManager, const BML_HookContext *ctx) {
+bool InitInputHook(CKInputManager *inputManager,
+                   const BML_ImcBusInterface *imc,
+                   const BML_CoreLoggingInterface *logging,
+                   BML_Mod owner) {
     if (g_State.initialized)
         return true;
 
-    if (ctx) s_Hook = *ctx;
+    s_ImcBus = imc;
+    s_Logging = logging;
+    s_Owner = owner;
 
     if (!inputManager) {
         HookLog(BML_LOG_ERROR, "Cannot initialize input hook: CKInputManager is null");
@@ -345,14 +352,13 @@ bool InitInputHook(CKInputManager *inputManager, const BML_HookContext *ctx) {
     g_State.input_manager = inputManager;
     utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>>(g_State.input_manager, g_State.vtable);
 
-    if (s_Hook.imc_bus && s_Hook.imc_bus->GetTopicId) {
-        auto *imc_bus = s_Hook.imc_bus;
-        imc_bus->GetTopicId(imc_bus->Context, BML_TOPIC_INPUT_KEY_DOWN, &g_State.topic_key_down);
-        imc_bus->GetTopicId(imc_bus->Context, BML_TOPIC_INPUT_KEY_UP, &g_State.topic_key_up);
-        imc_bus->GetTopicId(
-            imc_bus->Context, BML_TOPIC_INPUT_MOUSE_BUTTON, &g_State.topic_mouse_button);
-        imc_bus->GetTopicId(
-            imc_bus->Context, BML_TOPIC_INPUT_MOUSE_MOVE, &g_State.topic_mouse_move);
+    if (s_ImcBus && s_ImcBus->GetTopicId) {
+        s_ImcBus->GetTopicId(s_ImcBus->Context, BML_TOPIC_INPUT_KEY_DOWN, &g_State.topic_key_down);
+        s_ImcBus->GetTopicId(s_ImcBus->Context, BML_TOPIC_INPUT_KEY_UP, &g_State.topic_key_up);
+        s_ImcBus->GetTopicId(
+            s_ImcBus->Context, BML_TOPIC_INPUT_MOUSE_BUTTON, &g_State.topic_mouse_button);
+        s_ImcBus->GetTopicId(
+            s_ImcBus->Context, BML_TOPIC_INPUT_MOUSE_MOVE, &g_State.topic_mouse_move);
     }
 
     InstallVTableHooks();
@@ -377,7 +383,9 @@ void ShutdownInputHook() {
 
     HookLog(BML_LOG_INFO, "Input hooks shutdown");
     g_State = {};
-    s_Hook = {};
+    s_ImcBus = nullptr;
+    s_Logging = nullptr;
+    s_Owner = nullptr;
 }
 
 void EnableKeyboardRepetition(CKBOOL enable) {

@@ -15,7 +15,8 @@
 #include "CK2dEntity.h"
 
 #include "Macros.h"
-#include "bml_hook_context.h"
+#include "bml_logging.h"
+#include "bml_types.h"
 
 // Forward declarations
 class CKRenderedScene;
@@ -190,10 +191,11 @@ public:
 
 /**
  * @brief Initialize render engine hooks
- * @param services Module services for logging
+ * @param logging Logging interface for diagnostics
+ * @param owner Module handle for log attribution
  * @return true on success, false on failure
  */
-bool InitRenderHook(const BML_HookContext *ctx);
+bool InitRenderHook(const BML_CoreLoggingInterface *logging, BML_Mod owner);
 
 /**
  * @brief Shutdown render engine hooks

@@ -9,6 +9,8 @@
 class EventMod : public bml::HookModule {
     bool m_ScanCompleted = false;
 
+    const char *HookLogCategory() const override { return "BML_Event"; }
+
     void EnsureScanned(CKContext *ctx) {
         if (m_ScanCompleted || !ctx) return;
         if (BML_Event::ScanLoadedScripts(ctx) > 0) {
@@ -16,10 +18,11 @@ class EventMod : public bml::HookModule {
         }
     }
 
-    const char *HookLogCategory() const override { return "BML_Event"; }
-
-    bool InitHook(CKContext *ctx, const BML_HookContext *hctx) override {
-        if (!BML_Event::InitEventHooks(ctx, hctx)) return false;
+    bool InitHook(CKContext *ctx) override {
+        if (!BML_Event::InitEventHooks(ctx,
+                                        Services().Interfaces().ImcBus,
+                                        Services().Interfaces().Logging,
+                                        Services().Handle())) return false;
         EnsureScanned(ctx);
         return true;
     }
@@ -28,7 +31,7 @@ class EventMod : public bml::HookModule {
         BML_Event::ShutdownEventHooks();
     }
 
-    BML_Result OnModuleAttach(bml::ModuleServices &) override {
+    BML_Result OnModuleAttach() override {
         // Eager init
         CKContext *ctx = bml::virtools::GetCKContext(Services());
         TryInitHook(ctx);

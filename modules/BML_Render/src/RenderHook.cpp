@@ -22,15 +22,14 @@
 namespace BML_Render {
 
 namespace {
-BML_HookContext s_Hook = BML_HOOK_CONTEXT_INIT;
+static const BML_CoreLoggingInterface *s_Logging = nullptr;
+static BML_Mod s_Owner = nullptr;
 
 void Log(BML_LogSeverity severity, const char *message) {
-    if (!s_Hook.logging || !s_Hook.logging->Log || !message) {
+    if (!s_Logging || !s_Logging->Log || !message) {
         return;
     }
-    s_Hook.logging->Log(s_Hook.owner, severity,
-                        s_Hook.log_category ? s_Hook.log_category : "BML_Render",
-                        "%s", message);
+    s_Logging->Log(s_Owner, severity, "BML_Render", "%s", message);
 }
 } // namespace
 
@@ -142,11 +141,12 @@ bool CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(void *base) {
 // Public API
 //-----------------------------------------------------------------------------
 
-bool InitRenderHook(const BML_HookContext *ctx) {
+bool InitRenderHook(const BML_CoreLoggingInterface *logging, BML_Mod owner) {
     if (s_Initialized)
         return true;
 
-    if (ctx) s_Hook = *ctx;
+    s_Logging = logging;
+    s_Owner = owner;
 
     void *base = utils::GetModuleBaseAddress("CK2_3D.dll");
     if (!base) {
@@ -184,7 +184,8 @@ void ShutdownRenderHook() {
 
     s_Initialized = false;
     Log(BML_LOG_INFO, "Render engine hooks shutdown");
-    s_Hook = {};
+    s_Logging = nullptr;
+    s_Owner = nullptr;
 }
 
 void DisableRender(bool disable) {

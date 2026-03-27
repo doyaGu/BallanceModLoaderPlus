@@ -24,7 +24,9 @@ typedef int (*CKBehaviorCallback)(const CKBehaviorContext *behcontext, void *arg
 
 namespace {
 
-BML_HookContext s_Hook = BML_HOOK_CONTEXT_INIT;
+const BML_ImcBusInterface *s_ImcBus = nullptr;
+const BML_CoreLoggingInterface *s_Logging = nullptr;
+BML_Mod s_Owner = nullptr;
 
 enum TopicIndex {
     IDX_PRE_START_MENU = 0,
@@ -78,24 +80,22 @@ static BML_TopicId s_TopicPaused = 0;
 
 static void PublishRetainedState(const BML_ImcBusInterface *imc, BML_TopicId topic,
                                   const void *data, size_t size) {
-    if (!imc || !imc->PublishState || !s_Hook.owner || topic == 0) return;
+    if (!imc || !imc->PublishState || !s_Owner || topic == 0) return;
     BML_ImcMessage msg = BML_IMC_MESSAGE_INIT;
     msg.data = data;
     msg.size = size;
-    imc->PublishState(s_Hook.owner, topic, &msg);
+    imc->PublishState(s_Owner, topic, &msg);
 }
 
 static void UpdateGamePhase(BML_GamePhase phase) {
-    if (!s_Hook.imc_bus) return;
-    auto *imc = s_Hook.imc_bus;
+    if (!s_ImcBus) return;
     uint32_t value = static_cast<uint32_t>(phase);
-    PublishRetainedState(imc, s_TopicGamePhase, &value, sizeof(value));
+    PublishRetainedState(s_ImcBus, s_TopicGamePhase, &value, sizeof(value));
 }
 
 static void UpdatePaused(BML_Bool paused) {
-    if (!s_Hook.imc_bus) return;
-    auto *imc = s_Hook.imc_bus;
-    PublishRetainedState(imc, s_TopicPaused, &paused, sizeof(paused));
+    if (!s_ImcBus) return;
+    PublishRetainedState(s_ImcBus, s_TopicPaused, &paused, sizeof(paused));
 }
 
 static std::unordered_set<CK_ID> s_BaseScripts;
@@ -104,7 +104,7 @@ static std::unordered_set<CK_ID> s_GameplayEnergyScripts;
 static std::unordered_set<CK_ID> s_GameplayEventsScripts;
 
 static void Log(BML_LogSeverity severity, const char *format, ...) {
-    if (!s_Hook.logging || !s_Hook.logging->Log) {
+    if (!s_Logging || !s_Logging->Log) {
         return;
     }
 
@@ -114,9 +114,7 @@ static void Log(BML_LogSeverity severity, const char *format, ...) {
     std::vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
 
-    s_Hook.logging->Log(s_Hook.owner, severity,
-                        s_Hook.log_category ? s_Hook.log_category : "BML_Event",
-                        "%s", buffer);
+    s_Logging->Log(s_Owner, severity, "BML_Event", "%s", buffer);
 }
 
 static int PublishEventCallback(const CKBehaviorContext *behcontext, void *arg) {
@@ -128,10 +126,9 @@ static int PublishEventCallback(const CKBehaviorContext *behcontext, void *arg) 
     }
 
     const BML_TopicId topic = s_Topics[data->topicIndex];
-    if (topic != 0 && s_Hook.imc_bus) {
-        auto *imc_bus = s_Hook.imc_bus;
-        if (imc_bus && imc_bus->Publish && s_Hook.owner) {
-            imc_bus->Publish(s_Hook.owner, topic, nullptr, 0);
+    if (topic != 0 && s_ImcBus) {
+        if (s_ImcBus->Publish && s_Owner) {
+            s_ImcBus->Publish(s_Owner, topic, nullptr, 0);
         }
 
         // Update retained game state based on event type
@@ -224,51 +221,47 @@ static void LinkPublisher(bml::Graph &graph, CKBehavior *source, int topicIndex,
 }
 
 static void RegisterTopics() {
-    if (!s_Hook.imc_bus) {
+    if (!s_ImcBus || !s_ImcBus->GetTopicId) {
         return;
     }
 
-    auto *imcBus = s_Hook.imc_bus;
-    if (!imcBus || !imcBus->GetTopicId) {
-        return;
-    }
-    imcBus->GetTopicId(imcBus->Context, TOPIC_PRE_START_MENU, &s_Topics[IDX_PRE_START_MENU]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_POST_START_MENU, &s_Topics[IDX_POST_START_MENU]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_EXIT_GAME, &s_Topics[IDX_EXIT_GAME]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_PRE_LOAD_LEVEL, &s_Topics[IDX_PRE_LOAD_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_POST_LOAD_LEVEL, &s_Topics[IDX_POST_LOAD_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_START_LEVEL, &s_Topics[IDX_START_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_PRE_RESET_LEVEL, &s_Topics[IDX_PRE_RESET_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_POST_RESET_LEVEL, &s_Topics[IDX_POST_RESET_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_PAUSE_LEVEL, &s_Topics[IDX_PAUSE_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_UNPAUSE_LEVEL, &s_Topics[IDX_UNPAUSE_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_PRE_EXIT_LEVEL, &s_Topics[IDX_PRE_EXIT_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_POST_EXIT_LEVEL, &s_Topics[IDX_POST_EXIT_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_PRE_NEXT_LEVEL, &s_Topics[IDX_PRE_NEXT_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_POST_NEXT_LEVEL, &s_Topics[IDX_POST_NEXT_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_PRE_END_LEVEL, &s_Topics[IDX_PRE_END_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_POST_END_LEVEL, &s_Topics[IDX_POST_END_LEVEL]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_DEAD, &s_Topics[IDX_DEAD]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_BALL_OFF, &s_Topics[IDX_BALL_OFF]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_COUNTER_ACTIVE, &s_Topics[IDX_COUNTER_ACTIVE]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_COUNTER_INACTIVE, &s_Topics[IDX_COUNTER_INACTIVE]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_PRE_CHECKPOINT, &s_Topics[IDX_PRE_CHECKPOINT]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_POST_CHECKPOINT, &s_Topics[IDX_POST_CHECKPOINT]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_LEVEL_FINISH, &s_Topics[IDX_LEVEL_FINISH]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_GAME_OVER, &s_Topics[IDX_GAME_OVER]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_EXTRA_POINT, &s_Topics[IDX_EXTRA_POINT]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_PRE_LIFE_UP, &s_Topics[IDX_PRE_LIFE_UP]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_POST_LIFE_UP, &s_Topics[IDX_POST_LIFE_UP]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_PRE_SUB_LIFE, &s_Topics[IDX_PRE_SUB_LIFE]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_POST_SUB_LIFE, &s_Topics[IDX_POST_SUB_LIFE]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_BALL_NAV_ACTIVE, &s_Topics[IDX_BALL_NAV_ACTIVE]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_BALL_NAV_INACTIVE, &s_Topics[IDX_BALL_NAV_INACTIVE]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_CAM_NAV_ACTIVE, &s_Topics[IDX_CAM_NAV_ACTIVE]);
-    imcBus->GetTopicId(imcBus->Context, TOPIC_CAM_NAV_INACTIVE, &s_Topics[IDX_CAM_NAV_INACTIVE]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_PRE_START_MENU, &s_Topics[IDX_PRE_START_MENU]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_POST_START_MENU, &s_Topics[IDX_POST_START_MENU]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_EXIT_GAME, &s_Topics[IDX_EXIT_GAME]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_PRE_LOAD_LEVEL, &s_Topics[IDX_PRE_LOAD_LEVEL]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_POST_LOAD_LEVEL, &s_Topics[IDX_POST_LOAD_LEVEL]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_START_LEVEL, &s_Topics[IDX_START_LEVEL]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_PRE_RESET_LEVEL, &s_Topics[IDX_PRE_RESET_LEVEL]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_POST_RESET_LEVEL, &s_Topics[IDX_POST_RESET_LEVEL]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_PAUSE_LEVEL, &s_Topics[IDX_PAUSE_LEVEL]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_UNPAUSE_LEVEL, &s_Topics[IDX_UNPAUSE_LEVEL]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_PRE_EXIT_LEVEL, &s_Topics[IDX_PRE_EXIT_LEVEL]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_POST_EXIT_LEVEL, &s_Topics[IDX_POST_EXIT_LEVEL]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_PRE_NEXT_LEVEL, &s_Topics[IDX_PRE_NEXT_LEVEL]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_POST_NEXT_LEVEL, &s_Topics[IDX_POST_NEXT_LEVEL]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_PRE_END_LEVEL, &s_Topics[IDX_PRE_END_LEVEL]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_POST_END_LEVEL, &s_Topics[IDX_POST_END_LEVEL]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_DEAD, &s_Topics[IDX_DEAD]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_BALL_OFF, &s_Topics[IDX_BALL_OFF]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_COUNTER_ACTIVE, &s_Topics[IDX_COUNTER_ACTIVE]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_COUNTER_INACTIVE, &s_Topics[IDX_COUNTER_INACTIVE]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_PRE_CHECKPOINT, &s_Topics[IDX_PRE_CHECKPOINT]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_POST_CHECKPOINT, &s_Topics[IDX_POST_CHECKPOINT]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_LEVEL_FINISH, &s_Topics[IDX_LEVEL_FINISH]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_GAME_OVER, &s_Topics[IDX_GAME_OVER]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_EXTRA_POINT, &s_Topics[IDX_EXTRA_POINT]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_PRE_LIFE_UP, &s_Topics[IDX_PRE_LIFE_UP]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_POST_LIFE_UP, &s_Topics[IDX_POST_LIFE_UP]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_PRE_SUB_LIFE, &s_Topics[IDX_PRE_SUB_LIFE]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_POST_SUB_LIFE, &s_Topics[IDX_POST_SUB_LIFE]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_BALL_NAV_ACTIVE, &s_Topics[IDX_BALL_NAV_ACTIVE]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_BALL_NAV_INACTIVE, &s_Topics[IDX_BALL_NAV_INACTIVE]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_CAM_NAV_ACTIVE, &s_Topics[IDX_CAM_NAV_ACTIVE]);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, TOPIC_CAM_NAV_INACTIVE, &s_Topics[IDX_CAM_NAV_INACTIVE]);
 
     // Retained state topics
-    imcBus->GetTopicId(imcBus->Context, BML_TOPIC_STATE_GAME_PHASE, &s_TopicGamePhase);
-    imcBus->GetTopicId(imcBus->Context, BML_TOPIC_STATE_PAUSED, &s_TopicPaused);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, BML_TOPIC_STATE_GAME_PHASE, &s_TopicGamePhase);
+    s_ImcBus->GetTopicId(s_ImcBus->Context, BML_TOPIC_STATE_PAUSED, &s_TopicPaused);
 
     // Publish initial state
     UpdateGamePhase(BML_GAME_PHASE_IDLE);
@@ -286,7 +279,10 @@ static bool IsScriptBehavior(CKObject *object) {
 
 } // namespace
 
-bool InitEventHooks(CKContext *ctx, const BML_HookContext *hook_ctx) {
+bool InitEventHooks(CKContext *ctx,
+                    const BML_ImcBusInterface *imc,
+                    const BML_CoreLoggingInterface *logging,
+                    BML_Mod owner) {
     if (s_Initialized) {
         return true;
     }
@@ -296,7 +292,9 @@ bool InitEventHooks(CKContext *ctx, const BML_HookContext *hook_ctx) {
         return false;
     }
 
-    if (hook_ctx) s_Hook = *hook_ctx;
+    s_ImcBus = imc;
+    s_Logging = logging;
+    s_Owner = owner;
     s_Context = ctx;
     RegisterTopics();
     for (int index = 0; index < IDX_MAX; ++index) {
@@ -319,11 +317,13 @@ void ShutdownEventHooks() {
     s_GameplayIngameScripts.clear();
     s_GameplayEnergyScripts.clear();
     s_GameplayEventsScripts.clear();
-    s_Hook = {};
+    s_ImcBus = nullptr;
+    s_Logging = nullptr;
+    s_Owner = nullptr;
 }
 
 int ScanLoadedScripts(CKContext *ctx) {
-    if (!ctx || !s_Hook.imc_bus) {
+    if (!ctx || !s_ImcBus) {
         return 0;
     }
 
