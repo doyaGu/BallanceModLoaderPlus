@@ -1064,9 +1064,9 @@ public:
         return (self && data) ? self->HandleTextEdit(data) : 0;
     }
 
-    BML_Result OnAttach(bml::ModuleServices &services) override {
-        g_ConsoleServices = &services;
-        m_Subs = services.CreateSubscriptions();
+    BML_Result OnAttach() override {
+        g_ConsoleServices = &Services();
+        m_Subs = Services().CreateSubscriptions();
         m_HostRuntime = Services().Acquire<BML_HostRuntimeInterface>();
         if (!m_HostRuntime) {
             return BML_RESULT_NOT_FOUND;

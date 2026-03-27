@@ -33,16 +33,16 @@ class ScriptingMod : public bml::Module {
     bml::PublishedInterface m_EngineService;
 
 public:
-    BML_Result OnAttach(bml::ModuleServices &services) override {
-        services.Log().Info("script", "Initializing AngelScript runtime");
+    BML_Result OnAttach() override {
+        Services().Log().Info("script", "Initializing AngelScript runtime");
 
         BML::Scripting::g_Services = &Services().Interfaces();
 
         if (!m_Engine.Initialize()) {
-            services.Log().Error("script", "Failed to create AngelScript engine");
+            Services().Log().Error("script", "Failed to create AngelScript engine");
             return BML_RESULT_FAIL;
         }
-        m_Engine.SetServices(m_Handle, &services.Interfaces());
+        m_Engine.SetServices(m_Handle, &Services().Interfaces());
         g_ScriptEnginePtr = m_Engine.Get();
 
         m_Manager = std::make_unique<BML::Scripting::ScriptInstanceManager>(m_Engine.Get());
@@ -100,14 +100,14 @@ public:
             &g_EngineInterface, 1, 0, 0,
             BML_INTERFACE_FLAG_HOST_OWNED | BML_INTERFACE_FLAG_IMMUTABLE);
         if (!m_EngineService) {
-            services.Log().Warn("script",
+            Services().Log().Warn("script",
                 "Failed to publish script engine interface (non-fatal)");
         }
 
         // Register runtime provider (triggers script loading later)
-        BML_Result r = BML::Scripting::RegisterProvider(&services.Interfaces(), "com.bml.scripting");
+        BML_Result r = BML::Scripting::RegisterProvider(&Services().Interfaces(), "com.bml.scripting");
         if (r != BML_RESULT_OK) {
-            services.Log().Error("script", "Failed to register runtime provider: %d",
+            Services().Log().Error("script", "Failed to register runtime provider: %d",
                                  static_cast<int>(r));
             m_EngineService.Reset();
             m_Coroutines.reset();
@@ -119,7 +119,7 @@ public:
         }
 
         // Subscribe to engine events
-        m_Subs = services.CreateSubscriptions();
+        m_Subs = Services().CreateSubscriptions();
         m_Subs.Add(BML_TOPIC_CONSOLE_COMMAND, [this](const bml::imc::Message &msg) {
             OnConsoleCommand(msg);
         });
@@ -138,7 +138,7 @@ public:
             m_Coroutines->Tick();
         });
 
-        services.Log().Info("script", "AngelScript %s runtime ready", asGetLibraryVersion());
+        Services().Log().Info("script", "AngelScript %s runtime ready", asGetLibraryVersion());
         return BML_RESULT_OK;
     }
 

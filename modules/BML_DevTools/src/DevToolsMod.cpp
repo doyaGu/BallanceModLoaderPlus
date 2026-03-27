@@ -274,14 +274,14 @@ class DevToolsMod : public bml::Module {
     }
 
 public:
-    BML_Result OnAttach(bml::ModuleServices &services) override {
+    BML_Result OnAttach() override {
         Services().Locale().Load(nullptr);
-        services.Log().Info("devtools", "DevTools module attached");
+        Services().Log().Info("devtools", "DevTools module attached");
 
         m_DrawReg = bml::ui::RegisterDraw(
             Handle(), "bml.devtools.overlay", 900, OnDraw, this);
 
-        m_Subs = services.CreateSubscriptions();
+        m_Subs = Services().CreateSubscriptions();
         m_Subs.Add(BML_TOPIC_INPUT_KEY_DOWN, [this](const bml::imc::Message &msg) {
             const auto *event = msg.As<BML_KeyDownEvent>();
             if (!event || event->repeat) {

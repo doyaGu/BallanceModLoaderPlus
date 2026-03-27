@@ -96,8 +96,8 @@ public:
         self->m_Visible = self->m_Menu.IsOpen();
     }
 
-    BML_Result OnAttach(bml::ModuleServices &services) override {
-        m_Subs = services.CreateSubscriptions();
+    BML_Result OnAttach() override {
+        m_Subs = Services().CreateSubscriptions();
 
         m_DrawReg = bml::ui::RegisterDraw(Handle(), "bml.modmenu.window", 10, DrawCallback, this);
         if (!m_DrawReg) {

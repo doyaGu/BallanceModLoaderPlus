@@ -19,8 +19,8 @@ class EventLoggerMod : public bml::Module {
     uint32_t m_KeyDownCount = 0;
 
 public:
-    BML_Result OnAttach(bml::ModuleServices &services) override {
-        m_Subs = services.CreateSubscriptions();
+    BML_Result OnAttach() override {
+        m_Subs = Services().CreateSubscriptions();
         Services().Log().Info("=== EventLogger v1.0.0 Starting ===");
 
         m_Subs.Add(BML_TOPIC_ENGINE_INIT, [this](const bml::imc::Message &) {

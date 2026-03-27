@@ -142,8 +142,8 @@ class NewBallTypeModule : public bml::Module {
     }
 
 public:
-    BML_Result OnAttach(bml::ModuleServices &services) override {
-        m_Subs = services.CreateSubscriptions();
+    BML_Result OnAttach() override {
+        m_Subs = Services().CreateSubscriptions();
 
         auto *ctx = bml::virtools::GetCKContext(Services());
         m_Runtime.SetServices(&Services());

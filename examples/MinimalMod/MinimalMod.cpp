@@ -16,8 +16,8 @@ class MinimalMod : public bml::Module {
     bml::imc::SubscriptionManager m_Subs;
 
 public:
-    BML_Result OnAttach(bml::ModuleServices &services) override {
-        m_Subs = services.CreateSubscriptions();
+    BML_Result OnAttach() override {
+        m_Subs = Services().CreateSubscriptions();
 
         auto ver = bml::GetRuntimeVersion(Services().Interfaces().Context);
         Services().Log().Info("API loaded. Runtime version: %u.%u.%u",

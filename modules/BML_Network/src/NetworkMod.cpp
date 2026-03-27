@@ -120,7 +120,7 @@ class NetworkMod : public bml::Module {
     SocketWorker m_SocketWorker;
 
 public:
-    BML_Result OnAttach(bml::ModuleServices &services) override {
+    BML_Result OnAttach() override {
         if (!m_HttpClient.Start()) {
             Services().Log().Error("Failed to initialize WinHTTP session");
             return BML_RESULT_FAIL;
@@ -144,7 +144,7 @@ public:
             return BML_RESULT_FAIL;
         }
 
-        m_Subs = services.CreateSubscriptions();
+        m_Subs = Services().CreateSubscriptions();
         m_Subs.Add(BML_TOPIC_ENGINE_POST_PROCESS, [this](const bml::imc::Message &) {
             m_HttpClient.DrainCompletions();
             m_SocketWorker.DrainEvents();

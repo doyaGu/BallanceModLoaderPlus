@@ -120,8 +120,7 @@ public:
     static std::atomic<int> detach_count;
     static BML_Mod last_handle;
 
-    BML_Result OnAttach(bml::ModuleServices &services) override {
-        (void)services;
+    BML_Result OnAttach() override {
         attach_count.fetch_add(1, std::memory_order_relaxed);
         last_handle = Handle();
         return BML_RESULT_OK;
@@ -148,8 +147,7 @@ public:
     static std::atomic<int> attach_count;
     static std::atomic<int> detach_count;
 
-    BML_Result OnAttach(bml::ModuleServices &services) override {
-        (void)services;
+    BML_Result OnAttach() override {
         attach_count.fetch_add(1, std::memory_order_relaxed);
         return BML_RESULT_FAIL;
     }
@@ -175,8 +173,7 @@ class SubscriberMod : public bml::Module {
 public:
     static std::atomic<int> message_count;
 
-    BML_Result OnAttach(bml::ModuleServices &services) override {
-        (void)services;
+    BML_Result OnAttach() override {
         m_ImcBus = Acquire<BML_ImcBusInterface>(BML_IMC_BUS_INTERFACE_ID, 1);
         if (!m_ImcBus) {
             return BML_RESULT_NOT_FOUND;
@@ -230,8 +227,7 @@ public:
 
     bml::PublishedInterface m_Published;
 
-    BML_Result OnAttach(bml::ModuleServices &services) override {
-        (void)services;
+    BML_Result OnAttach() override {
         m_Published = Publish("test.framework.published", &s_Service, 1, 0, 0, BML_INTERFACE_FLAG_IMMUTABLE);
         return m_Published ? BML_RESULT_OK : BML_RESULT_FAIL;
     }
@@ -241,8 +237,7 @@ class FailingPublishingMod : public bml::Module {
 public:
     bml::PublishedInterface m_Published;
 
-    BML_Result OnAttach(bml::ModuleServices &services) override {
-        (void)services;
+    BML_Result OnAttach() override {
         m_Published = Publish("test.framework.rollback_published",
                               &PublishingMod::s_Service,
                               1,

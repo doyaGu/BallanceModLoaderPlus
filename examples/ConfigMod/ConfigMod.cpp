@@ -23,8 +23,8 @@ class ConfigMod : public bml::Module {
     bool        m_Verbose    = false;
 
 public:
-    BML_Result OnAttach(bml::ModuleServices &services) override {
-        m_Subs = services.CreateSubscriptions();
+    BML_Result OnAttach() override {
+        m_Subs = Services().CreateSubscriptions();
 
         // Read config with typed defaults -- missing keys return the default
         auto cfg = Services().Config();

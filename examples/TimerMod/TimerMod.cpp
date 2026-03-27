@@ -24,13 +24,13 @@ class TimerMod : public bml::Module {
     bml::imc::Topic m_TickTopic;
 
 public:
-    BML_Result OnAttach(bml::ModuleServices &services) override {
-        m_Subs = services.CreateSubscriptions();
+    BML_Result OnAttach() override {
+        m_Subs = Services().CreateSubscriptions();
 
         // Resolve the custom topic for publishing
         m_TickTopic = bml::imc::Topic(
             TOPIC_TIMER_TICK,
-            services.Interfaces().ImcBus,
+            Services().Interfaces().ImcBus,
             Handle());
 
         // Schedule a repeating timer that fires every 1000 ms.

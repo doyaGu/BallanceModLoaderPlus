@@ -289,7 +289,7 @@ const BML_MenuApi g_MenuApi = {
 
 class MenuMod : public bml::Module {
 public:
-    BML_Result OnAttach(bml::ModuleServices &) override {
+    BML_Result OnAttach() override {
         m_MenuApi = Publish(
             BML_MENU_INTERFACE_ID,
             &g_MenuApi,

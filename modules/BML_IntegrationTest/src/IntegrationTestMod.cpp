@@ -255,13 +255,13 @@ class IntegrationTestMod : public bml::Module {
     }
 
 public:
-    BML_Result OnAttach(bml::ModuleServices &services) override {
+    BML_Result OnAttach() override {
         if (BuiltinModuleProbe::IsEnabled()) {
             m_Probe = std::make_unique<BuiltinModuleProbe>(Handle());
             return m_Probe->OnAttach();
         }
 
-        m_Subs = services.CreateSubscriptions();
+        m_Subs = Services().CreateSubscriptions();
         m_StartTime = std::chrono::steady_clock::now();
 
         // ---- Test: api_load ----

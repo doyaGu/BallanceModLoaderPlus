@@ -385,8 +385,8 @@ public:
         self->RenderHud();
     }
 
-    BML_Result OnAttach(bml::ModuleServices &services) override {
-        m_Subs = services.CreateSubscriptions();
+    BML_Result OnAttach() override {
+        m_Subs = Services().CreateSubscriptions();
 
         Services().Locale().Load(nullptr);
 
