@@ -20,7 +20,9 @@
 
 #include "Core/Context.h"
 #include "Core/ImcBus.h"
-#include "Core/ImcBusSharedInternal.h"
+#define private public
+#include "Core/ImcBusInternal.h"
+#undef private
 #include "TestKernel.h"
 #include "TestKernelBuilder.h"
 #include "TestModHelper.h"
@@ -113,6 +115,20 @@ struct CurrentModuleCaptureState {
     std::atomic<uint32_t> call_count{0};
 };
 
+struct DelayedRepublishState {
+    BML_Mod owner{nullptr};
+    BML_TopicId output_topic{BML_TOPIC_ID_INVALID};
+    uint32_t payload{0};
+    uint64_t trigger_timestamp{0};
+};
+
+struct DelayedPublishStateState {
+    BML_Mod owner{nullptr};
+    BML_TopicId retained_topic{BML_TOPIC_ID_INVALID};
+    uint32_t payload{0};
+    uint64_t trigger_timestamp{0};
+};
+
 void BlockingHandler(BML_Context,
                      BML_TopicId,
                      const BML_ImcMessage *,
@@ -149,6 +165,38 @@ void CaptureCurrentModuleHandler(BML_Context,
     state->current_module.store(
         reinterpret_cast<uintptr_t>(Context::GetLifecycleModule()), std::memory_order_release);
     state->call_count.fetch_add(1, std::memory_order_relaxed);
+}
+
+void DelayedRepublishHandler(BML_Context,
+                             BML_TopicId,
+                             const BML_ImcMessage *message,
+                             void *user_data) {
+    auto *state = static_cast<DelayedRepublishState *>(user_data);
+    if (!state) {
+        return;
+    }
+
+    state->trigger_timestamp = message ? message->timestamp : 0;
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    const BML_Result result = ImcPublish(state->owner, state->output_topic,
+                                         &state->payload, sizeof(state->payload));
+    EXPECT_EQ(result, BML_RESULT_OK);
+}
+
+void DelayedPublishStateHandler(BML_Context,
+                                BML_TopicId,
+                                const BML_ImcMessage *message,
+                                void *user_data) {
+    auto *state = static_cast<DelayedPublishStateState *>(user_data);
+    if (!state) {
+        return;
+    }
+
+    state->trigger_timestamp = message ? message->timestamp : 0;
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    BML_ImcMessage msg = BML_IMC_MSG(&state->payload, sizeof(state->payload));
+    const BML_Result result = ImcPublishState(state->owner, state->retained_topic, &msg);
+    EXPECT_EQ(result, BML_RESULT_OK);
 }
 
 BML_Result EchoRpc(BML_Context ctx,
@@ -444,6 +492,74 @@ TEST_F(ImcBusTest, PublishExPreservesExplicitTimestamp) {
     EXPECT_EQ(state.timestamps.front(), kTimestamp);
 
     EXPECT_EQ(BML_RESULT_OK, ImcUnsubscribe(sub));
+}
+
+TEST_F(ImcBusTest, HandlerPublishAssignsTimestampAtPublishTime) {
+    BML_TopicId triggerTopic = BML_TOPIC_ID_INVALID;
+    BML_TopicId outputTopic = BML_TOPIC_ID_INVALID;
+    ASSERT_EQ(BML_RESULT_OK, GetTopicId("timestamp.handler.trigger", &triggerTopic));
+    ASSERT_EQ(BML_RESULT_OK, GetTopicId("timestamp.handler.output", &outputTopic));
+
+    PubSubState outputState;
+    BML_Subscription outputSub = nullptr;
+    ASSERT_EQ(BML_RESULT_OK, Subscribe(outputTopic, CollectingHandler, &outputState, &outputSub));
+
+    DelayedRepublishState republishState;
+    republishState.owner = host_mod_;
+    republishState.output_topic = outputTopic;
+    republishState.payload = 0xABCD1234u;
+
+    BML_Subscription triggerSub = nullptr;
+    ASSERT_EQ(BML_RESULT_OK,
+              Subscribe(triggerTopic, DelayedRepublishHandler, &republishState, &triggerSub));
+
+    const uint32_t triggerPayload = 1;
+    ASSERT_EQ(BML_RESULT_OK, Publish(triggerTopic, &triggerPayload, sizeof(triggerPayload)));
+
+    for (int i = 0; i < 4 && outputState.timestamps.empty(); ++i) {
+        Pump(0);
+    }
+
+    ASSERT_EQ(outputState.timestamps.size(), 1u);
+    ASSERT_NE(republishState.trigger_timestamp, 0u);
+    EXPECT_GE(outputState.timestamps.front() - republishState.trigger_timestamp,
+              10ull * 1000ull * 1000ull);
+
+    EXPECT_EQ(BML_RESULT_OK, ImcUnsubscribe(triggerSub));
+    EXPECT_EQ(BML_RESULT_OK, ImcUnsubscribe(outputSub));
+}
+
+TEST_F(ImcBusTest, HandlerPublishStateAssignsTimestampAtPublishTime) {
+    BML_TopicId triggerTopic = BML_TOPIC_ID_INVALID;
+    BML_TopicId retainedTopic = BML_TOPIC_ID_INVALID;
+    ASSERT_EQ(BML_RESULT_OK, GetTopicId("timestamp.state.trigger", &triggerTopic));
+    ASSERT_EQ(BML_RESULT_OK, GetTopicId("timestamp.state.retained", &retainedTopic));
+
+    DelayedPublishStateState publishState;
+    publishState.owner = host_mod_;
+    publishState.retained_topic = retainedTopic;
+    publishState.payload = 0x42u;
+
+    BML_Subscription triggerSub = nullptr;
+    ASSERT_EQ(BML_RESULT_OK,
+              Subscribe(triggerTopic, DelayedPublishStateHandler, &publishState, &triggerSub));
+
+    const uint32_t triggerPayload = 2;
+    ASSERT_EQ(BML_RESULT_OK, Publish(triggerTopic, &triggerPayload, sizeof(triggerPayload)));
+
+    Pump(0);
+
+    uint32_t retainedPayload = 0;
+    size_t copiedSize = 0;
+    BML_ImcStateMeta meta = BML_IMC_STATE_META_INIT;
+    ASSERT_EQ(BML_RESULT_OK, CopyState(retainedTopic, &retainedPayload, sizeof(retainedPayload),
+                                       &copiedSize, &meta));
+    ASSERT_EQ(copiedSize, sizeof(retainedPayload));
+    EXPECT_EQ(retainedPayload, publishState.payload);
+    ASSERT_NE(publishState.trigger_timestamp, 0u);
+    EXPECT_GE(meta.timestamp - publishState.trigger_timestamp, 10ull * 1000ull * 1000ull);
+
+    EXPECT_EQ(BML_RESULT_OK, ImcUnsubscribe(triggerSub));
 }
 
 TEST_F(ImcBusTest, RetainedStateDeliveryHonorsSubscriptionOptions) {
@@ -1152,33 +1268,6 @@ TEST_F(ImcBusTest, PumpBudgetDistributesLoadAcrossSubscribers) {
 
     EXPECT_EQ(BML_RESULT_OK, ImcUnsubscribe(sub1));
     EXPECT_EQ(BML_RESULT_OK, ImcUnsubscribe(sub2));
-}
-
-TEST(ImcBusSharedInternalTest, FrameTimestampCacheDoesNotLeakAcrossThreads) {
-    constexpr uint64_t kCachedTimestamp = 0x123456789ABCDEF0ull;
-
-    std::atomic<bool> workerReady{false};
-    std::atomic<bool> workerRelease{false};
-
-    std::thread worker([&] {
-        BML::Core::SetFrameTimestampCache(kCachedTimestamp);
-        workerReady.store(true, std::memory_order_release);
-        while (!workerRelease.load(std::memory_order_acquire)) {
-            std::this_thread::yield();
-        }
-        BML::Core::SetFrameTimestampCache(0);
-    });
-
-    while (!workerReady.load(std::memory_order_acquire)) {
-        std::this_thread::yield();
-    }
-
-    const uint64_t observedTimestamp = BML::Core::GetTimestampNs();
-
-    workerRelease.store(true, std::memory_order_release);
-    worker.join();
-
-    EXPECT_NE(observedTimestamp, kCachedTimestamp);
 }
 
 TEST_F(ImcBusTest, PublishingResumesAfterPumpClearsQueue) {

@@ -916,19 +916,16 @@ namespace BML::Core {
     }
 
     void ImcBusImpl::Pump(size_t max_per_sub) {
-        // Cache timestamp for the entire frame to avoid repeated QPC syscalls.
-        SetFrameTimestampCache(GetTimestampNsRaw());
+        const uint64_t pumpTimestampNs = GetTimestampNsRaw();
 
         m_GlobalStats.pump_cycles.fetch_add(1, std::memory_order_relaxed);
-        m_GlobalStats.last_pump_time.store(GetFrameTimestampCache(),
-                                           std::memory_order_relaxed);
+        m_GlobalStats.last_pump_time.store(pumpTimestampNs, std::memory_order_relaxed);
 
         DrainRpcQueue(max_per_sub);
 
         {
             SnapshotGuard guard(m_PublishState.snapshot.load(std::memory_order_acquire));
             if (!guard) {
-                SetFrameTimestampCache(0);
                 return;
             }
 
@@ -956,7 +953,5 @@ namespace BML::Core {
                 RetireOldSnapshots();
             }
         }
-
-        SetFrameTimestampCache(0);
     }
 } // namespace BML::Core
