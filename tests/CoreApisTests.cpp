@@ -342,6 +342,14 @@ void OrderingHandler(BML_Context ctx,
     capture->values.push_back(value);
 }
 
+BML_Result StreamingErrorHandler(BML_Context,
+                                 BML_RpcId,
+                                 const BML_ImcMessage *,
+                                 BML_RpcStream stream,
+                                 void *) {
+    return BML::Core::ImcStreamError(stream, BML_RESULT_FAIL, "stream error");
+}
+
 TEST_F(CoreApisTests, ImcBroadcastPreservesPublishOrderPerSubscriber) {
     auto owner = CreateTrackedMod("coreapis.imc.order");
     ASSERT_NE(owner, nullptr);
@@ -379,6 +387,46 @@ TEST_F(CoreApisTests, ImcBroadcastPreservesPublishOrderPerSubscriber) {
 
     ASSERT_EQ(BML_RESULT_OK, ImcUnsubscribe(sub1));
     ASSERT_EQ(BML_RESULT_OK, ImcUnsubscribe(sub2));
+    Context::SetLifecycleModule(nullptr);
+}
+
+TEST_F(CoreApisTests, ImcCallStreamingRpcExportAllowsNullChunkHandler) {
+    BML::Core::RegisterImcApis(*kernel_->api_registry);
+
+    auto call_streaming_rpc =
+        reinterpret_cast<PFN_BML_ImcCallStreamingRpc>(
+            kernel_->api_registry->Get("bmlImcCallStreamingRpc"));
+    ASSERT_NE(call_streaming_rpc, nullptr);
+
+    auto owner = CreateTrackedMod("coreapis.imc.streaming");
+    ASSERT_NE(owner, nullptr);
+    Context::SetLifecycleModule(owner);
+
+    BML_RpcId rpc_id = BML_RPC_ID_INVALID;
+    ASSERT_EQ(BML_RESULT_OK,
+              ImcGetRpcId(*kernel_, "coreapis.imc.streaming", &rpc_id));
+    ASSERT_EQ(BML_RESULT_OK,
+              ImcRegisterStreamingRpc(owner, rpc_id, StreamingErrorHandler, nullptr));
+
+    BML_Future future = nullptr;
+    EXPECT_EQ(BML_RESULT_OK,
+              call_streaming_rpc(owner, rpc_id, nullptr, nullptr, nullptr,
+                                 nullptr, &future));
+    ASSERT_NE(future, nullptr);
+
+    BML_FutureState state = BML_FUTURE_PENDING;
+    ASSERT_EQ(BML_RESULT_OK, ImcFutureGetState(future, &state));
+    EXPECT_EQ(BML_FUTURE_FAILED, state);
+
+    BML_Result code = BML_RESULT_OK;
+    char message[64] = {};
+    ASSERT_EQ(BML_RESULT_OK,
+              ImcFutureGetError(future, &code, message, sizeof(message), nullptr));
+    EXPECT_EQ(BML_RESULT_FAIL, code);
+    EXPECT_STREQ("stream error", message);
+
+    EXPECT_EQ(BML_RESULT_OK, ImcFutureRelease(future));
+    EXPECT_EQ(BML_RESULT_OK, ImcUnregisterRpc(owner, rpc_id));
     Context::SetLifecycleModule(nullptr);
 }
 
