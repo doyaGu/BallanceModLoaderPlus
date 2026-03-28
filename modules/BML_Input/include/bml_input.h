@@ -28,6 +28,7 @@ typedef struct BML_MouseMoveEvent {
     float rel_x;
     float rel_y;
     bool absolute;
+    uint32_t timestamp;
 } BML_MouseMoveEvent;
 
 #endif // BML_INPUT_H

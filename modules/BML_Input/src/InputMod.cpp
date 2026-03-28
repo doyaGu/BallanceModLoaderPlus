@@ -11,8 +11,11 @@
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_hook_module.hpp"
 #include "bml_imc_topic.hpp"
+#include "bml_input.h"
 #include "bml_input_control.h"
 
+#include <atomic>
+#include <chrono>
 #include <cstring>
 #include <mutex>
 #include <new>
@@ -31,41 +34,16 @@
 
 // ---------------------------------------------------------------------------
 // File-scope services pointer -- set by the module before InitInputHook,
-// cleared after ShutdownInputHook.
+// cleared after ShutdownInputHook.  Atomic for portability (prevents
+// pointer tearing on weakly-ordered architectures); actual access pattern
+// is single-threaded (main thread only).
 // ---------------------------------------------------------------------------
-static const bml::ModuleServices *s_Services = nullptr;
+static std::atomic<const bml::ModuleServices *> s_Services{nullptr};
 
 // ===================================================================
 // Anonymous namespace: hook state, vtable hooks, event publishing
 // ===================================================================
 namespace {
-
-struct KeyDownEvent {
-    uint32_t key_code;
-    uint32_t scan_code;
-    uint32_t timestamp;
-    bool repeat;
-};
-
-struct KeyUpEvent {
-    uint32_t key_code;
-    uint32_t scan_code;
-    uint32_t timestamp;
-};
-
-struct MouseMoveEvent {
-    float x;
-    float y;
-    float rel_x;
-    float rel_y;
-    bool absolute;
-};
-
-struct MouseButtonEvent {
-    uint32_t button;
-    bool down;
-    uint32_t timestamp;
-};
 
 struct InputState {
     bool initialized = false;
@@ -82,6 +60,12 @@ struct InputState {
 };
 
 InputState g_State;
+
+uint32_t GetInputTimestampMs() {
+    using namespace std::chrono;
+    return static_cast<uint32_t>(
+        duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
+}
 
 bool PublishInputMessage(const bml::imc::Topic &topic, const void *data, size_t size) {
     return topic.Publish(data, size);
@@ -290,22 +274,52 @@ void PublishKeyboardEvents(unsigned char *currentState) {
     if (!g_State.topic_key_down || !g_State.topic_key_up || !currentState)
         return;
 
+    const uint32_t timestamp = GetInputTimestampMs();
+
+    // Edge-detected key transitions.  Track which keys were just pressed
+    // this frame so the buffer scan below can distinguish repeats.
+    bool pressedThisFrame[256] = {};
+
     for (int index = 0; index < 256; ++index) {
-        if (currentState[index] && !g_State.last_keyboard_state[index]) {
-            KeyDownEvent event{};
+        const bool isDown = currentState[index] != 0;
+        const bool wasDown = g_State.last_keyboard_state[index] != 0;
+
+        if (isDown && !wasDown) {
+            pressedThisFrame[index] = true;
+            BML_KeyDownEvent event{};
             event.key_code = static_cast<uint32_t>(index);
-            if (PublishInputMessage(g_State.topic_key_down, &event, sizeof(event))) {
-                g_State.last_keyboard_state[index] = currentState[index];
-            }
-        } else if (!currentState[index] && g_State.last_keyboard_state[index]) {
-            KeyUpEvent event{};
+            event.scan_code = static_cast<uint32_t>(index);  // CK uses DIK scan codes as key IDs
+            event.timestamp = timestamp;
+            event.repeat = false;
+            PublishInputMessage(g_State.topic_key_down, &event, sizeof(event));
+        } else if (!isDown && wasDown) {
+            BML_KeyUpEvent event{};
             event.key_code = static_cast<uint32_t>(index);
-            if (PublishInputMessage(g_State.topic_key_up, &event, sizeof(event))) {
-                g_State.last_keyboard_state[index] = currentState[index];
-            }
-        } else {
-            g_State.last_keyboard_state[index] = currentState[index];
+            event.scan_code = static_cast<uint32_t>(index);
+            event.timestamp = timestamp;
+            PublishInputMessage(g_State.topic_key_up, &event, sizeof(event));
         }
+        g_State.last_keyboard_state[index] = currentState[index];
+    }
+
+    // Buffered repeat events (requires EnableKeyboardRepetition).
+    // The buffer contains both initial presses and repeats as KEY_PRESSED.
+    // We skip keys that just transitioned this frame (already emitted above).
+    const int bufferCount = GetNumberOfKeyInBufferOriginal();
+    for (int i = 0; i < bufferCount; ++i) {
+        CKDWORD key = 0;
+        CKDWORD stamp = 0;
+        int result = GetKeyFromBufferOriginal(i, key, &stamp);
+        if (result != KEY_PRESSED || key == 0 || key >= 256)
+            continue;
+        if (pressedThisFrame[key])
+            continue;
+        BML_KeyDownEvent event{};
+        event.key_code = key;
+        event.scan_code = key;
+        event.timestamp = timestamp;
+        event.repeat = true;
+        PublishInputMessage(g_State.topic_key_down, &event, sizeof(event));
     }
 }
 
@@ -313,42 +327,39 @@ void PublishMouseEvents() {
     if (!g_State.topic_mouse_button || !g_State.topic_mouse_move)
         return;
 
+    const uint32_t timestamp = GetInputTimestampMs();
     CKBYTE mouseStates[4] = {};
     GetMouseButtonsStateOriginal(mouseStates);
 
-    for (int button = 0; button < 3; ++button) {
+    for (int button = 0; button < 4; ++button) {
         const bool wasDown = (g_State.last_mouse_buttons[button] == KS_PRESSED) ||
             (g_State.last_mouse_buttons[button] != KS_IDLE && g_State.last_mouse_buttons[button] != KS_RELEASED);
         const bool isDown = (mouseStates[button] == KS_PRESSED) ||
             (mouseStates[button] != KS_IDLE && mouseStates[button] != KS_RELEASED);
 
         if (isDown != wasDown) {
-            MouseButtonEvent event{};
+            BML_MouseButtonEvent event{};
             event.button = static_cast<uint32_t>(button);
             event.down = isDown;
-            if (PublishInputMessage(g_State.topic_mouse_button, &event, sizeof(event))) {
-                g_State.last_mouse_buttons[button] = mouseStates[button];
-            }
-        } else {
-            g_State.last_mouse_buttons[button] = mouseStates[button];
+            event.timestamp = timestamp;
+            PublishInputMessage(g_State.topic_mouse_button, &event, sizeof(event));
         }
+        g_State.last_mouse_buttons[button] = mouseStates[button];
     }
 
     Vx2DVector currentPos{};
     GetMousePositionOriginal(currentPos, FALSE);
     if (currentPos.x != g_State.last_mouse_position.x || currentPos.y != g_State.last_mouse_position.y) {
-        MouseMoveEvent event{};
+        BML_MouseMoveEvent event{};
         event.x = currentPos.x;
         event.y = currentPos.y;
         event.rel_x = currentPos.x - g_State.last_mouse_position.x;
         event.rel_y = currentPos.y - g_State.last_mouse_position.y;
         event.absolute = false;
-        if (PublishInputMessage(g_State.topic_mouse_move, &event, sizeof(event))) {
-            g_State.last_mouse_position = currentPos;
-        }
-    } else {
-        g_State.last_mouse_position = currentPos;
+        event.timestamp = timestamp;
+        PublishInputMessage(g_State.topic_mouse_move, &event, sizeof(event));
     }
+    g_State.last_mouse_position = currentPos;
 }
 
 } // anonymous namespace
@@ -363,17 +374,19 @@ bool InitInputHook(CKInputManager *inputManager) {
         return true;
 
     if (!inputManager) {
-        if (s_Services)
-            s_Services->Log().Error("Cannot initialize input hook: CKInputManager is null");
+        auto *svc = s_Services.load(std::memory_order_acquire);
+        if (svc)
+            svc->Log().Error("Cannot initialize input hook: CKInputManager is null");
         return false;
     }
 
     g_State.input_manager = inputManager;
     utils::LoadVTable<CKInputManagerVTable<CKInputManager>>(g_State.input_manager, g_State.vtable);
 
-    if (s_Services) {
-        auto *imcBus = s_Services->Interfaces().ImcBus;
-        auto owner = s_Services->Handle();
+    auto *svc = s_Services.load(std::memory_order_acquire);
+    if (svc) {
+        auto *imcBus = svc->Interfaces().ImcBus;
+        auto owner = svc->Handle();
         g_State.topic_key_down = bml::imc::Topic(BML_TOPIC_INPUT_KEY_DOWN, imcBus, owner);
         g_State.topic_key_up = bml::imc::Topic(BML_TOPIC_INPUT_KEY_UP, imcBus, owner);
         g_State.topic_mouse_button = bml::imc::Topic(BML_TOPIC_INPUT_MOUSE_BUTTON, imcBus, owner);
@@ -388,8 +401,8 @@ bool InitInputHook(CKInputManager *inputManager) {
     g_State.last_mouse_position = {0.0f, 0.0f};
     g_State.initialized = true;
 
-    if (s_Services)
-        s_Services->Log().Info("Input hooks initialized successfully");
+    if (svc)
+        svc->Log().Info("Input hooks initialized successfully");
     return true;
 }
 
@@ -401,8 +414,9 @@ void ShutdownInputHook() {
         utils::SaveVTable<CKInputManagerVTable<CKInputManager>>(g_State.input_manager, g_State.vtable);
     }
 
-    if (s_Services)
-        s_Services->Log().Info("Input hooks shutdown");
+    auto *svc = s_Services.load(std::memory_order_acquire);
+    if (svc)
+        svc->Log().Info("Input hooks shutdown");
     g_State = {};
 }
 
@@ -599,6 +613,8 @@ struct BML_InputCaptureToken_T {
 
 namespace {
 class InputCaptureCoordinator {
+    static constexpr size_t kMaxCaptures = 64;
+
 public:
     void SetMainThread(std::thread::id thread_id) {
         std::lock_guard<std::mutex> lock(m_Mutex);
@@ -607,6 +623,9 @@ public:
 
     void Reset() {
         std::lock_guard<std::mutex> lock(m_Mutex);
+        for (auto &[id, record] : m_Captures) {
+            delete record.token;
+        }
         m_Captures.clear();
         m_NextTokenId = 1;
         ApplyStateLocked(0u, -1);
@@ -621,23 +640,27 @@ public:
             return thread_result;
         }
 
+        // Lock before allocation so kMaxCaptures check is atomic with insert.
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        if (m_Captures.size() >= kMaxCaptures) {
+            return BML_RESULT_WOULD_BLOCK;
+        }
+
         auto *token = new (std::nothrow) BML_InputCaptureToken_T{};
         if (!token) {
             return BML_RESULT_OUT_OF_MEMORY;
         }
 
-        {
-            std::lock_guard<std::mutex> lock(m_Mutex);
-            token->id = m_NextTokenId++;
-            m_Captures.emplace(token->id, CaptureRecord{
-                token->id,
-                m_NextSequence++,
-                desc->flags,
-                desc->cursor_visible,
-                desc->priority
-            });
-            RecomputeLocked();
-        }
+        token->id = m_NextTokenId++;
+        m_Captures.emplace(token->id, CaptureRecord{
+            token->id,
+            m_NextSequence++,
+            desc->flags,
+            desc->cursor_visible,
+            desc->priority,
+            token
+        });
+        RecomputeLocked();
 
         *out_token = reinterpret_cast<BML_InputCaptureToken>(token);
         return BML_RESULT_OK;
@@ -707,6 +730,7 @@ private:
         uint32_t flags{0};
         int cursor_visible{-1};
         int32_t priority{0};
+        BML_InputCaptureToken_T *token{nullptr};  // Owning. Deleted by Release() after erase, or by Reset() in bulk.
     };
 
     BML_Result CheckThread() const {
@@ -836,13 +860,13 @@ class InputMod : public bml::HookModule {
             Services().Log().Warn("CKInputManager not available yet - retrying next Engine/Init");
             return false;
         }
-        s_Services = &Services();
+        s_Services.store(&Services(), std::memory_order_release);
         return BML_Input::InitInputHook(im);
     }
 
     void ShutdownHook() override {
         BML_Input::ShutdownInputHook();
-        s_Services = nullptr;
+        s_Services.store(nullptr, std::memory_order_release);
     }
 
     BML_Result OnModuleAttach() override {
