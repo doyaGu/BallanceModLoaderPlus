@@ -415,7 +415,12 @@ namespace BML::Core {
             out_info->total_latency_ns =
                 it->second.stats->total_latency_ns.load(std::memory_order_relaxed);
         } else {
-            out_info->has_handler = BML_FALSE;
+            auto streaming_it = m_RpcState.streaming_rpc_handlers.find(rpc_id);
+            out_info->has_handler =
+                (streaming_it != m_RpcState.streaming_rpc_handlers.end() &&
+                 streaming_it->second.handler)
+                ? BML_TRUE
+                : BML_FALSE;
         }
         return BML_RESULT_OK;
     }

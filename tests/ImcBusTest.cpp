@@ -245,6 +245,14 @@ BML_Result CaptureCurrentModuleRpc(BML_Context,
     return BML_RESULT_OK;
 }
 
+BML_Result NoopStreamingRpc(BML_Context,
+                            BML_RpcId,
+                            const BML_ImcMessage *,
+                            BML_RpcStream,
+                            void *) {
+    return BML_RESULT_OK;
+}
+
 void CaptureCurrentModuleFutureCallback(BML_Context,
                                         BML_Future,
                                         void *user_data) {
@@ -1372,6 +1380,22 @@ TEST_F(ImcBusTest, FutureAwaitRejectsMainThreadButWorkerThreadCanWait) {
 
     EXPECT_EQ(BML_RESULT_OK, ImcFutureRelease(future));
     EXPECT_EQ(BML_RESULT_OK, UnregisterRpc(rpc));
+}
+
+TEST_F(ImcBusTest, GetRpcInfoReportsRegisteredStreamingHandler) {
+    BML_RpcId rpc = BML_RPC_ID_INVALID;
+    ASSERT_EQ(BML_RESULT_OK, GetRpcId("streaming.rpc.info", &rpc));
+
+    ASSERT_EQ(BML_RESULT_OK,
+              ImcRegisterStreamingRpc(host_mod_, rpc, NoopStreamingRpc, nullptr));
+
+    BML_RpcInfo info = BML_RPC_INFO_INIT;
+    ASSERT_EQ(BML_RESULT_OK, GetRpcInfo(rpc, &info));
+    EXPECT_EQ(info.rpc_id, rpc);
+    EXPECT_EQ(info.has_handler, BML_TRUE);
+    EXPECT_STREQ(info.name, "streaming.rpc.info");
+
+    EXPECT_EQ(BML_RESULT_OK, ImcUnregisterRpc(host_mod_, rpc));
 }
 
 // ========================================================================
