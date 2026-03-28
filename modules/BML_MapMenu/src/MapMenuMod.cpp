@@ -624,7 +624,11 @@ public:
             }
         });
 
-        if (!subscriptionsOk) return BML_RESULT_FAIL;
+        if (!subscriptionsOk) {
+            m_InputCaptureService.Reset();
+            m_DrawReg.Reset();
+            return BML_RESULT_FAIL;
+        }
 
         m_ConsoleRegistry = Services().Acquire<BML_ConsoleCommandRegistry>();
         if (m_ConsoleRegistry) {

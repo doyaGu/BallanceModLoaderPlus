@@ -159,7 +159,13 @@ public:
             MenuRuntime::OnKeyDown(event->key_code);
         });
 
-        return subscriptionsOk ? BML_RESULT_OK : BML_RESULT_FAIL;
+        if (!subscriptionsOk) {
+            MenuRuntime::SetInputService(nullptr);
+            m_InputCaptureService.Reset();
+            m_DrawReg.Reset();
+            return BML_RESULT_FAIL;
+        }
+        return BML_RESULT_OK;
     }
 
     BML_Result OnPrepareDetach() override {
