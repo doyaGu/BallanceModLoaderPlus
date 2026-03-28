@@ -6,11 +6,13 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <thread>
 
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_loader.h"
@@ -22,8 +24,11 @@
 #include "bml_interface.h"
 
 #include "Core/ModHandle.h"
+#include "Core/Microkernel.h"
 
 namespace {
+    using namespace std::chrono_literals;
+
     std::string ReadFileUtf8(const std::filesystem::path &path) {
         std::ifstream stream(path, std::ios::binary);
         if (!stream.is_open()) {
@@ -104,6 +109,13 @@ namespace {
         }
         state->call_count.fetch_add(1, std::memory_order_relaxed);
     }
+
+    struct RuntimeMirror {
+        std::unique_ptr<BML::Core::RuntimeState, void (*)(BML::Core::RuntimeState *)> state;
+        std::wstring mods_dir;
+        bool live{false};
+        std::atomic<uint32_t> active_calls{0};
+    };
 } // namespace
 
 TEST_F(BMLIntegrationTest, RuntimeExposesServices) {
@@ -130,6 +142,27 @@ TEST_F(BMLIntegrationTest, ServiceBundlesAreStablePerRuntime) {
     EXPECT_NE(m_Services->ImcBus, otherServices->ImcBus);
 
     bmlRuntimeDestroy(otherRuntime);
+}
+
+TEST_F(BMLIntegrationTest, RuntimeDestroyWaitsForOutstandingActiveCalls) {
+    auto *runtime = reinterpret_cast<RuntimeMirror *>(m_Runtime);
+    ASSERT_NE(runtime, nullptr);
+
+    runtime->active_calls.fetch_add(1, std::memory_order_acq_rel);
+
+    std::atomic<bool> destroy_finished{false};
+    std::thread destroyer([&] {
+        bmlRuntimeDestroy(m_Runtime);
+        destroy_finished.store(true, std::memory_order_release);
+    });
+
+    std::this_thread::sleep_for(10500ms);
+    EXPECT_FALSE(destroy_finished.load(std::memory_order_acquire));
+
+    runtime->active_calls.fetch_sub(1, std::memory_order_acq_rel);
+    destroyer.join();
+    m_Runtime = nullptr;
+    m_Services = nullptr;
 }
 
 TEST_F(BMLIntegrationTest, BootstrapLoaderStillLoadsHostBootstrapMinimum) {

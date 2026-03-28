@@ -114,7 +114,9 @@ namespace {
     }
 
     void WaitForRuntimeCallsToDrain(BML_Runtime runtime) {
-        while (runtime && runtime->active_calls.load(std::memory_order_acquire) != 0) {
+        if (!runtime || runtime->active_calls.load(std::memory_order_acquire) == 0)
+            return;
+        while (runtime->active_calls.load(std::memory_order_acquire) != 0) {
             std::this_thread::yield();
         }
     }
