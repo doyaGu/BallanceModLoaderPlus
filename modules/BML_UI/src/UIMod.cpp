@@ -48,6 +48,7 @@
 namespace {
 constexpr bool kShowOverlayDebugMarker = false; // visual debug marker
 constexpr bool kSubmitOnPostRender = true;       // production render path toggle
+constexpr float kReferenceHeight = 1200.0f;      // DPI scaling baseline (pixels)
 
 std::string BuildFontPath(const std::string &loaderDirUtf8, const char *filename) {
     if (!filename || filename[0] == '\0') {
@@ -119,7 +120,7 @@ struct UIDrawContribution {
     BML_InterfaceRegistration registration{nullptr};
     std::string id;
     int32_t priority{0};
-    uint32_t order{0};
+    uint64_t order{0};
     PFN_BML_UIDrawCallback callback{nullptr};
     void *user_data{nullptr};
 };
@@ -158,7 +159,8 @@ class UIMod : public bml::Module {
     std::string m_ProviderId;
     std::mutex m_DrawMutex;
     std::vector<UIDrawContribution> m_Contributions;
-    uint32_t m_NextDrawOrder = 1;
+    std::vector<UIDrawContribution> m_SortedSnapshot;  // cached; rebuilt when dirty
+    uint64_t m_NextDrawOrder = 1;
     bool m_DrawOrderDirty = false;
     DWORD m_UiThreadId = 0;
     bml::InterfaceLease<BML_HostRuntimeInterface> m_HostRuntime;
@@ -257,7 +259,9 @@ class UIMod : public bml::Module {
     }
 
     void BeginFrame() {
-        if (!m_RendererReady || m_FrameActive) {
+        if (!m_RendererReady) return;
+        if (m_FrameActive) {
+            Services().Log().Warn("BeginFrame called while frame already active");
             return;
         }
         m_RenderDataReady = false;
@@ -352,7 +356,11 @@ class UIMod : public bml::Module {
 
         m_ImGuiIniFilename = (std::filesystem::path(m_LoaderDirUtf8) / "ImGui.ini").string();
         m_ImGuiLogFilename = (std::filesystem::path(m_LoaderDirUtf8) / "ImGui.log").string();
-        io.LogFilename = m_ImGuiLogFilename.c_str();
+        // ImGui stores the raw pointer but never frees LogFilename (default is
+        // a string literal).  We use ImStrdup so the pointer survives any
+        // std::string reallocation.  One-shot: EnsureGuiResourcesReady is
+        // guarded by m_GuiResourcesReady and only runs once per context.
+        io.LogFilename = ImStrdup(m_ImGuiLogFilename.c_str());
 
         if (m_EnableIniSettings && utils::FileExistsUtf8(m_ImGuiIniFilename)) {
             ImGui::LoadIniSettingsFromDisk(m_ImGuiIniFilename.c_str());
@@ -363,7 +371,7 @@ class UIMod : public bml::Module {
             if (auto *root = m_RenderContext->Get2dRoot(TRUE)) {
                 root->GetRect(windowRect);
                 if (windowRect.GetHeight() > 0) {
-                    ImGui::GetStyle().FontScaleMain = static_cast<float>(windowRect.GetHeight()) / 1200.0f;
+                    ImGui::GetStyle().FontScaleMain = static_cast<float>(windowRect.GetHeight()) / kReferenceHeight;
                 }
             }
         }
@@ -397,7 +405,7 @@ class UIMod : public bml::Module {
 
     void OnResize() {
         if (m_WindowRect.GetHeight() > 0) {
-            ImGui::GetStyle().FontScaleMain = static_cast<float>(m_WindowRect.GetHeight()) / 1200.0f;
+            ImGui::GetStyle().FontScaleMain = static_cast<float>(m_WindowRect.GetHeight()) / kReferenceHeight;
         }
     }
 
@@ -665,27 +673,31 @@ public:
             return BML_RESULT_NOT_SUPPORTED;
         }
 
-        std::lock_guard<std::mutex> lock(m_DrawMutex);
-        auto it = std::find_if(m_Contributions.begin(), m_Contributions.end(),
-                               [registration](const UIDrawContribution &entry) {
-                                   return entry.registration == registration;
-                               });
-        if (it == m_Contributions.end()) {
-            return BML_RESULT_NOT_FOUND;
-        }
-
+        // Unregister from host first; only erase from our list on success.
         BML_Result unregister_result = m_HostRuntime->UnregisterContribution(registration);
         if (unregister_result != BML_RESULT_OK) {
             return unregister_result;
         }
 
-        m_Contributions.erase(it);
-        m_DrawOrderDirty = true;
+        std::lock_guard<std::mutex> lock(m_DrawMutex);
+        auto it = std::find_if(m_Contributions.begin(), m_Contributions.end(),
+                               [registration](const UIDrawContribution &entry) {
+                                   return entry.registration == registration;
+                               });
+        if (it != m_Contributions.end()) {
+            m_Contributions.erase(it);
+            m_DrawOrderDirty = true;
+        } else {
+            Services().Log().Warn("UnregisterDrawContribution: host accepted but entry not in local list");
+        }
         return BML_RESULT_OK;
     }
 
     void ExecuteDrawContributions() {
-        std::vector<UIDrawContribution> snapshot;
+        // m_SortedSnapshot is read outside the lock below.  This is safe because
+        // all callers (Register, Unregister, Execute) are main-thread-only.
+        assert(GetCurrentThreadId() == m_UiThreadId);
+
         {
             std::lock_guard<std::mutex> lock(m_DrawMutex);
             if (m_DrawOrderDirty) {
@@ -697,14 +709,16 @@ public:
                         return lhs.order < rhs.order;
                     });
                 m_DrawOrderDirty = false;
+                m_SortedSnapshot = m_Contributions;
+            } else if (m_SortedSnapshot.size() != m_Contributions.size()) {
+                m_SortedSnapshot = m_Contributions;
             }
-            snapshot = m_Contributions;
         }
 
         BML_UIDrawContext ctx = BML_UI_DRAW_CONTEXT_INIT;
         ctx.imgui = &g_ImGuiApi;
 
-        for (const auto &entry : snapshot) {
+        for (const auto &entry : m_SortedSnapshot) {
             if (entry.callback) {
                 entry.callback(&ctx, entry.user_data);
             }
@@ -858,6 +872,7 @@ public:
         {
             std::lock_guard<std::mutex> lock(m_DrawMutex);
             m_Contributions.clear();
+            m_SortedSnapshot.clear();
             m_NextDrawOrder = 1;
             m_DrawOrderDirty = false;
         }

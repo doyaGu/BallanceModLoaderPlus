@@ -41,7 +41,13 @@ static LRESULT OnWndProcA(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (msg == WM_IME_COMPOSITION) {
         if (lParam & GCS_RESULTSTR) {
             HIMC hIMC = ImmGetContext(hWnd);
-            LONG len = ImmGetCompositionStringW(hIMC, GCS_RESULTSTR, nullptr, 0) / (LONG) sizeof(WCHAR);
+            LONG byteLen = ImmGetCompositionStringW(hIMC, GCS_RESULTSTR, nullptr, 0);
+            if (byteLen <= 0 || byteLen > 0x10000) {
+                ImmReleaseContext(hWnd, hIMC);
+                ImGui::SetCurrentContext(prev);
+                return 1;
+            }
+            LONG len = byteLen / (LONG) sizeof(WCHAR);
 
             // Use stack buffer for typical IME strings, heap fallback for long ones
             constexpr LONG kStackBufSize = 64;
