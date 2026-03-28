@@ -218,20 +218,54 @@ namespace BML::Core {
             m_PublishState.subscriptions.clear();
         }
 
-        for (auto &sub : m_PublishState.retired_subscriptions) {
-            sub->closed.store(true, std::memory_order_release);
-            while (sub->ref_count.load(std::memory_order_acquire) != 0) {
-                std::this_thread::yield();
+        {
+            using namespace std::chrono;
+            constexpr auto kWarnAfter    = seconds(2);
+            constexpr auto kWarnInterval = seconds(2);
+            constexpr auto kPollInterval = milliseconds(1);
+
+            const auto drain_start = steady_clock::now();
+            auto next_warn = drain_start + kWarnAfter;
+            for (auto &sub : m_PublishState.retired_subscriptions) {
+                sub->closed.store(true, std::memory_order_release);
+                while (sub->ref_count.load(std::memory_order_acquire) != 0) {
+                    const auto now = steady_clock::now();
+                    if (now >= next_warn) {
+                        CoreLog(BML_LOG_WARN, kImcLogCategory,
+                            "Shutdown: draining sub ref_count (%u), %lld ms elapsed",
+                            sub->ref_count.load(std::memory_order_acquire),
+                            static_cast<long long>(duration_cast<milliseconds>(now - drain_start).count()));
+                        next_warn = now + kWarnInterval;
+                    }
+                    std::this_thread::sleep_for(kPollInterval);
+                }
+                DropPendingMessages(sub.get());
             }
-            DropPendingMessages(sub.get());
         }
         m_PublishState.retired_subscriptions.clear();
 
-        for (auto *snapshot : m_PublishState.retired_snapshots) {
-            while (snapshot->ref_count.load(std::memory_order_acquire) != 0) {
-                std::this_thread::yield();
+        {
+            using namespace std::chrono;
+            constexpr auto kWarnAfter    = seconds(2);
+            constexpr auto kWarnInterval = seconds(2);
+            constexpr auto kPollInterval = milliseconds(1);
+
+            const auto drain_start = steady_clock::now();
+            auto next_warn = drain_start + kWarnAfter;
+            for (auto *snapshot : m_PublishState.retired_snapshots) {
+                while (snapshot->ref_count.load(std::memory_order_acquire) != 0) {
+                    const auto now = steady_clock::now();
+                    if (now >= next_warn) {
+                        CoreLog(BML_LOG_WARN, kImcLogCategory,
+                            "Shutdown: draining snapshot ref_count (%u), %lld ms elapsed",
+                            snapshot->ref_count.load(std::memory_order_acquire),
+                            static_cast<long long>(duration_cast<milliseconds>(now - drain_start).count()));
+                        next_warn = now + kWarnInterval;
+                    }
+                    std::this_thread::sleep_for(kPollInterval);
+                }
+                delete snapshot;
             }
-            delete snapshot;
         }
         m_PublishState.retired_snapshots.clear();
 

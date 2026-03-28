@@ -1173,6 +1173,48 @@ TEST(ImcBusLifetimeTest, KernelDestructionCompletesPendingFutureBeforeContextDes
               static_cast<uintptr_t>(0));
 }
 
+TEST(ImcBusLifetimeTest, ShutdownWaitsForRetiredSubscriptionRefsToDrain) {
+    ImcBusImpl bus;
+
+    auto sub = std::make_unique<BML_Subscription_T>();
+    auto *raw_sub = sub.get();
+    raw_sub->closed.store(true, std::memory_order_release);
+    raw_sub->ref_count.store(1, std::memory_order_release);
+    bus.m_PublishState.retired_subscriptions.push_back(std::move(sub));
+
+    std::atomic<bool> shutdown_finished{false};
+    std::thread shutdown_thread([&] {
+        bus.Shutdown();
+        shutdown_finished.store(true, std::memory_order_release);
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(5200));
+    EXPECT_FALSE(shutdown_finished.load(std::memory_order_acquire));
+
+    raw_sub->ref_count.store(0, std::memory_order_release);
+    shutdown_thread.join();
+}
+
+TEST(ImcBusLifetimeTest, ShutdownWaitsForRetiredSnapshotRefsToDrain) {
+    ImcBusImpl bus;
+
+    auto *snapshot = new TopicSnapshot();
+    snapshot->ref_count.store(1, std::memory_order_release);
+    bus.m_PublishState.retired_snapshots.push_back(snapshot);
+
+    std::atomic<bool> shutdown_finished{false};
+    std::thread shutdown_thread([&] {
+        bus.Shutdown();
+        shutdown_finished.store(true, std::memory_order_release);
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(5200));
+    EXPECT_FALSE(shutdown_finished.load(std::memory_order_acquire));
+
+    snapshot->ref_count.store(0, std::memory_order_release);
+    shutdown_thread.join();
+}
+
 // ========================================================================
 // Edge Cases
 // ========================================================================
