@@ -5,7 +5,7 @@
 #include <utility>
 
 static constexpr char kMagic[4] = {'B', 'M', 'L', 'R'};
-static constexpr uint32_t kFormatVersion = 1;
+static constexpr uint32_t kFormatVersion = 2;
 
 // Pack BML version as (major << 16) | (minor << 8) | patch
 static uint32_t PackBmlVersion() {

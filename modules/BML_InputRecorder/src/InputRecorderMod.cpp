@@ -77,6 +77,7 @@ EventRecord MakeMouseMoveEvent(const BML_MouseMoveEvent &e) {
     r.mouse_move.rel_x = e.rel_x;
     r.mouse_move.rel_y = e.rel_y;
     r.mouse_move.absolute = e.absolute ? 1 : 0;
+    r.mouse_move.timestamp = e.timestamp;
     return r;
 }
 
@@ -125,6 +126,7 @@ class InputRecorderMod : public bml::Module {
                 e.rel_x = event.mouse_move.rel_x;
                 e.rel_y = event.mouse_move.rel_y;
                 e.absolute = event.mouse_move.absolute != 0;
+                e.timestamp = event.mouse_move.timestamp;
                 bml::imc::publish(Handle(), BML_TOPIC_INPUT_MOUSE_MOVE, e);
                 break;
             }
@@ -173,7 +175,7 @@ class InputRecorderMod : public bml::Module {
             }
 
             fs::create_directories(self->m_RecordingsDir);
-            std::string fullPath = self->m_RecordingsDir + "\\" + filename;
+            std::string fullPath = (fs::path(self->m_RecordingsDir) / filename).string();
 
             if (self->m_Engine.StartRecording(fullPath, 0)) {
                 char buf[256];
@@ -247,7 +249,7 @@ class InputRecorderMod : public bml::Module {
             if (!filename.ends_with(".bmlr"))
                 filename += ".bmlr";
 
-            std::string fullPath = self->m_RecordingsDir + "\\" + filename;
+            std::string fullPath = (fs::path(self->m_RecordingsDir) / filename).string();
             if (self->m_Engine.StartPlayback(fullPath)) {
                 self->AcquireInputCapture();
                 char buf[256];
@@ -399,7 +401,8 @@ public:
             }
         });
 
-        if (m_Subs.Count() < 6) {
+        constexpr size_t kExpectedSubscriptions = 6;  // 4 input + postprocess + level-exit
+        if (m_Subs.Count() < kExpectedSubscriptions) {
             Services().Log().Error("Failed to subscribe to required topics");
             return BML_RESULT_FAIL;
         }

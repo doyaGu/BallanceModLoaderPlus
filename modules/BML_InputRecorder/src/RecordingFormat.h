@@ -56,6 +56,7 @@ struct RecordedMouseMove {
     float rel_x;
     float rel_y;
     uint8_t absolute;
+    uint32_t timestamp;
 };
 
 #pragma pack(pop)

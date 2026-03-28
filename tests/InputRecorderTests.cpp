@@ -87,7 +87,7 @@ TEST(RecordingFormat, WriteAndReadHeader) {
 
     const auto &h = reader.Header();
     EXPECT_EQ(std::memcmp(h.magic, "BMLR", 4), 0);
-    EXPECT_EQ(h.format_version, 1u);
+    EXPECT_EQ(h.format_version, 2u);
     EXPECT_EQ(h.level_id, 42u);
     EXPECT_EQ(h.total_frames, 0u);
 }
