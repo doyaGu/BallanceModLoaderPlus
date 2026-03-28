@@ -39,8 +39,8 @@ namespace BML::Core {
     // Defined here (not KernelServices.cpp) so that test targets linking
     // KernelServices.cpp don't pull in L0 subsystem destructors.
     KernelServices::~KernelServices() {
-        // Keep Context alive until the IMC bus has finished draining queued work and
-        // notifying shutdown callbacks that still expect a valid BML_Context.
+        // Explicit destruction order -- reverse of construction in InitializeCore().
+        // IMC bus drains first while Context is still alive; then L3 -> L2 -> L1 -> L0.
         imc_bus.reset();
         context.reset();
         interface_registry.reset();
