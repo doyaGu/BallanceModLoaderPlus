@@ -141,6 +141,17 @@ TEST_F(ContextLifecycleTests, CleanupRunsShutdownHooksWithoutHoldingStateMutex) 
     EXPECT_TRUE(state.resolved.load(std::memory_order_acquire));
 }
 
+TEST_F(ContextLifecycleTests, CleanupMarksContextHandleDead) {
+    auto &ctx = *kernel_->context;
+    BML_Context handle = ctx.GetHandle();
+    ASSERT_NE(handle, nullptr);
+
+    ctx.Cleanup(*kernel_);
+
+    EXPECT_EQ(Context::FromHandle(handle), nullptr);
+    EXPECT_EQ(Context::KernelFromHandle(handle), nullptr);
+}
+
 TEST_F(ContextLifecycleTests, CurrentModuleIsThreadLocalPerThread) {
     auto primary = std::make_unique<BML_Mod_T>();
     primary->id = "context.primary";
