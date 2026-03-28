@@ -771,7 +771,7 @@ namespace BML::Core {
             BML_Result pub_result = PublishEx(resolved_owner, topic, msg);
             if (pub_result != BML_RESULT_OK && pub_result != BML_RESULT_NOT_FOUND) {
                 if (out_result) {
-                    *out_result = final_result;
+                    *out_result = BML_EVENT_CONTINUE;
                 }
                 return pub_result;
             }
