@@ -1,6 +1,13 @@
 #ifndef CK_SCRIPTNATIVEPOINTER_H
 #define CK_SCRIPTNATIVEPOINTER_H
 
+/**
+ * WARNING: NativePointer provides UNRESTRICTED access to process memory.
+ * Scripts using this type can read/write ANY address. This is intentional
+ * for advanced modding scenarios but means scripts must be FULLY TRUSTED.
+ * Do not load scripts from untrusted sources when NativePointer is available.
+ */
+
 #include <cstdint>
 #include <string>
 

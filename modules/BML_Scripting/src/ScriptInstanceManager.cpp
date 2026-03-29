@@ -60,6 +60,12 @@ void ScriptInstanceManager::ReleaseContext(asIScriptContext *ctx) {
 
     ctx->ClearLineCallback();
     ctx->Unprepare();
+
+    constexpr size_t kMaxPoolSize = 16;
+    if (m_ContextPool.size() >= kMaxPoolSize) {
+        ctx->Release();
+        return;
+    }
     m_ContextPool.push_back(ctx);
 }
 
