@@ -72,13 +72,21 @@ class PhysicsMod : public bml::HookModule {
                 m_IpionManager, &PostProcessThunk::Hook, kPostProcessSlot);
         }
 
+        if (!m_IpionManager) {
+            Services().Log().Warn("CKIpionManager not found — physics hooks unavailable");
+            return false;
+        }
+
         // Hook Physicalize BB
         CKBehaviorPrototype *proto = CKGetPrototypeFromGuid(PHYSICS_RT_PHYSICALIZE);
-        if (proto) {
-            if (!m_OriginalPhysicalize)
-                m_OriginalPhysicalize = proto->GetFunction();
-            proto->SetFunction(&PhysicalizeCallback);
+        if (!proto) {
+            Services().Log().Warn("Physicalize prototype not found — physics hooks unavailable");
+            return false;
         }
+
+        if (!m_OriginalPhysicalize)
+            m_OriginalPhysicalize = proto->GetFunction();
+        proto->SetFunction(&PhysicalizeCallback);
 
         return true;
     }
