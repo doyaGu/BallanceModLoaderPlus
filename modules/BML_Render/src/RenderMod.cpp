@@ -42,9 +42,9 @@ class RenderMod : public bml::HookModule {
 
         auto addrs = BML_Render::GetHookAddresses();
         if (addrs.render)
-            RegisterHook("CKRenderContext::Render", addrs.render);
+            RegisterHook("CKRenderContext::Render", addrs.render, BML_HOOK_TYPE_VTABLE);
         if (addrs.updateProjection)
-            RegisterHook("CKRenderContext::UpdateProjection", addrs.updateProjection);
+            RegisterHook("CKRenderContext::UpdateProjection", addrs.updateProjection, BML_HOOK_TYPE_INLINE);
 
         m_Cfg.Refresh(Services().Config());
         ApplyConfig();

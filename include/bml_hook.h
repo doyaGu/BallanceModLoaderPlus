@@ -40,6 +40,16 @@ BML_BEGIN_CDECLS
 #define BML_HOOK_FLAG_CONFLICT 0x00000001u
 
 /* ========================================================================
+ * Hook Types
+ * ======================================================================== */
+
+#define BML_HOOK_TYPE_UNKNOWN    0  /**< Unspecified hook mechanism */
+#define BML_HOOK_TYPE_VTABLE     1  /**< VTable slot replacement */
+#define BML_HOOK_TYPE_INLINE     2  /**< MinHook inline patch */
+#define BML_HOOK_TYPE_WIN32_API  3  /**< Win32 API hook (MH_CreateHookApi) */
+#define BML_HOOK_TYPE_BEHAVIOR   4  /**< CK Behavior function replacement */
+
+/* ========================================================================
  * Hook Descriptor
  * ======================================================================== */
 
@@ -52,10 +62,11 @@ typedef struct BML_HookDesc {
     void *target_address;       /**< Actual hooked address */
     int32_t priority;           /**< Lower = runs first in chain */
     uint32_t flags;             /**< BML_HOOK_FLAG_* (conflict flag set on output) */
+    uint32_t hook_type;         /**< BML_HOOK_TYPE_* mechanism identifier */
 } BML_HookDesc;
 
 /** @brief Static initializer for BML_HookDesc */
-#define BML_HOOK_DESC_INIT { sizeof(BML_HookDesc), NULL, NULL, 0, 0 }
+#define BML_HOOK_DESC_INIT { sizeof(BML_HookDesc), NULL, NULL, 0, 0, 0 }
 
 /* ========================================================================
  * Callback Types

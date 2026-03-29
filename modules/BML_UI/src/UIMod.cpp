@@ -37,6 +37,7 @@
 #include "PathUtils.h"
 #include "StringUtils.h"
 #include <MinHook.h>
+#include "bml_hook.hpp"
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
@@ -182,6 +183,7 @@ class UIMod : public bml::Module {
     bml::InterfaceLease<BML_HostRuntimeInterface> m_HostRuntime;
     bml::PublishedInterface m_DrawRegistryInterface;
     bml::PublishedInterface m_ImGuiInterface;
+    std::vector<bml::HookRegistration> m_Win32HookRegs;
 
     // =========================================================================
     // ImGui context scope helpers
@@ -774,6 +776,16 @@ public:
             return BML_RESULT_INTERNAL_ERROR;
         }
 
+        {
+            auto hooks = Services().Hooks();
+            if (hooks) {
+                m_Win32HookRegs.push_back(hooks.Register("user32::PeekMessageA", (void *)&PeekMessageA, 0, BML_HOOK_TYPE_WIN32_API));
+                m_Win32HookRegs.push_back(hooks.Register("user32::GetMessageA", (void *)&GetMessageA, 0, BML_HOOK_TYPE_WIN32_API));
+                m_Win32HookRegs.push_back(hooks.Register("user32::PeekMessageW", (void *)&PeekMessageW, 0, BML_HOOK_TYPE_WIN32_API));
+                m_Win32HookRegs.push_back(hooks.Register("user32::GetMessageW", (void *)&GetMessageW, 0, BML_HOOK_TYPE_WIN32_API));
+            }
+        }
+
         m_DrawRegistryInterface = Publish(
             BML_UI_DRAW_REGISTRY_INTERFACE_ID,
             &g_DrawRegistry,
@@ -885,6 +897,7 @@ public:
             DestroyAllUiState();
         }
 
+        m_Win32HookRegs.clear();
         bml_ui::UninstallWin32Hooks();
         MH_Uninitialize();
         (void) m_ImGuiInterface.Reset();

@@ -19,6 +19,7 @@ namespace BML::Core {
             void *target_address = nullptr;
             int32_t priority = 0;
             uint32_t flags = 0;
+            uint32_t hook_type = 0;
         };
     } // namespace
 
@@ -51,6 +52,7 @@ namespace BML::Core {
                 existing.target_name = desc->target_name ? desc->target_name : "";
                 existing.priority = desc->priority;
                 existing.flags = desc->flags;
+                existing.hook_type = desc->hook_type;
                 return BML_RESULT_OK;
             }
         }
@@ -75,6 +77,7 @@ namespace BML::Core {
         entry.target_address = desc->target_address;
         entry.priority = desc->priority;
         entry.flags = desc->flags | (conflict ? BML_HOOK_FLAG_CONFLICT : 0u);
+        entry.hook_type = desc->hook_type;
         vec.push_back(std::move(entry));
 
         CoreLog(BML_LOG_DEBUG, kLogCategory,
@@ -143,6 +146,7 @@ namespace BML::Core {
                 desc.target_address = entry.target_address;
                 desc.priority = entry.priority;
                 desc.flags = entry.flags;
+                desc.hook_type = entry.hook_type;
                 callback(&desc, entry.owner_module_id.c_str(), user_data);
             }
         }

@@ -228,13 +228,24 @@ class DevToolsMod : public bml::Module {
         }
     }
 
+    static const char *HookTypeName(uint32_t t) {
+        switch (t) {
+            case BML_HOOK_TYPE_VTABLE:    return "VTable";
+            case BML_HOOK_TYPE_INLINE:    return "Inline";
+            case BML_HOOK_TYPE_WIN32_API: return "Win32";
+            case BML_HOOK_TYPE_BEHAVIOR:  return "Behavior";
+            default:                      return "Unknown";
+        }
+    }
+
     void DrawHookPanel() {
         const auto &loc = Services().Locale();
         if (!ImGui::CollapsingHeader(loc["panel.hooks"])) return;
-        if (ImGui::BeginTable("Hooks", 5,
+        if (ImGui::BeginTable("Hooks", 6,
                 ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable)) {
             ImGui::TableSetupColumn(loc["column.owner"]);
             ImGui::TableSetupColumn(loc["column.target"]);
+            ImGui::TableSetupColumn("Type");
             ImGui::TableSetupColumn(loc["column.address"]);
             ImGui::TableSetupColumn(loc["column.priority"]);
             ImGui::TableSetupColumn(loc["column.flags"]);
@@ -243,6 +254,7 @@ class DevToolsMod : public bml::Module {
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn(); ImGui::TextUnformatted(h.owner.c_str());
                 ImGui::TableNextColumn(); ImGui::TextUnformatted(h.name.c_str());
+                ImGui::TableNextColumn(); ImGui::TextUnformatted(HookTypeName(h.hook_type));
                 ImGui::TableNextColumn(); ImGui::Text("%p", h.address);
                 ImGui::TableNextColumn(); ImGui::Text("%d", h.priority);
                 ImGui::TableNextColumn();

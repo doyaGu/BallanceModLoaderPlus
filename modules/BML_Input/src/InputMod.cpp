@@ -602,6 +602,22 @@ bool IsInputHookActive() {
     return g_State.initialized;
 }
 
+int GetHookedMethods(HookEntry *out, int maxCount) {
+    if (!out || maxCount <= 0 || !g_State.initialized) return 0;
+    auto &vt = g_State.vtable;
+    int n = 0;
+#define EMIT(Name) if (n < maxCount) { out[n].name = "CKInputManager::" #Name; out[n].address = utils::TypeErase(vt.Name); ++n; }
+    EMIT(PostProcess)
+    EMIT(IsKeyDown) EMIT(IsKeyUp) EMIT(IsKeyToggled)
+    EMIT(GetKeyboardState) EMIT(GetNumberOfKeyInBuffer) EMIT(GetKeyFromBuffer)
+    EMIT(IsMouseButtonDown) EMIT(IsMouseClicked) EMIT(IsMouseToggled)
+    EMIT(GetMouseButtonsState) EMIT(GetMousePosition) EMIT(GetMouseRelativePosition)
+    EMIT(GetJoystickPosition) EMIT(GetJoystickRotation) EMIT(GetJoystickSliders)
+    EMIT(GetJoystickPointOfViewAngle) EMIT(GetJoystickButtonsState) EMIT(IsJoystickButtonDown)
+#undef EMIT
+    return n;
+}
+
 } // namespace BML_Input
 
 // ===================================================================
@@ -862,7 +878,11 @@ class InputMod : public bml::HookModule {
         }
         s_Services.store(&Services(), std::memory_order_release);
         if (!BML_Input::InitInputHook(im)) return false;
-        RegisterHook("CKInputManager VTable", im);
+
+        BML_Input::HookEntry entries[32];
+        int count = BML_Input::GetHookedMethods(entries, 32);
+        for (int i = 0; i < count; ++i)
+            RegisterHook(entries[i].name, entries[i].address, BML_HOOK_TYPE_VTABLE);
         return true;
     }
 

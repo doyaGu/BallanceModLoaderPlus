@@ -88,8 +88,8 @@ class PhysicsMod : public bml::HookModule {
             m_OriginalPhysicalize = proto->GetFunction();
         proto->SetFunction(&PhysicalizeCallback);
 
-        RegisterHook("CKIpionManager::PostProcess", m_OriginalPostProcess);
-        RegisterHook("Physicalize BB", reinterpret_cast<void *>(m_OriginalPhysicalize));
+        RegisterHook("CKIpionManager::PostProcess", m_OriginalPostProcess, BML_HOOK_TYPE_VTABLE);
+        RegisterHook("Physicalize BB", reinterpret_cast<void *>(m_OriginalPhysicalize), BML_HOOK_TYPE_BEHAVIOR);
         return true;
     }
 

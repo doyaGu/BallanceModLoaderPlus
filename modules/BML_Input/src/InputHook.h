@@ -60,6 +60,9 @@ int IsDeviceBlocked(InputDevice device);
 void ProcessInput();
 bool IsInputHookActive();
 
+struct HookEntry { const char *name; void *address; };
+int GetHookedMethods(HookEntry *out, int maxCount);
+
 } // namespace BML_Input
 
 #endif // BML_INPUT_INPUTHOOK_H

@@ -55,7 +55,7 @@ class ObjectLoadMod : public bml::HookModule {
         if (!m_OriginalFunc)
             m_OriginalFunc = proto->GetFunction();
         proto->SetFunction(&ObjectLoadCallback);
-        RegisterHook("ObjectLoad BB", reinterpret_cast<void *>(m_OriginalFunc));
+        RegisterHook("ObjectLoad BB", reinterpret_cast<void *>(m_OriginalFunc), BML_HOOK_TYPE_BEHAVIOR);
         return true;
     }
 

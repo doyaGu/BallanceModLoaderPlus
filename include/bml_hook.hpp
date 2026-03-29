@@ -38,6 +38,7 @@ namespace bml {
         void *address = nullptr;
         int32_t priority = 0;
         uint32_t flags = 0;
+        uint32_t hook_type = 0;
         std::string owner;
 
         bool HasConflict() const noexcept {
@@ -69,7 +70,8 @@ namespace bml {
                          void *targetAddress,
                          int32_t priority = 0,
                          const BML_CoreHookRegistryInterface *iface = nullptr,
-                         BML_Mod owner = nullptr)
+                         BML_Mod owner = nullptr,
+                         uint32_t hookType = 0)
             : m_Address(targetAddress), m_Interface(iface), m_Owner(owner) {
             BML_ASSERT(iface);
             BML_ASSERT(targetAddress);
@@ -77,6 +79,7 @@ namespace bml {
             desc.target_name = targetName;
             desc.target_address = targetAddress;
             desc.priority = priority;
+            desc.hook_type = hookType;
             BML_Result result = BML_RESULT_NOT_SUPPORTED;
             if (owner && iface->Register) {
                 result = iface->Register(owner, &desc);
@@ -159,6 +162,7 @@ namespace bml {
                     info.address = desc->target_address;
                     info.priority = desc->priority;
                     info.flags = desc->flags;
+                    info.hook_type = desc->hook_type;
                     info.owner = owner ? owner : "";
                     (*c->fn)(info);
                 },
@@ -188,8 +192,8 @@ namespace bml {
                              BML_Mod owner = nullptr) noexcept
             : m_Interface(iface), m_Owner(owner) {}
 
-        HookRegistration Register(const char *name, void *address, int32_t priority = 0) const {
-            return HookRegistration(name, address, priority, m_Interface, m_Owner);
+        HookRegistration Register(const char *name, void *address, int32_t priority = 0, uint32_t hookType = 0) const {
+            return HookRegistration(name, address, priority, m_Interface, m_Owner, hookType);
         }
 
         void Enumerate(std::function<void(const HookInfo &)> callback) const {

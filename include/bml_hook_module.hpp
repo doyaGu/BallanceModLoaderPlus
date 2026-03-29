@@ -93,10 +93,10 @@ protected:
      * @param name    Human-readable hook target (e.g. "CKInputManager::IsKeyDown")
      * @param address The original (pre-hook) address of the hooked function
      */
-    void RegisterHook(const char *name, void *address) {
+    void RegisterHook(const char *name, void *address, uint32_t hookType = BML_HOOK_TYPE_UNKNOWN) {
         auto hooks = Services().Hooks();
         if (hooks && address) {
-            m_HookRegistrations.push_back(hooks.Register(name, address));
+            m_HookRegistrations.push_back(hooks.Register(name, address, 0, hookType));
         }
     }
 
