@@ -610,10 +610,6 @@ class EventMod : public bml::HookModule {
         for (auto &t : s_Topics) t = {};
         s_TopicGamePhase = {};
         s_TopicPaused = {};
-        s_BaseScripts.clear();
-        s_GameplayIngameScripts.clear();
-        s_GameplayEnergyScripts.clear();
-        s_GameplayEventsScripts.clear();
         s_Services = nullptr;
     }
 
