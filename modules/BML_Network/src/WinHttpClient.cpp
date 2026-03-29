@@ -327,6 +327,9 @@ HttpCompletedRequest WinHttpClient::ExecuteOnce(const HttpPendingRequest &reques
         WinHttpSetOption(hRequest.Get(), WINHTTP_OPTION_DISABLE_FEATURE, &optFlags, sizeof(optFlags));
     }
     if (request.flags & BML_HTTP_FLAG_INSECURE) {
+        OutputDebugStringA("[BML_Network] WARNING: TLS certificate validation disabled for request to ");
+        OutputDebugStringA(request.url.c_str());
+        OutputDebugStringA(" -- this is insecure and should not be used in production\n");
         DWORD secFlags = SECURITY_FLAG_IGNORE_ALL_CERT_ERRORS;
         WinHttpSetOption(hRequest.Get(), WINHTTP_OPTION_SECURITY_FLAGS, &secFlags, sizeof(secFlags));
     }
@@ -395,6 +398,11 @@ HttpCompletedRequest WinHttpClient::ExecuteOnce(const HttpPendingRequest &reques
     // 11. Body -- to file or memory
     size_t totalRead = 0;
     if (request.flags & BML_HTTP_FLAG_DOWNLOAD) {
+        // Reject output paths containing parent directory traversal
+        if (!request.output_path.empty() && request.output_path.find("..") != std::string::npos) {
+            result.error = "output_path must not contain parent directory traversal";
+            return result;
+        }
         if (!ReadResponseBodyToFile(hRequest.Get(), request, contentLength, totalRead)) {
             if (result.error.empty()) result.error = "Failed to write response to file";
         }
@@ -412,15 +420,18 @@ HttpCompletedRequest WinHttpClient::ExecuteOnce(const HttpPendingRequest &reques
 
 std::string WinHttpClient::ReadResponseBodyToMemory(HINTERNET hRequest, const HttpPendingRequest &request,
                                                      uint64_t contentLength, size_t &out_size) {
+    constexpr uint64_t kDefaultMaxBody = 64ULL * 1024 * 1024; // 64 MB
+    uint64_t effectiveMax = request.max_body_size > 0 ? request.max_body_size : kDefaultMaxBody;
+
     std::string body;
-    if (contentLength > 0 && (request.max_body_size == 0 || contentLength <= request.max_body_size)) {
+    if (contentLength > 0 && contentLength <= effectiveMax) {
         body.reserve(static_cast<size_t>(contentLength));
     }
 
     out_size = 0;
     DWORD available = 0;
     while (WinHttpQueryDataAvailable(hRequest, &available) && available > 0) {
-        if (request.max_body_size > 0 && out_size + available > request.max_body_size) {
+        if (out_size + available > effectiveMax) {
             break; // body size limit exceeded
         }
         std::vector<char> chunk(available);

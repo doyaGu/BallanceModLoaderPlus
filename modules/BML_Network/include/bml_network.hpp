@@ -154,6 +154,24 @@ namespace bml::net {
         Socket() = default;
         Socket(const BML_SocketSubInterface *sub, BML_SocketId id)
             : m_Sub(sub), m_Id(id) {}
+        ~Socket() { FreeCbWrap(); }
+
+        Socket(const Socket &) = delete;
+        Socket &operator=(const Socket &) = delete;
+
+        Socket(Socket &&o) noexcept
+            : m_Sub(o.m_Sub), m_Id(o.m_Id), m_CbWrap(o.m_CbWrap) {
+            o.m_Sub = nullptr; o.m_Id = 0; o.m_CbWrap = nullptr;
+        }
+        Socket &operator=(Socket &&o) noexcept {
+            if (this != &o) {
+                FreeCbWrap();
+                m_Sub = o.m_Sub; m_Id = o.m_Id; m_CbWrap = o.m_CbWrap;
+                o.m_Sub = nullptr; o.m_Id = 0; o.m_CbWrap = nullptr;
+            }
+            return *this;
+        }
+
         BML_SocketId Id() const { return m_Id; }
         explicit operator bool() const { return m_Sub != nullptr && m_Id != 0; }
         BML_Result Send(const void *data, size_t size) {
@@ -167,10 +185,22 @@ namespace bml::net {
             if (m_Sub && m_Sub->Close && m_Id != 0) {
                 m_Sub->Close(m_Id); m_Sub = nullptr; m_Id = 0;
             }
+            FreeCbWrap();
         }
     private:
+        friend Socket TcpConnect(const BML_NetworkInterface *, const char *, uint16_t, SocketCallback);
+        friend Socket UdpOpen(const BML_NetworkInterface *, const char *, uint16_t, SocketCallback);
+
+        void FreeCbWrap() {
+            if (m_CbWrap) {
+                delete static_cast<detail::SocketCbWrap *>(m_CbWrap);
+                m_CbWrap = nullptr;
+            }
+        }
+
         const BML_SocketSubInterface *m_Sub = nullptr;
         BML_SocketId m_Id = 0;
+        void *m_CbWrap = nullptr;
     };
 
     // ========================================================================
@@ -284,7 +314,9 @@ namespace bml::net {
         BML_SocketId id = 0;
         BML_Result r = n->Socket->Open(BML_SOCKET_TCP, host, port, detail::SocketTrampoline, w, &id);
         if (r != BML_RESULT_OK) { delete w; return {}; }
-        return Socket(n->Socket, id);
+        Socket socket(n->Socket, id);
+        socket.m_CbWrap = w;
+        return socket;
     }
 
     inline Socket UdpOpen(const BML_NetworkInterface *n, const char *host, uint16_t port, SocketCallback cb) {
@@ -293,7 +325,9 @@ namespace bml::net {
         BML_SocketId id = 0;
         BML_Result r = n->Socket->Open(BML_SOCKET_UDP, host, port, detail::SocketTrampoline, w, &id);
         if (r != BML_RESULT_OK) { delete w; return {}; }
-        return Socket(n->Socket, id);
+        Socket socket(n->Socket, id);
+        socket.m_CbWrap = w;
+        return socket;
     }
 
 } // namespace bml::net

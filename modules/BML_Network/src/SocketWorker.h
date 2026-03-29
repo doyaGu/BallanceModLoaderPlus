@@ -24,6 +24,8 @@
 
 // Per-socket state managed by a dedicated thread
 struct SocketEntry {
+    static constexpr size_t kMaxSendQueueBytes = 4ULL * 1024 * 1024; // 4 MB
+
     uint32_t id = 0;
     BML_SocketType type = BML_SOCKET_TCP;
     SOCKET handle = INVALID_SOCKET;
@@ -37,6 +39,7 @@ struct SocketEntry {
     // Send queue (for async sends from main thread)
     std::mutex send_mutex;
     std::vector<std::vector<char>> send_queue;
+    size_t send_queue_bytes = 0;
 
     // SendTo queue (UDP only)
     struct UdpDatagram {

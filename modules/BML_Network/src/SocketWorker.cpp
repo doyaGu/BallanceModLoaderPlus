@@ -107,7 +107,10 @@ BML_Result SocketWorker::Send(uint32_t id, const void *data, size_t size) {
 
     std::vector<char> buf(static_cast<const char *>(data), static_cast<const char *>(data) + size);
     std::lock_guard lock(entry->send_mutex);
+    if (entry->send_queue_bytes + size > SocketEntry::kMaxSendQueueBytes)
+        return BML_RESULT_WOULD_BLOCK;
     entry->send_queue.push_back(std::move(buf));
+    entry->send_queue_bytes += size;
     return BML_RESULT_OK;
 }
 
@@ -123,7 +126,10 @@ BML_Result SocketWorker::SendTo(uint32_t id, const char *host, uint16_t port,
     dgram.data.assign(static_cast<const char *>(data), static_cast<const char *>(data) + size);
 
     std::lock_guard lock(entry->send_mutex);
+    if (entry->send_queue_bytes + size > SocketEntry::kMaxSendQueueBytes)
+        return BML_RESULT_WOULD_BLOCK;
     entry->sendto_queue.push_back(std::move(dgram));
+    entry->send_queue_bytes += size;
     return BML_RESULT_OK;
 }
 
@@ -259,6 +265,7 @@ void SocketWorker::TcpWorkerLoop(uint32_t id) {
             {
                 std::lock_guard lock(entry->send_mutex);
                 toSend.swap(entry->send_queue);
+                entry->send_queue_bytes = 0;
             }
             for (auto &buf : toSend) {
                 int sent = send(sock, buf.data(), static_cast<int>(buf.size()), 0);
@@ -358,6 +365,7 @@ void SocketWorker::UdpWorkerLoop(uint32_t id) {
                 std::lock_guard lock(entry->send_mutex);
                 toSend.swap(entry->send_queue);
                 toSendTo.swap(entry->sendto_queue);
+                entry->send_queue_bytes = 0;
             }
 
             // Plain sends (to the cached default target)
