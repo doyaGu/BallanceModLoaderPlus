@@ -222,8 +222,8 @@ void NewBallTypeMod::OnLoadBalls(const CK_ID *objectIds, uint32_t objectCount) {
             !info.m_PiecesFrame ||
             !info.m_Explosion ||
             !info.m_Reset) {
-            if (m_Services) m_Services->Log().Info("Register New Ball Types Failed");
-            return;
+            if (m_Services) m_Services->Log().Error("Ball type '%s' incomplete -- skipping", info.m_Name.c_str());
+            continue;
         }
 
         bml::SetParam(info.m_BallParam, info.m_BallObj);
@@ -354,16 +354,34 @@ void NewBallTypeMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
     if (m_Services) m_Services->Log().Info("Modify Ingame script to accommodate new ball types");
     bml::Graph graph(script);
 
+    auto ballManager = graph.Find("BallManager");
+    if (!ballManager) {
+        if (m_Services) m_Services->Log().Error("Expected 'BallManager' not found in script");
+        return;
+    }
+
+    auto initIngame = graph.Find("Init Ingame");
+    if (!initIngame) {
+        if (m_Services) m_Services->Log().Error("Expected 'Init Ingame' not found in script");
+        return;
+    }
+
+    auto trafoManager = graph.Find("Trafo Manager");
+    if (!trafoManager) {
+        if (m_Services) m_Services->Log().Error("Expected 'Trafo Manager' not found in script");
+        return;
+    }
+
     {
-        auto phyNewBall = graph.Find("BallManager").Find("New Ball").Find("physicalize new Ball");
+        auto phyNewBall = ballManager.Find("New Ball").Find("physicalize new Ball");
         OnEditScript_PhysicalizeNewBall(phyNewBall);
 
-        auto resetPieces = graph.Find("BallManager").Find("Deactivate Ball").Find("reset Ballpieces");
+        auto resetPieces = ballManager.Find("Deactivate Ball").Find("reset Ballpieces");
         OnEditScript_ResetBallPieces(resetPieces);
     }
 
     {
-        auto trafoAttr = graph.Find("Init Ingame").Find("set Trafo-Attribute");
+        auto trafoAttr = initIngame.Find("set Trafo-Attribute");
         bml::Graph tg(trafoAttr);
         CKAttributeManager *am = m_Context->GetAttributeManager();
         CKAttributeType trafoType = am->GetAttributeTypeByName("TrafoType");
@@ -379,10 +397,8 @@ void NewBallTypeMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
     }
 
     {
-        auto trafoMgr = graph.Find("Trafo Manager");
-
         {
-            auto pieceFlag = trafoMgr.Find("set Piecesflag");
+            auto pieceFlag = trafoManager.Find("set Piecesflag");
             bml::Graph pf(pieceFlag);
             CKBehavior *sop = pieceFlag.Find("Switch On Parameter");
             CKParameterType booltype = m_Context->GetParameterManager()->ParameterGuidToType(CKPGUID_BOOL);
@@ -402,11 +418,11 @@ void NewBallTypeMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
         }
 
         {
-            OnEditScript_PhysicalizeNewBall(trafoMgr.Find("physicalize new Ball"));
+            OnEditScript_PhysicalizeNewBall(trafoManager.Find("physicalize new Ball"));
         }
 
         {
-            auto explode = trafoMgr.Find("start Explosion");
+            auto explode = trafoManager.Find("start Explosion");
             bml::Graph eg(explode);
             CKBehavior *sop = explode.Find("Switch On Parameter");
             CKBehavior *ps = explode.Find("Parameter Selector");
@@ -421,7 +437,7 @@ void NewBallTypeMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
         }
 
         {
-            auto setNewBall = trafoMgr.Find("set new Ball");
+            auto setNewBall = trafoManager.Find("set new Ball");
             bml::Graph sg(setNewBall);
             CKBehavior *sop = setNewBall.Find("Switch On Parameter");
             CKBehavior *ps = setNewBall.Find("Parameter Selector");
@@ -434,7 +450,7 @@ void NewBallTypeMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
         }
 
         {
-            auto fadeoutNode = trafoMgr.Find("Fadeout Manager");
+            auto fadeoutNode = trafoManager.Find("Fadeout Manager");
             bml::Graph fade(fadeoutNode);
             CKBehavior *identity = nullptr;
             fadeoutNode.FindAll([&identity](CKBehavior *beh) {
@@ -486,6 +502,18 @@ void NewBallTypeMod::OnEditScript_Base_EventHandler(CKBehavior *script) {
     if (m_Services) m_Services->Log().Info("Reset ball pieces for new ball types");
     bml::Graph graph(script);
 
+    auto resetLevel = graph.Find("reset Level");
+    if (!resetLevel) {
+        if (m_Services) m_Services->Log().Error("Expected 'reset Level' not found in script");
+        return;
+    }
+
+    auto exitLevel = graph.Find("Exit Level");
+    if (!exitLevel) {
+        if (m_Services) m_Services->Log().Error("Expected 'Exit Level' not found in script");
+        return;
+    }
+
     for (BallTypeInfo &info: m_BallTypes) {
         info.m_BallParam = graph.Param("Target", CKPGUID_BEOBJECT);
         info.m_UsedParam = graph.Param("Used", CKPGUID_BOOL);
@@ -503,14 +531,12 @@ void NewBallTypeMod::OnEditScript_Base_EventHandler(CKBehavior *script) {
         }
     };
 
-    auto rl = graph.Find("reset Level");
-    OnEditScript_ResetBallPieces(rl.Find("reset Ballpieces"));
-    CKBehavior *innerReset = rl.Find("reset  Level").Find("reset Level");
+    OnEditScript_ResetBallPieces(resetLevel.Find("reset Ballpieces"));
+    CKBehavior *innerReset = resetLevel.Find("reset  Level").Find("reset Level");
     addResetAttr(innerReset);
 
-    auto el = graph.Find("Exit Level");
-    OnEditScript_ResetBallPieces(el.Find("reset Ballpieces"));
-    addResetAttr(el.Find("reset Level"));
+    OnEditScript_ResetBallPieces(exitLevel.Find("reset Ballpieces"));
+    addResetAttr(exitLevel.Find("reset Level"));
 }
 
 void NewBallTypeMod::OnEditScript_PhysicalizeNewBall(CKBehavior *behGraph) {
