@@ -861,7 +861,9 @@ class InputMod : public bml::HookModule {
             return false;
         }
         s_Services.store(&Services(), std::memory_order_release);
-        return BML_Input::InitInputHook(im);
+        if (!BML_Input::InitInputHook(im)) return false;
+        RegisterHook("CKInputManager VTable", im);
+        return true;
     }
 
     void ShutdownHook() override {

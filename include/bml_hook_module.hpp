@@ -34,9 +34,12 @@
 #define BML_HOOK_MODULE_HPP
 
 #include "bml_module.hpp"
+#include "bml_hook.hpp"
 #include "bml_engine_events.h"
 #include "bml_engine_events.hpp"
 #include "bml_topics.h"
+
+#include <vector>
 
 namespace bml {
 
@@ -44,6 +47,7 @@ class HookModule : public Module {
 protected:
     imc::SubscriptionManager m_Subs;
     bool m_HookReady = false;
+    std::vector<HookRegistration> m_HookRegistrations;
 
     /** @brief Return a static log category string (e.g. "BML_Physics"). */
     virtual const char *HookLogCategory() const = 0;
@@ -79,6 +83,22 @@ protected:
      * Return an error to abort unload/reload. Default: OK.
      */
     virtual BML_Result OnModulePrepareDetach() { return BML_RESULT_OK; }
+
+    /**
+     * @brief Register a hook with the core registry for visibility/conflict detection.
+     *
+     * Call from InitHook() after installing each hook. Registrations are
+     * automatically unregistered when ShutdownHook() runs or the module detaches.
+     *
+     * @param name    Human-readable hook target (e.g. "CKInputManager::IsKeyDown")
+     * @param address The original (pre-hook) address of the hooked function
+     */
+    void RegisterHook(const char *name, void *address) {
+        auto hooks = Services().Hooks();
+        if (hooks && address) {
+            m_HookRegistrations.push_back(hooks.Register(name, address));
+        }
+    }
 
     /**
      * @brief Attempt hook initialization with a CKContext.
@@ -117,6 +137,7 @@ public:
 
     void OnDetach() override {
         OnModuleDetach();
+        m_HookRegistrations.clear();
         if (m_HookReady) {
             ShutdownHook();
             m_HookReady = false;
