@@ -155,6 +155,37 @@ TEST(LeaseManagerTests, CleanupConsumerUntracksButRefCountManagesLifetime) {
     EXPECT_EQ(manager.ReleaseInterfaceLease(lease), BML_RESULT_OK);  // 1→0, deletes
 }
 
+TEST(LeaseManagerTests, ResetDoesNotLetStaleLeaseReleaseEraseNewLease) {
+    LeaseManager manager;
+    TestKernel kernel;
+    BML_InterfaceLease staleLease = nullptr;
+    BML_InterfaceLease newLease = nullptr;
+
+    ASSERT_EQ(manager.CreateInterfaceLease(kernel.get(), "iface.before_reset", "provider.a", "consumer.a", &staleLease),
+              BML_RESULT_OK);
+
+    manager.AddRefInterfaceLease(staleLease);
+
+    manager.Reset();
+
+    ASSERT_EQ(manager.CreateInterfaceLease(kernel.get(), "iface.after_reset", "provider.b", "consumer.b", &newLease),
+              BML_RESULT_OK);
+    ASSERT_EQ(manager.GetOutstandingLeaseHandlesForTest(), 1u);
+    EXPECT_TRUE(manager.HasActiveInterfaceLease("consumer.b", "iface.after_reset"));
+
+    EXPECT_EQ(manager.ReleaseInterfaceLease(staleLease), BML_RESULT_OK);
+    EXPECT_EQ(manager.GetOutstandingLeaseHandlesForTest(), 1u);
+    EXPECT_TRUE(manager.HasActiveInterfaceLease("consumer.b", "iface.after_reset"));
+
+    EXPECT_EQ(manager.ReleaseInterfaceLease(staleLease), BML_RESULT_OK);
+    EXPECT_EQ(manager.GetOutstandingLeaseHandlesForTest(), 1u);
+    EXPECT_TRUE(manager.HasActiveInterfaceLease("consumer.b", "iface.after_reset"));
+
+    EXPECT_EQ(manager.ReleaseInterfaceLease(newLease), BML_RESULT_OK);
+    EXPECT_EQ(manager.GetOutstandingLeaseHandlesForTest(), 0u);
+    EXPECT_FALSE(manager.HasActiveInterfaceLease("consumer.b", "iface.after_reset"));
+}
+
 TEST(LeaseManagerTests, GetLeaseCountReflectsUniqueLeasesNotRefCount) {
     LeaseManager manager;
     TestKernel kernel;
