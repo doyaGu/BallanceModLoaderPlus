@@ -172,6 +172,7 @@ class ConsoleMod : public bml::Module {
 
     static void DestroyBoolState(void *data) { delete static_cast<bool *>(data); }
 
+    // Services().Interfaces().Context is a static BML_Services vtable pointer -- no dynamic lease cost.
     bool GetCheatState() const {
         void *raw = nullptr;
         if (Services().Interfaces().Context->GetUserData(Services().GlobalContext(), kInternalCheatStateKey, &raw) != BML_RESULT_OK || !raw) {
@@ -1095,6 +1096,9 @@ public:
         SetupBuiltinContext();
         RegisterBuiltins(m_Registry, &m_BuiltinCtx);
 
+        // Thread safety: IMC Pump() and draw callbacks both execute on the main game thread
+        // (Pump in ModManager::PreProcess, draw in ModManager::PostProcess -> UIMod::ExecuteDrawContributions).
+        // Therefore AddMessage() and RenderMessages() never overlap.
         m_Subs.Add(BML_TOPIC_CONSOLE_OUTPUT, [this](const bml::imc::Message &msg) {
             auto *event = msg.As<BML_ConsoleOutputEvent>();
             if (!event || !event->message_utf8 || event->struct_size < sizeof(BML_ConsoleOutputEvent)) return;
