@@ -59,13 +59,14 @@ namespace imc {
         // Publishing
         bool Publish(const void *data = nullptr, size_t size = 0) const {
             if (!Valid() || !m_Bus || !m_Owner || !m_Bus->Publish) return false;
-            return m_Bus->Publish(m_Owner, m_Id, data, size) == BML_RESULT_OK;
+            return m_Bus->Publish(m_Owner, m_Id, data, size, BML_PAYLOAD_TYPE_NONE) == BML_RESULT_OK;
         }
 
         template <typename T>
         bool Publish(const T &data) const {
             static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
-            return Publish(&data, sizeof(T));
+            if (!Valid() || !m_Bus || !m_Owner || !m_Bus->Publish) return false;
+            return m_Bus->Publish(m_Owner, m_Id, &data, sizeof(T), PayloadType<T>::Id) == BML_RESULT_OK;
         }
 
         bool PublishString(std::string_view str) const {
@@ -98,7 +99,12 @@ namespace imc {
         template <typename T>
         bool PublishState(const T &data) const {
             static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
-            return PublishState(&data, sizeof(T));
+            if (!Valid() || !m_Bus || !m_Owner || !m_Bus->PublishState) return false;
+            BML_ImcMessage msg = BML_IMC_MESSAGE_INIT;
+            msg.data = &data;
+            msg.size = sizeof(T);
+            msg.payload_type_id = PayloadType<T>::Id;
+            return m_Bus->PublishState(m_Owner, m_Id, &msg) == BML_RESULT_OK;
         }
 
         BML_Result CopyState(void *dst, size_t dst_size, size_t *out_size = nullptr,
@@ -123,6 +129,7 @@ namespace imc {
         bool PublishInterceptable(const T &data, EventResult *outResult = nullptr) const {
             static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
             BML_ImcMessage msg = BML_IMC_MSG(&data, sizeof(T));
+            msg.payload_type_id = PayloadType<T>::Id;
             return PublishInterceptable(msg, outResult);
         }
 
@@ -140,6 +147,8 @@ namespace imc {
         bool operator==(const Topic &other) const noexcept { return m_Id == other.m_Id; }
         bool operator!=(const Topic &other) const noexcept { return m_Id != other.m_Id; }
         bool operator<(const Topic &other) const noexcept { return m_Id < other.m_Id; }
+
+        BML_Mod Owner() const noexcept { return m_Owner; }
 
     private:
         std::string m_Name;

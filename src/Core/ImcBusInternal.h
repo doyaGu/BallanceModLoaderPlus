@@ -24,8 +24,10 @@ namespace BML::Core {
         BML_Result GetTopicId(const char *name, BML_TopicId *out_id);
         BML_Result GetRpcId(const char *name, BML_RpcId *out_id);
 
-        BML_Result Publish(BML_TopicId topic, const void *data, size_t size);
-        BML_Result Publish(BML_Mod owner, BML_TopicId topic, const void *data, size_t size);
+        BML_Result Publish(BML_TopicId topic, const void *data, size_t size,
+                           uint32_t type_id = BML_PAYLOAD_TYPE_NONE);
+        BML_Result Publish(BML_Mod owner, BML_TopicId topic, const void *data, size_t size,
+                           uint32_t type_id = BML_PAYLOAD_TYPE_NONE);
         BML_Result PublishEx(BML_TopicId topic, const BML_ImcMessage *msg);
         BML_Result PublishEx(BML_Mod owner, BML_TopicId topic, const BML_ImcMessage *msg);
         BML_Result PublishBuffer(BML_TopicId topic, const BML_ImcBuffer *buffer);

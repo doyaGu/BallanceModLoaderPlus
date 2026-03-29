@@ -19,6 +19,7 @@ namespace BML::Core {
         uint32_t priority{BML_IMC_PRIORITY_NORMAL};
         uint64_t timestamp{0};
         BML_TopicId reply_topic{0};
+        uint32_t payload_type_id{BML_PAYLOAD_TYPE_NONE};
         BufferStorage payload;
         std::atomic<uint32_t> ref_count{0};
 

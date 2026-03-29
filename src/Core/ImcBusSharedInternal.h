@@ -250,9 +250,13 @@ namespace BML::Core {
         uint64_t GetMessageCount(BML_TopicId id) const;
         size_t GetTopicCount() const;
 
+        void SetExpectedTypeId(BML_TopicId id, uint32_t type_id);
+        uint32_t GetExpectedTypeId(BML_TopicId id) const;
+
     private:
         struct TopicStats {
             std::atomic<uint64_t> message_count{0};
+            uint32_t expected_type_id{BML_PAYLOAD_TYPE_NONE};
         };
 
         TopicStats *EnsureStatsEntryLocked(BML_TopicId id);

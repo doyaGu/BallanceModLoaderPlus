@@ -62,6 +62,9 @@ namespace BML::Core {
             }
         }
 
+        out_info->expected_type_id =
+            m_PublishState.topic_registry.GetExpectedTypeId(topic);
+
         const std::string *name = m_PublishState.topic_registry.GetName(topic);
         if (name && !name->empty()) {
             size_t copy_len = std::min(name->size(), sizeof(out_info->name) - 1);
@@ -109,6 +112,18 @@ namespace BML::Core {
             return BML_RESULT_INVALID_ARGUMENT;
         if (msg->size > 0 && !msg->data)
             return BML_RESULT_INVALID_ARGUMENT;
+
+        // Type validation
+        if (msg->payload_type_id != BML_PAYLOAD_TYPE_NONE) {
+            uint32_t expected = m_PublishState.topic_registry.GetExpectedTypeId(topic);
+            if (expected != BML_PAYLOAD_TYPE_NONE && expected != msg->payload_type_id) {
+                const std::string *name = m_PublishState.topic_registry.GetName(topic);
+                CoreLog(BML_LOG_ERROR, kImcLogCategory,
+                        "Type mismatch on topic '%s': expected 0x%08X, got 0x%08X",
+                        name ? name->c_str() : "<unknown>", expected, msg->payload_type_id);
+                return BML_RESULT_IMC_TYPE_MISMATCH;
+            }
+        }
 
         BML_Mod resolved_owner = nullptr;
         BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));

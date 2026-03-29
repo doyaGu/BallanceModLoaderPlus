@@ -57,6 +57,7 @@ namespace BML::Core {
         message->priority = msg ? msg->priority : BML_IMC_PRIORITY_NORMAL;
         message->timestamp = (msg && msg->timestamp) ? msg->timestamp : GetTimestampNs();
         message->reply_topic = msg ? msg->reply_topic : 0;
+        message->payload_type_id = msg ? msg->payload_type_id : BML_PAYLOAD_TYPE_NONE;
 
         const bool ok = buffer
             ? message->SetExternalBuffer(*buffer)

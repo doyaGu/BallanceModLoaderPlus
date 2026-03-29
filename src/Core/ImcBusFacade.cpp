@@ -85,16 +85,18 @@ namespace BML::Core {
     BML_Result ImcGetRpcId(KernelServices &kernel, const char *n, BML_RpcId *o) {
         return GetBus(kernel).GetRpcId(n, o);
     }
-    BML_Result ImcPublish(BML_TopicId t, const void *d, size_t s) {
+    BML_Result ImcPublish(BML_TopicId t, const void *d, size_t s, uint32_t type_id) {
         auto *bus = TryGetAmbientBus();
-        return bus ? bus->Publish(t, d, s) : BML_RESULT_INVALID_CONTEXT;
+        return bus ? bus->Publish(t, d, s, type_id) : BML_RESULT_INVALID_CONTEXT;
     }
-    BML_Result ImcPublish(KernelServices &kernel, BML_TopicId t, const void *d, size_t s) {
-        return GetBus(kernel).Publish(t, d, s);
+    BML_Result ImcPublish(KernelServices &kernel, BML_TopicId t, const void *d, size_t s,
+                          uint32_t type_id) {
+        return GetBus(kernel).Publish(t, d, s, type_id);
     }
-    BML_Result ImcPublish(BML_Mod owner, BML_TopicId t, const void *d, size_t s) {
+    BML_Result ImcPublish(BML_Mod owner, BML_TopicId t, const void *d, size_t s,
+                          uint32_t type_id) {
         auto *bus = TryGetBusFromOwner(owner);
-        return bus ? bus->Publish(owner, t, d, s) : BML_RESULT_INVALID_CONTEXT;
+        return bus ? bus->Publish(owner, t, d, s, type_id) : BML_RESULT_INVALID_CONTEXT;
     }
     BML_Result ImcPublishEx(BML_TopicId t, const BML_ImcMessage *m) {
         auto *bus = TryGetAmbientBus();

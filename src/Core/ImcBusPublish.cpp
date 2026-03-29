@@ -118,6 +118,21 @@ namespace BML::Core {
         return m_IdToName.size();
     }
 
+    void TopicRegistry::SetExpectedTypeId(BML_TopicId id, uint32_t type_id) {
+        if (id == BML_TOPIC_ID_INVALID) return;
+        std::unique_lock lock(m_Mutex);
+        auto *stats = EnsureStatsEntryLocked(id);
+        if (stats) {
+            stats->expected_type_id = type_id;
+        }
+    }
+
+    uint32_t TopicRegistry::GetExpectedTypeId(BML_TopicId id) const {
+        std::shared_lock lock(m_Mutex);
+        auto it = m_Stats.find(id);
+        return it != m_Stats.end() ? it->second->expected_type_id : BML_PAYLOAD_TYPE_NONE;
+    }
+
     TopicRegistry::TopicStats *TopicRegistry::EnsureStatsEntryLocked(BML_TopicId id) {
         if (id == BML_TOPIC_ID_INVALID) {
             return nullptr;
@@ -192,6 +207,7 @@ namespace BML::Core {
             filter_msg.priority = message->priority;
             filter_msg.timestamp = message->timestamp;
             filter_msg.reply_topic = message->reply_topic;
+            filter_msg.payload_type_id = message->payload_type_id;
 
             if (!MatchesSubscription(sub, filter_msg))
                 return BML_RESULT_OK;
@@ -400,6 +416,7 @@ namespace BML::Core {
                 imc_msg.priority = msg->priority;
                 imc_msg.timestamp = msg->timestamp;
                 imc_msg.reply_topic = msg->reply_topic;
+                imc_msg.payload_type_id = msg->payload_type_id;
                 InvokeRegularHandler(sub, msg->topic_id, imc_msg);
             }
             ReleaseMessage(msg);
@@ -408,21 +425,40 @@ namespace BML::Core {
         return processed;
     }
 
-    BML_Result ImcBusImpl::Publish(BML_TopicId topic, const void *data, size_t size) {
-        return Publish(nullptr, topic, data, size);
+    BML_Result ImcBusImpl::Publish(BML_TopicId topic, const void *data, size_t size,
+                                   uint32_t type_id) {
+        return Publish(nullptr, topic, data, size, type_id);
     }
 
     BML_Result ImcBusImpl::Publish(BML_Mod owner, BML_TopicId topic,
-                                   const void *data, size_t size) {
+                                   const void *data, size_t size,
+                                   uint32_t type_id) {
         if (topic == BML_TOPIC_ID_INVALID)
             return BML_RESULT_INVALID_ARGUMENT;
         if (size > 0 && !data)
             return BML_RESULT_INVALID_ARGUMENT;
 
+        // Type validation: if message carries a type_id AND topic has an expected type,
+        // they must match
+        if (type_id != BML_PAYLOAD_TYPE_NONE) {
+            uint32_t expected = m_PublishState.topic_registry.GetExpectedTypeId(topic);
+            if (expected != BML_PAYLOAD_TYPE_NONE && expected != type_id) {
+                const std::string *name = m_PublishState.topic_registry.GetName(topic);
+                CoreLog(BML_LOG_ERROR, kImcLogCategory,
+                        "Type mismatch on topic '%s': expected 0x%08X, got 0x%08X",
+                        name ? name->c_str() : "<unknown>", expected, type_id);
+                return BML_RESULT_IMC_TYPE_MISMATCH;
+            }
+        }
+
         BML_Mod resolved_owner = nullptr;
         BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));
 
-        auto *message = CreateMessage(resolved_owner, topic, data, size, nullptr, nullptr);
+        BML_ImcMessage msg = BML_IMC_MESSAGE_INIT;
+        msg.data = data;
+        msg.size = size;
+        msg.payload_type_id = type_id;
+        auto *message = CreateMessage(resolved_owner, topic, data, size, &msg, nullptr);
         return DispatchMessage(topic, message);
     }
 
@@ -436,6 +472,18 @@ namespace BML::Core {
             return BML_RESULT_INVALID_ARGUMENT;
         if (msg->size > 0 && !msg->data)
             return BML_RESULT_INVALID_ARGUMENT;
+
+        // Type validation
+        if (msg->payload_type_id != BML_PAYLOAD_TYPE_NONE) {
+            uint32_t expected = m_PublishState.topic_registry.GetExpectedTypeId(topic);
+            if (expected != BML_PAYLOAD_TYPE_NONE && expected != msg->payload_type_id) {
+                const std::string *name = m_PublishState.topic_registry.GetName(topic);
+                CoreLog(BML_LOG_ERROR, kImcLogCategory,
+                        "Type mismatch on topic '%s': expected 0x%08X, got 0x%08X",
+                        name ? name->c_str() : "<unknown>", expected, msg->payload_type_id);
+                return BML_RESULT_IMC_TYPE_MISMATCH;
+            }
+        }
 
         BML_Mod resolved_owner = nullptr;
         BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));

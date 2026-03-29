@@ -70,7 +70,8 @@ typedef BML_Result (*PFN_BML_ImcGetTopicId)(BML_Context ctx,
 typedef BML_Result (*PFN_BML_ImcPublish)(BML_Mod owner,
                                          BML_TopicId topic,
                                          const void *data,
-                                         size_t size);
+                                         size_t size,
+                                         BML_PayloadTypeId type_id);
 
 /**
  * @brief Publish a message to a topic with extended options.

@@ -104,6 +104,12 @@ typedef enum BML_BackpressurePolicy {
 /**
  * @brief Message metadata for pub/sub and RPC.
  */
+/** @brief Payload type ID for type-safe messaging. 0 = untyped/void. */
+typedef uint32_t BML_PayloadTypeId;
+
+/** @brief Sentinel for void/empty payloads or untyped messages */
+#define BML_PAYLOAD_TYPE_NONE ((BML_PayloadTypeId)0)
+
 typedef struct BML_ImcMessage {
     size_t struct_size;       /**< sizeof(BML_ImcMessage), must be first */
     const void *data;         /**< Payload data pointer */
@@ -113,13 +119,14 @@ typedef struct BML_ImcMessage {
     uint32_t priority;        /**< Message priority (BML_ImcPriority) */
     uint64_t timestamp;       /**< Message timestamp (0 = auto-assign) */
     BML_TopicId reply_topic;  /**< Reserved for future request/response patterns (pass-through only) */
+    BML_PayloadTypeId payload_type_id; /**< Compile-time type hash of the payload (0 = untyped) */
 } BML_ImcMessage;
 
 /** @brief Static initializer for BML_ImcMessage */
-#define BML_IMC_MESSAGE_INIT { sizeof(BML_ImcMessage), NULL, 0, 0, 0, BML_IMC_PRIORITY_NORMAL, 0, 0 }
+#define BML_IMC_MESSAGE_INIT { sizeof(BML_ImcMessage), NULL, 0, 0, 0, BML_IMC_PRIORITY_NORMAL, 0, 0, BML_PAYLOAD_TYPE_NONE }
 
 /** @brief Quick message initializer macro */
-#define BML_IMC_MSG(ptr, len) { sizeof(BML_ImcMessage), (ptr), (len), 0, 0, BML_IMC_PRIORITY_NORMAL, 0, 0 }
+#define BML_IMC_MSG(ptr, len) { sizeof(BML_ImcMessage), (ptr), (len), 0, 0, BML_IMC_PRIORITY_NORMAL, 0, 0, BML_PAYLOAD_TYPE_NONE }
 
 /**
  * @brief Zero-copy buffer with optional cleanup callback.
@@ -216,9 +223,10 @@ typedef struct BML_TopicInfo {
     char name[256];               /**< Topic name (empty if not tracked) */
     size_t subscriber_count;      /**< Number of subscribers */
     uint64_t message_count;       /**< Total messages published to this topic */
+    BML_PayloadTypeId expected_type_id; /**< Expected payload type hash (0 = any) */
 } BML_TopicInfo;
 
-#define BML_TOPIC_INFO_INIT { sizeof(BML_TopicInfo), 0, {0}, 0, 0 }
+#define BML_TOPIC_INFO_INIT { sizeof(BML_TopicInfo), 0, {0}, 0, 0, BML_PAYLOAD_TYPE_NONE }
 
 /* ========================================================================
  * Callback Types

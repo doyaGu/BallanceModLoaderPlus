@@ -45,6 +45,7 @@
 #include "bml_imc_fwd.hpp"
 #include "bml_imc_message.hpp"
 #include "bml_imc_topic.hpp"
+#include "bml_imc_typed.hpp"
 #include "bml_imc_subscription.hpp"
 #include "bml_imc_publisher.hpp"
 #include "bml_imc_rpc.hpp"

@@ -91,6 +91,44 @@ namespace imc {
         constexpr BackpressurePolicy Fail       = BML_BACKPRESSURE_FAIL;
     }
 
+    // ========================================================================
+    // Compile-time type identity (needed by Message::As<T>)
+    // ========================================================================
+
+    namespace detail {
+        constexpr uint32_t kFnv1aOffsetBasis = 2166136261u;
+        constexpr uint32_t kFnv1aPrime = 16777619u;
+
+        constexpr uint32_t fnv1a(const char *s, uint32_t h = kFnv1aOffsetBasis) {
+            return *s ? fnv1a(s + 1, (h ^ static_cast<uint32_t>(*s)) * kFnv1aPrime) : h;
+        }
+
+        // __FUNCSIG__ is only available inside function bodies on MSVC.
+        // Wrapping it in a constexpr function allows its use in static
+        // member initializers via PayloadType<T>.
+        template <typename T>
+        constexpr uint32_t payload_type_hash() {
+            return fnv1a(__FUNCSIG__);
+        }
+
+        template <typename T>
+        constexpr const char *payload_type_name() {
+            return __FUNCSIG__;
+        }
+    } // namespace detail
+
+    template <typename T>
+    struct PayloadType {
+        static constexpr uint32_t Id = detail::payload_type_hash<T>();
+        static constexpr const char *Name = detail::payload_type_name<T>();
+    };
+
+    template <>
+    struct PayloadType<void> {
+        static constexpr uint32_t Id = BML_PAYLOAD_TYPE_NONE;
+        static constexpr const char *Name = "void";
+    };
+
 } // namespace imc
 } // namespace bml
 

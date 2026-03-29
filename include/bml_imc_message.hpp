@@ -34,6 +34,12 @@ namespace imc {
         template <typename T>
         const T *As() const noexcept {
             static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
+            if (!m_Msg) return nullptr;
+            // Type validation: if message has a type_id set, it must match T
+            if (m_Msg->payload_type_id != BML_PAYLOAD_TYPE_NONE &&
+                m_Msg->payload_type_id != PayloadType<T>::Id) {
+                return nullptr;
+            }
             if (Size() >= sizeof(T))
                 return static_cast<const T *>(Data());
             return nullptr;
@@ -72,6 +78,9 @@ namespace imc {
         }
         uint64_t Timestamp() const noexcept { return m_Msg ? m_Msg->timestamp : 0; }
         TopicId ReplyTopic() const noexcept { return m_Msg ? m_Msg->reply_topic : InvalidTopicId; }
+        uint32_t PayloadTypeId() const noexcept {
+            return m_Msg ? m_Msg->payload_type_id : BML_PAYLOAD_TYPE_NONE;
+        }
 
         bool HasFlag(uint32_t flag) const noexcept { return (Flags() & flag) != 0; }
 
@@ -104,6 +113,11 @@ namespace imc {
         template <typename T>
         const T *As() const noexcept {
             static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
+            if (!m_Msg) return nullptr;
+            if (m_Msg->payload_type_id != BML_PAYLOAD_TYPE_NONE &&
+                m_Msg->payload_type_id != PayloadType<T>::Id) {
+                return nullptr;
+            }
             return (Size() >= sizeof(T)) ? static_cast<const T *>(Data()) : nullptr;
         }
 

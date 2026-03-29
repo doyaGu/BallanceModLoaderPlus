@@ -173,6 +173,7 @@ enum {
     BML_RESULT_IMC_FUTURE_CANCELLED = -305,     /**< Future was cancelled */
     BML_RESULT_IMC_FUTURE_FAILED = -306,        /**< Future failed to complete */
     BML_RESULT_IMC_SUBSCRIPTION_CLOSED = -307,  /**< Subscription already closed */
+    BML_RESULT_IMC_TYPE_MISMATCH = -308,        /**< Payload type_id does not match topic's expected type */
     
     /* ========== Resource API Errors (-400 to -499) ========== */
     BML_RESULT_RESOURCE_INVALID_HANDLE = -400,      /**< Invalid resource handle */

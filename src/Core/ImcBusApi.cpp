@@ -7,10 +7,11 @@ namespace BML::Core {
         // -- Pub/Sub ----------------------------------------------------------
 
         BML_Result BML_API_ImcPublish(BML_Mod owner, BML_TopicId t,
-                                      const void *d, size_t s) {
+                                      const void *d, size_t s,
+                                      BML_PayloadTypeId type_id) {
             if (t == BML_TOPIC_ID_INVALID) return BML_RESULT_INVALID_ARGUMENT;
             if (s > 0 && !d) return BML_RESULT_INVALID_ARGUMENT;
-            return ImcPublish(owner, t, d, s);
+            return ImcPublish(owner, t, d, s, type_id);
         }
         BML_Result BML_API_ImcPublishEx(BML_Mod owner, BML_TopicId t,
                                         const BML_ImcMessage *m) {
