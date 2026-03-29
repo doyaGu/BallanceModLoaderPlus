@@ -49,7 +49,49 @@ namespace Menu {
             return bml::AcquireInterface<BML_MenuApi>(
                 ResolveHostMenuOwner(), BML_MENU_INTERFACE_ID, 1, 0, 0);
         }
+
+        inline thread_local const BML_MenuApi *g_ScopedMenuApi = nullptr;
+
+        inline const BML_MenuApi *GetScopedOrAcquire(bml::InterfaceLease<BML_MenuApi> &temp) {
+            if (g_ScopedMenuApi)
+                return g_ScopedMenuApi;
+            temp = AcquireMenu();
+            return temp.Get();
+        }
     } // namespace detail
+
+    /**
+     * @brief RAII scope that acquires the Menu interface once for multiple calls.
+     *
+     * Usage (in draw callbacks):
+     *   Menu::Scope menuScope;
+     *   if (menuScope) {
+     *       Menu::MainButton("Play");
+     *       Menu::BackButton("Back");
+     *       Menu::Title("My Page");
+     *   }
+     */
+    class Scope {
+    public:
+        Scope() : m_Lease(detail::AcquireMenu()) {
+            m_Previous = detail::g_ScopedMenuApi;
+            detail::g_ScopedMenuApi = m_Lease.Get();
+        }
+
+        ~Scope() {
+            detail::g_ScopedMenuApi = m_Previous;
+        }
+
+        Scope(const Scope &) = delete;
+        Scope &operator=(const Scope &) = delete;
+
+        explicit operator bool() const noexcept { return detail::g_ScopedMenuApi != nullptr; }
+        const BML_MenuApi *Get() const noexcept { return detail::g_ScopedMenuApi; }
+
+    private:
+        bml::InterfaceLease<BML_MenuApi> m_Lease;
+        const BML_MenuApi *m_Previous;
+    };
 
     template <typename Func>
     std::enable_if_t<std::is_void_v<std::invoke_result_t<Func>>> At(float x, float y, Func &&func) {
@@ -107,6 +149,7 @@ namespace Menu {
     bool InitTextures(CKContext *context);
     bool InitMaterials(CKContext *context);
     bool InitSounds(CKContext *context);
+    void CleanupResources(CKContext *context);
 
     CKTexture *LoadTexture(CKContext *context, const char *id, const char *filename, int slot = 0);
 
@@ -191,99 +234,99 @@ namespace Menu {
 #else
 
     inline bool InitTextures(CKContext *context) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->resources && api->resources->InitTextures ? api->resources->InitTextures(context) : false;
     }
 
     inline bool InitMaterials(CKContext *context) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->resources && api->resources->InitMaterials ? api->resources->InitMaterials(context) : false;
     }
 
     inline bool InitSounds(CKContext *context) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->resources && api->resources->InitSounds ? api->resources->InitSounds(context) : false;
     }
 
     inline CKTexture *LoadTexture(CKContext *context, const char *id, const char *filename, int slot = 0) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->resources && api->resources->LoadTexture
             ? api->resources->LoadTexture(context, id, filename, slot)
             : nullptr;
     }
 
     inline void PlayMenuClickSound() {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         if (api && api->resources && api->resources->PlayMenuClickSound) {
             api->resources->PlayMenuClickSound();
         }
     }
 
     inline ImVec2 GetMenuPos() {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->layout && api->layout->GetMenuPos ? api->layout->GetMenuPos() : ImVec2();
     }
 
     inline ImVec2 GetMenuSize() {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->layout && api->layout->GetMenuSize ? api->layout->GetMenuSize() : ImVec2();
     }
 
     inline ImVec4 GetMenuColor() {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->layout && api->layout->GetMenuColor ? api->layout->GetMenuColor() : ImVec4();
     }
 
     inline ImVec2 GetButtonSize(ButtonType type) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->layout && api->layout->GetButtonSize ? api->layout->GetButtonSize(type) : ImVec2();
     }
 
     inline float GetButtonIndent(ButtonType type) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->layout && api->layout->GetButtonIndent ? api->layout->GetButtonIndent(type) : 0.0f;
     }
 
     inline ImVec2 GetButtonSizeInCoord(ButtonType type) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->layout && api->layout->GetButtonSizeInCoord
             ? api->layout->GetButtonSizeInCoord(type)
             : ImVec2();
     }
 
     inline float GetButtonIndentInCoord(ButtonType type) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->layout && api->layout->GetButtonIndentInCoord
             ? api->layout->GetButtonIndentInCoord(type)
             : 0.0f;
     }
 
     inline ImGuiKey CKKeyToImGuiKey(CKKEYBOARD key) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->input && api->input->CKKeyToImGuiKey ? api->input->CKKeyToImGuiKey(key) : ImGuiKey_None;
     }
 
     inline CKKEYBOARD ImGuiKeyToCKKey(ImGuiKey key) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->input && api->input->ImGuiKeyToCKKey
             ? api->input->ImGuiKeyToCKKey(key)
             : static_cast<CKKEYBOARD>(0);
     }
 
     inline bool KeyChordToString(ImGuiKeyChord keyChord, char *buf, size_t size) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->input && api->input->KeyChordToString
             ? api->input->KeyChordToString(keyChord, buf, size)
             : false;
     }
 
     inline bool SetKeyChordFromIO(ImGuiKeyChord *keyChord) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->input && api->input->SetKeyChordFromIO ? api->input->SetKeyChordFromIO(keyChord) : false;
     }
 
     inline void AddButtonImage(ImDrawList *drawList, const ImVec2 &pos, ButtonType type, int state) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         if (api && api->draw && api->draw->AddButtonImage) {
             api->draw->AddButtonImage(drawList, pos, type, state, nullptr, nullptr);
         }
@@ -299,7 +342,7 @@ namespace Menu {
         ButtonType type,
         int state,
         const char *text) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         if (api && api->draw && api->draw->AddButtonImage) {
             api->draw->AddButtonImage(drawList, pos, type, state, text, nullptr);
         }
@@ -321,7 +364,7 @@ namespace Menu {
         int state,
         const char *text,
         const ImVec2 &textAlign) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         if (api && api->draw && api->draw->AddButtonImage) {
             api->draw->AddButtonImage(drawList, pos, type, state, text, &textAlign);
         }
@@ -338,67 +381,67 @@ namespace Menu {
     }
 
     inline bool MainButton(const char *label, ImGuiButtonFlags flags = 0) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->widgets && api->widgets->MainButton ? api->widgets->MainButton(label, flags) : false;
     }
 
     inline bool OkButton(const char *label, ImGuiButtonFlags flags = 0) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->widgets && api->widgets->OkButton ? api->widgets->OkButton(label, flags) : false;
     }
 
     inline bool BackButton(const char *label, ImGuiButtonFlags flags = 0) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->widgets && api->widgets->BackButton ? api->widgets->BackButton(label, flags) : false;
     }
 
     inline bool OptionButton(const char *label, ImGuiButtonFlags flags = 0) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->widgets && api->widgets->OptionButton ? api->widgets->OptionButton(label, flags) : false;
     }
 
     inline bool LevelButton(const char *label, bool *v = nullptr, ImGuiButtonFlags flags = 0) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->widgets && api->widgets->LevelButton ? api->widgets->LevelButton(label, v, flags) : false;
     }
 
     inline bool SmallButton(const char *label, bool *v = nullptr, ImGuiButtonFlags flags = 0) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->widgets && api->widgets->SmallButton ? api->widgets->SmallButton(label, v, flags) : false;
     }
 
     inline bool LeftButton(const char *label, ImGuiButtonFlags flags = 0) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->widgets && api->widgets->LeftButton ? api->widgets->LeftButton(label, flags) : false;
     }
 
     inline bool RightButton(const char *label, ImGuiButtonFlags flags = 0) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->widgets && api->widgets->RightButton ? api->widgets->RightButton(label, flags) : false;
     }
 
     inline bool PlusButton(const char *label, ImGuiButtonFlags flags = 0) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->widgets && api->widgets->PlusButton ? api->widgets->PlusButton(label, flags) : false;
     }
 
     inline bool MinusButton(const char *label, ImGuiButtonFlags flags = 0) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->widgets && api->widgets->MinusButton ? api->widgets->MinusButton(label, flags) : false;
     }
 
     inline bool KeyButton(const char *label, bool *toggled, ImGuiKeyChord *keyChord) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->widgets && api->widgets->KeyButton ? api->widgets->KeyButton(label, toggled, keyChord) : false;
     }
 
     inline bool YesNoButton(const char *label, bool *v) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->widgets && api->widgets->YesNoButton ? api->widgets->YesNoButton(label, v) : false;
     }
 
     inline bool RadioButton(const char *label, int *currentItem, const char *const items[], int itemsCount) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->widgets && api->widgets->RadioButton
             ? api->widgets->RadioButton(label, currentItem, items, itemsCount)
             : false;
@@ -410,7 +453,7 @@ namespace Menu {
         ImGuiInputTextFlags flags = 0,
         ImGuiInputTextCallback callback = nullptr,
         void *userData = nullptr) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->widgets && api->widgets->InputTextButton
             ? api->widgets->InputTextButton(label, buf, bufSize, flags, callback, userData)
             : false;
@@ -422,7 +465,7 @@ namespace Menu {
         float stepFast = 0.0f,
         const char *format = "%.3f",
         ImGuiInputTextFlags flags = 0) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->widgets && api->widgets->InputFloatButton
             ? api->widgets->InputFloatButton(label, v, step, stepFast, format, flags)
             : false;
@@ -434,43 +477,43 @@ namespace Menu {
         int step = 1,
         int stepFast = 100,
         ImGuiInputTextFlags flags = 0) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->widgets && api->widgets->InputIntButton
             ? api->widgets->InputIntButton(label, v, step, stepFast, flags)
             : false;
     }
 
     inline void WrappedText(const char *text, float width, float baseX = 0.0f, float scale = 1.0f) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         if (api && api->text && api->text->WrappedText) {
             api->text->WrappedText(text, width, baseX, scale);
         }
     }
 
     inline bool NavLeft(float x = 0.36f, float y = 0.124f) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->nav && api->nav->NavLeft ? api->nav->NavLeft(x, y) : false;
     }
 
     inline bool NavRight(float x = 0.6038f, float y = 0.124f) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->nav && api->nav->NavRight ? api->nav->NavRight(x, y) : false;
     }
 
     inline bool NavBack(float x = 0.4031f, float y = 0.85f) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->nav && api->nav->NavBack ? api->nav->NavBack(x, y) : false;
     }
 
     inline void Title(const char *text, float y = 0.13f, float scale = 1.5f, ImU32 color = IM_COL32_WHITE) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         if (api && api->text && api->text->Title) {
             api->text->Title(text, y, scale, color);
         }
     }
 
     inline bool SearchBar(char *buffer, size_t bufferSize, float x = 0.4f, float y = 0.18f, float width = 0.2f) {
-        auto api = detail::AcquireMenu();
+        bml::InterfaceLease<BML_MenuApi> _lease; const auto *api = detail::GetScopedOrAcquire(_lease);
         return api && api->widgets && api->widgets->SearchBar
             ? api->widgets->SearchBar(buffer, bufferSize, x, y, width)
             : false;
@@ -622,6 +665,10 @@ namespace Menu {
         int GetPageCount() const { return m_PageCount; }
 
         void SetPage(int page) {
+            if (m_PageCount <= 0) {
+                m_PageIndex = 0;
+                return;
+            }
             page = std::max(0, std::min(page, m_PageCount - 1));
             if (m_PageIndex != page) {
                 int oldPage = m_PageIndex;

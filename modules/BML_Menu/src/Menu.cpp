@@ -100,6 +100,7 @@ namespace Menu {
         0.0f,
     };
 
+    CKContext *g_Context = nullptr;
     CKTexture *g_Textures[TEXTURE_COUNT] = {};
     CKMaterial *g_Materials[MATERIAL_COUNT] = {};
     CKGroup *g_Sounds = nullptr;
@@ -135,6 +136,8 @@ namespace Menu {
     bool InitTextures(CKContext *context) {
         if (!context)
             return false;
+
+        g_Context = context;
 
         if (!g_Textures[TEXTURE_BUTTON_DESELECT])
             g_Textures[TEXTURE_BUTTON_DESELECT] = LoadTexture(context, "TEX_Button_Deselect", "Button01_deselect.tga");
@@ -225,6 +228,28 @@ namespace Menu {
             return false;
 
         return true;
+    }
+
+    void CleanupResources(CKContext *context) {
+        CKContext *ctx = context ? context : g_Context;
+        if (ctx) {
+            for (auto &tex : g_Textures) {
+                if (tex) {
+                    ctx->DestroyObject(tex);
+                    tex = nullptr;
+                }
+            }
+            for (auto &mat : g_Materials) {
+                if (mat) {
+                    ctx->DestroyObject(mat);
+                    mat = nullptr;
+                }
+            }
+        }
+        g_Sounds = nullptr;
+        g_MessageManager = nullptr;
+        g_MenuClickMessageType = -1;
+        g_Context = nullptr;
     }
 
     struct KeyMapping { CKKEYBOARD ck; ImGuiKey imgui; };
@@ -389,7 +414,11 @@ namespace Menu {
                 break;
         }
 
-        GetImGuiApi()->draw_list->AddImage(
+        const BML_ImGuiApi *api = GetImGuiApi();
+        if (!api->draw_list || !api->draw_list->AddImage)
+            return;
+
+        api->draw_list->AddImage(
             drawList,
             MakeTextureRef((ImTextureID) g_Textures[texture]),
             bml::imgui::detail::ToCValue<ImVec2, ImVec2_c>(bbMin),
@@ -706,22 +735,25 @@ namespace Menu {
         }
 
         if (*toggled) {
-            ImVec2 vpSize = ImGui::GetMainViewport()->Size;
-            const ImVec2 size0(vpSize.x * 0.145f, vpSize.y * 0.039f);
-            const ImVec2 min0(bbMin.x + vpSize.x * 0.155f, bbMin.y);
-            const ImVec2 max0(min0.x + size0.x, min0.y + size0.y);
+            const BML_ImGuiApi *api = GetImGuiApi();
+            if (api->draw_list && api->draw_list->AddImage) {
+                ImVec2 vpSize = ImGui::GetMainViewport()->Size;
+                const ImVec2 size0(vpSize.x * 0.145f, vpSize.y * 0.039f);
+                const ImVec2 min0(bbMin.x + vpSize.x * 0.155f, bbMin.y);
+                const ImVec2 max0(min0.x + size0.x, min0.y + size0.y);
 
-            const ImVec2 uv0(0.005f, 0.3850f);
-            const ImVec2 uv1(0.4320f, 0.4500f);
+                const ImVec2 uv0(0.005f, 0.3850f);
+                const ImVec2 uv1(0.4320f, 0.4500f);
 
-            GetImGuiApi()->draw_list->AddImage(
-                drawList,
-                MakeTextureRef((ImTextureID) g_Materials[MATERIAL_KEYS_HIGHLIGHT]),
-                bml::imgui::detail::ToCValue<ImVec2, ImVec2_c>(min0),
-                bml::imgui::detail::ToCValue<ImVec2, ImVec2_c>(max0),
-                bml::imgui::detail::ToCValue<ImVec2, ImVec2_c>(uv0),
-                bml::imgui::detail::ToCValue<ImVec2, ImVec2_c>(uv1),
-                IM_COL32_WHITE);
+                api->draw_list->AddImage(
+                    drawList,
+                    MakeTextureRef((ImTextureID) g_Materials[MATERIAL_KEYS_HIGHLIGHT]),
+                    bml::imgui::detail::ToCValue<ImVec2, ImVec2_c>(min0),
+                    bml::imgui::detail::ToCValue<ImVec2, ImVec2_c>(max0),
+                    bml::imgui::detail::ToCValue<ImVec2, ImVec2_c>(uv0),
+                    bml::imgui::detail::ToCValue<ImVec2, ImVec2_c>(uv1),
+                    IM_COL32_WHITE);
+            }
         }
 
         return changed;

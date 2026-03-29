@@ -301,6 +301,7 @@ public:
     }
 
     BML_Result OnPrepareDetach() override {
+        Menu::CleanupResources(nullptr);
         return m_MenuApi.Reset();
     }
 
