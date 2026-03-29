@@ -671,6 +671,29 @@ namespace {
     void ResetContributionMockState() {
         g_ContributionMockState = {};
     }
+
+    struct InterfaceAddRefMockState {
+        int addref_calls = 0;
+        int release_calls = 0;
+        BML_InterfaceLease last_lease = nullptr;
+    };
+
+    InterfaceAddRefMockState g_AddRefMockState;
+
+    void MockInterfaceAddRef(BML_InterfaceLease lease) {
+        ++g_AddRefMockState.addref_calls;
+        g_AddRefMockState.last_lease = lease;
+    }
+
+    BML_Result MockInterfaceReleaseForCopy(BML_InterfaceLease lease) {
+        ++g_AddRefMockState.release_calls;
+        g_AddRefMockState.last_lease = lease;
+        return BML_RESULT_OK;
+    }
+
+    void ResetAddRefMockState() {
+        g_AddRefMockState = {};
+    }
 }
 
 // ============================================================================
@@ -1068,6 +1091,13 @@ TEST(BMLWrapperTest, InterfaceLease_DefaultConstruction) {
     bml::InterfaceLease<int> lease;
     EXPECT_FALSE(static_cast<bool>(lease));
     EXPECT_EQ(nullptr, lease.Get());
+}
+
+TEST(BMLWrapperTest, InterfaceLease_IsCopyable) {
+    static_assert(std::is_copy_constructible_v<bml::InterfaceLease<int>>,
+                  "InterfaceLease should be copyable");
+    static_assert(std::is_move_constructible_v<bml::InterfaceLease<int>>,
+                  "InterfaceLease should be movable");
 }
 
 TEST(BMLWrapperTest, PublishedInterface_IsMoveOnly) {
@@ -1840,6 +1870,125 @@ TEST(BMLWrapperTest, SyncService_AtomicOperations) {
     void *old = svc.AtomicCompareExchangePtr(&ptr, &other, &sentinel);
     EXPECT_EQ(&sentinel, old);
     EXPECT_EQ(&other, ptr);
+}
+
+// ============================================================================
+// InterfaceLease Copy/Move Semantics Tests
+// ============================================================================
+
+TEST(BMLWrapperTest, InterfaceLease_CopyCallsAddRef) {
+    ResetAddRefMockState();
+
+    auto prevAddRef = bmlInterfaceAddRef;
+    auto prevRelease = bmlInterfaceRelease;
+    bmlInterfaceAddRef = &MockInterfaceAddRef;
+    bmlInterfaceRelease = &MockInterfaceReleaseForCopy;
+
+    static int service = 42;
+    auto lease = reinterpret_cast<BML_InterfaceLease>(0xFACE);
+    {
+        bml::InterfaceLease<int> original(&service, lease);
+        EXPECT_TRUE(static_cast<bool>(original));
+        EXPECT_EQ(0, g_AddRefMockState.addref_calls);
+
+        // Copy constructor
+        bml::InterfaceLease<int> copy(original);
+        EXPECT_TRUE(static_cast<bool>(copy));
+        EXPECT_EQ(1, g_AddRefMockState.addref_calls);
+        EXPECT_EQ(lease, g_AddRefMockState.last_lease);
+        EXPECT_EQ(&service, copy.Get());
+    }
+
+    // Destructor of both original and copy should call release
+    EXPECT_EQ(2, g_AddRefMockState.release_calls);
+
+    bmlInterfaceAddRef = prevAddRef;
+    bmlInterfaceRelease = prevRelease;
+}
+
+TEST(BMLWrapperTest, InterfaceLease_CopyOriginalResetCopyStillValid) {
+    ResetAddRefMockState();
+
+    auto prevAddRef = bmlInterfaceAddRef;
+    auto prevRelease = bmlInterfaceRelease;
+    bmlInterfaceAddRef = &MockInterfaceAddRef;
+    bmlInterfaceRelease = &MockInterfaceReleaseForCopy;
+
+    static int service = 99;
+    auto lease = reinterpret_cast<BML_InterfaceLease>(0xBEAD);
+    {
+        bml::InterfaceLease<int> original(&service, lease);
+        bml::InterfaceLease<int> copy(original);
+        EXPECT_EQ(1, g_AddRefMockState.addref_calls);
+
+        // Reset original -- releases once
+        original.Reset();
+        EXPECT_FALSE(static_cast<bool>(original));
+        EXPECT_EQ(1, g_AddRefMockState.release_calls);
+
+        // Copy should still be valid
+        EXPECT_TRUE(static_cast<bool>(copy));
+        EXPECT_EQ(&service, copy.Get());
+    }
+    // Copy destructor releases
+    EXPECT_EQ(2, g_AddRefMockState.release_calls);
+
+    bmlInterfaceAddRef = prevAddRef;
+    bmlInterfaceRelease = prevRelease;
+}
+
+TEST(BMLWrapperTest, InterfaceLease_CopyAssignment) {
+    ResetAddRefMockState();
+
+    auto prevAddRef = bmlInterfaceAddRef;
+    auto prevRelease = bmlInterfaceRelease;
+    bmlInterfaceAddRef = &MockInterfaceAddRef;
+    bmlInterfaceRelease = &MockInterfaceReleaseForCopy;
+
+    static int service1 = 10;
+    static int service2 = 20;
+    auto lease1 = reinterpret_cast<BML_InterfaceLease>(0xAAAA);
+    auto lease2 = reinterpret_cast<BML_InterfaceLease>(0xBBBB);
+    {
+        bml::InterfaceLease<int> a(&service1, lease1);
+        bml::InterfaceLease<int> b(&service2, lease2);
+
+        // Copy assign b = a: should release b's lease, then addref a's
+        b = a;
+        EXPECT_EQ(1, g_AddRefMockState.release_calls);  // b's old lease released
+        EXPECT_EQ(1, g_AddRefMockState.addref_calls);    // a's lease addref'd
+        EXPECT_EQ(&service1, b.Get());
+    }
+    // Both a and b destruct, each releasing lease1
+    EXPECT_EQ(3, g_AddRefMockState.release_calls);
+
+    bmlInterfaceAddRef = prevAddRef;
+    bmlInterfaceRelease = prevRelease;
+}
+
+TEST(BMLWrapperTest, InterfaceLease_MoveDoesNotAddRef) {
+    ResetAddRefMockState();
+
+    auto prevAddRef = bmlInterfaceAddRef;
+    auto prevRelease = bmlInterfaceRelease;
+    bmlInterfaceAddRef = &MockInterfaceAddRef;
+    bmlInterfaceRelease = &MockInterfaceReleaseForCopy;
+
+    static int service = 55;
+    auto lease = reinterpret_cast<BML_InterfaceLease>(0xDEAD);
+    {
+        bml::InterfaceLease<int> original(&service, lease);
+        bml::InterfaceLease<int> moved(std::move(original));
+
+        EXPECT_EQ(0, g_AddRefMockState.addref_calls);  // Move should NOT addref
+        EXPECT_FALSE(static_cast<bool>(original));
+        EXPECT_TRUE(static_cast<bool>(moved));
+    }
+    // Only one release (from moved's destructor; original was emptied)
+    EXPECT_EQ(1, g_AddRefMockState.release_calls);
+
+    bmlInterfaceAddRef = prevAddRef;
+    bmlInterfaceRelease = prevRelease;
 }
 
 // Main function
