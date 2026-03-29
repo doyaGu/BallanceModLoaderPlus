@@ -203,4 +203,13 @@ void DisableRender(bool disable) { g_DisableRender = disable; }
 void EnableWidescreenFix(bool enable) { g_EnableWidescreenFix = enable; }
 bool IsRenderHookActive() { return g_Initialized; }
 
+HookAddresses GetHookAddresses() {
+    HookAddresses addrs;
+    if (g_OriginalRender)
+        addrs.render = g_OriginalRender;
+    if (g_UpdateProjectionTargetPtr)
+        addrs.updateProjection = *reinterpret_cast<void **>(&g_UpdateProjectionTargetPtr);
+    return addrs;
+}
+
 } // namespace BML_Render

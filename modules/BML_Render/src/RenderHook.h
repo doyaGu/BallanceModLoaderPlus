@@ -14,11 +14,17 @@ namespace bml { class ModuleServices; }
 
 namespace BML_Render {
 
+struct HookAddresses {
+    void *render = nullptr;
+    void *updateProjection = nullptr;
+};
+
 bool InitRenderHook(const bml::ModuleServices &services);
 void ShutdownRenderHook();
 void DisableRender(bool disable);
 void EnableWidescreenFix(bool enable);
 bool IsRenderHookActive();
+HookAddresses GetHookAddresses();
 
 } // namespace BML_Render
 

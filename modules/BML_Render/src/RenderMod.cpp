@@ -5,6 +5,7 @@
 
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_hook_module.hpp"
+#include "bml_hook.hpp"
 #include "bml_config_bind.hpp"
 #include "bml_game_topics.h"
 #include "bml_virtools.h"
@@ -18,6 +19,8 @@ class RenderMod : public bml::HookModule {
     bool m_UnlockFrameRate = false;
     int32_t m_MaxFrameRate = 0;
     bml::ConfigBindings m_Cfg;
+    bml::HookRegistration m_RenderHookReg;
+    bml::HookRegistration m_ProjectionHookReg;
 
     void ApplyConfig() {
         BML_Render::EnableWidescreenFix(m_WidescreenFix);
@@ -39,12 +42,24 @@ class RenderMod : public bml::HookModule {
 
     bool InitHook(CKContext *) override {
         if (!BML_Render::InitRenderHook(Services())) return false;
+
+        auto hooks = Services().Hooks();
+        if (hooks) {
+            auto addrs = BML_Render::GetHookAddresses();
+            if (addrs.render)
+                m_RenderHookReg = hooks.Register("CKRenderContext::Render", addrs.render);
+            if (addrs.updateProjection)
+                m_ProjectionHookReg = hooks.Register("CKRenderContext::UpdateProjection", addrs.updateProjection);
+        }
+
         m_Cfg.Refresh(Services().Config());
         ApplyConfig();
         return true;
     }
 
     void ShutdownHook() override {
+        m_RenderHookReg.Unregister();
+        m_ProjectionHookReg.Unregister();
         BML_Render::ShutdownRenderHook();
     }
 
