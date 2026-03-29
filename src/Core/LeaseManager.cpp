@@ -139,14 +139,15 @@ namespace BML::Core {
         {
             std::lock_guard<std::mutex> lock(m_Mutex);
             auto it = m_InterfaceLeases.find(lease->id);
-            if (it == m_InterfaceLeases.end()) {
-                return BML_RESULT_INVALID_HANDLE;
+            if (it != m_InterfaceLeases.end()) {
+                // Still tracked — remove from map and kernel registry
+                UnregisterHandleKernel(lease);
+                m_InterfaceLeases.erase(it);
+                if (m_OutstandingLeaseHandles > 0) {
+                    --m_OutstandingLeaseHandles;
+                }
             }
-            UnregisterHandleKernel(lease);
-            m_InterfaceLeases.erase(it);
-            if (m_OutstandingLeaseHandles > 0) {
-                --m_OutstandingLeaseHandles;
-            }
+            // If not in map, Cleanup already untracked it — just delete
         }
 
         delete lease;
@@ -311,8 +312,11 @@ namespace BML::Core {
                 ++it;
                 continue;
             }
+            // Untrack from map and kernel registry, but DON'T delete.
+            // Outstanding InterfaceLease<T> copies may still hold this pointer.
+            // The ref_count system will delete when the last copy releases.
             UnregisterHandleKernel(it->second);
-            delete it->second;
+            it->second->kernel = nullptr;
             it = m_InterfaceLeases.erase(it);
             if (m_OutstandingLeaseHandles > 0) {
                 --m_OutstandingLeaseHandles;
@@ -334,7 +338,7 @@ namespace BML::Core {
                 continue;
             }
             UnregisterHandleKernel(it->second);
-            delete it->second;
+            it->second->kernel = nullptr;
             it = m_InterfaceLeases.erase(it);
             if (m_OutstandingLeaseHandles > 0) {
                 --m_OutstandingLeaseHandles;
@@ -363,7 +367,7 @@ namespace BML::Core {
         for (auto &[id, lease] : m_InterfaceLeases) {
             (void) id;
             UnregisterHandleKernel(lease);
-            delete lease;
+            lease->kernel = nullptr;
         }
         m_InterfaceLeases.clear();
         m_OutstandingLeaseHandles = 0;

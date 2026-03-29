@@ -133,7 +133,7 @@ TEST(LeaseManagerTests, AddRefOnNullIsNoOp) {
     manager.AddRefInterfaceLease(nullptr);
 }
 
-TEST(LeaseManagerTests, CleanupConsumerDestroysRegardlessOfRefCount) {
+TEST(LeaseManagerTests, CleanupConsumerUntracksButRefCountManagesLifetime) {
     LeaseManager manager;
     TestKernel kernel;
     BML_InterfaceLease lease = nullptr;
@@ -141,13 +141,18 @@ TEST(LeaseManagerTests, CleanupConsumerDestroysRegardlessOfRefCount) {
     ASSERT_EQ(manager.CreateInterfaceLease(kernel.get(), "iface.cleanup", "provider.a", "consumer.a", &lease),
               BML_RESULT_OK);
 
-    // AddRef to bump ref_count
+    // AddRef to bump ref_count to 3
     manager.AddRefInterfaceLease(lease);
     manager.AddRefInterfaceLease(lease);
 
-    // Cleanup forcibly destroys regardless of ref_count
+    // Cleanup untracks from map but doesn't delete (handle still has refs)
     manager.CleanupConsumer("consumer.a");
     EXPECT_EQ(manager.GetOutstandingLeaseHandlesForTest(), 0u);
+
+    // Handle is still alive — Release calls decrement ref_count safely
+    EXPECT_EQ(manager.ReleaseInterfaceLease(lease), BML_RESULT_OK);  // 3→2
+    EXPECT_EQ(manager.ReleaseInterfaceLease(lease), BML_RESULT_OK);  // 2→1
+    EXPECT_EQ(manager.ReleaseInterfaceLease(lease), BML_RESULT_OK);  // 1→0, deletes
 }
 
 TEST(LeaseManagerTests, GetLeaseCountReflectsUniqueLeasesNotRefCount) {
