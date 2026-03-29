@@ -276,6 +276,7 @@ class ObjectLoadMod : public bml::HookModule {
 
         auto *event = reinterpret_cast<BML_ObjectLoadEvent *>(storage);
         std::memset(event, 0, sizeof(BML_ObjectLoadEvent));
+        event->struct_size = sizeof(BML_ObjectLoadEvent);
         char *cursor = storage + sizeof(BML_ObjectLoadEvent);
 
         if (filenameSize > 0) {
@@ -318,6 +319,7 @@ class ObjectLoadMod : public bml::HookModule {
 
         auto *event = reinterpret_cast<BML_ScriptLoadEvent *>(storage);
         std::memset(event, 0, sizeof(BML_ScriptLoadEvent));
+        event->struct_size = sizeof(BML_ScriptLoadEvent);
         if (filenameSize > 0) {
             event->filename = storage + sizeof(BML_ScriptLoadEvent);
             std::memcpy(const_cast<char *>(event->filename), filename, filenameSize);

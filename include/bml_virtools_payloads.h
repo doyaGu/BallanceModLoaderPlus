@@ -15,6 +15,7 @@ class CKObject;
  * during the frame in which the event is published.
  */
 typedef struct BML_ObjectLoadEvent {
+    size_t struct_size;
     const char *filename;
     const char *master_name;
     CK_CLASSID class_id;
@@ -28,14 +29,19 @@ typedef struct BML_ObjectLoadEvent {
     uint32_t object_count;
 } BML_ObjectLoadEvent;
 
+#define BML_OBJECT_LOAD_EVENT_INIT { sizeof(BML_ObjectLoadEvent) }
+
 /**
  * @brief Payload for BML/ObjectLoad/LoadScript events.
  */
 typedef struct BML_ScriptLoadEvent {
+    size_t struct_size;
     const char *filename;
     CKBehavior *script;
     CKBOOL is_map;
 } BML_ScriptLoadEvent;
+
+#define BML_SCRIPT_LOAD_EVENT_INIT { sizeof(BML_ScriptLoadEvent) }
 
 /**
  * @brief Payload for Physics/Physicalize events.
