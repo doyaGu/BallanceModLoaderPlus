@@ -171,6 +171,7 @@ TEST_F(BMLIntegrationTest, BootstrapLoaderStillLoadsHostBootstrapMinimum) {
     EXPECT_NE(nullptr, bmlInterfaceRegister);
     EXPECT_NE(nullptr, bmlInterfaceAcquire);
     EXPECT_NE(nullptr, bmlInterfaceRelease);
+    EXPECT_NE(nullptr, bmlInterfaceAddRef);
     EXPECT_NE(nullptr, bmlInterfaceUnregister);
     EXPECT_NE(nullptr, bmlGetProcAddress("bmlGetProcAddress"));
     EXPECT_EQ(nullptr, bmlGetProcAddress("bmlGetLoadedModuleCount"));

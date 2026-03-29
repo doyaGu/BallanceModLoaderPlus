@@ -31,6 +31,7 @@ BML_BEGIN_CDECLS
  *   - bmlInterfaceRegister
  *   - bmlInterfaceAcquire
  *   - bmlInterfaceRelease
+ *   - bmlInterfaceAddRef
  *   - bmlInterfaceUnregister
  *
  * Module code must not use proc lookup for runtime behavior. Modules receive
@@ -84,7 +85,7 @@ BML_Result bmlLoadAPI(PFN_BML_GetProcAddress get_proc) {
     bmlInterfaceUnregister = (PFN_BML_InterfaceUnregister) get_proc("bmlInterfaceUnregister");
 
     if (!bmlInterfaceRegister || !bmlInterfaceAcquire ||
-        !bmlInterfaceRelease || !bmlInterfaceUnregister) {
+        !bmlInterfaceRelease || !bmlInterfaceAddRef || !bmlInterfaceUnregister) {
         bmlUnloadAPI();
         return BML_RESULT_NOT_FOUND;
     }
@@ -102,6 +103,11 @@ void bmlBindServices(const BML_Services *services) {
     bmlInterfaceRelease = services->InterfaceControl->Release;
     bmlInterfaceAddRef = services->InterfaceControl->AddRef;
     bmlInterfaceUnregister = services->InterfaceControl->Unregister;
+
+    if (!bmlInterfaceRegister || !bmlInterfaceAcquire ||
+        !bmlInterfaceRelease || !bmlInterfaceAddRef || !bmlInterfaceUnregister) {
+        bmlUnloadAPI();
+    }
 }
 
 void bmlUnloadAPI(void) {
@@ -109,7 +115,11 @@ void bmlUnloadAPI(void) {
 }
 
 BML_Bool bmlIsApiLoaded(void) {
-    return (bmlInterfaceAcquire != NULL) ? BML_TRUE : BML_FALSE;
+    return (bmlInterfaceRegister != NULL &&
+            bmlInterfaceAcquire != NULL &&
+            bmlInterfaceRelease != NULL &&
+            bmlInterfaceAddRef != NULL &&
+            bmlInterfaceUnregister != NULL) ? BML_TRUE : BML_FALSE;
 }
 
 size_t bmlGetApiCount(void) {
@@ -117,7 +127,7 @@ size_t bmlGetApiCount(void) {
 }
 
 size_t bmlGetRequiredApiCount(void) {
-    return 4;
+    return 5;
 }
 
 #else /* !BML_LOADER_IMPLEMENTATION */

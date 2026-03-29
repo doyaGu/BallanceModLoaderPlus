@@ -21,6 +21,7 @@ namespace BML::Core {
                                         const void **out_implementation,
                                         BML_InterfaceLease *out_lease);
     BML_Result BML_API_InterfaceRelease(BML_InterfaceLease lease);
+    void BML_API_InterfaceAddRef(BML_InterfaceLease lease);
     BML_Result BML_API_InterfaceUnregister(BML_Mod owner, const char *interface_id);
 } // namespace BML::Core
 
@@ -129,6 +130,7 @@ namespace {
             std::strcmp(proc_name, "bmlInterfaceRegister") == 0 ||
             std::strcmp(proc_name, "bmlInterfaceAcquire") == 0 ||
             std::strcmp(proc_name, "bmlInterfaceRelease") == 0 ||
+            std::strcmp(proc_name, "bmlInterfaceAddRef") == 0 ||
             std::strcmp(proc_name, "bmlInterfaceUnregister") == 0;
     }
 
@@ -148,6 +150,9 @@ namespace {
         }
         if (std::strcmp(proc_name, "bmlInterfaceRelease") == 0) {
             return reinterpret_cast<void *>(&BML::Core::BML_API_InterfaceRelease);
+        }
+        if (std::strcmp(proc_name, "bmlInterfaceAddRef") == 0) {
+            return reinterpret_cast<void *>(&BML::Core::BML_API_InterfaceAddRef);
         }
         if (std::strcmp(proc_name, "bmlInterfaceUnregister") == 0) {
             return reinterpret_cast<void *>(&BML::Core::BML_API_InterfaceUnregister);

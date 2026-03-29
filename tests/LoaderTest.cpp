@@ -405,6 +405,7 @@ namespace {
     }
 
     BML_Result MockInterfaceRelease(BML_InterfaceLease) { return BML_RESULT_OK; }
+    void MockInterfaceAddRef(BML_InterfaceLease) {}
     BML_Result MockInterfaceRegister(BML_Mod, const BML_InterfaceDesc *) { return BML_RESULT_OK; }
     BML_Result MockInterfaceUnregister(BML_Mod, const char *) { return BML_RESULT_OK; }
 
@@ -417,7 +418,7 @@ namespace {
         MockInterfaceRegister,
         MockInterfaceAcquire,
         MockInterfaceRelease,
-        nullptr, /* AddRef */
+        MockInterfaceAddRef,
         MockInterfaceUnregister,
     };
 
@@ -456,6 +457,9 @@ namespace {
         if (std::strcmp(proc_name, "bmlInterfaceRelease") == 0) {
             return reinterpret_cast<void *>(&MockInterfaceRelease);
         }
+        if (std::strcmp(proc_name, "bmlInterfaceAddRef") == 0) {
+            return reinterpret_cast<void *>(&MockInterfaceAddRef);
+        }
         if (std::strcmp(proc_name, "bmlInterfaceUnregister") == 0) {
             return reinterpret_cast<void *>(&MockInterfaceUnregister);
         }
@@ -482,6 +486,7 @@ TEST_F(LoaderTest, LoadAPI_BootstrapAndServices_Success) {
     EXPECT_NE(nullptr, bmlInterfaceRegister);
     EXPECT_NE(nullptr, bmlInterfaceAcquire);
     EXPECT_NE(nullptr, bmlInterfaceRelease);
+    EXPECT_NE(nullptr, bmlInterfaceAddRef);
     EXPECT_NE(nullptr, bmlInterfaceUnregister);
 }
 
@@ -503,6 +508,19 @@ TEST_F(LoaderTest, LoadAPI_MissingBootstrapExport_ReturnsNotFound) {
     EXPECT_EQ(nullptr, bmlInterfaceAcquire);
 }
 
+TEST_F(LoaderTest, LoadAPI_MissingInterfaceAddRefExport_ReturnsNotFound) {
+    auto missingAddRef = [](const char *proc_name) -> void * {
+        if (proc_name && std::strcmp(proc_name, "bmlInterfaceAddRef") == 0) {
+            return nullptr;
+        }
+        return MockGetProcAddress(proc_name);
+    };
+
+    EXPECT_EQ(BML_RESULT_NOT_FOUND, BML_BOOTSTRAP_LOAD(missingAddRef));
+    EXPECT_FALSE(bmlIsApiLoaded());
+    EXPECT_EQ(nullptr, bmlInterfaceAddRef);
+}
+
 TEST_F(LoaderTest, LoadAPI_MissingNonBootstrapInterface_DoesNotFail) {
     g_BlockCoreConfig = true;
     EXPECT_EQ(BML_RESULT_OK, BML_BOOTSTRAP_LOAD(MockGetProcAddress));
@@ -515,7 +533,21 @@ TEST_F(LoaderTest, BindServices_Success) {
     EXPECT_NE(nullptr, bmlInterfaceRegister);
     EXPECT_NE(nullptr, bmlInterfaceAcquire);
     EXPECT_NE(nullptr, bmlInterfaceRelease);
+    EXPECT_NE(nullptr, bmlInterfaceAddRef);
     EXPECT_NE(nullptr, bmlInterfaceUnregister);
+}
+
+TEST_F(LoaderTest, BindServices_MissingAddRefLeavesLoaderUnloaded) {
+    BML_CoreInterfaceControlInterface interfaceControl = g_InterfaceControl;
+    interfaceControl.AddRef = nullptr;
+
+    BML_Services services = g_Services;
+    services.InterfaceControl = &interfaceControl;
+
+    bmlBindServices(&services);
+
+    EXPECT_FALSE(bmlIsApiLoaded());
+    EXPECT_EQ(nullptr, bmlInterfaceAddRef);
 }
 
 TEST_F(LoaderTest, BindServices_NullBundleLeavesLoaderUnloaded) {
@@ -537,5 +569,5 @@ TEST_F(LoaderTest, UnloadAPI_ClearsCompatibilitySurface) {
 
 TEST_F(LoaderTest, ApiCountsReflectBootstrapMinimum) {
     EXPECT_EQ(5u, bmlGetApiCount());
-    EXPECT_EQ(4u, bmlGetRequiredApiCount());
+    EXPECT_EQ(5u, bmlGetRequiredApiCount());
 }
