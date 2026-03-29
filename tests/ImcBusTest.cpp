@@ -1844,4 +1844,51 @@ TEST_F(ImcBusTest, ConcurrentPublishWithSubscribeUnsubscribeRace) {
     EXPECT_EQ(BML_RESULT_OK, ImcUnsubscribe(initial_sub));
 }
 
+// ============================================================================
+// Typed Message Tests
+// ============================================================================
+
+TEST_F(ImcBusTest, PublishRejectsTypeMismatch) {
+    // Create a topic and set an expected type on it
+    BML_TopicId topic = BML_TOPIC_ID_INVALID;
+    ASSERT_EQ(BML_RESULT_OK, GetTopicId("Test/Typed", &topic));
+    ASSERT_NE(BML_TOPIC_ID_INVALID, topic);
+
+    // Access the internal bus to set expected type
+    auto &bus = kernel_->imc_bus->GetImpl();
+    bus.m_PublishState.topic_registry.SetExpectedTypeId(topic, 0xDEADBEEF);
+
+    // Publish with matching type_id should succeed
+    uint32_t data = 42;
+    BML_ImcMessage msg = BML_IMC_MESSAGE_INIT;
+    msg.data = &data;
+    msg.size = sizeof(data);
+    msg.payload_type_id = 0xDEADBEEF;
+    EXPECT_EQ(BML_RESULT_OK, PublishEx(topic, &msg));
+
+    // Publish with mismatching type_id should fail
+    msg.payload_type_id = 0xCAFEBABE;
+    EXPECT_EQ(BML_RESULT_IMC_TYPE_MISMATCH, PublishEx(topic, &msg));
+
+    // Publish with BML_PAYLOAD_TYPE_NONE should bypass validation
+    msg.payload_type_id = BML_PAYLOAD_TYPE_NONE;
+    EXPECT_EQ(BML_RESULT_OK, PublishEx(topic, &msg));
+
+    // Raw Publish (via C API with default type_id=0) should bypass validation
+    EXPECT_EQ(BML_RESULT_OK, Publish(topic, &data, sizeof(data)));
+}
+
+TEST_F(ImcBusTest, PublishWithTypeIdAndNoExpectedTypeSucceeds) {
+    // Topic with no expected type set should accept any type_id
+    BML_TopicId topic = BML_TOPIC_ID_INVALID;
+    ASSERT_EQ(BML_RESULT_OK, GetTopicId("Test/Untyped", &topic));
+
+    uint32_t data = 42;
+    BML_ImcMessage msg = BML_IMC_MESSAGE_INIT;
+    msg.data = &data;
+    msg.size = sizeof(data);
+    msg.payload_type_id = 0x12345678;
+    EXPECT_EQ(BML_RESULT_OK, PublishEx(topic, &msg));
+}
+
 } // namespace

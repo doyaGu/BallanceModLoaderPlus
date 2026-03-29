@@ -406,7 +406,7 @@ private:
             BML_RESULT_OK) {
             return;
         }
-        m_ImcBus->Publish(m_Handle, topicId, &event, sizeof(event));
+        m_ImcBus->Publish(m_Handle, topicId, &event, sizeof(event), BML_PAYLOAD_TYPE_NONE);
     }
 
     void RunCommandProbes() {

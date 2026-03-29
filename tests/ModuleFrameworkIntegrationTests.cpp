@@ -399,7 +399,7 @@ TEST_F(ModuleFrameworkIntegrationTest, SubscriptionManager_CleanupOnDetach) {
         imcBus->GetTopicId(imcBus->Context, "test/framework/event", &topic_id));
 
     uint32_t payload = 42;
-    ASSERT_EQ(BML_RESULT_OK, imcBus->Publish(hostMod, topic_id, &payload, sizeof(payload)));
+    ASSERT_EQ(BML_RESULT_OK, imcBus->Publish(hostMod, topic_id, &payload, sizeof(payload), BML_PAYLOAD_TYPE_NONE));
     imcBus->Pump(imcBus->Context, 100);
 
     EXPECT_EQ(1, SubscriberMod::message_count.load());
@@ -413,7 +413,7 @@ TEST_F(ModuleFrameworkIntegrationTest, SubscriptionManager_CleanupOnDetach) {
     imcBus = AcquireImcBus(hostMod);
     ASSERT_TRUE(static_cast<bool>(imcBus));
 
-    ASSERT_EQ(BML_RESULT_OK, imcBus->Publish(hostMod, topic_id, &payload, sizeof(payload)));
+    ASSERT_EQ(BML_RESULT_OK, imcBus->Publish(hostMod, topic_id, &payload, sizeof(payload), BML_PAYLOAD_TYPE_NONE));
     imcBus->Pump(imcBus->Context, 100);
 
     EXPECT_EQ(1, SubscriberMod::message_count.load()) << "Message received after detach";
@@ -449,7 +449,7 @@ TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_SubscriptionManager_PubSub) {
         BML_RESULT_OK,
         imcBus->GetTopicId(imcBus->Context, "test/cpp/wrapper/event", &topic_id));
     ASSERT_EQ(BML_RESULT_OK, imcBus->Publish(hostMod, topic_id, &static_cast<const uint32_t &>(uint32_t{99}),
-                                                  sizeof(uint32_t)));
+                                                  sizeof(uint32_t), BML_PAYLOAD_TYPE_NONE));
     bml::imc::pumpAll(imcBus.Get());
 
     EXPECT_EQ(1, received.load());
@@ -460,7 +460,7 @@ TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_SubscriptionManager_PubSub) {
     EXPECT_EQ(0u, subs.Count());
 
     const uint32_t second_payload = 100;
-    ASSERT_EQ(BML_RESULT_OK, imcBus->Publish(hostMod, topic_id, &second_payload, sizeof(second_payload)));
+    ASSERT_EQ(BML_RESULT_OK, imcBus->Publish(hostMod, topic_id, &second_payload, sizeof(second_payload), BML_PAYLOAD_TYPE_NONE));
     bml::imc::pumpAll(imcBus.Get());
     EXPECT_EQ(1, received.load()) << "Received after Clear()";
 }
@@ -491,7 +491,7 @@ TEST_F(ModuleFrameworkIntegrationTest, CppWrapper_TypedSubscription) {
     BML_TopicId topic_id = BML_TOPIC_ID_INVALID;
     ASSERT_EQ(BML_RESULT_OK, imcBus->GetTopicId(imcBus->Context, "test/cpp/typed", &topic_id));
     TestEvent sent = {10, 20};
-    ASSERT_EQ(BML_RESULT_OK, imcBus->Publish(hostMod, topic_id, &sent, sizeof(sent)));
+    ASSERT_EQ(BML_RESULT_OK, imcBus->Publish(hostMod, topic_id, &sent, sizeof(sent), BML_PAYLOAD_TYPE_NONE));
     bml::imc::pumpAll(imcBus.Get());
 
     EXPECT_EQ(1, count.load());

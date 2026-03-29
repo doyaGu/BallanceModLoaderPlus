@@ -183,7 +183,7 @@ static void Script_Publish(const std::string &topic) {
     BML_TopicId id = BML_TOPIC_ID_INVALID;
     if (g_Services->ImcBus->GetTopicId(
             g_Services->ImcBus->Context, topic.c_str(), &id) != BML_RESULT_OK) return;
-    g_Services->ImcBus->Publish(owner, id, nullptr, 0);
+    g_Services->ImcBus->Publish(owner, id, nullptr, 0, BML_PAYLOAD_TYPE_NONE);
 }
 
 static void Script_PublishString(const std::string &topic, const std::string &data) {
@@ -195,7 +195,7 @@ static void Script_PublishString(const std::string &topic, const std::string &da
     BML_TopicId id = BML_TOPIC_ID_INVALID;
     if (g_Services->ImcBus->GetTopicId(
             g_Services->ImcBus->Context, topic.c_str(), &id) != BML_RESULT_OK) return;
-    g_Services->ImcBus->Publish(owner, id, data.c_str(), data.size());
+    g_Services->ImcBus->Publish(owner, id, data.c_str(), data.size(), BML_PAYLOAD_TYPE_NONE);
 }
 
 static void Script_PublishInt(const std::string &topic, int value) {
@@ -207,7 +207,7 @@ static void Script_PublishInt(const std::string &topic, int value) {
     BML_TopicId id = BML_TOPIC_ID_INVALID;
     if (g_Services->ImcBus->GetTopicId(
             g_Services->ImcBus->Context, topic.c_str(), &id) != BML_RESULT_OK) return;
-    g_Services->ImcBus->Publish(owner, id, &value, sizeof(value));
+    g_Services->ImcBus->Publish(owner, id, &value, sizeof(value), BML_PAYLOAD_TYPE_NONE);
 }
 
 static void Script_Print(const std::string &message) {

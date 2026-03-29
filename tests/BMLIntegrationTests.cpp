@@ -375,7 +375,7 @@ TEST_F(BMLIntegrationTest, FullImcPublishSubscribeCycleUsesServices) {
 
     uint32_t payload = 42;
     ASSERT_EQ(BML_RESULT_OK,
-              m_Services->ImcBus->Publish(hostMod, topic, &payload, sizeof(payload)));
+              m_Services->ImcBus->Publish(hostMod, topic, &payload, sizeof(payload), BML_PAYLOAD_TYPE_NONE));
     m_Services->ImcBus->Pump(m_Services->ImcBus->Context, 100);
 
     EXPECT_EQ(1u, state.call_count.load());

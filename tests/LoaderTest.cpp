@@ -96,7 +96,7 @@ namespace {
         *out_id = 7;
         return BML_RESULT_OK;
     }
-    BML_Result DummyPublish(BML_Mod, BML_TopicId, const void *, size_t) { return BML_RESULT_OK; }
+    BML_Result DummyPublish(BML_Mod, BML_TopicId, const void *, size_t, BML_PayloadTypeId) { return BML_RESULT_OK; }
     BML_Result DummyPublishEx(BML_Mod, BML_TopicId, const BML_ImcMessage *) { return BML_RESULT_OK; }
     BML_Result DummyPublishBuffer(BML_Mod, BML_TopicId, const BML_ImcBuffer *) { return BML_RESULT_OK; }
     BML_Result DummyPublishMulti(BML_Mod, const BML_TopicId *, size_t, const void *, size_t, const BML_ImcMessage *, size_t *) {

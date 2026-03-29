@@ -155,7 +155,7 @@ bool TestContext::Publish(const char *topic, const void *data, size_t size) {
     if (!m_DefaultMod || !m_Publish) {
         return false;
     }
-    res = m_Publish(m_DefaultMod, topic_id, data, size);
+    res = m_Publish(m_DefaultMod, topic_id, data, size, BML_PAYLOAD_TYPE_NONE);
     return BML_SUCCEEDED(res);
 }
 

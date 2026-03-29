@@ -205,7 +205,7 @@ static void OnCmdSendMessage(BML_Context, BML_TopicId, const BML_ImcMessage *mes
     s_ImcBus->GetTopicId(s_ImcBus->Context, BML_TOPIC_CONSOLE_OUTPUT, &consoleTopic);
     if (consoleTopic) {
         if (BML_Mod owner = GetRuntimeOwner()) {
-            s_ImcBus->Publish(owner, consoleTopic, raw, message->size);
+            s_ImcBus->Publish(owner, consoleTopic, raw, message->size, BML_PAYLOAD_TYPE_NONE);
         }
     }
 }
@@ -374,7 +374,7 @@ void ModManager::PublishLifecycleEvent(const char *topic) {
 
     if (topicId) {
         if (BML_Mod owner = GetRuntimeOwner()) {
-            s_ImcBus->Publish(owner, topicId, nullptr, 0);
+            s_ImcBus->Publish(owner, topicId, nullptr, 0, BML_PAYLOAD_TYPE_NONE);
         }
     }
 }
@@ -382,7 +382,7 @@ void ModManager::PublishLifecycleEvent(const char *topic) {
 void ModManager::PublishProcessEvent(float deltaTime) {
     if (!EnsureRuntimeInterfaces() || !s_ImcBus->Publish || !s_TopicPostProcess) return;
     if (BML_Mod owner = GetRuntimeOwner()) {
-        s_ImcBus->Publish(owner, s_TopicPostProcess, &deltaTime, sizeof(float));
+        s_ImcBus->Publish(owner, s_TopicPostProcess, &deltaTime, sizeof(float), BML_PAYLOAD_TYPE_NONE);
     }
 }
 
@@ -535,7 +535,7 @@ CKERROR ModManager::OnCKInit() {
         payload.context = m_Context;
         payload.main_window = m_Context ? m_Context->GetMainWindow() : nullptr;
         if (BML_Mod owner = GetRuntimeOwner()) {
-            s_ImcBus->Publish(owner, s_TopicEngineInit, &payload, sizeof(payload));
+            s_ImcBus->Publish(owner, s_TopicEngineInit, &payload, sizeof(payload), BML_PAYLOAD_TYPE_NONE);
         }
         PumpImcNow();
     }
@@ -556,7 +556,7 @@ CKERROR ModManager::OnCKEnd() {
     // Publish engine end event
     if (EnsureRuntimeInterfaces() && s_ImcBus->Publish && s_TopicEngineEnd) {
         if (BML_Mod owner = GetRuntimeOwner()) {
-            s_ImcBus->Publish(owner, s_TopicEngineEnd, nullptr, 0);
+            s_ImcBus->Publish(owner, s_TopicEngineEnd, nullptr, 0, BML_PAYLOAD_TYPE_NONE);
         }
         PumpImcNow();
     }
@@ -573,7 +573,7 @@ CKERROR ModManager::OnCKPause() {
     // Publish engine pause event
     if (EnsureRuntimeInterfaces() && s_ImcBus->Publish && s_TopicEnginePause) {
         if (BML_Mod owner = GetRuntimeOwner()) {
-            s_ImcBus->Publish(owner, s_TopicEnginePause, nullptr, 0);
+            s_ImcBus->Publish(owner, s_TopicEnginePause, nullptr, 0, BML_PAYLOAD_TYPE_NONE);
         }
         PumpImcNow();
     }
@@ -610,7 +610,7 @@ CKERROR ModManager::OnCKPlay() {
             payload.render_window = m_RenderContext ? m_RenderContext->GetWindowHandle() : nullptr;
             payload.is_resume = BML_FALSE;
             if (BML_Mod owner = GetRuntimeOwner()) {
-                s_ImcBus->Publish(owner, s_TopicEnginePlay, &payload, sizeof(payload));
+                s_ImcBus->Publish(owner, s_TopicEnginePlay, &payload, sizeof(payload), BML_PAYLOAD_TYPE_NONE);
             }
             PumpImcNow();
         }
@@ -626,7 +626,7 @@ CKERROR ModManager::OnCKReset() {
         // Publish engine reset event
         if (EnsureRuntimeInterfaces() && s_ImcBus->Publish && s_TopicEngineReset) {
             if (BML_Mod owner = GetRuntimeOwner()) {
-                s_ImcBus->Publish(owner, s_TopicEngineReset, nullptr, 0);
+                s_ImcBus->Publish(owner, s_TopicEngineReset, nullptr, 0, BML_PAYLOAD_TYPE_NONE);
             }
             PumpImcNow();
         }
@@ -644,7 +644,7 @@ CKERROR ModManager::OnCKPostReset() {
     // Publish engine post-reset event
     if (EnsureRuntimeInterfaces() && s_ImcBus->Publish && s_TopicEnginePostReset) {
         if (BML_Mod owner = GetRuntimeOwner()) {
-            s_ImcBus->Publish(owner, s_TopicEnginePostReset, nullptr, 0);
+            s_ImcBus->Publish(owner, s_TopicEnginePostReset, nullptr, 0, BML_PAYLOAD_TYPE_NONE);
         }
         PumpImcNow();
     }
@@ -661,7 +661,7 @@ CKERROR ModManager::PreProcess() {
     // Publish pre-process event
     if (EnsureRuntimeInterfaces() && s_ImcBus->Publish && s_TopicPreProcess) {
         if (BML_Mod owner = GetRuntimeOwner()) {
-            s_ImcBus->Publish(owner, s_TopicPreProcess, nullptr, 0);
+            s_ImcBus->Publish(owner, s_TopicPreProcess, nullptr, 0, BML_PAYLOAD_TYPE_NONE);
         }
         PumpImcNow();
     }
@@ -680,7 +680,7 @@ CKERROR ModManager::PostProcess() {
     // Publish post-process event with delta time
     if (EnsureRuntimeInterfaces() && s_ImcBus->Publish && s_TopicPostProcess) {
         if (BML_Mod owner = GetRuntimeOwner()) {
-            s_ImcBus->Publish(owner, s_TopicPostProcess, &deltaTime, sizeof(float));
+            s_ImcBus->Publish(owner, s_TopicPostProcess, &deltaTime, sizeof(float), BML_PAYLOAD_TYPE_NONE);
         }
         PumpImcNow();
     }
@@ -692,7 +692,7 @@ CKERROR ModManager::OnPreRender(CKRenderContext *dev) {
     // Publish pre-render event
     if (EnsureRuntimeInterfaces() && s_ImcBus->Publish && s_TopicPreRender) {
         if (BML_Mod owner = GetRuntimeOwner()) {
-            s_ImcBus->Publish(owner, s_TopicPreRender, &dev, sizeof(dev));
+            s_ImcBus->Publish(owner, s_TopicPreRender, &dev, sizeof(dev), BML_PAYLOAD_TYPE_NONE);
         }
         PumpImcNow();
     }
@@ -704,7 +704,7 @@ CKERROR ModManager::OnPostRender(CKRenderContext *dev) {
     // Publish post-render event
     if (EnsureRuntimeInterfaces() && s_ImcBus->Publish && s_TopicPostRender) {
         if (BML_Mod owner = GetRuntimeOwner()) {
-            s_ImcBus->Publish(owner, s_TopicPostRender, &dev, sizeof(dev));
+            s_ImcBus->Publish(owner, s_TopicPostRender, &dev, sizeof(dev), BML_PAYLOAD_TYPE_NONE);
         }
         PumpImcNow();
     }
@@ -716,7 +716,7 @@ CKERROR ModManager::OnPostSpriteRender(CKRenderContext *dev) {
     // Publish post-sprite-render event (for overlay rendering)
     if (EnsureRuntimeInterfaces() && s_ImcBus->Publish && s_TopicPostSpriteRender) {
         if (BML_Mod owner = GetRuntimeOwner()) {
-            s_ImcBus->Publish(owner, s_TopicPostSpriteRender, &dev, sizeof(dev));
+            s_ImcBus->Publish(owner, s_TopicPostSpriteRender, &dev, sizeof(dev), BML_PAYLOAD_TYPE_NONE);
         }
         PumpImcNow();
     }

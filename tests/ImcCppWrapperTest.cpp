@@ -74,7 +74,7 @@ namespace {
         return MockGetRpcId(name, outRpc);
     }
 
-    BML_Result MockPublish(BML_Mod, BML_TopicId topic, const void *, size_t size) {
+    BML_Result MockPublish(BML_Mod, BML_TopicId topic, const void *, size_t size, BML_PayloadTypeId) {
         ++g_ImcMockState.publish_calls;
         g_ImcMockState.last_topic = topic;
         g_ImcMockState.last_publish_size = size;
@@ -991,4 +991,76 @@ TEST(ImcCppWrapperTest, RpcServiceManagerManagedMiddleware) {
 
     mgr.Clear(); // Should remove middleware without crash
     EXPECT_TRUE(mgr.Empty());
+}
+
+// ============================================================================
+// Typed Message Tests
+// ============================================================================
+
+TEST(ImcMessageTest, AsReturnsNullptrOnTypeMismatch) {
+    struct FooEvent { uint32_t value; };
+    struct BarEvent { float x; float y; };
+
+    FooEvent foo{42};
+    BML_ImcMessage msg = BML_IMC_MESSAGE_INIT;
+    msg.data = &foo;
+    msg.size = sizeof(foo);
+    msg.payload_type_id = bml::imc::PayloadType<FooEvent>::Id;
+
+    bml::imc::Message wrapped(&msg);
+
+    // Correct type: should succeed
+    const FooEvent *result = wrapped.As<FooEvent>();
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->value, 42u);
+
+    // Wrong type: should return nullptr
+    const BarEvent *wrong = wrapped.As<BarEvent>();
+    EXPECT_EQ(wrong, nullptr);
+
+    // Untyped message: As<T>() should still work (type_id=0 bypasses type check)
+    BML_ImcMessage untyped = BML_IMC_MESSAGE_INIT;
+    untyped.data = &foo;
+    untyped.size = sizeof(foo);
+    untyped.payload_type_id = BML_PAYLOAD_TYPE_NONE;
+    bml::imc::Message untypedWrapped(&untyped);
+    EXPECT_NE(untypedWrapped.As<FooEvent>(), nullptr);  // same size, no type check
+    // BarEvent is 8 bytes but buffer is only 4, so size check rejects it
+    // (type check is bypassed since payload_type_id==0, but size check still applies)
+    EXPECT_EQ(untypedWrapped.As<BarEvent>(), nullptr);
+
+    // Verify that untyped message with sufficient size allows any type cast
+    struct AltEvent { uint32_t v; };
+    EXPECT_NE(untypedWrapped.As<AltEvent>(), nullptr);  // same size, untyped allows cast
+}
+
+TEST(PayloadTypeTest, DifferentTypesHaveDifferentIds) {
+    struct TypeA { int x; };
+    struct TypeB { float y; };
+
+    constexpr uint32_t idA = bml::imc::PayloadType<TypeA>::Id;
+    constexpr uint32_t idB = bml::imc::PayloadType<TypeB>::Id;
+    constexpr uint32_t idVoid = bml::imc::PayloadType<void>::Id;
+
+    EXPECT_NE(idA, idB);
+    EXPECT_NE(idA, idVoid);
+    EXPECT_NE(idB, idVoid);
+    EXPECT_EQ(idVoid, BML_PAYLOAD_TYPE_NONE);
+
+    // Same type should always produce the same ID
+    EXPECT_EQ(idA, bml::imc::PayloadType<TypeA>::Id);
+}
+
+TEST(PayloadTypeTest, PayloadTypeIdFlowsThroughMessage) {
+    struct MyPayload { int32_t data; };
+
+    MyPayload payload{123};
+    BML_ImcMessage msg = BML_IMC_MESSAGE_INIT;
+    msg.data = &payload;
+    msg.size = sizeof(payload);
+    msg.payload_type_id = bml::imc::PayloadType<MyPayload>::Id;
+
+    bml::imc::Message wrapped(&msg);
+    EXPECT_EQ(wrapped.PayloadTypeId(), bml::imc::PayloadType<MyPayload>::Id);
+    EXPECT_NE(wrapped.PayloadTypeId(), BML_PAYLOAD_TYPE_NONE);
 }
