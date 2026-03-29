@@ -146,6 +146,7 @@ std::unique_ptr<MapEntry> BuildMapTree(const fs::path &directory,
     });
 
     for (const fs::directory_entry &entry : entries) {
+        if (entry.is_symlink()) continue;
         const fs::path fullPath = entry.path();
         if (entry.is_directory()) {
             std::unique_ptr<MapEntry> child = BuildMapTree(fullPath, depth - 1, foundAny, hadEnumerationError);
@@ -366,7 +367,7 @@ class MapMenuMod : public bml::Module {
         bml::SetParam(m_MapFile, tempFile.c_str());
         bml::SetParam(m_LoadCustom, TRUE);
         int levelNumber = m_Settings.levelNumber;
-        if (levelNumber < 1 || levelNumber > 13) levelNumber = std::rand() % 10 + 2;
+        if (levelNumber < 1 || levelNumber > 13) levelNumber = 2;
         currentLevel->SetElementValue(0, 0, &levelNumber);
         int levelRow = levelNumber - 1;
         bml::SetParam(m_LevelRow, levelRow);
@@ -625,7 +626,18 @@ public:
         });
 
         if (!subscriptionsOk) {
-            m_InputCaptureService.Reset();
+            m_DrawReg.Reset();
+            return BML_RESULT_FAIL;
+        }
+
+        if (!m_Subs.Add(BML_TOPIC_ENGINE_RESET, [this](const bml::imc::Message &) {
+            m_ExitStart = nullptr;
+            m_LoadCustom = nullptr;
+            m_MapFile = nullptr;
+            m_LevelRow = nullptr;
+            m_CurrentLevelArray = nullptr;
+            m_StartButtonId = 0;
+        })) {
             m_DrawReg.Reset();
             return BML_RESULT_FAIL;
         }
