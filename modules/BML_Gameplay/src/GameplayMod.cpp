@@ -270,8 +270,6 @@ class GameplayMod : public bml::Module {
             return;
         }
 
-        RefreshConfig();
-
         m_FpsCounter.Update(deltaSeconds);
         m_SRTimer.Update(deltaSeconds);
 
