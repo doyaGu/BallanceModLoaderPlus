@@ -2,17 +2,13 @@
 title = "BML Developer Tools"
 
 [menu]
+refresh = "Refresh"
+
+[tab]
 imc = "IMC"
 interfaces = "Interfaces"
 hooks = "Hooks"
 modules = "Modules"
-refresh = "Refresh"
-
-[panel]
-imc_bus = "IMC Bus"
-interfaces = "Interfaces"
-hooks = "Hooks"
-loaded_modules = "Loaded Modules"
 
 [column]
 id = "ID"

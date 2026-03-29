@@ -2,17 +2,13 @@
 title = "BML 开发者工具"
 
 [menu]
-imc = "IMC"
-interfaces = "接口"
-hooks = "钩子"
-modules = "模块"
 refresh = "刷新"
 
-[panel]
-imc_bus = "IMC 消息总线"
-interfaces = "接口"
-hooks = "钩子"
-loaded_modules = "已加载模块"
+[tab]
+imc = "IMC 消息总线"
+interfaces = "接口注册表"
+hooks = "Hook 注册表"
+modules = "已加载模块"
 
 [column]
 id = "ID"
@@ -23,7 +19,7 @@ interface_id = "接口 ID"
 version = "版本"
 provider = "提供者"
 flags = "标志"
-leases = "租用数"
+leases = "租约数"
 owner = "所有者"
 target = "目标"
 address = "地址"
