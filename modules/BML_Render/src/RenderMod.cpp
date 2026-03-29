@@ -55,11 +55,6 @@ class RenderMod : public bml::HookModule {
         m_Cfg.Sync(Services().Config());
         ApplyConfig();
 
-        m_Subs.Add(BML_TOPIC_ENGINE_END, [this](const bml::imc::Message &) {
-            BML_Render::ShutdownRenderHook();
-            m_HookReady = false;
-        });
-
         auto refreshCfg = [this](const bml::imc::Message &) {
             m_Cfg.Refresh(Services().Config());
             ApplyConfig();

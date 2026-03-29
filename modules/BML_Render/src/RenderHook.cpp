@@ -139,12 +139,15 @@ void UninstallHooks(void *base) {
     if (g_OriginalRender) {
         void *vtable = static_cast<char *>(base) + kVTableOffset;
         utils::HookVirtualMethod(&vtable, g_OriginalRender, kRenderSlot);
+        g_OriginalRender = nullptr;
     }
 
     // Remove UpdateProjection MinHook
     if (g_UpdateProjectionTargetPtr) {
         MH_DisableHook(*reinterpret_cast<void **>(&g_UpdateProjectionTargetPtr));
         MH_RemoveHook(*reinterpret_cast<void **>(&g_UpdateProjectionTargetPtr));
+        g_UpdateProjectionOrigPtr = nullptr;
+        g_UpdateProjectionTargetPtr = nullptr;
     }
 }
 
@@ -191,6 +194,7 @@ void ShutdownRenderHook() {
     if (base)
         UninstallHooks(base);
 
+    MH_Uninitialize();
     g_Initialized = false;
     g_Services = nullptr;
 }
