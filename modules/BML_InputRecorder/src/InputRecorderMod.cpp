@@ -168,6 +168,13 @@ class InputRecorderMod : public bml::Module {
             std::string filename;
             if (inv->argc >= 2) {
                 filename = inv->argv_utf8[1];
+                if (filename.find("..") != std::string::npos ||
+                    filename.find('/') != std::string::npos ||
+                    filename.find('\\') != std::string::npos) {
+                    self->ConsolePrint("Invalid filename: must not contain path separators or '..'",
+                                       BML_CONSOLE_OUTPUT_FLAG_ERROR);
+                    return BML_RESULT_OK;
+                }
                 if (!filename.ends_with(".bmlr"))
                     filename += ".bmlr";
             } else {
@@ -246,6 +253,13 @@ class InputRecorderMod : public bml::Module {
             }
 
             std::string filename = inv->argv_utf8[1];
+            if (filename.find("..") != std::string::npos ||
+                filename.find('/') != std::string::npos ||
+                filename.find('\\') != std::string::npos) {
+                self->ConsolePrint("Invalid filename: must not contain path separators or '..'",
+                                   BML_CONSOLE_OUTPUT_FLAG_ERROR);
+                return BML_RESULT_OK;
+            }
             if (!filename.ends_with(".bmlr"))
                 filename += ".bmlr";
 
@@ -401,8 +415,7 @@ public:
             }
         });
 
-        constexpr size_t kExpectedSubscriptions = 6;  // 4 input + postprocess + level-exit
-        if (m_Subs.Count() < kExpectedSubscriptions) {
+        if (m_Subs.Count() < 6) {
             Services().Log().Error("Failed to subscribe to required topics");
             return BML_RESULT_FAIL;
         }
