@@ -255,6 +255,7 @@ typedef BML_Result (*PFN_BML_InterfaceAcquire)(BML_Mod owner,
                                                const void **out_implementation,
                                                BML_InterfaceLease *out_lease);
 typedef BML_Result (*PFN_BML_InterfaceRelease)(BML_InterfaceLease lease);
+typedef void (*PFN_BML_InterfaceAddRef)(BML_InterfaceLease lease);
 typedef BML_Result (*PFN_BML_InterfaceUnregister)(BML_Mod owner,
                                                   const char *interface_id);
 
@@ -280,12 +281,14 @@ typedef struct BML_CoreInterfaceControlInterface {
     PFN_BML_InterfaceRegister Register;
     PFN_BML_InterfaceAcquire Acquire;
     PFN_BML_InterfaceRelease Release;
+    PFN_BML_InterfaceAddRef AddRef;
     PFN_BML_InterfaceUnregister Unregister;
 } BML_CoreInterfaceControlInterface;
 
 extern PFN_BML_InterfaceRegister bmlInterfaceRegister;
 extern PFN_BML_InterfaceAcquire bmlInterfaceAcquire;
 extern PFN_BML_InterfaceRelease bmlInterfaceRelease;
+extern PFN_BML_InterfaceAddRef bmlInterfaceAddRef;
 extern PFN_BML_InterfaceUnregister bmlInterfaceUnregister;
 
 BML_END_CDECLS

@@ -417,6 +417,7 @@ namespace {
         MockInterfaceRegister,
         MockInterfaceAcquire,
         MockInterfaceRelease,
+        nullptr, /* AddRef */
         MockInterfaceUnregister,
     };
 
@@ -535,6 +536,6 @@ TEST_F(LoaderTest, UnloadAPI_ClearsCompatibilitySurface) {
 }
 
 TEST_F(LoaderTest, ApiCountsReflectBootstrapMinimum) {
-    EXPECT_EQ(4u, bmlGetApiCount());
+    EXPECT_EQ(5u, bmlGetApiCount());
     EXPECT_EQ(4u, bmlGetRequiredApiCount());
 }

@@ -20,6 +20,7 @@ namespace BML::Core {
                                         const std::string &consumer_id,
                                         BML_InterfaceLease *out_lease);
         BML_Result ReleaseInterfaceLease(BML_InterfaceLease lease);
+        void AddRefInterfaceLease(BML_InterfaceLease lease);
 
         BML_Result CreateInterfaceRegistration(KernelServices *kernel,
                                                const std::string &interface_id,
@@ -51,13 +52,6 @@ namespace BML::Core {
         LeaseManager() = default;
 
     private:
-        struct InterfaceLeaseRecord {
-            uint64_t id{0};
-            std::string interface_id;
-            std::string provider_id;
-            std::string consumer_id;
-        };
-
         struct InterfaceRegistrationRecord {
             uint64_t id{0};
             std::string interface_id;
@@ -67,7 +61,7 @@ namespace BML::Core {
 
         mutable std::mutex m_Mutex;
         uint64_t m_NextId{1};
-        std::unordered_map<BML_InterfaceLease, InterfaceLeaseRecord> m_InterfaceLeases;
+        std::unordered_map<uint64_t, BML_InterfaceLease> m_InterfaceLeases;
         std::unordered_map<BML_InterfaceRegistration, InterfaceRegistrationRecord> m_InterfaceRegistrations;
         std::unordered_set<std::string> m_BlockedProviders;
         size_t m_OutstandingLeaseHandles{0};

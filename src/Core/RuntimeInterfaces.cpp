@@ -987,6 +987,7 @@ namespace BML::Core {
             ResolveRawApi<PFN_BML_InterfaceRegister>(kernel, "bmlInterfaceRegister"),
             ResolveRawApi<PFN_BML_InterfaceAcquire>(kernel, "bmlInterfaceAcquire"),
             ResolveRawApi<PFN_BML_InterfaceRelease>(kernel, "bmlInterfaceRelease"),
+            ResolveRawApi<PFN_BML_InterfaceAddRef>(kernel, "bmlInterfaceAddRef"),
             ResolveRawApi<PFN_BML_InterfaceUnregister>(kernel, "bmlInterfaceUnregister"),
         };
 

@@ -122,9 +122,27 @@ namespace bml {
             : m_Implementation(implementation), m_Lease(lease) {
         }
 
-        InterfaceLease(const InterfaceLease &) = delete;
-        InterfaceLease &operator=(const InterfaceLease &) = delete;
+        // COPY: atomic ref increment
+        InterfaceLease(const InterfaceLease &other)
+            : m_Implementation(other.m_Implementation), m_Lease(other.m_Lease) {
+            if (m_Lease && bmlInterfaceAddRef) {
+                bmlInterfaceAddRef(m_Lease);
+            }
+        }
 
+        InterfaceLease &operator=(const InterfaceLease &other) {
+            if (this != &other) {
+                Reset();
+                m_Implementation = other.m_Implementation;
+                m_Lease = other.m_Lease;
+                if (m_Lease && bmlInterfaceAddRef) {
+                    bmlInterfaceAddRef(m_Lease);
+                }
+            }
+            return *this;
+        }
+
+        // MOVE: transfer ownership, no atomic ops
         InterfaceLease(InterfaceLease &&other) noexcept
             : m_Implementation(other.m_Implementation), m_Lease(other.m_Lease) {
             other.m_Implementation = nullptr;

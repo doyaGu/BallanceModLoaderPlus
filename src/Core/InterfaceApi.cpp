@@ -58,6 +58,14 @@ namespace BML::Core {
         return kernel->interface_registry->Release(lease);
     }
 
+    void BML_API_InterfaceAddRef(BML_InterfaceLease lease) {
+        auto *kernel = LeaseManager::KernelFromLease(lease);
+        if (!kernel || !kernel->leases) {
+            return;
+        }
+        kernel->leases->AddRefInterfaceLease(lease);
+    }
+
     BML_Result BML_API_InterfaceUnregister(BML_Mod owner, const char *interface_id) {
         auto *kernel = Context::KernelFromMod(owner);
         Context *context = nullptr;
@@ -79,6 +87,8 @@ namespace BML::Core {
             bmlInterfaceAcquire, "interface", BML_API_InterfaceAcquire);
         BML_REGISTER_API_GUARDED(
             bmlInterfaceRelease, "interface", BML_API_InterfaceRelease);
+        BML_REGISTER_API_VOID_GUARDED(
+            bmlInterfaceAddRef, "interface", BML_API_InterfaceAddRef);
         BML_REGISTER_API_GUARDED(
             bmlInterfaceUnregister, "interface", BML_API_InterfaceUnregister);
     }

@@ -2,6 +2,7 @@
 
 #include "KernelServices.h"
 
+#include <atomic>
 #include <memory>
 #include <new>
 #include <sstream>
@@ -9,8 +10,12 @@
 #include "CoreErrors.h"
 
 struct BML_InterfaceLease_T {
+    std::atomic<uint32_t> ref_count{1};
     uint64_t id{0};
     BML::Core::KernelServices *kernel{nullptr};
+    std::string interface_id;
+    std::string provider_id;
+    std::string consumer_id;
 };
 
 struct BML_InterfaceRegistration_T {
@@ -100,9 +105,10 @@ namespace BML::Core {
             std::lock_guard<std::mutex> lock(m_Mutex);
             lease->id = m_NextId++;
             lease->kernel = kernel;
-            m_InterfaceLeases.emplace(lease, InterfaceLeaseRecord{
-                lease->id, interface_id, provider_id, consumer_id
-            });
+            lease->interface_id = interface_id;
+            lease->provider_id = provider_id;
+            lease->consumer_id = consumer_id;
+            m_InterfaceLeases.emplace(lease->id, lease);
             RegisterHandleKernel(lease, kernel);
             ++m_OutstandingLeaseHandles;
         }
@@ -111,14 +117,28 @@ namespace BML::Core {
         return BML_RESULT_OK;
     }
 
+    void LeaseManager::AddRefInterfaceLease(BML_InterfaceLease lease) {
+        if (!lease) {
+            return;
+        }
+        lease->ref_count.fetch_add(1, std::memory_order_relaxed);
+    }
+
     BML_Result LeaseManager::ReleaseInterfaceLease(BML_InterfaceLease lease) {
         if (!lease) {
             return BML_RESULT_INVALID_HANDLE;
         }
 
+        // Decrement ref_count. If not reaching zero, no registry work needed.
+        const uint32_t prev = lease->ref_count.fetch_sub(1, std::memory_order_acq_rel);
+        if (prev > 1) {
+            return BML_RESULT_OK;
+        }
+
+        // ref_count reached zero -- destroy the lease
         {
             std::lock_guard<std::mutex> lock(m_Mutex);
-            auto it = m_InterfaceLeases.find(lease);
+            auto it = m_InterfaceLeases.find(lease->id);
             if (it == m_InterfaceLeases.end()) {
                 return BML_RESULT_INVALID_HANDLE;
             }
@@ -213,9 +233,9 @@ namespace BML::Core {
         }
 
         std::lock_guard<std::mutex> lock(m_Mutex);
-        for (const auto &[handle, record] : m_InterfaceLeases) {
-            (void) handle;
-            if (record.consumer_id == consumer_id && record.interface_id == interface_id) {
+        for (const auto &[id, lease] : m_InterfaceLeases) {
+            (void) id;
+            if (lease->consumer_id == consumer_id && lease->interface_id == interface_id) {
                 return true;
             }
         }
@@ -224,13 +244,13 @@ namespace BML::Core {
 
     bool LeaseManager::HasInboundDependencies(const std::string &provider_id, std::string *out_message) const {
         std::lock_guard<std::mutex> lock(m_Mutex);
-        for (const auto &[handle, record] : m_InterfaceLeases) {
-            (void) handle;
-            if (record.provider_id == provider_id) {
+        for (const auto &[id, lease] : m_InterfaceLeases) {
+            (void) id;
+            if (lease->provider_id == provider_id) {
                 if (out_message) {
                     std::ostringstream oss;
-                    oss << "interface lease " << record.id << " on '" << record.interface_id
-                        << "' held by '" << record.consumer_id << "'";
+                    oss << "interface lease " << lease->id << " on '" << lease->interface_id
+                        << "' held by '" << lease->consumer_id << "'";
                     *out_message = oss.str();
                 }
                 return true;
@@ -255,13 +275,13 @@ namespace BML::Core {
 
     bool LeaseManager::HasOutboundDependencies(const std::string &consumer_id, std::string *out_message) const {
         std::lock_guard<std::mutex> lock(m_Mutex);
-        for (const auto &[handle, record] : m_InterfaceLeases) {
-            (void) handle;
-            if (record.consumer_id == consumer_id) {
+        for (const auto &[id, lease] : m_InterfaceLeases) {
+            (void) id;
+            if (lease->consumer_id == consumer_id) {
                 if (out_message) {
                     std::ostringstream oss;
-                    oss << "outbound interface lease " << record.id << " on '" << record.interface_id
-                        << "' provided by '" << record.provider_id << "'";
+                    oss << "outbound interface lease " << lease->id << " on '" << lease->interface_id
+                        << "' provided by '" << lease->provider_id << "'";
                     *out_message = oss.str();
                 }
                 return true;
@@ -286,10 +306,18 @@ namespace BML::Core {
 
     void LeaseManager::CleanupProvider(const std::string &provider_id) {
         std::lock_guard<std::mutex> lock(m_Mutex);
-        DestroyMatchingHandles<BML_InterfaceLease_T>(
-            m_InterfaceLeases,
-            m_OutstandingLeaseHandles,
-            [&](const InterfaceLeaseRecord &record) { return record.provider_id == provider_id; });
+        for (auto it = m_InterfaceLeases.begin(); it != m_InterfaceLeases.end();) {
+            if (it->second->provider_id != provider_id) {
+                ++it;
+                continue;
+            }
+            UnregisterHandleKernel(it->second);
+            delete it->second;
+            it = m_InterfaceLeases.erase(it);
+            if (m_OutstandingLeaseHandles > 0) {
+                --m_OutstandingLeaseHandles;
+            }
+        }
         DestroyMatchingHandles<BML_InterfaceRegistration_T>(
             m_InterfaceRegistrations,
             m_OutstandingRegistrationHandles,
@@ -300,10 +328,18 @@ namespace BML::Core {
 
     void LeaseManager::CleanupConsumer(const std::string &consumer_id) {
         std::lock_guard<std::mutex> lock(m_Mutex);
-        DestroyMatchingHandles<BML_InterfaceLease_T>(
-            m_InterfaceLeases,
-            m_OutstandingLeaseHandles,
-            [&](const InterfaceLeaseRecord &record) { return record.consumer_id == consumer_id; });
+        for (auto it = m_InterfaceLeases.begin(); it != m_InterfaceLeases.end();) {
+            if (it->second->consumer_id != consumer_id) {
+                ++it;
+                continue;
+            }
+            UnregisterHandleKernel(it->second);
+            delete it->second;
+            it = m_InterfaceLeases.erase(it);
+            if (m_OutstandingLeaseHandles > 0) {
+                --m_OutstandingLeaseHandles;
+            }
+        }
         DestroyMatchingHandles<BML_InterfaceRegistration_T>(
             m_InterfaceRegistrations,
             m_OutstandingRegistrationHandles,
@@ -313,9 +349,9 @@ namespace BML::Core {
     uint32_t LeaseManager::GetLeaseCountForInterface(const std::string &interface_id) const {
         std::lock_guard<std::mutex> lock(m_Mutex);
         uint32_t count = 0;
-        for (const auto &[handle, record] : m_InterfaceLeases) {
-            (void) handle;
-            if (record.interface_id == interface_id) {
+        for (const auto &[id, lease] : m_InterfaceLeases) {
+            (void) id;
+            if (lease->interface_id == interface_id) {
                 ++count;
             }
         }
@@ -324,7 +360,13 @@ namespace BML::Core {
 
     void LeaseManager::Reset() {
         std::lock_guard<std::mutex> lock(m_Mutex);
-        DestroyAllHandles<BML_InterfaceLease_T>(m_InterfaceLeases, m_OutstandingLeaseHandles);
+        for (auto &[id, lease] : m_InterfaceLeases) {
+            (void) id;
+            UnregisterHandleKernel(lease);
+            delete lease;
+        }
+        m_InterfaceLeases.clear();
+        m_OutstandingLeaseHandles = 0;
         DestroyAllHandles<BML_InterfaceRegistration_T>(
             m_InterfaceRegistrations, m_OutstandingRegistrationHandles);
         m_BlockedProviders.clear();

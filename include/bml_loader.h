@@ -57,12 +57,14 @@ size_t     bmlGetRequiredApiCount(void);
 PFN_BML_InterfaceRegister bmlInterfaceRegister = NULL;
 PFN_BML_InterfaceAcquire bmlInterfaceAcquire = NULL;
 PFN_BML_InterfaceRelease bmlInterfaceRelease = NULL;
+PFN_BML_InterfaceAddRef bmlInterfaceAddRef = NULL;
 PFN_BML_InterfaceUnregister bmlInterfaceUnregister = NULL;
 
 static void bmlResetApiPointers(void) {
     bmlInterfaceRegister = NULL;
     bmlInterfaceAcquire = NULL;
     bmlInterfaceRelease = NULL;
+    bmlInterfaceAddRef = NULL;
     bmlInterfaceUnregister = NULL;
 }
 
@@ -78,6 +80,7 @@ BML_Result bmlLoadAPI(PFN_BML_GetProcAddress get_proc) {
     bmlInterfaceRegister = (PFN_BML_InterfaceRegister) get_proc("bmlInterfaceRegister");
     bmlInterfaceAcquire = (PFN_BML_InterfaceAcquire) get_proc("bmlInterfaceAcquire");
     bmlInterfaceRelease = (PFN_BML_InterfaceRelease) get_proc("bmlInterfaceRelease");
+    bmlInterfaceAddRef = (PFN_BML_InterfaceAddRef) get_proc("bmlInterfaceAddRef");
     bmlInterfaceUnregister = (PFN_BML_InterfaceUnregister) get_proc("bmlInterfaceUnregister");
 
     if (!bmlInterfaceRegister || !bmlInterfaceAcquire ||
@@ -97,6 +100,7 @@ void bmlBindServices(const BML_Services *services) {
     bmlInterfaceRegister = services->InterfaceControl->Register;
     bmlInterfaceAcquire = services->InterfaceControl->Acquire;
     bmlInterfaceRelease = services->InterfaceControl->Release;
+    bmlInterfaceAddRef = services->InterfaceControl->AddRef;
     bmlInterfaceUnregister = services->InterfaceControl->Unregister;
 }
 
@@ -109,7 +113,7 @@ BML_Bool bmlIsApiLoaded(void) {
 }
 
 size_t bmlGetApiCount(void) {
-    return 4;
+    return 5;
 }
 
 size_t bmlGetRequiredApiCount(void) {
@@ -122,6 +126,7 @@ size_t bmlGetRequiredApiCount(void) {
 extern PFN_BML_InterfaceRegister bmlInterfaceRegister;
 extern PFN_BML_InterfaceAcquire bmlInterfaceAcquire;
 extern PFN_BML_InterfaceRelease bmlInterfaceRelease;
+extern PFN_BML_InterfaceAddRef bmlInterfaceAddRef;
 extern PFN_BML_InterfaceUnregister bmlInterfaceUnregister;
 
 #endif /* BML_LOADER_IMPLEMENTATION */
