@@ -50,6 +50,22 @@ constexpr bool kShowOverlayDebugMarker = false; // visual debug marker
 constexpr bool kSubmitOnPostRender = true;       // production render path toggle
 constexpr float kReferenceHeight = 1200.0f;      // DPI scaling baseline (pixels)
 
+#ifdef _MSC_VER
+static bool SafeInvokeDrawCallback(PFN_BML_UIDrawCallback cb, const BML_UIDrawContext *ctx, void *ud) {
+    __try {
+        cb(ctx, ud);
+        return true;
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+#else
+static bool SafeInvokeDrawCallback(PFN_BML_UIDrawCallback cb, const BML_UIDrawContext *ctx, void *ud) {
+    cb(ctx, ud);
+    return true;
+}
+#endif
+
 std::string BuildFontPath(const std::string &loaderDirUtf8, const char *filename) {
     if (!filename || filename[0] == '\0') {
         return "";
@@ -206,6 +222,11 @@ class UIMod : public bml::Module {
             return;
         }
         ContextScope scope(m_ImGuiCtx);
+        ImGuiIO &io = ImGui::GetIO();
+        if (io.LogFilename) {
+            ImGui::MemFree((void *)io.LogFilename);
+            io.LogFilename = nullptr;
+        }
         ImGui::DestroyContext();
         m_ImGuiCtx = nullptr;
         bml_ui::SetHookTarget(nullptr, nullptr);
@@ -356,10 +377,8 @@ class UIMod : public bml::Module {
 
         m_ImGuiIniFilename = (std::filesystem::path(m_LoaderDirUtf8) / "ImGui.ini").string();
         m_ImGuiLogFilename = (std::filesystem::path(m_LoaderDirUtf8) / "ImGui.log").string();
-        // ImGui stores the raw pointer but never frees LogFilename (default is
-        // a string literal).  We use ImStrdup so the pointer survives any
-        // std::string reallocation.  One-shot: EnsureGuiResourcesReady is
-        // guarded by m_GuiResourcesReady and only runs once per context.
+        // ImStrdup: LogFilename must survive std::string reallocation.
+        // Freed in DestroyImGuiContext via ImGui::MemFree.
         io.LogFilename = ImStrdup(m_ImGuiLogFilename.c_str());
 
         if (m_EnableIniSettings && utils::FileExistsUtf8(m_ImGuiIniFilename)) {
@@ -720,7 +739,9 @@ public:
 
         for (const auto &entry : m_SortedSnapshot) {
             if (entry.callback) {
-                entry.callback(&ctx, entry.user_data);
+                if (!SafeInvokeDrawCallback(entry.callback, &ctx, entry.user_data)) {
+                    Services().Log().Error("Draw callback '%s' threw an exception", entry.id.c_str());
+                }
             }
         }
     }

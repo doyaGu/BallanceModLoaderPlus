@@ -11,6 +11,7 @@
 #define IMGUI_IMPL_WIN32_DISABLE_GAMEPAD
 #include "backends/imgui_impl_win32.h"
 
+#include <atomic>
 #include <string>
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -25,29 +26,30 @@ static LPFNPEEKMESSAGE g_OrigPeekMessageW = nullptr;
 static LPFNGETMESSAGE g_OrigGetMessageA = nullptr;
 static LPFNGETMESSAGE g_OrigGetMessageW = nullptr;
 
-static HWND g_hWnd = nullptr;
-static ImGuiContext *g_ImGuiContext = nullptr;
+struct HookTarget {
+    HWND hwnd = nullptr;
+    ImGuiContext *ctx = nullptr;
+};
+
+static HookTarget g_Targets[2]{};
+static std::atomic<int> g_ActiveIndex{0};
 
 void SetHookTarget(HWND hwnd, ImGuiContext *ctx) {
-    g_hWnd = hwnd;
-    g_ImGuiContext = ctx;
+    int next = 1 - g_ActiveIndex.load(std::memory_order_relaxed);
+    g_Targets[next] = {hwnd, ctx};
+    g_ActiveIndex.store(next, std::memory_order_release);
 }
 
 static LRESULT OnWndProcA(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (!g_ImGuiContext) return 0;
+    const auto &target = g_Targets[g_ActiveIndex.load(std::memory_order_acquire)];
+    if (!target.ctx) return 0;
     ImGuiContext *prev = ImGui::GetCurrentContext();
-    ImGui::SetCurrentContext(g_ImGuiContext);
+    ImGui::SetCurrentContext(target.ctx);
 
     if (msg == WM_IME_COMPOSITION) {
         if (lParam & GCS_RESULTSTR) {
             HIMC hIMC = ImmGetContext(hWnd);
-            LONG byteLen = ImmGetCompositionStringW(hIMC, GCS_RESULTSTR, nullptr, 0);
-            if (byteLen <= 0 || byteLen > 0x10000) {
-                ImmReleaseContext(hWnd, hIMC);
-                ImGui::SetCurrentContext(prev);
-                return 1;
-            }
-            LONG len = byteLen / (LONG) sizeof(WCHAR);
+            LONG len = ImmGetCompositionStringW(hIMC, GCS_RESULTSTR, nullptr, 0) / (LONG) sizeof(WCHAR);
 
             // Use stack buffer for typical IME strings, heap fallback for long ones
             constexpr LONG kStackBufSize = 64;
@@ -76,9 +78,10 @@ static LRESULT OnWndProcA(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 }
 
 static LRESULT OnWndProcW(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (!g_ImGuiContext) return 0;
+    const auto &target = g_Targets[g_ActiveIndex.load(std::memory_order_acquire)];
+    if (!target.ctx) return 0;
     ImGuiContext *prev = ImGui::GetCurrentContext();
-    ImGui::SetCurrentContext(g_ImGuiContext);
+    ImGui::SetCurrentContext(target.ctx);
     LRESULT result = ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
     ImGui::SetCurrentContext(prev);
     return result;
@@ -88,7 +91,8 @@ extern "C" BOOL WINAPI HookPeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterM
     if (!g_OrigPeekMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg))
         return FALSE;
 
-    if (g_hWnd && lpMsg->hwnd == g_hWnd && (wRemoveMsg & PM_REMOVE) != 0) {
+    const auto &target = g_Targets[g_ActiveIndex.load(std::memory_order_acquire)];
+    if (target.hwnd && lpMsg->hwnd == target.hwnd && (wRemoveMsg & PM_REMOVE) != 0) {
         if (OnWndProcA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
             lpMsg->message = WM_NULL;
         }
@@ -101,7 +105,8 @@ extern "C" BOOL WINAPI HookPeekMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterM
     if (!g_OrigPeekMessageW(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg))
         return FALSE;
 
-    if (g_hWnd && lpMsg->hwnd == g_hWnd && (wRemoveMsg & PM_REMOVE) != 0) {
+    const auto &target = g_Targets[g_ActiveIndex.load(std::memory_order_acquire)];
+    if (target.hwnd && lpMsg->hwnd == target.hwnd && (wRemoveMsg & PM_REMOVE) != 0) {
         if (OnWndProcW(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
             lpMsg->message = WM_NULL;
         }
@@ -114,7 +119,8 @@ extern "C" BOOL WINAPI HookGetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMi
     if (!g_OrigGetMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax))
         return FALSE;
 
-    if (g_hWnd && lpMsg->hwnd == g_hWnd && OnWndProcA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
+    const auto &target = g_Targets[g_ActiveIndex.load(std::memory_order_acquire)];
+    if (target.hwnd && lpMsg->hwnd == target.hwnd && OnWndProcA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
         lpMsg->message = WM_NULL;
     }
 
@@ -125,7 +131,8 @@ extern "C" BOOL WINAPI HookGetMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMi
     if (!g_OrigGetMessageW(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax))
         return FALSE;
 
-    if (g_hWnd && lpMsg->hwnd == g_hWnd && OnWndProcW(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
+    const auto &target = g_Targets[g_ActiveIndex.load(std::memory_order_acquire)];
+    if (target.hwnd && lpMsg->hwnd == target.hwnd && OnWndProcW(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
         lpMsg->message = WM_NULL;
     }
 
@@ -153,15 +160,12 @@ bool InstallWin32Hooks() {
 }
 
 bool UninstallWin32Hooks() {
-    if (MH_DisableHook((LPVOID) &PeekMessageA) != MH_OK)
-        return false;
-    if (MH_DisableHook((LPVOID) &GetMessageA) != MH_OK)
-        return false;
-    if (MH_DisableHook((LPVOID) &PeekMessageW) != MH_OK)
-        return false;
-    if (MH_DisableHook((LPVOID) &GetMessageW) != MH_OK)
-        return false;
-    return true;
+    bool ok = true;
+    ok &= (MH_DisableHook((LPVOID) &PeekMessageA) == MH_OK);
+    ok &= (MH_DisableHook((LPVOID) &GetMessageA) == MH_OK);
+    ok &= (MH_DisableHook((LPVOID) &PeekMessageW) == MH_OK);
+    ok &= (MH_DisableHook((LPVOID) &GetMessageW) == MH_OK);
+    return ok;
 }
 
 } // namespace bml_ui
