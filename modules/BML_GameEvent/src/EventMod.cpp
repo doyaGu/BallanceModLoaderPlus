@@ -18,6 +18,7 @@
 #include "BML/Guids/Hooks.h"
 #include "BML/ScriptGraph.h"
 #include "bml_imc_topic.hpp"
+#include "bml_imc_typed.hpp"
 #include "bml_services.hpp"
 #include "bml_topics.h"
 #include "EventTopics.h"
@@ -75,25 +76,20 @@ struct HookCallbackData {
 
 static CKContext *s_Context = nullptr;
 static bool s_Initialized = false;
-static bml::imc::Topic s_Topics[IDX_MAX];
+static bml::imc::TypedTopic<void> s_Topics[IDX_MAX];
 static HookCallbackData s_CallbackData[IDX_MAX] = {};
 
 // Retained state topic IDs
-static bml::imc::Topic s_TopicGamePhase;
-static bml::imc::Topic s_TopicPaused;
-
-static void PublishRetainedState(const bml::imc::Topic &topic,
-                                  const void *data, size_t size) {
-    topic.PublishState(data, size);
-}
+static bml::imc::TypedTopic<uint32_t> s_TopicGamePhase;
+static bml::imc::TypedTopic<BML_Bool> s_TopicPaused;
 
 static void UpdateGamePhase(BML_GamePhase phase) {
     uint32_t value = static_cast<uint32_t>(phase);
-    PublishRetainedState(s_TopicGamePhase, &value, sizeof(value));
+    s_TopicGamePhase.PublishState(value);
 }
 
 static void UpdatePaused(BML_Bool paused) {
-    PublishRetainedState(s_TopicPaused, &paused, sizeof(paused));
+    s_TopicPaused.PublishState(paused);
 }
 
 static std::unordered_set<CK_ID> s_BaseScripts;
@@ -207,43 +203,43 @@ static void RegisterTopics() {
     auto owner = s_Services ? s_Services->Handle() : nullptr;
     if (!imcBus) return;
 
-    s_Topics[IDX_PRE_START_MENU] = bml::imc::Topic(BML_GameEvent::TOPIC_PRE_START_MENU, imcBus, owner);
-    s_Topics[IDX_POST_START_MENU] = bml::imc::Topic(BML_GameEvent::TOPIC_POST_START_MENU, imcBus, owner);
-    s_Topics[IDX_EXIT_GAME] = bml::imc::Topic(BML_GameEvent::TOPIC_EXIT_GAME, imcBus, owner);
-    s_Topics[IDX_PRE_LOAD_LEVEL] = bml::imc::Topic(BML_GameEvent::TOPIC_PRE_LOAD_LEVEL, imcBus, owner);
-    s_Topics[IDX_POST_LOAD_LEVEL] = bml::imc::Topic(BML_GameEvent::TOPIC_POST_LOAD_LEVEL, imcBus, owner);
-    s_Topics[IDX_START_LEVEL] = bml::imc::Topic(BML_GameEvent::TOPIC_START_LEVEL, imcBus, owner);
-    s_Topics[IDX_PRE_RESET_LEVEL] = bml::imc::Topic(BML_GameEvent::TOPIC_PRE_RESET_LEVEL, imcBus, owner);
-    s_Topics[IDX_POST_RESET_LEVEL] = bml::imc::Topic(BML_GameEvent::TOPIC_POST_RESET_LEVEL, imcBus, owner);
-    s_Topics[IDX_PAUSE_LEVEL] = bml::imc::Topic(BML_GameEvent::TOPIC_PAUSE_LEVEL, imcBus, owner);
-    s_Topics[IDX_UNPAUSE_LEVEL] = bml::imc::Topic(BML_GameEvent::TOPIC_UNPAUSE_LEVEL, imcBus, owner);
-    s_Topics[IDX_PRE_EXIT_LEVEL] = bml::imc::Topic(BML_GameEvent::TOPIC_PRE_EXIT_LEVEL, imcBus, owner);
-    s_Topics[IDX_POST_EXIT_LEVEL] = bml::imc::Topic(BML_GameEvent::TOPIC_POST_EXIT_LEVEL, imcBus, owner);
-    s_Topics[IDX_PRE_NEXT_LEVEL] = bml::imc::Topic(BML_GameEvent::TOPIC_PRE_NEXT_LEVEL, imcBus, owner);
-    s_Topics[IDX_POST_NEXT_LEVEL] = bml::imc::Topic(BML_GameEvent::TOPIC_POST_NEXT_LEVEL, imcBus, owner);
-    s_Topics[IDX_PRE_END_LEVEL] = bml::imc::Topic(BML_GameEvent::TOPIC_PRE_END_LEVEL, imcBus, owner);
-    s_Topics[IDX_POST_END_LEVEL] = bml::imc::Topic(BML_GameEvent::TOPIC_POST_END_LEVEL, imcBus, owner);
-    s_Topics[IDX_DEAD] = bml::imc::Topic(BML_GameEvent::TOPIC_DEAD, imcBus, owner);
-    s_Topics[IDX_BALL_OFF] = bml::imc::Topic(BML_GameEvent::TOPIC_BALL_OFF, imcBus, owner);
-    s_Topics[IDX_COUNTER_ACTIVE] = bml::imc::Topic(BML_GameEvent::TOPIC_COUNTER_ACTIVE, imcBus, owner);
-    s_Topics[IDX_COUNTER_INACTIVE] = bml::imc::Topic(BML_GameEvent::TOPIC_COUNTER_INACTIVE, imcBus, owner);
-    s_Topics[IDX_PRE_CHECKPOINT] = bml::imc::Topic(BML_GameEvent::TOPIC_PRE_CHECKPOINT, imcBus, owner);
-    s_Topics[IDX_POST_CHECKPOINT] = bml::imc::Topic(BML_GameEvent::TOPIC_POST_CHECKPOINT, imcBus, owner);
-    s_Topics[IDX_LEVEL_FINISH] = bml::imc::Topic(BML_GameEvent::TOPIC_LEVEL_FINISH, imcBus, owner);
-    s_Topics[IDX_GAME_OVER] = bml::imc::Topic(BML_GameEvent::TOPIC_GAME_OVER, imcBus, owner);
-    s_Topics[IDX_EXTRA_POINT] = bml::imc::Topic(BML_GameEvent::TOPIC_EXTRA_POINT, imcBus, owner);
-    s_Topics[IDX_PRE_LIFE_UP] = bml::imc::Topic(BML_GameEvent::TOPIC_PRE_LIFE_UP, imcBus, owner);
-    s_Topics[IDX_POST_LIFE_UP] = bml::imc::Topic(BML_GameEvent::TOPIC_POST_LIFE_UP, imcBus, owner);
-    s_Topics[IDX_PRE_SUB_LIFE] = bml::imc::Topic(BML_GameEvent::TOPIC_PRE_SUB_LIFE, imcBus, owner);
-    s_Topics[IDX_POST_SUB_LIFE] = bml::imc::Topic(BML_GameEvent::TOPIC_POST_SUB_LIFE, imcBus, owner);
-    s_Topics[IDX_BALL_NAV_ACTIVE] = bml::imc::Topic(BML_GameEvent::TOPIC_BALL_NAV_ACTIVE, imcBus, owner);
-    s_Topics[IDX_BALL_NAV_INACTIVE] = bml::imc::Topic(BML_GameEvent::TOPIC_BALL_NAV_INACTIVE, imcBus, owner);
-    s_Topics[IDX_CAM_NAV_ACTIVE] = bml::imc::Topic(BML_GameEvent::TOPIC_CAM_NAV_ACTIVE, imcBus, owner);
-    s_Topics[IDX_CAM_NAV_INACTIVE] = bml::imc::Topic(BML_GameEvent::TOPIC_CAM_NAV_INACTIVE, imcBus, owner);
+    s_Topics[IDX_PRE_START_MENU] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_PRE_START_MENU, imcBus, owner);
+    s_Topics[IDX_POST_START_MENU] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_POST_START_MENU, imcBus, owner);
+    s_Topics[IDX_EXIT_GAME] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_EXIT_GAME, imcBus, owner);
+    s_Topics[IDX_PRE_LOAD_LEVEL] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_PRE_LOAD_LEVEL, imcBus, owner);
+    s_Topics[IDX_POST_LOAD_LEVEL] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_POST_LOAD_LEVEL, imcBus, owner);
+    s_Topics[IDX_START_LEVEL] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_START_LEVEL, imcBus, owner);
+    s_Topics[IDX_PRE_RESET_LEVEL] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_PRE_RESET_LEVEL, imcBus, owner);
+    s_Topics[IDX_POST_RESET_LEVEL] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_POST_RESET_LEVEL, imcBus, owner);
+    s_Topics[IDX_PAUSE_LEVEL] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_PAUSE_LEVEL, imcBus, owner);
+    s_Topics[IDX_UNPAUSE_LEVEL] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_UNPAUSE_LEVEL, imcBus, owner);
+    s_Topics[IDX_PRE_EXIT_LEVEL] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_PRE_EXIT_LEVEL, imcBus, owner);
+    s_Topics[IDX_POST_EXIT_LEVEL] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_POST_EXIT_LEVEL, imcBus, owner);
+    s_Topics[IDX_PRE_NEXT_LEVEL] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_PRE_NEXT_LEVEL, imcBus, owner);
+    s_Topics[IDX_POST_NEXT_LEVEL] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_POST_NEXT_LEVEL, imcBus, owner);
+    s_Topics[IDX_PRE_END_LEVEL] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_PRE_END_LEVEL, imcBus, owner);
+    s_Topics[IDX_POST_END_LEVEL] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_POST_END_LEVEL, imcBus, owner);
+    s_Topics[IDX_DEAD] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_DEAD, imcBus, owner);
+    s_Topics[IDX_BALL_OFF] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_BALL_OFF, imcBus, owner);
+    s_Topics[IDX_COUNTER_ACTIVE] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_COUNTER_ACTIVE, imcBus, owner);
+    s_Topics[IDX_COUNTER_INACTIVE] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_COUNTER_INACTIVE, imcBus, owner);
+    s_Topics[IDX_PRE_CHECKPOINT] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_PRE_CHECKPOINT, imcBus, owner);
+    s_Topics[IDX_POST_CHECKPOINT] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_POST_CHECKPOINT, imcBus, owner);
+    s_Topics[IDX_LEVEL_FINISH] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_LEVEL_FINISH, imcBus, owner);
+    s_Topics[IDX_GAME_OVER] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_GAME_OVER, imcBus, owner);
+    s_Topics[IDX_EXTRA_POINT] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_EXTRA_POINT, imcBus, owner);
+    s_Topics[IDX_PRE_LIFE_UP] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_PRE_LIFE_UP, imcBus, owner);
+    s_Topics[IDX_POST_LIFE_UP] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_POST_LIFE_UP, imcBus, owner);
+    s_Topics[IDX_PRE_SUB_LIFE] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_PRE_SUB_LIFE, imcBus, owner);
+    s_Topics[IDX_POST_SUB_LIFE] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_POST_SUB_LIFE, imcBus, owner);
+    s_Topics[IDX_BALL_NAV_ACTIVE] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_BALL_NAV_ACTIVE, imcBus, owner);
+    s_Topics[IDX_BALL_NAV_INACTIVE] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_BALL_NAV_INACTIVE, imcBus, owner);
+    s_Topics[IDX_CAM_NAV_ACTIVE] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_CAM_NAV_ACTIVE, imcBus, owner);
+    s_Topics[IDX_CAM_NAV_INACTIVE] = bml::imc::TypedTopic<void>(BML_GameEvent::TOPIC_CAM_NAV_INACTIVE, imcBus, owner);
 
     // Retained state topics
-    s_TopicGamePhase = bml::imc::Topic(BML_TOPIC_STATE_GAME_PHASE, imcBus, owner);
-    s_TopicPaused = bml::imc::Topic(BML_TOPIC_STATE_PAUSED, imcBus, owner);
+    s_TopicGamePhase = bml::imc::TypedTopic<uint32_t>(BML_TOPIC_STATE_GAME_PHASE, imcBus, owner);
+    s_TopicPaused = bml::imc::TypedTopic<BML_Bool>(BML_TOPIC_STATE_PAUSED, imcBus, owner);
 
     // Publish initial state
     UpdateGamePhase(BML_GAME_PHASE_IDLE);

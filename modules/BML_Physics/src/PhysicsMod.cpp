@@ -9,6 +9,7 @@
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_hook_module.hpp"
 #include "bml_imc_topic.hpp"
+#include "bml_imc_typed.hpp"
 #include "bml_virtools_payloads.h"
 
 #include <algorithm>
@@ -48,8 +49,8 @@ class PhysicsMod : public bml::HookModule {
     CKIpionManager *m_IpionManager = nullptr;
     void *m_OriginalPostProcess = nullptr;
     CKBEHAVIORFCT m_OriginalPhysicalize = nullptr;
-    bml::imc::Topic m_TopicPostProcess;
-    bml::imc::Topic m_TopicPhysicalize;
+    bml::imc::TypedTopic<BML_PhysicsStepEvent> m_TopicPostProcess;
+    bml::imc::TypedTopic<BML_PhysicalizeEvent> m_TopicPhysicalize;
     bml::imc::Topic m_TopicUnphysicalize;
 
     const char *HookLogCategory() const override { return "BML_Physics"; }
@@ -61,8 +62,8 @@ class PhysicsMod : public bml::HookModule {
 
         auto *imcBus = Services().Interfaces().ImcBus;
         auto owner = Services().Handle();
-        m_TopicPostProcess = bml::imc::Topic(BML_TOPIC_PHYSICS_POST_PROCESS, imcBus, owner);
-        m_TopicPhysicalize = bml::imc::Topic(BML_TOPIC_PHYSICS_PHYSICALIZE, imcBus, owner);
+        m_TopicPostProcess = bml::imc::TypedTopic<BML_PhysicsStepEvent>(BML_TOPIC_PHYSICS_POST_PROCESS, imcBus, owner);
+        m_TopicPhysicalize = bml::imc::TypedTopic<BML_PhysicalizeEvent>(BML_TOPIC_PHYSICS_PHYSICALIZE, imcBus, owner);
         m_TopicUnphysicalize = bml::imc::Topic(BML_TOPIC_PHYSICS_UNPHYSICALIZE, imcBus, owner);
 
         // Hook IpionManager VTable

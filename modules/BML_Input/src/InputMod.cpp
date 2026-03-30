@@ -11,6 +11,7 @@
 #define BML_LOADER_IMPLEMENTATION
 #include "bml_hook_module.hpp"
 #include "bml_imc_topic.hpp"
+#include "bml_imc_typed.hpp"
 #include "bml_input.h"
 #include "bml_input_control.h"
 
@@ -53,10 +54,10 @@ struct InputState {
     unsigned char last_keyboard_state[256] = {};
     Vx2DVector last_mouse_position = {0.0f, 0.0f};
     CKBYTE last_mouse_buttons[4] = {};
-    bml::imc::Topic topic_key_down;
-    bml::imc::Topic topic_key_up;
-    bml::imc::Topic topic_mouse_button;
-    bml::imc::Topic topic_mouse_move;
+    bml::imc::TypedTopic<BML_KeyDownEvent> topic_key_down;
+    bml::imc::TypedTopic<BML_KeyUpEvent> topic_key_up;
+    bml::imc::TypedTopic<BML_MouseButtonEvent> topic_mouse_button;
+    bml::imc::TypedTopic<BML_MouseMoveEvent> topic_mouse_move;
 };
 
 InputState g_State;
@@ -65,10 +66,6 @@ uint32_t GetInputTimestampMs() {
     using namespace std::chrono;
     return static_cast<uint32_t>(
         duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
-}
-
-bool PublishInputMessage(const bml::imc::Topic &topic, const void *data, size_t size) {
-    return topic.Publish(data, size);
 }
 
 // ---------- VTable hooks ----------
@@ -291,13 +288,13 @@ void PublishKeyboardEvents(unsigned char *currentState) {
             event.scan_code = static_cast<uint32_t>(index);  // CK uses DIK scan codes as key IDs
             event.timestamp = timestamp;
             event.repeat = false;
-            PublishInputMessage(g_State.topic_key_down, &event, sizeof(event));
+            g_State.topic_key_down.Publish(event);
         } else if (!isDown && wasDown) {
             BML_KeyUpEvent event{};
             event.key_code = static_cast<uint32_t>(index);
             event.scan_code = static_cast<uint32_t>(index);
             event.timestamp = timestamp;
-            PublishInputMessage(g_State.topic_key_up, &event, sizeof(event));
+            g_State.topic_key_up.Publish(event);
         }
         g_State.last_keyboard_state[index] = currentState[index];
     }
@@ -319,7 +316,7 @@ void PublishKeyboardEvents(unsigned char *currentState) {
         event.scan_code = key;
         event.timestamp = timestamp;
         event.repeat = true;
-        PublishInputMessage(g_State.topic_key_down, &event, sizeof(event));
+        g_State.topic_key_down.Publish(event);
     }
 }
 
@@ -342,7 +339,7 @@ void PublishMouseEvents() {
             event.button = static_cast<uint32_t>(button);
             event.down = isDown;
             event.timestamp = timestamp;
-            PublishInputMessage(g_State.topic_mouse_button, &event, sizeof(event));
+            g_State.topic_mouse_button.Publish(event);
         }
         g_State.last_mouse_buttons[button] = mouseStates[button];
     }
@@ -357,7 +354,7 @@ void PublishMouseEvents() {
         event.rel_y = currentPos.y - g_State.last_mouse_position.y;
         event.absolute = false;
         event.timestamp = timestamp;
-        PublishInputMessage(g_State.topic_mouse_move, &event, sizeof(event));
+        g_State.topic_mouse_move.Publish(event);
     }
     g_State.last_mouse_position = currentPos;
 }
@@ -387,10 +384,10 @@ bool InitInputHook(CKInputManager *inputManager) {
     if (svc) {
         auto *imcBus = svc->Interfaces().ImcBus;
         auto owner = svc->Handle();
-        g_State.topic_key_down = bml::imc::Topic(BML_TOPIC_INPUT_KEY_DOWN, imcBus, owner);
-        g_State.topic_key_up = bml::imc::Topic(BML_TOPIC_INPUT_KEY_UP, imcBus, owner);
-        g_State.topic_mouse_button = bml::imc::Topic(BML_TOPIC_INPUT_MOUSE_BUTTON, imcBus, owner);
-        g_State.topic_mouse_move = bml::imc::Topic(BML_TOPIC_INPUT_MOUSE_MOVE, imcBus, owner);
+        g_State.topic_key_down = bml::imc::TypedTopic<BML_KeyDownEvent>(BML_TOPIC_INPUT_KEY_DOWN, imcBus, owner);
+        g_State.topic_key_up = bml::imc::TypedTopic<BML_KeyUpEvent>(BML_TOPIC_INPUT_KEY_UP, imcBus, owner);
+        g_State.topic_mouse_button = bml::imc::TypedTopic<BML_MouseButtonEvent>(BML_TOPIC_INPUT_MOUSE_BUTTON, imcBus, owner);
+        g_State.topic_mouse_move = bml::imc::TypedTopic<BML_MouseMoveEvent>(BML_TOPIC_INPUT_MOUSE_MOVE, imcBus, owner);
     }
 
     InstallVTableHooks();
