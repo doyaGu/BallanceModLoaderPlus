@@ -2,6 +2,7 @@
 #define BML_NEWBALLTYPEMOD_H
 
 #include "bml_services.hpp"
+#include "bml_ck_handle.hpp"
 
 #include "CKAll.h"
 #include "BML/ObjectLoadBehaviors.h"
@@ -17,14 +18,14 @@ struct BallTypeInfo {
     std::string m_Name;
     std::string m_ObjName;
 
-    CKGroup *m_AllGroup = nullptr;
-    CK3dObject *m_BallObj = nullptr;
+    bml::CKHandle<CKGroup> m_AllGroup;
+    bml::CKHandle<CK3dObject> m_BallObj;
 
-    CKGroup *m_PiecesGroup = nullptr;
-    CK3dEntity *m_PiecesFrame = nullptr;
+    bml::CKHandle<CKGroup> m_PiecesGroup;
+    bml::CKHandle<CK3dEntity> m_PiecesFrame;
 
-    CKBehavior *m_Explosion = nullptr;
-    CKBehavior *m_Reset = nullptr;
+    bml::CKHandle<CKBehavior> m_Explosion;
+    bml::CKHandle<CKBehavior> m_Reset;
 
     std::string m_CollGroup;
 
@@ -37,11 +38,11 @@ struct BallTypeInfo {
     float m_Radius;
 
 private:
-    CKParameter *m_BallParam = nullptr;
-    CKParameter *m_UsedParam = nullptr;
-    CKParameter *m_ResetParam = nullptr;
-    CKBehavior *m_Timer = nullptr;
-    CKBehavior *m_BinarySwitch[2];
+    bml::CKHandle<CKParameter> m_BallParam;
+    bml::CKHandle<CKParameter> m_UsedParam;
+    bml::CKHandle<CKParameter> m_ResetParam;
+    bml::CKHandle<CKBehavior> m_Timer;
+    bml::CKHandle<CKBehavior> m_BinarySwitch[2];
 };
 
 struct FloorTypeInfo {
@@ -102,8 +103,8 @@ private:
     const bml::ModuleServices *m_Services = nullptr;
     CKContext *m_Context = nullptr;
     bml::ObjectLoadCache m_ObjectLoader{nullptr};
-    CKDataArray *m_PhysicsBall = nullptr;
-    CKGroup *m_AllBalls = nullptr;
+    bml::CKHandle<CKDataArray> m_PhysicsBall;
+    bml::CKHandle<CKGroup> m_AllBalls;
 
     void SetInitialConditions(CKBeObject *object, bool hierarchy = false) const;
 

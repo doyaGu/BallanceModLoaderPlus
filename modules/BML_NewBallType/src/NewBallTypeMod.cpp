@@ -182,8 +182,8 @@ void NewBallTypeMod::RegisterModul(const char *modulName) {
 }
 
 void NewBallTypeMod::OnLoadBalls(const CK_ID *objectIds, uint32_t objectCount) {
-    m_PhysicsBall = static_cast<CKDataArray *>(m_Context->GetObjectByNameAndClass((CKSTRING)"Physicalize_GameBall", CKCID_DATAARRAY));
-    m_AllBalls = static_cast<CKGroup *>(m_Context->GetObjectByNameAndClass((CKSTRING)"All_Balls", CKCID_GROUP));
+    m_PhysicsBall.Reset(m_Context, static_cast<CKDataArray *>(m_Context->GetObjectByNameAndClass((CKSTRING)"Physicalize_GameBall", CKCID_DATAARRAY)));
+    m_AllBalls.Reset(m_Context, static_cast<CKGroup *>(m_Context->GetObjectByNameAndClass((CKSTRING)"All_Balls", CKCID_GROUP)));
     std::string path = "3D Entities\\";
     CK3dEntity *ballMF = static_cast<CK3dEntity *>(m_Context->GetObjectByNameAndClass((CKSTRING)"Balls_MF", CKCID_3DENTITY));
 
@@ -202,49 +202,59 @@ void NewBallTypeMod::OnLoadBalls(const CK_ID *objectIds, uint32_t objectCount) {
             const char *name = obj->GetName();
             if (name) {
                 if (allGroup == name)
-                    info.m_AllGroup = (CKGroup *) obj;
+                    info.m_AllGroup.Reset(m_Context, (CKGroup *) obj);
                 if (info.m_ObjName == name)
-                    info.m_BallObj = (CK3dObject *) obj;
+                    info.m_BallObj.Reset(m_Context, (CK3dObject *) obj);
                 if (piecesGroup == name)
-                    info.m_PiecesGroup = (CKGroup *) obj;
+                    info.m_PiecesGroup.Reset(m_Context, (CKGroup *) obj);
                 if (piecesFrame == name)
-                    info.m_PiecesFrame = (CK3dEntity *) obj;
+                    info.m_PiecesFrame.Reset(m_Context, (CK3dEntity *) obj);
                 if (explosion == name)
-                    info.m_Explosion = (CKBehavior *) obj;
+                    info.m_Explosion.Reset(m_Context, (CKBehavior *) obj);
                 if (reset == name)
-                    info.m_Reset = (CKBehavior *) obj;
+                    info.m_Reset.Reset(m_Context, (CKBehavior *) obj);
             }
         }
 
-        if (!info.m_AllGroup ||
-            !info.m_BallObj ||
-            !info.m_PiecesGroup ||
-            !info.m_PiecesFrame ||
-            !info.m_Explosion ||
-            !info.m_Reset) {
+        auto *allGroup_p = info.m_AllGroup.Get();
+        auto *ballObj_p = info.m_BallObj.Get();
+        auto *piecesGroup_p = info.m_PiecesGroup.Get();
+        auto *piecesFrame_p = info.m_PiecesFrame.Get();
+        auto *explosion_p = info.m_Explosion.Get();
+        auto *reset_p = info.m_Reset.Get();
+        if (!allGroup_p || !ballObj_p || !piecesGroup_p ||
+            !piecesFrame_p || !explosion_p || !reset_p) {
             if (m_Services) m_Services->Log().Error("Ball type '%s' incomplete -- skipping", info.m_Name.c_str());
             continue;
         }
 
-        bml::SetParam(info.m_BallParam, info.m_BallObj);
-        bml::SetParam(info.m_ResetParam, info.m_Reset);
-        info.m_BallObj->SetParent(ballMF);
-        info.m_PiecesFrame->SetParent(ballMF);
+        auto *ballParam_p = info.m_BallParam.Get();
+        auto *resetParam_p = info.m_ResetParam.Get();
+        if (ballParam_p) bml::SetParam(ballParam_p, static_cast<CKObject *>(ballObj_p));
+        if (resetParam_p) bml::SetParam(resetParam_p, static_cast<CKObject *>(reset_p));
+        ballObj_p->SetParent(ballMF);
+        piecesFrame_p->SetParent(ballMF);
 
-        m_PhysicsBall->AddRow();
-        int row = m_PhysicsBall->GetRowCount() - 1;
+        auto *physicsBall_p = m_PhysicsBall.Get();
+        auto *allBalls_p = m_AllBalls.Get();
+        if (!physicsBall_p || !allBalls_p) {
+            if (m_Services) m_Services->Log().Error("PhysicsBall or AllBalls array unavailable");
+            continue;
+        }
+        physicsBall_p->AddRow();
+        int row = physicsBall_p->GetRowCount() - 1;
 
-        m_PhysicsBall->SetElementStringValue(row, 0, (CKSTRING) info.m_ObjName.c_str());
-        m_PhysicsBall->SetElementValue(row, 1, &info.m_Friction);
-        m_PhysicsBall->SetElementValue(row, 2, &info.m_Elasticity);
-        m_PhysicsBall->SetElementValue(row, 3, &info.m_Mass);
-        m_PhysicsBall->SetElementStringValue(row, 4, (CKSTRING) info.m_CollGroup.c_str());
-        m_PhysicsBall->SetElementValue(row, 5, &info.m_LinearDamp);
-        m_PhysicsBall->SetElementValue(row, 6, &info.m_RotDamp);
-        m_PhysicsBall->SetElementValue(row, 7, &info.m_Force);
+        physicsBall_p->SetElementStringValue(row, 0, (CKSTRING) info.m_ObjName.c_str());
+        physicsBall_p->SetElementValue(row, 1, &info.m_Friction);
+        physicsBall_p->SetElementValue(row, 2, &info.m_Elasticity);
+        physicsBall_p->SetElementValue(row, 3, &info.m_Mass);
+        physicsBall_p->SetElementStringValue(row, 4, (CKSTRING) info.m_CollGroup.c_str());
+        physicsBall_p->SetElementValue(row, 5, &info.m_LinearDamp);
+        physicsBall_p->SetElementValue(row, 6, &info.m_RotDamp);
+        physicsBall_p->SetElementValue(row, 7, &info.m_Force);
 
-        for (int i = 0; i < info.m_AllGroup->GetObjectCount(); i++)
-            m_AllBalls->AddObject(info.m_AllGroup->GetObject(i));
+        for (int i = 0; i < allGroup_p->GetObjectCount(); i++)
+            allBalls_p->AddObject(allGroup_p->GetObject(i));
     }
 
     if (m_Services) m_Services->Log().Info("New Ball Types Registered");
@@ -389,7 +399,7 @@ void NewBallTypeMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
             CKBehavior *setAttr = tg.CreateBehavior(VT_LOGICS_SETATTRIBUTE, true);
             CKParameter *attr = tg.Param("Attr", CKPGUID_ATTRIBUTE, trafoType);
             CKParameter *attrParam = tg.ParamString("Param", info.m_ID.c_str());
-            setAttr->GetTargetParameter()->SetDirectSource(info.m_BallParam);
+            setAttr->GetTargetParameter()->SetDirectSource(info.m_BallParam.Get());
             setAttr->GetInputParameter(0)->SetDirectSource(attr);
             setAttr->CreateInputParameter("Param", CKPGUID_STRING)->SetDirectSource(attrParam);
             tg.Insert(tg.From(trafoAttr->GetOutput(0)).PrevLink(), setAttr);
@@ -410,7 +420,7 @@ void NewBallTypeMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
                 identity->GetOutputParameter(0)->SetType(booltype);
 
                 identity->GetInputParameter(0)->SetDirectSource(boolTrue);
-                identity->GetOutputParameter(0)->AddDestination(info.m_UsedParam, false);
+                identity->GetOutputParameter(0)->AddDestination(info.m_UsedParam.Get(), false);
                 sop->CreateInputParameter("Pin", CKPGUID_STRING)->SetDirectSource(id);
                 pf.Link(sop->CreateOutput("Out"), identity);
                 pf.Link(identity, pieceFlag->GetOutput(0));
@@ -444,7 +454,7 @@ void NewBallTypeMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
             for (BallTypeInfo &info: m_BallTypes) {
                 CKParameter *id = sg.ParamString("Pin", info.m_ID.c_str());
                 sop->CreateInputParameter("Pin", CKPGUID_STRING)->SetDirectSource(id);
-                ps->CreateInputParameter("Pin", CKPGUID_3DENTITY)->SetDirectSource(info.m_BallParam);
+                ps->CreateInputParameter("Pin", CKPGUID_3DENTITY)->SetDirectSource(info.m_BallParam.Get());
                 sg.Link(sop->CreateOutput("Out"), ps->CreateInput("In"));
             }
         }
@@ -471,18 +481,18 @@ void NewBallTypeMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
                 seton->GetOutputParameter(0)->SetType(booltype);
                 CKBehavior *timer = fade.CreateBehavior(VT_LOGICS_TIMER);
                 CKBehavior *activate = fade.CreateBehavior(VT_NARRATIVES_ACTIVATESCRIPT);
-                info.m_Timer = timer;
-                info.m_BinarySwitch[0] = binswitch[0];
-                info.m_BinarySwitch[1] = binswitch[1];
+                info.m_Timer.Reset(m_Context, timer);
+                info.m_BinarySwitch[0].Reset(m_Context, binswitch[0]);
+                info.m_BinarySwitch[1].Reset(m_Context, binswitch[1]);
 
-                identity->GetOutputParameter(0)->AddDestination(info.m_UsedParam, false);
-                binswitch[0]->GetInputParameter(0)->SetDirectSource(info.m_UsedParam);
-                binswitch[1]->GetInputParameter(0)->SetDirectSource(info.m_UsedParam);
+                identity->GetOutputParameter(0)->AddDestination(info.m_UsedParam.Get(), false);
+                binswitch[0]->GetInputParameter(0)->SetDirectSource(info.m_UsedParam.Get());
+                binswitch[1]->GetInputParameter(0)->SetDirectSource(info.m_UsedParam.Get());
                 seton->GetInputParameter(0)->SetDirectSource(setfalse);
-                seton->GetOutputParameter(0)->AddDestination(info.m_UsedParam, false);
+                seton->GetOutputParameter(0)->AddDestination(info.m_UsedParam.Get(), false);
                 timer->GetInputParameter(0)->SetDirectSource(time);
                 activate->GetInputParameter(0)->SetDirectSource(reset);
-                activate->GetInputParameter(1)->SetDirectSource(info.m_ResetParam);
+                activate->GetInputParameter(1)->SetDirectSource(info.m_ResetParam.Get());
 
                 fade.Link(identity, binswitch[0]);
                 fade.Link(binswitch[0], binswitch[0], 1, 0, 1);
@@ -515,9 +525,9 @@ void NewBallTypeMod::OnEditScript_Base_EventHandler(CKBehavior *script) {
     }
 
     for (BallTypeInfo &info: m_BallTypes) {
-        info.m_BallParam = graph.Param("Target", CKPGUID_BEOBJECT);
-        info.m_UsedParam = graph.Param("Used", CKPGUID_BOOL);
-        info.m_ResetParam = graph.Param("Script", CKPGUID_SCRIPT);
+        info.m_BallParam.Reset(m_Context, graph.Param("Target", CKPGUID_BEOBJECT));
+        info.m_UsedParam.Reset(m_Context, graph.Param("Used", CKPGUID_BOOL));
+        info.m_ResetParam.Reset(m_Context, graph.Param("Script", CKPGUID_SCRIPT));
     }
 
     auto addResetAttr = [this](CKBehavior *behGraph) {
@@ -525,7 +535,7 @@ void NewBallTypeMod::OnEditScript_Base_EventHandler(CKBehavior *script) {
         CKBehavior *remAttr = g.Find("Remove Attribute");
         for (BallTypeInfo &info: m_BallTypes) {
             CKBehavior *attr = g.CreateBehavior(VT_LOGICS_REMOVEATTRIBUTE, true);
-            attr->GetTargetParameter()->SetDirectSource(info.m_BallParam);
+            attr->GetTargetParameter()->SetDirectSource(info.m_BallParam.Get());
             attr->GetInputParameter(0)->ShareSourceWith(remAttr->GetInputParameter(0));
             g.Insert(g.From(behGraph->GetInput(0)).NextLink(), attr);
         }

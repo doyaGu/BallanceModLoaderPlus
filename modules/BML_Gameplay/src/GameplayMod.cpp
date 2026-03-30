@@ -21,6 +21,7 @@
 #include "bml_virtools.hpp"
 #include "bml_virtools_payloads.h"
 
+#include "bml_ck_handle.hpp"
 #include "BML/ScriptGraph.h"
 
 #include "CKAll.h"
@@ -71,8 +72,8 @@ class GameplayMod : public bml::Module {
     GameplaySettings m_Settings;
     bml::ConfigBindings m_Cfg;
     std::unordered_set<CK_ID> m_PatchedScripts;
-    CKBehaviorLink *m_OverclockLinks[3] = {};
-    CKBehaviorIO *m_OverclockLinkIO[3][2] = {};
+    bml::CKHandle<CKBehaviorLink> m_OverclockLinks[3];
+    bml::CKHandle<CKBehaviorIO> m_OverclockLinkIO[3][2];
     bml::ui::DrawRegistration m_DrawReg;
     FpsCounter m_FpsCounter;
     SRTimer m_SRTimer;
@@ -134,9 +135,11 @@ class GameplayMod : public bml::Module {
 
     void ApplyOverclockSetting() {
         for (int index = 0; index < 3; ++index) {
-            if (m_OverclockLinks[index] && m_OverclockLinkIO[index][0] && m_OverclockLinkIO[index][1]) {
-                m_OverclockLinks[index]->SetOutBehaviorIO(
-                    m_OverclockLinkIO[index][m_Settings.overclock ? 1 : 0]);
+            auto *link = m_OverclockLinks[index].Get();
+            auto *io0 = m_OverclockLinkIO[index][0].Get();
+            auto *io1 = m_OverclockLinkIO[index][1].Get();
+            if (link && io0 && io1) {
+                link->SetOutBehaviorIO(m_Settings.overclock ? io1 : io0);
             }
         }
     }
@@ -186,16 +189,18 @@ class GameplayMod : public bml::Module {
             return;
         }
 
+        CKContext *ctx = GetContext();
         auto deactivateBall = ballManager.Find("Deactivate Ball");
         auto resetPieces = deactivateBall ? deactivateBall.Find("reset Ballpieces") : bml::Node{};
         if (deactivateBall && resetPieces) {
-            m_OverclockLinks[0] = resetPieces.NextLink();
-            if (m_OverclockLinks[0]) {
+            CKBehaviorLink *link0 = resetPieces.NextLink();
+            m_OverclockLinks[0].Reset(ctx, link0);
+            if (link0) {
                 bml::Graph deactGraph(deactivateBall);
                 auto unphysicalize = deactGraph.From(
-                    m_OverclockLinks[0]->GetOutBehaviorIO()->GetOwner()).Next().Next();
+                    link0->GetOutBehaviorIO()->GetOwner()).Next().Next();
                 if (unphysicalize) {
-                    m_OverclockLinkIO[0][1] = unphysicalize->GetInput(1);
+                    m_OverclockLinkIO[0][1].Reset(ctx, unphysicalize->GetInput(1));
                 }
             }
         }
@@ -203,9 +208,10 @@ class GameplayMod : public bml::Module {
         auto newBall = ballManager.Find("New Ball");
         auto physNewBall = newBall ? newBall.Find("physicalize new Ball") : bml::Node{};
         if (newBall && physNewBall) {
-            m_OverclockLinks[1] = physNewBall.SkipBack(3).PrevLink();
-            if (m_OverclockLinks[1]) {
-                m_OverclockLinkIO[1][1] = physNewBall->GetInput(0);
+            CKBehaviorLink *link1 = physNewBall.SkipBack(3).PrevLink();
+            m_OverclockLinks[1].Reset(ctx, link1);
+            if (link1) {
+                m_OverclockLinkIO[1][1].Reset(ctx, physNewBall->GetInput(0));
             }
         }
 
@@ -219,15 +225,17 @@ class GameplayMod : public bml::Module {
             return;
         }
 
-        m_OverclockLinks[2] = delay.PrevLink();
+        CKContext *ctx = GetContext();
+        m_OverclockLinks[2].Reset(ctx, delay.PrevLink());
         CKBehaviorLink *next = delay.NextLink();
         if (next) {
-            m_OverclockLinkIO[2][1] = next->GetOutBehaviorIO();
+            m_OverclockLinkIO[2][1].Reset(ctx, next->GetOutBehaviorIO());
         }
 
         for (int index = 0; index < 3; ++index) {
-            if (m_OverclockLinks[index]) {
-                m_OverclockLinkIO[index][0] = m_OverclockLinks[index]->GetOutBehaviorIO();
+            auto *link = m_OverclockLinks[index].Get();
+            if (link) {
+                m_OverclockLinkIO[index][0].Reset(ctx, link->GetOutBehaviorIO());
             }
         }
 
@@ -453,9 +461,9 @@ public:
         m_PatchedScripts.clear();
         m_Cfg.Clear();
         for (int index = 0; index < 3; ++index) {
-            m_OverclockLinks[index] = nullptr;
-            m_OverclockLinkIO[index][0] = nullptr;
-            m_OverclockLinkIO[index][1] = nullptr;
+            m_OverclockLinks[index].Reset();
+            m_OverclockLinkIO[index][0].Reset();
+            m_OverclockLinkIO[index][1].Reset();
         }
 
         m_DrawReg.Reset();

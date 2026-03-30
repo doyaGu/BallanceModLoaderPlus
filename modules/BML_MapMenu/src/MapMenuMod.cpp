@@ -46,6 +46,7 @@
 #include "bml_ui.hpp"
 #include "BML/Guids/Logics.h"
 
+#include "bml_ck_handle.hpp"
 #include "BML/ScriptGraph.h"
 #include "PathUtils.h"
 #include "StringUtils.h"
@@ -209,12 +210,12 @@ class MapMenuMod : public bml::Module {
     bml::imc::Topic m_TopicCustomMapName;
 
     CKContext *m_Context = nullptr;
-    CKBehavior *m_ExitStart = nullptr;
+    bml::CKHandle<CKBehavior> m_ExitStart;
     CK_ID m_StartButtonId = 0;
-    CKParameter *m_LoadCustom = nullptr;
-    CKParameter *m_MapFile = nullptr;
-    CKParameter *m_LevelRow = nullptr;
-    CKDataArray *m_CurrentLevelArray = nullptr;
+    bml::CKHandle<CKParameter> m_LoadCustom;
+    bml::CKHandle<CKParameter> m_MapFile;
+    bml::CKHandle<CKParameter> m_LevelRow;
+    bml::CKHandle<CKDataArray> m_CurrentLevelArray;
 
     MapMenuSettings m_Settings;
     bool m_Visible = false;
@@ -307,8 +308,9 @@ class MapMenuMod : public bml::Module {
 
     CKDataArray *GetCurrentLevelArray() {
         if (!m_Context) return nullptr;
-        m_CurrentLevelArray = static_cast<CKDataArray *>(m_Context->GetObjectByNameAndClass((CKSTRING)"CurrentLevel", CKCID_DATAARRAY));
-        return m_CurrentLevelArray;
+        auto *raw = static_cast<CKDataArray *>(m_Context->GetObjectByNameAndClass((CKSTRING)"CurrentLevel", CKCID_DATAARRAY));
+        m_CurrentLevelArray.Reset(m_Context, raw);
+        return raw;
     }
 
     CK2dEntity *GetNamed2dEntity(const char *name) {
@@ -338,19 +340,25 @@ class MapMenuMod : public bml::Module {
         CKBehavior *binarySwitch = ll.CreateBehavior(VT_LOGICS_BINARYSWITCH);
         if (!binarySwitch) return false;
         ll.Link(loadLevel->GetInput(0), binarySwitch, 0);
-        m_LoadCustom = ll.Param("Custom Level", CKPGUID_BOOL);
-        if (!m_LoadCustom) return false;
-        binarySwitch->GetInputParameter(0)->SetDirectSource(m_LoadCustom);
+        CKParameter *loadCustomRaw = ll.Param("Custom Level", CKPGUID_BOOL);
+        m_LoadCustom.Reset(m_Context, loadCustomRaw);
+        if (!loadCustomRaw) return false;
+        binarySwitch->GetInputParameter(0)->SetDirectSource(loadCustomRaw);
         inLink->SetInBehaviorIO(binarySwitch->GetOutput(1));
         ll.Link(binarySwitch, objectLoad);
-        m_MapFile = objectLoad->GetInputParameter(0)->GetDirectSource();
-        m_LevelRow = operation->GetOutputParameter(0)->GetDestination(0);
-        return m_MapFile != nullptr && m_LevelRow != nullptr;
+        CKParameter *mapFileRaw = objectLoad->GetInputParameter(0)->GetDirectSource();
+        CKParameter *levelRowRaw = operation->GetOutputParameter(0)->GetDestination(0);
+        m_MapFile.Reset(m_Context, mapFileRaw);
+        m_LevelRow.Reset(m_Context, levelRowRaw);
+        return mapFileRaw != nullptr && levelRowRaw != nullptr;
     }
 
     void LoadMap(const std::wstring &path) {
         if (!m_Context || !m_Settings.enabled) return;
-        if (!m_LoadCustom || !m_MapFile || !m_LevelRow) {
+        auto *loadCustom = m_LoadCustom.Get();
+        auto *mapFile = m_MapFile.Get();
+        auto *levelRow = m_LevelRow.Get();
+        if (!loadCustom || !mapFile || !levelRow) {
             PublishConsoleMessage("[mapmenu] Levelinit_build hook is not ready yet", BML_CONSOLE_OUTPUT_FLAG_ERROR);
             return;
         }
@@ -364,17 +372,18 @@ class MapMenuMod : public bml::Module {
             PublishConsoleMessage("[mapmenu] failed to stage selected map", BML_CONSOLE_OUTPUT_FLAG_ERROR);
             return;
         }
-        bml::SetParam(m_MapFile, tempFile.c_str());
-        bml::SetParam(m_LoadCustom, TRUE);
+        bml::SetParam(mapFile, tempFile.c_str());
+        bml::SetParam(loadCustom, TRUE);
         int levelNumber = m_Settings.levelNumber;
         if (levelNumber < 1 || levelNumber > 13) levelNumber = 2;
         currentLevel->SetElementValue(0, 0, &levelNumber);
-        int levelRow = levelNumber - 1;
-        bml::SetParam(m_LevelRow, levelRow);
+        int levelRowVal = levelNumber - 1;
+        bml::SetParam(levelRow, levelRowVal);
         CKMessageManager *messageManager = m_Context->GetMessageManager();
         CKGroup *allSound = GetNamedGroup("All_Sound");
         CK2dEntity *blackScreen = GetNamed2dEntity("M_BlackScreen");
-        if (!m_ExitStart || !messageManager || !allSound || !blackScreen || !m_Context->GetCurrentLevel()) {
+        auto *exitStart = m_ExitStart.Get();
+        if (!exitStart || !messageManager || !allSound || !blackScreen || !m_Context->GetCurrentLevel()) {
             PublishConsoleMessage("[mapmenu] menu transition objects are unavailable", BML_CONSOLE_OUTPUT_FLAG_ERROR);
             return;
         }
@@ -388,8 +397,8 @@ class MapMenuMod : public bml::Module {
         messageManager->SendMessageSingle(loadLevelMessage, m_Context->GetCurrentLevel());
         messageManager->SendMessageSingle(loadMenuMessage, allSound);
         blackScreen->Show(CKHIDE);
-        m_ExitStart->ActivateInput(0);
-        m_ExitStart->Activate();
+        exitStart->ActivateInput(0);
+        exitStart->Activate();
         PublishConsoleMessage("[mapmenu] loading " + FormatPathForUi(path));
         m_MapLoaded = true;
         SetVisible(false);
@@ -619,25 +628,14 @@ public:
                 return;
             }
             if (strcmp(scriptName, "Menu_Start") == 0) {
-                m_ExitStart = bml::Graph(payload->script).Find("Exit");
+                CKBehavior *exitRaw = bml::Graph(payload->script).Find("Exit");
+                m_ExitStart.Reset(m_Context, exitRaw);
                 CK2dEntity *btn = GetNamed2dEntity("M_Start_But_01");
                 m_StartButtonId = btn ? btn->GetID() : 0;
             }
         });
 
         if (!subscriptionsOk) {
-            m_DrawReg.Reset();
-            return BML_RESULT_FAIL;
-        }
-
-        if (!m_Subs.Add(BML_TOPIC_ENGINE_RESET, [this](const bml::imc::Message &) {
-            m_ExitStart = nullptr;
-            m_LoadCustom = nullptr;
-            m_MapFile = nullptr;
-            m_LevelRow = nullptr;
-            m_CurrentLevelArray = nullptr;
-            m_StartButtonId = 0;
-        })) {
             m_DrawReg.Reset();
             return BML_RESULT_FAIL;
         }
@@ -683,12 +681,12 @@ public:
         m_TopicConsoleOutput = {};
         m_TopicCustomMapName = {};
         m_Context = nullptr;
-        m_ExitStart = nullptr;
+        m_ExitStart.Reset();
         m_StartButtonId = 0;
-        m_LoadCustom = nullptr;
-        m_MapFile = nullptr;
-        m_LevelRow = nullptr;
-        m_CurrentLevelArray = nullptr;
+        m_LoadCustom.Reset();
+        m_MapFile.Reset();
+        m_LevelRow.Reset();
+        m_CurrentLevelArray.Reset();
         m_MapLoaded = false;
         m_MapRoot.reset();
         m_SearchResults.clear();
