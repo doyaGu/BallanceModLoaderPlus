@@ -584,6 +584,17 @@ add_bml_test(MpscRingBufferTests
         BML_Utils
 )
 
+# ConcurrentRingBuffer MPSC queue tests
+add_bml_test(ConcurrentRingBufferTests
+        SOURCES
+        ConcurrentRingBufferTests.cpp
+        DEPENDENCIES
+        BML_Utils
+)
+target_include_directories(ConcurrentRingBufferTests PRIVATE
+        "${CMAKE_SOURCE_DIR}/modules/BML_DevTools/src"
+)
+
 # DiagnosticManager thread-local error handling tests
 add_bml_test(DiagnosticManagerTests
         SOURCES
