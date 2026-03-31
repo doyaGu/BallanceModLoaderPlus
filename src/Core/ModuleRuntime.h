@@ -61,6 +61,7 @@ namespace BML::Core {
         void StopHotReloadCoordinator();
         void HandleHotReloadNotify(const std::string &mod_id, ReloadResult result,
                                    unsigned int version, ReloadFailure failure);
+        bool ReloadSingleModule(const std::string &mod_id, ModuleBootstrapDiagnostics &out_diag);
         bool ShouldEnableHotReload() const;
         std::wstring GetHotReloadTempDirectory() const;
         void ApplyDiagnostics(const ModuleBootstrapDiagnostics &diag) const;

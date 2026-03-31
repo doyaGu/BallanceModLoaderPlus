@@ -546,6 +546,60 @@ namespace BML::Core {
         }
     }
 
+    bool ModuleRuntime::ReloadSingleModule(const std::string &mod_id,
+                                            ModuleBootstrapDiagnostics &out_diag) {
+        if (!m_Kernel || !m_Kernel->context || !m_HotReloadCoordinator) {
+            return false;
+        }
+        auto &context = *m_Kernel->context;
+
+        // Verify the module exists in the loaded snapshot
+        bool found = false;
+        for (const auto &m : context.GetLoadedModuleSnapshot()) {
+            if (m.id == mod_id) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            CoreLog(BML_LOG_WARN, kModuleRuntimeLogCategory,
+                    "Targeted reload: module '%s' not found in loaded modules", mod_id.c_str());
+            return false;
+        }
+
+        // The ReloadableModuleSlot has already performed the DLL swap
+        // (UnloadCurrent -> LoadVersion) including:
+        //   - PrepareModuleForDetach gate (checks dependencies)
+        //   - DETACH entrypoint call
+        //   - CleanupModuleKernelState
+        //   - FreeLibrary old DLL
+        //   - CopyDllToTemp -> LoadLibrary new DLL
+        //   - ATTACH entrypoint call
+        //
+        // We just need to synchronize Context's loaded-module record
+        // with the slot's new DLL handle and entrypoint.
+
+        HMODULE new_handle = nullptr;
+        PFN_BML_ModEntrypoint new_entrypoint = nullptr;
+        if (!m_HotReloadCoordinator->GetSlotModuleInfo(mod_id, &new_handle, &new_entrypoint)) {
+            CoreLog(BML_LOG_WARN, kModuleRuntimeLogCategory,
+                    "Targeted reload: slot for '%s' not loaded after reload", mod_id.c_str());
+            return false;
+        }
+
+        if (!context.UpdateLoadedModule(mod_id, new_handle, new_entrypoint)) {
+            CoreLog(BML_LOG_WARN, kModuleRuntimeLogCategory,
+                    "Targeted reload: failed to update Context for '%s'", mod_id.c_str());
+            return false;
+        }
+
+        BroadcastLifecycleEvent(BML_TOPIC_SYSTEM_MOD_RELOAD, context.GetLoadedModuleSnapshot());
+        CoreLog(BML_LOG_INFO, kModuleRuntimeLogCategory,
+                "Targeted hot reload of '%s' succeeded (version %u)",
+                mod_id.c_str(), m_HotReloadCoordinator->GetModuleVersion(mod_id));
+        return true;
+    }
+
     void ModuleRuntime::HandleHotReloadNotify(const std::string &mod_id, ReloadResult result,
                                               unsigned int version, ReloadFailure failure) {
         if (result == ReloadResult::Success) {
@@ -553,11 +607,33 @@ namespace BML::Core {
                     "Hot reload notification: mod '%s' version %u, result=%d",
                     mod_id.c_str(), version, static_cast<int>(result));
 
+            // Try targeted single-module reload first (only updates Context state)
             ModuleBootstrapDiagnostics diag;
-            if (ReloadModules(diag)) {
-                CoreLog(BML_LOG_INFO, kModuleRuntimeLogCategory, "Hot reload succeeded");
+            if (ReloadSingleModule(mod_id, diag)) {
+                // Targeted reload succeeded -- other modules were not disturbed
             } else {
-                CoreLog(BML_LOG_ERROR, kModuleRuntimeLogCategory, "Hot reload failed");
+                // Fall back to full reload (e.g. module not found, Context sync failed)
+                CoreLog(BML_LOG_WARN, kModuleRuntimeLogCategory,
+                        "Targeted reload of '%s' failed, falling back to full reload",
+                        mod_id.c_str());
+                if (ReloadModules(diag)) {
+                    CoreLog(BML_LOG_INFO, kModuleRuntimeLogCategory,
+                            "Full hot reload succeeded");
+                } else {
+                    CoreLog(BML_LOG_ERROR, kModuleRuntimeLogCategory,
+                            "Full hot reload failed");
+                }
+            }
+        } else if (result == ReloadResult::UnloadBlocked) {
+            // Module has active dependencies that prevent targeted reload.
+            // Fall back to full reload which tears down everything.
+            CoreLog(BML_LOG_WARN, kModuleRuntimeLogCategory,
+                    "Module '%s' has active dependencies, falling back to full reload",
+                    mod_id.c_str());
+            ModuleBootstrapDiagnostics diag;
+            if (!ReloadModules(diag)) {
+                CoreLog(BML_LOG_ERROR, kModuleRuntimeLogCategory,
+                        "Full reload fallback also failed for '%s'", mod_id.c_str());
             }
         } else if (result == ReloadResult::RolledBack) {
             CoreLog(BML_LOG_WARN, kModuleRuntimeLogCategory,

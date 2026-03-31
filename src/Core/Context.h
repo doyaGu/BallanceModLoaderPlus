@@ -138,6 +138,17 @@ namespace BML::Core {
         BML_Mod GetLoadedModuleAt(uint32_t index) const;
         void ShutdownModules(KernelServices &kernel);
 
+        /**
+         * @brief Update a loaded module's DLL handle and entrypoint after hot-reload.
+         *
+         * Used by the targeted reload path to synchronize Context's tracking
+         * with the ReloadableModuleSlot's new DLL without a full teardown.
+         * @return true if the module was found and updated.
+         */
+        bool UpdateLoadedModule(const std::string &mod_id,
+                                HMODULE new_handle,
+                                PFN_BML_ModEntrypoint new_entrypoint);
+
         std::unique_ptr<BML_Mod_T> CreateModHandle(const ModManifest &manifest);
         BML_Mod_T *ResolveModHandle(BML_Mod mod);
         const BML_Mod_T *ResolveModHandle(BML_Mod mod) const;

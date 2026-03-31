@@ -408,6 +408,28 @@ namespace BML::Core {
         m_LoadedModules.emplace_back(std::move(module));
     }
 
+    bool Context::UpdateLoadedModule(const std::string &mod_id,
+                                      HMODULE new_handle,
+                                      PFN_BML_ModEntrypoint new_entrypoint) {
+        std::lock_guard<std::mutex> lock(m_StateMutex);
+        for (auto &module : m_LoadedModules) {
+            if (module.id == mod_id) {
+                HMODULE old_handle = module.handle;
+                module.handle = new_handle;
+                module.entrypoint = new_entrypoint;
+                // Update the HMODULE -> BML_Mod lookup map
+                if (old_handle && old_handle != new_handle) {
+                    m_ModHandlesByModule.erase(old_handle);
+                }
+                if (new_handle && module.mod_handle) {
+                    m_ModHandlesByModule[new_handle] = module.mod_handle.get();
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
     std::vector<LoadedModuleSnapshot> Context::GetLoadedModuleSnapshot() const {
         std::lock_guard<std::mutex> lock(m_StateMutex);
         std::vector<LoadedModuleSnapshot> snapshot;
