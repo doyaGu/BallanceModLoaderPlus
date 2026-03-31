@@ -509,12 +509,16 @@ namespace BML::Core {
     void MemoryManager::AddModuleRange(uintptr_t base, uintptr_t end,
                                         const std::string &module_id) {
         std::lock_guard lock(m_RangeMutex);
-        int idx = static_cast<int>(m_ModuleRanges.size());
-        m_ModuleRanges.push_back({base, end, module_id, idx});
+        m_ModuleRanges.push_back({base, end, module_id, 0});
         std::sort(m_ModuleRanges.begin(), m_ModuleRanges.end(),
                   [](const auto &a, const auto &b) { return a.base < b.base; });
-        // Rebuild stats array to match
-        m_PerModuleStats.push_back(std::make_unique<PerModuleStats>(module_id));
+        // Rebuild stats array to match sorted order
+        m_PerModuleStats.clear();
+        for (size_t i = 0; i < m_ModuleRanges.size(); ++i) {
+            m_ModuleRanges[i].index = static_cast<int>(i);
+            m_PerModuleStats.push_back(
+                std::make_unique<PerModuleStats>(m_ModuleRanges[i].module_id));
+        }
         if (!m_CoreStats)
             m_CoreStats = std::make_unique<PerModuleStats>("<core>");
     }
@@ -536,8 +540,12 @@ namespace BML::Core {
     }
 
     int MemoryManager::FindModuleIndex(void *caller) const {
+        std::lock_guard lock(m_RangeMutex);
+        return FindModuleIndexLocked(caller);
+    }
+
+    int MemoryManager::FindModuleIndexLocked(void *caller) const {
         uintptr_t addr = reinterpret_cast<uintptr_t>(caller);
-        // Binary search on sorted ranges
         int lo = 0, hi = static_cast<int>(m_ModuleRanges.size()) - 1;
         while (lo <= hi) {
             int mid = lo + (hi - lo) / 2;
@@ -548,7 +556,7 @@ namespace BML::Core {
             else
                 return mid;
         }
-        return -1; // not found
+        return -1;
     }
 
     int MemoryManager::ResolveModuleIndex(void *caller) {
@@ -606,7 +614,9 @@ namespace BML::Core {
     void *MemoryManager::CallocTracked(size_t count, size_t sz, void *caller) {
         void *ptr = Calloc(count, sz);
         if (!ptr || !m_PerModuleEnabled.load(std::memory_order_acquire)) return ptr;
-        size_t total = count * sz;
+        size_t total = 0;
+        if (sz != 0 && count > SIZE_MAX / sz) total = 0; // overflow
+        else total = count * sz;
         int idx = ResolveModuleIndex(caller);
         auto *stats = GetModuleStats(idx);
         stats->total_allocated.fetch_add(total, std::memory_order_relaxed);
@@ -622,17 +632,30 @@ namespace BML::Core {
     }
 
     void *MemoryManager::ReallocTracked(void *ptr, size_t old_size, size_t new_size, void *caller) {
-        // Remove old tracking
+        AllocRecord old_record{-1, 0};
         if (ptr && m_PerModuleEnabled.load(std::memory_order_acquire)) {
             std::lock_guard lock(m_AllocMapMutex);
-            m_AllocMap.erase(ptr);
+            auto it = m_AllocMap.find(ptr);
+            if (it != m_AllocMap.end()) {
+                old_record = it->second;
+                m_AllocMap.erase(it);
+            }
         }
         void *new_ptr = Realloc(ptr, old_size, new_size);
+        if (!new_ptr && ptr) {
+            // Realloc failed — restore old tracking
+            if (old_record.module_index >= 0) {
+                std::lock_guard lock(m_AllocMapMutex);
+                m_AllocMap[ptr] = old_record;
+            }
+            return nullptr;
+        }
         if (new_ptr && m_PerModuleEnabled.load(std::memory_order_acquire)) {
-            int idx = ResolveModuleIndex(caller);
+            int idx = (old_record.module_index >= 0) ? old_record.module_index
+                                                     : ResolveModuleIndex(caller);
             auto *stats = GetModuleStats(idx);
-            if (ptr) {
-                stats->total_allocated.fetch_sub(old_size, std::memory_order_relaxed);
+            if (ptr && old_record.size > 0) {
+                stats->total_allocated.fetch_sub(old_record.size, std::memory_order_relaxed);
             }
             stats->total_allocated.fetch_add(new_size, std::memory_order_relaxed);
             if (!ptr) {

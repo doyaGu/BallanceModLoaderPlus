@@ -413,6 +413,7 @@ typedef BML_Result (*PFN_BML_ImcGetTopicName)(BML_Context ctx,
  * Captures metadata about a message at publish time for flow monitoring.
  */
 typedef struct BML_ImcMessageTrace {
+    size_t struct_size;         /**< sizeof(BML_ImcMessageTrace), must be first */
     BML_TopicId topic;          /**< Topic ID */
     BML_Mod owner;              /**< Publishing module */
     uint64_t timestamp_qpc;     /**< QueryPerformanceCounter timestamp */

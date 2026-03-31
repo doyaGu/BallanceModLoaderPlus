@@ -13,6 +13,7 @@ namespace BML::Core {
         QueryPerformanceCounter(&qpc);
 
         BML_ImcMessageTrace trace{};
+        trace.struct_size = sizeof(BML_ImcMessageTrace);
         trace.topic = topic;
         trace.owner = owner;
         trace.timestamp_qpc = static_cast<uint64_t>(qpc.QuadPart);
@@ -48,17 +49,12 @@ namespace BML::Core {
         BML_Mod resolved_owner = nullptr;
         BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));
 
-        TapState *old_tap = m_Tap.exchange(nullptr, std::memory_order_acq_rel);
-        if (!old_tap) {
+        TapState *old_tap = m_Tap.load(std::memory_order_acquire);
+        if (!old_tap || old_tap->owner != resolved_owner)
             return BML_RESULT_NOT_FOUND;
-        }
-
-        if (old_tap->owner != resolved_owner) {
-            // Restore the tap since owner doesn't match
-            m_Tap.store(old_tap, std::memory_order_release);
-            return BML_RESULT_NOT_FOUND;
-        }
-
+        if (!m_Tap.compare_exchange_strong(old_tap, nullptr,
+                                           std::memory_order_acq_rel))
+            return BML_RESULT_NOT_FOUND; // concurrent modification
         delete old_tap;
         return BML_RESULT_OK;
     }

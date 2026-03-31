@@ -155,6 +155,7 @@ namespace BML::Core {
         std::mutex m_AllocMapMutex;
         std::unordered_map<void *, AllocRecord> m_AllocMap;
 
+        int FindModuleIndexLocked(void *caller) const;
         int ResolveModuleIndex(void *caller);
         PerModuleStats *GetModuleStats(int index);
     };
