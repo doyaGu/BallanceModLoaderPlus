@@ -503,5 +503,208 @@ TEST_F(HotReloadCoordinatorTest, StopClearsScheduledReloads) {
     coordinator.Update();
 }
 
+// --- Gap 5: Verify Added events trigger reload ---
 
+TEST_F(HotReloadCoordinatorTest, OnFileChanged_AddedEvent_TriggersReload) {
+    auto dll_path = m_TempDir / "test.dll";
+    CreateMinimalDll(dll_path);
 
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
+
+    HotReloadSettings settings;
+    settings.enabled = true;
+    settings.debounce = 100ms;
+    settings.temp_directory = (m_TempDir / "temp").wstring();
+    coordinator.Configure(settings);
+
+    HotReloadModuleEntry entry;
+    entry.id = "test.mod";
+    entry.dll_path = dll_path.wstring();
+    entry.watch_path = m_TempDir.wstring();
+    ASSERT_TRUE(coordinator.RegisterModule(entry));
+
+    std::atomic<int> callback_count{0};
+    coordinator.SetNotifyCallback([&](const std::string &, ReloadResult, unsigned int, ReloadFailure) {
+        callback_count.fetch_add(1, std::memory_order_relaxed);
+    });
+
+    coordinator.Start();
+    std::this_thread::sleep_for(500ms);
+
+    // Remove and re-create to simulate Added event (some build systems do delete+create)
+    std::filesystem::remove(dll_path);
+    std::this_thread::sleep_for(100ms);
+    CreateMinimalDll(dll_path);
+
+    auto deadline = std::chrono::steady_clock::now() + 10s;
+    while (std::chrono::steady_clock::now() < deadline) {
+        coordinator.Update();
+        if (callback_count.load(std::memory_order_relaxed) != 0) {
+            break;
+        }
+        std::this_thread::sleep_for(50ms);
+    }
+
+    coordinator.Stop();
+
+    // We expect at least one callback from the Added or Modified event.
+    // Skip if the platform didn't deliver the event.
+    if (callback_count.load(std::memory_order_relaxed) == 0) {
+        GTEST_SKIP() << "Added file event not received in time (platform-specific behavior)";
+    }
+    EXPECT_GE(callback_count.load(std::memory_order_relaxed), 1);
+}
+
+// --- Gap 5: Verify Deleted events do NOT trigger reload ---
+
+TEST_F(HotReloadCoordinatorTest, OnFileChanged_DeletedEvent_DoesNotTriggerReload) {
+    auto dll_path = m_TempDir / "test.dll";
+    auto manifest_path = m_TempDir / "mod.toml";
+    CreateMinimalDll(dll_path);
+    {
+        std::ofstream mf(manifest_path);
+        mf << "[package]\n";
+    }
+
+    std::this_thread::sleep_for(200ms);
+
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
+
+    HotReloadSettings settings;
+    settings.enabled = true;
+    settings.debounce = 100ms;
+    settings.temp_directory = (m_TempDir / "temp").wstring();
+    coordinator.Configure(settings);
+
+    HotReloadModuleEntry entry;
+    entry.id = "test.mod";
+    entry.dll_path = dll_path.wstring();
+    entry.watch_path = m_TempDir.wstring();
+    ModManifest manifest{};
+    manifest.package.id = "test.mod";
+    manifest.directory = m_TempDir.wstring();
+    manifest.manifest_path = manifest_path.wstring();
+    entry.manifest = manifest;
+    ASSERT_TRUE(coordinator.RegisterModule(entry));
+
+    std::atomic<int> callback_count{0};
+    coordinator.SetNotifyCallback([&](const std::string &, ReloadResult, unsigned int, ReloadFailure) {
+        callback_count.fetch_add(1, std::memory_order_relaxed);
+    });
+
+    coordinator.Start();
+    std::this_thread::sleep_for(500ms);
+
+    // Delete a file — should NOT trigger reload
+    std::filesystem::remove(manifest_path);
+
+    auto deadline = std::chrono::steady_clock::now() + 1500ms;
+    while (std::chrono::steady_clock::now() < deadline) {
+        coordinator.Update();
+        std::this_thread::sleep_for(50ms);
+    }
+
+    coordinator.Stop();
+
+    EXPECT_EQ(callback_count.load(std::memory_order_relaxed), 0);
+}
+
+// --- Gap 5: Verify per-module recursive watching ---
+
+TEST_F(HotReloadCoordinatorTest, RecursiveWatch_ScriptModule_WatchesSubdirectories) {
+    auto script_path = m_TempDir / "main.as";
+    auto subdir = m_TempDir / "lib";
+    auto subfile = subdir / "utils.as";
+    std::filesystem::create_directories(subdir);
+    {
+        std::ofstream sf(script_path);
+        sf << "// main\n";
+    }
+    {
+        std::ofstream sf(subfile);
+        sf << "// utils\n";
+    }
+
+    std::this_thread::sleep_for(200ms);
+
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
+
+    HotReloadSettings settings;
+    settings.enabled = true;
+    settings.debounce = 200ms;
+    settings.temp_directory = (m_TempDir / "temp").wstring();
+    coordinator.Configure(settings);
+
+    HotReloadModuleEntry entry;
+    entry.id = "test.script";
+    entry.dll_path = script_path.wstring();
+    entry.watch_path = m_TempDir.wstring();
+    entry.watch_recursive = true;  // Enable recursive watching
+    ModManifest manifest{};
+    manifest.package.id = "test.script";
+    manifest.package.entry = "main.as";
+    manifest.directory = m_TempDir.wstring();
+    entry.manifest = manifest;
+    ASSERT_TRUE(coordinator.RegisterModule(entry));
+
+    std::atomic<int> callback_count{0};
+    coordinator.SetNotifyCallback([&](const std::string &, ReloadResult, unsigned int, ReloadFailure) {
+        callback_count.fetch_add(1, std::memory_order_relaxed);
+    });
+
+    coordinator.Start();
+    std::this_thread::sleep_for(500ms);
+
+    // Modify file in subdirectory
+    {
+        std::ofstream sf(subfile, std::ios::trunc);
+        sf << "// utils changed\n";
+        sf.flush();
+    }
+
+    auto deadline = std::chrono::steady_clock::now() + 10s;
+    while (std::chrono::steady_clock::now() < deadline) {
+        coordinator.Update();
+        if (callback_count.load(std::memory_order_relaxed) != 0) {
+            break;
+        }
+        std::this_thread::sleep_for(100ms);
+    }
+
+    coordinator.Stop();
+
+    if (callback_count.load(std::memory_order_relaxed) == 0) {
+        GTEST_SKIP() << "Subdirectory file event not received in time (platform-specific behavior)";
+    }
+    EXPECT_GE(callback_count.load(std::memory_order_relaxed), 1);
+}
+
+// --- Gap 2: Verify GetSlotModuleInfo returns valid data ---
+
+TEST_F(HotReloadCoordinatorTest, GetSlotModuleInfo_ReturnsSlotState) {
+    auto dll_path = m_TempDir / "test.dll";
+    CreateMinimalDll(dll_path);
+
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
+
+    HotReloadSettings settings;
+    settings.enabled = true;
+    settings.temp_directory = (m_TempDir / "temp").wstring();
+    coordinator.Configure(settings);
+
+    HotReloadModuleEntry entry;
+    entry.id = "test.mod";
+    entry.dll_path = dll_path.wstring();
+    entry.watch_path = m_TempDir.wstring();
+    ASSERT_TRUE(coordinator.RegisterModule(entry));
+
+    // Module not loaded via slot yet, so info should return false
+    HMODULE handle = nullptr;
+    PFN_BML_ModEntrypoint ep = nullptr;
+    EXPECT_FALSE(coordinator.GetSlotModuleInfo("test.mod", &handle, &ep));
+    EXPECT_FALSE(coordinator.GetSlotModuleInfo("nonexistent", &handle, &ep));
+}

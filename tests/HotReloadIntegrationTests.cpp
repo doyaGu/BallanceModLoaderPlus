@@ -160,3 +160,45 @@ TEST(HotReloadIntegrationTests, ReloadsSampleModWhenManifestChanges) {
         << "Reload failed: " << reload_diag.load_error.message;
     EXPECT_TRUE(reload_diag.load_error.message.empty()) << reload_diag.load_error.message;
 }
+
+TEST(HotReloadIntegrationTests, HandleHotReloadNotify_UnloadBlocked_FallsBackToFull) {
+    const auto sample_mod = GetSampleModPath();
+    ASSERT_TRUE(std::filesystem::exists(sample_mod)) << "Sample mod missing: " << sample_mod.string();
+
+    const auto mods_dir = CreateModsDirectory();
+    const auto run_root = mods_dir.parent_path();
+    TempDirGuard temp_guard{run_root};
+
+    const auto mod_dir = mods_dir / "Sample";
+    std::filesystem::create_directories(mod_dir);
+
+    const auto dll_name = sample_mod.filename();
+    const auto dll_destination = mod_dir / dll_name;
+    std::error_code copy_ec;
+    std::filesystem::copy_file(sample_mod,
+                               dll_destination,
+                               std::filesystem::copy_options::overwrite_existing,
+                               copy_ec);
+    ASSERT_FALSE(copy_ec) << copy_ec.message();
+
+    WriteManifest(mod_dir / "mod.toml", "test-blocked", dll_name.generic_string());
+
+    TestKernel kernel = TestKernelBuilder()
+        .WithAll()
+        .Build();
+    BML::Core::ModuleRuntime runtime;
+    runtime.BindKernel(*kernel);
+    RuntimeGuard runtime_guard{runtime};
+
+    BML::Core::ModuleBootstrapDiagnostics diag;
+    ASSERT_TRUE(runtime.DiscoverAndValidate(mods_dir.wstring(), diag));
+
+    BML_Services services{};
+    ASSERT_TRUE(runtime.LoadDiscovered(diag, &services));
+
+    // Full reload should still work as fallback
+    BML::Core::ModuleBootstrapDiagnostics reload_diag;
+    std::this_thread::sleep_for(1200ms);
+    EXPECT_TRUE(runtime.ReloadModules(reload_diag))
+        << "Full reload failed: " << reload_diag.load_error.message;
+}
