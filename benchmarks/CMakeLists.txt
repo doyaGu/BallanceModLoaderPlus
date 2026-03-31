@@ -8,6 +8,7 @@ add_executable(ImcBenchmark
         ${BML_SOURCE_DIR}/Core/ImcBusPublish.cpp
         ${BML_SOURCE_DIR}/Core/ImcBusRpc.cpp
         ${BML_SOURCE_DIR}/Core/ImcBusState.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBusTap.cpp
         ${BML_SOURCE_DIR}/Core/CrashDumpWriter.cpp
         ${BML_SOURCE_DIR}/Core/FaultTracker.cpp
         ${BML_SOURCE_DIR}/Core/HookRegistry.cpp
