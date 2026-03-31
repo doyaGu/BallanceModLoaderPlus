@@ -413,12 +413,21 @@ namespace BML::Core {
                     }
                     version = it->second.slot->GetVersion();
                     failure = ReloadFailure::None;
+                    // Provider handled reload internally — do NOT fire notify
+                    // callback, which would trigger a redundant full
+                    // ReloadModules() via HandleHotReloadNotify().
+                    // Only propagate failures so the runtime can fall back.
+                    if (result == ReloadResult::Success) {
+                        callback = {};
+                    } else {
+                        callback = m_NotifyCallback;
+                    }
                 } else {
                     result = it->second.slot->Reload();
                     version = it->second.slot->GetVersion();
                     failure = it->second.slot->GetLastFailure();
+                    callback = m_NotifyCallback;
                 }
-                callback = m_NotifyCallback;
                 processed = true;
             }
 
