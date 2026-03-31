@@ -42,8 +42,8 @@ class ImcFlowPanel : public Panel {
     uint64_t m_PerfFreq = 1;
     bool m_Paused = false;
     bool m_Available = false;
-    int m_FrameCount = 0;
-    int m_FrameMessages = 0;
+    uint64_t m_WindowStart = 0;
+    int m_WindowMessages = 0;
     char m_Filter[128]{};
 
     static constexpr size_t kMaxDisplay = 2048;
@@ -111,6 +111,7 @@ public:
             QueryPerformanceCounter(&now);
             m_PerfFreq = static_cast<uint64_t>(freq.QuadPart);
             m_BaseTimestamp = static_cast<uint64_t>(now.QuadPart);
+            m_WindowStart = m_BaseTimestamp;
         }
     }
 
@@ -126,7 +127,6 @@ public:
         if (!m_Available || m_Paused) return;
         FlowEntry batch[256];
         size_t n = m_Buffer.Drain(batch, 256);
-        m_FrameMessages += static_cast<int>(n);
         for (size_t i = 0; i < n; ++i) {
             FlowDisplayEntry d;
             d.relative_time = static_cast<float>(
@@ -139,10 +139,19 @@ public:
             m_Display.push_back(std::move(d));
         }
         while (m_Display.size() > kMaxDisplay) m_Display.pop_front();
-        if (++m_FrameCount >= 60) {
-            m_Throughput.Push(static_cast<float>(m_FrameMessages));
-            m_FrameMessages = 0;
-            m_FrameCount = 0;
+
+        // QPC-based 1-second throughput window
+        LARGE_INTEGER now;
+        QueryPerformanceCounter(&now);
+        uint64_t elapsed = static_cast<uint64_t>(now.QuadPart) - m_WindowStart;
+        m_WindowMessages += static_cast<int>(n);
+        if (elapsed >= m_PerfFreq) { // >= 1 second
+            float rate = static_cast<float>(m_WindowMessages)
+                       * static_cast<float>(m_PerfFreq)
+                       / static_cast<float>(elapsed);
+            m_Throughput.Push(rate);
+            m_WindowMessages = 0;
+            m_WindowStart = static_cast<uint64_t>(now.QuadPart);
         }
     }
 

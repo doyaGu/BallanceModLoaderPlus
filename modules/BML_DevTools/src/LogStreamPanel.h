@@ -6,6 +6,7 @@
 #include "bml_logging.h"
 #include "imgui.h"
 
+#include <cctype>
 #include <cstring>
 #include <deque>
 
@@ -69,10 +70,23 @@ class LogStreamPanel : public Panel {
         }
     }
 
+    static bool ContainsCaseInsensitive(const char *haystack, const char *needle) {
+        if (!needle[0]) return true;
+        for (const char *h = haystack; *h; ++h) {
+            const char *a = h, *b = needle;
+            while (*a && *b && std::tolower(static_cast<unsigned char>(*a))
+                            == std::tolower(static_cast<unsigned char>(*b))) {
+                ++a; ++b;
+            }
+            if (!*b) return true;
+        }
+        return false;
+    }
+
     bool PassesFilter(const LogEntry &e) const {
         if (static_cast<int>(e.severity) < m_MinSeverity) return false;
-        if (m_ModFilter[0] && !std::strstr(e.mod_id, m_ModFilter)) return false;
-        if (m_TagFilter[0] && !std::strstr(e.tag, m_TagFilter)) return false;
+        if (m_ModFilter[0] && !ContainsCaseInsensitive(e.mod_id, m_ModFilter)) return false;
+        if (m_TagFilter[0] && !ContainsCaseInsensitive(e.tag, m_TagFilter)) return false;
         return true;
     }
 

@@ -23,11 +23,34 @@ struct ModuleMemoryRow {
 class ModuleMemoryPanel : public Panel {
     std::vector<ModuleMemoryRow> m_Rows;
     bool m_TrackingEnabled = false;
+    bool m_Available = false;
+
+    void SetTracking(const bml::ModuleServices &svc, bool enable) {
+        const auto *mem = svc.Interfaces().Memory;
+        if (mem && mem->EnableModuleMemoryTracking) {
+            mem->EnableModuleMemoryTracking(mem->Context, enable ? BML_TRUE : BML_FALSE);
+            m_TrackingEnabled = enable;
+        }
+    }
 
 public:
     const char *Id() const override { return "module_memory"; }
     const char *Label(const bml::Locale &loc) const override {
         return loc["tab.module_memory"];
+    }
+
+    void OnShow(const bml::ModuleServices &svc) override {
+        const auto *mem = svc.Interfaces().Memory;
+        if (!mem) return;
+        m_Available = (mem->header.struct_size >=
+                       offsetof(BML_CoreMemoryInterface, EnableModuleMemoryTracking)
+                       + sizeof(mem->EnableModuleMemoryTracking))
+                   && mem->EnableModuleMemoryTracking
+                   && mem->EnumerateModuleMemory;
+    }
+
+    void OnHide(const bml::ModuleServices &svc) override {
+        if (m_TrackingEnabled) SetTracking(svc, false);
     }
 
     void Refresh(const bml::ModuleServices &svc) override {
@@ -59,27 +82,19 @@ public:
     void Draw(const bml::ModuleServices &svc) override {
         const auto &loc = svc.Locale();
 
-        // Toggle tracking
-        const auto *mem = svc.Interfaces().Memory;
-        if (!mem) {
-            ImGui::TextDisabled("Memory interface not available");
+        if (!m_Available) {
+            ImGui::TextColored(ImVec4(1, 0.6f, 0.2f, 1), "%s",
+                               loc["label.feature_unavailable"]);
             return;
         }
 
-        ImGui::Text("%s", loc["label.tracking_active"]);
-        ImGui::SameLine();
-        if (ImGui::Checkbox("##tracking", &m_TrackingEnabled)) {
-            if (mem->EnableModuleMemoryTracking) {
-                mem->EnableModuleMemoryTracking(mem->Context, m_TrackingEnabled);
-            }
+        if (ImGui::Checkbox(loc["label.tracking_active"], &m_TrackingEnabled)) {
+            SetTracking(svc, m_TrackingEnabled);
         }
         ImGui::TextDisabled("%s", loc["label.tracking_note"]);
         ImGui::Separator();
 
-        if (!m_TrackingEnabled) {
-            ImGui::TextDisabled("Enable tracking to see per-module memory usage");
-            return;
-        }
+        if (!m_TrackingEnabled) return;
 
         // Calculate totals
         uint64_t total_allocated = 0;
