@@ -1101,4 +1101,34 @@ TEST_F(CoreApisTests, GetLoadedModuleCount_MatchesModCount) {
     EXPECT_EQ(nullptr, module_api->GetLoadedModuleAt(module_api->Context, 2));
 }
 
+TEST_F(CoreApisTests, RuntimeInterfacesPopulateTailFields) {
+    BML::Core::RefreshRuntimeInterfaces(*kernel_);
+
+    const auto *services = kernel_->context->GetServiceHub()
+        ? &kernel_->context->GetServiceHub()->Interfaces()
+        : nullptr;
+    ASSERT_NE(services, nullptr);
+    ASSERT_NE(services->Logging, nullptr);
+    ASSERT_NE(services->Memory, nullptr);
+    ASSERT_NE(services->ImcBus, nullptr);
+
+    EXPECT_EQ(1u, services->Logging->header.major);
+    EXPECT_EQ(0u, services->Logging->header.minor);
+    EXPECT_EQ(sizeof(BML_CoreLoggingInterface), services->Logging->header.struct_size);
+    ASSERT_NE(services->Logging->AddLogListener, nullptr);
+    ASSERT_NE(services->Logging->RemoveLogListener, nullptr);
+
+    EXPECT_EQ(1u, services->Memory->header.major);
+    EXPECT_EQ(0u, services->Memory->header.minor);
+    EXPECT_EQ(sizeof(BML_CoreMemoryInterface), services->Memory->header.struct_size);
+    ASSERT_NE(services->Memory->EnableModuleMemoryTracking, nullptr);
+    ASSERT_NE(services->Memory->EnumerateModuleMemory, nullptr);
+
+    EXPECT_EQ(1u, services->ImcBus->header.major);
+    EXPECT_EQ(0u, services->ImcBus->header.minor);
+    EXPECT_EQ(sizeof(BML_ImcBusInterface), services->ImcBus->header.struct_size);
+    ASSERT_NE(services->ImcBus->RegisterMessageTap, nullptr);
+    ASSERT_NE(services->ImcBus->UnregisterMessageTap, nullptr);
+}
+
 } // namespace
