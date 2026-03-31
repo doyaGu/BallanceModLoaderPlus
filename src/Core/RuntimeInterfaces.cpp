@@ -1,5 +1,7 @@
 #include "RuntimeInterfaces.h"
 
+#include <intrin.h>
+
 #include "ApiRegistry.h"
 #include "Context.h"
 #include "DiagnosticManager.h"
@@ -132,6 +134,16 @@ namespace BML::Core {
             return ImcGetTopicName(*kernel, topic, buffer, buffer_size, out_length);
         }
 
+        BML_Result BML_API_ImcRegisterMessageTap(BML_Mod owner,
+                                                  BML_ImcMessageTap tap,
+                                                  void *user_data) {
+            return ImcRegisterMessageTap(owner, tap, user_data);
+        }
+
+        BML_Result BML_API_ImcUnregisterMessageTap(BML_Mod owner) {
+            return ImcUnregisterMessageTap(owner);
+        }
+
         BML_Result BML_API_ImcCopyState(BML_Context ctx,
                                                BML_TopicId topic,
                                                void *dst,
@@ -221,6 +233,16 @@ namespace BML::Core {
 
         BML_Result BML_API_ClearLogSinkOverride(BML_Mod /*owner*/) {
             return ClearLogSinkOverride();
+        }
+
+        BML_Result BML_API_AddLogListener(BML_Mod owner,
+                                          BML_LogListenerFn listener,
+                                          void *user_data) {
+            return AddLogListener(owner, listener, user_data);
+        }
+
+        BML_Result BML_API_RemoveLogListener(BML_Mod owner, BML_LogListenerFn listener) {
+            return RemoveLogListener(owner, listener);
         }
 
         BML_Result BML_API_GetLastError(BML_Context ctx, BML_ErrorInfo *out_error) {
@@ -334,41 +356,58 @@ namespace BML::Core {
             return (kernel && kernel->locale) ? kernel->locale->Lookup(table, key) : nullptr;
         }
 
+        __declspec(noinline)
         void *BML_API_Alloc(BML_Context ctx, size_t size) {
             auto *kernel = KernelFromContextHandle(ctx);
-            return (kernel && kernel->memory) ? kernel->memory->Alloc(size) : nullptr;
+            if (!kernel || !kernel->memory) return nullptr;
+            if (kernel->memory->IsPerModuleTrackingEnabled())
+                return kernel->memory->AllocTracked(size, _ReturnAddress());
+            return kernel->memory->Alloc(size);
         }
 
+        __declspec(noinline)
         void *BML_API_Calloc(BML_Context ctx, size_t count, size_t size) {
             auto *kernel = KernelFromContextHandle(ctx);
-            return (kernel && kernel->memory) ? kernel->memory->Calloc(count, size) : nullptr;
+            if (!kernel || !kernel->memory) return nullptr;
+            if (kernel->memory->IsPerModuleTrackingEnabled())
+                return kernel->memory->CallocTracked(count, size, _ReturnAddress());
+            return kernel->memory->Calloc(count, size);
         }
 
+        __declspec(noinline)
         void *BML_API_Realloc(BML_Context ctx, void *ptr, size_t old_size, size_t new_size) {
             auto *kernel = KernelFromContextHandle(ctx);
-            return (kernel && kernel->memory)
-                ? kernel->memory->Realloc(ptr, old_size, new_size)
-                : nullptr;
+            if (!kernel || !kernel->memory) return nullptr;
+            if (kernel->memory->IsPerModuleTrackingEnabled())
+                return kernel->memory->ReallocTracked(ptr, old_size, new_size, _ReturnAddress());
+            return kernel->memory->Realloc(ptr, old_size, new_size);
         }
 
+        __declspec(noinline)
         void BML_API_Free(BML_Context ctx, void *ptr) {
             auto *kernel = KernelFromContextHandle(ctx);
-            if (kernel && kernel->memory) {
-                kernel->memory->Free(ptr);
-            }
+            if (!kernel || !kernel->memory) return;
+            if (kernel->memory->IsPerModuleTrackingEnabled())
+                return kernel->memory->FreeTracked(ptr, _ReturnAddress());
+            kernel->memory->Free(ptr);
         }
 
+        __declspec(noinline)
         void *BML_API_AllocAligned(BML_Context ctx, size_t size, size_t alignment) {
             auto *kernel = KernelFromContextHandle(ctx);
-            return (kernel && kernel->memory) ? kernel->memory->AllocAligned(size, alignment)
-                                              : nullptr;
+            if (!kernel || !kernel->memory) return nullptr;
+            if (kernel->memory->IsPerModuleTrackingEnabled())
+                return kernel->memory->AllocAlignedTracked(size, alignment, _ReturnAddress());
+            return kernel->memory->AllocAligned(size, alignment);
         }
 
+        __declspec(noinline)
         void BML_API_FreeAligned(BML_Context ctx, void *ptr) {
             auto *kernel = KernelFromContextHandle(ctx);
-            if (kernel && kernel->memory) {
-                kernel->memory->FreeAligned(ptr);
-            }
+            if (!kernel || !kernel->memory) return;
+            if (kernel->memory->IsPerModuleTrackingEnabled())
+                return kernel->memory->FreeAlignedTracked(ptr, _ReturnAddress());
+            kernel->memory->FreeAligned(ptr);
         }
 
         BML_Result BML_API_MemoryPoolCreate(BML_Context ctx,
@@ -404,6 +443,21 @@ namespace BML::Core {
             auto *kernel = KernelFromContextHandle(ctx);
             return (kernel && kernel->memory) ? kernel->memory->GetStats(out_stats)
                                               : BML_RESULT_INVALID_CONTEXT;
+        }
+
+        BML_Result BML_API_EnableModuleMemoryTracking(BML_Context ctx, BML_Bool enable) {
+            auto *kernel = KernelFromContextHandle(ctx);
+            if (!kernel || !kernel->memory) return BML_RESULT_INVALID_CONTEXT;
+            kernel->memory->EnablePerModuleTracking(enable == BML_TRUE);
+            return BML_RESULT_OK;
+        }
+
+        BML_Result BML_API_EnumerateModuleMemory(BML_Context ctx,
+                                                  BML_EnumerateModuleMemoryFn cb,
+                                                  void *ud) {
+            auto *kernel = KernelFromContextHandle(ctx);
+            if (!kernel || !kernel->memory) return BML_RESULT_INVALID_CONTEXT;
+            return kernel->memory->EnumerateModuleMemory(cb, ud);
         }
 
         BML_Result BML_API_MutexCreate(BML_Context ctx, BML_Mod owner, BML_Mutex *out_mutex) {
@@ -902,6 +956,8 @@ namespace BML::Core {
             ResolveRawApi<PFN_BML_SetLogFilter>(kernel, "bmlSetLogFilter"),
             BML_API_RegisterLogSinkOverride,
             BML_API_ClearLogSinkOverride,
+            BML_API_AddLogListener,
+            BML_API_RemoveLogListener,
         };
 
         hub.m_ConfigInterface = {
@@ -942,6 +998,8 @@ namespace BML::Core {
             BML_API_MemoryPoolFree,
             BML_API_MemoryPoolDestroy,
             BML_API_GetMemoryStats,
+            BML_API_EnableModuleMemoryTracking,
+            BML_API_EnumerateModuleMemory,
         };
 
         hub.m_ResourceInterface = {
@@ -1018,6 +1076,8 @@ namespace BML::Core {
             BML_API_ImcResetStats,
             BML_API_ImcGetTopicInfo,
             BML_API_ImcGetTopicName,
+            BML_API_ImcRegisterMessageTap,
+            BML_API_ImcUnregisterMessageTap,
         };
 
         hub.m_ImcRpcInterface = {

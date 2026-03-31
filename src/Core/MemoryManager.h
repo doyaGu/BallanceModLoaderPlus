@@ -6,11 +6,41 @@
 #include <memory>
 #include <mutex>
 #include <vector>
+#include <unordered_map>
+#include <string>
 
 #include "bml_memory.h"
 #include "FixedBlockPool.h"
 
 namespace BML::Core {
+
+    struct ModuleRange {
+        uintptr_t base;
+        uintptr_t end;
+        std::string module_id;
+        int index;
+    };
+
+    struct PerModuleStats {
+        std::string module_id;
+        std::atomic<uint64_t> total_allocated{0};
+        std::atomic<uint64_t> peak_allocated{0};
+        std::atomic<uint64_t> alloc_count{0};
+        std::atomic<uint64_t> free_count{0};
+        std::atomic<uint64_t> active_alloc_count{0};
+
+        explicit PerModuleStats(const std::string &id) : module_id(id) {}
+    };
+
+    /// Plain snapshot for test / enumeration use (no atomics).
+    struct ModuleMemorySnapshot {
+        std::string module_id;
+        uint64_t total_allocated;
+        uint64_t peak_allocated;
+        uint64_t alloc_count;
+        uint64_t free_count;
+        uint64_t active_alloc_count;
+    };
 
     /**
      * @brief Memory pool implementation wrapper
@@ -60,6 +90,24 @@ namespace BML::Core {
         void SetTrackingEnabled(bool enabled) { m_tracking_enabled.store(enabled, std::memory_order_relaxed); }
         bool IsTrackingEnabled() const { return m_tracking_enabled.load(std::memory_order_relaxed); }
 
+        // Per-module tracking
+        void SetModuleRanges(std::vector<ModuleRange> ranges);
+        void AddModuleRange(uintptr_t base, uintptr_t end, const std::string &module_id);
+        void RemoveModuleRange(uintptr_t base);
+        void EnablePerModuleTracking(bool enable);
+        bool IsPerModuleTrackingEnabled() const;
+        int FindModuleIndex(void *caller) const;
+
+        void *AllocTracked(size_t size, void *caller);
+        void *CallocTracked(size_t count, size_t size, void *caller);
+        void *ReallocTracked(void *ptr, size_t old_size, size_t new_size, void *caller);
+        void FreeTracked(void *ptr, void *caller);
+        void *AllocAlignedTracked(size_t size, size_t alignment, void *caller);
+        void FreeAlignedTracked(void *ptr, void *caller);
+
+        std::vector<ModuleMemorySnapshot> GetPerModuleStats() const;
+        BML_Result EnumerateModuleMemory(BML_EnumerateModuleMemoryFn cb, void *ud);
+
 #if defined(BML_TEST)
         void ResetStatsForTesting();
 #endif
@@ -95,6 +143,21 @@ namespace BML::Core {
         // Pool registry
         std::mutex m_PoolMutex;
         std::vector<std::unique_ptr<MemoryPoolImpl>> m_Pools;
+
+        // Per-module tracking
+        std::atomic<bool> m_PerModuleEnabled{false};
+        mutable std::mutex m_RangeMutex;
+        std::vector<ModuleRange> m_ModuleRanges;           // sorted by base
+        std::vector<std::unique_ptr<PerModuleStats>> m_PerModuleStats;
+        std::unique_ptr<PerModuleStats> m_CoreStats;       // for unresolved callers
+
+        struct AllocRecord { int module_index; size_t size; };
+        std::mutex m_AllocMapMutex;
+        std::unordered_map<void *, AllocRecord> m_AllocMap;
+
+        int FindModuleIndexLocked(void *caller) const;
+        int ResolveModuleIndex(void *caller);
+        PerModuleStats *GetModuleStats(int index);
     };
 } // namespace BML::Core
 

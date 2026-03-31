@@ -21,6 +21,7 @@ set(BML_CORE_SOURCES
         ImcBusPublish.cpp
         ImcBusRpc.cpp
         ImcBusState.cpp
+        ImcBusTap.cpp
         InterfaceApi.cpp
         ResourceApi.cpp
         TimerManager.cpp

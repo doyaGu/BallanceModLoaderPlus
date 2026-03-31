@@ -24,6 +24,11 @@ namespace BML::Core {
 
     BML_Result RegisterLogSinkOverride(const BML_LogSinkOverrideDesc *desc);
     BML_Result ClearLogSinkOverride();
+
+    BML_Result AddLogListener(BML_Mod owner, BML_LogListenerFn listener, void *user_data);
+    BML_Result RemoveLogListener(BML_Mod owner, BML_LogListenerFn listener);
+    void ClearAllLogListeners();
+    void RemoveLogListenersForModule(BML_Mod owner);
 } // namespace BML::Core
 
 #endif // BML_CORE_LOGGING_H

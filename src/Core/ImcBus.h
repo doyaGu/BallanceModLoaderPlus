@@ -182,6 +182,13 @@ namespace BML::Core {
     BML_Result ImcClearState(BML_TopicId topic);
     BML_Result ImcClearState(KernelServices &kernel, BML_TopicId topic);
 
+    // Message Tap
+    BML_Result ImcRegisterMessageTap(BML_Mod owner, BML_ImcMessageTap tap, void *user_data);
+    BML_Result ImcRegisterMessageTap(KernelServices &kernel, BML_Mod owner,
+                                     BML_ImcMessageTap tap, void *user_data);
+    BML_Result ImcUnregisterMessageTap(BML_Mod owner);
+    BML_Result ImcUnregisterMessageTap(KernelServices &kernel, BML_Mod owner);
+
     void RegisterImcApis(ApiRegistry &registry);
 } // namespace BML::Core
 

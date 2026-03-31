@@ -17,6 +17,12 @@ namespace BML::Core {
     ImcBusImpl &GetBus(KernelServices &kernel);
     Context *ContextFromKernel(KernelServices *kernel) noexcept;
 
+    struct TapState {
+        BML_ImcMessageTap callback;
+        void *user_data;
+        BML_Mod owner;
+    };
+
     class ImcBusImpl {
     public:
         ImcBusImpl();
@@ -148,6 +154,10 @@ namespace BML::Core {
         void BindDeps(Context &ctx);
         Context *GetContext() const noexcept { return m_Context; }
 
+        BML_Result RegisterMessageTap(BML_Mod owner, BML_ImcMessageTap tap,
+                                      void *user_data);
+        BML_Result UnregisterMessageTap(BML_Mod owner);
+
     private:
         using SubscriptionPtr = BML_Subscription;
 
@@ -174,6 +184,7 @@ namespace BML::Core {
                                             BML_Mod *out_owner) const;
         void PublishNewSnapshot();
         void RetireOldSnapshots();
+        void FireTap(BML_Mod owner, BML_TopicId topic, const BML_ImcMessage *msg);
 
         PublishRuntimeState m_PublishState;
         RpcRuntimeState m_RpcState;
@@ -181,6 +192,7 @@ namespace BML::Core {
         ImcGlobalStats m_GlobalStats;
         std::atomic<uint64_t> m_NextMessageId{1};
         Context *m_Context{nullptr};
+        std::atomic<TapState *> m_Tap{nullptr};
     };
 } // namespace BML::Core
 

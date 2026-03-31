@@ -26,6 +26,9 @@
 #include "InterfacePanel.h"
 #include "HookPanel.h"
 #include "ModulePanel.h"
+#include "ImcFlowPanel.h"
+#include "ModuleMemoryPanel.h"
+#include "LogStreamPanel.h"
 
 namespace {
 
@@ -47,6 +50,9 @@ class DevToolsMod : public bml::Module {
         m_Panels.push_back(std::make_unique<devtools::InterfacePanel>());
         m_Panels.push_back(std::make_unique<devtools::HookPanel>());
         m_Panels.push_back(std::make_unique<devtools::ModulePanel>());
+        m_Panels.push_back(std::make_unique<devtools::ImcFlowPanel>());
+        m_Panels.push_back(std::make_unique<devtools::ModuleMemoryPanel>());
+        m_Panels.push_back(std::make_unique<devtools::LogStreamPanel>());
     }
 
     void RefreshAll() {
@@ -102,7 +108,12 @@ public:
             if (!event || event->repeat) return;
             if (event->key_code == 0x58) {
                 m_Visible = !m_Visible;
-                if (m_Visible) RefreshAll();
+                if (m_Visible) {
+                    RefreshAll();
+                    for (auto &p : m_Panels) p->OnShow(Services());
+                } else {
+                    for (auto &p : m_Panels) p->OnHide(Services());
+                }
             }
         });
 
@@ -114,6 +125,9 @@ public:
     }
 
     void OnDetach() override {
+        if (m_Visible) {
+            for (auto &p : m_Panels) p->OnHide(Services());
+        }
         m_Panels.clear();
         m_Subs.Clear();
         m_DrawReg.Reset();

@@ -88,6 +88,7 @@ add_bml_test_support_library(bml_test_runtime_support
         ${BML_SOURCE_DIR}/Core/ImcBusRpc.cpp
         ${BML_SOURCE_DIR}/Core/ImcBusState.cpp
         ${BML_SOURCE_DIR}/Core/ImcBus.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBusTap.cpp
         ${BML_SOURCE_DIR}/Core/InterfaceApi.cpp
         ${BML_SOURCE_DIR}/Core/InterfaceRegistry.cpp
         ${BML_SOURCE_DIR}/Core/LeaseManager.cpp
@@ -173,6 +174,7 @@ add_bml_test_support_library(bml_test_imc_support
         ${BML_SOURCE_DIR}/Core/ImcBusPublish.cpp
         ${BML_SOURCE_DIR}/Core/ImcBusRpc.cpp
         ${BML_SOURCE_DIR}/Core/ImcBusState.cpp
+        ${BML_SOURCE_DIR}/Core/ImcBusTap.cpp
         ${BML_SOURCE_DIR}/Core/ImcBus.cpp
         DEPENDENCIES
         bml_test_core_support
@@ -382,6 +384,13 @@ add_bml_test(ImcCppWrapperTest
         ImcCppWrapperTest.cpp
 )
 
+add_bml_test(ImcMessageTapTests
+        SOURCES
+        ImcMessageTapTests.cpp
+        DEPENDENCIES
+        bml_test_runtime_support
+)
+
 add_bml_test(LoaderTest
         SOURCES
         LoaderTest.cpp
@@ -477,9 +486,23 @@ add_bml_test(MemoryManagerTests
         bml_test_profiling_support
 )
 
+add_bml_test(ModuleMemoryTrackingTests
+        SOURCES
+        ModuleMemoryTrackingTests.cpp
+        DEPENDENCIES
+        bml_test_profiling_support
+)
+
 add_bml_test(LoggingSinkOverrideTests
         SOURCES
         LoggingSinkOverrideTests.cpp
+        DEPENDENCIES
+        bml_test_logging_api_support
+)
+
+add_bml_test(LogListenerTests
+        SOURCES
+        LogListenerTests.cpp
         DEPENDENCIES
         bml_test_logging_api_support
 )
@@ -582,6 +605,17 @@ add_bml_test(MpscRingBufferTests
         MpscRingBufferTests.cpp
         DEPENDENCIES
         BML_Utils
+)
+
+# ConcurrentRingBuffer MPSC queue tests
+add_bml_test(ConcurrentRingBufferTests
+        SOURCES
+        ConcurrentRingBufferTests.cpp
+        DEPENDENCIES
+        BML_Utils
+)
+target_include_directories(ConcurrentRingBufferTests PRIVATE
+        "${CMAKE_SOURCE_DIR}/modules/BML_DevTools/src"
 )
 
 # DiagnosticManager thread-local error handling tests
