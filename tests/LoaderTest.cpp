@@ -260,7 +260,7 @@ namespace {
             g_CoreContextInterface.GetUserData = DummyContextGetUserData;
 
             g_CoreModuleInterface.header = BML_IFACE_HEADER(
-                BML_CoreModuleInterface, BML_CORE_MODULE_INTERFACE_ID, 2, 0);
+                BML_CoreModuleInterface, BML_CORE_MODULE_INTERFACE_ID, 1, 0);
             g_CoreModuleInterface.Context = kServiceContext;
             g_CoreModuleInterface.GetModId = DummyGetModId;
             g_CoreModuleInterface.GetModVersion = DummyGetModVersion;

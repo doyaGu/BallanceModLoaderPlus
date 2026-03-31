@@ -20,21 +20,37 @@
 #include "bml_services.hpp"
 namespace BML::Core {
     namespace {
+        constexpr uint16_t kCoreContextInterfaceMajor = 1;
         constexpr uint16_t kCoreContextInterfaceMinor = 0;
-        constexpr uint16_t kCoreModuleInterfaceMinor = 1;
-        constexpr uint16_t kCoreLoggingInterfaceMinor = 1;
-        constexpr uint16_t kCoreConfigInterfaceMinor = 2;
+        constexpr uint16_t kCoreModuleInterfaceMajor = 1;
+        constexpr uint16_t kCoreModuleInterfaceMinor = 0;
+        constexpr uint16_t kCoreLoggingInterfaceMajor = 1;
+        constexpr uint16_t kCoreLoggingInterfaceMinor = 0;
+        constexpr uint16_t kCoreConfigInterfaceMajor = 1;
+        constexpr uint16_t kCoreConfigInterfaceMinor = 0;
+        constexpr uint16_t kCoreMemoryInterfaceMajor = 1;
         constexpr uint16_t kCoreMemoryInterfaceMinor = 0;
-        constexpr uint16_t kCoreResourceInterfaceMinor = 1;
+        constexpr uint16_t kCoreResourceInterfaceMajor = 1;
+        constexpr uint16_t kCoreResourceInterfaceMinor = 0;
+        constexpr uint16_t kCoreDiagnosticInterfaceMajor = 1;
         constexpr uint16_t kCoreDiagnosticInterfaceMinor = 0;
+        constexpr uint16_t kCoreInterfaceControlMajor = 1;
         constexpr uint16_t kCoreInterfaceControlMinor = 0;
-        constexpr uint16_t kImcBusInterfaceMinor = 3;
-        constexpr uint16_t kRpcInterfaceMinor = 3;
-        constexpr uint16_t kCoreTimerInterfaceMinor = 1;
+        constexpr uint16_t kImcBusInterfaceMajor = 1;
+        constexpr uint16_t kImcBusInterfaceMinor = 0;
+        constexpr uint16_t kRpcInterfaceMajor = 1;
+        constexpr uint16_t kRpcInterfaceMinor = 0;
+        constexpr uint16_t kCoreTimerInterfaceMajor = 1;
+        constexpr uint16_t kCoreTimerInterfaceMinor = 0;
+        constexpr uint16_t kCoreHookRegistryInterfaceMajor = 1;
         constexpr uint16_t kCoreHookRegistryInterfaceMinor = 0;
-        constexpr uint16_t kCoreLocaleInterfaceMinor = 1;
+        constexpr uint16_t kCoreLocaleInterfaceMajor = 1;
+        constexpr uint16_t kCoreLocaleInterfaceMinor = 0;
+        constexpr uint16_t kCoreSyncInterfaceMajor = 1;
         constexpr uint16_t kCoreSyncInterfaceMinor = 0;
+        constexpr uint16_t kCoreProfilingInterfaceMajor = 1;
         constexpr uint16_t kCoreProfilingInterfaceMinor = 0;
+        constexpr uint16_t kHostRuntimeInterfaceMajor = 1;
         constexpr uint16_t kHostRuntimeInterfaceMinor = 0;
 
         template <typename T>
@@ -909,7 +925,7 @@ namespace BML::Core {
         hub.m_ContextInterface = {
             BML_IFACE_HEADER(BML_CoreContextInterface,
                              BML_CORE_CONTEXT_INTERFACE_ID,
-                             1,
+                             kCoreContextInterfaceMajor,
                              kCoreContextInterfaceMinor),
             kernel.context ? kernel.context->GetHandle() : nullptr,
             BML_API_GetRuntimeVersion,
@@ -922,7 +938,7 @@ namespace BML::Core {
         hub.m_ModuleInterface = {
             BML_IFACE_HEADER(BML_CoreModuleInterface,
                              BML_CORE_MODULE_INTERFACE_ID,
-                             2,
+                             kCoreModuleInterfaceMajor,
                              kCoreModuleInterfaceMinor),
             kernel.context ? kernel.context->GetHandle() : nullptr,
             ResolveRawApi<PFN_BML_GetModId>(kernel, "bmlGetModId"),
@@ -948,7 +964,7 @@ namespace BML::Core {
         hub.m_LoggingInterface = {
             BML_IFACE_HEADER(BML_CoreLoggingInterface,
                              BML_CORE_LOGGING_INTERFACE_ID,
-                             1,
+                             kCoreLoggingInterfaceMajor,
                              kCoreLoggingInterfaceMinor),
             kernel.context ? kernel.context->GetHandle() : nullptr,
             ResolveRawApi<PFN_BML_Log>(kernel, "bmlLog"),
@@ -963,7 +979,7 @@ namespace BML::Core {
         hub.m_ConfigInterface = {
             BML_IFACE_HEADER(BML_CoreConfigInterface,
                              BML_CORE_CONFIG_INTERFACE_ID,
-                             1,
+                             kCoreConfigInterfaceMajor,
                              kCoreConfigInterfaceMinor),
             kernel.context ? kernel.context->GetHandle() : nullptr,
             ResolveRawApi<PFN_BML_ConfigGet>(kernel, "bmlConfigGet"),
@@ -984,7 +1000,7 @@ namespace BML::Core {
         hub.m_MemoryInterface = {
             BML_IFACE_HEADER(BML_CoreMemoryInterface,
                              BML_CORE_MEMORY_INTERFACE_ID,
-                             1,
+                             kCoreMemoryInterfaceMajor,
                              kCoreMemoryInterfaceMinor),
             kernel.context ? kernel.context->GetHandle() : nullptr,
             BML_API_Alloc,
@@ -1005,7 +1021,7 @@ namespace BML::Core {
         hub.m_ResourceInterface = {
             BML_IFACE_HEADER(BML_CoreResourceInterface,
                              BML_CORE_RESOURCE_INTERFACE_ID,
-                             1,
+                             kCoreResourceInterfaceMajor,
                              kCoreResourceInterfaceMinor),
             kernel.context ? kernel.context->GetHandle() : nullptr,
             ResolveRawApi<PFN_BML_RegisterResourceType>(kernel, "bmlRegisterResourceType"),
@@ -1020,7 +1036,7 @@ namespace BML::Core {
         hub.m_DiagnosticInterface = {
             BML_IFACE_HEADER(BML_CoreDiagnosticInterface,
                              BML_CORE_DIAGNOSTIC_INTERFACE_ID,
-                             1,
+                             kCoreDiagnosticInterfaceMajor,
                              kCoreDiagnosticInterfaceMinor),
             kernel.context ? kernel.context->GetHandle() : nullptr,
             BML_API_GetLastError,
@@ -1039,7 +1055,7 @@ namespace BML::Core {
         hub.m_InterfaceControlInterface = {
             BML_IFACE_HEADER(BML_CoreInterfaceControlInterface,
                              BML_CORE_INTERFACE_CONTROL_INTERFACE_ID,
-                             1,
+                             kCoreInterfaceControlMajor,
                              kCoreInterfaceControlMinor),
             kernel.context ? kernel.context->GetHandle() : nullptr,
             ResolveRawApi<PFN_BML_InterfaceRegister>(kernel, "bmlInterfaceRegister"),
@@ -1052,7 +1068,7 @@ namespace BML::Core {
         hub.m_ImcBusInterface = {
             BML_IFACE_HEADER(BML_ImcBusInterface,
                              BML_IMC_BUS_INTERFACE_ID,
-                             1,
+                             kImcBusInterfaceMajor,
                              kImcBusInterfaceMinor),
             kernel.context ? kernel.context->GetHandle() : nullptr,
             BML_API_ImcGetTopicId,
@@ -1083,7 +1099,7 @@ namespace BML::Core {
         hub.m_ImcRpcInterface = {
             BML_IFACE_HEADER(BML_ImcRpcInterface,
                              BML_IMC_RPC_INTERFACE_ID,
-                             1,
+                             kRpcInterfaceMajor,
                              kRpcInterfaceMinor),
             kernel.context ? kernel.context->GetHandle() : nullptr,
             BML_API_ImcGetRpcId,
@@ -1114,7 +1130,7 @@ namespace BML::Core {
         hub.m_TimerInterface = {
             BML_IFACE_HEADER(BML_CoreTimerInterface,
                              BML_CORE_TIMER_INTERFACE_ID,
-                             1,
+                             kCoreTimerInterfaceMajor,
                              kCoreTimerInterfaceMinor),
             kernel.context ? kernel.context->GetHandle() : nullptr,
             ResolveRawApi<PFN_BML_TimerScheduleOnce>(kernel, "bmlTimerScheduleOnce"),
@@ -1128,7 +1144,7 @@ namespace BML::Core {
         hub.m_HookRegistryInterface = {
             BML_IFACE_HEADER(BML_CoreHookRegistryInterface,
                              BML_CORE_HOOK_REGISTRY_INTERFACE_ID,
-                             2,
+                             kCoreHookRegistryInterfaceMajor,
                              kCoreHookRegistryInterfaceMinor),
             kernel.context ? kernel.context->GetHandle() : nullptr,
             ResolveRawApi<PFN_BML_HookRegister>(kernel, "bmlHookRegister"),
@@ -1139,7 +1155,7 @@ namespace BML::Core {
         hub.m_LocaleInterface = {
             BML_IFACE_HEADER(BML_CoreLocaleInterface,
                              BML_CORE_LOCALE_INTERFACE_ID,
-                             1,
+                             kCoreLocaleInterfaceMajor,
                              kCoreLocaleInterfaceMinor),
             kernel.context ? kernel.context->GetHandle() : nullptr,
             ResolveRawApi<PFN_BML_LocaleLoad>(kernel, "bmlLocaleLoad"),
@@ -1153,7 +1169,7 @@ namespace BML::Core {
         hub.m_SyncInterface = {
             BML_IFACE_HEADER(BML_CoreSyncInterface,
                              BML_CORE_SYNC_INTERFACE_ID,
-                             1,
+                             kCoreSyncInterfaceMajor,
                              kCoreSyncInterfaceMinor),
             kernel.context ? kernel.context->GetHandle() : nullptr,
             BML_API_MutexCreate,
@@ -1205,7 +1221,7 @@ namespace BML::Core {
         hub.m_ProfilingInterface = {
             BML_IFACE_HEADER(BML_CoreProfilingInterface,
                              BML_CORE_PROFILING_INTERFACE_ID,
-                             1,
+                             kCoreProfilingInterfaceMajor,
                              kCoreProfilingInterfaceMinor),
             kernel.context ? kernel.context->GetHandle() : nullptr,
             BML_API_TraceBegin,
@@ -1228,7 +1244,7 @@ namespace BML::Core {
         hub.m_HostRuntimeInterface = {
             BML_IFACE_HEADER(BML_HostRuntimeInterface,
                              BML_CORE_HOST_RUNTIME_INTERFACE_ID,
-                             2,
+                             kHostRuntimeInterfaceMajor,
                              kHostRuntimeInterfaceMinor),
             kernel.context ? kernel.context->GetHandle() : nullptr,
             BML_API_RegisterHostContribution,
@@ -1248,96 +1264,96 @@ namespace BML::Core {
                                  &hub.m_ContextInterface,
                                  sizeof(hub.m_ContextInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE,
-                                 bmlMakeVersion(1, kCoreContextInterfaceMinor, 0));
+                                 bmlMakeVersion(kCoreContextInterfaceMajor, kCoreContextInterfaceMinor, 0));
         RegisterRuntimeInterface(kernel,
                                  BML_CORE_MODULE_INTERFACE_ID,
                                  &hub.m_ModuleInterface,
                                  sizeof(hub.m_ModuleInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE,
-                                 bmlMakeVersion(2, kCoreModuleInterfaceMinor, 0));
+                                 bmlMakeVersion(kCoreModuleInterfaceMajor, kCoreModuleInterfaceMinor, 0));
         RegisterRuntimeInterface(kernel,
                                  BML_CORE_LOGGING_INTERFACE_ID,
                                  &hub.m_LoggingInterface,
                                  sizeof(hub.m_LoggingInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE,
-                                 bmlMakeVersion(1, kCoreLoggingInterfaceMinor, 0));
+                                 bmlMakeVersion(kCoreLoggingInterfaceMajor, kCoreLoggingInterfaceMinor, 0));
         RegisterRuntimeInterface(kernel,
                                  BML_CORE_CONFIG_INTERFACE_ID,
                                  &hub.m_ConfigInterface,
                                  sizeof(hub.m_ConfigInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE,
-                                 bmlMakeVersion(1, kCoreConfigInterfaceMinor, 0));
+                                 bmlMakeVersion(kCoreConfigInterfaceMajor, kCoreConfigInterfaceMinor, 0));
         RegisterRuntimeInterface(kernel,
                                  BML_CORE_MEMORY_INTERFACE_ID,
                                  &hub.m_MemoryInterface,
                                  sizeof(hub.m_MemoryInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE,
-                                 bmlMakeVersion(1, kCoreMemoryInterfaceMinor, 0));
+                                 bmlMakeVersion(kCoreMemoryInterfaceMajor, kCoreMemoryInterfaceMinor, 0));
         RegisterRuntimeInterface(kernel,
                                  BML_CORE_RESOURCE_INTERFACE_ID,
                                  &hub.m_ResourceInterface,
                                  sizeof(hub.m_ResourceInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE,
-                                 bmlMakeVersion(1, kCoreResourceInterfaceMinor, 0));
+                                 bmlMakeVersion(kCoreResourceInterfaceMajor, kCoreResourceInterfaceMinor, 0));
         RegisterRuntimeInterface(kernel,
                                  BML_CORE_DIAGNOSTIC_INTERFACE_ID,
                                  &hub.m_DiagnosticInterface,
                                  sizeof(hub.m_DiagnosticInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE,
-                                 bmlMakeVersion(1, kCoreDiagnosticInterfaceMinor, 0));
+                                 bmlMakeVersion(kCoreDiagnosticInterfaceMajor, kCoreDiagnosticInterfaceMinor, 0));
         RegisterRuntimeInterface(kernel,
                                  BML_CORE_INTERFACE_CONTROL_INTERFACE_ID,
                                  &hub.m_InterfaceControlInterface,
                                  sizeof(hub.m_InterfaceControlInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE | BML_INTERFACE_FLAG_INTERNAL,
-                                 bmlMakeVersion(1, kCoreInterfaceControlMinor, 0));
+                                 bmlMakeVersion(kCoreInterfaceControlMajor, kCoreInterfaceControlMinor, 0));
         RegisterRuntimeInterface(kernel,
                                  BML_IMC_BUS_INTERFACE_ID,
                                  &hub.m_ImcBusInterface,
                                  sizeof(hub.m_ImcBusInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE,
-                                 bmlMakeVersion(1, kImcBusInterfaceMinor, 0));
+                                 bmlMakeVersion(kImcBusInterfaceMajor, kImcBusInterfaceMinor, 0));
         RegisterRuntimeInterface(kernel,
                                  BML_IMC_RPC_INTERFACE_ID,
                                  &hub.m_ImcRpcInterface,
                                  sizeof(hub.m_ImcRpcInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE,
-                                 bmlMakeVersion(1, kRpcInterfaceMinor, 0));
+                                 bmlMakeVersion(kRpcInterfaceMajor, kRpcInterfaceMinor, 0));
         RegisterRuntimeInterface(kernel,
                                  BML_CORE_TIMER_INTERFACE_ID,
                                  &hub.m_TimerInterface,
                                  sizeof(hub.m_TimerInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE,
-                                 bmlMakeVersion(1, kCoreTimerInterfaceMinor, 0));
+                                 bmlMakeVersion(kCoreTimerInterfaceMajor, kCoreTimerInterfaceMinor, 0));
         RegisterRuntimeInterface(kernel,
                                  BML_CORE_HOOK_REGISTRY_INTERFACE_ID,
                                  &hub.m_HookRegistryInterface,
                                  sizeof(hub.m_HookRegistryInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE,
-                                 bmlMakeVersion(2, kCoreHookRegistryInterfaceMinor, 0));
+                                 bmlMakeVersion(kCoreHookRegistryInterfaceMajor, kCoreHookRegistryInterfaceMinor, 0));
         RegisterRuntimeInterface(kernel,
                                  BML_CORE_LOCALE_INTERFACE_ID,
                                  &hub.m_LocaleInterface,
                                  sizeof(hub.m_LocaleInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE,
-                                 bmlMakeVersion(1, kCoreLocaleInterfaceMinor, 0));
+                                 bmlMakeVersion(kCoreLocaleInterfaceMajor, kCoreLocaleInterfaceMinor, 0));
         RegisterRuntimeInterface(kernel,
                                  BML_CORE_SYNC_INTERFACE_ID,
                                  &hub.m_SyncInterface,
                                  sizeof(hub.m_SyncInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE,
-                                 bmlMakeVersion(1, kCoreSyncInterfaceMinor, 0));
+                                 bmlMakeVersion(kCoreSyncInterfaceMajor, kCoreSyncInterfaceMinor, 0));
         RegisterRuntimeInterface(kernel,
                                  BML_CORE_PROFILING_INTERFACE_ID,
                                  &hub.m_ProfilingInterface,
                                  sizeof(hub.m_ProfilingInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE,
-                                 bmlMakeVersion(1, kCoreProfilingInterfaceMinor, 0));
+                                 bmlMakeVersion(kCoreProfilingInterfaceMajor, kCoreProfilingInterfaceMinor, 0));
         RegisterRuntimeInterface(kernel,
                                  BML_CORE_HOST_RUNTIME_INTERFACE_ID,
                                  &hub.m_HostRuntimeInterface,
                                  sizeof(hub.m_HostRuntimeInterface),
                                  BML_INTERFACE_FLAG_IMMUTABLE | BML_INTERFACE_FLAG_INTERNAL,
-                                 bmlMakeVersion(2, kHostRuntimeInterfaceMinor, 0));
+                                 bmlMakeVersion(kHostRuntimeInterfaceMajor, kHostRuntimeInterfaceMinor, 0));
     }
 } // namespace BML::Core
