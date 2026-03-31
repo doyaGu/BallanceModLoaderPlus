@@ -39,6 +39,12 @@ namespace BML::Core {
         bool watch_recursive{false};          ///< Watch subdirectories (e.g. for script includes)
     };
 
+    enum class ReloadRequestKind {
+        SlotTargeted,   ///< Native DLL binary changed: use ReloadableModuleSlot
+        ProviderLocal,  ///< Runtime provider manages the module in-process
+        FullRuntime     ///< Manifest/provider topology changed: reload through ModuleRuntime
+    };
+
     /**
      * @brief Callback for reload events
      *
@@ -48,7 +54,8 @@ namespace BML::Core {
         const std::string &mod_id, ///< Module that was reloaded
         ReloadResult result,       ///< Result of the reload
         unsigned int version,      ///< New version number
-        ReloadFailure failure      ///< Failure reason (if any)
+        ReloadFailure failure,     ///< Failure reason (if any)
+        ReloadRequestKind kind     ///< Which reload path produced this notification
     )>;
 
     /**
@@ -184,7 +191,7 @@ namespace BML::Core {
         void OnFileChanged(const FileEvent &event);
 
         // Schedule a module for reload (with debouncing)
-        void ScheduleReload(const std::string &mod_id, bool requires_runtime_reload);
+        void ScheduleReload(const std::string &mod_id, ReloadRequestKind kind);
 
         // Process all scheduled reloads
         void ProcessScheduledReloads();
@@ -194,6 +201,10 @@ namespace BML::Core {
 
         // Check if a module is managed by a runtime provider (e.g. scripting)
         bool HasRuntimeProvider(const std::string &mod_id) const;
+        bool IsRuntimeProviderOwner(const std::string &mod_id) const;
+        ReloadRequestKind ClassifyReloadKind(const std::string &mod_id,
+                                             const std::filesystem::path &event_path) const;
+        static ReloadRequestKind MergeReloadKinds(ReloadRequestKind lhs, ReloadRequestKind rhs);
 
         // Reference to BML context
         Context &m_Context;
@@ -219,7 +230,7 @@ namespace BML::Core {
         struct ScheduledReload {
             std::string mod_id;
             std::chrono::steady_clock::time_point fire_time; // When to actually reload
-            bool requires_runtime_reload{false};
+            ReloadRequestKind kind{ReloadRequestKind::SlotTargeted};
         };
 
         std::vector<ScheduledReload> m_Scheduled;

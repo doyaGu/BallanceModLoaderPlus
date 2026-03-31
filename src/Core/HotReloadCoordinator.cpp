@@ -1,6 +1,7 @@
 #include "HotReloadCoordinator.h"
 
 #include <algorithm>
+#include <cwctype>
 #include <filesystem>
 
 #include "Context.h"
@@ -54,6 +55,19 @@ namespace BML::Core {
                 normalized = path.lexically_normal();
             }
             return normalized;
+        }
+
+        std::wstring NormalizeComparablePath(const std::filesystem::path& path) {
+            auto normalized = NormalizePath(path).wstring();
+#if defined(_WIN32)
+            std::transform(normalized.begin(), normalized.end(), normalized.begin(),
+                           [](wchar_t ch) { return static_cast<wchar_t>(std::towlower(ch)); });
+#endif
+            return normalized;
+        }
+
+        bool PathsEquivalent(const std::filesystem::path& lhs, const std::filesystem::path& rhs) {
+            return NormalizeComparablePath(lhs) == NormalizeComparablePath(rhs);
         }
     }
 
@@ -277,7 +291,7 @@ namespace BML::Core {
         }
 
         if (callback) {
-            callback(mod_id, result, version, failure);
+            callback(mod_id, result, version, failure, ReloadRequestKind::SlotTargeted);
         }
 
         return result;
@@ -308,7 +322,7 @@ namespace BML::Core {
 
     void HotReloadCoordinator::OnFileChanged(const FileEvent& event) {
         // Process events that indicate a module file was created or replaced.
-        // Deletions are ignored — the module is simply no longer present.
+        // Deletions are ignored - the module is simply no longer present.
         switch (event.action) {
         case FileAction::Modified:
         case FileAction::Added:
@@ -330,11 +344,8 @@ namespace BML::Core {
                 "Detected watched change for module '%s': %s/%s",
                 mod_id.c_str(), event.directory.c_str(), event.filename.c_str());
 
-        // Modules with a runtime provider (e.g. scripting) use the provider's
-        // in-process reload.  Native DLLs go through the slot's version-copy /
-        // SEH / rollback path, and the notify callback triggers targeted reload
-        // in ModuleRuntime.
-        ScheduleReload(mod_id, HasRuntimeProvider(mod_id));
+        const auto event_path = NormalizePath(std::filesystem::path(event.directory) / event.filename);
+        ScheduleReload(mod_id, ClassifyReloadKind(mod_id, event_path));
     }
 
     bool HotReloadCoordinator::HasRuntimeProvider(const std::string &mod_id) const {
@@ -348,7 +359,67 @@ namespace BML::Core {
         return false;
     }
 
-    void HotReloadCoordinator::ScheduleReload(const std::string& mod_id, bool requires_runtime_reload) {
+    bool HotReloadCoordinator::IsRuntimeProviderOwner(const std::string &mod_id) const {
+        return m_Context.HasRuntimeProviderOwner(mod_id);
+    }
+
+    ReloadRequestKind HotReloadCoordinator::ClassifyReloadKind(
+            const std::string &mod_id,
+            const std::filesystem::path &event_path) const {
+        const auto normalized_event = NormalizePath(event_path);
+        if (IsRuntimeProviderOwner(mod_id)) {
+            return ReloadRequestKind::FullRuntime;
+        }
+
+        auto snapshot = m_Context.GetLoadedModuleSnapshot();
+        for (const auto &module : snapshot) {
+            if (module.id != mod_id) {
+                continue;
+            }
+
+            const auto entry_path = NormalizePath(std::filesystem::path(module.path));
+            if (PathsEquivalent(normalized_event, entry_path)) {
+                if (IsModuleBinaryFile(entry_path.string())) {
+                    return ReloadRequestKind::SlotTargeted;
+                }
+                return HasRuntimeProvider(mod_id)
+                    ? ReloadRequestKind::ProviderLocal
+                    : ReloadRequestKind::FullRuntime;
+            }
+        }
+
+        std::lock_guard lock(m_Mutex);
+        auto it = m_Slots.find(mod_id);
+        if (it != m_Slots.end()) {
+            if (!it->second.info.dll_path.empty()) {
+                const auto registered_entry = NormalizePath(std::filesystem::path(it->second.info.dll_path));
+                if (PathsEquivalent(normalized_event, registered_entry)) {
+                    return IsModuleBinaryFile(registered_entry.string())
+                        ? ReloadRequestKind::SlotTargeted
+                        : ReloadRequestKind::ProviderLocal;
+                }
+            }
+
+            if (it->second.info.manifest && !it->second.info.manifest->manifest_path.empty()) {
+                const auto manifest_path = NormalizePath(
+                    std::filesystem::path(it->second.info.manifest->manifest_path));
+                if (PathsEquivalent(normalized_event, manifest_path)) {
+                    return ReloadRequestKind::FullRuntime;
+                }
+            }
+        }
+
+        return HasRuntimeProvider(mod_id)
+            ? ReloadRequestKind::ProviderLocal
+            : ReloadRequestKind::SlotTargeted;
+    }
+
+    ReloadRequestKind HotReloadCoordinator::MergeReloadKinds(ReloadRequestKind lhs,
+                                                             ReloadRequestKind rhs) {
+        return (static_cast<int>(lhs) >= static_cast<int>(rhs)) ? lhs : rhs;
+    }
+
+    void HotReloadCoordinator::ScheduleReload(const std::string& mod_id, ReloadRequestKind kind) {
         std::lock_guard lock(m_Mutex);
 
         auto now = std::chrono::steady_clock::now();
@@ -359,7 +430,7 @@ namespace BML::Core {
             if (sr.mod_id == mod_id) {
                 // Update fire time (reset debounce)
                 sr.fire_time = fire_time;
-                sr.requires_runtime_reload = sr.requires_runtime_reload || requires_runtime_reload;
+                sr.kind = MergeReloadKinds(sr.kind, kind);
                 CoreLog(BML_LOG_DEBUG, kLogCategory,
                         "Reset debounce for module '%s'", mod_id.c_str());
                 return;
@@ -367,12 +438,12 @@ namespace BML::Core {
         }
 
         // Add new scheduled reload
-        m_Scheduled.push_back({mod_id, fire_time, requires_runtime_reload});
+        m_Scheduled.push_back({mod_id, fire_time, kind});
         CoreLog(BML_LOG_DEBUG, kLogCategory,
-                "Scheduled reload for module '%s' (debounce %lldms, runtime_reload=%s)",
+                "Scheduled reload for module '%s' (debounce %lldms, kind=%d)",
                 mod_id.c_str(),
                 static_cast<long long>(m_Settings.debounce.count()),
-                requires_runtime_reload ? "true" : "false");
+                static_cast<int>(kind));
     }
 
     void HotReloadCoordinator::ProcessScheduledReloads() {
@@ -399,6 +470,7 @@ namespace BML::Core {
             ReloadResult result = ReloadResult::LoadFailed;
             unsigned int version = 0;
             ReloadFailure failure = ReloadFailure::None;
+            ReloadRequestKind kind = scheduled.kind;
             bool processed = false;
 
             {
@@ -411,7 +483,7 @@ namespace BML::Core {
                 CoreLog(BML_LOG_INFO, kLogCategory,
                         "Processing scheduled reload for module '%s'", scheduled.mod_id.c_str());
 
-                if (scheduled.requires_runtime_reload) {
+                if (scheduled.kind == ReloadRequestKind::ProviderLocal) {
                     // Check if a runtime provider owns this module
                     auto snapshot = m_Context.GetLoadedModuleSnapshot();
                     const BML_ModuleRuntimeProvider *provider = nullptr;
@@ -433,7 +505,7 @@ namespace BML::Core {
                     }
                     version = it->second.slot->GetVersion();
                     failure = ReloadFailure::None;
-                    // Provider handled reload internally — do NOT fire notify
+                    // Provider handled reload internally - do NOT fire notify
                     // callback, which would trigger a redundant full
                     // ReloadModules() via HandleHotReloadNotify().
                     // Only propagate failures so the runtime can fall back.
@@ -442,10 +514,15 @@ namespace BML::Core {
                     } else {
                         callback = m_NotifyCallback;
                     }
-                } else {
+                } else if (scheduled.kind == ReloadRequestKind::SlotTargeted) {
                     result = it->second.slot->Reload();
                     version = it->second.slot->GetVersion();
                     failure = it->second.slot->GetLastFailure();
+                    callback = m_NotifyCallback;
+                } else {
+                    result = ReloadResult::Success;
+                    version = it->second.slot->GetVersion();
+                    failure = ReloadFailure::None;
                     callback = m_NotifyCallback;
                 }
                 processed = true;
@@ -460,7 +537,7 @@ namespace BML::Core {
                     scheduled.mod_id.c_str(), ReloadResultToString(result), version);
 
             if (callback) {
-                callback(scheduled.mod_id, result, version, failure);
+                callback(scheduled.mod_id, result, version, failure, kind);
             }
         }
     }
@@ -475,7 +552,7 @@ namespace BML::Core {
         for (const auto& [id, entry] : m_Slots) {
             if (entry.info.dll_path.empty()) continue;
 
-            if (event_path == NormalizePath(std::filesystem::path(entry.info.dll_path))) {
+            if (PathsEquivalent(event_path, std::filesystem::path(entry.info.dll_path))) {
                 return id;
             }
         }
@@ -485,7 +562,7 @@ namespace BML::Core {
         for (const auto& [id, entry] : m_Slots) {
             if (!entry.info.manifest || entry.info.manifest->manifest_path.empty()) continue;
 
-            if (event_path == NormalizePath(std::filesystem::path(entry.info.manifest->manifest_path))) {
+            if (PathsEquivalent(event_path, std::filesystem::path(entry.info.manifest->manifest_path))) {
                 return id;
             }
         }
