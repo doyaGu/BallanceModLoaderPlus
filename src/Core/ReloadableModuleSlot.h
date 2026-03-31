@@ -21,9 +21,11 @@ namespace BML::Core {
      * @brief Reload operation type
      */
     enum class ReloadOp {
-        Load,       ///< After reload, initialize/restore state
-        Unload,     ///< Before reload, save state and cleanup
-        Close       ///< Final shutdown, no more reloads
+        Load,           ///< After reload, initialize/restore state
+        ReloadLoad,     ///< After hot-reload, re-attach with is_reload flag
+        Unload,         ///< Before reload, save state and cleanup
+        PrepareReload,  ///< Before hot-reload, notify module it will be reloaded
+        Close           ///< Final shutdown, no more reloads
     };
 
     /**

@@ -99,6 +99,19 @@ public:
      */
     virtual void OnDetach() {}
 
+    /**
+     * @brief Called instead of OnPrepareDetach when the module is about to be
+     * hot-reloaded.  Return an error to abort the reload (falls back to full
+     * reload).  Default: OK (allow reload).
+     */
+    virtual BML_Result OnPrepareReload() { return BML_RESULT_OK; }
+
+    /**
+     * @brief Called instead of OnAttach when the module is re-attached after a
+     * hot-reload.  Default delegates to OnAttach().
+     */
+    virtual BML_Result OnReloadAttach() { return OnAttach(); }
+
     /** @brief Get the mod handle assigned by the runtime. */
     BML_Mod Handle() const noexcept { return m_Handle; }
 
@@ -163,6 +176,8 @@ public:
             return PrepareDetach(static_cast<const BML_ModDetachArgs *>(data));
         case BML_MOD_ENTRYPOINT_DETACH:
             return Detach(static_cast<const BML_ModDetachArgs *>(data));
+        case BML_MOD_ENTRYPOINT_PREPARE_RELOAD:
+            return PrepareReload(static_cast<const BML_ModPrepareReloadArgs *>(data));
         default:
             return BML_RESULT_INVALID_ARGUMENT;
         }
@@ -170,7 +185,11 @@ public:
 
 private:
     static BML_Result Attach(const BML_ModAttachArgs *args) {
-        if (!args || args->struct_size < sizeof(BML_ModAttachArgs) ||
+        // Use offsetof(is_reload) as the minimum accepted size so that
+        // old runtimes that send the V1 struct (without is_reload) are
+        // still accepted.  The is_reload field itself is gated by a
+        // separate struct_size check below.
+        if (!args || args->struct_size < offsetof(BML_ModAttachArgs, is_reload) ||
             !args->mod || !args->services) {
             return BML_RESULT_INVALID_ARGUMENT;
         }
@@ -204,7 +223,13 @@ private:
         s_Instance = instance;
         BoundModuleHandleSlot() = args->mod;
 
-        BML_Result result = instance->OnAttach();
+        // Check if this is a reload re-attach (V2 extension field)
+        bool is_reload = false;
+        if (args->struct_size >= offsetof(BML_ModAttachArgs, is_reload) + sizeof(args->is_reload)) {
+            is_reload = (args->is_reload == BML_TRUE);
+        }
+        BML_Result result = is_reload ? instance->OnReloadAttach()
+                                      : instance->OnAttach();
         if (result != BML_RESULT_OK) {
             s_Instance = nullptr;
             BoundModuleHandleSlot() = nullptr;
@@ -231,6 +256,20 @@ private:
         }
 
         return s_Instance->OnPrepareDetach();
+    }
+
+    static BML_Result PrepareReload(const BML_ModPrepareReloadArgs *args) {
+        if (!args || args->struct_size < sizeof(BML_ModPrepareReloadArgs) ||
+            !args->mod) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+        if (args->api_version < BML_MOD_ENTRYPOINT_API_VERSION) {
+            return BML_RESULT_VERSION_MISMATCH;
+        }
+        if (!s_Instance) {
+            return BML_RESULT_OK;
+        }
+        return s_Instance->OnPrepareReload();
     }
 
     static BML_Result Detach(const BML_ModDetachArgs *args) {

@@ -91,7 +91,11 @@ typedef void *(*PFN_BML_GetProcAddress)(const char *proc_name);
 typedef enum BML_ModEntrypointCommand {
 	BML_MOD_ENTRYPOINT_ATTACH = 1,
 	BML_MOD_ENTRYPOINT_PREPARE_DETACH = 2,
-	BML_MOD_ENTRYPOINT_DETACH = 3
+	BML_MOD_ENTRYPOINT_DETACH = 3,
+	/** Called instead of PREPARE_DETACH when the module is about to be reloaded.
+	 *  Old modules return BML_RESULT_INVALID_ARGUMENT (unknown command),
+	 *  which the runtime treats as "fall back to PREPARE_DETACH". */
+	BML_MOD_ENTRYPOINT_PREPARE_RELOAD = 4
 } BML_ModEntrypointCommand;
 
 #define BML_MOD_ENTRYPOINT_API_VERSION 1u
@@ -102,7 +106,17 @@ typedef struct BML_ModAttachArgs {
 	BML_Context context;
 	BML_Mod mod;
 	const BML_Services *services;
+	/* V2 extension — only accessible when struct_size is large enough.
+	 * BML_TRUE when this attach follows a hot-reload (not the first load). */
+	BML_Bool is_reload;
 } BML_ModAttachArgs;
+
+/** Args for BML_MOD_ENTRYPOINT_PREPARE_RELOAD. */
+typedef struct BML_ModPrepareReloadArgs {
+	uint32_t struct_size;
+	uint32_t api_version;
+	BML_Mod mod;
+} BML_ModPrepareReloadArgs;
 
 typedef struct BML_ModDetachArgs {
 	uint32_t struct_size;

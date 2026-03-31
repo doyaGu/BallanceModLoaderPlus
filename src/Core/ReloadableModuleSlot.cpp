@@ -366,8 +366,10 @@ namespace BML::Core {
             RestoreState();  // From current snapshot (future)
         }
 
-        // Call entrypoint with ATTACH operation
-        int result = InvokeEntrypoint(ReloadOp::Load);
+        // Call entrypoint with ATTACH operation.
+        // Use ReloadLoad for version > 1 so the module receives is_reload=true.
+        ReloadOp load_op = (version > 1 && !is_rollback) ? ReloadOp::ReloadLoad : ReloadOp::Load;
+        int result = InvokeEntrypoint(load_op);
         if (result < 0) {
             CoreLog(BML_LOG_ERROR, kLogCategory,
                     "Entrypoint attach returned %d", result);
@@ -403,6 +405,20 @@ namespace BML::Core {
 
         int result = 0;
         if (!is_rollback) {
+            // For reloads (not final close), try PREPARE_RELOAD first so the
+            // module can distinguish a temporary unload from permanent shutdown.
+            // The dependency gate still runs via PrepareModuleForDetach.
+            if (!is_close && m_Version > 0) {
+                int prep = InvokeEntrypoint(ReloadOp::PrepareReload);
+                if (prep < 0 && prep != BML_RESULT_INVALID_ARGUMENT) {
+                    CoreLog(BML_LOG_WARN, kLogCategory,
+                            "Module '%s' rejected PREPARE_RELOAD (result %d)",
+                            GetModId().c_str(), prep);
+                    m_LastFailure = ReloadFailure::DetachBlocked;
+                    return false;
+                }
+            }
+
             std::string diagnostic;
             BML_Result prepare_result = PrepareModuleForDetach(*m_Config.kernel,
                                                                GetModId(),
@@ -531,14 +547,32 @@ namespace BML::Core {
         int result = -1;
 
         auto invoke = [&]() -> int {
-            if (op == ReloadOp::Load) {
+            if (op == ReloadOp::Load || op == ReloadOp::ReloadLoad) {
                 BML_ModAttachArgs attach{};
                 attach.struct_size = sizeof(attach);
                 attach.api_version = BML_MOD_ENTRYPOINT_API_VERSION;
                 attach.context = m_Config.context ? m_Config.context->GetHandle() : nullptr;
                 attach.mod = m_ModHandle.get();
                 attach.services = m_Config.services;
+                attach.is_reload = (op == ReloadOp::ReloadLoad) ? BML_TRUE : BML_FALSE;
                 return m_Entrypoint(BML_MOD_ENTRYPOINT_ATTACH, &attach);
+            }
+
+            if (op == ReloadOp::PrepareReload) {
+                // Send PREPARE_RELOAD as an advisory signal only.
+                // Old modules return INVALID_ARGUMENT (unknown command),
+                // which is treated as "no objection".  The subsequent
+                // PrepareModuleForDetach call handles PREPARE_DETACH and
+                // the dependency gate, so we do NOT fall back here.
+                BML_ModPrepareReloadArgs reload_args{};
+                reload_args.struct_size = sizeof(reload_args);
+                reload_args.api_version = BML_MOD_ENTRYPOINT_API_VERSION;
+                reload_args.mod = m_ModHandle.get();
+                int rc = m_Entrypoint(BML_MOD_ENTRYPOINT_PREPARE_RELOAD, &reload_args);
+                if (rc == BML_RESULT_INVALID_ARGUMENT) {
+                    return 0; // Old module — treat as success (no objection)
+                }
+                return rc;
             }
 
             BML_ModDetachArgs detach{};
