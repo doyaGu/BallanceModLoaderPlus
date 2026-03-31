@@ -169,6 +169,15 @@ namespace BML::Core {
          */
         unsigned int GetModuleVersion(const std::string &mod_id) const;
 
+        /**
+         * @brief Get the slot's current DLL handle and entrypoint after reload.
+         * Used by ModuleRuntime to synchronize Context's loaded-module record.
+         * @return true if the module was found and has a loaded slot.
+         */
+        bool GetSlotModuleInfo(const std::string &mod_id,
+                               HMODULE *out_handle,
+                               PFN_BML_ModEntrypoint *out_entrypoint) const;
+
     private:
         // File change handler
         void OnFileChanged(const FileEvent &event);
@@ -181,6 +190,9 @@ namespace BML::Core {
 
         // Find the module affected by a file change inside a watched module directory
         std::string FindModuleForEvent(const std::string &dir, const std::string &filename);
+
+        // Check if a module is managed by a runtime provider (e.g. scripting)
+        bool HasRuntimeProvider(const std::string &mod_id) const;
 
         // Reference to BML context
         Context &m_Context;

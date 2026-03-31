@@ -180,6 +180,16 @@ namespace BML::Core {
          */
         void SetUserData(void* data) { m_UserData = data; }
 
+        /**
+         * @brief Get the current DLL handle (for Context synchronization after reload)
+         */
+        HMODULE GetHandle() const { return m_Handle; }
+
+        /**
+         * @brief Get the current entrypoint (for Context synchronization after reload)
+         */
+        PFN_BML_ModEntrypoint GetEntrypoint() const { return m_Entrypoint; }
+
     private:
         class Context *m_Context;
 

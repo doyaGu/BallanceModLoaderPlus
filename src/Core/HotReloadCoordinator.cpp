@@ -323,9 +323,22 @@ namespace BML::Core {
                 "Detected watched change for module '%s': %s/%s",
                 mod_id.c_str(), event.directory.c_str(), event.filename.c_str());
 
-        // The runtime owns the live module state, so watcher-driven events debounce
-        // into a full runtime reload instead of attaching another ad-hoc slot instance.
-        ScheduleReload(mod_id, true);
+        // Modules with a runtime provider (e.g. scripting) use the provider's
+        // in-process reload.  Native DLLs go through the slot's version-copy /
+        // SEH / rollback path, and the notify callback triggers targeted reload
+        // in ModuleRuntime.
+        ScheduleReload(mod_id, HasRuntimeProvider(mod_id));
+    }
+
+    bool HotReloadCoordinator::HasRuntimeProvider(const std::string &mod_id) const {
+        auto snapshot = m_Context.GetLoadedModuleSnapshot();
+        for (const auto &m : snapshot) {
+            if (m.id == mod_id && m.mod_handle) {
+                std::string entry_utf8 = utils::Utf16ToUtf8(m.path);
+                return m_Context.FindRuntimeProvider(entry_utf8) != nullptr;
+            }
+        }
+        return false;
     }
 
     void HotReloadCoordinator::ScheduleReload(const std::string& mod_id, bool requires_runtime_reload) {
@@ -491,6 +504,19 @@ namespace BML::Core {
         }
 
         return {};
+    }
+
+    bool HotReloadCoordinator::GetSlotModuleInfo(const std::string &mod_id,
+                                                    HMODULE *out_handle,
+                                                    PFN_BML_ModEntrypoint *out_entrypoint) const {
+        std::lock_guard lock(m_Mutex);
+        auto it = m_Slots.find(mod_id);
+        if (it == m_Slots.end() || !it->second.slot || !it->second.slot->IsLoaded()) {
+            return false;
+        }
+        if (out_handle) *out_handle = it->second.slot->GetHandle();
+        if (out_entrypoint) *out_entrypoint = it->second.slot->GetEntrypoint();
+        return true;
     }
 
 } // namespace BML::Core
