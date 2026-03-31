@@ -140,7 +140,7 @@ namespace BML::Core {
         // Add watch if watcher is running
         if (m_Running && !entry.watch_path.empty()) {
             std::string watch_path_utf8 = utils::Utf16ToUtf8(entry.watch_path);
-            slot_entry.watch_id = m_Watcher->Watch(watch_path_utf8, false);
+            slot_entry.watch_id = m_Watcher->Watch(watch_path_utf8, entry.watch_recursive);
         }
 
         m_Slots[entry.id] = std::move(slot_entry);
@@ -203,7 +203,7 @@ namespace BML::Core {
         for (auto& [id, entry] : m_Slots) {
             if (!entry.info.watch_path.empty() && entry.watch_id < 0) {
                 std::string watch_path_utf8 = utils::Utf16ToUtf8(entry.info.watch_path);
-                entry.watch_id = m_Watcher->Watch(watch_path_utf8, false);
+                entry.watch_id = m_Watcher->Watch(watch_path_utf8, entry.info.watch_recursive);
             }
         }
 
@@ -307,7 +307,14 @@ namespace BML::Core {
     }
 
     void HotReloadCoordinator::OnFileChanged(const FileEvent& event) {
-        if (event.action != FileAction::Modified) {
+        // Process events that indicate a module file was created or replaced.
+        // Deletions are ignored — the module is simply no longer present.
+        switch (event.action) {
+        case FileAction::Modified:
+        case FileAction::Added:
+        case FileAction::Moved:
+            break;
+        case FileAction::Deleted:
             return;
         }
 

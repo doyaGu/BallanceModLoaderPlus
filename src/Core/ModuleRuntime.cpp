@@ -510,6 +510,18 @@ namespace BML::Core {
             entry.dll_path = dll_path;
             entry.watch_path = std::filesystem::path(manifest.directory).lexically_normal().wstring();
             entry.manifest = manifest;
+            // Script modules need recursive watching for subdirectory includes.
+            // Use case-insensitive comparison since Windows paths can vary.
+            std::filesystem::path ep(dll_path);
+            auto ext = ep.extension().string();
+            bool is_native_dll = false;
+            if (ext.size() == 4) {
+                is_native_dll = (ext[0] == '.' &&
+                                 (ext[1] == 'd' || ext[1] == 'D') &&
+                                 (ext[2] == 'l' || ext[2] == 'L') &&
+                                 (ext[3] == 'l' || ext[3] == 'L'));
+            }
+            entry.watch_recursive = !is_native_dll;
 
             m_HotReloadCoordinator->RegisterModule(entry);
         }
@@ -568,12 +580,12 @@ namespace BML::Core {
         }
 
         // The ReloadableModuleSlot has already performed the DLL swap
-        // (UnloadCurrent -> LoadVersion) including:
+        // (UnloadCurrent → LoadVersion) including:
         //   - PrepareModuleForDetach gate (checks dependencies)
         //   - DETACH entrypoint call
         //   - CleanupModuleKernelState
         //   - FreeLibrary old DLL
-        //   - CopyDllToTemp -> LoadLibrary new DLL
+        //   - CopyDllToTemp → LoadLibrary new DLL
         //   - ATTACH entrypoint call
         //
         // We just need to synchronize Context's loaded-module record
@@ -610,7 +622,7 @@ namespace BML::Core {
             // Try targeted single-module reload first (only updates Context state)
             ModuleBootstrapDiagnostics diag;
             if (ReloadSingleModule(mod_id, diag)) {
-                // Targeted reload succeeded -- other modules were not disturbed
+                // Targeted reload succeeded — other modules were not disturbed
             } else {
                 // Fall back to full reload (e.g. module not found, Context sync failed)
                 CoreLog(BML_LOG_WARN, kModuleRuntimeLogCategory,

@@ -36,6 +36,7 @@ namespace BML::Core {
         std::wstring dll_path;                ///< Path to the DLL
         std::wstring watch_path;              ///< Directory to watch for changes
         std::optional<ModManifest> manifest;  ///< Module manifest snapshot
+        bool watch_recursive{false};          ///< Watch subdirectories (e.g. for script includes)
     };
 
     /**
