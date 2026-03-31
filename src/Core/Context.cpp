@@ -845,6 +845,20 @@ namespace BML::Core {
         }
     }
 
+    bool Context::HasRuntimeProviderOwner(const std::string &owner_id) const {
+        if (owner_id.empty()) {
+            return false;
+        }
+
+        std::lock_guard<std::mutex> lock(m_RuntimeProviderMutex);
+        for (const auto &entry : m_RuntimeProviders) {
+            if (entry.owner_id == owner_id) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     const BML_ModuleRuntimeProvider *Context::FindRuntimeProvider(
             const std::string &entry_path_utf8) const {
         if (entry_path_utf8.empty())

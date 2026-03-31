@@ -183,6 +183,7 @@ namespace BML::Core {
                                            const std::string &owner_id);
         BML_Result UnregisterRuntimeProvider(const BML_ModuleRuntimeProvider *provider);
         void InvalidateRuntimeProvider(const std::string &owner_id);
+        bool HasRuntimeProviderOwner(const std::string &owner_id) const;
         const BML_ModuleRuntimeProvider *FindRuntimeProvider(const std::string &entry_path_utf8) const;
 
         static std::wstring SanitizeIdentifierForFilename(const std::string &value);
