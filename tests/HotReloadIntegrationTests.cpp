@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "Core/ModuleRuntime.h"
+
 #include "TestKernel.h"
 #include "TestKernelBuilder.h"
 
@@ -109,6 +110,58 @@ void WriteManifest(const std::filesystem::path &manifest_path,
     manifest << "description = \"" << description << "\"\n";
 }
 
+std::string FindManifestDescription(BML::Core::Context &context, const std::string &mod_id) {
+    for (const auto &manifest : context.GetManifestSnapshot()) {
+        if (manifest.package.id == mod_id) {
+            return manifest.package.description;
+        }
+    }
+    return {};
+}
+
+void AddLoadedModule(BML::Core::Context &context,
+                     const std::string &mod_id,
+                     const std::string &name,
+                     const std::wstring &directory,
+                     const std::wstring &entry_path) {
+    auto manifest = std::make_unique<BML::Core::ModManifest>();
+    manifest->package.id = mod_id;
+    manifest->package.name = name;
+    manifest->package.version = "1.0.0";
+    manifest->package.parsed_version = {1, 0, 0};
+    manifest->package.entry = std::filesystem::path(entry_path).filename().string();
+    manifest->directory = directory;
+    manifest->manifest_path = (std::filesystem::path(directory) / (mod_id + ".toml")).wstring();
+
+    auto *manifest_ptr = manifest.get();
+    context.RegisterManifest(std::move(manifest));
+
+    auto mod_handle = context.CreateModHandle(*manifest_ptr);
+    ASSERT_NE(mod_handle, nullptr);
+
+    BML::Core::LoadedModule loaded;
+    loaded.id = mod_id;
+    loaded.manifest = manifest_ptr;
+    loaded.handle = reinterpret_cast<HMODULE>(mod_handle.get());
+    loaded.entrypoint = reinterpret_cast<PFN_BML_ModEntrypoint>(mod_handle.get());
+    loaded.path = entry_path;
+    loaded.mod_handle = std::move(mod_handle);
+    context.AddLoadedModule(std::move(loaded));
+}
+
+void WriteManifestForId(const std::filesystem::path &manifest_path,
+                        const std::string &mod_id,
+                        const std::string &description,
+                        const std::string &entry_name) {
+    std::ofstream manifest(manifest_path);
+    manifest << "[package]\n";
+    manifest << "id = \"" << mod_id << "\"\n";
+    manifest << "name = \"" << mod_id << "\"\n";
+    manifest << "version = \"1.0.0\"\n";
+    manifest << "entry = \"" << entry_name << "\"\n";
+    manifest << "description = \"" << description << "\"\n";
+}
+
 } // namespace
 
 TEST(HotReloadIntegrationTests, ReloadsSampleModWhenManifestChanges) {
@@ -161,6 +214,53 @@ TEST(HotReloadIntegrationTests, ReloadsSampleModWhenManifestChanges) {
     EXPECT_TRUE(reload_diag.load_error.message.empty()) << reload_diag.load_error.message;
 }
 
+TEST(HotReloadIntegrationTests, FullRuntimeNotificationReloadsNativeModuleManifest) {
+    const auto sample_mod = GetSampleModPath();
+    ASSERT_TRUE(std::filesystem::exists(sample_mod)) << "Sample mod missing: " << sample_mod.string();
+
+    const auto mods_dir = CreateModsDirectory();
+    const auto run_root = mods_dir.parent_path();
+    TempDirGuard temp_guard{run_root};
+
+    const auto mod_dir = mods_dir / "Sample";
+    std::filesystem::create_directories(mod_dir);
+
+    const auto dll_name = sample_mod.filename();
+    const auto dll_destination = mod_dir / dll_name;
+    std::error_code copy_ec;
+    std::filesystem::copy_file(sample_mod,
+                               dll_destination,
+                               std::filesystem::copy_options::overwrite_existing,
+                               copy_ec);
+    ASSERT_FALSE(copy_ec) << copy_ec.message();
+
+    const auto manifest_path = mod_dir / "mod.toml";
+    WriteManifest(manifest_path, "initial", dll_name.generic_string());
+
+    TestKernel kernel = TestKernelBuilder()
+        .WithAll()
+        .Build();
+    BML::Core::ModuleRuntime runtime;
+    runtime.BindKernel(*kernel);
+    RuntimeGuard runtime_guard{runtime};
+
+    BML::Core::ModuleBootstrapDiagnostics discover_diag;
+    ASSERT_TRUE(runtime.DiscoverAndValidate(mods_dir.wstring(), discover_diag))
+        << "Discover failed: " << discover_diag.dependency_error.message;
+
+    BML::Core::ModuleBootstrapDiagnostics initial_diag;
+    BML_Services services{};
+    ASSERT_TRUE(runtime.LoadDiscovered(initial_diag, &services))
+        << "Initial load failed: " << initial_diag.load_error.message;
+
+    WriteManifest(manifest_path, "reloaded", dll_name.generic_string());
+
+    runtime.TestHandleHotReloadNotify("hot.reload.sample", BML::Core::ReloadResult::Success, 0,
+                                      BML::Core::ReloadFailure::None,
+                                      BML::Core::ReloadRequestKind::FullRuntime);
+    EXPECT_EQ(FindManifestDescription(*kernel->context, "hot.reload.sample"), "reloaded");
+}
+
 TEST(HotReloadIntegrationTests, HandleHotReloadNotify_UnloadBlocked_FallsBackToFull) {
     const auto sample_mod = GetSampleModPath();
     ASSERT_TRUE(std::filesystem::exists(sample_mod)) << "Sample mod missing: " << sample_mod.string();
@@ -201,4 +301,27 @@ TEST(HotReloadIntegrationTests, HandleHotReloadNotify_UnloadBlocked_FallsBackToF
     std::this_thread::sleep_for(1200ms);
     EXPECT_TRUE(runtime.ReloadModules(reload_diag))
         << "Full reload failed: " << reload_diag.load_error.message;
+}
+
+TEST(HotReloadIntegrationTests, TargetedReloadPublishesLifecycleOnlyForAffectedModule) {
+    TestKernel kernel = TestKernelBuilder()
+        .WithAll()
+        .Build();
+    BML::Core::ModuleRuntime runtime;
+    runtime.BindKernel(*kernel);
+
+    const auto mods_dir = CreateModsDirectory();
+    const auto run_root = mods_dir.parent_path();
+    TempDirGuard temp_guard{run_root};
+    const auto target_dir = mods_dir / "Targeted";
+    std::filesystem::create_directories(target_dir);
+
+    AddLoadedModule(*kernel->context, "hot.reload.sample.a", "Sample A",
+                    target_dir.wstring(), (target_dir / "SampleA.dll").wstring());
+    AddLoadedModule(*kernel->context, "hot.reload.sample.b", "Sample B",
+                    target_dir.wstring(), (target_dir / "SampleB.dll").wstring());
+
+    const auto targets = runtime.TestGetLifecycleBroadcastTargets("hot.reload.sample.a");
+    ASSERT_EQ(targets.size(), 1u);
+    EXPECT_EQ(targets[0], "hot.reload.sample.a");
 }

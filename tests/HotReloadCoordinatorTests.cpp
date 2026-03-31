@@ -6,6 +6,8 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <optional>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -48,6 +50,42 @@ void CreateMinimalDll(const std::filesystem::path& path) {
         out.put(0);
     }
 }
+
+BML_Bool StubProviderCanHandle(const char *entry_path) {
+    if (!entry_path) {
+        return BML_FALSE;
+    }
+    return std::string_view(entry_path).ends_with(".as") ? BML_TRUE : BML_FALSE;
+}
+
+BML_Result StubProviderAttachModule(BML_Mod, const BML_Services *, const char *, const char *) {
+    return BML_RESULT_OK;
+}
+
+BML_Result StubProviderPrepareDetach(BML_Mod) {
+    return BML_RESULT_OK;
+}
+
+BML_Result StubProviderDetachModule(BML_Mod) {
+    return BML_RESULT_OK;
+}
+
+BML_Result StubProviderReloadModule(BML_Mod mod) {
+    auto *called = reinterpret_cast<bool *>(mod);
+    if (called) {
+        *called = true;
+    }
+    return BML_RESULT_OK;
+}
+
+const BML_ModuleRuntimeProvider kStubRuntimeProvider = {
+    sizeof(BML_ModuleRuntimeProvider),
+    StubProviderCanHandle,
+    StubProviderAttachModule,
+    StubProviderPrepareDetach,
+    StubProviderDetachModule,
+    StubProviderReloadModule,
+};
 
 } // namespace
 
@@ -253,7 +291,8 @@ TEST_F(HotReloadCoordinatorTest, NotifyCallback) {
     coordinator.SetNotifyCallback([&](const std::string& mod_id,
                                       ReloadResult result,
                                       unsigned int,
-                                      ReloadFailure) {
+                                      ReloadFailure,
+                                      ReloadRequestKind) {
         notified_mod_id = mod_id;
         notified_result = result;
         callback_called = true;
@@ -357,7 +396,8 @@ TEST_F(HotReloadCoordinatorTest, IgnoresUnrelatedRootFileChanges) {
     ASSERT_TRUE(coordinator.RegisterModule(entry));
 
     std::atomic<int> callback_count{0};
-    coordinator.SetNotifyCallback([&](const std::string &, ReloadResult, unsigned int, ReloadFailure) {
+    coordinator.SetNotifyCallback([&](const std::string &, ReloadResult, unsigned int, ReloadFailure,
+                                      ReloadRequestKind) {
         callback_count.fetch_add(1, std::memory_order_relaxed);
     });
 
@@ -446,7 +486,8 @@ TEST_F(HotReloadCoordinatorTest, WatchesIncludedScriptFilesForRuntimeReload) {
     ASSERT_TRUE(coordinator.RegisterModule(entry));
 
     std::atomic<int> callback_count{0};
-    coordinator.SetNotifyCallback([&](const std::string &, ReloadResult, unsigned int, ReloadFailure) {
+    coordinator.SetNotifyCallback([&](const std::string &, ReloadResult, unsigned int, ReloadFailure,
+                                      ReloadRequestKind) {
         callback_count.fetch_add(1, std::memory_order_relaxed);
     });
 
@@ -525,7 +566,8 @@ TEST_F(HotReloadCoordinatorTest, OnFileChanged_AddedEvent_TriggersReload) {
     ASSERT_TRUE(coordinator.RegisterModule(entry));
 
     std::atomic<int> callback_count{0};
-    coordinator.SetNotifyCallback([&](const std::string &, ReloadResult, unsigned int, ReloadFailure) {
+    coordinator.SetNotifyCallback([&](const std::string &, ReloadResult, unsigned int, ReloadFailure,
+                                      ReloadRequestKind) {
         callback_count.fetch_add(1, std::memory_order_relaxed);
     });
 
@@ -590,14 +632,15 @@ TEST_F(HotReloadCoordinatorTest, OnFileChanged_DeletedEvent_DoesNotTriggerReload
     ASSERT_TRUE(coordinator.RegisterModule(entry));
 
     std::atomic<int> callback_count{0};
-    coordinator.SetNotifyCallback([&](const std::string &, ReloadResult, unsigned int, ReloadFailure) {
+    coordinator.SetNotifyCallback([&](const std::string &, ReloadResult, unsigned int, ReloadFailure,
+                                      ReloadRequestKind) {
         callback_count.fetch_add(1, std::memory_order_relaxed);
     });
 
     coordinator.Start();
     std::this_thread::sleep_for(500ms);
 
-    // Delete a file — should NOT trigger reload
+    // Delete a file - should NOT trigger reload
     std::filesystem::remove(manifest_path);
 
     auto deadline = std::chrono::steady_clock::now() + 1500ms;
@@ -651,7 +694,8 @@ TEST_F(HotReloadCoordinatorTest, RecursiveWatch_ScriptModule_WatchesSubdirectori
     ASSERT_TRUE(coordinator.RegisterModule(entry));
 
     std::atomic<int> callback_count{0};
-    coordinator.SetNotifyCallback([&](const std::string &, ReloadResult, unsigned int, ReloadFailure) {
+    coordinator.SetNotifyCallback([&](const std::string &, ReloadResult, unsigned int, ReloadFailure,
+                                      ReloadRequestKind) {
         callback_count.fetch_add(1, std::memory_order_relaxed);
     });
 
@@ -707,4 +751,112 @@ TEST_F(HotReloadCoordinatorTest, GetSlotModuleInfo_ReturnsSlotState) {
     PFN_BML_ModEntrypoint ep = nullptr;
     EXPECT_FALSE(coordinator.GetSlotModuleInfo("test.mod", &handle, &ep));
     EXPECT_FALSE(coordinator.GetSlotModuleInfo("nonexistent", &handle, &ep));
+}
+
+TEST_F(HotReloadCoordinatorTest, ManifestEditForNativeModuleSchedulesFullRuntimeReload) {
+    auto dll_path = m_TempDir / "test.dll";
+    auto manifest_path = m_TempDir / "mod.toml";
+    CreateMinimalDll(dll_path);
+    {
+        std::ofstream manifest_file(manifest_path);
+        manifest_file << "[package]\n";
+    }
+
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
+
+    HotReloadSettings settings;
+    settings.enabled = true;
+    settings.debounce = 0ms;
+    settings.temp_directory = (m_TempDir / "temp").wstring();
+    coordinator.Configure(settings);
+
+    HotReloadModuleEntry entry;
+    entry.id = "test.mod";
+    entry.dll_path = dll_path.wstring();
+    entry.watch_path = m_TempDir.wstring();
+    ModManifest manifest{};
+    manifest.package.id = "test.mod";
+    manifest.directory = m_TempDir.wstring();
+    manifest.manifest_path = manifest_path.wstring();
+    entry.manifest = manifest;
+    ASSERT_TRUE(coordinator.RegisterModule(entry));
+
+    std::optional<ReloadRequestKind> notified_kind;
+    coordinator.SetNotifyCallback([&](const std::string &, ReloadResult, unsigned int, ReloadFailure,
+                                      ReloadRequestKind kind) {
+        notified_kind = kind;
+    });
+
+    coordinator.Start();
+    std::this_thread::sleep_for(500ms);
+
+    {
+        std::ofstream manifest_file(manifest_path, std::ios::trunc);
+        manifest_file << "[package]\nname='changed'\n";
+        manifest_file.flush();
+    }
+
+    auto deadline = std::chrono::steady_clock::now() + 10s;
+    while (std::chrono::steady_clock::now() < deadline) {
+        coordinator.Update();
+        if (notified_kind.has_value()) {
+            break;
+        }
+        std::this_thread::sleep_for(100ms);
+    }
+
+    coordinator.Stop();
+
+    ASSERT_TRUE(notified_kind.has_value());
+    EXPECT_EQ(*notified_kind, ReloadRequestKind::FullRuntime);
+}
+
+TEST_F(HotReloadCoordinatorTest, ProviderOwnerBinaryChangeSchedulesFullRuntimeReload) {
+    auto dll_path = m_TempDir / "BML_Scripting.dll";
+    CreateMinimalDll(dll_path);
+
+    ASSERT_EQ(m_Context->RegisterRuntimeProvider(&kStubRuntimeProvider, "com.bml.scripting"),
+              BML_RESULT_OK);
+
+    HotReloadCoordinator coordinator(*m_Context, *kernel_);
+    coordinator.SetServices(&m_DummyServices);
+
+    HotReloadSettings settings;
+    settings.enabled = true;
+    settings.debounce = 0ms;
+    settings.temp_directory = (m_TempDir / "temp").wstring();
+    coordinator.Configure(settings);
+
+    HotReloadModuleEntry entry;
+    entry.id = "com.bml.scripting";
+    entry.dll_path = dll_path.wstring();
+    entry.watch_path = m_TempDir.wstring();
+    ASSERT_TRUE(coordinator.RegisterModule(entry));
+
+    std::optional<ReloadRequestKind> notified_kind;
+    coordinator.SetNotifyCallback([&](const std::string &, ReloadResult, unsigned int, ReloadFailure,
+                                      ReloadRequestKind kind) {
+        notified_kind = kind;
+    });
+
+    coordinator.Start();
+    std::this_thread::sleep_for(500ms);
+
+    std::ofstream(dll_path, std::ios::app) << "modified";
+
+    auto deadline = std::chrono::steady_clock::now() + 10s;
+    while (std::chrono::steady_clock::now() < deadline) {
+        coordinator.Update();
+        if (notified_kind.has_value()) {
+            break;
+        }
+        std::this_thread::sleep_for(100ms);
+    }
+
+    coordinator.Stop();
+
+    ASSERT_TRUE(notified_kind.has_value());
+    EXPECT_EQ(*notified_kind, ReloadRequestKind::FullRuntime);
+    EXPECT_EQ(m_Context->UnregisterRuntimeProvider(&kStubRuntimeProvider), BML_RESULT_OK);
 }
