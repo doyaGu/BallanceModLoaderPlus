@@ -4,12 +4,16 @@
 
 #include <filesystem>
 #include <unordered_set>
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#include <psapi.h>
+#pragma comment(lib, "psapi.lib")
+#else
 #include <dlfcn.h>
 #endif
 
 #include "Context.h"
 #include "ApiRegistry.h"
+#include "MemoryManager.h"
 #include "ConfigStore.h"
 #include "CrashDumpWriter.h"
 #include "ExtensionStateHooks.h"
@@ -300,6 +304,19 @@ namespace BML::Core {
                 continue;
             }
 
+            // Register DLL address range for per-module memory tracking
+#if defined(_WIN32)
+            if (kernel.memory) {
+                MODULEINFO modInfo{};
+                if (GetModuleInformation(GetCurrentProcess(), handle,
+                                         &modInfo, sizeof(modInfo))) {
+                    auto base = reinterpret_cast<uintptr_t>(modInfo.lpBaseOfDll);
+                    kernel.memory->AddModuleRange(
+                        base, base + modInfo.SizeOfImage, node.id);
+                }
+            }
+#endif
+
             auto closeModule = [](HMODULE module_handle) {
 #if defined(_WIN32)
                 FreeLibrary(module_handle);
@@ -472,6 +489,9 @@ namespace BML::Core {
 
             if (it->handle) {
 #if defined(_WIN32)
+                if (kernel.memory)
+                    kernel.memory->RemoveModuleRange(
+                        reinterpret_cast<uintptr_t>(it->handle));
                 FreeLibrary(it->handle);
 #else
                 dlclose(it->handle);
