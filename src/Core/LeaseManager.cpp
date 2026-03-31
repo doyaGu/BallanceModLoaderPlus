@@ -140,14 +140,14 @@ namespace BML::Core {
             std::lock_guard<std::mutex> lock(m_Mutex);
             auto it = m_InterfaceLeases.find(lease->id);
             if (it != m_InterfaceLeases.end() && it->second == lease) {
-                // Still tracked — remove from map and kernel registry
+                // Still tracked - remove from map and kernel registry
                 UnregisterHandleKernel(lease);
                 m_InterfaceLeases.erase(it);
                 if (m_OutstandingLeaseHandles > 0) {
                     --m_OutstandingLeaseHandles;
                 }
             }
-            // If not in map, Cleanup already untracked it — just delete
+            // If not in map, Cleanup already untracked it - just delete
         }
 
         delete lease;

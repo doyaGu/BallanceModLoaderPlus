@@ -149,10 +149,10 @@ TEST(LeaseManagerTests, CleanupConsumerUntracksButRefCountManagesLifetime) {
     manager.CleanupConsumer("consumer.a");
     EXPECT_EQ(manager.GetOutstandingLeaseHandlesForTest(), 0u);
 
-    // Handle is still alive — Release calls decrement ref_count safely
-    EXPECT_EQ(manager.ReleaseInterfaceLease(lease), BML_RESULT_OK);  // 3→2
-    EXPECT_EQ(manager.ReleaseInterfaceLease(lease), BML_RESULT_OK);  // 2→1
-    EXPECT_EQ(manager.ReleaseInterfaceLease(lease), BML_RESULT_OK);  // 1→0, deletes
+    // Handle is still alive - Release calls decrement ref_count safely
+    EXPECT_EQ(manager.ReleaseInterfaceLease(lease), BML_RESULT_OK);  // 3->2
+    EXPECT_EQ(manager.ReleaseInterfaceLease(lease), BML_RESULT_OK);  // 2->1
+    EXPECT_EQ(manager.ReleaseInterfaceLease(lease), BML_RESULT_OK);  // 1->0, deletes
 }
 
 TEST(LeaseManagerTests, ResetDoesNotLetStaleLeaseReleaseEraseNewLease) {

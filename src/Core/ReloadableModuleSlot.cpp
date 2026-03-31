@@ -570,7 +570,7 @@ namespace BML::Core {
                 reload_args.mod = m_ModHandle.get();
                 int rc = m_Entrypoint(BML_MOD_ENTRYPOINT_PREPARE_RELOAD, &reload_args);
                 if (rc == BML_RESULT_INVALID_ARGUMENT) {
-                    return 0; // Old module — treat as success (no objection)
+                    return 0; // Old module - treat as success (no objection)
                 }
                 return rc;
             }

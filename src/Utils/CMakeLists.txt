@@ -1,5 +1,5 @@
 # ============================================================================
-# BML_StringUtils — String manipulation and encoding conversion
+# BML_StringUtils - String manipulation and encoding conversion
 # ============================================================================
 add_library(BML_StringUtils STATIC
     StringUtils.h
@@ -18,7 +18,7 @@ set_target_properties(BML_StringUtils PROPERTIES
 )
 
 # ============================================================================
-# BML_HashUtils — FNV-1a hashing
+# BML_HashUtils - FNV-1a hashing
 # ============================================================================
 add_library(BML_HashUtils STATIC
     HashUtils.h
@@ -35,7 +35,7 @@ set_target_properties(BML_HashUtils PROPERTIES
 )
 
 # ============================================================================
-# BML_TimeUtils — Timestamp formatting
+# BML_TimeUtils - Timestamp formatting
 # ============================================================================
 add_library(BML_TimeUtils STATIC
     TimeUtils.h
@@ -52,7 +52,7 @@ set_target_properties(BML_TimeUtils PROPERTIES
 )
 
 # ============================================================================
-# BML_JsonUtils — JSON parsing/writing (yyjson wrapper)
+# BML_JsonUtils - JSON parsing/writing (yyjson wrapper)
 # ============================================================================
 add_library(BML_JsonUtils STATIC
     JsonUtils.h
@@ -79,7 +79,7 @@ set_target_properties(BML_JsonUtils PROPERTIES
 # ============================================================================
 if (WIN32)
     # ========================================================================
-    # BML_HookUtils — Memory manipulation and virtual table hooking
+    # BML_HookUtils - Memory manipulation and virtual table hooking
     # ========================================================================
     add_library(BML_HookUtils STATIC
         HookUtils.h
@@ -98,7 +98,7 @@ if (WIN32)
     )
 
     # ========================================================================
-    # BML_PathUtils — Windows file system operations and runtime layout
+    # BML_PathUtils - Windows file system operations and runtime layout
     # ========================================================================
     add_library(BML_PathUtils STATIC
         PathUtils.h
@@ -121,7 +121,7 @@ if (WIN32)
     )
 
     # ========================================================================
-    # BML_IniFile — INI file parsing with UTF-8 and comment preservation
+    # BML_IniFile - INI file parsing with UTF-8 and comment preservation
     # ========================================================================
     add_library(BML_IniFile STATIC
         IniFile.h
@@ -145,7 +145,7 @@ if (WIN32)
 endif ()
 
 # ============================================================================
-# BML_Utils — Umbrella target (backward compatibility)
+# BML_Utils - Umbrella target (backward compatibility)
 #
 # Links all individual Utils targets. Existing consumers that link BML_Utils
 # continue to work unchanged. New consumers can link individual targets for

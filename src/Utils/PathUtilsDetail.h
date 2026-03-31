@@ -1,7 +1,7 @@
 #ifndef BML_PATHUTILSDETAIL_H
 #define BML_PATHUTILSDETAIL_H
 
-// Internal detail header — included only by PathUtils.cpp.
+// Internal detail header - included only by PathUtils.cpp.
 // Provides template implementations for pure-string path manipulation
 // that is identical across char/wchar_t, eliminating A/W duplication.
 

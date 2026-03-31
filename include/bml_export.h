@@ -106,7 +106,7 @@ typedef struct BML_ModAttachArgs {
 	BML_Context context;
 	BML_Mod mod;
 	const BML_Services *services;
-	/* V2 extension — only accessible when struct_size is large enough.
+	/* V2 extension - only accessible when struct_size is large enough.
 	 * BML_TRUE when this attach follows a hot-reload (not the first load). */
 	BML_Bool is_reload;
 } BML_ModAttachArgs;

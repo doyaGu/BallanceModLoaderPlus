@@ -429,7 +429,7 @@ namespace BML::Core {
                 }
             }
             if (!subtracted) {
-                OutputDebugStringA("[BML Memory] WARNING: deallocation tracking underflow — "
+                OutputDebugStringA("[BML Memory] WARNING: deallocation tracking underflow - "
                                    "size exceeds tracked total\n");
             }
         }
@@ -643,7 +643,7 @@ namespace BML::Core {
         }
         void *new_ptr = Realloc(ptr, old_size, new_size);
         if (!new_ptr && ptr) {
-            // Realloc failed — restore old tracking
+            // Realloc failed - restore old tracking
             if (old_record.module_index >= 0) {
                 std::lock_guard lock(m_AllocMapMutex);
                 m_AllocMap[ptr] = old_record;

@@ -112,7 +112,7 @@ TEST_F(ImcMessageTapTest, CleanupOwnerRemovesTap) {
 
     ImcCleanupOwner(host_mod_);
 
-    // Tap should be gone — new registration should succeed
+    // Tap should be gone - new registration should succeed
     TapCapture cap2;
     BML_Mod mod2 = mods_->CreateMod("test.mod3");
     EXPECT_EQ(BML_RESULT_OK,

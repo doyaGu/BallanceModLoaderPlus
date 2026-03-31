@@ -228,7 +228,7 @@ static BML_Result BML_HandleReleaseImpl(const BML_HandleDesc *desc) {
         ControlBlock *control = slot.control;
         uint32_t prev = control->ref_count.fetch_sub(1, std::memory_order_acq_rel);
         if (prev == 0) {
-            // Was already zero — undo the decrement (wrapped to UINT32_MAX)
+            // Was already zero - undo the decrement (wrapped to UINT32_MAX)
             control->ref_count.fetch_add(1, std::memory_order_relaxed);
             return BML_RESULT_INVALID_STATE;
         }
