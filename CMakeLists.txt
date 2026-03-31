@@ -69,7 +69,7 @@ add_compile_options(
 )
 
 option(BML_BUILD_TESTS "Build the BML test suite" OFF)
-option(BML_BUILD_BENCHMARKS "Build the BML benchmark suite" ${WIN32})
+option(BML_BUILD_BENCHMARKS "Build the BML benchmark suite" OFF)
 option(BML_BUILD_MODULES "Build the standard BML modules" ${WIN32})
 option(BML_BUILD_EXAMPLES "Build the BML example modules" ${WIN32})
 option(BML_BUILD_ENGINE_BRIDGE "Build the Windows engine integration target (ModLoader)" ${WIN32})
