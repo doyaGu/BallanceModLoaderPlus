@@ -458,6 +458,9 @@ namespace BML::Core {
         msg.data = data;
         msg.size = size;
         msg.payload_type_id = type_id;
+
+        FireTap(resolved_owner, topic, &msg);
+
         auto *message = CreateMessage(resolved_owner, topic, data, size, &msg, nullptr);
         return DispatchMessage(topic, message);
     }
@@ -488,6 +491,8 @@ namespace BML::Core {
         BML_Mod resolved_owner = nullptr;
         BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));
 
+        FireTap(resolved_owner, topic, msg);
+
         auto *message = CreateMessage(resolved_owner, topic, msg->data, msg->size, msg, nullptr);
         return DispatchMessage(topic, message);
     }
@@ -505,6 +510,11 @@ namespace BML::Core {
 
         BML_Mod resolved_owner = nullptr;
         BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));
+
+        BML_ImcMessage msg = BML_IMC_MESSAGE_INIT;
+        msg.data = buffer->data;
+        msg.size = buffer->size;
+        FireTap(resolved_owner, topic, &msg);
 
         auto *message = CreateMessage(resolved_owner, topic, nullptr, 0, nullptr, buffer);
         return DispatchMessage(topic, message);
@@ -730,6 +740,8 @@ namespace BML::Core {
         BML_Mod resolved_owner = nullptr;
         BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));
 
+        FireTap(resolved_owner, topic, msg);
+
         BML_EventResult final_result = BML_EVENT_CONTINUE;
         auto *busContext = m_Context;
         BML_Context ctx = busContext ? busContext->GetHandle() : nullptr;
@@ -871,11 +883,21 @@ namespace BML::Core {
         BML_Mod resolved_owner = nullptr;
         BML_CHECK(ResolveRegistrationOwner(owner, &resolved_owner));
 
+        BML_ImcMessage trace_msg = BML_IMC_MESSAGE_INIT;
+        if (msg) {
+            trace_msg = *msg;
+        } else {
+            trace_msg.data = data;
+            trace_msg.size = size;
+        }
+
         size_t delivered = 0;
         BML_Result first_error = BML_RESULT_OK;
         for (size_t i = 0; i < topic_count; ++i) {
             if (topics[i] == BML_TOPIC_ID_INVALID)
                 continue;
+
+            FireTap(resolved_owner, topics[i], &trace_msg);
 
             auto *message = CreateMessage(resolved_owner, topics[i], data, size, msg, nullptr);
             BML_Result res = DispatchMessage(topics[i], message);

@@ -26,6 +26,9 @@
 #include "InterfacePanel.h"
 #include "HookPanel.h"
 #include "ModulePanel.h"
+#include "ImcFlowPanel.h"
+#include "ModuleMemoryPanel.h"
+#include "LogStreamPanel.h"
 
 namespace {
 
@@ -47,6 +50,9 @@ class DevToolsMod : public bml::Module {
         m_Panels.push_back(std::make_unique<devtools::InterfacePanel>());
         m_Panels.push_back(std::make_unique<devtools::HookPanel>());
         m_Panels.push_back(std::make_unique<devtools::ModulePanel>());
+        m_Panels.push_back(std::make_unique<devtools::ImcFlowPanel>());
+        m_Panels.push_back(std::make_unique<devtools::ModuleMemoryPanel>());
+        m_Panels.push_back(std::make_unique<devtools::LogStreamPanel>());
     }
 
     void RefreshAll() {

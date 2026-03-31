@@ -110,5 +110,6 @@ namespace BML::Core {
         kernel.leases->CleanupConsumer(module_id);
         kernel.leases->CleanupProvider(module_id);
         CleanupConfigHooksForModule(mod);
+        RemoveLogListenersForModule(mod);
     }
 } // namespace BML::Core

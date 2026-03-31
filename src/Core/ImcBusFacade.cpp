@@ -295,6 +295,23 @@ namespace BML::Core {
         return GetBus(kernel).ClearState(t);
     }
 
+    BML_Result ImcRegisterMessageTap(BML_Mod owner, BML_ImcMessageTap tap, void *user_data) {
+        auto *bus = TryGetBusFromOwner(owner);
+        return bus ? bus->RegisterMessageTap(owner, tap, user_data)
+                   : BML_RESULT_INVALID_CONTEXT;
+    }
+    BML_Result ImcRegisterMessageTap(KernelServices &kernel, BML_Mod owner,
+                                     BML_ImcMessageTap tap, void *user_data) {
+        return GetBus(kernel).RegisterMessageTap(owner, tap, user_data);
+    }
+    BML_Result ImcUnregisterMessageTap(BML_Mod owner) {
+        auto *bus = TryGetBusFromOwner(owner);
+        return bus ? bus->UnregisterMessageTap(owner) : BML_RESULT_INVALID_CONTEXT;
+    }
+    BML_Result ImcUnregisterMessageTap(KernelServices &kernel, BML_Mod owner) {
+        return GetBus(kernel).UnregisterMessageTap(owner);
+    }
+
     BML_Result ImcRegisterRpcEx(BML_RpcId r, BML_RpcHandlerEx h, void *u) {
         auto *bus = TryGetAmbientBus();
         return bus ? bus->RegisterRpcEx(r, h, u) : BML_RESULT_INVALID_CONTEXT;

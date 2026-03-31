@@ -387,6 +387,14 @@ namespace BML::Core {
                 }
             }
         }
+
+        // Clear message tap if owned by this module
+        TapState *tap = m_Tap.load(std::memory_order_acquire);
+        if (tap && tap->owner == owner) {
+            TapState *expected = tap;
+            m_Tap.compare_exchange_strong(expected, nullptr, std::memory_order_acq_rel);
+            delete tap;
+        }
     }
 
     namespace {

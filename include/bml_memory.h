@@ -191,6 +191,46 @@ typedef struct BML_MemoryStats {
  */
 typedef BML_Result (*PFN_BML_GetMemoryStats)(BML_Context ctx, BML_MemoryStats *out_stats);
 
+/* ========== Per-module Memory Tracking ========== */
+
+/**
+ * @brief Per-module memory statistics (for diagnostic enumeration)
+ */
+typedef struct BML_ModuleMemoryStats {
+    size_t struct_size;            /**< sizeof(BML_ModuleMemoryStats) */
+    const char *module_id;         /**< Stable pointer, valid during callback */
+    uint64_t total_allocated;      /**< Bytes currently held by this module */
+    uint64_t peak_allocated;       /**< Peak bytes held */
+    uint64_t alloc_count;          /**< Lifetime allocation count */
+    uint64_t free_count;           /**< Lifetime free count */
+    uint64_t active_alloc_count;   /**< Currently live allocations */
+} BML_ModuleMemoryStats;
+
+#define BML_MODULE_MEMORY_STATS_INIT { sizeof(BML_ModuleMemoryStats), NULL, 0, 0, 0, 0, 0 }
+
+/**
+ * @brief Callback for per-module memory enumeration
+ */
+typedef void (*BML_EnumerateModuleMemoryFn)(
+    const BML_ModuleMemoryStats *stats, void *user_data);
+
+/**
+ * @brief Enable/disable per-module memory tracking.
+ * When enabled, each alloc/free is attributed to the calling module.
+ * Adds ~100-200ns overhead per allocation.
+ * @threadsafe Yes
+ */
+typedef BML_Result (*PFN_BML_EnableModuleMemoryTracking)(
+    BML_Context ctx, BML_Bool enable);
+
+/**
+ * @brief Enumerate per-module memory statistics.
+ * Calls callback once per tracked module.
+ * @threadsafe Yes (snapshot under lock)
+ */
+typedef BML_Result (*PFN_BML_EnumerateModuleMemory)(
+    BML_Context ctx, BML_EnumerateModuleMemoryFn callback, void *user_data);
+
 typedef struct BML_CoreMemoryInterface {
     BML_InterfaceHeader header;
     BML_Context Context;
@@ -205,6 +245,8 @@ typedef struct BML_CoreMemoryInterface {
     PFN_BML_MemoryPoolFree MemoryPoolFree;
     PFN_BML_MemoryPoolDestroy MemoryPoolDestroy;
     PFN_BML_GetMemoryStats GetMemoryStats;
+    PFN_BML_EnableModuleMemoryTracking EnableModuleMemoryTracking;
+    PFN_BML_EnumerateModuleMemory EnumerateModuleMemory;
 } BML_CoreMemoryInterface;
 
 

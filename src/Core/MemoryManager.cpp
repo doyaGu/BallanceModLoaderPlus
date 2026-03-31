@@ -491,6 +491,233 @@ namespace BML::Core {
         );
     }
 
+    // ========== Per-module Memory Tracking ==========
+
+    void MemoryManager::SetModuleRanges(std::vector<ModuleRange> ranges) {
+        std::sort(ranges.begin(), ranges.end(),
+                  [](const auto &a, const auto &b) { return a.base < b.base; });
+        std::lock_guard lock(m_RangeMutex);
+        m_ModuleRanges = std::move(ranges);
+        // Resize per-module stats array
+        m_PerModuleStats.clear();
+        for (const auto &r : m_ModuleRanges)
+            m_PerModuleStats.push_back(std::make_unique<PerModuleStats>(r.module_id));
+        if (!m_CoreStats)
+            m_CoreStats = std::make_unique<PerModuleStats>("<core>");
+    }
+
+    void MemoryManager::AddModuleRange(uintptr_t base, uintptr_t end,
+                                        const std::string &module_id) {
+        std::lock_guard lock(m_RangeMutex);
+        int idx = static_cast<int>(m_ModuleRanges.size());
+        m_ModuleRanges.push_back({base, end, module_id, idx});
+        std::sort(m_ModuleRanges.begin(), m_ModuleRanges.end(),
+                  [](const auto &a, const auto &b) { return a.base < b.base; });
+        // Rebuild stats array to match
+        m_PerModuleStats.push_back(std::make_unique<PerModuleStats>(module_id));
+        if (!m_CoreStats)
+            m_CoreStats = std::make_unique<PerModuleStats>("<core>");
+    }
+
+    void MemoryManager::RemoveModuleRange(uintptr_t base) {
+        std::lock_guard lock(m_RangeMutex);
+        m_ModuleRanges.erase(
+            std::remove_if(m_ModuleRanges.begin(), m_ModuleRanges.end(),
+                            [base](const auto &r) { return r.base == base; }),
+            m_ModuleRanges.end());
+    }
+
+    void MemoryManager::EnablePerModuleTracking(bool enable) {
+        m_PerModuleEnabled.store(enable, std::memory_order_release);
+    }
+
+    bool MemoryManager::IsPerModuleTrackingEnabled() const {
+        return m_PerModuleEnabled.load(std::memory_order_acquire);
+    }
+
+    int MemoryManager::FindModuleIndex(void *caller) const {
+        uintptr_t addr = reinterpret_cast<uintptr_t>(caller);
+        // Binary search on sorted ranges
+        int lo = 0, hi = static_cast<int>(m_ModuleRanges.size()) - 1;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (addr < m_ModuleRanges[mid].base)
+                hi = mid - 1;
+            else if (addr >= m_ModuleRanges[mid].end)
+                lo = mid + 1;
+            else
+                return mid;
+        }
+        return -1; // not found
+    }
+
+    int MemoryManager::ResolveModuleIndex(void *caller) {
+        int idx = FindModuleIndex(caller);
+        return idx; // -1 means core
+    }
+
+    PerModuleStats *MemoryManager::GetModuleStats(int index) {
+        if (index >= 0 && index < static_cast<int>(m_PerModuleStats.size()))
+            return m_PerModuleStats[index].get();
+        return m_CoreStats.get();
+    }
+
+    void *MemoryManager::AllocTracked(size_t size, void *caller) {
+        void *ptr = Alloc(size);
+        if (!ptr || !m_PerModuleEnabled.load(std::memory_order_acquire)) return ptr;
+
+        int idx = ResolveModuleIndex(caller);
+        auto *stats = GetModuleStats(idx);
+        stats->total_allocated.fetch_add(size, std::memory_order_relaxed);
+        stats->alloc_count.fetch_add(1, std::memory_order_relaxed);
+        stats->active_alloc_count.fetch_add(1, std::memory_order_relaxed);
+
+        // Update peak
+        uint64_t current = stats->total_allocated.load(std::memory_order_relaxed);
+        uint64_t peak = stats->peak_allocated.load(std::memory_order_relaxed);
+        while (current > peak &&
+               !stats->peak_allocated.compare_exchange_weak(peak, current,
+                   std::memory_order_relaxed)) {}
+
+        {
+            std::lock_guard lock(m_AllocMapMutex);
+            m_AllocMap[ptr] = {idx, size};
+        }
+        return ptr;
+    }
+
+    void MemoryManager::FreeTracked(void *ptr, void *caller) {
+        if (!ptr) return;
+
+        if (m_PerModuleEnabled.load(std::memory_order_acquire)) {
+            std::lock_guard lock(m_AllocMapMutex);
+            auto it = m_AllocMap.find(ptr);
+            if (it != m_AllocMap.end()) {
+                auto *stats = GetModuleStats(it->second.module_index);
+                stats->total_allocated.fetch_sub(it->second.size, std::memory_order_relaxed);
+                stats->free_count.fetch_add(1, std::memory_order_relaxed);
+                stats->active_alloc_count.fetch_sub(1, std::memory_order_relaxed);
+                m_AllocMap.erase(it);
+            }
+        }
+        Free(ptr);
+    }
+
+    void *MemoryManager::CallocTracked(size_t count, size_t sz, void *caller) {
+        void *ptr = Calloc(count, sz);
+        if (!ptr || !m_PerModuleEnabled.load(std::memory_order_acquire)) return ptr;
+        size_t total = count * sz;
+        int idx = ResolveModuleIndex(caller);
+        auto *stats = GetModuleStats(idx);
+        stats->total_allocated.fetch_add(total, std::memory_order_relaxed);
+        stats->alloc_count.fetch_add(1, std::memory_order_relaxed);
+        stats->active_alloc_count.fetch_add(1, std::memory_order_relaxed);
+        uint64_t current = stats->total_allocated.load(std::memory_order_relaxed);
+        uint64_t peak = stats->peak_allocated.load(std::memory_order_relaxed);
+        while (current > peak &&
+               !stats->peak_allocated.compare_exchange_weak(peak, current,
+                   std::memory_order_relaxed)) {}
+        { std::lock_guard lock(m_AllocMapMutex); m_AllocMap[ptr] = {idx, total}; }
+        return ptr;
+    }
+
+    void *MemoryManager::ReallocTracked(void *ptr, size_t old_size, size_t new_size, void *caller) {
+        // Remove old tracking
+        if (ptr && m_PerModuleEnabled.load(std::memory_order_acquire)) {
+            std::lock_guard lock(m_AllocMapMutex);
+            m_AllocMap.erase(ptr);
+        }
+        void *new_ptr = Realloc(ptr, old_size, new_size);
+        if (new_ptr && m_PerModuleEnabled.load(std::memory_order_acquire)) {
+            int idx = ResolveModuleIndex(caller);
+            auto *stats = GetModuleStats(idx);
+            if (ptr) {
+                stats->total_allocated.fetch_sub(old_size, std::memory_order_relaxed);
+            }
+            stats->total_allocated.fetch_add(new_size, std::memory_order_relaxed);
+            if (!ptr) {
+                stats->alloc_count.fetch_add(1, std::memory_order_relaxed);
+                stats->active_alloc_count.fetch_add(1, std::memory_order_relaxed);
+            }
+            uint64_t current = stats->total_allocated.load(std::memory_order_relaxed);
+            uint64_t peak = stats->peak_allocated.load(std::memory_order_relaxed);
+            while (current > peak &&
+                   !stats->peak_allocated.compare_exchange_weak(peak, current,
+                       std::memory_order_relaxed)) {}
+            { std::lock_guard lock(m_AllocMapMutex); m_AllocMap[new_ptr] = {idx, new_size}; }
+        }
+        return new_ptr;
+    }
+
+    void *MemoryManager::AllocAlignedTracked(size_t size, size_t alignment, void *caller) {
+        void *ptr = AllocAligned(size, alignment);
+        if (!ptr || !m_PerModuleEnabled.load(std::memory_order_acquire)) return ptr;
+        int idx = ResolveModuleIndex(caller);
+        auto *stats = GetModuleStats(idx);
+        stats->total_allocated.fetch_add(size, std::memory_order_relaxed);
+        stats->alloc_count.fetch_add(1, std::memory_order_relaxed);
+        stats->active_alloc_count.fetch_add(1, std::memory_order_relaxed);
+        uint64_t current = stats->total_allocated.load(std::memory_order_relaxed);
+        uint64_t peak = stats->peak_allocated.load(std::memory_order_relaxed);
+        while (current > peak &&
+               !stats->peak_allocated.compare_exchange_weak(peak, current,
+                   std::memory_order_relaxed)) {}
+        { std::lock_guard lock(m_AllocMapMutex); m_AllocMap[ptr] = {idx, size}; }
+        return ptr;
+    }
+
+    void MemoryManager::FreeAlignedTracked(void *ptr, void *caller) {
+        if (!ptr) return;
+        if (m_PerModuleEnabled.load(std::memory_order_acquire)) {
+            std::lock_guard lock(m_AllocMapMutex);
+            auto it = m_AllocMap.find(ptr);
+            if (it != m_AllocMap.end()) {
+                auto *stats = GetModuleStats(it->second.module_index);
+                stats->total_allocated.fetch_sub(it->second.size, std::memory_order_relaxed);
+                stats->free_count.fetch_add(1, std::memory_order_relaxed);
+                stats->active_alloc_count.fetch_sub(1, std::memory_order_relaxed);
+                m_AllocMap.erase(it);
+            }
+        }
+        FreeAligned(ptr);
+    }
+
+    std::vector<ModuleMemorySnapshot> MemoryManager::GetPerModuleStats() const {
+        std::vector<ModuleMemorySnapshot> result;
+        std::lock_guard lock(m_RangeMutex);
+        auto snap = [](const PerModuleStats *s) -> ModuleMemorySnapshot {
+            return {s->module_id,
+                    s->total_allocated.load(std::memory_order_relaxed),
+                    s->peak_allocated.load(std::memory_order_relaxed),
+                    s->alloc_count.load(std::memory_order_relaxed),
+                    s->free_count.load(std::memory_order_relaxed),
+                    s->active_alloc_count.load(std::memory_order_relaxed)};
+        };
+        for (const auto &s : m_PerModuleStats) result.push_back(snap(s.get()));
+        if (m_CoreStats) result.push_back(snap(m_CoreStats.get()));
+        return result;
+    }
+
+    BML_Result MemoryManager::EnumerateModuleMemory(BML_EnumerateModuleMemoryFn cb, void *ud) {
+        if (!cb) return BML_RESULT_INVALID_ARGUMENT;
+
+        auto emit = [&](const PerModuleStats *s) {
+            BML_ModuleMemoryStats out = BML_MODULE_MEMORY_STATS_INIT;
+            out.module_id = s->module_id.c_str();
+            out.total_allocated = s->total_allocated.load(std::memory_order_relaxed);
+            out.peak_allocated = s->peak_allocated.load(std::memory_order_relaxed);
+            out.alloc_count = s->alloc_count.load(std::memory_order_relaxed);
+            out.free_count = s->free_count.load(std::memory_order_relaxed);
+            out.active_alloc_count = s->active_alloc_count.load(std::memory_order_relaxed);
+            cb(&out, ud);
+        };
+
+        std::lock_guard lock(m_RangeMutex);
+        for (const auto &s : m_PerModuleStats) emit(s.get());
+        if (m_CoreStats) emit(m_CoreStats.get());
+        return BML_RESULT_OK;
+    }
+
 #if defined(BML_TEST)
     void MemoryManager::ResetStatsForTesting() {
         m_TotalAllocated.store(0, std::memory_order_relaxed);

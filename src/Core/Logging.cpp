@@ -50,6 +50,19 @@ namespace BML::Core {
         std::mutex g_LogSinkDrainMutex;
         std::condition_variable g_LogSinkDrainCv;
 
+        struct LogListener {
+            BML_Mod owner;
+            BML_LogListenerFn callback;
+            void *user_data;
+        };
+
+        std::shared_mutex g_LogListenersMutex;
+        std::vector<LogListener> g_LogListeners;
+        thread_local bool g_InListenerDispatch = false;
+        std::atomic<uint32_t> g_ActiveListenerDispatches{0};
+        std::mutex g_ListenerDrainMutex;
+        std::condition_variable g_ListenerDrainCv;
+
         const char *SeverityToString(BML_LogSeverity level) {
             switch (level) {
             case BML_LOG_TRACE:
@@ -160,6 +173,68 @@ namespace BML::Core {
 #ifndef NDEBUG
             OutputDebugStringA(debugLine.c_str());
 #endif
+        }
+
+        void DispatchToListeners(BML_Context bml_ctx,
+                                 BML_Mod_T *mod,
+                                 BML_LogSeverity level,
+                                 const char *tag,
+                                 const std::string &body,
+                                 const std::string &formatted) {
+            // Prevent recursive dispatch
+            if (g_InListenerDispatch) {
+                return;
+            }
+
+            // Take a snapshot of listeners under read lock
+            std::vector<LogListener> listeners;
+            {
+                std::shared_lock lock(g_LogListenersMutex);
+                if (g_LogListeners.empty()) {
+                    return;
+                }
+                listeners = g_LogListeners;
+                g_ActiveListenerDispatches.fetch_add(1, std::memory_order_acq_rel);
+            }
+
+            // Build message info
+            BML_LogMessageInfo info{};
+            info.struct_size = sizeof(BML_LogMessageInfo);
+            info.api_version = bmlGetApiVersion();
+            info.mod = mod;
+            info.mod_id = mod ? mod->id.c_str() : nullptr;
+            info.severity = level;
+            info.tag = tag;
+            info.message = body.c_str();
+            info.formatted_line = formatted.c_str();
+
+            // Dispatch to all listeners with exception isolation
+            g_InListenerDispatch = true;
+            for (const auto &listener : listeners) {
+                try {
+                    listener.callback(bml_ctx, &info, listener.user_data);
+                } catch (const std::exception &ex) {
+#ifndef NDEBUG
+                    std::string msg = "[BML Logging] Listener exception: ";
+                    msg += ex.what();
+                    msg += "\n";
+                    OutputDebugStringA(msg.c_str());
+#else
+                    (void)ex;
+#endif
+                } catch (...) {
+#ifndef NDEBUG
+                    OutputDebugStringA("[BML Logging] Listener threw unknown exception\n");
+#endif
+                }
+            }
+            g_InListenerDispatch = false;
+
+            // Signal drain condition if this was the last dispatch
+            if (g_ActiveListenerDispatches.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+                std::lock_guard<std::mutex> lock(g_ListenerDrainMutex);
+                g_ListenerDrainCv.notify_all();
+            }
         }
 
         bool TryDispatchOverride(BML_Context bml_ctx,
@@ -306,8 +381,12 @@ namespace BML::Core {
 
             std::string body = FormatBody(fmt, args);
             std::string line = BuildLine(mod, level, tag, body);
-            if (TryDispatchOverride(bml_ctx ? bml_ctx : (context ? context->GetHandle() : nullptr),
-                                    mod, level, tag, body, line))
+            BML_Context ctx_handle = bml_ctx ? bml_ctx : (context ? context->GetHandle() : nullptr);
+
+            // Dispatch to listeners first (always fires, independent of override)
+            DispatchToListeners(ctx_handle, mod, level, tag, body, line);
+
+            if (TryDispatchOverride(ctx_handle, mod, level, tag, body, line))
                 return;
             WriteLineLocked(mod, line);
         }
@@ -429,6 +508,68 @@ namespace BML::Core {
             }
         }
         return BML_RESULT_OK;
+    }
+
+    BML_Result AddLogListener(BML_Mod owner, BML_LogListenerFn listener, void *user_data) {
+        if (!listener) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+
+        LogListener entry{owner, listener, user_data};
+        std::unique_lock lock(g_LogListenersMutex);
+        g_LogListeners.push_back(entry);
+        return BML_RESULT_OK;
+    }
+
+    BML_Result RemoveLogListener(BML_Mod owner, BML_LogListenerFn listener) {
+        if (!listener) {
+            return BML_RESULT_INVALID_ARGUMENT;
+        }
+
+        {
+            std::unique_lock lock(g_LogListenersMutex);
+            auto it = std::find_if(g_LogListeners.begin(), g_LogListeners.end(),
+                                   [owner, listener](const LogListener &l) {
+                                       return l.owner == owner && l.callback == listener;
+                                   });
+            if (it == g_LogListeners.end()) {
+                return BML_RESULT_NOT_FOUND;
+            }
+            g_LogListeners.erase(it);
+        }
+
+        // Wait for all active dispatches to complete
+        std::unique_lock<std::mutex> drain_lock(g_ListenerDrainMutex);
+        g_ListenerDrainCv.wait(drain_lock, [] {
+            return g_ActiveListenerDispatches.load(std::memory_order_acquire) == 0;
+        });
+
+        return BML_RESULT_OK;
+    }
+
+    void ClearAllLogListeners() {
+        std::unique_lock lock(g_LogListenersMutex);
+        g_LogListeners.clear();
+    }
+
+    void RemoveLogListenersForModule(BML_Mod owner) {
+        if (!owner) {
+            return;
+        }
+
+        {
+            std::unique_lock lock(g_LogListenersMutex);
+            g_LogListeners.erase(
+                std::remove_if(g_LogListeners.begin(), g_LogListeners.end(),
+                               [owner](const LogListener &l) { return l.owner == owner; }),
+                g_LogListeners.end());
+        }
+
+        // Wait for all active dispatches to complete
+        std::unique_lock<std::mutex> drain_lock(g_ListenerDrainMutex);
+        g_ListenerDrainCv.wait(drain_lock, [] {
+            return g_ActiveListenerDispatches.load(std::memory_order_acquire) == 0;
+        });
     }
 } // namespace BML::Core
 

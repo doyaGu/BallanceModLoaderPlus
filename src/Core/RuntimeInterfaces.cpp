@@ -132,6 +132,16 @@ namespace BML::Core {
             return ImcGetTopicName(*kernel, topic, buffer, buffer_size, out_length);
         }
 
+        BML_Result BML_API_ImcRegisterMessageTap(BML_Mod owner,
+                                                  BML_ImcMessageTap tap,
+                                                  void *user_data) {
+            return ImcRegisterMessageTap(owner, tap, user_data);
+        }
+
+        BML_Result BML_API_ImcUnregisterMessageTap(BML_Mod owner) {
+            return ImcUnregisterMessageTap(owner);
+        }
+
         BML_Result BML_API_ImcCopyState(BML_Context ctx,
                                                BML_TopicId topic,
                                                void *dst,
@@ -221,6 +231,16 @@ namespace BML::Core {
 
         BML_Result BML_API_ClearLogSinkOverride(BML_Mod /*owner*/) {
             return ClearLogSinkOverride();
+        }
+
+        BML_Result BML_API_AddLogListener(BML_Mod owner,
+                                          BML_LogListenerFn listener,
+                                          void *user_data) {
+            return AddLogListener(owner, listener, user_data);
+        }
+
+        BML_Result BML_API_RemoveLogListener(BML_Mod owner, BML_LogListenerFn listener) {
+            return RemoveLogListener(owner, listener);
         }
 
         BML_Result BML_API_GetLastError(BML_Context ctx, BML_ErrorInfo *out_error) {
@@ -902,6 +922,8 @@ namespace BML::Core {
             ResolveRawApi<PFN_BML_SetLogFilter>(kernel, "bmlSetLogFilter"),
             BML_API_RegisterLogSinkOverride,
             BML_API_ClearLogSinkOverride,
+            BML_API_AddLogListener,
+            BML_API_RemoveLogListener,
         };
 
         hub.m_ConfigInterface = {
@@ -1018,6 +1040,8 @@ namespace BML::Core {
             BML_API_ImcResetStats,
             BML_API_ImcGetTopicInfo,
             BML_API_ImcGetTopicName,
+            BML_API_ImcRegisterMessageTap,
+            BML_API_ImcUnregisterMessageTap,
         };
 
         hub.m_ImcRpcInterface = {

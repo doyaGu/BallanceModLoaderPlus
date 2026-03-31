@@ -404,6 +404,68 @@ typedef BML_Result (*PFN_BML_ImcGetTopicName)(BML_Context ctx,
                                               size_t *out_length);
 
 /* ========================================================================
+ * Message Flow Monitoring APIs
+ * ======================================================================== */
+
+/**
+ * @brief Trace record for a published message.
+ *
+ * Captures metadata about a message at publish time for flow monitoring.
+ */
+typedef struct BML_ImcMessageTrace {
+    BML_TopicId topic;          /**< Topic ID */
+    BML_Mod owner;              /**< Publishing module */
+    uint64_t timestamp_qpc;     /**< QueryPerformanceCounter timestamp */
+    size_t payload_size;        /**< Size of payload in bytes */
+    uint32_t payload_type_id;   /**< Payload type ID */
+    uint32_t priority;          /**< Message priority */
+    uint32_t flags;             /**< Message flags */
+} BML_ImcMessageTrace;
+
+/**
+ * @brief Callback invoked when a message is published.
+ *
+ * Fired from owner-variant publish methods (Publish/PublishEx/PublishBuffer/
+ * PublishInterceptable/PublishState) after validation but before dispatch.
+ * Not invoked for internal publishes or non-owner variants.
+ *
+ * @param[in] trace    Trace record with message metadata
+ * @param[in] user_data Opaque pointer provided at registration
+ *
+ * @threadsafe Yes (invoked from publish path)
+ * @warning Must be fast and non-blocking. Do not call IMC Pump from tap.
+ */
+typedef void (*BML_ImcMessageTap)(const BML_ImcMessageTrace *trace, void *user_data);
+
+/**
+ * @brief Register a message tap for flow monitoring.
+ *
+ * Only one tap can be active at a time. Overwrites any previous tap.
+ * Use for DevTools, debuggers, or telemetry systems.
+ *
+ * @param[in] owner     Module handle (owner of tap)
+ * @param[in] tap       Tap callback (NULL to unregister)
+ * @param[in] user_data Opaque pointer passed to tap
+ * @return BML_RESULT_OK on success
+ *
+ * @threadsafe Yes
+ */
+typedef BML_Result (*PFN_BML_ImcRegisterMessageTap)(BML_Mod owner,
+                                                     BML_ImcMessageTap tap,
+                                                     void *user_data);
+
+/**
+ * @brief Unregister the current message tap.
+ *
+ * @param[in] owner Module handle (must match registration owner)
+ * @return BML_RESULT_OK on success
+ * @return BML_RESULT_NOT_FOUND if no tap registered or owner mismatch
+ *
+ * @threadsafe Yes
+ */
+typedef BML_Result (*PFN_BML_ImcUnregisterMessageTap)(BML_Mod owner);
+
+/* ========================================================================
  * Bus Interface Vtable
  * ======================================================================== */
 
@@ -431,6 +493,8 @@ typedef struct BML_ImcBusInterface {
     PFN_BML_ImcResetStats ResetStats;
     PFN_BML_ImcGetTopicInfo GetTopicInfo;
     PFN_BML_ImcGetTopicName GetTopicName;
+    PFN_BML_ImcRegisterMessageTap RegisterMessageTap;
+    PFN_BML_ImcUnregisterMessageTap UnregisterMessageTap;
 } BML_ImcBusInterface;
 
 BML_END_CDECLS

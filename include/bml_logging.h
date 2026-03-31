@@ -56,6 +56,16 @@ typedef void (*BML_LogSinkDispatchFn)(BML_Context ctx, const BML_LogMessageInfo 
 typedef void (*BML_LogSinkShutdownFn)(void *user_data);
 
 /**
+ * @brief Log listener callback type (non-exclusive, multiple allowed)
+ * @param ctx BML context
+ * @param info Log message information
+ * @param user_data User-provided context from registration
+ * @note This callback is invoked for every log message, independent of sink override.
+ *       The callback should be fast and avoid blocking operations.
+ */
+typedef void (*BML_LogListenerFn)(BML_Context ctx, const BML_LogMessageInfo *info, void *user_data);
+
+/**
  * @brief Flags for log sink override behavior
  */
 typedef enum BML_LogSinkOverrideFlags {
@@ -123,6 +133,30 @@ typedef void (*PFN_BML_LogVa)(BML_Mod owner,
  */
 typedef void (*PFN_BML_SetLogFilter)(BML_Mod owner, BML_LogSeverity minimum_level);
 
+/**
+ * @brief Add a log listener callback
+ * @param owner Module registering the listener
+ * @param listener Callback function to receive log messages
+ * @param user_data User context passed to the callback
+ * @return BML_RESULT_OK on success
+ * @return BML_RESULT_INVALID_ARGUMENT if listener is NULL
+ * @threadsafe Yes
+ */
+typedef BML_Result (*PFN_BML_AddLogListener)(BML_Mod owner,
+                                             BML_LogListenerFn listener,
+                                             void *user_data);
+
+/**
+ * @brief Remove a log listener callback
+ * @param owner Module that registered the listener
+ * @param listener Callback function to remove
+ * @return BML_RESULT_OK on success
+ * @return BML_RESULT_NOT_FOUND if listener was not registered
+ * @threadsafe Yes
+ */
+typedef BML_Result (*PFN_BML_RemoveLogListener)(BML_Mod owner,
+                                                BML_LogListenerFn listener);
+
 typedef enum BML_LogCreateFlags {
     BML_LOG_CREATE_ALLOW_TAGS   = 1u << 0,
     BML_LOG_CREATE_ALLOW_FILTER = 1u << 1,
@@ -155,6 +189,8 @@ typedef struct BML_CoreLoggingInterface {
     PFN_BML_SetLogFilter SetLogFilter;
     PFN_BML_RegisterLogSinkOverride RegisterSinkOverride;
     PFN_BML_ClearLogSinkOverride ClearSinkOverride;
+    PFN_BML_AddLogListener AddLogListener;
+    PFN_BML_RemoveLogListener RemoveLogListener;
 } BML_CoreLoggingInterface;
 
 
