@@ -361,6 +361,28 @@ namespace BML::Core {
         m_DiagCallback = std::move(callback);
     }
 
+#if defined(BML_TEST)
+    void ModuleRuntime::TestHandleHotReloadNotify(const std::string &mod_id, ReloadResult result,
+                                                  unsigned int version, ReloadFailure failure,
+                                                  ReloadRequestKind kind) {
+        HandleHotReloadNotify(mod_id, result, version, failure, kind);
+    }
+
+    void ModuleRuntime::TestBroadcastLifecycleEventForModule(const char *topic,
+                                                             const std::string &mod_id) const {
+        BroadcastLifecycleEventForModule(topic, mod_id);
+    }
+
+    std::vector<std::string> ModuleRuntime::TestGetLifecycleBroadcastTargets(
+            const std::string &mod_id) const {
+        std::vector<std::string> result;
+        for (const auto &module : CollectLifecycleModulesForBroadcast(mod_id)) {
+            result.push_back(module.id);
+        }
+        return result;
+    }
+#endif
+
     bool ModuleRuntime::ReloadModulesInternal(ModuleBootstrapDiagnostics &out_diag) {
         if (m_DiscoveredModsDir.empty()) {
             out_diag.load_error.message = "Hot reload requested before discovery";
@@ -470,6 +492,35 @@ namespace BML::Core {
         }
     }
 
+    void ModuleRuntime::BroadcastLifecycleEventForModule(const char *topic,
+                                                         const std::string &mod_id) const {
+        if (!m_Kernel || mod_id.empty()) {
+            return;
+        }
+
+        auto modules = CollectLifecycleModulesForBroadcast(mod_id);
+        if (!modules.empty()) {
+            BroadcastLifecycleEvent(topic, modules);
+        }
+    }
+
+    std::vector<LoadedModuleSnapshot> ModuleRuntime::CollectLifecycleModulesForBroadcast(
+            const std::string &mod_id) const {
+        std::vector<LoadedModuleSnapshot> result;
+        if (!m_Kernel || mod_id.empty()) {
+            return result;
+        }
+
+        auto snapshot = m_Kernel->context->GetLoadedModuleSnapshot();
+        for (const auto &module : snapshot) {
+            if (module.id == mod_id && module.manifest) {
+                result.push_back(module);
+                break;
+            }
+        }
+        return result;
+    }
+
     void ModuleRuntime::UpdateHotReloadRegistration() {
         if (!m_HotReloadEnabled || !m_HotReloadCoordinator)
             return;
@@ -543,8 +594,9 @@ namespace BML::Core {
 
             m_HotReloadCoordinator->SetNotifyCallback(
                 [this](const std::string &mod_id, ReloadResult result,
-                       unsigned int version, ReloadFailure failure) {
-                    HandleHotReloadNotify(mod_id, result, version, failure);
+                       unsigned int version, ReloadFailure failure,
+                       ReloadRequestKind kind) {
+                    HandleHotReloadNotify(mod_id, result, version, failure, kind);
                 });
 
             m_HotReloadCoordinator->Start();
@@ -580,12 +632,12 @@ namespace BML::Core {
         }
 
         // The ReloadableModuleSlot has already performed the DLL swap
-        // (UnloadCurrent → LoadVersion) including:
+        // (UnloadCurrent -> LoadVersion) including:
         //   - PrepareModuleForDetach gate (checks dependencies)
         //   - DETACH entrypoint call
         //   - CleanupModuleKernelState
         //   - FreeLibrary old DLL
-        //   - CopyDllToTemp → LoadLibrary new DLL
+        //   - CopyDllToTemp -> LoadLibrary new DLL
         //   - ATTACH entrypoint call
         //
         // We just need to synchronize Context's loaded-module record
@@ -605,7 +657,7 @@ namespace BML::Core {
             return false;
         }
 
-        BroadcastLifecycleEvent(BML_TOPIC_SYSTEM_MOD_RELOAD, context.GetLoadedModuleSnapshot());
+        BroadcastLifecycleEventForModule(BML_TOPIC_SYSTEM_MOD_RELOAD, mod_id);
         CoreLog(BML_LOG_INFO, kModuleRuntimeLogCategory,
                 "Targeted hot reload of '%s' succeeded (version %u)",
                 mod_id.c_str(), m_HotReloadCoordinator->GetModuleVersion(mod_id));
@@ -613,7 +665,20 @@ namespace BML::Core {
     }
 
     void ModuleRuntime::HandleHotReloadNotify(const std::string &mod_id, ReloadResult result,
-                                              unsigned int version, ReloadFailure failure) {
+                                              unsigned int version, ReloadFailure failure,
+                                              ReloadRequestKind kind) {
+        if (kind == ReloadRequestKind::FullRuntime) {
+            ModuleBootstrapDiagnostics diag;
+            if (ReloadModules(diag)) {
+                CoreLog(BML_LOG_INFO, kModuleRuntimeLogCategory,
+                        "Full hot reload succeeded for '%s'", mod_id.c_str());
+            } else {
+                CoreLog(BML_LOG_ERROR, kModuleRuntimeLogCategory,
+                        "Full hot reload failed for '%s'", mod_id.c_str());
+            }
+            return;
+        }
+
         if (result == ReloadResult::Success) {
             CoreLog(BML_LOG_INFO, kModuleRuntimeLogCategory,
                     "Hot reload notification: mod '%s' version %u, result=%d",
@@ -622,7 +687,7 @@ namespace BML::Core {
             // Try targeted single-module reload first (only updates Context state)
             ModuleBootstrapDiagnostics diag;
             if (ReloadSingleModule(mod_id, diag)) {
-                // Targeted reload succeeded — other modules were not disturbed
+                // Targeted reload succeeded - other modules were not disturbed
             } else {
                 // Fall back to full reload (e.g. module not found, Context sync failed)
                 CoreLog(BML_LOG_WARN, kModuleRuntimeLogCategory,

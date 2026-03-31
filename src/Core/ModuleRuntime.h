@@ -51,16 +51,28 @@ namespace BML::Core {
 
         void SetDiagnosticsCallback(std::function<void(const ModuleBootstrapDiagnostics &)> callback);
 
+#if defined(BML_TEST)
+        void TestHandleHotReloadNotify(const std::string &mod_id, ReloadResult result,
+                                       unsigned int version, ReloadFailure failure,
+                                       ReloadRequestKind kind);
+        void TestBroadcastLifecycleEventForModule(const char *topic, const std::string &mod_id) const;
+        std::vector<std::string> TestGetLifecycleBroadcastTargets(const std::string &mod_id) const;
+#endif
+
     private:
         void FilterDisabledModules(std::vector<ResolvedNode> &order) const;
         void RecordLoadOrder(const std::vector<ResolvedNode> &order, ModuleBootstrapDiagnostics &diag) const;
         bool ReloadModulesInternal(ModuleBootstrapDiagnostics &out_diag);
         void BroadcastLifecycleEvent(const char *topic, const std::vector<LoadedModuleSnapshot> &modules) const;
+        void BroadcastLifecycleEventForModule(const char *topic, const std::string &mod_id) const;
+        std::vector<LoadedModuleSnapshot> CollectLifecycleModulesForBroadcast(
+            const std::string &mod_id) const;
         void UpdateHotReloadRegistration();
         void EnsureHotReloadCoordinator();
         void StopHotReloadCoordinator();
         void HandleHotReloadNotify(const std::string &mod_id, ReloadResult result,
-                                   unsigned int version, ReloadFailure failure);
+                                   unsigned int version, ReloadFailure failure,
+                                   ReloadRequestKind kind);
         bool ReloadSingleModule(const std::string &mod_id, ModuleBootstrapDiagnostics &out_diag);
         bool ShouldEnableHotReload() const;
         std::wstring GetHotReloadTempDirectory() const;
