@@ -864,7 +864,7 @@ void BMLMod::OnEditScript_ExtraLife_Fix(CKBehavior *script) {
 void BMLMod::OnProcess_HUD() {
     // Update builtin timers
     m_FPSCounter.Update(ImGui::GetIO().DeltaTime);
-    m_SRTimer.Update(ImGui::GetIO().DeltaTime);
+    m_SRTimer.Update(m_TimeManager->GetLastDeltaTime());
 
     // Update displays and states
     UpdateCheatState();

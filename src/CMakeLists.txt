@@ -36,6 +36,7 @@ set(BML_PRIVATE_HEADERS
         HUD.h
         FpsCounter.h
         SRTimer.h
+        RealTimer.h
         ModMenu.h
         MapMenu.h
         CommandBar.h
@@ -70,6 +71,7 @@ set(BML_SOURCES
         HUD.cpp
         FpsCounter.cpp
         SRTimer.cpp
+        RealTimer.cpp
         ModMenu.cpp
         MapMenu.cpp
         CommandBar.cpp

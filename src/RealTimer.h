@@ -1,12 +1,13 @@
-#ifndef BML_SRTIMER_H
-#define BML_SRTIMER_H
+#ifndef BML_REALTIMER_H
+#define BML_REALTIMER_H
 
 #include <cstdint>
+#include <chrono>
 
-class SRTimer {
+class RealTimer {
 public:
-    SRTimer() = default;
-    ~SRTimer() = default;
+    RealTimer() = default;
+    ~RealTimer() = default;
 
     void Reset();
     void Start();
@@ -22,12 +23,18 @@ public:
     void ClearDirty() { m_Dirty = false; }
 
 private:
-    double m_Time = 0.0;                  // Accumulated time in milliseconds
+    using Clock = std::chrono::high_resolution_clock;
+    using TimePoint = Clock::time_point;
+    using Duration = std::chrono::nanoseconds;
+
+    TimePoint m_StartTime;
+    Duration m_Accumulated = Duration::zero();
     bool m_Running = false;
     mutable char m_FormattedTime[32] = {};
     mutable bool m_Dirty = true;
 
+    Duration GetElapsed() const;
     void UpdateFormattedTime() const;
 };
 
-#endif // BML_SRTIMER_H
+#endif // BML_REALTIMER_H
