@@ -624,7 +624,14 @@ void MessageBoard::ResizeMessages(int size) {
 
     m_Messages.resize(size);
     m_MessageCount = std::min(m_MessageCount, size);
-    m_DisplayMessageCount = std::min(m_DisplayMessageCount, size);
+
+    // Recount displayed messages since truncation may have removed active-timer entries
+    int displayed = 0;
+    for (int i = 0; i < m_MessageCount; ++i) {
+        if (m_Messages[i].timer > 0.0f)
+            ++displayed;
+    }
+    m_DisplayMessageCount = displayed;
 }
 
 // =============================================================================
