@@ -53,7 +53,7 @@ ModContext::ModContext(CKContext *context) {
 
 ModContext::~ModContext() {
     Shutdown();
-    m_DataShare->Release();
+    if (m_DataShare) m_DataShare->Release();
     g_ModContext = nullptr;
 }
 
@@ -110,6 +110,7 @@ bool ModContext::Init() {
         ShutdownHooks();
         onig_end();
         ShutdownLogger();
+        return false;
     }
 
     SetFlags(BML_INITED);
@@ -558,6 +559,7 @@ bool ModContext::RemoveConfig(Config *config) {
     if (it != m_ConfigMap.end()) {
         SaveConfig(config);
         m_Configs.erase(std::remove(m_Configs.begin(), m_Configs.end(), it->second), m_Configs.end());
+        m_ConfigMap.erase(it);
     }
 
     return true;
@@ -686,6 +688,9 @@ void ModContext::RestoreIC(CKBeObject *obj, bool hierarchy) {
 }
 
 void ModContext::Show(CKBeObject *obj, CK_OBJECT_SHOWOPTION show, bool hierarchy) {
+    if (!obj)
+        return;
+
     obj->Show(show);
 
     if (hierarchy) {
@@ -984,7 +989,7 @@ void ModContext::InitDirectories() {
 
     // Set up temp directory
     ::GetTempPathW(MAX_PATH, path);
-    wcsncat(path, L"BML", MAX_PATH);
+    wcsncat(path, L"BML", MAX_PATH - wcslen(path) - 1);
     m_TempDir = path;
     if (!utils::DirectoryExistsW(m_TempDir)) {
         utils::CreateDirectoryW(m_TempDir);
