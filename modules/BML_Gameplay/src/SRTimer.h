@@ -2,7 +2,6 @@
 #define BML_SRTIMER_H
 
 #include <cstdint>
-#include <chrono>
 
 class SRTimer {
 public:
@@ -13,7 +12,7 @@ public:
     void Start();
     void Pause();
 
-    void Update(float deltaTime);
+    void Update(float deltaTimeMs);
 
     float GetTime() const;
     const char *GetFormattedTime() const;
@@ -23,17 +22,11 @@ public:
     void ClearDirty() { m_Dirty = false; }
 
 private:
-    using Clock = std::chrono::high_resolution_clock;
-    using TimePoint = Clock::time_point;
-    using Duration = std::chrono::nanoseconds;
-
-    TimePoint m_StartTime;
-    Duration m_Accumulated = Duration::zero();
+    double m_Time = 0.0;                  // Accumulated time in milliseconds
     bool m_Running = false;
     mutable char m_FormattedTime[32] = {};
     mutable bool m_Dirty = true;
 
-    Duration GetElapsed() const;
     void UpdateFormattedTime() const;
 };
 

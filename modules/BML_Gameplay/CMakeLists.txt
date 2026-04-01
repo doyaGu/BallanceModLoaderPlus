@@ -4,6 +4,7 @@ bml_add_module(BML_Gameplay
         src/FpsCounter.cpp
         src/GameplayMod.cpp
         src/SRTimer.cpp
+        src/RealTimer.cpp
     MANIFEST mod.toml
     INCLUDE_DIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/src

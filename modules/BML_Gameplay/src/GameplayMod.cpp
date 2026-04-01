@@ -279,7 +279,7 @@ class GameplayMod : public bml::Module {
         }
 
         m_FpsCounter.Update(deltaSeconds);
-        m_SRTimer.Update(deltaSeconds);
+        m_SRTimer.Update(deltaSeconds * 1000.0f);
 
         const float targetAlpha = m_SRTimer.IsRunning() ? 1.0f : 0.5f;
         const float fadeRate = 3.0f * deltaSeconds;
