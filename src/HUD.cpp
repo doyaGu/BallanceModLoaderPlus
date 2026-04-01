@@ -7,6 +7,7 @@
 
 #include "AnsiPalette.h"
 #include "IniFile.h"
+#include "StringUtils.h"
 
 // =============================================================================
 // Animation Implementation
@@ -181,12 +182,23 @@ void HUDElement::ToIni(IniFile &ini, const std::string &section) const {
     }
 }
 
+// Safe numeric parsers — return fallback on malformed input
+static int SafeStoi(const std::string &s, int fallback = 0) {
+    try { return std::stoi(s); } catch (...) { return fallback; }
+}
+static float SafeStof(const std::string &s, float fallback = 0.0f) {
+    try { return std::stof(s); } catch (...) { return fallback; }
+}
+static unsigned long SafeStoul(const std::string &s, unsigned long fallback = 0) {
+    try { return std::stoul(s); } catch (...) { return fallback; }
+}
+
 void HUDElement::FromIni(const IniFile &ini, const std::string &section) {
     SetVisible(ini.GetValue(section, "visible", "true") == "true");
-    SetAnchor(static_cast<AnchorPoint>(std::stoi(ini.GetValue(section, "anchor", "0"))));
+    SetAnchor(static_cast<AnchorPoint>(SafeStoi(ini.GetValue(section, "anchor", "0"))));
 
-    const float offsetX = std::stof(ini.GetValue(section, "offset_x", "0"));
-    const float offsetY = std::stof(ini.GetValue(section, "offset_y", "0"));
+    const float offsetX = SafeStof(ini.GetValue(section, "offset_x", "0"));
+    const float offsetY = SafeStof(ini.GetValue(section, "offset_y", "0"));
     const std::string offsetType = ini.GetValue(section, "offset_type", "pixels");
 
     if (offsetType == "normalized") {
@@ -196,46 +208,52 @@ void HUDElement::FromIni(const IniFile &ini, const std::string &section) {
     }
 
     SetPage(ini.GetValue(section, "page"));
-    SetLocalAlpha(std::stof(ini.GetValue(section, "local_alpha", "1.0")));
+    SetLocalAlpha(SafeStof(ini.GetValue(section, "local_alpha", "1.0"), 1.0f));
 
     if (ini.GetValue(section, "panel_enabled") == "true") {
         EnablePanel(true);
-        SetPanelBgColor(std::stoul(ini.GetValue(section, "panel_bg", std::to_string(m_PanelBg))));
-        SetPanelBorderColor(std::stoul(ini.GetValue(section, "panel_border", std::to_string(m_PanelBorder))));
-        SetPanelPadding(std::stof(ini.GetValue(section, "panel_padding", std::to_string(m_PanelPaddingPx))));
+        SetPanelBgColor(SafeStoul(ini.GetValue(section, "panel_bg", std::to_string(m_PanelBg))));
+        SetPanelBorderColor(SafeStoul(ini.GetValue(section, "panel_border", std::to_string(m_PanelBorder))));
+        SetPanelPadding(SafeStof(ini.GetValue(section, "panel_padding", std::to_string(m_PanelPaddingPx))));
         SetPanelBorderThickness(
-            std::stof(ini.GetValue(section, "panel_border_thickness", std::to_string(m_PanelBorderThickness))));
-        SetPanelRounding(std::stof(ini.GetValue(section, "panel_rounding", std::to_string(m_PanelRounding))));
+            SafeStof(ini.GetValue(section, "panel_border_thickness", std::to_string(m_PanelBorderThickness))));
+        SetPanelRounding(SafeStof(ini.GetValue(section, "panel_rounding", std::to_string(m_PanelRounding))));
     }
+}
+
+ImVec2 HUDElement::ResolveDrawPosition(const ImVec2 &viewportSize) const {
+    const ImVec2 elementSize = GetElementSize(viewportSize);
+    ImVec2 pos = CalculatePosition(elementSize, viewportSize);
+    pos.x = floorf(pos.x + HUDConstants::PIXEL_ROUND_BIAS);
+    pos.y = floorf(pos.y + HUDConstants::PIXEL_ROUND_BIAS);
+    return pos;
+}
+
+void HUDElement::DrawPanel(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &elementSize, float alpha) const {
+    if (!m_DrawPanel || !drawList) return;
+
+    const ImVec2 p0(pos.x - m_PanelPaddingPx, pos.y - m_PanelPaddingPx);
+    const ImVec2 p1(pos.x + elementSize.x + m_PanelPaddingPx, pos.y + elementSize.y + m_PanelPaddingPx);
+
+    auto scaleAlpha = [alpha](ImU32 c) -> ImU32 {
+        const float a = (((c >> 24) & 0xFF) / 255.0f) * std::clamp(alpha, 0.0f, 1.0f);
+        return (c & 0x00FFFFFF) | (static_cast<ImU32>(static_cast<int>(std::roundf(a * 255.0f))) << 24);
+    };
+
+    if ((m_PanelBg >> 24) & 0xFF)
+        drawList->AddRectFilled(p0, p1, scaleAlpha(m_PanelBg), m_PanelRounding);
+    if (m_PanelBorderThickness > 0.0f && ((m_PanelBorder >> 24) & 0xFF))
+        drawList->AddRect(p0, p1, scaleAlpha(m_PanelBorder), m_PanelRounding, 0, m_PanelBorderThickness);
 }
 
 void HUDElement::Draw(ImDrawList *drawList, const ImVec2 &viewportSize) {
     if (!m_Visible || !drawList) return;
+    DrawAt(drawList, ResolveDrawPosition(viewportSize), viewportSize, m_InheritedAlpha * m_LocalAlpha);
+}
 
-    const ImVec2 elementSize = GetElementSize(viewportSize);
-    ImVec2 pos = CalculatePosition(elementSize, viewportSize);
-    pos.x = floorf(pos.x + HUDConstants::PIXEL_SNAP_THRESHOLD);
-    pos.y = floorf(pos.y + HUDConstants::PIXEL_SNAP_THRESHOLD);
-
-    if (m_DrawPanel) {
-        const ImVec2 pad(m_PanelPaddingPx, m_PanelPaddingPx);
-        const ImVec2 p0 = ImVec2(pos.x - pad.x, pos.y - pad.y);
-        const ImVec2 p1 = ImVec2(pos.x + elementSize.x + pad.x, pos.y + elementSize.y + pad.y);
-
-        auto scaleAlpha = [&](ImU32 c) -> ImU32 {
-            const float a = ((((c >> 24) & 0xFF) / 255.0f) *
-                std::clamp(m_InheritedAlpha * m_LocalAlpha, 0.0f, 1.0f));
-            const int ai = static_cast<int>(std::roundf(a * 255.0f));
-            return (c & 0x00FFFFFF) | (static_cast<ImU32>(ai) << 24);
-        };
-
-        if ((m_PanelBg >> 24) & 0xFF) {
-            drawList->AddRectFilled(p0, p1, scaleAlpha(m_PanelBg), m_PanelRounding);
-        }
-        if (m_PanelBorderThickness > 0.0f && ((m_PanelBorder >> 24) & 0xFF)) {
-            drawList->AddRect(p0, p1, scaleAlpha(m_PanelBorder), m_PanelRounding, 0, m_PanelBorderThickness);
-        }
-    }
+void HUDElement::DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha) {
+    if (!drawList) return;
+    DrawPanel(drawList, pos, GetElementSize(viewportSize), alpha);
 }
 
 ImVec2 HUDElement::CalculatePosition(const ImVec2 &elementSize, const ImVec2 &viewportSize) const {
@@ -350,14 +368,19 @@ void HUDText::ToIni(IniFile &ini, const std::string &section) const {
 void HUDText::FromIni(const IniFile &ini, const std::string &section) {
     HUDElement::FromIni(ini, section);
     SetText(ini.GetValue(section, "text").c_str());
-    SetScale(std::stof(ini.GetValue(section, "scale", std::to_string(m_Scale))));
-    SetWrapWidthPx(std::stof(ini.GetValue(section, "wrap_width_px", std::to_string(m_WrapWidthPx))));
-    SetWrapWidthFrac(std::stof(ini.GetValue(section, "wrap_width_frac", std::to_string(m_WrapWidthFrac))));
-    SetTabColumns(std::stoi(ini.GetValue(section, "tab_columns", std::to_string(m_TabColumns))));
+    SetScale(SafeStof(ini.GetValue(section, "scale", std::to_string(m_Scale)), m_Scale));
+    SetWrapWidthPx(SafeStof(ini.GetValue(section, "wrap_width_px", std::to_string(m_WrapWidthPx)), m_WrapWidthPx));
+    SetWrapWidthFrac(SafeStof(ini.GetValue(section, "wrap_width_frac", std::to_string(m_WrapWidthFrac)), m_WrapWidthFrac));
+    SetTabColumns(SafeStoi(ini.GetValue(section, "tab_columns", std::to_string(m_TabColumns)), m_TabColumns));
 }
 
-void HUDText::Draw(ImDrawList* drawList, const ImVec2& viewportSize) {
+void HUDText::Draw(ImDrawList *drawList, const ImVec2 &viewportSize) {
     if (!m_Visible || m_AnsiText.IsEmpty() || !drawList) return;
+    DrawAt(drawList, ResolveDrawPosition(viewportSize), viewportSize, m_InheritedAlpha * m_LocalAlpha);
+}
+
+void HUDText::DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha) {
+    if (!drawList || m_AnsiText.IsEmpty()) return;
 
     const float fontSize = ImGui::GetFontSize() * m_Scale;
     if (fontSize <= 0.0f) return;
@@ -365,28 +388,13 @@ void HUDText::Draw(ImDrawList* drawList, const ImVec2& viewportSize) {
     const float wrapWidth = ResolveWrapWidth(viewportSize);
     const ImVec2 textSize = CalculateAnsiTextSize(viewportSize);
 
-    const bool hasWrap = (wrapWidth != FLT_MAX && wrapWidth > 0.0f);
-    const float boxWidth = hasWrap ? wrapWidth : textSize.x;
-
-    // Anchor against the box so panel/anchor stay stable
-    const ImVec2 boxSize(boxWidth, textSize.y);
-    ImVec2 pos = CalculatePosition(boxSize, viewportSize);
-
-    // Pixel snap
-    pos.x = floorf(pos.x + HUDConstants::PIXEL_SNAP_THRESHOLD);
-    pos.y = floorf(pos.y + HUDConstants::PIXEL_SNAP_THRESHOLD);
-
-    // Draw panel FIRST
-    HUDElement::Draw(drawList, viewportSize);
-
-    // Effective alpha
-    const float alpha = std::clamp(m_InheritedAlpha, 0.0f, 1.0f) * std::clamp(m_LocalAlpha, 0.0f, 1.0f);
+    DrawPanel(drawList, pos, textSize, alpha);
 
     AnsiText::TextOptions drawOptions;
     drawOptions.font = ImGui::GetFont();
     drawOptions.fontSize = fontSize;
     drawOptions.wrapWidth = wrapWidth;
-    drawOptions.alpha = alpha;
+    drawOptions.alpha = std::clamp(alpha, 0.0f, 1.0f);
     drawOptions.tabColumns = m_TabColumns;
     AnsiText::Renderer::DrawText(drawList, m_AnsiText, pos, drawOptions);
 }
@@ -443,24 +451,19 @@ HUDImage::HUDImage(ImTextureID texture, float width, float height)
 
 void HUDImage::Draw(ImDrawList *drawList, const ImVec2 &viewportSize) {
     if (!m_Visible || !drawList || !m_Texture) return;
+    DrawAt(drawList, ResolveDrawPosition(viewportSize), viewportSize, m_InheritedAlpha * m_LocalAlpha);
+}
+
+void HUDImage::DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha) {
+    if (!drawList || !m_Texture) return;
 
     const ImVec2 elementSize = GetElementSize(viewportSize);
-    ImVec2 pos = CalculatePosition(elementSize, viewportSize);
-    pos.x = floorf(pos.x + HUDConstants::PIXEL_SNAP_THRESHOLD);
-    pos.y = floorf(pos.y + HUDConstants::PIXEL_SNAP_THRESHOLD);
+    DrawPanel(drawList, pos, elementSize, alpha);
 
-    // Apply alpha
-    ImU32 tintWithAlpha = m_Tint;
-    float alpha = (((tintWithAlpha >> 24) & 0xFF) / 255.0f) *
-        std::clamp(m_InheritedAlpha * m_LocalAlpha, 0.0f, 1.0f);
-    int ai = static_cast<int>(std::roundf(alpha * 255.0f));
-    tintWithAlpha = (tintWithAlpha & 0x00FFFFFF) | (static_cast<ImU32>(ai) << 24);
-
-    // Draw panel if enabled
-    HUDElement::Draw(drawList, viewportSize);
-
+    const float a = (((m_Tint >> 24) & 0xFF) / 255.0f) * std::clamp(alpha, 0.0f, 1.0f);
+    const ImU32 tint = (m_Tint & 0x00FFFFFF) | (static_cast<ImU32>(static_cast<int>(std::roundf(a * 255.0f))) << 24);
     drawList->AddImage(m_Texture, pos, ImVec2(pos.x + elementSize.x, pos.y + elementSize.y),
-                       ImVec2(0, 0), ImVec2(1, 1), tintWithAlpha);
+                       ImVec2(0, 0), ImVec2(1, 1), tint);
 }
 
 ImVec2 HUDImage::GetElementSize(const ImVec2 &viewportSize) const {
@@ -477,9 +480,9 @@ void HUDImage::ToIni(IniFile &ini, const std::string &section) const {
 
 void HUDImage::FromIni(const IniFile &ini, const std::string &section) {
     HUDElement::FromIni(ini, section);
-    SetSize(std::stof(ini.GetValue(section, "width", std::to_string(m_Width))),
-            std::stof(ini.GetValue(section, "height", std::to_string(m_Height))));
-    SetTint(std::stoul(ini.GetValue(section, "tint", std::to_string(m_Tint))));
+    SetSize(SafeStof(ini.GetValue(section, "width", std::to_string(m_Width)), m_Width),
+            SafeStof(ini.GetValue(section, "height", std::to_string(m_Height)), m_Height));
+    SetTint(SafeStoul(ini.GetValue(section, "tint", std::to_string(m_Tint)), m_Tint));
 }
 
 // HUDProgressBar Implementation
@@ -488,31 +491,26 @@ HUDProgressBar::HUDProgressBar(float width, float height)
 
 void HUDProgressBar::Draw(ImDrawList *drawList, const ImVec2 &viewportSize) {
     if (!m_Visible || !drawList) return;
+    DrawAt(drawList, ResolveDrawPosition(viewportSize), viewportSize, m_InheritedAlpha * m_LocalAlpha);
+}
+
+void HUDProgressBar::DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha) {
+    if (!drawList) return;
 
     const ImVec2 elementSize = GetElementSize(viewportSize);
-    ImVec2 pos = CalculatePosition(elementSize, viewportSize);
-    pos.x = floorf(pos.x + HUDConstants::PIXEL_SNAP_THRESHOLD);
-    pos.y = floorf(pos.y + HUDConstants::PIXEL_SNAP_THRESHOLD);
+    DrawPanel(drawList, pos, elementSize, alpha);
 
-    // Apply alpha
-    auto scaleAlpha = [&](ImU32 c) -> ImU32 {
-        const float a = ((((c >> 24) & 0xFF) / 255.0f) *
-            std::clamp(m_InheritedAlpha * m_LocalAlpha, 0.0f, 1.0f));
-        const int ai = static_cast<int>(std::roundf(a * 255.0f));
-        return (c & 0x00FFFFFF) | (static_cast<ImU32>(ai) << 24);
+    auto scaleAlpha = [alpha](ImU32 c) -> ImU32 {
+        const float a = (((c >> 24) & 0xFF) / 255.0f) * std::clamp(alpha, 0.0f, 1.0f);
+        return (c & 0x00FFFFFF) | (static_cast<ImU32>(static_cast<int>(std::roundf(a * 255.0f))) << 24);
     };
 
-    // Draw panel if enabled
-    HUDElement::Draw(drawList, viewportSize);
-
-    // Draw background
-    const ImVec2 p1 = ImVec2(pos.x + elementSize.x, pos.y + elementSize.y);
+    const ImVec2 p1(pos.x + elementSize.x, pos.y + elementSize.y);
     drawList->AddRectFilled(pos, p1, scaleAlpha(m_BgColor));
 
-    // Draw fill
     const float progress = GetProgress();
     if (progress > 0.0f) {
-        ImVec2 fillEnd = ImVec2(pos.x + elementSize.x * progress, pos.y + elementSize.y);
+        const ImVec2 fillEnd(pos.x + elementSize.x * progress, pos.y + elementSize.y);
         drawList->AddRectFilled(pos, fillEnd, scaleAlpha(m_FillColor));
     }
 }
@@ -535,13 +533,13 @@ void HUDProgressBar::ToIni(IniFile &ini, const std::string &section) const {
 
 void HUDProgressBar::FromIni(const IniFile &ini, const std::string &section) {
     HUDElement::FromIni(ini, section);
-    SetSize(std::stof(ini.GetValue(section, "width", std::to_string(m_Width))),
-            std::stof(ini.GetValue(section, "height", std::to_string(m_Height))));
-    SetRange(std::stof(ini.GetValue(section, "min", std::to_string(m_Min))),
-             std::stof(ini.GetValue(section, "max", std::to_string(m_Max))));
-    SetValue(std::stof(ini.GetValue(section, "value", std::to_string(m_Value))));
-    SetColors(std::stoul(ini.GetValue(section, "bg_color", std::to_string(m_BgColor))),
-              std::stoul(ini.GetValue(section, "fill_color", std::to_string(m_FillColor))));
+    SetSize(SafeStof(ini.GetValue(section, "width", std::to_string(m_Width)), m_Width),
+            SafeStof(ini.GetValue(section, "height", std::to_string(m_Height)), m_Height));
+    SetRange(SafeStof(ini.GetValue(section, "min", std::to_string(m_Min)), m_Min),
+             SafeStof(ini.GetValue(section, "max", std::to_string(m_Max)), m_Max));
+    SetValue(SafeStof(ini.GetValue(section, "value", std::to_string(m_Value)), m_Value));
+    SetColors(SafeStoul(ini.GetValue(section, "bg_color", std::to_string(m_BgColor)), m_BgColor),
+              SafeStoul(ini.GetValue(section, "fill_color", std::to_string(m_FillColor)), m_FillColor));
 }
 
 // HUDSpacer Implementation
@@ -747,81 +745,68 @@ void HUDContainer::ToIni(IniFile &ini, const std::string &section) const {
 
 void HUDContainer::FromIni(const IniFile &ini, const std::string &section) {
     HUDElement::FromIni(ini, section);
-    m_Kind = static_cast<HUDLayoutKind>(std::stoi(ini.GetValue(section, "layout_kind", "0")));
-    SetGridCols(std::stoi(ini.GetValue(section, "grid_cols", std::to_string(m_GridCols))));
-    SetSpacing(std::stof(ini.GetValue(section, "spacing", std::to_string(m_SpacingPx))));
-    SetAlignX(static_cast<AlignX>(std::stoi(ini.GetValue(section, "align_x", "0"))));
-    SetAlignY(static_cast<AlignY>(std::stoi(ini.GetValue(section, "align_y", "0"))));
-    SetCellAlignX(static_cast<AlignX>(std::stoi(ini.GetValue(section, "cell_align_x", "0"))));
-    SetCellAlignY(static_cast<AlignY>(std::stoi(ini.GetValue(section, "cell_align_y", "0"))));
+    m_Kind = static_cast<HUDLayoutKind>(SafeStoi(ini.GetValue(section, "layout_kind", "0")));
+    SetGridCols(SafeStoi(ini.GetValue(section, "grid_cols", std::to_string(m_GridCols)), m_GridCols));
+    SetSpacing(SafeStof(ini.GetValue(section, "spacing", std::to_string(m_SpacingPx)), m_SpacingPx));
+    SetAlignX(static_cast<AlignX>(SafeStoi(ini.GetValue(section, "align_x", "0"))));
+    SetAlignY(static_cast<AlignY>(SafeStoi(ini.GetValue(section, "align_y", "0"))));
+    SetCellAlignX(static_cast<AlignX>(SafeStoi(ini.GetValue(section, "cell_align_x", "0"))));
+    SetCellAlignY(static_cast<AlignY>(SafeStoi(ini.GetValue(section, "cell_align_y", "0"))));
 
     if (ini.GetValue(section, "clip_enabled") == "true") {
         EnableClip(true);
-        SetClipPadding(std::stof(ini.GetValue(section, "clip_padding", std::to_string(m_ClipPaddingPx))));
+        SetClipPadding(SafeStof(ini.GetValue(section, "clip_padding", std::to_string(m_ClipPaddingPx)), m_ClipPaddingPx));
     }
 
     if (ini.GetValue(section, "fade_enabled") == "true") {
         EnableFade(true);
-        SetAlpha(std::stof(ini.GetValue(section, "fade_alpha", std::to_string(m_Alpha))));
-        SetFadeTarget(std::stof(ini.GetValue(section, "fade_target", std::to_string(m_FadeTarget))));
-        SetFadeSpeed(std::stof(ini.GetValue(section, "fade_speed", std::to_string(m_FadeSpeed))));
+        SetAlpha(SafeStof(ini.GetValue(section, "fade_alpha", std::to_string(m_Alpha)), m_Alpha));
+        SetFadeTarget(SafeStof(ini.GetValue(section, "fade_target", std::to_string(m_FadeTarget)), m_FadeTarget));
+        SetFadeSpeed(SafeStof(ini.GetValue(section, "fade_speed", std::to_string(m_FadeSpeed)), m_FadeSpeed));
     }
 }
 
 void HUDContainer::Draw(ImDrawList *drawList, const ImVec2 &viewportSize) {
     if (!m_Visible || !drawList) return;
+    DrawAt(drawList, ResolveDrawPosition(viewportSize), viewportSize, m_InheritedAlpha * m_LocalAlpha);
+}
 
-    // Gather visible children
-    struct Item {
-        std::shared_ptr<HUDElement> element;
-        ImVec2 size;
-    };
-    std::vector<Item> items;
-    items.reserve(m_Children.size());
+void HUDContainer::DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha) {
+    if (!drawList) return;
 
+    // Check if any children are visible
+    bool hasVisible = false;
     for (const auto &child : m_Children) {
-        if (child && child->IsVisible()) {
-            items.push_back({child, child->GetElementSize(viewportSize)});
-        }
+        if (child && child->IsVisible()) { hasVisible = true; break; }
     }
+    if (!hasVisible) return;
 
-    if (items.empty()) return;
-
-    const float alphaMul = m_InheritedAlpha * m_LocalAlpha * (m_FadeEnabled ? m_Alpha : 1.0f);
+    const float alphaMul = alpha * (m_FadeEnabled ? m_Alpha : 1.0f);
     const ImVec2 contentSize = CalculateContentSize(viewportSize);
 
-    // Use GetElementSize() which properly accounts for panel padding in anchor calculations
-    ImVec2 origin = CalculatePosition(contentSize, viewportSize);
-    origin.x = floorf(origin.x + HUDConstants::PIXEL_SNAP_THRESHOLD);
-    origin.y = floorf(origin.y + HUDConstants::PIXEL_SNAP_THRESHOLD);
+    DrawPanel(drawList, pos, contentSize, alphaMul);
 
-    // Draw panel if enabled
-    HUDElement::Draw(drawList, viewportSize);
-
-    // Optional clipping
     if (m_ClipEnabled) {
-        const auto clipMin = ImVec2(origin.x - m_ClipPaddingPx, origin.y - m_ClipPaddingPx);
-        const auto clipMax = ImVec2(origin.x + contentSize.x + m_ClipPaddingPx, origin.y + contentSize.y + m_ClipPaddingPx);
+        const ImVec2 clipMin(pos.x - m_ClipPaddingPx, pos.y - m_ClipPaddingPx);
+        const ImVec2 clipMax(pos.x + contentSize.x + m_ClipPaddingPx, pos.y + contentSize.y + m_ClipPaddingPx);
         drawList->PushClipRect(clipMin, clipMax, true);
     }
 
-    // Adjust origin for panel padding if enabled
-    ImVec2 childOrigin = origin;
+    ImVec2 childOrigin = pos;
     if (m_DrawPanel) {
         childOrigin.x += m_PanelPaddingPx;
         childOrigin.y += m_PanelPaddingPx;
     }
 
-    // Layout children based on kind
     switch (m_Kind) {
     case HUDLayoutKind::Vertical:
-        LayoutVertical(drawList, viewportSize, childOrigin, alphaMul);
+        LayoutVertical(drawList, viewportSize, childOrigin, contentSize, alphaMul);
         break;
     case HUDLayoutKind::Horizontal:
-        LayoutHorizontal(drawList, viewportSize, childOrigin, alphaMul);
+        LayoutHorizontal(drawList, viewportSize, childOrigin, contentSize, alphaMul);
         break;
     case HUDLayoutKind::Grid:
-        LayoutGrid(drawList, viewportSize, childOrigin, alphaMul);
+        LayoutGrid(drawList, viewportSize, childOrigin, contentSize, alphaMul);
         break;
     }
 
@@ -907,8 +892,7 @@ ImVec2 HUDContainer::GetElementSize(const ImVec2 &viewportSize) const {
     return CalculateContentSize(viewportSize);
 }
 
-void HUDContainer::LayoutVertical(ImDrawList *drawList, const ImVec2 &viewportSize, const ImVec2 &origin, float alphaMul) {
-    const ImVec2 contentSize = CalculateContentSize(viewportSize);
+void HUDContainer::LayoutVertical(ImDrawList *drawList, const ImVec2 &viewportSize, const ImVec2 &origin, const ImVec2 &contentSize, float alphaMul) {
     float y = origin.y;
 
     for (auto &child : m_Children) {
@@ -920,23 +904,12 @@ void HUDContainer::LayoutVertical(ImDrawList *drawList, const ImVec2 &viewportSi
         if (m_AlignX == AlignX::Center) x += (contentSize.x - childSize.x) * 0.5f;
         else if (m_AlignX == AlignX::Right) x += (contentSize.x - childSize.x);
 
-        const AnchorPoint oldA = child->GetAnchor();
-        const HUDOffset oldOff = child->GetOffset();
-
-        child->SetInheritedAlpha(alphaMul);
-        child->SetAnchor(AnchorPoint::TopLeft);
-        child->SetOffsetPixels(x, y);
-        child->Draw(drawList, viewportSize);
-
-        child->SetAnchor(oldA);
-        child->SetOffset(oldOff);
-
+        child->DrawAt(drawList, ImVec2(x, y), viewportSize, alphaMul);
         y += childSize.y + m_SpacingPx;
     }
 }
 
-void HUDContainer::LayoutHorizontal(ImDrawList *drawList, const ImVec2 &viewportSize, const ImVec2 &origin, float alphaMul) {
-    const ImVec2 contentSize = CalculateContentSize(viewportSize);
+void HUDContainer::LayoutHorizontal(ImDrawList *drawList, const ImVec2 &viewportSize, const ImVec2 &origin, const ImVec2 &contentSize, float alphaMul) {
     float x = origin.x;
 
     for (auto &child : m_Children) {
@@ -948,79 +921,50 @@ void HUDContainer::LayoutHorizontal(ImDrawList *drawList, const ImVec2 &viewport
         if (m_AlignY == AlignY::Middle) y += (contentSize.y - childSize.y) * 0.5f;
         else if (m_AlignY == AlignY::Bottom) y += (contentSize.y - childSize.y);
 
-        const AnchorPoint oldA = child->GetAnchor();
-        const HUDOffset oldOff = child->GetOffset();
-
-        child->SetInheritedAlpha(alphaMul);
-        child->SetAnchor(AnchorPoint::TopLeft);
-        child->SetOffsetPixels(x, y);
-        child->Draw(drawList, viewportSize);
-
-        child->SetAnchor(oldA);
-        child->SetOffset(oldOff);
-
+        child->DrawAt(drawList, ImVec2(x, y), viewportSize, alphaMul);
         x += childSize.x + m_SpacingPx;
     }
 }
 
-void HUDContainer::LayoutGrid(ImDrawList *drawList, const ImVec2 &viewportSize, const ImVec2 &origin, float alphaMul) {
-    std::vector<std::shared_ptr<HUDElement>> visibleChildren;
-    std::vector<ImVec2> childSizes;
+void HUDContainer::LayoutGrid(ImDrawList *drawList, const ImVec2 &viewportSize, const ImVec2 &origin, const ImVec2 &/*contentSize*/, float alphaMul) {
+    // Collect visible children and their sizes (raw pointers to avoid refcount churn)
+    struct Entry { HUDElement *element; ImVec2 size; };
+    std::vector<Entry> entries;
+    entries.reserve(m_Children.size());
 
     for (auto &child : m_Children) {
-        if (child && child->IsVisible()) {
-            visibleChildren.push_back(child);
-            childSizes.push_back(child->GetElementSize(viewportSize));
-        }
+        if (child && child->IsVisible())
+            entries.push_back({child.get(), child->GetElementSize(viewportSize)});
     }
-
-    if (visibleChildren.empty()) return;
+    if (entries.empty()) return;
 
     const int cols = std::max(1, m_GridCols);
-    const int rows = static_cast<int>((visibleChildren.size() + cols - 1) / cols);
+    const int rows = static_cast<int>((entries.size() + cols - 1) / cols);
 
-    // Calculate column widths and row heights
     std::vector<float> colW(cols, 0.0f), rowH(rows, 0.0f);
-    for (int i = 0; i < static_cast<int>(visibleChildren.size()); ++i) {
-        const int c = i % cols;
-        const int r = i / cols;
-        colW[c] = std::max(colW[c], childSizes[i].x);
-        rowH[r] = std::max(rowH[r], childSizes[i].y);
+    for (int i = 0; i < static_cast<int>(entries.size()); ++i) {
+        colW[i % cols] = std::max(colW[i % cols], entries[i].size.x);
+        rowH[i / cols] = std::max(rowH[i / cols], entries[i].size.y);
     }
 
-    // Calculate column and row positions
     std::vector<float> colX(cols, origin.x);
-    for (int c = 1; c < cols; ++c) {
+    for (int c = 1; c < cols; ++c)
         colX[c] = colX[c - 1] + colW[c - 1] + m_SpacingPx;
-    }
 
     std::vector<float> rowY(rows, origin.y);
-    for (int r = 1; r < rows; ++r) {
+    for (int r = 1; r < rows; ++r)
         rowY[r] = rowY[r - 1] + rowH[r - 1] + m_SpacingPx;
-    }
 
-    for (int i = 0; i < static_cast<int>(visibleChildren.size()); ++i) {
-        const int c = i % cols;
-        const int r = i / cols;
-        const ImVec2 childSize = childSizes[i];
+    for (int i = 0; i < static_cast<int>(entries.size()); ++i) {
+        const int c = i % cols, r = i / cols;
         float x = colX[c], y = rowY[r];
 
-        // Cell alignment
-        if (m_CellAlignX == AlignX::Center) x += (colW[c] - childSize.x) * 0.5f;
-        else if (m_CellAlignX == AlignX::Right) x += (colW[c] - childSize.x);
-        if (m_CellAlignY == AlignY::Middle) y += (rowH[r] - childSize.y) * 0.5f;
-        else if (m_CellAlignY == AlignY::Bottom) y += (rowH[r] - childSize.y);
+        if (m_CellAlignX == AlignX::Center) x += (colW[c] - entries[i].size.x) * 0.5f;
+        else if (m_CellAlignX == AlignX::Right) x += (colW[c] - entries[i].size.x);
+        if (m_CellAlignY == AlignY::Middle) y += (rowH[r] - entries[i].size.y) * 0.5f;
+        else if (m_CellAlignY == AlignY::Bottom) y += (rowH[r] - entries[i].size.y);
 
-        const AnchorPoint oldA = visibleChildren[i]->GetAnchor();
-        const HUDOffset oldOff = visibleChildren[i]->GetOffset();
-
-        visibleChildren[i]->SetInheritedAlpha(alphaMul);
-        visibleChildren[i]->SetAnchor(AnchorPoint::TopLeft);
-        visibleChildren[i]->SetOffsetPixels(x, y);
-        visibleChildren[i]->Draw(drawList, viewportSize);
-
-        visibleChildren[i]->SetAnchor(oldA);
-        visibleChildren[i]->SetOffset(oldOff);
+        entries[i].element->DrawAt(drawList, ImVec2(x, y), viewportSize, alphaMul);
     }
 }
 
@@ -1288,12 +1232,12 @@ void HUD::Register(const std::string &id, const std::shared_ptr<HUDElement> &e) 
 bool HUD::SaveLayoutToFile(const std::string &filePath) const {
     IniFile ini;
     SaveLayoutToIni(ini);
-    return ini.WriteToFile(std::wstring(filePath.begin(), filePath.end()));
+    return ini.WriteToFile(utils::Utf8ToUtf16(filePath));
 }
 
 bool HUD::LoadLayoutFromFile(const std::string &filePath) {
     IniFile ini;
-    if (!ini.ParseFromFile(std::wstring(filePath.begin(), filePath.end()))) {
+    if (!ini.ParseFromFile(utils::Utf8ToUtf16(filePath))) {
         return false;
     }
     LoadLayoutFromIni(ini);
@@ -1337,7 +1281,7 @@ void HUD::LoadLayoutFromIni(const IniFile &ini) {
     SetActivePage(ini.GetValue("hud", "active_page"));
 
     // Load elements
-    int elementCount = std::stoi(ini.GetValue("hud", "element_count", "0"));
+    int elementCount = SafeStoi(ini.GetValue("hud", "element_count", "0"));
     for (int i = 0; i < elementCount; i++) {
         std::string elementKey = "element_" + std::to_string(i) + "_name";
         std::string sectionKey = "element_" + std::to_string(i) + "_section";
@@ -1588,7 +1532,7 @@ void HUD::ApplyStyle(HUDElement &e) {
     e.SetAnchor(m_Style.anchor);
     e.SetOffset(m_Style.offset);
 
-    if (auto textElement = HUDCast<HUDText>(std::shared_ptr<HUDElement>(&e, [](HUDElement*){}))) {
+    if (auto *textElement = HUDCast<HUDText>(&e)) {
         textElement->SetScale(m_Style.scale);
         textElement->SetWrapWidthPx(m_Style.wrapWidthPx);
         textElement->SetWrapWidthFrac(m_Style.wrapWidthFrac);

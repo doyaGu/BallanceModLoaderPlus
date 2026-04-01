@@ -16,12 +16,12 @@
 
 // Constants
 namespace HUDConstants {
-    static constexpr float DEFAULT_PANEL_PADDING = 4.0f;
-    static constexpr float DEFAULT_BORDER_THICKNESS = 1.0f;
-    static constexpr float DEFAULT_ROUNDING = 2.0f;
-    static constexpr float MIN_SCALE = 0.1f;
-    static constexpr float MAX_SCALE = 10.0f;
-    static constexpr float PIXEL_SNAP_THRESHOLD = 0.5f;
+    inline constexpr float DEFAULT_PANEL_PADDING = 4.0f;
+    inline constexpr float DEFAULT_BORDER_THICKNESS = 1.0f;
+    inline constexpr float DEFAULT_ROUNDING = 2.0f;
+    inline constexpr float MIN_SCALE = 0.1f;
+    inline constexpr float MAX_SCALE = 10.0f;
+    inline constexpr float PIXEL_ROUND_BIAS = 0.5f;
 }
 
 enum class AnchorPoint {
@@ -200,12 +200,15 @@ public:
 
     // Virtual interface
     virtual void Draw(ImDrawList *drawList, const ImVec2 &viewportSize);
+    virtual void DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha);
     virtual ImVec2 GetElementSize(const ImVec2 &viewportSize) const { return {0, 0}; }
 
     // Position calculation
     ImVec2 CalculatePosition(const ImVec2 &elementSize, const ImVec2 &viewportSize) const;
+    ImVec2 ResolveDrawPosition(const ImVec2 &viewportSize) const;
 
 protected:
+    void DrawPanel(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &elementSize, float alpha) const;
     AnchorPoint m_Anchor = AnchorPoint::TopLeft;
     HUDOffset m_Offset;
     bool m_Visible = true;
@@ -304,6 +307,7 @@ public:
 
     // Override virtual methods
     void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override;
+    void DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha) override;
     ImVec2 GetElementSize(const ImVec2 &viewportSize) const override;
 
 private:
@@ -352,6 +356,7 @@ public:
     void FromIni(const IniFile &ini, const std::string &section) override;
 
     void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override;
+    void DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha) override;
     ImVec2 GetElementSize(const ImVec2 &viewportSize) const override;
 
 private:
@@ -379,6 +384,7 @@ public:
     void FromIni(const IniFile &ini, const std::string &section) override;
 
     void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override;
+    void DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha) override;
     ImVec2 GetElementSize(const ImVec2 &viewportSize) const override;
 
 private:
@@ -402,7 +408,8 @@ public:
     void ToIni(IniFile &ini, const std::string &section) const override;
     void FromIni(const IniFile &ini, const std::string &section) override;
 
-    void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override {} // Invisible
+    void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override {}
+    void DrawAt(ImDrawList *, const ImVec2 &, const ImVec2 &, float) override {}
     ImVec2 GetElementSize(const ImVec2 &viewportSize) const override;
 
 private:
@@ -486,17 +493,6 @@ public:
         }
     }
 
-    // Operator[] overload for easy child access
-    template <typename T = HUDText>
-    std::shared_ptr<T> operator[](const std::string &name) {
-        return GetOrAddChild<T>(name);
-    }
-
-    // Non-template version
-    std::shared_ptr<HUDElement> operator[](const char *name) {
-        return GetOrAddChild<HUDElement>(std::string(name));
-    }
-
     // Advanced child operations
     std::shared_ptr<HUDElement> StealChild(const std::string &name);
     void InsertChild(const std::shared_ptr<HUDElement> &element, const std::string &name);
@@ -561,6 +557,7 @@ public:
 
     // Virtual overrides
     void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override;
+    void DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha) override;
     ImVec2 GetElementSize(const ImVec2 &viewportSize) const override;
     void TickFade(float dt);
 
@@ -589,9 +586,9 @@ private:
 
     // Layout helpers
     ImVec2 CalculateContentSize(const ImVec2 &viewportSize) const;
-    void LayoutVertical(ImDrawList *drawList, const ImVec2 &viewportSize, const ImVec2 &origin, float alphaMul);
-    void LayoutHorizontal(ImDrawList *drawList, const ImVec2 &viewportSize, const ImVec2 &origin, float alphaMul);
-    void LayoutGrid(ImDrawList *drawList, const ImVec2 &viewportSize, const ImVec2 &origin, float alphaMul);
+    void LayoutVertical(ImDrawList *drawList, const ImVec2 &viewportSize, const ImVec2 &origin, const ImVec2 &contentSize, float alphaMul);
+    void LayoutHorizontal(ImDrawList *drawList, const ImVec2 &viewportSize, const ImVec2 &origin, const ImVec2 &contentSize, float alphaMul);
+    void LayoutGrid(ImDrawList *drawList, const ImVec2 &viewportSize, const ImVec2 &origin, const ImVec2 &contentSize, float alphaMul);
     void InvalidateSizeCache() { m_SizeCacheDirty = true; }
 };
 
