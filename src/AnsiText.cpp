@@ -153,26 +153,20 @@ namespace AnsiText {
     }
 
     AnsiString::AnsiString(AnsiString &&other) noexcept {
-        const char *srcBase = other.m_OriginalText.c_str();
-        m_OriginalText = std::move(other.m_OriginalText);
-        m_Segments = std::move(other.m_Segments);
-        m_HasAnsi256BG = other.m_HasAnsi256BG;
-        m_HasTrueColorBG = other.m_HasTrueColorBG;
-        m_HasReverse = other.m_HasReverse;
-        const char *dstBase = m_OriginalText.c_str();
-        RebindSegmentsPointers(srcBase, dstBase);
+        m_OriginalText.swap(other.m_OriginalText);
+        m_Segments.swap(other.m_Segments);
+        std::swap(m_HasAnsi256BG, other.m_HasAnsi256BG);
+        std::swap(m_HasTrueColorBG, other.m_HasTrueColorBG);
+        std::swap(m_HasReverse, other.m_HasReverse);
     }
 
     AnsiString &AnsiString::operator=(AnsiString &&other) noexcept {
         if (this == &other) return *this;
-        const char *srcBase = other.m_OriginalText.c_str();
-        m_OriginalText = std::move(other.m_OriginalText);
-        m_Segments = std::move(other.m_Segments);
-        m_HasAnsi256BG = other.m_HasAnsi256BG;
-        m_HasTrueColorBG = other.m_HasTrueColorBG;
-        m_HasReverse = other.m_HasReverse;
-        const char *dstBase = m_OriginalText.c_str();
-        RebindSegmentsPointers(srcBase, dstBase);
+        m_OriginalText.swap(other.m_OriginalText);
+        m_Segments.swap(other.m_Segments);
+        std::swap(m_HasAnsi256BG, other.m_HasAnsi256BG);
+        std::swap(m_HasTrueColorBG, other.m_HasTrueColorBG);
+        std::swap(m_HasReverse, other.m_HasReverse);
         return *this;
     }
 
@@ -387,7 +381,16 @@ namespace AnsiText {
             skipSep();
             if (p >= e || *p < '0' || *p > '9') return false;
             int v = 0;
-            while (p < e && *p >= '0' && *p <= '9') { v = v * 10 + (*p - '0'); ++p; }
+            while (p < e && *p >= '0' && *p <= '9') {
+                int digit = *p - '0';
+                if (v > (INT_MAX - digit) / 10) {
+                    // Overflow: skip remaining digits and fail
+                    while (p < e && *p >= '0' && *p <= '9') ++p;
+                    return false;
+                }
+                v = v * 10 + digit;
+                ++p;
+            }
             out = v; return true;
         };
 
@@ -701,7 +704,8 @@ namespace AnsiText {
         const ImU32 originalAlpha = (color >> IM_COL32_A_SHIFT) & 0xFF;
         if (originalAlpha == 0) return ImU32(0);
         const ImU32 newAlpha = (ImU32) (std::clamp(alpha, 0.0f, 1.0f) * (float) originalAlpha);
-        return (color & 0x00FFFFFF) | (newAlpha << IM_COL32_A_SHIFT);
+        constexpr ImU32 alphaMask = (ImU32)0xFF << IM_COL32_A_SHIFT;
+        return (color & ~alphaMask) | (newAlpha << IM_COL32_A_SHIFT);
     }
 
     // =============================================================================
@@ -1109,16 +1113,13 @@ namespace AnsiText {
                 }
 
                 // Pass 2: Text and decoration lines
-                bool any_decor = true;
-                if (wrapWidth != FLT_MAX) {
-                    any_decor = false;
-                    for (const auto &sp_check : line.spans) {
-                        const TextSegment *seg_check = sp_check.seg;
-                        if (!seg_check) continue;
-                        if (sp_check.isTab || !(sp_check.b < sp_check.e)) continue;
-                        ConsoleColor rc_check = seg_check->color.GetRendered();
-                        if (rc_check.underline || rc_check.doubleUnderline || rc_check.strikethrough) { any_decor = true; break; }
-                    }
+                bool any_decor = false;
+                for (const auto &sp_check : line.spans) {
+                    const TextSegment *seg_check = sp_check.seg;
+                    if (!seg_check) continue;
+                    if (sp_check.isTab || !(sp_check.b < sp_check.e)) continue;
+                    ConsoleColor rc_check = seg_check->color.GetRendered();
+                    if (rc_check.underline || rc_check.doubleUnderline || rc_check.strikethrough) { any_decor = true; break; }
                 }
                 float x = startPos.x;
                 for (const auto &sp : line.spans) {
