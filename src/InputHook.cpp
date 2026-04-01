@@ -216,13 +216,29 @@ struct InputHook::Impl {
         return CP_CALL_METHOD_PTR(s_InputManager, s_VTable.IsJoystickButtonDown, iJoystick, iButton);
     }
 
+    // Per-slot original function pointers saved by HookVirtualMethod
+    static void *s_OriginalSlots[32];
+    static size_t s_HookedSlotIndices[32];
+    static size_t s_HookedSlotCount;
+
+    template<typename T>
+    static void HookSlot(CKInputManager *im, T hook, size_t slotIndex) {
+        if (s_HookedSlotCount >= 32) return;
+        void *original = utils::HookVirtualMethod(im, hook, slotIndex);
+        s_OriginalSlots[s_HookedSlotCount] = original;
+        s_HookedSlotIndices[s_HookedSlotCount] = slotIndex;
+        ++s_HookedSlotCount;
+    }
+
     static void Hook(CKInputManager *im) {
         if (!im) return;
         s_InputManager = im;
+        s_HookedSlotCount = 0;
         utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>>(s_InputManager, s_VTable);
 
 #define HOOK_INPUT_MANAGER_VIRTUAL_METHOD(Instance, Name) \
-    utils::HookVirtualMethod(Instance, &InputHook::Impl::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>, Name) / sizeof(void*)))
+    HookSlot(Instance, &InputHook::Impl::CP_FUNC_HOOK_NAME(Name), \
+             (offsetof(CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>, Name) / sizeof(void*)))
 
         HOOK_INPUT_MANAGER_VIRTUAL_METHOD(s_InputManager, PostProcess);
 
@@ -249,8 +265,20 @@ struct InputHook::Impl {
     }
 
     static void Unhook() {
-        if (s_InputManager)
-            utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager>>(s_InputManager, s_VTable);
+        if (!s_InputManager) return;
+
+        // Restore only the specific vtable slots we hooked, not the entire table.
+        // This avoids writing past the declared vtable size if the actual
+        // CKInputManager has more virtual methods than our declaration covers.
+        void **vtable = *reinterpret_cast<void***>(s_InputManager);
+        uint32_t oldProtect = utils::UnprotectRegion(vtable, 256 * sizeof(void *));
+        for (size_t i = 0; i < s_HookedSlotCount; ++i) {
+            vtable[s_HookedSlotIndices[i]] = s_OriginalSlots[i];
+        }
+        utils::ProtectRegion(vtable, 256 * sizeof(void *), oldProtect);
+
+        s_InputManager = nullptr;
+        s_HookedSlotCount = 0;
     }
 };
 
@@ -260,16 +288,17 @@ Vx2DVector InputHook::Impl::s_LastMousePosition;
 int InputHook::Impl::s_BlockedDevice[CK_INPUT_DEVICE_COUNT] = {};
 CKInputManager *InputHook::Impl::s_InputManager = nullptr;
 CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager> InputHook::Impl::s_VTable = {};
+void *InputHook::Impl::s_OriginalSlots[32] = {};
+size_t InputHook::Impl::s_HookedSlotIndices[32] = {};
+size_t InputHook::Impl::s_HookedSlotCount = 0;
 
-InputHook::InputHook(CKInputManager *input) : m_Impl(new Impl) {
+InputHook::InputHook(CKInputManager *input) : m_Impl(nullptr) {
     assert(input != nullptr);
     Impl::Hook(input);
 }
 
 InputHook::~InputHook() {
     Impl::Unhook();
-    delete m_Impl;
-    m_Impl = nullptr;
 }
 
 void InputHook::EnableKeyboardRepetition(CKBOOL iEnable) {
