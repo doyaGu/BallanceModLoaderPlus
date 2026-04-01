@@ -176,6 +176,21 @@ static bool IsNumberStr(const std::string &s) {
     return true;
 }
 
+// Safe integer parse that returns false on overflow instead of throwing.
+static bool SafeParseInt(const std::string &s, int &out) {
+    if (!IsNumberStr(s)) return false;
+    try {
+        size_t pos = 0;
+        long val = std::stol(s, &pos);
+        if (pos != s.size()) return false;
+        if (val < INT_MIN || val > INT_MAX) return false;
+        out = static_cast<int>(val);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
 static bool ParseColorVal(const std::string &val, ImU32 &out) {
     if (!val.empty() && val[0] == '#') {
         out = AnsiPalette::HexToImU32(val.c_str() + 1);
@@ -253,9 +268,6 @@ void AnsiPalette::ParseBuffer(const std::string &buf) {
         if (ParseColorVal(v, c)) {
             m_Palette[idx] = c;
             m_HasOverride[idx] = true;
-            // Debug output for failed tests
-            if (idx == 1 && !sectionName.empty()) {
-            }
         } else {
             if (!m_ParseOrigin.empty()) {
                 AP_Log(1, std::string("AnsiPalette: invalid color value '") + v + "' for index " + std::to_string(idx) +
@@ -290,11 +302,13 @@ void AnsiPalette::ParseBuffer(const std::string &buf) {
                 
                 if (nameIndex >= 0) {
                     setIndexColor(base + nameIndex, utils::TrimStringCopy(entry.value), sectionName);
-                } else if (IsNumberStr(lkey)) {
-                    int idx = std::stoi(lkey);
-                    if ((sectionName == "standard" && idx >= 0 && idx <= 7) || 
-                        (sectionName == "bright" && idx >= 8 && idx <= 15)) {
-                        setIndexColor(idx, utils::TrimStringCopy(entry.value), sectionName);
+                } else {
+                    int idx;
+                    if (SafeParseInt(lkey, idx)) {
+                        if ((sectionName == "standard" && idx >= 0 && idx <= 7) ||
+                            (sectionName == "bright" && idx >= 8 && idx <= 15)) {
+                            setIndexColor(idx, utils::TrimStringCopy(entry.value), sectionName);
+                        }
                     }
                 }
             }
@@ -303,8 +317,8 @@ void AnsiPalette::ParseBuffer(const std::string &buf) {
                 if (entry.isComment || entry.isEmpty) continue;
                 
                 const std::string lkey = utils::ToLower(entry.key);
-                if (IsNumberStr(lkey)) {
-                    int idx = std::stoi(lkey);
+                int idx;
+                if (SafeParseInt(lkey, idx)) {
                     if (idx >= 16 && idx <= 231) {
                         setIndexColor(idx, utils::TrimStringCopy(entry.value), sectionName);
                     }
@@ -313,10 +327,10 @@ void AnsiPalette::ParseBuffer(const std::string &buf) {
         } else if (sectionName == "gray" || sectionName == "grayscale") {
             for (const auto &entry : section.entries) {
                 if (entry.isComment || entry.isEmpty) continue;
-                
+
                 const std::string lkey = utils::ToLower(entry.key);
-                if (IsNumberStr(lkey)) {
-                    int idx = std::stoi(lkey);
+                int idx;
+                if (SafeParseInt(lkey, idx)) {
                     if (idx >= 232 && idx <= 255) {
                         setIndexColor(idx, utils::TrimStringCopy(entry.value), sectionName);
                     }
@@ -333,9 +347,8 @@ void AnsiPalette::ParseBuffer(const std::string &buf) {
                     std::string bs = lkey.substr(dash + 1);
                     Trim(as);
                     Trim(bs);
-                    if (IsNumberStr(as) && IsNumberStr(bs)) {
-                        int a = std::stoi(as);
-                        int b = std::stoi(bs);
+                    int a, b;
+                    if (SafeParseInt(as, a) && SafeParseInt(bs, b)) {
                         if (a > b) std::swap(a, b);
                         a = std::max(0, a);
                         b = std::min(255, b);
@@ -346,13 +359,15 @@ void AnsiPalette::ParseBuffer(const std::string &buf) {
                         AP_Log(1, std::string("AnsiPalette: invalid range '") + lkey + "' in [overrides]" +
                                      (m_ParseOrigin.empty() ? std::string("") : (" at " + m_ParseOrigin)));
                     }
-                } else if (IsNumberStr(lkey)) {
-                    int idx = std::stoi(lkey);
-                    if (idx >= 0 && idx <= 255) {
-                        setIndexColor(idx, utils::TrimStringCopy(entry.value), sectionName);
-                    } else {
-                        AP_Log(1, std::string("AnsiPalette: override index out of range '") + lkey + "'" +
-                                     (m_ParseOrigin.empty() ? std::string("") : (" at " + m_ParseOrigin)));
+                } else {
+                    int idx;
+                    if (SafeParseInt(lkey, idx)) {
+                        if (idx >= 0 && idx <= 255) {
+                            setIndexColor(idx, utils::TrimStringCopy(entry.value), sectionName);
+                        } else {
+                            AP_Log(1, std::string("AnsiPalette: override index out of range '") + lkey + "'" +
+                                         (m_ParseOrigin.empty() ? std::string("") : (" at " + m_ParseOrigin)));
+                        }
                     }
                 }
             }
@@ -430,26 +445,22 @@ void AnsiPalette::ParseBuffer(const std::string &buf) {
             // Backward compatible: keys in global section treated as numeric indices
             for (const auto &entry : section.entries) {
                 if (entry.isComment || entry.isEmpty) continue;
-                
+
                 const std::string lkey = utils::ToLower(entry.key);
-                if (IsNumberStr(lkey)) {
-                    int idx = std::stoi(lkey);
-                    if (idx >= 0 && idx <= 255) {
-                        setIndexColor(idx, utils::TrimStringCopy(entry.value));
-                    }
+                int idx;
+                if (SafeParseInt(lkey, idx) && idx >= 0 && idx <= 255) {
+                    setIndexColor(idx, utils::TrimStringCopy(entry.value));
                 }
             }
         } else {
             // Unknown section - treat numeric keys like overrides
             for (const auto &entry : section.entries) {
                 if (entry.isComment || entry.isEmpty) continue;
-                
+
                 const std::string lkey = utils::ToLower(entry.key);
-                if (IsNumberStr(lkey)) {
-                    int idx = std::stoi(lkey);
-                    if (idx >= 0 && idx <= 255) {
-                        setIndexColor(idx, utils::TrimStringCopy(entry.value), sectionName);
-                    }
+                int idx;
+                if (SafeParseInt(lkey, idx) && idx >= 0 && idx <= 255) {
+                    setIndexColor(idx, utils::TrimStringCopy(entry.value), sectionName);
                 }
             }
         }
@@ -884,7 +895,7 @@ void AnsiPalette::ApplyThemeChainAndBuffer(const std::string &buf) {
     std::string topTheme = ExtractThemeName(buf);
     if (!topTheme.empty() && topTheme != "none") {
         std::set<std::wstring> visited;
-        auto toW = [](const std::string &s) { return std::wstring(s.begin(), s.end()); };
+        auto toW = [](const std::string &s) { return utils::Utf8ToUtf16(s); };
         auto applyThemeRecursive = [&](auto &self, const std::wstring &nameW) -> void {
             std::wstring themePath = ResolveThemePathW(nameW);
             if (themePath.empty() || !utils::FileExistsW(themePath)) {
@@ -1013,7 +1024,7 @@ std::vector<AnsiPalette::ThemeChainEntry> AnsiPalette::GetResolvedThemeChain() c
     std::string top = GetActiveThemeName();
     if (top.empty() || top == "none") return chain;
 
-    auto toW = [](const std::string &s) { return std::wstring(s.begin(), s.end()); };
+    auto toW = [](const std::string &s) { return utils::Utf8ToUtf16(s); };
     std::set<std::wstring> visited;
     std::string cur = top;
     while (true) {
@@ -1155,9 +1166,9 @@ static bool ValidateThemeOptionValue(const std::string &ckey, const std::string 
                 f *= 0.01f; // plain number >1, treat as percent for convenience
             }
             f = std::clamp(f, 0.0f, 1.0f);
-            std::string buf(32, '\0');
-            snprintf(buf.data(), buf.size(), "%.3f", f);
-            out_value = utils::TrimStringCopy(buf);
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%.3f", f);
+            out_value = buf;
             return true;
         } catch (...) { return false; }
     }
@@ -1166,9 +1177,9 @@ static bool ValidateThemeOptionValue(const std::string &ckey, const std::string 
             float f = std::stof(v);
             if (!std::isfinite(f)) return false;
             f = std::clamp(f, -1.0f, 1.0f);
-            std::string buf(32, '\0');
-            snprintf(buf.data(), buf.size(), "%.3f", f);
-            out_value = utils::TrimStringCopy(buf);
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%.3f", f);
+            out_value = buf;
             return true;
         } catch (...) { return false; }
     }
