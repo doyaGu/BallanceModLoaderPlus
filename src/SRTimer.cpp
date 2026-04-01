@@ -1,30 +1,44 @@
 #include "SRTimer.h"
+
 #include <cstdio>
 
-SRTimer::SRTimer() : m_Time(0.0f), m_Running(false) {}
-
 void SRTimer::Reset() {
-    m_Time = 0.0f;
+    m_Accumulated = Duration::zero();
+    m_StartTime = {};
+    m_Running = false;
     m_Dirty = true;
 }
 
 void SRTimer::Start() {
-    m_Running = true;
+    if (!m_Running) {
+        m_StartTime = Clock::now();
+        m_Running = true;
+    }
 }
 
 void SRTimer::Pause() {
-    m_Running = false;
-}
-
-void SRTimer::Update(float deltaTime) {
     if (m_Running) {
-        m_Time += deltaTime * 1000.0f; // Convert to milliseconds
+        m_Accumulated += GetElapsed();
+        m_Running = false;
         m_Dirty = true;
     }
 }
 
+void SRTimer::Update(float /*deltaTime*/) {
+    if (m_Running) {
+        m_Dirty = true;
+    }
+}
+
+SRTimer::Duration SRTimer::GetElapsed() const {
+    return Clock::now() - m_StartTime;
+}
+
 float SRTimer::GetTime() const {
-    return m_Time / 1000.0f; // Return in seconds
+    auto total = m_Accumulated;
+    if (m_Running)
+        total += GetElapsed();
+    return std::chrono::duration<float>(total).count();
 }
 
 bool SRTimer::IsRunning() const {
@@ -39,12 +53,21 @@ const char *SRTimer::GetFormattedTime() const {
 void SRTimer::UpdateFormattedTime() const {
     if (!m_Dirty) return;
 
-    float totalSeconds = m_Time / 1000.0f;
-    int hours = (int)(totalSeconds / 3600.0f);
-    int minutes = (int)((totalSeconds - hours * 3600.0f) / 60.0f);
-    float seconds = totalSeconds - hours * 3600.0f - minutes * 60.0f;
-    int milliseconds = (int)((seconds - (int)seconds) * 1000.0f);
+    auto total = m_Accumulated;
+    if (m_Running)
+        total += GetElapsed();
 
-    sprintf_s(m_FormattedTime, sizeof(m_FormattedTime), "  %02d:%02d:%02d.%03d", hours, minutes, (int)seconds, milliseconds);
+    auto totalUs = std::chrono::duration_cast<std::chrono::microseconds>(total).count();
+
+    int h = (int)(totalUs / 3600000000LL);
+    totalUs %= 3600000000LL;
+    int m = (int)(totalUs / 60000000LL);
+    totalUs %= 60000000LL;
+    int s = (int)(totalUs / 1000000LL);
+    totalUs %= 1000000LL;
+    int ms = (int)(totalUs / 1000LL);
+    int us = (int)(totalUs % 1000LL);
+
+    sprintf_s(m_FormattedTime, sizeof(m_FormattedTime), "  %02d:%02d:%02d.%03d%03d", h, m, s, ms, us);
     m_Dirty = false;
 }

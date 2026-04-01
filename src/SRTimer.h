@@ -1,9 +1,12 @@
 #ifndef BML_SRTIMER_H
 #define BML_SRTIMER_H
 
+#include <cstdint>
+#include <chrono>
+
 class SRTimer {
 public:
-    SRTimer();
+    SRTimer() = default;
     ~SRTimer() = default;
 
     void Reset();
@@ -20,11 +23,17 @@ public:
     void ClearDirty() { m_Dirty = false; }
 
 private:
-    float m_Time;                          // Time in milliseconds
-    bool m_Running;                        // Is timer running?
-    mutable char m_FormattedTime[32] = {}; // Formatted time string
-    mutable bool m_Dirty = true;           // Whether formatted string changed since last clear
+    using Clock = std::chrono::high_resolution_clock;
+    using TimePoint = Clock::time_point;
+    using Duration = std::chrono::nanoseconds;
 
+    TimePoint m_StartTime;
+    Duration m_Accumulated = Duration::zero();
+    bool m_Running = false;
+    mutable char m_FormattedTime[32] = {};
+    mutable bool m_Dirty = true;
+
+    Duration GetElapsed() const;
     void UpdateFormattedTime() const;
 };
 
