@@ -202,7 +202,7 @@ void CommandBar::LoadHistory() {
     long len = ftell(fp);
     rewind(fp);
 
-    if (len == 0) {
+    if (len <= 0) {
         fclose(fp);
         return;
     }
@@ -427,7 +427,7 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
             // Compute right-side remainder of the token so we can replace the whole token
             const char *textEnd = data->Buf + data->BufTextLen;
             const char *p = cursor;
-            while (p < textEnd && !std::isspace(*p)) ++p;
+            while (p < textEnd && !std::isspace(static_cast<unsigned char>(*p))) ++p;
             const int rightCount = static_cast<int>(p - cursor);
             const int totalDelete = wordCount + rightCount;
             const int deletePos = static_cast<int>(wordStart - data->Buf);
@@ -438,7 +438,7 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
                 const char *ins = m_Candidates[0].c_str();
                 data->InsertChars(deletePos, ins);
                 // Add a space only if there isn't already whitespace after the token
-                bool hasSpaceAfter = (p < textEnd) && std::isspace(*p);
+                bool hasSpaceAfter = (p < textEnd) && std::isspace(static_cast<unsigned char>(*p));
                 if (!hasSpaceAfter) {
                     const int insertedLen = static_cast<int>(strlen(ins));
                     data->InsertChars(deletePos + insertedLen, " ");
@@ -453,8 +453,8 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
                     for (size_t i = 0; i < m_Candidates.size() && allCandidatesMatches; i++) {
                         auto &candidate = m_Candidates[i];
                         if (i == 0)
-                            c = toupper(candidate[matchLen]);
-                        else if (c == 0 || c != toupper(candidate[matchLen]))
+                            c = toupper(static_cast<unsigned char>(candidate[matchLen]));
+                        else if (c == 0 || c != toupper(static_cast<unsigned char>(candidate[matchLen])))
                             allCandidatesMatches = false;
                     }
                     if (!allCandidatesMatches)
@@ -475,7 +475,7 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
                 InvalidateCandidates();
             }
 
-            const unsigned int prevHistoryPos = m_HistoryIndex;
+            const int prevHistoryPos = m_HistoryIndex;
             if (data->EventKey == ImGuiKey_UpArrow) {
                 if (m_HistoryIndex == -1)
                     m_HistoryIndex = static_cast<int>(m_History.size() - 1);
@@ -502,14 +502,14 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
                     const int leftCount = LastToken(wordStart, cursor);
                     const char *textEnd = data->Buf + data->BufTextLen;
                     const char *p = cursor;
-                    while (p < textEnd && !std::isspace(*p)) ++p;
+                    while (p < textEnd && !std::isspace(static_cast<unsigned char>(*p))) ++p;
                     const int rightCount = static_cast<int>(p - cursor);
                     const int totalDelete = leftCount + rightCount;
                     const int deletePos = static_cast<int>(wordStart - data->Buf);
                     data->DeleteChars(deletePos, totalDelete);
                     const char *ins = m_Candidates[m_CandidateSelected].c_str();
                     data->InsertChars(deletePos, ins);
-                    bool hasSpaceAfter = (p < textEnd) && std::isspace(*p);
+                    bool hasSpaceAfter = (p < textEnd) && std::isspace(static_cast<unsigned char>(*p));
                     if (!hasSpaceAfter) {
                         const int insertedLen = static_cast<int>(strlen(ins));
                         data->InsertChars(deletePos + insertedLen, " ");
@@ -558,7 +558,7 @@ void CommandBar::StripLine(const char *&lineStart, const char *&lineEnd) {
     // Skip white spaces at the beginning of the line
     while (lineStart < lineEnd) {
         const char c = *lineStart;
-        if (!std::isspace(c)) {
+        if (!std::isspace(static_cast<unsigned char>(c))) {
             break;
         }
         ++lineStart;
@@ -569,7 +569,7 @@ void CommandBar::StripLine(const char *&lineStart, const char *&lineEnd) {
     // Skip white spaces at the end of the line
     while (lineEnd > lineStart) {
         const char c = lineEnd[-1];
-        if (!std::isspace(c))
+        if (!std::isspace(static_cast<unsigned char>(c)))
             break;
         --lineEnd;
     }
@@ -583,7 +583,7 @@ int CommandBar::FirstToken(const char *tokenStart, const char *&tokenEnd) {
     tokenEnd = tokenStart;
     while (tokenEnd < lineEnd) {
         const char c = *tokenEnd;
-        if (std::isspace(c))
+        if (std::isspace(static_cast<unsigned char>(c)))
             break;
         ++tokenEnd;
     }
@@ -599,7 +599,7 @@ int CommandBar::LastToken(const char *&tokenStart, const char *tokenEnd) {
     tokenStart = tokenEnd;
     while (tokenStart > lineStart) {
         const char c = tokenStart[-1];
-        if (std::isspace(c))
+        if (std::isspace(static_cast<unsigned char>(c)))
             break;
         --tokenStart;
     }
@@ -624,7 +624,7 @@ std::vector<std::string> CommandBar::MakeArgs(const char *line) {
     utf8_int32_t cp, temp;
     utf8codepoint(rp, &cp);
     while (rp != end) {
-        if (std::isspace(*rp) || *rp == '\0') {
+        if (std::isspace(static_cast<unsigned char>(*rp)) || *rp == '\0') {
             const size_t len = rp - lp;
             if (len != 0) {
                 const char bk = *rp;
@@ -634,13 +634,13 @@ std::vector<std::string> CommandBar::MakeArgs(const char *line) {
             }
 
             if (*rp != '\0') {
-                while (std::isspace(*rp))
+                while (std::isspace(static_cast<unsigned char>(*rp)))
                     ++rp;
                 --rp;
             }
 
             lp = utf8codepoint(rp, &temp);
-            if (std::isspace(*rp) && *lp == '\0') {
+            if (std::isspace(static_cast<unsigned char>(*rp)) && *lp == '\0') {
                 args.emplace_back("");
                 break;
             }
@@ -651,7 +651,7 @@ std::vector<std::string> CommandBar::MakeArgs(const char *line) {
 
     delete[] buf;
 
-    return std::move(args);
+    return args;
 }
 
 std::vector<std::string> CommandBar::MakeArgsRange(const char *begin, const char *end) {
