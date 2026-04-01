@@ -1,6 +1,7 @@
 #include "Config.h"
 
 #include <cstdio>
+#include <cstring>
 #include <sstream>
 #include <algorithm>
 
@@ -28,14 +29,15 @@ bool Config::Load(const wchar_t *path) {
         return false;
 
     fseek(fp, 0, SEEK_END);
-    size_t sz = ftell(fp);
+    long rawSize = ftell(fp);
     fseek(fp, 0, SEEK_SET);
 
-    if (sz == 0) {
+    if (rawSize <= 0) {
         fclose(fp);
         return false;
     }
 
+    size_t sz = static_cast<size_t>(rawSize);
     auto *buf = new char[sz + 1];
     size_t read = fread(buf, sizeof(char), sz, fp);
     fclose(fp);
@@ -125,6 +127,7 @@ bool Config::Load(const wchar_t *path) {
             }
 
             prop->SetComment(comment.c_str());
+            comment.clear();
 
             Category *cate = GetCategory(category.c_str());
             if (cate) {
@@ -487,9 +490,23 @@ void Property::SetDefaultKey(CKKEYBOARD value) {
 }
 
 size_t Property::GetHash() const {
-    if (m_Type == STRING)
+    switch (m_Type) {
+    case STRING:
         return m_Hash;
-    return std::get<int>(m_Value);
+    case INTEGER:
+    case KEY:
+        return static_cast<size_t>(std::get<int>(m_Value));
+    case BOOLEAN:
+        return std::get<bool>(m_Value) ? 1 : 0;
+    case FLOAT: {
+        float f = std::get<float>(m_Value);
+        uint32_t bits;
+        std::memcpy(&bits, &f, sizeof(bits));
+        return static_cast<size_t>(bits);
+    }
+    default:
+        return 0;
+    }
 }
 
 void Property::CopyValue(Property *o) {
