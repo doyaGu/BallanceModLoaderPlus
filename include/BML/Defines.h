@@ -59,15 +59,15 @@
 #endif
 
 // Alignment macros
-#define BML_ALIGN(x) __attribute__((aligned(x)))
+#define BML_ALIGN(x) __declspec(align(x))
 #define BML_CACHE_LINE_SIZE 64
 #define BML_CACHE_ALIGNED BML_ALIGN(BML_CACHE_LINE_SIZE)
 
 // Compiler hints
-#define BML_LIKELY(x) __builtin_expect(!!(x), 1)
-#define BML_UNLIKELY(x) __builtin_expect(!!(x), 0)
-#define BML_PURE __attribute__((pure))
-#define BML_CONST __attribute__((const))
+#define BML_LIKELY(x) (!!(x))
+#define BML_UNLIKELY(x) (!!(x))
+#define BML_PURE
+#define BML_CONST
 
 // Debug assertions
 #ifdef NDEBUG
