@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <climits>
 #include <cstring>
 #include <utility>
 
@@ -57,7 +58,9 @@ namespace BML {
             victims.swap(s_Registry);
         }
         for (auto &kv : victims) {
-            delete kv.second; // HARD KILL: bypasses refcounts (see header warning)
+            // Saturate refcount so any concurrent Release() cannot reach 0 and double-free.
+            kv.second->m_Ref.Reset(UINT32_MAX / 2);
+            delete kv.second;
         }
     }
 
@@ -83,7 +86,6 @@ namespace BML {
 
     void DataShare::TriggerCallbacksUnlocked(const char *key, const void *data, size_t size) const {
         std::vector<Callback> pending;
-        std::vector<std::uint8_t> snapshot;
         {
             std::lock_guard<std::mutex> g(m_Mutex);
             const auto it = m_Cbs.find(key);
@@ -91,18 +93,11 @@ namespace BML {
                 pending.swap(it->second);
                 m_Cbs.erase(it);
             }
-            if (data && size) {
-                const auto *p = static_cast<const std::uint8_t *>(data);
-                snapshot.assign(p, p + size);
-            }
         }
-        if (!pending.empty()) {
-            const void *payload = snapshot.empty() ? nullptr : snapshot.data();
-            const size_t payloadSize = snapshot.size();
-            for (auto &cb : pending) {
-                if (cb.fn) cb.fn(key, payload, payloadSize, cb.userdata);
-                if (cb.cleanup) cb.cleanup(key, cb.userdata);
-            }
+        // Callers guarantee data outlives this call, so no extra snapshot needed.
+        for (auto &cb : pending) {
+            if (cb.fn) cb.fn(key, data, size, cb.userdata);
+            if (cb.cleanup) cb.cleanup(key, cb.userdata);
         }
     }
 
@@ -183,7 +178,9 @@ namespace BML {
         if (it == m_Data.end()) { if (outFullSize) *outFullSize = 0; return 0; }
         const auto &src = it->second;
         if (outFullSize) *outFullSize = src.size();
-        if (dstSize < src.size()) return -int(src.size());
+        if (dstSize < src.size()) {
+            return (src.size() <= static_cast<size_t>(INT_MAX)) ? -static_cast<int>(src.size()) : INT_MIN;
+        }
         if (!src.empty()) std::memcpy(dst, src.data(), src.size());
         return 1;
     }
