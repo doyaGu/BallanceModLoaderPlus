@@ -17,15 +17,15 @@ bool CommandContext::RegisterCommand(ICommand *cmd) {
     if (!cmd)
         return false;
 
-    auto name = std::move(cmd->GetName());
+    auto name = cmd->GetName();
     if (!ValidateCommandName(name.c_str())) {
-        Logger::GetDefault()->Error("Command name %s is invalid.", name);
+        Logger::GetDefault()->Error("Command name %s is invalid.", name.c_str());
         return false;
     }
 
     auto [it, inserted] = m_CommandMap.insert({name, cmd});
     if (!inserted) {
-        Logger::GetDefault()->Error("Command %s has already been registered.", name);
+        Logger::GetDefault()->Error("Command %s has already been registered.", name.c_str());
         return false;
     }
     m_Commands.push_back(cmd);
@@ -52,8 +52,18 @@ bool CommandContext::UnregisterCommand(const char *name) {
     }
 
     auto *cmd = it->second;
+    const auto primaryName = cmd->GetName();
+    const auto alias = cmd->GetAlias();
 
-    m_CommandMap.erase(it);
+    // Remove both name and alias entries by key to avoid iterator invalidation
+    m_CommandMap.erase(primaryName);
+    if (!alias.empty() && alias != primaryName) {
+        auto ait = m_CommandMap.find(alias);
+        if (ait != m_CommandMap.end() && ait->second == cmd) {
+            m_CommandMap.erase(ait);
+        }
+    }
+
     m_Commands.erase(std::remove(m_Commands.begin(), m_Commands.end(), cmd), m_Commands.end());
     return true;
 }
@@ -146,7 +156,7 @@ void CommandContext::Output(const char *message) {
 
 void CommandContext::OutputV(const char *format, va_list args) {
     if (m_OutputCallback) {
-        char *message = AllocPrintf(format, args);
+        char *message = AllocPrintfV(format, args);
         m_OutputCallback(message, m_OutputCallbackData);
         delete[] message;
     }
@@ -180,13 +190,13 @@ bool CommandContext::ValidateCommandName(const char *name) {
         return false;
     }
 
-    if (!isalpha(name[0])) {
+    if (!isalpha(static_cast<unsigned char>(name[0]))) {
         return false;
     }
 
     bool valid = true;
     for (size_t i = 1; i < size; ++i)
-        if (!isalnum(name[i]))
+        if (!isalnum(static_cast<unsigned char>(name[i])))
             valid = false;
 
     return valid;
@@ -207,7 +217,7 @@ std::vector<std::string> CommandContext::ParseCommandLine(const char *cmd) {
     utf8_int32_t cp, temp;
     utf8codepoint(rp, &cp);
     while (rp != end) {
-        if (utf8codepointsize(*rp) == 1 && std::isspace(*rp) || *rp == '\0') {
+        if ((utf8codepointsize(*rp) == 1 && std::isspace(static_cast<unsigned char>(*rp))) || *rp == '\0') {
             size_t len = rp - lp;
             if (len != 0) {
                 char bk = *rp;
@@ -217,7 +227,7 @@ std::vector<std::string> CommandContext::ParseCommandLine(const char *cmd) {
             }
 
             if (*rp != '\0') {
-                while (utf8codepointsize(*rp) == 1 && std::isspace(*rp))
+                while (utf8codepointsize(*rp) == 1 && std::isspace(static_cast<unsigned char>(*rp)))
                     ++rp;
                 --rp;
             }
