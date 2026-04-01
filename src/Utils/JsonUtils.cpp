@@ -239,7 +239,7 @@ namespace utils {
         if (!object || !key) {
             return std::string(defaultValue);
         }
-        yyjson_val *value = yyjson_obj_get(object, key);
+        yyjson_val *value = yyjson_obj_get(const_cast<yyjson_val *>(object), key);
         if (!value || !yyjson_is_str(value)) {
             return std::string(defaultValue);
         }
@@ -255,7 +255,7 @@ namespace utils {
         if (!object || !key) {
             return defaultValue;
         }
-        yyjson_val *value = yyjson_obj_get(object, key);
+        yyjson_val *value = yyjson_obj_get(const_cast<yyjson_val *>(object), key);
         return value && yyjson_is_bool(value) ? yyjson_get_bool(value) : defaultValue;
     }
 
@@ -263,7 +263,7 @@ namespace utils {
         if (!object || !key) {
             return defaultValue;
         }
-        yyjson_val *value = yyjson_obj_get(object, key);
+        yyjson_val *value = yyjson_obj_get(const_cast<yyjson_val *>(object), key);
         return value && yyjson_is_num(value) ? yyjson_get_int(value) : defaultValue;
     }
 } // namespace utils

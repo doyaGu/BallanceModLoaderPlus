@@ -38,10 +38,16 @@ void IniFile::Section::RebuildKeyIndex(const std::function<std::string(const std
     m_KeyIndexDirty = false;
 }
 
-IniFile::KeyValue *IniFile::Section::FindKey(const std::string &normalizedKey) const {
+IniFile::KeyValue *IniFile::Section::FindKey(const std::string &normalizedKey) {
     auto it = m_KeyIndex.find(normalizedKey);
     return (it != m_KeyIndex.end() && it->second < entries.size()) ?
-           const_cast<KeyValue*>(&entries[it->second]) : nullptr;
+           &entries[it->second] : nullptr;
+}
+
+const IniFile::KeyValue *IniFile::Section::FindKey(const std::string &normalizedKey) const {
+    auto it = m_KeyIndex.find(normalizedKey);
+    return (it != m_KeyIndex.end() && it->second < entries.size()) ?
+           &entries[it->second] : nullptr;
 }
 
 IniFile::IniFile() {
@@ -100,7 +106,8 @@ std::string IniFile::TrimUtf8String(const std::string &str) const {
             prev--;
         }
 
-        if (prev < start) break;
+        // If prev still points to a continuation byte, the sequence is malformed
+        if ((static_cast<unsigned char>(*prev) & 0xC0) == 0x80) break;
 
         size_t advance = 0;
         if (IsUtf8Whitespace(prev, &advance)) {
@@ -336,8 +343,34 @@ bool IniFile::ParseFromString(const std::string &content) {
     return true;
 }
 
+bool IniFile::HasPathTraversal(const std::wstring &path) {
+    // Reject paths containing ".." components (directory traversal)
+    size_t len = path.size();
+    for (size_t i = 0; i + 1 < len; ++i) {
+        if (path[i] == L'.' && path[i + 1] == L'.') {
+            // Check that ".." is bounded by path separators (or string edges)
+            bool atStart = (i == 0) || path[i - 1] == L'\\' || path[i - 1] == L'/';
+            bool atEnd = (i + 2 >= len) || path[i + 2] == L'\\' || path[i + 2] == L'/';
+            if (atStart && atEnd) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 bool IniFile::ParseFromFile(const std::wstring &filePath) {
     ClearError();
+
+    if (filePath.empty()) {
+        SetError("File path is empty");
+        return false;
+    }
+
+    if (HasPathTraversal(filePath)) {
+        SetError("Path traversal detected in file path");
+        return false;
+    }
 
     if (!utils::FileExistsW(filePath)) {
         SetError("File does not exist: " + utils::Utf16ToUtf8(filePath));
@@ -421,6 +454,16 @@ std::string IniFile::WriteToString() const {
 bool IniFile::WriteToFile(const std::wstring &filePath) const {
     const_cast<IniFile*>(this)->ClearError();
 
+    if (filePath.empty()) {
+        SetError("File path is empty");
+        return false;
+    }
+
+    if (HasPathTraversal(filePath)) {
+        SetError("Path traversal detected in file path");
+        return false;
+    }
+
     std::string content = WriteToString();
 
     // Validate UTF-8 before writing
@@ -480,13 +523,13 @@ IniFile::Section *IniFile::AddSection(const std::string &sectionName) {
     Section newSection(sectionName);
 
     // Insert at determined position
-    auto insertIter = m_Sections.begin() + insertPos;
-    auto result = m_Sections.insert(insertIter, std::move(newSection));
+    m_Sections.insert(m_Sections.begin() + insertPos, std::move(newSection));
 
-    // Rebuild section index since we inserted
+    // Rebuild section index since insertion invalidates all pointers/iterators
     RebuildSectionIndex();
 
-    return &(*result);
+    // Return via fresh index lookup to avoid using invalidated iterators
+    return GetSection(sectionName);
 }
 
 bool IniFile::RemoveSection(const std::string &sectionName) {
@@ -561,9 +604,11 @@ bool IniFile::SetValue(const std::string &sectionName, const std::string &key, c
     // Try to find existing key
     KeyValue *entry = FindKeyInSection(section, key);
     if (entry) {
+        entry->key = key;
         entry->value = value;
         // Preserve the inline comment when updating the value
-        entry->originalLine = FormatKeyValueWithComment(entry->key, value, entry->inlineComment);
+        entry->originalLine = FormatKeyValueWithComment(key, value, entry->inlineComment);
+        section->MarkKeyIndexDirty();
         return true;
     }
 

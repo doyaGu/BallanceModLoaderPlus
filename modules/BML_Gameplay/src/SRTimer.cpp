@@ -1,10 +1,10 @@
 #include "SRTimer.h"
+
 #include <cstdio>
 
-SRTimer::SRTimer() : m_Time(0.0f), m_Running(false) {}
-
 void SRTimer::Reset() {
-    m_Time = 0.0f;
+    m_Time = 0.0;
+    m_Running = false;
     m_Dirty = true;
 }
 
@@ -16,15 +16,15 @@ void SRTimer::Pause() {
     m_Running = false;
 }
 
-void SRTimer::Update(float deltaTime) {
+void SRTimer::Update(float deltaTimeMs) {
     if (m_Running) {
-        m_Time += deltaTime * 1000.0f; // Convert to milliseconds
+        m_Time += (double)deltaTimeMs;
         m_Dirty = true;
     }
 }
 
 float SRTimer::GetTime() const {
-    return m_Time / 1000.0f; // Return in seconds
+    return (float)m_Time;
 }
 
 bool SRTimer::IsRunning() const {
@@ -39,12 +39,15 @@ const char *SRTimer::GetFormattedTime() const {
 void SRTimer::UpdateFormattedTime() const {
     if (!m_Dirty) return;
 
-    float totalSeconds = m_Time / 1000.0f;
-    int hours = (int)(totalSeconds / 3600.0f);
-    int minutes = (int)((totalSeconds - hours * 3600.0f) / 60.0f);
-    float seconds = totalSeconds - hours * 3600.0f - minutes * 60.0f;
-    int milliseconds = (int)((seconds - (int)seconds) * 1000.0f);
+    int64_t totalMs = (int64_t)m_Time;
 
-    sprintf_s(m_FormattedTime, sizeof(m_FormattedTime), "  %02d:%02d:%02d.%03d", hours, minutes, (int)seconds, milliseconds);
+    int h = (int)(totalMs / 3600000);
+    totalMs %= 3600000;
+    int m = (int)(totalMs / 60000);
+    totalMs %= 60000;
+    int s = (int)(totalMs / 1000);
+    int ms = (int)(totalMs % 1000);
+
+    sprintf_s(m_FormattedTime, sizeof(m_FormattedTime), "  %02d:%02d:%02d.%03d", h, m, s, ms);
     m_Dirty = false;
 }

@@ -1,16 +1,18 @@
 #ifndef BML_SRTIMER_H
 #define BML_SRTIMER_H
 
+#include <cstdint>
+
 class SRTimer {
 public:
-    SRTimer();
+    SRTimer() = default;
     ~SRTimer() = default;
 
     void Reset();
     void Start();
     void Pause();
 
-    void Update(float deltaTime);
+    void Update(float deltaTimeMs);
 
     float GetTime() const;
     const char *GetFormattedTime() const;
@@ -20,10 +22,10 @@ public:
     void ClearDirty() { m_Dirty = false; }
 
 private:
-    float m_Time;                          // Time in milliseconds
-    bool m_Running;                        // Is timer running?
-    mutable char m_FormattedTime[32] = {}; // Formatted time string
-    mutable bool m_Dirty = true;           // Whether formatted string changed since last clear
+    double m_Time = 0.0;                  // Accumulated time in milliseconds
+    bool m_Running = false;
+    mutable char m_FormattedTime[32] = {};
+    mutable bool m_Dirty = true;
 
     void UpdateFormattedTime() const;
 };

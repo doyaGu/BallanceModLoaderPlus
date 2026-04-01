@@ -47,7 +47,8 @@ public:
         void MarkKeyIndexDirty() const { m_KeyIndexDirty = true; }
 
         // Find key with O(1) lookup
-        KeyValue *FindKey(const std::string &normalizedKey) const;
+        KeyValue *FindKey(const std::string &normalizedKey);
+        const KeyValue *FindKey(const std::string &normalizedKey) const;
     };
 
     // Function types for flexible operations
@@ -173,6 +174,9 @@ private:
     void RebuildSectionIndex() const;
     KeyValue *FindKeyInSection(Section *section, const std::string &key);
     const KeyValue *FindKeyInSection(const Section *section, const std::string &key) const;
+
+    // Path validation
+    static bool HasPathTraversal(const std::wstring &path);
 
     // Error handling
     void SetError(const std::string &error) const { m_LastError = error; }
