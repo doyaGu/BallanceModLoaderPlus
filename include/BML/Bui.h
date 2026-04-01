@@ -101,10 +101,11 @@ namespace Bui {
         return {vpSize.x * coord.x, vpSize.y * coord.y};
     }
 
-    // Initialization functions
+    // Initialization and cleanup
     BML_EXPORT bool InitTextures(CKContext *context);
     BML_EXPORT bool InitMaterials(CKContext *context);
     BML_EXPORT bool InitSounds(CKContext *context);
+    BML_EXPORT void CleanupResources(CKContext *context);
 
     // Context management
     BML_EXPORT ImGuiContext *GetImGuiContext();

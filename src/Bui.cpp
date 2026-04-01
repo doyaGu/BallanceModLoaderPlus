@@ -264,6 +264,27 @@ namespace Bui {
         return true;
     }
 
+    void CleanupResources(CKContext *context) {
+        if (!context) return;
+
+        for (auto &tex : g_Textures) {
+            if (tex) {
+                context->DestroyObject(tex);
+                tex = nullptr;
+            }
+        }
+        for (auto &mat : g_Materials) {
+            if (mat) {
+                context->DestroyObject(mat);
+                mat = nullptr;
+            }
+        }
+
+        g_Sounds = nullptr;
+        g_MessageManager = nullptr;
+        g_MenuClickMessageType = -1;
+    }
+
     ImGuiKey CKKeyToImGuiKey(CKKEYBOARD key) {
         switch (key) {
             case CKKEY_TAB: return ImGuiKey_Tab;
@@ -486,10 +507,23 @@ namespace Bui {
         if (!buf || size == 0 || key_chord == 0)
             return false;
 
-        const char *s = ImGui::GetKeyChordName(key_chord);
-        if (!s || *s == '\0')
+        // Extract modifiers and key from chord
+        ImGuiKey key = (ImGuiKey)(key_chord & ~ImGuiMod_Mask_);
+        int mods = key_chord & ImGuiMod_Mask_;
+
+        // Build string from public API (avoids internal ImGui::GetKeyChordName)
+        std::string result;
+        if (mods & ImGuiMod_Ctrl)  result += "Ctrl+";
+        if (mods & ImGuiMod_Shift) result += "Shift+";
+        if (mods & ImGuiMod_Alt)   result += "Alt+";
+        if (mods & ImGuiMod_Super) result += "Super+";
+
+        const char *keyName = ImGui::GetKeyName(key);
+        if (!keyName || *keyName == '\0')
             return false;
-        ImStrncpy(buf, s, (int) size);
+
+        result += keyName;
+        ImStrncpy(buf, result.c_str(), (int) size);
         return true;
     }
 
@@ -548,18 +582,22 @@ namespace Bui {
     }
 
     ImVec2 GetButtonSize(ButtonType type) {
+        if (type < 0 || type >= BUTTON_COUNT) return ImVec2(0, 0);
         return CoordToPixel(g_ButtonSizes[type]);
     }
 
     float GetButtonIndent(ButtonType type) {
+        if (type < 0 || type >= BUTTON_COUNT) return 0.0f;
         return g_ButtonIndent[type] * ImGui::GetMainViewport()->Size.x;
     }
 
     ImVec2 GetButtonSizeInCoord(ButtonType type) {
+        if (type < 0 || type >= BUTTON_COUNT) return ImVec2(0, 0);
         return g_ButtonSizes[type];
     }
 
     float GetButtonIndentInCoord(ButtonType type) {
+        if (type < 0 || type >= BUTTON_COUNT) return 0.0f;
         return g_ButtonIndent[type];
     }
 
@@ -875,7 +913,78 @@ namespace Bui {
     }
 
     bool RadioButton(const char *label, int *current_item, const char *const items[], int items_count) {
-        return false;
+        if (!label || !current_item || !items || items_count <= 0)
+            return false;
+
+        ImGuiWindow *window = ImGui::GetCurrentWindow();
+        if (window->SkipItems)
+            return false;
+
+        const ImGuiID id = window->GetID(label);
+        const ImVec2 textSize = ImGui::CalcTextSize(label, nullptr, true);
+
+        ImVec2 pos = window->DC.CursorPos;
+        ImVec2 size = GetButtonSize(BUTTON_OPTION);
+        const ImRect bb(pos, ImVec2(pos.x + size.x, pos.y + size.y));
+
+        int selectedItem = *current_item;
+        if (selectedItem < 0 || selectedItem >= items_count)
+            selectedItem = 0;
+
+        ImGui::BeginGroup();
+
+        ImGui::ItemSize(bb);
+        if (!ImGui::ItemAdd(bb, id)) {
+            ImGui::EndGroup();
+            return false;
+        }
+
+        bool hovered, held;
+        ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
+
+        AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
+
+        float indent = GetButtonIndent(BUTTON_OPTION);
+        const ImVec2 min(bb.Min.x + indent, bb.Min.y);
+        const ImVec2 max(bb.Max.x - indent, bb.Max.y);
+        ImGui::RenderTextClipped(min, max, label, nullptr, &textSize, ImVec2(0.5f, 0.21f), &bb);
+
+        ImVec2 backup = ImGui::GetCursorScreenPos();
+        bool changed = false;
+        const char *currentText = items[selectedItem] ? items[selectedItem] : "";
+
+        ImVec2 leftPos(pos.x + size.x * 0.15f, pos.y + size.y * 0.43f);
+        ImVec2 rightPos(pos.x + size.x * 0.75f, pos.y + size.y * 0.43f);
+        ImVec2 textMin(pos.x + size.x * 0.25f, pos.y + size.y * 0.39f);
+        ImVec2 textMax(pos.x + size.x * 0.73f, pos.y + size.y * 0.92f);
+        const ImVec2 currentTextSize = ImGui::CalcTextSize(currentText, nullptr, true);
+
+        ImGui::PushID(label);
+
+        ImGui::SetCursorScreenPos(leftPos);
+        if (MinusButton("##RadioPrev")) {
+            selectedItem = (selectedItem + items_count - 1) % items_count;
+            changed = true;
+        }
+
+        ImGui::SetCursorScreenPos(rightPos);
+        if (PlusButton("##RadioNext")) {
+            selectedItem = (selectedItem + 1) % items_count;
+            changed = true;
+        }
+
+        // Render current item text centered between arrows
+        ImGui::RenderTextClipped(textMin, textMax, currentText, nullptr, &currentTextSize, ImVec2(0.5f, 0.5f), &bb);
+        ImGui::PopID();
+
+        ImGui::SetCursorScreenPos(backup);
+        ImGui::Dummy(ImVec2(0.0f, 0.0f));
+        ImGui::EndGroup();
+
+        if (changed)
+            *current_item = selectedItem;
+
+        return changed;
     }
 
     bool InputTextButton(const char *label, char *buf, size_t buf_size, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void *user_data) {
