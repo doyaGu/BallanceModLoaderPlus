@@ -16,16 +16,29 @@ struct CP_CLASS_VTABLE_NAME(CKIpionManager) : public CP_CLASS_VTABLE_NAME(CKBase
 struct PhysicsHook {
     static CKIpionManager *s_IpionManager;
     static CP_CLASS_VTABLE_NAME(CKIpionManager) s_VTable;
+    static void *s_OriginalSlots[4];
+    static size_t s_HookedSlotIndices[4];
+    static size_t s_HookedSlotCount;
+
+    template<typename T>
+    static void HookSlot(CKIpionManager *im, T hook, size_t slotIndex) {
+        if (s_HookedSlotCount >= 4) return;
+        void *original = utils::HookVirtualMethod(im, hook, slotIndex);
+        s_OriginalSlots[s_HookedSlotCount] = original;
+        s_HookedSlotIndices[s_HookedSlotCount] = slotIndex;
+        ++s_HookedSlotCount;
+    }
 
     static void Hook(CKIpionManager *im) {
         if (!im)
             return;
 
         s_IpionManager = im;
+        s_HookedSlotCount = 0;
         utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKIpionManager)>(s_IpionManager, s_VTable);
 
 #define HOOK_PHYSICS_VIRTUAL_METHOD(Instance, Name) \
-    utils::HookVirtualMethod(Instance, &PhysicsHook::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKIpionManager), Name) / sizeof(void*)))
+    HookSlot(Instance, &PhysicsHook::CP_FUNC_HOOK_NAME(Name), (offsetof(CP_CLASS_VTABLE_NAME(CKIpionManager), Name) / sizeof(void*)))
 
         HOOK_PHYSICS_VIRTUAL_METHOD(s_IpionManager, PostProcess);
 
@@ -33,8 +46,28 @@ struct PhysicsHook {
     }
 
     static void Unhook() {
-        if (s_IpionManager)
-            utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKIpionManager)>(s_IpionManager, s_VTable);
+        if (!s_IpionManager || s_HookedSlotCount == 0) return;
+
+        void **vtable = utils::GetVTable(s_IpionManager);
+        if (!vtable) return;
+
+        size_t maxSlot = 0;
+        for (size_t i = 0; i < s_HookedSlotCount; ++i) {
+            if (s_HookedSlotIndices[i] > maxSlot)
+                maxSlot = s_HookedSlotIndices[i];
+        }
+        size_t regionSize = (maxSlot + 1) * sizeof(void *);
+
+        uint32_t oldProtect = utils::UnprotectRegion(vtable, regionSize);
+        if (!oldProtect) return;
+
+        for (size_t i = 0; i < s_HookedSlotCount; ++i) {
+            vtable[s_HookedSlotIndices[i]] = s_OriginalSlots[i];
+        }
+        utils::ProtectRegion(vtable, regionSize, oldProtect);
+
+        s_IpionManager = nullptr;
+        s_HookedSlotCount = 0;
     }
 
     CP_DECLARE_METHOD_HOOK(CKERROR, PostProcess, ()) { return CK_OK; }
@@ -46,6 +79,9 @@ struct PhysicsHook {
 
 CKIpionManager *PhysicsHook::s_IpionManager = nullptr;
 CP_CLASS_VTABLE_NAME(CKIpionManager) PhysicsHook::s_VTable = {};
+void *PhysicsHook::s_OriginalSlots[4] = {};
+size_t PhysicsHook::s_HookedSlotIndices[4] = {};
+size_t PhysicsHook::s_HookedSlotCount = 0;
 
 #define FIXED 0
 #define FRICTION 1

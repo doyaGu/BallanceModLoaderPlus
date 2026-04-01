@@ -1404,6 +1404,8 @@ void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg) {
     RegisterBehavior(reg, FillBehaviorHookBlockDecl);
 }
 
+static LPVOID g_CreateCKBehaviorPrototypeRunTimeTarget = nullptr;
+
 static bool HookCreateCKBehaviorPrototypeRuntime() {
     HMODULE handle = ::GetModuleHandleA("CK2.dll");
     LPVOID lpCreateCKBehaviorPrototypeRunTimeProc =
@@ -1414,7 +1416,16 @@ static bool HookCreateCKBehaviorPrototypeRuntime() {
         MH_EnableHook(lpCreateCKBehaviorPrototypeRunTimeProc) != MH_OK) {
         return false;
     }
+    g_CreateCKBehaviorPrototypeRunTimeTarget = lpCreateCKBehaviorPrototypeRunTimeProc;
     return true;
+}
+
+static void UnhookCreateCKBehaviorPrototypeRuntime() {
+    if (g_CreateCKBehaviorPrototypeRunTimeTarget) {
+        MH_DisableHook(g_CreateCKBehaviorPrototypeRunTimeTarget);
+        MH_RemoveHook(g_CreateCKBehaviorPrototypeRunTimeTarget);
+        g_CreateCKBehaviorPrototypeRunTimeTarget = nullptr;
+    }
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
@@ -1438,6 +1449,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
         }
         break;
     case DLL_PROCESS_DETACH:
+        UnhookCreateCKBehaviorPrototypeRuntime();
         if (!Overlay::ImGuiUninstallWin32Hooks()) {
             utils::OutputDebugA("Fatal: Unable to uninstall Win32 hooks for ImGui.\n");
             return FALSE;

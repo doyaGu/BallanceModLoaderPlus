@@ -126,15 +126,18 @@ namespace Overlay {
     }
 
     bool ImGuiUninstallWin32Hooks() {
-        if (MH_DisableHook((LPVOID) &PeekMessageA) != MH_OK)
-            return false;
-        if (MH_DisableHook((LPVOID) &GetMessageA) != MH_OK)
-            return false;
-        if (MH_DisableHook((LPVOID) &PeekMessageW) != MH_OK)
-            return false;
-        if (MH_DisableHook((LPVOID) &GetMessageW) != MH_OK)
-            return false;
-        return true;
+        bool ok = true;
+
+        if (MH_DisableHook((LPVOID) &PeekMessageA) != MH_OK) ok = false;
+        if (MH_RemoveHook((LPVOID) &PeekMessageA) != MH_OK) ok = false;
+        if (MH_DisableHook((LPVOID) &GetMessageA) != MH_OK) ok = false;
+        if (MH_RemoveHook((LPVOID) &GetMessageA) != MH_OK) ok = false;
+        if (MH_DisableHook((LPVOID) &PeekMessageW) != MH_OK) ok = false;
+        if (MH_RemoveHook((LPVOID) &PeekMessageW) != MH_OK) ok = false;
+        if (MH_DisableHook((LPVOID) &GetMessageW) != MH_OK) ok = false;
+        if (MH_RemoveHook((LPVOID) &GetMessageW) != MH_OK) ok = false;
+
+        return ok;
     }
 
     ImGuiContext *GetImGuiContext() {

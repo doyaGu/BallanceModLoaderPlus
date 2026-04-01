@@ -1072,6 +1072,7 @@ bool ModContext::ShutdownHooks() {
     bool result = true;
 
     delete m_InputHook;
+    m_InputHook = nullptr;
 
     if (UnhookObjectLoad()) {
         m_Logger->Info("Unhook ObjectLoad Success");

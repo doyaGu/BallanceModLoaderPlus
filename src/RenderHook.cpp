@@ -62,20 +62,26 @@ CKBOOL CP_HOOK_CLASS_NAME(CKRenderContext)::UpdateProjection(CKBOOL force) {
     return TRUE;
 }
 
+static void *s_RenderOriginalSlots[4] = {};
+static size_t s_RenderHookedSlotIndices[4] = {};
+static size_t s_RenderHookedSlotCount = 0;
+
 bool CP_HOOK_CLASS_NAME(CKRenderContext)::Hook(void *base) {
     if (!base)
         return false;
 
+    s_RenderHookedSlotCount = 0;
     auto *table = utils::ForceReinterpretCast<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> *>(base, 0x86AF8);
     utils::LoadVTable<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> >(&table, s_VTable);
 
-#define HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(Instance, Name) \
-    utils::HookVirtualMethod(Instance, &CP_HOOK_CLASS_NAME(CKRenderContext)::CP_FUNC_HOOK_NAME(Name), \
-                             (offsetof(CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>, Name) / sizeof(void*)))
-
-    HOOK_RENDER_CONTEXT_VIRTUAL_METHOD(&table, Render);
-
-#undef HOOK_RENDER_CONTEXT_VIRTUAL_METHOD
+    {
+        size_t slotIndex = offsetof(CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext>, Render) / sizeof(void*);
+        void *original = utils::HookVirtualMethod(&table,
+            &CP_HOOK_CLASS_NAME(CKRenderContext)::CP_FUNC_HOOK_NAME(Render), slotIndex);
+        s_RenderOriginalSlots[s_RenderHookedSlotCount] = original;
+        s_RenderHookedSlotIndices[s_RenderHookedSlotCount] = slotIndex;
+        ++s_RenderHookedSlotCount;
+    }
 
     CP_ADD_METHOD_HOOK(UpdateProjection, base, 0x6C68D);
 
@@ -87,7 +93,14 @@ bool CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(void *base) {
         return false;
 
     auto *table = utils::ForceReinterpretCast<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> *>(base, 0x86AF8);
-    utils::SaveVTable<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> >(&table, s_VTable);
+    // Per-slot restoration instead of SaveVTable bulk write
+    void **vtable = reinterpret_cast<void **>(table);
+    uint32_t oldProtect = utils::UnprotectRegion(vtable, 256 * sizeof(void *));
+    for (size_t i = 0; i < s_RenderHookedSlotCount; ++i) {
+        vtable[s_RenderHookedSlotIndices[i]] = s_RenderOriginalSlots[i];
+    }
+    utils::ProtectRegion(vtable, 256 * sizeof(void *), oldProtect);
+    s_RenderHookedSlotCount = 0;
 
     CP_REMOVE_METHOD_HOOK(UpdateProjection);
 

@@ -265,17 +265,27 @@ struct InputHook::Impl {
     }
 
     static void Unhook() {
-        if (!s_InputManager) return;
+        if (!s_InputManager || s_HookedSlotCount == 0) return;
 
-        // Restore only the specific vtable slots we hooked, not the entire table.
-        // This avoids writing past the declared vtable size if the actual
-        // CKInputManager has more virtual methods than our declaration covers.
+        // Restore only the specific vtable slots we hooked.
         void **vtable = *reinterpret_cast<void***>(s_InputManager);
-        uint32_t oldProtect = utils::UnprotectRegion(vtable, 256 * sizeof(void *));
+        if (!vtable) return;
+
+        // Calculate the region to unprotect: from vtable start to the last hooked slot.
+        size_t maxSlot = 0;
+        for (size_t i = 0; i < s_HookedSlotCount; ++i) {
+            if (s_HookedSlotIndices[i] > maxSlot)
+                maxSlot = s_HookedSlotIndices[i];
+        }
+        size_t regionSize = (maxSlot + 1) * sizeof(void *);
+
+        uint32_t oldProtect = utils::UnprotectRegion(vtable, regionSize);
+        if (!oldProtect) return; // VirtualProtect failed — do NOT null s_InputManager
+
         for (size_t i = 0; i < s_HookedSlotCount; ++i) {
             vtable[s_HookedSlotIndices[i]] = s_OriginalSlots[i];
         }
-        utils::ProtectRegion(vtable, 256 * sizeof(void *), oldProtect);
+        utils::ProtectRegion(vtable, regionSize, oldProtect);
 
         s_InputManager = nullptr;
         s_HookedSlotCount = 0;
