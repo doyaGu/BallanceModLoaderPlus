@@ -1121,7 +1121,7 @@ namespace Bui {
         const ImVec2 titleSize = font->CalcTextSizeA(size, FLT_MAX, 0.0f, text);
 
         const ImGuiViewport *vp = ImGui::GetMainViewport();
-        const ImVec2 pos(IM_FLOOR(vp->Pos.x + (vp->Size.x - titleSize.x) * 0.5f), IM_FLOOR(vp->Pos.y + vp->Size.y * y));
+        const ImVec2 pos(ImTrunc(vp->Pos.x + (vp->Size.x - titleSize.x) * 0.5f), ImTrunc(vp->Pos.y + vp->Size.y * y));
 
         ImGui::GetForegroundDrawList()->AddText(font, size, pos, color, text);
     }
