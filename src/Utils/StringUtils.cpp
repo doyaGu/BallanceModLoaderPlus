@@ -9,6 +9,7 @@
 #include <Windows.h>
 #else
 #include <climits>
+#include <cwctype>
 #include <locale>
 #endif
 
@@ -213,7 +214,7 @@ namespace utils {
                 case '4': case '5': case '6': case '7': {
                     unsigned int value = 0;
                     int digits = 0;
-                    while (digits < 3 && *p >= '0' && *p <= '7') {
+                    while (digits < 3 && *p >= '0' && *p <= '7' && value <= 0377) {
                         value = (value * 8) + static_cast<unsigned int>(*p - '0');
                         ++p; ++digits;
                     }
@@ -411,6 +412,32 @@ namespace utils {
         return out;
     }
 
+    std::string EscapeJsonString(const std::string &input) {
+        std::string output;
+        output.reserve(input.size() + 8);
+        for (char c : input) {
+            switch (c) {
+                case '"': output += "\\\""; break;
+                case '\\': output += "\\\\"; break;
+                case '\b': output += "\\b"; break;
+                case '\f': output += "\\f"; break;
+                case '\n': output += "\\n"; break;
+                case '\r': output += "\\r"; break;
+                case '\t': output += "\\t"; break;
+                default:
+                    if (static_cast<unsigned char>(c) < 0x20) {
+                        char buf[8];
+                        std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(c));
+                        output += buf;
+                    } else {
+                        output += c;
+                    }
+                    break;
+            }
+        }
+        return output;
+    }
+
     std::string StripAnsiCodes(const char *str) {
         if (!str) return {};
         auto isFinal = [](unsigned char c){ return c >= 0x40 && c <= 0x7E; };  // ECMA-48 final
@@ -505,6 +532,7 @@ namespace utils {
         return out;
     }
 
+#if defined(_WIN32)
     DWORD MapFlags(uint32_t f) {
         DWORD w = 0;
         if (f & kLinguisticIgnoreCase) w |= LINGUISTIC_IGNORECASE;
@@ -550,4 +578,27 @@ namespace utils {
         }
         return ToTri(r);
     }
+#else
+    int CompareString(const std::wstring &a, const std::wstring &b,
+                      uint32_t flags, const std::wstring &localeName) {
+        (void) localeName;
+        if (flags & kLinguisticIgnoreCase) {
+            std::wstring lowerA = a;
+            std::wstring lowerB = b;
+            for (auto &ch : lowerA) ch = static_cast<wchar_t>(std::towlower(ch));
+            for (auto &ch : lowerB) ch = static_cast<wchar_t>(std::towlower(ch));
+            if (lowerA < lowerB) return -1;
+            if (lowerA > lowerB) return 1;
+            return 0;
+        }
+        if (a < b) return -1;
+        if (a > b) return 1;
+        return 0;
+    }
+
+    int CompareString(const std::string &aUtf8, const std::string &bUtf8,
+                      uint32_t flags, const std::wstring &localeName) {
+        return CompareString(Utf8ToUtf16(aUtf8), Utf8ToUtf16(bUtf8), flags, localeName);
+    }
+#endif
 }

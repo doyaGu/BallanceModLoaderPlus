@@ -9,6 +9,13 @@
 #include <cctype>
 
 namespace utils {
+    namespace detail {
+        inline const std::locale &DefaultLocale() {
+            static const std::locale loc;
+            return loc;
+        }
+    }
+
     // String splitting functions with multiple overloads
     template <typename StringT>
     std::vector<StringT> SplitString(const StringT &str, const StringT &delim) {
@@ -57,10 +64,11 @@ namespace utils {
     template <typename StringT>
     void TrimString(StringT &s) {
         using CharT = typename StringT::value_type;
+        const auto &loc = detail::DefaultLocale();
         s.erase(s.begin(), std::find_if(s.begin(), s.end(),
-                                        [](CharT c) { return !std::isspace(c, std::locale()); }));
+                                        [&loc](CharT c) { return !std::isspace(c, loc); }));
         s.erase(std::find_if(s.rbegin(), s.rend(),
-                             [](CharT c) { return !std::isspace(c, std::locale()); }).base(), s.end());
+                             [&loc](CharT c) { return !std::isspace(c, loc); }).base(), s.end());
     }
 
     template <typename StringT>
@@ -99,9 +107,10 @@ namespace utils {
     template <typename StringT>
     StringT ToLower(const StringT &s) {
         StringT result = s;
+        const auto &loc = detail::DefaultLocale();
         std::transform(result.begin(), result.end(), result.begin(),
-                       [](typename StringT::value_type c) {
-                           return std::tolower(c, std::locale());
+                       [&loc](typename StringT::value_type c) {
+                           return std::tolower(c, loc);
                        });
         return result;
     }
@@ -109,9 +118,10 @@ namespace utils {
     template <typename StringT>
     StringT ToUpper(const StringT &s) {
         StringT result = s;
+        const auto &loc = detail::DefaultLocale();
         std::transform(result.begin(), result.end(), result.begin(),
-                       [](typename StringT::value_type c) {
-                           return std::toupper(c, std::locale());
+                       [&loc](typename StringT::value_type c) {
+                           return std::toupper(c, loc);
                        });
         return result;
     }
@@ -195,76 +205,11 @@ namespace utils {
 
     std::string UnescapeString(const char *str);
     std::string EscapeString(const char *str);
+    std::string EscapeJsonString(const std::string &input);
 
     std::string StripAnsiCodes(const char *str);
 
-    // Legacy compatibility functions
-    inline bool StringStartsWith(const std::string &s1, const std::string &s2) {
-        return StartsWith(s1, s2);
-    }
-
-    inline bool StringStartsWith(const std::string &s1, const char *s2) {
-        return StartsWith(s1, s2);
-    }
-
-    inline bool StringEndsWith(const std::string &s1, const std::string &s2) {
-        return EndsWith(s1, s2);
-    }
-
-    inline bool StringEndsWith(const std::string &s1, const char *s2) {
-        return EndsWith(s1, s2);
-    }
-
-    inline bool StringStartsWithCaseInsensitive(const std::string &s1, const std::string &s2) {
-        return StartsWith(s1, s2, false);
-    }
-
-    inline bool StringStartsWithCaseInsensitive(const std::string &s1, const char *s2) {
-        return StartsWith(s1, s2, false);
-    }
-
-    inline bool StringEndsWithCaseInsensitive(const std::string &s1, const std::string &s2) {
-        return EndsWith(s1, s2, false);
-    }
-
-    inline bool StringEndsWithCaseInsensitive(const std::string &s1, const char *s2) {
-        return EndsWith(s1, s2, false);
-    }
-
-    // Wide string versions
-    inline bool StringStartsWith(const std::wstring &s1, const std::wstring &s2) {
-        return StartsWith(s1, s2);
-    }
-
-    inline bool StringStartsWith(const std::wstring &s1, const wchar_t *s2) {
-        return StartsWith(s1, s2);
-    }
-
-    inline bool StringEndsWith(const std::wstring &s1, const std::wstring &s2) {
-        return EndsWith(s1, s2);
-    }
-
-    inline bool StringEndsWith(const std::wstring &s1, const wchar_t *s2) {
-        return EndsWith(s1, s2);
-    }
-
-    inline bool StringStartsWithCaseInsensitive(const std::wstring &s1, const std::wstring &s2) {
-        return StartsWith(s1, s2, false);
-    }
-
-    inline bool StringStartsWithCaseInsensitive(const std::wstring &s1, const wchar_t *s2) {
-        return StartsWith(s1, s2, false);
-    }
-
-    inline bool StringEndsWithCaseInsensitive(const std::wstring &s1, const std::wstring &s2) {
-        return EndsWith(s1, s2, false);
-    }
-
-    inline bool StringEndsWithCaseInsensitive(const std::wstring &s1, const wchar_t *s2) {
-        return EndsWith(s1, s2, false);
-    }
-
-    // Legacy conversion function compatibility
+    // Encoding conversion functions
     inline std::wstring Utf8ToUtf16(const std::string &str) {
         return ToWString(str, true);
     }

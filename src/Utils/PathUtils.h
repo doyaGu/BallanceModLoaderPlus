@@ -2,6 +2,7 @@
 #define BML_PATHUTILS_H
 
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -176,6 +177,35 @@ namespace utils {
     std::string GetExecutablePathA();
     std::wstring GetExecutablePathW();
     std::string GetExecutablePathUtf8();
+
+    struct RuntimeLayoutNames {
+        std::wstring runtime_directory = L"ModLoader";
+        std::wstring mods_directory = L"Mods";
+        std::wstring packages_directory = L"Packages";
+        std::wstring crash_dumps_directory = L"CrashDumps";
+        std::wstring fault_log_file = L"fault_log.json";
+    };
+
+    struct RuntimeLayout {
+        std::filesystem::path game_directory;
+        std::filesystem::path runtime_directory;
+        std::filesystem::path mods_directory;
+        std::filesystem::path packages_directory;
+        std::filesystem::path crash_dumps_directory;
+        std::filesystem::path fault_log_path;
+    };
+
+    // BML runtime paths
+    RuntimeLayout ResolveRuntimeLayoutFromExecutable(
+        const std::filesystem::path &executablePath,
+        const RuntimeLayoutNames &names = {});
+    RuntimeLayout ResolveRuntimeLayoutFromRuntimeDirectory(
+        const std::filesystem::path &runtimeDirectory,
+        const RuntimeLayoutNames &names = {});
+    RuntimeLayout ResolveRuntimeLayoutFromModsDirectory(
+        const std::filesystem::path &modsDirectory,
+        const RuntimeLayoutNames &names = {});
+    RuntimeLayout GetRuntimeLayout(const RuntimeLayoutNames &names = {});
 
     // File properties
     int64_t GetFileSizeA(const std::string &path);

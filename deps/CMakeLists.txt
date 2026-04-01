@@ -12,5 +12,8 @@ add_subdirectory(oniguruma EXCLUDE_FROM_ALL)
 add_library(utf8 INTERFACE)
 target_include_directories(utf8 INTERFACE ${CMAKE_CURRENT_LIST_DIR}/utf8.h)
 
+# yyjson
+add_subdirectory(yyjson EXCLUDE_FROM_ALL)
+
 # ImGui
 set(IMGUI_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui PARENT_SCOPE)
