@@ -46,18 +46,26 @@ void Logger::Log(const char *level, const char *fmt, va_list args) {
     SYSTEMTIME sys;
     GetLocalTime(&sys);
 
+    auto *ctx = BML_GetModContext();
+    FILE *logFile = ctx ? ctx->GetLogFile() : nullptr;
+
     FILE *outFiles[] = {
 #ifdef _DEBUG
         stdout,
 #endif
-        BML_GetModContext()->GetLogFile()
+        logFile
     };
 
     for (FILE *file: outFiles) {
+        if (!file) continue;
+
         fprintf(file, "[%02d/%02d/%d %02d:%02d:%02d.%03d] ", sys.wMonth, sys.wDay,
                 sys.wYear, sys.wHour, sys.wMinute, sys.wSecond, sys.wMilliseconds);
         fprintf(file, "[%s/%s]: ", m_ModName, level);
-        vfprintf(file, fmt, args);
+        va_list argsCopy;
+        va_copy(argsCopy, args);
+        vfprintf(file, fmt, argsCopy);
+        va_end(argsCopy);
         fputc('\n', file);
         fflush(file);
     }
