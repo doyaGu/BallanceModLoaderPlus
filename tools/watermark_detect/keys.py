@@ -11,8 +11,8 @@ import struct
 
 
 MASK64 = 0xFFFFFFFFFFFFFFFF
-DEFAULT_SOFT_BITS = 12
-DEFAULT_SOFT_FLIPS = 3
+DEFAULT_SOFT_BITS = 16
+DEFAULT_SOFT_FLIPS = 5
 
 
 def splitmix64(state: int) -> tuple[int, int]:

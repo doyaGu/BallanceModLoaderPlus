@@ -8,12 +8,10 @@ import numpy as np
 from .rs import rs_decode, crc16_ccitt_false, RS_CODE, RS_DATA
 from .layout import (
     TILE_CLASSES, TILE_CLASS_TO_INDEX, TILE_COLS, TILE_ROWS, BLOCK_SIZE,
-    NUM_MESSAGE_BLOCKS, MESSAGE_BLOCK_INDICES,
+    VISIBLE_BLOCK_THRESHOLD, NUM_MESSAGE_BLOCKS, MESSAGE_BLOCK_INDICES,
     get_v2_tile_class_for_tile, get_v2_message_permutation, get_v2_message_sign_mask,
 )
 from .keys import DEFAULT_SOFT_BITS, DEFAULT_SOFT_FLIPS, unpack_build_version
-
-VISIBLE_BLOCK_THRESHOLD = 0.25
 
 
 def _block_correlation(blocks: np.ndarray, coverage: np.ndarray, row: int, col: int,

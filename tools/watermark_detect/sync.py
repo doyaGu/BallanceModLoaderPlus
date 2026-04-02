@@ -15,13 +15,13 @@ from .layout import (
     NUM_PILOT_BLOCKS,
     PILOT_BLOCK_INDICES,
     BLOCK_SIZE,
+    VISIBLE_BLOCK_THRESHOLD,
     get_v2_tile_class_for_tile,
 )
 from .preprocess import build_block_grid
 
 
 DEFAULT_TOP_SYNC_CANDIDATES = 16
-VISIBLE_BLOCK_THRESHOLD = 0.25
 DEFAULT_TOP_TILE_ORIGINS = 4
 PILOT_BLOCK_COORDS = [(block_index % TILE_COLS, block_index // TILE_COLS) for block_index in PILOT_BLOCK_INDICES]
 
