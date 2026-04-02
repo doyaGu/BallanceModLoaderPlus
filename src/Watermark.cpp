@@ -72,15 +72,15 @@ namespace {
 
                 const size_t idx = (static_cast<size_t>(screenY) * width + screenX) * 4;
                 if (bright) {
-                    pixelsAdd[idx + 0] = 255;
-                    pixelsAdd[idx + 1] = 255;
-                    pixelsAdd[idx + 2] = 255;
-                    pixelsAdd[idx + 3] = alpha;
+                    pixelsAdd[idx + 0] = alpha;
+                    pixelsAdd[idx + 1] = alpha;
+                    pixelsAdd[idx + 2] = alpha;
+                    pixelsAdd[idx + 3] = 255;
                 } else {
-                    pixelsSub[idx + 0] = 255;
-                    pixelsSub[idx + 1] = 255;
-                    pixelsSub[idx + 2] = 255;
-                    pixelsSub[idx + 3] = alpha;
+                    pixelsSub[idx + 0] = alpha;
+                    pixelsSub[idx + 1] = alpha;
+                    pixelsSub[idx + 2] = alpha;
+                    pixelsSub[idx + 3] = 255;
                 }
             }
         }
@@ -113,6 +113,7 @@ namespace {
                               baseSeed, templateIndex, codedBit, alpha);
         }
     }
+
 } // namespace
 
 CKTexture *Watermark::CreateUploadTexture(CKContext *ctx, CKRenderContext *rc,
@@ -210,76 +211,91 @@ void Watermark::Shutdown(CKContext *ctx) {
 void Watermark::Draw(CKRenderContext *dev) {
     if (!m_TexAdd || !m_TexSub) return;
 
-    const int w = dev->GetWidth();
-    const int h = dev->GetHeight();
 
-    // Save all render states we touch
-    const CKDWORD sFillMode   = dev->GetState(VXRENDERSTATE_FILLMODE);
-    const CKDWORD sShadeMode  = dev->GetState(VXRENDERSTATE_SHADEMODE);
-    const CKDWORD sCullMode   = dev->GetState(VXRENDERSTATE_CULLMODE);
-    const CKDWORD sAlphaBlend = dev->GetState(VXRENDERSTATE_ALPHABLENDENABLE);
-    const CKDWORD sSrcBlend   = dev->GetState(VXRENDERSTATE_SRCBLEND);
-    const CKDWORD sDestBlend  = dev->GetState(VXRENDERSTATE_DESTBLEND);
-    const CKDWORD sBlendOp    = dev->GetState(VXRENDERSTATE_BLENDOP);
-    const CKDWORD sZEnable    = dev->GetState(VXRENDERSTATE_ZENABLE);
-    const CKDWORD sZWrite     = dev->GetState(VXRENDERSTATE_ZWRITEENABLE);
-    const CKDWORD sLighting   = dev->GetState(VXRENDERSTATE_LIGHTING);
-    const CKDWORD sFog        = dev->GetState(VXRENDERSTATE_FOGENABLE);
+    // Save all render states we modify
+    struct { VXRENDERSTATETYPE type; CKDWORD value; } savedStates[] = {
+        {VXRENDERSTATE_FILLMODE, dev->GetState(VXRENDERSTATE_FILLMODE)},
+        {VXRENDERSTATE_SHADEMODE, dev->GetState(VXRENDERSTATE_SHADEMODE)},
+        {VXRENDERSTATE_CULLMODE, dev->GetState(VXRENDERSTATE_CULLMODE)},
+        {VXRENDERSTATE_WRAP0, dev->GetState(VXRENDERSTATE_WRAP0)},
+        {VXRENDERSTATE_ALPHABLENDENABLE, dev->GetState(VXRENDERSTATE_ALPHABLENDENABLE)},
+        {VXRENDERSTATE_SRCBLEND, dev->GetState(VXRENDERSTATE_SRCBLEND)},
+        {VXRENDERSTATE_DESTBLEND, dev->GetState(VXRENDERSTATE_DESTBLEND)},
+        {VXRENDERSTATE_BLENDOP, dev->GetState(VXRENDERSTATE_BLENDOP)},
+        {VXRENDERSTATE_ALPHATESTENABLE, dev->GetState(VXRENDERSTATE_ALPHATESTENABLE)},
+        {VXRENDERSTATE_ZWRITEENABLE, dev->GetState(VXRENDERSTATE_ZWRITEENABLE)},
+        {VXRENDERSTATE_ZENABLE, dev->GetState(VXRENDERSTATE_ZENABLE)},
+        {VXRENDERSTATE_FOGENABLE, dev->GetState(VXRENDERSTATE_FOGENABLE)},
+        {VXRENDERSTATE_SPECULARENABLE, dev->GetState(VXRENDERSTATE_SPECULARENABLE)},
+        {VXRENDERSTATE_STENCILENABLE, dev->GetState(VXRENDERSTATE_STENCILENABLE)},
+        {VXRENDERSTATE_CLIPPING, dev->GetState(VXRENDERSTATE_CLIPPING)},
+        {VXRENDERSTATE_LIGHTING, dev->GetState(VXRENDERSTATE_LIGHTING)},
+    };
+    VxRect savedViewport;
+    dev->GetViewRect(savedViewport);
 
-    // Set 2D overlay states
+    // Setup render state (mirrors ImGui backend, except SRCBLEND=ONE for additive)
+    const float fw = static_cast<float>(m_TexWidth);
+    const float fh = static_cast<float>(m_TexHeight);
+    VxRect viewport(0, 0, fw, fh);
+    dev->SetViewRect(viewport);
+
     dev->SetState(VXRENDERSTATE_FILLMODE, VXFILL_SOLID);
     dev->SetState(VXRENDERSTATE_SHADEMODE, VXSHADE_GOURAUD);
     dev->SetState(VXRENDERSTATE_CULLMODE, VXCULL_NONE);
+    dev->SetState(VXRENDERSTATE_WRAP0, 0);
     dev->SetState(VXRENDERSTATE_ALPHABLENDENABLE, TRUE);
-    dev->SetState(VXRENDERSTATE_SRCBLEND, VXBLEND_SRCALPHA);
+    dev->SetState(VXRENDERSTATE_SRCBLEND, VXBLEND_ONE);
     dev->SetState(VXRENDERSTATE_DESTBLEND, VXBLEND_ONE);
     dev->SetState(VXRENDERSTATE_BLENDOP, VXBLENDOP_ADD);
-    dev->SetState(VXRENDERSTATE_ZENABLE, FALSE);
+    dev->SetState(VXRENDERSTATE_ALPHATESTENABLE, FALSE);
     dev->SetState(VXRENDERSTATE_ZWRITEENABLE, FALSE);
-    dev->SetState(VXRENDERSTATE_LIGHTING, FALSE);
+    dev->SetState(VXRENDERSTATE_ZENABLE, FALSE);
     dev->SetState(VXRENDERSTATE_FOGENABLE, FALSE);
-    dev->SetTextureStageState(CKRST_TSS_TEXTUREMAPBLEND, VXTEXTUREBLEND_MODULATEALPHA);
-    dev->SetTextureStageState(CKRST_TSS_ADDRESS, VXTEXTURE_ADDRESSCLAMP);
-    dev->SetTextureStageState(CKRST_TSS_MINFILTER, VXTEXTUREFILTER_NEAREST);
-    dev->SetTextureStageState(CKRST_TSS_MAGFILTER, VXTEXTUREFILTER_NEAREST);
+    dev->SetState(VXRENDERSTATE_SPECULARENABLE, FALSE);
+    dev->SetState(VXRENDERSTATE_STENCILENABLE, FALSE);
+    dev->SetState(VXRENDERSTATE_CLIPPING, TRUE);
+    dev->SetState(VXRENDERSTATE_LIGHTING, FALSE);
 
-    // Full-screen quad
+    dev->SetTextureStageState(CKRST_TSS_ADDRESS, VXTEXTURE_ADDRESSCLAMP);
+    dev->SetTextureStageState(CKRST_TSS_TEXTUREMAPBLEND, VXTEXTUREBLEND_MODULATEALPHA);
+    dev->SetTextureStageState(CKRST_TSS_STAGEBLEND, 0, 1);
+    dev->SetTextureStageState(CKRST_TSS_MINFILTER, VXTEXTUREFILTER_LINEAR);
+    dev->SetTextureStageState(CKRST_TSS_MAGFILTER, VXTEXTUREFILTER_LINEAR);
+
+    // Full-screen quad with UV covering content area of (possibly padded) texture
+    VxImageDescEx texDesc;
+    float uMax = 1.0f, vMax = 1.0f;
+    if (m_TexAdd->GetVideoTextureDesc(texDesc) && texDesc.Width > 0 && texDesc.Height > 0) {
+        uMax = fw / static_cast<float>(texDesc.Width);
+        vMax = fh / static_cast<float>(texDesc.Height);
+    }
+
     VxDrawPrimitiveData *data = dev->GetDrawPrimitiveStructure(CKRST_DP_CL_VCT, 4);
     if (data) {
         XPtrStrided<VxVector4> pos(data->PositionPtr, data->PositionStride);
         XPtrStrided<CKDWORD> col(data->ColorPtr, data->ColorStride);
         XPtrStrided<VxUV> uv(data->TexCoordPtr, data->TexCoordStride);
 
-        const float fw = static_cast<float>(w);
-        const float fh = static_cast<float>(h);
-
-        pos[0].Set(0,  0,  0, 1); col[0] = 0xFFFFFFFF; uv[0].u = 0; uv[0].v = 0;
-        pos[1].Set(fw, 0,  0, 1); col[1] = 0xFFFFFFFF; uv[1].u = 1; uv[1].v = 0;
-        pos[2].Set(fw, fh, 0, 1); col[2] = 0xFFFFFFFF; uv[2].u = 1; uv[2].v = 1;
-        pos[3].Set(0,  fh, 0, 1); col[3] = 0xFFFFFFFF; uv[3].u = 0; uv[3].v = 1;
+        pos[0].Set(0,  0,  0, 1); col[0] = 0xFFFFFFFF; uv[0].u = 0;    uv[0].v = 0;
+        pos[1].Set(fw, 0,  0, 1); col[1] = 0xFFFFFFFF; uv[1].u = uMax; uv[1].v = 0;
+        pos[2].Set(fw, fh, 0, 1); col[2] = 0xFFFFFFFF; uv[2].u = uMax; uv[2].v = vMax;
+        pos[3].Set(0,  fh, 0, 1); col[3] = 0xFFFFFFFF; uv[3].u = 0;    uv[3].v = vMax;
 
         CKWORD indices[] = {0, 1, 2, 0, 2, 3};
 
-        // Pass 1: Additive — output = bg + src * srcAlpha
+        // Pass 1: Additive — output = bg + src_rgb
         dev->SetTexture(m_TexAdd);
         dev->DrawPrimitive(VX_TRIANGLELIST, indices, 6, data);
 
-        // Pass 2: Reverse-subtract — output = bg - src * srcAlpha
+        // Pass 2: Reverse-subtract — output = bg - src_rgb
         dev->SetState(VXRENDERSTATE_BLENDOP, VXBLENDOP_REVSUBTRACT);
         dev->SetTexture(m_TexSub);
         dev->DrawPrimitive(VX_TRIANGLELIST, indices, 6, data);
     }
 
     // Restore all saved states
-    dev->SetState(VXRENDERSTATE_FILLMODE, sFillMode);
-    dev->SetState(VXRENDERSTATE_SHADEMODE, sShadeMode);
-    dev->SetState(VXRENDERSTATE_CULLMODE, sCullMode);
-    dev->SetState(VXRENDERSTATE_ALPHABLENDENABLE, sAlphaBlend);
-    dev->SetState(VXRENDERSTATE_SRCBLEND, sSrcBlend);
-    dev->SetState(VXRENDERSTATE_DESTBLEND, sDestBlend);
-    dev->SetState(VXRENDERSTATE_BLENDOP, sBlendOp);
-    dev->SetState(VXRENDERSTATE_ZENABLE, sZEnable);
-    dev->SetState(VXRENDERSTATE_ZWRITEENABLE, sZWrite);
-    dev->SetState(VXRENDERSTATE_LIGHTING, sLighting);
-    dev->SetState(VXRENDERSTATE_FOGENABLE, sFog);
+    for (const auto &s : savedStates)
+        dev->SetState(s.type, s.value);
+    dev->SetViewRect(savedViewport);
 }

@@ -58,7 +58,7 @@ def _compute_pilot_correlation_maps(block_grid: tuple[np.ndarray, np.ndarray],
             correlations = numerators / valid_pixels
             pilot_maps[class_index, pilot_index] = np.where(
                 visible_mask,
-                np.maximum(correlations, 0.0),
+                np.abs(correlations),
                 0.0,
             ).astype(np.float32, copy=False)
 
