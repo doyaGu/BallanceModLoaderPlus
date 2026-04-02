@@ -90,7 +90,7 @@ void RsEncode(const uint8_t *data, uint8_t *out) {
         feedback = out[i];
         if (feedback != 0) {
             for (int j = 1; j <= kRsParityLen; ++j) {
-                out[i + j] ^= GfMul(gen[j], feedback);
+                out[i + j] ^= GfMul(gen[kRsParityLen - j], feedback);
             }
         }
     }
