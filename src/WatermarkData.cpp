@@ -1,5 +1,6 @@
 #include "WatermarkData.h"
 
+#include <algorithm>
 #include <cstring>
 #include <ctime>
 
@@ -30,6 +31,11 @@ namespace watermark {
         utils::HardwareFingerprint fingerprint = utils::GetHardwareFingerprint();
         std::memcpy(identity.traceId.data(), fingerprint.hash, identity.traceId.size());
         return identity;
+    }
+
+    bool HasZeroTraceId(const WatermarkIdentity &identity) {
+        return std::all_of(identity.traceId.begin(), identity.traceId.end(),
+                           [](uint8_t b) { return b == 0; });
     }
 
     void BuildPayload(const WatermarkIdentity &identity, uint8_t outPayload[14]) {

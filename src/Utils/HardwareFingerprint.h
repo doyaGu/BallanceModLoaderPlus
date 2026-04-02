@@ -6,7 +6,7 @@
 namespace utils {
     // Reads HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid,
     // hashes with SHA-256 via BCrypt, returns first 6 bytes.
-    // On failure, returns all-zero.
+    // On failure, returns all-zero so callers can log and choose a fallback policy.
     struct HardwareFingerprint {
         uint8_t hash[6];
     };

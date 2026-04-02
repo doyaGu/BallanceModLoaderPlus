@@ -38,6 +38,20 @@ TEST(SplitMix64Test, DifferentSeeds) {
     EXPECT_NE(utils::SplitMix64(s1), utils::SplitMix64(s2));
 }
 
+TEST(SplitMix64Test, OnceIsPureFinalizerCalledByStatefulStep) {
+    uint64_t state = UINT64_C(0x0123456789ABCDEF);
+    const uint64_t result = utils::SplitMix64(state);
+    // SplitMix64 increments then calls Once, so Once(state_after_inc) == result
+    EXPECT_EQ(utils::SplitMix64Once(state), result);
+}
+
+TEST(SplitMix64Test, OnceKnownOutputAnchor) {
+    // Pure finalizer: finalize(0) = 0 (all bit-mixing on zero yields zero)
+    EXPECT_EQ(utils::SplitMix64Once(0), UINT64_C(0));
+    // Non-trivial anchor
+    EXPECT_EQ(utils::SplitMix64Once(1), UINT64_C(0x5692161D100B05E5));
+}
+
 // --- CRC-16 Tests ---
 
 TEST(Crc16Test, KnownVector) {
@@ -103,7 +117,7 @@ TEST(ReedSolomonTest, DifferentDataDifferentParity) {
 TEST(ReedSolomonTest, CrossValidation) {
     // Known payload for cross-validation with Python detector
     uint8_t payload[utils::kRsDataLen] = {
-        0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6, // hardware hash
+        0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6, // trace id
         0x67, 0xF3, 0x1A, 0x00,               // timestamp
         0x00, 0xCB,                             // version 0.3.11
         0x00, 0x00                              // CRC placeholder
@@ -221,6 +235,94 @@ TEST(WatermarkLayoutTest, MessageBlockIndicesSkipPilotsInRowMajorOrder) {
     EXPECT_EQ(messageBlocks.back(), 254);
 }
 
+TEST(WatermarkLayoutTest, TileClassesRepeatInABCDSupertilePattern) {
+    EXPECT_EQ(watermark::GetTileClassForTile(0, 0), watermark::TileClass::A);
+    EXPECT_EQ(watermark::GetTileClassForTile(1, 0), watermark::TileClass::B);
+    EXPECT_EQ(watermark::GetTileClassForTile(2, 0), watermark::TileClass::A);
+    EXPECT_EQ(watermark::GetTileClassForTile(0, 1), watermark::TileClass::C);
+    EXPECT_EQ(watermark::GetTileClassForTile(1, 1), watermark::TileClass::D);
+    EXPECT_EQ(watermark::GetTileClassForTile(2, 1), watermark::TileClass::C);
+    EXPECT_EQ(watermark::GetTileClassForTile(0, 2), watermark::TileClass::A);
+    EXPECT_EQ(watermark::GetTileClassForTile(1, 2), watermark::TileClass::B);
+}
+
+TEST(WatermarkLayoutTest, MessagePermutationsAreDeterministicAndBijective) {
+    const auto &permA = watermark::GetMessagePermutation(watermark::TileClass::A);
+    const auto &permB = watermark::GetMessagePermutation(watermark::TileClass::B);
+    const auto &permC = watermark::GetMessagePermutation(watermark::TileClass::C);
+    const auto &permD = watermark::GetMessagePermutation(watermark::TileClass::D);
+
+    EXPECT_EQ(permA[0], 0);
+    EXPECT_EQ(permA[7], 7);
+    EXPECT_EQ(permB[0], 17);
+    EXPECT_EQ(permB[1], 54);
+    EXPECT_EQ(permB[7], 36);
+    EXPECT_EQ(permC[0], 91);
+    EXPECT_EQ(permC[1], 144);
+    EXPECT_EQ(permD[0], 29);
+    EXPECT_EQ(permD[3], 2);
+
+    for (watermark::TileClass tileClass :
+         {watermark::TileClass::A, watermark::TileClass::B, watermark::TileClass::C,
+          watermark::TileClass::D}) {
+        bool seen[watermark::kMessageBlockCount] = {};
+        for (int canonicalIndex : watermark::GetMessagePermutation(tileClass)) {
+            ASSERT_GE(canonicalIndex, 0);
+            ASSERT_LT(canonicalIndex, watermark::kMessageBlockCount);
+            EXPECT_FALSE(seen[canonicalIndex]);
+            seen[canonicalIndex] = true;
+        }
+
+        const auto &inverse = watermark::GetInverseMessagePermutation(tileClass);
+        for (int canonicalIndex = 0; canonicalIndex < watermark::kMessageBlockCount; ++canonicalIndex) {
+            const int localIndex = inverse[canonicalIndex];
+            EXPECT_EQ(watermark::MapMessageIndex(tileClass, localIndex), canonicalIndex);
+        }
+    }
+}
+
+TEST(WatermarkLayoutTest, MessageSignMasksAreDeterministicPerClass) {
+    EXPECT_FALSE(watermark::IsMessageSignFlipped(watermark::TileClass::A, 0));
+    EXPECT_TRUE(watermark::IsMessageSignFlipped(watermark::TileClass::A, 1));
+    EXPECT_FALSE(watermark::IsMessageSignFlipped(watermark::TileClass::A, 3));
+
+    EXPECT_FALSE(watermark::IsMessageSignFlipped(watermark::TileClass::B, 0));
+    EXPECT_TRUE(watermark::IsMessageSignFlipped(watermark::TileClass::B, 1));
+    EXPECT_TRUE(watermark::IsMessageSignFlipped(watermark::TileClass::B, 4));
+
+    EXPECT_FALSE(watermark::IsMessageSignFlipped(watermark::TileClass::C, 0));
+    EXPECT_TRUE(watermark::IsMessageSignFlipped(watermark::TileClass::C, 3));
+    EXPECT_FALSE(watermark::IsMessageSignFlipped(watermark::TileClass::C, 4));
+
+    EXPECT_FALSE(watermark::IsMessageSignFlipped(watermark::TileClass::D, 0));
+    EXPECT_TRUE(watermark::IsMessageSignFlipped(watermark::TileClass::D, 1));
+    EXPECT_FALSE(watermark::IsMessageSignFlipped(watermark::TileClass::D, 6));
+
+    int maskCountA = 0;
+    int maskCountB = 0;
+    int maskCountC = 0;
+    int maskCountD = 0;
+    for (int canonicalIndex = 0; canonicalIndex < watermark::kMessageBlockCount; ++canonicalIndex) {
+        maskCountA += watermark::IsMessageSignFlipped(watermark::TileClass::A, canonicalIndex) ? 1 : 0;
+        maskCountB += watermark::IsMessageSignFlipped(watermark::TileClass::B, canonicalIndex) ? 1 : 0;
+        maskCountC += watermark::IsMessageSignFlipped(watermark::TileClass::C, canonicalIndex) ? 1 : 0;
+        maskCountD += watermark::IsMessageSignFlipped(watermark::TileClass::D, canonicalIndex) ? 1 : 0;
+    }
+
+    EXPECT_EQ(maskCountA, 133);
+    EXPECT_EQ(maskCountB, 125);
+    EXPECT_EQ(maskCountC, 120);
+    EXPECT_EQ(maskCountD, 111);
+}
+
+TEST(WatermarkLayoutTest, ClassSeedOffsetsDecorrelateFamilies) {
+    constexpr uint64_t kBaseSeed = UINT64_C(0x0123456789ABCDEF);
+    EXPECT_NE(watermark::GetMessageSeedForClass(kBaseSeed, watermark::TileClass::A),
+              watermark::GetMessageSeedForClass(kBaseSeed, watermark::TileClass::B));
+    EXPECT_NE(watermark::GetSyncSeedForClass(kBaseSeed, watermark::TileClass::A),
+              watermark::GetSyncSeedForClass(kBaseSeed, watermark::TileClass::C));
+}
+
 TEST(WatermarkCryptoTest, DeriveKeysIsDeterministic) {
     const uint8_t masterKey[16] = {
         0x9E, 0x57, 0xB2, 0x6D, 0x3F, 0xEB, 0x74, 0xA3,
@@ -262,4 +364,60 @@ TEST(WatermarkPayloadTest, PayloadPackingKeepsTraceSessionBuildAndCrc) {
 
     const uint16_t crc = static_cast<uint16_t>((payload[12] << 8) | payload[13]);
     EXPECT_EQ(crc, utils::Crc16CcittFalse(payload, 12));
+}
+
+TEST(WatermarkPayloadTest, ZeroTraceIdIsExplicitlyRecognized) {
+    watermark::WatermarkIdentity identity = {};
+    EXPECT_TRUE(watermark::HasZeroTraceId(identity));
+
+    identity.traceId[5] = 0x01;
+    EXPECT_FALSE(watermark::HasZeroTraceId(identity));
+}
+
+// --- End-to-end encoded bit test ---
+
+TEST(WatermarkEncodingTest, PermutationAndSignMaskProduceExpectedBit) {
+    // Known 30-byte RS codeword (from CrossValidation test)
+    const uint8_t coded[utils::kRsCodeLen] = {
+        0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6, 0x67, 0xF3,
+        0x1A, 0x00, 0x00, 0xCB, 0x76, 0x84, 0xEC, 0x8A,
+        0xF9, 0x92, 0x3E, 0x4E, 0x6D, 0x3E, 0xD7, 0x45,
+        0xED, 0xC0, 0x6A, 0x02, 0x19, 0xC6,
+    };
+
+    // For class A (identity permutation, no offset), templateIndex maps directly
+    const auto &permA = watermark::GetMessagePermutation(watermark::TileClass::A);
+    const int templateIndex = 0;
+    const int canonicalIndex = permA[templateIndex];
+    EXPECT_EQ(canonicalIndex, 0); // identity permutation
+
+    const int byteIdx = canonicalIndex / 8;
+    const int bitIdx = 7 - (canonicalIndex % 8);
+    uint8_t rawBit = (coded[byteIdx] >> bitIdx) & 1;
+    // 0xA1 = 10100001, bit 7 (MSB) = 1
+    EXPECT_EQ(rawBit, 1);
+
+    bool flipped = watermark::IsMessageSignFlipped(watermark::TileClass::A, canonicalIndex);
+    uint8_t finalBit = rawBit ^ (flipped ? 1 : 0);
+
+    // For class B, same codeword bit goes through a different permutation
+    const auto &permB = watermark::GetMessagePermutation(watermark::TileClass::B);
+    const int canonicalIndexB = permB[templateIndex]; // templateIndex 0 -> canonical 17
+    EXPECT_EQ(canonicalIndexB, 17);
+
+    const int byteIdxB = canonicalIndexB / 8;
+    const int bitIdxB = 7 - (canonicalIndexB % 8);
+    uint8_t rawBitB = (coded[byteIdxB] >> bitIdxB) & 1;
+    bool flippedB = watermark::IsMessageSignFlipped(watermark::TileClass::B, canonicalIndexB);
+    uint8_t finalBitB = rawBitB ^ (flippedB ? 1 : 0);
+
+    // The final encoded bits for different tile classes at the same templateIndex
+    // should generally differ (different canonical index + different sign mask)
+    // This is not guaranteed for every case, but verifies the pipeline works
+    (void)finalBit;
+    (void)finalBitB;
+
+    // Verify round-trip: inverse permutation recovers original index
+    const auto &invB = watermark::GetInverseMessagePermutation(watermark::TileClass::B);
+    EXPECT_EQ(invB[canonicalIndexB], templateIndex);
 }

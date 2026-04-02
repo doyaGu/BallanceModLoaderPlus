@@ -20,6 +20,7 @@ namespace watermark {
 
     [[nodiscard]] uint16_t PackBuildId(uint8_t major, uint8_t minor, uint8_t patch);
     [[nodiscard]] WatermarkIdentity BuildDefaultIdentity();
+    [[nodiscard]] bool HasZeroTraceId(const WatermarkIdentity &identity);
     void BuildPayload(const WatermarkIdentity &identity, uint8_t outPayload[14]);
 
     struct DerivedWatermarkKeys {

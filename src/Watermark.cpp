@@ -6,22 +6,113 @@
 #include "CKAll.h"
 #include "imgui.h"
 
+#include "Logger.h"
 #include "ReedSolomon.h"
 #include "SplitMix64.h"
 
-// Obfuscated master key (XOR with 0xA5 for basic obfuscation)
+// Embedded master key bytes used by the offline blind detector path.
 const uint8_t Watermark::kMasterKey[16] = {
-    0x3B ^ 0xA5, 0xF2 ^ 0xA5, 0x17 ^ 0xA5, 0xC8 ^ 0xA5,
-    0x9A ^ 0xA5, 0x4E ^ 0xA5, 0xD1 ^ 0xA5, 0x06 ^ 0xA5,
-    0x7F ^ 0xA5, 0xE3 ^ 0xA5, 0x55 ^ 0xA5, 0xAC ^ 0xA5,
-    0x68 ^ 0xA5, 0x14 ^ 0xA5, 0xB9 ^ 0xA5, 0x2D ^ 0xA5
+    0x9E, 0x57, 0xB2, 0x6D,
+    0x3F, 0xEB, 0x74, 0xA3,
+    0xDA, 0x46, 0xF0, 0x09,
+    0xCD, 0xB1, 0x1C, 0x88
 };
 
 namespace {
-    constexpr uint64_t kBlockSeedStride = UINT64_C(0x9E3779B97F4A7C15);
+    constexpr uint64_t kBlockSeedStride = UINT64_C(0x517CC1B727220A95);
+
+    struct TileRenderState {
+        uint64_t messageSeed;
+        uint64_t syncSeed;
+        const watermark::MessagePermutation *messagePermutation;
+        const watermark::MessageSignMask *messageSignMask;
+    };
 
     uint64_t SeedForTemplate(uint64_t baseSeed, int templateIndex) {
         return baseSeed ^ (static_cast<uint64_t>(templateIndex) * kBlockSeedStride);
+    }
+
+    TileRenderState BuildTileRenderState(int tileIndexX, int tileIndexY,
+                                         uint64_t messageSeed, uint64_t syncSeed) {
+        const watermark::TileClass tileClass = watermark::GetTileClassForTile(tileIndexX, tileIndexY);
+        return {
+            watermark::GetMessageSeedForClass(messageSeed, tileClass),
+            watermark::GetSyncSeedForClass(syncSeed, tileClass),
+            &watermark::GetMessagePermutation(tileClass),
+            &watermark::GetMessageSignMask(tileClass),
+        };
+    }
+
+    uint8_t GetEncodedMessageBit(const uint8_t coded[utils::kRsCodeLen], const TileRenderState &tileState,
+                                 int templateIndex) {
+        const int canonicalIndex = (*tileState.messagePermutation)[templateIndex];
+        const int byteIdx = canonicalIndex / 8;
+        const int bitIdx = 7 - (canonicalIndex % 8);
+
+        uint8_t codedBit = (coded[byteIdx] >> bitIdx) & 1;
+        if ((*tileState.messageSignMask)[canonicalIndex]) {
+            codedBit ^= 1;
+        }
+        return codedBit;
+    }
+
+    void RenderBlockPixels(uint8_t *pixels, int width, int height, int blockOriginX, int blockOriginY,
+                           uint64_t baseSeed, int templateIndex, uint8_t codedBit, uint8_t alpha) {
+        uint64_t pnState = SeedForTemplate(baseSeed, templateIndex);
+        for (int py = 0; py < watermark::kBlockSize; ++py) {
+            const int screenY = blockOriginY + py;
+            if (screenY >= height) {
+                break;
+            }
+
+            for (int px = 0; px < watermark::kBlockSize; ++px) {
+                const int screenX = blockOriginX + px;
+                if (screenX >= width) {
+                    break;
+                }
+
+                const uint64_t rng = utils::SplitMix64(pnState);
+                const bool pnSign = (rng >> 63) != 0;
+                // codedBit is 0 for pilot blocks, so (false != pnSign) == pnSign
+                const bool bright = (codedBit != 0) != pnSign;
+                const uint8_t rgb = bright ? 255 : 0;
+
+                const size_t idx = (static_cast<size_t>(screenY) * width + screenX) * 4;
+                pixels[idx + 0] = rgb;
+                pixels[idx + 1] = rgb;
+                pixels[idx + 2] = rgb;
+                pixels[idx + 3] = alpha;
+            }
+        }
+    }
+
+    void RenderTilePixels(uint8_t *pixels, int width, int height, int tileX, int tileY, const uint8_t coded[30],
+                          uint64_t messageSeed, uint64_t syncSeed) {
+        const int tileIndexX = tileX / watermark::kTileWidth;
+        const int tileIndexY = tileY / watermark::kTileHeight;
+        const TileRenderState tileState = BuildTileRenderState(tileIndexX, tileIndexY, messageSeed, syncSeed);
+
+        for (int blockIdx = 0; blockIdx < watermark::kTileBlockCount; ++blockIdx) {
+            const bool isPilot = watermark::IsPilotBlock(blockIdx);
+            const int blockCol = blockIdx % watermark::kTileCols;
+            const int blockRow = blockIdx / watermark::kTileCols;
+            const int blockOriginX = tileX + blockCol * watermark::kBlockSize;
+            const int blockOriginY = tileY + blockRow * watermark::kBlockSize;
+
+            const int templateIndex = isPilot
+                ? watermark::GetPilotTemplateIndex(blockIdx)
+                : watermark::GetMessageTemplateIndex(blockIdx);
+            if (templateIndex < 0) {
+                continue;
+            }
+
+            const uint8_t alpha = isPilot ? watermark::kPilotDelta : watermark::kMessageDelta;
+            const uint64_t baseSeed = isPilot ? tileState.syncSeed : tileState.messageSeed;
+            const uint8_t codedBit = isPilot ? 0 : GetEncodedMessageBit(coded, tileState, templateIndex);
+
+            RenderBlockPixels(pixels, width, height, blockOriginX, blockOriginY,
+                              baseSeed, templateIndex, codedBit, alpha);
+        }
     }
 } // namespace
 
@@ -42,54 +133,7 @@ void Watermark::GenerateTexture(CKContext *ctx, int width, int height) {
     // For each tile copy that fits on screen
     for (int tileY = 0; tileY < height; tileY += watermark::kTileHeight) {
         for (int tileX = 0; tileX < width; tileX += watermark::kTileWidth) {
-            // For each block in the tile
-            for (int blockIdx = 0; blockIdx < watermark::kTileBlockCount; ++blockIdx) {
-                const bool isPilot = watermark::IsPilotBlock(blockIdx);
-                const int blockCol = blockIdx % watermark::kTileCols;
-                const int blockRow = blockIdx / watermark::kTileCols;
-                const int blockOriginX = tileX + blockCol * watermark::kBlockSize;
-                const int blockOriginY = tileY + blockRow * watermark::kBlockSize;
-
-                const int templateIndex = isPilot
-                    ? watermark::GetPilotTemplateIndex(blockIdx)
-                    : watermark::GetMessageTemplateIndex(blockIdx);
-                if (templateIndex < 0) {
-                    continue;
-                }
-
-                const uint8_t alpha = isPilot ? watermark::kPilotDelta : watermark::kMessageDelta;
-                const uint64_t baseSeed = isPilot ? m_SyncSeed : m_MessageSeed;
-                uint64_t pnState = SeedForTemplate(baseSeed, templateIndex);
-
-                uint8_t codedBit = 0;
-                if (!isPilot) {
-                    const int byteIdx = templateIndex / 8;
-                    const int bitIdx = 7 - (templateIndex % 8);
-                    codedBit = (m_Coded[byteIdx] >> bitIdx) & 1;
-                }
-
-                for (int py = 0; py < watermark::kBlockSize; ++py) {
-                    int screenY = blockOriginY + py;
-                    if (screenY >= height) break;
-                    for (int px = 0; px < watermark::kBlockSize; ++px) {
-                        int screenX = blockOriginX + px;
-                        if (screenX >= width) break;
-
-                        uint64_t rng = utils::SplitMix64(pnState);
-                        const bool pnSign = (rng >> 63) != 0;
-                        const bool codedBitSet = codedBit != 0;
-
-                        const bool bright = isPilot ? pnSign : (codedBitSet != pnSign);
-                        const uint8_t rgb = bright ? 255 : 0;
-
-                        size_t idx = (static_cast<size_t>(screenY) * width + screenX) * 4;
-                        pixels[idx + 0] = rgb;   // B (BGRA)
-                        pixels[idx + 1] = rgb;   // G
-                        pixels[idx + 2] = rgb;   // R
-                        pixels[idx + 3] = alpha; // A
-                    }
-                }
-            }
+            RenderTilePixels(pixels.get(), width, height, tileX, tileY, m_Coded, m_MessageSeed, m_SyncSeed);
         }
     }
 
@@ -130,6 +174,13 @@ void Watermark::Init(CKContext *ctx) {
     // Build payload once per session (timestamp fixed at first Init)
     if (!m_PayloadBuilt) {
         watermark::WatermarkIdentity identity = watermark::BuildDefaultIdentity();
+        if (watermark::HasZeroTraceId(identity)) {
+            if (Logger *logger = Logger::GetDefault()) {
+                logger->Warn(
+                    "Watermark trace_id fallback is all-zero because hardware fingerprint acquisition failed.");
+            }
+        }
+
         uint8_t payload[14] = {};
         watermark::BuildPayload(identity, payload);
         utils::RsEncode(payload, m_Coded);
