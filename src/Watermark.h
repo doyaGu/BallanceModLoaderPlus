@@ -6,6 +6,7 @@
 #include "WatermarkData.h"
 
 class CKContext;
+class CKRenderContext;
 class CKTexture;
 
 class Watermark {
@@ -13,12 +14,16 @@ public:
     void Init(CKContext *ctx);
     void RegenerateTexture(CKContext *ctx);
     void Shutdown(CKContext *ctx);
-    void Draw();
+    void Draw(CKRenderContext *dev);
 
 private:
-    void GenerateTexture(CKContext *ctx, int width, int height);
+    void GenerateTextures(CKContext *ctx, int width, int height);
+    static CKTexture *CreateUploadTexture(CKContext *ctx, CKRenderContext *rc,
+                                          const char *name,
+                                          const uint8_t *pixels, int width, int height);
 
-    CKTexture *m_Texture = nullptr;
+    CKTexture *m_TexAdd = nullptr;
+    CKTexture *m_TexSub = nullptr;
     int m_TexWidth = 0;
     int m_TexHeight = 0;
     bool m_PayloadBuilt = false;

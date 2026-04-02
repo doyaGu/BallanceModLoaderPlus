@@ -30,8 +30,8 @@ namespace watermark {
     inline constexpr int kPilotBlockCount = 16;
     inline constexpr int kMessageBlockCount = 240;
     inline constexpr int kTileBlockCount = kPilotBlockCount + kMessageBlockCount;
-    inline constexpr uint8_t kMessageDelta = 4;
-    inline constexpr uint8_t kPilotDelta = 6;
+    inline constexpr uint8_t kMessageDelta = 3;
+    inline constexpr uint8_t kPilotDelta = 4;
 
     inline constexpr std::array<TileCoordinate, kPilotBlockCount> kPilotCoordinates = {{
         {0, 0}, {15, 0}, {0, 15}, {15, 15},

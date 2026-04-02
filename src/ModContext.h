@@ -15,6 +15,7 @@
 #include "DataShare.hpp"
 #include "CommandContext.h"
 #include "HookUtils.h"
+#include "Watermark.h"
 
 typedef enum DirectoryType {
     BML_DIR_WORKING = 0,
@@ -221,6 +222,9 @@ public:
 
     void OnProcess();
     void OnRender(CKRenderContext *dev);
+    void DrawWatermark(CKRenderContext *dev);
+
+    Watermark &GetWatermark() { return m_Watermark; }
 
     void OnLoadGame();
 
@@ -340,6 +344,7 @@ private:
     CKTimeManager *m_TimeManager = nullptr;
 
     InputHook *m_InputHook = nullptr;
+    Watermark m_Watermark;
 
     BMLMod *m_BMLMod = nullptr;
     NewBallTypeMod *m_BallTypeMod = nullptr;

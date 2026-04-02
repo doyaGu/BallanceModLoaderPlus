@@ -104,6 +104,6 @@ CKERROR ModManager::OnPostRender(CKRenderContext *dev) {
 
 CKERROR ModManager::OnPostSpriteRender(CKRenderContext *dev) {
     Overlay::ImGuiOnRender();
-
+    m_ModContext->DrawWatermark(dev);
     return CK_OK;
 }
