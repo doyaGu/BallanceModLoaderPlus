@@ -379,31 +379,31 @@ TEST_F(StringUtilsTest, StringHash) {
     }
 }
 
-// Test legacy compatibility functions
-TEST_F(StringUtilsTest, LegacyCompatibility) {
-    // Test StringStartsWith/EndsWith
+// Test StartsWith/EndsWith functions
+TEST_F(StringUtilsTest, StartsWithEndsWith) {
+    // Test case-sensitive (default)
     {
         std::string test = "Hello World";
-        EXPECT_TRUE(utils::StringStartsWith(test, "Hello"));
-        EXPECT_TRUE(utils::StringEndsWith(test, "World"));
-        EXPECT_FALSE(utils::StringStartsWith(test, "hello"));
-        EXPECT_FALSE(utils::StringEndsWith(test, "world"));
+        EXPECT_TRUE(utils::StartsWith(test, "Hello"));
+        EXPECT_TRUE(utils::EndsWith(test, "World"));
+        EXPECT_FALSE(utils::StartsWith(test, "hello"));
+        EXPECT_FALSE(utils::EndsWith(test, "world"));
     }
-    
-    // Test case-insensitive versions
+
+    // Test case-insensitive
     {
         std::string test = "Hello World";
-        EXPECT_TRUE(utils::StringStartsWithCaseInsensitive(test, "hello"));
-        EXPECT_TRUE(utils::StringEndsWithCaseInsensitive(test, "world"));
+        EXPECT_TRUE(utils::StartsWith(test, "hello", false));
+        EXPECT_TRUE(utils::EndsWith(test, "world", false));
     }
-    
+
     // Test wide string versions
     {
         std::wstring test = L"Hello World";
-        EXPECT_TRUE(utils::StringStartsWith(test, L"Hello"));
-        EXPECT_TRUE(utils::StringEndsWith(test, L"World"));
-        EXPECT_TRUE(utils::StringStartsWithCaseInsensitive(test, L"hello"));
-        EXPECT_TRUE(utils::StringEndsWithCaseInsensitive(test, L"world"));
+        EXPECT_TRUE(utils::StartsWith(test, L"Hello"));
+        EXPECT_TRUE(utils::EndsWith(test, L"World"));
+        EXPECT_TRUE(utils::StartsWith(test, L"hello", false));
+        EXPECT_TRUE(utils::EndsWith(test, L"world", false));
     }
 }
 
