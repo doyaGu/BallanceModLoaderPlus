@@ -280,7 +280,7 @@ struct InputHook::Impl {
         size_t regionSize = (maxSlot + 1) * sizeof(void *);
 
         uint32_t oldProtect = utils::UnprotectRegion(vtable, regionSize);
-        if (!oldProtect) return; // VirtualProtect failed — do NOT null s_InputManager
+        if (!oldProtect) return; // VirtualProtect failed - do NOT null s_InputManager
 
         for (size_t i = 0; i < s_HookedSlotCount; ++i) {
             vtable[s_HookedSlotIndices[i]] = s_OriginalSlots[i];

@@ -182,7 +182,7 @@ void HUDElement::ToIni(IniFile &ini, const std::string &section) const {
     }
 }
 
-// Safe numeric parsers — return fallback on malformed input
+// Safe numeric parsers - return fallback on malformed input
 static int SafeStoi(const std::string &s, int fallback = 0) {
     try { return std::stoi(s); } catch (...) { return fallback; }
 }
