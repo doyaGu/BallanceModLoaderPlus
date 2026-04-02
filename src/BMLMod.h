@@ -12,6 +12,7 @@
 #include "MapMenu.h"
 #include "CommandBar.h"
 #include "MessageBoard.h"
+#include "Watermark.h"
 
 class EventHookRegistrar;
 
@@ -138,6 +139,7 @@ private:
     MapMenu m_MapMenu;
     CommandBar m_CommandBar;
     MessageBoard m_MessageBoard;
+    Watermark m_Watermark;
 
     // HUD builtin components
     FpsCounter m_FPSCounter;

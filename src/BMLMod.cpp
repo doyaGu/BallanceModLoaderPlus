@@ -158,6 +158,8 @@ void BMLMod::OnLoad() {
 
     // Apply initial FPS update frequency setting
     SetFPSUpdateFrequency(m_FPSUpdateFrequency->GetInteger());
+
+    m_Watermark.Init(m_CKContext);
 }
 
 void BMLMod::OnUnload() {
@@ -169,6 +171,8 @@ void BMLMod::OnUnload() {
     if (m_EnableIniSettings->GetBoolean()) {
         ImGui::SaveIniSettingsToDisk(m_ImGuiIniFilename.c_str());
     }
+
+    m_Watermark.Shutdown(m_CKContext);
 
     // Reset pointers to prevent use-after-free
     m_Level01 = nullptr;
@@ -246,6 +250,8 @@ void BMLMod::OnProcess() {
     if (m_ShowImGuiDemo)
         ImGui::ShowDemoWindow(&m_ShowImGuiDemo);
 #endif
+
+    m_Watermark.Draw();
 }
 
 void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *prop) {
@@ -928,6 +934,8 @@ void BMLMod::OnProcess_Menu() {
 void BMLMod::OnResize() {
     ImGuiStyle &style = ImGui::GetStyle();
     style.FontScaleMain = m_WindowRect.GetHeight() / 1200.0f;
+
+    m_Watermark.RegenerateTexture(m_CKContext);
 }
 
 // HUD Builtin implementations
