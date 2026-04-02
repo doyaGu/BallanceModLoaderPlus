@@ -55,6 +55,10 @@ set(BML_PRIVATE_HEADERS
         AnsiText.h
         EventHook.h
 
+        WatermarkLayout.h
+        WatermarkData.h
+        Watermark.h
+
         Overlay.h
 
         RenderHook.h
@@ -89,6 +93,9 @@ set(BML_SOURCES
         AnsiPalette.cpp
         AnsiText.cpp
         EventHook.cpp
+
+        WatermarkData.cpp
+        Watermark.cpp
 
         Gui/Element.cpp
         Gui/Text.cpp
