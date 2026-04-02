@@ -1,4 +1,14 @@
-configure_file(Version.h.in "${BML_INCLUDE_DIR}/BML/Version.h" @ONLY)
+add_custom_target(BML_VersionHeader ALL
+    COMMAND "${CMAKE_COMMAND}"
+        -DBML_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+        -DBML_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+        -DBML_VERSION_PATCH=${PROJECT_VERSION_PATCH}
+        -DTEMPLATE_FILE=${CMAKE_CURRENT_SOURCE_DIR}/Version.h.in
+        -DOUTPUT_FILE=${BML_INCLUDE_DIR}/BML/Version.h
+        -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
+        -P ${PROJECT_SOURCE_DIR}/cmake/GenerateVersionHeader.cmake
+    COMMENT "Generating Version.h with git metadata"
+)
 
 add_subdirectory(Utils)
 
@@ -149,6 +159,8 @@ target_link_libraries(BML
         BMLUtils
         minhook onig
 )
+
+add_dependencies(BML BML_VersionHeader)
 
 target_compile_definitions(BML PRIVATE
         BML_EXPORTS IMGUI_EXPORT

@@ -4,8 +4,8 @@
 // Version
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION BML_MAJOR_VERSION, BML_MINOR_VERSION, BML_PATCH_VERSION
- PRODUCTVERSION BML_MAJOR_VERSION, BML_MINOR_VERSION, BML_PATCH_VERSION
+ FILEVERSION BML_MAJOR_VERSION, BML_MINOR_VERSION, BML_PATCH_VERSION, 0
+ PRODUCTVERSION BML_MAJOR_VERSION, BML_MINOR_VERSION, BML_PATCH_VERSION, 0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -22,12 +22,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Kakuty & Gamepiaynmo"
             VALUE "FileDescription", "Mod Loader for Ballance"
-            VALUE "FileVersion", BML_VERSION
+            VALUE "FileVersion", BML_VERSION_FULL
             VALUE "InternalName", "BMLPlus.dll"
             VALUE "LegalCopyright", "Copyright (C) 2025"
             VALUE "OriginalFilename", "BMLPlus.dll"
             VALUE "ProductName", "Ballance Mod Loader Plus"
-            VALUE "ProductVersion", BML_VERSION
+            VALUE "ProductVersion", BML_VERSION_FULL
         END
     END
     BLOCK "VarFileInfo"

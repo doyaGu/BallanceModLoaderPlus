@@ -18,6 +18,9 @@ ipch
 *.VC.db
 *.VC.VC.opendb
 
+## Generated files
+include/BML/Version.h
+
 ## CMake artifacts
 CMakeLists.txt.user
 CMakeCache.txt

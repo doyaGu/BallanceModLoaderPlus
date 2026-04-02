@@ -3,7 +3,11 @@
 
 #define BML_MAJOR_VERSION 0
 #define BML_MINOR_VERSION 3
-#define BML_PATCH_VERSION 10
-#define BML_VERSION "0.3.10"
+#define BML_PATCH_VERSION 11
+#define BML_VERSION "0.3.11"
+
+#define BML_VERSION_GIT_HASH "21c7e8e"
+#define BML_VERSION_GIT_DIRTY 1
+#define BML_VERSION_FULL "0.3.11+21c7e8e.dirty"
 
 #endif // BML_VERSION_H
