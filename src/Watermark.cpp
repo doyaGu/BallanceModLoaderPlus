@@ -56,7 +56,8 @@ namespace {
 
     void RenderBlockPixels(uint8_t *pixelsAdd, uint8_t *pixelsSub,
                            int width, int height, int blockOriginX, int blockOriginY,
-                           uint64_t baseSeed, int templateIndex, uint8_t codedBit, uint8_t alpha) {
+                           uint64_t baseSeed, int templateIndex, uint8_t codedBit,
+                           uint8_t deltaR, uint8_t deltaG, uint8_t deltaB) {
         uint64_t pnState = SeedForTemplate(baseSeed, templateIndex);
         for (int py = 0; py < watermark::kBlockSize; ++py) {
             const int screenY = blockOriginY + py;
@@ -72,14 +73,14 @@ namespace {
 
                 const size_t idx = (static_cast<size_t>(screenY) * width + screenX) * 4;
                 if (bright) {
-                    pixelsAdd[idx + 0] = alpha;
-                    pixelsAdd[idx + 1] = alpha;
-                    pixelsAdd[idx + 2] = alpha;
+                    pixelsAdd[idx + 0] = deltaB;
+                    pixelsAdd[idx + 1] = deltaG;
+                    pixelsAdd[idx + 2] = deltaR;
                     pixelsAdd[idx + 3] = 255;
                 } else {
-                    pixelsSub[idx + 0] = alpha;
-                    pixelsSub[idx + 1] = alpha;
-                    pixelsSub[idx + 2] = alpha;
+                    pixelsSub[idx + 0] = deltaB;
+                    pixelsSub[idx + 1] = deltaG;
+                    pixelsSub[idx + 2] = deltaR;
                     pixelsSub[idx + 3] = 255;
                 }
             }
@@ -105,12 +106,14 @@ namespace {
                 : watermark::GetMessageTemplateIndex(blockIdx);
             if (templateIndex < 0) continue;
 
-            const uint8_t alpha = isPilot ? watermark::kPilotDelta : watermark::kMessageDelta;
+            const uint8_t deltaR = isPilot ? watermark::kPilotDeltaR : watermark::kMessageDeltaR;
+            const uint8_t deltaG = isPilot ? watermark::kPilotDeltaG : watermark::kMessageDeltaG;
+            const uint8_t deltaB = isPilot ? watermark::kPilotDeltaB : watermark::kMessageDeltaB;
             const uint64_t baseSeed = isPilot ? tileState.syncSeed : tileState.messageSeed;
             const uint8_t codedBit = isPilot ? 0 : GetEncodedMessageBit(coded, tileState, templateIndex);
 
             RenderBlockPixels(pixelsAdd, pixelsSub, width, height, blockOriginX, blockOriginY,
-                              baseSeed, templateIndex, codedBit, alpha);
+                              baseSeed, templateIndex, codedBit, deltaR, deltaG, deltaB);
         }
     }
 
