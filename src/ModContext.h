@@ -222,6 +222,9 @@ public:
 
     void OnProcess();
     void OnRender(CKRenderContext *dev);
+
+    void InitWatermark();
+    void ShutdownWatermark();
     void DrawWatermark(CKRenderContext *dev);
 
     Watermark &GetWatermark() { return m_Watermark; }

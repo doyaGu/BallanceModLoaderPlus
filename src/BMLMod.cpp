@@ -932,7 +932,7 @@ void BMLMod::OnResize() {
     ImGuiStyle &style = ImGui::GetStyle();
     style.FontScaleMain = m_WindowRect.GetHeight() / 1200.0f;
 
-    BML_GetModContext()->GetWatermark().RegenerateTexture(m_CKContext);
+    BML_GetModContext()->GetWatermark().OnResolutionChanged(m_CKContext);
 }
 
 // HUD Builtin implementations
