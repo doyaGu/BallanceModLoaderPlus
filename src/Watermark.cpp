@@ -122,6 +122,8 @@ CKTexture *Watermark::CreateUploadTexture(CKContext *ctx, CKRenderContext *rc,
     auto *tex = static_cast<CKTexture *>(ctx->CreateObject(CKCID_TEXTURE, (CKSTRING)name));
     if (!tex) return nullptr;
 
+    // NOTTOBESAVED: watermark textures are runtime-only.
+    // NOTTOBEDELETED: survive CKContext::ClearAll during level transitions.
     tex->ModifyObjectFlags(CK_OBJECT_NOTTOBESAVED | CK_OBJECT_NOTTOBEDELETED, 0);
     if (!tex->Create(width, height)) {
         ctx->DestroyObject(tex);
@@ -145,12 +147,18 @@ CKTexture *Watermark::CreateUploadTexture(CKContext *ctx, CKRenderContext *rc,
     return tex;
 }
 
-void Watermark::GenerateTextures(CKContext *ctx, int width, int height) {
+void Watermark::DestroyTextures(CKContext *ctx) {
     if (m_TexAdd) { ctx->DestroyObject(m_TexAdd); m_TexAdd = nullptr; }
     if (m_TexSub) { ctx->DestroyObject(m_TexSub); m_TexSub = nullptr; }
+    m_TexWidth = 0;
+    m_TexHeight = 0;
+}
 
-    m_TexWidth = width;
-    m_TexHeight = height;
+bool Watermark::GenerateTextures(CKContext *ctx, int width, int height) {
+    DestroyTextures(ctx);
+
+    CKRenderContext *rc = ctx->GetPlayerRenderContext();
+    if (!rc) return false;
 
     const size_t pixelBytes = static_cast<size_t>(width) * height * 4;
     auto pixelsAdd = std::make_unique<uint8_t[]>(pixelBytes);
@@ -165,9 +173,20 @@ void Watermark::GenerateTextures(CKContext *ctx, int width, int height) {
         }
     }
 
-    CKRenderContext *rc = ctx->GetPlayerRenderContext();
-    m_TexAdd = CreateUploadTexture(ctx, rc, "BML_WatermarkAdd", pixelsAdd.get(), width, height);
-    m_TexSub = CreateUploadTexture(ctx, rc, "BML_WatermarkSub", pixelsSub.get(), width, height);
+    CKTexture *texAdd = CreateUploadTexture(ctx, rc, "BML_WatermarkAdd", pixelsAdd.get(), width, height);
+    if (!texAdd) return false;
+
+    CKTexture *texSub = CreateUploadTexture(ctx, rc, "BML_WatermarkSub", pixelsSub.get(), width, height);
+    if (!texSub) {
+        ctx->DestroyObject(texAdd);
+        return false;
+    }
+
+    m_TexAdd = texAdd;
+    m_TexSub = texSub;
+    m_TexWidth = width;
+    m_TexHeight = height;
+    return true;
 }
 
 void Watermark::Init(CKContext *ctx) {
@@ -196,21 +215,25 @@ void Watermark::Init(CKContext *ctx) {
     }
 }
 
-void Watermark::RegenerateTexture(CKContext *ctx) {
+void Watermark::OnResolutionChanged(CKContext *ctx) {
+    if (!m_PayloadBuilt) return;
+
     CKRenderContext *rc = ctx->GetPlayerRenderContext();
-    if (rc) {
-        GenerateTextures(ctx, rc->GetWidth(), rc->GetHeight());
-    }
+    if (!rc) return;
+
+    int newWidth = rc->GetWidth();
+    int newHeight = rc->GetHeight();
+    if (newWidth == m_TexWidth && newHeight == m_TexHeight) return;
+
+    GenerateTextures(ctx, newWidth, newHeight);
 }
 
 void Watermark::Shutdown(CKContext *ctx) {
-    if (m_TexAdd) { ctx->DestroyObject(m_TexAdd); m_TexAdd = nullptr; }
-    if (m_TexSub) { ctx->DestroyObject(m_TexSub); m_TexSub = nullptr; }
+    DestroyTextures(ctx);
 }
 
 void Watermark::Draw(CKRenderContext *dev) {
     if (!m_TexAdd || !m_TexSub) return;
-
 
     // Save all render states we modify
     struct { VXRENDERSTATETYPE type; CKDWORD value; } savedStates[] = {

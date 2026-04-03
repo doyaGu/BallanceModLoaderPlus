@@ -11,13 +11,23 @@ class CKTexture;
 
 class Watermark {
 public:
+    Watermark() = default;
+    ~Watermark() = default;
+
+    Watermark(const Watermark &) = delete;
+    Watermark &operator=(const Watermark &) = delete;
+
     void Init(CKContext *ctx);
-    void RegenerateTexture(CKContext *ctx);
     void Shutdown(CKContext *ctx);
     void Draw(CKRenderContext *dev);
 
+    void OnResolutionChanged(CKContext *ctx);
+
+    bool HasTextures() const { return m_TexAdd != nullptr && m_TexSub != nullptr; }
+
 private:
-    void GenerateTextures(CKContext *ctx, int width, int height);
+    void DestroyTextures(CKContext *ctx);
+    bool GenerateTextures(CKContext *ctx, int width, int height);
     static CKTexture *CreateUploadTexture(CKContext *ctx, CKRenderContext *rc,
                                           const char *name,
                                           const uint8_t *pixels, int width, int height);

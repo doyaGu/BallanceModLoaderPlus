@@ -29,6 +29,7 @@ CKERROR ModManager::OnCKPlay() {
         m_RenderContext = m_Context->GetPlayerRenderContext();
 
         Overlay::ImGuiInitRenderer(m_Context);
+        m_ModContext->InitWatermark();
         Overlay::ImGuiContextScope scope;
 
         m_ModContext->LoadMods();
@@ -48,6 +49,7 @@ CKERROR ModManager::OnCKReset() {
         m_ModContext->ShutdownMods();
         m_ModContext->UnloadMods();
 
+        m_ModContext->ShutdownWatermark();
         Overlay::ImGuiShutdownRenderer(m_Context);
 
         m_RenderContext = nullptr;

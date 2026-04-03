@@ -269,8 +269,6 @@ bool ModContext::InitMods() {
 
     OnLoadGame();
 
-    m_Watermark.Init(m_CKContext);
-
     SetFlags(BML_MODS_INITED);
     return true;
 }
@@ -278,8 +276,6 @@ bool ModContext::InitMods() {
 void ModContext::ShutdownMods() {
     if (!IsInited() || !AreModsLoaded() || !AreModsInited())
         return;
-
-    m_Watermark.Shutdown(m_CKContext);
 
     for (auto rit = m_Mods.rbegin(); rit != m_Mods.rend(); ++rit) {
         auto *mod = *rit;
@@ -804,6 +800,14 @@ void ModContext::OnProcess() {
 
 void ModContext::OnRender(CKRenderContext *dev) {
     BroadcastCallback(&IMod::OnRender, static_cast<CK_RENDER_FLAGS>(dev->GetCurrentRenderOptions()));
+}
+
+void ModContext::InitWatermark() {
+    m_Watermark.Init(m_CKContext);
+}
+
+void ModContext::ShutdownWatermark() {
+    m_Watermark.Shutdown(m_CKContext);
 }
 
 void ModContext::DrawWatermark(CKRenderContext *dev) {
