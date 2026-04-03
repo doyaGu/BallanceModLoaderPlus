@@ -30,16 +30,8 @@ namespace watermark {
     inline constexpr int kPilotBlockCount = 16;
     inline constexpr int kMessageBlockCount = 240;
     inline constexpr int kTileBlockCount = kPilotBlockCount + kMessageBlockCount;
-    // Per-channel delta: shift energy to blue (least perceptible) while
-    // preserving grayscale signal Y = 0.299*R + 0.587*G + 0.114*B.
-    // Message: Y = 0.299*0 + 0.587*1 + 0.114*8 = 1.50
-    // Pilot:   Y = 0.299*1 + 0.587*2 + 0.114*8 = 2.39
-    inline constexpr uint8_t kMessageDeltaR = 0;
-    inline constexpr uint8_t kMessageDeltaG = 1;
-    inline constexpr uint8_t kMessageDeltaB = 8;
-    inline constexpr uint8_t kPilotDeltaR = 1;
-    inline constexpr uint8_t kPilotDeltaG = 2;
-    inline constexpr uint8_t kPilotDeltaB = 8;
+    inline constexpr uint8_t kMessageDelta = 2;
+    inline constexpr uint8_t kPilotDelta = 3;
 
     inline constexpr std::array<TileCoordinate, kPilotBlockCount> kPilotCoordinates = {{
         {0, 0}, {15, 0}, {0, 15}, {15, 15},
