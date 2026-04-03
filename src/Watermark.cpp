@@ -284,11 +284,11 @@ void Watermark::Draw(CKRenderContext *dev) {
 
         CKWORD indices[] = {0, 1, 2, 0, 2, 3};
 
-        // Pass 1: Additive — output = bg + src_rgb
+        // Pass 1: Additive -- output = bg + src_rgb
         dev->SetTexture(m_TexAdd);
         dev->DrawPrimitive(VX_TRIANGLELIST, indices, 6, data);
 
-        // Pass 2: Reverse-subtract — output = bg - src_rgb
+        // Pass 2: Reverse-subtract -- output = bg - src_rgb
         dev->SetState(VXRENDERSTATE_BLENDOP, VXBLENDOP_REVSUBTRACT);
         dev->SetTexture(m_TexSub);
         dev->DrawPrimitive(VX_TRIANGLELIST, indices, 6, data);
