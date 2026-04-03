@@ -61,12 +61,12 @@ BUILD_ID = 0x00CB
 
 
 def _synthesize_base_frame(width: int, height: int) -> np.ndarray:
-    y_coords = np.linspace(35.0, 205.0, height, dtype=np.float32)[:, None]
-    x_coords = np.linspace(15.0, 75.0, width, dtype=np.float32)[None, :]
+    y_coords = np.linspace(25.0, 165.0, height, dtype=np.float32)[:, None]
+    x_coords = np.linspace(15.0, 55.0, width, dtype=np.float32)[None, :]
     base = y_coords + x_coords
-    base += 18.0 * np.sin(np.linspace(0.0, 12.0, width, dtype=np.float32))[None, :]
-    base += 12.0 * np.cos(np.linspace(0.0, 9.0, height, dtype=np.float32))[:, None]
-    return np.clip(base, 0.0, 255.0)
+    base += 14.0 * np.sin(np.linspace(0.0, 12.0, width, dtype=np.float32))[None, :]
+    base += 10.0 * np.cos(np.linspace(0.0, 9.0, height, dtype=np.float32))[:, None]
+    return np.clip(base, 10.0, 240.0)
 
 
 def _apply_occlusions(gray: np.ndarray, occlusion_rects: list[tuple[int, int, int, int]] | None) -> np.ndarray:
@@ -114,13 +114,10 @@ def _render_v2_frame(width: int = 1024, height: int = 1024, *,
                      crop_top: int = 0, crop_left: int = 0,
                      occlusion_rects: list[tuple[int, int, int, int]] | None = None,
                      scale: float = 1.0,
-                     message_alpha: float = 1.6,
-                     pilot_alpha: float = 2.5) -> np.ndarray:
+                     message_alpha: float = 6.0,
+                     pilot_alpha: float = 8.0) -> np.ndarray:
     derived = derive_v2_keys(MASTER_KEY_HEX, BUILD_ID, TILE_CLASSES, MESSAGE_SEED_OFFSETS, SYNC_SEED_OFFSETS)
     frame = _synthesize_base_frame(width, height)
-
-    message_alpha_ratio = message_alpha / 255.0
-    pilot_alpha_ratio = pilot_alpha / 255.0
 
     for tile_y in range(0, height, TILE_H):
         for tile_x in range(0, width, TILE_W):
@@ -151,9 +148,8 @@ def _render_v2_frame(width: int = 1024, height: int = 1024, *,
                 x1 = min(bx + BLOCK_SIZE, width)
                 y1 = min(by + BLOCK_SIZE, height)
                 pn_block = pilot_templates[pilot_idx][: y1 - by, : x1 - bx]
-                pattern = np.where(pn_block > 0.0, 255.0, 0.0)
-                region = frame[by:y1, bx:x1]
-                frame[by:y1, bx:x1] = region * (1.0 - pilot_alpha_ratio) + pattern * pilot_alpha_ratio
+                frame[by:y1, bx:x1] = np.clip(
+                    frame[by:y1, bx:x1] + pn_block * pilot_alpha, 0.0, 255.0)
 
             for local_index, block_index in enumerate(MESSAGE_BLOCK_INDICES):
                 canonical_index = permutation[local_index]
@@ -172,13 +168,9 @@ def _render_v2_frame(width: int = 1024, height: int = 1024, *,
                 if sign_mask[canonical_index]:
                     coded_bit ^= 1
                 pn_block = message_templates[local_index][: y1 - by, : x1 - bx]
-                pattern = np.where(
-                    np.logical_xor(coded_bit == 1, pn_block > 0.0),
-                    255.0,
-                    0.0,
-                )
-                region = frame[by:y1, bx:x1]
-                frame[by:y1, bx:x1] = region * (1.0 - message_alpha_ratio) + pattern * message_alpha_ratio
+                sign = -1.0 if coded_bit else 1.0
+                frame[by:y1, bx:x1] = np.clip(
+                    frame[by:y1, bx:x1] + pn_block * message_alpha * sign, 0.0, 255.0)
 
     frame = _apply_occlusions(frame, occlusion_rects)
     if crop_top or crop_left:
