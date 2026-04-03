@@ -191,7 +191,7 @@ class Detector:
                             block_source, pilot_bank, exhaustive=self._exhaustive,
                         )
 
-                        if sync_candidates and sync_candidates[0].pilot_score < 0.1:
+                        if sync_candidates and sync_candidates[0].pilot_score < 0.02:
                             continue
 
                         for sync_index, sync_candidate in enumerate(sync_candidates):

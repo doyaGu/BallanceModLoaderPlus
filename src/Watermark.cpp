@@ -1,5 +1,6 @@
 #include "Watermark.h"
 
+#include <cmath>
 #include <cstring>
 #include <memory>
 
@@ -54,32 +55,92 @@ namespace {
         return codedBit;
     }
 
+    constexpr int BS = watermark::kBlockSize;
+
+    void BoxBlur2D(const float in[BS][BS], float out[BS][BS], int radius) {
+        const int size = 2 * radius + 1;
+        const float inv = 1.0f / static_cast<float>(size);
+        float temp[BS][BS];
+
+        for (int y = 0; y < BS; ++y) {
+            for (int x = 0; x < BS; ++x) {
+                float sum = 0.0f;
+                for (int k = -radius; k <= radius; ++k) {
+                    const int sx = x + k;
+                    if (sx >= 0 && sx < BS) sum += in[y][sx];
+                }
+                temp[y][x] = sum * inv;
+            }
+        }
+        for (int y = 0; y < BS; ++y) {
+            for (int x = 0; x < BS; ++x) {
+                float sum = 0.0f;
+                for (int k = -radius; k <= radius; ++k) {
+                    const int sy = y + k;
+                    if (sy >= 0 && sy < BS) sum += temp[sy][x];
+                }
+                out[y][x] = sum * inv;
+            }
+        }
+    }
+
+    void GenerateBandpassBlock(uint64_t baseSeed, int templateIndex,
+                               float out[BS][BS]) {
+        float raw[BS][BS];
+        uint64_t pnState = SeedForTemplate(baseSeed, templateIndex);
+        for (int py = 0; py < BS; ++py)
+            for (int px = 0; px < BS; ++px) {
+                const uint64_t rng = utils::SplitMix64(pnState);
+                raw[py][px] = (rng >> 63) ? 1.0f : -1.0f;
+            }
+
+        float smoothSmall[BS][BS], smoothLarge[BS][BS];
+        BoxBlur2D(raw, smoothSmall, watermark::kBandpassSmallRadius);
+        BoxBlur2D(raw, smoothLarge, watermark::kBandpassLargeRadius);
+
+        float maxAbs = 0.0f;
+        for (int y = 0; y < BS; ++y)
+            for (int x = 0; x < BS; ++x) {
+                out[y][x] = smoothSmall[y][x] - smoothLarge[y][x];
+                const float a = fabsf(out[y][x]);
+                if (a > maxAbs) maxAbs = a;
+            }
+
+        if (maxAbs > 0.0f) {
+            const float inv = 1.0f / maxAbs;
+            for (int y = 0; y < BS; ++y)
+                for (int x = 0; x < BS; ++x)
+                    out[y][x] *= inv;
+        }
+    }
+
     void RenderBlockPixels(uint8_t *pixelsAdd, uint8_t *pixelsSub,
                            int width, int height, int blockOriginX, int blockOriginY,
-                           uint64_t baseSeed, int templateIndex, uint8_t codedBit, uint8_t delta) {
-        uint64_t pnState = SeedForTemplate(baseSeed, templateIndex);
-        for (int py = 0; py < watermark::kBlockSize; ++py) {
+                           const float filtered[BS][BS], uint8_t codedBit, uint8_t delta) {
+        for (int py = 0; py < BS; ++py) {
             const int screenY = blockOriginY + py;
             if (screenY >= height) break;
 
-            for (int px = 0; px < watermark::kBlockSize; ++px) {
+            for (int px = 0; px < BS; ++px) {
                 const int screenX = blockOriginX + px;
                 if (screenX >= width) break;
 
-                const uint64_t rng = utils::SplitMix64(pnState);
-                const bool pnSign = (rng >> 63) != 0;
-                const bool bright = (codedBit != 0) != pnSign;
+                float value = filtered[py][px];
+                if (codedBit) value = -value;
+
+                const auto magnitude = static_cast<uint8_t>(fabsf(value) * delta + 0.5f);
+                if (magnitude == 0) continue;
 
                 const size_t idx = (static_cast<size_t>(screenY) * width + screenX) * 4;
-                if (bright) {
-                    pixelsAdd[idx + 0] = delta;
-                    pixelsAdd[idx + 1] = delta;
-                    pixelsAdd[idx + 2] = delta;
+                if (value > 0.0f) {
+                    pixelsAdd[idx + 0] = magnitude;
+                    pixelsAdd[idx + 1] = magnitude;
+                    pixelsAdd[idx + 2] = magnitude;
                     pixelsAdd[idx + 3] = 255;
                 } else {
-                    pixelsSub[idx + 0] = delta;
-                    pixelsSub[idx + 1] = delta;
-                    pixelsSub[idx + 2] = delta;
+                    pixelsSub[idx + 0] = magnitude;
+                    pixelsSub[idx + 1] = magnitude;
+                    pixelsSub[idx + 2] = magnitude;
                     pixelsSub[idx + 3] = 255;
                 }
             }
@@ -109,8 +170,11 @@ namespace {
             const uint64_t baseSeed = isPilot ? tileState.syncSeed : tileState.messageSeed;
             const uint8_t codedBit = isPilot ? 0 : GetEncodedMessageBit(coded, tileState, templateIndex);
 
+            float filtered[BS][BS];
+            GenerateBandpassBlock(baseSeed, templateIndex, filtered);
+
             RenderBlockPixels(pixelsAdd, pixelsSub, width, height, blockOriginX, blockOriginY,
-                              baseSeed, templateIndex, codedBit, delta);
+                              filtered, codedBit, delta);
         }
     }
 

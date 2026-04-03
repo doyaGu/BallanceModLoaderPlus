@@ -30,8 +30,14 @@ namespace watermark {
     inline constexpr int kPilotBlockCount = 16;
     inline constexpr int kMessageBlockCount = 240;
     inline constexpr int kTileBlockCount = kPilotBlockCount + kMessageBlockCount;
-    inline constexpr uint8_t kMessageDelta = 2;
-    inline constexpr uint8_t kPilotDelta = 3;
+    inline constexpr uint8_t kMessageDelta = 6;
+    inline constexpr uint8_t kPilotDelta = 8;
+
+    // Bandpass filter radii for PN template shaping.
+    // DoB (Difference of Boxes): box_blur(r=1) - box_blur(r=5)
+    // keeps ~2-8 cycles per block, where H.264 mid-frequencies survive.
+    inline constexpr int kBandpassSmallRadius = 1;
+    inline constexpr int kBandpassLargeRadius = 5;
 
     inline constexpr std::array<TileCoordinate, kPilotBlockCount> kPilotCoordinates = {{
         {0, 0}, {15, 0}, {0, 15}, {15, 15},
