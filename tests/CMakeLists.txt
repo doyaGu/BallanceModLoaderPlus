@@ -81,13 +81,3 @@ add_bml_test(AnsiPaletteTest
 # Need ImGui headers for AnsiPalette
 target_include_directories(AnsiPaletteTest PRIVATE ${IMGUI_SOURCE_DIR})
 
-add_bml_test(WatermarkTest
-        SOURCES
-        WatermarkTest.cpp
-        ${BML_SOURCE_DIR}/WatermarkData.cpp
-        DEPENDENCIES
-        BML_HashUtils
-        BML_ReedSolomon
-        BML_CryptoUtils
-        BML_HardwareFingerprint
-)

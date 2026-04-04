@@ -802,18 +802,6 @@ void ModContext::OnRender(CKRenderContext *dev) {
     BroadcastCallback(&IMod::OnRender, static_cast<CK_RENDER_FLAGS>(dev->GetCurrentRenderOptions()));
 }
 
-void ModContext::InitWatermark() {
-    m_Watermark.Init(m_CKContext);
-}
-
-void ModContext::ShutdownWatermark() {
-    m_Watermark.Shutdown(m_CKContext);
-}
-
-void ModContext::DrawWatermark(CKRenderContext *dev) {
-    m_Watermark.Draw(dev);
-}
-
 void ModContext::OnLoadGame() {
     BroadcastCallback(&IMod::OnLoadObject, "base.cmo", false, "", CKCID_3DOBJECT,
                       true, true, true, false, nullptr, nullptr);
