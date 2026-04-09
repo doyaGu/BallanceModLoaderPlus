@@ -192,6 +192,12 @@ bool MapMenu::ExploreMaps(MapEntry *maps, int depth) {
 
             fullPath.append(L"\\").append(fileinfo.name);
 
+            // Reject entries whose names contain path traversal sequences
+            if (wcschr(fileinfo.name, L'\\') || wcschr(fileinfo.name, L'/') ||
+                wcsstr(fileinfo.name, L"..")) {
+                continue;
+            }
+
             if (fileinfo.attrib & _A_SUBDIR) {
                 std::wstring dirName = fileinfo.name;
 
