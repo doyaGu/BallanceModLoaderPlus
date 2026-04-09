@@ -72,6 +72,7 @@ namespace ExecuteBB {
                            const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
                            float linearDamp, float rotDamp, const char *collSurface, VxVector massCenter,
                            CKMesh *mesh) {
+        if (!bbPhysConv) return;
         PhysicalizeParam(bbPhysConv, target, fixed, friction, elasticity, mass, collGroup, startFrozen,
                          enableColl, calcMassCenter, linearDamp, rotDamp, collSurface, massCenter);
         SetParamObject(bbPhysConv->GetInputParameter(11)->GetDirectSource(), mesh);
@@ -83,6 +84,7 @@ namespace ExecuteBB {
                          const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
                          float linearDamp, float rotDamp, const char *collSurface, VxVector massCenter,
                          VxVector ballCenter, float ballRadius) {
+        if (!bbPhysBall) return;
         PhysicalizeParam(bbPhysBall, target, fixed, friction, elasticity, mass, collGroup, startFrozen,
                          enableColl, calcMassCenter, linearDamp, rotDamp, collSurface, massCenter);
         SetParamValue(bbPhysBall->GetInputParameter(11)->GetDirectSource(), ballCenter);
@@ -95,6 +97,7 @@ namespace ExecuteBB {
                             const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
                             float linearDamp, float rotDamp, const char *collSurface, VxVector massCenter,
                             CKMesh *mesh) {
+        if (!bbPhysConc) return;
         PhysicalizeParam(bbPhysConc, target, fixed, friction, elasticity, mass, collGroup, startFrozen,
                          enableColl, calcMassCenter, linearDamp, rotDamp, collSurface, massCenter);
         SetParamObject(bbPhysConc->GetInputParameter(11)->GetDirectSource(), mesh);
@@ -103,6 +106,7 @@ namespace ExecuteBB {
     }
 
     void Unphysicalize(CK3dEntity *target) {
+        if (!bbPhysConv) return;
         SetParamObject(bbPhysConv->GetTargetParameter()->GetDirectSource(), target);
         bbPhysConv->ActivateInput(1);
         bbPhysConv->Execute(0);
@@ -110,6 +114,7 @@ namespace ExecuteBB {
 
     void SetPhysicsForce(CK3dEntity *target, VxVector position, CK3dEntity *posRef, VxVector direction,
                          CK3dEntity *directionRef, float force) {
+        if (!bbSetForce) return;
         SetParamObject(bbSetForce->GetTargetParameter()->GetDirectSource(), target);
         SetParamValue(bbSetForce->GetInputParameter(0)->GetDirectSource(), position);
         SetParamObject(bbSetForce->GetInputParameter(1)->GetDirectSource(), posRef);
@@ -121,12 +126,14 @@ namespace ExecuteBB {
     }
 
     void UnsetPhysicsForce(CK3dEntity *target) {
+        if (!bbSetForce) return;
         SetParamObject(bbSetForce->GetTargetParameter()->GetDirectSource(), target);
         bbSetForce->ActivateInput(1);
         bbSetForce->Execute(0);
     }
 
     void PhysicsWakeUp(CK3dEntity *target) {
+        if (!bbPhysicsWakeUp) return;
         SetParamObject(bbPhysicsWakeUp->GetTargetParameter()->GetDirectSource(), target);
         bbPhysicsWakeUp->ActivateInput(0);
         bbPhysicsWakeUp->Execute(0);
@@ -134,6 +141,7 @@ namespace ExecuteBB {
 
     void PhysicsImpulse(CK3dEntity *target, VxVector position, CK3dEntity *posRef, VxVector direction,
                         CK3dEntity *dirRef, float impulse) {
+        if (!bbPhyImpul) return;
         SetParamObject(bbPhyImpul->GetTargetParameter()->GetDirectSource(), target);
         SetParamValue(bbPhyImpul->GetInputParameter(0)->GetDirectSource(), position);
         SetParamObject(bbPhyImpul->GetInputParameter(1)->GetDirectSource(), posRef);
@@ -147,6 +155,7 @@ namespace ExecuteBB {
     std::pair<XObjectArray *, CKObject *> ObjectLoad(const char *file, bool rename, const char *mastername,
                                                      CK_CLASSID filter, CKBOOL addToScene, CKBOOL reuseMesh,
                                                      CKBOOL reuseMtl, CKBOOL dynamic) {
+        if (!bbObjLoad) return {nullptr, nullptr};
         SetParamString(bbObjLoad->GetInputParameter(0)->GetDirectSource(), file);
         SetParamString(bbObjLoad->GetInputParameter(1)->GetDirectSource(), mastername);
         SetParamValue(bbObjLoad->GetInputParameter(2)->GetDirectSource(), filter);
