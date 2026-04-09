@@ -418,8 +418,9 @@ float BMLMod::GetSRScore() const {
 }
 
 int BMLMod::GetHSScore() {
-    int points, lifes;
     CKDataArray *energy = m_BML->GetArrayByName("Energy");
+    if (!energy) return 0;
+    int points = 0, lifes = 0;
     energy->GetElementValue(0, 0, &points);
     energy->GetElementValue(0, 1, &lifes);
     return points + lifes * 200;
