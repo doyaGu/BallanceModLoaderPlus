@@ -136,7 +136,7 @@ struct InputHook::Impl {
     }
 
     static void Unblock(CK_INPUT_DEVICE device) {
-        if (IsBlocked(device) > 0)
+        if (device >= 0 && device < CK_INPUT_DEVICE_COUNT && s_BlockedDevice[device] > 0)
             --s_BlockedDevice[device];
     }
 
@@ -280,13 +280,14 @@ struct InputHook::Impl {
         size_t regionSize = (maxSlot + 1) * sizeof(void *);
 
         uint32_t oldProtect = utils::UnprotectRegion(vtable, regionSize);
-        if (!oldProtect) return; // VirtualProtect failed - do NOT null s_InputManager
-
-        for (size_t i = 0; i < s_HookedSlotCount; ++i) {
-            vtable[s_HookedSlotIndices[i]] = s_OriginalSlots[i];
+        if (oldProtect) {
+            for (size_t i = 0; i < s_HookedSlotCount; ++i) {
+                vtable[s_HookedSlotIndices[i]] = s_OriginalSlots[i];
+            }
+            utils::ProtectRegion(vtable, regionSize, oldProtect);
         }
-        utils::ProtectRegion(vtable, regionSize, oldProtect);
 
+        // Always invalidate to prevent use-after-free in public methods
         s_InputManager = nullptr;
         s_HookedSlotCount = 0;
     }
