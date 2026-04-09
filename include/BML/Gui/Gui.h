@@ -61,6 +61,8 @@ namespace BGui {
 
         virtual void SetVisible(bool visible);
 
+        virtual ~Gui();
+
         bool CanBeBlocked();
         void SetCanBeBlocked(bool block);
 
