@@ -339,7 +339,8 @@ void ModOptionPage::SaveChanges() {
             case IProperty::STRING:
                 if (strcmp(m_Buffers[i], m_OriginalBuffers[i]) != 0) {
                     property->SetString(m_Buffers[i]);
-                    strcpy(m_OriginalBuffers[i], m_Buffers[i]);
+                    strncpy(m_OriginalBuffers[i], m_Buffers[i], BUFFER_SIZE - 1);
+                    m_OriginalBuffers[i][BUFFER_SIZE - 1] = '\0';
                 }
                 break;
             case IProperty::BOOLEAN:
@@ -387,7 +388,8 @@ void ModOptionPage::RevertChanges() {
 
         switch (property->GetType()) {
             case IProperty::STRING:
-                strcpy(m_Buffers[i], m_OriginalBuffers[i]);
+                strncpy(m_Buffers[i], m_OriginalBuffers[i], BUFFER_SIZE - 1);
+                m_Buffers[i][BUFFER_SIZE - 1] = '\0';
                 m_BufferHashes[i] = utils::HashString(m_Buffers[i]);
                 break;
             case IProperty::BOOLEAN:
