@@ -28,14 +28,22 @@ void BML_GetVersionString(char *version, size_t size) {
 }
 
 void *BML_Malloc(size_t size) {
+    if (size == 0)
+        return nullptr;
     return malloc(size);
 }
 
 void *BML_Calloc(size_t num, size_t size) {
+    if (num == 0 || size == 0)
+        return nullptr;
     return calloc(num, size);
 }
 
 void *BML_Realloc(void *ptr, size_t size) {
+    if (size == 0) {
+        free(ptr);
+        return nullptr;
+    }
     return realloc(ptr, size);
 }
 
@@ -672,10 +680,18 @@ int BML_GetDriveAndDirectoryA(const char *path, char **drive, char **directory) 
     if (!path || !drive || !directory) return 0;
 
     auto result = utils::GetDriveAndDirectoryA(path);
-    *drive = BML_Strdup(result.first.c_str());
-    *directory = BML_Strdup(result.second.c_str());
+    char *tmpDrive = BML_Strdup(result.first.c_str());
+    char *tmpDir = BML_Strdup(result.second.c_str());
 
-    return (*drive && *directory) ? 1 : 0;
+    if (tmpDrive && tmpDir) {
+        *drive = tmpDrive;
+        *directory = tmpDir;
+        return 1;
+    }
+
+    free(tmpDrive);
+    free(tmpDir);
+    return 0;
 }
 
 int BML_GetDriveAndDirectoryW(const wchar_t *path, wchar_t **drive, wchar_t **directory) {
@@ -683,18 +699,19 @@ int BML_GetDriveAndDirectoryW(const wchar_t *path, wchar_t **drive, wchar_t **di
 
     auto result = utils::GetDriveAndDirectoryW(path);
 
-    *drive = static_cast<wchar_t *>(malloc((result.first.length() + 1) * sizeof(wchar_t)));
-    *directory = static_cast<wchar_t *>(malloc((result.second.length() + 1) * sizeof(wchar_t)));
+    wchar_t *tmpDrive = static_cast<wchar_t *>(malloc((result.first.length() + 1) * sizeof(wchar_t)));
+    wchar_t *tmpDir = static_cast<wchar_t *>(malloc((result.second.length() + 1) * sizeof(wchar_t)));
 
-    if (*drive && *directory) {
-        wcscpy(*drive, result.first.c_str());
-        wcscpy(*directory, result.second.c_str());
+    if (tmpDrive && tmpDir) {
+        wcscpy(tmpDrive, result.first.c_str());
+        wcscpy(tmpDir, result.second.c_str());
+        *drive = tmpDrive;
+        *directory = tmpDir;
         return 1;
     }
 
-    free(*drive);
-    free(*directory);
-    *drive = *directory = nullptr;
+    free(tmpDrive);
+    free(tmpDir);
     return 0;
 }
 
@@ -702,10 +719,18 @@ int BML_GetDriveAndDirectoryUtf8(const char *path, char **drive, char **director
     if (!path || !drive || !directory) return 0;
 
     auto result = utils::GetDriveAndDirectoryUtf8(path);
-    *drive = BML_Strdup(result.first.c_str());
-    *directory = BML_Strdup(result.second.c_str());
+    char *tmpDrive = BML_Strdup(result.first.c_str());
+    char *tmpDir = BML_Strdup(result.second.c_str());
 
-    return (*drive && *directory) ? 1 : 0;
+    if (tmpDrive && tmpDir) {
+        *drive = tmpDrive;
+        *directory = tmpDir;
+        return 1;
+    }
+
+    free(tmpDrive);
+    free(tmpDir);
+    return 0;
 }
 
 char *BML_GetFileNameA(const char *path) {
