@@ -518,9 +518,17 @@ void ModContext::ExecuteCommand(const char *cmd) {
 
     m_Logger->Info("Execute Command: %s", cmd);
 
-    BroadcastCallback(&IMod::OnPreCommandExecute, command, args);
-    command->Execute(this, args);
-    BroadcastCallback(&IMod::OnPostCommandExecute, command, args);
+    try {
+        BroadcastCallback(&IMod::OnPreCommandExecute, command, args);
+        command->Execute(this, args);
+        BroadcastCallback(&IMod::OnPostCommandExecute, command, args);
+    } catch (const std::exception &e) {
+        m_Logger->Error("Exception executing command '%s': %s", cmd, e.what());
+        m_BMLMod->AddIngameMessage(("Error: Command failed - " + std::string(e.what())).c_str());
+    } catch (...) {
+        m_Logger->Error("Unknown exception executing command '%s'", cmd);
+        m_BMLMod->AddIngameMessage("Error: Command failed with unknown exception");
+    }
 }
 
 bool ModContext::AddConfig(Config *config) {
@@ -548,6 +556,8 @@ bool ModContext::AddConfig(Config *config) {
 }
 
 bool ModContext::RemoveConfig(Config *config) {
+    std::lock_guard<std::mutex> lock(m_Mutex);
+
     if (!config)
         return false;
 
@@ -1366,6 +1376,12 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
         const char *modId = mod->GetID();
         if (!modId) {
             return false;
+        }
+
+        // Remove from callback map to prevent dangling pointer in BroadcastCallback
+        for (auto &kv : m_CallbackMap) {
+            auto &vec = kv.second;
+            vec.erase(std::remove(vec.begin(), vec.end(), mod), vec.end());
         }
 
         // Remove from mod map
