@@ -208,8 +208,23 @@ public:
 
     template<typename T, typename... Args>
     std::enable_if_t<std::is_member_function_pointer<T>::value, void> BroadcastCallback(T callback, Args&&... args) {
-        for (IMod *mod: m_CallbackMap[utils::TypeErase(callback)]) {
-            (mod->*callback)(std::forward<Args>(args)...);
+        std::vector<IMod *> mods;
+        {
+            std::lock_guard<std::mutex> lock(m_Mutex);
+            auto it = m_CallbackMap.find(utils::TypeErase(callback));
+            if (it != m_CallbackMap.end())
+                mods = it->second;
+        }
+        for (IMod *mod : mods) {
+            try {
+                (mod->*callback)(std::forward<Args>(args)...);
+            } catch (const std::exception &e) {
+                if (m_Logger)
+                    m_Logger->Error("Exception in mod %s callback: %s", mod->GetID(), e.what());
+            } catch (...) {
+                if (m_Logger)
+                    m_Logger->Error("Unknown exception in mod %s callback", mod->GetID());
+            }
         }
     }
 
