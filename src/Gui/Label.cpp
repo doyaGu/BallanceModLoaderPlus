@@ -16,7 +16,7 @@ Label::Label(const char *name) : Element(name) {
 
 Label::~Label() {
     CKContext *context = BML_GetCKContext();
-    if (context)
+    if (context && m_Text2d)
         context->DestroyObject(CKOBJID(m_Text2d));
 }
 

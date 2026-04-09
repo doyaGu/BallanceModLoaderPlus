@@ -15,7 +15,7 @@ Element::Element(const char *name) {
 
 Element::~Element() {
     CKContext *context = BML_GetCKContext();
-    if (context)
+    if (context && m_2dEntity)
         context->DestroyObject(CKOBJID(m_2dEntity));
 }
 

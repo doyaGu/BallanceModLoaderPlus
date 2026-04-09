@@ -23,7 +23,7 @@ Text::Text(const char *name) : Element(name) {
 
 Text::~Text() {
     CKContext *context = BML_GetCKContext();
-    if (context)
+    if (context && m_Sprite)
         context->DestroyObject(CKOBJID(m_Sprite));
 }
 
