@@ -210,6 +210,7 @@ bool UnhookPhysicalize() {
 
     CKBehaviorPrototype *physicalizeProto = CKGetPrototypeFromGuid(PHYSICS_RT_PHYSICALIZE);
     if (!physicalizeProto) return false;
+    if (!g_Physicalize) return false;
     physicalizeProto->SetFunction(g_Physicalize);
     return true;
 }

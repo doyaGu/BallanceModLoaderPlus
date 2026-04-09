@@ -178,6 +178,7 @@ bool HookObjectLoad() {
 bool UnhookObjectLoad() {
     CKBehaviorPrototype *objectLoadProto = CKGetPrototypeFromGuid(VT_NARRATIVES_OBJECTLOAD);
     if (!objectLoadProto) return false;
+    if (!g_ObjectLoad) return false;
     objectLoadProto->SetFunction(g_ObjectLoad);
     return true;
 }
