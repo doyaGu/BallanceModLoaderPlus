@@ -17,7 +17,7 @@ Panel::Panel(const char *name) : Element(name) {
 
 Panel::~Panel() {
     CKContext *context = BML_GetCKContext();
-    if (context)
+    if (context && m_Material)
         context->DestroyObject(CKOBJID(m_Material));
 }
 
