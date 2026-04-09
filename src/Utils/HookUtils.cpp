@@ -92,6 +92,8 @@ namespace utils {
         uintptr_t original = *((uintptr_t *) entry);
 
         uint32_t originalProtection = UnprotectRegion((void *) entry, sizeof(void *));
+        if (!originalProtection)
+            return nullptr;
         *((uintptr_t *) entry) = (uintptr_t) hook;
         ProtectRegion((void *) entry, sizeof(void *), originalProtection);
 
