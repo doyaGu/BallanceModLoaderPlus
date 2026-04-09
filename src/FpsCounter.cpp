@@ -27,7 +27,11 @@ void FpsCounter::RecalculateAverage() {
     for (uint32_t i = 0; i < m_SampleCount; ++i) {
         totalTime += m_FrameTimes[i];
     }
-    m_CurrentAverageFps = m_SampleCount / totalTime;
+    if (totalTime > 0.0f) {
+        m_CurrentAverageFps = m_SampleCount / totalTime;
+    } else {
+        m_CurrentAverageFps = 0.0f;
+    }
 }
 
 float FpsCounter::GetAverageFps() const {
