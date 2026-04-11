@@ -2,6 +2,7 @@
 
 #include <map>
 #include <algorithm>
+#include <random>
 
 #include "BML/Bui.h"
 #include "BML/Gui.h"
@@ -394,7 +395,10 @@ void BMLMod::LoadMap(const std::wstring &path) {
     SetParamString(m_MapFile, filename.c_str());
     SetParamValue(m_LoadCustom, TRUE);
     int level = m_CustomMapNumber->GetInteger();
-    level = (level >= 1 && level <= 13) ? level : rand() % 10 + 2;
+    if (level < 1 || level > 13) {
+        static std::mt19937 s_Rng(std::random_device{}());
+        level = std::uniform_int_distribution<int>(2, 11)(s_Rng);
+    }
     m_CurLevel->SetElementValue(0, 0, &level);
     level--;
     SetParamValue(m_LevelRow, level);
