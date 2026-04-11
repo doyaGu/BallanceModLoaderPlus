@@ -126,10 +126,13 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
 
         BML_DataShare *ds = BML_GetModContext()->GetDataShare(nullptr);
 
+        std::string customMapName;
         if (isMap && ds) {
-            const char *mapName = static_cast<const char *>(BML_DataShare_Get(ds, "CustomMapName", nullptr));
-            if (mapName) {
-                fname = mapName;
+            size_t nameSize = BML_DataShare_SizeOf(ds, "CustomMapName");
+            if (nameSize > 0) {
+                customMapName.resize(nameSize - 1);
+                BML_DataShare_Copy(ds, "CustomMapName", customMapName.data(), nameSize);
+                fname = customMapName.c_str();
             }
         }
 
