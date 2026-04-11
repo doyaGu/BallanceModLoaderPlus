@@ -121,7 +121,8 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
         DeleteCKObjectArray(array);
         beh->SetOutputParameterObject(1, masterobject);
 
-        CKBOOL isMap = strcmp(beh->GetOwnerScript()->GetName(), "Levelinit_build") == 0;
+        CKBehavior *ownerScript = beh->GetOwnerScript();
+        CKBOOL isMap = ownerScript && strcmp(ownerScript->GetName(), "Levelinit_build") == 0;
 
         BML_DataShare *ds = BML_GetModContext()->GetDataShare(nullptr);
 
