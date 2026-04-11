@@ -1379,22 +1379,26 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
             return false;
         }
 
-        // Remove from callback map to prevent dangling pointer in BroadcastCallback
-        for (auto &kv : m_CallbackMap) {
-            auto &vec = kv.second;
-            vec.erase(std::remove(vec.begin(), vec.end(), mod), vec.end());
-        }
+        {
+            std::lock_guard<std::mutex> lock(m_Mutex);
 
-        // Remove from mod map
-        auto it = m_ModMap.find(modId);
-        if (it != m_ModMap.end()) {
-            m_ModMap.erase(it);
-        }
+            // Remove from callback map to prevent dangling pointer in BroadcastCallback
+            for (auto &kv : m_CallbackMap) {
+                auto &vec = kv.second;
+                vec.erase(std::remove(vec.begin(), vec.end(), mod), vec.end());
+            }
 
-        // Remove from mod vector
-        auto oit = std::find(m_Mods.begin(), m_Mods.end(), mod);
-        if (oit != m_Mods.end()) {
-            m_Mods.erase(oit);
+            // Remove from mod map
+            auto it = m_ModMap.find(modId);
+            if (it != m_ModMap.end()) {
+                m_ModMap.erase(it);
+            }
+
+            // Remove from mod vector
+            auto oit = std::find(m_Mods.begin(), m_Mods.end(), mod);
+            if (oit != m_Mods.end()) {
+                m_Mods.erase(oit);
+            }
         }
 
         // Call BMLExit function safely
