@@ -421,9 +421,13 @@ namespace utils {
         std::unique_ptr<FILE, decltype(&fclose)> filePtr(fp, &fclose);
 
         fseek(fp, 0, SEEK_END);
-        size_t size = ftell(fp);
+        long rawSize = ftell(fp);
         fseek(fp, 0, SEEK_SET);
 
+        if (rawSize <= 0)
+            return false;
+
+        size_t size = static_cast<size_t>(rawSize);
         std::vector<char> buffer(size);
         if (fread(buffer.data(), sizeof(char), size, fp) != size)
             return false;
@@ -832,6 +836,9 @@ namespace utils {
         fseek(file, 0, SEEK_END);
         long size = ftell(file);
         fseek(file, 0, SEEK_SET);
+
+        if (size <= 0)
+            return {};
 
         std::vector<uint8_t> buffer(static_cast<size_t>(size));
         if (fread(buffer.data(), 1, size, file) == static_cast<size_t>(size))
