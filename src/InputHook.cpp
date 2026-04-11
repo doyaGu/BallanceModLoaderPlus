@@ -312,71 +312,90 @@ InputHook::~InputHook() {
     Impl::Unhook();
 }
 
+bool InputHook::IsValid() { return Impl::s_InputManager != nullptr; }
+
 void InputHook::EnableKeyboardRepetition(CKBOOL iEnable) {
+    if (!IsValid()) return;
     Impl::s_InputManager->EnableKeyboardRepetition(iEnable);
 }
 
 CKBOOL InputHook::IsKeyboardRepetitionEnabled() {
+    if (!IsValid()) return FALSE;
     return Impl::s_InputManager->IsKeyboardRepetitionEnabled();
 }
 
 CKBOOL InputHook::IsKeyDown(CKDWORD iKey, CKDWORD *oStamp) {
+    if (!IsValid()) return FALSE;
     return Impl::s_InputManager->IsKeyDown(iKey, oStamp);
 }
 
 CKBOOL InputHook::IsKeyUp(CKDWORD iKey) {
+    if (!IsValid()) return FALSE;
     return Impl::s_InputManager->IsKeyUp(iKey);
 }
 
 CKBOOL InputHook::IsKeyToggled(CKDWORD iKey, CKDWORD *oStamp) {
+    if (!IsValid()) return FALSE;
     return Impl::s_InputManager->IsKeyToggled(iKey, oStamp);
 }
 
 void InputHook::GetKeyName(CKDWORD iKey, CKSTRING oKeyName) {
+    if (!IsValid()) return;
     Impl::s_InputManager->GetKeyName(iKey, oKeyName);
 }
 
 CKDWORD InputHook::GetKeyFromName(CKSTRING iKeyName) {
+    if (!IsValid()) return 0;
     return Impl::s_InputManager->GetKeyFromName(iKeyName);
 }
 
 unsigned char *InputHook::GetKeyboardState() {
+    if (!IsValid()) return nullptr;
     return Impl::s_InputManager->GetKeyboardState();
 }
 
 CKBOOL InputHook::IsKeyboardAttached() {
+    if (!IsValid()) return FALSE;
     return Impl::s_InputManager->IsKeyboardAttached();
 }
 
 int InputHook::GetNumberOfKeyInBuffer() {
+    if (!IsValid()) return 0;
     return Impl::s_InputManager->GetNumberOfKeyInBuffer();
 }
 
 int InputHook::GetKeyFromBuffer(int i, CKDWORD &oKey, CKDWORD *oTimeStamp) {
+    if (!IsValid()) return 0;
     return Impl::s_InputManager->GetKeyFromBuffer(i, oKey, oTimeStamp);
 }
 
 CKBOOL InputHook::IsMouseButtonDown(CK_MOUSEBUTTON iButton) {
+    if (!IsValid()) return FALSE;
     return Impl::s_InputManager->IsMouseButtonDown(iButton);
 }
 
 CKBOOL InputHook::IsMouseClicked(CK_MOUSEBUTTON iButton) {
+    if (!IsValid()) return FALSE;
     return Impl::s_InputManager->IsMouseClicked(iButton);
 }
 
 CKBOOL InputHook::IsMouseToggled(CK_MOUSEBUTTON iButton) {
+    if (!IsValid()) return FALSE;
     return Impl::s_InputManager->IsMouseToggled(iButton);
 }
 
 void InputHook::GetMouseButtonsState(CKBYTE oStates[4]) {
+    if (!IsValid()) return;
     Impl::s_InputManager->GetMouseButtonsState(oStates);
 }
 
 void InputHook::GetMousePosition(Vx2DVector &oPosition, CKBOOL iAbsolute) {
+    if (!IsValid()) return;
     Impl::s_InputManager->GetMousePosition(oPosition, iAbsolute);
 }
 
 void InputHook::GetMouseRelativePosition(VxVector &oPosition) {
+    if (!IsValid()) return;
     Impl::s_InputManager->GetMouseRelativePosition(oPosition);
 }
 
@@ -385,54 +404,67 @@ void InputHook::GetLastMousePosition(Vx2DVector &position) {
 }
 
 CKBOOL InputHook::IsMouseAttached() {
+    if (!IsValid()) return FALSE;
     return Impl::s_InputManager->IsMouseAttached();
 }
 
 CKBOOL InputHook::IsJoystickAttached(int iJoystick) {
+    if (!IsValid()) return FALSE;
     return Impl::s_InputManager->IsJoystickAttached(iJoystick);
 }
 
 void InputHook::GetJoystickPosition(int iJoystick, VxVector *oPosition) {
+    if (!IsValid()) return;
     Impl::s_InputManager->GetJoystickPosition(iJoystick, oPosition);
 }
 
 void InputHook::GetJoystickRotation(int iJoystick, VxVector *oRotation) {
+    if (!IsValid()) return;
     Impl::s_InputManager->GetJoystickRotation(iJoystick, oRotation);
 }
 
 void InputHook::GetJoystickSliders(int iJoystick, Vx2DVector *oPosition) {
+    if (!IsValid()) return;
     Impl::s_InputManager->GetJoystickSliders(iJoystick, oPosition);
 }
 
 void InputHook::GetJoystickPointOfViewAngle(int iJoystick, float *oAngle) {
+    if (!IsValid()) return;
     Impl::s_InputManager->GetJoystickPointOfViewAngle(iJoystick, oAngle);
 }
 
 CKDWORD InputHook::GetJoystickButtonsState(int iJoystick) {
+    if (!IsValid()) return 0;
     return Impl::s_InputManager->GetJoystickButtonsState(iJoystick);
 }
 
 CKBOOL InputHook::IsJoystickButtonDown(int iJoystick, int iButton) {
+    if (!IsValid()) return FALSE;
     return Impl::s_InputManager->IsJoystickButtonDown(iJoystick, iButton);
 }
 
 void InputHook::Pause(CKBOOL pause) {
+    if (!IsValid()) return;
     Impl::s_InputManager->Pause(pause);
 }
 
 void InputHook::ShowCursor(CKBOOL iShow) {
+    if (!IsValid()) return;
     Impl::s_InputManager->ShowCursor(iShow);
 }
 
 CKBOOL InputHook::GetCursorVisibility() {
+    if (!IsValid()) return FALSE;
     return Impl::s_InputManager->GetCursorVisibility();
 }
 
 VXCURSOR_POINTER InputHook::GetSystemCursor() {
+    if (!IsValid()) return static_cast<VXCURSOR_POINTER>(0);
     return Impl::s_InputManager->GetSystemCursor();
 }
 
 void InputHook::SetSystemCursor(VXCURSOR_POINTER cursor) {
+    if (!IsValid()) return;
     Impl::s_InputManager->SetSystemCursor(cursor);
 }
 
@@ -449,50 +481,62 @@ CKBOOL InputHook::IsKeyReleased(CKDWORD iKey) {
 }
 
 CKBOOL InputHook::oIsKeyPressed(CKDWORD iKey) {
+    if (!IsValid()) return FALSE;
     return Impl::IsKeyDownOriginal(iKey, nullptr) && !Impl::s_LastKeyboardState[iKey];
 }
 
 CKBOOL InputHook::oIsKeyReleased(CKDWORD iKey) {
+    if (!IsValid()) return FALSE;
     return Impl::IsKeyToggledOriginal(iKey, nullptr) && Impl::s_LastKeyboardState[iKey];
 }
 
 CKBOOL InputHook::oIsKeyDown(CKDWORD iKey, CKDWORD *oStamp) {
+    if (!IsValid()) return FALSE;
     return Impl::IsKeyDownOriginal(iKey, oStamp);
 }
 
 CKBOOL InputHook::oIsKeyUp(CKDWORD iKey) {
+    if (!IsValid()) return FALSE;
     return Impl::IsKeyUpOriginal(iKey);
 }
 
 CKBOOL InputHook::oIsKeyToggled(CKDWORD iKey, CKDWORD *oStamp) {
+    if (!IsValid()) return FALSE;
     return Impl::IsKeyToggledOriginal(iKey, oStamp);
 }
 
 unsigned char *InputHook::oGetKeyboardState() {
+    if (!IsValid()) return nullptr;
     return Impl::GetKeyboardStateOriginal();
 }
 
 int InputHook::oGetNumberOfKeyInBuffer() {
+    if (!IsValid()) return 0;
     return Impl::GetNumberOfKeyInBufferOriginal();
 }
 
 int InputHook::oGetKeyFromBuffer(int i, CKDWORD &oKey, CKDWORD *oTimeStamp) {
+    if (!IsValid()) return 0;
     return Impl::GetKeyFromBufferOriginal(i, oKey, oTimeStamp);
 }
 
 CKBOOL InputHook::oIsMouseButtonDown(CK_MOUSEBUTTON iButton) {
+    if (!IsValid()) return FALSE;
     return Impl::IsMouseButtonDownOriginal(iButton);
 }
 
 CKBOOL InputHook::oIsMouseClicked(CK_MOUSEBUTTON iButton) {
+    if (!IsValid()) return FALSE;
     return Impl::IsMouseClickedOriginal(iButton);
 }
 
 CKBOOL InputHook::oIsMouseToggled(CK_MOUSEBUTTON iButton) {
+    if (!IsValid()) return FALSE;
     return Impl::IsMouseToggledOriginal(iButton);
 }
 
 void InputHook::oGetMouseButtonsState(CKBYTE oStates[4]) {
+    if (!IsValid()) return;
     Impl::GetMouseButtonsStateOriginal(oStates);
 }
 
@@ -521,6 +565,7 @@ void InputHook::Unblock(CK_INPUT_DEVICE device) {
 }
 
 void InputHook::Process() {
+    if (!IsValid()) return;
     Impl::PostProcessOriginal();
     memcpy(Impl::s_LastKeyboardState, Impl::GetKeyboardStateOriginal(), sizeof(Impl::s_LastKeyboardState));
     Impl::s_InputManager->GetMousePosition(Impl::s_LastMousePosition, false);

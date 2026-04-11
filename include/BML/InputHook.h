@@ -82,6 +82,7 @@ public:
     void Process();
 
 private:
+    static bool IsValid();
     struct Impl;
     Impl *m_Impl;
 };
