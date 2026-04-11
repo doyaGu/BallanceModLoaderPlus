@@ -46,11 +46,14 @@ namespace utils {
         }
 
         size_t guidLen = strlen(guid);
-        BCryptHashData(hHash, reinterpret_cast<PUCHAR>(guid), static_cast<ULONG>(guidLen), 0);
-        BCryptFinishHash(hHash, digest, sizeof(digest), 0);
+        NTSTATUS s1 = BCryptHashData(hHash, reinterpret_cast<PUCHAR>(guid), static_cast<ULONG>(guidLen), 0);
+        NTSTATUS s2 = BCryptFinishHash(hHash, digest, sizeof(digest), 0);
 
         BCryptDestroyHash(hHash);
         BCryptCloseAlgorithmProvider(hAlg, 0);
+
+        if (s1 != 0 || s2 != 0)
+            return fp;
 
         memcpy(fp.hash, digest, 6);
         return fp;
