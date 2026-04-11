@@ -89,17 +89,26 @@ bool CP_HOOK_CLASS_NAME(CKRenderContext)::Hook(void *base) {
 }
 
 bool CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(void *base) {
-    if (!base)
+    if (!base || s_RenderHookedSlotCount == 0)
         return false;
 
     auto *table = utils::ForceReinterpretCast<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> *>(base, 0x86AF8);
-    // Per-slot restoration instead of SaveVTable bulk write
     void **vtable = reinterpret_cast<void **>(table);
-    uint32_t oldProtect = utils::UnprotectRegion(vtable, 256 * sizeof(void *));
+
+    size_t maxSlot = 0;
     for (size_t i = 0; i < s_RenderHookedSlotCount; ++i) {
-        vtable[s_RenderHookedSlotIndices[i]] = s_RenderOriginalSlots[i];
+        if (s_RenderHookedSlotIndices[i] > maxSlot)
+            maxSlot = s_RenderHookedSlotIndices[i];
     }
-    utils::ProtectRegion(vtable, 256 * sizeof(void *), oldProtect);
+    size_t regionSize = (maxSlot + 1) * sizeof(void *);
+
+    uint32_t oldProtect = utils::UnprotectRegion(vtable, regionSize);
+    if (oldProtect) {
+        for (size_t i = 0; i < s_RenderHookedSlotCount; ++i) {
+            vtable[s_RenderHookedSlotIndices[i]] = s_RenderOriginalSlots[i];
+        }
+        utils::ProtectRegion(vtable, regionSize, oldProtect);
+    }
     s_RenderHookedSlotCount = 0;
 
     CP_REMOVE_METHOD_HOOK(UpdateProjection);
