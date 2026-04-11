@@ -394,15 +394,33 @@ bool Property::GetBoolean() {
 }
 
 int Property::GetInteger() {
-    return m_Type == INTEGER ? std::get<int>(m_Value) : 0;
+    try {
+        return m_Type == INTEGER ? std::get<int>(m_Value) : 0;
+    } catch (const std::bad_variant_access &) {
+        m_Value = 0;
+        m_Type = INTEGER;
+        return 0;
+    }
 }
 
 float Property::GetFloat() {
-    return m_Type == FLOAT ? std::get<float>(m_Value) : 0.0f;
+    try {
+        return m_Type == FLOAT ? std::get<float>(m_Value) : 0.0f;
+    } catch (const std::bad_variant_access &) {
+        m_Value = 0.0f;
+        m_Type = FLOAT;
+        return 0.0f;
+    }
 }
 
 CKKEYBOARD Property::GetKey() {
-    return m_Type == KEY ? static_cast<CKKEYBOARD>(std::get<int>(m_Value)) : static_cast<CKKEYBOARD>(0);
+    try {
+        return m_Type == KEY ? static_cast<CKKEYBOARD>(std::get<int>(m_Value)) : static_cast<CKKEYBOARD>(0);
+    } catch (const std::bad_variant_access &) {
+        m_Value = 0;
+        m_Type = KEY;
+        return static_cast<CKKEYBOARD>(0);
+    }
 }
 
 void Property::SetString(const char *value) {
