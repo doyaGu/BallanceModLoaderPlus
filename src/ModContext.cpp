@@ -29,6 +29,102 @@ extern HMODULE g_DllHandle;
 
 using namespace BML;
 
+namespace {
+    constexpr wchar_t kLoaderDirectoryName[] = L"ModLoader";
+    constexpr wchar_t kTempDirectoryName[] = L"Temp";
+    constexpr wchar_t kInstanceDirectoryName[] = L"Instance";
+    constexpr wchar_t kModsDirectoryName[] = L"Mods";
+
+    std::wstring TrimTrailingSeparators(const std::wstring &path) {
+        size_t length = path.size();
+        while (length > 0 && (path[length - 1] == L'\\' || path[length - 1] == L'/'))
+            --length;
+
+        return path.substr(0, length);
+    }
+
+    std::wstring GetParentDirectory(const std::wstring &path) {
+        const std::wstring trimmed = TrimTrailingSeparators(path);
+        const size_t separator = trimmed.find_last_of(L"\\/");
+        if (separator == std::wstring::npos)
+            return {};
+
+        return trimmed.substr(0, separator);
+    }
+
+    std::wstring ResolveGameDirectoryFromExecutable(const std::wstring &executablePath) {
+        if (executablePath.empty())
+            return {};
+
+        return GetParentDirectory(GetParentDirectory(executablePath));
+    }
+
+    std::wstring ResolveLoaderDirectory(const std::wstring &gameDirectory) {
+        if (gameDirectory.empty())
+            return {};
+
+        return utils::CombinePathW(gameDirectory, kLoaderDirectoryName);
+    }
+
+    std::wstring BuildFallbackTempDirectory(const std::wstring &baseTempDirectory, unsigned long processId) {
+        wchar_t suffix[64] = {};
+        _snwprintf(suffix, sizeof(suffix) / sizeof(suffix[0]), L"BML-%lu", processId);
+        suffix[(sizeof(suffix) / sizeof(suffix[0])) - 1] = L'\0';
+        return utils::CombinePathW(baseTempDirectory, suffix);
+    }
+
+    bool PrepareFreshDirectory(const std::wstring &directory) {
+        if (directory.empty())
+            return false;
+
+        if (utils::FileExistsW(directory) && !utils::DeleteFileW(directory))
+            return false;
+
+        if (utils::DirectoryExistsW(directory) && !utils::DeleteDirectoryW(directory))
+            return false;
+
+        return utils::CreateFileTreeW(directory);
+    }
+
+    std::wstring CreateInstanceTempDirectory(const std::wstring &loaderDirectory, unsigned long processId) {
+        std::wstring tempInstanceDirectory = utils::CreateTempFileW(L"BML");
+        if (!tempInstanceDirectory.empty()) {
+            utils::DeleteFileW(tempInstanceDirectory);
+            if (utils::CreateDirectoryW(tempInstanceDirectory))
+                return tempInstanceDirectory;
+
+            tempInstanceDirectory.clear();
+        }
+
+        const std::wstring fallbackTempDirectory = BuildFallbackTempDirectory(utils::GetTempPathW(), processId);
+        if (PrepareFreshDirectory(fallbackTempDirectory))
+            return fallbackTempDirectory;
+
+        const std::wstring loaderFallbackDirectory = utils::CombinePathW(
+            utils::CombinePathW(loaderDirectory, kTempDirectoryName),
+            kInstanceDirectoryName);
+        if (utils::CreateFileTreeW(loaderFallbackDirectory))
+            return loaderFallbackDirectory;
+
+        return {};
+    }
+
+    std::wstring BuildZipExtractionDirectory(const std::wstring &tempDirectory, const std::wstring &archivePath) {
+        if (tempDirectory.empty() || archivePath.empty())
+            return {};
+
+        std::wstring archiveName = utils::GetFileNameW(archivePath);
+        const size_t extension = archiveName.find_last_of(L'.');
+        if (extension != std::wstring::npos && extension != 0)
+            archiveName.resize(extension);
+
+        if (archiveName.empty())
+            return {};
+
+        return utils::CombinePathW(utils::CombinePathW(tempDirectory, kModsDirectoryName), archiveName);
+    }
+}
+
 ModContext *g_ModContext = nullptr;
 
 ModContext *BML_GetModContext() {
@@ -969,8 +1065,6 @@ void ModContext::OnPostLifeUp() {
 
 void ModContext::InitDirectories() {
     wchar_t path[MAX_PATH];
-    wchar_t drive[4];
-    wchar_t dir[MAX_PATH];
 
     // Set up working directory
     _wgetcwd(path, MAX_PATH);
@@ -980,37 +1074,24 @@ void ModContext::InitDirectories() {
 
     // Set up game directory
     ::GetModuleFileNameW(nullptr, path, MAX_PATH);
-    _wsplitpath(path, drive, dir, nullptr, nullptr);
-    _snwprintf(path, MAX_PATH, L"%s%s", drive, dir);
     path[MAX_PATH - 1] = '\0';
-    size_t len = wcslen(path);
-    path[len - 1] = '\0';
-    wchar_t *s = wcsrchr(path, '\\');
-    *s = '\0';
-    m_GameDir = path;
+    m_GameDir = ResolveGameDirectoryFromExecutable(path);
     m_GameDirUtf8 = utils::ToString(m_GameDir);
 
     // Set up loader directory
-    m_LoaderDir = m_GameDir + L"\\ModLoader";
-    if (!utils::DirectoryExistsW(m_LoaderDir)) {
-        utils::CreateDirectoryW(m_LoaderDir);
-    }
+    m_LoaderDir = ResolveLoaderDirectory(m_GameDir);
+    utils::CreateFileTreeW(m_LoaderDir);
     m_LoaderDirUtf8 = utils::ToString(m_LoaderDir);
 
     // Set up temp directory
-    ::GetTempPathW(MAX_PATH, path);
-    wcsncat(path, L"BML", MAX_PATH - wcslen(path) - 1);
-    m_TempDir = path;
-    if (!utils::DirectoryExistsW(m_TempDir)) {
-        utils::CreateDirectoryW(m_TempDir);
-    }
+    m_TempDir = CreateInstanceTempDirectory(
+        m_LoaderDir,
+        static_cast<unsigned long>(::GetCurrentProcessId()));
     m_TempDirUtf8 = utils::ToString(m_TempDir);
 
     // Set up config directory
     m_ConfigDir = m_LoaderDir + L"\\Configs";
-    if (!utils::DirectoryExistsW(m_ConfigDir)) {
-        utils::CreateDirectoryW(m_ConfigDir);
-    }
+    utils::CreateFileTreeW(m_ConfigDir);
     m_ConfigDirUtf8 = utils::ToString(m_ConfigDir);
 }
 
@@ -1200,16 +1281,14 @@ size_t ModContext::ExploreMods(const std::wstring &path, std::vector<std::wstrin
     do {
         if ((fileinfo.attrib & _A_SUBDIR) == 0) {
             std::wstring fullPath = path + L"\\" + fileinfo.name;
-            wchar_t filename[MAX_PATH];
-            wchar_t ext[32];
-            _wsplitpath(fileinfo.name, nullptr, nullptr, filename, ext);
+            const std::wstring ext = utils::GetExtensionW(fullPath);
 
-            if (_wcsicmp(ext, L".zip") == 0) {
-                std::wstring dest = m_TempDir;
-                dest.append(L"\\Mods\\").append(filename);
+            if (_wcsicmp(ext.c_str(), L".zip") == 0) {
+                const std::wstring dest = BuildZipExtractionDirectory(m_TempDir, fullPath);
 
-                if (!utils::DirectoryExistsW(dest)) {
-                    utils::CreateDirectoryW(dest);
+                if (dest.empty() || !PrepareFreshDirectory(dest)) {
+                    m_Logger->Error("Failed to create temp extraction directory: %s", utils::Utf16ToAnsi(dest).c_str());
+                    continue;
                 }
 
                 if (utils::ExtractZipW(fullPath, dest)) {
@@ -1217,7 +1296,7 @@ size_t ModContext::ExploreMods(const std::wstring &path, std::vector<std::wstrin
                 } else {
                     m_Logger->Error("Failed to extract zip file: %s", utils::Utf16ToAnsi(fullPath).c_str());
                 }
-            } else if (_wcsicmp(ext, L".bmodp") == 0) {
+            } else if (_wcsicmp(ext.c_str(), L".bmodp") == 0) {
                 mods.push_back(fullPath);
             }
         }
