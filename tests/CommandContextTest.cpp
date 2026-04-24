@@ -99,6 +99,14 @@ TEST_F(CommandContextTest, RegisterWithAlias) {
     EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("tp"));
 }
 
+TEST_F(CommandContextTest, RegisterRejectsCaseInsensitiveDuplicateName) {
+    auto *cmd1 = MakeCommand("Teleport");
+    auto *cmd2 = MakeCommand("teleport");
+
+    EXPECT_TRUE(ctx->RegisterCommand(cmd1));
+    EXPECT_FALSE(ctx->RegisterCommand(cmd2));
+}
+
 // Name validation
 TEST_F(CommandContextTest, InvalidCommandNames) {
     // Starts with digit
@@ -117,6 +125,18 @@ TEST_F(CommandContextTest, InvalidCommandNames) {
 TEST_F(CommandContextTest, ValidCommandNames) {
     auto *cmd = MakeCommand("MyCommand123");
     EXPECT_TRUE(ctx->RegisterCommand(cmd));
+
+    auto *underscored = MakeCommand("_debug");
+    EXPECT_TRUE(ctx->RegisterCommand(underscored));
+
+    auto *dashed = MakeCommand("mod-command");
+    EXPECT_TRUE(ctx->RegisterCommand(dashed));
+
+    auto *dotted = MakeCommand("mod.command");
+    EXPECT_TRUE(ctx->RegisterCommand(dotted));
+
+    auto *utf8Named = MakeCommand("\xE6\xB5\x8B\xE8\xAF\x95");
+    EXPECT_TRUE(ctx->RegisterCommand(utf8Named));
 }
 
 // Lookup
@@ -128,6 +148,23 @@ TEST_F(CommandContextTest, GetCommandByName) {
     EXPECT_EQ(nullptr, ctx->GetCommandByName("nonexistent"));
     EXPECT_EQ(nullptr, ctx->GetCommandByName(nullptr));
     EXPECT_EQ(nullptr, ctx->GetCommandByName(""));
+}
+
+TEST_F(CommandContextTest, GetCommandByNameIsCaseInsensitive) {
+    auto *cmd = MakeCommand("Teleport", "Tp");
+    ASSERT_TRUE(ctx->RegisterCommand(cmd));
+
+    EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("teleport"));
+    EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("TELEPORT"));
+    EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("tp"));
+    EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("TP"));
+}
+
+TEST_F(CommandContextTest, GetCommandByNameIsCaseInsensitiveForUtf8) {
+    auto *cmd = MakeCommand("\xC3\x84pfel");
+    ASSERT_TRUE(ctx->RegisterCommand(cmd));
+
+    EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("\xC3\xA4PFEL"));
 }
 
 TEST_F(CommandContextTest, GetCommandByIndex) {
@@ -156,6 +193,15 @@ TEST_F(CommandContextTest, UnregisterRemovesAlias) {
     ctx->RegisterCommand(cmd);
 
     ctx->UnregisterCommand("teleport");
+    EXPECT_EQ(nullptr, ctx->GetCommandByName("tp"));
+}
+
+TEST_F(CommandContextTest, UnregisterIsCaseInsensitive) {
+    auto *cmd = MakeCommand("Teleport", "Tp");
+    ASSERT_TRUE(ctx->RegisterCommand(cmd));
+
+    EXPECT_TRUE(ctx->UnregisterCommand("teleport"));
+    EXPECT_EQ(nullptr, ctx->GetCommandByName("Teleport"));
     EXPECT_EQ(nullptr, ctx->GetCommandByName("tp"));
 }
 
