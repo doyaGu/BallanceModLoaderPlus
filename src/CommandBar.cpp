@@ -1,5 +1,8 @@
 #include "CommandBar.h"
 
+#include <cctype>
+#include <cstdint>
+#include <cstring>
 #include <sstream>
 
 #include <utf8.h>
@@ -9,8 +12,103 @@
 
 #include "ModContext.h"
 #include "PathUtils.h"
+#include "StringUtils.h"
 
-#define COMMAND_HISTORY_FILE L"\\CommandBar.history"
+namespace {
+    constexpr wchar_t kCommandHistoryFile[] = L"CommandBar.history";
+
+    std::wstring BuildHistoryPath(const std::wstring &loaderDirectory) {
+        if (loaderDirectory.empty())
+            return {};
+
+        return utils::CombinePathW(loaderDirectory, kCommandHistoryFile);
+    }
+
+    void MergeHistoryEntry(std::vector<std::string> &history, const std::string &entry) {
+        if (entry.empty())
+            return;
+
+        auto it = std::find(history.begin(), history.end(), entry);
+        if (it != history.end())
+            history.erase(it);
+
+        history.emplace_back(entry);
+    }
+
+    std::vector<std::string> ReadHistoryEntries(const std::wstring &path) {
+        if (path.empty())
+            return {};
+
+        const std::vector<std::uint8_t> bytes = utils::ReadBinaryFileW(path);
+        if (bytes.empty())
+            return {};
+
+        std::vector<std::string> history;
+        std::istringstream input(std::string(bytes.begin(), bytes.end()));
+        std::string line;
+        while (std::getline(input, line)) {
+            if (line.empty() || line[0] == '\0')
+                continue;
+
+            MergeHistoryEntry(history, line);
+        }
+
+        return history;
+    }
+
+    bool WriteHistoryEntries(const std::wstring &path, const std::vector<std::string> &history) {
+        if (path.empty())
+            return false;
+
+        const std::wstring tempPath = path + L".tmp";
+        if (history.empty()) {
+            utils::DeleteFileW(tempPath);
+            utils::DeleteFileW(path);
+            return true;
+        }
+
+        std::string content;
+        for (const std::string &entry : history) {
+            content.append(entry);
+            content.push_back('\n');
+        }
+
+        const std::vector<std::uint8_t> bytes(content.begin(), content.end());
+        if (!utils::WriteBinaryFileW(tempPath, bytes)) {
+            utils::DeleteFileW(tempPath);
+            return false;
+        }
+
+        if (!utils::MoveFileW(tempPath, path)) {
+            utils::DeleteFileW(tempPath);
+            return false;
+        }
+
+        return true;
+    }
+
+    std::string NormalizeCandidateEncoding(const std::string &candidate) {
+        if (candidate.empty())
+            return candidate;
+
+        const auto *utf8Candidate = reinterpret_cast<const utf8_int8_t *>(candidate.c_str());
+        if (utf8valid(utf8Candidate) == nullptr)
+            return candidate;
+
+        return utils::Utf16ToUtf8(utils::AnsiToUtf16(candidate));
+    }
+
+    bool InsertUniqueCandidate(std::vector<std::string> &candidates, const std::string &candidate) {
+        if (candidate.empty())
+            return false;
+
+        if (std::find(candidates.begin(), candidates.end(), candidate) != candidates.end())
+            return false;
+
+        candidates.emplace_back(candidate);
+        return true;
+    }
+}
 
 CommandBar::CommandBar() : Window("CommandBar"), m_Buffer(65535, '\0') {
     Hide();
@@ -66,15 +164,9 @@ void CommandBar::OnDraw() {
                                                    ImGuiInputTextFlags_CallbackEdit;
     if (ImGui::InputText("##CmdBar", &m_Buffer[0], m_Buffer.capacity() + 1, InputTextFlags, &TextEditCallback, this)) {
         if (m_Buffer[0] != '\0') {
-            BML_GetModContext()->ExecuteCommand(m_Buffer.c_str());
-
-            auto it = std::find(m_History.begin(), m_History.end(), m_Buffer);
-            if (it != m_History.end()) {
-                m_History.erase(it);
-            }
-
-            m_History.emplace_back(m_Buffer);
-            m_HistoryIndex = -1;
+            const std::string commandLine(m_Buffer.c_str());
+            RecordHistoryEntry(commandLine);
+            BML_GetModContext()->ExecuteCommand(commandLine.c_str());
         }
         ToggleCommandBar(false);
     }
@@ -185,70 +277,100 @@ void CommandBar::ExecuteHistory(int index) {
 void CommandBar::ClearHistory() {
     m_History.clear();
     m_HistoryIndex = -1;
+    SaveHistory();
+}
+
+std::wstring CommandBar::GetHistoryPath() const {
+    return BuildHistoryPath(BML_GetModContext()->GetDirectory(BML_DIR_LOADER));
 }
 
 void CommandBar::LoadHistory() {
-    std::wstring path = BML_GetModContext()->GetDirectory(BML_DIR_LOADER);
-    path.append(COMMAND_HISTORY_FILE);
-
-    if (!utils::FileExistsW(path))
-        return;
-
-    FILE *fp = _wfopen(path.c_str(), L"rb");
-    if (!fp)
-        return;
-
-    fseek(fp, 0, SEEK_END);
-    long len = ftell(fp);
-    rewind(fp);
-
-    if (len <= 0) {
-        fclose(fp);
-        return;
-    }
-
-    char *buf = new char[len + 1];
-    if (fread(buf, sizeof(char), len, fp) != len) {
-        delete[] buf;
-        fclose(fp);
-        return;
-    }
-
-    buf[len] = '\0';
-    fclose(fp);
-
-    std::istringstream iss(buf);
-    delete[] buf;
-
-    std::string line;
-    while (std::getline(iss, line)) {
-        if (line.empty() || line[0] == '\0')
-            continue;
-
-        auto it = std::find(m_History.begin(), m_History.end(), line);
-        if (it != m_History.end()) {
-            m_History.erase(it);
-        }
-
-        m_History.emplace_back(line);
-    }
+    m_History = ReadHistoryEntries(GetHistoryPath());
+    m_HistoryIndex = -1;
 }
 
 void CommandBar::SaveHistory() {
-    if (m_History.empty())
+    WriteHistoryEntries(GetHistoryPath(), m_History);
+}
+
+void CommandBar::RecordHistoryEntry(const std::string &entry) {
+    if (entry.empty())
         return;
 
-    std::wstring path = BML_GetModContext()->GetDirectory(BML_DIR_LOADER);
-    path.append(COMMAND_HISTORY_FILE);
+    MergeHistoryEntry(m_History, entry);
+    m_HistoryIndex = -1;
+    SaveHistory();
+}
 
-    FILE *fp = _wfopen(path.c_str(), L"wb");
-    if (!fp)
+void CommandBar::CollectCommandCandidates(const char *cmdStart, int cmdLength) {
+    const int count = BML_GetModContext()->GetCommandCount();
+    for (int i = 0; i < count; ++i) {
+        ICommand *cmd = BML_GetModContext()->GetCommand(i);
+        if (!cmd)
+            continue;
+
+        const std::string name = NormalizeCandidateEncoding(cmd->GetName());
+        if (utf8ncasecmp(name.c_str(), cmdStart, cmdLength) == 0)
+            InsertUniqueCandidate(m_Candidates, name);
+
+        const std::string alias = NormalizeCandidateEncoding(cmd->GetAlias());
+        if (!alias.empty() && utf8ncasecmp(alias.c_str(), cmdStart, cmdLength) == 0)
+            InsertUniqueCandidate(m_Candidates, alias);
+    }
+}
+
+void CommandBar::CollectArgumentCandidates(const char *wordStart, int wordLength, const char *cmdStart, const char *lineEnd) {
+    const auto args = MakeArgsRange(cmdStart, lineEnd);
+    if (args.empty())
         return;
 
-    for (const auto &str: m_History)
-        fprintf(fp, "%s\n", str.c_str());
+    ICommand *cmd = BML_GetModContext()->FindCommand(args[0].c_str());
+    if (!cmd)
+        return;
 
-    fclose(fp);
+    for (const std::string &rawCandidate : cmd->GetTabCompletion(BML_GetModContext(), args)) {
+        const std::string candidate = NormalizeCandidateEncoding(rawCandidate);
+        if (utf8ncasecmp(candidate.c_str(), wordStart, wordLength) == 0)
+            InsertUniqueCandidate(m_Candidates, candidate);
+    }
+}
+
+void CommandBar::ReplaceCurrentToken(ImGuiInputTextCallbackData *data, const char *replacement, int replacementLength) {
+    if (!data || !replacement)
+        return;
+
+    const char *tokenStart = data->Buf;
+    const char *cursor = data->Buf + data->CursorPos;
+    const int leftCount = LastToken(tokenStart, cursor);
+    const char *textEnd = data->Buf + data->BufTextLen;
+    const char *tokenEnd = cursor;
+    while (tokenEnd < textEnd && !std::isspace(static_cast<unsigned char>(*tokenEnd)))
+        ++tokenEnd;
+
+    const int deletePos = static_cast<int>(tokenStart - data->Buf);
+    const int deleteCount = leftCount + static_cast<int>(tokenEnd - cursor);
+    data->DeleteChars(deletePos, deleteCount);
+
+    const int insertLength = replacementLength >= 0 ? replacementLength : static_cast<int>(std::strlen(replacement));
+    data->InsertChars(deletePos, replacement, replacement + insertLength);
+
+    if (replacementLength >= 0)
+        return;
+
+    const bool hasSpaceAfter = (tokenEnd < textEnd) && std::isspace(static_cast<unsigned char>(*tokenEnd));
+    if (!hasSpaceAfter)
+        data->InsertChars(deletePos + insertLength, " ");
+}
+
+void CommandBar::SyncCandidatePageFromIndex() {
+    for (int i = static_cast<int>(m_CandidatePages.size() - 1); i >= 0; --i) {
+        if (m_CandidateIndex >= m_CandidatePages[i]) {
+            m_CandidatePage = i;
+            return;
+        }
+    }
+
+    m_CandidatePage = 0;
 }
 
 void CommandBar::ToggleCommandBar(bool on) {
@@ -273,26 +395,14 @@ void CommandBar::ToggleCommandBar(bool on) {
 
 void CommandBar::NextCandidate() {
     m_CandidateIndex = (m_CandidateIndex + 1) % (int) m_Candidates.size();
-
-    for (int i = (int) (m_CandidatePages.size() - 1); i >= 0; --i) {
-        if (m_CandidateIndex >= m_CandidatePages[i]) {
-            m_CandidatePage = i;
-            break;
-        }
-    }
+    SyncCandidatePageFromIndex();
 }
 
 void CommandBar::PrevCandidate() {
     if (m_CandidateIndex == 0)
         m_CandidateIndex = (int) m_Candidates.size();
     m_CandidateIndex = (m_CandidateIndex - 1) % (int) m_Candidates.size();
-
-    for (int i = (int) (m_CandidatePages.size() - 1); i >= 0; --i) {
-        if (m_CandidateIndex >= m_CandidatePages[i]) {
-            m_CandidatePage = i;
-            break;
-        }
-    }
+    SyncCandidatePageFromIndex();
 }
 
 void CommandBar::NextPageOfCandidates() {
@@ -359,7 +469,7 @@ void CommandBar::GenerateCandidatePages() {
 
 size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
     const char *wordStart = lineStart;
-    int wordCount = LastToken(wordStart, lineEnd);
+    const int wordLength = LastToken(wordStart, lineEnd);
 
     // Preserve raw end so arg parsing can keep empty-last-arg cases
     const char *rawLineEnd = lineEnd;
@@ -381,31 +491,9 @@ size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
         const int cmdLength = FirstToken(cmdStart, cmdEnd);
 
         if (completeCmd) {
-            // Add candidate commands
-            const int count = BML_GetModContext()->GetCommandCount();
-            for (int i = 0; i < count; ++i) {
-                ICommand *cmd = BML_GetModContext()->GetCommand(i);
-                if (cmd) {
-                    auto name = cmd->GetName();
-                    if (utf8ncasecmp(name.c_str(), cmdStart, cmdLength) == 0)
-                        m_Candidates.emplace_back(std::move(name));
-                    auto alias = cmd->GetAlias();
-                    if (!alias.empty() && utf8ncasecmp(alias.c_str(), cmdStart, cmdLength) == 0)
-                        m_Candidates.emplace_back(std::move(alias));
-                }
-            }
+            CollectCommandCandidates(cmdStart, cmdLength);
         } else {
-            // Add candidate arguments (consider only text up to the cursor, preserving trailing space)
-            const auto args = MakeArgsRange(cmdStart, rawLineEnd);
-            if (!args.empty()) {
-                ICommand *cmd = BML_GetModContext()->FindCommand(args[0].c_str());
-                if (cmd) {
-                    for (const auto &str : cmd->GetTabCompletion(BML_GetModContext(), args)) {
-                        if (utf8ncasecmp(str.c_str(), wordStart, wordCount) == 0)
-                            m_Candidates.push_back(str);
-                    }
-                }
-            }
+            CollectArgumentCandidates(wordStart, wordLength, cmdStart, rawLineEnd);
         }
 
         GenerateCandidatePages();
@@ -421,31 +509,9 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
         case ImGuiInputTextFlags_CallbackCompletion: {
             OnCompletion(data->Buf, data->Buf + data->CursorPos);
 
-            const char *wordStart = data->Buf;
-            const char *cursor = data->Buf + data->CursorPos;
-            int wordCount = LastToken(wordStart, cursor);
-            // Compute right-side remainder of the token so we can replace the whole token
-            const char *textEnd = data->Buf + data->BufTextLen;
-            const char *p = cursor;
-            while (p < textEnd && !std::isspace(static_cast<unsigned char>(*p))) ++p;
-            const int rightCount = static_cast<int>(p - cursor);
-            const int totalDelete = wordCount + rightCount;
-            const int deletePos = static_cast<int>(wordStart - data->Buf);
-
             if (m_Candidates.size() == 1) {
-                // Single match. Delete the beginning of the word and replace it entirely so we've got nice casing
-                data->DeleteChars(deletePos, totalDelete);
-                const char *ins = m_Candidates[0].c_str();
-                data->InsertChars(deletePos, ins);
-                // Add a space only if there isn't already whitespace after the token
-                bool hasSpaceAfter = (p < textEnd) && std::isspace(static_cast<unsigned char>(*p));
-                if (!hasSpaceAfter) {
-                    const int insertedLen = static_cast<int>(strlen(ins));
-                    data->InsertChars(deletePos + insertedLen, " ");
-                }
+                ReplaceCurrentToken(data, m_Candidates[0].c_str());
             } else if (m_Candidates.size() > 1) {
-                // Multiple matches. Complete as much as we can..
-                // So inputting "C"+Tab will complete to "CL" then display "CLEAR" and "CLASSIFY" as matches.
                 int matchLen = 0;
                 for (;;) {
                     int c = 0;
@@ -463,9 +529,7 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
                 }
 
                 if (matchLen > 0) {
-                    data->DeleteChars(deletePos, totalDelete);
-                    const auto &best = m_Candidates[0];
-                    data->InsertChars(deletePos, best.c_str(), best.c_str() + matchLen);
+                    ReplaceCurrentToken(data, m_Candidates[0].c_str(), matchLen);
                 }
             }
         }
@@ -497,23 +561,7 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
         case ImGuiInputTextFlags_CallbackAlways: {
             if (!m_Candidates.empty()) {
                 if (m_CandidateSelected != -1) {
-                    const char *wordStart = data->Buf;
-                    const char *cursor = data->Buf + data->CursorPos;
-                    const int leftCount = LastToken(wordStart, cursor);
-                    const char *textEnd = data->Buf + data->BufTextLen;
-                    const char *p = cursor;
-                    while (p < textEnd && !std::isspace(static_cast<unsigned char>(*p))) ++p;
-                    const int rightCount = static_cast<int>(p - cursor);
-                    const int totalDelete = leftCount + rightCount;
-                    const int deletePos = static_cast<int>(wordStart - data->Buf);
-                    data->DeleteChars(deletePos, totalDelete);
-                    const char *ins = m_Candidates[m_CandidateSelected].c_str();
-                    data->InsertChars(deletePos, ins);
-                    bool hasSpaceAfter = (p < textEnd) && std::isspace(static_cast<unsigned char>(*p));
-                    if (!hasSpaceAfter) {
-                        const int insertedLen = static_cast<int>(strlen(ins));
-                        data->InsertChars(deletePos + insertedLen, " ");
-                    }
+                    ReplaceCurrentToken(data, m_Candidates[m_CandidateSelected].c_str());
 
                     InvalidateCandidates();
                 }
