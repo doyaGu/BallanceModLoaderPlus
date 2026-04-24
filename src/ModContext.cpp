@@ -576,7 +576,18 @@ int ModContext::ClearDependencies(IMod *mod) {
 
 void ModContext::RegisterCommand(ICommand *cmd) {
     std::lock_guard<std::mutex> lock(m_Mutex);
-    m_CommandContext.RegisterCommand(cmd);
+    if (m_CommandContext.RegisterCommand(cmd)) {
+        return;
+    }
+
+    if (!cmd) {
+        m_Logger->Error("Failed to register a null command.");
+        return;
+    }
+
+    m_Logger->Error(
+        "Failed to register command '%s'. Command names are case-insensitive and must be valid UTF-8 tokens without spaces.",
+        cmd->GetName().c_str());
 }
 
 int ModContext::GetCommandCount() const {
