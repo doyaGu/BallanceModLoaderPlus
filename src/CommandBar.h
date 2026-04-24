@@ -1,6 +1,9 @@
 #ifndef BML_COMMANDBAR_H
 #define BML_COMMANDBAR_H
 
+#include <string>
+#include <vector>
+
 #include "BML/Bui.h"
 
 class CommandBar : public Bui::Window {
@@ -43,6 +46,13 @@ public:
     static std::vector<std::string> MakeArgsRange(const char *begin, const char *end);
 
 private:
+    std::wstring GetHistoryPath() const;
+    void RecordHistoryEntry(const std::string &entry);
+    void CollectCommandCandidates(const char *cmdStart, int cmdLength);
+    void CollectArgumentCandidates(const char *wordStart, int wordLength, const char *cmdStart, const char *lineEnd);
+    void ReplaceCurrentToken(ImGuiInputTextCallbackData *data, const char *replacement, int replacementLength = -1);
+    void SyncCandidatePageFromIndex();
+
     ImVec2 m_WindowPos;
     ImVec2 m_WindowSize;
     bool m_VisiblePrev = false;
