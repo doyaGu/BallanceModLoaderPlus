@@ -55,10 +55,27 @@ namespace BML {
         static std::vector<std::string> ParseCommandLine(const char *cmd);
 
     private:
+        struct CommandKeyHash {
+            using is_transparent = void;
+
+            size_t operator()(const std::string &key) const noexcept;
+            size_t operator()(const char *key) const noexcept;
+        };
+
+        struct CommandKeyEqual {
+            using is_transparent = void;
+
+            bool operator()(const std::string &lhs, const std::string &rhs) const noexcept;
+            bool operator()(const std::string &lhs, const char *rhs) const noexcept;
+            bool operator()(const char *lhs, const std::string &rhs) const noexcept;
+        };
+
+        static std::string NormalizeCommandKey(const char *name);
         static bool ValidateCommandName(const char *name);
 
         std::vector<ICommand *> m_Commands;
-        typedef std::unordered_map<std::string, ICommand *> CommandMap;
+        typedef std::unordered_map<std::string, ICommand *, CommandKeyHash, CommandKeyEqual>
+            CommandMap;
         CommandMap m_CommandMap;
         typedef std::unordered_map<std::string, std::string> VariableMap;
         VariableMap m_Variables;
