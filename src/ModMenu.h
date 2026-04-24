@@ -1,6 +1,7 @@
 #ifndef BML_MODMENU_H
 #define BML_MODMENU_H
 
+#include <cstdint>
 #include <array>
 #include <memory>
 #include <string>
@@ -67,7 +68,27 @@ public:
     void OnPageChanged(int newPage, int oldPage) override;
 
 protected:
+    struct PendingPropertyState {
+        IProperty::PropertyType type = IProperty::NONE;
+        std::string originalString;
+        std::string currentString;
+        int originalInt = 0;
+        int currentInt = 0;
+        float originalFloat = 0.0f;
+        float currentFloat = 0.0f;
+        bool originalBool = false;
+        bool currentBool = false;
+        ImGuiKeyChord originalKeyChord = static_cast<ImGuiKeyChord>(0);
+        ImGuiKeyChord currentKeyChord = static_cast<ImGuiKeyChord>(0);
+    };
+
+    static constexpr int PROPERTY_SLOTS = 4;
     void FlushBuffers();
+    int GetPropertyStartIndex() const;
+    Property *GetVisibleProperty(int index) const;
+    const PendingPropertyState *FindPendingState(Property *property) const;
+    PendingPropertyState &GetOrCreatePendingState(Property *property, IProperty::PropertyType type);
+    void SyncVisiblePageToPending();
     void LoadOriginalValues();
     void SaveChanges();
     void RevertChanges();
@@ -77,26 +98,27 @@ protected:
 
     Category *m_Category = nullptr;
     bool m_HasPendingChanges = false;
+    std::unordered_map<Property *, PendingPropertyState> m_PendingValues;
 
     static constexpr size_t BUFFER_SIZE = 4096;
 
     // Current working values
-    char m_Buffers[4][BUFFER_SIZE] = {};
-    size_t m_BufferHashes[4] = {};
-    bool m_KeyToggled[4] = {};
-    ImGuiKeyChord m_KeyChord[4] = {};
-    std::uint8_t m_IntFlags[4] = {};
-    std::uint8_t m_FloatFlags[4] = {};
-    int m_IntValues[4] = {};
-    float m_FloatValues[4] = {};
-    bool m_BoolValues[4] = {};
+    char m_Buffers[PROPERTY_SLOTS][BUFFER_SIZE] = {};
+    size_t m_BufferHashes[PROPERTY_SLOTS] = {};
+    bool m_KeyToggled[PROPERTY_SLOTS] = {};
+    ImGuiKeyChord m_KeyChord[PROPERTY_SLOTS] = {};
+    std::uint8_t m_IntFlags[PROPERTY_SLOTS] = {};
+    std::uint8_t m_FloatFlags[PROPERTY_SLOTS] = {};
+    int m_IntValues[PROPERTY_SLOTS] = {};
+    float m_FloatValues[PROPERTY_SLOTS] = {};
+    bool m_BoolValues[PROPERTY_SLOTS] = {};
 
     // Original values
-    char m_OriginalBuffers[4][BUFFER_SIZE] = {};
-    int m_OriginalIntValues[4] = {};
-    float m_OriginalFloatValues[4] = {};
-    bool m_OriginalBoolValues[4] = {};
-    ImGuiKeyChord m_OriginalKeyChord[4] = {};
+    char m_OriginalBuffers[PROPERTY_SLOTS][BUFFER_SIZE] = {};
+    int m_OriginalIntValues[PROPERTY_SLOTS] = {};
+    float m_OriginalFloatValues[PROPERTY_SLOTS] = {};
+    bool m_OriginalBoolValues[PROPERTY_SLOTS] = {};
+    ImGuiKeyChord m_OriginalKeyChord[PROPERTY_SLOTS] = {};
 };
 
 #endif // BML_MODMENU_H

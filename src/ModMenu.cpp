@@ -1,11 +1,24 @@
 #include "ModMenu.h"
 
 #include <cmath>
+#include <cstring>
+#include <algorithm>
 
 #include "BML/InputHook.h"
 
 #include "ModContext.h"
 #include "StringUtils.h"
+
+namespace {
+    void CopyStringToBuffer(const std::string &value, char *buffer, size_t bufferSize) {
+        if (!buffer || bufferSize == 0)
+            return;
+
+        const size_t copySize = std::min(value.size(), bufferSize - 1);
+        memcpy(buffer, value.data(), copySize);
+        buffer[copySize] = '\0';
+    }
+}
 
 void ModMenu::Init() {
     CreatePage<ModListPage>();
@@ -242,7 +255,7 @@ bool ModOptionPage::OnOpen() {
         return false;
 
     int count = static_cast<int>(m_Category->GetPropertyCount());
-    SetPageCount(Bui::CalcPageCount(count, 4));
+    SetPageCount(Bui::CalcPageCount(count, PROPERTY_SLOTS));
 
     FlushBuffers();
     LoadOriginalValues();
@@ -251,68 +264,190 @@ bool ModOptionPage::OnOpen() {
 
 void ModOptionPage::OnClose() {
     FlushBuffers();
+    m_PendingValues.clear();
+    m_HasPendingChanges = false;
 }
 
-void ModOptionPage::OnPageChanged(int newPage, int oldPage) {
+void ModOptionPage::OnPageChanged(int /*newPage*/, int /*oldPage*/) {
+    SyncVisiblePageToPending();
     FlushBuffers();
     LoadOriginalValues();
 }
 
 void ModOptionPage::FlushBuffers() {
-    memset(m_Buffers, 0, sizeof(m_Buffers));
-    memset(m_OriginalBuffers, 0, sizeof(m_OriginalBuffers));
-    memset(m_BufferHashes, 0, sizeof(m_BufferHashes));
-    memset(m_KeyToggled, 0, sizeof(m_KeyToggled));
-    memset(m_KeyChord, 0, sizeof(m_KeyChord));
-    memset(m_OriginalKeyChord, 0, sizeof(m_OriginalKeyChord));
-    memset(m_IntFlags, 0, sizeof(m_IntFlags));
-    memset(m_FloatFlags, 0, sizeof(m_FloatFlags));
-    memset(m_IntValues, 0, sizeof(m_IntValues));
-    memset(m_OriginalIntValues, 0, sizeof(m_OriginalIntValues));
-    memset(m_FloatValues, 0, sizeof(m_FloatValues));
-    memset(m_OriginalFloatValues, 0, sizeof(m_OriginalFloatValues));
-    memset(m_BoolValues, 0, sizeof(m_BoolValues));
-    memset(m_OriginalBoolValues, 0, sizeof(m_OriginalBoolValues));
+    std::memset(m_Buffers, 0, sizeof(m_Buffers));
+    std::memset(m_OriginalBuffers, 0, sizeof(m_OriginalBuffers));
+    std::fill_n(m_BufferHashes, PROPERTY_SLOTS, 0U);
+    std::fill_n(m_KeyToggled, PROPERTY_SLOTS, false);
+    std::fill_n(m_KeyChord, PROPERTY_SLOTS, static_cast<ImGuiKeyChord>(0));
+    std::fill_n(m_OriginalKeyChord, PROPERTY_SLOTS, static_cast<ImGuiKeyChord>(0));
+    std::fill_n(m_IntFlags, PROPERTY_SLOTS, static_cast<std::uint8_t>(0));
+    std::fill_n(m_FloatFlags, PROPERTY_SLOTS, static_cast<std::uint8_t>(0));
+    std::fill_n(m_IntValues, PROPERTY_SLOTS, 0);
+    std::fill_n(m_OriginalIntValues, PROPERTY_SLOTS, 0);
+    std::fill_n(m_FloatValues, PROPERTY_SLOTS, 0.0f);
+    std::fill_n(m_OriginalFloatValues, PROPERTY_SLOTS, 0.0f);
+    std::fill_n(m_BoolValues, PROPERTY_SLOTS, false);
+    std::fill_n(m_OriginalBoolValues, PROPERTY_SLOTS, false);
     m_HasPendingChanges = false;
+}
+
+int ModOptionPage::GetPropertyStartIndex() const {
+    return GetPage() * PROPERTY_SLOTS;
+}
+
+Property *ModOptionPage::GetVisibleProperty(int index) const {
+    if (!m_Category || index < 0 || index >= PROPERTY_SLOTS)
+        return nullptr;
+
+    return m_Category->GetProperty(GetPropertyStartIndex() + index);
+}
+
+const ModOptionPage::PendingPropertyState *ModOptionPage::FindPendingState(Property *property) const {
+    if (!property)
+        return nullptr;
+
+    auto it = m_PendingValues.find(property);
+    return it != m_PendingValues.end() ? &it->second : nullptr;
+}
+
+ModOptionPage::PendingPropertyState &ModOptionPage::GetOrCreatePendingState(Property *property, IProperty::PropertyType type) {
+    PendingPropertyState &state = m_PendingValues[property];
+    state.type = type;
+    return state;
+}
+
+void ModOptionPage::SyncVisiblePageToPending() {
+    if (!m_Category)
+        return;
+
+    for (int i = 0; i < PROPERTY_SLOTS; ++i) {
+        Property *property = GetVisibleProperty(i);
+        if (!property)
+            continue;
+
+        switch (property->GetType()) {
+            case IProperty::STRING: {
+                const std::string currentValue = m_Buffers[i];
+                const std::string originalValue = m_OriginalBuffers[i];
+                if (currentValue == originalValue) {
+                    m_PendingValues.erase(property);
+                    break;
+                }
+
+                PendingPropertyState &state = GetOrCreatePendingState(property, IProperty::STRING);
+                state.originalString = originalValue;
+                state.currentString = currentValue;
+                break;
+            }
+            case IProperty::BOOLEAN: {
+                if (m_BoolValues[i] == m_OriginalBoolValues[i]) {
+                    m_PendingValues.erase(property);
+                    break;
+                }
+
+                PendingPropertyState &state = GetOrCreatePendingState(property, IProperty::BOOLEAN);
+                state.originalBool = m_OriginalBoolValues[i];
+                state.currentBool = m_BoolValues[i];
+                break;
+            }
+            case IProperty::INTEGER: {
+                if (m_IntValues[i] == m_OriginalIntValues[i]) {
+                    m_PendingValues.erase(property);
+                    break;
+                }
+
+                PendingPropertyState &state = GetOrCreatePendingState(property, IProperty::INTEGER);
+                state.originalInt = m_OriginalIntValues[i];
+                state.currentInt = m_IntValues[i];
+                break;
+            }
+            case IProperty::KEY: {
+                if (m_KeyChord[i] == m_OriginalKeyChord[i]) {
+                    m_PendingValues.erase(property);
+                    break;
+                }
+
+                PendingPropertyState &state = GetOrCreatePendingState(property, IProperty::KEY);
+                state.originalKeyChord = m_OriginalKeyChord[i];
+                state.currentKeyChord = m_KeyChord[i];
+                break;
+            }
+            case IProperty::FLOAT: {
+                if (std::fabs(m_FloatValues[i] - m_OriginalFloatValues[i]) <= EPSILON) {
+                    m_PendingValues.erase(property);
+                    break;
+                }
+
+                PendingPropertyState &state = GetOrCreatePendingState(property, IProperty::FLOAT);
+                state.originalFloat = m_OriginalFloatValues[i];
+                state.currentFloat = m_FloatValues[i];
+                break;
+            }
+            default:
+                m_PendingValues.erase(property);
+                break;
+        }
+    }
 }
 
 void ModOptionPage::LoadOriginalValues() {
     if (!m_Category)
         return;
 
-    const int n = GetPage() * 4;
-
-    for (int i = 0; i < 4; ++i) {
-        Property *property = m_Category->GetProperty(n + i);
+    for (int i = 0; i < PROPERTY_SLOTS; ++i) {
+        Property *property = GetVisibleProperty(i);
         if (!property)
             continue;
 
+        const PendingPropertyState *pendingState = FindPendingState(property);
+
         switch (property->GetType()) {
             case IProperty::STRING: {
-                size_t copySize = std::min(property->GetStringSize() + 1, sizeof(m_Buffers[i]) - 1);
-                strncpy(m_Buffers[i], property->GetString(), copySize);
-                strncpy(m_OriginalBuffers[i], property->GetString(), copySize);
-                m_Buffers[i][copySize] = '\0';
-                m_OriginalBuffers[i][copySize] = '\0';
-                m_BufferHashes[i] = property->GetHash();
+                const std::string originalValue = pendingState
+                    ? pendingState->originalString
+                    : std::string(property->GetString() ? property->GetString() : "");
+                const std::string currentValue = pendingState
+                    ? pendingState->currentString
+                    : originalValue;
+
+                CopyStringToBuffer(currentValue, m_Buffers[i], BUFFER_SIZE);
+                CopyStringToBuffer(originalValue, m_OriginalBuffers[i], BUFFER_SIZE);
+                m_BufferHashes[i] = utils::HashString(m_Buffers[i]);
                 break;
             }
             case IProperty::BOOLEAN:
-                m_BoolValues[i] = property->GetBoolean();
-                m_OriginalBoolValues[i] = property->GetBoolean();
+                m_OriginalBoolValues[i] = pendingState
+                    ? pendingState->originalBool
+                    : property->GetBoolean();
+                m_BoolValues[i] = pendingState
+                    ? pendingState->currentBool
+                    : m_OriginalBoolValues[i];
                 break;
             case IProperty::INTEGER:
-                m_IntValues[i] = property->GetInteger();
-                m_OriginalIntValues[i] = property->GetInteger();
+                m_OriginalIntValues[i] = pendingState
+                    ? pendingState->originalInt
+                    : property->GetInteger();
+                m_IntValues[i] = pendingState
+                    ? pendingState->currentInt
+                    : m_OriginalIntValues[i];
                 m_IntFlags[i] = 1;
                 break;
             case IProperty::KEY:
-                m_KeyChord[i] = Bui::CKKeyToImGuiKey(property->GetKey());
-                m_OriginalKeyChord[i] = m_KeyChord[i];
+                m_OriginalKeyChord[i] = pendingState
+                    ? pendingState->originalKeyChord
+                    : Bui::CKKeyToImGuiKey(property->GetKey());
+                m_KeyChord[i] = pendingState
+                    ? pendingState->currentKeyChord
+                    : m_OriginalKeyChord[i];
                 break;
             case IProperty::FLOAT:
-                m_FloatValues[i] = property->GetFloat();
-                m_OriginalFloatValues[i] = property->GetFloat();
+                m_OriginalFloatValues[i] = pendingState
+                    ? pendingState->originalFloat
+                    : property->GetFloat();
+                m_FloatValues[i] = pendingState
+                    ? pendingState->currentFloat
+                    : m_OriginalFloatValues[i];
                 m_FloatFlags[i] = 1;
                 break;
             default:
@@ -320,7 +455,7 @@ void ModOptionPage::LoadOriginalValues() {
         }
     }
 
-    m_HasPendingChanges = false;
+    m_HasPendingChanges = HasPendingChanges();
 }
 
 
@@ -328,50 +463,38 @@ void ModOptionPage::SaveChanges() {
     if (!m_Category)
         return;
 
-    const int n = GetPage() * 4;
+    SyncVisiblePageToPending();
 
-    for (int i = 0; i < 4; ++i) {
-        Property *property = m_Category->GetProperty(n + i);
+    for (const auto &entry : m_PendingValues) {
+        Property *property = entry.first;
+        const PendingPropertyState &state = entry.second;
         if (!property)
             continue;
 
-        switch (property->GetType()) {
+        switch (state.type) {
             case IProperty::STRING:
-                if (strcmp(m_Buffers[i], m_OriginalBuffers[i]) != 0) {
-                    property->SetString(m_Buffers[i]);
-                    strncpy(m_OriginalBuffers[i], m_Buffers[i], BUFFER_SIZE - 1);
-                    m_OriginalBuffers[i][BUFFER_SIZE - 1] = '\0';
-                }
+                property->SetString(state.currentString.c_str());
                 break;
             case IProperty::BOOLEAN:
-                if (m_BoolValues[i] != m_OriginalBoolValues[i]) {
-                    property->SetBoolean(m_BoolValues[i]);
-                    m_OriginalBoolValues[i] = m_BoolValues[i];
-                }
+                property->SetBoolean(state.currentBool);
                 break;
             case IProperty::INTEGER:
-                if (m_IntValues[i] != m_OriginalIntValues[i]) {
-                    property->SetInteger(m_IntValues[i]);
-                    m_OriginalIntValues[i] = m_IntValues[i];
-                }
+                property->SetInteger(state.currentInt);
                 break;
             case IProperty::KEY:
-                if (m_KeyChord[i] != m_OriginalKeyChord[i]) {
-                    property->SetKey(Bui::ImGuiKeyToCKKey(static_cast<ImGuiKey>(m_KeyChord[i])));
-                    m_OriginalKeyChord[i] = m_KeyChord[i];
-                }
+                property->SetKey(Bui::ImGuiKeyToCKKey(static_cast<ImGuiKey>(state.currentKeyChord)));
                 break;
             case IProperty::FLOAT:
-                if (fabs(m_FloatValues[i] - m_OriginalFloatValues[i]) > EPSILON) {
-                    property->SetFloat(m_FloatValues[i]);
-                    m_OriginalFloatValues[i] = m_FloatValues[i];
-                }
+                property->SetFloat(state.currentFloat);
                 break;
             default:
                 break;
         }
     }
 
+    m_PendingValues.clear();
+    FlushBuffers();
+    LoadOriginalValues();
     m_HasPendingChanges = false;
 }
 
@@ -379,37 +502,9 @@ void ModOptionPage::RevertChanges() {
     if (!m_Category)
         return;
 
-    const int n = GetPage() * 4;
-
-    for (int i = 0; i < 4; ++i) {
-        Property *property = m_Category->GetProperty(n + i);
-        if (!property)
-            continue;
-
-        switch (property->GetType()) {
-            case IProperty::STRING:
-                strncpy(m_Buffers[i], m_OriginalBuffers[i], BUFFER_SIZE - 1);
-                m_Buffers[i][BUFFER_SIZE - 1] = '\0';
-                m_BufferHashes[i] = utils::HashString(m_Buffers[i]);
-                break;
-            case IProperty::BOOLEAN:
-                m_BoolValues[i] = m_OriginalBoolValues[i];
-                break;
-            case IProperty::INTEGER:
-                m_IntValues[i] = m_OriginalIntValues[i];
-                break;
-            case IProperty::KEY:
-                m_KeyChord[i] = m_OriginalKeyChord[i];
-                m_KeyToggled[i] = false;
-                break;
-            case IProperty::FLOAT:
-                m_FloatValues[i] = m_OriginalFloatValues[i];
-                break;
-            default:
-                break;
-        }
-    }
-
+    m_PendingValues.clear();
+    FlushBuffers();
+    LoadOriginalValues();
     m_HasPendingChanges = false;
 }
 
@@ -417,12 +512,14 @@ bool ModOptionPage::HasPendingChanges() const {
     if (!m_Category)
         return false;
 
-    const int n = GetPage() * 4;
+    std::array<Property *, PROPERTY_SLOTS> visibleProperties{};
 
-    for (int i = 0; i < 4; ++i) {
-        Property *property = m_Category->GetProperty(n + i);
+    for (int i = 0; i < PROPERTY_SLOTS; ++i) {
+        Property *property = GetVisibleProperty(i);
         if (!property)
             continue;
+
+        visibleProperties[i] = property;
 
         switch (property->GetType()) {
             case IProperty::STRING:
@@ -442,12 +539,17 @@ bool ModOptionPage::HasPendingChanges() const {
                     return true;
                 break;
             case IProperty::FLOAT:
-                if (fabs(m_FloatValues[i] - m_OriginalFloatValues[i]) > EPSILON)
+                if (std::fabs(m_FloatValues[i] - m_OriginalFloatValues[i]) > EPSILON)
                     return true;
                 break;
             default:
                 break;
         }
+    }
+
+    for (const auto &entry : m_PendingValues) {
+        if (std::find(visibleProperties.begin(), visibleProperties.end(), entry.first) == visibleProperties.end())
+            return true;
     }
 
     return false;
