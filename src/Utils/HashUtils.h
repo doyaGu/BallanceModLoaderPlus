@@ -10,8 +10,22 @@
 namespace utils {
     // -- FNV-1a raw hash values --
 
+    uint64_t Fnv1a64Append(uint64_t hash, const void *data, size_t size);
+    uint32_t Fnv1a32Append(uint32_t hash, const void *data, size_t size);
+
     uint64_t Fnv1a64(const void *data, size_t size);
     uint32_t Fnv1a32(const void *data, size_t size);
+
+    size_t Fnv1aSizeInit();
+    size_t Fnv1aSizeAppend(size_t hash, const void *data, size_t size);
+
+    inline size_t Fnv1aSizeAppendByte(size_t hash, uint8_t byte) {
+        return Fnv1aSizeAppend(hash, &byte, 1);
+    }
+
+    inline size_t Fnv1aSize(std::string_view sv) {
+        return Fnv1aSizeAppend(Fnv1aSizeInit(), sv.data(), sv.size());
+    }
 
     inline uint64_t Fnv1a64(const std::vector<uint8_t> &bytes) {
         return Fnv1a64(bytes.data(), bytes.size());
