@@ -1027,147 +1027,158 @@ namespace AnsiText {
         std::vector<Layout::Line> lines;
         Layout::BuildLines(font, text.GetSegments(), wrapWidth, tabColumns, resolvedFontSize, lines);
 
-        ImGuiListClipper clipper;
-        clipper.Begin((int)lines.size(), lineStep);
-        while (clipper.Step()) {
-            for (int lineIndex = clipper.DisplayStart; lineIndex < clipper.DisplayEnd; ++lineIndex) {
-                const auto &line = lines[(size_t)lineIndex];
-                const float lineTop = startPos.y + lineIndex * lineStep;
-                const float lineBottom = lineTop + lineHeight;
+        int displayStart = 0;
+        int displayEnd = static_cast<int>(lines.size());
+        if (lineStep > 0.0f && displayEnd > 0) {
+            const ImVec2 clipMin = drawList->GetClipRectMin();
+            const ImVec2 clipMax = drawList->GetClipRectMax();
+            displayStart = static_cast<int>(std::floor((clipMin.y - startPos.y - lineHeight) / lineStep)) + 1;
+            displayEnd = static_cast<int>(std::ceil((clipMax.y - startPos.y) / lineStep));
+            displayStart = std::clamp(displayStart, 0, static_cast<int>(lines.size()));
+            displayEnd = std::clamp(displayEnd, displayStart, static_cast<int>(lines.size()));
+        }
 
-                // Background pass (optional pre-scan fast path only when no wrap requested)
-                auto draw_background_runs = [&]() {
-                    struct BgRun { float x0, x1; ImU32 col; };
-                    std::vector<BgRun> runs; runs.reserve(line.spans.size() / 2);
-                    float xForBg = startPos.x; bool hasOpenRun = false; BgRun cur{};
-                    for (const auto &sp : line.spans) {
-                        const TextSegment *seg = sp.seg;
-                        if (!seg) { xForBg += sp.width; continue; }
-                        ConsoleColor rc = seg->color.GetRendered();
-                        ImU32 bgBase = rc.background;
-                        if (rc.bgIsAnsi256 && rc.bgAnsiIndex >= 0) {
-                            const_cast<AnsiPalette *>(palette)->EnsureInitialized();
-                            if (palette->IsActive()) palette->GetColor(rc.bgAnsiIndex, bgBase);
-                        }
-                        ImU32 bg = Color::ApplyAlpha(bgBase, alpha);
-                        const bool drawBg = (!sp.isTab) && (((bg >> IM_COL32_A_SHIFT) & 0xFF) != 0) && (sp.b < sp.e);
-                        if (drawBg) {
-                            const float x0 = xForBg;
-                            float italicPad = 0.0f;
-                            if (rc.italic) { const float pad = italicShear * (lineBottom - lineTop); italicPad = pad > 0.0f ? pad : 0.0f; }
-                            const float x1 = xForBg + sp.width + italicPad;
-                            if (hasOpenRun && cur.col == bg && std::abs(cur.x1 - x0) <= 0.25f) cur.x1 = x1;
-                            else { if (hasOpenRun) runs.push_back(cur); cur = BgRun{x0, x1, bg}; hasOpenRun = true; }
-                        } else { if (hasOpenRun) { runs.push_back(cur); hasOpenRun = false; } }
-                        xForBg += sp.width;
-                    }
-                    if (hasOpenRun) runs.push_back(cur);
-                    for (const BgRun &r : runs) drawList->AddRectFilled(ImVec2(r.x0, lineTop), ImVec2(r.x1, lineBottom), r.col);
-                };
+        for (int lineIndex = displayStart; lineIndex < displayEnd; ++lineIndex) {
+            const auto &line = lines[(size_t)lineIndex];
+            const float lineTop = startPos.y + lineIndex * lineStep;
+            const float lineBottom = lineTop + lineHeight;
 
-                if (wrapWidth == FLT_MAX) {
-                    // If palette inactive and text has no true-color backgrounds, all backgrounds render as transparent -> skip entirely
-                    const bool paletteInactive = !palette->IsActive();
-                    if (paletteInactive && !text.HasTrueColorBackground() && !text.HasReverse()) {
-                        // nothing to draw for backgrounds on this line
-                    } else {
-                        // Per-line fast-path: if all backgrounds are fully transparent, skip building runs
-                        bool any_bg = false;
-                        for (const auto &sp_check : line.spans) {
-                            const TextSegment *seg_check = sp_check.seg;
-                            if (!seg_check) continue;
-                            if (sp_check.isTab || !(sp_check.b < sp_check.e)) continue;
-                            ConsoleColor rc_check = seg_check->color.GetRendered();
-                            ImU32 bgBaseCheck = rc_check.background;
-                            if (rc_check.bgIsAnsi256 && rc_check.bgAnsiIndex >= 0) {
-                                const_cast<AnsiPalette *>(palette)->EnsureInitialized();
-                                if (palette->IsActive()) palette->GetColor(rc_check.bgAnsiIndex, bgBaseCheck);
-                            }
-                            ImU32 bgCheck = Color::ApplyAlpha(bgBaseCheck, alpha);
-                            if (((bgCheck >> IM_COL32_A_SHIFT) & 0xFF) != 0) { any_bg = true; break; }
-                        }
-                        if (any_bg) draw_background_runs();
-                    }
-                } else {
-                    // With wrapping, always build runs (cost amortized by fewer long lines)
-                    draw_background_runs();
-                }
-
-                // Pass 2: Text and decoration lines
-                bool any_decor = false;
-                for (const auto &sp_check : line.spans) {
-                    const TextSegment *seg_check = sp_check.seg;
-                    if (!seg_check) continue;
-                    if (sp_check.isTab || !(sp_check.b < sp_check.e)) continue;
-                    ConsoleColor rc_check = seg_check->color.GetRendered();
-                    if (rc_check.underline || rc_check.doubleUnderline || rc_check.strikethrough) { any_decor = true; break; }
-                }
-                float x = startPos.x;
+            // Background pass (optional pre-scan fast path only when no wrap requested)
+            auto draw_background_runs = [&]() {
+                struct BgRun { float x0, x1; ImU32 col; };
+                std::vector<BgRun> runs; runs.reserve(line.spans.size() / 2);
+                float xForBg = startPos.x; bool hasOpenRun = false; BgRun cur{};
                 for (const auto &sp : line.spans) {
                     const TextSegment *seg = sp.seg;
-                    if (!seg) {
-                        x += sp.width;
-                        continue;
-                    }
-
+                    if (!seg) { xForBg += sp.width; continue; }
                     ConsoleColor rc = seg->color.GetRendered();
-
-                    ImU32 fg = rc.foreground;
-                    if (rc.fgIsAnsi256 && rc.fgAnsiIndex >= 0) {
+                    ImU32 bgBase = rc.background;
+                    if (rc.bgIsAnsi256 && rc.bgAnsiIndex >= 0) {
                         const_cast<AnsiPalette *>(palette)->EnsureInitialized();
-                        if (palette->IsActive()) palette->GetColor(rc.fgAnsiIndex, fg);
+                        if (palette->IsActive()) palette->GetColor(rc.bgAnsiIndex, bgBase);
                     }
-                    if (rc.dim) fg = Color::ApplyDim(fg);
-                    if (rc.hidden) {
-                        ImU32 bgBase2 = rc.background;
-                        if (rc.bgIsAnsi256 && rc.bgAnsiIndex >= 0) {
-                            const_cast<AnsiPalette *>(palette)->EnsureInitialized();
-                            if (palette->IsActive()) palette->GetColor(rc.bgAnsiIndex, bgBase2);
-                        }
-                        // Use background color as text color; alpha will be applied once below.
-                        fg = bgBase2;
-                    }
-
-                    fg = Color::ApplyAlpha(fg, alpha);
-                    const bool fauxBold = rc.bold;
-                    const bool italic = rc.italic;
-
-                    if (!sp.isTab && sp.b < sp.e) {
-                        AddTextStyled(drawList, font, resolvedFontSize, ImVec2(x, lineTop), fg, sp.b, sp.e, italic, fauxBold);
-
-                        if (any_decor) {
-                            // Calculate italic padding once if needed for decorations
-                            float italicPadForDecorations = 0.0f;
-                            if (rc.italic && (rc.underline || rc.strikethrough)) {
-                                const float pad = italicShear * (lineBottom - lineTop);
-                                italicPadForDecorations = pad > 0.0f ? pad : 0.0f;
-                            }
-
-                            if (rc.underline) {
-                                float y = Metrics::UnderlineY(lineTop, resolvedFontSize);
-                                float th = Metrics::Thickness(resolvedFontSize);
-                                if ((static_cast<int>(th) & 1) != 0) y = floorf(y) + 0.5f;
-                                else y = roundf(y);
-                                drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width + italicPadForDecorations, y), fg, th);
-                                if (rc.doubleUnderline) {
-                                    float y2 = y + th + 1.0f;
-                                    if ((static_cast<int>(th) & 1) != 0) y2 = floorf(y2) + 0.5f;
-                                    else y2 = roundf(y2);
-                                    drawList->AddLine(ImVec2(x, y2), ImVec2(x + sp.width + italicPadForDecorations, y2), fg, th);
-                                }
-                            }
-                            if (rc.strikethrough) {
-                                float y = Metrics::StrikeY(lineTop, resolvedFontSize);
-                                float th = Metrics::Thickness(resolvedFontSize);
-                                if ((static_cast<int>(th) & 1) != 0) y = floorf(y) + 0.5f;
-                                else y = roundf(y);
-                                drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width + italicPadForDecorations, y), fg, th);
-                            }
-                        }
-                    }
-
-                    x += sp.width;
+                    ImU32 bg = Color::ApplyAlpha(bgBase, alpha);
+                    const bool drawBg = (!sp.isTab) && (((bg >> IM_COL32_A_SHIFT) & 0xFF) != 0) && (sp.b < sp.e);
+                    if (drawBg) {
+                        const float x0 = xForBg;
+                        float italicPad = 0.0f;
+                        if (rc.italic) { const float pad = italicShear * (lineBottom - lineTop); italicPad = pad > 0.0f ? pad : 0.0f; }
+                        const float x1 = xForBg + sp.width + italicPad;
+                        if (hasOpenRun && cur.col == bg && std::abs(cur.x1 - x0) <= 0.25f) cur.x1 = x1;
+                        else { if (hasOpenRun) runs.push_back(cur); cur = BgRun{x0, x1, bg}; hasOpenRun = true; }
+                    } else { if (hasOpenRun) { runs.push_back(cur); hasOpenRun = false; } }
+                    xForBg += sp.width;
                 }
+                if (hasOpenRun) runs.push_back(cur);
+                for (const BgRun &r : runs) drawList->AddRectFilled(ImVec2(r.x0, lineTop), ImVec2(r.x1, lineBottom), r.col);
+            };
+
+            if (wrapWidth == FLT_MAX) {
+                if (text.HasAnsi256Background()) {
+                    const_cast<AnsiPalette *>(palette)->EnsureInitialized();
+                }
+
+                // If palette inactive and text has no true-color backgrounds, all backgrounds render as transparent -> skip entirely
+                const bool paletteInactive = !palette->IsActive();
+                if (paletteInactive && !text.HasAnsi256Background() && !text.HasTrueColorBackground() && !text.HasReverse()) {
+                    // nothing to draw for backgrounds on this line
+                } else {
+                    // Per-line fast-path: if all backgrounds are fully transparent, skip building runs
+                    bool any_bg = false;
+                    for (const auto &sp_check : line.spans) {
+                        const TextSegment *seg_check = sp_check.seg;
+                        if (!seg_check) continue;
+                        if (sp_check.isTab || !(sp_check.b < sp_check.e)) continue;
+                        ConsoleColor rc_check = seg_check->color.GetRendered();
+                        ImU32 bgBaseCheck = rc_check.background;
+                        if (rc_check.bgIsAnsi256 && rc_check.bgAnsiIndex >= 0) {
+                            const_cast<AnsiPalette *>(palette)->EnsureInitialized();
+                            if (palette->IsActive()) palette->GetColor(rc_check.bgAnsiIndex, bgBaseCheck);
+                        }
+                        ImU32 bgCheck = Color::ApplyAlpha(bgBaseCheck, alpha);
+                        if (((bgCheck >> IM_COL32_A_SHIFT) & 0xFF) != 0) { any_bg = true; break; }
+                    }
+                    if (any_bg) draw_background_runs();
+                }
+            } else {
+                // With wrapping, always build runs (cost amortized by fewer long lines)
+                draw_background_runs();
+            }
+
+            // Pass 2: Text and decoration lines
+            bool any_decor = false;
+            for (const auto &sp_check : line.spans) {
+                const TextSegment *seg_check = sp_check.seg;
+                if (!seg_check) continue;
+                if (sp_check.isTab || !(sp_check.b < sp_check.e)) continue;
+                ConsoleColor rc_check = seg_check->color.GetRendered();
+                if (rc_check.underline || rc_check.doubleUnderline || rc_check.strikethrough) { any_decor = true; break; }
+            }
+            float x = startPos.x;
+            for (const auto &sp : line.spans) {
+                const TextSegment *seg = sp.seg;
+                if (!seg) {
+                    x += sp.width;
+                    continue;
+                }
+
+                ConsoleColor rc = seg->color.GetRendered();
+
+                ImU32 fg = rc.foreground;
+                if (rc.fgIsAnsi256 && rc.fgAnsiIndex >= 0) {
+                    const_cast<AnsiPalette *>(palette)->EnsureInitialized();
+                    if (palette->IsActive()) palette->GetColor(rc.fgAnsiIndex, fg);
+                }
+                if (rc.dim) fg = Color::ApplyDim(fg);
+                if (rc.hidden) {
+                    ImU32 bgBase2 = rc.background;
+                    if (rc.bgIsAnsi256 && rc.bgAnsiIndex >= 0) {
+                        const_cast<AnsiPalette *>(palette)->EnsureInitialized();
+                        if (palette->IsActive()) palette->GetColor(rc.bgAnsiIndex, bgBase2);
+                    }
+                    // Use background color as text color; alpha will be applied once below.
+                    fg = bgBase2;
+                }
+
+                fg = Color::ApplyAlpha(fg, alpha);
+                const bool fauxBold = rc.bold;
+                const bool italic = rc.italic;
+
+                if (!sp.isTab && sp.b < sp.e) {
+                    AddTextStyled(drawList, font, resolvedFontSize, ImVec2(x, lineTop), fg, sp.b, sp.e, italic, fauxBold);
+
+                    if (any_decor) {
+                        // Calculate italic padding once if needed for decorations
+                        float italicPadForDecorations = 0.0f;
+                        if (rc.italic && (rc.underline || rc.strikethrough)) {
+                            const float pad = italicShear * (lineBottom - lineTop);
+                            italicPadForDecorations = pad > 0.0f ? pad : 0.0f;
+                        }
+
+                        if (rc.underline) {
+                            float y = Metrics::UnderlineY(lineTop, resolvedFontSize);
+                            float th = Metrics::Thickness(resolvedFontSize);
+                            if ((static_cast<int>(th) & 1) != 0) y = floorf(y) + 0.5f;
+                            else y = roundf(y);
+                            drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width + italicPadForDecorations, y), fg, th);
+                            if (rc.doubleUnderline) {
+                                float y2 = y + th + 1.0f;
+                                if ((static_cast<int>(th) & 1) != 0) y2 = floorf(y2) + 0.5f;
+                                else y2 = roundf(y2);
+                                drawList->AddLine(ImVec2(x, y2), ImVec2(x + sp.width + italicPadForDecorations, y2), fg, th);
+                            }
+                        }
+                        if (rc.strikethrough) {
+                            float y = Metrics::StrikeY(lineTop, resolvedFontSize);
+                            float th = Metrics::Thickness(resolvedFontSize);
+                            if ((static_cast<int>(th) & 1) != 0) y = floorf(y) + 0.5f;
+                            else y = roundf(y);
+                            drawList->AddLine(ImVec2(x, y), ImVec2(x + sp.width + italicPadForDecorations, y), fg, th);
+                        }
+                    }
+                }
+
+                x += sp.width;
             }
         }
 
