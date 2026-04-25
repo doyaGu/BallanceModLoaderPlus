@@ -253,9 +253,9 @@ namespace AnsiText {
         m_HasTrueColorBG = false;
         m_HasReverse = false;
 
-        // Fast path: no ESC present -> single zero-copy segment
-        if (std::memchr(start, 0x1B, (size_t)(end - start)) == nullptr &&
-            std::memchr(start, 0x9B, (size_t)(end - start)) == nullptr) {
+        // The input has already been normalized to UTF-8. Treating raw 0x9B as
+        // 8-bit CSI here would collide with valid UTF-8 continuation bytes.
+        if (std::memchr(start, 0x1B, (size_t)(end - start)) == nullptr) {
             m_Segments.emplace_back(start, end, ConsoleColor());
             return;
         }
@@ -304,33 +304,6 @@ namespace AnsiText {
                     continue;
                 }
                 // Not an SGR (or incomplete): fall through to treat bytes literally
-            }
-            else if ((end - p) >= 1 && (unsigned char)p[0] == 0x9B) { // 8-bit C1 CSI variant
-                const char *seqStart = p + 1;
-                const char *q = seqStart;
-                bool sawFinal = false;
-                bool isSGR = false;
-                while (q < end) {
-                    unsigned char ch = (unsigned char)*q;
-                    if (ch >= 0x30 && ch <= 0x3F) { ++q; continue; }
-                    if (ch >= 0x20 && ch <= 0x2F) { ++q; continue; }
-                    if (ch >= 0x40 && ch <= 0x7E) { sawFinal = true; isSGR = (ch == 'm'); break; }
-                    break;
-                }
-                if (sawFinal && isSGR) {
-                    if (segStart < p) {
-                        if (!m_Segments.empty() && m_Segments.back().color == currentColor && m_Segments.back().end == segStart) {
-                            m_Segments.back().end = p;
-                        } else {
-                            m_Segments.emplace_back(segStart, p, currentColor);
-                        }
-                    }
-                    currentColor = ParseAnsiColorSequence(seqStart, (size_t)(q - seqStart), currentColor, &m_HasAnsi256BG, &m_HasTrueColorBG, &m_HasReverse);
-                    p = q + 1; // skip final 'm'
-                    segStart = p;
-                    continue;
-                }
-                // else treat as literal
             }
             ++p;
         }
