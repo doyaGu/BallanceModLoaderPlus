@@ -81,6 +81,21 @@ add_bml_test(AnsiPaletteTest
 # Need ImGui headers for AnsiPalette
 target_include_directories(AnsiPaletteTest PRIVATE ${IMGUI_SOURCE_DIR})
 
+add_bml_test(AnsiTextTest
+        SOURCES
+        AnsiTextTest.cpp
+        ${BML_SOURCE_DIR}/AnsiText.cpp
+        ${BML_SOURCE_DIR}/AnsiPalette.cpp
+        ${IMGUI_SOURCE_DIR}/imgui.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_draw.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_widgets.cpp
+        DEPENDENCIES
+        BMLUtils
+)
+target_include_directories(AnsiTextTest PRIVATE ${IMGUI_SOURCE_DIR})
+target_compile_definitions(AnsiTextTest PRIVATE IMGUI_EXPORT)
+
 add_bml_test(FpsCounterTest
         SOURCES
         FpsCounterTest.cpp
