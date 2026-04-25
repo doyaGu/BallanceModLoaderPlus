@@ -153,20 +153,27 @@ namespace AnsiText {
     }
 
     AnsiString::AnsiString(AnsiString &&other) noexcept {
-        m_OriginalText.swap(other.m_OriginalText);
-        m_Segments.swap(other.m_Segments);
-        std::swap(m_HasAnsi256BG, other.m_HasAnsi256BG);
-        std::swap(m_HasTrueColorBG, other.m_HasTrueColorBG);
-        std::swap(m_HasReverse, other.m_HasReverse);
+        const char *srcBase = other.m_OriginalText.c_str();
+        m_OriginalText = std::move(other.m_OriginalText);
+        m_Segments = std::move(other.m_Segments);
+        m_HasAnsi256BG = other.m_HasAnsi256BG;
+        m_HasTrueColorBG = other.m_HasTrueColorBG;
+        m_HasReverse = other.m_HasReverse;
+
+        RebindSegmentsPointers(srcBase, m_OriginalText.c_str());
     }
 
     AnsiString &AnsiString::operator=(AnsiString &&other) noexcept {
         if (this == &other) return *this;
-        m_OriginalText.swap(other.m_OriginalText);
-        m_Segments.swap(other.m_Segments);
-        std::swap(m_HasAnsi256BG, other.m_HasAnsi256BG);
-        std::swap(m_HasTrueColorBG, other.m_HasTrueColorBG);
-        std::swap(m_HasReverse, other.m_HasReverse);
+
+        const char *srcBase = other.m_OriginalText.c_str();
+        m_OriginalText = std::move(other.m_OriginalText);
+        m_Segments = std::move(other.m_Segments);
+        m_HasAnsi256BG = other.m_HasAnsi256BG;
+        m_HasTrueColorBG = other.m_HasTrueColorBG;
+        m_HasReverse = other.m_HasReverse;
+
+        RebindSegmentsPointers(srcBase, m_OriginalText.c_str());
         return *this;
     }
 
