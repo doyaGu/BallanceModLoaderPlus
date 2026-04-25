@@ -350,8 +350,8 @@ namespace AnsiText {
 
     ConsoleColor AnsiString::ParseAnsiColorSequence(const char *sequence, size_t length, const ConsoleColor &currentColor,
                                                     bool *out_hasAnsi256Bg, bool *out_hasTrueColorBg, bool *out_hasReverse) {
+        if (length == 0) return ConsoleColor();
         ConsoleColor color = currentColor;
-        if (length == 0) return color;
 
         const char *p = sequence;
         const char *const e = sequence + length;
@@ -401,11 +401,12 @@ namespace AnsiText {
                     else      { color.foreground = v; color.fgIsAnsi256 = false; color.fgAnsiIndex = -1; }
                     continue;
                 }
-                // Unknown sub-mode, ignore
-                continue;
+                // Unknown sub-mode: stop processing this sequence to avoid
+                // misinterpreting its parameters as subsequent SGR codes.
+                break;
             }
 
-            if (code == 39) { color.foreground = ImGui::GetColorU32(ImGuiCol_Text); color.fgIsAnsi256 = false; color.fgAnsiIndex = -1; continue; }
+            if (code == 39) { color.foreground = ConsoleColor().foreground; color.fgIsAnsi256 = false; color.fgAnsiIndex = -1; continue; }
             if (code == 49) { color.background = IM_COL32(0, 0, 0, 0); color.bgIsAnsi256 = false; color.bgAnsiIndex = -1; continue; }
 
             switch (code) {

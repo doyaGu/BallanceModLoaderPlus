@@ -8,6 +8,32 @@ namespace {
     std::string SegmentText(const AnsiText::TextSegment &segment) {
         return std::string(segment.begin, segment.end);
     }
+
+    class ScopedImGuiContext {
+    public:
+        ScopedImGuiContext() : m_Previous(ImGui::GetCurrentContext()) {
+            m_Context = ImGui::CreateContext();
+            ImGui::SetCurrentContext(m_Context);
+            ImGuiIO &io = ImGui::GetIO();
+            io.DisplaySize = ImVec2(800.0f, 600.0f);
+            io.Fonts->AddFontDefault();
+
+            unsigned char *pixels = nullptr;
+            int width = 0;
+            int height = 0;
+            io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+        }
+
+        ~ScopedImGuiContext() {
+            ImGui::SetCurrentContext(m_Context);
+            ImGui::DestroyContext(m_Context);
+            ImGui::SetCurrentContext(m_Previous);
+        }
+
+    private:
+        ImGuiContext *m_Previous = nullptr;
+        ImGuiContext *m_Context = nullptr;
+    };
 }
 
 TEST(AnsiTextTest, Utf8ContinuationByte9BIsNotTreatedAsCsi) {
@@ -48,4 +74,32 @@ TEST(AnsiTextTest, MoveAssignmentRebindsShortStringSegmentsToDestinationBuffer) 
     EXPECT_EQ(SegmentText(segments[0]), stored);
     EXPECT_EQ(segments[0].begin, stored.c_str());
     EXPECT_EQ(segments[0].end, stored.c_str() + stored.size());
+}
+
+TEST(AnsiTextTest, EmptySgrResetsFormatting) {
+    const std::string input = "\x1B[31mred\x1B[mplain";
+
+    AnsiText::AnsiString text(input);
+    const auto &segments = text.GetSegments();
+
+    ASSERT_EQ(segments.size(), 2u);
+    EXPECT_EQ(SegmentText(segments[0]), "red");
+    EXPECT_EQ(SegmentText(segments[1]), "plain");
+    EXPECT_NE(segments[0].color, AnsiText::ConsoleColor());
+    EXPECT_EQ(segments[1].color, AnsiText::ConsoleColor());
+}
+
+TEST(AnsiTextTest, Sgr39ResetsToDefaultForegroundInsteadOfCurrentStyleColor) {
+    ScopedImGuiContext context;
+    ImGui::GetStyle().Colors[ImGuiCol_Text] = ImVec4(0.25f, 0.5f, 0.75f, 1.0f);
+    const std::string input = "\x1B[31mred\x1B[39mplain";
+
+    AnsiText::AnsiString text(input);
+    const auto &segments = text.GetSegments();
+
+    ASSERT_EQ(segments.size(), 2u);
+    EXPECT_EQ(SegmentText(segments[0]), "red");
+    EXPECT_EQ(SegmentText(segments[1]), "plain");
+    EXPECT_NE(segments[0].color, AnsiText::ConsoleColor());
+    EXPECT_EQ(segments[1].color, AnsiText::ConsoleColor());
 }
