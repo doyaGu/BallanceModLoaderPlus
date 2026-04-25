@@ -26,12 +26,6 @@ Gui::Gui() {
     m_Height = rc->GetHeight();
 }
 
-Gui::~Gui() {
-    for (Element *element : m_Elements) {
-        delete element;
-    }
-}
-
 void Gui::OnCharTyped(CKDWORD key) {
     if (key == CKKEY_ESCAPE)
         if (m_Back)
