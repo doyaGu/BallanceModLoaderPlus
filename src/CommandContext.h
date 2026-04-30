@@ -71,6 +71,7 @@ namespace BML {
         };
 
         static std::string NormalizeCommandKey(const char *name);
+        static bool ValidateCommandAlias(const char *alias);
         static bool ValidateCommandName(const char *name);
 
         std::vector<ICommand *> m_Commands;
