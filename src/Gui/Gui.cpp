@@ -26,6 +26,12 @@ Gui::Gui() {
     m_Height = rc->GetHeight();
 }
 
+Gui::~Gui() {
+    for (Element *element : m_Elements) {
+        delete element;
+    }
+}
+
 void Gui::OnCharTyped(CKDWORD key) {
     if (key == CKKEY_ESCAPE)
         if (m_Back)
@@ -234,7 +240,6 @@ std::pair<Button *, KeyInput *> Gui::AddKeyButton(const char *name, const char *
     bg->SetZOrder(15);
     bg->SetOffset(Vx2DVector((float)BML_GetRenderContext()->GetWidth() * 0.03f, 0.0f));
     bg->SetCallback([]() {});
-    m_Elements.push_back(bg);
 
     auto *button = new KeyInput(name);
     button->SetFont(ExecuteBB::GAMEFONT_03);
@@ -260,8 +265,6 @@ std::pair<Button *, Button *> Gui::AddYesNoButton(const char *name, float yPos, 
         yes->SetActive(false);
         no->SetActive(true);
     });
-    m_Elements.push_back(yes);
-    m_Elements.push_back(no);
     return {yes, no};
 }
 

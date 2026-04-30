@@ -21,6 +21,7 @@ namespace BGui {
     class BML_EXPORT Gui {
     public:
         Gui();
+        ~Gui();
 
         Button *AddNormalButton(const char *name, const char *text, float yPos, float xPos = 0.35f,
                                 std::function<void()> callback = []() {});
