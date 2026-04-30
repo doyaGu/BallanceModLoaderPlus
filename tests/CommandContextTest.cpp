@@ -99,6 +99,18 @@ TEST_F(CommandContextTest, RegisterWithAlias) {
     EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("tp"));
 }
 
+TEST_F(CommandContextTest, RegisterWithSymbolAlias) {
+    auto *cmd = MakeCommand("help", "?");
+    auto *punctuationCmd = MakeCommand("repeat", "!");
+    EXPECT_TRUE(ctx->RegisterCommand(cmd));
+    EXPECT_TRUE(ctx->RegisterCommand(punctuationCmd));
+
+    EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("help"));
+    EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("?"));
+    EXPECT_EQ(static_cast<ICommand *>(punctuationCmd), ctx->GetCommandByName("repeat"));
+    EXPECT_EQ(static_cast<ICommand *>(punctuationCmd), ctx->GetCommandByName("!"));
+}
+
 TEST_F(CommandContextTest, RegisterRejectsCaseInsensitiveDuplicateName) {
     auto *cmd1 = MakeCommand("Teleport");
     auto *cmd2 = MakeCommand("teleport");

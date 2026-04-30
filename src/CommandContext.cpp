@@ -175,7 +175,7 @@ bool CommandContext::RegisterCommand(ICommand *cmd) {
 
     const auto alias = cmd->GetAlias();
     if (!alias.empty()) {
-        if (!ValidateCommandName(alias.c_str())) {
+        if (!ValidateCommandAlias(alias.c_str())) {
             Logger::GetDefault()->Warn("Command alias %s is invalid and will be ignored.", alias.c_str());
         } else {
             auto aliasIt = m_CommandMap.find(alias.c_str());
@@ -381,6 +381,33 @@ bool CommandContext::ValidateCommandName(const char *name) {
 
         cursor = next;
         first = false;
+    }
+
+    return true;
+}
+
+bool CommandContext::ValidateCommandAlias(const char *alias) {
+    if (!alias || alias[0] == '\0')
+        return false;
+
+    size_t size = strnlen(alias, MAX_CMD_NAME_LENGTH + 1);
+    if (size > MAX_CMD_NAME_LENGTH)
+        return false;
+
+    if (utf8valid(reinterpret_cast<const utf8_int8_t *>(alias)) != nullptr)
+        return false;
+
+    const auto *cursor = reinterpret_cast<const utf8_int8_t *>(alias);
+    while (*cursor != '\0') {
+        utf8_int32_t codepoint = 0;
+        const utf8_int8_t *next = utf8codepoint(cursor, &codepoint);
+        if (!next)
+            return false;
+
+        if (codepoint <= 0x20 || codepoint == 0x7F)
+            return false;
+
+        cursor = next;
     }
 
     return true;
