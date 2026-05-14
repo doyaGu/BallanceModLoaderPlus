@@ -217,8 +217,10 @@ void ModContext::Shutdown() {
     if (!IsInited())
         return;
 
-    if (AreModsLoaded())
+    if (AreModsLoaded()) {
+        ShutdownMods();
         UnloadMods();
+    }
 
     m_Logger->Info("Releasing Mod Loader");
 
@@ -314,6 +316,9 @@ void ModContext::UnloadMods() {
     if (!IsInited() || !AreModsLoaded())
         return;
 
+    if (AreModsInited())
+        ShutdownMods();
+
     std::vector<std::string> modNames;
     modNames.reserve(m_Mods.size());
     for (auto *mod : m_Mods) {
@@ -339,6 +344,8 @@ void ModContext::UnloadMods() {
 bool ModContext::InitMods() {
     if (!IsInited() || !AreModsLoaded() || AreModsInited())
         return false;
+
+    ClearFlags(BML_MODS_SHUTTING_DOWN);
 
     if (!ResolveDependencies()) {
         m_Logger->Error("Failed to resolve mod dependencies");
@@ -373,9 +380,26 @@ void ModContext::ShutdownMods() {
     if (!IsInited() || !AreModsLoaded() || !AreModsInited())
         return;
 
+    SetFlags(BML_MODS_SHUTTING_DOWN);
+
     for (auto rit = m_Mods.rbegin(); rit != m_Mods.rend(); ++rit) {
         auto *mod = *rit;
-        mod->OnUnload();
+        try {
+            mod->OnUnload();
+        } catch (const std::exception &e) {
+            if (m_Logger)
+                m_Logger->Error("Exception in mod %s unload callback: %s", mod->GetID(), e.what());
+        } catch (...) {
+            if (m_Logger)
+                m_Logger->Error("Unknown exception in mod %s unload callback", mod->GetID());
+        }
+    }
+
+    Timer::CancelAll();
+    if (m_TimeManager) {
+        Timer::ProcessAll(m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime() / 1000.0f);
+    } else {
+        Timer::ProcessAll(0, 0.0f);
     }
 
     for (auto rit = m_Configs.rbegin(); rit != m_Configs.rend(); ++rit) {
@@ -825,18 +849,30 @@ void ModContext::Show(CKBeObject *obj, CK_OBJECT_SHOWOPTION show, bool hierarchy
 }
 
 void ModContext::AddTimer(CKDWORD delay, std::function<void()> callback) {
+    if (!CanScheduleTimer())
+        return;
+
     Delay(static_cast<size_t>(delay), callback, m_TimeManager->GetMainTickCount());
 }
 
 void ModContext::AddTimerLoop(CKDWORD delay, std::function<bool()> callback) {
+    if (!CanScheduleTimer())
+        return;
+
     Interval(static_cast<size_t>(delay), callback, m_TimeManager->GetMainTickCount());
 }
 
 void ModContext::AddTimer(float delay, std::function<void()> callback) {
+    if (!CanScheduleTimer())
+        return;
+
     Delay(delay / 1000.0f, callback, m_TimeManager->GetAbsoluteTime() / 1000.0f);
 }
 
 void ModContext::AddTimerLoop(float delay, std::function<bool()> callback) {
+    if (!CanScheduleTimer())
+        return;
+
     Interval(delay / 1000.0f, callback, m_TimeManager->GetAbsoluteTime() / 1000.0f);
 }
 
@@ -1822,4 +1858,8 @@ void ModContext::AddDataPath(const char *path) {
         m_PathManager->GetPathIndex(SOUND_PATH_IDX, soundPath) == -1) {
         m_PathManager->AddPath(SOUND_PATH_IDX, soundPath);
     }
+}
+
+bool ModContext::CanScheduleTimer() const {
+    return IsInited() && m_TimeManager != nullptr && !AreFlagsSet(BML_MODS_SHUTTING_DOWN);
 }

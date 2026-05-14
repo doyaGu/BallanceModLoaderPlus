@@ -39,6 +39,7 @@ public:
 
         BML_MODS_LOADED = 0x00000010,
         BML_MODS_INITED = 0x00000020,
+        BML_MODS_SHUTTING_DOWN = 0x00000040,
 
         BML_INGAME = 0x00000100,
         BML_INLEVEL = 0x00000200,
@@ -320,6 +321,7 @@ private:
     void FillCallbackMap(IMod *mod);
 
     void AddDataPath(const char *path);
+    bool CanScheduleTimer() const;
 
     int m_Flags = 0;
 
