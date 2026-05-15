@@ -621,7 +621,7 @@ namespace Bui {
 
         if (type == BUTTON_LEVEL) {
             const ImVec2 size = bb.GetSize();
-            textRect.Min.x = bb.Min.x + size.x * 0.28f;
+            textRect.Min.x = bb.Min.x + size.x * 0.20f;
             textRect.Max.x = bb.Max.x - size.x * 0.08f;
         }
 
