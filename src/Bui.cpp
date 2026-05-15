@@ -1,5 +1,6 @@
 #include "BML/Bui.h"
 
+#include <cmath>
 #include <cstring>
 
 #include "CKMessageManager.h"
@@ -601,6 +602,42 @@ namespace Bui {
         return g_ButtonIndent[type];
     }
 
+    void RenderMarqueeText(ImDrawList *drawList, const ImVec2 &textMin, const ImVec2 &textMax,
+                           const char *text, const ImVec2 *textSize, bool selected,
+                           float selectedTimer, const ImRect *clipRect) {
+        if (!drawList || !text || text[0] == '\0' || !textSize)
+            return;
+
+        const float availableWidth = textMax.x - textMin.x;
+        if (textSize->x <= availableWidth) {
+            ImGui::RenderTextClipped(textMin, textMax, text, nullptr, textSize, ImVec2(0.5f, 0.5f), clipRect);
+            return;
+        }
+
+        constexpr float kScrollSpeed = 45.0f;
+        constexpr float kScrollGap = 36.0f;
+
+        float textY = textMin.y + (textMax.y - textMin.y - textSize->y) * 0.5f;
+        if (textY < textMin.y)
+            textY = textMin.y;
+
+        if (!selected) {
+            ImGui::RenderTextEllipsis(drawList, ImVec2(textMin.x, textY), ImVec2(textMax.x, textMax.y),
+                                      textMax.x, text, nullptr, textSize);
+            return;
+        }
+
+        const float cycleWidth = textSize->x + kScrollGap;
+        const float scrollOffset = fmodf(selectedTimer * kScrollSpeed, cycleWidth);
+        const ImU32 textColor = ImGui::GetColorU32(ImGuiCol_Text);
+        const float firstX = textMin.x - scrollOffset;
+
+        drawList->PushClipRect(textMin, textMax, true);
+        drawList->AddText(ImVec2(firstX, textY), textColor, text);
+        drawList->AddText(ImVec2(firstX + cycleWidth, textY), textColor, text);
+        drawList->PopClipRect();
+    }
+
     void AddButtonImage(ImDrawList *drawList, const ImRect &bb, ButtonType type, int state) {
         assert(drawList != nullptr);
 
@@ -941,6 +978,8 @@ namespace Bui {
 
         bool hovered, held;
         ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
+        ImGuiContext &g = *GImGui;
+        const float selectedTimer = held ? g.ActiveIdTimer : (hovered ? g.HoveredIdTimer : 0.0f);
 
         AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
 
@@ -953,10 +992,10 @@ namespace Bui {
         bool changed = false;
         const char *currentText = items[selectedItem] ? items[selectedItem] : "";
 
-        ImVec2 leftPos(pos.x + size.x * 0.15f, pos.y + size.y * 0.43f);
-        ImVec2 rightPos(pos.x + size.x * 0.75f, pos.y + size.y * 0.43f);
-        ImVec2 textMin(pos.x + size.x * 0.25f, pos.y + size.y * 0.39f);
-        ImVec2 textMax(pos.x + size.x * 0.73f, pos.y + size.y * 0.92f);
+        ImVec2 leftPos(pos.x + size.x * 0.23f, pos.y + size.y * 0.50f);
+        ImVec2 rightPos(pos.x + size.x * 0.82f, pos.y + size.y * 0.50f);
+        ImVec2 textMin(pos.x + size.x * 0.32f, pos.y + size.y * 0.38f);
+        ImVec2 textMax(pos.x + size.x * 0.80f, pos.y + size.y * 0.90f);
         const ImVec2 currentTextSize = ImGui::CalcTextSize(currentText, nullptr, true);
 
         ImGui::PushID(label);
@@ -973,8 +1012,8 @@ namespace Bui {
             changed = true;
         }
 
-        // Render current item text centered between arrows
-        ImGui::RenderTextClipped(textMin, textMax, currentText, nullptr, &currentTextSize, ImVec2(0.5f, 0.5f), &bb);
+        RenderMarqueeText(window->DrawList, textMin, textMax, currentText, &currentTextSize,
+                          hovered || held, selectedTimer, &bb);
         ImGui::PopID();
 
         ImGui::SetCursorScreenPos(backup);
