@@ -613,11 +613,15 @@ namespace Bui {
 
     ImRect GetButtonTextRect(const ImRect &bb, ButtonType type) {
         const float indent = GetButtonIndent(type);
-        ImRect textRect(ImVec2(bb.Min.x + indent, bb.Min.y), ImVec2(bb.Max.x - indent, bb.Max.y));
+        return ImRect(ImVec2(bb.Min.x + indent, bb.Min.y), ImVec2(bb.Max.x - indent, bb.Max.y));
+    }
+
+    ImRect GetButtonOverflowTextRect(const ImRect &bb, ButtonType type) {
+        ImRect textRect = GetButtonTextRect(bb, type);
 
         if (type == BUTTON_LEVEL) {
             const ImVec2 size = bb.GetSize();
-            textRect.Min.x = bb.Min.x + size.x * 0.18f;
+            textRect.Min.x = bb.Min.x + size.x * 0.28f;
             textRect.Max.x = bb.Max.x - size.x * 0.08f;
         }
 
@@ -686,12 +690,20 @@ namespace Bui {
 
         const ImRect textRect = GetButtonTextRect(bb, type);
         const ImVec2 textSize = ImGui::CalcTextSize(text, nullptr, true);
-        if (selected && GetButtonTextOverflowMode(type) == TextOverflowMarqueeWhenActive) {
-            RenderMarqueeText(drawList, textRect.Min, textRect.Max, text, &textSize, true, selectedTimer, &textRect);
+        if (textSize.x <= textRect.GetWidth()) {
+            ImGui::RenderTextClipped(textRect.Min, textRect.Max, text, nullptr, &textSize, textAlign, &bb);
             return;
         }
 
-        RenderEllipsisText(drawList, textRect.Min, textRect.Max, text, &textSize, textAlign, &textRect);
+        const ImRect overflowTextRect = GetButtonOverflowTextRect(bb, type);
+        if (selected && GetButtonTextOverflowMode(type) == TextOverflowMarqueeWhenActive) {
+            RenderMarqueeText(drawList, overflowTextRect.Min, overflowTextRect.Max, text,
+                              &textSize, true, selectedTimer, &overflowTextRect);
+            return;
+        }
+
+        RenderEllipsisText(drawList, overflowTextRect.Min, overflowTextRect.Max, text,
+                           &textSize, textAlign, &overflowTextRect);
     }
 
     void AddButtonImage(ImDrawList *drawList, const ImRect &bb, ButtonType type, int state) {
