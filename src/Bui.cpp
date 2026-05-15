@@ -602,6 +602,48 @@ namespace Bui {
         return g_ButtonIndent[type];
     }
 
+    enum TextOverflowMode {
+        TextOverflowEllipsis,
+        TextOverflowMarqueeWhenActive,
+    };
+
+    TextOverflowMode GetButtonTextOverflowMode(ButtonType type) {
+        return type == BUTTON_LEVEL ? TextOverflowMarqueeWhenActive : TextOverflowEllipsis;
+    }
+
+    ImRect GetButtonTextRect(const ImRect &bb, ButtonType type) {
+        const float indent = GetButtonIndent(type);
+        ImRect textRect(ImVec2(bb.Min.x + indent, bb.Min.y), ImVec2(bb.Max.x - indent, bb.Max.y));
+
+        if (type == BUTTON_LEVEL) {
+            const ImVec2 size = bb.GetSize();
+            textRect.Min.x = bb.Min.x + size.x * 0.18f;
+            textRect.Max.x = bb.Max.x - size.x * 0.08f;
+        }
+
+        return textRect;
+    }
+
+    void RenderEllipsisText(ImDrawList *drawList, const ImVec2 &textMin, const ImVec2 &textMax,
+                            const char *text, const ImVec2 *textSize, const ImVec2 &textAlign,
+                            const ImRect *clipRect) {
+        if (!drawList || !text || text[0] == '\0' || !textSize)
+            return;
+
+        const float availableWidth = textMax.x - textMin.x;
+        if (textSize->x <= availableWidth) {
+            ImGui::RenderTextClipped(textMin, textMax, text, nullptr, textSize, textAlign, clipRect);
+            return;
+        }
+
+        float textY = textMin.y + (textMax.y - textMin.y - textSize->y) * textAlign.y;
+        if (textY < textMin.y)
+            textY = textMin.y;
+
+        ImGui::RenderTextEllipsis(drawList, ImVec2(textMin.x, textY), ImVec2(textMax.x, textMax.y),
+                                  textMax.x, text, nullptr, textSize);
+    }
+
     void RenderMarqueeText(ImDrawList *drawList, const ImVec2 &textMin, const ImVec2 &textMax,
                            const char *text, const ImVec2 *textSize, bool selected,
                            float selectedTimer, const ImRect *clipRect) {
@@ -622,8 +664,7 @@ namespace Bui {
             textY = textMin.y;
 
         if (!selected) {
-            ImGui::RenderTextEllipsis(drawList, ImVec2(textMin.x, textY), ImVec2(textMax.x, textMax.y),
-                                      textMax.x, text, nullptr, textSize);
+            RenderEllipsisText(drawList, textMin, textMax, text, textSize, ImVec2(0.5f, 0.5f), clipRect);
             return;
         }
 
@@ -636,6 +677,21 @@ namespace Bui {
         drawList->AddText(ImVec2(firstX, textY), textColor, text);
         drawList->AddText(ImVec2(firstX + cycleWidth, textY), textColor, text);
         drawList->PopClipRect();
+    }
+
+    void RenderButtonText(ImDrawList *drawList, const ImRect &bb, ButtonType type, const char *text,
+                          const ImVec2 &textAlign, bool selected, float selectedTimer) {
+        if (!text || text[0] == '\0')
+            return;
+
+        const ImRect textRect = GetButtonTextRect(bb, type);
+        const ImVec2 textSize = ImGui::CalcTextSize(text, nullptr, true);
+        if (selected && GetButtonTextOverflowMode(type) == TextOverflowMarqueeWhenActive) {
+            RenderMarqueeText(drawList, textRect.Min, textRect.Max, text, &textSize, true, selectedTimer, &textRect);
+            return;
+        }
+
+        RenderEllipsisText(drawList, textRect.Min, textRect.Max, text, &textSize, textAlign, &textRect);
     }
 
     void AddButtonImage(ImDrawList *drawList, const ImRect &bb, ButtonType type, int state) {
@@ -657,15 +713,9 @@ namespace Bui {
         drawList->AddImage((ImTextureID) g_Textures[texture], bb.Min, bb.Max, g_ButtonUVs[type].Min, g_ButtonUVs[type].Max);
     }
 
-    void AddButtonImage(ImDrawList *drawList, const ImRect &bb, ButtonType type, int state, const char *text, const ImVec2 &text_align) {
+    void AddButtonImage(ImDrawList *drawList, const ImRect &bb, ButtonType type, int state, const char *text, const ImVec2 &textAlign) {
         AddButtonImage(drawList, bb, type, state);
-        if (text && text[0] != '\0') {
-            float indent = GetButtonIndent(type);
-            const ImVec2 min(bb.Min.x + indent, bb.Min.y);
-            const ImVec2 max(bb.Max.x - indent, bb.Max.y);
-            const ImVec2 textSize = ImGui::CalcTextSize(text, nullptr, true);
-            ImGui::RenderTextClipped(min, max, text, nullptr, &textSize, text_align, &bb);
-        }
+        RenderButtonText(drawList, bb, type, text, textAlign, false, 0.0f);
     }
 
     void AddButtonImage(ImDrawList *drawList, const ImRect &bb, ButtonType type, bool selected) {
@@ -726,7 +776,13 @@ namespace Bui {
         if (pressed)
             PlayMenuClickSound();
 
-        AddButtonImage(window->DrawList, bb, type, pressed || hovered || held, text, ImGui::GetStyle().ButtonTextAlign);
+        const bool active = pressed || hovered || held;
+        ImGuiContext &g = *GImGui;
+        const float activeTimer = held ? g.ActiveIdTimer : (hovered ? g.HoveredIdTimer : 0.0f);
+
+        AddButtonImage(window->DrawList, bb, type, active);
+        RenderButtonText(window->DrawList, bb, type, text, ImGui::GetStyle().ButtonTextAlign,
+                         active, activeTimer);
 
         return pressed;
     }
@@ -754,12 +810,18 @@ namespace Bui {
             PlayMenuClickSound();
 
         int state = (v && *v) ? 0 : 2;
-        if (pressed || hovered || held) {
+        const bool active = pressed || hovered || held;
+        if (active) {
             state = 1;
             if (v) *v = true;
         }
 
-        AddButtonImage(window->DrawList, bb, type, state, text, ImGui::GetStyle().ButtonTextAlign);
+        ImGuiContext &g = *GImGui;
+        const float activeTimer = held ? g.ActiveIdTimer : (hovered ? g.HoveredIdTimer : 0.0f);
+
+        AddButtonImage(window->DrawList, bb, type, state);
+        RenderButtonText(window->DrawList, bb, type, text, ImGui::GetStyle().ButtonTextAlign,
+                         active, activeTimer);
 
         return pressed;
     }
@@ -864,17 +926,17 @@ namespace Bui {
         float xl1 = size.x * 0.1055f, xr1 = size.x * 0.5195f;
         const ImVec2 min1(bb.Min.x + xl1, bb.Min.y);
         const ImVec2 max1(bb.Max.x - xr1, bb.Max.y);
-        ImGui::RenderTextClipped(min1, max1, label, nullptr, &textSize, style.ButtonTextAlign, &bb);
+        RenderEllipsisText(drawList, min1, max1, label, &textSize, style.ButtonTextAlign, &bb);
 
         if (*key_chord != 0) {
             float xl2 = size.x * 0.5625f, xr2 = size.x * 0.0195f;
             const ImVec2 min2(bb.Min.x + xl2, bb.Min.y);
-            const ImVec2 max2(bb.Max.x, bb.Max.y);
+            const ImVec2 max2(bb.Max.x - xr2, bb.Max.y);
 
             char keyText[32];
             KeyChordToString(*key_chord, keyText, sizeof(keyText));
             const ImVec2 keyTextSize = ImGui::CalcTextSize(keyText, nullptr, true);
-            ImGui::RenderTextClipped(min2, max2, keyText, nullptr, &keyTextSize, style.ButtonTextAlign, &bb);
+            RenderEllipsisText(drawList, min2, max2, keyText, &keyTextSize, style.ButtonTextAlign, &bb);
         }
 
         if (*toggled) {
@@ -922,7 +984,7 @@ namespace Bui {
         float indent = GetButtonIndent(BUTTON_OPTION);
         const ImVec2 min(bb.Min.x + indent, bb.Min.y);
         const ImVec2 max(bb.Max.x - indent, bb.Max.y);
-        ImGui::RenderTextClipped(min, max, label, nullptr, &textSize, ImVec2(0.5f, 0.21f), &bb);
+        RenderEllipsisText(window->DrawList, min, max, label, &textSize, ImVec2(0.5f, 0.21f), &bb);
 
         // Inline "Yes / No"
         ImVec2 backup = ImGui::GetCursorScreenPos();
@@ -986,7 +1048,7 @@ namespace Bui {
         float indent = GetButtonIndent(BUTTON_OPTION);
         const ImVec2 min(bb.Min.x + indent, bb.Min.y);
         const ImVec2 max(bb.Max.x - indent, bb.Max.y);
-        ImGui::RenderTextClipped(min, max, label, nullptr, &textSize, ImVec2(0.5f, 0.21f), &bb);
+        RenderEllipsisText(window->DrawList, min, max, label, &textSize, ImVec2(0.5f, 0.21f), &bb);
 
         ImVec2 backup = ImGui::GetCursorScreenPos();
         bool changed = false;
@@ -1054,7 +1116,7 @@ namespace Bui {
         float indent = GetButtonIndent(BUTTON_OPTION);
         const ImVec2 min(bb.Min.x + indent, bb.Min.y);
         const ImVec2 max(bb.Max.x - indent, bb.Max.y);
-        ImGui::RenderTextClipped(min, max, label, nullptr, &textSize, ImVec2(0.5f, 0.21f), &bb);
+        RenderEllipsisText(window->DrawList, min, max, label, &textSize, ImVec2(0.5f, 0.21f), &bb);
 
         ImVec2 backup = ImGui::GetCursorScreenPos();
         ImVec2 smPos(pos.x + size.x * 0.24f, pos.y + size.y * 0.45f);
@@ -1104,7 +1166,7 @@ namespace Bui {
         float indent = GetButtonIndent(BUTTON_OPTION);
         const ImVec2 min(bb.Min.x + indent, bb.Min.y);
         const ImVec2 max(bb.Max.x - indent, bb.Max.y);
-        ImGui::RenderTextClipped(min, max, label, nullptr, &textSize, ImVec2(0.5f, 0.21f), &bb);
+        RenderEllipsisText(window->DrawList, min, max, label, &textSize, ImVec2(0.5f, 0.21f), &bb);
 
         ImVec2 backup = ImGui::GetCursorScreenPos();
         ImVec2 smPos(pos.x + size.x * 0.24f, pos.y + size.y * 0.45f);
@@ -1154,7 +1216,7 @@ namespace Bui {
         float indent = GetButtonIndent(BUTTON_OPTION);
         const ImVec2 min(bb.Min.x + indent, bb.Min.y);
         const ImVec2 max(bb.Max.x - indent, bb.Max.y);
-        ImGui::RenderTextClipped(min, max, label, nullptr, &textSize, ImVec2(0.5f, 0.21f), &bb);
+        RenderEllipsisText(window->DrawList, min, max, label, &textSize, ImVec2(0.5f, 0.21f), &bb);
 
         ImVec2 backup = ImGui::GetCursorScreenPos();
         ImVec2 smPos(pos.x + size.x * 0.24f, pos.y + size.y * 0.45f);
