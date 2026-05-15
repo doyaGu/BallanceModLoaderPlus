@@ -2,7 +2,10 @@
 
 #include <cmath>
 #include <cstring>
+
 #include <algorithm>
+#include <array>
+#include <vector>
 
 #include "BML/InputHook.h"
 
@@ -10,6 +13,20 @@
 #include "StringUtils.h"
 
 namespace {
+    constexpr std::array<const char *, 4> kBmlFontFilenameChoices = {
+        "unifont.otf",
+        "NotoSansSC-Regular.otf",
+        "NotoSans-Regular.ttf",
+        "arial.ttf",
+    };
+
+    bool StringsEqual(const char *lhs, const char *rhs) {
+        if (!lhs || !rhs)
+            return lhs == rhs;
+
+        return std::strcmp(lhs, rhs) == 0;
+    }
+
     void CopyStringToBuffer(const std::string &value, char *buffer, size_t bufferSize) {
         if (!buffer || bufferSize == 0)
             return;
@@ -17,6 +34,55 @@ namespace {
         const size_t copySize = std::min(value.size(), bufferSize - 1);
         memcpy(buffer, value.data(), copySize);
         buffer[copySize] = '\0';
+    }
+
+    bool IsKnownFontFilename(const char *value) {
+        if (!value || value[0] == '\0')
+            return false;
+
+        return std::find_if(kBmlFontFilenameChoices.begin(), kBmlFontFilenameChoices.end(),
+                            [value](const char *choice) {
+                                return StringsEqual(value, choice);
+                            }) != kBmlFontFilenameChoices.end();
+    }
+
+    std::vector<const char *> BuildFontFilenameItems(const char *currentValue, std::string &customItem) {
+        std::vector<const char *> items;
+        items.reserve(kBmlFontFilenameChoices.size() + 1);
+
+        for (const char *choice : kBmlFontFilenameChoices) {
+            items.push_back(choice);
+        }
+
+        if (currentValue && currentValue[0] != '\0' && !IsKnownFontFilename(currentValue)) {
+            customItem = currentValue;
+            items.push_back(customItem.c_str());
+        }
+
+        return items;
+    }
+
+    int FindFontFilenameItem(const char *value, const std::vector<const char *> &items) {
+        if (!value)
+            value = "";
+
+        for (size_t i = 0; i < items.size(); ++i) {
+            if (StringsEqual(value, items[i]))
+                return static_cast<int>(i);
+        }
+
+        return 0;
+    }
+
+    bool IsBmlFontFilenameProperty(IMod *mod, Category *category, const Property *property) {
+        if (!mod || !category || !property)
+            return false;
+
+        if (!StringsEqual(mod->GetID(), "BML") || !StringsEqual(category->GetName(), "GUI"))
+            return false;
+
+        return StringsEqual(property->GetName(), "FontFilename") ||
+               StringsEqual(property->GetName(), "SecondaryFontFilename");
     }
 }
 
@@ -186,8 +252,21 @@ void ModOptionPage::OnDraw() {
 
         switch (property->GetType()) {
             case IProperty::STRING: {
-                Bui::InputTextButton(property->GetName(), m_Buffers[index], sizeof(m_Buffers[index]));
-                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                auto *modMenu = dynamic_cast<ModMenu *>(m_Menu);
+                IMod *currentMod = modMenu ? modMenu->GetCurrentMod() : nullptr;
+
+                if (IsBmlFontFilenameProperty(currentMod, m_Category, property)) {
+                    std::string customFont;
+                    std::vector<const char *> fontItems = BuildFontFilenameItems(m_Buffers[index], customFont);
+                    int currentItem = FindFontFilenameItem(m_Buffers[index], fontItems);
+
+                    if (Bui::RadioButton(property->GetName(), &currentItem, fontItems.data(),
+                                         static_cast<int>(fontItems.size()))) {
+                        CopyStringToBuffer(fontItems[static_cast<size_t>(currentItem)], m_Buffers[index], BUFFER_SIZE);
+                        m_BufferHashes[index] = utils::HashString(m_Buffers[index]);
+                    }
+                } else if (Bui::InputTextButton(property->GetName(), m_Buffers[index], sizeof(m_Buffers[index])) ||
+                           ImGui::IsItemDeactivatedAfterEdit()) {
                     m_BufferHashes[index] = utils::HashString(m_Buffers[index]);
                 }
                 break;
