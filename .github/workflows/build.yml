@@ -3,65 +3,198 @@ name: Build
 on:
   push:
     branches: [ "main" ]
+    tags: [ "v*" ]
   pull_request:
     branches: [ "main" ]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  PROJECT_NAME: BallanceModLoaderPlus
+  BASE_BUILD_DIR: ${{ github.workspace }}\build
+  BASE_DIST_DIR: ${{ github.workspace }}\dist
+
 jobs:
+  validate-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Validate release version markers
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Release tag must use vX.Y.Z format: $tag"
+          }
+
+          $version = $tag.Substring(1)
+          $cmake = Get-Content -LiteralPath 'CMakeLists.txt' -Raw
+          if ($cmake -notmatch "VERSION\s+$([regex]::Escape($version))(\s|$)") {
+            throw "CMakeLists.txt project VERSION must be $version"
+          }
+
+          $readme = Get-Content -LiteralPath 'README.md' -Encoding utf8 -Raw
+          if (-not $readme.Contains("Current version: $tag")) {
+            throw "README.md must contain: Current version: $tag"
+          }
+
+          $readmeZh = Get-Content -LiteralPath 'README_zh-CN.md' -Encoding utf8 -Raw
+          if (-not $readmeZh.Contains("当前版本：$tag")) {
+            throw "README_zh-CN.md must contain: 当前版本：$tag"
+          }
+
   build:
     runs-on: windows-latest
 
     strategy:
       matrix:
-        configuration: [Release, Debug]
-
-    env:
-      PROJECT_NAME: BallanceModLoaderPlus
-      BASE_BUILD_DIR: ${{ github.workspace }}/build
-      BASE_DIST_DIR: ${{ github.workspace }}/dist
+        configuration: [ Release, Debug ]
 
     steps:
-    - name: Checkout source code
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-    - name: Checkout Virtools SDK
-      uses: actions/checkout@v4
-      with:
-        repository: doyaGu/Virtools-SDK-2.1
-        path: ${{ github.workspace }}/Virtools-SDK-2.1
+      - name: Checkout Virtools SDK
+        uses: actions/checkout@v4
+        with:
+          repository: doyaGu/Virtools-SDK-2.1
+          path: Virtools-SDK-2.1
 
-    - name: Get current branch and commit hash
-      shell: bash
-      run: |
-        echo "GIT_BRANCH=$(echo ${GITHUB_REF#refs/heads/})" >> "$GITHUB_ENV"
-        echo "GIT_SHA=$(git rev-parse --short "$GITHUB_SHA")" >> "$GITHUB_ENV"
+      - name: Show tool versions
+        shell: pwsh
+        run: cmake --version
 
-    - name: Setup CMake
-      uses: lukka/get-cmake@latest
+      - name: Setup MSVC
+        uses: TheMrMilchmann/setup-msvc-dev@v3.0.0
+        with:
+          arch: x86
 
-    - name: Setup MSVC
-      uses: TheMrMilchmann/setup-msvc-dev@v3.0.0
-      with:
-        arch: x86
+      - name: Configure CMake
+        shell: pwsh
+        run: >
+          cmake -A Win32 -B "${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}"
+          -DCMAKE_BUILD_TYPE=${{ matrix.configuration }}
+          -DVIRTOOLS_SDK_PATH="${{ github.workspace }}\Virtools-SDK-2.1"
+          -DCMAKE_INSTALL_PREFIX="${{ env.BASE_DIST_DIR }}\${{ matrix.configuration }}"
 
-    - name: Configure CMake
-      run: >
-        cmake -A Win32 -B ${{ env.BASE_BUILD_DIR }}/${{ matrix.configuration }}
-        -DCMAKE_BUILD_TYPE=${{ matrix.configuration }}
-        -DVIRTOOLS_SDK_PATH=${{ github.workspace }}/Virtools-SDK-2.1
-        -DCMAKE_INSTALL_PREFIX=${{ env.BASE_DIST_DIR }}/${{ matrix.configuration }}
+      - name: Build the project
+        shell: pwsh
+        run: cmake --build "${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}" --config ${{ matrix.configuration }}
 
-    - name: Build the project
-      run: cmake --build ${{ env.BASE_BUILD_DIR }}/${{ matrix.configuration }} --config ${{ matrix.configuration }}
+      - name: Install binaries to distribution folder
+        shell: pwsh
+        run: >
+          cmake --install "${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}"
+          --prefix "${{ env.BASE_DIST_DIR }}\${{ matrix.configuration }}"
+          --config ${{ matrix.configuration }}
 
-    - name: Install binaries to distribution folder
-      run: >
-        cmake --install ${{ env.BASE_BUILD_DIR }}/${{ matrix.configuration }}
-        --prefix ${{ env.BASE_DIST_DIR }}/${{ matrix.configuration }}  --config ${{ matrix.configuration }}
+      - name: Upload SDK distribution artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-dist-${{ matrix.configuration }}
+          path: ${{ env.BASE_DIST_DIR }}\${{ matrix.configuration }}
+          retention-days: 14
 
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4.3.3
-      with:
-        name: ${{ env.PROJECT_NAME }}-${{ env.GIT_SHA }}-${{ matrix.configuration }}
-        path: ${{ env.BASE_DIST_DIR }}/${{ matrix.configuration }}
+      - name: Upload release runtime binary
+        if: startsWith(github.ref, 'refs/tags/v') && matrix.configuration == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-binary
+          path: ${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}\bin\${{ matrix.configuration }}\BMLPlus.dll
+          retention-days: 14
+
+  package-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [ validate-release, build ]
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Download Release SDK distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: sdk-dist-Release
+          path: ${{ github.workspace }}\artifacts\sdk-release
+
+      - name: Download Debug SDK distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: sdk-dist-Debug
+          path: ${{ github.workspace }}\artifacts\sdk-debug
+
+      - name: Download runtime binary
+        uses: actions/download-artifact@v4
+        with:
+          name: runtime-binary
+          path: ${{ github.workspace }}\artifacts\runtime-bin
+
+      - name: Create release packages
+        shell: pwsh
+        run: >
+          .\tools\package-release.ps1
+          -Version "${{ github.ref_name }}"
+          -ReleaseInstallDir "${{ github.workspace }}\artifacts\sdk-release"
+          -DebugInstallDir "${{ github.workspace }}\artifacts\sdk-debug"
+          -ReleaseBinaryDir "${{ github.workspace }}\artifacts\runtime-bin"
+          -OutputDir "${{ github.workspace }}\packages"
+
+      - name: Upload release package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
+          path: ${{ github.workspace }}\packages\*.zip
+          retention-days: 30
+
+  draft-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [ package-release ]
+    runs-on: windows-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release packages
+        uses: actions/download-artifact@v4
+        with:
+          name: release-packages
+          path: ${{ github.workspace }}\packages
+
+      - name: Create or update draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $assets = @(Get-ChildItem -LiteralPath "${{ github.workspace }}\packages" -Filter '*.zip')
+          if ($assets.Count -ne 3) {
+            throw "Expected 3 release packages, found $($assets.Count)"
+          }
+
+          $assetPaths = @($assets | ForEach-Object { $_.FullName })
+          $releaseJson = gh release view $tag --json isDraft 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag @assetPaths --draft --title $tag --notes "Draft release for $tag." --verify-tag
+            exit $LASTEXITCODE
+          }
+
+          $release = $releaseJson | ConvertFrom-Json
+          if (-not $release.isDraft) {
+            throw "Release $tag already exists and is not a draft"
+          }
+
+          gh release upload $tag @assetPaths --clobber
