@@ -12,6 +12,9 @@ param(
     [string]$ReleaseBinaryDir,
 
     [Parameter(Mandatory = $true)]
+    [string]$DebugBinaryDir,
+
+    [Parameter(Mandatory = $true)]
     [string]$OutputDir,
 
     [string]$RuntimeSourceDir
@@ -72,6 +75,7 @@ $repoRoot = Resolve-RepoPath '.'
 $releaseInstallDir = [System.IO.Path]::GetFullPath($ReleaseInstallDir)
 $debugInstallDir = [System.IO.Path]::GetFullPath($DebugInstallDir)
 $releaseBinaryDir = [System.IO.Path]::GetFullPath($ReleaseBinaryDir)
+$debugBinaryDir = [System.IO.Path]::GetFullPath($DebugBinaryDir)
 $runtimeSourceDir = [System.IO.Path]::GetFullPath($RuntimeSourceDir)
 $outputDir = [System.IO.Path]::GetFullPath($OutputDir)
 $stageRoot = Join-Path $outputDir '_stage'
@@ -79,6 +83,7 @@ $stageRoot = Join-Path $outputDir '_stage'
 Assert-PathExists $releaseInstallDir
 Assert-PathExists $debugInstallDir
 Assert-PathExists $releaseBinaryDir
+Assert-PathExists $debugBinaryDir
 Assert-PathExists $runtimeSourceDir
 
 Assert-PathExists (Join-Path $releaseInstallDir 'bin\BMLPlus.dll')
@@ -92,6 +97,7 @@ Assert-PathExists (Join-Path $debugInstallDir 'lib\BMLPlus.lib')
 Assert-PathExists (Join-Path $debugInstallDir 'lib\cmake\BML\BMLTargets-debug.cmake')
 
 Assert-PathExists (Join-Path $releaseBinaryDir 'BMLPlus.dll')
+Assert-PathExists (Join-Path $debugBinaryDir 'BMLPlus.pdb')
 Assert-PathExists (Join-Path $runtimeSourceDir 'ModLoader\Configs\BML.cfg')
 Assert-PathExists (Join-Path $runtimeSourceDir 'ModLoader\Fonts\unifont.otf')
 Assert-PathExists (Join-Path $runtimeSourceDir 'ModLoader\Mods\CameraUtilities.bmodp')
@@ -116,7 +122,11 @@ Copy-Item -LiteralPath (Join-Path $repoRoot 'README_zh-CN.md') -Destination $run
 
 New-ZipFromDirectory -SourceDir $runtimeStage -ZipPath (Join-Path $outputDir "BMLPlus-$Version.zip")
 New-ZipFromDirectory -SourceDir $releaseInstallDir -ZipPath (Join-Path $outputDir "BMLPlus-SDK-$Version-Release.zip")
-New-ZipFromDirectory -SourceDir $debugInstallDir -ZipPath (Join-Path $outputDir "BMLPlus-SDK-$Version-Debug.zip")
+
+$debugStage = Join-Path $stageRoot 'sdk-debug'
+Copy-Item -LiteralPath $debugInstallDir -Destination $debugStage -Recurse
+Copy-Item -LiteralPath (Join-Path $debugBinaryDir 'BMLPlus.pdb') -Destination (Join-Path $debugStage 'bin\BMLPlus.pdb')
+New-ZipFromDirectory -SourceDir $debugStage -ZipPath (Join-Path $outputDir "BMLPlus-SDK-$Version-Debug.zip")
 
 Remove-Item -LiteralPath $stageRoot -Recurse -Force
 

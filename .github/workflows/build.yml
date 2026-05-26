@@ -129,6 +129,15 @@ jobs:
           path: ${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}\bin\${{ matrix.configuration }}\BMLPlus.dll
           retention-days: 14
 
+      - name: Upload debug symbols
+        if: startsWith(github.ref, 'refs/tags/v') && matrix.configuration == 'Debug'
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-symbols
+          path: ${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}\bin\${{ matrix.configuration }}\BMLPlus.pdb
+          if-no-files-found: error
+          retention-days: 14
+
   package-release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [ validate-release, build ]
@@ -156,6 +165,12 @@ jobs:
           name: runtime-binary
           path: ${{ github.workspace }}\artifacts\runtime-bin
 
+      - name: Download debug symbols
+        uses: actions/download-artifact@v4
+        with:
+          name: debug-symbols
+          path: ${{ github.workspace }}\artifacts\debug-bin
+
       - name: Create release packages
         shell: pwsh
         run: >
@@ -164,6 +179,7 @@ jobs:
           -ReleaseInstallDir "${{ github.workspace }}\artifacts\sdk-release"
           -DebugInstallDir "${{ github.workspace }}\artifacts\sdk-debug"
           -ReleaseBinaryDir "${{ github.workspace }}\artifacts\runtime-bin"
+          -DebugBinaryDir "${{ github.workspace }}\artifacts\debug-bin"
           -OutputDir "${{ github.workspace }}\packages"
 
       - name: Upload release package artifact
