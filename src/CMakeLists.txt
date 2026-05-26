@@ -1,11 +1,27 @@
-add_custom_target(BML_VersionHeader ALL
-    COMMAND "${CMAKE_COMMAND}"
+set(BML_VERSION_HEADER "${BML_INCLUDE_DIR}/BML/Version.h")
+set(BML_VERSION_HEADER_ARGS
         -DBML_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
         -DBML_VERSION_MINOR=${PROJECT_VERSION_MINOR}
         -DBML_VERSION_PATCH=${PROJECT_VERSION_PATCH}
         -DTEMPLATE_FILE=${CMAKE_CURRENT_SOURCE_DIR}/Version.h.in
-        -DOUTPUT_FILE=${BML_INCLUDE_DIR}/BML/Version.h
+        -DOUTPUT_FILE=${BML_VERSION_HEADER}
         -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
+)
+
+# Generate once during configure so the file exists before CMake validates target sources.
+execute_process(
+        COMMAND "${CMAKE_COMMAND}"
+        ${BML_VERSION_HEADER_ARGS}
+        -P ${PROJECT_SOURCE_DIR}/cmake/GenerateVersionHeader.cmake
+        RESULT_VARIABLE BML_VERSION_HEADER_RESULT
+)
+if (NOT BML_VERSION_HEADER_RESULT EQUAL 0)
+    message(FATAL_ERROR "Failed to generate ${BML_VERSION_HEADER}")
+endif ()
+
+add_custom_target(BML_VersionHeader ALL
+    COMMAND "${CMAKE_COMMAND}"
+        ${BML_VERSION_HEADER_ARGS}
         -P ${PROJECT_SOURCE_DIR}/cmake/GenerateVersionHeader.cmake
     COMMENT "Generating Version.h with git metadata"
 )
@@ -13,7 +29,7 @@ add_custom_target(BML_VersionHeader ALL
 add_subdirectory(Utils)
 
 set(BML_PUBLIC_HEADERS
-        ${BML_INCLUDE_DIR}/BML/Version.h
+        ${BML_VERSION_HEADER}
         ${BML_INCLUDE_DIR}/BML/Defines.h
         ${BML_INCLUDE_DIR}/BML/BML.h
 
