@@ -5,20 +5,17 @@
 
 #include <algorithm>
 #include <array>
+#include <set>
 #include <vector>
 
 #include "BML/InputHook.h"
 
 #include "ModContext.h"
+#include "PathUtils.h"
 #include "StringUtils.h"
 
 namespace {
-    constexpr std::array<const char *, 4> kBmlFontFilenameChoices = {
-        "unifont.otf",
-        "NotoSansSC-Regular.otf",
-        "NotoSans-Regular.ttf",
-        "arial.ttf",
-    };
+    std::vector<std::string> g_FontFilenames = {"unifont.otf"};
 
     bool StringsEqual(const char *lhs, const char *rhs) {
         if (!lhs || !rhs)
@@ -40,18 +37,18 @@ namespace {
         if (!value || value[0] == '\0')
             return false;
 
-        return std::find_if(kBmlFontFilenameChoices.begin(), kBmlFontFilenameChoices.end(),
-                            [value](const char *choice) {
-                                return StringsEqual(value, choice);
-                            }) != kBmlFontFilenameChoices.end();
+        return std::find_if(g_FontFilenames.begin(), g_FontFilenames.end(),
+                            [value](const std::string &choice) {
+                                return StringsEqual(value, choice.c_str());
+                            }) != g_FontFilenames.end();
     }
 
     std::vector<const char *> BuildFontFilenameItems(const char *currentValue, std::string &customItem) {
         std::vector<const char *> items;
-        items.reserve(kBmlFontFilenameChoices.size() + 1);
+        items.reserve(g_FontFilenames.size() + 1);
 
-        for (const char *choice : kBmlFontFilenameChoices) {
-            items.push_back(choice);
+        for (const auto &choice : g_FontFilenames) {
+            items.push_back(choice.c_str());
         }
 
         if (currentValue && currentValue[0] != '\0' && !IsKnownFontFilename(currentValue)) {
@@ -83,6 +80,31 @@ namespace {
 
         return StringsEqual(property->GetName(), "FontFilename") ||
                StringsEqual(property->GetName(), "SecondaryFontFilename");
+    }
+
+    void RefreshFontList() {
+        g_FontFilenames.clear();
+        std::string fontsDir = std::string(BML_GetModContext()->GetDirectoryUtf8(BML_DIR_LOADER)) + "\\Fonts";
+        std::vector<std::string> files = utils::ListFilesUtf8(fontsDir, "*");
+
+        struct CaseInsensitiveLess {
+            bool operator()(const std::string &a, const std::string &b) const {
+                return utils::CompareString(a, b) < 0;
+            }
+        };
+        std::set<std::string, CaseInsensitiveLess> sortedFonts;
+
+        for (const auto &file : files) {
+            if (utils::EndsWith(file, ".ttf", false) || utils::EndsWith(file, ".otf", false)) {
+                sortedFonts.insert(file);
+            }
+        }
+
+        if (sortedFonts.empty()) {
+            sortedFonts.insert("unifont.otf");
+        }
+
+        g_FontFilenames.assign(sortedFonts.begin(), sortedFonts.end());
     }
 }
 
@@ -329,6 +351,8 @@ void ModOptionPage::OnPreEnd() {
 }
 
 bool ModOptionPage::OnOpen() {
+    RefreshFontList();
+
     m_Category = dynamic_cast<ModMenu *>(m_Menu)->GetCurrentCategory();
     if (!m_Category)
         return false;
