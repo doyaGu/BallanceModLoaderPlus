@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <algorithm>
 #include <locale>
@@ -208,6 +209,13 @@ namespace utils {
     std::string EscapeJsonString(const std::string &input);
 
     std::string StripAnsiCodes(const char *str);
+
+    bool CStringEqual(const char *lhs, const char *rhs);
+    bool CopyStringToBuffer(std::string_view value,
+                            char *buffer,
+                            size_t bufferSize,
+                            size_t *outRequiredSize = nullptr);
+
     template <typename T>
     bool AppendUnique(std::vector<T> &values, const T &value) {
         if (std::find(values.begin(), values.end(), value) != values.end())

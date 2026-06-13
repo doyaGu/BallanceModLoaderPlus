@@ -532,6 +532,30 @@ namespace utils {
         return out;
     }
 
+    bool CStringEqual(const char *lhs, const char *rhs) {
+        if (!lhs || !rhs)
+            return lhs == rhs;
+        return std::strcmp(lhs, rhs) == 0;
+    }
+
+    bool CopyStringToBuffer(std::string_view value,
+                            char *buffer,
+                            size_t bufferSize,
+                            size_t *outRequiredSize) {
+        const size_t required = value.size() + 1;
+        if (outRequiredSize)
+            *outRequiredSize = required;
+        if (!buffer || bufferSize == 0)
+            return true;
+        if (bufferSize < required) {
+            buffer[0] = '\0';
+            return false;
+        }
+        std::memcpy(buffer, value.data(), value.size());
+        buffer[value.size()] = '\0';
+        return true;
+    }
+
 #if defined(_WIN32)
     DWORD MapFlags(uint32_t f) {
         DWORD w = 0;
