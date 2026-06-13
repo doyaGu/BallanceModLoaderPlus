@@ -57,6 +57,9 @@ CKERROR ModManager::OnCKReset() {
 }
 
 CKERROR ModManager::PreProcess() {
+    if (!m_ModContext || !m_ModContext->IsInited() || !m_RenderContext)
+        return CK_OK;
+
     Overlay::ImGuiContextScope scope;
 
     Overlay::ImGuiNewFrame();
@@ -67,6 +70,9 @@ CKERROR ModManager::PreProcess() {
 extern void PhysicsPostProcess();
 
 CKERROR ModManager::PostProcess() {
+    if (!m_ModContext || !m_ModContext->IsInited() || !m_RenderContext)
+        return CK_OK;
+
     Overlay::ImGuiContextScope scope;
 
     PhysicsPostProcess();
@@ -74,6 +80,9 @@ CKERROR ModManager::PostProcess() {
     m_ModContext->OnProcess();
 
     auto *inputHook = m_ModContext->GetInputManager();
+    if (!inputHook)
+        return CK_OK;
+
     ImGuiIO &io = ImGui::GetIO();
 
     static bool cursorVisibilityChanged = false;
@@ -97,12 +106,18 @@ CKERROR ModManager::PostProcess() {
 }
 
 CKERROR ModManager::OnPostRender(CKRenderContext *dev) {
+    if (!m_ModContext || !m_ModContext->IsInited() || !m_RenderContext)
+        return CK_OK;
+
     m_ModContext->OnRender(dev);
 
     return CK_OK;
 }
 
 CKERROR ModManager::OnPostSpriteRender(CKRenderContext *dev) {
+    if (!m_ModContext || !m_ModContext->IsInited() || !m_RenderContext)
+        return CK_OK;
+
     Overlay::ImGuiOnRender();
     return CK_OK;
 }
