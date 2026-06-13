@@ -1389,11 +1389,18 @@ bool ModContext::UnloadLib(void *dllHandle) {
     if (it == m_DllHandleToModsMap.end())
         return false;
 
-    for (auto *mod : it->second) {
-        UnregisterMod(mod, m_ModToDllHandleMap[mod]);
+    std::vector<IMod *> mods = it->second;
+    for (auto *mod : mods) {
+        auto handleIt = m_ModToDllHandleMap.find(mod);
+        std::shared_ptr<void> modDllHandle;
+        if (handleIt != m_ModToDllHandleMap.end())
+            modDllHandle = handleIt->second;
+
+        UnregisterMod(mod, modDllHandle);
     }
 
-    m_DllHandleToModsMap.erase(it);
+    m_DllHandleToModsMap.erase(dllHandle);
+    m_DllHandleMap.erase(dllHandle);
     return true;
 }
 
@@ -1437,10 +1444,9 @@ bool ModContext::UnloadMod(const std::string &id) {
 
     IMod *mod = it->second;
     auto dit = m_ModToDllHandleMap.find(mod);
-    if (dit == m_ModToDllHandleMap.end())
-        return false;
-
-    auto &dllHandle = dit->second;
+    std::shared_ptr<void> dllHandle;
+    if (dit != m_ModToDllHandleMap.end())
+        dllHandle = dit->second;
 
     if (!UnregisterMod(mod, dllHandle)) {
         m_Logger->Error("Failed to unload mod %s.", id.c_str());
@@ -1495,7 +1501,7 @@ bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) 
 }
 
 bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) {
-    if (!mod || !dllHandle) {
+    if (!mod) {
         return false;
     }
 
@@ -1504,6 +1510,11 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
         if (!modId) {
             return false;
         }
+        const std::string modIdCopy = modId;
+        std::shared_ptr<void> ownedDllHandle = dllHandle;
+        auto dit = m_ModToDllHandleMap.find(mod);
+        if (!ownedDllHandle && dit != m_ModToDllHandleMap.end())
+            ownedDllHandle = dit->second;
 
         {
             std::lock_guard<std::mutex> lock(m_Mutex);
@@ -1525,40 +1536,41 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
             if (oit != m_Mods.end()) {
                 m_Mods.erase(oit);
             }
+
+            m_ModDependencies.erase(mod);
+
+            if (dit != m_ModToDllHandleMap.end())
+                m_ModToDllHandleMap.erase(dit);
         }
 
-        // Call BMLExit function safely
-        constexpr const char *EXIT_SYMBOL = "BMLExit";
-        typedef void (*BMLExitFunc)(IMod *);
-
-        try {
-            auto func = reinterpret_cast<BMLExitFunc>(::GetProcAddress(static_cast<HMODULE>(dllHandle.get()), EXIT_SYMBOL));
-            if (func) {
-                func(mod);
+        void *rawDllHandle = ownedDllHandle.get();
+        bool dllHandleStillHasMods = false;
+        if (rawDllHandle) {
+            auto mit = m_DllHandleToModsMap.find(rawDllHandle);
+            if (mit != m_DllHandleToModsMap.end()) {
+                auto &mods = mit->second;
+                mods.erase(std::remove(mods.begin(), mods.end(), mod), mods.end());
+                dllHandleStillHasMods = !mods.empty();
+                if (mods.empty())
+                    m_DllHandleToModsMap.erase(mit);
             }
-        } catch (...) {
-            // Continue cleanup even if BMLExit fails
-        }
 
-        // Clean up DLL handle mappings
-        auto mit = m_DllHandleToModsMap.find(dllHandle.get());
-        if (mit != m_DllHandleToModsMap.end()) {
-            auto &mods = mit->second;
-            mods.erase(std::remove(mods.begin(), mods.end(), mod), mods.end());
+            // Call BMLExit function safely
+            constexpr const char *EXIT_SYMBOL = "BMLExit";
+            typedef void (*BMLExitFunc)(IMod *);
 
-            // Remove empty entries
-            if (mods.empty()) {
-                m_DllHandleToModsMap.erase(mit);
+            try {
+                auto func = reinterpret_cast<BMLExitFunc>(::GetProcAddress(static_cast<HMODULE>(rawDllHandle), EXIT_SYMBOL));
+                if (func) {
+                    func(mod);
+                }
+            } catch (...) {
+                // Continue cleanup even if BMLExit fails
             }
-        }
 
-        auto dit = m_ModToDllHandleMap.find(mod);
-        if (dit != m_ModToDllHandleMap.end()) {
-            m_ModToDllHandleMap.erase(dit);
+            if (!dllHandleStillHasMods)
+                m_DllHandleMap.erase(rawDllHandle);
         }
-
-        // Clean up dependencies
-        m_ModDependencies.erase(mod);
 
         return true;
     } catch (...) {
