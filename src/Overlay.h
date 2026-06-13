@@ -7,6 +7,9 @@
 
 namespace Overlay {
     ImGuiContext *GetImGuiContext();
+    bool IsImGuiReady();
+    bool IsImGuiFrameActive();
+    bool IsImGuiRenderReady();
 
     class ImGuiContextScope {
     public:

@@ -144,6 +144,18 @@ namespace Overlay {
         return g_ImGuiContext;
     }
 
+    bool IsImGuiReady() {
+        return g_ImGuiReady;
+    }
+
+    bool IsImGuiFrameActive() {
+        return g_NewFrame;
+    }
+
+    bool IsImGuiRenderReady() {
+        return g_RenderReady;
+    }
+
     ImGuiContext *ImGuiCreateContext() {
         // Setup Dear ImGui context
         IMGUI_CHECKVERSION();
