@@ -1,8 +1,6 @@
 #include "ModMenu.h"
 
 #include <cmath>
-#include <cstring>
-
 #include <algorithm>
 #include <array>
 #include <set>
@@ -17,29 +15,13 @@
 namespace {
     std::vector<std::string> g_FontFilenames = {"unifont.otf"};
 
-    bool StringsEqual(const char *lhs, const char *rhs) {
-        if (!lhs || !rhs)
-            return lhs == rhs;
-
-        return std::strcmp(lhs, rhs) == 0;
-    }
-
-    void CopyStringToBuffer(const std::string &value, char *buffer, size_t bufferSize) {
-        if (!buffer || bufferSize == 0)
-            return;
-
-        const size_t copySize = std::min(value.size(), bufferSize - 1);
-        memcpy(buffer, value.data(), copySize);
-        buffer[copySize] = '\0';
-    }
-
     bool IsKnownFontFilename(const char *value) {
         if (!value || value[0] == '\0')
             return false;
 
         return std::find_if(g_FontFilenames.begin(), g_FontFilenames.end(),
                             [value](const std::string &choice) {
-                                return StringsEqual(value, choice.c_str());
+                                return utils::CStringEqual(value, choice.c_str());
                             }) != g_FontFilenames.end();
     }
 
@@ -64,7 +46,7 @@ namespace {
             value = "";
 
         for (size_t i = 0; i < items.size(); ++i) {
-            if (StringsEqual(value, items[i]))
+            if (utils::CStringEqual(value, items[i]))
                 return static_cast<int>(i);
         }
 
@@ -75,11 +57,11 @@ namespace {
         if (!mod || !category || !property)
             return false;
 
-        if (!StringsEqual(mod->GetID(), "BML") || !StringsEqual(category->GetName(), "GUI"))
+        if (!utils::CStringEqual(mod->GetID(), "BML") || !utils::CStringEqual(category->GetName(), "GUI"))
             return false;
 
-        return StringsEqual(property->GetName(), "FontFilename") ||
-               StringsEqual(property->GetName(), "SecondaryFontFilename");
+        return utils::CStringEqual(property->GetName(), "FontFilename") ||
+               utils::CStringEqual(property->GetName(), "SecondaryFontFilename");
     }
 
     void RefreshFontList() {
@@ -284,7 +266,7 @@ void ModOptionPage::OnDraw() {
 
                     if (Bui::RadioButton(property->GetName(), &currentItem, fontItems.data(),
                                          static_cast<int>(fontItems.size()))) {
-                        CopyStringToBuffer(fontItems[static_cast<size_t>(currentItem)], m_Buffers[index], BUFFER_SIZE);
+                        utils::CopyStringToBuffer(fontItems[static_cast<size_t>(currentItem)], m_Buffers[index], BUFFER_SIZE);
                         m_BufferHashes[index] = utils::HashString(m_Buffers[index]);
                     }
                 } else if (Bui::InputTextButton(property->GetName(), m_Buffers[index], sizeof(m_Buffers[index])) ||
@@ -514,8 +496,8 @@ void ModOptionPage::LoadOriginalValues() {
                     ? pendingState->currentString
                     : originalValue;
 
-                CopyStringToBuffer(currentValue, m_Buffers[i], BUFFER_SIZE);
-                CopyStringToBuffer(originalValue, m_OriginalBuffers[i], BUFFER_SIZE);
+                utils::CopyStringToBuffer(currentValue, m_Buffers[i], BUFFER_SIZE);
+                utils::CopyStringToBuffer(originalValue, m_OriginalBuffers[i], BUFFER_SIZE);
                 m_BufferHashes[i] = utils::HashString(m_Buffers[i]);
                 break;
             }
@@ -626,7 +608,7 @@ bool ModOptionPage::HasPendingChanges() const {
 
         switch (property->GetType()) {
             case IProperty::STRING:
-                if (strcmp(m_Buffers[i], m_OriginalBuffers[i]) != 0)
+                if (!utils::CStringEqual(m_Buffers[i], m_OriginalBuffers[i]))
                     return true;
                 break;
             case IProperty::BOOLEAN:
