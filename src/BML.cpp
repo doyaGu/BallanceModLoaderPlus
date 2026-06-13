@@ -1430,6 +1430,9 @@ void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg) {
 }
 
 static LPVOID g_CreateCKBehaviorPrototypeRunTimeTarget = nullptr;
+static bool g_MinHookInitialized = false;
+static bool g_RenderEngineHooked = false;
+static bool g_ImGuiWin32HooksInstalled = false;
 
 static bool HookCreateCKBehaviorPrototypeRuntime() {
     HMODULE handle = ::GetModuleHandleA("CK2.dll");
@@ -1452,6 +1455,26 @@ static void UnhookCreateCKBehaviorPrototypeRuntime() {
         g_CreateCKBehaviorPrototypeRunTimeTarget = nullptr;
     }
 }
+void BML_ShutdownProcessHooks() {
+    UnhookCreateCKBehaviorPrototypeRuntime();
+
+    if (g_ImGuiWin32HooksInstalled) {
+        if (!Overlay::ImGuiUninstallWin32Hooks())
+            utils::OutputDebugA("Fatal: Unable to uninstall Win32 hooks for ImGui.\n");
+        g_ImGuiWin32HooksInstalled = false;
+    }
+
+    if (g_RenderEngineHooked) {
+        RenderHook::UnhookRenderEngine();
+        g_RenderEngineHooked = false;
+    }
+
+    if (g_MinHookInitialized) {
+        if (MH_Uninitialize() != MH_OK)
+            utils::OutputDebugA("Fatal: Unable to uninitialize MinHook.\n");
+        g_MinHookInitialized = false;
+    }
+}
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
     switch (fdwReason) {
@@ -1460,30 +1483,27 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpReserved) {
             utils::OutputDebugA("Fatal: Unable to initialize MinHook.\n");
             return FALSE;
         }
+        g_MinHookInitialized = true;
         if (!RenderHook::HookRenderEngine()) {
             utils::OutputDebugA("Fatal: Unable to hook Render Engine.\n");
+            BML_ShutdownProcessHooks();
             return FALSE;
         }
+        g_RenderEngineHooked = true;
         if (!Overlay::ImGuiInstallWin32Hooks()) {
             utils::OutputDebugA("Fatal: Unable to install Win32 hooks for ImGui.\n");
+            BML_ShutdownProcessHooks();
             return FALSE;
         }
+        g_ImGuiWin32HooksInstalled = true;
         if (!HookCreateCKBehaviorPrototypeRuntime()) {
             utils::OutputDebugA("Fatal: Unable to hook CKBehaviorPrototypeRuntime.\n");
+            BML_ShutdownProcessHooks();
             return FALSE;
         }
         break;
     case DLL_PROCESS_DETACH:
-        UnhookCreateCKBehaviorPrototypeRuntime();
-        if (!Overlay::ImGuiUninstallWin32Hooks()) {
-            utils::OutputDebugA("Fatal: Unable to uninstall Win32 hooks for ImGui.\n");
-            return FALSE;
-        }
-        RenderHook::UnhookRenderEngine();
-        if (MH_Uninitialize() != MH_OK) {
-            utils::OutputDebugA("Fatal: Unable to uninitialize MinHook.\n");
-            return FALSE;
-        }
+        BML_ShutdownProcessHooks();
         break;
     default:
         break;
