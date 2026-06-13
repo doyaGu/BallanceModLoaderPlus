@@ -97,17 +97,6 @@ namespace {
 
         return utils::Utf16ToUtf8(utils::AnsiToUtf16(candidate));
     }
-
-    bool InsertUniqueCandidate(std::vector<std::string> &candidates, const std::string &candidate) {
-        if (candidate.empty())
-            return false;
-
-        if (std::find(candidates.begin(), candidates.end(), candidate) != candidates.end())
-            return false;
-
-        candidates.emplace_back(candidate);
-        return true;
-    }
 }
 
 CommandBar::CommandBar() : Window("CommandBar"), m_Buffer(65535, '\0') {
@@ -310,12 +299,12 @@ void CommandBar::CollectCommandCandidates(const char *cmdStart, int cmdLength) {
             continue;
 
         const std::string name = NormalizeCandidateEncoding(cmd->GetName());
-        if (utf8ncasecmp(name.c_str(), cmdStart, cmdLength) == 0)
-            InsertUniqueCandidate(m_Candidates, name);
+        if (!name.empty() && utf8ncasecmp(name.c_str(), cmdStart, cmdLength) == 0)
+            utils::AppendUnique(m_Candidates, name);
 
         const std::string alias = NormalizeCandidateEncoding(cmd->GetAlias());
         if (!alias.empty() && utf8ncasecmp(alias.c_str(), cmdStart, cmdLength) == 0)
-            InsertUniqueCandidate(m_Candidates, alias);
+            utils::AppendUnique(m_Candidates, alias);
     }
 }
 
@@ -330,8 +319,8 @@ void CommandBar::CollectArgumentCandidates(const char *wordStart, int wordLength
 
     for (const std::string &rawCandidate : cmd->GetTabCompletion(BML_GetModContext(), args)) {
         const std::string candidate = NormalizeCandidateEncoding(rawCandidate);
-        if (utf8ncasecmp(candidate.c_str(), wordStart, wordLength) == 0)
-            InsertUniqueCandidate(m_Candidates, candidate);
+        if (!candidate.empty() && utf8ncasecmp(candidate.c_str(), wordStart, wordLength) == 0)
+            utils::AppendUnique(m_Candidates, candidate);
     }
 }
 

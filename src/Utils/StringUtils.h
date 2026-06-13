@@ -208,6 +208,13 @@ namespace utils {
     std::string EscapeJsonString(const std::string &input);
 
     std::string StripAnsiCodes(const char *str);
+    template <typename T>
+    bool AppendUnique(std::vector<T> &values, const T &value) {
+        if (std::find(values.begin(), values.end(), value) != values.end())
+            return false;
+        values.emplace_back(value);
+        return true;
+    }
 
     // Encoding conversion functions
     inline std::wstring Utf8ToUtf16(const std::string &str) {
