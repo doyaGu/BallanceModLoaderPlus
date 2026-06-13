@@ -133,6 +133,8 @@ namespace utils {
     std::string NormalizePathA(const std::string &path);
     std::wstring NormalizePathW(const std::wstring &path);
     std::string NormalizePathUtf8(const std::string &path);
+    std::wstring TrimTrailingSeparatorsW(const std::wstring &path);
+    bool IsPathInsideRootW(const std::wstring &path, const std::wstring &root);
 
     // Path validation
     bool IsPathValidA(const std::string &path);
@@ -234,6 +236,8 @@ namespace utils {
     std::vector<uint8_t> ReadBinaryFileA(const std::string &path);
     std::vector<uint8_t> ReadBinaryFileW(const std::wstring &path);
     std::vector<uint8_t> ReadBinaryFileUtf8(const std::string &path);
+    bool ReadFileBytesW(const std::wstring &path, std::string &out);
+    bool ReadFileBytesUtf8(const std::string &path, std::string &out);
 
     bool WriteBinaryFileA(const std::string &path, const std::vector<uint8_t> &data);
     bool WriteBinaryFileW(const std::wstring &path, const std::vector<uint8_t> &data);

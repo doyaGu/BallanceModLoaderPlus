@@ -5,6 +5,8 @@
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
+#include <cstdio>
+#include <cwctype>
 #include <memory>
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -119,6 +121,128 @@ namespace utils {
             layout.fault_log_path =
                 (layout.runtime_directory / names.fault_log_file).lexically_normal();
             return layout;
+        }
+
+        std::wstring FoldPathCaseW(std::wstring path) {
+            std::transform(path.begin(), path.end(), path.begin(), [](wchar_t ch) {
+                return static_cast<wchar_t>(std::towlower(ch));
+            });
+            return path;
+        }
+
+        struct ZipEntryWriteState {
+            FILE *file = nullptr;
+        };
+
+        struct ZipPlanEntry {
+            size_t index = 0;
+            std::wstring relativePath;
+            bool isDirectory = false;
+        };
+
+        size_t WriteZipEntryChunk(void *arg, uint64_t offset, const void *data, size_t size) {
+            auto *state = static_cast<ZipEntryWriteState *>(arg);
+            if (!state || !state->file || (!data && size > 0))
+                return 0;
+            if (_fseeki64(state->file, static_cast<__int64>(offset), SEEK_SET) != 0)
+                return 0;
+            if (size == 0)
+                return 0;
+            return fwrite(data, 1, size, state->file);
+        }
+
+        bool TryBuildSafeZipRelativePath(const char *entryName, std::wstring &relativePath) {
+            relativePath.clear();
+            if (!entryName || entryName[0] == '\0')
+                return false;
+
+            std::string name(entryName);
+            if (name.empty() || name[0] == '/' || name[0] == '\\')
+                return false;
+            if (name.size() >= 2 && name[1] == ':')
+                return false;
+            if (name.find('\\') != std::string::npos)
+                return false;
+
+            std::wstring relative;
+            size_t segmentStart = 0;
+            while (segmentStart < name.size()) {
+                const size_t separator = name.find('/', segmentStart);
+                const size_t segmentEnd = separator == std::string::npos ? name.size() : separator;
+                const std::string segment = name.substr(segmentStart, segmentEnd - segmentStart);
+
+                if (segment.empty()) {
+                    if (separator == std::string::npos && segmentStart == name.size() - 1)
+                        break;
+                    return false;
+                }
+                if (segment == "." || segment == "..")
+                    return false;
+
+                if (!relative.empty())
+                    relative += L"\\";
+                relative += Utf8ToUtf16(segment);
+
+                if (separator == std::string::npos)
+                    break;
+                segmentStart = separator + 1;
+            }
+
+            if (relative.empty())
+                return false;
+
+            relativePath = relative;
+            return true;
+        }
+
+        std::wstring BuildZipStagingDirectory(const std::wstring &dest) {
+            const std::wstring resolvedDest = ResolvePathW(dest);
+            const std::wstring parent = GetDirectoryW(resolvedDest);
+            const std::wstring leaf = GetFileNameW(resolvedDest);
+            if (parent.empty() || leaf.empty())
+                return {};
+
+            wchar_t suffix[64] = {};
+            _snwprintf(suffix,
+                       sizeof(suffix) / sizeof(suffix[0]),
+                       L".extracting-%lu-%lu",
+                       static_cast<unsigned long>(::GetCurrentProcessId()),
+                       static_cast<unsigned long>(::GetTickCount()));
+            suffix[(sizeof(suffix) / sizeof(suffix[0])) - 1] = L'\0';
+            return CombinePathW(parent, leaf + suffix);
+        }
+
+        bool CopyDirectoryContentsW(const std::wstring &source, const std::wstring &dest) {
+            std::error_code ec;
+            const std::filesystem::path sourcePath(source);
+            const std::filesystem::path destPath(dest);
+
+            std::filesystem::create_directories(destPath, ec);
+            if (ec)
+                return false;
+
+            for (std::filesystem::recursive_directory_iterator it(sourcePath, ec), end; it != end && !ec; it.increment(ec)) {
+                const std::filesystem::path relative = it->path().lexically_relative(sourcePath);
+                const std::filesystem::path target = destPath / relative;
+                if (it->is_directory(ec)) {
+                    if (ec)
+                        return false;
+                    std::filesystem::create_directories(target, ec);
+                    if (ec)
+                        return false;
+                } else if (it->is_regular_file(ec)) {
+                    if (ec)
+                        return false;
+                    std::filesystem::create_directories(target.parent_path(), ec);
+                    if (ec)
+                        return false;
+                    std::filesystem::copy_file(it->path(), target, std::filesystem::copy_options::overwrite_existing, ec);
+                    if (ec)
+                        return false;
+                }
+            }
+
+            return !ec;
         }
     } // namespace
 
@@ -409,11 +533,6 @@ namespace utils {
         if (!FileExistsW(path) || dest.empty())
             return false;
 
-        if (!DirectoryExistsW(dest)) {
-            if (!CreateFileTreeW(dest))
-                return false;
-        }
-
         FILE *fp = nullptr;
         if (_wfopen_s(&fp, path.c_str(), L"rb") != 0 || !fp)
             return false;
@@ -432,8 +551,101 @@ namespace utils {
         if (fread(buffer.data(), sizeof(char), size, fp) != size)
             return false;
 
-        std::string destPathUtf8 = Utf16ToUtf8(dest);
-        return zip_stream_extract(buffer.data(), size, destPathUtf8.c_str(), nullptr, nullptr) >= 0;
+        struct zip_t *zip = zip_stream_open(buffer.data(), size, 0, 'r');
+        if (!zip)
+            return false;
+
+        bool ok = true;
+        const std::wstring resolvedDest = ResolvePathW(dest);
+        const std::wstring stagingDirectory = BuildZipStagingDirectory(resolvedDest);
+        if (stagingDirectory.empty()) {
+            zip_stream_close(zip);
+            return false;
+        }
+        if (PathExistsW(stagingDirectory) && !DeleteDirectoryW(stagingDirectory)) {
+            zip_stream_close(zip);
+            return false;
+        }
+        if (!CreateFileTreeW(stagingDirectory)) {
+            zip_stream_close(zip);
+            return false;
+        }
+
+        std::vector<ZipPlanEntry> plan;
+        const ssize_t total = zip_entries_total(zip);
+        if (total < 0)
+            ok = false;
+
+        for (ssize_t index = 0; ok && index < total; ++index) {
+            if (zip_entry_openbyindex(zip, static_cast<size_t>(index)) < 0) {
+                ok = false;
+                break;
+            }
+
+            std::wstring relativePath;
+            const char *entryName = zip_entry_name(zip);
+            const bool validName = TryBuildSafeZipRelativePath(entryName, relativePath);
+            const bool isDirectory = zip_entry_isdir(zip) != 0;
+            if (!validName) {
+                zip_entry_close(zip);
+                ok = false;
+                break;
+            }
+
+            const std::wstring outputPath = CombinePathW(resolvedDest, relativePath);
+            const std::wstring stagingPath = CombinePathW(stagingDirectory, relativePath);
+            if (!IsPathInsideRootW(outputPath, resolvedDest) ||
+                !IsPathInsideRootW(stagingPath, stagingDirectory)) {
+                zip_entry_close(zip);
+                ok = false;
+                break;
+            }
+
+            plan.push_back({static_cast<size_t>(index), relativePath, isDirectory});
+            zip_entry_close(zip);
+        }
+
+        for (const ZipPlanEntry &entry : plan) {
+            if (!ok)
+                break;
+            if (zip_entry_openbyindex(zip, entry.index) < 0) {
+                ok = false;
+                break;
+            }
+
+            const std::wstring outputPath = CombinePathW(stagingDirectory, entry.relativePath);
+            if (entry.isDirectory) {
+                ok = CreateFileTreeW(outputPath);
+                zip_entry_close(zip);
+                continue;
+            }
+
+            const std::wstring outputDirectory = GetDirectoryW(outputPath);
+            if (!outputDirectory.empty() && !CreateFileTreeW(outputDirectory)) {
+                zip_entry_close(zip);
+                ok = false;
+                break;
+            }
+
+            FILE *out = nullptr;
+            if (_wfopen_s(&out, outputPath.c_str(), L"wb") != 0 || !out) {
+                zip_entry_close(zip);
+                ok = false;
+                break;
+            }
+
+            ZipEntryWriteState state{out};
+            ok = zip_entry_extract(zip, WriteZipEntryChunk, &state) >= 0;
+            fclose(out);
+            zip_entry_close(zip);
+        }
+
+        zip_stream_close(zip);
+        if (ok) {
+            ok = CopyDirectoryContentsW(stagingDirectory, resolvedDest);
+        }
+        DeleteDirectoryW(stagingDirectory);
+        return ok;
     }
 
     bool ExtractZipUtf8(const std::string &path, const std::string &dest) {
@@ -475,6 +687,29 @@ namespace utils {
     std::string NormalizePathA(const std::string &path) { return detail::NormalizePathImpl<char>(path); }
     std::wstring NormalizePathW(const std::wstring &path) { return detail::NormalizePathImpl<wchar_t>(path); }
     std::string NormalizePathUtf8(const std::string &path) { return detail::NormalizePathImpl<char>(path); }
+
+    std::wstring TrimTrailingSeparatorsW(const std::wstring &path) {
+        size_t length = path.size();
+        while (length > 3 && (path[length - 1] == L'\\' || path[length - 1] == L'/'))
+            --length;
+        return path.substr(0, length);
+    }
+
+    bool IsPathInsideRootW(const std::wstring &path, const std::wstring &root) {
+        if (path.empty() || root.empty())
+            return false;
+
+        const std::wstring foldedPath = FoldPathCaseW(TrimTrailingSeparatorsW(ResolvePathW(path)));
+        const std::wstring foldedRoot = FoldPathCaseW(TrimTrailingSeparatorsW(ResolvePathW(root)));
+        if (foldedPath.empty() || foldedRoot.empty())
+            return false;
+        if (foldedPath == foldedRoot)
+            return true;
+        if (foldedPath.size() <= foldedRoot.size())
+            return false;
+        return foldedPath.compare(0, foldedRoot.size(), foldedRoot) == 0 &&
+               (foldedPath[foldedRoot.size()] == L'\\' || foldedPath[foldedRoot.size()] == L'/');
+    }
 
     // ========================================================================
     // Path validation (template-based)
@@ -849,6 +1084,37 @@ namespace utils {
 
     std::vector<uint8_t> ReadBinaryFileUtf8(const std::string &path) {
         return ReadBinaryFileW(Utf8ToUtf16(path));
+    }
+
+    bool ReadFileBytesW(const std::wstring &path, std::string &out) {
+        out.clear();
+        if (!FileExistsW(path))
+            return false;
+
+        FILE *file = nullptr;
+        _wfopen_s(&file, path.c_str(), L"rb");
+        if (!file)
+            return false;
+
+        std::unique_ptr<FILE, decltype(&fclose)> filePtr(file, &fclose);
+
+        if (fseek(file, 0, SEEK_END) != 0)
+            return false;
+        const long size = ftell(file);
+        if (size < 0)
+            return false;
+        if (fseek(file, 0, SEEK_SET) != 0)
+            return false;
+
+        out.resize(static_cast<size_t>(size));
+        if (size == 0)
+            return true;
+
+        return fread(&out[0], 1, static_cast<size_t>(size), file) == static_cast<size_t>(size);
+    }
+
+    bool ReadFileBytesUtf8(const std::string &path, std::string &out) {
+        return ReadFileBytesW(Utf8ToUtf16(path), out);
     }
 
     bool WriteBinaryFileA(const std::string &path, const std::vector<uint8_t> &data) {
