@@ -165,6 +165,8 @@ void BMLMod::OnLoad() {
 void BMLMod::OnUnload() {
     m_CommandBar.SaveHistory();
 
+    Bui::CleanupResources(m_CKContext);
+
     auto &cc = BML_GetModContext()->GetCommandContext();
     cc.ClearOutputCallback();
 
