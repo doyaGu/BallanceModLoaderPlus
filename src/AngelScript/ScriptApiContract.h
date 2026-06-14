@@ -24,7 +24,7 @@ enum ScriptCallbackId {
 enum class ScriptCallbackPayloadKind {
     None,
     GameEventInt,
-    BorrowedEventView
+    EventObject
 };
 
 struct ScriptCallbackContract {

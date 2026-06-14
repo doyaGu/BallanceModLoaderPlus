@@ -14,15 +14,15 @@ static const ScriptCallbackContract kCallbacks[] = {
     {ScriptCallbackOnLoad, "OnLoad", "void OnLoad(const BML::ModContext &in)", "OnLoad failed", ScriptCallbackPayloadKind::None},
     {ScriptCallbackOnUnload, "OnUnload", "void OnUnload(const BML::ModContext &in)", "OnUnload failed", ScriptCallbackPayloadKind::None},
     {ScriptCallbackOnProcess, "OnProcess", "void OnProcess(const BML::ModContext &in)", "OnProcess failed", ScriptCallbackPayloadKind::None},
-    {ScriptCallbackOnRender, "OnRender", "void OnRender(const BML::ModContext &in, const BML::RenderEvent &in)", "OnRender failed", ScriptCallbackPayloadKind::BorrowedEventView},
+    {ScriptCallbackOnRender, "OnRender", "void OnRender(const BML::ModContext &in, const BML::RenderEvent &in)", "OnRender failed", ScriptCallbackPayloadKind::EventObject},
     {ScriptCallbackOnGameEvent, "OnGameEvent", "void OnGameEvent(const BML::ModContext &in, BML::GameEvent event)", "OnGameEvent failed", ScriptCallbackPayloadKind::GameEventInt},
-    {ScriptCallbackOnCheatEnabled, "OnCheatEnabled", "void OnCheatEnabled(const BML::ModContext &in, const BML::CheatEvent &in)", "OnCheatEnabled failed", ScriptCallbackPayloadKind::BorrowedEventView},
-    {ScriptCallbackOnLoadObject, "OnLoadObject", "void OnLoadObject(const BML::ModContext &in, const BML::LoadObjectEvent &in)", "OnLoadObject failed", ScriptCallbackPayloadKind::BorrowedEventView},
-    {ScriptCallbackOnLoadScript, "OnLoadScript", "void OnLoadScript(const BML::ModContext &in, const BML::LoadScriptEvent &in)", "OnLoadScript failed", ScriptCallbackPayloadKind::BorrowedEventView},
-    {ScriptCallbackOnCommandEvent, "OnCommandEvent", "void OnCommandEvent(const BML::ModContext &in, const BML::CommandEvent &in)", "OnCommandEvent failed", ScriptCallbackPayloadKind::BorrowedEventView},
-    {ScriptCallbackOnModifyConfig, "OnModifyConfig", "void OnModifyConfig(const BML::ModContext &in, const BML::ConfigEvent &in)", "OnModifyConfig failed", ScriptCallbackPayloadKind::BorrowedEventView},
-    {ScriptCallbackOnPhysicalize, "OnPhysicalize", "void OnPhysicalize(const BML::ModContext &in, const BML::PhysicalizeEvent &in)", "OnPhysicalize failed", ScriptCallbackPayloadKind::BorrowedEventView},
-    {ScriptCallbackOnUnphysicalize, "OnUnphysicalize", "void OnUnphysicalize(const BML::ModContext &in, const BML::ObjectEvent &in)", "OnUnphysicalize failed", ScriptCallbackPayloadKind::BorrowedEventView},
+    {ScriptCallbackOnCheatEnabled, "OnCheatEnabled", "void OnCheatEnabled(const BML::ModContext &in, const BML::CheatEvent &in)", "OnCheatEnabled failed", ScriptCallbackPayloadKind::EventObject},
+    {ScriptCallbackOnLoadObject, "OnLoadObject", "void OnLoadObject(const BML::ModContext &in, const BML::LoadObjectEvent &in)", "OnLoadObject failed", ScriptCallbackPayloadKind::EventObject},
+    {ScriptCallbackOnLoadScript, "OnLoadScript", "void OnLoadScript(const BML::ModContext &in, const BML::LoadScriptEvent &in)", "OnLoadScript failed", ScriptCallbackPayloadKind::EventObject},
+    {ScriptCallbackOnCommandEvent, "OnCommandEvent", "void OnCommandEvent(const BML::ModContext &in, const BML::CommandEvent &in)", "OnCommandEvent failed", ScriptCallbackPayloadKind::EventObject},
+    {ScriptCallbackOnModifyConfig, "OnModifyConfig", "void OnModifyConfig(const BML::ModContext &in, const BML::ConfigEvent &in)", "OnModifyConfig failed", ScriptCallbackPayloadKind::EventObject},
+    {ScriptCallbackOnPhysicalize, "OnPhysicalize", "void OnPhysicalize(const BML::ModContext &in, const BML::PhysicalizeEvent &in)", "OnPhysicalize failed", ScriptCallbackPayloadKind::EventObject},
+    {ScriptCallbackOnUnphysicalize, "OnUnphysicalize", "void OnUnphysicalize(const BML::ModContext &in, const BML::ObjectEvent &in)", "OnUnphysicalize failed", ScriptCallbackPayloadKind::EventObject},
 };
 
 static const ScriptIntegerConstantContract kErrorConstants[] = {

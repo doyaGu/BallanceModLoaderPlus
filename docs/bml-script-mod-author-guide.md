@@ -249,8 +249,11 @@ Common capabilities:
 - Typed DataShare read/request helpers.
 - Typed export lookup and calls through `ModRef`, `ExportRef`, and `CallFrame`.
 
-Borrowed CK and manager handles are escape hatches. Use them during the current
-callback; do not store them in long-lived script fields.
+`BorrowLogger()` and `BorrowConfig()` return BML service wrappers that may be
+stored as handles, but every call still revalidates the owning script mod. CK
+and manager handles returned by other `Borrow*` APIs are escape hatches; use
+them during the current callback and do not store them in long-lived script
+fields.
 
 ## CK, Physics, And Text Helpers
 
@@ -263,11 +266,12 @@ For general Virtools work, start with CKAngelScript's own APIs:
 - Raw CK/Vx SDK bindings for the final engine call when a high-level helper
   does not cover the operation.
 
-Use `ctx.Borrow*` for BML-owned convenience access to CK managers and named CK
-object lookup. The returned handles are borrowed from Virtools. They are valid
-only while the owning level object still exists. When CKAS `ObjectRef@` /
-`Entity3DRef@` / `BehaviorRef@` handles fit the job, prefer them for durable
-script-side identity and reacquire raw CK handles only near the operation.
+Use `ctx.Borrow*` for BML-owned convenience access to CK managers, named CK
+object lookup, and per-mod BML services. CK and manager handles returned by
+those calls are borrowed from Virtools. They are valid only while the owning
+level object still exists. When CKAS `ObjectRef@` / `Entity3DRef@` /
+`BehaviorRef@` handles fit the job, prefer them for durable script-side identity
+and reacquire raw CK handles only near the operation.
 
 `BML::CK` contains stateless helpers for borrowed CK handles. Null handles
 return defaults or no-op. It is a convenience layer, not the complete CKAS
@@ -543,9 +547,10 @@ Common phases:
 ## Lifetime Rules
 
 - Script callbacks use `NO_SUSPEND`; suspension is an error.
-- Event objects are snapshots of scalar/string/list payloads. `Borrow*` methods
-  on those events return borrowed CK handles that may become null or stale after
-  the callback.
+- Event objects are snapshots of scalar/string/list payloads. Event `Borrow*`
+  methods return borrowed CK handles that may become null or stale after the
+  callback, except `ConfigEvent.BorrowProperty()` which returns a BML
+  `ConfigProperty` wrapper that revalidates the owning mod and property.
 - `CommandCompletion` and borrowed CK object/manager handles are callback-scope
   only. CKAS `ObjectRef@`-derived handles are the preferred long-lived identity
   for CK objects; raw pointers resolved from them are still short-lived.

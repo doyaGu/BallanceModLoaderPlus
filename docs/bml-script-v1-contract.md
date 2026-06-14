@@ -18,7 +18,8 @@ owning-plugin contract.
 - Main class: one `[bml.mod]` class in any AngelScript namespace; BML uses CKAS metadata reflection for the namespace and class identity.
 - Fixed callbacks: only the signatures documented in `bml-script-mod-author-guide.md` and `bml-script-mod-api.as`.
 - Event model: snapshot event objects, typed `GameEvent` enum values,
-  borrowed `Borrow*` handles, and `OnModifyConfig` config-change events.
+  `Borrow*` accessors for borrowed CK handles or BML service wrappers, and
+  `OnModifyConfig` config-change events.
 - Export model: typed export registry with generation-checked `ExportRef` / native `BML_ModExport`; `BML_FindModExportEx` and `ModRef.TryFindExport` expose stable Interop lookup status codes.
 - `CallFrame`: bool/int/float/string/void only, with arg/result type introspection and targeted arg/result clearing for reusable frames. Calls clear result before dispatch and leave no result after failure or `void` success.
 - Script-owned Timer: `BML::Timer` object callbacks, automatic unload cleanup.
@@ -74,10 +75,12 @@ owning-plugin contract.
   may also expose `CKContext@` overloads. Use the natural context for the
   surface being authored.
 - BML callbacks are synchronous and no-suspend. Event object scalar/string/list
-  data is copied, but handles returned by event `Borrow*` methods remain
-  borrowed CK handles. Long-running script work should be expressed through BML
-  Timer/Command/DataShare when it is a BML mod concern, or through CKAS
-  `Async`/`Message` when it is runtime/component script coordination.
+  data is copied, but CK handles returned by event `Borrow*` methods remain
+  borrowed CK handles. BML service wrappers such as `Logger`, `Config`, and
+  `ConfigProperty` are ref-counted handles that revalidate their owning mod.
+  Long-running script work should be expressed through BML Timer/Command/DataShare
+  when it is a BML mod concern, or through CKAS `Async`/`Message` when it is
+  runtime/component script coordination.
 - Source builds may set `BML_ENABLE_ANGELSCRIPT=OFF`. Official
   script-capable release packages include the matching CKAngelScript runtime and
   SDK headers.
@@ -92,4 +95,4 @@ Some Player runs may report a non-zero exit code after `Goodbye!` has been writt
 
 ## English Quick Contract
 
-Stable v1 is: single-file/directory/zip `*.mod.as` entry, AngelScript metadata, fixed callbacks, snapshot event objects with borrowed CK handle accessors, typed export registry, script-owned Timer/Command/DataShareRequest, and official release packages that include the matching CKAngelScript runtime. CKAngelScript runtime scripts, `AngelScript Component`, Scene/Behavior/BB/Param, Message/Async, and CK/Vx bindings are available under the CKAngelScript contract. Deferred: hot reload, `.bmodp` script packages, BML-owned full object wrappers, full sandbox policy, raw CKAS engine/module/function access, and BML fixed-callback suspension/resume.
+Stable v1 is: single-file/directory/zip `*.mod.as` entry, AngelScript metadata, fixed callbacks, snapshot event objects with borrowed CK handle accessors or BML service wrappers, typed export registry, script-owned Timer/Command/DataShareRequest, and official release packages that include the matching CKAngelScript runtime. CKAngelScript runtime scripts, `AngelScript Component`, Scene/Behavior/BB/Param, Message/Async, and CK/Vx bindings are available under the CKAngelScript contract. Deferred: hot reload, `.bmodp` script packages, BML-owned full object wrappers, full sandbox policy, raw CKAS engine/module/function access, and BML fixed-callback suspension/resume.

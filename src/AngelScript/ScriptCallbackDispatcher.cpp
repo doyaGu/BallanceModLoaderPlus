@@ -37,7 +37,7 @@ static CKAS_STATUS WriteGameEventArgs(CKAngelScriptArgWriter *writer, void *user
     return args->Api->ArgSetInt(writer, 1, *static_cast<int *>(args->EventView));
 }
 
-static CKAS_STATUS WriteBorrowedEventArgs(CKAngelScriptArgWriter *writer, void *userData) {
+static CKAS_STATUS WriteEventObjectArgs(CKAngelScriptArgWriter *writer, void *userData) {
     auto *args = static_cast<EventCallArgs *>(userData);
     if (!args || !args->ContextView || !args->EventView || !args->Api || !args->Api->ArgSetBorrowedObject)
         return CKAS_INVALIDARGUMENT;
@@ -116,7 +116,7 @@ bool ScriptCallbackDispatcher::CallWithEvent(CKContext *context,
     const ScriptCallbackContract &descriptor = Descriptor(id);
     ScriptMethodCall call;
     call.Method = method;
-    call.WriteArgs = descriptor.PayloadKind == ScriptCallbackPayloadKind::GameEventInt ? WriteGameEventArgs : WriteBorrowedEventArgs;
+    call.WriteArgs = descriptor.PayloadKind == ScriptCallbackPayloadKind::GameEventInt ? WriteGameEventArgs : WriteEventObjectArgs;
     call.UserData = &args;
     call.Phase = ScriptDiagnosticPhase::Callback;
     call.FailurePrefix = descriptor.FailurePrefix;
