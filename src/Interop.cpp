@@ -405,6 +405,8 @@ BML_EXPORT int BML_CallFrame_SetValue(BML_CallFrame *frame,
                                       BML_CALL_VALUE_TYPE type,
                                       const void *data,
                                       size_t count) {
+    if (!frame)
+        return BML_ERROR_INVALID_PARAMETER;
     if (!data && count > 0)
         return BML_ERROR_INVALID_PARAMETER;
     if (ToInternalCallValueType(type) == BML_CallValueType::Empty)

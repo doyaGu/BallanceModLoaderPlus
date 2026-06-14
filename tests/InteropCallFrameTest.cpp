@@ -121,6 +121,21 @@ TEST(InteropCallFrameTest, StoresExtendedArgumentValues) {
     EXPECT_EQ(value->IntValue, 123);
 }
 
+TEST(InteropCallFrameTest, ResetInvalidatesStringArrayPointerCache) {
+    BML_CallValue value;
+    value.Type = BML_CallValueType::StringArray;
+    value.StringArrayValue = {"left", "right"};
+    value.StringArrayPointerCache = {value.StringArrayValue[0].c_str(), value.StringArrayValue[1].c_str()};
+    value.StringArrayPointerCacheValid = true;
+
+    BML_ResetCallValue(value);
+
+    EXPECT_EQ(value.Type, BML_CallValueType::Empty);
+    EXPECT_TRUE(value.StringArrayValue.empty());
+    EXPECT_TRUE(value.StringArrayPointerCache.empty());
+    EXPECT_FALSE(value.StringArrayPointerCacheValid);
+}
+
 TEST(InteropCallFrameTest, DistinguishesMissingAndMismatchedResultTypes) {
     BML_CallFrame frame;
 
