@@ -152,6 +152,7 @@ void BML_ResetCallValue(BML_CallValue &value) {
     value.FloatArrayValue.clear();
     value.StringArrayValue.clear();
     value.StringArrayPointerCache.clear();
+    value.StringArrayPointerCacheValid = false;
     value.BufferValue.clear();
 }
 

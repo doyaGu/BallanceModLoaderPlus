@@ -77,11 +77,22 @@ static BML_CallValueType ToInternalCallValueType(BML_CALL_VALUE_TYPE type) {
     }
 }
 
-static void RebuildStringArrayPointerCache(const BML_CallValue &value) {
+static void InvalidateStringArrayPointerCache(BML_CallValue &value) {
+    value.StringArrayPointerCache.clear();
+    value.StringArrayPointerCacheValid = false;
+}
+
+static const std::vector<const char *> &EnsureStringArrayPointerCache(const BML_CallValue &value) {
+    if (value.StringArrayPointerCacheValid &&
+        value.StringArrayPointerCache.size() == value.StringArrayValue.size()) {
+        return value.StringArrayPointerCache;
+    }
     value.StringArrayPointerCache.clear();
     value.StringArrayPointerCache.reserve(value.StringArrayValue.size());
     for (const std::string &item : value.StringArrayValue)
         value.StringArrayPointerCache.push_back(item.c_str());
+    value.StringArrayPointerCacheValid = true;
+    return value.StringArrayPointerCache;
 }
 
 template <BML_CallValueType Type>
@@ -155,34 +166,6 @@ struct CallValueVectorTraits<BML_CallValueType::Buffer> {
     }
 };
 
-template <typename T>
-static int CopyVectorOut(const std::vector<T> &values, T *buffer, size_t bufferCount, size_t *outRequiredCount) {
-    if (outRequiredCount)
-        *outRequiredCount = values.size();
-    if (!buffer || bufferCount == 0)
-        return BML_OK;
-    if (bufferCount < values.size())
-        return BML_ERROR_INVALID_PARAMETER;
-    if (!values.empty())
-        std::copy(values.begin(), values.end(), buffer);
-    return BML_OK;
-}
-
-template <typename Fill>
-static int SetArgValue(BML_CallFrame *frame, size_t index, Fill fill) {
-    return GuardInteropMutation([&]() {
-        BML_CallValue *slot = BML_EnsureCallFrameArg(frame, index);
-        if (!slot)
-            return BML_ERROR_INVALID_PARAMETER;
-        BML_ResetCallValue(*slot);
-        fill(*slot);
-        return BML_OK;
-    });
-}
-
-template <typename Fill>
-static int SetResultValue(BML_CallFrame *frame, Fill fill);
-
 template <BML_CallValueType Type>
 static void AssignVectorValue(BML_CallValue &value,
                               const typename CallValueVectorTraits<Type>::Element *items,
@@ -203,76 +186,6 @@ static void AssignVectorValue(BML_CallValue &value,
 }
 
 template <BML_CallValueType Type>
-static int SetArgVectorValue(BML_CallFrame *frame,
-                             size_t index,
-                             const typename CallValueVectorTraits<Type>::Element *items,
-                             size_t count) {
-    if (!items && count > 0)
-        return BML_ERROR_INVALID_PARAMETER;
-    return SetArgValue(frame, index, [&](BML_CallValue &slot) {
-        AssignVectorValue<Type>(slot, items, count);
-    });
-}
-
-template <BML_CallValueType Type>
-static int SetResultVectorValue(BML_CallFrame *frame,
-                                const typename CallValueVectorTraits<Type>::Element *items,
-                                size_t count) {
-    if (!items && count > 0)
-        return BML_ERROR_INVALID_PARAMETER;
-    return SetResultValue(frame, [&](BML_CallValue &result) {
-        AssignVectorValue<Type>(result, items, count);
-    });
-}
-
-template <BML_CallValueType Type>
-static size_t GetArgVectorCount(const BML_CallFrame *frame, size_t index) {
-    const BML_CallValue *slot = nullptr;
-    return BML_GetCallFrameArgChecked(frame, index, Type, &slot) == BML_OK
-               ? CallValueVectorTraits<Type>::Values(*slot).size()
-               : 0;
-}
-
-template <BML_CallValueType Type>
-static size_t GetResultVectorCount(const BML_CallFrame *frame) {
-    const BML_CallValue *result = nullptr;
-    return BML_GetCallFrameResultChecked(frame, Type, &result) == BML_OK
-               ? CallValueVectorTraits<Type>::Values(*result).size()
-               : 0;
-}
-
-template <BML_CallValueType Type>
-static int CopyArgVectorValue(const BML_CallFrame *frame,
-                              size_t index,
-                              typename CallValueVectorTraits<Type>::Element *buffer,
-                              size_t bufferCount,
-                              size_t *outRequiredCount) {
-    const BML_CallValue *slot = nullptr;
-    const int status = BML_GetCallFrameArgChecked(frame, index, Type, &slot);
-    if (status != BML_OK) {
-        if (outRequiredCount)
-            *outRequiredCount = 0;
-        return status;
-    }
-    return CopyVectorOut(CallValueVectorTraits<Type>::Values(*slot), buffer, bufferCount, outRequiredCount);
-}
-
-template <BML_CallValueType Type>
-static int CopyResultVectorValue(const BML_CallFrame *frame,
-                                 typename CallValueVectorTraits<Type>::Element *buffer,
-                                 size_t bufferCount,
-                                 size_t *outRequiredCount) {
-    const BML_CallValue *result = nullptr;
-    const int status = BML_GetCallFrameResultChecked(frame, Type, &result);
-    if (status != BML_OK) {
-        if (outRequiredCount)
-            *outRequiredCount = 0;
-        return status;
-    }
-    return CopyVectorOut(CallValueVectorTraits<Type>::Values(*result), buffer, bufferCount, outRequiredCount);
-}
-
-template <BML_CallValueType Type>
 static int BorrowVectorDataOut(const BML_CallValue &value,
                                const void **outData,
                                size_t *outCount,
@@ -287,53 +200,6 @@ static int BorrowVectorDataOut(const BML_CallValue &value,
     if (outElementSize)
         *outElementSize = sizeof(typename CallValueVectorTraits<Type>::Element);
     return BML_OK;
-}
-
-template <BML_CallValueType Type>
-static int BorrowArgVectorValue(const BML_CallFrame *frame,
-                                size_t index,
-                                const typename CallValueVectorTraits<Type>::Element **outValues,
-                                size_t *outCount) {
-    if (!outValues)
-        return BML_ERROR_INVALID_PARAMETER;
-    if (outValues)
-        *outValues = nullptr;
-    if (outCount)
-        *outCount = 0;
-
-    const BML_CallValue *slot = nullptr;
-    const int status = BML_GetCallFrameArgChecked(frame, index, Type, &slot);
-    if (status != BML_OK)
-        return status;
-
-    const void *data = nullptr;
-    const int borrowStatus = BorrowVectorDataOut<Type>(*slot, &data, outCount, nullptr);
-    if (borrowStatus == BML_OK)
-        *outValues = static_cast<const typename CallValueVectorTraits<Type>::Element *>(data);
-    return borrowStatus;
-}
-
-template <BML_CallValueType Type>
-static int BorrowResultVectorValue(const BML_CallFrame *frame,
-                                   const typename CallValueVectorTraits<Type>::Element **outValues,
-                                   size_t *outCount) {
-    if (!outValues)
-        return BML_ERROR_INVALID_PARAMETER;
-    if (outValues)
-        *outValues = nullptr;
-    if (outCount)
-        *outCount = 0;
-
-    const BML_CallValue *result = nullptr;
-    const int status = BML_GetCallFrameResultChecked(frame, Type, &result);
-    if (status != BML_OK)
-        return status;
-
-    const void *data = nullptr;
-    const int borrowStatus = BorrowVectorDataOut<Type>(*result, &data, outCount, nullptr);
-    if (borrowStatus == BML_OK)
-        *outValues = static_cast<const typename CallValueVectorTraits<Type>::Element *>(data);
-    return borrowStatus;
 }
 
 static int SetValueData(BML_CallValue &value, BML_CALL_VALUE_TYPE type, const void *data, size_t count) {
@@ -372,7 +238,7 @@ static int SetValueData(BML_CallValue &value, BML_CALL_VALUE_TYPE type, const vo
         const auto *strings = static_cast<const char *const *>(data);
         for (size_t i = 0; i < count; ++i)
             value.StringArrayValue.emplace_back(strings && strings[i] ? strings[i] : "");
-        RebuildStringArrayPointerCache(value);
+        InvalidateStringArrayPointerCache(value);
         return BML_OK;
     }
     case BML_CallValueType::ObjectId:
@@ -424,28 +290,18 @@ static int BorrowValueData(const BML_CallValue &value,
         return BorrowVectorDataOut<BML_CallValueType::FloatArray>(value, outData, outCount, outElementSize);
     case BML_CallValueType::Buffer:
         return BorrowVectorDataOut<BML_CallValueType::Buffer>(value, outData, outCount, outElementSize);
-    case BML_CallValueType::StringArray:
-        RebuildStringArrayPointerCache(value);
-        *outData = value.StringArrayPointerCache.empty() ? nullptr : value.StringArrayPointerCache.data();
+    case BML_CallValueType::StringArray: {
+        const auto &cache = EnsureStringArrayPointerCache(value);
+        *outData = cache.empty() ? nullptr : cache.data();
         if (outCount)
-            *outCount = value.StringArrayPointerCache.size();
+            *outCount = cache.size();
         if (outElementSize)
             *outElementSize = sizeof(const char *);
         return BML_OK;
+    }
     default:
         return BML_ERROR_INTEROP_UNSUPPORTED;
     }
-}
-
-template <typename Fill>
-static int SetResultValue(BML_CallFrame *frame, Fill fill) {
-    if (!frame)
-        return BML_ERROR_INVALID_PARAMETER;
-    return GuardInteropMutation([&]() {
-        BML_ResetCallValue(frame->Result);
-        fill(frame->Result);
-        return BML_OK;
-    });
 }
 
 static BML_MOD_KIND GetModKind(const IMod *mod) {
@@ -551,6 +407,8 @@ BML_EXPORT int BML_CallFrame_SetValue(BML_CallFrame *frame,
                                       size_t count) {
     if (!data && count > 0)
         return BML_ERROR_INVALID_PARAMETER;
+    if (ToInternalCallValueType(type) == BML_CallValueType::Empty)
+        return BML_ERROR_INTEROP_UNSUPPORTED;
     return GuardInteropMutation([&]() {
         BML_CallValue *slot = BML_EnsureCallFrameArg(frame, index);
         if (!slot)
@@ -691,9 +549,14 @@ BML_EXPORT int BML_CallFrame_BorrowString(const BML_CallFrame *frame,
 }
 
 BML_EXPORT int BML_CallFrame_SetObjectId(BML_CallFrame *frame, size_t index, int objectId) {
-    return SetArgValue(frame, index, [&](BML_CallValue &slot) {
-        slot.Type = BML_CallValueType::ObjectId;
-        slot.IntValue = objectId;
+    return GuardInteropMutation([&]() {
+        BML_CallValue *slot = BML_EnsureCallFrameArg(frame, index);
+        if (!slot)
+            return BML_ERROR_INVALID_PARAMETER;
+        BML_ResetCallValue(*slot);
+        slot->Type = BML_CallValueType::ObjectId;
+        slot->IntValue = objectId;
+        return BML_OK;
     });
 }
 
@@ -748,6 +611,8 @@ BML_EXPORT int BML_CallFrame_SetResultValue(BML_CallFrame *frame,
         return BML_ERROR_INVALID_PARAMETER;
     if (!data && count > 0)
         return BML_ERROR_INVALID_PARAMETER;
+    if (ToInternalCallValueType(type) == BML_CallValueType::Empty)
+        return BML_ERROR_INTEROP_UNSUPPORTED;
     return GuardInteropMutation([&]() {
         BML_ResetCallValue(frame->Result);
         return SetValueData(frame->Result, type, data, count);
@@ -866,9 +731,13 @@ BML_EXPORT int BML_CallFrame_BorrowResultString(const BML_CallFrame *frame,
 }
 
 BML_EXPORT int BML_CallFrame_SetResultObjectId(BML_CallFrame *frame, int objectId) {
-    return SetResultValue(frame, [&](BML_CallValue &result) {
-        result.Type = BML_CallValueType::ObjectId;
-        result.IntValue = objectId;
+    if (!frame)
+        return BML_ERROR_INVALID_PARAMETER;
+    return GuardInteropMutation([&]() {
+        BML_ResetCallValue(frame->Result);
+        frame->Result.Type = BML_CallValueType::ObjectId;
+        frame->Result.IntValue = objectId;
+        return BML_OK;
     });
 }
 

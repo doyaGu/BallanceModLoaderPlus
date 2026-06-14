@@ -31,6 +31,7 @@ struct BML_CallValue {
     std::vector<float> FloatArrayValue;
     std::vector<std::string> StringArrayValue;
     mutable std::vector<const char *> StringArrayPointerCache;
+    mutable bool StringArrayPointerCacheValid = false;
     std::vector<std::uint8_t> BufferValue;
 };
 
