@@ -74,7 +74,7 @@ When copying smoke directories, remove the destination directory first. Copying 
   - Expected log includes `BML object api null defaults: valid=false id=0 nameEmpty=true class=0 childCount=0`.
   - Expected log includes `BML ctx borrowed manager api: ck=true renderContext=true attr=true behavior=true collision=true input=true message=true path=true parameter=true render=true sound=true time=true`.
   - Expected log includes `BML ctx object api null defaults: valid=false id=0 nameEmpty=true class=0 childCount=0 missingArray=true`.
-  - Expected log includes `BML hud/timer api: flags=7 title=true fps=true srHud=true ctxGlobal=true srTimeOk=true` with default HUD settings.
+  - Expected log includes `BML hud/timer api: flags=7 title=true fps=true srHud=true currentContext=true srTimeOk=true` with default HUD settings.
   - Expected log includes `BML ctx directories: game=true loader=true config=true invalid=true`.
   - Expected log includes `BML mod resource helpers: file=true dir=true read=true escapeRead=true missingRead=true`.
   - With `-SingleFileSmoke`, expected log includes `BML single-file script smoke loaded resource=true`.
@@ -89,7 +89,7 @@ When copying smoke directories, remove the destination directory first. Copying 
   - Expected log includes `BML command query: count=9 first=bml echo=true missing=false echoCheat=false`.
   - Expected log includes `BML command details valid: true`.
   - Expected log includes `BML menu/message api: exercised=true`, plus `echo bml-command-smoke` and `echo bml-command-global-smoke`.
-  - Expected log includes `BML config: greeting=hello enabled=true answer=42 scale=2.5`.
+  - Expected log includes `BML config: greeting=hello enabled=true answer=42 scale=2.5 category=true key=true`.
   - Expected log includes `BML config mismatch fallback: -33`.
   - Expected log includes `BML typed datashare: bool=true int=42 float=3.5`.
   - Expected log includes `BML typed datashare mismatch fallback: -77`.

@@ -31,6 +31,32 @@ enum HudFlag {
   HUD_SR = 4
 }
 
+enum InputDevice {
+  INPUT_DEVICE_KEYBOARD = 0,
+  INPUT_DEVICE_MOUSE = 1,
+  INPUT_DEVICE_JOYSTICK = 2,
+  INPUT_DEVICE_COUNT = 3
+}
+
+enum InputKeyEvent {
+  INPUT_KEY_NONE = 0,
+  INPUT_KEY_PRESSED = 1,
+  INPUT_KEY_RELEASED = 2
+}
+
+enum InputButtonState {
+  INPUT_BUTTON_IDLE = 0,
+  INPUT_BUTTON_PRESSED = 1,
+  INPUT_BUTTON_RELEASED = 2
+}
+
+enum CursorPointer {
+  CURSOR_NORMALSELECT = 1,
+  CURSOR_BUSY = 2,
+  CURSOR_MOVE = 3,
+  CURSOR_LINKSELECT = 4
+}
+
 typedef int GameEvent;
 const GameEvent GAME_EVENT_PRE_START_MENU;
 const GameEvent GAME_EVENT_POST_START_MENU;
@@ -88,6 +114,15 @@ enum CommandEventPhase {
   COMMAND_EVENT_COMPLETE = 3
 }
 
+enum ConfigPropertyType {
+  CONFIG_PROPERTY_STRING = 0,
+  CONFIG_PROPERTY_BOOLEAN = 1,
+  CONFIG_PROPERTY_INTEGER = 2,
+  CONFIG_PROPERTY_KEY = 3,
+  CONFIG_PROPERTY_FLOAT = 4,
+  CONFIG_PROPERTY_NONE = 5
+}
+
 enum TimerState {
   TIMER_IDLE = 0,
   TIMER_RUNNING = 1,
@@ -126,8 +161,198 @@ enum CallValueType {
   CALL_VALUE_STRING = 4
 }
 
-namespace UI {
+enum FontType {
+  FONT_NONE = 0,
+  FONT_GAME_NORMAL = 1,
+  FONT_GAME_LARGE = 2,
+  FONT_GAME_SMALL = 3,
+  FONT_GAME_SMALL_GRAY = 4,
+  FONT_GAME_HUGE = 5,
+  FONT_CREDITS_SMALL = 6,
+  FONT_CREDITS_BIG = 7
+}
 
+class VxRect {
+  float Left;
+  float Top;
+  float Right;
+  float Bottom;
+}
+
+class PhysicalizeDefinition {
+  bool Fixed;
+  float Friction;
+  float Elasticity;
+  float Mass;
+  string CollisionGroup;
+  bool StartFrozen;
+  bool EnableCollision;
+  bool CalcMassCenter;
+  float LinearDamp;
+  float RotDamp;
+  string CollisionSurface;
+  VxVector MassCenter;
+}
+
+class ObjectLoadOptions {
+  string File;
+  bool Rename;
+  string MasterName;
+  int FilterClass;
+  bool AddToScene;
+  bool ReuseMeshes;
+  bool ReuseMaterials;
+  bool Dynamic;
+}
+
+class ObjectLoadResult {
+  bool Success;
+  int Count;
+  CKObject@ BorrowMainObject() const;
+  CKObject@ BorrowObject(int index) const;
+}
+
+class Text2DDefinition {
+  FontType Font;
+  string Text;
+  int Align;
+  VxRect Margin;
+  Vx2DVector Offset;
+  Vx2DVector ParagraphIndent;
+  float CaretSize;
+  int Flags;
+}
+
+class BallTypeDefinition {
+  string BallFile;
+  string BallId;
+  string BallName;
+  string ObjectName;
+  float Friction;
+  float Elasticity;
+  float Mass;
+  string CollisionGroup;
+  float LinearDamp;
+  float RotDamp;
+  float Force;
+  float Radius;
+}
+
+class FloorTypeDefinition {
+  string Name;
+  float Friction;
+  float Elasticity;
+  float Mass;
+  string CollisionGroup;
+  bool EnableCollision;
+}
+
+class ModuleBallDefinition {
+  string Name;
+  bool Fixed;
+  float Friction;
+  float Elasticity;
+  float Mass;
+  string CollisionGroup;
+  bool StartFrozen;
+  bool EnableCollision;
+  bool CalcMassCenter;
+  float LinearDamp;
+  float RotDamp;
+  float Radius;
+}
+
+class ModuleConvexDefinition {
+  string Name;
+  bool Fixed;
+  float Friction;
+  float Elasticity;
+  float Mass;
+  string CollisionGroup;
+  bool StartFrozen;
+  bool EnableCollision;
+  bool CalcMassCenter;
+  float LinearDamp;
+  float RotDamp;
+}
+
+class TrafoDefinition {
+  string Name;
+}
+
+class ModuleDefinition {
+  string Name;
+}
+
+namespace Path {
+bool Exists(const string &in path);
+bool IsFile(const string &in path);
+bool IsDirectory(const string &in path);
+bool IsValid(const string &in path);
+bool IsAbsolute(const string &in path);
+bool IsRelative(const string &in path);
+string Combine(const string &in left, const string &in right);
+string Normalize(const string &in path);
+string FileName(const string &in path);
+string Extension(const string &in path);
+string RemoveExtension(const string &in path);
+}
+
+namespace CK {
+bool IsValid(CKObject@ object);
+int GetId(CKObject@ object);
+string GetName(CKObject@ object);
+int GetClassId(CKObject@ object);
+bool IsVisible(CKObject@ object);
+bool IsDynamic(CKObject@ object);
+
+int GetPriority(CKBeObject@ object);
+int GetScriptCount(CKBeObject@ object);
+int GetAttributeCount(CKBeObject@ object);
+void SetIC(CKBeObject@ object, bool hierarchy = false);
+void RestoreIC(CKBeObject@ object, bool hierarchy = false);
+void Show(CKBeObject@ object, CK_OBJECT_SHOWOPTION show = CKSHOW, bool hierarchy = false);
+
+VxVector GetPosition(CK3dEntity@ entity);
+void SetPosition(CK3dEntity@ entity, const VxVector &in position);
+VxVector GetScale(CK3dEntity@ entity, bool local = true);
+void SetScale(CK3dEntity@ entity, const VxVector &in scale, bool local = true);
+int GetChildCount(CK3dEntity@ entity);
+CK3dEntity@ BorrowChild(CK3dEntity@ entity, int index);
+CK3dEntity@ BorrowParent(CK3dEntity@ entity);
+
+int GetRowCount(CKDataArray@ array);
+int GetColumnCount(CKDataArray@ array);
+string GetColumnName(CKDataArray@ array, int column);
+int FindColumn(CKDataArray@ array, const string &in name);
+string GetString(CKDataArray@ array, int row, int column, const string &in defaultValue = "");
+bool GetBool(CKDataArray@ array, int row, int column, bool defaultValue = false);
+int GetInt(CKDataArray@ array, int row, int column, int defaultValue = 0);
+float GetFloat(CKDataArray@ array, int row, int column, float defaultValue = 0.0f);
+bool SetString(CKDataArray@ array, int row, int column, const string &in value);
+bool SetBool(CKDataArray@ array, int row, int column, bool value);
+bool SetInt(CKDataArray@ array, int row, int column, int value);
+bool SetFloat(CKDataArray@ array, int row, int column, float value);
+ObjectLoadResult@ LoadObject(const BML::ObjectLoadOptions &in options);
+}
+
+namespace Physics {
+bool PhysicalizeConvex(CK3dEntity@ target, const BML::PhysicalizeDefinition &in definition, CKMesh@ mesh = null);
+bool PhysicalizeBall(CK3dEntity@ target, const BML::PhysicalizeDefinition &in definition, const VxVector &in center, float radius);
+bool PhysicalizeConcave(CK3dEntity@ target, const BML::PhysicalizeDefinition &in definition, CKMesh@ mesh = null);
+bool Unphysicalize(CK3dEntity@ target);
+bool SetForce(CK3dEntity@ target, const VxVector &in position, CK3dEntity@ positionReference, const VxVector &in direction, CK3dEntity@ directionReference, float force);
+bool ClearForce(CK3dEntity@ target);
+bool Impulse(CK3dEntity@ target, const VxVector &in position, CK3dEntity@ positionReference, const VxVector &in direction, CK3dEntity@ directionReference, float impulse);
+bool WakeUp(CK3dEntity@ target);
+}
+
+namespace Text {
+CKBehavior@ Create2DText(CKBehavior@ ownerScript, CK2dEntity@ target, const BML::Text2DDefinition &in definition);
+CKBehavior@ Create2DText(CKBehavior@ ownerScript, CK2dEntity@ target, const BML::Text2DDefinition &in definition, CKMaterial@ backgroundMaterial, CKMaterial@ caretMaterial);
+}
+
+namespace UI {
 enum ButtonType {
   BUTTON_MAIN = 0,
   BUTTON_BACK = 1,
@@ -153,6 +378,7 @@ bool CanPrevPage(int pageIndex);
 bool CanNextPage(int pageIndex, int totalCount, int pageSize);
 
 bool MainButton(const string &in label);
+bool OkButton(const string &in label);
 bool BackButton(const string &in label);
 bool OptionButton(const string &in label);
 bool LevelButton(const string &in label);
@@ -163,6 +389,7 @@ bool LeftButton(const string &in label);
 bool RightButton(const string &in label);
 bool PlusButton(const string &in label);
 bool MinusButton(const string &in label);
+bool KeyButton(const string &in label, bool &inout toggled, int &inout keyChord);
 
 void Title(const string &in text, float y = 0.13f, float scale = 1.5f);
 void WrappedText(const string &in text, float width, float baseX = 0.0f, float scale = 1.0f);
@@ -171,18 +398,23 @@ bool NavRight(float x = 0.6038f, float y = 0.124f);
 bool NavBack(float x = 0.4031f, float y = 0.85f);
 
 bool YesNoButton(const string &in label, bool &inout value);
+bool RadioButtonText(const string &in label, int &inout currentItem, const string &in items);
+bool InputTextButton(const string &in label, string &inout value, int maxLength = 256);
 bool InputIntButton(const string &in label, int &inout value, int step = 1, int stepFast = 100);
 bool InputFloatButton(const string &in label, float &inout value, float step = 0.0f, float stepFast = 0.0f);
 bool SearchBar(string &inout text, float x = 0.4f, float y = 0.18f, float width = 0.2f);
 
 void PlayMenuClickSound();
+int CKKeyToImGuiKey(CKKEYBOARD key);
+CKKEYBOARD ImGuiKeyToCKKey(int key);
+string KeyChordToString(int keyChord);
+bool SetKeyChordFromIO(int &inout keyChord);
 float GetButtonSizeX(ButtonType type);
 float GetButtonSizeY(ButtonType type);
 float GetButtonIndent(ButtonType type);
 float GetButtonSizeCoordX(ButtonType type);
 float GetButtonSizeCoordY(ButtonType type);
 float GetButtonIndentCoord(ButtonType type);
-
 }
 
 class RenderEvent {
@@ -249,6 +481,32 @@ interface Timer {
   bool Tick(const BML::ModContext &in ctx, const BML::TimerEvent &in event);
 }
 
+class TimerRef {
+  bool get_IsValid() const;
+  bool IsValid() const;
+  int get_Id() const;
+  string get_Name() const;
+  int get_State() const;
+  int get_CompletedIterations() const;
+  int get_RemainingIterations() const;
+  float get_Progress() const;
+  void Pause();
+  void Resume();
+  void Cancel();
+}
+
+class TimerEvent {
+  bool get_IsValid() const;
+  int get_Id() const;
+  string get_Name() const;
+  int get_State() const;
+  int get_Type() const;
+  int get_TimeBase() const;
+  int get_CompletedIterations() const;
+  int get_RemainingIterations() const;
+  float get_Progress() const;
+}
+
 interface DataShareRequest {
   string get_Key() const;
   int get_Type() const;
@@ -270,18 +528,6 @@ class DataShareRequestRef {
   string get_Key() const;
   int get_Type() const;
   bool Cancel();
-}
-
-class TimerEvent {
-  bool get_IsValid() const;
-  int get_Id() const;
-  string get_Name() const;
-  int get_State() const;
-  int get_Type() const;
-  int get_TimeBase() const;
-  int get_CompletedIterations() const;
-  int get_RemainingIterations() const;
-  float get_Progress() const;
 }
 
 class PhysicalizeEvent {
@@ -311,24 +557,130 @@ class ObjectEvent {
   string get_TargetName() const;
 }
 
+class InputHook {
+  bool get_IsValid() const;
+  bool IsValid() const;
+  void EnableKeyboardRepetition(bool enable = true) const;
+  bool IsKeyboardRepetitionEnabled() const;
+  bool IsKeyboardAttached() const;
+  bool IsMouseAttached() const;
+  bool IsJoystickAttached(int joystick) const;
+  bool IsKeyDown(CKKEYBOARD key) const;
+  bool IsKeyDown(CKKEYBOARD key, uint &out stamp) const;
+  bool IsKeyUp(CKKEYBOARD key) const;
+  bool IsKeyPressed(CKKEYBOARD key) const;
+  bool IsKeyReleased(CKKEYBOARD key) const;
+  bool IsKeyToggled(CKKEYBOARD key) const;
+  bool IsKeyToggled(CKKEYBOARD key, uint &out stamp) const;
+  string GetKeyName(CKKEYBOARD key) const;
+  int GetKeyFromName(const string &in name) const;
+  int GetKeyboardState(CKKEYBOARD key) const;
+  bool IsKeyboardStateDown(CKKEYBOARD key) const;
+  int GetNumberOfKeyInBuffer() const;
+  int GetKeyFromBuffer(int index, CKKEYBOARD &out key, uint &out timestamp) const;
+  bool IsMouseButtonDown(CK_MOUSEBUTTON button) const;
+  bool IsMouseClicked(CK_MOUSEBUTTON button) const;
+  bool IsMouseToggled(CK_MOUSEBUTTON button) const;
+  int GetMouseButtonState(CK_MOUSEBUTTON button) const;
+  Vx2DVector GetMousePosition(bool absolute = true) const;
+  Vx2DVector GetLastMousePosition() const;
+  VxVector GetMouseRelativePosition() const;
+  VxVector GetJoystickPosition(int joystick) const;
+  VxVector GetJoystickRotation(int joystick) const;
+  Vx2DVector GetJoystickSliders(int joystick) const;
+  float GetJoystickPointOfViewAngle(int joystick) const;
+  uint GetJoystickButtonsState(int joystick) const;
+  bool IsJoystickButtonDown(int joystick, int button) const;
+  void Pause(bool pause) const;
+  void ShowCursor(bool show) const;
+  bool GetCursorVisibility() const;
+  int GetSystemCursor() const;
+  void SetSystemCursor(int cursor) const;
+  bool IsBlock() const;
+  void SetBlock(bool block) const;
+  int IsBlocked(InputDevice device) const;
+  void Block(InputDevice device) const;
+  void Unblock(InputDevice device) const;
+}
+
+class Logger {
+  bool get_IsValid() const;
+  bool IsValid() const;
+  void Info(const string &in message) const;
+  void Warn(const string &in message) const;
+  void Error(const string &in message) const;
+}
+
+class ConfigProperty {
+  bool get_IsValid() const;
+  bool IsValid() const;
+  int get_Type() const;
+  int GetType() const;
+  string GetString(const string &in defaultValue = "") const;
+  bool GetBoolean(bool defaultValue = false) const;
+  int GetInteger(int defaultValue = 0) const;
+  float GetFloat(float defaultValue = 0.0f) const;
+  CKKEYBOARD GetKey(CKKEYBOARD defaultValue = 0) const;
+  void SetString(const string &in value) const;
+  void SetBoolean(bool value) const;
+  void SetInteger(int value) const;
+  void SetFloat(float value) const;
+  void SetKey(CKKEYBOARD value) const;
+  void SetComment(const string &in comment) const;
+  void SetDefaultString(const string &in value) const;
+  void SetDefaultBoolean(bool value) const;
+  void SetDefaultInteger(int value) const;
+  void SetDefaultFloat(float value) const;
+  void SetDefaultKey(CKKEYBOARD value) const;
+}
+
+class Config {
+  bool get_IsValid() const;
+  bool IsValid() const;
+  bool HasCategory(const string &in category) const;
+  bool HasKey(const string &in category, const string &in key) const;
+  ConfigProperty@ GetProperty(const string &in category, const string &in key) const;
+  void SetCategoryComment(const string &in category, const string &in comment) const;
+}
+
 class ModContext {
+  bool get_HasContext() const;
+  bool HasContext() const;
   string get_ModId() const;
   string GetModId() const;
   string GetModId(int index) const;
   string get_ModName() const;
   string GetModName() const;
-  CKContext@ GetCKContext() const;
-  CKRenderContext@ GetRenderContext() const;
-  CKAttributeManager@ GetAttributeManager() const;
-  CKBehaviorManager@ GetBehaviorManager() const;
-  CKCollisionManager@ GetCollisionManager() const;
-  InputHook@ GetInputManager() const;
-  CKMessageManager@ GetMessageManager() const;
-  CKPathManager@ GetPathManager() const;
-  CKParameterManager@ GetParameterManager() const;
-  CKRenderManager@ GetRenderManager() const;
-  CKSoundManager@ GetSoundManager() const;
-  CKTimeManager@ GetTimeManager() const;
+
+  CKContext@ BorrowCKContext() const;
+  CKRenderContext@ BorrowRenderContext() const;
+  CKAttributeManager@ BorrowAttributeManager() const;
+  CKBehaviorManager@ BorrowBehaviorManager() const;
+  CKCollisionManager@ BorrowCollisionManager() const;
+  InputHook@ BorrowInputManager() const;
+  CKMessageManager@ BorrowMessageManager() const;
+  CKPathManager@ BorrowPathManager() const;
+  CKParameterManager@ BorrowParameterManager() const;
+  CKRenderManager@ BorrowRenderManager() const;
+  CKSoundManager@ BorrowSoundManager() const;
+  CKTimeManager@ BorrowTimeManager() const;
+  CKDataArray@ BorrowDataArrayByName(const string &in name) const;
+  CKGroup@ BorrowGroupByName(const string &in name) const;
+  CKMaterial@ BorrowMaterialByName(const string &in name) const;
+  CKMesh@ BorrowMeshByName(const string &in name) const;
+  CK2dEntity@ Borrow2dEntityByName(const string &in name) const;
+  CK3dEntity@ Borrow3dEntityByName(const string &in name) const;
+  CK3dObject@ Borrow3dObjectByName(const string &in name) const;
+  CKCamera@ BorrowCameraByName(const string &in name) const;
+  CKTargetCamera@ BorrowTargetCameraByName(const string &in name) const;
+  CKLight@ BorrowLightByName(const string &in name) const;
+  CKTargetLight@ BorrowTargetLightByName(const string &in name) const;
+  CKSound@ BorrowSoundByName(const string &in name) const;
+  CKTexture@ BorrowTextureByName(const string &in name) const;
+  CKBehavior@ BorrowScriptByName(const string &in name) const;
+  Logger@ BorrowLogger() const;
+  Config@ BorrowConfig() const;
+
   bool get_IsInGame() const;
   bool GetIsInGame() const;
   bool get_IsInLevel() const;
@@ -341,58 +693,13 @@ class ModContext {
   bool GetIsCheatEnabled() const;
   void EnableCheat(bool enable) const;
   void ExitGame() const;
+  void SendIngameMessage(const string &in message) const;
+  void ClearIngameMessages() const;
+  void ExecuteCommand(const string &in command) const;
+  void SkipRenderForNextTick() const;
+
   float GetSRScore() const;
   int GetHSScore() const;
-  string GetDirectoryUtf8(int type) const;
-  float GetTimeMs() const;
-  float GetAbsoluteTimeMs() const;
-  float GetDeltaTimeMs() const;
-  uint GetFrameCount() const;
-  bool IsKeyboardAttached() const;
-  bool IsMouseAttached() const;
-  bool IsKeyDown(CKKEYBOARD key) const;
-  bool IsKeyUp(CKKEYBOARD key) const;
-  bool IsKeyPressed(CKKEYBOARD key) const;
-  bool IsKeyReleased(CKKEYBOARD key) const;
-  bool IsKeyToggled(CKKEYBOARD key) const;
-  string GetKeyName(CKKEYBOARD key) const;
-  int GetKeyFromName(const string &in name) const;
-  bool IsMouseButtonDown(CK_MOUSEBUTTON button) const;
-  bool IsMouseClicked(CK_MOUSEBUTTON button) const;
-  bool IsMouseToggled(CK_MOUSEBUTTON button) const;
-  Vx2DVector GetMousePosition(bool absolute = true) const;
-  Vx2DVector GetLastMousePosition() const;
-  VxVector GetMouseRelativePosition() const;
-  bool IsObjectValid(CKObject@ object) const;
-  int GetObjectId(CKObject@ object) const;
-  string GetObjectName(CKObject@ object) const;
-  int GetObjectClassId(CKObject@ object) const;
-  bool IsObjectVisible(CKObject@ object) const;
-  bool IsObjectDynamic(CKObject@ object) const;
-  int GetBeObjectPriority(CKBeObject@ object) const;
-  int GetBeObjectScriptCount(CKBeObject@ object) const;
-  int GetBeObjectAttributeCount(CKBeObject@ object) const;
-  VxVector Get3dEntityPosition(CK3dEntity@ entity) const;
-  VxVector Get3dEntityScale(CK3dEntity@ entity, bool local = true) const;
-  int Get3dEntityChildCount(CK3dEntity@ entity) const;
-  CK3dEntity@ Get3dEntityParent(CK3dEntity@ entity) const;
-  CKDataArray@ GetArrayByName(const string &in name) const;
-  CKGroup@ GetGroupByName(const string &in name) const;
-  CKMaterial@ GetMaterialByName(const string &in name) const;
-  CKMesh@ GetMeshByName(const string &in name) const;
-  CK2dEntity@ Get2dEntityByName(const string &in name) const;
-  CK3dEntity@ Get3dEntityByName(const string &in name) const;
-  CK3dObject@ Get3dObjectByName(const string &in name) const;
-  CKCamera@ GetCameraByName(const string &in name) const;
-  CKTargetCamera@ GetTargetCameraByName(const string &in name) const;
-  CKLight@ GetLightByName(const string &in name) const;
-  CKTargetLight@ GetTargetLightByName(const string &in name) const;
-  CKSound@ GetSoundByName(const string &in name) const;
-  CKTexture@ GetTextureByName(const string &in name) const;
-  CKBehavior@ GetScriptByName(const string &in name) const;
-  void SetIC(CKBeObject@ object, bool hierarchy = false) const;
-  void RestoreIC(CKBeObject@ object, bool hierarchy = false) const;
-  void Show(CKBeObject@ object, CK_OBJECT_SHOWOPTION show = CKSHOW, bool hierarchy = false) const;
   int GetHUD() const;
   void SetHUD(int mode) const;
   void ShowTitle(bool show) const;
@@ -402,21 +709,29 @@ class ModContext {
   void PauseSRTimer() const;
   void ResetSRTimer() const;
   float GetSRTime() const;
-  TimerRef@ AddTimer(Timer@+ timer) const;
-  CommandRef@ RegisterCommand(Command@+ command) const;
-  bool UnregisterCommand(const string &in name) const;
-  DataShareRequestRef@ RequestDataShare(DataShareRequest@+ request) const;
-  bool RegisterBallType(const string &in ballFile, const string &in ballId, const string &in ballName, const string &in objName, float friction, float elasticity, float mass, const string &in collGroup, float linearDamp, float rotDamp, float force, float radius) const;
-  bool RegisterFloorType(const string &in floorName, float friction, float elasticity, float mass, const string &in collGroup, bool enableColl) const;
-  bool RegisterModulBall(const string &in modulName, bool fixed, float friction, float elasticity, float mass, const string &in collGroup, bool frozen, bool enableColl, bool calcMassCenter, float linearDamp, float rotDamp, float radius) const;
-  bool RegisterModulConvex(const string &in modulName, bool fixed, float friction, float elasticity, float mass, const string &in collGroup, bool frozen, bool enableColl, bool calcMassCenter, float linearDamp, float rotDamp) const;
-  bool RegisterTrafo(const string &in modulName) const;
-  bool RegisterModul(const string &in modulName) const;
+  void OpenModsMenu() const;
+  void CloseModsMenu() const;
+  void OpenMapMenu() const;
+  void CloseMapMenu() const;
+
+  string GetDirectoryUtf8(int type) const;
   string GetModRootUtf8() const;
   string ResolveModPathUtf8(const string &in relativePath) const;
   bool ModFileExistsUtf8(const string &in relativePath) const;
   bool ModDirectoryExistsUtf8(const string &in relativePath) const;
   string ReadModTextFileUtf8(const string &in relativePath, const string &in defaultValue = "") const;
+
+  TimerRef@ AddTimer(Timer@+ timer) const;
+  CommandRef@ RegisterCommand(Command@+ command) const;
+  bool UnregisterCommand(const string &in name) const;
+  DataShareRequestRef@ RequestDataShare(DataShareRequest@+ request) const;
+  bool RegisterBallType(const BallTypeDefinition &in definition) const;
+  bool RegisterFloorType(const FloorTypeDefinition &in definition) const;
+  bool RegisterModule(const ModuleBallDefinition &in definition) const;
+  bool RegisterModule(const ModuleConvexDefinition &in definition) const;
+  bool RegisterModule(const TrafoDefinition &in definition) const;
+  bool RegisterModule(const ModuleDefinition &in definition) const;
+
   int GetCommandCount() const;
   string GetCommandName(int index) const;
   string GetCommandAlias(int index) const;
@@ -426,32 +741,12 @@ class ModContext {
   ModRef@ FindMod(const string &in id) const;
   int GetModCount() const;
   ModRef@ GetMod(int index) const;
-  void SendIngameMessage(const string &in message) const;
-  void ClearIngameMessages() const;
-  void ExecuteCommand(const string &in command) const;
-  void SkipRenderForNextTick() const;
-  void OpenModsMenu() const;
-  void CloseModsMenu() const;
-  void OpenMapMenu() const;
-  void CloseMapMenu() const;
-  string GetConfigString(const string &in key, const string &in defaultValue = "") const;
-  void SetConfigString(const string &in key, const string &in value) const;
-  bool GetConfigBool(const string &in key, bool defaultValue = false) const;
-  void SetConfigBool(const string &in key, bool value) const;
-  int GetConfigInt(const string &in key, int defaultValue = 0) const;
-  void SetConfigInt(const string &in key, int value) const;
-  float GetConfigFloat(const string &in key, float defaultValue = 0.0f) const;
-  void SetConfigFloat(const string &in key, float value) const;
-  void LogInfo(const string &in message) const;
-  void LogWarn(const string &in message) const;
-  void LogError(const string &in message) const;
 }
 
 class ModRef {
   bool get_IsValid() const;
   bool get_IsScript() const;
   bool get_IsFailed() const;
-  // Same diagnostic exposed by native BML_GetModDiagnostic.
   string get_Diagnostic() const;
   string GetDiagnostic() const;
   string get_Id() const;
@@ -527,160 +822,12 @@ class CallFrame {
   int GetResultString(string &out value) const;
 }
 
-class TimerRef {
-  bool get_IsValid() const;
-  bool IsValid() const;
-  int get_Id() const;
-  string get_Name() const;
-  int get_State() const;
-  int get_CompletedIterations() const;
-  int get_RemainingIterations() const;
-  float get_Progress() const;
-  void Pause();
-  void Resume();
-  void Cancel();
-}
-
-class InputHook {
-  bool IsKeyboardAttached() const;
-  bool IsMouseAttached() const;
-  bool IsKeyDown(CKKEYBOARD key) const;
-  bool IsKeyUp(CKKEYBOARD key) const;
-  bool IsKeyPressed(CKKEYBOARD key) const;
-  bool IsKeyReleased(CKKEYBOARD key) const;
-  bool IsKeyToggled(CKKEYBOARD key) const;
-  string GetKeyName(CKKEYBOARD key) const;
-  int GetKeyFromName(const string &in name) const;
-  bool IsMouseButtonDown(CK_MOUSEBUTTON button) const;
-  bool IsMouseClicked(CK_MOUSEBUTTON button) const;
-  bool IsMouseToggled(CK_MOUSEBUTTON button) const;
-  Vx2DVector GetMousePosition(bool absolute = true) const;
-  Vx2DVector GetLastMousePosition() const;
-  VxVector GetMouseRelativePosition() const;
-}
-
 string GetVersion();
 int GetVersionMajor();
 int GetVersionMinor();
 int GetVersionPatch();
 string GetErrorString(int errorCode);
-
-bool IsInitialized();
-bool IsIngame();
-bool IsInLevel();
-bool IsPaused();
-bool IsPlaying();
-bool IsCheatEnabled();
-void EnableCheat(bool enable);
-void SendIngameMessage(const string &in message);
-void ExecuteCommand(const string &in command);
-void ExitGame();
-void OpenModsMenu();
-void CloseModsMenu();
-void OpenMapMenu();
-void CloseMapMenu();
-void ClearIngameMessages();
-float GetSRScore();
-int GetHSScore();
-int GetHUD();
-void SetHUD(int mode);
-void ShowTitle(bool show);
-void ShowFPS(bool show);
-void ShowSRTimer(bool show);
-void StartSRTimer();
-void PauseSRTimer();
-void ResetSRTimer();
-float GetSRTime();
-void SkipRenderForNextTick();
-
-// Borrowed CKAS object wrappers. Do not retain these across level unload, reset, or mod unload.
-CKContext@ GetCKContext();
-CKRenderContext@ GetRenderContext();
-CKAttributeManager@ GetAttributeManager();
-CKBehaviorManager@ GetBehaviorManager();
-CKCollisionManager@ GetCollisionManager();
-InputHook@ GetInputManager();
-CKMessageManager@ GetMessageManager();
-CKPathManager@ GetPathManager();
-CKParameterManager@ GetParameterManager();
-CKRenderManager@ GetRenderManager();
-CKSoundManager@ GetSoundManager();
-CKTimeManager@ GetTimeManager();
-float GetTimeMs();
-float GetAbsoluteTimeMs();
-float GetDeltaTimeMs();
-uint GetFrameCount();
-
-bool IsKeyboardAttached();
-bool IsMouseAttached();
-bool IsKeyDown(CKKEYBOARD key);
-bool IsKeyUp(CKKEYBOARD key);
-bool IsKeyPressed(CKKEYBOARD key);
-bool IsKeyReleased(CKKEYBOARD key);
-bool IsKeyToggled(CKKEYBOARD key);
-string GetKeyName(CKKEYBOARD key);
-int GetKeyFromName(const string &in name);
-bool IsMouseButtonDown(CK_MOUSEBUTTON button);
-bool IsMouseClicked(CK_MOUSEBUTTON button);
-bool IsMouseToggled(CK_MOUSEBUTTON button);
-Vx2DVector GetMousePosition(bool absolute = true);
-Vx2DVector GetLastMousePosition();
-VxVector GetMouseRelativePosition();
-
-bool IsObjectValid(CKObject@ object);
-int GetObjectId(CKObject@ object);
-string GetObjectName(CKObject@ object);
-int GetObjectClassId(CKObject@ object);
-bool IsObjectVisible(CKObject@ object);
-bool IsObjectDynamic(CKObject@ object);
-int GetBeObjectPriority(CKBeObject@ object);
-int GetBeObjectScriptCount(CKBeObject@ object);
-int GetBeObjectAttributeCount(CKBeObject@ object);
-VxVector Get3dEntityPosition(CK3dEntity@ entity);
-VxVector Get3dEntityScale(CK3dEntity@ entity, bool local = true);
-int Get3dEntityChildCount(CK3dEntity@ entity);
-CK3dEntity@ Get3dEntityParent(CK3dEntity@ entity);
-
-CKDataArray@ GetArrayByName(const string &in name);
-CKGroup@ GetGroupByName(const string &in name);
-CKMaterial@ GetMaterialByName(const string &in name);
-CKMesh@ GetMeshByName(const string &in name);
-CK2dEntity@ Get2dEntityByName(const string &in name);
-CK3dEntity@ Get3dEntityByName(const string &in name);
-CK3dObject@ Get3dObjectByName(const string &in name);
-CKCamera@ GetCameraByName(const string &in name);
-CKTargetCamera@ GetTargetCameraByName(const string &in name);
-CKLight@ GetLightByName(const string &in name);
-CKTargetLight@ GetTargetLightByName(const string &in name);
-CKSound@ GetSoundByName(const string &in name);
-CKTexture@ GetTextureByName(const string &in name);
-CKBehavior@ GetScriptByName(const string &in name);
-void SetIC(CKBeObject@ object, bool hierarchy = false);
-void RestoreIC(CKBeObject@ object, bool hierarchy = false);
-void Show(CKBeObject@ object, CK_OBJECT_SHOWOPTION show = CKSHOW, bool hierarchy = false);
-TimerRef@ AddTimer(Timer@+ timer);
-CommandRef@ RegisterCommand(Command@+ command);
-bool UnregisterCommand(const string &in name);
-bool RegisterBallType(const string &in ballFile, const string &in ballId, const string &in ballName, const string &in objName, float friction, float elasticity, float mass, const string &in collGroup, float linearDamp, float rotDamp, float force, float radius);
-bool RegisterFloorType(const string &in floorName, float friction, float elasticity, float mass, const string &in collGroup, bool enableColl);
-bool RegisterModulBall(const string &in modulName, bool fixed, float friction, float elasticity, float mass, const string &in collGroup, bool frozen, bool enableColl, bool calcMassCenter, float linearDamp, float rotDamp, float radius);
-bool RegisterModulConvex(const string &in modulName, bool fixed, float friction, float elasticity, float mass, const string &in collGroup, bool frozen, bool enableColl, bool calcMassCenter, float linearDamp, float rotDamp);
-bool RegisterTrafo(const string &in modulName);
-bool RegisterModul(const string &in modulName);
-
-string GetDirectoryUtf8(DirectoryType type);
-bool FileExistsUtf8(const string &in path);
-bool DirectoryExistsUtf8(const string &in path);
-bool PathExistsUtf8(const string &in path);
-bool IsPathValidUtf8(const string &in path);
-bool IsAbsolutePathUtf8(const string &in path);
-bool IsRelativePathUtf8(const string &in path);
-string CombinePathUtf8(const string &in left, const string &in right);
-string NormalizePathUtf8(const string &in path);
-string GetFileNameUtf8(const string &in path);
-string GetExtensionUtf8(const string &in path);
-string RemoveExtensionUtf8(const string &in path);
-string ReadTextFileUtf8(const string &in path);
+bool BorrowCurrentContext(ModContext &out context);
 
 bool DataShareSetString(const string &in key, const string &in value, const string &in name = "BML");
 string DataShareGetString(const string &in key, const string &in defaultValue = "", const string &in name = "BML");
@@ -693,31 +840,5 @@ float DataShareGetFloat(const string &in key, float defaultValue = 0.0f, const s
 bool DataShareHas(const string &in key, const string &in name = "BML");
 void DataShareRemove(const string &in key, const string &in name = "BML");
 int DataShareSizeOf(const string &in key, const string &in name = "BML");
-DataShareRequestRef@ RequestDataShare(DataShareRequest@+ request);
-
-ModRef@ FindMod(const string &in id);
-int GetModCount();
-string GetModId(int index);
-ModRef@ GetMod(int index);
 
 } // namespace BML
-
-// Advanced ImGui declarations are generated in docs/bml-imgui-api.as.
-// Prefer BML::UI for normal menu scripts; use ImGui only from render callbacks.
-
-// Optional script mod class methods. BML caches these exact declarations at OnLoad time.
-class BMLScriptModContract {
-  string Echo(const string &in value);
-
-  void OnLoad(const BML::ModContext &in);
-  void OnUnload(const BML::ModContext &in);
-  void OnProcess(const BML::ModContext &in);
-  void OnRender(const BML::ModContext &in, const BML::RenderEvent &in);
-  void OnGameEvent(const BML::ModContext &in, BML::GameEvent event);
-  void OnCheatEnabled(const BML::ModContext &in, const BML::CheatEvent &in);
-  void OnLoadObject(const BML::ModContext &in, const BML::LoadObjectEvent &in);
-  void OnLoadScript(const BML::ModContext &in, const BML::LoadScriptEvent &in);
-  void OnCommandEvent(const BML::ModContext &in, const BML::CommandEvent &in);
-  void OnPhysicalize(const BML::ModContext &in, const BML::PhysicalizeEvent &in);
-  void OnUnphysicalize(const BML::ModContext &in, const BML::ObjectEvent &in);
-}

@@ -25,7 +25,9 @@ CKAS metadata reflection.
          bml: "0.3.11")]
 class HelloMod {
   void OnLoad(const BML::ModContext &in ctx) {
-    ctx.LogInfo("Hello from BML script");
+    BML::Logger@ logger = ctx.BorrowLogger();
+    if (logger !is null)
+      logger.Info("Hello from BML script");
   }
 }
 ```
@@ -143,8 +145,17 @@ global helper functions when both exist.
 
 ```angelscript
 void OnLoad(const BML::ModContext &in ctx) {
-  ctx.LogInfo("id=" + ctx.ModId);
-  ctx.SetConfigString("greeting", "hello");
+  BML::Logger@ logger = ctx.BorrowLogger();
+  if (logger !is null)
+    logger.Info("id=" + ctx.ModId);
+
+  BML::Config@ config = ctx.BorrowConfig();
+  if (config !is null) {
+    BML::ConfigProperty@ greeting = config.GetProperty("General", "Greeting");
+    if (greeting !is null)
+      greeting.SetString("hello");
+  }
+
   ctx.RegisterCommand(HelloCommand());
   ctx.AddTimer(HeartbeatTimer());
 }
@@ -152,7 +163,8 @@ void OnLoad(const BML::ModContext &in ctx) {
 
 Common capabilities:
 
-- Logging, resource path resolution, and config read/write.
+- Per-mod `Logger` and `Config` objects.
+- Resource path resolution.
 - BML/game state, time, input, HUD, menu, and message helpers.
 - Mod registry queries such as `FindMod`, `GetModCount`, and `GetMod`.
 - Script-owned Timer and Command registration.
@@ -161,6 +173,35 @@ Common capabilities:
 
 Borrowed CK and manager handles are escape hatches. Use them during the current
 callback; do not store them in long-lived script fields.
+
+## CK, Physics, And Text Helpers
+
+Use `ctx.Borrow*` for raw CK managers and named CK object lookup. The returned
+handles are borrowed from Virtools. They are valid only while the owning level
+object still exists.
+
+`BML::CK` contains stateless helpers for borrowed CK handles. Null handles
+return defaults or no-op:
+
+```angelscript
+void OnLoad(const BML::ModContext &in ctx) {
+  CKDataArray@ array = ctx.BorrowDataArrayByName("Some_Array");
+  int column = BML::CK::FindColumn(array, "Name");
+  string value = BML::CK::GetString(array, 0, column, "");
+
+  BML::ObjectLoadOptions options;
+  options.File = "3D Entities\\Example.nmo";
+  BML::ObjectLoadResult@ loaded = BML::CK::LoadObject(options);
+  CKObject@ main = loaded is null ? null : loaded.BorrowMainObject();
+}
+```
+
+`BML::Physics` wraps runtime `ExecuteBB` physics actions. These helpers return
+`false` when BML is not in a loaded level or the target is null.
+
+`BML::Text` creates a `2D Text` behavior under an owner script and returns a
+borrowed `CKBehavior@`. Pass materials as explicit borrowed arguments when
+needed; keep `Text2DDefinition` value-only.
 
 ## UI
 
@@ -181,7 +222,7 @@ void OnRender(const BML::ModContext &in ctx, const BML::RenderEvent &in event) {
 
   BML::UI::SetCursorCoord(0.4f, 0.35f);
   if (BML::UI::MainButton("Click"))
-    ctx.LogInfo("clicked");
+    ctx.BorrowLogger().Info("clicked");
 
   BML::UI::YesNoButton("Enabled", enabled);
   BML::UI::InputIntButton("Count", count);
@@ -248,9 +289,9 @@ void OnLoad(const BML::ModContext &in ctx) {
     int value = 0;
     if (status == 0)
       frame.GetResultInt(value);
-    ctx.LogInfo("sum status=" + status + " value=" + value);
+    ctx.BorrowLogger().Info("sum status=" + status + " value=" + value);
   } else if (lookup == BML::ERROR_INTEROP_EXPORT_AMBIGUOUS) {
-    ctx.LogWarn("Add has multiple signatures; pass the signature explicitly.");
+    ctx.BorrowLogger().Warn("Add has multiple signatures; pass the signature explicitly.");
   }
 }
 ```
@@ -297,7 +338,7 @@ class HeartbeatTimer : BML::Timer {
   bool get_Loop() const { return true; }
 
   bool Tick(const BML::ModContext &in ctx, const BML::TimerEvent &in event) {
-    ctx.LogInfo("heartbeat " + event.CompletedIterations);
+    ctx.BorrowLogger().Info("heartbeat " + event.CompletedIterations);
     return event.CompletedIterations < 5;
   }
 }
@@ -333,7 +374,7 @@ class HelloCommand : BML::Command {
   string get_Description() const { return "Print hello"; }
 
   void Execute(const BML::ModContext &in ctx, const BML::CommandEvent &in event) {
-    ctx.LogInfo("hello " + event.ArgsText);
+    ctx.BorrowLogger().Info("hello " + event.ArgsText);
   }
 
   void Complete(const BML::ModContext &in ctx,
@@ -347,7 +388,7 @@ class HelloCommand : BML::Command {
 void OnLoad(const BML::ModContext &in ctx) {
   BML::CommandRef@ command = ctx.RegisterCommand(HelloCommand());
   if (command is null || !command.IsValid)
-    ctx.LogWarn("failed to register hello command");
+    ctx.BorrowLogger().Warn("failed to register hello command");
 }
 ```
 
@@ -372,14 +413,14 @@ class GreetingRequest : BML::DataShareRequest {
   string get_Name() const { return "OtherMod"; } // optional, defaults to "BML"
 
   void Receive(const BML::ModContext &in ctx, const BML::DataShareEvent &in event) {
-    ctx.LogInfo(event.Exists ? event.StringValue : "missing " + event.Key);
+    ctx.BorrowLogger().Info(event.Exists ? event.StringValue : "missing " + event.Key);
   }
 }
 
 void OnLoad(const BML::ModContext &in ctx) {
   BML::DataShareRequestRef@ request = ctx.RequestDataShare(GreetingRequest());
   if (request is null)
-    ctx.LogWarn("failed to request remote.greeting");
+    ctx.BorrowLogger().Warn("failed to request remote.greeting");
 }
 ```
 
