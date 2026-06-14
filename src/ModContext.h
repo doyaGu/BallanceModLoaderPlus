@@ -28,6 +28,14 @@ class ModContext;
 class BMLMod;
 class NewBallTypeMod;
 
+namespace BML {
+#if BML_ENABLE_ANGELSCRIPT
+class ScriptMod;
+struct ScriptModDefinition;
+struct ScriptModLoadCandidate;
+#endif
+}
+
 ModContext *BML_GetModContext();
 CKContext *BML_GetCKContext();
 CKRenderContext *BML_GetRenderContext();
@@ -73,6 +81,12 @@ public:
     void ModifyFlags(int add, int remove) { m_Flags = (m_Flags | add) & ~remove; }
     void SetFlags(int flags, bool set = true) { m_Flags = set ? m_Flags | flags : m_Flags & ~flags; }
     void ClearFlags(int flags) { m_Flags &= ~flags; }
+#if BML_ENABLE_ANGELSCRIPT
+    bool IsAngelScriptExtensionRegistered() const { return m_AngelScriptExtensionRegistered; }
+    void SetAngelScriptExtensionRegistered(bool registered) { m_AngelScriptExtensionRegistered = registered; }
+    bool AreAngelScriptBindingsRegistered() const { return m_AngelScriptBindingsRegistered; }
+    void SetAngelScriptBindingsRegistered(bool registered) { m_AngelScriptBindingsRegistered = registered; }
+#endif
 
     int GetModCount() override;
     IMod *GetMod(int index) override;
@@ -181,14 +195,27 @@ public:
     bool IsPlaying() override { return AreFlagsSet(BML_INGAME) && !AreFlagsSet(BML_PAUSED); }
 
     void OpenModsMenu();
+    void CloseModsMenu();
+    void OpenMapMenu();
+    void CloseMapMenu();
 
     bool IsCheatEnabled() override { return AreFlagsSet(BML_CHEAT); }
     void EnableCheat(bool enable) override;
 
     void SendIngameMessage(const char *msg) override;
+    void ClearIngameMessages();
 
     float GetSRScore() override;
     int GetHSScore() override;
+    int GetHUD();
+    void SetHUD(int mode);
+    void ShowTitle(bool show);
+    void ShowFPS(bool show);
+    void ShowSRTimer(bool show);
+    void StartSRTimer();
+    void PauseSRTimer();
+    void ResetSRTimer();
+    float GetSRTime();
 
     void SkipRenderForNextTick() override;
 
@@ -302,11 +329,18 @@ private:
     bool GetManagers();
 
     size_t ExploreMods(const std::wstring &path, std::vector<std::wstring> &mods);
+#if BML_ENABLE_ANGELSCRIPT
+    size_t ExploreScriptMods(const std::wstring &path, std::vector<BML::ScriptModLoadCandidate> &candidates);
+#endif
 
     std::shared_ptr<void> LoadLib(const wchar_t *path);
     bool UnloadLib(void *dllHandle);
 
     IMod *LoadMod(const std::wstring &path);
+#if BML_ENABLE_ANGELSCRIPT
+    IMod *LoadScriptMod(const BML::ScriptModLoadCandidate &candidate);
+    void RegisterScriptModDependencies(IMod *mod, const BML::ScriptModDefinition &definition);
+#endif
     bool UnloadMod(const std::string &id);
 
     void RegisterBuiltinMods();
@@ -324,6 +358,10 @@ private:
     bool CanScheduleTimer() const;
 
     int m_Flags = 0;
+#if BML_ENABLE_ANGELSCRIPT
+    bool m_AngelScriptExtensionRegistered = false;
+    bool m_AngelScriptBindingsRegistered = false;
+#endif
 
     std::wstring m_WorkingDir;
     std::wstring m_TempDir;
@@ -360,6 +398,9 @@ private:
 
     BMLMod *m_BMLMod = nullptr;
     NewBallTypeMod *m_BallTypeMod = nullptr;
+#if BML_ENABLE_ANGELSCRIPT
+    std::vector<std::unique_ptr<BML::ScriptMod>> m_ScriptMods;
+#endif
 
     typedef std::unordered_map<IMod *, std::shared_ptr<void>> ModToDllHandleMap;
     ModToDllHandleMap m_ModToDllHandleMap;

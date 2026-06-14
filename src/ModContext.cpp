@@ -19,6 +19,13 @@
 #include "RenderHook.h"
 #include "Overlay.h"
 #include "Logger.h"
+#if BML_ENABLE_ANGELSCRIPT
+#include "AngelScriptBindings.h"
+#include "ScriptMod.h"
+#include "ScriptModEntryScanner.h"
+#include "ScriptModLoader.h"
+#include "ScriptModRuntime.h"
+#endif
 #include "StringUtils.h"
 #include "PathUtils.h"
 
@@ -34,20 +41,14 @@ namespace {
     constexpr wchar_t kLoaderDirectoryName[] = L"ModLoader";
     constexpr wchar_t kTempDirectoryName[] = L"Temp";
     constexpr wchar_t kInstanceDirectoryName[] = L"Instance";
-    constexpr wchar_t kModsDirectoryName[] = L"Mods";
-
-    std::wstring TrimTrailingSeparators(const std::wstring &path) {
-        size_t length = path.size();
-        while (length > 0 && (path[length - 1] == L'\\' || path[length - 1] == L'/'))
-            --length;
-
-        return path.substr(0, length);
-    }
+    constexpr wchar_t kPackagesDirectoryName[] = L"Packages";
 
     std::wstring GetParentDirectory(const std::wstring &path) {
-        const std::wstring trimmed = TrimTrailingSeparators(path);
+        const std::wstring trimmed = utils::TrimTrailingSeparatorsW(path);
         const size_t separator = trimmed.find_last_of(L"\\/");
         if (separator == std::wstring::npos)
+            return {};
+        if (separator == 2 && trimmed.size() == 3 && trimmed[1] == L':')
             return {};
 
         return trimmed.substr(0, separator);
@@ -122,7 +123,7 @@ namespace {
         if (archiveName.empty())
             return {};
 
-        return utils::CombinePathW(utils::CombinePathW(tempDirectory, kModsDirectoryName), archiveName);
+        return utils::CombinePathW(utils::CombinePathW(tempDirectory, kPackagesDirectoryName), archiveName);
     }
 }
 
@@ -211,6 +212,9 @@ bool ModContext::Init() {
     }
 
     SetFlags(BML_INITED);
+#if BML_ENABLE_ANGELSCRIPT
+    BML_TryRegisterAngelScriptBindings(this);
+#endif
     return true;
 }
 
@@ -222,6 +226,10 @@ void ModContext::Shutdown() {
         ShutdownMods();
         UnloadMods();
     }
+
+#if BML_ENABLE_ANGELSCRIPT
+    BML_UnregisterAngelScriptBindings(this);
+#endif
 
     m_Logger->Info("Releasing Mod Loader");
 
@@ -275,9 +283,7 @@ bool ModContext::LoadMods() {
         std::wstring path = m_LoaderDir + L"\\Mods";
         if (utils::DirectoryExistsW(path)) {
             std::vector<std::wstring> modPaths;
-            if (ExploreMods(path, modPaths) == 0) {
-                m_Logger->Info("No mod is found.");
-            }
+            ExploreMods(path, modPaths);
 
             for (auto &modPath : modPaths) {
                 IMod *mod = LoadMod(modPath);
@@ -296,6 +302,35 @@ bool ModContext::LoadMods() {
                     std::string ansiPath = utils::Utf16ToAnsi(drivePath);
                     AddDataPath(ansiPath.c_str());
                 }
+            }
+
+#if BML_ENABLE_ANGELSCRIPT
+            std::vector<BML::ScriptModLoadCandidate> scriptModCandidates;
+            ExploreScriptMods(path, scriptModCandidates);
+            for (auto &scriptCandidate : scriptModCandidates) {
+                IMod *mod = LoadScriptMod(scriptCandidate);
+                if (mod) {
+                    const char *id = mod->GetID();
+                    if (modSet.find(id) != modSet.end()) {
+                        m_Logger->Warn("Duplicate Mod: %s", id);
+                        UnloadMod(id);
+                        continue;
+                    }
+                    modSet.emplace(id);
+                    loadedMods.push_back(mod);
+
+                    std::string ansiPath = utils::Utf16ToAnsi(scriptCandidate.RootDirectory);
+                    AddDataPath(ansiPath.c_str());
+                }
+            }
+#endif
+
+            if (modPaths.empty()
+#if BML_ENABLE_ANGELSCRIPT
+                && scriptModCandidates.empty()
+#endif
+            ) {
+                m_Logger->Info("No mod is found.");
             }
         }
 
@@ -336,6 +371,10 @@ void ModContext::UnloadMods() {
     delete m_BMLMod;
     m_BMLMod = nullptr;
 
+#if BML_ENABLE_ANGELSCRIPT
+    m_ScriptMods.clear();
+#endif
+
     m_ModDependencies.clear();
     m_DependencyGraph.clear();
 
@@ -365,6 +404,34 @@ bool ModContext::InitMods() {
         FillCallbackMap(mod);
         mod->OnLoad();
     }
+
+#if BML_ENABLE_ANGELSCRIPT
+    int scriptLoadedCount = 0;
+    int scriptFailedCount = 0;
+    BML::ScriptMod *firstFailedScript = nullptr;
+    for (IMod *mod : m_Mods) {
+        auto *scriptMod = dynamic_cast<BML::ScriptMod *>(mod);
+        if (!scriptMod)
+            continue;
+        if (scriptMod->IsFailed()) {
+            ++scriptFailedCount;
+            if (!firstFailedScript)
+                firstFailedScript = scriptMod;
+        } else if (scriptMod->IsLoaded()) {
+            ++scriptLoadedCount;
+        }
+    }
+    if (scriptLoadedCount > 0 || scriptFailedCount > 0) {
+        m_Logger->Info("BML script mod summary: loaded=%d failed=%d",
+                       scriptLoadedCount,
+                       scriptFailedCount);
+        if (firstFailedScript) {
+            m_Logger->Warn("First failed script mod %s: %s",
+                           firstFailedScript->GetID(),
+                           firstFailedScript->GetLastDiagnostic().c_str());
+        }
+    }
+#endif
 
     for (Config *config : m_Configs)
         SaveConfig(config);
@@ -518,6 +585,12 @@ int ModContext::CheckDependencies(IMod *mod) const {
             }
 
             IMod *depMod = depIt->second;
+#if BML_ENABLE_ANGELSCRIPT
+            if (BML::IsFailedScriptMod(depMod)) {
+                if (!dep.optional) return 0;
+                continue;
+            }
+#endif
             const char *verStr = depMod ? depMod->GetVersion() : nullptr;
             BMLVersion have = parseRelaxed(verStr);
 
@@ -886,7 +959,23 @@ void ModContext::ExitGame() {
 
 void ModContext::OpenModsMenu() {
     m_Logger->Info("Open Mods Menu");
-    m_BMLMod->OpenModsMenu();
+    if (m_BMLMod)
+        m_BMLMod->OpenModsMenu();
+}
+
+void ModContext::CloseModsMenu() {
+    if (m_BMLMod)
+        m_BMLMod->CloseModsMenu();
+}
+
+void ModContext::OpenMapMenu() {
+    if (m_BMLMod)
+        m_BMLMod->OpenMapMenu();
+}
+
+void ModContext::CloseMapMenu() {
+    if (m_BMLMod)
+        m_BMLMod->CloseMapMenu();
 }
 
 void ModContext::EnableCheat(bool enable) {
@@ -900,12 +989,60 @@ void ModContext::SendIngameMessage(const char *msg) {
     m_CommandContext.Output(msg);
 }
 
+void ModContext::ClearIngameMessages() {
+    if (m_BMLMod)
+        m_BMLMod->ClearIngameMessages();
+}
+
 float ModContext::GetSRScore() {
     return m_BMLMod->GetSRScore();
 }
 
 int ModContext::GetHSScore() {
     return m_BMLMod->GetHSScore();
+}
+
+int ModContext::GetHUD() {
+    return m_BMLMod ? m_BMLMod->GetHUD() : 0;
+}
+
+void ModContext::SetHUD(int mode) {
+    if (m_BMLMod)
+        m_BMLMod->SetHUD(mode);
+}
+
+void ModContext::ShowTitle(bool show) {
+    if (m_BMLMod)
+        m_BMLMod->ShowTitle(show);
+}
+
+void ModContext::ShowFPS(bool show) {
+    if (m_BMLMod)
+        m_BMLMod->ShowFPS(show);
+}
+
+void ModContext::ShowSRTimer(bool show) {
+    if (m_BMLMod)
+        m_BMLMod->ShowSRTimer(show);
+}
+
+void ModContext::StartSRTimer() {
+    if (m_BMLMod)
+        m_BMLMod->StartSRTimer();
+}
+
+void ModContext::PauseSRTimer() {
+    if (m_BMLMod)
+        m_BMLMod->PauseSRTimer();
+}
+
+void ModContext::ResetSRTimer() {
+    if (m_BMLMod)
+        m_BMLMod->ResetSRTimer();
+}
+
+float ModContext::GetSRTime() {
+    return m_BMLMod ? m_BMLMod->GetSRTime() : 0.0f;
 }
 
 void ModContext::SkipRenderForNextTick() {
@@ -948,11 +1085,20 @@ void ModContext::RegisterModul(const char *modulName) {
 }
 
 void ModContext::OnProcess() {
+    if (!IsInited() || !m_TimeManager)
+        return;
+
+#if BML_ENABLE_ANGELSCRIPT
+    BML_TryRegisterAngelScriptBindings(this);
+#endif
     Timer::ProcessAll(m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime() / 1000.0f);
     BroadcastCallback(&IMod::OnProcess);
 }
 
 void ModContext::OnRender(CKRenderContext *dev) {
+    if (!IsInited() || !dev)
+        return;
+
     BroadcastCallback(&IMod::OnRender, static_cast<CK_RENDER_FLAGS>(dev->GetCurrentRenderOptions()));
 }
 
@@ -1355,6 +1501,78 @@ size_t ModContext::ExploreMods(const std::wstring &path, std::vector<std::wstrin
     return mods.size();
 }
 
+#if BML_ENABLE_ANGELSCRIPT
+size_t ModContext::ExploreScriptMods(const std::wstring &path, std::vector<BML::ScriptModLoadCandidate> &candidates) {
+    const size_t before = candidates.size();
+    BML::FindScriptModCandidates(path, candidates);
+
+    if (path.empty() || !utils::DirectoryExistsW(path))
+        return candidates.size() - before;
+
+    const std::wstring pattern = path + L"\\*.zip";
+    _wfinddata_t fileinfo = {};
+    auto handle = _wfindfirst(pattern.c_str(), &fileinfo);
+    if (handle == -1)
+        return candidates.size() - before;
+
+    do {
+        if ((fileinfo.attrib & _A_SUBDIR) != 0)
+            continue;
+
+        const std::wstring zipPath = path + L"\\" + fileinfo.name;
+        const std::wstring dest = BuildZipExtractionDirectory(m_TempDir, zipPath);
+        if (dest.empty() || !PrepareFreshDirectory(dest)) {
+            m_Logger->Error("Failed to create script package extraction directory: %s", utils::Utf16ToAnsi(dest).c_str());
+            continue;
+        }
+
+        if (!utils::ExtractZipW(zipPath, dest)) {
+            m_Logger->Error("Failed to extract script package zip: %s", utils::Utf16ToAnsi(zipPath).c_str());
+            continue;
+        }
+
+        std::vector<BML::ScriptModLoadCandidate> packageCandidates;
+        std::vector<std::wstring> rootEntries = BML::FindScriptModEntryPaths(dest);
+        if (!rootEntries.empty()) {
+            BML::ScriptModLoadCandidate candidate = BML::MakeDirectoryScriptModCandidate(
+                dest,
+                BML::ScriptModEntrySourceKind::ZipPackage,
+                zipPath);
+            candidate.EntryPaths = std::move(rootEntries);
+            packageCandidates.push_back(std::move(candidate));
+        }
+
+        std::vector<BML::ScriptModLoadCandidate> nestedCandidates;
+        BML::FindScriptModCandidates(dest, nestedCandidates);
+        for (auto &candidate : nestedCandidates) {
+            if (candidate.SourceKind == BML::ScriptModEntrySourceKind::Directory)
+                packageCandidates.push_back(std::move(candidate));
+        }
+
+        if (packageCandidates.size() != 1 || packageCandidates.front().EntryPaths.size() != 1) {
+            BML::ScriptModLoadCandidate candidate = BML::MakeDirectoryScriptModCandidate(
+                dest,
+                BML::ScriptModEntrySourceKind::ZipPackage,
+                zipPath);
+            candidate.EntryPaths.clear();
+            for (const auto &packageCandidate : packageCandidates) {
+                candidate.EntryPaths.insert(candidate.EntryPaths.end(),
+                                            packageCandidate.EntryPaths.begin(),
+                                            packageCandidate.EntryPaths.end());
+            }
+            candidates.push_back(std::move(candidate));
+        } else {
+            packageCandidates.front().SourceKind = BML::ScriptModEntrySourceKind::ZipPackage;
+            packageCandidates.front().SourcePath = zipPath;
+            candidates.push_back(std::move(packageCandidates.front()));
+        }
+    } while (_wfindnext(handle, &fileinfo) == 0);
+
+    _findclose(handle);
+    return candidates.size() - before;
+}
+#endif
+
 std::shared_ptr<void> ModContext::LoadLib(const wchar_t *path) {
     if (!path || path[0] == '\0')
         return nullptr;
@@ -1437,6 +1655,47 @@ IMod *ModContext::LoadMod(const std::wstring &path) {
 
     return mod;
 }
+
+#if BML_ENABLE_ANGELSCRIPT
+IMod *ModContext::LoadScriptMod(const BML::ScriptModLoadCandidate &candidate) {
+    BML::ScriptModLoader loader;
+    BML::ScriptModLoadResult loadResult = loader.Load(this, GetCKContext(), candidate);
+    auto &scriptMod = loadResult.Mod;
+    IMod *mod = scriptMod.get();
+    if (!RegisterMod(mod)) {
+        m_Logger->Warn("Duplicate or incompatible script Mod: %s", mod->GetID());
+        return nullptr;
+    }
+
+    RegisterScriptModDependencies(mod, loadResult.Definition);
+    m_ScriptMods.push_back(std::move(scriptMod));
+    return mod;
+}
+
+void ModContext::RegisterScriptModDependencies(IMod *mod, const BML::ScriptModDefinition &definition) {
+    if (!mod)
+        return;
+
+    for (const auto &dependency : definition.Dependencies) {
+        if (dependency.Id.empty())
+            continue;
+
+        if (dependency.Optional) {
+            RegisterOptionalDependency(mod,
+                                       dependency.Id.c_str(),
+                                       dependency.MinVersion.major,
+                                       dependency.MinVersion.minor,
+                                       dependency.MinVersion.patch);
+        } else {
+            RegisterDependency(mod,
+                               dependency.Id.c_str(),
+                               dependency.MinVersion.major,
+                               dependency.MinVersion.minor,
+                               dependency.MinVersion.patch);
+        }
+    }
+}
+#endif
 
 bool ModContext::UnloadMod(const std::string &id) {
     auto it = m_ModMap.find(id);

@@ -142,6 +142,61 @@ set(BML_SOURCES
         BML.rc
 )
 
+set(BML_ANGELSCRIPT_PRIVATE_HEADERS)
+set(BML_ANGELSCRIPT_SOURCES)
+if (BML_WITH_ANGELSCRIPT)
+    set(BML_ANGELSCRIPT_PRIVATE_HEADERS
+            AngelScript/CKAngelScriptAdapter.h
+            AngelScript/AngelScriptBindings.h
+            AngelScript/AngelScriptImGuiBindings.h
+            AngelScript/ScriptApiContract.h
+            AngelScript/ScriptAngelScriptHandle.h
+            AngelScript/ScriptCallbackDispatcher.h
+            AngelScript/ScriptCallbackEvents.h
+            AngelScript/ScriptCommandService.h
+            AngelScript/ScriptDataShareService.h
+            AngelScript/ScriptDiagnostic.h
+            AngelScript/ScriptExportDispatcher.h
+            AngelScript/ScriptExportSignature.h
+            AngelScript/ScriptFacadeAccess.h
+            AngelScript/ScriptMod.h
+            AngelScript/ScriptModContextView.h
+            AngelScript/ScriptModDefinition.h
+            AngelScript/ScriptModDefinitionBuilder.h
+            AngelScript/ScriptModEntryScanner.h
+            AngelScript/ScriptModEventRouter.h
+            AngelScript/ScriptModLoader.h
+            AngelScript/ScriptModRuntime.h
+            AngelScript/ScriptModState.h
+            AngelScript/ScriptTimerService.h
+            AngelScript/generated/BMLImGuiAngelScriptBindings.h
+    )
+    set(BML_ANGELSCRIPT_SOURCES
+            AngelScript/AngelScriptBindings.cpp
+            AngelScript/CKAngelScriptAdapter.cpp
+            AngelScript/ScriptApiContract.cpp
+            AngelScript/ScriptCallbackDispatcher.cpp
+            AngelScript/ScriptCallbackEvents.cpp
+            AngelScript/ScriptCommandService.cpp
+            AngelScript/ScriptDataShareService.cpp
+            AngelScript/ScriptDiagnostic.cpp
+            AngelScript/ScriptExportDispatcher.cpp
+            AngelScript/ScriptExportSignature.cpp
+            AngelScript/ScriptMod.cpp
+            AngelScript/ScriptModContextView.cpp
+            AngelScript/ScriptModDefinition.cpp
+            AngelScript/ScriptModDefinitionBuilder.cpp
+            AngelScript/ScriptModEntryScanner.cpp
+            AngelScript/ScriptModEventRouter.cpp
+            AngelScript/ScriptModLoader.cpp
+            AngelScript/ScriptModRuntime.cpp
+            AngelScript/ScriptModState.cpp
+            AngelScript/ScriptTimerService.cpp
+            AngelScript/AngelScriptImGuiBindings.cpp
+            AngelScript/generated/BMLImGuiAngelScriptBindings.cpp
+    )
+endif ()
+
 set(IMGUI_HEADERS
         ${IMGUI_SOURCE_DIR}/imgui.h
         ${IMGUI_SOURCE_DIR}/imgui_internal.h
@@ -164,6 +219,8 @@ set(IMGUI_SOURCES
 
 add_library(BML SHARED
         ${BML_SOURCES} ${BML_PUBLIC_HEADERS} ${BML_PRIVATE_HEADERS}
+        ${BML_ANGELSCRIPT_PRIVATE_HEADERS}
+        ${BML_ANGELSCRIPT_SOURCES}
         ${IMGUI_SOURCES} ${IMGUI_HEADERS}
 )
 
@@ -175,6 +232,14 @@ target_include_directories(BML
         PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+if (BML_WITH_ANGELSCRIPT)
+    target_include_directories(BML PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/AngelScript
+            ${CKANGELSCRIPT_INCLUDE_DIR}
+            ${CKANGELSCRIPT_ANGELSCRIPT_INCLUDE_DIR}
+    )
+endif ()
 
 target_link_libraries(BML
         PUBLIC
@@ -188,6 +253,7 @@ add_dependencies(BML BML_VersionHeader)
 
 target_compile_definitions(BML PRIVATE
         BML_EXPORTS IMGUI_EXPORT
+        BML_ENABLE_ANGELSCRIPT=$<BOOL:${BML_WITH_ANGELSCRIPT}>
 )
 
 set_target_properties(BML PROPERTIES
