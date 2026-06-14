@@ -32,31 +32,41 @@ bool ScriptModEventRouter::HasCallback(ScriptCallbackId id) const {
 bool ScriptModEventRouter::CallOnLoad(ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnLoad))
         return true;
-    return IsBound() && m_Dispatcher.CallOnLoad(m_Context, *m_Runtime, *m_ContextView, diagnostic);
+    if (!RequireBound(diagnostic))
+        return false;
+    return m_Dispatcher.CallOnLoad(m_Context, *m_Runtime, *m_ContextView, diagnostic);
 }
 
 bool ScriptModEventRouter::CallOnUnload(ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnUnload))
         return true;
-    return IsBound() && m_Dispatcher.CallOnUnload(m_Context, *m_Runtime, *m_ContextView, diagnostic);
+    if (!RequireBound(diagnostic))
+        return false;
+    return m_Dispatcher.CallOnUnload(m_Context, *m_Runtime, *m_ContextView, diagnostic);
 }
 
 bool ScriptModEventRouter::CallOnProcess(ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnProcess))
         return true;
-    return IsBound() && m_Dispatcher.CallOnProcess(m_Context, *m_Runtime, *m_ContextView, diagnostic);
+    if (!RequireBound(diagnostic))
+        return false;
+    return m_Dispatcher.CallOnProcess(m_Context, *m_Runtime, *m_ContextView, diagnostic);
 }
 
 bool ScriptModEventRouter::CallGameEvent(size_t eventIndex, ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnGameEvent))
         return true;
-    return IsBound() && m_Dispatcher.CallGameEvent(m_Context, *m_Runtime, *m_ContextView, eventIndex, diagnostic);
+    if (!RequireBound(diagnostic))
+        return false;
+    return m_Dispatcher.CallGameEvent(m_Context, *m_Runtime, *m_ContextView, eventIndex, diagnostic);
 }
 
 bool ScriptModEventRouter::CallRender(CK_RENDER_FLAGS flags, ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnRender))
         return true;
-    return IsBound() && m_Dispatcher.CallRender(m_Context, *m_Runtime, *m_ContextView, flags, diagnostic);
+    if (!RequireBound(diagnostic))
+        return false;
+    return m_Dispatcher.CallRender(m_Context, *m_Runtime, *m_ContextView, flags, diagnostic);
 }
 
 bool ScriptModEventRouter::CallLoadObject(const char *filename,
@@ -72,21 +82,27 @@ bool ScriptModEventRouter::CallLoadObject(const char *filename,
                                           ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnLoadObject))
         return true;
-    return IsBound() && m_Dispatcher.CallLoadObject(m_Context, *m_Runtime, *m_ContextView, filename, isMap, masterName,
-                                                    filterClass, addToScene, reuseMeshes, reuseMaterials, dynamic,
-                                                    objectArray, masterObject, diagnostic);
+    if (!RequireBound(diagnostic))
+        return false;
+    return m_Dispatcher.CallLoadObject(m_Context, *m_Runtime, *m_ContextView, filename, isMap, masterName,
+                                       filterClass, addToScene, reuseMeshes, reuseMaterials, dynamic,
+                                       objectArray, masterObject, diagnostic);
 }
 
 bool ScriptModEventRouter::CallLoadScript(const char *filename, CKBehavior *script, ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnLoadScript))
         return true;
-    return IsBound() && m_Dispatcher.CallLoadScript(m_Context, *m_Runtime, *m_ContextView, filename, script, diagnostic);
+    if (!RequireBound(diagnostic))
+        return false;
+    return m_Dispatcher.CallLoadScript(m_Context, *m_Runtime, *m_ContextView, filename, script, diagnostic);
 }
 
 bool ScriptModEventRouter::CallCheatEnabled(bool enable, ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnCheatEnabled))
         return true;
-    return IsBound() && m_Dispatcher.CallCheatEnabled(m_Context, *m_Runtime, *m_ContextView, enable, diagnostic);
+    if (!RequireBound(diagnostic))
+        return false;
+    return m_Dispatcher.CallCheatEnabled(m_Context, *m_Runtime, *m_ContextView, enable, diagnostic);
 }
 
 bool ScriptModEventRouter::CallCommandEvent(bool beforeCommand,
@@ -95,7 +111,9 @@ bool ScriptModEventRouter::CallCommandEvent(bool beforeCommand,
                                             ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnCommandEvent))
         return true;
-    return IsBound() && m_Dispatcher.CallCommandEvent(m_Context, *m_Runtime, *m_ContextView, beforeCommand, command, args, diagnostic);
+    if (!RequireBound(diagnostic))
+        return false;
+    return m_Dispatcher.CallCommandEvent(m_Context, *m_Runtime, *m_ContextView, beforeCommand, command, args, diagnostic);
 }
 
 bool ScriptModEventRouter::CallModifyConfig(const char *modId,
@@ -105,7 +123,9 @@ bool ScriptModEventRouter::CallModifyConfig(const char *modId,
                                             ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnModifyConfig))
         return true;
-    return IsBound() && m_Dispatcher.CallModifyConfig(m_Context, *m_Runtime, *m_ContextView, modId, category, key, property, diagnostic);
+    if (!RequireBound(diagnostic))
+        return false;
+    return m_Dispatcher.CallModifyConfig(m_Context, *m_Runtime, *m_ContextView, modId, category, key, property, diagnostic);
 }
 
 bool ScriptModEventRouter::CallPhysicalize(CK3dEntity *target,
@@ -131,21 +151,32 @@ bool ScriptModEventRouter::CallPhysicalize(CK3dEntity *target,
                                            ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnPhysicalize))
         return true;
-    return IsBound() && m_Dispatcher.CallPhysicalize(m_Context, *m_Runtime, *m_ContextView, target, fixed, friction,
-                                                     elasticity, mass, collGroup, startFrozen, enableColl,
-                                                     calcMassCenter, linearDamp, rotDamp, collSurface, massCenter,
-                                                     convexCnt, convexMesh, ballCnt, ballCenter, ballRadius,
-                                                     concaveCnt, concaveMesh, diagnostic);
+    if (!RequireBound(diagnostic))
+        return false;
+    return m_Dispatcher.CallPhysicalize(m_Context, *m_Runtime, *m_ContextView, target, fixed, friction,
+                                        elasticity, mass, collGroup, startFrozen, enableColl,
+                                        calcMassCenter, linearDamp, rotDamp, collSurface, massCenter,
+                                        convexCnt, convexMesh, ballCnt, ballCenter, ballRadius,
+                                        concaveCnt, concaveMesh, diagnostic);
 }
 
 bool ScriptModEventRouter::CallUnphysicalize(CK3dEntity *target, ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnUnphysicalize))
         return true;
-    return IsBound() && m_Dispatcher.CallUnphysicalize(m_Context, *m_Runtime, *m_ContextView, target, diagnostic);
+    if (!RequireBound(diagnostic))
+        return false;
+    return m_Dispatcher.CallUnphysicalize(m_Context, *m_Runtime, *m_ContextView, target, diagnostic);
 }
 
 bool ScriptModEventRouter::IsBound() const {
     return m_Runtime && m_ContextView;
+}
+
+bool ScriptModEventRouter::RequireBound(ScriptDiagnostic &diagnostic) const {
+    if (IsBound())
+        return true;
+    diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, "Script event router is not bound.");
+    return false;
 }
 
 } // namespace BML

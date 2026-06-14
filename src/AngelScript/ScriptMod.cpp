@@ -178,6 +178,29 @@ void ScriptMod::OnModifyConfig(const char *category, const char *key, IProperty 
     if (!m_State.IsLoaded() || m_State.IsFailed())
         return;
 
+    const std::string eventCategory = category ? category : "";
+    const std::string eventKey = key ? key : "";
+    for (const auto &activeEvent : m_ActiveConfigEvents) {
+        if (activeEvent.first == eventCategory && activeEvent.second == eventKey)
+            return;
+    }
+
+    struct ActiveConfigEventGuard {
+        explicit ActiveConfigEventGuard(std::vector<std::pair<std::string, std::string>> &events,
+                                        std::string category,
+                                        std::string key)
+            : Events(events) {
+            Events.emplace_back(std::move(category), std::move(key));
+        }
+
+        ~ActiveConfigEventGuard() {
+            Events.pop_back();
+        }
+
+        std::vector<std::pair<std::string, std::string>> &Events;
+    };
+
+    ActiveConfigEventGuard activeEvent(m_ActiveConfigEvents, eventCategory, eventKey);
     ScriptDiagnostic diagnostic;
     FailIfEventCallFailed(m_EventRouter.CallModifyConfig(GetID(), category, key, prop, diagnostic), diagnostic);
 }

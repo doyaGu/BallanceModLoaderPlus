@@ -342,10 +342,28 @@ ScriptDataShareEventView::ScriptDataShareEventView(const std::string *key,
                                                    bool exists,
                                                    const void *data,
                                                    size_t size)
-    : m_Key(key), m_Type(type), m_Exists(exists), m_Data(data), m_Size(size) {}
+    : m_Key(key ? *key : std::string()), m_Type(type), m_Exists(exists) {
+    if (!m_Exists)
+        return;
+
+    switch (m_Type) {
+    case ScriptDataShareRequestType::String:
+        m_StringValue = StringFromData(data, size);
+        break;
+    case ScriptDataShareRequestType::Bool:
+        ValueFromData(data, size, m_BoolValue);
+        break;
+    case ScriptDataShareRequestType::Int:
+        ValueFromData(data, size, m_IntValue);
+        break;
+    case ScriptDataShareRequestType::Float:
+        ValueFromData(data, size, m_FloatValue);
+        break;
+    }
+}
 
 std::string ScriptDataShareEventView::GetKey() const {
-    return m_Key ? *m_Key : std::string();
+    return m_Key;
 }
 
 int ScriptDataShareEventView::GetType() const {
@@ -353,22 +371,19 @@ int ScriptDataShareEventView::GetType() const {
 }
 
 std::string ScriptDataShareEventView::GetString() const {
-    return m_Exists && m_Type == ScriptDataShareRequestType::String ? StringFromData(m_Data, m_Size) : std::string();
+    return m_Exists && m_Type == ScriptDataShareRequestType::String ? m_StringValue : std::string();
 }
 
 bool ScriptDataShareEventView::GetBool() const {
-    bool value = false;
-    return m_Exists && m_Type == ScriptDataShareRequestType::Bool && ValueFromData(m_Data, m_Size, value) ? value : false;
+    return m_Exists && m_Type == ScriptDataShareRequestType::Bool ? m_BoolValue : false;
 }
 
 int ScriptDataShareEventView::GetInt() const {
-    int value = 0;
-    return m_Exists && m_Type == ScriptDataShareRequestType::Int && ValueFromData(m_Data, m_Size, value) ? value : 0;
+    return m_Exists && m_Type == ScriptDataShareRequestType::Int ? m_IntValue : 0;
 }
 
 float ScriptDataShareEventView::GetFloat() const {
-    float value = 0.0f;
-    return m_Exists && m_Type == ScriptDataShareRequestType::Float && ValueFromData(m_Data, m_Size, value) ? value : 0.0f;
+    return m_Exists && m_Type == ScriptDataShareRequestType::Float ? m_FloatValue : 0.0f;
 }
 
 ScriptDataShareRequestRef::ScriptDataShareRequestRef(std::weak_ptr<ScriptDataShareServiceState> state,

@@ -2,6 +2,8 @@
 #define BML_SCRIPTMOD_H
 
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "BML/Interop.h"
 #include "BML/ICommand.h"
@@ -220,6 +222,7 @@ private:
     ScriptExportTable m_Exports;
     ScriptModState m_State;
     bool m_InLoadCallback = false;
+    std::vector<std::pair<std::string, std::string>> m_ActiveConfigEvents;
 };
 
 bool IsFailedScriptMod(const IMod *mod);

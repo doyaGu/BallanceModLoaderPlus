@@ -41,11 +41,13 @@ public:
     float GetFloat() const;
 
 private:
-    const std::string *m_Key = nullptr;
+    std::string m_Key;
     ScriptDataShareRequestType m_Type = ScriptDataShareRequestType::String;
     bool m_Exists = false;
-    const void *m_Data = nullptr;
-    size_t m_Size = 0;
+    std::string m_StringValue;
+    bool m_BoolValue = false;
+    int m_IntValue = 0;
+    float m_FloatValue = 0.0f;
 };
 
 class ScriptDataShareRequestRef {

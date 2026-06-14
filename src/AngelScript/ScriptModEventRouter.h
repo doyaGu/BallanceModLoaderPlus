@@ -78,6 +78,7 @@ public:
 
 private:
     bool IsBound() const;
+    bool RequireBound(ScriptDiagnostic &diagnostic) const;
 
     CKContext *m_Context = nullptr;
     ScriptModRuntime *m_Runtime = nullptr;

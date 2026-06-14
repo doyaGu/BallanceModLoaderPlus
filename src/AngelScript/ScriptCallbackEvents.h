@@ -76,6 +76,7 @@ private:
 
 class ScriptLoadObjectEventView {
 public:
+    ScriptLoadObjectEventView() = default;
     ScriptLoadObjectEventView(const char *filename,
                               CKBOOL isMap,
                               const char *masterName,
@@ -99,37 +100,41 @@ public:
     int GetObjectCount() const;
     int GetObjectId(int index) const;
     CKObject *BorrowObject(int index) const;
-    CKObject *BorrowMasterObject() const { return m_MasterObject; }
+    CKObject *BorrowMasterObject() const;
 
 private:
-    const char *m_Filename = "";
+    CKObject *ResolveObject(CK_ID id, CK_CLASSID classId) const;
+
+    std::string m_Filename;
     bool m_IsMap = false;
-    const char *m_MasterName = "";
+    std::string m_MasterName;
     int m_FilterClass = 0;
     bool m_AddToScene = false;
     bool m_ReuseMeshes = false;
     bool m_ReuseMaterials = false;
     bool m_Dynamic = false;
     CKContext *m_Context = nullptr;
-    XObjectArray *m_ObjectArray = nullptr;
-    CKObject *m_MasterObject = nullptr;
+    std::vector<CK_ID> m_ObjectIds;
+    CK_ID m_MasterObjectId = 0;
 };
 
 class ScriptLoadScriptEventView {
 public:
-    ScriptLoadScriptEventView(const char *filename, CKBehavior *script);
+    ScriptLoadScriptEventView() = default;
+    ScriptLoadScriptEventView(CKContext *context, const char *filename, CKBehavior *script);
     std::string GetFilename() const;
     int GetScriptId() const { return m_ScriptId; }
-    CKBehavior *BorrowScript() const { return m_Script; }
+    CKBehavior *BorrowScript() const;
 
 private:
-    const char *m_Filename = "";
-    int m_ScriptId = 0;
-    CKBehavior *m_Script = nullptr;
+    CKContext *m_Context = nullptr;
+    std::string m_Filename;
+    CK_ID m_ScriptId = 0;
 };
 
 class ScriptCommandEventView {
 public:
+    ScriptCommandEventView() = default;
     ScriptCommandEventView(ScriptCommandEventPhase phase,
                            ICommand *command,
                            const std::vector<std::string> *args);
@@ -146,15 +151,15 @@ public:
     bool IsCheat() const;
 
 private:
-    size_t GetUserArgStart() const;
-
     ScriptCommandEventPhase m_Phase = ScriptCommandEventPre;
-    ICommand *m_Command = nullptr;
-    const std::vector<std::string> *m_Args = nullptr;
+    std::string m_CommandName;
+    std::vector<std::string> m_Args;
+    bool m_IsCheat = false;
 };
 
 class ScriptConfigEventView {
 public:
+    ScriptConfigEventView() = default;
     ScriptConfigEventView(const char *modId, const char *category, const char *key, IProperty *property);
     std::string GetModId() const;
     std::string GetCategory() const;
@@ -163,16 +168,18 @@ public:
     bool HasProperty() const { return m_HasProperty; }
 
 private:
-    const char *m_ModId = "";
-    const char *m_Category = "";
-    const char *m_Key = "";
+    std::string m_ModId;
+    std::string m_Category;
+    std::string m_Key;
     int m_Type = 0;
     bool m_HasProperty = false;
 };
 
 class ScriptPhysicalizeEventView {
 public:
-    ScriptPhysicalizeEventView(CK3dEntity *target,
+    ScriptPhysicalizeEventView() = default;
+    ScriptPhysicalizeEventView(CKContext *context,
+                               CK3dEntity *target,
                                CKBOOL fixed,
                                float friction,
                                float elasticity,
@@ -195,7 +202,7 @@ public:
 
     int GetTargetId() const { return m_TargetId; }
     std::string GetTargetName() const;
-    CK3dEntity *BorrowTarget() const { return m_Target; }
+    CK3dEntity *BorrowTarget() const;
     bool GetFixed() const { return m_Fixed; }
     float GetFriction() const { return m_Friction; }
     float GetElasticity() const { return m_Elasticity; }
@@ -220,41 +227,43 @@ public:
     CKMesh *BorrowConcaveMesh(int index) const;
 
 private:
-    CK3dEntity *m_Target = nullptr;
-    int m_TargetId = 0;
-    const char *m_TargetName = "";
+    CKObject *ResolveObject(CK_ID id, CK_CLASSID classId) const;
+
+    CKContext *m_Context = nullptr;
+    CK_ID m_TargetId = 0;
+    std::string m_TargetName;
     bool m_Fixed = false;
     float m_Friction = 0.0f;
     float m_Elasticity = 0.0f;
     float m_Mass = 0.0f;
-    const char *m_CollisionGroup = "";
+    std::string m_CollisionGroup;
     bool m_StartFrozen = false;
     bool m_EnableCollision = false;
     bool m_AutoCalcMassCenter = false;
     float m_LinearDamp = 0.0f;
     float m_RotDamp = 0.0f;
-    const char *m_CollisionSurface = "";
+    std::string m_CollisionSurface;
     VxVector m_MassCenter;
     int m_ConvexCount = 0;
-    CKMesh **m_ConvexMesh = nullptr;
+    std::vector<CK_ID> m_ConvexMeshIds;
     int m_BallCount = 0;
-    VxVector *m_BallCenter = nullptr;
-    float *m_BallRadius = nullptr;
+    std::vector<VxVector> m_BallCenters;
+    std::vector<float> m_BallRadii;
     int m_ConcaveCount = 0;
-    CKMesh **m_ConcaveMesh = nullptr;
+    std::vector<CK_ID> m_ConcaveMeshIds;
 };
 
 class ScriptObjectEventView {
 public:
-    explicit ScriptObjectEventView(CK3dEntity *target = nullptr);
+    explicit ScriptObjectEventView(CKContext *context = nullptr, CK3dEntity *target = nullptr);
     int GetTargetId() const { return m_TargetId; }
     std::string GetTargetName() const;
-    CK3dEntity *BorrowTarget() const { return m_Target; }
+    CK3dEntity *BorrowTarget() const;
 
 private:
-    CK3dEntity *m_Target = nullptr;
-    int m_TargetId = 0;
-    const char *m_TargetName = "";
+    CKContext *m_Context = nullptr;
+    CK_ID m_TargetId = 0;
+    std::string m_TargetName;
 };
 
 } // namespace BML

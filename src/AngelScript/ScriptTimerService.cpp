@@ -426,15 +426,24 @@ static bool ExecuteTimerCallback(const std::weak_ptr<ScriptTimerServiceState> &w
     return keepTimer;
 }
 
-ScriptTimerEventView::ScriptTimerEventView(Timer *timer) : m_Timer(timer) {}
-int ScriptTimerEventView::GetId() const { return m_Timer ? static_cast<int>(m_Timer->GetId()) : 0; }
-std::string ScriptTimerEventView::GetName() const { return m_Timer ? m_Timer->GetName() : std::string(); }
-int ScriptTimerEventView::GetState() const { return m_Timer ? static_cast<int>(m_Timer->GetState()) : static_cast<int>(Timer::CANCELLED); }
-int ScriptTimerEventView::GetType() const { return m_Timer ? static_cast<int>(m_Timer->GetType()) : static_cast<int>(Timer::ONCE); }
-int ScriptTimerEventView::GetTimeBase() const { return m_Timer ? static_cast<int>(m_Timer->GetTimeBase()) : static_cast<int>(Timer::TICK); }
-int ScriptTimerEventView::GetCompletedIterations() const { return m_Timer ? m_Timer->GetCompletedIterations() : 0; }
-int ScriptTimerEventView::GetRemainingIterations() const { return m_Timer ? m_Timer->GetRemainingIterations() : 0; }
-float ScriptTimerEventView::GetProgress() const { return m_Timer ? m_Timer->GetProgress() : 0.0f; }
+ScriptTimerEventView::ScriptTimerEventView(Timer *timer)
+    : m_Valid(timer != nullptr),
+      m_Id(timer ? static_cast<int>(timer->GetId()) : 0),
+      m_Name(timer ? timer->GetName() : std::string()),
+      m_State(timer ? static_cast<int>(timer->GetState()) : static_cast<int>(Timer::CANCELLED)),
+      m_Type(timer ? static_cast<int>(timer->GetType()) : static_cast<int>(Timer::ONCE)),
+      m_TimeBase(timer ? static_cast<int>(timer->GetTimeBase()) : static_cast<int>(Timer::TICK)),
+      m_CompletedIterations(timer ? timer->GetCompletedIterations() : 0),
+      m_RemainingIterations(timer ? timer->GetRemainingIterations() : 0),
+      m_Progress(timer ? timer->GetProgress() : 0.0f) {}
+int ScriptTimerEventView::GetId() const { return m_Id; }
+std::string ScriptTimerEventView::GetName() const { return m_Name; }
+int ScriptTimerEventView::GetState() const { return m_State; }
+int ScriptTimerEventView::GetType() const { return m_Type; }
+int ScriptTimerEventView::GetTimeBase() const { return m_TimeBase; }
+int ScriptTimerEventView::GetCompletedIterations() const { return m_CompletedIterations; }
+int ScriptTimerEventView::GetRemainingIterations() const { return m_RemainingIterations; }
+float ScriptTimerEventView::GetProgress() const { return m_Progress; }
 
 ScriptTimerRef::ScriptTimerRef(std::weak_ptr<ScriptTimerServiceState> state, Timer::TimerId id)
     : m_State(std::move(state)), m_Id(id) {}

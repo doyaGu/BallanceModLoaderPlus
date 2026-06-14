@@ -751,6 +751,17 @@ static BMLAS_PhysicalizeDefinition &BMLAS_AssignPhysicalizeDefinition(
     return *self;
 }
 
+using BMLAS_TimerEvent = BML::ScriptTimerEventView;
+using BMLAS_RenderEvent = BML::ScriptRenderEventView;
+using BMLAS_CheatEvent = BML::ScriptCheatEventView;
+using BMLAS_LoadObjectEvent = BML::ScriptLoadObjectEventView;
+using BMLAS_LoadScriptEvent = BML::ScriptLoadScriptEventView;
+using BMLAS_CommandEvent = BML::ScriptCommandEventView;
+using BMLAS_ConfigEvent = BML::ScriptConfigEventView;
+using BMLAS_DataShareEvent = BML::ScriptDataShareEventView;
+using BMLAS_PhysicalizeEvent = BML::ScriptPhysicalizeEventView;
+using BMLAS_ObjectEvent = BML::ScriptObjectEventView;
+
 #define BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(CppType, Suffix)                         \
     static void BMLAS_Construct##Suffix(CppType *self) { new (self) CppType(); }   \
     static void BMLAS_CopyConstruct##Suffix(const CppType &other, CppType *self) { \
@@ -771,6 +782,16 @@ BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_ModuleBallDefinition, ModuleBallDefiniti
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_ModuleConvexDefinition, ModuleConvexDefinition)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_TrafoDefinition, TrafoDefinition)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_ModuleDefinition, ModuleDefinition)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_TimerEvent, TimerEvent)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_RenderEvent, RenderEvent)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_CheatEvent, CheatEvent)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_LoadObjectEvent, LoadObjectEvent)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_LoadScriptEvent, LoadScriptEvent)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_CommandEvent, CommandEvent)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_ConfigEvent, ConfigEvent)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_DataShareEvent, DataShareEvent)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_PhysicalizeEvent, PhysicalizeEvent)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_ObjectEvent, ObjectEvent)
 
 #undef BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS
 
@@ -2651,19 +2672,19 @@ static const ScriptObjectTypeRegistration kObjectTypeRegistrations[] = {
     {"ModuleDefinition", "class ModuleDefinition", sizeof(BMLAS_ModuleDefinition), asOBJ_VALUE | asGetTypeTraits<BMLAS_ModuleDefinition>()},
     {"InputHook", "class InputHook", 0, asOBJ_REF | asOBJ_NOCOUNT},
     {"TimerRef", "class TimerRef", 0, asOBJ_REF},
-    {"TimerEvent", "class TimerEvent", sizeof(BML::ScriptTimerEventView), asOBJ_VALUE | asOBJ_POD | asOBJ_APP_CLASS},
-    {"RenderEvent", "class RenderEvent", sizeof(BML::ScriptRenderEventView), asOBJ_VALUE | asOBJ_POD | asOBJ_APP_CLASS},
-    {"CheatEvent", "class CheatEvent", sizeof(BML::ScriptCheatEventView), asOBJ_VALUE | asOBJ_POD | asOBJ_APP_CLASS},
-    {"LoadObjectEvent", "class LoadObjectEvent", sizeof(BML::ScriptLoadObjectEventView), asOBJ_VALUE | asOBJ_POD | asOBJ_APP_CLASS},
-    {"LoadScriptEvent", "class LoadScriptEvent", sizeof(BML::ScriptLoadScriptEventView), asOBJ_VALUE | asOBJ_POD | asOBJ_APP_CLASS},
-    {"CommandEvent", "class CommandEvent", sizeof(BML::ScriptCommandEventView), asOBJ_VALUE | asOBJ_POD | asOBJ_APP_CLASS},
-    {"ConfigEvent", "class ConfigEvent", sizeof(BML::ScriptConfigEventView), asOBJ_VALUE | asOBJ_POD | asOBJ_APP_CLASS},
+    {"TimerEvent", "class TimerEvent", sizeof(BML::ScriptTimerEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptTimerEventView>()},
+    {"RenderEvent", "class RenderEvent", sizeof(BML::ScriptRenderEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptRenderEventView>()},
+    {"CheatEvent", "class CheatEvent", sizeof(BML::ScriptCheatEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptCheatEventView>()},
+    {"LoadObjectEvent", "class LoadObjectEvent", sizeof(BML::ScriptLoadObjectEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptLoadObjectEventView>()},
+    {"LoadScriptEvent", "class LoadScriptEvent", sizeof(BML::ScriptLoadScriptEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptLoadScriptEventView>()},
+    {"CommandEvent", "class CommandEvent", sizeof(BML::ScriptCommandEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptCommandEventView>()},
+    {"ConfigEvent", "class ConfigEvent", sizeof(BML::ScriptConfigEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptConfigEventView>()},
     {"CommandCompletion", "class CommandCompletion", 0, asOBJ_REF | asOBJ_SCOPED},
     {"CommandRef", "class CommandRef", 0, asOBJ_REF},
-    {"DataShareEvent", "class DataShareEvent", sizeof(BML::ScriptDataShareEventView), asOBJ_VALUE | asOBJ_POD | asOBJ_APP_CLASS},
+    {"DataShareEvent", "class DataShareEvent", sizeof(BML::ScriptDataShareEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptDataShareEventView>()},
     {"DataShareRequestRef", "class DataShareRequestRef", 0, asOBJ_REF},
-    {"PhysicalizeEvent", "class PhysicalizeEvent", sizeof(BML::ScriptPhysicalizeEventView), asOBJ_VALUE | asOBJ_POD | asOBJ_APP_CLASS},
-    {"ObjectEvent", "class ObjectEvent", sizeof(BML::ScriptObjectEventView), asOBJ_VALUE | asOBJ_POD | asOBJ_APP_CLASS},
+    {"PhysicalizeEvent", "class PhysicalizeEvent", sizeof(BML::ScriptPhysicalizeEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptPhysicalizeEventView>()},
+    {"ObjectEvent", "class ObjectEvent", sizeof(BML::ScriptObjectEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptObjectEventView>()},
     {"ModRef", "class ModRef", 0, asOBJ_REF},
     {"ExportRef", "class ExportRef", 0, asOBJ_REF},
     {"CallFrame", "class CallFrame", 0, asOBJ_REF},
@@ -2803,6 +2824,36 @@ static const ScriptObjectBehaviourRegistration kObjectBehaviourRegistrations[] =
     {"ModuleDefinition", asBEHAVE_CONSTRUCT, "void f()", "void ModuleDefinition default construct", asFUNCTION(BMLAS_ConstructModuleDefinition), asCALL_CDECL_OBJLAST},
     {"ModuleDefinition", asBEHAVE_CONSTRUCT, "void f(const ModuleDefinition &in)", "void ModuleDefinition copy construct", asFUNCTION(BMLAS_CopyConstructModuleDefinition), asCALL_CDECL_OBJLAST},
     {"ModuleDefinition", asBEHAVE_DESTRUCT, "void f()", "void ModuleDefinition destruct", asFUNCTION(BMLAS_DestructModuleDefinition), asCALL_CDECL_OBJLAST},
+    {"TimerEvent", asBEHAVE_CONSTRUCT, "void f()", "void TimerEvent default construct", asFUNCTION(BMLAS_ConstructTimerEvent), asCALL_CDECL_OBJLAST},
+    {"TimerEvent", asBEHAVE_CONSTRUCT, "void f(const TimerEvent &in)", "void TimerEvent copy construct", asFUNCTION(BMLAS_CopyConstructTimerEvent), asCALL_CDECL_OBJLAST},
+    {"TimerEvent", asBEHAVE_DESTRUCT, "void f()", "void TimerEvent destruct", asFUNCTION(BMLAS_DestructTimerEvent), asCALL_CDECL_OBJLAST},
+    {"RenderEvent", asBEHAVE_CONSTRUCT, "void f()", "void RenderEvent default construct", asFUNCTION(BMLAS_ConstructRenderEvent), asCALL_CDECL_OBJLAST},
+    {"RenderEvent", asBEHAVE_CONSTRUCT, "void f(const RenderEvent &in)", "void RenderEvent copy construct", asFUNCTION(BMLAS_CopyConstructRenderEvent), asCALL_CDECL_OBJLAST},
+    {"RenderEvent", asBEHAVE_DESTRUCT, "void f()", "void RenderEvent destruct", asFUNCTION(BMLAS_DestructRenderEvent), asCALL_CDECL_OBJLAST},
+    {"CheatEvent", asBEHAVE_CONSTRUCT, "void f()", "void CheatEvent default construct", asFUNCTION(BMLAS_ConstructCheatEvent), asCALL_CDECL_OBJLAST},
+    {"CheatEvent", asBEHAVE_CONSTRUCT, "void f(const CheatEvent &in)", "void CheatEvent copy construct", asFUNCTION(BMLAS_CopyConstructCheatEvent), asCALL_CDECL_OBJLAST},
+    {"CheatEvent", asBEHAVE_DESTRUCT, "void f()", "void CheatEvent destruct", asFUNCTION(BMLAS_DestructCheatEvent), asCALL_CDECL_OBJLAST},
+    {"LoadObjectEvent", asBEHAVE_CONSTRUCT, "void f()", "void LoadObjectEvent default construct", asFUNCTION(BMLAS_ConstructLoadObjectEvent), asCALL_CDECL_OBJLAST},
+    {"LoadObjectEvent", asBEHAVE_CONSTRUCT, "void f(const LoadObjectEvent &in)", "void LoadObjectEvent copy construct", asFUNCTION(BMLAS_CopyConstructLoadObjectEvent), asCALL_CDECL_OBJLAST},
+    {"LoadObjectEvent", asBEHAVE_DESTRUCT, "void f()", "void LoadObjectEvent destruct", asFUNCTION(BMLAS_DestructLoadObjectEvent), asCALL_CDECL_OBJLAST},
+    {"LoadScriptEvent", asBEHAVE_CONSTRUCT, "void f()", "void LoadScriptEvent default construct", asFUNCTION(BMLAS_ConstructLoadScriptEvent), asCALL_CDECL_OBJLAST},
+    {"LoadScriptEvent", asBEHAVE_CONSTRUCT, "void f(const LoadScriptEvent &in)", "void LoadScriptEvent copy construct", asFUNCTION(BMLAS_CopyConstructLoadScriptEvent), asCALL_CDECL_OBJLAST},
+    {"LoadScriptEvent", asBEHAVE_DESTRUCT, "void f()", "void LoadScriptEvent destruct", asFUNCTION(BMLAS_DestructLoadScriptEvent), asCALL_CDECL_OBJLAST},
+    {"CommandEvent", asBEHAVE_CONSTRUCT, "void f()", "void CommandEvent default construct", asFUNCTION(BMLAS_ConstructCommandEvent), asCALL_CDECL_OBJLAST},
+    {"CommandEvent", asBEHAVE_CONSTRUCT, "void f(const CommandEvent &in)", "void CommandEvent copy construct", asFUNCTION(BMLAS_CopyConstructCommandEvent), asCALL_CDECL_OBJLAST},
+    {"CommandEvent", asBEHAVE_DESTRUCT, "void f()", "void CommandEvent destruct", asFUNCTION(BMLAS_DestructCommandEvent), asCALL_CDECL_OBJLAST},
+    {"ConfigEvent", asBEHAVE_CONSTRUCT, "void f()", "void ConfigEvent default construct", asFUNCTION(BMLAS_ConstructConfigEvent), asCALL_CDECL_OBJLAST},
+    {"ConfigEvent", asBEHAVE_CONSTRUCT, "void f(const ConfigEvent &in)", "void ConfigEvent copy construct", asFUNCTION(BMLAS_CopyConstructConfigEvent), asCALL_CDECL_OBJLAST},
+    {"ConfigEvent", asBEHAVE_DESTRUCT, "void f()", "void ConfigEvent destruct", asFUNCTION(BMLAS_DestructConfigEvent), asCALL_CDECL_OBJLAST},
+    {"DataShareEvent", asBEHAVE_CONSTRUCT, "void f()", "void DataShareEvent default construct", asFUNCTION(BMLAS_ConstructDataShareEvent), asCALL_CDECL_OBJLAST},
+    {"DataShareEvent", asBEHAVE_CONSTRUCT, "void f(const DataShareEvent &in)", "void DataShareEvent copy construct", asFUNCTION(BMLAS_CopyConstructDataShareEvent), asCALL_CDECL_OBJLAST},
+    {"DataShareEvent", asBEHAVE_DESTRUCT, "void f()", "void DataShareEvent destruct", asFUNCTION(BMLAS_DestructDataShareEvent), asCALL_CDECL_OBJLAST},
+    {"PhysicalizeEvent", asBEHAVE_CONSTRUCT, "void f()", "void PhysicalizeEvent default construct", asFUNCTION(BMLAS_ConstructPhysicalizeEvent), asCALL_CDECL_OBJLAST},
+    {"PhysicalizeEvent", asBEHAVE_CONSTRUCT, "void f(const PhysicalizeEvent &in)", "void PhysicalizeEvent copy construct", asFUNCTION(BMLAS_CopyConstructPhysicalizeEvent), asCALL_CDECL_OBJLAST},
+    {"PhysicalizeEvent", asBEHAVE_DESTRUCT, "void f()", "void PhysicalizeEvent destruct", asFUNCTION(BMLAS_DestructPhysicalizeEvent), asCALL_CDECL_OBJLAST},
+    {"ObjectEvent", asBEHAVE_CONSTRUCT, "void f()", "void ObjectEvent default construct", asFUNCTION(BMLAS_ConstructObjectEvent), asCALL_CDECL_OBJLAST},
+    {"ObjectEvent", asBEHAVE_CONSTRUCT, "void f(const ObjectEvent &in)", "void ObjectEvent copy construct", asFUNCTION(BMLAS_CopyConstructObjectEvent), asCALL_CDECL_OBJLAST},
+    {"ObjectEvent", asBEHAVE_DESTRUCT, "void f()", "void ObjectEvent destruct", asFUNCTION(BMLAS_DestructObjectEvent), asCALL_CDECL_OBJLAST},
     {"CommandCompletion", asBEHAVE_FACTORY, "CommandCompletion@ f()", "CommandCompletion@ factory", asFUNCTION(BMLAS_CreateInvalidCommandCompletion), asCALL_CDECL},
     {"CommandCompletion", asBEHAVE_RELEASE, "void f()", "void CommandCompletion release", asFUNCTION(BMLAS_ReleaseCommandCompletion), asCALL_CDECL_OBJLAST},
     {"CommandRef", asBEHAVE_ADDREF, "void f()", "void CommandRef addref", asMETHOD(BML::ScriptCommandRef, AddRef), asCALL_THISCALL},
@@ -2824,6 +2875,16 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"VxRect", "VxRect &opAssign(const VxRect &in)", "VxRect &VxRect::opAssign(const VxRect &in)", asFUNCTION(BMLAS_AssignVxRect), asCALL_CDECL_OBJLAST},
     {"PhysicalizeDefinition", "PhysicalizeDefinition &opAssign(const PhysicalizeDefinition &in)", "PhysicalizeDefinition &PhysicalizeDefinition::opAssign(const PhysicalizeDefinition &in)", asFUNCTION(BMLAS_AssignPhysicalizeDefinition), asCALL_CDECL_OBJLAST},
     {"ObjectLoadOptions", "ObjectLoadOptions &opAssign(const ObjectLoadOptions &in)", "ObjectLoadOptions &ObjectLoadOptions::opAssign(const ObjectLoadOptions &in)", asFUNCTION(BMLAS_AssignObjectLoadOptions), asCALL_CDECL_OBJLAST},
+    {"TimerEvent", "TimerEvent &opAssign(const TimerEvent &in)", "TimerEvent &TimerEvent::opAssign(const TimerEvent &in)", asFUNCTION(BMLAS_AssignTimerEvent), asCALL_CDECL_OBJLAST},
+    {"RenderEvent", "RenderEvent &opAssign(const RenderEvent &in)", "RenderEvent &RenderEvent::opAssign(const RenderEvent &in)", asFUNCTION(BMLAS_AssignRenderEvent), asCALL_CDECL_OBJLAST},
+    {"CheatEvent", "CheatEvent &opAssign(const CheatEvent &in)", "CheatEvent &CheatEvent::opAssign(const CheatEvent &in)", asFUNCTION(BMLAS_AssignCheatEvent), asCALL_CDECL_OBJLAST},
+    {"LoadObjectEvent", "LoadObjectEvent &opAssign(const LoadObjectEvent &in)", "LoadObjectEvent &LoadObjectEvent::opAssign(const LoadObjectEvent &in)", asFUNCTION(BMLAS_AssignLoadObjectEvent), asCALL_CDECL_OBJLAST},
+    {"LoadScriptEvent", "LoadScriptEvent &opAssign(const LoadScriptEvent &in)", "LoadScriptEvent &LoadScriptEvent::opAssign(const LoadScriptEvent &in)", asFUNCTION(BMLAS_AssignLoadScriptEvent), asCALL_CDECL_OBJLAST},
+    {"CommandEvent", "CommandEvent &opAssign(const CommandEvent &in)", "CommandEvent &CommandEvent::opAssign(const CommandEvent &in)", asFUNCTION(BMLAS_AssignCommandEvent), asCALL_CDECL_OBJLAST},
+    {"ConfigEvent", "ConfigEvent &opAssign(const ConfigEvent &in)", "ConfigEvent &ConfigEvent::opAssign(const ConfigEvent &in)", asFUNCTION(BMLAS_AssignConfigEvent), asCALL_CDECL_OBJLAST},
+    {"DataShareEvent", "DataShareEvent &opAssign(const DataShareEvent &in)", "DataShareEvent &DataShareEvent::opAssign(const DataShareEvent &in)", asFUNCTION(BMLAS_AssignDataShareEvent), asCALL_CDECL_OBJLAST},
+    {"PhysicalizeEvent", "PhysicalizeEvent &opAssign(const PhysicalizeEvent &in)", "PhysicalizeEvent &PhysicalizeEvent::opAssign(const PhysicalizeEvent &in)", asFUNCTION(BMLAS_AssignPhysicalizeEvent), asCALL_CDECL_OBJLAST},
+    {"ObjectEvent", "ObjectEvent &opAssign(const ObjectEvent &in)", "ObjectEvent &ObjectEvent::opAssign(const ObjectEvent &in)", asFUNCTION(BMLAS_AssignObjectEvent), asCALL_CDECL_OBJLAST},
     {"ObjectLoadResult", "bool get_Success() const", "bool ObjectLoadResult::get_Success() const", asMETHOD(BMLAS_ObjectLoadResult, IsSuccess), asCALL_THISCALL},
     {"ObjectLoadResult", "int get_Count() const", "int ObjectLoadResult::get_Count() const", asMETHOD(BMLAS_ObjectLoadResult, GetCount), asCALL_THISCALL},
     {"ObjectLoadResult", "CKObject@ BorrowMainObject() const", "CKObject@ ObjectLoadResult::BorrowMainObject() const", asMETHOD(BMLAS_ObjectLoadResult, BorrowMainObject), asCALL_THISCALL},

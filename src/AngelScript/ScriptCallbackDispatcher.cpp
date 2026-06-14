@@ -136,8 +136,10 @@ bool ScriptCallbackDispatcher::CallOnProcess(CKContext *context, ScriptModRuntim
 }
 
 bool ScriptCallbackDispatcher::CallGameEvent(CKContext *context, ScriptModRuntime &runtime, ScriptModContextView &contextView, size_t eventIndex, ScriptDiagnostic &diagnostic) {
-    if (eventIndex >= ScriptGameEventCount)
+    if (eventIndex >= ScriptGameEventCount) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Callback, "Script game event index is out of range.");
         return false;
+    }
     int eventValue = static_cast<int>(eventIndex);
     return CallWithEvent(context, runtime, ScriptCallbackOnGameEvent, contextView, &eventValue, diagnostic);
 }
@@ -182,7 +184,7 @@ bool ScriptCallbackDispatcher::CallLoadScript(CKContext *context,
                                               const char *filename,
                                               CKBehavior *script,
                                               ScriptDiagnostic &diagnostic) {
-    ScriptLoadScriptEventView event(filename, script);
+    ScriptLoadScriptEventView event(context, filename, script);
     return CallWithEvent(context, runtime, ScriptCallbackOnLoadScript, contextView, &event, diagnostic);
 }
 
@@ -238,7 +240,7 @@ bool ScriptCallbackDispatcher::CallPhysicalize(CKContext *context,
                                                int concaveCnt,
                                                CKMesh **concaveMesh,
                                                ScriptDiagnostic &diagnostic) {
-    ScriptPhysicalizeEventView event(target, fixed, friction, elasticity, mass, collGroup, startFrozen, enableColl,
+    ScriptPhysicalizeEventView event(context, target, fixed, friction, elasticity, mass, collGroup, startFrozen, enableColl,
                                      calcMassCenter, linearDamp, rotDamp, collSurface, massCenter, convexCnt,
                                      convexMesh, ballCnt, ballCenter, ballRadius, concaveCnt, concaveMesh);
     return CallWithEvent(context, runtime, ScriptCallbackOnPhysicalize, contextView, &event, diagnostic);
@@ -249,7 +251,7 @@ bool ScriptCallbackDispatcher::CallUnphysicalize(CKContext *context,
                                                  ScriptModContextView &contextView,
                                                  CK3dEntity *target,
                                                  ScriptDiagnostic &diagnostic) {
-    ScriptObjectEventView event(target);
+    ScriptObjectEventView event(context, target);
     return CallWithEvent(context, runtime, ScriptCallbackOnUnphysicalize, contextView, &event, diagnostic);
 }
 

@@ -212,6 +212,9 @@ void OnUnphysicalize(const BML::ModContext &in ctx, const BML::ObjectEvent &in e
 `CommandEvent.Phase` distinguishes pre-execute, post-execute, and completion.
 `OnModifyConfig` exposes the changed category/key and a `ConfigProperty@`
 borrowed through the normal OOP config facade.
+Event objects copy scalar/string/list payloads, so storing an event object keeps
+only that snapshot. Handles returned by `Borrow*` methods are still borrowed CK
+handles and should be used immediately.
 
 ## ModContext
 
@@ -540,12 +543,14 @@ Common phases:
 ## Lifetime Rules
 
 - Script callbacks use `NO_SUSPEND`; suspension is an error.
-- Event views, `CommandCompletion`, and borrowed CK object/manager handles are
-  callback-scope only. CKAS `ObjectRef@`-derived handles are the preferred
-  long-lived identity for CK objects; raw pointers resolved from them are still
-  short-lived.
-- `ModContext` is a per-mod facade. Do not store callback-scope event views in
-  long-lived fields.
+- Event objects are snapshots of scalar/string/list payloads. `Borrow*` methods
+  on those events return borrowed CK handles that may become null or stale after
+  the callback.
+- `CommandCompletion` and borrowed CK object/manager handles are callback-scope
+  only. CKAS `ObjectRef@`-derived handles are the preferred long-lived identity
+  for CK objects; raw pointers resolved from them are still short-lived.
+- `ModContext` is a per-mod facade. Store durable IDs/refs instead of borrowed
+  CK handles when work crosses callbacks or frames.
 - Timer, Command, and DataShareRequest resources are owned by the script mod
   and are cleaned up on mod unload.
 - Export handles are generation-checked and become invalid when the owner or
@@ -555,7 +560,7 @@ Common phases:
 ## Do Not
 
 - Do not rely on old callback overloads.
-- Do not store borrowed event views, CK objects, or CK managers in long-lived fields.
+- Do not store borrowed CK objects or CK managers in long-lived fields.
 - Do not access raw CKAngelScript engine/context/module/function state. This
   does not forbid ordinary CKAngelScript script APIs such as `Scene`, `Behavior`,
   `BB`, `Param`, or registered CK/Vx SDK bindings.
@@ -581,9 +586,10 @@ Common phases:
 BML Script Mod v1 uses one `*.mod.as` entry per single-file, directory, or
 `.zip` script package, AngelScript metadata declarations, fixed callback
 signatures, script-owned Timer/Command objects, typed DataShare requests, and
-typed export handles. `BML::ModContext` is the primary facade. Event objects and
-borrowed CK handles are callback-scope views; CKAS `ObjectRef@`-derived handles
-are the long-lived CK object identity model. CKAngelScript runtime scripts,
+typed export handles. `BML::ModContext` is the primary facade. Event objects are
+snapshots, while `Borrow*` methods remain borrowed CK escape hatches; CKAS
+`ObjectRef@`-derived handles are the long-lived CK object identity model.
+CKAngelScript runtime scripts,
 `AngelScript Component`, `Scene`, `Behavior`, `BB`, `Param`, `Message`, `Async`,
 raw CK/Vx SDK, ImGui, and registered extension APIs remain available according
 to their own contracts; BML v1 only defines the BML-owned mod surface. Hot

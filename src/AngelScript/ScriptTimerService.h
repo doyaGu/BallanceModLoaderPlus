@@ -22,7 +22,7 @@ class ScriptTimerEventView {
 public:
     explicit ScriptTimerEventView(Timer *timer = nullptr);
 
-    bool IsValid() const { return m_Timer != nullptr; }
+    bool IsValid() const { return m_Valid; }
     int GetId() const;
     std::string GetName() const;
     int GetState() const;
@@ -33,7 +33,15 @@ public:
     float GetProgress() const;
 
 private:
-    Timer *m_Timer = nullptr;
+    bool m_Valid = false;
+    int m_Id = 0;
+    std::string m_Name;
+    int m_State = 0;
+    int m_Type = 0;
+    int m_TimeBase = 0;
+    int m_CompletedIterations = 0;
+    int m_RemainingIterations = 0;
+    float m_Progress = 0.0f;
 };
 
 class ScriptTimerServiceState;
