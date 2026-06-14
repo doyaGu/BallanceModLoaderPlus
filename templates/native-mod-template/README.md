@@ -1,4 +1,4 @@
-# BML+ Mod Template
+# BML+ Native Mod Template
 
 Minimal CMake-based template to build a BML+ mod with a sample command.
 
