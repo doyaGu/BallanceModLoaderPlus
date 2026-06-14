@@ -167,7 +167,7 @@ namespace ExecuteBB {
         bbObjLoad->Execute(0);
 
         XObjectArray *array = *static_cast<XObjectArray **>(bbObjLoad->GetOutputParameterWriteDataPtr(0));
-        if (rename) {
+        if (array && rename) {
             static int count = 0;
             count++;
             for (CK_ID *id = array->Begin(); id != array->End(); id++) {
