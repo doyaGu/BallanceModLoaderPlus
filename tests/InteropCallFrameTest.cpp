@@ -69,7 +69,7 @@ TEST(InteropCallFrameTest, TracksAndClearsResultType) {
     EXPECT_EQ(BML_ClearCallFrameResult(nullptr), BML_ERROR_INVALID_PARAMETER);
 }
 
-TEST(InteropCallFrameTest, StoresV2ArgumentValues) {
+TEST(InteropCallFrameTest, StoresExtendedArgumentValues) {
     BML_CallFrame frame;
 
     BML_CallValue *boolArray = BML_EnsureCallFrameArg(&frame, 0);

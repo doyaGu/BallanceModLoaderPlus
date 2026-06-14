@@ -21,7 +21,7 @@ owning-plugin contract.
   `Borrow*` accessors for borrowed CK handles or BML service wrappers, and
   `OnModifyConfig` config-change events.
 - Export model: typed export registry with generation-checked `ExportRef` / native `BML_ModExport`; `BML_FindModExportEx` and `ModRef.TryFindExport` expose stable Interop lookup status codes.
-- Interop v2 `CallFrame`: bool/int/float/string/void plus scalar arrays,
+- Interop `CallFrame`: bool/int/float/string/void plus scalar arrays,
   `array<uint8>` buffers, and `CKObject@` identity values. Calls clear result
   before dispatch and leave no result after failure or `void` success.
 - Script-owned Timer: `BML::Timer` object callbacks, automatic unload cleanup.
@@ -60,7 +60,7 @@ owning-plugin contract.
 - A v1 script should not depend on undocumented declarations, old callback overloads, or generated implementation helper names.
 - BML may add new facade functions in later minor releases without breaking v1.
 - BML may reject metadata or callback shapes that were never documented here.
-- Export signatures support v1 scalars plus v2 `const array<bool/int/float/string> &in`,
+- Export signatures support scalars plus `const array<bool/int/float/string> &in`,
   `array<bool/int/float/string>@`, `const array<uint8> &in`,
   `array<uint8>@`, and `CKObject@`. Signatureless lookup is valid only when the
   export name is unique; explicit lookup compares compiled descriptors.
@@ -112,7 +112,7 @@ Some Player runs may report a non-zero exit code after `Goodbye!` has been writt
 
 ## English Quick Contract
 
-Stable v1 plus required Interop v2 is: single-file/directory/zip `*.mod.as`
+The stable BML script mod contract is: single-file/directory/zip `*.mod.as`
 entry, AngelScript metadata, fixed callbacks, snapshot event objects with
 borrowed CK handle accessors or BML service wrappers, typed export registry with
 scalar arrays/buffers/object identity, script-owned Timer/Command/DataShareRequest,

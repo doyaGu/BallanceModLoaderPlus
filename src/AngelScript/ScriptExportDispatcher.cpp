@@ -39,20 +39,6 @@ struct FrameExportCallArgs {
     }
 };
 
-static bool IsInteropV2Type(ScriptExportValueType type) {
-    return InteropSignature::IsV2Type(type);
-}
-
-static bool UsesInteropV2Types(const ScriptExportSignatureInfo &signature) {
-    if (IsInteropV2Type(signature.ReturnType))
-        return true;
-    for (ScriptExportValueType type : signature.ParameterTypes) {
-        if (IsInteropV2Type(type))
-            return true;
-    }
-    return false;
-}
-
 static CKAS_STATUS MapFrameStatus(FrameExportCallArgs *args, int status) {
     if (status == BML_ERROR_INTEROP_TYPE_MISMATCH) {
         if (args)
@@ -294,126 +280,6 @@ static CKAS_STATUS ReadStringExportResult(CKAngelScriptResultReader *reader, voi
         return status;
     args->Result->assign(data ? data : "", size);
     return CKAS_OK;
-}
-
-static CKAS_STATUS WriteFrameExportArgs(CKAngelScriptArgWriter *writer, void *userData) {
-    auto *args = static_cast<FrameExportCallArgs *>(userData);
-    if (!args || !args->Signature || !args->Frame || !args->Api)
-        return CKAS_INVALIDARGUMENT;
-
-    if (args->Signature->ParameterTypes.empty())
-        return CKAS_OK;
-
-    for (size_t i = 0; i < args->Signature->ParameterTypes.size(); ++i) {
-        const ScriptExportValueType parameterType = args->Signature->ParameterTypes[i];
-        const CKDWORD index = static_cast<CKDWORD>(i);
-
-        CKAS_STATUS status = CKAS_OK;
-        if (parameterType == ScriptExportValueType::Bool) {
-            int value = 0;
-            const int frameStatus = BML_CallFrame_GetBool(args->Frame, i, &value);
-            if (frameStatus != BML_OK) {
-                args->FailureStatus = frameStatus == BML_ERROR_INTEROP_TYPE_MISMATCH
-                                          ? BML_ERROR_INTEROP_TYPE_MISMATCH
-                                          : BML_ERROR_INTEROP_BAD_CALL_FRAME;
-                return CKAS_INVALIDARGUMENT;
-            }
-            status = args->Api->ArgSetBool(writer, index, value ? TRUE : FALSE);
-        } else if (parameterType == ScriptExportValueType::Int) {
-            int value = 0;
-            const int frameStatus = BML_CallFrame_GetInt(args->Frame, i, &value);
-            if (frameStatus != BML_OK) {
-                args->FailureStatus = frameStatus == BML_ERROR_INTEROP_TYPE_MISMATCH
-                                          ? BML_ERROR_INTEROP_TYPE_MISMATCH
-                                          : BML_ERROR_INTEROP_BAD_CALL_FRAME;
-                return CKAS_INVALIDARGUMENT;
-            }
-            status = args->Api->ArgSetInt(writer, index, value);
-        } else if (parameterType == ScriptExportValueType::Float) {
-            float value = 0.0f;
-            const int frameStatus = BML_CallFrame_GetFloat(args->Frame, i, &value);
-            if (frameStatus != BML_OK) {
-                args->FailureStatus = frameStatus == BML_ERROR_INTEROP_TYPE_MISMATCH
-                                          ? BML_ERROR_INTEROP_TYPE_MISMATCH
-                                          : BML_ERROR_INTEROP_BAD_CALL_FRAME;
-                return CKAS_INVALIDARGUMENT;
-            }
-            status = args->Api->ArgSetFloat(writer, index, value);
-        } else if (parameterType == ScriptExportValueType::String) {
-            const BML_CallValue *slot = nullptr;
-            const int frameStatus = BML_GetCallFrameArgChecked(args->Frame, i, BML_CallValueType::String, &slot);
-            if (frameStatus != BML_OK) {
-                args->FailureStatus = frameStatus == BML_ERROR_INTEROP_TYPE_MISMATCH
-                                          ? BML_ERROR_INTEROP_TYPE_MISMATCH
-                                          : BML_ERROR_INTEROP_BAD_CALL_FRAME;
-                return CKAS_INVALIDARGUMENT;
-            }
-            status = args->Api->ArgSetString(writer, index, slot->StringValue.c_str());
-        } else {
-            args->FailureStatus = BML_ERROR_INTEROP_TYPE_MISMATCH;
-            return CKAS_TYPEMISMATCH;
-        }
-
-        if (status != CKAS_OK) {
-            args->FailureStatus = BML_ERROR_INTEROP_BAD_CALL_FRAME;
-            return status;
-        }
-    }
-
-    return CKAS_OK;
-}
-
-static CKAS_STATUS ReadFrameExportResult(CKAngelScriptResultReader *reader, void *userData) {
-    auto *args = static_cast<FrameExportCallArgs *>(userData);
-    if (!args || !args->Signature || !args->Frame || !args->Api)
-        return CKAS_INVALIDARGUMENT;
-
-    const ScriptExportValueType returnType = args->Signature->ReturnType;
-    if (returnType == ScriptExportValueType::Void)
-        return CKAS_OK;
-
-    if (returnType == ScriptExportValueType::Bool) {
-        CKBOOL value = FALSE;
-        const CKAS_STATUS status = args->Api->ResultGetBool(reader, &value);
-        const int frameStatus = status == CKAS_OK ? BML_CallFrame_SetResultBool(args->Frame, value != 0) : BML_OK;
-        if (status == CKAS_OK && frameStatus != BML_OK)
-            args->FailureStatus = BML_ERROR_INTEROP_BAD_CALL_FRAME;
-        return status == CKAS_OK ? (frameStatus == BML_OK ? CKAS_OK : CKAS_INVALIDARGUMENT) : status;
-    }
-    if (returnType == ScriptExportValueType::Int) {
-        int value = 0;
-        const CKAS_STATUS status = args->Api->ResultGetInt(reader, &value);
-        const int frameStatus = status == CKAS_OK ? BML_CallFrame_SetResultInt(args->Frame, value) : BML_OK;
-        if (status == CKAS_OK && frameStatus != BML_OK)
-            args->FailureStatus = BML_ERROR_INTEROP_BAD_CALL_FRAME;
-        return status == CKAS_OK ? (frameStatus == BML_OK ? CKAS_OK : CKAS_INVALIDARGUMENT) : status;
-    }
-    if (returnType == ScriptExportValueType::Float) {
-        float value = 0.0f;
-        const CKAS_STATUS status = args->Api->ResultGetFloat(reader, &value);
-        const int frameStatus = status == CKAS_OK ? BML_CallFrame_SetResultFloat(args->Frame, value) : BML_OK;
-        if (status == CKAS_OK && frameStatus != BML_OK)
-            args->FailureStatus = BML_ERROR_INTEROP_BAD_CALL_FRAME;
-        return status == CKAS_OK ? (frameStatus == BML_OK ? CKAS_OK : CKAS_INVALIDARGUMENT) : status;
-    }
-    if (returnType == ScriptExportValueType::String) {
-        const char *data = nullptr;
-        size_t size = 0;
-        const CKAS_STATUS status = args->Api->ResultGetStringView(reader, &data, &size);
-        if (status != CKAS_OK)
-            return status;
-        if (!args->Frame) {
-            args->FailureStatus = BML_ERROR_INTEROP_BAD_CALL_FRAME;
-            return CKAS_INVALIDARGUMENT;
-        }
-        BML_ResetCallValue(args->Frame->Result);
-        args->Frame->Result.Type = BML_CallValueType::String;
-        args->Frame->Result.StringValue.assign(data ? data : "", size);
-        return CKAS_OK;
-    }
-
-    args->FailureStatus = BML_ERROR_INTEROP_TYPE_MISMATCH;
-    return CKAS_TYPEMISMATCH;
 }
 
 static CKAS_STATUS ConfigureFrameExportContext(asIScriptContext *context, void *userData) {
@@ -828,15 +694,10 @@ int ScriptExportDispatcher::CallFrame(CKContext *context,
 
     ScriptMethodCall call;
     call.Method = binding.Method;
-    if (UsesInteropV2Types(binding.SignatureInfo)) {
-        call.ConfigureContext = ConfigureFrameExportContext;
-        call.ReadContextResult = binding.SignatureInfo.ReturnType == ScriptExportValueType::Void
-                                     ? nullptr
-                                     : ReadFrameExportContextResult;
-    } else {
-        call.WriteArgs = binding.SignatureInfo.ParameterTypes.empty() ? nullptr : WriteFrameExportArgs;
-        call.ReadResult = binding.SignatureInfo.ReturnType == ScriptExportValueType::Void ? nullptr : ReadFrameExportResult;
-    }
+    call.ConfigureContext = ConfigureFrameExportContext;
+    call.ReadContextResult = binding.SignatureInfo.ReturnType == ScriptExportValueType::Void
+                                 ? nullptr
+                                 : ReadFrameExportContextResult;
     call.UserData = &callArgs;
     call.Phase = ScriptDiagnosticPhase::ExportCall;
     call.FailurePrefix = "Export call failed";

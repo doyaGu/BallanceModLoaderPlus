@@ -227,7 +227,7 @@ public:
                        NativeObjectIdentityExport);
         RunNativeExportLifecycleSmoke();
         RunNativeExportHardeningSmoke();
-        RunNativeV2ExportSmoke();
+        RunNativeExtendedExportSmoke();
     }
 
     void OnUnload() override {
@@ -382,7 +382,7 @@ private:
                           failResultType);
     }
 
-    void RunNativeV2ExportSmoke() {
+    void RunNativeExtendedExportSmoke() {
         int sumStatus = BML_ERROR_FAIL;
         int sumResult = 0;
         {
@@ -475,7 +475,7 @@ private:
 
         const int bufferFirst = bufferResult.empty() ? -1 : static_cast<int>(bufferResult[0]);
         const int bufferLast = bufferResult.size() < 3 ? -1 : static_cast<int>(bufferResult[2]);
-        GetLogger()->Info("BML native interop v2 smoke sumStatus=%d sum=%d bufferStatus=%d bufferFirst=%d bufferLast=%d stringArrayStatus=%d stringCount=%d objectStatus=%d objectId=%d",
+        GetLogger()->Info("BML native interop extended smoke sumStatus=%d sum=%d bufferStatus=%d bufferFirst=%d bufferLast=%d stringArrayStatus=%d stringCount=%d objectStatus=%d objectId=%d",
                           sumStatus,
                           sumResult,
                           bufferStatus,

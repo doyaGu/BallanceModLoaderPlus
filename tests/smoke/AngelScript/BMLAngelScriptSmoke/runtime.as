@@ -547,17 +547,17 @@ class BMLBindingsSmokeMod {
       }
       BML::ExportRef@ doubleInts = self.FindExport("DoubleInts", "array<int>@ DoubleInts(const array<int> &in values)");
       if (doubleInts !is null && doubleInts.IsValid) {
-        BML::CallFrame@ v2Frame = BML::CallFrame();
+        BML::CallFrame@ arrayFrame = BML::CallFrame();
         array<int> values = {4, 6, 10};
-        int v2Status = v2Frame.SetIntArray(0, values);
-        if (v2Status == 0) {
-          v2Status = doubleInts.Call(v2Frame);
+        int arrayStatus = arrayFrame.SetIntArray(0, values);
+        if (arrayStatus == 0) {
+          arrayStatus = doubleInts.Call(arrayFrame);
         }
         array<int>@ doubled;
-        int getStatus = v2Status == 0 ? v2Frame.GetResultIntArray(doubled) : v2Status;
-        LogInfo(ctx, "BML script export DoubleInts status=" + v2Status +
+        int getStatus = arrayStatus == 0 ? arrayFrame.GetResultIntArray(doubled) : arrayStatus;
+        LogInfo(ctx, "BML script export DoubleInts status=" + arrayStatus +
                     " get=" + getStatus +
-                    " type=" + v2Frame.ResultType +
+                    " type=" + arrayFrame.ResultType +
                     " ok=" + BoolText(doubled !is null &&
                     doubled.length() == 3 &&
                     doubled[0] == 8 &&

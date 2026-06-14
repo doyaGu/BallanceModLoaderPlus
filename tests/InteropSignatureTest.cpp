@@ -4,7 +4,7 @@
 
 #include <gtest/gtest.h>
 
-TEST(InteropSignatureTest, ValidatesSupportedV1Signatures) {
+TEST(InteropSignatureTest, ValidatesSupportedScalarSignatures) {
     BML::InteropSignatureInfo info;
     EXPECT_EQ(BML::InteropSignature::Validate("int AddOne(int value)", "AddOne", &info), BML_OK);
     EXPECT_EQ(info.Name, "AddOne");
@@ -27,7 +27,7 @@ TEST(InteropSignatureTest, ValidatesSupportedV1Signatures) {
     EXPECT_TRUE(info.ParameterTypes.empty());
 }
 
-TEST(InteropSignatureTest, ValidatesSupportedV2Signatures) {
+TEST(InteropSignatureTest, ValidatesSupportedExtendedSignatures) {
     BML::InteropSignatureInfo info;
     EXPECT_EQ(BML::InteropSignature::Validate(
                   "array<int>@ Values(const array<int> &in input)",
@@ -107,7 +107,7 @@ TEST(InteropSignatureTest, RejectsBadOrMismatchedSignatures) {
               BML_ERROR_INTEROP_BAD_SIGNATURE);
 }
 
-TEST(InteropSignatureTest, RejectsUnsupportedV2Shapes) {
+TEST(InteropSignatureTest, RejectsUnsupportedExtendedShapes) {
     EXPECT_EQ(BML::InteropSignature::Validate("array<array<int>>@ Nested()", "Nested"),
               BML_ERROR_INTEROP_BAD_SIGNATURE);
     EXPECT_EQ(BML::InteropSignature::Validate(
