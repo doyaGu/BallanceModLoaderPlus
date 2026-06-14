@@ -311,7 +311,7 @@ static CKAS_STATUS ReadFrameExportResult(CKAngelScriptResultReader *reader, void
             args->FailureStatus = BML_ERROR_INTEROP_BAD_CALL_FRAME;
             return CKAS_INVALIDARGUMENT;
         }
-        args->Frame->Result = BML_CallValue();
+        BML_ResetCallValue(args->Frame->Result);
         args->Frame->Result.Type = BML_CallValueType::String;
         args->Frame->Result.StringValue.assign(data ? data : "", size);
         return CKAS_OK;

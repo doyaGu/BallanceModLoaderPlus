@@ -406,7 +406,9 @@ if (status == 0)
 `ResultType`, and `ClearResult()` for reusable dynamic frames. Type values are
 the `BML::CallValueType` enum: empty, bool, int, float, string, scalar arrays,
 buffer, and object id. Native Interop stores copies of array, string-array, and
-buffer values. Object values cross Interop as `CK_ID` identity; `CKObject@`
+buffer values; native callers can also use the `Borrow*` CallFrame APIs for
+zero-copy read views that stay valid only until the next frame mutation, call,
+clear, or destroy. Object values cross Interop as `CK_ID` identity; `CKObject@`
 handles are resolved only while reading/writing the frame or dispatching a
 script call.
 

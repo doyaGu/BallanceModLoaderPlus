@@ -485,14 +485,14 @@ int ExportRegistry::Call(BML_ModExport *handle, BML_CallFrame *frame) {
     if (!frame)
         return BML_ERROR_INTEROP_BAD_CALL_FRAME;
 
-    frame->Result = BML_CallValue();
+    BML_ResetCallValue(frame->Result);
 
     if (handle->Kind == BML_ResolvedExportKind::Native &&
         handle->NativeGeneration == g_NativeGeneration.load(std::memory_order_acquire) &&
         handle->Native.Callback) {
         const int status = CallNativeExport(handle->Native, frame);
         if (status != BML_OK)
-            frame->Result = BML_CallValue();
+            BML_ResetCallValue(frame->Result);
         return status;
     }
 
@@ -503,7 +503,7 @@ int ExportRegistry::Call(BML_ModExport *handle, BML_CallFrame *frame) {
         handle->ScriptBinding) {
         const int status = handle->Script->CallResolvedExport(handle->ScriptBinding, frame);
         if (status != BML_OK)
-            frame->Result = BML_CallValue();
+            BML_ResetCallValue(frame->Result);
         return status;
     }
 #endif
@@ -517,7 +517,7 @@ int ExportRegistry::Call(BML_ModExport *handle, BML_CallFrame *frame) {
     if (handle->Kind == BML_ResolvedExportKind::Native && handle->Native.Callback) {
         const int status = CallNativeExport(handle->Native, frame);
         if (status != BML_OK)
-            frame->Result = BML_CallValue();
+            BML_ResetCallValue(frame->Result);
         return status;
     }
 
@@ -525,7 +525,7 @@ int ExportRegistry::Call(BML_ModExport *handle, BML_CallFrame *frame) {
     if (handle->Kind == BML_ResolvedExportKind::Script && handle->Script && handle->ScriptBinding) {
         const int status = handle->Script->CallResolvedExport(handle->ScriptBinding, frame);
         if (status != BML_OK)
-            frame->Result = BML_CallValue();
+            BML_ResetCallValue(frame->Result);
         return status;
     }
 #endif

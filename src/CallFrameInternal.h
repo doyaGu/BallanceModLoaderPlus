@@ -58,6 +58,7 @@ int BML_GetCallFrameResultChecked(const BML_CallFrame *frame,
 int BML_ClearCallFrameResult(BML_CallFrame *frame);
 const char *BML_BorrowCallFrameString(const BML_CallFrame *frame, size_t index);
 const char *BML_BorrowCallFrameResultString(const BML_CallFrame *frame);
+void BML_ResetCallValue(BML_CallValue &value);
 void BML_ClearCallFrame(BML_CallFrame *frame);
 
 #endif

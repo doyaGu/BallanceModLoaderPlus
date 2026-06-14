@@ -95,7 +95,7 @@ int BML_ClearCallFrameArg(BML_CallFrame *frame, size_t index) {
     if (slot->Type == BML_CallValueType::Empty)
         return BML_ERROR_NOT_FOUND;
 
-    *slot = BML_CallValue();
+    BML_ResetCallValue(*slot);
     TrimCallFrameArgCount(frame);
     return BML_OK;
 }
@@ -128,7 +128,7 @@ int BML_ClearCallFrameResult(BML_CallFrame *frame) {
     if (frame->Result.Type == BML_CallValueType::Empty)
         return BML_ERROR_NOT_FOUND;
 
-    frame->Result = BML_CallValue();
+    BML_ResetCallValue(frame->Result);
     return BML_OK;
 }
 
@@ -143,13 +143,24 @@ const char *BML_BorrowCallFrameResultString(const BML_CallFrame *frame) {
     return frame->Result.StringValue.c_str();
 }
 
+void BML_ResetCallValue(BML_CallValue &value) {
+    value.Type = BML_CallValueType::Empty;
+    value.IntValue = 0;
+    value.FloatValue = 0.0f;
+    value.StringValue.clear();
+    value.IntArrayValue.clear();
+    value.FloatArrayValue.clear();
+    value.StringArrayValue.clear();
+    value.BufferValue.clear();
+}
+
 void BML_ClearCallFrame(BML_CallFrame *frame) {
     if (!frame)
         return;
 
     for (size_t i = 0; i < BML_CallFrame::InlineArgCount; ++i)
-        frame->InlineArgs[i] = BML_CallValue();
+        BML_ResetCallValue(frame->InlineArgs[i]);
     frame->ExtraArgs.clear();
     frame->ArgCount = 0;
-    frame->Result = BML_CallValue();
+    BML_ResetCallValue(frame->Result);
 }
