@@ -132,8 +132,7 @@ foreach ($path in @(
     (Join-Path $layout.RepoRoot 'README_zh-CN.md'),
     (Join-Path $layout.RepoRoot 'include\BML\Interop.h'),
     (Join-Path $layout.TemplatesRoot 'README.md'),
-    $nativeTemplate,
-    (Join-Path $layout.NativeInteropSmokeRoot 'BMLNativeInteropSmokeMod.cpp')
+    $nativeTemplate
 )) {
     Assert-BMLPath -Path $path
 }
@@ -148,7 +147,6 @@ foreach ($path in @(
     (Join-Path $debugInstall 'lib\BMLPlus.lib'),
     (Join-Path $debugInstall 'lib\cmake\BML\BMLTargets-debug.cmake'),
     (Join-Path $releaseBin 'BMLPlus.dll'),
-    (Join-Path $releaseBin 'BMLNativeInteropSmoke.bmodp'),
     (Join-Path $debugBin 'BMLPlus.pdb'),
     (Join-Path $runtimeSource 'ModLoader\Configs\BML.cfg'),
     (Join-Path $runtimeSource 'ModLoader\Fonts\unifont.otf'),
@@ -183,7 +181,6 @@ Copy-RequiredFile -Source (Join-Path $releaseBin 'BMLPlus.dll') -Destination (Jo
 Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'LICENSE') -Destination (Join-Path $runtimeStage 'LICENSE')
 Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'README.md') -Destination (Join-Path $runtimeStage 'README.md')
 Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'README_zh-CN.md') -Destination (Join-Path $runtimeStage 'README_zh-CN.md')
-Copy-RequiredFile -Source (Join-Path $releaseBin 'BMLNativeInteropSmoke.bmodp') -Destination (Join-Path $runtimeStage 'Examples\BMLNativeInteropSmoke.bmodp')
 Copy-RequiredFile -Source (Join-Path $layout.TemplatesRoot 'README.md') -Destination (Join-Path $runtimeStage 'Templates\README.md')
 Copy-BMLDirectoryContents -SourceDir $nativeTemplate -DestinationDir (Join-Path $runtimeStage 'Templates\native-mod-template')
 
@@ -201,8 +198,6 @@ New-BMLCleanDirectory $releaseSdkStage
 Copy-BMLDirectoryContents -SourceDir $releaseInstall -DestinationDir $releaseSdkStage
 Copy-RequiredFile -Source (Join-Path $layout.TemplatesRoot 'README.md') -Destination (Join-Path $releaseSdkStage 'templates\README.md')
 Copy-BMLDirectoryContents -SourceDir $nativeTemplate -DestinationDir (Join-Path $releaseSdkStage 'templates\native-mod-template')
-Copy-RequiredFile -Source (Join-Path $releaseBin 'BMLNativeInteropSmoke.bmodp') -Destination (Join-Path $releaseSdkStage 'examples\native\BMLNativeInteropSmoke.bmodp')
-Copy-RequiredFile -Source (Join-Path $layout.NativeInteropSmokeRoot 'BMLNativeInteropSmokeMod.cpp') -Destination (Join-Path $releaseSdkStage 'examples\native\BMLNativeInteropSmokeMod.cpp')
 
 if ($IncludeAngelScript) {
     Copy-CKAngelScriptHeaders -DestinationIncludeDir (Join-Path $releaseSdkStage 'include')
