@@ -3,6 +3,10 @@
 This document tracks the script-facing coverage of the native `IBML` surface.
 The script facade is intentionally not a raw ABI dump: long-lived callbacks,
 dependency mutation, and raw CKAngelScript handles stay outside the script API.
+This matrix is about BML-owned facade coverage only. It is not a complete list
+of what a BML script mod can do, because script mods run inside CKAngelScript
+and may also use CKAngelScript's `Scene`, `Behavior`, `BB`, `Param`, raw CK/Vx
+SDK bindings, and other registered engine-extension namespaces.
 
 ## Coverage Matrix
 
@@ -34,6 +38,9 @@ dependency mutation, and raw CKAngelScript handles stay outside the script API.
 ## Deliberately Omitted
 
 - Raw CKAngelScript engine/context/module/function handles.
+- Native FFI as a supported substitute for plugin-owned script APIs
+  (`NativePointer`, `DynCall`, or writable native memory should remain an
+  advanced escape hatch, not the normal interop story).
 - Native timer callback and command callback pointers.
 - `RegisterDependency`, `RegisterOptionalDependency`, and `ClearDependencies`.
 - Raw `DataShareRequest` callback/userData, method-name callbacks, and untyped byte payloads.

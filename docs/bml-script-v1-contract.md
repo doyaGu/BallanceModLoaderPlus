@@ -22,6 +22,10 @@ release contract, not a design sketch.
 - Advanced ImGui: generated `ImGui` namespace documented in `docs/bml-imgui-api.as`; frame-scope only, with context/platform lifecycle, allocators, raw callbacks, and raw `void*` intentionally omitted.
 - Diagnostics: script failures expose phase/message through logs, Mod menu, script `ModRef`, and native interop.
 - CKAngelScript integration: optional runtime dependency; BML+ must still load without `AngelScript.dll`.
+- CKAngelScript API coexistence: BML script mods may use CKAngelScript's
+  registered script APIs, including `Scene`, `Behavior`, `BB`, `Param`, raw
+  CK/Vx SDK bindings, and APIs from other registered engine extensions. This
+  contract defines only the BML-owned surface.
 
 ## Experimental or Deferred
 
@@ -29,10 +33,14 @@ release contract, not a design sketch.
 - Script package signing, package permissions, and multi-mod script archives.
 - `.bmodp` script packages. `.bmodp` remains reserved for native DLL mods.
 - Complete `IBML` facade coverage. v1 covers the practical script-facing subset and documents omissions.
-- Stable object/game-entity wrappers. v1 uses `CK_ID`, borrowed object handles, and event views.
+- Stable BML-owned object/game-entity wrappers. v1 uses `CK_ID`, borrowed object
+  handles, and event views in the BML facade; CKAngelScript's own `Scene`
+  refs and CK/Vx bindings follow the CKAngelScript contract.
 - Full permission/sandbox policy. v1 keeps path escape checks and does not expose process/network APIs.
 - Formal performance thresholds. The perf probe records baseline numbers, but pass/fail thresholds are not frozen.
-- Raw CKAngelScript access from ordinary script mods.
+- Raw CKAngelScript engine/context/module/function access from ordinary script mods.
+- Treating `NativePointer`, `DynCall`, or writable native memory as a supported
+  replacement for plugin-owned script APIs.
 - Async resume or script suspension.
 
 ## Compatibility Rules
@@ -53,4 +61,4 @@ Some Player runs may report a non-zero exit code after `Goodbye!` has been writt
 
 ## English Quick Contract
 
-Stable v1 is: single-file/directory/zip `*.mod.as` entry, AngelScript metadata, fixed callbacks, callback-scope event views, typed export registry, script-owned Timer/Command/DataShareRequest, optional CKAngelScript. Deferred: hot reload, `.bmodp` script packages, full object wrappers, full sandbox policy, raw CKAS access, async resume.
+Stable v1 is: single-file/directory/zip `*.mod.as` entry, AngelScript metadata, fixed callbacks, callback-scope event views, typed export registry, script-owned Timer/Command/DataShareRequest, optional CKAngelScript. CKAngelScript's own Scene/Behavior/BB/Param and CK/Vx bindings are available under the CKAngelScript contract. Deferred: hot reload, `.bmodp` script packages, BML-owned full object wrappers, full sandbox policy, raw CKAS engine/module/function access, async resume.
