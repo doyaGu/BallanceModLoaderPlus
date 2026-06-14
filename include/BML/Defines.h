@@ -132,6 +132,18 @@
 #define BML_ERROR_CONFIG_WRITE              (-602) /**< Failed to write configuration */
 #define BML_ERROR_CONFIG_FORMAT             (-603) /**< Invalid configuration format */
 
+/* Interop-specific error codes */
+#define BML_ERROR_INTEROP_TARGET_NOT_FOUND       (-700) /**< Target mod was not found */
+#define BML_ERROR_INTEROP_TARGET_FAILED          (-701) /**< Target mod is failed or unavailable */
+#define BML_ERROR_INTEROP_EXPORT_NOT_FOUND       (-702) /**< Requested export was not found */
+#define BML_ERROR_INTEROP_EXPORT_AMBIGUOUS       (-703) /**< Export name matches more than one signature */
+#define BML_ERROR_INTEROP_BAD_SIGNATURE          (-704) /**< Export signature is malformed or unsupported */
+#define BML_ERROR_INTEROP_SIGNATURE_MISMATCH     (-705) /**< Export name exists but signature does not match */
+#define BML_ERROR_INTEROP_BAD_CALL_FRAME         (-706) /**< Call frame is invalid for the requested operation */
+#define BML_ERROR_INTEROP_TYPE_MISMATCH          (-707) /**< Call frame value type does not match the requested type */
+#define BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED (-708) /**< Target export failed during execution */
+#define BML_ERROR_INTEROP_HANDLE_STALE           (-709) /**< Export handle no longer resolves to a live export */
+
 BML_BEGIN_CDECLS
 
 BML_EXPORT const char *BML_GetErrorString(int errorCode);

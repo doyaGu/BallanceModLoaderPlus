@@ -10,6 +10,7 @@
 #include "BML/IConfig.h"
 #include "BML/IMod.h"
 #include "BML/DataShare.h"
+#include "BML/Interop.h"
 
 #include "BML/Gui.h"
 #include "BML/InputHook.h"

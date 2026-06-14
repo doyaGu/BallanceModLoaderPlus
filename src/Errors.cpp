@@ -89,6 +89,28 @@ const char *BML_GetErrorString(int errorCode) {
         case BML_ERROR_CONFIG_FORMAT:
             return "Invalid configuration format";
 
+        /* Interop-specific error codes */
+        case BML_ERROR_INTEROP_TARGET_NOT_FOUND:
+            return "Interop target mod not found";
+        case BML_ERROR_INTEROP_TARGET_FAILED:
+            return "Interop target mod failed or unavailable";
+        case BML_ERROR_INTEROP_EXPORT_NOT_FOUND:
+            return "Interop export not found";
+        case BML_ERROR_INTEROP_EXPORT_AMBIGUOUS:
+            return "Interop export name is ambiguous";
+        case BML_ERROR_INTEROP_BAD_SIGNATURE:
+            return "Interop export signature is malformed or unsupported";
+        case BML_ERROR_INTEROP_SIGNATURE_MISMATCH:
+            return "Interop export signature mismatch";
+        case BML_ERROR_INTEROP_BAD_CALL_FRAME:
+            return "Interop call frame is invalid";
+        case BML_ERROR_INTEROP_TYPE_MISMATCH:
+            return "Interop call frame value type mismatch";
+        case BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED:
+            return "Interop target export execution failed";
+        case BML_ERROR_INTEROP_HANDLE_STALE:
+            return "Interop export handle is stale";
+
         /* Unknown error code */
         default:
             return "Unknown error";
