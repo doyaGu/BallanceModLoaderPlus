@@ -62,17 +62,22 @@ inline bool IsJoystickButtonIndexValid(int button) {
     return button >= 0 && button < 32;
 }
 
+inline bool IsKeyboardKeyIndexValid(CKKEYBOARD key) {
+    const int code = static_cast<int>(key);
+    return code >= 0 && code < 256;
+}
+
 inline bool IsJoystickAttached(InputHook *input, int joystick) {
     return input && IsJoystickIndexValid(joystick) && input->IsJoystickAttached(joystick);
 }
 
 inline bool IsKeyDown(InputHook *input, CKKEYBOARD key) {
-    return input && input->IsKeyDown(static_cast<CKDWORD>(key));
+    return input && IsKeyboardKeyIndexValid(key) && input->IsKeyDown(static_cast<CKDWORD>(key));
 }
 
 inline bool IsKeyDown(InputHook *input, CKKEYBOARD key, unsigned int &stamp) {
     stamp = 0;
-    if (!input)
+    if (!input || !IsKeyboardKeyIndexValid(key))
         return false;
     CKDWORD nativeStamp = 0;
     const bool result = input->IsKeyDown(static_cast<CKDWORD>(key), &nativeStamp) != FALSE;
@@ -81,24 +86,24 @@ inline bool IsKeyDown(InputHook *input, CKKEYBOARD key, unsigned int &stamp) {
 }
 
 inline bool IsKeyUp(InputHook *input, CKKEYBOARD key) {
-    return input && input->IsKeyUp(static_cast<CKDWORD>(key));
+    return input && IsKeyboardKeyIndexValid(key) && input->IsKeyUp(static_cast<CKDWORD>(key));
 }
 
 inline bool IsKeyPressed(InputHook *input, CKKEYBOARD key) {
-    return input && input->IsKeyPressed(static_cast<CKDWORD>(key));
+    return input && IsKeyboardKeyIndexValid(key) && input->IsKeyPressed(static_cast<CKDWORD>(key));
 }
 
 inline bool IsKeyReleased(InputHook *input, CKKEYBOARD key) {
-    return input && input->IsKeyReleased(static_cast<CKDWORD>(key));
+    return input && IsKeyboardKeyIndexValid(key) && input->IsKeyReleased(static_cast<CKDWORD>(key));
 }
 
 inline bool IsKeyToggled(InputHook *input, CKKEYBOARD key) {
-    return input && input->IsKeyToggled(static_cast<CKDWORD>(key));
+    return input && IsKeyboardKeyIndexValid(key) && input->IsKeyToggled(static_cast<CKDWORD>(key));
 }
 
 inline bool IsKeyToggled(InputHook *input, CKKEYBOARD key, unsigned int &stamp) {
     stamp = 0;
-    if (!input)
+    if (!input || !IsKeyboardKeyIndexValid(key))
         return false;
     CKDWORD nativeStamp = 0;
     const bool result = input->IsKeyToggled(static_cast<CKDWORD>(key), &nativeStamp) != FALSE;
@@ -107,7 +112,7 @@ inline bool IsKeyToggled(InputHook *input, CKKEYBOARD key, unsigned int &stamp) 
 }
 
 inline std::string GetKeyName(InputHook *input, CKKEYBOARD key) {
-    if (!input)
+    if (!input || !IsKeyboardKeyIndexValid(key))
         return {};
     char buffer[128] = {};
     input->GetKeyName(static_cast<CKDWORD>(key), buffer);
@@ -119,11 +124,9 @@ inline int GetKeyFromName(InputHook *input, const std::string &name) {
 }
 
 inline int GetKeyboardState(InputHook *input, CKKEYBOARD key) {
-    if (!input)
+    if (!input || !IsKeyboardKeyIndexValid(key))
         return 0;
     const int code = static_cast<int>(key);
-    if (code < 0 || code >= 256)
-        return 0;
     const unsigned char *state = input->GetKeyboardState();
     return state ? static_cast<int>(state[code]) : 0;
 }

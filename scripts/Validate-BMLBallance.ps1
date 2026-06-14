@@ -247,6 +247,7 @@ if (-not $SkipPlayer) {
     Add-BMLSmokeCheck $checks 'command-completion-script' (Test-BMLTextContains $modLogText 'BML script command completion callback') 'BML script command completion callback'
     Add-BMLSmokeCheck $checks 'command-completion-native' (Test-BMLTextContains $modLogText 'BML native command completion smoke') 'BML native command completion smoke'
     Add-BMLSmokeCheck $checks 'script-ui-facade' (Test-BMLTextContains $modLogText 'BML UI facade smoke:') 'BML UI facade smoke:'
+    Add-BMLSmokeCheck $checks 'script-input-invalid-key' (Test-BMLTextContains $modLogText 'keyboardInvalidDefaults=true') 'keyboardInvalidDefaults=true'
     Add-BMLSmokeCheck $checks 'script-imgui-advanced' (Test-BMLTextContains $modLogText 'BML ImGui advanced smoke:') 'BML ImGui advanced smoke:'
     Add-BMLSmokeCheck $checks 'native-export-lifecycle' (Test-BMLTextContains $modLogText 'BML native export lifecycle smoke') 'BML native export lifecycle smoke'
     Add-BMLSmokeCheck $checks 'native-export-hardening' (Test-BMLTextContains $modLogText 'BML native export hardening smoke findEx=0 ambiguous=-703 explicit=0 mismatch=-705 badSig=-704 missingTarget=-700 exception=-708') 'BML native export hardening smoke findEx=0 ambiguous=-703 explicit=0 mismatch=-705 badSig=-704 missingTarget=-700 exception=-708'

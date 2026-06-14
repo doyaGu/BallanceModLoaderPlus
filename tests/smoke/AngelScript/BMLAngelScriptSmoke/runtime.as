@@ -179,6 +179,21 @@ class BMLBindingsSmokeMod {
       int blockDuring = input.IsBlocked(BML::INPUT_DEVICE_KEYBOARD);
       input.Unblock(BML::INPUT_DEVICE_KEYBOARD);
       int blockAfter = input.IsBlocked(BML::INPUT_DEVICE_KEYBOARD);
+      CKKEYBOARD invalidKey = CKKEYBOARD(999);
+      uint invalidDownStamp = 123;
+      uint invalidToggleStamp = 123;
+      bool keyboardInvalidDefaults = !input.IsKeyDown(invalidKey) &&
+                                     !input.IsKeyDown(invalidKey, invalidDownStamp) &&
+                                     invalidDownStamp == 0 &&
+                                     !input.IsKeyUp(invalidKey) &&
+                                     !input.IsKeyPressed(invalidKey) &&
+                                     !input.IsKeyReleased(invalidKey) &&
+                                     !input.IsKeyToggled(invalidKey) &&
+                                     !input.IsKeyToggled(invalidKey, invalidToggleStamp) &&
+                                     invalidToggleStamp == 0 &&
+                                     input.GetKeyName(invalidKey) == "" &&
+                                     input.GetKeyboardState(invalidKey) == 0 &&
+                                     !input.IsKeyboardStateDown(invalidKey);
       VxVector invalidJoystickPos = input.GetJoystickPosition(-1);
       VxVector invalidJoystickRot = input.GetJoystickRotation(4);
       Vx2DVector invalidJoystickSliders = input.GetJoystickSliders(4);
@@ -221,6 +236,7 @@ class BMLBindingsSmokeMod {
                   " joystickPov=" + BoolText(input.GetJoystickPointOfViewAngle(0) == input.GetJoystickPointOfViewAngle(0)) +
                   " joystickButtons=" + input.GetJoystickButtonsState(0) +
                   " joystickButton0=" + BoolText(input.IsJoystickButtonDown(0, 0)) +
+                  " keyboardInvalidDefaults=" + BoolText(keyboardInvalidDefaults) +
                   " joystickInvalidDefaults=" + BoolText(joystickInvalidDefaults) +
                   " cursorVisible=" + BoolText(cursorVisible) +
                   " cursor=" + cursor +
