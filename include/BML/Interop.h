@@ -50,6 +50,17 @@ BML_EXPORT void BML_CallFrame_Clear(BML_CallFrame *frame);
 BML_EXPORT size_t BML_CallFrame_GetArgCount(const BML_CallFrame *frame);
 BML_EXPORT BML_CALL_VALUE_TYPE BML_CallFrame_GetArgType(const BML_CallFrame *frame, size_t index);
 BML_EXPORT int BML_CallFrame_ClearArg(BML_CallFrame *frame, size_t index);
+BML_EXPORT int BML_CallFrame_SetData(BML_CallFrame *frame,
+                                     size_t index,
+                                     BML_CALL_VALUE_TYPE type,
+                                     const void *data,
+                                     size_t count);
+BML_EXPORT int BML_CallFrame_BorrowData(const BML_CallFrame *frame,
+                                        size_t index,
+                                        BML_CALL_VALUE_TYPE type,
+                                        const void **outData,
+                                        size_t *outCount,
+                                        size_t *outElementSize);
 BML_EXPORT int BML_CallFrame_SetBool(BML_CallFrame *frame, size_t index, int value);
 BML_EXPORT int BML_CallFrame_GetBool(const BML_CallFrame *frame, size_t index, int *outValue);
 BML_EXPORT int BML_CallFrame_SetInt(BML_CallFrame *frame, size_t index, int value);
@@ -132,6 +143,15 @@ BML_EXPORT int BML_CallFrame_SetResultBool(BML_CallFrame *frame, int value);
 BML_EXPORT int BML_CallFrame_GetResultBool(const BML_CallFrame *frame, int *outValue);
 BML_EXPORT BML_CALL_VALUE_TYPE BML_CallFrame_GetResultType(const BML_CallFrame *frame);
 BML_EXPORT int BML_CallFrame_ClearResult(BML_CallFrame *frame);
+BML_EXPORT int BML_CallFrame_SetResultData(BML_CallFrame *frame,
+                                           BML_CALL_VALUE_TYPE type,
+                                           const void *data,
+                                           size_t count);
+BML_EXPORT int BML_CallFrame_BorrowResultData(const BML_CallFrame *frame,
+                                              BML_CALL_VALUE_TYPE type,
+                                              const void **outData,
+                                              size_t *outCount,
+                                              size_t *outElementSize);
 BML_EXPORT int BML_CallFrame_SetResultInt(BML_CallFrame *frame, int value);
 BML_EXPORT int BML_CallFrame_GetResultInt(const BML_CallFrame *frame, int *outValue);
 BML_EXPORT int BML_CallFrame_SetResultFloat(BML_CallFrame *frame, float value);

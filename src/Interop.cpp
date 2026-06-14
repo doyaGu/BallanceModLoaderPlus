@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <cstring>
 #include <new>
 #include <string>
 #include <vector>
@@ -51,6 +50,116 @@ static BML_CALL_VALUE_TYPE ToPublicCallValueType(BML_CallValueType type) {
     return static_cast<BML_CALL_VALUE_TYPE>(type);
 }
 
+static BML_CallValueType ToInternalCallValueType(BML_CALL_VALUE_TYPE type) {
+    switch (type) {
+    case BML_CALL_VALUE_BOOL:
+        return BML_CallValueType::Bool;
+    case BML_CALL_VALUE_INT:
+        return BML_CallValueType::Int;
+    case BML_CALL_VALUE_FLOAT:
+        return BML_CallValueType::Float;
+    case BML_CALL_VALUE_STRING:
+        return BML_CallValueType::String;
+    case BML_CALL_VALUE_BOOL_ARRAY:
+        return BML_CallValueType::BoolArray;
+    case BML_CALL_VALUE_INT_ARRAY:
+        return BML_CallValueType::IntArray;
+    case BML_CALL_VALUE_FLOAT_ARRAY:
+        return BML_CallValueType::FloatArray;
+    case BML_CALL_VALUE_STRING_ARRAY:
+        return BML_CallValueType::StringArray;
+    case BML_CALL_VALUE_BUFFER:
+        return BML_CallValueType::Buffer;
+    case BML_CALL_VALUE_OBJECT_ID:
+        return BML_CallValueType::ObjectId;
+    default:
+        return BML_CallValueType::Empty;
+    }
+}
+
+static bool IsContiguousDataType(BML_CALL_VALUE_TYPE type) {
+    switch (ToInternalCallValueType(type)) {
+    case BML_CallValueType::BoolArray:
+    case BML_CallValueType::IntArray:
+    case BML_CallValueType::FloatArray:
+    case BML_CallValueType::Buffer:
+        return true;
+    default:
+        return false;
+    }
+}
+
+template <BML_CallValueType Type>
+struct CallValueVectorTraits;
+
+template <>
+struct CallValueVectorTraits<BML_CallValueType::BoolArray> {
+    using Element = int;
+
+    static std::vector<Element> &Values(BML_CallValue &value) {
+        return value.IntArrayValue;
+    }
+
+    static const std::vector<Element> &Values(const BML_CallValue &value) {
+        return value.IntArrayValue;
+    }
+
+    static Element Store(Element value) {
+        return value ? 1 : 0;
+    }
+};
+
+template <>
+struct CallValueVectorTraits<BML_CallValueType::IntArray> {
+    using Element = int;
+
+    static std::vector<Element> &Values(BML_CallValue &value) {
+        return value.IntArrayValue;
+    }
+
+    static const std::vector<Element> &Values(const BML_CallValue &value) {
+        return value.IntArrayValue;
+    }
+
+    static Element Store(Element value) {
+        return value;
+    }
+};
+
+template <>
+struct CallValueVectorTraits<BML_CallValueType::FloatArray> {
+    using Element = float;
+
+    static std::vector<Element> &Values(BML_CallValue &value) {
+        return value.FloatArrayValue;
+    }
+
+    static const std::vector<Element> &Values(const BML_CallValue &value) {
+        return value.FloatArrayValue;
+    }
+
+    static Element Store(Element value) {
+        return value;
+    }
+};
+
+template <>
+struct CallValueVectorTraits<BML_CallValueType::Buffer> {
+    using Element = std::uint8_t;
+
+    static std::vector<Element> &Values(BML_CallValue &value) {
+        return value.BufferValue;
+    }
+
+    static const std::vector<Element> &Values(const BML_CallValue &value) {
+        return value.BufferValue;
+    }
+
+    static Element Store(Element value) {
+        return value;
+    }
+};
+
 template <typename T>
 static int CopyVectorOut(const std::vector<T> &values, T *buffer, size_t bufferCount, size_t *outRequiredCount) {
     if (outRequiredCount)
@@ -64,42 +173,6 @@ static int CopyVectorOut(const std::vector<T> &values, T *buffer, size_t bufferC
     return BML_OK;
 }
 
-template <typename T>
-static int BorrowVectorOut(const std::vector<T> &values, const T **outValues, size_t *outCount) {
-    if (!outValues)
-        return BML_ERROR_INVALID_PARAMETER;
-    *outValues = values.empty() ? nullptr : values.data();
-    if (outCount)
-        *outCount = values.size();
-    return BML_OK;
-}
-
-static int CopyBufferOut(const std::vector<std::uint8_t> &values,
-                         std::uint8_t *buffer,
-                         size_t bufferSize,
-                         size_t *outRequiredSize) {
-    if (outRequiredSize)
-        *outRequiredSize = values.size();
-    if (!buffer || bufferSize == 0)
-        return BML_OK;
-    if (bufferSize < values.size())
-        return BML_ERROR_INVALID_PARAMETER;
-    if (!values.empty())
-        std::memcpy(buffer, values.data(), values.size());
-    return BML_OK;
-}
-
-static int BorrowBufferOut(const std::vector<std::uint8_t> &values,
-                           const std::uint8_t **outData,
-                           size_t *outSize) {
-    if (!outData)
-        return BML_ERROR_INVALID_PARAMETER;
-    *outData = values.empty() ? nullptr : values.data();
-    if (outSize)
-        *outSize = values.size();
-    return BML_OK;
-}
-
 template <typename Fill>
 static int SetArgValue(BML_CallFrame *frame, size_t index, Fill fill) {
     return GuardInteropMutation([&]() {
@@ -110,6 +183,203 @@ static int SetArgValue(BML_CallFrame *frame, size_t index, Fill fill) {
         fill(*slot);
         return BML_OK;
     });
+}
+
+template <typename Fill>
+static int SetResultValue(BML_CallFrame *frame, Fill fill);
+
+template <BML_CallValueType Type>
+static void AssignVectorValue(BML_CallValue &value,
+                              const typename CallValueVectorTraits<Type>::Element *items,
+                              size_t count) {
+    using Traits = CallValueVectorTraits<Type>;
+    value.Type = Type;
+    auto &storage = Traits::Values(value);
+    storage.reserve(count);
+    if (!items || count == 0)
+        return;
+
+    if constexpr (Type == BML_CallValueType::BoolArray) {
+        for (size_t i = 0; i < count; ++i)
+            storage.push_back(Traits::Store(items[i]));
+    } else {
+        storage.assign(items, items + count);
+    }
+}
+
+template <BML_CallValueType Type>
+static int SetArgVectorValue(BML_CallFrame *frame,
+                             size_t index,
+                             const typename CallValueVectorTraits<Type>::Element *items,
+                             size_t count) {
+    if (!items && count > 0)
+        return BML_ERROR_INVALID_PARAMETER;
+    return SetArgValue(frame, index, [&](BML_CallValue &slot) {
+        AssignVectorValue<Type>(slot, items, count);
+    });
+}
+
+template <BML_CallValueType Type>
+static int SetResultVectorValue(BML_CallFrame *frame,
+                                const typename CallValueVectorTraits<Type>::Element *items,
+                                size_t count) {
+    if (!items && count > 0)
+        return BML_ERROR_INVALID_PARAMETER;
+    return SetResultValue(frame, [&](BML_CallValue &result) {
+        AssignVectorValue<Type>(result, items, count);
+    });
+}
+
+template <BML_CallValueType Type>
+static size_t GetArgVectorCount(const BML_CallFrame *frame, size_t index) {
+    const BML_CallValue *slot = nullptr;
+    return BML_GetCallFrameArgChecked(frame, index, Type, &slot) == BML_OK
+               ? CallValueVectorTraits<Type>::Values(*slot).size()
+               : 0;
+}
+
+template <BML_CallValueType Type>
+static size_t GetResultVectorCount(const BML_CallFrame *frame) {
+    const BML_CallValue *result = nullptr;
+    return BML_GetCallFrameResultChecked(frame, Type, &result) == BML_OK
+               ? CallValueVectorTraits<Type>::Values(*result).size()
+               : 0;
+}
+
+template <BML_CallValueType Type>
+static int CopyArgVectorValue(const BML_CallFrame *frame,
+                              size_t index,
+                              typename CallValueVectorTraits<Type>::Element *buffer,
+                              size_t bufferCount,
+                              size_t *outRequiredCount) {
+    const BML_CallValue *slot = nullptr;
+    const int status = BML_GetCallFrameArgChecked(frame, index, Type, &slot);
+    if (status != BML_OK) {
+        if (outRequiredCount)
+            *outRequiredCount = 0;
+        return status;
+    }
+    return CopyVectorOut(CallValueVectorTraits<Type>::Values(*slot), buffer, bufferCount, outRequiredCount);
+}
+
+template <BML_CallValueType Type>
+static int CopyResultVectorValue(const BML_CallFrame *frame,
+                                 typename CallValueVectorTraits<Type>::Element *buffer,
+                                 size_t bufferCount,
+                                 size_t *outRequiredCount) {
+    const BML_CallValue *result = nullptr;
+    const int status = BML_GetCallFrameResultChecked(frame, Type, &result);
+    if (status != BML_OK) {
+        if (outRequiredCount)
+            *outRequiredCount = 0;
+        return status;
+    }
+    return CopyVectorOut(CallValueVectorTraits<Type>::Values(*result), buffer, bufferCount, outRequiredCount);
+}
+
+template <BML_CallValueType Type>
+static int BorrowVectorDataOut(const BML_CallValue &value,
+                               const void **outData,
+                               size_t *outCount,
+                               size_t *outElementSize) {
+    if (!outData)
+        return BML_ERROR_INVALID_PARAMETER;
+
+    const auto &storage = CallValueVectorTraits<Type>::Values(value);
+    *outData = storage.empty() ? nullptr : storage.data();
+    if (outCount)
+        *outCount = storage.size();
+    if (outElementSize)
+        *outElementSize = sizeof(typename CallValueVectorTraits<Type>::Element);
+    return BML_OK;
+}
+
+template <BML_CallValueType Type>
+static int BorrowArgVectorValue(const BML_CallFrame *frame,
+                                size_t index,
+                                const typename CallValueVectorTraits<Type>::Element **outValues,
+                                size_t *outCount) {
+    if (!outValues)
+        return BML_ERROR_INVALID_PARAMETER;
+    if (outValues)
+        *outValues = nullptr;
+    if (outCount)
+        *outCount = 0;
+
+    const BML_CallValue *slot = nullptr;
+    const int status = BML_GetCallFrameArgChecked(frame, index, Type, &slot);
+    if (status != BML_OK)
+        return status;
+
+    const void *data = nullptr;
+    const int borrowStatus = BorrowVectorDataOut<Type>(*slot, &data, outCount, nullptr);
+    if (borrowStatus == BML_OK)
+        *outValues = static_cast<const typename CallValueVectorTraits<Type>::Element *>(data);
+    return borrowStatus;
+}
+
+template <BML_CallValueType Type>
+static int BorrowResultVectorValue(const BML_CallFrame *frame,
+                                   const typename CallValueVectorTraits<Type>::Element **outValues,
+                                   size_t *outCount) {
+    if (!outValues)
+        return BML_ERROR_INVALID_PARAMETER;
+    if (outValues)
+        *outValues = nullptr;
+    if (outCount)
+        *outCount = 0;
+
+    const BML_CallValue *result = nullptr;
+    const int status = BML_GetCallFrameResultChecked(frame, Type, &result);
+    if (status != BML_OK)
+        return status;
+
+    const void *data = nullptr;
+    const int borrowStatus = BorrowVectorDataOut<Type>(*result, &data, outCount, nullptr);
+    if (borrowStatus == BML_OK)
+        *outValues = static_cast<const typename CallValueVectorTraits<Type>::Element *>(data);
+    return borrowStatus;
+}
+
+static int SetDataValue(BML_CallValue &value, BML_CALL_VALUE_TYPE type, const void *data, size_t count) {
+    switch (ToInternalCallValueType(type)) {
+    case BML_CallValueType::BoolArray:
+        AssignVectorValue<BML_CallValueType::BoolArray>(value, static_cast<const int *>(data), count);
+        return BML_OK;
+    case BML_CallValueType::IntArray:
+        AssignVectorValue<BML_CallValueType::IntArray>(value, static_cast<const int *>(data), count);
+        return BML_OK;
+    case BML_CallValueType::FloatArray:
+        AssignVectorValue<BML_CallValueType::FloatArray>(value, static_cast<const float *>(data), count);
+        return BML_OK;
+    case BML_CallValueType::Buffer:
+        AssignVectorValue<BML_CallValueType::Buffer>(value, static_cast<const std::uint8_t *>(data), count);
+        return BML_OK;
+    default:
+        return BML_ERROR_INTEROP_UNSUPPORTED;
+    }
+}
+
+static int BorrowDataValue(const BML_CallValue &value,
+                           BML_CALL_VALUE_TYPE type,
+                           const void **outData,
+                           size_t *outCount,
+                           size_t *outElementSize) {
+    if (!outData)
+        return BML_ERROR_INVALID_PARAMETER;
+
+    switch (ToInternalCallValueType(type)) {
+    case BML_CallValueType::BoolArray:
+        return BorrowVectorDataOut<BML_CallValueType::BoolArray>(value, outData, outCount, outElementSize);
+    case BML_CallValueType::IntArray:
+        return BorrowVectorDataOut<BML_CallValueType::IntArray>(value, outData, outCount, outElementSize);
+    case BML_CallValueType::FloatArray:
+        return BorrowVectorDataOut<BML_CallValueType::FloatArray>(value, outData, outCount, outElementSize);
+    case BML_CallValueType::Buffer:
+        return BorrowVectorDataOut<BML_CallValueType::Buffer>(value, outData, outCount, outElementSize);
+    default:
+        return BML_ERROR_INTEROP_UNSUPPORTED;
+    }
 }
 
 template <typename Fill>
@@ -217,6 +487,46 @@ BML_EXPORT int BML_CallFrame_ClearArg(BML_CallFrame *frame, size_t index) {
     if (!frame)
         return BML_ERROR_INVALID_PARAMETER;
     return BML_ClearCallFrameArg(frame, index);
+}
+
+BML_EXPORT int BML_CallFrame_SetData(BML_CallFrame *frame,
+                                     size_t index,
+                                     BML_CALL_VALUE_TYPE type,
+                                     const void *data,
+                                     size_t count) {
+    if (!data && count > 0)
+        return BML_ERROR_INVALID_PARAMETER;
+    if (!IsContiguousDataType(type))
+        return BML_ERROR_INTEROP_UNSUPPORTED;
+    return GuardInteropMutation([&]() {
+        BML_CallValue *slot = BML_EnsureCallFrameArg(frame, index);
+        if (!slot)
+            return BML_ERROR_INVALID_PARAMETER;
+        BML_ResetCallValue(*slot);
+        return SetDataValue(*slot, type, data, count);
+    });
+}
+
+BML_EXPORT int BML_CallFrame_BorrowData(const BML_CallFrame *frame,
+                                        size_t index,
+                                        BML_CALL_VALUE_TYPE type,
+                                        const void **outData,
+                                        size_t *outCount,
+                                        size_t *outElementSize) {
+    if (outData)
+        *outData = nullptr;
+    if (outCount)
+        *outCount = 0;
+    if (outElementSize)
+        *outElementSize = 0;
+
+    if (!IsContiguousDataType(type))
+        return BML_ERROR_INTEROP_UNSUPPORTED;
+
+    const BML_CallValueType internalType = ToInternalCallValueType(type);
+    const BML_CallValue *slot = nullptr;
+    const int status = BML_GetCallFrameArgChecked(frame, index, internalType, &slot);
+    return status == BML_OK ? BorrowDataValue(*slot, type, outData, outCount, outElementSize) : status;
 }
 
 BML_EXPORT int BML_CallFrame_SetBool(BML_CallFrame *frame, size_t index, int value) {
@@ -331,21 +641,11 @@ BML_EXPORT int BML_CallFrame_BorrowString(const BML_CallFrame *frame,
 }
 
 BML_EXPORT int BML_CallFrame_SetBoolArray(BML_CallFrame *frame, size_t index, const int *values, size_t count) {
-    if ((!values && count > 0))
-        return BML_ERROR_INVALID_PARAMETER;
-    return SetArgValue(frame, index, [&](BML_CallValue &slot) {
-        slot.Type = BML_CallValueType::BoolArray;
-        slot.IntArrayValue.reserve(count);
-        for (size_t i = 0; i < count; ++i)
-            slot.IntArrayValue.push_back(values[i] ? 1 : 0);
-    });
+    return SetArgVectorValue<BML_CallValueType::BoolArray>(frame, index, values, count);
 }
 
 BML_EXPORT size_t BML_CallFrame_GetBoolArrayCount(const BML_CallFrame *frame, size_t index) {
-    const BML_CallValue *slot = nullptr;
-    return BML_GetCallFrameArgChecked(frame, index, BML_CallValueType::BoolArray, &slot) == BML_OK
-               ? slot->IntArrayValue.size()
-               : 0;
+    return GetArgVectorCount<BML_CallValueType::BoolArray>(frame, index);
 }
 
 BML_EXPORT int BML_CallFrame_CopyBoolArray(const BML_CallFrame *frame,
@@ -353,44 +653,22 @@ BML_EXPORT int BML_CallFrame_CopyBoolArray(const BML_CallFrame *frame,
                                            int *buffer,
                                            size_t bufferCount,
                                            size_t *outRequiredCount) {
-    const BML_CallValue *slot = nullptr;
-    const int status = BML_GetCallFrameArgChecked(frame, index, BML_CallValueType::BoolArray, &slot);
-    if (status != BML_OK) {
-        if (outRequiredCount)
-            *outRequiredCount = 0;
-        return status;
-    }
-    return CopyVectorOut(slot->IntArrayValue, buffer, bufferCount, outRequiredCount);
+    return CopyArgVectorValue<BML_CallValueType::BoolArray>(frame, index, buffer, bufferCount, outRequiredCount);
 }
 
 BML_EXPORT int BML_CallFrame_BorrowBoolArray(const BML_CallFrame *frame,
                                              size_t index,
                                              const int **outValues,
                                              size_t *outCount) {
-    if (outValues)
-        *outValues = nullptr;
-    if (outCount)
-        *outCount = 0;
-    const BML_CallValue *slot = nullptr;
-    const int status = BML_GetCallFrameArgChecked(frame, index, BML_CallValueType::BoolArray, &slot);
-    return status == BML_OK ? BorrowVectorOut(slot->IntArrayValue, outValues, outCount) : status;
+    return BorrowArgVectorValue<BML_CallValueType::BoolArray>(frame, index, outValues, outCount);
 }
 
 BML_EXPORT int BML_CallFrame_SetIntArray(BML_CallFrame *frame, size_t index, const int *values, size_t count) {
-    if (!values && count > 0)
-        return BML_ERROR_INVALID_PARAMETER;
-    return SetArgValue(frame, index, [&](BML_CallValue &slot) {
-        slot.Type = BML_CallValueType::IntArray;
-        if (count > 0)
-            slot.IntArrayValue.assign(values, values + count);
-    });
+    return SetArgVectorValue<BML_CallValueType::IntArray>(frame, index, values, count);
 }
 
 BML_EXPORT size_t BML_CallFrame_GetIntArrayCount(const BML_CallFrame *frame, size_t index) {
-    const BML_CallValue *slot = nullptr;
-    return BML_GetCallFrameArgChecked(frame, index, BML_CallValueType::IntArray, &slot) == BML_OK
-               ? slot->IntArrayValue.size()
-               : 0;
+    return GetArgVectorCount<BML_CallValueType::IntArray>(frame, index);
 }
 
 BML_EXPORT int BML_CallFrame_CopyIntArray(const BML_CallFrame *frame,
@@ -398,44 +676,22 @@ BML_EXPORT int BML_CallFrame_CopyIntArray(const BML_CallFrame *frame,
                                           int *buffer,
                                           size_t bufferCount,
                                           size_t *outRequiredCount) {
-    const BML_CallValue *slot = nullptr;
-    const int status = BML_GetCallFrameArgChecked(frame, index, BML_CallValueType::IntArray, &slot);
-    if (status != BML_OK) {
-        if (outRequiredCount)
-            *outRequiredCount = 0;
-        return status;
-    }
-    return CopyVectorOut(slot->IntArrayValue, buffer, bufferCount, outRequiredCount);
+    return CopyArgVectorValue<BML_CallValueType::IntArray>(frame, index, buffer, bufferCount, outRequiredCount);
 }
 
 BML_EXPORT int BML_CallFrame_BorrowIntArray(const BML_CallFrame *frame,
                                             size_t index,
                                             const int **outValues,
                                             size_t *outCount) {
-    if (outValues)
-        *outValues = nullptr;
-    if (outCount)
-        *outCount = 0;
-    const BML_CallValue *slot = nullptr;
-    const int status = BML_GetCallFrameArgChecked(frame, index, BML_CallValueType::IntArray, &slot);
-    return status == BML_OK ? BorrowVectorOut(slot->IntArrayValue, outValues, outCount) : status;
+    return BorrowArgVectorValue<BML_CallValueType::IntArray>(frame, index, outValues, outCount);
 }
 
 BML_EXPORT int BML_CallFrame_SetFloatArray(BML_CallFrame *frame, size_t index, const float *values, size_t count) {
-    if (!values && count > 0)
-        return BML_ERROR_INVALID_PARAMETER;
-    return SetArgValue(frame, index, [&](BML_CallValue &slot) {
-        slot.Type = BML_CallValueType::FloatArray;
-        if (count > 0)
-            slot.FloatArrayValue.assign(values, values + count);
-    });
+    return SetArgVectorValue<BML_CallValueType::FloatArray>(frame, index, values, count);
 }
 
 BML_EXPORT size_t BML_CallFrame_GetFloatArrayCount(const BML_CallFrame *frame, size_t index) {
-    const BML_CallValue *slot = nullptr;
-    return BML_GetCallFrameArgChecked(frame, index, BML_CallValueType::FloatArray, &slot) == BML_OK
-               ? slot->FloatArrayValue.size()
-               : 0;
+    return GetArgVectorCount<BML_CallValueType::FloatArray>(frame, index);
 }
 
 BML_EXPORT int BML_CallFrame_CopyFloatArray(const BML_CallFrame *frame,
@@ -443,27 +699,14 @@ BML_EXPORT int BML_CallFrame_CopyFloatArray(const BML_CallFrame *frame,
                                             float *buffer,
                                             size_t bufferCount,
                                             size_t *outRequiredCount) {
-    const BML_CallValue *slot = nullptr;
-    const int status = BML_GetCallFrameArgChecked(frame, index, BML_CallValueType::FloatArray, &slot);
-    if (status != BML_OK) {
-        if (outRequiredCount)
-            *outRequiredCount = 0;
-        return status;
-    }
-    return CopyVectorOut(slot->FloatArrayValue, buffer, bufferCount, outRequiredCount);
+    return CopyArgVectorValue<BML_CallValueType::FloatArray>(frame, index, buffer, bufferCount, outRequiredCount);
 }
 
 BML_EXPORT int BML_CallFrame_BorrowFloatArray(const BML_CallFrame *frame,
                                               size_t index,
                                               const float **outValues,
                                               size_t *outCount) {
-    if (outValues)
-        *outValues = nullptr;
-    if (outCount)
-        *outCount = 0;
-    const BML_CallValue *slot = nullptr;
-    const int status = BML_GetCallFrameArgChecked(frame, index, BML_CallValueType::FloatArray, &slot);
-    return status == BML_OK ? BorrowVectorOut(slot->FloatArrayValue, outValues, outCount) : status;
+    return BorrowArgVectorValue<BML_CallValueType::FloatArray>(frame, index, outValues, outCount);
 }
 
 BML_EXPORT int BML_CallFrame_SetStringArray(BML_CallFrame *frame,
@@ -527,20 +770,11 @@ BML_EXPORT int BML_CallFrame_BorrowStringArrayItem(const BML_CallFrame *frame,
 }
 
 BML_EXPORT int BML_CallFrame_SetBuffer(BML_CallFrame *frame, size_t index, const uint8_t *data, size_t size) {
-    if (!data && size > 0)
-        return BML_ERROR_INVALID_PARAMETER;
-    return SetArgValue(frame, index, [&](BML_CallValue &slot) {
-        slot.Type = BML_CallValueType::Buffer;
-        if (size > 0)
-            slot.BufferValue.assign(data, data + size);
-    });
+    return SetArgVectorValue<BML_CallValueType::Buffer>(frame, index, data, size);
 }
 
 BML_EXPORT size_t BML_CallFrame_GetBufferSize(const BML_CallFrame *frame, size_t index) {
-    const BML_CallValue *slot = nullptr;
-    return BML_GetCallFrameArgChecked(frame, index, BML_CallValueType::Buffer, &slot) == BML_OK
-               ? slot->BufferValue.size()
-               : 0;
+    return GetArgVectorCount<BML_CallValueType::Buffer>(frame, index);
 }
 
 BML_EXPORT int BML_CallFrame_CopyBuffer(const BML_CallFrame *frame,
@@ -548,27 +782,14 @@ BML_EXPORT int BML_CallFrame_CopyBuffer(const BML_CallFrame *frame,
                                         uint8_t *buffer,
                                         size_t bufferSize,
                                         size_t *outRequiredSize) {
-    const BML_CallValue *slot = nullptr;
-    const int status = BML_GetCallFrameArgChecked(frame, index, BML_CallValueType::Buffer, &slot);
-    if (status != BML_OK) {
-        if (outRequiredSize)
-            *outRequiredSize = 0;
-        return status;
-    }
-    return CopyBufferOut(slot->BufferValue, buffer, bufferSize, outRequiredSize);
+    return CopyArgVectorValue<BML_CallValueType::Buffer>(frame, index, buffer, bufferSize, outRequiredSize);
 }
 
 BML_EXPORT int BML_CallFrame_BorrowBuffer(const BML_CallFrame *frame,
                                           size_t index,
                                           const uint8_t **outData,
                                           size_t *outSize) {
-    if (outData)
-        *outData = nullptr;
-    if (outSize)
-        *outSize = 0;
-    const BML_CallValue *slot = nullptr;
-    const int status = BML_GetCallFrameArgChecked(frame, index, BML_CallValueType::Buffer, &slot);
-    return status == BML_OK ? BorrowBufferOut(slot->BufferValue, outData, outSize) : status;
+    return BorrowArgVectorValue<BML_CallValueType::Buffer>(frame, index, outData, outSize);
 }
 
 BML_EXPORT int BML_CallFrame_SetObjectId(BML_CallFrame *frame, size_t index, int objectId) {
@@ -619,6 +840,43 @@ BML_EXPORT BML_CALL_VALUE_TYPE BML_CallFrame_GetResultType(const BML_CallFrame *
 
 BML_EXPORT int BML_CallFrame_ClearResult(BML_CallFrame *frame) {
     return BML_ClearCallFrameResult(frame);
+}
+
+BML_EXPORT int BML_CallFrame_SetResultData(BML_CallFrame *frame,
+                                           BML_CALL_VALUE_TYPE type,
+                                           const void *data,
+                                           size_t count) {
+    if (!frame)
+        return BML_ERROR_INVALID_PARAMETER;
+    if (!data && count > 0)
+        return BML_ERROR_INVALID_PARAMETER;
+    if (!IsContiguousDataType(type))
+        return BML_ERROR_INTEROP_UNSUPPORTED;
+    return GuardInteropMutation([&]() {
+        BML_ResetCallValue(frame->Result);
+        return SetDataValue(frame->Result, type, data, count);
+    });
+}
+
+BML_EXPORT int BML_CallFrame_BorrowResultData(const BML_CallFrame *frame,
+                                              BML_CALL_VALUE_TYPE type,
+                                              const void **outData,
+                                              size_t *outCount,
+                                              size_t *outElementSize) {
+    if (outData)
+        *outData = nullptr;
+    if (outCount)
+        *outCount = 0;
+    if (outElementSize)
+        *outElementSize = 0;
+
+    if (!IsContiguousDataType(type))
+        return BML_ERROR_INTEROP_UNSUPPORTED;
+
+    const BML_CallValueType internalType = ToInternalCallValueType(type);
+    const BML_CallValue *result = nullptr;
+    const int status = BML_GetCallFrameResultChecked(frame, internalType, &result);
+    return status == BML_OK ? BorrowDataValue(*result, type, outData, outCount, outElementSize) : status;
 }
 
 BML_EXPORT int BML_CallFrame_SetResultInt(BML_CallFrame *frame, int value) {
@@ -715,133 +973,66 @@ BML_EXPORT int BML_CallFrame_BorrowResultString(const BML_CallFrame *frame,
 }
 
 BML_EXPORT int BML_CallFrame_SetResultBoolArray(BML_CallFrame *frame, const int *values, size_t count) {
-    if (!values && count > 0)
-        return BML_ERROR_INVALID_PARAMETER;
-    return SetResultValue(frame, [&](BML_CallValue &result) {
-        result.Type = BML_CallValueType::BoolArray;
-        result.IntArrayValue.reserve(count);
-        for (size_t i = 0; i < count; ++i)
-            result.IntArrayValue.push_back(values[i] ? 1 : 0);
-    });
+    return SetResultVectorValue<BML_CallValueType::BoolArray>(frame, values, count);
 }
 
 BML_EXPORT size_t BML_CallFrame_GetResultBoolArrayCount(const BML_CallFrame *frame) {
-    const BML_CallValue *result = nullptr;
-    return BML_GetCallFrameResultChecked(frame, BML_CallValueType::BoolArray, &result) == BML_OK
-               ? result->IntArrayValue.size()
-               : 0;
+    return GetResultVectorCount<BML_CallValueType::BoolArray>(frame);
 }
 
 BML_EXPORT int BML_CallFrame_CopyResultBoolArray(const BML_CallFrame *frame,
                                                  int *buffer,
                                                  size_t bufferCount,
                                                  size_t *outRequiredCount) {
-    const BML_CallValue *result = nullptr;
-    const int status = BML_GetCallFrameResultChecked(frame, BML_CallValueType::BoolArray, &result);
-    if (status != BML_OK) {
-        if (outRequiredCount)
-            *outRequiredCount = 0;
-        return status;
-    }
-    return CopyVectorOut(result->IntArrayValue, buffer, bufferCount, outRequiredCount);
+    return CopyResultVectorValue<BML_CallValueType::BoolArray>(frame, buffer, bufferCount, outRequiredCount);
 }
 
 BML_EXPORT int BML_CallFrame_BorrowResultBoolArray(const BML_CallFrame *frame,
                                                    const int **outValues,
                                                    size_t *outCount) {
-    if (outValues)
-        *outValues = nullptr;
-    if (outCount)
-        *outCount = 0;
-    const BML_CallValue *result = nullptr;
-    const int status = BML_GetCallFrameResultChecked(frame, BML_CallValueType::BoolArray, &result);
-    return status == BML_OK ? BorrowVectorOut(result->IntArrayValue, outValues, outCount) : status;
+    return BorrowResultVectorValue<BML_CallValueType::BoolArray>(frame, outValues, outCount);
 }
 
 BML_EXPORT int BML_CallFrame_SetResultIntArray(BML_CallFrame *frame, const int *values, size_t count) {
-    if (!values && count > 0)
-        return BML_ERROR_INVALID_PARAMETER;
-    return SetResultValue(frame, [&](BML_CallValue &result) {
-        result.Type = BML_CallValueType::IntArray;
-        if (count > 0)
-            result.IntArrayValue.assign(values, values + count);
-    });
+    return SetResultVectorValue<BML_CallValueType::IntArray>(frame, values, count);
 }
 
 BML_EXPORT size_t BML_CallFrame_GetResultIntArrayCount(const BML_CallFrame *frame) {
-    const BML_CallValue *result = nullptr;
-    return BML_GetCallFrameResultChecked(frame, BML_CallValueType::IntArray, &result) == BML_OK
-               ? result->IntArrayValue.size()
-               : 0;
+    return GetResultVectorCount<BML_CallValueType::IntArray>(frame);
 }
 
 BML_EXPORT int BML_CallFrame_CopyResultIntArray(const BML_CallFrame *frame,
                                                 int *buffer,
                                                 size_t bufferCount,
                                                 size_t *outRequiredCount) {
-    const BML_CallValue *result = nullptr;
-    const int status = BML_GetCallFrameResultChecked(frame, BML_CallValueType::IntArray, &result);
-    if (status != BML_OK) {
-        if (outRequiredCount)
-            *outRequiredCount = 0;
-        return status;
-    }
-    return CopyVectorOut(result->IntArrayValue, buffer, bufferCount, outRequiredCount);
+    return CopyResultVectorValue<BML_CallValueType::IntArray>(frame, buffer, bufferCount, outRequiredCount);
 }
 
 BML_EXPORT int BML_CallFrame_BorrowResultIntArray(const BML_CallFrame *frame,
                                                   const int **outValues,
                                                   size_t *outCount) {
-    if (outValues)
-        *outValues = nullptr;
-    if (outCount)
-        *outCount = 0;
-    const BML_CallValue *result = nullptr;
-    const int status = BML_GetCallFrameResultChecked(frame, BML_CallValueType::IntArray, &result);
-    return status == BML_OK ? BorrowVectorOut(result->IntArrayValue, outValues, outCount) : status;
+    return BorrowResultVectorValue<BML_CallValueType::IntArray>(frame, outValues, outCount);
 }
 
 BML_EXPORT int BML_CallFrame_SetResultFloatArray(BML_CallFrame *frame, const float *values, size_t count) {
-    if (!values && count > 0)
-        return BML_ERROR_INVALID_PARAMETER;
-    return SetResultValue(frame, [&](BML_CallValue &result) {
-        result.Type = BML_CallValueType::FloatArray;
-        if (count > 0)
-            result.FloatArrayValue.assign(values, values + count);
-    });
+    return SetResultVectorValue<BML_CallValueType::FloatArray>(frame, values, count);
 }
 
 BML_EXPORT size_t BML_CallFrame_GetResultFloatArrayCount(const BML_CallFrame *frame) {
-    const BML_CallValue *result = nullptr;
-    return BML_GetCallFrameResultChecked(frame, BML_CallValueType::FloatArray, &result) == BML_OK
-               ? result->FloatArrayValue.size()
-               : 0;
+    return GetResultVectorCount<BML_CallValueType::FloatArray>(frame);
 }
 
 BML_EXPORT int BML_CallFrame_CopyResultFloatArray(const BML_CallFrame *frame,
                                                   float *buffer,
                                                   size_t bufferCount,
                                                   size_t *outRequiredCount) {
-    const BML_CallValue *result = nullptr;
-    const int status = BML_GetCallFrameResultChecked(frame, BML_CallValueType::FloatArray, &result);
-    if (status != BML_OK) {
-        if (outRequiredCount)
-            *outRequiredCount = 0;
-        return status;
-    }
-    return CopyVectorOut(result->FloatArrayValue, buffer, bufferCount, outRequiredCount);
+    return CopyResultVectorValue<BML_CallValueType::FloatArray>(frame, buffer, bufferCount, outRequiredCount);
 }
 
 BML_EXPORT int BML_CallFrame_BorrowResultFloatArray(const BML_CallFrame *frame,
                                                     const float **outValues,
                                                     size_t *outCount) {
-    if (outValues)
-        *outValues = nullptr;
-    if (outCount)
-        *outCount = 0;
-    const BML_CallValue *result = nullptr;
-    const int status = BML_GetCallFrameResultChecked(frame, BML_CallValueType::FloatArray, &result);
-    return status == BML_OK ? BorrowVectorOut(result->FloatArrayValue, outValues, outCount) : status;
+    return BorrowResultVectorValue<BML_CallValueType::FloatArray>(frame, outValues, outCount);
 }
 
 BML_EXPORT int BML_CallFrame_SetResultStringArray(BML_CallFrame *frame,
@@ -902,46 +1093,24 @@ BML_EXPORT int BML_CallFrame_BorrowResultStringArrayItem(const BML_CallFrame *fr
 }
 
 BML_EXPORT int BML_CallFrame_SetResultBuffer(BML_CallFrame *frame, const uint8_t *data, size_t size) {
-    if (!data && size > 0)
-        return BML_ERROR_INVALID_PARAMETER;
-    return SetResultValue(frame, [&](BML_CallValue &result) {
-        result.Type = BML_CallValueType::Buffer;
-        if (size > 0)
-            result.BufferValue.assign(data, data + size);
-    });
+    return SetResultVectorValue<BML_CallValueType::Buffer>(frame, data, size);
 }
 
 BML_EXPORT size_t BML_CallFrame_GetResultBufferSize(const BML_CallFrame *frame) {
-    const BML_CallValue *result = nullptr;
-    return BML_GetCallFrameResultChecked(frame, BML_CallValueType::Buffer, &result) == BML_OK
-               ? result->BufferValue.size()
-               : 0;
+    return GetResultVectorCount<BML_CallValueType::Buffer>(frame);
 }
 
 BML_EXPORT int BML_CallFrame_CopyResultBuffer(const BML_CallFrame *frame,
                                               uint8_t *buffer,
                                               size_t bufferSize,
                                               size_t *outRequiredSize) {
-    const BML_CallValue *result = nullptr;
-    const int status = BML_GetCallFrameResultChecked(frame, BML_CallValueType::Buffer, &result);
-    if (status != BML_OK) {
-        if (outRequiredSize)
-            *outRequiredSize = 0;
-        return status;
-    }
-    return CopyBufferOut(result->BufferValue, buffer, bufferSize, outRequiredSize);
+    return CopyResultVectorValue<BML_CallValueType::Buffer>(frame, buffer, bufferSize, outRequiredSize);
 }
 
 BML_EXPORT int BML_CallFrame_BorrowResultBuffer(const BML_CallFrame *frame,
                                                 const uint8_t **outData,
                                                 size_t *outSize) {
-    if (outData)
-        *outData = nullptr;
-    if (outSize)
-        *outSize = 0;
-    const BML_CallValue *result = nullptr;
-    const int status = BML_GetCallFrameResultChecked(frame, BML_CallValueType::Buffer, &result);
-    return status == BML_OK ? BorrowBufferOut(result->BufferValue, outData, outSize) : status;
+    return BorrowResultVectorValue<BML_CallValueType::Buffer>(frame, outData, outSize);
 }
 
 BML_EXPORT int BML_CallFrame_SetResultObjectId(BML_CallFrame *frame, int objectId) {

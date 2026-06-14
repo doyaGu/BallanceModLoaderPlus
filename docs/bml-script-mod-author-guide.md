@@ -408,9 +408,13 @@ the `BML::CallValueType` enum: empty, bool, int, float, string, scalar arrays,
 buffer, and object id. Native Interop stores copies of array, string-array, and
 buffer values; native callers can also use the `Borrow*` CallFrame APIs for
 zero-copy read views that stay valid only until the next frame mutation, call,
-clear, or destroy. Object values cross Interop as `CK_ID` identity; `CKObject@`
-handles are resolved only while reading/writing the frame or dispatching a
-script call.
+clear, or destroy. Native code that is already descriptor-driven should prefer
+the generic `BML_CallFrame_SetData`, `BML_CallFrame_BorrowData`,
+`BML_CallFrame_SetResultData`, and `BML_CallFrame_BorrowResultData` APIs for
+contiguous `bool[]`, `int[]`, `float[]`, and `buffer` values; string arrays use
+item access because they are not exposed as one flat C buffer. Object values
+cross Interop as `CK_ID` identity; `CKObject@` handles are resolved only while
+reading/writing the frame or dispatching a script call.
 
 Each `ExportRef.Call*` and `ExportRef.Call(frame)` clears the frame result
 before dispatch. A failed call or `void` export leaves
