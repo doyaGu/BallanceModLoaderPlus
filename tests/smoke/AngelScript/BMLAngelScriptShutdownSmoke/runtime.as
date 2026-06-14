@@ -7,7 +7,10 @@ class BMLShutdownSmokeMod {
       return;
     }
     requestedExit = true;
-    ctx.LogInfo("BML shutdown smoke requesting exit");
-    BML::ExecuteCommand("exit");
+    BML::Logger@ logger = ctx.BorrowLogger();
+    if (logger !is null) {
+      logger.Info("BML shutdown smoke requesting exit");
+    }
+    ctx.ExecuteCommand("exit");
   }
 }

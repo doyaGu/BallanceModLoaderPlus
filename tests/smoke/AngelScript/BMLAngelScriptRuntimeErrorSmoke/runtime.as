@@ -3,7 +3,10 @@ class BMLRuntimeErrorSmokeMod {
   bool firstProcess = true;
 
   void OnLoad(const BML::ModContext &in ctx) {
-    ctx.LogInfo("BML runtime error smoke loaded");
+    BML::Logger@ logger = ctx.BorrowLogger();
+    if (logger !is null) {
+      logger.Info("BML runtime error smoke loaded");
+    }
   }
 
   void OnProcess(const BML::ModContext &in ctx) {

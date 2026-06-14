@@ -1,4 +1,4 @@
-﻿[bml.mod id="bml.bindings.smoke" name="BML Bindings Smoke" version="1.0.0" author="BML+" bml="0.3.11" description="Smoke test for BML AngelScript script mod bindings."]
+[bml.mod id="bml.bindings.smoke" name="BML Bindings Smoke" version="1.0.0" author="BML+" bml="0.3.11" description="Smoke test for BML AngelScript script mod bindings."]
 [bml.require id="BML" version="0.3.11"]
 [bml.require id="bml.native.interop.smoke" version="1.0.0"]
 [bml.optional id="bml.optional.missing.smoke" version="9.9.9"]
@@ -27,6 +27,10 @@ class BMLBindingsSmokeMod {
   int uiCounter = 3;
   float uiFloat = 1.5f;
   string uiSearch = "ball";
+  string uiText = "text";
+  int uiRadio = 1;
+  bool uiKeyToggled = false;
+  int uiKeyChord = 0;
   bool imguiCheck = false;
   float imguiFloat = 0.5f;
   int imguiInt = 2;
@@ -53,10 +57,10 @@ class BMLBindingsSmokeMod {
   }
 
   void LogFailedModState(const BML::ModContext &in ctx, const string &in id) {
-    BML::ModRef@ failedMod = BML::FindMod(id);
+    BML::ModRef@ failedMod = ctx.FindMod(id);
     if (failedMod !is null && failedMod.IsValid && failedMod.IsFailed) {
-      ctx.LogInfo("BML failed mod state: id=" + failedMod.Id + " kind=" + failedMod.Kind + " state=" + failedMod.State);
-      ctx.LogInfo("BML failed mod diagnostic: " + failedMod.Diagnostic);
+      LogInfo(ctx, "BML failed mod state: id=" + failedMod.Id + " kind=" + failedMod.Kind + " state=" + failedMod.State);
+      LogInfo(ctx, "BML failed mod diagnostic: " + failedMod.Diagnostic);
     }
   }
 
@@ -96,131 +100,194 @@ class BMLBindingsSmokeMod {
   }
 
   void OnLoad(const BML::ModContext &in ctx) {
-    ctx.LogInfo("BML script mod smoke loaded: " + ctx.GetModId() + " / " + ctx.GetModName());
-    ctx.LogInfo("BML version: " + BML::GetVersion());
-    ctx.LogInfo("BML initialized: " + BoolText(BML::IsInitialized()));
-    ctx.LogInfo("BML ctx runtime: paused=" + BoolText(ctx.IsPaused) +
+    LogInfo(ctx, "BML script mod smoke loaded: " + ctx.GetModId() + " / " + ctx.GetModName());
+    LogInfo(ctx, "BML version: " + BML::GetVersion());
+    BML::ModContext current;
+    bool hasCurrent = BML::BorrowCurrentContext(current);
+    LogInfo(ctx, "BML current context: " + BoolText(hasCurrent && current.GetModId() == ctx.GetModId()));
+    LogInfo(ctx, "BML ctx runtime: paused=" + BoolText(ctx.IsPaused) +
                 " playing=" + BoolText(ctx.IsPlaying) +
                 " cheat=" + BoolText(ctx.IsCheatEnabled) +
                 " sr=" + ctx.GetSRScore() +
                 " hs=" + ctx.GetHSScore());
-    Vx2DVector mousePos = BML::GetMousePosition();
-    VxVector mouseRel = BML::GetMouseRelativePosition();
-    uint globalFrameCount = BML::GetFrameCount();
     uint ctxFrameCount = ctx.GetFrameCount();
-    BML::InputHook@ input = BML::GetInputManager();
-    BML::InputHook@ ctxInput = ctx.GetInputManager();
-    ctx.LogInfo("BML time/input api: timeOk=" + BoolText(BML::GetTimeMs() >= 0.0f &&
-                BML::GetAbsoluteTimeMs() >= 0.0f &&
-                BML::GetDeltaTimeMs() >= 0.0f) +
-                " frameOk=" + BoolText(globalFrameCount == ctxFrameCount) +
-                " keyboard=" + BoolText(BML::IsKeyboardAttached()) +
-                " mouse=" + BoolText(BML::IsMouseAttached()) +
-                " escUp=" + BoolText(BML::IsKeyUp(CKKEY_ESCAPE)) +
-                " keyName=" + BoolText(BML::GetKeyName(CKKEY_ESCAPE) != "") +
-                " mousePosOk=" + BoolText(mousePos.x == mousePos.x && mousePos.y == mousePos.y) +
-                " mouseRelOk=" + BoolText(mouseRel.x == mouseRel.x && mouseRel.y == mouseRel.y && mouseRel.z == mouseRel.z));
-    ctx.LogInfo("BML ctx time/input api: timeOk=" + BoolText(ctx.GetTimeMs() >= 0.0f &&
+    BML::InputHook@ input = ctx.BorrowInputManager();
+    BML::InputHook@ ctxInput = ctx.BorrowInputManager();
+    bool inputOk = input !is null && input.IsValid;
+    bool keyboardAttached = inputOk && input.IsKeyboardAttached();
+    bool mouseAttached = inputOk && input.IsMouseAttached();
+    bool escapeUp = inputOk && input.IsKeyUp(CKKEY_ESCAPE);
+    bool keyNameOk = inputOk && input.GetKeyName(CKKEY_ESCAPE) != "";
+    Vx2DVector mousePos = inputOk ? input.GetMousePosition() : Vx2DVector();
+    VxVector mouseRel = inputOk ? input.GetMouseRelativePosition() : VxVector();
+    LogInfo(ctx, "BML time/input api: timeOk=" + BoolText(ctx.GetTimeMs() >= 0.0f &&
                 ctx.GetAbsoluteTimeMs() >= 0.0f &&
                 ctx.GetDeltaTimeMs() >= 0.0f) +
-                " frameOk=" + BoolText(ctxFrameCount == globalFrameCount) +
-                " keyboard=" + BoolText(ctx.IsKeyboardAttached()) +
-                " mouse=" + BoolText(ctx.IsMouseAttached()) +
-                " escUp=" + BoolText(ctx.IsKeyUp(CKKEY_ESCAPE)) +
-                " keyName=" + BoolText(ctx.GetKeyName(CKKEY_ESCAPE) != "") +
+                " frameOk=" + BoolText(ctxFrameCount >= 0) +
+                " keyboard=" + BoolText(keyboardAttached) +
+                " mouse=" + BoolText(mouseAttached) +
+                " escUp=" + BoolText(escapeUp) +
+                " keyName=" + BoolText(keyNameOk) +
+                " mousePosOk=" + BoolText(mousePos.x == mousePos.x && mousePos.y == mousePos.y) +
+                " mouseRelOk=" + BoolText(mouseRel.x == mouseRel.x && mouseRel.y == mouseRel.y && mouseRel.z == mouseRel.z));
+    LogInfo(ctx, "BML ctx time/input api: timeOk=" + BoolText(ctx.GetTimeMs() >= 0.0f &&
+                ctx.GetAbsoluteTimeMs() >= 0.0f &&
+                ctx.GetDeltaTimeMs() >= 0.0f) +
+                " frameOk=" + BoolText(ctxFrameCount >= 0) +
+                " keyboard=" + BoolText(keyboardAttached) +
+                " mouse=" + BoolText(mouseAttached) +
+                " escUp=" + BoolText(escapeUp) +
+                " keyName=" + BoolText(keyNameOk) +
                 " input=" + BoolText(ctxInput !is null));
-    ctx.LogInfo("BML borrowed manager api: ck=" + BoolText(BML::GetCKContext() !is null) +
-                " renderContext=" + BoolText(BML::GetRenderContext() !is null) +
-                " attr=" + BoolText(BML::GetAttributeManager() !is null) +
-                " behavior=" + BoolText(BML::GetBehaviorManager() !is null) +
-                " collision=" + BoolText(BML::GetCollisionManager() !is null) +
+    LogInfo(ctx, "BML borrowed manager api: ck=" + BoolText(ctx.BorrowCKContext() !is null) +
+                " renderContext=" + BoolText(ctx.BorrowRenderContext() !is null) +
+                " attr=" + BoolText(ctx.BorrowAttributeManager() !is null) +
+                " behavior=" + BoolText(ctx.BorrowBehaviorManager() !is null) +
+                " collision=" + BoolText(ctx.BorrowCollisionManager() !is null) +
                 " input=" + BoolText(input !is null) +
-                " message=" + BoolText(BML::GetMessageManager() !is null) +
-                " path=" + BoolText(BML::GetPathManager() !is null) +
-                " parameter=" + BoolText(BML::GetParameterManager() !is null) +
-                " render=" + BoolText(BML::GetRenderManager() !is null) +
-                " sound=" + BoolText(BML::GetSoundManager() !is null) +
-                " time=" + BoolText(BML::GetTimeManager() !is null));
-    ctx.LogInfo("BML ctx borrowed manager api: ck=" + BoolText(ctx.GetCKContext() !is null) +
-                " renderContext=" + BoolText(ctx.GetRenderContext() !is null) +
-                " attr=" + BoolText(ctx.GetAttributeManager() !is null) +
-                " behavior=" + BoolText(ctx.GetBehaviorManager() !is null) +
-                " collision=" + BoolText(ctx.GetCollisionManager() !is null) +
+                " message=" + BoolText(ctx.BorrowMessageManager() !is null) +
+                " path=" + BoolText(ctx.BorrowPathManager() !is null) +
+                " parameter=" + BoolText(ctx.BorrowParameterManager() !is null) +
+                " render=" + BoolText(ctx.BorrowRenderManager() !is null) +
+                " sound=" + BoolText(ctx.BorrowSoundManager() !is null) +
+                " time=" + BoolText(ctx.BorrowTimeManager() !is null));
+    LogInfo(ctx, "BML ctx borrowed manager api: ck=" + BoolText(ctx.BorrowCKContext() !is null) +
+                " renderContext=" + BoolText(ctx.BorrowRenderContext() !is null) +
+                " attr=" + BoolText(ctx.BorrowAttributeManager() !is null) +
+                " behavior=" + BoolText(ctx.BorrowBehaviorManager() !is null) +
+                " collision=" + BoolText(ctx.BorrowCollisionManager() !is null) +
                 " input=" + BoolText(ctxInput !is null) +
-                " message=" + BoolText(ctx.GetMessageManager() !is null) +
-                " path=" + BoolText(ctx.GetPathManager() !is null) +
-                " parameter=" + BoolText(ctx.GetParameterManager() !is null) +
-                " render=" + BoolText(ctx.GetRenderManager() !is null) +
-                " sound=" + BoolText(ctx.GetSoundManager() !is null) +
-                " time=" + BoolText(ctx.GetTimeManager() !is null));
+                " message=" + BoolText(ctx.BorrowMessageManager() !is null) +
+                " path=" + BoolText(ctx.BorrowPathManager() !is null) +
+                " parameter=" + BoolText(ctx.BorrowParameterManager() !is null) +
+                " render=" + BoolText(ctx.BorrowRenderManager() !is null) +
+                " sound=" + BoolText(ctx.BorrowSoundManager() !is null) +
+                " time=" + BoolText(ctx.BorrowTimeManager() !is null));
     if (input !is null) {
-      ctx.LogInfo("BML InputHook methods: keyboard=" + BoolText(input.IsKeyboardAttached()) +
+      uint stamp = 0;
+      CKKEYBOARD bufferKey = CKKEY_ESCAPE;
+      uint bufferTimestamp = 0;
+      int bufferEvent = input.GetKeyFromBuffer(0, bufferKey, bufferTimestamp);
+      bool repetition = input.IsKeyboardRepetitionEnabled();
+      bool cursorVisible = input.GetCursorVisibility();
+      int cursor = input.GetSystemCursor();
+      int blockBefore = input.IsBlocked(BML::INPUT_DEVICE_KEYBOARD);
+      input.EnableKeyboardRepetition(repetition);
+      input.SetSystemCursor(cursor);
+      input.ShowCursor(cursorVisible);
+      input.Block(BML::INPUT_DEVICE_KEYBOARD);
+      int blockDuring = input.IsBlocked(BML::INPUT_DEVICE_KEYBOARD);
+      input.Unblock(BML::INPUT_DEVICE_KEYBOARD);
+      int blockAfter = input.IsBlocked(BML::INPUT_DEVICE_KEYBOARD);
+      VxVector invalidJoystickPos = input.GetJoystickPosition(-1);
+      VxVector invalidJoystickRot = input.GetJoystickRotation(4);
+      Vx2DVector invalidJoystickSliders = input.GetJoystickSliders(4);
+      bool joystickInvalidDefaults = !input.IsJoystickAttached(-1) &&
+                                     invalidJoystickPos.x == 0.0f &&
+                                     invalidJoystickPos.y == 0.0f &&
+                                     invalidJoystickPos.z == 0.0f &&
+                                     invalidJoystickRot.x == 0.0f &&
+                                     invalidJoystickRot.y == 0.0f &&
+                                     invalidJoystickRot.z == 0.0f &&
+                                     invalidJoystickSliders.x == 0.0f &&
+                                     invalidJoystickSliders.y == 0.0f &&
+                                     input.GetJoystickPointOfViewAngle(4) == 0.0f &&
+                                     input.GetJoystickButtonsState(4) == 0 &&
+                                     !input.IsJoystickButtonDown(4, 0) &&
+                                     !input.IsJoystickButtonDown(0, -1);
+      LogInfo(ctx, "BML InputHook methods: keyboard=" + BoolText(input.IsKeyboardAttached()) +
                   " mouse=" + BoolText(input.IsMouseAttached()) +
+                  " joystick0=" + BoolText(input.IsJoystickAttached(0)) +
                   " escUp=" + BoolText(input.IsKeyUp(CKKEY_ESCAPE)) +
+                  " escDownStamp=" + BoolText(input.IsKeyDown(CKKEY_ESCAPE, stamp) || stamp == 0) +
+                  " escToggledStamp=" + BoolText(input.IsKeyToggled(CKKEY_ESCAPE, stamp) || stamp == 0) +
                   " keyName=" + BoolText(input.GetKeyName(CKKEY_ESCAPE) != "") +
-                  " mousePos=" + BoolText(input.GetMousePosition().x == input.GetMousePosition().x));
+                  " keyFromName=" + BoolText(input.GetKeyFromName(input.GetKeyName(CKKEY_ESCAPE)) == CKKEY_ESCAPE) +
+                  " keyState=" + input.GetKeyboardState(CKKEY_ESCAPE) +
+                  " keyStateDown=" + BoolText(input.IsKeyboardStateDown(CKKEY_ESCAPE)) +
+                  " keyBufferCount=" + input.GetNumberOfKeyInBuffer() +
+                  " keyBufferEvent=" + bufferEvent +
+                  " keyBufferKey=" + int(bufferKey) +
+                  " keyBufferTime=" + bufferTimestamp +
+                  " mouseDown=" + BoolText(input.IsMouseButtonDown(CK_MOUSEBUTTON_LEFT)) +
+                  " mouseClicked=" + BoolText(input.IsMouseClicked(CK_MOUSEBUTTON_LEFT)) +
+                  " mouseToggled=" + BoolText(input.IsMouseToggled(CK_MOUSEBUTTON_LEFT)) +
+                  " mouseState=" + input.GetMouseButtonState(CK_MOUSEBUTTON_LEFT) +
+                  " mousePos=" + BoolText(input.GetMousePosition().x == input.GetMousePosition().x) +
+                  " lastMousePos=" + BoolText(input.GetLastMousePosition().x == input.GetLastMousePosition().x) +
+                  " joystickPos=" + BoolText(input.GetJoystickPosition(0).x == input.GetJoystickPosition(0).x) +
+                  " joystickRot=" + BoolText(input.GetJoystickRotation(0).x == input.GetJoystickRotation(0).x) +
+                  " joystickSliders=" + BoolText(input.GetJoystickSliders(0).x == input.GetJoystickSliders(0).x) +
+                  " joystickPov=" + BoolText(input.GetJoystickPointOfViewAngle(0) == input.GetJoystickPointOfViewAngle(0)) +
+                  " joystickButtons=" + input.GetJoystickButtonsState(0) +
+                  " joystickButton0=" + BoolText(input.IsJoystickButtonDown(0, 0)) +
+                  " joystickInvalidDefaults=" + BoolText(joystickInvalidDefaults) +
+                  " cursorVisible=" + BoolText(cursorVisible) +
+                  " cursor=" + cursor +
+                  " blockBalanced=" + BoolText(blockDuring == blockBefore + 1 && blockAfter == blockBefore) +
+                  " keyboardBlock=" + BoolText(input.IsBlock()));
     }
     CKObject@ nullObject = null;
     CK3dEntity@ nullEntity = null;
-    VxVector nullEntityPos = BML::Get3dEntityPosition(nullEntity);
-    VxVector ctxNullEntityPos = ctx.Get3dEntityPosition(nullEntity);
-    ctx.LogInfo("BML object api null defaults: valid=" + BoolText(BML::IsObjectValid(nullObject)) +
-                " id=" + BML::GetObjectId(nullObject) +
-                " nameEmpty=" + BoolText(BML::GetObjectName(nullObject) == "") +
-                " class=" + BML::GetObjectClassId(nullObject) +
-                " childCount=" + BML::Get3dEntityChildCount(nullEntity) +
+    VxVector nullEntityPos = BML::CK::GetPosition(nullEntity);
+    VxVector ctxNullEntityPos = BML::CK::GetPosition(nullEntity);
+    LogInfo(ctx, "BML object api null defaults: valid=" + BoolText(BML::CK::IsValid(nullObject)) +
+                " id=" + BML::CK::GetId(nullObject) +
+                " nameEmpty=" + BoolText(BML::CK::GetName(nullObject) == "") +
+                " class=" + BML::CK::GetClassId(nullObject) +
+                " childCount=" + BML::CK::GetChildCount(nullEntity) +
                 " positionZero=" + BoolText(nullEntityPos.x == 0.0f && nullEntityPos.y == 0.0f && nullEntityPos.z == 0.0f));
-    ctx.LogInfo("BML ctx object api null defaults: valid=" + BoolText(ctx.IsObjectValid(nullObject)) +
-                " id=" + ctx.GetObjectId(nullObject) +
-                " nameEmpty=" + BoolText(ctx.GetObjectName(nullObject) == "") +
-                " class=" + ctx.GetObjectClassId(nullObject) +
-                " childCount=" + ctx.Get3dEntityChildCount(nullEntity) +
+    LogInfo(ctx, "BML ctx object api null defaults: valid=" + BoolText(BML::CK::IsValid(nullObject)) +
+                " id=" + BML::CK::GetId(nullObject) +
+                " nameEmpty=" + BoolText(BML::CK::GetName(nullObject) == "") +
+                " class=" + BML::CK::GetClassId(nullObject) +
+                " childCount=" + BML::CK::GetChildCount(nullEntity) +
                 " positionZero=" + BoolText(ctxNullEntityPos.x == 0.0f && ctxNullEntityPos.y == 0.0f && ctxNullEntityPos.z == 0.0f) +
-                " missingArray=" + BoolText(ctx.GetArrayByName("__missing_bml_smoke_array__") is null));
+                " missingArray=" + BoolText(ctx.BorrowDataArrayByName("__missing_bml_smoke_array__") is null));
     int originalHud = ctx.GetHUD();
     int menuSafeHud = originalHud & ~BML::HUD_SR;
     ctx.ShowTitle((originalHud & BML::HUD_TITLE) != 0);
-    BML::ShowFPS((originalHud & BML::HUD_FPS) != 0);
+    ctx.ShowFPS((originalHud & BML::HUD_FPS) != 0);
     ctx.ShowSRTimer(false);
     ctx.SetHUD(menuSafeHud);
-    BML::SetHUD(originalHud);
+    ctx.SetHUD(originalHud);
     ctx.ShowSRTimer(false);
     ctx.PauseSRTimer();
-    BML::StartSRTimer();
+    ctx.StartSRTimer();
     ctx.PauseSRTimer();
     ctx.ResetSRTimer();
     ctx.ShowSRTimer(false);
-    ctx.LogInfo("BML hud/timer api: flags=" + originalHud +
+    LogInfo(ctx, "BML hud/timer api: flags=" + originalHud +
                 " title=" + BoolText((originalHud & BML::HUD_TITLE) != 0) +
                 " fps=" + BoolText((originalHud & BML::HUD_FPS) != 0) +
                 " srHud=" + BoolText((originalHud & BML::HUD_SR) != 0) +
-                " ctxGlobal=" + BoolText(ctx.GetHUD() == BML::GetHUD()) +
-                " srTimeOk=" + BoolText(ctx.GetSRTime() >= 0.0f && BML::GetSRTime() >= 0.0f));
-    ctx.LogInfo("BML ctx directories: game=" + BoolText(ctx.GetDirectoryUtf8(BML::DIR_GAME) != "") +
+                " currentContext=" + BoolText(hasCurrent) +
+                " srTimeOk=" + BoolText(ctx.GetSRTime() >= 0.0f && ctx.GetSRTime() >= 0.0f));
+    LogInfo(ctx, "BML ctx directories: game=" + BoolText(ctx.GetDirectoryUtf8(BML::DIR_GAME) != "") +
                 " loader=" + BoolText(ctx.GetDirectoryUtf8(BML::DIR_LOADER) != "") +
                 " config=" + BoolText(ctx.GetDirectoryUtf8(BML::DIR_CONFIG) != "") +
                 " invalid=" + BoolText(ctx.GetDirectoryUtf8(999) == ""));
-    ctx.LogInfo("BML mod root valid: " + BoolText(BML::DirectoryExistsUtf8(ctx.GetModRootUtf8())));
-    ctx.LogInfo("BML mod path valid: " + BoolText(BML::FileExistsUtf8(ctx.ResolveModPathUtf8("runtime.as"))));
-    ctx.LogInfo("BML mod path escape blocked: " + BoolText(ctx.ResolveModPathUtf8("../base.cmo") == ""));
-    ctx.LogInfo("BML mod resource helpers: file=" + BoolText(ctx.ModFileExistsUtf8("runtime.as")) +
+    LogInfo(ctx, "BML mod root valid: " + BoolText(BML::Path::IsDirectory(ctx.GetModRootUtf8())));
+    LogInfo(ctx, "BML mod path valid: " + BoolText(BML::Path::IsFile(ctx.ResolveModPathUtf8("runtime.as"))));
+    LogInfo(ctx, "BML mod path escape blocked: " + BoolText(ctx.ResolveModPathUtf8("../base.cmo") == ""));
+    LogInfo(ctx, "BML mod resource helpers: file=" + BoolText(ctx.ModFileExistsUtf8("runtime.as")) +
                 " dir=" + BoolText(ctx.ModDirectoryExistsUtf8(".")) +
                 " read=" + BoolText(ctx.ReadModTextFileUtf8("Smoke.mod.as", "") != "") +
                 " escapeRead=" + BoolText(ctx.ReadModTextFileUtf8("../base.cmo", "blocked") == "blocked") +
                 " missingRead=" + BoolText(ctx.ReadModTextFileUtf8("missing.txt", "missing") == "missing"));
-    ctx.LogInfo("BML command query: count=" + ctx.GetCommandCount() +
+    LogInfo(ctx, "BML command query: count=" + ctx.GetCommandCount() +
                 " first=" + ctx.GetCommandName(0) +
                 " echo=" + BoolText(ctx.HasCommand("echo")) +
                 " missing=" + BoolText(ctx.HasCommand("bml-missing-command")) +
                 " echoCheat=" + BoolText(ctx.IsCommandCheat("echo")));
-    ctx.LogInfo("BML command details valid: " + BoolText(ctx.GetCommandDescription(0) != "" &&
+    LogInfo(ctx, "BML command details valid: " + BoolText(ctx.GetCommandDescription(0) != "" &&
                 ctx.GetCommandName(-1) == ""));
-    int modCount = BML::GetModCount();
+    int modCount = ctx.GetModCount();
     bool foundSelfByIndex = false;
     bool ctxFoundSelfByIndex = false;
     for (int i = 0; i < modCount; ++i) {
-      if (BML::GetModId(i) == ctx.GetModId()) {
-        BML::ModRef@ indexedSelf = BML::GetMod(i);
+      if (ctx.GetModId(i) == ctx.GetModId()) {
+        BML::ModRef@ indexedSelf = ctx.GetMod(i);
         foundSelfByIndex = indexedSelf !is null && indexedSelf.IsValid && indexedSelf.Id == ctx.GetModId();
       }
       if (ctx.GetModId(i) == ctx.GetModId()) {
@@ -228,59 +295,87 @@ class BMLBindingsSmokeMod {
         ctxFoundSelfByIndex = ctxIndexedSelf !is null && ctxIndexedSelf.IsValid && ctxIndexedSelf.Id == ctx.GetModId();
       }
     }
-    BML::ModRef@ invalidIndexedMod = BML::GetMod(-1);
+    BML::ModRef@ invalidIndexedMod = ctx.GetMod(-1);
     BML::ModRef@ ctxInvalidIndexedMod = ctx.GetMod(-1);
     BML::ModRef@ ctxSelf = ctx.FindMod(ctx.GetModId());
-    ctx.LogInfo("BML mod registry query: count=" + modCount +
-                " first=" + BML::GetModId(0) +
+    LogInfo(ctx, "BML mod registry query: count=" + modCount +
+                " first=" + ctx.GetModId(0) +
                 " selfByIndex=" + BoolText(foundSelfByIndex) +
-                " invalid=" + BoolText(BML::GetModId(-1) == "" && (invalidIndexedMod is null)));
-    ctx.LogInfo("BML ctx mod registry query: count=" + ctx.GetModCount() +
+                " invalid=" + BoolText(ctx.GetModId(-1) == "" && (invalidIndexedMod is null)));
+    LogInfo(ctx, "BML ctx mod registry query: count=" + ctx.GetModCount() +
                 " first=" + ctx.GetModId(0) +
                 " selfByIndex=" + BoolText(ctxFoundSelfByIndex) +
                 " selfFind=" + BoolText(ctxSelf !is null && ctxSelf.IsValid && ctxSelf.Id == ctx.GetModId()) +
                 " invalid=" + BoolText(ctx.GetModId(-1) == "" && (ctxInvalidIndexedMod is null)));
 
-    ctx.SetConfigString("Greeting", "hello");
-    ctx.SetConfigBool("Enabled", true);
-    ctx.SetConfigInt("Answer", 42);
-    ctx.SetConfigFloat("Scale", 2.5f);
-    ctx.LogInfo("BML config: greeting=" + ctx.GetConfigString("Greeting", "missing") +
-                " enabled=" + BoolText(ctx.GetConfigBool("Enabled", false)) +
-                " answer=" + ctx.GetConfigInt("Answer", -1) +
-                " scale=" + ctx.GetConfigFloat("Scale", -1.0f));
-    ctx.LogInfo("BML config mismatch fallback: " + ctx.GetConfigInt("Greeting", -33));
+    BML::Config@ config = ctx.BorrowConfig();
+    BML::ConfigProperty@ greeting = null;
+    BML::ConfigProperty@ enabled = null;
+    BML::ConfigProperty@ answer = null;
+    BML::ConfigProperty@ scaleProperty = null;
+    if (config !is null) {
+      config.SetCategoryComment("Smoke", "BML script smoke settings");
+      @greeting = config.GetProperty("Smoke", "Greeting");
+      @enabled = config.GetProperty("Smoke", "Enabled");
+      @answer = config.GetProperty("Smoke", "Answer");
+      @scaleProperty = config.GetProperty("Smoke", "Scale");
+    }
+    if (greeting !is null) {
+      greeting.SetDefaultString("default");
+      greeting.SetComment("Smoke greeting");
+      greeting.SetString("hello");
+    }
+    if (enabled !is null) {
+      enabled.SetDefaultBoolean(false);
+      enabled.SetBoolean(true);
+    }
+    if (answer !is null) {
+      answer.SetDefaultInteger(0);
+      answer.SetInteger(42);
+    }
+    if (scaleProperty !is null) {
+      scaleProperty.SetDefaultFloat(1.0f);
+      scaleProperty.SetFloat(2.5f);
+    }
+    LogInfo(ctx, "BML config: greeting=" + (greeting !is null ? greeting.GetString("missing") : "missing") +
+                " enabled=" + BoolText(enabled !is null && enabled.GetBoolean(false)) +
+                " answer=" + (answer !is null ? answer.GetInteger(-1) : -1) +
+                " scale=" + (scaleProperty !is null ? scaleProperty.GetFloat(-1.0f) : -1.0f) +
+                " category=" + BoolText(config !is null && config.HasCategory("Smoke")) +
+                " key=" + BoolText(config !is null && config.HasKey("Smoke", "Greeting")) +
+                " type=" + BoolText(greeting !is null && greeting.Type == BML::CONFIG_PROPERTY_STRING));
+    LogInfo(ctx, "BML config mismatch fallback: " + (greeting !is null ? greeting.GetInteger(-33) : -33));
 
     BML::DataShareSetString("AngelScriptSmoke", "loaded");
-    ctx.LogInfo("BML datashare: " + BML::DataShareGetString("AngelScriptSmoke", "missing"));
+    LogInfo(ctx, "BML datashare: " + BML::DataShareGetString("AngelScriptSmoke", "missing"));
     BML::DataShareSetBool("AngelScriptSmokeBool", true);
     BML::DataShareSetInt("AngelScriptSmokeInt", 42);
     BML::DataShareSetFloat("AngelScriptSmokeFloat", 3.5f);
-    ctx.LogInfo("BML typed datashare: bool=" + BoolText(BML::DataShareGetBool("AngelScriptSmokeBool", false)) +
+    LogInfo(ctx, "BML typed datashare: bool=" + BoolText(BML::DataShareGetBool("AngelScriptSmokeBool", false)) +
                 " int=" + BML::DataShareGetInt("AngelScriptSmokeInt", -1) +
                 " float=" + BML::DataShareGetFloat("AngelScriptSmokeFloat", -1.0f));
-    ctx.LogInfo("BML typed datashare mismatch fallback: " + BML::DataShareGetInt("AngelScriptSmoke", -77) +
+    LogInfo(ctx, "BML typed datashare mismatch fallback: " + BML::DataShareGetInt("AngelScriptSmoke", -77) +
                 " size=" + BML::DataShareSizeOf("AngelScriptSmoke"));
     dataShareImmediateSeen = false;
     dataSharePendingSeen = false;
     dataShareBoolSeen = false;
     BML::DataShareSetString("AngelScriptSmokeRequestImmediate", "ready");
-    @dataShareImmediateRequest = BML::RequestDataShare(SmokeDataShareRequest(this, "AngelScriptSmokeRequestImmediate", BML::DATASHARE_STRING));
+    @dataShareImmediateRequest = ctx.RequestDataShare(SmokeDataShareRequest(this, "AngelScriptSmokeRequestImmediate", BML::DATASHARE_STRING));
     @heldDataShareObject = SmokeDataShareRequest(this, "AngelScriptSmokeRequestPending", BML::DATASHARE_INT);
     @dataSharePendingRequest = ctx.RequestDataShare(heldDataShareObject);
-    @dataShareBoolRequest = BML::RequestDataShare(SmokeDataShareRequest(this, "AngelScriptSmokeRequestBool", BML::DATASHARE_BOOL));
+    @dataShareBoolRequest = ctx.RequestDataShare(SmokeDataShareRequest(this, "AngelScriptSmokeRequestBool", BML::DATASHARE_BOOL));
     BML::DataShareRequestRef@ invalidDataShareRequest = ctx.RequestDataShare(SmokeInvalidDataShareRequest());
     BML::DataShareSetInt("AngelScriptSmokeRequestPending", 77);
     BML::DataShareSetBool("AngelScriptSmokeRequestBool", true);
-    ctx.LogInfo("BML datashare request: immediate=" + BoolText(dataShareImmediateRequest !is null && dataShareImmediateSeen) +
+    LogInfo(ctx, "BML datashare request: immediate=" + BoolText(dataShareImmediateRequest !is null && dataShareImmediateSeen) +
                 " pending=" + BoolText(dataSharePendingRequest !is null && dataSharePendingSeen) +
                 " bool=" + BoolText(dataShareBoolRequest !is null && dataShareBoolSeen) +
                 " invalid=" + BoolText(invalidDataShareRequest is null));
 
-    @onceTimer = BML::AddTimer(SmokeOnceTimer(this));
+    @onceTimer = ctx.AddTimer(SmokeOnceTimer(this));
     @heldTimerObject = SmokeLoopTimer(this);
     @loopTimer = ctx.AddTimer(heldTimerObject);
-    BML::TimerRef@ invalidTimer = BML::AddTimer(SmokeInvalidTimer());
+    BML::TimerRef@ invalidTimer = ctx.AddTimer(SmokeInvalidTimer());
     @cancelledTimer = ctx.AddTimer(SmokeCancelledTimer(this));
     if (loopTimer !is null) {
       loopTimer.Pause();
@@ -289,7 +384,7 @@ class BMLBindingsSmokeMod {
     if (cancelledTimer !is null) {
       cancelledTimer.Cancel();
     }
-    ctx.LogInfo("BML script timer registration: once=" + BoolText(onceTimer !is null && onceTimer.IsValid) +
+    LogInfo(ctx, "BML script timer registration: once=" + BoolText(onceTimer !is null && onceTimer.IsValid) +
                 " loop=" + BoolText(loopTimer !is null && loopTimer.IsValid) +
                 " invalid=" + BoolText(invalidTimer is null) +
                 " cancelledState=" + (cancelledTimer is null ? -1 : cancelledTimer.State));
@@ -305,35 +400,37 @@ class BMLBindingsSmokeMod {
                         !smokeCommand.IsEnabled &&
                         smokeCommand.SetEnabled(true) &&
                         smokeCommand.IsEnabled;
-    ctx.LogInfo("BML script command registration: " + BoolText(commandRefOk));
+    LogInfo(ctx, "BML script command registration: " + BoolText(commandRefOk));
     @selfCommand = ctx.RegisterCommand(SelfUnregisterCommand(this));
-    ctx.LogInfo("BML script command collision/self registration: collisionBlocked=" +
+    LogInfo(ctx, "BML script command collision/self registration: collisionBlocked=" +
                 BoolText(ctx.RegisterCommand(EchoCollisionCommand(this)) is null) +
                 " self=" +
                 BoolText(selfCommand !is null && selfCommand.IsValid) +
                 " invalid=" +
                 BoolText(invalidCommand is null));
-    ctx.LogInfo("BML script object ownership: transientTimer=" + BoolText(onceTimer !is null) +
+    LogInfo(ctx, "BML script object ownership: transientTimer=" + BoolText(onceTimer !is null) +
                 " heldTimer=" + BoolText(loopTimer !is null && heldTimerObject !is null) +
                 " transientCommand=" + BoolText(selfCommand !is null) +
                 " heldCommand=" + BoolText(smokeCommand !is null && heldCommandObject !is null) +
                 " transientDataShare=" + BoolText(dataShareImmediateRequest !is null) +
                 " heldDataShare=" + BoolText(dataSharePendingRequest !is null && heldDataShareObject !is null));
-    ctx.LogInfo("BML content registration OnLoad: trafo=" + BoolText(ctx.RegisterTrafo("BMLAngelScriptSmokeTrafo")));
+    BML::TrafoDefinition trafo;
+    trafo.Name = "BMLAngelScriptSmokeTrafo";
+    LogInfo(ctx, "BML content registration OnLoad: trafo=" + BoolText(ctx.RegisterModule(trafo)));
 
-    bool originalCheat = BML::IsCheatEnabled();
-    BML::EnableCheat(!originalCheat);
-    BML::EnableCheat(originalCheat);
+    bool originalCheat = ctx.IsCheatEnabled;
+    ctx.EnableCheat(!originalCheat);
+    ctx.EnableCheat(originalCheat);
 
-    BML::ModRef@ self = BML::FindMod(ctx.GetModId());
+    BML::ModRef@ self = ctx.FindMod(ctx.GetModId());
     if (self !is null && self.IsValid) {
-      ctx.LogInfo("BML modref: " + self.Id + " kind=" + self.Kind + " state=" + self.State +
+      LogInfo(ctx, "BML modref: " + self.Id + " kind=" + self.Kind + " state=" + self.State +
                   " script=" + BoolText(self.IsScript));
-      ctx.LogInfo("BML modref metadata: author=" + self.Author +
+      LogInfo(ctx, "BML modref metadata: author=" + self.Author +
                   " desc=" + BoolText(self.Description != "") +
                   " bmlVersion=" + self.BMLVersion +
                   " parts=" + self.BMLVersionMajor + "." + self.BMLVersionMinor + "." + self.BMLVersionPatch);
-      ctx.LogInfo("BML modref dependencies: check=" + self.CheckDependencies() +
+      LogInfo(ctx, "BML modref dependencies: check=" + self.CheckDependencies() +
                   " count=" + self.GetDependencyCount() +
                   " first=" + self.GetDependencyId(0) + "@" + self.GetDependencyVersion(0) +
                   " firstOptional=" + BoolText(self.IsDependencyOptional(0)) +
@@ -374,7 +471,7 @@ class BMLBindingsSmokeMod {
       int overloadedIntStatus = self.TryFindExport("Overloaded", overloadedInt, "int Overloaded(int)");
       int overloadedIntResult = 0;
       int overloadedIntCallStatus = overloadedInt !is null ? overloadedInt.CallInt(5, overloadedIntResult) : BML::ERROR_INTEROP_EXPORT_NOT_FOUND;
-      ctx.LogInfo("BML script export registry: count=" + self.GetExportCount() +
+      LogInfo(ctx, "BML script export registry: count=" + self.GetExportCount() +
                   " sum=" + BoolText(foundSumExport) +
                   " indexedCall=" + BoolText(indexedSumCall) +
                   " overloadedAny=" + overloadedAnyStatus +
@@ -388,40 +485,40 @@ class BMLBindingsSmokeMod {
       if (echo !is null && echo.IsValid) {
         string exportResult;
         int exportStatus = echo.CallString("phase5", exportResult);
-        ctx.LogInfo("BML export Echo status=" + exportStatus + " result=" + exportResult);
+        LogInfo(ctx, "BML export Echo status=" + exportStatus + " result=" + exportResult);
       }
       BML::ExportRef@ addOne = self.FindExport("AddOne");
       if (addOne !is null && addOne.IsValid) {
         int addOneResult = 0;
         int addOneStatus = addOne.CallInt(40, addOneResult);
-        ctx.LogInfo("BML export AddOne status=" + addOneStatus + " result=" + addOneResult);
+        LogInfo(ctx, "BML export AddOne status=" + addOneStatus + " result=" + addOneResult);
       }
       BML::ExportRef@ scale = self.FindExport("Scale");
       if (scale !is null && scale.IsValid) {
         float scaleResult = 0.0f;
         int scaleStatus = scale.CallFloat(2.5f, scaleResult);
-        ctx.LogInfo("BML export Scale status=" + scaleStatus + " result=" + scaleResult);
+        LogInfo(ctx, "BML export Scale status=" + scaleStatus + " result=" + scaleResult);
       }
       BML::ExportRef@ notExport = self.FindExport("Not");
       if (notExport !is null && notExport.IsValid) {
         bool notResult = false;
         int notStatus = notExport.CallBool(true, notResult);
-        ctx.LogInfo("BML export Not status=" + notStatus + " result=" + BoolText(notResult));
+        LogInfo(ctx, "BML export Not status=" + notStatus + " result=" + BoolText(notResult));
       }
     }
 
-    BML::ModRef@ bml = BML::FindMod("BML");
+    BML::ModRef@ bml = ctx.FindMod("BML");
     if (bml !is null && bml.IsValid) {
-      ctx.LogInfo("BML native modref: " + bml.Id + " kind=" + bml.Kind + " state=" + bml.State);
-      ctx.LogInfo("BML native modref metadata: author=" + bml.Author +
+      LogInfo(ctx, "BML native modref: " + bml.Id + " kind=" + bml.Kind + " state=" + bml.State);
+      LogInfo(ctx, "BML native modref metadata: author=" + bml.Author +
                   " desc=" + BoolText(bml.Description != "") +
                   " bmlVersion=" + bml.BMLVersion);
     }
 
-    BML::ModRef@ nativeSmoke = BML::FindMod("bml.native.interop.smoke");
+    BML::ModRef@ nativeSmoke = ctx.FindMod("bml.native.interop.smoke");
     if (nativeSmoke !is null && nativeSmoke.IsValid) {
-      ctx.LogInfo("BML native smoke modref: " + nativeSmoke.Id + " kind=" + nativeSmoke.Kind + " state=" + nativeSmoke.State);
-      ctx.LogInfo("BML native smoke metadata: author=" + nativeSmoke.Author +
+      LogInfo(ctx, "BML native smoke modref: " + nativeSmoke.Id + " kind=" + nativeSmoke.Kind + " state=" + nativeSmoke.State);
+      LogInfo(ctx, "BML native smoke metadata: author=" + nativeSmoke.Author +
                   " desc=" + BoolText(nativeSmoke.Description != "") +
                   " bmlVersion=" + nativeSmoke.BMLVersion);
       bool foundNativeSumExport = false;
@@ -449,7 +546,7 @@ class BMLBindingsSmokeMod {
         }
       }
       BML::ExportRef@ invalidIndexedNativeExport = nativeSmoke.GetExport(-1);
-      ctx.LogInfo("BML native export registry: count=" + nativeSmoke.GetExportCount() +
+      LogInfo(ctx, "BML native export registry: count=" + nativeSmoke.GetExportCount() +
                   " sum=" + BoolText(foundNativeSumExport) +
                   " indexedCall=" + BoolText(indexedNativeSumCall) +
                   " invalid=" + BoolText(nativeSmoke.GetExportName(-1) == "" &&
@@ -459,7 +556,7 @@ class BMLBindingsSmokeMod {
       if (nativeEcho !is null && nativeEcho.IsValid) {
         string nativeResult;
         int nativeStatus = nativeEcho.CallString("script", nativeResult);
-        ctx.LogInfo("BML native export NativeEcho status=" + nativeStatus +
+        LogInfo(ctx, "BML native export NativeEcho status=" + nativeStatus +
                     " signature=" + nativeEcho.Signature +
                     " result=" + nativeResult);
       }
@@ -467,7 +564,7 @@ class BMLBindingsSmokeMod {
       if (nativeAddOne !is null && nativeAddOne.IsValid) {
         int nativeAddOneResult = 0;
         int nativeAddOneStatus = nativeAddOne.CallInt(41, nativeAddOneResult);
-        ctx.LogInfo("BML native export NativeAddOne status=" + nativeAddOneStatus + " result=" + nativeAddOneResult);
+        LogInfo(ctx, "BML native export NativeAddOne status=" + nativeAddOneStatus + " result=" + nativeAddOneResult);
       }
       BML::ExportRef@ nativeSum = nativeSmoke.FindExport("NativeSum", "int NativeSum(int left, int right)");
       if (nativeSum !is null && nativeSum.IsValid) {
@@ -483,19 +580,19 @@ class BMLBindingsSmokeMod {
         if (nativeSumStatus == 0) {
           sumFrame.GetResultInt(nativeSumResult);
         }
-        ctx.LogInfo("BML native export NativeSum status=" + nativeSumStatus + " result=" + nativeSumResult);
+        LogInfo(ctx, "BML native export NativeSum status=" + nativeSumStatus + " result=" + nativeSumResult);
       }
       BML::ExportRef@ nativeScale = nativeSmoke.FindExport("NativeScale", "float NativeScale(float value)");
       if (nativeScale !is null && nativeScale.IsValid) {
         float nativeScaleResult = 0.0f;
         int nativeScaleStatus = nativeScale.CallFloat(3.0f, nativeScaleResult);
-        ctx.LogInfo("BML native export NativeScale status=" + nativeScaleStatus + " result=" + nativeScaleResult);
+        LogInfo(ctx, "BML native export NativeScale status=" + nativeScaleStatus + " result=" + nativeScaleResult);
       }
       BML::ExportRef@ nativeNot = nativeSmoke.FindExport("NativeNot", "bool NativeNot(bool value)");
       if (nativeNot !is null && nativeNot.IsValid) {
         bool nativeNotResult = true;
         int nativeNotStatus = nativeNot.CallBool(true, nativeNotResult);
-        ctx.LogInfo("BML native export NativeNot status=" + nativeNotStatus + " result=" + BoolText(nativeNotResult));
+        LogInfo(ctx, "BML native export NativeNot status=" + nativeNotStatus + " result=" + BoolText(nativeNotResult));
       }
       BML::ExportRef@ nativeFrameReport = nativeSmoke.FindExport("NativeFrameReport");
       if (nativeFrameReport !is null && nativeFrameReport.IsValid) {
@@ -520,7 +617,7 @@ class BMLBindingsSmokeMod {
         int reportClearMissing = reportFrame.ClearArg(9);
         int reportClearResult = reportFrame.ClearResult();
         int reportResultTypeAfter = reportFrame.ResultType;
-        ctx.LogInfo("BML native export NativeFrameReport status=" + reportStatus +
+        LogInfo(ctx, "BML native export NativeFrameReport status=" + reportStatus +
                     " signature=" + nativeFrameReport.Signature +
                     " beforeCount=" + reportArgCountBefore +
                     " beforeTypes=" + reportType0Before + "/" + reportType1Before +
@@ -567,7 +664,7 @@ class BMLBindingsSmokeMod {
                               BML::ERROR_INTEROP_TARGET_EXECUTION_FAILED == -708 &&
                               BML::ERROR_INTEROP_HANDLE_STALE == -709 &&
                               BML::GetErrorString(BML::ERROR_INTEROP_EXPORT_AMBIGUOUS) != "";
-      ctx.LogInfo("BML native export hardening script tryEcho=" + tryNativeEchoStatus +
+      LogInfo(ctx, "BML native export hardening script tryEcho=" + tryNativeEchoStatus +
                   " echoValid=" + BoolText(tryNativeEcho !is null && tryNativeEcho.IsValid) +
                   " ambiguous=" + tryNativeAmbiguousStatus +
                   " ambiguousNull=" + BoolText(tryNativeAmbiguous is null) +
@@ -588,7 +685,7 @@ class BMLBindingsSmokeMod {
         if (frameCallStatus == 0) {
           frame.GetResultInt(frameIntResult);
         }
-        ctx.LogInfo("BML reusable frame NativeAddOne status=" + frameCallStatus + " result=" + frameIntResult);
+        LogInfo(ctx, "BML reusable frame NativeAddOne status=" + frameCallStatus + " result=" + frameIntResult);
 
         frame.Clear();
         frameSetStatus = frame.SetString(0, "frame");
@@ -597,7 +694,7 @@ class BMLBindingsSmokeMod {
         if (frameCallStatus == 0) {
           frame.GetResultString(frameStringResult);
         }
-        ctx.LogInfo("BML reusable frame NativeEcho status=" + frameCallStatus + " result=" + frameStringResult);
+        LogInfo(ctx, "BML reusable frame NativeEcho status=" + frameCallStatus + " result=" + frameStringResult);
       }
     }
 
@@ -616,7 +713,7 @@ class BMLBindingsSmokeMod {
         if (scriptSumStatus == 0) {
           scriptSumFrame.GetResultInt(scriptSumResult);
         }
-        ctx.LogInfo("BML export Sum status=" + scriptSumStatus + " result=" + scriptSumResult);
+        LogInfo(ctx, "BML export Sum status=" + scriptSumStatus + " result=" + scriptSumResult);
       }
     }
   }
@@ -627,41 +724,46 @@ class BMLBindingsSmokeMod {
     }
     firstFrame = false;
 
-    ctx.LogInfo("BML first process callback");
-    ctx.LogInfo("ctx ingame=" + BoolText(ctx.IsInGame) +
+    LogInfo(ctx, "BML first process callback");
+    LogInfo(ctx, "ctx ingame=" + BoolText(ctx.IsInGame) +
                 " inLevel=" + BoolText(ctx.IsInLevel) +
                 " paused=" + BoolText(ctx.IsPaused) +
                 " playing=" + BoolText(ctx.IsPlaying) +
                 " cheat=" + BoolText(ctx.IsCheatEnabled));
-    ctx.LogInfo("ctx/global runtime match=" + BoolText(ctx.IsPaused == BML::IsPaused() &&
-                ctx.IsPlaying == BML::IsPlaying() &&
-                ctx.IsCheatEnabled == BML::IsCheatEnabled()));
-    ctx.LogInfo("global ingame=" + BoolText(BML::IsIngame()) +
-                " inLevel=" + BoolText(BML::IsInLevel()) +
-                " paused=" + BoolText(BML::IsPaused()));
+    BML::ModContext current;
+    bool hasCurrent = BML::BorrowCurrentContext(current);
+    LogInfo(ctx, "ctx/current runtime match=" + BoolText(hasCurrent &&
+                ctx.IsPaused == current.IsPaused &&
+                ctx.IsPlaying == current.IsPlaying &&
+                ctx.IsCheatEnabled == current.IsCheatEnabled));
+    LogInfo(ctx, "current ingame=" + BoolText(hasCurrent && current.IsInGame) +
+                " inLevel=" + BoolText(hasCurrent && current.IsInLevel) +
+                " paused=" + BoolText(hasCurrent && current.IsPaused));
 
     LogFailedModState(ctx, "script:BMLAngelScriptCompileErrorSmoke");
     LogFailedModState(ctx, "bml.runtime.error.smoke");
 
     ctx.SendIngameMessage("BML AngelScript ctx smoke");
-    BML::SendIngameMessage("BML AngelScript global smoke");
+    ctx.SendIngameMessage("BML AngelScript global smoke");
     ctx.ExecuteCommand("echo bml-command-smoke");
-    BML::ExecuteCommand("echo bml-command-global-smoke");
-    BML::ExecuteCommand("assmoke alpha beta");
-    BML::ExecuteCommand("assself first");
-    BML::ExecuteCommand("assself second");
-    ctx.LogInfo("BML content registration after OnLoad blocked=" + BoolText(!BML::RegisterModul("BMLAngelScriptSmokeLateModul")));
+    ctx.ExecuteCommand("echo bml-command-global-smoke");
+    ctx.ExecuteCommand("assmoke alpha beta");
+    ctx.ExecuteCommand("assself first");
+    ctx.ExecuteCommand("assself second");
+    BML::ModuleDefinition lateModule;
+    lateModule.Name = "BMLAngelScriptSmokeLateModul";
+    LogInfo(ctx, "BML content registration after OnLoad blocked=" + BoolText(!ctx.RegisterModule(lateModule)));
     ctx.OpenModsMenu();
     ctx.CloseModsMenu();
-    BML::OpenMapMenu();
-    BML::CloseMapMenu();
-    BML::OpenModsMenu();
-    BML::CloseModsMenu();
+    ctx.OpenMapMenu();
+    ctx.CloseMapMenu();
+    ctx.OpenModsMenu();
+    ctx.CloseModsMenu();
     ctx.ClearIngameMessages();
-    BML::ClearIngameMessages();
-    ctx.LogInfo("BML menu/message api: exercised=true");
-    ctx.LogInfo("BML UI outside render safe=" + BoolText(!BML::UI::MainButton("outside-render")));
-    ctx.LogInfo("BML ImGui outside render safe=" + BoolText(!ImGui::Button("outside-render")));
+    ctx.ClearIngameMessages();
+    LogInfo(ctx, "BML menu/message api: exercised=true");
+    LogInfo(ctx, "BML UI outside render safe=" + BoolText(!BML::UI::MainButton("outside-render")));
+    LogInfo(ctx, "BML ImGui outside render safe=" + BoolText(!ImGui::Button("outside-render")));
   }
 
   void OnRender(const BML::ModContext &in ctx, const BML::RenderEvent &in event) {
@@ -670,7 +772,7 @@ class BMLBindingsSmokeMod {
     }
     firstRender = false;
 
-    ctx.LogInfo("BML first render callback flags=" + event.Flags);
+    LogInfo(ctx, "BML first render callback flags=" + event.Flags);
     int uiPages = BML::UI::CalcPageCount(9, 4);
     bool uiNavOk = !BML::UI::CanPrevPage(0) && BML::UI::CanNextPage(0, 9, 4);
     float uiButtonSize = BML::UI::GetButtonSizeCoordX(BML::UI::BUTTON_MAIN);
@@ -678,6 +780,8 @@ class BMLBindingsSmokeMod {
     BML::UI::WrappedText("BML UI smoke text", 240.0f, 0.0f, 1.0f);
     BML::UI::SetCursorCoord(0.4f, 0.30f);
     BML::UI::MainButton("BML UI Main");
+    BML::UI::OkButton("BML UI OK");
+    BML::UI::BackButton("BML UI Back");
     BML::UI::OptionButton("BML UI Option");
     BML::UI::LevelButton("BML UI Level", uiChoice);
     BML::UI::SmallButton("BML UI Small", uiChoice);
@@ -685,18 +789,31 @@ class BMLBindingsSmokeMod {
     BML::UI::RightButton("Next");
     BML::UI::PlusButton("Plus");
     BML::UI::MinusButton("Minus");
+    BML::UI::KeyButton("BML UI Key", uiKeyToggled, uiKeyChord);
     BML::UI::YesNoButton("BML UI Bool", uiChoice);
+    BML::UI::RadioButtonText("BML UI Radio", uiRadio, "Alpha\nBeta\nGamma");
+    BML::UI::InputTextButton("BML UI Text", uiText);
     BML::UI::InputIntButton("BML UI Int", uiCounter);
     BML::UI::InputFloatButton("BML UI Float", uiFloat);
     BML::UI::SearchBar(uiSearch);
+    int uiImGuiEscape = BML::UI::CKKeyToImGuiKey(CKKEY_ESCAPE);
+    CKKEYBOARD uiRoundTripEscape = BML::UI::ImGuiKeyToCKKey(uiImGuiEscape);
+    string uiKeyChordText = BML::UI::KeyChordToString(uiKeyChord);
+    int uiCapturedChord = uiKeyChord;
+    bool uiCaptured = BML::UI::SetKeyChordFromIO(uiCapturedChord);
     BML::UI::NavLeft();
     BML::UI::NavRight();
     BML::UI::NavBack();
     BML::UI::PlayMenuClickSound();
-    ctx.LogInfo("BML UI facade smoke: pages=" + uiPages +
+    LogInfo(ctx, "BML UI facade smoke: pages=" + uiPages +
                 " nav=" + BoolText(uiNavOk) +
                 " sizeCoord=" + uiButtonSize +
-                " search=" + uiSearch);
+                " search=" + uiSearch +
+                " text=" + uiText +
+                " radio=" + uiRadio +
+                " keyRoundTrip=" + BoolText(uiRoundTripEscape == CKKEY_ESCAPE) +
+                " keyChord=" + uiKeyChordText +
+                " keyCapture=" + BoolText(uiCaptured || uiCapturedChord == uiKeyChord));
 
     bool imguiWindow = ImGui::Begin("BML ImGui Smoke", ImGuiWindowFlags_AlwaysAutoResize);
     if (imguiWindow) {
@@ -743,7 +860,7 @@ class BMLBindingsSmokeMod {
       draw.PathArcTo(ImVec2(256, 32), 16.0f, 0.0f, 3.14f);
       draw.PathStroke(0xffffffff);
     }
-    ctx.LogInfo("BML ImGui advanced smoke: window=" + BoolText(imguiWindow) +
+    LogInfo(ctx, "BML ImGui advanced smoke: window=" + BoolText(imguiWindow) +
                 " combo=" + imguiCombo +
                 " list=" + imguiList +
                 " text=" + imguiText);
@@ -752,10 +869,10 @@ class BMLBindingsSmokeMod {
   void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
     if (event == BML::GAME_EVENT_PRE_START_MENU && firstPreStartMenu) {
       firstPreStartMenu = false;
-      ctx.LogInfo("BML first pre-start-menu callback");
+      LogInfo(ctx, "BML first pre-start-menu callback");
     } else if (event == BML::GAME_EVENT_POST_START_MENU && firstPostStartMenu) {
       firstPostStartMenu = false;
-      ctx.LogInfo("BML first post-start-menu callback");
+      LogInfo(ctx, "BML first post-start-menu callback");
     }
   }
 
@@ -765,7 +882,7 @@ class BMLBindingsSmokeMod {
     }
     firstCheatEnabled = false;
 
-    ctx.LogInfo("BML cheat callback enable=" + BoolText(event.Enabled));
+    LogInfo(ctx, "BML cheat callback enable=" + BoolText(event.Enabled));
   }
 
   void OnLoadObject(const BML::ModContext &in ctx,
@@ -775,7 +892,7 @@ class BMLBindingsSmokeMod {
     }
     firstLoadObject = false;
 
-    ctx.LogInfo("BML load object filename=" + event.Filename +
+    LogInfo(ctx, "BML load object filename=" + event.Filename +
                 " isMap=" + BoolText(event.IsMap) +
                 " filterClass=" + event.FilterClass +
                 " addToScene=" + BoolText(event.AddToScene) +
@@ -788,19 +905,19 @@ class BMLBindingsSmokeMod {
     }
     firstLoadScript = false;
 
-    ctx.LogInfo("BML load script filename=" + event.Filename + " scriptId=" + event.ScriptId);
+    LogInfo(ctx, "BML load script filename=" + event.Filename + " scriptId=" + event.ScriptId);
   }
 
   void OnCommandEvent(const BML::ModContext &in ctx, const BML::CommandEvent &in event) {
     if (event.IsPre && firstPreCommand) {
       firstPreCommand = false;
-      ctx.LogInfo("BML pre command callback command=" + event.CommandName +
+      LogInfo(ctx, "BML pre command callback command=" + event.CommandName +
                   " args=" + event.ArgsText +
                   " argCount=" + event.ArgCount +
                   " cheat=" + BoolText(event.IsCheat));
     } else if (event.IsPost && firstPostCommand) {
       firstPostCommand = false;
-      ctx.LogInfo("BML post command callback command=" + event.CommandName +
+      LogInfo(ctx, "BML post command callback command=" + event.CommandName +
                   " args=" + event.ArgsText +
                   " argCount=" + event.ArgCount +
                   " cheat=" + BoolText(event.IsCheat));
@@ -812,7 +929,7 @@ class BMLBindingsSmokeMod {
       return;
     }
     firstScriptCommand = false;
-    ctx.LogInfo("BML script command callback command=" + event.CommandName +
+    LogInfo(ctx, "BML script command callback command=" + event.CommandName +
                 " execute=" + BoolText(event.IsExecute) +
                 " args=" + event.ArgsText +
                 " count=" + event.ArgCount);
@@ -820,12 +937,12 @@ class BMLBindingsSmokeMod {
 
   void RecordSmokeCommandComplete(const BML::ModContext &in ctx, const BML::CommandEvent &in event, BML::CommandCompletion &inout completions) {
     if (!event.IsComplete || event.CommandName != "assmoke") {
-      ctx.LogWarn("BML script command completion unexpected event");
+      LogWarn(ctx, "BML script command completion unexpected event");
       return;
     }
     completions.Add("alpha");
     completions.Add("beta");
-    ctx.LogInfo("BML script command completion callback command=" + event.CommandName +
+    LogInfo(ctx, "BML script command completion callback command=" + event.CommandName +
                 " args=" + event.ArgsText +
                 " count=" + completions.Count);
   }
@@ -836,14 +953,14 @@ class BMLBindingsSmokeMod {
     }
     firstSelfUnregisterCommand = false;
     selfUnregisterCommandCalls++;
-    ctx.LogInfo("BML self unregister command callback command=" + event.CommandName +
+    LogInfo(ctx, "BML self unregister command callback command=" + event.CommandName +
                 " args=" + event.ArgsText +
                 " unregistered=" + BoolText(ctx.UnregisterCommand(event.CommandName)));
   }
 
   void RecordSmokeTimerOnce(const BML::ModContext &in ctx, const BML::TimerEvent &in event) {
     timerOnceSeen = true;
-    ctx.LogInfo("BML script timer once callback id=" + event.Id +
+    LogInfo(ctx, "BML script timer once callback id=" + event.Id +
                 " name=" + event.Name +
                 " valid=" + BoolText(event.IsValid) +
                 " state=" + event.State +
@@ -853,7 +970,7 @@ class BMLBindingsSmokeMod {
 
   bool RecordSmokeTimerLoop(const BML::ModContext &in ctx, const BML::TimerEvent &in event) {
     timerLoopSeen = true;
-    ctx.LogInfo("BML script timer loop callback id=" + event.Id +
+    LogInfo(ctx, "BML script timer loop callback id=" + event.Id +
                 " name=" + event.Name +
                 " remaining=" + event.RemainingIterations +
                 " completed=" + event.CompletedIterations);
@@ -862,7 +979,7 @@ class BMLBindingsSmokeMod {
 
   void RecordCancelledTimer(const BML::ModContext &in ctx, const BML::TimerEvent &in event) {
     timerCancelledSeen = true;
-    ctx.LogWarn("BML cancelled timer unexpectedly fired id=" + event.Id + " name=" + event.Name);
+    LogWarn(ctx, "BML cancelled timer unexpectedly fired id=" + event.Id + " name=" + event.Name);
   }
 
   void OnPhysicalize(const BML::ModContext &in ctx,
@@ -872,7 +989,7 @@ class BMLBindingsSmokeMod {
     }
     firstPhysicalize = false;
 
-    ctx.LogInfo("BML physicalize callback targetId=" + event.TargetId +
+    LogInfo(ctx, "BML physicalize callback targetId=" + event.TargetId +
                 " target=" + event.TargetName +
                 " fixed=" + BoolText(event.Fixed) +
                 " mass=" + event.Mass +
@@ -892,11 +1009,11 @@ class BMLBindingsSmokeMod {
     }
     firstUnphysicalize = false;
 
-    ctx.LogInfo("BML unphysicalize callback targetId=" + event.TargetId + " target=" + event.TargetName);
+    LogInfo(ctx, "BML unphysicalize callback targetId=" + event.TargetId + " target=" + event.TargetName);
   }
 
   void OnUnload(const BML::ModContext &in ctx) {
-    ctx.LogInfo("BML script mod smoke unloading");
+    LogInfo(ctx, "BML script mod smoke unloading");
     BML::DataShareRemove("AngelScriptSmoke");
     BML::DataShareRemove("AngelScriptSmokeBool");
     BML::DataShareRemove("AngelScriptSmokeInt");
@@ -910,7 +1027,7 @@ class BMLBindingsSmokeMod {
     if (selfCommand !is null && selfCommand.IsValid) {
       selfCommand.Unregister();
     }
-    ctx.LogInfo("BML script timer summary: once=" + BoolText(timerOnceSeen) +
+    LogInfo(ctx, "BML script timer summary: once=" + BoolText(timerOnceSeen) +
                 " loop=" + BoolText(timerLoopSeen) +
                 " cancelled=" + BoolText(timerCancelledSeen) +
                 " refsInvalid=" + BoolText((onceTimer is null || !onceTimer.IsValid) &&
@@ -923,6 +1040,20 @@ class BMLBindingsSmokeMod {
                                                     (dataShareBoolRequest is null || !dataShareBoolRequest.IsValid)) +
                 " command=" + BoolText(!firstScriptCommand) +
                 " selfCommandCalls=" + selfUnregisterCommandCalls);
+  }
+}
+
+void LogInfo(const BML::ModContext &in ctx, const string &in message) {
+  BML::Logger@ logger = ctx.BorrowLogger();
+  if (logger !is null) {
+    logger.Info(message);
+  }
+}
+
+void LogWarn(const BML::ModContext &in ctx, const string &in message) {
+  BML::Logger@ logger = ctx.BorrowLogger();
+  if (logger !is null) {
+    logger.Warn(message);
   }
 }
 
@@ -999,21 +1130,21 @@ class SmokeDataShareRequest : BML::DataShareRequest {
       owner.dataShareImmediateSeen = event.Exists &&
                                      event.Key == "AngelScriptSmokeRequestImmediate" &&
                                      event.StringValue == "ready";
-      ctx.LogInfo("BML datashare request immediate callback key=" + event.Key +
+      LogInfo(ctx, "BML datashare request immediate callback key=" + event.Key +
                   " exists=" + owner.BoolText(event.Exists) +
                   " value=" + event.StringValue);
     } else if (type == BML::DATASHARE_INT) {
       owner.dataSharePendingSeen = event.Exists &&
                                    event.Key == "AngelScriptSmokeRequestPending" &&
                                    event.IntValue == 77;
-      ctx.LogInfo("BML datashare request pending callback key=" + event.Key +
+      LogInfo(ctx, "BML datashare request pending callback key=" + event.Key +
                   " exists=" + owner.BoolText(event.Exists) +
                   " value=" + event.IntValue);
     } else if (type == BML::DATASHARE_BOOL) {
       owner.dataShareBoolSeen = event.Exists &&
                                 event.Key == "AngelScriptSmokeRequestBool" &&
                                 event.BoolValue;
-      ctx.LogInfo("BML datashare request bool callback key=" + event.Key +
+      LogInfo(ctx, "BML datashare request bool callback key=" + event.Key +
                   " exists=" + owner.BoolText(event.Exists) +
                   " value=" + owner.BoolText(event.BoolValue));
     }
@@ -1025,7 +1156,7 @@ class SmokeInvalidDataShareRequest : BML::DataShareRequest {
   int get_Type() const { return BML::DATASHARE_STRING; }
 
   void Receive(const BML::ModContext &in ctx, const BML::DataShareEvent &in event) {
-    ctx.LogWarn("BML invalid datashare request unexpectedly fired");
+    LogWarn(ctx, "BML invalid datashare request unexpectedly fired");
   }
 }
 
@@ -1058,7 +1189,7 @@ class SmokeInvalidCommand : BML::Command {
   string get_Name() const { return ""; }
 
   void Execute(const BML::ModContext &in ctx, const BML::CommandEvent &in event) {
-    ctx.LogWarn("BML invalid command unexpectedly executed");
+    LogWarn(ctx, "BML invalid command unexpectedly executed");
   }
 }
 
