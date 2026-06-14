@@ -93,7 +93,7 @@ bool ScriptModDefinitionBuilder::Build(CKContext *context,
     std::vector<std::string> diagnostics;
     const ScriptMetadataRecord *mainType = nullptr;
     std::vector<ParsedScriptMetadataRecord> bmlMetadata;
-    std::unordered_set<std::string> exportNames;
+    std::unordered_set<std::string> exportKeys;
     ScriptModDefinition reflected;
     reflected.Entry = entry.EntryFilename;
     reflected.Enabled = true;
@@ -189,8 +189,10 @@ bool ScriptModDefinitionBuilder::Build(CKContext *context,
                                       exportInfo.Signature + "'.");
                 continue;
             }
-            if (!exportNames.insert(exportInfo.Name).second) {
-                diagnostics.push_back("duplicate bml.export name '" + exportInfo.Name + "'.");
+            const std::string exportKey = exportInfo.Name + "\n" + exportInfo.Signature;
+            if (!exportKeys.insert(exportKey).second) {
+                diagnostics.push_back("duplicate bml.export name '" + exportInfo.Name +
+                                      "' with signature '" + exportInfo.Signature + "'.");
                 continue;
             }
             reflected.Exports.push_back(exportInfo);

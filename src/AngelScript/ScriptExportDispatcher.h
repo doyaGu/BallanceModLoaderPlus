@@ -2,7 +2,6 @@
 #define BML_SCRIPTEXPORTDISPATCHER_H
 
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "BML/Interop.h"
@@ -30,16 +29,13 @@ public:
     bool Release(CKContext *context, ScriptModRuntime &runtime, ScriptDiagnostic *diagnostic = nullptr);
     bool HasExport(const std::string &name, const std::string &signature = std::string()) const;
     const ScriptExportBinding *Resolve(const std::string &name, const std::string &signature = std::string()) const;
-    const ScriptExportBinding *Find(const std::string &name) const;
     std::string GetSignature(const std::string &name) const;
     int GetCount() const;
     bool GetInfo(int index, std::string &name, std::string &signature) const;
     void Clear();
 
 private:
-    typedef std::unordered_map<std::string, ScriptExportBinding> ExportMap;
-    ExportMap m_Exports;
-    std::vector<std::string> m_Order;
+    std::vector<ScriptExportBinding> m_Exports;
 };
 
 class ScriptExportDispatcher {

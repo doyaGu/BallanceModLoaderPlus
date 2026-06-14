@@ -85,6 +85,16 @@ class BMLBindingsSmokeMod {
     return value * 2.0f;
   }
 
+  [bml.export]
+  int Overloaded(int value) {
+    return value + 10;
+  }
+
+  [bml.export]
+  float Overloaded(float value) {
+    return value + 1.5f;
+  }
+
   void OnLoad(const BML::ModContext &in ctx) {
     ctx.LogInfo("BML script mod smoke loaded: " + ctx.GetModId() + " / " + ctx.GetModName());
     ctx.LogInfo("BML version: " + BML::GetVersion());
@@ -358,9 +368,19 @@ class BMLBindingsSmokeMod {
         }
       }
       BML::ExportRef@ invalidIndexedExport = self.GetExport(-1);
+      BML::ExportRef@ overloadedAny;
+      int overloadedAnyStatus = self.TryFindExport("Overloaded", overloadedAny);
+      BML::ExportRef@ overloadedInt;
+      int overloadedIntStatus = self.TryFindExport("Overloaded", overloadedInt, "int Overloaded(int)");
+      int overloadedIntResult = 0;
+      int overloadedIntCallStatus = overloadedInt !is null ? overloadedInt.CallInt(5, overloadedIntResult) : BML::ERROR_INTEROP_EXPORT_NOT_FOUND;
       ctx.LogInfo("BML script export registry: count=" + self.GetExportCount() +
                   " sum=" + BoolText(foundSumExport) +
                   " indexedCall=" + BoolText(indexedSumCall) +
+                  " overloadedAny=" + overloadedAnyStatus +
+                  " overloadedInt=" + overloadedIntStatus +
+                  " overloadedCall=" + overloadedIntCallStatus +
+                  " overloadedResult=" + overloadedIntResult +
                   " invalid=" + BoolText(self.GetExportName(-1) == "" &&
                   self.GetExportSignature(-1) == "" &&
                   (invalidIndexedExport is null)));

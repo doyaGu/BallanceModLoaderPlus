@@ -188,12 +188,6 @@ bool ScriptExportTable::Cache(CKContext *context,
                               const std::vector<ScriptModExportDefinition> &definitions,
                               ScriptDiagnostic &diagnostic) {
     for (const ScriptModExportDefinition &exportInfo : definitions) {
-        if (m_Exports.find(exportInfo.Name) != m_Exports.end()) {
-            diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::ExportLookup,
-                                              "Duplicate script export '" + exportInfo.Name + "'.");
-            return false;
-        }
-
         ScriptExportBinding binding;
         binding.Name = exportInfo.Name;
         binding.Signature = exportInfo.Signature;
@@ -213,17 +207,23 @@ bool ScriptExportTable::Cache(CKContext *context,
             return false;
         }
 
-        m_Order.push_back(binding.Name);
-        m_Exports.emplace(binding.Name, binding);
+        const bool duplicate = std::any_of(m_Exports.begin(), m_Exports.end(), [&binding](const ScriptExportBinding &existing) {
+            return existing.Name == binding.Name && existing.Signature == binding.Signature;
+        });
+        if (duplicate) {
+            diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::ExportLookup,
+                                              "Duplicate script export '" + binding.Name +
+                                              "' with signature '" + binding.Signature + "'.");
+            runtime.ReleaseMethod(context, binding.Method, nullptr);
+            return false;
+        }
+
+        m_Exports.push_back(binding);
     }
-    std::sort(m_Order.begin(), m_Order.end(), [this](const std::string &leftName, const std::string &rightName) {
-        const ScriptExportBinding *left = Find(leftName);
-        const ScriptExportBinding *right = Find(rightName);
-        if (!left || !right)
-            return leftName < rightName;
-        if (left->Name == right->Name)
-            return left->Signature < right->Signature;
-        return left->Name < right->Name;
+    std::sort(m_Exports.begin(), m_Exports.end(), [](const ScriptExportBinding &left, const ScriptExportBinding &right) {
+        if (left.Name == right.Name)
+            return left.Signature < right.Signature;
+        return left.Name < right.Name;
     });
     ExportRegistry::NotifyScriptExportsChanged();
     return true;
@@ -234,14 +234,13 @@ bool ScriptExportTable::Release(CKContext *context, ScriptModRuntime &runtime, S
     ScriptDiagnostic firstFailure;
     for (auto &entry : m_Exports) {
         ScriptDiagnostic releaseDiagnostic;
-        if (!runtime.ReleaseMethod(context, entry.second.Method, &releaseDiagnostic)) {
+        if (!runtime.ReleaseMethod(context, entry.Method, &releaseDiagnostic)) {
             if (ok)
                 firstFailure = releaseDiagnostic;
             ok = false;
         }
     }
     m_Exports.clear();
-    m_Order.clear();
     ExportRegistry::NotifyScriptExportsChanged();
     if (!ok && diagnostic)
         *diagnostic = firstFailure;
@@ -253,20 +252,32 @@ bool ScriptExportTable::HasExport(const std::string &name, const std::string &si
 }
 
 const ScriptExportBinding *ScriptExportTable::Resolve(const std::string &name, const std::string &signature) const {
-    const ScriptExportBinding *binding = Find(name);
-    if (!binding || (!signature.empty() && binding->Signature != signature))
-        return nullptr;
-    return binding;
-}
-
-const ScriptExportBinding *ScriptExportTable::Find(const std::string &name) const {
-    auto it = m_Exports.find(name);
-    return it == m_Exports.end() ? nullptr : &it->second;
+    const ScriptExportBinding *match = nullptr;
+    for (const ScriptExportBinding &binding : m_Exports) {
+        if (binding.Name != name)
+            continue;
+        if (!signature.empty()) {
+            if (binding.Signature == signature)
+                return &binding;
+            continue;
+        }
+        if (match)
+            return nullptr;
+        match = &binding;
+    }
+    return match;
 }
 
 std::string ScriptExportTable::GetSignature(const std::string &name) const {
-    const ScriptExportBinding *binding = Find(name);
-    return binding ? binding->Signature : std::string();
+    std::string signatures;
+    for (const ScriptExportBinding &binding : m_Exports) {
+        if (binding.Name != name)
+            continue;
+        if (!signatures.empty())
+            signatures += "; ";
+        signatures += binding.Signature;
+    }
+    return signatures;
 }
 
 int ScriptExportTable::GetCount() const {
@@ -274,20 +285,17 @@ int ScriptExportTable::GetCount() const {
 }
 
 bool ScriptExportTable::GetInfo(int index, std::string &name, std::string &signature) const {
-    if (index < 0 || index >= static_cast<int>(m_Order.size()))
+    if (index < 0 || index >= static_cast<int>(m_Exports.size()))
         return false;
 
-    const ScriptExportBinding *binding = Find(m_Order[static_cast<size_t>(index)]);
-    if (!binding)
-        return false;
-    name = binding->Name;
-    signature = binding->Signature;
+    const ScriptExportBinding &binding = m_Exports[static_cast<size_t>(index)];
+    name = binding.Name;
+    signature = binding.Signature;
     return true;
 }
 
 void ScriptExportTable::Clear() {
     m_Exports.clear();
-    m_Order.clear();
     ExportRegistry::NotifyScriptExportsChanged();
 }
 
