@@ -113,8 +113,9 @@ void ScriptMod::OnLoad() {
     m_InLoadCallback = true;
     const bool onLoadOk = m_EventRouter.CallOnLoad(diagnostic);
     m_InLoadCallback = false;
-    if (!onLoadOk) {
-        Fail(diagnostic);
+    if (!onLoadOk || m_State.IsFailed()) {
+        if (!onLoadOk)
+            Fail(diagnostic);
         CleanupFailedLoad();
         return;
     }
