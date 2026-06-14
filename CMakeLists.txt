@@ -79,11 +79,16 @@ if (BML_ENABLE_ANGELSCRIPT)
             "${CKANGELSCRIPT_ROOT}/include"
             "${CKANGELSCRIPT_ROOT}")
     if (CKANGELSCRIPT_INCLUDE_DIR AND CKANGELSCRIPT_ANGELSCRIPT_INCLUDE_DIR)
+        file(STRINGS "${CKANGELSCRIPT_INCLUDE_DIR}/CKAngelScript.h"
+                CKANGELSCRIPT_ARRAY_FEATURE
+                REGEX "CKAS_FEATURE_SCRIPT_ARRAY_ACCESS")
+        if (NOT CKANGELSCRIPT_ARRAY_FEATURE)
+            message(FATAL_ERROR "BML AngelScript script support requires CKAngelScript API v4 with CKAS_FEATURE_SCRIPT_ARRAY_ACCESS")
+        endif ()
         set(BML_WITH_ANGELSCRIPT TRUE)
         message(STATUS "BML AngelScript script support enabled")
     else ()
-        set(BML_WITH_ANGELSCRIPT FALSE)
-        message(STATUS "BML AngelScript script support disabled: CKAngelScript headers were not found")
+        message(FATAL_ERROR "BML AngelScript script support requires CKAngelScript and AngelScript headers")
     endif ()
 else ()
     set(BML_WITH_ANGELSCRIPT FALSE)

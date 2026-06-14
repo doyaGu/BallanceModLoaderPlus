@@ -1,6 +1,7 @@
 #include "BML/IMod.h"
 #include "BML/Interop.h"
 
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -105,6 +106,47 @@ static int NativeFailWithResultExport(BML_CallFrame *frame, void *) {
     return BML_ERROR_FAIL;
 }
 
+static int NativeSumIntArrayExport(BML_CallFrame *frame, void *) {
+    const size_t count = BML_CallFrame_GetIntArrayCount(frame, 0);
+    std::vector<int> values(count);
+    size_t required = 0;
+    const int status = BML_CallFrame_CopyIntArray(frame, 0, values.data(), values.size(), &required);
+    if (status != BML_OK)
+        return status;
+
+    int sum = 0;
+    for (int value : values)
+        sum += value;
+    return BML_CallFrame_SetResultInt(frame, sum);
+}
+
+static int NativeMirrorBufferExport(BML_CallFrame *frame, void *) {
+    const size_t size = BML_CallFrame_GetBufferSize(frame, 0);
+    std::vector<std::uint8_t> bytes(size);
+    size_t required = 0;
+    const int status = BML_CallFrame_CopyBuffer(frame, 0, bytes.data(), bytes.size(), &required);
+    if (status != BML_OK)
+        return status;
+    for (std::uint8_t &byte : bytes)
+        byte = static_cast<std::uint8_t>(byte ^ 0xffu);
+    return BML_CallFrame_SetResultBuffer(frame, bytes.data(), bytes.size());
+}
+
+static int NativeStringArrayCountExport(BML_CallFrame *frame, void *) {
+    const size_t count = BML_CallFrame_GetStringArrayCount(frame, 0);
+    if (count == 0 && BML_CallFrame_GetArgType(frame, 0) != BML_CALL_VALUE_STRING_ARRAY)
+        return BML_ERROR_INTEROP_BAD_CALL_FRAME;
+    return BML_CallFrame_SetResultInt(frame, static_cast<int>(count));
+}
+
+static int NativeObjectIdentityExport(BML_CallFrame *frame, void *) {
+    int objectId = 0;
+    const int status = BML_CallFrame_GetObjectId(frame, 0, &objectId);
+    if (status != BML_OK)
+        return status;
+    return BML_CallFrame_SetResultObjectId(frame, objectId);
+}
+
 static int NativeLifecycleSmokeExport(BML_CallFrame *frame, void *userdata) {
     auto *called = static_cast<bool *>(userdata);
     if (called)
@@ -147,8 +189,21 @@ public:
         RegisterExport("NativeAmbiguous", "float NativeAmbiguous(float value)", NativeAmbiguousFloatExport);
         RegisterExport("NativeThrow", "void NativeThrow()", NativeThrowExport);
         RegisterExport("NativeFailWithResult", "int NativeFailWithResult()", NativeFailWithResultExport);
+        RegisterExport("NativeSumIntArray",
+                       "int NativeSumIntArray(const array<int> &in values)",
+                       NativeSumIntArrayExport);
+        RegisterExport("NativeMirrorBuffer",
+                       "array<uint8>@ NativeMirrorBuffer(const array<uint8> &in bytes)",
+                       NativeMirrorBufferExport);
+        RegisterExport("NativeStringArrayCount",
+                       "int NativeStringArrayCount(const array<string> &in values)",
+                       NativeStringArrayCountExport);
+        RegisterExport("NativeObjectIdentity",
+                       "CKObject@ NativeObjectIdentity(CKObject@ object)",
+                       NativeObjectIdentityExport);
         RunNativeExportLifecycleSmoke();
         RunNativeExportHardeningSmoke();
+        RunNativeV2ExportSmoke();
     }
 
     void OnUnload() override {
@@ -301,6 +356,107 @@ private:
                           throwResultType,
                           failStatus,
                           failResultType);
+    }
+
+    void RunNativeV2ExportSmoke() {
+        int sumStatus = BML_ERROR_FAIL;
+        int sumResult = 0;
+        {
+            BML_ModExport *handle = nullptr;
+            sumStatus = BML_FindModExportEx(GetID(),
+                                            "NativeSumIntArray",
+                                            "int NativeSumIntArray(const array<int> &in input)",
+                                            &handle);
+            BML_CallFrame *frame = BML_CreateCallFrame();
+            const int values[] = {3, 5, 8};
+            if (sumStatus == BML_OK && frame)
+                sumStatus = BML_CallFrame_SetIntArray(frame, 0, values, 3);
+            if (sumStatus == BML_OK)
+                sumStatus = BML_CallModExport(handle, frame);
+            if (sumStatus == BML_OK)
+                sumStatus = BML_CallFrame_GetResultInt(frame, &sumResult);
+            DestroyFrame(frame);
+            ReleaseExport(handle);
+        }
+
+        int bufferStatus = BML_ERROR_FAIL;
+        std::vector<std::uint8_t> bufferResult;
+        {
+            BML_ModExport *handle = nullptr;
+            bufferStatus = BML_FindModExportEx(GetID(),
+                                               "NativeMirrorBuffer",
+                                               "array<uint8>@ NativeMirrorBuffer(const array<uint8> &in bytes)",
+                                               &handle);
+            BML_CallFrame *frame = BML_CreateCallFrame();
+            const std::uint8_t bytes[] = {0x00u, 0x55u, 0xffu};
+            if (bufferStatus == BML_OK && frame)
+                bufferStatus = BML_CallFrame_SetBuffer(frame, 0, bytes, 3);
+            if (bufferStatus == BML_OK)
+                bufferStatus = BML_CallModExport(handle, frame);
+            if (bufferStatus == BML_OK) {
+                const size_t size = BML_CallFrame_GetResultBufferSize(frame);
+                bufferResult.resize(size);
+                size_t required = 0;
+                bufferStatus = BML_CallFrame_CopyResultBuffer(frame,
+                                                              bufferResult.data(),
+                                                              bufferResult.size(),
+                                                              &required);
+            }
+            DestroyFrame(frame);
+            ReleaseExport(handle);
+        }
+
+        int stringArrayStatus = BML_ERROR_FAIL;
+        int stringArrayCount = 0;
+        {
+            BML_ModExport *handle = nullptr;
+            stringArrayStatus = BML_FindModExportEx(GetID(),
+                                                    "NativeStringArrayCount",
+                                                    "int NativeStringArrayCount(const array<string> &in values)",
+                                                    &handle);
+            BML_CallFrame *frame = BML_CreateCallFrame();
+            const char *values[] = {"alpha", "beta"};
+            if (stringArrayStatus == BML_OK && frame)
+                stringArrayStatus = BML_CallFrame_SetStringArray(frame, 0, values, 2);
+            if (stringArrayStatus == BML_OK)
+                stringArrayStatus = BML_CallModExport(handle, frame);
+            if (stringArrayStatus == BML_OK)
+                stringArrayStatus = BML_CallFrame_GetResultInt(frame, &stringArrayCount);
+            DestroyFrame(frame);
+            ReleaseExport(handle);
+        }
+
+        int objectStatus = BML_ERROR_FAIL;
+        int objectResult = -1;
+        {
+            BML_ModExport *handle = nullptr;
+            objectStatus = BML_FindModExportEx(GetID(),
+                                               "NativeObjectIdentity",
+                                               "CKObject@ NativeObjectIdentity(CKObject@ object)",
+                                               &handle);
+            BML_CallFrame *frame = BML_CreateCallFrame();
+            if (objectStatus == BML_OK && frame)
+                objectStatus = BML_CallFrame_SetObjectId(frame, 0, 0);
+            if (objectStatus == BML_OK)
+                objectStatus = BML_CallModExport(handle, frame);
+            if (objectStatus == BML_OK)
+                objectStatus = BML_CallFrame_GetResultObjectId(frame, &objectResult);
+            DestroyFrame(frame);
+            ReleaseExport(handle);
+        }
+
+        const int bufferFirst = bufferResult.empty() ? -1 : static_cast<int>(bufferResult[0]);
+        const int bufferLast = bufferResult.size() < 3 ? -1 : static_cast<int>(bufferResult[2]);
+        GetLogger()->Info("BML native interop v2 smoke sumStatus=%d sum=%d bufferStatus=%d bufferFirst=%d bufferLast=%d stringArrayStatus=%d stringCount=%d objectStatus=%d objectId=%d",
+                          sumStatus,
+                          sumResult,
+                          bufferStatus,
+                          bufferFirst,
+                          bufferLast,
+                          stringArrayStatus,
+                          stringArrayCount,
+                          objectStatus,
+                          objectResult);
     }
 
     void RunNativeToScriptExportSmoke() {

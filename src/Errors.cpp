@@ -110,6 +110,8 @@ const char *BML_GetErrorString(int errorCode) {
             return "Interop target export execution failed";
         case BML_ERROR_INTEROP_HANDLE_STALE:
             return "Interop export handle is stale";
+        case BML_ERROR_INTEROP_UNSUPPORTED:
+            return "Interop operation is unsupported by the current runtime";
 
         /* Unknown error code */
         default:

@@ -107,6 +107,7 @@ const int ERROR_INTEROP_BAD_CALL_FRAME;
 const int ERROR_INTEROP_TYPE_MISMATCH;
 const int ERROR_INTEROP_TARGET_EXECUTION_FAILED;
 const int ERROR_INTEROP_HANDLE_STALE;
+const int ERROR_INTEROP_UNSUPPORTED;
 
 enum CommandEventPhase {
   COMMAND_EVENT_PRE = 0,
@@ -159,7 +160,13 @@ enum CallValueType {
   CALL_VALUE_BOOL = 1,
   CALL_VALUE_INT = 2,
   CALL_VALUE_FLOAT = 3,
-  CALL_VALUE_STRING = 4
+  CALL_VALUE_STRING = 4,
+  CALL_VALUE_BOOL_ARRAY = 16,
+  CALL_VALUE_INT_ARRAY = 17,
+  CALL_VALUE_FLOAT_ARRAY = 18,
+  CALL_VALUE_STRING_ARRAY = 19,
+  CALL_VALUE_BUFFER = 20,
+  CALL_VALUE_OBJECT_ID = 21
 }
 
 enum FontType {
@@ -831,6 +838,20 @@ class CallFrame {
   int GetFloat(uint index, float &out value) const;
   int SetString(uint index, const string &in value);
   int GetString(uint index, string &out value) const;
+  int SetBoolArray(uint index, const array<bool> &in values);
+  int GetBoolArray(uint index, array<bool>@ &out values) const;
+  int SetIntArray(uint index, const array<int> &in values);
+  int GetIntArray(uint index, array<int>@ &out values) const;
+  int SetFloatArray(uint index, const array<float> &in values);
+  int GetFloatArray(uint index, array<float>@ &out values) const;
+  int SetStringArray(uint index, const array<string> &in values);
+  int GetStringArray(uint index, array<string>@ &out values) const;
+  int SetBuffer(uint index, const array<uint8> &in values);
+  int GetBuffer(uint index, array<uint8>@ &out values) const;
+  int SetObjectId(uint index, int objectId);
+  int GetObjectId(uint index, int &out objectId) const;
+  int SetObject(uint index, CKObject@ object);
+  int GetObject(uint index, CKObject@ &out object) const;
   int SetResultBool(bool value);
   int get_ResultType() const;
   int GetResultType() const;
@@ -842,6 +863,20 @@ class CallFrame {
   int GetResultFloat(float &out value) const;
   int SetResultString(const string &in value);
   int GetResultString(string &out value) const;
+  int SetResultBoolArray(const array<bool> &in values);
+  int GetResultBoolArray(array<bool>@ &out values) const;
+  int SetResultIntArray(const array<int> &in values);
+  int GetResultIntArray(array<int>@ &out values) const;
+  int SetResultFloatArray(const array<float> &in values);
+  int GetResultFloatArray(array<float>@ &out values) const;
+  int SetResultStringArray(const array<string> &in values);
+  int GetResultStringArray(array<string>@ &out values) const;
+  int SetResultBuffer(const array<uint8> &in values);
+  int GetResultBuffer(array<uint8>@ &out values) const;
+  int SetResultObjectId(int objectId);
+  int GetResultObjectId(int &out objectId) const;
+  int SetResultObject(CKObject@ object);
+  int GetResultObject(CKObject@ &out object) const;
 }
 
 string GetVersion();

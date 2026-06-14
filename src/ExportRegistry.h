@@ -2,6 +2,7 @@
 #define BML_EXPORTREGISTRY_H
 
 #include "BML/Interop.h"
+#include "InteropSignature.h"
 
 #include <atomic>
 #include <cstdint>
@@ -23,6 +24,7 @@ struct BML_ExportKey {
 struct BML_NativeExportEntry {
     BML_NativeExportCallback Callback = nullptr;
     void *UserData = nullptr;
+    BML::InteropSignatureInfo SignatureInfo;
 };
 
 enum class BML_ResolvedExportKind {

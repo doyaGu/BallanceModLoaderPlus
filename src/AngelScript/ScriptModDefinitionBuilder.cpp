@@ -185,7 +185,7 @@ bool ScriptModDefinitionBuilder::Build(CKContext *context,
             const int signatureStatus = InteropSignature::Validate(exportInfo.Signature, exportInfo.Name);
             if (signatureStatus != BML_OK) {
                 diagnostics.push_back("bml.export name '" + exportInfo.Name +
-                                      "' has unsupported v1 interop signature '" +
+                                      "' has unsupported interop signature '" +
                                       exportInfo.Signature + "'.");
                 continue;
             }

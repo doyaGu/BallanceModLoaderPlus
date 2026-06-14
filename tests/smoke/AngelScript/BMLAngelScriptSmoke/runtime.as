@@ -91,6 +91,29 @@ class BMLBindingsSmokeMod {
   }
 
   [bml.export]
+  array<int>@ DoubleInts(const array<int> &in values) {
+    array<int>@ result = array<int>();
+    for (uint i = 0; i < values.length(); ++i) {
+      result.insertLast(values[i] * 2);
+    }
+    return result;
+  }
+
+  [bml.export]
+  array<uint8>@ FlipBuffer(const array<uint8> &in bytes) {
+    array<uint8>@ result = array<uint8>();
+    for (uint i = 0; i < bytes.length(); ++i) {
+      result.insertLast(uint8(bytes[i] ^ 0xff));
+    }
+    return result;
+  }
+
+  [bml.export]
+  CKObject@ ObjectIdentity(CKObject@ object) {
+    return object;
+  }
+
+  [bml.export]
   int Overloaded(int value) {
     return value + 10;
   }
@@ -522,6 +545,56 @@ class BMLBindingsSmokeMod {
         int notStatus = notExport.CallBool(true, notResult);
         LogInfo(ctx, "BML export Not status=" + notStatus + " result=" + BoolText(notResult));
       }
+      BML::ExportRef@ doubleInts = self.FindExport("DoubleInts", "array<int>@ DoubleInts(const array<int> &in values)");
+      if (doubleInts !is null && doubleInts.IsValid) {
+        BML::CallFrame@ v2Frame = BML::CallFrame();
+        array<int> values = {4, 6, 10};
+        int v2Status = v2Frame.SetIntArray(0, values);
+        if (v2Status == 0) {
+          v2Status = doubleInts.Call(v2Frame);
+        }
+        array<int>@ doubled;
+        int getStatus = v2Status == 0 ? v2Frame.GetResultIntArray(doubled) : v2Status;
+        LogInfo(ctx, "BML script export DoubleInts status=" + v2Status +
+                    " get=" + getStatus +
+                    " type=" + v2Frame.ResultType +
+                    " ok=" + BoolText(doubled !is null &&
+                    doubled.length() == 3 &&
+                    doubled[0] == 8 &&
+                    doubled[1] == 12 &&
+                    doubled[2] == 20));
+      }
+      BML::ExportRef@ flipBuffer = self.FindExport("FlipBuffer", "array<uint8>@ FlipBuffer(const array<uint8> &in bytes)");
+      if (flipBuffer !is null && flipBuffer.IsValid) {
+        BML::CallFrame@ bufferFrame = BML::CallFrame();
+        array<uint8> bytes = {0, 15, 255};
+        int bufferStatus = bufferFrame.SetBuffer(0, bytes);
+        if (bufferStatus == 0) {
+          bufferStatus = flipBuffer.Call(bufferFrame);
+        }
+        array<uint8>@ flipped;
+        int getBufferStatus = bufferStatus == 0 ? bufferFrame.GetResultBuffer(flipped) : bufferStatus;
+        LogInfo(ctx, "BML script export FlipBuffer status=" + bufferStatus +
+                    " get=" + getBufferStatus +
+                    " ok=" + BoolText(flipped !is null &&
+                    flipped.length() == 3 &&
+                    flipped[0] == 255 &&
+                    flipped[1] == 240 &&
+                    flipped[2] == 0));
+      }
+      BML::ExportRef@ objectIdentity = self.FindExport("ObjectIdentity", "CKObject@ ObjectIdentity(CKObject@ object)");
+      if (objectIdentity !is null && objectIdentity.IsValid) {
+        BML::CallFrame@ objectFrame = BML::CallFrame();
+        int objectStatus = objectFrame.SetObject(0, null);
+        if (objectStatus == 0) {
+          objectStatus = objectIdentity.Call(objectFrame);
+        }
+        CKObject@ objectResult;
+        int getObjectStatus = objectStatus == 0 ? objectFrame.GetResultObject(objectResult) : objectStatus;
+        LogInfo(ctx, "BML script export ObjectIdentity status=" + objectStatus +
+                    " get=" + getObjectStatus +
+                    " null=" + BoolText(objectResult is null));
+      }
     }
 
     BML::ModRef@ bml = ctx.FindMod("BML");
@@ -611,6 +684,88 @@ class BMLBindingsSmokeMod {
         int nativeNotStatus = nativeNot.CallBool(true, nativeNotResult);
         LogInfo(ctx, "BML native export NativeNot status=" + nativeNotStatus + " result=" + BoolText(nativeNotResult));
       }
+      BML::ExportRef@ nativeSumIntArray = nativeSmoke.FindExport("NativeSumIntArray",
+          "int NativeSumIntArray(const array<int> &in values)");
+      if (nativeSumIntArray !is null && nativeSumIntArray.IsValid) {
+        BML::CallFrame@ intArrayFrame = BML::CallFrame();
+        array<int> values = {7, 11, 13};
+        int intArrayStatus = intArrayFrame.SetIntArray(0, values);
+        if (intArrayStatus == 0) {
+          intArrayStatus = nativeSumIntArray.Call(intArrayFrame);
+        }
+        int intArrayResult = 0;
+        if (intArrayStatus == 0) {
+          intArrayFrame.GetResultInt(intArrayResult);
+        }
+        array<int>@ valuesCopy;
+        int intArrayGetStatus = intArrayFrame.GetIntArray(0, valuesCopy);
+        LogInfo(ctx, "BML native export NativeSumIntArray status=" + intArrayStatus +
+                    " result=" + intArrayResult +
+                    " get=" + intArrayGetStatus +
+                    " copyOk=" + BoolText(valuesCopy !is null &&
+                    valuesCopy.length() == 3 &&
+                    valuesCopy[0] == 7 &&
+                    valuesCopy[2] == 13));
+      }
+      BML::ExportRef@ nativeMirrorBuffer = nativeSmoke.FindExport("NativeMirrorBuffer",
+          "array<uint8>@ NativeMirrorBuffer(const array<uint8> &in bytes)");
+      if (nativeMirrorBuffer !is null && nativeMirrorBuffer.IsValid) {
+        BML::CallFrame@ bufferFrame = BML::CallFrame();
+        array<uint8> bytes = {0, 85, 255};
+        int bufferStatus = bufferFrame.SetBuffer(0, bytes);
+        if (bufferStatus == 0) {
+          bufferStatus = nativeMirrorBuffer.Call(bufferFrame);
+        }
+        array<uint8>@ bufferResult;
+        int bufferGetStatus = bufferStatus == 0 ? bufferFrame.GetResultBuffer(bufferResult) : bufferStatus;
+        LogInfo(ctx, "BML native export NativeMirrorBuffer status=" + bufferStatus +
+                    " get=" + bufferGetStatus +
+                    " resultOk=" + BoolText(bufferResult !is null &&
+                    bufferResult.length() == 3 &&
+                    bufferResult[0] == 255 &&
+                    bufferResult[1] == 170 &&
+                    bufferResult[2] == 0));
+      }
+      BML::ExportRef@ nativeStringArrayCount = nativeSmoke.FindExport("NativeStringArrayCount",
+          "int NativeStringArrayCount(const array<string> &in values)");
+      if (nativeStringArrayCount !is null && nativeStringArrayCount.IsValid) {
+        BML::CallFrame@ stringArrayFrame = BML::CallFrame();
+        array<string> names = {"alpha", "beta", "gamma"};
+        int stringArrayStatus = stringArrayFrame.SetStringArray(0, names);
+        if (stringArrayStatus == 0) {
+          stringArrayStatus = nativeStringArrayCount.Call(stringArrayFrame);
+        }
+        int stringArrayResult = 0;
+        if (stringArrayStatus == 0) {
+          stringArrayFrame.GetResultInt(stringArrayResult);
+        }
+        array<string>@ namesCopy;
+        int stringArrayGetStatus = stringArrayFrame.GetStringArray(0, namesCopy);
+        LogInfo(ctx, "BML native export NativeStringArrayCount status=" + stringArrayStatus +
+                    " result=" + stringArrayResult +
+                    " get=" + stringArrayGetStatus +
+                    " copyOk=" + BoolText(namesCopy !is null &&
+                    namesCopy.length() == 3 &&
+                    namesCopy[1] == "beta"));
+      }
+      BML::ExportRef@ nativeObjectIdentity = nativeSmoke.FindExport("NativeObjectIdentity",
+          "CKObject@ NativeObjectIdentity(CKObject@ object)");
+      if (nativeObjectIdentity !is null && nativeObjectIdentity.IsValid) {
+        BML::CallFrame@ objectFrame = BML::CallFrame();
+        int objectStatus = objectFrame.SetObject(0, null);
+        if (objectStatus == 0) {
+          objectStatus = nativeObjectIdentity.Call(objectFrame);
+        }
+        int objectId = -1;
+        int objectGetIdStatus = objectStatus == 0 ? objectFrame.GetResultObjectId(objectId) : objectStatus;
+        CKObject@ objectValue;
+        int objectGetStatus = objectStatus == 0 ? objectFrame.GetResultObject(objectValue) : objectStatus;
+        LogInfo(ctx, "BML native export NativeObjectIdentity status=" + objectStatus +
+                    " getId=" + objectGetIdStatus +
+                    " objectId=" + objectId +
+                    " getObject=" + objectGetStatus +
+                    " null=" + BoolText(objectValue is null));
+      }
       BML::ExportRef@ nativeFrameReport = nativeSmoke.FindExport("NativeFrameReport");
       if (nativeFrameReport !is null && nativeFrameReport.IsValid) {
         BML::CallFrame@ reportFrame = BML::CallFrame();
@@ -680,6 +835,10 @@ class BMLBindingsSmokeMod {
                               BML::ERROR_INTEROP_TYPE_MISMATCH == -707 &&
                               BML::ERROR_INTEROP_TARGET_EXECUTION_FAILED == -708 &&
                               BML::ERROR_INTEROP_HANDLE_STALE == -709 &&
+                              BML::ERROR_INTEROP_UNSUPPORTED == -710 &&
+                              BML::CALL_VALUE_INT_ARRAY == 17 &&
+                              BML::CALL_VALUE_BUFFER == 20 &&
+                              BML::CALL_VALUE_OBJECT_ID == 21 &&
                               BML::GetErrorString(BML::ERROR_INTEROP_EXPORT_AMBIGUOUS) != "";
       LogInfo(ctx, "BML native export hardening script tryEcho=" + tryNativeEchoStatus +
                   " echoValid=" + BoolText(tryNativeEcho !is null && tryNativeEcho.IsValid) +

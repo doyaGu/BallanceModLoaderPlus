@@ -1837,6 +1837,129 @@ public:
         return status;
     }
 
+    int SetBoolArray(unsigned int index, void *values) {
+        if (!m_Frame || !values)
+            return BML_ERROR_INVALID_PARAMETER;
+        std::vector<int> copy;
+        const int status = CopyBoolArrayFromScript(values, copy);
+        if (status != BML_OK)
+            return status;
+        return BML_CallFrame_SetBoolArray(m_Frame, index, copy.data(), copy.size());
+    }
+
+    int GetBoolArray(unsigned int index, void *&values) const {
+        values = nullptr;
+        const BML_CallValue *slot = nullptr;
+        const int status = BML_GetCallFrameArgChecked(m_Frame, index, BML_CallValueType::BoolArray, &slot);
+        if (status != BML_OK)
+            return status;
+        return CreateBoolArray(slot->IntArrayValue, values);
+    }
+
+    int SetIntArray(unsigned int index, void *values) {
+        if (!m_Frame || !values)
+            return BML_ERROR_INVALID_PARAMETER;
+        std::vector<int> copy;
+        const int status = CopyIntArrayFromScript(values, copy);
+        if (status != BML_OK)
+            return status;
+        return BML_CallFrame_SetIntArray(m_Frame, index, copy.data(), copy.size());
+    }
+
+    int GetIntArray(unsigned int index, void *&values) const {
+        values = nullptr;
+        const BML_CallValue *slot = nullptr;
+        const int status = BML_GetCallFrameArgChecked(m_Frame, index, BML_CallValueType::IntArray, &slot);
+        if (status != BML_OK)
+            return status;
+        return CreateIntArray(slot->IntArrayValue, values);
+    }
+
+    int SetFloatArray(unsigned int index, void *values) {
+        if (!m_Frame || !values)
+            return BML_ERROR_INVALID_PARAMETER;
+        std::vector<float> copy;
+        const int status = CopyFloatArrayFromScript(values, copy);
+        if (status != BML_OK)
+            return status;
+        return BML_CallFrame_SetFloatArray(m_Frame, index, copy.data(), copy.size());
+    }
+
+    int GetFloatArray(unsigned int index, void *&values) const {
+        values = nullptr;
+        const BML_CallValue *slot = nullptr;
+        const int status = BML_GetCallFrameArgChecked(m_Frame, index, BML_CallValueType::FloatArray, &slot);
+        if (status != BML_OK)
+            return status;
+        return CreateFloatArray(slot->FloatArrayValue, values);
+    }
+
+    int SetStringArray(unsigned int index, void *values) {
+        if (!m_Frame || !values)
+            return BML_ERROR_INVALID_PARAMETER;
+        std::vector<std::string> copy;
+        int status = CopyStringArrayFromScript(values, copy);
+        if (status != BML_OK)
+            return status;
+        std::vector<const char *> pointers(copy.size());
+        for (size_t i = 0; i < copy.size(); ++i)
+            pointers[i] = copy[i].c_str();
+        return BML_CallFrame_SetStringArray(m_Frame, index, pointers.data(), pointers.size());
+    }
+
+    int GetStringArray(unsigned int index, void *&values) const {
+        values = nullptr;
+        const BML_CallValue *slot = nullptr;
+        const int status = BML_GetCallFrameArgChecked(m_Frame, index, BML_CallValueType::StringArray, &slot);
+        if (status != BML_OK)
+            return status;
+        return CreateStringArray(slot->StringArrayValue, values);
+    }
+
+    int SetBuffer(unsigned int index, void *values) {
+        if (!m_Frame || !values)
+            return BML_ERROR_INVALID_PARAMETER;
+        std::vector<std::uint8_t> copy;
+        const int status = CopyBufferFromScript(values, copy);
+        if (status != BML_OK)
+            return status;
+        return BML_CallFrame_SetBuffer(m_Frame, index, copy.data(), copy.size());
+    }
+
+    int GetBuffer(unsigned int index, void *&values) const {
+        values = nullptr;
+        const BML_CallValue *slot = nullptr;
+        const int status = BML_GetCallFrameArgChecked(m_Frame, index, BML_CallValueType::Buffer, &slot);
+        if (status != BML_OK)
+            return status;
+        return CreateBufferArray(slot->BufferValue, values);
+    }
+
+    int SetObjectId(unsigned int index, int objectId) {
+        return m_Frame ? BML_CallFrame_SetObjectId(m_Frame, index, objectId) : BML_ERROR_INVALID_PARAMETER;
+    }
+
+    int GetObjectId(unsigned int index, int &objectId) const {
+        return m_Frame ? BML_CallFrame_GetObjectId(m_Frame, index, &objectId) : BML_ERROR_INTEROP_BAD_CALL_FRAME;
+    }
+
+    int SetObject(unsigned int index, CKObject *object) {
+        return SetObjectId(index, object ? static_cast<int>(object->GetID()) : 0);
+    }
+
+    int GetObject(unsigned int index, CKObject *&object) const {
+        object = nullptr;
+        int objectId = 0;
+        const int status = GetObjectId(index, objectId);
+        if (status != BML_OK)
+            return status;
+        if (objectId == 0)
+            return BML_OK;
+        ModContext *ctx = GetActiveContext();
+        object = ctx && ctx->GetCKContext() ? ctx->GetCKContext()->GetObject(static_cast<CK_ID>(objectId)) : nullptr;
+        return object ? BML_OK : BML_ERROR_INTEROP_HANDLE_STALE;
+    }
+
     int SetResultBool(bool value) {
         return m_Frame ? BML_CallFrame_SetResultBool(m_Frame, value ? 1 : 0) : BML_ERROR_INVALID_PARAMETER;
     }
@@ -1894,9 +2017,469 @@ public:
         return status;
     }
 
+    int SetResultBoolArray(void *values) {
+        if (!m_Frame || !values)
+            return BML_ERROR_INVALID_PARAMETER;
+        std::vector<int> copy;
+        const int status = CopyBoolArrayFromScript(values, copy);
+        if (status != BML_OK)
+            return status;
+        return BML_CallFrame_SetResultBoolArray(m_Frame, copy.data(), copy.size());
+    }
+
+    int GetResultBoolArray(void *&values) const {
+        values = nullptr;
+        const BML_CallValue *slot = nullptr;
+        const int status = BML_GetCallFrameResultChecked(m_Frame, BML_CallValueType::BoolArray, &slot);
+        if (status != BML_OK)
+            return status;
+        return CreateBoolArray(slot->IntArrayValue, values);
+    }
+
+    int SetResultIntArray(void *values) {
+        if (!m_Frame || !values)
+            return BML_ERROR_INVALID_PARAMETER;
+        std::vector<int> copy;
+        const int status = CopyIntArrayFromScript(values, copy);
+        if (status != BML_OK)
+            return status;
+        return BML_CallFrame_SetResultIntArray(m_Frame, copy.data(), copy.size());
+    }
+
+    int GetResultIntArray(void *&values) const {
+        values = nullptr;
+        const BML_CallValue *slot = nullptr;
+        const int status = BML_GetCallFrameResultChecked(m_Frame, BML_CallValueType::IntArray, &slot);
+        if (status != BML_OK)
+            return status;
+        return CreateIntArray(slot->IntArrayValue, values);
+    }
+
+    int SetResultFloatArray(void *values) {
+        if (!m_Frame || !values)
+            return BML_ERROR_INVALID_PARAMETER;
+        std::vector<float> copy;
+        const int status = CopyFloatArrayFromScript(values, copy);
+        if (status != BML_OK)
+            return status;
+        return BML_CallFrame_SetResultFloatArray(m_Frame, copy.data(), copy.size());
+    }
+
+    int GetResultFloatArray(void *&values) const {
+        values = nullptr;
+        const BML_CallValue *slot = nullptr;
+        const int status = BML_GetCallFrameResultChecked(m_Frame, BML_CallValueType::FloatArray, &slot);
+        if (status != BML_OK)
+            return status;
+        return CreateFloatArray(slot->FloatArrayValue, values);
+    }
+
+    int SetResultStringArray(void *values) {
+        if (!m_Frame || !values)
+            return BML_ERROR_INVALID_PARAMETER;
+        std::vector<std::string> copy;
+        int status = CopyStringArrayFromScript(values, copy);
+        if (status != BML_OK)
+            return status;
+        std::vector<const char *> pointers(copy.size());
+        for (size_t i = 0; i < copy.size(); ++i)
+            pointers[i] = copy[i].c_str();
+        return BML_CallFrame_SetResultStringArray(m_Frame, pointers.data(), pointers.size());
+    }
+
+    int GetResultStringArray(void *&values) const {
+        values = nullptr;
+        const BML_CallValue *slot = nullptr;
+        const int status = BML_GetCallFrameResultChecked(m_Frame, BML_CallValueType::StringArray, &slot);
+        if (status != BML_OK)
+            return status;
+        return CreateStringArray(slot->StringArrayValue, values);
+    }
+
+    int SetResultBuffer(void *values) {
+        if (!m_Frame || !values)
+            return BML_ERROR_INVALID_PARAMETER;
+        std::vector<std::uint8_t> copy;
+        const int status = CopyBufferFromScript(values, copy);
+        if (status != BML_OK)
+            return status;
+        return BML_CallFrame_SetResultBuffer(m_Frame, copy.data(), copy.size());
+    }
+
+    int GetResultBuffer(void *&values) const {
+        values = nullptr;
+        const BML_CallValue *slot = nullptr;
+        const int status = BML_GetCallFrameResultChecked(m_Frame, BML_CallValueType::Buffer, &slot);
+        if (status != BML_OK)
+            return status;
+        return CreateBufferArray(slot->BufferValue, values);
+    }
+
+    int SetResultObjectId(int objectId) {
+        return m_Frame ? BML_CallFrame_SetResultObjectId(m_Frame, objectId) : BML_ERROR_INVALID_PARAMETER;
+    }
+
+    int GetResultObjectId(int &objectId) const {
+        return m_Frame ? BML_CallFrame_GetResultObjectId(m_Frame, &objectId) : BML_ERROR_INTEROP_BAD_CALL_FRAME;
+    }
+
+    int SetResultObject(CKObject *object) {
+        return SetResultObjectId(object ? static_cast<int>(object->GetID()) : 0);
+    }
+
+    int GetResultObject(CKObject *&object) const {
+        object = nullptr;
+        int objectId = 0;
+        const int status = GetResultObjectId(objectId);
+        if (status != BML_OK)
+            return status;
+        if (objectId == 0)
+            return BML_OK;
+        ModContext *ctx = GetActiveContext();
+        object = ctx && ctx->GetCKContext() ? ctx->GetCKContext()->GetObject(static_cast<CK_ID>(objectId)) : nullptr;
+        return object ? BML_OK : BML_ERROR_INTEROP_HANDLE_STALE;
+    }
+
     BML_CallFrame *GetNativeFrame() const { return m_Frame; }
 
 private:
+    static int MapArrayStatus(CKAS_STATUS status) {
+        switch (status) {
+        case CKAS_OK:
+            return BML_OK;
+        case CKAS_TYPEMISMATCH:
+            return BML_ERROR_INTEROP_TYPE_MISMATCH;
+        case CKAS_UNSUPPORTED:
+            return BML_ERROR_INTEROP_UNSUPPORTED;
+        default:
+            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
+        }
+    }
+
+    static const CKAngelScriptAdapter::Api *GetArrayApi(CKAngelScript **angelScript = nullptr) {
+        if (angelScript)
+            *angelScript = nullptr;
+        if (!g_AngelScriptHost.IsAvailable() || !g_AngelScriptHost.GetAngelScript()) {
+            ModContext *context = GetActiveContext();
+            if (context && context->GetCKContext())
+                g_AngelScriptHost.Refresh(context->GetCKContext());
+        }
+        if (!g_AngelScriptHost.IsAvailable() || !g_AngelScriptHost.GetAngelScript())
+            return nullptr;
+        if (angelScript)
+            *angelScript = g_AngelScriptHost.GetAngelScript();
+        return &g_AngelScriptHost.GetApi();
+    }
+
+    static int GetArraySize(void *values, CKDWORD &count) {
+        count = 0;
+        if (!values)
+            return BML_ERROR_INVALID_PARAMETER;
+        const CKAngelScriptAdapter::Api *api = GetArrayApi();
+        if (!api || !api->ArrayGetSize)
+            return BML_ERROR_INTEROP_UNSUPPORTED;
+        return MapArrayStatus(api->ArrayGetSize(values, &count));
+    }
+
+    static int RequireArrayElementType(void *values, int expectedTypeId) {
+        if (!values)
+            return BML_ERROR_INVALID_PARAMETER;
+        const CKAngelScriptAdapter::Api *api = GetArrayApi();
+        if (!api || !api->ArrayGetElementTypeId)
+            return BML_ERROR_INTEROP_UNSUPPORTED;
+        int actualTypeId = 0;
+        const int status = MapArrayStatus(api->ArrayGetElementTypeId(values, &actualTypeId));
+        if (status != BML_OK)
+            return status;
+        return actualTypeId == expectedTypeId ? BML_OK : BML_ERROR_INTEROP_TYPE_MISMATCH;
+    }
+
+    static int GetStringTypeId(void *values, int &typeId) {
+        typeId = 0;
+        if (!values)
+            return BML_ERROR_INVALID_PARAMETER;
+        const CKAngelScriptAdapter::Api *api = GetArrayApi();
+        if (!api || !api->ArrayGetArrayType)
+            return BML_ERROR_INTEROP_UNSUPPORTED;
+        asITypeInfo *arrayType = nullptr;
+        int status = MapArrayStatus(api->ArrayGetArrayType(values, &arrayType));
+        if (status != BML_OK)
+            return status;
+        asIScriptEngine *engine = arrayType ? arrayType->GetEngine() : nullptr;
+        if (!engine)
+            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
+        typeId = engine->GetTypeIdByDecl("string");
+        return typeId >= 0 ? BML_OK : BML_ERROR_INTEROP_UNSUPPORTED;
+    }
+
+    static int RequireStringArray(void *values) {
+        int stringTypeId = 0;
+        int status = GetStringTypeId(values, stringTypeId);
+        if (status != BML_OK)
+            return status;
+        return RequireArrayElementType(values, stringTypeId);
+    }
+
+    static void ReleaseArray(void *&values) {
+        if (!values)
+            return;
+        const CKAngelScriptAdapter::Api *api = GetArrayApi();
+        if (api && api->ArrayRelease)
+            api->ArrayRelease(values);
+        values = nullptr;
+    }
+
+    static int CreateArray(const char *decl, size_t count, void *&array) {
+        array = nullptr;
+        CKAngelScript *angelScript = nullptr;
+        const CKAngelScriptAdapter::Api *api = GetArrayApi(&angelScript);
+        if (!api || !api->CreateArray || !angelScript)
+            return BML_ERROR_INTEROP_UNSUPPORTED;
+        return MapArrayStatus(api->CreateArray(angelScript, decl, static_cast<CKDWORD>(count), &array));
+    }
+
+    static int AssignArrayHandle(void *array, void *&values) {
+        values = nullptr;
+        if (!array)
+            return BML_ERROR_INVALID_PARAMETER;
+        CKAngelScript *angelScript = nullptr;
+        const CKAngelScriptAdapter::Api *api = GetArrayApi(&angelScript);
+        if (!api || !api->AssignObjectHandle || !api->ArrayGetArrayType || !angelScript)
+            return BML_ERROR_INTEROP_UNSUPPORTED;
+
+        asITypeInfo *arrayType = nullptr;
+        int status = MapArrayStatus(api->ArrayGetArrayType(array, &arrayType));
+        if (status != BML_OK)
+            return status;
+        return MapArrayStatus(api->AssignObjectHandle(&values, array, arrayType));
+    }
+
+    static int CopyBoolArrayFromScript(void *values, std::vector<int> &copy) {
+        CKDWORD count = 0;
+        int status = GetArraySize(values, count);
+        if (status != BML_OK)
+            return status;
+        status = RequireArrayElementType(values, asTYPEID_BOOL);
+        if (status != BML_OK)
+            return status;
+        const CKAngelScriptAdapter::Api *api = GetArrayApi();
+        if (!api || !api->ArrayGetElementAddress)
+            return BML_ERROR_INTEROP_UNSUPPORTED;
+        copy.resize(count);
+        for (CKDWORD i = 0; i < count; ++i) {
+            void *address = nullptr;
+            status = MapArrayStatus(api->ArrayGetElementAddress(values, i, &address));
+            if (status != BML_OK)
+                return status;
+            copy[i] = address && *static_cast<bool *>(address) ? 1 : 0;
+        }
+        return BML_OK;
+    }
+
+    static int CopyIntArrayFromScript(void *values, std::vector<int> &copy) {
+        CKDWORD count = 0;
+        int status = GetArraySize(values, count);
+        if (status != BML_OK)
+            return status;
+        status = RequireArrayElementType(values, asTYPEID_INT32);
+        if (status != BML_OK)
+            return status;
+        const CKAngelScriptAdapter::Api *api = GetArrayApi();
+        if (!api || !api->ArrayGetElementAddress)
+            return BML_ERROR_INTEROP_UNSUPPORTED;
+        copy.resize(count);
+        for (CKDWORD i = 0; i < count; ++i) {
+            void *address = nullptr;
+            status = MapArrayStatus(api->ArrayGetElementAddress(values, i, &address));
+            if (status != BML_OK)
+                return status;
+            copy[i] = address ? *static_cast<int *>(address) : 0;
+        }
+        return BML_OK;
+    }
+
+    static int CopyFloatArrayFromScript(void *values, std::vector<float> &copy) {
+        CKDWORD count = 0;
+        int status = GetArraySize(values, count);
+        if (status != BML_OK)
+            return status;
+        status = RequireArrayElementType(values, asTYPEID_FLOAT);
+        if (status != BML_OK)
+            return status;
+        const CKAngelScriptAdapter::Api *api = GetArrayApi();
+        if (!api || !api->ArrayGetElementAddress)
+            return BML_ERROR_INTEROP_UNSUPPORTED;
+        copy.resize(count);
+        for (CKDWORD i = 0; i < count; ++i) {
+            void *address = nullptr;
+            status = MapArrayStatus(api->ArrayGetElementAddress(values, i, &address));
+            if (status != BML_OK)
+                return status;
+            copy[i] = address ? *static_cast<float *>(address) : 0.0f;
+        }
+        return BML_OK;
+    }
+
+    static int CopyStringArrayFromScript(void *values, std::vector<std::string> &copy) {
+        CKDWORD count = 0;
+        int status = GetArraySize(values, count);
+        if (status != BML_OK)
+            return status;
+        status = RequireStringArray(values);
+        if (status != BML_OK)
+            return status;
+        const CKAngelScriptAdapter::Api *api = GetArrayApi();
+        if (!api || !api->ArrayGetElementAddress)
+            return BML_ERROR_INTEROP_UNSUPPORTED;
+        copy.resize(count);
+        for (CKDWORD i = 0; i < count; ++i) {
+            void *address = nullptr;
+            status = MapArrayStatus(api->ArrayGetElementAddress(values, i, &address));
+            if (status != BML_OK)
+                return status;
+            const auto *value = static_cast<const std::string *>(address);
+            copy[i] = value ? *value : "";
+        }
+        return BML_OK;
+    }
+
+    static int CopyBufferFromScript(void *values, std::vector<std::uint8_t> &copy) {
+        CKDWORD count = 0;
+        int status = GetArraySize(values, count);
+        if (status != BML_OK)
+            return status;
+        status = RequireArrayElementType(values, asTYPEID_UINT8);
+        if (status != BML_OK)
+            return status;
+        const CKAngelScriptAdapter::Api *api = GetArrayApi();
+        if (!api || !api->ArrayGetElementAddress)
+            return BML_ERROR_INTEROP_UNSUPPORTED;
+        copy.resize(count);
+        for (CKDWORD i = 0; i < count; ++i) {
+            void *address = nullptr;
+            status = MapArrayStatus(api->ArrayGetElementAddress(values, i, &address));
+            if (status != BML_OK)
+                return status;
+            copy[i] = address ? *static_cast<std::uint8_t *>(address) : 0;
+        }
+        return BML_OK;
+    }
+
+    static int CreateBoolArray(const std::vector<int> &source, void *&values) {
+        void *array = nullptr;
+        int status = CreateArray("array<bool>", source.size(), array);
+        if (status != BML_OK)
+            return status;
+        const CKAngelScriptAdapter::Api *api = GetArrayApi();
+        if (!api || !api->ArraySetElementValue) {
+            ReleaseArray(array);
+            return BML_ERROR_INTEROP_UNSUPPORTED;
+        }
+        for (CKDWORD i = 0; i < source.size(); ++i) {
+            const bool value = source[i] != 0;
+            status = MapArrayStatus(api->ArraySetElementValue(array, i, &value));
+            if (status != BML_OK) {
+                ReleaseArray(array);
+                return status;
+            }
+        }
+        status = AssignArrayHandle(array, values);
+        ReleaseArray(array);
+        return status;
+    }
+
+    static int CreateIntArray(const std::vector<int> &source, void *&values) {
+        void *array = nullptr;
+        int status = CreateArray("array<int>", source.size(), array);
+        if (status != BML_OK)
+            return status;
+        const CKAngelScriptAdapter::Api *api = GetArrayApi();
+        if (!api || !api->ArraySetElementValue) {
+            ReleaseArray(array);
+            return BML_ERROR_INTEROP_UNSUPPORTED;
+        }
+        for (CKDWORD i = 0; i < source.size(); ++i) {
+            const int value = source[i];
+            status = MapArrayStatus(api->ArraySetElementValue(array, i, &value));
+            if (status != BML_OK) {
+                ReleaseArray(array);
+                return status;
+            }
+        }
+        status = AssignArrayHandle(array, values);
+        ReleaseArray(array);
+        return status;
+    }
+
+    static int CreateFloatArray(const std::vector<float> &source, void *&values) {
+        void *array = nullptr;
+        int status = CreateArray("array<float>", source.size(), array);
+        if (status != BML_OK)
+            return status;
+        const CKAngelScriptAdapter::Api *api = GetArrayApi();
+        if (!api || !api->ArraySetElementValue) {
+            ReleaseArray(array);
+            return BML_ERROR_INTEROP_UNSUPPORTED;
+        }
+        for (CKDWORD i = 0; i < source.size(); ++i) {
+            const float value = source[i];
+            status = MapArrayStatus(api->ArraySetElementValue(array, i, &value));
+            if (status != BML_OK) {
+                ReleaseArray(array);
+                return status;
+            }
+        }
+        status = AssignArrayHandle(array, values);
+        ReleaseArray(array);
+        return status;
+    }
+
+    static int CreateStringArray(const std::vector<std::string> &source, void *&values) {
+        void *array = nullptr;
+        int status = CreateArray("array<string>", source.size(), array);
+        if (status != BML_OK)
+            return status;
+        const CKAngelScriptAdapter::Api *api = GetArrayApi();
+        if (!api || !api->ArraySetElementValue) {
+            ReleaseArray(array);
+            return BML_ERROR_INTEROP_UNSUPPORTED;
+        }
+        for (CKDWORD i = 0; i < source.size(); ++i) {
+            const std::string &value = source[i];
+            status = MapArrayStatus(api->ArraySetElementValue(array, i, &value));
+            if (status != BML_OK) {
+                ReleaseArray(array);
+                return status;
+            }
+        }
+        status = AssignArrayHandle(array, values);
+        ReleaseArray(array);
+        return status;
+    }
+
+    static int CreateBufferArray(const std::vector<std::uint8_t> &source, void *&values) {
+        void *array = nullptr;
+        int status = CreateArray("array<uint8>", source.size(), array);
+        if (status != BML_OK)
+            return status;
+        const CKAngelScriptAdapter::Api *api = GetArrayApi();
+        if (!api || !api->ArraySetElementValue) {
+            ReleaseArray(array);
+            return BML_ERROR_INTEROP_UNSUPPORTED;
+        }
+        for (CKDWORD i = 0; i < source.size(); ++i) {
+            const std::uint8_t value = source[i];
+            status = MapArrayStatus(api->ArraySetElementValue(array, i, &value));
+            if (status != BML_OK) {
+                ReleaseArray(array);
+                return status;
+            }
+        }
+        status = AssignArrayHandle(array, values);
+        ReleaseArray(array);
+        return status;
+    }
+
     int m_RefCount = 1;
     BML_CallFrame *m_Frame = nullptr;
 };
@@ -3037,6 +3620,20 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"CallFrame", "int GetFloat(uint index, float &out value) const", "int CallFrame::GetFloat(uint index, float &out value) const", asMETHOD(BMLAS_CallFrame, GetFloat), asCALL_THISCALL},
     {"CallFrame", "int SetString(uint index, const string &in value)", "int CallFrame::SetString(uint index, const string &in value)", asMETHOD(BMLAS_CallFrame, SetString), asCALL_THISCALL},
     {"CallFrame", "int GetString(uint index, string &out value) const", "int CallFrame::GetString(uint index, string &out value) const", asMETHOD(BMLAS_CallFrame, GetString), asCALL_THISCALL},
+    {"CallFrame", "int SetBoolArray(uint index, const array<bool> &in values)", "int CallFrame::SetBoolArray(uint index, const array<bool> &in values)", asMETHOD(BMLAS_CallFrame, SetBoolArray), asCALL_THISCALL},
+    {"CallFrame", "int GetBoolArray(uint index, array<bool>@ &out values) const", "int CallFrame::GetBoolArray(uint index, array<bool>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetBoolArray), asCALL_THISCALL},
+    {"CallFrame", "int SetIntArray(uint index, const array<int> &in values)", "int CallFrame::SetIntArray(uint index, const array<int> &in values)", asMETHOD(BMLAS_CallFrame, SetIntArray), asCALL_THISCALL},
+    {"CallFrame", "int GetIntArray(uint index, array<int>@ &out values) const", "int CallFrame::GetIntArray(uint index, array<int>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetIntArray), asCALL_THISCALL},
+    {"CallFrame", "int SetFloatArray(uint index, const array<float> &in values)", "int CallFrame::SetFloatArray(uint index, const array<float> &in values)", asMETHOD(BMLAS_CallFrame, SetFloatArray), asCALL_THISCALL},
+    {"CallFrame", "int GetFloatArray(uint index, array<float>@ &out values) const", "int CallFrame::GetFloatArray(uint index, array<float>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetFloatArray), asCALL_THISCALL},
+    {"CallFrame", "int SetStringArray(uint index, const array<string> &in values)", "int CallFrame::SetStringArray(uint index, const array<string> &in values)", asMETHOD(BMLAS_CallFrame, SetStringArray), asCALL_THISCALL},
+    {"CallFrame", "int GetStringArray(uint index, array<string>@ &out values) const", "int CallFrame::GetStringArray(uint index, array<string>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetStringArray), asCALL_THISCALL},
+    {"CallFrame", "int SetBuffer(uint index, const array<uint8> &in values)", "int CallFrame::SetBuffer(uint index, const array<uint8> &in values)", asMETHOD(BMLAS_CallFrame, SetBuffer), asCALL_THISCALL},
+    {"CallFrame", "int GetBuffer(uint index, array<uint8>@ &out values) const", "int CallFrame::GetBuffer(uint index, array<uint8>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetBuffer), asCALL_THISCALL},
+    {"CallFrame", "int SetObjectId(uint index, int objectId)", "int CallFrame::SetObjectId(uint index, int objectId)", asMETHOD(BMLAS_CallFrame, SetObjectId), asCALL_THISCALL},
+    {"CallFrame", "int GetObjectId(uint index, int &out objectId) const", "int CallFrame::GetObjectId(uint index, int &out objectId) const", asMETHOD(BMLAS_CallFrame, GetObjectId), asCALL_THISCALL},
+    {"CallFrame", "int SetObject(uint index, CKObject@ object)", "int CallFrame::SetObject(uint index, CKObject@ object)", asMETHOD(BMLAS_CallFrame, SetObject), asCALL_THISCALL},
+    {"CallFrame", "int GetObject(uint index, CKObject@ &out object) const", "int CallFrame::GetObject(uint index, CKObject@ &out object) const", asMETHOD(BMLAS_CallFrame, GetObject), asCALL_THISCALL},
     {"CallFrame", "int SetResultBool(bool value)", "int CallFrame::SetResultBool(bool value)", asMETHOD(BMLAS_CallFrame, SetResultBool), asCALL_THISCALL},
     {"CallFrame", "int get_ResultType() const", "int CallFrame::get_ResultType() const", asMETHOD(BMLAS_CallFrame, GetResultType), asCALL_THISCALL},
     {"CallFrame", "int GetResultType() const", "int CallFrame::GetResultType() const", asMETHOD(BMLAS_CallFrame, GetResultType), asCALL_THISCALL},
@@ -3048,6 +3645,20 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"CallFrame", "int GetResultFloat(float &out value) const", "int CallFrame::GetResultFloat(float &out value) const", asMETHOD(BMLAS_CallFrame, GetResultFloat), asCALL_THISCALL},
     {"CallFrame", "int SetResultString(const string &in value)", "int CallFrame::SetResultString(const string &in value)", asMETHOD(BMLAS_CallFrame, SetResultString), asCALL_THISCALL},
     {"CallFrame", "int GetResultString(string &out value) const", "int CallFrame::GetResultString(string &out value) const", asMETHOD(BMLAS_CallFrame, GetResultString), asCALL_THISCALL},
+    {"CallFrame", "int SetResultBoolArray(const array<bool> &in values)", "int CallFrame::SetResultBoolArray(const array<bool> &in values)", asMETHOD(BMLAS_CallFrame, SetResultBoolArray), asCALL_THISCALL},
+    {"CallFrame", "int GetResultBoolArray(array<bool>@ &out values) const", "int CallFrame::GetResultBoolArray(array<bool>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetResultBoolArray), asCALL_THISCALL},
+    {"CallFrame", "int SetResultIntArray(const array<int> &in values)", "int CallFrame::SetResultIntArray(const array<int> &in values)", asMETHOD(BMLAS_CallFrame, SetResultIntArray), asCALL_THISCALL},
+    {"CallFrame", "int GetResultIntArray(array<int>@ &out values) const", "int CallFrame::GetResultIntArray(array<int>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetResultIntArray), asCALL_THISCALL},
+    {"CallFrame", "int SetResultFloatArray(const array<float> &in values)", "int CallFrame::SetResultFloatArray(const array<float> &in values)", asMETHOD(BMLAS_CallFrame, SetResultFloatArray), asCALL_THISCALL},
+    {"CallFrame", "int GetResultFloatArray(array<float>@ &out values) const", "int CallFrame::GetResultFloatArray(array<float>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetResultFloatArray), asCALL_THISCALL},
+    {"CallFrame", "int SetResultStringArray(const array<string> &in values)", "int CallFrame::SetResultStringArray(const array<string> &in values)", asMETHOD(BMLAS_CallFrame, SetResultStringArray), asCALL_THISCALL},
+    {"CallFrame", "int GetResultStringArray(array<string>@ &out values) const", "int CallFrame::GetResultStringArray(array<string>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetResultStringArray), asCALL_THISCALL},
+    {"CallFrame", "int SetResultBuffer(const array<uint8> &in values)", "int CallFrame::SetResultBuffer(const array<uint8> &in values)", asMETHOD(BMLAS_CallFrame, SetResultBuffer), asCALL_THISCALL},
+    {"CallFrame", "int GetResultBuffer(array<uint8>@ &out values) const", "int CallFrame::GetResultBuffer(array<uint8>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetResultBuffer), asCALL_THISCALL},
+    {"CallFrame", "int SetResultObjectId(int objectId)", "int CallFrame::SetResultObjectId(int objectId)", asMETHOD(BMLAS_CallFrame, SetResultObjectId), asCALL_THISCALL},
+    {"CallFrame", "int GetResultObjectId(int &out objectId) const", "int CallFrame::GetResultObjectId(int &out objectId) const", asMETHOD(BMLAS_CallFrame, GetResultObjectId), asCALL_THISCALL},
+    {"CallFrame", "int SetResultObject(CKObject@ object)", "int CallFrame::SetResultObject(CKObject@ object)", asMETHOD(BMLAS_CallFrame, SetResultObject), asCALL_THISCALL},
+    {"CallFrame", "int GetResultObject(CKObject@ &out object) const", "int CallFrame::GetResultObject(CKObject@ &out object) const", asMETHOD(BMLAS_CallFrame, GetResultObject), asCALL_THISCALL},
     {"TimerRef", "bool get_IsValid() const", "bool TimerRef::get_IsValid() const", asMETHOD(BML::ScriptTimerRef, IsValid), asCALL_THISCALL},
     {"TimerRef", "bool IsValid() const", "bool TimerRef::IsValid() const", asMETHOD(BML::ScriptTimerRef, IsValid), asCALL_THISCALL},
     {"TimerRef", "int get_Id() const", "int TimerRef::get_Id() const", asMETHOD(BML::ScriptTimerRef, GetId), asCALL_THISCALL},

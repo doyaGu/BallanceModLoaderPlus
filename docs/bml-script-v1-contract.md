@@ -21,7 +21,9 @@ owning-plugin contract.
   `Borrow*` accessors for borrowed CK handles or BML service wrappers, and
   `OnModifyConfig` config-change events.
 - Export model: typed export registry with generation-checked `ExportRef` / native `BML_ModExport`; `BML_FindModExportEx` and `ModRef.TryFindExport` expose stable Interop lookup status codes.
-- `CallFrame`: bool/int/float/string/void only, with arg/result type introspection and targeted arg/result clearing for reusable frames. Calls clear result before dispatch and leave no result after failure or `void` success.
+- Interop v2 `CallFrame`: bool/int/float/string/void plus scalar arrays,
+  `array<uint8>` buffers, and `CKObject@` identity values. Calls clear result
+  before dispatch and leave no result after failure or `void` success.
 - Script-owned Timer: `BML::Timer` object callbacks, automatic unload cleanup.
 - Script-owned Command: `BML::Command` object callbacks, automatic unload cleanup.
 - Typed DataShare: bool/int/float/string get/set, `DataShareSizeOf`, and script-owned `DataShareRequest` object requests.
@@ -58,7 +60,10 @@ owning-plugin contract.
 - A v1 script should not depend on undocumented declarations, old callback overloads, or generated implementation helper names.
 - BML may add new facade functions in later minor releases without breaking v1.
 - BML may reject metadata or callback shapes that were never documented here.
-- V1 export signatures support only `void`, `bool`, `int`, `float`, and `string`/`const string &in`; signatureless lookup is valid only when the export name is unique.
+- Export signatures support v1 scalars plus v2 `const array<bool/int/float/string> &in`,
+  `array<bool/int/float/string>@`, `const array<uint8> &in`,
+  `array<uint8>@`, and `CKObject@`. Signatureless lookup is valid only when the
+  export name is unique; explicit lookup compares compiled descriptors.
 - `docs/bml-script-mod-api.as` is a stub for authoring and validation. The guide and this contract define the supported surface.
 
 ## CKAngelScript Coexistence
@@ -87,7 +92,19 @@ owning-plugin contract.
 
 ## CKAngelScript Release Policy
 
-Official script-capable release packages include a known-good CKAngelScript/AngelScript runtime and install `AngelScript.dll` next to `BMLPlus.dll` under `BuildingBlocks`. SDK packages include the matching `CKAngelScript.h` and `angelscript.h` headers. Source builds may still disable script support with `BML_ENABLE_ANGELSCRIPT=OFF`. BML script v1 requires a CKAngelScript build that reports `CKAS_FEATURE_OBJECT_TYPE_NAMESPACE`, because script mod main classes may live in AngelScript namespaces and BML creates them through `CKAngelScriptObjectOptions::ClassNamespace`.
+Official script-capable release packages include a known-good
+CKAngelScript/AngelScript runtime and install `AngelScript.dll` next to
+`BMLPlus.dll` under `BuildingBlocks`. SDK packages include the matching
+`CKAngelScript.h`, `angelscript.h`, and AngelScript add-on headers. Source
+builds may still disable script support with `BML_ENABLE_ANGELSCRIPT=OFF`.
+BML script support requires a CKAngelScript build that reports
+`CKAS_FEATURE_OBJECT_TYPE_NAMESPACE`,
+`CKAS_FEATURE_OBJECT_METHOD_CONTEXT_ACCESS`, and
+`CKAS_FEATURE_SCRIPT_ARRAY_ACCESS`. These are not Interop feature flags:
+object-method context access lets hosts configure/read prepared AngelScript
+contexts, and script-array access exposes CKAS-owned `array<T>` objects through
+generic lifecycle/type/size/element-address operations. CKAS never depends on
+BML or Interop.
 
 ## Shutdown Anomaly Policy
 
@@ -95,4 +112,13 @@ Some Player runs may report a non-zero exit code after `Goodbye!` has been writt
 
 ## English Quick Contract
 
-Stable v1 is: single-file/directory/zip `*.mod.as` entry, AngelScript metadata, fixed callbacks, snapshot event objects with borrowed CK handle accessors or BML service wrappers, typed export registry, script-owned Timer/Command/DataShareRequest, and official release packages that include the matching CKAngelScript runtime. CKAngelScript runtime scripts, `AngelScript Component`, Scene/Behavior/BB/Param, Message/Async, and CK/Vx bindings are available under the CKAngelScript contract. Deferred: hot reload, `.bmodp` script packages, BML-owned full object wrappers, full sandbox policy, raw CKAS engine/module/function access, and BML fixed-callback suspension/resume.
+Stable v1 plus required Interop v2 is: single-file/directory/zip `*.mod.as`
+entry, AngelScript metadata, fixed callbacks, snapshot event objects with
+borrowed CK handle accessors or BML service wrappers, typed export registry with
+scalar arrays/buffers/object identity, script-owned Timer/Command/DataShareRequest,
+and official release packages that include the matching CKAngelScript runtime.
+CKAngelScript runtime scripts, `AngelScript Component`, Scene/Behavior/BB/Param,
+Message/Async, and CK/Vx bindings are available under the CKAngelScript
+contract. Deferred: hot reload, `.bmodp` script packages, BML-owned full object
+wrappers, full sandbox policy, raw CKAS engine/module/function access, and BML
+fixed-callback suspension/resume.

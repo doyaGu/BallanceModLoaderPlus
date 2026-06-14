@@ -196,6 +196,8 @@ bool ScriptModRuntime::CallMethod(CKContext *context,
                                   CKAngelScriptMethod *method,
                                   CKAngelScriptWriteArgsCallback writeArgs,
                                   CKAngelScriptReadResultCallback readResult,
+                                  CKAngelScriptContextCallback configureContext,
+                                  CKAngelScriptContextCallback readContextResult,
                                   void *userData,
                                   ScriptDiagnosticPhase phase,
                                   const char *failurePrefix,
@@ -217,6 +219,8 @@ bool ScriptModRuntime::CallMethod(CKContext *context,
     options.Method = method;
     options.WriteArgs = writeArgs;
     options.ReadResult = readResult;
+    options.ConfigureContext = configureContext;
+    options.ReadContextResult = readContextResult;
     options.UserData = userData;
     options.Flags = CKAS_CALL_NO_SUSPEND;
 
@@ -238,6 +242,8 @@ bool ScriptModRuntime::CallMethod(CKContext *context,
                       call.Method,
                       call.WriteArgs,
                       call.ReadResult,
+                      call.ConfigureContext,
+                      call.ReadContextResult,
                       call.UserData,
                       call.Phase,
                       call.FailurePrefix,

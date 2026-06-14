@@ -38,6 +38,8 @@ struct ScriptMethodCall {
     CKAngelScriptMethod *Method = nullptr;
     CKAngelScriptWriteArgsCallback WriteArgs = nullptr;
     CKAngelScriptReadResultCallback ReadResult = nullptr;
+    CKAngelScriptContextCallback ConfigureContext = nullptr;
+    CKAngelScriptContextCallback ReadContextResult = nullptr;
     void *UserData = nullptr;
     ScriptDiagnosticPhase Phase = ScriptDiagnosticPhase::Callback;
     const char *FailurePrefix = nullptr;
@@ -53,6 +55,7 @@ public:
     const std::string &GetModuleName() const { return m_ModuleName; }
     CKAngelScriptObject *GetObject() const { return m_Object; }
     const ::CKAngelScriptAdapter::Api &GetApi() const { return m_Adapter.GetApi(); }
+    CKAngelScript *GetAngelScript() const { return m_Adapter.GetAngelScript(); }
     void SetLoaded(bool loaded) { m_Loaded = loaded; }
     void SetOwner(ScriptMod *owner) { m_Owner = owner; }
     static ScriptMod *GetCurrentScriptMod();
@@ -81,6 +84,8 @@ public:
                     CKAngelScriptMethod *method,
                     CKAngelScriptWriteArgsCallback writeArgs,
                     CKAngelScriptReadResultCallback readResult,
+                    CKAngelScriptContextCallback configureContext,
+                    CKAngelScriptContextCallback readContextResult,
                     void *userData,
                     ScriptDiagnosticPhase phase,
                     const char *failurePrefix,

@@ -106,8 +106,36 @@ static int GetTargetStatus(const char *modId, IMod **outMod = nullptr) {
 
 static int ResolveNativeLocked(BML_ModExport &handle) {
     auto it = g_NativeExports.find(handle.Key);
-    if (it == g_NativeExports.end())
-        return BML_ERROR_INTEROP_EXPORT_NOT_FOUND;
+    if (it == g_NativeExports.end()) {
+        if (handle.Key.Signature.empty())
+            return BML_ERROR_INTEROP_EXPORT_NOT_FOUND;
+
+        InteropSignatureInfo requestedSignature;
+        if (InteropSignature::Validate(handle.Key.Signature, handle.Key.Name, &requestedSignature) != BML_OK)
+            return BML_ERROR_INTEROP_EXPORT_NOT_FOUND;
+
+        const BML_ExportKey *matchedKey = nullptr;
+        const BML_NativeExportEntry *matchedEntry = nullptr;
+        for (const auto &entry : g_NativeExports) {
+            if (entry.first.ModId != handle.Key.ModId || entry.first.Name != handle.Key.Name)
+                continue;
+            if (!InteropSignature::Equivalent(entry.second.SignatureInfo, requestedSignature))
+                continue;
+            if (matchedEntry)
+                return BML_ERROR_INTEROP_EXPORT_AMBIGUOUS;
+            matchedKey = &entry.first;
+            matchedEntry = &entry.second;
+        }
+
+        if (!matchedEntry || !matchedKey)
+            return BML_ERROR_INTEROP_EXPORT_NOT_FOUND;
+
+        handle.Key.Signature = matchedKey->Signature;
+        handle.Kind = BML_ResolvedExportKind::Native;
+        handle.Native = *matchedEntry;
+        handle.NativeGeneration = g_NativeGeneration.load(std::memory_order_acquire);
+        return BML_OK;
+    }
 
     handle.Kind = BML_ResolvedExportKind::Native;
     handle.Native = it->second;
@@ -240,13 +268,22 @@ int ExportRegistry::RegisterNative(const char *modId,
                                    void *userData) {
     if (!IsValidKeyPart(modId) || !IsValidKeyPart(name) || !IsValidKeyPart(signature) || !callback)
         return BML_ERROR_INVALID_PARAMETER;
-    const int signatureStatus = InteropSignature::Validate(signature, name);
+    InteropSignatureInfo signatureInfo;
+    const int signatureStatus = InteropSignature::Validate(signature, name, &signatureInfo);
     if (signatureStatus != BML_OK)
         return signatureStatus;
 
     std::lock_guard<std::mutex> lock(g_ExportRegistryMutex);
+    for (const auto &entry : g_NativeExports) {
+        if (entry.first.ModId == modId &&
+            entry.first.Name == name &&
+            InteropSignature::Equivalent(entry.second.SignatureInfo, signatureInfo)) {
+            return BML_ERROR_ALREADY_EXISTS;
+        }
+    }
+
     auto inserted = g_NativeExports.emplace(MakeKey(modId, name, signature),
-                                            BML_NativeExportEntry{callback, userData});
+                                            BML_NativeExportEntry{callback, userData, signatureInfo});
     if (!inserted.second)
         return BML_ERROR_ALREADY_EXISTS;
 
@@ -260,9 +297,24 @@ int ExportRegistry::UnregisterNative(const char *modId, const char *name, const 
         return BML_ERROR_INVALID_PARAMETER;
 
     std::lock_guard<std::mutex> lock(g_ExportRegistryMutex);
-    const size_t removed = g_NativeExports.erase(MakeKey(modId, name, signature));
-    if (removed == 0)
+    auto key = MakeKey(modId, name, signature);
+    auto it = g_NativeExports.find(key);
+    if (it == g_NativeExports.end()) {
+        InteropSignatureInfo requestedSignature;
+        if (InteropSignature::Validate(signature, name, &requestedSignature) == BML_OK) {
+            for (auto candidate = g_NativeExports.begin(); candidate != g_NativeExports.end(); ++candidate) {
+                if (candidate->first.ModId == modId &&
+                    candidate->first.Name == name &&
+                    InteropSignature::Equivalent(candidate->second.SignatureInfo, requestedSignature)) {
+                    it = candidate;
+                    break;
+                }
+            }
+        }
+    }
+    if (it == g_NativeExports.end())
         return BML_ERROR_NOT_FOUND;
+    g_NativeExports.erase(it);
 
     g_NativeGeneration.fetch_add(1, std::memory_order_acq_rel);
     g_ExportListCache.erase(modId);

@@ -54,6 +54,8 @@ public:
                                                      CKAngelScriptMethod **,
                                                      CKAngelScriptResult *);
     typedef CKAS_STATUS(__cdecl *ReleaseMethodFn)(CKAngelScript *, CKAngelScriptMethod *, CKAngelScriptResult *);
+    typedef CKAS_STATUS(__cdecl *BorrowActiveContextFn)(CKAngelScript *, asIScriptContext **, CKAngelScriptResult *);
+    typedef CKAS_STATUS(__cdecl *AssignObjectHandleFn)(void **, void *, asITypeInfo *);
     typedef CKAS_STATUS(__cdecl *ArgSetBoolFn)(CKAngelScriptArgWriter *, CKDWORD, CKBOOL);
     typedef CKAS_STATUS(__cdecl *ArgSetIntFn)(CKAngelScriptArgWriter *, CKDWORD, int);
     typedef CKAS_STATUS(__cdecl *ArgSetFloatFn)(CKAngelScriptArgWriter *, CKDWORD, float);
@@ -73,6 +75,25 @@ public:
     typedef CKAS_STATUS(__cdecl *UnregisterEngineExtensionFn)(CKAngelScript *,
                                                               const char *,
                                                               CKAngelScriptResult *);
+    typedef CKAS_STATUS(__cdecl *CreateArrayFn)(CKAngelScript *, const char *, CKDWORD, void **);
+    typedef CKAS_STATUS(__cdecl *CreateArrayByTypeFn)(asITypeInfo *, CKDWORD, void **);
+    typedef CKAS_STATUS(__cdecl *ArrayAddRefFn)(void *);
+    typedef CKAS_STATUS(__cdecl *ArrayReleaseFn)(void *);
+    typedef CKAS_STATUS(__cdecl *ArrayGetRefCountFn)(void *, int *);
+    typedef CKAS_STATUS(__cdecl *ArrayGetArrayTypeFn)(void *, asITypeInfo **);
+    typedef CKAS_STATUS(__cdecl *ArrayGetArrayTypeIdFn)(void *, int *);
+    typedef CKAS_STATUS(__cdecl *ArrayGetSizeFn)(void *, CKDWORD *);
+    typedef CKAS_STATUS(__cdecl *ArrayResizeFn)(void *, CKDWORD);
+    typedef CKAS_STATUS(__cdecl *ArrayReserveFn)(void *, CKDWORD);
+    typedef CKAS_STATUS(__cdecl *ArrayGetElementTypeIdFn)(void *, int *);
+    typedef CKAS_STATUS(__cdecl *ArrayGetElementAddressFn)(void *, CKDWORD, void **);
+    typedef CKAS_STATUS(__cdecl *ArrayGetConstElementAddressFn)(const void *, CKDWORD, const void **);
+    typedef CKAS_STATUS(__cdecl *ArraySetElementValueFn)(void *, CKDWORD, const void *);
+    typedef CKAS_STATUS(__cdecl *ArrayInsertAtFn)(void *, CKDWORD, const void *);
+    typedef CKAS_STATUS(__cdecl *ArrayInsertLastFn)(void *, const void *);
+    typedef CKAS_STATUS(__cdecl *ArrayRemoveAtFn)(void *, CKDWORD);
+    typedef CKAS_STATUS(__cdecl *ArrayRemoveLastFn)(void *);
+    typedef CKAS_STATUS(__cdecl *ArrayClearFn)(void *);
 
     struct Api {
         CKGetAngelScriptFn GetAngelScript = nullptr;
@@ -96,6 +117,8 @@ public:
         ReleaseObjectFn ReleaseObject = nullptr;
         FindObjectMethodFn FindObjectMethod = nullptr;
         ReleaseMethodFn ReleaseMethod = nullptr;
+        BorrowActiveContextFn BorrowActiveContext = nullptr;
+        AssignObjectHandleFn AssignObjectHandle = nullptr;
         ArgSetBoolFn ArgSetBool = nullptr;
         ArgSetIntFn ArgSetInt = nullptr;
         ArgSetFloatFn ArgSetFloat = nullptr;
@@ -109,6 +132,25 @@ public:
         CallObjectMethodFn CallObjectMethod = nullptr;
         RegisterEngineExtensionFn RegisterEngineExtension = nullptr;
         UnregisterEngineExtensionFn UnregisterEngineExtension = nullptr;
+        CreateArrayFn CreateArray = nullptr;
+        CreateArrayByTypeFn CreateArrayByType = nullptr;
+        ArrayAddRefFn ArrayAddRef = nullptr;
+        ArrayReleaseFn ArrayRelease = nullptr;
+        ArrayGetRefCountFn ArrayGetRefCount = nullptr;
+        ArrayGetArrayTypeFn ArrayGetArrayType = nullptr;
+        ArrayGetArrayTypeIdFn ArrayGetArrayTypeId = nullptr;
+        ArrayGetSizeFn ArrayGetSize = nullptr;
+        ArrayResizeFn ArrayResize = nullptr;
+        ArrayReserveFn ArrayReserve = nullptr;
+        ArrayGetElementTypeIdFn ArrayGetElementTypeId = nullptr;
+        ArrayGetElementAddressFn ArrayGetElementAddress = nullptr;
+        ArrayGetConstElementAddressFn ArrayGetConstElementAddress = nullptr;
+        ArraySetElementValueFn ArraySetElementValue = nullptr;
+        ArrayInsertAtFn ArrayInsertAt = nullptr;
+        ArrayInsertLastFn ArrayInsertLast = nullptr;
+        ArrayRemoveAtFn ArrayRemoveAt = nullptr;
+        ArrayRemoveLastFn ArrayRemoveLast = nullptr;
+        ArrayClearFn ArrayClear = nullptr;
     };
 
     bool Refresh(CKContext *context);
@@ -136,7 +178,7 @@ private:
     Api m_Api;
     State m_State = State::Unchecked;
     CKDWORD m_ApiVersion = 0;
-    bool m_Features[CKAS_FEATURE_OBJECT_TYPE_NAMESPACE + 1] = {};
+    bool m_Features[CKAS_FEATURE_SCRIPT_ARRAY_ACCESS + 1] = {};
     std::string m_Diagnostic;
 };
 

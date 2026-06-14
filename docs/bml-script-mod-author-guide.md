@@ -404,10 +404,16 @@ if (status == 0)
 
 `CallFrame` exposes `ArgCount`, `GetArgType(index)`, `ClearArg(index)`,
 `ResultType`, and `ClearResult()` for reusable dynamic frames. Type values are
-the `BML::CallValueType` enum: empty, bool, int, float, and string.
-Each `ExportRef.Call*` clears the frame result before dispatch. A failed call or
-`void` export leaves `ResultType == BML::CALL_VALUE_EMPTY`; do not reuse an old
-result after a non-zero status.
+the `BML::CallValueType` enum: empty, bool, int, float, string, scalar arrays,
+buffer, and object id. Native Interop stores copies of array, string-array, and
+buffer values. Object values cross Interop as `CK_ID` identity; `CKObject@`
+handles are resolved only while reading/writing the frame or dispatching a
+script call.
+
+Each `ExportRef.Call*` and `ExportRef.Call(frame)` clears the frame result
+before dispatch. A failed call or `void` export leaves
+`ResultType == BML::CALL_VALUE_EMPTY`; do not reuse an old result after a
+non-zero status.
 
 `ExportRef` is generation-checked. After owner unload or export unregister,
 old handles do not call stale runtime state and return
@@ -415,8 +421,26 @@ old handles do not call stale runtime state and return
 `BML::ERROR_INTEROP_TARGET_NOT_FOUND`, `ERROR_INTEROP_TARGET_FAILED`,
 `ERROR_INTEROP_EXPORT_NOT_FOUND`, `ERROR_INTEROP_EXPORT_AMBIGUOUS`,
 `ERROR_INTEROP_BAD_SIGNATURE`, or `ERROR_INTEROP_SIGNATURE_MISMATCH` for lookup
-failures. V1 export signatures support only `void`, `bool`, `int`, `float`, and
-`string`/`const string &in`.
+failures.
+
+Interop signatures support:
+
+- scalars: `void`, `bool`, `int`, `float`, `string`, `const string &in`
+- array params: `const array<bool/int/float/string> &in`
+- buffer params: `const array<uint8> &in`
+- object params: `CKObject@`
+- array returns: `array<bool/int/float/string>@`
+- buffer returns: `array<uint8>@`
+- object returns: `CKObject@`
+
+`array<uint8>` maps to the native buffer APIs. CKAngelScript reflection may
+print arrays as `T[]`; BML treats `T[]@` and `const T[]&in` as equivalent to
+`array<T>@` and `const array<T> &in`. Nested arrays, dictionaries,
+script class handles, arbitrary `T@`, raw pointers, `&out`, and `&inout` are not
+valid Interop signatures. Signatureless lookup is valid only when an export name
+is unique; when a mod exports the same name with multiple signatures, pass the
+explicit signature. Explicit lookup compares compiled type descriptors, so
+parameter names and equivalent string forms do not affect resolution.
 
 ## Timer
 
@@ -537,8 +561,9 @@ You can inspect diagnostics from:
 
 Common phases:
 
-- `ckas-host`: `AngelScript.dll` is missing, CKAS v3 features are incomplete,
-  or the installed CKAS build is too old for namespaced script mod classes.
+- `ckas-host`: `AngelScript.dll` is missing, or the installed CKAS build lacks
+  the required namespace, object-method context, or generic script-array object
+  access features.
 - `compile`: AngelScript compilation failed.
 - `metadata`: `bml.mod`, dependency, or export metadata is invalid.
 - `callback`: a fixed callback failed at runtime.

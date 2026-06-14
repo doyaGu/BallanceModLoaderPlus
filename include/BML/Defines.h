@@ -143,6 +143,7 @@
 #define BML_ERROR_INTEROP_TYPE_MISMATCH          (-707) /**< Call frame value type does not match the requested type */
 #define BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED (-708) /**< Target export failed during execution */
 #define BML_ERROR_INTEROP_HANDLE_STALE           (-709) /**< Export handle no longer resolves to a live export */
+#define BML_ERROR_INTEROP_UNSUPPORTED            (-710) /**< Interop operation requires an unavailable runtime feature */
 
 BML_BEGIN_CDECLS
 

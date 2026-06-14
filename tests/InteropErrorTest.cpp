@@ -17,4 +17,6 @@ TEST(InteropErrorTest, ReturnsInteropErrorStrings) {
     EXPECT_STREQ(BML_GetErrorString(BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED),
                  "Interop target export execution failed");
     EXPECT_STREQ(BML_GetErrorString(BML_ERROR_INTEROP_HANDLE_STALE), "Interop export handle is stale");
+    EXPECT_STREQ(BML_GetErrorString(BML_ERROR_INTEROP_UNSUPPORTED),
+                 "Interop operation is unsupported by the current runtime");
 }

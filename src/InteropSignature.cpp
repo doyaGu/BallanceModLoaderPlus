@@ -35,35 +35,230 @@ static std::string RemoveTrailingParameterName(std::string type) {
     return maybeType.empty() ? type : maybeType;
 }
 
-std::string InteropSignature::NormalizeType(std::string type) {
+static std::string PrepareType(std::string type) {
     type = utils::TrimStringCopy(type);
     const size_t assignment = type.find('=');
     if (assignment != std::string::npos)
         type = utils::TrimStringCopy(type.substr(0, assignment));
-    type = RemoveTrailingParameterName(type);
+    return RemoveTrailingParameterName(type);
+}
 
+static std::string RemoveAsciiWhitespace(const std::string &value) {
     std::string compact;
-    compact.reserve(type.size());
-    for (char ch : type) {
-        if (ch != ' ' && ch != '\t')
+    compact.reserve(value.size());
+    for (char ch : value) {
+        if (ch != ' ' && ch != '\t' && ch != '\r' && ch != '\n')
             compact.push_back(ch);
     }
+    return compact;
+}
 
+static bool StartsWith(const std::string &value, const char *prefix) {
+    const std::string prefixValue(prefix);
+    return value.size() >= prefixValue.size() &&
+           value.compare(0, prefixValue.size(), prefixValue) == 0;
+}
+
+static bool EndsWith(const std::string &value, const char *suffix) {
+    const std::string suffixValue(suffix);
+    return value.size() >= suffixValue.size() &&
+           value.compare(value.size() - suffixValue.size(), suffixValue.size(), suffixValue) == 0;
+}
+
+static bool ExtractWrapped(const std::string &value,
+                           const char *prefix,
+                           const char *suffix,
+                           std::string &inner) {
+    if (!StartsWith(value, prefix) || !EndsWith(value, suffix))
+        return false;
+    const size_t prefixSize = std::string(prefix).size();
+    const size_t suffixSize = std::string(suffix).size();
+    if (value.size() < prefixSize + suffixSize)
+        return false;
+    inner = value.substr(prefixSize, value.size() - prefixSize - suffixSize);
+    return !inner.empty();
+}
+
+static bool ExtractArrayReturnType(const std::string &compact, std::string &inner) {
+    if (ExtractWrapped(compact, "array<", ">@", inner))
+        return true;
+    if (EndsWith(compact, "[]@")) {
+        inner = compact.substr(0, compact.size() - 3);
+        return !inner.empty();
+    }
+    return false;
+}
+
+static bool ExtractArrayParameterType(const std::string &compact, std::string &inner) {
+    if (ExtractWrapped(compact, "constarray<", ">&in", inner))
+        return true;
+    if (StartsWith(compact, "const") && EndsWith(compact, "[]&in")) {
+        inner = compact.substr(5, compact.size() - 5 - 5);
+        return !inner.empty();
+    }
+    return false;
+}
+
+static bool SplitParametersNestedAware(const std::string &parameters,
+                                       std::vector<std::string> &outTypes) {
+    outTypes.clear();
+    if (utils::TrimStringCopy(parameters).empty())
+        return true;
+
+    int genericDepth = 0;
+    size_t start = 0;
+    for (size_t i = 0; i <= parameters.size(); ++i) {
+        const bool atEnd = i == parameters.size();
+        const char ch = atEnd ? ',' : parameters[i];
+
+        if (!atEnd) {
+            if (ch == '<') {
+                ++genericDepth;
+            } else if (ch == '>') {
+                --genericDepth;
+                if (genericDepth < 0)
+                    return false;
+            }
+        }
+
+        if ((atEnd || ch == ',') && genericDepth == 0) {
+            std::string parameter = utils::TrimStringCopy(parameters.substr(start, i - start));
+            if (parameter.empty())
+                return false;
+            outTypes.push_back(InteropSignature::NormalizeType(parameter));
+            start = i + 1;
+        }
+    }
+
+    return genericDepth == 0;
+}
+
+static InteropTypeDescriptor MakeDescriptor(InteropValueType type,
+                                            const std::string &canonicalName,
+                                            InteropValueType elementType = InteropValueType::Unsupported) {
+    InteropTypeDescriptor descriptor;
+    descriptor.Type = type;
+    descriptor.ElementType = elementType;
+    descriptor.CanonicalName = canonicalName;
+    return descriptor;
+}
+
+static bool MapArrayElement(const std::string &inner,
+                            InteropValueType &arrayType,
+                            InteropValueType &elementType,
+                            std::string &canonicalElement) {
+    if (inner == "bool") {
+        arrayType = InteropValueType::BoolArray;
+        elementType = InteropValueType::Bool;
+        canonicalElement = "bool";
+        return true;
+    }
+    if (inner == "int") {
+        arrayType = InteropValueType::IntArray;
+        elementType = InteropValueType::Int;
+        canonicalElement = "int";
+        return true;
+    }
+    if (inner == "float") {
+        arrayType = InteropValueType::FloatArray;
+        elementType = InteropValueType::Float;
+        canonicalElement = "float";
+        return true;
+    }
+    if (inner == "string") {
+        arrayType = InteropValueType::StringArray;
+        elementType = InteropValueType::String;
+        canonicalElement = "string";
+        return true;
+    }
+    if (inner == "uint8") {
+        arrayType = InteropValueType::Buffer;
+        elementType = InteropValueType::Int;
+        canonicalElement = "uint8";
+        return true;
+    }
+    return false;
+}
+
+static InteropTypeDescriptor DescriptorFromPreparedType(const std::string &prepared) {
+    const std::string compact = RemoveAsciiWhitespace(prepared);
     if (compact == "void")
-        return "void";
+        return MakeDescriptor(InteropValueType::Void, "void");
     if (compact == "bool")
-        return "bool";
+        return MakeDescriptor(InteropValueType::Bool, "bool");
     if (compact == "int")
-        return "int";
+        return MakeDescriptor(InteropValueType::Int, "int");
     if (compact == "float")
-        return "float";
-    if (compact == "string")
-        return "string";
+        return MakeDescriptor(InteropValueType::Float, "float");
+    if (compact == "string" || compact == "conststring&in" || compact == "string&in")
+        return MakeDescriptor(InteropValueType::String, "string");
+    if (compact == "CKObject@")
+        return MakeDescriptor(InteropValueType::ObjectId, "CKObject@");
+
+    std::string inner;
+    if (ExtractArrayParameterType(compact, inner) ||
+        ExtractArrayReturnType(compact, inner)) {
+        InteropValueType arrayType = InteropValueType::Unsupported;
+        InteropValueType elementType = InteropValueType::Unsupported;
+        std::string canonicalElement;
+        if (MapArrayElement(inner, arrayType, elementType, canonicalElement)) {
+            return MakeDescriptor(arrayType,
+                                  std::string("array<") + canonicalElement + ">",
+                                  elementType);
+        }
+    }
+
+    return InteropTypeDescriptor();
+}
+
+static std::string BuildCanonicalSignature(const InteropSignatureInfo &info) {
+    if (info.Name.empty() || !info.ReturnDescriptor.IsSupported())
+        return {};
+
+    std::string signature = info.ReturnDescriptor.CanonicalName;
+    signature += " ";
+    signature += info.Name;
+    signature += "(";
+    for (size_t i = 0; i < info.ParameterDescriptors.size(); ++i) {
+        if (i > 0)
+            signature += ", ";
+        signature += info.ParameterDescriptors[i].CanonicalName;
+    }
+    signature += ")";
+    return signature;
+}
+
+std::string InteropSignature::NormalizeType(std::string type) {
+    const std::string prepared = PrepareType(std::move(type));
+    const std::string compact = RemoveAsciiWhitespace(prepared);
+
+    if (compact == "void" ||
+        compact == "bool" ||
+        compact == "int" ||
+        compact == "float" ||
+        compact == "string")
+        return compact;
     if (compact == "conststring&in")
         return "const string &in";
     if (compact == "string&in")
         return "string &in";
-    return type;
+    if (compact == "CKObject@")
+        return "CKObject@";
+
+    std::string inner;
+    if (ExtractArrayParameterType(compact, inner) ||
+        ExtractArrayReturnType(compact, inner)) {
+        InteropValueType arrayType = InteropValueType::Unsupported;
+        InteropValueType elementType = InteropValueType::Unsupported;
+        std::string canonicalElement;
+        if (MapArrayElement(inner, arrayType, elementType, canonicalElement)) {
+            if (ExtractArrayParameterType(compact, inner))
+                return std::string("const array<") + canonicalElement + "> &in";
+            return std::string("array<") + canonicalElement + ">@";
+        }
+    }
+
+    return prepared;
 }
 
 std::string InteropSignature::ExtractReturnType(const std::string &signature) {
@@ -96,54 +291,74 @@ std::vector<std::string> InteropSignature::ExtractParameterTypes(const std::stri
 
     std::vector<std::string> types;
     const std::string parameters = signature.substr(open + 1, close - open - 1);
-    size_t start = 0;
-    while (start < parameters.size()) {
-        const size_t comma = parameters.find(',', start);
-        const size_t end = comma == std::string::npos ? parameters.size() : comma;
-        const std::string parameter = utils::TrimStringCopy(parameters.substr(start, end - start));
-        if (!parameter.empty())
-            types.push_back(NormalizeType(parameter));
-        if (comma == std::string::npos)
-            break;
-        start = comma + 1;
-    }
+    if (!SplitParametersNestedAware(parameters, types))
+        return std::vector<std::string>();
     return types;
 }
 
 InteropValueType InteropSignature::TypeFromName(const std::string &type) {
-    const std::string normalized = NormalizeType(type);
-    if (normalized == "void")
-        return InteropValueType::Void;
-    if (normalized == "bool")
-        return InteropValueType::Bool;
-    if (normalized == "int")
-        return InteropValueType::Int;
-    if (normalized == "float")
-        return InteropValueType::Float;
-    if (normalized == "string" || normalized == "const string &in" || normalized == "string &in")
-        return InteropValueType::String;
-    return InteropValueType::Unsupported;
+    return DescriptorFromName(type).Type;
+}
+
+InteropTypeDescriptor InteropSignature::DescriptorFromName(const std::string &type) {
+    return DescriptorFromPreparedType(PrepareType(type));
 }
 
 InteropSignatureInfo InteropSignature::Compile(const std::string &signature) {
     InteropSignatureInfo info;
-    info.ReturnType = TypeFromName(ExtractReturnType(signature));
+    info.ReturnDescriptor = DescriptorFromName(ExtractReturnType(signature));
+    info.ReturnType = info.ReturnDescriptor.Type;
     info.Name = ExtractFunctionName(signature);
+
     const std::vector<std::string> parameterTypes = ExtractParameterTypes(signature);
     info.ParameterTypes.reserve(parameterTypes.size());
-    for (const std::string &parameterType : parameterTypes)
-        info.ParameterTypes.push_back(TypeFromName(parameterType));
+    info.ParameterDescriptors.reserve(parameterTypes.size());
+    for (const std::string &parameterType : parameterTypes) {
+        InteropTypeDescriptor descriptor = DescriptorFromName(parameterType);
+        info.ParameterDescriptors.push_back(descriptor);
+        info.ParameterTypes.push_back(descriptor.Type);
+    }
+
+    info.CanonicalSignature = BuildCanonicalSignature(info);
     return info;
 }
 
 bool InteropSignature::IsSupported(const InteropSignatureInfo &info) {
-    if (info.Name.empty() || info.ReturnType == InteropValueType::Unsupported)
+    if (info.Name.empty() || !info.ReturnDescriptor.IsSupported())
         return false;
-    for (const InteropValueType parameterType : info.ParameterTypes) {
-        if (parameterType == InteropValueType::Unsupported || parameterType == InteropValueType::Void)
+    if (info.ParameterDescriptors.size() != info.ParameterTypes.size())
+        return false;
+    for (const InteropTypeDescriptor &parameterType : info.ParameterDescriptors) {
+        if (!parameterType.IsSupported() || parameterType.Type == InteropValueType::Void)
             return false;
     }
     return true;
+}
+
+bool InteropSignature::Equivalent(const InteropSignatureInfo &left, const InteropSignatureInfo &right) {
+    if (left.Name != right.Name)
+        return false;
+    if (left.ReturnDescriptor != right.ReturnDescriptor)
+        return false;
+    if (left.ParameterDescriptors.size() != right.ParameterDescriptors.size())
+        return false;
+    for (size_t i = 0; i < left.ParameterDescriptors.size(); ++i) {
+        if (left.ParameterDescriptors[i] != right.ParameterDescriptors[i])
+            return false;
+    }
+    return true;
+}
+
+bool InteropSignature::EquivalentSignatures(const std::string &left,
+                                            const std::string &right,
+                                            const std::string &expectedName) {
+    InteropSignatureInfo leftInfo;
+    InteropSignatureInfo rightInfo;
+    if (Validate(left, expectedName, &leftInfo) != BML_OK)
+        return false;
+    if (Validate(right, expectedName, &rightInfo) != BML_OK)
+        return false;
+    return Equivalent(leftInfo, rightInfo);
 }
 
 int InteropSignature::Validate(const std::string &signature,
@@ -158,23 +373,30 @@ int InteropSignature::Validate(const std::string &signature,
         if (signature[i] != ' ' && signature[i] != '\t')
             return BML_ERROR_INTEROP_BAD_SIGNATURE;
     }
-    const std::string parameters = utils::TrimStringCopy(signature.substr(open + 1, close - open - 1));
-    if (!parameters.empty()) {
-        size_t start = 0;
-        while (start <= parameters.size()) {
-            const size_t comma = parameters.find(',', start);
-            const size_t end = comma == std::string::npos ? parameters.size() : comma;
-            if (utils::TrimStringCopy(parameters.substr(start, end - start)).empty())
-                return BML_ERROR_INTEROP_BAD_SIGNATURE;
-            if (comma == std::string::npos)
-                break;
-            start = comma + 1;
-        }
-    }
+
+    std::vector<std::string> parameters;
+    if (!SplitParametersNestedAware(signature.substr(open + 1, close - open - 1), parameters))
+        return BML_ERROR_INTEROP_BAD_SIGNATURE;
 
     InteropSignatureInfo info = Compile(signature);
     if (!IsSupported(info))
         return BML_ERROR_INTEROP_BAD_SIGNATURE;
+    if (info.ParameterDescriptors.size() != parameters.size())
+        return BML_ERROR_INTEROP_BAD_SIGNATURE;
+
+    const std::string normalizedReturn = NormalizeType(ExtractReturnType(signature));
+    const std::string compactReturn = RemoveAsciiWhitespace(normalizedReturn);
+    if (info.ReturnDescriptor.IsArrayLike() && !EndsWith(compactReturn, ">@"))
+        return BML_ERROR_INTEROP_BAD_SIGNATURE;
+
+    for (size_t i = 0; i < parameters.size(); ++i) {
+        const std::string compactParameter = RemoveAsciiWhitespace(parameters[i]);
+        if (info.ParameterDescriptors[i].IsArrayLike() &&
+            !ExtractWrapped(compactParameter, "constarray<", ">&in", parameters[i])) {
+            return BML_ERROR_INTEROP_BAD_SIGNATURE;
+        }
+    }
+
     if (!expectedName.empty() && info.Name != expectedName)
         return BML_ERROR_INTEROP_SIGNATURE_MISMATCH;
     if (outInfo)

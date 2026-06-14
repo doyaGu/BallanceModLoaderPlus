@@ -12,6 +12,7 @@ static CKAngelScriptAdapter::GetStatusNameFn g_GetStatusName = nullptr;
 
 static constexpr CKAS_FEATURE kRequiredFeatures[] = {
     CKAS_FEATURE_MODULE_LIFECYCLE,
+    CKAS_FEATURE_RAW_ANGELSCRIPT_ACCESS,
     CKAS_FEATURE_OBJECT_HANDLE,
     CKAS_FEATURE_SYNC_OBJECT_METHOD_CALL,
     CKAS_FEATURE_TYPED_ARG_READER_WRITER,
@@ -21,6 +22,8 @@ static constexpr CKAS_FEATURE kRequiredFeatures[] = {
     CKAS_FEATURE_STATUS_TEXT,
     CKAS_FEATURE_METADATA_REFLECTION,
     CKAS_FEATURE_OBJECT_TYPE_NAMESPACE,
+    CKAS_FEATURE_OBJECT_METHOD_CONTEXT_ACCESS,
+    CKAS_FEATURE_SCRIPT_ARRAY_ACCESS,
 };
 
 template <typename T>
@@ -34,11 +37,15 @@ static bool Resolve(HMODULE module, const char *name, T &out, std::string &missi
 }
 
 static std::string MakeMissingFeatureDiagnostic(CKAS_FEATURE feature) {
-    std::string message = std::string("CKAngelScript is missing required BML script v1 feature ") +
+    std::string message = std::string("CKAngelScript is missing required BML script feature ") +
         CKAngelScriptAdapter::FeatureName(feature) + ".";
     if (feature == CKAS_FEATURE_OBJECT_TYPE_NAMESPACE) {
         message += " The installed CKAngelScript build is too old for namespaced script mod classes; "
                    "install a CKAS v3 build that supports CKAngelScriptObjectOptions::ClassNamespace.";
+    } else if (feature == CKAS_FEATURE_OBJECT_METHOD_CONTEXT_ACCESS) {
+        message += " BML requires generic object-method context access for script-side value marshalling.";
+    } else if (feature == CKAS_FEATURE_SCRIPT_ARRAY_ACCESS) {
+        message += " BML requires generic CKAngelScript array object access for script-side value marshalling.";
     }
     return message;
 }
@@ -102,7 +109,7 @@ bool CKAngelScriptAdapter::IsAvailable() const {
 
 bool CKAngelScriptAdapter::HasFeature(CKAS_FEATURE feature) const {
     const int index = static_cast<int>(feature);
-    return index >= 0 && index <= CKAS_FEATURE_OBJECT_TYPE_NAMESPACE && m_Features[index];
+    return index >= 0 && index <= CKAS_FEATURE_SCRIPT_ARRAY_ACCESS && m_Features[index];
 }
 
 CKAngelScriptAdapter::State CKAngelScriptAdapter::GetState() const {
@@ -202,6 +209,10 @@ const char *CKAngelScriptAdapter::FeatureName(CKAS_FEATURE feature) {
         return "CKAS_FEATURE_METADATA_REFLECTION";
     case CKAS_FEATURE_OBJECT_TYPE_NAMESPACE:
         return "CKAS_FEATURE_OBJECT_TYPE_NAMESPACE";
+    case CKAS_FEATURE_OBJECT_METHOD_CONTEXT_ACCESS:
+        return "CKAS_FEATURE_OBJECT_METHOD_CONTEXT_ACCESS";
+    case CKAS_FEATURE_SCRIPT_ARRAY_ACCESS:
+        return "CKAS_FEATURE_SCRIPT_ARRAY_ACCESS";
     default:
         return "CKAS_FEATURE_UNKNOWN";
     }
@@ -245,6 +256,8 @@ bool CKAngelScriptAdapter::ResolveRequiredExports(void *moduleHandle) {
         Resolve(module, "CKAngelScriptReleaseObject", m_Api.ReleaseObject, missing) &&
         Resolve(module, "CKAngelScriptFindObjectMethod", m_Api.FindObjectMethod, missing) &&
         Resolve(module, "CKAngelScriptReleaseMethod", m_Api.ReleaseMethod, missing) &&
+        Resolve(module, "CKAngelScriptBorrowActiveContext", m_Api.BorrowActiveContext, missing) &&
+        Resolve(module, "CKAngelScriptAssignObjectHandle", m_Api.AssignObjectHandle, missing) &&
         Resolve(module, "CKAngelScriptArgSetBool", m_Api.ArgSetBool, missing) &&
         Resolve(module, "CKAngelScriptArgSetInt", m_Api.ArgSetInt, missing) &&
         Resolve(module, "CKAngelScriptArgSetFloat", m_Api.ArgSetFloat, missing) &&
@@ -257,7 +270,26 @@ bool CKAngelScriptAdapter::ResolveRequiredExports(void *moduleHandle) {
         Resolve(module, "CKAngelScriptResultGetStringView", m_Api.ResultGetStringView, missing) &&
         Resolve(module, "CKAngelScriptCallObjectMethod", m_Api.CallObjectMethod, missing) &&
         Resolve(module, "CKAngelScriptRegisterEngineExtension", m_Api.RegisterEngineExtension, missing) &&
-        Resolve(module, "CKAngelScriptUnregisterEngineExtension", m_Api.UnregisterEngineExtension, missing);
+        Resolve(module, "CKAngelScriptUnregisterEngineExtension", m_Api.UnregisterEngineExtension, missing) &&
+        Resolve(module, "CKAngelScriptCreateArray", m_Api.CreateArray, missing) &&
+        Resolve(module, "CKAngelScriptCreateArrayByType", m_Api.CreateArrayByType, missing) &&
+        Resolve(module, "CKAngelScriptArrayAddRef", m_Api.ArrayAddRef, missing) &&
+        Resolve(module, "CKAngelScriptArrayRelease", m_Api.ArrayRelease, missing) &&
+        Resolve(module, "CKAngelScriptArrayGetRefCount", m_Api.ArrayGetRefCount, missing) &&
+        Resolve(module, "CKAngelScriptArrayGetArrayType", m_Api.ArrayGetArrayType, missing) &&
+        Resolve(module, "CKAngelScriptArrayGetArrayTypeId", m_Api.ArrayGetArrayTypeId, missing) &&
+        Resolve(module, "CKAngelScriptArrayGetSize", m_Api.ArrayGetSize, missing) &&
+        Resolve(module, "CKAngelScriptArrayResize", m_Api.ArrayResize, missing) &&
+        Resolve(module, "CKAngelScriptArrayReserve", m_Api.ArrayReserve, missing) &&
+        Resolve(module, "CKAngelScriptArrayGetElementTypeId", m_Api.ArrayGetElementTypeId, missing) &&
+        Resolve(module, "CKAngelScriptArrayGetElementAddress", m_Api.ArrayGetElementAddress, missing) &&
+        Resolve(module, "CKAngelScriptArrayGetConstElementAddress", m_Api.ArrayGetConstElementAddress, missing) &&
+        Resolve(module, "CKAngelScriptArraySetElementValue", m_Api.ArraySetElementValue, missing) &&
+        Resolve(module, "CKAngelScriptArrayInsertAt", m_Api.ArrayInsertAt, missing) &&
+        Resolve(module, "CKAngelScriptArrayInsertLast", m_Api.ArrayInsertLast, missing) &&
+        Resolve(module, "CKAngelScriptArrayRemoveAt", m_Api.ArrayRemoveAt, missing) &&
+        Resolve(module, "CKAngelScriptArrayRemoveLast", m_Api.ArrayRemoveLast, missing) &&
+        Resolve(module, "CKAngelScriptArrayClear", m_Api.ArrayClear, missing);
 
     if (ok)
         return true;
@@ -270,7 +302,7 @@ bool CKAngelScriptAdapter::ValidateFeatures() {
     for (CKAS_FEATURE feature : kRequiredFeatures) {
         const int index = static_cast<int>(feature);
         const bool supported = m_Api.HasFeature(feature) != 0;
-        if (index >= 0 && index <= CKAS_FEATURE_OBJECT_TYPE_NAMESPACE)
+        if (index >= 0 && index <= CKAS_FEATURE_SCRIPT_ARRAY_ACCESS)
             m_Features[index] = supported;
 
         if (!supported) {

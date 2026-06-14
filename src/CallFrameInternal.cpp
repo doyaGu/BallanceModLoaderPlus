@@ -104,6 +104,23 @@ BML_CallValueType BML_GetCallFrameResultType(const BML_CallFrame *frame) {
     return frame ? frame->Result.Type : BML_CallValueType::Empty;
 }
 
+int BML_GetCallFrameResultChecked(const BML_CallFrame *frame,
+                                  BML_CallValueType type,
+                                  const BML_CallValue **outValue) {
+    if (outValue)
+        *outValue = nullptr;
+    if (!frame)
+        return BML_ERROR_INTEROP_BAD_CALL_FRAME;
+    if (frame->Result.Type == BML_CallValueType::Empty)
+        return BML_ERROR_NOT_FOUND;
+    if (frame->Result.Type != type)
+        return BML_ERROR_INTEROP_TYPE_MISMATCH;
+
+    if (outValue)
+        *outValue = &frame->Result;
+    return BML_OK;
+}
+
 int BML_ClearCallFrameResult(BML_CallFrame *frame) {
     if (!frame)
         return BML_ERROR_INVALID_PARAMETER;
