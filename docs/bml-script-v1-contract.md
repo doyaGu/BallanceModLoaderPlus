@@ -21,7 +21,7 @@ release contract, not a design sketch.
 - UI: stable `BML::UI` menu facade for ordinary render-time Bui-style controls.
 - Advanced ImGui: generated `ImGui` namespace documented in `docs/bml-imgui-api.as`; frame-scope only, with context/platform lifecycle, allocators, raw callbacks, and raw `void*` intentionally omitted.
 - Diagnostics: script failures expose phase/message through logs, Mod menu, script `ModRef`, and native interop.
-- CKAngelScript integration: required runtime dependency for script-capable BML+ releases.
+- CKAngelScript integration: official script-capable BML+ release packages include the matching CKAngelScript runtime.
 - CKAngelScript API coexistence: BML script mods may use CKAngelScript's
   registered script APIs, including `Scene`, `Behavior`, `BB`, `Param`, raw
   CK/Vx SDK bindings, and APIs from other registered engine extensions. This
@@ -51,9 +51,9 @@ release contract, not a design sketch.
 - V1 export signatures support only `void`, `bool`, `int`, `float`, and `string`/`const string &in`; signatureless lookup is valid only when the export name is unique.
 - `docs/bml-script-mod-api.as` is a stub for authoring and validation. The guide and this contract define the supported surface.
 
-## CKAngelScript Runtime Policy
+## CKAngelScript Release Policy
 
-Script-capable release packages include a known-good CKAngelScript/AngelScript runtime and install `AngelScript.dll` next to `BMLPlus.dll` under `BuildingBlocks`. BML script v1 requires a CKAngelScript build that reports `CKAS_FEATURE_OBJECT_TYPE_NAMESPACE`, because script mod main classes may live in AngelScript namespaces and BML creates them through `CKAngelScriptObjectOptions::ClassNamespace`.
+Official script-capable release packages include a known-good CKAngelScript/AngelScript runtime and install `AngelScript.dll` next to `BMLPlus.dll` under `BuildingBlocks`. SDK packages include the matching `CKAngelScript.h` and `angelscript.h` headers. Source builds may still disable script support with `BML_ENABLE_ANGELSCRIPT=OFF`. BML script v1 requires a CKAngelScript build that reports `CKAS_FEATURE_OBJECT_TYPE_NAMESPACE`, because script mod main classes may live in AngelScript namespaces and BML creates them through `CKAngelScriptObjectOptions::ClassNamespace`.
 
 ## Shutdown Anomaly Policy
 
@@ -61,4 +61,4 @@ Some Player runs may report a non-zero exit code after `Goodbye!` has been writt
 
 ## English Quick Contract
 
-Stable v1 is: single-file/directory/zip `*.mod.as` entry, AngelScript metadata, fixed callbacks, callback-scope event views, typed export registry, script-owned Timer/Command/DataShareRequest, required CKAngelScript runtime. CKAngelScript's own Scene/Behavior/BB/Param and CK/Vx bindings are available under the CKAngelScript contract. Deferred: hot reload, `.bmodp` script packages, BML-owned full object wrappers, full sandbox policy, raw CKAS engine/module/function access, async resume.
+Stable v1 is: single-file/directory/zip `*.mod.as` entry, AngelScript metadata, fixed callbacks, callback-scope event views, typed export registry, script-owned Timer/Command/DataShareRequest, and official release packages that include the matching CKAngelScript runtime. CKAngelScript's own Scene/Behavior/BB/Param and CK/Vx bindings are available under the CKAngelScript contract. Deferred: hot reload, `.bmodp` script packages, BML-owned full object wrappers, full sandbox policy, raw CKAS engine/module/function access, async resume.
