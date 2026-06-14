@@ -144,15 +144,7 @@ void ModListPage::OnDraw() {
         if (!mod)
             return false;
         const char *id = mod->GetID();
-        std::string label = id ? id : "";
-#if BML_ENABLE_ANGELSCRIPT
-        if (const auto *scriptMod = AsScriptMod(mod)) {
-            label += " [script:";
-            label += GetScriptModStateLabel(scriptMod);
-            label += "]";
-        }
-#endif
-        if (Bui::MainButton(label.c_str())) {
+        if (Bui::MainButton(id ? id : "")) {
             dynamic_cast<ModMenu *>(m_Menu)->SetCurrentMod(mod);
             m_Menu->OpenPage("Mod Page");
         }
