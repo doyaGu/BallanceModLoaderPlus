@@ -13,6 +13,7 @@
 #include <oniguruma.h>
 
 #include "BML/BML.h"
+#include "BML/Interop.h"
 #include "BML/Timer.h"
 
 #include "RenderHook.h"
@@ -1541,6 +1542,13 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
 
             if (dit != m_ModToDllHandleMap.end())
                 m_ModToDllHandleMap.erase(dit);
+        }
+
+        const int removedExports = BML_UnregisterNativeModExports(modIdCopy.c_str());
+        if (removedExports > 0 && m_Logger) {
+            m_Logger->Info("Removed %d native export(s) owned by unloaded Mod %s",
+                           removedExports,
+                           modIdCopy.c_str());
         }
 
         void *rawDllHandle = ownedDllHandle.get();

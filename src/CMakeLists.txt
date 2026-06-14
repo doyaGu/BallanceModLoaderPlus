@@ -40,6 +40,7 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/IBML.h
         ${BML_INCLUDE_DIR}/BML/IMod.h
         ${BML_INCLUDE_DIR}/BML/DataShare.h
+        ${BML_INCLUDE_DIR}/BML/Interop.h
 
         ${BML_INCLUDE_DIR}/BML/Bui.h
         ${BML_INCLUDE_DIR}/BML/Gui.h
@@ -74,6 +75,9 @@ set(BML_PRIVATE_HEADERS
         Overlay.h
 
         RenderHook.h
+        CallFrameInternal.h
+        InteropSignature.h
+        ExportRegistry.h
 
         CommandContext.h
         DataShare.hpp
@@ -127,7 +131,11 @@ set(BML_SOURCES
         ScriptHelper.cpp
 
         CommandContext.cpp
+        CallFrameInternal.cpp
+        InteropSignature.cpp
         DataShare.cpp
+        ExportRegistry.cpp
+        Interop.cpp
         Logger.cpp
         Config.cpp
 
