@@ -42,6 +42,26 @@ struct ExportKeyEqual {
     }
 };
 
+struct ExportNameKey {
+    std::string ModId;
+    std::string Name;
+};
+
+struct ExportNameKeyHash {
+    size_t operator()(const ExportNameKey &key) const {
+        const std::hash<std::string> hash;
+        size_t value = hash(key.ModId);
+        value ^= hash(key.Name) + 0x9e3779b9u + (value << 6) + (value >> 2);
+        return value;
+    }
+};
+
+struct ExportNameKeyEqual {
+    bool operator()(const ExportNameKey &left, const ExportNameKey &right) const {
+        return left.ModId == right.ModId && left.Name == right.Name;
+    }
+};
+
 struct ExportListCache {
     uint64_t NativeGeneration = 0;
     uint64_t ScriptGeneration = 0;
@@ -50,6 +70,7 @@ struct ExportListCache {
 
 static std::mutex g_ExportRegistryMutex;
 static std::unordered_map<BML_ExportKey, BML_NativeExportEntry, ExportKeyHash, ExportKeyEqual> g_NativeExports;
+static std::unordered_map<ExportNameKey, std::vector<std::string>, ExportNameKeyHash, ExportNameKeyEqual> g_NativeExportsByName;
 static std::unordered_map<std::string, ExportListCache> g_ExportListCache;
 static std::atomic<uint64_t> g_NativeGeneration(1);
 static std::atomic<uint64_t> g_ScriptGeneration(1);
@@ -64,6 +85,28 @@ static BML_ExportKey MakeKey(const char *modId, const char *name, const char *si
     key.Name = name ? name : "";
     key.Signature = signature ? signature : "";
     return key;
+}
+
+static ExportNameKey MakeNameKey(const char *modId, const char *name) {
+    ExportNameKey key;
+    key.ModId = modId ? modId : "";
+    key.Name = name ? name : "";
+    return key;
+}
+
+static void AddNativeNameIndexLocked(const BML_ExportKey &key) {
+    g_NativeExportsByName[MakeNameKey(key.ModId.c_str(), key.Name.c_str())].push_back(key.Signature);
+}
+
+static void RemoveNativeNameIndexLocked(const BML_ExportKey &key) {
+    auto it = g_NativeExportsByName.find(MakeNameKey(key.ModId.c_str(), key.Name.c_str()));
+    if (it == g_NativeExportsByName.end())
+        return;
+
+    auto &signatures = it->second;
+    signatures.erase(std::remove(signatures.begin(), signatures.end(), key.Signature), signatures.end());
+    if (signatures.empty())
+        g_NativeExportsByName.erase(it);
 }
 
 static void SortAndUniqueExports(std::vector<ExportInfo> &exports) {
@@ -82,6 +125,11 @@ static void AppendNativeExportsLocked(const char *modId, std::vector<ExportInfo>
         if (entry.first.ModId == modId)
             exports.push_back(ExportInfo{entry.first.Name, entry.first.Signature});
     }
+}
+
+static const std::vector<std::string> *FindNativeSignaturesByNameLocked(const char *modId, const char *name) {
+    auto it = g_NativeExportsByName.find(MakeNameKey(modId, name));
+    return it == g_NativeExportsByName.end() ? nullptr : &it->second;
 }
 
 static IMod *FindTargetMod(const char *modId) {
@@ -114,23 +162,32 @@ static int ResolveNativeLocked(BML_ModExport &handle) {
         if (InteropSignature::Validate(handle.Key.Signature, handle.Key.Name, &requestedSignature) != BML_OK)
             return BML_ERROR_INTEROP_EXPORT_NOT_FOUND;
 
-        const BML_ExportKey *matchedKey = nullptr;
+        const std::vector<std::string> *candidateSignatures =
+            FindNativeSignaturesByNameLocked(handle.Key.ModId.c_str(), handle.Key.Name.c_str());
+        if (!candidateSignatures)
+            return BML_ERROR_INTEROP_EXPORT_NOT_FOUND;
+
+        BML_ExportKey matchedKey;
         const BML_NativeExportEntry *matchedEntry = nullptr;
-        for (const auto &entry : g_NativeExports) {
-            if (entry.first.ModId != handle.Key.ModId || entry.first.Name != handle.Key.Name)
+        for (const std::string &candidateSignature : *candidateSignatures) {
+            auto candidate = g_NativeExports.find(MakeKey(handle.Key.ModId.c_str(),
+                                                          handle.Key.Name.c_str(),
+                                                          candidateSignature.c_str()));
+            if (candidate == g_NativeExports.end())
                 continue;
+            const auto &entry = *candidate;
             if (!InteropSignature::Equivalent(entry.second.SignatureInfo, requestedSignature))
                 continue;
             if (matchedEntry)
                 return BML_ERROR_INTEROP_EXPORT_AMBIGUOUS;
-            matchedKey = &entry.first;
+            matchedKey = entry.first;
             matchedEntry = &entry.second;
         }
 
-        if (!matchedEntry || !matchedKey)
+        if (!matchedEntry)
             return BML_ERROR_INTEROP_EXPORT_NOT_FOUND;
 
-        handle.Key.Signature = matchedKey->Signature;
+        handle.Key.Signature = matchedKey.Signature;
         handle.Kind = BML_ResolvedExportKind::Native;
         handle.Native = *matchedEntry;
         handle.NativeGeneration = g_NativeGeneration.load(std::memory_order_acquire);
@@ -180,6 +237,18 @@ static void AppendScriptExports(const char *modId, std::vector<ExportInfo> &expo
             exports.push_back(ExportInfo{std::move(name), std::move(signature)});
     }
 }
+
+static void AppendScriptExportsForName(const char *modId, const char *name, std::vector<ExportInfo> &exports) {
+    ScriptMod *scriptMod = FindScriptMod(modId ? modId : "");
+    if (!scriptMod)
+        return;
+
+    std::vector<std::string> signatures;
+    scriptMod->GetExportSignatures(name ? name : "", signatures);
+    exports.reserve(exports.size() + signatures.size());
+    for (std::string &signature : signatures)
+        exports.push_back(ExportInfo{name ? name : "", std::move(signature)});
+}
 #else
 static int ResolveScript(BML_ModExport &) {
     return BML_ERROR_INTEROP_EXPORT_NOT_FOUND;
@@ -187,15 +256,23 @@ static int ResolveScript(BML_ModExport &) {
 
 static void AppendScriptExports(const char *, std::vector<ExportInfo> &) {
 }
+
+static void AppendScriptExportsForName(const char *, const char *, std::vector<ExportInfo> &) {
+}
 #endif
 
 static int ResolveUniqueKey(const char *modId, const char *name, BML_ExportKey &key) {
     std::vector<ExportInfo> exports;
     {
         std::lock_guard<std::mutex> lock(g_ExportRegistryMutex);
-        AppendNativeExportsLocked(modId, exports);
+        const std::vector<std::string> *nativeSignatures = FindNativeSignaturesByNameLocked(modId, name);
+        if (nativeSignatures) {
+            exports.reserve(exports.size() + nativeSignatures->size());
+            for (const std::string &signature : *nativeSignatures)
+                exports.push_back(ExportInfo{name, signature});
+        }
     }
-    AppendScriptExports(modId, exports);
+    AppendScriptExportsForName(modId, name, exports);
     SortAndUniqueExports(exports);
 
     const ExportInfo *match = nullptr;
@@ -240,9 +317,15 @@ static int ResolveExplicitKey(BML_ModExport &handle) {
     std::vector<ExportInfo> exports;
     {
         std::lock_guard<std::mutex> lock(g_ExportRegistryMutex);
-        AppendNativeExportsLocked(handle.Key.ModId.c_str(), exports);
+        const std::vector<std::string> *nativeSignatures =
+            FindNativeSignaturesByNameLocked(handle.Key.ModId.c_str(), handle.Key.Name.c_str());
+        if (nativeSignatures) {
+            exports.reserve(exports.size() + nativeSignatures->size());
+            for (const std::string &signature : *nativeSignatures)
+                exports.push_back(ExportInfo{handle.Key.Name, signature});
+        }
     }
-    AppendScriptExports(handle.Key.ModId.c_str(), exports);
+    AppendScriptExportsForName(handle.Key.ModId.c_str(), handle.Key.Name.c_str(), exports);
     for (const ExportInfo &exportInfo : exports) {
         if (exportInfo.Name == handle.Key.Name)
             return BML_ERROR_INTEROP_SIGNATURE_MISMATCH;
@@ -274,18 +357,22 @@ int ExportRegistry::RegisterNative(const char *modId,
         return signatureStatus;
 
     std::lock_guard<std::mutex> lock(g_ExportRegistryMutex);
-    for (const auto &entry : g_NativeExports) {
-        if (entry.first.ModId == modId &&
-            entry.first.Name == name &&
-            InteropSignature::Equivalent(entry.second.SignatureInfo, signatureInfo)) {
-            return BML_ERROR_ALREADY_EXISTS;
+    if (const std::vector<std::string> *candidateSignatures = FindNativeSignaturesByNameLocked(modId, name)) {
+        for (const std::string &candidateSignature : *candidateSignatures) {
+            auto candidate = g_NativeExports.find(MakeKey(modId, name, candidateSignature.c_str()));
+            if (candidate != g_NativeExports.end() &&
+                InteropSignature::Equivalent(candidate->second.SignatureInfo, signatureInfo)) {
+                return BML_ERROR_ALREADY_EXISTS;
+            }
         }
     }
 
-    auto inserted = g_NativeExports.emplace(MakeKey(modId, name, signature),
+    BML_ExportKey key = MakeKey(modId, name, signature);
+    auto inserted = g_NativeExports.emplace(key,
                                             BML_NativeExportEntry{callback, userData, signatureInfo});
     if (!inserted.second)
         return BML_ERROR_ALREADY_EXISTS;
+    AddNativeNameIndexLocked(key);
 
     g_NativeGeneration.fetch_add(1, std::memory_order_acq_rel);
     g_ExportListCache.erase(modId);
@@ -302,19 +389,24 @@ int ExportRegistry::UnregisterNative(const char *modId, const char *name, const 
     if (it == g_NativeExports.end()) {
         InteropSignatureInfo requestedSignature;
         if (InteropSignature::Validate(signature, name, &requestedSignature) == BML_OK) {
-            for (auto candidate = g_NativeExports.begin(); candidate != g_NativeExports.end(); ++candidate) {
-                if (candidate->first.ModId == modId &&
-                    candidate->first.Name == name &&
-                    InteropSignature::Equivalent(candidate->second.SignatureInfo, requestedSignature)) {
-                    it = candidate;
-                    break;
+            if (const std::vector<std::string> *candidateSignatures =
+                    FindNativeSignaturesByNameLocked(modId, name)) {
+                for (const std::string &candidateSignature : *candidateSignatures) {
+                    auto candidate = g_NativeExports.find(MakeKey(modId, name, candidateSignature.c_str()));
+                    if (candidate != g_NativeExports.end() &&
+                        InteropSignature::Equivalent(candidate->second.SignatureInfo, requestedSignature)) {
+                        it = candidate;
+                        break;
+                    }
                 }
             }
         }
     }
     if (it == g_NativeExports.end())
         return BML_ERROR_NOT_FOUND;
+    const BML_ExportKey removedKey = it->first;
     g_NativeExports.erase(it);
+    RemoveNativeNameIndexLocked(removedKey);
 
     g_NativeGeneration.fetch_add(1, std::memory_order_acq_rel);
     g_ExportListCache.erase(modId);
@@ -329,6 +421,7 @@ int ExportRegistry::UnregisterNativeForMod(const char *modId) {
     std::lock_guard<std::mutex> lock(g_ExportRegistryMutex);
     for (auto it = g_NativeExports.begin(); it != g_NativeExports.end();) {
         if (it->first.ModId == modId) {
+            RemoveNativeNameIndexLocked(it->first);
             it = g_NativeExports.erase(it);
             ++removed;
         } else {

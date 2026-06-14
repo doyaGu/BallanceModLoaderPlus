@@ -561,6 +561,15 @@ static int MapExportCallStatus(const ScriptDiagnostic &diagnostic) {
     }
 }
 
+static std::string MakeExportCanonicalKey(const std::string &name, const std::string &canonicalSignature) {
+    std::string key;
+    key.reserve(name.size() + 1 + canonicalSignature.size());
+    key += name;
+    key.push_back('\0');
+    key += canonicalSignature;
+    return key;
+}
+
 bool ScriptExportTable::Cache(CKContext *context,
                               ScriptModRuntime &runtime,
                               const std::vector<ScriptModExportDefinition> &definitions,
@@ -604,6 +613,7 @@ bool ScriptExportTable::Cache(CKContext *context,
             return left.Signature < right.Signature;
         return left.Name < right.Name;
     });
+    RebuildIndex();
     ExportRegistry::NotifyScriptExportsChanged();
     return true;
 }
@@ -620,6 +630,8 @@ bool ScriptExportTable::Release(CKContext *context, ScriptModRuntime &runtime, S
         }
     }
     m_Exports.clear();
+    m_ExportsByName.clear();
+    m_ExportsByCanonicalSignature.clear();
     ExportRegistry::NotifyScriptExportsChanged();
     if (!ok && diagnostic)
         *diagnostic = firstFailure;
@@ -631,38 +643,48 @@ bool ScriptExportTable::HasExport(const std::string &name, const std::string &si
 }
 
 const ScriptExportBinding *ScriptExportTable::Resolve(const std::string &name, const std::string &signature) const {
-    ScriptExportSignatureInfo requestedSignature;
-    if (!signature.empty() &&
-        InteropSignature::Validate(signature, name, &requestedSignature) != BML_OK) {
+    auto byName = m_ExportsByName.find(name);
+    if (byName == m_ExportsByName.end())
         return nullptr;
+
+    if (!signature.empty()) {
+        ScriptExportSignatureInfo requestedSignature;
+        if (InteropSignature::Validate(signature, name, &requestedSignature) != BML_OK)
+            return nullptr;
+
+        auto bySignature = m_ExportsByCanonicalSignature.find(
+            MakeExportCanonicalKey(name, requestedSignature.CanonicalSignature));
+        return bySignature == m_ExportsByCanonicalSignature.end()
+                   ? nullptr
+                   : &m_Exports[bySignature->second];
     }
 
-    const ScriptExportBinding *match = nullptr;
-    for (const ScriptExportBinding &binding : m_Exports) {
-        if (binding.Name != name)
-            continue;
-        if (!signature.empty()) {
-            if (InteropSignature::Equivalent(binding.SignatureInfo, requestedSignature))
-                return &binding;
-            continue;
-        }
-        if (match)
-            return nullptr;
-        match = &binding;
-    }
-    return match;
+    return byName->second.size() == 1 ? &m_Exports[byName->second.front()] : nullptr;
 }
 
 std::string ScriptExportTable::GetSignature(const std::string &name) const {
     std::string signatures;
-    for (const ScriptExportBinding &binding : m_Exports) {
-        if (binding.Name != name)
-            continue;
+    auto byName = m_ExportsByName.find(name);
+    if (byName == m_ExportsByName.end())
+        return signatures;
+
+    for (size_t index : byName->second) {
+        const ScriptExportBinding &binding = m_Exports[index];
         if (!signatures.empty())
             signatures += "; ";
         signatures += binding.Signature;
     }
     return signatures;
+}
+
+void ScriptExportTable::GetSignatures(const std::string &name, std::vector<std::string> &out) const {
+    auto byName = m_ExportsByName.find(name);
+    if (byName == m_ExportsByName.end())
+        return;
+
+    out.reserve(out.size() + byName->second.size());
+    for (size_t index : byName->second)
+        out.push_back(m_Exports[index].Signature);
 }
 
 int ScriptExportTable::GetCount() const {
@@ -681,7 +703,24 @@ bool ScriptExportTable::GetInfo(int index, std::string &name, std::string &signa
 
 void ScriptExportTable::Clear() {
     m_Exports.clear();
+    m_ExportsByName.clear();
+    m_ExportsByCanonicalSignature.clear();
     ExportRegistry::NotifyScriptExportsChanged();
+}
+
+void ScriptExportTable::RebuildIndex() {
+    m_ExportsByName.clear();
+    m_ExportsByCanonicalSignature.clear();
+    m_ExportsByName.reserve(m_Exports.size());
+    m_ExportsByCanonicalSignature.reserve(m_Exports.size());
+
+    for (size_t i = 0; i < m_Exports.size(); ++i) {
+        const ScriptExportBinding &binding = m_Exports[i];
+        m_ExportsByName[binding.Name].push_back(i);
+        m_ExportsByCanonicalSignature.emplace(
+            MakeExportCanonicalKey(binding.Name, binding.SignatureInfo.CanonicalSignature),
+            i);
+    }
 }
 
 int ScriptExportDispatcher::CallVoid(CKContext *context,

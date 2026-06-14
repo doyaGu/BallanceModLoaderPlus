@@ -188,6 +188,7 @@ public:
     bool HasExport(const std::string &name, const std::string &signature = std::string()) const;
     const ScriptExportBinding *ResolveExport(const std::string &name, const std::string &signature = std::string()) const;
     std::string GetExportSignature(const std::string &name) const;
+    void GetExportSignatures(const std::string &name, std::vector<std::string> &out) const;
     int GetExportCount() const;
     bool GetExportInfo(int index, std::string &name, std::string &signature) const;
     int CallVoidExport(const std::string &name, const std::string &signature);

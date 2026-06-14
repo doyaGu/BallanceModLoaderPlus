@@ -664,6 +664,10 @@ std::string ScriptMod::GetExportSignature(const std::string &name) const {
     return m_Exports.GetSignature(name);
 }
 
+void ScriptMod::GetExportSignatures(const std::string &name, std::vector<std::string> &out) const {
+    m_Exports.GetSignatures(name, out);
+}
+
 int ScriptMod::GetExportCount() const {
     return m_Exports.GetCount();
 }

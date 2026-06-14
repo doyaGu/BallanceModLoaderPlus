@@ -1,11 +1,16 @@
 #include "InteropSignature.h"
 
 #include <cctype>
+#include <mutex>
+#include <unordered_map>
 
 #include "BML/Defines.h"
 #include "Utils/StringUtils.h"
 
 namespace BML {
+
+static std::mutex g_SignatureCacheMutex;
+static std::unordered_map<std::string, InteropSignatureInfo> g_SignatureCache;
 
 static bool IsIdentifierToken(const std::string &value) {
     if (value.empty())
@@ -305,6 +310,13 @@ InteropTypeDescriptor InteropSignature::DescriptorFromName(const std::string &ty
 }
 
 InteropSignatureInfo InteropSignature::Compile(const std::string &signature) {
+    {
+        std::lock_guard<std::mutex> lock(g_SignatureCacheMutex);
+        auto it = g_SignatureCache.find(signature);
+        if (it != g_SignatureCache.end())
+            return it->second;
+    }
+
     InteropSignatureInfo info;
     info.ReturnDescriptor = DescriptorFromName(ExtractReturnType(signature));
     info.ReturnType = info.ReturnDescriptor.Type;
@@ -320,6 +332,10 @@ InteropSignatureInfo InteropSignature::Compile(const std::string &signature) {
     }
 
     info.CanonicalSignature = BuildCanonicalSignature(info);
+    {
+        std::lock_guard<std::mutex> lock(g_SignatureCacheMutex);
+        g_SignatureCache.emplace(signature, info);
+    }
     return info;
 }
 

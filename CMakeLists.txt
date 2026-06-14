@@ -83,7 +83,7 @@ if (BML_ENABLE_ANGELSCRIPT)
                 CKANGELSCRIPT_ARRAY_FEATURE
                 REGEX "CKAS_FEATURE_SCRIPT_ARRAY_ACCESS")
         if (NOT CKANGELSCRIPT_ARRAY_FEATURE)
-            message(FATAL_ERROR "BML AngelScript script support requires CKAngelScript API v4 with CKAS_FEATURE_SCRIPT_ARRAY_ACCESS")
+            message(FATAL_ERROR "BML AngelScript script support requires CKAngelScript with CKAS_FEATURE_SCRIPT_ARRAY_ACCESS")
         endif ()
         set(BML_WITH_ANGELSCRIPT TRUE)
         message(STATUS "BML AngelScript script support enabled")
