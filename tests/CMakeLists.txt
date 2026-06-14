@@ -116,3 +116,23 @@ add_bml_test(CommandContextTest
         BMLUtils
 )
 
+add_bml_test(InteropCallFrameTest
+        SOURCES
+        InteropCallFrameTest.cpp
+        ${BML_SOURCE_DIR}/CallFrameInternal.cpp
+)
+
+add_bml_test(InteropSignatureTest
+        SOURCES
+        InteropSignatureTest.cpp
+        ${BML_SOURCE_DIR}/InteropSignature.cpp
+        DEPENDENCIES
+        BMLUtils
+)
+
+add_bml_test(InteropErrorTest
+        SOURCES
+        InteropErrorTest.cpp
+        ${BML_SOURCE_DIR}/Errors.cpp
+)
+
