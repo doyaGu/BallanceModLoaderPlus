@@ -54,17 +54,39 @@ function Copy-DocumentationFiles {
     }
 }
 
-function Write-OptionalAngelScriptReadme {
+function Write-RequiredAngelScriptReadme {
     param([string]$DestinationDir)
 
     New-Item -ItemType Directory -Path $DestinationDir -Force | Out-Null
 @"
-BML+ script mods use CKAngelScript as an optional dependency.
+BML+ script mods require CKAngelScript.
 
-If this package contains optional\CKAngelScript, copy the matching AngelScript.dll
-to BuildingBlocks\AngelScript.dll to enable script mods. BMLPlus.dll must still
-load without that DLL; native BML features do not require CKAngelScript.
+This package installs the matching AngelScript.dll into BuildingBlocks next to
+BMLPlus.dll. Keep the two DLLs together when deploying this release.
 "@ | Set-Content -Path (Join-Path $DestinationDir 'CKAngelScript-README.txt') -Encoding UTF8
+}
+
+function Get-CKAngelScriptRuntimeDll {
+    param([string]$RootDir)
+
+    $rootDll = Join-Path $RootDir 'AngelScript.dll'
+    if (Test-Path -LiteralPath $rootDll -PathType Leaf) {
+        return $rootDll
+    }
+
+    $buildingBlocksDll = Join-Path $RootDir 'BuildingBlocks\AngelScript.dll'
+    if (Test-Path -LiteralPath $buildingBlocksDll -PathType Leaf) {
+        return $buildingBlocksDll
+    }
+
+    throw "Required CKAngelScript runtime is missing: $rootDll or $buildingBlocksDll"
+}
+
+function Copy-CKAngelScriptHeaders {
+    param([string]$DestinationIncludeDir)
+
+    Copy-RequiredFile -Source (Join-Path $ckasRuntime 'include\CKAngelScript.h') -Destination (Join-Path $DestinationIncludeDir 'CKAngelScript.h')
+    Copy-RequiredFile -Source (Join-Path $ckasRuntime 'include\angelscript.h') -Destination (Join-Path $DestinationIncludeDir 'angelscript.h')
 }
 
 $layout = Get-BMLProjectLayout
@@ -78,11 +100,15 @@ $runtimeSource = if ($RuntimeSourceDir) {
     $layout.RuntimeSourceRoot
 }
 $ckasRuntime = if ($CKAngelScriptRuntimeDir) { [System.IO.Path]::GetFullPath($CKAngelScriptRuntimeDir) } else { $null }
+$ckasRuntimeDll = if ($ckasRuntime) { Get-CKAngelScriptRuntimeDll -RootDir $ckasRuntime } else { $null }
 $output = [System.IO.Path]::GetFullPath($OutputDir)
 $stageRoot = Join-Path $output '_stage'
 
 if ($ckasRuntime -and -not $IncludeAngelScript) {
     throw '-CKAngelScriptRuntimeDir requires -IncludeAngelScript.'
+}
+if ($IncludeAngelScript -and -not $ckasRuntime) {
+    throw '-IncludeAngelScript requires -CKAngelScriptRuntimeDir.'
 }
 
 $scriptDocs = @(
@@ -141,7 +167,9 @@ if ($IncludeAngelScript) {
     }
     Assert-BMLPath -Path $scriptTemplate -Type Container
     if ($ckasRuntime) {
-        Assert-BMLPath -Path $ckasRuntime -Type Container
+        Assert-BMLPath -Path $ckasRuntimeDll -Type Leaf
+        Assert-BMLPath -Path (Join-Path $ckasRuntime 'include\CKAngelScript.h') -Type Leaf
+        Assert-BMLPath -Path (Join-Path $ckasRuntime 'include\angelscript.h') -Type Leaf
     }
 }
 
@@ -162,10 +190,8 @@ Copy-BMLDirectoryContents -SourceDir $nativeTemplate -DestinationDir (Join-Path 
 if ($IncludeAngelScript) {
     Copy-DocumentationFiles -DestinationDir (Join-Path $runtimeStage 'Docs\Scripting') -Files $scriptDocs
     Copy-BMLDirectoryContents -SourceDir $scriptTemplate -DestinationDir (Join-Path $runtimeStage 'Templates\script-mod-template')
-    if ($ckasRuntime) {
-        Copy-BMLDirectoryContents -SourceDir $ckasRuntime -DestinationDir (Join-Path $runtimeStage 'optional\CKAngelScript')
-    }
-    Write-OptionalAngelScriptReadme -DestinationDir (Join-Path $runtimeStage 'optional')
+    Copy-RequiredFile -Source $ckasRuntimeDll -Destination (Join-Path $runtimeStage 'BuildingBlocks\AngelScript.dll')
+    Write-RequiredAngelScriptReadme -DestinationDir (Join-Path $runtimeStage 'Docs\Scripting')
 }
 
 New-BMLZipFromDirectory -SourceDir $runtimeStage -ZipPath (Join-Path $output "BMLPlus-$Version.zip")
@@ -179,6 +205,7 @@ Copy-RequiredFile -Source (Join-Path $releaseBin 'BMLNativeInteropSmoke.bmodp') 
 Copy-RequiredFile -Source (Join-Path $layout.NativeInteropSmokeRoot 'BMLNativeInteropSmokeMod.cpp') -Destination (Join-Path $releaseSdkStage 'examples\native\BMLNativeInteropSmokeMod.cpp')
 
 if ($IncludeAngelScript) {
+    Copy-CKAngelScriptHeaders -DestinationIncludeDir (Join-Path $releaseSdkStage 'include')
     Copy-BMLDirectoryContents -SourceDir $scriptTemplate -DestinationDir (Join-Path $releaseSdkStage 'templates\script-mod-template')
     Copy-DocumentationFiles -DestinationDir (Join-Path $releaseSdkStage 'docs\scripting') -Files $scriptSdkDocs
     Copy-RequiredFile -Source (Join-Path $layout.ScriptsRoot 'Validate-BMLBallance.ps1') -Destination (Join-Path $releaseSdkStage 'scripts\Validate-BMLBallance.ps1')
@@ -197,6 +224,9 @@ foreach ($directory in @('docs', 'tools', 'examples')) {
     if (Test-Path -LiteralPath $source) {
         Copy-BMLDirectoryContents -SourceDir $source -DestinationDir (Join-Path $debugStage $directory)
     }
+}
+if ($IncludeAngelScript) {
+    Copy-CKAngelScriptHeaders -DestinationIncludeDir (Join-Path $debugStage 'include')
 }
 
 New-BMLZipFromDirectory -SourceDir $debugStage -ZipPath (Join-Path $output "BMLPlus-SDK-$Version-Debug.zip")

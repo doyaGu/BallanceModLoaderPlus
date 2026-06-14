@@ -58,36 +58,34 @@ add_compile_options(
 option(BML_BUILD_TESTS "Build the BML test suite" OFF)
 option(BML_BUILD_SMOKE_MODS "Build BML smoke validation mods" ON)
 option(BML_BUILD_SCRIPT_TOOLS "Build script mod authoring tools" ON)
-option(BML_ENABLE_ANGELSCRIPT "Build optional AngelScript script support when CKAngelScript headers are available" OFF)
-set(CKANGELSCRIPT_ROOT "${PROJECT_SOURCE_DIR}/../CKAngelScript" CACHE PATH "Optional CKAngelScript source or install root")
+option(BML_ENABLE_ANGELSCRIPT "Build AngelScript script support using CKAngelScript headers" ON)
+set(CKANGELSCRIPT_ROOT "${PROJECT_SOURCE_DIR}/../CKAngelScript" CACHE PATH "CKAngelScript source or install root")
 
 set(BML_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/include" CACHE INTERNAL "")
 set(BML_SOURCE_DIR "${PROJECT_SOURCE_DIR}/src" CACHE INTERNAL "")
 
 find_package(VirtoolsSDK REQUIRED)
 
-if (BML_ENABLE_ANGELSCRIPT)
-    find_path(CKANGELSCRIPT_INCLUDE_DIR
-            NAMES CKAngelScript.h
-            HINTS
-            "${CKANGELSCRIPT_ROOT}/include"
-            "${CKANGELSCRIPT_ROOT}")
-    find_path(CKANGELSCRIPT_ANGELSCRIPT_INCLUDE_DIR
-            NAMES angelscript.h
-            HINTS
-            "${CKANGELSCRIPT_ROOT}/deps/angelscript/angelscript/include"
-            "${CKANGELSCRIPT_ROOT}/include"
-            "${CKANGELSCRIPT_ROOT}")
-    if (CKANGELSCRIPT_INCLUDE_DIR AND CKANGELSCRIPT_ANGELSCRIPT_INCLUDE_DIR)
-        set(BML_WITH_ANGELSCRIPT TRUE)
-        message(STATUS "BML AngelScript script support enabled")
-    else ()
-        set(BML_WITH_ANGELSCRIPT FALSE)
-        message(STATUS "BML AngelScript script support disabled: CKAngelScript headers were not found")
-    endif ()
+if (NOT BML_ENABLE_ANGELSCRIPT)
+    message(FATAL_ERROR "BML requires CKAngelScript; set CKANGELSCRIPT_ROOT to a CKAngelScript source, install, or SDK root")
+endif ()
+
+find_path(CKANGELSCRIPT_INCLUDE_DIR
+        NAMES CKAngelScript.h
+        HINTS
+        "${CKANGELSCRIPT_ROOT}/include"
+        "${CKANGELSCRIPT_ROOT}")
+find_path(CKANGELSCRIPT_ANGELSCRIPT_INCLUDE_DIR
+        NAMES angelscript.h
+        HINTS
+        "${CKANGELSCRIPT_ROOT}/deps/angelscript/angelscript/include"
+        "${CKANGELSCRIPT_ROOT}/include"
+        "${CKANGELSCRIPT_ROOT}")
+if (CKANGELSCRIPT_INCLUDE_DIR AND CKANGELSCRIPT_ANGELSCRIPT_INCLUDE_DIR)
+    set(BML_WITH_ANGELSCRIPT TRUE)
+    message(STATUS "BML AngelScript script support enabled")
 else ()
-    set(BML_WITH_ANGELSCRIPT FALSE)
-    message(STATUS "BML AngelScript script support disabled")
+    message(FATAL_ERROR "BML requires CKAngelScript headers; set CKANGELSCRIPT_ROOT to a CKAngelScript source, install, or SDK root")
 endif ()
 
 add_subdirectory(deps)
