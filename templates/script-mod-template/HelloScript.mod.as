@@ -69,7 +69,7 @@ class HelloCommand : BML::Command {
     string get_Description() const { return "Print a script greeting"; }
 
     void Execute(const BML::ModContext &in ctx, const BML::CommandEvent &in event) {
-        string target = event.ArgCount > 1 ? event.GetArg(1) : "Ballance";
+        string target = event.ArgCount > 0 ? event.GetArg(0) : "Ballance";
         ctx.SendIngameMessage("Hello, " + target + "!");
     }
 
