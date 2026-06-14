@@ -144,8 +144,8 @@ void ScriptMod::OnLoadObject(const char *filename,
                              CKBOOL reuseMeshes,
                              CKBOOL reuseMaterials,
                              CKBOOL dynamic,
-                             XObjectArray *,
-                             CKObject *) {
+                             XObjectArray *objArray,
+                             CKObject *masterObj) {
     if (!m_State.IsLoaded() || m_State.IsFailed())
         return;
 
@@ -158,6 +158,8 @@ void ScriptMod::OnLoadObject(const char *filename,
                                                        reuseMeshes,
                                                        reuseMaterials,
                                                        dynamic,
+                                                       objArray,
+                                                       masterObj,
                                                        diagnostic),
                           diagnostic);
 }
@@ -167,8 +169,16 @@ void ScriptMod::OnLoadScript(const char *filename, CKBehavior *script) {
         return;
 
     ScriptDiagnostic diagnostic;
-    FailIfEventCallFailed(m_EventRouter.CallLoadScript(filename, script ? script->GetID() : 0, diagnostic),
+    FailIfEventCallFailed(m_EventRouter.CallLoadScript(filename, script, diagnostic),
                           diagnostic);
+}
+
+void ScriptMod::OnModifyConfig(const char *category, const char *key, IProperty *prop) {
+    if (!m_State.IsLoaded() || m_State.IsFailed())
+        return;
+
+    ScriptDiagnostic diagnostic;
+    FailIfEventCallFailed(m_EventRouter.CallModifyConfig(GetID(), category, key, prop, diagnostic), diagnostic);
 }
 
 void ScriptMod::OnPreStartMenu() {
@@ -345,12 +355,12 @@ void ScriptMod::OnPhysicalize(CK3dEntity *target,
                               const char *collSurface,
                               VxVector massCenter,
                               int convexCnt,
-                              CKMesh **,
+                              CKMesh **convexMesh,
                               int ballCnt,
-                              VxVector *,
-                              float *,
+                              VxVector *ballCenter,
+                              float *ballRadius,
                               int concaveCnt,
-                              CKMesh **) {
+                              CKMesh **concaveMesh) {
     if (!m_State.IsLoaded() || m_State.IsFailed())
         return;
 
@@ -369,8 +379,12 @@ void ScriptMod::OnPhysicalize(CK3dEntity *target,
                                                         collSurface,
                                                         massCenter,
                                                         convexCnt,
+                                                        convexMesh,
                                                         ballCnt,
+                                                        ballCenter,
+                                                        ballRadius,
                                                         concaveCnt,
+                                                        concaveMesh,
                                                         diagnostic),
                           diagnostic);
 }

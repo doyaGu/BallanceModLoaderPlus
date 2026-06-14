@@ -20,48 +20,9 @@ static const ScriptCallbackContract kCallbacks[] = {
     {ScriptCallbackOnLoadObject, "OnLoadObject", "void OnLoadObject(const BML::ModContext &in, const BML::LoadObjectEvent &in)", "OnLoadObject failed", ScriptCallbackPayloadKind::BorrowedEventView},
     {ScriptCallbackOnLoadScript, "OnLoadScript", "void OnLoadScript(const BML::ModContext &in, const BML::LoadScriptEvent &in)", "OnLoadScript failed", ScriptCallbackPayloadKind::BorrowedEventView},
     {ScriptCallbackOnCommandEvent, "OnCommandEvent", "void OnCommandEvent(const BML::ModContext &in, const BML::CommandEvent &in)", "OnCommandEvent failed", ScriptCallbackPayloadKind::BorrowedEventView},
+    {ScriptCallbackOnModifyConfig, "OnModifyConfig", "void OnModifyConfig(const BML::ModContext &in, const BML::ConfigEvent &in)", "OnModifyConfig failed", ScriptCallbackPayloadKind::BorrowedEventView},
     {ScriptCallbackOnPhysicalize, "OnPhysicalize", "void OnPhysicalize(const BML::ModContext &in, const BML::PhysicalizeEvent &in)", "OnPhysicalize failed", ScriptCallbackPayloadKind::BorrowedEventView},
     {ScriptCallbackOnUnphysicalize, "OnUnphysicalize", "void OnUnphysicalize(const BML::ModContext &in, const BML::ObjectEvent &in)", "OnUnphysicalize failed", ScriptCallbackPayloadKind::BorrowedEventView},
-};
-
-static const ScriptTypedefContract kTypedefs[] = {
-    {"GameEvent", "int", "typedef int GameEvent"},
-};
-
-static const ScriptIntegerConstantContract kGameEventConstants[] = {
-    {"const GameEvent GAME_EVENT_PRE_START_MENU", ScriptGameEventPreStartMenu},
-    {"const GameEvent GAME_EVENT_POST_START_MENU", ScriptGameEventPostStartMenu},
-    {"const GameEvent GAME_EVENT_EXIT_GAME", ScriptGameEventExitGame},
-    {"const GameEvent GAME_EVENT_PRE_LOAD_LEVEL", ScriptGameEventPreLoadLevel},
-    {"const GameEvent GAME_EVENT_POST_LOAD_LEVEL", ScriptGameEventPostLoadLevel},
-    {"const GameEvent GAME_EVENT_START_LEVEL", ScriptGameEventStartLevel},
-    {"const GameEvent GAME_EVENT_PRE_RESET_LEVEL", ScriptGameEventPreResetLevel},
-    {"const GameEvent GAME_EVENT_POST_RESET_LEVEL", ScriptGameEventPostResetLevel},
-    {"const GameEvent GAME_EVENT_PAUSE_LEVEL", ScriptGameEventPauseLevel},
-    {"const GameEvent GAME_EVENT_UNPAUSE_LEVEL", ScriptGameEventUnpauseLevel},
-    {"const GameEvent GAME_EVENT_PRE_EXIT_LEVEL", ScriptGameEventPreExitLevel},
-    {"const GameEvent GAME_EVENT_POST_EXIT_LEVEL", ScriptGameEventPostExitLevel},
-    {"const GameEvent GAME_EVENT_PRE_NEXT_LEVEL", ScriptGameEventPreNextLevel},
-    {"const GameEvent GAME_EVENT_POST_NEXT_LEVEL", ScriptGameEventPostNextLevel},
-    {"const GameEvent GAME_EVENT_DEAD", ScriptGameEventDead},
-    {"const GameEvent GAME_EVENT_PRE_END_LEVEL", ScriptGameEventPreEndLevel},
-    {"const GameEvent GAME_EVENT_POST_END_LEVEL", ScriptGameEventPostEndLevel},
-    {"const GameEvent GAME_EVENT_COUNTER_ACTIVE", ScriptGameEventCounterActive},
-    {"const GameEvent GAME_EVENT_COUNTER_INACTIVE", ScriptGameEventCounterInactive},
-    {"const GameEvent GAME_EVENT_BALL_NAV_ACTIVE", ScriptGameEventBallNavActive},
-    {"const GameEvent GAME_EVENT_BALL_NAV_INACTIVE", ScriptGameEventBallNavInactive},
-    {"const GameEvent GAME_EVENT_CAM_NAV_ACTIVE", ScriptGameEventCamNavActive},
-    {"const GameEvent GAME_EVENT_CAM_NAV_INACTIVE", ScriptGameEventCamNavInactive},
-    {"const GameEvent GAME_EVENT_BALL_OFF", ScriptGameEventBallOff},
-    {"const GameEvent GAME_EVENT_PRE_CHECKPOINT_REACHED", ScriptGameEventPreCheckpointReached},
-    {"const GameEvent GAME_EVENT_POST_CHECKPOINT_REACHED", ScriptGameEventPostCheckpointReached},
-    {"const GameEvent GAME_EVENT_LEVEL_FINISH", ScriptGameEventLevelFinish},
-    {"const GameEvent GAME_EVENT_GAME_OVER", ScriptGameEventGameOver},
-    {"const GameEvent GAME_EVENT_EXTRA_POINT", ScriptGameEventExtraPoint},
-    {"const GameEvent GAME_EVENT_PRE_SUB_LIFE", ScriptGameEventPreSubLife},
-    {"const GameEvent GAME_EVENT_POST_SUB_LIFE", ScriptGameEventPostSubLife},
-    {"const GameEvent GAME_EVENT_PRE_LIFE_UP", ScriptGameEventPreLifeUp},
-    {"const GameEvent GAME_EVENT_POST_LIFE_UP", ScriptGameEventPostLifeUp},
 };
 
 static const ScriptIntegerConstantContract kErrorConstants[] = {
@@ -79,6 +40,42 @@ static const ScriptIntegerConstantContract kErrorConstants[] = {
     {"const int ERROR_INTEROP_TYPE_MISMATCH", BML_ERROR_INTEROP_TYPE_MISMATCH},
     {"const int ERROR_INTEROP_TARGET_EXECUTION_FAILED", BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED},
     {"const int ERROR_INTEROP_HANDLE_STALE", BML_ERROR_INTEROP_HANDLE_STALE},
+};
+
+static const ScriptEnumValueContract kGameEventValues[] = {
+    {"GAME_EVENT_PRE_START_MENU", ScriptGameEventPreStartMenu, "GameEvent::GAME_EVENT_PRE_START_MENU"},
+    {"GAME_EVENT_POST_START_MENU", ScriptGameEventPostStartMenu, "GameEvent::GAME_EVENT_POST_START_MENU"},
+    {"GAME_EVENT_EXIT_GAME", ScriptGameEventExitGame, "GameEvent::GAME_EVENT_EXIT_GAME"},
+    {"GAME_EVENT_PRE_LOAD_LEVEL", ScriptGameEventPreLoadLevel, "GameEvent::GAME_EVENT_PRE_LOAD_LEVEL"},
+    {"GAME_EVENT_POST_LOAD_LEVEL", ScriptGameEventPostLoadLevel, "GameEvent::GAME_EVENT_POST_LOAD_LEVEL"},
+    {"GAME_EVENT_START_LEVEL", ScriptGameEventStartLevel, "GameEvent::GAME_EVENT_START_LEVEL"},
+    {"GAME_EVENT_PRE_RESET_LEVEL", ScriptGameEventPreResetLevel, "GameEvent::GAME_EVENT_PRE_RESET_LEVEL"},
+    {"GAME_EVENT_POST_RESET_LEVEL", ScriptGameEventPostResetLevel, "GameEvent::GAME_EVENT_POST_RESET_LEVEL"},
+    {"GAME_EVENT_PAUSE_LEVEL", ScriptGameEventPauseLevel, "GameEvent::GAME_EVENT_PAUSE_LEVEL"},
+    {"GAME_EVENT_UNPAUSE_LEVEL", ScriptGameEventUnpauseLevel, "GameEvent::GAME_EVENT_UNPAUSE_LEVEL"},
+    {"GAME_EVENT_PRE_EXIT_LEVEL", ScriptGameEventPreExitLevel, "GameEvent::GAME_EVENT_PRE_EXIT_LEVEL"},
+    {"GAME_EVENT_POST_EXIT_LEVEL", ScriptGameEventPostExitLevel, "GameEvent::GAME_EVENT_POST_EXIT_LEVEL"},
+    {"GAME_EVENT_PRE_NEXT_LEVEL", ScriptGameEventPreNextLevel, "GameEvent::GAME_EVENT_PRE_NEXT_LEVEL"},
+    {"GAME_EVENT_POST_NEXT_LEVEL", ScriptGameEventPostNextLevel, "GameEvent::GAME_EVENT_POST_NEXT_LEVEL"},
+    {"GAME_EVENT_DEAD", ScriptGameEventDead, "GameEvent::GAME_EVENT_DEAD"},
+    {"GAME_EVENT_PRE_END_LEVEL", ScriptGameEventPreEndLevel, "GameEvent::GAME_EVENT_PRE_END_LEVEL"},
+    {"GAME_EVENT_POST_END_LEVEL", ScriptGameEventPostEndLevel, "GameEvent::GAME_EVENT_POST_END_LEVEL"},
+    {"GAME_EVENT_COUNTER_ACTIVE", ScriptGameEventCounterActive, "GameEvent::GAME_EVENT_COUNTER_ACTIVE"},
+    {"GAME_EVENT_COUNTER_INACTIVE", ScriptGameEventCounterInactive, "GameEvent::GAME_EVENT_COUNTER_INACTIVE"},
+    {"GAME_EVENT_BALL_NAV_ACTIVE", ScriptGameEventBallNavActive, "GameEvent::GAME_EVENT_BALL_NAV_ACTIVE"},
+    {"GAME_EVENT_BALL_NAV_INACTIVE", ScriptGameEventBallNavInactive, "GameEvent::GAME_EVENT_BALL_NAV_INACTIVE"},
+    {"GAME_EVENT_CAM_NAV_ACTIVE", ScriptGameEventCamNavActive, "GameEvent::GAME_EVENT_CAM_NAV_ACTIVE"},
+    {"GAME_EVENT_CAM_NAV_INACTIVE", ScriptGameEventCamNavInactive, "GameEvent::GAME_EVENT_CAM_NAV_INACTIVE"},
+    {"GAME_EVENT_BALL_OFF", ScriptGameEventBallOff, "GameEvent::GAME_EVENT_BALL_OFF"},
+    {"GAME_EVENT_PRE_CHECKPOINT_REACHED", ScriptGameEventPreCheckpointReached, "GameEvent::GAME_EVENT_PRE_CHECKPOINT_REACHED"},
+    {"GAME_EVENT_POST_CHECKPOINT_REACHED", ScriptGameEventPostCheckpointReached, "GameEvent::GAME_EVENT_POST_CHECKPOINT_REACHED"},
+    {"GAME_EVENT_LEVEL_FINISH", ScriptGameEventLevelFinish, "GameEvent::GAME_EVENT_LEVEL_FINISH"},
+    {"GAME_EVENT_GAME_OVER", ScriptGameEventGameOver, "GameEvent::GAME_EVENT_GAME_OVER"},
+    {"GAME_EVENT_EXTRA_POINT", ScriptGameEventExtraPoint, "GameEvent::GAME_EVENT_EXTRA_POINT"},
+    {"GAME_EVENT_PRE_SUB_LIFE", ScriptGameEventPreSubLife, "GameEvent::GAME_EVENT_PRE_SUB_LIFE"},
+    {"GAME_EVENT_POST_SUB_LIFE", ScriptGameEventPostSubLife, "GameEvent::GAME_EVENT_POST_SUB_LIFE"},
+    {"GAME_EVENT_PRE_LIFE_UP", ScriptGameEventPreLifeUp, "GameEvent::GAME_EVENT_PRE_LIFE_UP"},
+    {"GAME_EVENT_POST_LIFE_UP", ScriptGameEventPostLifeUp, "GameEvent::GAME_EVENT_POST_LIFE_UP"},
 };
 
 static const ScriptEnumValueContract kDirectoryTypeValues[] = {
@@ -189,6 +186,7 @@ static const ScriptEnumValueContract kCallValueTypeValues[] = {
 };
 
 static const ScriptEnumContract kEnums[] = {
+    {"GameEvent", "enum GameEvent", kGameEventValues, sizeof(kGameEventValues) / sizeof(kGameEventValues[0])},
     {"DirectoryType", "enum DirectoryType", kDirectoryTypeValues, sizeof(kDirectoryTypeValues) / sizeof(kDirectoryTypeValues[0])},
     {"ModKind", "enum ModKind", kModKindValues, sizeof(kModKindValues) / sizeof(kModKindValues[0])},
     {"ModState", "enum ModState", kModStateValues, sizeof(kModStateValues) / sizeof(kModStateValues[0])},
@@ -225,15 +223,20 @@ static const ScriptEventMemberContract kLoadObjectEventMembers[] = {
     {"bool get_ReuseMeshes() const", "bool LoadObjectEvent::get_ReuseMeshes() const"},
     {"bool get_ReuseMaterials() const", "bool LoadObjectEvent::get_ReuseMaterials() const"},
     {"bool get_IsDynamic() const", "bool LoadObjectEvent::get_IsDynamic() const"},
+    {"int get_ObjectCount() const", "int LoadObjectEvent::get_ObjectCount() const"},
+    {"int GetObjectId(int index) const", "int LoadObjectEvent::GetObjectId(int index) const"},
+    {"CKObject@ BorrowObject(int index) const", "CKObject@ LoadObjectEvent::BorrowObject(int index) const"},
+    {"CKObject@ BorrowMasterObject() const", "CKObject@ LoadObjectEvent::BorrowMasterObject() const"},
 };
 
 static const ScriptEventMemberContract kLoadScriptEventMembers[] = {
     {"string get_Filename() const", "string LoadScriptEvent::get_Filename() const"},
     {"int get_ScriptId() const", "int LoadScriptEvent::get_ScriptId() const"},
+    {"CKBehavior@ BorrowScript() const", "CKBehavior@ LoadScriptEvent::BorrowScript() const"},
 };
 
 static const ScriptEventMemberContract kCommandEventMembers[] = {
-    {"int get_Phase() const", "int CommandEvent::get_Phase() const"},
+    {"CommandEventPhase get_Phase() const", "CommandEventPhase CommandEvent::get_Phase() const"},
     {"bool get_IsPre() const", "bool CommandEvent::get_IsPre() const"},
     {"bool get_IsPost() const", "bool CommandEvent::get_IsPost() const"},
     {"bool get_IsExecute() const", "bool CommandEvent::get_IsExecute() const"},
@@ -243,6 +246,15 @@ static const ScriptEventMemberContract kCommandEventMembers[] = {
     {"string GetArg(int index) const", "string CommandEvent::GetArg(int index) const"},
     {"string get_ArgsText() const", "string CommandEvent::get_ArgsText() const"},
     {"bool get_IsCheat() const", "bool CommandEvent::get_IsCheat() const"},
+};
+
+static const ScriptEventMemberContract kConfigEventMembers[] = {
+    {"string get_ModId() const", "string ConfigEvent::get_ModId() const"},
+    {"string get_Category() const", "string ConfigEvent::get_Category() const"},
+    {"string get_Key() const", "string ConfigEvent::get_Key() const"},
+    {"ConfigPropertyType get_Type() const", "ConfigPropertyType ConfigEvent::get_Type() const"},
+    {"bool get_HasProperty() const", "bool ConfigEvent::get_HasProperty() const"},
+    {"ConfigProperty@ BorrowProperty() const", "ConfigProperty@ ConfigEvent::BorrowProperty() const"},
 };
 
 static const ScriptEventMemberContract kTimerEventMembers[] = {
@@ -270,6 +282,7 @@ static const ScriptEventMemberContract kDataShareEventMembers[] = {
 static const ScriptEventMemberContract kPhysicalizeEventMembers[] = {
     {"int get_TargetId() const", "int PhysicalizeEvent::get_TargetId() const"},
     {"string get_TargetName() const", "string PhysicalizeEvent::get_TargetName() const"},
+    {"CK3dEntity@ BorrowTarget() const", "CK3dEntity@ PhysicalizeEvent::BorrowTarget() const"},
     {"bool get_Fixed() const", "bool PhysicalizeEvent::get_Fixed() const"},
     {"float get_Friction() const", "float PhysicalizeEvent::get_Friction() const"},
     {"float get_Elasticity() const", "float PhysicalizeEvent::get_Elasticity() const"},
@@ -284,14 +297,20 @@ static const ScriptEventMemberContract kPhysicalizeEventMembers[] = {
     {"float get_MassCenterX() const", "float PhysicalizeEvent::get_MassCenterX() const"},
     {"float get_MassCenterY() const", "float PhysicalizeEvent::get_MassCenterY() const"},
     {"float get_MassCenterZ() const", "float PhysicalizeEvent::get_MassCenterZ() const"},
+    {"VxVector get_MassCenter() const", "VxVector PhysicalizeEvent::get_MassCenter() const"},
     {"int get_ConvexCount() const", "int PhysicalizeEvent::get_ConvexCount() const"},
+    {"CKMesh@ BorrowConvexMesh(int index) const", "CKMesh@ PhysicalizeEvent::BorrowConvexMesh(int index) const"},
     {"int get_BallCount() const", "int PhysicalizeEvent::get_BallCount() const"},
+    {"VxVector GetBallCenter(int index) const", "VxVector PhysicalizeEvent::GetBallCenter(int index) const"},
+    {"float GetBallRadius(int index) const", "float PhysicalizeEvent::GetBallRadius(int index) const"},
     {"int get_ConcaveCount() const", "int PhysicalizeEvent::get_ConcaveCount() const"},
+    {"CKMesh@ BorrowConcaveMesh(int index) const", "CKMesh@ PhysicalizeEvent::BorrowConcaveMesh(int index) const"},
 };
 
 static const ScriptEventMemberContract kObjectEventMembers[] = {
     {"int get_TargetId() const", "int ObjectEvent::get_TargetId() const"},
     {"string get_TargetName() const", "string ObjectEvent::get_TargetName() const"},
+    {"CK3dEntity@ BorrowTarget() const", "CK3dEntity@ ObjectEvent::BorrowTarget() const"},
 };
 
 static const ScriptEventTypeContract kEventTypes[] = {
@@ -300,6 +319,7 @@ static const ScriptEventTypeContract kEventTypes[] = {
     {"LoadObjectEvent", "class LoadObjectEvent", kLoadObjectEventMembers, sizeof(kLoadObjectEventMembers) / sizeof(kLoadObjectEventMembers[0])},
     {"LoadScriptEvent", "class LoadScriptEvent", kLoadScriptEventMembers, sizeof(kLoadScriptEventMembers) / sizeof(kLoadScriptEventMembers[0])},
     {"CommandEvent", "class CommandEvent", kCommandEventMembers, sizeof(kCommandEventMembers) / sizeof(kCommandEventMembers[0])},
+    {"ConfigEvent", "class ConfigEvent", kConfigEventMembers, sizeof(kConfigEventMembers) / sizeof(kConfigEventMembers[0])},
     {"TimerEvent", "class TimerEvent", kTimerEventMembers, sizeof(kTimerEventMembers) / sizeof(kTimerEventMembers[0])},
     {"DataShareEvent", "class DataShareEvent", kDataShareEventMembers, sizeof(kDataShareEventMembers) / sizeof(kDataShareEventMembers[0])},
     {"PhysicalizeEvent", "class PhysicalizeEvent", kPhysicalizeEventMembers, sizeof(kPhysicalizeEventMembers) / sizeof(kPhysicalizeEventMembers[0])},
@@ -313,11 +333,11 @@ ScriptContractSpan<ScriptCallbackContract> ScriptApiContract::Callbacks() {
 }
 
 ScriptContractSpan<ScriptTypedefContract> ScriptApiContract::Typedefs() {
-    return {kTypedefs, sizeof(kTypedefs) / sizeof(kTypedefs[0])};
+    return {nullptr, 0};
 }
 
 ScriptContractSpan<ScriptIntegerConstantContract> ScriptApiContract::GameEventConstants() {
-    return {kGameEventConstants, sizeof(kGameEventConstants) / sizeof(kGameEventConstants[0])};
+    return {nullptr, 0};
 }
 
 ScriptContractSpan<ScriptIntegerConstantContract> ScriptApiContract::ErrorConstants() {

@@ -67,18 +67,20 @@ bool ScriptModEventRouter::CallLoadObject(const char *filename,
                                           CKBOOL reuseMeshes,
                                           CKBOOL reuseMaterials,
                                           CKBOOL dynamic,
+                                          XObjectArray *objectArray,
+                                          CKObject *masterObject,
                                           ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnLoadObject))
         return true;
     return IsBound() && m_Dispatcher.CallLoadObject(m_Context, *m_Runtime, *m_ContextView, filename, isMap, masterName,
                                                     filterClass, addToScene, reuseMeshes, reuseMaterials, dynamic,
-                                                    diagnostic);
+                                                    objectArray, masterObject, diagnostic);
 }
 
-bool ScriptModEventRouter::CallLoadScript(const char *filename, CK_ID scriptId, ScriptDiagnostic &diagnostic) {
+bool ScriptModEventRouter::CallLoadScript(const char *filename, CKBehavior *script, ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnLoadScript))
         return true;
-    return IsBound() && m_Dispatcher.CallLoadScript(m_Context, *m_Runtime, *m_ContextView, filename, scriptId, diagnostic);
+    return IsBound() && m_Dispatcher.CallLoadScript(m_Context, *m_Runtime, *m_ContextView, filename, script, diagnostic);
 }
 
 bool ScriptModEventRouter::CallCheatEnabled(bool enable, ScriptDiagnostic &diagnostic) {
@@ -96,6 +98,16 @@ bool ScriptModEventRouter::CallCommandEvent(bool beforeCommand,
     return IsBound() && m_Dispatcher.CallCommandEvent(m_Context, *m_Runtime, *m_ContextView, beforeCommand, command, args, diagnostic);
 }
 
+bool ScriptModEventRouter::CallModifyConfig(const char *modId,
+                                            const char *category,
+                                            const char *key,
+                                            IProperty *property,
+                                            ScriptDiagnostic &diagnostic) {
+    if (!HasCallback(ScriptCallbackOnModifyConfig))
+        return true;
+    return IsBound() && m_Dispatcher.CallModifyConfig(m_Context, *m_Runtime, *m_ContextView, modId, category, key, property, diagnostic);
+}
+
 bool ScriptModEventRouter::CallPhysicalize(CK3dEntity *target,
                                            CKBOOL fixed,
                                            float friction,
@@ -110,15 +122,20 @@ bool ScriptModEventRouter::CallPhysicalize(CK3dEntity *target,
                                            const char *collSurface,
                                            VxVector massCenter,
                                            int convexCnt,
+                                           CKMesh **convexMesh,
                                            int ballCnt,
+                                           VxVector *ballCenter,
+                                           float *ballRadius,
                                            int concaveCnt,
+                                           CKMesh **concaveMesh,
                                            ScriptDiagnostic &diagnostic) {
     if (!HasCallback(ScriptCallbackOnPhysicalize))
         return true;
     return IsBound() && m_Dispatcher.CallPhysicalize(m_Context, *m_Runtime, *m_ContextView, target, fixed, friction,
                                                      elasticity, mass, collGroup, startFrozen, enableColl,
                                                      calcMassCenter, linearDamp, rotDamp, collSurface, massCenter,
-                                                     convexCnt, ballCnt, concaveCnt, diagnostic);
+                                                     convexCnt, convexMesh, ballCnt, ballCenter, ballRadius,
+                                                     concaveCnt, concaveMesh, diagnostic);
 }
 
 bool ScriptModEventRouter::CallUnphysicalize(CK3dEntity *target, ScriptDiagnostic &diagnostic) {

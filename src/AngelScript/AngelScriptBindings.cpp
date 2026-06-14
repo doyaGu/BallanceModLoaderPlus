@@ -78,6 +78,10 @@ std::string BMLAS_GetErrorString(int errorCode) {
     return message ? message : "";
 }
 
+std::string BMLAS_GetGameEventName(int event) {
+    return BML::GetScriptGameEventName(event);
+}
+
 bool BMLAS_IsInitialized() { return GetActiveContext() != nullptr; }
 bool BMLAS_IsIngame() { ModContext *ctx = nullptr; return RequireContext(ctx) && ctx->IsIngame(); }
 bool BMLAS_IsInLevel() { ModContext *ctx = nullptr; return RequireContext(ctx) && ctx->IsInLevel(); }
@@ -1050,6 +1054,12 @@ static BMLAS_ConfigRef *BMLAS_ContextBorrowConfig(BML::ScriptModContextView *vie
         return nullptr;
     BML::ScriptMod *owner = BMLAS_ResolveScriptModOwner(view->GetModId());
     return owner ? new (std::nothrow) BMLAS_ConfigRef(owner->GetID()) : nullptr;
+}
+
+static BMLAS_ConfigPropertyRef *BMLAS_ConfigEventBorrowProperty(const BML::ScriptConfigEventView *event) {
+    if (!event || !event->HasProperty())
+        return nullptr;
+    return new (std::nothrow) BMLAS_ConfigPropertyRef(event->GetModId(), event->GetCategory(), event->GetKey());
 }
 
 static BMLAS_ObjectLoadResult *BMLAS_CK_LoadObject(const BMLAS_ObjectLoadOptions &options) {
@@ -2647,6 +2657,7 @@ static const ScriptObjectTypeRegistration kObjectTypeRegistrations[] = {
     {"LoadObjectEvent", "class LoadObjectEvent", sizeof(BML::ScriptLoadObjectEventView), asOBJ_VALUE | asOBJ_POD | asOBJ_APP_CLASS},
     {"LoadScriptEvent", "class LoadScriptEvent", sizeof(BML::ScriptLoadScriptEventView), asOBJ_VALUE | asOBJ_POD | asOBJ_APP_CLASS},
     {"CommandEvent", "class CommandEvent", sizeof(BML::ScriptCommandEventView), asOBJ_VALUE | asOBJ_POD | asOBJ_APP_CLASS},
+    {"ConfigEvent", "class ConfigEvent", sizeof(BML::ScriptConfigEventView), asOBJ_VALUE | asOBJ_POD | asOBJ_APP_CLASS},
     {"CommandCompletion", "class CommandCompletion", 0, asOBJ_REF | asOBJ_SCOPED},
     {"CommandRef", "class CommandRef", 0, asOBJ_REF},
     {"DataShareEvent", "class DataShareEvent", sizeof(BML::ScriptDataShareEventView), asOBJ_VALUE | asOBJ_POD | asOBJ_APP_CLASS},
@@ -2830,8 +2841,8 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"Config", "void SetCategoryComment(const string &in category, const string &in comment) const", "void Config::SetCategoryComment(const string &in category, const string &in comment) const", asMETHOD(BMLAS_ConfigRef, SetCategoryComment), asCALL_THISCALL},
     {"ConfigProperty", "bool get_IsValid() const", "bool ConfigProperty::get_IsValid() const", asMETHOD(BMLAS_ConfigPropertyRef, IsValid), asCALL_THISCALL},
     {"ConfigProperty", "bool IsValid() const", "bool ConfigProperty::IsValid() const", asMETHOD(BMLAS_ConfigPropertyRef, IsValid), asCALL_THISCALL},
-    {"ConfigProperty", "int get_Type() const", "int ConfigProperty::get_Type() const", asMETHOD(BMLAS_ConfigPropertyRef, GetType), asCALL_THISCALL},
-    {"ConfigProperty", "int GetType() const", "int ConfigProperty::GetType() const", asMETHOD(BMLAS_ConfigPropertyRef, GetType), asCALL_THISCALL},
+    {"ConfigProperty", "ConfigPropertyType get_Type() const", "ConfigPropertyType ConfigProperty::get_Type() const", asMETHOD(BMLAS_ConfigPropertyRef, GetType), asCALL_THISCALL},
+    {"ConfigProperty", "ConfigPropertyType GetType() const", "ConfigPropertyType ConfigProperty::GetType() const", asMETHOD(BMLAS_ConfigPropertyRef, GetType), asCALL_THISCALL},
     {"ConfigProperty", "string GetString(const string &in defaultValue = \"\") const", "string ConfigProperty::GetString(const string &in defaultValue) const", asMETHOD(BMLAS_ConfigPropertyRef, GetString), asCALL_THISCALL},
     {"ConfigProperty", "bool GetBoolean(bool defaultValue = false) const", "bool ConfigProperty::GetBoolean(bool defaultValue) const", asMETHOD(BMLAS_ConfigPropertyRef, GetBoolean), asCALL_THISCALL},
     {"ConfigProperty", "int GetInteger(int defaultValue = 0) const", "int ConfigProperty::GetInteger(int defaultValue) const", asMETHOD(BMLAS_ConfigPropertyRef, GetInteger), asCALL_THISCALL},
@@ -3107,9 +3118,14 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"LoadObjectEvent", "bool get_ReuseMeshes() const", "bool LoadObjectEvent::get_ReuseMeshes() const", asMETHOD(BML::ScriptLoadObjectEventView, GetReuseMeshes), asCALL_THISCALL},
     {"LoadObjectEvent", "bool get_ReuseMaterials() const", "bool LoadObjectEvent::get_ReuseMaterials() const", asMETHOD(BML::ScriptLoadObjectEventView, GetReuseMaterials), asCALL_THISCALL},
     {"LoadObjectEvent", "bool get_IsDynamic() const", "bool LoadObjectEvent::get_IsDynamic() const", asMETHOD(BML::ScriptLoadObjectEventView, IsDynamic), asCALL_THISCALL},
+    {"LoadObjectEvent", "int get_ObjectCount() const", "int LoadObjectEvent::get_ObjectCount() const", asMETHOD(BML::ScriptLoadObjectEventView, GetObjectCount), asCALL_THISCALL},
+    {"LoadObjectEvent", "int GetObjectId(int index) const", "int LoadObjectEvent::GetObjectId(int index) const", asMETHOD(BML::ScriptLoadObjectEventView, GetObjectId), asCALL_THISCALL},
+    {"LoadObjectEvent", "CKObject@ BorrowObject(int index) const", "CKObject@ LoadObjectEvent::BorrowObject(int index) const", asMETHOD(BML::ScriptLoadObjectEventView, BorrowObject), asCALL_THISCALL},
+    {"LoadObjectEvent", "CKObject@ BorrowMasterObject() const", "CKObject@ LoadObjectEvent::BorrowMasterObject() const", asMETHOD(BML::ScriptLoadObjectEventView, BorrowMasterObject), asCALL_THISCALL},
     {"LoadScriptEvent", "string get_Filename() const", "string LoadScriptEvent::get_Filename() const", asMETHOD(BML::ScriptLoadScriptEventView, GetFilename), asCALL_THISCALL},
     {"LoadScriptEvent", "int get_ScriptId() const", "int LoadScriptEvent::get_ScriptId() const", asMETHOD(BML::ScriptLoadScriptEventView, GetScriptId), asCALL_THISCALL},
-    {"CommandEvent", "int get_Phase() const", "int CommandEvent::get_Phase() const", asMETHOD(BML::ScriptCommandEventView, GetPhase), asCALL_THISCALL},
+    {"LoadScriptEvent", "CKBehavior@ BorrowScript() const", "CKBehavior@ LoadScriptEvent::BorrowScript() const", asMETHOD(BML::ScriptLoadScriptEventView, BorrowScript), asCALL_THISCALL},
+    {"CommandEvent", "CommandEventPhase get_Phase() const", "CommandEventPhase CommandEvent::get_Phase() const", asMETHOD(BML::ScriptCommandEventView, GetPhase), asCALL_THISCALL},
     {"CommandEvent", "bool get_IsPre() const", "bool CommandEvent::get_IsPre() const", asMETHOD(BML::ScriptCommandEventView, IsPre), asCALL_THISCALL},
     {"CommandEvent", "bool get_IsPost() const", "bool CommandEvent::get_IsPost() const", asMETHOD(BML::ScriptCommandEventView, IsPost), asCALL_THISCALL},
     {"CommandEvent", "bool get_IsExecute() const", "bool CommandEvent::get_IsExecute() const", asMETHOD(BML::ScriptCommandEventView, IsExecute), asCALL_THISCALL},
@@ -3119,6 +3135,12 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"CommandEvent", "string GetArg(int index) const", "string CommandEvent::GetArg(int index) const", asMETHOD(BML::ScriptCommandEventView, GetArg), asCALL_THISCALL},
     {"CommandEvent", "string get_ArgsText() const", "string CommandEvent::get_ArgsText() const", asMETHOD(BML::ScriptCommandEventView, GetArgsText), asCALL_THISCALL},
     {"CommandEvent", "bool get_IsCheat() const", "bool CommandEvent::get_IsCheat() const", asMETHOD(BML::ScriptCommandEventView, IsCheat), asCALL_THISCALL},
+    {"ConfigEvent", "string get_ModId() const", "string ConfigEvent::get_ModId() const", asMETHOD(BML::ScriptConfigEventView, GetModId), asCALL_THISCALL},
+    {"ConfigEvent", "string get_Category() const", "string ConfigEvent::get_Category() const", asMETHOD(BML::ScriptConfigEventView, GetCategory), asCALL_THISCALL},
+    {"ConfigEvent", "string get_Key() const", "string ConfigEvent::get_Key() const", asMETHOD(BML::ScriptConfigEventView, GetKey), asCALL_THISCALL},
+    {"ConfigEvent", "ConfigPropertyType get_Type() const", "ConfigPropertyType ConfigEvent::get_Type() const", asMETHOD(BML::ScriptConfigEventView, GetType), asCALL_THISCALL},
+    {"ConfigEvent", "bool get_HasProperty() const", "bool ConfigEvent::get_HasProperty() const", asMETHOD(BML::ScriptConfigEventView, HasProperty), asCALL_THISCALL},
+    {"ConfigEvent", "ConfigProperty@ BorrowProperty() const", "ConfigProperty@ ConfigEvent::BorrowProperty() const", asFUNCTION(BMLAS_ConfigEventBorrowProperty), asCALL_CDECL_OBJFIRST},
     {"CommandCompletion", "void Add(const string &in value) const", "void CommandCompletion::Add(const string &in value) const", asMETHOD(BML::ScriptCommandCompletion, Add), asCALL_THISCALL},
     {"CommandCompletion", "int get_Count() const", "int CommandCompletion::get_Count() const", asMETHOD(BML::ScriptCommandCompletion, GetCount), asCALL_THISCALL},
     {"CommandCompletion", "string At(int index) const", "string CommandCompletion::At(int index) const", asMETHOD(BML::ScriptCommandCompletion, At), asCALL_THISCALL},
@@ -3131,6 +3153,7 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"CommandRef", "bool Unregister()", "bool CommandRef::Unregister()", asMETHOD(BML::ScriptCommandRef, Unregister), asCALL_THISCALL},
     {"PhysicalizeEvent", "int get_TargetId() const", "int PhysicalizeEvent::get_TargetId() const", asMETHOD(BML::ScriptPhysicalizeEventView, GetTargetId), asCALL_THISCALL},
     {"PhysicalizeEvent", "string get_TargetName() const", "string PhysicalizeEvent::get_TargetName() const", asMETHOD(BML::ScriptPhysicalizeEventView, GetTargetName), asCALL_THISCALL},
+    {"PhysicalizeEvent", "CK3dEntity@ BorrowTarget() const", "CK3dEntity@ PhysicalizeEvent::BorrowTarget() const", asMETHOD(BML::ScriptPhysicalizeEventView, BorrowTarget), asCALL_THISCALL},
     {"PhysicalizeEvent", "bool get_Fixed() const", "bool PhysicalizeEvent::get_Fixed() const", asMETHOD(BML::ScriptPhysicalizeEventView, GetFixed), asCALL_THISCALL},
     {"PhysicalizeEvent", "float get_Friction() const", "float PhysicalizeEvent::get_Friction() const", asMETHOD(BML::ScriptPhysicalizeEventView, GetFriction), asCALL_THISCALL},
     {"PhysicalizeEvent", "float get_Elasticity() const", "float PhysicalizeEvent::get_Elasticity() const", asMETHOD(BML::ScriptPhysicalizeEventView, GetElasticity), asCALL_THISCALL},
@@ -3145,11 +3168,17 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"PhysicalizeEvent", "float get_MassCenterX() const", "float PhysicalizeEvent::get_MassCenterX() const", asMETHOD(BML::ScriptPhysicalizeEventView, GetMassCenterX), asCALL_THISCALL},
     {"PhysicalizeEvent", "float get_MassCenterY() const", "float PhysicalizeEvent::get_MassCenterY() const", asMETHOD(BML::ScriptPhysicalizeEventView, GetMassCenterY), asCALL_THISCALL},
     {"PhysicalizeEvent", "float get_MassCenterZ() const", "float PhysicalizeEvent::get_MassCenterZ() const", asMETHOD(BML::ScriptPhysicalizeEventView, GetMassCenterZ), asCALL_THISCALL},
+    {"PhysicalizeEvent", "VxVector get_MassCenter() const", "VxVector PhysicalizeEvent::get_MassCenter() const", asMETHOD(BML::ScriptPhysicalizeEventView, GetMassCenter), asCALL_THISCALL},
     {"PhysicalizeEvent", "int get_ConvexCount() const", "int PhysicalizeEvent::get_ConvexCount() const", asMETHOD(BML::ScriptPhysicalizeEventView, GetConvexCount), asCALL_THISCALL},
+    {"PhysicalizeEvent", "CKMesh@ BorrowConvexMesh(int index) const", "CKMesh@ PhysicalizeEvent::BorrowConvexMesh(int index) const", asMETHOD(BML::ScriptPhysicalizeEventView, BorrowConvexMesh), asCALL_THISCALL},
     {"PhysicalizeEvent", "int get_BallCount() const", "int PhysicalizeEvent::get_BallCount() const", asMETHOD(BML::ScriptPhysicalizeEventView, GetBallCount), asCALL_THISCALL},
+    {"PhysicalizeEvent", "VxVector GetBallCenter(int index) const", "VxVector PhysicalizeEvent::GetBallCenter(int index) const", asMETHOD(BML::ScriptPhysicalizeEventView, GetBallCenter), asCALL_THISCALL},
+    {"PhysicalizeEvent", "float GetBallRadius(int index) const", "float PhysicalizeEvent::GetBallRadius(int index) const", asMETHOD(BML::ScriptPhysicalizeEventView, GetBallRadius), asCALL_THISCALL},
     {"PhysicalizeEvent", "int get_ConcaveCount() const", "int PhysicalizeEvent::get_ConcaveCount() const", asMETHOD(BML::ScriptPhysicalizeEventView, GetConcaveCount), asCALL_THISCALL},
+    {"PhysicalizeEvent", "CKMesh@ BorrowConcaveMesh(int index) const", "CKMesh@ PhysicalizeEvent::BorrowConcaveMesh(int index) const", asMETHOD(BML::ScriptPhysicalizeEventView, BorrowConcaveMesh), asCALL_THISCALL},
     {"ObjectEvent", "int get_TargetId() const", "int ObjectEvent::get_TargetId() const", asMETHOD(BML::ScriptObjectEventView, GetTargetId), asCALL_THISCALL},
     {"ObjectEvent", "string get_TargetName() const", "string ObjectEvent::get_TargetName() const", asMETHOD(BML::ScriptObjectEventView, GetTargetName), asCALL_THISCALL},
+    {"ObjectEvent", "CK3dEntity@ BorrowTarget() const", "CK3dEntity@ ObjectEvent::BorrowTarget() const", asMETHOD(BML::ScriptObjectEventView, BorrowTarget), asCALL_THISCALL},
 };
 
 static const ScriptUiEnumValueRegistration kUiButtonTypeRegistrations[] = {
@@ -3230,6 +3259,7 @@ static const ScriptGlobalFunctionRegistration kGlobalFunctionRegistrations[] = {
     {"int GetVersionMinor()", "BML::GetVersionMinor", asFUNCTION(BMLAS_GetVersionMinor), asCALL_CDECL},
     {"int GetVersionPatch()", "BML::GetVersionPatch", asFUNCTION(BMLAS_GetVersionPatch), asCALL_CDECL},
     {"string GetErrorString(int errorCode)", "BML::GetErrorString", asFUNCTION(BMLAS_GetErrorString), asCALL_CDECL},
+    {"string GetGameEventName(GameEvent event)", "BML::GetGameEventName", asFUNCTION(BMLAS_GetGameEventName), asCALL_CDECL},
     {"bool BorrowCurrentContext(ModContext &out context)", "BML::BorrowCurrentContext", asFUNCTION(BMLAS_BorrowCurrentContext), asCALL_CDECL},
     {"bool DataShareSetString(const string &in key, const string &in value, const string &in name = \"BML\")", "bool DataShareSetString(const string &in key, const string &in value, const string &in name = \"BML\")", asFUNCTION(BMLAS_DataShareSetString), asCALL_CDECL},
     {"string DataShareGetString(const string &in key, const string &in defaultValue = \"\", const string &in name = \"BML\")", "string DataShareGetString(const string &in key, const string &in defaultValue = \"\", const string &in name = \"BML\")", asFUNCTION(BMLAS_DataShareGetString), asCALL_CDECL},

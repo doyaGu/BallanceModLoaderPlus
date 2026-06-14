@@ -159,8 +159,20 @@ bool ScriptCallbackDispatcher::CallLoadObject(CKContext *context,
                                               CKBOOL reuseMeshes,
                                               CKBOOL reuseMaterials,
                                               CKBOOL dynamic,
+                                              XObjectArray *objectArray,
+                                              CKObject *masterObject,
                                               ScriptDiagnostic &diagnostic) {
-    ScriptLoadObjectEventView event(filename, isMap, masterName, filterClass, addToScene, reuseMeshes, reuseMaterials, dynamic);
+    ScriptLoadObjectEventView event(filename,
+                                    isMap,
+                                    masterName,
+                                    filterClass,
+                                    addToScene,
+                                    reuseMeshes,
+                                    reuseMaterials,
+                                    dynamic,
+                                    context,
+                                    objectArray,
+                                    masterObject);
     return CallWithEvent(context, runtime, ScriptCallbackOnLoadObject, contextView, &event, diagnostic);
 }
 
@@ -168,9 +180,9 @@ bool ScriptCallbackDispatcher::CallLoadScript(CKContext *context,
                                               ScriptModRuntime &runtime,
                                               ScriptModContextView &contextView,
                                               const char *filename,
-                                              CK_ID scriptId,
+                                              CKBehavior *script,
                                               ScriptDiagnostic &diagnostic) {
-    ScriptLoadScriptEventView event(filename, scriptId);
+    ScriptLoadScriptEventView event(filename, script);
     return CallWithEvent(context, runtime, ScriptCallbackOnLoadScript, contextView, &event, diagnostic);
 }
 
@@ -190,6 +202,18 @@ bool ScriptCallbackDispatcher::CallCommandEvent(CKContext *context,
     return CallWithEvent(context, runtime, ScriptCallbackOnCommandEvent, contextView, &event, diagnostic);
 }
 
+bool ScriptCallbackDispatcher::CallModifyConfig(CKContext *context,
+                                                ScriptModRuntime &runtime,
+                                                ScriptModContextView &contextView,
+                                                const char *modId,
+                                                const char *category,
+                                                const char *key,
+                                                IProperty *property,
+                                                ScriptDiagnostic &diagnostic) {
+    ScriptConfigEventView event(modId, category, key, property);
+    return CallWithEvent(context, runtime, ScriptCallbackOnModifyConfig, contextView, &event, diagnostic);
+}
+
 bool ScriptCallbackDispatcher::CallPhysicalize(CKContext *context,
                                                ScriptModRuntime &runtime,
                                                ScriptModContextView &contextView,
@@ -207,12 +231,16 @@ bool ScriptCallbackDispatcher::CallPhysicalize(CKContext *context,
                                                const char *collSurface,
                                                VxVector massCenter,
                                                int convexCnt,
+                                               CKMesh **convexMesh,
                                                int ballCnt,
+                                               VxVector *ballCenter,
+                                               float *ballRadius,
                                                int concaveCnt,
+                                               CKMesh **concaveMesh,
                                                ScriptDiagnostic &diagnostic) {
     ScriptPhysicalizeEventView event(target, fixed, friction, elasticity, mass, collGroup, startFrozen, enableColl,
                                      calcMassCenter, linearDamp, rotDamp, collSurface, massCenter, convexCnt,
-                                     ballCnt, concaveCnt);
+                                     convexMesh, ballCnt, ballCenter, ballRadius, concaveCnt, concaveMesh);
     return CallWithEvent(context, runtime, ScriptCallbackOnPhysicalize, contextView, &event, diagnostic);
 }
 

@@ -39,12 +39,19 @@ public:
                         CKBOOL reuseMeshes,
                         CKBOOL reuseMaterials,
                         CKBOOL dynamic,
+                        XObjectArray *objectArray,
+                        CKObject *masterObject,
                         ScriptDiagnostic &diagnostic);
-    bool CallLoadScript(const char *filename, CK_ID scriptId, ScriptDiagnostic &diagnostic);
+    bool CallLoadScript(const char *filename, CKBehavior *script, ScriptDiagnostic &diagnostic);
     bool CallCheatEnabled(bool enable, ScriptDiagnostic &diagnostic);
     bool CallCommandEvent(bool beforeCommand,
                           ICommand *command,
                           const std::vector<std::string> &args,
+                          ScriptDiagnostic &diagnostic);
+    bool CallModifyConfig(const char *modId,
+                          const char *category,
+                          const char *key,
+                          IProperty *property,
                           ScriptDiagnostic &diagnostic);
     bool CallPhysicalize(CK3dEntity *target,
                          CKBOOL fixed,
@@ -60,8 +67,12 @@ public:
                          const char *collSurface,
                          VxVector massCenter,
                          int convexCnt,
+                         CKMesh **convexMesh,
                          int ballCnt,
+                         VxVector *ballCenter,
+                         float *ballRadius,
                          int concaveCnt,
+                         CKMesh **concaveMesh,
                          ScriptDiagnostic &diagnostic);
     bool CallUnphysicalize(CK3dEntity *target, ScriptDiagnostic &diagnostic);
 

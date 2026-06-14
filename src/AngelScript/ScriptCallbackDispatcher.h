@@ -36,12 +36,14 @@ public:
                         CKBOOL reuseMeshes,
                         CKBOOL reuseMaterials,
                         CKBOOL dynamic,
+                        XObjectArray *objectArray,
+                        CKObject *masterObject,
                         ScriptDiagnostic &diagnostic);
     bool CallLoadScript(CKContext *context,
                         ScriptModRuntime &runtime,
                         ScriptModContextView &contextView,
                         const char *filename,
-                        CK_ID scriptId,
+                        CKBehavior *script,
                         ScriptDiagnostic &diagnostic);
     bool CallCheatEnabled(CKContext *context, ScriptModRuntime &runtime, ScriptModContextView &contextView, bool enable, ScriptDiagnostic &diagnostic);
     bool CallCommandEvent(CKContext *context,
@@ -50,6 +52,14 @@ public:
                           bool beforeCommand,
                           ICommand *command,
                           const std::vector<std::string> &args,
+                          ScriptDiagnostic &diagnostic);
+    bool CallModifyConfig(CKContext *context,
+                          ScriptModRuntime &runtime,
+                          ScriptModContextView &contextView,
+                          const char *modId,
+                          const char *category,
+                          const char *key,
+                          IProperty *property,
                           ScriptDiagnostic &diagnostic);
     bool CallPhysicalize(CKContext *context,
                          ScriptModRuntime &runtime,
@@ -68,8 +78,12 @@ public:
                          const char *collSurface,
                          VxVector massCenter,
                          int convexCnt,
+                         CKMesh **convexMesh,
                          int ballCnt,
+                         VxVector *ballCenter,
+                         float *ballRadius,
                          int concaveCnt,
+                         CKMesh **concaveMesh,
                          ScriptDiagnostic &diagnostic);
     bool CallUnphysicalize(CKContext *context,
                            ScriptModRuntime &runtime,

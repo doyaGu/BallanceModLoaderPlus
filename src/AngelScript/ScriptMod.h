@@ -54,6 +54,7 @@ public:
                       XObjectArray *objArray,
                       CKObject *masterObj) override;
     void OnLoadScript(const char *filename, CKBehavior *script) override;
+    void OnModifyConfig(const char *category, const char *key, IProperty *prop) override;
     void OnPreStartMenu() override;
     void OnPostStartMenu() override;
     void OnExitGame() override;

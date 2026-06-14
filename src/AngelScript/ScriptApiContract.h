@@ -15,6 +15,7 @@ enum ScriptCallbackId {
     ScriptCallbackOnLoadObject,
     ScriptCallbackOnLoadScript,
     ScriptCallbackOnCommandEvent,
+    ScriptCallbackOnModifyConfig,
     ScriptCallbackOnPhysicalize,
     ScriptCallbackOnUnphysicalize,
     ScriptCallbackCount
@@ -77,7 +78,7 @@ struct ScriptContractSpan {
     size_t Count;
 
     const T *begin() const { return Data; }
-    const T *end() const { return Data + Count; }
+    const T *end() const { return Data ? Data + Count : Data; }
 };
 
 namespace ScriptApiContract {
