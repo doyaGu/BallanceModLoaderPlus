@@ -12,6 +12,10 @@
 #include "PathUtils.h"
 #include "StringUtils.h"
 
+#if BML_ENABLE_ANGELSCRIPT
+#include "ScriptMod.h"
+#endif
+
 namespace {
     std::vector<std::string> g_FontFilenames = {"unifont.otf"};
 
@@ -88,6 +92,20 @@ namespace {
 
         g_FontFilenames.assign(sortedFonts.begin(), sortedFonts.end());
     }
+
+#if BML_ENABLE_ANGELSCRIPT
+    const BML::ScriptMod *AsScriptMod(const IMod *mod) {
+        return dynamic_cast<const BML::ScriptMod *>(mod);
+    }
+
+    const char *GetScriptModStateLabel(const BML::ScriptMod *mod) {
+        if (!mod)
+            return "";
+        if (mod->IsFailed())
+            return "failed";
+        return mod->IsLoaded() ? "loaded" : "registered";
+    }
+#endif
 }
 
 void ModMenu::Init() {
@@ -126,7 +144,15 @@ void ModListPage::OnDraw() {
         if (!mod)
             return false;
         const char *id = mod->GetID();
-        if (Bui::MainButton(id)) {
+        std::string label = id ? id : "";
+#if BML_ENABLE_ANGELSCRIPT
+        if (const auto *scriptMod = AsScriptMod(mod)) {
+            label += " [script:";
+            label += GetScriptModStateLabel(scriptMod);
+            label += "]";
+        }
+#endif
+        if (Bui::MainButton(label.c_str())) {
             dynamic_cast<ModMenu *>(m_Menu)->SetCurrentMod(mod);
             m_Menu->OpenPage("Mod Page");
         }
@@ -152,6 +178,21 @@ void ModPage::OnPostBegin() {
 
     snprintf(m_TextBuf, sizeof(m_TextBuf), "v%s", mod->GetVersion());
     Bui::WrappedText(m_TextBuf, titleWidth, titleX);
+
+#if BML_ENABLE_ANGELSCRIPT
+    if (const auto *scriptMod = AsScriptMod(mod)) {
+        snprintf(m_TextBuf,
+                 sizeof(m_TextBuf),
+                 "Script mod: %s",
+                 GetScriptModStateLabel(scriptMod));
+        Bui::WrappedText(m_TextBuf, titleWidth, titleX);
+
+        if (scriptMod->IsFailed() || !scriptMod->GetLastDiagnostic().empty()) {
+            Bui::WrappedText("Diagnostic:", titleWidth, titleX);
+            Bui::WrappedText(scriptMod->GetLastDiagnostic().c_str(), titleWidth, titleX);
+        }
+    }
+#endif
 
     ImGui::NewLine();
 
