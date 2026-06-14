@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "BML/Interop.h"
+
 namespace BML {
 
 enum class InteropValueType {
@@ -60,6 +62,10 @@ public:
     static std::vector<std::string> ExtractParameterTypes(const std::string &signature);
     static InteropValueType TypeFromName(const std::string &type);
     static InteropTypeDescriptor DescriptorFromName(const std::string &type);
+    static bool IsArrayLike(InteropValueType type);
+    static bool IsV2Type(InteropValueType type);
+    static const char *ScriptArrayDecl(InteropValueType type);
+    static BML_CALL_VALUE_TYPE ToCallValueType(InteropValueType type);
     static InteropSignatureInfo Compile(const std::string &signature);
     static bool IsSupported(const InteropSignatureInfo &info);
     static bool Equivalent(const InteropSignatureInfo &left, const InteropSignatureInfo &right);

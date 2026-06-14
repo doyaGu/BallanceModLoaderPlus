@@ -1838,60 +1838,27 @@ public:
     }
 
     int SetBoolArray(unsigned int index, void *values) {
-        if (!m_Frame || !values)
-            return BML_ERROR_INVALID_PARAMETER;
-        std::vector<int> copy;
-        const int status = CopyBoolArrayFromScript(values, copy);
-        if (status != BML_OK)
-            return status;
-        return BML_CallFrame_SetBoolArray(m_Frame, index, copy.data(), copy.size());
+        return SetContiguousArray<BoolArrayTraits>(index, values);
     }
 
     int GetBoolArray(unsigned int index, void *&values) const {
-        values = nullptr;
-        const BML_CallValue *slot = nullptr;
-        const int status = BML_GetCallFrameArgChecked(m_Frame, index, BML_CallValueType::BoolArray, &slot);
-        if (status != BML_OK)
-            return status;
-        return CreateBoolArray(slot->IntArrayValue, values);
+        return GetContiguousArray<BoolArrayTraits>(index, values);
     }
 
     int SetIntArray(unsigned int index, void *values) {
-        if (!m_Frame || !values)
-            return BML_ERROR_INVALID_PARAMETER;
-        std::vector<int> copy;
-        const int status = CopyIntArrayFromScript(values, copy);
-        if (status != BML_OK)
-            return status;
-        return BML_CallFrame_SetIntArray(m_Frame, index, copy.data(), copy.size());
+        return SetContiguousArray<IntArrayTraits>(index, values);
     }
 
     int GetIntArray(unsigned int index, void *&values) const {
-        values = nullptr;
-        const BML_CallValue *slot = nullptr;
-        const int status = BML_GetCallFrameArgChecked(m_Frame, index, BML_CallValueType::IntArray, &slot);
-        if (status != BML_OK)
-            return status;
-        return CreateIntArray(slot->IntArrayValue, values);
+        return GetContiguousArray<IntArrayTraits>(index, values);
     }
 
     int SetFloatArray(unsigned int index, void *values) {
-        if (!m_Frame || !values)
-            return BML_ERROR_INVALID_PARAMETER;
-        std::vector<float> copy;
-        const int status = CopyFloatArrayFromScript(values, copy);
-        if (status != BML_OK)
-            return status;
-        return BML_CallFrame_SetFloatArray(m_Frame, index, copy.data(), copy.size());
+        return SetContiguousArray<FloatArrayTraits>(index, values);
     }
 
     int GetFloatArray(unsigned int index, void *&values) const {
-        values = nullptr;
-        const BML_CallValue *slot = nullptr;
-        const int status = BML_GetCallFrameArgChecked(m_Frame, index, BML_CallValueType::FloatArray, &slot);
-        if (status != BML_OK)
-            return status;
-        return CreateFloatArray(slot->FloatArrayValue, values);
+        return GetContiguousArray<FloatArrayTraits>(index, values);
     }
 
     int SetStringArray(unsigned int index, void *values) {
@@ -1909,30 +1876,31 @@ public:
 
     int GetStringArray(unsigned int index, void *&values) const {
         values = nullptr;
-        const BML_CallValue *slot = nullptr;
-        const int status = BML_GetCallFrameArgChecked(m_Frame, index, BML_CallValueType::StringArray, &slot);
-        if (status != BML_OK)
-            return status;
-        return CreateStringArray(slot->StringArrayValue, values);
+        const size_t count = m_Frame ? BML_CallFrame_GetStringArrayCount(m_Frame, index) : 0;
+        const BML_CALL_VALUE_TYPE actualType = m_Frame ? BML_CallFrame_GetArgType(m_Frame, index)
+                                                       : BML_CALL_VALUE_EMPTY;
+        if (count == 0 && (!m_Frame || actualType != BML_CALL_VALUE_STRING_ARRAY)) {
+            if (!m_Frame)
+                return BML_ERROR_INTEROP_BAD_CALL_FRAME;
+            return actualType == BML_CALL_VALUE_EMPTY ? BML_ERROR_NOT_FOUND : BML_ERROR_INTEROP_TYPE_MISMATCH;
+        }
+        return CreateStringArrayFromFrame(count,
+                                          [&](size_t item, const char **data, size_t *size) {
+                                              return BML_CallFrame_BorrowStringArrayItem(m_Frame,
+                                                                                         index,
+                                                                                         item,
+                                                                                         data,
+                                                                                         size);
+                                          },
+                                          values);
     }
 
     int SetBuffer(unsigned int index, void *values) {
-        if (!m_Frame || !values)
-            return BML_ERROR_INVALID_PARAMETER;
-        std::vector<std::uint8_t> copy;
-        const int status = CopyBufferFromScript(values, copy);
-        if (status != BML_OK)
-            return status;
-        return BML_CallFrame_SetBuffer(m_Frame, index, copy.data(), copy.size());
+        return SetContiguousArray<BufferArrayTraits>(index, values);
     }
 
     int GetBuffer(unsigned int index, void *&values) const {
-        values = nullptr;
-        const BML_CallValue *slot = nullptr;
-        const int status = BML_GetCallFrameArgChecked(m_Frame, index, BML_CallValueType::Buffer, &slot);
-        if (status != BML_OK)
-            return status;
-        return CreateBufferArray(slot->BufferValue, values);
+        return GetContiguousArray<BufferArrayTraits>(index, values);
     }
 
     int SetObjectId(unsigned int index, int objectId) {
@@ -2018,60 +1986,27 @@ public:
     }
 
     int SetResultBoolArray(void *values) {
-        if (!m_Frame || !values)
-            return BML_ERROR_INVALID_PARAMETER;
-        std::vector<int> copy;
-        const int status = CopyBoolArrayFromScript(values, copy);
-        if (status != BML_OK)
-            return status;
-        return BML_CallFrame_SetResultBoolArray(m_Frame, copy.data(), copy.size());
+        return SetResultContiguousArray<BoolArrayTraits>(values);
     }
 
     int GetResultBoolArray(void *&values) const {
-        values = nullptr;
-        const BML_CallValue *slot = nullptr;
-        const int status = BML_GetCallFrameResultChecked(m_Frame, BML_CallValueType::BoolArray, &slot);
-        if (status != BML_OK)
-            return status;
-        return CreateBoolArray(slot->IntArrayValue, values);
+        return GetResultContiguousArray<BoolArrayTraits>(values);
     }
 
     int SetResultIntArray(void *values) {
-        if (!m_Frame || !values)
-            return BML_ERROR_INVALID_PARAMETER;
-        std::vector<int> copy;
-        const int status = CopyIntArrayFromScript(values, copy);
-        if (status != BML_OK)
-            return status;
-        return BML_CallFrame_SetResultIntArray(m_Frame, copy.data(), copy.size());
+        return SetResultContiguousArray<IntArrayTraits>(values);
     }
 
     int GetResultIntArray(void *&values) const {
-        values = nullptr;
-        const BML_CallValue *slot = nullptr;
-        const int status = BML_GetCallFrameResultChecked(m_Frame, BML_CallValueType::IntArray, &slot);
-        if (status != BML_OK)
-            return status;
-        return CreateIntArray(slot->IntArrayValue, values);
+        return GetResultContiguousArray<IntArrayTraits>(values);
     }
 
     int SetResultFloatArray(void *values) {
-        if (!m_Frame || !values)
-            return BML_ERROR_INVALID_PARAMETER;
-        std::vector<float> copy;
-        const int status = CopyFloatArrayFromScript(values, copy);
-        if (status != BML_OK)
-            return status;
-        return BML_CallFrame_SetResultFloatArray(m_Frame, copy.data(), copy.size());
+        return SetResultContiguousArray<FloatArrayTraits>(values);
     }
 
     int GetResultFloatArray(void *&values) const {
-        values = nullptr;
-        const BML_CallValue *slot = nullptr;
-        const int status = BML_GetCallFrameResultChecked(m_Frame, BML_CallValueType::FloatArray, &slot);
-        if (status != BML_OK)
-            return status;
-        return CreateFloatArray(slot->FloatArrayValue, values);
+        return GetResultContiguousArray<FloatArrayTraits>(values);
     }
 
     int SetResultStringArray(void *values) {
@@ -2089,30 +2024,30 @@ public:
 
     int GetResultStringArray(void *&values) const {
         values = nullptr;
-        const BML_CallValue *slot = nullptr;
-        const int status = BML_GetCallFrameResultChecked(m_Frame, BML_CallValueType::StringArray, &slot);
-        if (status != BML_OK)
-            return status;
-        return CreateStringArray(slot->StringArrayValue, values);
+        if (!m_Frame)
+            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
+        const size_t count = BML_CallFrame_GetResultStringArrayCount(m_Frame);
+        if (count == 0 && BML_CallFrame_GetResultType(m_Frame) != BML_CALL_VALUE_STRING_ARRAY) {
+            return BML_CallFrame_GetResultType(m_Frame) == BML_CALL_VALUE_EMPTY
+                       ? BML_ERROR_NOT_FOUND
+                       : BML_ERROR_INTEROP_TYPE_MISMATCH;
+        }
+        return CreateStringArrayFromFrame(count,
+                                          [&](size_t item, const char **data, size_t *size) {
+                                              return BML_CallFrame_BorrowResultStringArrayItem(m_Frame,
+                                                                                               item,
+                                                                                               data,
+                                                                                               size);
+                                          },
+                                          values);
     }
 
     int SetResultBuffer(void *values) {
-        if (!m_Frame || !values)
-            return BML_ERROR_INVALID_PARAMETER;
-        std::vector<std::uint8_t> copy;
-        const int status = CopyBufferFromScript(values, copy);
-        if (status != BML_OK)
-            return status;
-        return BML_CallFrame_SetResultBuffer(m_Frame, copy.data(), copy.size());
+        return SetResultContiguousArray<BufferArrayTraits>(values);
     }
 
     int GetResultBuffer(void *&values) const {
-        values = nullptr;
-        const BML_CallValue *slot = nullptr;
-        const int status = BML_GetCallFrameResultChecked(m_Frame, BML_CallValueType::Buffer, &slot);
-        if (status != BML_OK)
-            return status;
-        return CreateBufferArray(slot->BufferValue, values);
+        return GetResultContiguousArray<BufferArrayTraits>(values);
     }
 
     int SetResultObjectId(int objectId) {
@@ -2143,6 +2078,46 @@ public:
     BML_CallFrame *GetNativeFrame() const { return m_Frame; }
 
 private:
+    struct BoolArrayTraits {
+        using FrameElement = int;
+        using ScriptElement = bool;
+        static constexpr BML_CALL_VALUE_TYPE FrameType = BML_CALL_VALUE_BOOL_ARRAY;
+        static constexpr int ScriptTypeId = asTYPEID_BOOL;
+        static const char *Decl() { return "array<bool>"; }
+        static FrameElement ToFrame(ScriptElement value) { return value ? 1 : 0; }
+        static ScriptElement ToScript(FrameElement value) { return value != 0; }
+    };
+
+    struct IntArrayTraits {
+        using FrameElement = int;
+        using ScriptElement = int;
+        static constexpr BML_CALL_VALUE_TYPE FrameType = BML_CALL_VALUE_INT_ARRAY;
+        static constexpr int ScriptTypeId = asTYPEID_INT32;
+        static const char *Decl() { return "array<int>"; }
+        static FrameElement ToFrame(ScriptElement value) { return value; }
+        static ScriptElement ToScript(FrameElement value) { return value; }
+    };
+
+    struct FloatArrayTraits {
+        using FrameElement = float;
+        using ScriptElement = float;
+        static constexpr BML_CALL_VALUE_TYPE FrameType = BML_CALL_VALUE_FLOAT_ARRAY;
+        static constexpr int ScriptTypeId = asTYPEID_FLOAT;
+        static const char *Decl() { return "array<float>"; }
+        static FrameElement ToFrame(ScriptElement value) { return value; }
+        static ScriptElement ToScript(FrameElement value) { return value; }
+    };
+
+    struct BufferArrayTraits {
+        using FrameElement = std::uint8_t;
+        using ScriptElement = std::uint8_t;
+        static constexpr BML_CALL_VALUE_TYPE FrameType = BML_CALL_VALUE_BUFFER;
+        static constexpr int ScriptTypeId = asTYPEID_UINT8;
+        static const char *Decl() { return "array<uint8>"; }
+        static FrameElement ToFrame(ScriptElement value) { return value; }
+        static ScriptElement ToScript(FrameElement value) { return value; }
+    };
+
     static int MapArrayStatus(CKAS_STATUS status) {
         switch (status) {
         case CKAS_OK:
@@ -2254,12 +2229,13 @@ private:
         return MapArrayStatus(api->AssignObjectHandle(&values, array, arrayType));
     }
 
-    static int CopyBoolArrayFromScript(void *values, std::vector<int> &copy) {
+    template <typename Traits>
+    static int CopyContiguousArrayFromScript(void *values, std::vector<typename Traits::FrameElement> &copy) {
         CKDWORD count = 0;
         int status = GetArraySize(values, count);
         if (status != BML_OK)
             return status;
-        status = RequireArrayElementType(values, asTYPEID_BOOL);
+        status = RequireArrayElementType(values, Traits::ScriptTypeId);
         if (status != BML_OK)
             return status;
         const CKAngelScriptAdapter::Api *api = GetArrayApi();
@@ -2271,53 +2247,91 @@ private:
             status = MapArrayStatus(api->ArrayGetElementAddress(values, i, &address));
             if (status != BML_OK)
                 return status;
-            copy[i] = address && *static_cast<bool *>(address) ? 1 : 0;
+            const auto *value = static_cast<const typename Traits::ScriptElement *>(address);
+            copy[i] = value ? Traits::ToFrame(*value) : typename Traits::FrameElement();
         }
         return BML_OK;
     }
 
-    static int CopyIntArrayFromScript(void *values, std::vector<int> &copy) {
-        CKDWORD count = 0;
-        int status = GetArraySize(values, count);
+    template <typename Traits>
+    int SetContiguousArray(unsigned int index, void *values) {
+        if (!m_Frame || !values)
+            return BML_ERROR_INVALID_PARAMETER;
+        std::vector<typename Traits::FrameElement> copy;
+        const int status = CopyContiguousArrayFromScript<Traits>(values, copy);
         if (status != BML_OK)
             return status;
-        status = RequireArrayElementType(values, asTYPEID_INT32);
-        if (status != BML_OK)
-            return status;
-        const CKAngelScriptAdapter::Api *api = GetArrayApi();
-        if (!api || !api->ArrayGetElementAddress)
-            return BML_ERROR_INTEROP_UNSUPPORTED;
-        copy.resize(count);
-        for (CKDWORD i = 0; i < count; ++i) {
-            void *address = nullptr;
-            status = MapArrayStatus(api->ArrayGetElementAddress(values, i, &address));
-            if (status != BML_OK)
-                return status;
-            copy[i] = address ? *static_cast<int *>(address) : 0;
-        }
-        return BML_OK;
+        return BML_CallFrame_SetData(m_Frame, index, Traits::FrameType, copy.data(), copy.size());
     }
 
-    static int CopyFloatArrayFromScript(void *values, std::vector<float> &copy) {
-        CKDWORD count = 0;
-        int status = GetArraySize(values, count);
+    template <typename Traits>
+    int SetResultContiguousArray(void *values) {
+        if (!m_Frame || !values)
+            return BML_ERROR_INVALID_PARAMETER;
+        std::vector<typename Traits::FrameElement> copy;
+        const int status = CopyContiguousArrayFromScript<Traits>(values, copy);
         if (status != BML_OK)
             return status;
-        status = RequireArrayElementType(values, asTYPEID_FLOAT);
+        return BML_CallFrame_SetResultData(m_Frame, Traits::FrameType, copy.data(), copy.size());
+    }
+
+    template <typename Traits>
+    static int CreateContiguousArrayFromData(const void *data, size_t count, size_t elementSize, void *&values) {
+        values = nullptr;
+        if (elementSize != sizeof(typename Traits::FrameElement))
+            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
+
+        void *array = nullptr;
+        int status = CreateArray(Traits::Decl(), count, array);
         if (status != BML_OK)
             return status;
         const CKAngelScriptAdapter::Api *api = GetArrayApi();
-        if (!api || !api->ArrayGetElementAddress)
+        if (!api || !api->ArraySetElementValue) {
+            ReleaseArray(array);
             return BML_ERROR_INTEROP_UNSUPPORTED;
-        copy.resize(count);
-        for (CKDWORD i = 0; i < count; ++i) {
-            void *address = nullptr;
-            status = MapArrayStatus(api->ArrayGetElementAddress(values, i, &address));
-            if (status != BML_OK)
-                return status;
-            copy[i] = address ? *static_cast<float *>(address) : 0.0f;
         }
-        return BML_OK;
+
+        const auto *source = static_cast<const typename Traits::FrameElement *>(data);
+        for (CKDWORD i = 0; i < count; ++i) {
+            const typename Traits::ScriptElement value = source ? Traits::ToScript(source[i])
+                                                                : typename Traits::ScriptElement();
+            status = MapArrayStatus(api->ArraySetElementValue(array, i, &value));
+            if (status != BML_OK) {
+                ReleaseArray(array);
+                return status;
+            }
+        }
+        status = AssignArrayHandle(array, values);
+        ReleaseArray(array);
+        return status;
+    }
+
+    template <typename Traits>
+    int GetContiguousArray(unsigned int index, void *&values) const {
+        values = nullptr;
+        if (!m_Frame)
+            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
+        const void *data = nullptr;
+        size_t count = 0;
+        size_t elementSize = 0;
+        const int status = BML_CallFrame_BorrowData(m_Frame, index, Traits::FrameType, &data, &count, &elementSize);
+        if (status != BML_OK)
+            return status;
+        return CreateContiguousArrayFromData<Traits>(data, count, elementSize, values);
+    }
+
+    template <typename Traits>
+    int GetResultContiguousArray(void *&values) const {
+        values = nullptr;
+        if (!m_Frame)
+            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
+        const void *data = nullptr;
+        size_t count = 0;
+        size_t elementSize = 0;
+        const int status = BML_CallFrame_BorrowResultData(m_Frame, Traits::FrameType, &data, &count, &elementSize);
+        if (status != BML_OK)
+            return status;
+        return CreateContiguousArrayFromData<Traits>(data, count, elementSize, values);
     }
 
     static int CopyStringArrayFromScript(void *values, std::vector<std::string> &copy) {
@@ -2343,132 +2357,26 @@ private:
         return BML_OK;
     }
 
-    static int CopyBufferFromScript(void *values, std::vector<std::uint8_t> &copy) {
-        CKDWORD count = 0;
-        int status = GetArraySize(values, count);
-        if (status != BML_OK)
-            return status;
-        status = RequireArrayElementType(values, asTYPEID_UINT8);
+    template <typename Getter>
+    static int CreateStringArrayFromFrame(size_t count, Getter get, void *&values) {
+        void *array = nullptr;
+        int status = CreateArray("array<string>", count, array);
         if (status != BML_OK)
             return status;
         const CKAngelScriptAdapter::Api *api = GetArrayApi();
-        if (!api || !api->ArrayGetElementAddress)
+        if (!api || !api->ArraySetElementValue) {
+            ReleaseArray(array);
             return BML_ERROR_INTEROP_UNSUPPORTED;
-        copy.resize(count);
+        }
         for (CKDWORD i = 0; i < count; ++i) {
-            void *address = nullptr;
-            status = MapArrayStatus(api->ArrayGetElementAddress(values, i, &address));
-            if (status != BML_OK)
-                return status;
-            copy[i] = address ? *static_cast<std::uint8_t *>(address) : 0;
-        }
-        return BML_OK;
-    }
-
-    static int CreateBoolArray(const std::vector<int> &source, void *&values) {
-        void *array = nullptr;
-        int status = CreateArray("array<bool>", source.size(), array);
-        if (status != BML_OK)
-            return status;
-        const CKAngelScriptAdapter::Api *api = GetArrayApi();
-        if (!api || !api->ArraySetElementValue) {
-            ReleaseArray(array);
-            return BML_ERROR_INTEROP_UNSUPPORTED;
-        }
-        for (CKDWORD i = 0; i < source.size(); ++i) {
-            const bool value = source[i] != 0;
-            status = MapArrayStatus(api->ArraySetElementValue(array, i, &value));
+            const char *data = nullptr;
+            size_t size = 0;
+            status = get(i, &data, &size);
             if (status != BML_OK) {
                 ReleaseArray(array);
                 return status;
             }
-        }
-        status = AssignArrayHandle(array, values);
-        ReleaseArray(array);
-        return status;
-    }
-
-    static int CreateIntArray(const std::vector<int> &source, void *&values) {
-        void *array = nullptr;
-        int status = CreateArray("array<int>", source.size(), array);
-        if (status != BML_OK)
-            return status;
-        const CKAngelScriptAdapter::Api *api = GetArrayApi();
-        if (!api || !api->ArraySetElementValue) {
-            ReleaseArray(array);
-            return BML_ERROR_INTEROP_UNSUPPORTED;
-        }
-        for (CKDWORD i = 0; i < source.size(); ++i) {
-            const int value = source[i];
-            status = MapArrayStatus(api->ArraySetElementValue(array, i, &value));
-            if (status != BML_OK) {
-                ReleaseArray(array);
-                return status;
-            }
-        }
-        status = AssignArrayHandle(array, values);
-        ReleaseArray(array);
-        return status;
-    }
-
-    static int CreateFloatArray(const std::vector<float> &source, void *&values) {
-        void *array = nullptr;
-        int status = CreateArray("array<float>", source.size(), array);
-        if (status != BML_OK)
-            return status;
-        const CKAngelScriptAdapter::Api *api = GetArrayApi();
-        if (!api || !api->ArraySetElementValue) {
-            ReleaseArray(array);
-            return BML_ERROR_INTEROP_UNSUPPORTED;
-        }
-        for (CKDWORD i = 0; i < source.size(); ++i) {
-            const float value = source[i];
-            status = MapArrayStatus(api->ArraySetElementValue(array, i, &value));
-            if (status != BML_OK) {
-                ReleaseArray(array);
-                return status;
-            }
-        }
-        status = AssignArrayHandle(array, values);
-        ReleaseArray(array);
-        return status;
-    }
-
-    static int CreateStringArray(const std::vector<std::string> &source, void *&values) {
-        void *array = nullptr;
-        int status = CreateArray("array<string>", source.size(), array);
-        if (status != BML_OK)
-            return status;
-        const CKAngelScriptAdapter::Api *api = GetArrayApi();
-        if (!api || !api->ArraySetElementValue) {
-            ReleaseArray(array);
-            return BML_ERROR_INTEROP_UNSUPPORTED;
-        }
-        for (CKDWORD i = 0; i < source.size(); ++i) {
-            const std::string &value = source[i];
-            status = MapArrayStatus(api->ArraySetElementValue(array, i, &value));
-            if (status != BML_OK) {
-                ReleaseArray(array);
-                return status;
-            }
-        }
-        status = AssignArrayHandle(array, values);
-        ReleaseArray(array);
-        return status;
-    }
-
-    static int CreateBufferArray(const std::vector<std::uint8_t> &source, void *&values) {
-        void *array = nullptr;
-        int status = CreateArray("array<uint8>", source.size(), array);
-        if (status != BML_OK)
-            return status;
-        const CKAngelScriptAdapter::Api *api = GetArrayApi();
-        if (!api || !api->ArraySetElementValue) {
-            ReleaseArray(array);
-            return BML_ERROR_INTEROP_UNSUPPORTED;
-        }
-        for (CKDWORD i = 0; i < source.size(); ++i) {
-            const std::uint8_t value = source[i];
+            const std::string value(data ? data : "", size);
             status = MapArrayStatus(api->ArraySetElementValue(array, i, &value));
             if (status != BML_OK) {
                 ReleaseArray(array);

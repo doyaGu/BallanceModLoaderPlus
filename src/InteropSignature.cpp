@@ -148,6 +148,34 @@ static InteropTypeDescriptor MakeDescriptor(InteropValueType type,
     return descriptor;
 }
 
+struct InteropTypeFacts {
+    InteropValueType Type;
+    BML_CALL_VALUE_TYPE CallValueType;
+    const char *ScriptArrayDecl;
+    bool V2;
+};
+
+static const InteropTypeFacts kTypeFacts[] = {
+    {InteropValueType::Bool, BML_CALL_VALUE_BOOL, nullptr, false},
+    {InteropValueType::Int, BML_CALL_VALUE_INT, nullptr, false},
+    {InteropValueType::Float, BML_CALL_VALUE_FLOAT, nullptr, false},
+    {InteropValueType::String, BML_CALL_VALUE_STRING, nullptr, false},
+    {InteropValueType::BoolArray, BML_CALL_VALUE_BOOL_ARRAY, "array<bool>", true},
+    {InteropValueType::IntArray, BML_CALL_VALUE_INT_ARRAY, "array<int>", true},
+    {InteropValueType::FloatArray, BML_CALL_VALUE_FLOAT_ARRAY, "array<float>", true},
+    {InteropValueType::StringArray, BML_CALL_VALUE_STRING_ARRAY, "array<string>", true},
+    {InteropValueType::Buffer, BML_CALL_VALUE_BUFFER, "array<uint8>", true},
+    {InteropValueType::ObjectId, BML_CALL_VALUE_OBJECT_ID, nullptr, true},
+};
+
+static const InteropTypeFacts *FindTypeFacts(InteropValueType type) {
+    for (const InteropTypeFacts &facts : kTypeFacts) {
+        if (facts.Type == type)
+            return &facts;
+    }
+    return nullptr;
+}
+
 static bool MapArrayElement(const std::string &inner,
                             InteropValueType &arrayType,
                             InteropValueType &elementType,
@@ -307,6 +335,26 @@ InteropValueType InteropSignature::TypeFromName(const std::string &type) {
 
 InteropTypeDescriptor InteropSignature::DescriptorFromName(const std::string &type) {
     return DescriptorFromPreparedType(PrepareType(type));
+}
+
+bool InteropSignature::IsArrayLike(InteropValueType type) {
+    const InteropTypeFacts *facts = FindTypeFacts(type);
+    return facts && facts->ScriptArrayDecl;
+}
+
+bool InteropSignature::IsV2Type(InteropValueType type) {
+    const InteropTypeFacts *facts = FindTypeFacts(type);
+    return facts && facts->V2;
+}
+
+const char *InteropSignature::ScriptArrayDecl(InteropValueType type) {
+    const InteropTypeFacts *facts = FindTypeFacts(type);
+    return facts ? facts->ScriptArrayDecl : nullptr;
+}
+
+BML_CALL_VALUE_TYPE InteropSignature::ToCallValueType(InteropValueType type) {
+    const InteropTypeFacts *facts = FindTypeFacts(type);
+    return facts ? facts->CallValueType : BML_CALL_VALUE_EMPTY;
 }
 
 InteropSignatureInfo InteropSignature::Compile(const std::string &signature) {
