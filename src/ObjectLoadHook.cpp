@@ -1,174 +1,87 @@
 #include "BML/Guids/Narratives.h"
 
+#include <cstring>
+#include <string>
+
 #include "ModContext.h"
 
 static CKBEHAVIORFCT g_ObjectLoad = nullptr;
 
 int ObjectLoad(const CKBehaviorContext &behcontext) {
     CKBehavior *beh = behcontext.Behavior;
-    CKContext *ctx = behcontext.Context;
+    if (!g_ObjectLoad)
+        return CKBR_OK;
 
-    // Loading
-    if (beh->IsInputActive(0)) {
-        beh->ActivateInput(0, FALSE);
+    const bool wasLoading = beh->IsInputActive(0) != FALSE;
 
-        // Dynamic ?
-        CKBOOL dynamic = TRUE;
+    CKBOOL dynamic = TRUE;
+    CKBOOL addtoscene = TRUE;
+    CKBOOL reuseMeshes = FALSE;
+    CKBOOL reuseMaterials = FALSE;
+    CK_CLASSID cid = CKCID_3DOBJECT;
+    std::string fname;
+    std::string mastername;
+
+    if (wasLoading) {
         beh->GetLocalParameterValue(0, &dynamic);
-
-        CKBOOL addtoscene = TRUE;
-        beh->GetInputParameterValue(3, &addtoscene);
-
-        CKScene *scene = ctx->GetCurrentScene();
-        if (ctx->GetCurrentLevel()->GetLevelScene() == scene)
-            addtoscene = FALSE;
-
-        auto fname = (const char *) beh->GetInputParameterReadDataPtr(0);
-        auto mastername = (const char *) beh->GetInputParameterReadDataPtr(1);
-        CK_CLASSID cid = CKCID_3DOBJECT;
         beh->GetInputParameterValue(2, &cid);
-
-        auto loadoptions = (CK_LOAD_FLAGS) (CK_LOAD_DEFAULT | CK_LOAD_AUTOMATICMODE);
-        if (dynamic)
-            loadoptions = (CK_LOAD_FLAGS) (loadoptions | CK_LOAD_AS_DYNAMIC_OBJECT);
-
-        CKObjectArray *array = CreateCKObjectArray();
-
-        CKBOOL reuseMeshes = FALSE;
+        beh->GetInputParameterValue(3, &addtoscene);
         beh->GetInputParameterValue(4, &reuseMeshes);
-
-        CKBOOL reuseMaterials = FALSE;
         beh->GetInputParameterValue(5, &reuseMaterials);
 
-        ctx->SetAutomaticLoadMode(CKLOAD_OK, CKLOAD_OK, reuseMeshes ? CKLOAD_USECURRENT : CKLOAD_OK,
-                                  reuseMaterials ? CKLOAD_USECURRENT : CKLOAD_OK);
+        if (const auto *value = static_cast<const char *>(beh->GetInputParameterReadDataPtr(0)))
+            fname = value;
+        if (const auto *value = static_cast<const char *>(beh->GetInputParameterReadDataPtr(1)))
+            mastername = value;
+    }
 
-        // We load the file
-        XString filename(fname);
-        if (ctx->GetPathManager()->ResolveFileName(filename, DATA_PATH_IDX, -1) != CK_OK) {
-            ctx->OutputToConsoleEx("Unable to find %s", fname);
-        }
+    const int result = g_ObjectLoad(behcontext);
 
-        if (ctx->Load(filename.Str(), array, loadoptions) != CK_OK) {
-            beh->ActivateOutput(2);
-            return CKBR_OK;
-        } else {
-            beh->ActivateOutput(0);
-        }
+    if (!wasLoading)
+        return result;
 
-        XObjectArray *oarray = *(XObjectArray **) beh->GetOutputParameterWriteDataPtr(0);
-        oarray->Clear();
+    auto *modContext = BML_GetModContext();
+    if (!modContext)
+        return result;
 
-        CKLevel *level = behcontext.CurrentLevel;
-        CKObject *masterobject = NULL;
+    XObjectArray *oarray = nullptr;
+    if (void *outputArrayPtr = beh->GetOutputParameterWriteDataPtr(0))
+        oarray = *static_cast<XObjectArray **>(outputArrayPtr);
+    if (!oarray)
+        return result;
 
-        CKLevel *loadedLevel = NULL;
+    CKObject *masterobject = beh->GetOutputParameterObject(1);
+    CKBehavior *ownerScript = beh->GetOwnerScript();
+    CKBOOL isMap = ownerScript && std::strcmp(ownerScript->GetName(), "Levelinit_build") == 0;
 
-        // If there is a level in the Loaded Object
-        for (array->Reset(); !array->EndOfList(); array->Next()) {
-            CKObject *o = array->GetData(ctx);
-            if (CKIsChildClassOf(o, CKCID_LEVEL)) {
-                loadedLevel = (CKLevel *) o;
-            }
-
-            // We search here for the master object
-            if (CKIsChildClassOf(o, cid)) {
-                if (mastername && *mastername != 0) {
-                    char *objectName = o->GetName();
-                    if (objectName && !strcmp(objectName, mastername)) {
-                        masterobject = o;
-                    }
-                } else {
-                    if (CKIsChildClassOf(o, CKCID_3DENTITY)) {
-                        if (!((CK3dEntity *) o)->GetParent())
-                            masterobject = o;
-                    } else if (CKIsChildClassOf(o, CKCID_2DENTITY)) {
-                        if (!((CK2dEntity *) o)->GetParent())
-                            masterobject = o;
-                    }
-                }
-            }
-
-            oarray->PushBack(o->GetID());
-        }
-
-        if (loadedLevel) {
-            // If a level is loaded, do a merge
-            level->Merge(loadedLevel, FALSE);
-            oarray->RemoveObject(loadedLevel);
-            ctx->DestroyObject(loadedLevel);
-        } else {
-            // else add everything to the level / scene
-
-            level->BeginAddSequence(TRUE);
-
-            for (array->Reset(); !array->EndOfList(); array->Next()) {
-                CKObject *o = array->GetData(ctx);
-                if (CKIsChildClassOf(o, CKCID_SCENE)) {
-                    level->AddScene((CKScene *) o);
-                } else {
-                    level->AddObject(o);
-                }
-
-                if (addtoscene && CKIsChildClassOf(o, CKCID_SCENEOBJECT) &&
-                    !(CKIsChildClassOf(o, CKCID_LEVEL) || CKIsChildClassOf(o, CKCID_SCENE)))
-                    scene->AddObjectToScene((CKSceneObject *) o);
-            }
-
-            level->BeginAddSequence(FALSE);
-        }
-
-        DeleteCKObjectArray(array);
-        beh->SetOutputParameterObject(1, masterobject);
-
-        CKBehavior *ownerScript = beh->GetOwnerScript();
-        CKBOOL isMap = ownerScript && strcmp(ownerScript->GetName(), "Levelinit_build") == 0;
-
-        BML_DataShare *ds = BML_GetModContext()->GetDataShare(nullptr);
-
-        std::string customMapName;
-        if (isMap && ds) {
-            size_t nameSize = BML_DataShare_SizeOf(ds, "CustomMapName");
-            if (nameSize > 0) {
-                customMapName.resize(nameSize - 1);
-                BML_DataShare_Copy(ds, "CustomMapName", customMapName.data(), nameSize);
-                fname = customMapName.c_str();
-            }
-        }
-
-        BML_GetModContext()->BroadcastCallback(&IMod::OnLoadObject,
-                                               fname, isMap, mastername, cid,
-                                               addtoscene, reuseMeshes,
-                                               reuseMaterials, dynamic, oarray,
-                                               masterobject);
-
-        for (CK_ID *id = oarray->Begin(); id != oarray->End(); id++) {
-            CKObject *obj = BML_GetModContext()->GetCKContext()->GetObject(*id);
-            if (obj && obj->GetClassID() == CKCID_BEHAVIOR) {
-                auto *behavior = (CKBehavior *) obj;
-                if ((behavior->GetType() & CKBEHAVIORTYPE_SCRIPT) != 0) {
-                    BML_GetModContext()->BroadcastCallback(&IMod::OnLoadScript, fname, behavior);
-                }
-            }
-        }
-
-        if (isMap && ds) {
-            BML_DataShare_Remove(ds, "CustomMapName");
+    BML_DataShare *ds = modContext->GetDataShare(nullptr);
+    std::string callbackName = fname;
+    if (isMap && ds) {
+        size_t nameSize = BML_DataShare_SizeOf(ds, "CustomMapName");
+        if (nameSize > 0) {
+            callbackName.resize(nameSize - 1);
+            BML_DataShare_Copy(ds, "CustomMapName", callbackName.data(), nameSize);
         }
     }
 
-    // Unloading
-    if (beh->IsInputActive(1)) {
-        beh->ActivateInput(1, FALSE);
-        beh->ActivateOutput(1);
+    modContext->BroadcastCallback(&IMod::OnLoadObject,
+                                  callbackName.c_str(), isMap, mastername.c_str(), cid,
+                                  addtoscene, reuseMeshes, reuseMaterials, dynamic, oarray,
+                                  masterobject);
 
-        XObjectArray *oarray = *(XObjectArray **) beh->GetOutputParameterWriteDataPtr(0);
-        ctx->DestroyObjects(oarray->Begin(), oarray->Size());
-        oarray->Clear();
+    for (CK_ID *id = oarray->Begin(); id != oarray->End(); id++) {
+        CKObject *obj = modContext->GetCKContext()->GetObject(*id);
+        if (obj && obj->GetClassID() == CKCID_BEHAVIOR) {
+            auto *behavior = static_cast<CKBehavior *>(obj);
+            if ((behavior->GetType() & CKBEHAVIORTYPE_SCRIPT) != 0)
+                modContext->BroadcastCallback(&IMod::OnLoadScript, callbackName.c_str(), behavior);
+        }
     }
 
-    beh->GetOutputParameter(0)->DataChanged();
-    return CKBR_OK;
+    if (isMap && ds)
+        BML_DataShare_Remove(ds, "CustomMapName");
+
+    return result;
 }
 
 bool HookObjectLoad() {
