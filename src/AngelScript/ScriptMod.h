@@ -22,6 +22,7 @@
 #include "ScriptTimerService.h"
 
 class ModContext;
+class asIScriptFunction;
 class asIScriptObject;
 
 namespace BML {
@@ -138,9 +139,20 @@ public:
     void RecordScriptDiagnostic(const ScriptDiagnostic &diagnostic);
     bool IsInLoadCallback() const { return m_InLoadCallback; }
     ScriptTimerRef *AddScriptTimer(asIScriptObject *timer);
+    ScriptTimerRef *AddScriptTimeoutTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name);
+    ScriptTimerRef *AddScriptTimeoutMs(float delayMs, asIScriptFunction *callback, const std::string &name);
+    ScriptTimerRef *AddScriptIntervalTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name);
+    ScriptTimerRef *AddScriptIntervalMs(float delayMs, asIScriptFunction *callback, const std::string &name);
     ScriptCommandRef *RegisterScriptCommand(asIScriptObject *command);
+    ScriptCommandRef *RegisterScriptCommand(const ScriptCommandDefinition &definition,
+                                            asIScriptFunction *execute,
+                                            asIScriptFunction *complete);
     bool UnregisterScriptCommand(const std::string &name);
     ScriptDataShareRequestRef *RequestScriptDataShare(asIScriptObject *request);
+    ScriptDataShareRequestRef *RequestScriptDataShare(const std::string &key,
+                                                      int type,
+                                                      asIScriptFunction *callback,
+                                                      const std::string &name);
     ScriptModContextView *BorrowContextView() { return &m_ContextView; }
     bool RegisterScriptBallType(const std::string &ballFile,
                                 const std::string &ballId,

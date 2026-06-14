@@ -302,10 +302,40 @@ ScriptTimerRef *ScriptModContextView::AddTimer(asIScriptObject *timer) const {
     return nullptr;
 }
 
+ScriptTimerRef *ScriptModContextView::SetTimeoutTicks(unsigned int delayTicks,
+                                                      asIScriptFunction *callback,
+                                                      const std::string &name) const {
+    return m_Owner ? m_Owner->AddScriptTimeoutTicks(delayTicks, callback, name) : nullptr;
+}
+
+ScriptTimerRef *ScriptModContextView::SetTimeout(float delayMs,
+                                                 asIScriptFunction *callback,
+                                                 const std::string &name) const {
+    return m_Owner ? m_Owner->AddScriptTimeoutMs(delayMs, callback, name) : nullptr;
+}
+
+ScriptTimerRef *ScriptModContextView::SetIntervalTicks(unsigned int delayTicks,
+                                                       asIScriptFunction *callback,
+                                                       const std::string &name) const {
+    return m_Owner ? m_Owner->AddScriptIntervalTicks(delayTicks, callback, name) : nullptr;
+}
+
+ScriptTimerRef *ScriptModContextView::SetInterval(float delayMs,
+                                                  asIScriptFunction *callback,
+                                                  const std::string &name) const {
+    return m_Owner ? m_Owner->AddScriptIntervalMs(delayMs, callback, name) : nullptr;
+}
+
 ScriptCommandRef *ScriptModContextView::RegisterCommand(asIScriptObject *command) const {
     if (m_Owner)
         return m_Owner->RegisterScriptCommand(command);
     return nullptr;
+}
+
+ScriptCommandRef *ScriptModContextView::RegisterCommand(const ScriptCommandDefinition &definition,
+                                                        asIScriptFunction *execute,
+                                                        asIScriptFunction *complete) const {
+    return m_Owner ? m_Owner->RegisterScriptCommand(definition, execute, complete) : nullptr;
 }
 
 bool ScriptModContextView::UnregisterCommand(const std::string &name) const {
@@ -316,6 +346,13 @@ ScriptDataShareRequestRef *ScriptModContextView::RequestDataShare(asIScriptObjec
     if (m_Owner)
         return m_Owner->RequestScriptDataShare(request);
     return nullptr;
+}
+
+ScriptDataShareRequestRef *ScriptModContextView::RequestDataShare(const std::string &key,
+                                                                  int type,
+                                                                  asIScriptFunction *callback,
+                                                                  const std::string &name) const {
+    return m_Owner ? m_Owner->RequestScriptDataShare(key, type, callback, name) : nullptr;
 }
 
 bool ScriptModContextView::RegisterBallType(const std::string &ballFile,

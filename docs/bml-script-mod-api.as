@@ -483,6 +483,20 @@ interface Command {
   void Execute(const BML::ModContext &in, const BML::CommandEvent &in);
 }
 
+funcdef void CommandCallback(const BML::ModContext &in ctx, const BML::CommandEvent &in event);
+funcdef void CommandCompletionCallback(const BML::ModContext &in ctx, const BML::CommandEvent &in event, BML::CommandCompletion &inout completions);
+
+class CommandDefinition {
+  string Name;
+  string Alias;
+  string Description;
+  string Usage;
+  string Category;
+  bool Cheat;
+  bool Hidden;
+  bool Enabled;
+}
+
 class CommandCompletion {
   void Add(const string &in value) const;
   int get_Count() const;
@@ -502,6 +516,9 @@ class CommandRef {
 interface Timer {
   bool Tick(const BML::ModContext &in ctx, const BML::TimerEvent &in event);
 }
+
+funcdef void TimerCallback(const BML::ModContext &in ctx, const BML::TimerEvent &in event);
+funcdef bool TimerLoopCallback(const BML::ModContext &in ctx, const BML::TimerEvent &in event);
 
 class TimerRef {
   bool get_IsValid() const;
@@ -534,6 +551,8 @@ interface DataShareRequest {
   int get_Type() const;
   void Receive(const BML::ModContext &in ctx, const BML::DataShareEvent &in event);
 }
+
+funcdef void DataShareCallback(const BML::ModContext &in ctx, const BML::DataShareEvent &in event);
 
 class DataShareEvent {
   bool get_Exists() const;
@@ -751,9 +770,15 @@ class ModContext {
   string ReadModTextFileUtf8(const string &in relativePath, const string &in defaultValue = "") const;
 
   TimerRef@ AddTimer(Timer@+ timer) const;
+  TimerRef@ SetTimeoutTicks(uint delayTicks, TimerCallback@+ callback, const string &in name = "") const;
+  TimerRef@ SetTimeout(float delayMs, TimerCallback@+ callback, const string &in name = "") const;
+  TimerRef@ SetIntervalTicks(uint delayTicks, TimerLoopCallback@+ callback, const string &in name = "") const;
+  TimerRef@ SetInterval(float delayMs, TimerLoopCallback@+ callback, const string &in name = "") const;
   CommandRef@ RegisterCommand(Command@+ command) const;
+  CommandRef@ RegisterCommand(const CommandDefinition &in definition, CommandCallback@+ execute, CommandCompletionCallback@+ complete = null) const;
   bool UnregisterCommand(const string &in name) const;
   DataShareRequestRef@ RequestDataShare(DataShareRequest@+ request) const;
+  DataShareRequestRef@ RequestDataShare(const string &in key, int type, DataShareCallback@+ callback, const string &in name = "") const;
   bool RegisterBallType(const BallTypeDefinition &in definition) const;
   bool RegisterFloorType(const FloorTypeDefinition &in definition) const;
   bool RegisterModule(const ModuleBallDefinition &in definition) const;

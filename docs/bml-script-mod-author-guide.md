@@ -452,11 +452,53 @@ parameter names and equivalent string forms do not affect resolution.
 
 ## Timer
 
-Timers are owned by the script mod. BML cancels them during mod unload. Timer
-registration stores a script object and caches its `Tick` method at registration.
-This mirrors the native `Timer` model: provide either `DelayTicks` or `DelayMs`,
-then optional `Name`, `Loop`, `RepeatCount`, `Priority`, and `StartPaused`
-getters.
+Timers are owned by the script mod. BML cancels them during mod unload. For
+simple delayed or repeated work, prefer callback timers:
+
+```angelscript
+void SayReady(const BML::ModContext &in ctx, const BML::TimerEvent &in event) {
+  ctx.BorrowLogger().Info("ready");
+}
+
+bool Heartbeat(const BML::ModContext &in ctx, const BML::TimerEvent &in event) {
+  ctx.BorrowLogger().Info("heartbeat " + event.CompletedIterations);
+  return event.CompletedIterations < 5;
+}
+
+void OnLoad(const BML::ModContext &in ctx) {
+  BML::TimerRef@ once = ctx.SetTimeout(1000.0f, SayReady, "ready");
+  BML::TimerRef@ loop = ctx.SetInterval(1000.0f, Heartbeat, "heartbeat");
+}
+```
+
+`SetTimeout`/`SetInterval` use millisecond delays. `SetTimeoutTicks` and
+`SetIntervalTicks` use BML tick delays. A timeout callback uses
+`BML::TimerCallback` and returns `void`; an interval callback uses
+`BML::TimerLoopCallback` and returns `bool`, where `false` stops the timer.
+BML retains the function/delegate until completion, cancellation, or mod unload.
+To bind a method with object state, create an AngelScript delegate:
+
+```angelscript
+class Pulse {
+  int count = 0;
+  bool Tick(const BML::ModContext &in ctx, const BML::TimerEvent &in event) {
+    count++;
+    return count < 5;
+  }
+}
+
+void OnLoad(const BML::ModContext &in ctx) {
+  Pulse pulse;
+  BML::TimerLoopCallback@ cb = BML::TimerLoopCallback(pulse.Tick);
+  ctx.SetIntervalTicks(1, cb, "pulse");
+}
+```
+
+For timers that need object state, start-paused, repeat-count, or priority
+configuration, implement `BML::Timer`. Registration stores a script object and
+caches its `Tick` method at registration. This mirrors the native `Timer` model:
+provide either `DelayTicks` or `DelayMs`, then optional `Name`, `Loop`,
+`RepeatCount`, `Priority`, and `StartPaused` getters.
 
 ```angelscript
 class HeartbeatTimer : BML::Timer {
@@ -478,11 +520,11 @@ void OnLoad(const BML::ModContext &in ctx) {
 `TimerRef` supports `IsValid`, `Pause`, `Resume`, `Cancel`, `State`,
 `CompletedIterations`, `RemainingIterations`, and `Progress`.
 
-The API stub shows `Timer@+`, `Command@+`, and `DataShareRequest@+`.
-That is an AngelScript/native ownership contract: BML retains the object when
-registration succeeds and releases it on unregister, completion, cancellation,
-or mod unload. Script authors still pass normal script objects, including
-temporaries such as `ctx.AddTimer(HeartbeatTimer())`.
+The API stub shows `Timer@+`, command/DataShare callback `@+`, `Command@+`,
+and `DataShareRequest@+`. That is an AngelScript/native ownership contract:
+BML retains the object or delegate when registration succeeds and releases it on
+unregister, completion, cancellation, or mod unload. Script authors still pass
+normal script objects, including temporaries such as `ctx.AddTimer(HeartbeatTimer())`.
 
 ## Command And Completion
 
@@ -491,8 +533,10 @@ register an instance. BML owns the command object until unregister or mod
 unload. The interface only requires `Name` and `Execute`; optional metadata
 getters and `Complete` are detected at registration.
 
-Do not expose raw callbacks or userData. Self-unregister is delayed until the
-callback returns.
+Lightweight commands can instead use `CommandDefinition` plus function or method
+delegates. `CommandDefinition.Enabled` defaults to `true`; the other fields
+default to an empty string or `false`. Duplicate names or aliases fail and return
+`null`. Self-unregister is delayed until the callback returns.
 
 ```angelscript
 class HelloCommand : BML::Command {
@@ -519,6 +563,27 @@ void OnLoad(const BML::ModContext &in ctx) {
 }
 ```
 
+```angelscript
+void HelloExecute(const BML::ModContext &in ctx,
+                  const BML::CommandEvent &in event) {
+  ctx.BorrowLogger().Info("hello " + event.ArgsText);
+}
+
+void HelloComplete(const BML::ModContext &in ctx,
+                   const BML::CommandEvent &in event,
+                   BML::CommandCompletion &inout completions) {
+  completions.Add("world");
+}
+
+void OnLoad(const BML::ModContext &in ctx) {
+  BML::CommandDefinition def;
+  def.Name = "hello";
+  def.Alias = "h";
+  def.Description = "Print hello";
+  BML::CommandRef@ command = ctx.RegisterCommand(def, HelloExecute, HelloComplete);
+}
+```
+
 ## DataShare
 
 Synchronous typed read:
@@ -532,6 +597,8 @@ Typed request objects become inert after completion, cancellation, or mod
 unload. Implement `BML::DataShareRequest`, then pass the object to
 `RequestDataShare`. If the value is already available, the callback may run
 before `RequestDataShare` returns and the returned ref may already be invalid.
+The delegate overload has the same lifecycle rules and uses the current default
+DataShare namespace when `name` is empty.
 
 ```angelscript
 class GreetingRequest : BML::DataShareRequest {
@@ -548,6 +615,18 @@ void OnLoad(const BML::ModContext &in ctx) {
   BML::DataShareRequestRef@ request = ctx.RequestDataShare(GreetingRequest());
   if (request is null)
     ctx.BorrowLogger().Warn("failed to request remote.greeting");
+}
+```
+
+```angelscript
+void ReceiveGreeting(const BML::ModContext &in ctx,
+                     const BML::DataShareEvent &in event) {
+  ctx.BorrowLogger().Info(event.Exists ? event.StringValue : "missing " + event.Key);
+}
+
+void OnLoad(const BML::ModContext &in ctx) {
+  BML::DataShareRequestRef@ request =
+      ctx.RequestDataShare("remote.greeting", BML::DATASHARE_STRING, ReceiveGreeting);
 }
 ```
 

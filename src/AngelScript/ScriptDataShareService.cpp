@@ -8,6 +8,7 @@
 
 #include "ModContext.h"
 #include "ScriptAngelScriptHandle.h"
+#include "ScriptFunctionSupport.h"
 #include "ScriptMod.h"
 #include "ScriptModContextView.h"
 #include "ScriptModRuntime.h"
@@ -22,6 +23,7 @@ struct ScriptDataShareRequestEntry {
     unsigned int Generation = 0;
     asIScriptObject *Object = nullptr;
     asIScriptFunction *ReceiveMethod = nullptr;
+    bool OwnsFunctionRef = false;
     ScriptDataShareRequestType Type = ScriptDataShareRequestType::String;
     std::string Key;
     std::string Name;
@@ -220,12 +222,37 @@ static bool NormalizeType(int value, ScriptDataShareRequestType &type) {
     }
 }
 
+static bool IsDataShareCallbackSignature(asIScriptFunction *callback) {
+    const ScriptFunctionParam params[] = {
+        {"BML::ModContext", asTM_INREF | asTM_CONST},
+        {"BML::DataShareEvent", asTM_INREF | asTM_CONST},
+    };
+    return ScriptFunctionHasSignature(callback, asTYPEID_VOID, params, 2);
+}
+
 static void ReleaseScriptDataShareRequestObject(ScriptDataShareRequestEntry &entry) {
     if (entry.Object) {
         entry.Object->Release();
         entry.Object = nullptr;
     }
+    if (entry.OwnsFunctionRef && entry.ReceiveMethod) {
+        entry.ReceiveMethod->Release();
+        entry.OwnsFunctionRef = false;
+    }
     entry.ReceiveMethod = nullptr;
+}
+
+struct DataShareFunctionCallArgs {
+    ScriptModContextView *ContextView = nullptr;
+    ScriptDataShareEventView *Event = nullptr;
+};
+
+static int WriteDataShareFunctionArgs(asIScriptContext *context, void *userdata) {
+    auto *args = static_cast<DataShareFunctionCallArgs *>(userdata);
+    int code = context->SetArgObject(0, args ? args->ContextView : nullptr);
+    if (code >= 0)
+        code = context->SetArgObject(1, args ? args->Event : nullptr);
+    return code;
 }
 
 static void RetireRequestEntry(const std::shared_ptr<ScriptDataShareServiceState> &state, int id) {
@@ -248,43 +275,24 @@ static bool ExecuteDataShareReceive(asIScriptObject *object,
                                     ScriptModContextView *contextView,
                                     ScriptDataShareEventView *event,
                                     ScriptDiagnostic &diagnostic) {
-    if (!object || !method || !contextView || !event) {
+    if (!method || !contextView || !event) {
         diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Callback, "DataShare request callback has invalid runtime state.");
         return false;
     }
 
-    asIScriptContext *context = object->GetEngine()->CreateContext();
-    if (!context) {
-        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Callback, "Unable to create AngelScript context for DataShare request callback.");
-        return false;
-    }
-
-    ScriptCurrentModScope callScope(owner);
-    int code = context->Prepare(method);
-    if (code >= 0)
-        code = context->SetObject(object);
-    if (code >= 0)
-        code = context->SetArgObject(0, contextView);
-    if (code >= 0)
-        code = context->SetArgObject(1, event);
-
-    if (code < 0) {
-        diagnostic = MakeAngelScriptDiagnostic(ScriptDiagnosticPhase::Callback, code, context, "DataShare request callback failed");
-        context->Release();
-        return false;
-    }
-
-    code = context->Execute();
-    if (code == asEXECUTION_SUSPENDED)
-        context->Abort();
-    if (code != asEXECUTION_FINISHED) {
-        diagnostic = MakeAngelScriptDiagnostic(ScriptDiagnosticPhase::Callback, code, context, "DataShare request callback failed");
-        context->Release();
-        return false;
-    }
-
-    context->Release();
-    return true;
+    DataShareFunctionCallArgs args = {contextView, event};
+    ScriptFunctionCall call;
+    call.Function = method;
+    call.Object = object;
+    call.Owner = owner;
+    call.Phase = ScriptDiagnosticPhase::Callback;
+    call.FailurePrefix = "DataShare request callback failed";
+    call.InvalidStateMessage = "DataShare request callback has invalid runtime state.";
+    call.ContextFailureMessage = "Unable to create AngelScript context for DataShare request callback.";
+    call.SuspendedMessage = "script DataShare request callback suspended";
+    call.WriteArgs = WriteDataShareFunctionArgs;
+    call.UserData = &args;
+    return ExecuteScriptFunction(call, diagnostic);
 }
 
 static bool CallDataShareRequest(const std::shared_ptr<ScriptDataShareServiceState> &state,
@@ -299,7 +307,7 @@ static bool CallDataShareRequest(const std::shared_ptr<ScriptDataShareServiceSta
         return true;
 
     ScriptDataShareRequestEntry &entry = it->second;
-    if (!entry.Object || !entry.ReceiveMethod)
+    if (!entry.ReceiveMethod)
         return true;
 
     ++entry.ActiveCalls;
@@ -493,6 +501,57 @@ ScriptDataShareRequestRef *ScriptDataShareService::Request(asIScriptObject *requ
     entry.Generation = m_State->NextGeneration++;
     ScriptObjectHandle retained = ScriptObjectHandle::Retain(request);
     entry.Object = retained.Detach();
+    const unsigned int generation = entry.Generation;
+    m_State->Requests.emplace(requestId, std::move(entry));
+
+    auto *cookie = new ScriptDataShareRequestCookie;
+    cookie->State = m_State;
+    cookie->Id = requestId;
+
+    auto registered = m_State->Requests.find(requestId);
+    BML_DataShare_Request(share, registered != m_State->Requests.end() ? registered->second.Key.c_str() : "",
+                          OnDataShareRequest, cookie, CleanupDataShareRequest);
+    BML_DataShare_Release(share);
+    return new ScriptDataShareRequestRef(m_State, requestId, generation);
+}
+
+ScriptDataShareRequestRef *ScriptDataShareService::Request(const std::string &key,
+                                                           int typeValue,
+                                                           asIScriptFunction *callback,
+                                                           const std::string &name) {
+    if (!callback || !m_State->Active || !m_State->Context || !m_State->Owner)
+        return nullptr;
+
+    if (!IsDataShareCallbackSignature(callback)) {
+        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "RequestDataShare requires BML::DataShareCallback."));
+        return nullptr;
+    }
+
+    ScriptDataShareRequestEntry entry;
+    entry.Key = key;
+    entry.Name = name;
+    if (!NormalizeType(typeValue, entry.Type)) {
+        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "DataShare request type is invalid."));
+        return nullptr;
+    }
+    if (!IsValidDataShareKey(entry.Key)) {
+        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "DataShare request key is invalid."));
+        return nullptr;
+    }
+
+    BML_DataShare *share = BML_GetDataShare(entry.Name.empty() ? nullptr : entry.Name.c_str());
+    if (!share)
+        return nullptr;
+
+    callback->AddRef();
+    entry.ReceiveMethod = callback;
+    entry.OwnsFunctionRef = true;
+
+    const int requestId = m_State->NextRequestId++;
+    entry.Generation = m_State->NextGeneration++;
     const unsigned int generation = entry.Generation;
     m_State->Requests.emplace(requestId, std::move(entry));
 

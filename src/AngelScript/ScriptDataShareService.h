@@ -9,6 +9,7 @@
 #include "ScriptModRuntime.h"
 
 class ModContext;
+class asIScriptFunction;
 class asIScriptObject;
 
 namespace BML {
@@ -76,6 +77,10 @@ public:
 
     void Bind(ModContext *context, ScriptMod *owner, ScriptModRuntime *runtime, ScriptModContextView *contextView);
     ScriptDataShareRequestRef *Request(asIScriptObject *request);
+    ScriptDataShareRequestRef *Request(const std::string &key,
+                                       int type,
+                                       asIScriptFunction *callback,
+                                       const std::string &name);
     void Release(ScriptDiagnostic *diagnostic = nullptr);
 
 private:

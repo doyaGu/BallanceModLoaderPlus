@@ -9,6 +9,7 @@
 
 #include "CommandContext.h"
 #include "ScriptAngelScriptHandle.h"
+#include "ScriptFunctionSupport.h"
 #include "ModContext.h"
 #include "ScriptCallbackEvents.h"
 #include "ScriptMod.h"
@@ -36,6 +37,7 @@ struct ScriptCommandEntry {
     asIScriptObject *Object = nullptr;
     asIScriptFunction *ExecuteMethod = nullptr;
     asIScriptFunction *CompleteMethod = nullptr;
+    bool OwnsFunctionRefs = false;
     std::unique_ptr<ICommand> Command;
     int ActiveCalls = 0;
     bool PendingUnregister = false;
@@ -64,6 +66,23 @@ static std::string NormalizeCommandName(const std::string &name) {
     std::transform(normalized.begin(), normalized.end(), normalized.begin(),
                    [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
     return normalized;
+}
+
+static bool IsCommandExecuteSignature(asIScriptFunction *callback) {
+    const ScriptFunctionParam params[] = {
+        {"BML::ModContext", asTM_INREF | asTM_CONST},
+        {"BML::CommandEvent", asTM_INREF | asTM_CONST},
+    };
+    return ScriptFunctionHasSignature(callback, asTYPEID_VOID, params, 2);
+}
+
+static bool IsCommandCompleteSignature(asIScriptFunction *callback) {
+    const ScriptFunctionParam params[] = {
+        {"BML::ModContext", asTM_INREF | asTM_CONST},
+        {"BML::CommandEvent", asTM_INREF | asTM_CONST},
+        {"BML::CommandCompletion", asTM_INOUTREF},
+    };
+    return ScriptFunctionHasSignature(callback, asTYPEID_VOID, params, 3);
 }
 
 static ScriptDiagnostic MakeAngelScriptDiagnostic(ScriptDiagnosticPhase phase,
@@ -103,49 +122,46 @@ static ScriptDiagnostic MakeAngelScriptDiagnostic(ScriptDiagnosticPhase phase,
     return diagnostic;
 }
 
+struct CommandFunctionCallArgs {
+    const CommandCallArgs *Args = nullptr;
+    bool Completion = false;
+};
+
+static int WriteCommandFunctionArgs(asIScriptContext *context, void *userdata) {
+    auto *callArgs = static_cast<CommandFunctionCallArgs *>(userdata);
+    const CommandCallArgs *args = callArgs ? callArgs->Args : nullptr;
+    int code = context->SetArgObject(0, args ? args->ContextView : nullptr);
+    if (code >= 0)
+        code = context->SetArgObject(1, args ? args->Event : nullptr);
+    if (code >= 0 && callArgs && callArgs->Completion)
+        code = context->SetArgObject(2, args ? args->Completion : nullptr);
+    return code;
+}
+
 static bool ExecutePreparedMethod(asIScriptObject *object,
                                   asIScriptFunction *method,
                                   const CommandCallArgs &args,
                                   bool completion,
                                   const char *failurePrefix,
                                   ScriptDiagnostic &diagnostic) {
-    if (!object || !method || !args.ContextView || !args.Event)
-        return false;
-
-    asIScriptContext *context = object->GetEngine()->CreateContext();
-    if (!context) {
-        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Callback, "Unable to create AngelScript context for command callback.");
+    if (!method || !args.ContextView || !args.Event) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Callback, "Command callback has invalid runtime state.");
         return false;
     }
 
-    ScriptCurrentModScope callScope(args.Owner);
-    int code = context->Prepare(method);
-    if (code >= 0)
-        code = context->SetObject(object);
-    if (code >= 0)
-        code = context->SetArgObject(0, args.ContextView);
-    if (code >= 0)
-        code = context->SetArgObject(1, args.Event);
-    if (completion && code >= 0)
-        code = context->SetArgObject(2, args.Completion);
-
-    if (code < 0) {
-        diagnostic = MakeAngelScriptDiagnostic(ScriptDiagnosticPhase::Callback, code, context, failurePrefix);
-        context->Release();
-        return false;
-    }
-
-    code = context->Execute();
-    if (code == asEXECUTION_SUSPENDED)
-        context->Abort();
-    if (code != asEXECUTION_FINISHED) {
-        diagnostic = MakeAngelScriptDiagnostic(ScriptDiagnosticPhase::Callback, code, context, failurePrefix);
-        context->Release();
-        return false;
-    }
-
-    context->Release();
-    return true;
+    CommandFunctionCallArgs functionArgs = {&args, completion};
+    ScriptFunctionCall call;
+    call.Function = method;
+    call.Object = object;
+    call.Owner = args.Owner;
+    call.Phase = ScriptDiagnosticPhase::Callback;
+    call.FailurePrefix = failurePrefix;
+    call.InvalidStateMessage = "Command callback has invalid runtime state.";
+    call.ContextFailureMessage = "Unable to create AngelScript context for command callback.";
+    call.SuspendedMessage = "script command callback suspended";
+    call.WriteArgs = WriteCommandFunctionArgs;
+    call.UserData = &functionArgs;
+    return ExecuteScriptFunction(call, diagnostic);
 }
 
 static bool ReadStringProperty(asIScriptObject *object,
@@ -239,6 +255,15 @@ static void ReleaseScriptCommandObject(ScriptCommandEntry &entry) {
         entry.Object->Release();
         entry.Object = nullptr;
     }
+    if (entry.OwnsFunctionRefs) {
+        if (entry.ExecuteMethod)
+            entry.ExecuteMethod->Release();
+        if (entry.CompleteMethod)
+            entry.CompleteMethod->Release();
+        entry.ExecuteMethod = nullptr;
+        entry.CompleteMethod = nullptr;
+        entry.OwnsFunctionRefs = false;
+    }
 }
 
 static void FinishCommandCall(const std::shared_ptr<ScriptCommandServiceState> &state, const std::string &key) {
@@ -283,7 +308,7 @@ public:
 
         const std::string key = m_Key;
         auto it = state->Commands.find(key);
-        if (it == state->Commands.end() || !it->second.Object || !it->second.ExecuteMethod || !it->second.Enabled)
+        if (it == state->Commands.end() || !it->second.ExecuteMethod || !it->second.Enabled)
             return;
         ++it->second.ActiveCalls;
 
@@ -308,7 +333,7 @@ public:
 
         const std::string key = m_Key;
         auto it = state->Commands.find(key);
-        if (it == state->Commands.end() || !it->second.Object || !it->second.CompleteMethod || !it->second.Enabled)
+        if (it == state->Commands.end() || !it->second.CompleteMethod || !it->second.Enabled)
             return {};
         ++it->second.ActiveCalls;
 
@@ -500,6 +525,77 @@ ScriptCommandRef *ScriptCommandService::Register(asIScriptObject *command) {
     entry.Generation = m_State->NextGeneration++;
     ScriptObjectHandle retained = ScriptObjectHandle::Retain(command);
     entry.Object = retained.Detach();
+    entry.Command.reset(new ScriptCommand(m_State, key, entry.Name, entry.Alias, entry.Description, entry.Cheat));
+
+    ICommand *nativeCommand = entry.Command.get();
+    if (!m_State->Context->GetCommandContext().RegisterCommand(nativeCommand)) {
+        ReleaseScriptCommandObject(entry);
+        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "Command registration failed: " + entry.Name));
+        return nullptr;
+    }
+
+    const unsigned int generation = entry.Generation;
+    m_State->Commands.emplace(key, std::move(entry));
+    return new ScriptCommandRef(m_State, key, generation);
+}
+
+ScriptCommandRef *ScriptCommandService::Register(const ScriptCommandDefinition &definition,
+                                                 asIScriptFunction *execute,
+                                                 asIScriptFunction *complete) {
+    if (!execute || !m_State->Active || !m_State->Context || !m_State->Owner)
+        return nullptr;
+
+    if (!IsCommandExecuteSignature(execute)) {
+        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "RegisterCommand requires BML::CommandCallback."));
+        return nullptr;
+    }
+    if (complete && !IsCommandCompleteSignature(complete)) {
+        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "RegisterCommand completion requires BML::CommandCompletionCallback."));
+        return nullptr;
+    }
+
+    ScriptCommandEntry entry;
+    entry.Name = definition.Name;
+    entry.Alias = definition.Alias;
+    entry.Description = definition.Description;
+    entry.Usage = definition.Usage;
+    entry.Category = definition.Category;
+    entry.Cheat = definition.Cheat;
+    entry.Hidden = definition.Hidden;
+    entry.Enabled = definition.Enabled;
+
+    const std::string key = NormalizeCommandName(entry.Name);
+    if (key.empty()) {
+        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "Command name cannot be empty."));
+        return nullptr;
+    }
+    if (m_State->Commands.find(key) != m_State->Commands.end()) {
+        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "Command name is already registered by this script mod: " + entry.Name));
+        return nullptr;
+    }
+    if (m_State->Context->FindCommand(entry.Name.c_str())) {
+        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "Command name is already registered: " + entry.Name));
+        return nullptr;
+    }
+    if (!entry.Alias.empty() && m_State->Context->FindCommand(entry.Alias.c_str())) {
+        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "Command alias is already registered: " + entry.Alias));
+        return nullptr;
+    }
+
+    execute->AddRef();
+    if (complete)
+        complete->AddRef();
+    entry.ExecuteMethod = execute;
+    entry.CompleteMethod = complete;
+    entry.OwnsFunctionRefs = true;
+    entry.Generation = m_State->NextGeneration++;
     entry.Command.reset(new ScriptCommand(m_State, key, entry.Name, entry.Alias, entry.Description, entry.Cheat));
 
     ICommand *nativeCommand = entry.Command.get();

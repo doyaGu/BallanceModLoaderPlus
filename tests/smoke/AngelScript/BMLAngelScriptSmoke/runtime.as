@@ -3,6 +3,7 @@
 [bml.require id="bml.native.interop.smoke" version="1.0.0"]
 [bml.optional id="bml.optional.missing.smoke" version="9.9.9"]
 [external.tool name="metadata ignored by BML"]
+
 class BMLBindingsSmokeMod {
   bool firstFrame = true;
   bool firstRender = true;
@@ -20,10 +21,14 @@ class BMLBindingsSmokeMod {
   bool firstSelfUnregisterCommand = true;
   bool timerOnceSeen = false;
   bool timerLoopSeen = false;
+  bool timerDelegateSeen = false;
   bool timerCancelledSeen = false;
   bool dataShareImmediateSeen = false;
   bool dataSharePendingSeen = false;
   bool dataShareBoolSeen = false;
+  bool dataShareDelegateObjectSeen = false;
+  bool commandDelegateMethodSeen = false;
+  bool commandDelegateMethodCompleteSeen = false;
   bool uiChoice = false;
   int uiCounter = 3;
   float uiFloat = 1.5f;
@@ -43,15 +48,27 @@ class BMLBindingsSmokeMod {
   int selfUnregisterCommandCalls = 0;
   BML::CommandRef@ smokeCommand;
   BML::CommandRef@ selfCommand;
+  BML::CommandRef@ delegateCommand;
+  BML::CommandRef@ delegateMethodCommand;
   BML::TimerRef@ onceTimer;
   BML::TimerRef@ loopTimer;
   BML::TimerRef@ cancelledTimer;
+  BML::TimerRef@ callbackOnceTimer;
+  BML::TimerRef@ callbackLoopTimer;
+  BML::TimerRef@ callbackDelegateTimer;
   BML::DataShareRequestRef@ dataShareImmediateRequest;
   BML::DataShareRequestRef@ dataSharePendingRequest;
   BML::DataShareRequestRef@ dataShareBoolRequest;
+  BML::DataShareRequestRef@ dataShareDelegateImmediateRequest;
+  BML::DataShareRequestRef@ dataShareDelegatePendingRequest;
+  BML::DataShareRequestRef@ dataShareDelegateBoolRequest;
+  BML::DataShareRequestRef@ dataShareDelegateObjectRequest;
   BML::Command@ heldCommandObject;
+  SmokeCommandDelegate@ heldCommandDelegate;
   BML::Timer@ heldTimerObject;
+  SmokeTimerDelegate@ heldTimerDelegate;
   BML::DataShareRequest@ heldDataShareObject;
+  SmokeDataShareDelegate@ heldDataShareDelegate;
 
   string BoolText(bool value) {
     return value ? "true" : "false";
@@ -399,6 +416,10 @@ class BMLBindingsSmokeMod {
     dataShareImmediateSeen = false;
     dataSharePendingSeen = false;
     dataShareBoolSeen = false;
+    dataShareDelegateObjectSeen = false;
+    gDataShareDelegateImmediateSeen = false;
+    gDataShareDelegatePendingSeen = false;
+    gDataShareDelegateBoolSeen = false;
     BML::DataShareSetString("AngelScriptSmokeRequestImmediate", "ready");
     @dataShareImmediateRequest = ctx.RequestDataShare(SmokeDataShareRequest(this, "AngelScriptSmokeRequestImmediate", BML::DATASHARE_STRING));
     @heldDataShareObject = SmokeDataShareRequest(this, "AngelScriptSmokeRequestPending", BML::DATASHARE_INT);
@@ -411,10 +432,35 @@ class BMLBindingsSmokeMod {
                 " pending=" + BoolText(dataSharePendingRequest !is null && dataSharePendingSeen) +
                 " bool=" + BoolText(dataShareBoolRequest !is null && dataShareBoolSeen) +
                 " invalid=" + BoolText(invalidDataShareRequest is null));
+    BML::DataShareSetString("AngelScriptSmokeDelegateImmediate", "delegate-ready");
+    @dataShareDelegateImmediateRequest = ctx.RequestDataShare("AngelScriptSmokeDelegateImmediate", BML::DATASHARE_STRING, SmokeDataShareDelegateCallback);
+    @dataShareDelegatePendingRequest = ctx.RequestDataShare("AngelScriptSmokeDelegatePending", BML::DATASHARE_INT, SmokeDataShareDelegateCallback);
+    @dataShareDelegateBoolRequest = ctx.RequestDataShare("AngelScriptSmokeDelegateBool", BML::DATASHARE_BOOL, SmokeDataShareDelegateCallback);
+    @heldDataShareDelegate = SmokeDataShareDelegate(this);
+    BML::DataShareCallback@ dataShareDelegateCallback = BML::DataShareCallback(heldDataShareDelegate.Receive);
+    @dataShareDelegateObjectRequest = ctx.RequestDataShare("AngelScriptSmokeDelegateObject", BML::DATASHARE_STRING, dataShareDelegateCallback);
+    BML::DataShareRequestRef@ invalidDataShareDelegateKey = ctx.RequestDataShare("", BML::DATASHARE_STRING, SmokeDataShareDelegateCallback);
+    BML::DataShareRequestRef@ invalidDataShareDelegateType = ctx.RequestDataShare("AngelScriptSmokeDelegateInvalidType", 999, SmokeDataShareDelegateCallback);
+    BML::DataShareRequestRef@ invalidDataShareDelegateNull = ctx.RequestDataShare("AngelScriptSmokeDelegateInvalidNull", BML::DATASHARE_STRING, null);
+    BML::DataShareSetInt("AngelScriptSmokeDelegatePending", 88);
+    BML::DataShareSetBool("AngelScriptSmokeDelegateBool", true);
+    BML::DataShareSetString("AngelScriptSmokeDelegateObject", "object-ready");
+    LogInfo(ctx, "BML datashare delegate request: immediate=" + BoolText(dataShareDelegateImmediateRequest !is null && gDataShareDelegateImmediateSeen) +
+                " pending=" + BoolText(dataShareDelegatePendingRequest !is null && gDataShareDelegatePendingSeen) +
+                " bool=" + BoolText(dataShareDelegateBoolRequest !is null && gDataShareDelegateBoolSeen) +
+                " object=" + BoolText(dataShareDelegateObjectRequest !is null && dataShareDelegateObjectSeen) +
+                " invalid=" + BoolText(invalidDataShareDelegateKey is null &&
+                                        invalidDataShareDelegateType is null &&
+                                        invalidDataShareDelegateNull is null));
 
     @onceTimer = ctx.AddTimer(SmokeOnceTimer(this));
     @heldTimerObject = SmokeLoopTimer(this);
     @loopTimer = ctx.AddTimer(heldTimerObject);
+    @callbackOnceTimer = ctx.SetTimeoutTicks(1, SmokeTimeoutCallback, "bml-smoke-callback-once");
+    @callbackLoopTimer = ctx.SetIntervalTicks(1, SmokeIntervalCallback, "bml-smoke-callback-loop");
+    @heldTimerDelegate = SmokeTimerDelegate(this);
+    BML::TimerLoopCallback@ delegateCallback = BML::TimerLoopCallback(heldTimerDelegate.Tick);
+    @callbackDelegateTimer = ctx.SetIntervalTicks(1, delegateCallback, "bml-smoke-callback-delegate");
     BML::TimerRef@ invalidTimer = ctx.AddTimer(SmokeInvalidTimer());
     @cancelledTimer = ctx.AddTimer(SmokeCancelledTimer(this));
     if (loopTimer !is null) {
@@ -426,6 +472,9 @@ class BMLBindingsSmokeMod {
     }
     LogInfo(ctx, "BML script timer registration: once=" + BoolText(onceTimer !is null && onceTimer.IsValid) +
                 " loop=" + BoolText(loopTimer !is null && loopTimer.IsValid) +
+                " callbackOnce=" + BoolText(callbackOnceTimer !is null && callbackOnceTimer.IsValid) +
+                " callbackLoop=" + BoolText(callbackLoopTimer !is null && callbackLoopTimer.IsValid) +
+                " callbackDelegate=" + BoolText(callbackDelegateTimer !is null && callbackDelegateTimer.IsValid) +
                 " invalid=" + BoolText(invalidTimer is null) +
                 " cancelledState=" + (cancelledTimer is null ? -1 : cancelledTimer.State));
     @heldCommandObject = SmokeCommand(this);
@@ -448,6 +497,38 @@ class BMLBindingsSmokeMod {
                 BoolText(selfCommand !is null && selfCommand.IsValid) +
                 " invalid=" +
                 BoolText(invalidCommand is null));
+    gCommandDelegateExecuteSeen = false;
+    gCommandDelegateCompletionSeen = false;
+    commandDelegateMethodSeen = false;
+    commandDelegateMethodCompleteSeen = false;
+    BML::CommandDefinition delegateDefinition;
+    delegateDefinition.Name = "assdelegate";
+    delegateDefinition.Alias = "asd";
+    delegateDefinition.Description = "AngelScript delegate smoke command";
+    delegateDefinition.Usage = "assdelegate [value]";
+    delegateDefinition.Category = "Smoke";
+    @delegateCommand = ctx.RegisterCommand(delegateDefinition, SmokeCommandDelegateExecute, SmokeCommandDelegateComplete);
+    @heldCommandDelegate = SmokeCommandDelegate(this);
+    BML::CommandCallback@ commandDelegateCallback = BML::CommandCallback(heldCommandDelegate.Execute);
+    BML::CommandCompletionCallback@ completionDelegateCallback = BML::CommandCompletionCallback(heldCommandDelegate.Complete);
+    BML::CommandDefinition methodDelegateDefinition;
+    methodDelegateDefinition.Name = "assmethod";
+    methodDelegateDefinition.Alias = "asm";
+    methodDelegateDefinition.Description = "AngelScript method delegate smoke command";
+    methodDelegateDefinition.Usage = "assmethod [value]";
+    methodDelegateDefinition.Category = "Smoke";
+    @delegateMethodCommand = ctx.RegisterCommand(methodDelegateDefinition, commandDelegateCallback, completionDelegateCallback);
+    BML::CommandDefinition invalidDelegateDefinition;
+    BML::CommandRef@ invalidDelegateCommand = ctx.RegisterCommand(invalidDelegateDefinition, SmokeCommandDelegateExecute);
+    BML::CommandDefinition nullDelegateDefinition;
+    nullDelegateDefinition.Name = "assnull";
+    BML::CommandRef@ nullDelegateCommand = ctx.RegisterCommand(nullDelegateDefinition, null);
+    LogInfo(ctx, "BML script command delegate registration: global=" +
+                BoolText(delegateCommand !is null && delegateCommand.IsValid) +
+                " method=" +
+                BoolText(delegateMethodCommand !is null && delegateMethodCommand.IsValid) +
+                " invalid=" +
+                BoolText(invalidDelegateCommand is null && nullDelegateCommand is null));
     LogInfo(ctx, "BML script object ownership: transientTimer=" + BoolText(onceTimer !is null) +
                 " heldTimer=" + BoolText(loopTimer !is null && heldTimerObject !is null) +
                 " transientCommand=" + BoolText(selfCommand !is null) +
@@ -924,6 +1005,8 @@ class BMLBindingsSmokeMod {
     ctx.ExecuteCommand("echo bml-command-smoke");
     ctx.ExecuteCommand("echo bml-command-global-smoke");
     ctx.ExecuteCommand("assmoke alpha beta");
+    ctx.ExecuteCommand("assdelegate gamma");
+    ctx.ExecuteCommand("assmethod delta");
     ctx.ExecuteCommand("assself first");
     ctx.ExecuteCommand("assself second");
     BML::ModuleDefinition lateModule;
@@ -1146,6 +1229,24 @@ class BMLBindingsSmokeMod {
                 " count=" + completions.Count);
   }
 
+  void RecordCommandDelegateMethodExecute(const BML::ModContext &in ctx, const BML::CommandEvent &in event, int hits) {
+    commandDelegateMethodSeen = event.IsExecute &&
+                                event.CommandName == "assmethod" &&
+                                event.ArgsText == "delta";
+    LogInfo(ctx, "BML script command delegate method execute command=" + event.CommandName +
+                " args=" + event.ArgsText +
+                " hits=" + hits);
+  }
+
+  void RecordCommandDelegateMethodComplete(const BML::ModContext &in ctx, const BML::CommandEvent &in event, BML::CommandCompletion &inout completions, int hits) {
+    commandDelegateMethodCompleteSeen = event.IsComplete && event.CommandName == "assmethod";
+    completions.Add("method-alpha");
+    completions.Add("method-beta");
+    LogInfo(ctx, "BML script command delegate method completion command=" + event.CommandName +
+                " hits=" + hits +
+                " count=" + completions.Count);
+  }
+
   void RecordSelfUnregisterCommandExecute(const BML::ModContext &in ctx, const BML::CommandEvent &in event) {
     if (!firstSelfUnregisterCommand) {
       return;
@@ -1174,6 +1275,25 @@ class BMLBindingsSmokeMod {
                 " remaining=" + event.RemainingIterations +
                 " completed=" + event.CompletedIterations);
     return false;
+  }
+
+  bool RecordSmokeTimerDelegate(const BML::ModContext &in ctx, const BML::TimerEvent &in event, int hits) {
+    timerDelegateSeen = true;
+    LogInfo(ctx, "BML script timer callback delegate id=" + event.Id +
+                " name=" + event.Name +
+                " hits=" + hits +
+                " completed=" + event.CompletedIterations);
+    return false;
+  }
+
+  void RecordDataShareDelegateObject(const BML::ModContext &in ctx, const BML::DataShareEvent &in event, int hits) {
+    dataShareDelegateObjectSeen = event.Exists &&
+                                  event.Key == "AngelScriptSmokeDelegateObject" &&
+                                  event.StringValue == "object-ready";
+    LogInfo(ctx, "BML datashare delegate method callback key=" + event.Key +
+                " exists=" + BoolText(event.Exists) +
+                " value=" + event.StringValue +
+                " hits=" + hits);
   }
 
   void RecordCancelledTimer(const BML::ModContext &in ctx, const BML::TimerEvent &in event) {
@@ -1227,24 +1347,54 @@ class BMLBindingsSmokeMod {
     BML::DataShareRemove("AngelScriptSmokeRequestImmediate");
     BML::DataShareRemove("AngelScriptSmokeRequestPending");
     BML::DataShareRemove("AngelScriptSmokeRequestBool");
+    BML::DataShareRemove("AngelScriptSmokeDelegateImmediate");
+    BML::DataShareRemove("AngelScriptSmokeDelegatePending");
+    BML::DataShareRemove("AngelScriptSmokeDelegateBool");
+    BML::DataShareRemove("AngelScriptSmokeDelegateObject");
     if (smokeCommand !is null && smokeCommand.IsValid) {
       smokeCommand.Unregister();
     }
     if (selfCommand !is null && selfCommand.IsValid) {
       selfCommand.Unregister();
     }
+    if (delegateCommand !is null && delegateCommand.IsValid) {
+      delegateCommand.Unregister();
+    }
+    if (delegateMethodCommand !is null && delegateMethodCommand.IsValid) {
+      delegateMethodCommand.Unregister();
+    }
     LogInfo(ctx, "BML script timer summary: once=" + BoolText(timerOnceSeen) +
                 " loop=" + BoolText(timerLoopSeen) +
+                " callbackOnce=" + BoolText(gTimerCallbackOnceSeen) +
+                " callbackLoop=" + BoolText(gTimerCallbackLoopSeen) +
+                " callbackDelegate=" + BoolText(timerDelegateSeen) +
                 " cancelled=" + BoolText(timerCancelledSeen) +
                 " refsInvalid=" + BoolText((onceTimer is null || !onceTimer.IsValid) &&
                                            (loopTimer is null || !loopTimer.IsValid) &&
-                                           (cancelledTimer is null || !cancelledTimer.IsValid)) +
+                                           (cancelledTimer is null || !cancelledTimer.IsValid) &&
+                                           (callbackOnceTimer is null || !callbackOnceTimer.IsValid) &&
+                                           (callbackLoopTimer is null || !callbackLoopTimer.IsValid) &&
+                                           (callbackDelegateTimer is null || !callbackDelegateTimer.IsValid)) +
                 " commandRefsInvalid=" + BoolText((smokeCommand is null || !smokeCommand.IsValid) &&
-                                                  (selfCommand is null || !selfCommand.IsValid)) +
+                                                  (selfCommand is null || !selfCommand.IsValid) &&
+                                                  (delegateCommand is null || !delegateCommand.IsValid) &&
+                                                  (delegateMethodCommand is null || !delegateMethodCommand.IsValid)) +
                 " dataShareRefsInvalid=" + BoolText((dataShareImmediateRequest is null || !dataShareImmediateRequest.IsValid) &&
                                                     (dataSharePendingRequest is null || !dataSharePendingRequest.IsValid) &&
-                                                    (dataShareBoolRequest is null || !dataShareBoolRequest.IsValid)) +
+                                                    (dataShareBoolRequest is null || !dataShareBoolRequest.IsValid) &&
+                                                    (dataShareDelegateImmediateRequest is null || !dataShareDelegateImmediateRequest.IsValid) &&
+                                                    (dataShareDelegatePendingRequest is null || !dataShareDelegatePendingRequest.IsValid) &&
+                                                    (dataShareDelegateBoolRequest is null || !dataShareDelegateBoolRequest.IsValid) &&
+                                                    (dataShareDelegateObjectRequest is null || !dataShareDelegateObjectRequest.IsValid)) +
                 " command=" + BoolText(!firstScriptCommand) +
+                " commandDelegate=" + BoolText(gCommandDelegateExecuteSeen) +
+                " commandDelegateCompletion=" + BoolText(gCommandDelegateCompletionSeen) +
+                " commandDelegateMethod=" + BoolText(commandDelegateMethodSeen) +
+                " commandDelegateMethodCompletion=" + BoolText(commandDelegateMethodCompleteSeen) +
+                " dataShareDelegate=" + BoolText(gDataShareDelegateImmediateSeen &&
+                                                 gDataShareDelegatePendingSeen &&
+                                                 gDataShareDelegateBoolSeen &&
+                                                 dataShareDelegateObjectSeen) +
                 " selfCommandCalls=" + selfUnregisterCommandCalls);
   }
 }
@@ -1256,10 +1406,86 @@ void LogInfo(const BML::ModContext &in ctx, const string &in message) {
   }
 }
 
+bool gTimerCallbackOnceSeen = false;
+bool gTimerCallbackLoopSeen = false;
+bool gCommandDelegateExecuteSeen = false;
+bool gCommandDelegateCompletionSeen = false;
+bool gDataShareDelegateImmediateSeen = false;
+bool gDataShareDelegatePendingSeen = false;
+bool gDataShareDelegateBoolSeen = false;
+
 void LogWarn(const BML::ModContext &in ctx, const string &in message) {
   BML::Logger@ logger = ctx.BorrowLogger();
   if (logger !is null) {
     logger.Warn(message);
+  }
+}
+
+void SmokeTimeoutCallback(const BML::ModContext &in ctx, const BML::TimerEvent &in event) {
+  gTimerCallbackOnceSeen = true;
+  LogInfo(ctx, "BML script timer callback once id=" + event.Id +
+              " name=" + event.Name +
+              " valid=" + (event.IsValid ? "true" : "false"));
+}
+
+bool SmokeIntervalCallback(const BML::ModContext &in ctx, const BML::TimerEvent &in event) {
+  gTimerCallbackLoopSeen = true;
+  LogInfo(ctx, "BML script timer callback loop id=" + event.Id +
+              " name=" + event.Name +
+              " completed=" + event.CompletedIterations);
+  return false;
+}
+
+void SmokeCommandDelegateExecute(const BML::ModContext &in ctx, const BML::CommandEvent &in event) {
+  gCommandDelegateExecuteSeen = event.IsExecute &&
+                                event.CommandName == "assdelegate" &&
+                                event.ArgsText == "gamma";
+  LogInfo(ctx, "BML script command delegate execute command=" + event.CommandName +
+              " args=" + event.ArgsText +
+              " count=" + event.ArgCount);
+}
+
+void SmokeCommandDelegateComplete(const BML::ModContext &in ctx, const BML::CommandEvent &in event, BML::CommandCompletion &inout completions) {
+  gCommandDelegateCompletionSeen = event.IsComplete && event.CommandName == "assdelegate";
+  completions.Add("delegate-alpha");
+  completions.Add("delegate-beta");
+  LogInfo(ctx, "BML script command delegate completion command=" + event.CommandName +
+              " args=" + event.ArgsText +
+              " count=" + completions.Count);
+}
+
+void SmokeDataShareDelegateCallback(const BML::ModContext &in ctx, const BML::DataShareEvent &in event) {
+  if (event.Key == "AngelScriptSmokeDelegateImmediate") {
+    gDataShareDelegateImmediateSeen = event.Exists && event.StringValue == "delegate-ready";
+    LogInfo(ctx, "BML datashare delegate immediate callback key=" + event.Key +
+                " exists=" + (event.Exists ? "true" : "false") +
+                " value=" + event.StringValue);
+  } else if (event.Key == "AngelScriptSmokeDelegatePending") {
+    gDataShareDelegatePendingSeen = event.Exists && event.IntValue == 88;
+    LogInfo(ctx, "BML datashare delegate pending callback key=" + event.Key +
+                " exists=" + (event.Exists ? "true" : "false") +
+                " value=" + event.IntValue);
+  } else if (event.Key == "AngelScriptSmokeDelegateBool") {
+    gDataShareDelegateBoolSeen = event.Exists && event.BoolValue;
+    LogInfo(ctx, "BML datashare delegate bool callback key=" + event.Key +
+                " exists=" + (event.Exists ? "true" : "false") +
+                " value=" + (event.BoolValue ? "true" : "false"));
+  } else {
+    LogWarn(ctx, "BML datashare delegate unexpected callback key=" + event.Key);
+  }
+}
+
+class SmokeTimerDelegate {
+  BMLBindingsSmokeMod@ owner;
+  int hits = 0;
+
+  SmokeTimerDelegate(BMLBindingsSmokeMod@ mod) {
+    @owner = mod;
+  }
+
+  bool Tick(const BML::ModContext &in ctx, const BML::TimerEvent &in event) {
+    hits++;
+    return owner.RecordSmokeTimerDelegate(ctx, event, hits);
   }
 }
 
@@ -1363,6 +1589,40 @@ class SmokeInvalidDataShareRequest : BML::DataShareRequest {
 
   void Receive(const BML::ModContext &in ctx, const BML::DataShareEvent &in event) {
     LogWarn(ctx, "BML invalid datashare request unexpectedly fired");
+  }
+}
+
+class SmokeDataShareDelegate {
+  BMLBindingsSmokeMod@ owner;
+  int hits = 0;
+
+  SmokeDataShareDelegate(BMLBindingsSmokeMod@ mod) {
+    @owner = mod;
+  }
+
+  void Receive(const BML::ModContext &in ctx, const BML::DataShareEvent &in event) {
+    hits++;
+    owner.RecordDataShareDelegateObject(ctx, event, hits);
+  }
+}
+
+class SmokeCommandDelegate {
+  BMLBindingsSmokeMod@ owner;
+  int executeHits = 0;
+  int completeHits = 0;
+
+  SmokeCommandDelegate(BMLBindingsSmokeMod@ mod) {
+    @owner = mod;
+  }
+
+  void Execute(const BML::ModContext &in ctx, const BML::CommandEvent &in event) {
+    executeHits++;
+    owner.RecordCommandDelegateMethodExecute(ctx, event, executeHits);
+  }
+
+  void Complete(const BML::ModContext &in ctx, const BML::CommandEvent &in event, BML::CommandCompletion &inout completions) {
+    completeHits++;
+    owner.RecordCommandDelegateMethodComplete(ctx, event, completions, completeHits);
   }
 }
 

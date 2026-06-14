@@ -9,6 +9,7 @@
 #include "BML/ILogger.h"
 #include "ModContext.h"
 #include "ScriptAngelScriptHandle.h"
+#include "ScriptFunctionSupport.h"
 #include "ScriptMod.h"
 #include "ScriptModContextView.h"
 #include "ScriptModRuntime.h"
@@ -18,15 +19,24 @@ namespace BML {
 static constexpr const char *kTimerInterfaceDecl = "BML::Timer";
 static constexpr const char *kTimerTickDecl =
     "bool Tick(const BML::ModContext &in, const BML::TimerEvent &in)";
-
 struct ScriptTimerEntry {
     asIScriptObject *Object = nullptr;
-    asIScriptFunction *TickMethod = nullptr;
+    asIScriptFunction *Callback = nullptr;
+    bool OwnsCallbackRef = false;
     bool Loop = false;
+    bool ReturnsBool = true;
     std::string Name;
     int ActiveCalls = 0;
     bool PendingRetire = false;
 };
+
+static bool IsTimerCallbackSignature(asIScriptFunction *callback, bool returnsBool) {
+    const ScriptFunctionParam params[] = {
+        {"BML::ModContext", asTM_INREF | asTM_CONST},
+        {"BML::TimerEvent", asTM_INREF | asTM_CONST},
+    };
+    return ScriptFunctionHasSignature(callback, returnsBool ? asTYPEID_BOOL : asTYPEID_VOID, params, 2);
+}
 
 struct ScriptTimerRegistration {
     std::string Name;
@@ -346,6 +356,11 @@ static void ReleaseScriptTimerObject(ScriptTimerEntry &entry) {
         entry.Object->Release();
         entry.Object = nullptr;
     }
+    if (entry.OwnsCallbackRef && entry.Callback) {
+        entry.Callback->Release();
+        entry.Callback = nullptr;
+        entry.OwnsCallbackRef = false;
+    }
 }
 
 static void RetireTimerEntry(const std::shared_ptr<ScriptTimerServiceState> &state,
@@ -383,6 +398,27 @@ static void RecordTimerDiagnostic(const std::shared_ptr<ScriptTimerServiceState>
         state->Owner->RecordScriptDiagnostic(diagnostic);
 }
 
+struct TimerFunctionCallArgs {
+    ScriptModContextView *ContextView = nullptr;
+    ScriptTimerEventView *Event = nullptr;
+    bool ReturnsBool = false;
+    bool Result = false;
+};
+
+static int WriteTimerFunctionArgs(asIScriptContext *context, void *userdata) {
+    auto *args = static_cast<TimerFunctionCallArgs *>(userdata);
+    int code = context->SetArgObject(0, args ? args->ContextView : nullptr);
+    if (code >= 0)
+        code = context->SetArgObject(1, args ? args->Event : nullptr);
+    return code;
+}
+
+static void ReadTimerFunctionResult(asIScriptContext *context, void *userdata) {
+    auto *args = static_cast<TimerFunctionCallArgs *>(userdata);
+    if (args)
+        args->Result = args->ReturnsBool ? context->GetReturnByte() != 0 : false;
+}
+
 static bool ExecuteTimerCallback(const std::weak_ptr<ScriptTimerServiceState> &weakState,
                                  Timer::TimerId id,
                                  Timer &timer) {
@@ -391,21 +427,43 @@ static bool ExecuteTimerCallback(const std::weak_ptr<ScriptTimerServiceState> &w
         return false;
 
     auto it = state->Timers.find(id);
-    if (it == state->Timers.end() || !it->second.Object || !it->second.TickMethod || !state->ContextView)
+    if (it == state->Timers.end() || !it->second.Callback || !state->ContextView)
         return false;
 
     ScriptTimerEventView event(&timer);
     ScriptDiagnostic diagnostic;
     bool continueTimer = false;
     ++it->second.ActiveCalls;
-    if (!ExecuteObjectMethod(it->second.Object,
-                             it->second.TickMethod,
-                             state->Owner,
-                             state->ContextView,
-                             &event,
-                             "Timer callback failed",
-                             continueTimer,
-                             diagnostic)) {
+    const bool callSucceeded = it->second.Object
+                                   ? ExecuteObjectMethod(it->second.Object,
+                                                         it->second.Callback,
+                                                         state->Owner,
+                                                         state->ContextView,
+                                                         &event,
+                                                         "Timer callback failed",
+                                                         continueTimer,
+                                                         diagnostic)
+                                   : [&]() {
+                                         TimerFunctionCallArgs args = {state->ContextView,
+                                                                       &event,
+                                                                       it->second.ReturnsBool,
+                                                                       false};
+                                         ScriptFunctionCall call;
+                                         call.Function = it->second.Callback;
+                                         call.Owner = state->Owner;
+                                         call.Phase = ScriptDiagnosticPhase::Callback;
+                                         call.FailurePrefix = "Timer callback failed";
+                                         call.InvalidStateMessage = "Timer callback has invalid runtime state.";
+                                         call.ContextFailureMessage = "Unable to create AngelScript context for timer callback.";
+                                         call.SuspendedMessage = "script timer callback suspended";
+                                         call.WriteArgs = WriteTimerFunctionArgs;
+                                         call.ReadResult = ReadTimerFunctionResult;
+                                         call.UserData = &args;
+                                         const bool ok = ExecuteScriptFunction(call, diagnostic);
+                                         continueTimer = args.Result;
+                                         return ok;
+                                     }();
+    if (!callSucceeded) {
         RecordTimerDiagnostic(state, diagnostic, true);
         auto afterCall = state->Timers.find(id);
         if (afterCall != state->Timers.end() && afterCall->second.ActiveCalls > 0)
@@ -576,6 +634,102 @@ ScriptTimerRef *ScriptTimerService::Add(asIScriptObject *timer) {
                     time->GetAbsoluteTime() / 1000.0f);
 }
 
+ScriptTimerRef *ScriptTimerService::AddTimeoutTicks(unsigned int delayTicks,
+                                                    asIScriptFunction *callback,
+                                                    const std::string &name) {
+    if (!callback || delayTicks == 0 || !m_State->Active || !m_State->Context || !m_State->Owner)
+        return nullptr;
+    if (!IsTimerCallbackSignature(callback, false)) {
+        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "SetTimeoutTicks requires BML::TimerCallback."));
+        return nullptr;
+    }
+    CKTimeManager *time = m_State->Context->GetTimeManager();
+    if (!time)
+        return nullptr;
+
+    Timer::Builder builder;
+    builder.WithDelayTicks(delayTicks).WithType(Timer::ONCE);
+    return AddCallbackTimer(builder,
+                            callback,
+                            false,
+                            name,
+                            time->GetMainTickCount(),
+                            time->GetAbsoluteTime() / 1000.0f);
+}
+
+ScriptTimerRef *ScriptTimerService::AddTimeoutMs(float delayMs,
+                                                 asIScriptFunction *callback,
+                                                 const std::string &name) {
+    if (!callback || delayMs <= 0.0f || !m_State->Active || !m_State->Context || !m_State->Owner)
+        return nullptr;
+    if (!IsTimerCallbackSignature(callback, false)) {
+        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "SetTimeout requires BML::TimerCallback."));
+        return nullptr;
+    }
+    CKTimeManager *time = m_State->Context->GetTimeManager();
+    if (!time)
+        return nullptr;
+
+    Timer::Builder builder;
+    builder.WithDelaySeconds(delayMs / 1000.0f).WithType(Timer::ONCE);
+    return AddCallbackTimer(builder,
+                            callback,
+                            false,
+                            name,
+                            time->GetMainTickCount(),
+                            time->GetAbsoluteTime() / 1000.0f);
+}
+
+ScriptTimerRef *ScriptTimerService::AddIntervalTicks(unsigned int delayTicks,
+                                                     asIScriptFunction *callback,
+                                                     const std::string &name) {
+    if (!callback || delayTicks == 0 || !m_State->Active || !m_State->Context || !m_State->Owner)
+        return nullptr;
+    if (!IsTimerCallbackSignature(callback, true)) {
+        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "SetIntervalTicks requires BML::TimerLoopCallback."));
+        return nullptr;
+    }
+    CKTimeManager *time = m_State->Context->GetTimeManager();
+    if (!time)
+        return nullptr;
+
+    Timer::Builder builder;
+    builder.WithDelayTicks(delayTicks).WithType(Timer::LOOP);
+    return AddCallbackTimer(builder,
+                            callback,
+                            true,
+                            name,
+                            time->GetMainTickCount(),
+                            time->GetAbsoluteTime() / 1000.0f);
+}
+
+ScriptTimerRef *ScriptTimerService::AddIntervalMs(float delayMs,
+                                                  asIScriptFunction *callback,
+                                                  const std::string &name) {
+    if (!callback || delayMs <= 0.0f || !m_State->Active || !m_State->Context || !m_State->Owner)
+        return nullptr;
+    if (!IsTimerCallbackSignature(callback, true)) {
+        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "SetInterval requires BML::TimerLoopCallback."));
+        return nullptr;
+    }
+    CKTimeManager *time = m_State->Context->GetTimeManager();
+    if (!time)
+        return nullptr;
+
+    Timer::Builder builder;
+    builder.WithDelaySeconds(delayMs / 1000.0f).WithType(Timer::LOOP);
+    return AddCallbackTimer(builder,
+                            callback,
+                            true,
+                            name,
+                            time->GetMainTickCount(),
+                            time->GetAbsoluteTime() / 1000.0f);
+}
+
 ScriptTimerRef *ScriptTimerService::AddTimer(Timer::Builder &builder,
                                              asIScriptObject *timer,
                                              const ScriptTimerRegistration &registration,
@@ -604,9 +758,47 @@ ScriptTimerRef *ScriptTimerService::AddTimer(Timer::Builder &builder,
     ScriptObjectHandle retained = ScriptObjectHandle::Retain(timer);
     ScriptTimerEntry entry;
     entry.Object = retained.Detach();
-    entry.TickMethod = registration.TickMethod;
+    entry.Callback = registration.TickMethod;
     entry.Loop = registration.Loop;
+    entry.ReturnsBool = true;
     entry.Name = registration.Name;
+    m_State->Timers.emplace(nativeTimer->GetId(), std::move(entry));
+    return new ScriptTimerRef(m_State, nativeTimer->GetId());
+}
+
+ScriptTimerRef *ScriptTimerService::AddCallbackTimer(Timer::Builder &builder,
+                                                     asIScriptFunction *callback,
+                                                     bool loop,
+                                                     const std::string &name,
+                                                     size_t tick,
+                                                     float time) {
+    if (!m_State->Active || !m_State->Owner || !callback)
+        return nullptr;
+
+    std::weak_ptr<ScriptTimerServiceState> weakState = m_State;
+    builder.WithName(name)
+        .AddToGroup(std::string("script:") + (m_State->Owner ? m_State->Owner->GetID() : "unknown"));
+    if (loop) {
+        builder.WithLoopCallback([weakState](Timer &nativeTimer) {
+            return ExecuteTimerCallback(weakState, nativeTimer.GetId(), nativeTimer);
+        });
+    } else {
+        builder.WithOnceCallback([weakState](Timer &nativeTimer) {
+            ExecuteTimerCallback(weakState, nativeTimer.GetId(), nativeTimer);
+        });
+    }
+
+    std::shared_ptr<Timer> nativeTimer = builder.Build(tick, time);
+    if (!nativeTimer)
+        return nullptr;
+
+    callback->AddRef();
+    ScriptTimerEntry entry;
+    entry.Callback = callback;
+    entry.OwnsCallbackRef = true;
+    entry.Loop = loop;
+    entry.ReturnsBool = loop;
+    entry.Name = name;
     m_State->Timers.emplace(nativeTimer->GetId(), std::move(entry));
     return new ScriptTimerRef(m_State, nativeTimer->GetId());
 }

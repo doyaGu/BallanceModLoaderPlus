@@ -8,12 +8,14 @@
 
 class ModContext;
 class IMod;
+class asIScriptFunction;
 class asIScriptObject;
 
 namespace BML {
 
 class ScriptMod;
 class ScriptCommandRef;
+struct ScriptCommandDefinition;
 class ScriptDataShareRequestRef;
 class ScriptTimerRef;
 
@@ -91,9 +93,20 @@ public:
     void ResetSRTimer() const;
     float GetSRTime() const;
     ScriptTimerRef *AddTimer(asIScriptObject *timer) const;
+    ScriptTimerRef *SetTimeoutTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name) const;
+    ScriptTimerRef *SetTimeout(float delayMs, asIScriptFunction *callback, const std::string &name) const;
+    ScriptTimerRef *SetIntervalTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name) const;
+    ScriptTimerRef *SetInterval(float delayMs, asIScriptFunction *callback, const std::string &name) const;
     ScriptCommandRef *RegisterCommand(asIScriptObject *command) const;
+    ScriptCommandRef *RegisterCommand(const ScriptCommandDefinition &definition,
+                                      asIScriptFunction *execute,
+                                      asIScriptFunction *complete) const;
     bool UnregisterCommand(const std::string &name) const;
     ScriptDataShareRequestRef *RequestDataShare(asIScriptObject *request) const;
+    ScriptDataShareRequestRef *RequestDataShare(const std::string &key,
+                                                int type,
+                                                asIScriptFunction *callback,
+                                                const std::string &name) const;
     bool RegisterBallType(const std::string &ballFile,
                           const std::string &ballId,
                           const std::string &ballName,

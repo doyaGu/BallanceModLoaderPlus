@@ -182,6 +182,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptDiagnostic.cpp
             AngelScript/ScriptExportDispatcher.cpp
             AngelScript/ScriptExportSignature.cpp
+            AngelScript/ScriptFunctionSupport.cpp
             AngelScript/ScriptMod.cpp
             AngelScript/ScriptModContextView.cpp
             AngelScript/ScriptModDefinition.cpp

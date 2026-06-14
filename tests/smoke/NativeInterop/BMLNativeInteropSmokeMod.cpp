@@ -544,6 +544,44 @@ private:
                           static_cast<int>(completions.size()),
                           hasAlpha ? "true" : "false",
                           hasBeta ? "true" : "false");
+
+        ICommand *delegateCommand = m_BML ? m_BML->FindCommand("assdelegate") : nullptr;
+        args.clear();
+        args.emplace_back("assdelegate");
+        args.emplace_back("delegate");
+        const std::vector<std::string> delegateCompletions = delegateCommand ? delegateCommand->GetTabCompletion(m_BML, args) : std::vector<std::string>();
+        bool hasDelegateAlpha = false;
+        bool hasDelegateBeta = false;
+        for (const std::string &completion : delegateCompletions) {
+            if (completion == "delegate-alpha")
+                hasDelegateAlpha = true;
+            if (completion == "delegate-beta")
+                hasDelegateBeta = true;
+        }
+        GetLogger()->Info("BML native command delegate completion smoke command=%s count=%d alpha=%s beta=%s",
+                          delegateCommand ? "true" : "false",
+                          static_cast<int>(delegateCompletions.size()),
+                          hasDelegateAlpha ? "true" : "false",
+                          hasDelegateBeta ? "true" : "false");
+
+        ICommand *methodCommand = m_BML ? m_BML->FindCommand("assmethod") : nullptr;
+        args.clear();
+        args.emplace_back("assmethod");
+        args.emplace_back("method");
+        const std::vector<std::string> methodCompletions = methodCommand ? methodCommand->GetTabCompletion(m_BML, args) : std::vector<std::string>();
+        bool hasMethodAlpha = false;
+        bool hasMethodBeta = false;
+        for (const std::string &completion : methodCompletions) {
+            if (completion == "method-alpha")
+                hasMethodAlpha = true;
+            if (completion == "method-beta")
+                hasMethodBeta = true;
+        }
+        GetLogger()->Info("BML native command method delegate completion smoke command=%s count=%d alpha=%s beta=%s",
+                          methodCommand ? "true" : "false",
+                          static_cast<int>(methodCompletions.size()),
+                          hasMethodAlpha ? "true" : "false",
+                          hasMethodBeta ? "true" : "false");
     }
 
     void CallScriptEchoSmoke() {

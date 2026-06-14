@@ -12,6 +12,7 @@
 
 class ModContext;
 class asIScriptObject;
+class asIScriptFunction;
 
 namespace BML {
 
@@ -80,6 +81,10 @@ public:
 
     void Bind(ModContext *context, ScriptMod *owner, ScriptModRuntime *runtime, ScriptModContextView *contextView);
     ScriptTimerRef *Add(asIScriptObject *timer);
+    ScriptTimerRef *AddTimeoutTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name = std::string());
+    ScriptTimerRef *AddTimeoutMs(float delayMs, asIScriptFunction *callback, const std::string &name = std::string());
+    ScriptTimerRef *AddIntervalTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name = std::string());
+    ScriptTimerRef *AddIntervalMs(float delayMs, asIScriptFunction *callback, const std::string &name = std::string());
     void Release(ScriptDiagnostic *diagnostic = nullptr);
 
 private:
@@ -88,6 +93,12 @@ private:
                              const ScriptTimerRegistration &registration,
                              size_t tick,
                              float time);
+    ScriptTimerRef *AddCallbackTimer(BML::Timer::Builder &builder,
+                                     asIScriptFunction *callback,
+                                     bool loop,
+                                     const std::string &name,
+                                     size_t tick,
+                                     float time);
 
     std::shared_ptr<ScriptTimerServiceState> m_State;
 };

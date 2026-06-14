@@ -757,6 +757,7 @@ using BMLAS_CheatEvent = BML::ScriptCheatEventView;
 using BMLAS_LoadObjectEvent = BML::ScriptLoadObjectEventView;
 using BMLAS_LoadScriptEvent = BML::ScriptLoadScriptEventView;
 using BMLAS_CommandEvent = BML::ScriptCommandEventView;
+using BMLAS_CommandDefinition = BML::ScriptCommandDefinition;
 using BMLAS_ConfigEvent = BML::ScriptConfigEventView;
 using BMLAS_DataShareEvent = BML::ScriptDataShareEventView;
 using BMLAS_PhysicalizeEvent = BML::ScriptPhysicalizeEventView;
@@ -788,6 +789,7 @@ BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_CheatEvent, CheatEvent)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_LoadObjectEvent, LoadObjectEvent)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_LoadScriptEvent, LoadScriptEvent)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_CommandEvent, CommandEvent)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_CommandDefinition, CommandDefinition)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_ConfigEvent, ConfigEvent)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_DataShareEvent, DataShareEvent)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_PhysicalizeEvent, PhysicalizeEvent)
@@ -1397,6 +1399,14 @@ static BML::ScriptCommandRef *BMLAS_RegisterCommand(asIScriptObject *command) {
     return nullptr;
 }
 
+static BML::ScriptCommandRef *BMLAS_ContextRegisterCommandDelegate(
+    const BML::ScriptModContextView *context,
+    const BMLAS_CommandDefinition &definition,
+    asIScriptFunction *execute,
+    asIScriptFunction *complete) {
+    return context ? context->RegisterCommand(definition, execute, complete) : nullptr;
+}
+
 static bool BMLAS_UnregisterCommand(const std::string &name) {
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     return owner && owner->UnregisterScriptCommand(name);
@@ -1407,6 +1417,15 @@ static BML::ScriptDataShareRequestRef *BMLAS_RequestDataShare(asIScriptObject *r
     if (owner)
         return owner->RequestScriptDataShare(request);
     return nullptr;
+}
+
+static BML::ScriptDataShareRequestRef *BMLAS_ContextRequestDataShareDelegate(
+    const BML::ScriptModContextView *context,
+    const std::string &key,
+    int type,
+    asIScriptFunction *callback,
+    const std::string &name) {
+    return context ? context->RequestDataShare(key, type, callback, name) : nullptr;
 }
 
 static bool BMLAS_RegisterBallType(const std::string &ballFile,
@@ -3115,6 +3134,11 @@ struct ScriptInterfaceRegistration {
     const char *DiagnosticName;
 };
 
+struct ScriptFuncdefRegistration {
+    const char *Declaration;
+    const char *DiagnosticName;
+};
+
 struct ScriptGlobalFunctionRegistration {
     const char *Declaration;
     const char *DiagnosticName;
@@ -3159,6 +3183,7 @@ static const ScriptObjectTypeRegistration kObjectTypeRegistrations[] = {
     {"LoadObjectEvent", "class LoadObjectEvent", sizeof(BML::ScriptLoadObjectEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptLoadObjectEventView>()},
     {"LoadScriptEvent", "class LoadScriptEvent", sizeof(BML::ScriptLoadScriptEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptLoadScriptEventView>()},
     {"CommandEvent", "class CommandEvent", sizeof(BML::ScriptCommandEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptCommandEventView>()},
+    {"CommandDefinition", "class CommandDefinition", sizeof(BMLAS_CommandDefinition), asOBJ_VALUE | asGetTypeTraits<BMLAS_CommandDefinition>()},
     {"ConfigEvent", "class ConfigEvent", sizeof(BML::ScriptConfigEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptConfigEventView>()},
     {"CommandCompletion", "class CommandCompletion", 0, asOBJ_REF | asOBJ_SCOPED},
     {"CommandRef", "class CommandRef", 0, asOBJ_REF},
@@ -3175,6 +3200,14 @@ static const ScriptInterfaceRegistration kInterfaceRegistrations[] = {
     {"Command", "interface Command"},
     {"Timer", "interface Timer"},
     {"DataShareRequest", "interface DataShareRequest"},
+};
+
+static const ScriptFuncdefRegistration kFuncdefRegistrations[] = {
+    {"void TimerCallback(const BML::ModContext &in, const BML::TimerEvent &in)", "funcdef TimerCallback"},
+    {"bool TimerLoopCallback(const BML::ModContext &in, const BML::TimerEvent &in)", "funcdef TimerLoopCallback"},
+    {"void CommandCallback(const BML::ModContext &in, const BML::CommandEvent &in)", "funcdef CommandCallback"},
+    {"void CommandCompletionCallback(const BML::ModContext &in, const BML::CommandEvent &in, BML::CommandCompletion &inout)", "funcdef CommandCompletionCallback"},
+    {"void DataShareCallback(const BML::ModContext &in, const BML::DataShareEvent &in)", "funcdef DataShareCallback"},
 };
 
 static const ScriptInterfaceMethodRegistration kInterfaceMethodRegistrations[] = {
@@ -3262,6 +3295,14 @@ static const ScriptObjectPropertyRegistration kObjectPropertyRegistrations[] = {
     {"ModuleConvexDefinition", "float RotDamp", "float ModuleConvexDefinition::RotDamp", asOFFSET(BMLAS_ModuleConvexDefinition, RotDamp)},
     {"TrafoDefinition", "string Name", "string TrafoDefinition::Name", asOFFSET(BMLAS_TrafoDefinition, Name)},
     {"ModuleDefinition", "string Name", "string ModuleDefinition::Name", asOFFSET(BMLAS_ModuleDefinition, Name)},
+    {"CommandDefinition", "string Name", "string CommandDefinition::Name", asOFFSET(BMLAS_CommandDefinition, Name)},
+    {"CommandDefinition", "string Alias", "string CommandDefinition::Alias", asOFFSET(BMLAS_CommandDefinition, Alias)},
+    {"CommandDefinition", "string Description", "string CommandDefinition::Description", asOFFSET(BMLAS_CommandDefinition, Description)},
+    {"CommandDefinition", "string Usage", "string CommandDefinition::Usage", asOFFSET(BMLAS_CommandDefinition, Usage)},
+    {"CommandDefinition", "string Category", "string CommandDefinition::Category", asOFFSET(BMLAS_CommandDefinition, Category)},
+    {"CommandDefinition", "bool Cheat", "bool CommandDefinition::Cheat", asOFFSET(BMLAS_CommandDefinition, Cheat)},
+    {"CommandDefinition", "bool Hidden", "bool CommandDefinition::Hidden", asOFFSET(BMLAS_CommandDefinition, Hidden)},
+    {"CommandDefinition", "bool Enabled", "bool CommandDefinition::Enabled", asOFFSET(BMLAS_CommandDefinition, Enabled)},
 };
 
 static const ScriptObjectBehaviourRegistration kObjectBehaviourRegistrations[] = {
@@ -3305,6 +3346,9 @@ static const ScriptObjectBehaviourRegistration kObjectBehaviourRegistrations[] =
     {"ModuleDefinition", asBEHAVE_CONSTRUCT, "void f()", "void ModuleDefinition default construct", asFUNCTION(BMLAS_ConstructModuleDefinition), asCALL_CDECL_OBJLAST},
     {"ModuleDefinition", asBEHAVE_CONSTRUCT, "void f(const ModuleDefinition &in)", "void ModuleDefinition copy construct", asFUNCTION(BMLAS_CopyConstructModuleDefinition), asCALL_CDECL_OBJLAST},
     {"ModuleDefinition", asBEHAVE_DESTRUCT, "void f()", "void ModuleDefinition destruct", asFUNCTION(BMLAS_DestructModuleDefinition), asCALL_CDECL_OBJLAST},
+    {"CommandDefinition", asBEHAVE_CONSTRUCT, "void f()", "void CommandDefinition default construct", asFUNCTION(BMLAS_ConstructCommandDefinition), asCALL_CDECL_OBJLAST},
+    {"CommandDefinition", asBEHAVE_CONSTRUCT, "void f(const CommandDefinition &in)", "void CommandDefinition copy construct", asFUNCTION(BMLAS_CopyConstructCommandDefinition), asCALL_CDECL_OBJLAST},
+    {"CommandDefinition", asBEHAVE_DESTRUCT, "void f()", "void CommandDefinition destruct", asFUNCTION(BMLAS_DestructCommandDefinition), asCALL_CDECL_OBJLAST},
     {"TimerEvent", asBEHAVE_CONSTRUCT, "void f()", "void TimerEvent default construct", asFUNCTION(BMLAS_ConstructTimerEvent), asCALL_CDECL_OBJLAST},
     {"TimerEvent", asBEHAVE_CONSTRUCT, "void f(const TimerEvent &in)", "void TimerEvent copy construct", asFUNCTION(BMLAS_CopyConstructTimerEvent), asCALL_CDECL_OBJLAST},
     {"TimerEvent", asBEHAVE_DESTRUCT, "void f()", "void TimerEvent destruct", asFUNCTION(BMLAS_DestructTimerEvent), asCALL_CDECL_OBJLAST},
@@ -3408,6 +3452,7 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"ModuleConvexDefinition", "ModuleConvexDefinition &opAssign(const ModuleConvexDefinition &in)", "ModuleConvexDefinition &ModuleConvexDefinition::opAssign(const ModuleConvexDefinition &in)", asFUNCTION(BMLAS_AssignModuleConvexDefinition), asCALL_CDECL_OBJLAST},
     {"TrafoDefinition", "TrafoDefinition &opAssign(const TrafoDefinition &in)", "TrafoDefinition &TrafoDefinition::opAssign(const TrafoDefinition &in)", asFUNCTION(BMLAS_AssignTrafoDefinition), asCALL_CDECL_OBJLAST},
     {"ModuleDefinition", "ModuleDefinition &opAssign(const ModuleDefinition &in)", "ModuleDefinition &ModuleDefinition::opAssign(const ModuleDefinition &in)", asFUNCTION(BMLAS_AssignModuleDefinition), asCALL_CDECL_OBJLAST},
+    {"CommandDefinition", "CommandDefinition &opAssign(const CommandDefinition &in)", "CommandDefinition &CommandDefinition::opAssign(const CommandDefinition &in)", asFUNCTION(BMLAS_AssignCommandDefinition), asCALL_CDECL_OBJLAST},
     {"ModContext", "ModContext &opAssign(const ModContext &in)", "ModContext &ModContext::opAssign(const ModContext &in)", asFUNCTION(BMLAS_AssignModContext), asCALL_CDECL_OBJLAST},
     {"ModContext", "bool get_HasContext() const", "bool ModContext::get_HasContext() const", asMETHOD(BML::ScriptModContextView, HasContext), asCALL_THISCALL},
     {"ModContext", "bool HasContext() const", "bool ModContext::HasContext() const", asMETHOD(BML::ScriptModContextView, HasContext), asCALL_THISCALL},
@@ -3470,9 +3515,15 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"ModContext", "void ResetSRTimer() const", "void ModContext::ResetSRTimer() const", asMETHOD(BML::ScriptModContextView, ResetSRTimer), asCALL_THISCALL},
     {"ModContext", "float GetSRTime() const", "float ModContext::GetSRTime() const", asMETHOD(BML::ScriptModContextView, GetSRTime), asCALL_THISCALL},
     {"ModContext", "TimerRef@ AddTimer(Timer@+ timer) const", "TimerRef@ ModContext::AddTimer(Timer@+ timer) const", asMETHOD(BML::ScriptModContextView, AddTimer), asCALL_THISCALL},
-    {"ModContext", "CommandRef@ RegisterCommand(Command@+ command) const", "CommandRef@ ModContext::RegisterCommand(Command@+ command) const", asMETHOD(BML::ScriptModContextView, RegisterCommand), asCALL_THISCALL},
+    {"ModContext", "TimerRef@ SetTimeoutTicks(uint delayTicks, TimerCallback@+ callback, const string &in name = \"\") const", "TimerRef@ ModContext::SetTimeoutTicks(uint delayTicks, TimerCallback@+ callback, const string &in name = \"\") const", asMETHOD(BML::ScriptModContextView, SetTimeoutTicks), asCALL_THISCALL},
+    {"ModContext", "TimerRef@ SetTimeout(float delayMs, TimerCallback@+ callback, const string &in name = \"\") const", "TimerRef@ ModContext::SetTimeout(float delayMs, TimerCallback@+ callback, const string &in name = \"\") const", asMETHOD(BML::ScriptModContextView, SetTimeout), asCALL_THISCALL},
+    {"ModContext", "TimerRef@ SetIntervalTicks(uint delayTicks, TimerLoopCallback@+ callback, const string &in name = \"\") const", "TimerRef@ ModContext::SetIntervalTicks(uint delayTicks, TimerLoopCallback@+ callback, const string &in name = \"\") const", asMETHOD(BML::ScriptModContextView, SetIntervalTicks), asCALL_THISCALL},
+    {"ModContext", "TimerRef@ SetInterval(float delayMs, TimerLoopCallback@+ callback, const string &in name = \"\") const", "TimerRef@ ModContext::SetInterval(float delayMs, TimerLoopCallback@+ callback, const string &in name = \"\") const", asMETHOD(BML::ScriptModContextView, SetInterval), asCALL_THISCALL},
+    {"ModContext", "CommandRef@ RegisterCommand(Command@+ command) const", "CommandRef@ ModContext::RegisterCommand(Command@+ command) const", asMETHODPR(BML::ScriptModContextView, RegisterCommand, (asIScriptObject *) const, BML::ScriptCommandRef *), asCALL_THISCALL},
+    {"ModContext", "CommandRef@ RegisterCommand(const CommandDefinition &in definition, CommandCallback@+ execute, CommandCompletionCallback@+ complete = null) const", "CommandRef@ ModContext::RegisterCommand(const CommandDefinition &in, CommandCallback@+, CommandCompletionCallback@+) const", asFUNCTION(BMLAS_ContextRegisterCommandDelegate), asCALL_CDECL_OBJFIRST},
     {"ModContext", "bool UnregisterCommand(const string &in name) const", "bool ModContext::UnregisterCommand(const string &in name) const", asMETHOD(BML::ScriptModContextView, UnregisterCommand), asCALL_THISCALL},
-    {"ModContext", "DataShareRequestRef@ RequestDataShare(DataShareRequest@+ request) const", "DataShareRequestRef@ ModContext::RequestDataShare(DataShareRequest@+ request) const", asMETHOD(BML::ScriptModContextView, RequestDataShare), asCALL_THISCALL},
+    {"ModContext", "DataShareRequestRef@ RequestDataShare(DataShareRequest@+ request) const", "DataShareRequestRef@ ModContext::RequestDataShare(DataShareRequest@+ request) const", asMETHODPR(BML::ScriptModContextView, RequestDataShare, (asIScriptObject *) const, BML::ScriptDataShareRequestRef *), asCALL_THISCALL},
+    {"ModContext", "DataShareRequestRef@ RequestDataShare(const string &in key, int type, DataShareCallback@+ callback, const string &in name = \"\") const", "DataShareRequestRef@ ModContext::RequestDataShare(const string &in, int, DataShareCallback@+, const string &in) const", asFUNCTION(BMLAS_ContextRequestDataShareDelegate), asCALL_CDECL_OBJFIRST},
     {"ModContext", "bool RegisterBallType(const BallTypeDefinition &in definition) const", "bool ModContext::RegisterBallType(const BallTypeDefinition &in definition) const", asFUNCTION(BMLAS_ContextRegisterBallType), asCALL_CDECL_OBJFIRST},
     {"ModContext", "bool RegisterFloorType(const FloorTypeDefinition &in definition) const", "bool ModContext::RegisterFloorType(const FloorTypeDefinition &in definition) const", asFUNCTION(BMLAS_ContextRegisterFloorType), asCALL_CDECL_OBJFIRST},
     {"ModContext", "bool RegisterModule(const ModuleBallDefinition &in definition) const", "bool ModContext::RegisterModule(const ModuleBallDefinition &in definition) const", asFUNCTION(BMLAS_ContextRegisterModuleBall), asCALL_CDECL_OBJFIRST},
@@ -4099,6 +4150,13 @@ int RegisterScriptInterfaces(asIScriptEngine *engine, const char **errorMessage)
     return asSUCCESS;
 }
 
+int RegisterScriptFuncdefs(asIScriptEngine *engine, const char **errorMessage) {
+    for (const ScriptFuncdefRegistration &registration : kFuncdefRegistrations) {
+        BML_AS_REGISTER(engine->RegisterFuncdef(registration.Declaration), registration.DiagnosticName);
+    }
+    return asSUCCESS;
+}
+
 int RegisterScriptObjectProperties(asIScriptEngine *engine, const char **errorMessage) {
     for (const ScriptObjectPropertyRegistration &registration : kObjectPropertyRegistrations) {
         BML_AS_REGISTER(engine->RegisterObjectProperty(registration.TypeName, registration.Declaration, registration.ByteOffset), registration.DiagnosticName);
@@ -4182,6 +4240,9 @@ int RegisterScriptFacade(asIScriptEngine *engine, const char **errorMessage) {
     const int interfacesResult = RegisterScriptInterfaces(engine, errorMessage);
     if (interfacesResult < 0)
         return interfacesResult;
+    const int funcdefsResult = RegisterScriptFuncdefs(engine, errorMessage);
+    if (funcdefsResult < 0)
+        return funcdefsResult;
     const int behavioursResult = RegisterScriptObjectBehaviours(engine, errorMessage);
     if (behavioursResult < 0)
         return behavioursResult;

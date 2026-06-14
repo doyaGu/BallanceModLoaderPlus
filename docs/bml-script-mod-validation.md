@@ -93,13 +93,16 @@ When copying smoke directories, remove the destination directory first. Copying 
   - Expected log includes `BML config mismatch fallback: -33`.
   - Expected log includes `BML typed datashare: bool=true int=42 float=3.5`.
   - Expected log includes `BML typed datashare mismatch fallback: -77`.
-  - Expected log includes `BML script timer registration: once=true loop=true invalid=true` and a `cancelledState` field.
+  - Expected log includes `BML datashare delegate request: immediate=true pending=true bool=true object=true invalid=true`.
+  - Expected log includes `BML script timer registration: once=true loop=true callbackOnce=true callbackLoop=true callbackDelegate=true invalid=true` and a `cancelledState` field.
+  - Expected log includes `BML script command delegate registration: global=true method=true invalid=true`.
+  - Expected log includes `BML native command delegate completion smoke command=true` and `BML native command method delegate completion smoke command=true`.
   - Expected log includes `BML native mod state BML kind=1 state=2 smoke kind=2 state=2`.
   - Expected log includes `BML native export lifecycle smoke first=0 duplicate=-10 unregister=0 validBefore=1 validAfter=0 staleCall=-709 callback=false`.
   - Expected log includes `BML native export hardening smoke findEx=0 ambiguous=-703 explicit=0 mismatch=-705 badSig=-704 missingTarget=-700 exception=-708`.
   - Expected log includes `BML native export hardening script tryEcho=0`, `voidString=-3`, and `constants=true`.
   - Expected log includes `BML native export NativeFrameReport status=0` and `enumOk=true`.
-  - Expected shutdown summary includes `BML script timer summary: once=true loop=true cancelled=false command=true selfCommandCalls=1`.
+  - Expected shutdown summary includes `BML script timer summary: once=true loop=true callbackOnce=true callbackLoop=true callbackDelegate=true cancelled=false` plus `command=true`, `commandDelegate=true`, `commandDelegateCompletion=true`, `commandDelegateMethod=true`, `commandDelegateMethodCompletion=true`, `dataShareDelegate=true`, and `selfCommandCalls=1`.
   - On shutdown, expected log includes `Removed 1 native export(s) owned by unloaded Mod BML`.
   - Expected log does not include `forbidden symbol` or `Failed to register BML AngelScript declarations`.
 

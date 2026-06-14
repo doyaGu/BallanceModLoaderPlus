@@ -10,6 +10,7 @@
 #include "ScriptDiagnostic.h"
 
 class ModContext;
+class asIScriptFunction;
 class asIScriptObject;
 
 namespace BML {
@@ -17,6 +18,17 @@ namespace BML {
 class ScriptMod;
 class ScriptModContextView;
 class ScriptCommandServiceState;
+
+struct ScriptCommandDefinition {
+    std::string Name;
+    std::string Alias;
+    std::string Description;
+    std::string Usage;
+    std::string Category;
+    bool Cheat = false;
+    bool Hidden = false;
+    bool Enabled = true;
+};
 
 class ScriptCommandCompletion {
 public:
@@ -58,6 +70,9 @@ public:
 
     void Bind(ModContext *context, ScriptMod *owner, ScriptModContextView *contextView);
     ScriptCommandRef *Register(asIScriptObject *command);
+    ScriptCommandRef *Register(const ScriptCommandDefinition &definition,
+                               asIScriptFunction *execute,
+                               asIScriptFunction *complete);
     bool Unregister(const std::string &name);
     void Release(ScriptDiagnostic *diagnostic = nullptr);
 

@@ -562,8 +562,30 @@ ScriptTimerRef *ScriptMod::AddScriptTimer(asIScriptObject *timer) {
     return m_Timers.Add(timer);
 }
 
+ScriptTimerRef *ScriptMod::AddScriptTimeoutTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name) {
+    return m_Timers.AddTimeoutTicks(delayTicks, callback, name);
+}
+
+ScriptTimerRef *ScriptMod::AddScriptTimeoutMs(float delayMs, asIScriptFunction *callback, const std::string &name) {
+    return m_Timers.AddTimeoutMs(delayMs, callback, name);
+}
+
+ScriptTimerRef *ScriptMod::AddScriptIntervalTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name) {
+    return m_Timers.AddIntervalTicks(delayTicks, callback, name);
+}
+
+ScriptTimerRef *ScriptMod::AddScriptIntervalMs(float delayMs, asIScriptFunction *callback, const std::string &name) {
+    return m_Timers.AddIntervalMs(delayMs, callback, name);
+}
+
 ScriptCommandRef *ScriptMod::RegisterScriptCommand(asIScriptObject *command) {
     return m_Commands.Register(command);
+}
+
+ScriptCommandRef *ScriptMod::RegisterScriptCommand(const ScriptCommandDefinition &definition,
+                                                   asIScriptFunction *execute,
+                                                   asIScriptFunction *complete) {
+    return m_Commands.Register(definition, execute, complete);
 }
 
 bool ScriptMod::UnregisterScriptCommand(const std::string &name) {
@@ -572,6 +594,13 @@ bool ScriptMod::UnregisterScriptCommand(const std::string &name) {
 
 ScriptDataShareRequestRef *ScriptMod::RequestScriptDataShare(asIScriptObject *request) {
     return m_DataShareRequests.Request(request);
+}
+
+ScriptDataShareRequestRef *ScriptMod::RequestScriptDataShare(const std::string &key,
+                                                             int type,
+                                                             asIScriptFunction *callback,
+                                                             const std::string &name) {
+    return m_DataShareRequests.Request(key, type, callback, name);
 }
 
 bool ScriptMod::RegisterScriptBallType(const std::string &ballFile,
