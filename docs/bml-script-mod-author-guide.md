@@ -1,7 +1,8 @@
 # BML Script Mod v1 Author Guide
 
-本文是 BML+ Script Mod v1 的作者手册。`docs/bml-script-mod-api.as` 是给编辑器、
-补全和静态检查使用的 API stub，不是主要教程。
+This document is the BML+ Script Mod v1 author guide.
+`docs/bml-script-mod-api.as` is the API stub for editor completion and static
+checks; it is not the primary tutorial.
 
 ## Quickstart
 
@@ -76,22 +77,37 @@ HelloScript.zip
 
 ## API Layers
 
-BML script mods run in CKAngelScript. The available script surface is therefore
-layered:
+BML script mods run inside CKAngelScript, but a BML script mod is only one
+script shape: an AngelScript module/class that BML gives mod identity, load
+order, callbacks, resources, dependencies, exports, commands, config, logging,
+timers, DataShare, and BML UI helpers. It is not a replacement for every CKAS
+runtime surface.
 
-- CKAngelScript owns the AngelScript engine, module compilation, CK/Vx SDK
-  bindings, and high-level namespaces such as `Scene`, `Behavior`, `BB`,
-  `Param`, `Message`, `Async`, and `Runtime`.
-- BML owns mod identity, load order, BML dependencies, fixed callbacks, config,
-  logging, commands, timers, DataShare, exports, resource paths, and BML UI
-  helpers.
+The useful surfaces are layered:
+
+- CKAngelScript runtime scripts are long-lived modules discovered from `Scripts`
+  roots. They use `[script]` / `[script.depends]`, `ScriptContext`, `Runtime::*`,
+  `Message::*`, and `Async::*`.
+- `AngelScript Component` is a Building Block that attaches one script class to
+  one behavior instance. It uses `CKBehaviorContext`, component metadata,
+  injected fields, `BBConfig@`, `BBSlot@`, `BehaviorRef@`, and `ParamTypeInfo@`.
+- CKAngelScript scene/behavior APIs such as `Scene`, `Behavior`, `BB`, and
+  `Param` cover Virtools object identity, scene membership, behavior graph
+  search/editing, runtime Building Block instances, parameter values, sources,
+  and operations.
+- Raw CK/Vx SDK bindings are available when the high-level CKAS API does not
+  cover a direct engine call. Resolve raw CK pointers near the operation; do
+  not store them as durable script identity.
+- `NativePointer`, `NativeBuffer`, DynCall/DynLoad/DynCallback, and writable
+  native memory are advanced escape hatches for proven SDK/FFI work, not the
+  normal way to design mod interoperability.
 - Other native plugins may expose script APIs by registering CKAngelScript
   engine extensions. Treat those APIs as plugin-owned surfaces, not as BML
   facade methods.
 
 Do not measure script mod capability only by the BML facade. For Virtools scene
 objects, behavior graphs, Building Blocks, parameters, CKDataArray, CKMesh,
-CKTexture, cameras, render contexts, and math types, prefer the CKAngelScript
+CKTexture, cameras, render contexts, and math types, prefer CKAngelScript's
 high-level API first, then raw CK/Vx SDK bindings when a direct SDK operation
 is needed. Use BML APIs when the operation is about BML mod semantics or BML
 services.
@@ -99,6 +115,36 @@ services.
 `[bml.require]` and `[bml.optional]` are BML mod dependencies. CKAngelScript
 runtime scripts also have their own `[script.depends]` metadata, but that is
 not the BML mod dependency graph.
+
+## Choosing The Right Script Surface
+
+| Goal | Best surface | Reason |
+| --- | --- | --- |
+| Publish a mod with BML identity, dependency ordering, config, commands, logs, HUD/menu UI, resources, exports, or DataShare | BML script mod | These are BML-owned mod semantics. |
+| Patch or inspect a level object, data array, material, mesh, texture, camera, or scene membership | BML script mod plus CKAS `Scene`/raw CK APIs, or a CKAS runtime script when no BML mod identity is needed | BML can orchestrate the mod; CKAS should own Virtools object lookup and identity. |
+| Add per-object or per-behavior logic inside an existing behavior graph | `AngelScript Component` | It naturally receives `CKBehaviorContext` and editor/component metadata injection. |
+| Search, edit, or drive behavior graphs and Building Blocks | CKAS `Behavior`, `BB`, and `Param`, often from a component; a BML script mod can coordinate by borrowing `CKContext@` where CKAS overloads allow it | The graph and parameter model is CKAS-owned, not a BML facade clone. |
+| Communicate between scripts/components or schedule frame-based work | CKAS `Message` and `Async`; use BML exports/DataShare only for stable mod-visible contracts | CKAS owns script runtime communication, while BML owns mod-level interop. |
+| Hook engine internals, replace performance-critical loops, patch renderer/input internals, or expose a native service | Native plugin plus a guarded CKAS engine extension; script controls policy/config | Native code owns unsafe lifetime and performance boundaries. |
+
+BML callbacks receive `BML::ModContext`, not `ScriptContext` or
+`CKBehaviorContext`. Use `ctx.BorrowCKContext()` for CKAS helpers that explicitly
+accept `CKContext@`. Runtime scripts should pass `ScriptContext`; AngelScript
+Components should pass `CKBehaviorContext`. Do not fake one context as another.
+If a missing context blocks a real use case, add a small native/CKAS extension at
+the owner boundary instead of smuggling raw engine objects through BML.
+
+## Architectural Patterns
+
+- Pure BML script mod: good for commands, config-driven toggles, HUD/menu
+  changes, DataShare, exports, resource loading, and light level scripting.
+- BML orchestrator plus CKAS components: BML owns mod configuration and public
+  interop; components live on behavior instances and execute per-object logic.
+- Native core plus script policy: native code owns hooks, renderer/input patches,
+  or high-frequency loops; AngelScript exposes safe knobs, scripts, and
+  callbacks through a CKAS extension.
+- Script service bus: CKAS `Message`/`Async` connects runtime scripts and
+  components; BML exports/DataShare expose the stable mod-facing service.
 
 ## Metadata
 
@@ -213,7 +259,9 @@ For general Virtools work, start with CKAngelScript's own APIs:
 
 Use `ctx.Borrow*` for BML-owned convenience access to CK managers and named CK
 object lookup. The returned handles are borrowed from Virtools. They are valid
-only while the owning level object still exists.
+only while the owning level object still exists. When CKAS `ObjectRef@` /
+`Entity3DRef@` / `BehaviorRef@` handles fit the job, prefer them for durable
+script-side identity and reacquire raw CK handles only near the operation.
 
 `BML::CK` contains stateless helpers for borrowed CK handles. Null handles
 return defaults or no-op. It is a convenience layer, not the complete CKAS
@@ -490,7 +538,9 @@ Common phases:
 
 - Script callbacks use `NO_SUSPEND`; suspension is an error.
 - Event views, `CommandCompletion`, and borrowed CK object/manager handles are
-  callback-scope only.
+  callback-scope only. CKAS `ObjectRef@`-derived handles are the preferred
+  long-lived identity for CK objects; raw pointers resolved from them are still
+  short-lived.
 - `ModContext` is a per-mod facade. Do not store callback-scope event views in
   long-lived fields.
 - Timer, Command, and DataShareRequest resources are owned by the script mod
@@ -529,8 +579,11 @@ BML Script Mod v1 uses one `*.mod.as` entry per single-file, directory, or
 `.zip` script package, AngelScript metadata declarations, fixed callback
 signatures, script-owned Timer/Command objects, typed DataShare requests, and
 typed export handles. `BML::ModContext` is the primary facade. Event objects and
-borrowed CK handles are callback-scope views. CKAngelScript's own Scene,
-Behavior, BB, Param, raw CK/Vx SDK, ImGui, and extension APIs remain available
-according to their own contracts; BML v1 only defines the BML-owned mod
-surface. Hot reload, `.bmodp` script packages, BML-owned entity wrappers, raw
-CKAS engine/module/function access, and a full sandbox policy are deferred.
+borrowed CK handles are callback-scope views; CKAS `ObjectRef@`-derived handles
+are the long-lived CK object identity model. CKAngelScript runtime scripts,
+`AngelScript Component`, `Scene`, `Behavior`, `BB`, `Param`, `Message`, `Async`,
+raw CK/Vx SDK, ImGui, and registered extension APIs remain available according
+to their own contracts; BML v1 only defines the BML-owned mod surface. Hot
+reload, `.bmodp` script packages, BML-owned entity wrappers, raw CKAS
+engine/module/function access, BML callback suspension/resume, and a full
+sandbox policy are deferred.

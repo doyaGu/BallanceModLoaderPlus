@@ -4,9 +4,35 @@ This document tracks the script-facing coverage of the native `IBML` surface.
 The script facade is intentionally not a raw ABI dump: long-lived callbacks,
 dependency mutation, and raw CKAngelScript handles stay outside the script API.
 This matrix is about BML-owned facade coverage only. It is not a complete list
-of what a BML script mod can do, because script mods run inside CKAngelScript
-and may also use CKAngelScript's `Scene`, `Behavior`, `BB`, `Param`, raw CK/Vx
-SDK bindings, and other registered engine-extension namespaces.
+of what scripts can do in a BML+ script-capable release. BML script mods run
+inside CKAngelScript, can coexist with CKAS runtime scripts and
+`AngelScript Component`, and can use shared CKAS namespaces such as `Scene`,
+`Behavior`, `BB`, `Param`, `Message`, `Async`, raw CK/Vx SDK bindings, advanced
+FFI helpers, and other registered engine-extension namespaces.
+
+## Relationship To CKAngelScript
+
+BML does not try to mirror the whole CKAngelScript API. BML script mods are
+CKAS-hosted modules with BML mod identity and BML services. CKAngelScript keeps
+ownership of the AngelScript engine, runtime script manager, component Building
+Block, object identity refs, behavior graph bridge, parameter bridge,
+script-to-script messaging, async scheduler, raw CK/Vx bindings, and advanced
+native memory/call helpers.
+
+Use this matrix to answer "which native `IBML` feature is script-facing?" Do
+not use it as the upper bound for what a script can do in Virtools.
+
+## Placement Guidance
+
+| Need | Put it here |
+| --- | --- |
+| BML mod identity, dependency ordering, resource paths, logger/config, commands, timers, exports, DataShare, HUD/menu helpers | BML script facade |
+| Safe Virtools object lookup, scene membership, object identity across frames | CKAS `Scene` and `ObjectRef@`-derived handles; use BML `Borrow*ByName` only for convenience |
+| Behavior graph search/editing, runtime Building Block spawning/stepping, CK parameter values/sources/operations | CKAS `Behavior`, `BB`, and `Param` |
+| Per-object/per-behavior script logic with editor-configured fields | CKAS `AngelScript Component` |
+| Runtime script/component communication and cooperative frame work | CKAS `Message` and `Async`; use BML exports/DataShare for stable mod-visible contracts |
+| Renderer/input/platform hooks, high-frequency patches, or unsafe native lifetime | Native plugin code plus a guarded CKAS engine extension |
+| External library calls or native memory experiments | CKAS `NativePointer`/DynCall as an advanced escape hatch, not a supported substitute for plugin APIs |
 
 ## Coverage Matrix
 
