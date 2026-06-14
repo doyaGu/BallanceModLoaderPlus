@@ -3,7 +3,7 @@
          version: "1.0.0",
          author: "Template",
          description: "Minimal BML+ script mod template",
-         bml: "0.3.11")]
+         bml: "0.3.12")]
 class HelloScript {
     private BML::TimerRef@ heartbeat;
     private BML::CommandRef@ helloCommand;

@@ -1,4 +1,4 @@
-[bml.mod id="bml.zip.smoke" name="BML Zip Script Smoke" version="1.0.0" author="BML+" bml="0.3.11" description="Smoke test for zipped BML AngelScript script mod loading."]
+[bml.mod id="bml.zip.smoke" name="BML Zip Script Smoke" version="1.0.0" author="BML+" bml="0.3.12" description="Smoke test for zipped BML AngelScript script mod loading."]
 class BMLZipScriptSmoke {
   string BoolText(bool value) {
     return value ? "true" : "false";

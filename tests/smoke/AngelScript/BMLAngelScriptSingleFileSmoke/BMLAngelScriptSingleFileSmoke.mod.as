@@ -1,5 +1,5 @@
 namespace BMLSmoke {
-  [bml.mod id="bml.singlefile.smoke" name="BML Single File Script Smoke" version="1.0.0" author="BML+" bml="0.3.11" description="Smoke test for single-file BML AngelScript script mod loading."]
+  [bml.mod id="bml.singlefile.smoke" name="BML Single File Script Smoke" version="1.0.0" author="BML+" bml="0.3.12" description="Smoke test for single-file BML AngelScript script mod loading."]
   class BMLSingleFileScriptSmoke {
     string BoolText(bool value) {
       return value ? "true" : "false";

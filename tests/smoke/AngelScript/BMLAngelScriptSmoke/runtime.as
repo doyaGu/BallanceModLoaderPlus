@@ -1,5 +1,5 @@
-[bml.mod id="bml.bindings.smoke" name="BML Bindings Smoke" version="1.0.0" author="BML+" bml="0.3.11" description="Smoke test for BML AngelScript script mod bindings."]
-[bml.require id="BML" version="0.3.11"]
+[bml.mod id="bml.bindings.smoke" name="BML Bindings Smoke" version="1.0.0" author="BML+" bml="0.3.12" description="Smoke test for BML AngelScript script mod bindings."]
+[bml.require id="BML" version="0.3.12"]
 [bml.require id="bml.native.interop.smoke" version="1.0.0"]
 [bml.optional id="bml.optional.missing.smoke" version="9.9.9"]
 [external.tool name="metadata ignored by BML"]

@@ -81,10 +81,10 @@ When copying smoke directories, remove the destination directory first. Copying 
   - With `-ZipSmoke`, expected log includes `BML zip script smoke loaded resource=true`.
   - Expected log includes `BML mod registry query: count=4 first=BML selfByIndex=true invalid=true` when normal smoke and shutdown smoke are the only script Mods present.
   - Expected log includes `BML ctx mod registry query: count=4 first=BML selfByIndex=true selfFind=true invalid=true` under the same Mod set.
-  - Expected log includes `BML modref metadata: author=BML+ desc=true bmlVersion=0.3.11 parts=0.3.11`.
-  - Expected log includes `BML modref dependencies: check=1 count=2 first=BML@0.3.11 firstOptional=false second=bml.optional.missing.smoke@9.9.9 secondOptional=true invalid=true`.
+  - Expected log includes `BML modref metadata: author=BML+ desc=true bmlVersion=0.3.12 parts=0.3.12`.
+  - Expected log includes `BML modref dependencies: check=1 count=2 first=BML@0.3.12 firstOptional=false second=bml.optional.missing.smoke@9.9.9 secondOptional=true invalid=true`.
   - Expected log includes `BML script export registry: count=7 sum=true indexedCall=true overloadedAny=-703 overloadedInt=0 overloadedCall=0 overloadedResult=15 invalid=true`.
-  - Expected log includes `BML native modref metadata: author=Gamepiaynmo & YingChe & Kakuty desc=true bmlVersion=0.3.11`.
+  - Expected log includes `BML native modref metadata: author=Gamepiaynmo & YingChe & Kakuty desc=true bmlVersion=0.3.12`.
   - Expected log includes `BML native export registry: count=6 sum=true indexedCall=true invalid=true`.
   - Expected log includes `BML command query: count=9 first=bml echo=true missing=false echoCheat=false`.
   - Expected log includes `BML command details valid: true`.

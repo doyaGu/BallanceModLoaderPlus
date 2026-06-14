@@ -22,7 +22,7 @@ CKAS metadata reflection.
 ```angelscript
 [bml.mod(id: "example.hello", name: "Hello Script", version: "1.0.0",
          author: "You", description: "Minimal BML script mod",
-         bml: "0.3.11")]
+         bml: "0.3.12")]
 class HelloMod {
   void OnLoad(const BML::ModContext &in ctx) {
     BML::Logger@ logger = ctx.BorrowLogger();
@@ -107,7 +107,7 @@ exactly once.
 
 ```angelscript
 [bml.mod(id: "example.core", name: "Example Core", version: "1.2.0",
-         author: "You", description: "Example", bml: "0.3.11")]
+         author: "You", description: "Example", bml: "0.3.12")]
 class ExampleCore {
 }
 ```
@@ -119,7 +119,7 @@ scripts cannot mutate dependencies at runtime.
 [bml.require(id: "other.mod", version: "1.0.0")]
 [bml.optional(id: "debug.helper", version: "0.1.0")]
 [bml.mod(id: "example.dep", name: "Example With Deps", version: "1.0.0",
-         author: "You", description: "Dependency example", bml: "0.3.11")]
+         author: "You", description: "Dependency example", bml: "0.3.12")]
 class ExampleWithDeps {
 }
 ```
