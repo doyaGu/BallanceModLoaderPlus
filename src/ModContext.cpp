@@ -306,21 +306,23 @@ bool ModContext::LoadMods() {
 
 #if BML_ENABLE_ANGELSCRIPT
             std::vector<BML::ScriptModLoadCandidate> scriptModCandidates;
-            ExploreScriptMods(path, scriptModCandidates);
-            for (auto &scriptCandidate : scriptModCandidates) {
-                IMod *mod = LoadScriptMod(scriptCandidate);
-                if (mod) {
-                    const char *id = mod->GetID();
-                    if (modSet.find(id) != modSet.end()) {
-                        m_Logger->Warn("Duplicate Mod: %s", id);
-                        UnloadMod(id);
-                        continue;
-                    }
-                    modSet.emplace(id);
-                    loadedMods.push_back(mod);
+            if (AreAngelScriptBindingsRegistered()) {
+                ExploreScriptMods(path, scriptModCandidates);
+                for (auto &scriptCandidate : scriptModCandidates) {
+                    IMod *mod = LoadScriptMod(scriptCandidate);
+                    if (mod) {
+                        const char *id = mod->GetID();
+                        if (modSet.find(id) != modSet.end()) {
+                            m_Logger->Warn("Duplicate Mod: %s", id);
+                            UnloadMod(id);
+                            continue;
+                        }
+                        modSet.emplace(id);
+                        loadedMods.push_back(mod);
 
-                    std::string ansiPath = utils::Utf16ToAnsi(scriptCandidate.RootDirectory);
-                    AddDataPath(ansiPath.c_str());
+                        std::string ansiPath = utils::Utf16ToAnsi(scriptCandidate.RootDirectory);
+                        AddDataPath(ansiPath.c_str());
+                    }
                 }
             }
 #endif
