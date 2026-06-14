@@ -51,21 +51,6 @@ public:
     float GetAbsoluteTimeMs() const;
     float GetDeltaTimeMs() const;
     unsigned int GetFrameCount() const;
-    bool IsKeyboardAttached() const;
-    bool IsMouseAttached() const;
-    bool IsKeyDown(CKKEYBOARD key) const;
-    bool IsKeyUp(CKKEYBOARD key) const;
-    bool IsKeyPressed(CKKEYBOARD key) const;
-    bool IsKeyReleased(CKKEYBOARD key) const;
-    bool IsKeyToggled(CKKEYBOARD key) const;
-    std::string GetKeyName(CKKEYBOARD key) const;
-    int GetKeyFromName(const std::string &name) const;
-    bool IsMouseButtonDown(CK_MOUSEBUTTON button) const;
-    bool IsMouseClicked(CK_MOUSEBUTTON button) const;
-    bool IsMouseToggled(CK_MOUSEBUTTON button) const;
-    Vx2DVector GetMousePosition(bool absolute) const;
-    Vx2DVector GetLastMousePosition() const;
-    VxVector GetMouseRelativePosition() const;
     bool IsObjectValid(CKObject *object) const;
     int GetObjectId(CKObject *object) const;
     std::string GetObjectName(CKObject *object) const;
@@ -173,17 +158,6 @@ public:
     void CloseModsMenu() const;
     void OpenMapMenu() const;
     void CloseMapMenu() const;
-    std::string GetConfigString(const std::string &key, const std::string &defaultValue) const;
-    void SetConfigString(const std::string &key, const std::string &value) const;
-    bool GetConfigBool(const std::string &key, bool defaultValue) const;
-    void SetConfigBool(const std::string &key, bool value) const;
-    int GetConfigInt(const std::string &key, int defaultValue) const;
-    void SetConfigInt(const std::string &key, int value) const;
-    float GetConfigFloat(const std::string &key, float defaultValue) const;
-    void SetConfigFloat(const std::string &key, float value) const;
-    void LogInfo(const std::string &message) const;
-    void LogWarn(const std::string &message) const;
-    void LogError(const std::string &message) const;
 
 private:
     ModContext *m_Context = nullptr;

@@ -7,6 +7,7 @@
 #include "BML/BML.h"
 #include "BML/Bui.h"
 #include "BML/DataShare.h"
+#include "BML/IConfig.h"
 #include "BML/InputHook.h"
 #include "BML/Interop.h"
 #include "BML/ILogger.h"
@@ -14,15 +15,19 @@
 
 #if BML_ENABLE_ANGELSCRIPT
 
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 #include <new>
+#include <vector>
 #include <utility>
 
 #include <angelscript.h>
 
 #include "AngelScript/generated/BMLImGuiAngelScriptBindings.h"
 #include "AngelScriptImGuiBindings.h"
+#include "BML/ExecuteBB.h"
 #include "BMLMod.h"
 #include "CKAngelScriptAdapter.h"
 #include "ScriptApiContract.h"
@@ -285,27 +290,35 @@ std::string BMLAS_GetDirectoryUtf8(DirectoryType type) {
     return dir ? dir : "";
 }
 
-InputHook *BMLAS_GetInputHook() {
-    ModContext *ctx = nullptr;
-    return RequireContext(ctx) ? ctx->GetInputManager() : nullptr;
-}
-
+static bool BMLAS_InputHookIsValid(InputHook *input) { return BML::ScriptFacadeAccess::IsInputValid(input); }
+static void BMLAS_InputHookEnableKeyboardRepetition(InputHook *input, bool enable) { BML::ScriptFacadeAccess::EnableKeyboardRepetition(input, enable); }
+static bool BMLAS_InputHookIsKeyboardRepetitionEnabled(InputHook *input) { return BML::ScriptFacadeAccess::IsKeyboardRepetitionEnabled(input); }
 static bool BMLAS_InputHookIsKeyboardAttached(InputHook *input) { return BML::ScriptFacadeAccess::IsKeyboardAttached(input); }
 static bool BMLAS_InputHookIsMouseAttached(InputHook *input) { return BML::ScriptFacadeAccess::IsMouseAttached(input); }
+static bool BMLAS_InputHookIsJoystickAttached(InputHook *input, int joystick) { return BML::ScriptFacadeAccess::IsJoystickAttached(input, joystick); }
 static bool BMLAS_InputHookIsKeyDown(InputHook *input, CKKEYBOARD key) { return BML::ScriptFacadeAccess::IsKeyDown(input, key); }
+static bool BMLAS_InputHookIsKeyDownWithStamp(InputHook *input, CKKEYBOARD key, unsigned int &stamp) { return BML::ScriptFacadeAccess::IsKeyDown(input, key, stamp); }
 static bool BMLAS_InputHookIsKeyUp(InputHook *input, CKKEYBOARD key) { return BML::ScriptFacadeAccess::IsKeyUp(input, key); }
 static bool BMLAS_InputHookIsKeyPressed(InputHook *input, CKKEYBOARD key) { return BML::ScriptFacadeAccess::IsKeyPressed(input, key); }
 static bool BMLAS_InputHookIsKeyReleased(InputHook *input, CKKEYBOARD key) { return BML::ScriptFacadeAccess::IsKeyReleased(input, key); }
 static bool BMLAS_InputHookIsKeyToggled(InputHook *input, CKKEYBOARD key) { return BML::ScriptFacadeAccess::IsKeyToggled(input, key); }
+static bool BMLAS_InputHookIsKeyToggledWithStamp(InputHook *input, CKKEYBOARD key, unsigned int &stamp) { return BML::ScriptFacadeAccess::IsKeyToggled(input, key, stamp); }
 static std::string BMLAS_InputHookGetKeyName(InputHook *input, CKKEYBOARD key) {
     return BML::ScriptFacadeAccess::GetKeyName(input, key);
 }
 static int BMLAS_InputHookGetKeyFromName(InputHook *input, const std::string &name) {
     return BML::ScriptFacadeAccess::GetKeyFromName(input, name);
 }
+static int BMLAS_InputHookGetKeyboardState(InputHook *input, CKKEYBOARD key) { return BML::ScriptFacadeAccess::GetKeyboardState(input, key); }
+static bool BMLAS_InputHookIsKeyboardStateDown(InputHook *input, CKKEYBOARD key) { return BML::ScriptFacadeAccess::IsKeyboardStateDown(input, key); }
+static int BMLAS_InputHookGetNumberOfKeyInBuffer(InputHook *input) { return BML::ScriptFacadeAccess::GetNumberOfKeyInBuffer(input); }
+static int BMLAS_InputHookGetKeyFromBuffer(InputHook *input, int index, CKKEYBOARD &key, unsigned int &timestamp) {
+    return BML::ScriptFacadeAccess::GetKeyFromBuffer(input, index, key, timestamp);
+}
 static bool BMLAS_InputHookIsMouseButtonDown(InputHook *input, CK_MOUSEBUTTON button) { return BML::ScriptFacadeAccess::IsMouseButtonDown(input, button); }
 static bool BMLAS_InputHookIsMouseClicked(InputHook *input, CK_MOUSEBUTTON button) { return BML::ScriptFacadeAccess::IsMouseClicked(input, button); }
 static bool BMLAS_InputHookIsMouseToggled(InputHook *input, CK_MOUSEBUTTON button) { return BML::ScriptFacadeAccess::IsMouseToggled(input, button); }
+static int BMLAS_InputHookGetMouseButtonState(InputHook *input, CK_MOUSEBUTTON button) { return BML::ScriptFacadeAccess::GetMouseButtonState(input, button); }
 static Vx2DVector BMLAS_InputHookGetMousePosition(InputHook *input, bool absolute) {
     return BML::ScriptFacadeAccess::GetMousePosition(input, absolute);
 }
@@ -315,66 +328,34 @@ static Vx2DVector BMLAS_InputHookGetLastMousePosition(InputHook *input) {
 static VxVector BMLAS_InputHookGetMouseRelativePosition(InputHook *input) {
     return BML::ScriptFacadeAccess::GetMouseRelativePosition(input);
 }
-
-bool BMLAS_IsKeyboardAttached() {
-    return BML::ScriptFacadeAccess::IsKeyboardAttached(BMLAS_GetInputHook());
+static VxVector BMLAS_InputHookGetJoystickPosition(InputHook *input, int joystick) {
+    return BML::ScriptFacadeAccess::GetJoystickPosition(input, joystick);
 }
-
-bool BMLAS_IsMouseAttached() {
-    return BML::ScriptFacadeAccess::IsMouseAttached(BMLAS_GetInputHook());
+static VxVector BMLAS_InputHookGetJoystickRotation(InputHook *input, int joystick) {
+    return BML::ScriptFacadeAccess::GetJoystickRotation(input, joystick);
 }
-
-bool BMLAS_IsKeyDown(CKKEYBOARD key) {
-    return BML::ScriptFacadeAccess::IsKeyDown(BMLAS_GetInputHook(), key);
+static Vx2DVector BMLAS_InputHookGetJoystickSliders(InputHook *input, int joystick) {
+    return BML::ScriptFacadeAccess::GetJoystickSliders(input, joystick);
 }
-
-bool BMLAS_IsKeyUp(CKKEYBOARD key) {
-    return BML::ScriptFacadeAccess::IsKeyUp(BMLAS_GetInputHook(), key);
+static float BMLAS_InputHookGetJoystickPointOfViewAngle(InputHook *input, int joystick) {
+    return BML::ScriptFacadeAccess::GetJoystickPointOfViewAngle(input, joystick);
 }
-
-bool BMLAS_IsKeyPressed(CKKEYBOARD key) {
-    return BML::ScriptFacadeAccess::IsKeyPressed(BMLAS_GetInputHook(), key);
+static unsigned int BMLAS_InputHookGetJoystickButtonsState(InputHook *input, int joystick) {
+    return BML::ScriptFacadeAccess::GetJoystickButtonsState(input, joystick);
 }
-
-bool BMLAS_IsKeyReleased(CKKEYBOARD key) {
-    return BML::ScriptFacadeAccess::IsKeyReleased(BMLAS_GetInputHook(), key);
+static bool BMLAS_InputHookIsJoystickButtonDown(InputHook *input, int joystick, int button) {
+    return BML::ScriptFacadeAccess::IsJoystickButtonDown(input, joystick, button);
 }
-
-bool BMLAS_IsKeyToggled(CKKEYBOARD key) {
-    return BML::ScriptFacadeAccess::IsKeyToggled(BMLAS_GetInputHook(), key);
-}
-
-std::string BMLAS_GetKeyName(CKKEYBOARD key) {
-    return BML::ScriptFacadeAccess::GetKeyName(BMLAS_GetInputHook(), key);
-}
-
-int BMLAS_GetKeyFromName(const std::string &name) {
-    return BML::ScriptFacadeAccess::GetKeyFromName(BMLAS_GetInputHook(), name);
-}
-
-bool BMLAS_IsMouseButtonDown(CK_MOUSEBUTTON button) {
-    return BML::ScriptFacadeAccess::IsMouseButtonDown(BMLAS_GetInputHook(), button);
-}
-
-bool BMLAS_IsMouseClicked(CK_MOUSEBUTTON button) {
-    return BML::ScriptFacadeAccess::IsMouseClicked(BMLAS_GetInputHook(), button);
-}
-
-bool BMLAS_IsMouseToggled(CK_MOUSEBUTTON button) {
-    return BML::ScriptFacadeAccess::IsMouseToggled(BMLAS_GetInputHook(), button);
-}
-
-Vx2DVector BMLAS_GetMousePosition(bool absolute) {
-    return BML::ScriptFacadeAccess::GetMousePosition(BMLAS_GetInputHook(), absolute);
-}
-
-Vx2DVector BMLAS_GetLastMousePosition() {
-    return BML::ScriptFacadeAccess::GetLastMousePosition(BMLAS_GetInputHook());
-}
-
-VxVector BMLAS_GetMouseRelativePosition() {
-    return BML::ScriptFacadeAccess::GetMouseRelativePosition(BMLAS_GetInputHook());
-}
+static void BMLAS_InputHookPause(InputHook *input, bool pause) { BML::ScriptFacadeAccess::PauseInput(input, pause); }
+static void BMLAS_InputHookShowCursor(InputHook *input, bool show) { BML::ScriptFacadeAccess::ShowCursor(input, show); }
+static bool BMLAS_InputHookGetCursorVisibility(InputHook *input) { return BML::ScriptFacadeAccess::GetCursorVisibility(input); }
+static int BMLAS_InputHookGetSystemCursor(InputHook *input) { return BML::ScriptFacadeAccess::GetSystemCursor(input); }
+static void BMLAS_InputHookSetSystemCursor(InputHook *input, int cursor) { BML::ScriptFacadeAccess::SetSystemCursor(input, cursor); }
+static bool BMLAS_InputHookIsBlock(InputHook *input) { return BML::ScriptFacadeAccess::IsBlock(input); }
+static void BMLAS_InputHookSetBlock(InputHook *input, bool block) { BML::ScriptFacadeAccess::SetBlock(input, block); }
+static int BMLAS_InputHookIsBlocked(InputHook *input, int device) { return BML::ScriptFacadeAccess::IsBlocked(input, device); }
+static void BMLAS_InputHookBlock(InputHook *input, int device) { BML::ScriptFacadeAccess::Block(input, device); }
+static void BMLAS_InputHookUnblock(InputHook *input, int device) { BML::ScriptFacadeAccess::Unblock(input, device); }
 
 bool BMLAS_IsObjectValid(CKObject *object) {
     return BML::ScriptFacadeAccess::IsObjectValid(object);
@@ -635,6 +616,740 @@ int BMLAS_DataShareSizeOf(const std::string &key, const std::string &name) {
 
 static BML::ScriptMod *BMLAS_CurrentScriptMod() {
     return BML::ScriptModRuntime::GetCurrentScriptMod();
+}
+
+struct BMLAS_PhysicalizeDefinition {
+    bool Fixed = false;
+    float Friction = 0.7f;
+    float Elasticity = 0.4f;
+    float Mass = 1.0f;
+    std::string CollisionGroup;
+    bool StartFrozen = false;
+    bool EnableCollision = true;
+    bool CalcMassCenter = false;
+    float LinearDamp = 0.1f;
+    float RotDamp = 0.1f;
+    std::string CollisionSurface;
+    VxVector MassCenter = VxVector(0.0f, 0.0f, 0.0f);
+};
+
+struct BMLAS_VxRect {
+    float Left = 0.0f;
+    float Top = 0.0f;
+    float Right = 0.0f;
+    float Bottom = 0.0f;
+
+    VxRect ToNative() const {
+        return VxRect(Left, Top, Right, Bottom);
+    }
+};
+
+struct BMLAS_ObjectLoadOptions {
+    std::string File;
+    bool Rename = true;
+    std::string MasterName;
+    int FilterClass = CKCID_3DOBJECT;
+    bool AddToScene = true;
+    bool ReuseMeshes = true;
+    bool ReuseMaterials = true;
+    bool Dynamic = true;
+};
+
+struct BMLAS_Text2DDefinition {
+    int Font = ExecuteBB::NOFONT;
+    std::string Text;
+    int Align = ALIGN_CENTER;
+    BMLAS_VxRect Margin = {2.0f, 2.0f, 2.0f, 2.0f};
+    Vx2DVector Offset = Vx2DVector(0.0f, 0.0f);
+    Vx2DVector ParagraphIndent = Vx2DVector(0.0f, 0.0f);
+    float CaretSize = 0.1f;
+    int Flags = TEXT_SCREEN;
+};
+
+struct BMLAS_BallTypeDefinition {
+    std::string BallFile;
+    std::string BallId;
+    std::string BallName;
+    std::string ObjectName;
+    float Friction = 0.0f;
+    float Elasticity = 0.0f;
+    float Mass = 0.0f;
+    std::string CollisionGroup;
+    float LinearDamp = 0.0f;
+    float RotDamp = 0.0f;
+    float Force = 0.0f;
+    float Radius = 0.0f;
+};
+
+struct BMLAS_FloorTypeDefinition {
+    std::string Name;
+    float Friction = 0.0f;
+    float Elasticity = 0.0f;
+    float Mass = 0.0f;
+    std::string CollisionGroup;
+    bool EnableCollision = true;
+};
+
+struct BMLAS_ModuleBallDefinition {
+    std::string Name;
+    bool Fixed = false;
+    float Friction = 0.0f;
+    float Elasticity = 0.0f;
+    float Mass = 0.0f;
+    std::string CollisionGroup;
+    bool StartFrozen = false;
+    bool EnableCollision = true;
+    bool CalcMassCenter = false;
+    float LinearDamp = 0.0f;
+    float RotDamp = 0.0f;
+    float Radius = 0.0f;
+};
+
+struct BMLAS_ModuleConvexDefinition {
+    std::string Name;
+    bool Fixed = false;
+    float Friction = 0.0f;
+    float Elasticity = 0.0f;
+    float Mass = 0.0f;
+    std::string CollisionGroup;
+    bool StartFrozen = false;
+    bool EnableCollision = true;
+    bool CalcMassCenter = false;
+    float LinearDamp = 0.0f;
+    float RotDamp = 0.0f;
+};
+
+struct BMLAS_TrafoDefinition {
+    std::string Name;
+};
+
+struct BMLAS_ModuleDefinition {
+    std::string Name;
+};
+
+static void BMLAS_ConstructPhysicalizeDefinition(BMLAS_PhysicalizeDefinition *self) {
+    new (self) BMLAS_PhysicalizeDefinition();
+}
+
+static void BMLAS_CopyConstructPhysicalizeDefinition(const BMLAS_PhysicalizeDefinition &other,
+                                                     BMLAS_PhysicalizeDefinition *self) {
+    new (self) BMLAS_PhysicalizeDefinition(other);
+}
+
+static void BMLAS_DestructPhysicalizeDefinition(BMLAS_PhysicalizeDefinition *self) {
+    self->~BMLAS_PhysicalizeDefinition();
+}
+
+static BMLAS_PhysicalizeDefinition &BMLAS_AssignPhysicalizeDefinition(
+    const BMLAS_PhysicalizeDefinition &other,
+    BMLAS_PhysicalizeDefinition *self) {
+    *self = other;
+    return *self;
+}
+
+#define BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(CppType, Suffix)                         \
+    static void BMLAS_Construct##Suffix(CppType *self) { new (self) CppType(); }   \
+    static void BMLAS_CopyConstruct##Suffix(const CppType &other, CppType *self) { \
+        new (self) CppType(other);                                                 \
+    }                                                                              \
+    static void BMLAS_Destruct##Suffix(CppType *self) { self->~CppType(); }        \
+    static CppType &BMLAS_Assign##Suffix(const CppType &other, CppType *self) {    \
+        *self = other;                                                             \
+        return *self;                                                              \
+    }
+
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_VxRect, VxRect)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_ObjectLoadOptions, ObjectLoadOptions)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_Text2DDefinition, Text2DDefinition)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_BallTypeDefinition, BallTypeDefinition)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_FloorTypeDefinition, FloorTypeDefinition)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_ModuleBallDefinition, ModuleBallDefinition)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_ModuleConvexDefinition, ModuleConvexDefinition)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_TrafoDefinition, TrafoDefinition)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_ModuleDefinition, ModuleDefinition)
+
+#undef BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS
+
+static BML::ScriptModContextView *BMLAS_CreateInvalidModContext() {
+    return new (std::nothrow) BML::ScriptModContextView();
+}
+
+static void BMLAS_ReleaseModContext(BML::ScriptModContextView *view) {
+    delete view;
+}
+
+static BML::ScriptModContextView &BMLAS_AssignModContext(const BML::ScriptModContextView &other,
+                                                         BML::ScriptModContextView *self) {
+    *self = other;
+    return *self;
+}
+
+static bool BMLAS_BorrowCurrentContext(BML::ScriptModContextView &outContext) {
+    outContext = BML::ScriptModContextView();
+    BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
+    BML::ScriptModContextView *view = owner ? owner->BorrowContextView() : nullptr;
+    if (!view || !view->HasContext())
+        return false;
+    outContext = *view;
+    return true;
+}
+
+class BMLAS_ObjectLoadResult {
+public:
+    BMLAS_ObjectLoadResult(CKContext *context, bool success, CK_ID mainObjectId, std::vector<CK_ID> objectIds)
+        : m_Context(context), m_Success(success), m_MainObjectId(mainObjectId), m_ObjectIds(std::move(objectIds)) {}
+
+    void AddRef() { ++m_RefCount; }
+
+    void Release() {
+        if (--m_RefCount == 0)
+            delete this;
+    }
+
+    bool IsSuccess() const { return m_Success; }
+
+    int GetCount() const { return static_cast<int>(m_ObjectIds.size()); }
+
+    CKObject *BorrowMainObject() const {
+        return Resolve(m_MainObjectId);
+    }
+
+    CKObject *BorrowObject(int index) const {
+        if (index < 0 || index >= GetCount())
+            return nullptr;
+        return Resolve(m_ObjectIds[static_cast<std::size_t>(index)]);
+    }
+
+private:
+    CKObject *Resolve(CK_ID id) const {
+        return m_Context && id != 0 ? m_Context->GetObject(id) : nullptr;
+    }
+
+    int m_RefCount = 1;
+    CKContext *m_Context = nullptr;
+    bool m_Success = false;
+    CK_ID m_MainObjectId = 0;
+    std::vector<CK_ID> m_ObjectIds;
+};
+
+static BMLAS_ObjectLoadResult *BMLAS_CreateObjectLoadResult(CKContext *context,
+                                                            bool success,
+                                                            CK_ID mainObjectId,
+                                                            std::vector<CK_ID> objectIds) {
+    return new (std::nothrow) BMLAS_ObjectLoadResult(context, success, mainObjectId, std::move(objectIds));
+}
+
+static BML::ScriptMod *BMLAS_ResolveScriptModOwner(const std::string &modId) {
+    ModContext *ctx = nullptr;
+    if (!RequireContext(ctx))
+        return nullptr;
+    IMod *mod = ctx->FindMod(modId.c_str());
+    return dynamic_cast<BML::ScriptMod *>(mod);
+}
+
+class BMLAS_LoggerRef {
+public:
+    explicit BMLAS_LoggerRef(std::string modId) : m_ModId(std::move(modId)) {}
+
+    void AddRef() { ++m_RefCount; }
+
+    void Release() {
+        if (--m_RefCount == 0)
+            delete this;
+    }
+
+    bool IsValid() const { return Resolve() != nullptr; }
+
+    void Info(const std::string &message) const {
+        if (BML::ScriptMod *owner = Resolve())
+            owner->LogInfo(message);
+    }
+
+    void Warn(const std::string &message) const {
+        if (BML::ScriptMod *owner = Resolve())
+            owner->LogWarn(message);
+    }
+
+    void Error(const std::string &message) const {
+        if (BML::ScriptMod *owner = Resolve())
+            owner->LogError(message);
+    }
+
+private:
+    BML::ScriptMod *Resolve() const { return BMLAS_ResolveScriptModOwner(m_ModId); }
+
+    int m_RefCount = 1;
+    std::string m_ModId;
+};
+
+class BMLAS_ConfigPropertyRef {
+public:
+    BMLAS_ConfigPropertyRef(std::string modId, std::string category, std::string key)
+        : m_ModId(std::move(modId)), m_Category(std::move(category)), m_Key(std::move(key)) {}
+
+    void AddRef() { ++m_RefCount; }
+
+    void Release() {
+        if (--m_RefCount == 0)
+            delete this;
+    }
+
+    bool IsValid() const { return ResolveProperty() != nullptr; }
+
+    int GetType() const {
+        IProperty *property = ResolveProperty();
+        return property ? static_cast<int>(property->GetType()) : static_cast<int>(IProperty::NONE);
+    }
+
+    std::string GetString(const std::string &defaultValue) const {
+        IProperty *property = ResolveProperty();
+        if (!property || property->GetType() != IProperty::STRING)
+            return defaultValue;
+        const char *value = property->GetString();
+        return value ? value : "";
+    }
+
+    bool GetBoolean(bool defaultValue) const {
+        IProperty *property = ResolveProperty();
+        return property && property->GetType() == IProperty::BOOLEAN ? property->GetBoolean() : defaultValue;
+    }
+
+    int GetInteger(int defaultValue) const {
+        IProperty *property = ResolveProperty();
+        return property && property->GetType() == IProperty::INTEGER ? property->GetInteger() : defaultValue;
+    }
+
+    float GetFloat(float defaultValue) const {
+        IProperty *property = ResolveProperty();
+        return property && property->GetType() == IProperty::FLOAT ? property->GetFloat() : defaultValue;
+    }
+
+    CKKEYBOARD GetKey(CKKEYBOARD defaultValue) const {
+        IProperty *property = ResolveProperty();
+        return property && property->GetType() == IProperty::KEY ? property->GetKey() : defaultValue;
+    }
+
+    void SetString(const std::string &value) const {
+        if (IProperty *property = ResolveProperty())
+            property->SetString(value.c_str());
+    }
+
+    void SetBoolean(bool value) const {
+        if (IProperty *property = ResolveProperty())
+            property->SetBoolean(value);
+    }
+
+    void SetInteger(int value) const {
+        if (IProperty *property = ResolveProperty())
+            property->SetInteger(value);
+    }
+
+    void SetFloat(float value) const {
+        if (IProperty *property = ResolveProperty())
+            property->SetFloat(value);
+    }
+
+    void SetKey(CKKEYBOARD value) const {
+        if (IProperty *property = ResolveProperty())
+            property->SetKey(value);
+    }
+
+    void SetComment(const std::string &comment) const {
+        if (IProperty *property = ResolveProperty())
+            property->SetComment(comment.c_str());
+    }
+
+    void SetDefaultString(const std::string &value) const {
+        if (IProperty *property = ResolveProperty())
+            property->SetDefaultString(value.c_str());
+    }
+
+    void SetDefaultBoolean(bool value) const {
+        if (IProperty *property = ResolveProperty())
+            property->SetDefaultBoolean(value);
+    }
+
+    void SetDefaultInteger(int value) const {
+        if (IProperty *property = ResolveProperty())
+            property->SetDefaultInteger(value);
+    }
+
+    void SetDefaultFloat(float value) const {
+        if (IProperty *property = ResolveProperty())
+            property->SetDefaultFloat(value);
+    }
+
+    void SetDefaultKey(CKKEYBOARD value) const {
+        if (IProperty *property = ResolveProperty())
+            property->SetDefaultKey(value);
+    }
+
+private:
+    IProperty *ResolveProperty() const {
+        BML::ScriptMod *owner = BMLAS_ResolveScriptModOwner(m_ModId);
+        return owner ? owner->GetConfigProperty(m_Category, m_Key) : nullptr;
+    }
+
+    int m_RefCount = 1;
+    std::string m_ModId;
+    std::string m_Category;
+    std::string m_Key;
+};
+
+class BMLAS_ConfigRef {
+public:
+    explicit BMLAS_ConfigRef(std::string modId) : m_ModId(std::move(modId)) {}
+
+    void AddRef() { ++m_RefCount; }
+
+    void Release() {
+        if (--m_RefCount == 0)
+            delete this;
+    }
+
+    bool IsValid() const { return Resolve() != nullptr; }
+
+    bool HasCategory(const std::string &category) const {
+        BML::ScriptMod *owner = Resolve();
+        return owner && owner->HasConfigCategory(category);
+    }
+
+    bool HasKey(const std::string &category, const std::string &key) const {
+        BML::ScriptMod *owner = Resolve();
+        return owner && owner->HasConfigKey(category, key);
+    }
+
+    BMLAS_ConfigPropertyRef *GetProperty(const std::string &category, const std::string &key) const {
+        BML::ScriptMod *owner = Resolve();
+        if (!owner || !owner->GetConfigProperty(category, key))
+            return nullptr;
+        return new (std::nothrow) BMLAS_ConfigPropertyRef(m_ModId, category, key);
+    }
+
+    void SetCategoryComment(const std::string &category, const std::string &comment) const {
+        if (BML::ScriptMod *owner = Resolve())
+            owner->SetConfigCategoryComment(category, comment);
+    }
+
+private:
+    BML::ScriptMod *Resolve() const { return BMLAS_ResolveScriptModOwner(m_ModId); }
+
+    int m_RefCount = 1;
+    std::string m_ModId;
+};
+
+static BMLAS_LoggerRef *BMLAS_ContextBorrowLogger(BML::ScriptModContextView *view) {
+    if (!view || !view->HasContext())
+        return nullptr;
+    BML::ScriptMod *owner = BMLAS_ResolveScriptModOwner(view->GetModId());
+    return owner ? new (std::nothrow) BMLAS_LoggerRef(owner->GetID()) : nullptr;
+}
+
+static BMLAS_ConfigRef *BMLAS_ContextBorrowConfig(BML::ScriptModContextView *view) {
+    if (!view || !view->HasContext())
+        return nullptr;
+    BML::ScriptMod *owner = BMLAS_ResolveScriptModOwner(view->GetModId());
+    return owner ? new (std::nothrow) BMLAS_ConfigRef(owner->GetID()) : nullptr;
+}
+
+static BMLAS_ObjectLoadResult *BMLAS_CK_LoadObject(const BMLAS_ObjectLoadOptions &options) {
+    ModContext *ctx = nullptr;
+    if (!RequireLoadedContext(ctx))
+        return BMLAS_CreateObjectLoadResult(nullptr, false, 0, {});
+
+    std::pair<XObjectArray *, CKObject *> result = ExecuteBB::ObjectLoad(options.File.c_str(),
+                                                                         options.Rename,
+                                                                         options.MasterName.c_str(),
+                                                                         static_cast<CK_CLASSID>(options.FilterClass),
+                                                                         options.AddToScene ? TRUE : FALSE,
+                                                                         options.ReuseMeshes ? TRUE : FALSE,
+                                                                         options.ReuseMaterials ? TRUE : FALSE,
+                                                                         options.Dynamic ? TRUE : FALSE);
+    std::vector<CK_ID> objectIds;
+    if (result.first) {
+        objectIds.reserve(static_cast<std::size_t>(result.first->Size()));
+        for (CK_ID *id = result.first->Begin(); id != result.first->End(); ++id) {
+            objectIds.push_back(*id);
+        }
+    }
+
+    const CK_ID mainObjectId = result.second ? result.second->GetID() : 0;
+    const bool success = result.first != nullptr || result.second != nullptr;
+    return BMLAS_CreateObjectLoadResult(ctx->GetCKContext(), success, mainObjectId, std::move(objectIds));
+}
+
+static ExecuteBB::FontType BMLAS_ToFontType(int value) {
+    if (value < ExecuteBB::NOFONT || value > ExecuteBB::GAMEFONT_CREDITS_BIG)
+        return ExecuteBB::NOFONT;
+    return static_cast<ExecuteBB::FontType>(value);
+}
+
+static CKBehavior *BMLAS_Text_Create2DText(CKBehavior *ownerScript,
+                                           CK2dEntity *target,
+                                           const BMLAS_Text2DDefinition &definition,
+                                           CKMaterial *backgroundMaterial,
+                                           CKMaterial *caretMaterial) {
+    ModContext *ctx = nullptr;
+    if (!ownerScript || !target || !RequireLoadedContext(ctx))
+        return nullptr;
+
+    return ExecuteBB::Create2DText(ownerScript,
+                                   target,
+                                   BMLAS_ToFontType(definition.Font),
+                                   definition.Text.c_str(),
+                                   definition.Align,
+                                   definition.Margin.ToNative(),
+                                   definition.Offset,
+                                   definition.ParagraphIndent,
+                                   backgroundMaterial,
+                                   definition.CaretSize,
+                                   caretMaterial,
+                                   definition.Flags);
+}
+
+static CKBehavior *BMLAS_Text_Create2DTextDefaultMaterials(CKBehavior *ownerScript,
+                                                          CK2dEntity *target,
+                                                          const BMLAS_Text2DDefinition &definition) {
+    return BMLAS_Text_Create2DText(ownerScript, target, definition, nullptr, nullptr);
+}
+
+static bool BMLAS_ContextRegisterBallType(const BML::ScriptModContextView *view,
+                                          const BMLAS_BallTypeDefinition &definition) {
+    return view && view->RegisterBallType(definition.BallFile, definition.BallId, definition.BallName,
+                                          definition.ObjectName, definition.Friction, definition.Elasticity,
+                                          definition.Mass, definition.CollisionGroup, definition.LinearDamp,
+                                          definition.RotDamp, definition.Force, definition.Radius);
+}
+
+static bool BMLAS_ContextRegisterFloorType(const BML::ScriptModContextView *view,
+                                           const BMLAS_FloorTypeDefinition &definition) {
+    return view && view->RegisterFloorType(definition.Name, definition.Friction, definition.Elasticity,
+                                           definition.Mass, definition.CollisionGroup,
+                                           definition.EnableCollision);
+}
+
+static bool BMLAS_ContextRegisterModuleBall(const BML::ScriptModContextView *view,
+                                            const BMLAS_ModuleBallDefinition &definition) {
+    return view && view->RegisterModulBall(definition.Name, definition.Fixed, definition.Friction,
+                                           definition.Elasticity, definition.Mass, definition.CollisionGroup,
+                                           definition.StartFrozen, definition.EnableCollision,
+                                           definition.CalcMassCenter, definition.LinearDamp, definition.RotDamp,
+                                           definition.Radius);
+}
+
+static bool BMLAS_ContextRegisterModuleConvex(const BML::ScriptModContextView *view,
+                                              const BMLAS_ModuleConvexDefinition &definition) {
+    return view && view->RegisterModulConvex(definition.Name, definition.Fixed, definition.Friction,
+                                             definition.Elasticity, definition.Mass, definition.CollisionGroup,
+                                             definition.StartFrozen, definition.EnableCollision,
+                                             definition.CalcMassCenter, definition.LinearDamp, definition.RotDamp);
+}
+
+static bool BMLAS_ContextRegisterTrafo(const BML::ScriptModContextView *view,
+                                       const BMLAS_TrafoDefinition &definition) {
+    return view && view->RegisterTrafo(definition.Name);
+}
+
+static bool BMLAS_ContextRegisterModule(const BML::ScriptModContextView *view,
+                                        const BMLAS_ModuleDefinition &definition) {
+    return view && view->RegisterModul(definition.Name);
+}
+
+static void BMLAS_CK_Set3dEntityPosition(CK3dEntity *entity, const VxVector &position) {
+    if (entity)
+        entity->SetPosition(&position);
+}
+
+static void BMLAS_CK_Set3dEntityScale(CK3dEntity *entity, const VxVector &scale, bool local) {
+    if (entity)
+        entity->SetScale(&scale, FALSE, local ? TRUE : FALSE);
+}
+
+static CK3dEntity *BMLAS_CK_Borrow3dEntityChild(CK3dEntity *entity, int index) {
+    if (!entity || index < 0 || index >= entity->GetChildrenCount())
+        return nullptr;
+    return entity->GetChild(index);
+}
+
+static bool BMLAS_CK_HasDataArrayCell(CKDataArray *array, int row, int column) {
+    return array && row >= 0 && column >= 0 && row < array->GetRowCount() && column < array->GetColumnCount();
+}
+
+static int BMLAS_CK_GetDataArrayRowCount(CKDataArray *array) {
+    return array ? array->GetRowCount() : 0;
+}
+
+static int BMLAS_CK_GetDataArrayColumnCount(CKDataArray *array) {
+    return array ? array->GetColumnCount() : 0;
+}
+
+static std::string BMLAS_CK_GetDataArrayColumnName(CKDataArray *array, int column) {
+    if (!array || column < 0 || column >= array->GetColumnCount())
+        return "";
+    char *name = array->GetColumnName(column);
+    return name ? name : "";
+}
+
+static int BMLAS_CK_FindDataArrayColumn(CKDataArray *array, const std::string &name) {
+    if (!array)
+        return -1;
+    const int count = array->GetColumnCount();
+    for (int i = 0; i < count; ++i) {
+        char *columnName = array->GetColumnName(i);
+        if (columnName && name == columnName)
+            return i;
+    }
+    return -1;
+}
+
+static std::string BMLAS_CK_GetDataArrayString(CKDataArray *array,
+                                               int row,
+                                               int column,
+                                               const std::string &defaultValue) {
+    if (!BMLAS_CK_HasDataArrayCell(array, row, column))
+        return defaultValue;
+
+    char buffer[4096] = {};
+    const int result = array->GetElementStringValue(row, column, buffer);
+    if (result <= 0 && buffer[0] == '\0')
+        return defaultValue;
+    return buffer;
+}
+
+static bool BMLAS_CK_GetDataArrayBool(CKDataArray *array, int row, int column, bool defaultValue) {
+    if (!BMLAS_CK_HasDataArrayCell(array, row, column))
+        return defaultValue;
+    int value = defaultValue ? 1 : 0;
+    return array->GetElementValue(row, column, &value) ? value != 0 : defaultValue;
+}
+
+static int BMLAS_CK_GetDataArrayInt(CKDataArray *array, int row, int column, int defaultValue) {
+    if (!BMLAS_CK_HasDataArrayCell(array, row, column))
+        return defaultValue;
+    int value = defaultValue;
+    return array->GetElementValue(row, column, &value) ? value : defaultValue;
+}
+
+static float BMLAS_CK_GetDataArrayFloat(CKDataArray *array, int row, int column, float defaultValue) {
+    if (!BMLAS_CK_HasDataArrayCell(array, row, column))
+        return defaultValue;
+    float value = defaultValue;
+    return array->GetElementValue(row, column, &value) ? value : defaultValue;
+}
+
+static bool BMLAS_CK_SetDataArrayString(CKDataArray *array,
+                                        int row,
+                                        int column,
+                                        const std::string &value) {
+    if (!BMLAS_CK_HasDataArrayCell(array, row, column))
+        return false;
+    std::string copy = value;
+    return array->SetElementStringValue(row, column, copy.empty() ? const_cast<char *>("") : &copy[0]) != 0;
+}
+
+static bool BMLAS_CK_SetDataArrayBool(CKDataArray *array, int row, int column, bool value) {
+    if (!BMLAS_CK_HasDataArrayCell(array, row, column))
+        return false;
+    int stored = value ? 1 : 0;
+    return array->SetElementValue(row, column, &stored) != 0;
+}
+
+static bool BMLAS_CK_SetDataArrayInt(CKDataArray *array, int row, int column, int value) {
+    return BMLAS_CK_HasDataArrayCell(array, row, column) && array->SetElementValue(row, column, &value) != 0;
+}
+
+static bool BMLAS_CK_SetDataArrayFloat(CKDataArray *array, int row, int column, float value) {
+    return BMLAS_CK_HasDataArrayCell(array, row, column) && array->SetElementValue(row, column, &value) != 0;
+}
+
+static bool BMLAS_Physics_HasTarget(CK3dEntity *target) {
+    ModContext *ctx = nullptr;
+    return target && RequireLoadedContext(ctx);
+}
+
+static bool BMLAS_Physics_PhysicalizeConvex(CK3dEntity *target,
+                                            const BMLAS_PhysicalizeDefinition &definition,
+                                            CKMesh *mesh) {
+    if (!BMLAS_Physics_HasTarget(target))
+        return false;
+    ExecuteBB::PhysicalizeConvex(target, definition.Fixed, definition.Friction, definition.Elasticity,
+                                 definition.Mass, definition.CollisionGroup.c_str(), definition.StartFrozen,
+                                 definition.EnableCollision, definition.CalcMassCenter, definition.LinearDamp,
+                                 definition.RotDamp, definition.CollisionSurface.c_str(), definition.MassCenter,
+                                 mesh);
+    return true;
+}
+
+static bool BMLAS_Physics_PhysicalizeBall(CK3dEntity *target,
+                                          const BMLAS_PhysicalizeDefinition &definition,
+                                          const VxVector &center,
+                                          float radius) {
+    if (!BMLAS_Physics_HasTarget(target))
+        return false;
+    ExecuteBB::PhysicalizeBall(target, definition.Fixed, definition.Friction, definition.Elasticity,
+                               definition.Mass, definition.CollisionGroup.c_str(), definition.StartFrozen,
+                               definition.EnableCollision, definition.CalcMassCenter, definition.LinearDamp,
+                               definition.RotDamp, definition.CollisionSurface.c_str(), definition.MassCenter,
+                               center, radius);
+    return true;
+}
+
+static bool BMLAS_Physics_PhysicalizeConcave(CK3dEntity *target,
+                                             const BMLAS_PhysicalizeDefinition &definition,
+                                             CKMesh *mesh) {
+    if (!BMLAS_Physics_HasTarget(target))
+        return false;
+    ExecuteBB::PhysicalizeConcave(target, definition.Fixed, definition.Friction, definition.Elasticity,
+                                  definition.Mass, definition.CollisionGroup.c_str(), definition.StartFrozen,
+                                  definition.EnableCollision, definition.CalcMassCenter, definition.LinearDamp,
+                                  definition.RotDamp, definition.CollisionSurface.c_str(), definition.MassCenter,
+                                  mesh);
+    return true;
+}
+
+static bool BMLAS_Physics_Unphysicalize(CK3dEntity *target) {
+    if (!BMLAS_Physics_HasTarget(target))
+        return false;
+    ExecuteBB::Unphysicalize(target);
+    return true;
+}
+
+static bool BMLAS_Physics_SetForce(CK3dEntity *target,
+                                   const VxVector &position,
+                                   CK3dEntity *positionReference,
+                                   const VxVector &direction,
+                                   CK3dEntity *directionReference,
+                                   float force) {
+    if (!BMLAS_Physics_HasTarget(target))
+        return false;
+    ExecuteBB::SetPhysicsForce(target, position, positionReference, direction, directionReference, force);
+    return true;
+}
+
+static bool BMLAS_Physics_ClearForce(CK3dEntity *target) {
+    if (!BMLAS_Physics_HasTarget(target))
+        return false;
+    ExecuteBB::UnsetPhysicsForce(target);
+    return true;
+}
+
+static bool BMLAS_Physics_Impulse(CK3dEntity *target,
+                                  const VxVector &position,
+                                  CK3dEntity *positionReference,
+                                  const VxVector &direction,
+                                  CK3dEntity *directionReference,
+                                  float impulse) {
+    if (!BMLAS_Physics_HasTarget(target))
+        return false;
+    ExecuteBB::PhysicsImpulse(target, position, positionReference, direction, directionReference, impulse);
+    return true;
+}
+
+static bool BMLAS_Physics_WakeUp(CK3dEntity *target) {
+    if (!BMLAS_Physics_HasTarget(target))
+        return false;
+    ExecuteBB::PhysicsWakeUp(target);
+    return true;
 }
 
 static BML::ScriptTimerRef *BMLAS_AddTimer(asIScriptObject *timer) {
@@ -1466,6 +2181,13 @@ bool BMLAS_UI_MainButton(const std::string &label) {
     return Bui::MainButton(label.c_str());
 }
 
+bool BMLAS_UI_OkButton(const std::string &label) {
+    if (!BMLAS_UI_BeginRenderCall())
+        return false;
+    Bui::ImGuiContextScope scope;
+    return Bui::OkButton(label.c_str());
+}
+
 bool BMLAS_UI_BackButton(const std::string &label) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
@@ -1536,6 +2258,16 @@ bool BMLAS_UI_MinusButton(const std::string &label) {
     return Bui::MinusButton(label.c_str());
 }
 
+bool BMLAS_UI_KeyButton(const std::string &label, bool &toggled, int &keyChord) {
+    if (!BMLAS_UI_BeginRenderCall())
+        return false;
+    Bui::ImGuiContextScope scope;
+    ImGuiKeyChord nativeChord = static_cast<ImGuiKeyChord>(keyChord);
+    const bool changed = Bui::KeyButton(label.c_str(), &toggled, &nativeChord);
+    keyChord = static_cast<int>(nativeChord);
+    return changed;
+}
+
 void BMLAS_UI_Title(const std::string &text, float y, float scale) {
     if (!BMLAS_UI_BeginRenderCall())
         return;
@@ -1578,6 +2310,51 @@ bool BMLAS_UI_YesNoButton(const std::string &label, bool &value) {
     return Bui::YesNoButton(label.c_str(), &value);
 }
 
+bool BMLAS_UI_RadioButtonText(const std::string &label, int &currentItem, const std::string &itemsText) {
+    if (!BMLAS_UI_BeginRenderCall())
+        return false;
+    Bui::ImGuiContextScope scope;
+    std::vector<std::string> items;
+    std::size_t start = 0;
+    while (start <= itemsText.size()) {
+        const std::size_t end = itemsText.find('\n', start);
+        std::string item = end == std::string::npos
+                               ? itemsText.substr(start)
+                               : itemsText.substr(start, end - start);
+        if (!item.empty() && item.back() == '\r')
+            item.pop_back();
+        if (!item.empty())
+            items.push_back(std::move(item));
+        if (end == std::string::npos)
+            break;
+        start = end + 1;
+    }
+    if (items.empty())
+        return false;
+
+    std::vector<const char *> itemPointers;
+    itemPointers.reserve(items.size());
+    for (const std::string &item : items)
+        itemPointers.push_back(item.c_str());
+    return Bui::RadioButton(label.c_str(), &currentItem, itemPointers.data(), static_cast<int>(itemPointers.size()));
+}
+
+bool BMLAS_UI_InputTextButton(const std::string &label, std::string &text, int maxLength) {
+    if (!BMLAS_UI_BeginRenderCall())
+        return false;
+    Bui::ImGuiContextScope scope;
+    if (maxLength < 1)
+        maxLength = 1;
+    if (maxLength > 4096)
+        maxLength = 4096;
+    std::vector<char> buffer(static_cast<std::size_t>(maxLength) + 1, '\0');
+    std::strncpy(buffer.data(), text.c_str(), buffer.size() - 1);
+    const bool changed = Bui::InputTextButton(label.c_str(), buffer.data(), buffer.size());
+    if (changed)
+        text = buffer.data();
+    return changed;
+}
+
 bool BMLAS_UI_InputIntButton(const std::string &label, int &value, int step, int stepFast) {
     if (!BMLAS_UI_BeginRenderCall())
         return false;
@@ -1606,6 +2383,32 @@ bool BMLAS_UI_SearchBar(std::string &text, float x, float y, float width) {
 
 void BMLAS_UI_PlayMenuClickSound() {
     Bui::PlayMenuClickSound();
+}
+
+int BMLAS_UI_CKKeyToImGuiKey(CKKEYBOARD key) {
+    return static_cast<int>(Bui::CKKeyToImGuiKey(key));
+}
+
+CKKEYBOARD BMLAS_UI_ImGuiKeyToCKKey(int key) {
+    return Bui::ImGuiKeyToCKKey(static_cast<ImGuiKey>(key));
+}
+
+std::string BMLAS_UI_KeyChordToString(int keyChord) {
+    if (!BMLAS_UI_BeginRenderCall())
+        return {};
+    Bui::ImGuiContextScope scope;
+    char buffer[128] = {};
+    return Bui::KeyChordToString(static_cast<ImGuiKeyChord>(keyChord), buffer, sizeof(buffer)) ? buffer : "";
+}
+
+bool BMLAS_UI_SetKeyChordFromIO(int &keyChord) {
+    if (!BMLAS_UI_BeginRenderCall())
+        return false;
+    Bui::ImGuiContextScope scope;
+    ImGuiKeyChord nativeChord = static_cast<ImGuiKeyChord>(keyChord);
+    const bool changed = Bui::SetKeyChordFromIO(&nativeChord);
+    keyChord = static_cast<int>(nativeChord);
+    return changed;
 }
 
 float BMLAS_UI_GetButtonSizeX(int type) {
@@ -1640,13 +2443,6 @@ float BMLAS_UI_GetButtonSizeCoordY(int type) {
 float BMLAS_UI_GetButtonIndentCoord(int type) {
     return Bui::GetButtonIndentInCoord(BMLAS_UI_ToButtonType(type));
 }
-
-BML::ScriptModContextView *BMLAS_CreateInvalidModContext() {
-    static BML::ScriptModContextView invalidContext;
-    return &invalidContext;
-}
-
-void BMLAS_ReleaseModContext(BML::ScriptModContextView *) {}
 
 BML::ScriptCommandCompletion *BMLAS_CreateInvalidCommandCompletion() {
     static BML::ScriptCommandCompletion invalidList;
@@ -1781,6 +2577,13 @@ struct ScriptObjectBehaviourRegistration {
     asDWORD CallConvention;
 };
 
+struct ScriptObjectPropertyRegistration {
+    const char *TypeName;
+    const char *Declaration;
+    const char *DiagnosticName;
+    int ByteOffset;
+};
+
 struct ScriptObjectMethodRegistration {
     const char *TypeName;
     const char *Declaration;
@@ -1822,6 +2625,20 @@ struct ScriptUiFunctionRegistration {
 
 static const ScriptObjectTypeRegistration kObjectTypeRegistrations[] = {
     {"ModContext", "class ModContext", 0, asOBJ_REF | asOBJ_SCOPED},
+    {"VxRect", "class VxRect", sizeof(BMLAS_VxRect), asOBJ_VALUE | asGetTypeTraits<BMLAS_VxRect>()},
+    {"PhysicalizeDefinition", "class PhysicalizeDefinition", sizeof(BMLAS_PhysicalizeDefinition), asOBJ_VALUE | asGetTypeTraits<BMLAS_PhysicalizeDefinition>()},
+    {"ObjectLoadOptions", "class ObjectLoadOptions", sizeof(BMLAS_ObjectLoadOptions), asOBJ_VALUE | asGetTypeTraits<BMLAS_ObjectLoadOptions>()},
+    {"ObjectLoadResult", "class ObjectLoadResult", 0, asOBJ_REF},
+    {"Logger", "class Logger", 0, asOBJ_REF},
+    {"Config", "class Config", 0, asOBJ_REF},
+    {"ConfigProperty", "class ConfigProperty", 0, asOBJ_REF},
+    {"Text2DDefinition", "class Text2DDefinition", sizeof(BMLAS_Text2DDefinition), asOBJ_VALUE | asGetTypeTraits<BMLAS_Text2DDefinition>()},
+    {"BallTypeDefinition", "class BallTypeDefinition", sizeof(BMLAS_BallTypeDefinition), asOBJ_VALUE | asGetTypeTraits<BMLAS_BallTypeDefinition>()},
+    {"FloorTypeDefinition", "class FloorTypeDefinition", sizeof(BMLAS_FloorTypeDefinition), asOBJ_VALUE | asGetTypeTraits<BMLAS_FloorTypeDefinition>()},
+    {"ModuleBallDefinition", "class ModuleBallDefinition", sizeof(BMLAS_ModuleBallDefinition), asOBJ_VALUE | asGetTypeTraits<BMLAS_ModuleBallDefinition>()},
+    {"ModuleConvexDefinition", "class ModuleConvexDefinition", sizeof(BMLAS_ModuleConvexDefinition), asOBJ_VALUE | asGetTypeTraits<BMLAS_ModuleConvexDefinition>()},
+    {"TrafoDefinition", "class TrafoDefinition", sizeof(BMLAS_TrafoDefinition), asOBJ_VALUE | asGetTypeTraits<BMLAS_TrafoDefinition>()},
+    {"ModuleDefinition", "class ModuleDefinition", sizeof(BMLAS_ModuleDefinition), asOBJ_VALUE | asGetTypeTraits<BMLAS_ModuleDefinition>()},
     {"InputHook", "class InputHook", 0, asOBJ_REF | asOBJ_NOCOUNT},
     {"TimerRef", "class TimerRef", 0, asOBJ_REF},
     {"TimerEvent", "class TimerEvent", sizeof(BML::ScriptTimerEventView), asOBJ_VALUE | asOBJ_POD | asOBJ_APP_CLASS},
@@ -1856,9 +2673,125 @@ static const ScriptInterfaceMethodRegistration kInterfaceMethodRegistrations[] =
     {"DataShareRequest", "void Receive(const BML::ModContext &in, const BML::DataShareEvent &in)", "void DataShareRequest::Receive(...)"},
 };
 
+static const ScriptObjectPropertyRegistration kObjectPropertyRegistrations[] = {
+    {"VxRect", "float Left", "float VxRect::Left", asOFFSET(BMLAS_VxRect, Left)},
+    {"VxRect", "float Top", "float VxRect::Top", asOFFSET(BMLAS_VxRect, Top)},
+    {"VxRect", "float Right", "float VxRect::Right", asOFFSET(BMLAS_VxRect, Right)},
+    {"VxRect", "float Bottom", "float VxRect::Bottom", asOFFSET(BMLAS_VxRect, Bottom)},
+    {"PhysicalizeDefinition", "bool Fixed", "bool PhysicalizeDefinition::Fixed", asOFFSET(BMLAS_PhysicalizeDefinition, Fixed)},
+    {"PhysicalizeDefinition", "float Friction", "float PhysicalizeDefinition::Friction", asOFFSET(BMLAS_PhysicalizeDefinition, Friction)},
+    {"PhysicalizeDefinition", "float Elasticity", "float PhysicalizeDefinition::Elasticity", asOFFSET(BMLAS_PhysicalizeDefinition, Elasticity)},
+    {"PhysicalizeDefinition", "float Mass", "float PhysicalizeDefinition::Mass", asOFFSET(BMLAS_PhysicalizeDefinition, Mass)},
+    {"PhysicalizeDefinition", "string CollisionGroup", "string PhysicalizeDefinition::CollisionGroup", asOFFSET(BMLAS_PhysicalizeDefinition, CollisionGroup)},
+    {"PhysicalizeDefinition", "bool StartFrozen", "bool PhysicalizeDefinition::StartFrozen", asOFFSET(BMLAS_PhysicalizeDefinition, StartFrozen)},
+    {"PhysicalizeDefinition", "bool EnableCollision", "bool PhysicalizeDefinition::EnableCollision", asOFFSET(BMLAS_PhysicalizeDefinition, EnableCollision)},
+    {"PhysicalizeDefinition", "bool CalcMassCenter", "bool PhysicalizeDefinition::CalcMassCenter", asOFFSET(BMLAS_PhysicalizeDefinition, CalcMassCenter)},
+    {"PhysicalizeDefinition", "float LinearDamp", "float PhysicalizeDefinition::LinearDamp", asOFFSET(BMLAS_PhysicalizeDefinition, LinearDamp)},
+    {"PhysicalizeDefinition", "float RotDamp", "float PhysicalizeDefinition::RotDamp", asOFFSET(BMLAS_PhysicalizeDefinition, RotDamp)},
+    {"PhysicalizeDefinition", "string CollisionSurface", "string PhysicalizeDefinition::CollisionSurface", asOFFSET(BMLAS_PhysicalizeDefinition, CollisionSurface)},
+    {"PhysicalizeDefinition", "VxVector MassCenter", "VxVector PhysicalizeDefinition::MassCenter", asOFFSET(BMLAS_PhysicalizeDefinition, MassCenter)},
+    {"ObjectLoadOptions", "string File", "string ObjectLoadOptions::File", asOFFSET(BMLAS_ObjectLoadOptions, File)},
+    {"ObjectLoadOptions", "bool Rename", "bool ObjectLoadOptions::Rename", asOFFSET(BMLAS_ObjectLoadOptions, Rename)},
+    {"ObjectLoadOptions", "string MasterName", "string ObjectLoadOptions::MasterName", asOFFSET(BMLAS_ObjectLoadOptions, MasterName)},
+    {"ObjectLoadOptions", "int FilterClass", "int ObjectLoadOptions::FilterClass", asOFFSET(BMLAS_ObjectLoadOptions, FilterClass)},
+    {"ObjectLoadOptions", "bool AddToScene", "bool ObjectLoadOptions::AddToScene", asOFFSET(BMLAS_ObjectLoadOptions, AddToScene)},
+    {"ObjectLoadOptions", "bool ReuseMeshes", "bool ObjectLoadOptions::ReuseMeshes", asOFFSET(BMLAS_ObjectLoadOptions, ReuseMeshes)},
+    {"ObjectLoadOptions", "bool ReuseMaterials", "bool ObjectLoadOptions::ReuseMaterials", asOFFSET(BMLAS_ObjectLoadOptions, ReuseMaterials)},
+    {"ObjectLoadOptions", "bool Dynamic", "bool ObjectLoadOptions::Dynamic", asOFFSET(BMLAS_ObjectLoadOptions, Dynamic)},
+    {"Text2DDefinition", "FontType Font", "FontType Text2DDefinition::Font", asOFFSET(BMLAS_Text2DDefinition, Font)},
+    {"Text2DDefinition", "string Text", "string Text2DDefinition::Text", asOFFSET(BMLAS_Text2DDefinition, Text)},
+    {"Text2DDefinition", "int Align", "int Text2DDefinition::Align", asOFFSET(BMLAS_Text2DDefinition, Align)},
+    {"Text2DDefinition", "VxRect Margin", "VxRect Text2DDefinition::Margin", asOFFSET(BMLAS_Text2DDefinition, Margin)},
+    {"Text2DDefinition", "Vx2DVector Offset", "Vx2DVector Text2DDefinition::Offset", asOFFSET(BMLAS_Text2DDefinition, Offset)},
+    {"Text2DDefinition", "Vx2DVector ParagraphIndent", "Vx2DVector Text2DDefinition::ParagraphIndent", asOFFSET(BMLAS_Text2DDefinition, ParagraphIndent)},
+    {"Text2DDefinition", "float CaretSize", "float Text2DDefinition::CaretSize", asOFFSET(BMLAS_Text2DDefinition, CaretSize)},
+    {"Text2DDefinition", "int Flags", "int Text2DDefinition::Flags", asOFFSET(BMLAS_Text2DDefinition, Flags)},
+    {"BallTypeDefinition", "string BallFile", "string BallTypeDefinition::BallFile", asOFFSET(BMLAS_BallTypeDefinition, BallFile)},
+    {"BallTypeDefinition", "string BallId", "string BallTypeDefinition::BallId", asOFFSET(BMLAS_BallTypeDefinition, BallId)},
+    {"BallTypeDefinition", "string BallName", "string BallTypeDefinition::BallName", asOFFSET(BMLAS_BallTypeDefinition, BallName)},
+    {"BallTypeDefinition", "string ObjectName", "string BallTypeDefinition::ObjectName", asOFFSET(BMLAS_BallTypeDefinition, ObjectName)},
+    {"BallTypeDefinition", "float Friction", "float BallTypeDefinition::Friction", asOFFSET(BMLAS_BallTypeDefinition, Friction)},
+    {"BallTypeDefinition", "float Elasticity", "float BallTypeDefinition::Elasticity", asOFFSET(BMLAS_BallTypeDefinition, Elasticity)},
+    {"BallTypeDefinition", "float Mass", "float BallTypeDefinition::Mass", asOFFSET(BMLAS_BallTypeDefinition, Mass)},
+    {"BallTypeDefinition", "string CollisionGroup", "string BallTypeDefinition::CollisionGroup", asOFFSET(BMLAS_BallTypeDefinition, CollisionGroup)},
+    {"BallTypeDefinition", "float LinearDamp", "float BallTypeDefinition::LinearDamp", asOFFSET(BMLAS_BallTypeDefinition, LinearDamp)},
+    {"BallTypeDefinition", "float RotDamp", "float BallTypeDefinition::RotDamp", asOFFSET(BMLAS_BallTypeDefinition, RotDamp)},
+    {"BallTypeDefinition", "float Force", "float BallTypeDefinition::Force", asOFFSET(BMLAS_BallTypeDefinition, Force)},
+    {"BallTypeDefinition", "float Radius", "float BallTypeDefinition::Radius", asOFFSET(BMLAS_BallTypeDefinition, Radius)},
+    {"FloorTypeDefinition", "string Name", "string FloorTypeDefinition::Name", asOFFSET(BMLAS_FloorTypeDefinition, Name)},
+    {"FloorTypeDefinition", "float Friction", "float FloorTypeDefinition::Friction", asOFFSET(BMLAS_FloorTypeDefinition, Friction)},
+    {"FloorTypeDefinition", "float Elasticity", "float FloorTypeDefinition::Elasticity", asOFFSET(BMLAS_FloorTypeDefinition, Elasticity)},
+    {"FloorTypeDefinition", "float Mass", "float FloorTypeDefinition::Mass", asOFFSET(BMLAS_FloorTypeDefinition, Mass)},
+    {"FloorTypeDefinition", "string CollisionGroup", "string FloorTypeDefinition::CollisionGroup", asOFFSET(BMLAS_FloorTypeDefinition, CollisionGroup)},
+    {"FloorTypeDefinition", "bool EnableCollision", "bool FloorTypeDefinition::EnableCollision", asOFFSET(BMLAS_FloorTypeDefinition, EnableCollision)},
+    {"ModuleBallDefinition", "string Name", "string ModuleBallDefinition::Name", asOFFSET(BMLAS_ModuleBallDefinition, Name)},
+    {"ModuleBallDefinition", "bool Fixed", "bool ModuleBallDefinition::Fixed", asOFFSET(BMLAS_ModuleBallDefinition, Fixed)},
+    {"ModuleBallDefinition", "float Friction", "float ModuleBallDefinition::Friction", asOFFSET(BMLAS_ModuleBallDefinition, Friction)},
+    {"ModuleBallDefinition", "float Elasticity", "float ModuleBallDefinition::Elasticity", asOFFSET(BMLAS_ModuleBallDefinition, Elasticity)},
+    {"ModuleBallDefinition", "float Mass", "float ModuleBallDefinition::Mass", asOFFSET(BMLAS_ModuleBallDefinition, Mass)},
+    {"ModuleBallDefinition", "string CollisionGroup", "string ModuleBallDefinition::CollisionGroup", asOFFSET(BMLAS_ModuleBallDefinition, CollisionGroup)},
+    {"ModuleBallDefinition", "bool StartFrozen", "bool ModuleBallDefinition::StartFrozen", asOFFSET(BMLAS_ModuleBallDefinition, StartFrozen)},
+    {"ModuleBallDefinition", "bool EnableCollision", "bool ModuleBallDefinition::EnableCollision", asOFFSET(BMLAS_ModuleBallDefinition, EnableCollision)},
+    {"ModuleBallDefinition", "bool CalcMassCenter", "bool ModuleBallDefinition::CalcMassCenter", asOFFSET(BMLAS_ModuleBallDefinition, CalcMassCenter)},
+    {"ModuleBallDefinition", "float LinearDamp", "float ModuleBallDefinition::LinearDamp", asOFFSET(BMLAS_ModuleBallDefinition, LinearDamp)},
+    {"ModuleBallDefinition", "float RotDamp", "float ModuleBallDefinition::RotDamp", asOFFSET(BMLAS_ModuleBallDefinition, RotDamp)},
+    {"ModuleBallDefinition", "float Radius", "float ModuleBallDefinition::Radius", asOFFSET(BMLAS_ModuleBallDefinition, Radius)},
+    {"ModuleConvexDefinition", "string Name", "string ModuleConvexDefinition::Name", asOFFSET(BMLAS_ModuleConvexDefinition, Name)},
+    {"ModuleConvexDefinition", "bool Fixed", "bool ModuleConvexDefinition::Fixed", asOFFSET(BMLAS_ModuleConvexDefinition, Fixed)},
+    {"ModuleConvexDefinition", "float Friction", "float ModuleConvexDefinition::Friction", asOFFSET(BMLAS_ModuleConvexDefinition, Friction)},
+    {"ModuleConvexDefinition", "float Elasticity", "float ModuleConvexDefinition::Elasticity", asOFFSET(BMLAS_ModuleConvexDefinition, Elasticity)},
+    {"ModuleConvexDefinition", "float Mass", "float ModuleConvexDefinition::Mass", asOFFSET(BMLAS_ModuleConvexDefinition, Mass)},
+    {"ModuleConvexDefinition", "string CollisionGroup", "string ModuleConvexDefinition::CollisionGroup", asOFFSET(BMLAS_ModuleConvexDefinition, CollisionGroup)},
+    {"ModuleConvexDefinition", "bool StartFrozen", "bool ModuleConvexDefinition::StartFrozen", asOFFSET(BMLAS_ModuleConvexDefinition, StartFrozen)},
+    {"ModuleConvexDefinition", "bool EnableCollision", "bool ModuleConvexDefinition::EnableCollision", asOFFSET(BMLAS_ModuleConvexDefinition, EnableCollision)},
+    {"ModuleConvexDefinition", "bool CalcMassCenter", "bool ModuleConvexDefinition::CalcMassCenter", asOFFSET(BMLAS_ModuleConvexDefinition, CalcMassCenter)},
+    {"ModuleConvexDefinition", "float LinearDamp", "float ModuleConvexDefinition::LinearDamp", asOFFSET(BMLAS_ModuleConvexDefinition, LinearDamp)},
+    {"ModuleConvexDefinition", "float RotDamp", "float ModuleConvexDefinition::RotDamp", asOFFSET(BMLAS_ModuleConvexDefinition, RotDamp)},
+    {"TrafoDefinition", "string Name", "string TrafoDefinition::Name", asOFFSET(BMLAS_TrafoDefinition, Name)},
+    {"ModuleDefinition", "string Name", "string ModuleDefinition::Name", asOFFSET(BMLAS_ModuleDefinition, Name)},
+};
+
 static const ScriptObjectBehaviourRegistration kObjectBehaviourRegistrations[] = {
     {"ModContext", asBEHAVE_FACTORY, "ModContext@ f()", "ModContext@ ModContext factory", asFUNCTION(BMLAS_CreateInvalidModContext), asCALL_CDECL},
     {"ModContext", asBEHAVE_RELEASE, "void f()", "void ModContext release", asFUNCTION(BMLAS_ReleaseModContext), asCALL_CDECL_OBJLAST},
+    {"VxRect", asBEHAVE_CONSTRUCT, "void f()", "void VxRect default construct", asFUNCTION(BMLAS_ConstructVxRect), asCALL_CDECL_OBJLAST},
+    {"VxRect", asBEHAVE_CONSTRUCT, "void f(const VxRect &in)", "void VxRect copy construct", asFUNCTION(BMLAS_CopyConstructVxRect), asCALL_CDECL_OBJLAST},
+    {"VxRect", asBEHAVE_DESTRUCT, "void f()", "void VxRect destruct", asFUNCTION(BMLAS_DestructVxRect), asCALL_CDECL_OBJLAST},
+    {"PhysicalizeDefinition", asBEHAVE_CONSTRUCT, "void f()", "void PhysicalizeDefinition default construct", asFUNCTION(BMLAS_ConstructPhysicalizeDefinition), asCALL_CDECL_OBJLAST},
+    {"PhysicalizeDefinition", asBEHAVE_CONSTRUCT, "void f(const PhysicalizeDefinition &in)", "void PhysicalizeDefinition copy construct", asFUNCTION(BMLAS_CopyConstructPhysicalizeDefinition), asCALL_CDECL_OBJLAST},
+    {"PhysicalizeDefinition", asBEHAVE_DESTRUCT, "void f()", "void PhysicalizeDefinition destruct", asFUNCTION(BMLAS_DestructPhysicalizeDefinition), asCALL_CDECL_OBJLAST},
+    {"ObjectLoadOptions", asBEHAVE_CONSTRUCT, "void f()", "void ObjectLoadOptions default construct", asFUNCTION(BMLAS_ConstructObjectLoadOptions), asCALL_CDECL_OBJLAST},
+    {"ObjectLoadOptions", asBEHAVE_CONSTRUCT, "void f(const ObjectLoadOptions &in)", "void ObjectLoadOptions copy construct", asFUNCTION(BMLAS_CopyConstructObjectLoadOptions), asCALL_CDECL_OBJLAST},
+    {"ObjectLoadOptions", asBEHAVE_DESTRUCT, "void f()", "void ObjectLoadOptions destruct", asFUNCTION(BMLAS_DestructObjectLoadOptions), asCALL_CDECL_OBJLAST},
+    {"ObjectLoadResult", asBEHAVE_ADDREF, "void f()", "void ObjectLoadResult addref", asMETHOD(BMLAS_ObjectLoadResult, AddRef), asCALL_THISCALL},
+    {"ObjectLoadResult", asBEHAVE_RELEASE, "void f()", "void ObjectLoadResult release", asMETHOD(BMLAS_ObjectLoadResult, Release), asCALL_THISCALL},
+    {"Logger", asBEHAVE_ADDREF, "void f()", "void Logger addref", asMETHOD(BMLAS_LoggerRef, AddRef), asCALL_THISCALL},
+    {"Logger", asBEHAVE_RELEASE, "void f()", "void Logger release", asMETHOD(BMLAS_LoggerRef, Release), asCALL_THISCALL},
+    {"Config", asBEHAVE_ADDREF, "void f()", "void Config addref", asMETHOD(BMLAS_ConfigRef, AddRef), asCALL_THISCALL},
+    {"Config", asBEHAVE_RELEASE, "void f()", "void Config release", asMETHOD(BMLAS_ConfigRef, Release), asCALL_THISCALL},
+    {"ConfigProperty", asBEHAVE_ADDREF, "void f()", "void ConfigProperty addref", asMETHOD(BMLAS_ConfigPropertyRef, AddRef), asCALL_THISCALL},
+    {"ConfigProperty", asBEHAVE_RELEASE, "void f()", "void ConfigProperty release", asMETHOD(BMLAS_ConfigPropertyRef, Release), asCALL_THISCALL},
+    {"Text2DDefinition", asBEHAVE_CONSTRUCT, "void f()", "void Text2DDefinition default construct", asFUNCTION(BMLAS_ConstructText2DDefinition), asCALL_CDECL_OBJLAST},
+    {"Text2DDefinition", asBEHAVE_CONSTRUCT, "void f(const Text2DDefinition &in)", "void Text2DDefinition copy construct", asFUNCTION(BMLAS_CopyConstructText2DDefinition), asCALL_CDECL_OBJLAST},
+    {"Text2DDefinition", asBEHAVE_DESTRUCT, "void f()", "void Text2DDefinition destruct", asFUNCTION(BMLAS_DestructText2DDefinition), asCALL_CDECL_OBJLAST},
+    {"BallTypeDefinition", asBEHAVE_CONSTRUCT, "void f()", "void BallTypeDefinition default construct", asFUNCTION(BMLAS_ConstructBallTypeDefinition), asCALL_CDECL_OBJLAST},
+    {"BallTypeDefinition", asBEHAVE_CONSTRUCT, "void f(const BallTypeDefinition &in)", "void BallTypeDefinition copy construct", asFUNCTION(BMLAS_CopyConstructBallTypeDefinition), asCALL_CDECL_OBJLAST},
+    {"BallTypeDefinition", asBEHAVE_DESTRUCT, "void f()", "void BallTypeDefinition destruct", asFUNCTION(BMLAS_DestructBallTypeDefinition), asCALL_CDECL_OBJLAST},
+    {"FloorTypeDefinition", asBEHAVE_CONSTRUCT, "void f()", "void FloorTypeDefinition default construct", asFUNCTION(BMLAS_ConstructFloorTypeDefinition), asCALL_CDECL_OBJLAST},
+    {"FloorTypeDefinition", asBEHAVE_CONSTRUCT, "void f(const FloorTypeDefinition &in)", "void FloorTypeDefinition copy construct", asFUNCTION(BMLAS_CopyConstructFloorTypeDefinition), asCALL_CDECL_OBJLAST},
+    {"FloorTypeDefinition", asBEHAVE_DESTRUCT, "void f()", "void FloorTypeDefinition destruct", asFUNCTION(BMLAS_DestructFloorTypeDefinition), asCALL_CDECL_OBJLAST},
+    {"ModuleBallDefinition", asBEHAVE_CONSTRUCT, "void f()", "void ModuleBallDefinition default construct", asFUNCTION(BMLAS_ConstructModuleBallDefinition), asCALL_CDECL_OBJLAST},
+    {"ModuleBallDefinition", asBEHAVE_CONSTRUCT, "void f(const ModuleBallDefinition &in)", "void ModuleBallDefinition copy construct", asFUNCTION(BMLAS_CopyConstructModuleBallDefinition), asCALL_CDECL_OBJLAST},
+    {"ModuleBallDefinition", asBEHAVE_DESTRUCT, "void f()", "void ModuleBallDefinition destruct", asFUNCTION(BMLAS_DestructModuleBallDefinition), asCALL_CDECL_OBJLAST},
+    {"ModuleConvexDefinition", asBEHAVE_CONSTRUCT, "void f()", "void ModuleConvexDefinition default construct", asFUNCTION(BMLAS_ConstructModuleConvexDefinition), asCALL_CDECL_OBJLAST},
+    {"ModuleConvexDefinition", asBEHAVE_CONSTRUCT, "void f(const ModuleConvexDefinition &in)", "void ModuleConvexDefinition copy construct", asFUNCTION(BMLAS_CopyConstructModuleConvexDefinition), asCALL_CDECL_OBJLAST},
+    {"ModuleConvexDefinition", asBEHAVE_DESTRUCT, "void f()", "void ModuleConvexDefinition destruct", asFUNCTION(BMLAS_DestructModuleConvexDefinition), asCALL_CDECL_OBJLAST},
+    {"TrafoDefinition", asBEHAVE_CONSTRUCT, "void f()", "void TrafoDefinition default construct", asFUNCTION(BMLAS_ConstructTrafoDefinition), asCALL_CDECL_OBJLAST},
+    {"TrafoDefinition", asBEHAVE_CONSTRUCT, "void f(const TrafoDefinition &in)", "void TrafoDefinition copy construct", asFUNCTION(BMLAS_CopyConstructTrafoDefinition), asCALL_CDECL_OBJLAST},
+    {"TrafoDefinition", asBEHAVE_DESTRUCT, "void f()", "void TrafoDefinition destruct", asFUNCTION(BMLAS_DestructTrafoDefinition), asCALL_CDECL_OBJLAST},
+    {"ModuleDefinition", asBEHAVE_CONSTRUCT, "void f()", "void ModuleDefinition default construct", asFUNCTION(BMLAS_ConstructModuleDefinition), asCALL_CDECL_OBJLAST},
+    {"ModuleDefinition", asBEHAVE_CONSTRUCT, "void f(const ModuleDefinition &in)", "void ModuleDefinition copy construct", asFUNCTION(BMLAS_CopyConstructModuleDefinition), asCALL_CDECL_OBJLAST},
+    {"ModuleDefinition", asBEHAVE_DESTRUCT, "void f()", "void ModuleDefinition destruct", asFUNCTION(BMLAS_DestructModuleDefinition), asCALL_CDECL_OBJLAST},
     {"CommandCompletion", asBEHAVE_FACTORY, "CommandCompletion@ f()", "CommandCompletion@ factory", asFUNCTION(BMLAS_CreateInvalidCommandCompletion), asCALL_CDECL},
     {"CommandCompletion", asBEHAVE_RELEASE, "void f()", "void CommandCompletion release", asFUNCTION(BMLAS_ReleaseCommandCompletion), asCALL_CDECL_OBJLAST},
     {"CommandRef", asBEHAVE_ADDREF, "void f()", "void CommandRef addref", asMETHOD(BML::ScriptCommandRef, AddRef), asCALL_THISCALL},
@@ -1877,22 +2810,70 @@ static const ScriptObjectBehaviourRegistration kObjectBehaviourRegistrations[] =
 };
 
 static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
+    {"VxRect", "VxRect &opAssign(const VxRect &in)", "VxRect &VxRect::opAssign(const VxRect &in)", asFUNCTION(BMLAS_AssignVxRect), asCALL_CDECL_OBJLAST},
+    {"PhysicalizeDefinition", "PhysicalizeDefinition &opAssign(const PhysicalizeDefinition &in)", "PhysicalizeDefinition &PhysicalizeDefinition::opAssign(const PhysicalizeDefinition &in)", asFUNCTION(BMLAS_AssignPhysicalizeDefinition), asCALL_CDECL_OBJLAST},
+    {"ObjectLoadOptions", "ObjectLoadOptions &opAssign(const ObjectLoadOptions &in)", "ObjectLoadOptions &ObjectLoadOptions::opAssign(const ObjectLoadOptions &in)", asFUNCTION(BMLAS_AssignObjectLoadOptions), asCALL_CDECL_OBJLAST},
+    {"ObjectLoadResult", "bool get_Success() const", "bool ObjectLoadResult::get_Success() const", asMETHOD(BMLAS_ObjectLoadResult, IsSuccess), asCALL_THISCALL},
+    {"ObjectLoadResult", "int get_Count() const", "int ObjectLoadResult::get_Count() const", asMETHOD(BMLAS_ObjectLoadResult, GetCount), asCALL_THISCALL},
+    {"ObjectLoadResult", "CKObject@ BorrowMainObject() const", "CKObject@ ObjectLoadResult::BorrowMainObject() const", asMETHOD(BMLAS_ObjectLoadResult, BorrowMainObject), asCALL_THISCALL},
+    {"ObjectLoadResult", "CKObject@ BorrowObject(int index) const", "CKObject@ ObjectLoadResult::BorrowObject(int index) const", asMETHOD(BMLAS_ObjectLoadResult, BorrowObject), asCALL_THISCALL},
+    {"Logger", "bool get_IsValid() const", "bool Logger::get_IsValid() const", asMETHOD(BMLAS_LoggerRef, IsValid), asCALL_THISCALL},
+    {"Logger", "bool IsValid() const", "bool Logger::IsValid() const", asMETHOD(BMLAS_LoggerRef, IsValid), asCALL_THISCALL},
+    {"Logger", "void Info(const string &in message) const", "void Logger::Info(const string &in message) const", asMETHOD(BMLAS_LoggerRef, Info), asCALL_THISCALL},
+    {"Logger", "void Warn(const string &in message) const", "void Logger::Warn(const string &in message) const", asMETHOD(BMLAS_LoggerRef, Warn), asCALL_THISCALL},
+    {"Logger", "void Error(const string &in message) const", "void Logger::Error(const string &in message) const", asMETHOD(BMLAS_LoggerRef, Error), asCALL_THISCALL},
+    {"Config", "bool get_IsValid() const", "bool Config::get_IsValid() const", asMETHOD(BMLAS_ConfigRef, IsValid), asCALL_THISCALL},
+    {"Config", "bool IsValid() const", "bool Config::IsValid() const", asMETHOD(BMLAS_ConfigRef, IsValid), asCALL_THISCALL},
+    {"Config", "bool HasCategory(const string &in category) const", "bool Config::HasCategory(const string &in category) const", asMETHOD(BMLAS_ConfigRef, HasCategory), asCALL_THISCALL},
+    {"Config", "bool HasKey(const string &in category, const string &in key) const", "bool Config::HasKey(const string &in category, const string &in key) const", asMETHOD(BMLAS_ConfigRef, HasKey), asCALL_THISCALL},
+    {"Config", "ConfigProperty@ GetProperty(const string &in category, const string &in key) const", "ConfigProperty@ Config::GetProperty(const string &in category, const string &in key) const", asMETHOD(BMLAS_ConfigRef, GetProperty), asCALL_THISCALL},
+    {"Config", "void SetCategoryComment(const string &in category, const string &in comment) const", "void Config::SetCategoryComment(const string &in category, const string &in comment) const", asMETHOD(BMLAS_ConfigRef, SetCategoryComment), asCALL_THISCALL},
+    {"ConfigProperty", "bool get_IsValid() const", "bool ConfigProperty::get_IsValid() const", asMETHOD(BMLAS_ConfigPropertyRef, IsValid), asCALL_THISCALL},
+    {"ConfigProperty", "bool IsValid() const", "bool ConfigProperty::IsValid() const", asMETHOD(BMLAS_ConfigPropertyRef, IsValid), asCALL_THISCALL},
+    {"ConfigProperty", "int get_Type() const", "int ConfigProperty::get_Type() const", asMETHOD(BMLAS_ConfigPropertyRef, GetType), asCALL_THISCALL},
+    {"ConfigProperty", "int GetType() const", "int ConfigProperty::GetType() const", asMETHOD(BMLAS_ConfigPropertyRef, GetType), asCALL_THISCALL},
+    {"ConfigProperty", "string GetString(const string &in defaultValue = \"\") const", "string ConfigProperty::GetString(const string &in defaultValue) const", asMETHOD(BMLAS_ConfigPropertyRef, GetString), asCALL_THISCALL},
+    {"ConfigProperty", "bool GetBoolean(bool defaultValue = false) const", "bool ConfigProperty::GetBoolean(bool defaultValue) const", asMETHOD(BMLAS_ConfigPropertyRef, GetBoolean), asCALL_THISCALL},
+    {"ConfigProperty", "int GetInteger(int defaultValue = 0) const", "int ConfigProperty::GetInteger(int defaultValue) const", asMETHOD(BMLAS_ConfigPropertyRef, GetInteger), asCALL_THISCALL},
+    {"ConfigProperty", "float GetFloat(float defaultValue = 0.0f) const", "float ConfigProperty::GetFloat(float defaultValue) const", asMETHOD(BMLAS_ConfigPropertyRef, GetFloat), asCALL_THISCALL},
+    {"ConfigProperty", "CKKEYBOARD GetKey(CKKEYBOARD defaultValue = 0) const", "CKKEYBOARD ConfigProperty::GetKey(CKKEYBOARD defaultValue) const", asMETHOD(BMLAS_ConfigPropertyRef, GetKey), asCALL_THISCALL},
+    {"ConfigProperty", "void SetString(const string &in value) const", "void ConfigProperty::SetString(const string &in value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetString), asCALL_THISCALL},
+    {"ConfigProperty", "void SetBoolean(bool value) const", "void ConfigProperty::SetBoolean(bool value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetBoolean), asCALL_THISCALL},
+    {"ConfigProperty", "void SetInteger(int value) const", "void ConfigProperty::SetInteger(int value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetInteger), asCALL_THISCALL},
+    {"ConfigProperty", "void SetFloat(float value) const", "void ConfigProperty::SetFloat(float value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetFloat), asCALL_THISCALL},
+    {"ConfigProperty", "void SetKey(CKKEYBOARD value) const", "void ConfigProperty::SetKey(CKKEYBOARD value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetKey), asCALL_THISCALL},
+    {"ConfigProperty", "void SetComment(const string &in comment) const", "void ConfigProperty::SetComment(const string &in comment) const", asMETHOD(BMLAS_ConfigPropertyRef, SetComment), asCALL_THISCALL},
+    {"ConfigProperty", "void SetDefaultString(const string &in value) const", "void ConfigProperty::SetDefaultString(const string &in value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetDefaultString), asCALL_THISCALL},
+    {"ConfigProperty", "void SetDefaultBoolean(bool value) const", "void ConfigProperty::SetDefaultBoolean(bool value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetDefaultBoolean), asCALL_THISCALL},
+    {"ConfigProperty", "void SetDefaultInteger(int value) const", "void ConfigProperty::SetDefaultInteger(int value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetDefaultInteger), asCALL_THISCALL},
+    {"ConfigProperty", "void SetDefaultFloat(float value) const", "void ConfigProperty::SetDefaultFloat(float value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetDefaultFloat), asCALL_THISCALL},
+    {"ConfigProperty", "void SetDefaultKey(CKKEYBOARD value) const", "void ConfigProperty::SetDefaultKey(CKKEYBOARD value) const", asMETHOD(BMLAS_ConfigPropertyRef, SetDefaultKey), asCALL_THISCALL},
+    {"Text2DDefinition", "Text2DDefinition &opAssign(const Text2DDefinition &in)", "Text2DDefinition &Text2DDefinition::opAssign(const Text2DDefinition &in)", asFUNCTION(BMLAS_AssignText2DDefinition), asCALL_CDECL_OBJLAST},
+    {"BallTypeDefinition", "BallTypeDefinition &opAssign(const BallTypeDefinition &in)", "BallTypeDefinition &BallTypeDefinition::opAssign(const BallTypeDefinition &in)", asFUNCTION(BMLAS_AssignBallTypeDefinition), asCALL_CDECL_OBJLAST},
+    {"FloorTypeDefinition", "FloorTypeDefinition &opAssign(const FloorTypeDefinition &in)", "FloorTypeDefinition &FloorTypeDefinition::opAssign(const FloorTypeDefinition &in)", asFUNCTION(BMLAS_AssignFloorTypeDefinition), asCALL_CDECL_OBJLAST},
+    {"ModuleBallDefinition", "ModuleBallDefinition &opAssign(const ModuleBallDefinition &in)", "ModuleBallDefinition &ModuleBallDefinition::opAssign(const ModuleBallDefinition &in)", asFUNCTION(BMLAS_AssignModuleBallDefinition), asCALL_CDECL_OBJLAST},
+    {"ModuleConvexDefinition", "ModuleConvexDefinition &opAssign(const ModuleConvexDefinition &in)", "ModuleConvexDefinition &ModuleConvexDefinition::opAssign(const ModuleConvexDefinition &in)", asFUNCTION(BMLAS_AssignModuleConvexDefinition), asCALL_CDECL_OBJLAST},
+    {"TrafoDefinition", "TrafoDefinition &opAssign(const TrafoDefinition &in)", "TrafoDefinition &TrafoDefinition::opAssign(const TrafoDefinition &in)", asFUNCTION(BMLAS_AssignTrafoDefinition), asCALL_CDECL_OBJLAST},
+    {"ModuleDefinition", "ModuleDefinition &opAssign(const ModuleDefinition &in)", "ModuleDefinition &ModuleDefinition::opAssign(const ModuleDefinition &in)", asFUNCTION(BMLAS_AssignModuleDefinition), asCALL_CDECL_OBJLAST},
+    {"ModContext", "ModContext &opAssign(const ModContext &in)", "ModContext &ModContext::opAssign(const ModContext &in)", asFUNCTION(BMLAS_AssignModContext), asCALL_CDECL_OBJLAST},
+    {"ModContext", "bool get_HasContext() const", "bool ModContext::get_HasContext() const", asMETHOD(BML::ScriptModContextView, HasContext), asCALL_THISCALL},
+    {"ModContext", "bool HasContext() const", "bool ModContext::HasContext() const", asMETHOD(BML::ScriptModContextView, HasContext), asCALL_THISCALL},
     {"ModContext", "string get_ModId() const", "string ModContext::get_ModId() const", asMETHOD(BML::ScriptModContextView, GetModId), asCALL_THISCALL},
     {"ModContext", "string GetModId() const", "string ModContext::GetModId() const", asMETHOD(BML::ScriptModContextView, GetModId), asCALL_THISCALL},
     {"ModContext", "string get_ModName() const", "string ModContext::get_ModName() const", asMETHOD(BML::ScriptModContextView, GetModName), asCALL_THISCALL},
     {"ModContext", "string GetModName() const", "string ModContext::GetModName() const", asMETHOD(BML::ScriptModContextView, GetModName), asCALL_THISCALL},
-    {"ModContext", "CKContext@ GetCKContext() const", "CKContext@ ModContext::GetCKContext() const", asMETHOD(BML::ScriptModContextView, GetCKContext), asCALL_THISCALL},
-    {"ModContext", "CKRenderContext@ GetRenderContext() const", "CKRenderContext@ ModContext::GetRenderContext() const", asMETHOD(BML::ScriptModContextView, GetRenderContext), asCALL_THISCALL},
-    {"ModContext", "CKAttributeManager@ GetAttributeManager() const", "CKAttributeManager@ ModContext::GetAttributeManager() const", asMETHOD(BML::ScriptModContextView, GetAttributeManager), asCALL_THISCALL},
-    {"ModContext", "CKBehaviorManager@ GetBehaviorManager() const", "CKBehaviorManager@ ModContext::GetBehaviorManager() const", asMETHOD(BML::ScriptModContextView, GetBehaviorManager), asCALL_THISCALL},
-    {"ModContext", "CKCollisionManager@ GetCollisionManager() const", "CKCollisionManager@ ModContext::GetCollisionManager() const", asMETHOD(BML::ScriptModContextView, GetCollisionManager), asCALL_THISCALL},
-    {"ModContext", "InputHook@ GetInputManager() const", "InputHook@ ModContext::GetInputManager() const", asMETHOD(BML::ScriptModContextView, GetInputManager), asCALL_THISCALL},
-    {"ModContext", "CKMessageManager@ GetMessageManager() const", "CKMessageManager@ ModContext::GetMessageManager() const", asMETHOD(BML::ScriptModContextView, GetMessageManager), asCALL_THISCALL},
-    {"ModContext", "CKPathManager@ GetPathManager() const", "CKPathManager@ ModContext::GetPathManager() const", asMETHOD(BML::ScriptModContextView, GetPathManager), asCALL_THISCALL},
-    {"ModContext", "CKParameterManager@ GetParameterManager() const", "CKParameterManager@ ModContext::GetParameterManager() const", asMETHOD(BML::ScriptModContextView, GetParameterManager), asCALL_THISCALL},
-    {"ModContext", "CKRenderManager@ GetRenderManager() const", "CKRenderManager@ ModContext::GetRenderManager() const", asMETHOD(BML::ScriptModContextView, GetRenderManager), asCALL_THISCALL},
-    {"ModContext", "CKSoundManager@ GetSoundManager() const", "CKSoundManager@ ModContext::GetSoundManager() const", asMETHOD(BML::ScriptModContextView, GetSoundManager), asCALL_THISCALL},
-    {"ModContext", "CKTimeManager@ GetTimeManager() const", "CKTimeManager@ ModContext::GetTimeManager() const", asMETHOD(BML::ScriptModContextView, GetTimeManager), asCALL_THISCALL},
+    {"ModContext", "CKContext@ BorrowCKContext() const", "CKContext@ ModContext::BorrowCKContext() const", asMETHOD(BML::ScriptModContextView, GetCKContext), asCALL_THISCALL},
+    {"ModContext", "CKRenderContext@ BorrowRenderContext() const", "CKRenderContext@ ModContext::BorrowRenderContext() const", asMETHOD(BML::ScriptModContextView, GetRenderContext), asCALL_THISCALL},
+    {"ModContext", "CKAttributeManager@ BorrowAttributeManager() const", "CKAttributeManager@ ModContext::BorrowAttributeManager() const", asMETHOD(BML::ScriptModContextView, GetAttributeManager), asCALL_THISCALL},
+    {"ModContext", "CKBehaviorManager@ BorrowBehaviorManager() const", "CKBehaviorManager@ ModContext::BorrowBehaviorManager() const", asMETHOD(BML::ScriptModContextView, GetBehaviorManager), asCALL_THISCALL},
+    {"ModContext", "CKCollisionManager@ BorrowCollisionManager() const", "CKCollisionManager@ ModContext::BorrowCollisionManager() const", asMETHOD(BML::ScriptModContextView, GetCollisionManager), asCALL_THISCALL},
+    {"ModContext", "InputHook@ BorrowInputManager() const", "InputHook@ ModContext::BorrowInputManager() const", asMETHOD(BML::ScriptModContextView, GetInputManager), asCALL_THISCALL},
+    {"ModContext", "CKMessageManager@ BorrowMessageManager() const", "CKMessageManager@ ModContext::BorrowMessageManager() const", asMETHOD(BML::ScriptModContextView, GetMessageManager), asCALL_THISCALL},
+    {"ModContext", "CKPathManager@ BorrowPathManager() const", "CKPathManager@ ModContext::BorrowPathManager() const", asMETHOD(BML::ScriptModContextView, GetPathManager), asCALL_THISCALL},
+    {"ModContext", "CKParameterManager@ BorrowParameterManager() const", "CKParameterManager@ ModContext::BorrowParameterManager() const", asMETHOD(BML::ScriptModContextView, GetParameterManager), asCALL_THISCALL},
+    {"ModContext", "CKRenderManager@ BorrowRenderManager() const", "CKRenderManager@ ModContext::BorrowRenderManager() const", asMETHOD(BML::ScriptModContextView, GetRenderManager), asCALL_THISCALL},
+    {"ModContext", "CKSoundManager@ BorrowSoundManager() const", "CKSoundManager@ ModContext::BorrowSoundManager() const", asMETHOD(BML::ScriptModContextView, GetSoundManager), asCALL_THISCALL},
+    {"ModContext", "CKTimeManager@ BorrowTimeManager() const", "CKTimeManager@ ModContext::BorrowTimeManager() const", asMETHOD(BML::ScriptModContextView, GetTimeManager), asCALL_THISCALL},
     {"ModContext", "bool get_IsInGame() const", "bool ModContext::get_IsInGame() const", asMETHOD(BML::ScriptModContextView, IsInGame), asCALL_THISCALL},
     {"ModContext", "bool GetIsInGame() const", "bool ModContext::GetIsInGame() const", asMETHOD(BML::ScriptModContextView, IsInGame), asCALL_THISCALL},
     {"ModContext", "bool get_IsInLevel() const", "bool ModContext::get_IsInLevel() const", asMETHOD(BML::ScriptModContextView, IsInLevel), asCALL_THISCALL},
@@ -1912,51 +2893,20 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"ModContext", "float GetAbsoluteTimeMs() const", "float ModContext::GetAbsoluteTimeMs() const", asMETHOD(BML::ScriptModContextView, GetAbsoluteTimeMs), asCALL_THISCALL},
     {"ModContext", "float GetDeltaTimeMs() const", "float ModContext::GetDeltaTimeMs() const", asMETHOD(BML::ScriptModContextView, GetDeltaTimeMs), asCALL_THISCALL},
     {"ModContext", "uint GetFrameCount() const", "uint ModContext::GetFrameCount() const", asMETHOD(BML::ScriptModContextView, GetFrameCount), asCALL_THISCALL},
-    {"ModContext", "bool IsKeyboardAttached() const", "bool ModContext::IsKeyboardAttached() const", asMETHOD(BML::ScriptModContextView, IsKeyboardAttached), asCALL_THISCALL},
-    {"ModContext", "bool IsMouseAttached() const", "bool ModContext::IsMouseAttached() const", asMETHOD(BML::ScriptModContextView, IsMouseAttached), asCALL_THISCALL},
-    {"ModContext", "bool IsKeyDown(CKKEYBOARD key) const", "bool ModContext::IsKeyDown(CKKEYBOARD key) const", asMETHOD(BML::ScriptModContextView, IsKeyDown), asCALL_THISCALL},
-    {"ModContext", "bool IsKeyUp(CKKEYBOARD key) const", "bool ModContext::IsKeyUp(CKKEYBOARD key) const", asMETHOD(BML::ScriptModContextView, IsKeyUp), asCALL_THISCALL},
-    {"ModContext", "bool IsKeyPressed(CKKEYBOARD key) const", "bool ModContext::IsKeyPressed(CKKEYBOARD key) const", asMETHOD(BML::ScriptModContextView, IsKeyPressed), asCALL_THISCALL},
-    {"ModContext", "bool IsKeyReleased(CKKEYBOARD key) const", "bool ModContext::IsKeyReleased(CKKEYBOARD key) const", asMETHOD(BML::ScriptModContextView, IsKeyReleased), asCALL_THISCALL},
-    {"ModContext", "bool IsKeyToggled(CKKEYBOARD key) const", "bool ModContext::IsKeyToggled(CKKEYBOARD key) const", asMETHOD(BML::ScriptModContextView, IsKeyToggled), asCALL_THISCALL},
-    {"ModContext", "string GetKeyName(CKKEYBOARD key) const", "string ModContext::GetKeyName(CKKEYBOARD key) const", asMETHOD(BML::ScriptModContextView, GetKeyName), asCALL_THISCALL},
-    {"ModContext", "int GetKeyFromName(const string &in name) const", "int ModContext::GetKeyFromName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetKeyFromName), asCALL_THISCALL},
-    {"ModContext", "bool IsMouseButtonDown(CK_MOUSEBUTTON button) const", "bool ModContext::IsMouseButtonDown(CK_MOUSEBUTTON button) const", asMETHOD(BML::ScriptModContextView, IsMouseButtonDown), asCALL_THISCALL},
-    {"ModContext", "bool IsMouseClicked(CK_MOUSEBUTTON button) const", "bool ModContext::IsMouseClicked(CK_MOUSEBUTTON button) const", asMETHOD(BML::ScriptModContextView, IsMouseClicked), asCALL_THISCALL},
-    {"ModContext", "bool IsMouseToggled(CK_MOUSEBUTTON button) const", "bool ModContext::IsMouseToggled(CK_MOUSEBUTTON button) const", asMETHOD(BML::ScriptModContextView, IsMouseToggled), asCALL_THISCALL},
-    {"ModContext", "Vx2DVector GetMousePosition(bool absolute = true) const", "Vx2DVector ModContext::GetMousePosition(bool absolute) const", asMETHOD(BML::ScriptModContextView, GetMousePosition), asCALL_THISCALL},
-    {"ModContext", "Vx2DVector GetLastMousePosition() const", "Vx2DVector ModContext::GetLastMousePosition() const", asMETHOD(BML::ScriptModContextView, GetLastMousePosition), asCALL_THISCALL},
-    {"ModContext", "VxVector GetMouseRelativePosition() const", "VxVector ModContext::GetMouseRelativePosition() const", asMETHOD(BML::ScriptModContextView, GetMouseRelativePosition), asCALL_THISCALL},
-    {"ModContext", "bool IsObjectValid(CKObject@ object) const", "bool ModContext::IsObjectValid(CKObject@ object) const", asMETHOD(BML::ScriptModContextView, IsObjectValid), asCALL_THISCALL},
-    {"ModContext", "int GetObjectId(CKObject@ object) const", "int ModContext::GetObjectId(CKObject@ object) const", asMETHOD(BML::ScriptModContextView, GetObjectId), asCALL_THISCALL},
-    {"ModContext", "string GetObjectName(CKObject@ object) const", "string ModContext::GetObjectName(CKObject@ object) const", asMETHOD(BML::ScriptModContextView, GetObjectName), asCALL_THISCALL},
-    {"ModContext", "int GetObjectClassId(CKObject@ object) const", "int ModContext::GetObjectClassId(CKObject@ object) const", asMETHOD(BML::ScriptModContextView, GetObjectClassId), asCALL_THISCALL},
-    {"ModContext", "bool IsObjectVisible(CKObject@ object) const", "bool ModContext::IsObjectVisible(CKObject@ object) const", asMETHOD(BML::ScriptModContextView, IsObjectVisible), asCALL_THISCALL},
-    {"ModContext", "bool IsObjectDynamic(CKObject@ object) const", "bool ModContext::IsObjectDynamic(CKObject@ object) const", asMETHOD(BML::ScriptModContextView, IsObjectDynamic), asCALL_THISCALL},
-    {"ModContext", "int GetBeObjectPriority(CKBeObject@ object) const", "int ModContext::GetBeObjectPriority(CKBeObject@ object) const", asMETHOD(BML::ScriptModContextView, GetBeObjectPriority), asCALL_THISCALL},
-    {"ModContext", "int GetBeObjectScriptCount(CKBeObject@ object) const", "int ModContext::GetBeObjectScriptCount(CKBeObject@ object) const", asMETHOD(BML::ScriptModContextView, GetBeObjectScriptCount), asCALL_THISCALL},
-    {"ModContext", "int GetBeObjectAttributeCount(CKBeObject@ object) const", "int ModContext::GetBeObjectAttributeCount(CKBeObject@ object) const", asMETHOD(BML::ScriptModContextView, GetBeObjectAttributeCount), asCALL_THISCALL},
-    {"ModContext", "VxVector Get3dEntityPosition(CK3dEntity@ entity) const", "VxVector ModContext::Get3dEntityPosition(CK3dEntity@ entity) const", asMETHOD(BML::ScriptModContextView, Get3dEntityPosition), asCALL_THISCALL},
-    {"ModContext", "VxVector Get3dEntityScale(CK3dEntity@ entity, bool local = true) const", "VxVector ModContext::Get3dEntityScale(CK3dEntity@ entity, bool local) const", asMETHOD(BML::ScriptModContextView, Get3dEntityScale), asCALL_THISCALL},
-    {"ModContext", "int Get3dEntityChildCount(CK3dEntity@ entity) const", "int ModContext::Get3dEntityChildCount(CK3dEntity@ entity) const", asMETHOD(BML::ScriptModContextView, Get3dEntityChildCount), asCALL_THISCALL},
-    {"ModContext", "CK3dEntity@ Get3dEntityParent(CK3dEntity@ entity) const", "CK3dEntity@ ModContext::Get3dEntityParent(CK3dEntity@ entity) const", asMETHOD(BML::ScriptModContextView, Get3dEntityParent), asCALL_THISCALL},
-    {"ModContext", "CKDataArray@ GetArrayByName(const string &in name) const", "CKDataArray@ ModContext::GetArrayByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetArrayByName), asCALL_THISCALL},
-    {"ModContext", "CKGroup@ GetGroupByName(const string &in name) const", "CKGroup@ ModContext::GetGroupByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetGroupByName), asCALL_THISCALL},
-    {"ModContext", "CKMaterial@ GetMaterialByName(const string &in name) const", "CKMaterial@ ModContext::GetMaterialByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetMaterialByName), asCALL_THISCALL},
-    {"ModContext", "CKMesh@ GetMeshByName(const string &in name) const", "CKMesh@ ModContext::GetMeshByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetMeshByName), asCALL_THISCALL},
-    {"ModContext", "CK2dEntity@ Get2dEntityByName(const string &in name) const", "CK2dEntity@ ModContext::Get2dEntityByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, Get2dEntityByName), asCALL_THISCALL},
-    {"ModContext", "CK3dEntity@ Get3dEntityByName(const string &in name) const", "CK3dEntity@ ModContext::Get3dEntityByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, Get3dEntityByName), asCALL_THISCALL},
-    {"ModContext", "CK3dObject@ Get3dObjectByName(const string &in name) const", "CK3dObject@ ModContext::Get3dObjectByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, Get3dObjectByName), asCALL_THISCALL},
-    {"ModContext", "CKCamera@ GetCameraByName(const string &in name) const", "CKCamera@ ModContext::GetCameraByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetCameraByName), asCALL_THISCALL},
-    {"ModContext", "CKTargetCamera@ GetTargetCameraByName(const string &in name) const", "CKTargetCamera@ ModContext::GetTargetCameraByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetTargetCameraByName), asCALL_THISCALL},
-    {"ModContext", "CKLight@ GetLightByName(const string &in name) const", "CKLight@ ModContext::GetLightByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetLightByName), asCALL_THISCALL},
-    {"ModContext", "CKTargetLight@ GetTargetLightByName(const string &in name) const", "CKTargetLight@ ModContext::GetTargetLightByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetTargetLightByName), asCALL_THISCALL},
-    {"ModContext", "CKSound@ GetSoundByName(const string &in name) const", "CKSound@ ModContext::GetSoundByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetSoundByName), asCALL_THISCALL},
-    {"ModContext", "CKTexture@ GetTextureByName(const string &in name) const", "CKTexture@ ModContext::GetTextureByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetTextureByName), asCALL_THISCALL},
-    {"ModContext", "CKBehavior@ GetScriptByName(const string &in name) const", "CKBehavior@ ModContext::GetScriptByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetScriptByName), asCALL_THISCALL},
-    {"ModContext", "void SetIC(CKBeObject@ object, bool hierarchy = false) const", "void ModContext::SetIC(CKBeObject@ object, bool hierarchy) const", asMETHOD(BML::ScriptModContextView, SetIC), asCALL_THISCALL},
-    {"ModContext", "void RestoreIC(CKBeObject@ object, bool hierarchy = false) const", "void ModContext::RestoreIC(CKBeObject@ object, bool hierarchy) const", asMETHOD(BML::ScriptModContextView, RestoreIC), asCALL_THISCALL},
-    {"ModContext", "void Show(CKBeObject@ object, CK_OBJECT_SHOWOPTION show = CKSHOW, bool hierarchy = false) const", "void ModContext::Show(CKBeObject@ object, CK_OBJECT_SHOWOPTION show, bool hierarchy) const", asMETHOD(BML::ScriptModContextView, Show), asCALL_THISCALL},
+    {"ModContext", "CKDataArray@ BorrowDataArrayByName(const string &in name) const", "CKDataArray@ ModContext::BorrowDataArrayByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetArrayByName), asCALL_THISCALL},
+    {"ModContext", "CKGroup@ BorrowGroupByName(const string &in name) const", "CKGroup@ ModContext::BorrowGroupByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetGroupByName), asCALL_THISCALL},
+    {"ModContext", "CKMaterial@ BorrowMaterialByName(const string &in name) const", "CKMaterial@ ModContext::BorrowMaterialByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetMaterialByName), asCALL_THISCALL},
+    {"ModContext", "CKMesh@ BorrowMeshByName(const string &in name) const", "CKMesh@ ModContext::BorrowMeshByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetMeshByName), asCALL_THISCALL},
+    {"ModContext", "CK2dEntity@ Borrow2dEntityByName(const string &in name) const", "CK2dEntity@ ModContext::Borrow2dEntityByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, Get2dEntityByName), asCALL_THISCALL},
+    {"ModContext", "CK3dEntity@ Borrow3dEntityByName(const string &in name) const", "CK3dEntity@ ModContext::Borrow3dEntityByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, Get3dEntityByName), asCALL_THISCALL},
+    {"ModContext", "CK3dObject@ Borrow3dObjectByName(const string &in name) const", "CK3dObject@ ModContext::Borrow3dObjectByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, Get3dObjectByName), asCALL_THISCALL},
+    {"ModContext", "CKCamera@ BorrowCameraByName(const string &in name) const", "CKCamera@ ModContext::BorrowCameraByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetCameraByName), asCALL_THISCALL},
+    {"ModContext", "CKTargetCamera@ BorrowTargetCameraByName(const string &in name) const", "CKTargetCamera@ ModContext::BorrowTargetCameraByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetTargetCameraByName), asCALL_THISCALL},
+    {"ModContext", "CKLight@ BorrowLightByName(const string &in name) const", "CKLight@ ModContext::BorrowLightByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetLightByName), asCALL_THISCALL},
+    {"ModContext", "CKTargetLight@ BorrowTargetLightByName(const string &in name) const", "CKTargetLight@ ModContext::BorrowTargetLightByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetTargetLightByName), asCALL_THISCALL},
+    {"ModContext", "CKSound@ BorrowSoundByName(const string &in name) const", "CKSound@ ModContext::BorrowSoundByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetSoundByName), asCALL_THISCALL},
+    {"ModContext", "CKTexture@ BorrowTextureByName(const string &in name) const", "CKTexture@ ModContext::BorrowTextureByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetTextureByName), asCALL_THISCALL},
+    {"ModContext", "CKBehavior@ BorrowScriptByName(const string &in name) const", "CKBehavior@ ModContext::BorrowScriptByName(const string &in name) const", asMETHOD(BML::ScriptModContextView, GetScriptByName), asCALL_THISCALL},
     {"ModContext", "int GetHUD() const", "int ModContext::GetHUD() const", asMETHOD(BML::ScriptModContextView, GetHUD), asCALL_THISCALL},
     {"ModContext", "void SetHUD(int mode) const", "void ModContext::SetHUD(int mode) const", asMETHOD(BML::ScriptModContextView, SetHUD), asCALL_THISCALL},
     {"ModContext", "void ShowTitle(bool show) const", "void ModContext::ShowTitle(bool show) const", asMETHOD(BML::ScriptModContextView, ShowTitle), asCALL_THISCALL},
@@ -1970,12 +2920,12 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"ModContext", "CommandRef@ RegisterCommand(Command@+ command) const", "CommandRef@ ModContext::RegisterCommand(Command@+ command) const", asMETHOD(BML::ScriptModContextView, RegisterCommand), asCALL_THISCALL},
     {"ModContext", "bool UnregisterCommand(const string &in name) const", "bool ModContext::UnregisterCommand(const string &in name) const", asMETHOD(BML::ScriptModContextView, UnregisterCommand), asCALL_THISCALL},
     {"ModContext", "DataShareRequestRef@ RequestDataShare(DataShareRequest@+ request) const", "DataShareRequestRef@ ModContext::RequestDataShare(DataShareRequest@+ request) const", asMETHOD(BML::ScriptModContextView, RequestDataShare), asCALL_THISCALL},
-    {"ModContext", "bool RegisterBallType(const string &in ballFile, const string &in ballId, const string &in ballName, const string &in objName, float friction, float elasticity, float mass, const string &in collGroup, float linearDamp, float rotDamp, float force, float radius) const", "bool ModContext::RegisterBallType(...) const", asMETHOD(BML::ScriptModContextView, RegisterBallType), asCALL_THISCALL},
-    {"ModContext", "bool RegisterFloorType(const string &in floorName, float friction, float elasticity, float mass, const string &in collGroup, bool enableColl) const", "bool ModContext::RegisterFloorType(...) const", asMETHOD(BML::ScriptModContextView, RegisterFloorType), asCALL_THISCALL},
-    {"ModContext", "bool RegisterModulBall(const string &in modulName, bool fixed, float friction, float elasticity, float mass, const string &in collGroup, bool frozen, bool enableColl, bool calcMassCenter, float linearDamp, float rotDamp, float radius) const", "bool ModContext::RegisterModulBall(...) const", asMETHOD(BML::ScriptModContextView, RegisterModulBall), asCALL_THISCALL},
-    {"ModContext", "bool RegisterModulConvex(const string &in modulName, bool fixed, float friction, float elasticity, float mass, const string &in collGroup, bool frozen, bool enableColl, bool calcMassCenter, float linearDamp, float rotDamp) const", "bool ModContext::RegisterModulConvex(...) const", asMETHOD(BML::ScriptModContextView, RegisterModulConvex), asCALL_THISCALL},
-    {"ModContext", "bool RegisterTrafo(const string &in modulName) const", "bool ModContext::RegisterTrafo(const string &in modulName) const", asMETHOD(BML::ScriptModContextView, RegisterTrafo), asCALL_THISCALL},
-    {"ModContext", "bool RegisterModul(const string &in modulName) const", "bool ModContext::RegisterModul(const string &in modulName) const", asMETHOD(BML::ScriptModContextView, RegisterModul), asCALL_THISCALL},
+    {"ModContext", "bool RegisterBallType(const BallTypeDefinition &in definition) const", "bool ModContext::RegisterBallType(const BallTypeDefinition &in definition) const", asFUNCTION(BMLAS_ContextRegisterBallType), asCALL_CDECL_OBJFIRST},
+    {"ModContext", "bool RegisterFloorType(const FloorTypeDefinition &in definition) const", "bool ModContext::RegisterFloorType(const FloorTypeDefinition &in definition) const", asFUNCTION(BMLAS_ContextRegisterFloorType), asCALL_CDECL_OBJFIRST},
+    {"ModContext", "bool RegisterModule(const ModuleBallDefinition &in definition) const", "bool ModContext::RegisterModule(const ModuleBallDefinition &in definition) const", asFUNCTION(BMLAS_ContextRegisterModuleBall), asCALL_CDECL_OBJFIRST},
+    {"ModContext", "bool RegisterModule(const ModuleConvexDefinition &in definition) const", "bool ModContext::RegisterModule(const ModuleConvexDefinition &in definition) const", asFUNCTION(BMLAS_ContextRegisterModuleConvex), asCALL_CDECL_OBJFIRST},
+    {"ModContext", "bool RegisterModule(const TrafoDefinition &in definition) const", "bool ModContext::RegisterModule(const TrafoDefinition &in definition) const", asFUNCTION(BMLAS_ContextRegisterTrafo), asCALL_CDECL_OBJFIRST},
+    {"ModContext", "bool RegisterModule(const ModuleDefinition &in definition) const", "bool ModContext::RegisterModule(const ModuleDefinition &in definition) const", asFUNCTION(BMLAS_ContextRegisterModule), asCALL_CDECL_OBJFIRST},
     {"ModContext", "string GetModRootUtf8() const", "string ModContext::GetModRootUtf8() const", asMETHOD(BML::ScriptModContextView, GetModRootUtf8), asCALL_THISCALL},
     {"ModContext", "string ResolveModPathUtf8(const string &in relativePath) const", "string ModContext::ResolveModPathUtf8(const string &in relativePath) const", asMETHOD(BML::ScriptModContextView, ResolveModPathUtf8), asCALL_THISCALL},
     {"ModContext", "bool ModFileExistsUtf8(const string &in relativePath) const", "bool ModContext::ModFileExistsUtf8(const string &in relativePath) const", asMETHOD(BML::ScriptModContextView, ModFileExistsUtf8), asCALL_THISCALL},
@@ -1991,6 +2941,8 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"ModContext", "int GetModCount() const", "int ModContext::GetModCount() const", asMETHOD(BML::ScriptModContextView, GetGlobalModCount), asCALL_THISCALL},
     {"ModContext", "string GetModId(int index) const", "string ModContext::GetModId(int index) const", asMETHOD(BML::ScriptModContextView, GetGlobalModId), asCALL_THISCALL},
     {"ModContext", "ModRef@ GetMod(int index) const", "ModRef@ ModContext::GetMod(int index) const", asFUNCTION(BMLAS_ContextGetMod), asCALL_CDECL_OBJFIRST},
+    {"ModContext", "Logger@ BorrowLogger() const", "Logger@ ModContext::BorrowLogger() const", asFUNCTION(BMLAS_ContextBorrowLogger), asCALL_CDECL_OBJFIRST},
+    {"ModContext", "Config@ BorrowConfig() const", "Config@ ModContext::BorrowConfig() const", asFUNCTION(BMLAS_ContextBorrowConfig), asCALL_CDECL_OBJFIRST},
     {"ModContext", "void SendIngameMessage(const string &in message) const", "void ModContext::SendIngameMessage(const string &in message) const", asMETHOD(BML::ScriptModContextView, SendIngameMessage), asCALL_THISCALL},
     {"ModContext", "void ClearIngameMessages() const", "void ModContext::ClearIngameMessages() const", asMETHOD(BML::ScriptModContextView, ClearIngameMessages), asCALL_THISCALL},
     {"ModContext", "void ExecuteCommand(const string &in command) const", "void ModContext::ExecuteCommand(const string &in command) const", asMETHOD(BML::ScriptModContextView, ExecuteCommand), asCALL_THISCALL},
@@ -1999,17 +2951,6 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"ModContext", "void CloseModsMenu() const", "void ModContext::CloseModsMenu() const", asMETHOD(BML::ScriptModContextView, CloseModsMenu), asCALL_THISCALL},
     {"ModContext", "void OpenMapMenu() const", "void ModContext::OpenMapMenu() const", asMETHOD(BML::ScriptModContextView, OpenMapMenu), asCALL_THISCALL},
     {"ModContext", "void CloseMapMenu() const", "void ModContext::CloseMapMenu() const", asMETHOD(BML::ScriptModContextView, CloseMapMenu), asCALL_THISCALL},
-    {"ModContext", "string GetConfigString(const string &in key, const string &in defaultValue = \"\") const", "string ModContext::GetConfigString(const string &in key, const string &in defaultValue = \"\") const", asMETHOD(BML::ScriptModContextView, GetConfigString), asCALL_THISCALL},
-    {"ModContext", "void SetConfigString(const string &in key, const string &in value) const", "void ModContext::SetConfigString(const string &in key, const string &in value) const", asMETHOD(BML::ScriptModContextView, SetConfigString), asCALL_THISCALL},
-    {"ModContext", "bool GetConfigBool(const string &in key, bool defaultValue = false) const", "bool ModContext::GetConfigBool(const string &in key, bool defaultValue = false) const", asMETHOD(BML::ScriptModContextView, GetConfigBool), asCALL_THISCALL},
-    {"ModContext", "void SetConfigBool(const string &in key, bool value) const", "void ModContext::SetConfigBool(const string &in key, bool value) const", asMETHOD(BML::ScriptModContextView, SetConfigBool), asCALL_THISCALL},
-    {"ModContext", "int GetConfigInt(const string &in key, int defaultValue = 0) const", "int ModContext::GetConfigInt(const string &in key, int defaultValue = 0) const", asMETHOD(BML::ScriptModContextView, GetConfigInt), asCALL_THISCALL},
-    {"ModContext", "void SetConfigInt(const string &in key, int value) const", "void ModContext::SetConfigInt(const string &in key, int value) const", asMETHOD(BML::ScriptModContextView, SetConfigInt), asCALL_THISCALL},
-    {"ModContext", "float GetConfigFloat(const string &in key, float defaultValue = 0.0f) const", "float ModContext::GetConfigFloat(const string &in key, float defaultValue = 0.0f) const", asMETHOD(BML::ScriptModContextView, GetConfigFloat), asCALL_THISCALL},
-    {"ModContext", "void SetConfigFloat(const string &in key, float value) const", "void ModContext::SetConfigFloat(const string &in key, float value) const", asMETHOD(BML::ScriptModContextView, SetConfigFloat), asCALL_THISCALL},
-    {"ModContext", "void LogInfo(const string &in message) const", "void ModContext::LogInfo(const string &in message) const", asMETHOD(BML::ScriptModContextView, LogInfo), asCALL_THISCALL},
-    {"ModContext", "void LogWarn(const string &in message) const", "void ModContext::LogWarn(const string &in message) const", asMETHOD(BML::ScriptModContextView, LogWarn), asCALL_THISCALL},
-    {"ModContext", "void LogError(const string &in message) const", "void ModContext::LogError(const string &in message) const", asMETHOD(BML::ScriptModContextView, LogError), asCALL_THISCALL},
     {"CallFrame", "bool get_IsValid() const", "bool CallFrame::get_IsValid() const", asMETHOD(BMLAS_CallFrame, IsValid), asCALL_THISCALL},
     {"CallFrame", "void Clear()", "void CallFrame::Clear()", asMETHOD(BMLAS_CallFrame, Clear), asCALL_THISCALL},
     {"CallFrame", "int get_ArgCount() const", "int CallFrame::get_ArgCount() const", asMETHOD(BMLAS_CallFrame, GetArgCount), asCALL_THISCALL},
@@ -2066,21 +3007,49 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"DataShareRequestRef", "string get_Key() const", "string DataShareRequestRef::get_Key() const", asMETHOD(BML::ScriptDataShareRequestRef, GetKey), asCALL_THISCALL},
     {"DataShareRequestRef", "int get_Type() const", "int DataShareRequestRef::get_Type() const", asMETHOD(BML::ScriptDataShareRequestRef, GetType), asCALL_THISCALL},
     {"DataShareRequestRef", "bool Cancel()", "bool DataShareRequestRef::Cancel()", asMETHOD(BML::ScriptDataShareRequestRef, Cancel), asCALL_THISCALL},
+    {"InputHook", "bool get_IsValid() const", "bool InputHook::get_IsValid() const", asFUNCTION(BMLAS_InputHookIsValid), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "bool IsValid() const", "bool InputHook::IsValid() const", asFUNCTION(BMLAS_InputHookIsValid), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "void EnableKeyboardRepetition(bool enable = true) const", "void InputHook::EnableKeyboardRepetition(bool enable) const", asFUNCTION(BMLAS_InputHookEnableKeyboardRepetition), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "bool IsKeyboardRepetitionEnabled() const", "bool InputHook::IsKeyboardRepetitionEnabled() const", asFUNCTION(BMLAS_InputHookIsKeyboardRepetitionEnabled), asCALL_CDECL_OBJFIRST},
     {"InputHook", "bool IsKeyboardAttached() const", "bool InputHook::IsKeyboardAttached() const", asFUNCTION(BMLAS_InputHookIsKeyboardAttached), asCALL_CDECL_OBJFIRST},
     {"InputHook", "bool IsMouseAttached() const", "bool InputHook::IsMouseAttached() const", asFUNCTION(BMLAS_InputHookIsMouseAttached), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "bool IsJoystickAttached(int joystick) const", "bool InputHook::IsJoystickAttached(int joystick) const", asFUNCTION(BMLAS_InputHookIsJoystickAttached), asCALL_CDECL_OBJFIRST},
     {"InputHook", "bool IsKeyDown(CKKEYBOARD key) const", "bool InputHook::IsKeyDown(CKKEYBOARD key) const", asFUNCTION(BMLAS_InputHookIsKeyDown), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "bool IsKeyDown(CKKEYBOARD key, uint &out stamp) const", "bool InputHook::IsKeyDown(CKKEYBOARD key, uint &out stamp) const", asFUNCTION(BMLAS_InputHookIsKeyDownWithStamp), asCALL_CDECL_OBJFIRST},
     {"InputHook", "bool IsKeyUp(CKKEYBOARD key) const", "bool InputHook::IsKeyUp(CKKEYBOARD key) const", asFUNCTION(BMLAS_InputHookIsKeyUp), asCALL_CDECL_OBJFIRST},
     {"InputHook", "bool IsKeyPressed(CKKEYBOARD key) const", "bool InputHook::IsKeyPressed(CKKEYBOARD key) const", asFUNCTION(BMLAS_InputHookIsKeyPressed), asCALL_CDECL_OBJFIRST},
     {"InputHook", "bool IsKeyReleased(CKKEYBOARD key) const", "bool InputHook::IsKeyReleased(CKKEYBOARD key) const", asFUNCTION(BMLAS_InputHookIsKeyReleased), asCALL_CDECL_OBJFIRST},
     {"InputHook", "bool IsKeyToggled(CKKEYBOARD key) const", "bool InputHook::IsKeyToggled(CKKEYBOARD key) const", asFUNCTION(BMLAS_InputHookIsKeyToggled), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "bool IsKeyToggled(CKKEYBOARD key, uint &out stamp) const", "bool InputHook::IsKeyToggled(CKKEYBOARD key, uint &out stamp) const", asFUNCTION(BMLAS_InputHookIsKeyToggledWithStamp), asCALL_CDECL_OBJFIRST},
     {"InputHook", "string GetKeyName(CKKEYBOARD key) const", "string InputHook::GetKeyName(CKKEYBOARD key) const", asFUNCTION(BMLAS_InputHookGetKeyName), asCALL_CDECL_OBJFIRST},
     {"InputHook", "int GetKeyFromName(const string &in name) const", "int InputHook::GetKeyFromName(const string &in name) const", asFUNCTION(BMLAS_InputHookGetKeyFromName), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "int GetKeyboardState(CKKEYBOARD key) const", "int InputHook::GetKeyboardState(CKKEYBOARD key) const", asFUNCTION(BMLAS_InputHookGetKeyboardState), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "bool IsKeyboardStateDown(CKKEYBOARD key) const", "bool InputHook::IsKeyboardStateDown(CKKEYBOARD key) const", asFUNCTION(BMLAS_InputHookIsKeyboardStateDown), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "int GetNumberOfKeyInBuffer() const", "int InputHook::GetNumberOfKeyInBuffer() const", asFUNCTION(BMLAS_InputHookGetNumberOfKeyInBuffer), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "int GetKeyFromBuffer(int index, CKKEYBOARD &out key, uint &out timestamp) const", "int InputHook::GetKeyFromBuffer(int index, CKKEYBOARD &out key, uint &out timestamp) const", asFUNCTION(BMLAS_InputHookGetKeyFromBuffer), asCALL_CDECL_OBJFIRST},
     {"InputHook", "bool IsMouseButtonDown(CK_MOUSEBUTTON button) const", "bool InputHook::IsMouseButtonDown(CK_MOUSEBUTTON button) const", asFUNCTION(BMLAS_InputHookIsMouseButtonDown), asCALL_CDECL_OBJFIRST},
     {"InputHook", "bool IsMouseClicked(CK_MOUSEBUTTON button) const", "bool InputHook::IsMouseClicked(CK_MOUSEBUTTON button) const", asFUNCTION(BMLAS_InputHookIsMouseClicked), asCALL_CDECL_OBJFIRST},
     {"InputHook", "bool IsMouseToggled(CK_MOUSEBUTTON button) const", "bool InputHook::IsMouseToggled(CK_MOUSEBUTTON button) const", asFUNCTION(BMLAS_InputHookIsMouseToggled), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "int GetMouseButtonState(CK_MOUSEBUTTON button) const", "int InputHook::GetMouseButtonState(CK_MOUSEBUTTON button) const", asFUNCTION(BMLAS_InputHookGetMouseButtonState), asCALL_CDECL_OBJFIRST},
     {"InputHook", "Vx2DVector GetMousePosition(bool absolute = true) const", "Vx2DVector InputHook::GetMousePosition(bool absolute) const", asFUNCTION(BMLAS_InputHookGetMousePosition), asCALL_CDECL_OBJFIRST},
     {"InputHook", "Vx2DVector GetLastMousePosition() const", "Vx2DVector InputHook::GetLastMousePosition() const", asFUNCTION(BMLAS_InputHookGetLastMousePosition), asCALL_CDECL_OBJFIRST},
     {"InputHook", "VxVector GetMouseRelativePosition() const", "VxVector InputHook::GetMouseRelativePosition() const", asFUNCTION(BMLAS_InputHookGetMouseRelativePosition), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "VxVector GetJoystickPosition(int joystick) const", "VxVector InputHook::GetJoystickPosition(int joystick) const", asFUNCTION(BMLAS_InputHookGetJoystickPosition), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "VxVector GetJoystickRotation(int joystick) const", "VxVector InputHook::GetJoystickRotation(int joystick) const", asFUNCTION(BMLAS_InputHookGetJoystickRotation), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "Vx2DVector GetJoystickSliders(int joystick) const", "Vx2DVector InputHook::GetJoystickSliders(int joystick) const", asFUNCTION(BMLAS_InputHookGetJoystickSliders), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "float GetJoystickPointOfViewAngle(int joystick) const", "float InputHook::GetJoystickPointOfViewAngle(int joystick) const", asFUNCTION(BMLAS_InputHookGetJoystickPointOfViewAngle), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "uint GetJoystickButtonsState(int joystick) const", "uint InputHook::GetJoystickButtonsState(int joystick) const", asFUNCTION(BMLAS_InputHookGetJoystickButtonsState), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "bool IsJoystickButtonDown(int joystick, int button) const", "bool InputHook::IsJoystickButtonDown(int joystick, int button) const", asFUNCTION(BMLAS_InputHookIsJoystickButtonDown), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "void Pause(bool pause) const", "void InputHook::Pause(bool pause) const", asFUNCTION(BMLAS_InputHookPause), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "void ShowCursor(bool show) const", "void InputHook::ShowCursor(bool show) const", asFUNCTION(BMLAS_InputHookShowCursor), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "bool GetCursorVisibility() const", "bool InputHook::GetCursorVisibility() const", asFUNCTION(BMLAS_InputHookGetCursorVisibility), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "int GetSystemCursor() const", "int InputHook::GetSystemCursor() const", asFUNCTION(BMLAS_InputHookGetSystemCursor), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "void SetSystemCursor(int cursor) const", "void InputHook::SetSystemCursor(int cursor) const", asFUNCTION(BMLAS_InputHookSetSystemCursor), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "bool IsBlock() const", "bool InputHook::IsBlock() const", asFUNCTION(BMLAS_InputHookIsBlock), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "void SetBlock(bool block) const", "void InputHook::SetBlock(bool block) const", asFUNCTION(BMLAS_InputHookSetBlock), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "int IsBlocked(InputDevice device) const", "int InputHook::IsBlocked(InputDevice device) const", asFUNCTION(BMLAS_InputHookIsBlocked), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "void Block(InputDevice device) const", "void InputHook::Block(InputDevice device) const", asFUNCTION(BMLAS_InputHookBlock), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "void Unblock(InputDevice device) const", "void InputHook::Unblock(InputDevice device) const", asFUNCTION(BMLAS_InputHookUnblock), asCALL_CDECL_OBJFIRST},
     {"ModRef", "string get_Id() const", "string ModRef::get_Id() const", asMETHOD(BMLAS_ModRef, GetId), asCALL_THISCALL},
     {"ModRef", "string GetId() const", "string ModRef::GetId() const", asMETHOD(BMLAS_ModRef, GetId), asCALL_THISCALL},
     {"ModRef", "string get_Name() const", "string ModRef::get_Name() const", asMETHOD(BMLAS_ModRef, GetName), asCALL_THISCALL},
@@ -2196,6 +3165,17 @@ static const ScriptUiEnumValueRegistration kUiButtonTypeRegistrations[] = {
     {"BUTTON_MINUS", Bui::BUTTON_MINUS, "BML::UI::BUTTON_MINUS"},
 };
 
+static const ScriptUiEnumValueRegistration kFontTypeRegistrations[] = {
+    {"FONT_NONE", ExecuteBB::NOFONT, "BML::FONT_NONE"},
+    {"FONT_GAME_NORMAL", ExecuteBB::GAMEFONT_01, "BML::FONT_GAME_NORMAL"},
+    {"FONT_GAME_LARGE", ExecuteBB::GAMEFONT_02, "BML::FONT_GAME_LARGE"},
+    {"FONT_GAME_SMALL", ExecuteBB::GAMEFONT_03, "BML::FONT_GAME_SMALL"},
+    {"FONT_GAME_SMALL_GRAY", ExecuteBB::GAMEFONT_03A, "BML::FONT_GAME_SMALL_GRAY"},
+    {"FONT_GAME_HUGE", ExecuteBB::GAMEFONT_04, "BML::FONT_GAME_HUGE"},
+    {"FONT_CREDITS_SMALL", ExecuteBB::GAMEFONT_CREDITS_SMALL, "BML::FONT_CREDITS_SMALL"},
+    {"FONT_CREDITS_BIG", ExecuteBB::GAMEFONT_CREDITS_BIG, "BML::FONT_CREDITS_BIG"},
+};
+
 static const ScriptUiFunctionRegistration kUiFunctionRegistrations[] = {
     {"void SetCursorCoord(float x, float y)", "BML::UI::SetCursorCoord", asFUNCTION(BMLAS_UI_SetCursorCoord), asCALL_CDECL},
     {"float CoordToPixelX(float x)", "BML::UI::CoordToPixelX", asFUNCTION(BMLAS_UI_CoordToPixelX), asCALL_CDECL},
@@ -2208,6 +3188,7 @@ static const ScriptUiFunctionRegistration kUiFunctionRegistrations[] = {
     {"bool CanPrevPage(int pageIndex)", "BML::UI::CanPrevPage", asFUNCTION(BMLAS_UI_CanPrevPage), asCALL_CDECL},
     {"bool CanNextPage(int pageIndex, int totalCount, int pageSize)", "BML::UI::CanNextPage", asFUNCTION(BMLAS_UI_CanNextPage), asCALL_CDECL},
     {"bool MainButton(const string &in label)", "BML::UI::MainButton", asFUNCTION(BMLAS_UI_MainButton), asCALL_CDECL},
+    {"bool OkButton(const string &in label)", "BML::UI::OkButton", asFUNCTION(BMLAS_UI_OkButton), asCALL_CDECL},
     {"bool BackButton(const string &in label)", "BML::UI::BackButton", asFUNCTION(BMLAS_UI_BackButton), asCALL_CDECL},
     {"bool OptionButton(const string &in label)", "BML::UI::OptionButton", asFUNCTION(BMLAS_UI_OptionButton), asCALL_CDECL},
     {"bool LevelButton(const string &in label)", "BML::UI::LevelButton", asFUNCTION(BMLAS_UI_LevelButton), asCALL_CDECL},
@@ -2218,16 +3199,23 @@ static const ScriptUiFunctionRegistration kUiFunctionRegistrations[] = {
     {"bool RightButton(const string &in label)", "BML::UI::RightButton", asFUNCTION(BMLAS_UI_RightButton), asCALL_CDECL},
     {"bool PlusButton(const string &in label)", "BML::UI::PlusButton", asFUNCTION(BMLAS_UI_PlusButton), asCALL_CDECL},
     {"bool MinusButton(const string &in label)", "BML::UI::MinusButton", asFUNCTION(BMLAS_UI_MinusButton), asCALL_CDECL},
+    {"bool KeyButton(const string &in label, bool &inout toggled, int &inout keyChord)", "BML::UI::KeyButton", asFUNCTION(BMLAS_UI_KeyButton), asCALL_CDECL},
     {"void Title(const string &in text, float y = 0.13f, float scale = 1.5f)", "BML::UI::Title", asFUNCTION(BMLAS_UI_Title), asCALL_CDECL},
     {"void WrappedText(const string &in text, float width, float baseX = 0.0f, float scale = 1.0f)", "BML::UI::WrappedText", asFUNCTION(BMLAS_UI_WrappedText), asCALL_CDECL},
     {"bool NavLeft(float x = 0.36f, float y = 0.124f)", "BML::UI::NavLeft", asFUNCTION(BMLAS_UI_NavLeft), asCALL_CDECL},
     {"bool NavRight(float x = 0.6038f, float y = 0.124f)", "BML::UI::NavRight", asFUNCTION(BMLAS_UI_NavRight), asCALL_CDECL},
     {"bool NavBack(float x = 0.4031f, float y = 0.85f)", "BML::UI::NavBack", asFUNCTION(BMLAS_UI_NavBack), asCALL_CDECL},
     {"bool YesNoButton(const string &in label, bool &inout value)", "BML::UI::YesNoButton", asFUNCTION(BMLAS_UI_YesNoButton), asCALL_CDECL},
+    {"bool RadioButtonText(const string &in label, int &inout currentItem, const string &in items)", "BML::UI::RadioButtonText", asFUNCTION(BMLAS_UI_RadioButtonText), asCALL_CDECL},
+    {"bool InputTextButton(const string &in label, string &inout value, int maxLength = 256)", "BML::UI::InputTextButton", asFUNCTION(BMLAS_UI_InputTextButton), asCALL_CDECL},
     {"bool InputIntButton(const string &in label, int &inout value, int step = 1, int stepFast = 100)", "BML::UI::InputIntButton", asFUNCTION(BMLAS_UI_InputIntButton), asCALL_CDECL},
     {"bool InputFloatButton(const string &in label, float &inout value, float step = 0.0f, float stepFast = 0.0f)", "BML::UI::InputFloatButton", asFUNCTION(BMLAS_UI_InputFloatButton), asCALL_CDECL},
     {"bool SearchBar(string &inout text, float x = 0.4f, float y = 0.18f, float width = 0.2f)", "BML::UI::SearchBar", asFUNCTION(BMLAS_UI_SearchBar), asCALL_CDECL},
     {"void PlayMenuClickSound()", "BML::UI::PlayMenuClickSound", asFUNCTION(BMLAS_UI_PlayMenuClickSound), asCALL_CDECL},
+    {"int CKKeyToImGuiKey(CKKEYBOARD key)", "BML::UI::CKKeyToImGuiKey", asFUNCTION(BMLAS_UI_CKKeyToImGuiKey), asCALL_CDECL},
+    {"CKKEYBOARD ImGuiKeyToCKKey(int key)", "BML::UI::ImGuiKeyToCKKey", asFUNCTION(BMLAS_UI_ImGuiKeyToCKKey), asCALL_CDECL},
+    {"string KeyChordToString(int keyChord)", "BML::UI::KeyChordToString", asFUNCTION(BMLAS_UI_KeyChordToString), asCALL_CDECL},
+    {"bool SetKeyChordFromIO(int &inout keyChord)", "BML::UI::SetKeyChordFromIO", asFUNCTION(BMLAS_UI_SetKeyChordFromIO), asCALL_CDECL},
     {"float GetButtonSizeX(ButtonType type)", "BML::UI::GetButtonSizeX", asFUNCTION(BMLAS_UI_GetButtonSizeX), asCALL_CDECL},
     {"float GetButtonSizeY(ButtonType type)", "BML::UI::GetButtonSizeY", asFUNCTION(BMLAS_UI_GetButtonSizeY), asCALL_CDECL},
     {"float GetButtonIndent(ButtonType type)", "BML::UI::GetButtonIndent", asFUNCTION(BMLAS_UI_GetButtonIndent), asCALL_CDECL},
@@ -2237,125 +3225,12 @@ static const ScriptUiFunctionRegistration kUiFunctionRegistrations[] = {
 };
 
 static const ScriptGlobalFunctionRegistration kGlobalFunctionRegistrations[] = {
-    {"ModRef@ FindMod(const string &in id)", "ModRef@ FindMod(const string &in id)", asFUNCTION(BMLAS_FindMod), asCALL_CDECL},
-    {"int GetModCount()", "int GetModCount()", asFUNCTION(BMLAS_GetModCount), asCALL_CDECL},
-    {"string GetModId(int index)", "string GetModId(int index)", asFUNCTION(BMLAS_GetModId), asCALL_CDECL},
-    {"ModRef@ GetMod(int index)", "ModRef@ GetMod(int index)", asFUNCTION(BMLAS_GetMod), asCALL_CDECL},
-    {"string GetVersion()", "string GetVersion()", asFUNCTION(BMLAS_GetVersion), asCALL_CDECL},
-    {"int GetVersionMajor()", "int GetVersionMajor()", asFUNCTION(BMLAS_GetVersionMajor), asCALL_CDECL},
-    {"int GetVersionMinor()", "int GetVersionMinor()", asFUNCTION(BMLAS_GetVersionMinor), asCALL_CDECL},
-    {"int GetVersionPatch()", "int GetVersionPatch()", asFUNCTION(BMLAS_GetVersionPatch), asCALL_CDECL},
-    {"string GetErrorString(int errorCode)", "string GetErrorString(int errorCode)", asFUNCTION(BMLAS_GetErrorString), asCALL_CDECL},
-    {"bool IsInitialized()", "bool IsInitialized()", asFUNCTION(BMLAS_IsInitialized), asCALL_CDECL},
-    {"bool IsIngame()", "bool IsIngame()", asFUNCTION(BMLAS_IsIngame), asCALL_CDECL},
-    {"bool IsInLevel()", "bool IsInLevel()", asFUNCTION(BMLAS_IsInLevel), asCALL_CDECL},
-    {"bool IsPaused()", "bool IsPaused()", asFUNCTION(BMLAS_IsPaused), asCALL_CDECL},
-    {"bool IsPlaying()", "bool IsPlaying()", asFUNCTION(BMLAS_IsPlaying), asCALL_CDECL},
-    {"bool IsCheatEnabled()", "bool IsCheatEnabled()", asFUNCTION(BMLAS_IsCheatEnabled), asCALL_CDECL},
-    {"void EnableCheat(bool enable)", "void EnableCheat(bool enable)", asFUNCTION(BMLAS_EnableCheat), asCALL_CDECL},
-    {"void SendIngameMessage(const string &in message)", "void SendIngameMessage(const string &in message)", asFUNCTION(BMLAS_SendIngameMessage), asCALL_CDECL},
-    {"void ExecuteCommand(const string &in command)", "void ExecuteCommand(const string &in command)", asFUNCTION(BMLAS_ExecuteCommand), asCALL_CDECL},
-    {"void ExitGame()", "void ExitGame()", asFUNCTION(BMLAS_ExitGame), asCALL_CDECL},
-    {"void OpenModsMenu()", "void OpenModsMenu()", asFUNCTION(BMLAS_OpenModsMenu), asCALL_CDECL},
-    {"void CloseModsMenu()", "void CloseModsMenu()", asFUNCTION(BMLAS_CloseModsMenu), asCALL_CDECL},
-    {"void OpenMapMenu()", "void OpenMapMenu()", asFUNCTION(BMLAS_OpenMapMenu), asCALL_CDECL},
-    {"void CloseMapMenu()", "void CloseMapMenu()", asFUNCTION(BMLAS_CloseMapMenu), asCALL_CDECL},
-    {"void ClearIngameMessages()", "void ClearIngameMessages()", asFUNCTION(BMLAS_ClearIngameMessages), asCALL_CDECL},
-    {"float GetSRScore()", "float GetSRScore()", asFUNCTION(BMLAS_GetSRScore), asCALL_CDECL},
-    {"int GetHSScore()", "int GetHSScore()", asFUNCTION(BMLAS_GetHSScore), asCALL_CDECL},
-    {"int GetHUD()", "int GetHUD()", asFUNCTION(BMLAS_GetHUD), asCALL_CDECL},
-    {"void SetHUD(int mode)", "void SetHUD(int mode)", asFUNCTION(BMLAS_SetHUD), asCALL_CDECL},
-    {"void ShowTitle(bool show)", "void ShowTitle(bool show)", asFUNCTION(BMLAS_ShowTitle), asCALL_CDECL},
-    {"void ShowFPS(bool show)", "void ShowFPS(bool show)", asFUNCTION(BMLAS_ShowFPS), asCALL_CDECL},
-    {"void ShowSRTimer(bool show)", "void ShowSRTimer(bool show)", asFUNCTION(BMLAS_ShowSRTimer), asCALL_CDECL},
-    {"void StartSRTimer()", "void StartSRTimer()", asFUNCTION(BMLAS_StartSRTimer), asCALL_CDECL},
-    {"void PauseSRTimer()", "void PauseSRTimer()", asFUNCTION(BMLAS_PauseSRTimer), asCALL_CDECL},
-    {"void ResetSRTimer()", "void ResetSRTimer()", asFUNCTION(BMLAS_ResetSRTimer), asCALL_CDECL},
-    {"float GetSRTime()", "float GetSRTime()", asFUNCTION(BMLAS_GetSRTime), asCALL_CDECL},
-    {"void SkipRenderForNextTick()", "void SkipRenderForNextTick()", asFUNCTION(BMLAS_SkipRenderForNextTick), asCALL_CDECL},
-    {"CKContext@ GetCKContext()", "CKContext@ GetCKContext()", asFUNCTION(BMLAS_GetCKContext), asCALL_CDECL},
-    {"CKRenderContext@ GetRenderContext()", "CKRenderContext@ GetRenderContext()", asFUNCTION(BMLAS_GetRenderContext), asCALL_CDECL},
-    {"CKAttributeManager@ GetAttributeManager()", "CKAttributeManager@ GetAttributeManager()", asFUNCTION(BMLAS_GetAttributeManager), asCALL_CDECL},
-    {"CKBehaviorManager@ GetBehaviorManager()", "CKBehaviorManager@ GetBehaviorManager()", asFUNCTION(BMLAS_GetBehaviorManager), asCALL_CDECL},
-    {"CKCollisionManager@ GetCollisionManager()", "CKCollisionManager@ GetCollisionManager()", asFUNCTION(BMLAS_GetCollisionManager), asCALL_CDECL},
-    {"InputHook@ GetInputManager()", "InputHook@ GetInputManager()", asFUNCTION(BMLAS_GetInputHook), asCALL_CDECL},
-    {"CKMessageManager@ GetMessageManager()", "CKMessageManager@ GetMessageManager()", asFUNCTION(BMLAS_GetMessageManager), asCALL_CDECL},
-    {"CKPathManager@ GetPathManager()", "CKPathManager@ GetPathManager()", asFUNCTION(BMLAS_GetPathManager), asCALL_CDECL},
-    {"CKParameterManager@ GetParameterManager()", "CKParameterManager@ GetParameterManager()", asFUNCTION(BMLAS_GetParameterManager), asCALL_CDECL},
-    {"CKRenderManager@ GetRenderManager()", "CKRenderManager@ GetRenderManager()", asFUNCTION(BMLAS_GetRenderManager), asCALL_CDECL},
-    {"CKSoundManager@ GetSoundManager()", "CKSoundManager@ GetSoundManager()", asFUNCTION(BMLAS_GetSoundManager), asCALL_CDECL},
-    {"CKTimeManager@ GetTimeManager()", "CKTimeManager@ GetTimeManager()", asFUNCTION(BMLAS_GetTimeManager), asCALL_CDECL},
-    {"float GetTimeMs()", "float GetTimeMs()", asFUNCTION(BMLAS_GetTimeMs), asCALL_CDECL},
-    {"float GetAbsoluteTimeMs()", "float GetAbsoluteTimeMs()", asFUNCTION(BMLAS_GetAbsoluteTimeMs), asCALL_CDECL},
-    {"float GetDeltaTimeMs()", "float GetDeltaTimeMs()", asFUNCTION(BMLAS_GetDeltaTimeMs), asCALL_CDECL},
-    {"uint GetFrameCount()", "uint GetFrameCount()", asFUNCTION(BMLAS_GetFrameCount), asCALL_CDECL},
-    {"string GetDirectoryUtf8(DirectoryType type)", "string GetDirectoryUtf8(DirectoryType type)", asFUNCTION(BMLAS_GetDirectoryUtf8), asCALL_CDECL},
-    {"bool IsKeyboardAttached()", "bool IsKeyboardAttached()", asFUNCTION(BMLAS_IsKeyboardAttached), asCALL_CDECL},
-    {"bool IsMouseAttached()", "bool IsMouseAttached()", asFUNCTION(BMLAS_IsMouseAttached), asCALL_CDECL},
-    {"bool IsKeyDown(CKKEYBOARD key)", "bool IsKeyDown(CKKEYBOARD key)", asFUNCTION(BMLAS_IsKeyDown), asCALL_CDECL},
-    {"bool IsKeyUp(CKKEYBOARD key)", "bool IsKeyUp(CKKEYBOARD key)", asFUNCTION(BMLAS_IsKeyUp), asCALL_CDECL},
-    {"bool IsKeyPressed(CKKEYBOARD key)", "bool IsKeyPressed(CKKEYBOARD key)", asFUNCTION(BMLAS_IsKeyPressed), asCALL_CDECL},
-    {"bool IsKeyReleased(CKKEYBOARD key)", "bool IsKeyReleased(CKKEYBOARD key)", asFUNCTION(BMLAS_IsKeyReleased), asCALL_CDECL},
-    {"bool IsKeyToggled(CKKEYBOARD key)", "bool IsKeyToggled(CKKEYBOARD key)", asFUNCTION(BMLAS_IsKeyToggled), asCALL_CDECL},
-    {"string GetKeyName(CKKEYBOARD key)", "string GetKeyName(CKKEYBOARD key)", asFUNCTION(BMLAS_GetKeyName), asCALL_CDECL},
-    {"int GetKeyFromName(const string &in name)", "int GetKeyFromName(const string &in name)", asFUNCTION(BMLAS_GetKeyFromName), asCALL_CDECL},
-    {"bool IsMouseButtonDown(CK_MOUSEBUTTON button)", "bool IsMouseButtonDown(CK_MOUSEBUTTON button)", asFUNCTION(BMLAS_IsMouseButtonDown), asCALL_CDECL},
-    {"bool IsMouseClicked(CK_MOUSEBUTTON button)", "bool IsMouseClicked(CK_MOUSEBUTTON button)", asFUNCTION(BMLAS_IsMouseClicked), asCALL_CDECL},
-    {"bool IsMouseToggled(CK_MOUSEBUTTON button)", "bool IsMouseToggled(CK_MOUSEBUTTON button)", asFUNCTION(BMLAS_IsMouseToggled), asCALL_CDECL},
-    {"Vx2DVector GetMousePosition(bool absolute = true)", "Vx2DVector GetMousePosition(bool absolute = true)", asFUNCTION(BMLAS_GetMousePosition), asCALL_CDECL},
-    {"Vx2DVector GetLastMousePosition()", "Vx2DVector GetLastMousePosition()", asFUNCTION(BMLAS_GetLastMousePosition), asCALL_CDECL},
-    {"VxVector GetMouseRelativePosition()", "VxVector GetMouseRelativePosition()", asFUNCTION(BMLAS_GetMouseRelativePosition), asCALL_CDECL},
-    {"bool IsObjectValid(CKObject@ object)", "bool IsObjectValid(CKObject@ object)", asFUNCTION(BMLAS_IsObjectValid), asCALL_CDECL},
-    {"int GetObjectId(CKObject@ object)", "int GetObjectId(CKObject@ object)", asFUNCTION(BMLAS_GetObjectId), asCALL_CDECL},
-    {"string GetObjectName(CKObject@ object)", "string GetObjectName(CKObject@ object)", asFUNCTION(BMLAS_GetObjectName), asCALL_CDECL},
-    {"int GetObjectClassId(CKObject@ object)", "int GetObjectClassId(CKObject@ object)", asFUNCTION(BMLAS_GetObjectClassId), asCALL_CDECL},
-    {"bool IsObjectVisible(CKObject@ object)", "bool IsObjectVisible(CKObject@ object)", asFUNCTION(BMLAS_IsObjectVisible), asCALL_CDECL},
-    {"bool IsObjectDynamic(CKObject@ object)", "bool IsObjectDynamic(CKObject@ object)", asFUNCTION(BMLAS_IsObjectDynamic), asCALL_CDECL},
-    {"int GetBeObjectPriority(CKBeObject@ object)", "int GetBeObjectPriority(CKBeObject@ object)", asFUNCTION(BMLAS_GetBeObjectPriority), asCALL_CDECL},
-    {"int GetBeObjectScriptCount(CKBeObject@ object)", "int GetBeObjectScriptCount(CKBeObject@ object)", asFUNCTION(BMLAS_GetBeObjectScriptCount), asCALL_CDECL},
-    {"int GetBeObjectAttributeCount(CKBeObject@ object)", "int GetBeObjectAttributeCount(CKBeObject@ object)", asFUNCTION(BMLAS_GetBeObjectAttributeCount), asCALL_CDECL},
-    {"VxVector Get3dEntityPosition(CK3dEntity@ entity)", "VxVector Get3dEntityPosition(CK3dEntity@ entity)", asFUNCTION(BMLAS_Get3dEntityPosition), asCALL_CDECL},
-    {"VxVector Get3dEntityScale(CK3dEntity@ entity, bool local = true)", "VxVector Get3dEntityScale(CK3dEntity@ entity, bool local = true)", asFUNCTION(BMLAS_Get3dEntityScale), asCALL_CDECL},
-    {"int Get3dEntityChildCount(CK3dEntity@ entity)", "int Get3dEntityChildCount(CK3dEntity@ entity)", asFUNCTION(BMLAS_Get3dEntityChildCount), asCALL_CDECL},
-    {"CK3dEntity@ Get3dEntityParent(CK3dEntity@ entity)", "CK3dEntity@ Get3dEntityParent(CK3dEntity@ entity)", asFUNCTION(BMLAS_Get3dEntityParent), asCALL_CDECL},
-    {"CKDataArray@ GetArrayByName(const string &in name)", "CKDataArray@ GetArrayByName(const string &in name)", asFUNCTION(BMLAS_GetArrayByName), asCALL_CDECL},
-    {"CKGroup@ GetGroupByName(const string &in name)", "CKGroup@ GetGroupByName(const string &in name)", asFUNCTION(BMLAS_GetGroupByName), asCALL_CDECL},
-    {"CKMaterial@ GetMaterialByName(const string &in name)", "CKMaterial@ GetMaterialByName(const string &in name)", asFUNCTION(BMLAS_GetMaterialByName), asCALL_CDECL},
-    {"CKMesh@ GetMeshByName(const string &in name)", "CKMesh@ GetMeshByName(const string &in name)", asFUNCTION(BMLAS_GetMeshByName), asCALL_CDECL},
-    {"CK2dEntity@ Get2dEntityByName(const string &in name)", "CK2dEntity@ Get2dEntityByName(const string &in name)", asFUNCTION(BMLAS_Get2dEntityByName), asCALL_CDECL},
-    {"CK3dEntity@ Get3dEntityByName(const string &in name)", "CK3dEntity@ Get3dEntityByName(const string &in name)", asFUNCTION(BMLAS_Get3dEntityByName), asCALL_CDECL},
-    {"CK3dObject@ Get3dObjectByName(const string &in name)", "CK3dObject@ Get3dObjectByName(const string &in name)", asFUNCTION(BMLAS_Get3dObjectByName), asCALL_CDECL},
-    {"CKCamera@ GetCameraByName(const string &in name)", "CKCamera@ GetCameraByName(const string &in name)", asFUNCTION(BMLAS_GetCameraByName), asCALL_CDECL},
-    {"CKTargetCamera@ GetTargetCameraByName(const string &in name)", "CKTargetCamera@ GetTargetCameraByName(const string &in name)", asFUNCTION(BMLAS_GetTargetCameraByName), asCALL_CDECL},
-    {"CKLight@ GetLightByName(const string &in name)", "CKLight@ GetLightByName(const string &in name)", asFUNCTION(BMLAS_GetLightByName), asCALL_CDECL},
-    {"CKTargetLight@ GetTargetLightByName(const string &in name)", "CKTargetLight@ GetTargetLightByName(const string &in name)", asFUNCTION(BMLAS_GetTargetLightByName), asCALL_CDECL},
-    {"CKSound@ GetSoundByName(const string &in name)", "CKSound@ GetSoundByName(const string &in name)", asFUNCTION(BMLAS_GetSoundByName), asCALL_CDECL},
-    {"CKTexture@ GetTextureByName(const string &in name)", "CKTexture@ GetTextureByName(const string &in name)", asFUNCTION(BMLAS_GetTextureByName), asCALL_CDECL},
-    {"CKBehavior@ GetScriptByName(const string &in name)", "CKBehavior@ GetScriptByName(const string &in name)", asFUNCTION(BMLAS_GetScriptByName), asCALL_CDECL},
-    {"void SetIC(CKBeObject@ object, bool hierarchy = false)", "void SetIC(CKBeObject@ object, bool hierarchy = false)", asFUNCTION(BMLAS_SetIC), asCALL_CDECL},
-    {"void RestoreIC(CKBeObject@ object, bool hierarchy = false)", "void RestoreIC(CKBeObject@ object, bool hierarchy = false)", asFUNCTION(BMLAS_RestoreIC), asCALL_CDECL},
-    {"void Show(CKBeObject@ object, CK_OBJECT_SHOWOPTION show = CKSHOW, bool hierarchy = false)", "void Show(CKBeObject@ object, CK_OBJECT_SHOWOPTION show = CKSHOW, bool hierarchy = false)", asFUNCTION(BMLAS_Show), asCALL_CDECL},
-    {"TimerRef@ AddTimer(Timer@+ timer)", "TimerRef@ AddTimer(Timer@+ timer)", asFUNCTION(BMLAS_AddTimer), asCALL_CDECL},
-    {"CommandRef@ RegisterCommand(Command@+ command)", "CommandRef@ RegisterCommand(Command@+ command)", asFUNCTION(BMLAS_RegisterCommand), asCALL_CDECL},
-    {"bool UnregisterCommand(const string &in name)", "bool UnregisterCommand(const string &in name)", asFUNCTION(BMLAS_UnregisterCommand), asCALL_CDECL},
-    {"bool RegisterBallType(const string &in ballFile, const string &in ballId, const string &in ballName, const string &in objName, float friction, float elasticity, float mass, const string &in collGroup, float linearDamp, float rotDamp, float force, float radius)", "bool RegisterBallType(...)", asFUNCTION(BMLAS_RegisterBallType), asCALL_CDECL},
-    {"bool RegisterFloorType(const string &in floorName, float friction, float elasticity, float mass, const string &in collGroup, bool enableColl)", "bool RegisterFloorType(...)", asFUNCTION(BMLAS_RegisterFloorType), asCALL_CDECL},
-    {"bool RegisterModulBall(const string &in modulName, bool fixed, float friction, float elasticity, float mass, const string &in collGroup, bool frozen, bool enableColl, bool calcMassCenter, float linearDamp, float rotDamp, float radius)", "bool RegisterModulBall(...)", asFUNCTION(BMLAS_RegisterModulBall), asCALL_CDECL},
-    {"bool RegisterModulConvex(const string &in modulName, bool fixed, float friction, float elasticity, float mass, const string &in collGroup, bool frozen, bool enableColl, bool calcMassCenter, float linearDamp, float rotDamp)", "bool RegisterModulConvex(...)", asFUNCTION(BMLAS_RegisterModulConvex), asCALL_CDECL},
-    {"bool RegisterTrafo(const string &in modulName)", "bool RegisterTrafo(const string &in modulName)", asFUNCTION(BMLAS_RegisterTrafo), asCALL_CDECL},
-    {"bool RegisterModul(const string &in modulName)", "bool RegisterModul(const string &in modulName)", asFUNCTION(BMLAS_RegisterModul), asCALL_CDECL},
-    {"bool FileExistsUtf8(const string &in path)", "bool FileExistsUtf8(const string &in path)", asFUNCTION(BMLAS_FileExistsUtf8), asCALL_CDECL},
-    {"bool DirectoryExistsUtf8(const string &in path)", "bool DirectoryExistsUtf8(const string &in path)", asFUNCTION(BMLAS_DirectoryExistsUtf8), asCALL_CDECL},
-    {"bool PathExistsUtf8(const string &in path)", "bool PathExistsUtf8(const string &in path)", asFUNCTION(BMLAS_PathExistsUtf8), asCALL_CDECL},
-    {"bool IsPathValidUtf8(const string &in path)", "bool IsPathValidUtf8(const string &in path)", asFUNCTION(BMLAS_IsPathValidUtf8), asCALL_CDECL},
-    {"bool IsAbsolutePathUtf8(const string &in path)", "bool IsAbsolutePathUtf8(const string &in path)", asFUNCTION(BMLAS_IsAbsolutePathUtf8), asCALL_CDECL},
-    {"bool IsRelativePathUtf8(const string &in path)", "bool IsRelativePathUtf8(const string &in path)", asFUNCTION(BMLAS_IsRelativePathUtf8), asCALL_CDECL},
-    {"string CombinePathUtf8(const string &in left, const string &in right)", "string CombinePathUtf8(const string &in left, const string &in right)", asFUNCTION(BMLAS_CombinePathUtf8), asCALL_CDECL},
-    {"string NormalizePathUtf8(const string &in path)", "string NormalizePathUtf8(const string &in path)", asFUNCTION(BMLAS_NormalizePathUtf8), asCALL_CDECL},
-    {"string GetFileNameUtf8(const string &in path)", "string GetFileNameUtf8(const string &in path)", asFUNCTION(BMLAS_GetFileNameUtf8), asCALL_CDECL},
-    {"string GetExtensionUtf8(const string &in path)", "string GetExtensionUtf8(const string &in path)", asFUNCTION(BMLAS_GetExtensionUtf8), asCALL_CDECL},
-    {"string RemoveExtensionUtf8(const string &in path)", "string RemoveExtensionUtf8(const string &in path)", asFUNCTION(BMLAS_RemoveExtensionUtf8), asCALL_CDECL},
-    {"string ReadTextFileUtf8(const string &in path)", "string ReadTextFileUtf8(const string &in path)", asFUNCTION(BMLAS_ReadTextFileUtf8), asCALL_CDECL},
+    {"string GetVersion()", "BML::GetVersion", asFUNCTION(BMLAS_GetVersion), asCALL_CDECL},
+    {"int GetVersionMajor()", "BML::GetVersionMajor", asFUNCTION(BMLAS_GetVersionMajor), asCALL_CDECL},
+    {"int GetVersionMinor()", "BML::GetVersionMinor", asFUNCTION(BMLAS_GetVersionMinor), asCALL_CDECL},
+    {"int GetVersionPatch()", "BML::GetVersionPatch", asFUNCTION(BMLAS_GetVersionPatch), asCALL_CDECL},
+    {"string GetErrorString(int errorCode)", "BML::GetErrorString", asFUNCTION(BMLAS_GetErrorString), asCALL_CDECL},
+    {"bool BorrowCurrentContext(ModContext &out context)", "BML::BorrowCurrentContext", asFUNCTION(BMLAS_BorrowCurrentContext), asCALL_CDECL},
     {"bool DataShareSetString(const string &in key, const string &in value, const string &in name = \"BML\")", "bool DataShareSetString(const string &in key, const string &in value, const string &in name = \"BML\")", asFUNCTION(BMLAS_DataShareSetString), asCALL_CDECL},
     {"string DataShareGetString(const string &in key, const string &in defaultValue = \"\", const string &in name = \"BML\")", "string DataShareGetString(const string &in key, const string &in defaultValue = \"\", const string &in name = \"BML\")", asFUNCTION(BMLAS_DataShareGetString), asCALL_CDECL},
     {"bool DataShareSetBool(const string &in key, bool value, const string &in name = \"BML\")", "bool DataShareSetBool(const string &in key, bool value, const string &in name = \"BML\")", asFUNCTION(BMLAS_DataShareSetBool), asCALL_CDECL},
@@ -2367,7 +3242,71 @@ static const ScriptGlobalFunctionRegistration kGlobalFunctionRegistrations[] = {
     {"bool DataShareHas(const string &in key, const string &in name = \"BML\")", "bool DataShareHas(const string &in key, const string &in name = \"BML\")", asFUNCTION(BMLAS_DataShareHas), asCALL_CDECL},
     {"void DataShareRemove(const string &in key, const string &in name = \"BML\")", "void DataShareRemove(const string &in key, const string &in name = \"BML\")", asFUNCTION(BMLAS_DataShareRemove), asCALL_CDECL},
     {"int DataShareSizeOf(const string &in key, const string &in name = \"BML\")", "int DataShareSizeOf(const string &in key, const string &in name = \"BML\")", asFUNCTION(BMLAS_DataShareSizeOf), asCALL_CDECL},
-    {"DataShareRequestRef@ RequestDataShare(DataShareRequest@+ request)", "DataShareRequestRef@ RequestDataShare(DataShareRequest@+ request)", asFUNCTION(BMLAS_RequestDataShare), asCALL_CDECL},
+};
+
+static const ScriptGlobalFunctionRegistration kPathFunctionRegistrations[] = {
+    {"bool Exists(const string &in path)", "BML::Path::Exists", asFUNCTION(BMLAS_PathExistsUtf8), asCALL_CDECL},
+    {"bool IsFile(const string &in path)", "BML::Path::IsFile", asFUNCTION(BMLAS_FileExistsUtf8), asCALL_CDECL},
+    {"bool IsDirectory(const string &in path)", "BML::Path::IsDirectory", asFUNCTION(BMLAS_DirectoryExistsUtf8), asCALL_CDECL},
+    {"bool IsValid(const string &in path)", "BML::Path::IsValid", asFUNCTION(BMLAS_IsPathValidUtf8), asCALL_CDECL},
+    {"bool IsAbsolute(const string &in path)", "BML::Path::IsAbsolute", asFUNCTION(BMLAS_IsAbsolutePathUtf8), asCALL_CDECL},
+    {"bool IsRelative(const string &in path)", "BML::Path::IsRelative", asFUNCTION(BMLAS_IsRelativePathUtf8), asCALL_CDECL},
+    {"string Combine(const string &in left, const string &in right)", "BML::Path::Combine", asFUNCTION(BMLAS_CombinePathUtf8), asCALL_CDECL},
+    {"string Normalize(const string &in path)", "BML::Path::Normalize", asFUNCTION(BMLAS_NormalizePathUtf8), asCALL_CDECL},
+    {"string FileName(const string &in path)", "BML::Path::FileName", asFUNCTION(BMLAS_GetFileNameUtf8), asCALL_CDECL},
+    {"string Extension(const string &in path)", "BML::Path::Extension", asFUNCTION(BMLAS_GetExtensionUtf8), asCALL_CDECL},
+    {"string RemoveExtension(const string &in path)", "BML::Path::RemoveExtension", asFUNCTION(BMLAS_RemoveExtensionUtf8), asCALL_CDECL},
+};
+
+static const ScriptGlobalFunctionRegistration kCkFunctionRegistrations[] = {
+    {"bool IsValid(CKObject@ object)", "BML::CK::IsValid", asFUNCTION(BMLAS_IsObjectValid), asCALL_CDECL},
+    {"int GetId(CKObject@ object)", "BML::CK::GetId", asFUNCTION(BMLAS_GetObjectId), asCALL_CDECL},
+    {"string GetName(CKObject@ object)", "BML::CK::GetName", asFUNCTION(BMLAS_GetObjectName), asCALL_CDECL},
+    {"int GetClassId(CKObject@ object)", "BML::CK::GetClassId", asFUNCTION(BMLAS_GetObjectClassId), asCALL_CDECL},
+    {"bool IsVisible(CKObject@ object)", "BML::CK::IsVisible", asFUNCTION(BMLAS_IsObjectVisible), asCALL_CDECL},
+    {"bool IsDynamic(CKObject@ object)", "BML::CK::IsDynamic", asFUNCTION(BMLAS_IsObjectDynamic), asCALL_CDECL},
+    {"int GetPriority(CKBeObject@ object)", "BML::CK::GetPriority", asFUNCTION(BMLAS_GetBeObjectPriority), asCALL_CDECL},
+    {"int GetScriptCount(CKBeObject@ object)", "BML::CK::GetScriptCount", asFUNCTION(BMLAS_GetBeObjectScriptCount), asCALL_CDECL},
+    {"int GetAttributeCount(CKBeObject@ object)", "BML::CK::GetAttributeCount", asFUNCTION(BMLAS_GetBeObjectAttributeCount), asCALL_CDECL},
+    {"void SetIC(CKBeObject@ object, bool hierarchy = false)", "BML::CK::SetIC", asFUNCTION(BMLAS_SetIC), asCALL_CDECL},
+    {"void RestoreIC(CKBeObject@ object, bool hierarchy = false)", "BML::CK::RestoreIC", asFUNCTION(BMLAS_RestoreIC), asCALL_CDECL},
+    {"void Show(CKBeObject@ object, CK_OBJECT_SHOWOPTION show = CKSHOW, bool hierarchy = false)", "BML::CK::Show", asFUNCTION(BMLAS_Show), asCALL_CDECL},
+    {"VxVector GetPosition(CK3dEntity@ entity)", "BML::CK::GetPosition", asFUNCTION(BMLAS_Get3dEntityPosition), asCALL_CDECL},
+    {"void SetPosition(CK3dEntity@ entity, const VxVector &in position)", "BML::CK::SetPosition", asFUNCTION(BMLAS_CK_Set3dEntityPosition), asCALL_CDECL},
+    {"VxVector GetScale(CK3dEntity@ entity, bool local = true)", "BML::CK::GetScale", asFUNCTION(BMLAS_Get3dEntityScale), asCALL_CDECL},
+    {"void SetScale(CK3dEntity@ entity, const VxVector &in scale, bool local = true)", "BML::CK::SetScale", asFUNCTION(BMLAS_CK_Set3dEntityScale), asCALL_CDECL},
+    {"int GetChildCount(CK3dEntity@ entity)", "BML::CK::GetChildCount", asFUNCTION(BMLAS_Get3dEntityChildCount), asCALL_CDECL},
+    {"CK3dEntity@ BorrowChild(CK3dEntity@ entity, int index)", "BML::CK::BorrowChild", asFUNCTION(BMLAS_CK_Borrow3dEntityChild), asCALL_CDECL},
+    {"CK3dEntity@ BorrowParent(CK3dEntity@ entity)", "BML::CK::BorrowParent", asFUNCTION(BMLAS_Get3dEntityParent), asCALL_CDECL},
+    {"int GetRowCount(CKDataArray@ array)", "BML::CK::GetRowCount", asFUNCTION(BMLAS_CK_GetDataArrayRowCount), asCALL_CDECL},
+    {"int GetColumnCount(CKDataArray@ array)", "BML::CK::GetColumnCount", asFUNCTION(BMLAS_CK_GetDataArrayColumnCount), asCALL_CDECL},
+    {"string GetColumnName(CKDataArray@ array, int column)", "BML::CK::GetColumnName", asFUNCTION(BMLAS_CK_GetDataArrayColumnName), asCALL_CDECL},
+    {"int FindColumn(CKDataArray@ array, const string &in name)", "BML::CK::FindColumn", asFUNCTION(BMLAS_CK_FindDataArrayColumn), asCALL_CDECL},
+    {"string GetString(CKDataArray@ array, int row, int column, const string &in defaultValue = \"\")", "BML::CK::GetString", asFUNCTION(BMLAS_CK_GetDataArrayString), asCALL_CDECL},
+    {"bool GetBool(CKDataArray@ array, int row, int column, bool defaultValue = false)", "BML::CK::GetBool", asFUNCTION(BMLAS_CK_GetDataArrayBool), asCALL_CDECL},
+    {"int GetInt(CKDataArray@ array, int row, int column, int defaultValue = 0)", "BML::CK::GetInt", asFUNCTION(BMLAS_CK_GetDataArrayInt), asCALL_CDECL},
+    {"float GetFloat(CKDataArray@ array, int row, int column, float defaultValue = 0.0f)", "BML::CK::GetFloat", asFUNCTION(BMLAS_CK_GetDataArrayFloat), asCALL_CDECL},
+    {"bool SetString(CKDataArray@ array, int row, int column, const string &in value)", "BML::CK::SetString", asFUNCTION(BMLAS_CK_SetDataArrayString), asCALL_CDECL},
+    {"bool SetBool(CKDataArray@ array, int row, int column, bool value)", "BML::CK::SetBool", asFUNCTION(BMLAS_CK_SetDataArrayBool), asCALL_CDECL},
+    {"bool SetInt(CKDataArray@ array, int row, int column, int value)", "BML::CK::SetInt", asFUNCTION(BMLAS_CK_SetDataArrayInt), asCALL_CDECL},
+    {"bool SetFloat(CKDataArray@ array, int row, int column, float value)", "BML::CK::SetFloat", asFUNCTION(BMLAS_CK_SetDataArrayFloat), asCALL_CDECL},
+    {"ObjectLoadResult@ LoadObject(const BML::ObjectLoadOptions &in options)", "BML::CK::LoadObject", asFUNCTION(BMLAS_CK_LoadObject), asCALL_CDECL},
+};
+
+static const ScriptGlobalFunctionRegistration kPhysicsFunctionRegistrations[] = {
+    {"bool PhysicalizeConvex(CK3dEntity@ target, const BML::PhysicalizeDefinition &in definition, CKMesh@ mesh = null)", "BML::Physics::PhysicalizeConvex", asFUNCTION(BMLAS_Physics_PhysicalizeConvex), asCALL_CDECL},
+    {"bool PhysicalizeBall(CK3dEntity@ target, const BML::PhysicalizeDefinition &in definition, const VxVector &in center, float radius)", "BML::Physics::PhysicalizeBall", asFUNCTION(BMLAS_Physics_PhysicalizeBall), asCALL_CDECL},
+    {"bool PhysicalizeConcave(CK3dEntity@ target, const BML::PhysicalizeDefinition &in definition, CKMesh@ mesh = null)", "BML::Physics::PhysicalizeConcave", asFUNCTION(BMLAS_Physics_PhysicalizeConcave), asCALL_CDECL},
+    {"bool Unphysicalize(CK3dEntity@ target)", "BML::Physics::Unphysicalize", asFUNCTION(BMLAS_Physics_Unphysicalize), asCALL_CDECL},
+    {"bool SetForce(CK3dEntity@ target, const VxVector &in position, CK3dEntity@ positionReference, const VxVector &in direction, CK3dEntity@ directionReference, float force)", "BML::Physics::SetForce", asFUNCTION(BMLAS_Physics_SetForce), asCALL_CDECL},
+    {"bool ClearForce(CK3dEntity@ target)", "BML::Physics::ClearForce", asFUNCTION(BMLAS_Physics_ClearForce), asCALL_CDECL},
+    {"bool Impulse(CK3dEntity@ target, const VxVector &in position, CK3dEntity@ positionReference, const VxVector &in direction, CK3dEntity@ directionReference, float impulse)", "BML::Physics::Impulse", asFUNCTION(BMLAS_Physics_Impulse), asCALL_CDECL},
+    {"bool WakeUp(CK3dEntity@ target)", "BML::Physics::WakeUp", asFUNCTION(BMLAS_Physics_WakeUp), asCALL_CDECL},
+};
+
+static const ScriptGlobalFunctionRegistration kTextFunctionRegistrations[] = {
+    {"CKBehavior@ Create2DText(CKBehavior@ ownerScript, CK2dEntity@ target, const BML::Text2DDefinition &in definition)", "BML::Text::Create2DText", asFUNCTION(BMLAS_Text_Create2DTextDefaultMaterials), asCALL_CDECL},
+    {"CKBehavior@ Create2DText(CKBehavior@ ownerScript, CK2dEntity@ target, const BML::Text2DDefinition &in definition, CKMaterial@ backgroundMaterial, CKMaterial@ caretMaterial)", "BML::Text::Create2DText(materials)", asFUNCTION(BMLAS_Text_Create2DText), asCALL_CDECL},
 };
 
 bool CheckScriptApiContractRegistrationSurface() {
@@ -2447,6 +3386,14 @@ bool CheckScriptFacadeRegistrationSurface() {
         }
     }
 
+    for (const ScriptObjectPropertyRegistration &registration : kObjectPropertyRegistrations) {
+        if (!CheckRegistrationSurfaceText("object property type", registration.DiagnosticName, registration.TypeName) ||
+            !CheckRegistrationSurfaceText("object property declaration", registration.TypeName, registration.Declaration) ||
+            !CheckRegistrationSurfaceText("object property diagnostic", registration.TypeName, registration.DiagnosticName)) {
+            return false;
+        }
+    }
+
     for (const ScriptObjectBehaviourRegistration &registration : kObjectBehaviourRegistrations) {
         if (!CheckRegistrationSurfaceText("object behaviour type", registration.DiagnosticName, registration.TypeName) ||
             !CheckRegistrationSurfaceText("object behaviour declaration", registration.TypeName, registration.Declaration) ||
@@ -2463,10 +3410,35 @@ bool CheckScriptFacadeRegistrationSurface() {
         }
     }
 
-    for (const ScriptGlobalFunctionRegistration &registration : kGlobalFunctionRegistrations) {
+    for (const ScriptUiEnumValueRegistration &registration : kFontTypeRegistrations) {
+        if (!CheckRegistrationSurfaceText("font enum value", "BML::FontType", registration.Name) ||
+            !CheckRegistrationSurfaceText("font enum diagnostic", "BML::FontType", registration.DiagnosticName)) {
+            return false;
+        }
+    }
+
+    const ScriptGlobalFunctionRegistration *globalFunctionGroups[] = {
+        kGlobalFunctionRegistrations,
+        kPathFunctionRegistrations,
+        kCkFunctionRegistrations,
+        kPhysicsFunctionRegistrations,
+        kTextFunctionRegistrations,
+    };
+    const std::size_t globalFunctionGroupSizes[] = {
+        std::size(kGlobalFunctionRegistrations),
+        std::size(kPathFunctionRegistrations),
+        std::size(kCkFunctionRegistrations),
+        std::size(kPhysicsFunctionRegistrations),
+        std::size(kTextFunctionRegistrations),
+    };
+
+    for (std::size_t group = 0; group < std::size(globalFunctionGroups); ++group) {
+        for (std::size_t index = 0; index < globalFunctionGroupSizes[group]; ++index) {
+            const ScriptGlobalFunctionRegistration &registration = globalFunctionGroups[group][index];
         if (!CheckRegistrationSurfaceText("global function declaration", nullptr, registration.Declaration) ||
             !CheckRegistrationSurfaceText("global function diagnostic", nullptr, registration.DiagnosticName)) {
             return false;
+        }
         }
     }
 
@@ -2503,6 +3475,10 @@ int RegisterScriptEnumsAndConstants(asIScriptEngine *engine, const char **errorM
             BML_AS_REGISTER(engine->RegisterEnumValue(enumInfo.Name, value.Name, value.Value), value.DiagnosticName);
         }
     }
+    BML_AS_REGISTER(engine->RegisterEnum("FontType"), "enum FontType");
+    for (const ScriptUiEnumValueRegistration &registration : kFontTypeRegistrations) {
+        BML_AS_REGISTER(engine->RegisterEnumValue("FontType", registration.Name, registration.Value), registration.DiagnosticName);
+    }
     return asSUCCESS;
 }
 
@@ -2523,6 +3499,13 @@ int RegisterScriptInterfaces(asIScriptEngine *engine, const char **errorMessage)
     return asSUCCESS;
 }
 
+int RegisterScriptObjectProperties(asIScriptEngine *engine, const char **errorMessage) {
+    for (const ScriptObjectPropertyRegistration &registration : kObjectPropertyRegistrations) {
+        BML_AS_REGISTER(engine->RegisterObjectProperty(registration.TypeName, registration.Declaration, registration.ByteOffset), registration.DiagnosticName);
+    }
+    return asSUCCESS;
+}
+
 int RegisterScriptObjectBehaviours(asIScriptEngine *engine, const char **errorMessage) {
     for (const ScriptObjectBehaviourRegistration &registration : kObjectBehaviourRegistrations) {
         BML_AS_REGISTER(engine->RegisterObjectBehaviour(registration.TypeName, registration.Behaviour, registration.Declaration, registration.Function, registration.CallConvention), registration.DiagnosticName);
@@ -2537,11 +3520,33 @@ int RegisterScriptObjectMethods(asIScriptEngine *engine, const char **errorMessa
     return asSUCCESS;
 }
 
-int RegisterScriptGlobalFunctions(asIScriptEngine *engine, const char **errorMessage) {
-    for (const ScriptGlobalFunctionRegistration &registration : kGlobalFunctionRegistrations) {
+template <std::size_t Count>
+int RegisterScriptGlobalFunctionList(asIScriptEngine *engine,
+                                     const char **errorMessage,
+                                     const char *namespaceName,
+                                     const ScriptGlobalFunctionRegistration (&registrations)[Count]) {
+    BML_AS_REGISTER(engine->SetDefaultNamespace(namespaceName), namespaceName);
+    for (const ScriptGlobalFunctionRegistration &registration : registrations) {
         BML_AS_REGISTER(engine->RegisterGlobalFunction(registration.Declaration, registration.Function, registration.CallConvention), registration.DiagnosticName);
     }
+    BML_AS_REGISTER(engine->SetDefaultNamespace("BML"), "namespace BML");
     return asSUCCESS;
+}
+
+int RegisterScriptGlobalFunctions(asIScriptEngine *engine, const char **errorMessage) {
+    const int bmlResult = RegisterScriptGlobalFunctionList(engine, errorMessage, "BML", kGlobalFunctionRegistrations);
+    if (bmlResult < 0)
+        return bmlResult;
+    const int pathResult = RegisterScriptGlobalFunctionList(engine, errorMessage, "BML::Path", kPathFunctionRegistrations);
+    if (pathResult < 0)
+        return pathResult;
+    const int ckResult = RegisterScriptGlobalFunctionList(engine, errorMessage, "BML::CK", kCkFunctionRegistrations);
+    if (ckResult < 0)
+        return ckResult;
+    const int physicsResult = RegisterScriptGlobalFunctionList(engine, errorMessage, "BML::Physics", kPhysicsFunctionRegistrations);
+    if (physicsResult < 0)
+        return physicsResult;
+    return RegisterScriptGlobalFunctionList(engine, errorMessage, "BML::Text", kTextFunctionRegistrations);
 }
 
 int RegisterScriptUiFacade(asIScriptEngine *engine, const char **errorMessage) {
@@ -2571,6 +3576,9 @@ int RegisterScriptFacade(asIScriptEngine *engine, const char **errorMessage) {
     const int typesResult = RegisterScriptObjectTypes(engine, errorMessage);
     if (typesResult < 0)
         return typesResult;
+    const int propertiesResult = RegisterScriptObjectProperties(engine, errorMessage);
+    if (propertiesResult < 0)
+        return propertiesResult;
     const int interfacesResult = RegisterScriptInterfaces(engine, errorMessage);
     if (interfacesResult < 0)
         return interfacesResult;

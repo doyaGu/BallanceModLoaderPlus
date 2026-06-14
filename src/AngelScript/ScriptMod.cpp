@@ -20,8 +20,6 @@ static bool IsConfigKeyValid(const std::string &key) {
     return true;
 }
 
-static constexpr const char *kScriptConfigCategory = "Script";
-
 static std::string BuildMissingExportDiagnostic(const ScriptModDefinition &definition,
                                                 const ScriptExportTable &exports,
                                                 const std::string &name,
@@ -459,101 +457,48 @@ std::string ScriptMod::ReadModTextFileUtf8(const std::string &relativePath,
     return text;
 }
 
-std::string ScriptMod::GetConfigString(const std::string &key, const std::string &defaultValue) {
-    if (!IsConfigKeyValid(key))
-        return defaultValue;
-    IConfig *config = GetConfig();
-    if (!config)
-        return defaultValue;
-    IProperty *property = config->GetProperty(kScriptConfigCategory, key.c_str());
-    if (!property || property->GetType() != IProperty::STRING)
-        return defaultValue;
-    const char *value = property->GetString();
-    return value ? value : "";
+void ScriptMod::LogInfo(const std::string &message) {
+    if (ILogger *logger = GetLogger())
+        logger->Info("%s", message.c_str());
 }
 
-void ScriptMod::SetConfigString(const std::string &key, const std::string &value) {
-    if (!IsConfigKeyValid(key))
-        return;
-    IConfig *config = GetConfig();
-    if (!config)
-        return;
-    config->SetCategoryComment(kScriptConfigCategory, "Script Mod Settings");
-    IProperty *property = config->GetProperty(kScriptConfigCategory, key.c_str());
-    if (property)
-        property->SetString(value.c_str());
+void ScriptMod::LogWarn(const std::string &message) {
+    if (ILogger *logger = GetLogger())
+        logger->Warn("%s", message.c_str());
 }
 
-bool ScriptMod::GetConfigBool(const std::string &key, bool defaultValue) {
-    if (!IsConfigKeyValid(key))
-        return defaultValue;
-    IConfig *config = GetConfig();
-    if (!config)
-        return defaultValue;
-    IProperty *property = config->GetProperty(kScriptConfigCategory, key.c_str());
-    if (!property || property->GetType() != IProperty::BOOLEAN)
-        return defaultValue;
-    return property->GetBoolean();
+void ScriptMod::LogError(const std::string &message) {
+    if (ILogger *logger = GetLogger())
+        logger->Error("%s", message.c_str());
 }
 
-void ScriptMod::SetConfigBool(const std::string &key, bool value) {
-    if (!IsConfigKeyValid(key))
-        return;
+bool ScriptMod::HasConfigCategory(const std::string &category) {
+    if (!IsConfigKeyValid(category))
+        return false;
     IConfig *config = GetConfig();
-    if (!config)
-        return;
-    config->SetCategoryComment(kScriptConfigCategory, "Script Mod Settings");
-    IProperty *property = config->GetProperty(kScriptConfigCategory, key.c_str());
-    if (property)
-        property->SetBoolean(value);
+    return config && config->HasCategory(category.c_str());
 }
 
-int ScriptMod::GetConfigInt(const std::string &key, int defaultValue) {
-    if (!IsConfigKeyValid(key))
-        return defaultValue;
+bool ScriptMod::HasConfigKey(const std::string &category, const std::string &key) {
+    if (!IsConfigKeyValid(category) || !IsConfigKeyValid(key))
+        return false;
     IConfig *config = GetConfig();
-    if (!config)
-        return defaultValue;
-    IProperty *property = config->GetProperty(kScriptConfigCategory, key.c_str());
-    if (!property || property->GetType() != IProperty::INTEGER)
-        return defaultValue;
-    return property->GetInteger();
+    return config && config->HasKey(category.c_str(), key.c_str());
 }
 
-void ScriptMod::SetConfigInt(const std::string &key, int value) {
-    if (!IsConfigKeyValid(key))
-        return;
+IProperty *ScriptMod::GetConfigProperty(const std::string &category, const std::string &key) {
+    if (!IsConfigKeyValid(category) || !IsConfigKeyValid(key))
+        return nullptr;
     IConfig *config = GetConfig();
-    if (!config)
-        return;
-    config->SetCategoryComment(kScriptConfigCategory, "Script Mod Settings");
-    IProperty *property = config->GetProperty(kScriptConfigCategory, key.c_str());
-    if (property)
-        property->SetInteger(value);
+    return config ? config->GetProperty(category.c_str(), key.c_str()) : nullptr;
 }
 
-float ScriptMod::GetConfigFloat(const std::string &key, float defaultValue) {
-    if (!IsConfigKeyValid(key))
-        return defaultValue;
-    IConfig *config = GetConfig();
-    if (!config)
-        return defaultValue;
-    IProperty *property = config->GetProperty(kScriptConfigCategory, key.c_str());
-    if (!property || property->GetType() != IProperty::FLOAT)
-        return defaultValue;
-    return property->GetFloat();
-}
-
-void ScriptMod::SetConfigFloat(const std::string &key, float value) {
-    if (!IsConfigKeyValid(key))
+void ScriptMod::SetConfigCategoryComment(const std::string &category, const std::string &comment) {
+    if (!IsConfigKeyValid(category))
         return;
     IConfig *config = GetConfig();
-    if (!config)
-        return;
-    config->SetCategoryComment(kScriptConfigCategory, "Script Mod Settings");
-    IProperty *property = config->GetProperty(kScriptConfigCategory, key.c_str());
-    if (property)
-        property->SetFloat(value);
+    if (config)
+        config->SetCategoryComment(category.c_str(), comment.c_str());
 }
 
 bool ScriptMod::CompileAndCreate() {

@@ -123,14 +123,13 @@ public:
     bool ModFileExistsUtf8(const std::string &relativePath) const;
     bool ModDirectoryExistsUtf8(const std::string &relativePath) const;
     std::string ReadModTextFileUtf8(const std::string &relativePath, const std::string &defaultValue) const;
-    std::string GetConfigString(const std::string &key, const std::string &defaultValue);
-    void SetConfigString(const std::string &key, const std::string &value);
-    bool GetConfigBool(const std::string &key, bool defaultValue);
-    void SetConfigBool(const std::string &key, bool value);
-    int GetConfigInt(const std::string &key, int defaultValue);
-    void SetConfigInt(const std::string &key, int value);
-    float GetConfigFloat(const std::string &key, float defaultValue);
-    void SetConfigFloat(const std::string &key, float value);
+    void LogInfo(const std::string &message);
+    void LogWarn(const std::string &message);
+    void LogError(const std::string &message);
+    bool HasConfigCategory(const std::string &category);
+    bool HasConfigKey(const std::string &category, const std::string &key);
+    IProperty *GetConfigProperty(const std::string &category, const std::string &key);
+    void SetConfigCategoryComment(const std::string &category, const std::string &comment);
     void SetLoadFailure(const std::string &diagnostic);
     void SetLoadFailure(const ScriptDiagnostic &diagnostic);
     void RecordScriptDiagnostic(const ScriptDiagnostic &diagnostic);
@@ -139,6 +138,7 @@ public:
     ScriptCommandRef *RegisterScriptCommand(asIScriptObject *command);
     bool UnregisterScriptCommand(const std::string &name);
     ScriptDataShareRequestRef *RequestScriptDataShare(asIScriptObject *request);
+    ScriptModContextView *BorrowContextView() { return &m_ContextView; }
     bool RegisterScriptBallType(const std::string &ballFile,
                                 const std::string &ballId,
                                 const std::string &ballName,

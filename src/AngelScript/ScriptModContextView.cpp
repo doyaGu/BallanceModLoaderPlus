@@ -130,66 +130,6 @@ unsigned int ScriptModContextView::GetFrameCount() const {
     return ScriptFacadeAccess::GetFrameCount(GetTimeManager());
 }
 
-bool ScriptModContextView::IsKeyboardAttached() const {
-    return ScriptFacadeAccess::IsKeyboardAttached(GetInputManager());
-}
-
-bool ScriptModContextView::IsMouseAttached() const {
-    return ScriptFacadeAccess::IsMouseAttached(GetInputManager());
-}
-
-bool ScriptModContextView::IsKeyDown(CKKEYBOARD key) const {
-    return ScriptFacadeAccess::IsKeyDown(GetInputManager(), key);
-}
-
-bool ScriptModContextView::IsKeyUp(CKKEYBOARD key) const {
-    return ScriptFacadeAccess::IsKeyUp(GetInputManager(), key);
-}
-
-bool ScriptModContextView::IsKeyPressed(CKKEYBOARD key) const {
-    return ScriptFacadeAccess::IsKeyPressed(GetInputManager(), key);
-}
-
-bool ScriptModContextView::IsKeyReleased(CKKEYBOARD key) const {
-    return ScriptFacadeAccess::IsKeyReleased(GetInputManager(), key);
-}
-
-bool ScriptModContextView::IsKeyToggled(CKKEYBOARD key) const {
-    return ScriptFacadeAccess::IsKeyToggled(GetInputManager(), key);
-}
-
-std::string ScriptModContextView::GetKeyName(CKKEYBOARD key) const {
-    return ScriptFacadeAccess::GetKeyName(GetInputManager(), key);
-}
-
-int ScriptModContextView::GetKeyFromName(const std::string &name) const {
-    return ScriptFacadeAccess::GetKeyFromName(GetInputManager(), name);
-}
-
-bool ScriptModContextView::IsMouseButtonDown(CK_MOUSEBUTTON button) const {
-    return ScriptFacadeAccess::IsMouseButtonDown(GetInputManager(), button);
-}
-
-bool ScriptModContextView::IsMouseClicked(CK_MOUSEBUTTON button) const {
-    return ScriptFacadeAccess::IsMouseClicked(GetInputManager(), button);
-}
-
-bool ScriptModContextView::IsMouseToggled(CK_MOUSEBUTTON button) const {
-    return ScriptFacadeAccess::IsMouseToggled(GetInputManager(), button);
-}
-
-Vx2DVector ScriptModContextView::GetMousePosition(bool absolute) const {
-    return ScriptFacadeAccess::GetMousePosition(GetInputManager(), absolute);
-}
-
-Vx2DVector ScriptModContextView::GetLastMousePosition() const {
-    return ScriptFacadeAccess::GetLastMousePosition(GetInputManager());
-}
-
-VxVector ScriptModContextView::GetMouseRelativePosition() const {
-    return ScriptFacadeAccess::GetMouseRelativePosition(GetInputManager());
-}
-
 bool ScriptModContextView::IsObjectValid(CKObject *object) const {
     return ScriptFacadeAccess::IsObjectValid(object);
 }
@@ -538,58 +478,6 @@ void ScriptModContextView::OpenMapMenu() const {
 void ScriptModContextView::CloseMapMenu() const {
     if (m_Context)
         m_Context->CloseMapMenu();
-}
-
-std::string ScriptModContextView::GetConfigString(const std::string &key,
-                                                  const std::string &defaultValue) const {
-    return m_Owner ? m_Owner->GetConfigString(key, defaultValue) : defaultValue;
-}
-
-void ScriptModContextView::SetConfigString(const std::string &key, const std::string &value) const {
-    if (m_Owner)
-        m_Owner->SetConfigString(key, value);
-}
-
-bool ScriptModContextView::GetConfigBool(const std::string &key, bool defaultValue) const {
-    return m_Owner ? m_Owner->GetConfigBool(key, defaultValue) : defaultValue;
-}
-
-void ScriptModContextView::SetConfigBool(const std::string &key, bool value) const {
-    if (m_Owner)
-        m_Owner->SetConfigBool(key, value);
-}
-
-int ScriptModContextView::GetConfigInt(const std::string &key, int defaultValue) const {
-    return m_Owner ? m_Owner->GetConfigInt(key, defaultValue) : defaultValue;
-}
-
-void ScriptModContextView::SetConfigInt(const std::string &key, int value) const {
-    if (m_Owner)
-        m_Owner->SetConfigInt(key, value);
-}
-
-float ScriptModContextView::GetConfigFloat(const std::string &key, float defaultValue) const {
-    return m_Owner ? m_Owner->GetConfigFloat(key, defaultValue) : defaultValue;
-}
-
-void ScriptModContextView::SetConfigFloat(const std::string &key, float value) const {
-    if (m_Owner)
-        m_Owner->SetConfigFloat(key, value);
-}
-
-void ScriptModContextView::LogInfo(const std::string &message) const {
-    if (m_Context && m_Context->GetLogger())
-        m_Context->GetLogger()->Info("[%s] %s", GetModId().c_str(), message.c_str());
-}
-
-void ScriptModContextView::LogWarn(const std::string &message) const {
-    if (m_Context && m_Context->GetLogger())
-        m_Context->GetLogger()->Warn("[%s] %s", GetModId().c_str(), message.c_str());
-}
-
-void ScriptModContextView::LogError(const std::string &message) const {
-    if (m_Context && m_Context->GetLogger())
-        m_Context->GetLogger()->Error("[%s] %s", GetModId().c_str(), message.c_str());
 }
 
 } // namespace BML

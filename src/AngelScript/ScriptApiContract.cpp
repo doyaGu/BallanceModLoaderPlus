@@ -1,6 +1,8 @@
 #include "ScriptApiContract.h"
 
 #include "BML/Interop.h"
+#include "BML/IConfig.h"
+#include "BML/InputHook.h"
 #include "BML/Timer.h"
 #include "ScriptCallbackEvents.h"
 
@@ -106,11 +108,46 @@ static const ScriptEnumValueContract kHudFlagValues[] = {
     {"HUD_SR", 4, "HudFlag::HUD_SR"},
 };
 
+static const ScriptEnumValueContract kInputDeviceValues[] = {
+    {"INPUT_DEVICE_KEYBOARD", CK_INPUT_DEVICE_KEYBOARD, "InputDevice::INPUT_DEVICE_KEYBOARD"},
+    {"INPUT_DEVICE_MOUSE", CK_INPUT_DEVICE_MOUSE, "InputDevice::INPUT_DEVICE_MOUSE"},
+    {"INPUT_DEVICE_JOYSTICK", CK_INPUT_DEVICE_JOYSTICK, "InputDevice::INPUT_DEVICE_JOYSTICK"},
+    {"INPUT_DEVICE_COUNT", CK_INPUT_DEVICE_COUNT, "InputDevice::INPUT_DEVICE_COUNT"},
+};
+
+static const ScriptEnumValueContract kInputKeyEventValues[] = {
+    {"INPUT_KEY_NONE", NO_KEY, "InputKeyEvent::INPUT_KEY_NONE"},
+    {"INPUT_KEY_PRESSED", KEY_PRESSED, "InputKeyEvent::INPUT_KEY_PRESSED"},
+    {"INPUT_KEY_RELEASED", KEY_RELEASED, "InputKeyEvent::INPUT_KEY_RELEASED"},
+};
+
+static const ScriptEnumValueContract kInputButtonStateValues[] = {
+    {"INPUT_BUTTON_IDLE", KS_IDLE, "InputButtonState::INPUT_BUTTON_IDLE"},
+    {"INPUT_BUTTON_PRESSED", KS_PRESSED, "InputButtonState::INPUT_BUTTON_PRESSED"},
+    {"INPUT_BUTTON_RELEASED", KS_RELEASED, "InputButtonState::INPUT_BUTTON_RELEASED"},
+};
+
+static const ScriptEnumValueContract kCursorPointerValues[] = {
+    {"CURSOR_NORMALSELECT", VXCURSOR_NORMALSELECT, "CursorPointer::CURSOR_NORMALSELECT"},
+    {"CURSOR_BUSY", VXCURSOR_BUSY, "CursorPointer::CURSOR_BUSY"},
+    {"CURSOR_MOVE", VXCURSOR_MOVE, "CursorPointer::CURSOR_MOVE"},
+    {"CURSOR_LINKSELECT", VXCURSOR_LINKSELECT, "CursorPointer::CURSOR_LINKSELECT"},
+};
+
 static const ScriptEnumValueContract kCommandEventPhaseValues[] = {
     {"COMMAND_EVENT_PRE", ScriptCommandEventPre, "CommandEventPhase::COMMAND_EVENT_PRE"},
     {"COMMAND_EVENT_POST", ScriptCommandEventPost, "CommandEventPhase::COMMAND_EVENT_POST"},
     {"COMMAND_EVENT_EXECUTE", ScriptCommandEventExecute, "CommandEventPhase::COMMAND_EVENT_EXECUTE"},
     {"COMMAND_EVENT_COMPLETE", ScriptCommandEventComplete, "CommandEventPhase::COMMAND_EVENT_COMPLETE"},
+};
+
+static const ScriptEnumValueContract kConfigPropertyTypeValues[] = {
+    {"CONFIG_PROPERTY_STRING", IProperty::STRING, "ConfigPropertyType::CONFIG_PROPERTY_STRING"},
+    {"CONFIG_PROPERTY_BOOLEAN", IProperty::BOOLEAN, "ConfigPropertyType::CONFIG_PROPERTY_BOOLEAN"},
+    {"CONFIG_PROPERTY_INTEGER", IProperty::INTEGER, "ConfigPropertyType::CONFIG_PROPERTY_INTEGER"},
+    {"CONFIG_PROPERTY_KEY", IProperty::KEY, "ConfigPropertyType::CONFIG_PROPERTY_KEY"},
+    {"CONFIG_PROPERTY_FLOAT", IProperty::FLOAT, "ConfigPropertyType::CONFIG_PROPERTY_FLOAT"},
+    {"CONFIG_PROPERTY_NONE", IProperty::NONE, "ConfigPropertyType::CONFIG_PROPERTY_NONE"},
 };
 
 static const ScriptEnumValueContract kTimerStateValues[] = {
@@ -156,7 +193,12 @@ static const ScriptEnumContract kEnums[] = {
     {"ModKind", "enum ModKind", kModKindValues, sizeof(kModKindValues) / sizeof(kModKindValues[0])},
     {"ModState", "enum ModState", kModStateValues, sizeof(kModStateValues) / sizeof(kModStateValues[0])},
     {"HudFlag", "enum HudFlag", kHudFlagValues, sizeof(kHudFlagValues) / sizeof(kHudFlagValues[0])},
+    {"InputDevice", "enum InputDevice", kInputDeviceValues, sizeof(kInputDeviceValues) / sizeof(kInputDeviceValues[0])},
+    {"InputKeyEvent", "enum InputKeyEvent", kInputKeyEventValues, sizeof(kInputKeyEventValues) / sizeof(kInputKeyEventValues[0])},
+    {"InputButtonState", "enum InputButtonState", kInputButtonStateValues, sizeof(kInputButtonStateValues) / sizeof(kInputButtonStateValues[0])},
+    {"CursorPointer", "enum CursorPointer", kCursorPointerValues, sizeof(kCursorPointerValues) / sizeof(kCursorPointerValues[0])},
     {"CommandEventPhase", "enum CommandEventPhase", kCommandEventPhaseValues, sizeof(kCommandEventPhaseValues) / sizeof(kCommandEventPhaseValues[0])},
+    {"ConfigPropertyType", "enum ConfigPropertyType", kConfigPropertyTypeValues, sizeof(kConfigPropertyTypeValues) / sizeof(kConfigPropertyTypeValues[0])},
     {"TimerState", "enum TimerState", kTimerStateValues, sizeof(kTimerStateValues) / sizeof(kTimerStateValues[0])},
     {"TimerType", "enum TimerType", kTimerTypeValues, sizeof(kTimerTypeValues) / sizeof(kTimerTypeValues[0])},
     {"TimerTimeBase", "enum TimerTimeBase", kTimerTimeBaseValues, sizeof(kTimerTimeBaseValues) / sizeof(kTimerTimeBaseValues[0])},
