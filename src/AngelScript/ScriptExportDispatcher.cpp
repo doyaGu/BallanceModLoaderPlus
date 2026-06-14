@@ -167,30 +167,26 @@ static CKAS_STATUS SetScriptArrayArg(asIScriptContext *context,
     void *array = nullptr;
 
     if (type == ScriptExportValueType::StringArray) {
-        const size_t count = BML_CallFrame_GetStringArrayCount(args->Frame, frameIndex);
-        if (count == 0 && BML_CallFrame_GetArgType(args->Frame, frameIndex) != BML_CALL_VALUE_STRING_ARRAY) {
-            const BML_CALL_VALUE_TYPE actualType = BML_CallFrame_GetArgType(args->Frame, frameIndex);
-            return MapFrameStatus(args,
-                                  actualType == BML_CALL_VALUE_EMPTY
-                                      ? BML_ERROR_NOT_FOUND
-                                      : BML_ERROR_INTEROP_TYPE_MISMATCH);
-        }
+        const void *data = nullptr;
+        size_t count = 0;
+        size_t elementSize = 0;
+        const int frameStatus = BML_CallFrame_BorrowValue(args->Frame,
+                                                          frameIndex,
+                                                          BML_CALL_VALUE_STRING_ARRAY,
+                                                          &data,
+                                                          &count,
+                                                          &elementSize);
+        if (frameStatus != BML_OK)
+            return MapFrameStatus(args, frameStatus);
+        if (elementSize != sizeof(const char *))
+            return MapFrameStatus(args, BML_ERROR_INTEROP_BAD_CALL_FRAME);
+
         CKAS_STATUS status = CreateScriptArray(args, type, count, &array);
         if (status != CKAS_OK)
             return status;
+        const auto *strings = static_cast<const char *const *>(data);
         for (CKDWORD i = 0; i < count; ++i) {
-            const char *data = nullptr;
-            size_t size = 0;
-            const int frameStatus = BML_CallFrame_BorrowStringArrayItem(args->Frame,
-                                                                         frameIndex,
-                                                                         i,
-                                                                         &data,
-                                                                         &size);
-            if (frameStatus != BML_OK) {
-                args->Api->ArrayRelease(array);
-                return MapFrameStatus(args, frameStatus);
-            }
-            const std::string value(data ? data : "", size);
+            const std::string value(strings && strings[i] ? strings[i] : "");
             status = args->Api->ArraySetElementValue(array, i, &value);
             if (status != CKAS_OK) {
                 args->Api->ArrayRelease(array);
@@ -202,12 +198,12 @@ static CKAS_STATUS SetScriptArrayArg(asIScriptContext *context,
         const void *data = nullptr;
         size_t count = 0;
         size_t elementSize = 0;
-        const int frameStatus = BML_CallFrame_BorrowData(args->Frame,
-                                                         frameIndex,
-                                                         frameType,
-                                                         &data,
-                                                         &count,
-                                                         &elementSize);
+        const int frameStatus = BML_CallFrame_BorrowValue(args->Frame,
+                                                          frameIndex,
+                                                          frameType,
+                                                          &data,
+                                                          &count,
+                                                          &elementSize);
         if (frameStatus != BML_OK)
             return MapFrameStatus(args, frameStatus);
 
@@ -365,28 +361,28 @@ static int SetFrameResultFromScriptArray(FrameExportCallArgs *args,
     if (type == ScriptExportValueType::BoolArray) {
         std::vector<int> values;
         const int copyStatus = PrimitiveScriptArrayBridge<int, bool>::Copy(array, values, args->Api, BoolToFrame);
-        return copyStatus == BML_OK ? BML_CallFrame_SetResultData(args->Frame,
-                                                                  BML_CALL_VALUE_BOOL_ARRAY,
-                                                                  values.data(),
-                                                                  values.size())
+        return copyStatus == BML_OK ? BML_CallFrame_SetResultValue(args->Frame,
+                                                                   BML_CALL_VALUE_BOOL_ARRAY,
+                                                                   values.data(),
+                                                                   values.size())
                                     : copyStatus;
     }
     if (type == ScriptExportValueType::IntArray) {
         std::vector<int> values;
         const int copyStatus = PrimitiveScriptArrayBridge<int, int>::Copy(array, values, args->Api, IntToFrame);
-        return copyStatus == BML_OK ? BML_CallFrame_SetResultData(args->Frame,
-                                                                  BML_CALL_VALUE_INT_ARRAY,
-                                                                  values.data(),
-                                                                  values.size())
+        return copyStatus == BML_OK ? BML_CallFrame_SetResultValue(args->Frame,
+                                                                   BML_CALL_VALUE_INT_ARRAY,
+                                                                   values.data(),
+                                                                   values.size())
                                     : copyStatus;
     }
     if (type == ScriptExportValueType::FloatArray) {
         std::vector<float> values;
         const int copyStatus = PrimitiveScriptArrayBridge<float, float>::Copy(array, values, args->Api, FloatToFrame);
-        return copyStatus == BML_OK ? BML_CallFrame_SetResultData(args->Frame,
-                                                                  BML_CALL_VALUE_FLOAT_ARRAY,
-                                                                  values.data(),
-                                                                  values.size())
+        return copyStatus == BML_OK ? BML_CallFrame_SetResultValue(args->Frame,
+                                                                   BML_CALL_VALUE_FLOAT_ARRAY,
+                                                                   values.data(),
+                                                                   values.size())
                                     : copyStatus;
     }
     if (type == ScriptExportValueType::StringArray) {
@@ -401,7 +397,7 @@ static int SetFrameResultFromScriptArray(FrameExportCallArgs *args,
             storage[i] = value ? *value : "";
             values[i] = storage[i].c_str();
         }
-        return BML_CallFrame_SetResultStringArray(args->Frame, values.data(), values.size());
+        return BML_CallFrame_SetResultValue(args->Frame, BML_CALL_VALUE_STRING_ARRAY, values.data(), values.size());
     }
     if (type == ScriptExportValueType::Buffer) {
         std::vector<std::uint8_t> values;
@@ -409,10 +405,10 @@ static int SetFrameResultFromScriptArray(FrameExportCallArgs *args,
                                                                                            values,
                                                                                            args->Api,
                                                                                            ByteToFrame);
-        return copyStatus == BML_OK ? BML_CallFrame_SetResultData(args->Frame,
-                                                                  BML_CALL_VALUE_BUFFER,
-                                                                  values.data(),
-                                                                  values.size())
+        return copyStatus == BML_OK ? BML_CallFrame_SetResultValue(args->Frame,
+                                                                   BML_CALL_VALUE_BUFFER,
+                                                                   values.data(),
+                                                                   values.size())
                                     : copyStatus;
     }
     return BML_ERROR_INTEROP_TYPE_MISMATCH;

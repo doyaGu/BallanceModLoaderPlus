@@ -110,12 +110,12 @@ static int NativeSumIntArrayExport(BML_CallFrame *frame, void *) {
     const void *data = nullptr;
     size_t required = 0;
     size_t elementSize = 0;
-    const int status = BML_CallFrame_BorrowData(frame,
-                                                0,
-                                                BML_CALL_VALUE_INT_ARRAY,
-                                                &data,
-                                                &required,
-                                                &elementSize);
+    const int status = BML_CallFrame_BorrowValue(frame,
+                                                 0,
+                                                 BML_CALL_VALUE_INT_ARRAY,
+                                                 &data,
+                                                 &required,
+                                                 &elementSize);
     if (status != BML_OK)
         return status;
     if (elementSize != sizeof(int))
@@ -132,12 +132,12 @@ static int NativeMirrorBufferExport(BML_CallFrame *frame, void *) {
     const void *borrowed = nullptr;
     size_t required = 0;
     size_t elementSize = 0;
-    const int status = BML_CallFrame_BorrowData(frame,
-                                                0,
-                                                BML_CALL_VALUE_BUFFER,
-                                                &borrowed,
-                                                &required,
-                                                &elementSize);
+    const int status = BML_CallFrame_BorrowValue(frame,
+                                                 0,
+                                                 BML_CALL_VALUE_BUFFER,
+                                                 &borrowed,
+                                                 &required,
+                                                 &elementSize);
     if (status != BML_OK)
         return status;
     if (elementSize != sizeof(std::uint8_t))
@@ -149,26 +149,41 @@ static int NativeMirrorBufferExport(BML_CallFrame *frame, void *) {
         bytes.assign(bytesIn, bytesIn + required);
     for (std::uint8_t &byte : bytes)
         byte = static_cast<std::uint8_t>(byte ^ 0xffu);
-    return BML_CallFrame_SetResultData(frame, BML_CALL_VALUE_BUFFER, bytes.data(), bytes.size());
+    return BML_CallFrame_SetResultValue(frame, BML_CALL_VALUE_BUFFER, bytes.data(), bytes.size());
 }
 
 static int NativeStringArrayCountExport(BML_CallFrame *frame, void *) {
-    const size_t count = BML_CallFrame_GetStringArrayCount(frame, 0);
-    if (count == 0 && BML_CallFrame_GetArgType(frame, 0) != BML_CALL_VALUE_STRING_ARRAY)
-        return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-    const char *first = nullptr;
-    size_t firstSize = 0;
-    if (count > 0 && BML_CallFrame_BorrowStringArrayItem(frame, 0, 0, &first, &firstSize) != BML_OK)
+    const void *data = nullptr;
+    size_t count = 0;
+    size_t elementSize = 0;
+    const int status = BML_CallFrame_BorrowValue(frame,
+                                                 0,
+                                                 BML_CALL_VALUE_STRING_ARRAY,
+                                                 &data,
+                                                 &count,
+                                                 &elementSize);
+    if (status != BML_OK)
+        return status;
+    if (elementSize != sizeof(const char *))
         return BML_ERROR_INTEROP_BAD_CALL_FRAME;
     return BML_CallFrame_SetResultInt(frame, static_cast<int>(count));
 }
 
 static int NativeObjectIdentityExport(BML_CallFrame *frame, void *) {
-    int objectId = 0;
-    const int status = BML_CallFrame_GetObjectId(frame, 0, &objectId);
+    const void *data = nullptr;
+    size_t count = 0;
+    size_t elementSize = 0;
+    const int status = BML_CallFrame_BorrowValue(frame,
+                                                 0,
+                                                 BML_CALL_VALUE_OBJECT_ID,
+                                                 &data,
+                                                 &count,
+                                                 &elementSize);
     if (status != BML_OK)
         return status;
-    return BML_CallFrame_SetResultObjectId(frame, objectId);
+    if (!data || count != 1 || elementSize != sizeof(int))
+        return BML_ERROR_INTEROP_BAD_CALL_FRAME;
+    return BML_CallFrame_SetResultValue(frame, BML_CALL_VALUE_OBJECT_ID, data, 1);
 }
 
 static int NativeLifecycleSmokeExport(BML_CallFrame *frame, void *userdata) {
@@ -394,7 +409,7 @@ private:
             BML_CallFrame *frame = BML_CreateCallFrame();
             const int values[] = {3, 5, 8};
             if (sumStatus == BML_OK && frame)
-                sumStatus = BML_CallFrame_SetData(frame, 0, BML_CALL_VALUE_INT_ARRAY, values, 3);
+                sumStatus = BML_CallFrame_SetValue(frame, 0, BML_CALL_VALUE_INT_ARRAY, values, 3);
             if (sumStatus == BML_OK)
                 sumStatus = BML_CallModExport(handle, frame);
             if (sumStatus == BML_OK)
@@ -414,18 +429,18 @@ private:
             BML_CallFrame *frame = BML_CreateCallFrame();
             const std::uint8_t bytes[] = {0x00u, 0x55u, 0xffu};
             if (bufferStatus == BML_OK && frame)
-                bufferStatus = BML_CallFrame_SetData(frame, 0, BML_CALL_VALUE_BUFFER, bytes, 3);
+                bufferStatus = BML_CallFrame_SetValue(frame, 0, BML_CALL_VALUE_BUFFER, bytes, 3);
             if (bufferStatus == BML_OK)
                 bufferStatus = BML_CallModExport(handle, frame);
             if (bufferStatus == BML_OK) {
                 size_t required = 0;
                 size_t elementSize = 0;
                 const void *borrowed = nullptr;
-                bufferStatus = BML_CallFrame_BorrowResultData(frame,
-                                                              BML_CALL_VALUE_BUFFER,
-                                                              &borrowed,
-                                                              &required,
-                                                              &elementSize);
+                bufferStatus = BML_CallFrame_BorrowResultValue(frame,
+                                                               BML_CALL_VALUE_BUFFER,
+                                                               &borrowed,
+                                                               &required,
+                                                               &elementSize);
                 const auto *bytesOut = static_cast<const std::uint8_t *>(borrowed);
                 if (bufferStatus == BML_OK && elementSize == sizeof(std::uint8_t) && bytesOut)
                     bufferResult.assign(bytesOut, bytesOut + required);
@@ -445,7 +460,7 @@ private:
             BML_CallFrame *frame = BML_CreateCallFrame();
             const char *values[] = {"alpha", "beta"};
             if (stringArrayStatus == BML_OK && frame)
-                stringArrayStatus = BML_CallFrame_SetStringArray(frame, 0, values, 2);
+                stringArrayStatus = BML_CallFrame_SetValue(frame, 0, BML_CALL_VALUE_STRING_ARRAY, values, 2);
             if (stringArrayStatus == BML_OK)
                 stringArrayStatus = BML_CallModExport(handle, frame);
             if (stringArrayStatus == BML_OK)
@@ -463,12 +478,23 @@ private:
                                                "CKObject@ NativeObjectIdentity(CKObject@ object)",
                                                &handle);
             BML_CallFrame *frame = BML_CreateCallFrame();
+            int objectId = 0;
             if (objectStatus == BML_OK && frame)
-                objectStatus = BML_CallFrame_SetObjectId(frame, 0, 0);
+                objectStatus = BML_CallFrame_SetValue(frame, 0, BML_CALL_VALUE_OBJECT_ID, &objectId, 1);
             if (objectStatus == BML_OK)
                 objectStatus = BML_CallModExport(handle, frame);
-            if (objectStatus == BML_OK)
-                objectStatus = BML_CallFrame_GetResultObjectId(frame, &objectResult);
+            if (objectStatus == BML_OK) {
+                const void *borrowed = nullptr;
+                size_t count = 0;
+                size_t elementSize = 0;
+                objectStatus = BML_CallFrame_BorrowResultValue(frame,
+                                                               BML_CALL_VALUE_OBJECT_ID,
+                                                               &borrowed,
+                                                               &count,
+                                                               &elementSize);
+                if (objectStatus == BML_OK && borrowed && count == 1 && elementSize == sizeof(int))
+                    objectResult = *static_cast<const int *>(borrowed);
+            }
             DestroyFrame(frame);
             ReleaseExport(handle);
         }

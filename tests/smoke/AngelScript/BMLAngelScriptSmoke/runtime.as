@@ -549,12 +549,12 @@ class BMLBindingsSmokeMod {
       if (doubleInts !is null && doubleInts.IsValid) {
         BML::CallFrame@ arrayFrame = BML::CallFrame();
         array<int> values = {4, 6, 10};
-        int arrayStatus = arrayFrame.SetIntArray(0, values);
+        int arrayStatus = arrayFrame.SetArray(0, values);
         if (arrayStatus == 0) {
           arrayStatus = doubleInts.Call(arrayFrame);
         }
         array<int>@ doubled;
-        int getStatus = arrayStatus == 0 ? arrayFrame.GetResultIntArray(doubled) : arrayStatus;
+        int getStatus = arrayStatus == 0 ? arrayFrame.GetResultArray(doubled) : arrayStatus;
         LogInfo(ctx, "BML script export DoubleInts status=" + arrayStatus +
                     " get=" + getStatus +
                     " type=" + arrayFrame.ResultType +
@@ -568,12 +568,12 @@ class BMLBindingsSmokeMod {
       if (flipBuffer !is null && flipBuffer.IsValid) {
         BML::CallFrame@ bufferFrame = BML::CallFrame();
         array<uint8> bytes = {0, 15, 255};
-        int bufferStatus = bufferFrame.SetBuffer(0, bytes);
+        int bufferStatus = bufferFrame.SetArray(0, bytes);
         if (bufferStatus == 0) {
           bufferStatus = flipBuffer.Call(bufferFrame);
         }
         array<uint8>@ flipped;
-        int getBufferStatus = bufferStatus == 0 ? bufferFrame.GetResultBuffer(flipped) : bufferStatus;
+        int getBufferStatus = bufferStatus == 0 ? bufferFrame.GetResultArray(flipped) : bufferStatus;
         LogInfo(ctx, "BML script export FlipBuffer status=" + bufferStatus +
                     " get=" + getBufferStatus +
                     " ok=" + BoolText(flipped !is null &&
@@ -689,7 +689,7 @@ class BMLBindingsSmokeMod {
       if (nativeSumIntArray !is null && nativeSumIntArray.IsValid) {
         BML::CallFrame@ intArrayFrame = BML::CallFrame();
         array<int> values = {7, 11, 13};
-        int intArrayStatus = intArrayFrame.SetIntArray(0, values);
+        int intArrayStatus = intArrayFrame.SetArray(0, values);
         if (intArrayStatus == 0) {
           intArrayStatus = nativeSumIntArray.Call(intArrayFrame);
         }
@@ -698,7 +698,7 @@ class BMLBindingsSmokeMod {
           intArrayFrame.GetResultInt(intArrayResult);
         }
         array<int>@ valuesCopy;
-        int intArrayGetStatus = intArrayFrame.GetIntArray(0, valuesCopy);
+        int intArrayGetStatus = intArrayFrame.GetArray(0, valuesCopy);
         LogInfo(ctx, "BML native export NativeSumIntArray status=" + intArrayStatus +
                     " result=" + intArrayResult +
                     " get=" + intArrayGetStatus +
@@ -712,12 +712,12 @@ class BMLBindingsSmokeMod {
       if (nativeMirrorBuffer !is null && nativeMirrorBuffer.IsValid) {
         BML::CallFrame@ bufferFrame = BML::CallFrame();
         array<uint8> bytes = {0, 85, 255};
-        int bufferStatus = bufferFrame.SetBuffer(0, bytes);
+        int bufferStatus = bufferFrame.SetArray(0, bytes);
         if (bufferStatus == 0) {
           bufferStatus = nativeMirrorBuffer.Call(bufferFrame);
         }
         array<uint8>@ bufferResult;
-        int bufferGetStatus = bufferStatus == 0 ? bufferFrame.GetResultBuffer(bufferResult) : bufferStatus;
+        int bufferGetStatus = bufferStatus == 0 ? bufferFrame.GetResultArray(bufferResult) : bufferStatus;
         LogInfo(ctx, "BML native export NativeMirrorBuffer status=" + bufferStatus +
                     " get=" + bufferGetStatus +
                     " resultOk=" + BoolText(bufferResult !is null &&
@@ -731,7 +731,7 @@ class BMLBindingsSmokeMod {
       if (nativeStringArrayCount !is null && nativeStringArrayCount.IsValid) {
         BML::CallFrame@ stringArrayFrame = BML::CallFrame();
         array<string> names = {"alpha", "beta", "gamma"};
-        int stringArrayStatus = stringArrayFrame.SetStringArray(0, names);
+        int stringArrayStatus = stringArrayFrame.SetArray(0, names);
         if (stringArrayStatus == 0) {
           stringArrayStatus = nativeStringArrayCount.Call(stringArrayFrame);
         }
@@ -740,7 +740,7 @@ class BMLBindingsSmokeMod {
           stringArrayFrame.GetResultInt(stringArrayResult);
         }
         array<string>@ namesCopy;
-        int stringArrayGetStatus = stringArrayFrame.GetStringArray(0, namesCopy);
+        int stringArrayGetStatus = stringArrayFrame.GetArray(0, namesCopy);
         LogInfo(ctx, "BML native export NativeStringArrayCount status=" + stringArrayStatus +
                     " result=" + stringArrayResult +
                     " get=" + stringArrayGetStatus +

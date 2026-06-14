@@ -1871,28 +1871,27 @@ public:
         std::vector<const char *> pointers(copy.size());
         for (size_t i = 0; i < copy.size(); ++i)
             pointers[i] = copy[i].c_str();
-        return BML_CallFrame_SetStringArray(m_Frame, index, pointers.data(), pointers.size());
+        return BML_CallFrame_SetValue(m_Frame, index, BML_CALL_VALUE_STRING_ARRAY, pointers.data(), pointers.size());
     }
 
     int GetStringArray(unsigned int index, void *&values) const {
         values = nullptr;
-        const size_t count = m_Frame ? BML_CallFrame_GetStringArrayCount(m_Frame, index) : 0;
-        const BML_CALL_VALUE_TYPE actualType = m_Frame ? BML_CallFrame_GetArgType(m_Frame, index)
-                                                       : BML_CALL_VALUE_EMPTY;
-        if (count == 0 && (!m_Frame || actualType != BML_CALL_VALUE_STRING_ARRAY)) {
-            if (!m_Frame)
-                return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-            return actualType == BML_CALL_VALUE_EMPTY ? BML_ERROR_NOT_FOUND : BML_ERROR_INTEROP_TYPE_MISMATCH;
-        }
-        return CreateStringArrayFromFrame(count,
-                                          [&](size_t item, const char **data, size_t *size) {
-                                              return BML_CallFrame_BorrowStringArrayItem(m_Frame,
-                                                                                         index,
-                                                                                         item,
-                                                                                         data,
-                                                                                         size);
-                                          },
-                                          values);
+        if (!m_Frame)
+            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
+        const void *data = nullptr;
+        size_t count = 0;
+        size_t elementSize = 0;
+        const int status = BML_CallFrame_BorrowValue(m_Frame,
+                                                     index,
+                                                     BML_CALL_VALUE_STRING_ARRAY,
+                                                     &data,
+                                                     &count,
+                                                     &elementSize);
+        if (status != BML_OK)
+            return status;
+        if (elementSize != sizeof(const char *))
+            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
+        return CreateStringArrayFromPointers(static_cast<const char *const *>(data), count, values);
     }
 
     int SetBuffer(unsigned int index, void *values) {
@@ -2019,27 +2018,26 @@ public:
         std::vector<const char *> pointers(copy.size());
         for (size_t i = 0; i < copy.size(); ++i)
             pointers[i] = copy[i].c_str();
-        return BML_CallFrame_SetResultStringArray(m_Frame, pointers.data(), pointers.size());
+        return BML_CallFrame_SetResultValue(m_Frame, BML_CALL_VALUE_STRING_ARRAY, pointers.data(), pointers.size());
     }
 
     int GetResultStringArray(void *&values) const {
         values = nullptr;
         if (!m_Frame)
             return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-        const size_t count = BML_CallFrame_GetResultStringArrayCount(m_Frame);
-        if (count == 0 && BML_CallFrame_GetResultType(m_Frame) != BML_CALL_VALUE_STRING_ARRAY) {
-            return BML_CallFrame_GetResultType(m_Frame) == BML_CALL_VALUE_EMPTY
-                       ? BML_ERROR_NOT_FOUND
-                       : BML_ERROR_INTEROP_TYPE_MISMATCH;
-        }
-        return CreateStringArrayFromFrame(count,
-                                          [&](size_t item, const char **data, size_t *size) {
-                                              return BML_CallFrame_BorrowResultStringArrayItem(m_Frame,
-                                                                                               item,
-                                                                                               data,
-                                                                                               size);
-                                          },
-                                          values);
+        const void *data = nullptr;
+        size_t count = 0;
+        size_t elementSize = 0;
+        const int status = BML_CallFrame_BorrowResultValue(m_Frame,
+                                                           BML_CALL_VALUE_STRING_ARRAY,
+                                                           &data,
+                                                           &count,
+                                                           &elementSize);
+        if (status != BML_OK)
+            return status;
+        if (elementSize != sizeof(const char *))
+            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
+        return CreateStringArrayFromPointers(static_cast<const char *const *>(data), count, values);
     }
 
     int SetResultBuffer(void *values) {
@@ -2261,7 +2259,7 @@ private:
         const int status = CopyContiguousArrayFromScript<Traits>(values, copy);
         if (status != BML_OK)
             return status;
-        return BML_CallFrame_SetData(m_Frame, index, Traits::FrameType, copy.data(), copy.size());
+        return BML_CallFrame_SetValue(m_Frame, index, Traits::FrameType, copy.data(), copy.size());
     }
 
     template <typename Traits>
@@ -2272,7 +2270,7 @@ private:
         const int status = CopyContiguousArrayFromScript<Traits>(values, copy);
         if (status != BML_OK)
             return status;
-        return BML_CallFrame_SetResultData(m_Frame, Traits::FrameType, copy.data(), copy.size());
+        return BML_CallFrame_SetResultValue(m_Frame, Traits::FrameType, copy.data(), copy.size());
     }
 
     template <typename Traits>
@@ -2314,7 +2312,7 @@ private:
         const void *data = nullptr;
         size_t count = 0;
         size_t elementSize = 0;
-        const int status = BML_CallFrame_BorrowData(m_Frame, index, Traits::FrameType, &data, &count, &elementSize);
+        const int status = BML_CallFrame_BorrowValue(m_Frame, index, Traits::FrameType, &data, &count, &elementSize);
         if (status != BML_OK)
             return status;
         return CreateContiguousArrayFromData<Traits>(data, count, elementSize, values);
@@ -2328,7 +2326,7 @@ private:
         const void *data = nullptr;
         size_t count = 0;
         size_t elementSize = 0;
-        const int status = BML_CallFrame_BorrowResultData(m_Frame, Traits::FrameType, &data, &count, &elementSize);
+        const int status = BML_CallFrame_BorrowResultValue(m_Frame, Traits::FrameType, &data, &count, &elementSize);
         if (status != BML_OK)
             return status;
         return CreateContiguousArrayFromData<Traits>(data, count, elementSize, values);
@@ -2357,8 +2355,7 @@ private:
         return BML_OK;
     }
 
-    template <typename Getter>
-    static int CreateStringArrayFromFrame(size_t count, Getter get, void *&values) {
+    static int CreateStringArrayFromPointers(const char *const *items, size_t count, void *&values) {
         void *array = nullptr;
         int status = CreateArray("array<string>", count, array);
         if (status != BML_OK)
@@ -2369,14 +2366,7 @@ private:
             return BML_ERROR_INTEROP_UNSUPPORTED;
         }
         for (CKDWORD i = 0; i < count; ++i) {
-            const char *data = nullptr;
-            size_t size = 0;
-            status = get(i, &data, &size);
-            if (status != BML_OK) {
-                ReleaseArray(array);
-                return status;
-            }
-            const std::string value(data ? data : "", size);
+            const std::string value(items && items[i] ? items[i] : "");
             status = MapArrayStatus(api->ArraySetElementValue(array, i, &value));
             if (status != BML_OK) {
                 ReleaseArray(array);
@@ -3528,16 +3518,16 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"CallFrame", "int GetFloat(uint index, float &out value) const", "int CallFrame::GetFloat(uint index, float &out value) const", asMETHOD(BMLAS_CallFrame, GetFloat), asCALL_THISCALL},
     {"CallFrame", "int SetString(uint index, const string &in value)", "int CallFrame::SetString(uint index, const string &in value)", asMETHOD(BMLAS_CallFrame, SetString), asCALL_THISCALL},
     {"CallFrame", "int GetString(uint index, string &out value) const", "int CallFrame::GetString(uint index, string &out value) const", asMETHOD(BMLAS_CallFrame, GetString), asCALL_THISCALL},
-    {"CallFrame", "int SetBoolArray(uint index, const array<bool> &in values)", "int CallFrame::SetBoolArray(uint index, const array<bool> &in values)", asMETHOD(BMLAS_CallFrame, SetBoolArray), asCALL_THISCALL},
-    {"CallFrame", "int GetBoolArray(uint index, array<bool>@ &out values) const", "int CallFrame::GetBoolArray(uint index, array<bool>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetBoolArray), asCALL_THISCALL},
-    {"CallFrame", "int SetIntArray(uint index, const array<int> &in values)", "int CallFrame::SetIntArray(uint index, const array<int> &in values)", asMETHOD(BMLAS_CallFrame, SetIntArray), asCALL_THISCALL},
-    {"CallFrame", "int GetIntArray(uint index, array<int>@ &out values) const", "int CallFrame::GetIntArray(uint index, array<int>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetIntArray), asCALL_THISCALL},
-    {"CallFrame", "int SetFloatArray(uint index, const array<float> &in values)", "int CallFrame::SetFloatArray(uint index, const array<float> &in values)", asMETHOD(BMLAS_CallFrame, SetFloatArray), asCALL_THISCALL},
-    {"CallFrame", "int GetFloatArray(uint index, array<float>@ &out values) const", "int CallFrame::GetFloatArray(uint index, array<float>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetFloatArray), asCALL_THISCALL},
-    {"CallFrame", "int SetStringArray(uint index, const array<string> &in values)", "int CallFrame::SetStringArray(uint index, const array<string> &in values)", asMETHOD(BMLAS_CallFrame, SetStringArray), asCALL_THISCALL},
-    {"CallFrame", "int GetStringArray(uint index, array<string>@ &out values) const", "int CallFrame::GetStringArray(uint index, array<string>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetStringArray), asCALL_THISCALL},
-    {"CallFrame", "int SetBuffer(uint index, const array<uint8> &in values)", "int CallFrame::SetBuffer(uint index, const array<uint8> &in values)", asMETHOD(BMLAS_CallFrame, SetBuffer), asCALL_THISCALL},
-    {"CallFrame", "int GetBuffer(uint index, array<uint8>@ &out values) const", "int CallFrame::GetBuffer(uint index, array<uint8>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetBuffer), asCALL_THISCALL},
+    {"CallFrame", "int SetArray(uint index, const array<bool> &in values)", "int CallFrame::SetArray(uint index, const array<bool> &in values)", asMETHOD(BMLAS_CallFrame, SetBoolArray), asCALL_THISCALL},
+    {"CallFrame", "int GetArray(uint index, array<bool>@ &out values) const", "int CallFrame::GetArray(uint index, array<bool>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetBoolArray), asCALL_THISCALL},
+    {"CallFrame", "int SetArray(uint index, const array<int> &in values)", "int CallFrame::SetArray(uint index, const array<int> &in values)", asMETHOD(BMLAS_CallFrame, SetIntArray), asCALL_THISCALL},
+    {"CallFrame", "int GetArray(uint index, array<int>@ &out values) const", "int CallFrame::GetArray(uint index, array<int>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetIntArray), asCALL_THISCALL},
+    {"CallFrame", "int SetArray(uint index, const array<float> &in values)", "int CallFrame::SetArray(uint index, const array<float> &in values)", asMETHOD(BMLAS_CallFrame, SetFloatArray), asCALL_THISCALL},
+    {"CallFrame", "int GetArray(uint index, array<float>@ &out values) const", "int CallFrame::GetArray(uint index, array<float>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetFloatArray), asCALL_THISCALL},
+    {"CallFrame", "int SetArray(uint index, const array<string> &in values)", "int CallFrame::SetArray(uint index, const array<string> &in values)", asMETHOD(BMLAS_CallFrame, SetStringArray), asCALL_THISCALL},
+    {"CallFrame", "int GetArray(uint index, array<string>@ &out values) const", "int CallFrame::GetArray(uint index, array<string>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetStringArray), asCALL_THISCALL},
+    {"CallFrame", "int SetArray(uint index, const array<uint8> &in values)", "int CallFrame::SetArray(uint index, const array<uint8> &in values)", asMETHOD(BMLAS_CallFrame, SetBuffer), asCALL_THISCALL},
+    {"CallFrame", "int GetArray(uint index, array<uint8>@ &out values) const", "int CallFrame::GetArray(uint index, array<uint8>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetBuffer), asCALL_THISCALL},
     {"CallFrame", "int SetObjectId(uint index, int objectId)", "int CallFrame::SetObjectId(uint index, int objectId)", asMETHOD(BMLAS_CallFrame, SetObjectId), asCALL_THISCALL},
     {"CallFrame", "int GetObjectId(uint index, int &out objectId) const", "int CallFrame::GetObjectId(uint index, int &out objectId) const", asMETHOD(BMLAS_CallFrame, GetObjectId), asCALL_THISCALL},
     {"CallFrame", "int SetObject(uint index, CKObject@ object)", "int CallFrame::SetObject(uint index, CKObject@ object)", asMETHOD(BMLAS_CallFrame, SetObject), asCALL_THISCALL},
@@ -3553,16 +3543,16 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"CallFrame", "int GetResultFloat(float &out value) const", "int CallFrame::GetResultFloat(float &out value) const", asMETHOD(BMLAS_CallFrame, GetResultFloat), asCALL_THISCALL},
     {"CallFrame", "int SetResultString(const string &in value)", "int CallFrame::SetResultString(const string &in value)", asMETHOD(BMLAS_CallFrame, SetResultString), asCALL_THISCALL},
     {"CallFrame", "int GetResultString(string &out value) const", "int CallFrame::GetResultString(string &out value) const", asMETHOD(BMLAS_CallFrame, GetResultString), asCALL_THISCALL},
-    {"CallFrame", "int SetResultBoolArray(const array<bool> &in values)", "int CallFrame::SetResultBoolArray(const array<bool> &in values)", asMETHOD(BMLAS_CallFrame, SetResultBoolArray), asCALL_THISCALL},
-    {"CallFrame", "int GetResultBoolArray(array<bool>@ &out values) const", "int CallFrame::GetResultBoolArray(array<bool>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetResultBoolArray), asCALL_THISCALL},
-    {"CallFrame", "int SetResultIntArray(const array<int> &in values)", "int CallFrame::SetResultIntArray(const array<int> &in values)", asMETHOD(BMLAS_CallFrame, SetResultIntArray), asCALL_THISCALL},
-    {"CallFrame", "int GetResultIntArray(array<int>@ &out values) const", "int CallFrame::GetResultIntArray(array<int>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetResultIntArray), asCALL_THISCALL},
-    {"CallFrame", "int SetResultFloatArray(const array<float> &in values)", "int CallFrame::SetResultFloatArray(const array<float> &in values)", asMETHOD(BMLAS_CallFrame, SetResultFloatArray), asCALL_THISCALL},
-    {"CallFrame", "int GetResultFloatArray(array<float>@ &out values) const", "int CallFrame::GetResultFloatArray(array<float>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetResultFloatArray), asCALL_THISCALL},
-    {"CallFrame", "int SetResultStringArray(const array<string> &in values)", "int CallFrame::SetResultStringArray(const array<string> &in values)", asMETHOD(BMLAS_CallFrame, SetResultStringArray), asCALL_THISCALL},
-    {"CallFrame", "int GetResultStringArray(array<string>@ &out values) const", "int CallFrame::GetResultStringArray(array<string>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetResultStringArray), asCALL_THISCALL},
-    {"CallFrame", "int SetResultBuffer(const array<uint8> &in values)", "int CallFrame::SetResultBuffer(const array<uint8> &in values)", asMETHOD(BMLAS_CallFrame, SetResultBuffer), asCALL_THISCALL},
-    {"CallFrame", "int GetResultBuffer(array<uint8>@ &out values) const", "int CallFrame::GetResultBuffer(array<uint8>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetResultBuffer), asCALL_THISCALL},
+    {"CallFrame", "int SetResultArray(const array<bool> &in values)", "int CallFrame::SetResultArray(const array<bool> &in values)", asMETHOD(BMLAS_CallFrame, SetResultBoolArray), asCALL_THISCALL},
+    {"CallFrame", "int GetResultArray(array<bool>@ &out values) const", "int CallFrame::GetResultArray(array<bool>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetResultBoolArray), asCALL_THISCALL},
+    {"CallFrame", "int SetResultArray(const array<int> &in values)", "int CallFrame::SetResultArray(const array<int> &in values)", asMETHOD(BMLAS_CallFrame, SetResultIntArray), asCALL_THISCALL},
+    {"CallFrame", "int GetResultArray(array<int>@ &out values) const", "int CallFrame::GetResultArray(array<int>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetResultIntArray), asCALL_THISCALL},
+    {"CallFrame", "int SetResultArray(const array<float> &in values)", "int CallFrame::SetResultArray(const array<float> &in values)", asMETHOD(BMLAS_CallFrame, SetResultFloatArray), asCALL_THISCALL},
+    {"CallFrame", "int GetResultArray(array<float>@ &out values) const", "int CallFrame::GetResultArray(array<float>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetResultFloatArray), asCALL_THISCALL},
+    {"CallFrame", "int SetResultArray(const array<string> &in values)", "int CallFrame::SetResultArray(const array<string> &in values)", asMETHOD(BMLAS_CallFrame, SetResultStringArray), asCALL_THISCALL},
+    {"CallFrame", "int GetResultArray(array<string>@ &out values) const", "int CallFrame::GetResultArray(array<string>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetResultStringArray), asCALL_THISCALL},
+    {"CallFrame", "int SetResultArray(const array<uint8> &in values)", "int CallFrame::SetResultArray(const array<uint8> &in values)", asMETHOD(BMLAS_CallFrame, SetResultBuffer), asCALL_THISCALL},
+    {"CallFrame", "int GetResultArray(array<uint8>@ &out values) const", "int CallFrame::GetResultArray(array<uint8>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetResultBuffer), asCALL_THISCALL},
     {"CallFrame", "int SetResultObjectId(int objectId)", "int CallFrame::SetResultObjectId(int objectId)", asMETHOD(BMLAS_CallFrame, SetResultObjectId), asCALL_THISCALL},
     {"CallFrame", "int GetResultObjectId(int &out objectId) const", "int CallFrame::GetResultObjectId(int &out objectId) const", asMETHOD(BMLAS_CallFrame, GetResultObjectId), asCALL_THISCALL},
     {"CallFrame", "int SetResultObject(CKObject@ object)", "int CallFrame::SetResultObject(CKObject@ object)", asMETHOD(BMLAS_CallFrame, SetResultObject), asCALL_THISCALL},
