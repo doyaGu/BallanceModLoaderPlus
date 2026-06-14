@@ -17,7 +17,8 @@ owning-plugin contract.
 - Metadata tags: `bml.mod`, `bml.require`, `bml.optional`, `bml.export`.
 - Main class: one `[bml.mod]` class in any AngelScript namespace; BML uses CKAS metadata reflection for the namespace and class identity.
 - Fixed callbacks: only the signatures documented in `bml-script-mod-author-guide.md` and `bml-script-mod-api.as`.
-- Event model: callback-scope borrowed event views and integer `GameEvent` constants.
+- Event model: callback-scope borrowed event views, typed `GameEvent` enum
+  values, and `OnModifyConfig` config-change events.
 - Export model: typed export registry with generation-checked `ExportRef` / native `BML_ModExport`; `BML_FindModExportEx` and `ModRef.TryFindExport` expose stable Interop lookup status codes.
 - `CallFrame`: bool/int/float/string/void only, with arg/result type introspection and targeted arg/result clearing for reusable frames. Calls clear result before dispatch and leave no result after failure or `void` success.
 - Script-owned Timer: `BML::Timer` object callbacks, automatic unload cleanup.

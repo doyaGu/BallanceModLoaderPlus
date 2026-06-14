@@ -57,40 +57,41 @@ enum CursorPointer {
   CURSOR_LINKSELECT = 4
 }
 
-typedef int GameEvent;
-const GameEvent GAME_EVENT_PRE_START_MENU;
-const GameEvent GAME_EVENT_POST_START_MENU;
-const GameEvent GAME_EVENT_EXIT_GAME;
-const GameEvent GAME_EVENT_PRE_LOAD_LEVEL;
-const GameEvent GAME_EVENT_POST_LOAD_LEVEL;
-const GameEvent GAME_EVENT_START_LEVEL;
-const GameEvent GAME_EVENT_PRE_RESET_LEVEL;
-const GameEvent GAME_EVENT_POST_RESET_LEVEL;
-const GameEvent GAME_EVENT_PAUSE_LEVEL;
-const GameEvent GAME_EVENT_UNPAUSE_LEVEL;
-const GameEvent GAME_EVENT_PRE_EXIT_LEVEL;
-const GameEvent GAME_EVENT_POST_EXIT_LEVEL;
-const GameEvent GAME_EVENT_PRE_NEXT_LEVEL;
-const GameEvent GAME_EVENT_POST_NEXT_LEVEL;
-const GameEvent GAME_EVENT_DEAD;
-const GameEvent GAME_EVENT_PRE_END_LEVEL;
-const GameEvent GAME_EVENT_POST_END_LEVEL;
-const GameEvent GAME_EVENT_COUNTER_ACTIVE;
-const GameEvent GAME_EVENT_COUNTER_INACTIVE;
-const GameEvent GAME_EVENT_BALL_NAV_ACTIVE;
-const GameEvent GAME_EVENT_BALL_NAV_INACTIVE;
-const GameEvent GAME_EVENT_CAM_NAV_ACTIVE;
-const GameEvent GAME_EVENT_CAM_NAV_INACTIVE;
-const GameEvent GAME_EVENT_BALL_OFF;
-const GameEvent GAME_EVENT_PRE_CHECKPOINT_REACHED;
-const GameEvent GAME_EVENT_POST_CHECKPOINT_REACHED;
-const GameEvent GAME_EVENT_LEVEL_FINISH;
-const GameEvent GAME_EVENT_GAME_OVER;
-const GameEvent GAME_EVENT_EXTRA_POINT;
-const GameEvent GAME_EVENT_PRE_SUB_LIFE;
-const GameEvent GAME_EVENT_POST_SUB_LIFE;
-const GameEvent GAME_EVENT_PRE_LIFE_UP;
-const GameEvent GAME_EVENT_POST_LIFE_UP;
+enum GameEvent {
+  GAME_EVENT_PRE_START_MENU = 0,
+  GAME_EVENT_POST_START_MENU = 1,
+  GAME_EVENT_EXIT_GAME = 2,
+  GAME_EVENT_PRE_LOAD_LEVEL = 3,
+  GAME_EVENT_POST_LOAD_LEVEL = 4,
+  GAME_EVENT_START_LEVEL = 5,
+  GAME_EVENT_PRE_RESET_LEVEL = 6,
+  GAME_EVENT_POST_RESET_LEVEL = 7,
+  GAME_EVENT_PAUSE_LEVEL = 8,
+  GAME_EVENT_UNPAUSE_LEVEL = 9,
+  GAME_EVENT_PRE_EXIT_LEVEL = 10,
+  GAME_EVENT_POST_EXIT_LEVEL = 11,
+  GAME_EVENT_PRE_NEXT_LEVEL = 12,
+  GAME_EVENT_POST_NEXT_LEVEL = 13,
+  GAME_EVENT_DEAD = 14,
+  GAME_EVENT_PRE_END_LEVEL = 15,
+  GAME_EVENT_POST_END_LEVEL = 16,
+  GAME_EVENT_COUNTER_ACTIVE = 17,
+  GAME_EVENT_COUNTER_INACTIVE = 18,
+  GAME_EVENT_BALL_NAV_ACTIVE = 19,
+  GAME_EVENT_BALL_NAV_INACTIVE = 20,
+  GAME_EVENT_CAM_NAV_ACTIVE = 21,
+  GAME_EVENT_CAM_NAV_INACTIVE = 22,
+  GAME_EVENT_BALL_OFF = 23,
+  GAME_EVENT_PRE_CHECKPOINT_REACHED = 24,
+  GAME_EVENT_POST_CHECKPOINT_REACHED = 25,
+  GAME_EVENT_LEVEL_FINISH = 26,
+  GAME_EVENT_GAME_OVER = 27,
+  GAME_EVENT_EXTRA_POINT = 28,
+  GAME_EVENT_PRE_SUB_LIFE = 29,
+  GAME_EVENT_POST_SUB_LIFE = 30,
+  GAME_EVENT_PRE_LIFE_UP = 31,
+  GAME_EVENT_POST_LIFE_UP = 32
+}
 
 const int ERROR_OK;
 const int ERROR_FAIL;
@@ -436,15 +437,20 @@ class LoadObjectEvent {
   bool get_ReuseMeshes() const;
   bool get_ReuseMaterials() const;
   bool get_IsDynamic() const;
+  int get_ObjectCount() const;
+  int GetObjectId(int index) const;
+  CKObject@ BorrowObject(int index) const;
+  CKObject@ BorrowMasterObject() const;
 }
 
 class LoadScriptEvent {
   string get_Filename() const;
   int get_ScriptId() const;
+  CKBehavior@ BorrowScript() const;
 }
 
 class CommandEvent {
-  int get_Phase() const;
+  CommandEventPhase get_Phase() const;
   bool get_IsPre() const;
   bool get_IsPost() const;
   bool get_IsExecute() const;
@@ -454,6 +460,15 @@ class CommandEvent {
   string GetArg(int index) const;
   string get_ArgsText() const;
   bool get_IsCheat() const;
+}
+
+class ConfigEvent {
+  string get_ModId() const;
+  string get_Category() const;
+  string get_Key() const;
+  ConfigPropertyType get_Type() const;
+  bool get_HasProperty() const;
+  ConfigProperty@ BorrowProperty() const;
 }
 
 interface Command {
@@ -533,6 +548,7 @@ class DataShareRequestRef {
 class PhysicalizeEvent {
   int get_TargetId() const;
   string get_TargetName() const;
+  CK3dEntity@ BorrowTarget() const;
   bool get_Fixed() const;
   float get_Friction() const;
   float get_Elasticity() const;
@@ -547,14 +563,20 @@ class PhysicalizeEvent {
   float get_MassCenterX() const;
   float get_MassCenterY() const;
   float get_MassCenterZ() const;
+  VxVector get_MassCenter() const;
   int get_ConvexCount() const;
+  CKMesh@ BorrowConvexMesh(int index) const;
   int get_BallCount() const;
+  VxVector GetBallCenter(int index) const;
+  float GetBallRadius(int index) const;
   int get_ConcaveCount() const;
+  CKMesh@ BorrowConcaveMesh(int index) const;
 }
 
 class ObjectEvent {
   int get_TargetId() const;
   string get_TargetName() const;
+  CK3dEntity@ BorrowTarget() const;
 }
 
 class InputHook {
@@ -614,8 +636,8 @@ class Logger {
 class ConfigProperty {
   bool get_IsValid() const;
   bool IsValid() const;
-  int get_Type() const;
-  int GetType() const;
+  ConfigPropertyType get_Type() const;
+  ConfigPropertyType GetType() const;
   string GetString(const string &in defaultValue = "") const;
   bool GetBoolean(bool defaultValue = false) const;
   int GetInteger(int defaultValue = 0) const;
@@ -827,6 +849,7 @@ int GetVersionMajor();
 int GetVersionMinor();
 int GetVersionPatch();
 string GetErrorString(int errorCode);
+string GetGameEventName(GameEvent event);
 bool BorrowCurrentContext(ModContext &out context);
 
 bool DataShareSetString(const string &in key, const string &in value, const string &in name = "BML");

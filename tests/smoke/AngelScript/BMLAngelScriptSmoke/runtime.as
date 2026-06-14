@@ -11,6 +11,7 @@ class BMLBindingsSmokeMod {
   bool firstCheatEnabled = true;
   bool firstLoadObject = true;
   bool firstLoadScript = true;
+  bool firstConfigModify = true;
   bool firstPreCommand = true;
   bool firstPostCommand = true;
   bool firstScriptCommand = true;
@@ -885,10 +886,10 @@ class BMLBindingsSmokeMod {
   void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
     if (event == BML::GAME_EVENT_PRE_START_MENU && firstPreStartMenu) {
       firstPreStartMenu = false;
-      LogInfo(ctx, "BML first pre-start-menu callback");
+      LogInfo(ctx, "BML first pre-start-menu callback event=" + BML::GetGameEventName(event));
     } else if (event == BML::GAME_EVENT_POST_START_MENU && firstPostStartMenu) {
       firstPostStartMenu = false;
-      LogInfo(ctx, "BML first post-start-menu callback");
+      LogInfo(ctx, "BML first post-start-menu callback event=" + BML::GetGameEventName(event));
     }
   }
 
@@ -912,7 +913,11 @@ class BMLBindingsSmokeMod {
                 " isMap=" + BoolText(event.IsMap) +
                 " filterClass=" + event.FilterClass +
                 " addToScene=" + BoolText(event.AddToScene) +
-                " dynamic=" + BoolText(event.IsDynamic));
+                " dynamic=" + BoolText(event.IsDynamic) +
+                " count=" + event.ObjectCount +
+                " firstId=" + event.GetObjectId(0) +
+                " firstObject=" + BoolText(event.BorrowObject(0) !is null) +
+                " master=" + BoolText(event.BorrowMasterObject() !is null));
   }
 
   void OnLoadScript(const BML::ModContext &in ctx, const BML::LoadScriptEvent &in event) {
@@ -921,23 +926,42 @@ class BMLBindingsSmokeMod {
     }
     firstLoadScript = false;
 
-    LogInfo(ctx, "BML load script filename=" + event.Filename + " scriptId=" + event.ScriptId);
+    LogInfo(ctx, "BML load script filename=" + event.Filename +
+                " scriptId=" + event.ScriptId +
+                " script=" + BoolText(event.BorrowScript() !is null));
   }
 
   void OnCommandEvent(const BML::ModContext &in ctx, const BML::CommandEvent &in event) {
-    if (event.IsPre && firstPreCommand) {
+    BML::CommandEventPhase phase = event.Phase;
+    if (phase == BML::COMMAND_EVENT_PRE && event.IsPre && firstPreCommand) {
       firstPreCommand = false;
       LogInfo(ctx, "BML pre command callback command=" + event.CommandName +
                   " args=" + event.ArgsText +
                   " argCount=" + event.ArgCount +
                   " cheat=" + BoolText(event.IsCheat));
-    } else if (event.IsPost && firstPostCommand) {
+    } else if (phase == BML::COMMAND_EVENT_POST && event.IsPost && firstPostCommand) {
       firstPostCommand = false;
       LogInfo(ctx, "BML post command callback command=" + event.CommandName +
                   " args=" + event.ArgsText +
                   " argCount=" + event.ArgCount +
                   " cheat=" + BoolText(event.IsCheat));
     }
+  }
+
+  void OnModifyConfig(const BML::ModContext &in ctx, const BML::ConfigEvent &in event) {
+    if (!firstConfigModify || event.Category != "Smoke") {
+      return;
+    }
+    firstConfigModify = false;
+
+    BML::ConfigProperty@ property = event.BorrowProperty();
+    LogInfo(ctx, "BML config modify callback mod=" + event.ModId +
+                " key=" + event.Key +
+                " type=" + BoolText(event.Type == BML::CONFIG_PROPERTY_STRING ||
+                                    event.Type == BML::CONFIG_PROPERTY_BOOLEAN ||
+                                    event.Type == BML::CONFIG_PROPERTY_INTEGER ||
+                                    event.Type == BML::CONFIG_PROPERTY_FLOAT) +
+                " property=" + BoolText(event.HasProperty && property !is null));
   }
 
   void RecordSmokeCommandExecute(const BML::ModContext &in ctx, const BML::CommandEvent &in event) {
@@ -1007,16 +1031,21 @@ class BMLBindingsSmokeMod {
 
     LogInfo(ctx, "BML physicalize callback targetId=" + event.TargetId +
                 " target=" + event.TargetName +
+                " targetPtr=" + BoolText(event.BorrowTarget() !is null) +
                 " fixed=" + BoolText(event.Fixed) +
                 " mass=" + event.Mass +
                 " friction=" + event.Friction +
                 " elasticity=" + event.Elasticity +
                 " collGroup=" + event.CollisionGroup +
                 " surface=" + event.CollisionSurface +
-                " center=" + event.MassCenterX + "," + event.MassCenterY + "," + event.MassCenterZ +
+                " center=" + event.MassCenter.x + "," + event.MassCenter.y + "," + event.MassCenter.z +
                 " convex=" + event.ConvexCount +
+                " convexMesh=" + BoolText(event.BorrowConvexMesh(0) !is null) +
                 " ball=" + event.BallCount +
-                " concave=" + event.ConcaveCount);
+                " ballRadius=" + event.GetBallRadius(0) +
+                " ballX=" + event.GetBallCenter(0).x +
+                " concave=" + event.ConcaveCount +
+                " concaveMesh=" + BoolText(event.BorrowConcaveMesh(0) !is null));
   }
 
   void OnUnphysicalize(const BML::ModContext &in ctx, const BML::ObjectEvent &in event) {
@@ -1025,7 +1054,9 @@ class BMLBindingsSmokeMod {
     }
     firstUnphysicalize = false;
 
-    LogInfo(ctx, "BML unphysicalize callback targetId=" + event.TargetId + " target=" + event.TargetName);
+    LogInfo(ctx, "BML unphysicalize callback targetId=" + event.TargetId +
+                " target=" + event.TargetName +
+                " targetPtr=" + BoolText(event.BorrowTarget() !is null));
   }
 
   void OnUnload(const BML::ModContext &in ctx) {

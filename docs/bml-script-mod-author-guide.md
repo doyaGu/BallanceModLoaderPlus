@@ -203,12 +203,15 @@ void OnCheatEnabled(const BML::ModContext &in ctx, const BML::CheatEvent &in eve
 void OnLoadObject(const BML::ModContext &in ctx, const BML::LoadObjectEvent &in event);
 void OnLoadScript(const BML::ModContext &in ctx, const BML::LoadScriptEvent &in event);
 void OnCommandEvent(const BML::ModContext &in ctx, const BML::CommandEvent &in event);
+void OnModifyConfig(const BML::ModContext &in ctx, const BML::ConfigEvent &in event);
 void OnPhysicalize(const BML::ModContext &in ctx, const BML::PhysicalizeEvent &in event);
 void OnUnphysicalize(const BML::ModContext &in ctx, const BML::ObjectEvent &in event);
 ```
 
-`OnGameEvent` uses `BML::GAME_EVENT_*` constants for no-payload game events.
+`OnGameEvent` uses the `BML::GameEvent` enum for no-payload game events.
 `CommandEvent.Phase` distinguishes pre-execute, post-execute, and completion.
+`OnModifyConfig` exposes the changed category/key and a `ConfigProperty@`
+borrowed through the normal OOP config facade.
 
 ## ModContext
 
