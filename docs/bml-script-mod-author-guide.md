@@ -4,6 +4,47 @@ This document is the BML+ Script Mod v1 author guide.
 `docs/bml-script-mod-api.as` is the API stub for editor completion and static
 checks; it is not the primary tutorial.
 
+Use this guide when you are writing a script mod that is loaded by BML+. Use
+CKAngelScript's own documentation when you are writing a plain runtime script,
+an `AngelScript Component`, or raw CK/Vx SDK code. A BML script mod can call
+those CKAngelScript APIs, but BML only owns the mod-facing layer described here.
+
+## What You Need
+
+- A script-capable BML+ build with `BML_ENABLE_ANGELSCRIPT=ON`.
+- The matching `AngelScript.dll` installed next to `BMLPlus.dll` in
+  `BuildingBlocks`.
+- The matching CKAngelScript headers and AngelScript headers when building a
+  native plugin that also exposes script APIs.
+- `docs/bml-script-mod-api.as` in your editor as an authoring stub. Do not
+  include this stub from the script at runtime.
+- CKAngelScript API docs for Virtools object work. Start with CKAS
+  `docs/api-inventory.md`, `docs/scene-interop.md`, `docs/sdk-bindings.md`,
+  `docs/messaging.md`, and `docs/async.md`.
+
+To verify that the runtime is present, load Ballance with BML+ and check the
+BML log. Missing or incompatible CKAngelScript is reported as a `ckas-host`
+diagnostic, and script mods stay unavailable without breaking native-only BML
+features.
+
+## Authoring Loop
+
+The fast loop is:
+
+1. Put one `*.mod.as` entry under `ModLoader/Mods`.
+2. Add `[bml.mod]` metadata to exactly one class.
+3. Implement `OnLoad` first and log through `ctx.BorrowLogger()`.
+4. Add one feature at a time: config, command, timer, DataShare, UI, or CKAS
+   scene work.
+5. Restart Player after changing script source. Hot reload is not part of the
+   v1 contract.
+6. When the script fails, read the BML log and the Mod menu diagnostic before
+   changing unrelated code.
+
+Keep smoke scripts and author examples separate. The smoke scripts under
+`tests/smoke/AngelScript` intentionally exercise edge cases and regression
+coverage; they are not minimal examples.
+
 ## Quickstart
 
 Start from `templates/script-mod-template` for a minimal script mod. The
@@ -60,6 +101,22 @@ HelloScript.zip
   README.md
 ```
 
+Recommended source layout for a larger directory or zip mod:
+
+```text
+MyScriptMod/
+  MyScript.mod.as       # the only BML entry
+  src/                  # ordinary AngelScript files if CKAS include support is used
+  Resources/            # textures, NMO/CMO/VMO assets, text data
+  ConfigDefaults/       # optional user-facing defaults you copy/read yourself
+  README.md
+```
+
+The entry file is the BML mod boundary. Keep metadata, the main class, and the
+public `[bml.export]` methods easy to find there. Put implementation helpers in
+other files only when your CKAngelScript setup includes them during module
+build; do not assume BML will scan arbitrary files as separate mod entries.
+
 `.bmodp` is reserved for native DLL mods. Do not use `.bmodp` for script mods.
 
 ## Entry Rules
@@ -74,6 +131,31 @@ HelloScript.zip
   exports. Those facts come from CKAngelScript metadata reflection.
 - The `[bml.mod]` class may live in any AngelScript namespace. BML records the
   namespace and class name reported by CKAS metadata reflection.
+
+## AngelScript Notes
+
+BML script mods are ordinary AngelScript classes hosted by CKAngelScript. These
+language rules matter when reading this guide:
+
+- `T@` is a handle. Use `is null` / `!is null` for null and identity checks.
+- Use `@field = @handle` or `@field = expr` when rebinding a handle member. A
+  plain assignment without handle syntax can call object assignment instead.
+- Script classes are reference types. Passing `HelloCommand()` to
+  `RegisterCommand` creates a script object that BML retains on success.
+- Value classes such as `BML::ObjectLoadOptions`, `BML::CommandDefinition`, and
+  event objects are copied by value. They are safe to store unless they return
+  borrowed handles through a method.
+- Declarations with `@+` in `bml-script-mod-api.as` mean BML retains the script
+  object or delegate when registration succeeds. You still write ordinary
+  script code; the marker documents the native ownership transfer.
+- BML fixed callbacks run with CKAS no-suspend semantics. Do not call an API
+  that suspends from `OnLoad`, `OnProcess`, `OnRender`, command callbacks,
+  timer callbacks, DataShare callbacks, or export calls.
+
+Keep interface method signatures exact when implementing `BML::Command`,
+`BML::Timer`, and `BML::DataShareRequest`. A missing `const`, `&in`, return
+type, or method name means BML cannot bind the script object to the expected
+callback.
 
 ## API Layers
 
@@ -158,6 +240,16 @@ class ExampleCore {
 }
 ```
 
+Required arguments are `id`, `name`, and `version`. Optional arguments are
+`author`, `description`, and `bml`. The `bml` value is the minimum BML+ version
+the script expects, not the script's own version. Unknown `bml.*` metadata tags
+are metadata errors. Non-BML metadata is ignored by BML and remains available to
+other CKAngelScript tooling.
+
+Use a stable reverse-DNS-style or owner-prefixed id such as
+`author.example.mod`. Changing the id creates a different mod from BML's point
+of view and breaks dependency/export lookups that target the old id.
+
 Dependencies are also metadata. They participate in BML's dependency graph;
 scripts cannot mutate dependencies at runtime.
 
@@ -170,9 +262,16 @@ class ExampleWithDeps {
 }
 ```
 
+`bml.require` means the dependency must be present and satisfy the optional
+minimum version. `bml.optional` records a soft dependency that can be queried
+through `ModRef`, but it does not block loading when absent. Dependency metadata
+does not replace CKAngelScript `[script.depends]`; that belongs to CKAS runtime
+scripts.
+
 Exports are methods marked with `[bml.export]`. The public signature supports
-only `void`, `bool`, `int`, `float`, and `string` values. Parameter names are
-not part of the contract.
+the scalar types used by the typed `ExportRef.Call*` helpers and the wider
+`CallFrame` value set documented later in this guide. Parameter names are not
+part of the contract.
 
 ```angelscript
 class ExportExample {
@@ -187,6 +286,12 @@ class ExportExample {
   }
 }
 ```
+
+If the `name` argument is omitted, the method name is used. The export
+signature is inferred from the compiled method declaration. Duplicate
+`name + signature` pairs are rejected; overloading the same export name with
+different supported signatures is allowed, but callers must pass the signature
+when lookup would otherwise be ambiguous.
 
 ## Fixed Callbacks
 
@@ -215,6 +320,27 @@ borrowed through the normal OOP config facade.
 Event objects copy scalar/string/list payloads, so storing an event object keeps
 only that snapshot. Handles returned by `Borrow*` methods are still borrowed CK
 handles and should be used immediately.
+
+### Callback And Event Reference
+
+| Callback | When to use it | Payload notes |
+| --- | --- | --- |
+| `OnLoad` | Initialize config, commands, timers, DataShare requests, exports, and content registration. | No event object. Failures here fail the script mod load. |
+| `OnUnload` | Cancel optional work, unregister commands explicitly when desired, and clear script-side state. | BML also cleans up script-owned resources. |
+| `OnProcess` | Light per-tick orchestration. | Avoid expensive scene scans; cache durable ids/refs and revalidate near use. |
+| `OnRender` | BML UI and ImGui drawing. | `RenderEvent.Flags` is a snapshot of the render flags. Frame-scope handles from ImGui must not be stored. |
+| `OnGameEvent` | Respond to BML/game lifecycle events such as level load, reset, pause, finish, and ball/nav state. | The payload is a `BML::GameEvent` enum. Use `BML::GetGameEventName(event)` for logs. |
+| `OnCheatEnabled` | Track cheat state changes. | `CheatEvent.Enabled` is a snapshot. |
+| `OnLoadObject` | Observe Object Load operations. | Object ids and load options are copied. `BorrowObject` and `BorrowMasterObject` resolve borrowed CK handles on demand. |
+| `OnLoadScript` | Observe loaded Virtools behavior scripts. | `ScriptId` is stable as an id snapshot; `BorrowScript()` is a borrowed `CKBehavior@`. |
+| `OnCommandEvent` | Observe command execution phases globally for this mod. | `CommandName`, args, `ArgsText`, phase flags, and cheat flag are snapshots. |
+| `OnModifyConfig` | React to config edits. | Category/key/type are copied. `BorrowProperty()` returns a BML `ConfigProperty` wrapper and same-key reentry is suppressed. |
+| `OnPhysicalize` | Observe physics physicalization requests. | Target id/name, scalar settings, mesh ids, ball centers/radii are copied. Borrowed target/mesh handles may be null later. |
+| `OnUnphysicalize` | Observe physics unphysicalization requests. | Target id/name are copied. `BorrowTarget()` is a borrowed CK handle. |
+
+Use event snapshots for logging, decisions, and delayed work. For delayed CK
+object work, store `CK_ID` values or CKAS `ObjectRef@`-derived handles and
+resolve raw CK handles only when the operation runs.
 
 ## ModContext
 
@@ -255,6 +381,121 @@ and manager handles returned by other `Borrow*` APIs are escape hatches; use
 them during the current callback and do not store them in long-lived script
 fields.
 
+## Resources And Paths
+
+Use `ModContext` path helpers for files owned by the script mod:
+
+```angelscript
+void OnLoad(const BML::ModContext &in ctx) {
+  string root = ctx.GetModRootUtf8();
+  string text = ctx.ReadModTextFileUtf8("Resources/readme.txt", "");
+  if (ctx.ModFileExistsUtf8("Resources/settings.txt"))
+    ctx.BorrowLogger().Info("resource root=" + root + " text=" + text);
+}
+```
+
+`ResolveModPathUtf8(relativePath)` resolves a path inside the mod root.
+`ModFileExistsUtf8`, `ModDirectoryExistsUtf8`, and `ReadModTextFileUtf8` are
+guarded for script mod resources. Use `BML::Path` for pure path manipulation:
+`Combine`, `Normalize`, `FileName`, `Extension`, `RemoveExtension`,
+`IsAbsolute`, `IsRelative`, `Exists`, `IsFile`, and `IsDirectory`.
+
+Directory constants such as `DIR_GAME`, `DIR_LOADER`, `DIR_CONFIG`, and
+`DIR_TEMP` are available through `GetDirectoryUtf8(type)` when a script needs a
+known BML path. Prefer mod-relative paths for assets so zip, directory, and
+single-file packages behave the same.
+
+## Logger And Config
+
+`Logger`, `Config`, and `ConfigProperty` are BML service wrappers. They are
+script handles with `IsValid`; each call resolves the owning mod again. It is
+fine to store them as handles, but still check `IsValid` when work can run after
+unload or failure.
+
+```angelscript
+class Settings {
+  BML::ConfigProperty@ greeting;
+  BML::ConfigProperty@ enabled;
+
+  void Load(const BML::ModContext &in ctx) {
+    BML::Config@ config = ctx.BorrowConfig();
+    if (config is null)
+      return;
+
+    @greeting = config.GetProperty("General", "Greeting");
+    @enabled = config.GetProperty("General", "Enabled");
+    if (greeting !is null) {
+      greeting.SetDefaultString("hello");
+      greeting.SetComment("Text printed by the hello command.");
+    }
+    if (enabled !is null)
+      enabled.SetDefaultBoolean(true);
+    config.SetCategoryComment("General", "Basic script mod settings.");
+  }
+}
+```
+
+`GetProperty(category, key)` creates or returns the mod's property facade. Use
+typed getters with defaults: `GetString`, `GetBoolean`, `GetInteger`,
+`GetFloat`, and `GetKey`. Use typed setters and default setters for values.
+`OnModifyConfig` fires when a property changes; same-property recursive edits
+are suppressed to prevent accidental infinite loops.
+
+## Input, Game State, And HUD
+
+Input lives on `InputHook`, reached through `ctx.BorrowInputManager()`.
+`InputHook` is a borrowed BML facade over the native input hook; use it during
+callbacks and do not store it as durable state.
+
+```angelscript
+void OnProcess(const BML::ModContext &in ctx) {
+  BML::InputHook@ input = ctx.BorrowInputManager();
+  if (input !is null && input.IsKeyPressed(CKKEY_F5)) {
+    ctx.SendIngameMessage("F5 pressed by script");
+  }
+}
+```
+
+Useful `ModContext` state and HUD helpers include:
+
+- `IsInGame`, `IsInLevel`, `IsPaused`, `IsPlaying`, and `IsCheatEnabled`.
+- `EnableCheat`, `ExitGame`, `SendIngameMessage`, `ClearIngameMessages`,
+  `ExecuteCommand`, and `SkipRenderForNextTick`.
+- `GetSRScore`, `GetHSScore`, `GetHUD`, `SetHUD`, `ShowTitle`, `ShowFPS`,
+  `ShowSRTimer`, `StartSRTimer`, `PauseSRTimer`, `ResetSRTimer`, and
+  `GetSRTime`.
+- `OpenModsMenu`, `CloseModsMenu`, `OpenMapMenu`, and `CloseMapMenu`.
+
+Guard mutating calls with state checks when they depend on a loaded level. BML
+returns defaults or no-ops when the underlying runtime is unavailable, but a
+script is easier to debug when the state check is explicit.
+
+## Content Registration
+
+`RegisterBallType`, `RegisterFloorType`, and the `RegisterModule` overloads
+mirror BML's native content registration surface for common Ballance modding
+tasks. Call them from `OnLoad`; late registration returns `false`.
+
+```angelscript
+void OnLoad(const BML::ModContext &in ctx) {
+  BML::BallTypeDefinition ball;
+  ball.BallId = "example.ball";
+  ball.BallName = "Example Ball";
+  ball.BallFile = "Resources/example_ball.nmo";
+  ball.ObjectName = "Example_Ball";
+  ball.Friction = 0.4f;
+  ball.Elasticity = 0.2f;
+  ball.Mass = 1.0f;
+  ball.Radius = 2.0f;
+  if (!ctx.RegisterBallType(ball))
+    ctx.BorrowLogger().Warn("failed to register ball type");
+}
+```
+
+Use `BallTypeDefinition`, `FloorTypeDefinition`, `ModuleBallDefinition`,
+`ModuleConvexDefinition`, `TrafoDefinition`, and `ModuleDefinition` as
+value-only declarations. Keep asset paths mod-relative where possible.
+
 ## CK, Physics, And Text Helpers
 
 For general Virtools work, start with CKAngelScript's own APIs:
@@ -290,13 +531,75 @@ void OnLoad(const BML::ModContext &in ctx) {
 }
 ```
 
+For durable scene identity, prefer CKAngelScript refs:
+
+```angelscript
+Entity3DRef@ ball;
+
+void OnLoad(const BML::ModContext &in ctx) {
+  CKContext@ ck = ctx.BorrowCKContext();
+  @ball = Scene::FindEntity3D(ck, "Ball");
+}
+
+void OnProcess(const BML::ModContext &in ctx) {
+  if (ball is null || !ball.valid)
+    return;
+
+  CK3dEntity@ entity = ball.Entity3D();
+  if (entity !is null)
+    entity.Translate(VxVector(0.0f, 0.0f, 0.1f));
+}
+```
+
+Use CKAS `Scene::*` for lookup, creation, scene membership, stale-id
+protection, and dynamic destruction. Use raw CK/Vx methods only near the actual
+operation. Use CKAS `Behavior`, `BB`, and `Param` when the task is behavior
+graph or parameter work. Use CKAS `Message` for communication with runtime
+scripts or components.
+
+CKAS `Async` is available to runtime scripts and components, but BML fixed
+callbacks are no-suspend. Do not call `Await` from a BML callback. If a BML mod
+needs delayed work, use BML timers or delegate the suspending work to a CKAS
+runtime script/component and communicate through `Message` or BML exports.
+
 `BML::Physics` wraps runtime `ExecuteBB` physics actions. These helpers return
 `false` when BML is not in a loaded level or the target is null. It does not
 expose PhysicsRT private manager types such as `CKIpionManager`.
 
+```angelscript
+void MakeBallPhysical(const BML::ModContext &in ctx, CK3dEntity@ target) {
+  BML::PhysicalizeDefinition def;
+  def.Fixed = false;
+  def.Friction = 0.4f;
+  def.Elasticity = 0.2f;
+  def.Mass = 1.0f;
+  def.CollisionGroup = "Ball";
+  def.EnableCollision = true;
+
+  if (!BML::Physics::PhysicalizeBall(target, def, VxVector(0.0f, 0.0f, 0.0f), 2.0f))
+    ctx.BorrowLogger().Warn("physicalize failed");
+}
+```
+
 `BML::Text` creates a `2D Text` behavior under an owner script and returns a
 borrowed `CKBehavior@`. Pass materials as explicit borrowed arguments when
 needed; keep `Text2DDefinition` value-only.
+
+```angelscript
+CKBehavior@ CreateHudText(const BML::ModContext &in ctx,
+                          CKBehavior@ owner,
+                          CK2dEntity@ target) {
+  BML::Text2DDefinition text;
+  text.Font = BML::FONT_GAME_NORMAL;
+  text.Text = "Hello";
+  text.Align = 0;
+  text.Offset = Vx2DVector(0.0f, 0.0f);
+  CKBehavior@ behavior = BML::Text::Create2DText(owner, target, text);
+  if (behavior is null)
+    ctx.BorrowLogger().Warn("2D Text creation failed");
+  return behavior;
+}
+```
 
 ## UI
 
@@ -364,6 +667,36 @@ void OnRender(const BML::ModContext &in ctx, const BML::RenderEvent &in event) {
 ```
 
 ## ExportRef And CallFrame
+
+Use `ModContext.FindMod`, `GetModCount`, and `GetMod(index)` to inspect native
+and script mods known to BML. `ModRef` is a facade handle, not a native `IMod*`.
+It exposes metadata, state, dependencies, diagnostics, and exports.
+
+```angelscript
+void OnLoad(const BML::ModContext &in ctx) {
+  BML::ModRef@ other = ctx.FindMod("example.provider");
+  if (other is null || !other.IsValid) {
+    ctx.BorrowLogger().Warn("provider missing");
+    return;
+  }
+
+  if (other.IsFailed)
+    ctx.BorrowLogger().Warn(other.Id + " failed: " + other.Diagnostic);
+}
+```
+
+Use metadata dependencies when load order matters. Use `FindMod` and state
+checks when the relationship is optional at runtime. `CheckDependencies()`
+returns BML status codes; `GetDependency*` methods expose the reflected
+dependency list so scripts can explain missing optional features to users.
+
+For mod-to-mod communication, choose the smallest stable contract:
+
+- Use exports when the caller needs a request/response function call with typed
+  arguments and a status code.
+- Use DataShare when the data is state-like and can be read later by name.
+- Use CKAS `Message` when the other participant is a CKAS runtime script or
+  component rather than a BML mod.
 
 Prefer typed export calls:
 
@@ -630,6 +963,83 @@ void OnLoad(const BML::ModContext &in ctx) {
 }
 ```
 
+## Common Recipes
+
+### Toggle A Feature With Config And Command
+
+```angelscript
+bool enabled = true;
+BML::ConfigProperty@ enabledProp;
+
+void OnLoad(const BML::ModContext &in ctx) {
+  BML::Config@ config = ctx.BorrowConfig();
+  if (config !is null) {
+    @enabledProp = config.GetProperty("General", "Enabled");
+    if (enabledProp !is null) {
+      enabledProp.SetDefaultBoolean(true);
+      enabled = enabledProp.GetBoolean(true);
+    }
+  }
+
+  BML::CommandDefinition def;
+  def.Name = "toggle-example";
+  def.Description = "Toggle the example feature";
+  ctx.RegisterCommand(def, ToggleExample);
+}
+
+void ToggleExample(const BML::ModContext &in ctx,
+                   const BML::CommandEvent &in event) {
+  enabled = !enabled;
+  if (enabledProp !is null && enabledProp.IsValid)
+    enabledProp.SetBoolean(enabled);
+  ctx.SendIngameMessage(enabled ? "Example enabled" : "Example disabled");
+}
+
+void OnModifyConfig(const BML::ModContext &in ctx,
+                    const BML::ConfigEvent &in event) {
+  if (event.Category == "General" && event.Key == "Enabled") {
+    BML::ConfigProperty@ prop = event.BorrowProperty();
+    enabled = prop !is null ? prop.GetBoolean(enabled) : enabled;
+  }
+}
+```
+
+### Delay Work Until The Next Tick
+
+Use this when a callback fires before the scene object you need is ready, or
+when a command should defer a heavy scan:
+
+```angelscript
+void RunLater(const BML::ModContext &in ctx,
+              const BML::TimerEvent &in event) {
+  CKContext@ ck = ctx.BorrowCKContext();
+  Entity3DRef@ ball = Scene::FindEntity3D(ck, "Ball");
+  if (ball !is null && ball.valid)
+    ctx.BorrowLogger().Info("Ball id=" + ball.Id());
+}
+
+void OnLoad(const BML::ModContext &in ctx) {
+  ctx.SetTimeoutTicks(1, RunLater, "find-ball");
+}
+```
+
+### Expose A Small Service To Other Mods
+
+```angelscript
+[bml.export(name: "IsFeatureEnabled", signature: "bool()")]
+bool IsFeatureEnabled() {
+  return enabled;
+}
+
+[bml.export(name: "SetFeatureEnabled", signature: "void(bool)")]
+void SetFeatureEnabled(bool value) {
+  enabled = value;
+}
+```
+
+Callers should use `TryFindExport` for optional integration and inspect the
+returned status before calling.
+
 ## Diagnostics
 
 Script failures are recorded as structured diagnostics:
@@ -655,6 +1065,23 @@ Common phases:
 - `metadata`: `bml.mod`, dependency, or export metadata is invalid.
 - `callback`: a fixed callback failed at runtime.
 - `export-lookup` / `export-call`: export missing, signature mismatch, or call failed.
+
+Debugging order:
+
+1. Check the first diagnostic phase. Fix `ckas-host`, `compile`, and
+   `metadata` errors before looking at runtime logic.
+2. Check the exact callback name in the diagnostic. A callback failure marks the
+   script mod failed, so later callbacks may not run.
+3. Log ids, names, and status codes, not raw handle addresses.
+4. When a borrowed CK handle is null, log the durable id/name snapshot or CKAS
+   ref `Error()` instead.
+5. Reproduce with a small script package before moving the same logic into a
+   larger mod.
+
+For local validation, use the script-capable release package and copy the mod
+into a clean `ModLoader/Mods` directory. The repository smoke tests are useful
+for BML development, but an author should still verify the script in Player
+with the same CKAngelScript runtime that will ship with the mod.
 
 ## Lifetime Rules
 
@@ -697,6 +1124,31 @@ Common phases:
 - Single-file resources live under the sibling directory named after the entry
   stem, e.g. `Mods/Foo/Resources` for `Mods/Foo.mod.as`.
 - Directory and zip script mods should keep stable assets under `Resources/`.
+- Keep exactly one `*.mod.as` entry per directory or zip package. Helper files
+  are fine only when the CKAngelScript build process includes them as part of
+  the entry module.
+- Do not package `docs/bml-script-mod-api.as` with the mod as runtime code; it
+  is an editor/reference stub.
+- Declare BML mod dependencies with `[bml.require]` and `[bml.optional]`.
+  Mention CKAngelScript/runtime-script requirements in your README because they
+  are outside the BML dependency graph.
+- If the mod depends on a native plugin's CKAS extension namespace, document the
+  native plugin id/version and handle missing APIs with a clear diagnostic.
+
+## Author Checklist
+
+- The package has exactly one `*.mod.as` entry.
+- The main class has one `[bml.mod]` with stable `id`, `name`, and `version`.
+- Every dependency that affects load order is metadata, not a runtime check.
+- Every export has a supported signature and a stable name.
+- `OnLoad` logs at least one clear startup line during development.
+- Long-lived CK object identity uses CKAS refs or ids, not borrowed raw handles.
+- Timers, commands, and DataShare requests are either held in fields or designed
+  to finish immediately.
+- Render/UI code runs from `OnRender`.
+- Heavy scene scans are delayed, cached as refs/ids, or moved to a native
+  plugin/CKAS component when needed.
+- The script has been tested in Player with the release CKAngelScript runtime.
 
 ## English Summary
 
