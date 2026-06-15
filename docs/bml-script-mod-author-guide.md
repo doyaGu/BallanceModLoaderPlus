@@ -1,65 +1,51 @@
 # BML Script Mod v1 Author Guide
 
-This document is the BML+ Script Mod v1 author guide.
-`docs/bml-script-mod-api.as` is the API stub for editor completion and static
-checks; it is not the primary tutorial.
+This guide is for people who want to publish a mod that BML+ loads from an
+AngelScript file. It starts with the authoring workflow, then moves into the
+API reference. `docs/bml-script-mod-api.as` is only an editor/static-checking
+stub; do not package it as runtime script code.
 
-Use this guide when you are writing a script mod that is loaded by BML+. Use
-CKAngelScript's own documentation when you are writing a plain runtime script,
-an `AngelScript Component`, or raw CK/Vx SDK code. A BML script mod can call
-those CKAngelScript APIs, but BML only owns the mod-facing layer described here.
+## Who This Is For
 
-## What You Need
+You can use script mods without knowing the native BML C++ API first. You need
+basic C-like syntax and enough AngelScript to read handles such as `T@`,
+references such as `const T &in`, and class methods. The AngelScript notes
+below explain the parts that matter most for BML.
 
-- A script-capable BML+ build with `BML_ENABLE_ANGELSCRIPT=ON`.
-- The matching `AngelScript.dll` installed next to `BMLPlus.dll` in
-  `BuildingBlocks`.
-- The matching CKAngelScript headers and AngelScript headers when building a
-  native plugin that also exposes script APIs.
-- `docs/bml-script-mod-api.as` in your editor as an authoring stub. Do not
-  include this stub from the script at runtime.
-- CKAngelScript API docs for Virtools object work. Start with CKAS
-  `docs/api-inventory.md`, `docs/scene-interop.md`, `docs/sdk-bindings.md`,
-  `docs/messaging.md`, and `docs/async.md`.
+If you already write native BML mods, read this as the script-facing shape of
+the same mod concepts: metadata replaces the native plugin descriptor, fixed
+callbacks replace virtual methods, and `BML::ModContext` is the per-mod service
+object.
 
-To verify that the runtime is present, load Ballance with BML+ and check the
-BML log. Missing or incompatible CKAngelScript is reported as a `ckas-host`
-diagnostic, and script mods stay unavailable without breaking native-only BML
-features.
+If you already use CKAngelScript, read this as the BML-owned layer on top of
+CKAS. Scene objects, behavior graphs, components, raw CK/Vx bindings, messages,
+async work, and plugin extension namespaces still belong to CKAngelScript and
+its docs. BML adds mod identity, dependencies, resources, config, commands,
+logging, UI hooks, exports, DataShare, and load diagnostics.
 
-## Authoring Loop
+If you are exposing APIs from a native plugin, this guide tells script authors
+how they will consume those APIs. Use the CKAngelScript registration docs for
+the native binding work.
 
-The fast loop is:
+## How To Read This Guide
 
-1. Put one `*.mod.as` entry under `ModLoader/Mods`.
-2. Add `[bml.mod]` metadata to exactly one class.
-3. Implement `OnLoad` first and log through `ctx.BorrowLogger()`.
-4. Add one feature at a time: config, command, timer, DataShare, UI, or CKAS
-   scene work.
-5. Restart Player after changing script source. Hot reload is not part of the
-   v1 contract.
-6. When the script fails, read the BML log and the Mod menu diagnostic before
-   changing unrelated code.
+- New script author: read `First Mod`, `Before You Start`, `Entry Rules`,
+  `AngelScript Notes`, `Callbacks`, and `The ModContext Object`.
+- Native BML author: start at `What BML Adds To CKAngelScript`, then read
+  `Callbacks`, `Logger And Config`, `Command And Completion`, `Timer`, and
+  `DataShare`.
+- CKAngelScript author: start at `What BML Adds To CKAngelScript`, then use the
+  task table below to find the BML service you need.
+- API lookup: jump to the reference section that owns the feature. The guide is
+  not meant to be read straight through on the first pass.
 
-Keep smoke scripts and author examples separate. The smoke scripts under
-`tests/smoke/AngelScript` intentionally exercise edge cases and regression
-coverage; they are not minimal examples.
+## First Mod
 
-## Quickstart
+Start from `templates/script-mod-template` or create a single file named
+`HelloScript.mod.as` under `ModLoader/Mods`. The filename ending matters:
+`*.mod.as` is how BML finds script mod entries.
 
-Start from `templates/script-mod-template` for a minimal script mod. The
-template is intentionally small; `tests/smoke/AngelScript` contains regression
-assets, not starter examples.
-
-v1 supports three package forms under `ModLoader/Mods`:
-
-- A single `Foo.mod.as` file.
-- A directory containing exactly one `*.mod.as` entry.
-- A `.zip` package containing exactly one script mod entry.
-
-The entry file must be valid AngelScript. BML does not parse source text; it
-compiles the entry through CKAngelScript and reads declaration metadata from
-CKAS metadata reflection.
+The smallest useful mod logs one line when it loads:
 
 ```angelscript
 [bml.mod(id: "example.hello", name: "Hello Script", version: "1.0.0",
@@ -74,7 +60,54 @@ class HelloMod {
 }
 ```
 
-Recommended directory shape:
+Run Ballance with a script-capable BML+ build and check the BML log. If the
+line appears, the mod entry compiled, metadata was accepted, and the `OnLoad`
+callback ran. From there, add one feature at a time: a config value, a command,
+a timer, a DataShare request, a UI draw callback, or CKAngelScript scene work.
+
+After editing script source, restart Player. Hot reload is not part of the v1
+contract. When a script fails, first read the BML log and the Mod menu
+diagnostic; do not guess from symptoms in game.
+
+Keep smoke scripts and author examples separate. The smoke scripts under
+`tests/smoke/AngelScript` intentionally exercise edge cases and regression
+coverage; they are not minimal examples.
+
+## Before You Start
+
+You need:
+
+- A script-capable BML+ build. `BML_ENABLE_ANGELSCRIPT` controls whether the
+  build supports script mods.
+- The matching `AngelScript.dll` next to `BMLPlus.dll` in `BuildingBlocks` when
+  distributing a script-capable release.
+- `docs/bml-script-mod-api.as` in your editor for completion and static checks.
+  Do not include this stub from the script at runtime.
+- CKAngelScript API docs when the mod touches Virtools objects, behavior
+  graphs, components, messages, async work, or raw CK/Vx SDK bindings. Start
+  with CKAS `docs/api-inventory.md`, `docs/scene-interop.md`,
+  `docs/sdk-bindings.md`, `docs/messaging.md`, and `docs/async.md`.
+- Matching CKAngelScript and AngelScript headers only when building a native
+  plugin that also exposes script APIs.
+
+To verify that the runtime is present, load Ballance with BML+ and check the
+BML log. Missing or incompatible CKAngelScript is reported as a `ckas-host`
+diagnostic, and script mods stay unavailable without breaking native-only BML
+features.
+
+## Package Shapes
+
+v1 supports three package forms under `ModLoader/Mods`:
+
+- A single `Foo.mod.as` file.
+- A directory containing exactly one `*.mod.as` entry.
+- A `.zip` package containing exactly one script mod entry.
+
+The entry file must be valid AngelScript. BML does not parse source text; it
+compiles the entry through CKAngelScript and reads declaration metadata from
+CKAS metadata reflection.
+
+Directory shape:
 
 ```text
 ModLoader/Mods/HelloScript/
@@ -101,7 +134,7 @@ HelloScript.zip
   README.md
 ```
 
-Recommended source layout for a larger directory or zip mod:
+Larger directory or zip mod:
 
 ```text
 MyScriptMod/
@@ -118,6 +151,33 @@ other files only when your CKAngelScript setup includes them during module
 build; do not assume BML will scan arbitrary files as separate mod entries.
 
 `.bmodp` is reserved for native DLL mods. Do not use `.bmodp` for script mods.
+
+## Task Map
+
+| I want to... | Read | Use |
+| --- | --- | --- |
+| Give my script a mod id, version, author, dependencies, or exports | `Mod Metadata` | `[bml.mod]`, `[bml.require]`, `[bml.optional]`, `[bml.export]` |
+| Run code when the mod loads, each tick, during render, or when BML/game events happen | `Callbacks` | `OnLoad`, `OnProcess`, `OnRender`, `OnGameEvent`, event-specific callbacks |
+| Log messages or store user settings | `Logger And Config` | `ctx.BorrowLogger()`, `ctx.BorrowConfig()` |
+| Add commands or command completion | `Command And Completion` | `BML::Command`, `BML::CommandDefinition`, `BML::CommandCompletion` |
+| Delay or repeat work | `Timer` | `BML::Timer`, `ctx.AddTimer()` |
+| Draw BML/ImGui UI | `UI`, `Advanced ImGui` | `OnRender`, `ctx.Draw*`, `BML::ImGui::*` |
+| Call another mod or expose functions to other mods | `ExportRef And CallFrame` | `ModRef.FindExport()`, `ExportRef.Call*`, `CallFrame` |
+| Exchange typed data with native mods or scripts | `DataShare` | `BML::DataShareRequest`, `ctx.RequestDataShare*` |
+| Work with Virtools objects, behavior graphs, or CKDataArray/CKMesh/CKTexture | `What BML Adds To CKAngelScript`, CKAS docs | CKAS `Scene`, `Behavior`, `BB`, `Param`, raw CK/Vx SDK bindings where needed |
+
+## Concepts At A Glance
+
+| Term | Meaning |
+| --- | --- |
+| Script mod entry | The one `*.mod.as` file that BML compiles as the mod boundary. |
+| Main mod class | The AngelScript class marked with `[bml.mod]`. BML creates and calls this class. |
+| Metadata | AngelScript attributes such as `[bml.mod]` and `[bml.require]`. These replace a separate manifest file. |
+| Callback | A method with an exact name/signature, such as `OnLoad` or `OnRender`, that BML calls at a known point. |
+| `BML::ModContext` | The per-mod service object passed into callbacks. Start here for logging, config, commands, resources, timers, DataShare, exports, and BML UI. |
+| Borrowed handle | A handle returned for immediate use, usually to CK/Virtools state. Do not keep it as long-term identity unless that section says it is safe. |
+| CKAS ref | A CKAngelScript reference object such as an `ObjectRef@`-derived handle. Prefer this for long-lived CK object identity. |
+| Export | A script method that other mods can find and call through BML interop. |
 
 ## Entry Rules
 
@@ -157,7 +217,7 @@ Keep interface method signatures exact when implementing `BML::Command`,
 type, or method name means BML cannot bind the script object to the expected
 callback.
 
-## API Layers
+## What BML Adds To CKAngelScript
 
 BML script mods run inside CKAngelScript, but a BML script mod is only one
 script shape: an AngelScript module/class that BML gives mod identity, load
@@ -216,7 +276,7 @@ Components should pass `CKBehaviorContext`. Do not fake one context as another.
 If a missing context blocks a real use case, add a small native/CKAS extension at
 the owner boundary instead of smuggling raw engine objects through BML.
 
-## Architectural Patterns
+## Common Project Shapes
 
 - Pure BML script mod: good for commands, config-driven toggles, HUD/menu
   changes, DataShare, exports, resource loading, and light level scripting.
@@ -228,7 +288,7 @@ the owner boundary instead of smuggling raw engine objects through BML.
 - Script service bus: CKAS `Message`/`Async` connects runtime scripts and
   components; BML exports/DataShare expose the stable mod-facing service.
 
-## Metadata
+## Mod Metadata
 
 `bml.mod` declares the main script mod class. It is required and must appear
 exactly once.
@@ -293,7 +353,7 @@ signature is inferred from the compiled method declaration. Duplicate
 different supported signatures is allowed, but callers must pass the signature
 when lookup would otherwise be ambiguous.
 
-## Fixed Callbacks
+## Callbacks
 
 Old `OnPre*` / `OnPost*` overload families are not part of the v1 contract.
 Only these fixed signatures are recognized:
@@ -342,7 +402,7 @@ Use event snapshots for logging, decisions, and delayed work. For delayed CK
 object work, store `CK_ID` values or CKAS `ObjectRef@`-derived handles and
 resolve raw CK handles only when the operation runs.
 
-## ModContext
+## The ModContext Object
 
 `ModContext` is the main per-mod facade. Prefer the callback parameter over
 global helper functions when both exist.
