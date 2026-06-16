@@ -20,6 +20,8 @@ ipch
 
 ## Generated files
 include/BML/Version.h
+dist/
+dist-install/
 
 ## CMake artifacts
 CMakeLists.txt.user
