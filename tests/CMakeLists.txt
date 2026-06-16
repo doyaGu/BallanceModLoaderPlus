@@ -28,7 +28,11 @@ function(add_bml_test test_name)
             ${TEST_DEPENDENCIES}
     )
 
-    target_compile_definitions(${test_name} PRIVATE "BML_EXPORTS" "BML_TEST")
+    target_compile_definitions(${test_name} PRIVATE
+            "BML_EXPORTS"
+            "BML_TEST"
+            "IMGUI_USER_CONFIG=\"BMLImGuiConfig.h\""
+    )
 
     set_target_properties(${test_name} PROPERTIES FOLDER "Tests")
 

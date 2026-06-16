@@ -253,7 +253,7 @@ target_link_libraries(BML
 add_dependencies(BML BML_VersionHeader)
 
 target_compile_definitions(BML PRIVATE
-        BML_EXPORTS IMGUI_EXPORT
+        BML_EXPORTS IMGUI_EXPORT IMGUI_USER_CONFIG=\"BMLImGuiConfig.h\"
         BML_ENABLE_ANGELSCRIPT=$<BOOL:${BML_WITH_ANGELSCRIPT}>
 )
 
@@ -262,11 +262,6 @@ set_target_properties(BML PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
-)
-
-add_custom_command(TARGET BML PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/imconfig.h" "${IMGUI_SOURCE_DIR}"
-        VERBATIM
 )
 
 install(TARGETS BML
@@ -282,7 +277,8 @@ install(DIRECTORY "${BML_INCLUDE_DIR}/BML"
 )
 
 install(FILES
-        "${IMGUI_SOURCE_DIR}/imconfig.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/imconfig.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/BMLImGuiConfig.h"
         "${IMGUI_SOURCE_DIR}/imgui.h"
         "${IMGUI_SOURCE_DIR}/imgui_internal.h"
         "${IMGUI_SOURCE_DIR}/imstb_rectpack.h"
