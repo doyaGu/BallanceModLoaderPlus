@@ -244,12 +244,10 @@ static InteropTypeDescriptor DescriptorFromPreparedType(const std::string &prepa
 }
 
 static std::string BuildCanonicalSignature(const InteropSignatureInfo &info) {
-    if (info.Name.empty() || !info.ReturnDescriptor.IsSupported())
+    if (!info.ReturnDescriptor.IsSupported())
         return {};
 
     std::string signature = info.ReturnDescriptor.CanonicalName;
-    signature += " ";
-    signature += info.Name;
     signature += "(";
     for (size_t i = 0; i < info.ParameterDescriptors.size(); ++i) {
         if (i > 0)
@@ -300,7 +298,7 @@ std::string InteropSignature::ExtractReturnType(const std::string &signature) {
     const std::string prefix = utils::TrimStringCopy(signature.substr(0, paren));
     const size_t nameStart = prefix.find_last_of(" \t");
     if (nameStart == std::string::npos)
-        return {};
+        return prefix;
     return utils::TrimStringCopy(prefix.substr(0, nameStart));
 }
 
@@ -382,7 +380,7 @@ InteropSignatureInfo InteropSignature::Compile(const std::string &signature) {
 }
 
 bool InteropSignature::IsSupported(const InteropSignatureInfo &info) {
-    if (info.Name.empty() || !info.ReturnDescriptor.IsSupported())
+    if (!info.ReturnDescriptor.IsSupported())
         return false;
     if (info.ParameterDescriptors.size() != info.ParameterTypes.size())
         return false;
@@ -394,8 +392,6 @@ bool InteropSignature::IsSupported(const InteropSignatureInfo &info) {
 }
 
 bool InteropSignature::Equivalent(const InteropSignatureInfo &left, const InteropSignatureInfo &right) {
-    if (left.Name != right.Name)
-        return false;
     if (left.ReturnDescriptor != right.ReturnDescriptor)
         return false;
     if (left.ParameterDescriptors.size() != right.ParameterDescriptors.size())
@@ -455,7 +451,7 @@ int InteropSignature::Validate(const std::string &signature,
         }
     }
 
-    if (!expectedName.empty() && info.Name != expectedName)
+    if (!expectedName.empty() && IsIdentifierToken(expectedName) && !info.Name.empty() && info.Name != expectedName)
         return BML_ERROR_INTEROP_SIGNATURE_MISMATCH;
     if (outInfo)
         *outInfo = info;

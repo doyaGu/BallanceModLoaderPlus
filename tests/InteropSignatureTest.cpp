@@ -27,6 +27,27 @@ TEST(InteropSignatureTest, ValidatesSupportedScalarSignatures) {
     EXPECT_TRUE(info.ParameterTypes.empty());
 }
 
+TEST(InteropSignatureTest, ValidatesNamelessDescriptorsForDottedExportNames) {
+    BML::InteropSignatureInfo info;
+    EXPECT_EQ(BML::InteropSignature::Validate("void(string)", "ui.message.add", &info), BML_OK);
+    EXPECT_TRUE(info.Name.empty());
+    EXPECT_EQ(info.ReturnType, BML::InteropValueType::Void);
+    ASSERT_EQ(info.ParameterTypes.size(), 1u);
+    EXPECT_EQ(info.ParameterTypes[0], BML::InteropValueType::String);
+    EXPECT_EQ(info.CanonicalSignature, "void(string)");
+
+    EXPECT_EQ(BML::InteropSignature::Validate("int()", "ui.hud.get", &info), BML_OK);
+    EXPECT_TRUE(info.Name.empty());
+    EXPECT_EQ(info.ReturnType, BML::InteropValueType::Int);
+    EXPECT_TRUE(info.ParameterTypes.empty());
+    EXPECT_EQ(info.CanonicalSignature, "int()");
+
+    EXPECT_EQ(BML::InteropSignature::Validate("void(bool)", "ui.hud.fps.show", &info), BML_OK);
+    EXPECT_TRUE(info.Name.empty());
+    ASSERT_EQ(info.ParameterTypes.size(), 1u);
+    EXPECT_EQ(info.ParameterTypes[0], BML::InteropValueType::Bool);
+}
+
 TEST(InteropSignatureTest, ValidatesSupportedExtendedSignatures) {
     BML::InteropSignatureInfo info;
     EXPECT_EQ(BML::InteropSignature::Validate(
@@ -39,7 +60,7 @@ TEST(InteropSignatureTest, ValidatesSupportedExtendedSignatures) {
     ASSERT_EQ(info.ParameterDescriptors.size(), 1u);
     EXPECT_EQ(info.ParameterTypes[0], BML::InteropValueType::IntArray);
     EXPECT_EQ(info.ParameterDescriptors[0].ElementType, BML::InteropValueType::Int);
-    EXPECT_EQ(info.CanonicalSignature, "array<int> Values(array<int>)");
+    EXPECT_EQ(info.CanonicalSignature, "array<int>(array<int>)");
 
     EXPECT_EQ(BML::InteropSignature::Validate(
                   "array<uint8>@ Digest(const array<uint8> &in bytes)",
@@ -58,7 +79,7 @@ TEST(InteropSignatureTest, ValidatesSupportedExtendedSignatures) {
     EXPECT_EQ(info.ReturnType, BML::InteropValueType::IntArray);
     ASSERT_EQ(info.ParameterTypes.size(), 1u);
     EXPECT_EQ(info.ParameterTypes[0], BML::InteropValueType::IntArray);
-    EXPECT_EQ(info.CanonicalSignature, "array<int> ReflectedValues(array<int>)");
+    EXPECT_EQ(info.CanonicalSignature, "array<int>(array<int>)");
 
     EXPECT_EQ(BML::InteropSignature::Validate(
                   "uint8[]@ ReflectedDigest(const uint8[]&in bytes)",
@@ -143,6 +164,10 @@ TEST(InteropSignatureTest, ComparesDescriptorEquivalentSignatures) {
         "string Echo(const string &in value)",
         "string Echo(string &in text)",
         "Echo"));
+    EXPECT_TRUE(BML::InteropSignature::EquivalentSignatures(
+        "void Message(const string &in value)",
+        "void(string)",
+        "ui.message.add"));
     EXPECT_FALSE(BML::InteropSignature::EquivalentSignatures(
         "array<int>@ Values(const array<int> &in input)",
         "array<float>@ Values(const array<float> &in input)",
