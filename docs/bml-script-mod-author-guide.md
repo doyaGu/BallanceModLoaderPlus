@@ -526,6 +526,15 @@ Useful `ModContext` state and HUD helpers include:
   `GetSRTime`.
 - `OpenModsMenu`, `CloseModsMenu`, `OpenMapMenu`, and `CloseMapMenu`.
 
+`ModContext` keeps these methods for compatibility, but new code should prefer
+the mod-to-mod capability facade when it does not need per-mod state:
+`BML::UI::SendMessage`, `BML::UI::ClearMessages`,
+`BML::Menu::OpenModsMenu`, `BML::Menu::CloseModsMenu`,
+`BML::Menu::OpenMapMenu`, `BML::Menu::CloseMapMenu`, and
+`BML::HUD::*`. These functions are backed by the same Interop exports that
+native mods can import from the built-in `BML` mod, so scripts and native mods
+use the same public capability contract.
+
 Guard mutating calls with state checks when they depend on a loaded level. BML
 returns defaults or no-ops when the underlying runtime is unavailable, but a
 script is easier to debug when the state check is explicit.
@@ -663,11 +672,13 @@ CKBehavior@ CreateHudText(const BML::ModContext &in ctx,
 
 ## UI
 
-`BML::UI` is a small BML-style menu facade over the native Bui helpers. Use it
-from `OnRender`; drawing and input calls outside a render callback are safe
-no-ops or return default values. The facade intentionally does not expose
-`Bui::Window`, `Bui::Page`, raw draw lists, raw text buffers, resource
-initialization, or script/menu transition internals.
+`BML::UI` contains two groups. `SendMessage` and `ClearMessages` are core
+capabilities and may be called from normal callbacks. The BML-style menu
+controls below are render-time Bui helpers; use them from `OnRender`. Drawing
+and input calls outside a render callback are safe no-ops or return default
+values. The facade intentionally does not expose `Bui::Window`, `Bui::Page`,
+raw draw lists, raw text buffers, resource initialization, or script/menu
+transition internals.
 
 ```angelscript
 bool enabled = true;
@@ -742,6 +753,19 @@ void OnLoad(const BML::ModContext &in ctx) {
 
   if (other.IsFailed)
     ctx.BorrowLogger().Warn(other.Id + " failed: " + other.Diagnostic);
+}
+```
+
+The built-in `BML` mod publishes UI/HUD/menu capabilities through the same
+Interop registry. Dynamic callers may use nameless descriptors:
+
+```angelscript
+BML::ModRef@ bml = ctx.FindMod("BML");
+BML::ExportRef@ sendMessage;
+if (bml !is null && bml.TryFindExport("ui.message.add", sendMessage, "void(string)") == BML::ERROR_OK) {
+  BML::CallFrame@ frame = BML::CallFrame();
+  frame.SetString(0, "Hello from Interop");
+  sendMessage.Call(frame);
 }
 ```
 
@@ -841,7 +865,9 @@ script class handles, arbitrary `T@`, raw pointers, `&out`, and `&inout` are not
 valid Interop signatures. Signatureless lookup is valid only when an export name
 is unique; when a mod exports the same name with multiple signatures, pass the
 explicit signature. Explicit lookup compares compiled type descriptors, so
-parameter names and equivalent string forms do not affect resolution.
+parameter names, function names, nameless descriptors such as `void(string)`,
+and equivalent string forms do not affect resolution. Info APIs still return
+the public signature text that the provider registered.
 
 ## Timer
 

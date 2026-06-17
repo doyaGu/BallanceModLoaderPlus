@@ -374,6 +374,9 @@ enum ButtonType {
   BUTTON_MINUS = 9
 }
 
+void SendMessage(const string &in message);
+void ClearMessages();
+
 void SetCursorCoord(float x, float y);
 float CoordToPixelX(float x);
 float CoordToPixelY(float y);
@@ -423,6 +426,25 @@ float GetButtonIndent(ButtonType type);
 float GetButtonSizeCoordX(ButtonType type);
 float GetButtonSizeCoordY(ButtonType type);
 float GetButtonIndentCoord(ButtonType type);
+}
+
+namespace Menu {
+void OpenModsMenu();
+void CloseModsMenu();
+void OpenMapMenu();
+void CloseMapMenu();
+}
+
+namespace HUD {
+int GetMode();
+void SetMode(int mode);
+void ShowTitle(bool show);
+void ShowFPS(bool show);
+void ShowSRTimer(bool show);
+void StartSRTimer();
+void PauseSRTimer();
+void ResetSRTimer();
+float GetSRTime();
 }
 
 class RenderEvent {

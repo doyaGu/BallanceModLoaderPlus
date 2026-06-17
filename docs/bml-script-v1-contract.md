@@ -27,6 +27,10 @@ owning-plugin contract.
 - Script-owned Timer: `BML::Timer` object callbacks, automatic unload cleanup.
 - Script-owned Command: `BML::Command` object callbacks, automatic unload cleanup.
 - Typed DataShare: bool/int/float/string get/set, `DataShareSizeOf`, and script-owned `DataShareRequest` object requests.
+- Core capabilities: `BML::UI` messages, `BML::Menu`, and `BML::HUD` are
+  backed by Interop exports from the built-in `BML` mod. Compatibility
+  `ModContext` helpers route through the same capability contract where
+  available.
 - UI: stable `BML::UI` menu facade for ordinary render-time Bui-style controls.
 - Advanced ImGui: generated `ImGui` namespace documented in `docs/bml-imgui-api.as`; frame-scope only, with context/platform lifecycle, allocators, raw callbacks, and raw `void*` intentionally omitted.
 - Diagnostics: script failures expose phase/message through logs, Mod menu, script `ModRef`, and native interop.

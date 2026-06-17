@@ -6,6 +6,7 @@
 
 #include "BML/BML.h"
 #include "BML/Bui.h"
+#include "BML/Core.h"
 #include "BML/DataShare.h"
 #include "BML/IConfig.h"
 #include "BML/InputHook.h"
@@ -197,6 +198,66 @@ void BMLAS_ResetSRTimer() {
 float BMLAS_GetSRTime() {
     ModContext *ctx = nullptr;
     return RequireLoadedContext(ctx) ? ctx->GetSRTime() : 0.0f;
+}
+
+void BMLAS_CoreUI_SendMessage(const std::string &message) {
+    BML::Core::UI::SendMessage(message.c_str());
+}
+
+void BMLAS_CoreUI_ClearMessages() {
+    BML::Core::UI::ClearMessages();
+}
+
+void BMLAS_CoreMenu_OpenModsMenu() {
+    BML::Core::Menu::OpenModsMenu();
+}
+
+void BMLAS_CoreMenu_CloseModsMenu() {
+    BML::Core::Menu::CloseModsMenu();
+}
+
+void BMLAS_CoreMenu_OpenMapMenu() {
+    BML::Core::Menu::OpenMapMenu();
+}
+
+void BMLAS_CoreMenu_CloseMapMenu() {
+    BML::Core::Menu::CloseMapMenu();
+}
+
+int BMLAS_CoreHUD_GetMode() {
+    return BML::Core::HUD::GetMode();
+}
+
+void BMLAS_CoreHUD_SetMode(int mode) {
+    BML::Core::HUD::SetMode(mode);
+}
+
+void BMLAS_CoreHUD_ShowTitle(bool show) {
+    BML::Core::HUD::ShowTitle(show);
+}
+
+void BMLAS_CoreHUD_ShowFPS(bool show) {
+    BML::Core::HUD::ShowFPS(show);
+}
+
+void BMLAS_CoreHUD_ShowSRTimer(bool show) {
+    BML::Core::HUD::ShowSRTimer(show);
+}
+
+void BMLAS_CoreHUD_StartSRTimer() {
+    BML::Core::HUD::StartSRTimer();
+}
+
+void BMLAS_CoreHUD_PauseSRTimer() {
+    BML::Core::HUD::PauseSRTimer();
+}
+
+void BMLAS_CoreHUD_ResetSRTimer() {
+    BML::Core::HUD::ResetSRTimer();
+}
+
+float BMLAS_CoreHUD_GetSRTime() {
+    return BML::Core::HUD::GetSRTime();
 }
 
 void BMLAS_SkipRenderForNextTick() {
@@ -3827,6 +3888,8 @@ static const ScriptUiEnumValueRegistration kFontTypeRegistrations[] = {
 };
 
 static const ScriptUiFunctionRegistration kUiFunctionRegistrations[] = {
+    {"void SendMessage(const string &in message)", "BML::UI::SendMessage", asFUNCTION(BMLAS_CoreUI_SendMessage), asCALL_CDECL},
+    {"void ClearMessages()", "BML::UI::ClearMessages", asFUNCTION(BMLAS_CoreUI_ClearMessages), asCALL_CDECL},
     {"void SetCursorCoord(float x, float y)", "BML::UI::SetCursorCoord", asFUNCTION(BMLAS_UI_SetCursorCoord), asCALL_CDECL},
     {"float CoordToPixelX(float x)", "BML::UI::CoordToPixelX", asFUNCTION(BMLAS_UI_CoordToPixelX), asCALL_CDECL},
     {"float CoordToPixelY(float y)", "BML::UI::CoordToPixelY", asFUNCTION(BMLAS_UI_CoordToPixelY), asCALL_CDECL},
@@ -3907,6 +3970,25 @@ static const ScriptGlobalFunctionRegistration kPathFunctionRegistrations[] = {
     {"string FileName(const string &in path)", "BML::Path::FileName", asFUNCTION(BMLAS_GetFileNameUtf8), asCALL_CDECL},
     {"string Extension(const string &in path)", "BML::Path::Extension", asFUNCTION(BMLAS_GetExtensionUtf8), asCALL_CDECL},
     {"string RemoveExtension(const string &in path)", "BML::Path::RemoveExtension", asFUNCTION(BMLAS_RemoveExtensionUtf8), asCALL_CDECL},
+};
+
+static const ScriptGlobalFunctionRegistration kMenuFunctionRegistrations[] = {
+    {"void OpenModsMenu()", "BML::Menu::OpenModsMenu", asFUNCTION(BMLAS_CoreMenu_OpenModsMenu), asCALL_CDECL},
+    {"void CloseModsMenu()", "BML::Menu::CloseModsMenu", asFUNCTION(BMLAS_CoreMenu_CloseModsMenu), asCALL_CDECL},
+    {"void OpenMapMenu()", "BML::Menu::OpenMapMenu", asFUNCTION(BMLAS_CoreMenu_OpenMapMenu), asCALL_CDECL},
+    {"void CloseMapMenu()", "BML::Menu::CloseMapMenu", asFUNCTION(BMLAS_CoreMenu_CloseMapMenu), asCALL_CDECL},
+};
+
+static const ScriptGlobalFunctionRegistration kHudFunctionRegistrations[] = {
+    {"int GetMode()", "BML::HUD::GetMode", asFUNCTION(BMLAS_CoreHUD_GetMode), asCALL_CDECL},
+    {"void SetMode(int mode)", "BML::HUD::SetMode", asFUNCTION(BMLAS_CoreHUD_SetMode), asCALL_CDECL},
+    {"void ShowTitle(bool show)", "BML::HUD::ShowTitle", asFUNCTION(BMLAS_CoreHUD_ShowTitle), asCALL_CDECL},
+    {"void ShowFPS(bool show)", "BML::HUD::ShowFPS", asFUNCTION(BMLAS_CoreHUD_ShowFPS), asCALL_CDECL},
+    {"void ShowSRTimer(bool show)", "BML::HUD::ShowSRTimer", asFUNCTION(BMLAS_CoreHUD_ShowSRTimer), asCALL_CDECL},
+    {"void StartSRTimer()", "BML::HUD::StartSRTimer", asFUNCTION(BMLAS_CoreHUD_StartSRTimer), asCALL_CDECL},
+    {"void PauseSRTimer()", "BML::HUD::PauseSRTimer", asFUNCTION(BMLAS_CoreHUD_PauseSRTimer), asCALL_CDECL},
+    {"void ResetSRTimer()", "BML::HUD::ResetSRTimer", asFUNCTION(BMLAS_CoreHUD_ResetSRTimer), asCALL_CDECL},
+    {"float GetSRTime()", "BML::HUD::GetSRTime", asFUNCTION(BMLAS_CoreHUD_GetSRTime), asCALL_CDECL},
 };
 
 static const ScriptGlobalFunctionRegistration kCkFunctionRegistrations[] = {
@@ -4071,6 +4153,8 @@ bool CheckScriptFacadeRegistrationSurface() {
     const ScriptGlobalFunctionRegistration *globalFunctionGroups[] = {
         kGlobalFunctionRegistrations,
         kPathFunctionRegistrations,
+        kMenuFunctionRegistrations,
+        kHudFunctionRegistrations,
         kCkFunctionRegistrations,
         kPhysicsFunctionRegistrations,
         kTextFunctionRegistrations,
@@ -4078,6 +4162,8 @@ bool CheckScriptFacadeRegistrationSurface() {
     const std::size_t globalFunctionGroupSizes[] = {
         std::size(kGlobalFunctionRegistrations),
         std::size(kPathFunctionRegistrations),
+        std::size(kMenuFunctionRegistrations),
+        std::size(kHudFunctionRegistrations),
         std::size(kCkFunctionRegistrations),
         std::size(kPhysicsFunctionRegistrations),
         std::size(kTextFunctionRegistrations),
@@ -4198,6 +4284,12 @@ int RegisterScriptGlobalFunctions(asIScriptEngine *engine, const char **errorMes
     const int pathResult = RegisterScriptGlobalFunctionList(engine, errorMessage, "BML::Path", kPathFunctionRegistrations);
     if (pathResult < 0)
         return pathResult;
+    const int menuResult = RegisterScriptGlobalFunctionList(engine, errorMessage, "BML::Menu", kMenuFunctionRegistrations);
+    if (menuResult < 0)
+        return menuResult;
+    const int hudResult = RegisterScriptGlobalFunctionList(engine, errorMessage, "BML::HUD", kHudFunctionRegistrations);
+    if (hudResult < 0)
+        return hudResult;
     const int ckResult = RegisterScriptGlobalFunctionList(engine, errorMessage, "BML::CK", kCkFunctionRegistrations);
     if (ckResult < 0)
         return ckResult;

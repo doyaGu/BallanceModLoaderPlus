@@ -320,6 +320,29 @@ class BMLBindingsSmokeMod {
                 " srHud=" + BoolText((originalHud & BML::HUD_SR) != 0) +
                 " currentContext=" + BoolText(hasCurrent) +
                 " srTimeOk=" + BoolText(ctx.GetSRTime() >= 0.0f && ctx.GetSRTime() >= 0.0f));
+    int coreHud = BML::HUD::GetMode();
+    BML::HUD::SetMode(coreHud);
+    BML::HUD::ShowTitle((coreHud & BML::HUD_TITLE) != 0);
+    BML::HUD::ShowFPS((coreHud & BML::HUD_FPS) != 0);
+    BML::HUD::ShowSRTimer(false);
+    BML::HUD::PauseSRTimer();
+    BML::HUD::StartSRTimer();
+    BML::HUD::PauseSRTimer();
+    BML::HUD::ResetSRTimer();
+    BML::HUD::ShowSRTimer(false);
+    BML::UI::SendMessage("BML core capability UI smoke");
+    BML::UI::ClearMessages();
+    BML::Menu::OpenModsMenu();
+    BML::Menu::CloseModsMenu();
+    BML::Menu::OpenMapMenu();
+    BML::Menu::CloseMapMenu();
+    BML::ModRef@ bmlMod = ctx.FindMod("BML");
+    BML::ExportRef@ coreMessage = null;
+    int rawCoreStatus = bmlMod !is null ? bmlMod.TryFindExport("ui.message.add", coreMessage, "void(string)") : BML::ERROR_INTEROP_TARGET_NOT_FOUND;
+    LogInfo(ctx, "BML core capability facade smoke: hud=" + coreHud +
+                " srTimeOk=" + BoolText(BML::HUD::GetSRTime() >= 0.0f) +
+                " rawMessage=" + rawCoreStatus +
+                " rawHandle=" + BoolText(coreMessage !is null));
     LogInfo(ctx, "BML ctx directories: game=" + BoolText(ctx.GetDirectoryUtf8(BML::DIR_GAME) != "") +
                 " loader=" + BoolText(ctx.GetDirectoryUtf8(BML::DIR_LOADER) != "") +
                 " config=" + BoolText(ctx.GetDirectoryUtf8(BML::DIR_CONFIG) != "") +
