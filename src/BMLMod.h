@@ -104,6 +104,8 @@ private:
     void InitConfigs();
     void InitGUI();
     void RegisterCommands();
+    void RegisterCoreCapabilityExports();
+    void UnregisterCoreCapabilityExports();
 
     void OnEditScript_Base_EventHandler(CKBehavior *script);
     void OnEditScript_Menu_MenuInit(CKBehavior *script);

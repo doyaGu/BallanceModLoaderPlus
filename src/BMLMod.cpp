@@ -7,6 +7,7 @@
 #include "BML/Bui.h"
 #include "BML/Gui.h"
 #include "BML/ExecuteBB.h"
+#include "BML/Interop.h"
 #include "BML/ScriptHelper.h"
 #include "BML/Guids/Logics.h"
 #include "BML/Guids/Interface.h"
@@ -26,6 +27,135 @@ namespace ExecuteBB {
 }
 
 using namespace ScriptHelper;
+
+namespace {
+
+using BMLCoreExportCallback = int (*)(BML_CallFrame *, void *);
+
+struct BMLCoreExportRegistration {
+    const char *Name;
+    const char *Signature;
+    BMLCoreExportCallback Callback;
+};
+
+static BMLMod *AsBMLMod(void *userdata) {
+    return static_cast<BMLMod *>(userdata);
+}
+
+static int CoreMessageAdd(BML_CallFrame *frame, void *userdata) {
+    const char *message = nullptr;
+    size_t size = 0;
+    const int status = BML_CallFrame_BorrowString(frame, 0, &message, &size);
+    if (status != BML_OK)
+        return status;
+    const std::string text = message ? std::string(message, size) : std::string();
+    AsBMLMod(userdata)->AddIngameMessage(text.c_str());
+    return BML_OK;
+}
+
+static int CoreMessageClear(BML_CallFrame *, void *userdata) {
+    AsBMLMod(userdata)->ClearIngameMessages();
+    return BML_OK;
+}
+
+static int CoreModsMenuOpen(BML_CallFrame *, void *userdata) {
+    AsBMLMod(userdata)->OpenModsMenu();
+    return BML_OK;
+}
+
+static int CoreModsMenuClose(BML_CallFrame *, void *userdata) {
+    AsBMLMod(userdata)->CloseModsMenu();
+    return BML_OK;
+}
+
+static int CoreMapMenuOpen(BML_CallFrame *, void *userdata) {
+    AsBMLMod(userdata)->OpenMapMenu();
+    return BML_OK;
+}
+
+static int CoreMapMenuClose(BML_CallFrame *, void *userdata) {
+    AsBMLMod(userdata)->CloseMapMenu();
+    return BML_OK;
+}
+
+static int CoreHudGet(BML_CallFrame *frame, void *userdata) {
+    return BML_CallFrame_SetResultInt(frame, AsBMLMod(userdata)->GetHUD());
+}
+
+static int CoreHudSet(BML_CallFrame *frame, void *userdata) {
+    int mode = 0;
+    const int status = BML_CallFrame_GetInt(frame, 0, &mode);
+    if (status != BML_OK)
+        return status;
+    AsBMLMod(userdata)->SetHUD(mode);
+    return BML_OK;
+}
+
+static int CoreHudTitleShow(BML_CallFrame *frame, void *userdata) {
+    int show = 0;
+    const int status = BML_CallFrame_GetBool(frame, 0, &show);
+    if (status != BML_OK)
+        return status;
+    AsBMLMod(userdata)->ShowTitle(show != 0);
+    return BML_OK;
+}
+
+static int CoreHudFpsShow(BML_CallFrame *frame, void *userdata) {
+    int show = 0;
+    const int status = BML_CallFrame_GetBool(frame, 0, &show);
+    if (status != BML_OK)
+        return status;
+    AsBMLMod(userdata)->ShowFPS(show != 0);
+    return BML_OK;
+}
+
+static int CoreHudSrShow(BML_CallFrame *frame, void *userdata) {
+    int show = 0;
+    const int status = BML_CallFrame_GetBool(frame, 0, &show);
+    if (status != BML_OK)
+        return status;
+    AsBMLMod(userdata)->ShowSRTimer(show != 0);
+    return BML_OK;
+}
+
+static int CoreHudSrStart(BML_CallFrame *, void *userdata) {
+    AsBMLMod(userdata)->StartSRTimer();
+    return BML_OK;
+}
+
+static int CoreHudSrPause(BML_CallFrame *, void *userdata) {
+    AsBMLMod(userdata)->PauseSRTimer();
+    return BML_OK;
+}
+
+static int CoreHudSrReset(BML_CallFrame *, void *userdata) {
+    AsBMLMod(userdata)->ResetSRTimer();
+    return BML_OK;
+}
+
+static int CoreHudSrTime(BML_CallFrame *frame, void *userdata) {
+    return BML_CallFrame_SetResultFloat(frame, AsBMLMod(userdata)->GetSRTime());
+}
+
+static const BMLCoreExportRegistration kCoreExports[] = {
+    {"ui.message.add", "void(string)", CoreMessageAdd},
+    {"ui.message.clear", "void()", CoreMessageClear},
+    {"ui.menu.mods.open", "void()", CoreModsMenuOpen},
+    {"ui.menu.mods.close", "void()", CoreModsMenuClose},
+    {"ui.menu.maps.open", "void()", CoreMapMenuOpen},
+    {"ui.menu.maps.close", "void()", CoreMapMenuClose},
+    {"ui.hud.get", "int()", CoreHudGet},
+    {"ui.hud.set", "void(int)", CoreHudSet},
+    {"ui.hud.title.show", "void(bool)", CoreHudTitleShow},
+    {"ui.hud.fps.show", "void(bool)", CoreHudFpsShow},
+    {"ui.hud.sr.show", "void(bool)", CoreHudSrShow},
+    {"ui.hud.sr.start", "void()", CoreHudSrStart},
+    {"ui.hud.sr.pause", "void()", CoreHudSrPause},
+    {"ui.hud.sr.reset", "void()", CoreHudSrReset},
+    {"ui.hud.sr.time", "float()", CoreHudSrTime},
+};
+
+} // namespace
 
 static ImFont *LoadFont(const char *filename, float size, const char *ranges, bool merge = false) {
     ImGuiIO &io = ImGui::GetIO();
@@ -160,9 +290,12 @@ void BMLMod::OnLoad() {
     // Apply initial FPS update frequency setting
     SetFPSUpdateFrequency(m_FPSUpdateFrequency->GetInteger());
 
+    RegisterCoreCapabilityExports();
 }
 
 void BMLMod::OnUnload() {
+    UnregisterCoreCapabilityExports();
+
     m_CommandBar.SaveHistory();
 
     Bui::CleanupResources(m_CKContext);
@@ -190,6 +323,25 @@ void BMLMod::OnUnload() {
     // Clear containers
     m_WindowRect = VxRect();
     m_OldWindowRect = VxRect();
+}
+
+void BMLMod::RegisterCoreCapabilityExports() {
+    for (const BMLCoreExportRegistration &registration : kCoreExports) {
+        const int status = BML_RegisterNativeModExport(GetID(),
+                                                       registration.Name,
+                                                       registration.Signature,
+                                                       registration.Callback,
+                                                       this);
+        if (status != BML_OK && status != BML_ERROR_ALREADY_EXISTS)
+            GetLogger()->Warn("Failed to register BML core export %s (%s): %s",
+                              registration.Name,
+                              registration.Signature,
+                              BML_GetErrorString(status));
+    }
+}
+
+void BMLMod::UnregisterCoreCapabilityExports() {
+    BML_UnregisterNativeModExports(GetID());
 }
 
 void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,

@@ -11,6 +11,8 @@
 #include "BML/IMod.h"
 #include "BML/DataShare.h"
 #include "BML/Interop.h"
+#include "BML/Import.h"
+#include "BML/Core.h"
 
 #include "BML/Gui.h"
 #include "BML/InputHook.h"

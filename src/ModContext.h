@@ -15,6 +15,7 @@
 #include "DataShare.hpp"
 #include "CommandContext.h"
 #include "HookUtils.h"
+#include "BuiltinCapabilityImports.h"
 
 typedef enum DirectoryType {
     BML_DIR_WORKING = 0,
@@ -396,6 +397,7 @@ private:
 
     InputHook *m_InputHook = nullptr;
 
+    BuiltinCapabilityImports m_BuiltinCapabilities;
     BMLMod *m_BMLMod = nullptr;
     NewBallTypeMod *m_BallTypeMod = nullptr;
 #if BML_ENABLE_ANGELSCRIPT

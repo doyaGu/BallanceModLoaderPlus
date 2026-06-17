@@ -1,4 +1,5 @@
 #include "BML/IMod.h"
+#include "BML/Import.h"
 #include "BML/Interop.h"
 
 #include <cstdint>
@@ -243,6 +244,7 @@ public:
         RunNativeExportLifecycleSmoke();
         RunNativeExportHardeningSmoke();
         RunNativeExtendedExportSmoke();
+        RunCoreCapabilitySmoke();
     }
 
     void OnUnload() override {
@@ -511,6 +513,33 @@ private:
                           stringArrayCount,
                           objectStatus,
                           objectResult);
+    }
+
+    void RunCoreCapabilitySmoke() {
+        BML::Import<int()> getHud;
+        int hud = -1;
+        int getStatus = getHud.Bind("BML", "ui.hud.get", "int()");
+        if (getStatus == BML_OK)
+            getStatus = getHud.Invoke(hud);
+
+        BML::Import<void(int)> setHud;
+        int setStatus = setHud.Bind("BML", "ui.hud.set", "void(int)");
+        if (getStatus == BML_OK && setStatus == BML_OK)
+            setStatus = setHud.Invoke(hud);
+
+        BML_ModExport *messageHandle = nullptr;
+        const int rawMessageStatus = BML_FindModExportEx("BML",
+                                                         "ui.message.add",
+                                                         "void(string)",
+                                                         &messageHandle);
+        if (messageHandle)
+            BML_ReleaseModExport(messageHandle);
+
+        GetLogger()->Info("BML native core capability smoke get=%d hud=%d set=%d rawMessage=%d",
+                          getStatus,
+                          hud,
+                          setStatus,
+                          rawMessageStatus);
     }
 
     void RunNativeToScriptExportSmoke() {

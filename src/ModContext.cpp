@@ -961,23 +961,19 @@ void ModContext::ExitGame() {
 
 void ModContext::OpenModsMenu() {
     m_Logger->Info("Open Mods Menu");
-    if (m_BMLMod)
-        m_BMLMod->OpenModsMenu();
+    m_BuiltinCapabilities.OpenModsMenu();
 }
 
 void ModContext::CloseModsMenu() {
-    if (m_BMLMod)
-        m_BMLMod->CloseModsMenu();
+    m_BuiltinCapabilities.CloseModsMenu();
 }
 
 void ModContext::OpenMapMenu() {
-    if (m_BMLMod)
-        m_BMLMod->OpenMapMenu();
+    m_BuiltinCapabilities.OpenMapMenu();
 }
 
 void ModContext::CloseMapMenu() {
-    if (m_BMLMod)
-        m_BMLMod->CloseMapMenu();
+    m_BuiltinCapabilities.CloseMapMenu();
 }
 
 void ModContext::EnableCheat(bool enable) {
@@ -988,16 +984,15 @@ void ModContext::EnableCheat(bool enable) {
 }
 
 void ModContext::SendIngameMessage(const char *msg) {
-    m_CommandContext.Output(msg);
+    m_BuiltinCapabilities.SendIngameMessage(msg);
 }
 
 void ModContext::ClearIngameMessages() {
-    if (m_BMLMod)
-        m_BMLMod->ClearIngameMessages();
+    m_BuiltinCapabilities.ClearIngameMessages();
 }
 
 float ModContext::GetSRScore() {
-    return m_BMLMod->GetSRScore();
+    return m_BuiltinCapabilities.GetSRTime();
 }
 
 int ModContext::GetHSScore() {
@@ -1005,46 +1000,39 @@ int ModContext::GetHSScore() {
 }
 
 int ModContext::GetHUD() {
-    return m_BMLMod ? m_BMLMod->GetHUD() : 0;
+    return m_BuiltinCapabilities.GetHUD();
 }
 
 void ModContext::SetHUD(int mode) {
-    if (m_BMLMod)
-        m_BMLMod->SetHUD(mode);
+    m_BuiltinCapabilities.SetHUD(mode);
 }
 
 void ModContext::ShowTitle(bool show) {
-    if (m_BMLMod)
-        m_BMLMod->ShowTitle(show);
+    m_BuiltinCapabilities.ShowTitle(show);
 }
 
 void ModContext::ShowFPS(bool show) {
-    if (m_BMLMod)
-        m_BMLMod->ShowFPS(show);
+    m_BuiltinCapabilities.ShowFPS(show);
 }
 
 void ModContext::ShowSRTimer(bool show) {
-    if (m_BMLMod)
-        m_BMLMod->ShowSRTimer(show);
+    m_BuiltinCapabilities.ShowSRTimer(show);
 }
 
 void ModContext::StartSRTimer() {
-    if (m_BMLMod)
-        m_BMLMod->StartSRTimer();
+    m_BuiltinCapabilities.StartSRTimer();
 }
 
 void ModContext::PauseSRTimer() {
-    if (m_BMLMod)
-        m_BMLMod->PauseSRTimer();
+    m_BuiltinCapabilities.PauseSRTimer();
 }
 
 void ModContext::ResetSRTimer() {
-    if (m_BMLMod)
-        m_BMLMod->ResetSRTimer();
+    m_BuiltinCapabilities.ResetSRTimer();
 }
 
 float ModContext::GetSRTime() {
-    return m_BMLMod ? m_BMLMod->GetSRTime() : 0.0f;
+    return m_BuiltinCapabilities.GetSRTime();
 }
 
 void ModContext::SkipRenderForNextTick() {

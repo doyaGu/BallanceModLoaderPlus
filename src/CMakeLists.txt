@@ -41,6 +41,8 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/IMod.h
         ${BML_INCLUDE_DIR}/BML/DataShare.h
         ${BML_INCLUDE_DIR}/BML/Interop.h
+        ${BML_INCLUDE_DIR}/BML/Import.h
+        ${BML_INCLUDE_DIR}/BML/Core.h
 
         ${BML_INCLUDE_DIR}/BML/Bui.h
         ${BML_INCLUDE_DIR}/BML/Gui.h
@@ -55,6 +57,7 @@ set(BML_PUBLIC_HEADERS
 set(BML_PRIVATE_HEADERS
         ModManager.h
         ModContext.h
+        BuiltinCapabilityImports.h
 
         BMLMod.h
         NewBallTypeMod.h
@@ -92,6 +95,7 @@ set(BML_SOURCES
         HookBlock.cpp
         ModManager.cpp
         ModContext.cpp
+        BuiltinCapabilityImports.cpp
 
         IMod.cpp
         BMLMod.cpp
