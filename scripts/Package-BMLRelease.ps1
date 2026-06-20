@@ -70,6 +70,29 @@ BMLPlus.dll. Keep the two DLLs together when deploying this release.
 "@ | Set-Content -Path (Join-Path $DestinationDir 'CKAngelScript-README.txt') -Encoding UTF8
 }
 
+function Write-UpdaterBootstrapReadme {
+    param(
+        [string]$DestinationDir,
+        [string]$Version
+    )
+
+    New-Item -ItemType Directory -Path $DestinationDir -Force | Out-Null
+@"
+BML+ Updater
+
+Bin\Updater.exe updates BML+ runtime files only. It does not install, remove, or
+change mods and configs.
+
+Use BMLPlus-$Version.zip for manual installation. BMLPlus-Update-$Version.zip is
+only for Bin\Updater.exe apply-local/verify-local and is not a manual install
+package.
+
+This release does not self-update Bin\Updater.exe. If an old updater reports
+detached signature verification failure, install the latest manual package once
+to bootstrap Bin\Updater.exe, then use updater packages afterwards.
+"@ | Set-Content -Path (Join-Path $DestinationDir 'Updater-README.txt') -Encoding UTF8
+}
+
 function Get-RelativeZipPath {
     param(
         [string]$BaseDir,
@@ -79,6 +102,33 @@ function Get-RelativeZipPath {
     $baseUri = [System.Uri](([System.IO.Path]::GetFullPath($BaseDir).TrimEnd('\') + '\'))
     $pathUri = [System.Uri]([System.IO.Path]::GetFullPath($Path))
     return [System.Uri]::UnescapeDataString($baseUri.MakeRelativeUri($pathUri).ToString())
+}
+
+function Get-BMLVersionHeaderFullVersion {
+    param([string]$VersionHeaderPath)
+
+    Assert-BMLPath -Path $VersionHeaderPath -Type Leaf
+    $match = Select-String -LiteralPath $VersionHeaderPath -Pattern '^\s*#define\s+BML_VERSION_FULL\s+"([^"]+)"\s*$' | Select-Object -First 1
+    if (-not $match) {
+        throw "Unable to read BML_VERSION_FULL from $VersionHeaderPath"
+    }
+    return $match.Matches[0].Groups[1].Value
+}
+
+function Assert-BMLBinaryVersionMatchesHeader {
+    param(
+        [string]$BinaryPath,
+        [string]$VersionHeaderPath,
+        [string]$Label
+    )
+
+    Assert-BMLPath -Path $BinaryPath -Type Leaf
+    $expected = Get-BMLVersionHeaderFullVersion -VersionHeaderPath $VersionHeaderPath
+    $versionInfo = (Get-Item -LiteralPath $BinaryPath).VersionInfo
+    $actual = if ($versionInfo.ProductVersion) { $versionInfo.ProductVersion } else { $versionInfo.FileVersion }
+    if ($actual -ne $expected) {
+        throw "$Label version resource mismatch: binary has '$actual', Version.h has '$expected'. Rebuild the target before packaging."
+    }
 }
 
 function Test-UpdaterManagedPath {
@@ -270,6 +320,15 @@ foreach ($path in @(
     Assert-BMLPath -Path $path -Type Leaf
 }
 
+Assert-BMLBinaryVersionMatchesHeader `
+    -BinaryPath (Join-Path $releaseBin 'BMLPlus.dll') `
+    -VersionHeaderPath (Join-Path $releaseInstall 'include\BML\Version.h') `
+    -Label 'Release BMLPlus.dll'
+Assert-BMLBinaryVersionMatchesHeader `
+    -BinaryPath (Join-Path $debugInstall 'bin\BMLPlus.dll') `
+    -VersionHeaderPath (Join-Path $debugInstall 'include\BML\Version.h') `
+    -Label 'Debug BMLPlus.dll'
+
 if ($IncludeAngelScript) {
     Assert-BMLPath -Path (Join-Path $layout.ScriptsRoot 'Pack-BMLScriptMod.ps1') -Type Leaf
     foreach ($doc in $scriptSdkDocs) {
@@ -291,6 +350,7 @@ New-BMLCleanDirectory $runtimeStage
 Copy-Item -Path (Join-Path $runtimeSource '*') -Destination $runtimeStage -Recurse
 Copy-RequiredFile -Source (Join-Path $releaseBin 'BMLPlus.dll') -Destination (Join-Path $runtimeStage 'BuildingBlocks\BMLPlus.dll')
 Copy-RequiredFile -Source (Join-Path $releaseBin 'Updater.exe') -Destination (Join-Path $runtimeStage 'Bin\Updater.exe')
+Write-UpdaterBootstrapReadme -DestinationDir (Join-Path $runtimeStage 'Bin') -Version $Version
 Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'LICENSE') -Destination (Join-Path $runtimeStage 'LICENSE')
 Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'README.md') -Destination (Join-Path $runtimeStage 'README.md')
 Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'README_zh-CN.md') -Destination (Join-Path $runtimeStage 'README_zh-CN.md')
@@ -310,6 +370,7 @@ $updaterStage = Join-Path $stageRoot 'updater-runtime'
 Copy-BMLDirectoryFresh -SourceDir $runtimeStage -DestinationDir $updaterStage
 foreach ($forbidden in @(
     (Join-Path $updaterStage 'Bin\Updater.exe'),
+    (Join-Path $updaterStage 'Bin\Updater-README.txt'),
     (Join-Path $updaterStage 'ModLoader\Mods'),
     (Join-Path $updaterStage 'ModLoader\Configs')
 )) {

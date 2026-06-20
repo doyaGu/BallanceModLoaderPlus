@@ -240,7 +240,9 @@ namespace bmlupdater {
             return Result::Failure("Updater public key is not configured");
         }
         if (!utils::VerifyEcdsaP256Sha256RawSignature(x, y, digest.data(), signature.data())) {
-            return Result::Failure("Detached signature verification failed");
+            return Result::Failure(
+                "Detached signature verification failed. This updater may be stale or built with a different public key; "
+                "install the latest manual BMLPlus package once to bootstrap Bin/Updater.exe.");
         }
         return Result::Success();
     }
