@@ -145,12 +145,30 @@ function New-BMLZipFromDirectory {
         Remove-Item -LiteralPath $ZipPath -Force
     }
 
-    $items = Get-ChildItem -LiteralPath $SourceDir -Force
-    if (-not $items) {
+    $files = @(Get-ChildItem -LiteralPath $SourceDir -File -Recurse -Force)
+    if (-not $files) {
         throw "Cannot package empty directory: $SourceDir"
     }
 
-    Compress-Archive -Path (Join-Path $SourceDir '*') -DestinationPath $ZipPath -CompressionLevel Optimal
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    New-Item -ItemType Directory -Path (Split-Path -Parent $ZipPath) -Force | Out-Null
+    $sourceFull = [System.IO.Path]::GetFullPath($SourceDir).TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    $zip = [System.IO.Compression.ZipFile]::Open($ZipPath, [System.IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($file in $files) {
+            $fileFull = [System.IO.Path]::GetFullPath($file.FullName)
+            $relative = $fileFull.Substring($sourceFull.Length).Replace('\', '/')
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                $zip,
+                $fileFull,
+                $relative,
+                [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+        }
+    } finally {
+        $zip.Dispose()
+    }
 }
 
 function Get-BMLOptionalHash {

@@ -23,7 +23,11 @@ param(
 
     [string]$CKAngelScriptRuntimeDir,
 
-    [switch]$IncludeAngelScript
+    [switch]$IncludeAngelScript,
+
+    [string]$SigningCngKeyName,
+
+    [switch]$SkipUpdateSigning
 )
 
 Set-StrictMode -Version Latest
@@ -66,6 +70,109 @@ BMLPlus.dll. Keep the two DLLs together when deploying this release.
 "@ | Set-Content -Path (Join-Path $DestinationDir 'CKAngelScript-README.txt') -Encoding UTF8
 }
 
+function Get-RelativeZipPath {
+    param(
+        [string]$BaseDir,
+        [string]$Path
+    )
+
+    $baseUri = [System.Uri](([System.IO.Path]::GetFullPath($BaseDir).TrimEnd('\') + '\'))
+    $pathUri = [System.Uri]([System.IO.Path]::GetFullPath($Path))
+    return [System.Uri]::UnescapeDataString($baseUri.MakeRelativeUri($pathUri).ToString())
+}
+
+function Test-UpdaterManagedPath {
+    param([string]$RelativePath)
+
+    $lower = $RelativePath.ToLowerInvariant()
+    if ($lower -eq 'bin/updater.exe') {
+        return $false
+    }
+    if ($lower.StartsWith('modloader/mods/') -or $lower.StartsWith('modloader/configs/')) {
+        return $false
+    }
+    if ($RelativePath.Contains('\') -or $RelativePath.Contains(':') -or $RelativePath.StartsWith('/')) {
+        return $false
+    }
+    foreach ($segment in $RelativePath.Split('/')) {
+        if (-not $segment -or $segment -eq '.' -or $segment -eq '..' -or $segment.EndsWith('.') -or $segment.EndsWith(' ')) {
+            return $false
+        }
+    }
+    return $true
+}
+
+function New-UpdaterManifestObject {
+    param(
+        [string]$Version,
+        [string]$PackagePath,
+        [string]$PackageStage
+    )
+
+    $managedFiles = @()
+    foreach ($file in Get-ChildItem -LiteralPath $PackageStage -File -Recurse) {
+        $relative = Get-RelativeZipPath -BaseDir $PackageStage -Path $file.FullName
+        if (-not (Test-UpdaterManagedPath -RelativePath $relative)) {
+            throw "Updater package contains forbidden managed path: $relative"
+        }
+        $managedFiles += [pscustomobject]@{
+            path = $relative
+            sha256 = ((Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant())
+            size = $file.Length
+        }
+    }
+
+    return [ordered]@{
+        schemaVersion = 1
+        version = $Version
+        package = [ordered]@{
+            fileName = [System.IO.Path]::GetFileName($PackagePath)
+            sha256 = ((Get-FileHash -LiteralPath $PackagePath -Algorithm SHA256).Hash.ToLowerInvariant())
+        }
+        managedFiles = $managedFiles
+        preserve = @()
+        removeFiles = @()
+    }
+}
+
+function Write-UpdaterManifestSignature {
+    param(
+        [string]$ManifestPath,
+        [string]$SignaturePath,
+        [string]$CngKeyName
+    )
+
+    if (-not $CngKeyName) {
+        throw 'Updater manifest signing requires -SigningCngKeyName, or pass -SkipUpdateSigning for local unsigned packaging.'
+    }
+
+    $key = [System.Security.Cryptography.CngKey]::Open($CngKeyName)
+    $ecdsa = [System.Security.Cryptography.ECDsaCng]::new($key)
+    try {
+        $bytes = [System.IO.File]::ReadAllBytes($ManifestPath)
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        $hash = $sha.ComputeHash($bytes)
+        $signature = $ecdsa.SignHash($hash)
+        if ($signature.Length -ne 64) {
+            throw "CNG ECDSA signature must be IEEE P1363 r||s format; got $($signature.Length) bytes."
+        }
+        [System.IO.File]::WriteAllText($SignaturePath, [System.Convert]::ToBase64String($signature), [System.Text.Encoding]::ASCII)
+    } finally {
+        $ecdsa.Dispose()
+        $key.Dispose()
+    }
+}
+
+function Write-Utf8NoBomText {
+    param(
+        [string]$Path,
+        [string]$Text
+    )
+
+    $encoding = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($Path, $Text, $encoding)
+}
+
 function Get-CKAngelScriptRuntimeDll {
     param([string]$RootDir)
 
@@ -79,7 +186,12 @@ function Get-CKAngelScriptRuntimeDll {
         return $buildingBlocksDll
     }
 
-    throw "Required CKAngelScript runtime is missing: $rootDll or $buildingBlocksDll"
+    $binDll = Join-Path $RootDir 'bin\AngelScript.dll'
+    if (Test-Path -LiteralPath $binDll -PathType Leaf) {
+        return $binDll
+    }
+
+    throw "Required CKAngelScript runtime is missing: $rootDll, $buildingBlocksDll, or $binDll"
 }
 
 function Copy-CKAngelScriptHeaders {
@@ -191,6 +303,30 @@ if ($IncludeAngelScript) {
 }
 
 New-BMLZipFromDirectory -SourceDir $runtimeStage -ZipPath (Join-Path $output "BMLPlus-$Version.zip")
+
+$updaterStage = Join-Path $stageRoot 'updater-runtime'
+Copy-BMLDirectoryFresh -SourceDir $runtimeStage -DestinationDir $updaterStage
+foreach ($forbidden in @(
+    (Join-Path $updaterStage 'Bin\Updater.exe'),
+    (Join-Path $updaterStage 'ModLoader\Mods'),
+    (Join-Path $updaterStage 'ModLoader\Configs')
+)) {
+    if (Test-Path -LiteralPath $forbidden) {
+        Remove-Item -LiteralPath $forbidden -Recurse -Force
+    }
+}
+
+$updaterZip = Join-Path $output "BMLPlus-Update-$Version.zip"
+New-BMLZipFromDirectory -SourceDir $updaterStage -ZipPath $updaterZip
+$updaterManifest = Join-Path $output "BMLPlus-Update-$Version.manifest.json"
+$manifestObject = New-UpdaterManifestObject -Version $Version -PackagePath $updaterZip -PackageStage $updaterStage
+Write-Utf8NoBomText -Path $updaterManifest -Text (($manifestObject | ConvertTo-Json -Depth 6) + "`n")
+$updaterManifestSignature = "$updaterManifest.sig"
+if ($SkipUpdateSigning) {
+    Write-Warning "Skipping updater manifest signature: $updaterManifestSignature"
+} else {
+    Write-UpdaterManifestSignature -ManifestPath $updaterManifest -SignaturePath $updaterManifestSignature -CngKeyName $SigningCngKeyName
+}
 
 $releaseSdkStage = Join-Path $stageRoot 'sdk-release'
 New-BMLCleanDirectory $releaseSdkStage
