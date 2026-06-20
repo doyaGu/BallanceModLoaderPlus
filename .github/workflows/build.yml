@@ -18,6 +18,7 @@ env:
   PROJECT_NAME: BallanceModLoaderPlus
   BASE_BUILD_DIR: ${{ github.workspace }}\build
   BASE_DIST_DIR: ${{ github.workspace }}\dist
+  CKANGELSCRIPT_VERSION: v0.2.0
 
 jobs:
   validate-release:
@@ -71,6 +72,26 @@ jobs:
           repository: doyaGu/Virtools-SDK-2.1
           path: Virtools-SDK-2.1
 
+      - name: Download CKAngelScript release
+        shell: pwsh
+        run: |
+          $downloadDir = "${{ github.workspace }}\artifacts\ckangelscript"
+          $extractDir = "${{ github.workspace }}\artifacts\ckangelscript-release"
+          New-Item -ItemType Directory -Force -Path $downloadDir, $extractDir | Out-Null
+          $archive = Join-Path $downloadDir "CKAngelScript-$env:CKANGELSCRIPT_VERSION-Release.zip"
+          $url = "https://github.com/doyaGu/CKAngelScript/releases/download/$env:CKANGELSCRIPT_VERSION/CKAngelScript-$env:CKANGELSCRIPT_VERSION-Release.zip"
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          Expand-Archive -LiteralPath $archive -DestinationPath $extractDir -Force
+          foreach ($required in @(
+            (Join-Path $extractDir 'bin\AngelScript.dll'),
+            (Join-Path $extractDir 'include\CKAngelScript.h'),
+            (Join-Path $extractDir 'include\angelscript.h')
+          )) {
+            if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
+              throw "CKAngelScript release package is missing required file: $required"
+            }
+          }
+
       - name: Show tool versions
         shell: pwsh
         run: cmake --version
@@ -88,22 +109,25 @@ jobs:
 
       - name: Configure CMake
         shell: pwsh
-        run: >
-          cmake -A Win32 -B "${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}"
-          -DCMAKE_BUILD_TYPE=${{ matrix.configuration }}
-          -DVIRTOOLS_SDK_PATH="${{ github.workspace }}\Virtools-SDK-2.1"
-          -DCMAKE_INSTALL_PREFIX="${{ env.BASE_DIST_DIR }}\${{ matrix.configuration }}"
+        run: |
+          $env:CC = "cl"
+          $env:CXX = "cl"
+          cmake -G Ninja -B "${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}" `
+            -DCMAKE_BUILD_TYPE=${{ matrix.configuration }} `
+            -DVIRTOOLS_SDK_PATH="${{ github.workspace }}\Virtools-SDK-2.1" `
+            -DBML_ENABLE_ANGELSCRIPT=ON `
+            -DCKANGELSCRIPT_ROOT="${{ github.workspace }}\artifacts\ckangelscript-release" `
+            -DCMAKE_INSTALL_PREFIX="${{ env.BASE_DIST_DIR }}\${{ matrix.configuration }}"
 
       - name: Build the project
         shell: pwsh
-        run: cmake --build "${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}" --config ${{ matrix.configuration }}
+        run: cmake --build "${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}"
 
       - name: Install binaries to distribution folder
         shell: pwsh
         run: >
           cmake --install "${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}"
           --prefix "${{ env.BASE_DIST_DIR }}\${{ matrix.configuration }}"
-          --config ${{ matrix.configuration }}
 
       - name: Upload main SDK distribution artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -126,7 +150,7 @@ jobs:
         uses: actions/upload-artifact@v7.0.1
         with:
           name: BMLPlus-${{ github.ref_name }}-Runtime-Binary
-          path: ${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}\bin\${{ matrix.configuration }}\BMLPlus.dll
+          path: ${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}\bin\BMLPlus.dll
           retention-days: 14
 
       - name: Upload debug symbols
@@ -134,7 +158,7 @@ jobs:
         uses: actions/upload-artifact@v7.0.1
         with:
           name: BMLPlus-${{ github.ref_name }}-Debug-Symbols
-          path: ${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}\bin\${{ matrix.configuration }}\BMLPlus.pdb
+          path: ${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}\bin\BMLPlus.pdb
           if-no-files-found: error
           retention-days: 14
 
@@ -171,16 +195,39 @@ jobs:
           name: BMLPlus-${{ github.ref_name }}-Debug-Symbols
           path: ${{ github.workspace }}\artifacts\debug-bin
 
+      - name: Download CKAngelScript release
+        shell: pwsh
+        run: |
+          $downloadDir = "${{ github.workspace }}\artifacts\ckangelscript"
+          $extractDir = "${{ github.workspace }}\artifacts\ckangelscript-release"
+          New-Item -ItemType Directory -Force -Path $downloadDir, $extractDir | Out-Null
+          $archive = Join-Path $downloadDir "CKAngelScript-$env:CKANGELSCRIPT_VERSION-Release.zip"
+          $url = "https://github.com/doyaGu/CKAngelScript/releases/download/$env:CKANGELSCRIPT_VERSION/CKAngelScript-$env:CKANGELSCRIPT_VERSION-Release.zip"
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          Expand-Archive -LiteralPath $archive -DestinationPath $extractDir -Force
+          foreach ($required in @(
+            (Join-Path $extractDir 'bin\AngelScript.dll'),
+            (Join-Path $extractDir 'include\CKAngelScript.h'),
+            (Join-Path $extractDir 'include\angelscript.h')
+          )) {
+            if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
+              throw "CKAngelScript release package is missing required file: $required"
+            }
+          }
+
       - name: Create release packages
         shell: pwsh
-        run: >
-          .\tools\package-release.ps1
-          -Version "${{ github.ref_name }}"
-          -ReleaseInstallDir "${{ github.workspace }}\artifacts\sdk-release"
-          -DebugInstallDir "${{ github.workspace }}\artifacts\sdk-debug"
-          -ReleaseBinaryDir "${{ github.workspace }}\artifacts\runtime-bin"
-          -DebugBinaryDir "${{ github.workspace }}\artifacts\debug-bin"
-          -OutputDir "${{ github.workspace }}\packages"
+        run: |
+          .\scripts\Package-BMLRelease.ps1 `
+            -Version "${{ github.ref_name }}" `
+            -ReleaseInstallDir "${{ github.workspace }}\artifacts\sdk-release" `
+            -DebugInstallDir "${{ github.workspace }}\artifacts\sdk-debug" `
+            -ReleaseBinaryDir "${{ github.workspace }}\artifacts\runtime-bin" `
+            -DebugBinaryDir "${{ github.workspace }}\artifacts\debug-bin" `
+            -OutputDir "${{ github.workspace }}\packages" `
+            -CKAngelScriptRuntimeDir "${{ github.workspace }}\artifacts\ckangelscript-release" `
+            -IncludeAngelScript `
+            -SkipUpdateSigning
 
       - name: Upload release package artifact
         uses: actions/upload-artifact@v7.0.1
@@ -214,8 +261,8 @@ jobs:
         run: |
           $tag = $env:GITHUB_REF_NAME
           $assets = @(Get-ChildItem -LiteralPath "${{ github.workspace }}\packages" -Filter '*.zip')
-          if ($assets.Count -ne 3) {
-            throw "Expected 3 release packages, found $($assets.Count)"
+          if ($assets.Count -ne 4) {
+            throw "Expected 4 release packages, found $($assets.Count)"
           }
 
           $assetPaths = @($assets | ForEach-Object { $_.FullName })
