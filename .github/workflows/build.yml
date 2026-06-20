@@ -220,6 +220,7 @@ jobs:
       - name: Create release packages
         env:
           UPDATER_BASE_URL: ${{ vars.BML_UPDATER_BASE_URL }}
+          UPDATER_DEFAULT_CHANNEL: ${{ vars.BML_UPDATER_DEFAULT_CHANNEL }}
         shell: pwsh
         run: |
           $packageArgs = @(
@@ -235,6 +236,9 @@ jobs:
           )
           if ($env:UPDATER_BASE_URL) {
             $packageArgs += @('-UpdaterBaseUrl', $env:UPDATER_BASE_URL)
+            if ($env:UPDATER_DEFAULT_CHANNEL) {
+              $packageArgs += @('-UpdaterDefaultChannel', $env:UPDATER_DEFAULT_CHANNEL)
+            }
           }
           .\scripts\Package-BMLRelease.ps1 @packageArgs
 

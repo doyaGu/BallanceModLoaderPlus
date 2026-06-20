@@ -7,6 +7,11 @@
 #include "UpdaterTypes.h"
 
 namespace bmlupdater {
+    struct UpdaterSourceConfig {
+        std::string baseUrl;
+        std::string defaultChannel{"stable"};
+    };
+
     class UpdaterService {
     public:
         explicit UpdaterService(UpdaterContext context);
@@ -14,8 +19,10 @@ namespace bmlupdater {
         [[nodiscard]] const UpdaterContext &Context() const noexcept;
         [[nodiscard]] StatusInfo GetStatus() const;
         [[nodiscard]] Result RunDoctor(std::vector<std::string> &diagnostics) const;
+        [[nodiscard]] Result GetSourceConfig(UpdaterSourceConfig &config) const;
+        [[nodiscard]] Result SetSourceConfig(UpdaterSourceConfig config) const;
         [[nodiscard]] Result GetSourceBaseUrl(std::string &baseUrl) const;
-        [[nodiscard]] Result SetSourceBaseUrl(std::string baseUrl) const;
+        [[nodiscard]] Result SetSourceBaseUrl(std::string baseUrl, std::string defaultChannel = "stable") const;
         [[nodiscard]] Result ClearSource() const;
         [[nodiscard]] Result CheckForUpdates(const std::string &channel, std::vector<std::string> &diagnostics) const;
         [[nodiscard]] Result VerifyLocalPackage(const std::wstring &packagePath,

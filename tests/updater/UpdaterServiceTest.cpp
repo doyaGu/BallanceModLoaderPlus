@@ -124,6 +124,21 @@ TEST(UpdaterServiceTest, RemoteSourceConfigurationRoundTripsThroughSourcesJson) 
     ASSERT_TRUE(result.ok) << result.message;
     EXPECT_EQ(baseUrl, "https://updates.example.test/bml");
 
+    bmlupdater::UpdaterSourceConfig config;
+    result = service.GetSourceConfig(config);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_EQ(config.baseUrl, "https://updates.example.test/bml");
+    EXPECT_EQ(config.defaultChannel, "stable");
+
+    result = service.SetSourceBaseUrl("https://updates.example.test/bml", "beta");
+    ASSERT_TRUE(result.ok) << result.message;
+    result = service.GetSourceConfig(config);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_EQ(config.defaultChannel, "beta");
+
+    result = service.SetSourceBaseUrl("https://updates.example.test/bml", "nightly");
+    EXPECT_FALSE(result.ok);
+
     result = service.SetSourceBaseUrl("http://updates.example.test/bml");
     EXPECT_FALSE(result.ok);
 

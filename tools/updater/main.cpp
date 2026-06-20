@@ -27,7 +27,7 @@ namespace {
             "  status\n"
             "  doctor\n"
             "  source [show]\n"
-            "  source set <https-base-url>\n"
+            "  source set <https-base-url> [--channel stable|beta]\n"
             "  source clear\n"
             "  check [--channel stable|beta]\n"
             "  verify-local <package>\n"
@@ -66,10 +66,11 @@ namespace {
         if (command == L"source") {
             const std::wstring action = argc > 2 ? argv[2] : L"show";
             if (action == L"show") {
-                std::string baseUrl;
-                bmlupdater::Result result = service.GetSourceBaseUrl(baseUrl);
-                if (!baseUrl.empty()) {
-                    std::cout << "baseUrl=" << baseUrl << "\n";
+                bmlupdater::UpdaterSourceConfig config;
+                bmlupdater::Result result = service.GetSourceConfig(config);
+                if (!config.baseUrl.empty()) {
+                    std::cout << "baseUrl=" << config.baseUrl << "\n";
+                    std::cout << "defaultChannel=" << config.defaultChannel << "\n";
                 } else {
                     std::cout << "baseUrl=<none>\n";
                 }
@@ -81,7 +82,17 @@ namespace {
                     PrintUsage();
                     return 2;
                 }
-                bmlupdater::Result result = service.SetSourceBaseUrl(Narrow(argv[3]));
+                std::string defaultChannel = "stable";
+                for (int i = 4; i < argc; ++i) {
+                    const std::wstring option = argv[i];
+                    if (option == L"--channel" && i + 1 < argc) {
+                        defaultChannel = Narrow(argv[++i]);
+                    } else {
+                        PrintUsage();
+                        return 2;
+                    }
+                }
+                bmlupdater::Result result = service.SetSourceBaseUrl(Narrow(argv[3]), defaultChannel);
                 PrintResult(result);
                 return result.ok ? 0 : 1;
             }
@@ -95,10 +106,14 @@ namespace {
         }
 
         if (command == L"check") {
-            std::string channel = "stable";
-            for (int i = 2; i + 1 < argc; ++i) {
-                if (std::wstring(argv[i]) == L"--channel") {
-                    channel = Narrow(argv[i + 1]);
+            std::string channel;
+            for (int i = 2; i < argc; ++i) {
+                const std::wstring option = argv[i];
+                if (option == L"--channel" && i + 1 < argc) {
+                    channel = Narrow(argv[++i]);
+                } else {
+                    PrintUsage();
+                    return 2;
                 }
             }
             std::vector<std::string> diagnostics;

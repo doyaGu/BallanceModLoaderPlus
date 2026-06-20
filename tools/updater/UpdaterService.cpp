@@ -7,6 +7,7 @@
 #include <cctype>
 #include <sstream>
 #include <unordered_map>
+#include <utility>
 
 #include "CryptoUtils.h"
 #include "JsonUtils.h"
@@ -199,11 +200,32 @@ namespace bmlupdater {
             return Result::Success();
         }
 
-        std::string SourcesJson(std::string_view baseUrl) {
+        Result ValidateChannelName(const std::string &channel) {
+            if (channel == "stable" || channel == "beta") {
+                return Result::Success();
+            }
+            return Result::Failure("channel must be stable or beta");
+        }
+
+        Result ValidateRemoteHttpsUrl(const std::string &url, std::string_view fieldName) {
+            if (!url.starts_with("https://")) {
+                return Result::Failure(std::string(fieldName) + " must use HTTPS");
+            }
+            for (const char c : url) {
+                if (std::isspace(static_cast<unsigned char>(c))) {
+                    return Result::Failure(std::string(fieldName) + " must not contain whitespace");
+                }
+            }
+            return Result::Success();
+        }
+
+        std::string SourcesJson(const UpdaterSourceConfig &config) {
             utils::MutableJsonDocument doc;
             yyjson_mut_val *root = doc.CreateObject();
             doc.SetRoot(root);
-            (void)doc.AddString(root, "baseUrl", baseUrl);
+            (void)doc.AddInt(root, "schemaVersion", 1);
+            (void)doc.AddString(root, "baseUrl", config.baseUrl);
+            (void)doc.AddString(root, "defaultChannel", config.defaultChannel);
             std::string error;
             return doc.Write(true, error);
         }
@@ -355,8 +377,8 @@ namespace bmlupdater {
         return Result::Success("doctor passed");
     }
 
-    Result UpdaterService::GetSourceBaseUrl(std::string &baseUrl) const {
-        baseUrl.clear();
+    Result UpdaterService::GetSourceConfig(UpdaterSourceConfig &config) const {
+        config = {};
         if (!PathExists(SourcesFile())) {
             return Result::Success("no remote source configured");
         }
@@ -366,28 +388,54 @@ namespace bmlupdater {
         if (!sourcesDoc.IsValid() || !yyjson_is_obj(sourcesDoc.Root())) {
             return Result::Failure("Unable to parse sources.json: " + error);
         }
-        baseUrl = utils::JsonGetString(sourcesDoc.Root(), "baseUrl", "");
-        Result normalized = NormalizeSourceBaseUrl(baseUrl);
+
+        const int64_t schemaVersion = utils::JsonGetInt(sourcesDoc.Root(), "schemaVersion", 1);
+        if (schemaVersion != 1) {
+            return Result::Failure("Unsupported sources.json schemaVersion");
+        }
+
+        config.baseUrl = utils::JsonGetString(sourcesDoc.Root(), "baseUrl", "");
+        config.defaultChannel = utils::JsonGetString(sourcesDoc.Root(), "defaultChannel", "stable");
+        Result normalized = NormalizeSourceBaseUrl(config.baseUrl);
         if (!normalized.ok) {
             return normalized;
+        }
+        Result channel = ValidateChannelName(config.defaultChannel);
+        if (!channel.ok) {
+            return channel;
         }
         return Result::Success("remote source configured");
     }
 
-    Result UpdaterService::SetSourceBaseUrl(std::string baseUrl) const {
-        Result normalized = NormalizeSourceBaseUrl(baseUrl);
+    Result UpdaterService::SetSourceConfig(UpdaterSourceConfig config) const {
+        Result normalized = NormalizeSourceBaseUrl(config.baseUrl);
         if (!normalized.ok) {
             return normalized;
+        }
+        Result channel = ValidateChannelName(config.defaultChannel);
+        if (!channel.ok) {
+            return channel;
         }
         if (!CreateDirectories(m_Context.updaterStateRoot)) {
             return Result::Failure("Unable to create updater state root");
         }
         std::string error;
-        const std::string json = SourcesJson(baseUrl);
+        const std::string json = SourcesJson(config);
         if (json.empty() || !WriteTextFile(SourcesFile(), json, error)) {
             return Result::Failure(error.empty() ? "Unable to write sources.json" : error);
         }
         return Result::Success("remote source configured");
+    }
+
+    Result UpdaterService::GetSourceBaseUrl(std::string &baseUrl) const {
+        UpdaterSourceConfig config;
+        Result result = GetSourceConfig(config);
+        baseUrl = config.baseUrl;
+        return result;
+    }
+
+    Result UpdaterService::SetSourceBaseUrl(std::string baseUrl, std::string defaultChannel) const {
+        return SetSourceConfig({std::move(baseUrl), std::move(defaultChannel)});
     }
 
     Result UpdaterService::ClearSource() const {
@@ -400,21 +448,25 @@ namespace bmlupdater {
 
     Result UpdaterService::CheckForUpdates(const std::string &channel, std::vector<std::string> &diagnostics) const {
         diagnostics.clear();
-        const std::string selectedChannel = channel.empty() ? "stable" : channel;
-        diagnostics.push_back("channel=" + selectedChannel);
-
-        std::string baseUrl;
-        Result source = GetSourceBaseUrl(baseUrl);
+        UpdaterSourceConfig config;
+        Result source = GetSourceConfig(config);
         if (!source.ok) {
             return source;
         }
-        if (baseUrl.empty()) {
+        const std::string selectedChannel = channel.empty() ? config.defaultChannel : channel;
+        Result channelResult = ValidateChannelName(selectedChannel);
+        if (!channelResult.ok) {
+            return channelResult;
+        }
+        diagnostics.push_back("channel=" + selectedChannel);
+
+        if (config.baseUrl.empty()) {
             diagnostics.push_back("sources.json is missing; local package verification/apply is available");
             return Result::Success("no remote source configured");
         }
 
         std::string error;
-        const std::string channelUrl = baseUrl + "/" + selectedChannel + ".json";
+        const std::string channelUrl = config.baseUrl + "/" + selectedChannel + ".json";
         const std::string signatureUrl = channelUrl + ".sig";
         diagnostics.push_back("fetching " + channelUrl);
 
@@ -442,6 +494,14 @@ namespace bmlupdater {
         const std::string manifestUrl = utils::JsonGetString(channelDoc.Root(), "manifestUrl", "");
         if (latestVersion.empty() || packageUrl.empty() || manifestUrl.empty()) {
             return Result::Failure("Channel JSON must include version, packageUrl, and manifestUrl");
+        }
+        Result packageUrlResult = ValidateRemoteHttpsUrl(packageUrl, "packageUrl");
+        if (!packageUrlResult.ok) {
+            return packageUrlResult;
+        }
+        Result manifestUrlResult = ValidateRemoteHttpsUrl(manifestUrl, "manifestUrl");
+        if (!manifestUrlResult.ok) {
+            return manifestUrlResult;
         }
 
         yyjson_val *revokedVersions = yyjson_obj_get(channelDoc.Root(), "revokedVersions");

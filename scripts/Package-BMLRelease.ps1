@@ -25,6 +25,9 @@ param(
 
     [string]$UpdaterBaseUrl,
 
+    [ValidateSet('stable', 'beta')]
+    [string]$UpdaterDefaultChannel = 'stable',
+
     [switch]$IncludeAngelScript,
 
     [string]$SigningCngKeyName,
@@ -228,7 +231,8 @@ function Write-Utf8NoBomText {
 function Write-UpdaterSourcesJson {
     param(
         [string]$DestinationDir,
-        [string]$BaseUrl
+        [string]$BaseUrl,
+        [string]$DefaultChannel
     )
 
     if (-not $BaseUrl) {
@@ -244,7 +248,11 @@ function Write-UpdaterSourcesJson {
     }
 
     New-Item -ItemType Directory -Path $DestinationDir -Force | Out-Null
-    $sourceObject = [ordered]@{ baseUrl = $normalized }
+    $sourceObject = [ordered]@{
+        schemaVersion = 1
+        baseUrl = $normalized
+        defaultChannel = $DefaultChannel
+    }
     Write-Utf8NoBomText -Path (Join-Path $DestinationDir 'sources.json') -Text (($sourceObject | ConvertTo-Json -Depth 3) + "`n")
 }
 
@@ -376,7 +384,7 @@ Copy-Item -Path (Join-Path $runtimeSource '*') -Destination $runtimeStage -Recur
 Copy-RequiredFile -Source (Join-Path $releaseBin 'BMLPlus.dll') -Destination (Join-Path $runtimeStage 'BuildingBlocks\BMLPlus.dll')
 Copy-RequiredFile -Source (Join-Path $releaseBin 'Updater.exe') -Destination (Join-Path $runtimeStage 'Bin\Updater.exe')
 Write-UpdaterBootstrapReadme -DestinationDir (Join-Path $runtimeStage 'Bin') -Version $Version
-Write-UpdaterSourcesJson -DestinationDir (Join-Path $runtimeStage 'ModLoader\Updater') -BaseUrl $UpdaterBaseUrl
+Write-UpdaterSourcesJson -DestinationDir (Join-Path $runtimeStage 'ModLoader\Updater') -BaseUrl $UpdaterBaseUrl -DefaultChannel $UpdaterDefaultChannel
 Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'LICENSE') -Destination (Join-Path $runtimeStage 'LICENSE')
 Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'README.md') -Destination (Join-Path $runtimeStage 'README.md')
 Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'README_zh-CN.md') -Destination (Join-Path $runtimeStage 'README_zh-CN.md')
