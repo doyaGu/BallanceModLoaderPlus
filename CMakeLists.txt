@@ -57,6 +57,7 @@ add_compile_options(
 
 option(BML_BUILD_TESTS "Build the BML test suite" OFF)
 option(BML_BUILD_SCRIPT_TOOLS "Build script mod authoring tools" ON)
+option(BML_BUILD_UPDATER "Build the standalone BML updater" ON)
 option(BML_ENABLE_ANGELSCRIPT "Build optional AngelScript script support when CKAngelScript headers are available" OFF)
 set(CKANGELSCRIPT_ROOT "${PROJECT_SOURCE_DIR}/../CKAngelScript" CACHE PATH "Optional CKAngelScript source or install root")
 
@@ -98,6 +99,9 @@ add_subdirectory(deps)
 add_subdirectory(src)
 if (BML_BUILD_SCRIPT_TOOLS)
     add_subdirectory(tools)
+endif ()
+if (BML_BUILD_UPDATER)
+    add_subdirectory(tools/updater)
 endif ()
 if (BML_BUILD_TESTS)
     enable_testing()

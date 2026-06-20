@@ -26,6 +26,14 @@ namespace utils {
                 nullptr,
                 BCRYPT_ALG_HANDLE_HMAC_FLAG) == 0;
         }
+
+        bool OpenSha256Provider(BCRYPT_ALG_HANDLE *provider) {
+            return BCryptOpenAlgorithmProvider(
+                provider,
+                BCRYPT_SHA256_ALGORITHM,
+                nullptr,
+                0) == 0;
+        }
     } // namespace
 
     bool HmacSha256(const uint8_t *key, size_t keyLength,
@@ -62,6 +70,153 @@ namespace utils {
         }
 
         BCryptDestroyHash(hash);
+        BCryptCloseAlgorithmProvider(algorithm, 0);
+        return status == 0;
+    }
+
+    bool Sha256(const uint8_t *data, size_t dataLength, uint8_t outDigest[32]) {
+        if (!outDigest || (!data && dataLength > 0)) {
+            return false;
+        }
+
+        BCRYPT_ALG_HANDLE algorithm = nullptr;
+        BCRYPT_HASH_HANDLE hash = nullptr;
+
+        if (!OpenSha256Provider(&algorithm)) {
+            return false;
+        }
+
+        NTSTATUS status = BCryptCreateHash(algorithm, &hash, nullptr, 0, nullptr, 0, 0);
+        if (status != 0) {
+            BCryptCloseAlgorithmProvider(algorithm, 0);
+            return false;
+        }
+
+        status = BCryptHashData(
+            hash,
+            dataLength == 0 ? nullptr : const_cast<PUCHAR>(data),
+            static_cast<ULONG>(dataLength),
+            0);
+        if (status == 0) {
+            status = BCryptFinishHash(hash, outDigest, static_cast<ULONG>(kSha256Length), 0);
+        }
+
+        BCryptDestroyHash(hash);
+        BCryptCloseAlgorithmProvider(algorithm, 0);
+        return status == 0;
+    }
+
+    bool Sha256File(const std::wstring &path, uint8_t outDigest[32]) {
+        if (!outDigest) {
+            return false;
+        }
+
+        HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file == INVALID_HANDLE_VALUE) {
+            return false;
+        }
+
+        BCRYPT_ALG_HANDLE algorithm = nullptr;
+        BCRYPT_HASH_HANDLE hash = nullptr;
+        if (!OpenSha256Provider(&algorithm)) {
+            CloseHandle(file);
+            return false;
+        }
+        NTSTATUS status = BCryptCreateHash(algorithm, &hash, nullptr, 0, nullptr, 0, 0);
+        if (status != 0) {
+            BCryptCloseAlgorithmProvider(algorithm, 0);
+            CloseHandle(file);
+            return false;
+        }
+
+        std::array<uint8_t, 64 * 1024> buffer{};
+        while (true) {
+            DWORD read = 0;
+            if (!ReadFile(file, buffer.data(), static_cast<DWORD>(buffer.size()), &read, nullptr)) {
+                status = -1;
+                break;
+            }
+            if (read == 0) {
+                break;
+            }
+            status = BCryptHashData(hash, buffer.data(), read, 0);
+            if (status != 0) {
+                break;
+            }
+        }
+
+        if (status == 0) {
+            status = BCryptFinishHash(hash, outDigest, static_cast<ULONG>(kSha256Length), 0);
+        }
+
+        BCryptDestroyHash(hash);
+        BCryptCloseAlgorithmProvider(algorithm, 0);
+        CloseHandle(file);
+        return status == 0;
+    }
+
+    std::vector<uint8_t> Sha256Bytes(const uint8_t *data, size_t dataLength) {
+        std::vector<uint8_t> digest(kSha256Length);
+        if (!Sha256(data, dataLength, digest.data())) {
+            digest.clear();
+        }
+        return digest;
+    }
+
+    std::vector<uint8_t> Sha256FileBytes(const std::wstring &path) {
+        std::vector<uint8_t> digest(kSha256Length);
+        if (!Sha256File(path, digest.data())) {
+            digest.clear();
+        }
+        return digest;
+    }
+
+    bool VerifyEcdsaP256Sha256RawSignature(const uint8_t publicKeyX[32],
+                                           const uint8_t publicKeyY[32],
+                                           const uint8_t digest[32],
+                                           const uint8_t signature[64]) {
+        if (!publicKeyX || !publicKeyY || !digest || !signature) {
+            return false;
+        }
+
+        BCRYPT_ALG_HANDLE algorithm = nullptr;
+        BCRYPT_KEY_HANDLE key = nullptr;
+        if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_ECDSA_P256_ALGORITHM, nullptr, 0) != 0) {
+            return false;
+        }
+
+        struct PublicBlob {
+            BCRYPT_ECCKEY_BLOB header;
+            uint8_t x[32];
+            uint8_t y[32];
+        } blob{};
+        blob.header.dwMagic = BCRYPT_ECDSA_PUBLIC_P256_MAGIC;
+        blob.header.cbKey = 32;
+        std::memcpy(blob.x, publicKeyX, 32);
+        std::memcpy(blob.y, publicKeyY, 32);
+
+        NTSTATUS status = BCryptImportKeyPair(
+            algorithm,
+            nullptr,
+            BCRYPT_ECCPUBLIC_BLOB,
+            &key,
+            reinterpret_cast<PUCHAR>(&blob),
+            sizeof(blob),
+            0);
+        if (status == 0) {
+            status = BCryptVerifySignature(
+                key,
+                nullptr,
+                const_cast<PUCHAR>(digest),
+                static_cast<ULONG>(kSha256Length),
+                const_cast<PUCHAR>(signature),
+                64,
+                0);
+        }
+
+        if (key) {
+            BCryptDestroyKey(key);
+        }
         BCryptCloseAlgorithmProvider(algorithm, 0);
         return status == 0;
     }

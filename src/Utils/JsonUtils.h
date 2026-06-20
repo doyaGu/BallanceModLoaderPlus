@@ -2,7 +2,6 @@
 #define BML_JSONUTILS_H
 
 #include <cstdint>
-#include <filesystem>
 #include <string>
 #include <string_view>
 
@@ -26,7 +25,7 @@ namespace utils {
         [[nodiscard]] yyjson_val *Root() const noexcept;
 
         static JsonDocument Parse(std::string_view content, std::string &error);
-        static JsonDocument ParseFile(const std::filesystem::path &path, std::string &error);
+        static JsonDocument ParseFile(const std::wstring &path, std::string &error);
 
     private:
         yyjson_doc *m_Doc{nullptr};

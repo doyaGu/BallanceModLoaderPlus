@@ -1,8 +1,11 @@
 #include "JsonUtils.h"
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+
 #include <cstdlib>
-#include <fstream>
-#include <iterator>
 #include <utility>
 
 #include "StringUtils.h"
@@ -70,17 +73,28 @@ namespace utils {
         return JsonDocument(doc);
     }
 
-    JsonDocument JsonDocument::ParseFile(const std::filesystem::path &path, std::string &error) {
+    JsonDocument JsonDocument::ParseFile(const std::wstring &path, std::string &error) {
         error.clear();
-        std::ifstream ifs(path, std::ios::binary);
-        if (!ifs.is_open()) {
+        HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file == INVALID_HANDLE_VALUE) {
             error = "Unable to open JSON file";
             return {};
         }
-
-        const std::string content{
-            std::istreambuf_iterator<char>(ifs),
-            std::istreambuf_iterator<char>()};
+        LARGE_INTEGER size{};
+        if (!GetFileSizeEx(file, &size) || size.QuadPart < 0 || size.QuadPart > static_cast<LONGLONG>(SIZE_MAX)) {
+            CloseHandle(file);
+            error = "Unable to read JSON file";
+            return {};
+        }
+        std::string content(static_cast<size_t>(size.QuadPart), '\0');
+        DWORD read = 0;
+        const BOOL ok = content.empty() ||
+                        ReadFile(file, content.data(), static_cast<DWORD>(content.size()), &read, nullptr);
+        CloseHandle(file);
+        if (!ok || read != content.size()) {
+            error = "Unable to read JSON file";
+            return {};
+        }
         return Parse(content, error);
     }
 

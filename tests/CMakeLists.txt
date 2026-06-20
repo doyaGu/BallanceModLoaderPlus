@@ -141,4 +141,7 @@ add_bml_test(InteropErrorTest
 )
 
 add_subdirectory(smoke)
+if (BML_BUILD_UPDATER)
+    add_subdirectory(updater)
+endif ()
 
