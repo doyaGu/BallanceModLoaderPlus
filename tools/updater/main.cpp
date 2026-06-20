@@ -21,9 +21,50 @@ namespace {
         std::cout << (result.ok ? "OK: " : "ERROR: ") << result.message << "\n";
     }
 
+    void PrintPlanSummary(const bmlupdater::ApplyPlan &plan) {
+        size_t installOrReplace = 0;
+        size_t remove = 0;
+        for (const bmlupdater::ApplyOperation &operation : plan.operations) {
+            if (operation.kind == bmlupdater::OperationKind::InstallOrReplace) {
+                ++installOrReplace;
+            } else {
+                ++remove;
+            }
+        }
+        std::cout << "planVersion=" << plan.version << "\n";
+        std::cout << "planOperations=" << plan.operations.size() << "\n";
+        std::cout << "planInstallOrReplace=" << installOrReplace << "\n";
+        std::cout << "planRemove=" << remove << "\n";
+    }
+
+    void PrintPlanDiagnostics(const bmlupdater::ApplyPlan &plan) {
+        for (const std::string &diagnostic : plan.diagnostics) {
+            std::cout << diagnostic << "\n";
+        }
+    }
+
+    int PrintNoRemoteWork(const bmlupdater::Result &result, const bmlupdater::RemoteUpdateInfo &info) {
+        if (info.latestVersion.empty()) {
+            std::cout << "nextStep=Updater.exe source set <https-base-url> --channel stable\n";
+        } else if (!info.updateAvailable) {
+            std::cout << "nextStep=Updater.exe update --force\n";
+        }
+        PrintResult(result);
+        return result.ok ? 0 : 1;
+    }
+
     void PrintUsage() {
         std::cout <<
-            "Updater.exe commands:\n"
+            "BML+ Updater\n"
+            "\n"
+            "Common workflows:\n"
+            "  Updater.exe source set <https-base-url> --channel stable\n"
+            "  Updater.exe check\n"
+            "  Updater.exe plan-remote\n"
+            "  Updater.exe update\n"
+            "  Updater.exe apply-local <BMLPlus-Update-vX.Y.Z.zip>\n"
+            "\n"
+            "Commands:\n"
             "  status\n"
             "  doctor\n"
             "  source [show]\n"
@@ -31,9 +72,11 @@ namespace {
             "  source clear\n"
             "  check [--channel stable|beta]\n"
             "  download [--channel stable|beta] [--force]\n"
+            "  plan-remote [--channel stable|beta] [--force]\n"
             "  apply-remote [--channel stable|beta] [--force]\n"
             "  update [--channel stable|beta] [--force]\n"
             "  verify-local <package>\n"
+            "  plan-local <package>\n"
             "  apply-local <package>\n"
             "  rollback\n"
             "  --help\n";
@@ -76,6 +119,7 @@ namespace {
                     std::cout << "defaultChannel=" << config.defaultChannel << "\n";
                 } else {
                     std::cout << "baseUrl=<none>\n";
+                    std::cout << "nextStep=Updater.exe source set <https-base-url> --channel stable\n";
                 }
                 PrintResult(result);
                 return result.ok ? 0 : 1;
@@ -108,7 +152,8 @@ namespace {
             return 2;
         }
 
-        if (command == L"check" || command == L"download" || command == L"apply-remote" || command == L"update") {
+        if (command == L"check" || command == L"download" || command == L"plan-remote" ||
+            command == L"apply-remote" || command == L"update") {
             std::string channel;
             bool force = false;
             for (int i = 2; i < argc; ++i) {
@@ -145,8 +190,7 @@ namespace {
                     return 1;
                 }
                 if (info.latestVersion.empty() || !info.updateAvailable) {
-                    PrintResult(result);
-                    return 0;
+                    return PrintNoRemoteWork(result, info);
                 }
                 bmlupdater::LocalPackageVerification verification;
                 result = service.DownloadRemote(info, verification, [](const std::string &line) {
@@ -160,14 +204,55 @@ namespace {
                 return result.ok ? 0 : 1;
             }
 
-            bmlupdater::Result result = (command == L"update")
-                ? service.Update(channel, force, [](const std::string &line) { std::cout << line << "\n"; })
-                : service.ApplyRemote(channel, force, [](const std::string &line) { std::cout << line << "\n"; });
+            std::vector<std::string> diagnostics;
+            bmlupdater::RemoteUpdateInfo info;
+            bmlupdater::Result result = service.CheckRemote(channel, force, info, diagnostics);
+            for (const std::string &line : diagnostics) {
+                std::cout << line << "\n";
+            }
+            if (!result.ok) {
+                PrintResult(result);
+                return 1;
+            }
+            if (info.latestVersion.empty() || !info.updateAvailable) {
+                return PrintNoRemoteWork(result, info);
+            }
+
+            bmlupdater::LocalPackageVerification verification;
+            result = service.DownloadRemote(info, verification, [](const std::string &line) {
+                std::cout << line << "\n";
+            });
+            if (!result.ok) {
+                PrintResult(result);
+                return 1;
+            }
+            bmlupdater::ApplyPlan plan;
+            result = service.BuildApplyPlan(verification, plan);
+            if (!result.ok) {
+                PrintResult(result);
+                return 1;
+            }
+            PrintPlanDiagnostics(plan);
+            PrintPlanSummary(plan);
+            if (command == L"plan-remote") {
+                PrintResult(result);
+                return 0;
+            }
+
+            std::cout << "checking write access\n";
+            result = service.CheckApplyAccess(plan);
+            if (!result.ok) {
+                PrintResult(result);
+                return 1;
+            }
+            result = service.Apply(verification, plan, [](const std::string &line) {
+                std::cout << line << "\n";
+            });
             PrintResult(result);
             return result.ok ? 0 : 1;
         }
 
-        if (command == L"verify-local" || command == L"apply-local") {
+        if (command == L"verify-local" || command == L"plan-local" || command == L"apply-local") {
             if (argc < 3) {
                 PrintUsage();
                 return 2;
@@ -193,8 +278,11 @@ namespace {
                 PrintResult(result);
                 return 1;
             }
-            for (const std::string &diagnostic : plan.diagnostics) {
-                std::cout << diagnostic << "\n";
+            PrintPlanDiagnostics(plan);
+            PrintPlanSummary(plan);
+            if (command == L"plan-local") {
+                PrintResult(result);
+                return 0;
             }
             std::cout << "checking write access\n";
             result = service.CheckApplyAccess(plan);
