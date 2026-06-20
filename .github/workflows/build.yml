@@ -150,7 +150,9 @@ jobs:
         uses: actions/upload-artifact@v7.0.1
         with:
           name: BMLPlus-${{ github.ref_name }}-Runtime-Binary
-          path: ${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}\bin\BMLPlus.dll
+          path: |
+            ${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}\bin\BMLPlus.dll
+            ${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}\bin\Updater.exe
           retention-days: 14
 
       - name: Upload debug symbols

@@ -259,6 +259,7 @@ foreach ($path in @(
     (Join-Path $debugInstall 'lib\BMLPlus.lib'),
     (Join-Path $debugInstall 'lib\cmake\BML\BMLTargets-debug.cmake'),
     (Join-Path $releaseBin 'BMLPlus.dll'),
+    (Join-Path $releaseBin 'Updater.exe'),
     (Join-Path $debugBin 'BMLPlus.pdb'),
     (Join-Path $runtimeSource 'ModLoader\Configs\BML.cfg'),
     (Join-Path $runtimeSource 'ModLoader\Fonts\unifont.otf'),
@@ -289,6 +290,7 @@ $runtimeStage = Join-Path $stageRoot 'runtime'
 New-BMLCleanDirectory $runtimeStage
 Copy-Item -Path (Join-Path $runtimeSource '*') -Destination $runtimeStage -Recurse
 Copy-RequiredFile -Source (Join-Path $releaseBin 'BMLPlus.dll') -Destination (Join-Path $runtimeStage 'BuildingBlocks\BMLPlus.dll')
+Copy-RequiredFile -Source (Join-Path $releaseBin 'Updater.exe') -Destination (Join-Path $runtimeStage 'Bin\Updater.exe')
 Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'LICENSE') -Destination (Join-Path $runtimeStage 'LICENSE')
 Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'README.md') -Destination (Join-Path $runtimeStage 'README.md')
 Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'README_zh-CN.md') -Destination (Join-Path $runtimeStage 'README_zh-CN.md')
