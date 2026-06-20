@@ -43,9 +43,49 @@ namespace {
         }
     }
 
+    void PrintStatusInfo(bmlupdater::UpdaterService &service) {
+        const bmlupdater::StatusInfo status = service.GetStatus();
+        std::cout << "installedVersion=" << status.installedVersion << "\n";
+        std::cout << "pendingTransaction=" << (status.pendingTransaction ? "true" : "false") << "\n";
+        if (!status.lastError.empty()) {
+            std::cout << "lastError=" << status.lastError << "\n";
+        }
+    }
+
+    bmlupdater::Result PrintSourceInfo(bmlupdater::UpdaterService &service) {
+        bmlupdater::UpdaterSourceConfig config;
+        bmlupdater::Result result = service.GetSourceConfig(config);
+        if (!config.baseUrl.empty()) {
+            std::cout << "baseUrl=" << config.baseUrl << "\n";
+            std::cout << "defaultChannel=" << config.defaultChannel << "\n";
+        } else {
+            std::cout << "baseUrl=<none>\n";
+        }
+        return result;
+    }
+
+    int PrintOverview(bmlupdater::UpdaterService &service) {
+        std::cout << "BML+ Updater\n";
+        PrintStatusInfo(service);
+        bmlupdater::Result source = PrintSourceInfo(service);
+        if (!source.ok) {
+            PrintResult(source);
+            return 1;
+        }
+        bmlupdater::UpdaterSourceConfig config;
+        (void)service.GetSourceConfig(config);
+        if (config.baseUrl.empty()) {
+            std::cout << "nextStep=Updater.exe configure <https-base-url>\n";
+        } else {
+            std::cout << "nextStep=Updater.exe check\n";
+        }
+        std::cout << "help=Updater.exe --help\n";
+        return 0;
+    }
+
     int PrintNoRemoteWork(const bmlupdater::Result &result, const bmlupdater::RemoteUpdateInfo &info) {
         if (info.latestVersion.empty()) {
-            std::cout << "nextStep=Updater.exe source set <https-base-url> --channel stable\n";
+            std::cout << "nextStep=Updater.exe configure <https-base-url>\n";
         } else if (!info.updateAvailable) {
             std::cout << "nextStep=Updater.exe update --force\n";
         }
@@ -58,23 +98,27 @@ namespace {
             "BML+ Updater\n"
             "\n"
             "Common workflows:\n"
-            "  Updater.exe source set <https-base-url> --channel stable\n"
+            "  Updater.exe\n"
+            "  Updater.exe configure <https-base-url>\n"
             "  Updater.exe check\n"
-            "  Updater.exe plan-remote\n"
+            "  Updater.exe plan\n"
             "  Updater.exe update\n"
             "  Updater.exe apply-local <BMLPlus-Update-vX.Y.Z.zip>\n"
             "\n"
             "Commands:\n"
+            "  overview\n"
             "  status\n"
             "  doctor\n"
+            "  configure <https-base-url> [--channel stable|beta]\n"
             "  source [show]\n"
             "  source set <https-base-url> [--channel stable|beta]\n"
             "  source clear\n"
-            "  check [--channel stable|beta]\n"
-            "  download [--channel stable|beta] [--force]\n"
-            "  plan-remote [--channel stable|beta] [--force]\n"
-            "  apply-remote [--channel stable|beta] [--force]\n"
-            "  update [--channel stable|beta] [--force]\n"
+            "  check [-c stable|beta]\n"
+            "  download [-c stable|beta] [--force]\n"
+            "  plan [-c stable|beta] [--force]\n"
+            "  plan-remote [-c stable|beta] [--force]\n"
+            "  apply-remote [-c stable|beta] [--force]\n"
+            "  update [-c stable|beta] [--force]\n"
             "  verify-local <package>\n"
             "  plan-local <package>\n"
             "  apply-local <package>\n"
@@ -83,19 +127,18 @@ namespace {
     }
 
     int RunCli(int argc, wchar_t **argv, bmlupdater::UpdaterService &service) {
-        const std::wstring command = argc > 1 ? argv[1] : L"--help";
+        const std::wstring command = argc > 1 ? argv[1] : L"overview";
         if (command == L"--help" || command == L"-h" || command == L"/?") {
             PrintUsage();
             return 0;
         }
 
+        if (command == L"overview") {
+            return PrintOverview(service);
+        }
+
         if (command == L"status") {
-            const bmlupdater::StatusInfo status = service.GetStatus();
-            std::cout << "installedVersion=" << status.installedVersion << "\n";
-            std::cout << "pendingTransaction=" << (status.pendingTransaction ? "true" : "false") << "\n";
-            if (!status.lastError.empty()) {
-                std::cout << "lastError=" << status.lastError << "\n";
-            }
+            PrintStatusInfo(service);
             return 0;
         }
 
@@ -109,38 +152,41 @@ namespace {
             return result.ok ? 0 : 1;
         }
 
-        if (command == L"source") {
-            const std::wstring action = argc > 2 ? argv[2] : L"show";
+        if (command == L"configure" || command == L"source") {
+            const std::wstring action = command == L"configure" ? L"set" : (argc > 2 ? argv[2] : L"show");
             if (action == L"show") {
-                bmlupdater::UpdaterSourceConfig config;
-                bmlupdater::Result result = service.GetSourceConfig(config);
-                if (!config.baseUrl.empty()) {
-                    std::cout << "baseUrl=" << config.baseUrl << "\n";
-                    std::cout << "defaultChannel=" << config.defaultChannel << "\n";
-                } else {
-                    std::cout << "baseUrl=<none>\n";
-                    std::cout << "nextStep=Updater.exe source set <https-base-url> --channel stable\n";
+                bmlupdater::Result result = PrintSourceInfo(service);
+                if (result.ok) {
+                    bmlupdater::UpdaterSourceConfig config;
+                    (void)service.GetSourceConfig(config);
+                    if (config.baseUrl.empty()) {
+                        std::cout << "nextStep=Updater.exe configure <https-base-url>\n";
+                    }
                 }
                 PrintResult(result);
                 return result.ok ? 0 : 1;
             }
             if (action == L"set") {
-                if (argc < 4) {
+                const int urlIndex = command == L"configure" ? 2 : 3;
+                if (argc <= urlIndex) {
                     PrintUsage();
                     return 2;
                 }
                 std::string defaultChannel = "stable";
-                for (int i = 4; i < argc; ++i) {
+                for (int i = urlIndex + 1; i < argc; ++i) {
                     const std::wstring option = argv[i];
-                    if (option == L"--channel" && i + 1 < argc) {
+                    if ((option == L"--channel" || option == L"-c") && i + 1 < argc) {
                         defaultChannel = Narrow(argv[++i]);
                     } else {
                         PrintUsage();
                         return 2;
                     }
                 }
-                bmlupdater::Result result = service.SetSourceBaseUrl(Narrow(argv[3]), defaultChannel);
+                bmlupdater::Result result = service.SetSourceBaseUrl(Narrow(argv[urlIndex]), defaultChannel);
                 PrintResult(result);
+                if (result.ok) {
+                    std::cout << "nextStep=Updater.exe check\n";
+                }
                 return result.ok ? 0 : 1;
             }
             if (action == L"clear") {
@@ -152,13 +198,13 @@ namespace {
             return 2;
         }
 
-        if (command == L"check" || command == L"download" || command == L"plan-remote" ||
+        if (command == L"check" || command == L"download" || command == L"plan" || command == L"plan-remote" ||
             command == L"apply-remote" || command == L"update") {
             std::string channel;
             bool force = false;
             for (int i = 2; i < argc; ++i) {
                 const std::wstring option = argv[i];
-                if (option == L"--channel" && i + 1 < argc) {
+                if ((option == L"--channel" || option == L"-c") && i + 1 < argc) {
                     channel = Narrow(argv[++i]);
                 } else if (option == L"--force") {
                     force = true;
@@ -234,7 +280,7 @@ namespace {
             }
             PrintPlanDiagnostics(plan);
             PrintPlanSummary(plan);
-            if (command == L"plan-remote") {
+            if (command == L"plan" || command == L"plan-remote") {
                 PrintResult(result);
                 return 0;
             }
