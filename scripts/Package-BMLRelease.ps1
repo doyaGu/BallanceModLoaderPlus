@@ -117,7 +117,7 @@ $scriptDocs = @(
     'bml-script-mod-api.as',
     'bml-script-facade-coverage.md'
 )
-$scriptSdkDocs = $scriptDocs + @('bml-script-mod-validation.md')
+$scriptSdkDocs = $scriptDocs
 $nativeTemplate = Join-Path $layout.TemplatesRoot 'native-mod-template'
 $scriptTemplate = Join-Path $layout.TemplatesRoot 'script-mod-template'
 
@@ -158,7 +158,6 @@ foreach ($path in @(
 }
 
 if ($IncludeAngelScript) {
-    Assert-BMLPath -Path (Join-Path $layout.ScriptsRoot 'Validate-BMLBallance.ps1') -Type Leaf
     Assert-BMLPath -Path (Join-Path $layout.ScriptsRoot 'Pack-BMLScriptMod.ps1') -Type Leaf
     foreach ($doc in $scriptSdkDocs) {
         Assert-BMLPath -Path (Join-Path $layout.DocsRoot $doc) -Type Leaf
@@ -203,7 +202,6 @@ if ($IncludeAngelScript) {
     Copy-CKAngelScriptHeaders -DestinationIncludeDir (Join-Path $releaseSdkStage 'include')
     Copy-BMLDirectoryContents -SourceDir $scriptTemplate -DestinationDir (Join-Path $releaseSdkStage 'templates\script-mod-template')
     Copy-DocumentationFiles -DestinationDir (Join-Path $releaseSdkStage 'docs\scripting') -Files $scriptSdkDocs
-    Copy-RequiredFile -Source (Join-Path $layout.ScriptsRoot 'Validate-BMLBallance.ps1') -Destination (Join-Path $releaseSdkStage 'scripts\Validate-BMLBallance.ps1')
     Copy-RequiredFile -Source (Join-Path $layout.ScriptsRoot 'Pack-BMLScriptMod.ps1') -Destination (Join-Path $releaseSdkStage 'scripts\Pack-BMLScriptMod.ps1')
     Copy-BMLDirectoryContents -SourceDir (Join-Path $layout.ScriptsRoot 'lib') -DestinationDir (Join-Path $releaseSdkStage 'scripts\lib')
 }

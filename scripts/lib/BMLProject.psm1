@@ -59,8 +59,6 @@ function Get-BMLProjectLayout {
         DocsRoot = Join-Path $repo 'docs'
         TemplatesRoot = Join-Path $repo 'templates'
         RuntimeSourceRoot = Join-Path $repo 'packaging\runtime'
-        ScriptSmokeRoot = Join-Path $repo 'tests\smoke\AngelScript'
-        NativeInteropSmokeRoot = Join-Path $repo 'tests\smoke\NativeInterop'
         DefaultReleaseBin = Join-Path $repo 'cmake-build-release\bin'
     }
 }
@@ -185,44 +183,6 @@ function Get-BMLLogTail {
     return (Get-Content -LiteralPath $Path -Tail $Lines -ErrorAction SilentlyContinue) -join "`n"
 }
 
-function Test-BMLTextContains {
-    param(
-        [AllowNull()]
-        [string]$Text,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Needle
-    )
-
-    if ($null -eq $Text) {
-        return $false
-    }
-    return $Text.IndexOf($Needle, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
-}
-
-function Add-BMLSmokeCheck {
-    param(
-        [Parameter(Mandatory = $true)]
-        [AllowEmptyCollection()]
-        [System.Collections.Generic.List[object]]$Checks,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Name,
-
-        [Parameter(Mandatory = $true)]
-        [bool]$Passed,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Needle
-    )
-
-    $Checks.Add([pscustomobject]@{
-        Name = $Name
-        Passed = $Passed
-        Needle = $Needle
-    })
-}
-
 Export-ModuleMember -Function `
     Get-BMLRepositoryRoot, `
     Resolve-BMLPath, `
@@ -234,6 +194,4 @@ Export-ModuleMember -Function `
     New-BMLZipFromDirectory, `
     Get-BMLOptionalHash, `
     Get-BMLTextIfExists, `
-    Get-BMLLogTail, `
-    Test-BMLTextContains, `
-    Add-BMLSmokeCheck
+    Get-BMLLogTail

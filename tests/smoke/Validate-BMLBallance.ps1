@@ -27,7 +27,45 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Import-Module (Join-Path $PSScriptRoot 'lib\BMLProject.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot '..\..\scripts\lib\BMLProject.psm1') -Force
+
+function Test-SmokeTextContains {
+    param(
+        [AllowNull()]
+        [string]$Text,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Needle
+    )
+
+    if ($null -eq $Text) {
+        return $false
+    }
+    return $Text.IndexOf($Needle, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+}
+
+function Add-SmokeCheck {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [System.Collections.Generic.List[object]]$Checks,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [Parameter(Mandatory = $true)]
+        [bool]$Passed,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Needle
+    )
+
+    $Checks.Add([pscustomobject]@{
+        Name = $Name
+        Passed = $Passed
+        Needle = $Needle
+    })
+}
 
 function Install-SingleFileSmoke {
     param(
@@ -156,6 +194,7 @@ if (-not $BallanceRoot) {
 }
 
 $layout = Get-BMLProjectLayout
+$scriptSmokeRoot = Join-Path $layout.RepoRoot 'tests\smoke\AngelScript'
 $ballanceRootFull = [System.IO.Path]::GetFullPath($BallanceRoot)
 $buildingBlocksDir = Join-Path $ballanceRootFull 'BuildingBlocks'
 $modsDir = Join-Path $ballanceRootFull 'ModLoader\Mods'
@@ -204,7 +243,7 @@ if ($CKAngelScriptDll) {
 }
 
 if (-not $SkipSmokeInstall) {
-    Install-SmokeMods -ScriptSmokeRoot $layout.ScriptSmokeRoot -ModsDirectory $modsDir
+    Install-SmokeMods -ScriptSmokeRoot $scriptSmokeRoot -ModsDirectory $modsDir
 }
 
 $playerExitCode = $null
@@ -240,41 +279,46 @@ if (-not $SkipPlayer) {
 $modLogText = Get-BMLTextIfExists $modLoaderLog
 $checks = [System.Collections.Generic.List[object]]::new()
 if (-not $SkipPlayer) {
-    Add-BMLSmokeCheck $checks 'bindings' (Test-BMLTextContains $modLogText 'Registered BML AngelScript bindings') 'Registered BML AngelScript bindings'
-    Add-BMLSmokeCheck $checks 'script-summary' (Test-BMLTextContains $modLogText 'BML script mod summary:') 'BML script mod summary:'
-    Add-BMLSmokeCheck $checks 'script-datashare-request' (Test-BMLTextContains $modLogText 'BML datashare request: immediate=') 'BML datashare request: immediate='
-    Add-BMLSmokeCheck $checks 'script-datashare-delegate' (Test-BMLTextContains $modLogText 'BML datashare delegate request: immediate=true pending=true bool=true object=true invalid=true') 'BML datashare delegate request: immediate=true pending=true bool=true object=true invalid=true'
-    Add-BMLSmokeCheck $checks 'script-object-ownership' (Test-BMLTextContains $modLogText 'BML script object ownership: transientTimer=true heldTimer=true transientCommand=true heldCommand=true transientDataShare=true heldDataShare=true') 'BML script object ownership: transientTimer=true heldTimer=true transientCommand=true heldCommand=true transientDataShare=true heldDataShare=true'
-    Add-BMLSmokeCheck $checks 'script-command-delegate' (Test-BMLTextContains $modLogText 'BML script command delegate registration: global=true method=true invalid=true') 'BML script command delegate registration: global=true method=true invalid=true'
-    Add-BMLSmokeCheck $checks 'command-completion-script' (Test-BMLTextContains $modLogText 'BML script command completion callback') 'BML script command completion callback'
-    Add-BMLSmokeCheck $checks 'command-completion-native' (Test-BMLTextContains $modLogText 'BML native command completion smoke') 'BML native command completion smoke'
-    Add-BMLSmokeCheck $checks 'command-completion-native-delegate' (Test-BMLTextContains $modLogText 'BML native command delegate completion smoke command=true') 'BML native command delegate completion smoke command=true'
-    Add-BMLSmokeCheck $checks 'command-completion-native-method-delegate' (Test-BMLTextContains $modLogText 'BML native command method delegate completion smoke command=true') 'BML native command method delegate completion smoke command=true'
-    Add-BMLSmokeCheck $checks 'script-ui-facade' (Test-BMLTextContains $modLogText 'BML UI facade smoke:') 'BML UI facade smoke:'
-    Add-BMLSmokeCheck $checks 'script-core-capability-facade' (Test-BMLTextContains $modLogText 'BML core capability facade smoke:') 'BML core capability facade smoke:'
-    Add-BMLSmokeCheck $checks 'script-input-invalid-key' (Test-BMLTextContains $modLogText 'keyboardInvalidDefaults=true') 'keyboardInvalidDefaults=true'
-    Add-BMLSmokeCheck $checks 'script-imgui-advanced' (Test-BMLTextContains $modLogText 'BML ImGui advanced smoke:') 'BML ImGui advanced smoke:'
-    Add-BMLSmokeCheck $checks 'native-export-lifecycle' (Test-BMLTextContains $modLogText 'BML native export lifecycle smoke') 'BML native export lifecycle smoke'
-    Add-BMLSmokeCheck $checks 'native-core-capability' (Test-BMLTextContains $modLogText 'BML native core capability smoke get=0') 'BML native core capability smoke get=0'
-    Add-BMLSmokeCheck $checks 'native-core-capability-set' (Test-BMLTextContains $modLogText 'set=0 rawMessage=0') 'set=0 rawMessage=0'
-    Add-BMLSmokeCheck $checks 'native-export-hardening' (Test-BMLTextContains $modLogText 'BML native export hardening smoke findEx=0 ambiguous=-703 explicit=0 mismatch=-705 badSig=-704 missingTarget=-700 exception=-708') 'BML native export hardening smoke findEx=0 ambiguous=-703 explicit=0 mismatch=-705 badSig=-704 missingTarget=-700 exception=-708'
-    Add-BMLSmokeCheck $checks 'script-export-hardening' (Test-BMLTextContains $modLogText 'BML native export hardening script tryEcho=0') 'BML native export hardening script tryEcho=0'
-    Add-BMLSmokeCheck $checks 'script-export-hardening-callstring' (Test-BMLTextContains $modLogText 'voidString=-3') 'voidString=-3'
-    Add-BMLSmokeCheck $checks 'script-export-hardening-constants' (Test-BMLTextContains $modLogText 'constants=true') 'constants=true'
+    $scriptCoreCapabilityExpected = 'BML core capability facade smoke: hud=<mode> srTimeOk=true rawMessage=0 rawHandle=true'
+    $scriptCoreCapabilityPassed = [regex]::IsMatch(
+        $modLogText,
+        'BML core capability facade smoke: hud=-?\d+ srTimeOk=true rawMessage=0 rawHandle=true',
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    Add-SmokeCheck $checks 'bindings' (Test-SmokeTextContains $modLogText 'Registered BML AngelScript bindings') 'Registered BML AngelScript bindings'
+    Add-SmokeCheck $checks 'script-summary' (Test-SmokeTextContains $modLogText 'BML script mod summary:') 'BML script mod summary:'
+    Add-SmokeCheck $checks 'script-datashare-request' (Test-SmokeTextContains $modLogText 'BML datashare request: immediate=') 'BML datashare request: immediate='
+    Add-SmokeCheck $checks 'script-datashare-delegate' (Test-SmokeTextContains $modLogText 'BML datashare delegate request: immediate=true pending=true bool=true object=true invalid=true') 'BML datashare delegate request: immediate=true pending=true bool=true object=true invalid=true'
+    Add-SmokeCheck $checks 'script-object-ownership' (Test-SmokeTextContains $modLogText 'BML script object ownership: transientTimer=true heldTimer=true transientCommand=true heldCommand=true transientDataShare=true heldDataShare=true') 'BML script object ownership: transientTimer=true heldTimer=true transientCommand=true heldCommand=true transientDataShare=true heldDataShare=true'
+    Add-SmokeCheck $checks 'script-command-delegate' (Test-SmokeTextContains $modLogText 'BML script command delegate registration: global=true method=true invalid=true') 'BML script command delegate registration: global=true method=true invalid=true'
+    Add-SmokeCheck $checks 'command-completion-script' (Test-SmokeTextContains $modLogText 'BML script command completion callback') 'BML script command completion callback'
+    Add-SmokeCheck $checks 'command-completion-native' (Test-SmokeTextContains $modLogText 'BML native command completion smoke') 'BML native command completion smoke'
+    Add-SmokeCheck $checks 'command-completion-native-delegate' (Test-SmokeTextContains $modLogText 'BML native command delegate completion smoke command=true') 'BML native command delegate completion smoke command=true'
+    Add-SmokeCheck $checks 'command-completion-native-method-delegate' (Test-SmokeTextContains $modLogText 'BML native command method delegate completion smoke command=true') 'BML native command method delegate completion smoke command=true'
+    Add-SmokeCheck $checks 'script-ui-facade' (Test-SmokeTextContains $modLogText 'BML UI facade smoke:') 'BML UI facade smoke:'
+    Add-SmokeCheck $checks 'script-core-capability-facade' $scriptCoreCapabilityPassed $scriptCoreCapabilityExpected
+    Add-SmokeCheck $checks 'script-input-invalid-key' (Test-SmokeTextContains $modLogText 'keyboardInvalidDefaults=true') 'keyboardInvalidDefaults=true'
+    Add-SmokeCheck $checks 'script-imgui-advanced' (Test-SmokeTextContains $modLogText 'BML ImGui advanced smoke:') 'BML ImGui advanced smoke:'
+    Add-SmokeCheck $checks 'native-export-lifecycle' (Test-SmokeTextContains $modLogText 'BML native export lifecycle smoke') 'BML native export lifecycle smoke'
+    Add-SmokeCheck $checks 'native-core-capability' (Test-SmokeTextContains $modLogText 'BML native core capability smoke get=0') 'BML native core capability smoke get=0'
+    Add-SmokeCheck $checks 'native-core-capability-set' (Test-SmokeTextContains $modLogText 'set=0 rawMessage=0') 'set=0 rawMessage=0'
+    Add-SmokeCheck $checks 'native-export-hardening' (Test-SmokeTextContains $modLogText 'BML native export hardening smoke findEx=0 ambiguous=-703 explicit=0 mismatch=-705 badSig=-704 missingTarget=-700 exception=-708') 'BML native export hardening smoke findEx=0 ambiguous=-703 explicit=0 mismatch=-705 badSig=-704 missingTarget=-700 exception=-708'
+    Add-SmokeCheck $checks 'script-export-hardening' (Test-SmokeTextContains $modLogText 'BML native export hardening script tryEcho=0') 'BML native export hardening script tryEcho=0'
+    Add-SmokeCheck $checks 'script-export-hardening-callstring' (Test-SmokeTextContains $modLogText 'voidString=-3') 'voidString=-3'
+    Add-SmokeCheck $checks 'script-export-hardening-constants' (Test-SmokeTextContains $modLogText 'constants=true') 'constants=true'
     if ($SingleFileSmoke) {
-        Add-BMLSmokeCheck $checks 'single-file-script-package' (Test-BMLTextContains $modLogText 'BML single-file script smoke loaded resource=true') 'BML single-file script smoke loaded resource=true'
+        Add-SmokeCheck $checks 'single-file-script-package' (Test-SmokeTextContains $modLogText 'BML single-file script smoke loaded resource=true') 'BML single-file script smoke loaded resource=true'
     }
     if ($ZipSmoke) {
-        Add-BMLSmokeCheck $checks 'zip-script-package' (Test-BMLTextContains $modLogText 'BML zip script smoke loaded resource=true') 'BML zip script smoke loaded resource=true'
+        Add-SmokeCheck $checks 'zip-script-package' (Test-SmokeTextContains $modLogText 'BML zip script smoke loaded resource=true') 'BML zip script smoke loaded resource=true'
     }
-    Add-BMLSmokeCheck $checks 'compile-diagnostic' (Test-BMLTextContains $modLogText 'phase=compile') 'phase=compile'
-    Add-BMLSmokeCheck $checks 'runtime-diagnostic' (Test-BMLTextContains $modLogText 'phase=callback') 'phase=callback'
-    Add-BMLSmokeCheck $checks 'goodbye' (Test-BMLTextContains $modLogText 'Goodbye!') 'Goodbye!'
-    Add-BMLSmokeCheck $checks 'shutdown-smoke' (Test-BMLTextContains $modLogText 'BML shutdown smoke requesting exit') 'BML shutdown smoke requesting exit'
+    Add-SmokeCheck $checks 'compile-diagnostic' (Test-SmokeTextContains $modLogText 'phase=compile') 'phase=compile'
+    Add-SmokeCheck $checks 'runtime-diagnostic' (Test-SmokeTextContains $modLogText 'phase=callback') 'phase=callback'
+    Add-SmokeCheck $checks 'goodbye' (Test-SmokeTextContains $modLogText 'Goodbye!') 'Goodbye!'
+    Add-SmokeCheck $checks 'shutdown-smoke' (Test-SmokeTextContains $modLogText 'BML shutdown smoke requesting exit') 'BML shutdown smoke requesting exit'
 }
 
 $failedChecks = @($checks | Where-Object { -not $_.Passed })
-$hasGoodbye = Test-BMLTextContains $modLogText 'Goodbye!'
+$hasGoodbye = Test-SmokeTextContains $modLogText 'Goodbye!'
 $shutdownAnomaly = $playerStarted -and $null -ne $playerExitCode -and $playerExitCode -ne 0 -and $hasGoodbye
 
 $status = 'ok'

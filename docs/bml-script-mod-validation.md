@@ -4,10 +4,10 @@ This checklist covers the current BML Script Mod Platform smoke matrix.
 
 ## Automated Ballance Validation
 
-Preferred release validation is the repository script:
+Preferred release validation is the repository test script:
 
 ```powershell
-scripts/Validate-BMLBallance.ps1 `
+tests/smoke/Validate-BMLBallance.ps1 `
   -BallanceRoot $env:BML_BALLANCE_ROOT `
   -BuildDll cmake-build-release/bin/BMLPlus.dll `
   -PlayerSeconds 30 `

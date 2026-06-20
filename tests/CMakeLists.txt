@@ -140,3 +140,5 @@ add_bml_test(InteropErrorTest
         ${BML_SOURCE_DIR}/Errors.cpp
 )
 
+add_subdirectory(smoke)
+
