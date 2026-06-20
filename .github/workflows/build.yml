@@ -218,18 +218,25 @@ jobs:
           }
 
       - name: Create release packages
+        env:
+          UPDATER_BASE_URL: ${{ vars.BML_UPDATER_BASE_URL }}
         shell: pwsh
         run: |
-          .\scripts\Package-BMLRelease.ps1 `
-            -Version "${{ github.ref_name }}" `
-            -ReleaseInstallDir "${{ github.workspace }}\artifacts\sdk-release" `
-            -DebugInstallDir "${{ github.workspace }}\artifacts\sdk-debug" `
-            -ReleaseBinaryDir "${{ github.workspace }}\artifacts\runtime-bin" `
-            -DebugBinaryDir "${{ github.workspace }}\artifacts\debug-bin" `
-            -OutputDir "${{ github.workspace }}\packages" `
-            -CKAngelScriptRuntimeDir "${{ github.workspace }}\artifacts\ckangelscript-release" `
-            -IncludeAngelScript `
-            -SkipUpdateSigning
+          $packageArgs = @(
+            '-Version', "${{ github.ref_name }}",
+            '-ReleaseInstallDir', "${{ github.workspace }}\artifacts\sdk-release",
+            '-DebugInstallDir', "${{ github.workspace }}\artifacts\sdk-debug",
+            '-ReleaseBinaryDir', "${{ github.workspace }}\artifacts\runtime-bin",
+            '-DebugBinaryDir', "${{ github.workspace }}\artifacts\debug-bin",
+            '-OutputDir', "${{ github.workspace }}\packages",
+            '-CKAngelScriptRuntimeDir', "${{ github.workspace }}\artifacts\ckangelscript-release",
+            '-IncludeAngelScript',
+            '-SkipUpdateSigning'
+          )
+          if ($env:UPDATER_BASE_URL) {
+            $packageArgs += @('-UpdaterBaseUrl', $env:UPDATER_BASE_URL)
+          }
+          .\scripts\Package-BMLRelease.ps1 @packageArgs
 
       - name: Upload release package artifact
         uses: actions/upload-artifact@v7.0.1

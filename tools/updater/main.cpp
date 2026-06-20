@@ -26,6 +26,9 @@ namespace {
             "Updater.exe commands:\n"
             "  status\n"
             "  doctor\n"
+            "  source [show]\n"
+            "  source set <https-base-url>\n"
+            "  source clear\n"
             "  check [--channel stable|beta]\n"
             "  verify-local <package>\n"
             "  apply-local <package>\n"
@@ -58,6 +61,37 @@ namespace {
             }
             PrintResult(result);
             return result.ok ? 0 : 1;
+        }
+
+        if (command == L"source") {
+            const std::wstring action = argc > 2 ? argv[2] : L"show";
+            if (action == L"show") {
+                std::string baseUrl;
+                bmlupdater::Result result = service.GetSourceBaseUrl(baseUrl);
+                if (!baseUrl.empty()) {
+                    std::cout << "baseUrl=" << baseUrl << "\n";
+                } else {
+                    std::cout << "baseUrl=<none>\n";
+                }
+                PrintResult(result);
+                return result.ok ? 0 : 1;
+            }
+            if (action == L"set") {
+                if (argc < 4) {
+                    PrintUsage();
+                    return 2;
+                }
+                bmlupdater::Result result = service.SetSourceBaseUrl(Narrow(argv[3]));
+                PrintResult(result);
+                return result.ok ? 0 : 1;
+            }
+            if (action == L"clear") {
+                bmlupdater::Result result = service.ClearSource();
+                PrintResult(result);
+                return result.ok ? 0 : 1;
+            }
+            PrintUsage();
+            return 2;
         }
 
         if (command == L"check") {

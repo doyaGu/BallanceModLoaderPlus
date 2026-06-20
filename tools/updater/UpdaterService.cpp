@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <sstream>
 #include <unordered_map>
 
@@ -180,6 +181,33 @@ namespace bmlupdater {
             return doc.Write(true, error);
         }
 
+        Result NormalizeSourceBaseUrl(std::string &baseUrl) {
+            while (!baseUrl.empty() && baseUrl.back() == '/') {
+                baseUrl.pop_back();
+            }
+            if (baseUrl.empty()) {
+                return Result::Failure("source baseUrl must not be empty");
+            }
+            if (!baseUrl.starts_with("https://")) {
+                return Result::Failure("source baseUrl must use HTTPS");
+            }
+            for (const char c : baseUrl) {
+                if (std::isspace(static_cast<unsigned char>(c))) {
+                    return Result::Failure("source baseUrl must not contain whitespace");
+                }
+            }
+            return Result::Success();
+        }
+
+        std::string SourcesJson(std::string_view baseUrl) {
+            utils::MutableJsonDocument doc;
+            yyjson_mut_val *root = doc.CreateObject();
+            doc.SetRoot(root);
+            (void)doc.AddString(root, "baseUrl", baseUrl);
+            std::string error;
+            return doc.Write(true, error);
+        }
+
         std::string PendingJson(const std::wstring &transactionRoot) {
             utils::MutableJsonDocument doc;
             yyjson_mut_val *root = doc.CreateObject();
@@ -323,7 +351,51 @@ namespace bmlupdater {
         }
         diagnostics.push_back(PathExists(InstalledManifestFile()) ? "installed manifest found" : "installed manifest missing");
         diagnostics.push_back(PathExists(PendingFile()) ? "pending transaction hint found" : "no pending transaction hint");
+        diagnostics.push_back(PathExists(SourcesFile()) ? "remote source configured" : "remote source not configured");
         return Result::Success("doctor passed");
+    }
+
+    Result UpdaterService::GetSourceBaseUrl(std::string &baseUrl) const {
+        baseUrl.clear();
+        if (!PathExists(SourcesFile())) {
+            return Result::Success("no remote source configured");
+        }
+
+        std::string error;
+        utils::JsonDocument sourcesDoc = utils::JsonDocument::ParseFile(SourcesFile(), error);
+        if (!sourcesDoc.IsValid() || !yyjson_is_obj(sourcesDoc.Root())) {
+            return Result::Failure("Unable to parse sources.json: " + error);
+        }
+        baseUrl = utils::JsonGetString(sourcesDoc.Root(), "baseUrl", "");
+        Result normalized = NormalizeSourceBaseUrl(baseUrl);
+        if (!normalized.ok) {
+            return normalized;
+        }
+        return Result::Success("remote source configured");
+    }
+
+    Result UpdaterService::SetSourceBaseUrl(std::string baseUrl) const {
+        Result normalized = NormalizeSourceBaseUrl(baseUrl);
+        if (!normalized.ok) {
+            return normalized;
+        }
+        if (!CreateDirectories(m_Context.updaterStateRoot)) {
+            return Result::Failure("Unable to create updater state root");
+        }
+        std::string error;
+        const std::string json = SourcesJson(baseUrl);
+        if (json.empty() || !WriteTextFile(SourcesFile(), json, error)) {
+            return Result::Failure(error.empty() ? "Unable to write sources.json" : error);
+        }
+        return Result::Success("remote source configured");
+    }
+
+    Result UpdaterService::ClearSource() const {
+        std::string error;
+        if (!RemoveFileIfPresent(SourcesFile(), error)) {
+            return Result::Failure(error);
+        }
+        return Result::Success("remote source cleared");
     }
 
     Result UpdaterService::CheckForUpdates(const std::string &channel, std::vector<std::string> &diagnostics) const {
@@ -331,25 +403,17 @@ namespace bmlupdater {
         const std::string selectedChannel = channel.empty() ? "stable" : channel;
         diagnostics.push_back("channel=" + selectedChannel);
 
-        const std::wstring sourcesPath = JoinPath(m_Context.updaterStateRoot, L"sources.json");
-        if (!PathExists(sourcesPath)) {
+        std::string baseUrl;
+        Result source = GetSourceBaseUrl(baseUrl);
+        if (!source.ok) {
+            return source;
+        }
+        if (baseUrl.empty()) {
             diagnostics.push_back("sources.json is missing; local package verification/apply is available");
             return Result::Success("no remote source configured");
         }
 
         std::string error;
-        utils::JsonDocument sourcesDoc = utils::JsonDocument::ParseFile(sourcesPath, error);
-        if (!sourcesDoc.IsValid() || !yyjson_is_obj(sourcesDoc.Root())) {
-            return Result::Failure("Unable to parse sources.json: " + error);
-        }
-        std::string baseUrl = utils::JsonGetString(sourcesDoc.Root(), "baseUrl", "");
-        while (!baseUrl.empty() && baseUrl.back() == '/') {
-            baseUrl.pop_back();
-        }
-        if (!baseUrl.starts_with("https://")) {
-            return Result::Failure("sources.json baseUrl must be HTTPS");
-        }
-
         const std::string channelUrl = baseUrl + "/" + selectedChannel + ".json";
         const std::string signatureUrl = channelUrl + ".sig";
         diagnostics.push_back("fetching " + channelUrl);
@@ -721,6 +785,10 @@ namespace bmlupdater {
 
     std::wstring UpdaterService::PendingFile() const {
         return JoinPath(m_Context.updaterStateRoot, L"pending.json");
+    }
+
+    std::wstring UpdaterService::SourcesFile() const {
+        return JoinPath(m_Context.updaterStateRoot, L"sources.json");
     }
 
     std::optional<UpdaterManifest> UpdaterService::LoadInstalledManifest() const {

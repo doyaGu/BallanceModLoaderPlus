@@ -34,6 +34,7 @@ TEST(UpdaterPathTest, RejectsWindowsSpecificAmbiguity) {
 
 TEST(UpdaterPathTest, RejectsUpdaterPackageForbiddenAreas) {
     EXPECT_TRUE(bmlupdater::IsDisallowedUpdaterPackagePath("Bin/Updater.exe"));
+    EXPECT_TRUE(bmlupdater::IsDisallowedUpdaterPackagePath("ModLoader/Updater/sources.json"));
     EXPECT_TRUE(bmlupdater::IsDisallowedUpdaterPackagePath("ModLoader/Mods/CameraUtilities.bmodp"));
     EXPECT_TRUE(bmlupdater::IsDisallowedUpdaterPackagePath("ModLoader/Configs/BML.cfg"));
     EXPECT_FALSE(bmlupdater::IsDisallowedUpdaterPackagePath("BuildingBlocks/BMLPlus.dll"));

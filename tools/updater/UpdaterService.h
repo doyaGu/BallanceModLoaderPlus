@@ -14,6 +14,9 @@ namespace bmlupdater {
         [[nodiscard]] const UpdaterContext &Context() const noexcept;
         [[nodiscard]] StatusInfo GetStatus() const;
         [[nodiscard]] Result RunDoctor(std::vector<std::string> &diagnostics) const;
+        [[nodiscard]] Result GetSourceBaseUrl(std::string &baseUrl) const;
+        [[nodiscard]] Result SetSourceBaseUrl(std::string baseUrl) const;
+        [[nodiscard]] Result ClearSource() const;
         [[nodiscard]] Result CheckForUpdates(const std::string &channel, std::vector<std::string> &diagnostics) const;
         [[nodiscard]] Result VerifyLocalPackage(const std::wstring &packagePath,
                                                 LocalPackageVerification &verification,
@@ -30,6 +33,7 @@ namespace bmlupdater {
         [[nodiscard]] std::wstring StateFile() const;
         [[nodiscard]] std::wstring InstalledManifestFile() const;
         [[nodiscard]] std::wstring PendingFile() const;
+        [[nodiscard]] std::wstring SourcesFile() const;
         [[nodiscard]] std::optional<UpdaterManifest> LoadInstalledManifest() const;
 
         UpdaterContext m_Context;

@@ -394,6 +394,7 @@ namespace bmlupdater {
     bool IsDisallowedUpdaterPackagePath(std::string_view normalizedPath) {
         const std::string lower = ToLowerAscii(std::string(normalizedPath));
         return lower == "bin/updater.exe" ||
+               PathMatchesPrefix(lower, "modloader/updater/") ||
                PathMatchesPrefix(lower, "modloader/mods/") ||
                PathMatchesPrefix(lower, "modloader/configs/");
     }

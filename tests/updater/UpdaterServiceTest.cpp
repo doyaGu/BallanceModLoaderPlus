@@ -99,3 +99,37 @@ TEST(UpdaterServiceTest, RollbackRestoresUpdaterStateWrittenByApply) {
     EXPECT_FALSE(bmlupdater::PathExists(bmlupdater::JoinPath(stateRoot, L"installed.manifest.json")));
     EXPECT_EQ(service.GetStatus().installedVersion, "unknown");
 }
+
+TEST(UpdaterServiceTest, RemoteSourceConfigurationRoundTripsThroughSourcesJson) {
+    const std::wstring tempRoot = MakeTempRoot();
+    const auto cleanup = std::unique_ptr<void, void (*)(void *)>(
+        const_cast<std::wstring *>(&tempRoot),
+        [](void *path) {
+            std::string error;
+            (void)bmlupdater::RemoveDirectoryTree(*static_cast<std::wstring *>(path), error);
+        });
+
+    const std::wstring gameRoot = bmlupdater::JoinPath(tempRoot, L"game");
+    const std::wstring stateRoot = bmlupdater::JoinPath(bmlupdater::JoinPath(gameRoot, L"ModLoader"), L"Updater");
+    bmlupdater::UpdaterService service({gameRoot, stateRoot});
+
+    std::string baseUrl = "unchanged";
+    bmlupdater::Result result = service.GetSourceBaseUrl(baseUrl);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_TRUE(baseUrl.empty());
+
+    result = service.SetSourceBaseUrl("https://updates.example.test/bml/");
+    ASSERT_TRUE(result.ok) << result.message;
+    result = service.GetSourceBaseUrl(baseUrl);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_EQ(baseUrl, "https://updates.example.test/bml");
+
+    result = service.SetSourceBaseUrl("http://updates.example.test/bml");
+    EXPECT_FALSE(result.ok);
+
+    result = service.ClearSource();
+    ASSERT_TRUE(result.ok) << result.message;
+    result = service.GetSourceBaseUrl(baseUrl);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_TRUE(baseUrl.empty());
+}
