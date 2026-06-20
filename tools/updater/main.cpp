@@ -30,6 +30,9 @@ namespace {
             "  source set <https-base-url> [--channel stable|beta]\n"
             "  source clear\n"
             "  check [--channel stable|beta]\n"
+            "  download [--channel stable|beta] [--force]\n"
+            "  apply-remote [--channel stable|beta] [--force]\n"
+            "  update [--channel stable|beta] [--force]\n"
             "  verify-local <package>\n"
             "  apply-local <package>\n"
             "  rollback\n"
@@ -105,22 +108,61 @@ namespace {
             return 2;
         }
 
-        if (command == L"check") {
+        if (command == L"check" || command == L"download" || command == L"apply-remote" || command == L"update") {
             std::string channel;
+            bool force = false;
             for (int i = 2; i < argc; ++i) {
                 const std::wstring option = argv[i];
                 if (option == L"--channel" && i + 1 < argc) {
                     channel = Narrow(argv[++i]);
+                } else if (option == L"--force") {
+                    force = true;
                 } else {
                     PrintUsage();
                     return 2;
                 }
             }
-            std::vector<std::string> diagnostics;
-            bmlupdater::Result result = service.CheckForUpdates(channel, diagnostics);
-            for (const std::string &line : diagnostics) {
-                std::cout << line << "\n";
+
+            if (command == L"check") {
+                std::vector<std::string> diagnostics;
+                bmlupdater::Result result = service.CheckForUpdates(channel, diagnostics);
+                for (const std::string &line : diagnostics) {
+                    std::cout << line << "\n";
+                }
+                PrintResult(result);
+                return result.ok ? 0 : 1;
             }
+
+            if (command == L"download") {
+                std::vector<std::string> diagnostics;
+                bmlupdater::RemoteUpdateInfo info;
+                bmlupdater::Result result = service.CheckRemote(channel, force, info, diagnostics);
+                for (const std::string &line : diagnostics) {
+                    std::cout << line << "\n";
+                }
+                if (!result.ok) {
+                    PrintResult(result);
+                    return 1;
+                }
+                if (info.latestVersion.empty() || !info.updateAvailable) {
+                    PrintResult(result);
+                    return 0;
+                }
+                bmlupdater::LocalPackageVerification verification;
+                result = service.DownloadRemote(info, verification, [](const std::string &line) {
+                    std::cout << line << "\n";
+                });
+                if (result.ok && !verification.manifest.version.empty()) {
+                    std::cout << "version=" << verification.manifest.version << "\n";
+                    std::cout << "managedFiles=" << verification.manifest.managedFiles.size() << "\n";
+                }
+                PrintResult(result);
+                return result.ok ? 0 : 1;
+            }
+
+            bmlupdater::Result result = (command == L"update")
+                ? service.Update(channel, force, [](const std::string &line) { std::cout << line << "\n"; })
+                : service.ApplyRemote(channel, force, [](const std::string &line) { std::cout << line << "\n"; });
             PrintResult(result);
             return result.ok ? 0 : 1;
         }

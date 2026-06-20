@@ -89,6 +89,22 @@ namespace bmlupdater {
         std::vector<std::string> diagnostics;
     };
 
+    struct RemoteUpdateInfo {
+        std::string channel;
+        std::string channelUrl;
+        std::string channelSignatureUrl;
+        std::string channelJson;
+        std::string channelSignature;
+        std::string latestVersion;
+        std::string packageUrl;
+        std::string manifestUrl;
+        std::string manifestSignatureUrl;
+        std::vector<std::string> revokedVersions;
+        std::vector<std::string> revokedManifestHashes;
+        bool updateAvailable{false};
+        bool sameTrustedVersion{false};
+    };
+
     using ProgressCallback = std::function<void(const std::string &)>;
 } // namespace bmlupdater
 

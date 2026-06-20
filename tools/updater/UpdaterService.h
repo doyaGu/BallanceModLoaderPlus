@@ -24,7 +24,14 @@ namespace bmlupdater {
         [[nodiscard]] Result GetSourceBaseUrl(std::string &baseUrl) const;
         [[nodiscard]] Result SetSourceBaseUrl(std::string baseUrl, std::string defaultChannel = "stable") const;
         [[nodiscard]] Result ClearSource() const;
+        [[nodiscard]] Result CheckRemote(const std::string &channel,
+                                         bool force,
+                                         RemoteUpdateInfo &info,
+                                         std::vector<std::string> &diagnostics) const;
         [[nodiscard]] Result CheckForUpdates(const std::string &channel, std::vector<std::string> &diagnostics) const;
+        [[nodiscard]] Result DownloadRemote(const RemoteUpdateInfo &info,
+                                            LocalPackageVerification &verification,
+                                            ProgressCallback progress = {}) const;
         [[nodiscard]] Result VerifyLocalPackage(const std::wstring &packagePath,
                                                 LocalPackageVerification &verification,
                                                 ProgressCallback progress = {}) const;
@@ -33,6 +40,12 @@ namespace bmlupdater {
         [[nodiscard]] Result Apply(const LocalPackageVerification &verification,
                                    const ApplyPlan &plan,
                                    ProgressCallback progress = {}) const;
+        [[nodiscard]] Result ApplyRemote(const std::string &channel,
+                                         bool force,
+                                         ProgressCallback progress = {}) const;
+        [[nodiscard]] Result Update(const std::string &channel,
+                                    bool force,
+                                    ProgressCallback progress = {}) const;
         [[nodiscard]] Result CheckRollbackAccess() const;
         [[nodiscard]] Result Rollback(ProgressCallback progress = {}) const;
 

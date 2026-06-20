@@ -12,6 +12,13 @@ add_bml_test(UpdaterManifestTest
         BMLUpdaterCore
 )
 
+add_bml_test(UpdaterRemoteTest
+        SOURCES
+        UpdaterRemoteTest.cpp
+        DEPENDENCIES
+        BMLUpdaterCore
+)
+
 add_bml_test(UpdaterServiceTest
         SOURCES
         UpdaterServiceTest.cpp

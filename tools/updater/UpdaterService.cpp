@@ -15,6 +15,7 @@
 #include "UpdaterManifest.h"
 #include "UpdaterNetwork.h"
 #include "UpdaterPaths.h"
+#include "UpdaterRemote.h"
 #include "UpdaterZip.h"
 
 namespace bmlupdater {
@@ -200,23 +201,22 @@ namespace bmlupdater {
             return Result::Success();
         }
 
-        Result ValidateChannelName(const std::string &channel) {
-            if (channel == "stable" || channel == "beta") {
-                return Result::Success();
-            }
-            return Result::Failure("channel must be stable or beta");
-        }
-
-        Result ValidateRemoteHttpsUrl(const std::string &url, std::string_view fieldName) {
-            if (!url.starts_with("https://")) {
-                return Result::Failure(std::string(fieldName) + " must use HTTPS");
-            }
-            for (const char c : url) {
-                if (std::isspace(static_cast<unsigned char>(c))) {
-                    return Result::Failure(std::string(fieldName) + " must not contain whitespace");
-                }
-            }
-            return Result::Success();
+        std::string RemoteSessionJson(const RemoteUpdateInfo &info,
+                                      std::string_view manifestSha256,
+                                      std::string_view packageSha256) {
+            utils::MutableJsonDocument doc;
+            yyjson_mut_val *root = doc.CreateObject();
+            doc.SetRoot(root);
+            (void)doc.AddInt(root, "schemaVersion", 1);
+            (void)doc.AddString(root, "channel", info.channel);
+            (void)doc.AddString(root, "version", info.latestVersion);
+            (void)doc.AddString(root, "channelUrl", info.channelUrl);
+            (void)doc.AddString(root, "packageUrl", info.packageUrl);
+            (void)doc.AddString(root, "manifestUrl", info.manifestUrl);
+            (void)doc.AddString(root, "manifestSha256", manifestSha256);
+            (void)doc.AddString(root, "packageSha256", packageSha256);
+            std::string error;
+            return doc.Write(true, error);
         }
 
         std::string SourcesJson(const UpdaterSourceConfig &config) {
@@ -446,7 +446,11 @@ namespace bmlupdater {
         return Result::Success("remote source cleared");
     }
 
-    Result UpdaterService::CheckForUpdates(const std::string &channel, std::vector<std::string> &diagnostics) const {
+    Result UpdaterService::CheckRemote(const std::string &channel,
+                                       bool force,
+                                       RemoteUpdateInfo &info,
+                                       std::vector<std::string> &diagnostics) const {
+        info = {};
         diagnostics.clear();
         UpdaterSourceConfig config;
         Result source = GetSourceConfig(config);
@@ -459,15 +463,17 @@ namespace bmlupdater {
             return channelResult;
         }
         diagnostics.push_back("channel=" + selectedChannel);
+        info.channel = selectedChannel;
 
         if (config.baseUrl.empty()) {
             diagnostics.push_back("sources.json is missing; local package verification/apply is available");
             return Result::Success("no remote source configured");
         }
 
-        std::string error;
         const std::string channelUrl = config.baseUrl + "/" + selectedChannel + ".json";
         const std::string signatureUrl = channelUrl + ".sig";
+        info.channelUrl = channelUrl;
+        info.channelSignatureUrl = signatureUrl;
         diagnostics.push_back("fetching " + channelUrl);
 
         std::string channelJson;
@@ -480,47 +486,137 @@ namespace bmlupdater {
         if (!fetched.ok) {
             return fetched;
         }
+        info.channelJson = channelJson;
+        info.channelSignature = signatureText;
         Result verified = VerifyDetachedSignature(channelJson, signatureText);
         if (!verified.ok) {
             return verified;
         }
 
-        utils::JsonDocument channelDoc = utils::JsonDocument::Parse(channelJson, error);
-        if (!channelDoc.IsValid() || !yyjson_is_obj(channelDoc.Root())) {
-            return Result::Failure("Unable to parse channel JSON: " + error);
+        const std::optional<UpdaterManifest> installed = LoadInstalledManifest();
+        const std::string trustedInstalledVersion = installed ? installed->version : std::string();
+        Result parsed = ParseRemoteChannelJson(
+            channelJson,
+            selectedChannel,
+            channelUrl,
+            signatureUrl,
+            force,
+            trustedInstalledVersion,
+            info);
+        if (!parsed.ok) {
+            return parsed;
         }
-        const std::string latestVersion = utils::JsonGetString(channelDoc.Root(), "version", "");
-        const std::string packageUrl = utils::JsonGetString(channelDoc.Root(), "packageUrl", "");
-        const std::string manifestUrl = utils::JsonGetString(channelDoc.Root(), "manifestUrl", "");
-        if (latestVersion.empty() || packageUrl.empty() || manifestUrl.empty()) {
-            return Result::Failure("Channel JSON must include version, packageUrl, and manifestUrl");
-        }
-        Result packageUrlResult = ValidateRemoteHttpsUrl(packageUrl, "packageUrl");
-        if (!packageUrlResult.ok) {
-            return packageUrlResult;
-        }
-        Result manifestUrlResult = ValidateRemoteHttpsUrl(manifestUrl, "manifestUrl");
-        if (!manifestUrlResult.ok) {
-            return manifestUrlResult;
-        }
+        info.channelJson = channelJson;
+        info.channelSignature = signatureText;
 
-        yyjson_val *revokedVersions = yyjson_obj_get(channelDoc.Root(), "revokedVersions");
-        if (yyjson_is_arr(revokedVersions)) {
-            size_t idx = 0;
-            size_t max = 0;
-            yyjson_val *value = nullptr;
-            yyjson_arr_foreach(revokedVersions, idx, max, value) {
-                if (yyjson_is_str(value) && latestVersion == yyjson_get_str(value)) {
-                    return Result::Failure("Latest channel version is revoked: " + latestVersion);
-                }
-            }
+        const StatusInfo status = GetStatus();
+        diagnostics.push_back("installedVersion=" + status.installedVersion);
+        diagnostics.push_back("latestVersion=" + info.latestVersion);
+        diagnostics.push_back(std::string("updateAvailable=") + (info.updateAvailable ? "true" : "false"));
+        if (info.sameTrustedVersion && !force) {
+            diagnostics.push_back("skipReason=same trusted installed version; use --force to reinstall");
         }
-
-        diagnostics.push_back("latestVersion=" + latestVersion);
-        diagnostics.push_back("packageUrl=" + packageUrl);
-        diagnostics.push_back("manifestUrl=" + manifestUrl);
+        diagnostics.push_back("packageUrl=" + info.packageUrl);
+        diagnostics.push_back("manifestUrl=" + info.manifestUrl);
         diagnostics.push_back("channel signature verified");
         return Result::Success("remote channel checked");
+    }
+
+    Result UpdaterService::CheckForUpdates(const std::string &channel, std::vector<std::string> &diagnostics) const {
+        RemoteUpdateInfo info;
+        return CheckRemote(channel, false, info, diagnostics);
+    }
+
+    Result UpdaterService::DownloadRemote(const RemoteUpdateInfo &info,
+                                          LocalPackageVerification &verification,
+                                          ProgressCallback progress) const {
+        verification = {};
+        if (info.channel.empty() || info.latestVersion.empty() || info.packageUrl.empty() || info.manifestUrl.empty()) {
+            return Result::Failure("No remote update selected");
+        }
+        if (!info.updateAvailable) {
+            return Result::Success("remote update skipped");
+        }
+
+        const std::wstring downloadRoot = JoinPath(
+            JoinPath(JoinPath(m_Context.updaterStateRoot, L"downloads"), utils::Utf8ToUtf16(info.channel)),
+            utils::Utf8ToUtf16(info.latestVersion));
+        std::string error;
+        if (!RemoveDirectoryTree(downloadRoot, error) || !CreateDirectories(downloadRoot)) {
+            return Result::Failure(error.empty() ? "Unable to create remote download root: " + PathUtf8(downloadRoot) : error);
+        }
+
+        if (!WriteTextFile(JoinPath(downloadRoot, L"channel.json"), info.channelJson, error) ||
+            !WriteTextFile(JoinPath(downloadRoot, L"channel.json.sig"), info.channelSignature, error)) {
+            return Result::Failure(error.empty() ? "Unable to write remote channel metadata" : error);
+        }
+
+        if (progress) progress("downloading manifest");
+        std::string manifestJson;
+        Result fetched = HttpGetUtf8(utils::Utf8ToUtf16(info.manifestUrl), manifestJson);
+        if (!fetched.ok) {
+            return fetched;
+        }
+        if (progress) progress("downloading manifest signature");
+        std::string manifestSignature;
+        fetched = HttpGetUtf8(utils::Utf8ToUtf16(info.manifestSignatureUrl), manifestSignature);
+        if (!fetched.ok) {
+            return fetched;
+        }
+        if (progress) progress("verifying manifest signature");
+        Result manifestSignatureResult = VerifyDetachedSignature(manifestJson, manifestSignature);
+        if (!manifestSignatureResult.ok) {
+            return manifestSignatureResult;
+        }
+
+        UpdaterManifest manifest;
+        Result parsed = ParseManifestJson(manifestJson, manifest);
+        if (!parsed.ok) {
+            return parsed;
+        }
+        if (manifest.version != info.latestVersion) {
+            return Result::Failure("Remote manifest version does not match channel version");
+        }
+        if (FileNameFromUrl(info.packageUrl) != manifest.packageFileName) {
+            return Result::Failure("Channel packageUrl file name does not match manifest package fileName");
+        }
+
+        const std::wstring packagePath = JoinPath(downloadRoot, utils::Utf8ToUtf16(manifest.packageFileName));
+        const std::wstring manifestPath = DeriveManifestPath(packagePath);
+        const std::wstring signaturePath = DeriveSignaturePath(manifestPath);
+        if (!WriteTextFile(manifestPath, manifestJson, error) ||
+            !WriteTextFile(signaturePath, manifestSignature, error)) {
+            return Result::Failure(error.empty() ? "Unable to write remote manifest metadata" : error);
+        }
+
+        const std::string manifestHash = HashFileHex(manifestPath);
+        if (manifestHash.empty()) {
+            return Result::Failure("Unable to hash remote manifest");
+        }
+        if (ContainsAsciiCaseInsensitive(info.revokedManifestHashes, manifestHash)) {
+            return Result::Failure("Remote manifest hash is revoked: " + manifestHash);
+        }
+
+        if (progress) progress("downloading package");
+        Result downloaded = HttpDownloadFile(utils::Utf8ToUtf16(info.packageUrl), packagePath, progress);
+        if (!downloaded.ok) {
+            return downloaded;
+        }
+        if (progress) progress("verifying package");
+        const std::string packageHash = HashFileHex(packagePath);
+        if (packageHash.empty()) {
+            return Result::Failure("Unable to hash remote package");
+        }
+        if (packageHash != ToLowerAscii(manifest.packageSha256)) {
+            return Result::Failure("Remote package hash does not match manifest");
+        }
+
+        const std::string sessionJson = RemoteSessionJson(info, manifestHash, packageHash);
+        if (!sessionJson.empty()) {
+            (void)WriteTextFile(JoinPath(downloadRoot, L"remote-session.json"), sessionJson, error);
+        }
+
+        return VerifyLocalPackage(packagePath, verification, progress);
     }
 
     Result UpdaterService::VerifyLocalPackage(const std::wstring &packagePath,
@@ -764,6 +860,55 @@ namespace bmlupdater {
         (void)RemoveFileIfPresent(PendingFile(), error);
         if (progress) progress("apply complete");
         return Result::Success("apply complete");
+    }
+
+    Result UpdaterService::ApplyRemote(const std::string &channel,
+                                       bool force,
+                                       ProgressCallback progress) const {
+        std::vector<std::string> diagnostics;
+        RemoteUpdateInfo info;
+        Result checked = CheckRemote(channel, force, info, diagnostics);
+        for (const std::string &diagnostic : diagnostics) {
+            if (progress) progress(diagnostic);
+        }
+        if (!checked.ok) {
+            return checked;
+        }
+        if (info.latestVersion.empty()) {
+            return Result::Success("no remote source configured");
+        }
+        if (!info.updateAvailable) {
+            return Result::Success("remote update skipped");
+        }
+
+        LocalPackageVerification verification;
+        Result downloaded = DownloadRemote(info, verification, progress);
+        if (!downloaded.ok) {
+            return downloaded;
+        }
+        if (!verification.manifest.managedFiles.empty()) {
+            if (progress) progress("building apply plan");
+        }
+        ApplyPlan plan;
+        Result planned = BuildApplyPlan(verification, plan);
+        if (!planned.ok) {
+            return planned;
+        }
+        for (const std::string &diagnostic : plan.diagnostics) {
+            if (progress) progress(diagnostic);
+        }
+        if (progress) progress("checking write access");
+        Result access = CheckApplyAccess(plan);
+        if (!access.ok) {
+            return access;
+        }
+        return Apply(verification, plan, progress);
+    }
+
+    Result UpdaterService::Update(const std::string &channel,
+                                  bool force,
+                                  ProgressCallback progress) const {
+        return ApplyRemote(channel, force, std::move(progress));
     }
 
     Result UpdaterService::CheckRollbackAccess() const {

@@ -8,6 +8,8 @@ add_library(BMLUpdaterCore STATIC
     UpdaterTypes.h
     UpdaterNetwork.cpp
     UpdaterNetwork.h
+    UpdaterRemote.cpp
+    UpdaterRemote.h
     UpdaterZip.cpp
     UpdaterZip.h
 )
