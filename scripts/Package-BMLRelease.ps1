@@ -388,14 +388,9 @@ Write-UpdaterSourcesJson -DestinationDir (Join-Path $runtimeStage 'ModLoader\Upd
 Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'LICENSE') -Destination (Join-Path $runtimeStage 'LICENSE')
 Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'README.md') -Destination (Join-Path $runtimeStage 'README.md')
 Copy-RequiredFile -Source (Join-Path $layout.RepoRoot 'README_zh-CN.md') -Destination (Join-Path $runtimeStage 'README_zh-CN.md')
-Copy-RequiredFile -Source (Join-Path $layout.TemplatesRoot 'README.md') -Destination (Join-Path $runtimeStage 'Templates\README.md')
-Copy-BMLDirectoryContents -SourceDir $nativeTemplate -DestinationDir (Join-Path $runtimeStage 'Templates\native-mod-template')
 
 if ($IncludeAngelScript) {
-    Copy-DocumentationFiles -DestinationDir (Join-Path $runtimeStage 'Docs\Scripting') -Files $scriptDocs
-    Copy-BMLDirectoryContents -SourceDir $scriptTemplate -DestinationDir (Join-Path $runtimeStage 'Templates\script-mod-template')
     Copy-RequiredFile -Source $ckasRuntimeDll -Destination (Join-Path $runtimeStage 'BuildingBlocks\AngelScript.dll')
-    Write-RequiredAngelScriptReadme -DestinationDir (Join-Path $runtimeStage 'Docs\Scripting')
 }
 
 New-BMLZipFromDirectory -SourceDir $runtimeStage -ZipPath (Join-Path $output "BMLPlus-$Version.zip")
