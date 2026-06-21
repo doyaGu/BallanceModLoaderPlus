@@ -298,22 +298,28 @@ gh release upload $version @assets --clobber --repo doyaGu/BallanceModLoaderPlus
 Push `stable.json` and `stable.json.sig` to `gh-pages:/updates/`.
 
 GitHub Pages serves the stable updater source. Release packages remain on
-GitHub Releases; Pages contains only channel metadata.
+GitHub Releases; Pages contains only channel metadata. Keep
+`updates/index.html` in the Pages tree so opening the configured base URL in a
+browser does not return 404. The updater does not trust this HTML page; it only
+trusts signed channel JSON.
 
 ```powershell
 $repo = "C:\Users\kakut\Works\Ballance\BallanceModLoaderPlus"
 $readmePath = Join-Path $env:TEMP "bmlplus-gh-pages-readme.md"
 $indexPath = Join-Path $env:TEMP "bmlplus-gh-pages-index.html"
+$updatesIndexPath = Join-Path $env:TEMP "bmlplus-gh-pages-updates-index.html"
 $nojekyllPath = Join-Path $env:TEMP "bmlplus-gh-pages-nojekyll"
 $readmeText = "# BML+ update metadata`n`nSigned updater channel files are under /updates/.`n"
 [System.IO.File]::WriteAllText($readmePath, $readmeText, [System.Text.UTF8Encoding]::new($false))
-[System.IO.File]::WriteAllText($indexPath, "<!doctype html><meta charset=`"utf-8`"><title>BML+ updates</title><p>BML+ update metadata.</p>`n", [System.Text.UTF8Encoding]::new($false))
+[System.IO.File]::WriteAllText($indexPath, "<!doctype html><meta charset=`"utf-8`"><title>BML+ updates</title><p>BML+ update metadata. See <a href=`"updates/`">updates/</a>.</p>`n", [System.Text.UTF8Encoding]::new($false))
+[System.IO.File]::WriteAllText($updatesIndexPath, "<!doctype html><meta charset=`"utf-8`"><title>BML+ updater channel</title><h1>BML+ updater channel</h1><p>Use this base URL in Updater: <code>https://doyagu.github.io/BallanceModLoaderPlus/updates</code></p><ul><li><a href=`"stable.json`">stable.json</a></li><li><a href=`"stable.json.sig`">stable.json.sig</a></li></ul>`n", [System.Text.UTF8Encoding]::new($false))
 [System.IO.File]::WriteAllText($nojekyllPath, "", [System.Text.UTF8Encoding]::new($false))
 
 $stableBlob = git -C $repo hash-object -w --no-filters (Join-Path $out "stable.json")
 $sigBlob = git -C $repo hash-object -w --no-filters (Join-Path $out "stable.json.sig")
 $readmeBlob = git -C $repo hash-object -w --no-filters $readmePath
 $indexBlob = git -C $repo hash-object -w --no-filters $indexPath
+$updatesIndexBlob = git -C $repo hash-object -w --no-filters $updatesIndexPath
 $nojekyllBlob = git -C $repo hash-object -w --no-filters $nojekyllPath
 
 $oldIndex = $env:GIT_INDEX_FILE
@@ -324,6 +330,7 @@ try {
   git -C $repo update-index --add --cacheinfo 100644,$readmeBlob,README.md
   git -C $repo update-index --add --cacheinfo 100644,$indexBlob,index.html
   git -C $repo update-index --add --cacheinfo 100644,$nojekyllBlob,.nojekyll
+  git -C $repo update-index --add --cacheinfo 100644,$updatesIndexBlob,updates/index.html
   git -C $repo update-index --add --cacheinfo 100644,$stableBlob,updates/stable.json
   git -C $repo update-index --add --cacheinfo 100644,$sigBlob,updates/stable.json.sig
   $tree = (git -C $repo write-tree).Trim()

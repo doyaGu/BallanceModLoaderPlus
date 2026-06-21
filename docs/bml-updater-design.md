@@ -192,6 +192,7 @@ gh-pages
   index.html
   .nojekyll
   updates/
+    index.html
     stable.json
     stable.json.sig
 ```
