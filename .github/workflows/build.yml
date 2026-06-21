@@ -223,21 +223,21 @@ jobs:
           UPDATER_DEFAULT_CHANNEL: ${{ vars.BML_UPDATER_DEFAULT_CHANNEL }}
         shell: pwsh
         run: |
-          $packageArgs = @(
-            '-Version', "${{ github.ref_name }}",
-            '-ReleaseInstallDir', "${{ github.workspace }}\artifacts\sdk-release",
-            '-DebugInstallDir', "${{ github.workspace }}\artifacts\sdk-debug",
-            '-ReleaseBinaryDir', "${{ github.workspace }}\artifacts\runtime-bin",
-            '-DebugBinaryDir', "${{ github.workspace }}\artifacts\debug-bin",
-            '-OutputDir', "${{ github.workspace }}\packages",
-            '-CKAngelScriptRuntimeDir', "${{ github.workspace }}\artifacts\ckangelscript-release",
-            '-IncludeAngelScript',
-            '-SkipUpdateSigning'
-          )
+          $packageArgs = @{
+            Version = "${{ github.ref_name }}"
+            ReleaseInstallDir = "${{ github.workspace }}\artifacts\sdk-release"
+            DebugInstallDir = "${{ github.workspace }}\artifacts\sdk-debug"
+            ReleaseBinaryDir = "${{ github.workspace }}\artifacts\runtime-bin"
+            DebugBinaryDir = "${{ github.workspace }}\artifacts\debug-bin"
+            OutputDir = "${{ github.workspace }}\packages"
+            CKAngelScriptRuntimeDir = "${{ github.workspace }}\artifacts\ckangelscript-release"
+            IncludeAngelScript = $true
+            SkipUpdateSigning = $true
+          }
           if ($env:UPDATER_BASE_URL) {
-            $packageArgs += @('-UpdaterBaseUrl', $env:UPDATER_BASE_URL)
+            $packageArgs.UpdaterBaseUrl = $env:UPDATER_BASE_URL
             if ($env:UPDATER_DEFAULT_CHANNEL) {
-              $packageArgs += @('-UpdaterDefaultChannel', $env:UPDATER_DEFAULT_CHANNEL)
+              $packageArgs.UpdaterDefaultChannel = $env:UPDATER_DEFAULT_CHANNEL
             }
           }
           .\scripts\Package-BMLRelease.ps1 @packageArgs
