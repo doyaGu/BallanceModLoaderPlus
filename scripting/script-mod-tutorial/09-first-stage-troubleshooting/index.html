@@ -1,0 +1,3295 @@
+
+<!doctype html>
+<html lang="zh" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="BMLPlus documentation and Ballance script mod tutorial.">
+      
+      
+      
+        <link rel="canonical" href="https://doyagu.github.io/BallanceModLoaderPlus/scripting/script-mod-tutorial/09-first-stage-troubleshooting/">
+      
+      
+        <link rel="prev" href="../08-timer/">
+      
+      
+        <link rel="next" href="../10-how-to-read-script-api/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>第 9 章：第一篇排错流程 - Ballance Mod Loader Plus</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#9" class="md-skip">
+          跳转至
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="页眉">
+    <a href="../.." title="Ballance Mod Loader Plus" class="md-header__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Ballance Mod Loader Plus
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              第 9 章：第一篇排错流程
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜索" placeholder="搜索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="查找">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清空当前内容" aria-label="清空当前内容" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜索引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/doyaGu/BallanceModLoaderPlus" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    doyaGu/BallanceModLoaderPlus
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="导航栏" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Ballance Mod Loader Plus" class="md-nav__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Ballance Mod Loader Plus
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/doyaGu/BallanceModLoaderPlus" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    doyaGu/BallanceModLoaderPlus
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    首页
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    脚本 Mod 教程
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    脚本 Mod 教程
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    导读
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第一篇：脚本先跑起来
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    第一篇：脚本先跑起来
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../00-background/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 0 章：几个名字到底指什么
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../01-script-mod-scope/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 1 章：脚本 mod 的范围
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../02-angelscript-minimum-syntax/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 2 章：AngelScript 最小语法
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../03-first-loadable-script/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 3 章：第一个可加载脚本
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../04-bml-callback-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 4 章：BML 怎么调用脚本
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../05-logs-window-fps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 5 章：让脚本在游戏里可见
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../06-command/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 6 章：命令
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../07-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 7 章：配置
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../08-timer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 8 章：Timer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 9 章：第一篇排错流程
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 9 章：第一篇排错流程
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        先看日志
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        脚本没被找到
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        脚本编译失败
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#onload" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OnLoad 没执行
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#onprocess" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OnProcess 没执行
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#imgui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        看不到 ImGui 窗口
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        命令没有反应
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        命令补全没有出现
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        配置没生成
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        配置改了但脚本没按配置走
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#timer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Timer 没执行
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        改了脚本但游戏里没变化
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        每次只改一层
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        本章结果
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../10-how-to-read-script-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 10 章：怎么查脚本 API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../11-basic-script-template/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 11 章：第一篇收束：基础脚本模板
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第二篇：看懂游戏运行时
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    第二篇：看懂游戏运行时
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../12-ballance-file-roles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 12 章：Ballance 文件各自负责什么
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../13-objects-entities-and-names/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 13 章：对象、实体和名字
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../14-groups-are-object-lists/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 14 章：组是对象名单
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../15-dataarray-runtime-tables/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 15 章：DataArray 是运行时表
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../16-behavior-graphs-and-building-blocks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 16 章：行为图和 Building Block
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../17-checkpoint-mental-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 17 章：用检查点串起四个概念
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../18-level01-content-case-study/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 18 章：第一关内容个案
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../19-find-objects-and-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 19 章：查找对象和组
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../20-currentlevel-dataarray/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 20 章：DataArray 入门：CurrentLevel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../21-alllevel-config-table/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 21 章：关卡配置表 AllLevel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../22-physicalize-balls/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 22 章：物理参数表 Physicalize_Balls
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../23-runtime-flow-overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 23 章：从 base.cmo 到一局游戏
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../24-levelinit-author-markers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 24 章：Levelinit 如何处理作者标记
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../25-gameplay-runtime-state/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 25 章：Gameplay 如何维持运行中状态
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_4" id="__nav_2_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第三篇：行为图和物理
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    第三篇：行为图和物理
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../26-reading-behavior-graphs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 26 章：行为图阅读法
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../27-object-enters-physics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 27 章：对象接入物理系统
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../28-create-physicalized-object/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 28 章：生成物理化对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../29-push-physics-object/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 29 章：推动物理对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_5" id="__nav_2_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第四篇：做一个可控小 mod
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    第四篇：做一个可控小 mod
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../30-risk-classification-before-changes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 30 章：修改前风险分级
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../31-create-your-own-controlled-object/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 31 章：创建自己的可控对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../32-complete-small-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 32 章：一个完整小 mod
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../33-release-version-compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 33 章：发布、版本和兼容性
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_6" id="__nav_2_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    进阶参考
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    进阶参考
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-a-bml-lifecycle-overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考 A：BML 生命周期总览
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-b-game-events-and-level-timing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考 B：游戏事件和关卡时机
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-c-modcontext-service-map/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考 C：ModContext 服务地图
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-d-paths-resources-logs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考 D：路径、资源和日志诊断
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-e-input-ui-frame-state/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考 E：输入、UI 和每帧状态
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-f-script-mod-boundary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考 F：脚本 mod 的边界
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-g-advanced-callbacks-events/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考 G：BML 进阶回调和事件对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-h-mod-info-dependencies-exports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考 H：mod 信息、依赖和导出
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-i-datashare-shared-state/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考 I：DataShare 和跨脚本共享状态
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-j-bml-hud-menu-message-services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考 J：BML HUD、菜单和消息服务
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-k-ckas-script-entrypoints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考 K：CKAS 三种脚本入口
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-l-handles-refs-lifetime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考 L：句柄、引用和对象生命周期
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-m-scene-objects-hierarchy-visibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考 M：场景对象、层级和可见性
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-n-dataarray-write-rollback/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考 N：DataArray 写入和回滚
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-o-resources-text-ui/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考 O：资源、文本和 UI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-p-behavior-calls-and-script-libraries/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考 P：行为调用和脚本库组织
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-q-ball-floor-module-registration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考 Q：球、地板和模块注册
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_7" id="__nav_2_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    附录
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    附录
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../appendix-a-glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    附录 A：术语表
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../appendix-b-bml-callbacks-services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    附录 B：常用 BML 回调和服务
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../appendix-c-ballance-names/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    附录 C：常用 Ballance 对象和组名
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../appendix-d-dataarrays/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    附录 D：常用 DataArray
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    BML 脚本 API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    维护资料
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    维护资料
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../bml-script-mod-author-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    脚本 mod 作者指南
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../bml-script-v1-contract/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    脚本 mod v1 契约
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../bml-script-mod-validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    脚本 mod 验证记录
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../bml-script-facade-coverage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    脚本 facade 覆盖记录
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../bml-script-api-redesign-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    脚本 API 重设计计划
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../bml-release-packaging-process/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    BML 发布打包流程
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../bml-updater-design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    BML Updater 设计
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        先看日志
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        脚本没被找到
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        脚本编译失败
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#onload" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OnLoad 没执行
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#onprocess" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OnProcess 没执行
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#imgui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        看不到 ImGui 窗口
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        命令没有反应
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        命令补全没有出现
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        配置没生成
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        配置改了但脚本没按配置走
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#timer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Timer 没执行
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        改了脚本但游戏里没变化
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        每次只改一层
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        本章结果
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="9">第 9 章：第一篇排错流程<a class="headerlink" href="#9" title="Permanent link">&para;</a></h1>
+<p>脚本出问题时，先按顺序缩小范围。</p>
+<p>这一章不新增 API，只整理排错顺序。</p>
+<p>不要同时改文件名、代码、配置和命令。一次只确认一层：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>文件是否被 BML 找到
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  脚本是否编译通过
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    OnLoad 是否执行
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>      OnProcess 是否执行
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>        命令、配置、Timer 是否各自工作
+</code></pre></div>
+<p>前一层不成立，后一层通常没有意义。</p>
+<h2 id="_1">先看日志<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<p>前面章节已经多次用过日志。排错时先打开：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>ModLoader/ModLoader.log
+</code></pre></div>
+<p>正常加载时，能看到这样的内容：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>[BML/INFO]: Loading Mod hello.script[Hello Mod] v1.0.0 by Tutorial
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>[hello.script/INFO]: HelloMod command registered: hello
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>[hello.script/INFO]: HelloMod loaded from ModLoader/Mods/HelloMod.mod.as messagesEnabled=true
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>[ModLoader/INFO]: BML script mod summary: loaded=3 failed=0
+</code></pre></div>
+<p>先找三类信息：</p>
+<table>
+<thead>
+<tr>
+<th>日志内容</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Loading Mod hello.script</code></td>
+<td>BML 找到了脚本，并读到了 mod 信息</td>
+</tr>
+<tr>
+<td><code>hello.script/INFO</code></td>
+<td>脚本里的日志已经执行</td>
+</tr>
+<tr>
+<td><code>failed=0</code></td>
+<td>本轮脚本加载没有失败项</td>
+</tr>
+</tbody>
+</table>
+<p>如果日志里没有 <code>Loading Mod hello.script</code>，先查文件和 mod 信息。<br />
+如果有 <code>Loading Mod hello.script</code>，但没有脚本自己的日志，继续查编译和回调。<br />
+如果已经有脚本日志，再查具体功能。</p>
+<h2 id="_2">脚本没被找到<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p>先查文件名。</p>
+<p>正确：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>HelloMod.mod.as
+</code></pre></div>
+<p>常见错误：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>HelloMod.as
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>HelloMod.mod.txt
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>HelloMod.mod.as.txt
+</code></pre></div>
+<p>Windows 资源管理器可能隐藏扩展名。看到文件名像 <code>HelloMod.mod.as</code>，实际可能是 <code>HelloMod.mod.as.txt</code>。排错时建议打开扩展名显示。</p>
+<p>再查位置：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>ModLoader/Mods/HelloMod.mod.as
+</code></pre></div>
+<p>脚本文件要放在 <code>ModLoader/Mods</code> 下面。</p>
+<p>然后查入口类前面的 mod 信息：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p">[</span><span class="n">bml</span><span class="p">.</span><span class="n">mod</span><span class="w"> </span><span class="n">id</span><span class="o">=</span><span class="s">&quot;hello.script&quot;</span><span class="w"> </span><span class="n">name</span><span class="o">=</span><span class="s">&quot;Hello Mod&quot;</span><span class="w"> </span><span class="n">version</span><span class="o">=</span><span class="s">&quot;1.0.0&quot;</span><span class="w"> </span><span class="n">author</span><span class="o">=</span><span class="s">&quot;Tutorial&quot;</span><span class="w"> </span><span class="n">bml</span><span class="o">=</span><span class="s">&quot;0.3.12&quot;</span><span class="p">]</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">HelloMod</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="p">}</span>
+</code></pre></div>
+<p><code>[bml.mod ...]</code> 是 BMLPlus 读取脚本 mod 信息用的标记。它不是 AngelScript 语言本身的语法，也不是注释。不要删掉，也不要放到别的类前面。</p>
+<h2 id="_3">脚本编译失败<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p>编译失败时，日志会给出错误位置或错误说明。先看第一条错误，不要从最后一条开始猜。</p>
+<p>最常见的是这些：</p>
+<table>
+<thead>
+<tr>
+<th>错误类型</th>
+<th>先查什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>少分号</td>
+<td>上一行结尾有没有 <code>;</code></td>
+</tr>
+<tr>
+<td>大括号不配对</td>
+<td><code>{</code> 和 <code>}</code> 是否成对</td>
+</tr>
+<tr>
+<td>名字拼错</td>
+<td>函数名、变量名、类型名是否和教程一致</td>
+</tr>
+<tr>
+<td>回调签名不对</td>
+<td>返回值、参数、<code>const</code>、<code>&amp;in</code> 是否照抄</td>
+</tr>
+<tr>
+<td>句柄为空</td>
+<td><code>xxx !is null</code> 之后再调用方法</td>
+</tr>
+</tbody>
+</table>
+<p>例如日志对象可能为空，写日志时用这种结构：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">private</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">LogInfo</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">string</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">message</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">Logger</span><span class="err">@</span><span class="w"> </span><span class="n">logger</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowLogger</span><span class="p">();</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">logger</span><span class="w"> </span><span class="o">!</span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">        </span><span class="n">logger</span><span class="p">.</span><span class="n">Info</span><span class="p">(</span><span class="n">message</span><span class="p">);</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="p">}</span>
+</code></pre></div>
+<p>这里的关键点有两个：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>BML::Logger@ logger     logger 是对象句柄
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>logger !is null         确认句柄有效
+</code></pre></div>
+<p>后面看到 <code>CommandRef@</code>、<code>TimerRef@</code>、<code>Config@</code>，也按这个思路处理。</p>
+<h2 id="onload"><code>OnLoad</code> 没执行<a class="headerlink" href="#onload" title="Permanent link">&para;</a></h2>
+<p><code>OnLoad</code> 是固定回调，名字和签名都要对。</p>
+<p>正确：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnLoad</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">    </span><span class="n">LogInfo</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;HelloMod loaded.&quot;</span><span class="p">);</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="p">}</span>
+</code></pre></div>
+<p>下面这些都不对：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kt">void</span><span class="w"> </span><span class="n">OnLoaded</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="kt">void</span><span class="w"> </span><span class="n">OnLoad</span><span class="p">()</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="kt">int</span><span class="w"> </span><span class="n">OnLoad</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span>
+</code></pre></div>
+<p>排错时可以先把 <code>OnLoad</code> 缩到最小：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnLoad</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">    </span><span class="n">LogInfo</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;OnLoad reached&quot;</span><span class="p">);</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="p">}</span>
+</code></pre></div>
+<p>日志出现 <code>OnLoad reached</code>，说明脚本加载和 <code>OnLoad</code> 都已经通了。再把命令、配置、Timer 加回来。</p>
+<h2 id="onprocess"><code>OnProcess</code> 没执行<a class="headerlink" href="#onprocess" title="Permanent link">&para;</a></h2>
+<p><code>OnProcess</code> 也是固定回调。</p>
+<p>正确：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnProcess</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="p">}</span>
+</code></pre></div>
+<p>看不到窗口时，先确认 <code>OnProcess</code> 是否真的在跑。可以加一个只写一次的日志：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">private</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">firstProcess</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnProcess</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">firstProcess</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">        </span><span class="n">firstProcess</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="w">        </span><span class="n">LogInfo</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;OnProcess first frame&quot;</span><span class="p">);</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="w">    </span><span class="n">DrawWindow</span><span class="p">();</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="p">}</span>
+</code></pre></div>
+<p>如果日志里有：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>[hello.script/INFO]: OnProcess first frame
+</code></pre></div>
+<p>说明 <code>OnProcess</code> 没问题。接下来查窗口开关和 ImGui 代码。</p>
+<h2 id="imgui">看不到 ImGui 窗口<a class="headerlink" href="#imgui" title="Permanent link">&para;</a></h2>
+<p>先查窗口是否被隐藏：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="k">private</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">showWindow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
+</code></pre></div>
+<p>再查 <code>OnProcess</code> 里有没有调用窗口函数：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnProcess</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">    </span><span class="n">HandleWindowToggle</span><span class="p">(</span><span class="n">ctx</span><span class="p">);</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">    </span><span class="n">UpdateFps</span><span class="p">();</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">    </span><span class="n">DrawWindow</span><span class="p">();</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="p">}</span>
+</code></pre></div>
+<p>再查 <code>DrawWindow()</code> 是否因为开关提前返回：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="k">private</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">DrawWindow</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">showWindow</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">        </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ImGui</span><span class="o">::</span><span class="n">Begin</span><span class="p">(</span><span class="s">&quot;Hello&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="w">        </span><span class="n">ImGui</span><span class="o">::</span><span class="n">TextUnformatted</span><span class="p">(</span><span class="s">&quot;HelloMod is running.&quot;</span><span class="p">);</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="w">    </span><span class="n">ImGui</span><span class="o">::</span><span class="n">End</span><span class="p">();</span>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="p">}</span>
+</code></pre></div>
+<p>如果按过 <code>F9</code>，窗口可能已经被隐藏。再按一次 <code>F9</code>，或者临时把 <code>showWindow</code> 改回 <code>true</code>。</p>
+<h2 id="_4">命令没有反应<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p>命令先看注册，再看输入。</p>
+<p><code>OnLoad</code> 里要调用：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="n">RegisterCommands</span><span class="p">(</span><span class="n">ctx</span><span class="p">);</span>
+</code></pre></div>
+<p>注册函数里要能拿到有效引用：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="err">@</span><span class="n">helloCommand</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">RegisterCommand</span><span class="p">(</span><span class="n">def</span><span class="p">,</span><span class="w"> </span><span class="n">execute</span><span class="p">,</span><span class="w"> </span><span class="n">complete</span><span class="p">);</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">helloCommand</span><span class="w"> </span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">!</span><span class="n">helloCommand</span><span class="p">.</span><span class="n">IsValid</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="w">    </span><span class="n">LogWarn</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;hello command registration failed&quot;</span><span class="p">);</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="p">}</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="n">LogInfo</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;HelloMod command registered: &quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">helloCommand</span><span class="p">.</span><span class="n">Name</span><span class="p">);</span>
+</code></pre></div>
+<p>正常日志：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>[hello.script/INFO]: HelloMod command registered: hello
+</code></pre></div>
+<p>命令栏输入的是命令名或别名：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>hello
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>h
+</code></pre></div>
+<p>不要输入函数名：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>OnHelloCommand
+</code></pre></div>
+<p>函数名只给脚本内部使用。命令栏只认识 <code>def.Name</code> 和 <code>def.Alias</code>。</p>
+<h2 id="_5">命令补全没有出现<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<p>补全要分两步看。</p>
+<p>第一步，注册命令时传入补全回调：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="n">BML</span><span class="o">::</span><span class="n">CommandCompletionCallback</span><span class="err">@</span><span class="w"> </span><span class="n">complete</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">CommandCompletionCallback</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="n">CompleteHelloCommand</span><span class="p">);</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="err">@</span><span class="n">helloCommand</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">RegisterCommand</span><span class="p">(</span><span class="n">def</span><span class="p">,</span><span class="w"> </span><span class="n">execute</span><span class="p">,</span><span class="w"> </span><span class="n">complete</span><span class="p">);</span>
+</code></pre></div>
+<p>第二步，补全函数签名要完整：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="k">private</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">CompleteHelloCommand</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="w">                                  </span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">CommandEvent</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">event</span><span class="p">,</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="w">                                  </span><span class="n">BML</span><span class="o">::</span><span class="n">CommandCompletion</span><span class="w"> </span><span class="o">&amp;</span><span class="n">inout</span><span class="w"> </span><span class="n">completions</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="w">    </span><span class="n">completions</span><span class="p">.</span><span class="n">Add</span><span class="p">(</span><span class="s">&quot;status&quot;</span><span class="p">);</span>
+<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a><span class="w">    </span><span class="n">completions</span><span class="p">.</span><span class="n">Add</span><span class="p">(</span><span class="s">&quot;toggle&quot;</span><span class="p">);</span>
+<a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a><span class="w">    </span><span class="n">completions</span><span class="p">.</span><span class="n">Add</span><span class="p">(</span><span class="s">&quot;messages&quot;</span><span class="p">);</span>
+<a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a><span class="p">}</span>
+</code></pre></div>
+<p><code>BML::CommandCompletion &amp;inout completions</code> 表示 BML 把补全列表交给函数，函数往里面加候选。</p>
+<h2 id="_6">配置没生成<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<p>配置先看 <code>OnLoad</code> 里有没有调用：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="n">LoadConfig</span><span class="p">(</span><span class="n">ctx</span><span class="p">);</span>
+</code></pre></div>
+<p>再看是否拿到了配置对象：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="n">BML</span><span class="o">::</span><span class="n">Config</span><span class="err">@</span><span class="w"> </span><span class="n">config</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowConfig</span><span class="p">();</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">config</span><span class="w"> </span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="w">    </span><span class="n">LogWarn</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;config is not available&quot;</span><span class="p">);</span>
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a><span class="p">}</span>
+</code></pre></div>
+<p>再看是否访问了配置项：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="err">@</span><span class="n">messagesEnabledProp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">GetProperty</span><span class="p">(</span><span class="s">&quot;Hello&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;MessagesEnabled&quot;</span><span class="p">);</span>
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a><span class="n">messagesEnabledProp</span><span class="p">.</span><span class="n">SetDefaultBoolean</span><span class="p">(</span><span class="nb">true</span><span class="p">);</span>
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a><span class="n">messagesEnabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">messagesEnabledProp</span><span class="p">.</span><span class="n">GetBoolean</span><span class="p">();</span>
+</code></pre></div>
+<p>配置文件通常在脚本成功加载并访问配置项后生成。修改脚本后没有看到配置变化时，先确认脚本这次真的加载成功。</p>
+<h2 id="_7">配置改了但脚本没按配置走<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
+<p>配置项和成员变量是两件事。</p>
+<p>配置项保存在文件里：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="k">private</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ConfigProperty</span><span class="err">@</span><span class="w"> </span><span class="n">messagesEnabledProp</span><span class="p">;</span>
+</code></pre></div>
+<p>成员变量保存在当前脚本运行中：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="k">private</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">messagesEnabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
+</code></pre></div>
+<p>读取配置时，要把配置值放进成员变量：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="n">messagesEnabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">messagesEnabledProp</span><span class="p">.</span><span class="n">GetBoolean</span><span class="p">();</span>
+</code></pre></div>
+<p>命令修改配置时，也要同时更新成员变量和配置项：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="n">messagesEnabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">!</span><span class="n">messagesEnabled</span><span class="p">;</span>
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a><span class="n">messagesEnabledProp</span><span class="p">.</span><span class="n">SetBoolean</span><span class="p">(</span><span class="n">messagesEnabled</span><span class="p">);</span>
+</code></pre></div>
+<p>只改其中一个，会出现“配置文件里变了，但窗口里没变”或“窗口里变了，下次启动又恢复”的情况。</p>
+<h2 id="timer">Timer 没执行<a class="headerlink" href="#timer" title="Permanent link">&para;</a></h2>
+<p>Timer 先看启动，再看回调。</p>
+<p><code>OnLoad</code> 里要调用：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="n">StartTimers</span><span class="p">(</span><span class="n">ctx</span><span class="p">);</span>
+</code></pre></div>
+<p>启动后应该能看到：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>[hello.script/INFO]: HelloMod timers started: command=true status=true
+</code></pre></div>
+<p>如果这里是 <code>false</code>，先查 <code>SetTimeout</code> / <code>SetInterval</code> 是否返回了有效 <code>TimerRef</code>。</p>
+<p>一次性 Timer 回调签名：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="k">private</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">OnCommandTimer</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">TimerEvent</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">event</span><span class="p">)</span>
+</code></pre></div>
+<p>循环 Timer 回调签名：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="k">private</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">OnStatusTimer</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">TimerEvent</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">event</span><span class="p">)</span>
+</code></pre></div>
+<p>循环 Timer 的返回值决定是否继续：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>true   继续下一次
+<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a>false  停止
+</code></pre></div>
+<p>第 8 章的例子第 3 次返回 <code>false</code>，所以只会看到三次：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>[hello.script/INFO]: HelloMod timer tick 1 from hello-status
+<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a>[hello.script/INFO]: HelloMod timer tick 2 from hello-status
+<a id="__codelineno-37-3" name="__codelineno-37-3" href="#__codelineno-37-3"></a>[hello.script/INFO]: HelloMod timer tick 3 from hello-status
+</code></pre></div>
+<p>另外，<code>SetTimeout(1000.0f, ...)</code> 和 <code>SetInterval(2000.0f, ...)</code> 的时间单位是毫秒。</p>
+<h2 id="_8">改了脚本但游戏里没变化<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h2>
+<p>修改 <code>.as</code> 后，重启 Player。</p>
+<p>第一篇里的脚本写法不依赖热重载。保存文件后如果只切回游戏窗口，旧脚本可能还在运行。</p>
+<p>重启后先看日志时间，再看脚本自己的日志：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a>[hello.script/INFO]: HelloMod loaded from ModLoader/Mods/HelloMod.mod.as messagesEnabled=true
+</code></pre></div>
+<p>如果日志时间没变，通常是 Player 没重启。<br />
+如果日志时间变了但内容还是旧的，通常是改错文件或文件没保存。</p>
+<h2 id="_9">每次只改一层<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h2>
+<p>排错时把范围缩小到一件事。</p>
+<p>例如窗口看不到：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a>先确认脚本加载
+<a id="__codelineno-39-2" name="__codelineno-39-2" href="#__codelineno-39-2"></a>再确认 OnLoad 日志
+<a id="__codelineno-39-3" name="__codelineno-39-3" href="#__codelineno-39-3"></a>再确认 OnProcess 日志
+<a id="__codelineno-39-4" name="__codelineno-39-4" href="#__codelineno-39-4"></a>再确认 showWindow
+<a id="__codelineno-39-5" name="__codelineno-39-5" href="#__codelineno-39-5"></a>最后查 ImGui::Begin / ImGui::End
+</code></pre></div>
+<p>命令没有反应：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a>先确认 RegisterCommands(ctx)
+<a id="__codelineno-40-2" name="__codelineno-40-2" href="#__codelineno-40-2"></a>再确认 command registered 日志
+<a id="__codelineno-40-3" name="__codelineno-40-3" href="#__codelineno-40-3"></a>再确认命令栏输入 hello 或 h
+<a id="__codelineno-40-4" name="__codelineno-40-4" href="#__codelineno-40-4"></a>再确认 OnHelloCommand 日志
+<a id="__codelineno-40-5" name="__codelineno-40-5" href="#__codelineno-40-5"></a>最后查命令参数
+</code></pre></div>
+<p>Timer 没执行：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a>先确认 StartTimers(ctx)
+<a id="__codelineno-41-2" name="__codelineno-41-2" href="#__codelineno-41-2"></a>再确认 timers started 日志
+<a id="__codelineno-41-3" name="__codelineno-41-3" href="#__codelineno-41-3"></a>再确认回调签名
+<a id="__codelineno-41-4" name="__codelineno-41-4" href="#__codelineno-41-4"></a>再确认时间单位
+<a id="__codelineno-41-5" name="__codelineno-41-5" href="#__codelineno-41-5"></a>最后查循环回调返回值
+</code></pre></div>
+<h2 id="_10">本章结果<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h2>
+<p>第一篇写出的脚本已经有这些入口：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a>OnLoad       启动时执行
+<a id="__codelineno-42-2" name="__codelineno-42-2" href="#__codelineno-42-2"></a>OnProcess    每帧执行
+<a id="__codelineno-42-3" name="__codelineno-42-3" href="#__codelineno-42-3"></a>Command      命令栏手动触发
+<a id="__codelineno-42-4" name="__codelineno-42-4" href="#__codelineno-42-4"></a>Config       保存和读取设置
+<a id="__codelineno-42-5" name="__codelineno-42-5" href="#__codelineno-42-5"></a>Timer        延迟或低频触发
+</code></pre></div>
+<p>排错时按这个顺序查：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a>文件名和位置
+<a id="__codelineno-43-2" name="__codelineno-43-2" href="#__codelineno-43-2"></a>[bml.mod ...]
+<a id="__codelineno-43-3" name="__codelineno-43-3" href="#__codelineno-43-3"></a>编译日志
+<a id="__codelineno-43-4" name="__codelineno-43-4" href="#__codelineno-43-4"></a>OnLoad 日志
+<a id="__codelineno-43-5" name="__codelineno-43-5" href="#__codelineno-43-5"></a>OnProcess 日志
+<a id="__codelineno-43-6" name="__codelineno-43-6" href="#__codelineno-43-6"></a>命令注册日志
+<a id="__codelineno-43-7" name="__codelineno-43-7" href="#__codelineno-43-7"></a>配置项读取
+<a id="__codelineno-43-8" name="__codelineno-43-8" href="#__codelineno-43-8"></a>Timer 启动日志
+</code></pre></div>
+<p>下一章讲怎么查脚本 API。看到没用过的类型、函数和回调签名时，先判断它属于 BML、CKAS 还是 CK/Virtools 绑定，再查对应资料。</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  回到页面顶部
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
