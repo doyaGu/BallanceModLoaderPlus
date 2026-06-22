@@ -26,8 +26,10 @@ public:
 
     bool QueueReload(const std::string &id, const ScriptModReloadOptions &options, std::string &message);
     size_t QueueReloadAll(const ScriptModReloadOptions &options);
-    bool SetWatchingEnabled(bool enabled);
-    bool IsWatchingEnabled() const { return m_WatchingEnabled; }
+    bool SetAutomaticEnabled(bool enabled);
+    bool SetWatchingEnabled(bool enabled) { return SetAutomaticEnabled(enabled); }
+    bool IsAutomaticEnabled() const { return m_AutomaticEnabled; }
+    bool IsWatchingEnabled() const { return m_AutomaticEnabled; }
     std::string GetStatus() const;
 
 private:
@@ -45,6 +47,7 @@ private:
 
     ScriptMod *FindMod(const std::string &id) const;
     void RebuildWatches();
+    void ClearAutomaticPendingReloads();
     void QueueReloadNow(ScriptMod *mod, const ScriptModReloadOptions &options, const std::string &reason);
     void QueueReloadDebounced(ScriptMod *mod, const ScriptModReloadOptions &options, const std::string &reason);
     bool ShouldWatch(const ScriptMod *mod, ScriptModReloadPolicy *outPolicy = nullptr) const;
@@ -53,7 +56,7 @@ private:
 
     ModContext *m_Context = nullptr;
     bool m_Started = false;
-    bool m_WatchingEnabled = true;
+    bool m_AutomaticEnabled = true;
     std::vector<ModRecord> m_Mods;
     std::unordered_map<std::string, PendingReload> m_Pending;
     ScriptFileWatcherWin32 m_Watcher;

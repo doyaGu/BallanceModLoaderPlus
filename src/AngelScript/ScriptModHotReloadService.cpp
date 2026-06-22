@@ -105,7 +105,7 @@ void ScriptModHotReloadService::Process() {
     if (!m_Started)
         return;
 
-    if (m_WatchingEnabled) {
+    if (m_AutomaticEnabled) {
         const std::vector<ScriptFileWatcherWin32::Event> events = m_Watcher.DrainEvents();
         ScriptModReloadOptions automaticOptions;
         automaticOptions.Automatic = true;
@@ -134,6 +134,10 @@ void ScriptModHotReloadService::Process() {
         if (pendingIt == m_Pending.end())
             continue;
         PendingReload pending = pendingIt->second;
+        if (pending.Options.Automatic && !m_AutomaticEnabled) {
+            m_Pending.erase(pendingIt);
+            continue;
+        }
         ScriptMod *mod = FindMod(id);
         if (!mod) {
             m_Pending.erase(pendingIt);
@@ -189,10 +193,12 @@ size_t ScriptModHotReloadService::QueueReloadAll(const ScriptModReloadOptions &o
     return count;
 }
 
-bool ScriptModHotReloadService::SetWatchingEnabled(bool enabled) {
-    if (m_WatchingEnabled == enabled)
+bool ScriptModHotReloadService::SetAutomaticEnabled(bool enabled) {
+    if (m_AutomaticEnabled == enabled)
         return true;
-    m_WatchingEnabled = enabled;
+    m_AutomaticEnabled = enabled;
+    if (!m_AutomaticEnabled)
+        ClearAutomaticPendingReloads();
     RebuildWatches();
     return true;
 }
@@ -207,7 +213,7 @@ std::string ScriptModHotReloadService::GetStatus() const {
     stream << "script hot reload: mods=" << m_Mods.size()
            << " auto=" << autoCount
            << " pending=" << m_Pending.size()
-           << " watch=" << (m_WatchingEnabled ? "on" : "off");
+           << " automatic=" << (m_AutomaticEnabled ? "on" : "off");
     return stream.str();
 }
 
@@ -223,7 +229,7 @@ ScriptMod *ScriptModHotReloadService::FindMod(const std::string &id) const {
 
 void ScriptModHotReloadService::RebuildWatches() {
     m_Watcher.StopAll();
-    if (!m_Started || !m_WatchingEnabled)
+    if (!m_Started || !m_AutomaticEnabled)
         return;
     for (auto &record : m_Mods) {
         if (!record.Mod)
@@ -232,6 +238,15 @@ void ScriptModHotReloadService::RebuildWatches() {
         record.WatchRoot = GetWatchRoot(record.Mod);
         if (record.Policy == ScriptModReloadPolicy::Auto && !record.WatchRoot.empty())
             m_Watcher.Watch(record.WatchRoot);
+    }
+}
+
+void ScriptModHotReloadService::ClearAutomaticPendingReloads() {
+    for (auto it = m_Pending.begin(); it != m_Pending.end();) {
+        if (it->second.Options.Automatic)
+            it = m_Pending.erase(it);
+        else
+            ++it;
     }
 }
 
@@ -250,6 +265,8 @@ void ScriptModHotReloadService::QueueReloadDebounced(ScriptMod *mod,
                                                      const ScriptModReloadOptions &options,
                                                      const std::string &reason) {
     if (!mod || !mod->GetID())
+        return;
+    if (options.Automatic && !m_AutomaticEnabled)
         return;
     PendingReload &pending = m_Pending[mod->GetID()];
     pending.Options = options;

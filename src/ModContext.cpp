@@ -1762,8 +1762,12 @@ size_t ModContext::QueueAllScriptModReloads(const BML::ScriptModReloadOptions &o
     return m_ScriptHotReload ? m_ScriptHotReload->QueueReloadAll(options) : 0;
 }
 
+bool ModContext::SetScriptHotReloadAutomatic(bool enabled) {
+    return m_ScriptHotReload && m_ScriptHotReload->SetAutomaticEnabled(enabled);
+}
+
 bool ModContext::SetScriptHotReloadWatching(bool enabled) {
-    return m_ScriptHotReload && m_ScriptHotReload->SetWatchingEnabled(enabled);
+    return SetScriptHotReloadAutomatic(enabled);
 }
 
 std::string ModContext::GetScriptHotReloadStatus() const {

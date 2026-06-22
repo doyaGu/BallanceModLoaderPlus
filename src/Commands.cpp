@@ -908,26 +908,26 @@ void CommandScript::Execute(IBML *bml, const std::vector<std::string> &args) {
         return;
     }
 
-    if (args[1] == "watch") {
+    if (args[1] == "auto" || args[1] == "watch") {
         if (args.size() != 3 || (args[2] != "on" && args[2] != "off")) {
-            bml->SendIngameMessage("Usage: script watch <on|off>");
+            bml->SendIngameMessage("Usage: script auto <on|off>");
             return;
         }
         const bool enabled = args[2] == "on";
-        context->SetScriptHotReloadWatching(enabled);
-        bml->SendIngameMessage(enabled ? "Script hot reload watch on." : "Script hot reload watch off.");
+        context->SetScriptHotReloadAutomatic(enabled);
+        bml->SendIngameMessage(enabled ? "Script automatic hot reload on." : "Script automatic hot reload off.");
         return;
     }
 
-    bml->SendIngameMessage("Usage: script <status|reload|watch>");
+    bml->SendIngameMessage("Usage: script <status|reload|auto>");
 }
 
 const std::vector<std::string> CommandScript::GetTabCompletion(IBML *, const std::vector<std::string> &args) {
     if (args.size() == 2)
-        return {"status", "reload", "watch"};
+        return {"status", "reload", "auto", "watch"};
     if (args.size() == 3 && args[1] == "reload")
         return {"all"};
-    if (args.size() == 3 && args[1] == "watch")
+    if (args.size() == 3 && (args[1] == "auto" || args[1] == "watch"))
         return {"on", "off"};
     if (args.size() == 4 && args[1] == "reload")
         return {"--force-exports"};
