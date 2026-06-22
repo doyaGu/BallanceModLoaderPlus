@@ -16,4 +16,8 @@ void ScriptModState::Fail(const ScriptDiagnostic &diagnostic) {
     Record(diagnostic);
 }
 
+void ScriptModState::ClearFailure() {
+    m_Failed = false;
+}
+
 } // namespace BML

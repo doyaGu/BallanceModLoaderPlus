@@ -2,6 +2,8 @@
 
 #include <utility>
 
+#include "ScriptMod.h"
+
 namespace BML {
 
 namespace {
@@ -27,6 +29,28 @@ ScriptRenderCallbackScope::ScriptRenderCallbackScope()
 ScriptRenderCallbackScope::~ScriptRenderCallbackScope() {
     g_InRenderCallback = m_Previous;
 }
+
+class ScriptRuntimeCallScope {
+public:
+    explicit ScriptRuntimeCallScope(ScriptMod *owner) : m_Owner(owner) {
+        if (m_Owner)
+            m_Entered = m_Owner->EnterScriptCall();
+    }
+
+    ~ScriptRuntimeCallScope() {
+        if (m_Owner && m_Entered)
+            m_Owner->LeaveScriptCall();
+    }
+
+    bool Entered() const { return m_Entered; }
+
+    ScriptRuntimeCallScope(const ScriptRuntimeCallScope &) = delete;
+    ScriptRuntimeCallScope &operator=(const ScriptRuntimeCallScope &) = delete;
+
+private:
+    ScriptMod *m_Owner = nullptr;
+    bool m_Entered = false;
+};
 
 ScriptModRuntime::ScriptModRuntime(std::string moduleName)
     : m_ModuleName(std::move(moduleName)) {
@@ -226,6 +250,12 @@ bool ScriptModRuntime::CallMethod(CKContext *context,
 
     CKAngelScriptResult result = {};
     m_Api->InitResult(&result);
+    ScriptRuntimeCallScope activeCallScope(m_Owner);
+    if (m_Owner && !activeCallScope.Entered()) {
+        diagnostic = MakeScriptDiagnostic(phase, "Script mod reload is in progress.");
+        diagnostic.Status = CKAS_INUSE;
+        return false;
+    }
     ScriptCurrentModScope callScope(m_Owner);
     const CKAS_STATUS status = m_Api->CallObjectMethod(m_AngelScript, &options, &result);
     if (status == CKAS_OK)

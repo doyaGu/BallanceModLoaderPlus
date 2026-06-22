@@ -135,6 +135,11 @@ bool ScriptModDefinitionBuilder::Build(CKContext *context,
         reflected.Version = RequireMetadataArg(tag, "version", record.Metadata, diagnostics);
         reflected.Author = MetadataArg(tag, "author");
         reflected.Description = MetadataArg(tag, "description");
+        reflected.ReloadPolicy = MetadataArg(tag, "reload");
+        if (!reflected.ReloadPolicy.empty() &&
+            ParseScriptModReloadPolicy(reflected.ReloadPolicy) == ScriptModReloadPolicy::Default) {
+            diagnostics.push_back("bml.mod reload must be 'auto' or 'manual'.");
+        }
         const std::string bmlVersion = MetadataArg(tag, "bml");
         if (!bmlVersion.empty()) {
             reflected.Metadata["bml"] = bmlVersion;

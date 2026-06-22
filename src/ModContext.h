@@ -34,6 +34,8 @@ namespace BML {
 class ScriptMod;
 struct ScriptModDefinition;
 struct ScriptModLoadCandidate;
+class ScriptModHotReloadService;
+struct ScriptModReloadOptions;
 #endif
 }
 
@@ -87,6 +89,15 @@ public:
     void SetAngelScriptExtensionRegistered(bool registered) { m_AngelScriptExtensionRegistered = registered; }
     bool AreAngelScriptBindingsRegistered() const { return m_AngelScriptBindingsRegistered; }
     void SetAngelScriptBindingsRegistered(bool registered) { m_AngelScriptBindingsRegistered = registered; }
+    bool ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
+                                             const BML::ScriptModDefinition &candidate,
+                                             std::string &diagnostic) const;
+    bool QueueScriptModReload(const std::string &id,
+                              const BML::ScriptModReloadOptions &options,
+                              std::string &message);
+    size_t QueueAllScriptModReloads(const BML::ScriptModReloadOptions &options);
+    bool SetScriptHotReloadWatching(bool enabled);
+    std::string GetScriptHotReloadStatus() const;
 #endif
 
     int GetModCount() override;
@@ -402,6 +413,7 @@ private:
     NewBallTypeMod *m_BallTypeMod = nullptr;
 #if BML_ENABLE_ANGELSCRIPT
     std::vector<std::unique_ptr<BML::ScriptMod>> m_ScriptMods;
+    std::unique_ptr<BML::ScriptModHotReloadService> m_ScriptHotReload;
 #endif
 
     typedef std::unordered_map<IMod *, std::shared_ptr<void>> ModToDllHandleMap;

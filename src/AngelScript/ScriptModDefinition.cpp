@@ -3,6 +3,8 @@
 #include <cctype>
 #include <cstdlib>
 
+#include "Utils/StringUtils.h"
+
 namespace BML {
 
 static void SkipMetadataSpaces(const std::string &text, size_t &pos) {
@@ -82,6 +84,27 @@ BMLVersion ParseBmlVersion(const std::string &value) {
     int patch = 0;
     std::sscanf(value.c_str(), "%d.%d.%d", &major, &minor, &patch);
     return BMLVersion(major, minor, patch);
+}
+
+ScriptModReloadPolicy ParseScriptModReloadPolicy(const std::string &value) {
+    const std::string normalized = utils::ToLower(utils::TrimStringCopy(value));
+    if (normalized == "auto")
+        return ScriptModReloadPolicy::Auto;
+    if (normalized == "manual" || normalized == "off" || normalized == "false")
+        return ScriptModReloadPolicy::Manual;
+    return ScriptModReloadPolicy::Default;
+}
+
+const char *ToString(ScriptModReloadPolicy policy) {
+    switch (policy) {
+    case ScriptModReloadPolicy::Auto:
+        return "auto";
+    case ScriptModReloadPolicy::Manual:
+        return "manual";
+    case ScriptModReloadPolicy::Default:
+    default:
+        return "default";
+    }
 }
 
 bool ParseScriptMetadataTag(const std::string &metadata,

@@ -499,9 +499,8 @@ int ExportRegistry::Call(BML_ModExport *handle, BML_CallFrame *frame) {
 #if BML_ENABLE_ANGELSCRIPT
     if (handle->Kind == BML_ResolvedExportKind::Script &&
         handle->ScriptGeneration == g_ScriptGeneration.load(std::memory_order_acquire) &&
-        handle->Script &&
-        handle->ScriptBinding) {
-        const int status = handle->Script->CallResolvedExport(handle->ScriptBinding, frame);
+        handle->Script) {
+        const int status = handle->Script->CallExport(handle->Key.Name, handle->Key.Signature, frame);
         if (status != BML_OK)
             BML_ResetCallValue(frame->Result);
         return status;
@@ -522,8 +521,8 @@ int ExportRegistry::Call(BML_ModExport *handle, BML_CallFrame *frame) {
     }
 
 #if BML_ENABLE_ANGELSCRIPT
-    if (handle->Kind == BML_ResolvedExportKind::Script && handle->Script && handle->ScriptBinding) {
-        const int status = handle->Script->CallResolvedExport(handle->ScriptBinding, frame);
+    if (handle->Kind == BML_ResolvedExportKind::Script && handle->Script) {
+        const int status = handle->Script->CallExport(handle->Key.Name, handle->Key.Signature, frame);
         if (status != BML_OK)
             BML_ResetCallValue(frame->Result);
         return status;

@@ -1,10 +1,15 @@
 #include "ScriptMod.h"
 
+#include <algorithm>
+#include <iomanip>
+#include <sstream>
 #include <utility>
 #include <vector>
 
 #include "BML/IConfig.h"
+#include "ExportRegistry.h"
 #include "ModContext.h"
+#include "ScriptModDefinitionBuilder.h"
 #include "Utils/PathUtils.h"
 #include "Utils/StringUtils.h"
 
@@ -18,6 +23,184 @@ static bool IsConfigKeyValid(const std::string &key) {
             return false;
     }
     return true;
+}
+
+static void AppendHostRegistrationPart(std::ostringstream &stream, const std::string &value) {
+    stream << value.size() << ':' << value << ';';
+}
+
+static void AppendHostRegistrationPart(std::ostringstream &stream, const char *value) {
+    AppendHostRegistrationPart(stream, std::string(value ? value : ""));
+}
+
+static void AppendHostRegistrationPart(std::ostringstream &stream, bool value) {
+    stream << (value ? "1;" : "0;");
+}
+
+static void AppendHostRegistrationPart(std::ostringstream &stream, float value) {
+    stream << std::setprecision(9) << value << ';';
+}
+
+template<typename... Args>
+static std::string MakeHostRegistrationKey(const Args &... args) {
+    std::ostringstream stream;
+    (AppendHostRegistrationPart(stream, args), ...);
+    return stream.str();
+}
+
+static std::vector<std::string> CanonicalHostRegistrations(const std::vector<ScriptModHostRegistration> &items) {
+    std::vector<std::string> canonical;
+    canonical.reserve(items.size());
+    for (const auto &item : items)
+        canonical.push_back(item.Kind + "\n" + item.Key);
+    std::sort(canonical.begin(), canonical.end());
+    return canonical;
+}
+
+static std::string MakeReloadModuleName(const ScriptModRuntime &runtime) {
+    static std::atomic<unsigned long> s_ReloadSerial{1};
+    return runtime.GetModuleName() + ".reload." + std::to_string(s_ReloadSerial.fetch_add(1, std::memory_order_relaxed));
+}
+
+static ScriptModLoadCandidate MakeReloadCandidate(const ScriptModEntry &entry);
+
+class ScriptModCallScope {
+public:
+    explicit ScriptModCallScope(const ScriptMod *mod) : m_Mod(mod) {
+        if (m_Mod)
+            m_Entered = m_Mod->EnterScriptCall();
+    }
+
+    ~ScriptModCallScope() {
+        if (m_Mod && m_Entered)
+            m_Mod->LeaveScriptCall();
+    }
+
+    bool Entered() const { return m_Entered; }
+
+    ScriptModCallScope(const ScriptModCallScope &) = delete;
+    ScriptModCallScope &operator=(const ScriptModCallScope &) = delete;
+
+private:
+    const ScriptMod *m_Mod = nullptr;
+    bool m_Entered = false;
+};
+
+static std::wstring MakeZipReloadStagingRoot(const ScriptModEntry &entry) {
+    static std::atomic<unsigned long> s_ZipReloadSerial{1};
+    const std::wstring parent = utils::GetDirectoryW(entry.RootDirectory.empty() ? entry.SourcePath : entry.RootDirectory);
+    std::wstring baseName = utils::RemoveExtensionW(utils::GetFileNameW(entry.SourcePath));
+    if (baseName.empty())
+        baseName = L"script-package";
+
+    for (int attempt = 0; attempt < 128; ++attempt) {
+        const unsigned long serial = s_ZipReloadSerial.fetch_add(1, std::memory_order_relaxed);
+        std::wstring candidate = utils::CombinePathW(parent, baseName + L".reload." + std::to_wstring(serial));
+        if (!utils::PathExistsW(candidate))
+            return candidate;
+    }
+
+    return {};
+}
+
+static ScriptModLoadCandidate MakeZipReloadCandidate(const ScriptModEntry &entry,
+                                                     const std::wstring &stagingRoot) {
+    std::vector<ScriptModLoadCandidate> packageCandidates;
+
+    std::vector<std::wstring> rootEntries = FindScriptModEntryPaths(stagingRoot);
+    if (!rootEntries.empty()) {
+        ScriptModLoadCandidate rootCandidate =
+            MakeDirectoryScriptModCandidate(stagingRoot, ScriptModEntrySourceKind::ZipPackage, entry.SourcePath);
+        rootCandidate.EntryPaths = std::move(rootEntries);
+        rootCandidate.SyntheticId = entry.SyntheticId;
+        packageCandidates.push_back(std::move(rootCandidate));
+    }
+
+    std::vector<ScriptModLoadCandidate> nestedCandidates;
+    FindScriptModCandidates(stagingRoot, nestedCandidates);
+    for (auto &nestedCandidate : nestedCandidates) {
+        if (nestedCandidate.SourceKind != ScriptModEntrySourceKind::Directory)
+            continue;
+        nestedCandidate.SourceKind = ScriptModEntrySourceKind::ZipPackage;
+        nestedCandidate.SourcePath = entry.SourcePath;
+        nestedCandidate.SyntheticId = entry.SyntheticId;
+        packageCandidates.push_back(std::move(nestedCandidate));
+    }
+
+    if (packageCandidates.size() == 1 && packageCandidates.front().EntryPaths.size() == 1)
+        return std::move(packageCandidates.front());
+
+    ScriptModLoadCandidate aggregate =
+        MakeDirectoryScriptModCandidate(stagingRoot, ScriptModEntrySourceKind::ZipPackage, entry.SourcePath);
+    aggregate.EntryPaths.clear();
+    aggregate.SyntheticId = entry.SyntheticId;
+    for (const auto &packageCandidate : packageCandidates) {
+        aggregate.EntryPaths.insert(aggregate.EntryPaths.end(),
+                                    packageCandidate.EntryPaths.begin(),
+                                    packageCandidate.EntryPaths.end());
+    }
+    return aggregate;
+}
+
+static bool PrepareZipReloadCandidate(const ScriptModEntry &entry,
+                                      ScriptModLoadCandidate &candidate,
+                                      std::wstring &stagingRoot,
+                                      ScriptDiagnostic &diagnostic) {
+    candidate = ScriptModLoadCandidate();
+    stagingRoot.clear();
+    if (entry.SourceKind != ScriptModEntrySourceKind::ZipPackage) {
+        candidate = MakeReloadCandidate(entry);
+        return true;
+    }
+
+    if (entry.SourcePath.empty() || entry.RootDirectory.empty()) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, "Zip script mod reload is missing source or root path.");
+        return false;
+    }
+    if (!utils::FileExistsW(entry.SourcePath)) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, "Zip script package no longer exists.");
+        diagnostic.EntryPath = utils::Utf16ToUtf8(entry.SourcePath);
+        return false;
+    }
+
+    stagingRoot = MakeZipReloadStagingRoot(entry);
+    if (stagingRoot.empty()) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, "Failed to allocate script package reload staging directory.");
+        diagnostic.EntryPath = utils::Utf16ToUtf8(entry.SourcePath);
+        return false;
+    }
+    if (utils::PathExistsW(stagingRoot) && !utils::DeleteDirectoryW(stagingRoot)) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, "Failed to clear script package reload staging directory.");
+        diagnostic.EntryPath = utils::Utf16ToUtf8(stagingRoot);
+        stagingRoot.clear();
+        return false;
+    }
+    if (!utils::CreateFileTreeW(stagingRoot) || !utils::ExtractZipW(entry.SourcePath, stagingRoot)) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, "Failed to extract script package for reload.");
+        diagnostic.EntryPath = utils::Utf16ToUtf8(entry.SourcePath);
+        if (!stagingRoot.empty())
+            utils::DeleteDirectoryW(stagingRoot);
+        stagingRoot.clear();
+        return false;
+    }
+
+    candidate = MakeZipReloadCandidate(entry, stagingRoot);
+    return true;
+}
+
+static ScriptModLoadCandidate MakeReloadCandidate(const ScriptModEntry &entry) {
+    ScriptModLoadCandidate candidate;
+    candidate.SourceKind = entry.SourceKind;
+    candidate.SourcePath = entry.SourcePath;
+    candidate.RootDirectory = entry.RootDirectory;
+    candidate.ResourceRootDirectory = entry.ResourceRootDirectory;
+    candidate.SyntheticId = entry.SyntheticId;
+    if (entry.SourceKind == ScriptModEntrySourceKind::Directory) {
+        candidate.EntryPaths = FindScriptModEntryPaths(entry.RootDirectory);
+    }
+    if (candidate.EntryPaths.empty() && !entry.EntryPath.empty())
+        candidate.EntryPaths.push_back(entry.EntryPath);
+    return candidate;
 }
 
 static std::string BuildMissingExportDiagnostic(const ScriptModDefinition &definition,
@@ -84,42 +267,57 @@ BMLVersion ScriptMod::GetBMLVersion() {
 }
 
 void ScriptMod::OnLoad() {
+    LoadCurrentRuntime(false);
+}
+
+bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations) {
     if (m_State.IsFailed())
-        return;
+        return false;
 
     if (!m_Definition.Enabled) {
         Record(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, "Script mod is disabled."));
-        return;
+        return false;
     }
 
     if (!CompileAndCreate())
-        return;
+        return false;
     m_EventRouter.Bind(m_Context ? m_Context->GetCKContext() : nullptr, &m_Runtime, &m_ContextView);
 
     ScriptDiagnostic diagnostic;
     if (!m_EventRouter.Cache(diagnostic)) {
         Fail(diagnostic);
-        return;
+        return false;
     }
     if (!m_Exports.Cache(m_Context ? m_Context->GetCKContext() : nullptr, m_Runtime, m_Definition.Exports, diagnostic)) {
         Fail(diagnostic);
-        return;
+        return false;
     }
 
-    m_Timers.Bind(m_Context, this, &m_Runtime, &m_ContextView);
-    m_Commands.Bind(m_Context, this, &m_ContextView);
-    m_DataShareRequests.Bind(m_Context, this, &m_Runtime, &m_ContextView);
+    RebindServices();
     m_State.MarkLoaded(true);
+    const HostRegistrationMode previousMode = m_HostRegistrationMode;
+    m_HostRegistrationMode = validateHostRegistrations ? HostRegistrationMode::Validate : HostRegistrationMode::Capture;
+    m_PendingHostRegistrations.clear();
     m_InLoadCallback = true;
     const bool onLoadOk = m_EventRouter.CallOnLoad(diagnostic);
     m_InLoadCallback = false;
+    m_HostRegistrationMode = previousMode;
     if (!onLoadOk || m_State.IsFailed()) {
         if (!onLoadOk)
             Fail(diagnostic);
         CleanupFailedLoad();
-        return;
+        return false;
+    }
+    if (validateHostRegistrations) {
+        std::string registrationDiagnostic;
+        if (!ValidateHostRegistrationSet(registrationDiagnostic)) {
+            Fail(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, registrationDiagnostic));
+            CleanupFailedLoad();
+            return false;
+        }
     }
     m_Runtime.SetLoaded(true);
+    return true;
 }
 
 void ScriptMod::OnUnload() {
@@ -145,9 +343,12 @@ void ScriptMod::OnLoadObject(const char *filename,
                              CKBOOL reuseMeshes,
                              CKBOOL reuseMaterials,
                              CKBOOL dynamic,
-                             XObjectArray *objArray,
-                             CKObject *masterObj) {
-    if (!m_State.IsLoaded() || m_State.IsFailed())
+                              XObjectArray *objArray,
+                              CKObject *masterObj) {
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return;
+    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
         return;
 
     ScriptDiagnostic diagnostic;
@@ -166,7 +367,10 @@ void ScriptMod::OnLoadObject(const char *filename,
 }
 
 void ScriptMod::OnLoadScript(const char *filename, CKBehavior *script) {
-    if (!m_State.IsLoaded() || m_State.IsFailed())
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return;
+    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
         return;
 
     ScriptDiagnostic diagnostic;
@@ -175,7 +379,10 @@ void ScriptMod::OnLoadScript(const char *filename, CKBehavior *script) {
 }
 
 void ScriptMod::OnModifyConfig(const char *category, const char *key, IProperty *prop) {
-    if (!m_State.IsLoaded() || m_State.IsFailed())
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return;
+    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
         return;
 
     const std::string eventCategory = category ? category : "";
@@ -338,7 +545,10 @@ void ScriptMod::OnPostLifeUp() {
 }
 
 void ScriptMod::OnProcess() {
-    if (!m_State.IsLoaded() || m_State.IsFailed())
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return;
+    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
         return;
     if (!m_EventRouter.HasOnProcess())
         return;
@@ -348,7 +558,10 @@ void ScriptMod::OnProcess() {
 }
 
 void ScriptMod::OnRender(CK_RENDER_FLAGS flags) {
-    if (!m_State.IsLoaded() || m_State.IsFailed())
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return;
+    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
         return;
     if (!m_EventRouter.HasOnRender())
         return;
@@ -358,7 +571,10 @@ void ScriptMod::OnRender(CK_RENDER_FLAGS flags) {
 }
 
 void ScriptMod::OnCheatEnabled(bool enable) {
-    if (!m_State.IsLoaded() || m_State.IsFailed())
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return;
+    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
         return;
 
     ScriptDiagnostic diagnostic;
@@ -385,7 +601,10 @@ void ScriptMod::OnPhysicalize(CK3dEntity *target,
                               float *ballRadius,
                               int concaveCnt,
                               CKMesh **concaveMesh) {
-    if (!m_State.IsLoaded() || m_State.IsFailed())
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return;
+    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
         return;
 
     ScriptDiagnostic diagnostic;
@@ -414,7 +633,10 @@ void ScriptMod::OnPhysicalize(CK3dEntity *target,
 }
 
 void ScriptMod::OnUnphysicalize(CK3dEntity *target) {
-    if (!m_State.IsLoaded() || m_State.IsFailed())
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return;
+    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
         return;
 
     ScriptDiagnostic diagnostic;
@@ -422,7 +644,10 @@ void ScriptMod::OnUnphysicalize(CK3dEntity *target) {
 }
 
 void ScriptMod::OnPreCommandExecute(ICommand *command, const std::vector<std::string> &args) {
-    if (!m_State.IsLoaded() || m_State.IsFailed())
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return;
+    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
         return;
 
     ScriptDiagnostic diagnostic;
@@ -430,7 +655,10 @@ void ScriptMod::OnPreCommandExecute(ICommand *command, const std::vector<std::st
 }
 
 void ScriptMod::OnPostCommandExecute(ICommand *command, const std::vector<std::string> &args) {
-    if (!m_State.IsLoaded() || m_State.IsFailed())
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return;
+    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
         return;
 
     ScriptDiagnostic diagnostic;
@@ -554,7 +782,124 @@ bool ScriptMod::CompileAndCreate() {
 
     return true;
 }
+
+bool ScriptMod::CanHotReloadNow() const {
+    std::lock_guard<std::mutex> lock(m_ReloadMutex);
+    return !m_Reloading.load(std::memory_order_acquire) && m_ActiveScriptCalls == 0;
+}
+
+bool ScriptMod::EnterScriptCall() const {
+    std::lock_guard<std::mutex> lock(m_ReloadMutex);
+    if (m_Reloading.load(std::memory_order_acquire) &&
+        m_ReloadThreadId != std::this_thread::get_id()) {
+        return false;
+    }
+    ++m_ActiveScriptCalls;
+    return true;
+}
+
+void ScriptMod::LeaveScriptCall() const {
+    std::lock_guard<std::mutex> lock(m_ReloadMutex);
+    if (m_ActiveScriptCalls > 0)
+        --m_ActiveScriptCalls;
+}
+
+void ScriptMod::RebindServices() {
+    m_Timers.Bind(m_Context, this, &m_Runtime, &m_ContextView);
+    m_Commands.Bind(m_Context, this, &m_ContextView);
+    m_DataShareRequests.Bind(m_Context, this, &m_Runtime, &m_ContextView);
+}
+
+void ScriptMod::SetReloadDiagnostic(const std::string &diagnostic) {
+    m_LastReloadDiagnostic = diagnostic;
+    if (!diagnostic.empty() && m_Context && m_Context->GetLogger())
+        m_Context->GetLogger()->Warn("Script mod %s reload: %s", GetID(), diagnostic.c_str());
+}
+
+bool ScriptMod::ValidateHostRegistrationSet(std::string &diagnostic) {
+    const auto expected = CanonicalHostRegistrations(m_HostRegistrations);
+    const auto actual = CanonicalHostRegistrations(m_PendingHostRegistrations);
+    if (expected == actual)
+        return true;
+
+    diagnostic = "Script mod changed ball/floor/module registrations; restart is required.";
+    return false;
+}
+
+bool ScriptMod::NoteHostRegistration(const char *kind, const std::string &key) {
+    ScriptModHostRegistration registration{kind ? kind : "", key};
+    if (m_HostRegistrationMode == HostRegistrationMode::Validate) {
+        m_PendingHostRegistrations.push_back(std::move(registration));
+        return true;
+    }
+    m_HostRegistrations.push_back(std::move(registration));
+    return true;
+}
+
+bool ScriptMod::ValidateReloadDefinition(const ScriptModDefinition &candidate,
+                                         const ScriptExportTable &candidateExports,
+                                         const ScriptModReloadOptions &options,
+                                         std::string &diagnostic) const {
+    if (candidate.Id != m_Definition.Id) {
+        diagnostic = "Script mod id changed from '" + m_Definition.Id + "' to '" + candidate.Id + "'.";
+        return false;
+    }
+    if (!candidate.Enabled) {
+        diagnostic = "Script mod reload candidate is disabled.";
+        return false;
+    }
+
+    auto dependencyKey = [](const ScriptModDependency &dependency) {
+        return dependency.Id + "\n" +
+               std::to_string(dependency.MinVersion.major) + "." +
+               std::to_string(dependency.MinVersion.minor) + "." +
+               std::to_string(dependency.MinVersion.patch) + "\n" +
+               (dependency.Optional ? "optional" : "required");
+    };
+    std::vector<std::string> oldDependencies;
+    std::vector<std::string> newDependencies;
+    oldDependencies.reserve(m_Definition.Dependencies.size());
+    newDependencies.reserve(candidate.Dependencies.size());
+    for (const auto &dependency : m_Definition.Dependencies)
+        oldDependencies.push_back(dependencyKey(dependency));
+    for (const auto &dependency : candidate.Dependencies)
+        newDependencies.push_back(dependencyKey(dependency));
+    std::sort(oldDependencies.begin(), oldDependencies.end());
+    std::sort(newDependencies.begin(), newDependencies.end());
+    if (oldDependencies != newDependencies) {
+        diagnostic = "Script mod dependency declarations changed; restart is required.";
+        return false;
+    }
+
+    BMLVersion currentBml;
+    if (currentBml < candidate.MinBmlVersion) {
+        diagnostic = "Script mod reload candidate requires newer BML.";
+        return false;
+    }
+
+    if (!m_Context || !m_Context->ValidateScriptModReloadDependencies(this, candidate, diagnostic))
+        return false;
+
+    if (!options.ForceExports) {
+        for (int i = 0; i < m_Exports.GetCount(); ++i) {
+            std::string name;
+            std::string signature;
+            if (!m_Exports.GetInfo(i, name, signature))
+                continue;
+            if (!candidateExports.HasExport(name, signature)) {
+                diagnostic = "Script mod reload removed or changed export '" + name +
+                             "' signature '" + signature + "'.";
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
 bool ScriptMod::HasExport(const std::string &name, const std::string &signature) const {
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return false;
     return m_Exports.HasExport(name, signature);
 }
 
@@ -617,6 +962,12 @@ bool ScriptMod::RegisterScriptBallType(const std::string &ballFile,
                                        float radius) {
     if (!m_InLoadCallback || !m_Context || ballFile.empty() || ballId.empty() || ballName.empty() || objName.empty())
         return false;
+    if (!NoteHostRegistration("ball", MakeHostRegistrationKey(ballFile, ballId, ballName, objName, friction,
+                                                              elasticity, mass, collGroup, linearDamp, rotDamp,
+                                                              force, radius)))
+        return false;
+    if (m_HostRegistrationMode == HostRegistrationMode::Validate)
+        return true;
     m_Context->RegisterBallType(ballFile.c_str(), ballId.c_str(), ballName.c_str(), objName.c_str(), friction,
                                 elasticity, mass, collGroup.c_str(), linearDamp, rotDamp, force, radius);
     return true;
@@ -630,6 +981,11 @@ bool ScriptMod::RegisterScriptFloorType(const std::string &floorName,
                                         bool enableColl) {
     if (!m_InLoadCallback || !m_Context || floorName.empty())
         return false;
+    if (!NoteHostRegistration("floor", MakeHostRegistrationKey(floorName, friction, elasticity, mass, collGroup,
+                                                               enableColl)))
+        return false;
+    if (m_HostRegistrationMode == HostRegistrationMode::Validate)
+        return true;
     m_Context->RegisterFloorType(floorName.c_str(), friction, elasticity, mass, collGroup.c_str(), enableColl);
     return true;
 }
@@ -648,6 +1004,12 @@ bool ScriptMod::RegisterScriptModulBall(const std::string &modulName,
                                         float radius) {
     if (!m_InLoadCallback || !m_Context || modulName.empty())
         return false;
+    if (!NoteHostRegistration("module-ball", MakeHostRegistrationKey(modulName, fixed, friction, elasticity, mass,
+                                                                     collGroup, frozen, enableColl, calcMassCenter,
+                                                                     linearDamp, rotDamp, radius)))
+        return false;
+    if (m_HostRegistrationMode == HostRegistrationMode::Validate)
+        return true;
     m_Context->RegisterModulBall(modulName.c_str(), fixed, friction, elasticity, mass, collGroup.c_str(), frozen,
                                  enableColl, calcMassCenter, linearDamp, rotDamp, radius);
     return true;
@@ -666,6 +1028,12 @@ bool ScriptMod::RegisterScriptModulConvex(const std::string &modulName,
                                           float rotDamp) {
     if (!m_InLoadCallback || !m_Context || modulName.empty())
         return false;
+    if (!NoteHostRegistration("module-convex", MakeHostRegistrationKey(modulName, fixed, friction, elasticity, mass,
+                                                                       collGroup, frozen, enableColl, calcMassCenter,
+                                                                       linearDamp, rotDamp)))
+        return false;
+    if (m_HostRegistrationMode == HostRegistrationMode::Validate)
+        return true;
     m_Context->RegisterModulConvex(modulName.c_str(), fixed, friction, elasticity, mass, collGroup.c_str(), frozen,
                                    enableColl, calcMassCenter, linearDamp, rotDamp);
     return true;
@@ -674,6 +1042,10 @@ bool ScriptMod::RegisterScriptModulConvex(const std::string &modulName,
 bool ScriptMod::RegisterScriptTrafo(const std::string &modulName) {
     if (!m_InLoadCallback || !m_Context || modulName.empty())
         return false;
+    if (!NoteHostRegistration("trafo", MakeHostRegistrationKey(modulName)))
+        return false;
+    if (m_HostRegistrationMode == HostRegistrationMode::Validate)
+        return true;
     m_Context->RegisterTrafo(modulName.c_str());
     return true;
 }
@@ -681,38 +1053,60 @@ bool ScriptMod::RegisterScriptTrafo(const std::string &modulName) {
 bool ScriptMod::RegisterScriptModul(const std::string &modulName) {
     if (!m_InLoadCallback || !m_Context || modulName.empty())
         return false;
+    if (!NoteHostRegistration("module", MakeHostRegistrationKey(modulName)))
+        return false;
+    if (m_HostRegistrationMode == HostRegistrationMode::Validate)
+        return true;
     m_Context->RegisterModul(modulName.c_str());
     return true;
 }
 
 const ScriptExportBinding *ScriptMod::ResolveExport(const std::string &name, const std::string &signature) const {
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return nullptr;
     return m_Exports.Resolve(name, signature);
 }
 
 std::string ScriptMod::GetExportSignature(const std::string &name) const {
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return {};
     return m_Exports.GetSignature(name);
 }
 
 void ScriptMod::GetExportSignatures(const std::string &name, std::vector<std::string> &out) const {
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return;
     m_Exports.GetSignatures(name, out);
 }
 
 int ScriptMod::GetExportCount() const {
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return 0;
     return m_Exports.GetCount();
 }
 
 bool ScriptMod::GetExportInfo(int index, std::string &name, std::string &signature) const {
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return false;
     return m_Exports.GetInfo(index, name, signature);
 }
 
 int ScriptMod::CallVoidExport(const std::string &name, const std::string &signature) {
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return BML_ERROR_INTEROP_TARGET_FAILED;
     const ScriptExportBinding *binding = m_Exports.Resolve(name, signature);
     if (!binding) {
         Record(MakeScriptDiagnostic(ScriptDiagnosticPhase::ExportLookup,
                                     BuildMissingExportDiagnostic(m_Definition, m_Exports, name, signature)));
         return BML_ERROR_INTEROP_EXPORT_NOT_FOUND;
     }
-    if (!m_State.IsLoaded() || m_State.IsFailed())
+    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
         return BML_ERROR_INTEROP_TARGET_FAILED;
 
     ScriptDiagnostic diagnostic;
@@ -734,13 +1128,16 @@ int ScriptMod::CallStringExport(const std::string &name,
                                 const std::string &argument,
                                 bool hasArgument,
     std::string &out) {
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return BML_ERROR_INTEROP_TARGET_FAILED;
     const ScriptExportBinding *binding = m_Exports.Resolve(name, signature);
     if (!binding) {
         Record(MakeScriptDiagnostic(ScriptDiagnosticPhase::ExportLookup,
                                     BuildMissingExportDiagnostic(m_Definition, m_Exports, name, signature)));
         return BML_ERROR_INTEROP_EXPORT_NOT_FOUND;
     }
-    if (!m_State.IsLoaded() || m_State.IsFailed())
+    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
         return BML_ERROR_INTEROP_TARGET_FAILED;
 
     ScriptDiagnostic diagnostic;
@@ -762,6 +1159,9 @@ int ScriptMod::CallExport(const std::string &name, const std::string &signature,
     if (!frame)
         return BML_ERROR_INTEROP_BAD_CALL_FRAME;
 
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return BML_ERROR_INTEROP_TARGET_FAILED;
     const ScriptExportBinding *binding = m_Exports.Resolve(name, signature);
     if (!binding) {
         Record(MakeScriptDiagnostic(ScriptDiagnosticPhase::ExportLookup,
@@ -776,7 +1176,10 @@ int ScriptMod::CallResolvedExport(const ScriptExportBinding *binding, BML_CallFr
         return BML_ERROR_INTEROP_BAD_CALL_FRAME;
     if (!binding)
         return BML_ERROR_INTEROP_EXPORT_NOT_FOUND;
-    if (!m_State.IsLoaded() || m_State.IsFailed())
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return BML_ERROR_INTEROP_TARGET_FAILED;
+    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
         return BML_ERROR_INTEROP_TARGET_FAILED;
 
     ScriptDiagnostic diagnostic;
@@ -793,7 +1196,10 @@ int ScriptMod::CallResolvedExport(const ScriptExportBinding *binding, BML_CallFr
 }
 
 void ScriptMod::CallGameEvent(size_t eventIndex) {
-    if (!m_State.IsLoaded() || m_State.IsFailed())
+    ScriptModCallScope callScope(this);
+    if (!callScope.Entered())
+        return;
+    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
         return;
     if (!m_EventRouter.HasGameEvent())
         return;
@@ -811,6 +1217,8 @@ void ScriptMod::CleanupFailedLoad() {
 }
 
 void ScriptMod::FailIfEventCallFailed(bool ok, const ScriptDiagnostic &diagnostic) {
+    if (!ok && diagnostic.Status == CKAS_INUSE && m_Reloading.load(std::memory_order_acquire))
+        return;
     if (!ok)
         Fail(diagnostic);
 }
@@ -832,6 +1240,25 @@ void ScriptMod::Fail(const ScriptDiagnostic &diagnostic) {
 
 bool ScriptMod::ReleaseRuntime() {
     CKContext *ckContext = m_Context ? m_Context->GetCKContext() : nullptr;
+    bool ok = ReleaseScriptServices();
+    ok = ReleaseScriptMethodHandles() && ok;
+
+    ScriptDiagnostic diagnostic;
+    ok = m_Runtime.Release(ckContext, &diagnostic) && ok;
+    m_State.MarkLoaded(false);
+    if (!ok) {
+        if (!diagnostic.Message.empty())
+            Record(diagnostic);
+        if (m_Context && m_Context->GetLogger()) {
+            m_Context->GetLogger()->Warn("Script mod %s runtime release failed: %s",
+                                         GetID(),
+                                         m_State.GetLastDiagnosticText().c_str());
+        }
+    }
+    return ok;
+}
+
+bool ScriptMod::ReleaseScriptServices() {
     ScriptDiagnostic releaseDiagnostic;
     bool ok = true;
     m_DataShareRequests.Release(&releaseDiagnostic);
@@ -852,18 +1279,29 @@ bool ScriptMod::ReleaseRuntime() {
         ok = false;
     }
     releaseDiagnostic = ScriptDiagnostic();
+    return ok;
+}
+
+bool ScriptMod::ReleaseScriptMethodHandles() {
+    CKContext *ckContext = m_Context ? m_Context->GetCKContext() : nullptr;
+    ScriptDiagnostic releaseDiagnostic;
+    bool ok = true;
     if (!m_Exports.Release(ckContext, m_Runtime, &releaseDiagnostic)) {
         Record(releaseDiagnostic);
         ok = false;
     }
+    releaseDiagnostic = ScriptDiagnostic();
     if (!m_EventRouter.Release(&releaseDiagnostic)) {
         Record(releaseDiagnostic);
         ok = false;
     }
+    return ok;
+}
 
+bool ScriptMod::ReleaseRuntimeOnly(ScriptModRuntime &runtime) {
+    CKContext *ckContext = m_Context ? m_Context->GetCKContext() : nullptr;
     ScriptDiagnostic diagnostic;
-    ok = m_Runtime.Release(ckContext, &diagnostic) && ok;
-    m_State.MarkLoaded(false);
+    const bool ok = runtime.Release(ckContext, &diagnostic);
     if (!ok) {
         if (!diagnostic.Message.empty())
             Record(diagnostic);
@@ -874,6 +1312,161 @@ bool ScriptMod::ReleaseRuntime() {
         }
     }
     return ok;
+}
+
+ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &options) {
+    ScriptModReloadResult result;
+    {
+        std::lock_guard<std::mutex> lock(m_ReloadMutex);
+        if (m_Reloading.load(std::memory_order_acquire)) {
+            result.RetryLater = true;
+            result.Diagnostic = "Reload already in progress.";
+            return result;
+        }
+        if (m_ActiveScriptCalls != 0) {
+            result.RetryLater = true;
+            result.Diagnostic = "Script callback/export is active; reload deferred.";
+            return result;
+        }
+        m_ReloadThreadId = std::this_thread::get_id();
+        m_Reloading.store(true, std::memory_order_release);
+    }
+
+    auto finish = [&](bool success, const std::string &diagnostic) {
+        result.Success = success;
+        result.Diagnostic = diagnostic;
+        if (!success)
+            SetReloadDiagnostic(diagnostic);
+        else
+            SetReloadDiagnostic(std::string());
+        {
+            std::lock_guard<std::mutex> lock(m_ReloadMutex);
+            m_ReloadThreadId = std::thread::id();
+            m_Reloading.store(false, std::memory_order_release);
+        }
+        return result;
+    };
+
+    ScriptDiagnostic diagnostic;
+    std::wstring stagedZipRoot;
+    auto cleanupStagedZipRoot = [&]() {
+        if (!stagedZipRoot.empty()) {
+            utils::DeleteDirectoryW(stagedZipRoot);
+            stagedZipRoot.clear();
+        }
+    };
+
+    ScriptModLoadCandidate candidate;
+    if (!PrepareZipReloadCandidate(m_Entry, candidate, stagedZipRoot, diagnostic))
+        return finish(false, FormatScriptDiagnostic(diagnostic));
+    if (candidate.EntryPaths.size() != 1) {
+        cleanupStagedZipRoot();
+        return finish(false, "Reload requires exactly one *.mod.as entry file.");
+    }
+    ScriptModEntry candidateEntry = MakeScriptModEntry(candidate, candidate.EntryPaths.front());
+    ScriptModDefinition candidateDefinition;
+    ScriptModRuntime candidateRuntime(MakeReloadModuleName(m_Runtime));
+    ScriptModDefinitionBuilder builder;
+    if (!builder.Build(m_Context ? m_Context->GetCKContext() : nullptr,
+                       candidateEntry,
+                       candidateRuntime,
+                       candidateDefinition,
+                       diagnostic)) {
+        ReleaseRuntimeOnly(candidateRuntime);
+        cleanupStagedZipRoot();
+        return finish(false, FormatScriptDiagnostic(diagnostic));
+    }
+
+    candidateRuntime.SetOwner(this);
+    if (!candidateRuntime.CreateObject(m_Context ? m_Context->GetCKContext() : nullptr,
+                                       candidateDefinition.ClassNamespace,
+                                       candidateDefinition.ClassName,
+                                       diagnostic)) {
+        ReleaseRuntimeOnly(candidateRuntime);
+        cleanupStagedZipRoot();
+        return finish(false, FormatScriptDiagnostic(diagnostic));
+    }
+
+    ScriptExportTable candidateExports;
+    if (!candidateExports.Cache(m_Context ? m_Context->GetCKContext() : nullptr,
+                                candidateRuntime,
+                                candidateDefinition.Exports,
+                                diagnostic)) {
+        candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
+        ReleaseRuntimeOnly(candidateRuntime);
+        cleanupStagedZipRoot();
+        return finish(false, FormatScriptDiagnostic(diagnostic));
+    }
+
+    std::string validationDiagnostic;
+    if (!ValidateReloadDefinition(candidateDefinition, candidateExports, options, validationDiagnostic)) {
+        candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
+        ReleaseRuntimeOnly(candidateRuntime);
+        cleanupStagedZipRoot();
+        return finish(false, validationDiagnostic);
+    }
+    candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
+
+    ExportRegistry::NotifyScriptExportsChanged();
+    ScriptDiagnostic unloadDiagnostic;
+    if (m_State.IsLoaded() && !m_EventRouter.CallOnUnload(unloadDiagnostic))
+        Record(unloadDiagnostic);
+
+    ReleaseScriptServices();
+    ReleaseScriptMethodHandles();
+    m_State.MarkLoaded(false);
+
+    ScriptModDefinition oldDefinition = std::move(m_Definition);
+    ScriptModEntry oldEntry = std::move(m_Entry);
+    ScriptModRuntime oldRuntime = std::move(m_Runtime);
+
+    m_Definition = std::move(candidateDefinition);
+    m_Entry = std::move(candidateEntry);
+    m_Runtime = std::move(candidateRuntime);
+    m_Runtime.SetOwner(this);
+    m_State.ClearFailure();
+
+    if (LoadCurrentRuntime(true)) {
+        ReleaseRuntimeOnly(oldRuntime);
+        if (oldEntry.SourceKind == ScriptModEntrySourceKind::ZipPackage &&
+            !oldEntry.RootDirectory.empty() &&
+            oldEntry.RootDirectory != m_Entry.RootDirectory) {
+            utils::DeleteDirectoryW(oldEntry.RootDirectory);
+        }
+        stagedZipRoot.clear();
+        if (m_Context)
+            m_Context->GetCommandContext().SortCommands();
+        ExportRegistry::NotifyScriptExportsChanged();
+        return finish(true, std::string());
+    }
+
+    const std::string reloadFailure = m_State.GetLastDiagnosticText().empty()
+                                          ? "Reload candidate OnLoad failed."
+                                          : m_State.GetLastDiagnosticText();
+    ReleaseRuntime();
+    cleanupStagedZipRoot();
+
+    m_Definition = std::move(oldDefinition);
+    m_Entry = std::move(oldEntry);
+    m_Runtime = std::move(oldRuntime);
+    m_Runtime.SetOwner(this);
+    m_State.ClearFailure();
+
+    if (LoadCurrentRuntime(true)) {
+        if (m_Context)
+            m_Context->GetCommandContext().SortCommands();
+        ExportRegistry::NotifyScriptExportsChanged();
+        return finish(false, "Reload failed; rolled back to previous runtime. " + reloadFailure);
+    }
+
+    const std::string rollbackFailure = m_State.GetLastDiagnosticText().empty()
+                                            ? "Rollback failed."
+                                            : m_State.GetLastDiagnosticText();
+    Fail(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                              "Reload failed and rollback failed. " + reloadFailure + " " + rollbackFailure));
+    cleanupStagedZipRoot();
+    ExportRegistry::NotifyScriptExportsChanged();
+    return finish(false, m_State.GetLastDiagnosticText());
 }
 
 std::wstring ScriptMod::GetEntryPath() const {

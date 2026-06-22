@@ -1,7 +1,10 @@
 #ifndef BML_SCRIPTMOD_H
 #define BML_SCRIPTMOD_H
 
+#include <atomic>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -28,6 +31,22 @@ class asIScriptObject;
 namespace BML {
 
 class ScriptMod;
+
+struct ScriptModReloadOptions {
+    bool Automatic = false;
+    bool ForceExports = false;
+};
+
+struct ScriptModReloadResult {
+    bool Success = false;
+    bool RetryLater = false;
+    std::string Diagnostic;
+};
+
+struct ScriptModHostRegistration {
+    std::string Kind;
+    std::string Key;
+};
 
 class ScriptMod final : public IMod {
 public:
@@ -120,8 +139,12 @@ public:
 
     bool IsFailed() const { return m_State.IsFailed(); }
     bool IsLoaded() const { return m_State.IsLoaded(); }
+    bool IsReloading() const { return m_Reloading.load(); }
+    bool CanHotReloadNow() const;
     const std::string &GetLastDiagnostic() const { return m_State.GetLastDiagnosticText(); }
+    const std::string &GetLastReloadDiagnostic() const { return m_LastReloadDiagnostic; }
     const ScriptModDefinition &GetDefinition() const { return m_Definition; }
+    const ScriptModEntry &GetEntry() const { return m_Entry; }
     std::string GetRootDirectoryUtf8() const;
     std::string ResolveResourcePathUtf8(const std::string &relativePath) const;
     bool ModFileExistsUtf8(const std::string &relativePath) const;
@@ -211,16 +234,36 @@ public:
                          std::string &result);
     int CallExport(const std::string &name, const std::string &signature, BML_CallFrame *frame);
     int CallResolvedExport(const ScriptExportBinding *binding, BML_CallFrame *frame);
+    ScriptModReloadResult TryHotReload(const ScriptModReloadOptions &options);
+    bool EnterScriptCall() const;
+    void LeaveScriptCall() const;
 
 private:
+    enum class HostRegistrationMode {
+        Capture,
+        Validate,
+    };
+
     bool CompileAndCreate();
+    bool LoadCurrentRuntime(bool validateHostRegistrations);
     void CallGameEvent(size_t eventIndex);
     void CleanupFailedLoad();
     void FailIfEventCallFailed(bool ok, const ScriptDiagnostic &diagnostic);
     void Record(const ScriptDiagnostic &diagnostic);
     void Fail(const std::string &diagnostic);
     void Fail(const ScriptDiagnostic &diagnostic);
+    bool ReleaseScriptServices();
+    bool ReleaseScriptMethodHandles();
     bool ReleaseRuntime();
+    bool ReleaseRuntimeOnly(ScriptModRuntime &runtime);
+    void RebindServices();
+    void SetReloadDiagnostic(const std::string &diagnostic);
+    bool ValidateReloadDefinition(const ScriptModDefinition &candidate,
+                                  const ScriptExportTable &candidateExports,
+                                  const ScriptModReloadOptions &options,
+                                  std::string &diagnostic) const;
+    bool ValidateHostRegistrationSet(std::string &diagnostic);
+    bool NoteHostRegistration(const char *kind, const std::string &key);
     std::wstring GetEntryPath() const;
 
     ModContext *m_Context = nullptr;
@@ -235,6 +278,14 @@ private:
     ScriptExportTable m_Exports;
     ScriptModState m_State;
     bool m_InLoadCallback = false;
+    mutable std::mutex m_ReloadMutex;
+    mutable int m_ActiveScriptCalls = 0;
+    mutable std::thread::id m_ReloadThreadId;
+    std::atomic<bool> m_Reloading{false};
+    std::string m_LastReloadDiagnostic;
+    HostRegistrationMode m_HostRegistrationMode = HostRegistrationMode::Capture;
+    std::vector<ScriptModHostRegistration> m_HostRegistrations;
+    std::vector<ScriptModHostRegistration> m_PendingHostRegistrations;
     std::vector<std::pair<std::string, std::string>> m_ActiveConfigEvents;
 };
 

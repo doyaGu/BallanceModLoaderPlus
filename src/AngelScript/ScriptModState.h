@@ -17,6 +17,7 @@ public:
     void MarkLoaded(bool loaded);
     void Record(const ScriptDiagnostic &diagnostic);
     void Fail(const ScriptDiagnostic &diagnostic);
+    void ClearFailure();
 
 private:
     bool m_Loaded = false;

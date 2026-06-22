@@ -23,6 +23,7 @@
 #include "AngelScriptBindings.h"
 #include "ScriptMod.h"
 #include "ScriptModEntryScanner.h"
+#include "ScriptModHotReloadService.h"
 #include "ScriptModLoader.h"
 #include "ScriptModRuntime.h"
 #endif
@@ -146,6 +147,9 @@ ModContext::ModContext(CKContext *context) {
     m_CKContext = context;
     m_DataShare = DataShare::GetInstance("BML");
     if (m_DataShare) m_DataShare->AddRef();
+#if BML_ENABLE_ANGELSCRIPT
+    m_ScriptHotReload = std::make_unique<BML::ScriptModHotReloadService>(this);
+#endif
     g_ModContext = this;
 }
 
@@ -223,6 +227,10 @@ void ModContext::Shutdown() {
         return;
 
     if (AreModsLoaded()) {
+#if BML_ENABLE_ANGELSCRIPT
+        if (m_ScriptHotReload)
+            m_ScriptHotReload->Stop();
+#endif
         ShutdownMods();
         UnloadMods();
     }
@@ -354,6 +362,11 @@ void ModContext::UnloadMods() {
     if (!IsInited() || !AreModsLoaded())
         return;
 
+#if BML_ENABLE_ANGELSCRIPT
+    if (m_ScriptHotReload)
+        m_ScriptHotReload->Stop();
+#endif
+
     if (AreModsInited())
         ShutdownMods();
 
@@ -442,6 +455,11 @@ bool ModContext::InitMods() {
 
     OnLoadGame();
 
+#if BML_ENABLE_ANGELSCRIPT
+    if (m_ScriptHotReload)
+        m_ScriptHotReload->Start();
+#endif
+
     SetFlags(BML_MODS_INITED);
     return true;
 }
@@ -451,6 +469,11 @@ void ModContext::ShutdownMods() {
         return;
 
     SetFlags(BML_MODS_SHUTTING_DOWN);
+
+#if BML_ENABLE_ANGELSCRIPT
+    if (m_ScriptHotReload)
+        m_ScriptHotReload->Stop();
+#endif
 
     for (auto rit = m_Mods.rbegin(); rit != m_Mods.rend(); ++rit) {
         auto *mod = *rit;
@@ -1080,6 +1103,8 @@ void ModContext::OnProcess() {
 
 #if BML_ENABLE_ANGELSCRIPT
     BML_TryRegisterAngelScriptBindings(this);
+    if (m_ScriptHotReload)
+        m_ScriptHotReload->Process();
 #endif
     Timer::ProcessAll(m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime() / 1000.0f);
     BroadcastCallback(&IMod::OnProcess);
@@ -1659,6 +1684,8 @@ IMod *ModContext::LoadScriptMod(const BML::ScriptModLoadCandidate &candidate) {
 
     RegisterScriptModDependencies(mod, loadResult.Definition);
     m_ScriptMods.push_back(std::move(scriptMod));
+    if (m_ScriptHotReload)
+        m_ScriptHotReload->RegisterMod(static_cast<BML::ScriptMod *>(mod));
     return mod;
 }
 
@@ -1684,6 +1711,63 @@ void ModContext::RegisterScriptModDependencies(IMod *mod, const BML::ScriptModDe
                                dependency.MinVersion.patch);
         }
     }
+}
+
+bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
+                                                     const BML::ScriptModDefinition &candidate,
+                                                     std::string &diagnostic) const {
+    if (!mod) {
+        diagnostic = "Script mod reload target is missing.";
+        return false;
+    }
+
+    if (CheckDependencies(const_cast<BML::ScriptMod *>(mod)) == 0) {
+        diagnostic = "Script mod reload dependencies are not currently satisfied.";
+        return false;
+    }
+
+    const BMLVersion candidateVersion = BML::ParseBmlVersion(candidate.Version);
+    const char *targetId = const_cast<BML::ScriptMod *>(mod)->GetID();
+    for (const auto &entry : m_ModDependencies) {
+        IMod *dependent = entry.first;
+        if (!dependent || dependent == mod)
+            continue;
+
+        for (const auto &dependency : entry.second) {
+            if (!dependency.id || !targetId || std::string(dependency.id) != targetId)
+                continue;
+            if (!dependency.optional && candidateVersion < dependency.minVersion) {
+                diagnostic = "Script mod reload version would no longer satisfy dependent mod '";
+                diagnostic += dependent->GetID() ? dependent->GetID() : "";
+                diagnostic += "'.";
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+bool ModContext::QueueScriptModReload(const std::string &id,
+                                      const BML::ScriptModReloadOptions &options,
+                                      std::string &message) {
+    if (!m_ScriptHotReload) {
+        message = "Script hot reload service is unavailable.";
+        return false;
+    }
+    return m_ScriptHotReload->QueueReload(id, options, message);
+}
+
+size_t ModContext::QueueAllScriptModReloads(const BML::ScriptModReloadOptions &options) {
+    return m_ScriptHotReload ? m_ScriptHotReload->QueueReloadAll(options) : 0;
+}
+
+bool ModContext::SetScriptHotReloadWatching(bool enabled) {
+    return m_ScriptHotReload && m_ScriptHotReload->SetWatchingEnabled(enabled);
+}
+
+std::string ModContext::GetScriptHotReloadStatus() const {
+    return m_ScriptHotReload ? m_ScriptHotReload->GetStatus() : "script hot reload: unavailable";
 }
 #endif
 
@@ -1761,6 +1845,12 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
             return false;
         }
         const std::string modIdCopy = modId;
+#if BML_ENABLE_ANGELSCRIPT
+        if (m_ScriptHotReload) {
+            if (auto *scriptMod = dynamic_cast<BML::ScriptMod *>(mod))
+                m_ScriptHotReload->UnregisterMod(scriptMod);
+        }
+#endif
         std::shared_ptr<void> ownedDllHandle = dllHandle;
         auto dit = m_ModToDllHandleMap.find(mod);
         if (!ownedDllHandle && dit != m_ModToDllHandleMap.end())

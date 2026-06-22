@@ -38,6 +38,15 @@ struct ScriptModDefinition {
     std::unordered_map<std::string, std::string> Metadata;
 };
 
+enum class ScriptModReloadPolicy {
+    Default,
+    Auto,
+    Manual,
+};
+
+ScriptModReloadPolicy ParseScriptModReloadPolicy(const std::string &value);
+const char *ToString(ScriptModReloadPolicy policy);
+
 struct ScriptMetadataTag {
     std::string Name;
     std::unordered_map<std::string, std::string> Args;

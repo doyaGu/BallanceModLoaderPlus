@@ -462,6 +462,8 @@ static int MapExportCallStatus(const ScriptDiagnostic &diagnostic) {
         return BML_ERROR_INTEROP_TYPE_MISMATCH;
     case CKAS_UNSUPPORTED:
         return BML_ERROR_INTEROP_UNSUPPORTED;
+    case CKAS_INUSE:
+        return BML_ERROR_INTEROP_TARGET_FAILED;
     case CKAS_BUFFERTOOSMALL:
         return BML_ERROR_INTEROP_BAD_CALL_FRAME;
     default:
