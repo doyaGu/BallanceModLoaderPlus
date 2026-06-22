@@ -8,6 +8,9 @@
 #include "BMLMod.h"
 
 #include "ModContext.h"
+#if BML_ENABLE_ANGELSCRIPT
+#include "AngelScript/ScriptMod.h"
+#endif
 #include "AnsiPalette.h"
 #include "StringUtils.h"
 #include "PathUtils.h"
@@ -869,3 +872,65 @@ const std::vector<std::string> CommandPalette::GetTabCompletion(IBML *bml, const
     }
     return {};
 }
+
+#if BML_ENABLE_ANGELSCRIPT
+void CommandScript::Execute(IBML *bml, const std::vector<std::string> &args) {
+    auto *context = dynamic_cast<ModContext *>(bml);
+    if (!context) {
+        bml->SendIngameMessage("Script hot reload is unavailable.");
+        return;
+    }
+
+    if (args.size() < 2 || args[1] == "status") {
+        const std::string status = context->GetScriptHotReloadStatus();
+        bml->SendIngameMessage(status.c_str());
+        return;
+    }
+
+    if (args[1] == "reload") {
+        if (args.size() < 3) {
+            bml->SendIngameMessage("Usage: script reload <modId|all> [--force-exports]");
+            return;
+        }
+        BML::ScriptModReloadOptions options;
+        for (size_t i = 3; i < args.size(); ++i) {
+            if (args[i] == "--force-exports")
+                options.ForceExports = true;
+        }
+        if (args[2] == "all") {
+            const size_t count = context->QueueAllScriptModReloads(options);
+            bml->SendIngameMessage(("Queued script reloads: " + std::to_string(count)).c_str());
+            return;
+        }
+        std::string message;
+        context->QueueScriptModReload(args[2], options, message);
+        bml->SendIngameMessage(message.c_str());
+        return;
+    }
+
+    if (args[1] == "watch") {
+        if (args.size() != 3 || (args[2] != "on" && args[2] != "off")) {
+            bml->SendIngameMessage("Usage: script watch <on|off>");
+            return;
+        }
+        const bool enabled = args[2] == "on";
+        context->SetScriptHotReloadWatching(enabled);
+        bml->SendIngameMessage(enabled ? "Script hot reload watch on." : "Script hot reload watch off.");
+        return;
+    }
+
+    bml->SendIngameMessage("Usage: script <status|reload|watch>");
+}
+
+const std::vector<std::string> CommandScript::GetTabCompletion(IBML *, const std::vector<std::string> &args) {
+    if (args.size() == 2)
+        return {"status", "reload", "watch"};
+    if (args.size() == 3 && args[1] == "reload")
+        return {"all"};
+    if (args.size() == 3 && args[1] == "watch")
+        return {"on", "off"};
+    if (args.size() == 4 && args[1] == "reload")
+        return {"--force-exports"};
+    return {};
+}
+#endif
