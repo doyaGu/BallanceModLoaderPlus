@@ -9,25 +9,25 @@ updater source deployment, and real update validation.
 Repository:
 
 ```text
-C:\Users\kakut\Works\Ballance\BallanceModLoaderPlus
+<repo-root>
 ```
 
 Ballance install used for validation:
 
 ```text
-C:\Users\kakut\Games\Ballance
+<ballance-install>
 ```
 
 CKAngelScript local repository:
 
 ```text
-C:\Users\kakut\Works\Virtools\CKAngelScript
+<ckas-repo>
 ```
 
 BML+ CKAngelScript release staging used by current packaging:
 
 ```text
-C:\Users\kakut\Works\Ballance\BallanceModLoaderPlus\build-ci-ckas-release
+<ckas-release-runtime>
 ```
 
 Official updater source:
@@ -39,7 +39,7 @@ https://doyagu.github.io/BallanceModLoaderPlus/updates
 Production signing key name on the local release machine:
 
 ```text
-BMLPlus-Updater-Production-v1
+<production-signing-key-name>
 ```
 
 Use a `vX.Y.Z` version string, for example `v0.3.12`.
@@ -81,7 +81,7 @@ CI can build unsigned artifacts, but official update trust is created locally:
 
 1. Build or obtain final binaries.
 2. Run `scripts\Package-BMLRelease.ps1` locally with
-   `-SigningCngKeyName BMLPlus-Updater-Production-v1`.
+   `-SigningCngKeyName <production-signing-key-name>`.
 3. Generate and sign `stable.json` locally.
 4. Upload signed artifacts to the GitHub release.
 5. Push signed channel files to `gh-pages:/updates/`.
@@ -94,7 +94,7 @@ channel files, and package hashes.
 Check the local CNG key before packaging:
 
 ```powershell
-$key = [System.Security.Cryptography.CngKey]::Open("BMLPlus-Updater-Production-v1")
+$key = [System.Security.Cryptography.CngKey]::Open("<production-signing-key-name>")
 $key.Algorithm
 $key.Dispose()
 ```
@@ -105,19 +105,19 @@ The algorithm must be `ECDSA_P256`.
 
 Use MSVC x86. Do not build release packages with MinGW.
 
-Visual Studio 2022 path currently used:
+Visual Studio 2022 developer command prompt path:
 
 ```text
-C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat
+<vs2022-vsdevcmd>
 ```
 
 Example release build from a clean release worktree:
 
 ```powershell
-$wt = "C:\Users\kakut\Works\Ballance\BallanceModLoaderPlus-release"
-$vs = "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat"
-$ckas = "C:\Users\kakut\Works\Ballance\BallanceModLoaderPlus\build-ci-ckas-release"
-$sdk = "C:\Users\kakut\Works\Virtools\Virtools-SDK-2.1"
+$wt = "<release-worktree>"
+$vs = "<vs2022-vsdevcmd>"
+$ckas = "<ckas-release-runtime>"
+$sdk = "<virtools-sdk>"
 
 cmd /c "`"$vs`" -arch=x86 && cmake -S `"$wt`" -B `"$wt\build-release-msvc`" -G Ninja -DCMAKE_BUILD_TYPE=Release -DVIRTOOLS_SDK_PATH=`"$sdk`" -DBML_ENABLE_ANGELSCRIPT=ON -DCKANGELSCRIPT_ROOT=`"$ckas`" -DCMAKE_INSTALL_PREFIX=`"$wt\dist-release-msvc`" && cmake --build `"$wt\build-release-msvc`" && cmake --install `"$wt\build-release-msvc`" --prefix `"$wt\dist-release-msvc`""
 ```
@@ -134,8 +134,8 @@ Use the fixed updater source for `sources.json`:
 
 ```powershell
 $version = "v0.3.12"
-$repo = "C:\Users\kakut\Works\Ballance\BallanceModLoaderPlus"
-$wt = "C:\Users\kakut\Works\Ballance\BallanceModLoaderPlus-release"
+$repo = "<repo-root>"
+$wt = "<release-worktree>"
 $out = "$wt\package-$version"
 
 & "$wt\scripts\Package-BMLRelease.ps1" `
@@ -145,11 +145,11 @@ $out = "$wt\package-$version"
   -ReleaseBinaryDir "$wt\build-release-msvc\bin" `
   -DebugBinaryDir "$wt\build-debug-msvc\bin" `
   -OutputDir $out `
-  -CKAngelScriptRuntimeDir "$repo\build-ci-ckas-release" `
+  -CKAngelScriptRuntimeDir "<ckas-release-runtime>" `
   -IncludeAngelScript `
   -UpdaterBaseUrl "https://doyagu.github.io/BallanceModLoaderPlus/updates" `
   -UpdaterDefaultChannel stable `
-  -SigningCngKeyName "BMLPlus-Updater-Production-v1"
+  -SigningCngKeyName "<production-signing-key-name>"
 ```
 
 The package script signs:
@@ -169,7 +169,7 @@ Example for `v0.3.12`:
 
 ```powershell
 $version = "v0.3.12"
-$out = "C:\Users\kakut\Works\Ballance\BallanceModLoaderPlus-release\package-$version"
+$out = "<release-worktree>\package-$version"
 $base = "https://github.com/doyaGu/BallanceModLoaderPlus/releases/download/$version"
 
 $stable = [ordered]@{
@@ -190,7 +190,7 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 Sign `stable.json` with the production CNG key:
 
 ```powershell
-$key = [System.Security.Cryptography.CngKey]::Open("BMLPlus-Updater-Production-v1")
+$key = [System.Security.Cryptography.CngKey]::Open("<production-signing-key-name>")
 $ecdsa = [System.Security.Cryptography.ECDsaCng]::new($key)
 try {
   $bytes = [System.IO.File]::ReadAllBytes($stablePath)
@@ -304,7 +304,7 @@ browser does not return 404. The updater does not trust this HTML page; it only
 trusts signed channel JSON.
 
 ```powershell
-$repo = "C:\Users\kakut\Works\Ballance\BallanceModLoaderPlus"
+$repo = "<repo-root>"
 $readmePath = Join-Path $env:TEMP "bmlplus-gh-pages-readme.md"
 $indexPath = Join-Path $env:TEMP "bmlplus-gh-pages-index.html"
 $updatesIndexPath = Join-Path $env:TEMP "bmlplus-gh-pages-updates-index.html"
@@ -400,7 +400,7 @@ Run a real remote check from the validation game install:
 $runner = "$wt\Updater-test-runner.exe"
 Copy-Item "$wt\build-release-msvc\Bin\Updater.exe" $runner -Force
 
-Push-Location "C:\Users\kakut\Games\Ballance"
+Push-Location "<ballance-install>"
 try {
   & $runner source set "https://doyagu.github.io/BallanceModLoaderPlus/updates" --channel stable
   & $runner check
@@ -420,7 +420,7 @@ OK: remote channel checked
 For a same-version real apply test:
 
 ```powershell
-Push-Location "C:\Users\kakut\Games\Ballance"
+Push-Location "<ballance-install>"
 try {
   & $runner update --force
   & $runner status

@@ -4,6 +4,7 @@
 *.o
 *.obj
 *.exe
+__pycache__/
 
 ## Visual Studio artifacts
 .vs
@@ -22,6 +23,18 @@ ipch
 include/BML/Version.h
 dist/
 dist-install/
+site/
+.codex-cache/
+
+## Local documentation drafts and private notes
+docs/script-mod-tutorial/archive/
+docs/script-mod-tutorial/libs/
+docs/script-mod-tutorial-materials/
+docs/script-mod-tutorial-outline.md
+docs/script-mod-tutorial-research.md
+docs/script-mod-tutorial-gap-audit.md
+docs/superpowers/
+docs/bml-script-api-redesign-plan.md
 
 ## CMake artifacts
 CMakeLists.txt.user
@@ -40,6 +53,4 @@ build*/
 ## JetBrains IDE artifacts
 .idea
 cmake-build-*
-
-
 

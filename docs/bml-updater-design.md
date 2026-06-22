@@ -98,7 +98,7 @@ it with the Ballance install as the working directory:
 ```powershell
 $runner = "C:\path\to\Updater-test-runner.exe"
 Copy-Item "C:\path\to\build\Bin\Updater.exe" $runner -Force
-Push-Location "C:\Users\kakut\Games\Ballance"
+Push-Location "<ballance-install>"
 & $runner check
 Pop-Location
 ```

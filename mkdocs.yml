@@ -1,0 +1,115 @@
+site_name: Ballance Mod Loader Plus
+site_description: BMLPlus documentation and Ballance script mod tutorial.
+site_url: https://doyagu.github.io/BallanceModLoaderPlus/
+repo_url: https://github.com/doyaGu/BallanceModLoaderPlus
+repo_name: doyaGu/BallanceModLoaderPlus
+docs_dir: docs
+site_dir: site
+hooks:
+  - docs/hooks/pygments_angelscript.py
+
+theme:
+  name: material
+  language: zh
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+
+exclude_docs: |
+  hooks/**
+  bml-release-packaging-process.md
+  bml-script-api-redesign-plan.md
+  bml-script-facade-coverage.md
+  bml-script-mod-author-guide.md
+  bml-script-mod-validation.md
+  bml-script-v1-contract.md
+  bml-updater-design.md
+  script-mod-tutorial/archive/**
+  script-mod-tutorial/libs/**
+  script-mod-tutorial-materials/**
+  script-mod-tutorial-outline.md
+  script-mod-tutorial-research.md
+  script-mod-tutorial-gap-audit.md
+  superpowers/**
+
+nav:
+  - 首页: index.md
+  - 脚本 Mod 教程:
+      - 导读: script-mod-tutorial/README.md
+      - 第一篇：脚本先跑起来:
+          - 第 0 章：几个名字到底指什么: script-mod-tutorial/00-background.md
+          - 第 1 章：脚本 mod 的范围: script-mod-tutorial/01-script-mod-scope.md
+          - 第 2 章：AngelScript 最小语法: script-mod-tutorial/02-angelscript-minimum-syntax.md
+          - 第 3 章：第一个可加载脚本: script-mod-tutorial/03-first-loadable-script.md
+          - 第 4 章：BML 怎么调用脚本: script-mod-tutorial/04-bml-callback-model.md
+          - 第 5 章：让脚本在游戏里可见: script-mod-tutorial/05-logs-window-fps.md
+          - 第 6 章：命令: script-mod-tutorial/06-command.md
+          - 第 7 章：配置: script-mod-tutorial/07-config.md
+          - 第 8 章：Timer: script-mod-tutorial/08-timer.md
+          - 第 9 章：第一篇排错流程: script-mod-tutorial/09-first-stage-troubleshooting.md
+          - 第 10 章：怎么查脚本 API: script-mod-tutorial/10-how-to-read-script-api.md
+          - 第 11 章：第一篇收束：基础脚本模板: script-mod-tutorial/11-basic-script-template.md
+      - 第二篇：看懂游戏运行时:
+          - 第 12 章：Ballance 文件各自负责什么: script-mod-tutorial/12-ballance-file-roles.md
+          - 第 13 章：对象、实体和名字: script-mod-tutorial/13-objects-entities-and-names.md
+          - 第 14 章：组是对象名单: script-mod-tutorial/14-groups-are-object-lists.md
+          - 第 15 章：DataArray 是运行时表: script-mod-tutorial/15-dataarray-runtime-tables.md
+          - 第 16 章：行为图和 Building Block: script-mod-tutorial/16-behavior-graphs-and-building-blocks.md
+          - 第 17 章：用检查点串起四个概念: script-mod-tutorial/17-checkpoint-mental-model.md
+          - 第 18 章：第一关内容个案: script-mod-tutorial/18-level01-content-case-study.md
+          - 第 19 章：查找对象和组: script-mod-tutorial/19-find-objects-and-groups.md
+          - 第 20 章：DataArray 入门：CurrentLevel: script-mod-tutorial/20-currentlevel-dataarray.md
+          - 第 21 章：关卡配置表 AllLevel: script-mod-tutorial/21-alllevel-config-table.md
+          - 第 22 章：物理参数表 Physicalize_Balls: script-mod-tutorial/22-physicalize-balls.md
+          - 第 23 章：从 base.cmo 到一局游戏: script-mod-tutorial/23-runtime-flow-overview.md
+          - 第 24 章：Levelinit 如何处理作者标记: script-mod-tutorial/24-levelinit-author-markers.md
+          - 第 25 章：Gameplay 如何维持运行中状态: script-mod-tutorial/25-gameplay-runtime-state.md
+      - 第三篇：行为图和物理:
+          - 第 26 章：行为图阅读法: script-mod-tutorial/26-reading-behavior-graphs.md
+          - 第 27 章：对象接入物理系统: script-mod-tutorial/27-object-enters-physics.md
+          - 第 28 章：生成物理化对象: script-mod-tutorial/28-create-physicalized-object.md
+          - 第 29 章：推动物理对象: script-mod-tutorial/29-push-physics-object.md
+      - 第四篇：做一个可控小 mod:
+          - 第 30 章：修改前风险分级: script-mod-tutorial/30-risk-classification-before-changes.md
+          - 第 31 章：创建自己的可控对象: script-mod-tutorial/31-create-your-own-controlled-object.md
+          - 第 32 章：一个完整小 mod: script-mod-tutorial/32-complete-small-mod.md
+          - 第 33 章：发布、版本和兼容性: script-mod-tutorial/33-release-version-compatibility.md
+      - 进阶参考:
+          - 参考 A：BML 生命周期总览: script-mod-tutorial/ref-a-bml-lifecycle-overview.md
+          - 参考 B：游戏事件和关卡时机: script-mod-tutorial/ref-b-game-events-and-level-timing.md
+          - 参考 C：ModContext 服务地图: script-mod-tutorial/ref-c-modcontext-service-map.md
+          - 参考 D：路径、资源和日志诊断: script-mod-tutorial/ref-d-paths-resources-logs.md
+          - 参考 E：输入、UI 和每帧状态: script-mod-tutorial/ref-e-input-ui-frame-state.md
+          - 参考 F：脚本 mod 的边界: script-mod-tutorial/ref-f-script-mod-boundary.md
+          - 参考 G：BML 进阶回调和事件对象: script-mod-tutorial/ref-g-advanced-callbacks-events.md
+          - 参考 H：mod 信息、依赖和导出: script-mod-tutorial/ref-h-mod-info-dependencies-exports.md
+          - 参考 I：DataShare 和跨脚本共享状态: script-mod-tutorial/ref-i-datashare-shared-state.md
+          - 参考 J：BML HUD、菜单和消息服务: script-mod-tutorial/ref-j-bml-hud-menu-message-services.md
+          - 参考 K：CKAS 三种脚本入口: script-mod-tutorial/ref-k-ckas-script-entrypoints.md
+          - 参考 L：句柄、引用和对象生命周期: script-mod-tutorial/ref-l-handles-refs-lifetime.md
+          - 参考 M：场景对象、层级和可见性: script-mod-tutorial/ref-m-scene-objects-hierarchy-visibility.md
+          - 参考 N：DataArray 写入和回滚: script-mod-tutorial/ref-n-dataarray-write-rollback.md
+          - 参考 O：资源、文本和 UI: script-mod-tutorial/ref-o-resources-text-ui.md
+          - 参考 P：行为调用和脚本库组织: script-mod-tutorial/ref-p-behavior-calls-and-script-libraries.md
+          - 参考 Q：球、地板和模块注册: script-mod-tutorial/ref-q-ball-floor-module-registration.md
+      - 附录:
+          - 附录 A：术语表: script-mod-tutorial/appendix-a-glossary.md
+          - 附录 B：常用 BML 回调和服务: script-mod-tutorial/appendix-b-bml-callbacks-services.md
+          - 附录 C：常用 Ballance 对象和组名: script-mod-tutorial/appendix-c-ballance-names.md
+          - 附录 D：常用 DataArray: script-mod-tutorial/appendix-d-dataarrays.md
+  - BML 脚本 API: api.md

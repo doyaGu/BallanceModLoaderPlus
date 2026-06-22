@@ -1,0 +1,74 @@
+name: Docs
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v6.0.2
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+
+      - name: Install documentation dependencies
+        run: python -m pip install -r requirements-docs.txt
+
+      - name: Build documentation
+        run: mkdocs build --strict
+
+      - name: Checkout gh-pages
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/checkout@v6.0.2
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Copy documentation to Pages root
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          find gh-pages -mindepth 1 -maxdepth 1 \
+            ! -name ".git" \
+            ! -name ".nojekyll" \
+            ! -name "updates" \
+            -exec rm -rf {} +
+          cp -a site/. gh-pages/
+
+      - name: Configure Git author
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        working-directory: gh-pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Deploy to gh-pages
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        working-directory: gh-pages
+        shell: bash
+        run: |
+          git add -A .
+          if git diff --cached --quiet; then
+            echo "No documentation changes to deploy."
+          else
+            git commit -m "Deploy scripting documentation"
+            git push origin gh-pages
+          fi
