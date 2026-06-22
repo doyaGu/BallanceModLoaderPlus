@@ -1398,17 +1398,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#imgui" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        教程里的 ImGui 示例图怎么看
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#_10" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2584,17 +2573,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#imgui" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        教程里的 ImGui 示例图怎么看
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#_10" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2677,10 +2655,6 @@
 <td>看 Ballance 原版流程的可读图结构</td>
 </tr>
 <tr>
-<td>教程里的 ImGui 示例图</td>
-<td>把一小段流程画出来练习读法</td>
-</tr>
-<tr>
 <td>BML 脚本日志</td>
 <td>提供时间和运行时状态锚点</td>
 </tr>
@@ -2688,7 +2662,6 @@
 </table>
 <p>这三种东西不要混。</p>
 <p>反混淆文件用来阅读原版流程。<br />
-ImGui 示例图只是教学用的简化图。<br />
 脚本日志只能告诉你“现在游戏运行到哪一步、哪些表能读到”，它不能替代行为图本身。</p>
 <p>本章先用 <code>activate next Checkpoint</code> 练习读法。<br />
 它在 <code>Gameplay</code> 的检查点流程附近，规模小，名字也直观。</p>
@@ -2944,49 +2917,25 @@ ImGui 示例图只是教学用的简化图。<br />
 <a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a>消息
 <a id="__codelineno-31-6" name="__codelineno-31-6" href="#__codelineno-31-6"></a>一句话总结
 </code></pre></div>
-<h2 id="imgui">教程里的 ImGui 示例图怎么看<a class="headerlink" href="#imgui" title="Permanent link">&para;</a></h2>
-<p>教程目录里有一个简化图示例：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>docs/script-mod-tutorial/examples/BehaviorGraphViewerExample.mod.as
-</code></pre></div>
-<p>它使用：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>docs/script-mod-tutorial/libs/BehaviorGraphImGui.as
-</code></pre></div>
-<p>这个示例手工画了一张 <code>activate next Checkpoint</code> 的教学图。<br />
-它不会解析原版文件，也不会修改行为图。</p>
-<p>它的用途是练习读图：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>左边看入口
-<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a>中间看 DataArray
-<a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a>右边看对象操作和消息
-<a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a>标着 event / exec / done 的线按执行顺序读
-<a id="__codelineno-34-5" name="__codelineno-34-5" href="#__codelineno-34-5"></a>较细的黄色参数线按数据来源读
-</code></pre></div>
-<p>操作方式：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>右键或中键拖动：平移
-<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a>鼠标滚轮：缩放
-<a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a>左键点击节点：选中
-<a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a>左键拖动节点：移动节点
-</code></pre></div>
-<p>这个示例能帮助你建立“图上怎么读”的感觉。<br />
-真正分析原版流程时，仍然要回到 Virtools Dev 里的反混淆图。</p>
 <h2 id="_10">脚本日志怎么配合读图<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h2>
 <p>BML 脚本日志不显示行为图。<br />
 它只提供时间和状态锚点。</p>
 <p>例如看到：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>GAME_EVENT_START_LEVEL
-<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a>CurrentLevel.Level ID = 1
-<a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a>Checkpoints rows = 3
-<a id="__codelineno-36-4" name="__codelineno-36-4" href="#__codelineno-36-4"></a>IngameParameter.Activate Sector = 1
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>GAME_EVENT_START_LEVEL
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a>CurrentLevel.Level ID = 1
+<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a>Checkpoints rows = 3
+<a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a>IngameParameter.Activate Sector = 1
 </code></pre></div>
 <p>可以得到：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>关卡已经开始。
-<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a>Levelinit 已经准备好运行时表。
-<a id="__codelineno-37-3" name="__codelineno-37-3" href="#__codelineno-37-3"></a>Gameplay 可以读取这些表继续运行。
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>关卡已经开始。
+<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>Levelinit 已经准备好运行时表。
+<a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a>Gameplay 可以读取这些表继续运行。
 </code></pre></div>
 <p>然后再回到行为图里看：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a>谁读 CurrentLevel？
-<a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a>谁读 Checkpoints？
-<a id="__codelineno-38-3" name="__codelineno-38-3" href="#__codelineno-38-3"></a>谁写 IngameParameter？
-<a id="__codelineno-38-4" name="__codelineno-38-4" href="#__codelineno-38-4"></a>谁在状态变化后发送消息？
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>谁读 CurrentLevel？
+<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a>谁读 Checkpoints？
+<a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a>谁写 IngameParameter？
+<a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a>谁在状态变化后发送消息？
 </code></pre></div>
 <p>脚本日志负责告诉你“现在状态是什么”。<br />
 行为图负责解释“这些状态为什么会被这样读写”。</p>
@@ -3023,27 +2972,27 @@ ImGui 示例图只是教学用的简化图。<br />
 </tbody>
 </table>
 <p>更稳的做法：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a>先选一小段
-<a id="__codelineno-39-2" name="__codelineno-39-2" href="#__codelineno-39-2"></a>先追执行线
-<a id="__codelineno-39-3" name="__codelineno-39-3" href="#__codelineno-39-3"></a>再追表
-<a id="__codelineno-39-4" name="__codelineno-39-4" href="#__codelineno-39-4"></a>再追对象
-<a id="__codelineno-39-5" name="__codelineno-39-5" href="#__codelineno-39-5"></a>最后看消息
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>先选一小段
+<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a>先追执行线
+<a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a>再追表
+<a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a>再追对象
+<a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a>最后看消息
 </code></pre></div>
 <h2 id="_12">本章结果<a class="headerlink" href="#_12" title="Permanent link">&para;</a></h2>
 <p>现在看行为图时，按这个顺序：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a>1. 找入口
-<a id="__codelineno-40-2" name="__codelineno-40-2" href="#__codelineno-40-2"></a>2. 只追执行线
-<a id="__codelineno-40-3" name="__codelineno-40-3" href="#__codelineno-40-3"></a>3. 追 DataArray 读写
-<a id="__codelineno-40-4" name="__codelineno-40-4" href="#__codelineno-40-4"></a>4. 追对象和矩阵
-<a id="__codelineno-40-5" name="__codelineno-40-5" href="#__codelineno-40-5"></a>5. 看消息怎样接到别的流程
-<a id="__codelineno-40-6" name="__codelineno-40-6" href="#__codelineno-40-6"></a>6. 写一句话总结
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>1. 找入口
+<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a>2. 只追执行线
+<a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a>3. 追 DataArray 读写
+<a id="__codelineno-36-4" name="__codelineno-36-4" href="#__codelineno-36-4"></a>4. 追对象和矩阵
+<a id="__codelineno-36-5" name="__codelineno-36-5" href="#__codelineno-36-5"></a>5. 看消息怎样接到别的流程
+<a id="__codelineno-36-6" name="__codelineno-36-6" href="#__codelineno-36-6"></a>6. 写一句话总结
 </code></pre></div>
 <p><code>activate next Checkpoint</code> 先读成：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a>收到检查点相关事件后，
-<a id="__codelineno-41-2" name="__codelineno-41-2" href="#__codelineno-41-2"></a>更新运行时状态，
-<a id="__codelineno-41-3" name="__codelineno-41-3" href="#__codelineno-41-3"></a>从 Checkpoints 表里取出下一检查点对象和矩阵，
-<a id="__codelineno-41-4" name="__codelineno-41-4" href="#__codelineno-41-4"></a>设置对象位置并显示，
-<a id="__codelineno-41-5" name="__codelineno-41-5" href="#__codelineno-41-5"></a>再发送消息接到后续流程。
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>收到检查点相关事件后，
+<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a>更新运行时状态，
+<a id="__codelineno-37-3" name="__codelineno-37-3" href="#__codelineno-37-3"></a>从 Checkpoints 表里取出下一检查点对象和矩阵，
+<a id="__codelineno-37-4" name="__codelineno-37-4" href="#__codelineno-37-4"></a>设置对象位置并显示，
+<a id="__codelineno-37-5" name="__codelineno-37-5" href="#__codelineno-37-5"></a>再发送消息接到后续流程。
 </code></pre></div>
 <p>下一章进入对象接入物理系统的事件。<br />
 物理化同样要按这套方法看：谁触发、读了什么参数、操作哪个对象、后续由谁接手。</p>
