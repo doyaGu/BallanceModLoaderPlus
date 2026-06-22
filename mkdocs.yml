@@ -32,6 +32,7 @@ markdown_extensions:
 
 exclude_docs: |
   hooks/**
+  maintenance/**
   bml-release-packaging-process.md
   bml-script-api-redesign-plan.md
   bml-script-facade-coverage.md
