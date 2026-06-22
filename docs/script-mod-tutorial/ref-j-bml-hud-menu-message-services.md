@@ -1,6 +1,6 @@
-﻿# 参考 J：BML HUD、菜单和消息服务
+# 参考 J：BML HUD、菜单和消息服务
 
-前面已经用过两类界面：
+相关基础中已经用过两类界面：
 
 ```text
 ImGui 调试窗口
@@ -9,10 +9,10 @@ BML 的游戏内消息
 
 它们解决的问题不同。
 
-ImGui 适合做脚本自己的调试面板：显示变量、按钮、开关、列表。  
+ImGui 适合做脚本自己的调试面板：显示变量、按钮、开关、列表。
 BML 自带的 UI/HUD/Menu 服务适合接到游戏已有界面里：发一条消息、显示 FPS、显示 SR Timer、打开 BML 菜单。
 
-本章只讲 BML 自带服务。
+本参考只讲 BML 自带服务。
 
 ## 先分清三组能力
 
@@ -24,7 +24,7 @@ BML 暴露给脚本的界面相关能力，可以先按三组记：
 | HUD | `GetHUD`、`SetHUD`、`ShowFPS`、`ShowSRTimer`、SR Timer | 控制 BML 已有 HUD 项 |
 | 菜单 | `OpenModsMenu`、`CloseModsMenu`、`OpenMapMenu`、`CloseMapMenu` | 打开或关闭 BML 已有菜单 |
 
-这些 API 不是画按钮、画窗口的工具。  
+这些 API 不是画按钮、画窗口的工具。
 要画自己的按钮和窗口，继续用 ImGui。
 
 ## `ctx` 方法和命名空间方法
@@ -47,7 +47,7 @@ BML::HUD::ShowFPS(true);
 BML::Menu::OpenModsMenu();
 ```
 
-本教程的脚本大多数都在 BML 回调里执行，已经有 `ctx`，所以优先用 `ctx`。  
+多数示例脚本都在 BML 回调里执行，已经有 `ctx`，所以优先用 `ctx`。
 命名空间写法适合放在不方便传 `ctx` 的辅助代码里，或者临时确认某个 BML 全局服务能不能工作。
 
 ## HUD 的心智模型
@@ -60,12 +60,12 @@ FPS
 SR Timer
 ```
 
-`ShowFPS(true)` 只打开 FPS。  
+`ShowFPS(true)` 只打开 FPS。
 `ShowFPS(false)` 只关掉 FPS。
 
 `ShowSRTimer(true)` 和 `ShowSRTimer(false)` 控制 SR Timer 是否显示。
 
-`GetHUD()` 读出当前 HUD 组合。  
+`GetHUD()` 读出当前 HUD 组合。
 `SetHUD(mode)` 一次性恢复到某个组合。
 
 这就是为什么示例会在加载时保存原来的 HUD：
@@ -73,7 +73,7 @@ SR Timer
 ```text
 加载脚本
   记住原来的 HUD
-  打开本章要演示的 HUD 项
+  打开示例要演示的 HUD 项
 卸载脚本
   把 HUD 恢复回去
 ```
@@ -96,10 +96,10 @@ SR Timer 是 BML 的内置计时器。
 
 它不是脚本 Timer。
 
-脚本 Timer 是“过一段时间调用一个函数”。  
+脚本 Timer 是“过一段时间调用一个函数”。
 SR Timer 是“HUD 上显示的一只计时表”。
 
-本章会用脚本 Timer 等一秒，然后读取 SR Timer 的值。
+示例会用脚本 Timer 等一秒，然后读取 SR Timer 的值。
 
 ## 新建脚本
 
@@ -292,7 +292,7 @@ ctx.SendIngameMessage("HUD Menu Demo loaded.");
 BML::UI::SendMessage("Message sent through BML::UI.");
 ```
 
-`ctx.SendIngameMessage(...)` 是本教程更常用的写法。  
+`ctx.SendIngameMessage(...)` 是回调内更常用的写法。
 `BML::UI::SendMessage(...)` 展示命名空间入口。
 
 清理消息用：
@@ -313,7 +313,7 @@ ctx.ResetSRTimer();
 ctx.StartSRTimer();
 ```
 
-脚本加载后，画面上应该能看到 FPS 和 SR Timer。  
+脚本加载后，画面上应该能看到 FPS 和 SR Timer。
 一秒后 `OnStatusTimer` 读取状态：
 
 ```angelscript
@@ -333,7 +333,7 @@ hm map
 hm restore
 ```
 
-菜单相关操作放到命令里。  
+菜单相关操作放到命令里。
 如果脚本每次加载都自动打开菜单，会打断正常进游戏。
 
 ## 运行后看什么
@@ -400,7 +400,7 @@ hm restore
 
 ## 命名空间入口怎么对应
 
-本章示例主要用 `ctx`，下面是对应关系：
+示例主要用 `ctx`，下面是对应关系：
 
 | `ctx` 写法 | 命名空间写法 |
 | --- | --- |
@@ -450,9 +450,9 @@ FPS 或 SR Timer 没变化：
 - 确认 `RegisterCommand` 传入了 `complete`；
 - 补全函数第三个参数要写成 `BML::CommandCompletion &inout completions`。
 
-## 本章结果
+## 速查结论
 
-到这里，第二篇的 BML 运行框架已经收束：
+BML 运行框架可以按这几块归类：
 
 ```text
 生命周期
@@ -466,6 +466,3 @@ mod 信息、依赖、导出
 DataShare
 BML HUD、菜单和消息
 ```
-
-主线后面进入 Ballance 的 Virtools 世界模型。先看 Ballance 的关卡、对象、组、DataArray、行为图这些东西在 Virtools 里分别是什么，再写运行时观察脚本。
-

@@ -1,6 +1,6 @@
-﻿# 参考 C：ModContext 服务地图
+# 参考 C：ModContext 服务地图
 
-前面每个回调都会收到一个 `ctx`：
+BML 脚本 mod 的常见回调都会收到一个 `ctx`：
 
 ```angelscript
 void OnLoad(const BML::ModContext &in ctx)
@@ -26,7 +26,7 @@ BML 交给当前脚本的一张服务地图
 | --- | --- |
 | 当前 mod 身份 | `GetModId()`、`GetModName()` |
 | 日志和配置 | `BorrowLogger()`、`BorrowConfig()` |
-| 输入和每帧状态 | `BorrowInputManager()`、`GetDeltaTimeMs()` |
+| 输入和每帧状态 | `BorrowInputManager()`，以及 ImGui 的 `GetIO().DeltaTime` |
 | 命令和 Timer | `RegisterCommand(...)`、`SetTimeout(...)`、`SetInterval(...)` |
 | 游戏状态 | `GetIsInGame()`、`GetIsInLevel()`、`GetIsPaused()`、`GetIsPlaying()` |
 | 菜单和 HUD | `SendIngameMessage(...)`、`ShowFPS(...)`、`OpenModsMenu()` |
@@ -34,9 +34,8 @@ BML 交给当前脚本的一张服务地图
 | mod 列表 | `GetModCount()`、`GetMod(...)`、`FindMod(...)` |
 | CKAS / Virtools 入口 | `BorrowCKContext()`、`BorrowRenderContext()`、`BorrowDataArrayByName(...)`、`Borrow3dEntityByName(...)` |
 
-第一篇用过日志、配置、输入、命令、Timer。
+基础模板用过日志、配置、输入、命令、Timer。
 
-主线后面会逐渐用到游戏状态、路径、mod 列表、CKAS / Virtools 入口。
 
 ## 用小脚本打印服务状态
 
@@ -147,7 +146,7 @@ if (ck !is null) {
 关卡对象不要长期缓存
 ```
 
-如果后面确实需要跨多次调用保存对象身份，再引入 CKAS 的 `ObjectRef@`、`Entity3DRef@` 这类引用层。
+如果确实需要跨多次调用保存对象身份，再引入 CKAS 的 `ObjectRef@`、`Entity3DRef@` 这类引用层。
 
 ## BML 层服务
 
@@ -241,9 +240,9 @@ string path = ctx.ResolveModPathUtf8("data/settings.txt");
 bool exists = ctx.ModFileExistsUtf8("data/settings.txt");
 ```
 
-教程里不写本机绝对路径。脚本资源应当放在 mod 自己目录下面，再用相对路径访问。
+文档和示例不写本机绝对路径。脚本资源应当放在 mod 自己目录下面，再用相对路径访问。
 
-参考 D会专门讲路径、资源和日志诊断。
+路径、资源和日志诊断见参考 D。
 
 ## 游戏状态查询
 
@@ -266,7 +265,7 @@ if (!ctx.GetIsInLevel()) {
 
 但它们不能替代 `OnGameEvent`。
 
-判断“现在是不是在关卡里”用状态查询。  
+判断“现在是不是在关卡里”用状态查询。
 判断“刚刚进入关卡”用 `GAME_EVENT_START_LEVEL`。
 
 ## 运行后看日志
@@ -293,11 +292,11 @@ if (!ctx.GetIsInLevel()) {
 
 不同启动阶段、窗口焦点、游戏状态可能导致布尔值不同。先看日志形状，不要把某个布尔值当成所有机器都固定的结果。
 
-`root` 实际会输出当前 mod 的完整目录。教程里用 `<mod 根目录>` 代替本机路径。
+`root` 实际会输出当前 mod 的完整目录。文档中用 `<mod 根目录>` 代替本机路径。
 
-## 本章结果
+## 速查结论
 
-现在可以把 `ctx` 看成一张服务地图：
+可将 `ctx` 看成一张服务地图：
 
 ```text
 BML 层
@@ -316,6 +315,3 @@ Borrow 返回值先判空
 关卡对象等 GAME_EVENT_START_LEVEL
 退出关卡后清掉自己保存的关卡状态
 ```
-
-下一章讲路径、资源和日志诊断。它会把 `GetModRootUtf8()`、`ResolveModPathUtf8(...)`、日志前缀和错误定位讲清楚。
-

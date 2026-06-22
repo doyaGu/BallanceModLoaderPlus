@@ -1,6 +1,6 @@
 # 参考 A：BML 生命周期总览
 
-第一篇已经写过 `OnLoad` 和 `OnProcess`。
+基础模板已经写过 `OnLoad` 和 `OnProcess`。
 
 本参考篇把它们放回 BML 的运行框架里看：
 
@@ -21,7 +21,7 @@ OnProcess    每帧更新
 OnUnload     卸载清理
 ```
 
-游戏事件放到下一章。
+游戏事件由参考 B 单独说明。
 
 ## 用一个小脚本观察
 
@@ -110,7 +110,7 @@ class LifeMod {
 准备脚本自己的成员变量
 ```
 
-第一篇模板里就是这样：
+基础模板里就是这样：
 
 ```angelscript
 void OnLoad(const BML::ModContext &in ctx) {
@@ -135,7 +135,7 @@ void OnLoad(const BML::ModContext &in ctx) {
 处理短小的每帧状态
 ```
 
-第一篇模板里是：
+基础模板里是：
 
 ```angelscript
 void OnProcess(const BML::ModContext &in ctx) {
@@ -180,7 +180,7 @@ void OnProcess(const BML::ModContext &in ctx) {
 把调试状态收尾
 ```
 
-第一篇里注册的命令和 Timer 属于 BML 管理的脚本资源。脚本卸载时，BML 会处理这些资源。  
+脚本注册的命令和 Timer 属于 BML 管理的脚本资源。脚本卸载时，BML 会处理这些资源。
 写 `OnUnload` 的意义主要是把自己额外维护的状态收干净，也方便从日志确认脚本完整退出。
 
 一个常见写法：
@@ -245,11 +245,10 @@ Player 重启
 | 绘制 ImGui 窗口 | `OnProcess` |
 | 取消还没触发的 Timer | `OnUnload` |
 
-下一章会加入 `OnGameEvent`。它关注游戏流程走到了哪里，比如菜单、关卡加载、关卡开始。
 
-## 本章结果
+## 速查结论
 
-现在可以把第一篇的代码放进更清晰的位置：
+可将基础模板的代码放进更清晰的位置：
 
 ```text
 OnLoad
@@ -264,5 +263,3 @@ OnProcess
 OnUnload
   清理脚本自己的状态
 ```
-
-第二篇后面的章节会继续补完整个运行框架：游戏事件、`ModContext` 服务、脚本边界、什么时候进入 CKAS / Virtools 层。

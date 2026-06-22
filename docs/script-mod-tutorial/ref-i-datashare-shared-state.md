@@ -1,6 +1,6 @@
 # 参考 I：DataShare 和跨脚本共享状态
 
-参考 H讲了导出。导出适合“现在调用一个函数，马上拿结果”。
+导出适合同步函数调用：发起请求，马上拿结果。
 
 DataShare 解决的是另一类问题：
 
@@ -23,7 +23,7 @@ DataShare namespace
   key -> value
 ```
 
-本章用一个单独的命名空间：
+本参考使用一个单独的命名空间：
 
 ```text
 tutorial.datashare
@@ -48,7 +48,7 @@ int
 float
 ```
 
-不要把 `CKObject@`、`CK3dEntity@`、`CKDataArray@` 这类运行时句柄塞进 DataShare。  
+不要把 `CKObject@`、`CK3dEntity@`、`CKDataArray@` 这类运行时句柄塞进 DataShare。
 需要共享对象身份时，先共享名字或 id，使用方再按时机重新查对象。
 
 ## 写入脚本
@@ -133,8 +133,8 @@ BML::DataShareGetInt(...)
 BML::DataShareGetFloat(...)
 ```
 
-第三个参数是 DataShare 命名空间。  
-本章统一传 `tutorial.datashare`，避免和别的脚本共用默认空间时撞键。
+第三个参数是 DataShare 命名空间。
+示例统一传 `tutorial.datashare`，避免和别的脚本共用默认空间时撞键。
 
 ## 读取脚本
 
@@ -286,10 +286,10 @@ BML::DataShareCallback@ delayedCallback = BML::DataShareCallback(this.OnDelayedV
                                        shareName);
 ```
 
-`tutorial.delayed` 在 `Writer` 的 Timer 里才写入。  
+`tutorial.delayed` 在 `Writer` 的 Timer 里才写入。
 写入发生后，`Reader` 的 `OnDelayedValue` 会被调用一次。
 
-请求是一次性的。回调触发后，这个请求就结束。  
+请求是一次性的。回调触发后，这个请求就结束。
 如果想继续等待下一次变化，需要重新请求。
 
 如果请求时值已经存在，回调可能会在 `RequestDataShare(...)` 返回前执行。所以日志里可能看到：
@@ -299,7 +299,7 @@ Reader status callback ...
 Reader requests statusValid=false delayedValid=true
 ```
 
-这表示 `tutorial.status` 已经存在，请求立即完成，返回的请求句柄已经无效。  
+这表示 `tutorial.status` 已经存在，请求立即完成，返回的请求句柄已经无效。
 `tutorial.delayed` 还不存在，所以请求句柄保持有效，等待后面的写入。
 
 ## DataShareEvent 怎么读
@@ -322,7 +322,7 @@ const BML::DataShareEvent &in event
 | `event.IntValue` | 整数值 |
 | `event.FloatValue` | 浮点值 |
 
-按请求类型读取对应字段。  
+按请求类型读取对应字段。
 请求的是 `DATASHARE_STRING`，就读 `StringValue`。请求的是 `DATASHARE_INT`，就读 `IntValue`。
 
 ## 运行后看日志
@@ -404,11 +404,11 @@ CKDataArray@ 句柄
 需要强一致的事务数据
 ```
 
-DataShare 是轻量共享状态。它不替你管理 Virtools 对象生命周期。
+DataShare 是轻量共享状态。它不管理 Virtools 对象生命周期。
 
-## 本章结果
+## 速查结论
 
-现在可以把 DataShare 看成：
+可将 DataShare 看成：
 
 ```text
 命名空间 + key + 基础类型值
@@ -423,5 +423,3 @@ DataShare 是轻量共享状态。它不替你管理 Virtools 对象生命周期
 值可能晚到时使用 RequestDataShare
 回调触发一次后请求结束
 ```
-
-下一章讲 BML HUD、菜单和消息服务。那一章会把 BML 自带 UI/HUD 和 ImGui 调试窗口分开。

@@ -1,6 +1,6 @@
 # 参考 P：行为调用和脚本库组织
 
-脚本写到后面，会遇到两类“调用”：
+脚本规模变大后，会遇到两类“调用”：
 
 | 名字 | 用在哪里 | 解决什么问题 |
 | --- | --- | --- |
@@ -9,7 +9,7 @@
 
 这两类 API 都有“Call”的味道，但所在层级不同。`CallFrame` 不会启动 Virtools Building Block；`BBInstance` 属于 CKAS 的行为图运行层。
 
-这一章分三步：
+本参考分三块：
 
 ```text
 先用 CallFrame 调另一个 BML mod 的分数文本服务
@@ -19,7 +19,7 @@
 
 ## CallFrame 是一张调用单
 
-参考 H已经用过 `CallString`、`CallInt` 这类窄接口。它们适合一个参数、一个返回值的简单导出。
+`CallString`、`CallInt` 这类窄接口适合一个参数、一个返回值的简单导出。
 
 `CallFrame` 更通用。可以把它想成一张调用单：
 
@@ -374,7 +374,7 @@ class GraphViewer {
 }
 ```
 
-入口脚本现在只回答三个问题：
+入口脚本只回答三个问题：
 
 ```text
 这张图有哪些节点
@@ -384,9 +384,9 @@ class GraphViewer {
 
 至于节点怎么画、缩放怎么处理、拖动怎么更新坐标，都交给 `BehaviorGraphImGui.as`。
 
-## 小结
+## 速查结论
 
-这一章要记住三件事：
+速查项三件事：
 
 ```text
 CallFrame 是 BML mod 导出调用的参数和返回值容器。
@@ -395,4 +395,3 @@ CKAS 的 BBConfig / BBInstance 是 Virtools 行为图运行时对象。
 ```
 
 写脚本时先让入口文件保持直观。等某段逻辑出现第二次、第三次，再把它移到库里。
-

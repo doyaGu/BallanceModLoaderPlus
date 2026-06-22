@@ -1,8 +1,8 @@
 # 参考 L：句柄、引用和对象生命周期
 
-第 19 章已经用过 `Borrow3dEntityByName` 和 `BorrowGroupByName`。那时只在当前函数里拿对象、打印信息、马上结束。
+`Borrow3dEntityByName` 和 `BorrowGroupByName` 适合在当前函数里拿对象、打印信息、马上结束。
 
-从这一章开始，要考虑“脚本能不能把对象记住”。这个问题比看起来重要。Ballance 会加载关卡、卸载关卡、重置关卡，Virtools 对象也会跟着创建和销毁。脚本如果把一个已经失效的对象当成还活着，就会得到错误结果，严重时会让脚本回调异常。
+写到对象引用时，要考虑“脚本能不能把对象记住”。这个问题比看起来重要。Ballance 会加载关卡、卸载关卡、重置关卡，Virtools 对象也会跟着创建和销毁。脚本如果把一个已经失效的对象当成还活着，就会得到错误结果，严重时会让脚本回调异常。
 
 先记住三种东西：
 
@@ -62,7 +62,7 @@ string rememberedName = "PC_TwoFlames_MF";
 int rememberedId = BML::CK::GetId(entity);
 ```
 
-id 是运行时编号。它适合在同一轮加载期间做诊断，但不适合写进教程、配置或发布 mod。下一次进入关卡，id 可能变化。
+id 是运行时编号。它适合在同一轮加载期间做诊断，但不适合写进配置或发布 mod。下一次进入关卡，id 可能变化。
 
 用 CKAS 引用：
 
@@ -74,7 +74,7 @@ Entity3DRef@ rememberedRef = Scene::FindEntity3D(ck, "PC_TwoFlames_MF", 0, true)
 
 ## 一个观察脚本
 
-这一章先做观察，不改对象。脚本提供一个命令：
+示例只做观察，不改对象。脚本提供一个命令：
 
 ```text
 ckref
@@ -88,7 +88,7 @@ ckref
 4. 保存这个 `Entity3DRef@` 到成员变量。
 5. 下一帧检查保存的引用是否仍然有效。
 
-把下面脚本放到：
+脚本入口路径：
 
 ```text
 ModLoader/Mods/RefMod.mod.as
@@ -197,7 +197,7 @@ private bool checkNextFrame = false;
 
 `rememberedId` 只用来打印对照，不把它当成长期配置。
 
-`rememberedRef` 是这一章的重点。它保存 CKAS 引用包装，不保存原始 `CK3dEntity@`。
+`rememberedRef` 是这里的重点。它保存 CKAS 引用包装，不保存原始 `CK3dEntity@`。
 
 `checkNextFrame` 用来让脚本在下一帧再检查一次引用。这样可以看到“引用被保存到成员变量以后还能继续使用”。
 
@@ -339,13 +339,10 @@ Borrow3dEntityByName not found: PC_TwoFlames_MF
 | 要跨关卡继续有效 | 保存逻辑名字或配置项，进入关卡后重新查 |
 | 要调用 CK SDK 方法 | 先用 `Entity3DRef@` 确认身份，再按当前 API 借到 `CK3dEntity@`，操作完不要保存原始句柄 |
 
-后面章节讲显示、移动、DataArray 写入时，会继续使用这条规则：
+显示、移动、DataArray 写入同样使用这条规则：
 
 ```text
 长期保存身份：名字或 CKAS Ref
 临时执行操作：原始 CK 句柄
 关卡切换：清缓存，重新查
 ```
-
-下一章会在这个基础上讲场景对象、层级和可见性。
-

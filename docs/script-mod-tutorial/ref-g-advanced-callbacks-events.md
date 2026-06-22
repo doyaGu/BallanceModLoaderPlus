@@ -1,6 +1,6 @@
 # 参考 G：BML 进阶回调和事件对象
 
-前面已经讲过几个固定回调：
+相关基础中已经讲过几个固定回调：
 
 ```text
 OnLoad
@@ -11,7 +11,7 @@ OnGameEvent
 
 BML 还提供一组更靠近底层流程的回调。它们能看到命令执行、配置修改、对象加载、行为脚本加载、物理化等事件。
 
-这一章先建立一个判断方法：
+先建立一个判断方法：
 
 ```text
 先看回调发生在什么时候
@@ -54,10 +54,10 @@ const BML::LoadObjectEvent &in event
 const BML::PhysicalizeEvent &in event
 ```
 
-事件对象可以先按“这一次事件的快照”理解。  
+事件对象可以先按“这一次事件的快照”理解。
 例如命令事件里有命令名、参数、阶段；配置事件里有 mod id、分类、键名、配置项类型。
 
-事件对象里的字符串、数字、布尔值适合记录。  
+事件对象里的字符串、数字、布尔值适合记录。
 `Borrow*` 返回的 CK 句柄仍然按临时借用处理。
 
 ## 用小脚本观察事件
@@ -303,7 +303,7 @@ void OnCommandEvent(const BML::ModContext &in ctx, const BML::CommandEvent &in e
 void OnCbCommand(const BML::ModContext &in ctx, const BML::CommandEvent &in event)
 ```
 
-`OnCbCommand` 是 `cb` 命令自己的执行函数。  
+`OnCbCommand` 是 `cb` 命令自己的执行函数。
 `OnCommandEvent` 是 BML 通知脚本“某个命令进入执行流程”的事件。
 
 执行：
@@ -320,7 +320,7 @@ execute  命令自己的执行回调
 post     命令执行后
 ```
 
-补全函数对应 `complete` 阶段。它通常由命令栏补全触发，本章的 Timer 执行命令不会触发补全。
+补全函数对应 `complete` 阶段。它通常由命令栏补全触发，本参考的 Timer 执行命令不会触发补全。
 
 ## 配置事件
 
@@ -390,7 +390,7 @@ void OnLoadScript(const BML::ModContext &in ctx, const BML::LoadScriptEvent &in 
 | `event.ScriptId` | 行为脚本对象 id |
 | `event.BorrowScript()` | 临时借用 `CKBehavior@` |
 
-这里的 `BorrowObject`、`BorrowScript` 仍然是临时借用。需要长期记住对象时，先保存 id 或名字，后面再讲引用包装。
+这里的 `BorrowObject`、`BorrowScript` 仍然是临时借用。需要长期记住对象时，先保存 id、名字，或使用参考 L 的引用包装。
 
 ## 物理化事件
 
@@ -402,7 +402,7 @@ void OnPhysicalize(const BML::ModContext &in ctx, const BML::PhysicalizeEvent &i
 
 这个事件里能看到目标名、质量、摩擦、弹性、碰撞组、球形/凸包/凹包数量等信息。它已经很接近游戏物理流程。
 
-本章只建议记录：
+本参考只建议记录：
 
 ```angelscript
 event.TargetName
@@ -411,7 +411,7 @@ event.Friction
 event.Elasticity
 ```
 
-不要在第一版脚本里直接对当前活动球施力或改物理参数。后面的物理章节会单独讲边界和回滚。
+不要在第一版脚本里直接对当前活动球施力或改物理参数。物理修改同样要先考虑边界和回滚。
 
 `OnUnphysicalize` 对应物理表示移除：
 
@@ -458,7 +458,7 @@ void OnUnphysicalize(const BML::ModContext &in ctx, const BML::ObjectEvent &in e
 [callback.script/INFO]: CallbackMod unload commandEvents=2 configEvents=1 objectLoads=10 scriptLoads=63 physicalize=51 unphysicalize=51
 ```
 
-不同启动阶段会影响 `objectLoads`、`scriptLoads`、`physicalize` 的数量。  
+不同启动阶段会影响 `objectLoads`、`scriptLoads`、`physicalize` 的数量。
 这次测试只停在菜单，也触发了纸球碎片相关的物理化日志。进入关卡后，物理化相关日志通常会更多。
 
 ## 哪些回调先观察
@@ -486,9 +486,9 @@ void OnUnphysicalize(const BML::ModContext &in ctx, const BML::ObjectEvent &in e
 在物理化事件里直接改当前活动球
 ```
 
-## 本章结果
+## 速查结论
 
-现在可以把进阶回调看成一组观察窗口：
+可将进阶回调看成一组观察窗口：
 
 ```text
 命令事件看命令流程
@@ -498,5 +498,3 @@ void OnUnphysicalize(const BML::ModContext &in ctx, const BML::ObjectEvent &in e
 事件对象保存快照
 Borrow* 句柄仍然临时使用
 ```
-
-下一章讲 mod 信息、依赖和导出。那一章会从“当前有哪些 mod”开始，继续讲 BML 层的 mod 关系。

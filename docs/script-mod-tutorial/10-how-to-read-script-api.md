@@ -29,7 +29,7 @@ CK::GetRowCount(array);
 | CKAS 高层脚本 API | 场景对象、行为图、BB、参数、消息、异步任务 | `CKAngelScript/docs/api-inventory.md` 和相关专题文档 |
 | CK/Virtools 原始绑定 | `CKContext`、`CKObject`、`CK3dEntity`、`CKDataArray`、`VxVector` 等 SDK 类型 | `CKAngelScript/docs/sdk-bindings.md`，必要时看 `CKAngelScript/src/Script*.cpp` |
 
-第一篇写的命令、配置、Timer，主要查 BML。  
+第一篇写的命令、配置、Timer，主要查 BML。
 后面开始找对象、读 DataArray、看行为图，就要把 CKAS 和 CK/Virtools 绑定一起看。
 
 ## BML API 查什么
@@ -98,6 +98,72 @@ ctx.BorrowDataArrayByName     来自 BML::ModContext
 CK::GetRowCount               来自 namespace CK
 CKDataArray@                  来自 CK/Virtools 对象类型
 ```
+
+## 用 angel-lsp 做补全和类型检查
+
+写脚本时可以用 [angel-lsp](https://github.com/sashi0034/angel-lsp) 辅助编辑。它是通用 AngelScript Language Server，提供语法高亮、补全、类型检查、跳转定义、查找引用、重命名等功能。
+
+它和 BMLPlus 的关系要分清：
+
+```text
+BMLPlus / CKAS
+  负责真正加载、编译、运行脚本
+
+angel-lsp
+  负责让编辑器认识 AngelScript 代码
+  不负责判断脚本在 Ballance 里一定能运行
+```
+
+angel-lsp 不知道 Ballance 和 BMLPlus 自己增加了哪些类型。要让它认识 `BML::ModContext`、`BML::Logger`、`CKDataArray@` 这些名字，需要在脚本项目根目录放一个文件：
+
+```text
+as.predefined
+```
+
+BMLPlus 文档里已经准备了这个文件：
+
+```text
+docs/as.predefined
+```
+
+把它复制到正在编辑的脚本工作区根目录，并保持文件名为：
+
+```text
+as.predefined
+```
+
+如果编辑的是单文件脚本，可以把脚本文件和 `as.predefined` 放在同一个编辑器工作区里：
+
+```text
+script-workspace/
+  as.predefined
+  HelloMod.mod.as
+```
+
+如果编辑的是一个目录形式的 mod，就放在这个目录的根部：
+
+```text
+MyScriptMod/
+  as.predefined
+  Main.mod.as
+  libs/
+    Helpers.as
+```
+
+这样编辑器检查 `*.as` 文件时，会把 `as.predefined` 里的声明当作宿主环境已经提供的 API。`ctx.BorrowLogger()`、`BML::CommandDefinition`、`BML::TimerCallback` 这类名字就能参与补全和类型检查。
+
+`docs/bml-script-mod-api.as` 仍然适合用来阅读 BML 脚本 mod API。`docs/as.predefined` 更适合交给 LSP，因为它可以同时放入 BML、ImGui、CKAS 和 Virtools 相关声明。
+
+angel-lsp 的用户设置里有两个和 BML 脚本常见写法有关：
+
+| 设置 | 建议 |
+| --- | --- |
+| `Angel Script: Builtin String Types` | 保留 `string`。BML 示例使用小写 `string`。 |
+| `Angel Script: Builtin Array Type` | 需要写 `Type[]` 形式数组时再打开。 |
+| `Angel Script: Implicit Mutual Inclusion` | 不建议一开始打开。BML 脚本里更容易用显式 `#include` 看清依赖。 |
+
+`as.predefined` 是给编辑器看的，不会被 BMLPlus 自动加载。
+脚本最终能不能跑，仍然看 Player 启动后的编译结果和日志。
 
 ## CKAS API 查什么
 
@@ -272,7 +338,7 @@ if (entity !is null) {
 Entity3DRef@ ref = Scene::FindEntity3D(ckContext, "Ball");
 ```
 
-`CK3dEntity@` 是原始对象句柄。对象消失或场景切换后，长期保存它风险更高。  
+`CK3dEntity@` 是原始对象句柄。对象消失或场景切换后，长期保存它风险更高。
 `Entity3DRef@` 是 CKAS 的对象引用层，更适合跨多次调用保存对象身份。
 
 这里先建立判断方法。后面讲关卡对象时再写完整示例。
@@ -422,7 +488,7 @@ helloCommand.IsValid
 event.ArgCount
 ```
 
-看到 `get_Name()`，脚本里就可以找 `.Name`。  
+看到 `get_Name()`，脚本里就可以找 `.Name`。
 看到 `get_IsValid()`，脚本里就可以找 `.IsValid`。
 
 这个规则也会出现在 CKAS 的对象引用、参数引用、行为图引用里。

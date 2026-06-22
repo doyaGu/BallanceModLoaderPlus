@@ -1,6 +1,6 @@
 # 参考 H：mod 信息、依赖和导出
 
-前面几章一直在写单个脚本。真实 mod 经常会遇到另一个问题：
+相关主题一直在写单个脚本。真实 mod 经常会遇到另一个问题：
 
 ```text
 当前有哪些 mod 已经加载
@@ -10,7 +10,7 @@
 另一个 mod 是否提供了可调用的导出函数
 ```
 
-这一章讲 BML 层的 mod 关系。它仍然站在 BML 脚本 mod 这一层，不进入 Virtools 对象修改。
+本参考说明 BML 层的 mod 关系。它仍然站在 BML 脚本 mod 这一层，不进入 Virtools 对象修改。
 
 ## 三个概念
 
@@ -37,14 +37,14 @@ ModContext
 
 ## 准备两个脚本
 
-这一章用两个文件：
+示例使用两个文件：
 
 ```text
 ModLoader/Mods/ModInfoProvider.mod.as
 ModLoader/Mods/ModInfoInspector.mod.as
 ```
 
-`Provider` 暴露两个导出函数。  
+`Provider` 暴露两个导出函数。
 `Inspector` 查询 mod 列表、读取依赖信息，并调用 `Provider` 的导出。
 
 ## 提供导出的脚本
@@ -83,7 +83,7 @@ class ModInfoProvider {
 }
 ```
 
-`[bml.export ...]` 要贴在 `bml.mod` 类的方法上。  
+`[bml.export ...]` 要贴在 `bml.mod` 类的方法上。
 这里公开了两个函数：
 
 ```text
@@ -208,7 +208,7 @@ class ModInfoInspector {
 [bml.optional id="modinfo.debug" version="0.1.0"]
 ```
 
-`bml.require` 表示必需依赖。缺少它，当前 mod 不应该正常加载。  
+`bml.require` 表示必需依赖。缺少它，当前 mod 不应该正常加载。
 `bml.optional` 表示可选关系。缺少它，不阻止当前 mod 加载，但可以通过 `ModRef` 查询出来。
 
 依赖是元数据，不是在 `OnLoad` 里临时创建的运行时状态。
@@ -223,8 +223,8 @@ BML::ModRef@ mod = ctx.GetMod(index);
 BML::ModRef@ provider = ctx.FindMod("modinfo.provider");
 ```
 
-`GetModCount()` 告诉你 BML 当前知道多少个 mod。  
-`GetMod(index)` 按序号取一个 `ModRef`。  
+`GetModCount()` 返回 BML 当前知道多少个 mod。
+`GetMod(index)` 按序号取一个 `ModRef`。
 `FindMod(id)` 按 mod id 查找。
 
 拿到 `ModRef@` 后先判空，再看 `IsValid`：
@@ -264,14 +264,14 @@ string version = self.GetDependencyVersion(i);
 bool optional = self.IsDependencyOptional(i);
 ```
 
-本章脚本声明了两个依赖：
+示例脚本声明两个依赖：
 
 ```text
 modinfo.provider  必需
 modinfo.debug     可选
 ```
 
-所以日志里会看到两条依赖记录。  
+所以日志里会看到两条依赖记录。
 `CheckDependencies()` 用来判断依赖是否满足。当前实现里：
 
 ```text
@@ -291,7 +291,7 @@ string name = provider.GetExportName(i);
 string signature = provider.GetExportSignature(i);
 ```
 
-本章的 provider 有两个导出：
+本参考的 provider 有两个导出：
 
 ```text
 Greeting
@@ -305,7 +305,7 @@ BML::ExportRef@ greeting;
 int lookup = provider.TryFindExport("Greeting", greeting);
 ```
 
-`TryFindExport` 比 `FindExport` 更适合教程示例，因为它会返回查找状态。  
+`TryFindExport` 比 `FindExport` 更适合参考示例，因为它会返回查找状态。
 查找成功时，`lookup == BML::ERROR_OK`，并且 `greeting` 是有效的 `ExportRef@`。
 
 如果同名导出有多个签名，需要传入签名：
@@ -316,7 +316,7 @@ provider.TryFindExport("Greeting", greeting, "string Greeting(const string &in)"
 
 签名字符串可以先用 `GetExportSignature(i)` 打印出来，再复制到查询代码里。
 
-本章的导出名没有重载，所以省略签名。
+本参考的导出名没有重载，所以省略签名。
 
 ## 调用导出
 
@@ -346,7 +346,7 @@ int result = 0;
 int callStatus = answer.CallInt(result);
 ```
 
-`callStatus == BML::ERROR_OK` 表示调用成功。  
+`callStatus == BML::ERROR_OK` 表示调用成功。
 返回非零值时，先把状态码写进日志，不要直接使用结果变量。
 
 `ExportRef` 还支持更通用的 `CallFrame`。它适合多参数、数组、对象 id 这类情况。入门阶段先用 `CallString`、`CallInt`、`CallBool`、`CallFloat` 这种窄接口，出错点少很多。
@@ -387,14 +387,13 @@ int callStatus = answer.CallInt(result);
 | 共享一个状态，其他脚本稍后按名字读取 | DataShare |
 | 和 CKAS runtime script 或组件通信 | CKAS `Message` |
 
-导出更像函数调用：现在请求，现在返回。  
+导出更像函数调用：同步请求，同步返回。
 DataShare 更像一块命名状态：写入后，别人之后可以读取。
 
-参考 I会专门讲 DataShare。
 
-## 本章结果
+## 速查结论
 
-现在可以把 BML 层的 mod 关系看成：
+可将 BML 层的 mod 关系看成：
 
 ```text
 metadata
@@ -408,6 +407,4 @@ runtime query
   -> ExportRef
 ```
 
-本章只做了一个最小导出调用。跨 mod 设计不要从“能调用”直接跳到“到处互相调用”。先判断关系是加载顺序、函数调用，还是共享状态。
-
-下一章讲 DataShare 和跨脚本共享状态。
+本参考只做了一个最小导出调用。跨 mod 设计不要从“能调用”直接跳到“到处互相调用”。先判断关系是加载顺序、函数调用，还是共享状态。

@@ -1,6 +1,6 @@
 # 参考 B：游戏事件和关卡时机
 
-参考 A讲的是脚本对象的生命周期：
+参考 A 对应脚本对象的生命周期：
 
 ```text
 OnLoad
@@ -8,7 +8,7 @@ OnProcess
 OnUnload
 ```
 
-这一章讲 Ballance 游戏流程里的时机：
+本参考说明 Ballance 游戏流程里的时机：
 
 ```text
 开始菜单
@@ -44,7 +44,7 @@ GAME_EVENT_PRE_EXIT_LEVEL    准备退出关卡
 GAME_EVENT_POST_EXIT_LEVEL   退出关卡后
 ```
 
-后面要查关卡对象、读运行时 DataArray、扫描行为图，通常等到 `GAME_EVENT_START_LEVEL`。
+查关卡对象、读运行时 DataArray、扫描行为图，通常等到 `GAME_EVENT_START_LEVEL`。
 
 ## 用一个小脚本观察
 
@@ -193,7 +193,6 @@ START_LEVEL        关卡开始运行
 
 脚本要读关卡运行时对象，先从 `GAME_EVENT_START_LEVEL` 开始。
 
-后面章节会在这里做事：
 
 ```angelscript
 if (event == BML::GAME_EVENT_START_LEVEL) {
@@ -213,7 +212,7 @@ CK3dEntity@ ball = ctx.Borrow3dEntityByName("Ball");
 
 很容易拿到 `null`。
 
-等到 `GAME_EVENT_START_LEVEL`，关卡内容和运行时表更接近可用状态。后面读取对象、组、DataArray 时，会把扫描入口接到这里。
+等到 `GAME_EVENT_START_LEVEL`，关卡内容和运行时表更接近可用状态。读取对象、组、DataArray 时，扫描入口通常接到这里。
 
 ## 为什么退出关卡要清状态
 
@@ -238,11 +237,11 @@ if (event == BML::GAME_EVENT_PRE_EXIT_LEVEL ||
 }
 ```
 
-这里的 `levelReady` 只是一个布尔值。后面如果保存了对象引用、扫描结果、表格行列信息，也按同样思路清掉。
+这里的 `levelReady` 只是一个布尔值。如果脚本还保存了对象引用、扫描结果、表格行列信息，也按同样思路清掉。
 
-## 常见事件先记这些
+## 常见事件速查
 
-先记一小组，够后面章节使用：
+常用事件先按这一组查：
 
 | 事件 | 先怎么理解 |
 | --- | --- |
@@ -270,9 +269,9 @@ docs/bml-script-mod-api.as
 enum GameEvent
 ```
 
-## 本章结果
+## 速查结论
 
-现在脚本能区分两条线：
+脚本可区分两条线：
 
 ```text
 脚本生命周期
@@ -286,12 +285,10 @@ enum GameEvent
   GAME_EVENT_PRE_EXIT_LEVEL
 ```
 
-后面查对象、读表、看行为图时，会反复用这个判断：
+查对象、读表、看行为图时，会反复用这个判断：
 
 ```angelscript
 if (event == BML::GAME_EVENT_START_LEVEL) {
     // 从这里开始碰关卡运行时内容
 }
 ```
-
-下一章讲 `ModContext` 服务地图。也就是 `ctx` 除了日志、命令、Timer 之外，还能借到哪些 BML、CKAS、Virtools 入口。

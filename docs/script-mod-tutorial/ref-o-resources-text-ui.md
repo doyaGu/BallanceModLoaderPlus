@@ -1,6 +1,6 @@
 # 参考 O：资源、文本和 UI
 
-前面几章主要在改运行中的对象和表。这一章换一个入口：脚本怎样接触资源文件，怎样向游戏里显示短消息，怎样理解 2D Text 和 BML UI。
+运行时对象和表之外，脚本还会接触资源文件、短消息、2D Text 与 BML UI。
 
 先把三个名字分开：
 
@@ -10,16 +10,16 @@
 | Virtools 对象 | 文件加载后出现在 CKContext 里的对象 |
 | UI | 给玩家看的消息、菜单按钮、调试窗口 |
 
-资源文件还没有进入游戏。  
-`LoadObject` 会把资源文件里的对象加载进 Virtools。  
-`BML::UI::SendMessage` 只是在游戏里显示一行短消息。  
+资源文件还没有进入游戏。
+`LoadObject` 会把资源文件里的对象加载进 Virtools。
+`BML::UI::SendMessage` 只是在游戏里显示一行短消息。
 `BML::Text::Create2DText` 是创建 Virtools 的 `2D Text` 行为，需要现成的 owner script 和 2D entity。
 
 这四件事不要混在一起。
 
-## 本章实际使用哪些 API
+## 涉及 API
 
-先看本章会碰到的 API：
+先看这里会碰到的 API：
 
 | API | 用途 |
 | --- | --- |
@@ -32,11 +32,11 @@
 | `BML::Text2DDefinition` | 描述 2D Text 的字体和文字 |
 | `BML::Text::Create2DText(...)` | 创建 Virtools `2D Text` 行为 |
 
-本章的完整脚本只演示资源加载和消息。`Create2DText` 单独讲，因为它依赖已有行为图对象，直接塞进入门脚本容易变成“能编译但不知道为什么显示不出来”。
+本参考的完整脚本只演示资源加载和消息。`Create2DText` 单独讲，因为它依赖已有行为图对象，直接塞进入门脚本容易变成“能编译但不知道为什么显示不出来”。
 
 ## 完整脚本
 
-把下面脚本放到：
+脚本入口路径：
 
 ```text
 ModLoader/Mods/ResMod.mod.as
@@ -169,7 +169,7 @@ BML::UI::ClearMessages();
 
 ## 再看资源路径
 
-本章加载的是：
+示例加载的是：
 
 ```text
 3D Entities\PH\P_Modul_01.nmo
@@ -200,7 +200,7 @@ if (!BML::Path::IsFile(resourcePath)) {
 Resource missing load success=true count=21 main=none
 ```
 
-所以本章不把 `ObjectLoadResult.Success` 当作路径存在的证明。路径存在由 `BML::Path::IsFile` 负责，`LoadObject` 只负责执行加载。
+所以示例不把 `ObjectLoadResult.Success` 当作路径存在的证明。路径存在由 `BML::Path::IsFile` 负责，`LoadObject` 只负责执行加载。
 
 ## `ObjectLoadOptions` 怎么看
 
@@ -229,7 +229,7 @@ options.Dynamic = true;
 
 入门阶段不要急着改 `FilterClass`。默认值已经适合常见 3D 对象加载。
 
-本章把 `AddToScene` 设成 `false`，原因很简单：先验证加载，不让对象直接出现在当前场景里。等能稳定判断加载结果以后，再考虑是否加入场景、是否移动位置、是否物理化。
+本参考把 `AddToScene` 设成 `false`，原因很简单：先验证加载，不让对象直接出现在当前场景里。等能稳定判断加载结果以后，再考虑是否加入场景、是否移动位置、是否物理化。
 
 ## `ObjectLoadResult` 怎么看
 
@@ -248,7 +248,7 @@ if (result is null || result.Count <= 0) {
 }
 ```
 
-`Count` 表示这次结果里记录了多少个对象 id。  
+`Count` 表示这次结果里记录了多少个对象 id。
 `BorrowMainObject()` 尝试借主对象：
 
 ```angelscript
@@ -266,7 +266,7 @@ Res load ok: success=true count=21 main=none
 
 ## 缺失路径怎么处理
 
-本章的 `missing` 命令不会把缺失路径交给 `LoadObject`：
+本参考的 `missing` 命令不会把缺失路径交给 `LoadObject`：
 
 ```angelscript
 if (!BML::Path::IsFile(resourcePath)) {
@@ -326,13 +326,13 @@ CKBehavior@ behavior = BML::Text::Create2DText(owner, target, text);
 新建的 2D Text 行为什么时候销毁
 ```
 
-所以入门阶段先用 `BML::UI::SendMessage`。等后面讲行为调用和脚本库组织时，再把 `Create2DText` 放进行为图上下文里处理。
+所以入门阶段先用 `BML::UI::SendMessage`。`Create2DText` 需要放进行为图上下文里处理。
 
 ## BML UI 辅助函数怎么理解
 
 `BML::UI` 里有两类函数。
 
-第一类是消息函数，本章已经用了：
+第一类是消息函数，示例已经用了：
 
 ```angelscript
 BML::UI::SendMessage("text");
@@ -355,7 +355,7 @@ NavBack
 
 这些函数服务于 BML 菜单绘制层。它们不是 ImGui 调试窗口 API，也不是 Virtools 2D Text。
 
-当前版本里，不要把这些菜单绘制函数作为本章第一段可复制代码。实际测试中，把 `BML::UI::Title`、`BML::UI::MainButton` 这类函数直接放进脚本 `OnRender`，会触发嵌套调用错误。要做调试窗口，前面已经讲过 ImGui；要显示短消息，用本章的 `SendMessage`。
+当前版本里，不要把这些菜单绘制函数作为第一段可复制代码。实际测试中，把 `BML::UI::Title`、`BML::UI::MainButton` 这类函数直接放进脚本 `OnRender`，会触发嵌套调用错误。要做调试窗口，用 ImGui；要显示短消息，用本参考的 `SendMessage`。
 
 ## 运行后看什么
 
@@ -397,9 +397,9 @@ Res missing path blocked before LoadObject: 3D Entities\PH\Missing_Tutorial_Obje
 
 如果 `res load` 也提示文件不存在，先检查相对路径是否写对，再检查脚本是不是在正确的游戏目录里运行。
 
-## 这一章的边界
+## 适用边界
 
-本章只讲三件事：
+本参考只讲三件事：
 
 ```text
 资源加载前先检查路径
@@ -416,6 +416,3 @@ LoadObject 之后看对象数量
 创建和管理完整 2D 文本 UI
 封装自己的脚本库
 ```
-
-下一章会进入行为调用和脚本库组织。那时再处理“创建出来的行为归谁管、什么时候销毁、怎样封装成可复用函数”。
-

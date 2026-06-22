@@ -1,9 +1,9 @@
 # 参考 F：脚本 mod 的边界
 
-前面已经会写日志、窗口、命令、配置、Timer、事件、资源路径。  
+相关基础中已经会写日志、窗口、命令、配置、Timer、事件、资源路径。
 这些都属于 BML 脚本 mod 自己的运行框架。
 
-从后面开始，会越来越多接触 CKAS 和 Virtools 对象。进入那一层以前，先把边界摆清楚。
+使用 CKAS 和 Virtools 对象前，先把边界摆清楚。
 
 ## 先看三层
 
@@ -57,7 +57,7 @@ void OnLoad(const BML::ModContext &in ctx)
 void OnLoad(const BML::ModContext &in ctx)
 ```
 
-这时 `ctx` 的类型只有 `BML::ModContext`。  
+这时 `ctx` 的类型只有 `BML::ModContext`。
 如果某个 CKAS 函数声明要求的是：
 
 ```angelscript
@@ -66,7 +66,7 @@ SomeFunction(const ScriptContext &in ctx)
 
 BML 的 `ctx` 不能直接传进去。
 
-后面遇到 CKAS API 时，先看函数声明要求哪种上下文。声明写 `CKContext@`，BML 脚本 mod 才能考虑用 `ctx.BorrowCKContext()` 取得入口。
+遇到 CKAS API 时，先看函数声明要求哪种上下文。声明写 `CKContext@`，BML 脚本 mod 才能考虑用 `ctx.BorrowCKContext()` 取得入口。
 
 ## BML 层负责什么
 
@@ -219,7 +219,7 @@ class BoundaryMod {
 
 ## `Borrow*` 的含义
 
-这一章反复出现 `Borrow`：
+这里反复出现 `Borrow`：
 
 ```angelscript
 ctx.BorrowLogger()
@@ -263,7 +263,6 @@ private CK3dEntity@ cachedBall;
 ```text
 对象名
 对象 id
-后面会讲的 ObjectRef / Entity3DRef
 ```
 
 ## 关卡对象要等时机
@@ -336,16 +335,14 @@ CKAS 负责脚本运行时和 Virtools 能力
 Virtools 负责游戏对象和行为图
 ```
 
-## 本章结果
+## 速查结论
 
-现在先建立边界感：
+边界速查：
 
 ```text
 BML::ModContext、ScriptContext、CKBehaviorContext 是三种上下文
 BorrowCKContext() 只是借 CKContext 入口
 Borrow* 返回的 CK 句柄不代表脚本拥有它
 关卡对象等关卡开始后再找
-长期状态优先保存名字、id 或后面讲的引用包装
+长期状态优先保存名字、id 或引用包装
 ```
-
-下一章讲 BML 进阶回调和事件对象。那一章会把 `OnLoadObject`、`OnLoadScript`、`OnPhysicalize`、`OnCommandEvent` 这类回调放在一张表里，先判断它们适合观察什么，再决定什么时候能修改。

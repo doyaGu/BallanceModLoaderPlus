@@ -86,10 +86,10 @@ class HelloMod {
     }
 
     private void UpdateFps(const BML::ModContext &in ctx) {
-        // GetDeltaTimeMs 返回上一帧耗时，单位是毫秒。
-        float deltaMs = ctx.GetDeltaTimeMs();
-        if (deltaMs > 0.0f) {
-            fps = 1000.0f / deltaMs;
+        // ImGui::GetIO().DeltaTime 返回上一帧耗时，单位是秒。
+        ImGuiIO@ io = ImGui::GetIO();
+        if (io !is null && io.DeltaTime > 0.0f) {
+            fps = 1.0f / io.DeltaTime;
         }
     }
 
@@ -217,16 +217,17 @@ fps            当前显示的 FPS
 
 ## FPS 怎么算
 
-这一行读取上一帧耗时：
+这几行读取上一帧耗时：
 
 ```angelscript
-float deltaMs = ctx.GetDeltaTimeMs();
+ImGuiIO@ io = ImGui::GetIO();
+float deltaSeconds = io.DeltaTime;
 ```
 
-单位是毫秒。FPS 的意思是一秒能跑多少帧，所以用 `1000` 除以上一帧耗时：
+`DeltaTime` 的单位是秒。FPS 的意思是一秒能跑多少帧，所以用 `1` 除以上一帧耗时：
 
 ```angelscript
-fps = 1000.0f / deltaMs;
+fps = 1.0f / deltaSeconds;
 ```
 
 例子：

@@ -1,8 +1,8 @@
-﻿# 参考 N：DataArray 写入和回滚
+# 参考 N：DataArray 写入和回滚
 
-前面几章一直在读 DataArray。读表不会改变游戏状态，出错时通常只是日志不对。
+相关主题一直在读 DataArray。读表不会改变游戏状态，出错时通常只是日志不对。
 
-从这一章开始，脚本会写 DataArray。写入以后，原版行为图下一帧就可能读到新值，所以必须先建立一个习惯：
+写 DataArray 时，原版行为图下一帧就可能读到新值，所以必须先建立一个习惯：
 
 ```text
 先保存旧值
@@ -11,7 +11,7 @@
 最后恢复旧值
 ```
 
-本章只写一个单元格：
+本参考只写一个单元格：
 
 ```text
 Energy 表
@@ -19,11 +19,11 @@ Energy 表
 Points 列
 ```
 
-`Energy.Points` 是当前分数。本章把它临时加 1，然后立刻恢复。这样能确认 `SetInt` 的调用方式，又不会留下关卡状态。
+`Energy.Points` 是当前分数。本参考把它临时加 1，然后立刻恢复。这样能确认 `SetInt` 的调用方式，又不会留下关卡状态。
 
-## 本章练习问题
+## 检查目标
 
-这章不追求做出“加分 mod”。  
+此处不追求做出“加分 mod”。
 它只验证一个更基础的能力：
 
 ```text
@@ -39,15 +39,15 @@ Points 列
 马上恢复旧分数
 ```
 
-正常结束后，当前分数应该回到原值。  
-如果这一步都不稳定，后面写 `CurrentLevel`、`IngameParameter`、检查点表就更危险。
+正常结束后，当前分数应该回到原值。
+如果这一步都不稳定，写 `CurrentLevel`、`IngameParameter`、检查点表就更危险。
 
-脚本会同时写日志和发一条游戏内短消息。  
+脚本会同时写日志和发一条游戏内短消息。
 短消息用来看“命令确实触发了”，日志用来核对旧值、写入值和恢复值。
 
 ## DataArray 写入 API
 
-DataArray 的读取函数前面已经用过：
+DataArray 的读取函数相关基础中已经用过：
 
 ```angelscript
 int value = BML::CK::GetInt(table, row, column, 0);
@@ -92,7 +92,7 @@ SetInt 恢复旧值
 
 ## 完整脚本
 
-把下面脚本放到：
+脚本入口路径：
 
 ```text
 ModLoader/Mods/ArrayWriteMod.mod.as
@@ -190,7 +190,7 @@ class ArrayWriteMod {
         }
 
         int oldValue = BML::CK::GetInt(energy, 0, column, 0);
-        // 写入前先保存旧值。后面任何一步失败，都还有机会恢复。
+        // 写入前先保存旧值。之后任何一步失败，都还有机会恢复。
         SaveBackup("Energy", 0, column, oldValue);
 
         int newValue = oldValue + 1;
@@ -200,12 +200,12 @@ class ArrayWriteMod {
             return;
         }
 
-        // 写入后马上读回，确认单元格现在是什么值。
+        // 写入后马上读回，确认单元格当前是什么值。
         int afterWrite = BML::CK::GetInt(energy, 0, column, -1);
         log.Info("ArrayWrite wrote Energy.Points: old=" + oldValue +
                  " afterWrite=" + afterWrite);
 
-        // 本章只验证写入路径，不把分数改动留在关卡里。
+        // 本参考只验证写入路径，不把分数改动留在关卡里。
         RestoreBackup(ctx, "pulse");
         int restored = BML::CK::GetInt(energy, 0, column, -1);
         log.Info("ArrayWrite restored Energy.Points=" + restored);
@@ -327,9 +327,9 @@ SaveBackup("Energy", 0, column, oldValue);
 旧值是多少
 ```
 
-这四件事缺一个，后面就不知道该把值写回哪里。
+这四件事缺一个，恢复时就不知道该把值写回哪里。
 
-本章只备份 `int`。如果以后写 `float`、`bool`、`string`，要分别保存旧的 `float`、`bool`、`string`，不能全塞进一个整数备份里。
+本参考只备份 `int`。如果以后写 `float`、`bool`、`string`，要分别保存旧的 `float`、`bool`、`string`，不能全塞进一个整数备份里。
 
 ## 写入后必须读回
 
@@ -339,7 +339,7 @@ SaveBackup("Energy", 0, column, oldValue);
 bool ok = BML::CK::SetInt(energy, 0, column, newValue);
 ```
 
-`ok` 只能说明 setter 返回成功。为了确认单元格现在是什么值，后面又读了一次：
+`ok` 只能说明 setter 返回成功。为了确认单元格当前值，又读了一次：
 
 ```angelscript
 int afterWrite = BML::CK::GetInt(energy, 0, column, -1);
@@ -361,7 +361,7 @@ ArrayWrite wrote Energy.Points: old=0 afterWrite=1
 
 ## 恢复有三个入口
 
-本章的恢复不只靠 `pulse` 末尾那一行。
+本参考的恢复不只靠 `pulse` 末尾那一行。
 
 脚本准备了三个恢复入口：
 
@@ -384,7 +384,7 @@ if (event == BML::GAME_EVENT_PRE_EXIT_LEVEL ||
 
 ## 哪些表不要上来就写
 
-刚开始练习时，不要碰这些表和字段：
+刚开始验证写入能力时，不要碰这些表和字段：
 
 | 表或字段 | 原因 |
 | --- | --- |
@@ -393,7 +393,7 @@ if (event == BML::GAME_EVENT_PRE_EXIT_LEVEL ||
 | `Checkpoints` | 影响检查点状态和复活流程 |
 | `ResetPoints` | 影响复活点选择 |
 | `Physicalize_Balls` | 影响物理化参数，通常要配合重新物理化 |
-| `AllLevel` | 属于关卡配置，不适合拿来做临时运行练习 |
+| `AllLevel` | 属于关卡配置，不适合拿来做临时运行验证 |
 
 先从这类值开始：
 
@@ -404,7 +404,7 @@ if (event == BML::GAME_EVENT_PRE_EXIT_LEVEL ||
 不控制关卡流程
 ```
 
-`Energy.Points` 也不应该长期改。本章只用它证明 `SetInt` 路径可用，真正做玩法时要重新设计状态来源、触发时机和恢复策略。
+`Energy.Points` 也不应该长期改。本参考只用它证明 `SetInt` 路径可用，真正做玩法时要重新设计状态来源、触发时机和恢复策略。
 
 ## 运行后看什么
 
@@ -444,7 +444,7 @@ Points pulse: 0 -> 1 -> 0
 游戏内消息也显示了这次变化
 ```
 
-如果已经吃到分数，再执行同一条命令，旧值会变成当时的分数。例如这次测试中，后面又执行了一次：
+如果已经吃到分数，再执行同一条命令，旧值会变成当时的分数。例如这次测试中，又执行了一次：
 
 ```text
 ArrayWrite wrote Energy.Points: old=916 afterWrite=917
@@ -457,9 +457,9 @@ Points pulse: 916 -> 917 -> 916
 
 如果在菜单里运行命令，`Energy` 表可能还没进入本局运行状态。进入关卡后再执行。
 
-## 这一章的边界
+## 适用边界
 
-本章只说明 DataArray 单元格怎么写、怎么恢复。
+本参考只说明 DataArray 单元格怎么写、怎么恢复。
 
 还没有解决这些问题：
 
@@ -469,8 +469,3 @@ Points pulse: 916 -> 917 -> 916
 写入值是否会被原版流程覆盖
 写入后是否还要同步对象、物理或 UI
 ```
-
-后面写行为调用和资源/UI 时，会继续遇到同一个原则：先找到原版流程读写状态的位置，再决定脚本应该在哪个时机插进去。
-
-
-
