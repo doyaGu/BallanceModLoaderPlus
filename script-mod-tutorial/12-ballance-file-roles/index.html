@@ -10,26 +10,28 @@
       
       
       
-        <link rel="canonical" href="https://doyagu.github.io/BallanceModLoaderPlus/">
+        <link rel="canonical" href="https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/12-ballance-file-roles/">
       
       
+        <link rel="prev" href="../11-basic-script-template/">
       
-        <link rel="next" href="script-mod-tutorial/">
+      
+        <link rel="next" href="../13-objects-entities-and-names/">
       
       
         
       
       
-      <link rel="icon" href="assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>Ballance Mod Loader Plus</title>
+        <title>第 12 章：Ballance 文件各自负责什么 - Ballance Mod Loader Plus</title>
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
       
 
@@ -48,7 +50,7 @@
       
     
     
-    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -66,7 +68,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#ballance-mod-loader-plus" class="md-skip">
+        <a href="#12-ballance" class="md-skip">
           跳转至
         </a>
       
@@ -82,7 +84,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="页眉">
-    <a href="." title="Ballance Mod Loader Plus" class="md-header__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+    <a href="../.." title="Ballance Mod Loader Plus" class="md-header__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -102,7 +104,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              首页
+              第 12 章：Ballance 文件各自负责什么
             
           </span>
         </div>
@@ -194,7 +196,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="导航栏" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="." title="Ballance Mod Loader Plus" class="md-nav__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+    <a href="../.." title="Ballance Mod Loader Plus" class="md-nav__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -221,37 +223,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    首页
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="." class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -267,48 +242,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="目录">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      目录
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        推荐入口
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        教程主线
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -317,8 +250,10 @@
       
   
   
+    
   
   
+  
     
     
     
@@ -329,11 +264,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
         
           
           <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
@@ -354,7 +289,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -372,7 +307,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/" class="md-nav__link">
+      <a href="../" class="md-nav__link">
         
   
   
@@ -449,7 +384,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/00-background/" class="md-nav__link">
+      <a href="../00-background/" class="md-nav__link">
         
   
   
@@ -477,7 +412,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/01-script-mod-scope/" class="md-nav__link">
+      <a href="../01-script-mod-scope/" class="md-nav__link">
         
   
   
@@ -505,7 +440,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/02-angelscript-minimum-syntax/" class="md-nav__link">
+      <a href="../02-angelscript-minimum-syntax/" class="md-nav__link">
         
   
   
@@ -533,7 +468,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/03-first-loadable-script/" class="md-nav__link">
+      <a href="../03-first-loadable-script/" class="md-nav__link">
         
   
   
@@ -561,7 +496,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/04-bml-callback-model/" class="md-nav__link">
+      <a href="../04-bml-callback-model/" class="md-nav__link">
         
   
   
@@ -589,7 +524,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/05-logs-window-fps/" class="md-nav__link">
+      <a href="../05-logs-window-fps/" class="md-nav__link">
         
   
   
@@ -617,7 +552,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/06-command/" class="md-nav__link">
+      <a href="../06-command/" class="md-nav__link">
         
   
   
@@ -645,7 +580,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/07-config/" class="md-nav__link">
+      <a href="../07-config/" class="md-nav__link">
         
   
   
@@ -673,7 +608,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/08-timer/" class="md-nav__link">
+      <a href="../08-timer/" class="md-nav__link">
         
   
   
@@ -701,7 +636,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/09-first-stage-troubleshooting/" class="md-nav__link">
+      <a href="../09-first-stage-troubleshooting/" class="md-nav__link">
         
   
   
@@ -729,7 +664,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/10-how-to-read-script-api/" class="md-nav__link">
+      <a href="../10-how-to-read-script-api/" class="md-nav__link">
         
   
   
@@ -757,7 +692,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/11-basic-script-template/" class="md-nav__link">
+      <a href="../11-basic-script-template/" class="md-nav__link">
         
   
   
@@ -790,6 +725,8 @@
                 
   
   
+    
+  
   
   
     
@@ -799,11 +736,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" checked>
         
           
           <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
@@ -824,7 +761,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_2_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -839,10 +776,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="script-mod-tutorial/12-ballance-file-roles/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 12 章：Ballance 文件各自负责什么
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -858,6 +822,103 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        一局游戏由多个文件接起来
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#level_xxnmo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Level_XX.NMO 提供关卡内容
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#levelinitnmo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Levelinit.nmo 把内容整理成运行时状态
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gameplaynmo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gameplay.nmo 维持运行中的玩法
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#building-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Building Block 提供行为图节点能力
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bml-mod" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BML 脚本 mod 站在哪
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        本章结果
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -870,7 +931,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/13-objects-entities-and-names/" class="md-nav__link">
+      <a href="../13-objects-entities-and-names/" class="md-nav__link">
         
   
   
@@ -898,7 +959,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/14-groups-are-object-lists/" class="md-nav__link">
+      <a href="../14-groups-are-object-lists/" class="md-nav__link">
         
   
   
@@ -926,7 +987,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/15-dataarray-runtime-tables/" class="md-nav__link">
+      <a href="../15-dataarray-runtime-tables/" class="md-nav__link">
         
   
   
@@ -954,7 +1015,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/16-behavior-graphs-and-building-blocks/" class="md-nav__link">
+      <a href="../16-behavior-graphs-and-building-blocks/" class="md-nav__link">
         
   
   
@@ -982,7 +1043,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/17-checkpoint-mental-model/" class="md-nav__link">
+      <a href="../17-checkpoint-mental-model/" class="md-nav__link">
         
   
   
@@ -1010,7 +1071,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/18-level01-content-case-study/" class="md-nav__link">
+      <a href="../18-level01-content-case-study/" class="md-nav__link">
         
   
   
@@ -1038,7 +1099,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/19-find-objects-and-groups/" class="md-nav__link">
+      <a href="../19-find-objects-and-groups/" class="md-nav__link">
         
   
   
@@ -1066,7 +1127,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/20-currentlevel-dataarray/" class="md-nav__link">
+      <a href="../20-currentlevel-dataarray/" class="md-nav__link">
         
   
   
@@ -1094,7 +1155,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/21-alllevel-config-table/" class="md-nav__link">
+      <a href="../21-alllevel-config-table/" class="md-nav__link">
         
   
   
@@ -1122,7 +1183,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/22-physicalize-balls/" class="md-nav__link">
+      <a href="../22-physicalize-balls/" class="md-nav__link">
         
   
   
@@ -1150,7 +1211,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/23-runtime-flow-overview/" class="md-nav__link">
+      <a href="../23-runtime-flow-overview/" class="md-nav__link">
         
   
   
@@ -1178,7 +1239,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/24-levelinit-author-markers/" class="md-nav__link">
+      <a href="../24-levelinit-author-markers/" class="md-nav__link">
         
   
   
@@ -1206,7 +1267,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/25-gameplay-runtime-state/" class="md-nav__link">
+      <a href="../25-gameplay-runtime-state/" class="md-nav__link">
         
   
   
@@ -1291,7 +1352,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/26-reading-behavior-graphs/" class="md-nav__link">
+      <a href="../26-reading-behavior-graphs/" class="md-nav__link">
         
   
   
@@ -1319,7 +1380,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/27-object-enters-physics/" class="md-nav__link">
+      <a href="../27-object-enters-physics/" class="md-nav__link">
         
   
   
@@ -1347,7 +1408,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/28-create-physicalized-object/" class="md-nav__link">
+      <a href="../28-create-physicalized-object/" class="md-nav__link">
         
   
   
@@ -1375,7 +1436,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/29-push-physics-object/" class="md-nav__link">
+      <a href="../29-push-physics-object/" class="md-nav__link">
         
   
   
@@ -1460,7 +1521,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/30-risk-classification-before-changes/" class="md-nav__link">
+      <a href="../30-risk-classification-before-changes/" class="md-nav__link">
         
   
   
@@ -1488,7 +1549,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/31-create-your-own-controlled-object/" class="md-nav__link">
+      <a href="../31-create-your-own-controlled-object/" class="md-nav__link">
         
   
   
@@ -1516,7 +1577,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/32-complete-small-mod/" class="md-nav__link">
+      <a href="../32-complete-small-mod/" class="md-nav__link">
         
   
   
@@ -1544,7 +1605,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/33-release-version-compatibility/" class="md-nav__link">
+      <a href="../33-release-version-compatibility/" class="md-nav__link">
         
   
   
@@ -1629,7 +1690,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-a-bml-lifecycle-overview/" class="md-nav__link">
+      <a href="../ref-a-bml-lifecycle-overview/" class="md-nav__link">
         
   
   
@@ -1657,7 +1718,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-b-game-events-and-level-timing/" class="md-nav__link">
+      <a href="../ref-b-game-events-and-level-timing/" class="md-nav__link">
         
   
   
@@ -1685,7 +1746,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-c-modcontext-service-map/" class="md-nav__link">
+      <a href="../ref-c-modcontext-service-map/" class="md-nav__link">
         
   
   
@@ -1713,7 +1774,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-d-paths-resources-logs/" class="md-nav__link">
+      <a href="../ref-d-paths-resources-logs/" class="md-nav__link">
         
   
   
@@ -1741,7 +1802,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-e-input-ui-frame-state/" class="md-nav__link">
+      <a href="../ref-e-input-ui-frame-state/" class="md-nav__link">
         
   
   
@@ -1769,7 +1830,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-f-script-mod-boundary/" class="md-nav__link">
+      <a href="../ref-f-script-mod-boundary/" class="md-nav__link">
         
   
   
@@ -1797,7 +1858,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-g-advanced-callbacks-events/" class="md-nav__link">
+      <a href="../ref-g-advanced-callbacks-events/" class="md-nav__link">
         
   
   
@@ -1825,7 +1886,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-h-mod-info-dependencies-exports/" class="md-nav__link">
+      <a href="../ref-h-mod-info-dependencies-exports/" class="md-nav__link">
         
   
   
@@ -1853,7 +1914,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-i-datashare-shared-state/" class="md-nav__link">
+      <a href="../ref-i-datashare-shared-state/" class="md-nav__link">
         
   
   
@@ -1881,7 +1942,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-j-bml-hud-menu-message-services/" class="md-nav__link">
+      <a href="../ref-j-bml-hud-menu-message-services/" class="md-nav__link">
         
   
   
@@ -1909,7 +1970,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-k-ckas-script-entrypoints/" class="md-nav__link">
+      <a href="../ref-k-ckas-script-entrypoints/" class="md-nav__link">
         
   
   
@@ -1937,7 +1998,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-l-handles-refs-lifetime/" class="md-nav__link">
+      <a href="../ref-l-handles-refs-lifetime/" class="md-nav__link">
         
   
   
@@ -1965,7 +2026,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-m-scene-objects-hierarchy-visibility/" class="md-nav__link">
+      <a href="../ref-m-scene-objects-hierarchy-visibility/" class="md-nav__link">
         
   
   
@@ -1993,7 +2054,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-n-dataarray-write-rollback/" class="md-nav__link">
+      <a href="../ref-n-dataarray-write-rollback/" class="md-nav__link">
         
   
   
@@ -2021,7 +2082,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-o-resources-text-ui/" class="md-nav__link">
+      <a href="../ref-o-resources-text-ui/" class="md-nav__link">
         
   
   
@@ -2049,7 +2110,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-p-behavior-calls-and-script-libraries/" class="md-nav__link">
+      <a href="../ref-p-behavior-calls-and-script-libraries/" class="md-nav__link">
         
   
   
@@ -2077,7 +2138,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-q-ball-floor-module-registration/" class="md-nav__link">
+      <a href="../ref-q-ball-floor-module-registration/" class="md-nav__link">
         
   
   
@@ -2162,7 +2223,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/appendix-a-glossary/" class="md-nav__link">
+      <a href="../appendix-a-glossary/" class="md-nav__link">
         
   
   
@@ -2190,7 +2251,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/appendix-b-bml-callbacks-services/" class="md-nav__link">
+      <a href="../appendix-b-bml-callbacks-services/" class="md-nav__link">
         
   
   
@@ -2218,7 +2279,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/appendix-c-ballance-names/" class="md-nav__link">
+      <a href="../appendix-c-ballance-names/" class="md-nav__link">
         
   
   
@@ -2246,7 +2307,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/appendix-d-dataarrays/" class="md-nav__link">
+      <a href="../appendix-d-dataarrays/" class="md-nav__link">
         
   
   
@@ -2289,7 +2350,7 @@
   
   
     <li class="md-nav__item">
-      <a href="api/" class="md-nav__link">
+      <a href="../../api/" class="md-nav__link">
         
   
   
@@ -2339,7 +2400,62 @@
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        推荐入口
+        一局游戏由多个文件接起来
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#level_xxnmo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Level_XX.NMO 提供关卡内容
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#levelinitnmo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Levelinit.nmo 把内容整理成运行时状态
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gameplaynmo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gameplay.nmo 维持运行中的玩法
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#building-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Building Block 提供行为图节点能力
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bml-mod" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BML 脚本 mod 站在哪
       
     </span>
   </a>
@@ -2350,7 +2466,7 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        教程主线
+        本章结果
       
     </span>
   </a>
@@ -2377,22 +2493,215 @@
   
 
 
-<h1 id="ballance-mod-loader-plus">Ballance Mod Loader Plus 文档<a class="headerlink" href="#ballance-mod-loader-plus" title="Permanent link">&para;</a></h1>
-<p>这里是 BMLPlus 的在线文档入口。</p>
-<p>当前站点先收纳脚本 mod 创作教程和脚本 API 资料。源码构建、发布包和项目介绍仍以仓库根目录的 README 为准。</p>
-<h2 id="_1">推荐入口<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
-<ul>
-<li><a href="script-mod-tutorial/">脚本 Mod 创作教程</a></li>
-<li><a href="api/">BML 脚本 API</a></li>
-</ul>
-<h2 id="_2">教程主线<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<p>教程按四段推进：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>脚本先跑起来
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>看懂游戏运行时
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>进入行为图和物理
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>做一个可控小 mod
+<h1 id="12-ballance">第 12 章：Ballance 文件各自负责什么<a class="headerlink" href="#12-ballance" title="Permanent link">&para;</a></h1>
+<p>第一篇一直站在 BML 脚本这边：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>脚本加载
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>脚本窗口
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>命令、配置、Timer
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>BML 事件和服务
 </code></pre></div>
-<p>第一次学习，直接从 <a href="script-mod-tutorial/00-background/">第 0 章</a> 开始。</p>
+<p>从这一章开始，要把脚本看到的东西放回 Ballance 原版运行流程里。</p>
+<p>先用一句话定位置：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>脚本 mod 在运行中的 Player 里观察和影响 Ballance，Ballance 本身由多个 Virtools 文件和 Building Block 共同驱动。
+</code></pre></div>
+<p>玩家点进第一关时，画面上只看到球、地板、机关和检查点。<br />
+脚本要理解这局游戏，不能只看一个关卡文件。</p>
+<h2 id="_1">一局游戏由多个文件接起来<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<p>Ballance 运行时至少要把这几类内容接起来：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>base.cmo
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  进入菜单，调度关卡加载
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>3D Entities/Level/Level_XX.NMO
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>  提供某一关的地图内容
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>3D Entities/Levelinit.nmo
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>  把关卡内容整理成一局游戏要用的状态
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>3D Entities/Gameplay.nmo
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>  在关卡开始后持续处理玩法
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>BuildingBlocks/*.dll
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>  提供行为图节点的具体能力
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>BML 脚本 mod
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>  在运行时接入，读取、显示、少量干预
+</code></pre></div>
+<p>这几个名字先不要背成清单。<br />
+更重要的是看它们在一局游戏里的先后关系：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>Player 启动
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  base.cmo 进入菜单
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    玩家选择关卡
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>      Levelinit 加载 Level_XX.NMO
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>        Levelinit 整理对象、组和运行时表
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>          Gameplay 接手关卡运行
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>            BML 脚本在事件点和每帧里观察状态
+</code></pre></div>
+<p>脚本碰到的大量问题，都来自这条链上的位置判断。</p>
+<h2 id="level_xxnmo"><code>Level_XX.NMO</code> 提供关卡内容<a class="headerlink" href="#level_xxnmo" title="Permanent link">&para;</a></h2>
+<p><code>Level_XX.NMO</code> 指原版 13 个关卡文件：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>Level_01.NMO
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>Level_02.NMO
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>...
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>Level_13.NMO
+</code></pre></div>
+<p>它们提供的是关卡作者放进去的内容：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>地板和轨道
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>机关对象
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>检查点标记
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>复活点标记
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>起点标记
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>终点标记
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>对象组
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>材质、网格、贴图引用
+</code></pre></div>
+<p>拿第一关检查点举例。关卡内容里能看到：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>PC_Checkpoints
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  PC_TwoFlames_01
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  PC_TwoFlames_02
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>  PC_TwoFlames_03
+</code></pre></div>
+<p>这说明第一关放了 3 个检查点标记，并把它们收进一份检查点名单。</p>
+<p>但这还没有解释：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>哪个检查点当前有效
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>触发后当前复活点怎么变
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>死亡后球回到哪里
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>火焰什么时候显示或隐藏
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>状态写在哪张表里
+</code></pre></div>
+<p>关卡文件提供“内容”。完整玩法还要继续看 Levelinit 和 Gameplay。</p>
+<h2 id="levelinitnmo"><code>Levelinit.nmo</code> 把内容整理成运行时状态<a class="headerlink" href="#levelinitnmo" title="Permanent link">&para;</a></h2>
+<p><code>Levelinit.nmo</code> 可以先按“关卡初始化流程”理解。</p>
+<p>它站在中间：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>关卡作者内容
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  ↓
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>运行时状态
+</code></pre></div>
+<p>它会处理这类事情：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>根据关卡编号加载 Level_XX.NMO
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>读取关卡配置表
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>读取关卡里的对象组
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>整理检查点、复活点、起点、终点
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>准备物理化对象
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>写入 CurrentLevel、Checkpoints、ResetPoints 等表
+</code></pre></div>
+<p>所以脚本看到一个对象存在，只能说明内容已经在运行时里。<br />
+要知道原版流程怎样使用它，还要看初始化后形成的表和状态。</p>
+<p>检查点就是典型例子：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>Level_01.NMO
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>  提供 PC_Checkpoints 这份名单
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>Levelinit.nmo
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>  读取这份名单
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>  结合复活点和配置
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>  整理成运行时表
+</code></pre></div>
+<p>这也是后面会讲 <code>CurrentLevel</code>、<code>Checkpoints</code>、<code>ResetPoints</code> 的原因。</p>
+<h2 id="gameplaynmo"><code>Gameplay.nmo</code> 维持运行中的玩法<a class="headerlink" href="#gameplaynmo" title="Permanent link">&para;</a></h2>
+<p><code>Gameplay.nmo</code> 接手关卡开始后的运行逻辑。</p>
+<p>它持续处理：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>球控制
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>相机控制
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>当前球类型
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>检查点推进
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>复活点更新
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>分数和生命
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>掉落死亡
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>关卡结束
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>内部消息
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>运行时表更新
+</code></pre></div>
+<p>这会影响脚本修改的判断。</p>
+<p>例如脚本把一个对象移动了，Gameplay 后续仍然可能再设置它的位置。<br />
+脚本改了某个表值，行为图后续仍然可能继续写这张表。</p>
+<p>所以后面做修改前，要先问：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>我改的是关卡内容对象？
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>我改的是初始化后的运行时表？
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>我改的是 Gameplay 正在持续维护的状态？
+</code></pre></div>
+<p>这三个位置的风险不同。</p>
+<h2 id="building-block">Building Block 提供行为图节点能力<a class="headerlink" href="#building-block" title="Permanent link">&para;</a></h2>
+<p>Virtools 原版逻辑大量放在行为图里。</p>
+<p>行为图里的节点需要 Building Block 提供执行能力。可以先这样理解：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>行为图负责组织流程。
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>Building Block 负责具体动作。
+</code></pre></div>
+<p>常见动作包括：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>读 DataArray 单元格
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>写 DataArray 单元格
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>发送内部消息
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>等待内部消息
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>显示或隐藏对象
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>设置对象位置
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>把对象交给物理系统
+</code></pre></div>
+<p>后面看到 <code>Get Cell</code>、<code>Set Cell</code>、<code>Send Message</code>、<code>Physicalize</code> 这些名字时，不要只当成陌生术语。<br />
+它们就是原版流程真正动起来的动作节点。</p>
+<h2 id="bml-mod">BML 脚本 mod 站在哪<a class="headerlink" href="#bml-mod" title="Permanent link">&para;</a></h2>
+<p>BML 脚本 mod 不替代上面的文件。<br />
+它在 Player 运行后接进来，通过 BML 和 CKAS 接触运行时对象。</p>
+<p>可以这样放位置：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>Ballance 原版内容
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>  base.cmo
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>  Levelinit.nmo
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>  Gameplay.nmo
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>  Level_XX.NMO
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>  BuildingBlocks
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>BML
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>  脚本生命周期、事件、命令、配置、Timer、日志、UI
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a>CKAS
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a>  让脚本接触 Virtools 对象、组、DataArray、行为等运行时对象
+<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a>
+<a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a>脚本 mod
+<a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a>  使用 BML 和 CKAS，在合适时机读取或影响这些内容
+</code></pre></div>
+<p>写脚本时，先判断自己碰的是哪一层：</p>
+<table>
+<thead>
+<tr>
+<th>想做的事</th>
+<th>主要接触</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>显示窗口、注册命令、读配置</td>
+<td>BML</td>
+</tr>
+<tr>
+<td>找一个检查点对象</td>
+<td>CKAS / 运行时对象</td>
+</tr>
+<tr>
+<td>找检查点名单</td>
+<td>CKAS / <code>CKGroup</code></td>
+</tr>
+<tr>
+<td>读当前关卡、当前球、当前复活点</td>
+<td>CKAS / <code>CKDataArray</code></td>
+</tr>
+<tr>
+<td>理解检查点怎样推进</td>
+<td>Levelinit、Gameplay、行为图</td>
+</tr>
+<tr>
+<td>改复活、物理、过关流程</td>
+<td>Gameplay、DataArray、物理相关 Building Block</td>
+</tr>
+</tbody>
+</table>
+<p>越靠近 Gameplay 的持续流程，越需要小心。</p>
+<h2 id="_2">本章结果<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p>先记住这条线：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>Level_XX.NMO 提供关卡内容。
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>Levelinit.nmo 把内容整理成运行时状态。
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>Gameplay.nmo 维持关卡开始后的玩法。
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>Building Block 给行为图节点提供动作。
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>BML 脚本 mod 在运行时观察和干预。
+</code></pre></div>
+<p>下一章讲对象、实体和名字。<br />
+这一步会解释为什么 <code>PC_Checkpoints</code>、<code>PC_TwoFlames_01</code>、<code>CurrentLevel</code> 不能混在一起看。</p>
 
 
 
@@ -2448,10 +2757,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.sections", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "content.code.copy"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

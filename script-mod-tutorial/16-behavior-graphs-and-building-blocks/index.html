@@ -10,26 +10,28 @@
       
       
       
-        <link rel="canonical" href="https://doyagu.github.io/BallanceModLoaderPlus/">
+        <link rel="canonical" href="https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/16-behavior-graphs-and-building-blocks/">
       
       
+        <link rel="prev" href="../15-dataarray-runtime-tables/">
       
-        <link rel="next" href="script-mod-tutorial/">
+      
+        <link rel="next" href="../17-checkpoint-mental-model/">
       
       
         
       
       
-      <link rel="icon" href="assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>Ballance Mod Loader Plus</title>
+        <title>第 16 章：行为图和 Building Block - Ballance Mod Loader Plus</title>
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
       
 
@@ -48,7 +50,7 @@
       
     
     
-    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -66,7 +68,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#ballance-mod-loader-plus" class="md-skip">
+        <a href="#16-building-block" class="md-skip">
           跳转至
         </a>
       
@@ -82,7 +84,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="页眉">
-    <a href="." title="Ballance Mod Loader Plus" class="md-header__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+    <a href="../.." title="Ballance Mod Loader Plus" class="md-header__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -102,7 +104,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              首页
+              第 16 章：行为图和 Building Block
             
           </span>
         </div>
@@ -194,7 +196,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="导航栏" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="." title="Ballance Mod Loader Plus" class="md-nav__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+    <a href="../.." title="Ballance Mod Loader Plus" class="md-nav__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -221,37 +223,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    首页
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="." class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -267,48 +242,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="目录">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      目录
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        推荐入口
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        教程主线
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -317,8 +250,10 @@
       
   
   
+    
   
   
+  
     
     
     
@@ -329,11 +264,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
         
           
           <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
@@ -354,7 +289,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -372,7 +307,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/" class="md-nav__link">
+      <a href="../" class="md-nav__link">
         
   
   
@@ -449,7 +384,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/00-background/" class="md-nav__link">
+      <a href="../00-background/" class="md-nav__link">
         
   
   
@@ -477,7 +412,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/01-script-mod-scope/" class="md-nav__link">
+      <a href="../01-script-mod-scope/" class="md-nav__link">
         
   
   
@@ -505,7 +440,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/02-angelscript-minimum-syntax/" class="md-nav__link">
+      <a href="../02-angelscript-minimum-syntax/" class="md-nav__link">
         
   
   
@@ -533,7 +468,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/03-first-loadable-script/" class="md-nav__link">
+      <a href="../03-first-loadable-script/" class="md-nav__link">
         
   
   
@@ -561,7 +496,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/04-bml-callback-model/" class="md-nav__link">
+      <a href="../04-bml-callback-model/" class="md-nav__link">
         
   
   
@@ -589,7 +524,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/05-logs-window-fps/" class="md-nav__link">
+      <a href="../05-logs-window-fps/" class="md-nav__link">
         
   
   
@@ -617,7 +552,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/06-command/" class="md-nav__link">
+      <a href="../06-command/" class="md-nav__link">
         
   
   
@@ -645,7 +580,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/07-config/" class="md-nav__link">
+      <a href="../07-config/" class="md-nav__link">
         
   
   
@@ -673,7 +608,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/08-timer/" class="md-nav__link">
+      <a href="../08-timer/" class="md-nav__link">
         
   
   
@@ -701,7 +636,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/09-first-stage-troubleshooting/" class="md-nav__link">
+      <a href="../09-first-stage-troubleshooting/" class="md-nav__link">
         
   
   
@@ -729,7 +664,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/10-how-to-read-script-api/" class="md-nav__link">
+      <a href="../10-how-to-read-script-api/" class="md-nav__link">
         
   
   
@@ -757,7 +692,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/11-basic-script-template/" class="md-nav__link">
+      <a href="../11-basic-script-template/" class="md-nav__link">
         
   
   
@@ -790,6 +725,8 @@
                 
   
   
+    
+  
   
   
     
@@ -799,11 +736,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" checked>
         
           
           <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
@@ -824,7 +761,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_2_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -842,7 +779,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/12-ballance-file-roles/" class="md-nav__link">
+      <a href="../12-ballance-file-roles/" class="md-nav__link">
         
   
   
@@ -870,7 +807,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/13-objects-entities-and-names/" class="md-nav__link">
+      <a href="../13-objects-entities-and-names/" class="md-nav__link">
         
   
   
@@ -898,7 +835,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/14-groups-are-object-lists/" class="md-nav__link">
+      <a href="../14-groups-are-object-lists/" class="md-nav__link">
         
   
   
@@ -926,7 +863,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/15-dataarray-runtime-tables/" class="md-nav__link">
+      <a href="../15-dataarray-runtime-tables/" class="md-nav__link">
         
   
   
@@ -951,10 +888,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="script-mod-tutorial/16-behavior-graphs-and-building-blocks/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    第 16 章：行为图和 Building Block
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -970,6 +934,136 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        行为图是什么
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#building-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Building Block 是动作节点
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        两种线要分开看
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dataarray" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        用 DataArray 读写来理解行为图
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        用消息理解流程之间的连接
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#levelinit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Levelinit 里重点看什么
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gameplay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gameplay 里重点看什么
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        为什么脚本修改可能被覆盖
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mod" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        脚本 mod 怎样使用行为图知识
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        本章结果
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -982,7 +1076,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/17-checkpoint-mental-model/" class="md-nav__link">
+      <a href="../17-checkpoint-mental-model/" class="md-nav__link">
         
   
   
@@ -1010,7 +1104,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/18-level01-content-case-study/" class="md-nav__link">
+      <a href="../18-level01-content-case-study/" class="md-nav__link">
         
   
   
@@ -1038,7 +1132,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/19-find-objects-and-groups/" class="md-nav__link">
+      <a href="../19-find-objects-and-groups/" class="md-nav__link">
         
   
   
@@ -1066,7 +1160,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/20-currentlevel-dataarray/" class="md-nav__link">
+      <a href="../20-currentlevel-dataarray/" class="md-nav__link">
         
   
   
@@ -1094,7 +1188,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/21-alllevel-config-table/" class="md-nav__link">
+      <a href="../21-alllevel-config-table/" class="md-nav__link">
         
   
   
@@ -1122,7 +1216,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/22-physicalize-balls/" class="md-nav__link">
+      <a href="../22-physicalize-balls/" class="md-nav__link">
         
   
   
@@ -1150,7 +1244,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/23-runtime-flow-overview/" class="md-nav__link">
+      <a href="../23-runtime-flow-overview/" class="md-nav__link">
         
   
   
@@ -1178,7 +1272,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/24-levelinit-author-markers/" class="md-nav__link">
+      <a href="../24-levelinit-author-markers/" class="md-nav__link">
         
   
   
@@ -1206,7 +1300,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/25-gameplay-runtime-state/" class="md-nav__link">
+      <a href="../25-gameplay-runtime-state/" class="md-nav__link">
         
   
   
@@ -1291,7 +1385,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/26-reading-behavior-graphs/" class="md-nav__link">
+      <a href="../26-reading-behavior-graphs/" class="md-nav__link">
         
   
   
@@ -1319,7 +1413,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/27-object-enters-physics/" class="md-nav__link">
+      <a href="../27-object-enters-physics/" class="md-nav__link">
         
   
   
@@ -1347,7 +1441,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/28-create-physicalized-object/" class="md-nav__link">
+      <a href="../28-create-physicalized-object/" class="md-nav__link">
         
   
   
@@ -1375,7 +1469,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/29-push-physics-object/" class="md-nav__link">
+      <a href="../29-push-physics-object/" class="md-nav__link">
         
   
   
@@ -1460,7 +1554,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/30-risk-classification-before-changes/" class="md-nav__link">
+      <a href="../30-risk-classification-before-changes/" class="md-nav__link">
         
   
   
@@ -1488,7 +1582,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/31-create-your-own-controlled-object/" class="md-nav__link">
+      <a href="../31-create-your-own-controlled-object/" class="md-nav__link">
         
   
   
@@ -1516,7 +1610,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/32-complete-small-mod/" class="md-nav__link">
+      <a href="../32-complete-small-mod/" class="md-nav__link">
         
   
   
@@ -1544,7 +1638,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/33-release-version-compatibility/" class="md-nav__link">
+      <a href="../33-release-version-compatibility/" class="md-nav__link">
         
   
   
@@ -1629,7 +1723,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-a-bml-lifecycle-overview/" class="md-nav__link">
+      <a href="../ref-a-bml-lifecycle-overview/" class="md-nav__link">
         
   
   
@@ -1657,7 +1751,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-b-game-events-and-level-timing/" class="md-nav__link">
+      <a href="../ref-b-game-events-and-level-timing/" class="md-nav__link">
         
   
   
@@ -1685,7 +1779,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-c-modcontext-service-map/" class="md-nav__link">
+      <a href="../ref-c-modcontext-service-map/" class="md-nav__link">
         
   
   
@@ -1713,7 +1807,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-d-paths-resources-logs/" class="md-nav__link">
+      <a href="../ref-d-paths-resources-logs/" class="md-nav__link">
         
   
   
@@ -1741,7 +1835,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-e-input-ui-frame-state/" class="md-nav__link">
+      <a href="../ref-e-input-ui-frame-state/" class="md-nav__link">
         
   
   
@@ -1769,7 +1863,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-f-script-mod-boundary/" class="md-nav__link">
+      <a href="../ref-f-script-mod-boundary/" class="md-nav__link">
         
   
   
@@ -1797,7 +1891,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-g-advanced-callbacks-events/" class="md-nav__link">
+      <a href="../ref-g-advanced-callbacks-events/" class="md-nav__link">
         
   
   
@@ -1825,7 +1919,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-h-mod-info-dependencies-exports/" class="md-nav__link">
+      <a href="../ref-h-mod-info-dependencies-exports/" class="md-nav__link">
         
   
   
@@ -1853,7 +1947,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-i-datashare-shared-state/" class="md-nav__link">
+      <a href="../ref-i-datashare-shared-state/" class="md-nav__link">
         
   
   
@@ -1881,7 +1975,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-j-bml-hud-menu-message-services/" class="md-nav__link">
+      <a href="../ref-j-bml-hud-menu-message-services/" class="md-nav__link">
         
   
   
@@ -1909,7 +2003,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-k-ckas-script-entrypoints/" class="md-nav__link">
+      <a href="../ref-k-ckas-script-entrypoints/" class="md-nav__link">
         
   
   
@@ -1937,7 +2031,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-l-handles-refs-lifetime/" class="md-nav__link">
+      <a href="../ref-l-handles-refs-lifetime/" class="md-nav__link">
         
   
   
@@ -1965,7 +2059,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-m-scene-objects-hierarchy-visibility/" class="md-nav__link">
+      <a href="../ref-m-scene-objects-hierarchy-visibility/" class="md-nav__link">
         
   
   
@@ -1993,7 +2087,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-n-dataarray-write-rollback/" class="md-nav__link">
+      <a href="../ref-n-dataarray-write-rollback/" class="md-nav__link">
         
   
   
@@ -2021,7 +2115,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-o-resources-text-ui/" class="md-nav__link">
+      <a href="../ref-o-resources-text-ui/" class="md-nav__link">
         
   
   
@@ -2049,7 +2143,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-p-behavior-calls-and-script-libraries/" class="md-nav__link">
+      <a href="../ref-p-behavior-calls-and-script-libraries/" class="md-nav__link">
         
   
   
@@ -2077,7 +2171,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/ref-q-ball-floor-module-registration/" class="md-nav__link">
+      <a href="../ref-q-ball-floor-module-registration/" class="md-nav__link">
         
   
   
@@ -2162,7 +2256,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/appendix-a-glossary/" class="md-nav__link">
+      <a href="../appendix-a-glossary/" class="md-nav__link">
         
   
   
@@ -2190,7 +2284,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/appendix-b-bml-callbacks-services/" class="md-nav__link">
+      <a href="../appendix-b-bml-callbacks-services/" class="md-nav__link">
         
   
   
@@ -2218,7 +2312,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/appendix-c-ballance-names/" class="md-nav__link">
+      <a href="../appendix-c-ballance-names/" class="md-nav__link">
         
   
   
@@ -2246,7 +2340,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod-tutorial/appendix-d-dataarrays/" class="md-nav__link">
+      <a href="../appendix-d-dataarrays/" class="md-nav__link">
         
   
   
@@ -2289,7 +2383,7 @@
   
   
     <li class="md-nav__item">
-      <a href="api/" class="md-nav__link">
+      <a href="../../api/" class="md-nav__link">
         
   
   
@@ -2339,7 +2433,18 @@
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        推荐入口
+        行为图是什么
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#building-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Building Block 是动作节点
       
     </span>
   </a>
@@ -2350,7 +2455,84 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        教程主线
+        两种线要分开看
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dataarray" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        用 DataArray 读写来理解行为图
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        用消息理解流程之间的连接
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#levelinit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Levelinit 里重点看什么
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gameplay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gameplay 里重点看什么
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        为什么脚本修改可能被覆盖
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mod" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        脚本 mod 怎样使用行为图知识
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        本章结果
       
     </span>
   </a>
@@ -2377,22 +2559,260 @@
   
 
 
-<h1 id="ballance-mod-loader-plus">Ballance Mod Loader Plus 文档<a class="headerlink" href="#ballance-mod-loader-plus" title="Permanent link">&para;</a></h1>
-<p>这里是 BMLPlus 的在线文档入口。</p>
-<p>当前站点先收纳脚本 mod 创作教程和脚本 API 资料。源码构建、发布包和项目介绍仍以仓库根目录的 README 为准。</p>
-<h2 id="_1">推荐入口<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
-<ul>
-<li><a href="script-mod-tutorial/">脚本 Mod 创作教程</a></li>
-<li><a href="api/">BML 脚本 API</a></li>
-</ul>
-<h2 id="_2">教程主线<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<p>教程按四段推进：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>脚本先跑起来
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>看懂游戏运行时
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>进入行为图和物理
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>做一个可控小 mod
+<h1 id="16-building-block">第 16 章：行为图和 Building Block<a class="headerlink" href="#16-building-block" title="Permanent link">&para;</a></h1>
+<p>第 15 章讲了 DataArray：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>表保存状态
 </code></pre></div>
-<p>第一次学习，直接从 <a href="script-mod-tutorial/00-background/">第 0 章</a> 开始。</p>
+<p>这一章讲谁在读写这些状态。</p>
+<p>Virtools 里大量原版逻辑放在行为图里。<br />
+行为图可以先理解成可执行的流程图。</p>
+<p>一句话：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>行为图回答“原版逻辑怎么跑”。
+</code></pre></div>
+<h2 id="_1">行为图是什么<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<p>Virtools 的行为对象叫：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>CKBehavior
+</code></pre></div>
+<p>一个 <code>CKBehavior</code> 可能代表：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>一张行为图
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>一个子图
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>一个 Building Block 节点
+</code></pre></div>
+<p>入门阶段先用这套模型：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>图      容器
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>节点    做事
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>线      连接执行顺序和数据流向
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>参数    决定节点操作什么
+</code></pre></div>
+<p>Ballance 的 <code>Levelinit.nmo</code> 和 <code>Gameplay.nmo</code> 里有大量行为图。</p>
+<p><code>Levelinit.nmo</code> 偏初始化：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>加载关卡
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>读取组
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>整理表
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>准备物理化对象
+</code></pre></div>
+<p><code>Gameplay.nmo</code> 偏运行中：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>球控制
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>相机控制
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>检查点推进
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>复活
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>分数
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>生命
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>关卡结束
+</code></pre></div>
+<h2 id="building-block">Building Block 是动作节点<a class="headerlink" href="#building-block" title="Permanent link">&para;</a></h2>
+<p>Building Block 可以先理解成行为图里的动作块。</p>
+<p>它有：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>输入    什么时候开始
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>输出    做完以后去哪里
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>参数    读写什么对象或值
+</code></pre></div>
+<p>常见名字：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>Get Cell
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>Set Cell
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>Send Message
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>Wait Message
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>Physicalize
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>Set World Matrix
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>Show
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>Hide
+</code></pre></div>
+<p>按用途看：</p>
+<table>
+<thead>
+<tr>
+<th>Building Block</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Get Cell</code></td>
+<td>从 DataArray 读值</td>
+</tr>
+<tr>
+<td><code>Set Cell</code></td>
+<td>往 DataArray 写值</td>
+</tr>
+<tr>
+<td><code>Send Message</code></td>
+<td>发内部消息</td>
+</tr>
+<tr>
+<td><code>Wait Message</code></td>
+<td>等内部消息</td>
+</tr>
+<tr>
+<td><code>Physicalize</code></td>
+<td>把对象交给物理系统</td>
+</tr>
+<tr>
+<td><code>Set World Matrix</code></td>
+<td>设置对象世界矩阵</td>
+</tr>
+<tr>
+<td><code>Show</code> / <code>Hide</code></td>
+<td>显示或隐藏对象</td>
+</tr>
+</tbody>
+</table>
+<p>这些节点组合起来，形成原版流程。</p>
+<h2 id="_2">两种线要分开看<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p>行为图里最容易混的是线。</p>
+<p>第一类是执行线：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>这个节点执行完
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  触发下一个节点
+</code></pre></div>
+<p>它回答：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>谁先运行，谁后运行？
+</code></pre></div>
+<p>第二类是参数线：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>这个值
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>  传给那个节点使用
+</code></pre></div>
+<p>它回答：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>数据从哪里来，给谁用？
+</code></pre></div>
+<p>拿 <code>Set Cell</code> 举例。</p>
+<p>只看执行线，可以知道它什么时候写表。<br />
+只看参数线，可以知道它写哪张表、哪一行、哪一列、写入什么值。</p>
+<p>两类线合起来，才知道这个写表动作的完整含义。</p>
+<h2 id="dataarray">用 DataArray 读写来理解行为图<a class="headerlink" href="#dataarray" title="Permanent link">&para;</a></h2>
+<p>第 15 章说过：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>DataArray 保存状态
+</code></pre></div>
+<p>行为图里看到：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>Get Cell
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>Set Cell
+</code></pre></div>
+<p>通常就在读写 DataArray。</p>
+<p>追一个 <code>Set Cell</code> 时，按五个问题看：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>哪张表？
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>哪一行？
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>哪一列？
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>写入什么？
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>什么时候写？
+</code></pre></div>
+<p>例如 <code>CurrentLevel.Points</code> 变化时，画面上的分数只是结果之一。<br />
+原版流程可能还在某处写了 <code>CurrentLevel</code> 表里的分数字段。</p>
+<p>再比如关卡加载时，<code>AllLevel.Levelfile</code> 会作为配置来源，告诉流程加载哪个关卡文件。</p>
+<p>表名、列名和行为图节点要一起看。</p>
+<h2 id="_3">用消息理解流程之间的连接<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p>Ballance 原版流程不只靠表。</p>
+<p>行为图之间还会用内部消息连接：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>Send Message
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>Wait Message
+</code></pre></div>
+<p>可以先这样读：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>Send Message
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>  某个流程发出通知
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>Wait Message
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>  另一个流程等到通知后继续
+</code></pre></div>
+<p>检查点、死亡、复活、过关这类流程，经常会分成多条线。<br />
+一个地方触发后，会通过消息让别的流程接着做事。</p>
+<p>看消息时先问：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>谁发？
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>谁等？
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>收到后改了哪个对象或哪张表？
+</code></pre></div>
+<p>这三个问题比一开始记消息编号更有用。</p>
+<h2 id="levelinit">Levelinit 里重点看什么<a class="headerlink" href="#levelinit" title="Permanent link">&para;</a></h2>
+<p><code>Levelinit.nmo</code> 的重点是把关卡内容准备成运行时状态。</p>
+<p>可以先抓两类图：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>总流程
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>  加载关卡、设置 CurrentLevel、初始化表
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>处理关卡标记的流程
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>  检查点、复活点、起点、终点、物理化对象
+</code></pre></div>
+<p>第 14 章的组在这里开始变得有用：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>PC_Checkpoints
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>PR_Resetpoints
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>P_Extra_Point
+</code></pre></div>
+<p>第 15 章的表也在这里接上：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>CurrentLevel
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>Checkpoints
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>ResetPoints
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>PH_Groups
+</code></pre></div>
+<p>Levelinit 是“关卡内容”和“运行时状态”之间的桥。</p>
+<h2 id="gameplay">Gameplay 里重点看什么<a class="headerlink" href="#gameplay" title="Permanent link">&para;</a></h2>
+<p><code>Gameplay.nmo</code> 的重点是关卡开始后的持续逻辑。</p>
+<p>常见关注点：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>当前球
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>相机
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>检查点触发
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>复活
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a>分数
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>生命
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a>掉落死亡
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a>关卡结束
+</code></pre></div>
+<p>看 Gameplay 行为图时，不要从整张大图开始硬读。</p>
+<p>先选一个问题：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>检查点触发后谁更新 CurrentLevel？
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>死亡后谁读取当前复活点？
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>当前球什么时候切换？
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>分数在哪里增加？
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>终点触发后谁发结束消息？
+</code></pre></div>
+<p>然后沿着：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>对象名
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>组名
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>DataArray 名
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a>Building Block 名
+<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a>消息名
+</code></pre></div>
+<p>一路追。</p>
+<h2 id="_4">为什么脚本修改可能被覆盖<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p>行为图解释了一个常见现象：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>脚本改了对象或表，过一会又变回去了。
+</code></pre></div>
+<p>原因通常在原版流程里。</p>
+<p>脚本设置对象位置后，Gameplay 可能继续执行：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>Set World Matrix
+</code></pre></div>
+<p>脚本改了表值后，行为图可能继续执行：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>Set Cell
+</code></pre></div>
+<p>所以修改前要判断：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>这个值是一次性初始化结果，还是 Gameplay 每帧或每个事件都会维护？
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>我改的是源头，还是只改了后果？
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>下一次复活、重开、切关会不会重建它？
+</code></pre></div>
+<p>这就是教程先安排观察，再安排修改的原因。</p>
+<h2 id="mod">脚本 mod 怎样使用行为图知识<a class="headerlink" href="#mod" title="Permanent link">&para;</a></h2>
+<p>脚本入门阶段不需要改行为图。</p>
+<p>行为图知识先用来判断：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>为什么这个对象会变化
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>为什么这个表值会变
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>一个组为什么会被 Levelinit 使用
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a>一个消息可能连接哪些流程
+<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a>修改会不会被后续流程覆盖
+</code></pre></div>
+<p>代码仍然从简单观察开始：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>找对象
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>找组
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a>读 DataArray
+<a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a>记录事件
+<a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a>显示结果
+</code></pre></div>
+<p>行为图提供解释路径。<br />
+它让这些观察结果变成可以追下去的线索。</p>
+<h2 id="_5">本章结果<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<p>先记住：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>CKBehavior 可以表示图、子图或节点。
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>Building Block 是行为图里的动作节点。
+<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a>执行线决定先后。
+<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a>参数线决定数据来源和去向。
+<a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a>Get Cell / Set Cell 对应表读写。
+<a id="__codelineno-31-6" name="__codelineno-31-6" href="#__codelineno-31-6"></a>Send Message / Wait Message 对应流程通信。
+<a id="__codelineno-31-7" name="__codelineno-31-7" href="#__codelineno-31-7"></a>行为图解释原版逻辑怎样运行。
+</code></pre></div>
+<p>下一章用检查点把对象、组、DataArray、行为图串起来。</p>
 
 
 
@@ -2448,10 +2868,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.sections", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "content.code.copy"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>
