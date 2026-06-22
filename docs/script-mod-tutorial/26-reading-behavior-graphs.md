@@ -29,13 +29,11 @@ Gameplay
 | 方式 | 用途 |
 | --- | --- |
 | 反混淆文件里的 Schematic View | 看 Ballance 原版流程的可读图结构 |
-| 教程里的 ImGui 示例图 | 把一小段流程画出来练习读法 |
 | BML 脚本日志 | 提供时间和运行时状态锚点 |
 
 这三种东西不要混。
 
 反混淆文件用来阅读原版流程。  
-ImGui 示例图只是教学用的简化图。  
 脚本日志只能告诉你“现在游戏运行到哪一步、哪些表能读到”，它不能替代行为图本身。
 
 本章先用 `activate next Checkpoint` 练习读法。  
@@ -358,45 +356,6 @@ DataArray
 消息
 一句话总结
 ```
-
-## 教程里的 ImGui 示例图怎么看
-
-教程目录里有一个简化图示例：
-
-```text
-docs/script-mod-tutorial/examples/BehaviorGraphViewerExample.mod.as
-```
-
-它使用：
-
-```text
-docs/script-mod-tutorial/libs/BehaviorGraphImGui.as
-```
-
-这个示例手工画了一张 `activate next Checkpoint` 的教学图。  
-它不会解析原版文件，也不会修改行为图。
-
-它的用途是练习读图：
-
-```text
-左边看入口
-中间看 DataArray
-右边看对象操作和消息
-标着 event / exec / done 的线按执行顺序读
-较细的黄色参数线按数据来源读
-```
-
-操作方式：
-
-```text
-右键或中键拖动：平移
-鼠标滚轮：缩放
-左键点击节点：选中
-左键拖动节点：移动节点
-```
-
-这个示例能帮助你建立“图上怎么读”的感觉。  
-真正分析原版流程时，仍然要回到 Virtools Dev 里的反混淆图。
 
 ## 脚本日志怎么配合读图
 
