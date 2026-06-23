@@ -170,6 +170,7 @@ private:
     void DrawLogsTab();
     void DrawLogFilters();
     void RebuildLogCacheIfNeeded();
+    void RebuildSortedLogCacheIfNeeded(ImGuiTableSortSpecs *sortSpecs);
     void DrawLogColumnsMenu();
     void DrawLogTable(float tableHeight);
     void DrawLogRow(const ScriptDevEvent &event);
@@ -214,6 +215,10 @@ private:
     std::string m_FilteredEventSelectedModId;
     bool m_FilteredEventSelectedModOnly = false;
     bool m_FilteredEventReloadOnly = false;
+    uint64_t m_FilteredEventCacheRevision = 0;
+    std::vector<ScriptDevEvent> m_SortedEventCache;
+    uint64_t m_SortedEventSourceRevision = 0;
+    std::string m_SortedEventSortKey;
 };
 
 } // namespace BML

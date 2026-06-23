@@ -260,6 +260,24 @@ int LogColumnFromSortSpec(const ImGuiTableColumnSortSpecs &spec) {
     return LogColumnSequence;
 }
 
+std::string LogSortSpecsKey(const ImGuiTableSortSpecs *sortSpecs) {
+    if (!sortSpecs || sortSpecs->SpecsCount <= 0)
+        return {};
+
+    std::ostringstream stream;
+    for (int i = 0; i < sortSpecs->SpecsCount; ++i) {
+        const ImGuiTableColumnSortSpecs &spec = sortSpecs->Specs[i];
+        if (i != 0)
+            stream << ';';
+        stream << LogColumnFromSortSpec(spec)
+               << ':'
+               << static_cast<int>(spec.SortDirection)
+               << ':'
+               << static_cast<int>(spec.SortOrder);
+    }
+    return stream.str();
+}
+
 void SortLogs(std::vector<ScriptDevEvent> &logs, const ImGuiTableSortSpecs *sortSpecs) {
     if (!sortSpecs || sortSpecs->SpecsCount <= 0)
         return;
@@ -1196,16 +1214,22 @@ void ScriptDevToolsService::DrawStatusBar() {
 }
 
 void ScriptDevToolsService::DrawModList() {
-    if (ImGui::BeginTable("script-dev-mod-table", 1, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV)) {
-        ImGui::TableSetupColumn("id", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableHeadersRow();
-        for (const auto &snapshot : m_Snapshots) {
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
+    if (m_Snapshots.empty()) {
+        ImGui::TextDisabled("No script mods.");
+        return;
+    }
+
+    ImGuiListClipper clipper;
+    clipper.Begin(static_cast<int>(m_Snapshots.size()));
+    while (clipper.Step()) {
+        for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
+            const ScriptModSnapshot &snapshot = m_Snapshots[static_cast<size_t>(i)];
             const bool selected = snapshot.Id == m_SelectedModId;
             ImGui::PushStyleColor(ImGuiCol_Text, ModListTextColor(snapshot.State));
-            if (ImGui::Selectable(snapshot.Id.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns))
+            ImGui::PushID(i);
+            if (ImGui::Selectable(snapshot.Id.c_str(), selected))
                 m_SelectedModId = snapshot.Id;
+            ImGui::PopID();
             ImGui::PopStyleColor();
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("state %s\nsource %s\nreload %s",
@@ -1214,7 +1238,6 @@ void ScriptDevToolsService::DrawModList() {
                                   snapshot.ReloadPolicy.c_str());
             }
         }
-        ImGui::EndTable();
     }
 }
 
@@ -1446,7 +1469,21 @@ void ScriptDevToolsService::RebuildLogCacheIfNeeded() {
         m_FilteredEventSelectedModId = filters.SelectedModId;
         m_FilteredEventSelectedModOnly = filters.SelectedModOnly;
         m_FilteredEventReloadOnly = filters.ReloadOnly;
+        ++m_FilteredEventCacheRevision;
     }
+}
+
+void ScriptDevToolsService::RebuildSortedLogCacheIfNeeded(ImGuiTableSortSpecs *sortSpecs) {
+    const std::string sortKey = LogSortSpecsKey(sortSpecs);
+    if (m_SortedEventSourceRevision != m_FilteredEventCacheRevision ||
+        sortKey != m_SortedEventSortKey) {
+        m_SortedEventCache = m_FilteredEventCache;
+        SortLogs(m_SortedEventCache, sortSpecs);
+        m_SortedEventSourceRevision = m_FilteredEventCacheRevision;
+        m_SortedEventSortKey = sortKey;
+    }
+    if (sortSpecs)
+        sortSpecs->SpecsDirty = false;
 }
 
 void ScriptDevToolsService::DrawLogColumnsMenu() {
@@ -1470,10 +1507,13 @@ void ScriptDevToolsService::DrawLogTable(float tableHeight) {
             SetupLogColumns(m_LogColumnVisible);
             ImGui::TableHeadersRow();
 
-            std::vector<ScriptDevEvent> displayLogs = m_FilteredEventCache;
-            SortLogs(displayLogs, ImGui::TableGetSortSpecs());
-            for (const auto &event : displayLogs)
-                DrawLogRow(event);
+            RebuildSortedLogCacheIfNeeded(ImGui::TableGetSortSpecs());
+            ImGuiListClipper clipper;
+            clipper.Begin(static_cast<int>(m_SortedEventCache.size()));
+            while (clipper.Step()) {
+                for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i)
+                    DrawLogRow(m_SortedEventCache[static_cast<size_t>(i)]);
+            }
             ImGui::EndTable();
         }
         if (!m_PauseEventScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 8.0f)
