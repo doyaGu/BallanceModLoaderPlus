@@ -32,6 +32,7 @@ namespace BML {
 
 class ScriptMod;
 
+class ScriptModReloadPhaseScope;
 struct ScriptModReloadOptions {
     bool Automatic = false;
     bool ForceExports = false;
@@ -280,6 +281,9 @@ private:
     void ScheduleFailureCleanup();
     bool ReleaseScriptServices();
     bool ReleaseScriptMethodHandles();
+    ScriptModReloadPhase GetReloadPhase() const {
+        return static_cast<ScriptModReloadPhase>(m_ReloadPhase.load(std::memory_order_acquire));
+    }
     bool ReleaseRuntime();
     bool ReleaseRuntimeOnly(ScriptModRuntime &runtime);
     void RebindServices();
@@ -295,6 +299,8 @@ private:
     bool ValidateReloadDefinition(const ScriptModDefinition &candidate,
                                   const ScriptExportTable &candidateExports,
                                   const ScriptModReloadOptions &options,
+    friend class ScriptModReloadPhaseScope;
+
                                   std::string &diagnostic,
                                   std::vector<ScriptModReloadDiagnosticField> *fields) const;
     bool ValidateHostRegistrationSet(std::string &diagnostic, bool failedLoadRecovery);
@@ -318,6 +324,7 @@ private:
     mutable std::thread::id m_ReloadThreadId;
     std::atomic<bool> m_Reloading{false};
     std::atomic<bool> m_PendingFailureCleanup{false};
+    void SetReloadPhase(ScriptModReloadPhase phase);
     std::atomic<bool> m_CallbackFenceActive{false};
     std::atomic<unsigned int> m_CallbackFenceFrame{0};
     std::string m_LastReloadDiagnostic;
@@ -338,3 +345,4 @@ bool IsFailedScriptMod(const IMod *mod);
 } // namespace BML
 
 #endif
+    std::atomic<int> m_ReloadPhase{static_cast<int>(ScriptModReloadPhase::None)};

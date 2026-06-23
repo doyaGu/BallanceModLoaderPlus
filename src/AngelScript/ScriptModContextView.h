@@ -13,6 +13,15 @@ class asIScriptObject;
 
 namespace BML {
 
+enum class ScriptModReloadPhase : int {
+    None = 0,
+    Unload = 1,
+    Load = 2,
+    Rollback = 3,
+    Recovery = 4,
+    Cleanup = 5,
+};
+
 class ScriptMod;
 class ScriptCommandRef;
 struct ScriptCommandDefinition;
@@ -28,6 +37,11 @@ public:
     std::string GetModId() const;
     std::string GetModName() const;
     CKContext *GetCKContext() const;
+    bool IsReloading() const;
+    ScriptModReloadPhase GetReloadPhase() const;
+    unsigned int GetReloadAttemptId() const;
+    unsigned int GetModGeneration() const;
+    unsigned int GetRuntimeGeneration() const;
     CKRenderContext *GetRenderContext() const;
     CKAttributeManager *GetAttributeManager() const;
     CKBehaviorManager *GetBehaviorManager() const;

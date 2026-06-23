@@ -30,6 +30,26 @@ std::string ScriptModContextView::GetModName() const {
     return m_Owner ? m_Owner->GetName() : "";
 }
 
+bool ScriptModContextView::IsReloading() const {
+    return m_Owner && m_Owner->GetReloadPhase() != ScriptModReloadPhase::None;
+}
+
+ScriptModReloadPhase ScriptModContextView::GetReloadPhase() const {
+    return m_Owner ? m_Owner->GetReloadPhase() : ScriptModReloadPhase::None;
+}
+
+unsigned int ScriptModContextView::GetReloadAttemptId() const {
+    return m_Owner ? m_Owner->GetReloadAttemptId() : 0;
+}
+
+unsigned int ScriptModContextView::GetModGeneration() const {
+    return m_Owner ? m_Owner->GetModGeneration() : 0;
+}
+
+unsigned int ScriptModContextView::GetRuntimeGeneration() const {
+    return m_Owner ? m_Owner->GetRuntimeGeneration() : 0;
+}
+
 CKContext *ScriptModContextView::GetCKContext() const {
     return m_Context ? m_Context->GetCKContext() : nullptr;
 }

@@ -24,6 +24,25 @@ static constexpr const char *kReloadDependencyBoundary =
 static constexpr const char *kReloadRollbackBoundary =
     "Rollback restores only BML-managed script resources such as callbacks, exports, timers, commands, DataShare requests, and script runtime handles; it cannot undo game-world changes made by script code.";
 
+class ScriptModReloadPhaseScope {
+public:
+    ScriptModReloadPhaseScope(ScriptMod &mod, ScriptModReloadPhase phase)
+        : m_Mod(mod), m_Previous(mod.GetReloadPhase()) {
+        m_Mod.SetReloadPhase(phase);
+    }
+
+    ~ScriptModReloadPhaseScope() {
+        m_Mod.SetReloadPhase(m_Previous);
+    }
+
+    ScriptModReloadPhaseScope(const ScriptModReloadPhaseScope &) = delete;
+    ScriptModReloadPhaseScope &operator=(const ScriptModReloadPhaseScope &) = delete;
+
+private:
+    ScriptMod &m_Mod;
+    ScriptModReloadPhase m_Previous;
+};
+
 static void AddReloadField(std::vector<ScriptModReloadDiagnosticField> *fields,
                            const std::string &key,
                            const std::string &value) {
@@ -1290,6 +1309,12 @@ void ScriptMod::TouchReloadAttempt() {
     TouchModGeneration();
 }
 
+void ScriptMod::SetReloadPhase(ScriptModReloadPhase phase) {
+    const int oldPhase = m_ReloadPhase.exchange(static_cast<int>(phase), std::memory_order_acq_rel);
+    if (oldPhase != static_cast<int>(phase))
+        TouchModGeneration();
+}
+
 bool ScriptMod::ValidateHostRegistrationSet(std::string &diagnostic, bool failedLoadRecovery) {
     const auto expected = CanonicalHostRegistrations(m_HostRegistrations);
     const auto actual = CanonicalHostRegistrations(m_PendingHostRegistrations);
@@ -1711,7 +1736,12 @@ void ScriptMod::CallGameEvent(size_t eventIndex) {
 void ScriptMod::CleanupFailedLoad() {
     const ScriptDiagnostic failureDiagnostic = m_State.GetLastDiagnostic();
     ScriptDiagnostic unloadDiagnostic;
-    m_EventRouter.CallOnUnload(unloadDiagnostic);
+    if (GetReloadPhase() == ScriptModReloadPhase::None) {
+        m_EventRouter.CallOnUnload(unloadDiagnostic);
+    } else {
+        ScriptModReloadPhaseScope cleanupPhase(*this, ScriptModReloadPhase::Cleanup);
+        m_EventRouter.CallOnUnload(unloadDiagnostic);
+    }
     ReleaseRuntime();
     m_State.MarkLoaded(false);
     m_State.Fail(failureDiagnostic);
@@ -2196,8 +2226,11 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
 
     ExportRegistry::NotifyScriptExportsChanged();
     ScriptDiagnostic unloadDiagnostic;
-    if (m_State.IsLoaded() && !m_EventRouter.CallOnUnload(unloadDiagnostic))
-        Record(unloadDiagnostic);
+    if (m_State.IsLoaded()) {
+        ScriptModReloadPhaseScope unloadPhase(*this, ScriptModReloadPhase::Unload);
+        if (!m_EventRouter.CallOnUnload(unloadDiagnostic))
+            Record(unloadDiagnostic);
+    }
 
     ReleaseScriptServices();
     ReleaseScriptMethodHandles();
@@ -2227,7 +2260,16 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
         Fail(liveDiagnostic);
     }
 
-    if (liveModuleLoaded && LoadCurrentRuntime(true, recoveringPlaceholder)) {
+    bool liveRuntimeLoaded = false;
+    if (liveModuleLoaded) {
+        const ScriptModReloadPhase loadPhase = recoveringPlaceholder
+                                                   ? ScriptModReloadPhase::Recovery
+                                                   : ScriptModReloadPhase::Load;
+        ScriptModReloadPhaseScope phase(*this, loadPhase);
+        liveRuntimeLoaded = LoadCurrentRuntime(true, recoveringPlaceholder);
+    }
+
+    if (liveModuleLoaded && liveRuntimeLoaded) {
         ReleaseRuntimeOnly(oldRuntime);
         if (oldEntry.SourceKind == ScriptModEntrySourceKind::ZipPackage &&
             !oldEntry.RootDirectory.empty() &&
@@ -2283,7 +2325,13 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     SetRuntimeDiagnosticPathRewrite(oldDiagnosticPathFrom, oldDiagnosticPathTo);
     m_State.ClearFailure();
 
-    if (LoadCurrentRuntime(true)) {
+    bool rollbackLoaded = false;
+    {
+        ScriptModReloadPhaseScope phase(*this, ScriptModReloadPhase::Rollback);
+        rollbackLoaded = LoadCurrentRuntime(true);
+    }
+
+    if (rollbackLoaded) {
         if (m_Context)
             m_Context->GetCommandContext().SortCommands();
         ExportRegistry::NotifyScriptExportsChanged();

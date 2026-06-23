@@ -397,12 +397,40 @@ Expected behavior:
   invalid or stale after replacement. New registrations from the new `OnLoad`
   are the only active resources.
 - Rollback restores only resources BML owns: callbacks, exports, timers,
+- A script mod can detect reload lifecycle callbacks through `ModContext`:
+  `ctx.IsReloading` is true only while BML is calling script lifecycle methods
+  for hot reload. `ctx.ReloadPhase` is one of `BML::RELOAD_UNLOAD`,
+  `BML::RELOAD_LOAD`, `BML::RELOAD_ROLLBACK`, `BML::RELOAD_RECOVERY`, or
+  `BML::RELOAD_CLEANUP`. Normal startup and normal game shutdown use
+  `BML::RELOAD_NONE`.
+- Use `ctx.ReloadPhase` in `OnUnload` to distinguish final shutdown from old
+  runtime replacement. Use `BML::RELOAD_ROLLBACK` in `OnLoad` to avoid assuming
+  a failed candidate has left the game world untouched.
   commands, DataShare requests, and script runtime handles. It cannot undo
   changes your script already made to the game world through CKAS Scene/BB APIs,
   raw CK/Vx calls, or another plugin. If a feature mutates world state during
   `OnLoad`, make it explicitly reversible or require a restart after failure.
 
 ## Callbacks
+```angelscript
+void OnUnload(const BML::ModContext &in ctx) {
+  if (ctx.ReloadPhase == BML::RELOAD_UNLOAD) {
+    // Hot reload is replacing this runtime. Clean BML/CK resources that the
+    // script owns, but do not treat this as final game shutdown.
+    return;
+  }
+
+  // Normal unload or game shutdown.
+}
+
+void OnLoad(const BML::ModContext &in ctx) {
+  if (ctx.ReloadPhase == BML::RELOAD_ROLLBACK) {
+    // The new candidate failed and BML restored the old runtime. World state
+    // touched by the failed candidate may still need manual repair or restart.
+  }
+}
+```
+
 
 Old `OnPre*` / `OnPost*` overload families are not part of the v1 contract.
 Only these fixed signatures are recognized:

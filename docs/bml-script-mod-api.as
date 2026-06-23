@@ -25,6 +25,15 @@ enum ModState {
   MOD_STATE_FAILED = 3
 }
 
+enum ReloadPhase {
+  RELOAD_NONE = 0,
+  RELOAD_UNLOAD = 1,
+  RELOAD_LOAD = 2,
+  RELOAD_ROLLBACK = 3,
+  RELOAD_RECOVERY = 4,
+  RELOAD_CLEANUP = 5
+}
+
 enum HudFlag {
   HUD_TITLE = 1,
   HUD_FPS = 2,
@@ -759,6 +768,16 @@ class ModContext {
   bool GetIsPaused() const;
   bool get_IsPlaying() const;
   bool GetIsPlaying() const;
+  bool get_IsReloading() const;
+  bool IsReloading() const;
+  ReloadPhase get_ReloadPhase() const;
+  ReloadPhase GetReloadPhase() const;
+  uint get_ReloadAttemptId() const;
+  uint GetReloadAttemptId() const;
+  uint get_ModGeneration() const;
+  uint GetModGeneration() const;
+  uint get_RuntimeGeneration() const;
+  uint GetRuntimeGeneration() const;
   bool get_IsCheatEnabled() const;
   bool GetIsCheatEnabled() const;
   void EnableCheat(bool enable) const;

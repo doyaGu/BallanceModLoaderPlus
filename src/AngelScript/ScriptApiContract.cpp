@@ -5,6 +5,7 @@
 #include "BML/InputHook.h"
 #include "BML/Timer.h"
 #include "ScriptCallbackEvents.h"
+#include "ScriptModContextView.h"
 
 namespace BML {
 
@@ -98,6 +99,15 @@ static const ScriptEnumValueContract kModStateValues[] = {
     {"MOD_STATE_REGISTERED", 1, "ModState::MOD_STATE_REGISTERED"},
     {"MOD_STATE_LOADED", 2, "ModState::MOD_STATE_LOADED"},
     {"MOD_STATE_FAILED", 3, "ModState::MOD_STATE_FAILED"},
+};
+
+static const ScriptEnumValueContract kReloadPhaseValues[] = {
+    {"RELOAD_NONE", static_cast<int>(ScriptModReloadPhase::None), "ReloadPhase::RELOAD_NONE"},
+    {"RELOAD_UNLOAD", static_cast<int>(ScriptModReloadPhase::Unload), "ReloadPhase::RELOAD_UNLOAD"},
+    {"RELOAD_LOAD", static_cast<int>(ScriptModReloadPhase::Load), "ReloadPhase::RELOAD_LOAD"},
+    {"RELOAD_ROLLBACK", static_cast<int>(ScriptModReloadPhase::Rollback), "ReloadPhase::RELOAD_ROLLBACK"},
+    {"RELOAD_RECOVERY", static_cast<int>(ScriptModReloadPhase::Recovery), "ReloadPhase::RELOAD_RECOVERY"},
+    {"RELOAD_CLEANUP", static_cast<int>(ScriptModReloadPhase::Cleanup), "ReloadPhase::RELOAD_CLEANUP"},
 };
 
 static const ScriptEnumValueContract kHudFlagValues[] = {
@@ -204,6 +214,7 @@ static const ScriptEnumContract kEnums[] = {
     {"DirectoryType", "enum DirectoryType", kDirectoryTypeValues, sizeof(kDirectoryTypeValues) / sizeof(kDirectoryTypeValues[0])},
     {"ModKind", "enum ModKind", kModKindValues, sizeof(kModKindValues) / sizeof(kModKindValues[0])},
     {"ModState", "enum ModState", kModStateValues, sizeof(kModStateValues) / sizeof(kModStateValues[0])},
+    {"ReloadPhase", "enum ReloadPhase", kReloadPhaseValues, sizeof(kReloadPhaseValues) / sizeof(kReloadPhaseValues[0])},
     {"HudFlag", "enum HudFlag", kHudFlagValues, sizeof(kHudFlagValues) / sizeof(kHudFlagValues[0])},
     {"InputDevice", "enum InputDevice", kInputDeviceValues, sizeof(kInputDeviceValues) / sizeof(kInputDeviceValues[0])},
     {"InputBlockMask", "enum InputBlockMask", kInputBlockMaskValues, sizeof(kInputBlockMaskValues) / sizeof(kInputBlockMaskValues[0])},

@@ -103,6 +103,11 @@ not dynamic mod discovery and not dependency graph reconstruction.
   export method resources from the old runtime before committing the new one.
   Old handles become invalid or stale; new registrations from the new `OnLoad`
   are the only active script resources.
+- Script mods are reload-aware through `BML::ModContext`: `IsReloading` is true
+  only during script lifecycle callbacks that are part of hot reload, and
+  `ReloadPhase` reports `RELOAD_UNLOAD`, `RELOAD_LOAD`, `RELOAD_ROLLBACK`,
+  `RELOAD_RECOVERY`, or `RELOAD_CLEANUP`. Normal startup and normal shutdown
+  report `RELOAD_NONE`.
 - Rollback restores only BML-managed script resources and runtime handles. It
   cannot undo game-world changes already made by script code, CKAS Scene/BB
   calls, raw CK/Vx operations, or external plugin APIs. Such side effects must
