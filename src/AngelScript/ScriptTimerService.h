@@ -89,6 +89,11 @@ public:
     void Release(ScriptDiagnostic *diagnostic = nullptr);
     size_t GetActiveCount() const;
 
+#ifdef BML_TEST
+    ScriptTimerRef *AddTestTimerForRelease(const std::string &name,
+                                           Timer::SimpleCallback callback = Timer::SimpleCallback());
+#endif
+
 private:
     ScriptTimerRef *AddTimer(BML::Timer::Builder &builder,
                              asIScriptObject *timer,

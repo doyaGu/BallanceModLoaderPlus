@@ -864,4 +864,29 @@ size_t ScriptTimerService::GetActiveCount() const {
     return m_State && m_State->Active ? m_State->Timers.size() : 0;
 }
 
+#ifdef BML_TEST
+ScriptTimerRef *ScriptTimerService::AddTestTimerForRelease(const std::string &name,
+                                                           Timer::SimpleCallback callback) {
+    if (!m_State)
+        return nullptr;
+    m_State->Active = true;
+    if (!callback)
+        callback = []() {};
+
+    std::shared_ptr<Timer> nativeTimer = Timer::Builder()
+        .WithName(name)
+        .WithDelayTicks(1000)
+        .AddToGroup("script:test")
+        .WithSimpleCallback(std::move(callback))
+        .Build(0, 0.0f);
+    if (!nativeTimer)
+        return nullptr;
+
+    ScriptTimerEntry entry;
+    entry.Name = name;
+    m_State->Timers.emplace(nativeTimer->GetId(), std::move(entry));
+    return new ScriptTimerRef(m_State, nativeTimer->GetId());
+}
+#endif
+
 } // namespace BML

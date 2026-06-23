@@ -171,14 +171,6 @@ static bool CaptureReloadSourceSnapshot(const ScriptModEntry &entry,
     return true;
 }
 
-static void AppendRawDiagnosticLine(ScriptDiagnostic &diagnostic, const std::string &line) {
-    if (line.empty())
-        return;
-    if (!diagnostic.RawMessage.empty())
-        diagnostic.RawMessage += "\n";
-    diagnostic.RawMessage += line;
-}
-
 class ScriptModCallScope {
 public:
     explicit ScriptModCallScope(const ScriptMod *mod) : m_Mod(mod) {
@@ -1873,7 +1865,6 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                           + std::string(kReloadRollbackBoundary);
         if (failure.RawMessage.empty() && failure.CompilerMessages.empty() && failure.StackTrace.empty())
             failure.RawMessage = reloadFailure;
-        AppendRawDiagnosticLine(failure, kReloadRollbackBoundary);
         return finish(false, FormatScriptDiagnostic(failure), &failure);
     }
 
@@ -1884,7 +1875,6 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                                                                "Reload failed and rollback failed. "
                                                                + std::string(kReloadRollbackBoundary));
     rollbackDiagnostic.RawMessage = reloadFailure + "\n" + rollbackFailure;
-    AppendRawDiagnosticLine(rollbackDiagnostic, kReloadRollbackBoundary);
     Fail(rollbackDiagnostic);
     ExportRegistry::NotifyScriptExportsChanged();
     return finish(false, m_State.GetLastDiagnosticText(), &m_State.GetLastDiagnostic());

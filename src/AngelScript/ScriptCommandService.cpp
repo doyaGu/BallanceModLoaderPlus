@@ -663,4 +663,24 @@ size_t ScriptCommandService::GetActiveCount() const {
     return m_State && m_State->Active ? m_State->Commands.size() : 0;
 }
 
+#ifdef BML_TEST
+ScriptCommandRef *ScriptCommandService::AddTestCommandForRelease(const std::string &name,
+                                                                 const std::string &alias) {
+    if (!m_State || name.empty())
+        return nullptr;
+    m_State->Active = true;
+
+    ScriptCommandEntry entry;
+    entry.Name = name;
+    entry.Alias = alias;
+    entry.Enabled = true;
+    entry.Generation = m_State->NextGeneration++;
+
+    const std::string key = NormalizeCommandName(entry.Name);
+    const unsigned int generation = entry.Generation;
+    m_State->Commands.emplace(key, std::move(entry));
+    return new ScriptCommandRef(m_State, key, generation);
+}
+#endif
+
 } // namespace BML

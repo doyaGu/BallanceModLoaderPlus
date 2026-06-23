@@ -78,6 +78,10 @@ public:
     void Release(ScriptDiagnostic *diagnostic = nullptr);
     size_t GetActiveCount() const;
 
+#ifdef BML_TEST
+    ScriptCommandRef *AddTestCommandForRelease(const std::string &name, const std::string &alias = std::string());
+#endif
+
 private:
     std::shared_ptr<ScriptCommandServiceState> m_State;
 };

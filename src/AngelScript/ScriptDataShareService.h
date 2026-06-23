@@ -85,6 +85,11 @@ public:
     void Release(ScriptDiagnostic *diagnostic = nullptr);
     size_t GetActiveCount() const;
 
+#ifdef BML_TEST
+    ScriptDataShareRequestRef *AddTestRequestForRelease(const std::string &key,
+                                                        ScriptDataShareRequestType type = ScriptDataShareRequestType::String);
+#endif
+
 private:
     std::shared_ptr<ScriptDataShareServiceState> m_State;
 };

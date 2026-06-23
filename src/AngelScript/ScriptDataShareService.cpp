@@ -596,4 +596,35 @@ size_t ScriptDataShareService::GetActiveCount() const {
     return m_State && m_State->Active ? m_State->Requests.size() : 0;
 }
 
+#ifdef BML_TEST
+ScriptDataShareRequestRef *ScriptDataShareService::AddTestRequestForRelease(const std::string &key,
+                                                                            ScriptDataShareRequestType type) {
+    if (!m_State || key.empty())
+        return nullptr;
+    m_State->Active = true;
+
+    ScriptDataShareRequestEntry entry;
+    entry.Key = key;
+    entry.Type = type;
+
+    const int requestId = m_State->NextRequestId++;
+    entry.Generation = m_State->NextGeneration++;
+    const unsigned int generation = entry.Generation;
+    m_State->Requests.emplace(requestId, std::move(entry));
+
+    BML_DataShare *share = BML_GetDataShare(nullptr);
+    if (!share) {
+        m_State->Requests.erase(requestId);
+        return nullptr;
+    }
+
+    auto *cookie = new ScriptDataShareRequestCookie;
+    cookie->State = m_State;
+    cookie->Id = requestId;
+    BML_DataShare_Request(share, key.c_str(), OnDataShareRequest, cookie, CleanupDataShareRequest);
+    BML_DataShare_Release(share);
+    return new ScriptDataShareRequestRef(m_State, requestId, generation);
+}
+#endif
+
 } // namespace BML

@@ -20,7 +20,16 @@ function(add_bml_test test_name)
     target_include_directories(${test_name} PRIVATE
             "${BML_INCLUDE_DIR}"
             "${BML_SOURCE_DIR}"
+            "${BML_SOURCE_DIR}/Utils"
     )
+    if (BML_WITH_ANGELSCRIPT)
+        target_include_directories(${test_name} PRIVATE
+                "${BML_SOURCE_DIR}/AngelScript"
+                "${VIRTOOLS_SDK_INCLUDE_DIR}"
+                "${CKANGELSCRIPT_INCLUDE_DIR}"
+                "${CKANGELSCRIPT_ANGELSCRIPT_INCLUDE_DIR}"
+        )
+    endif ()
 
     target_link_libraries(${test_name} PRIVATE
             gtest_main
@@ -32,6 +41,10 @@ function(add_bml_test test_name)
             "BML_EXPORTS"
             "BML_TEST"
             "IMGUI_USER_CONFIG=\"BMLImGuiConfig.h\""
+            "BML_ENABLE_ANGELSCRIPT=$<BOOL:${BML_WITH_ANGELSCRIPT}>"
+    )
+    target_compile_options(${test_name} PRIVATE
+            $<$<CXX_COMPILER_ID:MSVC>:/Zc:strictStrings->
     )
 
     set_target_properties(${test_name} PROPERTIES FOLDER "Tests")
@@ -125,6 +138,26 @@ add_bml_test(DataShareTest
         DataShareTest.cpp
         ${BML_SOURCE_DIR}/DataShare.cpp
 )
+
+if (BML_WITH_ANGELSCRIPT)
+    add_bml_test(ScriptServiceLifecycleTest
+            SOURCES
+            ScriptServiceLifecycleTest.cpp
+            ScriptServiceLifecycleStubs.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptCommandService.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptDataShareService.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptDiagnostic.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptFunctionSupport.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptTimerService.cpp
+            ${BML_SOURCE_DIR}/DataShare.cpp
+    )
+    target_compile_options(ScriptServiceLifecycleTest PRIVATE
+            $<$<CXX_COMPILER_ID:MSVC>:/Gy>
+    )
+    target_link_options(ScriptServiceLifecycleTest PRIVATE
+            $<$<CXX_COMPILER_ID:MSVC>:/OPT:REF>
+    )
+endif ()
 
 add_bml_test(ScriptDevEventsTest
         SOURCES
