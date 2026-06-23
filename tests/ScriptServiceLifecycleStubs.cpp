@@ -57,6 +57,10 @@ bool ScriptMod::EnterScriptCall() const {
     return true;
 }
 
+bool ScriptMod::CanDispatchScriptServiceCallback() {
+    return true;
+}
+
 void ScriptMod::LeaveScriptCall() const {}
 
 } // namespace BML

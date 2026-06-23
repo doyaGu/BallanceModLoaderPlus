@@ -318,6 +318,8 @@ static bool CallDataShareRequest(const std::shared_ptr<ScriptDataShareServiceSta
                                  size_t size) {
     if (!state || !state->Active)
         return true;
+    if (state->Owner && !state->Owner->CanDispatchScriptServiceCallback())
+        return true;
 
     auto it = state->Requests.find(id);
     if (it == state->Requests.end())

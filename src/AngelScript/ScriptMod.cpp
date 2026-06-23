@@ -1199,6 +1199,10 @@ bool ScriptMod::CanDispatchScriptCallback() {
     return true;
 }
 
+bool ScriptMod::CanDispatchScriptServiceCallback() {
+    return CanDispatchScriptCallback();
+}
+
 void ScriptMod::FenceCallbacksForCurrentFrame() {
     CKTimeManager *time = m_Context ? m_Context->GetTimeManager() : nullptr;
     if (!time)

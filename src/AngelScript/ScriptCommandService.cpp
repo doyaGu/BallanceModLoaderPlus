@@ -340,6 +340,8 @@ public:
         std::shared_ptr<ScriptCommandServiceState> state = m_State.lock();
         if (!state || !state->Active || !state->ContextView)
             return;
+        if (state->Owner && !state->Owner->CanDispatchScriptServiceCallback())
+            return;
 
         const std::string key = m_Key;
         auto it = state->Commands.find(key);
@@ -364,6 +366,8 @@ public:
     const std::vector<std::string> GetTabCompletion(IBML *, const std::vector<std::string> &args) override {
         std::shared_ptr<ScriptCommandServiceState> state = m_State.lock();
         if (!state || !state->Active || !state->ContextView)
+            return {};
+        if (state->Owner && !state->Owner->CanDispatchScriptServiceCallback())
             return {};
 
         const std::string key = m_Key;

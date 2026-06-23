@@ -467,6 +467,8 @@ static bool ExecuteTimerCallback(const std::weak_ptr<ScriptTimerServiceState> &w
     std::shared_ptr<ScriptTimerServiceState> state = weakState.lock();
     if (!state || !state->Active)
         return false;
+    if (state->Owner && !state->Owner->CanDispatchScriptServiceCallback())
+        return false;
 
     auto it = state->Timers.find(id);
     if (it == state->Timers.end() || !it->second.Callback || !state->ContextView)
