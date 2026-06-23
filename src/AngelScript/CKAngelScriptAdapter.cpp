@@ -24,6 +24,7 @@ static constexpr CKAS_FEATURE kRequiredFeatures[] = {
     CKAS_FEATURE_OBJECT_TYPE_NAMESPACE,
     CKAS_FEATURE_OBJECT_METHOD_CONTEXT_ACCESS,
     CKAS_FEATURE_SCRIPT_ARRAY_ACCESS,
+    CKAS_FEATURE_ACTIVE_CONTEXT_EXCEPTION,
 };
 
 template <typename T>
@@ -46,6 +47,8 @@ static std::string MakeMissingFeatureDiagnostic(CKAS_FEATURE feature) {
         message += " BML requires generic object-method context access for script-side value marshalling.";
     } else if (feature == CKAS_FEATURE_SCRIPT_ARRAY_ACCESS) {
         message += " BML requires generic CKAngelScript array object access for script-side value marshalling.";
+    } else if (feature == CKAS_FEATURE_ACTIVE_CONTEXT_EXCEPTION) {
+        message += " BML requires CKAngelScript to set host API exceptions on the current script context.";
     }
     return message;
 }
@@ -109,7 +112,7 @@ bool CKAngelScriptAdapter::IsAvailable() const {
 
 bool CKAngelScriptAdapter::HasFeature(CKAS_FEATURE feature) const {
     const int index = static_cast<int>(feature);
-    return index >= 0 && index <= CKAS_FEATURE_SCRIPT_ARRAY_ACCESS && m_Features[index];
+    return index >= 0 && index <= CKAS_FEATURE_ACTIVE_CONTEXT_EXCEPTION && m_Features[index];
 }
 
 CKAngelScriptAdapter::State CKAngelScriptAdapter::GetState() const {
@@ -213,6 +216,8 @@ const char *CKAngelScriptAdapter::FeatureName(CKAS_FEATURE feature) {
         return "CKAS_FEATURE_OBJECT_METHOD_CONTEXT_ACCESS";
     case CKAS_FEATURE_SCRIPT_ARRAY_ACCESS:
         return "CKAS_FEATURE_SCRIPT_ARRAY_ACCESS";
+    case CKAS_FEATURE_ACTIVE_CONTEXT_EXCEPTION:
+        return "CKAS_FEATURE_ACTIVE_CONTEXT_EXCEPTION";
     default:
         return "CKAS_FEATURE_UNKNOWN";
     }
@@ -257,6 +262,7 @@ bool CKAngelScriptAdapter::ResolveRequiredExports(void *moduleHandle) {
         Resolve(module, "CKAngelScriptFindObjectMethod", m_Api.FindObjectMethod, missing) &&
         Resolve(module, "CKAngelScriptReleaseMethod", m_Api.ReleaseMethod, missing) &&
         Resolve(module, "CKAngelScriptBorrowActiveContext", m_Api.BorrowActiveContext, missing) &&
+        Resolve(module, "CKAngelScriptSetActiveContextException", m_Api.SetActiveContextException, missing) &&
         Resolve(module, "CKAngelScriptAssignObjectHandle", m_Api.AssignObjectHandle, missing) &&
         Resolve(module, "CKAngelScriptArgSetBool", m_Api.ArgSetBool, missing) &&
         Resolve(module, "CKAngelScriptArgSetInt", m_Api.ArgSetInt, missing) &&
@@ -302,7 +308,7 @@ bool CKAngelScriptAdapter::ValidateFeatures() {
     for (CKAS_FEATURE feature : kRequiredFeatures) {
         const int index = static_cast<int>(feature);
         const bool supported = m_Api.HasFeature(feature) != 0;
-        if (index >= 0 && index <= CKAS_FEATURE_SCRIPT_ARRAY_ACCESS)
+        if (index >= 0 && index <= CKAS_FEATURE_ACTIVE_CONTEXT_EXCEPTION)
             m_Features[index] = supported;
 
         if (!supported) {

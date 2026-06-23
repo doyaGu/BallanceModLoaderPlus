@@ -9,6 +9,7 @@
 namespace BML {
 
 class ScriptMod;
+class ScriptModRuntime;
 
 class ScriptCurrentModScope {
 public:
@@ -20,6 +21,24 @@ public:
 
 private:
     ScriptMod *m_Previous = nullptr;
+};
+
+class ScriptObjectConstructionScope {
+public:
+    explicit ScriptObjectConstructionScope(ScriptMod *owner, ScriptModRuntime *runtime = nullptr);
+    ~ScriptObjectConstructionScope();
+
+    ScriptObjectConstructionScope(const ScriptObjectConstructionScope &) = delete;
+    ScriptObjectConstructionScope &operator=(const ScriptObjectConstructionScope &) = delete;
+
+    std::string GetViolation() const;
+
+private:
+    ScriptMod *m_Previous = nullptr;
+    ScriptModRuntime *m_PreviousRuntime = nullptr;
+    int m_PreviousDepth = 0;
+    std::string m_PreviousViolation;
+    bool m_Active = false;
 };
 
 class ScriptRenderCallbackScope {
@@ -62,6 +81,8 @@ public:
     void SetLoaded(bool loaded) { m_Loaded = loaded; }
     void SetOwner(ScriptMod *owner) { m_Owner = owner; }
     static ScriptMod *GetCurrentScriptMod();
+    static bool IsConstructingScriptObject();
+    static bool RecordConstructionHostCallViolation(const char *apiName);
     static bool IsInRenderCallback();
     bool IsModuleLoaded() const { return m_ModuleLoaded; }
     bool HasObject() const { return m_Object != nullptr; }

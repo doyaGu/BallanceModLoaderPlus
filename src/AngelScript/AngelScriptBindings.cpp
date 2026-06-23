@@ -36,6 +36,7 @@
 #include "ScriptFacadeAccess.h"
 #include "ScriptMod.h"
 #include "ScriptModContextView.h"
+#include "ScriptModRuntime.h"
 #include "ScriptTimerService.h"
 
 static constexpr const char *kExtensionName = "BML";
@@ -59,6 +60,10 @@ static bool RequireContext(ModContext *&context) {
 
 static bool RequireLoadedContext(ModContext *&context) {
     return RequireContext(context) && context->AreModsLoaded();
+}
+
+static bool RejectScriptObjectConstructionHostCall(const char *apiName) {
+    return BML::ScriptModRuntime::RecordConstructionHostCallViolation(apiName);
 }
 
 static std::string CopyAndFree(char *value) {
@@ -91,48 +96,64 @@ bool BMLAS_IsPlaying() { ModContext *ctx = nullptr; return RequireContext(ctx) &
 bool BMLAS_IsCheatEnabled() { ModContext *ctx = nullptr; return RequireContext(ctx) && ctx->IsCheatEnabled(); }
 
 void BMLAS_EnableCheat(bool enable) {
+    if (RejectScriptObjectConstructionHostCall("BML::EnableCheat"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireContext(ctx))
         ctx->EnableCheat(enable);
 }
 
 void BMLAS_SendIngameMessage(const std::string &message) {
+    if (RejectScriptObjectConstructionHostCall("BML::SendIngameMessage"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->SendIngameMessage(message.c_str());
 }
 
 void BMLAS_ExecuteCommand(const std::string &command) {
+    if (RejectScriptObjectConstructionHostCall("BML::ExecuteCommand"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->ExecuteCommand(command.c_str());
 }
 
 void BMLAS_OpenModsMenu() {
+    if (RejectScriptObjectConstructionHostCall("BML::OpenModsMenu"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->OpenModsMenu();
 }
 
 void BMLAS_CloseModsMenu() {
+    if (RejectScriptObjectConstructionHostCall("BML::CloseModsMenu"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->CloseModsMenu();
 }
 
 void BMLAS_OpenMapMenu() {
+    if (RejectScriptObjectConstructionHostCall("BML::OpenMapMenu"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->OpenMapMenu();
 }
 
 void BMLAS_CloseMapMenu() {
+    if (RejectScriptObjectConstructionHostCall("BML::CloseMapMenu"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->CloseMapMenu();
 }
 
 void BMLAS_ClearIngameMessages() {
+    if (RejectScriptObjectConstructionHostCall("BML::ClearIngameMessages"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->ClearIngameMessages();
@@ -154,42 +175,56 @@ int BMLAS_GetHUD() {
 }
 
 void BMLAS_SetHUD(int mode) {
+    if (RejectScriptObjectConstructionHostCall("BML::SetHUD"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->SetHUD(mode);
 }
 
 void BMLAS_ShowTitle(bool show) {
+    if (RejectScriptObjectConstructionHostCall("BML::ShowTitle"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->ShowTitle(show);
 }
 
 void BMLAS_ShowFPS(bool show) {
+    if (RejectScriptObjectConstructionHostCall("BML::ShowFPS"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->ShowFPS(show);
 }
 
 void BMLAS_ShowSRTimer(bool show) {
+    if (RejectScriptObjectConstructionHostCall("BML::ShowSRTimer"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->ShowSRTimer(show);
 }
 
 void BMLAS_StartSRTimer() {
+    if (RejectScriptObjectConstructionHostCall("BML::StartSRTimer"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->StartSRTimer();
 }
 
 void BMLAS_PauseSRTimer() {
+    if (RejectScriptObjectConstructionHostCall("BML::PauseSRTimer"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->PauseSRTimer();
 }
 
 void BMLAS_ResetSRTimer() {
+    if (RejectScriptObjectConstructionHostCall("BML::ResetSRTimer"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->ResetSRTimer();
@@ -201,26 +236,38 @@ float BMLAS_GetSRTime() {
 }
 
 void BMLAS_CoreUI_SendMessage(const std::string &message) {
+    if (RejectScriptObjectConstructionHostCall("BML::Core::UI::SendMessage"))
+        return;
     BML::Core::UI::SendMessage(message.c_str());
 }
 
 void BMLAS_CoreUI_ClearMessages() {
+    if (RejectScriptObjectConstructionHostCall("BML::Core::UI::ClearMessages"))
+        return;
     BML::Core::UI::ClearMessages();
 }
 
 void BMLAS_CoreMenu_OpenModsMenu() {
+    if (RejectScriptObjectConstructionHostCall("BML::Core::Menu::OpenModsMenu"))
+        return;
     BML::Core::Menu::OpenModsMenu();
 }
 
 void BMLAS_CoreMenu_CloseModsMenu() {
+    if (RejectScriptObjectConstructionHostCall("BML::Core::Menu::CloseModsMenu"))
+        return;
     BML::Core::Menu::CloseModsMenu();
 }
 
 void BMLAS_CoreMenu_OpenMapMenu() {
+    if (RejectScriptObjectConstructionHostCall("BML::Core::Menu::OpenMapMenu"))
+        return;
     BML::Core::Menu::OpenMapMenu();
 }
 
 void BMLAS_CoreMenu_CloseMapMenu() {
+    if (RejectScriptObjectConstructionHostCall("BML::Core::Menu::CloseMapMenu"))
+        return;
     BML::Core::Menu::CloseMapMenu();
 }
 
@@ -229,30 +276,44 @@ int BMLAS_CoreHUD_GetMode() {
 }
 
 void BMLAS_CoreHUD_SetMode(int mode) {
+    if (RejectScriptObjectConstructionHostCall("BML::Core::HUD::SetMode"))
+        return;
     BML::Core::HUD::SetMode(mode);
 }
 
 void BMLAS_CoreHUD_ShowTitle(bool show) {
+    if (RejectScriptObjectConstructionHostCall("BML::Core::HUD::ShowTitle"))
+        return;
     BML::Core::HUD::ShowTitle(show);
 }
 
 void BMLAS_CoreHUD_ShowFPS(bool show) {
+    if (RejectScriptObjectConstructionHostCall("BML::Core::HUD::ShowFPS"))
+        return;
     BML::Core::HUD::ShowFPS(show);
 }
 
 void BMLAS_CoreHUD_ShowSRTimer(bool show) {
+    if (RejectScriptObjectConstructionHostCall("BML::Core::HUD::ShowSRTimer"))
+        return;
     BML::Core::HUD::ShowSRTimer(show);
 }
 
 void BMLAS_CoreHUD_StartSRTimer() {
+    if (RejectScriptObjectConstructionHostCall("BML::Core::HUD::StartSRTimer"))
+        return;
     BML::Core::HUD::StartSRTimer();
 }
 
 void BMLAS_CoreHUD_PauseSRTimer() {
+    if (RejectScriptObjectConstructionHostCall("BML::Core::HUD::PauseSRTimer"))
+        return;
     BML::Core::HUD::PauseSRTimer();
 }
 
 void BMLAS_CoreHUD_ResetSRTimer() {
+    if (RejectScriptObjectConstructionHostCall("BML::Core::HUD::ResetSRTimer"))
+        return;
     BML::Core::HUD::ResetSRTimer();
 }
 
@@ -261,6 +322,8 @@ float BMLAS_CoreHUD_GetSRTime() {
 }
 
 void BMLAS_SkipRenderForNextTick() {
+    if (RejectScriptObjectConstructionHostCall("BML::SkipRenderForNextTick"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireContext(ctx))
         ctx->SkipRenderForNextTick();
@@ -277,6 +340,8 @@ CKRenderContext *BMLAS_GetRenderContext() {
 }
 
 void BMLAS_ExitGame() {
+    if (RejectScriptObjectConstructionHostCall("BML::ExitGame"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->ExitGame();
@@ -356,7 +421,11 @@ std::string BMLAS_GetDirectoryUtf8(DirectoryType type) {
 }
 
 static bool BMLAS_InputHookIsValid(InputHook *input) { return BML::ScriptFacadeAccess::IsInputValid(input); }
-static void BMLAS_InputHookEnableKeyboardRepetition(InputHook *input, bool enable) { BML::ScriptFacadeAccess::EnableKeyboardRepetition(input, enable); }
+static void BMLAS_InputHookEnableKeyboardRepetition(InputHook *input, bool enable) {
+    if (RejectScriptObjectConstructionHostCall("InputHook::EnableKeyboardRepetition"))
+        return;
+    BML::ScriptFacadeAccess::EnableKeyboardRepetition(input, enable);
+}
 static bool BMLAS_InputHookIsKeyboardRepetitionEnabled(InputHook *input) { return BML::ScriptFacadeAccess::IsKeyboardRepetitionEnabled(input); }
 static bool BMLAS_InputHookIsKeyboardAttached(InputHook *input) { return BML::ScriptFacadeAccess::IsKeyboardAttached(input); }
 static bool BMLAS_InputHookIsMouseAttached(InputHook *input) { return BML::ScriptFacadeAccess::IsMouseAttached(input); }
@@ -411,18 +480,50 @@ static unsigned int BMLAS_InputHookGetJoystickButtonsState(InputHook *input, int
 static bool BMLAS_InputHookIsJoystickButtonDown(InputHook *input, int joystick, int button) {
     return BML::ScriptFacadeAccess::IsJoystickButtonDown(input, joystick, button);
 }
-static void BMLAS_InputHookPause(InputHook *input, bool pause) { BML::ScriptFacadeAccess::PauseInput(input, pause); }
-static void BMLAS_InputHookShowCursor(InputHook *input, bool show) { BML::ScriptFacadeAccess::ShowCursor(input, show); }
+static void BMLAS_InputHookPause(InputHook *input, bool pause) {
+    if (RejectScriptObjectConstructionHostCall("InputHook::Pause"))
+        return;
+    BML::ScriptFacadeAccess::PauseInput(input, pause);
+}
+static void BMLAS_InputHookShowCursor(InputHook *input, bool show) {
+    if (RejectScriptObjectConstructionHostCall("InputHook::ShowCursor"))
+        return;
+    BML::ScriptFacadeAccess::ShowCursor(input, show);
+}
 static bool BMLAS_InputHookGetCursorVisibility(InputHook *input) { return BML::ScriptFacadeAccess::GetCursorVisibility(input); }
 static int BMLAS_InputHookGetSystemCursor(InputHook *input) { return BML::ScriptFacadeAccess::GetSystemCursor(input); }
-static void BMLAS_InputHookSetSystemCursor(InputHook *input, int cursor) { BML::ScriptFacadeAccess::SetSystemCursor(input, cursor); }
+static void BMLAS_InputHookSetSystemCursor(InputHook *input, int cursor) {
+    if (RejectScriptObjectConstructionHostCall("InputHook::SetSystemCursor"))
+        return;
+    BML::ScriptFacadeAccess::SetSystemCursor(input, cursor);
+}
 static bool BMLAS_InputHookIsBlock(InputHook *input) { return BML::ScriptFacadeAccess::IsBlock(input); }
-static void BMLAS_InputHookSetBlock(InputHook *input, bool block) { BML::ScriptFacadeAccess::SetBlock(input, block); }
+static void BMLAS_InputHookSetBlock(InputHook *input, bool block) {
+    if (RejectScriptObjectConstructionHostCall("InputHook::SetBlock"))
+        return;
+    BML::ScriptFacadeAccess::SetBlock(input, block);
+}
 static int BMLAS_InputHookIsBlocked(InputHook *input, int device) { return BML::ScriptFacadeAccess::IsBlocked(input, device); }
-static void BMLAS_InputHookBlock(InputHook *input, int device) { BML::ScriptFacadeAccess::Block(input, device); }
-static void BMLAS_InputHookUnblock(InputHook *input, int device) { BML::ScriptFacadeAccess::Unblock(input, device); }
-static uint64_t BMLAS_InputHookAcquireBlock(InputHook *input, unsigned int mask) { return BML::ScriptFacadeAccess::AcquireBlock(input, mask); }
-static void BMLAS_InputHookReleaseBlock(InputHook *input, uint64_t token) { BML::ScriptFacadeAccess::ReleaseBlock(input, token); }
+static void BMLAS_InputHookBlock(InputHook *input, int device) {
+    if (RejectScriptObjectConstructionHostCall("InputHook::Block"))
+        return;
+    BML::ScriptFacadeAccess::Block(input, device);
+}
+static void BMLAS_InputHookUnblock(InputHook *input, int device) {
+    if (RejectScriptObjectConstructionHostCall("InputHook::Unblock"))
+        return;
+    BML::ScriptFacadeAccess::Unblock(input, device);
+}
+static uint64_t BMLAS_InputHookAcquireBlock(InputHook *input, unsigned int mask) {
+    if (RejectScriptObjectConstructionHostCall("InputHook::AcquireBlock"))
+        return 0;
+    return BML::ScriptFacadeAccess::AcquireBlock(input, mask);
+}
+static void BMLAS_InputHookReleaseBlock(InputHook *input, uint64_t token) {
+    if (RejectScriptObjectConstructionHostCall("InputHook::ReleaseBlock"))
+        return;
+    BML::ScriptFacadeAccess::ReleaseBlock(input, token);
+}
 
 bool BMLAS_IsObjectValid(CKObject *object) {
     return BML::ScriptFacadeAccess::IsObjectValid(object);
@@ -547,18 +648,24 @@ CKBehavior *BMLAS_GetScriptByName(const std::string &name) {
 }
 
 void BMLAS_SetIC(CKBeObject *object, bool hierarchy) {
+    if (RejectScriptObjectConstructionHostCall("BML::SetIC"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireContext(ctx) && object)
         ctx->SetIC(object, hierarchy);
 }
 
 void BMLAS_RestoreIC(CKBeObject *object, bool hierarchy) {
+    if (RejectScriptObjectConstructionHostCall("BML::RestoreIC"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireContext(ctx) && object)
         ctx->RestoreIC(object, hierarchy);
 }
 
 void BMLAS_Show(CKBeObject *object, CK_OBJECT_SHOWOPTION show, bool hierarchy) {
+    if (RejectScriptObjectConstructionHostCall("BML::Show"))
+        return;
     ModContext *ctx = nullptr;
     if (RequireContext(ctx) && object)
         ctx->Show(object, show, hierarchy);
@@ -578,6 +685,8 @@ std::string BMLAS_RemoveExtensionUtf8(const std::string &path) { return CopyAndF
 std::string BMLAS_ReadTextFileUtf8(const std::string &path) { return CopyAndFree(BML_ReadTextFileUtf8(path.c_str())); }
 
 bool BMLAS_DataShareSetString(const std::string &key, const std::string &value, const std::string &name) {
+    if (RejectScriptObjectConstructionHostCall("BML::DataShareSetString"))
+        return false;
     BML_DataShare *share = BML_GetDataShare(name.empty() ? nullptr : name.c_str());
     if (!share)
         return false;
@@ -588,6 +697,8 @@ bool BMLAS_DataShareSetString(const std::string &key, const std::string &value, 
 
 template <typename T>
 bool BMLAS_DataShareSetValue(const std::string &key, T value, const std::string &name) {
+    if (RejectScriptObjectConstructionHostCall("BML::DataShareSet"))
+        return false;
     BML_DataShare *share = BML_GetDataShare(name.empty() ? nullptr : name.c_str());
     if (!share)
         return false;
@@ -665,6 +776,8 @@ bool BMLAS_DataShareHas(const std::string &key, const std::string &name) {
 }
 
 void BMLAS_DataShareRemove(const std::string &key, const std::string &name) {
+    if (RejectScriptObjectConstructionHostCall("BML::DataShareRemove"))
+        return;
     BML_DataShare *share = BML_GetDataShare(name.empty() ? nullptr : name.c_str());
     if (!share)
         return;
@@ -876,6 +989,8 @@ static BML::ScriptModContextView &BMLAS_AssignModContext(const BML::ScriptModCon
 
 static bool BMLAS_BorrowCurrentContext(BML::ScriptModContextView &outContext) {
     outContext = BML::ScriptModContextView();
+    if (RejectScriptObjectConstructionHostCall("BML::BorrowCurrentContext"))
+        return false;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     BML::ScriptModContextView *view = owner ? owner->BorrowContextView() : nullptr;
     if (!view || !view->HasContext())
@@ -1149,6 +1264,8 @@ static BMLAS_ConfigPropertyRef *BMLAS_ConfigEventBorrowProperty(const BML::Scrip
 }
 
 static BMLAS_ObjectLoadResult *BMLAS_CK_LoadObject(const BMLAS_ObjectLoadOptions &options) {
+    if (RejectScriptObjectConstructionHostCall("CK::LoadObject"))
+        return BMLAS_CreateObjectLoadResult(nullptr, false, 0, {});
     ModContext *ctx = nullptr;
     if (!RequireLoadedContext(ctx))
         return BMLAS_CreateObjectLoadResult(nullptr, false, 0, {});
@@ -1185,6 +1302,8 @@ static CKBehavior *BMLAS_Text_Create2DText(CKBehavior *ownerScript,
                                            const BMLAS_Text2DDefinition &definition,
                                            CKMaterial *backgroundMaterial,
                                            CKMaterial *caretMaterial) {
+    if (RejectScriptObjectConstructionHostCall("Text::Create2DText"))
+        return nullptr;
     ModContext *ctx = nullptr;
     if (!ownerScript || !target || !RequireLoadedContext(ctx))
         return nullptr;
@@ -1252,11 +1371,15 @@ static bool BMLAS_ContextRegisterModule(const BML::ScriptModContextView *view,
 }
 
 static void BMLAS_CK_Set3dEntityPosition(CK3dEntity *entity, const VxVector &position) {
+    if (RejectScriptObjectConstructionHostCall("CK3dEntity::SetPosition"))
+        return;
     if (entity)
         entity->SetPosition(&position);
 }
 
 static void BMLAS_CK_Set3dEntityScale(CK3dEntity *entity, const VxVector &scale, bool local) {
+    if (RejectScriptObjectConstructionHostCall("CK3dEntity::SetScale"))
+        return;
     if (entity)
         entity->SetScale(&scale, FALSE, local ? TRUE : FALSE);
 }
@@ -1337,6 +1460,8 @@ static bool BMLAS_CK_SetDataArrayString(CKDataArray *array,
                                         int row,
                                         int column,
                                         const std::string &value) {
+    if (RejectScriptObjectConstructionHostCall("CKDataArray::SetString"))
+        return false;
     if (!BMLAS_CK_HasDataArrayCell(array, row, column))
         return false;
     std::string copy = value;
@@ -1344,6 +1469,8 @@ static bool BMLAS_CK_SetDataArrayString(CKDataArray *array,
 }
 
 static bool BMLAS_CK_SetDataArrayBool(CKDataArray *array, int row, int column, bool value) {
+    if (RejectScriptObjectConstructionHostCall("CKDataArray::SetBool"))
+        return false;
     if (!BMLAS_CK_HasDataArrayCell(array, row, column))
         return false;
     int stored = value ? 1 : 0;
@@ -1351,10 +1478,14 @@ static bool BMLAS_CK_SetDataArrayBool(CKDataArray *array, int row, int column, b
 }
 
 static bool BMLAS_CK_SetDataArrayInt(CKDataArray *array, int row, int column, int value) {
+    if (RejectScriptObjectConstructionHostCall("CKDataArray::SetInt"))
+        return false;
     return BMLAS_CK_HasDataArrayCell(array, row, column) && array->SetElementValue(row, column, &value) != 0;
 }
 
 static bool BMLAS_CK_SetDataArrayFloat(CKDataArray *array, int row, int column, float value) {
+    if (RejectScriptObjectConstructionHostCall("CKDataArray::SetFloat"))
+        return false;
     return BMLAS_CK_HasDataArrayCell(array, row, column) && array->SetElementValue(row, column, &value) != 0;
 }
 
@@ -1366,6 +1497,8 @@ static bool BMLAS_Physics_HasTarget(CK3dEntity *target) {
 static bool BMLAS_Physics_PhysicalizeConvex(CK3dEntity *target,
                                             const BMLAS_PhysicalizeDefinition &definition,
                                             CKMesh *mesh) {
+    if (RejectScriptObjectConstructionHostCall("Physics::PhysicalizeConvex"))
+        return false;
     if (!BMLAS_Physics_HasTarget(target))
         return false;
     ExecuteBB::PhysicalizeConvex(target, definition.Fixed, definition.Friction, definition.Elasticity,
@@ -1380,6 +1513,8 @@ static bool BMLAS_Physics_PhysicalizeBall(CK3dEntity *target,
                                           const BMLAS_PhysicalizeDefinition &definition,
                                           const VxVector &center,
                                           float radius) {
+    if (RejectScriptObjectConstructionHostCall("Physics::PhysicalizeBall"))
+        return false;
     if (!BMLAS_Physics_HasTarget(target))
         return false;
     ExecuteBB::PhysicalizeBall(target, definition.Fixed, definition.Friction, definition.Elasticity,
@@ -1393,6 +1528,8 @@ static bool BMLAS_Physics_PhysicalizeBall(CK3dEntity *target,
 static bool BMLAS_Physics_PhysicalizeConcave(CK3dEntity *target,
                                              const BMLAS_PhysicalizeDefinition &definition,
                                              CKMesh *mesh) {
+    if (RejectScriptObjectConstructionHostCall("Physics::PhysicalizeConcave"))
+        return false;
     if (!BMLAS_Physics_HasTarget(target))
         return false;
     ExecuteBB::PhysicalizeConcave(target, definition.Fixed, definition.Friction, definition.Elasticity,
@@ -1404,6 +1541,8 @@ static bool BMLAS_Physics_PhysicalizeConcave(CK3dEntity *target,
 }
 
 static bool BMLAS_Physics_Unphysicalize(CK3dEntity *target) {
+    if (RejectScriptObjectConstructionHostCall("Physics::Unphysicalize"))
+        return false;
     if (!BMLAS_Physics_HasTarget(target))
         return false;
     ExecuteBB::Unphysicalize(target);
@@ -1416,6 +1555,8 @@ static bool BMLAS_Physics_SetForce(CK3dEntity *target,
                                    const VxVector &direction,
                                    CK3dEntity *directionReference,
                                    float force) {
+    if (RejectScriptObjectConstructionHostCall("Physics::SetForce"))
+        return false;
     if (!BMLAS_Physics_HasTarget(target))
         return false;
     ExecuteBB::SetPhysicsForce(target, position, positionReference, direction, directionReference, force);
@@ -1423,6 +1564,8 @@ static bool BMLAS_Physics_SetForce(CK3dEntity *target,
 }
 
 static bool BMLAS_Physics_ClearForce(CK3dEntity *target) {
+    if (RejectScriptObjectConstructionHostCall("Physics::ClearForce"))
+        return false;
     if (!BMLAS_Physics_HasTarget(target))
         return false;
     ExecuteBB::UnsetPhysicsForce(target);
@@ -1435,6 +1578,8 @@ static bool BMLAS_Physics_Impulse(CK3dEntity *target,
                                   const VxVector &direction,
                                   CK3dEntity *directionReference,
                                   float impulse) {
+    if (RejectScriptObjectConstructionHostCall("Physics::Impulse"))
+        return false;
     if (!BMLAS_Physics_HasTarget(target))
         return false;
     ExecuteBB::PhysicsImpulse(target, position, positionReference, direction, directionReference, impulse);
@@ -1442,6 +1587,8 @@ static bool BMLAS_Physics_Impulse(CK3dEntity *target,
 }
 
 static bool BMLAS_Physics_WakeUp(CK3dEntity *target) {
+    if (RejectScriptObjectConstructionHostCall("Physics::WakeUp"))
+        return false;
     if (!BMLAS_Physics_HasTarget(target))
         return false;
     ExecuteBB::PhysicsWakeUp(target);
@@ -1449,6 +1596,8 @@ static bool BMLAS_Physics_WakeUp(CK3dEntity *target) {
 }
 
 static BML::ScriptTimerRef *BMLAS_AddTimer(asIScriptObject *timer) {
+    if (RejectScriptObjectConstructionHostCall("BML::AddTimer"))
+        return nullptr;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     if (owner)
         return owner->AddScriptTimer(timer);
@@ -1456,6 +1605,8 @@ static BML::ScriptTimerRef *BMLAS_AddTimer(asIScriptObject *timer) {
 }
 
 static BML::ScriptCommandRef *BMLAS_RegisterCommand(asIScriptObject *command) {
+    if (RejectScriptObjectConstructionHostCall("BML::RegisterCommand"))
+        return nullptr;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     if (owner)
         return owner->RegisterScriptCommand(command);
@@ -1467,15 +1618,21 @@ static BML::ScriptCommandRef *BMLAS_ContextRegisterCommandDelegate(
     const BMLAS_CommandDefinition &definition,
     asIScriptFunction *execute,
     asIScriptFunction *complete) {
+    if (RejectScriptObjectConstructionHostCall("BML::ModContext::RegisterCommand"))
+        return nullptr;
     return context ? context->RegisterCommand(definition, execute, complete) : nullptr;
 }
 
 static bool BMLAS_UnregisterCommand(const std::string &name) {
+    if (RejectScriptObjectConstructionHostCall("BML::UnregisterCommand"))
+        return false;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     return owner && owner->UnregisterScriptCommand(name);
 }
 
 static BML::ScriptDataShareRequestRef *BMLAS_RequestDataShare(asIScriptObject *request) {
+    if (RejectScriptObjectConstructionHostCall("BML::RequestDataShare"))
+        return nullptr;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     if (owner)
         return owner->RequestScriptDataShare(request);
@@ -1488,6 +1645,8 @@ static BML::ScriptDataShareRequestRef *BMLAS_ContextRequestDataShareDelegate(
     int type,
     asIScriptFunction *callback,
     const std::string &name) {
+    if (RejectScriptObjectConstructionHostCall("BML::ModContext::RequestDataShare"))
+        return nullptr;
     return context ? context->RequestDataShare(key, type, callback, name) : nullptr;
 }
 
@@ -1503,6 +1662,8 @@ static bool BMLAS_RegisterBallType(const std::string &ballFile,
                                    float rotDamp,
                                    float force,
                                    float radius) {
+    if (RejectScriptObjectConstructionHostCall("BML::RegisterBallType"))
+        return false;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     return owner && owner->RegisterScriptBallType(ballFile, ballId, ballName, objName, friction, elasticity, mass,
                                                  collGroup, linearDamp, rotDamp, force, radius);
@@ -1514,6 +1675,8 @@ static bool BMLAS_RegisterFloorType(const std::string &floorName,
                                     float mass,
                                     const std::string &collGroup,
                                     bool enableColl) {
+    if (RejectScriptObjectConstructionHostCall("BML::RegisterFloorType"))
+        return false;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     return owner && owner->RegisterScriptFloorType(floorName, friction, elasticity, mass, collGroup, enableColl);
 }
@@ -1530,6 +1693,8 @@ static bool BMLAS_RegisterModulBall(const std::string &modulName,
                                     float linearDamp,
                                     float rotDamp,
                                     float radius) {
+    if (RejectScriptObjectConstructionHostCall("BML::RegisterModulBall"))
+        return false;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     return owner && owner->RegisterScriptModulBall(modulName, fixed, friction, elasticity, mass, collGroup,
                                                    frozen, enableColl, calcMassCenter, linearDamp, rotDamp, radius);
@@ -1546,17 +1711,23 @@ static bool BMLAS_RegisterModulConvex(const std::string &modulName,
                                       bool calcMassCenter,
                                       float linearDamp,
                                       float rotDamp) {
+    if (RejectScriptObjectConstructionHostCall("BML::RegisterModulConvex"))
+        return false;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     return owner && owner->RegisterScriptModulConvex(modulName, fixed, friction, elasticity, mass, collGroup,
                                                      frozen, enableColl, calcMassCenter, linearDamp, rotDamp);
 }
 
 static bool BMLAS_RegisterTrafo(const std::string &modulName) {
+    if (RejectScriptObjectConstructionHostCall("BML::RegisterTrafo"))
+        return false;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     return owner && owner->RegisterScriptTrafo(modulName);
 }
 
 static bool BMLAS_RegisterModul(const std::string &modulName) {
+    if (RejectScriptObjectConstructionHostCall("BML::RegisterModul"))
+        return false;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     return owner && owner->RegisterScriptModul(modulName);
 }

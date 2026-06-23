@@ -8,6 +8,10 @@ namespace BML {
 
 namespace {
 thread_local ScriptMod *g_CurrentScriptMod = nullptr;
+thread_local ScriptMod *g_ConstructingScriptMod = nullptr;
+thread_local ScriptModRuntime *g_ConstructingScriptModRuntime = nullptr;
+thread_local int g_ScriptObjectConstructionDepth = 0;
+thread_local std::string g_ScriptObjectConstructionViolation;
 thread_local bool g_InRenderCallback = false;
 
 void ReplaceAll(std::string &value, const std::string &from, const std::string &to) {
@@ -41,6 +45,36 @@ ScriptCurrentModScope::ScriptCurrentModScope(ScriptMod *owner)
 
 ScriptCurrentModScope::~ScriptCurrentModScope() {
     g_CurrentScriptMod = m_Previous;
+}
+
+ScriptObjectConstructionScope::ScriptObjectConstructionScope(ScriptMod *owner, ScriptModRuntime *runtime)
+    : m_Previous(g_ConstructingScriptMod),
+      m_PreviousRuntime(g_ConstructingScriptModRuntime),
+      m_PreviousDepth(g_ScriptObjectConstructionDepth),
+      m_PreviousViolation(g_ScriptObjectConstructionViolation),
+      m_Active(owner != nullptr) {
+    if (m_Active) {
+        if (g_ScriptObjectConstructionDepth == 0)
+            g_ScriptObjectConstructionViolation.clear();
+        g_ConstructingScriptMod = owner;
+        g_ConstructingScriptModRuntime = runtime;
+        ++g_ScriptObjectConstructionDepth;
+    }
+}
+
+ScriptObjectConstructionScope::~ScriptObjectConstructionScope() {
+    if (!m_Active)
+        return;
+    if (g_ScriptObjectConstructionDepth > 0)
+        --g_ScriptObjectConstructionDepth;
+    g_ConstructingScriptMod = m_Previous;
+    g_ConstructingScriptModRuntime = m_PreviousRuntime;
+    if (m_PreviousDepth == 0)
+        g_ScriptObjectConstructionViolation = m_PreviousViolation;
+}
+
+std::string ScriptObjectConstructionScope::GetViolation() const {
+    return m_Active ? g_ScriptObjectConstructionViolation : std::string();
 }
 
 ScriptRenderCallbackScope::ScriptRenderCallbackScope()
@@ -119,6 +153,34 @@ ScriptModRuntime &ScriptModRuntime::operator=(ScriptModRuntime &&other) noexcept
 
 ScriptMod *ScriptModRuntime::GetCurrentScriptMod() {
     return g_CurrentScriptMod;
+}
+
+bool ScriptModRuntime::IsConstructingScriptObject() {
+    return g_ScriptObjectConstructionDepth > 0 && g_ConstructingScriptMod != nullptr;
+}
+
+bool ScriptModRuntime::RecordConstructionHostCallViolation(const char *apiName) {
+    if (!IsConstructingScriptObject())
+        return false;
+
+    if (g_ScriptObjectConstructionViolation.empty()) {
+        g_ScriptObjectConstructionViolation = apiName ? apiName : "BML host API";
+        g_ScriptObjectConstructionViolation +=
+            " is not available while constructing a script mod object; move host-visible work to OnLoad().";
+    }
+
+    ScriptModRuntime *runtime = g_ConstructingScriptModRuntime;
+    if (runtime) {
+        const ::CKAngelScriptAdapter::Api &api = runtime->m_Adapter.GetApi();
+        CKAngelScriptResult result = {};
+        api.InitResult(&result);
+        if (api.SetActiveContextException) {
+            api.SetActiveContextException(runtime->m_Adapter.GetAngelScript(),
+                                          g_ScriptObjectConstructionViolation.c_str(),
+                                          &result);
+        }
+    }
+    return true;
 }
 
 bool ScriptModRuntime::IsInRenderCallback() {
@@ -239,7 +301,22 @@ bool ScriptModRuntime::CreateObject(CKContext *context,
 
     CKAngelScriptResult result = {};
     api.InitResult(&result);
+    ScriptObjectConstructionScope constructionScope(m_Owner, this);
     const CKAS_STATUS status = api.CreateObject(m_Adapter.GetAngelScript(), &objectOptions, &m_Object, &result);
+    const std::string constructionViolation = constructionScope.GetViolation();
+    if (status == CKAS_OK && !constructionViolation.empty()) {
+        if (m_Object) {
+            CKAngelScriptResult releaseResult = {};
+            api.InitResult(&releaseResult);
+            api.ReleaseObject(m_Adapter.GetAngelScript(), m_Object, &releaseResult);
+            m_Object = nullptr;
+        }
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::CreateObject,
+                                          constructionViolation);
+        diagnostic.Status = CKAS_INVALIDSTATE;
+        return false;
+    }
+
     if (status == CKAS_OK && m_Object) {
         m_AngelScript = m_Adapter.GetAngelScript();
         m_Api = &m_Adapter.GetApi();

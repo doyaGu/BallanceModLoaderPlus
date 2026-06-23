@@ -55,6 +55,7 @@ public:
                                                      CKAngelScriptResult *);
     typedef CKAS_STATUS(__cdecl *ReleaseMethodFn)(CKAngelScript *, CKAngelScriptMethod *, CKAngelScriptResult *);
     typedef CKAS_STATUS(__cdecl *BorrowActiveContextFn)(CKAngelScript *, asIScriptContext **, CKAngelScriptResult *);
+    typedef CKAS_STATUS(__cdecl *SetActiveContextExceptionFn)(CKAngelScript *, const char *, CKAngelScriptResult *);
     typedef CKAS_STATUS(__cdecl *AssignObjectHandleFn)(void **, void *, asITypeInfo *);
     typedef CKAS_STATUS(__cdecl *ArgSetBoolFn)(CKAngelScriptArgWriter *, CKDWORD, CKBOOL);
     typedef CKAS_STATUS(__cdecl *ArgSetIntFn)(CKAngelScriptArgWriter *, CKDWORD, int);
@@ -118,6 +119,7 @@ public:
         FindObjectMethodFn FindObjectMethod = nullptr;
         ReleaseMethodFn ReleaseMethod = nullptr;
         BorrowActiveContextFn BorrowActiveContext = nullptr;
+        SetActiveContextExceptionFn SetActiveContextException = nullptr;
         AssignObjectHandleFn AssignObjectHandle = nullptr;
         ArgSetBoolFn ArgSetBool = nullptr;
         ArgSetIntFn ArgSetInt = nullptr;
@@ -178,7 +180,7 @@ private:
     Api m_Api;
     State m_State = State::Unchecked;
     CKDWORD m_ApiVersion = 0;
-    bool m_Features[CKAS_FEATURE_SCRIPT_ARRAY_ACCESS + 1] = {};
+    bool m_Features[CKAS_FEATURE_ACTIVE_CONTEXT_EXCEPTION + 1] = {};
     std::string m_Diagnostic;
 };
 
