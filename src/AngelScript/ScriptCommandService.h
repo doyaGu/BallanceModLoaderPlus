@@ -2,6 +2,7 @@
 #define BML_SCRIPTCOMMANDSERVICE_H
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -79,7 +80,12 @@ public:
     size_t GetActiveCount() const;
 
 #ifdef BML_TEST
-    ScriptCommandRef *AddTestCommandForRelease(const std::string &name, const std::string &alias = std::string());
+    ScriptCommandRef *AddTestCommandForRelease(
+        const std::string &name,
+        const std::string &alias = std::string(),
+        std::function<void(const std::vector<std::string> &)> execute = {});
+    bool InvokeTestCommandForRelease(const std::string &name,
+                                     const std::vector<std::string> &args = {});
 #endif
 
 private:

@@ -2,6 +2,7 @@
 #define BML_SCRIPTDATASHARESERVICE_H
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -86,8 +87,10 @@ public:
     size_t GetActiveCount() const;
 
 #ifdef BML_TEST
-    ScriptDataShareRequestRef *AddTestRequestForRelease(const std::string &key,
-                                                        ScriptDataShareRequestType type = ScriptDataShareRequestType::String);
+    ScriptDataShareRequestRef *AddTestRequestForRelease(
+        const std::string &key,
+        ScriptDataShareRequestType type = ScriptDataShareRequestType::String,
+        std::function<void(const ScriptDataShareEventView &)> callback = {});
 #endif
 
 private:

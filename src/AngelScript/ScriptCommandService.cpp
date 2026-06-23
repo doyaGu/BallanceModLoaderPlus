@@ -41,6 +41,9 @@ struct ScriptCommandEntry {
     std::unique_ptr<ICommand> Command;
     int ActiveCalls = 0;
     bool PendingUnregister = false;
+#ifdef BML_TEST
+    std::function<void(const std::vector<std::string> &)> TestExecute;
+#endif
 };
 
 class ScriptCommandServiceState {
@@ -294,6 +297,24 @@ static void FinishCommandCall(const std::shared_ptr<ScriptCommandServiceState> &
         state->Commands.erase(it);
     }
 }
+
+#ifdef BML_TEST
+static bool InvokeTestCommand(const std::shared_ptr<ScriptCommandServiceState> &state,
+                              const std::string &key,
+                              const std::vector<std::string> &args) {
+    if (!state || !state->Active)
+        return false;
+
+    auto it = state->Commands.find(key);
+    if (it == state->Commands.end() || !it->second.Enabled || !it->second.TestExecute)
+        return false;
+
+    ++it->second.ActiveCalls;
+    it->second.TestExecute(args);
+    FinishCommandCall(state, key);
+    return true;
+}
+#endif
 
 class ScriptCommand final : public ICommand {
 public:
@@ -665,7 +686,8 @@ size_t ScriptCommandService::GetActiveCount() const {
 
 #ifdef BML_TEST
 ScriptCommandRef *ScriptCommandService::AddTestCommandForRelease(const std::string &name,
-                                                                 const std::string &alias) {
+                                                                 const std::string &alias,
+                                                                 std::function<void(const std::vector<std::string> &)> execute) {
     if (!m_State || name.empty())
         return nullptr;
     m_State->Active = true;
@@ -675,11 +697,17 @@ ScriptCommandRef *ScriptCommandService::AddTestCommandForRelease(const std::stri
     entry.Alias = alias;
     entry.Enabled = true;
     entry.Generation = m_State->NextGeneration++;
+    entry.TestExecute = std::move(execute);
 
     const std::string key = NormalizeCommandName(entry.Name);
     const unsigned int generation = entry.Generation;
     m_State->Commands.emplace(key, std::move(entry));
     return new ScriptCommandRef(m_State, key, generation);
+}
+
+bool ScriptCommandService::InvokeTestCommandForRelease(const std::string &name,
+                                                       const std::vector<std::string> &args) {
+    return InvokeTestCommand(m_State, NormalizeCommandName(name), args);
 }
 #endif
 

@@ -29,6 +29,9 @@ struct ScriptDataShareRequestEntry {
     std::string Name;
     int ActiveCalls = 0;
     bool PendingCancel = false;
+#ifdef BML_TEST
+    std::function<void(const ScriptDataShareEventView &)> TestCallback;
+#endif
 };
 
 class ScriptDataShareServiceState {
@@ -313,7 +316,7 @@ static bool CallDataShareRequest(const std::shared_ptr<ScriptDataShareServiceSta
                                  int id,
                                  const void *data,
                                  size_t size) {
-    if (!state || !state->Active || !state->ContextView)
+    if (!state || !state->Active)
         return true;
 
     auto it = state->Requests.find(id);
@@ -321,18 +324,32 @@ static bool CallDataShareRequest(const std::shared_ptr<ScriptDataShareServiceSta
         return true;
 
     ScriptDataShareRequestEntry &entry = it->second;
-    if (!entry.ReceiveMethod)
+#ifdef BML_TEST
+    const bool hasTestCallback = static_cast<bool>(entry.TestCallback);
+    if ((!state->ContextView || !entry.ReceiveMethod) && !hasTestCallback)
         return true;
+#else
+    if (!state->ContextView || !entry.ReceiveMethod)
+        return true;
+#endif
 
     ++entry.ActiveCalls;
     ScriptDataShareEventView event(&entry.Key, entry.Type, data != nullptr && size > 0, data, size);
     ScriptDiagnostic diagnostic;
-    const bool ok = ExecuteDataShareReceive(entry.Object,
-                                            entry.ReceiveMethod,
-                                            state->Owner,
-                                            state->ContextView,
-                                            &event,
-                                            diagnostic);
+    bool ok = true;
+#ifdef BML_TEST
+    if (!entry.ReceiveMethod) {
+        entry.TestCallback(event);
+    } else
+#endif
+    {
+        ok = ExecuteDataShareReceive(entry.Object,
+                                     entry.ReceiveMethod,
+                                     state->Owner,
+                                     state->ContextView,
+                                     &event,
+                                     diagnostic);
+    }
     auto afterCall = state->Requests.find(id);
     if (afterCall != state->Requests.end() && afterCall->second.ActiveCalls > 0)
         --afterCall->second.ActiveCalls;
@@ -598,7 +615,8 @@ size_t ScriptDataShareService::GetActiveCount() const {
 
 #ifdef BML_TEST
 ScriptDataShareRequestRef *ScriptDataShareService::AddTestRequestForRelease(const std::string &key,
-                                                                            ScriptDataShareRequestType type) {
+                                                                            ScriptDataShareRequestType type,
+                                                                            std::function<void(const ScriptDataShareEventView &)> callback) {
     if (!m_State || key.empty())
         return nullptr;
     m_State->Active = true;
@@ -606,6 +624,7 @@ ScriptDataShareRequestRef *ScriptDataShareService::AddTestRequestForRelease(cons
     ScriptDataShareRequestEntry entry;
     entry.Key = key;
     entry.Type = type;
+    entry.TestCallback = std::move(callback);
 
     const int requestId = m_State->NextRequestId++;
     entry.Generation = m_State->NextGeneration++;
