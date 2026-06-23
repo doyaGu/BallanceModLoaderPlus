@@ -949,9 +949,20 @@ void ScriptMod::FenceCallbacksForCurrentFrame() {
 
 void ScriptMod::SetReloadDiagnostic(const std::string &diagnostic) {
     m_LastReloadDiagnostic = diagnostic;
+    m_LastReloadDiagnosticInfo = diagnostic.empty()
+                                     ? ScriptDiagnostic()
+                                     : MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, diagnostic);
     TouchModGeneration();
     if (!diagnostic.empty() && m_Context && m_Context->GetLogger())
         m_Context->GetLogger()->Warn("Script mod %s reload: %s", GetID(), diagnostic.c_str());
+}
+
+void ScriptMod::SetReloadDiagnostic(const ScriptDiagnostic &diagnostic) {
+    m_LastReloadDiagnosticInfo = diagnostic;
+    m_LastReloadDiagnostic = FormatScriptDiagnostic(diagnostic);
+    TouchModGeneration();
+    if (!m_LastReloadDiagnostic.empty() && m_Context && m_Context->GetLogger())
+        m_Context->GetLogger()->Warn("Script mod %s reload: %s", GetID(), m_LastReloadDiagnostic.c_str());
 }
 
 void ScriptMod::TouchModGeneration() {
@@ -1502,14 +1513,18 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
     TouchReloadAttempt();
     result.ReloadAttemptId = GetReloadAttemptId();
 
-    auto finish = [&](bool success, const std::string &diagnostic) {
+    auto finish = [&](bool success, const std::string &diagnostic, const ScriptDiagnostic *structuredDiagnostic = nullptr) {
         result.Success = success;
         result.ReloadAttemptId = GetReloadAttemptId();
         result.Diagnostic = diagnostic;
-        if (!success)
-            SetReloadDiagnostic(diagnostic);
-        else
+        if (!success) {
+            if (structuredDiagnostic)
+                SetReloadDiagnostic(*structuredDiagnostic);
+            else
+                SetReloadDiagnostic(diagnostic);
+        } else {
             SetReloadDiagnostic(std::string());
+        }
         {
             std::lock_guard<std::mutex> lock(m_ReloadMutex);
             m_ReloadThreadId = std::thread::id();
@@ -1527,7 +1542,7 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
                                                               diagnostic,
                                                               GetReloadAttemptId());
         }
-        return finish(false, FormatScriptDiagnostic(diagnostic));
+        return finish(false, FormatScriptDiagnostic(diagnostic), &diagnostic);
     };
 
     ScriptDiagnostic diagnostic;
@@ -1589,7 +1604,8 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
         candidateEvents.Release(nullptr);
         candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
         ReleaseRuntimeOnly(candidateRuntime);
-        return finish(false, validationDiagnostic);
+        const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Metadata, validationDiagnostic);
+        return finish(false, validationDiagnostic, &failure);
     }
     if (m_Context && m_Context->GetScriptDevTools()) {
         m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
@@ -1628,14 +1644,18 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     TouchReloadAttempt();
     result.ReloadAttemptId = GetReloadAttemptId();
 
-    auto finish = [&](bool success, const std::string &diagnostic) {
+    auto finish = [&](bool success, const std::string &diagnostic, const ScriptDiagnostic *structuredDiagnostic = nullptr) {
         result.Success = success;
         result.ReloadAttemptId = GetReloadAttemptId();
         result.Diagnostic = diagnostic;
-        if (!success)
-            SetReloadDiagnostic(diagnostic);
-        else
+        if (!success) {
+            if (structuredDiagnostic)
+                SetReloadDiagnostic(*structuredDiagnostic);
+            else
+                SetReloadDiagnostic(diagnostic);
+        } else {
             SetReloadDiagnostic(std::string());
+        }
         {
             std::lock_guard<std::mutex> lock(m_ReloadMutex);
             m_ReloadThreadId = std::thread::id();
@@ -1653,7 +1673,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                                                               diagnostic,
                                                               GetReloadAttemptId());
         }
-        return finish(false, FormatScriptDiagnostic(diagnostic));
+        return finish(false, FormatScriptDiagnostic(diagnostic), &diagnostic);
     };
 
     ScriptDiagnostic diagnostic;
@@ -1705,7 +1725,8 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     if (!ValidateReloadDefinition(candidateDefinition, candidateExports, options, validationDiagnostic)) {
         candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
         ReleaseRuntimeOnly(candidateRuntime);
-        return finish(false, validationDiagnostic);
+        const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Metadata, validationDiagnostic);
+        return finish(false, validationDiagnostic, &failure);
     }
     if (m_Context && m_Context->GetScriptDevTools()) {
         m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
@@ -1719,7 +1740,9 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     }
     candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
     if (!ReleaseRuntimeOnly(candidateRuntime)) {
-        return finish(false, "Reload candidate cleanup failed; keeping previous runtime.");
+        const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                                                              "Reload candidate cleanup failed; keeping previous runtime.");
+        return finish(false, failure.Message, &failure);
     }
 
     ExportRegistry::NotifyScriptExportsChanged();
@@ -1765,6 +1788,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
         return finish(true, std::string());
     }
 
+    const ScriptDiagnostic reloadDiagnostic = m_State.GetLastDiagnostic();
     const std::string reloadFailure = m_State.GetLastDiagnosticText().empty()
                                           ? "Reload candidate OnLoad failed."
                                           : m_State.GetLastDiagnosticText();
@@ -1781,21 +1805,25 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
             m_Context->GetCommandContext().SortCommands();
         ExportRegistry::NotifyScriptExportsChanged();
         FenceCallbacksForCurrentFrame();
-        return finish(false,
-                      "Reload failed; rolled back to previous runtime. "
-                      "BML-managed script resources were restored; game-world side effects from the failed reload may remain. " +
-                          reloadFailure);
+        ScriptDiagnostic failure = reloadDiagnostic;
+        failure.Phase = ScriptDiagnosticPhase::Runtime;
+        failure.Message = "Reload failed; rolled back to previous runtime. "
+                          "BML-managed script resources were restored; game-world side effects from the failed reload may remain.";
+        if (failure.RawMessage.empty() && failure.CompilerMessages.empty() && failure.StackTrace.empty())
+            failure.RawMessage = reloadFailure;
+        return finish(false, FormatScriptDiagnostic(failure), &failure);
     }
 
     const std::string rollbackFailure = m_State.GetLastDiagnosticText().empty()
                                             ? "Rollback failed."
                                             : m_State.GetLastDiagnosticText();
-    Fail(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
-                              "Reload failed and rollback failed. "
-                              "BML-managed script resources could not be restored; game-world side effects may remain. " +
-                                  reloadFailure + " " + rollbackFailure));
+    ScriptDiagnostic rollbackDiagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                                                               "Reload failed and rollback failed. "
+                                                               "BML-managed script resources could not be restored; game-world side effects may remain.");
+    rollbackDiagnostic.RawMessage = reloadFailure + "\n" + rollbackFailure;
+    Fail(rollbackDiagnostic);
     ExportRegistry::NotifyScriptExportsChanged();
-    return finish(false, m_State.GetLastDiagnosticText());
+    return finish(false, m_State.GetLastDiagnosticText(), &m_State.GetLastDiagnostic());
 }
 
 std::wstring ScriptMod::GetEntryPath() const {

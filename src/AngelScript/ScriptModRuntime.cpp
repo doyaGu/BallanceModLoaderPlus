@@ -20,6 +20,17 @@ void ReplaceAll(std::string &value, const std::string &from, const std::string &
         pos += to.size();
     }
 }
+
+void ReplaceCompilerMessageSection(ScriptDiagnostic &diagnostic,
+                                   const std::string &from,
+                                   const std::string &to) {
+    if (from.empty())
+        return;
+    for (ScriptCompilerMessage &message : diagnostic.CompilerMessages) {
+        if (message.Section == from)
+            message.Section = to;
+    }
+}
 } // namespace
 
 ScriptCurrentModScope::ScriptCurrentModScope(ScriptMod *owner)
@@ -144,7 +155,8 @@ bool ScriptModRuntime::LoadModule(CKContext *context, const std::string &entryPa
     if (status != CKAS_OK) {
         diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Compile, status, result, "Compile failed");
         diagnostic.EntryPath = entryPathUtf8;
-        ReplaceAll(diagnostic.Message, m_ModuleName + "(", entryPathUtf8 + "(");
+        ReplaceAll(diagnostic.RawMessage, m_ModuleName + "(", entryPathUtf8 + "(");
+        ReplaceCompilerMessageSection(diagnostic, m_ModuleName, entryPathUtf8);
         return false;
     }
 
@@ -176,7 +188,8 @@ bool ScriptModRuntime::LoadModuleFromCode(CKContext *context,
     if (status != CKAS_OK) {
         diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Compile, status, result, "Compile failed");
         diagnostic.EntryPath = entryPathUtf8;
-        ReplaceAll(diagnostic.Message, m_ModuleName + "(", entryPathUtf8 + "(");
+        ReplaceAll(diagnostic.RawMessage, m_ModuleName + "(", entryPathUtf8 + "(");
+        ReplaceCompilerMessageSection(diagnostic, m_ModuleName, entryPathUtf8);
         return false;
     }
 

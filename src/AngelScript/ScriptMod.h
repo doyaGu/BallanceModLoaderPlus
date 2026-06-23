@@ -145,7 +145,9 @@ public:
     bool IsReloading() const { return m_Reloading.load(); }
     bool CanHotReloadNow() const;
     const std::string &GetLastDiagnostic() const { return m_State.GetLastDiagnosticText(); }
+    const ScriptDiagnostic &GetLastDiagnosticInfo() const { return m_State.GetLastDiagnostic(); }
     const std::string &GetLastReloadDiagnostic() const { return m_LastReloadDiagnostic; }
+    const ScriptDiagnostic &GetLastReloadDiagnosticInfo() const { return m_LastReloadDiagnosticInfo; }
     const ScriptModDefinition &GetDefinition() const { return m_Definition; }
     const ScriptModEntry &GetEntry() const { return m_Entry; }
     std::string GetRootDirectoryUtf8() const;
@@ -273,6 +275,7 @@ private:
     bool CanDispatchScriptCallback();
     void FenceCallbacksForCurrentFrame();
     void SetReloadDiagnostic(const std::string &diagnostic);
+    void SetReloadDiagnostic(const ScriptDiagnostic &diagnostic);
     void TouchModGeneration();
     void TouchRuntimeGeneration();
     void TouchReloadAttempt();
@@ -303,6 +306,7 @@ private:
     std::atomic<bool> m_CallbackFenceActive{false};
     std::atomic<unsigned int> m_CallbackFenceFrame{0};
     std::string m_LastReloadDiagnostic;
+    ScriptDiagnostic m_LastReloadDiagnosticInfo;
     std::atomic<unsigned int> m_ModGeneration{1};
     std::atomic<unsigned int> m_RuntimeGeneration{1};
     std::atomic<unsigned int> m_ReloadAttemptId{0};

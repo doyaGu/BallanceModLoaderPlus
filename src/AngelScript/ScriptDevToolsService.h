@@ -38,6 +38,18 @@ struct ScriptResourceSnapshot {
     int ActiveCalls = 0;
 };
 
+struct ScriptDiagnosticSnapshot {
+    bool Present = false;
+    std::string Phase;
+    std::string Status;
+    int AngelScriptCode = 0;
+    std::string Summary;
+    std::string EntryFile;
+    std::string RawMessage;
+    std::string StackTrace;
+    std::vector<ScriptCompilerMessage> CompilerMessages;
+};
+
 struct ScriptModSnapshot {
     std::string Id;
     std::string Name;
@@ -49,6 +61,8 @@ struct ScriptModSnapshot {
     std::string EntryPath;
     std::string LastDiagnostic;
     std::string LastReloadDiagnostic;
+    ScriptDiagnosticSnapshot LastDiagnosticInfo;
+    ScriptDiagnosticSnapshot LastReloadDiagnosticInfo;
     unsigned int ModGeneration = 0;
     unsigned int RuntimeGeneration = 0;
     unsigned int ReloadAttemptId = 0;

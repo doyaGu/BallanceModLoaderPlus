@@ -5,9 +5,11 @@
 #include <ctime>
 #include <iomanip>
 #include <sstream>
+#include <utility>
 
 #include "imgui.h"
 
+#include "CKAngelScriptAdapter.h"
 #include "ModContext.h"
 #include "Utils/PathUtils.h"
 #include "Utils/StringUtils.h"
@@ -78,6 +80,132 @@ std::string SourceKindToString(ScriptModEntrySourceKind kind) {
     default:
         return "directory";
     }
+}
+
+std::string BaseNameUtf8(const std::string &path) {
+    const size_t slash = path.find_last_of("\\/");
+    return slash == std::string::npos ? path : path.substr(slash + 1);
+}
+
+bool StartsWithParentTraversal(const std::string &path) {
+    return path == ".." ||
+           path.rfind("..\\", 0) == 0 ||
+           path.rfind("../", 0) == 0;
+}
+
+std::string ModsRootUtf8(ModContext *context) {
+    if (!context)
+        return {};
+    const char *loaderDir = context->GetDirectoryUtf8(BML_DIR_LOADER);
+    if (!loaderDir || !loaderDir[0])
+        return {};
+    return utils::CombinePathUtf8(loaderDir, "Mods");
+}
+
+std::string DisplayScriptPath(ModContext *context, const std::string &path) {
+    if (path.empty())
+        return {};
+    if (path.find('\\') == std::string::npos && path.find('/') == std::string::npos)
+        return path;
+
+    const std::string modsRoot = ModsRootUtf8(context);
+    if (!modsRoot.empty()) {
+        const std::string relative = utils::MakeRelativePathUtf8(path, modsRoot);
+        if (!relative.empty() &&
+            relative != "." &&
+            !StartsWithParentTraversal(relative) &&
+            !utils::IsAbsolutePathUtf8(relative)) {
+            return relative;
+        }
+    }
+
+    return BaseNameUtf8(path);
+}
+
+void ReplaceAll(std::string &text, const std::string &from, const std::string &to) {
+    if (from.empty())
+        return;
+    size_t pos = 0;
+    while ((pos = text.find(from, pos)) != std::string::npos) {
+        text.replace(pos, from.size(), to);
+        pos += to.size();
+    }
+}
+
+void ReplaceModsRoot(ModContext *context, std::string &text) {
+    const std::string modsRoot = ModsRootUtf8(context);
+    if (modsRoot.empty())
+        return;
+    ReplaceAll(text, modsRoot + "\\", "");
+    ReplaceAll(text, modsRoot + "/", "");
+    std::string slashRoot = modsRoot;
+    std::replace(slashRoot.begin(), slashRoot.end(), '\\', '/');
+    if (slashRoot != modsRoot)
+        ReplaceAll(text, slashRoot + "/", "");
+    const std::string normalizedRoot = utils::NormalizePathUtf8(modsRoot);
+    if (normalizedRoot != modsRoot) {
+        ReplaceAll(text, normalizedRoot + "\\", "");
+        ReplaceAll(text, normalizedRoot + "/", "");
+        std::string normalizedSlashRoot = normalizedRoot;
+        std::replace(normalizedSlashRoot.begin(), normalizedSlashRoot.end(), '\\', '/');
+        if (normalizedSlashRoot != normalizedRoot)
+            ReplaceAll(text, normalizedSlashRoot + "/", "");
+    }
+}
+
+std::string SanitizeDiagnosticText(ModContext *context, std::string text, const std::string &entryPath) {
+    if (!entryPath.empty())
+        ReplaceAll(text, entryPath, DisplayScriptPath(context, entryPath));
+    ReplaceModsRoot(context, text);
+    return text;
+}
+
+std::string DisplayEventFieldValue(ModContext *context, const ScriptDevEvent &event, const ScriptDevEventField &field) {
+    return SanitizeDiagnosticText(context, field.Value, event.SourcePath);
+}
+
+std::string DisplayEventMessage(ModContext *context, const ScriptDevEvent &event) {
+    return SanitizeDiagnosticText(context, event.Message, event.SourcePath);
+}
+
+std::string FirstDiagnosticLine(const std::string &text) {
+    const size_t end = text.find_first_of("\r\n");
+    return end == std::string::npos ? text : text.substr(0, end);
+}
+
+bool HasDiagnosticContent(const ScriptDiagnostic &diagnostic, const std::string &fallbackText) {
+    return diagnostic.Status != CKAS_OK ||
+           diagnostic.AngelScriptCode != 0 ||
+           !diagnostic.Message.empty() ||
+           !diagnostic.RawMessage.empty() ||
+           !diagnostic.StackTrace.empty() ||
+           !diagnostic.EntryPath.empty() ||
+           !fallbackText.empty();
+}
+
+ScriptDiagnosticSnapshot MakeDiagnosticSnapshot(ModContext *context,
+                                                const ScriptDiagnostic &diagnostic,
+                                                const std::string &fallbackText) {
+    ScriptDiagnosticSnapshot snapshot;
+    snapshot.Present = HasDiagnosticContent(diagnostic, fallbackText);
+    if (!snapshot.Present)
+        return snapshot;
+
+    snapshot.Phase = ScriptDiagnosticPhaseName(diagnostic.Phase);
+    snapshot.Status = CKAngelScriptAdapter::StatusName(diagnostic.Status);
+    snapshot.AngelScriptCode = diagnostic.AngelScriptCode;
+    snapshot.EntryFile = DisplayScriptPath(context, diagnostic.EntryPath);
+    snapshot.Summary = diagnostic.Message.empty()
+                           ? SanitizeDiagnosticText(context, FirstDiagnosticLine(fallbackText), diagnostic.EntryPath)
+                           : diagnostic.Message;
+    snapshot.RawMessage = SanitizeDiagnosticText(context, diagnostic.RawMessage, diagnostic.EntryPath);
+    snapshot.StackTrace = SanitizeDiagnosticText(context, diagnostic.StackTrace, diagnostic.EntryPath);
+    snapshot.CompilerMessages.reserve(diagnostic.CompilerMessages.size());
+    for (ScriptCompilerMessage message : diagnostic.CompilerMessages) {
+        message.Section = DisplayScriptPath(context, message.Section);
+        snapshot.CompilerMessages.push_back(std::move(message));
+    }
+    return snapshot;
 }
 
 std::string EffectiveReloadPolicy(const ScriptMod *mod) {
@@ -162,7 +290,7 @@ void SetupLogColumns(const bool *visible) {
                                 static_cast<ImGuiID>(column + 1));
 }
 
-std::string LogCellText(const ScriptDevEvent &event, int column) {
+std::string LogCellText(ModContext *context, const ScriptDevEvent &event, int column) {
     switch (column) {
     case LogColumnSequence:
         return std::to_string(event.Sequence);
@@ -171,13 +299,13 @@ std::string LogCellText(const ScriptDevEvent &event, int column) {
     case LogColumnLevel:
         return ToString(event.Severity);
     case LogColumnSource:
-        return ScriptDevLogSource(event);
+        return DisplayScriptPath(context, ScriptDevLogSource(event));
     case LogColumnAttempt:
         return event.ReloadAttemptId == 0 ? "" : std::to_string(event.ReloadAttemptId);
     case LogColumnCode:
         return event.Code;
     case LogColumnMessage:
-        return event.Message;
+        return DisplayEventMessage(context, event);
     default:
         return {};
     }
@@ -203,6 +331,137 @@ ImVec4 StateColor(const std::string &state) {
     if (state == "loaded")
         return ImVec4(0.48f, 0.74f, 0.48f, 1.0f);
     return ImVec4(0.72f, 0.72f, 0.72f, 1.0f);
+}
+
+ImVec4 CompilerMessageColor(CKAS_MESSAGETYPE type) {
+    switch (type) {
+    case CKAS_MESSAGE_ERROR:
+        return SeverityColor(ScriptDevEventSeverity::Error);
+    case CKAS_MESSAGE_WARNING:
+        return SeverityColor(ScriptDevEventSeverity::Warn);
+    case CKAS_MESSAGE_INFORMATION:
+    default:
+        return SeverityColor(ScriptDevEventSeverity::Info);
+    }
+}
+
+bool HasDiagnosticDetails(const ScriptDiagnosticSnapshot &diagnostic) {
+    return !diagnostic.RawMessage.empty() || !diagnostic.StackTrace.empty();
+}
+
+void AppendDiagnosticLines(std::vector<std::string> &lines,
+                           const std::string &label,
+                           const ScriptDiagnosticSnapshot &diagnostic) {
+    lines.push_back("  " + label + ":");
+    if (!diagnostic.Present) {
+        lines.push_back("    none");
+        return;
+    }
+
+    lines.push_back("    summary=" + diagnostic.Summary);
+    lines.push_back("    phase=" + diagnostic.Phase + " status=" + diagnostic.Status);
+    if (diagnostic.AngelScriptCode != 0)
+        lines.push_back("    asCode=" + std::to_string(diagnostic.AngelScriptCode));
+    if (!diagnostic.EntryFile.empty())
+        lines.push_back("    entry=" + diagnostic.EntryFile);
+    if (!diagnostic.CompilerMessages.empty()) {
+        lines.push_back("    compiler:");
+        for (const ScriptCompilerMessage &message : diagnostic.CompilerMessages) {
+            std::ostringstream stream;
+            stream << "      " << ScriptCompilerMessageTypeName(message.Type);
+            if (!message.Section.empty())
+                stream << ' ' << message.Section;
+            if (message.Row != 0 || message.Column != 0)
+                stream << ':' << message.Row << ':' << message.Column;
+            if (!message.Message.empty())
+                stream << " - " << message.Message;
+            lines.push_back(stream.str());
+        }
+    }
+    if (HasDiagnosticDetails(diagnostic))
+        lines.push_back("    raw output available in the Logs panel");
+}
+
+void DrawDiagnosticMetaRow(const char *label, const std::string &value) {
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::TextDisabled("%s", label);
+    ImGui::TableNextColumn();
+    ImGui::TextWrapped("%s", value.empty() ? "-" : value.c_str());
+}
+
+void DrawCompilerMessages(const char *id, const ScriptDiagnosticSnapshot &diagnostic) {
+    if (diagnostic.CompilerMessages.empty())
+        return;
+
+    ImGui::Spacing();
+    ImGui::TextDisabled("Compiler messages");
+    const ImGuiTableFlags flags = ImGuiTableFlags_RowBg |
+                                  ImGuiTableFlags_BordersInnerV |
+                                  ImGuiTableFlags_Resizable |
+                                  ImGuiTableFlags_ScrollY;
+    const float tableHeight = std::min(220.0f, 32.0f + 28.0f * static_cast<float>(diagnostic.CompilerMessages.size()));
+    if (ImGui::BeginTable(id, 5, flags, ImVec2(0.0f, tableHeight))) {
+        ImGui::TableSetupColumn("level", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+        ImGui::TableSetupColumn("file", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+        ImGui::TableSetupColumn("line", ImGuiTableColumnFlags_WidthFixed, 56.0f);
+        ImGui::TableSetupColumn("col", ImGuiTableColumnFlags_WidthFixed, 48.0f);
+        ImGui::TableSetupColumn("message", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableHeadersRow();
+        for (const ScriptCompilerMessage &message : diagnostic.CompilerMessages) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextColored(CompilerMessageColor(message.Type), "%s", ScriptCompilerMessageTypeName(message.Type));
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(message.Section.empty() ? "-" : message.Section.c_str());
+            ImGui::TableNextColumn();
+            if (message.Row > 0)
+                ImGui::Text("%d", message.Row);
+            else
+                ImGui::TextUnformatted("-");
+            ImGui::TableNextColumn();
+            if (message.Column > 0)
+                ImGui::Text("%d", message.Column);
+            else
+                ImGui::TextUnformatted("-");
+            ImGui::TableNextColumn();
+            ImGui::TextWrapped("%s", message.Message.empty() ? "-" : message.Message.c_str());
+        }
+        ImGui::EndTable();
+    }
+}
+
+void DrawDiagnosticBlock(const char *title, const ScriptDiagnosticSnapshot &diagnostic) {
+    ImGui::TextUnformatted(title);
+    if (!diagnostic.Present) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("none");
+        return;
+    }
+
+    if (ImGui::BeginTable(title, 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("field", ImGuiTableColumnFlags_WidthFixed, 96.0f);
+        ImGui::TableSetupColumn("value", ImGuiTableColumnFlags_WidthStretch);
+        DrawDiagnosticMetaRow("summary", diagnostic.Summary);
+        DrawDiagnosticMetaRow("phase", diagnostic.Phase);
+        DrawDiagnosticMetaRow("status", diagnostic.Status);
+        if (diagnostic.AngelScriptCode != 0)
+            DrawDiagnosticMetaRow("as code", std::to_string(diagnostic.AngelScriptCode));
+        if (!diagnostic.EntryFile.empty())
+            DrawDiagnosticMetaRow("entry", diagnostic.EntryFile);
+        ImGui::EndTable();
+    }
+
+    DrawCompilerMessages((std::string(title) + "##compiler").c_str(), diagnostic);
+
+    if (HasDiagnosticDetails(diagnostic) && ImGui::CollapsingHeader((std::string("Raw output##") + title).c_str())) {
+        if (!diagnostic.RawMessage.empty())
+            ImGui::TextWrapped("%s", diagnostic.RawMessage.c_str());
+        if (!diagnostic.StackTrace.empty()) {
+            ImGui::Separator();
+            ImGui::TextWrapped("%s", diagnostic.StackTrace.c_str());
+        }
+    }
 }
 
 } // namespace
@@ -247,8 +506,10 @@ void ScriptDevToolsService::PublishDiagnostic(ScriptDevEventSeverity severity,
         {"asCode", std::to_string(diagnostic.AngelScriptCode)},
         {"hasStack", diagnostic.StackTrace.empty() ? "false" : "true"},
     };
+    if (!diagnostic.RawMessage.empty())
+        fields.push_back({"raw", SanitizeDiagnosticText(m_Context, diagnostic.RawMessage, diagnostic.EntryPath)});
     if (!diagnostic.StackTrace.empty())
-        fields.push_back({"stack", diagnostic.StackTrace});
+        fields.push_back({"stack", SanitizeDiagnosticText(m_Context, diagnostic.StackTrace, diagnostic.EntryPath)});
 
     PublishEvent(severity,
                  code,
@@ -437,6 +698,8 @@ ScriptModSnapshot ScriptDevToolsService::BuildSnapshot(ScriptMod *mod) const {
     snapshot.EntryPath = utils::Utf16ToUtf8(entry.EntryPath);
     snapshot.LastDiagnostic = mod->GetLastDiagnostic();
     snapshot.LastReloadDiagnostic = mod->GetLastReloadDiagnostic();
+    snapshot.LastDiagnosticInfo = MakeDiagnosticSnapshot(m_Context, mod->GetLastDiagnosticInfo(), snapshot.LastDiagnostic);
+    snapshot.LastReloadDiagnosticInfo = MakeDiagnosticSnapshot(m_Context, mod->GetLastReloadDiagnosticInfo(), snapshot.LastReloadDiagnostic);
     snapshot.ModGeneration = mod->GetModGeneration();
     snapshot.RuntimeGeneration = mod->GetRuntimeGeneration();
     snapshot.ReloadAttemptId = mod->GetReloadAttemptId();
@@ -549,8 +812,8 @@ std::vector<std::string> ScriptDevToolsService::FormatLogs(const std::string &se
         if (it->ReloadAttemptId != 0)
             stream << " reloadId=" << it->ReloadAttemptId;
         if (!it->SourcePath.empty())
-            stream << " source=" << it->SourcePath;
-        stream << " - " << it->Message;
+            stream << " source=" << DisplayScriptPath(m_Context, it->SourcePath);
+        stream << " - " << DisplayEventMessage(m_Context, *it);
         lines.push_back(stream.str());
         ++emitted;
     }
@@ -592,7 +855,7 @@ std::vector<std::string> ScriptDevToolsService::FormatInfo(const std::string &id
         "Script mod " + snapshot->Id,
         "  name=" + snapshot->Name + " version=" + snapshot->Version + " state=" + snapshot->State,
         "  reload=" + snapshot->ReloadPolicy + " source=" + snapshot->SourceKind,
-        "  entry=" + snapshot->EntryPath,
+        "  entry=" + DisplayScriptPath(m_Context, snapshot->EntryPath),
         "  modGeneration=" + std::to_string(snapshot->ModGeneration) +
             " runtimeGeneration=" + std::to_string(snapshot->RuntimeGeneration) +
             " reloadAttemptId=" + std::to_string(snapshot->ReloadAttemptId),
@@ -606,9 +869,9 @@ std::vector<std::string> ScriptDevToolsService::FormatDiag(const std::string &id
     std::vector<std::string> lines;
     lines.push_back("Diagnostics for " + snapshot->Id + ":");
     lines.push_back("  state=" + snapshot->State);
-    lines.push_back("  last=" + (snapshot->LastDiagnostic.empty() ? "<none>" : snapshot->LastDiagnostic));
-    lines.push_back("  reload=" + (snapshot->LastReloadDiagnostic.empty() ? "<none>" : snapshot->LastReloadDiagnostic));
-    lines.push_back("  source=" + snapshot->EntryPath);
+    lines.push_back("  entry=" + DisplayScriptPath(m_Context, snapshot->EntryPath));
+    AppendDiagnosticLines(lines, "last", snapshot->LastDiagnosticInfo);
+    AppendDiagnosticLines(lines, "reload", snapshot->LastReloadDiagnosticInfo);
     return lines;
 }
 
@@ -923,21 +1186,32 @@ void ScriptDevToolsService::DrawDiagnosticsTab(const ScriptModSnapshot *selected
         ImGui::TextUnformatted("No script mod selected.");
         return;
     }
-    ImGui::Text("%s", selected->Name.c_str());
+    ImGui::TextUnformatted(selected->Name.c_str());
     ImGui::SameLine();
     ImGui::TextColored(StateColor(selected->State), "%s", selected->State.c_str());
-    ImGui::Text("id %s", selected->Id.c_str());
-    ImGui::Text("version %s", selected->Version.c_str());
-    ImGui::Text("entry %s", selected->EntryPath.c_str());
+
+    if (ImGui::BeginTable("script-dev-diagnostics-summary", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("field", ImGuiTableColumnFlags_WidthFixed, 96.0f);
+        ImGui::TableSetupColumn("value", ImGuiTableColumnFlags_WidthStretch);
+        DrawDiagnosticMetaRow("id", selected->Id);
+        DrawDiagnosticMetaRow("version", selected->Version);
+        DrawDiagnosticMetaRow("entry", DisplayScriptPath(m_Context, selected->EntryPath));
+        DrawDiagnosticMetaRow("reload", selected->ReloadPolicy);
+        ImGui::EndTable();
+    }
+
     ImGui::Separator();
-    ImGui::TextWrapped("last diagnostic: %s", selected->LastDiagnostic.empty() ? "<none>" : selected->LastDiagnostic.c_str());
-    ImGui::TextWrapped("last reload: %s", selected->LastReloadDiagnostic.empty() ? "<none>" : selected->LastReloadDiagnostic.c_str());
+    DrawDiagnosticBlock("Last diagnostic", selected->LastDiagnosticInfo);
     ImGui::Separator();
-    ImGui::Text("modGeneration %u", selected->ModGeneration);
+    DrawDiagnosticBlock("Last reload", selected->LastReloadDiagnosticInfo);
+    ImGui::Separator();
+    ImGui::TextDisabled("runtime");
     ImGui::SameLine();
-    ImGui::Text("runtimeGeneration %u", selected->RuntimeGeneration);
+    ImGui::Text("mod %u", selected->ModGeneration);
     ImGui::SameLine();
-    ImGui::Text("reloadAttemptId %u", selected->ReloadAttemptId);
+    ImGui::Text("runtime %u", selected->RuntimeGeneration);
+    ImGui::SameLine();
+    ImGui::Text("reload %u", selected->ReloadAttemptId);
 }
 
 void ScriptDevToolsService::DrawReloadTab(const ScriptModSnapshot *selected) {
@@ -946,7 +1220,7 @@ void ScriptDevToolsService::DrawReloadTab(const ScriptModSnapshot *selected) {
         return;
     }
     ImGui::Text("policy %s", selected->ReloadPolicy.c_str());
-    ImGui::Text("source %s", selected->SourcePath.c_str());
+    ImGui::Text("source %s", DisplayScriptPath(m_Context, selected->SourcePath).c_str());
     ImGui::TextWrapped("dry-run compiles and validates without calling candidate OnLoad or replacing runtime.");
 }
 
@@ -1181,7 +1455,7 @@ void ScriptDevToolsService::DrawLogRow(const ScriptDevEvent &event) {
         if (!m_LogColumnVisible[column] || !ImGui::TableSetColumnIndex(column))
             continue;
 
-        const std::string text = LogCellText(event, column);
+        const std::string text = LogCellText(m_Context, event, column);
         if (!selectableDrawn) {
             const std::string label = text + "##script-dev-log-row-" + std::to_string(event.Sequence);
             if (ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns))
@@ -1213,18 +1487,19 @@ void ScriptDevToolsService::CopyLogToClipboard(const ScriptDevEvent &event) cons
            << "mod: " << event.ModId << '\n'
            << "phase: " << event.Phase << '\n'
            << "reloadId: " << event.ReloadAttemptId << '\n'
-           << "source: " << event.SourcePath << '\n'
-           << "message: " << event.Message << '\n';
+           << "source: " << DisplayScriptPath(m_Context, event.SourcePath) << '\n'
+           << "message: " << DisplayEventMessage(m_Context, event) << '\n';
     if (!event.Fields.empty()) {
         stream << "fields:\n";
         for (const auto &field : event.Fields)
-            stream << "  " << field.Key << ": " << field.Value << '\n';
+            stream << "  " << field.Key << ": " << DisplayEventFieldValue(m_Context, event, field) << '\n';
     }
     ImGui::SetClipboardText(stream.str().c_str());
 }
 
 void ScriptDevToolsService::CopyLogMessageToClipboard(const ScriptDevEvent &event) const {
-    ImGui::SetClipboardText(event.Message.c_str());
+    const std::string message = DisplayEventMessage(m_Context, event);
+    ImGui::SetClipboardText(message.c_str());
 }
 
 void ScriptDevToolsService::DrawLogDetail(const ScriptDevEvent *selectedLog) {
@@ -1238,25 +1513,27 @@ void ScriptDevToolsService::DrawLogDetail(const ScriptDevEvent *selectedLog) {
                 ImGui::SameLine();
                 ImGui::TextColored(SeverityColor(selectedLog->Severity), "event %s", selectedLog->Code.c_str());
             }
-            const std::string source = ScriptDevLogSource(*selectedLog);
+            const std::string source = DisplayScriptPath(m_Context, ScriptDevLogSource(*selectedLog));
             if (!source.empty())
                 ImGui::Text("source %s", source.c_str());
             if (selectedLog->ReloadAttemptId != 0)
                 ImGui::Text("reload id %u", selectedLog->ReloadAttemptId);
             if (!selectedLog->ModId.empty() && selectedLog->ModId != source)
                 ImGui::Text("mod %s", selectedLog->ModId.c_str());
-            if (!selectedLog->SourcePath.empty() && selectedLog->SourcePath != source)
-                ImGui::TextWrapped("path %s", selectedLog->SourcePath.c_str());
+            const std::string sourcePath = DisplayScriptPath(m_Context, selectedLog->SourcePath);
+            if (!sourcePath.empty() && sourcePath != source)
+                ImGui::TextWrapped("file %s", sourcePath.c_str());
             ImGui::Separator();
-            ImGui::TextWrapped("%s", selectedLog->Message.c_str());
+            ImGui::TextWrapped("%s", DisplayEventMessage(m_Context, *selectedLog).c_str());
             if (!selectedLog->Fields.empty()) {
                 ImGui::Separator();
                 for (const auto &field : selectedLog->Fields) {
+                    const std::string value = DisplayEventFieldValue(m_Context, *selectedLog, field);
                     if (field.Key == "stack") {
                         ImGui::TextUnformatted("stack");
-                        ImGui::TextWrapped("%s", field.Value.c_str());
+                        ImGui::TextWrapped("%s", value.c_str());
                     } else {
-                        ImGui::TextWrapped("%s: %s", field.Key.c_str(), field.Value.c_str());
+                        ImGui::TextWrapped("%s: %s", field.Key.c_str(), value.c_str());
                     }
                 }
             }
