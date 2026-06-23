@@ -42,7 +42,7 @@ const LogColumnSpec kLogColumns[LogColumnCount] = {
     {"time", ImGuiTableColumnFlags_WidthFixed, 92.0f},
     {"level", ImGuiTableColumnFlags_WidthFixed, 64.0f},
     {"source", ImGuiTableColumnFlags_WidthFixed, 145.0f},
-    {"reload id", ImGuiTableColumnFlags_WidthFixed, 82.0f},
+    {"reload", ImGuiTableColumnFlags_WidthFixed, 72.0f},
     {"event code", ImGuiTableColumnFlags_WidthFixed, 185.0f},
     {"message", ImGuiTableColumnFlags_WidthStretch, 0.0f},
 };
@@ -856,7 +856,7 @@ std::vector<std::string> ScriptDevToolsService::FormatLogs(const std::string &se
         if (!it->Phase.empty())
             stream << " phase=" << it->Phase;
         if (it->ReloadAttemptId != 0)
-            stream << " reloadId=" << it->ReloadAttemptId;
+            stream << " reload=" << it->ReloadAttemptId;
         if (!it->SourcePath.empty())
             stream << " source=" << DisplayScriptPath(m_Context, it->SourcePath);
         stream << " - " << DisplayEventMessage(m_Context, *it);
@@ -904,7 +904,7 @@ std::vector<std::string> ScriptDevToolsService::FormatInfo(const std::string &id
         "  entry=" + DisplayScriptPath(m_Context, snapshot->EntryPath),
         "  modGeneration=" + std::to_string(snapshot->ModGeneration) +
             " runtimeGeneration=" + std::to_string(snapshot->RuntimeGeneration) +
-            " reloadAttemptId=" + std::to_string(snapshot->ReloadAttemptId),
+            " reload=" + std::to_string(snapshot->ReloadAttemptId),
     };
 }
 
@@ -1550,7 +1550,7 @@ void ScriptDevToolsService::CopyLogToClipboard(const ScriptDevEvent &event) cons
            << "eventCode: " << event.Code << '\n'
            << "mod: " << event.ModId << '\n'
            << "phase: " << event.Phase << '\n'
-           << "reloadId: " << event.ReloadAttemptId << '\n'
+           << "reload: " << event.ReloadAttemptId << '\n'
            << "source: " << DisplayScriptPath(m_Context, event.SourcePath) << '\n'
            << "message: " << DisplayEventMessage(m_Context, event) << '\n';
     if (!event.Fields.empty()) {
@@ -1581,7 +1581,7 @@ void ScriptDevToolsService::DrawLogDetail(const ScriptDevEvent *selectedLog) {
             if (!source.empty())
                 ImGui::Text("source %s", source.c_str());
             if (selectedLog->ReloadAttemptId != 0)
-                ImGui::Text("reload id %u", selectedLog->ReloadAttemptId);
+                ImGui::Text("reload %u", selectedLog->ReloadAttemptId);
             if (!selectedLog->ModId.empty() && selectedLog->ModId != source)
                 ImGui::Text("mod %s", selectedLog->ModId.c_str());
             const std::string sourcePath = DisplayScriptPath(m_Context, selectedLog->SourcePath);

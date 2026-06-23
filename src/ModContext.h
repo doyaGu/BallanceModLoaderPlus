@@ -37,6 +37,7 @@ struct ScriptModLoadCandidate;
 class ScriptDevToolsService;
 class ScriptModHotReloadService;
 struct ScriptModReloadOptions;
+struct ScriptModReloadDiagnosticField;
 struct ScriptDiagnostic;
 enum class ScriptDevEventSeverity;
 #endif
@@ -94,7 +95,8 @@ public:
     void SetAngelScriptBindingsRegistered(bool registered) { m_AngelScriptBindingsRegistered = registered; }
     bool ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
                                              const BML::ScriptModDefinition &candidate,
-                                             std::string &diagnostic) const;
+                                             std::string &diagnostic,
+                                             std::vector<BML::ScriptModReloadDiagnosticField> *fields = nullptr) const;
     bool PromoteFailedScriptModPlaceholder(BML::ScriptMod *mod,
                                            const std::string &oldId,
                                            const BML::ScriptModDefinition &candidate,

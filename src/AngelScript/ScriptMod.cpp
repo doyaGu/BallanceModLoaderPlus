@@ -24,6 +24,20 @@ static constexpr const char *kReloadDependencyBoundary =
 static constexpr const char *kReloadRollbackBoundary =
     "Rollback restores only BML-managed script resources such as callbacks, exports, timers, commands, DataShare requests, and script runtime handles; it cannot undo game-world changes made by script code.";
 
+static void AddReloadField(std::vector<ScriptModReloadDiagnosticField> *fields,
+                           const std::string &key,
+                           const std::string &value) {
+    if (fields)
+        fields->push_back({key, value});
+}
+
+static void AddReloadBoundary(std::vector<ScriptModReloadDiagnosticField> *fields,
+                              const char *boundary,
+                              const char *action) {
+    AddReloadField(fields, "boundary", boundary ? boundary : "");
+    AddReloadField(fields, "action", action ? action : "");
+}
+
 static bool IsConfigKeyValid(const std::string &key) {
     if (key.empty())
         return false;
@@ -1230,16 +1244,21 @@ bool ScriptMod::NoteHostRegistration(const char *kind, const std::string &key) {
 bool ScriptMod::ValidateReloadDefinition(const ScriptModDefinition &candidate,
                                          const ScriptExportTable &candidateExports,
                                          const ScriptModReloadOptions &options,
-                                         std::string &diagnostic) const {
+                                         std::string &diagnostic,
+                                         std::vector<ScriptModReloadDiagnosticField> *fields) const {
     const bool recoveringPlaceholder = IsFailedPlaceholder();
     if (candidate.Id != m_Definition.Id) {
         if (!recoveringPlaceholder) {
             diagnostic = "Script mod id changed from '" + m_Definition.Id + "' to '" + candidate.Id + "'.";
+            AddReloadBoundary(fields, "mod_identity", "restart_required");
+            AddReloadField(fields, "oldId", m_Definition.Id);
+            AddReloadField(fields, "newId", candidate.Id);
             return false;
         }
     }
     if (!candidate.Enabled) {
         diagnostic = "Script mod reload candidate is disabled.";
+        AddReloadBoundary(fields, "mod_enabled", "enable_candidate_or_restart");
         return false;
     }
 
@@ -1263,16 +1282,19 @@ bool ScriptMod::ValidateReloadDefinition(const ScriptModDefinition &candidate,
     if (!recoveringPlaceholder && oldDependencies != newDependencies) {
         diagnostic = "Script mod dependency declarations changed; restart is required. "
                      + std::string(kReloadDependencyBoundary);
+        AddReloadBoundary(fields, "dependency_graph", "restart_required");
+        AddReloadField(fields, "cascade", "false");
         return false;
     }
 
     BMLVersion currentBml;
     if (currentBml < candidate.MinBmlVersion) {
         diagnostic = "Script mod reload candidate requires newer BML.";
+        AddReloadBoundary(fields, "bml_version", "upgrade_bml_or_restart");
         return false;
     }
 
-    if (!m_Context || !m_Context->ValidateScriptModReloadDependencies(this, candidate, diagnostic))
+    if (!m_Context || !m_Context->ValidateScriptModReloadDependencies(this, candidate, diagnostic, fields))
         return false;
 
     if (!options.ForceExports) {
@@ -1287,6 +1309,10 @@ bool ScriptMod::ValidateReloadDefinition(const ScriptModDefinition &candidate,
                              "Hot reload keeps existing dependent mods running and does not cascade reload them, "
                              "so non-forced reload requires every previous export name/signature to remain available. "
                              "Keep the export, use manual --force-exports only when callers can tolerate it, or restart.";
+                AddReloadBoundary(fields, "export_compatibility", "keep_export_force_exports_or_restart");
+                AddReloadField(fields, "cascade", "false");
+                AddReloadField(fields, "export", name);
+                AddReloadField(fields, "signature", signature);
                 return false;
             }
         }
@@ -1748,10 +1774,15 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
     TouchReloadAttempt();
     result.ReloadAttemptId = GetReloadAttemptId();
 
-    auto finish = [&](bool success, const std::string &diagnostic, const ScriptDiagnostic *structuredDiagnostic = nullptr) {
+    auto finish = [&](bool success,
+                      const std::string &diagnostic,
+                      const ScriptDiagnostic *structuredDiagnostic = nullptr,
+                      const std::vector<ScriptModReloadDiagnosticField> *fields = nullptr) {
         result.Success = success;
         result.ReloadAttemptId = GetReloadAttemptId();
         result.Diagnostic = diagnostic;
+        if (fields)
+            result.Fields = *fields;
         if (!success) {
             if (structuredDiagnostic)
                 SetReloadDiagnostic(*structuredDiagnostic);
@@ -1839,12 +1870,13 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
     }
 
     std::string validationDiagnostic;
-    if (!ValidateReloadDefinition(candidateDefinition, candidateExports, options, validationDiagnostic)) {
+    std::vector<ScriptModReloadDiagnosticField> validationFields;
+    if (!ValidateReloadDefinition(candidateDefinition, candidateExports, options, validationDiagnostic, &validationFields)) {
         candidateEvents.Release(nullptr);
         candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
         ReleaseRuntimeOnly(candidateRuntime);
         const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Metadata, validationDiagnostic);
-        return finish(false, validationDiagnostic, &failure);
+        return finish(false, validationDiagnostic, &failure, &validationFields);
     }
     if (m_Context && m_Context->GetScriptDevTools()) {
         m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
@@ -1883,10 +1915,15 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     TouchReloadAttempt();
     result.ReloadAttemptId = GetReloadAttemptId();
 
-    auto finish = [&](bool success, const std::string &diagnostic, const ScriptDiagnostic *structuredDiagnostic = nullptr) {
+    auto finish = [&](bool success,
+                      const std::string &diagnostic,
+                      const ScriptDiagnostic *structuredDiagnostic = nullptr,
+                      const std::vector<ScriptModReloadDiagnosticField> *fields = nullptr) {
         result.Success = success;
         result.ReloadAttemptId = GetReloadAttemptId();
         result.Diagnostic = diagnostic;
+        if (fields)
+            result.Fields = *fields;
         if (!success) {
             if (structuredDiagnostic)
                 SetReloadDiagnostic(*structuredDiagnostic);
@@ -1964,11 +2001,12 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     }
 
     std::string validationDiagnostic;
-    if (!ValidateReloadDefinition(candidateDefinition, candidateExports, options, validationDiagnostic)) {
+    std::vector<ScriptModReloadDiagnosticField> validationFields;
+    if (!ValidateReloadDefinition(candidateDefinition, candidateExports, options, validationDiagnostic, &validationFields)) {
         candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
         ReleaseRuntimeOnly(candidateRuntime);
         const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Metadata, validationDiagnostic);
-        return finish(false, validationDiagnostic, &failure);
+        return finish(false, validationDiagnostic, &failure, &validationFields);
     }
     if (m_Context && m_Context->GetScriptDevTools()) {
         m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
@@ -2077,7 +2115,12 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
         Fail(failure);
         ExportRegistry::NotifyScriptExportsChanged();
         FenceCallbacksForCurrentFrame();
-        return finish(false, FormatScriptDiagnostic(failure), &failure);
+        std::vector<ScriptModReloadDiagnosticField> fields = {
+            {"boundary", "failed_load_recovery"},
+            {"candidateId", candidateId},
+            {"action", "fix_script_and_reload_again_or_restart"},
+        };
+        return finish(false, FormatScriptDiagnostic(failure), &failure, &fields);
     }
 
     m_Definition = std::move(oldDefinition);
@@ -2097,7 +2140,14 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                           + std::string(kReloadRollbackBoundary);
         if (failure.RawMessage.empty() && failure.CompilerMessages.empty() && failure.StackTrace.empty())
             failure.RawMessage = reloadFailure;
-        return finish(false, FormatScriptDiagnostic(failure), &failure);
+        std::vector<ScriptModReloadDiagnosticField> fields = {
+            {"boundary", "rollback_scope"},
+            {"rollback", "success"},
+            {"restored", "BML-managed script resources and runtime handles"},
+            {"notRestored", "game-world side effects made by script code"},
+            {"action", "restart_if_game_world_state_changed"},
+        };
+        return finish(false, FormatScriptDiagnostic(failure), &failure, &fields);
     }
 
     const std::string rollbackFailure = m_State.GetLastDiagnosticText().empty()
@@ -2109,7 +2159,13 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     rollbackDiagnostic.RawMessage = reloadFailure + "\n" + rollbackFailure;
     Fail(rollbackDiagnostic);
     ExportRegistry::NotifyScriptExportsChanged();
-    return finish(false, m_State.GetLastDiagnosticText(), &m_State.GetLastDiagnostic());
+    std::vector<ScriptModReloadDiagnosticField> fields = {
+        {"boundary", "rollback_scope"},
+        {"rollback", "failed"},
+        {"state", "failed"},
+        {"action", "restart_required"},
+    };
+    return finish(false, m_State.GetLastDiagnosticText(), &m_State.GetLastDiagnostic(), &fields);
 }
 
 std::wstring ScriptMod::GetEntryPath() const {

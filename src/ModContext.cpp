@@ -1719,21 +1719,41 @@ void ModContext::RegisterScriptModDependencies(IMod *mod, const BML::ScriptModDe
 
 bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
                                                      const BML::ScriptModDefinition &candidate,
-                                                     std::string &diagnostic) const {
+                                                     std::string &diagnostic,
+                                                     std::vector<BML::ScriptModReloadDiagnosticField> *fields) const {
+    auto addField = [&](const std::string &key, const std::string &value) {
+        if (fields)
+            fields->push_back({key, value});
+    };
+    auto addDependencyBoundary = [&](const BML::ScriptModDependency &dependency,
+                                     const char *action) {
+        addField("boundary", "dependency_graph");
+        addField("cascade", "false");
+        addField("dependency", dependency.Id);
+        addField("action", action ? action : "restart_or_reload_dependency");
+    };
+
     if (!mod) {
         diagnostic = "Script mod reload target is missing.";
+        addField("boundary", "reload_target");
+        addField("action", "restart_required");
         return false;
     }
 
     const char *currentId = const_cast<BML::ScriptMod *>(mod)->GetID();
     if (candidate.Id.empty()) {
         diagnostic = "Script mod reload candidate has an empty id.";
+        addField("boundary", "mod_identity");
+        addField("action", "fix_metadata");
         return false;
     }
     if (currentId && candidate.Id != currentId) {
         auto existing = m_ModMap.find(candidate.Id);
         if (existing != m_ModMap.end() && existing->second != mod) {
             diagnostic = "Script mod failed-load recovery id '" + candidate.Id + "' conflicts with an already registered mod.";
+            addField("boundary", "mod_identity");
+            addField("conflict", candidate.Id);
+            addField("action", "restart_required");
             return false;
         }
     }
@@ -1747,6 +1767,7 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
                 diagnostic = "Script mod reload dependency '" + dependency.Id + "' is missing. "
                              "Hot reload only refreshes already registered script mods; it does not discover or load new dependency graph nodes. "
                              "Restart after adding dependencies.";
+                addDependencyBoundary(dependency, "restart_after_adding_dependency");
                 return false;
             }
             continue;
@@ -1756,6 +1777,7 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
         if (!dependencyMod) {
             if (!dependency.Optional) {
                 diagnostic = "Script mod reload dependency '" + dependency.Id + "' is unavailable.";
+                addDependencyBoundary(dependency, "restart_or_reload_dependency");
                 return false;
             }
             continue;
@@ -1765,6 +1787,7 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
             if (!dependency.Optional) {
                 diagnostic = "Script mod reload dependency '" + dependency.Id + "' is failed. "
                              "Hot reload does not repair or cascade reload required dependencies; fix and reload the dependency first, or restart.";
+                addDependencyBoundary(dependency, "fix_and_reload_dependency_or_restart");
                 return false;
             }
             continue;
@@ -1774,6 +1797,7 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
         if (have < dependency.MinVersion && !dependency.Optional) {
             diagnostic = "Script mod reload dependency '" + dependency.Id + "' is older than required. "
                          "Hot reload does not cascade reload dependencies; update/reload that dependency first, or restart.";
+            addDependencyBoundary(dependency, "update_or_reload_dependency_or_restart");
             return false;
         }
     }
@@ -1791,6 +1815,10 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
                 diagnostic = "Script mod reload version would no longer satisfy dependent mod '";
                 diagnostic += dependent->GetID() ? dependent->GetID() : "";
                 diagnostic += "'. Hot reload does not cascade reload dependent mods; restart or reload dependent mods explicitly.";
+                addField("boundary", "dependent_compatibility");
+                addField("cascade", "false");
+                addField("dependent", dependent->GetID() ? dependent->GetID() : "");
+                addField("action", "restart_or_reload_dependents_explicitly");
                 return false;
             }
         }

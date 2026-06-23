@@ -38,12 +38,18 @@ struct ScriptModReloadOptions {
     bool DryRun = false;
 };
 
+struct ScriptModReloadDiagnosticField {
+    std::string Key;
+    std::string Value;
+};
+
 struct ScriptModReloadResult {
     bool Success = false;
     bool RetryLater = false;
     unsigned int ReloadAttemptId = 0;
     std::string Diagnostic;
     std::string SourcePath;
+    std::vector<ScriptModReloadDiagnosticField> Fields;
 };
 
 struct ScriptModHostRegistration {
@@ -283,7 +289,8 @@ private:
     bool ValidateReloadDefinition(const ScriptModDefinition &candidate,
                                   const ScriptExportTable &candidateExports,
                                   const ScriptModReloadOptions &options,
-                                  std::string &diagnostic) const;
+                                  std::string &diagnostic,
+                                  std::vector<ScriptModReloadDiagnosticField> *fields) const;
     bool ValidateHostRegistrationSet(std::string &diagnostic);
     bool NoteHostRegistration(const char *kind, const std::string &key);
     std::wstring GetEntryPath() const;

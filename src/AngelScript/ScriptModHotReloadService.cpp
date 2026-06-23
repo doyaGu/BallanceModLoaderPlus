@@ -78,6 +78,24 @@ void SendReloadResultMessage(ModContext *context,
     context->SendIngameMessage(message.c_str());
 }
 
+std::vector<ScriptDevEventField> BuildReloadResultFields(const std::string &reason,
+                                                         const ScriptModReloadResult &result) {
+    std::vector<ScriptDevEventField> fields = {
+        {"reason", reason},
+    };
+    for (const ScriptModReloadDiagnosticField &field : result.Fields)
+        fields.push_back({field.Key, field.Value});
+    return fields;
+}
+
+bool ReloadResultRolledBack(const ScriptModReloadResult &result) {
+    for (const ScriptModReloadDiagnosticField &field : result.Fields) {
+        if (field.Key == "rollback" && field.Value == "success")
+            return true;
+    }
+    return false;
+}
+
 ScriptModReloadPolicy ResolvePolicy(const ScriptMod *mod) {
     if (!mod)
         return ScriptModReloadPolicy::Manual;
@@ -288,7 +306,7 @@ void ScriptModHotReloadService::Process() {
                                 pending.Options,
                                 result);
         if (m_Context && m_Context->GetScriptDevTools()) {
-            const bool rolledBack = !result.Success && result.Diagnostic.find("rolled back") != std::string::npos;
+            const bool rolledBack = !result.Success && ReloadResultRolledBack(result);
             const char *code = "ScriptReloadRejected";
             if (pending.Options.DryRun)
                 code = result.Success ? "ScriptReloadDryRunPassed" : "ScriptReloadDryRunFailed";
@@ -296,6 +314,7 @@ void ScriptModHotReloadService::Process() {
                 code = "ScriptReloadCommitted";
             else if (rolledBack)
                 code = "ScriptReloadRolledBack";
+            std::vector<ScriptDevEventField> fields = BuildReloadResultFields(pending.Reason, result);
             m_Context->GetScriptDevTools()->PublishEvent(result.Success ? ScriptDevEventSeverity::Info : ScriptDevEventSeverity::Warn,
                                                          code,
                                                          id,
@@ -304,8 +323,7 @@ void ScriptModHotReloadService::Process() {
                                                          result.Success
                                                              ? (pending.Options.DryRun ? "Script reload dry-run passed." : "Script reload committed.")
                                                              : result.Diagnostic,
-                                                         {{"reason", pending.Reason},
-                                                          {"attempt", std::to_string(result.ReloadAttemptId)}},
+                                                         fields,
                                                          result.ReloadAttemptId);
         }
         if (result.Success && !pending.Options.DryRun)
