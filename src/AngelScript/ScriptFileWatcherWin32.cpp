@@ -83,6 +83,12 @@ void ScriptFileWatcherWin32::StopAll() {
             ::CloseHandle(state->StopEvent);
         delete state;
     }
+
+    {
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        m_Events.clear();
+        m_OverflowQueued = false;
+    }
 }
 
 std::vector<ScriptFileWatcherWin32::Event> ScriptFileWatcherWin32::DrainEvents() {

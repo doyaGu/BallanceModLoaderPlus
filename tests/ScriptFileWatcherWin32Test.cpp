@@ -118,5 +118,24 @@ TEST(ScriptFileWatcherWin32Test, StopAllIsIdempotent) {
     EXPECT_TRUE(watcher.DrainEvents().empty());
 }
 
+TEST(ScriptFileWatcherWin32Test, StopAllClearsQueuedEvents) {
+    const TempWatchRoot root;
+    ScriptFileWatcherWin32 watcher;
+    ASSERT_TRUE(watcher.Watch(root.Path().wstring()));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    const std::filesystem::path entry = root.Path() / "Stale.mod.as";
+    WriteText(entry, "class Stale {}\n");
+    const std::vector<ScriptFileWatcherWin32::Event> beforeStop = DrainUntil(watcher, [](const auto &seen) {
+        return HasPathEvent(seen, L"Stale.mod.as");
+    });
+    ASSERT_TRUE(HasPathEvent(beforeStop, L"Stale.mod.as"));
+
+    WriteText(entry, "class Stale { void OnLoad() {} }\n");
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    watcher.StopAll();
+    EXPECT_TRUE(watcher.DrainEvents().empty());
+}
+
 } // namespace Test
 } // namespace BML
