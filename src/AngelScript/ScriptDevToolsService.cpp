@@ -348,6 +348,14 @@ ImVec4 StateColor(const std::string &state) {
     return ImVec4(0.72f, 0.72f, 0.72f, 1.0f);
 }
 
+ImVec4 ModListTextColor(const std::string &state) {
+    if (state == "failed")
+        return ImVec4(0.92f, 0.36f, 0.34f, 1.0f);
+    if (state == "reloading")
+        return ImVec4(0.70f, 0.77f, 0.82f, 1.0f);
+    return ImGui::GetStyleColorVec4(ImGuiCol_Text);
+}
+
 ImVec4 CompilerMessageColor(CKAS_MESSAGETYPE type) {
     switch (type) {
     case CKAS_MESSAGE_ERROR:
@@ -1188,21 +1196,23 @@ void ScriptDevToolsService::DrawStatusBar() {
 }
 
 void ScriptDevToolsService::DrawModList() {
-    if (ImGui::BeginTable("script-dev-mod-table", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV)) {
+    if (ImGui::BeginTable("script-dev-mod-table", 1, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV)) {
         ImGui::TableSetupColumn("id", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("state", ImGuiTableColumnFlags_WidthFixed, 72.0f);
-        ImGui::TableSetupColumn("src", ImGuiTableColumnFlags_WidthFixed, 54.0f);
         ImGui::TableHeadersRow();
         for (const auto &snapshot : m_Snapshots) {
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             const bool selected = snapshot.Id == m_SelectedModId;
+            ImGui::PushStyleColor(ImGuiCol_Text, ModListTextColor(snapshot.State));
             if (ImGui::Selectable(snapshot.Id.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns))
                 m_SelectedModId = snapshot.Id;
-            ImGui::TableNextColumn();
-            ImGui::TextColored(StateColor(snapshot.State), "%s", snapshot.State.c_str());
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(snapshot.SourceKind.c_str());
+            ImGui::PopStyleColor();
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("state %s\nsource %s\nreload %s",
+                                  snapshot.State.c_str(),
+                                  snapshot.SourceKind.c_str(),
+                                  snapshot.ReloadPolicy.c_str());
+            }
         }
         ImGui::EndTable();
     }
