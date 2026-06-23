@@ -83,8 +83,10 @@ bool ScriptModDefinitionBuilder::Build(CKContext *context,
                                        ScriptModRuntime &runtime,
                                        ScriptModDefinition &definition,
                                        ScriptDiagnostic &diagnostic) const {
-    if (!runtime.LoadModule(context, utils::Utf16ToUtf8(entry.EntryPath), diagnostic))
+    if (!runtime.IsModuleLoaded() &&
+        !runtime.LoadModule(context, utils::Utf16ToUtf8(entry.EntryPath), diagnostic)) {
         return false;
+    }
 
     ScriptMetadataCollection collection;
     if (!runtime.EnumerateMetadata(context, CollectScriptMetadata, &collection, diagnostic))

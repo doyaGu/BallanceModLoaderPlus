@@ -9,6 +9,17 @@ namespace BML {
 namespace {
 thread_local ScriptMod *g_CurrentScriptMod = nullptr;
 thread_local bool g_InRenderCallback = false;
+
+void ReplaceAll(std::string &value, const std::string &from, const std::string &to) {
+    if (from.empty())
+        return;
+
+    size_t pos = 0;
+    while ((pos = value.find(from, pos)) != std::string::npos) {
+        value.replace(pos, from.size(), to);
+        pos += to.size();
+    }
+}
 } // namespace
 
 ScriptCurrentModScope::ScriptCurrentModScope(ScriptMod *owner)
@@ -56,6 +67,45 @@ ScriptModRuntime::ScriptModRuntime(std::string moduleName)
     : m_ModuleName(std::move(moduleName)) {
 }
 
+ScriptModRuntime::ScriptModRuntime(ScriptModRuntime &&other) noexcept
+    : m_ModuleName(std::move(other.m_ModuleName)),
+      m_Adapter(std::move(other.m_Adapter)),
+      m_AngelScript(other.m_AngelScript),
+      m_Api(other.m_Api),
+      m_Object(other.m_Object),
+      m_ModuleLoaded(other.m_ModuleLoaded),
+      m_Loaded(other.m_Loaded),
+      m_Owner(other.m_Owner) {
+    other.m_AngelScript = nullptr;
+    other.m_Api = nullptr;
+    other.m_Object = nullptr;
+    other.m_ModuleLoaded = false;
+    other.m_Loaded = false;
+    other.m_Owner = nullptr;
+}
+
+ScriptModRuntime &ScriptModRuntime::operator=(ScriptModRuntime &&other) noexcept {
+    if (this == &other)
+        return *this;
+
+    m_ModuleName = std::move(other.m_ModuleName);
+    m_Adapter = std::move(other.m_Adapter);
+    m_AngelScript = other.m_AngelScript;
+    m_Api = other.m_Api;
+    m_Object = other.m_Object;
+    m_ModuleLoaded = other.m_ModuleLoaded;
+    m_Loaded = other.m_Loaded;
+    m_Owner = other.m_Owner;
+
+    other.m_AngelScript = nullptr;
+    other.m_Api = nullptr;
+    other.m_Object = nullptr;
+    other.m_ModuleLoaded = false;
+    other.m_Loaded = false;
+    other.m_Owner = nullptr;
+    return *this;
+}
+
 ScriptMod *ScriptModRuntime::GetCurrentScriptMod() {
     return g_CurrentScriptMod;
 }
@@ -94,6 +144,39 @@ bool ScriptModRuntime::LoadModule(CKContext *context, const std::string &entryPa
     if (status != CKAS_OK) {
         diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Compile, status, result, "Compile failed");
         diagnostic.EntryPath = entryPathUtf8;
+        ReplaceAll(diagnostic.Message, m_ModuleName + "(", entryPathUtf8 + "(");
+        return false;
+    }
+
+    m_ModuleLoaded = true;
+    return true;
+}
+
+bool ScriptModRuntime::LoadModuleFromCode(CKContext *context,
+                                          const std::string &sourceCode,
+                                          const std::string &entryPathUtf8,
+                                          ScriptDiagnostic &diagnostic) {
+    if (m_ModuleLoaded)
+        return true;
+    if (!Refresh(context, diagnostic))
+        return false;
+
+    const ::CKAngelScriptAdapter::Api &api = m_Adapter.GetApi();
+    CKAngelScript *angelScript = m_Adapter.GetAngelScript();
+
+    CKAngelScriptResult result = {};
+    api.InitResult(&result);
+    CKAngelScriptLoadOptions loadOptions = {};
+    api.InitLoadOptions(&loadOptions);
+    loadOptions.ModuleName = m_ModuleName.c_str();
+    loadOptions.Code = sourceCode.c_str();
+    loadOptions.Flags = CKAS_LOAD_REPLACEEXISTING;
+
+    const CKAS_STATUS status = api.LoadModule(angelScript, &loadOptions, &result);
+    if (status != CKAS_OK) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Compile, status, result, "Compile failed");
+        diagnostic.EntryPath = entryPathUtf8;
+        ReplaceAll(diagnostic.Message, m_ModuleName + "(", entryPathUtf8 + "(");
         return false;
     }
 
@@ -228,6 +311,11 @@ bool ScriptModRuntime::CallMethod(CKContext *context,
                                   ScriptDiagnostic &diagnostic) {
     if (!method)
         return true;
+    if (!m_Object) {
+        diagnostic = MakeScriptDiagnostic(phase, "Script object is not available.");
+        diagnostic.Status = CKAS_INVALIDARGUMENT;
+        return false;
+    }
     if (!m_Api || !m_AngelScript) {
         if (!Refresh(context, diagnostic))
             return false;

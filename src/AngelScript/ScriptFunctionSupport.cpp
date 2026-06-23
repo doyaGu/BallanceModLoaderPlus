@@ -2,9 +2,20 @@
 
 #include <string>
 
+#include "ScriptMod.h"
 #include "ScriptModRuntime.h"
 
 namespace BML {
+
+ScriptHostCallScope::ScriptHostCallScope(ScriptMod *owner) : m_Owner(owner) {
+    if (m_Owner)
+        m_Entered = m_Owner->EnterScriptCall();
+}
+
+ScriptHostCallScope::~ScriptHostCallScope() {
+    if (m_Owner && m_Entered)
+        m_Owner->LeaveScriptCall();
+}
 
 bool ScriptFunctionHasSignature(asIScriptFunction *function,
                                 int returnTypeId,
@@ -69,6 +80,13 @@ static ScriptDiagnostic MakeScriptFunctionDiagnostic(const ScriptFunctionCall &c
 }
 
 bool ExecuteScriptFunction(const ScriptFunctionCall &call, ScriptDiagnostic &diagnostic) {
+    ScriptHostCallScope activeCall(call.Owner);
+    if (call.Owner && !activeCall.Entered()) {
+        diagnostic = MakeScriptDiagnostic(call.Phase, "Script mod reload is in progress.");
+        diagnostic.Status = CKAS_INUSE;
+        return false;
+    }
+
     if (!call.Function) {
         diagnostic = MakeScriptDiagnostic(call.Phase,
                                           call.InvalidStateMessage ? call.InvalidStateMessage : "Script callback has invalid runtime state.");

@@ -570,10 +570,16 @@ void ScriptDataShareService::Release(ScriptDiagnostic *) {
     if (!m_State || !m_State->Active)
         return;
 
-    m_State->Active = false;
-    for (auto &entry : m_State->Requests)
+    std::shared_ptr<ScriptDataShareServiceState> releasedState = m_State;
+    releasedState->Active = false;
+    for (auto &entry : releasedState->Requests)
         ReleaseScriptDataShareRequestObject(entry.second);
-    m_State->Requests.clear();
+    releasedState->Requests.clear();
+    m_State = std::make_shared<ScriptDataShareServiceState>();
+}
+
+size_t ScriptDataShareService::GetActiveCount() const {
+    return m_State && m_State->Active ? m_State->Requests.size() : 0;
 }
 
 } // namespace BML

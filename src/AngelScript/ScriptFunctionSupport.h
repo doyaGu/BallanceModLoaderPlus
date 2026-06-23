@@ -11,6 +11,21 @@ namespace BML {
 
 class ScriptMod;
 
+class ScriptHostCallScope {
+public:
+    explicit ScriptHostCallScope(ScriptMod *owner);
+    ~ScriptHostCallScope();
+
+    ScriptHostCallScope(const ScriptHostCallScope &) = delete;
+    ScriptHostCallScope &operator=(const ScriptHostCallScope &) = delete;
+
+    bool Entered() const { return m_Entered; }
+
+private:
+    ScriptMod *m_Owner = nullptr;
+    bool m_Entered = false;
+};
+
 struct ScriptFunctionParam {
     const char *TypeDecl = nullptr;
     asDWORD RequiredFlags = 0;

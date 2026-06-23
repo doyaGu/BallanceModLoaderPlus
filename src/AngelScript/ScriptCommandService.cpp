@@ -633,14 +633,20 @@ void ScriptCommandService::Release(ScriptDiagnostic *) {
     if (!m_State || !m_State->Active)
         return;
 
-    m_State->Active = false;
-    for (auto &entry : m_State->Commands) {
-        if (m_State->Context)
-            m_State->Context->GetCommandContext().UnregisterCommand(entry.second.Name.c_str());
+    std::shared_ptr<ScriptCommandServiceState> releasedState = m_State;
+    releasedState->Active = false;
+    for (auto &entry : releasedState->Commands) {
+        if (releasedState->Context)
+            releasedState->Context->GetCommandContext().UnregisterCommand(entry.second.Name.c_str());
         ReleaseScriptCommandObject(entry.second);
     }
-    m_State->Commands.clear();
-    m_State->RetiredCommands.clear();
+    releasedState->Commands.clear();
+    releasedState->RetiredCommands.clear();
+    m_State = std::make_shared<ScriptCommandServiceState>();
+}
+
+size_t ScriptCommandService::GetActiveCount() const {
+    return m_State && m_State->Active ? m_State->Commands.size() : 0;
 }
 
 } // namespace BML

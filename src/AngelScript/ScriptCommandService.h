@@ -1,6 +1,7 @@
 #ifndef BML_SCRIPTCOMMANDSERVICE_H
 #define BML_SCRIPTCOMMANDSERVICE_H
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -75,6 +76,7 @@ public:
                                asIScriptFunction *complete);
     bool Unregister(const std::string &name);
     void Release(ScriptDiagnostic *diagnostic = nullptr);
+    size_t GetActiveCount() const;
 
 private:
     std::shared_ptr<ScriptCommandServiceState> m_State;

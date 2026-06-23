@@ -106,6 +106,13 @@ static bool ExecuteObjectMethod(asIScriptObject *object,
                                 const char *failurePrefix,
                                 bool &result,
                                 ScriptDiagnostic &diagnostic) {
+    ScriptHostCallScope activeCall(owner);
+    if (owner && !activeCall.Entered()) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Callback, "Script mod reload is in progress.");
+        diagnostic.Status = CKAS_INUSE;
+        return false;
+    }
+
     result = false;
     if (!object || !method || !contextView || !event) {
         diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Callback, "Timer callback has invalid runtime state.");
@@ -807,13 +814,19 @@ void ScriptTimerService::Release(ScriptDiagnostic *) {
     if (!m_State || !m_State->Active)
         return;
 
-    m_State->Active = false;
-    for (auto &entry : m_State->Timers) {
+    std::shared_ptr<ScriptTimerServiceState> releasedState = m_State;
+    releasedState->Active = false;
+    for (auto &entry : releasedState->Timers) {
         if (std::shared_ptr<Timer> timer = Timer::FindById(entry.first))
             timer->Cancel();
         ReleaseScriptTimerObject(entry.second);
     }
-    m_State->Timers.clear();
+    releasedState->Timers.clear();
+    m_State = std::make_shared<ScriptTimerServiceState>();
+}
+
+size_t ScriptTimerService::GetActiveCount() const {
+    return m_State && m_State->Active ? m_State->Timers.size() : 0;
 }
 
 } // namespace BML

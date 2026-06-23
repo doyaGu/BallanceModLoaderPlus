@@ -1,6 +1,7 @@
 #ifndef BML_SCRIPTDATASHARESERVICE_H
 #define BML_SCRIPTDATASHARESERVICE_H
 
+#include <cstddef>
 #include <memory>
 #include <string>
 
@@ -82,6 +83,7 @@ public:
                                        asIScriptFunction *callback,
                                        const std::string &name);
     void Release(ScriptDiagnostic *diagnostic = nullptr);
+    size_t GetActiveCount() const;
 
 private:
     std::shared_ptr<ScriptDataShareServiceState> m_State;

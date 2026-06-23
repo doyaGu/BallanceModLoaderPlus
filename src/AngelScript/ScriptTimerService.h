@@ -1,6 +1,7 @@
 #ifndef BML_SCRIPTTIMERSERVICE_H
 #define BML_SCRIPTTIMERSERVICE_H
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -86,6 +87,7 @@ public:
     ScriptTimerRef *AddIntervalTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name = std::string());
     ScriptTimerRef *AddIntervalMs(float delayMs, asIScriptFunction *callback, const std::string &name = std::string());
     void Release(ScriptDiagnostic *diagnostic = nullptr);
+    size_t GetActiveCount() const;
 
 private:
     ScriptTimerRef *AddTimer(BML::Timer::Builder &builder,

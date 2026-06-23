@@ -49,8 +49,11 @@ class ScriptModRuntime {
 public:
     ScriptModRuntime() = default;
     explicit ScriptModRuntime(std::string moduleName);
-    ScriptModRuntime(ScriptModRuntime &&) = default;
-    ScriptModRuntime &operator=(ScriptModRuntime &&) = default;
+    ScriptModRuntime(ScriptModRuntime &&other) noexcept;
+    ScriptModRuntime &operator=(ScriptModRuntime &&other) noexcept;
+
+    ScriptModRuntime(const ScriptModRuntime &) = delete;
+    ScriptModRuntime &operator=(const ScriptModRuntime &) = delete;
 
     const std::string &GetModuleName() const { return m_ModuleName; }
     CKAngelScriptObject *GetObject() const { return m_Object; }
@@ -65,6 +68,10 @@ public:
 
     bool Refresh(CKContext *context, ScriptDiagnostic &diagnostic);
     bool LoadModule(CKContext *context, const std::string &entryPathUtf8, ScriptDiagnostic &diagnostic);
+    bool LoadModuleFromCode(CKContext *context,
+                            const std::string &sourceCode,
+                            const std::string &entryPathUtf8,
+                            ScriptDiagnostic &diagnostic);
     bool EnumerateMetadata(CKContext *context,
                            CKAngelScriptMetadataCallback callback,
                            void *userData,
