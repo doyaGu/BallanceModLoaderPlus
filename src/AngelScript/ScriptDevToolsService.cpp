@@ -396,12 +396,17 @@ void DrawCompilerMessages(const char *id, const ScriptDiagnosticSnapshot &diagno
 
     ImGui::Spacing();
     ImGui::TextDisabled("Compiler messages");
+    const ImGuiStyle &style = ImGui::GetStyle();
     const ImGuiTableFlags flags = ImGuiTableFlags_RowBg |
                                   ImGuiTableFlags_BordersInnerV |
                                   ImGuiTableFlags_Resizable |
                                   ImGuiTableFlags_ScrollY;
-    const float tableHeight = std::min(220.0f, 32.0f + 28.0f * static_cast<float>(diagnostic.CompilerMessages.size()));
+    const float rowHeight = ImGui::GetTextLineHeightWithSpacing() + style.CellPadding.y * 2.0f;
+    const float tableHeight = std::min(280.0f,
+                                       std::max(118.0f,
+                                                rowHeight * (static_cast<float>(diagnostic.CompilerMessages.size()) + 1.5f)));
     if (ImGui::BeginTable(id, 5, flags, ImVec2(0.0f, tableHeight))) {
+        ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn("level", ImGuiTableColumnFlags_WidthFixed, 70.0f);
         ImGui::TableSetupColumn("file", ImGuiTableColumnFlags_WidthFixed, 150.0f);
         ImGui::TableSetupColumn("line", ImGuiTableColumnFlags_WidthFixed, 56.0f);
@@ -1314,7 +1319,6 @@ void ScriptDevToolsService::DrawLogsTab() {
     const float detailHeight = std::max(115.0f, availableHeight * 0.34f);
     const float tableHeight = std::max(150.0f, availableHeight - detailHeight - ImGui::GetFrameHeightWithSpacing() - 10.0f);
 
-    DrawLogColumnsMenu();
     DrawLogTable(tableHeight);
 
     const ScriptDevEvent *selectedLog = FindSelectedLog();
@@ -1339,9 +1343,12 @@ void ScriptDevToolsService::DrawLogFilters() {
     ImGui::SameLine();
     ImGui::TextUnformatted("Source");
     ImGui::SameLine();
-    const float sourceWidth = std::max(160.0f, ImGui::GetContentRegionAvail().x);
+    const float columnsButtonWidth = ImGui::CalcTextSize("Columns").x + style.FramePadding.x * 2.0f;
+    const float sourceWidth = std::max(160.0f, ImGui::GetContentRegionAvail().x - columnsButtonWidth - style.ItemSpacing.x);
     ImGui::SetNextItemWidth(sourceWidth);
     ImGui::InputText("##script-dev-source", m_EventSourceFilter, sizeof(m_EventSourceFilter));
+    ImGui::SameLine();
+    DrawLogColumnsMenu();
 
     ImGui::TextUnformatted("Search");
     ImGui::SameLine();
@@ -1415,9 +1422,9 @@ void ScriptDevToolsService::RebuildLogCacheIfNeeded() {
 }
 
 void ScriptDevToolsService::DrawLogColumnsMenu() {
-    if (ImGui::Button("Columns"))
-        ImGui::OpenPopup("script-dev-log-columns");
-    if (ImGui::BeginPopup("script-dev-log-columns")) {
+    if (ImGui::Button("Columns##script-dev-log-columns-button"))
+        ImGui::OpenPopup("script-dev-log-columns-popup");
+    if (ImGui::BeginPopup("script-dev-log-columns-popup")) {
         for (int column = 0; column < LogColumnCount; ++column)
             ImGui::MenuItem(kLogColumns[column].Label, nullptr, &m_LogColumnVisible[column]);
         ImGui::EndPopup();
