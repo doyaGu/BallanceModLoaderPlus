@@ -253,7 +253,10 @@ void ScriptModHotReloadService::Process() {
                                                          result.SourcePath,
                                                          result.Success
                                                              ? (pending.Options.DryRun ? "Script reload dry-run passed." : "Script reload committed.")
-                                                             : result.Diagnostic);
+                                                             : result.Diagnostic,
+                                                         {{"reason", pending.Reason},
+                                                          {"attempt", std::to_string(result.ReloadAttemptId)}},
+                                                         result.ReloadAttemptId);
         }
         if (result.Success && !pending.Options.DryRun)
             RegisterMod(mod);

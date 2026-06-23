@@ -1500,9 +1500,11 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
         m_Reloading.store(true, std::memory_order_release);
     }
     TouchReloadAttempt();
+    result.ReloadAttemptId = GetReloadAttemptId();
 
     auto finish = [&](bool success, const std::string &diagnostic) {
         result.Success = success;
+        result.ReloadAttemptId = GetReloadAttemptId();
         result.Diagnostic = diagnostic;
         if (!success)
             SetReloadDiagnostic(diagnostic);
@@ -1518,11 +1520,12 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
     auto finishWithDiagnostic = [&](const ScriptDiagnostic &diagnostic) {
         if (result.SourcePath.empty())
             result.SourcePath = diagnostic.EntryPath;
-        if (m_Context) {
-            m_Context->PublishScriptDevDiagnostic(ScriptDevEventSeverity::Error,
-                                                  "ScriptReloadDryRunDiagnostic",
-                                                  GetID() ? GetID() : "",
-                                                  diagnostic);
+        if (m_Context && m_Context->GetScriptDevTools()) {
+            m_Context->GetScriptDevTools()->PublishDiagnostic(ScriptDevEventSeverity::Error,
+                                                              "ScriptReloadDryRunDiagnostic",
+                                                              GetID() ? GetID() : "",
+                                                              diagnostic,
+                                                              GetReloadAttemptId());
         }
         return finish(false, FormatScriptDiagnostic(diagnostic));
     };
@@ -1594,7 +1597,9 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
                                                      GetID() ? GetID() : "",
                                                      "reload",
                                                      snapshot.EntryPathUtf8,
-                                                     "Script reload candidate prepared.");
+                                                     "Script reload candidate prepared.",
+                                                     {},
+                                                     GetReloadAttemptId());
     }
 
     candidateEvents.Release(nullptr);
@@ -1621,9 +1626,11 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
         m_Reloading.store(true, std::memory_order_release);
     }
     TouchReloadAttempt();
+    result.ReloadAttemptId = GetReloadAttemptId();
 
     auto finish = [&](bool success, const std::string &diagnostic) {
         result.Success = success;
+        result.ReloadAttemptId = GetReloadAttemptId();
         result.Diagnostic = diagnostic;
         if (!success)
             SetReloadDiagnostic(diagnostic);
@@ -1639,11 +1646,12 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     auto finishWithDiagnostic = [&](const ScriptDiagnostic &diagnostic) {
         if (result.SourcePath.empty())
             result.SourcePath = diagnostic.EntryPath;
-        if (m_Context) {
-            m_Context->PublishScriptDevDiagnostic(ScriptDevEventSeverity::Error,
-                                                  "ScriptReloadDiagnostic",
-                                                  GetID() ? GetID() : "",
-                                                  diagnostic);
+        if (m_Context && m_Context->GetScriptDevTools()) {
+            m_Context->GetScriptDevTools()->PublishDiagnostic(ScriptDevEventSeverity::Error,
+                                                              "ScriptReloadDiagnostic",
+                                                              GetID() ? GetID() : "",
+                                                              diagnostic,
+                                                              GetReloadAttemptId());
         }
         return finish(false, FormatScriptDiagnostic(diagnostic));
     };
@@ -1705,7 +1713,9 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                                                      GetID() ? GetID() : "",
                                                      "reload",
                                                      snapshot.EntryPathUtf8,
-                                                     "Script reload candidate prepared.");
+                                                     "Script reload candidate prepared.",
+                                                     {},
+                                                     GetReloadAttemptId());
     }
     candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
     if (!ReleaseRuntimeOnly(candidateRuntime)) {

@@ -41,6 +41,7 @@ struct ScriptModReloadOptions {
 struct ScriptModReloadResult {
     bool Success = false;
     bool RetryLater = false;
+    unsigned int ReloadAttemptId = 0;
     std::string Diagnostic;
     std::string SourcePath;
 };

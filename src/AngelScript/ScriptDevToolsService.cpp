@@ -21,6 +21,7 @@ enum LogColumn {
     LogColumnTime,
     LogColumnLevel,
     LogColumnSource,
+    LogColumnAttempt,
     LogColumnTag,
     LogColumnMessage,
     LogColumnCount,
@@ -36,7 +37,11 @@ struct LogFilters {
     int SeverityIndex = 0;
     std::string Tag;
     std::string Source;
+    std::string Attempt;
     std::string Text;
+    std::string SelectedModId;
+    bool SelectedModOnly = false;
+    bool ReloadOnly = false;
 };
 
 const LogColumnSpec kLogColumns[LogColumnCount] = {
@@ -46,6 +51,7 @@ const LogColumnSpec kLogColumns[LogColumnCount] = {
     {"time", ImGuiTableColumnFlags_WidthFixed, 92.0f},
     {"level", ImGuiTableColumnFlags_WidthFixed, 64.0f},
     {"source", ImGuiTableColumnFlags_WidthFixed, 145.0f},
+    {"attempt", ImGuiTableColumnFlags_WidthFixed, 70.0f},
     {"tag", ImGuiTableColumnFlags_WidthFixed, 185.0f},
     {"message", ImGuiTableColumnFlags_WidthStretch, 0.0f},
 };
@@ -137,11 +143,20 @@ std::string LogSource(const ScriptDevEvent &event) {
 
 std::string LogSearchText(const ScriptDevEvent &event) {
     return event.Code + " " + event.ModId + " " + event.Phase + " " +
+           (event.ReloadAttemptId == 0 ? "" : std::to_string(event.ReloadAttemptId)) + " " +
            event.SourcePath + " " + event.Message + " " + JoinFields(event.Fields);
+}
+
+bool IsReloadLog(const ScriptDevEvent &event) {
+    return event.Phase == "reload" || event.Code.rfind("ScriptReload", 0) == 0;
 }
 
 bool LogMatchesFilters(const ScriptDevEvent &event, const LogFilters &filters) {
     if (!SeverityMatches(event, kLogSeverityFilters[filters.SeverityIndex]))
+        return false;
+    if (filters.SelectedModOnly && !filters.SelectedModId.empty() && event.ModId != filters.SelectedModId)
+        return false;
+    if (filters.ReloadOnly && !IsReloadLog(event))
         return false;
     if (!ContainsInsensitive(event.Code, filters.Tag))
         return false;
@@ -149,6 +164,11 @@ bool LogMatchesFilters(const ScriptDevEvent &event, const LogFilters &filters) {
     const std::string sourceHaystack = LogSource(event) + " " + event.SourcePath;
     if (!ContainsInsensitive(sourceHaystack, filters.Source))
         return false;
+    if (!filters.Attempt.empty() &&
+        !ContainsInsensitive(event.ReloadAttemptId == 0 ? "" : std::to_string(event.ReloadAttemptId),
+                             filters.Attempt)) {
+        return false;
+    }
 
     return ContainsInsensitive(LogSearchText(event), filters.Text);
 }
@@ -171,6 +191,8 @@ int CompareLogs(const ScriptDevEvent &left, const ScriptDevEvent &right, int col
         return static_cast<int>(left.Severity) - static_cast<int>(right.Severity);
     case LogColumnSource:
         return CompareText(LogSource(left), LogSource(right));
+    case LogColumnAttempt:
+        return left.ReloadAttemptId < right.ReloadAttemptId ? -1 : (right.ReloadAttemptId < left.ReloadAttemptId ? 1 : 0);
     case LogColumnTag:
         return CompareText(left.Code, right.Code);
     case LogColumnMessage:
@@ -231,6 +253,8 @@ std::string LogCellText(const ScriptDevEvent &event, int column) {
         return ToString(event.Severity);
     case LogColumnSource:
         return LogSource(event);
+    case LogColumnAttempt:
+        return event.ReloadAttemptId == 0 ? "" : std::to_string(event.ReloadAttemptId);
     case LogColumnTag:
         return event.Code;
     case LogColumnMessage:
@@ -300,9 +324,11 @@ void ScriptDevToolsService::PublishEvent(ScriptDevEventSeverity severity,
                                          const std::string &phase,
                                          const std::string &sourcePath,
                                          const std::string &message,
-                                         const std::vector<ScriptDevEventField> &fields) {
+                                         const std::vector<ScriptDevEventField> &fields,
+                                         unsigned int reloadAttemptId) {
     ScriptDevEvent event;
     event.TimestampMs = NowMs();
+    event.ReloadAttemptId = reloadAttemptId;
     event.Severity = severity;
     event.Code = code;
     event.ModId = modId;
@@ -328,16 +354,24 @@ void ScriptDevToolsService::PublishEvent(ScriptDevEventSeverity severity,
 void ScriptDevToolsService::PublishDiagnostic(ScriptDevEventSeverity severity,
                                               const std::string &code,
                                               const std::string &modId,
-                                              const ScriptDiagnostic &diagnostic) {
+                                              const ScriptDiagnostic &diagnostic,
+                                              unsigned int reloadAttemptId) {
+    std::vector<ScriptDevEventField> fields = {
+        {"status", std::to_string(static_cast<int>(diagnostic.Status))},
+        {"asCode", std::to_string(diagnostic.AngelScriptCode)},
+        {"hasStack", diagnostic.StackTrace.empty() ? "false" : "true"},
+    };
+    if (!diagnostic.StackTrace.empty())
+        fields.push_back({"stack", diagnostic.StackTrace});
+
     PublishEvent(severity,
                  code,
                  modId,
                  ScriptDiagnosticPhaseName(diagnostic.Phase),
                  diagnostic.EntryPath,
                  diagnostic.Message,
-                 {{"status", std::to_string(static_cast<int>(diagnostic.Status))},
-                  {"asCode", std::to_string(diagnostic.AngelScriptCode)},
-                  {"stack", diagnostic.StackTrace.empty() ? "no" : "yes"}});
+                 fields,
+                 reloadAttemptId);
 }
 
 void ScriptDevToolsService::PublishLogLine(const char *level, const char *source, const std::string &message) {
@@ -633,6 +667,10 @@ std::vector<std::string> ScriptDevToolsService::FormatLogs(const std::string &se
             stream << " mod=" << it->ModId;
         if (!it->Phase.empty())
             stream << " phase=" << it->Phase;
+        if (it->ReloadAttemptId != 0)
+            stream << " attempt=" << it->ReloadAttemptId;
+        if (!it->SourcePath.empty())
+            stream << " source=" << it->SourcePath;
         stream << " - " << it->Message;
         lines.push_back(stream.str());
         ++emitted;
@@ -890,25 +928,31 @@ void ScriptDevToolsService::OnHide() {
 }
 
 void ScriptDevToolsService::BlockGameInput() {
-    if (m_GameInputBlocked || !m_Context || !m_Context->GetInputManager())
+    if (m_InputBlockTokenActive)
+        return;
+    if (!m_Context || !m_Context->GetInputManager())
         return;
 
     InputHook *input = m_Context->GetInputManager();
     input->Block(CK_INPUT_DEVICE_KEYBOARD);
     input->Block(CK_INPUT_DEVICE_MOUSE);
     input->Block(CK_INPUT_DEVICE_JOYSTICK);
-    m_GameInputBlocked = true;
+    m_InputBlockTokenActive = true;
 }
 
 void ScriptDevToolsService::UnblockGameInput() {
-    if (!m_GameInputBlocked || !m_Context || !m_Context->GetInputManager())
+    if (!m_InputBlockTokenActive)
         return;
+    if (!m_Context || !m_Context->GetInputManager()) {
+        m_InputBlockTokenActive = false;
+        return;
+    }
 
     InputHook *input = m_Context->GetInputManager();
     input->Unblock(CK_INPUT_DEVICE_JOYSTICK);
     input->Unblock(CK_INPUT_DEVICE_MOUSE);
     input->Unblock(CK_INPUT_DEVICE_KEYBOARD);
-    m_GameInputBlocked = false;
+    m_InputBlockTokenActive = false;
 }
 
 void ScriptDevToolsService::OnDraw() {
@@ -1121,8 +1165,13 @@ void ScriptDevToolsService::DrawLogsTab() {
     DrawLogTable(tableHeight);
 
     const ScriptDevEvent *selectedLog = FindSelectedLog();
-    if (selectedLog && ImGui::Button("Copy Log"))
+    if (selectedLog && ImGui::Button("Copy Full Log"))
         CopyLogToClipboard(*selectedLog);
+    if (selectedLog) {
+        ImGui::SameLine();
+        if (ImGui::Button("Copy Message"))
+            CopyLogMessageToClipboard(*selectedLog);
+    }
     DrawLogDetail(selectedLog);
 }
 
@@ -1140,10 +1189,6 @@ void ScriptDevToolsService::DrawLogFilters() {
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(96.0f);
         ImGui::Combo("##script-dev-severity", &m_EventSeverityFilter, "all\0info\0warn\0error\0");
-        ImGui::SameLine();
-        ImGui::Checkbox("Pause", &m_PauseEventScroll);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Pause auto scroll");
         ImGui::TableSetColumnIndex(2);
         ImGui::TextUnformatted("source");
         ImGui::TableSetColumnIndex(3);
@@ -1162,6 +1207,27 @@ void ScriptDevToolsService::DrawLogFilters() {
         ImGui::SetNextItemWidth(-1.0f);
         ImGui::InputText("##script-dev-search", m_EventSearch, sizeof(m_EventSearch));
 
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("scope");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::Checkbox("Selected Mod", &m_LogSelectedModOnly);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Only show logs whose mod id matches the selected mod.");
+        ImGui::SameLine();
+        ImGui::Checkbox("Reload", &m_LogReloadOnly);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Only show reload lifecycle logs.");
+        ImGui::SameLine();
+        ImGui::Checkbox("Pause", &m_PauseEventScroll);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Pause auto scroll.");
+        ImGui::TableSetColumnIndex(2);
+        ImGui::TextUnformatted("attempt");
+        ImGui::TableSetColumnIndex(3);
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputText("##script-dev-attempt", m_EventAttemptFilter, sizeof(m_EventAttemptFilter));
+
         ImGui::EndTable();
     }
 }
@@ -1172,12 +1238,23 @@ void ScriptDevToolsService::RebuildLogCacheIfNeeded() {
         std::lock_guard<std::mutex> lock(m_EventMutex);
         eventGeneration = m_EventGeneration;
     }
-    const LogFilters filters = {m_EventSeverityFilter, m_EventCodeFilter, m_EventSourceFilter, m_EventSearch};
+    const LogFilters filters = {m_EventSeverityFilter,
+                                m_EventCodeFilter,
+                                m_EventSourceFilter,
+                                m_EventAttemptFilter,
+                                m_EventSearch,
+                                m_SelectedModId,
+                                m_LogSelectedModOnly,
+                                m_LogReloadOnly};
     if (eventGeneration != m_FilteredEventCacheGeneration ||
         m_EventSeverityFilter != m_FilteredEventSeverityFilter ||
         filters.Tag != m_FilteredEventCodeFilter ||
         filters.Source != m_FilteredEventSourceFilter ||
-        filters.Text != m_FilteredEventSearch) {
+        filters.Attempt != m_FilteredEventAttemptFilter ||
+        filters.Text != m_FilteredEventSearch ||
+        filters.SelectedModId != m_FilteredEventSelectedModId ||
+        filters.SelectedModOnly != m_FilteredEventSelectedModOnly ||
+        filters.ReloadOnly != m_FilteredEventReloadOnly) {
         std::vector<ScriptDevEvent> events = GetEventSnapshot();
         std::vector<ScriptDevEvent> filtered;
         filtered.reserve(events.size());
@@ -1192,7 +1269,11 @@ void ScriptDevToolsService::RebuildLogCacheIfNeeded() {
         m_FilteredEventSeverityFilter = m_EventSeverityFilter;
         m_FilteredEventCodeFilter = filters.Tag;
         m_FilteredEventSourceFilter = filters.Source;
+        m_FilteredEventAttemptFilter = filters.Attempt;
         m_FilteredEventSearch = filters.Text;
+        m_FilteredEventSelectedModId = filters.SelectedModId;
+        m_FilteredEventSelectedModOnly = filters.SelectedModOnly;
+        m_FilteredEventReloadOnly = filters.ReloadOnly;
     }
 }
 
@@ -1262,15 +1343,25 @@ const ScriptDevEvent *ScriptDevToolsService::FindSelectedLog() const {
 
 void ScriptDevToolsService::CopyLogToClipboard(const ScriptDevEvent &event) const {
     std::ostringstream stream;
-    stream << '#' << event.Sequence << ' ' << FormatTimestamp(event.TimestampMs)
-           << ' ' << ToString(event.Severity)
-           << ' ' << event.Code
-           << " mod=" << event.ModId
-           << " phase=" << event.Phase
-           << " source=" << event.SourcePath
-           << " message=" << event.Message
-           << ' ' << JoinFields(event.Fields);
+    stream << "sequence: " << event.Sequence << '\n'
+           << "time: " << FormatTimestamp(event.TimestampMs) << '\n'
+           << "severity: " << ToString(event.Severity) << '\n'
+           << "tag: " << event.Code << '\n'
+           << "mod: " << event.ModId << '\n'
+           << "phase: " << event.Phase << '\n'
+           << "attempt: " << event.ReloadAttemptId << '\n'
+           << "source: " << event.SourcePath << '\n'
+           << "message: " << event.Message << '\n';
+    if (!event.Fields.empty()) {
+        stream << "fields:\n";
+        for (const auto &field : event.Fields)
+            stream << "  " << field.Key << ": " << field.Value << '\n';
+    }
     ImGui::SetClipboardText(stream.str().c_str());
+}
+
+void ScriptDevToolsService::CopyLogMessageToClipboard(const ScriptDevEvent &event) const {
+    ImGui::SetClipboardText(event.Message.c_str());
 }
 
 void ScriptDevToolsService::DrawLogDetail(const ScriptDevEvent *selectedLog) {
@@ -1285,16 +1376,24 @@ void ScriptDevToolsService::DrawLogDetail(const ScriptDevEvent *selectedLog) {
             const std::string source = LogSource(*selectedLog);
             if (!source.empty())
                 ImGui::Text("source %s", source.c_str());
+            if (selectedLog->ReloadAttemptId != 0)
+                ImGui::Text("attempt %u", selectedLog->ReloadAttemptId);
             if (!selectedLog->ModId.empty() && selectedLog->ModId != source)
                 ImGui::Text("mod %s", selectedLog->ModId.c_str());
             if (!selectedLog->SourcePath.empty() && selectedLog->SourcePath != source)
                 ImGui::TextWrapped("path %s", selectedLog->SourcePath.c_str());
             ImGui::Separator();
             ImGui::TextWrapped("%s", selectedLog->Message.c_str());
-            const std::string fields = JoinFields(selectedLog->Fields);
-            if (!fields.empty()) {
+            if (!selectedLog->Fields.empty()) {
                 ImGui::Separator();
-                ImGui::TextWrapped("%s", fields.c_str());
+                for (const auto &field : selectedLog->Fields) {
+                    if (field.Key == "stack") {
+                        ImGui::TextUnformatted("stack");
+                        ImGui::TextWrapped("%s", field.Value.c_str());
+                    } else {
+                        ImGui::TextWrapped("%s: %s", field.Key.c_str(), field.Value.c_str());
+                    }
+                }
             }
         } else {
             ImGui::TextUnformatted("Select a log line to inspect the full message.");

@@ -29,6 +29,7 @@ struct ScriptDevEventField {
 struct ScriptDevEvent {
     uint64_t Sequence = 0;
     uint64_t TimestampMs = 0;
+    unsigned int ReloadAttemptId = 0;
     ScriptDevEventSeverity Severity = ScriptDevEventSeverity::Info;
     std::string Code;
     std::string ModId;
@@ -118,11 +119,13 @@ public:
                       const std::string &phase,
                       const std::string &sourcePath,
                       const std::string &message,
-                      const std::vector<ScriptDevEventField> &fields = {});
+                      const std::vector<ScriptDevEventField> &fields = {},
+                      unsigned int reloadAttemptId = 0);
     void PublishDiagnostic(ScriptDevEventSeverity severity,
                            const std::string &code,
                            const std::string &modId,
-                           const ScriptDiagnostic &diagnostic);
+                           const ScriptDiagnostic &diagnostic,
+                           unsigned int reloadAttemptId = 0);
     void PublishLogLine(const char *level, const char *source, const std::string &message);
 
     void EnqueueAction(const ScriptDevAction &action);
@@ -182,6 +185,7 @@ private:
     void DrawLogDetail(const ScriptDevEvent *selectedLog);
     const ScriptDevEvent *FindSelectedLog() const;
     void CopyLogToClipboard(const ScriptDevEvent &event) const;
+    void CopyLogMessageToClipboard(const ScriptDevEvent &event) const;
     void DrawBottomBar(const ScriptModSnapshot *selected);
 
     ModContext *m_Context = nullptr;
@@ -206,16 +210,23 @@ private:
     int m_EventSeverityFilter = 0;
     char m_EventCodeFilter[64] = {};
     char m_EventSourceFilter[128] = {};
+    char m_EventAttemptFilter[32] = {};
     char m_EventSearch[128] = {};
     bool m_PauseEventScroll = false;
-    bool m_GameInputBlocked = false;
-    bool m_LogColumnVisible[6] = {true, true, true, true, true, true};
+    bool m_InputBlockTokenActive = false;
+    bool m_LogSelectedModOnly = false;
+    bool m_LogReloadOnly = false;
+    bool m_LogColumnVisible[7] = {true, true, true, true, true, true, true};
     std::vector<ScriptDevEvent> m_FilteredEventCache;
     uint64_t m_FilteredEventCacheGeneration = 0;
     int m_FilteredEventSeverityFilter = -1;
     std::string m_FilteredEventCodeFilter;
     std::string m_FilteredEventSourceFilter;
+    std::string m_FilteredEventAttemptFilter;
     std::string m_FilteredEventSearch;
+    std::string m_FilteredEventSelectedModId;
+    bool m_FilteredEventSelectedModOnly = false;
+    bool m_FilteredEventReloadOnly = false;
 };
 
 const char *ToString(ScriptDevEventSeverity severity);
