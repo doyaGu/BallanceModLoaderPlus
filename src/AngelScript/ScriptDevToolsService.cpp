@@ -1015,6 +1015,8 @@ std::vector<std::string> ScriptDevToolsService::HandleCommand(const std::vector<
                 options.DryRun = true;
             else if (args[i] == "--force-exports")
                 options.ForceExports = true;
+            else
+                return {"Usage: script reload [id|all] [--dry-run] [--force-exports]"};
         }
         ScriptDevAction action;
         action.Kind = target == "all" ? ScriptDevActionKind::ReloadAll : ScriptDevActionKind::Reload;
@@ -1045,6 +1047,8 @@ std::vector<std::string> ScriptDevToolsService::CompleteCommand(const std::vecto
                              args[1] == "exports" || args[1] == "resources")) {
         return GetScriptModIds();
     }
+    if (args.size() == 3 && args[1] == "reload" && !args[2].empty() && args[2][0] == '-')
+        return {"--dry-run", "--force-exports"};
     if (args.size() == 3 && args[1] == "reload") {
         std::vector<std::string> ids = {"all"};
         std::vector<std::string> modIds = GetScriptModIds();
