@@ -26,15 +26,19 @@ public:
     bool Cache(CKContext *context,
                ScriptModRuntime &runtime,
                const std::vector<ScriptModExportDefinition> &definitions,
-               ScriptDiagnostic &diagnostic);
-    bool Release(CKContext *context, ScriptModRuntime &runtime, ScriptDiagnostic *diagnostic = nullptr);
+               ScriptDiagnostic &diagnostic,
+               bool publishChange = true);
+    bool Release(CKContext *context,
+                 ScriptModRuntime &runtime,
+                 ScriptDiagnostic *diagnostic = nullptr,
+                 bool publishChange = true);
     bool HasExport(const std::string &name, const std::string &signature = std::string()) const;
     const ScriptExportBinding *Resolve(const std::string &name, const std::string &signature = std::string()) const;
     std::string GetSignature(const std::string &name) const;
     void GetSignatures(const std::string &name, std::vector<std::string> &out) const;
     int GetCount() const;
     bool GetInfo(int index, std::string &name, std::string &signature) const;
-    void Clear();
+    void Clear(bool publishChange = true);
 
 private:
     void RebuildIndex();

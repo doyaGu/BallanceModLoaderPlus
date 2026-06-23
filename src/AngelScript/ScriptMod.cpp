@@ -1876,10 +1876,11 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
     if (!candidateExports.Cache(m_Context ? m_Context->GetCKContext() : nullptr,
                                 candidateRuntime,
                                 candidateDefinition.Exports,
-                                diagnostic)) {
+                                diagnostic,
+                                false)) {
         RewriteSnapshotDiagnosticPaths(snapshot, diagnostic);
         candidateEvents.Release(nullptr);
-        candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
+        candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
         ReleaseRuntimeOnly(candidateRuntime);
         return finishWithDiagnostic(diagnostic);
     }
@@ -1888,7 +1889,7 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
     std::vector<ScriptModReloadDiagnosticField> validationFields;
     if (!ValidateReloadDefinition(candidateDefinition, candidateExports, options, validationDiagnostic, &validationFields)) {
         candidateEvents.Release(nullptr);
-        candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
+        candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
         ReleaseRuntimeOnly(candidateRuntime);
         const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Metadata, validationDiagnostic);
         return finish(false, validationDiagnostic, &failure, &validationFields);
@@ -1905,7 +1906,7 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
     }
 
     candidateEvents.Release(nullptr);
-    candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
+    candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
     ReleaseRuntimeOnly(candidateRuntime);
     return finish(true, "Reload dry-run passed.");
 }
@@ -2008,9 +2009,10 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     if (!candidateExports.Cache(m_Context ? m_Context->GetCKContext() : nullptr,
                                 candidateRuntime,
                                 candidateDefinition.Exports,
-                                diagnostic)) {
+                                diagnostic,
+                                false)) {
         RewriteSnapshotDiagnosticPaths(snapshot, diagnostic);
-        candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
+        candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
         ReleaseRuntimeOnly(candidateRuntime);
         return finishWithDiagnostic(diagnostic);
     }
@@ -2018,7 +2020,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     std::string validationDiagnostic;
     std::vector<ScriptModReloadDiagnosticField> validationFields;
     if (!ValidateReloadDefinition(candidateDefinition, candidateExports, options, validationDiagnostic, &validationFields)) {
-        candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
+        candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
         ReleaseRuntimeOnly(candidateRuntime);
         const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Metadata, validationDiagnostic);
         return finish(false, validationDiagnostic, &failure, &validationFields);
@@ -2033,7 +2035,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                                                      {},
                                                      GetReloadAttemptId());
     }
-    candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
+    candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
     if (!ReleaseRuntimeOnly(candidateRuntime)) {
         const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
                                                               "Reload candidate cleanup failed; keeping previous runtime.");

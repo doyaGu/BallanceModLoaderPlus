@@ -483,7 +483,8 @@ static std::string MakeExportCanonicalKey(const std::string &name, const std::st
 bool ScriptExportTable::Cache(CKContext *context,
                               ScriptModRuntime &runtime,
                               const std::vector<ScriptModExportDefinition> &definitions,
-                              ScriptDiagnostic &diagnostic) {
+                              ScriptDiagnostic &diagnostic,
+                              bool publishChange) {
     for (const ScriptModExportDefinition &exportInfo : definitions) {
         ScriptExportBinding binding;
         binding.Name = exportInfo.Name;
@@ -524,11 +525,15 @@ bool ScriptExportTable::Cache(CKContext *context,
         return left.Name < right.Name;
     });
     RebuildIndex();
-    ExportRegistry::NotifyScriptExportsChanged();
+    if (publishChange)
+        ExportRegistry::NotifyScriptExportsChanged();
     return true;
 }
 
-bool ScriptExportTable::Release(CKContext *context, ScriptModRuntime &runtime, ScriptDiagnostic *diagnostic) {
+bool ScriptExportTable::Release(CKContext *context,
+                                ScriptModRuntime &runtime,
+                                ScriptDiagnostic *diagnostic,
+                                bool publishChange) {
     bool ok = true;
     ScriptDiagnostic firstFailure;
     for (auto &entry : m_Exports) {
@@ -542,7 +547,8 @@ bool ScriptExportTable::Release(CKContext *context, ScriptModRuntime &runtime, S
     m_Exports.clear();
     m_ExportsByName.clear();
     m_ExportsByCanonicalSignature.clear();
-    ExportRegistry::NotifyScriptExportsChanged();
+    if (publishChange)
+        ExportRegistry::NotifyScriptExportsChanged();
     if (!ok && diagnostic)
         *diagnostic = firstFailure;
     return ok;
@@ -611,11 +617,12 @@ bool ScriptExportTable::GetInfo(int index, std::string &name, std::string &signa
     return true;
 }
 
-void ScriptExportTable::Clear() {
+void ScriptExportTable::Clear(bool publishChange) {
     m_Exports.clear();
     m_ExportsByName.clear();
     m_ExportsByCanonicalSignature.clear();
-    ExportRegistry::NotifyScriptExportsChanged();
+    if (publishChange)
+        ExportRegistry::NotifyScriptExportsChanged();
 }
 
 void ScriptExportTable::RebuildIndex() {
