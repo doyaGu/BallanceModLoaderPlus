@@ -897,6 +897,6 @@ const std::vector<std::string> CommandScript::GetTabCompletion(IBML *bml, const 
         return context->GetScriptDevTools()->CompleteCommand(args);
 #endif
     if (args.size() == 2)
-        return {"status", "list", "info", "diag", "events"};
+        return {"status", "list", "info", "diag", "logs"};
     return {};
 }

@@ -180,6 +180,17 @@ int CompareLogs(const ScriptDevEvent &left, const ScriptDevEvent &right, int col
     }
 }
 
+int LogColumnFromSortSpec(const ImGuiTableColumnSortSpecs &spec) {
+    if (spec.ColumnUserID > 0) {
+        const int column = static_cast<int>(spec.ColumnUserID - 1);
+        if (column >= 0 && column < LogColumnCount)
+            return column;
+    }
+    if (spec.ColumnIndex >= 0 && spec.ColumnIndex < LogColumnCount)
+        return spec.ColumnIndex;
+    return LogColumnSequence;
+}
+
 void SortLogs(std::vector<ScriptDevEvent> &logs, const ImGuiTableSortSpecs *sortSpecs) {
     if (!sortSpecs || sortSpecs->SpecsCount <= 0)
         return;
@@ -187,7 +198,7 @@ void SortLogs(std::vector<ScriptDevEvent> &logs, const ImGuiTableSortSpecs *sort
     std::stable_sort(logs.begin(), logs.end(), [sortSpecs](const ScriptDevEvent &left, const ScriptDevEvent &right) {
         for (int i = 0; i < sortSpecs->SpecsCount; ++i) {
             const ImGuiTableColumnSortSpecs &spec = sortSpecs->Specs[i];
-            int cmp = CompareLogs(left, right, spec.ColumnIndex);
+            int cmp = CompareLogs(left, right, LogColumnFromSortSpec(spec));
             if (cmp == 0)
                 continue;
             if (spec.SortDirection == ImGuiSortDirection_Descending)
@@ -204,7 +215,29 @@ ImGuiTableColumnFlags LogColumnFlags(int column, const bool *visible) {
 
 void SetupLogColumns(const bool *visible) {
     for (int column = 0; column < LogColumnCount; ++column)
-        ImGui::TableSetupColumn(kLogColumns[column].Label, LogColumnFlags(column, visible), kLogColumns[column].Width);
+        ImGui::TableSetupColumn(kLogColumns[column].Label,
+                                LogColumnFlags(column, visible),
+                                kLogColumns[column].Width,
+                                static_cast<ImGuiID>(column + 1));
+}
+
+std::string LogCellText(const ScriptDevEvent &event, int column) {
+    switch (column) {
+    case LogColumnSequence:
+        return std::to_string(event.Sequence);
+    case LogColumnTime:
+        return FormatTimestamp(event.TimestampMs);
+    case LogColumnLevel:
+        return ToString(event.Severity);
+    case LogColumnSource:
+        return LogSource(event);
+    case LogColumnTag:
+        return event.Code;
+    case LogColumnMessage:
+        return event.Message;
+    default:
+        return {};
+    }
 }
 
 ImVec4 SeverityColor(ScriptDevEventSeverity severity) {
@@ -1094,27 +1127,43 @@ void ScriptDevToolsService::DrawLogsTab() {
 }
 
 void ScriptDevToolsService::DrawLogFilters() {
-    ImGui::TextUnformatted("level");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(96.0f);
-    ImGui::Combo("##script-dev-severity", &m_EventSeverityFilter, "all\0info\0warn\0error\0");
-    ImGui::SameLine();
-    ImGui::Checkbox("Pause auto scroll", &m_PauseEventScroll);
+    const ImGuiTableFlags flags = ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoSavedSettings;
+    if (ImGui::BeginTable("script-dev-log-filters", 4, flags)) {
+        ImGui::TableSetupColumn("label-a", ImGuiTableColumnFlags_WidthFixed, 52.0f);
+        ImGui::TableSetupColumn("filter-a", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("label-b", ImGuiTableColumnFlags_WidthFixed, 56.0f);
+        ImGui::TableSetupColumn("filter-b", ImGuiTableColumnFlags_WidthStretch);
 
-    ImGui::TextUnformatted("source");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(260.0f);
-    ImGui::InputText("##script-dev-source", m_EventSourceFilter, sizeof(m_EventSourceFilter));
-    ImGui::SameLine();
-    ImGui::TextUnformatted("tag");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(std::max(180.0f, ImGui::GetContentRegionAvail().x));
-    ImGui::InputText("##script-dev-code", m_EventCodeFilter, sizeof(m_EventCodeFilter));
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("level");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(96.0f);
+        ImGui::Combo("##script-dev-severity", &m_EventSeverityFilter, "all\0info\0warn\0error\0");
+        ImGui::SameLine();
+        ImGui::Checkbox("Pause", &m_PauseEventScroll);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Pause auto scroll");
+        ImGui::TableSetColumnIndex(2);
+        ImGui::TextUnformatted("source");
+        ImGui::TableSetColumnIndex(3);
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputText("##script-dev-source", m_EventSourceFilter, sizeof(m_EventSourceFilter));
 
-    ImGui::TextUnformatted("text");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(std::max(260.0f, ImGui::GetContentRegionAvail().x));
-    ImGui::InputText("##script-dev-search", m_EventSearch, sizeof(m_EventSearch));
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("tag");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputText("##script-dev-code", m_EventCodeFilter, sizeof(m_EventCodeFilter));
+        ImGui::TableSetColumnIndex(2);
+        ImGui::TextUnformatted("text");
+        ImGui::TableSetColumnIndex(3);
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputText("##script-dev-search", m_EventSearch, sizeof(m_EventSearch));
+
+        ImGui::EndTable();
+    }
 }
 
 void ScriptDevToolsService::RebuildLogCacheIfNeeded() {
@@ -1182,20 +1231,24 @@ void ScriptDevToolsService::DrawLogTable(float tableHeight) {
 
 void ScriptDevToolsService::DrawLogRow(const ScriptDevEvent &event) {
     ImGui::TableNextRow();
-    ImGui::TableNextColumn();
-    const std::string label = std::to_string(event.Sequence);
-    if (ImGui::Selectable(label.c_str(), m_SelectedEventSequence == event.Sequence, ImGuiSelectableFlags_SpanAllColumns))
-        m_SelectedEventSequence = event.Sequence;
-    ImGui::TableNextColumn();
-    ImGui::TextUnformatted(FormatTimestamp(event.TimestampMs).c_str());
-    ImGui::TableNextColumn();
-    ImGui::TextColored(SeverityColor(event.Severity), "%s", ToString(event.Severity));
-    ImGui::TableNextColumn();
-    ImGui::TextUnformatted(LogSource(event).c_str());
-    ImGui::TableNextColumn();
-    ImGui::TextUnformatted(event.Code.c_str());
-    ImGui::TableNextColumn();
-    ImGui::TextUnformatted(event.Message.c_str());
+    bool selectableDrawn = false;
+    const bool selected = m_SelectedEventSequence == event.Sequence;
+    for (int column = 0; column < LogColumnCount; ++column) {
+        if (!m_LogColumnVisible[column] || !ImGui::TableSetColumnIndex(column))
+            continue;
+
+        const std::string text = LogCellText(event, column);
+        if (!selectableDrawn) {
+            const std::string label = text + "##script-dev-log-row-" + std::to_string(event.Sequence);
+            if (ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns))
+                m_SelectedEventSequence = event.Sequence;
+            selectableDrawn = true;
+        } else if (column == LogColumnLevel) {
+            ImGui::TextColored(SeverityColor(event.Severity), "%s", text.c_str());
+        } else {
+            ImGui::TextUnformatted(text.c_str());
+        }
+    }
 }
 
 const ScriptDevEvent *ScriptDevToolsService::FindSelectedLog() const {
@@ -1229,9 +1282,12 @@ void ScriptDevToolsService::DrawLogDetail(const ScriptDevEvent *selectedLog) {
                         ToString(selectedLog->Severity));
             ImGui::SameLine();
             ImGui::TextColored(SeverityColor(selectedLog->Severity), "%s", selectedLog->Code.c_str());
-            if (!selectedLog->ModId.empty())
-                ImGui::Text("source %s", selectedLog->ModId.c_str());
-            if (!selectedLog->SourcePath.empty())
+            const std::string source = LogSource(*selectedLog);
+            if (!source.empty())
+                ImGui::Text("source %s", source.c_str());
+            if (!selectedLog->ModId.empty() && selectedLog->ModId != source)
+                ImGui::Text("mod %s", selectedLog->ModId.c_str());
+            if (!selectedLog->SourcePath.empty() && selectedLog->SourcePath != source)
                 ImGui::TextWrapped("path %s", selectedLog->SourcePath.c_str());
             ImGui::Separator();
             ImGui::TextWrapped("%s", selectedLog->Message.c_str());
