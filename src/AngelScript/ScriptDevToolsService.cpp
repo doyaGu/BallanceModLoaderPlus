@@ -22,7 +22,7 @@ enum LogColumn {
     LogColumnLevel,
     LogColumnSource,
     LogColumnAttempt,
-    LogColumnTag,
+    LogColumnCode,
     LogColumnMessage,
     LogColumnCount,
 };
@@ -40,8 +40,8 @@ const LogColumnSpec kLogColumns[LogColumnCount] = {
     {"time", ImGuiTableColumnFlags_WidthFixed, 92.0f},
     {"level", ImGuiTableColumnFlags_WidthFixed, 64.0f},
     {"source", ImGuiTableColumnFlags_WidthFixed, 145.0f},
-    {"attempt", ImGuiTableColumnFlags_WidthFixed, 70.0f},
-    {"tag", ImGuiTableColumnFlags_WidthFixed, 185.0f},
+    {"reload id", ImGuiTableColumnFlags_WidthFixed, 82.0f},
+    {"event code", ImGuiTableColumnFlags_WidthFixed, 185.0f},
     {"message", ImGuiTableColumnFlags_WidthStretch, 0.0f},
 };
 
@@ -112,7 +112,7 @@ int CompareLogs(const ScriptDevEvent &left, const ScriptDevEvent &right, int col
         return CompareText(ScriptDevLogSource(left), ScriptDevLogSource(right));
     case LogColumnAttempt:
         return left.ReloadAttemptId < right.ReloadAttemptId ? -1 : (right.ReloadAttemptId < left.ReloadAttemptId ? 1 : 0);
-    case LogColumnTag:
+    case LogColumnCode:
         return CompareText(left.Code, right.Code);
     case LogColumnMessage:
         return CompareText(left.Message, right.Message);
@@ -174,7 +174,7 @@ std::string LogCellText(const ScriptDevEvent &event, int column) {
         return ScriptDevLogSource(event);
     case LogColumnAttempt:
         return event.ReloadAttemptId == 0 ? "" : std::to_string(event.ReloadAttemptId);
-    case LogColumnTag:
+    case LogColumnCode:
         return event.Code;
     case LogColumnMessage:
         return event.Message;
@@ -547,7 +547,7 @@ std::vector<std::string> ScriptDevToolsService::FormatLogs(const std::string &se
         if (!it->Phase.empty())
             stream << " phase=" << it->Phase;
         if (it->ReloadAttemptId != 0)
-            stream << " attempt=" << it->ReloadAttemptId;
+            stream << " reloadId=" << it->ReloadAttemptId;
         if (!it->SourcePath.empty())
             stream << " source=" << it->SourcePath;
         stream << " - " << it->Message;
@@ -1055,59 +1055,52 @@ void ScriptDevToolsService::DrawLogsTab() {
 }
 
 void ScriptDevToolsService::DrawLogFilters() {
-    const ImGuiTableFlags flags = ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoSavedSettings;
-    if (ImGui::BeginTable("script-dev-log-filters", 4, flags)) {
-        ImGui::TableSetupColumn("label-a", ImGuiTableColumnFlags_WidthFixed, 52.0f);
-        ImGui::TableSetupColumn("filter-a", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("label-b", ImGuiTableColumnFlags_WidthFixed, 56.0f);
-        ImGui::TableSetupColumn("filter-b", ImGuiTableColumnFlags_WidthStretch);
+    const ImGuiStyle &style = ImGui::GetStyle();
+    const float fullWidth = ImGui::GetContentRegionAvail().x;
 
-        ImGui::TableNextRow();
-        ImGui::TableSetColumnIndex(0);
-        ImGui::TextUnformatted("level");
-        ImGui::TableSetColumnIndex(1);
-        ImGui::SetNextItemWidth(96.0f);
-        ImGui::Combo("##script-dev-severity", &m_EventSeverityFilter, "all\0info\0warn\0error\0");
-        ImGui::TableSetColumnIndex(2);
-        ImGui::TextUnformatted("source");
-        ImGui::TableSetColumnIndex(3);
-        ImGui::SetNextItemWidth(-1.0f);
-        ImGui::InputText("##script-dev-source", m_EventSourceFilter, sizeof(m_EventSourceFilter));
+    ImGui::TextUnformatted("Level");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(96.0f);
+    ImGui::Combo("##script-dev-severity", &m_EventSeverityFilter, "all\0info\0warn\0error\0");
+    ImGui::SameLine();
+    ImGui::TextUnformatted("Source");
+    ImGui::SameLine();
+    const float sourceWidth = std::max(160.0f, ImGui::GetContentRegionAvail().x);
+    ImGui::SetNextItemWidth(sourceWidth);
+    ImGui::InputText("##script-dev-source", m_EventSourceFilter, sizeof(m_EventSourceFilter));
 
-        ImGui::TableNextRow();
-        ImGui::TableSetColumnIndex(0);
-        ImGui::TextUnformatted("tag");
-        ImGui::TableSetColumnIndex(1);
-        ImGui::SetNextItemWidth(-1.0f);
+    ImGui::TextUnformatted("Search");
+    ImGui::SameLine();
+    const float searchWidth = std::max(220.0f, fullWidth - 72.0f);
+    ImGui::SetNextItemWidth(searchWidth);
+    ImGui::InputText("##script-dev-search", m_EventSearch, sizeof(m_EventSearch));
+
+    ImGui::Checkbox("This Mod", &m_LogSelectedModOnly);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Only show logs whose mod id matches the selected mod.");
+    ImGui::SameLine();
+    ImGui::Checkbox("Reload Only", &m_LogReloadOnly);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Only show reload lifecycle logs.");
+    ImGui::SameLine();
+    ImGui::Checkbox("Pause", &m_PauseEventScroll);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Pause auto scroll.");
+    ImGui::SameLine(0.0f, style.ItemSpacing.x * 2.0f);
+    if (ImGui::Button(m_ShowAdvancedLogFilters ? "Hide Advanced" : "Advanced"))
+        m_ShowAdvancedLogFilters = !m_ShowAdvancedLogFilters;
+
+    if (m_ShowAdvancedLogFilters) {
+        ImGui::TextUnformatted("Event");
+        ImGui::SameLine();
+        const float eventWidth = std::max(180.0f, (fullWidth - 112.0f) * 0.58f);
+        ImGui::SetNextItemWidth(eventWidth);
         ImGui::InputText("##script-dev-code", m_EventCodeFilter, sizeof(m_EventCodeFilter));
-        ImGui::TableSetColumnIndex(2);
-        ImGui::TextUnformatted("text");
-        ImGui::TableSetColumnIndex(3);
-        ImGui::SetNextItemWidth(-1.0f);
-        ImGui::InputText("##script-dev-search", m_EventSearch, sizeof(m_EventSearch));
-
-        ImGui::TableNextRow();
-        ImGui::TableSetColumnIndex(0);
-        ImGui::TextUnformatted("scope");
-        ImGui::TableSetColumnIndex(1);
-        ImGui::Checkbox("Selected Mod", &m_LogSelectedModOnly);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Only show logs whose mod id matches the selected mod.");
         ImGui::SameLine();
-        ImGui::Checkbox("Reload", &m_LogReloadOnly);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Only show reload lifecycle logs.");
+        ImGui::TextUnformatted("Reload Id");
         ImGui::SameLine();
-        ImGui::Checkbox("Pause", &m_PauseEventScroll);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Pause auto scroll.");
-        ImGui::TableSetColumnIndex(2);
-        ImGui::TextUnformatted("attempt");
-        ImGui::TableSetColumnIndex(3);
-        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::SetNextItemWidth(std::max(80.0f, ImGui::GetContentRegionAvail().x));
         ImGui::InputText("##script-dev-attempt", m_EventAttemptFilter, sizeof(m_EventAttemptFilter));
-
-        ImGui::EndTable();
     }
 }
 
@@ -1127,7 +1120,7 @@ void ScriptDevToolsService::RebuildLogCacheIfNeeded() {
                                          m_LogReloadOnly};
     if (eventGeneration != m_FilteredEventCacheGeneration ||
         m_EventSeverityFilter != m_FilteredEventSeverityFilter ||
-        filters.Tag != m_FilteredEventCodeFilter ||
+        filters.Code != m_FilteredEventCodeFilter ||
         filters.Source != m_FilteredEventSourceFilter ||
         filters.Attempt != m_FilteredEventAttemptFilter ||
         filters.Text != m_FilteredEventSearch ||
@@ -1137,7 +1130,7 @@ void ScriptDevToolsService::RebuildLogCacheIfNeeded() {
         m_FilteredEventCache = FilterScriptDevEvents(GetEventSnapshot(), filters, 1000);
         m_FilteredEventCacheGeneration = eventGeneration;
         m_FilteredEventSeverityFilter = m_EventSeverityFilter;
-        m_FilteredEventCodeFilter = filters.Tag;
+        m_FilteredEventCodeFilter = filters.Code;
         m_FilteredEventSourceFilter = filters.Source;
         m_FilteredEventAttemptFilter = filters.Attempt;
         m_FilteredEventSearch = filters.Text;
@@ -1216,10 +1209,10 @@ void ScriptDevToolsService::CopyLogToClipboard(const ScriptDevEvent &event) cons
     stream << "sequence: " << event.Sequence << '\n'
            << "time: " << FormatTimestamp(event.TimestampMs) << '\n'
            << "severity: " << ToString(event.Severity) << '\n'
-           << "tag: " << event.Code << '\n'
+           << "eventCode: " << event.Code << '\n'
            << "mod: " << event.ModId << '\n'
            << "phase: " << event.Phase << '\n'
-           << "attempt: " << event.ReloadAttemptId << '\n'
+           << "reloadId: " << event.ReloadAttemptId << '\n'
            << "source: " << event.SourcePath << '\n'
            << "message: " << event.Message << '\n';
     if (!event.Fields.empty()) {
@@ -1241,13 +1234,15 @@ void ScriptDevToolsService::DrawLogDetail(const ScriptDevEvent *selectedLog) {
                         static_cast<unsigned long long>(selectedLog->Sequence),
                         FormatTimestamp(selectedLog->TimestampMs).c_str(),
                         ToString(selectedLog->Severity));
-            ImGui::SameLine();
-            ImGui::TextColored(SeverityColor(selectedLog->Severity), "%s", selectedLog->Code.c_str());
+            if (selectedLog->Code != "LogLine") {
+                ImGui::SameLine();
+                ImGui::TextColored(SeverityColor(selectedLog->Severity), "event %s", selectedLog->Code.c_str());
+            }
             const std::string source = ScriptDevLogSource(*selectedLog);
             if (!source.empty())
                 ImGui::Text("source %s", source.c_str());
             if (selectedLog->ReloadAttemptId != 0)
-                ImGui::Text("attempt %u", selectedLog->ReloadAttemptId);
+                ImGui::Text("reload id %u", selectedLog->ReloadAttemptId);
             if (!selectedLog->ModId.empty() && selectedLog->ModId != source)
                 ImGui::Text("mod %s", selectedLog->ModId.c_str());
             if (!selectedLog->SourcePath.empty() && selectedLog->SourcePath != source)

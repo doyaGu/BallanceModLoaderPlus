@@ -188,7 +188,8 @@ private:
     bool m_InputBlockTokenActive = false;
     bool m_LogSelectedModOnly = false;
     bool m_LogReloadOnly = false;
-    bool m_LogColumnVisible[7] = {true, true, true, true, true, true, true};
+    bool m_ShowAdvancedLogFilters = false;
+    bool m_LogColumnVisible[7] = {true, true, true, true, false, false, true};
     std::vector<ScriptDevEvent> m_FilteredEventCache;
     uint64_t m_FilteredEventCacheGeneration = 0;
     int m_FilteredEventSeverityFilter = -1;

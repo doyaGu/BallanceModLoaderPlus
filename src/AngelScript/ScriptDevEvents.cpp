@@ -133,7 +133,7 @@ bool ScriptDevLogMatchesFilters(const ScriptDevEvent &event, const ScriptDevLogF
         return false;
     if (filters.ReloadOnly && !IsReloadLog(event))
         return false;
-    if (!ContainsInsensitive(event.Code, filters.Tag))
+    if (!ContainsInsensitive(event.Code, filters.Code))
         return false;
 
     const std::string sourceHaystack = ScriptDevLogSource(event) + " " + event.SourcePath;

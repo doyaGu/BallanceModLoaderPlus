@@ -73,7 +73,7 @@ TEST(ScriptDevEventFilterTest, MatchesReloadAttemptSelectedModSourceAndText) {
     EXPECT_EQ(7u, filtered[0].ReloadAttemptId);
 }
 
-TEST(ScriptDevEventFilterTest, ReloadOnlyIncludesReloadPhaseAndScriptReloadTags) {
+TEST(ScriptDevEventFilterTest, ReloadOnlyIncludesReloadPhaseAndScriptReloadCodes) {
     std::vector<ScriptDevEvent> events;
     events.push_back(MakeEvent("LogLine", "hello.script", "regular log"));
 
@@ -81,9 +81,9 @@ TEST(ScriptDevEventFilterTest, ReloadOnlyIncludesReloadPhaseAndScriptReloadTags)
     byPhase.Phase = "reload";
     events.push_back(byPhase);
 
-    ScriptDevEvent byTag = MakeEvent("ScriptReloadCommitted", "hello.script", "tag reload");
-    byTag.Phase = "other";
-    events.push_back(byTag);
+    ScriptDevEvent byCode = MakeEvent("ScriptReloadCommitted", "hello.script", "code reload");
+    byCode.Phase = "other";
+    events.push_back(byCode);
 
     ScriptDevLogFilters filters;
     filters.ReloadOnly = true;

@@ -33,7 +33,7 @@ struct ScriptDevEvent {
 
 struct ScriptDevLogFilters {
     std::string Severity;
-    std::string Tag;
+    std::string Code;
     std::string Source;
     std::string Attempt;
     std::string Text;
