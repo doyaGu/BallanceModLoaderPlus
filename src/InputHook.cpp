@@ -145,23 +145,23 @@ struct InputHook::Impl {
     }
 
     static uint32_t NormalizeBlockMask(uint32_t mask) {
-        return mask & InputHook::InputBlockAll;
+        return mask & InputHook::INPUT_BLOCK_ALL;
     }
 
     static void ApplyBlockMask(uint32_t mask, bool block) {
-        if (mask & InputHook::InputBlockKeyboard) {
+        if (mask & InputHook::INPUT_BLOCK_KEYBOARD) {
             if (block)
                 Block(CK_INPUT_DEVICE_KEYBOARD);
             else
                 Unblock(CK_INPUT_DEVICE_KEYBOARD);
         }
-        if (mask & InputHook::InputBlockMouse) {
+        if (mask & InputHook::INPUT_BLOCK_MOUSE) {
             if (block)
                 Block(CK_INPUT_DEVICE_MOUSE);
             else
                 Unblock(CK_INPUT_DEVICE_MOUSE);
         }
-        if (mask & InputHook::InputBlockJoystick) {
+        if (mask & InputHook::INPUT_BLOCK_JOYSTICK) {
             if (block)
                 Block(CK_INPUT_DEVICE_JOYSTICK);
             else

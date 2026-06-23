@@ -1,6 +1,7 @@
 #ifndef BML_SCRIPTFACADEACCESS_H
 #define BML_SCRIPTFACADEACCESS_H
 
+#include <cstdint>
 #include <string>
 
 #include "CKAll.h"
@@ -279,6 +280,15 @@ inline void Block(InputHook *input, int device) {
 inline void Unblock(InputHook *input, int device) {
     if (input)
         input->Unblock(static_cast<CK_INPUT_DEVICE>(device));
+}
+
+inline uint64_t AcquireBlock(InputHook *input, uint32_t mask) {
+    return input ? input->AcquireBlock(mask) : 0;
+}
+
+inline void ReleaseBlock(InputHook *input, uint64_t token) {
+    if (input)
+        input->ReleaseBlock(token);
 }
 
 inline bool IsObjectValid(CKObject *object) {

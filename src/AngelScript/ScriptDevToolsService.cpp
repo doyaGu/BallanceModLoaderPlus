@@ -1121,7 +1121,7 @@ void ScriptDevToolsService::BlockGameInput() {
     if (!m_Context || !m_Context->GetInputManager())
         return;
 
-    m_InputBlockToken = m_Context->GetInputManager()->AcquireBlock(InputHook::InputBlockAll);
+    m_InputBlockToken = m_Context->GetInputManager()->AcquireBlock(InputHook::INPUT_BLOCK_ALL);
 }
 
 void ScriptDevToolsService::UnblockGameInput() {

@@ -81,11 +81,11 @@ public:
     void Block(CK_INPUT_DEVICE device);
     void Unblock(CK_INPUT_DEVICE device);
 
-    enum InputBlockDeviceMask : uint32_t {
-        InputBlockKeyboard = 1u << CK_INPUT_DEVICE_KEYBOARD,
-        InputBlockMouse = 1u << CK_INPUT_DEVICE_MOUSE,
-        InputBlockJoystick = 1u << CK_INPUT_DEVICE_JOYSTICK,
-        InputBlockAll = InputBlockKeyboard | InputBlockMouse | InputBlockJoystick,
+    enum InputBlockMask : uint32_t {
+        INPUT_BLOCK_KEYBOARD = 1u << CK_INPUT_DEVICE_KEYBOARD,
+        INPUT_BLOCK_MOUSE = 1u << CK_INPUT_DEVICE_MOUSE,
+        INPUT_BLOCK_JOYSTICK = 1u << CK_INPUT_DEVICE_JOYSTICK,
+        INPUT_BLOCK_ALL = INPUT_BLOCK_KEYBOARD | INPUT_BLOCK_MOUSE | INPUT_BLOCK_JOYSTICK,
     };
     uint64_t AcquireBlock(uint32_t deviceMask);
     void ReleaseBlock(uint64_t token);

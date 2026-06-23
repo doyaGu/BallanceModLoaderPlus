@@ -421,6 +421,8 @@ static void BMLAS_InputHookSetBlock(InputHook *input, bool block) { BML::ScriptF
 static int BMLAS_InputHookIsBlocked(InputHook *input, int device) { return BML::ScriptFacadeAccess::IsBlocked(input, device); }
 static void BMLAS_InputHookBlock(InputHook *input, int device) { BML::ScriptFacadeAccess::Block(input, device); }
 static void BMLAS_InputHookUnblock(InputHook *input, int device) { BML::ScriptFacadeAccess::Unblock(input, device); }
+static uint64_t BMLAS_InputHookAcquireBlock(InputHook *input, unsigned int mask) { return BML::ScriptFacadeAccess::AcquireBlock(input, mask); }
+static void BMLAS_InputHookReleaseBlock(InputHook *input, uint64_t token) { BML::ScriptFacadeAccess::ReleaseBlock(input, token); }
 
 bool BMLAS_IsObjectValid(CKObject *object) {
     return BML::ScriptFacadeAccess::IsObjectValid(object);
@@ -3743,6 +3745,8 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"InputHook", "int IsBlocked(InputDevice device) const", "int InputHook::IsBlocked(InputDevice device) const", asFUNCTION(BMLAS_InputHookIsBlocked), asCALL_CDECL_OBJFIRST},
     {"InputHook", "void Block(InputDevice device) const", "void InputHook::Block(InputDevice device) const", asFUNCTION(BMLAS_InputHookBlock), asCALL_CDECL_OBJFIRST},
     {"InputHook", "void Unblock(InputDevice device) const", "void InputHook::Unblock(InputDevice device) const", asFUNCTION(BMLAS_InputHookUnblock), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "uint64 AcquireBlock(uint mask) const", "uint64 InputHook::AcquireBlock(uint mask) const", asFUNCTION(BMLAS_InputHookAcquireBlock), asCALL_CDECL_OBJFIRST},
+    {"InputHook", "void ReleaseBlock(uint64 token) const", "void InputHook::ReleaseBlock(uint64 token) const", asFUNCTION(BMLAS_InputHookReleaseBlock), asCALL_CDECL_OBJFIRST},
     {"ModRef", "string get_Id() const", "string ModRef::get_Id() const", asMETHOD(BMLAS_ModRef, GetId), asCALL_THISCALL},
     {"ModRef", "string GetId() const", "string ModRef::GetId() const", asMETHOD(BMLAS_ModRef, GetId), asCALL_THISCALL},
     {"ModRef", "string get_Name() const", "string ModRef::get_Name() const", asMETHOD(BMLAS_ModRef, GetName), asCALL_THISCALL},

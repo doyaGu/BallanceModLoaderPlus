@@ -113,6 +113,13 @@ static const ScriptEnumValueContract kInputDeviceValues[] = {
     {"INPUT_DEVICE_COUNT", CK_INPUT_DEVICE_COUNT, "InputDevice::INPUT_DEVICE_COUNT"},
 };
 
+static const ScriptEnumValueContract kInputBlockMaskValues[] = {
+    {"INPUT_BLOCK_KEYBOARD", InputHook::INPUT_BLOCK_KEYBOARD, "InputBlockMask::INPUT_BLOCK_KEYBOARD"},
+    {"INPUT_BLOCK_MOUSE", InputHook::INPUT_BLOCK_MOUSE, "InputBlockMask::INPUT_BLOCK_MOUSE"},
+    {"INPUT_BLOCK_JOYSTICK", InputHook::INPUT_BLOCK_JOYSTICK, "InputBlockMask::INPUT_BLOCK_JOYSTICK"},
+    {"INPUT_BLOCK_ALL", InputHook::INPUT_BLOCK_ALL, "InputBlockMask::INPUT_BLOCK_ALL"},
+};
+
 static const ScriptEnumValueContract kInputKeyEventValues[] = {
     {"INPUT_KEY_NONE", NO_KEY, "InputKeyEvent::INPUT_KEY_NONE"},
     {"INPUT_KEY_PRESSED", KEY_PRESSED, "InputKeyEvent::INPUT_KEY_PRESSED"},
@@ -199,6 +206,7 @@ static const ScriptEnumContract kEnums[] = {
     {"ModState", "enum ModState", kModStateValues, sizeof(kModStateValues) / sizeof(kModStateValues[0])},
     {"HudFlag", "enum HudFlag", kHudFlagValues, sizeof(kHudFlagValues) / sizeof(kHudFlagValues[0])},
     {"InputDevice", "enum InputDevice", kInputDeviceValues, sizeof(kInputDeviceValues) / sizeof(kInputDeviceValues[0])},
+    {"InputBlockMask", "enum InputBlockMask", kInputBlockMaskValues, sizeof(kInputBlockMaskValues) / sizeof(kInputBlockMaskValues[0])},
     {"InputKeyEvent", "enum InputKeyEvent", kInputKeyEventValues, sizeof(kInputKeyEventValues) / sizeof(kInputKeyEventValues[0])},
     {"InputButtonState", "enum InputButtonState", kInputButtonStateValues, sizeof(kInputButtonStateValues) / sizeof(kInputButtonStateValues[0])},
     {"CursorPointer", "enum CursorPointer", kCursorPointerValues, sizeof(kCursorPointerValues) / sizeof(kCursorPointerValues[0])},

@@ -1309,7 +1309,7 @@ namespace Bui {
         if (!ctx) return;
         if (g_KeyboardInputBlockToken == 0) {
             if (auto *input = ctx->GetInputManager())
-                g_KeyboardInputBlockToken = input->AcquireBlock(InputHook::InputBlockKeyboard);
+                g_KeyboardInputBlockToken = input->AcquireBlock(InputHook::INPUT_BLOCK_KEYBOARD);
         }
     }
 

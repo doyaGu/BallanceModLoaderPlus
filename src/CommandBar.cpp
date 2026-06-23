@@ -376,7 +376,7 @@ void CommandBar::ToggleCommandBar(bool on) {
         m_Buffer[0] = '\0';
         if (m_InputBlockToken == 0) {
             if (auto *input = context->GetInputManager())
-                m_InputBlockToken = input->AcquireBlock(InputHook::InputBlockKeyboard);
+                m_InputBlockToken = input->AcquireBlock(InputHook::INPUT_BLOCK_KEYBOARD);
         }
         m_HistoryIndex = static_cast<int>(m_History.size());
     } else {
