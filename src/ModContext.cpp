@@ -1107,6 +1107,7 @@ void ModContext::OnProcess() {
 
 #if BML_ENABLE_ANGELSCRIPT
     BML_TryRegisterAngelScriptBindings(this);
+    ProcessScriptModQueuedCallbacks();
     ProcessScriptModFailureCleanup();
     if (m_ScriptDevTools)
         m_ScriptDevTools->ProcessActions();
@@ -1724,6 +1725,13 @@ void ModContext::ProcessScriptModFailureCleanup() {
     for (const auto &scriptMod : m_ScriptMods) {
         if (scriptMod)
             scriptMod->ProcessFailureCleanup();
+    }
+}
+
+void ModContext::ProcessScriptModQueuedCallbacks() {
+    for (const auto &scriptMod : m_ScriptMods) {
+        if (scriptMod)
+            scriptMod->ProcessQueuedScriptServiceCallbacks();
     }
 }
 

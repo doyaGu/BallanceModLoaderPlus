@@ -90,7 +90,9 @@ BML::DataShareCallback@ cb = BML::DataShareCallback(this.OnValue);
 ctx.RequestDataShare("key", BML::DATASHARE_STRING, cb, "ns");
 ```
 
-One-shot. If value exists, callback may fire immediately.
+One-shot. Script callbacks are queued to the BML main-thread safe point; if the
+value already exists, the callback runs on a later process tick rather than
+inside `RequestDataShare`.
 
 Types: DATASHARE_STRING, DATASHARE_BOOL, DATASHARE_INT, DATASHARE_FLOAT
 

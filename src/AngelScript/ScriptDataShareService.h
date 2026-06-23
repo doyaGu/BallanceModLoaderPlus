@@ -83,6 +83,7 @@ public:
                                        int type,
                                        asIScriptFunction *callback,
                                        const std::string &name);
+    void ProcessQueuedCallbacks();
     void Release(ScriptDiagnostic *diagnostic = nullptr);
     size_t GetActiveCount() const;
 

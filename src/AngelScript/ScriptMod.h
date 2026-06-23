@@ -247,6 +247,7 @@ public:
     int CallExport(const std::string &name, const std::string &signature, BML_CallFrame *frame);
     ScriptModReloadResult TryHotReload(const ScriptModReloadOptions &options);
     ScriptModReloadResult TryHotReloadDryRun(const ScriptModReloadOptions &options);
+    void ProcessQueuedScriptServiceCallbacks();
     void ProcessFailureCleanup();
     bool CanDispatchScriptServiceCallback();
     bool EnterScriptCall() const;

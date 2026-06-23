@@ -128,6 +128,11 @@ not dynamic mod discovery and not dependency graph reconstruction.
   Long-running script work should be expressed through BML Timer/Command/DataShare
   when it is a BML mod concern, or through CKAS `Async`/`Message` when it is
   runtime/component script coordination.
+- Script DataShare request callbacks are delivered only from the BML main
+  thread safe point. Native DataShare may trigger on any caller thread, but the
+  script facade copies the payload and drains the callback queue before reload,
+  timer, and normal mod-process callbacks. Reload or unload drops queued
+  DataShare callbacks that have not yet executed.
 - Source builds may set `BML_ENABLE_ANGELSCRIPT=OFF`. Official
   script-capable release packages include the matching CKAngelScript runtime and
   SDK headers.

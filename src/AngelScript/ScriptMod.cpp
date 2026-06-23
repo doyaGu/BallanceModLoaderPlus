@@ -1416,6 +1416,10 @@ ScriptDataShareRequestRef *ScriptMod::RequestScriptDataShare(const std::string &
     return m_DataShareRequests.Request(key, type, callback, name);
 }
 
+void ScriptMod::ProcessQueuedScriptServiceCallbacks() {
+    m_DataShareRequests.ProcessQueuedCallbacks();
+}
+
 bool ScriptMod::RegisterScriptBallType(const std::string &ballFile,
                                        const std::string &ballId,
                                        const std::string &ballName,

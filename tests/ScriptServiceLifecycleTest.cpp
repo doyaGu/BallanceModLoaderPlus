@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "AngelScript/ScriptCommandService.h"
@@ -211,12 +212,139 @@ TEST_F(ScriptServiceLifecycleTest, DataShareReleaseSuppressesOldCallbackAndRunsN
     BML_DataShare_Release(share);
 
     EXPECT_EQ(0, oldCalls);
+    EXPECT_EQ(0, newCalls);
+    ASSERT_TRUE(newRef->IsValid());
+    newService.ProcessQueuedCallbacks();
     EXPECT_EQ(1, newCalls);
     EXPECT_FALSE(ref->IsValid());
     EXPECT_FALSE(newRef->IsValid());
 
     ref->Release();
     newRef->Release();
+}
+
+TEST_F(ScriptServiceLifecycleTest, DataShareCallbackQueuesUntilServiceDrain) {
+    int calls = 0;
+    const char value[] = "queued";
+
+    ScriptDataShareService service;
+    ScriptDataShareRequestRef *ref = service.AddTestRequestForRelease(
+        "script-service-queued-datashare",
+        ScriptDataShareRequestType::String,
+        [&calls](const ScriptDataShareEventView &event) {
+            EXPECT_TRUE(event.Exists());
+            EXPECT_EQ(std::string("queued"), event.GetString());
+            ++calls;
+        });
+    ASSERT_NE(nullptr, ref);
+
+    BML_DataShare *share = BML_GetDataShare(nullptr);
+    ASSERT_NE(nullptr, share);
+    EXPECT_EQ(1, BML_DataShare_Set(share, "script-service-queued-datashare", value, sizeof(value)));
+    BML_DataShare_Release(share);
+
+    EXPECT_EQ(0, calls);
+    EXPECT_TRUE(ref->IsValid());
+
+    service.ProcessQueuedCallbacks();
+
+    EXPECT_EQ(1, calls);
+    EXPECT_FALSE(ref->IsValid());
+    ref->Release();
+}
+
+TEST_F(ScriptServiceLifecycleTest, DataShareReleaseDropsQueuedCallback) {
+    int calls = 0;
+    const char value[] = "dropped";
+
+    ScriptDataShareService service;
+    ScriptDataShareRequestRef *ref = service.AddTestRequestForRelease(
+        "script-service-drop-queued-datashare",
+        ScriptDataShareRequestType::String,
+        [&calls](const ScriptDataShareEventView &) {
+            ++calls;
+        });
+    ASSERT_NE(nullptr, ref);
+
+    BML_DataShare *share = BML_GetDataShare(nullptr);
+    ASSERT_NE(nullptr, share);
+    EXPECT_EQ(1, BML_DataShare_Set(share, "script-service-drop-queued-datashare", value, sizeof(value)));
+    BML_DataShare_Release(share);
+
+    service.Release();
+    service.ProcessQueuedCallbacks();
+
+    EXPECT_EQ(0, calls);
+    EXPECT_FALSE(ref->IsValid());
+    ref->Release();
+}
+
+TEST_F(ScriptServiceLifecycleTest, DataShareCancelDropsQueuedCallback) {
+    int calls = 0;
+    const char value[] = "cancelled";
+
+    ScriptDataShareService service;
+    ScriptDataShareRequestRef *ref = service.AddTestRequestForRelease(
+        "script-service-cancel-queued-datashare",
+        ScriptDataShareRequestType::String,
+        [&calls](const ScriptDataShareEventView &) {
+            ++calls;
+        });
+    ASSERT_NE(nullptr, ref);
+
+    BML_DataShare *share = BML_GetDataShare(nullptr);
+    ASSERT_NE(nullptr, share);
+    EXPECT_EQ(1, BML_DataShare_Set(share, "script-service-cancel-queued-datashare", value, sizeof(value)));
+    BML_DataShare_Release(share);
+
+    EXPECT_TRUE(ref->IsValid());
+    EXPECT_TRUE(ref->Cancel());
+    EXPECT_FALSE(ref->IsValid());
+
+    service.ProcessQueuedCallbacks();
+
+    EXPECT_EQ(0, calls);
+    EXPECT_FALSE(ref->IsValid());
+    ref->Release();
+}
+
+TEST_F(ScriptServiceLifecycleTest, DataShareWorkerThreadTriggerRunsOnServiceDrainThread) {
+    int calls = 0;
+    std::thread::id triggerThread;
+    std::thread::id callbackThread;
+    const std::thread::id drainThread = std::this_thread::get_id();
+    const char value[] = "worker";
+
+    ScriptDataShareService service;
+    ScriptDataShareRequestRef *ref = service.AddTestRequestForRelease(
+        "script-service-worker-datashare",
+        ScriptDataShareRequestType::String,
+        [&](const ScriptDataShareEventView &event) {
+            EXPECT_TRUE(event.Exists());
+            EXPECT_EQ(std::string("worker"), event.GetString());
+            callbackThread = std::this_thread::get_id();
+            ++calls;
+        });
+    ASSERT_NE(nullptr, ref);
+
+    std::thread worker([&]() {
+        triggerThread = std::this_thread::get_id();
+        BML_DataShare *share = BML_GetDataShare(nullptr);
+        ASSERT_NE(nullptr, share);
+        EXPECT_EQ(1, BML_DataShare_Set(share, "script-service-worker-datashare", value, sizeof(value)));
+        BML_DataShare_Release(share);
+    });
+    worker.join();
+
+    EXPECT_EQ(0, calls);
+
+    service.ProcessQueuedCallbacks();
+
+    EXPECT_EQ(1, calls);
+    EXPECT_EQ(drainThread, callbackThread);
+    EXPECT_NE(triggerThread, callbackThread);
+    EXPECT_FALSE(ref->IsValid());
+    ref->Release();
 }
 
 } // namespace Test

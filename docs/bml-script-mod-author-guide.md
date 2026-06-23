@@ -1063,10 +1063,14 @@ int size = BML::DataShareSizeOf("feature.enabled", "BML");
 
 Typed request objects become inert after completion, cancellation, or mod
 unload. Implement `BML::DataShareRequest`, then pass the object to
-`RequestDataShare`. If the value is already available, the callback may run
-before `RequestDataShare` returns and the returned ref may already be invalid.
-The delegate overload has the same lifecycle rules and uses the current default
-DataShare namespace when `name` is empty.
+`RequestDataShare`. Script DataShare callbacks are queued onto the BML main
+thread safe point; they do not run inside `RequestDataShare`, `DataShareSet*`,
+or native DataShare trigger call stacks. If the value is already available, the
+returned ref can remain valid until the queued callback is drained on a later
+process tick, then becomes invalid after the one-shot callback completes.
+Reload or unload cancels queued callbacks that have not run yet. The delegate
+overload has the same lifecycle rules and uses the current default DataShare
+namespace when `name` is empty.
 
 ```angelscript
 class GreetingRequest : BML::DataShareRequest {
