@@ -123,6 +123,13 @@ static bool ReadStringProperty(asIScriptObject *object,
         return !required;
     }
 
+    ScriptHostCallScope activeCall(owner);
+    if (owner && !activeCall.Entered()) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, "Script mod reload is in progress.");
+        diagnostic.Status = CKAS_INUSE;
+        return false;
+    }
+
     asIScriptContext *context = object->GetEngine()->CreateContext();
     if (!context) {
         diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, "Unable to create AngelScript context for DataShare request property.");
@@ -170,6 +177,13 @@ static bool ReadIntProperty(asIScriptObject *object,
     if (!method) {
         diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
             std::string("DataShare request object is missing property: ") + declaration);
+        return false;
+    }
+
+    ScriptHostCallScope activeCall(owner);
+    if (owner && !activeCall.Entered()) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, "Script mod reload is in progress.");
+        diagnostic.Status = CKAS_INUSE;
         return false;
     }
 

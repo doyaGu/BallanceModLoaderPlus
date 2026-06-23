@@ -250,7 +250,7 @@ void ScriptModHotReloadService::Process() {
                                                          code,
                                                          id,
                                                          "reload",
-                                                         "",
+                                                         result.SourcePath,
                                                          result.Success
                                                              ? (pending.Options.DryRun ? "Script reload dry-run passed." : "Script reload committed.")
                                                              : result.Diagnostic);

@@ -1743,7 +1743,7 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
             if (!dependency.optional && candidateVersion < dependency.minVersion) {
                 diagnostic = "Script mod reload version would no longer satisfy dependent mod '";
                 diagnostic += dependent->GetID() ? dependent->GetID() : "";
-                diagnostic += "'.";
+                diagnostic += "'. Hot reload does not cascade reload dependent mods; restart or update dependents explicitly.";
                 return false;
             }
         }

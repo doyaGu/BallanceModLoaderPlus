@@ -42,6 +42,7 @@ struct ScriptModReloadResult {
     bool Success = false;
     bool RetryLater = false;
     std::string Diagnostic;
+    std::string SourcePath;
 };
 
 struct ScriptModHostRegistration {

@@ -167,6 +167,13 @@ static bool ReadStringProperty(asIScriptObject *object,
         return true;
     }
 
+    ScriptHostCallScope activeCall(owner);
+    if (owner && !activeCall.Entered()) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, "Script mod reload is in progress.");
+        diagnostic.Status = CKAS_INUSE;
+        return false;
+    }
+
     asIScriptContext *context = object->GetEngine()->CreateContext();
     if (!context) {
         diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, "Unable to create AngelScript context for timer property.");
@@ -208,6 +215,13 @@ static bool ReadBoolProperty(asIScriptObject *object,
         return true;
     }
 
+    ScriptHostCallScope activeCall(owner);
+    if (owner && !activeCall.Entered()) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, "Script mod reload is in progress.");
+        diagnostic.Status = CKAS_INUSE;
+        return false;
+    }
+
     asIScriptContext *context = object->GetEngine()->CreateContext();
     if (!context) {
         diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, "Unable to create AngelScript context for timer property.");
@@ -246,6 +260,13 @@ static bool ReadIntProperty(asIScriptObject *object,
     if (!method) {
         value = defaultValue;
         return true;
+    }
+
+    ScriptHostCallScope activeCall(owner);
+    if (owner && !activeCall.Entered()) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, "Script mod reload is in progress.");
+        diagnostic.Status = CKAS_INUSE;
+        return false;
     }
 
     asIScriptContext *context = object->GetEngine()->CreateContext();
@@ -289,6 +310,13 @@ static bool ReadUIntProperty(asIScriptObject *object,
         return true;
     }
 
+    ScriptHostCallScope activeCall(owner);
+    if (owner && !activeCall.Entered()) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, "Script mod reload is in progress.");
+        diagnostic.Status = CKAS_INUSE;
+        return false;
+    }
+
     asIScriptContext *context = object->GetEngine()->CreateContext();
     if (!context) {
         diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, "Unable to create AngelScript context for timer property.");
@@ -329,6 +357,13 @@ static bool ReadFloatProperty(asIScriptObject *object,
         value = 0.0f;
         present = false;
         return true;
+    }
+
+    ScriptHostCallScope activeCall(owner);
+    if (owner && !activeCall.Entered()) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, "Script mod reload is in progress.");
+        diagnostic.Status = CKAS_INUSE;
+        return false;
     }
 
     asIScriptContext *context = object->GetEngine()->CreateContext();

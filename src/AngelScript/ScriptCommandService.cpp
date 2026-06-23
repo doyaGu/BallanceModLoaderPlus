@@ -183,6 +183,13 @@ static bool ReadStringProperty(asIScriptObject *object,
         return false;
     }
 
+    ScriptHostCallScope activeCall(owner);
+    if (owner && !activeCall.Entered()) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, "Script mod reload is in progress.");
+        diagnostic.Status = CKAS_INUSE;
+        return false;
+    }
+
     asIScriptContext *context = object->GetEngine()->CreateContext();
     if (!context) {
         diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, "Unable to create AngelScript context for command property.");
@@ -222,6 +229,13 @@ static bool ReadBoolProperty(asIScriptObject *object,
     if (!method) {
         value = defaultValue;
         return true;
+    }
+
+    ScriptHostCallScope activeCall(owner);
+    if (owner && !activeCall.Entered()) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, "Script mod reload is in progress.");
+        diagnostic.Status = CKAS_INUSE;
+        return false;
     }
 
     asIScriptContext *context = object->GetEngine()->CreateContext();

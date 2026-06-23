@@ -85,6 +85,45 @@ static std::string MakeReloadModuleName(const ScriptModRuntime &runtime) {
 }
 
 static ScriptModLoadCandidate MakeReloadCandidate(const ScriptModEntry &entry);
+static bool PrepareZipReloadCandidate(const ScriptModEntry &entry,
+                                      ScriptModLoadCandidate &candidate,
+                                      std::wstring &stagingRoot,
+                                      ScriptDiagnostic &diagnostic);
+
+struct ScriptModReloadSourceSnapshot {
+    ScriptModLoadCandidate Candidate;
+    ScriptModEntry Entry;
+    std::string SourceCode;
+    std::string EntryPathUtf8;
+    std::wstring StagedZipRoot;
+
+    ScriptModReloadSourceSnapshot() = default;
+    ScriptModReloadSourceSnapshot(const ScriptModReloadSourceSnapshot &) = delete;
+    ScriptModReloadSourceSnapshot &operator=(const ScriptModReloadSourceSnapshot &) = delete;
+
+    ~ScriptModReloadSourceSnapshot() {
+        Cleanup();
+    }
+
+    void Reset() {
+        Cleanup();
+        Candidate = ScriptModLoadCandidate();
+        Entry = ScriptModEntry();
+        SourceCode.clear();
+        EntryPathUtf8.clear();
+    }
+
+    void Cleanup() {
+        if (!StagedZipRoot.empty()) {
+            utils::DeleteDirectoryW(StagedZipRoot);
+            StagedZipRoot.clear();
+        }
+    }
+
+    void KeepStagedRoot() {
+        StagedZipRoot.clear();
+    }
+};
 
 static bool ReadReloadEntrySource(const ScriptModEntry &entry,
                                   std::string &sourceCode,
@@ -95,6 +134,35 @@ static bool ReadReloadEntrySource(const ScriptModEntry &entry,
     diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, "Failed to read script entry file for reload.");
     diagnostic.EntryPath = utils::Utf16ToUtf8(entry.EntryPath);
     return false;
+}
+
+static bool CaptureReloadSourceSnapshot(const ScriptModEntry &entry,
+                                        ScriptModReloadSourceSnapshot &snapshot,
+                                        ScriptDiagnostic &diagnostic) {
+    snapshot.Reset();
+
+    ScriptModLoadCandidate candidate;
+    std::wstring stagedZipRoot;
+    if (!PrepareZipReloadCandidate(entry, candidate, stagedZipRoot, diagnostic))
+        return false;
+
+    snapshot.Candidate = std::move(candidate);
+    snapshot.StagedZipRoot = std::move(stagedZipRoot);
+    if (snapshot.Candidate.EntryPaths.size() != 1) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                          "Reload requires exactly one *.mod.as entry file.");
+        diagnostic.EntryPath = utils::Utf16ToUtf8(snapshot.Candidate.RootDirectory.empty()
+                                                      ? snapshot.Candidate.SourcePath
+                                                      : snapshot.Candidate.RootDirectory);
+        return false;
+    }
+
+    snapshot.Entry = MakeScriptModEntry(snapshot.Candidate, snapshot.Candidate.EntryPaths.front());
+    snapshot.EntryPathUtf8 = utils::Utf16ToUtf8(snapshot.Entry.EntryPath);
+    if (!ReadReloadEntrySource(snapshot.Entry, snapshot.SourceCode, diagnostic))
+        return false;
+
+    return true;
 }
 
 class ScriptModCallScope {
@@ -950,7 +1018,8 @@ bool ScriptMod::ValidateReloadDefinition(const ScriptModDefinition &candidate,
     std::sort(oldDependencies.begin(), oldDependencies.end());
     std::sort(newDependencies.begin(), newDependencies.end());
     if (oldDependencies != newDependencies) {
-        diagnostic = "Script mod dependency declarations changed; restart is required.";
+        diagnostic = "Script mod dependency declarations changed; restart is required. "
+                     "Hot reload does not reorder the dependency graph or cascade reload dependent mods.";
         return false;
     }
 
@@ -1446,51 +1515,42 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
         }
         return result;
     };
-
-    ScriptDiagnostic diagnostic;
-    std::wstring stagedZipRoot;
-    auto cleanupStagedZipRoot = [&]() {
-        if (!stagedZipRoot.empty()) {
-            utils::DeleteDirectoryW(stagedZipRoot);
-            stagedZipRoot.clear();
+    auto finishWithDiagnostic = [&](const ScriptDiagnostic &diagnostic) {
+        if (result.SourcePath.empty())
+            result.SourcePath = diagnostic.EntryPath;
+        if (m_Context) {
+            m_Context->PublishScriptDevDiagnostic(ScriptDevEventSeverity::Error,
+                                                  "ScriptReloadDryRunDiagnostic",
+                                                  GetID() ? GetID() : "",
+                                                  diagnostic);
         }
+        return finish(false, FormatScriptDiagnostic(diagnostic));
     };
 
-    ScriptModLoadCandidate candidate;
-    if (!PrepareZipReloadCandidate(m_Entry, candidate, stagedZipRoot, diagnostic))
-        return finish(false, FormatScriptDiagnostic(diagnostic));
-    if (candidate.EntryPaths.size() != 1) {
-        cleanupStagedZipRoot();
-        return finish(false, "Reload dry-run requires exactly one *.mod.as entry file.");
-    }
-
-    ScriptModEntry candidateEntry = MakeScriptModEntry(candidate, candidate.EntryPaths.front());
-    std::string candidateSourceCode;
-    if (!ReadReloadEntrySource(candidateEntry, candidateSourceCode, diagnostic)) {
-        cleanupStagedZipRoot();
-        return finish(false, FormatScriptDiagnostic(diagnostic));
-    }
+    ScriptDiagnostic diagnostic;
+    ScriptModReloadSourceSnapshot snapshot;
+    if (!CaptureReloadSourceSnapshot(m_Entry, snapshot, diagnostic))
+        return finishWithDiagnostic(diagnostic);
+    result.SourcePath = snapshot.EntryPathUtf8;
 
     ScriptModDefinition candidateDefinition;
     ScriptModRuntime candidateRuntime(MakeReloadModuleName(m_Runtime));
     if (!candidateRuntime.LoadModuleFromCode(m_Context ? m_Context->GetCKContext() : nullptr,
-                                             candidateSourceCode,
-                                             utils::Utf16ToUtf8(candidateEntry.EntryPath),
+                                             snapshot.SourceCode,
+                                             snapshot.EntryPathUtf8,
                                              diagnostic)) {
         ReleaseRuntimeOnly(candidateRuntime);
-        cleanupStagedZipRoot();
-        return finish(false, FormatScriptDiagnostic(diagnostic));
+        return finishWithDiagnostic(diagnostic);
     }
 
     ScriptModDefinitionBuilder builder;
     if (!builder.Build(m_Context ? m_Context->GetCKContext() : nullptr,
-                       candidateEntry,
+                       snapshot.Entry,
                        candidateRuntime,
                        candidateDefinition,
                        diagnostic)) {
         ReleaseRuntimeOnly(candidateRuntime);
-        cleanupStagedZipRoot();
-        return finish(false, FormatScriptDiagnostic(diagnostic));
+        return finishWithDiagnostic(diagnostic);
     }
 
     candidateRuntime.SetOwner(this);
@@ -1499,8 +1559,7 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
                                        candidateDefinition.ClassName,
                                        diagnostic)) {
         ReleaseRuntimeOnly(candidateRuntime);
-        cleanupStagedZipRoot();
-        return finish(false, FormatScriptDiagnostic(diagnostic));
+        return finishWithDiagnostic(diagnostic);
     }
 
     ScriptModEventRouter candidateEvents;
@@ -1508,8 +1567,7 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
     if (!candidateEvents.Cache(diagnostic)) {
         candidateEvents.Release(nullptr);
         ReleaseRuntimeOnly(candidateRuntime);
-        cleanupStagedZipRoot();
-        return finish(false, FormatScriptDiagnostic(diagnostic));
+        return finishWithDiagnostic(diagnostic);
     }
 
     ScriptExportTable candidateExports;
@@ -1520,8 +1578,7 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
         candidateEvents.Release(nullptr);
         candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
         ReleaseRuntimeOnly(candidateRuntime);
-        cleanupStagedZipRoot();
-        return finish(false, FormatScriptDiagnostic(diagnostic));
+        return finishWithDiagnostic(diagnostic);
     }
 
     std::string validationDiagnostic;
@@ -1529,7 +1586,6 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
         candidateEvents.Release(nullptr);
         candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
         ReleaseRuntimeOnly(candidateRuntime);
-        cleanupStagedZipRoot();
         return finish(false, validationDiagnostic);
     }
     if (m_Context && m_Context->GetScriptDevTools()) {
@@ -1537,14 +1593,13 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
                                                      "ScriptReloadPrepared",
                                                      GetID() ? GetID() : "",
                                                      "reload",
-                                                     utils::Utf16ToUtf8(candidateEntry.EntryPath),
+                                                     snapshot.EntryPathUtf8,
                                                      "Script reload candidate prepared.");
     }
 
     candidateEvents.Release(nullptr);
     candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
     ReleaseRuntimeOnly(candidateRuntime);
-    cleanupStagedZipRoot();
     return finish(true, "Reload dry-run passed.");
 }
 
@@ -1581,50 +1636,42 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
         }
         return result;
     };
-
-    ScriptDiagnostic diagnostic;
-    std::wstring stagedZipRoot;
-    auto cleanupStagedZipRoot = [&]() {
-        if (!stagedZipRoot.empty()) {
-            utils::DeleteDirectoryW(stagedZipRoot);
-            stagedZipRoot.clear();
+    auto finishWithDiagnostic = [&](const ScriptDiagnostic &diagnostic) {
+        if (result.SourcePath.empty())
+            result.SourcePath = diagnostic.EntryPath;
+        if (m_Context) {
+            m_Context->PublishScriptDevDiagnostic(ScriptDevEventSeverity::Error,
+                                                  "ScriptReloadDiagnostic",
+                                                  GetID() ? GetID() : "",
+                                                  diagnostic);
         }
+        return finish(false, FormatScriptDiagnostic(diagnostic));
     };
 
-    ScriptModLoadCandidate candidate;
-    if (!PrepareZipReloadCandidate(m_Entry, candidate, stagedZipRoot, diagnostic))
-        return finish(false, FormatScriptDiagnostic(diagnostic));
-    if (candidate.EntryPaths.size() != 1) {
-        cleanupStagedZipRoot();
-        return finish(false, "Reload requires exactly one *.mod.as entry file.");
-    }
-    ScriptModEntry candidateEntry = MakeScriptModEntry(candidate, candidate.EntryPaths.front());
-    std::string candidateSourceCode;
-    if (!ReadReloadEntrySource(candidateEntry, candidateSourceCode, diagnostic)) {
-        cleanupStagedZipRoot();
-        return finish(false, FormatScriptDiagnostic(diagnostic));
-    }
+    ScriptDiagnostic diagnostic;
+    ScriptModReloadSourceSnapshot snapshot;
+    if (!CaptureReloadSourceSnapshot(m_Entry, snapshot, diagnostic))
+        return finishWithDiagnostic(diagnostic);
+    result.SourcePath = snapshot.EntryPathUtf8;
 
     ScriptModDefinition candidateDefinition;
     ScriptModRuntime candidateRuntime(MakeReloadModuleName(m_Runtime));
     if (!candidateRuntime.LoadModuleFromCode(m_Context ? m_Context->GetCKContext() : nullptr,
-                                             candidateSourceCode,
-                                             utils::Utf16ToUtf8(candidateEntry.EntryPath),
+                                             snapshot.SourceCode,
+                                             snapshot.EntryPathUtf8,
                                              diagnostic)) {
         ReleaseRuntimeOnly(candidateRuntime);
-        cleanupStagedZipRoot();
-        return finish(false, FormatScriptDiagnostic(diagnostic));
+        return finishWithDiagnostic(diagnostic);
     }
 
     ScriptModDefinitionBuilder builder;
     if (!builder.Build(m_Context ? m_Context->GetCKContext() : nullptr,
-                       candidateEntry,
+                       snapshot.Entry,
                        candidateRuntime,
                        candidateDefinition,
                        diagnostic)) {
         ReleaseRuntimeOnly(candidateRuntime);
-        cleanupStagedZipRoot();
-        return finish(false, FormatScriptDiagnostic(diagnostic));
+        return finishWithDiagnostic(diagnostic);
     }
 
     candidateRuntime.SetOwner(this);
@@ -1633,8 +1680,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                                        candidateDefinition.ClassName,
                                        diagnostic)) {
         ReleaseRuntimeOnly(candidateRuntime);
-        cleanupStagedZipRoot();
-        return finish(false, FormatScriptDiagnostic(diagnostic));
+        return finishWithDiagnostic(diagnostic);
     }
 
     ScriptExportTable candidateExports;
@@ -1644,15 +1690,13 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                                 diagnostic)) {
         candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
         ReleaseRuntimeOnly(candidateRuntime);
-        cleanupStagedZipRoot();
-        return finish(false, FormatScriptDiagnostic(diagnostic));
+        return finishWithDiagnostic(diagnostic);
     }
 
     std::string validationDiagnostic;
     if (!ValidateReloadDefinition(candidateDefinition, candidateExports, options, validationDiagnostic)) {
         candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
         ReleaseRuntimeOnly(candidateRuntime);
-        cleanupStagedZipRoot();
         return finish(false, validationDiagnostic);
     }
     if (m_Context && m_Context->GetScriptDevTools()) {
@@ -1660,12 +1704,11 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                                                      "ScriptReloadPrepared",
                                                      GetID() ? GetID() : "",
                                                      "reload",
-                                                     utils::Utf16ToUtf8(candidateEntry.EntryPath),
+                                                     snapshot.EntryPathUtf8,
                                                      "Script reload candidate prepared.");
     }
     candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
     if (!ReleaseRuntimeOnly(candidateRuntime)) {
-        cleanupStagedZipRoot();
         return finish(false, "Reload candidate cleanup failed; keeping previous runtime.");
     }
 
@@ -1684,15 +1727,15 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     const std::string liveModuleName = MakeReloadModuleName(oldRuntime);
 
     m_Definition = std::move(candidateDefinition);
-    m_Entry = std::move(candidateEntry);
+    m_Entry = std::move(snapshot.Entry);
     m_Runtime = ScriptModRuntime(liveModuleName);
     m_Runtime.SetOwner(this);
     m_State.ClearFailure();
 
     ScriptDiagnostic liveDiagnostic;
     const bool liveModuleLoaded = m_Runtime.LoadModuleFromCode(m_Context ? m_Context->GetCKContext() : nullptr,
-                                                              candidateSourceCode,
-                                                              utils::Utf16ToUtf8(m_Entry.EntryPath),
+                                                              snapshot.SourceCode,
+                                                              snapshot.EntryPathUtf8,
                                                               liveDiagnostic);
     if (!liveModuleLoaded)
         Fail(liveDiagnostic);
@@ -1704,7 +1747,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
             oldEntry.RootDirectory != m_Entry.RootDirectory) {
             utils::DeleteDirectoryW(oldEntry.RootDirectory);
         }
-        stagedZipRoot.clear();
+        snapshot.KeepStagedRoot();
         if (m_Context)
             m_Context->GetCommandContext().SortCommands();
         ExportRegistry::NotifyScriptExportsChanged();
@@ -1716,7 +1759,6 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                                           ? "Reload candidate OnLoad failed."
                                           : m_State.GetLastDiagnosticText();
     ReleaseRuntime();
-    cleanupStagedZipRoot();
 
     m_Definition = std::move(oldDefinition);
     m_Entry = std::move(oldEntry);
@@ -1729,15 +1771,19 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
             m_Context->GetCommandContext().SortCommands();
         ExportRegistry::NotifyScriptExportsChanged();
         FenceCallbacksForCurrentFrame();
-        return finish(false, "Reload failed; rolled back to previous runtime. " + reloadFailure);
+        return finish(false,
+                      "Reload failed; rolled back to previous runtime. "
+                      "BML-managed script resources were restored; game-world side effects from the failed reload may remain. " +
+                          reloadFailure);
     }
 
     const std::string rollbackFailure = m_State.GetLastDiagnosticText().empty()
                                             ? "Rollback failed."
                                             : m_State.GetLastDiagnosticText();
     Fail(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
-                              "Reload failed and rollback failed. " + reloadFailure + " " + rollbackFailure));
-    cleanupStagedZipRoot();
+                              "Reload failed and rollback failed. "
+                              "BML-managed script resources could not be restored; game-world side effects may remain. " +
+                                  reloadFailure + " " + rollbackFailure));
     ExportRegistry::NotifyScriptExportsChanged();
     return finish(false, m_State.GetLastDiagnosticText());
 }
