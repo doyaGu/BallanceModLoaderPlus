@@ -1110,47 +1110,54 @@ void ScriptDevToolsService::OnDraw() {
     DrawStatusBar();
     ImGui::Separator();
 
-    const float bottomHeight = ImGui::GetFrameHeightWithSpacing() + 8.0f;
-    const float contentWidth = ImGui::GetContentRegionAvail().x;
-    const float listWidth = std::min(320.0f, std::max(235.0f, contentWidth * 0.22f));
-    if (ImGui::BeginChild("script-dev-mods", ImVec2(listWidth, -bottomHeight), true))
-        DrawModList();
-    ImGui::EndChild();
-
-    ImGui::SameLine();
     const ScriptModSnapshot *selected = FindSnapshot(m_SelectedModId);
-    if (ImGui::BeginChild("script-dev-details", ImVec2(0, -bottomHeight), true)) {
-        if (ImGui::BeginTabBar("script-dev-tabs")) {
-            if (ImGui::BeginTabItem("Diag")) {
-                DrawDiagnosticsTab(selected);
-                ImGui::EndTabItem();
+
+    const ImGuiStyle &style = ImGui::GetStyle();
+    const float footerHeight = ImGui::GetFrameHeightWithSpacing() + style.ItemSpacing.y * 2.0f;
+    if (ImGui::BeginChild("script-dev-main", ImVec2(0.0f, -footerHeight), false)) {
+        const float contentWidth = ImGui::GetContentRegionAvail().x;
+        const float listWidth = std::min(320.0f, std::max(235.0f, contentWidth * 0.22f));
+        if (ImGui::BeginChild("script-dev-mods", ImVec2(listWidth, 0.0f), true))
+            DrawModList();
+        ImGui::EndChild();
+
+        ImGui::SameLine();
+        if (ImGui::BeginChild("script-dev-details", ImVec2(0.0f, 0.0f), true)) {
+            if (ImGui::BeginTabBar("script-dev-tabs")) {
+                if (ImGui::BeginTabItem("Diag")) {
+                    DrawDiagnosticsTab(selected);
+                    ImGui::EndTabItem();
+                }
+                if (ImGui::BeginTabItem("Reload")) {
+                    DrawReloadTab(selected);
+                    ImGui::EndTabItem();
+                }
+                if (ImGui::BeginTabItem("Res")) {
+                    DrawResourcesTab(selected);
+                    ImGui::EndTabItem();
+                }
+                if (ImGui::BeginTabItem("Exports")) {
+                    DrawExportsTab(selected);
+                    ImGui::EndTabItem();
+                }
+                if (ImGui::BeginTabItem("Deps")) {
+                    DrawDependenciesTab(selected);
+                    ImGui::EndTabItem();
+                }
+                if (ImGui::BeginTabItem("Logs")) {
+                    DrawLogsTab();
+                    ImGui::EndTabItem();
+                }
+                ImGui::EndTabBar();
             }
-            if (ImGui::BeginTabItem("Reload")) {
-                DrawReloadTab(selected);
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Res")) {
-                DrawResourcesTab(selected);
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Exports")) {
-                DrawExportsTab(selected);
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Deps")) {
-                DrawDependenciesTab(selected);
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("Logs")) {
-                DrawLogsTab();
-                ImGui::EndTabItem();
-            }
-            ImGui::EndTabBar();
         }
+        ImGui::EndChild();
     }
     ImGui::EndChild();
 
-    DrawBottomBar(selected);
+    if (ImGui::BeginChild("script-dev-footer", ImVec2(0.0f, 0.0f), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+        DrawBottomBar(selected);
+    ImGui::EndChild();
 }
 
 void ScriptDevToolsService::DrawStatusBar() {
