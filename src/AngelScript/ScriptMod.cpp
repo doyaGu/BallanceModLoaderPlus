@@ -1566,8 +1566,6 @@ int ScriptMod::CallVoidExport(const std::string &name, const std::string &signat
         Fail(diagnostic);
     else if (status != BML_OK)
         Record(diagnostic);
-    else
-        Record(MakeScriptDiagnostic(ScriptDiagnosticPhase::ExportCall, "Export call succeeded."));
     return status;
 }
 
