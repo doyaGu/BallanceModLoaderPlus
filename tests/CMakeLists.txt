@@ -140,6 +140,14 @@ add_bml_test(DataShareTest
 )
 
 if (BML_WITH_ANGELSCRIPT)
+    if (WIN32)
+        add_bml_test(ScriptFileWatcherWin32Test
+                SOURCES
+                ScriptFileWatcherWin32Test.cpp
+                ${BML_SOURCE_DIR}/AngelScript/ScriptFileWatcherWin32.cpp
+        )
+    endif ()
+
     add_bml_test(ScriptServiceLifecycleTest
             SOURCES
             ScriptServiceLifecycleTest.cpp
