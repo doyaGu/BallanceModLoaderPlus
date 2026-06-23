@@ -1,8 +1,10 @@
 #include "ScriptMod.h"
 
 #include <algorithm>
+#include <filesystem>
 #include <iomanip>
 #include <sstream>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -91,17 +93,24 @@ static std::string MakeReloadModuleName(const ScriptModRuntime &runtime) {
 }
 
 static ScriptModLoadCandidate MakeReloadCandidate(const ScriptModEntry &entry);
+static bool PrepareFilesystemReloadCandidate(const ScriptModEntry &entry,
+                                             ScriptModLoadCandidate &candidate,
+                                             std::wstring &stagingRoot,
+                                             ScriptDiagnostic &diagnostic);
 static bool PrepareZipReloadCandidate(const ScriptModEntry &entry,
                                       ScriptModLoadCandidate &candidate,
                                       std::wstring &stagingRoot,
                                       ScriptDiagnostic &diagnostic);
 
 struct ScriptModReloadSourceSnapshot {
-    ScriptModLoadCandidate Candidate;
-    ScriptModEntry Entry;
-    std::string SourceCode;
-    std::string EntryPathUtf8;
-    std::wstring StagedZipRoot;
+    ScriptModLoadCandidate CompileCandidate;
+    ScriptModEntry CompileEntry;
+    ScriptModEntry CommitEntry;
+    std::string CompileEntryPathUtf8;
+    std::string CommitEntryPathUtf8;
+    std::wstring StagedRoot;
+    std::string DiagnosticStagedRootUtf8;
+    std::string DiagnosticDisplayRootUtf8;
 
     ScriptModReloadSourceSnapshot() = default;
     ScriptModReloadSourceSnapshot(const ScriptModReloadSourceSnapshot &) = delete;
@@ -113,33 +122,70 @@ struct ScriptModReloadSourceSnapshot {
 
     void Reset() {
         Cleanup();
-        Candidate = ScriptModLoadCandidate();
-        Entry = ScriptModEntry();
-        SourceCode.clear();
-        EntryPathUtf8.clear();
+        CompileCandidate = ScriptModLoadCandidate();
+        CompileEntry = ScriptModEntry();
+        CommitEntry = ScriptModEntry();
+        CompileEntryPathUtf8.clear();
+        CommitEntryPathUtf8.clear();
+        DiagnosticStagedRootUtf8.clear();
+        DiagnosticDisplayRootUtf8.clear();
     }
 
     void Cleanup() {
-        if (!StagedZipRoot.empty()) {
-            utils::DeleteDirectoryW(StagedZipRoot);
-            StagedZipRoot.clear();
+        if (!StagedRoot.empty()) {
+            utils::DeleteDirectoryW(StagedRoot);
+            StagedRoot.clear();
         }
     }
 
     void KeepStagedRoot() {
-        StagedZipRoot.clear();
+        StagedRoot.clear();
     }
 };
 
-static bool ReadReloadEntrySource(const ScriptModEntry &entry,
-                                  std::string &sourceCode,
-                                  ScriptDiagnostic &diagnostic) {
-    if (utils::ReadFileBytesW(entry.EntryPath, sourceCode))
-        return true;
+static void ReplaceAllText(std::string &value, const std::string &from, const std::string &to) {
+    if (from.empty())
+        return;
 
-    diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, "Failed to read script entry file for reload.");
-    diagnostic.EntryPath = utils::Utf16ToUtf8(entry.EntryPath);
-    return false;
+    size_t pos = 0;
+    while ((pos = value.find(from, pos)) != std::string::npos) {
+        value.replace(pos, from.size(), to);
+        pos += to.size();
+    }
+}
+
+static void ReplacePathPrefixText(std::string &value, const std::string &from, const std::string &to) {
+    if (value.empty() || from.empty() || from == to)
+        return;
+
+    ReplaceAllText(value, from, to);
+    std::string slashFrom = from;
+    std::replace(slashFrom.begin(), slashFrom.end(), '\\', '/');
+    if (slashFrom != from)
+        ReplaceAllText(value, slashFrom, to);
+}
+
+static void RewriteSnapshotDiagnosticPaths(const ScriptModReloadSourceSnapshot &snapshot,
+                                           ScriptDiagnostic &diagnostic) {
+    if (snapshot.DiagnosticStagedRootUtf8.empty() ||
+        snapshot.DiagnosticDisplayRootUtf8.empty()) {
+        return;
+    }
+
+    ReplacePathPrefixText(diagnostic.EntryPath,
+                          snapshot.DiagnosticStagedRootUtf8,
+                          snapshot.DiagnosticDisplayRootUtf8);
+    ReplacePathPrefixText(diagnostic.RawMessage,
+                          snapshot.DiagnosticStagedRootUtf8,
+                          snapshot.DiagnosticDisplayRootUtf8);
+    ReplacePathPrefixText(diagnostic.StackTrace,
+                          snapshot.DiagnosticStagedRootUtf8,
+                          snapshot.DiagnosticDisplayRootUtf8);
+    for (ScriptCompilerMessage &message : diagnostic.CompilerMessages) {
+        ReplacePathPrefixText(message.Section,
+                              snapshot.DiagnosticStagedRootUtf8,
+                              snapshot.DiagnosticDisplayRootUtf8);
+    }
 }
 
 static bool CaptureReloadSourceSnapshot(const ScriptModEntry &entry,
@@ -148,25 +194,48 @@ static bool CaptureReloadSourceSnapshot(const ScriptModEntry &entry,
     snapshot.Reset();
 
     ScriptModLoadCandidate candidate;
-    std::wstring stagedZipRoot;
-    if (!PrepareZipReloadCandidate(entry, candidate, stagedZipRoot, diagnostic))
-        return false;
+    std::wstring stagedRoot;
+    if (entry.SourceKind == ScriptModEntrySourceKind::ZipPackage) {
+        if (!PrepareZipReloadCandidate(entry, candidate, stagedRoot, diagnostic))
+            return false;
+    } else {
+        if (!PrepareFilesystemReloadCandidate(entry, candidate, stagedRoot, diagnostic))
+            return false;
+    }
 
-    snapshot.Candidate = std::move(candidate);
-    snapshot.StagedZipRoot = std::move(stagedZipRoot);
-    if (snapshot.Candidate.EntryPaths.size() != 1) {
+    snapshot.CompileCandidate = std::move(candidate);
+    snapshot.StagedRoot = std::move(stagedRoot);
+    snapshot.DiagnosticStagedRootUtf8 = utils::Utf16ToUtf8(snapshot.StagedRoot);
+    if (entry.SourceKind == ScriptModEntrySourceKind::ZipPackage) {
+        snapshot.DiagnosticDisplayRootUtf8 = utils::Utf16ToUtf8(entry.SourcePath.empty()
+                                                                    ? entry.RootDirectory
+                                                                    : entry.SourcePath);
+    } else {
+        snapshot.DiagnosticDisplayRootUtf8 = utils::Utf16ToUtf8(entry.SourceKind == ScriptModEntrySourceKind::SingleFile
+                                                                    ? utils::GetDirectoryW(entry.EntryPath)
+                                                                    : entry.RootDirectory);
+    }
+
+    if (snapshot.CompileCandidate.EntryPaths.size() != 1) {
         diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
                                           "Reload requires exactly one *.mod.as entry file.");
-        diagnostic.EntryPath = utils::Utf16ToUtf8(snapshot.Candidate.RootDirectory.empty()
-                                                      ? snapshot.Candidate.SourcePath
-                                                      : snapshot.Candidate.RootDirectory);
+        diagnostic.EntryPath = utils::Utf16ToUtf8(snapshot.CompileCandidate.RootDirectory.empty()
+                                                      ? snapshot.CompileCandidate.SourcePath
+                                                      : snapshot.CompileCandidate.RootDirectory);
+        RewriteSnapshotDiagnosticPaths(snapshot, diagnostic);
         return false;
     }
 
-    snapshot.Entry = MakeScriptModEntry(snapshot.Candidate, snapshot.Candidate.EntryPaths.front());
-    snapshot.EntryPathUtf8 = utils::Utf16ToUtf8(snapshot.Entry.EntryPath);
-    if (!ReadReloadEntrySource(snapshot.Entry, snapshot.SourceCode, diagnostic))
-        return false;
+    snapshot.CompileEntry = MakeScriptModEntry(snapshot.CompileCandidate,
+                                               snapshot.CompileCandidate.EntryPaths.front());
+    snapshot.CompileEntryPathUtf8 = utils::Utf16ToUtf8(snapshot.CompileEntry.EntryPath);
+
+    if (entry.SourceKind == ScriptModEntrySourceKind::ZipPackage) {
+        snapshot.CommitEntry = snapshot.CompileEntry;
+    } else {
+        snapshot.CommitEntry = entry;
+    }
+    snapshot.CommitEntryPathUtf8 = utils::Utf16ToUtf8(snapshot.CommitEntry.EntryPath);
 
     return true;
 }
@@ -193,6 +262,74 @@ private:
     bool m_Entered = false;
 };
 
+static bool CopyDirectorySnapshotContentsW(const std::wstring &source,
+                                           const std::wstring &dest) {
+    if (source.empty() || dest.empty())
+        return false;
+
+    std::error_code ec;
+    const std::filesystem::path sourcePath(source);
+    const std::filesystem::path destPath(dest);
+
+    std::filesystem::create_directories(destPath, ec);
+    if (ec)
+        return false;
+
+    for (std::filesystem::recursive_directory_iterator it(sourcePath, ec), end;
+         it != end && !ec;
+         it.increment(ec)) {
+        const std::filesystem::path relative = it->path().lexically_relative(sourcePath);
+        const std::filesystem::path target = destPath / relative;
+        if (it->is_directory(ec)) {
+            if (ec)
+                return false;
+            std::filesystem::create_directories(target, ec);
+            if (ec)
+                return false;
+            continue;
+        }
+        if (!it->is_regular_file(ec)) {
+            if (ec)
+                return false;
+            continue;
+        }
+        std::filesystem::create_directories(target.parent_path(), ec);
+        if (ec)
+            return false;
+        std::filesystem::copy_file(it->path(),
+                                   target,
+                                   std::filesystem::copy_options::overwrite_existing,
+                                   ec);
+        if (ec)
+            return false;
+    }
+
+    return !ec;
+}
+
+static std::wstring MakeReloadSnapshotRoot(const ScriptModEntry &entry) {
+    static std::atomic<unsigned long> s_ReloadSnapshotSerial{1};
+    const std::wstring tempRoot = utils::CombinePathW(utils::GetTempPathW(), L"BMLScriptReload");
+
+    std::wstring baseName;
+    if (!entry.EntryPath.empty()) {
+        baseName = utils::RemoveExtensionW(utils::RemoveExtensionW(utils::GetFileNameW(entry.EntryPath)));
+    }
+    if (baseName.empty() && !entry.RootDirectory.empty())
+        baseName = utils::GetFileNameW(entry.RootDirectory);
+    if (baseName.empty())
+        baseName = L"script-mod";
+
+    for (int attempt = 0; attempt < 128; ++attempt) {
+        const unsigned long serial = s_ReloadSnapshotSerial.fetch_add(1, std::memory_order_relaxed);
+        std::wstring candidate = utils::CombinePathW(tempRoot, baseName + L".snapshot." + std::to_wstring(serial));
+        if (!utils::PathExistsW(candidate))
+            return candidate;
+    }
+
+    return {};
+}
+
 static std::wstring MakeZipReloadStagingRoot(const ScriptModEntry &entry) {
     static std::atomic<unsigned long> s_ZipReloadSerial{1};
     const std::wstring parent = utils::GetDirectoryW(entry.RootDirectory.empty() ? entry.SourcePath : entry.RootDirectory);
@@ -208,6 +345,92 @@ static std::wstring MakeZipReloadStagingRoot(const ScriptModEntry &entry) {
     }
 
     return {};
+}
+
+static bool PrepareFilesystemReloadCandidate(const ScriptModEntry &entry,
+                                             ScriptModLoadCandidate &candidate,
+                                             std::wstring &stagingRoot,
+                                             ScriptDiagnostic &diagnostic) {
+    candidate = ScriptModLoadCandidate();
+    stagingRoot.clear();
+
+    if (entry.EntryPath.empty() || !utils::FileExistsW(entry.EntryPath)) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, "Script entry file no longer exists.");
+        diagnostic.EntryPath = utils::Utf16ToUtf8(entry.EntryPath);
+        return false;
+    }
+
+    stagingRoot = MakeReloadSnapshotRoot(entry);
+    if (stagingRoot.empty()) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, "Failed to allocate script reload snapshot directory.");
+        diagnostic.EntryPath = utils::Utf16ToUtf8(entry.EntryPath);
+        return false;
+    }
+    if (utils::PathExistsW(stagingRoot) && !utils::DeleteDirectoryW(stagingRoot)) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, "Failed to clear script reload snapshot directory.");
+        diagnostic.EntryPath = utils::Utf16ToUtf8(stagingRoot);
+        stagingRoot.clear();
+        return false;
+    }
+    if (!utils::CreateFileTreeW(stagingRoot)) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, "Failed to create script reload snapshot directory.");
+        diagnostic.EntryPath = utils::Utf16ToUtf8(stagingRoot);
+        stagingRoot.clear();
+        return false;
+    }
+
+    if (entry.SourceKind == ScriptModEntrySourceKind::SingleFile) {
+        const std::wstring stagedEntry = utils::CombinePathW(stagingRoot, utils::GetFileNameW(entry.EntryPath));
+        if (!utils::CopyFileW(entry.EntryPath, stagedEntry)) {
+            diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, "Failed to copy script entry into reload snapshot.");
+            diagnostic.EntryPath = utils::Utf16ToUtf8(entry.EntryPath);
+            utils::DeleteDirectoryW(stagingRoot);
+            stagingRoot.clear();
+            return false;
+        }
+
+        const std::wstring resourceRootName = utils::GetFileNameW(entry.ResourceRootDirectory);
+        const std::wstring stagedResourceRoot = resourceRootName.empty()
+                                                    ? stagingRoot
+                                                    : utils::CombinePathW(stagingRoot, resourceRootName);
+        if (!entry.ResourceRootDirectory.empty() &&
+            utils::DirectoryExistsW(entry.ResourceRootDirectory) &&
+            !CopyDirectorySnapshotContentsW(entry.ResourceRootDirectory, stagedResourceRoot)) {
+            diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, "Failed to copy script resource directory into reload snapshot.");
+            diagnostic.EntryPath = utils::Utf16ToUtf8(entry.ResourceRootDirectory);
+            utils::DeleteDirectoryW(stagingRoot);
+            stagingRoot.clear();
+            return false;
+        }
+
+        candidate.SourceKind = ScriptModEntrySourceKind::SingleFile;
+        candidate.SourcePath = entry.SourcePath;
+        candidate.RootDirectory = stagedResourceRoot;
+        candidate.ResourceRootDirectory = stagedResourceRoot;
+        candidate.EntryPaths.push_back(stagedEntry);
+        candidate.SyntheticId = entry.SyntheticId;
+        return true;
+    }
+
+    if (entry.RootDirectory.empty() || !utils::DirectoryExistsW(entry.RootDirectory)) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, "Script mod directory no longer exists.");
+        diagnostic.EntryPath = utils::Utf16ToUtf8(entry.RootDirectory);
+        utils::DeleteDirectoryW(stagingRoot);
+        stagingRoot.clear();
+        return false;
+    }
+
+    if (!CopyDirectorySnapshotContentsW(entry.RootDirectory, stagingRoot)) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, "Failed to copy script mod directory into reload snapshot.");
+        diagnostic.EntryPath = utils::Utf16ToUtf8(entry.RootDirectory);
+        utils::DeleteDirectoryW(stagingRoot);
+        stagingRoot.clear();
+        return false;
+    }
+
+    candidate = MakeDirectoryScriptModCandidate(stagingRoot, entry.SourceKind, entry.SourcePath);
+    candidate.SyntheticId = entry.SyntheticId;
+    return true;
 }
 
 static ScriptModLoadCandidate MakeZipReloadCandidate(const ScriptModEntry &entry,
@@ -1561,24 +1784,25 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
     ScriptModReloadSourceSnapshot snapshot;
     if (!CaptureReloadSourceSnapshot(m_Entry, snapshot, diagnostic))
         return finishWithDiagnostic(diagnostic);
-    result.SourcePath = snapshot.EntryPathUtf8;
+    result.SourcePath = snapshot.CommitEntryPathUtf8;
 
     ScriptModDefinition candidateDefinition;
     ScriptModRuntime candidateRuntime(MakeReloadModuleName(m_Runtime));
-    if (!candidateRuntime.LoadModuleFromCode(m_Context ? m_Context->GetCKContext() : nullptr,
-                                             snapshot.SourceCode,
-                                             snapshot.EntryPathUtf8,
-                                             diagnostic)) {
+    if (!candidateRuntime.LoadModule(m_Context ? m_Context->GetCKContext() : nullptr,
+                                     snapshot.CompileEntryPathUtf8,
+                                     diagnostic)) {
+        RewriteSnapshotDiagnosticPaths(snapshot, diagnostic);
         ReleaseRuntimeOnly(candidateRuntime);
         return finishWithDiagnostic(diagnostic);
     }
 
     ScriptModDefinitionBuilder builder;
     if (!builder.Build(m_Context ? m_Context->GetCKContext() : nullptr,
-                       snapshot.Entry,
+                       snapshot.CommitEntry,
                        candidateRuntime,
                        candidateDefinition,
                        diagnostic)) {
+        RewriteSnapshotDiagnosticPaths(snapshot, diagnostic);
         ReleaseRuntimeOnly(candidateRuntime);
         return finishWithDiagnostic(diagnostic);
     }
@@ -1588,6 +1812,7 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
                                        candidateDefinition.ClassNamespace,
                                        candidateDefinition.ClassName,
                                        diagnostic)) {
+        RewriteSnapshotDiagnosticPaths(snapshot, diagnostic);
         ReleaseRuntimeOnly(candidateRuntime);
         return finishWithDiagnostic(diagnostic);
     }
@@ -1595,6 +1820,7 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
     ScriptModEventRouter candidateEvents;
     candidateEvents.Bind(m_Context ? m_Context->GetCKContext() : nullptr, &candidateRuntime, &m_ContextView);
     if (!candidateEvents.Cache(diagnostic)) {
+        RewriteSnapshotDiagnosticPaths(snapshot, diagnostic);
         candidateEvents.Release(nullptr);
         ReleaseRuntimeOnly(candidateRuntime);
         return finishWithDiagnostic(diagnostic);
@@ -1605,6 +1831,7 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
                                 candidateRuntime,
                                 candidateDefinition.Exports,
                                 diagnostic)) {
+        RewriteSnapshotDiagnosticPaths(snapshot, diagnostic);
         candidateEvents.Release(nullptr);
         candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
         ReleaseRuntimeOnly(candidateRuntime);
@@ -1624,7 +1851,7 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
                                                      "ScriptReloadPrepared",
                                                      GetID() ? GetID() : "",
                                                      "reload",
-                                                     snapshot.EntryPathUtf8,
+                                                     snapshot.CommitEntryPathUtf8,
                                                      "Script reload candidate prepared.",
                                                      {},
                                                      GetReloadAttemptId());
@@ -1692,24 +1919,25 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     ScriptModReloadSourceSnapshot snapshot;
     if (!CaptureReloadSourceSnapshot(m_Entry, snapshot, diagnostic))
         return finishWithDiagnostic(diagnostic);
-    result.SourcePath = snapshot.EntryPathUtf8;
+    result.SourcePath = snapshot.CommitEntryPathUtf8;
 
     ScriptModDefinition candidateDefinition;
     ScriptModRuntime candidateRuntime(MakeReloadModuleName(m_Runtime));
-    if (!candidateRuntime.LoadModuleFromCode(m_Context ? m_Context->GetCKContext() : nullptr,
-                                             snapshot.SourceCode,
-                                             snapshot.EntryPathUtf8,
-                                             diagnostic)) {
+    if (!candidateRuntime.LoadModule(m_Context ? m_Context->GetCKContext() : nullptr,
+                                     snapshot.CompileEntryPathUtf8,
+                                     diagnostic)) {
+        RewriteSnapshotDiagnosticPaths(snapshot, diagnostic);
         ReleaseRuntimeOnly(candidateRuntime);
         return finishWithDiagnostic(diagnostic);
     }
 
     ScriptModDefinitionBuilder builder;
     if (!builder.Build(m_Context ? m_Context->GetCKContext() : nullptr,
-                       snapshot.Entry,
+                       snapshot.CommitEntry,
                        candidateRuntime,
                        candidateDefinition,
                        diagnostic)) {
+        RewriteSnapshotDiagnosticPaths(snapshot, diagnostic);
         ReleaseRuntimeOnly(candidateRuntime);
         return finishWithDiagnostic(diagnostic);
     }
@@ -1719,6 +1947,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                                        candidateDefinition.ClassNamespace,
                                        candidateDefinition.ClassName,
                                        diagnostic)) {
+        RewriteSnapshotDiagnosticPaths(snapshot, diagnostic);
         ReleaseRuntimeOnly(candidateRuntime);
         return finishWithDiagnostic(diagnostic);
     }
@@ -1728,6 +1957,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                                 candidateRuntime,
                                 candidateDefinition.Exports,
                                 diagnostic)) {
+        RewriteSnapshotDiagnosticPaths(snapshot, diagnostic);
         candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
         ReleaseRuntimeOnly(candidateRuntime);
         return finishWithDiagnostic(diagnostic);
@@ -1745,7 +1975,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                                                      "ScriptReloadPrepared",
                                                      GetID() ? GetID() : "",
                                                      "reload",
-                                                     snapshot.EntryPathUtf8,
+                                                     snapshot.CommitEntryPathUtf8,
                                                      "Script reload candidate prepared.",
                                                      {},
                                                      GetReloadAttemptId());
@@ -1793,18 +2023,19 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     const std::string liveModuleName = MakeReloadModuleName(oldRuntime);
 
     m_Definition = std::move(candidateDefinition);
-    m_Entry = std::move(snapshot.Entry);
+    m_Entry = snapshot.CommitEntry;
     m_Runtime = ScriptModRuntime(liveModuleName);
     m_Runtime.SetOwner(this);
     m_State.ClearFailure();
 
     ScriptDiagnostic liveDiagnostic;
-    const bool liveModuleLoaded = m_Runtime.LoadModuleFromCode(m_Context ? m_Context->GetCKContext() : nullptr,
-                                                              snapshot.SourceCode,
-                                                              snapshot.EntryPathUtf8,
-                                                              liveDiagnostic);
-    if (!liveModuleLoaded)
+    const bool liveModuleLoaded = m_Runtime.LoadModule(m_Context ? m_Context->GetCKContext() : nullptr,
+                                                       snapshot.CompileEntryPathUtf8,
+                                                       liveDiagnostic);
+    if (!liveModuleLoaded) {
+        RewriteSnapshotDiagnosticPaths(snapshot, liveDiagnostic);
         Fail(liveDiagnostic);
+    }
 
     if (liveModuleLoaded && LoadCurrentRuntime(true)) {
         ReleaseRuntimeOnly(oldRuntime);
@@ -1813,7 +2044,8 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
             oldEntry.RootDirectory != m_Entry.RootDirectory) {
             utils::DeleteDirectoryW(oldEntry.RootDirectory);
         }
-        snapshot.KeepStagedRoot();
+        if (snapshot.CommitEntry.RootDirectory == snapshot.CompileEntry.RootDirectory)
+            snapshot.KeepStagedRoot();
         if (m_Context)
             m_Context->GetCommandContext().SortCommands();
         ExportRegistry::NotifyScriptExportsChanged();
