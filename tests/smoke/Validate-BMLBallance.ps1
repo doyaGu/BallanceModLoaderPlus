@@ -21,7 +21,9 @@ param(
 
     [switch]$SingleFileSmoke,
 
-    [switch]$ZipSmoke
+    [switch]$ZipSmoke,
+
+    [switch]$HotReloadStateSmoke
 )
 
 Set-StrictMode -Version Latest
@@ -119,6 +121,7 @@ function Remove-SmokeInstall {
         'BMLAngelScriptCompileErrorSmoke',
         'BMLAngelScriptRuntimeErrorSmoke',
         'BMLAngelScriptShutdownSmoke',
+        'BMLAngelScriptStateReloadSmoke',
         'BMLAngelScriptSingleFileSmoke'
     )
     foreach ($directory in $directories) {
@@ -175,10 +178,15 @@ function Install-SmokeMods {
     foreach ($smoke in @(
         'BMLAngelScriptSmoke',
         'BMLAngelScriptCompileErrorSmoke',
-        'BMLAngelScriptRuntimeErrorSmoke',
-        'BMLAngelScriptShutdownSmoke'
+        'BMLAngelScriptRuntimeErrorSmoke'
     )) {
         Copy-BMLDirectoryFresh -SourceDir (Join-Path $ScriptSmokeRoot $smoke) -DestinationDir (Join-Path $ModsDirectory $smoke)
+    }
+
+    if ($HotReloadStateSmoke) {
+        Copy-BMLDirectoryFresh -SourceDir (Join-Path $ScriptSmokeRoot 'BMLAngelScriptStateReloadSmoke') -DestinationDir (Join-Path $ModsDirectory 'BMLAngelScriptStateReloadSmoke')
+    } else {
+        Copy-BMLDirectoryFresh -SourceDir (Join-Path $ScriptSmokeRoot 'BMLAngelScriptShutdownSmoke') -DestinationDir (Join-Path $ModsDirectory 'BMLAngelScriptShutdownSmoke')
     }
 
     if ($SingleFileSmoke) {
@@ -206,6 +214,8 @@ $installedAngelScriptDll = Join-Path $buildingBlocksDir 'AngelScript.dll'
 $modLoaderLog = Join-Path $ballanceRootFull 'ModLoader\ModLoader.log'
 $playerLog = Join-Path $ballanceRootFull 'Bin\Player.log'
 $angelScriptLog = Join-Path $ballanceRootFull 'Bin\AngelScript.log'
+$stateReloadSmokeRuntime = Join-Path $modsDir 'BMLAngelScriptStateReloadSmoke\runtime.as'
+$stateReloadSmokeRuntimeV2 = Join-Path $modsDir 'BMLAngelScriptStateReloadSmoke\runtime.v2.txt'
 
 if (-not $BuildDll) {
     $BuildDll = Join-Path $layout.DefaultReleaseBin 'BMLPlus.dll'
@@ -252,6 +262,7 @@ $playerExitCode = $null
 $playerTimedOut = $false
 $playerKilled = $false
 $playerStarted = $false
+$hotReloadStateSourcePatched = $false
 
 if (-not $SkipPlayer) {
     foreach ($logPath in @($modLoaderLog, $playerLog, $angelScriptLog)) {
@@ -264,8 +275,16 @@ if (-not $SkipPlayer) {
     $playerStarted = $true
     $deadline = (Get-Date).AddSeconds($PlayerSeconds)
     while (-not $process.HasExited -and (Get-Date) -lt $deadline) {
-        Start-Sleep -Milliseconds 250
+        Start-Sleep -Milliseconds 100
         $process.Refresh()
+        if ($HotReloadStateSmoke -and -not $hotReloadStateSourcePatched) {
+            $liveLogText = Get-BMLTextIfExists $modLoaderLog
+            if ((Test-SmokeTextContains $liveLogText 'BML state reload smoke v1 ready') -and
+                (Test-SmokeTextContains $liveLogText 'BML script mod summary:')) {
+                Copy-Item -LiteralPath $stateReloadSmokeRuntimeV2 -Destination $stateReloadSmokeRuntime -Force
+                $hotReloadStateSourcePatched = $true
+            }
+        }
     }
 
     if (-not $process.HasExited) {
@@ -288,6 +307,7 @@ if (-not $SkipPlayer) {
         [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
     Add-SmokeCheck $checks 'bindings' (Test-SmokeTextContains $modLogText 'Registered BML AngelScript bindings') 'Registered BML AngelScript bindings'
     Add-SmokeCheck $checks 'script-summary' (Test-SmokeTextContains $modLogText 'BML script mod summary:') 'BML script mod summary:'
+    Add-SmokeCheck $checks 'script-state-bag' (Test-SmokeTextContains $modLogText 'BML state bag smoke: ok=true') 'BML state bag smoke: ok=true'
     Add-SmokeCheck $checks 'script-datashare-request' (Test-SmokeTextContains $modLogText 'BML datashare request: immediate=') 'BML datashare request: immediate='
     $scriptDataShareDelegatePassed =
         (Test-SmokeTextContains $modLogText 'BML datashare delegate immediate callback key=AngelScriptSmokeDelegateImmediate exists=true value=delegate-ready') -and
@@ -319,10 +339,18 @@ if (-not $SkipPlayer) {
     if ($ZipSmoke) {
         Add-SmokeCheck $checks 'zip-script-package' (Test-SmokeTextContains $modLogText 'BML zip script smoke loaded resource=true') 'BML zip script smoke loaded resource=true'
     }
+    if ($HotReloadStateSmoke) {
+        Add-SmokeCheck $checks 'state-reload-source-patched' $hotReloadStateSourcePatched 'BML state reload smoke source patched'
+        Add-SmokeCheck $checks 'state-reload-ready' (Test-SmokeTextContains $modLogText 'BML state reload smoke v1 ready') 'BML state reload smoke v1 ready'
+        Add-SmokeCheck $checks 'state-reload-migrated' (Test-SmokeTextContains $modLogText 'BML state reload smoke v2 loaded migrated=true from=1.0.0 counter=1235 text=from-v1:migrated') 'BML state reload smoke v2 loaded migrated=true from=1.0.0 counter=1235 text=from-v1:migrated'
+        Add-SmokeCheck $checks 'state-reload-committed' (Test-SmokeTextContains $modLogText 'Script mod bml.state.reload.smoke hot reload succeeded.') 'Script mod bml.state.reload.smoke hot reload succeeded.'
+    }
     Add-SmokeCheck $checks 'compile-diagnostic' (Test-SmokeTextContains $modLogText 'phase=compile') 'phase=compile'
     Add-SmokeCheck $checks 'runtime-diagnostic' (Test-SmokeTextContains $modLogText 'phase=callback') 'phase=callback'
     Add-SmokeCheck $checks 'goodbye' (Test-SmokeTextContains $modLogText 'Goodbye!') 'Goodbye!'
-    Add-SmokeCheck $checks 'shutdown-smoke' (Test-SmokeTextContains $modLogText 'BML shutdown smoke requesting exit') 'BML shutdown smoke requesting exit'
+    if (-not $HotReloadStateSmoke) {
+        Add-SmokeCheck $checks 'shutdown-smoke' (Test-SmokeTextContains $modLogText 'BML shutdown smoke requesting exit') 'BML shutdown smoke requesting exit'
+    }
 }
 
 $failedChecks = @($checks | Where-Object { -not $_.Passed })
@@ -353,6 +381,7 @@ $result = [pscustomobject]@{
     CKAngelScriptDll = $CKAngelScriptDll
     SingleFileSmoke = [bool]$SingleFileSmoke
     ZipSmoke = [bool]$ZipSmoke
+    HotReloadStateSmoke = [bool]$HotReloadStateSmoke
     PlayerStarted = $playerStarted
     PlayerExitCode = $playerExitCode
     PlayerTimedOut = $playerTimedOut

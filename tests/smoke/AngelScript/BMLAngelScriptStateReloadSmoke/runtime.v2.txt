@@ -1,0 +1,39 @@
+[bml.mod id="bml.state.reload.smoke" name="BML AngelScript State Reload Smoke" version="2.0.0" author="BML" bml="0.3.0" reload="auto" description="Smoke test for script hot reload state migration."]
+class BMLStateReloadSmokeMod {
+  bool migrated = false;
+  int counter = -1;
+  string text = "";
+  string fromVersion = "";
+
+  void MigrateState(const string &in version, BML::StateBag@ state) {
+    if (state is null) {
+      return;
+    }
+    migrated = state.GetBool("saved", false);
+    counter = state.GetInt("counter", -1) + 1;
+    text = state.GetString("text", "") + ":migrated";
+    fromVersion = version;
+    state.SetInt("counter", counter);
+    state.SetString("text", text);
+    state.SetString("fromVersion", fromVersion);
+  }
+
+  void RestoreState(BML::StateBag@ state) {
+    if (state is null) {
+      return;
+    }
+    counter = state.GetInt("counter", -1);
+    text = state.GetString("text", "");
+    fromVersion = state.GetString("fromVersion", "");
+  }
+
+  void OnLoad(const BML::ModContext &in ctx) {
+    BML::Logger@ logger = ctx.BorrowLogger();
+    if (logger !is null) {
+      logger.Info("BML state reload smoke v2 loaded migrated=" + (migrated ? "true" : "false") +
+                  " from=" + fromVersion +
+                  " counter=" + counter +
+                  " text=" + text);
+    }
+  }
+}
