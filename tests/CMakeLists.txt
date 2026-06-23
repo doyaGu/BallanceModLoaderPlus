@@ -165,6 +165,14 @@ if (BML_WITH_ANGELSCRIPT)
     target_link_options(ScriptServiceLifecycleTest PRIVATE
             $<$<CXX_COMPILER_ID:MSVC>:/OPT:REF>
     )
+
+    add_bml_test(ScriptModStateTest
+            SOURCES
+            ScriptModStateTest.cpp
+            ${BML_SOURCE_DIR}/AngelScript/CKAngelScriptAdapter.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptDiagnostic.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptModState.cpp
+    )
 endif ()
 
 add_bml_test(ScriptDevEventsTest

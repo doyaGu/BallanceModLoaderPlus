@@ -18,6 +18,8 @@ void ScriptModState::Fail(const ScriptDiagnostic &diagnostic) {
 
 void ScriptModState::ClearFailure() {
     m_Failed = false;
+    m_LastDiagnostic = ScriptDiagnostic();
+    m_LastDiagnosticText.clear();
 }
 
 } // namespace BML
