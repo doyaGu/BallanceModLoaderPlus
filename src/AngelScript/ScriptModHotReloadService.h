@@ -43,8 +43,11 @@ private:
 
     struct PendingReload {
         ScriptModReloadOptions Options;
+        std::chrono::steady_clock::time_point QueuedAt;
         std::chrono::steady_clock::time_point Due;
+        std::chrono::steady_clock::time_point LastBlockedNotice;
         std::string Reason;
+        size_t BlockedRetryCount = 0;
     };
 
     ScriptMod *FindMod(const std::string &id) const;

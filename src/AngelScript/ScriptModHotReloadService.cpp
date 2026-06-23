@@ -14,6 +14,7 @@ namespace BML {
 namespace {
 constexpr auto kDebounceDelay = std::chrono::milliseconds(500);
 constexpr auto kRetryDelay = std::chrono::milliseconds(100);
+constexpr auto kBlockedNoticeDelay = std::chrono::seconds(1);
 
 bool EndsWithInsensitive(const std::wstring &value, const wchar_t *suffix) {
     if (!suffix)
@@ -201,6 +202,24 @@ void ScriptModHotReloadService::Process() {
             continue;
         }
         if (!mod->CanHotReloadNow()) {
+            ++pending.BlockedRetryCount;
+            const bool firstNotice = pending.LastBlockedNotice.time_since_epoch().count() == 0;
+            if (firstNotice || now - pending.LastBlockedNotice >= kBlockedNoticeDelay) {
+                pending.LastBlockedNotice = now;
+                if (m_Context && m_Context->GetScriptDevTools()) {
+                    const auto waitMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - pending.QueuedAt).count();
+                    m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
+                                                                 "ScriptReloadBlocked",
+                                                                 id,
+                                                                 "reload",
+                                                                 "",
+                                                                 "Script reload is waiting for active script calls to finish.",
+                                                                 {{"reason", pending.Reason},
+                                                                  {"activeCalls", std::to_string(mod->GetActiveScriptCallCount())},
+                                                                  {"retries", std::to_string(pending.BlockedRetryCount)},
+                                                                  {"waitMs", std::to_string(waitMs)}});
+                }
+            }
             pending.Due = now + kRetryDelay;
             m_Pending[id] = pending;
             continue;
@@ -219,6 +238,26 @@ void ScriptModHotReloadService::Process() {
                                            ? mod->TryHotReloadDryRun(pending.Options)
                                            : mod->TryHotReload(pending.Options);
         if (result.RetryLater) {
+            ++pending.BlockedRetryCount;
+            if (pending.LastBlockedNotice.time_since_epoch().count() == 0 ||
+                now - pending.LastBlockedNotice >= kBlockedNoticeDelay) {
+                pending.LastBlockedNotice = now;
+                if (m_Context && m_Context->GetScriptDevTools()) {
+                    const auto waitMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - pending.QueuedAt).count();
+                    m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
+                                                                 "ScriptReloadBlocked",
+                                                                 id,
+                                                                 "reload",
+                                                                 "",
+                                                                 result.Diagnostic.empty()
+                                                                     ? "Script reload asked to retry later."
+                                                                     : result.Diagnostic,
+                                                                 {{"reason", pending.Reason},
+                                                                  {"activeCalls", std::to_string(mod->GetActiveScriptCallCount())},
+                                                                  {"retries", std::to_string(pending.BlockedRetryCount)},
+                                                                  {"waitMs", std::to_string(waitMs)}});
+                }
+            }
             pending.Due = now + kRetryDelay;
             m_Pending[id] = pending;
             continue;
@@ -314,10 +353,17 @@ std::string ScriptModHotReloadService::GetStatus() const {
         if (record.Policy == ScriptModReloadPolicy::Auto)
             ++autoCount;
     }
+    size_t blockedCount = 0;
+    for (const auto &entry : m_Pending) {
+        ScriptMod *mod = FindMod(entry.first);
+        if (mod && !mod->CanHotReloadNow())
+            ++blockedCount;
+    }
     std::ostringstream stream;
     stream << "script hot reload: mods=" << m_Mods.size()
            << " auto=" << autoCount
            << " pending=" << m_Pending.size()
+           << " blocked=" << blockedCount
            << " automatic=" << (m_AutomaticEnabled ? "on" : "off")
            << " watcherDropped=" << m_Watcher.GetDroppedEventCount();
     return stream.str();
@@ -376,6 +422,9 @@ void ScriptModHotReloadService::QueueReloadNow(ScriptMod *mod,
     PendingReload &pending = m_Pending[mod->GetID()];
     pending.Options = options;
     pending.Due = std::chrono::steady_clock::now();
+    pending.QueuedAt = pending.Due;
+    pending.LastBlockedNotice = {};
+    pending.BlockedRetryCount = 0;
     pending.Reason = reason;
     if (m_Context && m_Context->GetScriptDevTools()) {
         const bool dryRun = options.DryRun;
@@ -401,7 +450,10 @@ void ScriptModHotReloadService::QueueReloadDebounced(ScriptMod *mod,
         return;
     PendingReload &pending = m_Pending[mod->GetID()];
     pending.Options = options;
-    pending.Due = std::chrono::steady_clock::now() + kDebounceDelay;
+    pending.QueuedAt = std::chrono::steady_clock::now();
+    pending.Due = pending.QueuedAt + kDebounceDelay;
+    pending.LastBlockedNotice = {};
+    pending.BlockedRetryCount = 0;
     pending.Reason = reason;
     if (m_Context && m_Context->GetScriptDevTools()) {
         const bool dryRun = options.DryRun;
