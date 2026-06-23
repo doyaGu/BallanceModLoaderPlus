@@ -436,13 +436,14 @@ void RestoreState(BML::StateBag@ state) {
 ```
 
   BML calls `SaveState` on the old runtime before `OnUnload`. If state was
-  saved, the current runtime and the candidate must declare either
-  `RestoreState(BML::StateBag@)` or
-  `MigrateState(const string &in fromVersion, BML::StateBag@)`, otherwise
-  reload is rejected before the old runtime is unloaded. On the candidate,
-  BML calls `MigrateState` first, then `RestoreState`, then `OnLoad`.
-  Rollback uses a clone of the original state bag to restore the old runtime
-  before rollback `OnLoad`.
+  saved, the old runtime must declare `RestoreState(BML::StateBag@)` so rollback
+  can restore the old script object without running migration code. The
+  candidate must declare either `RestoreState(BML::StateBag@)` or
+  `MigrateState(const string &in fromVersion, BML::StateBag@)`, otherwise reload
+  is rejected before the old runtime is unloaded. On the candidate, BML calls
+  `MigrateState` first, then `RestoreState`, then `OnLoad`. Rollback uses a
+  clone of the original state bag and calls only old `RestoreState` before
+  rollback `OnLoad`.
 - `StateBag` is intentionally limited to `bool`, `int`, `float`, and `string`.
   Do not store AngelScript objects, callbacks, `ModRef`, `ExportRef`, CK handles,
   timers, commands, or DataShare requests in it; those resources are rebound

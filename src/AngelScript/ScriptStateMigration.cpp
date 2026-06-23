@@ -107,12 +107,12 @@ bool ScriptStateMigration::Save(CKContext *context,
                                    diagnostic);
 }
 
-bool ScriptStateMigration::Restore(CKContext *context,
-                                   ScriptModRuntime &runtime,
-                                   const std::string &fromVersion,
-                                   ScriptStateBag &state,
-                                   bool &called,
-                                   ScriptDiagnostic &diagnostic) {
+bool ScriptStateMigration::MigrateAndRestore(CKContext *context,
+                                             ScriptModRuntime &runtime,
+                                             const std::string &fromVersion,
+                                             ScriptStateBag &state,
+                                             bool &called,
+                                             ScriptDiagnostic &diagnostic) {
     called = false;
 
     bool migrated = false;
@@ -143,6 +143,38 @@ bool ScriptStateMigration::Restore(CKContext *context,
 
     called = migrated || restored;
     return true;
+}
+
+bool ScriptStateMigration::Restore(CKContext *context,
+                                   ScriptModRuntime &runtime,
+                                   ScriptStateBag &state,
+                                   bool &called,
+                                   ScriptDiagnostic &diagnostic) {
+    StateOnlyArgs args = {&runtime.GetApi(), &state};
+    return CallOptionalStateMethod(context,
+                                   runtime,
+                                   RestoreStateDecl,
+                                   WriteStateOnlyArgs,
+                                   &args,
+                                   "RestoreState failed",
+                                   called,
+                                   diagnostic);
+}
+
+bool ScriptStateMigration::HasSaveHook(CKContext *context,
+                                       ScriptModRuntime &runtime,
+                                       bool &available,
+                                       ScriptDiagnostic &diagnostic) {
+    available = false;
+    return HasStateMethod(context, runtime, SaveStateDecl, available, diagnostic);
+}
+
+bool ScriptStateMigration::HasRestoreState(CKContext *context,
+                                           ScriptModRuntime &runtime,
+                                           bool &available,
+                                           ScriptDiagnostic &diagnostic) {
+    available = false;
+    return HasStateMethod(context, runtime, RestoreStateDecl, available, diagnostic);
 }
 
 bool ScriptStateMigration::HasRestoreHook(CKContext *context,

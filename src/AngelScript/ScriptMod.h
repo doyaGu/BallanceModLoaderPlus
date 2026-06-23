@@ -306,7 +306,8 @@ private:
     bool LoadCurrentRuntime(bool validateHostRegistrations,
                             bool failedLoadRecovery = false,
                             ScriptStateBag *restoreState = nullptr,
-                            const std::string &restoreFromVersion = std::string());
+                            const std::string &restoreFromVersion = std::string(),
+                            bool migrateState = true);
     void CallGameEvent(size_t eventIndex);
     void CleanupFailedLoad();
     void FailIfEventCallFailed(bool ok, const ScriptDiagnostic &diagnostic);

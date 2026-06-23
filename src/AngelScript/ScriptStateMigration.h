@@ -24,12 +24,28 @@ public:
                      bool &called,
                      ScriptDiagnostic &diagnostic);
 
+    static bool MigrateAndRestore(CKContext *context,
+                                  ScriptModRuntime &runtime,
+                                  const std::string &fromVersion,
+                                  ScriptStateBag &state,
+                                  bool &called,
+                                  ScriptDiagnostic &diagnostic);
+
     static bool Restore(CKContext *context,
                         ScriptModRuntime &runtime,
-                        const std::string &fromVersion,
                         ScriptStateBag &state,
                         bool &called,
                         ScriptDiagnostic &diagnostic);
+
+    static bool HasSaveHook(CKContext *context,
+                            ScriptModRuntime &runtime,
+                            bool &available,
+                            ScriptDiagnostic &diagnostic);
+
+    static bool HasRestoreState(CKContext *context,
+                                ScriptModRuntime &runtime,
+                                bool &available,
+                                ScriptDiagnostic &diagnostic);
 
     static bool HasRestoreHook(CKContext *context,
                                ScriptModRuntime &runtime,
