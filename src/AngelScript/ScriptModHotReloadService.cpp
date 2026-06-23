@@ -32,29 +32,6 @@ bool SamePathInsensitive(const std::wstring &left, const std::wstring &right) {
     return _wcsicmp(resolvedLeft.c_str(), resolvedRight.c_str()) == 0;
 }
 
-std::string CompactDiagnostic(std::string diagnostic) {
-    for (char &ch : diagnostic) {
-        if (ch == '\r' || ch == '\n' || ch == '\t')
-            ch = ' ';
-    }
-
-    std::string compact;
-    compact.reserve(diagnostic.size());
-    bool previousSpace = false;
-    for (char ch : diagnostic) {
-        const bool isSpace = ch == ' ';
-        if (isSpace && previousSpace)
-            continue;
-        compact.push_back(ch);
-        previousSpace = isSpace;
-    }
-
-    constexpr size_t kMaxDiagnosticLength = 220;
-    if (compact.size() > kMaxDiagnosticLength)
-        compact = compact.substr(0, kMaxDiagnosticLength - 3) + "...";
-    return compact;
-}
-
 void SendReloadResultMessage(ModContext *context,
                              const std::string &id,
                              const ScriptModReloadOptions &options,
@@ -74,10 +51,6 @@ void SendReloadResultMessage(ModContext *context,
     } else {
         message += "failed: ";
         message += id;
-        if (!result.Diagnostic.empty()) {
-            message += ": ";
-            message += CompactDiagnostic(result.Diagnostic);
-        }
     }
 
     context->SendIngameMessage(message.c_str());
