@@ -107,6 +107,19 @@ not dynamic mod discovery and not dependency graph reconstruction.
   export method resources from the old runtime before committing the new one.
   Old handles become invalid or stale; new registrations from the new `OnLoad`
   are the only active script resources.
+- Script object fields are not automatically copied across runtime replacement.
+  A script can opt into state migration with optional object methods:
+  `void SaveState(BML::StateBag@ state)`,
+  `void MigrateState(const string &in fromVersion, BML::StateBag@ state)`, and
+  `void RestoreState(BML::StateBag@ state)`. BML calls `SaveState` on the old
+  runtime before `OnUnload`; if it is present and succeeds, both the old runtime
+  and the candidate must provide `RestoreState` or `MigrateState`, otherwise
+  reload is rejected before unloading the old runtime. The candidate receives
+  `MigrateState`, then `RestoreState`, then `OnLoad`. Rollback receives a clone
+  of the original state bag before rollback `OnLoad`.
+- `StateBag` stores only `bool`, `int`, `float`, and `string` values keyed by
+  string. It never carries AngelScript object handles, callbacks, BML resource
+  handles, CK object handles, or other runtime-owned pointers across reload.
 - Script mods are reload-aware through `BML::ModContext`: `IsReloading` is true
   only during script lifecycle callbacks that are part of hot reload, and
   `ReloadPhase` reports `RELOAD_UNLOAD`, `RELOAD_LOAD`, `RELOAD_ROLLBACK`,

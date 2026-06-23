@@ -410,6 +410,43 @@ Expected behavior:
 - Use `ctx.ReloadPhase` in `OnUnload` to distinguish final shutdown from old
   runtime replacement. Use `BML::RELOAD_ROLLBACK` in `OnLoad` to avoid assuming
   a failed candidate has left the game world untouched.
+- Script object fields are not preserved automatically. To preserve them, add
+  hot reload state hooks:
+
+```angelscript
+int counter = 0;
+string mode = "idle";
+
+void SaveState(BML::StateBag@ state) {
+  state.SetInt("counter", counter);
+  state.SetString("mode", mode);
+}
+
+void MigrateState(const string &in fromVersion, BML::StateBag@ state) {
+  if (fromVersion == "1.0.0" && state.Has("oldMode")) {
+    state.SetString("mode", state.GetString("oldMode", "idle"));
+    state.Remove("oldMode");
+  }
+}
+
+void RestoreState(BML::StateBag@ state) {
+  counter = state.GetInt("counter", counter);
+  mode = state.GetString("mode", mode);
+}
+```
+
+  BML calls `SaveState` on the old runtime before `OnUnload`. If state was
+  saved, the current runtime and the candidate must declare either
+  `RestoreState(BML::StateBag@)` or
+  `MigrateState(const string &in fromVersion, BML::StateBag@)`, otherwise
+  reload is rejected before the old runtime is unloaded. On the candidate,
+  BML calls `MigrateState` first, then `RestoreState`, then `OnLoad`.
+  Rollback uses a clone of the original state bag to restore the old runtime
+  before rollback `OnLoad`.
+- `StateBag` is intentionally limited to `bool`, `int`, `float`, and `string`.
+  Do not store AngelScript objects, callbacks, `ModRef`, `ExportRef`, CK handles,
+  timers, commands, or DataShare requests in it; those resources are rebound
+  through the normal `OnLoad` path.
 - Rollback restores only resources BML owns: callbacks, exports, timers,
   commands, DataShare requests, and script runtime handles. It cannot undo
   changes your script already made to the game world through CKAS Scene/BB APIs,
