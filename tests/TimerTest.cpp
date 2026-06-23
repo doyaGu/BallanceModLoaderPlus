@@ -435,6 +435,41 @@ TEST_F(TimerTest, Cancel) {
     EXPECT_FALSE(callbackExecuted);
 }
 
+TEST_F(TimerTest, CancelGroupBeforeReplacementPreventsOldCallbacks) {
+    size_t currentTick = 100;
+    int oldCallbackCount = 0;
+    int newCallbackCount = 0;
+
+    Timer::Builder()
+        .WithName("old-script-timer")
+        .WithDelayTicks(10)
+        .AddToGroup("script:reload-smoke")
+        .WithSimpleCallback([&oldCallbackCount]() {
+            oldCallbackCount++;
+        })
+        .Build(currentTick, 0.0f);
+
+    for (const auto &timer : Timer::FindByGroup("script:reload-smoke")) {
+        timer->Cancel();
+    }
+
+    Timer::Builder()
+        .WithName("new-script-timer")
+        .WithDelayTicks(10)
+        .AddToGroup("script:reload-smoke")
+        .WithSimpleCallback([&newCallbackCount]() {
+            newCallbackCount++;
+        })
+        .Build(currentTick, 0.0f);
+
+    AdvanceTicks(currentTick, 10);
+    Timer::ProcessAll(currentTick, 0.0f);
+
+    EXPECT_EQ(0, oldCallbackCount);
+    EXPECT_EQ(1, newCallbackCount);
+    EXPECT_EQ(0u, Timer::FindByGroup("script:reload-smoke").size());
+}
+
 // Test timer finding by ID, name, and group
 TEST_F(TimerTest, TimerLookup) {
     size_t currentTick = 100;

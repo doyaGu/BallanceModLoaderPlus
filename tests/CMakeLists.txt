@@ -120,6 +120,12 @@ add_bml_test(CommandContextTest
         BMLUtils
 )
 
+add_bml_test(DataShareTest
+        SOURCES
+        DataShareTest.cpp
+        ${BML_SOURCE_DIR}/DataShare.cpp
+)
+
 add_bml_test(ScriptDevEventsTest
         SOURCES
         ScriptDevEventsTest.cpp

@@ -200,6 +200,22 @@ TEST_F(CommandContextTest, UnregisterCommand) {
     EXPECT_EQ(nullptr, ctx->GetCommandByName("test"));
 }
 
+TEST_F(CommandContextTest, UnregisterAllowsReplacementWithoutOldLookup) {
+    auto *oldCmd = MakeCommand("reload-smoke", "rs");
+    auto *newCmd = MakeCommand("reload-smoke", "rs2");
+    ASSERT_TRUE(ctx->RegisterCommand(oldCmd));
+
+    EXPECT_TRUE(ctx->UnregisterCommand("reload-smoke"));
+    EXPECT_EQ(nullptr, ctx->GetCommandByName("reload-smoke"));
+    EXPECT_EQ(nullptr, ctx->GetCommandByName("rs"));
+
+    ASSERT_TRUE(ctx->RegisterCommand(newCmd));
+    EXPECT_EQ(static_cast<ICommand *>(newCmd), ctx->GetCommandByName("reload-smoke"));
+    EXPECT_EQ(static_cast<ICommand *>(newCmd), ctx->GetCommandByName("rs2"));
+    EXPECT_EQ(nullptr, ctx->GetCommandByName("rs"));
+    EXPECT_EQ(1u, ctx->GetCommandCount());
+}
+
 TEST_F(CommandContextTest, UnregisterRemovesAlias) {
     auto *cmd = MakeCommand("teleport", "tp");
     ctx->RegisterCommand(cmd);
