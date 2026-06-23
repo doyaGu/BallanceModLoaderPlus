@@ -95,6 +95,13 @@ public:
     bool ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
                                              const BML::ScriptModDefinition &candidate,
                                              std::string &diagnostic) const;
+    bool PromoteFailedScriptModPlaceholder(BML::ScriptMod *mod,
+                                           const std::string &oldId,
+                                           const BML::ScriptModDefinition &candidate,
+                                           std::string &diagnostic);
+    void RestoreFailedScriptModPlaceholder(BML::ScriptMod *mod,
+                                           const std::string &currentId,
+                                           const BML::ScriptModDefinition &oldDefinition);
     bool QueueScriptModReload(const std::string &id,
                               const BML::ScriptModReloadOptions &options,
                               std::string &message);

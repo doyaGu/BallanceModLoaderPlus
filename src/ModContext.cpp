@@ -1725,20 +1725,64 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
         return false;
     }
 
-    if (CheckDependencies(const_cast<BML::ScriptMod *>(mod)) == 0) {
-        diagnostic = "Script mod reload dependencies are not currently satisfied.";
+    const char *currentId = const_cast<BML::ScriptMod *>(mod)->GetID();
+    if (candidate.Id.empty()) {
+        diagnostic = "Script mod reload candidate has an empty id.";
         return false;
+    }
+    if (currentId && candidate.Id != currentId) {
+        auto existing = m_ModMap.find(candidate.Id);
+        if (existing != m_ModMap.end() && existing->second != mod) {
+            diagnostic = "Script mod failed-load recovery id '" + candidate.Id + "' conflicts with an already registered mod.";
+            return false;
+        }
+    }
+
+    for (const auto &dependency : candidate.Dependencies) {
+        if (dependency.Id.empty())
+            continue;
+        auto dependencyIt = m_ModMap.find(dependency.Id);
+        if (dependencyIt == m_ModMap.end()) {
+            if (!dependency.Optional) {
+                diagnostic = "Script mod reload dependency '" + dependency.Id + "' is missing. "
+                             "Hot reload does not load new dependency graph nodes; restart is required.";
+                return false;
+            }
+            continue;
+        }
+
+        IMod *dependencyMod = dependencyIt->second;
+        if (!dependencyMod) {
+            if (!dependency.Optional) {
+                diagnostic = "Script mod reload dependency '" + dependency.Id + "' is unavailable.";
+                return false;
+            }
+            continue;
+        }
+#if BML_ENABLE_ANGELSCRIPT
+        if (BML::IsFailedScriptMod(dependencyMod)) {
+            if (!dependency.Optional) {
+                diagnostic = "Script mod reload dependency '" + dependency.Id + "' is failed.";
+                return false;
+            }
+            continue;
+        }
+#endif
+        const BMLVersion have = BML::ParseBmlVersion(dependencyMod->GetVersion() ? dependencyMod->GetVersion() : "0.0.0");
+        if (have < dependency.MinVersion && !dependency.Optional) {
+            diagnostic = "Script mod reload dependency '" + dependency.Id + "' is older than required.";
+            return false;
+        }
     }
 
     const BMLVersion candidateVersion = BML::ParseBmlVersion(candidate.Version);
-    const char *targetId = const_cast<BML::ScriptMod *>(mod)->GetID();
     for (const auto &entry : m_ModDependencies) {
         IMod *dependent = entry.first;
         if (!dependent || dependent == mod)
             continue;
 
         for (const auto &dependency : entry.second) {
-            if (!dependency.id || !targetId || std::string(dependency.id) != targetId)
+            if (!dependency.id || std::string(dependency.id) != candidate.Id)
                 continue;
             if (!dependency.optional && candidateVersion < dependency.minVersion) {
                 diagnostic = "Script mod reload version would no longer satisfy dependent mod '";
@@ -1750,6 +1794,64 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
     }
 
     return true;
+}
+
+bool ModContext::PromoteFailedScriptModPlaceholder(BML::ScriptMod *mod,
+                                                   const std::string &oldId,
+                                                   const BML::ScriptModDefinition &candidate,
+                                                   std::string &diagnostic) {
+    if (!mod) {
+        diagnostic = "Script mod failed-load recovery target is missing.";
+        return false;
+    }
+    if (!mod->IsFailedPlaceholder()) {
+        diagnostic = "Script mod id changes require restart after the mod has loaded once.";
+        return false;
+    }
+    if (oldId.empty() || candidate.Id.empty()) {
+        diagnostic = "Script mod failed-load recovery requires non-empty old and new ids.";
+        return false;
+    }
+
+    auto oldIt = m_ModMap.find(oldId);
+    if (oldIt == m_ModMap.end() || oldIt->second != mod) {
+        diagnostic = "Script mod failed-load recovery lost its placeholder registration.";
+        return false;
+    }
+
+    auto newIt = m_ModMap.find(candidate.Id);
+    if (newIt != m_ModMap.end() && newIt->second != mod) {
+        diagnostic = "Script mod failed-load recovery id '" + candidate.Id + "' conflicts with an already registered mod.";
+        return false;
+    }
+
+    if (candidate.Id != oldId) {
+        m_ModMap.erase(oldIt);
+        m_ModMap.emplace(candidate.Id, mod);
+    }
+
+    ClearDependencies(mod);
+    RegisterScriptModDependencies(mod, candidate);
+    return true;
+}
+
+void ModContext::RestoreFailedScriptModPlaceholder(BML::ScriptMod *mod,
+                                                   const std::string &currentId,
+                                                   const BML::ScriptModDefinition &oldDefinition) {
+    if (!mod)
+        return;
+
+    if (!currentId.empty()) {
+        auto currentIt = m_ModMap.find(currentId);
+        if (currentIt != m_ModMap.end() && currentIt->second == mod)
+            m_ModMap.erase(currentIt);
+    }
+
+    if (!oldDefinition.Id.empty())
+        m_ModMap[oldDefinition.Id] = mod;
+
+    ClearDependencies(mod);
+    RegisterScriptModDependencies(mod, oldDefinition);
 }
 
 bool ModContext::QueueScriptModReload(const std::string &id,

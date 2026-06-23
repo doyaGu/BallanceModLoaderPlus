@@ -1002,9 +1002,12 @@ bool ScriptMod::ValidateReloadDefinition(const ScriptModDefinition &candidate,
                                          const ScriptExportTable &candidateExports,
                                          const ScriptModReloadOptions &options,
                                          std::string &diagnostic) const {
+    const bool recoveringPlaceholder = IsFailedPlaceholder();
     if (candidate.Id != m_Definition.Id) {
-        diagnostic = "Script mod id changed from '" + m_Definition.Id + "' to '" + candidate.Id + "'.";
-        return false;
+        if (!recoveringPlaceholder) {
+            diagnostic = "Script mod id changed from '" + m_Definition.Id + "' to '" + candidate.Id + "'.";
+            return false;
+        }
     }
     if (!candidate.Enabled) {
         diagnostic = "Script mod reload candidate is disabled.";
@@ -1028,7 +1031,7 @@ bool ScriptMod::ValidateReloadDefinition(const ScriptModDefinition &candidate,
         newDependencies.push_back(dependencyKey(dependency));
     std::sort(oldDependencies.begin(), oldDependencies.end());
     std::sort(newDependencies.begin(), newDependencies.end());
-    if (oldDependencies != newDependencies) {
+    if (!recoveringPlaceholder && oldDependencies != newDependencies) {
         diagnostic = "Script mod dependency declarations changed; restart is required. "
                      "Hot reload does not reorder the dependency graph or cascade reload dependent mods.";
         return false;
@@ -1745,6 +1748,27 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
         return finish(false, failure.Message, &failure);
     }
 
+    const bool recoveringPlaceholder = IsFailedPlaceholder();
+    const std::string recoveryOldId = m_Definition.Id;
+    bool recoveryPromoted = false;
+    if (recoveringPlaceholder) {
+        if (!m_Context) {
+            const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Metadata,
+                                                                  "Script mod failed-load recovery requires a ModContext.");
+            return finish(false, failure.Message, &failure);
+        }
+        std::string recoveryDiagnostic;
+        if (!m_Context->PromoteFailedScriptModPlaceholder(this,
+                                                          recoveryOldId,
+                                                          candidateDefinition,
+                                                          recoveryDiagnostic)) {
+            const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Metadata,
+                                                                  recoveryDiagnostic);
+            return finish(false, recoveryDiagnostic, &failure);
+        }
+        recoveryPromoted = true;
+    }
+
     ExportRegistry::NotifyScriptExportsChanged();
     ScriptDiagnostic unloadDiagnostic;
     if (m_State.IsLoaded() && !m_EventRouter.CallOnUnload(unloadDiagnostic))
@@ -1794,6 +1818,27 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                                           : m_State.GetLastDiagnosticText();
     ReleaseRuntime();
 
+    if (recoveringPlaceholder) {
+        const std::string candidateId = m_Definition.Id;
+        m_Definition = std::move(oldDefinition);
+        m_Entry = std::move(oldEntry);
+        m_Runtime = std::move(oldRuntime);
+        m_Runtime.SetOwner(this);
+        if (recoveryPromoted && m_Context)
+            m_Context->RestoreFailedScriptModPlaceholder(this, candidateId, m_Definition);
+
+        ScriptDiagnostic failure = reloadDiagnostic;
+        failure.Phase = ScriptDiagnosticPhase::Runtime;
+        if (failure.Message.empty())
+            failure.Message = "Failed-load recovery did not complete; fixed script was not loaded.";
+        if (failure.RawMessage.empty() && failure.CompilerMessages.empty() && failure.StackTrace.empty())
+            failure.RawMessage = reloadFailure;
+        Fail(failure);
+        ExportRegistry::NotifyScriptExportsChanged();
+        FenceCallbacksForCurrentFrame();
+        return finish(false, FormatScriptDiagnostic(failure), &failure);
+    }
+
     m_Definition = std::move(oldDefinition);
     m_Entry = std::move(oldEntry);
     m_Runtime = std::move(oldRuntime);
@@ -1835,6 +1880,13 @@ std::wstring ScriptMod::GetEntryPath() const {
 bool IsFailedScriptMod(const IMod *mod) {
     auto *scriptMod = dynamic_cast<const ScriptMod *>(mod);
     return scriptMod && scriptMod->IsFailed();
+}
+
+bool ScriptMod::IsFailedPlaceholder() const {
+    return m_State.IsFailed() &&
+           !m_Entry.SyntheticId.empty() &&
+           m_Definition.Id == m_Entry.SyntheticId &&
+           !m_State.IsLoaded();
 }
 
 } // namespace BML

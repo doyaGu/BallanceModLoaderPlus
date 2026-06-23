@@ -4,6 +4,7 @@
 #include <chrono>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "ScriptFileWatcherWin32.h"
@@ -52,13 +53,17 @@ private:
     void QueueReloadDebounced(ScriptMod *mod, const ScriptModReloadOptions &options, const std::string &reason);
     bool ShouldWatch(const ScriptMod *mod, ScriptModReloadPolicy *outPolicy = nullptr) const;
     std::wstring GetWatchRoot(const ScriptMod *mod) const;
+    std::wstring GetModsRoot() const;
     bool EventLooksRelevant(const ScriptFileWatcherWin32::Event &event, const ScriptMod *mod) const;
+    bool EventBelongsToKnownMod(const std::wstring &path, const ScriptMod *mod) const;
+    void PublishNewModRestartRequired(const ScriptFileWatcherWin32::Event &event);
 
     ModContext *m_Context = nullptr;
     bool m_Started = false;
     bool m_AutomaticEnabled = true;
     std::vector<ModRecord> m_Mods;
     std::unordered_map<std::string, PendingReload> m_Pending;
+    std::unordered_set<std::wstring> m_ReportedNewModRoots;
     ScriptFileWatcherWin32 m_Watcher;
 };
 

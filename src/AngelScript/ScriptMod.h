@@ -142,6 +142,7 @@ public:
 
     bool IsFailed() const { return m_State.IsFailed(); }
     bool IsLoaded() const { return m_State.IsLoaded(); }
+    bool IsFailedPlaceholder() const;
     bool IsReloading() const { return m_Reloading.load(); }
     bool CanHotReloadNow() const;
     const std::string &GetLastDiagnostic() const { return m_State.GetLastDiagnosticText(); }

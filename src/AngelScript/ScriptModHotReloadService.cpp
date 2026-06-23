@@ -32,6 +32,17 @@ bool SamePathInsensitive(const std::wstring &left, const std::wstring &right) {
     return _wcsicmp(resolvedLeft.c_str(), resolvedRight.c_str()) == 0;
 }
 
+std::wstring ScriptEntryStem(const std::wstring &entryPath) {
+    std::wstring fileName = utils::GetFileNameW(entryPath);
+    constexpr wchar_t suffix[] = L".mod.as";
+    constexpr size_t suffixLength = (sizeof(suffix) / sizeof(suffix[0])) - 1;
+    if (fileName.size() > suffixLength &&
+        _wcsicmp(fileName.c_str() + fileName.size() - suffixLength, suffix) == 0) {
+        fileName.resize(fileName.size() - suffixLength);
+    }
+    return fileName;
+}
+
 void SendReloadResultMessage(ModContext *context,
                              const std::string &id,
                              const ScriptModReloadOptions &options,
@@ -135,10 +146,9 @@ void ScriptModHotReloadService::Process() {
         ScriptModReloadOptions automaticOptions;
         automaticOptions.Automatic = true;
         for (const auto &event : events) {
+            PublishNewModRestartRequired(event);
             for (const auto &record : m_Mods) {
                 if (!record.Mod || record.Policy != ScriptModReloadPolicy::Auto)
-                    continue;
-                if (record.WatchRoot != event.Root)
                     continue;
                 if (!EventLooksRelevant(event, record.Mod))
                     continue;
@@ -192,24 +202,29 @@ void ScriptModHotReloadService::Process() {
         }
 
         if (m_Context && m_Context->GetLogger()) {
+            const char *currentId = mod->GetID();
+            const std::string resultId = currentId && *currentId ? currentId : id;
             if (result.Success) {
                 if (pending.Options.DryRun)
-                    m_Context->GetLogger()->Info("Script mod %s hot reload dry-run passed.", id.c_str());
+                    m_Context->GetLogger()->Info("Script mod %s hot reload dry-run passed.", resultId.c_str());
                 else
-                    m_Context->GetLogger()->Info("Script mod %s hot reload succeeded.", id.c_str());
+                    m_Context->GetLogger()->Info("Script mod %s hot reload succeeded.", resultId.c_str());
             } else {
                 if (pending.Options.DryRun) {
                     m_Context->GetLogger()->Warn("Script mod %s hot reload dry-run failed: %s",
-                                                 id.c_str(),
+                                                 resultId.c_str(),
                                                  result.Diagnostic.c_str());
                 } else {
                     m_Context->GetLogger()->Warn("Script mod %s hot reload failed: %s",
-                                                 id.c_str(),
+                                                 resultId.c_str(),
                                                  result.Diagnostic.c_str());
                 }
             }
         }
-        SendReloadResultMessage(m_Context, id, pending.Options, result);
+        SendReloadResultMessage(m_Context,
+                                mod->GetID() && *mod->GetID() ? mod->GetID() : id,
+                                pending.Options,
+                                result);
         if (m_Context && m_Context->GetScriptDevTools()) {
             const bool rolledBack = !result.Success && result.Diagnostic.find("rolled back") != std::string::npos;
             const char *code = "ScriptReloadRejected";
@@ -298,13 +313,27 @@ void ScriptModHotReloadService::RebuildWatches() {
     m_Watcher.StopAll();
     if (!m_Started || !m_AutomaticEnabled)
         return;
+
+    std::vector<std::wstring> watchedRoots;
+    auto watchOnce = [&](const std::wstring &root) {
+        if (root.empty())
+            return;
+        for (const auto &watched : watchedRoots) {
+            if (SamePathInsensitive(watched, root))
+                return;
+        }
+        if (m_Watcher.Watch(root))
+            watchedRoots.push_back(root);
+    };
+
+    watchOnce(GetModsRoot());
     for (auto &record : m_Mods) {
         if (!record.Mod)
             continue;
         record.Policy = ResolvePolicy(record.Mod);
         record.WatchRoot = GetWatchRoot(record.Mod);
-        if (record.Policy == ScriptModReloadPolicy::Auto && !record.WatchRoot.empty())
-            m_Watcher.Watch(record.WatchRoot);
+        if (record.Policy == ScriptModReloadPolicy::Auto)
+            watchOnce(record.WatchRoot);
     }
 }
 
@@ -386,16 +415,83 @@ std::wstring ScriptModHotReloadService::GetWatchRoot(const ScriptMod *mod) const
     return entry.RootDirectory;
 }
 
+std::wstring ScriptModHotReloadService::GetModsRoot() const {
+    if (!m_Context)
+        return {};
+    const wchar_t *loaderDir = m_Context->GetDirectory(BML_DIR_LOADER);
+    if (!loaderDir || !*loaderDir)
+        return {};
+    return utils::CombinePathW(loaderDir, L"Mods");
+}
+
 bool ScriptModHotReloadService::EventLooksRelevant(const ScriptFileWatcherWin32::Event &event,
                                                    const ScriptMod *mod) const {
     if (!mod)
         return false;
     if (event.Overflow)
         return true;
+    if (!EventBelongsToKnownMod(event.Path, mod))
+        return false;
     const ScriptModEntry &entry = mod->GetEntry();
     if (entry.SourceKind == ScriptModEntrySourceKind::ZipPackage)
         return EndsWithInsensitive(event.Path, L".zip") && SamePathInsensitive(event.Path, entry.SourcePath);
     return EndsWithInsensitive(event.Path, L".as");
+}
+
+bool ScriptModHotReloadService::EventBelongsToKnownMod(const std::wstring &path, const ScriptMod *mod) const {
+    if (!mod || path.empty())
+        return false;
+
+    const ScriptModEntry &entry = mod->GetEntry();
+    if (entry.SourceKind == ScriptModEntrySourceKind::ZipPackage)
+        return SamePathInsensitive(path, entry.SourcePath);
+
+    if (entry.SourceKind == ScriptModEntrySourceKind::SingleFile) {
+        if (SamePathInsensitive(path, entry.EntryPath))
+            return true;
+        if (!entry.ResourceRootDirectory.empty() && utils::IsPathInsideRootW(path, entry.ResourceRootDirectory))
+            return true;
+        return false;
+    }
+
+    return !entry.RootDirectory.empty() && utils::IsPathInsideRootW(path, entry.RootDirectory);
+}
+
+void ScriptModHotReloadService::PublishNewModRestartRequired(const ScriptFileWatcherWin32::Event &event) {
+    if (event.Overflow || !IsScriptModEntryName(utils::GetFileNameW(event.Path).c_str()))
+        return;
+
+    for (const auto &record : m_Mods) {
+        if (EventBelongsToKnownMod(event.Path, record.Mod))
+            return;
+    }
+
+    const std::wstring modsRoot = GetModsRoot();
+    const std::wstring entryDirectory = utils::GetDirectoryW(event.Path);
+    std::wstring candidateRoot = entryDirectory;
+    if (SamePathInsensitive(entryDirectory, modsRoot))
+        candidateRoot = utils::CombinePathW(entryDirectory, ScriptEntryStem(event.Path));
+
+    const std::wstring key = utils::ResolvePathW(candidateRoot);
+    if (key.empty() || !m_ReportedNewModRoots.insert(key).second)
+        return;
+
+    std::wstring displayPath = event.Path;
+    if (!modsRoot.empty() && utils::IsPathInsideRootW(event.Path, modsRoot))
+        displayPath = utils::MakeRelativePathW(event.Path, modsRoot);
+    const std::string source = utils::Utf16ToUtf8(displayPath);
+    const std::string message = "New script mod entry detected; restart is required to load it.";
+    if (m_Context && m_Context->GetLogger())
+        m_Context->GetLogger()->Warn("%s %s", message.c_str(), source.c_str());
+    if (m_Context && m_Context->GetScriptDevTools()) {
+        m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
+                                                     "ScriptModRestartRequired",
+                                                     "",
+                                                     "watch",
+                                                     source,
+                                                     message,
+                                                     {{"reason", "new script mod"}});
+    }
 }
 
 } // namespace BML
