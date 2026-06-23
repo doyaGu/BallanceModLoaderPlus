@@ -245,6 +245,13 @@ void CommandBar::OnShow() {
 
 void CommandBar::OnHide() {
     m_VisiblePrev = true;
+    if (m_InputBlockToken != 0) {
+        if (auto *context = BML_GetModContext()) {
+            if (auto *input = context->GetInputManager())
+                input->ReleaseBlock(m_InputBlockToken);
+        }
+        m_InputBlockToken = 0;
+    }
 }
 
 void CommandBar::PrintHistory() {
@@ -363,20 +370,28 @@ void CommandBar::SyncCandidatePageFromIndex() {
 }
 
 void CommandBar::ToggleCommandBar(bool on) {
-    auto *inputHook = BML_GetModContext()->GetInputManager();
+    auto *context = BML_GetModContext();
     if (on) {
         Show();
         m_Buffer[0] = '\0';
-        inputHook->Block(CK_INPUT_DEVICE_KEYBOARD);
+        if (m_InputBlockToken == 0) {
+            if (auto *input = context->GetInputManager())
+                m_InputBlockToken = input->AcquireBlock(InputHook::InputBlockKeyboard);
+        }
         m_HistoryIndex = static_cast<int>(m_History.size());
     } else {
+        const uint64_t releaseToken = m_InputBlockToken;
+        m_InputBlockToken = 0;
         Hide();
         ImGui::SetWindowFocus(nullptr);
         m_Buffer[0] = '\0';
-        BML_GetModContext()->AddTimerLoop(1ul, [this, inputHook] {
-            if (inputHook->oIsKeyDown(CKKEY_ESCAPE) || inputHook->oIsKeyDown(CKKEY_RETURN))
+        context->AddTimerLoop(1ul, [context, releaseToken] {
+            auto *input = context->GetInputManager();
+            if (!input)
+                return false;
+            if (input->oIsKeyDown(CKKEY_ESCAPE) || input->oIsKeyDown(CKKEY_RETURN))
                 return true;
-            inputHook->Unblock(CK_INPUT_DEVICE_KEYBOARD);
+            input->ReleaseBlock(releaseToken);
             return false;
         });
     }

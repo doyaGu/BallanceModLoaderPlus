@@ -200,7 +200,7 @@ private:
     char m_EventAttemptFilter[32] = {};
     char m_EventSearch[128] = {};
     bool m_PauseEventScroll = false;
-    bool m_InputBlockTokenActive = false;
+    uint64_t m_InputBlockToken = 0;
     bool m_LogSelectedModOnly = false;
     bool m_LogReloadOnly = false;
     bool m_ShowAdvancedLogFilters = false;

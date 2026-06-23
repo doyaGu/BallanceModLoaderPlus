@@ -1,5 +1,7 @@
 #include "BML/InputHook.h"
 
+#include <unordered_map>
+
 #include "VTables.h"
 #include "HookUtils.h"
 
@@ -8,6 +10,8 @@ struct InputHook::Impl {
     static unsigned char s_LastKeyboardState[256];
     static Vx2DVector s_LastMousePosition;
     static int s_BlockedDevice[CK_INPUT_DEVICE_COUNT];
+    static uint64_t s_NextBlockToken;
+    static std::unordered_map<uint64_t, uint32_t> s_BlockTokens;
     static CKInputManager *s_InputManager;
     static CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager> s_VTable;
 
@@ -138,6 +142,68 @@ struct InputHook::Impl {
     static void Unblock(CK_INPUT_DEVICE device) {
         if (device >= 0 && device < CK_INPUT_DEVICE_COUNT && s_BlockedDevice[device] > 0)
             --s_BlockedDevice[device];
+    }
+
+    static uint32_t NormalizeBlockMask(uint32_t mask) {
+        return mask & InputHook::InputBlockAll;
+    }
+
+    static void ApplyBlockMask(uint32_t mask, bool block) {
+        if (mask & InputHook::InputBlockKeyboard) {
+            if (block)
+                Block(CK_INPUT_DEVICE_KEYBOARD);
+            else
+                Unblock(CK_INPUT_DEVICE_KEYBOARD);
+        }
+        if (mask & InputHook::InputBlockMouse) {
+            if (block)
+                Block(CK_INPUT_DEVICE_MOUSE);
+            else
+                Unblock(CK_INPUT_DEVICE_MOUSE);
+        }
+        if (mask & InputHook::InputBlockJoystick) {
+            if (block)
+                Block(CK_INPUT_DEVICE_JOYSTICK);
+            else
+                Unblock(CK_INPUT_DEVICE_JOYSTICK);
+        }
+    }
+
+    static uint64_t AcquireBlock(uint32_t deviceMask) {
+        const uint32_t mask = NormalizeBlockMask(deviceMask);
+        if (mask == 0)
+            return 0;
+
+        uint64_t token = 0;
+        do {
+            token = s_NextBlockToken++;
+            if (s_NextBlockToken == 0)
+                s_NextBlockToken = 1;
+        } while (token == 0 || s_BlockTokens.find(token) != s_BlockTokens.end());
+
+        s_BlockTokens.emplace(token, mask);
+        ApplyBlockMask(mask, true);
+        return token;
+    }
+
+    static void ReleaseBlock(uint64_t token) {
+        if (token == 0)
+            return;
+
+        auto it = s_BlockTokens.find(token);
+        if (it == s_BlockTokens.end())
+            return;
+
+        const uint32_t mask = it->second;
+        s_BlockTokens.erase(it);
+        ApplyBlockMask(mask, false);
+    }
+
+    static void ReleaseAllBlocks() {
+        for (const auto &entry : s_BlockTokens)
+            ApplyBlockMask(entry.second, false);
+        s_BlockTokens.clear();
+        s_NextBlockToken = 1;
     }
 
     static CKERROR PostProcessOriginal() {
@@ -297,6 +363,8 @@ unsigned char InputHook::Impl::s_KeyboardState[256] = {};
 unsigned char InputHook::Impl::s_LastKeyboardState[256] = {};
 Vx2DVector InputHook::Impl::s_LastMousePosition;
 int InputHook::Impl::s_BlockedDevice[CK_INPUT_DEVICE_COUNT] = {};
+uint64_t InputHook::Impl::s_NextBlockToken = 1;
+std::unordered_map<uint64_t, uint32_t> InputHook::Impl::s_BlockTokens;
 CKInputManager *InputHook::Impl::s_InputManager = nullptr;
 CP_CLASS_VTABLE_NAME(CKInputManager)<CKInputManager> InputHook::Impl::s_VTable = {};
 void *InputHook::Impl::s_OriginalSlots[32] = {};
@@ -309,6 +377,7 @@ InputHook::InputHook(CKInputManager *input) : m_Impl(nullptr) {
 }
 
 InputHook::~InputHook() {
+    Impl::ReleaseAllBlocks();
     Impl::Unhook();
 }
 
@@ -562,6 +631,14 @@ void InputHook::Block(CK_INPUT_DEVICE device) {
 
 void InputHook::Unblock(CK_INPUT_DEVICE device) {
     Impl::Unblock(device);
+}
+
+uint64_t InputHook::AcquireBlock(uint32_t deviceMask) {
+    return Impl::AcquireBlock(deviceMask);
+}
+
+void InputHook::ReleaseBlock(uint64_t token) {
+    Impl::ReleaseBlock(token);
 }
 
 void InputHook::Process() {

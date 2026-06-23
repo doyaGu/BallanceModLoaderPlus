@@ -1,6 +1,7 @@
 #include "BML/Bui.h"
 
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 
 #include "CKMessageManager.h"
@@ -17,6 +18,8 @@
 #include "Overlay.h"
 
 namespace Bui {
+    static uint64_t g_KeyboardInputBlockToken = 0;
+
     enum TextureType {
         TEXTURE_BUTTON_DESELECT,
         TEXTURE_BUTTON_SELECT,
@@ -1304,7 +1307,10 @@ namespace Bui {
     void BlockKeyboardInput() {
         auto *ctx = BML_GetModContext();
         if (!ctx) return;
-        ctx->GetInputManager()->Block(CK_INPUT_DEVICE_KEYBOARD);
+        if (g_KeyboardInputBlockToken == 0) {
+            if (auto *input = ctx->GetInputManager())
+                g_KeyboardInputBlockToken = input->AcquireBlock(InputHook::InputBlockKeyboard);
+        }
     }
 
     void ActivateScript(const char *scriptName) {
@@ -1320,11 +1326,16 @@ namespace Bui {
     void UnblockKeyboardAfterRelease() {
         auto *mod = BML_GetModContext();
         if (!mod) return;
-        auto *input = mod->GetInputManager();
-        mod->AddTimerLoop(1ul, [input] {
+        const uint64_t token = g_KeyboardInputBlockToken;
+        g_KeyboardInputBlockToken = 0;
+        if (token == 0) return;
+        mod->AddTimerLoop(1ul, [mod, token] {
+            auto *input = mod->GetInputManager();
+            if (!input)
+                return false;
             if (input->oIsKeyDown(CKKEY_ESCAPE) || input->oIsKeyDown(CKKEY_RETURN))
                 return true; // keep waiting while keys are down
-            input->Unblock(CK_INPUT_DEVICE_KEYBOARD);
+            input->ReleaseBlock(token);
             return false; // stop loop
         });
     }

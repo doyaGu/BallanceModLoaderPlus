@@ -1116,31 +1116,20 @@ void ScriptDevToolsService::OnHide() {
 }
 
 void ScriptDevToolsService::BlockGameInput() {
-    if (m_InputBlockTokenActive)
+    if (m_InputBlockToken != 0)
         return;
     if (!m_Context || !m_Context->GetInputManager())
         return;
 
-    InputHook *input = m_Context->GetInputManager();
-    input->Block(CK_INPUT_DEVICE_KEYBOARD);
-    input->Block(CK_INPUT_DEVICE_MOUSE);
-    input->Block(CK_INPUT_DEVICE_JOYSTICK);
-    m_InputBlockTokenActive = true;
+    m_InputBlockToken = m_Context->GetInputManager()->AcquireBlock(InputHook::InputBlockAll);
 }
 
 void ScriptDevToolsService::UnblockGameInput() {
-    if (!m_InputBlockTokenActive)
+    if (m_InputBlockToken == 0)
         return;
-    if (!m_Context || !m_Context->GetInputManager()) {
-        m_InputBlockTokenActive = false;
-        return;
-    }
-
-    InputHook *input = m_Context->GetInputManager();
-    input->Unblock(CK_INPUT_DEVICE_JOYSTICK);
-    input->Unblock(CK_INPUT_DEVICE_MOUSE);
-    input->Unblock(CK_INPUT_DEVICE_KEYBOARD);
-    m_InputBlockTokenActive = false;
+    if (m_Context && m_Context->GetInputManager())
+        m_Context->GetInputManager()->ReleaseBlock(m_InputBlockToken);
+    m_InputBlockToken = 0;
 }
 
 void ScriptDevToolsService::OnDraw() {
