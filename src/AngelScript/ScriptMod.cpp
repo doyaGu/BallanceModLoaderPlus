@@ -1344,11 +1344,9 @@ bool ScriptMod::ValidateReloadDefinition(const ScriptModDefinition &candidate,
         return false;
 
     if (!options.ForceExports) {
-        for (int i = 0; i < m_Exports.GetCount(); ++i) {
-            std::string name;
-            std::string signature;
-            if (!m_Exports.GetInfo(i, name, signature))
-                continue;
+        for (const ScriptModExportDefinition &exportInfo : m_Definition.Exports) {
+            const std::string &name = exportInfo.Name;
+            const std::string &signature = exportInfo.Signature;
             if (!candidateExports.HasExport(name, signature)) {
                 diagnostic = "Script mod reload removed or changed export '" + name +
                              "' signature '" + signature + "'. "
