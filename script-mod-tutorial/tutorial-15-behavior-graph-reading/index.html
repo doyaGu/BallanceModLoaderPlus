@@ -1,0 +1,2672 @@
+
+<!doctype html>
+<html lang="zh" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="BML documentation and Ballance script mod tutorial.">
+      
+      
+      
+        <link rel="canonical" href="https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-15-behavior-graph-reading/">
+      
+      
+        <link rel="prev" href="../tutorial-14-gameplay-state-machine/">
+      
+      
+        <link rel="next" href="../tutorial-16-physics-observe/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>15 行为图阅读 - Ballance Mod Loader Plus</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#15" class="md-skip">
+          跳转至
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="页眉">
+    <a href="../.." title="Ballance Mod Loader Plus" class="md-header__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Ballance Mod Loader Plus
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              15 行为图阅读
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜索" placeholder="搜索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="查找">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清空当前内容" aria-label="清空当前内容" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜索引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/doyaGu/BallanceModLoaderPlus" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    doyaGu/BallanceModLoaderPlus
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="导航栏" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Ballance Mod Loader Plus" class="md-nav__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Ballance Mod Loader Plus
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/doyaGu/BallanceModLoaderPlus" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    doyaGu/BallanceModLoaderPlus
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    首页
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    脚本 Mod 教程
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    脚本 Mod 教程
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    导读
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    教程
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    教程
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-01-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    01 环境搭建
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-02-hello-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    02 第一个 Mod
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-03-output-input/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    03 输出与输入
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-04-imgui-window/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    04 ImGui 窗口
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-05-commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    05 命令系统
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-06-callbacks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    06 回调模型
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-07-config-timer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    07 配置与 Timer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-08-find-objects/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    08 查找对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-09-coordinate-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    09 坐标显示器
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-10-ballance-internals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    10 Ballance 内部结构
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-11-dataarray-read/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    11 读 DataArray
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-12-status-panel-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    12 状态面板
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-13-levelinit-placeholders/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    13 Levelinit 占位对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-14-gameplay-state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    14 Gameplay 状态机
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    15 行为图阅读
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    15 行为图阅读
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        行为图是什么
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        行为图的三个层次
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        两种连线
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#building-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        常见 Building Block
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        四步阅读法
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="四步阅读法">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第一步：看图名
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第二步：看顶层子图和节点
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dataarray" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第三步：找 DataArray 读写
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第四步：找消息收发
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#activate-next-checkpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        实例：activate next Checkpoint
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="实例：activate next Checkpoint">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第一步：图名
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第二步：执行线上的节点
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dataarray_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第三步：DataArray 操作
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第四步：消息
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        完整流程图（文本表示）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        一句话总结
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gameplay_sectormanager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        实例：Gameplay_SectorManager 简化视图
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="实例：Gameplay_SectorManager 简化视图">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第一步：图名
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第二步：顶层子图
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dataarray_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第三步：DataArray 操作
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第四步：消息
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_16" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        简化流程
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        脚本能做什么，不能做什么
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        用脚本观察行为图的执行效果
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_19" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        概念总结
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        常见问题
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        完成状态
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        下一步
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-16-physics-observe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    16 物理观察
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-17-physics-create/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    17 生成物理对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-18-physics-control/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    18 控制物理对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-19-safety-checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    19 安全检查清单
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-20-complete-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    20 完整 Mod
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-21-publish/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    21 发布
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-22-troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    22 排错
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    参考
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-lifecycle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    生命周期与事件
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-modcontext/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ModContext 方法
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-commands-config-timer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令、配置、定时器
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-input-imgui/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    输入与 ImGui
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-objects-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    对象与组
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-dataarray/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DataArray
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-physics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    物理
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-inter-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    跨 Mod 通信
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-hud-resources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HUD、消息与资源
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-ballance-names/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ballance 名称速查
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    BML 脚本 API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        行为图是什么
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        行为图的三个层次
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        两种连线
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#building-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        常见 Building Block
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        四步阅读法
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="四步阅读法">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第一步：看图名
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第二步：看顶层子图和节点
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dataarray" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第三步：找 DataArray 读写
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第四步：找消息收发
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#activate-next-checkpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        实例：activate next Checkpoint
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="实例：activate next Checkpoint">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第一步：图名
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第二步：执行线上的节点
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dataarray_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第三步：DataArray 操作
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第四步：消息
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        完整流程图（文本表示）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        一句话总结
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gameplay_sectormanager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        实例：Gameplay_SectorManager 简化视图
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="实例：Gameplay_SectorManager 简化视图">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第一步：图名
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第二步：顶层子图
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dataarray_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第三步：DataArray 操作
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        第四步：消息
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_16" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        简化流程
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        脚本能做什么，不能做什么
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        用脚本观察行为图的执行效果
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_19" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        概念总结
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        常见问题
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        完成状态
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        下一步
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="15">15 行为图阅读法<a class="headerlink" href="#15" title="Permanent link">&para;</a></h1>
+<p>上一章看到 Gameplay 持续维护运行时表格：IngameParameter、Energy、CurrentLevel 这些表在关卡运行期间会不断被更新。分数增加了，Sector 编号变了，ActiveBall 换了。</p>
+<p>谁在更新它们？</p>
+<p>你的脚本没有写入操作，但值确实在变。答案是行为图（Behavior Graph）。行为图是 Ballance 原版逻辑的载体，用可视化方式编写，节点连线组成流程。理解行为图的阅读方法，能帮你弄清楚游戏状态为什么会按照特定顺序变化。</p>
+<p>本章目标：掌握一套从行为图中提取流程信息的阅读方法，不需要修改任何行为图。</p>
+<h2 id="_1">行为图是什么<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<p>Virtools 引擎的可视化编程系统。每一段逻辑由若干节点和连线组成，这些节点叫做 Building Block（简称 BB）。</p>
+<p>一段行为图的执行过程：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>节点 A 做一个操作
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>完成后沿着线跑到节点 B
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>节点 B 需要数据，数据通过另一种线从别处传过来
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>节点 B 完成后继续沿线到节点 C
+</code></pre></div>
+<p>和文本代码的区别：文本代码从上往下读，行为图从左往右（或按线的方向）追。但原理一样，都是顺序执行加数据传递。</p>
+<p>Ballance 几乎所有核心逻辑都在行为图里：</p>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>包含的行为图</th>
+<th>负责</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>base.cmo</code></td>
+<td>菜单流程、关卡调度</td>
+<td>启动、加载、退出</td>
+</tr>
+<tr>
+<td><code>Levelinit.nmo</code></td>
+<td>分组、建表、初始化</td>
+<td>开局整理</td>
+</tr>
+<tr>
+<td><code>Gameplay.nmo</code></td>
+<td>球控制、碰撞、计分、检查点</td>
+<td>运行时规则</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">行为图的三个层次<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p>一个 CKBehavior（行为对象）可以是三种东西：</p>
+<table>
+<thead>
+<tr>
+<th>层次</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Building Block</td>
+<td>最小执行单元，做一个具体操作</td>
+</tr>
+<tr>
+<td>子图（Sub-Graph）</td>
+<td>包含多个 Building Block 和连线，组成一段流程</td>
+</tr>
+<tr>
+<td>脚本行为（Script Behavior）</td>
+<td>附加在某个对象上的顶级行为图</td>
+</tr>
+</tbody>
+</table>
+<p>要看这些图，需要使用保留了 Interface Data 的反混淆文件。原版文件里的界面数据被删除，直接打开通常只能看到对象和行为存在，不能正常看到 Schematic View。</p>
+<p>实际操作顺序：</p>
+<ol>
+<li>从 <a href="https://github.com/BearKidsTeam/BallanceModding">BearKidsTeam/BallanceModding</a> 找到整理后的 Ballance 文件。</li>
+<li>用 Virtools Dev 打开其中的 <code>Gameplay.nmo</code> 或 <code>Levelinit.nmo</code>。</li>
+<li>在对象列表里找到行为对象，例如 <code>Gameplay_Ingame</code>。</li>
+<li>打开 Schematic View，从顶层子图开始往里看。</li>
+</ol>
+<p>打开反混淆后的 <code>Gameplay.nmo</code>，最外层看到的是脚本行为，例如 <code>Gameplay_Ingame</code>。进入它，看到若干子图，例如 <code>Gameplay_Events</code>、<code>Gameplay_SectorManager</code>。再进入子图，看到具体的 Building Block 节点。</p>
+<p>这种嵌套关系像文件夹：外面的图给出概览，里面的图给出细节。</p>
+<h2 id="_3">两种连线<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p>行为图里的线有两种，必须区分清楚：</p>
+<table>
+<thead>
+<tr>
+<th>线的类型</th>
+<th>方向</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>执行线（Behavior Link）</td>
+<td>节点输出 -&gt; 节点输入</td>
+<td>控制流：谁先跑，谁后跑</td>
+</tr>
+<tr>
+<td>参数线（Parameter Link）</td>
+<td>参数输出 -&gt; 参数输入</td>
+<td>数据流：值从哪里来</td>
+</tr>
+</tbody>
+</table>
+<p>执行线决定顺序。参数线决定数据。</p>
+<p>一个典型的场景：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>[Get Row] --执行线--&gt; [Set World Matrix] --执行线--&gt; [Show]
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>     |                       ^
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>     |--参数线(matrix)-------|
+</code></pre></div>
+<p>Get Row 先执行，取出一行数据。执行完后轮到 Set World Matrix，它需要矩阵参数，这个矩阵通过参数线从 Get Row 的输出拿到。最后 Show 执行，显示对象。</p>
+<p>阅读时的原则：先追执行线搞清顺序，再追参数线搞清数据来源。</p>
+<h2 id="building-block">常见 Building Block<a class="headerlink" href="#building-block" title="Permanent link">&para;</a></h2>
+<p>在 Ballance 的行为图里频繁出现这些节点：</p>
+<table>
+<thead>
+<tr>
+<th>节点名</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Activate Script</code></td>
+<td>启动一段子流程</td>
+</tr>
+<tr>
+<td><code>Deactivate Script</code></td>
+<td>停止一段子流程</td>
+</tr>
+<tr>
+<td><code>Wait Message</code></td>
+<td>等待内部消息到达后才继续</td>
+</tr>
+<tr>
+<td><code>Send Message</code></td>
+<td>向其他流程发送内部消息</td>
+</tr>
+<tr>
+<td><code>Get Cell</code></td>
+<td>从 DataArray 读一个单元格</td>
+</tr>
+<tr>
+<td><code>Set Cell</code></td>
+<td>往 DataArray 写一个单元格</td>
+</tr>
+<tr>
+<td><code>Get Row</code></td>
+<td>从 DataArray 读一整行</td>
+</tr>
+<tr>
+<td><code>Set World Matrix</code></td>
+<td>设置 3D 对象的位置和旋转</td>
+</tr>
+<tr>
+<td><code>Show</code></td>
+<td>显示对象</td>
+</tr>
+<tr>
+<td><code>Hide</code></td>
+<td>隐藏对象</td>
+</tr>
+<tr>
+<td><code>Op</code></td>
+<td>算术运算（加减乘除）</td>
+</tr>
+</tbody>
+</table>
+<p>先看节点名，通常能判断这段流程的大致用途。看不懂时再追参数线，不要一开始就陷进每个参数的来源。</p>
+<h2 id="_4">四步阅读法<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p>面对一张行为图，按这个顺序读：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>第一步：看图名
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>第二步：看顶层子图和节点
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>第三步：找 DataArray 读写
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>第四步：找消息收发
+</code></pre></div>
+<p>不要从左上角开始逐个节点细读。不要第一时间追参数。先把大方向搞清楚。</p>
+<h3 id="_5">第一步：看图名<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
+<p>图名通常能告诉你这段流程的职责。</p>
+<table>
+<thead>
+<tr>
+<th>图名</th>
+<th>先这样理解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Gameplay_Ingame</code></td>
+<td>关卡运行中的总流程</td>
+</tr>
+<tr>
+<td><code>Gameplay_Events</code></td>
+<td>事件中转和处理</td>
+</tr>
+<tr>
+<td><code>Gameplay_SectorManager</code></td>
+<td>小节切换管理</td>
+</tr>
+<tr>
+<td><code>activate next Checkpoint</code></td>
+<td>激活下一个检查点</td>
+</tr>
+<tr>
+<td><code>set Resetpoint</code></td>
+<td>设置复活点</td>
+</tr>
+</tbody>
+</table>
+<p>名字越具体，流程越小。名字越笼统，流程越大。入门时先从具体的小图开始。</p>
+<h3 id="_6">第二步：看顶层子图和节点<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
+<p>进入一张图后，先扫一遍顶层的子图名和 BB 节点名，列出来：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>Gameplay_Events 顶层包含：
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  Wait Message
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  activate next Checkpoint
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  activate Sektor
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  set Resetpoint
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  Send Message
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  Key Event
+</code></pre></div>
+<p>这就够了。从名字可以看出这张图负责事件中转：等消息进来，然后分发给检查点、小节、复活点等子流程，最后再发消息出去。</p>
+<h3 id="dataarray">第三步：找 DataArray 读写<a class="headerlink" href="#dataarray" title="Permanent link">&para;</a></h3>
+<p>看到 <code>Get Cell</code>、<code>Set Cell</code>、<code>Get Row</code>、<code>Set Row</code> 这些节点，说明流程在读写表格。接着问四个问题：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>哪张表？
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>哪一行？
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>哪一列？
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>读还是写？
+</code></pre></div>
+<p>这些信息在参数线上。对接到前面几章你已经实测过的表（CurrentLevel、Checkpoints、IngameParameter），就能把行为图的操作和你观察到的状态变化对应起来。</p>
+<h3 id="_7">第四步：找消息收发<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
+<p><code>Send Message</code> 和 <code>Wait Message</code> 是流程之间的连接点。</p>
+<ul>
+<li><code>Wait Message</code> 出现在流程开头：这段流程由消息触发</li>
+<li><code>Send Message</code> 出现在流程末尾：做完后通知其他流程继续</li>
+</ul>
+<p>Ballance 的原版逻辑大量使用消息串联。一个复杂的过程（过检查点、变球、过关）往往由多段子流程通过消息接力完成。</p>
+<h2 id="activate-next-checkpoint">实例：activate next Checkpoint<a class="headerlink" href="#activate-next-checkpoint" title="Permanent link">&para;</a></h2>
+<p>用四步阅读法读这张图。</p>
+<h3 id="_8">第一步：图名<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>activate next Checkpoint
+</code></pre></div>
+<p>职责明确：激活下一个检查点。</p>
+<h3 id="_9">第二步：执行线上的节点<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h3>
+<p>按执行线顺序，这张图包含：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>Activate Script -&gt; Set Cell -&gt; Get Row -&gt; Set World Matrix -&gt; Show -&gt; Send Message
+</code></pre></div>
+<p>翻译成自然语言：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>进入子流程
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>更新表中的某个状态
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>从表里取出一行数据
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>把某个对象设置到指定位置
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>显示该对象
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>发消息通知其他流程
+</code></pre></div>
+<h3 id="dataarray_1">第三步：DataArray 操作<a class="headerlink" href="#dataarray_1" title="Permanent link">&para;</a></h3>
+<p><code>Set Cell</code> 的参数追踪：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>目标表：CurrentLevel 或检查点状态相关字段
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>操作：写入下一个检查点的索引
+</code></pre></div>
+<p><code>Get Row</code> 的参数追踪：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>目标表：Checkpoints
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>行号：由 Set Cell 更新后的索引决定
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>读出内容：检查点对象引用、世界矩阵
+</code></pre></div>
+<p>和你在第 11 章实测的 Checkpoints 表对照：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>Checkpoints 表结构
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>  行 0: object=PC_TwoFlames_01   matrix=...
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>  行 1: object=PC_TwoFlames_02   matrix=...
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>  行 2: object=PC_TwoFlames_03   matrix=...
+</code></pre></div>
+<p>所以 Get Row 取出的就是下一个检查点的对象和位置。</p>
+<h3 id="_10">第四步：消息<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h3>
+<p>末尾的 <code>Send Message</code> 通知其他流程：检查点已激活。后续可能触发复活点更新、提示显示、声音播放等。</p>
+<h3 id="_11">完整流程图（文本表示）<a class="headerlink" href="#_11" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>activate next Checkpoint
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>=========================
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>[Activate Script]
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>       |
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>       v  执行线
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>[Set Cell]  ---- 参数线 ----&gt; CurrentLevel (更新检查点索引)
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>       |
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>       v  执行线
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>[Get Row]   ---- 参数线 &lt;--- Checkpoints 表 (取出对象+矩阵)
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>       |
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>       |--- 参数线(object) -----.
+<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>       |--- 参数线(matrix) --.  |
+<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>       v  执行线              |  |
+<a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>[Set World Matrix] &lt;---------&#39;  |
+<a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>       |                        |
+<a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>       v  执行线                |
+<a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a>[Show] &lt;------------------------&#39;
+<a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a>       |
+<a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a>       v  执行线
+<a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a>[Send Message]  ----&gt; 通知后续流程
+</code></pre></div>
+<h3 id="_12">一句话总结<a class="headerlink" href="#_12" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>收到检查点事件后，更新索引，从 Checkpoints 表读出下一检查点的对象和位置，
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>把对象放到该位置并显示出来，最后发消息通知后续流程。
+</code></pre></div>
+<h2 id="gameplay_sectormanager">实例：Gameplay_SectorManager 简化视图<a class="headerlink" href="#gameplay_sectormanager" title="Permanent link">&para;</a></h2>
+<p><code>Gameplay_SectorManager</code> 比 <code>activate next Checkpoint</code> 大得多，但阅读方法一样。</p>
+<h3 id="_13">第一步：图名<a class="headerlink" href="#_13" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>Gameplay_SectorManager
+</code></pre></div>
+<p>负责小节（Sector）相关的激活和关闭。第 10 章提到 Ballance 把每关分成若干 Sector，只渲染当前 Sector 附近的对象。</p>
+<h3 id="_14">第二步：顶层子图<a class="headerlink" href="#_14" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>Wait Message
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>activate Sektor
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>deactivate Sektor
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>Send Message
+</code></pre></div>
+<p>大方向：等消息 -&gt; 激活某个小节 -&gt; 关闭某个小节 -&gt; 发消息。</p>
+<h3 id="dataarray_2">第三步：DataArray 操作<a class="headerlink" href="#dataarray_2" title="Permanent link">&para;</a></h3>
+<p>子图内部的关键操作：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>读 IngameParameter.&quot;Activate Sector&quot; -&gt; 得到要激活的小节编号
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>读 IngameParameter.&quot;Deactivate Sector&quot; -&gt; 得到要关闭的小节编号
+</code></pre></div>
+<p>对照第 11 章你观察到的 IngameParameter 表内容：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>IngameParameter.Activate Sector: 1
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>IngameParameter.Deactivate Sector: 0
+</code></pre></div>
+<p>当玩家经过检查点，行为图会先更新这两个值，再触发 SectorManager 执行切换。</p>
+<h3 id="_15">第四步：消息<a class="headerlink" href="#_15" title="Permanent link">&para;</a></h3>
+<p><code>Wait Message</code>：等待某个消息到达后才开始执行切换。这个消息通常由检查点流程发出。</p>
+<p><code>Send Message</code>：切换完成后通知其他流程（可能触发对象显示、声音等）。</p>
+<h3 id="_16">简化流程<a class="headerlink" href="#_16" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>Gameplay_SectorManager 简化流程
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>===================================
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>收到小节切换消息
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>  |
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>  v
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>读 IngameParameter 表
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>  得到 Activate Sector 编号 (例如 2)
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>  得到 Deactivate Sector 编号 (例如 1)
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a>  |
+<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a>  v
+<a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a>activate Sektor
+<a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a>  显示 Sector_02 组中的所有对象
+<a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a>  |
+<a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a>  v
+<a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a>deactivate Sektor
+<a id="__codelineno-17-17" name="__codelineno-17-17" href="#__codelineno-17-17"></a>  隐藏 Sector_01 组中的所有对象
+<a id="__codelineno-17-18" name="__codelineno-17-18" href="#__codelineno-17-18"></a>  |
+<a id="__codelineno-17-19" name="__codelineno-17-19" href="#__codelineno-17-19"></a>  v
+<a id="__codelineno-17-20" name="__codelineno-17-20" href="#__codelineno-17-20"></a>发送完成消息
+</code></pre></div>
+<p>这就是为什么玩的时候，经过检查点后远处的路面突然出现而身后的路面消失。行为图按照 IngameParameter 表里的编号控制 Sector 组的显示和隐藏。</p>
+<h2 id="_17">脚本能做什么，不能做什么<a class="headerlink" href="#_17" title="Permanent link">&para;</a></h2>
+<p>明确边界：</p>
+<table>
+<thead>
+<tr>
+<th>能力</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>读 DataArray</td>
+<td>可以。观察行为图写入的结果</td>
+</tr>
+<tr>
+<td>监听游戏事件</td>
+<td>可以。知道行为图执行到了哪个阶段</td>
+</tr>
+<tr>
+<td>查看对象状态</td>
+<td>可以。看到行为图设置的位置、可见性</td>
+</tr>
+<tr>
+<td>修改行为图</td>
+<td>不可以。无法增删节点或改连线</td>
+</tr>
+<tr>
+<td>拦截行为图执行</td>
+<td>不可以。无法暂停或跳过某个节点</td>
+</tr>
+<tr>
+<td>替换行为图逻辑</td>
+<td>不可以。但可以在事件后覆盖效果</td>
+</tr>
+</tbody>
+</table>
+<p>这个限制意味着什么？你的脚本和行为图是并行的两套系统。行为图按原版流程运行，你的脚本通过事件和 DataArray 观察它的输出。如果你想改变游戏行为，方式是在行为图执行完之后覆盖它的结果（比如修改 DataArray 的值，移动对象位置），而不是修改行为图本身。</p>
+<h2 id="_18">用脚本观察行为图的执行效果<a class="headerlink" href="#_18" title="Permanent link">&para;</a></h2>
+<p>下面这段代码不读取行为图，而是观察行为图执行后的状态变化。当玩家经过检查点时，行为图会更新 Checkpoints 表和 IngameParameter 表，脚本能看到变化：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="p">[</span><span class="n">bml</span><span class="p">.</span><span class="n">mod</span><span class="w"> </span><span class="n">id</span><span class="o">=</span><span class="s">&quot;bgwatch.script&quot;</span><span class="w"> </span><span class="n">name</span><span class="o">=</span><span class="s">&quot;BG Watcher&quot;</span><span class="w"> </span><span class="n">version</span><span class="o">=</span><span class="s">&quot;1.0.0&quot;</span><span class="w"> </span><span class="n">author</span><span class="o">=</span><span class="s">&quot;Tutorial&quot;</span><span class="w"> </span><span class="n">bml</span><span class="o">=</span><span class="s">&quot;0.3.12&quot;</span><span class="w"> </span><span class="n">description</span><span class="o">=</span><span class="s">&quot;Observe behavior graph effects&quot;</span><span class="p">]</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">BGWatcher</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="w">    </span><span class="k">private</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">lastSector</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="w">    </span><span class="k">private</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">lastCheckpointIndex</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="nf">OnLoad</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="w">        </span><span class="n">LogInfo</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;BGWatcher loaded&quot;</span><span class="p">);</span>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a>
+<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a><span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="nf">OnGameEvent</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">GameEvent</span><span class="w"> </span><span class="n">event</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">event</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">GAME_EVENT_START_LEVEL</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a><span class="w">            </span><span class="n">lastSector</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a><span class="w">            </span><span class="n">lastCheckpointIndex</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span>
+<a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a><span class="w">            </span><span class="n">SnapshotState</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;level_start&quot;</span><span class="p">);</span>
+<a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-18-16" name="__codelineno-18-16" href="#__codelineno-18-16"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-18-17" name="__codelineno-18-17" href="#__codelineno-18-17"></a>
+<a id="__codelineno-18-18" name="__codelineno-18-18" href="#__codelineno-18-18"></a><span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="nf">OnProcess</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-19" name="__codelineno-18-19" href="#__codelineno-18-19"></a><span class="w">        </span><span class="n">CKDataArray</span><span class="err">@</span><span class="w"> </span><span class="n">ingame</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowDataArrayByName</span><span class="p">(</span><span class="s">&quot;IngameParameter&quot;</span><span class="p">);</span>
+<a id="__codelineno-18-20" name="__codelineno-18-20" href="#__codelineno-18-20"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ingame</span><span class="w"> </span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-18-21" name="__codelineno-18-21" href="#__codelineno-18-21"></a>
+<a id="__codelineno-18-22" name="__codelineno-18-22" href="#__codelineno-18-22"></a><span class="w">        </span><span class="kt">int</span><span class="w"> </span><span class="n">colSector</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">CK</span><span class="o">::</span><span class="n">FindColumn</span><span class="p">(</span><span class="n">ingame</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Activate Sector&quot;</span><span class="p">);</span>
+<a id="__codelineno-18-23" name="__codelineno-18-23" href="#__codelineno-18-23"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">colSector</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-18-24" name="__codelineno-18-24" href="#__codelineno-18-24"></a>
+<a id="__codelineno-18-25" name="__codelineno-18-25" href="#__codelineno-18-25"></a><span class="w">        </span><span class="kt">int</span><span class="w"> </span><span class="n">currentSector</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">CK</span><span class="o">::</span><span class="n">GetInt</span><span class="p">(</span><span class="n">ingame</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">colSector</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span>
+<a id="__codelineno-18-26" name="__codelineno-18-26" href="#__codelineno-18-26"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">currentSector</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">lastSector</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-27" name="__codelineno-18-27" href="#__codelineno-18-27"></a><span class="w">            </span><span class="n">lastSector</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">currentSector</span><span class="p">;</span>
+<a id="__codelineno-18-28" name="__codelineno-18-28" href="#__codelineno-18-28"></a><span class="w">            </span><span class="n">LogInfo</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Sector changed -&gt; &quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">currentSector</span>
+<a id="__codelineno-18-29" name="__codelineno-18-29" href="#__codelineno-18-29"></a><span class="w">                         </span><span class="o">+</span><span class="w"> </span><span class="s">&quot; (SectorManager activated a new sector)&quot;</span><span class="p">);</span>
+<a id="__codelineno-18-30" name="__codelineno-18-30" href="#__codelineno-18-30"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-18-31" name="__codelineno-18-31" href="#__codelineno-18-31"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-18-32" name="__codelineno-18-32" href="#__codelineno-18-32"></a>
+<a id="__codelineno-18-33" name="__codelineno-18-33" href="#__codelineno-18-33"></a><span class="w">    </span><span class="k">private</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">SnapshotState</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span>
+<a id="__codelineno-18-34" name="__codelineno-18-34" href="#__codelineno-18-34"></a><span class="w">                               </span><span class="k">const</span><span class="w"> </span><span class="n">string</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">reason</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-35" name="__codelineno-18-35" href="#__codelineno-18-35"></a><span class="w">        </span><span class="n">CKDataArray</span><span class="err">@</span><span class="w"> </span><span class="n">ingame</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowDataArrayByName</span><span class="p">(</span><span class="s">&quot;IngameParameter&quot;</span><span class="p">);</span>
+<a id="__codelineno-18-36" name="__codelineno-18-36" href="#__codelineno-18-36"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ingame</span><span class="w"> </span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-37" name="__codelineno-18-37" href="#__codelineno-18-37"></a><span class="w">            </span><span class="n">LogInfo</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;IngameParameter not available at &quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">reason</span><span class="p">);</span>
+<a id="__codelineno-18-38" name="__codelineno-18-38" href="#__codelineno-18-38"></a><span class="w">            </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-18-39" name="__codelineno-18-39" href="#__codelineno-18-39"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-18-40" name="__codelineno-18-40" href="#__codelineno-18-40"></a>
+<a id="__codelineno-18-41" name="__codelineno-18-41" href="#__codelineno-18-41"></a><span class="w">        </span><span class="kt">int</span><span class="w"> </span><span class="n">colActivate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">CK</span><span class="o">::</span><span class="n">FindColumn</span><span class="p">(</span><span class="n">ingame</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Activate Sector&quot;</span><span class="p">);</span>
+<a id="__codelineno-18-42" name="__codelineno-18-42" href="#__codelineno-18-42"></a><span class="w">        </span><span class="kt">int</span><span class="w"> </span><span class="n">colDeactivate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">CK</span><span class="o">::</span><span class="n">FindColumn</span><span class="p">(</span><span class="n">ingame</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Deactivate Sector&quot;</span><span class="p">);</span>
+<a id="__codelineno-18-43" name="__codelineno-18-43" href="#__codelineno-18-43"></a>
+<a id="__codelineno-18-44" name="__codelineno-18-44" href="#__codelineno-18-44"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">colActivate</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">colDeactivate</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-45" name="__codelineno-18-45" href="#__codelineno-18-45"></a><span class="w">            </span><span class="kt">int</span><span class="w"> </span><span class="n">activate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">CK</span><span class="o">::</span><span class="n">GetInt</span><span class="p">(</span><span class="n">ingame</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">colActivate</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span>
+<a id="__codelineno-18-46" name="__codelineno-18-46" href="#__codelineno-18-46"></a><span class="w">            </span><span class="kt">int</span><span class="w"> </span><span class="n">deactivate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">CK</span><span class="o">::</span><span class="n">GetInt</span><span class="p">(</span><span class="n">ingame</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">colDeactivate</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span>
+<a id="__codelineno-18-47" name="__codelineno-18-47" href="#__codelineno-18-47"></a><span class="w">            </span><span class="n">LogInfo</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Snapshot[&quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">reason</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">&quot;] Activate Sector=&quot;</span>
+<a id="__codelineno-18-48" name="__codelineno-18-48" href="#__codelineno-18-48"></a><span class="w">                         </span><span class="o">+</span><span class="w"> </span><span class="n">activate</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">&quot; Deactivate Sector=&quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">deactivate</span><span class="p">);</span>
+<a id="__codelineno-18-49" name="__codelineno-18-49" href="#__codelineno-18-49"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-18-50" name="__codelineno-18-50" href="#__codelineno-18-50"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-18-51" name="__codelineno-18-51" href="#__codelineno-18-51"></a>
+<a id="__codelineno-18-52" name="__codelineno-18-52" href="#__codelineno-18-52"></a><span class="w">    </span><span class="k">private</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">LogInfo</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">string</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">msg</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-53" name="__codelineno-18-53" href="#__codelineno-18-53"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">Logger</span><span class="err">@</span><span class="w"> </span><span class="n">logger</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowLogger</span><span class="p">();</span>
+<a id="__codelineno-18-54" name="__codelineno-18-54" href="#__codelineno-18-54"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">logger</span><span class="w"> </span><span class="o">!</span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-55" name="__codelineno-18-55" href="#__codelineno-18-55"></a><span class="w">            </span><span class="n">logger</span><span class="p">.</span><span class="n">Info</span><span class="p">(</span><span class="n">msg</span><span class="p">);</span>
+<a id="__codelineno-18-56" name="__codelineno-18-56" href="#__codelineno-18-56"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-18-57" name="__codelineno-18-57" href="#__codelineno-18-57"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-18-58" name="__codelineno-18-58" href="#__codelineno-18-58"></a><span class="p">}</span>
+</code></pre></div>
+<p>运行后进入第一关，经过第一个检查点时日志会出现：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>Sector changed -&gt; 2 (SectorManager activated a new sector)
+</code></pre></div>
+<p>你没有修改任何值。是行为图执行了 <code>activate next Checkpoint</code>，更新了 IngameParameter 表里的 <code>Activate Sector</code>，然后 SectorManager 执行了小节切换。你的脚本只是观察到了这个变化。</p>
+<h2 id="_19">概念总结<a class="headerlink" href="#_19" title="Permanent link">&para;</a></h2>
+<p>把行为图和前面章节学过的概念连接起来：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>DataArray（第 11 章）
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>  行为图读写 DataArray 来存储和传递状态
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>  你的脚本读 DataArray 来观察状态
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>游戏事件（第 6 章）
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>  BML 在行为图的关键节点处发出事件
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>  你的脚本收到事件后执行响应
+<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a>
+<a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a>对象和组（第 8、10 章）
+<a id="__codelineno-20-10" name="__codelineno-20-10" href="#__codelineno-20-10"></a>  行为图通过 Show/Hide/SetWorldMatrix 操作对象
+<a id="__codelineno-20-11" name="__codelineno-20-11" href="#__codelineno-20-11"></a>  你的脚本通过 Borrow3dEntityByName 获取同一个对象并读取它的状态
+<a id="__codelineno-20-12" name="__codelineno-20-12" href="#__codelineno-20-12"></a>
+<a id="__codelineno-20-13" name="__codelineno-20-13" href="#__codelineno-20-13"></a>消息（Virtools 内部）
+<a id="__codelineno-20-14" name="__codelineno-20-14" href="#__codelineno-20-14"></a>  行为图子流程之间用 Send/Wait Message 串联
+<a id="__codelineno-20-15" name="__codelineno-20-15" href="#__codelineno-20-15"></a>  脚本不直接收发 Virtools 消息，但能通过 BML 事件间接感知
+</code></pre></div>
+<p>行为图负责推进原版逻辑。DataArray 保存运行时状态。脚本先读这些状态，确认原版逻辑在做什么；需要改行为时，再选择一个影响范围明确的状态或对象去改。</p>
+<h2 id="_20">常见问题<a class="headerlink" href="#_20" title="Permanent link">&para;</a></h2>
+<p><strong>Q：我必须用 Virtools Dev 打开行为图才能读吗？</strong></p>
+<p>可以，但要打开反混淆后的文件。原版文件缺少 Interface Data，直接打开看不到可读的 Schematic View。反混淆文件可以在 <a href="https://github.com/BearKidsTeam/BallanceModding">BearKidsTeam/BallanceModding</a> 找到。</p>
+<p><strong>Q：BML 游戏事件和 Virtools 消息是同一个东西吗？</strong></p>
+<p>不是。BML 游戏事件（<code>BML::GameEvent</code>）是 BML 框架提供给脚本 mod 的回调接口。Virtools 消息（<code>Send Message</code> / <code>Wait Message</code>）是行为图内部的通信机制。它们属于不同层。BML 会在行为图执行到某些关键点时发出对应的游戏事件，所以你可以间接感知行为图的进度。</p>
+<p><strong>Q：如果行为图改了 DataArray，我在 OnProcess 里能立刻读到新值吗？</strong></p>
+<p>在 <code>OnProcess</code> 里观察，通常能读到本帧行为图处理后的结果，所以适合做状态面板和日志观察。事件回调的时机要看具体事件来源，不能把所有事件都当成同一个时间点。</p>
+<p><strong>Q：我的脚本能在行为图之前执行吗？</strong></p>
+<p>脚本层没有 <code>OnPreProcess</code> 固定回调。常规脚本主要在 <code>OnProcess</code> 里观察本帧状态，或通过 <code>GameEvent</code> 响应关卡阶段变化。脚本不能阻止某个行为图节点执行。</p>
+<p><strong>Q：行为图里的 Send Message 会触发 BML 事件吗？</strong></p>
+<p>不是每个 Virtools 消息都对应一个 BML 事件。BML 只在特定的关键消息处生成事件（开始关卡、死亡、加分、过关等）。大部分行为图内部的消息传递对脚本是不可见的，你只能通过 DataArray 的变化来间接推断。</p>
+<h2 id="_21">完成状态<a class="headerlink" href="#_21" title="Permanent link">&para;</a></h2>
+<p>本章完成后你能做到：</p>
+<ul>
+<li>[x] 理解行为图是 Virtools 的可视化编程系统</li>
+<li>[x] 区分执行线和参数线的作用</li>
+<li>[x] 使用四步阅读法（图名 -&gt; 顶层子图 -&gt; DataArray -&gt; 消息）</li>
+<li>[x] 读懂 <code>activate next Checkpoint</code> 的完整流程</li>
+<li>[x] 理解 <code>Gameplay_SectorManager</code> 的大致职责</li>
+<li>[x] 知道脚本能观察行为图效果但不能修改行为图</li>
+<li>[x] 通过监听 DataArray 变化间接观察行为图执行</li>
+</ul>
+<h2 id="_22">下一步<a class="headerlink" href="#_22" title="Permanent link">&para;</a></h2>
+<p><a href="../tutorial-16-physics-observe/">16 物理观察</a>，看行为图如何通过 Physicalize 操作把对象接入物理系统，以及脚本怎么观察这个过程。</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  回到页面顶部
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

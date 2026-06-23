@@ -1,0 +1,2203 @@
+
+<!doctype html>
+<html lang="zh" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="BML documentation and Ballance script mod tutorial.">
+      
+      
+      
+        <link rel="canonical" href="https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-10-ballance-internals/">
+      
+      
+        <link rel="prev" href="../tutorial-09-coordinate-mod/">
+      
+      
+        <link rel="next" href="../tutorial-11-dataarray-read/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>10 Ballance 内部结构 - Ballance Mod Loader Plus</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#10-ballance" class="md-skip">
+          跳转至
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="页眉">
+    <a href="../.." title="Ballance Mod Loader Plus" class="md-header__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Ballance Mod Loader Plus
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              10 Ballance 内部结构
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜索" placeholder="搜索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="查找">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清空当前内容" aria-label="清空当前内容" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜索引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/doyaGu/BallanceModLoaderPlus" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    doyaGu/BallanceModLoaderPlus
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="导航栏" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Ballance Mod Loader Plus" class="md-nav__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Ballance Mod Loader Plus
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/doyaGu/BallanceModLoaderPlus" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    doyaGu/BallanceModLoaderPlus
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    首页
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    脚本 Mod 教程
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    脚本 Mod 教程
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    导读
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    教程
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    教程
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-01-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    01 环境搭建
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-02-hello-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    02 第一个 Mod
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-03-output-input/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    03 输出与输入
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-04-imgui-window/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    04 ImGui 窗口
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-05-commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    05 命令系统
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-06-callbacks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    06 回调模型
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-07-config-timer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    07 配置与 Timer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-08-find-objects/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    08 查找对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-09-coordinate-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    09 坐标显示器
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    10 Ballance 内部结构
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    10 Ballance 内部结构
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        四个关键文件
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        一次关卡启动的完整流程
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        为什么"太早"会失败
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        对象命名约定
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="对象命名约定">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        前缀决定用途
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        不带前缀的对象
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mod" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        命名规则的 mod 写作意义
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#levelinit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        组：Levelinit 整理的结果
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dataarraylevelinit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DataArray：Levelinit 创建的运行时表
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        行为图：不可修改的原版逻辑
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        综合：一关里有什么
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mod_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        脚本 mod 的操作边界
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        验证你的理解
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        常见问题
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        下一步预告
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-11-dataarray-read/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    11 读 DataArray
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-12-status-panel-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    12 状态面板
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-13-levelinit-placeholders/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    13 Levelinit 占位对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-14-gameplay-state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    14 Gameplay 状态机
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-15-behavior-graph-reading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    15 行为图阅读
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-16-physics-observe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    16 物理观察
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-17-physics-create/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    17 生成物理对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-18-physics-control/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    18 控制物理对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-19-safety-checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    19 安全检查清单
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-20-complete-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    20 完整 Mod
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-21-publish/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    21 发布
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-22-troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    22 排错
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    参考
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-lifecycle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    生命周期与事件
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-modcontext/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ModContext 方法
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-commands-config-timer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令、配置、定时器
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-input-imgui/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    输入与 ImGui
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-objects-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    对象与组
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-dataarray/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DataArray
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-physics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    物理
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-inter-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    跨 Mod 通信
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-hud-resources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HUD、消息与资源
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-ballance-names/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ballance 名称速查
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    BML 脚本 API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        四个关键文件
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        一次关卡启动的完整流程
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        为什么"太早"会失败
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        对象命名约定
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="对象命名约定">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        前缀决定用途
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        不带前缀的对象
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mod" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        命名规则的 mod 写作意义
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#levelinit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        组：Levelinit 整理的结果
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dataarraylevelinit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DataArray：Levelinit 创建的运行时表
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        行为图：不可修改的原版逻辑
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        综合：一关里有什么
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mod_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        脚本 mod 的操作边界
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        验证你的理解
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        常见问题
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        下一步预告
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="10-ballance">10 Ballance 内部结构<a class="headerlink" href="#10-ballance" title="Permanent link">&para;</a></h1>
+<p>上一章做出了坐标显示器，进入关卡后找到球体对象，每帧读取坐标。但有一个问题你可能已经注意到：为什么必须等到 <code>GAME_EVENT_START_LEVEL</code> 才能找到球？为什么关卡开始前查找会返回 null？</p>
+<p>答案在 Ballance 的文件架构和启动流程里。这一章会解释：当你点击"Play Level 1"，游戏内部到底发生了什么。理解了这个流程，你就知道什么时候能找到什么对象，以及为什么有些操作必须在特定时机执行。</p>
+<h2 id="_1">四个关键文件<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<p>Ballance 的运行时由四类文件协作组成。想象成一条流水线，每个文件负责一个阶段：</p>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>位置</th>
+<th>职责</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>base.cmo</code></td>
+<td>游戏根目录</td>
+<td>总指挥：菜单系统、关卡调度、全局状态管理</td>
+</tr>
+<tr>
+<td><code>Levelinit.nmo</code></td>
+<td><code>3D Entities/</code></td>
+<td>初始化工人：关卡加载后整理对象、创建组和运行时表</td>
+</tr>
+<tr>
+<td><code>Gameplay.nmo</code></td>
+<td><code>3D Entities/</code></td>
+<td>规则裁判：球的控制、碰撞、计分、检查点逻辑</td>
+</tr>
+<tr>
+<td><code>Level_XX.NMO</code></td>
+<td><code>3D Entities/Level/</code></td>
+<td>关卡蓝图：XX 关的地形、机关、加分点等具体内容</td>
+</tr>
+</tbody>
+</table>
+<p><code>base.cmo</code> 从游戏启动就常驻内存。其余三个是关卡需要时加载的。</p>
+<h2 id="_2">一次关卡启动的完整流程<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p>当你在菜单里选择"Level 1"并点击开始，游戏内部按以下顺序执行：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>1. 玩家点击开始
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>2. base.cmo 收到指令，开始加载关卡
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>3. base.cmo 加载 Level_01.NMO -&gt; 地形、机关、加分点等对象出现在场景中
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>4. base.cmo 启动 Levelinit.nmo
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>5. Levelinit 遍历场景，按规则整理对象（例如把检查点放入 PC_Checkpoints 组）
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>6. Levelinit 创建运行时表格（CurrentLevel、ResetPoints、Checkpoints...）
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>7. Levelinit 设置初始状态（起始球、起始复活点、初始分数=0）
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>8. Levelinit 完成，通知 base.cmo
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>9. base.cmo 启动 Gameplay.nmo
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>10. Gameplay 接管球的物理控制、碰撞检测、计分逻辑
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>11. BML 发出 GAME_EVENT_START_LEVEL &lt;- 你的脚本在这里开始工作
+</code></pre></div>
+<p>注意第 11 步，你的脚本收到事件时，前面所有步骤已经完成。这意味着：</p>
+<ul>
+<li>所有对象已经创建并命名</li>
+<li>所有组已经填充完毕</li>
+<li>所有运行时表格已经有了初始数据</li>
+<li>球已经就位并准备好被控制</li>
+</ul>
+<p>这就是为什么查找关卡对象通常放在 <code>GAME_EVENT_START_LEVEL</code> 之后。时机对了，还要名字和类型也对；名字拼错或用错查找函数仍然会返回 <code>null</code>。</p>
+<h2 id="_3">为什么"太早"会失败<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p>如果你在 <code>OnLoad</code> 里调用 <code>ctx.Borrow3dEntityByName("Ball")</code>，结果是 null。因为 <code>OnLoad</code> 在游戏启动时执行，那时候 Level_01.NMO 还没加载，球根本不存在。</p>
+<p>常见的"时机太早"错误：</p>
+<table>
+<thead>
+<tr>
+<th>代码位置</th>
+<th>能找到的对象</th>
+<th>找不到的对象</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OnLoad</code></td>
+<td>无（关卡对象都不存在）</td>
+<td>球、地板、检查点、DataArray</td>
+</tr>
+<tr>
+<td><code>OnProcess</code>（菜单中）</td>
+<td>无</td>
+<td>同上</td>
+</tr>
+<tr>
+<td><code>GAME_EVENT_START_LEVEL</code></td>
+<td>已创建的关卡对象、组、DataArray</td>
+<td>名字拼错或类型不匹配的对象</td>
+</tr>
+<tr>
+<td><code>OnProcess</code>（关卡中）</td>
+<td>已创建的关卡对象、组、DataArray</td>
+<td>名字拼错或类型不匹配的对象</td>
+</tr>
+</tbody>
+</table>
+<p>规则：<strong>关卡对象只在关卡运行时存在。</strong> 菜单里、加载画面里，它们都不在。</p>
+<h2 id="_4">对象命名约定<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p>Level_01.NMO 里的对象遵循 Ballance 的命名约定。上一章已经从 <code>CurrentLevel.ActiveBall</code> 取到了当前玩家球；这里再看关卡对象常见的命名规则。</p>
+<h3 id="_5">前缀决定用途<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>前缀</th>
+<th>含义</th>
+<th>第一关里的例子</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>P_</code></td>
+<td>物理实体（会参与碰撞）</td>
+<td><code>P_Ball_Paper_01</code>（纸球）、<code>P_Modul_18_01</code>（推箱）</td>
+</tr>
+<tr>
+<td><code>PR_</code></td>
+<td>复活点（Resetpoint）</td>
+<td><code>PR_Resetpoint_01</code>、<code>PR_Resetpoint_02</code></td>
+</tr>
+<tr>
+<td><code>PC_</code></td>
+<td>检查点（Checkpoint）</td>
+<td><code>PC_TwoFlames_01</code>（双火焰柱）</td>
+</tr>
+<tr>
+<td><code>PS_</code></td>
+<td>起始点（Start）</td>
+<td><code>PS_Levelstart_01</code></td>
+</tr>
+<tr>
+<td><code>PE_</code></td>
+<td>终点（End）</td>
+<td><code>PE_Levelende_01</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="_6">不带前缀的对象<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
+<p>地板、装饰物等不带前缀：<code>Floor_01</code>、<code>Sector_01</code>。它们是静态几何体，不参与游戏逻辑，通常不需要脚本操作。</p>
+<h3 id="mod">命名规则的 mod 写作意义<a class="headerlink" href="#mod" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>前缀让你精确查找</strong>：想找球？搜 <code>P_Ball_</code>。想找检查点？搜 <code>PC_</code></li>
+<li><strong>编号从 01 开始</strong>：第一关第一个复活点是 <code>PR_Resetpoint_01</code>，不是 <code>_00</code></li>
+<li><strong>球的名字包含材质</strong>：<code>P_Ball_Paper_01</code>（纸）、<code>P_Ball_Wood_01</code>（木）、<code>P_Ball_Stone_01</code>（石）</li>
+</ul>
+<h2 id="levelinit">组：Levelinit 整理的结果<a class="headerlink" href="#levelinit" title="Permanent link">&para;</a></h2>
+<p>前面流程里提到 Levelinit 会"把对象分组"。组（Group）是 Ballance 里的对象列表，Levelinit 根据命名规则把同类对象归入同一个组。</p>
+<p>第一关运行时常用的关键组：</p>
+<table>
+<thead>
+<tr>
+<th>组名</th>
+<th>内容</th>
+<th>第一关的成员数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>All_Trafo</code></td>
+<td>所有变球器</td>
+<td>2 个</td>
+</tr>
+<tr>
+<td><code>P_Extra_Point</code></td>
+<td>加分机关</td>
+<td>11 个</td>
+</tr>
+<tr>
+<td><code>PC_Checkpoints</code></td>
+<td>检查点</td>
+<td>3 个</td>
+</tr>
+<tr>
+<td><code>PR_Resetpoints</code></td>
+<td>复活点</td>
+<td>4 个</td>
+</tr>
+<tr>
+<td><code>PE_Levelende</code></td>
+<td>关卡终点</td>
+<td>1 个</td>
+</tr>
+<tr>
+<td><code>PS_Levelstart</code></td>
+<td>关卡起点</td>
+<td>1 个</td>
+</tr>
+<tr>
+<td><code>Sector_01</code> ~ <code>Sector_04</code></td>
+<td>各小节的对象集合</td>
+<td>每节不同</td>
+</tr>
+</tbody>
+</table>
+<p>组的意义：你不需要记住每个对象的名字，通过遍历组就能找到同类对象。第 8 章的 <code>PC_Checkpoints</code> 示例已经演示了最基本的组遍历。</p>
+<p>注意 <code>Sector</code> 组，Ballance 把每关分成若干小节（Sector），每个小节包含一段连续的地形和机关。第一关有 4 个 Sector。Sector 的划分影响游戏的渲染优化：只有当前 Sector 附近的对象会被渲染，远处的暂时隐藏。</p>
+<h2 id="dataarraylevelinit">DataArray：Levelinit 创建的运行时表<a class="headerlink" href="#dataarraylevelinit" title="Permanent link">&para;</a></h2>
+<p>除了分组，Levelinit 还创建运行时表格（DataArray）来记录游戏状态。把 DataArray 想象成 Excel 表格，有行有列，每个单元格存一个值。</p>
+<p>关卡运行时的核心表格：</p>
+<table>
+<thead>
+<tr>
+<th>表名</th>
+<th>作用</th>
+<th>行数</th>
+<th>打个比方</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CurrentLevel</code></td>
+<td>当前关卡即时状态</td>
+<td>1</td>
+<td>仪表盘，实时显示当前状况</td>
+</tr>
+<tr>
+<td><code>AllLevel</code></td>
+<td>13 关的起始配置</td>
+<td>13</td>
+<td>目录，每关的基本信息</td>
+</tr>
+<tr>
+<td><code>Checkpoints</code></td>
+<td>检查点状态</td>
+<td>每关不同</td>
+<td>签到表，记录哪些点已激活</td>
+</tr>
+<tr>
+<td><code>ResetPoints</code></td>
+<td>复活点位置</td>
+<td>每关不同</td>
+<td>坐标簿，记录每个复活点的位置</td>
+</tr>
+<tr>
+<td><code>IngameParameter</code></td>
+<td>游戏参数</td>
+<td>1</td>
+<td>设置面板，球速度、摄像机距离等</td>
+</tr>
+</tbody>
+</table>
+<p>下一章会详细讲怎么用脚本读取这些表。这里先记住：<strong>DataArray 和组一样，只在关卡运行时存在。</strong></p>
+<h2 id="_7">行为图：不可修改的原版逻辑<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
+<p>你可能好奇：Levelinit 怎么知道要把对象分到哪个组？Gameplay 怎么知道吃到加分点要加分？</p>
+<p>答案是行为图（Behavior Graph），Ballance 原版的逻辑系统。它是一种可视化编程，节点连线表示逻辑流程。Levelinit 和 Gameplay 的内部逻辑都是行为图写的。</p>
+<p>脚本 mod 不能修改行为图。这是一个硬限制。但你不需要修改它们，行为图处理的是游戏的核心流程（物理、碰撞、计分），而脚本 mod 做的是在这个流程之上增加新功能（显示信息、修改状态、增加 HUD）。</p>
+<p>如果你在日志里看到某个状态突然变化（比如分数增加、球被弹飞），但你的脚本没有做任何操作，那通常是行为图在工作。</p>
+<h2 id="_8">综合：一关里有什么<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h2>
+<p>以第一关为参考，运行时场景里的内容可以这样分层理解：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>Level_01.NMO 提供（关卡原始内容）
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>├── 约 42 块地板
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>├── 11 个加分机关
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>├── 3 个检查点（双火焰柱）
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>├── 4 个复活点
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>├── 2 个变球器
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>├── 1 个起点、1 个终点
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>└── 各种装饰物
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>Levelinit 整理后（有序的工作区）
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>├── PC_Checkpoints 组：3 个检查点
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>├── PR_Resetpoints 组：4 个复活点
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>├── CurrentLevel 表：Level=1, Ball=Ball_Wood, Points=0
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>├── ResetPoints 表：4 行，每行一个复活点的位置矩阵
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>└── Checkpoints 表：3 行，每行一个检查点的状态
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>Gameplay 持续维护
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>├── 球的物理运动
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>├── 碰撞检测 -&gt; 触发变球/计分/死亡
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>├── 检查点激活 -&gt; 更新 Checkpoints 表和 CurrentLevel 表
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>└── 通关判定 -&gt; 碰到 PE_Levelende 时结算
+</code></pre></div>
+<p>你的脚本 mod 在最外层观察和操作这些内容。</p>
+<h2 id="mod_1">脚本 mod 的操作边界<a class="headerlink" href="#mod_1" title="Permanent link">&para;</a></h2>
+<p>了解了内部结构，明确一下你能做什么、不能做什么：</p>
+<table>
+<thead>
+<tr>
+<th>能做</th>
+<th>不能做</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>按名字查找任何对象</td>
+<td>修改行为图节点和连线</td>
+</tr>
+<tr>
+<td>读取 DataArray 的值</td>
+<td>改变文件加载顺序</td>
+</tr>
+<tr>
+<td>修改对象的位置和属性</td>
+<td>创建新的行为图</td>
+</tr>
+<tr>
+<td>遍历组成员</td>
+<td>替换原版 Building Block</td>
+</tr>
+<tr>
+<td>监听游戏事件并响应</td>
+<td>阻止原版逻辑执行</td>
+</tr>
+<tr>
+<td>创建 ImGui 界面</td>
+<td>直接修改 .cmo/.nmo 文件</td>
+</tr>
+</tbody>
+</table>
+<p>大多数实用 mod 都在"读取"范围内工作。你已经做过的坐标显示器就是典型例子：查找对象、读取位置、显示到 ImGui。接下来的几章会从读取 DataArray 开始，逐步进入修改操作。</p>
+<h2 id="_9">验证你的理解<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h2>
+<p>进入第一关后，在你的坐标 mod（第 9 章）的 <code>GAME_EVENT_START_LEVEL</code> 回调里加几行日志：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">event</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">GAME_EVENT_START_LEVEL</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="c1">// 验证对象存在</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="n">CK3dEntity</span><span class="err">@</span><span class="w"> </span><span class="n">ball</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">Borrow3dEntityByName</span><span class="p">(</span><span class="s">&quot;Ball&quot;</span><span class="p">);</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="n">LogInfo</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Ball: &quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="n">ball</span><span class="w"> </span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s">&quot;null&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;found&quot;</span><span class="p">));</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="c1">// 验证 DataArray 存在</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">    </span><span class="n">CKDataArray</span><span class="err">@</span><span class="w"> </span><span class="n">table</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowDataArrayByName</span><span class="p">(</span><span class="s">&quot;CurrentLevel&quot;</span><span class="p">);</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">    </span><span class="n">LogInfo</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;CurrentLevel: &quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="n">table</span><span class="w"> </span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s">&quot;null&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;found&quot;</span><span class="p">));</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="p">}</span>
+</code></pre></div>
+<p>如果两行都输出 "found"，说明你的理解是正确的：在 <code>GAME_EVENT_START_LEVEL</code> 时，Levelinit 已经完成了所有准备工作。</p>
+<h2 id="_10">常见问题<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h2>
+<p><strong>"我在 OnLoad 里找对象，总是 null"</strong>，OnLoad 在游戏启动时执行一次，那时还在菜单，没有任何关卡对象。等 <code>GAME_EVENT_START_LEVEL</code> 再找。</p>
+<p><strong>"我找到了对象但读出来的值很奇怪"</strong>，确认你找的对象名拼写完全正确。Ballance 区分大小写：<code>P_Ball_Paper_01</code> 和 <code>p_ball_paper_01</code> 是不同的名字。</p>
+<p><strong>"退出关卡后我的 mod 崩溃了"</strong>，你可能在 <code>OnProcess</code> 里使用了已经失效的句柄。退出关卡时对象被销毁，之前缓存的句柄变成悬空引用。一定要在 <code>GAME_EVENT_PRE_EXIT_LEVEL</code> 里把句柄设为 null，并在使用前检查 <code>is null</code>。</p>
+<p><strong>"AllLevel 表在菜单里也能读到吗？"</strong>，不能。DataArray 和其他关卡对象一样，只在关卡运行时存在。即使是"看起来像全局信息"的 AllLevel，也是由 Levelinit 创建的。</p>
+<h2 id="_11">下一步预告<a class="headerlink" href="#_11" title="Permanent link">&para;</a></h2>
+<p>你已经知道 CurrentLevel 表里有关卡号、活动球、分数等信息。下一章会动手用脚本读取它，把这些数据取出来，用 ImGui 显示在屏幕上。</p>
+<hr />
+<p><strong>完成状态</strong>：能说出一关里有哪些对象、组和表，以及它们的创建时机</p>
+<hr />
+<p>下一步：<a href="../tutorial-11-dataarray-read/">11 读 DataArray</a></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  回到页面顶部
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

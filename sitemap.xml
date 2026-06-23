@@ -2,234 +2,142 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://doyagu.github.io/BallanceModLoaderPlus/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
          <loc>https://doyagu.github.io/BallanceModLoaderPlus/api/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
          <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/00-background/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-ballance-names/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/01-script-mod-scope/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-commands-config-timer/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/02-angelscript-minimum-syntax/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-dataarray/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/03-first-loadable-script/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-hud-resources/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/04-bml-callback-model/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-input-imgui/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/05-logs-window-fps/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-inter-mod/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/06-command/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-lifecycle/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/07-config/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-modcontext/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/08-timer/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-objects-groups/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/09-first-stage-troubleshooting/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-physics/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/10-how-to-read-script-api/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-01-setup/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/11-basic-script-template/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-02-hello-mod/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/12-ballance-file-roles/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-03-output-input/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/13-objects-entities-and-names/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-04-imgui-window/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/14-groups-are-object-lists/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-05-commands/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/15-dataarray-runtime-tables/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-06-callbacks/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/16-behavior-graphs-and-building-blocks/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-07-config-timer/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/17-checkpoint-mental-model/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-08-find-objects/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/18-level01-content-case-study/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-09-coordinate-mod/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/19-find-objects-and-groups/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-10-ballance-internals/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/20-currentlevel-dataarray/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-11-dataarray-read/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/21-alllevel-config-table/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-12-status-panel-mod/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/22-physicalize-balls/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-13-levelinit-placeholders/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/23-runtime-flow-overview/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-14-gameplay-state-machine/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/24-levelinit-author-markers/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-15-behavior-graph-reading/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/25-gameplay-runtime-state/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-16-physics-observe/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/26-reading-behavior-graphs/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-17-physics-create/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/27-object-enters-physics/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-18-physics-control/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/28-create-physicalized-object/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-19-safety-checklist/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/29-push-physics-object/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-20-complete-mod/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/30-risk-classification-before-changes/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-21-publish/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
     <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/31-create-your-own-controlled-object/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/32-complete-small-mod/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/33-release-version-compatibility/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/appendix-a-glossary/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/appendix-b-bml-callbacks-services/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/appendix-c-ballance-names/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/appendix-d-dataarrays/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-a-bml-lifecycle-overview/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-b-game-events-and-level-timing/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-c-modcontext-service-map/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-d-paths-resources-logs/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-e-input-ui-frame-state/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-f-script-mod-boundary/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-g-advanced-callbacks-events/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-h-mod-info-dependencies-exports/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-i-datashare-shared-state/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-j-bml-hud-menu-message-services/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-k-ckas-script-entrypoints/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-l-handles-refs-lifetime/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-m-scene-objects-hierarchy-visibility/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-n-dataarray-write-rollback/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-o-resources-text-ui/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-p-behavior-calls-and-script-libraries/</loc>
-         <lastmod>2026-06-22</lastmod>
-    </url>
-    <url>
-         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/ref-q-ball-floor-module-registration/</loc>
-         <lastmod>2026-06-22</lastmod>
+         <loc>https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-22-troubleshooting/</loc>
+         <lastmod>2026-06-23</lastmod>
     </url>
 </urlset>

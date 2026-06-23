@@ -1,0 +1,2908 @@
+
+<!doctype html>
+<html lang="zh" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="BML documentation and Ballance script mod tutorial.">
+      
+      
+      
+        <link rel="canonical" href="https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-21-publish/">
+      
+      
+        <link rel="prev" href="../tutorial-20-complete-mod/">
+      
+      
+        <link rel="next" href="../tutorial-22-troubleshooting/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>21 发布 - Ballance Mod Loader Plus</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#21" class="md-skip">
+          跳转至
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="页眉">
+    <a href="../.." title="Ballance Mod Loader Plus" class="md-header__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Ballance Mod Loader Plus
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              21 发布
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜索" placeholder="搜索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="查找">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清空当前内容" aria-label="清空当前内容" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜索引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/doyaGu/BallanceModLoaderPlus" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    doyaGu/BallanceModLoaderPlus
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="导航栏" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Ballance Mod Loader Plus" class="md-nav__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Ballance Mod Loader Plus
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/doyaGu/BallanceModLoaderPlus" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    doyaGu/BallanceModLoaderPlus
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    首页
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    脚本 Mod 教程
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    脚本 Mod 教程
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    导读
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    教程
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    教程
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-01-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    01 环境搭建
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-02-hello-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    02 第一个 Mod
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-03-output-input/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    03 输出与输入
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-04-imgui-window/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    04 ImGui 窗口
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-05-commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    05 命令系统
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-06-callbacks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    06 回调模型
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-07-config-timer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    07 配置与 Timer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-08-find-objects/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    08 查找对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-09-coordinate-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    09 坐标显示器
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-10-ballance-internals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    10 Ballance 内部结构
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-11-dataarray-read/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    11 读 DataArray
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-12-status-panel-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    12 状态面板
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-13-levelinit-placeholders/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    13 Levelinit 占位对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-14-gameplay-state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    14 Gameplay 状态机
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-15-behavior-graph-reading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    15 行为图阅读
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-16-physics-observe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    16 物理观察
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-17-physics-create/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    17 生成物理对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-18-physics-control/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    18 控制物理对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-19-safety-checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    19 安全检查清单
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-20-complete-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    20 完整 Mod
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    21 发布
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    21 发布
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        发布意味着什么
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mod" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mod 身份：元数据块
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="mod 身份：元数据块">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        各字段含义
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        id 的选择规则
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        版本号
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="版本号">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        什么时候改哪个数字
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        具体场景
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BML 版本要求
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        文件结构
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="文件结构">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        命名约定
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        单文件发布
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        目录发布
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zip 包分发
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        不应包含的内容
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        发布前测试
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="发布前测试">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步骤 1：清理现有状态
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步骤 2：使用打包后的文件安装
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步骤 3：启动游戏并检查日志
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步骤 4：完整游戏流程测试
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        发布说明
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="发布说明">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        模板
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        更新说明
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        配置迁移
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="配置迁移">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_16" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        默认值由代码负责
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        改名时兼容旧 key
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        什么时候不需要迁移
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        风险分级与用户沟通
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="风险分级与用户沟通">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_19" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        风险等级
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        如何向用户传达风险
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分发渠道
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        发布检查清单
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        常见发布错误
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="常见发布错误">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_24" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        忘记更新版本号
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#id_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        id 被意外修改
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        配置依赖本机环境
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zip_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zip 多嵌套一层目录
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        残留调试代码
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bml_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        bml 版本要求过低
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_27" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        完成状态
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-22-troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    22 排错
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    参考
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-lifecycle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    生命周期与事件
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-modcontext/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ModContext 方法
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-commands-config-timer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令、配置、定时器
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-input-imgui/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    输入与 ImGui
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-objects-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    对象与组
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-dataarray/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DataArray
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-physics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    物理
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-inter-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    跨 Mod 通信
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-hud-resources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HUD、消息与资源
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref-ballance-names/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ballance 名称速查
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    BML 脚本 API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        发布意味着什么
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mod" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mod 身份：元数据块
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="mod 身份：元数据块">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        各字段含义
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        id 的选择规则
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        版本号
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="版本号">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        什么时候改哪个数字
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        具体场景
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BML 版本要求
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        文件结构
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="文件结构">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        命名约定
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        单文件发布
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        目录发布
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zip 包分发
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        不应包含的内容
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        发布前测试
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="发布前测试">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步骤 1：清理现有状态
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步骤 2：使用打包后的文件安装
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步骤 3：启动游戏并检查日志
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步骤 4：完整游戏流程测试
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        发布说明
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="发布说明">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        模板
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        更新说明
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        配置迁移
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="配置迁移">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_16" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        默认值由代码负责
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        改名时兼容旧 key
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        什么时候不需要迁移
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        风险分级与用户沟通
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="风险分级与用户沟通">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_19" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        风险等级
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        如何向用户传达风险
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分发渠道
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        发布检查清单
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        常见发布错误
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="常见发布错误">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_24" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        忘记更新版本号
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#id_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        id 被意外修改
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        配置依赖本机环境
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zip_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        zip 多嵌套一层目录
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        残留调试代码
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bml_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        bml 版本要求过低
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_27" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        完成状态
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="21">21 发布<a class="headerlink" href="#21" title="Permanent link">&para;</a></h1>
+<p>mod 在自己机器上跑通之后，下一步是让别的玩家也能用。</p>
+<h2 id="_1">发布意味着什么<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<p>发布之后，使用环境和本地开发不同：</p>
+<ul>
+<li>其他玩家拿到的是固定的文件包，没有你的编辑器和调试习惯。</li>
+<li>出问题时他们看到的是日志里的错误消息，不是源码。</li>
+<li>你以后更新时，他们本地已经有旧版配置文件。</li>
+</ul>
+<p>发布包需要让别人能安装、运行、更新和卸载。这个要求会反过来影响文件结构、版本号、配置和日志。</p>
+<hr />
+<h2 id="mod">mod 身份：元数据块<a class="headerlink" href="#mod" title="Permanent link">&para;</a></h2>
+<p>入口文件顶部的元数据块是 BML 识别和管理 mod 的依据：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">[</span><span class="n">bml</span><span class="p">.</span><span class="n">mod</span><span class="w"> </span><span class="n">id</span><span class="o">=</span><span class="s">&quot;complete.mod&quot;</span><span class="w"> </span><span class="n">name</span><span class="o">=</span><span class="s">&quot;Complete Mod&quot;</span><span class="w"> </span><span class="n">version</span><span class="o">=</span><span class="s">&quot;1.0.0&quot;</span><span class="w"> </span><span class="n">author</span><span class="o">=</span><span class="s">&quot;YourName&quot;</span><span class="w"> </span><span class="n">bml</span><span class="o">=</span><span class="s">&quot;0.3.12&quot;</span><span class="w"> </span><span class="n">description</span><span class="o">=</span><span class="s">&quot;A complete tutorial mod&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">CompleteMod</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="_2">各字段含义<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>作用</th>
+<th>要求</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>机器标识。配置文件名、日志前缀、依赖声明全靠它</td>
+<td>发布后永远不改</td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td>在 mod 列表里显示的名字</td>
+<td>可以随版本调整</td>
+</tr>
+<tr>
+<td><code>version</code></td>
+<td>当前版本号</td>
+<td>每次发布必须递增</td>
+</tr>
+<tr>
+<td><code>author</code></td>
+<td>作者名</td>
+<td>可以写多个，用逗号分隔</td>
+</tr>
+<tr>
+<td><code>bml</code></td>
+<td>需要的最低 BML 版本</td>
+<td>用了新 API 时必须更新</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>一句话功能描述</td>
+<td>控制在 80 字符以内</td>
+</tr>
+</tbody>
+</table>
+<h3 id="id">id 的选择规则<a class="headerlink" href="#id" title="Permanent link">&para;</a></h3>
+<p><code>id</code> 相当于 mod 的身份证号。BML 用它决定配置文件路径（<code>ModLoader/Configs/&lt;id&gt;.cfg</code>）、日志标记、依赖声明。</p>
+<p>好的 id 是小写字母加点号，例如 <code>fps.display</code>、<code>ball.spawner</code>、<code>level.timer</code>。避免中文、空格或特殊符号。</p>
+<p>一旦发布第一个版本，id 就固定了。改了 id，BML 会把它当作另一个 mod，旧配置变成孤儿，用户设置全部丢失。</p>
+<hr />
+<h2 id="_3">版本号<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p>使用三段式版本号：<code>主版本.次版本.修订版本</code></p>
+<h3 id="_4">什么时候改哪个数字<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>你做了什么</th>
+<th>版本变化</th>
+<th>示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>修 bug、改措辞、修正日志格式</td>
+<td>修订 +1</td>
+<td><code>1.0.0</code> -&gt; <code>1.0.1</code></td>
+</tr>
+<tr>
+<td>加新功能（命令、配置项），旧行为不变</td>
+<td>次版本 +1，修订归零</td>
+<td><code>1.0.0</code> -&gt; <code>1.1.0</code></td>
+</tr>
+<tr>
+<td>删除命令、改变配置含义、改变默认行为</td>
+<td>主版本 +1，其余归零</td>
+<td><code>1.0.0</code> -&gt; <code>2.0.0</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="_5">具体场景<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
+<p>假设你的 mod 当前是 <code>1.2.3</code>：</p>
+<ul>
+<li>发现窗口位置计算有误，修好了 -&gt; <code>1.2.4</code></li>
+<li>加了一个 <code>/cmod reset</code> 命令 -&gt; <code>1.3.0</code></li>
+<li>把配置项 <code>ShowWindow</code> 从布尔改成了整数（0=隐藏、1=小窗、2=大窗）-&gt; <code>2.0.0</code></li>
+</ul>
+<p>主版本号变化意味着"用户可能需要重新配置"。这是对用户最重要的信号。</p>
+<hr />
+<h2 id="bml">BML 版本要求<a class="headerlink" href="#bml" title="Permanent link">&para;</a></h2>
+<p><code>bml="0.3.12"</code> 表示需要 BML 0.3.12 或更高版本。版本不满足时 mod 不会被加载，日志会提示不匹配。</p>
+<p>判断方法：检查用到的 API 是在哪个版本引入的。基础回调（<code>OnLoad</code>、<code>OnUnload</code>、<code>GetConfig</code>）可以保持较低要求；用了新 API 就更新到对应版本。不确定时写你开发环境的 BML 版本，至少保证测试过的环境匹配。</p>
+<hr />
+<h2 id="_6">文件结构<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<h3 id="_7">命名约定<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
+<p>BML 通过 <code>.mod.as</code> 后缀识别入口文件。一个 mod 有且只有一个 <code>.mod.as</code> 文件。文件名通常和 mod 名称对应：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>CompleteMod.mod.as
+</code></pre></div>
+<p>其他辅助脚本文件使用 <code>.as</code> 后缀（不带 <code>.mod</code>），它们不会被 BML 当作独立 mod 加载。</p>
+<h3 id="_8">单文件发布<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
+<p>最直接的方式。适合代码量小（几百行以内）的 mod：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>CompleteMod.mod.as
+</code></pre></div>
+<p>用户把这个文件放入 <code>ModLoader/Mods/</code> 就能用。</p>
+<h3 id="_9">目录发布<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h3>
+<p>代码量大或需要分模块时使用目录结构：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>CompleteMod/
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  CompleteMod.mod.as
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  libs/
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    Helper.as
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  README.md
+</code></pre></div>
+<p>规则：目录里有且只能有一个 <code>*.mod.as</code> 入口文件。BML 扫描 <code>ModLoader/Mods/</code> 时，如果遇到子目录，会进入其中寻找入口。</p>
+<h3 id="zip">zip 包分发<a class="headerlink" href="#zip" title="Permanent link">&para;</a></h3>
+<p>把目录压缩成 zip，方便在论坛或聊天工具中传递：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>CompleteMod.zip
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  -&gt; CompleteMod/
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>       CompleteMod.mod.as
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>       libs/
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>         Helper.as
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>       README.md
+</code></pre></div>
+<p>用户解压后把 <code>CompleteMod/</code> 目录放入 <code>ModLoader/Mods/</code> 即可。</p>
+<hr />
+<h2 id="_10">不应包含的内容<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h2>
+<p>打包前检查一遍，确保没有把以下内容混入发布包：</p>
+<table>
+<thead>
+<tr>
+<th>不该出现的</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>本机绝对路径</td>
+<td>别人的电脑路径不同</td>
+</tr>
+<tr>
+<td>调试专用代码（每帧日志输出或测试命令）</td>
+<td>干扰用户体验和日志阅读</td>
+</tr>
+<tr>
+<td>编辑器临时文件（<code>.swp</code>、<code>.bak</code>、<code>~</code> 结尾文件）</td>
+<td>与发布无关</td>
+</tr>
+<tr>
+<td>你的 BML 配置文件夹</td>
+<td>包含你的个人设置</td>
+</tr>
+<tr>
+<td>编译产物或日志文件</td>
+<td>无用且可能很大</td>
+</tr>
+</tbody>
+</table>
+<p>如果你有仅开发时使用的测试命令，在发布前移除，或者用配置项默认关闭。不要让玩家在正常使用时看到开发入口。</p>
+<h2 id="_11">发布前测试<a class="headerlink" href="#_11" title="Permanent link">&para;</a></h2>
+<p>在自己的开发环境跑通不够。你需要模拟"一个从未见过这个 mod 的用户"的安装体验。</p>
+<h3 id="1">步骤 1：清理现有状态<a class="headerlink" href="#1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>删掉 <code>ModLoader/Configs/</code> 下你的 mod 配置文件</li>
+<li>删掉游戏目录中任何你 mod 创建的临时文件</li>
+<li>目的：确认首次运行时，mod 不依赖遗留配置</li>
+</ul>
+<h3 id="2">步骤 2：使用打包后的文件安装<a class="headerlink" href="#2" title="Permanent link">&para;</a></h3>
+<p>不要直接用开发目录里的源码。把打包好的 zip 解压到一个干净的 <code>ModLoader/Mods/</code> 里，验证文件路径正确。</p>
+<h3 id="3">步骤 3：启动游戏并检查日志<a class="headerlink" href="#3" title="Permanent link">&para;</a></h3>
+<p>打开 <code>ModLoader/ModLoader.log</code>，确认：</p>
+<ul>
+<li>mod 被正确识别并加载（应该看到带 id 的加载消息）</li>
+<li>没有脚本编译错误</li>
+<li>没有 "null handle" 或 "undefined variable" 警告</li>
+<li>如果有命令，输入命令能正常响应</li>
+</ul>
+<h3 id="4">步骤 4：完整游戏流程测试<a class="headerlink" href="#4" title="Permanent link">&para;</a></h3>
+<ul>
+<li>进入关卡 -&gt; 退出关卡 -&gt; 重新进入 -&gt; 退出游戏</li>
+<li>确认每个阶段 mod 的行为正常，没有残留对象或崩溃</li>
+<li>如果 mod 有 OnUnload 清理逻辑，确认卸载时不报错</li>
+</ul>
+<p>如果你声明了 <code>bml="0.3.12"</code> 但手头只有更新的 BML 版本，至少在发布说明中注明实际测试的版本。</p>
+<hr />
+<h2 id="_12">发布说明<a class="headerlink" href="#_12" title="Permanent link">&para;</a></h2>
+<p>每个版本都应该附带说明文档。发布说明写给"准备安装这个 mod 的玩家"看，内容要从玩家视角出发。</p>
+<h3 id="_13">模板<a class="headerlink" href="#_13" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>Complete Mod v1.0.0
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>需要：BML 0.3.12 或更新版本。
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>安装：把 CompleteMod.mod.as 放入 ModLoader/Mods/。
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>命令：cmod [spawn|despawn|push|status|window]
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>配置：ShowWindow, AutoSpawn
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>卸载：删除 mod 文件。如需清掉设置，删除 ModLoader/Configs/complete.mod.cfg。
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>已验证：Ballance Player + BML 0.3.12
+</code></pre></div>
+<p>每一条都是对用户的承诺：安装路径要写完整（不要假设用户知道 <code>Mods</code> 在哪）；命令和配置要列全（用户不一定会看源码）；卸载说明要包含配置文件路径。</p>
+<h3 id="_14">更新说明<a class="headerlink" href="#_14" title="Permanent link">&para;</a></h3>
+<p>从第二个版本开始，还应包含变更内容：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>Complete Mod v1.1.0
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>新增：/cmod reset 命令，重置所有生成的对象
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>修复：退出关卡时偶尔出现的空指针错误
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>配置：新增 MaxObjects 项（默认值 10）
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>注意：旧版配置自动兼容，无需手动修改
+</code></pre></div>
+<hr />
+<h2 id="_15">配置迁移<a class="headerlink" href="#_15" title="Permanent link">&para;</a></h2>
+<h3 id="_16">默认值由代码负责<a class="headerlink" href="#_16" title="Permanent link">&para;</a></h3>
+<p>配置的默认值必须在代码中设置：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">showWindowProp</span><span class="p">.</span><span class="n">SetDefaultBoolean</span><span class="p">(</span><span class="nb">true</span><span class="p">);</span>
+</code></pre></div>
+<p>不要通过分发默认配置文件来提供初始值。原因：用户更新 mod 后，如果你的新配置文件覆盖了他的自定义设置，他会丢失个人配置。</p>
+<h3 id="key">改名时兼容旧 key<a class="headerlink" href="#key" title="Permanent link">&para;</a></h3>
+<p>如果新版本需要修改配置项名称（例如从 <code>OldKey</code> 改为 <code>NewKey</code>），必须写迁移代码：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">config</span><span class="p">.</span><span class="n">HasKey</span><span class="p">(</span><span class="s">&quot;MyMod&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;OldKey&quot;</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">!</span><span class="n">config</span><span class="p">.</span><span class="n">HasKey</span><span class="p">(</span><span class="s">&quot;MyMod&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;NewKey&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">ConfigProperty</span><span class="err">@</span><span class="w"> </span><span class="n">old</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">GetProperty</span><span class="p">(</span><span class="s">&quot;MyMod&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;OldKey&quot;</span><span class="p">);</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">ConfigProperty</span><span class="err">@</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">GetProperty</span><span class="p">(</span><span class="s">&quot;MyMod&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;NewKey&quot;</span><span class="p">);</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">old</span><span class="w"> </span><span class="o">!</span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="o">!</span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">        </span><span class="k">new</span><span class="p">.</span><span class="n">SetBoolean</span><span class="p">(</span><span class="n">old</span><span class="p">.</span><span class="n">GetBoolean</span><span class="p">(</span><span class="nb">true</span><span class="p">));</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="p">}</span>
+</code></pre></div>
+<p>这段代码的逻辑：</p>
+<ol>
+<li>检查旧 key 是否存在且新 key 尚未创建</li>
+<li>如果条件满足，读取旧值写入新 key</li>
+<li>使用 <code>@</code> 句柄和 <code>!is null</code> 检查防止空引用</li>
+</ol>
+<p>这样做的好处：用户从旧版更新后，已有设置会自动迁移到新配置项，无需手动操作。</p>
+<h3 id="_17">什么时候不需要迁移<a class="headerlink" href="#_17" title="Permanent link">&para;</a></h3>
+<ul>
+<li>新增一个以前没有的配置项，直接设默认值即可</li>
+<li>删除一个配置项，旧值留在文件里不影响运行，无需特殊处理</li>
+</ul>
+<hr />
+<h2 id="_18">风险分级与用户沟通<a class="headerlink" href="#_18" title="Permanent link">&para;</a></h2>
+<h3 id="_19">风险等级<a class="headerlink" href="#_19" title="Permanent link">&para;</a></h3>
+<p>发布前确认你的 mod 属于哪个等级：</p>
+<table>
+<thead>
+<tr>
+<th>等级</th>
+<th>行为范围</th>
+<th>举例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>低风险</td>
+<td>只读取游戏状态、显示额外信息</td>
+<td>FPS 显示、日志观察窗口</td>
+</tr>
+<tr>
+<td>中风险</td>
+<td>创建或删除自己的对象</td>
+<td>木球生成器、临时标记物</td>
+</tr>
+<tr>
+<td>高风险</td>
+<td>修改原版数据、移动玩家控制的球、改变行为图</td>
+<td>重力修改、关卡数据编辑</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_20">如何向用户传达风险<a class="headerlink" href="#_20" title="Permanent link">&para;</a></h3>
+<p>低风险 mod 通常不需要特别说明。中、高风险 mod 应在发布说明中写清：</p>
+<ul>
+<li><strong>影响范围</strong>："本 mod 会修改当前关卡的重力参数"</li>
+<li><strong>是否可逆</strong>："退出关卡后恢复默认值" 或 "修改持久保存，需手动恢复"</li>
+<li><strong>与其他 mod 的冲突可能</strong>："如果同时使用了修改物理参数的 mod，可能产生冲突"</li>
+</ul>
+<p>玩家宁可看到风险警告，也不想在崩溃后才发现问题。</p>
+<hr />
+<h2 id="_21">分发渠道<a class="headerlink" href="#_21" title="Permanent link">&para;</a></h2>
+<p>Ballance 社区常见的发布平台：</p>
+<table>
+<thead>
+<tr>
+<th>渠道</th>
+<th>适用场景</th>
+<th>注意事项</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BallanceBug 论坛</td>
+<td>中文社区首选</td>
+<td>帖子中贴安装说明，附件上传 zip</td>
+</tr>
+<tr>
+<td>Discord（Ballance 服务器）</td>
+<td>国际社区</td>
+<td>发到对应频道，写英文说明</td>
+</tr>
+<tr>
+<td>GitHub Release</td>
+<td>需要版本管理、issue 跟踪</td>
+<td>适合持续维护的 mod</td>
+</tr>
+<tr>
+<td>直接发送文件</td>
+<td>小范围测试</td>
+<td>不适合正式发布，缺少版本追溯</td>
+</tr>
+</tbody>
+</table>
+<p>无论哪个渠道，确保安装路径、BML 版本要求、mod 版本号、使用说明四项信息可见。</p>
+<hr />
+<h2 id="_22">发布检查清单<a class="headerlink" href="#_22" title="Permanent link">&para;</a></h2>
+<p>按顺序逐项确认：</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>检查项</th>
+<th>通过标准</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>入口文件</td>
+<td>有且只有一个 <code>*.mod.as</code> 文件</td>
+</tr>
+<tr>
+<td>2</td>
+<td>元数据完整</td>
+<td>id、name、version、author、bml、description 全部填写</td>
+</tr>
+<tr>
+<td>3</td>
+<td>版本号递增</td>
+<td>比上一次发布的版本号大</td>
+</tr>
+<tr>
+<td>4</td>
+<td>无本机路径</td>
+<td>代码中没有硬编码的绝对路径</td>
+</tr>
+<tr>
+<td>5</td>
+<td>无调试残留</td>
+<td>移除了测试命令和过量的日志输出</td>
+</tr>
+<tr>
+<td>6</td>
+<td>资源引用</td>
+<td>使用相对路径或通过 BML 接口获取目录</td>
+</tr>
+<tr>
+<td>7</td>
+<td>配置默认值</td>
+<td>所有配置项在代码中设了默认值</td>
+</tr>
+<tr>
+<td>8</td>
+<td>配置迁移</td>
+<td>改名的配置项有兼容代码</td>
+</tr>
+<tr>
+<td>9</td>
+<td>清洁安装测试</td>
+<td>删掉旧配置后首次运行正常</td>
+</tr>
+<tr>
+<td>10</td>
+<td>流程测试</td>
+<td>进关卡、退关卡、重启游戏、卸载 mod，各阶段无报错</td>
+</tr>
+<tr>
+<td>11</td>
+<td>日志检查</td>
+<td>启动后日志无错误、无警告</td>
+</tr>
+<tr>
+<td>12</td>
+<td>发布说明</td>
+<td>安装、命令、配置、卸载、版本要求全部写清</td>
+</tr>
+<tr>
+<td>13</td>
+<td>风险说明</td>
+<td>中高风险 mod 写明影响范围</td>
+</tr>
+<tr>
+<td>14</td>
+<td>打包格式</td>
+<td>zip 内目录结构正确，解压即可使用</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_23">常见发布错误<a class="headerlink" href="#_23" title="Permanent link">&para;</a></h2>
+<h3 id="_24">忘记更新版本号<a class="headerlink" href="#_24" title="Permanent link">&para;</a></h3>
+<p><strong>现象</strong>：用户更新后 BML 显示的版本号和上次一样。<strong>解决</strong>：改代码后紧跟着改 <code>version</code> 字段，形成习惯。</p>
+<h3 id="id_1">id 被意外修改<a class="headerlink" href="#id_1" title="Permanent link">&para;</a></h3>
+<p><strong>现象</strong>：更新后旧配置失效，<code>ModLoader/Configs/</code> 下多出新配置文件。<strong>原因</strong>：id 拼写变了（如 <code>ball.spawner</code> 变成 <code>ballspawner</code>）。<strong>解决</strong>：发布后 id 视为不可变。</p>
+<h3 id="_25">配置依赖本机环境<a class="headerlink" href="#_25" title="Permanent link">&para;</a></h3>
+<p><strong>现象</strong>：别人下载后首次运行报错，找不到路径或缺少初始值。<strong>解决</strong>：所有默认值通过 <code>SetDefaultXxx()</code> 在代码中设置，不依赖外部文件。</p>
+<h3 id="zip_1">zip 多嵌套一层目录<a class="headerlink" href="#zip_1" title="Permanent link">&para;</a></h3>
+<p><strong>现象</strong>：解压放入 <code>Mods/</code> 后 BML 找不到 mod。<strong>原因</strong>：路径是 <code>CompleteMod/CompleteMod/CompleteMod.mod.as</code>。<strong>解决</strong>：打包时确认 zip 根目录就是 mod 目录或 <code>.mod.as</code> 文件本身。</p>
+<h3 id="_26">残留调试代码<a class="headerlink" href="#_26" title="Permanent link">&para;</a></h3>
+<p><strong>现象</strong>：用户反馈日志刷屏，影响性能。<strong>原因</strong>：<code>OnProcess</code> 里留下了每帧 <code>logger.Info</code>，或者发布包还保留测试命令。<strong>解决</strong>：发布前搜索 <code>logger.</code> 和命令注册代码，移除调试专用输出。</p>
+<h3 id="bml_1">bml 版本要求过低<a class="headerlink" href="#bml_1" title="Permanent link">&para;</a></h3>
+<p><strong>现象</strong>：旧版 BML 用户加载后报"未定义的方法"。<strong>原因</strong>：用了新 API 但 <code>bml</code> 字段没更新。<strong>解决</strong>：不确定时就写当前安装的 BML 版本号。</p>
+<hr />
+<h2 id="_27">完成状态<a class="headerlink" href="#_27" title="Permanent link">&para;</a></h2>
+<p>mod 经过完整的发布流程：元数据正确、版本号递增、清洁测试通过、打包格式正确、发布说明完整。用户可以通过 zip 文件安装并正常使用。</p>
+<p>下一步：<a href="../tutorial-22-troubleshooting/">22 排错索引</a></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  回到页面顶部
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
