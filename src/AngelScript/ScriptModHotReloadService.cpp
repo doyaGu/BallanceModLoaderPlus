@@ -234,6 +234,7 @@ void ScriptModHotReloadService::Process() {
                                                                  "Script reload is waiting for active script calls to finish.",
                                                                  {{"reason", pending.Reason},
                                                                   {"activeCalls", std::to_string(mod->GetActiveScriptCallCount())},
+                                                                  {"queuedServiceCallbacks", std::to_string(mod->GetQueuedScriptServiceCallbackCount())},
                                                                   {"retries", std::to_string(pending.BlockedRetryCount)},
                                                                   {"waitMs", std::to_string(waitMs)}});
                 }
@@ -272,6 +273,7 @@ void ScriptModHotReloadService::Process() {
                                                                      : result.Diagnostic,
                                                                  {{"reason", pending.Reason},
                                                                   {"activeCalls", std::to_string(mod->GetActiveScriptCallCount())},
+                                                                  {"queuedServiceCallbacks", std::to_string(mod->GetQueuedScriptServiceCallbackCount())},
                                                                   {"retries", std::to_string(pending.BlockedRetryCount)},
                                                                   {"waitMs", std::to_string(waitMs)}});
                 }

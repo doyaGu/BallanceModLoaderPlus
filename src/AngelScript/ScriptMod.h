@@ -258,6 +258,7 @@ public:
     size_t GetActiveTimerCount() const { return m_Timers.GetActiveCount(); }
     size_t GetActiveCommandCount() const { return m_Commands.GetActiveCount(); }
     size_t GetActiveDataShareRequestCount() const { return m_DataShareRequests.GetActiveCount(); }
+    size_t GetQueuedScriptServiceCallbackCount() const;
     size_t GetHostRegistrationCount() const { return m_HostRegistrations.size(); }
     int GetActiveScriptCallCount() const;
     void GetCallbackNames(std::vector<std::string> &out) const { m_EventRouter.GetCallbackNames(out); }

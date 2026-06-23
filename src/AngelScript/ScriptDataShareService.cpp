@@ -819,6 +819,13 @@ size_t ScriptDataShareService::GetActiveCount() const {
     return count;
 }
 
+size_t ScriptDataShareService::GetQueuedCallbackCount() const {
+    if (!m_State)
+        return 0;
+    std::lock_guard<std::mutex> guard(m_State->Mutex);
+    return m_State->Active ? m_State->PendingCallbacks.size() : 0;
+}
+
 #ifdef BML_TEST
 ScriptDataShareRequestRef *ScriptDataShareService::AddTestRequestForRelease(const std::string &key,
                                                                             ScriptDataShareRequestType type,

@@ -86,6 +86,7 @@ public:
     void ProcessQueuedCallbacks();
     void Release(ScriptDiagnostic *diagnostic = nullptr);
     size_t GetActiveCount() const;
+    size_t GetQueuedCallbackCount() const;
 
 #ifdef BML_TEST
     ScriptDataShareRequestRef *AddTestRequestForRelease(
