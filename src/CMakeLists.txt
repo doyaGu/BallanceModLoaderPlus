@@ -181,6 +181,8 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptModLoader.h
             AngelScript/ScriptModRuntime.h
             AngelScript/ScriptModState.h
+            AngelScript/ScriptStateBag.h
+            AngelScript/ScriptStateMigration.h
             AngelScript/ScriptTimerService.h
             AngelScript/generated/BMLImGuiAngelScriptBindings.h
     )
@@ -210,6 +212,8 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptModLoader.cpp
             AngelScript/ScriptModRuntime.cpp
             AngelScript/ScriptModState.cpp
+            AngelScript/ScriptStateBag.cpp
+            AngelScript/ScriptStateMigration.cpp
             AngelScript/ScriptTimerService.cpp
             AngelScript/AngelScriptImGuiBindings.cpp
             AngelScript/generated/BMLImGuiAngelScriptBindings.cpp

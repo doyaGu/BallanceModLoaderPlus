@@ -173,6 +173,12 @@ if (BML_WITH_ANGELSCRIPT)
             ${BML_SOURCE_DIR}/AngelScript/ScriptDiagnostic.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptModState.cpp
     )
+
+    add_bml_test(ScriptStateBagTest
+            SOURCES
+            ScriptStateBagTest.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptStateBag.cpp
+    )
 endif ()
 
 add_bml_test(ScriptDevEventsTest

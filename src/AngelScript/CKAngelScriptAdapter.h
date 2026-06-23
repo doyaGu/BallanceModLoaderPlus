@@ -62,6 +62,7 @@ public:
     typedef CKAS_STATUS(__cdecl *ArgSetFloatFn)(CKAngelScriptArgWriter *, CKDWORD, float);
     typedef CKAS_STATUS(__cdecl *ArgSetStringFn)(CKAngelScriptArgWriter *, CKDWORD, const char *);
     typedef CKAS_STATUS(__cdecl *ArgSetBorrowedObjectFn)(CKAngelScriptArgWriter *, CKDWORD, void *);
+    typedef CKAS_STATUS(__cdecl *ArgSetObjectHandleFn)(CKAngelScriptArgWriter *, CKDWORD, void *);
     typedef CKAS_STATUS(__cdecl *ResultGetBoolFn)(CKAngelScriptResultReader *, CKBOOL *);
     typedef CKAS_STATUS(__cdecl *ResultGetIntFn)(CKAngelScriptResultReader *, int *);
     typedef CKAS_STATUS(__cdecl *ResultGetFloatFn)(CKAngelScriptResultReader *, float *);
@@ -126,6 +127,7 @@ public:
         ArgSetFloatFn ArgSetFloat = nullptr;
         ArgSetStringFn ArgSetString = nullptr;
         ArgSetBorrowedObjectFn ArgSetBorrowedObject = nullptr;
+        ArgSetObjectHandleFn ArgSetObjectHandle = nullptr;
         ResultGetBoolFn ResultGetBool = nullptr;
         ResultGetIntFn ResultGetInt = nullptr;
         ResultGetFloatFn ResultGetFloat = nullptr;
@@ -180,7 +182,7 @@ private:
     Api m_Api;
     State m_State = State::Unchecked;
     CKDWORD m_ApiVersion = 0;
-    bool m_Features[CKAS_FEATURE_SOURCE_SECTIONS + 1] = {};
+    bool m_Features[CKAS_FEATURE_OBJECT_HANDLE_ARGS + 1] = {};
     std::string m_Diagnostic;
 };
 

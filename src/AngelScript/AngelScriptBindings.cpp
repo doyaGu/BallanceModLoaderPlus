@@ -38,6 +38,7 @@
 #include "ScriptMod.h"
 #include "ScriptModContextView.h"
 #include "ScriptModRuntime.h"
+#include "ScriptStateBag.h"
 #include "ScriptTimerService.h"
 
 static constexpr const char *kExtensionName = "BML";
@@ -83,6 +84,10 @@ int BMLAS_GetVersionPatch() { return BML_PATCH_VERSION; }
 std::string BMLAS_GetErrorString(int errorCode) {
     const char *message = BML_GetErrorString(errorCode);
     return message ? message : "";
+}
+
+static BML::ScriptStateBag *BMLAS_CreateStateBag() {
+    return new (std::nothrow) BML::ScriptStateBag();
 }
 
 std::string BMLAS_GetGameEventName(int event) {
@@ -3491,6 +3496,7 @@ static const ScriptObjectTypeRegistration kObjectTypeRegistrations[] = {
     {"ModRef", "class ModRef", 0, asOBJ_REF},
     {"ExportRef", "class ExportRef", 0, asOBJ_REF},
     {"CallFrame", "class CallFrame", 0, asOBJ_REF},
+    {"StateBag", "class StateBag", 0, asOBJ_REF},
 };
 
 static const ScriptInterfaceRegistration kInterfaceRegistrations[] = {
@@ -3693,6 +3699,9 @@ static const ScriptObjectBehaviourRegistration kObjectBehaviourRegistrations[] =
     {"CallFrame", asBEHAVE_FACTORY, "CallFrame@ f()", "CallFrame@ CallFrame factory", asFUNCTION(BMLAS_CreateCallFrame), asCALL_CDECL},
     {"CallFrame", asBEHAVE_ADDREF, "void f()", "void CallFrame addref", asMETHOD(BMLAS_CallFrame, AddRef), asCALL_THISCALL},
     {"CallFrame", asBEHAVE_RELEASE, "void f()", "void CallFrame release", asMETHOD(BMLAS_CallFrame, Release), asCALL_THISCALL},
+    {"StateBag", asBEHAVE_FACTORY, "StateBag@ f()", "StateBag@ StateBag factory", asFUNCTION(BMLAS_CreateStateBag), asCALL_CDECL},
+    {"StateBag", asBEHAVE_ADDREF, "void f()", "void StateBag addref", asMETHOD(BML::ScriptStateBag, AddRef), asCALL_THISCALL},
+    {"StateBag", asBEHAVE_RELEASE, "void f()", "void StateBag release", asMETHOD(BML::ScriptStateBag, Release), asCALL_THISCALL},
     {"ModRef", asBEHAVE_ADDREF, "void f()", "void ModRef addref", asMETHOD(BMLAS_ModRef, AddRef), asCALL_THISCALL},
     {"ModRef", asBEHAVE_RELEASE, "void f()", "void ModRef release", asMETHOD(BMLAS_ModRef, Release), asCALL_THISCALL},
     {"ExportRef", asBEHAVE_ADDREF, "void f()", "void ExportRef addref", asMETHOD(BMLAS_ExportRef, AddRef), asCALL_THISCALL},
@@ -3926,6 +3935,21 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"CallFrame", "int GetResultObjectId(int &out objectId) const", "int CallFrame::GetResultObjectId(int &out objectId) const", asMETHOD(BMLAS_CallFrame, GetResultObjectId), asCALL_THISCALL},
     {"CallFrame", "int SetResultObject(CKObject@ object)", "int CallFrame::SetResultObject(CKObject@ object)", asMETHOD(BMLAS_CallFrame, SetResultObject), asCALL_THISCALL},
     {"CallFrame", "int GetResultObject(CKObject@ &out object) const", "int CallFrame::GetResultObject(CKObject@ &out object) const", asMETHOD(BMLAS_CallFrame, GetResultObject), asCALL_THISCALL},
+    {"StateBag", "bool Has(const string &in key) const", "bool StateBag::Has(const string &in) const", asMETHOD(BML::ScriptStateBag, Has), asCALL_THISCALL},
+    {"StateBag", "bool Remove(const string &in key)", "bool StateBag::Remove(const string &in)", asMETHOD(BML::ScriptStateBag, Remove), asCALL_THISCALL},
+    {"StateBag", "void Clear()", "void StateBag::Clear()", asMETHOD(BML::ScriptStateBag, Clear), asCALL_THISCALL},
+    {"StateBag", "int get_Count() const", "int StateBag::get_Count() const", asMETHOD(BML::ScriptStateBag, GetCount), asCALL_THISCALL},
+    {"StateBag", "int GetCount() const", "int StateBag::GetCount() const", asMETHOD(BML::ScriptStateBag, GetCount), asCALL_THISCALL},
+    {"StateBag", "string GetKey(int index) const", "string StateBag::GetKey(int) const", asMETHOD(BML::ScriptStateBag, GetKey), asCALL_THISCALL},
+    {"StateBag", "StateValueType GetType(const string &in key) const", "StateValueType StateBag::GetType(const string &in) const", asMETHOD(BML::ScriptStateBag, GetType), asCALL_THISCALL},
+    {"StateBag", "void SetBool(const string &in key, bool value)", "void StateBag::SetBool(const string &in, bool)", asMETHOD(BML::ScriptStateBag, SetBool), asCALL_THISCALL},
+    {"StateBag", "bool GetBool(const string &in key, bool defaultValue = false) const", "bool StateBag::GetBool(const string &in, bool) const", asMETHOD(BML::ScriptStateBag, GetBool), asCALL_THISCALL},
+    {"StateBag", "void SetInt(const string &in key, int value)", "void StateBag::SetInt(const string &in, int)", asMETHOD(BML::ScriptStateBag, SetInt), asCALL_THISCALL},
+    {"StateBag", "int GetInt(const string &in key, int defaultValue = 0) const", "int StateBag::GetInt(const string &in, int) const", asMETHOD(BML::ScriptStateBag, GetInt), asCALL_THISCALL},
+    {"StateBag", "void SetFloat(const string &in key, float value)", "void StateBag::SetFloat(const string &in, float)", asMETHOD(BML::ScriptStateBag, SetFloat), asCALL_THISCALL},
+    {"StateBag", "float GetFloat(const string &in key, float defaultValue = 0.0f) const", "float StateBag::GetFloat(const string &in, float) const", asMETHOD(BML::ScriptStateBag, GetFloat), asCALL_THISCALL},
+    {"StateBag", "void SetString(const string &in key, const string &in value)", "void StateBag::SetString(const string &in, const string &in)", asMETHOD(BML::ScriptStateBag, SetString), asCALL_THISCALL},
+    {"StateBag", "string GetString(const string &in key, const string &in defaultValue = \"\") const", "string StateBag::GetString(const string &in, const string &in) const", asMETHOD(BML::ScriptStateBag, GetString), asCALL_THISCALL},
     {"TimerRef", "bool get_IsValid() const", "bool TimerRef::get_IsValid() const", asMETHOD(BML::ScriptTimerRef, IsValid), asCALL_THISCALL},
     {"TimerRef", "bool IsValid() const", "bool TimerRef::IsValid() const", asMETHOD(BML::ScriptTimerRef, IsValid), asCALL_THISCALL},
     {"TimerRef", "int get_Id() const", "int TimerRef::get_Id() const", asMETHOD(BML::ScriptTimerRef, GetId), asCALL_THISCALL},

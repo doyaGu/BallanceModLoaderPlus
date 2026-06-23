@@ -6,6 +6,7 @@
 #include "BML/Timer.h"
 #include "ScriptCallbackEvents.h"
 #include "ScriptModContextView.h"
+#include "ScriptStateBag.h"
 
 namespace BML {
 
@@ -209,6 +210,14 @@ static const ScriptEnumValueContract kCallValueTypeValues[] = {
     {"CALL_VALUE_OBJECT_ID", BML_CALL_VALUE_OBJECT_ID, "CallValueType::CALL_VALUE_OBJECT_ID"},
 };
 
+static const ScriptEnumValueContract kStateValueTypeValues[] = {
+    {"STATE_VALUE_EMPTY", static_cast<int>(ScriptStateValueType::Empty), "StateValueType::STATE_VALUE_EMPTY"},
+    {"STATE_VALUE_BOOL", static_cast<int>(ScriptStateValueType::Bool), "StateValueType::STATE_VALUE_BOOL"},
+    {"STATE_VALUE_INT", static_cast<int>(ScriptStateValueType::Int), "StateValueType::STATE_VALUE_INT"},
+    {"STATE_VALUE_FLOAT", static_cast<int>(ScriptStateValueType::Float), "StateValueType::STATE_VALUE_FLOAT"},
+    {"STATE_VALUE_STRING", static_cast<int>(ScriptStateValueType::String), "StateValueType::STATE_VALUE_STRING"},
+};
+
 static const ScriptEnumContract kEnums[] = {
     {"GameEvent", "enum GameEvent", kGameEventValues, sizeof(kGameEventValues) / sizeof(kGameEventValues[0])},
     {"DirectoryType", "enum DirectoryType", kDirectoryTypeValues, sizeof(kDirectoryTypeValues) / sizeof(kDirectoryTypeValues[0])},
@@ -228,6 +237,7 @@ static const ScriptEnumContract kEnums[] = {
     {"TimerTimeBase", "enum TimerTimeBase", kTimerTimeBaseValues, sizeof(kTimerTimeBaseValues) / sizeof(kTimerTimeBaseValues[0])},
     {"DataShareValueType", "enum DataShareValueType", kDataShareValueTypeValues, sizeof(kDataShareValueTypeValues) / sizeof(kDataShareValueTypeValues[0])},
     {"CallValueType", "enum CallValueType", kCallValueTypeValues, sizeof(kCallValueTypeValues) / sizeof(kCallValueTypeValues[0])},
+    {"StateValueType", "enum StateValueType", kStateValueTypeValues, sizeof(kStateValueTypeValues) / sizeof(kStateValueTypeValues[0])},
 };
 
 static const ScriptEventMemberContract kRenderEventMembers[] = {

@@ -33,6 +33,7 @@ namespace BML {
 
 class ScriptMod;
 class ScriptModReloadPhaseScope;
+class ScriptStateBag;
 
 struct ScriptModReloadOptions {
     bool Automatic = false;
@@ -302,7 +303,10 @@ private:
     friend class ScriptModReloadPhaseScope;
 
     bool CompileAndCreate();
-    bool LoadCurrentRuntime(bool validateHostRegistrations, bool failedLoadRecovery = false);
+    bool LoadCurrentRuntime(bool validateHostRegistrations,
+                            bool failedLoadRecovery = false,
+                            ScriptStateBag *restoreState = nullptr,
+                            const std::string &restoreFromVersion = std::string());
     void CallGameEvent(size_t eventIndex);
     void CleanupFailedLoad();
     void FailIfEventCallFailed(bool ok, const ScriptDiagnostic &diagnostic);

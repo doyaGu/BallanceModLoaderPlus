@@ -16,6 +16,8 @@
 #include "ModContext.h"
 #include "ScriptDevToolsService.h"
 #include "ScriptModDefinitionBuilder.h"
+#include "ScriptStateBag.h"
+#include "ScriptStateMigration.h"
 #include "Utils/PathUtils.h"
 #include "Utils/StringUtils.h"
 
@@ -859,7 +861,10 @@ void ScriptMod::OnLoad() {
     LoadCurrentRuntime(false);
 }
 
-bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations, bool failedLoadRecovery) {
+bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations,
+                                   bool failedLoadRecovery,
+                                   ScriptStateBag *restoreState,
+                                   const std::string &restoreFromVersion) {
     if (m_State.IsFailed())
         return false;
 
@@ -901,6 +906,27 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations, bool failedLo
 
     RebindServices();
     m_State.MarkLoaded(true);
+
+    if (restoreState) {
+        bool restored = false;
+        if (!ScriptStateMigration::Restore(m_Context ? m_Context->GetCKContext() : nullptr,
+                                           m_Runtime,
+                                           restoreFromVersion,
+                                           *restoreState,
+                                           restored,
+                                           diagnostic)) {
+            Fail(diagnostic);
+            CleanupFailedLoad();
+            return false;
+        }
+        if (!restored) {
+            Fail(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                                      "Script hot reload state was saved, but the runtime does not declare RestoreState(StateBag@) or MigrateState(fromVersion, StateBag@)."));
+            CleanupFailedLoad();
+            return false;
+        }
+    }
+
     const HostRegistrationMode previousMode = m_HostRegistrationMode;
     m_HostRegistrationMode = validateHostRegistrations ? HostRegistrationMode::Validate : HostRegistrationMode::Capture;
     m_PendingHostRegistrations.clear();
@@ -2455,6 +2481,93 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                                                      {},
                                                      GetReloadAttemptId());
     }
+
+    ScriptStateBagHandle savedState;
+    ScriptStateBagHandle rollbackState;
+    bool stateSaved = false;
+    const std::string oldVersion = m_Definition.Version;
+    if (m_State.IsLoaded()) {
+        savedState.Reset(new ScriptStateBag());
+        ScriptDiagnostic stateDiagnostic;
+        if (!ScriptStateMigration::Save(m_Context ? m_Context->GetCKContext() : nullptr,
+                                        m_Runtime,
+                                        *savedState.Get(),
+                                        stateSaved,
+                                        stateDiagnostic)) {
+            RewriteSnapshotDiagnosticPaths(snapshot, stateDiagnostic);
+            candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
+            ReleaseRuntimeOnly(candidateRuntime);
+            return finishWithDiagnostic(stateDiagnostic);
+        }
+
+        if (!stateSaved) {
+            savedState.Reset();
+        } else {
+            bool oldCanRestore = false;
+            if (!ScriptStateMigration::HasRestoreHook(m_Context ? m_Context->GetCKContext() : nullptr,
+                                                      m_Runtime,
+                                                      oldCanRestore,
+                                                      stateDiagnostic)) {
+                candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
+                ReleaseRuntimeOnly(candidateRuntime);
+                return finishWithDiagnostic(stateDiagnostic);
+            }
+            if (!oldCanRestore) {
+                candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
+                ReleaseRuntimeOnly(candidateRuntime);
+                const ScriptDiagnostic failure = MakeScriptDiagnostic(
+                    ScriptDiagnosticPhase::Runtime,
+                    "Script hot reload state migration is unsafe: current runtime declares SaveState(StateBag@) "
+                    "but does not declare RestoreState(StateBag@) or MigrateState(fromVersion, StateBag@); "
+                    "rollback could not restore saved state.");
+                std::vector<ScriptModReloadDiagnosticField> fields = {
+                    {"boundary", "state_migration"},
+                    {"required", "RestoreState(StateBag@) or MigrateState(fromVersion, StateBag@)"},
+                    {"action", "add_restore_hook_or_remove_SaveState"},
+                };
+                return finish(false, failure.Message, &failure, &fields);
+            }
+
+            bool candidateCanRestore = false;
+            if (!ScriptStateMigration::HasRestoreHook(m_Context ? m_Context->GetCKContext() : nullptr,
+                                                      candidateRuntime,
+                                                      candidateCanRestore,
+                                                      stateDiagnostic)) {
+                RewriteSnapshotDiagnosticPaths(snapshot, stateDiagnostic);
+                candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
+                ReleaseRuntimeOnly(candidateRuntime);
+                return finishWithDiagnostic(stateDiagnostic);
+            }
+            if (!candidateCanRestore) {
+                candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
+                ReleaseRuntimeOnly(candidateRuntime);
+                const ScriptDiagnostic failure = MakeScriptDiagnostic(
+                    ScriptDiagnosticPhase::Runtime,
+                    "Script hot reload state migration is unsafe: current runtime saved state, "
+                    "but the candidate does not declare RestoreState(StateBag@) or MigrateState(fromVersion, StateBag@).");
+                std::vector<ScriptModReloadDiagnosticField> fields = {
+                    {"boundary", "state_migration"},
+                    {"required", "RestoreState(StateBag@) or MigrateState(fromVersion, StateBag@)"},
+                    {"action", "add_candidate_restore_hook"},
+                };
+                return finish(false, failure.Message, &failure, &fields);
+            }
+
+            rollbackState.Reset(savedState->Clone());
+            if (m_Context && m_Context->GetScriptDevTools()) {
+                m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+                                                             "ScriptReloadStateSaved",
+                                                             GetID() ? GetID() : "",
+                                                             "reload",
+                                                             snapshot.CommitEntryPathUtf8,
+                                                             "Script hot reload state saved.",
+                                                             {{"keys", std::to_string(savedState->GetCount())},
+                                                              {"fromVersion", oldVersion}},
+                                                             GetReloadAttemptId());
+            }
+        }
+    }
+
     candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
 
     const bool recoveringPlaceholder = IsFailedPlaceholder();
@@ -2510,7 +2623,10 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                                                : ScriptModReloadPhase::Load;
     {
         ScriptModReloadPhaseScope phase(*this, loadPhase);
-        liveRuntimeLoaded = LoadCurrentRuntime(true, recoveringPlaceholder);
+        liveRuntimeLoaded = LoadCurrentRuntime(true,
+                                               recoveringPlaceholder,
+                                               savedState.Get(),
+                                               oldVersion);
     }
 
     if (liveRuntimeLoaded) {
@@ -2580,7 +2696,10 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     bool rollbackLoaded = false;
     {
         ScriptModReloadPhaseScope phase(*this, ScriptModReloadPhase::Rollback);
-        rollbackLoaded = LoadCurrentRuntime(true);
+        rollbackLoaded = LoadCurrentRuntime(true,
+                                            false,
+                                            rollbackState.Get(),
+                                            oldVersion);
     }
 
     if (rollbackLoaded) {

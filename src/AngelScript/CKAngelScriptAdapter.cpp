@@ -26,6 +26,7 @@ static constexpr CKAS_FEATURE kRequiredFeatures[] = {
     CKAS_FEATURE_SCRIPT_ARRAY_ACCESS,
     CKAS_FEATURE_ACTIVE_CONTEXT_EXCEPTION,
     CKAS_FEATURE_SOURCE_SECTIONS,
+    CKAS_FEATURE_OBJECT_HANDLE_ARGS,
 };
 
 template <typename T>
@@ -52,6 +53,8 @@ static std::string MakeMissingFeatureDiagnostic(CKAS_FEATURE feature) {
         message += " BML requires CKAngelScript to set host API exceptions on the current script context.";
     } else if (feature == CKAS_FEATURE_SOURCE_SECTIONS) {
         message += " BML requires CKAngelScript source-section loading for consistent script hot reload snapshots.";
+    } else if (feature == CKAS_FEATURE_OBJECT_HANDLE_ARGS) {
+        message += " BML requires CKAngelScript object-handle argument writing for script hot reload state migration.";
     }
     return message;
 }
@@ -115,7 +118,7 @@ bool CKAngelScriptAdapter::IsAvailable() const {
 
 bool CKAngelScriptAdapter::HasFeature(CKAS_FEATURE feature) const {
     const int index = static_cast<int>(feature);
-    return index >= 0 && index <= CKAS_FEATURE_SOURCE_SECTIONS && m_Features[index];
+    return index >= 0 && index <= CKAS_FEATURE_OBJECT_HANDLE_ARGS && m_Features[index];
 }
 
 CKAngelScriptAdapter::State CKAngelScriptAdapter::GetState() const {
@@ -223,6 +226,8 @@ const char *CKAngelScriptAdapter::FeatureName(CKAS_FEATURE feature) {
         return "CKAS_FEATURE_ACTIVE_CONTEXT_EXCEPTION";
     case CKAS_FEATURE_SOURCE_SECTIONS:
         return "CKAS_FEATURE_SOURCE_SECTIONS";
+    case CKAS_FEATURE_OBJECT_HANDLE_ARGS:
+        return "CKAS_FEATURE_OBJECT_HANDLE_ARGS";
     default:
         return "CKAS_FEATURE_UNKNOWN";
     }
@@ -274,6 +279,7 @@ bool CKAngelScriptAdapter::ResolveRequiredExports(void *moduleHandle) {
         Resolve(module, "CKAngelScriptArgSetFloat", m_Api.ArgSetFloat, missing) &&
         Resolve(module, "CKAngelScriptArgSetString", m_Api.ArgSetString, missing) &&
         Resolve(module, "CKAngelScriptArgSetBorrowedObject", m_Api.ArgSetBorrowedObject, missing) &&
+        Resolve(module, "CKAngelScriptArgSetObjectHandle", m_Api.ArgSetObjectHandle, missing) &&
         Resolve(module, "CKAngelScriptResultGetBool", m_Api.ResultGetBool, missing) &&
         Resolve(module, "CKAngelScriptResultGetInt", m_Api.ResultGetInt, missing) &&
         Resolve(module, "CKAngelScriptResultGetFloat", m_Api.ResultGetFloat, missing) &&
@@ -313,7 +319,7 @@ bool CKAngelScriptAdapter::ValidateFeatures() {
     for (CKAS_FEATURE feature : kRequiredFeatures) {
         const int index = static_cast<int>(feature);
         const bool supported = m_Api.HasFeature(feature) != 0;
-        if (index >= 0 && index <= CKAS_FEATURE_SOURCE_SECTIONS)
+        if (index >= 0 && index <= CKAS_FEATURE_OBJECT_HANDLE_ARGS)
             m_Features[index] = supported;
 
         if (!supported) {

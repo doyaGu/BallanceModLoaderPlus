@@ -45,6 +45,9 @@ class BMLBindingsSmokeMod {
   string imguiText = "hello";
   string imguiMultiline = "line1\nline2";
   ImVec4 imguiColor = ImVec4(0.2f, 0.4f, 0.8f, 1.0f);
+  bool stateBagSmokeOk = false;
+  int migratedCounter = 17;
+  string migratedText = "initial";
   int selfUnregisterCommandCalls = 0;
   BML::CommandRef@ smokeCommand;
   BML::CommandRef@ selfCommand;
@@ -80,6 +83,44 @@ class BMLBindingsSmokeMod {
       LogInfo(ctx, "BML failed mod state: id=" + failedMod.Id + " kind=" + failedMod.Kind + " state=" + failedMod.State);
       LogInfo(ctx, "BML failed mod diagnostic: " + failedMod.Diagnostic);
     }
+  }
+
+  bool RunStateBagSmoke() {
+    BML::StateBag@ bag = BML::StateBag();
+    if (bag is null)
+      return false;
+    bag.SetBool("ready", true);
+    bag.SetInt("counter", migratedCounter);
+    bag.SetFloat("ratio", 2.5f);
+    bag.SetString("text", migratedText);
+    bool ok = bag.Count == 4 &&
+              bag.Has("ready") &&
+              bag.GetType("ready") == BML::STATE_VALUE_BOOL &&
+              bag.GetType("counter") == BML::STATE_VALUE_INT &&
+              bag.GetType("ratio") == BML::STATE_VALUE_FLOAT &&
+              bag.GetType("text") == BML::STATE_VALUE_STRING &&
+              bag.GetBool("ready", false) &&
+              bag.GetInt("counter", 0) == migratedCounter &&
+              bag.GetFloat("ratio", 0.0f) == 2.5f &&
+              bag.GetString("text", "") == migratedText &&
+              bag.GetString("missing", "fallback") == "fallback";
+    ok = ok && bag.Remove("ratio") && !bag.Has("ratio") && bag.Count == 3;
+    bag.Clear();
+    return ok && bag.Count == 0;
+  }
+
+  void SaveState(BML::StateBag@ state) {
+    state.SetInt("migratedCounter", migratedCounter);
+    state.SetString("migratedText", migratedText);
+  }
+
+  void MigrateState(const string &in fromVersion, BML::StateBag@ state) {
+    state.SetString("fromVersion", fromVersion);
+  }
+
+  void RestoreState(BML::StateBag@ state) {
+    migratedCounter = state.GetInt("migratedCounter", migratedCounter);
+    migratedText = state.GetString("migratedText", migratedText);
   }
 
   [bml.export]
@@ -146,6 +187,8 @@ class BMLBindingsSmokeMod {
     BML::ModContext current;
     bool hasCurrent = BML::BorrowCurrentContext(current);
     LogInfo(ctx, "BML current context: " + BoolText(hasCurrent && current.GetModId() == ctx.GetModId()));
+    stateBagSmokeOk = RunStateBagSmoke();
+    LogInfo(ctx, "BML state bag smoke: ok=" + BoolText(stateBagSmokeOk));
     LogInfo(ctx, "BML ctx runtime: paused=" + BoolText(ctx.IsPaused) +
                 " playing=" + BoolText(ctx.IsPlaying) +
                 " cheat=" + BoolText(ctx.IsCheatEnabled) +
