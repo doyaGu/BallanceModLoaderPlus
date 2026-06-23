@@ -16,6 +16,12 @@
 
 namespace BML {
 
+static constexpr const char *kReloadDependencyBoundary =
+    "Hot reload never reorders the dependency graph and never cascades reload into dependent mods; restart or reload dependents explicitly.";
+
+static constexpr const char *kReloadRollbackBoundary =
+    "Rollback restores only BML-managed script resources such as callbacks, exports, timers, commands, DataShare requests, and script runtime handles; it cannot undo game-world changes made by script code.";
+
 static bool IsConfigKeyValid(const std::string &key) {
     if (key.empty())
         return false;
@@ -163,6 +169,14 @@ static bool CaptureReloadSourceSnapshot(const ScriptModEntry &entry,
         return false;
 
     return true;
+}
+
+static void AppendRawDiagnosticLine(ScriptDiagnostic &diagnostic, const std::string &line) {
+    if (line.empty())
+        return;
+    if (!diagnostic.RawMessage.empty())
+        diagnostic.RawMessage += "\n";
+    diagnostic.RawMessage += line;
 }
 
 class ScriptModCallScope {
@@ -1033,7 +1047,7 @@ bool ScriptMod::ValidateReloadDefinition(const ScriptModDefinition &candidate,
     std::sort(newDependencies.begin(), newDependencies.end());
     if (!recoveringPlaceholder && oldDependencies != newDependencies) {
         diagnostic = "Script mod dependency declarations changed; restart is required. "
-                     "Hot reload does not reorder the dependency graph or cascade reload dependent mods.";
+                     + std::string(kReloadDependencyBoundary);
         return false;
     }
 
@@ -1054,7 +1068,10 @@ bool ScriptMod::ValidateReloadDefinition(const ScriptModDefinition &candidate,
                 continue;
             if (!candidateExports.HasExport(name, signature)) {
                 diagnostic = "Script mod reload removed or changed export '" + name +
-                             "' signature '" + signature + "'.";
+                             "' signature '" + signature + "'. "
+                             "Hot reload keeps existing dependent mods running and does not cascade reload them, "
+                             "so non-forced reload requires every previous export name/signature to remain available. "
+                             "Keep the export, use manual --force-exports only when callers can tolerate it, or restart.";
                 return false;
             }
         }
@@ -1853,9 +1870,10 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
         ScriptDiagnostic failure = reloadDiagnostic;
         failure.Phase = ScriptDiagnosticPhase::Runtime;
         failure.Message = "Reload failed; rolled back to previous runtime. "
-                          "BML-managed script resources were restored; game-world side effects from the failed reload may remain.";
+                          + std::string(kReloadRollbackBoundary);
         if (failure.RawMessage.empty() && failure.CompilerMessages.empty() && failure.StackTrace.empty())
             failure.RawMessage = reloadFailure;
+        AppendRawDiagnosticLine(failure, kReloadRollbackBoundary);
         return finish(false, FormatScriptDiagnostic(failure), &failure);
     }
 
@@ -1864,8 +1882,9 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                                             : m_State.GetLastDiagnosticText();
     ScriptDiagnostic rollbackDiagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
                                                                "Reload failed and rollback failed. "
-                                                               "BML-managed script resources could not be restored; game-world side effects may remain.");
+                                                               + std::string(kReloadRollbackBoundary));
     rollbackDiagnostic.RawMessage = reloadFailure + "\n" + rollbackFailure;
+    AppendRawDiagnosticLine(rollbackDiagnostic, kReloadRollbackBoundary);
     Fail(rollbackDiagnostic);
     ExportRegistry::NotifyScriptExportsChanged();
     return finish(false, m_State.GetLastDiagnosticText(), &m_State.GetLastDiagnostic());

@@ -65,9 +65,11 @@ line appears, the mod entry compiled, metadata was accepted, and the `OnLoad`
 callback ran. From there, add one feature at a time: a config value, a command,
 a timer, a DataShare request, a UI draw callback, or CKAngelScript scene work.
 
-After editing script source, restart Player. Hot reload is not part of the v1
-contract. When a script fails, first read the BML log and the Mod menu
-diagnostic; do not guess from symptoms in game.
+After editing an already loaded script source, use `script reload <id>` or
+`script reload` for all script mods. If a reload fails, BML keeps the previous
+runtime when it can and records the full reason in `ModLoader.log`, `script
+logs`, and `script diag <id>`. When a script fails, read those diagnostics
+before guessing from symptoms in game.
 
 Keep smoke scripts and author examples separate. The smoke scripts under
 `tests/smoke/AngelScript` intentionally exercise edge cases and regression
@@ -352,6 +354,53 @@ signature is inferred from the compiled method declaration. Duplicate
 `name + signature` pairs are rejected; overloading the same export name with
 different supported signatures is allowed, but callers must pass the signature
 when lookup would otherwise be ambiguous.
+
+## Hot Reload
+
+Hot reload replaces the script runtime for a mod that BML already discovered at
+startup. It is meant for edit/test cycles, not for changing the mod graph while
+the game is running.
+
+Commands:
+
+```text
+script reload              # reload all script mods
+script reload <id>         # reload one script mod
+script reload <id> --dry-run
+script reload <id> --force-exports
+script diag <id>
+script logs error
+```
+
+Expected behavior:
+
+- A compile or metadata failure keeps the old runtime active when one exists.
+  The in-game message only says reload failed; use `script diag <id>` or the
+  Logs tab for the structured compiler messages.
+- If the mod failed during initial startup, BML keeps a failed placeholder. Fix
+  the file, then run `script reload` or `script reload <placeholder-id>` to
+  recover it. The placeholder can promote to the real mod id when that id does
+  not conflict.
+- Dropping a brand-new `*.mod.as` file into `ModLoader/Mods` after startup does
+  not load a new mod. Restart Player to discover new mod registry nodes.
+- Changing a successfully loaded mod id requires restart. Changing dependency
+  declarations, adding required dependencies, or requiring a new dependency
+  graph node is rejected because BML does not reorder the graph at runtime.
+- Hot reload does not cascade into dependent mods. If a dependent mod now
+  requires a version that the candidate no longer satisfies, reload is rejected.
+  Restart or reload the affected dependent mods explicitly.
+- Existing exports are compatibility promises. Normal reload requires every old
+  export `name + signature` to remain present; new exports are allowed. Use
+  `--force-exports` only for manual reloads where you know callers can tolerate
+  stale/missing exports.
+- Old Timer, Command, DataShare request, callback, and export handles become
+  invalid or stale after replacement. New registrations from the new `OnLoad`
+  are the only active resources.
+- Rollback restores only resources BML owns: callbacks, exports, timers,
+  commands, DataShare requests, and script runtime handles. It cannot undo
+  changes your script already made to the game world through CKAS Scene/BB APIs,
+  raw CK/Vx calls, or another plugin. If a feature mutates world state during
+  `OnLoad`, make it explicitly reversible or require a restart after failure.
 
 ## Callbacks
 
@@ -1182,10 +1231,12 @@ with the same CKAngelScript runtime that will ship with the mod.
 - `ModContext` is a per-mod facade. Store durable IDs/refs instead of borrowed
   CK handles when work crosses callbacks or frames.
 - Timer, Command, and DataShareRequest resources are owned by the script mod
-  and are cleaned up on mod unload.
+  and are cleaned up on mod unload and hot reload replacement.
 - Export handles are generation-checked and become invalid when the owner or
   export disappears.
-- Hot reload has no v1 contract.
+- Hot reload keeps the mod registry slot stable, but it does not discover new
+  mods, rebuild dependency graph nodes, cascade dependent reloads, or undo
+  script-authored game-world side effects.
 
 ## Do Not
 
@@ -1241,13 +1292,14 @@ with the same CKAngelScript runtime that will ship with the mod.
 BML Script Mod v1 uses one `*.mod.as` entry per single-file, directory, or
 `.zip` script package, AngelScript metadata declarations, fixed callback
 signatures, script-owned Timer/Command objects, typed DataShare requests, and
-typed export handles. `BML::ModContext` is the primary facade. Event objects are
-snapshots, while `Borrow*` methods remain borrowed CK escape hatches; CKAS
-`ObjectRef@`-derived handles are the long-lived CK object identity model.
+typed export handles. It supports hot reload for already discovered script mods
+within the documented lifecycle boundaries. `BML::ModContext` is the primary
+facade. Event objects are snapshots, while `Borrow*` methods remain borrowed CK
+escape hatches; CKAS `ObjectRef@`-derived handles are the long-lived CK object
+identity model.
 CKAngelScript runtime scripts,
 `AngelScript Component`, `Scene`, `Behavior`, `BB`, `Param`, `Message`, `Async`,
 raw CK/Vx SDK, ImGui, and registered extension APIs remain available according
-to their own contracts; BML v1 only defines the BML-owned mod surface. Hot
-reload, `.bmodp` script packages, BML-owned entity wrappers, raw CKAS
-engine/module/function access, BML callback suspension/resume, and a full
-sandbox policy are deferred.
+to their own contracts; BML v1 only defines the BML-owned mod surface. `.bmodp`
+script packages, BML-owned entity wrappers, raw CKAS engine/module/function
+access, BML callback suspension/resume, and a full sandbox policy are deferred.

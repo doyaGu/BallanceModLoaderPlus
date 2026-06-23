@@ -1745,7 +1745,8 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
         if (dependencyIt == m_ModMap.end()) {
             if (!dependency.Optional) {
                 diagnostic = "Script mod reload dependency '" + dependency.Id + "' is missing. "
-                             "Hot reload does not load new dependency graph nodes; restart is required.";
+                             "Hot reload only refreshes already registered script mods; it does not discover or load new dependency graph nodes. "
+                             "Restart after adding dependencies.";
                 return false;
             }
             continue;
@@ -1762,7 +1763,8 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
 #if BML_ENABLE_ANGELSCRIPT
         if (BML::IsFailedScriptMod(dependencyMod)) {
             if (!dependency.Optional) {
-                diagnostic = "Script mod reload dependency '" + dependency.Id + "' is failed.";
+                diagnostic = "Script mod reload dependency '" + dependency.Id + "' is failed. "
+                             "Hot reload does not repair or cascade reload required dependencies; fix and reload the dependency first, or restart.";
                 return false;
             }
             continue;
@@ -1770,7 +1772,8 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
 #endif
         const BMLVersion have = BML::ParseBmlVersion(dependencyMod->GetVersion() ? dependencyMod->GetVersion() : "0.0.0");
         if (have < dependency.MinVersion && !dependency.Optional) {
-            diagnostic = "Script mod reload dependency '" + dependency.Id + "' is older than required.";
+            diagnostic = "Script mod reload dependency '" + dependency.Id + "' is older than required. "
+                         "Hot reload does not cascade reload dependencies; update/reload that dependency first, or restart.";
             return false;
         }
     }
@@ -1787,7 +1790,7 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
             if (!dependency.optional && candidateVersion < dependency.minVersion) {
                 diagnostic = "Script mod reload version would no longer satisfy dependent mod '";
                 diagnostic += dependent->GetID() ? dependent->GetID() : "";
-                diagnostic += "'. Hot reload does not cascade reload dependent mods; restart or update dependents explicitly.";
+                diagnostic += "'. Hot reload does not cascade reload dependent mods; restart or reload dependent mods explicitly.";
                 return false;
             }
         }

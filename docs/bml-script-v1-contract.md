@@ -35,6 +35,10 @@ owning-plugin contract.
 - Advanced ImGui: generated `ImGui` namespace documented in `docs/bml-imgui-api.as`; frame-scope only, with context/platform lifecycle, allocators, raw callbacks, and raw `void*` intentionally omitted.
 - Diagnostics: script failures expose phase/message through logs, Mod menu, script `ModRef`, and native interop.
 - CKAngelScript integration: official script-capable BML+ release packages include the matching CKAngelScript runtime.
+- Hot reload for already discovered script mods: manual `script reload <id|all>`,
+  automatic reload for non-zip mods when enabled, dry-run validation, and
+  failed-load placeholder recovery when the fixed source keeps or promotes to a
+  non-conflicting mod id.
 - CKAngelScript API coexistence: BML script mods may use CKAngelScript's
   registered script APIs, including runtime/component-facing `Scene`,
   `Behavior`, `BB`, `Param`, `Message`, `Async`, raw CK/Vx SDK bindings, and
@@ -43,7 +47,6 @@ owning-plugin contract.
 
 ## Experimental or Deferred
 
-- Hot reload. No transactional or fail-stop reload semantics are promised in v1.
 - Script package signing, package permissions, and multi-mod script archives.
 - `.bmodp` script packages. `.bmodp` remains reserved for native DLL mods.
 - Complete `IBML` facade coverage. v1 covers the practical script-facing subset and documents omissions.
@@ -69,6 +72,41 @@ owning-plugin contract.
   `array<uint8>@`, and `CKObject@`. Signatureless lookup is valid only when the
   export name is unique; explicit lookup compares compiled descriptors.
 - `docs/bml-script-mod-api.as` is a stub for authoring and validation. The guide and this contract define the supported surface.
+
+## Hot Reload Contract
+
+Hot reload is a runtime replacement for an already registered script mod. It is
+not dynamic mod discovery and not dependency graph reconstruction.
+
+- BML keeps the existing `ScriptMod*`, mod registry slot, and mod ordering.
+  Script-side `ModRef` resolves by id again when used.
+- `script reload` without an id means `script reload all`. `--dry-run` compiles,
+  reflects metadata, creates the candidate object, caches callbacks/exports,
+  validates compatibility, then unloads the candidate without calling its
+  `OnLoad`.
+- If a mod failed during initial startup before a working runtime existed, BML
+  keeps a failed placeholder. After the source is fixed, `script reload <id>`
+  or `script reload all` may recover that placeholder and promote it to the real
+  mod id if the id does not conflict.
+- Adding a brand-new `*.mod.as` file after startup is not hot reload. The file
+  watcher may observe the directory, but BML does not add new mod registry
+  nodes during a running game. Restart to discover new mods.
+- Changing mod id after a successful load, adding/removing/changing dependency
+  declarations, or requiring newly added dependency graph nodes is rejected.
+- Hot reload does not cascade into dependent mods. If the new version no longer
+  satisfies an already registered dependent mod, reload is rejected and the
+  diagnostic says to restart or reload dependents explicitly.
+- Non-forced reload requires every previous export `name + signature` to remain
+  available. Added exports are allowed. Removing or changing exports requires a
+  deliberate manual `--force-exports` reload or a restart.
+- BML invalidates script-owned Timer, Command, DataShare request, callback, and
+  export method resources from the old runtime before committing the new one.
+  Old handles become invalid or stale; new registrations from the new `OnLoad`
+  are the only active script resources.
+- Rollback restores only BML-managed script resources and runtime handles. It
+  cannot undo game-world changes already made by script code, CKAS Scene/BB
+  calls, raw CK/Vx operations, or external plugin APIs. Such side effects must
+  be explicitly reversible in the script or require a restart.
 
 ## CKAngelScript Coexistence
 
@@ -120,9 +158,11 @@ The stable BML script mod contract is: single-file/directory/zip `*.mod.as`
 entry, AngelScript metadata, fixed callbacks, snapshot event objects with
 borrowed CK handle accessors or BML service wrappers, typed export registry with
 scalar arrays/buffers/object identity, script-owned Timer/Command/DataShareRequest,
-and official release packages that include the matching CKAngelScript runtime.
+hot reload for already discovered script mods within the documented lifecycle
+boundaries, and official release packages that include the matching
+CKAngelScript runtime.
 CKAngelScript runtime scripts, `AngelScript Component`, Scene/Behavior/BB/Param,
 Message/Async, and CK/Vx bindings are available under the CKAngelScript
-contract. Deferred: hot reload, `.bmodp` script packages, BML-owned full object
-wrappers, full sandbox policy, raw CKAS engine/module/function access, and BML
+contract. Deferred: `.bmodp` script packages, BML-owned full object wrappers,
+full sandbox policy, raw CKAS engine/module/function access, and BML
 fixed-callback suspension/resume.
