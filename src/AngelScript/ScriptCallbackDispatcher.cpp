@@ -56,6 +56,7 @@ bool ScriptCallbackDispatcher::CacheAll(CKContext *context, ScriptModRuntime &ru
         if (!m_Methods[descriptor.Id] && diagnostic.Status != CKAS_OK && !diagnostic.Message.empty()) {
             diagnostic.Phase = ScriptDiagnosticPhase::MethodLookup;
             diagnostic.Message = std::string("Method lookup failed for ") + descriptor.Name + ": " + diagnostic.Message;
+            Release(context, runtime, nullptr);
             return false;
         }
     }

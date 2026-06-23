@@ -623,17 +623,34 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations, bool failedLo
         return false;
     }
 
-    if (!CompileAndCreate())
+    auto cleanupFailedPrepare = [&]() {
+        const ScriptDiagnostic failure = m_State.GetLastDiagnostic();
+        ReleaseRuntime();
+        if (!failure.Message.empty() ||
+            !failure.RawMessage.empty() ||
+            !failure.StackTrace.empty() ||
+            !failure.CompilerMessages.empty() ||
+            failure.Status != CKAS_OK) {
+            m_State.Fail(failure);
+            TouchModGeneration();
+        }
+    };
+
+    if (!CompileAndCreate()) {
+        cleanupFailedPrepare();
         return false;
+    }
     m_EventRouter.Bind(m_Context ? m_Context->GetCKContext() : nullptr, &m_Runtime, &m_ContextView);
 
     ScriptDiagnostic diagnostic;
     if (!m_EventRouter.Cache(diagnostic)) {
         Fail(diagnostic);
+        cleanupFailedPrepare();
         return false;
     }
     if (!m_Exports.Cache(m_Context ? m_Context->GetCKContext() : nullptr, m_Runtime, m_Definition.Exports, diagnostic)) {
         Fail(diagnostic);
+        cleanupFailedPrepare();
         return false;
     }
 

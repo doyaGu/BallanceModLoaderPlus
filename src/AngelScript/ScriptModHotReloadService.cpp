@@ -281,9 +281,9 @@ void ScriptModHotReloadService::Process() {
             continue;
         }
 
+        const char *currentId = mod->GetID();
+        const std::string resultId = currentId && *currentId ? currentId : id;
         if (m_Context && m_Context->GetLogger()) {
-            const char *currentId = mod->GetID();
-            const std::string resultId = currentId && *currentId ? currentId : id;
             if (result.Success) {
                 if (pending.Options.DryRun)
                     m_Context->GetLogger()->Info("Script mod %s hot reload dry-run passed.", resultId.c_str());
@@ -302,7 +302,7 @@ void ScriptModHotReloadService::Process() {
             }
         }
         SendReloadResultMessage(m_Context,
-                                mod->GetID() && *mod->GetID() ? mod->GetID() : id,
+                                resultId,
                                 pending.Options,
                                 result);
         if (m_Context && m_Context->GetScriptDevTools()) {
@@ -317,7 +317,7 @@ void ScriptModHotReloadService::Process() {
             std::vector<ScriptDevEventField> fields = BuildReloadResultFields(pending.Reason, result);
             m_Context->GetScriptDevTools()->PublishEvent(result.Success ? ScriptDevEventSeverity::Info : ScriptDevEventSeverity::Warn,
                                                          code,
-                                                         id,
+                                                         resultId,
                                                          "reload",
                                                          result.SourcePath,
                                                          result.Success

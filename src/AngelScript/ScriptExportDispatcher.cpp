@@ -485,6 +485,10 @@ bool ScriptExportTable::Cache(CKContext *context,
                               const std::vector<ScriptModExportDefinition> &definitions,
                               ScriptDiagnostic &diagnostic,
                               bool publishChange) {
+    auto rollback = [&]() {
+        Release(context, runtime, nullptr, false);
+    };
+
     for (const ScriptModExportDefinition &exportInfo : definitions) {
         ScriptExportBinding binding;
         binding.Name = exportInfo.Name;
@@ -497,11 +501,13 @@ bool ScriptExportTable::Cache(CKContext *context,
             diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::ExportLookup,
                                               "Unsupported script export signature '" +
                                               binding.Signature + "'.");
+            rollback();
             return false;
         }
         binding.Method = runtime.FindMethod(context, binding.MethodDecl.c_str(), diagnostic, false);
         if (!binding.Method) {
             diagnostic.Phase = ScriptDiagnosticPhase::ExportLookup;
+            rollback();
             return false;
         }
 
@@ -514,6 +520,7 @@ bool ScriptExportTable::Cache(CKContext *context,
                                               "Duplicate script export '" + binding.Name +
                                               "' with signature '" + binding.Signature + "'.");
             runtime.ReleaseMethod(context, binding.Method, nullptr);
+            rollback();
             return false;
         }
 
