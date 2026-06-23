@@ -282,11 +282,26 @@ ImGuiTableColumnFlags LogColumnFlags(int column, const bool *visible) {
     return kLogColumns[column].Flags | (visible[column] ? 0 : ImGuiTableColumnFlags_Disabled);
 }
 
+float LogColumnDefaultWidth(int column) {
+    if (kLogColumns[column].Flags & ImGuiTableColumnFlags_WidthStretch)
+        return kLogColumns[column].Width;
+
+    const ImGuiStyle &style = ImGui::GetStyle();
+    const float headerWidth = ImGui::CalcTextSize(kLogColumns[column].Label).x +
+                              style.CellPadding.x * 2.0f +
+                              ImGui::GetFrameHeight();
+    return std::max(kLogColumns[column].Width, headerWidth);
+}
+
+void SetNextItemWidthToLineEnd() {
+    ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x));
+}
+
 void SetupLogColumns(const bool *visible) {
     for (int column = 0; column < LogColumnCount; ++column)
         ImGui::TableSetupColumn(kLogColumns[column].Label,
                                 LogColumnFlags(column, visible),
-                                kLogColumns[column].Width,
+                                LogColumnDefaultWidth(column),
                                 static_cast<ImGuiID>(column + 1));
 }
 
@@ -1341,7 +1356,6 @@ void ScriptDevToolsService::DrawLogsTab() {
 
 void ScriptDevToolsService::DrawLogFilters() {
     const ImGuiStyle &style = ImGui::GetStyle();
-    const float fullWidth = ImGui::GetContentRegionAvail().x;
 
     ImGui::TextUnformatted("Level");
     ImGui::SameLine();
@@ -1351,7 +1365,7 @@ void ScriptDevToolsService::DrawLogFilters() {
     ImGui::TextUnformatted("Source");
     ImGui::SameLine();
     const float columnsButtonWidth = ImGui::CalcTextSize("Columns").x + style.FramePadding.x * 2.0f;
-    const float sourceWidth = std::max(160.0f, ImGui::GetContentRegionAvail().x - columnsButtonWidth - style.ItemSpacing.x);
+    const float sourceWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x - columnsButtonWidth - style.ItemSpacing.x);
     ImGui::SetNextItemWidth(sourceWidth);
     ImGui::InputText("##script-dev-source", m_EventSourceFilter, sizeof(m_EventSourceFilter));
     ImGui::SameLine();
@@ -1359,8 +1373,7 @@ void ScriptDevToolsService::DrawLogFilters() {
 
     ImGui::TextUnformatted("Search");
     ImGui::SameLine();
-    const float searchWidth = std::max(220.0f, fullWidth - 72.0f);
-    ImGui::SetNextItemWidth(searchWidth);
+    SetNextItemWidthToLineEnd();
     ImGui::InputText("##script-dev-search", m_EventSearch, sizeof(m_EventSearch));
 
     ImGui::Checkbox("This Mod", &m_LogSelectedModOnly);
@@ -1381,13 +1394,11 @@ void ScriptDevToolsService::DrawLogFilters() {
     if (m_ShowAdvancedLogFilters) {
         ImGui::TextUnformatted("Event");
         ImGui::SameLine();
-        const float eventWidth = std::max(180.0f, (fullWidth - 112.0f) * 0.58f);
-        ImGui::SetNextItemWidth(eventWidth);
+        SetNextItemWidthToLineEnd();
         ImGui::InputText("##script-dev-code", m_EventCodeFilter, sizeof(m_EventCodeFilter));
-        ImGui::SameLine();
         ImGui::TextUnformatted("Reload Id");
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(std::max(80.0f, ImGui::GetContentRegionAvail().x));
+        SetNextItemWidthToLineEnd();
         ImGui::InputText("##script-dev-attempt", m_EventAttemptFilter, sizeof(m_EventAttemptFilter));
     }
 }
