@@ -1,6 +1,8 @@
 #include "Logger.h"
 
 #include <cstdio>
+#include <string>
+#include <vector>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -49,6 +51,22 @@ void Logger::Log(const char *level, const char *fmt, va_list args) {
     auto *ctx = BML_GetModContext();
     FILE *logFile = ctx ? ctx->GetLogFile() : nullptr;
 
+    std::string message;
+    if (fmt) {
+        va_list sizeArgs;
+        va_copy(sizeArgs, args);
+        const int length = _vscprintf(fmt, sizeArgs);
+        va_end(sizeArgs);
+        if (length >= 0) {
+            std::vector<char> buffer(static_cast<size_t>(length) + 1);
+            va_list formatArgs;
+            va_copy(formatArgs, args);
+            vsnprintf_s(buffer.data(), buffer.size(), _TRUNCATE, fmt, formatArgs);
+            va_end(formatArgs);
+            message.assign(buffer.data());
+        }
+    }
+
     FILE *outFiles[] = {
 #ifdef _DEBUG
         stdout,
@@ -62,11 +80,13 @@ void Logger::Log(const char *level, const char *fmt, va_list args) {
         fprintf(file, "[%02d/%02d/%d %02d:%02d:%02d.%03d] ", sys.wMonth, sys.wDay,
                 sys.wYear, sys.wHour, sys.wMinute, sys.wSecond, sys.wMilliseconds);
         fprintf(file, "[%s/%s]: ", m_ModName, level);
-        va_list argsCopy;
-        va_copy(argsCopy, args);
-        vfprintf(file, fmt, argsCopy);
-        va_end(argsCopy);
+        fputs(message.c_str(), file);
         fputc('\n', file);
         fflush(file);
     }
+
+#if BML_ENABLE_ANGELSCRIPT
+    if (ctx)
+        ctx->PublishScriptDevLogEvent(level, m_ModName, message);
+#endif
 }

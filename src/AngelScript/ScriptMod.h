@@ -35,6 +35,7 @@ class ScriptMod;
 struct ScriptModReloadOptions {
     bool Automatic = false;
     bool ForceExports = false;
+    bool DryRun = false;
 };
 
 struct ScriptModReloadResult {
@@ -235,8 +236,18 @@ public:
     int CallExport(const std::string &name, const std::string &signature, BML_CallFrame *frame);
     int CallResolvedExport(const ScriptExportBinding *binding, BML_CallFrame *frame);
     ScriptModReloadResult TryHotReload(const ScriptModReloadOptions &options);
+    ScriptModReloadResult TryHotReloadDryRun(const ScriptModReloadOptions &options);
     bool EnterScriptCall() const;
     void LeaveScriptCall() const;
+    unsigned int GetModGeneration() const { return m_ModGeneration.load(std::memory_order_acquire); }
+    unsigned int GetRuntimeGeneration() const { return m_RuntimeGeneration.load(std::memory_order_acquire); }
+    unsigned int GetReloadAttemptId() const { return m_ReloadAttemptId.load(std::memory_order_acquire); }
+    size_t GetActiveTimerCount() const { return m_Timers.GetActiveCount(); }
+    size_t GetActiveCommandCount() const { return m_Commands.GetActiveCount(); }
+    size_t GetActiveDataShareRequestCount() const { return m_DataShareRequests.GetActiveCount(); }
+    size_t GetHostRegistrationCount() const { return m_HostRegistrations.size(); }
+    int GetActiveScriptCallCount() const;
+    void GetCallbackNames(std::vector<std::string> &out) const { m_EventRouter.GetCallbackNames(out); }
 
 private:
     enum class HostRegistrationMode {
@@ -257,7 +268,12 @@ private:
     bool ReleaseRuntime();
     bool ReleaseRuntimeOnly(ScriptModRuntime &runtime);
     void RebindServices();
+    bool CanDispatchScriptCallback();
+    void FenceCallbacksForCurrentFrame();
     void SetReloadDiagnostic(const std::string &diagnostic);
+    void TouchModGeneration();
+    void TouchRuntimeGeneration();
+    void TouchReloadAttempt();
     bool ValidateReloadDefinition(const ScriptModDefinition &candidate,
                                   const ScriptExportTable &candidateExports,
                                   const ScriptModReloadOptions &options,
@@ -282,7 +298,12 @@ private:
     mutable int m_ActiveScriptCalls = 0;
     mutable std::thread::id m_ReloadThreadId;
     std::atomic<bool> m_Reloading{false};
+    std::atomic<bool> m_CallbackFenceActive{false};
+    std::atomic<unsigned int> m_CallbackFenceFrame{0};
     std::string m_LastReloadDiagnostic;
+    std::atomic<unsigned int> m_ModGeneration{1};
+    std::atomic<unsigned int> m_RuntimeGeneration{1};
+    std::atomic<unsigned int> m_ReloadAttemptId{0};
     HostRegistrationMode m_HostRegistrationMode = HostRegistrationMode::Capture;
     std::vector<ScriptModHostRegistration> m_HostRegistrations;
     std::vector<ScriptModHostRegistration> m_PendingHostRegistrations;

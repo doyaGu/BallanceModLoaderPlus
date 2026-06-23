@@ -143,7 +143,6 @@ public:
     const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
 };
 
-#if BML_ENABLE_ANGELSCRIPT
 class CommandScript : public ICommand {
 public:
     CommandScript() = default;
@@ -155,6 +154,5 @@ public:
     void Execute(IBML *bml, const std::vector<std::string> &args) override;
     const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
 };
-#endif
 
 #endif // BML_COMMANDS_H

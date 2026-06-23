@@ -34,8 +34,11 @@ namespace BML {
 class ScriptMod;
 struct ScriptModDefinition;
 struct ScriptModLoadCandidate;
+class ScriptDevToolsService;
 class ScriptModHotReloadService;
 struct ScriptModReloadOptions;
+struct ScriptDiagnostic;
+enum class ScriptDevEventSeverity;
 #endif
 }
 
@@ -99,6 +102,13 @@ public:
     bool SetScriptHotReloadAutomatic(bool enabled);
     bool SetScriptHotReloadWatching(bool enabled);
     std::string GetScriptHotReloadStatus() const;
+    BML::ScriptDevToolsService *GetScriptDevTools() const { return m_ScriptDevTools.get(); }
+    void RenderScriptDevToolsPanel();
+    void PublishScriptDevLogEvent(const char *level, const char *source, const std::string &message);
+    void PublishScriptDevDiagnostic(BML::ScriptDevEventSeverity severity,
+                                    const std::string &code,
+                                    const std::string &modId,
+                                    const BML::ScriptDiagnostic &diagnostic);
 #endif
 
     int GetModCount() override;
@@ -414,6 +424,7 @@ private:
     NewBallTypeMod *m_BallTypeMod = nullptr;
 #if BML_ENABLE_ANGELSCRIPT
     std::vector<std::unique_ptr<BML::ScriptMod>> m_ScriptMods;
+    std::unique_ptr<BML::ScriptDevToolsService> m_ScriptDevTools;
     std::unique_ptr<BML::ScriptModHotReloadService> m_ScriptHotReload;
 #endif
 

@@ -163,6 +163,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptCallbackEvents.h
             AngelScript/ScriptCommandService.h
             AngelScript/ScriptDataShareService.h
+            AngelScript/ScriptDevToolsService.h
             AngelScript/ScriptDiagnostic.h
             AngelScript/ScriptExportDispatcher.h
             AngelScript/ScriptExportSignature.h
@@ -189,6 +190,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptCallbackEvents.cpp
             AngelScript/ScriptCommandService.cpp
             AngelScript/ScriptDataShareService.cpp
+            AngelScript/ScriptDevToolsService.cpp
             AngelScript/ScriptDiagnostic.cpp
             AngelScript/ScriptExportDispatcher.cpp
             AngelScript/ScriptExportSignature.cpp

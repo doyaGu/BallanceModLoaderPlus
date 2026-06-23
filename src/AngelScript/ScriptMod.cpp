@@ -9,6 +9,7 @@
 #include "BML/IConfig.h"
 #include "ExportRegistry.h"
 #include "ModContext.h"
+#include "ScriptDevToolsService.h"
 #include "ScriptModDefinitionBuilder.h"
 #include "Utils/PathUtils.h"
 #include "Utils/StringUtils.h"
@@ -59,10 +60,42 @@ static std::vector<std::string> CanonicalHostRegistrations(const std::vector<Scr
 
 static std::string MakeReloadModuleName(const ScriptModRuntime &runtime) {
     static std::atomic<unsigned long> s_ReloadSerial{1};
-    return runtime.GetModuleName() + ".reload." + std::to_string(s_ReloadSerial.fetch_add(1, std::memory_order_relaxed));
+    std::string base = runtime.GetModuleName();
+    for (;;) {
+        const size_t marker = base.rfind(".reload.");
+        if (marker == std::string::npos)
+            break;
+
+        const size_t suffixStart = marker + 8;
+        if (suffixStart == base.size())
+            break;
+
+        bool numericSuffix = true;
+        for (size_t i = suffixStart; i < base.size(); ++i) {
+            if (base[i] < '0' || base[i] > '9') {
+                numericSuffix = false;
+                break;
+            }
+        }
+        if (!numericSuffix)
+            break;
+        base.resize(marker);
+    }
+    return base + ".reload." + std::to_string(s_ReloadSerial.fetch_add(1, std::memory_order_relaxed));
 }
 
 static ScriptModLoadCandidate MakeReloadCandidate(const ScriptModEntry &entry);
+
+static bool ReadReloadEntrySource(const ScriptModEntry &entry,
+                                  std::string &sourceCode,
+                                  ScriptDiagnostic &diagnostic) {
+    if (utils::ReadFileBytesW(entry.EntryPath, sourceCode))
+        return true;
+
+    diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, "Failed to read script entry file for reload.");
+    diagnostic.EntryPath = utils::Utf16ToUtf8(entry.EntryPath);
+    return false;
+}
 
 class ScriptModCallScope {
 public:
@@ -317,6 +350,8 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations) {
         }
     }
     m_Runtime.SetLoaded(true);
+    TouchRuntimeGeneration();
+    TouchModGeneration();
     return true;
 }
 
@@ -333,6 +368,7 @@ void ScriptMod::OnUnload() {
     }
     ReleaseRuntime();
     m_State.MarkLoaded(false);
+    TouchModGeneration();
 }
 
 void ScriptMod::OnLoadObject(const char *filename,
@@ -348,7 +384,7 @@ void ScriptMod::OnLoadObject(const char *filename,
     ScriptModCallScope callScope(this);
     if (!callScope.Entered())
         return;
-    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
+    if (!CanDispatchScriptCallback())
         return;
 
     ScriptDiagnostic diagnostic;
@@ -370,7 +406,7 @@ void ScriptMod::OnLoadScript(const char *filename, CKBehavior *script) {
     ScriptModCallScope callScope(this);
     if (!callScope.Entered())
         return;
-    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
+    if (!CanDispatchScriptCallback())
         return;
 
     ScriptDiagnostic diagnostic;
@@ -382,7 +418,7 @@ void ScriptMod::OnModifyConfig(const char *category, const char *key, IProperty 
     ScriptModCallScope callScope(this);
     if (!callScope.Entered())
         return;
-    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
+    if (!CanDispatchScriptCallback())
         return;
 
     const std::string eventCategory = category ? category : "";
@@ -548,7 +584,7 @@ void ScriptMod::OnProcess() {
     ScriptModCallScope callScope(this);
     if (!callScope.Entered())
         return;
-    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
+    if (!CanDispatchScriptCallback())
         return;
     if (!m_EventRouter.HasOnProcess())
         return;
@@ -561,7 +597,7 @@ void ScriptMod::OnRender(CK_RENDER_FLAGS flags) {
     ScriptModCallScope callScope(this);
     if (!callScope.Entered())
         return;
-    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
+    if (!CanDispatchScriptCallback())
         return;
     if (!m_EventRouter.HasOnRender())
         return;
@@ -574,7 +610,7 @@ void ScriptMod::OnCheatEnabled(bool enable) {
     ScriptModCallScope callScope(this);
     if (!callScope.Entered())
         return;
-    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
+    if (!CanDispatchScriptCallback())
         return;
 
     ScriptDiagnostic diagnostic;
@@ -604,7 +640,7 @@ void ScriptMod::OnPhysicalize(CK3dEntity *target,
     ScriptModCallScope callScope(this);
     if (!callScope.Entered())
         return;
-    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
+    if (!CanDispatchScriptCallback())
         return;
 
     ScriptDiagnostic diagnostic;
@@ -636,7 +672,7 @@ void ScriptMod::OnUnphysicalize(CK3dEntity *target) {
     ScriptModCallScope callScope(this);
     if (!callScope.Entered())
         return;
-    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
+    if (!CanDispatchScriptCallback())
         return;
 
     ScriptDiagnostic diagnostic;
@@ -647,7 +683,7 @@ void ScriptMod::OnPreCommandExecute(ICommand *command, const std::vector<std::st
     ScriptModCallScope callScope(this);
     if (!callScope.Entered())
         return;
-    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
+    if (!CanDispatchScriptCallback())
         return;
 
     ScriptDiagnostic diagnostic;
@@ -658,7 +694,7 @@ void ScriptMod::OnPostCommandExecute(ICommand *command, const std::vector<std::s
     ScriptModCallScope callScope(this);
     if (!callScope.Entered())
         return;
-    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
+    if (!CanDispatchScriptCallback())
         return;
 
     ScriptDiagnostic diagnostic;
@@ -666,11 +702,11 @@ void ScriptMod::OnPostCommandExecute(ICommand *command, const std::vector<std::s
 }
 
 void ScriptMod::SetLoadFailure(const std::string &diagnostic) {
-    Fail(diagnostic);
+    SetLoadFailure(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, diagnostic));
 }
 
 void ScriptMod::SetLoadFailure(const ScriptDiagnostic &diagnostic) {
-    Fail(diagnostic);
+    FailIfEventCallFailed(false, diagnostic);
 }
 
 void ScriptMod::RecordScriptDiagnostic(const ScriptDiagnostic &diagnostic) {
@@ -804,16 +840,63 @@ void ScriptMod::LeaveScriptCall() const {
         --m_ActiveScriptCalls;
 }
 
+int ScriptMod::GetActiveScriptCallCount() const {
+    std::lock_guard<std::mutex> lock(m_ReloadMutex);
+    return m_ActiveScriptCalls;
+}
+
 void ScriptMod::RebindServices() {
     m_Timers.Bind(m_Context, this, &m_Runtime, &m_ContextView);
     m_Commands.Bind(m_Context, this, &m_ContextView);
     m_DataShareRequests.Bind(m_Context, this, &m_Runtime, &m_ContextView);
 }
 
+bool ScriptMod::CanDispatchScriptCallback() {
+    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load(std::memory_order_acquire))
+        return false;
+
+    if (!m_CallbackFenceActive.load(std::memory_order_acquire))
+        return true;
+
+    CKTimeManager *time = m_Context ? m_Context->GetTimeManager() : nullptr;
+    if (!time)
+        return false;
+
+    const unsigned int currentFrame = static_cast<unsigned int>(time->GetMainTickCount());
+    const unsigned int fencedFrame = m_CallbackFenceFrame.load(std::memory_order_acquire);
+    if (currentFrame == fencedFrame)
+        return false;
+
+    m_CallbackFenceActive.store(false, std::memory_order_release);
+    return true;
+}
+
+void ScriptMod::FenceCallbacksForCurrentFrame() {
+    CKTimeManager *time = m_Context ? m_Context->GetTimeManager() : nullptr;
+    if (!time)
+        return;
+    m_CallbackFenceFrame.store(static_cast<unsigned int>(time->GetMainTickCount()), std::memory_order_release);
+    m_CallbackFenceActive.store(true, std::memory_order_release);
+}
+
 void ScriptMod::SetReloadDiagnostic(const std::string &diagnostic) {
     m_LastReloadDiagnostic = diagnostic;
+    TouchModGeneration();
     if (!diagnostic.empty() && m_Context && m_Context->GetLogger())
         m_Context->GetLogger()->Warn("Script mod %s reload: %s", GetID(), diagnostic.c_str());
+}
+
+void ScriptMod::TouchModGeneration() {
+    m_ModGeneration.fetch_add(1, std::memory_order_acq_rel);
+}
+
+void ScriptMod::TouchRuntimeGeneration() {
+    m_RuntimeGeneration.fetch_add(1, std::memory_order_acq_rel);
+}
+
+void ScriptMod::TouchReloadAttempt() {
+    m_ReloadAttemptId.fetch_add(1, std::memory_order_acq_rel);
+    TouchModGeneration();
 }
 
 bool ScriptMod::ValidateHostRegistrationSet(std::string &diagnostic) {
@@ -1106,7 +1189,7 @@ int ScriptMod::CallVoidExport(const std::string &name, const std::string &signat
                                     BuildMissingExportDiagnostic(m_Definition, m_Exports, name, signature)));
         return BML_ERROR_INTEROP_EXPORT_NOT_FOUND;
     }
-    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
+    if (!CanDispatchScriptCallback())
         return BML_ERROR_INTEROP_TARGET_FAILED;
 
     ScriptDiagnostic diagnostic;
@@ -1137,7 +1220,7 @@ int ScriptMod::CallStringExport(const std::string &name,
                                     BuildMissingExportDiagnostic(m_Definition, m_Exports, name, signature)));
         return BML_ERROR_INTEROP_EXPORT_NOT_FOUND;
     }
-    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
+    if (!CanDispatchScriptCallback())
         return BML_ERROR_INTEROP_TARGET_FAILED;
 
     ScriptDiagnostic diagnostic;
@@ -1179,7 +1262,7 @@ int ScriptMod::CallResolvedExport(const ScriptExportBinding *binding, BML_CallFr
     ScriptModCallScope callScope(this);
     if (!callScope.Entered())
         return BML_ERROR_INTEROP_TARGET_FAILED;
-    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
+    if (!CanDispatchScriptCallback())
         return BML_ERROR_INTEROP_TARGET_FAILED;
 
     ScriptDiagnostic diagnostic;
@@ -1199,7 +1282,7 @@ void ScriptMod::CallGameEvent(size_t eventIndex) {
     ScriptModCallScope callScope(this);
     if (!callScope.Entered())
         return;
-    if (!m_State.IsLoaded() || m_State.IsFailed() || m_Reloading.load())
+    if (!CanDispatchScriptCallback())
         return;
     if (!m_EventRouter.HasGameEvent())
         return;
@@ -1225,6 +1308,13 @@ void ScriptMod::FailIfEventCallFailed(bool ok, const ScriptDiagnostic &diagnosti
 
 void ScriptMod::Record(const ScriptDiagnostic &diagnostic) {
     m_State.Record(diagnostic);
+    TouchModGeneration();
+    if (m_Context && !diagnostic.Message.empty() && diagnostic.Message != "Export call succeeded.") {
+        m_Context->PublishScriptDevDiagnostic(ScriptDevEventSeverity::Info,
+                                              "ScriptDiagnostic",
+                                              GetID() ? GetID() : "",
+                                              diagnostic);
+    }
 }
 
 void ScriptMod::Fail(const std::string &diagnostic) {
@@ -1234,6 +1324,15 @@ void ScriptMod::Fail(const std::string &diagnostic) {
 void ScriptMod::Fail(const ScriptDiagnostic &diagnostic) {
     m_State.MarkLoaded(false);
     m_State.Fail(diagnostic);
+    TouchModGeneration();
+    if (m_Context) {
+        m_Context->PublishScriptDevDiagnostic(ScriptDevEventSeverity::Error,
+                                              diagnostic.Phase == ScriptDiagnosticPhase::Callback
+                                                  ? "ScriptCallbackFailed"
+                                                  : "ScriptModFailed",
+                                              GetID() ? GetID() : "",
+                                              diagnostic);
+    }
     if (m_Context && m_Context->GetLogger())
         m_Context->GetLogger()->Error("Script mod %s failed: %s", GetID(), m_State.GetLastDiagnosticText().c_str());
 }
@@ -1314,6 +1413,141 @@ bool ScriptMod::ReleaseRuntimeOnly(ScriptModRuntime &runtime) {
     return ok;
 }
 
+ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions &options) {
+    ScriptModReloadResult result;
+    {
+        std::lock_guard<std::mutex> lock(m_ReloadMutex);
+        if (m_Reloading.load(std::memory_order_acquire)) {
+            result.RetryLater = true;
+            result.Diagnostic = "Reload already in progress.";
+            return result;
+        }
+        if (m_ActiveScriptCalls != 0) {
+            result.RetryLater = true;
+            result.Diagnostic = "Script callback/export is active; reload dry-run deferred.";
+            return result;
+        }
+        m_ReloadThreadId = std::this_thread::get_id();
+        m_Reloading.store(true, std::memory_order_release);
+    }
+    TouchReloadAttempt();
+
+    auto finish = [&](bool success, const std::string &diagnostic) {
+        result.Success = success;
+        result.Diagnostic = diagnostic;
+        if (!success)
+            SetReloadDiagnostic(diagnostic);
+        else
+            SetReloadDiagnostic(std::string());
+        {
+            std::lock_guard<std::mutex> lock(m_ReloadMutex);
+            m_ReloadThreadId = std::thread::id();
+            m_Reloading.store(false, std::memory_order_release);
+        }
+        return result;
+    };
+
+    ScriptDiagnostic diagnostic;
+    std::wstring stagedZipRoot;
+    auto cleanupStagedZipRoot = [&]() {
+        if (!stagedZipRoot.empty()) {
+            utils::DeleteDirectoryW(stagedZipRoot);
+            stagedZipRoot.clear();
+        }
+    };
+
+    ScriptModLoadCandidate candidate;
+    if (!PrepareZipReloadCandidate(m_Entry, candidate, stagedZipRoot, diagnostic))
+        return finish(false, FormatScriptDiagnostic(diagnostic));
+    if (candidate.EntryPaths.size() != 1) {
+        cleanupStagedZipRoot();
+        return finish(false, "Reload dry-run requires exactly one *.mod.as entry file.");
+    }
+
+    ScriptModEntry candidateEntry = MakeScriptModEntry(candidate, candidate.EntryPaths.front());
+    std::string candidateSourceCode;
+    if (!ReadReloadEntrySource(candidateEntry, candidateSourceCode, diagnostic)) {
+        cleanupStagedZipRoot();
+        return finish(false, FormatScriptDiagnostic(diagnostic));
+    }
+
+    ScriptModDefinition candidateDefinition;
+    ScriptModRuntime candidateRuntime(MakeReloadModuleName(m_Runtime));
+    if (!candidateRuntime.LoadModuleFromCode(m_Context ? m_Context->GetCKContext() : nullptr,
+                                             candidateSourceCode,
+                                             utils::Utf16ToUtf8(candidateEntry.EntryPath),
+                                             diagnostic)) {
+        ReleaseRuntimeOnly(candidateRuntime);
+        cleanupStagedZipRoot();
+        return finish(false, FormatScriptDiagnostic(diagnostic));
+    }
+
+    ScriptModDefinitionBuilder builder;
+    if (!builder.Build(m_Context ? m_Context->GetCKContext() : nullptr,
+                       candidateEntry,
+                       candidateRuntime,
+                       candidateDefinition,
+                       diagnostic)) {
+        ReleaseRuntimeOnly(candidateRuntime);
+        cleanupStagedZipRoot();
+        return finish(false, FormatScriptDiagnostic(diagnostic));
+    }
+
+    candidateRuntime.SetOwner(this);
+    if (!candidateRuntime.CreateObject(m_Context ? m_Context->GetCKContext() : nullptr,
+                                       candidateDefinition.ClassNamespace,
+                                       candidateDefinition.ClassName,
+                                       diagnostic)) {
+        ReleaseRuntimeOnly(candidateRuntime);
+        cleanupStagedZipRoot();
+        return finish(false, FormatScriptDiagnostic(diagnostic));
+    }
+
+    ScriptModEventRouter candidateEvents;
+    candidateEvents.Bind(m_Context ? m_Context->GetCKContext() : nullptr, &candidateRuntime, &m_ContextView);
+    if (!candidateEvents.Cache(diagnostic)) {
+        candidateEvents.Release(nullptr);
+        ReleaseRuntimeOnly(candidateRuntime);
+        cleanupStagedZipRoot();
+        return finish(false, FormatScriptDiagnostic(diagnostic));
+    }
+
+    ScriptExportTable candidateExports;
+    if (!candidateExports.Cache(m_Context ? m_Context->GetCKContext() : nullptr,
+                                candidateRuntime,
+                                candidateDefinition.Exports,
+                                diagnostic)) {
+        candidateEvents.Release(nullptr);
+        candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
+        ReleaseRuntimeOnly(candidateRuntime);
+        cleanupStagedZipRoot();
+        return finish(false, FormatScriptDiagnostic(diagnostic));
+    }
+
+    std::string validationDiagnostic;
+    if (!ValidateReloadDefinition(candidateDefinition, candidateExports, options, validationDiagnostic)) {
+        candidateEvents.Release(nullptr);
+        candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
+        ReleaseRuntimeOnly(candidateRuntime);
+        cleanupStagedZipRoot();
+        return finish(false, validationDiagnostic);
+    }
+    if (m_Context && m_Context->GetScriptDevTools()) {
+        m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+                                                     "ScriptReloadPrepared",
+                                                     GetID() ? GetID() : "",
+                                                     "reload",
+                                                     utils::Utf16ToUtf8(candidateEntry.EntryPath),
+                                                     "Script reload candidate prepared.");
+    }
+
+    candidateEvents.Release(nullptr);
+    candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
+    ReleaseRuntimeOnly(candidateRuntime);
+    cleanupStagedZipRoot();
+    return finish(true, "Reload dry-run passed.");
+}
+
 ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &options) {
     ScriptModReloadResult result;
     {
@@ -1331,6 +1565,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
         m_ReloadThreadId = std::this_thread::get_id();
         m_Reloading.store(true, std::memory_order_release);
     }
+    TouchReloadAttempt();
 
     auto finish = [&](bool success, const std::string &diagnostic) {
         result.Success = success;
@@ -1364,8 +1599,23 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
         return finish(false, "Reload requires exactly one *.mod.as entry file.");
     }
     ScriptModEntry candidateEntry = MakeScriptModEntry(candidate, candidate.EntryPaths.front());
+    std::string candidateSourceCode;
+    if (!ReadReloadEntrySource(candidateEntry, candidateSourceCode, diagnostic)) {
+        cleanupStagedZipRoot();
+        return finish(false, FormatScriptDiagnostic(diagnostic));
+    }
+
     ScriptModDefinition candidateDefinition;
     ScriptModRuntime candidateRuntime(MakeReloadModuleName(m_Runtime));
+    if (!candidateRuntime.LoadModuleFromCode(m_Context ? m_Context->GetCKContext() : nullptr,
+                                             candidateSourceCode,
+                                             utils::Utf16ToUtf8(candidateEntry.EntryPath),
+                                             diagnostic)) {
+        ReleaseRuntimeOnly(candidateRuntime);
+        cleanupStagedZipRoot();
+        return finish(false, FormatScriptDiagnostic(diagnostic));
+    }
+
     ScriptModDefinitionBuilder builder;
     if (!builder.Build(m_Context ? m_Context->GetCKContext() : nullptr,
                        candidateEntry,
@@ -1405,7 +1655,19 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
         cleanupStagedZipRoot();
         return finish(false, validationDiagnostic);
     }
+    if (m_Context && m_Context->GetScriptDevTools()) {
+        m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+                                                     "ScriptReloadPrepared",
+                                                     GetID() ? GetID() : "",
+                                                     "reload",
+                                                     utils::Utf16ToUtf8(candidateEntry.EntryPath),
+                                                     "Script reload candidate prepared.");
+    }
     candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime);
+    if (!ReleaseRuntimeOnly(candidateRuntime)) {
+        cleanupStagedZipRoot();
+        return finish(false, "Reload candidate cleanup failed; keeping previous runtime.");
+    }
 
     ExportRegistry::NotifyScriptExportsChanged();
     ScriptDiagnostic unloadDiagnostic;
@@ -1419,14 +1681,23 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     ScriptModDefinition oldDefinition = std::move(m_Definition);
     ScriptModEntry oldEntry = std::move(m_Entry);
     ScriptModRuntime oldRuntime = std::move(m_Runtime);
+    const std::string liveModuleName = MakeReloadModuleName(oldRuntime);
 
     m_Definition = std::move(candidateDefinition);
     m_Entry = std::move(candidateEntry);
-    m_Runtime = std::move(candidateRuntime);
+    m_Runtime = ScriptModRuntime(liveModuleName);
     m_Runtime.SetOwner(this);
     m_State.ClearFailure();
 
-    if (LoadCurrentRuntime(true)) {
+    ScriptDiagnostic liveDiagnostic;
+    const bool liveModuleLoaded = m_Runtime.LoadModuleFromCode(m_Context ? m_Context->GetCKContext() : nullptr,
+                                                              candidateSourceCode,
+                                                              utils::Utf16ToUtf8(m_Entry.EntryPath),
+                                                              liveDiagnostic);
+    if (!liveModuleLoaded)
+        Fail(liveDiagnostic);
+
+    if (liveModuleLoaded && LoadCurrentRuntime(true)) {
         ReleaseRuntimeOnly(oldRuntime);
         if (oldEntry.SourceKind == ScriptModEntrySourceKind::ZipPackage &&
             !oldEntry.RootDirectory.empty() &&
@@ -1437,6 +1708,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
         if (m_Context)
             m_Context->GetCommandContext().SortCommands();
         ExportRegistry::NotifyScriptExportsChanged();
+        FenceCallbacksForCurrentFrame();
         return finish(true, std::string());
     }
 
@@ -1456,6 +1728,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
         if (m_Context)
             m_Context->GetCommandContext().SortCommands();
         ExportRegistry::NotifyScriptExportsChanged();
+        FenceCallbacksForCurrentFrame();
         return finish(false, "Reload failed; rolled back to previous runtime. " + reloadFailure);
     }
 

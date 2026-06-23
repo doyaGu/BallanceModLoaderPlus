@@ -5,6 +5,7 @@
 
 #include "Logger.h"
 #include "ModContext.h"
+#include "ScriptDevToolsService.h"
 #include "Utils/PathUtils.h"
 #include "Utils/StringUtils.h"
 
@@ -29,6 +30,57 @@ bool SamePathInsensitive(const std::wstring &left, const std::wstring &right) {
     const std::wstring resolvedLeft = utils::ResolvePathW(left);
     const std::wstring resolvedRight = utils::ResolvePathW(right);
     return _wcsicmp(resolvedLeft.c_str(), resolvedRight.c_str()) == 0;
+}
+
+std::string CompactDiagnostic(std::string diagnostic) {
+    for (char &ch : diagnostic) {
+        if (ch == '\r' || ch == '\n' || ch == '\t')
+            ch = ' ';
+    }
+
+    std::string compact;
+    compact.reserve(diagnostic.size());
+    bool previousSpace = false;
+    for (char ch : diagnostic) {
+        const bool isSpace = ch == ' ';
+        if (isSpace && previousSpace)
+            continue;
+        compact.push_back(ch);
+        previousSpace = isSpace;
+    }
+
+    constexpr size_t kMaxDiagnosticLength = 220;
+    if (compact.size() > kMaxDiagnosticLength)
+        compact = compact.substr(0, kMaxDiagnosticLength - 3) + "...";
+    return compact;
+}
+
+void SendReloadResultMessage(ModContext *context,
+                             const std::string &id,
+                             const ScriptModReloadOptions &options,
+                             const ScriptModReloadResult &result) {
+    if (!context)
+        return;
+
+    std::string message = "[script] ";
+    if (options.DryRun)
+        message += "reload dry-run ";
+    else
+        message += "reload ";
+
+    if (result.Success) {
+        message += "ok: ";
+        message += id;
+    } else {
+        message += "failed: ";
+        message += id;
+        if (!result.Diagnostic.empty()) {
+            message += ": ";
+            message += CompactDiagnostic(result.Diagnostic);
+        }
+    }
+
+    context->SendIngameMessage(message.c_str());
 }
 
 ScriptModReloadPolicy ResolvePolicy(const ScriptMod *mod) {
@@ -134,37 +186,76 @@ void ScriptModHotReloadService::Process() {
         if (pendingIt == m_Pending.end())
             continue;
         PendingReload pending = pendingIt->second;
+        m_Pending.erase(pendingIt);
         if (pending.Options.Automatic && !m_AutomaticEnabled) {
-            m_Pending.erase(pendingIt);
             continue;
         }
         ScriptMod *mod = FindMod(id);
         if (!mod) {
-            m_Pending.erase(pendingIt);
             continue;
         }
         if (!mod->CanHotReloadNow()) {
-            pendingIt->second.Due = now + kRetryDelay;
+            pending.Due = now + kRetryDelay;
+            m_Pending[id] = pending;
             continue;
         }
 
-        ScriptModReloadResult result = mod->TryHotReload(pending.Options);
+        if (m_Context && m_Context->GetScriptDevTools()) {
+            m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+                                                         pending.Options.DryRun ? "ScriptReloadDryRunStarted" : "ScriptReloadStarted",
+                                                         id,
+                                                         "reload",
+                                                         "",
+                                                         pending.Options.DryRun ? "Script reload dry-run started." : "Script reload started.",
+                                                         {{"reason", pending.Reason}});
+        }
+        ScriptModReloadResult result = pending.Options.DryRun
+                                           ? mod->TryHotReloadDryRun(pending.Options)
+                                           : mod->TryHotReload(pending.Options);
         if (result.RetryLater) {
-            pendingIt->second.Due = now + kRetryDelay;
+            pending.Due = now + kRetryDelay;
+            m_Pending[id] = pending;
             continue;
         }
-        m_Pending.erase(pendingIt);
 
         if (m_Context && m_Context->GetLogger()) {
             if (result.Success) {
-                m_Context->GetLogger()->Info("Script mod %s hot reload succeeded.", id.c_str());
+                if (pending.Options.DryRun)
+                    m_Context->GetLogger()->Info("Script mod %s hot reload dry-run passed.", id.c_str());
+                else
+                    m_Context->GetLogger()->Info("Script mod %s hot reload succeeded.", id.c_str());
             } else {
-                m_Context->GetLogger()->Warn("Script mod %s hot reload failed: %s",
-                                             id.c_str(),
-                                             result.Diagnostic.c_str());
+                if (pending.Options.DryRun) {
+                    m_Context->GetLogger()->Warn("Script mod %s hot reload dry-run failed: %s",
+                                                 id.c_str(),
+                                                 result.Diagnostic.c_str());
+                } else {
+                    m_Context->GetLogger()->Warn("Script mod %s hot reload failed: %s",
+                                                 id.c_str(),
+                                                 result.Diagnostic.c_str());
+                }
             }
         }
-        if (result.Success)
+        SendReloadResultMessage(m_Context, id, pending.Options, result);
+        if (m_Context && m_Context->GetScriptDevTools()) {
+            const bool rolledBack = !result.Success && result.Diagnostic.find("rolled back") != std::string::npos;
+            const char *code = "ScriptReloadRejected";
+            if (pending.Options.DryRun)
+                code = result.Success ? "ScriptReloadDryRunPassed" : "ScriptReloadDryRunFailed";
+            else if (result.Success)
+                code = "ScriptReloadCommitted";
+            else if (rolledBack)
+                code = "ScriptReloadRolledBack";
+            m_Context->GetScriptDevTools()->PublishEvent(result.Success ? ScriptDevEventSeverity::Info : ScriptDevEventSeverity::Warn,
+                                                         code,
+                                                         id,
+                                                         "reload",
+                                                         "",
+                                                         result.Success
+                                                             ? (pending.Options.DryRun ? "Script reload dry-run passed." : "Script reload committed.")
+                                                             : result.Diagnostic);
+        }
+        if (result.Success && !pending.Options.DryRun)
             RegisterMod(mod);
     }
 }
@@ -178,7 +269,7 @@ bool ScriptModHotReloadService::QueueReload(const std::string &id,
         return false;
     }
     QueueReloadNow(mod, options, "manual");
-    message = "Queued script reload: " + id;
+    message = options.DryRun ? "Queued script reload dry-run: " + id : "Queued script reload: " + id;
     return true;
 }
 
@@ -259,6 +350,19 @@ void ScriptModHotReloadService::QueueReloadNow(ScriptMod *mod,
     pending.Options = options;
     pending.Due = std::chrono::steady_clock::now();
     pending.Reason = reason;
+    if (m_Context && m_Context->GetScriptDevTools()) {
+        const bool dryRun = options.DryRun;
+        m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+                                                     dryRun ? "ScriptReloadDryRunQueued" : "ScriptReloadQueued",
+                                                     mod->GetID(),
+                                                     "reload",
+                                                     "",
+                                                     dryRun ? "Script reload dry-run queued." : "Script reload queued.",
+                                                     {{"reason", reason},
+                                                      {"automatic", options.Automatic ? "true" : "false"},
+                                                      {"dryRun", dryRun ? "true" : "false"},
+                                                      {"forceExports", options.ForceExports ? "true" : "false"}});
+    }
 }
 
 void ScriptModHotReloadService::QueueReloadDebounced(ScriptMod *mod,
@@ -272,6 +376,20 @@ void ScriptModHotReloadService::QueueReloadDebounced(ScriptMod *mod,
     pending.Options = options;
     pending.Due = std::chrono::steady_clock::now() + kDebounceDelay;
     pending.Reason = reason;
+    if (m_Context && m_Context->GetScriptDevTools()) {
+        const bool dryRun = options.DryRun;
+        m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+                                                     dryRun ? "ScriptReloadDryRunQueued" : "ScriptReloadQueued",
+                                                     mod->GetID(),
+                                                     "reload",
+                                                     "",
+                                                     dryRun ? "Script reload dry-run queued after debounce."
+                                                            : "Script reload queued after debounce.",
+                                                     {{"reason", reason},
+                                                      {"automatic", options.Automatic ? "true" : "false"},
+                                                      {"dryRun", dryRun ? "true" : "false"},
+                                                      {"forceExports", options.ForceExports ? "true" : "false"}});
+    }
 }
 
 bool ScriptModHotReloadService::ShouldWatch(const ScriptMod *mod, ScriptModReloadPolicy *outPolicy) const {

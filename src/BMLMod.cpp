@@ -396,6 +396,10 @@ void BMLMod::OnProcess() {
     OnProcess_HUD();
     OnProcess_Menu();
     OnProcess_CommandBar();
+#if BML_ENABLE_ANGELSCRIPT
+    if (auto *context = BML_GetModContext())
+        context->RenderScriptDevToolsPanel();
+#endif
 
 #ifndef NDEBUG
     if (ImGui::IsKeyChordPressed(ImGuiMod_Shift | ImGuiMod_Alt | ImGuiKey_F5))
@@ -823,9 +827,7 @@ void BMLMod::RegisterCommands() {
     m_BML->RegisterCommand(new CommandExit());
     m_BML->RegisterCommand(new CommandHUD(this));
     m_BML->RegisterCommand(new CommandPalette());
-#if BML_ENABLE_ANGELSCRIPT
     m_BML->RegisterCommand(new CommandScript());
-#endif
 }
 
 void BMLMod::OnEditScript_Base_EventHandler(CKBehavior *script) {

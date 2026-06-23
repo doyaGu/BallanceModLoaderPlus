@@ -2,6 +2,7 @@
 #define BML_SCRIPTMODEVENTROUTER_H
 
 #include <cstddef>
+#include <string>
 #include <vector>
 
 #include "BML/ICommand.h"
@@ -25,6 +26,7 @@ public:
     bool HasOnProcess() const { return HasCallback(ScriptCallbackOnProcess); }
     bool HasOnRender() const { return HasCallback(ScriptCallbackOnRender); }
     bool HasGameEvent() const { return HasCallback(ScriptCallbackOnGameEvent); }
+    void GetCallbackNames(std::vector<std::string> &out) const;
 
     bool CallOnLoad(ScriptDiagnostic &diagnostic);
     bool CallOnUnload(ScriptDiagnostic &diagnostic);

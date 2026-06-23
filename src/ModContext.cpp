@@ -21,6 +21,7 @@
 #include "Logger.h"
 #if BML_ENABLE_ANGELSCRIPT
 #include "AngelScriptBindings.h"
+#include "ScriptDevToolsService.h"
 #include "ScriptMod.h"
 #include "ScriptModEntryScanner.h"
 #include "ScriptModHotReloadService.h"
@@ -148,6 +149,7 @@ ModContext::ModContext(CKContext *context) {
     m_DataShare = DataShare::GetInstance("BML");
     if (m_DataShare) m_DataShare->AddRef();
 #if BML_ENABLE_ANGELSCRIPT
+    m_ScriptDevTools = std::make_unique<BML::ScriptDevToolsService>(this);
     m_ScriptHotReload = std::make_unique<BML::ScriptModHotReloadService>(this);
 #endif
     g_ModContext = this;
@@ -1103,6 +1105,8 @@ void ModContext::OnProcess() {
 
 #if BML_ENABLE_ANGELSCRIPT
     BML_TryRegisterAngelScriptBindings(this);
+    if (m_ScriptDevTools)
+        m_ScriptDevTools->ProcessActions();
     if (m_ScriptHotReload)
         m_ScriptHotReload->Process();
 #endif
@@ -1772,6 +1776,24 @@ bool ModContext::SetScriptHotReloadWatching(bool enabled) {
 
 std::string ModContext::GetScriptHotReloadStatus() const {
     return m_ScriptHotReload ? m_ScriptHotReload->GetStatus() : "script hot reload: unavailable";
+}
+
+void ModContext::RenderScriptDevToolsPanel() {
+    if (m_ScriptDevTools)
+        m_ScriptDevTools->RenderPanel();
+}
+
+void ModContext::PublishScriptDevLogEvent(const char *level, const char *source, const std::string &message) {
+    if (m_ScriptDevTools)
+        m_ScriptDevTools->PublishLogLine(level, source, message);
+}
+
+void ModContext::PublishScriptDevDiagnostic(BML::ScriptDevEventSeverity severity,
+                                            const std::string &code,
+                                            const std::string &modId,
+                                            const BML::ScriptDiagnostic &diagnostic) {
+    if (m_ScriptDevTools)
+        m_ScriptDevTools->PublishDiagnostic(severity, code, modId, diagnostic);
 }
 #endif
 
