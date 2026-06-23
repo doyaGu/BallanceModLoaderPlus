@@ -33,17 +33,6 @@ struct LogColumnSpec {
     float Width;
 };
 
-struct LogFilters {
-    int SeverityIndex = 0;
-    std::string Tag;
-    std::string Source;
-    std::string Attempt;
-    std::string Text;
-    std::string SelectedModId;
-    bool SelectedModOnly = false;
-    bool ReloadOnly = false;
-};
-
 const LogColumnSpec kLogColumns[LogColumnCount] = {
     {"#", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_DefaultSort |
               ImGuiTableColumnFlags_PreferSortDescending,
@@ -103,76 +92,6 @@ std::string EffectiveReloadPolicy(const ScriptMod *mod) {
     return ToString(policy);
 }
 
-std::string SeverityToLower(ScriptDevEventSeverity severity) {
-    switch (severity) {
-    case ScriptDevEventSeverity::Warn:
-        return "warn";
-    case ScriptDevEventSeverity::Error:
-        return "error";
-    case ScriptDevEventSeverity::Info:
-    default:
-        return "info";
-    }
-}
-
-bool SeverityMatches(const ScriptDevEvent &event, const std::string &severity) {
-    if (severity.empty())
-        return true;
-    return SeverityToLower(event.Severity) == utils::ToLower(severity);
-}
-
-bool ContainsInsensitive(const std::string &text, const std::string &needle) {
-    if (needle.empty())
-        return true;
-    return utils::ToLower(text).find(utils::ToLower(needle)) != std::string::npos;
-}
-
-std::string JoinFields(const std::vector<ScriptDevEventField> &fields) {
-    std::ostringstream stream;
-    for (size_t i = 0; i < fields.size(); ++i) {
-        if (i != 0)
-            stream << ' ';
-        stream << fields[i].Key << '=' << fields[i].Value;
-    }
-    return stream.str();
-}
-
-std::string LogSource(const ScriptDevEvent &event) {
-    return event.ModId.empty() ? event.SourcePath : event.ModId;
-}
-
-std::string LogSearchText(const ScriptDevEvent &event) {
-    return event.Code + " " + event.ModId + " " + event.Phase + " " +
-           (event.ReloadAttemptId == 0 ? "" : std::to_string(event.ReloadAttemptId)) + " " +
-           event.SourcePath + " " + event.Message + " " + JoinFields(event.Fields);
-}
-
-bool IsReloadLog(const ScriptDevEvent &event) {
-    return event.Phase == "reload" || event.Code.rfind("ScriptReload", 0) == 0;
-}
-
-bool LogMatchesFilters(const ScriptDevEvent &event, const LogFilters &filters) {
-    if (!SeverityMatches(event, kLogSeverityFilters[filters.SeverityIndex]))
-        return false;
-    if (filters.SelectedModOnly && !filters.SelectedModId.empty() && event.ModId != filters.SelectedModId)
-        return false;
-    if (filters.ReloadOnly && !IsReloadLog(event))
-        return false;
-    if (!ContainsInsensitive(event.Code, filters.Tag))
-        return false;
-
-    const std::string sourceHaystack = LogSource(event) + " " + event.SourcePath;
-    if (!ContainsInsensitive(sourceHaystack, filters.Source))
-        return false;
-    if (!filters.Attempt.empty() &&
-        !ContainsInsensitive(event.ReloadAttemptId == 0 ? "" : std::to_string(event.ReloadAttemptId),
-                             filters.Attempt)) {
-        return false;
-    }
-
-    return ContainsInsensitive(LogSearchText(event), filters.Text);
-}
-
 int CompareText(const std::string &left, const std::string &right) {
     if (left < right)
         return -1;
@@ -190,7 +109,7 @@ int CompareLogs(const ScriptDevEvent &left, const ScriptDevEvent &right, int col
     case LogColumnLevel:
         return static_cast<int>(left.Severity) - static_cast<int>(right.Severity);
     case LogColumnSource:
-        return CompareText(LogSource(left), LogSource(right));
+        return CompareText(ScriptDevLogSource(left), ScriptDevLogSource(right));
     case LogColumnAttempt:
         return left.ReloadAttemptId < right.ReloadAttemptId ? -1 : (right.ReloadAttemptId < left.ReloadAttemptId ? 1 : 0);
     case LogColumnTag:
@@ -252,7 +171,7 @@ std::string LogCellText(const ScriptDevEvent &event, int column) {
     case LogColumnLevel:
         return ToString(event.Severity);
     case LogColumnSource:
-        return LogSource(event);
+        return ScriptDevLogSource(event);
     case LogColumnAttempt:
         return event.ReloadAttemptId == 0 ? "" : std::to_string(event.ReloadAttemptId);
     case LogColumnTag:
@@ -288,33 +207,10 @@ ImVec4 StateColor(const std::string &state) {
 
 } // namespace
 
-const char *ToString(ScriptDevEventSeverity severity) {
-    switch (severity) {
-    case ScriptDevEventSeverity::Warn:
-        return "WARN";
-    case ScriptDevEventSeverity::Error:
-        return "ERROR";
-    case ScriptDevEventSeverity::Info:
-    default:
-        return "INFO";
-    }
-}
-
-ScriptDevEventSeverity ScriptDevEventSeverityFromLogLevel(const char *level) {
-    if (!level)
-        return ScriptDevEventSeverity::Info;
-    const std::string normalized = utils::ToLower(std::string(level));
-    if (normalized == "error")
-        return ScriptDevEventSeverity::Error;
-    if (normalized == "warn" || normalized == "warning")
-        return ScriptDevEventSeverity::Warn;
-    return ScriptDevEventSeverity::Info;
-}
-
 ScriptDevToolsService::ScriptDevToolsService(ModContext *context)
     : Bui::Window("Script Developer Tools"),
       m_Context(context),
-      m_Events(kEventCapacity) {
+      m_EventStore(kEventCapacity) {
     m_Visible = false;
 }
 
@@ -338,17 +234,7 @@ void ScriptDevToolsService::PublishEvent(ScriptDevEventSeverity severity,
     event.Fields = fields;
 
     std::lock_guard<std::mutex> lock(m_EventMutex);
-    event.Sequence = m_NextEventSequence++;
-    if (m_EventCount < kEventCapacity) {
-        const size_t index = (m_EventStart + m_EventCount) % kEventCapacity;
-        m_Events[index] = std::move(event);
-        ++m_EventCount;
-    } else {
-        m_Events[m_EventStart] = std::move(event);
-        m_EventStart = (m_EventStart + 1) % kEventCapacity;
-        ++m_DroppedEvents;
-    }
-    ++m_EventGeneration;
+    m_EventStore.Append(std::move(event));
 }
 
 void ScriptDevToolsService::PublishDiagnostic(ScriptDevEventSeverity severity,
@@ -482,10 +368,7 @@ void ScriptDevToolsService::ExecuteReloadAllAction(const ScriptDevAction &action
 
 void ScriptDevToolsService::ClearEvents() {
     std::lock_guard<std::mutex> lock(m_EventMutex);
-    m_EventStart = 0;
-    m_EventCount = 0;
-    m_DroppedEvents = 0;
-    ++m_EventGeneration;
+    m_EventStore.Clear();
 }
 
 ScriptMod *ScriptDevToolsService::FindScriptMod(const std::string &id) const {
@@ -605,17 +488,13 @@ std::vector<std::string> ScriptDevToolsService::GetScriptModIds() {
 }
 
 std::vector<ScriptDevEvent> ScriptDevToolsService::GetEventSnapshot() const {
-    std::vector<ScriptDevEvent> events;
     std::lock_guard<std::mutex> lock(m_EventMutex);
-    events.reserve(m_EventCount);
-    for (size_t i = 0; i < m_EventCount; ++i)
-        events.push_back(m_Events[(m_EventStart + i) % kEventCapacity]);
-    return events;
+    return m_EventStore.Snapshot();
 }
 
 uint64_t ScriptDevToolsService::GetDroppedEventCount() const {
     std::lock_guard<std::mutex> lock(m_EventMutex);
-    return m_DroppedEvents;
+    return m_EventStore.GetDroppedCount();
 }
 
 ScriptDevStatusSnapshot ScriptDevToolsService::GetStatusSnapshot() {
@@ -633,8 +512,8 @@ ScriptDevStatusSnapshot ScriptDevToolsService::GetStatusSnapshot() {
     }
     {
         std::lock_guard<std::mutex> lock(m_EventMutex);
-        status.DroppedEvents = m_DroppedEvents;
-        status.EventCount = m_EventCount;
+        status.DroppedEvents = m_EventStore.GetDroppedCount();
+        status.EventCount = m_EventStore.GetCount();
     }
     return status;
 }
@@ -657,7 +536,7 @@ std::vector<std::string> ScriptDevToolsService::FormatLogs(const std::string &se
     lines.push_back("Recent script logs:");
     size_t emitted = 0;
     for (auto it = events.rbegin(); it != events.rend() && emitted < 25; ++it) {
-        if (!SeverityMatches(*it, severity))
+        if (!ScriptDevEventSeverityMatches(*it, severity))
             continue;
         std::ostringstream stream;
         stream << '#' << it->Sequence << ' ' << FormatTimestamp(it->TimestampMs)
@@ -1236,16 +1115,16 @@ void ScriptDevToolsService::RebuildLogCacheIfNeeded() {
     uint64_t eventGeneration = 0;
     {
         std::lock_guard<std::mutex> lock(m_EventMutex);
-        eventGeneration = m_EventGeneration;
+        eventGeneration = m_EventStore.GetGeneration();
     }
-    const LogFilters filters = {m_EventSeverityFilter,
-                                m_EventCodeFilter,
-                                m_EventSourceFilter,
-                                m_EventAttemptFilter,
-                                m_EventSearch,
-                                m_SelectedModId,
-                                m_LogSelectedModOnly,
-                                m_LogReloadOnly};
+    const ScriptDevLogFilters filters = {kLogSeverityFilters[m_EventSeverityFilter],
+                                         m_EventCodeFilter,
+                                         m_EventSourceFilter,
+                                         m_EventAttemptFilter,
+                                         m_EventSearch,
+                                         m_SelectedModId,
+                                         m_LogSelectedModOnly,
+                                         m_LogReloadOnly};
     if (eventGeneration != m_FilteredEventCacheGeneration ||
         m_EventSeverityFilter != m_FilteredEventSeverityFilter ||
         filters.Tag != m_FilteredEventCodeFilter ||
@@ -1255,16 +1134,7 @@ void ScriptDevToolsService::RebuildLogCacheIfNeeded() {
         filters.SelectedModId != m_FilteredEventSelectedModId ||
         filters.SelectedModOnly != m_FilteredEventSelectedModOnly ||
         filters.ReloadOnly != m_FilteredEventReloadOnly) {
-        std::vector<ScriptDevEvent> events = GetEventSnapshot();
-        std::vector<ScriptDevEvent> filtered;
-        filtered.reserve(events.size());
-        for (const auto &event : events) {
-            if (LogMatchesFilters(event, filters))
-                filtered.push_back(event);
-        }
-        if (filtered.size() > 1000)
-            filtered.erase(filtered.begin(), filtered.end() - 1000);
-        m_FilteredEventCache = std::move(filtered);
+        m_FilteredEventCache = FilterScriptDevEvents(GetEventSnapshot(), filters, 1000);
         m_FilteredEventCacheGeneration = eventGeneration;
         m_FilteredEventSeverityFilter = m_EventSeverityFilter;
         m_FilteredEventCodeFilter = filters.Tag;
@@ -1373,7 +1243,7 @@ void ScriptDevToolsService::DrawLogDetail(const ScriptDevEvent *selectedLog) {
                         ToString(selectedLog->Severity));
             ImGui::SameLine();
             ImGui::TextColored(SeverityColor(selectedLog->Severity), "%s", selectedLog->Code.c_str());
-            const std::string source = LogSource(*selectedLog);
+            const std::string source = ScriptDevLogSource(*selectedLog);
             if (!source.empty())
                 ImGui::Text("source %s", source.c_str());
             if (selectedLog->ReloadAttemptId != 0)

@@ -120,6 +120,14 @@ add_bml_test(CommandContextTest
         BMLUtils
 )
 
+add_bml_test(ScriptDevEventsTest
+        SOURCES
+        ScriptDevEventsTest.cpp
+        ${BML_SOURCE_DIR}/AngelScript/ScriptDevEvents.cpp
+        DEPENDENCIES
+        BML_StringUtils
+)
+
 add_bml_test(InteropCallFrameTest
         SOURCES
         InteropCallFrameTest.cpp
@@ -144,4 +152,3 @@ add_subdirectory(smoke)
 if (BML_BUILD_UPDATER)
     add_subdirectory(updater)
 endif ()
-

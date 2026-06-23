@@ -8,36 +8,13 @@
 #include <vector>
 
 #include "BML/Bui.h"
+#include "ScriptDevEvents.h"
 #include "ScriptMod.h"
 
 class IBML;
 class ModContext;
 
 namespace BML {
-
-enum class ScriptDevEventSeverity {
-    Info,
-    Warn,
-    Error,
-};
-
-struct ScriptDevEventField {
-    std::string Key;
-    std::string Value;
-};
-
-struct ScriptDevEvent {
-    uint64_t Sequence = 0;
-    uint64_t TimestampMs = 0;
-    unsigned int ReloadAttemptId = 0;
-    ScriptDevEventSeverity Severity = ScriptDevEventSeverity::Info;
-    std::string Code;
-    std::string ModId;
-    std::string Phase;
-    std::string SourcePath;
-    std::string Message;
-    std::vector<ScriptDevEventField> Fields;
-};
 
 struct ScriptDependencySnapshot {
     std::string Id;
@@ -191,12 +168,7 @@ private:
     ModContext *m_Context = nullptr;
 
     mutable std::mutex m_EventMutex;
-    std::vector<ScriptDevEvent> m_Events;
-    size_t m_EventStart = 0;
-    size_t m_EventCount = 0;
-    uint64_t m_NextEventSequence = 1;
-    uint64_t m_DroppedEvents = 0;
-    uint64_t m_EventGeneration = 0;
+    ScriptDevEventRingBuffer m_EventStore;
 
     mutable std::mutex m_ActionMutex;
     std::deque<ScriptDevAction> m_Actions;
@@ -228,9 +200,6 @@ private:
     bool m_FilteredEventSelectedModOnly = false;
     bool m_FilteredEventReloadOnly = false;
 };
-
-const char *ToString(ScriptDevEventSeverity severity);
-ScriptDevEventSeverity ScriptDevEventSeverityFromLogLevel(const char *level);
 
 } // namespace BML
 
