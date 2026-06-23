@@ -519,6 +519,10 @@ ScriptDevToolsService::ScriptDevToolsService(ModContext *context)
     m_Visible = false;
 }
 
+ScriptDevToolsService::~ScriptDevToolsService() {
+    UnblockGameInput();
+}
+
 void ScriptDevToolsService::PublishEvent(ScriptDevEventSeverity severity,
                                          const std::string &code,
                                          const std::string &modId,

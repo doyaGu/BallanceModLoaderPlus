@@ -239,6 +239,8 @@ void ModContext::Shutdown() {
 
 #if BML_ENABLE_ANGELSCRIPT
     BML_UnregisterAngelScriptBindings(this);
+    if (m_ScriptDevTools)
+        m_ScriptDevTools->Hide();
 #endif
 
     m_Logger->Info("Releasing Mod Loader");

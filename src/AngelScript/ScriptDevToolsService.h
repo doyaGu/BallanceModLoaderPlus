@@ -100,6 +100,7 @@ struct ScriptDevAction {
 class ScriptDevToolsService final : public Bui::Window {
 public:
     explicit ScriptDevToolsService(ModContext *context);
+    ~ScriptDevToolsService() override;
 
     void ProcessActions();
     void RenderPanel();
