@@ -6,6 +6,8 @@ namespace BML {
 
 namespace {
 
+constexpr size_t kMaxQueuedEvents = 4096;
+
 std::wstring JoinWatchedPath(const std::wstring &root, const wchar_t *relativeName, DWORD lengthBytes) {
     std::wstring path = root;
     if (!path.empty() && path.back() != L'\\' && path.back() != L'/')
@@ -87,7 +89,13 @@ std::vector<ScriptFileWatcherWin32::Event> ScriptFileWatcherWin32::DrainEvents()
     std::vector<Event> events;
     std::lock_guard<std::mutex> lock(m_Mutex);
     events.swap(m_Events);
+    m_OverflowQueued = false;
     return events;
+}
+
+uint64_t ScriptFileWatcherWin32::GetDroppedEventCount() const {
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    return m_DroppedEvents;
 }
 
 void ScriptFileWatcherWin32::WorkerLoop(WatchState *state) {
@@ -159,7 +167,32 @@ void ScriptFileWatcherWin32::WorkerLoop(WatchState *state) {
 
 void ScriptFileWatcherWin32::PushEvent(const Event &event) {
     std::lock_guard<std::mutex> lock(m_Mutex);
+    if (event.Overflow) {
+        PushOverflowEventLocked(event.Root);
+        return;
+    }
+    if (m_Events.size() >= kMaxQueuedEvents) {
+        ++m_DroppedEvents;
+        PushOverflowEventLocked(event.Root);
+        return;
+    }
     m_Events.push_back(event);
+}
+
+void ScriptFileWatcherWin32::PushOverflowEventLocked(const std::wstring &root) {
+    if (m_OverflowQueued)
+        return;
+    if (m_Events.size() >= kMaxQueuedEvents && !m_Events.empty()) {
+        m_Events.erase(m_Events.begin());
+        ++m_DroppedEvents;
+    }
+
+    Event overflow;
+    overflow.Root = root;
+    overflow.Path = root;
+    overflow.Overflow = true;
+    m_Events.push_back(overflow);
+    m_OverflowQueued = true;
 }
 
 } // namespace BML

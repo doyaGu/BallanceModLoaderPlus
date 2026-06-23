@@ -32,6 +32,16 @@ bool SamePathInsensitive(const std::wstring &left, const std::wstring &right) {
     return _wcsicmp(resolvedLeft.c_str(), resolvedRight.c_str()) == 0;
 }
 
+bool IsCoveredByWatchedRoot(const std::wstring &root, const std::vector<std::wstring> &watchedRoots) {
+    if (root.empty())
+        return true;
+    for (const auto &watched : watchedRoots) {
+        if (SamePathInsensitive(watched, root) || utils::IsPathInsideRootW(root, watched))
+            return true;
+    }
+    return false;
+}
+
 std::wstring ScriptEntryStem(const std::wstring &entryPath) {
     std::wstring fileName = utils::GetFileNameW(entryPath);
     constexpr wchar_t suffix[] = L".mod.as";
@@ -143,6 +153,19 @@ void ScriptModHotReloadService::Process() {
 
     if (m_AutomaticEnabled) {
         const std::vector<ScriptFileWatcherWin32::Event> events = m_Watcher.DrainEvents();
+        const uint64_t watcherDroppedEvents = m_Watcher.GetDroppedEventCount();
+        if (watcherDroppedEvents != m_LastWatcherDroppedEvents) {
+            if (m_Context && m_Context->GetScriptDevTools()) {
+                m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
+                                                             "ScriptWatchOverflow",
+                                                             "",
+                                                             "watch",
+                                                             "",
+                                                             "Script file watcher dropped events; all auto reload mods will be treated as changed.",
+                                                             {{"dropped", std::to_string(watcherDroppedEvents)}});
+            }
+            m_LastWatcherDroppedEvents = watcherDroppedEvents;
+        }
         ScriptModReloadOptions automaticOptions;
         automaticOptions.Automatic = true;
         for (const auto &event : events) {
@@ -295,7 +318,8 @@ std::string ScriptModHotReloadService::GetStatus() const {
     stream << "script hot reload: mods=" << m_Mods.size()
            << " auto=" << autoCount
            << " pending=" << m_Pending.size()
-           << " automatic=" << (m_AutomaticEnabled ? "on" : "off");
+           << " automatic=" << (m_AutomaticEnabled ? "on" : "off")
+           << " watcherDropped=" << m_Watcher.GetDroppedEventCount();
     return stream.str();
 }
 
@@ -318,10 +342,8 @@ void ScriptModHotReloadService::RebuildWatches() {
     auto watchOnce = [&](const std::wstring &root) {
         if (root.empty())
             return;
-        for (const auto &watched : watchedRoots) {
-            if (SamePathInsensitive(watched, root))
-                return;
-        }
+        if (IsCoveredByWatchedRoot(root, watchedRoots))
+            return;
         if (m_Watcher.Watch(root))
             watchedRoots.push_back(root);
     };

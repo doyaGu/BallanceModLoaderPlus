@@ -2,6 +2,7 @@
 #define BML_SCRIPTMODHOTRELOADSERVICE_H
 
 #include <chrono>
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -65,6 +66,7 @@ private:
     std::unordered_map<std::string, PendingReload> m_Pending;
     std::unordered_set<std::wstring> m_ReportedNewModRoots;
     ScriptFileWatcherWin32 m_Watcher;
+    uint64_t m_LastWatcherDroppedEvents = 0;
 };
 
 } // namespace BML

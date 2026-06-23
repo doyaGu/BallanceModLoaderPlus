@@ -1,6 +1,7 @@
 #ifndef BML_SCRIPTFILEWATCHERWIN32_H
 #define BML_SCRIPTFILEWATCHERWIN32_H
 
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -31,6 +32,7 @@ public:
     bool Watch(const std::wstring &root);
     void StopAll();
     std::vector<Event> DrainEvents();
+    uint64_t GetDroppedEventCount() const;
 
 private:
     struct WatchState {
@@ -42,10 +44,13 @@ private:
 
     void WorkerLoop(WatchState *state);
     void PushEvent(const Event &event);
+    void PushOverflowEventLocked(const std::wstring &root);
 
-    std::mutex m_Mutex;
+    mutable std::mutex m_Mutex;
     std::vector<Event> m_Events;
     std::vector<WatchState *> m_Watches;
+    uint64_t m_DroppedEvents = 0;
+    bool m_OverflowQueued = false;
 };
 
 } // namespace BML
