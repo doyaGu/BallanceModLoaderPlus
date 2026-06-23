@@ -1,6 +1,6 @@
-# Ballance Mod Loader Plus 文档
+# BML 文档
 
-这里是 BMLPlus 的在线文档入口。
+这里是 BML 的在线文档入口。
 
 当前站点先收纳脚本 mod 创作教程和脚本 API 资料。源码构建、发布包和项目介绍仍以仓库根目录的 README 为准。
 
@@ -14,10 +14,10 @@
 教程按四段推进：
 
 ```text
-脚本先跑起来
+装好环境，脚本先跑起来
 看懂游戏运行时
 进入行为图和物理
 做一个可控小 mod
 ```
 
-第一次学习，直接从 [第 0 章](script-mod-tutorial/00-background.md) 开始。
+第一次学习，直接从 [第 1 节](script-mod-tutorial/tutorial-01-setup.md) 开始。

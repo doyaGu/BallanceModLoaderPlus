@@ -181,7 +181,7 @@ Check the public site:
 
 ```powershell
 Invoke-WebRequest -UseBasicParsing "https://doyagu.github.io/BallanceModLoaderPlus/"
-Invoke-WebRequest -UseBasicParsing "https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/00-background/"
+Invoke-WebRequest -UseBasicParsing "https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-01-setup/"
 Invoke-WebRequest -UseBasicParsing "https://doyagu.github.io/BallanceModLoaderPlus/api/"
 ```
 
@@ -196,7 +196,7 @@ Invoke-WebRequest -UseBasicParsing "<removed-tutorial-example-url>"
 Also verify raw `main` when source visibility matters:
 
 ```powershell
-Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/doyaGu/BallanceModLoaderPlus/main/docs/script-mod-tutorial/00-background.md"
+Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/doyaGu/BallanceModLoaderPlus/main/docs/script-mod-tutorial/tutorial-01-setup.md"
 ```
 
 ## Rules
