@@ -723,8 +723,11 @@ void ScriptDevToolsService::RefreshSnapshotsIfNeeded(bool force) {
     m_LastObservedGeneration = observed;
     ++m_SnapshotGeneration;
 
-    if (m_SelectedModId.empty() && !m_Snapshots.empty())
-        m_SelectedModId = m_Snapshots.front().Id;
+    const bool selectedStillExists = std::any_of(m_Snapshots.begin(), m_Snapshots.end(), [&](const ScriptModSnapshot &snapshot) {
+        return snapshot.Id == m_SelectedModId;
+    });
+    if (!selectedStillExists)
+        m_SelectedModId = m_Snapshots.empty() ? std::string() : m_Snapshots.front().Id;
 }
 
 ScriptModSnapshot ScriptDevToolsService::BuildSnapshot(ScriptMod *mod) const {
