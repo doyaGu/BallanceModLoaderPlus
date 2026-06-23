@@ -372,6 +372,7 @@ private:
 #if BML_ENABLE_ANGELSCRIPT
     IMod *LoadScriptMod(const BML::ScriptModLoadCandidate &candidate);
     void RegisterScriptModDependencies(IMod *mod, const BML::ScriptModDefinition &definition);
+    void ProcessScriptModFailureCleanup();
 #endif
     bool UnloadMod(const std::string &id);
 

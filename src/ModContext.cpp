@@ -1107,6 +1107,7 @@ void ModContext::OnProcess() {
 
 #if BML_ENABLE_ANGELSCRIPT
     BML_TryRegisterAngelScriptBindings(this);
+    ProcessScriptModFailureCleanup();
     if (m_ScriptDevTools)
         m_ScriptDevTools->ProcessActions();
     if (m_ScriptHotReload)
@@ -1716,6 +1717,13 @@ void ModContext::RegisterScriptModDependencies(IMod *mod, const BML::ScriptModDe
                                dependency.MinVersion.minor,
                                dependency.MinVersion.patch);
         }
+    }
+}
+
+void ModContext::ProcessScriptModFailureCleanup() {
+    for (const auto &scriptMod : m_ScriptMods) {
+        if (scriptMod)
+            scriptMod->ProcessFailureCleanup();
     }
 }
 

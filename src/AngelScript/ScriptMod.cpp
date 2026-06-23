@@ -678,6 +678,7 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations, bool failedLo
         }
     }
     m_Runtime.SetLoaded(true);
+    m_PendingFailureCleanup.store(false, std::memory_order_release);
     TouchRuntimeGeneration();
     TouchModGeneration();
     return true;
@@ -1583,10 +1584,14 @@ int ScriptMod::CallVoidExport(const std::string &name, const std::string &signat
                                                         m_Runtime,
                                                         *binding,
                                                         diagnostic);
-    if (status == BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED)
+    if (status == BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED) {
+        const bool wasLoaded = m_State.IsLoaded();
         Fail(diagnostic);
-    else if (status != BML_OK)
+        if (wasLoaded)
+            ScheduleFailureCleanup();
+    } else if (status != BML_OK) {
         Record(diagnostic);
+    }
     return status;
 }
 
@@ -1615,10 +1620,14 @@ int ScriptMod::CallStringExport(const std::string &name,
                                                           hasArgument,
                                                           out,
                                                           diagnostic);
-    if (status == BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED)
+    if (status == BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED) {
+        const bool wasLoaded = m_State.IsLoaded();
         Fail(diagnostic);
-    else if (status != BML_OK)
+        if (wasLoaded)
+            ScheduleFailureCleanup();
+    } else if (status != BML_OK) {
         Record(diagnostic);
+    }
     return status;
 }
 
@@ -1644,10 +1653,14 @@ int ScriptMod::CallExport(const std::string &name, const std::string &signature,
                                                          *binding,
                                                          frame,
                                                          diagnostic);
-    if (status == BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED)
+    if (status == BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED) {
+        const bool wasLoaded = m_State.IsLoaded();
         Fail(diagnostic);
-    else if (status != BML_OK)
+        if (wasLoaded)
+            ScheduleFailureCleanup();
+    } else if (status != BML_OK) {
         Record(diagnostic);
+    }
     return status;
 }
 
@@ -1670,13 +1683,18 @@ void ScriptMod::CleanupFailedLoad() {
     ReleaseRuntime();
     m_State.MarkLoaded(false);
     m_State.Fail(failureDiagnostic);
+    m_PendingFailureCleanup.store(false, std::memory_order_release);
 }
 
 void ScriptMod::FailIfEventCallFailed(bool ok, const ScriptDiagnostic &diagnostic) {
     if (!ok && diagnostic.Status == CKAS_INUSE && m_Reloading.load(std::memory_order_acquire))
         return;
-    if (!ok)
+    if (!ok) {
+        const bool wasLoaded = m_State.IsLoaded();
         Fail(diagnostic);
+        if (wasLoaded && !m_InLoadCallback && !m_Reloading.load(std::memory_order_acquire))
+            ScheduleFailureCleanup();
+    }
 }
 
 void ScriptMod::Record(const ScriptDiagnostic &diagnostic) {
@@ -1710,6 +1728,58 @@ void ScriptMod::Fail(const ScriptDiagnostic &diagnostic) {
     }
     if (m_Context && m_Context->GetLogger())
         m_Context->GetLogger()->Error("Script mod %s failed: %s", GetID(), m_State.GetLastDiagnosticText().c_str());
+}
+
+void ScriptMod::ScheduleFailureCleanup() {
+    m_PendingFailureCleanup.store(true, std::memory_order_release);
+}
+
+void ScriptMod::ProcessFailureCleanup() {
+    if (!m_PendingFailureCleanup.load(std::memory_order_acquire))
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock(m_ReloadMutex);
+        if (m_Reloading.load(std::memory_order_acquire) || m_ActiveScriptCalls != 0)
+            return;
+        m_ReloadThreadId = std::this_thread::get_id();
+        m_Reloading.store(true, std::memory_order_release);
+    }
+
+    auto clearGate = [&]() {
+        std::lock_guard<std::mutex> lock(m_ReloadMutex);
+        m_ReloadThreadId = std::thread::id();
+        m_Reloading.store(false, std::memory_order_release);
+    };
+
+    if (!m_State.IsFailed()) {
+        m_PendingFailureCleanup.store(false, std::memory_order_release);
+        clearGate();
+        return;
+    }
+
+    const ScriptDiagnostic failure = m_State.GetLastDiagnostic();
+    m_PendingFailureCleanup.store(false, std::memory_order_release);
+    ExportRegistry::NotifyScriptExportsChanged();
+    ReleaseRuntime();
+    m_State.Fail(failure);
+    TouchModGeneration();
+
+    if (m_Context && m_Context->GetScriptDevTools()) {
+        m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
+                                                     "ScriptRuntimeResourcesReleased",
+                                                     GetID() ? GetID() : "",
+                                                     "runtime",
+                                                     failure.EntryPath,
+                                                     "Released BML-managed script resources after runtime failure.",
+                                                     {{"boundary", "bml_managed_resources"},
+                                                      {"notRestored", "game-world side effects made by script code"},
+                                                      {"action", "fix_script_and_reload_or_restart"}},
+                                                     GetReloadAttemptId());
+    }
+
+    ExportRegistry::NotifyScriptExportsChanged();
+    clearGate();
 }
 
 bool ScriptMod::ReleaseRuntime() {

@@ -247,6 +247,7 @@ public:
     int CallExport(const std::string &name, const std::string &signature, BML_CallFrame *frame);
     ScriptModReloadResult TryHotReload(const ScriptModReloadOptions &options);
     ScriptModReloadResult TryHotReloadDryRun(const ScriptModReloadOptions &options);
+    void ProcessFailureCleanup();
     bool CanDispatchScriptServiceCallback();
     bool EnterScriptCall() const;
     void LeaveScriptCall() const;
@@ -274,6 +275,7 @@ private:
     void Record(const ScriptDiagnostic &diagnostic);
     void Fail(const std::string &diagnostic);
     void Fail(const ScriptDiagnostic &diagnostic);
+    void ScheduleFailureCleanup();
     bool ReleaseScriptServices();
     bool ReleaseScriptMethodHandles();
     bool ReleaseRuntime();
@@ -313,6 +315,7 @@ private:
     mutable int m_ActiveScriptCalls = 0;
     mutable std::thread::id m_ReloadThreadId;
     std::atomic<bool> m_Reloading{false};
+    std::atomic<bool> m_PendingFailureCleanup{false};
     std::atomic<bool> m_CallbackFenceActive{false};
     std::atomic<unsigned int> m_CallbackFenceFrame{0};
     std::string m_LastReloadDiagnostic;
