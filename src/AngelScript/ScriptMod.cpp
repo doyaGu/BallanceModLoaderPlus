@@ -202,6 +202,28 @@ static void RewriteSnapshotDiagnosticPaths(const ScriptModReloadSourceSnapshot &
     }
 }
 
+static ScriptModEntry MakeFilesystemCommitEntry(const ScriptModEntry &currentEntry,
+                                                const ScriptModLoadCandidate &compileCandidate,
+                                                const ScriptModEntry &compileEntry) {
+    ScriptModEntry commitEntry = currentEntry;
+    if (currentEntry.SourceKind != ScriptModEntrySourceKind::Directory ||
+        currentEntry.RootDirectory.empty() ||
+        compileCandidate.RootDirectory.empty() ||
+        compileEntry.EntryPath.empty() ||
+        !utils::IsPathInsideRootW(compileEntry.EntryPath, compileCandidate.RootDirectory)) {
+        return commitEntry;
+    }
+
+    const std::wstring relativeEntry = utils::MakeRelativePathW(compileEntry.EntryPath,
+                                                               compileCandidate.RootDirectory);
+    if (relativeEntry.empty() || relativeEntry == L".")
+        return commitEntry;
+
+    commitEntry.EntryPath = utils::CombinePathW(currentEntry.RootDirectory, relativeEntry);
+    commitEntry.EntryFilename = utils::Utf16ToUtf8(utils::GetFileNameW(commitEntry.EntryPath));
+    return commitEntry;
+}
+
 static bool CaptureReloadSourceSnapshot(const ScriptModEntry &entry,
                                         ScriptModReloadSourceSnapshot &snapshot,
                                         ScriptDiagnostic &diagnostic) {
@@ -247,7 +269,9 @@ static bool CaptureReloadSourceSnapshot(const ScriptModEntry &entry,
     if (entry.SourceKind == ScriptModEntrySourceKind::ZipPackage) {
         snapshot.CommitEntry = snapshot.CompileEntry;
     } else {
-        snapshot.CommitEntry = entry;
+        snapshot.CommitEntry = MakeFilesystemCommitEntry(entry,
+                                                         snapshot.CompileCandidate,
+                                                         snapshot.CompileEntry);
     }
     snapshot.CommitEntryPathUtf8 = utils::Utf16ToUtf8(snapshot.CommitEntry.EntryPath);
 
