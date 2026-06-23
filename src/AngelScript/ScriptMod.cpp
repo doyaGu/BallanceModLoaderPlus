@@ -1201,11 +1201,28 @@ void ScriptMod::SetReloadDiagnostic(const std::string &diagnostic) {
 }
 
 void ScriptMod::SetReloadDiagnostic(const ScriptDiagnostic &diagnostic) {
-    m_LastReloadDiagnosticInfo = diagnostic;
-    m_LastReloadDiagnostic = FormatScriptDiagnostic(diagnostic);
+    m_LastReloadDiagnosticInfo = RewriteRuntimeDiagnosticPaths(diagnostic);
+    m_LastReloadDiagnostic = FormatScriptDiagnostic(m_LastReloadDiagnosticInfo);
     TouchModGeneration();
     if (!m_LastReloadDiagnostic.empty() && m_Context && m_Context->GetLogger())
         m_Context->GetLogger()->Warn("Script mod %s reload: %s", GetID(), m_LastReloadDiagnostic.c_str());
+}
+
+ScriptDiagnostic ScriptMod::RewriteRuntimeDiagnosticPaths(ScriptDiagnostic diagnostic) const {
+    if (m_RuntimeDiagnosticPathFrom.empty() || m_RuntimeDiagnosticPathTo.empty())
+        return diagnostic;
+
+    ReplacePathPrefixText(diagnostic.EntryPath, m_RuntimeDiagnosticPathFrom, m_RuntimeDiagnosticPathTo);
+    ReplacePathPrefixText(diagnostic.RawMessage, m_RuntimeDiagnosticPathFrom, m_RuntimeDiagnosticPathTo);
+    ReplacePathPrefixText(diagnostic.StackTrace, m_RuntimeDiagnosticPathFrom, m_RuntimeDiagnosticPathTo);
+    for (ScriptCompilerMessage &message : diagnostic.CompilerMessages)
+        ReplacePathPrefixText(message.Section, m_RuntimeDiagnosticPathFrom, m_RuntimeDiagnosticPathTo);
+    return diagnostic;
+}
+
+void ScriptMod::SetRuntimeDiagnosticPathRewrite(std::string from, std::string to) {
+    m_RuntimeDiagnosticPathFrom = std::move(from);
+    m_RuntimeDiagnosticPathTo = std::move(to);
 }
 
 void ScriptMod::TouchModGeneration() {
@@ -1648,13 +1665,14 @@ void ScriptMod::FailIfEventCallFailed(bool ok, const ScriptDiagnostic &diagnosti
 }
 
 void ScriptMod::Record(const ScriptDiagnostic &diagnostic) {
-    m_State.Record(diagnostic);
+    ScriptDiagnostic rewritten = RewriteRuntimeDiagnosticPaths(diagnostic);
+    m_State.Record(rewritten);
     TouchModGeneration();
-    if (m_Context && !diagnostic.Message.empty() && diagnostic.Message != "Export call succeeded.") {
+    if (m_Context && !rewritten.Message.empty() && rewritten.Message != "Export call succeeded.") {
         m_Context->PublishScriptDevDiagnostic(ScriptDevEventSeverity::Info,
                                               "ScriptDiagnostic",
                                               GetID() ? GetID() : "",
-                                              diagnostic);
+                                              rewritten);
     }
 }
 
@@ -1663,16 +1681,17 @@ void ScriptMod::Fail(const std::string &diagnostic) {
 }
 
 void ScriptMod::Fail(const ScriptDiagnostic &diagnostic) {
+    ScriptDiagnostic rewritten = RewriteRuntimeDiagnosticPaths(diagnostic);
     m_State.MarkLoaded(false);
-    m_State.Fail(diagnostic);
+    m_State.Fail(rewritten);
     TouchModGeneration();
     if (m_Context) {
         m_Context->PublishScriptDevDiagnostic(ScriptDevEventSeverity::Error,
-                                              diagnostic.Phase == ScriptDiagnosticPhase::Callback
+                                              rewritten.Phase == ScriptDiagnosticPhase::Callback
                                                   ? "ScriptCallbackFailed"
                                                   : "ScriptModFailed",
                                               GetID() ? GetID() : "",
-                                              diagnostic);
+                                              rewritten);
     }
     if (m_Context && m_Context->GetLogger())
         m_Context->GetLogger()->Error("Script mod %s failed: %s", GetID(), m_State.GetLastDiagnosticText().c_str());
@@ -2058,12 +2077,16 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     ScriptModDefinition oldDefinition = std::move(m_Definition);
     ScriptModEntry oldEntry = std::move(m_Entry);
     ScriptModRuntime oldRuntime = std::move(m_Runtime);
+    const std::string oldDiagnosticPathFrom = m_RuntimeDiagnosticPathFrom;
+    const std::string oldDiagnosticPathTo = m_RuntimeDiagnosticPathTo;
     const std::string liveModuleName = MakeReloadModuleName(oldRuntime);
 
     m_Definition = std::move(candidateDefinition);
     m_Entry = snapshot.CommitEntry;
     m_Runtime = ScriptModRuntime(liveModuleName);
     m_Runtime.SetOwner(this);
+    SetRuntimeDiagnosticPathRewrite(snapshot.DiagnosticStagedRootUtf8,
+                                    snapshot.DiagnosticDisplayRootUtf8);
     m_State.ClearFailure();
 
     ScriptDiagnostic liveDiagnostic;
@@ -2103,6 +2126,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
         m_Entry = std::move(oldEntry);
         m_Runtime = std::move(oldRuntime);
         m_Runtime.SetOwner(this);
+        SetRuntimeDiagnosticPathRewrite(oldDiagnosticPathFrom, oldDiagnosticPathTo);
         if (recoveryPromoted && m_Context)
             m_Context->RestoreFailedScriptModPlaceholder(this, candidateId, m_Definition);
 
@@ -2127,6 +2151,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     m_Entry = std::move(oldEntry);
     m_Runtime = std::move(oldRuntime);
     m_Runtime.SetOwner(this);
+    SetRuntimeDiagnosticPathRewrite(oldDiagnosticPathFrom, oldDiagnosticPathTo);
     m_State.ClearFailure();
 
     if (LoadCurrentRuntime(true)) {

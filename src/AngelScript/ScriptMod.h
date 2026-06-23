@@ -283,6 +283,8 @@ private:
     void FenceCallbacksForCurrentFrame();
     void SetReloadDiagnostic(const std::string &diagnostic);
     void SetReloadDiagnostic(const ScriptDiagnostic &diagnostic);
+    ScriptDiagnostic RewriteRuntimeDiagnosticPaths(ScriptDiagnostic diagnostic) const;
+    void SetRuntimeDiagnosticPathRewrite(std::string from, std::string to);
     void TouchModGeneration();
     void TouchRuntimeGeneration();
     void TouchReloadAttempt();
@@ -315,6 +317,8 @@ private:
     std::atomic<unsigned int> m_CallbackFenceFrame{0};
     std::string m_LastReloadDiagnostic;
     ScriptDiagnostic m_LastReloadDiagnosticInfo;
+    std::string m_RuntimeDiagnosticPathFrom;
+    std::string m_RuntimeDiagnosticPathTo;
     std::atomic<unsigned int> m_ModGeneration{1};
     std::atomic<unsigned int> m_RuntimeGeneration{1};
     std::atomic<unsigned int> m_ReloadAttemptId{0};
