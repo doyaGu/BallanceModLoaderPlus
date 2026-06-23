@@ -42,7 +42,6 @@ struct BML_ModExport {
     BML_NativeExportEntry Native;
 #if BML_ENABLE_ANGELSCRIPT
     BML::ScriptMod *Script = nullptr;
-    const BML::ScriptExportBinding *ScriptBinding = nullptr;
 #endif
 
     explicit BML_ModExport(BML_ExportKey key);

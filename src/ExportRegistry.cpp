@@ -213,13 +213,11 @@ static int ResolveScript(BML_ModExport &handle) {
     if (scriptMod->IsFailed())
         return BML_ERROR_INTEROP_TARGET_FAILED;
 
-    const ScriptExportBinding *binding = scriptMod->ResolveExport(handle.Key.Name, handle.Key.Signature);
-    if (!binding)
+    if (!scriptMod->HasExport(handle.Key.Name, handle.Key.Signature))
         return BML_ERROR_INTEROP_EXPORT_NOT_FOUND;
 
     handle.Kind = BML_ResolvedExportKind::Script;
     handle.Script = scriptMod;
-    handle.ScriptBinding = binding;
     handle.ScriptGeneration = g_ScriptGeneration.load(std::memory_order_acquire);
     return BML_OK;
 }

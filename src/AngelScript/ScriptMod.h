@@ -245,7 +245,6 @@ public:
                          bool hasArgument,
                          std::string &result);
     int CallExport(const std::string &name, const std::string &signature, BML_CallFrame *frame);
-    int CallResolvedExport(const ScriptExportBinding *binding, BML_CallFrame *frame);
     ScriptModReloadResult TryHotReload(const ScriptModReloadOptions &options);
     ScriptModReloadResult TryHotReloadDryRun(const ScriptModReloadOptions &options);
     bool EnterScriptCall() const;
@@ -267,7 +266,7 @@ private:
     };
 
     bool CompileAndCreate();
-    bool LoadCurrentRuntime(bool validateHostRegistrations);
+    bool LoadCurrentRuntime(bool validateHostRegistrations, bool failedLoadRecovery = false);
     void CallGameEvent(size_t eventIndex);
     void CleanupFailedLoad();
     void FailIfEventCallFailed(bool ok, const ScriptDiagnostic &diagnostic);
@@ -293,7 +292,7 @@ private:
                                   const ScriptModReloadOptions &options,
                                   std::string &diagnostic,
                                   std::vector<ScriptModReloadDiagnosticField> *fields) const;
-    bool ValidateHostRegistrationSet(std::string &diagnostic);
+    bool ValidateHostRegistrationSet(std::string &diagnostic, bool failedLoadRecovery);
     bool NoteHostRegistration(const char *kind, const std::string &key);
     std::wstring GetEntryPath() const;
 

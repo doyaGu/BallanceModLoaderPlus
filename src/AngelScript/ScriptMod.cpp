@@ -614,7 +614,7 @@ void ScriptMod::OnLoad() {
     LoadCurrentRuntime(false);
 }
 
-bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations) {
+bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations, bool failedLoadRecovery) {
     if (m_State.IsFailed())
         return false;
 
@@ -654,7 +654,7 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations) {
     }
     if (validateHostRegistrations) {
         std::string registrationDiagnostic;
-        if (!ValidateHostRegistrationSet(registrationDiagnostic)) {
+        if (!ValidateHostRegistrationSet(registrationDiagnostic, failedLoadRecovery)) {
             Fail(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime, registrationDiagnostic));
             CleanupFailedLoad();
             return false;
@@ -1238,11 +1238,18 @@ void ScriptMod::TouchReloadAttempt() {
     TouchModGeneration();
 }
 
-bool ScriptMod::ValidateHostRegistrationSet(std::string &diagnostic) {
+bool ScriptMod::ValidateHostRegistrationSet(std::string &diagnostic, bool failedLoadRecovery) {
     const auto expected = CanonicalHostRegistrations(m_HostRegistrations);
     const auto actual = CanonicalHostRegistrations(m_PendingHostRegistrations);
     if (expected == actual)
         return true;
+
+    if (failedLoadRecovery && expected.empty() && !actual.empty()) {
+        diagnostic = "Script mod failed-load recovery introduced ball/floor/module registrations. "
+                     "Hot reload cannot create irreversible host registrations for a script mod that never loaded; "
+                     "restart is required.";
+        return false;
+    }
 
     diagnostic = "Script mod changed ball/floor/module registrations; restart is required.";
     return false;
@@ -1609,17 +1616,6 @@ int ScriptMod::CallExport(const std::string &name, const std::string &signature,
                                     BuildMissingExportDiagnostic(m_Definition, m_Exports, name, signature)));
         return BML_ERROR_INTEROP_EXPORT_NOT_FOUND;
     }
-    return CallResolvedExport(binding, frame);
-}
-
-int ScriptMod::CallResolvedExport(const ScriptExportBinding *binding, BML_CallFrame *frame) {
-    if (!frame)
-        return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-    if (!binding)
-        return BML_ERROR_INTEROP_EXPORT_NOT_FOUND;
-    ScriptModCallScope callScope(this);
-    if (!callScope.Entered())
-        return BML_ERROR_INTEROP_TARGET_FAILED;
     if (!CanDispatchScriptCallback())
         return BML_ERROR_INTEROP_TARGET_FAILED;
 
@@ -2098,7 +2094,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
         Fail(liveDiagnostic);
     }
 
-    if (liveModuleLoaded && LoadCurrentRuntime(true)) {
+    if (liveModuleLoaded && LoadCurrentRuntime(true, recoveringPlaceholder)) {
         ReleaseRuntimeOnly(oldRuntime);
         if (oldEntry.SourceKind == ScriptModEntrySourceKind::ZipPackage &&
             !oldEntry.RootDirectory.empty() &&
