@@ -16,6 +16,7 @@
 #include "ScriptCommandService.h"
 #include "ScriptDataShareService.h"
 #include "ScriptExportDispatcher.h"
+#include "ScriptHookBlockService.h"
 #include "ScriptModEntryScanner.h"
 #include "ScriptModContextView.h"
 #include "ScriptModDefinition.h"
@@ -31,8 +32,8 @@ class asIScriptObject;
 namespace BML {
 
 class ScriptMod;
-
 class ScriptModReloadPhaseScope;
+
 struct ScriptModReloadOptions {
     bool Automatic = false;
     bool ForceExports = false;
@@ -189,6 +190,30 @@ public:
                                                       int type,
                                                       asIScriptFunction *callback,
                                                       const std::string &name);
+    ScriptHookBlockRef *CreateScriptHookBlock(CKBehavior *ownerScript,
+                                              asIScriptFunction *callback,
+                                              const std::string &name,
+                                              int inputCount,
+                                              int outputCount);
+    ScriptHookBlockRef *InsertScriptHookBlockAfter(CKBehavior *ownerScript,
+                                                   CKBehavior *source,
+                                                   asIScriptFunction *callback,
+                                                   const std::string &name,
+                                                   int sourceOutput,
+                                                   int targetInput);
+    ScriptHookBlockRef *InsertScriptHookBlockBefore(CKBehavior *ownerScript,
+                                                    CKBehavior *target,
+                                                    asIScriptFunction *callback,
+                                                    const std::string &name,
+                                                    int sourceOutput,
+                                                    int targetInput);
+    ScriptHookBlockRef *InsertScriptHookBlockBetween(CKBehavior *ownerScript,
+                                                     CKBehavior *source,
+                                                     CKBehavior *target,
+                                                     asIScriptFunction *callback,
+                                                     const std::string &name,
+                                                     int sourceOutput,
+                                                     int targetInput);
     ScriptModContextView *BorrowContextView() { return &m_ContextView; }
     bool RegisterScriptBallType(const std::string &ballFile,
                                 const std::string &ballId,
@@ -256,9 +281,13 @@ public:
     unsigned int GetModGeneration() const { return m_ModGeneration.load(std::memory_order_acquire); }
     unsigned int GetRuntimeGeneration() const { return m_RuntimeGeneration.load(std::memory_order_acquire); }
     unsigned int GetReloadAttemptId() const { return m_ReloadAttemptId.load(std::memory_order_acquire); }
+    ScriptModReloadPhase GetReloadPhase() const {
+        return static_cast<ScriptModReloadPhase>(m_ReloadPhase.load(std::memory_order_acquire));
+    }
     size_t GetActiveTimerCount() const { return m_Timers.GetActiveCount(); }
     size_t GetActiveCommandCount() const { return m_Commands.GetActiveCount(); }
     size_t GetActiveDataShareRequestCount() const { return m_DataShareRequests.GetActiveCount(); }
+    size_t GetActiveHookBlockCount() const { return m_HookBlocks.GetActiveCount(); }
     size_t GetQueuedScriptServiceCallbackCount() const;
     size_t GetHostRegistrationCount() const { return m_HostRegistrations.size(); }
     int GetActiveScriptCallCount() const;
@@ -269,6 +298,8 @@ private:
         Capture,
         Validate,
     };
+
+    friend class ScriptModReloadPhaseScope;
 
     bool CompileAndCreate();
     bool LoadCurrentRuntime(bool validateHostRegistrations, bool failedLoadRecovery = false);
@@ -281,9 +312,6 @@ private:
     void ScheduleFailureCleanup();
     bool ReleaseScriptServices();
     bool ReleaseScriptMethodHandles();
-    ScriptModReloadPhase GetReloadPhase() const {
-        return static_cast<ScriptModReloadPhase>(m_ReloadPhase.load(std::memory_order_acquire));
-    }
     bool ReleaseRuntime();
     bool ReleaseRuntimeOnly(ScriptModRuntime &runtime);
     void RebindServices();
@@ -296,11 +324,10 @@ private:
     void TouchModGeneration();
     void TouchRuntimeGeneration();
     void TouchReloadAttempt();
+    void SetReloadPhase(ScriptModReloadPhase phase);
     bool ValidateReloadDefinition(const ScriptModDefinition &candidate,
                                   const ScriptExportTable &candidateExports,
                                   const ScriptModReloadOptions &options,
-    friend class ScriptModReloadPhaseScope;
-
                                   std::string &diagnostic,
                                   std::vector<ScriptModReloadDiagnosticField> *fields) const;
     bool ValidateHostRegistrationSet(std::string &diagnostic, bool failedLoadRecovery);
@@ -316,6 +343,7 @@ private:
     ScriptTimerService m_Timers;
     ScriptCommandService m_Commands;
     ScriptDataShareService m_DataShareRequests;
+    ScriptHookBlockService m_HookBlocks;
     ScriptExportTable m_Exports;
     ScriptModState m_State;
     bool m_InLoadCallback = false;
@@ -324,7 +352,6 @@ private:
     mutable std::thread::id m_ReloadThreadId;
     std::atomic<bool> m_Reloading{false};
     std::atomic<bool> m_PendingFailureCleanup{false};
-    void SetReloadPhase(ScriptModReloadPhase phase);
     std::atomic<bool> m_CallbackFenceActive{false};
     std::atomic<unsigned int> m_CallbackFenceFrame{0};
     std::string m_LastReloadDiagnostic;
@@ -334,6 +361,7 @@ private:
     std::atomic<unsigned int> m_ModGeneration{1};
     std::atomic<unsigned int> m_RuntimeGeneration{1};
     std::atomic<unsigned int> m_ReloadAttemptId{0};
+    std::atomic<int> m_ReloadPhase{static_cast<int>(ScriptModReloadPhase::None)};
     HostRegistrationMode m_HostRegistrationMode = HostRegistrationMode::Capture;
     std::vector<ScriptModHostRegistration> m_HostRegistrations;
     std::vector<ScriptModHostRegistration> m_PendingHostRegistrations;
@@ -345,4 +373,3 @@ bool IsFailedScriptMod(const IMod *mod);
 } // namespace BML
 
 #endif
-    std::atomic<int> m_ReloadPhase{static_cast<int>(ScriptModReloadPhase::None)};

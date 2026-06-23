@@ -1227,6 +1227,7 @@ void ScriptMod::RebindServices() {
     m_Timers.Bind(m_Context, this, &m_Runtime, &m_ContextView);
     m_Commands.Bind(m_Context, this, &m_ContextView);
     m_DataShareRequests.Bind(m_Context, this, &m_Runtime, &m_ContextView);
+    m_HookBlocks.Bind(m_Context, this, &m_ContextView);
 }
 
 bool ScriptMod::CanDispatchScriptCallback() {
@@ -1469,6 +1470,42 @@ ScriptDataShareRequestRef *ScriptMod::RequestScriptDataShare(const std::string &
                                                              asIScriptFunction *callback,
                                                              const std::string &name) {
     return m_DataShareRequests.Request(key, type, callback, name);
+}
+
+ScriptHookBlockRef *ScriptMod::CreateScriptHookBlock(CKBehavior *ownerScript,
+                                                     asIScriptFunction *callback,
+                                                     const std::string &name,
+                                                     int inputCount,
+                                                     int outputCount) {
+    return m_HookBlocks.Create(ownerScript, callback, name, inputCount, outputCount);
+}
+
+ScriptHookBlockRef *ScriptMod::InsertScriptHookBlockAfter(CKBehavior *ownerScript,
+                                                          CKBehavior *source,
+                                                          asIScriptFunction *callback,
+                                                          const std::string &name,
+                                                          int sourceOutput,
+                                                          int targetInput) {
+    return m_HookBlocks.InsertAfter(ownerScript, source, callback, name, sourceOutput, targetInput);
+}
+
+ScriptHookBlockRef *ScriptMod::InsertScriptHookBlockBefore(CKBehavior *ownerScript,
+                                                           CKBehavior *target,
+                                                           asIScriptFunction *callback,
+                                                           const std::string &name,
+                                                           int sourceOutput,
+                                                           int targetInput) {
+    return m_HookBlocks.InsertBefore(ownerScript, target, callback, name, sourceOutput, targetInput);
+}
+
+ScriptHookBlockRef *ScriptMod::InsertScriptHookBlockBetween(CKBehavior *ownerScript,
+                                                            CKBehavior *source,
+                                                            CKBehavior *target,
+                                                            asIScriptFunction *callback,
+                                                            const std::string &name,
+                                                            int sourceOutput,
+                                                            int targetInput) {
+    return m_HookBlocks.InsertBetween(ownerScript, source, target, callback, name, sourceOutput, targetInput);
 }
 
 void ScriptMod::ProcessQueuedScriptServiceCallbacks() {
@@ -1880,6 +1917,12 @@ bool ScriptMod::ReleaseScriptServices() {
     }
     releaseDiagnostic = ScriptDiagnostic();
     m_Commands.Release(&releaseDiagnostic);
+    if (!releaseDiagnostic.Message.empty()) {
+        Record(releaseDiagnostic);
+        ok = false;
+    }
+    releaseDiagnostic = ScriptDiagnostic();
+    m_HookBlocks.Release(&releaseDiagnostic);
     if (!releaseDiagnostic.Message.empty()) {
         Record(releaseDiagnostic);
         ok = false;

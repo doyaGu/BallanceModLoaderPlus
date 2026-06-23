@@ -33,6 +33,7 @@ CKERROR CreateHookBlockProto(CKBehaviorPrototype **pproto) {
 
     proto->DeclareLocalParameter("Callback", CKPGUID_POINTER);
     proto->DeclareLocalParameter("Argument", CKPGUID_POINTER);
+    proto->DeclareLocalParameter("Auto Activate Outputs", CKPGUID_BOOL);
 
     proto->SetBehaviorFlags((CK_BEHAVIOR_FLAGS) (CKBEHAVIOR_VARIABLEINPUTS | CKBEHAVIOR_VARIABLEOUTPUTS));
     proto->SetFlags(CK_BEHAVIORPROTOTYPE_NORMAL);
@@ -59,9 +60,16 @@ int HookBlock(const CKBehaviorContext &behcontext) {
         ret = cb(&behcontext, arg);
     }
 
-    count = beh->GetOutputCount();
-    for (i = 0; i < count; ++i) {
-        beh->ActivateOutput(i);
+    CKBOOL autoActivateOutputs = TRUE;
+    if (beh->GetLocalParameterCount() > 2) {
+        beh->GetLocalParameterValue(2, &autoActivateOutputs);
+    }
+
+    if (autoActivateOutputs) {
+        count = beh->GetOutputCount();
+        for (i = 0; i < count; ++i) {
+            beh->ActivateOutput(i);
+        }
     }
 
     return ret;

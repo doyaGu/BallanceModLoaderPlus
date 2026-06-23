@@ -428,6 +428,50 @@ ScriptDataShareRequestRef *ScriptModContextView::RequestDataShare(const std::str
     return m_Owner ? m_Owner->RequestScriptDataShare(key, type, callback, name) : nullptr;
 }
 
+ScriptHookBlockRef *ScriptModContextView::CreateHookBlock(CKBehavior *ownerScript,
+                                                          asIScriptFunction *callback,
+                                                          const std::string &name,
+                                                          int inputCount,
+                                                          int outputCount) const {
+    if (RejectScriptObjectConstructionHostCall("ModContext::CreateHookBlock"))
+        return nullptr;
+    return m_Owner ? m_Owner->CreateScriptHookBlock(ownerScript, callback, name, inputCount, outputCount) : nullptr;
+}
+
+ScriptHookBlockRef *ScriptModContextView::InsertHookBlockAfter(CKBehavior *ownerScript,
+                                                               CKBehavior *source,
+                                                               asIScriptFunction *callback,
+                                                               const std::string &name,
+                                                               int sourceOutput,
+                                                               int targetInput) const {
+    if (RejectScriptObjectConstructionHostCall("ModContext::InsertHookBlockAfter"))
+        return nullptr;
+    return m_Owner ? m_Owner->InsertScriptHookBlockAfter(ownerScript, source, callback, name, sourceOutput, targetInput) : nullptr;
+}
+
+ScriptHookBlockRef *ScriptModContextView::InsertHookBlockBefore(CKBehavior *ownerScript,
+                                                                CKBehavior *target,
+                                                                asIScriptFunction *callback,
+                                                                const std::string &name,
+                                                                int sourceOutput,
+                                                                int targetInput) const {
+    if (RejectScriptObjectConstructionHostCall("ModContext::InsertHookBlockBefore"))
+        return nullptr;
+    return m_Owner ? m_Owner->InsertScriptHookBlockBefore(ownerScript, target, callback, name, sourceOutput, targetInput) : nullptr;
+}
+
+ScriptHookBlockRef *ScriptModContextView::InsertHookBlockBetween(CKBehavior *ownerScript,
+                                                                 CKBehavior *source,
+                                                                 CKBehavior *target,
+                                                                 asIScriptFunction *callback,
+                                                                 const std::string &name,
+                                                                 int sourceOutput,
+                                                                 int targetInput) const {
+    if (RejectScriptObjectConstructionHostCall("ModContext::InsertHookBlockBetween"))
+        return nullptr;
+    return m_Owner ? m_Owner->InsertScriptHookBlockBetween(ownerScript, source, target, callback, name, sourceOutput, targetInput) : nullptr;
+}
+
 bool ScriptModContextView::RegisterBallType(const std::string &ballFile,
                                             const std::string &ballId,
                                             const std::string &ballName,

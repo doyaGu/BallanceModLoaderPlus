@@ -34,6 +34,7 @@
 #include "ScriptApiContract.h"
 #include "ScriptCallbackEvents.h"
 #include "ScriptFacadeAccess.h"
+#include "ScriptHookBlockService.h"
 #include "ScriptMod.h"
 #include "ScriptModContextView.h"
 #include "ScriptModRuntime.h"
@@ -938,6 +939,7 @@ using BMLAS_ConfigEvent = BML::ScriptConfigEventView;
 using BMLAS_DataShareEvent = BML::ScriptDataShareEventView;
 using BMLAS_PhysicalizeEvent = BML::ScriptPhysicalizeEventView;
 using BMLAS_ObjectEvent = BML::ScriptObjectEventView;
+using BMLAS_HookBlockEvent = BML::ScriptHookBlockEventView;
 
 #define BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(CppType, Suffix)                         \
     static void BMLAS_Construct##Suffix(CppType *self) { new (self) CppType(); }   \
@@ -959,6 +961,7 @@ BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_ModuleBallDefinition, ModuleBallDefiniti
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_ModuleConvexDefinition, ModuleConvexDefinition)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_TrafoDefinition, TrafoDefinition)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_ModuleDefinition, ModuleDefinition)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_HookBlockEvent, HookBlockEvent)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_TimerEvent, TimerEvent)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_RenderEvent, RenderEvent)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_CheatEvent, CheatEvent)
@@ -1648,6 +1651,64 @@ static BML::ScriptDataShareRequestRef *BMLAS_ContextRequestDataShareDelegate(
     if (RejectScriptObjectConstructionHostCall("BML::ModContext::RequestDataShare"))
         return nullptr;
     return context ? context->RequestDataShare(key, type, callback, name) : nullptr;
+}
+
+static BML::ScriptHookBlockRef *BMLAS_Hook_Create(CKBehavior *ownerScript,
+                                                  asIScriptFunction *callback,
+                                                  const std::string &name,
+                                                  int inputCount,
+                                                  int outputCount) {
+    if (RejectScriptObjectConstructionHostCall("BML::Hook::Create"))
+        return nullptr;
+    BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
+    return owner ? owner->CreateScriptHookBlock(ownerScript, callback, name, inputCount, outputCount) : nullptr;
+}
+
+static BML::ScriptHookBlockRef *BMLAS_Hook_InsertAfter(CKBehavior *ownerScript,
+                                                       CKBehavior *source,
+                                                       asIScriptFunction *callback,
+                                                       const std::string &name,
+                                                       int sourceOutput,
+                                                       int targetInput) {
+    if (RejectScriptObjectConstructionHostCall("BML::Hook::InsertAfter"))
+        return nullptr;
+    BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
+    return owner ? owner->InsertScriptHookBlockAfter(ownerScript, source, callback, name, sourceOutput, targetInput) : nullptr;
+}
+
+static BML::ScriptHookBlockRef *BMLAS_Hook_InsertBefore(CKBehavior *ownerScript,
+                                                        CKBehavior *target,
+                                                        asIScriptFunction *callback,
+                                                        const std::string &name,
+                                                        int sourceOutput,
+                                                        int targetInput) {
+    if (RejectScriptObjectConstructionHostCall("BML::Hook::InsertBefore"))
+        return nullptr;
+    BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
+    return owner ? owner->InsertScriptHookBlockBefore(ownerScript, target, callback, name, sourceOutput, targetInput) : nullptr;
+}
+
+static BML::ScriptHookBlockRef *BMLAS_Hook_InsertBetween(CKBehavior *ownerScript,
+                                                         CKBehavior *source,
+                                                         CKBehavior *target,
+                                                         asIScriptFunction *callback,
+                                                         const std::string &name,
+                                                         int sourceOutput,
+                                                         int targetInput) {
+    if (RejectScriptObjectConstructionHostCall("BML::Hook::InsertBetween"))
+        return nullptr;
+    BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
+    return owner ? owner->InsertScriptHookBlockBetween(ownerScript, source, target, callback, name, sourceOutput, targetInput) : nullptr;
+}
+
+static void BMLAS_HookBlockRefSetEnabled(BML::ScriptHookBlockRef *self, bool enabled) {
+    if (self)
+        self->SetEnabled(enabled);
+}
+
+static void BMLAS_HookBlockRefSetAutoActivateOutputs(BML::ScriptHookBlockRef *self, bool enabled) {
+    if (self)
+        self->SetAutoActivateOutputs(enabled);
 }
 
 static bool BMLAS_RegisterBallType(const std::string &ballFile,
@@ -3423,6 +3484,8 @@ static const ScriptObjectTypeRegistration kObjectTypeRegistrations[] = {
     {"CommandRef", "class CommandRef", 0, asOBJ_REF},
     {"DataShareEvent", "class DataShareEvent", sizeof(BML::ScriptDataShareEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptDataShareEventView>()},
     {"DataShareRequestRef", "class DataShareRequestRef", 0, asOBJ_REF},
+    {"HookBlockEvent", "class HookBlockEvent", sizeof(BMLAS_HookBlockEvent), asOBJ_VALUE | asGetTypeTraits<BMLAS_HookBlockEvent>()},
+    {"HookBlockRef", "class HookBlockRef", 0, asOBJ_REF},
     {"PhysicalizeEvent", "class PhysicalizeEvent", sizeof(BML::ScriptPhysicalizeEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptPhysicalizeEventView>()},
     {"ObjectEvent", "class ObjectEvent", sizeof(BML::ScriptObjectEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptObjectEventView>()},
     {"ModRef", "class ModRef", 0, asOBJ_REF},
@@ -3442,6 +3505,7 @@ static const ScriptFuncdefRegistration kFuncdefRegistrations[] = {
     {"void CommandCallback(const BML::ModContext &in, const BML::CommandEvent &in)", "funcdef CommandCallback"},
     {"void CommandCompletionCallback(const BML::ModContext &in, const BML::CommandEvent &in, BML::CommandCompletion &inout)", "funcdef CommandCompletionCallback"},
     {"void DataShareCallback(const BML::ModContext &in, const BML::DataShareEvent &in)", "funcdef DataShareCallback"},
+    {"int HookBlockCallback(const BML::ModContext &in, const BML::HookBlockEvent &in)", "funcdef HookBlockCallback"},
 };
 
 static const ScriptInterfaceMethodRegistration kInterfaceMethodRegistrations[] = {
@@ -3607,6 +3671,9 @@ static const ScriptObjectBehaviourRegistration kObjectBehaviourRegistrations[] =
     {"DataShareEvent", asBEHAVE_CONSTRUCT, "void f()", "void DataShareEvent default construct", asFUNCTION(BMLAS_ConstructDataShareEvent), asCALL_CDECL_OBJLAST},
     {"DataShareEvent", asBEHAVE_CONSTRUCT, "void f(const DataShareEvent &in)", "void DataShareEvent copy construct", asFUNCTION(BMLAS_CopyConstructDataShareEvent), asCALL_CDECL_OBJLAST},
     {"DataShareEvent", asBEHAVE_DESTRUCT, "void f()", "void DataShareEvent destruct", asFUNCTION(BMLAS_DestructDataShareEvent), asCALL_CDECL_OBJLAST},
+    {"HookBlockEvent", asBEHAVE_CONSTRUCT, "void f()", "void HookBlockEvent default construct", asFUNCTION(BMLAS_ConstructHookBlockEvent), asCALL_CDECL_OBJLAST},
+    {"HookBlockEvent", asBEHAVE_CONSTRUCT, "void f(const HookBlockEvent &in)", "void HookBlockEvent copy construct", asFUNCTION(BMLAS_CopyConstructHookBlockEvent), asCALL_CDECL_OBJLAST},
+    {"HookBlockEvent", asBEHAVE_DESTRUCT, "void f()", "void HookBlockEvent destruct", asFUNCTION(BMLAS_DestructHookBlockEvent), asCALL_CDECL_OBJLAST},
     {"PhysicalizeEvent", asBEHAVE_CONSTRUCT, "void f()", "void PhysicalizeEvent default construct", asFUNCTION(BMLAS_ConstructPhysicalizeEvent), asCALL_CDECL_OBJLAST},
     {"PhysicalizeEvent", asBEHAVE_CONSTRUCT, "void f(const PhysicalizeEvent &in)", "void PhysicalizeEvent copy construct", asFUNCTION(BMLAS_CopyConstructPhysicalizeEvent), asCALL_CDECL_OBJLAST},
     {"PhysicalizeEvent", asBEHAVE_DESTRUCT, "void f()", "void PhysicalizeEvent destruct", asFUNCTION(BMLAS_DestructPhysicalizeEvent), asCALL_CDECL_OBJLAST},
@@ -3619,6 +3686,8 @@ static const ScriptObjectBehaviourRegistration kObjectBehaviourRegistrations[] =
     {"CommandRef", asBEHAVE_RELEASE, "void f()", "void CommandRef release", asMETHOD(BML::ScriptCommandRef, Release), asCALL_THISCALL},
     {"DataShareRequestRef", asBEHAVE_ADDREF, "void f()", "void DataShareRequestRef addref", asMETHOD(BML::ScriptDataShareRequestRef, AddRef), asCALL_THISCALL},
     {"DataShareRequestRef", asBEHAVE_RELEASE, "void f()", "void DataShareRequestRef release", asMETHOD(BML::ScriptDataShareRequestRef, Release), asCALL_THISCALL},
+    {"HookBlockRef", asBEHAVE_ADDREF, "void f()", "void HookBlockRef addref", asMETHOD(BML::ScriptHookBlockRef, AddRef), asCALL_THISCALL},
+    {"HookBlockRef", asBEHAVE_RELEASE, "void f()", "void HookBlockRef release", asMETHOD(BML::ScriptHookBlockRef, Release), asCALL_THISCALL},
     {"TimerRef", asBEHAVE_ADDREF, "void f()", "void TimerRef addref", asMETHOD(BML::ScriptTimerRef, AddRef), asCALL_THISCALL},
     {"TimerRef", asBEHAVE_RELEASE, "void f()", "void TimerRef release", asMETHOD(BML::ScriptTimerRef, Release), asCALL_THISCALL},
     {"CallFrame", asBEHAVE_FACTORY, "CallFrame@ f()", "CallFrame@ CallFrame factory", asFUNCTION(BMLAS_CreateCallFrame), asCALL_CDECL},
@@ -3642,6 +3711,7 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"CommandEvent", "CommandEvent &opAssign(const CommandEvent &in)", "CommandEvent &CommandEvent::opAssign(const CommandEvent &in)", asFUNCTION(BMLAS_AssignCommandEvent), asCALL_CDECL_OBJLAST},
     {"ConfigEvent", "ConfigEvent &opAssign(const ConfigEvent &in)", "ConfigEvent &ConfigEvent::opAssign(const ConfigEvent &in)", asFUNCTION(BMLAS_AssignConfigEvent), asCALL_CDECL_OBJLAST},
     {"DataShareEvent", "DataShareEvent &opAssign(const DataShareEvent &in)", "DataShareEvent &DataShareEvent::opAssign(const DataShareEvent &in)", asFUNCTION(BMLAS_AssignDataShareEvent), asCALL_CDECL_OBJLAST},
+    {"HookBlockEvent", "HookBlockEvent &opAssign(const HookBlockEvent &in)", "HookBlockEvent &HookBlockEvent::opAssign(const HookBlockEvent &in)", asFUNCTION(BMLAS_AssignHookBlockEvent), asCALL_CDECL_OBJLAST},
     {"PhysicalizeEvent", "PhysicalizeEvent &opAssign(const PhysicalizeEvent &in)", "PhysicalizeEvent &PhysicalizeEvent::opAssign(const PhysicalizeEvent &in)", asFUNCTION(BMLAS_AssignPhysicalizeEvent), asCALL_CDECL_OBJLAST},
     {"ObjectEvent", "ObjectEvent &opAssign(const ObjectEvent &in)", "ObjectEvent &ObjectEvent::opAssign(const ObjectEvent &in)", asFUNCTION(BMLAS_AssignObjectEvent), asCALL_CDECL_OBJLAST},
     {"ObjectLoadResult", "bool get_Success() const", "bool ObjectLoadResult::get_Success() const", asMETHOD(BMLAS_ObjectLoadResult, IsSuccess), asCALL_THISCALL},
@@ -3694,6 +3764,16 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"ModContext", "string GetModId() const", "string ModContext::GetModId() const", asMETHOD(BML::ScriptModContextView, GetModId), asCALL_THISCALL},
     {"ModContext", "string get_ModName() const", "string ModContext::get_ModName() const", asMETHOD(BML::ScriptModContextView, GetModName), asCALL_THISCALL},
     {"ModContext", "string GetModName() const", "string ModContext::GetModName() const", asMETHOD(BML::ScriptModContextView, GetModName), asCALL_THISCALL},
+    {"ModContext", "bool get_IsReloading() const", "bool ModContext::get_IsReloading() const", asMETHOD(BML::ScriptModContextView, IsReloading), asCALL_THISCALL},
+    {"ModContext", "bool IsReloading() const", "bool ModContext::IsReloading() const", asMETHOD(BML::ScriptModContextView, IsReloading), asCALL_THISCALL},
+    {"ModContext", "ReloadPhase get_ReloadPhase() const", "ReloadPhase ModContext::get_ReloadPhase() const", asMETHOD(BML::ScriptModContextView, GetReloadPhase), asCALL_THISCALL},
+    {"ModContext", "ReloadPhase GetReloadPhase() const", "ReloadPhase ModContext::GetReloadPhase() const", asMETHOD(BML::ScriptModContextView, GetReloadPhase), asCALL_THISCALL},
+    {"ModContext", "uint get_ReloadAttemptId() const", "uint ModContext::get_ReloadAttemptId() const", asMETHOD(BML::ScriptModContextView, GetReloadAttemptId), asCALL_THISCALL},
+    {"ModContext", "uint GetReloadAttemptId() const", "uint ModContext::GetReloadAttemptId() const", asMETHOD(BML::ScriptModContextView, GetReloadAttemptId), asCALL_THISCALL},
+    {"ModContext", "uint get_ModGeneration() const", "uint ModContext::get_ModGeneration() const", asMETHOD(BML::ScriptModContextView, GetModGeneration), asCALL_THISCALL},
+    {"ModContext", "uint GetModGeneration() const", "uint ModContext::GetModGeneration() const", asMETHOD(BML::ScriptModContextView, GetModGeneration), asCALL_THISCALL},
+    {"ModContext", "uint get_RuntimeGeneration() const", "uint ModContext::get_RuntimeGeneration() const", asMETHOD(BML::ScriptModContextView, GetRuntimeGeneration), asCALL_THISCALL},
+    {"ModContext", "uint GetRuntimeGeneration() const", "uint ModContext::GetRuntimeGeneration() const", asMETHOD(BML::ScriptModContextView, GetRuntimeGeneration), asCALL_THISCALL},
     {"ModContext", "CKContext@ BorrowCKContext() const", "CKContext@ ModContext::BorrowCKContext() const", asMETHOD(BML::ScriptModContextView, GetCKContext), asCALL_THISCALL},
     {"ModContext", "CKRenderContext@ BorrowRenderContext() const", "CKRenderContext@ ModContext::BorrowRenderContext() const", asMETHOD(BML::ScriptModContextView, GetRenderContext), asCALL_THISCALL},
     {"ModContext", "CKAttributeManager@ BorrowAttributeManager() const", "CKAttributeManager@ ModContext::BorrowAttributeManager() const", asMETHOD(BML::ScriptModContextView, GetAttributeManager), asCALL_THISCALL},
@@ -3758,22 +3838,16 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"ModContext", "bool UnregisterCommand(const string &in name) const", "bool ModContext::UnregisterCommand(const string &in name) const", asMETHOD(BML::ScriptModContextView, UnregisterCommand), asCALL_THISCALL},
     {"ModContext", "DataShareRequestRef@ RequestDataShare(DataShareRequest@+ request) const", "DataShareRequestRef@ ModContext::RequestDataShare(DataShareRequest@+ request) const", asMETHODPR(BML::ScriptModContextView, RequestDataShare, (asIScriptObject *) const, BML::ScriptDataShareRequestRef *), asCALL_THISCALL},
     {"ModContext", "DataShareRequestRef@ RequestDataShare(const string &in key, int type, DataShareCallback@+ callback, const string &in name = \"\") const", "DataShareRequestRef@ ModContext::RequestDataShare(const string &in, int, DataShareCallback@+, const string &in) const", asFUNCTION(BMLAS_ContextRequestDataShareDelegate), asCALL_CDECL_OBJFIRST},
+    {"ModContext", "HookBlockRef@ CreateHookBlock(CKBehavior@ ownerScript, HookBlockCallback@+ callback, const string &in name = \"\", int inputCount = 1, int outputCount = 1) const", "HookBlockRef@ ModContext::CreateHookBlock(CKBehavior@, HookBlockCallback@+) const", asMETHOD(BML::ScriptModContextView, CreateHookBlock), asCALL_THISCALL},
+    {"ModContext", "HookBlockRef@ InsertHookBlockAfter(CKBehavior@ ownerScript, CKBehavior@ source, HookBlockCallback@+ callback, const string &in name = \"\", int sourceOutput = 0, int targetInput = -1) const", "HookBlockRef@ ModContext::InsertHookBlockAfter(CKBehavior@, CKBehavior@, HookBlockCallback@+) const", asMETHOD(BML::ScriptModContextView, InsertHookBlockAfter), asCALL_THISCALL},
+    {"ModContext", "HookBlockRef@ InsertHookBlockBefore(CKBehavior@ ownerScript, CKBehavior@ target, HookBlockCallback@+ callback, const string &in name = \"\", int sourceOutput = -1, int targetInput = 0) const", "HookBlockRef@ ModContext::InsertHookBlockBefore(CKBehavior@, CKBehavior@, HookBlockCallback@+) const", asMETHOD(BML::ScriptModContextView, InsertHookBlockBefore), asCALL_THISCALL},
+    {"ModContext", "HookBlockRef@ InsertHookBlockBetween(CKBehavior@ ownerScript, CKBehavior@ source, CKBehavior@ target, HookBlockCallback@+ callback, const string &in name = \"\", int sourceOutput = 0, int targetInput = 0) const", "HookBlockRef@ ModContext::InsertHookBlockBetween(CKBehavior@, CKBehavior@, CKBehavior@, HookBlockCallback@+) const", asMETHOD(BML::ScriptModContextView, InsertHookBlockBetween), asCALL_THISCALL},
     {"ModContext", "bool RegisterBallType(const BallTypeDefinition &in definition) const", "bool ModContext::RegisterBallType(const BallTypeDefinition &in definition) const", asFUNCTION(BMLAS_ContextRegisterBallType), asCALL_CDECL_OBJFIRST},
     {"ModContext", "bool RegisterFloorType(const FloorTypeDefinition &in definition) const", "bool ModContext::RegisterFloorType(const FloorTypeDefinition &in definition) const", asFUNCTION(BMLAS_ContextRegisterFloorType), asCALL_CDECL_OBJFIRST},
     {"ModContext", "bool RegisterModule(const ModuleBallDefinition &in definition) const", "bool ModContext::RegisterModule(const ModuleBallDefinition &in definition) const", asFUNCTION(BMLAS_ContextRegisterModuleBall), asCALL_CDECL_OBJFIRST},
     {"ModContext", "bool RegisterModule(const ModuleConvexDefinition &in definition) const", "bool ModContext::RegisterModule(const ModuleConvexDefinition &in definition) const", asFUNCTION(BMLAS_ContextRegisterModuleConvex), asCALL_CDECL_OBJFIRST},
     {"ModContext", "bool RegisterModule(const TrafoDefinition &in definition) const", "bool ModContext::RegisterModule(const TrafoDefinition &in definition) const", asFUNCTION(BMLAS_ContextRegisterTrafo), asCALL_CDECL_OBJFIRST},
     {"ModContext", "bool RegisterModule(const ModuleDefinition &in definition) const", "bool ModContext::RegisterModule(const ModuleDefinition &in definition) const", asFUNCTION(BMLAS_ContextRegisterModule), asCALL_CDECL_OBJFIRST},
-    {"ModContext", "bool get_IsReloading() const", "bool ModContext::get_IsReloading() const", asMETHOD(BML::ScriptModContextView, IsReloading), asCALL_THISCALL},
-    {"ModContext", "bool IsReloading() const", "bool ModContext::IsReloading() const", asMETHOD(BML::ScriptModContextView, IsReloading), asCALL_THISCALL},
-    {"ModContext", "ReloadPhase get_ReloadPhase() const", "ReloadPhase ModContext::get_ReloadPhase() const", asMETHOD(BML::ScriptModContextView, GetReloadPhase), asCALL_THISCALL},
-    {"ModContext", "ReloadPhase GetReloadPhase() const", "ReloadPhase ModContext::GetReloadPhase() const", asMETHOD(BML::ScriptModContextView, GetReloadPhase), asCALL_THISCALL},
-    {"ModContext", "uint get_ReloadAttemptId() const", "uint ModContext::get_ReloadAttemptId() const", asMETHOD(BML::ScriptModContextView, GetReloadAttemptId), asCALL_THISCALL},
-    {"ModContext", "uint GetReloadAttemptId() const", "uint ModContext::GetReloadAttemptId() const", asMETHOD(BML::ScriptModContextView, GetReloadAttemptId), asCALL_THISCALL},
-    {"ModContext", "uint get_ModGeneration() const", "uint ModContext::get_ModGeneration() const", asMETHOD(BML::ScriptModContextView, GetModGeneration), asCALL_THISCALL},
-    {"ModContext", "uint GetModGeneration() const", "uint ModContext::GetModGeneration() const", asMETHOD(BML::ScriptModContextView, GetModGeneration), asCALL_THISCALL},
-    {"ModContext", "uint get_RuntimeGeneration() const", "uint ModContext::get_RuntimeGeneration() const", asMETHOD(BML::ScriptModContextView, GetRuntimeGeneration), asCALL_THISCALL},
-    {"ModContext", "uint GetRuntimeGeneration() const", "uint ModContext::GetRuntimeGeneration() const", asMETHOD(BML::ScriptModContextView, GetRuntimeGeneration), asCALL_THISCALL},
     {"ModContext", "string GetModRootUtf8() const", "string ModContext::GetModRootUtf8() const", asMETHOD(BML::ScriptModContextView, GetModRootUtf8), asCALL_THISCALL},
     {"ModContext", "string ResolveModPathUtf8(const string &in relativePath) const", "string ModContext::ResolveModPathUtf8(const string &in relativePath) const", asMETHOD(BML::ScriptModContextView, ResolveModPathUtf8), asCALL_THISCALL},
     {"ModContext", "bool ModFileExistsUtf8(const string &in relativePath) const", "bool ModContext::ModFileExistsUtf8(const string &in relativePath) const", asMETHOD(BML::ScriptModContextView, ModFileExistsUtf8), asCALL_THISCALL},
@@ -3883,6 +3957,29 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"DataShareRequestRef", "string get_Key() const", "string DataShareRequestRef::get_Key() const", asMETHOD(BML::ScriptDataShareRequestRef, GetKey), asCALL_THISCALL},
     {"DataShareRequestRef", "int get_Type() const", "int DataShareRequestRef::get_Type() const", asMETHOD(BML::ScriptDataShareRequestRef, GetType), asCALL_THISCALL},
     {"DataShareRequestRef", "bool Cancel()", "bool DataShareRequestRef::Cancel()", asMETHOD(BML::ScriptDataShareRequestRef, Cancel), asCALL_THISCALL},
+    {"HookBlockEvent", "bool get_IsValid() const", "bool HookBlockEvent::get_IsValid() const", asMETHOD(BMLAS_HookBlockEvent, IsValid), asCALL_THISCALL},
+    {"HookBlockEvent", "int get_BlockId() const", "int HookBlockEvent::get_BlockId() const", asMETHOD(BMLAS_HookBlockEvent, GetBlockId), asCALL_THISCALL},
+    {"HookBlockEvent", "string get_BlockName() const", "string HookBlockEvent::get_BlockName() const", asMETHOD(BMLAS_HookBlockEvent, GetBlockName), asCALL_THISCALL},
+    {"HookBlockEvent", "float get_DeltaTime() const", "float HookBlockEvent::get_DeltaTime() const", asMETHOD(BMLAS_HookBlockEvent, GetDeltaTime), asCALL_THISCALL},
+    {"HookBlockEvent", "int get_InputCount() const", "int HookBlockEvent::get_InputCount() const", asMETHOD(BMLAS_HookBlockEvent, GetInputCount), asCALL_THISCALL},
+    {"HookBlockEvent", "int get_OutputCount() const", "int HookBlockEvent::get_OutputCount() const", asMETHOD(BMLAS_HookBlockEvent, GetOutputCount), asCALL_THISCALL},
+    {"HookBlockEvent", "CKBehavior@ BorrowBlock() const", "CKBehavior@ HookBlockEvent::BorrowBlock() const", asMETHOD(BMLAS_HookBlockEvent, BorrowBlock), asCALL_THISCALL},
+    {"HookBlockEvent", "CKBehavior@ BorrowOwnerScript() const", "CKBehavior@ HookBlockEvent::BorrowOwnerScript() const", asMETHOD(BMLAS_HookBlockEvent, BorrowOwnerScript), asCALL_THISCALL},
+    {"HookBlockEvent", "bool ActivateOutput(int index) const", "bool HookBlockEvent::ActivateOutput(int index) const", asMETHOD(BMLAS_HookBlockEvent, ActivateOutput), asCALL_THISCALL},
+    {"HookBlockEvent", "void ActivateAllOutputs() const", "void HookBlockEvent::ActivateAllOutputs() const", asMETHOD(BMLAS_HookBlockEvent, ActivateAllOutputs), asCALL_THISCALL},
+    {"HookBlockRef", "bool get_IsValid() const", "bool HookBlockRef::get_IsValid() const", asMETHOD(BML::ScriptHookBlockRef, IsValid), asCALL_THISCALL},
+    {"HookBlockRef", "bool get_IsInstalled() const", "bool HookBlockRef::get_IsInstalled() const", asMETHOD(BML::ScriptHookBlockRef, IsInstalled), asCALL_THISCALL},
+    {"HookBlockRef", "bool get_Enabled() const", "bool HookBlockRef::get_Enabled() const", asMETHOD(BML::ScriptHookBlockRef, IsEnabled), asCALL_THISCALL},
+    {"HookBlockRef", "void set_Enabled(bool enabled)", "void HookBlockRef::set_Enabled(bool enabled)", asFUNCTION(BMLAS_HookBlockRefSetEnabled), asCALL_CDECL_OBJFIRST},
+    {"HookBlockRef", "bool SetEnabled(bool enabled)", "bool HookBlockRef::SetEnabled(bool enabled)", asMETHOD(BML::ScriptHookBlockRef, SetEnabled), asCALL_THISCALL},
+    {"HookBlockRef", "bool get_AutoActivateOutputs() const", "bool HookBlockRef::get_AutoActivateOutputs() const", asMETHOD(BML::ScriptHookBlockRef, GetAutoActivateOutputs), asCALL_THISCALL},
+    {"HookBlockRef", "void set_AutoActivateOutputs(bool enabled)", "void HookBlockRef::set_AutoActivateOutputs(bool enabled)", asFUNCTION(BMLAS_HookBlockRefSetAutoActivateOutputs), asCALL_CDECL_OBJFIRST},
+    {"HookBlockRef", "bool SetAutoActivateOutputs(bool enabled)", "bool HookBlockRef::SetAutoActivateOutputs(bool enabled)", asMETHOD(BML::ScriptHookBlockRef, SetAutoActivateOutputs), asCALL_THISCALL},
+    {"HookBlockRef", "int get_BlockId() const", "int HookBlockRef::get_BlockId() const", asMETHOD(BML::ScriptHookBlockRef, GetBlockId), asCALL_THISCALL},
+    {"HookBlockRef", "string get_Name() const", "string HookBlockRef::get_Name() const", asMETHOD(BML::ScriptHookBlockRef, GetName), asCALL_THISCALL},
+    {"HookBlockRef", "CKBehavior@ BorrowBlock() const", "CKBehavior@ HookBlockRef::BorrowBlock() const", asMETHOD(BML::ScriptHookBlockRef, BorrowBlock), asCALL_THISCALL},
+    {"HookBlockRef", "CKBehavior@ BorrowOwnerScript() const", "CKBehavior@ HookBlockRef::BorrowOwnerScript() const", asMETHOD(BML::ScriptHookBlockRef, BorrowOwnerScript), asCALL_THISCALL},
+    {"HookBlockRef", "bool Uninstall()", "bool HookBlockRef::Uninstall()", asMETHOD(BML::ScriptHookBlockRef, Uninstall), asCALL_THISCALL},
     {"InputHook", "bool get_IsValid() const", "bool InputHook::get_IsValid() const", asFUNCTION(BMLAS_InputHookIsValid), asCALL_CDECL_OBJFIRST},
     {"InputHook", "bool IsValid() const", "bool InputHook::IsValid() const", asFUNCTION(BMLAS_InputHookIsValid), asCALL_CDECL_OBJFIRST},
     {"InputHook", "void EnableKeyboardRepetition(bool enable = true) const", "void InputHook::EnableKeyboardRepetition(bool enable) const", asFUNCTION(BMLAS_InputHookEnableKeyboardRepetition), asCALL_CDECL_OBJFIRST},
@@ -4227,6 +4324,13 @@ static const ScriptGlobalFunctionRegistration kTextFunctionRegistrations[] = {
     {"CKBehavior@ Create2DText(CKBehavior@ ownerScript, CK2dEntity@ target, const BML::Text2DDefinition &in definition, CKMaterial@ backgroundMaterial, CKMaterial@ caretMaterial)", "BML::Text::Create2DText(materials)", asFUNCTION(BMLAS_Text_Create2DText), asCALL_CDECL},
 };
 
+static const ScriptGlobalFunctionRegistration kHookFunctionRegistrations[] = {
+    {"HookBlockRef@ Create(CKBehavior@ ownerScript, HookBlockCallback@+ callback, const string &in name = \"\", int inputCount = 1, int outputCount = 1)", "BML::Hook::Create", asFUNCTION(BMLAS_Hook_Create), asCALL_CDECL},
+    {"HookBlockRef@ InsertAfter(CKBehavior@ ownerScript, CKBehavior@ source, HookBlockCallback@+ callback, const string &in name = \"\", int sourceOutput = 0, int targetInput = -1)", "BML::Hook::InsertAfter", asFUNCTION(BMLAS_Hook_InsertAfter), asCALL_CDECL},
+    {"HookBlockRef@ InsertBefore(CKBehavior@ ownerScript, CKBehavior@ target, HookBlockCallback@+ callback, const string &in name = \"\", int sourceOutput = -1, int targetInput = 0)", "BML::Hook::InsertBefore", asFUNCTION(BMLAS_Hook_InsertBefore), asCALL_CDECL},
+    {"HookBlockRef@ InsertBetween(CKBehavior@ ownerScript, CKBehavior@ source, CKBehavior@ target, HookBlockCallback@+ callback, const string &in name = \"\", int sourceOutput = 0, int targetInput = 0)", "BML::Hook::InsertBetween", asFUNCTION(BMLAS_Hook_InsertBetween), asCALL_CDECL},
+};
+
 bool CheckScriptApiContractRegistrationSurface() {
     for (const BML::ScriptCallbackContract &callback : BML::ScriptApiContract::Callbacks()) {
         if (!CheckRegistrationSurfaceText("callback name", nullptr, callback.Name) ||
@@ -4343,6 +4447,7 @@ bool CheckScriptFacadeRegistrationSurface() {
         kCkFunctionRegistrations,
         kPhysicsFunctionRegistrations,
         kTextFunctionRegistrations,
+        kHookFunctionRegistrations,
     };
     const std::size_t globalFunctionGroupSizes[] = {
         std::size(kGlobalFunctionRegistrations),
@@ -4352,6 +4457,7 @@ bool CheckScriptFacadeRegistrationSurface() {
         std::size(kCkFunctionRegistrations),
         std::size(kPhysicsFunctionRegistrations),
         std::size(kTextFunctionRegistrations),
+        std::size(kHookFunctionRegistrations),
     };
 
     for (std::size_t group = 0; group < std::size(globalFunctionGroups); ++group) {
@@ -4481,7 +4587,10 @@ int RegisterScriptGlobalFunctions(asIScriptEngine *engine, const char **errorMes
     const int physicsResult = RegisterScriptGlobalFunctionList(engine, errorMessage, "BML::Physics", kPhysicsFunctionRegistrations);
     if (physicsResult < 0)
         return physicsResult;
-    return RegisterScriptGlobalFunctionList(engine, errorMessage, "BML::Text", kTextFunctionRegistrations);
+    const int textResult = RegisterScriptGlobalFunctionList(engine, errorMessage, "BML::Text", kTextFunctionRegistrations);
+    if (textResult < 0)
+        return textResult;
+    return RegisterScriptGlobalFunctionList(engine, errorMessage, "BML::Hook", kHookFunctionRegistrations);
 }
 
 int RegisterScriptUiFacade(asIScriptEngine *engine, const char **errorMessage) {

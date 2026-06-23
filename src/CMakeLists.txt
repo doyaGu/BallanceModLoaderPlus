@@ -170,6 +170,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptExportSignature.h
             AngelScript/ScriptFacadeAccess.h
             AngelScript/ScriptFileWatcherWin32.h
+            AngelScript/ScriptHookBlockService.h
             AngelScript/ScriptMod.h
             AngelScript/ScriptModContextView.h
             AngelScript/ScriptModDefinition.h
@@ -198,6 +199,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptExportSignature.cpp
             AngelScript/ScriptFileWatcherWin32.cpp
             AngelScript/ScriptFunctionSupport.cpp
+            AngelScript/ScriptHookBlockService.cpp
             AngelScript/ScriptMod.cpp
             AngelScript/ScriptModContextView.cpp
             AngelScript/ScriptModDefinition.cpp

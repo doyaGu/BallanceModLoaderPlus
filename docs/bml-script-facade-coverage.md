@@ -53,6 +53,7 @@ not use it as the upper bound for what a script can do in Virtools.
 | DataArray and object load | `BML::CK` helpers plus `ObjectLoadOptions`/`ObjectLoadResult` | Object load result copies CK IDs and resolves borrowed handles on demand; it does not expose `XObjectArray*`. |
 | Physics actions | `BML::Physics` helpers plus `PhysicalizeDefinition` | Runtime-level wrappers over `ExecuteBB`; return false for unavailable runtime or null targets. |
 | 2D text behavior creation | `BML::Text::Create2DText` plus `Text2DDefinition` | Returns borrowed `CKBehavior@`; definition is value-only and CK handles are explicit arguments. |
+| Hook Block behavior callbacks | `BML::Hook::Create/Insert*`, `ModContext::CreateHookBlock/InsertHookBlock*`, `HookBlockCallback`, `HookBlockEvent`, `HookBlockRef` | BML owns the script callback bridge and restores inserted links on unload/hot reload. Graph discovery and detailed behavior editing stay on CKAS `Behavior`/`BB` APIs; raw `CKBehaviorContext`, `CKBehaviorLink`, and `CKBehaviorIO` are not part of the BML facade. |
 | Content registration | `ModContext::RegisterBallType`, `RegisterFloorType`, and `RegisterModule` definition objects | Only accepted during script `OnLoad`; late calls return false. |
 | Mod registry | `ModContext::FindMod/GetMod*` | `ModRef` is a resolved facade handle, not a native `IMod*`. |
 | Dependencies | Metadata plus `ModRef` read APIs | Runtime dependency mutation remains native-only. Script dependencies use `[bml.require]` and `[bml.optional]`. |

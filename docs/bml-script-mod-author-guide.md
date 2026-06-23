@@ -166,6 +166,7 @@ build; do not assume BML will scan arbitrary files as separate mod entries.
 | Draw BML/ImGui UI | `UI`, `Advanced ImGui` | `OnRender`, `ctx.Draw*`, `BML::ImGui::*` |
 | Call another mod or expose functions to other mods | `ExportRef And CallFrame` | `ModRef.FindExport()`, `ExportRef.Call*`, `CallFrame` |
 | Exchange typed data with native mods or scripts | `DataShare` | `BML::DataShareRequest`, `ctx.RequestDataShare*` |
+| Hook an existing behavior graph path | `CK, Physics, And Text Helpers` | CKAS `Behavior`/`BB` lookup plus `ctx.InsertHookBlock*` or `BML::Hook::*` |
 | Work with Virtools objects, behavior graphs, or CKDataArray/CKMesh/CKTexture | `What BML Adds To CKAngelScript`, CKAS docs | CKAS `Scene`, `Behavior`, `BB`, `Param`, raw CK/Vx SDK bindings where needed |
 
 ## Concepts At A Glance
@@ -396,7 +397,6 @@ Expected behavior:
 - Old Timer, Command, DataShare request, callback, and export handles become
   invalid or stale after replacement. New registrations from the new `OnLoad`
   are the only active resources.
-- Rollback restores only resources BML owns: callbacks, exports, timers,
 - A script mod can detect reload lifecycle callbacks through `ModContext`:
   `ctx.IsReloading` is true only while BML is calling script lifecycle methods
   for hot reload. `ctx.ReloadPhase` is one of `BML::RELOAD_UNLOAD`,
@@ -406,12 +406,12 @@ Expected behavior:
 - Use `ctx.ReloadPhase` in `OnUnload` to distinguish final shutdown from old
   runtime replacement. Use `BML::RELOAD_ROLLBACK` in `OnLoad` to avoid assuming
   a failed candidate has left the game world untouched.
+- Rollback restores only resources BML owns: callbacks, exports, timers,
   commands, DataShare requests, and script runtime handles. It cannot undo
   changes your script already made to the game world through CKAS Scene/BB APIs,
   raw CK/Vx calls, or another plugin. If a feature mutates world state during
   `OnLoad`, make it explicitly reversible or require a restart after failure.
 
-## Callbacks
 ```angelscript
 void OnUnload(const BML::ModContext &in ctx) {
   if (ctx.ReloadPhase == BML::RELOAD_UNLOAD) {
@@ -431,6 +431,7 @@ void OnLoad(const BML::ModContext &in ctx) {
 }
 ```
 
+## Callbacks
 
 Old `OnPre*` / `OnPost*` overload families are not part of the v1 contract.
 Only these fixed signatures are recognized:
@@ -707,6 +708,84 @@ CKAS `Async` is available to runtime scripts and components, but BML fixed
 callbacks are no-suspend. Do not call `Await` from a BML callback. If a BML mod
 needs delayed work, use BML timers or delegate the suspending work to a CKAS
 runtime script/component and communicate through `Message` or BML exports.
+
+### Hook Block
+
+Use BML Hook Block when a script mod needs a stable callback point inside an
+existing Virtools behavior graph. BML owns the native Hook Block instance,
+retains the AngelScript delegate, and removes or restores its inserted links on
+mod unload. CKAS still owns graph discovery: use CKAS `Behavior`, `BB`, and
+`Param` helpers to find the owner script and Building Blocks you want to hook.
+
+```angelscript
+BML::HookBlockRef@ hook;
+
+CKBehavior@ FindSubBehaviorByName(CKBehavior@ owner, const string &in name) {
+  if (owner is null)
+    return null;
+
+  const int count = owner.GetSubBehaviorCount();
+  for (int i = 0; i < count; ++i) {
+    CKBehavior@ child = owner.GetSubBehavior(i);
+    if (child !is null && child.GetName() == name)
+      return child;
+  }
+
+  return null;
+}
+
+int OnBallHook(const BML::ModContext &in ctx,
+               const BML::HookBlockEvent &in event) {
+  BML::Logger@ log = ctx.BorrowLogger();
+  if (log !is null)
+    log.Info("Hooked " + event.BlockName);
+
+  return CKBR_OK;
+}
+
+void OnLoad(const BML::ModContext &in ctx) {
+  CKBehavior@ owner = ctx.BorrowScriptByName("Gameplay_Ingame");
+  CKBehavior@ source = FindSubBehaviorByName(owner, "Some_Behavior");
+  if (owner is null || source is null)
+    return;
+
+  @hook = ctx.InsertHookBlockAfter(owner, source, OnBallHook, "example hook");
+  if (hook is null)
+    ctx.BorrowLogger().Warn("hook install failed");
+}
+```
+
+`CreateHookBlock` creates an unattached Hook Block under an owner behavior
+script. `InsertHookBlockAfter`, `InsertHookBlockBefore`, and
+`InsertHookBlockBetween` are convenience helpers for the common one-input,
+one-output graph patches. If a graph has multiple matching links, BML patches
+the first matching link; find a more specific source/target with CKAS when the
+graph is ambiguous.
+
+By default, the Hook Block activates all outputs after the callback, matching
+the native Hook Block behavior. Set `HookBlockRef.AutoActivateOutputs = false`
+when the script should choose the outgoing branch itself:
+
+```angelscript
+int RouteHook(const BML::ModContext &in ctx,
+              const BML::HookBlockEvent &in event) {
+  if (ShouldContinue())
+    event.ActivateOutput(0);
+  return CKBR_OK;
+}
+
+void OnLoad(const BML::ModContext &in ctx) {
+  @hook = ctx.InsertHookBlockBetween(owner, from, to, RouteHook, "route");
+  if (hook !is null)
+    hook.AutoActivateOutputs = false;
+}
+```
+
+Store `HookBlockRef@` only when the script may later disable or uninstall the
+hook. Otherwise, it is safe to ignore the returned handle; BML still owns the
+installed hook until the script mod unloads. Do not store `HookBlockEvent`
+borrowed `CKBehavior@` handles across callbacks; store CKAS refs or durable ids
+when later work needs to find the same graph objects.
 
 `BML::Physics` wraps runtime `ExecuteBB` physics actions. These helpers return
 `false` when BML is not in a loaded level or the target is null. It does not
@@ -1262,8 +1341,8 @@ with the same CKAngelScript runtime that will ship with the mod.
   for CK objects; raw pointers resolved from them are still short-lived.
 - `ModContext` is a per-mod facade. Store durable IDs/refs instead of borrowed
   CK handles when work crosses callbacks or frames.
-- Timer, Command, and DataShareRequest resources are owned by the script mod
-  and are cleaned up on mod unload and hot reload replacement.
+- Timer, Command, DataShareRequest, and HookBlock resources are owned by the
+  script mod and are cleaned up on mod unload and hot reload replacement.
 - Export handles are generation-checked and become invalid when the owner or
   export disappears.
 - Hot reload keeps the mod registry slot stable, but it does not discover new

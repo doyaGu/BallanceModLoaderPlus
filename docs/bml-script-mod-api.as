@@ -369,6 +369,13 @@ CKBehavior@ Create2DText(CKBehavior@ ownerScript, CK2dEntity@ target, const BML:
 CKBehavior@ Create2DText(CKBehavior@ ownerScript, CK2dEntity@ target, const BML::Text2DDefinition &in definition, CKMaterial@ backgroundMaterial, CKMaterial@ caretMaterial);
 }
 
+namespace Hook {
+HookBlockRef@ Create(CKBehavior@ ownerScript, HookBlockCallback@+ callback, const string &in name = "", int inputCount = 1, int outputCount = 1);
+HookBlockRef@ InsertAfter(CKBehavior@ ownerScript, CKBehavior@ source, HookBlockCallback@+ callback, const string &in name = "", int sourceOutput = 0, int targetInput = -1);
+HookBlockRef@ InsertBefore(CKBehavior@ ownerScript, CKBehavior@ target, HookBlockCallback@+ callback, const string &in name = "", int sourceOutput = -1, int targetInput = 0);
+HookBlockRef@ InsertBetween(CKBehavior@ ownerScript, CKBehavior@ source, CKBehavior@ target, HookBlockCallback@+ callback, const string &in name = "", int sourceOutput = 0, int targetInput = 0);
+}
+
 namespace UI {
 enum ButtonType {
   BUTTON_MAIN = 0,
@@ -602,6 +609,37 @@ class DataShareRequestRef {
   bool Cancel();
 }
 
+class HookBlockEvent {
+  bool get_IsValid() const;
+  int get_BlockId() const;
+  string get_BlockName() const;
+  float get_DeltaTime() const;
+  int get_InputCount() const;
+  int get_OutputCount() const;
+  CKBehavior@ BorrowBlock() const;
+  CKBehavior@ BorrowOwnerScript() const;
+  bool ActivateOutput(int index) const;
+  void ActivateAllOutputs() const;
+}
+
+funcdef int HookBlockCallback(const BML::ModContext &in ctx, const BML::HookBlockEvent &in event);
+
+class HookBlockRef {
+  bool get_IsValid() const;
+  bool get_IsInstalled() const;
+  bool get_Enabled() const;
+  void set_Enabled(bool enabled);
+  bool SetEnabled(bool enabled);
+  bool get_AutoActivateOutputs() const;
+  void set_AutoActivateOutputs(bool enabled);
+  bool SetAutoActivateOutputs(bool enabled);
+  int get_BlockId() const;
+  string get_Name() const;
+  CKBehavior@ BorrowBlock() const;
+  CKBehavior@ BorrowOwnerScript() const;
+  bool Uninstall();
+}
+
 class PhysicalizeEvent {
   int get_TargetId() const;
   string get_TargetName() const;
@@ -730,6 +768,16 @@ class ModContext {
   string GetModId(int index) const;
   string get_ModName() const;
   string GetModName() const;
+  bool get_IsReloading() const;
+  bool IsReloading() const;
+  ReloadPhase get_ReloadPhase() const;
+  ReloadPhase GetReloadPhase() const;
+  uint get_ReloadAttemptId() const;
+  uint GetReloadAttemptId() const;
+  uint get_ModGeneration() const;
+  uint GetModGeneration() const;
+  uint get_RuntimeGeneration() const;
+  uint GetRuntimeGeneration() const;
 
   CKContext@ BorrowCKContext() const;
   CKRenderContext@ BorrowRenderContext() const;
@@ -768,16 +816,6 @@ class ModContext {
   bool GetIsPaused() const;
   bool get_IsPlaying() const;
   bool GetIsPlaying() const;
-  bool get_IsReloading() const;
-  bool IsReloading() const;
-  ReloadPhase get_ReloadPhase() const;
-  ReloadPhase GetReloadPhase() const;
-  uint get_ReloadAttemptId() const;
-  uint GetReloadAttemptId() const;
-  uint get_ModGeneration() const;
-  uint GetModGeneration() const;
-  uint get_RuntimeGeneration() const;
-  uint GetRuntimeGeneration() const;
   bool get_IsCheatEnabled() const;
   bool GetIsCheatEnabled() const;
   void EnableCheat(bool enable) const;
@@ -820,6 +858,10 @@ class ModContext {
   bool UnregisterCommand(const string &in name) const;
   DataShareRequestRef@ RequestDataShare(DataShareRequest@+ request) const;
   DataShareRequestRef@ RequestDataShare(const string &in key, int type, DataShareCallback@+ callback, const string &in name = "") const;
+  HookBlockRef@ CreateHookBlock(CKBehavior@ ownerScript, HookBlockCallback@+ callback, const string &in name = "", int inputCount = 1, int outputCount = 1) const;
+  HookBlockRef@ InsertHookBlockAfter(CKBehavior@ ownerScript, CKBehavior@ source, HookBlockCallback@+ callback, const string &in name = "", int sourceOutput = 0, int targetInput = -1) const;
+  HookBlockRef@ InsertHookBlockBefore(CKBehavior@ ownerScript, CKBehavior@ target, HookBlockCallback@+ callback, const string &in name = "", int sourceOutput = -1, int targetInput = 0) const;
+  HookBlockRef@ InsertHookBlockBetween(CKBehavior@ ownerScript, CKBehavior@ source, CKBehavior@ target, HookBlockCallback@+ callback, const string &in name = "", int sourceOutput = 0, int targetInput = 0) const;
   bool RegisterBallType(const BallTypeDefinition &in definition) const;
   bool RegisterFloorType(const FloorTypeDefinition &in definition) const;
   bool RegisterModule(const ModuleBallDefinition &in definition) const;

@@ -310,6 +310,10 @@ namespace ExecuteBB {
         CKBehavior *beh = CreateBB(script, HOOKS_HOOKBLOCK_GUID);
         beh->SetLocalParameterValue(0, &callback);
         beh->SetLocalParameterValue(1, &arg);
+        if (beh->GetLocalParameterCount() > 2) {
+            CKBOOL autoActivateOutputs = TRUE;
+            beh->SetLocalParameterValue(2, &autoActivateOutputs);
+        }
 
         XString pinName = "In ";
         for (int i = 0; i < inCount; i++) {

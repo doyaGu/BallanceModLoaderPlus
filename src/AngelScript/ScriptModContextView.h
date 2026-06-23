@@ -26,6 +26,7 @@ class ScriptMod;
 class ScriptCommandRef;
 struct ScriptCommandDefinition;
 class ScriptDataShareRequestRef;
+class ScriptHookBlockRef;
 class ScriptTimerRef;
 
 class ScriptModContextView {
@@ -36,12 +37,12 @@ public:
     bool HasContext() const { return m_Context != nullptr; }
     std::string GetModId() const;
     std::string GetModName() const;
-    CKContext *GetCKContext() const;
     bool IsReloading() const;
     ScriptModReloadPhase GetReloadPhase() const;
     unsigned int GetReloadAttemptId() const;
     unsigned int GetModGeneration() const;
     unsigned int GetRuntimeGeneration() const;
+    CKContext *GetCKContext() const;
     CKRenderContext *GetRenderContext() const;
     CKAttributeManager *GetAttributeManager() const;
     CKBehaviorManager *GetBehaviorManager() const;
@@ -121,6 +122,30 @@ public:
                                                 int type,
                                                 asIScriptFunction *callback,
                                                 const std::string &name) const;
+    ScriptHookBlockRef *CreateHookBlock(CKBehavior *ownerScript,
+                                        asIScriptFunction *callback,
+                                        const std::string &name,
+                                        int inputCount,
+                                        int outputCount) const;
+    ScriptHookBlockRef *InsertHookBlockAfter(CKBehavior *ownerScript,
+                                             CKBehavior *source,
+                                             asIScriptFunction *callback,
+                                             const std::string &name,
+                                             int sourceOutput,
+                                             int targetInput) const;
+    ScriptHookBlockRef *InsertHookBlockBefore(CKBehavior *ownerScript,
+                                              CKBehavior *target,
+                                              asIScriptFunction *callback,
+                                              const std::string &name,
+                                              int sourceOutput,
+                                              int targetInput) const;
+    ScriptHookBlockRef *InsertHookBlockBetween(CKBehavior *ownerScript,
+                                               CKBehavior *source,
+                                               CKBehavior *target,
+                                               asIScriptFunction *callback,
+                                               const std::string &name,
+                                               int sourceOutput,
+                                               int targetInput) const;
     bool RegisterBallType(const std::string &ballFile,
                           const std::string &ballId,
                           const std::string &ballName,
