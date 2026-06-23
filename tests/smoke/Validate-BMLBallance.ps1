@@ -106,7 +106,9 @@ function Install-ZipSmoke {
     )
 
     $zipPath = Join-Path $ModsDirectory 'BMLAngelScriptZipSmoke.zip'
-    & (Join-Path $PSScriptRoot 'Pack-BMLScriptMod.ps1') -Source $SourceDirectory -Output $zipPath -Force | Out-Null
+    $packScript = Join-Path $PSScriptRoot '..\..\scripts\Pack-BMLScriptMod.ps1'
+    Assert-BMLPath -Path $packScript -Type Leaf | Out-Null
+    & $packScript -Source $SourceDirectory -Output $zipPath -Force | Out-Null
 }
 
 function Remove-SmokeInstall {
@@ -287,7 +289,13 @@ if (-not $SkipPlayer) {
     Add-SmokeCheck $checks 'bindings' (Test-SmokeTextContains $modLogText 'Registered BML AngelScript bindings') 'Registered BML AngelScript bindings'
     Add-SmokeCheck $checks 'script-summary' (Test-SmokeTextContains $modLogText 'BML script mod summary:') 'BML script mod summary:'
     Add-SmokeCheck $checks 'script-datashare-request' (Test-SmokeTextContains $modLogText 'BML datashare request: immediate=') 'BML datashare request: immediate='
-    Add-SmokeCheck $checks 'script-datashare-delegate' (Test-SmokeTextContains $modLogText 'BML datashare delegate request: immediate=true pending=true bool=true object=true invalid=true') 'BML datashare delegate request: immediate=true pending=true bool=true object=true invalid=true'
+    $scriptDataShareDelegatePassed =
+        (Test-SmokeTextContains $modLogText 'BML datashare delegate immediate callback key=AngelScriptSmokeDelegateImmediate exists=true value=delegate-ready') -and
+        (Test-SmokeTextContains $modLogText 'BML datashare delegate pending callback key=AngelScriptSmokeDelegatePending exists=true value=88') -and
+        (Test-SmokeTextContains $modLogText 'BML datashare delegate bool callback key=AngelScriptSmokeDelegateBool exists=true value=true') -and
+        (Test-SmokeTextContains $modLogText 'BML datashare delegate method callback key=AngelScriptSmokeDelegateObject exists=true value=object-ready hits=1') -and
+        (Test-SmokeTextContains $modLogText 'dataShareDelegate=true')
+    Add-SmokeCheck $checks 'script-datashare-delegate' $scriptDataShareDelegatePassed 'BML datashare delegate callbacks and summary dataShareDelegate=true'
     Add-SmokeCheck $checks 'script-object-ownership' (Test-SmokeTextContains $modLogText 'BML script object ownership: transientTimer=true heldTimer=true transientCommand=true heldCommand=true transientDataShare=true heldDataShare=true') 'BML script object ownership: transientTimer=true heldTimer=true transientCommand=true heldCommand=true transientDataShare=true heldDataShare=true'
     Add-SmokeCheck $checks 'script-command-delegate' (Test-SmokeTextContains $modLogText 'BML script command delegate registration: global=true method=true invalid=true') 'BML script command delegate registration: global=true method=true invalid=true'
     Add-SmokeCheck $checks 'command-completion-script' (Test-SmokeTextContains $modLogText 'BML script command completion callback') 'BML script command completion callback'
