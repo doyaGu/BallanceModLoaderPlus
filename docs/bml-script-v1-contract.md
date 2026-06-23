@@ -84,6 +84,10 @@ not dynamic mod discovery and not dependency graph reconstruction.
   reflects metadata, creates the candidate object, caches callbacks/exports,
   validates compatibility, then unloads the candidate without calling its
   `OnLoad`.
+- Each reload attempt first captures the entry and included `.as` sources into
+  an in-memory source snapshot. Prepare and commit use the same compiled
+  candidate runtime, so a save between validation and commit cannot change what
+  is installed.
 - If a mod failed during initial startup before a working runtime existed, BML
   keeps a failed placeholder. After the source is fixed, `script reload <id>`
   or `script reload all` may recover that placeholder and promote it to the real

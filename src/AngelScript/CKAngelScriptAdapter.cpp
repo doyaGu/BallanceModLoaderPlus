@@ -25,6 +25,7 @@ static constexpr CKAS_FEATURE kRequiredFeatures[] = {
     CKAS_FEATURE_OBJECT_METHOD_CONTEXT_ACCESS,
     CKAS_FEATURE_SCRIPT_ARRAY_ACCESS,
     CKAS_FEATURE_ACTIVE_CONTEXT_EXCEPTION,
+    CKAS_FEATURE_SOURCE_SECTIONS,
 };
 
 template <typename T>
@@ -49,6 +50,8 @@ static std::string MakeMissingFeatureDiagnostic(CKAS_FEATURE feature) {
         message += " BML requires generic CKAngelScript array object access for script-side value marshalling.";
     } else if (feature == CKAS_FEATURE_ACTIVE_CONTEXT_EXCEPTION) {
         message += " BML requires CKAngelScript to set host API exceptions on the current script context.";
+    } else if (feature == CKAS_FEATURE_SOURCE_SECTIONS) {
+        message += " BML requires CKAngelScript source-section loading for consistent script hot reload snapshots.";
     }
     return message;
 }
@@ -112,7 +115,7 @@ bool CKAngelScriptAdapter::IsAvailable() const {
 
 bool CKAngelScriptAdapter::HasFeature(CKAS_FEATURE feature) const {
     const int index = static_cast<int>(feature);
-    return index >= 0 && index <= CKAS_FEATURE_ACTIVE_CONTEXT_EXCEPTION && m_Features[index];
+    return index >= 0 && index <= CKAS_FEATURE_SOURCE_SECTIONS && m_Features[index];
 }
 
 CKAngelScriptAdapter::State CKAngelScriptAdapter::GetState() const {
@@ -218,6 +221,8 @@ const char *CKAngelScriptAdapter::FeatureName(CKAS_FEATURE feature) {
         return "CKAS_FEATURE_SCRIPT_ARRAY_ACCESS";
     case CKAS_FEATURE_ACTIVE_CONTEXT_EXCEPTION:
         return "CKAS_FEATURE_ACTIVE_CONTEXT_EXCEPTION";
+    case CKAS_FEATURE_SOURCE_SECTIONS:
+        return "CKAS_FEATURE_SOURCE_SECTIONS";
     default:
         return "CKAS_FEATURE_UNKNOWN";
     }
@@ -308,7 +313,7 @@ bool CKAngelScriptAdapter::ValidateFeatures() {
     for (CKAS_FEATURE feature : kRequiredFeatures) {
         const int index = static_cast<int>(feature);
         const bool supported = m_Api.HasFeature(feature) != 0;
-        if (index >= 0 && index <= CKAS_FEATURE_ACTIVE_CONTEXT_EXCEPTION)
+        if (index >= 0 && index <= CKAS_FEATURE_SOURCE_SECTIONS)
             m_Features[index] = supported;
 
         if (!supported) {

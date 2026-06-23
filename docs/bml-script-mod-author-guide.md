@@ -378,6 +378,10 @@ Expected behavior:
 - A compile or metadata failure keeps the old runtime active when one exists.
   The in-game message only says reload failed; use `script diag <id>` or the
   Logs tab for the structured compiler messages.
+- BML captures an in-memory source snapshot at the start of each reload attempt.
+  Validation and commit use that same candidate runtime, so saving the script
+  again while reload is running cannot switch the committed source underneath
+  the validator.
 - If the mod failed during initial startup, BML keeps a failed placeholder. Fix
   the file, then run `script reload` or `script reload <placeholder-id>` to
   recover it. The placeholder can promote to the real mod id when that id does

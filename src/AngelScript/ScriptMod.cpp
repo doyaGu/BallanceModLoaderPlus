@@ -1,8 +1,11 @@
 #include "ScriptMod.h"
 
 #include <algorithm>
+#include <cwctype>
 #include <filesystem>
 #include <iomanip>
+#include <iterator>
+#include <set>
 #include <sstream>
 #include <system_error>
 #include <utility>
@@ -99,6 +102,36 @@ static std::vector<std::string> CanonicalHostRegistrations(const std::vector<Scr
     return canonical;
 }
 
+static std::string FormatHostRegistrationForDiagnostic(const std::string &canonical) {
+    const size_t separator = canonical.find('\n');
+    if (separator == std::string::npos)
+        return canonical;
+    std::string key = canonical.substr(separator + 1);
+    std::replace(key.begin(), key.end(), '\n', '|');
+    return canonical.substr(0, separator) + "(" + key + ")";
+}
+
+static void AppendHostRegistrationDiff(std::string &diagnostic,
+                                       const char *label,
+                                       const std::vector<std::string> &items) {
+    if (items.empty())
+        return;
+    diagnostic += " ";
+    diagnostic += label ? label : "changed";
+    diagnostic += ": ";
+    constexpr size_t kMaxItems = 6;
+    for (size_t i = 0; i < items.size() && i < kMaxItems; ++i) {
+        if (i != 0)
+            diagnostic += ", ";
+        diagnostic += FormatHostRegistrationForDiagnostic(items[i]);
+    }
+    if (items.size() > kMaxItems) {
+        diagnostic += ", ... +";
+        diagnostic += std::to_string(items.size() - kMaxItems);
+    }
+    diagnostic += ".";
+}
+
 static std::string MakeReloadModuleName(const ScriptModRuntime &runtime) {
     static std::atomic<unsigned long> s_ReloadSerial{1};
     std::string base = runtime.GetModuleName();
@@ -141,6 +174,8 @@ struct ScriptModReloadSourceSnapshot {
     ScriptModEntry CommitEntry;
     std::string CompileEntryPathUtf8;
     std::string CommitEntryPathUtf8;
+    std::string EntrySectionNameUtf8;
+    std::vector<ScriptSourceSection> SourceSections;
     std::wstring StagedRoot;
     std::string DiagnosticStagedRootUtf8;
     std::string DiagnosticDisplayRootUtf8;
@@ -160,6 +195,8 @@ struct ScriptModReloadSourceSnapshot {
         CommitEntry = ScriptModEntry();
         CompileEntryPathUtf8.clear();
         CommitEntryPathUtf8.clear();
+        EntrySectionNameUtf8.clear();
+        SourceSections.clear();
         DiagnosticStagedRootUtf8.clear();
         DiagnosticDisplayRootUtf8.clear();
     }
@@ -219,6 +256,162 @@ static void RewriteSnapshotDiagnosticPaths(const ScriptModReloadSourceSnapshot &
                               snapshot.DiagnosticStagedRootUtf8,
                               snapshot.DiagnosticDisplayRootUtf8);
     }
+}
+
+static bool EndsWithInsensitiveW(const std::wstring &value, const wchar_t *suffix) {
+    if (!suffix)
+        return false;
+    const size_t suffixLength = std::wcslen(suffix);
+    if (value.size() < suffixLength)
+        return false;
+    return _wcsicmp(value.c_str() + value.size() - suffixLength, suffix) == 0;
+}
+
+static std::string ToScriptSectionNameUtf8(const std::wstring &path,
+                                           const std::wstring &root) {
+    std::wstring relative;
+    if (!root.empty() && utils::IsPathInsideRootW(path, root)) {
+        relative = utils::MakeRelativePathW(path, root);
+    }
+    if (relative.empty() || relative == L".")
+        relative = utils::GetFileNameW(path);
+
+    std::string section = utils::Utf16ToUtf8(relative);
+    for (char &ch : section) {
+        if (ch == '\\')
+            ch = '/';
+    }
+    return section;
+}
+
+static std::wstring FoldPathKeyW(std::wstring path) {
+    path = utils::ResolvePathW(path);
+    std::replace(path.begin(), path.end(), L'/', L'\\');
+    std::transform(path.begin(), path.end(), path.begin(), [](wchar_t ch) {
+        return static_cast<wchar_t>(std::towlower(ch));
+    });
+    return path;
+}
+
+static bool AddScriptSourceSection(const std::wstring &path,
+                                   const std::wstring &sectionRoot,
+                                   std::set<std::wstring> &seen,
+                                   std::vector<ScriptSourceSection> &sections,
+                                   ScriptDiagnostic &diagnostic) {
+    const std::wstring key = FoldPathKeyW(path);
+    if (!seen.insert(key).second)
+        return true;
+
+    std::string code;
+    const std::string pathUtf8 = utils::Utf16ToUtf8(path);
+    if (!utils::ReadFileBytesUtf8(pathUtf8, code)) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                          "Failed to read script source into reload snapshot.");
+        diagnostic.EntryPath = pathUtf8;
+        return false;
+    }
+
+    ScriptSourceSection section;
+    section.Name = ToScriptSectionNameUtf8(path, sectionRoot);
+    section.Code = std::move(code);
+    sections.push_back(std::move(section));
+    return true;
+}
+
+static bool AddScriptSourceDirectory(const std::wstring &root,
+                                     const std::wstring &sectionRoot,
+                                     const std::wstring &entryPath,
+                                     bool includeModEntries,
+                                     std::set<std::wstring> &seen,
+                                     std::vector<ScriptSourceSection> &sections,
+                                     ScriptDiagnostic &diagnostic) {
+    if (root.empty() || !utils::DirectoryExistsW(root))
+        return true;
+
+    std::error_code ec;
+    for (std::filesystem::recursive_directory_iterator it(root, ec), end;
+         it != end && !ec;
+         it.increment(ec)) {
+        if (!it->is_regular_file(ec)) {
+            if (ec)
+                break;
+            continue;
+        }
+        const std::wstring path = it->path().wstring();
+        if (!EndsWithInsensitiveW(path, L".as"))
+            continue;
+        if (!includeModEntries &&
+            IsScriptModEntryName(utils::GetFileNameW(path).c_str()) &&
+            FoldPathKeyW(path) != FoldPathKeyW(entryPath)) {
+            continue;
+        }
+        if (!AddScriptSourceSection(path, sectionRoot, seen, sections, diagnostic))
+            return false;
+    }
+
+    if (ec) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                          "Failed to enumerate script source snapshot directory.");
+        diagnostic.EntryPath = utils::Utf16ToUtf8(root);
+        return false;
+    }
+    return true;
+}
+
+static bool CaptureReloadSourceSections(const ScriptModEntry &entry,
+                                        const ScriptModEntry &compileEntry,
+                                        std::vector<ScriptSourceSection> &sections,
+                                        std::string &entrySectionName,
+                                        ScriptDiagnostic &diagnostic) {
+    sections.clear();
+    entrySectionName.clear();
+    if (compileEntry.EntryPath.empty() || !utils::FileExistsW(compileEntry.EntryPath)) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                          "Script entry file no longer exists.");
+        diagnostic.EntryPath = utils::Utf16ToUtf8(compileEntry.EntryPath);
+        return false;
+    }
+
+    std::wstring sectionRoot = compileEntry.RootDirectory;
+    if (entry.SourceKind == ScriptModEntrySourceKind::SingleFile || sectionRoot.empty())
+        sectionRoot = utils::GetDirectoryW(compileEntry.EntryPath);
+
+    std::set<std::wstring> seen;
+    if (!AddScriptSourceSection(compileEntry.EntryPath, sectionRoot, seen, sections, diagnostic))
+        return false;
+    entrySectionName = sections.front().Name;
+
+    if (entry.SourceKind == ScriptModEntrySourceKind::SingleFile) {
+        if (!AddScriptSourceDirectory(utils::GetDirectoryW(compileEntry.EntryPath),
+                                      sectionRoot,
+                                      compileEntry.EntryPath,
+                                      false,
+                                      seen,
+                                      sections,
+                                      diagnostic)) {
+            return false;
+        }
+        if (!compileEntry.ResourceRootDirectory.empty() &&
+            !utils::IsPathInsideRootW(compileEntry.ResourceRootDirectory, sectionRoot) &&
+            !AddScriptSourceDirectory(compileEntry.ResourceRootDirectory,
+                                      compileEntry.ResourceRootDirectory,
+                                      compileEntry.EntryPath,
+                                      false,
+                                      seen,
+                                      sections,
+                                      diagnostic)) {
+            return false;
+        }
+        return true;
+    }
+
+    return AddScriptSourceDirectory(compileEntry.RootDirectory,
+                                    sectionRoot,
+                                    compileEntry.EntryPath,
+                                    true,
+                                    seen,
+                                    sections,
+                                    diagnostic);
 }
 
 static ScriptModEntry MakeFilesystemCommitEntry(const ScriptModEntry &currentEntry,
@@ -293,6 +486,15 @@ static bool CaptureReloadSourceSnapshot(const ScriptModEntry &entry,
                                                          snapshot.CompileEntry);
     }
     snapshot.CommitEntryPathUtf8 = utils::Utf16ToUtf8(snapshot.CommitEntry.EntryPath);
+
+    if (!CaptureReloadSourceSections(entry,
+                                     snapshot.CompileEntry,
+                                     snapshot.SourceSections,
+                                     snapshot.EntrySectionNameUtf8,
+                                     diagnostic)) {
+        RewriteSnapshotDiagnosticPaths(snapshot, diagnostic);
+        return false;
+    }
 
     return true;
 }
@@ -1322,14 +1524,26 @@ bool ScriptMod::ValidateHostRegistrationSet(std::string &diagnostic, bool failed
     if (expected == actual)
         return true;
 
+    std::vector<std::string> added;
+    std::vector<std::string> removed;
+    std::set_difference(actual.begin(), actual.end(),
+                        expected.begin(), expected.end(),
+                        std::back_inserter(added));
+    std::set_difference(expected.begin(), expected.end(),
+                        actual.begin(), actual.end(),
+                        std::back_inserter(removed));
+
     if (failedLoadRecovery && expected.empty() && !actual.empty()) {
         diagnostic = "Script mod failed-load recovery introduced ball/floor/module registrations. "
                      "Hot reload cannot create irreversible host registrations for a script mod that never loaded; "
                      "restart is required.";
+        AppendHostRegistrationDiff(diagnostic, "added", added);
         return false;
     }
 
     diagnostic = "Script mod changed ball/floor/module registrations; restart is required.";
+    AppendHostRegistrationDiff(diagnostic, "added", added);
+    AppendHostRegistrationDiff(diagnostic, "removed", removed);
     return false;
 }
 
@@ -2033,9 +2247,10 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
 
     ScriptModDefinition candidateDefinition;
     ScriptModRuntime candidateRuntime(MakeReloadModuleName(m_Runtime));
-    if (!candidateRuntime.LoadModule(m_Context ? m_Context->GetCKContext() : nullptr,
-                                     snapshot.CompileEntryPathUtf8,
-                                     diagnostic)) {
+    if (!candidateRuntime.LoadModuleFromSections(m_Context ? m_Context->GetCKContext() : nullptr,
+                                                 snapshot.SourceSections,
+                                                 snapshot.EntrySectionNameUtf8,
+                                                 diagnostic)) {
         RewriteSnapshotDiagnosticPaths(snapshot, diagnostic);
         ReleaseRuntimeOnly(candidateRuntime);
         return finishWithDiagnostic(diagnostic);
@@ -2180,9 +2395,10 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
 
     ScriptModDefinition candidateDefinition;
     ScriptModRuntime candidateRuntime(MakeReloadModuleName(m_Runtime));
-    if (!candidateRuntime.LoadModule(m_Context ? m_Context->GetCKContext() : nullptr,
-                                     snapshot.CompileEntryPathUtf8,
-                                     diagnostic)) {
+    if (!candidateRuntime.LoadModuleFromSections(m_Context ? m_Context->GetCKContext() : nullptr,
+                                                 snapshot.SourceSections,
+                                                 snapshot.EntrySectionNameUtf8,
+                                                 diagnostic)) {
         RewriteSnapshotDiagnosticPaths(snapshot, diagnostic);
         ReleaseRuntimeOnly(candidateRuntime);
         return finishWithDiagnostic(diagnostic);
@@ -2240,11 +2456,6 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                                                      GetReloadAttemptId());
     }
     candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
-    if (!ReleaseRuntimeOnly(candidateRuntime)) {
-        const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
-                                                              "Reload candidate cleanup failed; keeping previous runtime.");
-        return finish(false, failure.Message, &failure);
-    }
 
     const bool recoveringPlaceholder = IsFailedPlaceholder();
     const std::string recoveryOldId = m_Definition.Id;
@@ -2284,40 +2495,38 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     ScriptModRuntime oldRuntime = std::move(m_Runtime);
     const std::string oldDiagnosticPathFrom = m_RuntimeDiagnosticPathFrom;
     const std::string oldDiagnosticPathTo = m_RuntimeDiagnosticPathTo;
-    const std::string liveModuleName = MakeReloadModuleName(oldRuntime);
 
     m_Definition = std::move(candidateDefinition);
     m_Entry = snapshot.CommitEntry;
-    m_Runtime = ScriptModRuntime(liveModuleName);
+    m_Runtime = std::move(candidateRuntime);
     m_Runtime.SetOwner(this);
     SetRuntimeDiagnosticPathRewrite(snapshot.DiagnosticStagedRootUtf8,
                                     snapshot.DiagnosticDisplayRootUtf8);
     m_State.ClearFailure();
 
-    ScriptDiagnostic liveDiagnostic;
-    const bool liveModuleLoaded = m_Runtime.LoadModule(m_Context ? m_Context->GetCKContext() : nullptr,
-                                                       snapshot.CompileEntryPathUtf8,
-                                                       liveDiagnostic);
-    if (!liveModuleLoaded) {
-        RewriteSnapshotDiagnosticPaths(snapshot, liveDiagnostic);
-        Fail(liveDiagnostic);
-    }
-
     bool liveRuntimeLoaded = false;
-    if (liveModuleLoaded) {
-        const ScriptModReloadPhase loadPhase = recoveringPlaceholder
-                                                   ? ScriptModReloadPhase::Recovery
-                                                   : ScriptModReloadPhase::Load;
+    const ScriptModReloadPhase loadPhase = recoveringPlaceholder
+                                               ? ScriptModReloadPhase::Recovery
+                                               : ScriptModReloadPhase::Load;
+    {
         ScriptModReloadPhaseScope phase(*this, loadPhase);
         liveRuntimeLoaded = LoadCurrentRuntime(true, recoveringPlaceholder);
     }
 
-    if (liveModuleLoaded && liveRuntimeLoaded) {
+    if (liveRuntimeLoaded) {
         ReleaseRuntimeOnly(oldRuntime);
         if (oldEntry.SourceKind == ScriptModEntrySourceKind::ZipPackage &&
             !oldEntry.RootDirectory.empty() &&
             oldEntry.RootDirectory != m_Entry.RootDirectory) {
-            utils::DeleteDirectoryW(oldEntry.RootDirectory);
+            if (!utils::DeleteDirectoryW(oldEntry.RootDirectory)) {
+                const std::string oldRoot = utils::Utf16ToUtf8(oldEntry.RootDirectory);
+                Record(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                                            "Failed to remove previous script package reload staging directory: " + oldRoot));
+                if (m_Context && m_Context->GetLogger()) {
+                    m_Context->GetLogger()->Warn("Failed to remove previous script package reload staging directory: %s",
+                                                 oldRoot.c_str());
+                }
+            }
         }
         if (snapshot.CommitEntry.RootDirectory == snapshot.CompileEntry.RootDirectory)
             snapshot.KeepStagedRoot();

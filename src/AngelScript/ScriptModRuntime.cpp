@@ -259,6 +259,57 @@ bool ScriptModRuntime::LoadModuleFromCode(CKContext *context,
     return true;
 }
 
+bool ScriptModRuntime::LoadModuleFromSections(CKContext *context,
+                                              const std::vector<ScriptSourceSection> &sections,
+                                              const std::string &entryPathUtf8,
+                                              ScriptDiagnostic &diagnostic) {
+    if (m_ModuleLoaded)
+        return true;
+    if (sections.empty()) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Compile,
+                                          "Script source snapshot does not contain an entry section.");
+        diagnostic.EntryPath = entryPathUtf8;
+        return false;
+    }
+    if (!Refresh(context, diagnostic))
+        return false;
+
+    const ::CKAngelScriptAdapter::Api &api = m_Adapter.GetApi();
+    CKAngelScript *angelScript = m_Adapter.GetAngelScript();
+
+    std::vector<CKAngelScriptSourceSection> sourceSections;
+    sourceSections.reserve(sections.size());
+    for (const ScriptSourceSection &section : sections) {
+        CKAngelScriptSourceSection sourceSection = {};
+        sourceSection.Size = sizeof(sourceSection);
+        sourceSection.SectionName = section.Name.c_str();
+        sourceSection.Code = section.Code.c_str();
+        sourceSection.CodeSize = section.Code.size();
+        sourceSections.push_back(sourceSection);
+    }
+
+    CKAngelScriptResult result = {};
+    api.InitResult(&result);
+    CKAngelScriptLoadOptions loadOptions = {};
+    api.InitLoadOptions(&loadOptions);
+    loadOptions.ModuleName = m_ModuleName.c_str();
+    loadOptions.Sections = sourceSections.data();
+    loadOptions.SectionCount = sourceSections.size();
+    loadOptions.Flags = CKAS_LOAD_REPLACEEXISTING;
+
+    const CKAS_STATUS status = api.LoadModule(angelScript, &loadOptions, &result);
+    if (status != CKAS_OK) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Compile, status, result, "Compile failed");
+        diagnostic.EntryPath = entryPathUtf8;
+        ReplaceAll(diagnostic.RawMessage, m_ModuleName + "(", entryPathUtf8 + "(");
+        ReplaceCompilerMessageSection(diagnostic, m_ModuleName, entryPathUtf8);
+        return false;
+    }
+
+    m_ModuleLoaded = true;
+    return true;
+}
+
 bool ScriptModRuntime::EnumerateMetadata(CKContext *context,
                                          CKAngelScriptMetadataCallback callback,
                                          void *userData,

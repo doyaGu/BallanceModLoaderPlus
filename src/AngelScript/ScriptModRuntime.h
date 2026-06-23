@@ -2,6 +2,7 @@
 #define BML_SCRIPTMODRUNTIME_H
 
 #include <string>
+#include <vector>
 
 #include "CKAngelScriptAdapter.h"
 #include "ScriptDiagnostic.h"
@@ -64,6 +65,11 @@ struct ScriptMethodCall {
     const char *FailurePrefix = nullptr;
 };
 
+struct ScriptSourceSection {
+    std::string Name;
+    std::string Code;
+};
+
 class ScriptModRuntime {
 public:
     ScriptModRuntime() = default;
@@ -93,6 +99,10 @@ public:
                             const std::string &sourceCode,
                             const std::string &entryPathUtf8,
                             ScriptDiagnostic &diagnostic);
+    bool LoadModuleFromSections(CKContext *context,
+                                const std::vector<ScriptSourceSection> &sections,
+                                const std::string &entryPathUtf8,
+                                ScriptDiagnostic &diagnostic);
     bool EnumerateMetadata(CKContext *context,
                            CKAngelScriptMetadataCallback callback,
                            void *userData,

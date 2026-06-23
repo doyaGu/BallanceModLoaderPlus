@@ -180,7 +180,7 @@ private:
     Api m_Api;
     State m_State = State::Unchecked;
     CKDWORD m_ApiVersion = 0;
-    bool m_Features[CKAS_FEATURE_ACTIVE_CONTEXT_EXCEPTION + 1] = {};
+    bool m_Features[CKAS_FEATURE_SOURCE_SECTIONS + 1] = {};
     std::string m_Diagnostic;
 };
 
