@@ -1484,13 +1484,15 @@
 
 
 <h1 id="bml-api">BML 脚本 API<a class="headerlink" href="#bml-api" title="Permanent link">&para;</a></h1>
-<p>这里放脚本教程中会用到的 BMLPlus 脚本绑定声明。</p>
+<p>这里放脚本教程中会用到的 BML 脚本绑定声明。</p>
 <h2 id="_1">绑定声明<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <ul>
+<li><a href="../as.predefined">as.predefined</a></li>
 <li><a href="../bml-script-mod-api.as">BML 脚本 mod API</a></li>
 <li><a href="../bml-imgui-api.as">BML ImGui API</a></li>
 </ul>
-<p><code>.as</code> 文件不是教程章节，而是脚本能看到的绑定声明。写脚本时遇到类型、函数、回调签名不确定，优先查这些文件。</p>
+<p><code>as.predefined</code> 是给 AngelScript Language Server 使用的完整预定义文件，写脚本时建议把它放到 VS Code 工作区里。它不是运行时脚本，BML 不会加载它。</p>
+<p>下面两个 <code>.as</code> 文件是拆分出来的 BML 声明，适合快速查 BML 自己提供的类型、函数、回调签名。</p>
 
 
 
