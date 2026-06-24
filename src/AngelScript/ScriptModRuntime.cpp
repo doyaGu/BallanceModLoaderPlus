@@ -39,6 +39,16 @@ void ReplaceCompilerMessageSection(ScriptDiagnostic &diagnostic,
             message.Section = to;
     }
 }
+
+CKAS_STATUS __cdecl BMLScriptHostCallFilter(const char *apiName, CKDWORD flags, void *) {
+    if ((flags & CKAS_HOSTCALL_MUTATES_HOST_STATE) == 0)
+        return CKAS_OK;
+
+    return ScriptModRuntime::RecordConstructionHostCallViolation(apiName) ||
+           ScriptModRuntime::RecordStateHookHostCallViolation(apiName)
+               ? CKAS_INVALIDSTATE
+               : CKAS_OK;
+}
 } // namespace
 
 ScriptCurrentModScope::ScriptCurrentModScope(ScriptMod *owner)
@@ -247,8 +257,25 @@ bool ScriptModRuntime::IsInRenderCallback() {
 }
 
 bool ScriptModRuntime::Refresh(CKContext *context, ScriptDiagnostic &diagnostic) {
-    if (m_Adapter.Refresh(context))
+    if (m_Adapter.Refresh(context)) {
+        const ::CKAngelScriptAdapter::Api &api = m_Adapter.GetApi();
+        if (api.InitResult && api.SetHostCallFilter) {
+            CKAngelScriptResult result = {};
+            api.InitResult(&result);
+            const CKAS_STATUS status = api.SetHostCallFilter(m_Adapter.GetAngelScript(),
+                                                             BMLScriptHostCallFilter,
+                                                             nullptr,
+                                                             &result);
+            if (status != CKAS_OK) {
+                diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::CkasHost,
+                                                  status,
+                                                  result,
+                                                  "Failed to install CKAngelScript host-call filter");
+                return false;
+            }
+        }
         return true;
+    }
     diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::CkasHost, m_Adapter.GetDiagnostic());
     return false;
 }
