@@ -141,7 +141,7 @@ Larger directory or zip mod:
 ```text
 MyScriptMod/
   MyScript.mod.as       # the only BML entry
-  src/                  # ordinary AngelScript files if CKAS include support is used
+  libs/                 # ordinary AngelScript files included by the entry
   Resources/            # textures, NMO/CMO/VMO assets, text data
   ConfigDefaults/       # optional user-facing defaults you copy/read yourself
   README.md
@@ -151,6 +151,10 @@ The entry file is the BML mod boundary. Keep metadata, the main class, and the
 public `[bml.export]` methods easy to find there. Put implementation helpers in
 other files only when your CKAngelScript setup includes them during module
 build; do not assume BML will scan arbitrary files as separate mod entries.
+Keep helper files inside the owning mod directory, for example
+`MyScriptMod/libs/*.as`. Do not use a global `ModLoader/Mods/libs` directory as
+a shared script library root; hot reload tracks a single mod's entry and
+resource root, not arbitrary global include paths.
 
 `.bmodp` is reserved for native DLL mods. Do not use `.bmodp` for script mods.
 
@@ -382,6 +386,9 @@ Expected behavior:
   Validation and commit use that same candidate runtime, so saving the script
   again while reload is running cannot switch the committed source underneath
   the validator.
+- `--dry-run` does not call `SaveState`, `MigrateState`, `RestoreState`, or
+  candidate `OnLoad`. It validates compilation, metadata, compatibility, and
+  required state hook declarations only.
 - If the mod failed during initial startup, BML keeps a failed placeholder. Fix
   the file, then run `script reload` or `script reload <placeholder-id>` to
   recover it. The placeholder can promote to the real mod id when that id does
@@ -450,16 +457,18 @@ void RestoreState(BML::StateBag@ state) {
   Do not store AngelScript objects, callbacks, `ModRef`, `ExportRef`, CK handles,
   timers, commands, or DataShare requests in it; those resources are rebound
   through the normal `OnLoad` path.
-- `StateBag` is transient. BML enables it only while it is calling
-  `SaveState`, `MigrateState`, or `RestoreState`. If a script stores the
-  `StateBag@` in a field and tries to use it later, the script-visible API
-  behaves as empty and ignores mutations.
+- A `StateBag` passed by BML to `SaveState`, `MigrateState`, or `RestoreState`
+  reports `state.IsReloadState == true` and is transient. BML enables it only
+  while it is calling that hook. If a script stores that `StateBag@` in a field
+  and tries to use it later, the script-visible API behaves as empty and ignores
+  mutations. A script-created `BML::StateBag()` is just a normal script-owned
+  primitive/string container and is not a hot reload migration object.
 - State hooks are restricted phases. They may copy primitive/string values
   through `StateBag`, read context information, and log diagnostics. They must
   not register timers, commands, hooks, DataShare requests, or irreversible
   content; they must not execute commands, write DataShare/config values, mutate
-  input state, or change CK/game-world objects. Rebuild resources in `OnLoad`
-  after pure state has been restored.
+  input state, call `ExportRef`/native exports, or change CK/game-world objects.
+  Rebuild resources in `OnLoad` after pure state has been restored.
 - Rollback restores only resources BML owns: callbacks, exports, timers,
   commands, DataShare requests, and script runtime handles. It cannot undo
   changes your script already made to the game world through CKAS Scene/BB APIs,
@@ -1424,7 +1433,9 @@ with the same CKAngelScript runtime that will ship with the mod.
   and `.zip` script packages.
 - `.bmodp` is native-only.
 - Single-file resources live under the sibling directory named after the entry
-  stem, e.g. `Mods/Foo/Resources` for `Mods/Foo.mod.as`.
+  stem, e.g. `Mods/Foo/Resources` for `Mods/Foo.mod.as`. If the script grows
+  enough to need helper `.as` libraries, prefer converting it to a directory
+  script mod with `Foo/Foo.mod.as` and `Foo/libs/*.as`.
 - Directory and zip script mods should keep stable assets under `Resources/`.
 - Keep exactly one `*.mod.as` entry per directory or zip package. Helper files
   are fine only when the CKAngelScript build process includes them as part of

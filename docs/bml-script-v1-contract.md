@@ -83,11 +83,17 @@ not dynamic mod discovery and not dependency graph reconstruction.
 - `script reload` without an id means `script reload all`. `--dry-run` compiles,
   reflects metadata, creates the candidate object, caches callbacks/exports,
   validates compatibility, then unloads the candidate without calling its
-  `OnLoad`.
+  `OnLoad`. It also checks required state hook declarations, but it does not
+  execute `SaveState`, `MigrateState`, or `RestoreState`.
 - Each reload attempt first captures the entry and included `.as` sources into
   an in-memory source snapshot. Prepare and commit use the same compiled
   candidate runtime, so a save between validation and commit cannot change what
   is installed.
+- Source snapshots are bounded by the script mod package. Directory and zip
+  packages should keep helper `.as` files under the package root, typically
+  `libs/`. Single-file scripts should stay small or move to a directory package
+  when they need helper libraries; a global `ModLoader/Mods/libs` directory is
+  not a stable hot reload boundary.
 - If a mod failed during initial startup before a working runtime existed, BML
   keeps a failed placeholder. After the source is fixed, `script reload <id>`
   or `script reload all` may recover that placeholder and promote it to the real
@@ -122,14 +128,17 @@ not dynamic mod discovery and not dependency graph reconstruction.
 - `StateBag` stores only `bool`, `int`, `float`, and `string` values keyed by
   string. It never carries AngelScript object handles, callbacks, BML resource
   handles, CK object handles, or other runtime-owned pointers across reload.
-- `StateBag` is transient. BML enables script access only while it is calling
-  `SaveState`, `MigrateState`, or `RestoreState`; a stored `StateBag@` behaves
-  as empty and ignores writes after the hook returns.
+- A `StateBag` passed by BML to `SaveState`, `MigrateState`, or `RestoreState`
+  reports `IsReloadState == true` and is transient. BML enables script access
+  only while it is calling that hook; a stored reload `StateBag@` behaves as
+  empty and ignores writes after the hook returns. A script-created
+  `BML::StateBag()` is a normal script-owned primitive/string container.
 - State migration hooks are restricted. They may transfer primitive/string
   values through `StateBag`, read context information, and log. They must not
   create timers, commands, hooks, DataShare requests, irreversible content, or
-  mutate DataShare/config/input/game-world state; resources are rebuilt from
-  restored pure data in `OnLoad`.
+  mutate DataShare/config/input/game-world state, call `ExportRef`/native
+  exports, or otherwise cross into external host side effects; resources are
+  rebuilt from restored pure data in `OnLoad`.
 - Script mods are reload-aware through `BML::ModContext`: `IsReloading` is true
   only during script lifecycle callbacks that are part of hot reload, and
   `ReloadPhase` reports `RELOAD_UNLOAD`, `RELOAD_LOAD`, `RELOAD_ROLLBACK`,

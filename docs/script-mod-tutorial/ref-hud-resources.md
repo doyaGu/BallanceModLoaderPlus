@@ -56,8 +56,10 @@ string content = ctx.ReadModTextFileUtf8("data/message.txt", "");
 
 ```
 ModLoader/Mods/
-  MyMod.mod.as
   MyMod/
+    MyMod.mod.as
+    libs/
+      MyUtils.as
     data/
       message.txt
 ```
@@ -68,7 +70,9 @@ ModLoader/Mods/
 #include "libs/MyUtils.as"
 ```
 
-库文件不能有 [bml.mod] 属性。放在 `ModLoader/Mods/libs/` 下。
+库文件不能有 [bml.mod] 属性。放在当前 mod 目录自己的 `libs/` 下，不要放到全局
+`ModLoader/Mods/libs/` 里给多个 mod 共用。热重载按单个 mod 的入口和资源根目录
+计算源码范围；全局 include 文件不是稳定的热重载边界。
 
 ## 加载资源对象
 

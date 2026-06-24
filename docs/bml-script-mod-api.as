@@ -37,6 +37,14 @@ enum ReloadPhase {
   RELOAD_RESTORE_STATE = 8
 }
 
+enum StateValueType {
+  STATE_VALUE_EMPTY = 0,
+  STATE_VALUE_BOOL = 1,
+  STATE_VALUE_INT = 2,
+  STATE_VALUE_FLOAT = 3,
+  STATE_VALUE_STRING = 4
+}
+
 enum HudFlag {
   HUD_TITLE = 1,
   HUD_FPS = 2,
@@ -932,6 +940,26 @@ class ExportRef {
   int CallInt(int &out result) const;
   int CallFloat(float argument, float &out result) const;
   int CallFloat(float &out result) const;
+}
+
+class StateBag {
+  bool get_IsReloadState() const;
+  bool IsReloadState() const;
+  bool Has(const string &in key) const;
+  bool Remove(const string &in key);
+  void Clear();
+  int get_Count() const;
+  int GetCount() const;
+  string GetKey(int index) const;
+  StateValueType GetType(const string &in key) const;
+  void SetBool(const string &in key, bool value);
+  bool GetBool(const string &in key, bool defaultValue = false) const;
+  void SetInt(const string &in key, int value);
+  int GetInt(const string &in key, int defaultValue = 0) const;
+  void SetFloat(const string &in key, float value);
+  float GetFloat(const string &in key, float defaultValue = 0.0f) const;
+  void SetString(const string &in key, const string &in value);
+  string GetString(const string &in key, const string &in defaultValue = "") const;
 }
 
 class CallFrame {
