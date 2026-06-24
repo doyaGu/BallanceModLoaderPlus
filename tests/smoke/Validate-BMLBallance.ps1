@@ -34,19 +34,33 @@ $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot '..\..\scripts\lib\BMLProject.psm1') -Force
 
+function Convert-SmokeText {
+    param(
+        [AllowNull()]
+        [object]$Text
+    )
+
+    if ($null -eq $Text) {
+        return ''
+    }
+
+    return [string]::Join("`n", @($Text))
+}
+
 function Test-SmokeTextContains {
     param(
         [AllowNull()]
-        [string]$Text,
+        [object]$Text,
 
         [Parameter(Mandatory = $true)]
         [string]$Needle
     )
 
-    if ($null -eq $Text) {
+    $textString = Convert-SmokeText $Text
+    if ($textString.Length -eq 0) {
         return $false
     }
-    return $Text.IndexOf($Needle, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+    return $textString.IndexOf($Needle, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
 }
 
 function Test-SmokeTextContainsAfter {
@@ -61,11 +75,10 @@ function Test-SmokeTextContainsAfter {
         [string]$AfterNeedle
     )
 
-    if ($null -eq $Text) {
+    $textString = Convert-SmokeText $Text
+    if ($textString.Length -eq 0) {
         return $false
     }
-
-    $textString = [string]::Join("`n", @($Text))
     $afterIndex = $textString.IndexOf($AfterNeedle, [System.StringComparison]::OrdinalIgnoreCase)
     if ($afterIndex -lt 0) {
         return $false
@@ -341,8 +354,8 @@ if (-not $SkipPlayer) {
     $playerExitCode = $process.ExitCode
 }
 
-$modLogText = Get-BMLTextIfExists $modLoaderLog
-$playerLogText = Get-BMLTextIfExists $playerLog
+$modLogText = Convert-SmokeText (Get-BMLTextIfExists $modLoaderLog)
+$playerLogText = Convert-SmokeText (Get-BMLTextIfExists $playerLog)
 $checks = [System.Collections.Generic.List[object]]::new()
 if (-not $SkipPlayer) {
     Add-SmokeCheck $checks 'player-postprocess-clean' (-not (Test-SmokeTextContains $playerLogText 'Error : PostProcess')) 'Player.log must not contain Error : PostProcess'
