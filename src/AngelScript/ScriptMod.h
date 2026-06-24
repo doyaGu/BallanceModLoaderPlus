@@ -308,7 +308,8 @@ private:
                             bool failedLoadRecovery = false,
                             ScriptStateBag *restoreState = nullptr,
                             const std::string &restoreFromVersion = std::string(),
-                            bool migrateState = true);
+                            bool migrateState = true,
+                            std::vector<ScriptModReloadDiagnosticField> *failureFields = nullptr);
     void CallGameEvent(size_t eventIndex);
     void CleanupFailedLoad();
     void FailIfEventCallFailed(bool ok, const ScriptDiagnostic &diagnostic);

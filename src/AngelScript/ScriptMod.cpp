@@ -897,7 +897,8 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations,
                                    bool failedLoadRecovery,
                                    ScriptStateBag *restoreState,
                                    const std::string &restoreFromVersion,
-                                   bool migrateState) {
+                                   bool migrateState,
+                                   std::vector<ScriptModReloadDiagnosticField> *failureFields) {
     if (m_State.IsFailed())
         return false;
 
@@ -941,6 +942,10 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations,
     m_State.MarkLoaded(true);
 
     if (restoreState) {
+        auto setStateFailureFields = [&](const char *hook, const char *operation, bool executed) {
+            if (failureFields)
+                *failureFields = BuildStateMigrationFailureFields(hook, operation, executed, true);
+        };
         bool restored = false;
         if (migrateState) {
             bool migrated = false;
@@ -953,6 +958,7 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations,
                                                    migrated,
                                                    diagnostic)) {
                     Fail(diagnostic);
+                    setStateFailureFields("MigrateState", "execute_candidate_migrate", true);
                     CleanupFailedLoad();
                     return false;
                 }
@@ -967,6 +973,7 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations,
                                                    restoreStateCalled,
                                                    diagnostic)) {
                     Fail(diagnostic);
+                    setStateFailureFields("RestoreState", "execute_candidate_restore", true);
                     CleanupFailedLoad();
                     return false;
                 }
@@ -980,6 +987,7 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations,
                                                restored,
                                                diagnostic)) {
                 Fail(diagnostic);
+                setStateFailureFields("RestoreState", "execute_rollback_restore", true);
                 CleanupFailedLoad();
                 return false;
             }
@@ -991,6 +999,7 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations,
             Fail(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
                                       std::string("Script hot reload state was saved, but the runtime does not declare ")
                                           + requiredHook + "."));
+            setStateFailureFields(requiredHook, migrateState ? "candidate_restore_not_called" : "rollback_restore_not_called", false);
             CleanupFailedLoad();
             return false;
         }
@@ -2927,6 +2936,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     m_State.ClearFailure();
 
     bool liveRuntimeLoaded = false;
+    std::vector<ScriptModReloadDiagnosticField> liveRuntimeFailureFields;
     const ScriptModReloadPhase loadPhase = recoveringPlaceholder
                                                ? ScriptModReloadPhase::Recovery
                                                : ScriptModReloadPhase::Load;
@@ -2936,7 +2946,8 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                                                recoveringPlaceholder,
                                                savedState.Get(),
                                                oldVersion,
-                                               true);
+                                               true,
+                                               &liveRuntimeFailureFields);
     }
 
     if (liveRuntimeLoaded) {
@@ -2997,6 +3008,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
             {"candidateId", candidateId},
             {"action", "fix_script_and_reload_again_or_restart"},
         };
+        AppendReloadFields(fields, std::move(liveRuntimeFailureFields));
         return finish(false, FormatScriptDiagnostic(failure), &failure, &fields);
     }
 
@@ -3008,13 +3020,15 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     m_State.ClearFailure();
 
     bool rollbackLoaded = false;
+    std::vector<ScriptModReloadDiagnosticField> rollbackRuntimeFailureFields;
     {
         ScriptModReloadPhaseScope phase(*this, ScriptModReloadPhase::Rollback);
         rollbackLoaded = LoadCurrentRuntime(true,
                                             false,
                                             rollbackState.Get(),
                                             oldVersion,
-                                            false);
+                                            false,
+                                            &rollbackRuntimeFailureFields);
     }
 
     if (rollbackLoaded) {
@@ -3035,6 +3049,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
             {"notRestored", "game-world side effects made by script code"},
             {"action", "restart_if_game_world_state_changed"},
         };
+        AppendReloadFields(fields, std::move(liveRuntimeFailureFields));
         return finish(false, FormatScriptDiagnostic(failure), &failure, &fields);
     }
 
@@ -3053,6 +3068,8 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
         {"state", "failed"},
         {"action", "restart_required"},
     };
+    AppendReloadFields(fields, std::move(liveRuntimeFailureFields));
+    AppendReloadFields(fields, std::move(rollbackRuntimeFailureFields));
     return finish(false, m_State.GetLastDiagnosticText(), &m_State.GetLastDiagnostic(), &fields);
 }
 
