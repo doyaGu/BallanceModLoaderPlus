@@ -71,7 +71,10 @@ function Write-RequiredAngelScriptReadme {
 BML+ script mods require CKAngelScript.
 
 This package installs the matching AngelScript.dll into BuildingBlocks next to
-BMLPlus.dll. Keep the two DLLs together when deploying this release.
+BMLPlus.dll. Keep the two DLLs together when deploying this release. BML script
+support in this release requires CKAngelScript API v8 and the host-call filter,
+source-section, object-handle argument, script-array, namespace, and
+object-method context features.
 "@ | Set-Content -Path (Join-Path $DestinationDir 'CKAngelScript-README.txt') -Encoding UTF8
 }
 
@@ -277,6 +280,50 @@ function Get-CKAngelScriptRuntimeDll {
     throw "Required CKAngelScript runtime is missing: $rootDll, $buildingBlocksDll, or $binDll"
 }
 
+function Get-CKAngelScriptHeaderApiVersion {
+    param([string]$HeaderPath)
+
+    Assert-BMLPath -Path $HeaderPath -Type Leaf
+    $match = Select-String -LiteralPath $HeaderPath -Pattern '^\s*#define\s+CKAS_API_VERSION\s+(\d+)\s*$' | Select-Object -First 1
+    if (-not $match) {
+        throw "Unable to read CKAS_API_VERSION from $HeaderPath"
+    }
+    return [int]$match.Matches[0].Groups[1].Value
+}
+
+function Assert-CKAngelScriptHeaderFeature {
+    param(
+        [string]$HeaderPath,
+        [string]$Feature
+    )
+
+    $match = Select-String -LiteralPath $HeaderPath -SimpleMatch $Feature | Select-Object -First 1
+    if (-not $match) {
+        throw "CKAngelScript header is missing required BML script feature $Feature. Use the matching CKAngelScript runtime and headers."
+    }
+}
+
+function Assert-CKAngelScriptRuntimeCompatible {
+    param([string]$RootDir)
+
+    $headerPath = Join-Path $RootDir 'include\CKAngelScript.h'
+    $apiVersion = Get-CKAngelScriptHeaderApiVersion -HeaderPath $headerPath
+    if ($apiVersion -lt 8) {
+        throw "CKAngelScript API version $apiVersion is too old. BML script support requires API version 8 or newer."
+    }
+
+    foreach ($feature in @(
+        'CKAS_FEATURE_OBJECT_TYPE_NAMESPACE',
+        'CKAS_FEATURE_OBJECT_METHOD_CONTEXT_ACCESS',
+        'CKAS_FEATURE_SCRIPT_ARRAY_ACCESS',
+        'CKAS_FEATURE_SOURCE_SECTIONS',
+        'CKAS_FEATURE_OBJECT_HANDLE_ARGS',
+        'CKAS_FEATURE_HOST_CALL_FILTER'
+    )) {
+        Assert-CKAngelScriptHeaderFeature -HeaderPath $headerPath -Feature $feature
+    }
+}
+
 function Copy-CKAngelScriptHeaders {
     param([string]$DestinationIncludeDir)
 
@@ -372,6 +419,7 @@ if ($IncludeAngelScript) {
         Assert-BMLPath -Path $ckasRuntimeDll -Type Leaf
         Assert-BMLPath -Path (Join-Path $ckasRuntime 'include\CKAngelScript.h') -Type Leaf
         Assert-BMLPath -Path (Join-Path $ckasRuntime 'include\angelscript.h') -Type Leaf
+        Assert-CKAngelScriptRuntimeCompatible -RootDir $ckasRuntime
     }
 }
 

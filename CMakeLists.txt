@@ -80,11 +80,32 @@ if (BML_ENABLE_ANGELSCRIPT)
             "${CKANGELSCRIPT_ROOT}")
     if (CKANGELSCRIPT_INCLUDE_DIR AND CKANGELSCRIPT_ANGELSCRIPT_INCLUDE_DIR)
         file(STRINGS "${CKANGELSCRIPT_INCLUDE_DIR}/CKAngelScript.h"
-                CKANGELSCRIPT_ARRAY_FEATURE
-                REGEX "CKAS_FEATURE_SCRIPT_ARRAY_ACCESS")
-        if (NOT CKANGELSCRIPT_ARRAY_FEATURE)
-            message(FATAL_ERROR "BML AngelScript script support requires CKAngelScript with CKAS_FEATURE_SCRIPT_ARRAY_ACCESS")
+                CKANGELSCRIPT_API_VERSION_LINE
+                REGEX "^#define[ \t]+CKAS_API_VERSION[ \t]+[0-9]+")
+        if (NOT CKANGELSCRIPT_API_VERSION_LINE)
+            message(FATAL_ERROR "BML AngelScript script support requires CKAngelScript with CKAS_API_VERSION")
         endif ()
+        string(REGEX REPLACE ".*CKAS_API_VERSION[ \t]+([0-9]+).*" "\\1"
+                CKANGELSCRIPT_API_VERSION "${CKANGELSCRIPT_API_VERSION_LINE}")
+        if (CKANGELSCRIPT_API_VERSION LESS 8)
+            message(FATAL_ERROR "BML AngelScript script support requires CKAngelScript API version 8 or newer")
+        endif ()
+
+        file(STRINGS "${CKANGELSCRIPT_INCLUDE_DIR}/CKAngelScript.h"
+                CKANGELSCRIPT_REQUIRED_FEATURES
+                REGEX "CKAS_FEATURE_(OBJECT_TYPE_NAMESPACE|OBJECT_METHOD_CONTEXT_ACCESS|SCRIPT_ARRAY_ACCESS|SOURCE_SECTIONS|OBJECT_HANDLE_ARGS|HOST_CALL_FILTER)")
+        foreach (required_feature
+                CKAS_FEATURE_OBJECT_TYPE_NAMESPACE
+                CKAS_FEATURE_OBJECT_METHOD_CONTEXT_ACCESS
+                CKAS_FEATURE_SCRIPT_ARRAY_ACCESS
+                CKAS_FEATURE_SOURCE_SECTIONS
+                CKAS_FEATURE_OBJECT_HANDLE_ARGS
+                CKAS_FEATURE_HOST_CALL_FILTER)
+            string(FIND "${CKANGELSCRIPT_REQUIRED_FEATURES}" "${required_feature}" required_feature_index)
+            if (required_feature_index EQUAL -1)
+                message(FATAL_ERROR "BML AngelScript script support requires CKAngelScript with ${required_feature}")
+            endif ()
+        endforeach ()
         set(BML_WITH_ANGELSCRIPT TRUE)
         message(STATUS "BML AngelScript script support enabled")
     else ()
