@@ -1,3 +1,4 @@
+#include "AngelScript/AngelScriptImGuiBindings.h"
 #include "AngelScript/ScriptDiagnostic.h"
 #include "AngelScript/ScriptMod.h"
 
@@ -10,6 +11,12 @@ ILogger *IMod::GetLogger() {
 IConfig *IMod::GetConfig() {
     return nullptr;
 }
+
+CKBOOL BMLImGuiASBeginCallbackRecovery(BMLImGuiASCallbackRecoveryScope *) {
+    return FALSE;
+}
+
+void BMLImGuiASEndCallbackRecovery(BMLImGuiASCallbackRecoveryScope *, const char *, const char *) {}
 
 namespace BML {
 

@@ -13,8 +13,19 @@ struct BMLImGuiASCallScope {
     CKBOOL Changed = FALSE;
 };
 
+struct BMLImGuiASCallbackRecoveryScope {
+    ImGuiContext *Previous = nullptr;
+    CKBOOL Active = FALSE;
+    CKBOOL Changed = FALSE;
+    alignas(8) unsigned char State[64] = {};
+};
+
 CKBOOL BMLImGuiASBeginCall(BMLImGuiASCallScope *scope);
 void BMLImGuiASEndCall(BMLImGuiASCallScope *scope);
+CKBOOL BMLImGuiASBeginCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope);
+void BMLImGuiASEndCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope,
+                                   const char *modId,
+                                   const char *phase);
 void BMLImGuiASSetRegistrationError(const char **errorMessage, const char *expression, int code);
 void BMLImGuiASReportRuntimeWarning(const char *message);
 ImDrawList *BMLImGuiASGetBackgroundDrawList();

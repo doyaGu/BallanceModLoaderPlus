@@ -409,6 +409,7 @@ if (-not $SkipPlayer) {
     }
     Add-SmokeCheck $checks 'compile-diagnostic' (Test-SmokeTextContains $modLogText 'phase=compile') 'phase=compile'
     Add-SmokeCheck $checks 'runtime-diagnostic' (Test-SmokeTextContains $modLogText 'phase=callback') 'phase=callback'
+    Add-SmokeCheck $checks 'script-imgui-stack-recovery' (Test-SmokeTextContains $modLogText 'Recovered mismatched ImGui stack after script callback') 'Recovered mismatched ImGui stack after script callback'
     Add-SmokeCheck $checks 'goodbye' (Test-SmokeTextContains $modLogText 'Goodbye!') 'Goodbye!'
     if (-not $HotReloadStateSmoke) {
         Add-SmokeCheck $checks 'shutdown-smoke' (Test-SmokeTextContains $modLogText 'BML shutdown smoke requesting exit') 'BML shutdown smoke requesting exit'

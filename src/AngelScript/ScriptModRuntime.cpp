@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#include "AngelScriptImGuiBindings.h"
 #include "ScriptMod.h"
 
 namespace BML {
@@ -579,7 +580,12 @@ bool ScriptModRuntime::CallMethod(CKContext *context,
         return false;
     }
     ScriptCurrentModScope callScope(m_Owner);
+    BMLImGuiASCallbackRecoveryScope imguiRecovery;
+    BMLImGuiASBeginCallbackRecovery(&imguiRecovery);
     const CKAS_STATUS status = m_Api->CallObjectMethod(m_AngelScript, &options, &result);
+    BMLImGuiASEndCallbackRecovery(&imguiRecovery,
+                                  m_Owner ? m_Owner->GetID() : nullptr,
+                                  failurePrefix ? failurePrefix : "script method");
     if (status == CKAS_OK)
         return true;
 
