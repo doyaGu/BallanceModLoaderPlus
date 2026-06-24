@@ -384,17 +384,7 @@ static bool CaptureReloadSourceSections(const ScriptModEntry &entry,
     entrySectionName = sections.front().Name;
 
     if (entry.SourceKind == ScriptModEntrySourceKind::SingleFile) {
-        if (!AddScriptSourceDirectory(utils::GetDirectoryW(compileEntry.EntryPath),
-                                      sectionRoot,
-                                      compileEntry.EntryPath,
-                                      false,
-                                      seen,
-                                      sections,
-                                      diagnostic)) {
-            return false;
-        }
         if (!compileEntry.ResourceRootDirectory.empty() &&
-            !utils::IsPathInsideRootW(compileEntry.ResourceRootDirectory, sectionRoot) &&
             !AddScriptSourceDirectory(compileEntry.ResourceRootDirectory,
                                       compileEntry.ResourceRootDirectory,
                                       compileEntry.EntryPath,

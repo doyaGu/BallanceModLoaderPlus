@@ -543,13 +543,6 @@ bool ScriptModHotReloadService::EventBelongsToKnownMod(const std::wstring &path,
     if (entry.SourceKind == ScriptModEntrySourceKind::SingleFile) {
         if (SamePathInsensitive(path, entry.EntryPath))
             return true;
-        const std::wstring entryDirectory = utils::GetDirectoryW(entry.EntryPath);
-        if (!entryDirectory.empty() &&
-            utils::IsPathInsideRootW(path, entryDirectory) &&
-            EndsWithInsensitive(path, L".as") &&
-            !IsScriptModEntryName(utils::GetFileNameW(path).c_str())) {
-            return true;
-        }
         if (!entry.ResourceRootDirectory.empty() && utils::IsPathInsideRootW(path, entry.ResourceRootDirectory))
             return true;
         return false;
