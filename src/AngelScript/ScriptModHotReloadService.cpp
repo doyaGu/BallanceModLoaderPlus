@@ -505,7 +505,27 @@ void ScriptModHotReloadService::QueueReloadDebounced(ScriptMod *mod,
         return;
     if (options.Automatic && !m_AutomaticEnabled)
         return;
-    PendingReload &pending = m_Pending[mod->GetID()];
+    const std::string id = mod->GetID();
+    auto existingIt = m_Pending.find(id);
+    if (options.Automatic &&
+        existingIt != m_Pending.end() &&
+        !existingIt->second.Options.Automatic) {
+        if (m_Context && m_Context->GetScriptDevTools()) {
+            m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+                                                         "ScriptReloadAutoCoalesced",
+                                                         id,
+                                                         "reload",
+                                                         "",
+                                                         "Automatic script reload was coalesced into a pending manual reload.",
+                                                         {{"reason", reason},
+                                                          {"pendingReason", existingIt->second.Reason},
+                                                          {"pendingDryRun", existingIt->second.Options.DryRun ? "true" : "false"},
+                                                          {"pendingCheckState", existingIt->second.Options.CheckStateHooks ? "true" : "false"},
+                                                          {"pendingForceExports", existingIt->second.Options.ForceExports ? "true" : "false"}});
+        }
+        return;
+    }
+    PendingReload &pending = m_Pending[id];
     pending.Options = options;
     pending.QueuedAt = std::chrono::steady_clock::now();
     pending.Due = pending.QueuedAt + kDebounceDelay;
@@ -516,7 +536,7 @@ void ScriptModHotReloadService::QueueReloadDebounced(ScriptMod *mod,
         const bool dryRun = options.DryRun;
         m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
                                                      dryRun ? "ScriptReloadDryRunQueued" : "ScriptReloadQueued",
-                                                     mod->GetID(),
+                                                     id,
                                                      "reload",
                                                      "",
                                                      dryRun ? "Script reload dry-run queued after debounce."
