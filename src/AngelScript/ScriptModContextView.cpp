@@ -6,6 +6,7 @@
 #include "BML/ILogger.h"
 #include "ModContext.h"
 #include "ScriptFacadeAccess.h"
+#include "ScriptFunctionSupport.h"
 #include "ScriptMod.h"
 #include "ScriptModRuntime.h"
 
@@ -18,8 +19,7 @@ bool RejectScriptObjectConstructionHostCall(const char *apiName) {
 }
 
 bool RejectRestrictedHostCall(const char *apiName) {
-    return ScriptModRuntime::RecordConstructionHostCallViolation(apiName) ||
-           ScriptModRuntime::RecordStateHookHostCallViolation(apiName);
+    return RejectScriptRestrictedHostCall(apiName);
 }
 
 } // namespace

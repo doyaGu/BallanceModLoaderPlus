@@ -431,6 +431,8 @@ bool ScriptHookBlockRef::IsEnabled() const {
 }
 
 bool ScriptHookBlockRef::SetEnabled(bool enabled) {
+    if (RejectScriptRestrictedHostCall("HookBlockRef::SetEnabled"))
+        return false;
     ScriptHookBlockEntry *entry = ResolveHookBlockEntry(m_State.lock(), m_Id, m_Generation);
     if (!entry)
         return false;
@@ -444,6 +446,8 @@ bool ScriptHookBlockRef::GetAutoActivateOutputs() const {
 }
 
 bool ScriptHookBlockRef::SetAutoActivateOutputs(bool enabled) {
+    if (RejectScriptRestrictedHostCall("HookBlockRef::SetAutoActivateOutputs"))
+        return false;
     ScriptHookBlockEntry *entry = ResolveHookBlockEntry(m_State.lock(), m_Id, m_Generation);
     if (!entry)
         return false;
@@ -473,6 +477,8 @@ CKBehavior *ScriptHookBlockRef::BorrowOwnerScript() const {
 }
 
 bool ScriptHookBlockRef::Uninstall() {
+    if (RejectScriptRestrictedHostCall("HookBlockRef::Uninstall"))
+        return false;
     return RetireHookBlockEntry(m_State.lock(), m_Id, m_Generation);
 }
 

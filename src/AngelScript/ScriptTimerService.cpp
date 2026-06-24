@@ -589,14 +589,20 @@ float ScriptTimerRef::GetProgress() const {
     return timer ? timer->GetProgress() : 0.0f;
 }
 void ScriptTimerRef::Pause() {
+    if (RejectScriptRestrictedHostCall("TimerRef::Pause"))
+        return;
     if (Timer *timer = ResolveTimer())
         timer->Pause();
 }
 void ScriptTimerRef::Resume() {
+    if (RejectScriptRestrictedHostCall("TimerRef::Resume"))
+        return;
     if (Timer *timer = ResolveTimer())
         timer->Resume();
 }
 void ScriptTimerRef::Cancel() {
+    if (RejectScriptRestrictedHostCall("TimerRef::Cancel"))
+        return;
     std::shared_ptr<ScriptTimerServiceState> state = m_State.lock();
     if (!state || !state->Active || m_Id == Timer::InvalidId)
         return;

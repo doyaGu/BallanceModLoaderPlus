@@ -34,6 +34,7 @@
 #include "ScriptApiContract.h"
 #include "ScriptCallbackEvents.h"
 #include "ScriptFacadeAccess.h"
+#include "ScriptFunctionSupport.h"
 #include "ScriptHookBlockService.h"
 #include "ScriptMod.h"
 #include "ScriptModContextView.h"
@@ -69,8 +70,7 @@ static bool RejectScriptObjectConstructionHostCall(const char *apiName) {
 }
 
 static bool RejectRestrictedHostCall(const char *apiName) {
-    return BML::ScriptModRuntime::RecordConstructionHostCallViolation(apiName) ||
-           BML::ScriptModRuntime::RecordStateHookHostCallViolation(apiName);
+    return BML::RejectScriptRestrictedHostCall(apiName);
 }
 
 static std::string CopyAndFree(char *value) {

@@ -474,6 +474,8 @@ bool ScriptCommandRef::IsEnabled() const {
 }
 
 bool ScriptCommandRef::SetEnabled(bool enabled) {
+    if (RejectScriptRestrictedHostCall("CommandRef::SetEnabled"))
+        return false;
     std::shared_ptr<ScriptCommandServiceState> state = m_State.lock();
     if (!state || !state->Active)
         return false;
@@ -485,6 +487,8 @@ bool ScriptCommandRef::SetEnabled(bool enabled) {
 }
 
 bool ScriptCommandRef::Unregister() {
+    if (RejectScriptRestrictedHostCall("CommandRef::Unregister"))
+        return false;
     std::shared_ptr<ScriptCommandServiceState> state = m_State.lock();
     if (!state || !state->Active || !state->Owner)
         return false;
