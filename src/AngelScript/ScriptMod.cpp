@@ -1502,8 +1502,7 @@ bool ScriptMod::CompileAndCreate() {
 bool ScriptMod::CanHotReloadNow() const {
     std::lock_guard<std::mutex> lock(m_ReloadMutex);
     return !m_Reloading.load(std::memory_order_acquire) &&
-           m_ActiveScriptCalls == 0 &&
-           GetQueuedScriptServiceCallbackCount() == 0;
+           m_ActiveScriptCalls == 0;
 }
 
 bool ScriptMod::EnterScriptCall() const {
@@ -2297,11 +2296,6 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
             result.Diagnostic = "Script callback/export is active; reload dry-run deferred.";
             return result;
         }
-        if (GetQueuedScriptServiceCallbackCount() != 0) {
-            result.RetryLater = true;
-            result.Diagnostic = "Script service callback is queued; reload dry-run deferred.";
-            return result;
-        }
         m_ReloadThreadId = std::this_thread::get_id();
         m_Reloading.store(true, std::memory_order_release);
     }
@@ -2623,11 +2617,6 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
         if (m_ActiveScriptCalls != 0) {
             result.RetryLater = true;
             result.Diagnostic = "Script callback/export is active; reload deferred.";
-            return result;
-        }
-        if (GetQueuedScriptServiceCallbackCount() != 0) {
-            result.RetryLater = true;
-            result.Diagnostic = "Script service callback is queued; reload deferred.";
             return result;
         }
         m_ReloadThreadId = std::this_thread::get_id();
