@@ -4,6 +4,7 @@
 #include <string>
 
 #include "ScriptDiagnostic.h"
+#include "ScriptModLifecycle.h"
 #include "ScriptStateBag.h"
 
 class CKContext;
@@ -30,6 +31,13 @@ public:
                                   ScriptStateBag &state,
                                   bool &called,
                                   ScriptDiagnostic &diagnostic);
+
+    static bool Migrate(CKContext *context,
+                        ScriptModRuntime &runtime,
+                        const std::string &fromVersion,
+                        ScriptStateBag &state,
+                        bool &called,
+                        ScriptDiagnostic &diagnostic);
 
     static bool Restore(CKContext *context,
                         ScriptModRuntime &runtime,

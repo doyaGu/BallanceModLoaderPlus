@@ -6,6 +6,7 @@
 
 #include "CKAngelScriptAdapter.h"
 #include "ScriptDiagnostic.h"
+#include "ScriptModLifecycle.h"
 
 namespace BML {
 
@@ -39,6 +40,22 @@ private:
     ScriptModRuntime *m_PreviousRuntime = nullptr;
     int m_PreviousDepth = 0;
     std::string m_PreviousViolation;
+    bool m_Active = false;
+};
+
+class ScriptStateHookScope {
+public:
+    ScriptStateHookScope(ScriptMod *owner, ScriptModRuntime *runtime, ScriptModReloadPhase phase);
+    ~ScriptStateHookScope();
+
+    ScriptStateHookScope(const ScriptStateHookScope &) = delete;
+    ScriptStateHookScope &operator=(const ScriptStateHookScope &) = delete;
+
+private:
+    ScriptMod *m_PreviousMod = nullptr;
+    ScriptModRuntime *m_PreviousRuntime = nullptr;
+    ScriptModReloadPhase m_PreviousPhase = ScriptModReloadPhase::None;
+    int m_PreviousDepth = 0;
     bool m_Active = false;
 };
 
@@ -86,9 +103,13 @@ public:
     CKAngelScript *GetAngelScript() const { return m_Adapter.GetAngelScript(); }
     void SetLoaded(bool loaded) { m_Loaded = loaded; }
     void SetOwner(ScriptMod *owner) { m_Owner = owner; }
+    ScriptMod *GetOwner() const { return m_Owner; }
     static ScriptMod *GetCurrentScriptMod();
     static bool IsConstructingScriptObject();
     static bool RecordConstructionHostCallViolation(const char *apiName);
+    static bool IsInStateHook();
+    static ScriptModReloadPhase GetStateHookPhase();
+    static bool RecordStateHookHostCallViolation(const char *apiName);
     static bool IsInRenderCallback();
     bool IsModuleLoaded() const { return m_ModuleLoaded; }
     bool HasObject() const { return m_Object != nullptr; }

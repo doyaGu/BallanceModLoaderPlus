@@ -109,6 +109,9 @@ static const ScriptEnumValueContract kReloadPhaseValues[] = {
     {"RELOAD_ROLLBACK", static_cast<int>(ScriptModReloadPhase::Rollback), "ReloadPhase::RELOAD_ROLLBACK"},
     {"RELOAD_RECOVERY", static_cast<int>(ScriptModReloadPhase::Recovery), "ReloadPhase::RELOAD_RECOVERY"},
     {"RELOAD_CLEANUP", static_cast<int>(ScriptModReloadPhase::Cleanup), "ReloadPhase::RELOAD_CLEANUP"},
+    {"RELOAD_SAVE_STATE", static_cast<int>(ScriptModReloadPhase::SaveState), "ReloadPhase::RELOAD_SAVE_STATE"},
+    {"RELOAD_MIGRATE_STATE", static_cast<int>(ScriptModReloadPhase::MigrateState), "ReloadPhase::RELOAD_MIGRATE_STATE"},
+    {"RELOAD_RESTORE_STATE", static_cast<int>(ScriptModReloadPhase::RestoreState), "ReloadPhase::RELOAD_RESTORE_STATE"},
 };
 
 static const ScriptEnumValueContract kHudFlagValues[] = {

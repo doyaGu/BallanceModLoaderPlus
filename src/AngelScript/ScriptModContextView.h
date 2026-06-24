@@ -5,6 +5,7 @@
 
 #include "CKAll.h"
 #include "BML/InputHook.h"
+#include "ScriptModLifecycle.h"
 
 class ModContext;
 class IMod;
@@ -12,15 +13,6 @@ class asIScriptFunction;
 class asIScriptObject;
 
 namespace BML {
-
-enum class ScriptModReloadPhase : int {
-    None = 0,
-    Unload = 1,
-    Load = 2,
-    Rollback = 3,
-    Recovery = 4,
-    Cleanup = 5,
-};
 
 class ScriptMod;
 class ScriptCommandRef;

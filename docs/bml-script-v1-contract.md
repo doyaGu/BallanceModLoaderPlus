@@ -122,11 +122,20 @@ not dynamic mod discovery and not dependency graph reconstruction.
 - `StateBag` stores only `bool`, `int`, `float`, and `string` values keyed by
   string. It never carries AngelScript object handles, callbacks, BML resource
   handles, CK object handles, or other runtime-owned pointers across reload.
+- `StateBag` is transient. BML enables script access only while it is calling
+  `SaveState`, `MigrateState`, or `RestoreState`; a stored `StateBag@` behaves
+  as empty and ignores writes after the hook returns.
+- State migration hooks are restricted. They may transfer primitive/string
+  values through `StateBag`, read context information, and log. They must not
+  create timers, commands, hooks, DataShare requests, irreversible content, or
+  mutate DataShare/config/input/game-world state; resources are rebuilt from
+  restored pure data in `OnLoad`.
 - Script mods are reload-aware through `BML::ModContext`: `IsReloading` is true
   only during script lifecycle callbacks that are part of hot reload, and
   `ReloadPhase` reports `RELOAD_UNLOAD`, `RELOAD_LOAD`, `RELOAD_ROLLBACK`,
-  `RELOAD_RECOVERY`, or `RELOAD_CLEANUP`. Normal startup and normal shutdown
-  report `RELOAD_NONE`.
+  `RELOAD_RECOVERY`, `RELOAD_CLEANUP`, `RELOAD_SAVE_STATE`,
+  `RELOAD_MIGRATE_STATE`, or `RELOAD_RESTORE_STATE`. Normal startup and normal
+  shutdown report `RELOAD_NONE`.
 - Rollback restores only BML-managed script resources and runtime handles. It
   cannot undo game-world changes already made by script code, CKAS Scene/BB
   calls, raw CK/Vx operations, or external plugin APIs. Such side effects must

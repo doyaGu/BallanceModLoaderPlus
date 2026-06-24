@@ -910,22 +910,47 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations,
 
     if (restoreState) {
         bool restored = false;
-        const bool restoreOk = migrateState
-                                   ? ScriptStateMigration::MigrateAndRestore(m_Context ? m_Context->GetCKContext() : nullptr,
-                                                                             m_Runtime,
-                                                                             restoreFromVersion,
-                                                                             *restoreState,
-                                                                             restored,
-                                                                             diagnostic)
-                                   : ScriptStateMigration::Restore(m_Context ? m_Context->GetCKContext() : nullptr,
-                                                                   m_Runtime,
-                                                                   *restoreState,
-                                                                   restored,
-                                                                   diagnostic);
-        if (!restoreOk) {
-            Fail(diagnostic);
-            CleanupFailedLoad();
-            return false;
+        if (migrateState) {
+            bool migrated = false;
+            {
+                ScriptModReloadPhaseScope statePhase(*this, ScriptModReloadPhase::MigrateState);
+                if (!ScriptStateMigration::Migrate(m_Context ? m_Context->GetCKContext() : nullptr,
+                                                   m_Runtime,
+                                                   restoreFromVersion,
+                                                   *restoreState,
+                                                   migrated,
+                                                   diagnostic)) {
+                    Fail(diagnostic);
+                    CleanupFailedLoad();
+                    return false;
+                }
+            }
+
+            bool restoreStateCalled = false;
+            {
+                ScriptModReloadPhaseScope statePhase(*this, ScriptModReloadPhase::RestoreState);
+                if (!ScriptStateMigration::Restore(m_Context ? m_Context->GetCKContext() : nullptr,
+                                                   m_Runtime,
+                                                   *restoreState,
+                                                   restoreStateCalled,
+                                                   diagnostic)) {
+                    Fail(diagnostic);
+                    CleanupFailedLoad();
+                    return false;
+                }
+            }
+            restored = migrated || restoreStateCalled;
+        } else {
+            ScriptModReloadPhaseScope statePhase(*this, ScriptModReloadPhase::RestoreState);
+            if (!ScriptStateMigration::Restore(m_Context ? m_Context->GetCKContext() : nullptr,
+                                               m_Runtime,
+                                               *restoreState,
+                                               restored,
+                                               diagnostic)) {
+                Fail(diagnostic);
+                CleanupFailedLoad();
+                return false;
+            }
         }
         if (!restored) {
             const char *requiredHook = migrateState
@@ -2567,26 +2592,35 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     const std::string oldVersion = m_Definition.Version;
     if (m_State.IsLoaded()) {
         savedState.Reset(new ScriptStateBag());
+        savedState->SetScriptAccessEnabled(false);
         ScriptDiagnostic stateDiagnostic;
-        if (!ScriptStateMigration::Save(m_Context ? m_Context->GetCKContext() : nullptr,
-                                        m_Runtime,
-                                        *savedState.Get(),
-                                        stateSaved,
-                                        stateDiagnostic)) {
-            RewriteSnapshotDiagnosticPaths(snapshot, stateDiagnostic);
-            candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
-            ReleaseRuntimeOnly(candidateRuntime);
-            return finishWithDiagnostic(stateDiagnostic);
+        {
+            ScriptModReloadPhaseScope statePhase(*this, ScriptModReloadPhase::SaveState);
+            if (!ScriptStateMigration::Save(m_Context ? m_Context->GetCKContext() : nullptr,
+                                            m_Runtime,
+                                            *savedState.Get(),
+                                            stateSaved,
+                                            stateDiagnostic)) {
+                RewriteSnapshotDiagnosticPaths(snapshot, stateDiagnostic);
+                candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
+                ReleaseRuntimeOnly(candidateRuntime);
+                return finishWithDiagnostic(stateDiagnostic);
+            }
         }
-
         if (!stateSaved) {
             savedState.Reset();
         } else {
+            rollbackState.Reset(savedState->Clone());
+            rollbackState->SetScriptAccessEnabled(false);
+        }
+
+        if (savedState) {
             bool oldCanRestore = false;
             if (!ScriptStateMigration::HasRestoreState(m_Context ? m_Context->GetCKContext() : nullptr,
                                                        m_Runtime,
                                                        oldCanRestore,
                                                        stateDiagnostic)) {
+                RewriteSnapshotDiagnosticPaths(snapshot, stateDiagnostic);
                 candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
                 ReleaseRuntimeOnly(candidateRuntime);
                 return finishWithDiagnostic(stateDiagnostic);
@@ -2632,7 +2666,6 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                 return finish(false, failure.Message, &failure, &fields);
             }
 
-            rollbackState.Reset(savedState->Clone());
             if (m_Context && m_Context->GetScriptDevTools()) {
                 m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
                                                              "ScriptReloadStateSaved",
@@ -2640,7 +2673,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                                                              "reload",
                                                              snapshot.CommitEntryPathUtf8,
                                                              "Script hot reload state saved.",
-                                                             {{"keys", std::to_string(savedState->GetCount())},
+                                                             {{"keys", std::to_string(savedState->GetStoredCount())},
                                                               {"fromVersion", oldVersion}},
                                                              GetReloadAttemptId());
             }

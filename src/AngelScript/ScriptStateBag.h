@@ -23,6 +23,10 @@ public:
     void AddRef();
     void Release();
 
+    bool IsScriptAccessEnabled() const { return m_ScriptAccessEnabled; }
+    void SetScriptAccessEnabled(bool enabled) { m_ScriptAccessEnabled = enabled; }
+    int GetStoredCount() const;
+
     bool Has(const std::string &key) const;
     bool Remove(const std::string &key);
     void Clear();
@@ -52,6 +56,7 @@ private:
 
     std::map<std::string, Value> m_Values;
     int m_RefCount = 1;
+    bool m_ScriptAccessEnabled = true;
 };
 
 class ScriptStateBagHandle {

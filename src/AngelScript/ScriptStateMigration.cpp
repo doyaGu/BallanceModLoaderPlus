@@ -43,6 +43,7 @@ static bool CallOptionalStateMethod(CKContext *context,
                                     CKAngelScriptWriteArgsCallback writeArgs,
                                     void *userData,
                                     const char *failurePrefix,
+                                    ScriptModReloadPhase phase,
                                     bool &called,
                                     ScriptDiagnostic &diagnostic) {
     called = false;
@@ -56,7 +57,21 @@ static bool CallOptionalStateMethod(CKContext *context,
     call.UserData = userData;
     call.Phase = ScriptDiagnosticPhase::Runtime;
     call.FailurePrefix = failurePrefix;
+    ScriptStateBag *state = nullptr;
+    if (userData) {
+        if (phase == ScriptModReloadPhase::MigrateState) {
+            state = static_cast<MigrateStateArgs *>(userData)->State;
+        } else {
+            state = static_cast<StateOnlyArgs *>(userData)->State;
+        }
+    }
+    const bool previousStateBagAccess = state ? state->IsScriptAccessEnabled() : false;
+    if (state)
+        state->SetScriptAccessEnabled(true);
+    ScriptStateHookScope stateHookScope(runtime.GetOwner(), &runtime, phase);
     const bool ok = runtime.CallMethod(context, call, diagnostic);
+    if (state)
+        state->SetScriptAccessEnabled(previousStateBagAccess);
     called = ok;
 
     ScriptDiagnostic releaseDiagnostic;
@@ -103,6 +118,25 @@ bool ScriptStateMigration::Save(CKContext *context,
                                    WriteStateOnlyArgs,
                                    &args,
                                    "SaveState failed",
+                                   ScriptModReloadPhase::SaveState,
+                                   called,
+                                   diagnostic);
+}
+
+bool ScriptStateMigration::Migrate(CKContext *context,
+                                   ScriptModRuntime &runtime,
+                                   const std::string &fromVersion,
+                                   ScriptStateBag &state,
+                                   bool &called,
+                                   ScriptDiagnostic &diagnostic) {
+    MigrateStateArgs args = {&runtime.GetApi(), &fromVersion, &state};
+    return CallOptionalStateMethod(context,
+                                   runtime,
+                                   MigrateStateDecl,
+                                   WriteMigrateStateArgs,
+                                   &args,
+                                   "MigrateState failed",
+                                   ScriptModReloadPhase::MigrateState,
                                    called,
                                    diagnostic);
 }
@@ -116,15 +150,7 @@ bool ScriptStateMigration::MigrateAndRestore(CKContext *context,
     called = false;
 
     bool migrated = false;
-    MigrateStateArgs migrateArgs = {&runtime.GetApi(), &fromVersion, &state};
-    if (!CallOptionalStateMethod(context,
-                                 runtime,
-                                 MigrateStateDecl,
-                                 WriteMigrateStateArgs,
-                                 &migrateArgs,
-                                 "MigrateState failed",
-                                 migrated,
-                                 diagnostic)) {
+    if (!Migrate(context, runtime, fromVersion, state, migrated, diagnostic)) {
         return false;
     }
 
@@ -136,6 +162,7 @@ bool ScriptStateMigration::MigrateAndRestore(CKContext *context,
                                  WriteStateOnlyArgs,
                                  &restoreArgs,
                                  "RestoreState failed",
+                                 ScriptModReloadPhase::RestoreState,
                                  restored,
                                  diagnostic)) {
         return false;
@@ -157,6 +184,7 @@ bool ScriptStateMigration::Restore(CKContext *context,
                                    WriteStateOnlyArgs,
                                    &args,
                                    "RestoreState failed",
+                                   ScriptModReloadPhase::RestoreState,
                                    called,
                                    diagnostic);
 }

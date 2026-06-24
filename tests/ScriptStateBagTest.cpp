@@ -55,3 +55,35 @@ TEST(ScriptStateBagTest, EnumeratesRemovesClearsAndClones) {
     EXPECT_EQ(0, bag.GetCount());
     EXPECT_EQ(2, clone->GetCount());
 }
+
+TEST(ScriptStateBagTest, DisabledScriptAccessHidesValuesAndRejectsMutations) {
+    ScriptStateBag bag;
+    bag.SetInt("counter", 7);
+    bag.SetString("name", "before");
+    EXPECT_EQ(2, bag.GetStoredCount());
+
+    bag.SetScriptAccessEnabled(false);
+    EXPECT_FALSE(bag.Has("counter"));
+    EXPECT_EQ(ScriptStateValueType::Empty, bag.GetType("counter"));
+    EXPECT_EQ(0, bag.GetCount());
+    EXPECT_EQ("", bag.GetKey(0));
+    EXPECT_EQ(99, bag.GetInt("counter", 99));
+    EXPECT_EQ("fallback", bag.GetString("name", "fallback"));
+    EXPECT_FALSE(bag.Remove("counter"));
+
+    bag.SetInt("counter", 8);
+    bag.SetString("new", "ignored");
+    bag.Clear();
+    EXPECT_EQ(2, bag.GetStoredCount());
+
+    BML::ScriptStateBagHandle clone(bag.Clone());
+    ASSERT_TRUE(clone);
+    EXPECT_FALSE(clone->IsScriptAccessEnabled());
+    EXPECT_EQ(2, clone->GetStoredCount());
+    EXPECT_EQ(0, clone->GetCount());
+
+    bag.SetScriptAccessEnabled(true);
+    EXPECT_EQ(2, bag.GetCount());
+    EXPECT_EQ(7, bag.GetInt("counter", 0));
+    EXPECT_EQ("before", bag.GetString("name", ""));
+}

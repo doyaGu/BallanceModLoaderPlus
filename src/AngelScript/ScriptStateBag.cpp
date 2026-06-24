@@ -5,11 +5,14 @@
 namespace BML {
 
 ScriptStateBag::ScriptStateBag(const ScriptStateBag &other)
-    : m_Values(other.m_Values) {}
+    : m_Values(other.m_Values),
+      m_ScriptAccessEnabled(other.m_ScriptAccessEnabled) {}
 
 ScriptStateBag &ScriptStateBag::operator=(const ScriptStateBag &other) {
-    if (this != &other)
+    if (this != &other) {
         m_Values = other.m_Values;
+        m_ScriptAccessEnabled = other.m_ScriptAccessEnabled;
+    }
     return *this;
 }
 
@@ -22,24 +25,38 @@ void ScriptStateBag::Release() {
         delete this;
 }
 
+int ScriptStateBag::GetStoredCount() const {
+    return static_cast<int>(m_Values.size());
+}
+
 bool ScriptStateBag::Has(const std::string &key) const {
+    if (!m_ScriptAccessEnabled)
+        return false;
     return m_Values.find(key) != m_Values.end();
 }
 
 bool ScriptStateBag::Remove(const std::string &key) {
+    if (!m_ScriptAccessEnabled)
+        return false;
     return m_Values.erase(key) != 0;
 }
 
 void ScriptStateBag::Clear() {
+    if (!m_ScriptAccessEnabled)
+        return;
     m_Values.clear();
 }
 
 int ScriptStateBag::GetCount() const {
+    if (!m_ScriptAccessEnabled)
+        return 0;
     return static_cast<int>(m_Values.size());
 }
 
 std::string ScriptStateBag::GetKey(int index) const {
-    if (index < 0 || index >= GetCount())
+    if (!m_ScriptAccessEnabled)
+        return {};
+    if (index < 0 || index >= GetStoredCount())
         return {};
     auto it = m_Values.begin();
     std::advance(it, index);
@@ -47,11 +64,15 @@ std::string ScriptStateBag::GetKey(int index) const {
 }
 
 ScriptStateValueType ScriptStateBag::GetType(const std::string &key) const {
+    if (!m_ScriptAccessEnabled)
+        return ScriptStateValueType::Empty;
     const auto it = m_Values.find(key);
     return it == m_Values.end() ? ScriptStateValueType::Empty : it->second.Type;
 }
 
 void ScriptStateBag::SetBool(const std::string &key, bool value) {
+    if (!m_ScriptAccessEnabled)
+        return;
     Value &entry = m_Values[key];
     entry = Value();
     entry.Type = ScriptStateValueType::Bool;
@@ -59,6 +80,8 @@ void ScriptStateBag::SetBool(const std::string &key, bool value) {
 }
 
 bool ScriptStateBag::GetBool(const std::string &key, bool defaultValue) const {
+    if (!m_ScriptAccessEnabled)
+        return defaultValue;
     const auto it = m_Values.find(key);
     return it != m_Values.end() && it->second.Type == ScriptStateValueType::Bool
                ? it->second.BoolValue
@@ -66,6 +89,8 @@ bool ScriptStateBag::GetBool(const std::string &key, bool defaultValue) const {
 }
 
 void ScriptStateBag::SetInt(const std::string &key, int value) {
+    if (!m_ScriptAccessEnabled)
+        return;
     Value &entry = m_Values[key];
     entry = Value();
     entry.Type = ScriptStateValueType::Int;
@@ -73,6 +98,8 @@ void ScriptStateBag::SetInt(const std::string &key, int value) {
 }
 
 int ScriptStateBag::GetInt(const std::string &key, int defaultValue) const {
+    if (!m_ScriptAccessEnabled)
+        return defaultValue;
     const auto it = m_Values.find(key);
     return it != m_Values.end() && it->second.Type == ScriptStateValueType::Int
                ? it->second.IntValue
@@ -80,6 +107,8 @@ int ScriptStateBag::GetInt(const std::string &key, int defaultValue) const {
 }
 
 void ScriptStateBag::SetFloat(const std::string &key, float value) {
+    if (!m_ScriptAccessEnabled)
+        return;
     Value &entry = m_Values[key];
     entry = Value();
     entry.Type = ScriptStateValueType::Float;
@@ -87,6 +116,8 @@ void ScriptStateBag::SetFloat(const std::string &key, float value) {
 }
 
 float ScriptStateBag::GetFloat(const std::string &key, float defaultValue) const {
+    if (!m_ScriptAccessEnabled)
+        return defaultValue;
     const auto it = m_Values.find(key);
     return it != m_Values.end() && it->second.Type == ScriptStateValueType::Float
                ? it->second.FloatValue
@@ -94,6 +125,8 @@ float ScriptStateBag::GetFloat(const std::string &key, float defaultValue) const
 }
 
 void ScriptStateBag::SetString(const std::string &key, const std::string &value) {
+    if (!m_ScriptAccessEnabled)
+        return;
     Value &entry = m_Values[key];
     entry = Value();
     entry.Type = ScriptStateValueType::String;
@@ -101,6 +134,8 @@ void ScriptStateBag::SetString(const std::string &key, const std::string &value)
 }
 
 std::string ScriptStateBag::GetString(const std::string &key, const std::string &defaultValue) const {
+    if (!m_ScriptAccessEnabled)
+        return defaultValue;
     const auto it = m_Values.find(key);
     return it != m_Values.end() && it->second.Type == ScriptStateValueType::String
                ? it->second.StringValue

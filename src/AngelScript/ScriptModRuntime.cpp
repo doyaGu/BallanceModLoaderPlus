@@ -12,6 +12,10 @@ thread_local ScriptMod *g_ConstructingScriptMod = nullptr;
 thread_local ScriptModRuntime *g_ConstructingScriptModRuntime = nullptr;
 thread_local int g_ScriptObjectConstructionDepth = 0;
 thread_local std::string g_ScriptObjectConstructionViolation;
+thread_local ScriptMod *g_StateHookScriptMod = nullptr;
+thread_local ScriptModRuntime *g_StateHookScriptModRuntime = nullptr;
+thread_local ScriptModReloadPhase g_StateHookPhase = ScriptModReloadPhase::None;
+thread_local int g_StateHookDepth = 0;
 thread_local bool g_InRenderCallback = false;
 
 void ReplaceAll(std::string &value, const std::string &from, const std::string &to) {
@@ -75,6 +79,30 @@ ScriptObjectConstructionScope::~ScriptObjectConstructionScope() {
 
 std::string ScriptObjectConstructionScope::GetViolation() const {
     return m_Active ? g_ScriptObjectConstructionViolation : std::string();
+}
+
+ScriptStateHookScope::ScriptStateHookScope(ScriptMod *owner, ScriptModRuntime *runtime, ScriptModReloadPhase phase)
+    : m_PreviousMod(g_StateHookScriptMod),
+      m_PreviousRuntime(g_StateHookScriptModRuntime),
+      m_PreviousPhase(g_StateHookPhase),
+      m_PreviousDepth(g_StateHookDepth),
+      m_Active(owner != nullptr && runtime != nullptr && IsScriptModStateHookPhase(phase)) {
+    if (m_Active) {
+        g_StateHookScriptMod = owner;
+        g_StateHookScriptModRuntime = runtime;
+        g_StateHookPhase = phase;
+        ++g_StateHookDepth;
+    }
+}
+
+ScriptStateHookScope::~ScriptStateHookScope() {
+    if (!m_Active)
+        return;
+    if (g_StateHookDepth > 0)
+        --g_StateHookDepth;
+    g_StateHookScriptMod = m_PreviousMod;
+    g_StateHookScriptModRuntime = m_PreviousRuntime;
+    g_StateHookPhase = m_PreviousDepth > 0 ? m_PreviousPhase : ScriptModReloadPhase::None;
 }
 
 ScriptRenderCallbackScope::ScriptRenderCallbackScope()
@@ -177,6 +205,37 @@ bool ScriptModRuntime::RecordConstructionHostCallViolation(const char *apiName) 
         if (api.SetActiveContextException) {
             api.SetActiveContextException(runtime->m_Adapter.GetAngelScript(),
                                           g_ScriptObjectConstructionViolation.c_str(),
+                                          &result);
+        }
+    }
+    return true;
+}
+
+bool ScriptModRuntime::IsInStateHook() {
+    return g_StateHookDepth > 0 && g_StateHookScriptMod != nullptr;
+}
+
+ScriptModReloadPhase ScriptModRuntime::GetStateHookPhase() {
+    return IsInStateHook() ? g_StateHookPhase : ScriptModReloadPhase::None;
+}
+
+bool ScriptModRuntime::RecordStateHookHostCallViolation(const char *apiName) {
+    if (!IsInStateHook())
+        return false;
+
+    std::string message = apiName ? apiName : "BML host API";
+    message += " is not available during hot reload ";
+    message += GetScriptModReloadPhaseName(g_StateHookPhase);
+    message += "; state hooks may only transfer primitive/string values through BML::StateBag and use read-only queries/logging.";
+
+    ScriptModRuntime *runtime = g_StateHookScriptModRuntime;
+    if (runtime) {
+        const ::CKAngelScriptAdapter::Api &api = runtime->m_Adapter.GetApi();
+        CKAngelScriptResult result = {};
+        api.InitResult(&result);
+        if (api.SetActiveContextException) {
+            api.SetActiveContextException(runtime->m_Adapter.GetAngelScript(),
+                                          message.c_str(),
                                           &result);
         }
     }

@@ -405,8 +405,10 @@ Expected behavior:
   `ctx.IsReloading` is true only while BML is calling script lifecycle methods
   for hot reload. `ctx.ReloadPhase` is one of `BML::RELOAD_UNLOAD`,
   `BML::RELOAD_LOAD`, `BML::RELOAD_ROLLBACK`, `BML::RELOAD_RECOVERY`, or
-  `BML::RELOAD_CLEANUP`. Normal startup and normal game shutdown use
-  `BML::RELOAD_NONE`.
+  `BML::RELOAD_CLEANUP`. State migration hooks report the finer
+  `BML::RELOAD_SAVE_STATE`, `BML::RELOAD_MIGRATE_STATE`, and
+  `BML::RELOAD_RESTORE_STATE` phases. Normal startup and normal game shutdown
+  use `BML::RELOAD_NONE`.
 - Use `ctx.ReloadPhase` in `OnUnload` to distinguish final shutdown from old
   runtime replacement. Use `BML::RELOAD_ROLLBACK` in `OnLoad` to avoid assuming
   a failed candidate has left the game world untouched.
@@ -448,6 +450,16 @@ void RestoreState(BML::StateBag@ state) {
   Do not store AngelScript objects, callbacks, `ModRef`, `ExportRef`, CK handles,
   timers, commands, or DataShare requests in it; those resources are rebound
   through the normal `OnLoad` path.
+- `StateBag` is transient. BML enables it only while it is calling
+  `SaveState`, `MigrateState`, or `RestoreState`. If a script stores the
+  `StateBag@` in a field and tries to use it later, the script-visible API
+  behaves as empty and ignores mutations.
+- State hooks are restricted phases. They may copy primitive/string values
+  through `StateBag`, read context information, and log diagnostics. They must
+  not register timers, commands, hooks, DataShare requests, or irreversible
+  content; they must not execute commands, write DataShare/config values, mutate
+  input state, or change CK/game-world objects. Rebuild resources in `OnLoad`
+  after pure state has been restored.
 - Rollback restores only resources BML owns: callbacks, exports, timers,
   commands, DataShare requests, and script runtime handles. It cannot undo
   changes your script already made to the game world through CKAS Scene/BB APIs,
