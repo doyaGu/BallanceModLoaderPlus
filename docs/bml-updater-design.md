@@ -202,9 +202,9 @@ gh-pages
 ```json
 {
   "schemaVersion": 1,
-  "version": "v0.3.12",
-  "packageUrl": "https://github.com/doyaGu/BallanceModLoaderPlus/releases/download/v0.3.12/BMLPlus-Update-v0.3.12.zip",
-  "manifestUrl": "https://github.com/doyaGu/BallanceModLoaderPlus/releases/download/v0.3.12/BMLPlus-Update-v0.3.12.manifest.json",
+  "version": "v0.3.13",
+  "packageUrl": "https://github.com/doyaGu/BallanceModLoaderPlus/releases/download/v0.3.13/BMLPlus-Update-v0.3.13.zip",
+  "manifestUrl": "https://github.com/doyaGu/BallanceModLoaderPlus/releases/download/v0.3.13/BMLPlus-Update-v0.3.13.manifest.json",
   "revokedVersions": [],
   "revokedManifestHashes": []
 }

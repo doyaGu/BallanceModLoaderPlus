@@ -42,7 +42,7 @@ Production signing key name on the local release machine:
 <production-signing-key-name>
 ```
 
-Use a `vX.Y.Z` version string, for example `v0.3.12`.
+Use a `vX.Y.Z` version string, for example `v0.3.13`.
 
 ## Release Artifacts
 
@@ -133,7 +133,7 @@ cmd /c "`"$vs`" -arch=x86 && cmake -S `"$wt`" -B `"$wt\build-debug-msvc`" -G Nin
 Use the fixed updater source for `sources.json`:
 
 ```powershell
-$version = "v0.3.12"
+$version = "v0.3.13"
 $repo = "<repo-root>"
 $wt = "<release-worktree>"
 $out = "$wt\package-$version"
@@ -165,10 +165,10 @@ It does not sign `stable.json`; generate that separately.
 The fixed source branch contains channel files. `stable.json` points at the
 versioned release assets.
 
-Example for `v0.3.12`:
+Example for `v0.3.13`:
 
 ```powershell
-$version = "v0.3.12"
+$version = "v0.3.13"
 $out = "<release-worktree>\package-$version"
 $base = "https://github.com/doyaGu/BallanceModLoaderPlus/releases/download/$version"
 

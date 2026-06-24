@@ -2,7 +2,7 @@
 
 English | [简体中文](README_zh-CN.md)
 
-Current version: v0.3.12
+Current version: v0.3.13
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
