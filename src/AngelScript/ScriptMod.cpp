@@ -555,8 +555,8 @@ private:
     bool m_Entered = false;
 };
 
-static bool CopyDirectorySnapshotContentsW(const std::wstring &source,
-                                           const std::wstring &dest) {
+static bool CopyScriptSourceSnapshotContentsW(const std::wstring &source,
+                                              const std::wstring &dest) {
     if (source.empty() || dest.empty())
         return false;
 
@@ -586,6 +586,8 @@ static bool CopyDirectorySnapshotContentsW(const std::wstring &source,
                 return false;
             continue;
         }
+        if (!EndsWithInsensitiveW(it->path().wstring(), L".as"))
+            continue;
         std::filesystem::create_directories(target.parent_path(), ec);
         if (ec)
             return false;
@@ -688,7 +690,7 @@ static bool PrepareFilesystemReloadCandidate(const ScriptModEntry &entry,
                                                     : utils::CombinePathW(stagingRoot, resourceRootName);
         if (!entry.ResourceRootDirectory.empty() &&
             utils::DirectoryExistsW(entry.ResourceRootDirectory) &&
-            !CopyDirectorySnapshotContentsW(entry.ResourceRootDirectory, stagedResourceRoot)) {
+            !CopyScriptSourceSnapshotContentsW(entry.ResourceRootDirectory, stagedResourceRoot)) {
             diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, "Failed to copy script resource directory into reload snapshot.");
             diagnostic.EntryPath = utils::Utf16ToUtf8(entry.ResourceRootDirectory);
             utils::DeleteDirectoryW(stagingRoot);
@@ -713,7 +715,7 @@ static bool PrepareFilesystemReloadCandidate(const ScriptModEntry &entry,
         return false;
     }
 
-    if (!CopyDirectorySnapshotContentsW(entry.RootDirectory, stagingRoot)) {
+    if (!CopyScriptSourceSnapshotContentsW(entry.RootDirectory, stagingRoot)) {
         diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, "Failed to copy script mod directory into reload snapshot.");
         diagnostic.EntryPath = utils::Utf16ToUtf8(entry.RootDirectory);
         utils::DeleteDirectoryW(stagingRoot);
