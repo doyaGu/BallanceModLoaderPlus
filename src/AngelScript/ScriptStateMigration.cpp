@@ -17,6 +17,28 @@ struct MigrateStateArgs {
     ScriptStateBag *State = nullptr;
 };
 
+class ScriptStateBagAccessScope {
+public:
+    explicit ScriptStateBagAccessScope(ScriptStateBag *state)
+        : m_State(state),
+          m_PreviousAccess(state ? state->IsScriptAccessEnabled() : false) {
+        if (m_State)
+            m_State->SetScriptAccessEnabled(true);
+    }
+
+    ~ScriptStateBagAccessScope() {
+        if (m_State)
+            m_State->SetScriptAccessEnabled(m_PreviousAccess);
+    }
+
+    ScriptStateBagAccessScope(const ScriptStateBagAccessScope &) = delete;
+    ScriptStateBagAccessScope &operator=(const ScriptStateBagAccessScope &) = delete;
+
+private:
+    ScriptStateBag *m_State = nullptr;
+    bool m_PreviousAccess = false;
+};
+
 static CKAS_STATUS WriteStateOnlyArgs(CKAngelScriptArgWriter *writer, void *userData) {
     auto *args = static_cast<StateOnlyArgs *>(userData);
     if (!args || !args->Api || !args->Api->ArgSetObjectHandle || !args->State)
@@ -65,13 +87,9 @@ static bool CallOptionalStateMethod(CKContext *context,
             state = static_cast<StateOnlyArgs *>(userData)->State;
         }
     }
-    const bool previousStateBagAccess = state ? state->IsScriptAccessEnabled() : false;
-    if (state)
-        state->SetScriptAccessEnabled(true);
+    ScriptStateBagAccessScope stateAccess(state);
     ScriptStateHookScope stateHookScope(runtime.GetOwner(), &runtime, phase);
     const bool ok = runtime.CallMethod(context, call, diagnostic);
-    if (state)
-        state->SetScriptAccessEnabled(previousStateBagAccess);
     called = ok;
 
     ScriptDiagnostic releaseDiagnostic;
