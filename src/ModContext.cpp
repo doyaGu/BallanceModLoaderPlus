@@ -1,6 +1,5 @@
 #include "ModContext.h"
 
-#include <cwctype>
 #include <unordered_set>
 #include <queue>
 
@@ -28,6 +27,7 @@
 #include "ScriptModHotReloadService.h"
 #include "ScriptModLoader.h"
 #include "ScriptModRuntime.h"
+#include "ScriptReloadStagingCleanup.h"
 #endif
 #include "StringUtils.h"
 #include "PathUtils.h"
@@ -129,59 +129,6 @@ namespace {
         return utils::CombinePathW(utils::CombinePathW(tempDirectory, kPackagesDirectoryName), archiveName);
     }
 
-#if BML_ENABLE_ANGELSCRIPT
-    bool HasNumericSuffixAfterMarker(const std::wstring &name, const wchar_t *marker) {
-        const wchar_t *pos = marker ? wcsstr(name.c_str(), marker) : nullptr;
-        if (!pos)
-            return false;
-        pos += wcslen(marker);
-        if (*pos == L'\0')
-            return false;
-        while (*pos) {
-            if (!std::iswdigit(*pos))
-                return false;
-            ++pos;
-        }
-        return true;
-    }
-
-    void CleanupStaleScriptReloadDirectoryChildren(const std::wstring &root,
-                                                   const wchar_t *marker,
-                                                   ILogger *logger) {
-        if (root.empty() || !marker || !utils::DirectoryExistsW(root))
-            return;
-
-        const std::wstring pattern = utils::CombinePathW(root, L"*");
-        _wfinddata_t fileinfo = {};
-        auto handle = _wfindfirst(pattern.c_str(), &fileinfo);
-        if (handle == -1)
-            return;
-
-        do {
-            if ((fileinfo.attrib & _A_SUBDIR) == 0)
-                continue;
-            if (wcscmp(fileinfo.name, L".") == 0 || wcscmp(fileinfo.name, L"..") == 0)
-                continue;
-            if (!HasNumericSuffixAfterMarker(fileinfo.name, marker))
-                continue;
-
-            const std::wstring stale = utils::CombinePathW(root, fileinfo.name);
-            if (!utils::DeleteDirectoryW(stale) && logger) {
-                logger->Warn("Failed to remove stale script reload directory: %s",
-                             utils::Utf16ToUtf8(stale).c_str());
-            }
-        } while (_wfindnext(handle, &fileinfo) == 0);
-
-        _findclose(handle);
-    }
-
-    void CleanupStaleScriptReloadArtifacts(const std::wstring &modsRoot, ILogger *logger) {
-        CleanupStaleScriptReloadDirectoryChildren(utils::CombinePathW(utils::GetTempPathW(), L"BMLScriptReload"),
-                                                  L".snapshot.",
-                                                  logger);
-        CleanupStaleScriptReloadDirectoryChildren(modsRoot, L".reload.", logger);
-    }
-#endif
 }
 
 ModContext *g_ModContext = nullptr;

@@ -179,6 +179,15 @@ if (BML_WITH_ANGELSCRIPT)
             ScriptStateBagTest.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptStateBag.cpp
     )
+
+    add_bml_test(ScriptReloadStagingCleanupTest
+            SOURCES
+            ScriptReloadStagingCleanupTest.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptReloadStagingCleanup.cpp
+            DEPENDENCIES
+            BML_PathUtils
+            BML_StringUtils
+    )
 endif ()
 
 add_bml_test(ScriptDevEventsTest
